@@ -1,3 +1,5 @@
+import {createGenericOwnCompatibilityStore} from './generic-own-review-store';
+import {withAgentActionGuard} from './agent-action-guard';
 import {assertHumanReviewedActionTier} from '../../lib/ai/agent-action-tier-guard';
 import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
@@ -38,51 +40,39 @@ const Body=z.object({reviewNonce:PrivateReviewNonce,intent:OwnNotificationPrefer
  * another person's review both end in the same generic refusal, which confirms nothing. */
 function capture(ctx:SessionContext):SessionContext{return {...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};}
 async function guard(tx:Tx,ctx:SessionContext,module:'notifications'|'ess'|'claims'|'performance'='notifications'){await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,module);await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');return fresh;}
-function identity(m:Meta){if(m.state!=='awaiting_confirmation'||!m.intentDigest||!m.reviewedDigest)return fail();return JSON.stringify([1,m.action,m.actionId,m.binding,m.intentDigest,m.reviewedDigest]);}
-function reviewed(binding:z.infer<typeof Binding>,body:z.infer<typeof Body>){return privateReviewCommitment([1,MODULE_NOTIFICATION_ACTION,binding],body);}
-function checked(m:Meta,value:unknown){const body=Body.parse(value);if(body.intent.employmentId!==m.binding.employmentId||body.review.employmentId!==m.binding.employmentId||hash(body.intent)!==m.intentDigest||reviewed(m.binding,body)!==m.reviewedDigest)return fail();return body;}
-function seal(m:Meta,body:z.infer<typeof Body>){let dek:Buffer|undefined;try{if(!masterKeyAvailable())return fail();const id=identity(m),text=JSON.stringify(checked(m,body));if(Buffer.byteLength(text)>32768)return fail();dek=newDek();const kid=newKid();return OwnLeaveSealedReview.parse({formatVersion:1,kid,wrappedDek:wrapDek(dek,'assistant:module-action:key:'+id),ciphertext:sealUnderDek(dek,kid,text,'assistant:module-action:body:'+id)});}finally{dek?.fill(0);}}
-function unseal(stored:Stored){let dek:Buffer|undefined;try{if(!masterKeyAvailable())return fail();const id=identity(stored.metadata),sealed=OwnLeaveSealedReview.parse(stored.sealed);dek=unwrapDek(sealed.wrappedDek,'assistant:module-action:key:'+id);if(dek.length!==32)return fail();const text=unsealUnderDek(dek,sealed.ciphertext,'assistant:module-action:body:'+id);if(Buffer.byteLength(text)>32768)return fail();return checked(stored.metadata,JSON.parse(text));}finally{dek?.fill(0);}}
-async function read(tx:Tx,query:SQL){try{const [row]=await tx.execute<{review:unknown}>(query);return Stored.parse(row?.review);}catch{return fail();}}
-function bound(stored:Stored,ctx:SessionContext,id:string,subject?:string){const m=stored.metadata;if(m.actionId!==id||m.binding.tenantId!==ctx.tenantId||m.binding.userId!==ctx.userId||m.binding.personId!==ctx.personId||(subject&&m.binding.employmentId!==subject))return fail();}
-function pending(stored:Stored){const body=unseal(stored),m=stored.metadata;return {kind:'prepared' as const,review:ModuleActionPreparedReview.parse({action:m.action,contractVersion:1,actionId:m.actionId,reviewedDigest:m.reviewedDigest,createdAt:m.createdAt,expiresAt:m.expiresAt,review:{version:body.review.version,kind:body.review.kind,employmentId:body.review.employmentId,before:body.review.before.map(row=>({category:row.category,enabled:row.enabled,locale:row.locale})),after:{enabledCategories:body.review.after.enabledCategories.slice(),locale:body.review.after.locale}}})};}
-function retired(stored:Stored){return {kind:'retired' as const,receipt:ModuleActionRetiredReceipt.parse({action:stored.metadata.action,contractVersion:1,actionId:stored.metadata.actionId,state:stored.metadata.state})};}
-async function completed(tx:Tx,ctx:SessionContext,stored:Stored,cap:OwnNotificationServerIdentity){if(stored.metadata.state!=='completed'||!stored.eventId)return fail();
- const actual=await reopenOwnNotificationPreferencesEventTx(tx,ctx,{employmentId:stored.metadata.binding.employmentId,eventId:stored.eventId},cap);if(actual.proof!=='historical_event_current_values'||actual.version!==1||actual.kind!=='own_notification_preferences')return fail();
- return {kind:'completed' as const,receipt:ModuleActionCompletedReceipt.parse({action:MODULE_NOTIFICATION_ACTION,contractVersion:1,actionId:stored.metadata.actionId,state:'completed',sourceEventId:actual.eventId,employmentId:actual.employmentId,enabledCategories:actual.enabledCategories,locale:actual.locale,semantics:'recorded_effect_current_values'})};}
-async function subject(tx:Tx,id:string){const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_module_action_review_subject(${id}::uuid,${MODULE_NOTIFICATION_ACTION}) as subject`);return z.guid().parse(row?.subject);}
-/** Capability is resolved afresh by the eventual HTTP owner outside this transaction. It is never
- * part of the human input, encrypted body or persisted completion. No hidden identity/network call. */
-export async function prepareModuleActionReview(supplied:SessionContext,input:unknown,cap:OwnNotificationServerIdentity){assertHumanReviewedActionTier(supplied,'notifications.email_preferences.save','confirm');const ctx=capture(supplied),parsed=ModuleActionPrepare.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{
- const fresh=await guard(tx,ctx);await lockLeaveDependencyReadConfigurationTx(tx,fresh.tenantId);
- if(!fresh.personId)return fail();
- // A posted UUID nominates no resource authority. Establish the actual own-person/RLS binding
- // before taking its employee barrier, then refuse drift instead of locking a retargeted subject.
- const nominate=()=>tx.select({id:employment.id,companyId:employment.companyId}).from(employment).where(and(eq(employment.id,p.intent.employmentId),eq(employment.tenantId,fresh.tenantId),eq(employment.personId,fresh.personId!))).limit(1);
- const [nominated]=await nominate();if(!nominated)return fail();await lockLeaveDependenciesTx(tx,fresh.tenantId,[nominated.id]);
- const [own]=await nominate();if(!own||own.id!==nominated.id||own.companyId!==nominated.companyId)return fail();
- const review=await prepareOwnNotificationPreferencesTx(tx,fresh,p.intent,cap),body=Body.parse({reviewNonce:newPrivateReviewNonce(),intent:p.intent,review}),binding=Binding.parse({tenantId:fresh.tenantId,userId:fresh.userId,personId:fresh.personId,employmentId:p.intent.employmentId,companyId:own.companyId});
- const now=new Date(),m=Metadata.parse({actionId:randomUUID(),action:MODULE_NOTIFICATION_ACTION,contractVersion:1,binding,intentDigest:hash(body.intent),reviewedDigest:reviewed(binding,body),state:'awaiting_confirmation',createdAt:now.toISOString(),expiresAt:new Date(now.getTime()+600000).toISOString()}),sealed=seal(m,body);
- const stored=await read(tx,sql`select app.assistant_module_action_review_prepare(${MODULE_NOTIFICATION_ACTION},${m.actionId}::uuid,${binding.personId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) as review`);bound(stored,fresh,m.actionId,p.intent.employmentId);return pending(stored);
- });}catch{return fail();}}
-export async function confirmModuleActionReview(supplied:SessionContext,input:unknown,cap:OwnNotificationServerIdentity){assertHumanReviewedActionTier(supplied,'notifications.email_preferences.save','confirm');const ctx=capture(supplied),parsed=ModuleActionConfirmation.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{
- const fresh=await guard(tx,ctx);await lockLeaveDependencyReadConfigurationTx(tx,fresh.tenantId);const nominated=await subject(tx,p.actionId);await lockLeaveDependenciesTx(tx,fresh.tenantId,[nominated]);
- const stored=await read(tx,sql`select app.assistant_module_action_review_read(${p.actionId}::uuid,${MODULE_NOTIFICATION_ACTION}) as review`);bound(stored,fresh,p.actionId,nominated);
- if(stored.metadata.state==='completed')return completed(tx,fresh,stored,cap);if(stored.metadata.state!=='awaiting_confirmation')return retired(stored);
- if(stored.metadata.reviewedDigest!==p.reviewedDigest)return fail();const body=unseal(stored),native=await confirmOwnNotificationPreferencesTx(tx,fresh,body.intent,body.review.reviewDigest,cap);
- await captureNativeOutcomeTargetsTx(tx,fresh,{action:MODULE_NOTIFICATION_ACTION,sourceId:p.actionId,eventId:native.eventId,targets:[{kind:'employment',id:nominated}]});
- const done=await read(tx,sql`select app.assistant_module_action_review_complete(${p.actionId}::uuid,${MODULE_NOTIFICATION_ACTION},${p.reviewedDigest},${native.eventId}::uuid) as review`);bound(done,fresh,p.actionId,nominated);if(done.eventId!==native.eventId)return fail();return completed(tx,fresh,done,cap);
- });}catch{return fail();}}
-/** Reopen is read/reconciliation only, never an effect or automatic confirmation retry. */
-export async function reopenModuleActionReview(supplied:SessionContext,actionId:unknown,cap:OwnNotificationServerIdentity){const ctx=capture(supplied),parsed=z.guid().safeParse(actionId);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
- const fresh=await guard(tx,ctx);await lockLeaveDependencyReadConfigurationTx(tx,fresh.tenantId);const nominated=await subject(tx,id);await lockLeaveDependenciesTx(tx,fresh.tenantId,[nominated]);const stored=await read(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${MODULE_NOTIFICATION_ACTION}) as review`);bound(stored,fresh,id,nominated);return stored.metadata.state==='awaiting_confirmation'?pending(stored):stored.metadata.state==='completed'?completed(tx,fresh,stored,cap):retired(stored);
- });}catch{return fail();}}
-/** Retirement has fresh actual caller/custody authority but no Assistant grant/pause requirement. */
-export async function discardModuleActionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=ModuleActionRetirementRequest.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_legacy_review_retire(${p.actionId}::uuid,${MODULE_NOTIFICATION_ACTION}) as receipt`);return{kind:'retired' as const,receipt:ModuleActionRetiredReceipt.parse(row?.receipt)};});}catch{return fail();}}
 
-/** Same bounded current-login index; no content, identities, digests or native effect references. */
-export async function listModuleActionReviews(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const rows=await tx.execute(sql`select action,action_id as "actionId",state,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt" from app.assistant_legacy_reviews_index(${MODULE_NOTIFICATION_ACTION})`);return ModuleActionReviewIndexResult.parse({kind:'module_review_index',reviews:Array.from(rows)});});}catch{return fail();}}
-
+type NotificationHuman=z.infer<typeof OwnNotificationPreferencesIntent>;
+type NotificationView={reviewNonce:z.infer<typeof PrivateReviewNonce>;content:NotificationHuman;nativeReviewedDigest:string;review:z.infer<typeof OwnNotificationPreferencesReview>};
+type NotificationSource={employmentId:string;companyId?:string};
+function notificationView(value:unknown):NotificationView{const body=Body.parse(value);if(body.intent.employmentId!==body.review.employmentId)return fail();return{reviewNonce:body.reviewNonce,content:body.intent,nativeReviewedDigest:body.review.reviewDigest,review:body.review};}
+function notificationStore(cap?:OwnNotificationServerIdentity){
+ const capability=()=>cap??fail();
+ return createGenericOwnCompatibilityStore<NotificationHuman,z.infer<typeof Binding>,Stored,NotificationSource,{content:NotificationHuman;reviewedDigest:string;review:z.infer<typeof OwnNotificationPreferencesReview>},Awaited<ReturnType<typeof confirmOwnNotificationPreferencesTx>>,z.infer<typeof ModuleActionPreparedReview>,z.infer<typeof ModuleActionCompletedReceipt>,z.infer<typeof ModuleActionRetiredReceipt>,z.infer<typeof ModuleActionReviewIndexResult>>({
+ action:MODULE_NOTIFICATION_ACTION,tier:'confirm',human:OwnNotificationPreferencesIntent,metadata:Metadata,stored:Stored,confirmation:ModuleActionConfirmation,retirement:ModuleActionRetirementRequest,retired:ModuleActionRetiredReceipt,index:ModuleActionReviewIndexResult,indexKind:'module_review_index',
+ body:{read:notificationView,write:view=>{const body=view as NotificationView;return Body.parse({reviewNonce:body.reviewNonce,intent:body.content,review:body.review});},create:(native,reviewNonce)=>({reviewNonce,content:native.content,nativeReviewedDigest:native.reviewedDigest,review:native.review}),assertCurrent:()=>{}},
+ async withInterval(tx,ctx,nomination,work){const fresh=await withAgentActionGuard(tx,ctx,MODULE_NOTIFICATION_ACTION);await lockLeaveDependencyReadConfigurationTx(tx,fresh.tenantId);if(!fresh.personId)return fail();
+  if(nomination.human){const id=nomination.human.employmentId,nominate=()=>tx.select({id:employment.id,companyId:employment.companyId}).from(employment).where(and(eq(employment.id,id),eq(employment.tenantId,fresh.tenantId),eq(employment.personId,fresh.personId!))).limit(1);const [before]=await nominate();if(!before)return fail();await lockLeaveDependenciesTx(tx,fresh.tenantId,[before.id]);const [own]=await nominate();if(!own||own.id!==before.id||own.companyId!==before.companyId)return fail();return work(fresh,{employmentId:own.id,companyId:own.companyId});}
+  const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_module_action_review_subject(${z.guid().parse(nomination.actionId)}::uuid,${MODULE_NOTIFICATION_ACTION}) as subject`),id=z.guid().parse(row?.subject);await lockLeaveDependenciesTx(tx,fresh.tenantId,[id]);return work(fresh,{employmentId:id});
+ },
+ binding:(ctx,own)=>Binding.parse({tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId,employmentId:own.employmentId,companyId:own.companyId}),assertSubjectBinding:(binding,own)=>{if(binding.employmentId!==own.employmentId||(own.companyId&&binding.companyId!==own.companyId))return fail();},assertHumanBinding:(binding,human)=>{if(binding.employmentId!==human.employmentId)return fail();},
+ async prepareNative(tx,ctx,human){const review=await prepareOwnNotificationPreferencesTx(tx,ctx,human,capability());return{content:human,reviewedDigest:review.reviewDigest,review};},
+ async reopenNative(_tx,_ctx,view){const body=view as NotificationView;return{content:body.content,reviewedDigest:body.nativeReviewedDigest,review:body.review};},
+ confirmNative:(tx,ctx,body)=>confirmOwnNotificationPreferencesTx(tx,ctx,body.content,body.nativeReviewedDigest,capability()),
+ pending:(row,view)=>{const body=view as NotificationView,m=row.metadata;return ModuleActionPreparedReview.parse({action:MODULE_NOTIFICATION_ACTION,contractVersion:1,actionId:m.actionId,reviewedDigest:m.reviewedDigest,createdAt:m.createdAt,expiresAt:m.expiresAt,review:{version:body.review.version,kind:body.review.kind,employmentId:body.review.employmentId,before:body.review.before.map(item=>({category:item.category,enabled:item.enabled,locale:item.locale})),after:{enabledCategories:body.review.after.enabledCategories.slice(),locale:body.review.after.locale}}});},
+ async completed(tx,ctx,row){if(!row.eventId)return fail();const actual=await reopenOwnNotificationPreferencesEventTx(tx,ctx,{employmentId:row.metadata.binding.employmentId,eventId:row.eventId},capability());if(actual.proof!=='historical_event_current_values'||actual.version!==1||actual.kind!=='own_notification_preferences')return fail();return ModuleActionCompletedReceipt.parse({action:MODULE_NOTIFICATION_ACTION,contractVersion:1,actionId:row.metadata.actionId,state:'completed',sourceEventId:actual.eventId,employmentId:actual.employmentId,enabledCategories:actual.enabledCategories,locale:actual.locale,semantics:'recorded_effect_current_values'});},
+ event:row=>row.eventId,nativeEvent:native=>native.eventId,assertCompletion:(row,native)=>{if(row.eventId!==native.eventId)return fail();},targets:source=>[{kind:'employment',id:source.employmentId}],
+ async prepareRow(tx,m,sealed){const b=m.binding,[row]=await tx.execute<{review:unknown}>(sql`select app.assistant_module_action_review_prepare(${MODULE_NOTIFICATION_ACTION},${m.actionId}::uuid,${b.personId}::uuid,${b.employmentId}::uuid,${b.companyId}::uuid,${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) as review`);return row?.review;},
+ async readRow(tx,id){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_module_action_review_read(${id}::uuid,${MODULE_NOTIFICATION_ACTION}) as review`);return row?.review;},
+ async completeRow(tx,id,expected,native){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_module_action_review_complete(${id}::uuid,${MODULE_NOTIFICATION_ACTION},${expected},${native.eventId}::uuid) as review`);return row?.review;},
+ async discardRow(tx,id){const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_legacy_review_retire(${id}::uuid,${MODULE_NOTIFICATION_ACTION}) as receipt`);return row?.receipt;},
+ async indexRows(tx){return Array.from(await tx.execute(sql`select action,action_id as "actionId",state,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt" from app.assistant_legacy_reviews_index(${MODULE_NOTIFICATION_ACTION})`));},unavailable:fail,
+ });
+}
+export async function prepareModuleActionReview(ctx:SessionContext,input:unknown,cap:OwnNotificationServerIdentity){assertHumanReviewedActionTier(ctx,MODULE_NOTIFICATION_ACTION,'confirm');const parsed=ModuleActionPrepare.safeParse(input);if(!parsed.success)return fail();return notificationStore(cap).prepare(ctx,parsed.data.intent);}
+export const confirmModuleActionReview=(ctx:SessionContext,input:unknown,cap:OwnNotificationServerIdentity)=>notificationStore(cap).confirm(ctx,input);
+export const reopenModuleActionReview=(ctx:SessionContext,input:unknown,cap:OwnNotificationServerIdentity)=>notificationStore(cap).reopen(ctx,input);
+export const discardModuleActionReview=(ctx:SessionContext,input:unknown)=>notificationStore().discard(ctx,input);
+export const listModuleActionReviews=(ctx:SessionContext)=>notificationStore().list(ctx);
 
 /** ESS shares the physical lifecycle above. These typed server owners remain unmounted; the
  * existing notification-only HTTP/public contracts do not acquire another action by importing it. */
@@ -347,12 +337,7 @@ export async function listClaimSubmissionModuleActionReviews(supplied:SessionCon
 
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
-export async function readCompletedNotificationOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown,cap:OwnNotificationServerIdentity){
- const ctx=capture(supplied),id=z.guid().parse(value);await boundNativeOutcomeTransactionTx(tx);
- const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'notifications.email_preferences.save'},${id}::uuid) as completed`);
- if(terminal?.completed!==true)return fail();
- const fresh=await guard(tx,ctx);await lockLeaveDependencyReadConfigurationTx(tx,fresh.tenantId);const nominated=await subject(tx,id);await lockLeaveDependenciesTx(tx,fresh.tenantId,[nominated]);const stored=await read(tx,sql`select app.assistant_module_action_review_read(${id}::uuid,${MODULE_NOTIFICATION_ACTION}) as review`);bound(stored,fresh,id,nominated);const completion=await completed(tx,fresh,stored,cap);return{completion,eventId:z.guid().parse(stored.eventId)};
-}
+export const readCompletedNotificationOutcomeTx=(tx:Tx,ctx:SessionContext,input:unknown,cap:OwnNotificationServerIdentity)=>notificationStore(cap).readCompletedOutcomeTx(tx,ctx,input);
 
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
