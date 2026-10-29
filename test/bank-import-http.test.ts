@@ -10,7 +10,7 @@ import {POST as create} from '../app/admin/personnel/import/bank-statutory/jobs/
 import {PUT as upload,POST as command,GET as status} from '../app/admin/personnel/import/bank-statutory/jobs/[jobId]/route';
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();ctx=adminCtx(await seedBase());});afterAll(closeAll);
 const origin='https://hr.example.test';
-const request=(url:string,method:string,body:string|Buffer,withOrigin=true)=>new Request(origin+url,{method,headers:{host:'hr.example.test',...(withOrigin?{origin}:{})},body});
+const request=(url:string,method:string,body:string|Buffer,withOrigin=true)=>new Request(origin+url,{method,headers:{host:'hr.example.test',...(withOrigin?{origin}:{})},body:typeof body==='string'?body:new Uint8Array(body)});
 it('admits, uploads, queues and polls a file without executing any validation in the HTTP request',async()=>{
  const bytes=Buffer.from('employee_code,tax_number\nEMP1,T1'),meta=JSON.stringify({name:'bank.csv',bytes:bytes.length,hash:createHash('sha256').update(bytes).digest('hex')});
  const first=await create(request('/jobs','POST',meta));expect(first.status).toBe(201);const {job}=await first.json();

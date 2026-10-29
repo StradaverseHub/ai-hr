@@ -96,7 +96,7 @@ BEGIN
  IF jsonb_typeof(p_codes) IS DISTINCT FROM 'array' OR jsonb_array_length(p_codes)>1000 OR NOT app.principal_snapshot_current() THEN
   RAISE EXCEPTION 'Import subject lookup refused' USING ERRCODE='42501';
  END IF;
- RETURN QUERY SELECT e.id,e.person_id,e.company_id,e.employee_code,e.hired_on,e.card_id,e.attendance_photo_setting,e.payment_method,
+ RETURN QUERY SELECT e.id,e.person_id,e.company_id,e.employee_code,e.hired_on,e.card_id,e.attendance_photo_setting::text,e.payment_method::text,
  p.full_name,p.primary_email,p.phone,c.country,CASE WHEN s.id IS NULL THEN NULL ELSE to_jsonb(s)||jsonb_build_object(
  'epf_employee_rate',s.epf_employee_rate::text,'epf_employer_rate',s.epf_employer_rate::text,
  'epf_employee_amount',s.epf_employee_amount::text,'epf_employer_amount',s.epf_employer_amount::text,
