@@ -673,3 +673,23 @@ it('accepts tenant directory recipients and rejects foreign people and deleted r
   notice.cc = [`person:${randomUUID()}`]; await expect(v9SaveConfig(admin, invalid.revision, invalid)).rejects.toThrow('available person from this tenant');
   notice.cc = []; invalid.groups = invalid.groups.filter(group => group.id !== 'review-recipient-group'); await expect(v9SaveConfig(admin, invalid.revision, invalid)).rejects.toThrow('existing assignment group');
 });
+
+it('resumes offboarding waits before 08:00 without starting date workflows or clearance', async () => {
+  const config = (await v9Workspace(admin)).config!;
+  config.checklists = [...config.checklists.filter(checklist => checklist.module === 'onb'), { id: 'morning-checklist', name: 'Fictional morning checklist', module: 'off', rules: {}, tasks: [{ id: 'morning-task', name: 'Keep open', by: 'employee', group: null, mode: 'manual', opens: null, due: 0, required: true, documentTemplate: null, documentAction: 'completed' }] }];
+  config.workflows = [{ id: 'morning-wait', name: 'Morning wait', module: 'off', status: 'published', trigger: { event: 'submitted', days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [], steps: [{ id: 'wait', type: 'waitFile', slot: 'morning-slot', label: 'Fictional supporting file' }, { id: 'notice', type: 'notify', to: 'employee', cc: [], subject: 'Resumed before 08:00', body: '' }], description: '' }, { id: 'daily-date', name: 'Daily date', module: 'off', status: 'published', trigger: { event: 'beforeLWD', days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [], steps: [{ id: 'notice', type: 'notify', to: 'employee', cc: [], subject: 'Date work after 08:00', body: '' }], description: '' }];
+  await v9SaveConfig(admin, config.revision, config);
+  const lastDay = todayInKualaLumpur();
+  const id = await v9CreateOffboarding(admin, { employmentId, type: 'Resignation', noticeDate: addDays(lastDay, -30), lastDay });
+  // Isolate the minute-worker timing from the submission command's immediate date evaluation.
+  const before = await v9CaseDetail(admin, id);
+  await owner.db.execute(sql`update lc_v9_case set data=${JSON.stringify({ ...before.case, state: 'submitted', checklistId: 'morning-checklist', tasks: [{ id: 'morning-task', name: 'Keep open', status: 'todo', by: 'employee', required: true, dueOn: lastDay, assignee: employee.userId, reason: '', documentTemplate: null, documentAction: 'completed' }], files: [{ id: randomUUID(), slot: 'morning-slot', name: 'Fictional existing receipt', storageId: randomUUID() }], runs: [{ id: 'morning-wait:once', workflowId: 'morning-wait', revision: config.revision, date: lastDay, status: 'waiting', cursor: 0, reason: 'Upload Fictional supporting file.', at: lastDay + 'T00:00:00Z', definition: config.workflows[0] }] })}::jsonb where id=${id}::uuid`);
+  const system = { ...admin, userId: undefined, personId: null }, morning = new Date(addDays(lastDay, -1) + 'T23:00:00Z');
+  // 23:00 UTC is 07:00 Malaysia on the following day.
+  expect(todayInKualaLumpur(morning)).toBe(lastDay);
+  expect(await v9Sweep(system, owner, morning)).toEqual({ processed: 1, failed: 0 });
+  const after = (await v9CaseDetail(admin, id)).case;
+  expect(after.state).toBe('submitted'); expect(after.mails.map(mail => mail.subject)).toEqual(['Resumed before 08:00']);
+  expect(after.runs.some(run => run.workflowId === 'daily-date')).toBe(false);
+  expect(await v9Sweep(system, owner, morning)).toEqual({ processed: 0, failed: 0 });
+});

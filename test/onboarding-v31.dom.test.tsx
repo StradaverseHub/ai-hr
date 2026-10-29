@@ -210,3 +210,14 @@ describe('prototype group editing and retained requisitions',()=>{
   expect(screen.queryByText(/Current parallel policy/)).toBeNull();expect(screen.queryByRole('button')).toBeNull();expect(screen.queryByRole('combobox')).toBeNull();expect(screen.queryByRole('textbox')).toBeNull();
  });
 });
+
+it('shows an unlimited group as available without a zero-maximum workload meter', () => {
+  const config = defaultConfig('owner'); config.groups[0]!.limit = 0;
+  const context = { config, revision: 1, actor: { id: 'owner', module: true, master: false }, directory: [{ id: 'owner', name: 'Fictional HR' }], checklistCounts: {}, loads: { owner: 1500 }, availability: {}, matchCounts: {}, totalJoiners: 0 };
+  const options = { businessGroup: [], company: [], department: [], title: [], grade: [], employmentType: [] };
+  render(<NextIntlClientProvider locale="en" messages={messages('en')}><OnboardingSettings context={context as never} options={options as never} initialTab="groups"/></NextIntlClientProvider>);
+  const group = within(screen.getByRole('region', { name: 'People GBS' }));
+  expect(group.getByText('Available')).toBeVisible(); expect(group.queryByText('At limit')).not.toBeInTheDocument();
+  expect(group.getByText(/No task limit/)).toBeVisible(); expect(group.queryByRole('progressbar')).not.toBeInTheDocument();
+  expect(group.getByRole('spinbutton', { name: 'Open onboarding task limit per person' })).toHaveAttribute('min', '0');
+});

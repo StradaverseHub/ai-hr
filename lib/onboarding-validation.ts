@@ -5,7 +5,7 @@ const rules = z.object({ businessGroup: z.array(id).max(300).optional(), company
 const step = z.object({ id, label: name, type: z.enum(['group', 'routing', 'person']), target: z.string().max(100), method: z.enum(['manual', 'rr']) }).strict();
 export const onboardingTaskSchema = z.object({ id, name, by: z.enum(['group', 'joiner', 'manager']), group: z.string().max(100), method: z.enum(['manual', 'rr']), opens: z.number().int().min(-365).max(365).nullable(), due: z.number().int().min(-365).max(365), gate: z.boolean(), required: z.boolean().optional(), documentTemplate: id.nullable().optional(), documentAction: z.enum(['completed', 'signed', 'sent']).optional() }).strict();
 export const onboardingConfigSchema = z.object({
-    version: z.literal(1), v9ChecklistRevision: z.number().int().positive().optional(), groups: z.array(z.object({ id, name, members: z.array(id).max(500), limit: z.number().int().min(1).max(1000) }).strict()).max(100),
+    version: z.literal(1), v9ChecklistRevision: z.number().int().positive().optional(), groups: z.array(z.object({ id, name, members: z.array(id).max(500), limit: z.number().int().min(0).max(1000) }).strict()).max(100),
     workflows: z.array(z.object({ id, name, mode: z.enum(['seq', 'par']), steps: z.array(step).min(1).max(30) }).strict()).max(100),
     routings: z.array(z.object({ id, name, rows: z.array(z.object({ id, rules, group: z.string().max(100) }).strict()).max(300) }).strict()).max(100),
     checklists: z.array(z.object({ id, name, owner: id, createdAt: z.string().datetime(), rules, tasks: z.array(onboardingTaskSchema).max(100) }).strict()).max(100),

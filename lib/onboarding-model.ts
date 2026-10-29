@@ -349,7 +349,7 @@ function taskAssignee(config: Config, t: Task, env: Environment, exclude?: Id): 
     const group = config.groups.find(g => g.id === t.group);
     if (!group)
         return null;
-    return group.members.filter(id => id !== exclude && env.users.includes(id) && available(env, id, t.dueOn) && (env.taskLoads[id] ?? 0) < group.limit)
+    return group.members.filter(id => id !== exclude && env.users.includes(id) && available(env, id, t.dueOn) && (group.limit === 0 || (env.taskLoads[id] ?? 0) < group.limit))
         .sort((a, b) => (env.taskLoads[a] ?? 0) - (env.taskLoads[b] ?? 0) || (env.lastTaskAssignment[a] ?? '').localeCompare(env.lastTaskAssignment[b] ?? '') || group.members.indexOf(a) - group.members.indexOf(b))[0] ?? null;
 }
 export function assignTask(config: Config, c: Case, t: Task, a: Actor, env: Environment, rerun = false) {
@@ -841,8 +841,8 @@ export function validateConfig(config: Config) {
         for (const row of route.rows)
             allowedRules(row.rules, ['businessGroup', 'company', 'department', 'title'], true);
     for (const g of config.groups)
-        if (!g.name.trim() || !Number.isInteger(g.limit) || g.limit < 1 || new Set(g.members).size !== g.members.length)
-            fail('Choose a group name, positive task limit and distinct members.');
+        if (!g.name.trim() || !Number.isInteger(g.limit) || g.limit < 0 || new Set(g.members).size !== g.members.length)
+            fail('Choose a group name, nonnegative task limit (zero means unlimited) and distinct members.');
     for (const list of [...config.checklists.map(c => c.tasks), ...config.workflows.map(w => w.steps), ...config.routings.map(r => r.rows)])
         if (new Set(list.map(x => x.id)).size !== list.length)
             fail('Task, step and routing-row identifiers must be unique within each definition.');

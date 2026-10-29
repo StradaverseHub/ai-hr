@@ -422,7 +422,7 @@ export async function v9Sweep(ctx: SessionContext, connection: NotificationSweep
   const ids = await connection.withTenant(ctx, async tx => {
     const [permission] = await tx.execute<{ ok: boolean }>(sql`select current_user='ai_hr_owner' OR EXISTS(select 1 from pg_roles where rolname=current_user and rolsuper) as ok`);
     if (!permission?.ok) throw new M.V9Error('Lifecycle scheduling requires the storage owner.', 'forbidden');
-    return dates ? tx.execute<{ id: string }>(sql`select id from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and data->>'state'='submitted' order by updated_at,id`) : [];
+    return tx.execute<{ id: string }>(sql`select id from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and data->>'state'='submitted' order by updated_at,id`);
   });
   const output = { processed: 0, failed: 0 };
   for (const { id } of ids) try {
@@ -432,10 +432,10 @@ export async function v9Sweep(ctx: SessionContext, connection: NotificationSweep
       if (!row) return false; const config = await configTx(tx, ctx); if (!config) return false;
       const c = structuredClone(row.data), env = await environment(tx, ctx, c, config);
       env.today = todayInKualaLumpur(now); env.now = now.toISOString();
-      for (const w of config.workflows) { if (c.runs.some(r => r.workflowId === w.id && r.status === 'waiting')) M.runWorkflow(c, config, w, env, 'resume'); M.runWorkflow(c, config, w, env, 'date'); }
-      const calculation = c.module === 'off' ? await readSettlementTx(tx, ctx, c, config) : null;
+      for (const w of config.workflows) { if (c.runs.some(r => r.workflowId === w.id && r.status === 'waiting')) M.runWorkflow(c, config, w, env, 'resume'); if (dates) M.runWorkflow(c, config, w, env, 'date'); }
+      const calculation = dates && c.module === 'off' ? await readSettlementTx(tx, ctx, c, config) : null;
       const figures = calculation?.ready && calculation.lastDay === c.facts.lastDay ? { sourceRevision: calculation.sourceRevision, lastDay: calculation.lastDay, leaveDays: String(calculation.encashDays), amount: calculation.amount!.toFixed(2), currency: calculation.currency, payDate: calculation.payDate, lockedAt: env.now, payrollReference: randomUUID() } : null;
-      M.lastDayCheck(c, config, env, figures);
+      if (dates) M.lastDayCheck(c, config, env, figures);
       if (JSON.stringify(c) === JSON.stringify(row.data)) return false;
       await store(tx, ctx, row, c, 'scheduled'); return true;
     });
