@@ -38,8 +38,11 @@ try {
   const roleProof=await owner`select r.rolname,r.rolsuper,r.rolbypassrls,c.relowner=r.oid as queue_owner from pg_roles r cross join pg_class c where r.rolname in ('ai_hr_app','ai_hr_owner') and c.oid='public.bank_import_job'::regclass order by r.rolname`;
   assert.equal(roleProof.length,2);
   assert.deepEqual(roleProof.map((r:any)=>[r.rolname,r.rolsuper,r.rolbypassrls,r.queue_owner]),[['ai_hr_app',false,false,false],['ai_hr_owner',false,false,true]]);
-  const ledger=await owner`select id::text,hash,created_at::text from drizzle.__drizzle_migrations order by id`;
+  // Drizzle inserts in journal-array order. Qualify the numeric input: ORDER BY id would bind id::text's output alias.
+  const ledger=await owner`select m.id::text as migration_id,m.hash,m.created_at::text as created_at from drizzle.__drizzle_migrations m order by m.id`;
   assert.equal(ledger.length,562,'Exact production-source562 ordinary migration ledger required');
+  let priorId=0n;
+  for(const row of ledger){assert(/^[1-9][0-9]*$/.test(row.migration_id)&&BigInt(row.migration_id)>priorId,'Actual ledger IDs must be positive and numerically increasing');priorId=BigInt(row.migration_id);}
   // This is a FRESH ordinary-journal DB: hash exact current SQL bytes, never staging's two historical identities.
   const journal=JSON.parse(readFileSync(join(source,'db/migrations/meta/_journal.json'),'utf8'));
   assert.equal(journal.entries.length,562);
