@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 function format(locale: 'en' | 'ms') {
   const module = { exports: {} as Record<string, (...a: string[]) => string> };
   runInNewContext(transpileModule(readFileSync('mobile/lib/attendance-format.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText,
-    { module, exports: module.exports, require: (id: string) => { if (id === './i18n') return { appLocale: () => locale, t: (k: string) => k }; throw new Error('Unexpected ' + id); } });
+    { module, exports: module.exports, require: (id: string) => { if (id === './i18n') return { appLocale: () => locale, intlLocale: () => (locale === 'ms' ? 'ms-MY' : 'en-MY'), t: (k: string) => k }; throw new Error('Unexpected ' + id); } });
   return module.exports;
 }
 

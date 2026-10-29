@@ -73,7 +73,7 @@ function fixture() {
     react: React, 'react/jsx-runtime': jsx, 'react-native': native, './ui': ui, './errors': errors,
     './auth': { authGeneration: () => 1, assertAuthGeneration: () => {} },
     './config': { config: { apiUrl: 'https://hr.test' }, identityNamespace: () => 'company' },
-    './i18n': { appLocale: () => 'en', t },
+    './i18n': { appLocale: () => 'en', intlLocale: () => 'en-MY', t },
     './api': { useApiV2, apiPostV2 },
     './session': { useSession: () => ({ employmentId: 'own-emp', signOut }) },
     './design': { DesignText: Text, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark') }) },

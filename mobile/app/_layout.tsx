@@ -9,6 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { t, type MessageKey } from '../lib/i18n';
 import { Icon } from '../lib/icon';
 import { biometricName, useLockCapability } from '../lib/app-lock';
+import { takeReopenAfterLanguage, useDisplayPrefs } from '../lib/preferences';
 import { SessionProvider, useSession } from '../lib/session';
 import { PushLifecycle, PushSessionWatcher } from '../lib/push';
 import {authGeneration} from '../lib/auth';
@@ -16,6 +17,7 @@ import { Button, colors } from '../lib/ui';
 
 function ThemedStack() {
   const { palette } = useTenantDesign();
+  useEffect(() => { const path = takeReopenAfterLanguage(); if (path) setTimeout(() => router.push(path), 0); }, []);
   return <><StatusBar style={palette.text === '#111111' ? 'dark' : 'light'} /><PushLifecycle /><Stack screenOptions={{ headerShown: false }} /></>;
 }
 
@@ -58,12 +60,15 @@ function LockScreen({ error, unlocking, unlock, signOut }: { error: boolean; unl
 }
 
 export default function RootLayout() {
+  const { language } = useDisplayPrefs();
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />
       <CompanyConnectionProvider><SessionProvider>
         <PushSessionWatcher />
-        <JourneyDraftProvider><WorkplaceReviewBoundary><Gate /></WorkplaceReviewBoundary></JourneyDraftProvider>
+        {/* A language change re-renders every screen in the new language: the screens below the session remount (the
+            session, its lock and any draft above them are kept), and Settings reopens itself. */}
+        <JourneyDraftProvider><WorkplaceReviewBoundary><Gate key={language} /></WorkplaceReviewBoundary></JourneyDraftProvider>
       </SessionProvider></CompanyConnectionProvider>
     </SafeAreaProvider>
   );

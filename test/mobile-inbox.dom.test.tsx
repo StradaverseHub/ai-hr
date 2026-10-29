@@ -66,7 +66,7 @@ function fixture() {
     react: React, 'react/jsx-runtime': jsx, 'react-native': native, './ui': ui, './errors': errors,
     './auth': { authGeneration: () => 1, assertAuthGeneration: () => {} },
     './config': { config: { apiUrl: 'https://hr.test' }, identityNamespace: () => 'company' },
-    './i18n': { appLocale: () => 'en', t },
+    './i18n': { appLocale: () => 'en', intlLocale: () => 'en-MY', t },
   };
   const api = { apiGetV2, apiPostV2, apiGetPage: vi.fn() };
   const paged = load('mobile/lib/paged-list.tsx', { ...base, './api': api });

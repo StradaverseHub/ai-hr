@@ -13,7 +13,7 @@ import { router } from 'expo-router';
 import { DesignText as Text, useTenantDesign } from './design';
 import { useApiV2 } from './api';
 import { config } from './config';
-import { appLocale, t, type MessageKey } from './i18n';
+import { appLocale, t, type MessageKey, intlLocale } from './i18n';
 import { useSession } from './session';
 import { Button, Card, LoadState, Muted, Row, Screen, SectionLabel, Title } from './ui';
 import {
@@ -74,7 +74,7 @@ export function profileFieldLabel(field: ProfileFieldV2, fields: readonly Profil
 }
 export function fmtProfileInstant(iso: string | null): string {
   if (!iso) return '';
-  try { return new Intl.DateTimeFormat(appLocale() === 'ms' ? 'ms-MY' : 'en-MY', { timeZone: 'Asia/Kuala_Lumpur', day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(iso)); }
+  try { return new Intl.DateTimeFormat(intlLocale(), { timeZone: 'Asia/Kuala_Lumpur', day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(iso)); }
   catch { return iso.slice(0, 10); }
 }
 

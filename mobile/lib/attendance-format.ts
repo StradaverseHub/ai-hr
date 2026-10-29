@@ -3,7 +3,7 @@
  * date comes from the server (lib/mobile-api/v2/attendance.ts). A calendar date is printed as a calendar date (never
  * moved through the device's zone); an instant is printed in the zone the server named, the kernel's business-day zone.
  */
-import { appLocale, t, type MessageKey } from './i18n';
+import { intlLocale, t, type MessageKey } from './i18n';
 import type {
   AttendanceApplicationDisplay, AttendanceApplicationSummaryV2, AttendanceDayStatus, AttendanceException,
 } from '../../lib/mobile-api/v2/attendance';
@@ -15,7 +15,6 @@ export function attendanceApplicationPath(id: string, action?: 'withdraw'): `v2/
   return `v2/attendance/applications/${id.toLowerCase()}${action ? `/${action}` : ''}`;
 }
 
-const intlLocale = () => (appLocale() === 'ms' ? 'ms-MY' : 'en-MY');
 
 /** `YYYY-MM-DD` as a calendar date ("Mon, 3 Nov 2026"), the same on every device. */
 export function fmtCalendarDate(iso: string, withYear = true): string {

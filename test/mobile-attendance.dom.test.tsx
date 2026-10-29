@@ -93,7 +93,7 @@ function fixture() {
     fmtDays: (n: unknown) => (n == null ? '—' : String(n)),
   };
   const t = (k: string, v?: Record<string, unknown>) => (v ? `${k} ${Object.values(v).join('|')}` : k);
-  const i18n = { appLocale: () => 'en', t };
+  const i18n = { appLocale: () => 'en', intlLocale: () => 'en-MY', t };
   const base = {
     react: React, 'react/jsx-runtime': jsx, 'react-native': native, './ui': ui, './errors': errors,
     './auth': { authGeneration: () => 1, assertAuthGeneration: () => {} },

@@ -18,7 +18,7 @@ import { apiGetV2, apiPostV2, v2Page } from './api';
 import { assertAuthGeneration, authGeneration } from './auth';
 import { config, identityNamespace } from './config';
 import { RequestRejectedError, SignInRequiredError } from './errors';
-import { appLocale, t, type MessageKey } from './i18n';
+import { appLocale, t, type MessageKey, intlLocale } from './i18n';
 import { PagedList, usePagedResource } from './paged-list';
 import { useSession } from './session';
 import { Button, Card, fmtDays, HeaderBack, LoadState, Muted, Row, Screen, Title } from './ui';
@@ -57,7 +57,7 @@ export function leaveRefusalText(r: LeaveCommandRefusal): string {
 }
 function fmtInstant(iso: string | null): string {
   if (!iso) return '';
-  try { return new Intl.DateTimeFormat(appLocale() === 'ms' ? 'ms-MY' : 'en-MY', { timeZone: 'Asia/Kuala_Lumpur', day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(iso)); }
+  try { return new Intl.DateTimeFormat(intlLocale(), { timeZone: 'Asia/Kuala_Lumpur', day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(iso)); }
   catch { return iso.slice(0, 10); }
 }
 const span = (from: string, to: string) => (from === to ? from : t('leaveDateSpan', { from, to }));

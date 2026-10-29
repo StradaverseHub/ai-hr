@@ -5,10 +5,19 @@
  * namespace would trip them. Moving these into `messages/` (and teaching the guards about the app) is a
  * named follow-up, not an oversight.
  *
+ * Six languages, the web's own (en, ms, zh, ta, th, vi), chosen in Settings or taken from the phone. English and Malay
+ * live here; Chinese, Tamil, Thai and Vietnamese live in ./locales and are machine-drafted (Mobile WOW round) like
+ * the Malay was, so they want a native speaker's read before customers rely on them.
+ *
  * Malay is first-class (most Malaysian HR apps ship English-only while many of their 1–2 star reviews are
  * written in Malay). These `ms` strings are machine-drafted and want a native speaker's read.
  */
 import { getLocales } from 'expo-localization';
+import { APP_LOCALES, displayPrefs, type AppLocaleCode } from './preferences';
+import zh from './locales/zh';
+import ta from './locales/ta';
+import th from './locales/th';
+import vi from './locales/vi';
 
 const en = {
   signedClockUnavailable: "Device checks are temporarily unavailable. Try again later. Saved attempts remain available for receipt recovery.",
@@ -846,6 +855,15 @@ const en = {
   lockIris: "Iris",
   lockPasscode: "Passcode",
   lockNone: "Not set up",
+  settingsDisplay: "Display",
+  settingsAppearance: "Appearance",
+  appearanceAuto: "Automatic",
+  appearanceLight: "Light",
+  appearanceDark: "Dark",
+  appearanceAutoHint: "Automatic follows your company's app design and your phone's light or dark setting.",
+  settingsLanguage: "Language",
+  languageAuto: "Phone language",
+  languageAutoHint: "Uses your phone's language when the app has it, otherwise English.",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -1685,17 +1703,43 @@ const ms: Record<MessageKey, string> = {
   lockIris: "Iris",
   lockPasscode: "Kod laluan",
   lockNone: "Belum disediakan",
+  settingsDisplay: "Paparan",
+  settingsAppearance: "Penampilan",
+  appearanceAuto: "Automatik",
+  appearanceLight: "Cerah",
+  appearanceDark: "Gelap",
+  appearanceAutoHint: "Automatik mengikut reka bentuk aplikasi syarikat anda dan tetapan cerah atau gelap telefon anda.",
+  settingsLanguage: "Bahasa",
+  languageAuto: "Bahasa telefon",
+  languageAutoHint: "Menggunakan bahasa telefon anda jika aplikasi menyokongnya, jika tidak Bahasa Inggeris.",
 };
 
-const catalogues: Record<string, Record<MessageKey, string>> = { en, ms };
+const catalogues: Record<AppLocaleCode, Record<MessageKey, string>> = { en, ms, zh, ta, th, vi };
 
-/** The device language if we have it, else English. Sent to the API as Accept-Language too. */
-export function appLocale(): 'en' | 'ms' {
-  const code = getLocales()[0]?.languageCode ?? 'en';
-  return code === 'ms' ? 'ms' : 'en';
+/** Each language's own name, shown in the picker in that language so anyone can find theirs. */
+export const LANGUAGE_NAMES: Record<AppLocaleCode, string> = { en: 'English', ms: 'Bahasa Melayu', zh: '中文', ta: 'தமிழ்', th: 'ไทย', vi: 'Tiếng Việt' };
+
+/** The phone's first language the app has, else English. */
+export function deviceLocale(): AppLocaleCode {
+  for (const l of getLocales()) {
+    const code = (l.languageCode ?? '').toLowerCase();
+    if ((APP_LOCALES as readonly string[]).includes(code)) return code as AppLocaleCode;
+  }
+  return 'en';
+}
+
+/** The person's chosen language (Settings), else the phone's. Sent to the API as Accept-Language too. */
+export function appLocale(): AppLocaleCode {
+  const chosen = displayPrefs().language;
+  return chosen === 'auto' ? deviceLocale() : chosen;
+}
+
+/** The BCP 47 tag for dates and numbers in the current language, with Malaysia as the region where it has one. */
+export function intlLocale(): string {
+  return ({ en: 'en-MY', ms: 'ms-MY', zh: 'zh-Hans-MY', ta: 'ta-MY', th: 'th-TH', vi: 'vi-VN' } as const)[appLocale()];
 }
 
 export function t(key: MessageKey, vars: Record<string, string | number> = {}): string {
   const table = catalogues[appLocale()] ?? en;
-  return (table[key] ?? en[key]).replace(/\{(\w+)\}/g, (_, k: string) => String(vars[k] ?? `{${k}}`));
+  return (table[key] || en[key]).replace(/\{(\w+)\}/g, (_, k: string) => String(vars[k] ?? `{${k}}`));
 }
