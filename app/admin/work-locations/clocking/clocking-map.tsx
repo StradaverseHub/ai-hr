@@ -57,6 +57,7 @@ export function ClockingMap({ provider }: { provider: MapProvider }) {
   const tileRef = useRef<Leaflet.TileLayer | null>(null);
   const [status, setStatus] = useState<Status>('loading');
   const [hasPoint, setHasPoint] = useState(false);
+  const [tileFailed, setTileFailed] = useState(false);
   const [satellite, setSatellite] = useState(false);
 
   const satelliteAvailable = provider.satelliteTileUrl !== null;
@@ -94,7 +95,20 @@ export function ClockingMap({ provider }: { provider: MapProvider }) {
         mapRef.current = map;
 
         const subs = subdomains.split(',').filter((s) => s !== '');
-        const tiles = L.tileLayer(tileUrl, { maxZoom, subdomains: subs.length > 0 ? subs : 'abc' });
+        const tiles = L.tileLayer(tileUrl, {
+          maxZoom,
+          subdomains: subs.length > 0 ? subs : 'abc',
+          // Edge security headers can replace the document policy with `same-origin`.
+          // OSM requires Referer on web tile requests. Set it on each image so only the
+          // site origin crosses origins; page paths, queries and form values stay private.
+          referrerPolicy: 'strict-origin-when-cross-origin',
+        });
+        setTileFailed(false);
+        const tileEvents = {
+          loading: () => { if (!cancelled) setTileFailed(false); },
+          tileerror: () => { if (!cancelled) setTileFailed(true); },
+        };
+        tiles.on(tileEvents);
         tiles.addTo(map);
         tileRef.current = tiles;
 
@@ -184,6 +198,7 @@ export function ClockingMap({ provider }: { provider: MapProvider }) {
         detach = () => {
           if (timer) clearTimeout(timer);
           clearTimeout(resize);
+          tiles.off(tileEvents);
           form?.removeEventListener('input', onInput);
           form?.removeEventListener(MAP_FOCUS_EVENT, onFocusRequest);
         };
@@ -264,12 +279,14 @@ export function ClockingMap({ provider }: { provider: MapProvider }) {
 
       <div className="relative h-80 w-full overflow-hidden rounded-md border border-border bg-muted sm:h-96">
         <div ref={canvasRef} className="absolute inset-0" />
-        {status !== 'ready' && (
-          <p className="absolute inset-0 z-[800] flex items-center justify-center p-4 text-center text-xs text-muted-foreground">
+        {(status !== 'ready' || tileFailed) && (
+          <p
+            role="status"
+            className="pointer-events-none absolute inset-0 z-[800] flex items-center justify-center bg-muted p-4 text-center text-xs text-muted-foreground">
             {status === 'loading' ? t('mapLoading') : t('mapUnavailable')}
           </p>
         )}
-        {status === 'ready' && !hasPoint && (
+        {status === 'ready' && !tileFailed && !hasPoint && (
           <p className="pointer-events-none absolute inset-x-0 bottom-0 z-[800] bg-background/90 px-3 py-1.5 text-center text-xs text-muted-foreground">
             {t('mapNoPoint')}
           </p>
