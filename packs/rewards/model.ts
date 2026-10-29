@@ -18,6 +18,7 @@ type Three = [number, number, number];
 type Five = [number, number, number, number, number];
 export type RewardPolicy = {
   year: number; effectiveFrom: string; joinedBefore: string; confirmedBy: string; blockedFrom: string; blockedTo: string;
+  unitGovernanceDigest?: string; activeAsOf?: string; minimumBonusRating?: typeof performances[number]; excludeNotice?: boolean; excludeErCase?: boolean;
   standardPools: Three; hPools: Three; meritMatrix: Record<typeof talents[number], Three>;
   bonusMatrix: Record<string, Five>; ranges: Record<string, Three>; seniorGrades: string[];
   // Absence means the persisted legacy grade rule. Never default old snapshots on parse.
@@ -45,6 +46,7 @@ export type Recommendation = {
 export const policySchema: z.ZodType<RewardPolicy> = z.object({
   year: z.number().int().min(2000).max(2200),
   effectiveFrom: isoDateSchema,
+  unitGovernanceDigest:z.string().regex(/^[a-f0-9]{64}$/).optional(), activeAsOf: isoDateSchema.optional(), minimumBonusRating:z.enum(performances).optional(), excludeNotice:z.boolean().optional(), excludeErCase:z.boolean().optional(),
   joinedBefore: isoDateSchema,
   confirmedBy: isoDateSchema,
   blockedFrom: isoDateSchema,
@@ -125,7 +127,7 @@ export function defaultPolicy(year: number): RewardPolicy {
   const bonusMatrix: RewardPolicy['bonusMatrix'] = { H: [0, 5000, 10000, 15000, 20000] };
   for (let g = 12; g <= 22; g++) bonusMatrix[String(g)] = g <= 15 ? [0, 5000, 15000, 22500, 30000] : g <= 19 ? [0, 5000, 25000, 35000, 45000] : g <= 21 ? [0, 5000, 30000, 40000, 50000] : [0, 5000, 40000, 50000, 60000];
   return {
-    year, effectiveFrom: `${year + 1}-01-01`, joinedBefore: `${year}-10-01`, confirmedBy: `${year}-12-31`,
+    year,activeAsOf:`${year}-12-31`,minimumBonusRating:'BE',excludeNotice:true,excludeErCase:true, effectiveFrom: `${year + 1}-01-01`, joinedBefore: `${year}-10-01`, confirmedBy: `${year}-12-31`,
     blockedFrom: `${year}-10-01`, blockedTo: `${year}-12-31`,
     standardPools: [500, 100, 100], hPools: [500, 100, 100],
     meritMatrix: { SSTAR: [1000, 800, 800], STAR: [800, 600, 600], SCORE: [600, 450, 300], IMPRO: [0, 0, 0], PIP: [0, 0, 0] },

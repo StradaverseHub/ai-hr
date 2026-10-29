@@ -65,3 +65,30 @@ configuration and confidential membership boundaries; demonstrate actual save/re
 and unavailable setup, six locales, keyboard and mobile behavior; run two independent populated
 restricted-owner upgrades and the classifier-required gate and official Linux production build.
 A source checkpoint or test count does not establish these outcomes or authorize board closure.
+
+## Approved follow-up — 29 October 2026
+
+Board requests 8ff065b3, 1acb9934 and 59b01b97 refine the original compatibility and ownership
+rules. A catalogue's global availability or creation company is not evidence that a company
+belongs to a business unit. New policy targets and review creation must follow actual effective,
+unsuperseded People organisation assignments, using the assignment's dated company and the
+existing legacy company fallback. Companies without a current relation show an explanation;
+no relation is inferred from a label's name or its catalogue ownership. Existing target/version
+records and review snapshots remain intact, with invalid retained selections shown for explicit
+correction. The approved picker order is business group, business unit, then company, with the
+selected pairs visible above the choices while scrolling.
+
+Shared policy owns group rules. Unit PAT, target months, multiplier overrides, branch ratings,
+exemptions and unit funding are omitted from shared presentation and from new-review consumption.
+Historical stored versions are not rewritten. Their shared-view projections redact these unit
+figures, including version comparisons; immutable version identity still records the new review's
+origin. Origin comparison ignores unit-owned values so configuring a unit budget does not claim
+that the shared group policy changed.
+
+New grid saves validate complete H/JG12–23 bonus rows, complete salary ranges except JG23,
+strict salary bounds and rating order, zero UA and supported decimal precision. Legacy snapshots
+remain readable and must be corrected explicitly before a new configuration version is saved.
+New configurations record eligibility facts explicitly. A version predating an active-as-of date
+or a minimum bonus rating is labelled as legacy snapshot behavior or unspecified; summaries do
+not invent those facts. These are implementation rules for the approved follow-up; installation
+and acceptance still require the repository release evidence and a rendered authorized journey.

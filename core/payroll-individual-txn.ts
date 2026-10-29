@@ -49,6 +49,7 @@ import {
 import { employedByCompanyDuring } from './employment-company';
 import { settingEnabled } from './entitlements';
 import { isTransactionEffectiveDate } from '../lib/transaction-effective-date';
+import {lockNativePayrollPeriodsTx,lockNativePayrollBatchPeriodTx} from './payroll-period-lock';
 
 const money = (v: number) => Number(v).toFixed(2);
 
@@ -455,6 +456,7 @@ export type TxnTarget = { batchId: string } | { companyId: string; payPeriod: st
 
 async function resolveTxnTarget(
   tx: Tx,
+  ctx: SessionContext,
   p: { batchId?: string | null; companyId?: string | null; payPeriod?: string | null },
 ): Promise<{
   batchId: string | null;
@@ -469,6 +471,7 @@ async function resolveTxnTarget(
   payrollCycleId: string | null;
 }> {
   if (p.batchId) {
+    await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);
     const { payPeriod, companyId, scope, status, runType, payrollCycleId } = await loadWritableBatch(tx, p.batchId);
     return { batchId: p.batchId, companyId, payPeriod, scope, status, runType, payrollCycleId };
   }
@@ -477,6 +480,7 @@ async function resolveTxnTarget(
   // The company must exist in-tenant (RLS also scopes it); fail loudly rather than insert a dangling FK.
   const [co] = await tx.select({ id: company.id }).from(company).where(eq(company.id, p.companyId)).limit(1);
   if (!co) throw new MissingTxnTargetError();
+  await lockNativePayrollPeriodsTx(tx,ctx,[{companyId:p.companyId,payPeriod:p.payPeriod}]);
   return {
     batchId: null,
     companyId: p.companyId,
@@ -518,7 +522,9 @@ export const WRITABLE_BATCH_STATUSES = ['draft', 'processed'] as const;
 export type WritableBatchStatus = (typeof WRITABLE_BATCH_STATUSES)[number];
 
 /**
- * Load a batch this ledger may write to (or throw if closed / not found). Returns period + company +
+ * Lock a batch before any ledger row mutation (or throw if closed / not found). This keeps
+ * create, edit, delete and import reversal in the same batch-before-row order as payroll processing.
+ * Returns period + company +
  * scope so the bulk wrapper can enforce the C3 (company match) and C4 (scope membership) correctness
  * guards, plus the STATUS, which the callers need for one reason: a write that lands on a `processed`
  * run has just made that run's payslips, statutory figures and totals disagree with their inputs, and
@@ -554,7 +560,8 @@ export async function loadWritableBatch(
     })
     .from(payrollBatch)
     .where(eq(payrollBatch.id, batchId))
-    .limit(1);
+    .limit(1)
+    .for('update');
   if (!batch) throw new BatchNotDraftError();
   if (!WRITABLE_BATCH_STATUSES.includes(batch.status as WritableBatchStatus)) throw new BatchNotDraftError();
   return {
@@ -710,7 +717,7 @@ export function createIndividualTxn(
     // Phase 3 — component pick: validated (exists / not archived / kind match), and REQUIRED for a new
     // payable (earning/deduction) row while INDIVIDUAL_TXN_PAY_ENABLED is on.
     await assertTxnComponents(tx, [{ kind: p.kind, componentId: p.componentId }], individualTxnPayEnabled(ctx));
-    const target = await resolveTxnTarget(tx, p);
+    const target = await resolveTxnTarget(tx, ctx, p);
     assertTransactionDate(p.txnDate);
     // C3 backstop on the unattached path too: the employment must belong to the target company (the batch
     // path's bulk wrapper enforces it; this single-row path now always does, both shapes).
@@ -1102,14 +1109,20 @@ export function createIndividualTxnsBulk(
     widenScopeIfNeeded?: boolean;
   },
 ): Promise<{ ids: string[]; widenedEmploymentIds: string[] }> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, (tx) => createIndividualTxnsBulkTx(tx, ctx, p));
+}
+
+/** Transaction-bound owner: import row ownership and outcome are committed with the ledger write. */
+export async function createIndividualTxnsBulkTx(
+  tx: Tx, ctx: SessionContext, p: Parameters<typeof createIndividualTxnsBulk>[1],
+): Promise<{ ids: string[]; widenedEmploymentIds: string[] }> {
     // De-dupe the selection defensively (a repeated employee would double-post the grid) and require ≥1 payee.
     const employmentIds = [...new Set(p.employmentIds)];
     if (employmentIds.length === 0) throw new EmptyEmployeeSelectionError();
 
     // Resolve the write target ONCE inside the transaction: a DRAFT batch (draft re-check happens here —
     // C5/C8) or, since f1564110 Phase 2, an unattached (company, pay month) pair when no run exists yet.
-    const target = await resolveTxnTarget(tx, p);
+    const target = await resolveTxnTarget(tx, ctx, p);
     const { payPeriod, companyId: targetCompanyId, scope } = target;
     // c11e81aa — validated against the RESOLVED target's company (never the client's), and against the
     // target run's type when there is one. Resolved before any insert so a bad cycle costs nothing.
@@ -1263,7 +1276,7 @@ export function createIndividualTxnsBulk(
       await markBatchNeedsRecalc(tx, ctx, { batchId: target.batchId, employmentIds });
     }
     return { ids, widenedEmploymentIds };
-  });
+
 }
 
 /**
@@ -1377,21 +1390,7 @@ export function updateIndividualTxn(
   },
 ): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
-    const [existing] = await tx
-      .select({
-        batchId: payrollIndividualTxn.batchId,
-        companyId: payrollIndividualTxn.companyId,
-        payPeriod: payrollIndividualTxn.payPeriod,
-        employmentId: payrollIndividualTxn.employmentId,
-        kind: payrollIndividualTxn.kind,
-        componentId: payrollIndividualTxn.componentId,
-        txnDate: payrollIndividualTxn.txnDate,
-        intendedCycleId: payrollIndividualTxn.intendedCycleId,
-      })
-      .from(payrollIndividualTxn)
-      .where(eq(payrollIndividualTxn.id, p.id))
-      .limit(1);
-    if (!existing) throw new TxnNotFoundError(p.id); // distinct from BatchNotDraftError (real non-draft case)
+    const existing=await lockIndividualTxnForWrite(tx,ctx,p.id);
     // Attached ⇒ the owning batch must still be writable — draft or processed, never closed (the batch's
     // payPeriod is authoritative). Unattached ⇒ no batch gate. Both preserve the processing month
     // independently of the effective work date.
@@ -1477,20 +1476,26 @@ export function updateIndividualTxn(
   });
 }
 
+
+async function lockIndividualTxnForWrite(tx:Tx,ctx:SessionContext,id:string){
+ const read=()=>tx.select().from(payrollIndividualTxn).where(eq(payrollIndividualTxn.id,id)).limit(1);
+ const [nominee]=await read();if(!nominee)throw new TxnNotFoundError(id);
+ if(nominee.batchId)await lockNativePayrollBatchPeriodTx(tx,ctx,nominee.batchId);
+ else if(nominee.companyId&&nominee.payPeriod)await lockNativePayrollPeriodsTx(tx,ctx,[{companyId:nominee.companyId,payPeriod:nominee.payPeriod}]);
+ if(nominee.batchId)await loadWritableBatch(tx,nominee.batchId);
+ const [current]=await read().for('update');
+ if(!current||current.batchId!==nominee.batchId||current.companyId!==nominee.companyId||current.payPeriod!==nominee.payPeriod)throw new TxnNotFoundError(id);
+ return current;
+}
+
 /** Delete a dated one-off transaction. Allowed while unattached or attached to a DRAFT batch. */
 export function deleteIndividualTxn(ctx: SessionContext, p: { id: string }): Promise<{ id: string }> {
-  return withTenant(ctx, async (tx) => {
-    const [existing] = await tx
-      .select({
-        batchId: payrollIndividualTxn.batchId,
-        payPeriod: payrollIndividualTxn.payPeriod,
-        employmentId: payrollIndividualTxn.employmentId,
-        kind: payrollIndividualTxn.kind,
-      })
-      .from(payrollIndividualTxn)
-      .where(eq(payrollIndividualTxn.id, p.id))
-      .limit(1);
-    if (!existing) throw new TxnNotFoundError(p.id); // distinct from BatchNotDraftError (real non-draft case)
+  return withTenant(ctx, (tx) => deleteIndividualTxnTx(tx, ctx, p));
+}
+
+/** Same removal controls, usable by atomic import-batch reversal. */
+export async function deleteIndividualTxnTx(tx: Tx, ctx: SessionContext, p: {id: string}): Promise<{id: string}> {
+    const existing=await lockIndividualTxnForWrite(tx,ctx,p.id);
     // Unattached ⇒ no batch gate. Attached ⇒ draft or processed; a CLOSED run still refuses.
     const batch = existing.batchId != null ? await loadWritableBatch(tx, existing.batchId) : null;
     await tx.delete(payrollIndividualTxn).where(eq(payrollIndividualTxn.id, p.id));
@@ -1515,7 +1520,7 @@ export function deleteIndividualTxn(ctx: SessionContext, p: { id: string }): Pro
       },
     });
     return { id: p.id };
-  });
+
 }
 
 /** One unattached (period-keyed) ledger row for the "awaiting payroll run" view. */
