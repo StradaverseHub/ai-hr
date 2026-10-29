@@ -130,6 +130,7 @@ def verify_source_bytes(source,manifest):
                 check(False,'accepted file differs from frozen source/dependency bytes: '+json.dumps(detail,sort_keys=True,ensure_ascii=True))
         elif row['type']=='symlink': check(path.is_symlink() and os.readlink(path)==row['target'],'accepted source/dependency link differs')
         else: check(path.is_dir() and not path.is_symlink(),'accepted source/dependency directory differs')
+    if any(r['path']=='node_modules' for r in manifest['entries']): dependency_inventory(source,manifest)
 
 def authenticated_inputs():
     root=root_directory();protected(root,True);path=root/'authenticated.json';protected(path)
@@ -154,12 +155,115 @@ def load_module(name,path):
     spec=importlib.util.spec_from_file_location(name,path);loaded=importlib.util.module_from_spec(spec);spec.loader.exec_module(loaded);return loaded
 
 def frozen_git_result(result,operation):
-    check(operation in ['rev-parse','status'],'fixed frozen Git operation required')
+    check(operation in ['rev-parse','status','ls-tree','check-ignore'],'fixed frozen Git operation required')
     if result.returncode!=0 or result.stderr!='':
         raw=result.stderr.encode('utf8',errors='replace')
         detail={'operation':operation,'exitCode':result.returncode,'stderrBytes':len(raw),'stderrSha256':digest(raw),'stderrFirst4096Bytes':raw[:4096].decode('utf8',errors='replace')}
         check(False,'frozen checkout Git check failed: '+json.dumps(detail,sort_keys=True,ensure_ascii=True))
     return result.stdout.strip()
+
+def pinned_source_objects(source,wanted,registry):
+    source=Path(source)
+    check(source.is_absolute() and source.resolve(strict=True)==source,'literal source checkout required')
+    for parent in [source,*source.parents]: check(not parent.is_symlink(),'source checkout ancestor is a symlink')
+    def git(*words):
+        result=registry.run(['/usr/bin/git','-c','safe.directory='+str(source),'-C',str(source),*words],env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'},timeout=60)
+        return frozen_git_result(result,words[0])
+    check(git('rev-parse','HEAD')==wanted and not git('status','--porcelain','--untracked-files=all'),'clean independently pinned source required')
+    tree=git('ls-tree','-rz','--full-tree',wanted);records=tree.split('\0')
+    for record in records:
+        if not record: continue
+        metadata,name=record.split('\t',1);mode,kind,blob=metadata.split()
+        check(not (name=='node_modules' or name.startswith('node_modules/')),'tracked node_modules may never be replaced')
+        check(kind=='blob' and mode in ['100644','100755','120000'] and not name.startswith('/') and all(part not in ['','.','..'] for part in name.split('/')),'regular committed source object required')
+        path=source/name
+        check(path.parent.resolve().is_relative_to(source),'committed source ancestor escapes checkout')
+        info=path.lstat()
+        if mode=='120000':
+            check(stat.S_ISLNK(info.st_mode),'committed source link changed');raw=os.readlink(path).encode()
+        else:
+            check(stat.S_ISREG(info.st_mode) and not path.is_symlink() and info.st_size<=256*1024**2,'bounded committed regular file required');raw=path.read_bytes()
+        check(hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()==blob,'actual committed source bytes differ from pinned Git object: '+json.dumps(name,ensure_ascii=True))
+    check(git('check-ignore','--','node_modules')=='node_modules','replacement target must be ignored by pinned source')
+
+def dependency_inventory(source,manifest):
+    target=Path(source)/'node_modules';check(target.is_dir() and not target.is_symlink(),'real authoritative node_modules required')
+    actual={'node_modules'}
+    for base,dirs,files in os.walk(target,followlinks=False):
+        for name in dirs+files:
+            path=Path(base)/name;actual.add(path.relative_to(source).as_posix());info=path.lstat()
+            if stat.S_ISREG(info.st_mode): check(info.st_nlink==1,'authoritative dependency hardlink refused')
+    expected={r['path'] for r in manifest['entries'] if r['path']=='node_modules' or r['path'].startswith('node_modules/')}
+    check(actual==expected,'authoritative dependency inventory differs; no extras or missing entries permitted')
+
+def closed_dependencies(source,manifest): verify_source_bytes(source,manifest)
+
+def dependency_identity(path):
+    info=protected(path,True);return {'dev':info.st_dev,'ino':info.st_ino,'uid':info.st_uid}
+
+def fsync_directory(path):
+    fd=os.open(path,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try: os.fsync(fd)
+    finally: os.close(fd)
+
+def cleanup_dependency_staging(root):
+    root=Path(root);journal=root/'dependency-provision.json'
+    if not journal.exists(): return
+    protected(journal);value=json.loads(journal.read_bytes())
+    check(set(value)=={'format','kind','source','sourceSha','archiveSha256','manifestSha256','state','stageIdentity','oldIdentity','newIdentity','cleanup'} and value['format']==1 and value['kind']=='EXACT_AUTHENTICATED_DEPENDENCIES_NOT_RELEASE','closed dependency provision journal required')
+    for name,key in [('dependency-stage','stageIdentity'),('dependency-quarantine','oldIdentity')]:
+        path=root/name;state=value['cleanup'][name]
+        check(state in ['pending','remove-pending','removed'],'closed dependency cleanup state required')
+        try:
+            info=path.lstat()
+            check(stat.S_ISDIR(info.st_mode) and not path.is_symlink(),'real dependency staging directory required')
+            if name=='dependency-stage': protected(path,True)
+        except FileNotFoundError:
+            not_created=value['state']=='stage-create-pending' and name=='dependency-stage' and value[key] is None or name=='dependency-quarantine' and value['state'] in ['stage-create-pending','extracting','quarantine-pending']
+            check(state in ['remove-pending','removed'] or state=='pending' and not_created,'uncertain missing dependency staging');value['cleanup'][name]='removed';atomic_root(journal,value);continue
+        identity={'dev':info.st_dev,'ino':info.st_ino,'uid':info.st_uid}
+        if value[key] is None:
+            check(name=='dependency-stage' and value['state']=='stage-create-pending' and not any(path.iterdir()),'unidentified dependency staging retained; runner disposal required')
+            value[key]=identity;atomic_root(journal,value)
+        check(identity==value[key] and state!='removed','dependency staging inode changed; retained for runner disposal')
+        check(shutil.rmtree.avoids_symlink_attacks,'fd-safe dependency staging removal required')
+        for base,dirs,_ in os.walk(path,followlinks=False):
+            for child in dirs:
+                item=Path(base)/child
+                if not item.is_symlink(): check(item.stat().st_dev==info.st_dev,'foreign mount in dependency staging; removal refused')
+        value['cleanup'][name]='remove-pending';atomic_root(journal,value);shutil.rmtree(path)
+        value['cleanup'][name]='removed';atomic_root(journal,value)
+
+def provision_dependencies(source,manifest,archive,fmt,registry,wanted):
+    # Only this disposable checkout's ignored dependency directory can be replaced.
+    source=Path(source);check(source==Path(os.environ['GITHUB_WORKSPACE'])/'source','fixed disposable source checkout required')
+    check(str(source.stat().st_uid)==os.environ.get('SUDO_UID') and source.stat().st_uid>0,'original runner-owned checkout required')
+    pinned_source_objects(source,wanted,registry)
+    verify_source_bytes(source,{'entries':[r for r in manifest['entries'] if r['path']!='node_modules' and not r['path'].startswith('node_modules/')]})
+    root=registry.root;protected(root,True);journal=root/'dependency-provision.json';target=source/'node_modules'
+    binding={'source':str(source),'sourceSha':wanted,'archiveSha256':file_hash(archive),'manifestSha256':digest(fmt.canonical(manifest))}
+    if journal.exists():
+        protected(journal);value=json.loads(journal.read_bytes())
+        check(all(value.get(k)==v for k,v in binding.items()) and value.get('state')=='installed','incomplete/different provision cannot be retried or reset; retain failure evidence')
+        check(dependency_identity(target)==value['newIdentity'],'installed dependency inode changed; no automatic reprovision')
+        closed_dependencies(source,manifest);cleanup_dependency_staging(root);return
+    check(target.is_dir() and not target.is_symlink(),'fresh ignored real dependency directory required')
+    old=target.lstat();check(old.st_uid==source.stat().st_uid,'fresh dependency owner differs from runner')
+    stage=root/'dependency-stage';quarantine=root/'dependency-quarantine'
+    check(not stage.exists() and not quarantine.exists() and not stage.is_symlink() and not quarantine.is_symlink(),'new fixed dependency staging names required')
+    check(root.stat().st_dev==source.stat().st_dev==old.st_dev,'atomic same-device dependency replacement required')
+    value={'format':1,'kind':'EXACT_AUTHENTICATED_DEPENDENCIES_NOT_RELEASE',**binding,'state':'stage-create-pending','stageIdentity':None,'oldIdentity':{'dev':old.st_dev,'ino':old.st_ino,'uid':old.st_uid},'newIdentity':None,'cleanup':{'dependency-stage':'pending','dependency-quarantine':'pending'}}
+    atomic_root(journal,value);stage.mkdir(mode=0o700);value['stageIdentity']=dependency_identity(stage);value['state']='extracting';atomic_root(journal,value)
+    extracted=fmt.extract_archive(archive,stage,wanted,manifest['lockSha256'],manifest['packageSha256'])
+    check(exact(extracted,manifest),'staged authenticated manifest changed');closed_dependencies(stage,manifest)
+    value['newIdentity']=dependency_identity(stage/'node_modules')
+    check(target.lstat().st_dev==old.st_dev and target.lstat().st_ino==old.st_ino,'fresh dependency inode changed before atomic replacement')
+    pinned_source_objects(source,wanted,registry)
+    value['state']='quarantine-pending';atomic_root(journal,value);os.rename(target,quarantine);fsync_directory(source);fsync_directory(root)
+    value['state']='install-pending';atomic_root(journal,value);os.rename(stage/'node_modules',target);fsync_directory(source);fsync_directory(stage)
+    value['state']='installed';atomic_root(journal,value)
+    check(dependency_identity(target)==value['newIdentity'],'authoritative installed dependency inode differs')
+    closed_dependencies(source,manifest);pinned_source_objects(source,wanted,registry);cleanup_dependency_staging(root)
 
 def verify_packet(source,producer):
     inputs=authenticated_inputs();pins=inputs['producer'];package=root_directory()/'accepted';source=Path(source).resolve(strict=True);producer=Path(producer).resolve(strict=True)
@@ -181,7 +285,7 @@ def verify_packet(source,producer):
     raw=(package/'worker-runtime-proof.json').read_bytes();proof=json.loads(raw);check(raw==fmt.canonical(proof),'canonical accepted runtime witness required')
     expected=validate_runtime_witness(proof,pins['source'],pins['producer'],inputs['members']['worker-package.zip'],(package/'worker-package.zip').stat().st_size,manifest,ledger,pins['run'],fmt)
     check(exact(provenance,expected) and inputs['members']['worker-provenance.json']==digest(fmt.canonical(expected)),'closed provenance/hash linkage differs')
-    verify_source_bytes(source,manifest)
+    provision_dependencies(source,manifest,package/'worker-package.zip',fmt,registry,pins['source'])
     # inspect_archive checks closed membership/size; independently stream every actual
     # inner payload byte as well as comparing the installed source/dependency bytes.
     with zipfile.ZipFile(package/'worker-package.zip') as archive:
@@ -650,6 +754,7 @@ class Registry:
         self.data['forcedCleanup']=self.data['forcedCleanup'] or forced;self.save()
         self.remove_namespace()
         self.cleanup_resources()
+        cleanup_dependency_staging(self.root)
         check(not self.data['forcedCleanup'],'forced cleanup invalidates every receipt')
 
 def check_gate_namespace(gate_root,probe_case):
@@ -722,10 +827,10 @@ def export_cleanup_evidence(root,destination,probe_case=None):
     probe_suffix(probe_case);prefix='owned-' if probe_case is None else 'owned-'+probe_case+'-'
     destination=Path(destination);info=destination.lstat()
     check(destination.resolve(strict=True)==destination and destination.name=='bank-throughput-evidence' and stat.S_ISDIR(info.st_mode) and str(info.st_uid)==os.environ.get('SUDO_UID') and not info.st_mode&0o022,'original private runner evidence directory required')
-    for name in ['registry.json','budget.json',*[p.name for p in root.glob('cleanup-*')]]:
+    for name in ['registry.json','budget.json','dependency-provision.json',*[p.name for p in root.glob('cleanup-*')]]:
         path=root/name
         if not path.exists(): continue
-        check(name in ['registry.json','budget.json',*['cleanup-'+value for value in worker_log_names()]],'closed cleanup evidence names required')
+        check(name in ['registry.json','budget.json','dependency-provision.json',*['cleanup-'+value for value in worker_log_names()]],'closed cleanup evidence names required')
         protected(path)
         with path.open('rb') as incoming: raw=incoming.read(1024**2+1)
         check(len(raw)<=1024**2,'bounded cleanup evidence required')
