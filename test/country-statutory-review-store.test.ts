@@ -81,7 +81,7 @@ describe('WP9 retained statutory profile custody',()=>{
   const done=await confirmCountryStatutoryReview(ctx,packet);expect(done.kind).toBe('completed');expect(await confirmCountryStatutoryReview(ctx,packet)).toEqual(done);expect(await reopenCountryStatutoryReview(ctx,old.actionId)).toEqual(done);const after=await state();expect(after.profiles).toHaveLength(before.profiles.length);expect(after.inputs).toEqual(before.inputs);expect(after.slips).toEqual(before.slips);expect(after.profiles[0].bankAccountNo).toBe(before.profiles[0].bankAccountNo);
  });
  it('retires an old pending statutory review without decrypting after grant removal',async()=>{
-  const before=await state(),old=await retainedCountryReview();await revokeAssistant(ctx,{appUserId:ctx.userId!});const unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();
+  const old=await retainedCountryReview();await revokeAssistant(ctx,{appUserId:ctx.userId!});const before=await state(),unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();
   expect((await discardCountryStatutoryReview(ctx,{action,contractVersion:1,actionId:old.actionId})).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect(await state()).toEqual(before);
  });
  it('reconciles a lost committed reply without a second statutory write',async()=>{
