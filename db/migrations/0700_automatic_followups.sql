@@ -80,7 +80,7 @@ BEGIN
  ELSE
   RETURN QUERY SELECT jsonb_build_object('itemId',c.id,'employmentId',e.id,'companyId',c.company_id,'kind',c.kind,'status',c.status,
    'laptopRequired',c.laptop_required,'carparkRequired',c.carpark_required,'outcome',c.outcome,
-   'transitionAt',greatest(c.created_at,(SELECT max(v.occurred_at) FROM public.domain_event v WHERE v.tenant_id=t AND v.aggregate_type='lifecycle-case' AND v.aggregate_id=c.id
+   'transitionAt',greatest(c.created_at,(SELECT max(h.at) FROM public.lc_history h WHERE h.tenant_id=t AND h.ref_type='case' AND h.ref_id=c.id AND h.action='case.edited' AND h.detail->'fields' ?| ARRAY['laptopRequired','carparkRequired']),(SELECT max(v.occurred_at) FROM public.domain_event v WHERE v.tenant_id=t AND v.aggregate_type='lifecycle-case' AND v.aggregate_id=c.id
     AND v.event_type IN ('lifecycle-case.step-done','lifecycle-case.step-undone','lifecycle-case.reopened','lifecycle-case.outcome-set','lifecycle-case.outcome-changed','lifecycle-case.owner-changed')),(SELECT max(v.occurred_at) FROM public.domain_event v WHERE v.tenant_id=t AND v.aggregate_type='lifecycle-config' AND v.event_type IN ('lifecycle-config.steps-saved','lifecycle-config.steps-reset','lifecycle-config.defaults-loaded') AND (v.payload->>'kind'=c.kind OR v.event_type='lifecycle-config.defaults-loaded'))),
    'defs',coalesce((SELECT jsonb_agg(jsonb_build_object('key',d.step_key,'phase',d.phase,'rule',d.rule,'sort',d.sort,'active',d.active) ORDER BY d.phase,d.sort,d.step_key)
     FROM public.lc_step_def d WHERE d.tenant_id=t AND d.kind=c.kind),'[]'::jsonb),

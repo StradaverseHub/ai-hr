@@ -81,7 +81,14 @@ describe('Actionable lifecycle steps, not invented deadlines',()=>{
   await owner.db.update(s.domainEvent).set({occurredAt:past}).where(eq(s.domainEvent.id,transition.id));await owner.db.insert(s.domainEvent).values({tenantId:b.tenantId,aggregateType:'lifecycle-case',aggregateId:c.id,eventType:'lifecycle-case.commented',actorType:'user',actorId:b.adminUserId,payload:{}});expect((await runAutomaticFollowups(await agent(),{calendar})).sent).toBe(1);
   await owner.db.insert(s.domainEvent).values({tenantId:b.tenantId,aggregateType:'lifecycle-case',aggregateId:c.id,eventType:'lifecycle-case.reopened',actorType:'user',actorId:b.adminUserId,payload:{}});expect((await runAutomaticFollowups(await agent(),{calendar})).sent).toBe(0);
  });
- it('does not chase cancelled cases or locked/offboarding outcome-dependent steps',async()=>{const c=await lifecycle();await enabled(lifeKey);await owner.db.update(s.lcCase).set({status:'cancelled'}).where(eq(s.lcCase.id,c.id));expect((await run()).sent).toBe(0);});
+ it('starts a new wait for an applicability flag change, while unrelated edited fields do not reset it',async()=>{
+  const c=await lifecycle();await enabled(lifeKey);await owner.db.insert(s.lcCaseStep).values({tenantId:b.tenantId,caseId:c.id,stepKey:'first',done:true,doneAt:past});await owner.db.update(s.lcCase).set({carparkRequired:true}).where(eq(s.lcCase.id,c.id));
+  const [changed]=await owner.db.insert(s.lcHistory).values({tenantId:b.tenantId,refType:'case',refId:c.id,action:'case.edited',detail:{fields:['carparkRequired']}}).returning();
+  const calendar=async(_e:string,from:string,to:string)=>from===to?0:5;expect((await runAutomaticFollowups(await agent(),{calendar})).sent).toBe(0);
+  await owner.db.update(s.lcHistory).set({at:past}).where(eq(s.lcHistory.id,changed.id));await owner.db.insert(s.lcHistory).values({tenantId:b.tenantId,refType:'case',refId:c.id,action:'case.edited',detail:{fields:['notes']}});
+  expect((await runAutomaticFollowups(await agent(),{calendar})).sent).toBe(1);expect((await events())[0].payload).toMatchObject({stage:expect.stringMatching(/^carpark:/)});
+ });
+ it('does not chase cancelled cases',async()=>{const c=await lifecycle();await enabled(lifeKey);await owner.db.update(s.lcCase).set({status:'cancelled'}).where(eq(s.lcCase.id,c.id));expect((await run()).sent).toBe(0);});
 });
 
 describe('Reminder authority, boundaries and observations',()=>{
