@@ -1,4 +1,5 @@
 'use client';
+import {useAssistantImportIntake} from '@/components/assistant/import-handoff';
 import {PersonnelImportEvaluationPanel,type PersonnelImportEvaluationHandle,type PersonnelImportEvaluationStatus} from '@/components/personnel-import-evaluation-panel';
 import {employeeImportSourceFingerprint,personnelImportLocalDigest,personnelImportLocalBytesDigest} from '@/lib/personnel-import-evaluation-client';
 import {PersonnelImportEvidenceReview} from '@/components/personnel-import-evidence-review';
@@ -489,6 +490,8 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
           : templateDownloaded
             ? 2 // the template has been taken; filling it in happens off-screen
             : 1;
+
+  useAssistantImportIntake('employee',text=>{reset();setCsv(text);setFileName(null);sourceFile.current=null;},setError);
 
   return (
     <div className="space-y-6">

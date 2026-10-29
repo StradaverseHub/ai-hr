@@ -1,4 +1,5 @@
 'use client';
+import {useAssistantImportIntake} from '@/components/assistant/import-handoff';
 
 import { useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
@@ -215,6 +216,8 @@ export function LeaveHistoryImport({ runs, showRunLog = true, historyOnly = fals
           : templateTaken
             ? 'uploadExcel'
             : 'downloadTemplate';
+
+  useAssistantImportIntake('leave_history',text=>{if(!historyOnly){reset();setCsv(text);setSource({kind:'paste'});}},setError);
 
   if (historyOnly) return <ImportLog runs={runs} onDownload={downloadErrors} />;
 
