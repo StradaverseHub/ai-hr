@@ -220,6 +220,7 @@ export type ConfigSectionDescriptor = {
  * agency's own naming convention, produced by the pack's one definition of it, so two surfaces offering
  * one month's file cannot name it differently.
  */
+export class BankPaymentFileError extends Error { constructor(message:string,public readonly status:404|409|422=422){super(message);this.name='BankPaymentFileError';} }
 export type BankPaymentRequest = {companyId:string;bankProfileId:string;formatId:string;periodKey:string;paymentDate:string;runSeq?:number;testFile:boolean;reference:string};
 export type BankPaymentPreview = {digest:string;recordCount:number;totalCents:number;companyName:string;paymentDate:string;periodKey:string};
 export type BankPaymentFiles = {

@@ -100,10 +100,23 @@ export function ClockingMap({ provider }: { provider: MapProvider }) {
         // send only our origin on these images, never a form path or its query string.
         const tiles = L.tileLayer(tileUrl, { maxZoom, subdomains: subs.length > 0 ? subs : 'abc', referrerPolicy: 'strict-origin-when-cross-origin' });
         // Initialising Leaflet is not proof that the provider delivered a map.
-        const loaded = () => { if (!cancelled) setStatus('ready'); };
-        const failed = () => { if (!cancelled) setStatus('unavailable'); };
+        let tileError = false;
+        let tileTimeout: ReturnType<typeof setTimeout> | null = null;
+        const failed = () => { tileError = true; if (!cancelled) setStatus('unavailable'); };
+        const loading = () => {
+          tileError = false;
+          if (tileTimeout) clearTimeout(tileTimeout);
+          if (!cancelled) setStatus('loading');
+          tileTimeout = setTimeout(failed, 12000);
+        };
+        const loaded = () => {
+          if (tileTimeout) clearTimeout(tileTimeout);
+          if (!cancelled && !tileError) setStatus('ready');
+        };
+        tiles.on('loading', loading);
         tiles.on('tileload', loaded);
         tiles.on('tileerror', failed);
+        loading();
         tiles.addTo(map);
         tileRef.current = tiles;
 
@@ -196,6 +209,8 @@ export function ClockingMap({ provider }: { provider: MapProvider }) {
           if (timer) clearTimeout(timer);
           clearTimeout(resize);
           observer?.disconnect();
+          if (tileTimeout) clearTimeout(tileTimeout);
+          tiles.off('loading', loading);
           tiles.off('tileload', loaded);
           tiles.off('tileerror', failed);
           form?.removeEventListener('input', onInput);

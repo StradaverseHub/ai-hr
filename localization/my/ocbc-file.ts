@@ -2,10 +2,11 @@
  * Layouts are distinct from government-portal files. No truncation, guessed routing or rounding of money.
  * LHDN/Zakat remain unavailable: their mandatory hash algorithm is absent from the supplied documents.
  */
+import {BankPaymentFileError} from '../country-pack';
 import { myBankByKey, MY_BANKS } from '../../lib/my-banks';
 import { tryBnmCodeForBankName } from './bank-files/bnm-codes';
 export type OcbcFormat = 'salary'|'kwsp'|'socso'|'lhdn'|'zakat';
-export class OcbcFileError extends Error { constructor(message:string){super(message);this.name='OcbcFileError';} }
+export class OcbcFileError extends BankPaymentFileError { constructor(message:string){super(message);this.name='OcbcFileError';} }
 export type OcbcSettings={contactName:string;contactPhone:string;stateCode:string;requireIdCheck:boolean};
 export type OcbcPayer={name:string;corporateId:string;account:string;branch:string;settings:OcbcSettings;employerReference?:string};
 export type OcbcRow={key:string;name:string;employeeCode?:string;account?:string;bank?:string;identity?:string;epfNumber?:string;employeeCents?:number;employerCents?:number;wageCents?:number;amountCents:number};
