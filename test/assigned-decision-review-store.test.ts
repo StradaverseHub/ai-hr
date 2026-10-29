@@ -295,7 +295,7 @@ describe('claim rejection human reason and independent reviewed decisions',()=>{
   expect(event.payload.rejectReason).toBe('Original human rejection reason');
  });
  it('reads and completes an actual old-writer sealed no-reason rejection without changing its digest',async()=>{
-  const c=AssignedClaimDecision,legacy=createGenericAssignedReviewStore({action:c.action,human:c.Human.extend({note:z.never().optional()}),consequence:c.consequence,prepared:c.Prepared,completed:c.Completed,retired:c.Retired,index:c.Index,indexKind:c.indexKind,withSubject:withAssignedClaimSubjectTx,prepare:prepareAssignedClaimSourceTx,confirm:confirmAssignedClaimSourceTx,reconcile:reconcileAssignedClaimSourceTx,unavailable:assignedDecisionUnavailable});
+  const c=AssignedClaimDecision,legacy=createGenericAssignedReviewStore({action:c.action,human:c.Human.extend({note:z.never().optional()}),consequence:c.consequence,prepared:c.Prepared,completed:c.Completed,retired:c.Retired,index:c.Index,indexKind:c.indexKind,withSubject:withAssignedClaimSubjectTx,prepare:(tx,ctx,human)=>prepareAssignedClaimSourceTx(tx,ctx,c.Human.parse(human)),confirm:(tx,ctx,human,digest)=>confirmAssignedClaimSourceTx(tx,ctx,c.Human.parse(human),digest),reconcile:reconcileAssignedClaimSourceTx,unavailable:assignedDecisionUnavailable});
   const id=await KINDS.claim.create(),old=await legacy.prepare(mgr,{...KINDS.claim.human(id,'rejected'),note:undefined});
   const reopened=await claimDecisionReviews.reopen(mgr,old.review.actionId);expect(reopened.kind).toBe('prepared');
   if(reopened.kind!=='prepared')throw Error('Expected original saved review');
