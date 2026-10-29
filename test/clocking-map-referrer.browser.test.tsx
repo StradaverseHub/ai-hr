@@ -44,6 +44,8 @@ it('real Leaflet images override a same-origin document policy and retain the po
 
 it('real image failures show the fallback while coordinates stay editable', async () => {
   const { container } = mount('/map-test-missing-tile/{z}/{x}/{y}.png');
+  // An import failure also renders the fallback: require real tile elements first.
+  await waitFor(() => expect(container.querySelector('img.leaflet-tile')).not.toBeNull(), { timeout: 5000 });
   await waitFor(() => expect(screen.getByRole('status').textContent).toContain('The map could not be loaded'), { timeout: 5000 });
   expect(container.querySelector<HTMLInputElement>('[name="lat"]')?.value).toBe('3.139');
   expect(container.querySelector<HTMLInputElement>('[name="radiusM"]')?.value).toBe('150');
