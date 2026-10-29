@@ -1428,7 +1428,7 @@ export async function setRegistrationNumbersMY(ctx:SessionContext,p:{personId:st
 export const reviewedStatutoryInputSchemaMY=z.object({
  personId:z.uuid().transform(id=>id.toLowerCase()),epfNumber:z.string().max(512).optional(),socsoNumber:z.string().max(512).optional(),
  socsoCategory:z.enum(['auto','first','second','none']).optional(),eisCategory:z.enum(['auto','none']).optional(),subjectToSkbbk:z.boolean().optional(),employerBearsSocso:z.boolean().optional(),employerBearsEis:z.boolean().optional(),employerBearsSkbbk:z.boolean().optional(),employerBearsEpf:z.boolean().optional(),
- epfCitizenship:z.enum(['citizen','pr','non_citizen']).optional(),epfMode:z.enum(['auto','voluntary_excess','exempt','manual_amount','manual_percentage']).optional(),epfEmployeeRate:z.number().finite().nullable().optional(),epfEmployerRate:z.number().finite().nullable().optional(),epfEmployeeAmount:z.number().finite().nullable().optional(),epfEmployerAmount:z.number().finite().nullable().optional(),epfManualReason:z.string().max(4000).nullable().optional(),
+ epfCitizenship:z.enum(['citizen','pr','non_citizen']).optional(),epfMode:z.enum(['auto','voluntary_excess','exempt','manual_amount','manual_percentage','topup_percentage']).optional(),epfEmployeeRate:z.number().finite().nullable().optional(),epfEmployerRate:z.number().finite().nullable().optional(),epfEmployeeAmount:z.number().finite().nullable().optional(),epfEmployerAmount:z.number().finite().nullable().optional(),epfManualReason:z.string().max(4000).nullable().optional(),
 }).strict();
 async function lockReviewedStatutoryPersonIdMYTx(tx:Tx,ctx:SessionContext,personId:string){
  if(!ctx.userId)throw new Error('Statutory review unavailable');

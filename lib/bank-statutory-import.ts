@@ -129,5 +129,12 @@ export function childReliefTableFrom(state:BankStatutoryState){
  for(const field of CHILD_RELIEF_GRID_FIELDS){const cell=field.childReliefCell!;out[cell.category]??={full:0,half:0};out[cell.category][cell.share]=Number(state[column(field)]||0);}
  return out;
 }
-/** Item before/after in import history: only the columns this import changed, as canonical strings. */
-export type BankStatutoryItemState={employeeCode:string;fields:Record<string,string>};
+/** Item before/after in import history: only the columns this import changed, as canonical strings.
+ *  b6dbadc5 — `epfTopupBasis` says what a recorded Top-up rate MEANS: 'additive' (an increment, recorded
+ *  since b6dbadc5 from a row that was not a legacy total-rate top-up) or 'total' (a pre-additive full rate).
+ *  Absent = recorded before b6dbadc5, i.e. a full rate. Revert refuses to restore a non-additive Top-up rate. */
+export type BankStatutoryItemState={employeeCode:string;fields:Record<string,string>;epfTopupBasis?:'additive'|'total'};
+/** b6dbadc5 — the basis recorded with an import item's "before" state, from the statutory row it was read from. */
+export function bankStatutoryTopupBasis(row:{epfMode?:string|null;epfEmployerRate?:string|number|null}|null|undefined):'additive'|'total'{
+ return row?.epfMode==='voluntary_excess'&&row.epfEmployerRate!=null?'total':'additive';
+}
