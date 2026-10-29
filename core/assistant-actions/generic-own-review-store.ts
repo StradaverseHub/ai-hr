@@ -98,3 +98,7 @@ export function createGenericOwnReviewStore<Human extends {employmentId:string},
   },
  });
 }
+
+/** Existing login/company-bound own protocols may retain their SQL and binding schema while sharing
+ * the same lifecycle, sealing, digest-confirmation and uncertain-completion owner. */
+export {createReviewCustody as createGenericOwnCompatibilityStore} from './generic-review-custody';
