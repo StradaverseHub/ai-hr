@@ -9,6 +9,9 @@ import subprocess
 import sys
 import zipfile
 
+# Defense in depth for a direct invocation: imports must never dirty the frozen source.
+sys.dont_write_bytecode=True
+
 def main():
     root,output=map(lambda value:Path(value).absolute(),sys.argv[1:3]);source=sys.argv[3]
     spec=importlib.util.spec_from_file_location('worker_format',Path(__file__).resolve().parents[1]/'deploy/systemd/bank_import_worker_format.py')
