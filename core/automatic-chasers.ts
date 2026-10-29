@@ -38,7 +38,7 @@ import { appendEvent } from '../db/events';
 import * as schema from '../db/schema';
 import { isModuleEnabled, resolveEntitlementsTx, settingEnabled } from './entitlements';
 import { agentActor, agentHolds, agentSpecialistCurrentTx, agentStamp, isAgentContext } from './agent-principal';
-import { addDaysIso, elapsedWorkingDaysTx, localDate } from './leave-escalation';
+import { addDaysIso, elapsedWorkingDaysTx, localDate } from '../packs/leave/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { agentActionsByTier, type AgentAutomaticSource, type AgentAutomaticSpecialist } from '../lib/ai/agent-action-registry';
 import { assertAgentActionTier } from '../lib/ai/agent-action-tier-guard';

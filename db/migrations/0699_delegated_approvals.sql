@@ -87,7 +87,7 @@ CREATE FUNCTION app.delegated_decision_write_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE allowed_columns text[];mod text;task text;
 BEGIN
- IF app.access_workforce_storage_owner() OR app.can_see_employment(OLD.employment_id) THEN RETURN NEW; END IF;
+ IF app.access_workforce_storage_owner() OR OLD.employment_id=ANY((SELECT app.visible_employment_ids())::uuid[]) THEN RETURN NEW; END IF;
  IF TG_TABLE_NAME='claim_request' THEN
   mod:='claims';task:='claims.claim';allowed_columns:=ARRAY['status','taxable','decided_by_employment_id','decided_at'];
  ELSIF TG_TABLE_NAME='replacement_leave_request' THEN

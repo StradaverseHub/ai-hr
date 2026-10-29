@@ -16252,11 +16252,11 @@
       "leaveCancellation": "Pembatalan Cuti"
     },
     "coverageTitle": "Liputan Perwakilan",
-    "coverageHint": "Pilih bahagian organisasi yang diliputi oleh pengganti. Biarkan sesuatu peringkat kosong untuk meliputi semuanya di bawah peringkat sebelumnya.",
+    "coverageHint": "Biarkan Syarikat kosong untuk meliputi syarikat pengganti sendiri. Pilih syarikat secara jelas untuk meliputi syarikat lain. Aras bawah yang kosong meliputi semua dalam syarikat yang dipilih.",
     "coverageCompany": "Syarikat",
     "coverageBusinessUnit": "Unit Perniagaan",
     "coverageDepartment": "Jabatan",
-    "coverageAllCompanies": "Semua syarikat",
+    "coverageAllCompanies": "Syarikat pengganti",
     "coverageAllBusinessUnits": "Semua unit perniagaan",
     "coverageAllDepartments": "Semua jabatan",
     "eligibleHint": "Hanya pelulus yang setaraf dengan orang yang mewakilkan disenaraikan.",

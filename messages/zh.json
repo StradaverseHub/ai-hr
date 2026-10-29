@@ -16252,11 +16252,11 @@
       "leaveCancellation": "请假取消"
     },
     "coverageTitle": "委托覆盖范围",
-    "coverageHint": "选择代理人负责的组织范围。某一级留空即覆盖上一级以下的全部。",
+    "coverageHint": "公司留空时，仅涵盖代理人所在公司。若需涵盖其他公司，请明确选择公司。下级范围留空时，涵盖所选公司内的所有相应单位。",
     "coverageCompany": "公司",
     "coverageBusinessUnit": "业务单元",
     "coverageDepartment": "部门",
-    "coverageAllCompanies": "所有公司",
+    "coverageAllCompanies": "代理人所在公司",
     "coverageAllBusinessUnits": "所有业务单元",
     "coverageAllDepartments": "所有部门",
     "eligibleHint": "仅列出与委托人同级别的审批人。",

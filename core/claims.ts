@@ -3814,7 +3814,7 @@ export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:st
    employee:sql<string>`approval_subject.employee`,createdAt:claimRequest.createdAt}).from(claimRequest)
    .innerJoin(sql`LATERAL app.delegated_approval_subject(${claimRequest.employmentId},'claims','claims.claim') AS approval_subject`,sql`true`)
    .where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),sql`NOT app.is_self_person(approval_subject.person_id)`,
-    companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(${companyIds}::uuid[])`))
+    companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
    .orderBy(desc(claimRequest.createdAt),claimRequest.id);
   return filterDelegationOrgScopeTx(tx,ctx,rows,row=>row.employmentId);
  });

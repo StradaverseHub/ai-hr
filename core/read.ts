@@ -1561,7 +1561,7 @@ export function listLeaveRequests(
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
       .where(
         and(
-          companyIds && companyIds.length ? sql`approval_subject.company_id = ANY(${companyIds}::uuid[])` : undefined,
+          companyIds && companyIds.length ? sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])` : undefined,
           opts?.status ? eq(leaveRequest.status, opts.status) : undefined,
           opts?.requestId ? eq(leaveRequest.id,opts.requestId) : undefined,
         ),
@@ -1896,7 +1896,7 @@ export function listPendingLeaveCancellations(ctx: SessionContext, companyIds?: 
         and(
           eq(leaveCancellationRequest.status, 'pending'),
           requestId?eq(leaveCancellationRequest.id,requestId):undefined,
-          companyIds && companyIds.length ? sql`approval_subject.company_id = ANY(${companyIds}::uuid[])` : undefined,
+          companyIds && companyIds.length ? sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])` : undefined,
         ),
       )
       .orderBy(desc(leaveCancellationRequest.createdAt));

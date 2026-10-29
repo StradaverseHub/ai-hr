@@ -142,7 +142,8 @@ describe('WP13 Automatic-tier chasers under the agent principal', () => {
       const p = e.payload as Record<string, unknown>;
       expect(p).toMatchObject({ companyId: base.companyId, chaseNumber: 1, agent: { principalId, enabledBy: [{ feature: 'approval_chasers', userId: base.adminUserId }] } });
       // Only ids, stage and dates: no amount, description, reason or name leaves the source.
-      expect(JSON.stringify(p)).not.toMatch(/312|Fictional|secret|Chaser fixture/);
+      expect(Object.keys(p).sort()).toEqual(['action','source','stage','companyId','waitingOn','workingDaysWaiting','chaseNumber','agent'].sort());
+      expect(JSON.stringify(p)).not.toMatch(/312\.50|Fictional|secret|Chaser fixture/);
     }
     // The approver acts on one claim after the sweep: the registry re-checks at dispatch and tells nobody.
     await owner.db.update(schema.claimRequest).set({ status: 'approved' }).where(eq(schema.claimRequest.id, laterDecided));

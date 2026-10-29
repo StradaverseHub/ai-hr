@@ -238,7 +238,7 @@ export async function currentApproverEmploymentsTx(tx: Tx, source: string, itemI
       .from(attendanceCorrection).where(eq(attendanceCorrection.id, itemId)).limit(1);
     if (!row || row.status !== 'pending' || row.employmentId !== subjectEmploymentId) return null;
     // Loaded on use: the attendance workflow owner is large and this registry is imported widely.
-    const { attendanceWorkflowForTx } = await import('./attendance-workflow');
+    const { attendanceWorkflowForTx } = await import('../packs/attendance/service');
     const flow = await attendanceWorkflowForTx(tx, itemId);
     // The chased stage key: level and participant decisions recorded at it (0697 agent_overdue_approvals).
     const key = flow ? `${flow.currentStage}.${flow.participantDecisions.filter((d) => d.stageIndex === flow.currentStage).length}` : '0.0';

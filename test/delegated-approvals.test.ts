@@ -1,7 +1,7 @@
 /** Owner-approved delegated approvals: real DB, native services and Assistant custody; fictional fixtures.
  * Authored for GitHub Actions only. No installation or provider request. */
 import {randomUUID} from 'node:crypto';
-import {eq,sql} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
@@ -61,7 +61,11 @@ const kinds={
 };
 describe.each(Object.keys(kinds) as (keyof typeof kinds)[])('delegated %s decisions',name=>{
  it.each(['approved','rejected'] as const)('the native service records the stand-in as the final %s actor, with no Personnel inheritance',async decision=>{
-  const k=kinds[name],id=await k.create();await noPersonnel();await k.native(id,decision);
+  const k=kinds[name],id=await k.create();await noPersonnel();
+  if(name==='attendance'&&decision==='approved')await withTenant(delegate,async tx=>{
+   const identity=await tx.execute(sql`select * from app.delegated_request_effect_identity(${id}::uuid,'attendance')`);expect(identity).toHaveLength(1);
+  });
+  await k.native(id,decision);
   const [row]=await owner.db.execute<{status:string}>(sql`select status::text as status from ${sql.raw(k.table)} where id=${id}::uuid`);expect(row.status).toBe(decision);
   const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,id));
   expect(events.filter(e=>e.eventType===k.event+decision)).toEqual([expect.objectContaining({actorId:delegate.userId,actorType:'user',subjectEmploymentId:subject.employmentId})]);
@@ -129,6 +133,12 @@ describe('request-bound delegated approval effects',()=>{
   const id=await claim(),other=await seedBase();
   await owner.db.insert(schema.reportingLineScope).values({tenantId:other.tenantId,reportingLineId:lineId,module:'leave',taskType:'leave.application'});
   expect(JSON.stringify(await readClaimDecisionChoices(delegate))).toContain(id);
+  // A foreign matching row must not reopen a real tenant's wrong-module restriction either.
+  await owner.db.insert(schema.reportingLineScope).values({tenantId:b.tenantId,reportingLineId:lineId,module:'leave',taskType:'leave.application'});
+  await owner.db.insert(schema.reportingLineScope).values({tenantId:other.tenantId,reportingLineId:lineId,module:'claims',taskType:'claims.claim'});
+  expect(JSON.stringify(await readClaimDecisionChoices(delegate))).not.toContain(id);
+  await expect(decideClaim(delegate,{claimRequestId:id,decision:'approve'})).rejects.toThrow();
+  await owner.db.delete(schema.reportingLineScope).where(and(eq(schema.reportingLineScope.tenantId,b.tenantId),eq(schema.reportingLineScope.reportingLineId,lineId)));
   await decideClaim(delegate,{claimRequestId:id,decision:'approve'});
  });
  it('clamps history for company HR even though the inherited function used admin-somewhere',async()=>{
@@ -148,7 +158,7 @@ describe('request-bound delegated approval effects',()=>{
   const [g]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'LIMITED',name:'Limited',rank:1}).returning({id:schema.jobGrade.id});
   await owner.db.update(schema.employment).set({gradeId:g.id}).where(eq(schema.employment.id,subject.employmentId));
   const id=await claim(200);
-  await setClaimPolicy(root,{claimTypeId,gradeId:g.id,annualBudget:10000,perClaimCap:100,effectiveFrom:todayInKualaLumpur()});
+  await setClaimPolicy(root,{claimTypeId,gradeId:g.id,annualBudget:100,perClaimCap:1000,effectiveFrom:todayInKualaLumpur()});
   await expect(decideClaim(delegate,{claimRequestId:id,decision:'approve'})).rejects.toThrow();
   const [q]=await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,id));expect(q.status).toBe('pending');
   const facts=await withTenant(delegate,tx=>tx.execute<{grade_id:string}>(sql`select * from app.claim_decision_subject_facts(${id}::uuid)`));expect(facts[0].grade_id).toBe(g.id);
@@ -189,10 +199,10 @@ describe('request-bound delegated approval effects',()=>{
   await withTenant(delegate,async tx=>{
    const snapshot=()=>tx.execute(sql`select current_setting('app.user_id') as u,current_setting('app.roles') as r,current_setting('app.grants') as g`);
    const before=await snapshot();
-   await withDelegatedRequestEffectTx(tx,delegate,{id,kind:'replacement_leave',employmentId:subject.employmentId},async()=>{
-    const [e]=await tx.select().from(schema.employment).where(eq(schema.employment.id,subject.employmentId));expect(e.id).toBe(subject.employmentId);
+   await withDelegatedRequestEffectTx(tx,delegate,{id,kind:'replacement_leave',employmentId:subject.employmentId},async effectTx=>{
+    const [e]=await effectTx.select().from(schema.employment).where(eq(schema.employment.id,subject.employmentId));expect(e.id).toBe(subject.employmentId);
    });expect(await snapshot()).toEqual(before);
-   await expect(withDelegatedRequestEffectTx(tx,delegate,{id,kind:'replacement_leave',employmentId:subject.employmentId},()=>tx.execute(sql`select 1/0`))).rejects.toThrow();expect(await snapshot()).toEqual(before);
+   await expect(withDelegatedRequestEffectTx(tx,delegate,{id,kind:'replacement_leave',employmentId:subject.employmentId},effectTx=>effectTx.execute(sql`select 1/0`))).rejects.toThrow();expect(await snapshot()).toEqual(before);
    expect(await tx.select().from(schema.employment).where(eq(schema.employment.id,subject.employmentId))).toEqual([]);
   });
  });

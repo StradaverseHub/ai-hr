@@ -16252,11 +16252,11 @@
       "leaveCancellation": "Leave Cancellation"
     },
     "coverageTitle": "Delegation Coverage",
-    "coverageHint": "Choose which part of the organisation the stand-in covers. Leave a level blank to cover everything under the level above.",
+    "coverageHint": "Leave Company blank to cover the stand-in’s own company. Choose a company explicitly to cover another company. Blank lower levels cover everything within the selected company.",
     "coverageCompany": "Company",
     "coverageBusinessUnit": "Business Unit",
     "coverageDepartment": "Department",
-    "coverageAllCompanies": "All companies",
+    "coverageAllCompanies": "Stand-in’s company",
     "coverageAllBusinessUnits": "All business units",
     "coverageAllDepartments": "All departments",
     "eligibleHint": "Only approvers of the same level as the person delegating are listed.",

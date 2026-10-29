@@ -1030,7 +1030,8 @@ export async function decideReplacementLeaveRequestTx(
     // Approving MINTS credits, so the add-on must be live for this half.
     assertModuleEnabled(ctx, 'toil');
 
-    const {granted,daysCredited,creditedMinutes,expiresOn}=await withDelegatedRequestEffectTx(tx,ctx,{id:p.requestId,kind:'replacement_leave',employmentId:req.employmentId},async()=>{
+    const {granted,daysCredited,creditedMinutes,expiresOn}=await withDelegatedRequestEffectTx(tx,ctx,{id:p.requestId,kind:'replacement_leave',employmentId:req.employmentId},async(effectTx)=>{
+    const tx=effectTx;
     let lines: (typeof replacementLeaveRequestDate.$inferSelect)[];
     try {
       lines = await tx.select().from(replacementLeaveRequestDate)
@@ -1341,7 +1342,7 @@ function pendingReplacementHeads(tx: Tx, opts: { companyIds?: string[];requestId
         and(
           eq(replacementLeaveRequest.status, 'pending'),
           opts.requestId?eq(replacementLeaveRequest.id,opts.requestId):undefined,
-          opts.companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(${opts.companyIds}::uuid[])`,
+          opts.companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(opts.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`,
         ),
       )
       .orderBy(desc(replacementLeaveRequest.createdAt))
@@ -1356,7 +1357,7 @@ export function listPendingReplacementLeaveTasks(ctx:SessionContext,opts:{compan
    .from(replacementLeaveRequest).innerJoin(sql`LATERAL app.delegated_approval_subject(${replacementLeaveRequest.employmentId},'leave','leave.replacement') AS approval_subject`,sql`true`)
    .where(and(eq(replacementLeaveRequest.status,'pending'),eq(replacementLeaveRequest.tenantId,ctx.tenantId),
     sql`NOT app.is_self_person(approval_subject.person_id)`,
-    opts.companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(${opts.companyIds}::uuid[])`))
+    opts.companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(opts.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
    .orderBy(desc(replacementLeaveRequest.createdAt),replacementLeaveRequest.id);
   const result=[];
   for(const row of candidates){
@@ -1405,7 +1406,7 @@ export async function listPendingReplacementLeaveRequests(
     const key=JSON.stringify([request.employmentId,line.workedDate,line.fromTime,line.toTime]);
     let review=exactReviews.get(key);
     if(!review){
-      review=legacyDays.has(dayKey)?{basis:'legacy'}:await withTenant(ctx,tx=>withDelegatedRequestEffectTx(tx,ctx,{id:request.id,kind:'replacement_leave',employmentId:request.employmentId},()=>leaveCreditClaimReviewTx(tx,ctx,{employmentId:request.employmentId,workedDate:line.workedDate,claimStart:line.fromTime??undefined,claimEnd:line.toTime??undefined})));
+      review=legacyDays.has(dayKey)?{basis:'legacy'}:await withTenant(ctx,tx=>withDelegatedRequestEffectTx(tx,ctx,{id:request.id,kind:'replacement_leave',employmentId:request.employmentId},effectTx=>leaveCreditClaimReviewTx(effectTx,ctx,{employmentId:request.employmentId,workedDate:line.workedDate,claimStart:line.fromTime??undefined,claimEnd:line.toTime??undefined})));
       exactReviews.set(key,review);if(review.basis==='legacy')legacyDays.add(dayKey);
     }
     const routeMismatch=review.basis==='formula'&&((line.sourceType==='extended_hours')!==(review.workedDayKind==='workday'));
