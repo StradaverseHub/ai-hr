@@ -1,3 +1,4 @@
+import {establishRewardMembership} from './rewards-shared-policy-fixture';
 /**
  * ADR-0142 — the OneHR performance partner: performance administration WITHOUT compensation.
  *
@@ -426,6 +427,7 @@ describe('OneHR performance partner (ADR-0142)', () => {
     await setModule(b.tenantId, 'rewards', 'active');
     const hr = await entitledCtx(b);
     const [bu] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code: 'PRT', name: 'Partner BU', label: 'Partner BU' }).returning();
+    await establishRewardMembership(hr,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:bu.id,departmentId:b.deptA,year});
     const unitId = await createRewardUnit(hr, { name: 'Partner-company annual review', year, companyId: b.companyId, businessUnitId: bu.id, snapshotDate: todayInKualaLumpur() });
     const read = (ctx: SessionContext) =>
       withTenant(ctx, async (tx) => ({

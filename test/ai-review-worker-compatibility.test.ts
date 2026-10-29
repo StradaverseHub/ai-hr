@@ -2,7 +2,7 @@
  * This supplies compatibility evidence for an owner decision, never permission to retain/update a live service. */
 import {createHash} from 'node:crypto';
 import {execFileSync,spawnSync} from 'node:child_process';
-import {mkdtempSync,mkdirSync,rmSync,writeFileSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {eq,sql} from 'drizzle-orm';
@@ -17,10 +17,27 @@ const WORKER_SOURCE='968354c00a71df7baccd499eb60757a3307ed61e';
 // This source fixture never substitutes for that controller's authenticated extracted-packet boot proof.
 const PACKET_POLICY={controller:'567ec0908a24e21078e458ec1e93e696cafeb0a8',formatSha256:'07fa30e623f192ed8231ed42de4a606ed8251539db95389ec7ad6b50ff166369',
  roots:['package.json','pnpm-lock.yaml','tsconfig.json','app','assets','components','content','core','data','db','deploy','i18n','lib','localization','messages','packs','public','scripts','types','node_modules']};
-const unchanged=['package.json','pnpm-lock.yaml','db/client.ts','scripts/bank-import-runner.ts','core/bank-import-worker.ts','core/bank-import-job.ts','core/import-sections.ts','core/import-history.ts','lib/bank-import-source.server.ts','lib/bank-import-job.ts'];
+const unchanged=['db/client.ts','scripts/bank-import-runner.ts','core/bank-import-worker.ts','core/bank-import-job.ts','core/import-sections.ts','core/import-history.ts','lib/bank-import-source.server.ts','lib/bank-import-job.ts'];
 beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
 it('runs immutable 968 worker Git source under the corrected V2 root policy against the AI schema and web contract',async()=>{
  expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...unchanged],{encoding:'utf8'}).trim()).toBe('');
+ // PR61 adds a pinned provider-schema validator for tests only. Prove the complete old package
+ // and lock graph remain identical after removing ONLY this explicitly approved additive delta.
+ const oldPackage=JSON.parse(execFileSync('git',['show',WORKER_SOURCE+':package.json'],{encoding:'utf8'}));
+ expect(JSON.parse(readFileSync('package.json','utf8'))).toEqual({...oldPackage,devDependencies:{...oldPackage.devDependencies,ajv:'8.20.0'}});
+ const additions=[
+  '      ajv:\n        specifier: 8.20.0\n        version: 8.20.0\n',
+  '  ajv@8.20.0:\n    resolution: {integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==}\n\n',
+  '  fast-uri@3.1.9:\n    resolution: {integrity: sha512-hS/0Wt3Ya043oKXs0sIxrMpKQITXhMLIrVAKKXi4gozGC9v7YRWVnXIZzjNPTO02M9BdxLCWqK1yRXgNziVyJQ==}\n\n',
+  '  json-schema-traverse@1.0.0:\n    resolution: {integrity: sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==}\n\n',
+  '  ajv@8.20.0:\n    dependencies:\n      fast-deep-equal: 3.1.3\n      fast-uri: 3.1.9\n      json-schema-traverse: 1.0.0\n      require-from-string: 2.0.2\n\n',
+  '  fast-uri@3.1.9: {}\n\n',
+  '  json-schema-traverse@1.0.0: {}\n\n',
+ ];
+ let lock=readFileSync('pnpm-lock.yaml','utf8');
+ for(const block of additions){expect(lock.split(block)).toHaveLength(2);lock=lock.replace(block,'');}
+ expect(lock).toBe(execFileSync('git',['show',WORKER_SOURCE+':pnpm-lock.yaml'],{encoding:'utf8'}));
+
  const directory=mkdtempSync(join(tmpdir(),'aihr-worker-compat-'));
  try{
   const available=new Set(execFileSync('git',['ls-tree','--name-only',WORKER_SOURCE],{encoding:'utf8'}).trim().split('\n'));

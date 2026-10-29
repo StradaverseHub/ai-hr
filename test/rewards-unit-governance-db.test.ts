@@ -20,9 +20,7 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
  let b:Base,gr:SessionContext,checker:SessionContext,bu:SessionContext,ctro:SessionContext,payroll:SessionContext,unitId:string,employeeId:string,entryId:string;
  const view=()=>getRewardUnit(gr,unitId);
  beforeAll(async()=>{
-  if(!process.env.TEST_DB_NAMESPACE)throw new Error('Use a private disposable test namespace.');
-  // Reserved SQL is deliberately unjournaled until prerequisite allocation freezes. Apply only to
-  // this namespaced worker database, whose ordinary migrations globalSetup already rehearsed.
+  // The ordinary harness installs the journal in its owned disposable worker database.
   await ensureRewardGovernanceFixtureSchema();
  });
  beforeEach(async()=>{

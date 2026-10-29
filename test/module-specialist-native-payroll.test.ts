@@ -1,3 +1,4 @@
+import {establishRewardMembership} from './rewards-shared-policy-fixture';
 /** Authored UNRUN. Six actual native record projections through real Assistant read sessions.
  * No model/provider, injected moduleWork, fabricated read result, forged receipt or draft SQL install.
  * Finite specialist interpretation coverage only; not payroll correctness or production-benefit proof. */
@@ -94,7 +95,7 @@ describe('real canonical financial and statutory specialist evidence',()=>{
  it('interprets a real native Rewards draft and excludes another tenant without claiming an award or payroll post',async()=>{
   const f=await fixture();await setCompensation(f.admin,{employmentId:f.mine.employmentId,basicSalary:7319,monthlyAllowance:0,effectiveFrom});await grantAssistant(f.admin,{appUserId:f.admin.userId!});
   const id=await createRewardUnit(f.admin,{name:'Fictional native reward cycle',year:Number(today.slice(0,4)),companyId:b.companyId,businessUnitId:f.businessUnitId,snapshotDate:today});const native=await getRewardUnit(f.admin,id);expect(native.rows.length).toBeGreaterThan(0);
-  const foreign=await seedBase();await setModule(foreign.tenantId,'rewards','active');const foreignAdmin=await entitledCtx(foreign),foreignUnit=await createBusinessUnit(foreignAdmin,{companyId:foreign.companyId,code:'FOREIGN',name:'PRIVATE_FOREIGN_SPECIALIST_UNIT'});await createRewardUnit(foreignAdmin,{name:'PRIVATE_FOREIGN_SPECIALIST_REWARDS',year:Number(today.slice(0,4)),companyId:foreign.companyId,businessUnitId:foreignUnit.id,snapshotDate:today});
+  const foreign=await seedBase();await setModule(foreign.tenantId,'rewards','active');const foreignAdmin=await entitledCtx(foreign),foreignUnit=await createBusinessUnit(foreignAdmin,{companyId:foreign.companyId,code:'FOREIGN',name:'PRIVATE_FOREIGN_SPECIALIST_UNIT'});await establishRewardMembership(foreignAdmin,{tenantId:foreign.tenantId,companyId:foreign.companyId,businessUnitId:foreignUnit.id,year:Number(today.slice(0,4))});await createRewardUnit(foreignAdmin,{name:'PRIVATE_FOREIGN_SPECIALIST_REWARDS',year:Number(today.slice(0,4)),companyId:foreign.companyId,businessUnitId:foreignUnit.id,snapshotDate:today});
   const result=(await assess(f.admin,'rewards')).assessment;expect(result.findings).toContain('reward_draft_not_awarded');expect(result.findings).not.toContain('reward_posted_not_processed_or_paid');expect(result.presentation.cards).toHaveLength(1);expect(value(result.presentation.cards[0],'status')).toBe('draft');expect(value(result.presentation.cards[0],'rewardUnit')).toBe(native.name);
   for(const marker of ['PRIVATE_FOREIGN_SPECIALIST_REWARDS','PRIVATE_FOREIGN_SPECIALIST_UNIT','7319',f.mine.personId])expect(JSON.stringify(result)).not.toContain(marker);
   await revoke(f.admin,f.admin,['rewards']);

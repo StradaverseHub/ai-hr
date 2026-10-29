@@ -366,8 +366,17 @@ const CASES: Case[] = [
     name: 'an unposted reward review', expected: 'payroll', setup: async (id) => {
       const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
       const [bu] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: id, code: 'REWARD', name: 'Rewards unit' }).returning();
+      // Minimal fictional People rows satisfy the real creation guard. No payroll/allocation
+      // history is authored here: this case isolates retention by the review itself.
+      const [department]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:id,name:'Review prerequisite'}).returning();
+      const [member]=await owner.db.insert(schema.employment).values({tenantId:b.tenantId,companyId:id,personId:await newPerson(),hiredOn:'2020-01-01'}).returning();
+      await owner.db.insert(schema.assignment).values({tenantId:b.tenantId,employmentId:member.id,companyId:id,departmentId:department.id,businessUnitId:bu.id,employmentType:'full_time',validFrom:'2020-01-01'});
       const [cycle] = await owner.db.insert(schema.rewardCycle).values({ tenantId: b.tenantId, name: 'Annual rewards', year, createdBy: b.adminUserId }).returning();
       await withTenant(ADMIN(),tx=>tx.insert(schema.rewardUnit).values({ tenantId: b.tenantId, createdBy: b.adminUserId, cycleId: cycle.id, companyId: id, businessUnitId: bu.id, policy: defaultPolicy(year), snapshotDate: today }));
+      // Retained review after the fictional subject moves away: isolate the financial retention
+      // guard without an employment/assignment still pointing at the old company. No guard is disabled.
+      await owner.db.update(schema.employment).set({companyId:b.companyId}).where(eq(schema.employment.id,member.id));
+      await owner.db.update(schema.assignment).set({companyId:b.companyId,departmentId:b.deptA,businessUnitId:null}).where(eq(schema.assignment.employmentId,member.id));
     },
   },
   {
