@@ -138,12 +138,13 @@ async function main() {
         ? await runHrOrchestrator(agentContext(t.id, principalId, entitlements, orchestratorEnablements)) : null;
       const chasers = chaserEnablements.length > 0
         ? await runAutomaticChasers(agentContext(t.id, principalId, entitlements, chaserEnablements), { today }) : null;
-      const chaseSent = (chasers?.approvals.status === 'succeeded' ? chasers.approvals.value.sent : 0)
-        + (chasers?.reviews.status === 'succeeded' ? chasers.reviews.value.sent : 0);
+      const approvalRun = chasers?.approvals, reviewRun = chasers?.reviews;
+      const chaseSent = (approvalRun?.status === 'succeeded' ? approvalRun.value.sent : 0)
+        + (reviewRun?.status === 'succeeded' ? reviewRun.value.sent : 0);
       if (chasers) chaserTenants++;
       totalChases += chaseSent;
       if (chasers?.failed) console.error('  Automatic chasers require attention: a chaser failed.');
-      for (const run of [chasers?.approvals, chasers?.reviews]) {
+      for (const run of [approvalRun, reviewRun]) {
         if (run?.status !== 'succeeded') continue;
         const capped = Object.entries(run.value.byAction).filter(([, c]) => c?.cappedOut).map(([id]) => id);
         if (capped.length) console.error(`  ⚠ ${capped.join(', ')} reached the per-run cap; more remain.`);
