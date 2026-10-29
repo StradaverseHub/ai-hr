@@ -105,8 +105,13 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
  });
  it('dispatches a private status-neutral notice when a final pool is downgraded to Not set',async()=>{
   await setModule(b.tenantId,'notifications','active');
-  const recipient=await hireEmployee(gr,{person:{fullName:'Fictional pool notice reviewer',primaryEmail:'pool-notice@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:`${year-2}-01-01`});
-  const userId=await createAppUser(b.tenantId,recipient.personId,'employee');await setRewardMember(gr,unitId,(await view()).unit.revision,userId,'bg');
+  const [hq]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional HQ pool reviewer company'}).returning();
+  const [department]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:hq.id,name:'Fictional HQ Rewards'}).returning();
+  const recipient=await hireEmployee(gr,{person:{fullName:'Fictional HQ pool notice reviewer',primaryEmail:'pool-notice@fixture.test'},companyId:hq.id,departmentId:department.id,employmentType:'full_time',hiredOn:`${year-2}-01-01`});
+  const userId=await createAppUser(b.tenantId,recipient.personId,'employee');await setRewardMember(gr,unitId,(await view()).unit.revision,userId,'gr');
+  expect(hq.id).not.toBe(b.companyId);
+  const other=await seedBase(),otherAdmin=await entitledCtx(other);
+  const foreignRecipients=await withTenant(otherAdmin,tx=>tx.execute(sql`select app.reward_pool_notification_recipients(${unitId}::uuid)`));expect(foreignRecipients).toEqual([]);
   await saveRewardUnitInputs(gr,unitId,(await view()).unit.revision,{...inputs,actualCents:1000000},'Reviewed final fictional PAT evidence');
   const enabled=await entitledCtx(b),system:SessionContext={tenantId:b.tenantId,roles:['hr_admin'],entitlements:enabled.entitlements};
   await dispatchNotificationsFromSweep(system,owner);
@@ -120,6 +125,9 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   expect(notices[0].body).toContain('pool or its status');expect(notices[0].body).not.toMatch(/final|900000|1000000/i);
   expect(Object.keys(event.payload as object)).toEqual(['revision']);
   expect((await dispatchNotificationsFromSweep(system,owner)).created).toBe(0);
+  await owner.db.update(schema.employment).set({terminatedOn:today}).where(eq(schema.employment.id,recipient.employmentId));
+  const remaining=await withTenant(gr,tx=>tx.execute<{id:string}>(sql`select app.reward_pool_notification_recipients(${unitId}::uuid) as id`));
+  expect(remaining.map(row=>row.id)).not.toContain(recipient.employmentId);
  });
  it('invalidates public budget evidence after eligibility changes rather than exposing PAT or silently using a stale pool',async()=>{
   await saveInputs();const v=await view();await saveRewardEntry(gr,unitId,v.unit.revision,entryId,v.rows[0].recommendation,{...v.rows[0].facts,performance:'OU'});

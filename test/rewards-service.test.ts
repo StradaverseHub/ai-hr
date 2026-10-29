@@ -42,7 +42,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     actors.gr = admin; actors.payroll = admin;
     await setRewardMember(admin, unitId, (await view()).unit.revision, admin.userId!, 'payroll');
     const v = await view();
-    await configureRewardFixture(admin, unitId, v.unit.revision, { ...v.unit.policy, effectiveFrom: today, patActual: 100, patTarget: 100, ranges: { '12': [300000, 500000, 700000] } });
+    await configureRewardFixture(admin, unitId, v.unit.revision, { ...v.unit.policy, effectiveFrom: today, patActual: 100, patTarget: 100, targetMonthsBp: 20000, ranges: { '12': [300000, 500000, 700000] } });
     const v2 = await view();
     await saveRewardEntry(admin, unitId, v2.unit.revision, v2.rows[0].id, v2.rows[0].recommendation, { ...emptyFacts(), reviewed: true, talent: 'SCORE', performance: 'ME' });
     await refreshRewardFixtureBudget(admin,unitId);
