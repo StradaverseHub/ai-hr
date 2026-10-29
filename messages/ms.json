@@ -9511,7 +9511,8 @@
         "confirmed": "Import disahkan",
         "reverted": "Import dibatalkan",
         "revert-refused": "Pembatalan ditolak"
-      }
+      },
+      "inputType": "Jenis input"
     }
   },
   "admin": {

@@ -9511,7 +9511,8 @@
         "confirmed": "Import confirmed",
         "reverted": "Import reverted",
         "revert-refused": "Reversal refused"
-      }
+      },
+      "inputType": "Input type"
     }
   },
   "admin": {
