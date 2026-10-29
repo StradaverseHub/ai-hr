@@ -5,7 +5,8 @@ import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vit
 import * as s from '../db/schema';
 import {withTenant,type SessionContext} from '../db/client';
 import {askAssistant} from '../core/assistant';
-import {grantAssistant} from '../core/assistant-grant';
+import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
+import {eraseOwnAssistantHistory} from '../core/assistant-history-retention';
 import {resolveActiveAiConfig} from '../core/ai-config';
 import {bindAiSpendTaskTx} from '../core/ai-spend-task';
 import {assistantQuestionBudgetBinding} from '../core/assistant-question-budget';
@@ -79,6 +80,26 @@ describe('atomic Malaysia-day Assistant question quota',()=>{
  it('includes pre-migration retired transcripts in the daily count and never needs their content',async()=>{
   await budget(1);await owner.db.insert(s.assistantExchange).values({tenantId:base.tenantId,appUserId:base.adminUserId,question:'',contentRetiredAt:new Date(),toolCalls:[]});
   await expect(ask()).rejects.toMatchObject({code:'budget_daily'});expect(openaiAdapter.converse).not.toHaveBeenCalled();expect(await quotaRows()).toEqual([]);
+ });
+ it('clearing history and revoking access in flight keeps accounting without restoring content or replenishing the daily place',async()=>{
+  await budget(1);transport().mockImplementationOnce(async()=>{
+   await eraseOwnAssistantHistory(ctx);await revokeAssistant(ctx,{appUserId:base.adminUserId});return end;
+  });
+  await expect(ask()).rejects.toMatchObject({code:'provider_error'});
+  const [quota]=await quotaRows();expect(quota.accounted_tokens).toBe('12');expect(quota.exchange_id).toBeTruthy();
+  const [exchange]=await owner.db.select().from(s.assistantExchange).where(eq(s.assistantExchange.tenantId,base.tenantId));
+  expect(exchange).toMatchObject({question:'',answer:null,toolCalls:[],disclosureReceipt:null});expect(exchange.contentRetiredAt).not.toBeNull();
+  await grantAssistant(ctx,{appUserId:base.adminUserId});await expect(ask()).rejects.toMatchObject({code:'budget_daily'});
+  expect(openaiAdapter.converse).toHaveBeenCalledOnce();expect(await quotaRows()).toEqual([quota]);
+ });
+ it('reconciles an already accounted own exchange idempotently and cannot reuse its completed root',async()=>{
+  await budget(10);await ask();const [quota]=await quotaRows();
+  if(!quota.exchange_id)throw Error('Expected fictional completed exchange');
+  const usage=await owner.db.select().from(s.assistantUsage).where(eq(s.assistantUsage.tenantId,base.tenantId));
+  await withTenant(ctx,tx=>tx.execute(sql`select app.assistant_question_budget_complete(${quota.root_id}::uuid,${quota.exchange_id}::uuid)`));
+  expect(await quotaRows()).toEqual([quota]);expect(await owner.db.select().from(s.assistantUsage).where(eq(s.assistantUsage.tenantId,base.tenantId))).toEqual(usage);
+  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.assistant_question_budget_complete(${quota.root_id}::uuid,${base.companyId}::uuid)`))).rejects.toThrow();
+  await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.assistant_question_budget_admit(${quota.root_id}::uuid,1)`))).rejects.toThrow();
  });
  it('does not let caller-supplied dates move quota day or usage period',async()=>{
   await budget(1);await askAssistant(ctx,{question:'Fictional clock question',now:new Date(Date.now()+86_400_000)});
