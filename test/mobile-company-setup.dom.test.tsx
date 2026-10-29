@@ -97,7 +97,7 @@ describe('shipped company setup screen',()=>{
  });
  it('places link review inside the shipped session and draft providers',()=>{
   const layout=readFileSync('mobile/app/_layout.tsx','utf8');
-  expect(layout).toMatch(/<CompanyConnectionProvider><SessionProvider>[\s\S]*<JourneyDraftProvider><WorkplaceReviewBoundary><Gate \/><\/WorkplaceReviewBoundary><\/JourneyDraftProvider>[\s\S]*<\/SessionProvider><\/CompanyConnectionProvider>/);
+  expect(layout).toMatch(/<CompanyConnectionProvider><SessionProvider>[\s\S]*<JourneyDraftProvider><WorkplaceReviewBoundary><Gate(?: key=\{language\})? \/><\/WorkplaceReviewBoundary><\/JourneyDraftProvider>[\s\S]*<\/SessionProvider><\/CompanyConnectionProvider>/);
  });
  it('pastes and verifies an on-prem setup link without opening another host or sending credentials',async()=>{
   const f=fixture(),user=userEvent.setup();render(<f.Provider><f.PrivateView/></f.Provider>);

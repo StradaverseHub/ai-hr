@@ -6,20 +6,32 @@
  *  - Stored preferences that are missing, damaged or unknown fall back to Automatic, and a choice is kept.
  */
 import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import * as React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const device = vi.hoisted(() => ({ locales: [{ languageCode: 'en' }] as { languageCode: string | null }[], store: new Map<string, string>() }));
-vi.mock('expo-localization', () => ({ getLocales: () => device.locales }));
-vi.mock('expo-secure-store', () => ({
-  getItem: (k: string) => device.store.get(k) ?? null,
-  setItem: (k: string, v: string) => { device.store.set(k, v); },
-}));
-
+// The app's modules are loaded in a sandbox with their native ports injected (as every mobile test here does), so this
+// file never pulls React Native's own global types into the server's type check.
+const device = { locales: [{ languageCode: 'en' }] as { languageCode: string | null }[], store: new Map<string, string>() };
+type Loaded = Record<string, any>;
+function load(path: string, ports: Record<string, unknown>): Loaded {
+  const module = { exports: {} as Loaded };
+  const code = ts.transpileModule(readFileSync(path, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  runInNewContext(code, { module, exports: module.exports, JSON, Intl, Object, String, Array,
+    require: (id: string) => { if (id in ports) return ports[id]; throw new Error('Missing port ' + id + ' for ' + path); } });
+  return module.exports;
+}
+const catalogue = (code: 'zh' | 'ta' | 'th' | 'vi') => load(`mobile/lib/locales/${code}.ts`, {});
 async function fresh() {
-  vi.resetModules();
-  const prefs = await import('../mobile/lib/preferences');
-  const i18n = await import('../mobile/lib/i18n');
+  const prefs = load('mobile/lib/preferences.ts', {
+    'expo-secure-store': { getItem: (k: string) => device.store.get(k) ?? null, setItem: (k: string, v: string) => { device.store.set(k, v); } },
+    react: React,
+  });
+  const i18n = load('mobile/lib/i18n.ts', {
+    'expo-localization': { getLocales: () => device.locales }, './preferences': prefs,
+    './locales/zh': catalogue('zh'), './locales/ta': catalogue('ta'), './locales/th': catalogue('th'), './locales/vi': catalogue('vi'),
+  });
   return { prefs, i18n };
 }
 const placeholders = (s: string) => (s.match(/\{\w+\}/g) ?? []).sort().join(',');
@@ -32,7 +44,7 @@ describe('six language catalogues', () => {
     const { prefs, i18n } = await fresh();
     const en: Record<string, string> = {};
     prefs.setDisplayPref('language', 'en');
-    const keys = Object.keys((await import('../mobile/lib/locales/zh')).default);
+    const keys = Object.keys(catalogue('zh').default);
     for (const k of keys) en[k] = i18n.t(k as never);
     expect(keys.length).toBeGreaterThan(800);
     for (const code of prefs.APP_LOCALES) {
@@ -46,16 +58,23 @@ describe('six language catalogues', () => {
     }
   });
   it('the four new catalogues define exactly the English key set', async () => {
-    const zh = (await import('../mobile/lib/locales/zh')).default, ta = (await import('../mobile/lib/locales/ta')).default;
-    const th = (await import('../mobile/lib/locales/th')).default, vi_ = (await import('../mobile/lib/locales/vi')).default;
-    const src = readFileSync('mobile/lib/i18n.ts', 'utf8');
-    const enBlock = src.slice(src.indexOf('const en = {'), src.indexOf('} as const;\n\nexport type MessageKey'));
-    const enKeys = [...enBlock.matchAll(/^ {2}(\w+):/gm)].map((m) => m[1]).sort();
+    const [zh, ta, th, vi_] = (['zh', 'ta', 'th', 'vi'] as const).map((c) => catalogue(c).default);
+    const file = ts.createSourceFile('i18n.ts', readFileSync('mobile/lib/i18n.ts', 'utf8'), ts.ScriptTarget.Latest, true);
+    let enKeys: string[] = [];
+    file.forEachChild((n) => {
+      if (!ts.isVariableStatement(n)) return;
+      for (const d of n.declarationList.declarations) {
+        if (!ts.isIdentifier(d.name) || d.name.text !== 'en' || !d.initializer) continue;
+        const obj = (ts.isAsExpression(d.initializer) ? d.initializer.expression : d.initializer) as ts.ObjectLiteralExpression;
+        enKeys = obj.properties.map((p) => (p.name as ts.Identifier).text).sort();
+      }
+    });
+    expect(enKeys.length).toBeGreaterThan(800);
     for (const cat of [zh, ta, th, vi_]) expect(Object.keys(cat).sort()).toEqual(enKeys);
   });
   it('translates most of the app, not just a few strings', async () => {
     const { prefs, i18n } = await fresh();
-    const keys = Object.keys((await import('../mobile/lib/locales/zh')).default);
+    const keys = Object.keys(catalogue('zh').default);
     prefs.setDisplayPref('language', 'en');
     const en = new Map(keys.map((k) => [k, i18n.t(k as never)]));
     for (const code of ['ms', 'zh', 'ta', 'th', 'vi'] as const) {
@@ -81,7 +100,7 @@ describe('six language catalogues', () => {
     const en = shape(enNode!);
     expect(keys(en).length).toBeGreaterThan(20);
     for (const code of ['zh', 'ta', 'th', 'vi'] as const) {
-      const c = (await import(`../mobile/lib/locales/${code}.ts`)).company;
+      const c = catalogue(code).company;
       expect(keys(c)).toEqual(keys(en));
     }
   });
