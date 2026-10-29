@@ -37,8 +37,11 @@ describe('connection probe ledger (R9)',()=>{
  it('upgrades a populated immutable source baseline and preserves its existing usage receipt',async()=>{
   const folder=mkdtempSync(join(tmpdir(),'ai-probe-baseline-'));
   const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8'));
-  const entry=journal.entries.at(-1);expect(entry.tag).toBe('0678_ai_connection_probe_ledger');
-  const prior={...journal,entries:journal.entries.slice(0,-1)};
+  const tag='0678_ai_connection_probe_ledger';
+  expect(journal.entries.filter((entry:{tag:string})=>entry.tag===tag)).toHaveLength(1);
+  const probeIndex=journal.entries.findIndex((entry:{tag:string})=>entry.tag===tag);expect(probeIndex).toBeGreaterThan(0);
+  const entry=journal.entries[probeIndex],latest=journal.entries.at(-1);
+  const prior={...journal,entries:journal.entries.slice(0,probeIndex)};
   mkdirSync(join(folder,'meta'));writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify(prior));
   for(const item of prior.entries)copyFileSync(`db/migrations/${item.tag}.sql`,join(folder,`${item.tag}.sql`));
   const name='ai_probe_upgrade_'+randomUUID().replaceAll('-','');
@@ -57,8 +60,11 @@ describe('connection probe ledger (R9)',()=>{
    await migrate(drizzle(upgrade),{migrationsFolder:'db/migrations'});
    expect(await upgrade`select * from ai_model_run where id=${runId}::uuid`).toEqual(before);
    const [applied]=await upgrade`select hash,created_at from drizzle.__drizzle_migrations order by created_at desc limit 1`;
-   expect(Number(applied.created_at)).toBe(entry.when);
-   expect(applied.hash).toBe(createHash('sha256').update(readFileSync(`db/migrations/${entry.tag}.sql`)).digest('hex'));
+   expect(Number(applied.created_at)).toBe(latest.when);
+   expect(applied.hash).toBe(createHash('sha256').update(readFileSync(`db/migrations/${latest.tag}.sql`)).digest('hex'));
+   const [probeApplied]=await upgrade`select hash,created_at from drizzle.__drizzle_migrations where created_at=${entry.when}`;
+   expect(Number(probeApplied.created_at)).toBe(entry.when);
+   expect(probeApplied.hash).toBe(createHash('sha256').update(readFileSync(`db/migrations/${entry.tag}.sql`)).digest('hex'));
    const [count]=await upgrade`select count(*)::int as n from drizzle.__drizzle_migrations`;expect(count.n).toBe(journal.entries.length);
    const [present]=await upgrade`select to_regprocedure('app.ai_probe_start(text,text)')::text as name`;expect(present.name).not.toBeNull();
   }finally{
