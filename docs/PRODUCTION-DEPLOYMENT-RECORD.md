@@ -1,6 +1,6 @@
 # Production deployment record
 
-Prepared for the owner and Claude on 28 October 2026. This records the production commissioning and re-release performed on 25–26 October and the 28 October upgrade to `prod-2026-10-28.1`, using retained deployment evidence. It is a historical installation record; query the installation before reporting its current version or health.
+Prepared for the owner and Claude on 28 October 2026. This records the production commissioning and re-release performed on 25–26 October and the 28 October upgrade to `prod-2026-10-28.1` and 29 October upgrade to `prod-2026-10-29.1`, using retained deployment evidence. It is a historical installation record; query the installation before reporting its current version or health.
 
 This is the public summary. The full record, including open commissioning and security items and post-installation repairs, is private: `.improve/production-deployment-record-20261026-full.md` in the preserved operator checkout, beside the evidence listed below. Read it before planning production work.
 
@@ -31,6 +31,16 @@ The first data-preserving upgrade of this installation, requested explicitly by 
 3. **Verified.** `/health` returns `{"status":"ok"}` on loopback, origin and public endpoint; login 200 and protected root 307; native image/canvas modules render on Node 24; tenant, company, employment, person, user and role counts are unchanged. The owner then signed in and accepted the release.
 
 The installation still has no deploy-state receipt. Backups, rollback copy, logs and the full record stay private (`.improve/production-release-prod-2026-10-28.1.json`). Email delivery, maintenance timers and Reports were not configured by this upgrade.
+
+## 29 October 2026 upgrade to prod-2026-10-29.1
+
+Requested explicitly by the owner after staging acceptance of `a5855dd94c342cea685aa70a97fe2f71647459c1` / build `_9Gp1iKo93BS-yy4ylC3t`, with `main` and `alpha` at that commit. The same procedure as 28 October was followed.
+
+1. **Rehearsed first.** A pre-upgrade backup restored into an owned scratch database matched live exactly (418 tables, identical content hashes). The release's database sequence ran on that copy: audit-chain gate, 11 migrations (532 → 543, zero hash mismatches), catalogs and both backfills. 414 existing tables kept identical contents; `employment`, `person` and `people_general_policy` kept every original column identical and only gained new columns (import-void fields and a duplicate-email policy flag defaulting to off). The new release booted on Node 24 against the copy; the scratch database was then dropped.
+2. **Cut over with the service stopped.** A first cutover attempt was refused by its own post-install verification (staged files had owner-only permissions) and automatically restored the previous release about 20 seconds later, before any database change. After re-staging with the archive's permissions, a second backup was taken with the service stopped, the package installed with zero content differences, and the database sequence passed. Downtime was about 14 seconds; the database was not reset. The previous release is retained for code rollback.
+3. **Verified.** `/health` returns `{"status":"ok"}` on loopback and the public endpoint; login 200, protected root 307, signed-out API 401; tenant, company, employment, person, user and role counts are unchanged. The owner then signed in and accepted the release.
+
+The installation still has no deploy-state receipt. Backups, rollback copy, logs and the full record stay private (`production-release-prod-2026-10-29.1.json`).
 
 ## Installation layout
 
