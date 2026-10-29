@@ -1,22 +1,21 @@
-import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {eq} from 'drizzle-orm';
 import * as schema from '../db/schema';
 import {draftReportSpec,ReportDraftError} from '../core/report-ai';
 import {openaiAdapter} from '../lib/ai/providers/openai';
 import * as ai from '../lib/ai';
-import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,createAppUser,type Base} from './harness';
+import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,createAppUser,type Base} from './harness';
 let base:Base,ctx:Awaited<ReturnType<typeof entitledCtx>>;
 let beforeAdmission:(()=>Promise<void>)|undefined;
 const result=JSON.stringify({spec:{datasetId:'leave_balances',columns:['name','balance']},explanation:'Selected fields.'});
 beforeAll(migrateTestDb);
 beforeEach(async()=>{
- await resetDb();base=await seedBase();await setModule(base.tenantId,'leave','active');ctx=await entitledCtx(base);beforeAdmission=undefined;
+ await resetDb();base=await seedBase();ctx=await entitledCtx(base);beforeAdmission=undefined;
  vi.stubEnv('OPENAI_API_KEY','fictional-report-authority-key-never-sent');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');
  vi.spyOn(openaiAdapter,'generate').mockImplementation(async(_cfg,args)=>{args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});return result;});
  const original=ai.generateDraft;vi.spyOn(ai,'generateDraft').mockImplementation(async(cfg,args)=>{const callback=beforeAdmission;beforeAdmission=undefined;if(callback)await callback();return original(cfg,args);});
 });
 afterAll(closeAll);
-import {afterEach} from 'vitest';
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 describe('report designer core and actual provider-admission authority',()=>{
  it('admits an authorized schema-only draft with untrusted request framing and the selected dataset retained',async()=>{
