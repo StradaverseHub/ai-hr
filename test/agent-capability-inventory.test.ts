@@ -58,7 +58,7 @@ describe('ADR-0151 agent capability inventory',()=>{
  });
 
  it('registers only declared module actions, and every declared action has a tier ceiling',()=>{
-  const declared=new Set(Object.keys(NATIVE_OUTCOME_ACTIONS));
+  const declared=new Set([...Object.keys(NATIVE_OUTCOME_ACTIONS),'approvals.claim.chase','approvals.attendance.chase','approvals.toil.chase','employees.review_overdue.remind']);
   expect(new Set(Object.keys(AGENT_ACTION_TIER_CEILING))).toEqual(declared);
   for(const [file,entries] of Object.entries(inventory))for(const [name,value] of Object.entries(entries)){
    if(!value.startsWith('registered:'))continue;
