@@ -35,5 +35,6 @@ it('refresh clears individually reviewed selection and does not resend any decis
 });
 for(const [locale,messages] of Object.entries({en,ms,zh,vi:viMessages,ta,th}))it(`renders complete reviewed facts and consent in ${locale} desktop/mobile`,async()=>{
  configure(1);const result=mount(locale,messages);fireEvent.click(screen.getByRole('button',{name:messages.assistant.workspace.bulkDecisions.load}));const row=(await screen.findAllByRole('listitem'))[0];fireEvent.click(within(row).getByRole('button',{name:messages.assistant.workspace.decisionActions.reopen}));await within(row).findByRole('checkbox');fireEvent.click(within(row).getByRole('checkbox'));await waitFor(()=>expect(screen.getByRole('button',{name:createTranslator({locale,messages,namespace:'assistant.workspace.bulkDecisions'})('confirm',{count:1})}).hasAttribute('disabled')).toBe(false));
+ // Includes cold Tailwind compilation, browser startup and two font-complete captures on CI.
  await captureAiReviewScreenshots(aiReviewDomHtml(result.container),locale,'chat-card-reviewed-bulk','real saved-review composition and full native review cards; fictional fixture; no authenticated journey');
-});
+},60000);
