@@ -24,7 +24,7 @@ import { resolveDocumentUpload } from '../../../core/employee-documents';
 
 type Row = { id: string; revision: number; company_id: string; data: M.Case; native?: true };
 export type DirectoryUser = { id: string; name: string };
-export type Options = { users: DirectoryUser[]; companies: { id: string; name: string }[]; employees: { id: string; name: string; employeeNo: string; companyId: string }[]; labels?: Partial<Record<M.RuleField, Record<string, string>>>; leaveTypes?: { id: string; name: string }[] };
+export type Options = { users: DirectoryUser[]; companies: { id: string; name: string; registrationNo?: string; address?: string }[]; employees: { id: string; name: string; employeeNo: string; companyId: string }[]; labels?: Partial<Record<M.RuleField, Record<string, string>>>; leaveTypes?: { id: string; name: string }[] };
 export type Workspace = { config: M.Config | null; cases: M.Case[]; options: Options; canConfigure: boolean; actor: M.Actor; personnelWritableKeys: string[]; templateUsage?: M.TemplateUsage[]; definitionUsage?: M.DefinitionUsage[] };
 export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'state' | 'facts' | 'tasks' | 'items' | 'documents'> & { own: boolean };
 export type CaseDetail = { case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
@@ -82,7 +82,7 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   if (M.validDate(anchor)) for (const cl of config.checklists.filter(x => x.module === c.module)) for (const t of cl.tasks) dates.add(M.taskDate(c.module, anchor, t.due));
   const unavailable = await onboardingUnavailableTx(tx, [...dates]);
   const sharedLoads = await onboardingAssignmentLoadsTx(tx);
-  const company = await tx.execute<{ name: string }>(sql`select legal_name as name from company where id=${c.facts.company}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+  const company = await tx.execute<{ name: string; registrationNo: string; address: string }>(sql`select legal_name as name,coalesce(registration_no,'') as "registrationNo",concat_ws(', ',nullif(trim(address_line1),''),nullif(trim(address_line2),''),nullif(trim(address_line3),''),nullif(trim(postcode),''),nullif(trim(city),''),nullif(trim(state),''),nullif(trim(address_country),'')) as address from company where id=${c.facts.company}::uuid and tenant_id=${ctx.tenantId}::uuid`);
   const [personnel] = c.facts.employmentId ? await tx.execute<{ position: string | null; department: string | null; business_group: string | null; email: string | null }>(sql`select pos.title as position,dept.name as department,bu.name as business_group,p.primary_email as email from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id left join position pos on pos.id::text=${c.facts.title} and pos.tenant_id=e.tenant_id left join department dept on dept.id::text=${c.facts.department} and dept.tenant_id=e.tenant_id left join business_unit bu on bu.id::text=${c.facts.businessGroup} and bu.tenant_id=e.tenant_id where e.id=${c.facts.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid`) : [];
   const native = c.module === 'onb' ? await onboardingV9ReadTx(ctx, tx, c.id) : null;
   const nf = native ? nativeFacts(native.c) : null;
@@ -98,6 +98,9 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   const signatory = config.companies?.find(co => co.companyId === c.facts.company);
   values['signatory.name'] = users.find(u => u.id === signatory?.signatoryUserId)?.name ?? '';
   values['signatory.title'] = signatory?.signatoryTitle ?? '';
+  values['company.regNo'] = signatory?.letterhead?.registrationNo ?? company[0]?.registrationNo ?? '';
+  values['company.address'] = signatory?.letterhead?.address ?? company[0]?.address ?? '';
+  values['company.color'] = signatory?.letterhead?.color ?? '#4F46E5';
   const calculation = c.module === 'off' ? await readSettlementTx(tx, ctx, c, config) : null;
   if (calculation?.ready) Object.assign(values, { 'leave.remaining': String(calculation.remainingLeave), 'leave.encashDays': String(calculation.encashDays), 'leave.encashAmount': `${calculation.currency} ${calculation.amount!.toFixed(2)}`, 'leave.dailyRate': `${calculation.currency} ${calculation.dailyRate!.toFixed(2)}`, 'pay.finalPayDate': fmt(calculation.payDate) });
   return { today, now: new Date().toISOString(), actor: who, nextId: randomUUID,
@@ -127,7 +130,7 @@ export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {
   return withLifecycleTenant(ctx, async tx => {
     const who = await actor(tx, ctx), config = await configTx(tx, ctx);
     const [permission] = await tx.execute<{ ok: boolean }>(sql`select app.is_group_admin() as ok`);
-    const companies = await tx.execute<{ id: string; name: string }>(sql`select id,legal_name as name from company where tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(id) order by legal_name,id`);
+    const companies = await tx.execute<{ id: string; name: string; registrationNo: string; address: string }>(sql`select id,legal_name as name,coalesce(registration_no,'') as "registrationNo",concat_ws(', ',nullif(trim(address_line1),''),nullif(trim(address_line2),''),nullif(trim(address_line3),''),nullif(trim(postcode),''),nullif(trim(city),''),nullif(trim(state),''),nullif(trim(address_country),'')) as address from company where tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(id) order by legal_name,id`);
     if (!permission?.ok && !companies.length) throw new M.V9Error('HR administration access is required. Open your assigned lifecycle tasks instead.', 'forbidden');
     const users = await tx.execute<DirectoryUser>(sql`select u.id,coalesce(p.full_name,'User') as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) order by name,u.id`);
     const employees = await tx.execute<{ id: string; name: string; employeeNo: string; companyId: string }>(sql`select e.id,p.full_name as name,e.employee_code as "employeeNo",e.company_id as "companyId" from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(e.company_id) order by p.full_name,e.id`);

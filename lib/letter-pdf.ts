@@ -13,12 +13,15 @@ export type LetterPdfInput={
  /** A second authenticated party for countersigned lifecycle documents. */
  additionalSignatures?:LetterPdfSignature[];
  letterhead?:Uint8Array;
+ /** Frozen document brand colour, when its author includes a letterhead block. */
+ accentColor?:string;
  verification?:{url:string;caption:string};
  /** Internal report exports may span more pages; official letters retain the smaller default. */
  maxPages?:number;
 };
 /** Only frozen, resolved text and private validated PNG bytes enter this renderer. No fetch or HR reads. */
 export async function renderLetterPdf(input:LetterPdfInput){
+ if(input.accentColor!==undefined&&!/^#[0-9a-fA-F]{6}$/.test(input.accentColor))throw new Error('Invalid document brand colour');
  const maxPages=input.maxPages??200;if(!Number.isInteger(maxPages)||maxPages<1||maxPages>2000)throw new Error('Invalid PDF page limit');
  if(input.additionalSignatures&&input.additionalSignatures.length>1)throw new Error('Too many document signatures');
  const signatures=[input.signature,...input.additionalSignatures??[]];
@@ -74,6 +77,7 @@ export async function renderLetterPdf(input:LetterPdfInput){
  }
  function paragraph(content:LetterInline[],size=11,strong=false,indent=0){for(const line of wrap(content,bodyWidth-indent-4,size,strong)){space(size*1.65);drawLine(line,left+indent,y-size,size);y-=size*1.65;}y-=7;}
  const plain=(text:string):LetterInline[]=>[{type:'text',text}];
+ if(input.accentColor){const color=input.accentColor;page.drawRectangle({x:left,y:y-4,width:bodyWidth,height:4,color:rgb(parseInt(color.slice(1,3),16)/255,parseInt(color.slice(3,5),16)/255,parseInt(color.slice(5,7),16)/255)});y-=18;}
  if(header){const dimensions=header.scale(Math.min(bodyWidth/header.width,80/header.height));page.drawImage(header,{x:left,y:y-dimensions.height,width:dimensions.width,height:dimensions.height});y-=dimensions.height+18;}
  paragraph(plain(input.title),17,true);paragraph(plain(input.reference),9);y-=7;
  for(const block of input.document.blocks){

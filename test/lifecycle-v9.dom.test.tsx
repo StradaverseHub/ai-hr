@@ -30,3 +30,16 @@ it('requires a typed name and explicit consent before signing', () => {
   expect(button).toBeDisabled(); fireEvent.click(screen.getByRole('checkbox'));
   fireEvent.click(button); expect(submit).toHaveBeenCalledWith({ method: 'typed', value: 'Employee Name', consent: true });
 });
+
+it('renders the frozen company letterhead, including registration, multiline address and brand colour', () => {
+  const doc = document([]); doc.blocks = [{ id: 'head', type: 'letterhead', text: '', section: '' }];
+  doc.mergeValues = { 'company.name': 'Saved fictional company', 'company.regNo': 'FICTIONAL-001', 'company.address': 'Saved address\nSaved second line', 'company.color': '#336699' };
+  const view = render(<DocumentBody document={doc}/>);
+  expect(screen.getByText('Saved fictional company')).toBeInTheDocument();
+  expect(screen.getByText('Registration No. FICTIONAL-001')).toBeVisible();
+  expect(screen.getByText('Saved address Saved second line')).toHaveTextContent('Saved address Saved second line');
+  expect(view.container.querySelector('.v9-letterhead')).toHaveStyle({ borderTopColor: '#336699' });
+  doc.mergeValues['company.color'] = 'url(https://untrusted.invalid/asset)';
+  view.rerender(<DocumentBody document={doc}/>);
+  expect(view.container.querySelector('.v9-letterhead')).toHaveStyle({ borderTopColor: '#4F46E5' });
+});

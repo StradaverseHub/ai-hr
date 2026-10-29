@@ -1,3 +1,4 @@
+import { v9LiteralAddress } from '../lifecycle-v9-recipient';
 import { v9EmailContent, v9ImageCid } from '../lifecycle-v9-email-content';
 import { client } from '../../db/client';
 import { renderV9DocumentPdf } from '../lifecycle-v9-pdf';
@@ -20,7 +21,12 @@ export async function internalLifecycleV9Mail(input: LifecycleV9DeliveryRequest,
   if (!profile || !['onboarding','hr','noreply'].includes(profile)) return { outcome: 'skipped', error: 'notEligible' };
   const active = await readLifecycleRelayTx(client, target.tenantId, profile);
   if (!active) return { outcome: 'skipped', error: 'relayUnavailable' };
-  const addresses: string[] = target.contact ? [target.contact.email] : [];
+  const byRecipient = new Map<string, string>();
+  if (target.contact) byRecipient.set(target.contact.email, target.contact.email);
+  for (const literal of target.literals ?? []) {
+    if (v9LiteralAddress(literal.key) !== literal.email) return { outcome: 'skipped', error: 'recipientUnavailable' };
+    byRecipient.set(literal.key, literal.email);
+  }
   for (const binding of target.bindings) {
     const credential = await readRecord<Credential>(client, `credential:${binding.subject}`);
     if (!credential || credential.subject !== binding.subject || credential.tenantId !== target.tenantId || credential.issuer !== internalIssuer(target.tenantId) || credential.issuer !== binding.issuer)
@@ -32,9 +38,10 @@ export async function internalLifecycleV9Mail(input: LifecycleV9DeliveryRequest,
       if (error instanceof InternalAuthError) return { outcome: 'skipped', error: 'recipientChanged' };
       throw error;
     }
-    addresses.push(credential.email);
+    byRecipient.set(binding.userId, credential.email);
   }
-  if (addresses.length !== target.payload.mail.to.length + target.payload.mail.cc.length || new Set(addresses.map(address => address.toLowerCase())).size !== addresses.length)
+  const addresses = [...target.payload.mail.to, ...target.payload.mail.cc].map(key => byRecipient.get(key));
+  if (addresses.some(address => !address) || addresses.length !== target.payload.mail.to.length + target.payload.mail.cc.length || new Set(addresses.map(address => address!.toLowerCase())).size !== addresses.length)
     return { outcome: 'skipped', error: 'recipientUnavailable' };
   const { mail, documents, files } = target.payload;
   if (!mail.delivery || mail.delivery.version !== 1 || mail.to.length !== 1) return { outcome: 'skipped', error: 'notEligible' };
@@ -62,13 +69,13 @@ export async function internalLifecycleV9Mail(input: LifecycleV9DeliveryRequest,
   const content = v9EmailContent(mail.body + (links.length ? '\n\n' + links.join('\n') : ''), assetReferences.filter(asset => asset.kind === 'image'));
   const currentRelay = await readLifecycleRelayTx(client, target.tenantId, profile);
   if (!currentRelay || currentRelay.revision !== active.revision) return { outcome: 'skipped', error: 'relayUnavailable' };
-  const proof = { bindings: target.bindings, contact: target.contact ?? null, addresses, relayRevision: active.revision, senderProfile: profile, senderAddress: active.relay.config.from };
+  const proof = { bindings: target.bindings, contact: target.contact ?? null, literals: target.literals ?? [], addresses, relayRevision: active.revision, senderProfile: profile, senderAddress: active.relay.config.from };
   // A separate completed statement persists start BEFORE any external message bytes are sent.
   const started = (await client`select app.lc_v9_email_start(${id}::uuid,${token}::uuid,${origin},${JSON.stringify(proof)}::jsonb) as started`)[0]?.started === true;
   if (!started) return { outcome: 'skipped', error: 'notEligible' };
   let result: LifecycleV9DeliveryResult;
   try {
-    await transport(active.relay, { to: addresses[0], cc: addresses.slice(1), subject: mail.subject, ...content, attachments, senderProfile: mail.delivery.sender, messageId: `<lifecycle-v9.${id}@${new URL(origin).hostname}>` });
+    await transport(active.relay, { to: addresses[0]!, cc: addresses.slice(1) as string[], subject: mail.subject, ...content, attachments, senderProfile: mail.delivery.sender, messageId: `<lifecycle-v9.${id}@${new URL(origin).hostname}>` });
     result = { outcome: 'sent', error: null };
   } catch (error) { result = notificationSmtpFailure(error); }
   const finished = (await client`select app.lc_v9_email_finish(${id}::uuid,${token}::uuid,${result.outcome},${result.error}) as finished`)[0]?.finished === true;

@@ -1,4 +1,5 @@
 'use client';
+import { v9Letterhead } from '@/lib/lifecycle-v9-letterhead';
 import type { ReactNode } from 'react';
 import { merge, type Document, type Field } from '@/lib/lifecycle-v9-model';
 
@@ -9,7 +10,7 @@ export function DocumentBody({ document, values = document.values, editableBy, d
   return <article className="v9-document v9-document-grid">{document.blocks.map(block => {
     const text = merge(document.edits[block.id] ?? block.text, { ...document.mergeValues, ...values }).text;
     let content: ReactNode;
-    if (block.type === 'letterhead') content = <div className="v9-letterhead">{document.mergeValues?.['company.name'] ?? document.mergeValues?.company ?? ''}</div>;
+    if (block.type === 'letterhead') { const letterhead = v9Letterhead(document); content = <header className="v9-letterhead" style={{ borderTopColor: letterhead.color }}><div className="v9-letterhead-name"><span aria-hidden className="v9-letterhead-mark" style={{ background: letterhead.color }}/><strong>{letterhead.name}</strong></div><p>{letterhead.registration}</p><p className="v9-prewrap">{letterhead.address}</p></header>; }
     else if (block.type === 'heading') content = <h2>{text}</h2>;
     else if (block.type === 'subheading') content = <h3>{text}</h3>;
     else if (block.type === 'text') content = <p style={{ whiteSpace: 'pre-wrap' }}>{text}</p>;

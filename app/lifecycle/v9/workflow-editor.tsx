@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { todayInKualaLumpur } from '@/lib/hr-date';
+import { RecipientPicker } from './recipient-picker';
 import * as M from '@/lib/lifecycle-v9-model';
 
 type Props = {
@@ -11,37 +12,10 @@ type Props = {
   cases: M.Case[]; users: { id: string; name: string }[];
   actor: M.Actor; labels: Partial<Record<M.RuleField, Record<string, string>>>;
 };
-const roles: [M.Role, string][] = [['employee', 'Employee'], ['supervisor', 'Line manager'], ['pbp', 'PBP'], ['ta', 'TA'], ['peopleOps', 'GBS People Ops'], ['taskOwners', 'Task owners'], ['hrSignatory', 'HR signatory'], ['starter', 'Whoever started it']];
 const fieldLabels: Record<M.RuleField | 'joinWithin', string> = { businessGroup: 'Business group', company: 'Company', department: 'Department', grade: 'Grade', employmentType: 'Employment type', title: 'Position', caseType: 'Case type', joinWithin: 'Days until the join date' };
 const stepLabels: Record<M.Step['type'], string> = { doc: 'Generate a document', waitSign: 'Wait for a signature', waitFile: 'Wait for a file', email: 'Send an email', notify: 'Notify someone' };
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="v9-field"><span>{label}</span>{children}</label>; }
 function Button({ children, onClick, disabled = false, primary = false }: { children: ReactNode; onClick: () => void; disabled?: boolean; primary?: boolean }) { return <button type="button" className={'v9-button' + (primary ? ' v9-button-primary' : '')} disabled={disabled} onClick={onClick}>{children}</button>; }
-function RolePicker({ label, value, change, disabled, single = false, groups, users }: { label: string; value: M.Role[]; change: (value: M.Role[]) => void; disabled: boolean; single?: boolean; groups: M.Group[]; users: Props['users'] }) {
-  const roleName = (role: M.Role) => role.startsWith('group:')
-    ? groups.find(group => group.id === role.slice(6))?.name ?? 'Unavailable group'
-    : role.startsWith('person:')
-      ? users.find(user => user.id === role.slice(7))?.name ?? 'Unavailable person'
-      : roles.find(([key]) => key === role)?.[1] ?? 'Unavailable role';
-  const full = !single && value.length >= 8;
-  const select = (role: M.Role) => { if (!full || value.includes(role)) change(single ? [role] : value.includes(role) ? value : [...value, role]); };
-  return <details className="v9-recipient-picker">
-    <summary role="button" aria-label={label}>{label.startsWith('CC') ? 'CC' : 'To'}: {value.map(roleName).join(', ') || 'No one'}</summary>
-    <fieldset className="v9-role-picker"><legend>{label}</legend><div className="v9-stack">
-      {roles.filter(([role]) => single || role !== 'taskOwners').map(([role, name]) => <label key={role}>
-        <input type="checkbox" checked={value.includes(role)} disabled={disabled || full && !value.includes(role)} onChange={event => event.target.checked ? select(role) : change(value.filter(selected => selected !== role))}/>{name}
-      </label>)}
-      {value.filter(role => role.startsWith('group:') || role.startsWith('person:')).map(role => <label key={role}>
-        <input type="checkbox" checked disabled={disabled} onChange={() => change(value.filter(selected => selected !== role))}/>{role.startsWith('group:') ? 'Group: ' : 'Person: '}{roleName(role)}
-      </label>)}
-      <Field label="An assignment group"><select aria-label={`Assignment group for ${label}`} value="" disabled={disabled || full} onChange={event => { if (event.target.value) select(`group:${event.target.value}`); }}>
-        <option value="">Choose a group…</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
-      </select></Field>
-      <Field label="A named person"><select aria-label={`Named person for ${label}`} value="" disabled={disabled || full} onChange={event => { if (event.target.value) select(`person:${event.target.value}`); }}>
-        <option value="">Choose a person…</option>{users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
-      </select></Field>
-    </div></fieldset>
-  </details>;
-}
 
 function newStep(type: M.Step['type'], config: M.Config, module: M.Module, id: string = crypto.randomUUID()): M.Step {
   if (type === 'doc') return { id, type, template: '', release: false };
@@ -91,7 +65,7 @@ function StepEditor({ step, index, config, module, disabled, change, users }: { 
     {step.type === 'waitSign' && <Field label={`Signer for step ${index + 1}`}><select value={step.by} disabled={disabled} onChange={e => change({ ...step, by: e.target.value as 'hr' | 'employee' })}><option value="employee">Employee</option><option value="hr">HR signatory</option></select></Field>}
     {step.type === 'waitFile' && <Field label={`File slot for step ${index + 1}`}><select value={step.slot} disabled={disabled} onChange={e => { const slot = emails.flatMap(email => email.slots.map(s => ({ key: `${email.id}:${s.id}`, label: s.label }))).find(s => s.key === e.target.value); change({ ...step, slot: e.target.value, label: slot?.label ?? '' }); }}><option value="">Choose…</option>{emails.flatMap(email => email.slots.map(slot => <option key={`${email.id}:${slot.id}`} value={`${email.id}:${slot.id}`}>{email.name} · {slot.label}</option>))}</select></Field>}
     {step.type === 'notify' && <><Field label={`Subject for step ${index + 1}`}><input className="v9-input" value={step.subject} disabled={disabled} onChange={e => change({ ...step, subject: e.target.value })}/></Field><Field label={`Message for step ${index + 1}`}><textarea rows={4} value={step.body} disabled={disabled} onChange={e => change({ ...step, body: e.target.value })}/></Field></>}
-    {'to' in step && <><RolePicker groups={config.groups} users={users} single label={`To for step ${index + 1}`} value={Array.isArray(step.to) ? step.to : [step.to]} disabled={disabled} change={to => change({ ...step, to })}/><RolePicker groups={config.groups} users={users} label={`CC for step ${index + 1}`} value={step.cc} disabled={disabled} change={cc => change({ ...step, cc })}/></>}
+    {'to' in step && <><RecipientPicker groups={config.groups} users={users} single label={`To for step ${index + 1}`} value={Array.isArray(step.to) ? step.to : [step.to]} disabled={disabled} change={to => change({ ...step, to })}/><RecipientPicker groups={config.groups} users={users} label={`CC for step ${index + 1}`} value={step.cc} disabled={disabled} change={cc => change({ ...step, cc })}/></>}
   </div>;
 }
 function WorkflowTest({ config, workflow, cases, users }: Pick<Props, 'config' | 'cases' | 'users'> & { workflow: M.Workflow }) {

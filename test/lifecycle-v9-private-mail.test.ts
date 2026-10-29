@@ -100,3 +100,24 @@ it('loads frozen shared files and inline image bytes before committing a single 
   const transport = vi.fn(async () => {}); expect(await internalLifecycleV9Mail(request,transport)).toEqual({ outcome: 'sent', error: null });
   expect(transport).toHaveBeenCalledExactlyOnceWith(relay.relay, expect.objectContaining({ text: 'Saved <text>\n[Image: Fictional logo.png]', html: expect.stringContaining(`src="cid:v9-image.${image.id}@aihr"`), attachments: [{ filename: file.name, contentType: 'text/plain', bytes: Buffer.from('fictional-bytes') }, { filename: image.name, contentType: 'image/png', bytes: Buffer.from('fictional-bytes'), cid: `v9-image.${image.id}@aihr` }] }));
 });
+
+it('keeps literal mailboxes separate from credentials while preserving mixed To and CC order', async () => {
+  target.payload.mail.to = ['address:team@fictional.invalid']; target.payload.mail.cc = [userId, 'address:archive@fictional.invalid'];
+  target.literals = [{ key: target.payload.mail.to[0], email: 'team@fictional.invalid', position: 1 }, { key: target.payload.mail.cc[1], email: 'archive@fictional.invalid', position: 3 }];
+  const transport = vi.fn(async () => {});
+  expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'sent', error: null });
+  expect(fixture.credential).toHaveBeenCalledExactlyOnceWith(fixture.sql, `credential:${subject}`);
+  expect(transport).toHaveBeenCalledExactlyOnceWith(relay.relay, expect.objectContaining({ to: 'team@fictional.invalid', cc: ['employee@fictional.invalid', 'archive@fictional.invalid'] }));
+  const proof = JSON.parse(fixture.sql.mock.calls.find(call => call[0].join('?').includes('email_start'))!.at(-1));
+  expect(proof).toMatchObject({ literals: target.literals, addresses: ['team@fictional.invalid', 'employee@fictional.invalid', 'archive@fictional.invalid'] });
+});
+it('holds a malformed or duplicate literal destination before persisting start', async () => {
+  target.payload.mail.cc = ['address:employee@fictional.invalid'];
+  target.literals = [{ key: target.payload.mail.cc[0], email: 'employee@fictional.invalid', position: 2 }];
+  const transport = vi.fn();
+  expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'skipped', error: 'recipientUnavailable' });
+  expect(called('email_start')).toBe(false);
+  target.literals[0].email = 'changed@fictional.invalid';
+  expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'skipped', error: 'recipientUnavailable' });
+  expect(transport).not.toHaveBeenCalled();
+});

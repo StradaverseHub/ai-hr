@@ -53,7 +53,7 @@ it('sends the immutable files/CID once through verified credentials and holds an
   expect((await readSession(signedIn.access_token))?.subject).toBe((await credentialByLogin('v9-fixture','owner'))!.subject);
   const credential=(await credentialByLogin('v9-fixture','owner'))!;web.context=admin;web.identity={issuer:credential.issuer,subject:credential.subject,email:credential.email,emailVerified:credential.emailVerified};
   const actor={userId:base.adminUserId,tenantId:base.tenantId,issuer:credential.issuer,subject:credential.subject};
-  const sink=await startReportSmtpSink({key:readFileSync(join(directory,'server.key')),cert:readFileSync(join(directory,'server.pem')),recipients:['recipient@report-acceptance.invalid']});
+  const sink=await startReportSmtpSink({key:readFileSync(join(directory,'server.key')),cert:readFileSync(join(directory,'server.pem')),recipients:['recipient@report-acceptance.invalid','team@report-acceptance.invalid','archive@report-acceptance.invalid']});
   try{
     const relay={...defaultEmailConfig,host:'127.0.0.1',port:sink.port,security:'tls' as const,from:'owner@report-acceptance.invalid',auth:false};
     const settings=await internalEmailRequest<EmailSettingsView>({op:'view',actor});await internalEmailRequest({op:'save',actor,revision:settings.revision,config:relay});
@@ -107,5 +107,17 @@ it('sends the immutable files/CID once through verified credentials and holds an
     expect(await v9DeliverEmails(system,owner,privateSender)).toEqual({attempted:1,sent:0,held:1,failed:0});expect(sink.messages).toHaveLength(4);
     c=(await v9CaseDetail(admin,id)).case;expect(c.mails.at(-1)).toMatchObject({status:'uncertain',deliveredAt:null,failure:'uncertain'});
     expect(await v9DeliverEmails(system,owner,privateSender)).toEqual({attempted:0,sent:0,held:0,failed:0});expect(sink.messages).toHaveLength(4);
+    const literalConfig=(await v9Workspace(admin)).config!;
+    literalConfig.workflows.push({...structuredClone(literalConfig.workflows[0]),id:'literal-wire',name:'Fictional mailbox wire',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},steps:[{id:'mailbox',type:'email',template:'wire-email',to:['address:team@report-acceptance.invalid'],cc:['peopleOps','address:archive@report-acceptance.invalid']}]});
+    await v9SaveConfig(admin,literalConfig.revision,literalConfig);
+    c=(await v9CaseDetail(admin,id)).case;
+    await v9Command(admin,id,c.revision,{type:'startWorkflow',workflowId:'literal-wire'});
+    sink.setMode('accept');sink.setRecipientCount(3);
+    expect(await v9DeliverEmails(system,owner,privateSender)).toEqual({attempted:1,sent:1,held:0,failed:0});expect(sink.messages).toHaveLength(5);
+    expect(sink.messages[4].recipients).toEqual(['team@report-acceptance.invalid','recipient@report-acceptance.invalid','archive@report-acceptance.invalid']);
+    const literalParts=fixtureMailAttachments(sink.messages[4].raw);expect(literalParts.find(part=>part.mime==='text/plain')?.bytes).toEqual(fileBytes);expect(literalParts.find(part=>part.mime==='image/png')?.bytes).toEqual(imageBytes);
+    const [literalReceipt]=await owner.client`select recipient_proof from lc_v9_email_delivery where case_id=${id}::uuid and payload->'mail'->>'workflowId'='literal-wire'`;
+    expect(literalReceipt.recipient_proof.bindings).toHaveLength(1);expect(literalReceipt.recipient_proof.literals).toEqual([{key:'address:team@report-acceptance.invalid',email:'team@report-acceptance.invalid',position:1},{key:'address:archive@report-acceptance.invalid',email:'archive@report-acceptance.invalid',position:3}]);
+
   }finally{await sink.close();}
 },90000);

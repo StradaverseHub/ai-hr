@@ -477,3 +477,18 @@ it('keeps a failed receipt while its explicit retry waits for its own acknowledg
   retry.status = 'cancelled'; expect(M.unresolvedWorkflowDeliveries(c)).toEqual([retry]);
   retry.status = 'uncertain'; expect(() => M.retryEmail(c, config, retry.id, 'Uncertain', environment)).toThrow('cannot be retried');
 });
+
+it('resolves selected literal To and CC destinations without inferring user identities', () => {
+  const { c, config, environment } = fixture();
+  const definition = workflow({ trigger: { event: 'manual', days: 0, workdays: false, repeat: false, skipIf: '' }, steps: [{ id: 'literal', type: 'notify', subject: 'Review {employee.name}', body: 'Mailbox review', to: ['address:team@fictional.invalid'], cc: ['address:archive@fictional.invalid', 'supervisor'] }] });
+  environment.requireDeliveryAck = true;
+  environment.eligibleUser = id => ['hr','manager'].includes(id);
+  const plan = M.planWorkflow(c, config, definition, environment); expect(plan.lines.at(-1)?.text).toBe('Would alert team@fictional.invalid');
+  M.runWorkflow(c, config, definition, environment, 'manual');
+  expect(c.mails[0]).toMatchObject({ to: ['address:team@fictional.invalid'], cc: ['address:archive@fictional.invalid','manager'], delivery: { toNames: ['team@fictional.invalid'], ccNames: ['archive@fictional.invalid','manager'] }, status: 'pending' });
+  expect(c.runs[0].status).toBe('waiting');
+  const before = structuredClone(c.mails[0]);
+  config.workflows = [definition];
+  c.mails[0].status = 'failed'; c.mails[0].failure = 'smtpTemporary';
+  expect(M.retryEmail(c, config, before.id, 'Definite rejection reviewed', environment)).toMatchObject({ to: before.to, cc: before.cc, retryOf: before.id });
+});

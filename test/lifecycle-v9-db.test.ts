@@ -230,6 +230,26 @@ it('returns actual config revisions and authenticated version stamps for automat
   expect(next.versionStamps).toContainEqual({ templateId: template.id, version: 2, state: 'published', at: todayInKualaLumpur(), by: before.actor.name });
 });
 
+it('freezes company letterhead defaults and later presentation edits with each generated document', async () => {
+  await owner.client`update company set registration_no='CANONICAL-FICTIONAL',address_line1='Canonical fictional address',city='Fixture City' where id=${base.companyId}::uuid`;
+  const c = await prepared(), first = structuredClone(c.documents[0]);
+  expect(first.mergeValues).toMatchObject({ 'company.regNo': 'CANONICAL-FICTIONAL', 'company.address': 'Canonical fictional address, Fixture City', 'company.color': '#4F46E5' });
+  const workspace = await v9Workspace(admin), config = workspace.config!;
+  expect(workspace.options.companies.find(company => company.id === base.companyId)).toMatchObject({ registrationNo: 'CANONICAL-FICTIONAL', address: 'Canonical fictional address, Fixture City' });
+  config.companies = [{ companyId: base.companyId, signatoryUserId: null, signatoryTitle: '', letterhead: { registrationNo: 'LETTERHEAD-FICTIONAL', address: 'Formatted fictional address\nSecond line', color: '#336699' } }];
+  await v9SaveConfig(admin, config.revision, config);
+  expect((await v9CaseDetail(admin, c.id)).case.documents[0]).toEqual(first);
+  const template = config.templates.find(template => template.module === 'off' && template.id !== 'fixture-form')!;
+  await v9Command(admin, c.id, c.revision, { type: 'generate', template: template.id });
+  const next = (await v9CaseDetail(admin, c.id)).case.documents.find(document => document.templateId === template.id)!;
+  expect(next.mergeValues).toMatchObject({ 'company.regNo': 'LETTERHEAD-FICTIONAL', 'company.address': 'Formatted fictional address\nSecond line', 'company.color': '#336699' });
+  const [company] = await owner.client`select registration_no,address_line1 from company where id=${base.companyId}::uuid`;
+  expect(company).toEqual({ registration_no: 'CANONICAL-FICTIONAL', address_line1: 'Canonical fictional address' });
+  const invalid = (await v9Workspace(admin)).config!;
+  invalid.companies![0].letterhead!.color = 'url(https://untrusted.invalid/logo)';
+  await expect(v9SaveConfig(admin, invalid.revision, invalid)).rejects.toThrow();
+});
+
 it('previews an HR-held acceptance message without changing its case and refuses unrelated users', async () => {
   const c = await prepared(), before = structuredClone(c);
   const preview = await v9PreviewEmail(admin, c.id, 'e3');
@@ -496,6 +516,36 @@ it('binds the private capability to its current subject, exact identity, saved d
   if (verificationError) throw verificationError;
   expect(verified).toBe(true);
 });
+it('verifies explicit mailbox destinations and their exact database start proof without linking accounts', async () => {
+  const config = (await v9Workspace(admin)).config!;
+  config.workflows = [{ id: 'literal-intent', name: 'Fictional literal intent', module: 'off', status: 'published', trigger: { event: 'submitted', days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [], steps: [{ id: 'notice', type: 'notify', subject: 'Fictional mailbox notice', body: 'Fictional test intent', to: ['address:subject@test.invalid'], cc: ['address:archive@fictional.invalid'] }], description: '' }];
+  await v9SaveConfig(admin, config.revision, config);
+  const [{ count: usersBefore }] = await owner.client`select count(*)::integer as count from app_user where tenant_id=${base.tenantId}::uuid`;
+  const id = await v9CreateOffboarding(admin, { employmentId, type: 'Resignation', noticeDate: todayInKualaLumpur(), lastDay: addDays(todayInKualaLumpur(),30) });
+  await v9Command(admin, id, 1, { type: 'submit' });
+  let checked = false, failure: unknown;
+  const output = await v9DeliverEmails({ ...admin, userId: undefined, personId: null }, owner, async request => {
+    try {
+      const origin = 'https://literal-capability.example';
+      const [{ target }] = await owner.client`select app.lc_v9_email_target(${request.deliveryId}::uuid,${request.leaseToken}::uuid,${origin}) as target`;
+      expect(target).toMatchObject({ bindings: [], contact: null, literals: [{ key: 'address:subject@test.invalid', email: 'subject@test.invalid', position: 1 }, { key: 'address:archive@fictional.invalid', email: 'archive@fictional.invalid', position: 2 }] });
+      const proof = { bindings: [], contact: null, literals: target.literals, addresses: ['subject@test.invalid','changed@fictional.invalid'], relayRevision: 'controlled-database-proof' };
+      const start = async () => (await owner.client`select app.lc_v9_email_start(${request.deliveryId}::uuid,${request.leaseToken}::uuid,${origin},${JSON.stringify(proof)}::jsonb) as started`)[0].started;
+      expect(await start()).toBe(false);
+      proof.addresses[1] = 'archive@fictional.invalid'; expect(await start()).toBe(true);
+      const [{ finished }] = await owner.client`select app.lc_v9_email_finish(${request.deliveryId}::uuid,${request.leaseToken}::uuid,'failed','smtpRejected') as finished`;
+      expect(finished).toBe(true); checked = true;
+      return { outcome: 'failed', error: 'smtpRejected' };
+    } catch (error) { failure = error; throw error; }
+  });
+  if (failure) throw failure;
+  expect(checked).toBe(true); expect(output).toEqual({ attempted: 1, sent: 0, held: 0, failed: 1 });
+  const [{ count: usersAfter }] = await owner.client`select count(*)::integer as count from app_user where tenant_id=${base.tenantId}::uuid`;
+  expect(usersAfter).toBe(usersBefore);
+  const c = (await v9CaseDetail(admin, id)).case;
+  expect(c.mails[0]).toMatchObject({ to: ['address:subject@test.invalid'], cc: ['address:archive@fictional.invalid'], status: 'failed' });
+});
+
 it('authorizes a real prehire contact without an app account and refuses an address changed after queue', async () => {
   const config = (await v9Workspace(admin)).config!;
   config.workflows = []; config.checklists = [{ id: 'contact-onb', name: 'Contact fixture', module: 'onb', rules: {}, tasks: [] }];

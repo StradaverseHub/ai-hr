@@ -5,7 +5,7 @@ export type SinkMode='accept'|'temporary'|'lost'|'hold';
 export type CapturedReportMail={recipients:string[];raw:Buffer;sha256:string};
 export async function startReportSmtpSink(input:{key:Buffer;cert:Buffer;port?:number;recipients:readonly string[];recipientCount?:number}) {
  if(!input.recipients.length||input.recipients.some(value=>!/^[-a-z0-9]+@report-acceptance\.invalid$/.test(value)))throw new Error('Fictional sink recipients required.');
- const recipientCount=input.recipientCount??1;if(!Number.isInteger(recipientCount)||recipientCount<1||recipientCount>input.recipients.length)throw Error('Invalid fixture envelope count');
+ let recipientCount=input.recipientCount??1;if(!Number.isInteger(recipientCount)||recipientCount<1||recipientCount>input.recipients.length)throw Error('Invalid fixture envelope count');
  let mode:SinkMode='accept',capturedBytes=0;const messages:CapturedReportMail[]=[],sockets=new Set<TLSSocket>();
  const server=createServer({key:input.key,cert:input.cert,minVersion:'TLSv1.2'},socket=>{
   sockets.add(socket);socket.on('error',()=>{});socket.on('close',()=>sockets.delete(socket));socket.write('220 localhost disposable report fixture\r\n');
@@ -37,7 +37,7 @@ export async function startReportSmtpSink(input:{key:Buffer;cert:Buffer;port?:nu
  server.on('tlsClientError',()=>{});
  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(input.port??0,'127.0.0.1',()=>{server.off('error',reject);resolve();});});
  const address=server.address();if(!address||typeof address==='string')throw new Error('Fixture sink did not bind.');
- return {port:address.port,messages,setMode:(next:SinkMode)=>{mode=next;},disconnect:()=>{for(const socket of sockets)socket.destroy();},close:async()=>{for(const socket of sockets)socket.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));}};
+ return {port:address.port,messages,setRecipientCount:(count:number)=>{if(!Number.isInteger(count)||count<1||count>input.recipients.length)throw Error('Invalid fixture envelope count');recipientCount=count;},setMode:(next:SinkMode)=>{mode=next;},disconnect:()=>{for(const socket of sockets)socket.destroy();},close:async()=>{for(const socket of sockets)socket.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));}};
 }
 /** Unfold continuation lines only in the MIME header section, never in encoded body data. */
 function mimePart(part:string):{headers:Map<string,string[]>;body:string} {

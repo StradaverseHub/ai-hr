@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import { v9Letterhead } from './lifecycle-v9-letterhead';
 import { renderLetterPdf, type LetterPdfInput } from './letter-pdf';
 import { merge, V9Error, type Document, type Field, type Signature } from './lifecycle-v9-model';
 import type { ResolvedLetterBlock, LetterInline } from './letter-model';
@@ -23,7 +24,7 @@ export function v9PdfDocument(document: Document, requireComplete = false): Lett
   }
   for (const block of document.blocks) {
     const value = resolved(document.edits[block.id] ?? block.text);
-    if (block.type === 'letterhead') blocks.push({ type: 'heading', level: 2, content: text(document.mergeValues?.['company.name'] ?? document.mergeValues?.company ?? '') });
+    if (block.type === 'letterhead') { const letterhead = v9Letterhead(document); blocks.push({ type: 'heading', level: 2, content: text(letterhead.name) }, { type: 'paragraph', content: text(letterhead.registration) }, { type: 'paragraph', content: text(letterhead.address) }); }
     else if (block.type === 'heading' || block.type === 'subheading') blocks.push({ type: 'heading', level: block.type === 'heading' ? 1 : 2, content: text(value) });
     else if (block.type === 'text') blocks.push({ type: 'paragraph', content: text(value) });
     else if (block.type === 'fields') document.fields.filter(field => field.section === block.section).forEach(field);
@@ -44,6 +45,6 @@ export async function renderV9DocumentPdf(document: Document, reference: string,
   const signatures = document.hrStep === 'before' ? [{ signature: document.hrSignature, role: 'HR' }, { signature: document.employeeSignature, role: 'Employee' }] : [{ signature: document.employeeSignature, role: 'Employee' }, { signature: document.hrSignature, role: 'HR' }];
   const recorded = signatures.filter(value => value.signature);
   const primary = recorded[0] ?? { signature: null, role: 'Employee' };
-  const result = await renderLetterPdf({ document: v9PdfDocument(document, requireComplete), title: document.name, reference: `${reference} · v${document.version} · ${document.status}`, signature: await evidence(primary.signature, primary.role, document), ...(recorded.length > 1 ? { additionalSignatures: [await evidence(recorded[1].signature, recorded[1].role, document)] } : {}) });
+  const result = await renderLetterPdf({ document: v9PdfDocument(document, requireComplete), title: document.name, ...(document.blocks.some(block => block.type === 'letterhead') ? { accentColor: v9Letterhead(document).color } : {}), reference: `${reference} · v${document.version} · ${document.status}`, signature: await evidence(primary.signature, primary.role, document), ...(recorded.length > 1 ? { additionalSignatures: [await evidence(recorded[1].signature, recorded[1].role, document)] } : {}) });
   return { bytes: result.bytes, pages: result.pages };
 }

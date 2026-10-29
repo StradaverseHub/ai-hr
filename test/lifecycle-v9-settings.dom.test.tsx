@@ -35,3 +35,16 @@ it('keeps settings on their canonical owner and retains unsaved catalogue edits 
   await waitFor(() => expect(mocks.save).toHaveBeenCalledWith(7, expect.objectContaining({ catalogue: [expect.objectContaining({ id: 'existing-system', name: 'Fictional renamed system' })] }), {}, false));
   expect(await screen.findByText('Changes saved')).toBeVisible();
 });
+function CompanyEditor() {
+  const [config, setConfig] = useState(v9Defaults());
+  return <><WorkspaceSettings activeTab="shared" config={config} options={{ companies: [{ id: 'company', name: 'Fictional company', registrationNo: 'SOURCE-001', address: 'Source address' }], users: [{ id: 'hr', name: 'Fictional HR' }], employees: [] }} editable edit={change => setConfig(old => { const next = structuredClone(old); change(next); return next; })}/><output data-testid="company-settings">{JSON.stringify(config.companies)}</output></>;
+}
+it('starts letterhead settings from company facts and retains independent signatory and presentation edits', () => {
+  render(<CompanyEditor/>);
+  expect(screen.getByRole('textbox', { name: 'Fictional company · Registration no.' })).toHaveValue('SOURCE-001');
+  fireEvent.change(screen.getByRole('textbox', { name: 'Fictional company · Registration no.' }), { target: { value: 'FORMATTED-001' } });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Fictional company · Address' }), { target: { value: 'Printed address\nSecond line' } });
+  fireEvent.change(screen.getByLabelText('Fictional company · Brand colour'), { target: { value: '#336699' } });
+  fireEvent.change(screen.getByRole('combobox', { name: 'Fictional company · Signatory' }), { target: { value: 'hr' } });
+  expect(JSON.parse(screen.getByTestId('company-settings').textContent!)).toEqual([{ companyId: 'company', signatoryUserId: 'hr', signatoryTitle: '', letterhead: { registrationNo: 'FORMATTED-001', address: 'Printed address\nSecond line', color: '#336699' } }]);
+});

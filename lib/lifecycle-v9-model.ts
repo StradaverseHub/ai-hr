@@ -1,3 +1,4 @@
+import { v9LiteralAddress } from './lifecycle-v9-recipient';
 import { v9EmploymentRule } from './lifecycle-v9-employment';
 import type { EmploymentConfirmationDates } from './employment-confirmation';
 import { MANAGED_EMAIL_ATTACHMENT_MAX_BYTES, MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT } from './managed-email-policy';
@@ -59,7 +60,7 @@ export type Document = {
   mergeValues?: Record<string, string>;
   hrStep?: Template['hrStep']; employeeAck?: boolean; signatoryUserId?: string | null; templateType?: Template['type'];
 };
-export type Role = 'employee' | 'supervisor' | 'pbp' | 'ta' | 'peopleOps' | 'taskOwners' | 'hrSignatory' | 'starter' | `group:${string}` | `person:${string}`;
+export type Role = 'employee' | 'supervisor' | 'pbp' | 'ta' | 'peopleOps' | 'taskOwners' | 'hrSignatory' | 'starter' | `group:${string}` | `person:${string}` | `address:${string}`;
 export type EmailAsset = { id: string; kind: 'file' | 'image'; name: string; mimeType: string; size: number; contentHash: string; at: string; by: string };
 export type DefinitionUsage = { kind: 'document' | 'email'; definitionId: string; messages: number; runs: number };
 export type TemplateUsage = { templateId: string; version: number; documents: number };
@@ -143,7 +144,7 @@ export type Config = {
   emails: EmailTemplate[]; workflows: Workflow[]; groups: Group[]; peopleOpsGroup: string | null;
   bpRules: { rules: Pick<Rules, 'businessGroup' | 'company' | 'department'>; userId: string }[];
   settlementPolicy?: SettlementPolicy;
-  companies?: { companyId: string; signatoryUserId: string | null; signatoryTitle: string }[];
+  companies?: { companyId: string; signatoryUserId: string | null; signatoryTitle: string; letterhead?: { registrationNo?: string; address?: string; color?: string } }[];
 };
 export type Environment = {
   today: string; now: string; actor: Actor; nextId: () => string;
@@ -355,7 +356,10 @@ export function signDocument(c: Case, config: Config, id: string, role: 'employe
   }
   if (documentFinal(doc)) linkedTasks(c, doc, 'signed'); appendLog(c, env, 'document.signed', `${doc.name} · ${role}`);
 }
+function eligibleRecipient(id: string, env: Pick<Environment, 'eligibleUser'>): boolean { return id.startsWith('address:') ? !!v9LiteralAddress(id) : env.eligibleUser(id); }
+function recipientName(id: string, env: Pick<Environment, 'userName'>): string { return v9LiteralAddress(id) ?? env.userName(id); }
 function recipients(c: Case, config: Config, role: Role): string[] {
+  if (role.startsWith('address:')) return v9LiteralAddress(role) ? [role] : [];
   if (role.startsWith('person:')) return [role.slice(7)];
   if (role.startsWith('group:')) return config.groups.find(group => group.id === role.slice(6))?.members ?? [];
   if (role === 'peopleOps') return config.groups.find(g => g.id === config.peopleOpsGroup)?.members ?? [];
@@ -364,6 +368,7 @@ function recipients(c: Case, config: Config, role: Role): string[] {
   return id ? [id] : [];
 }
 function recipientLabel(role: Role, config: Config, env: Pick<Environment, 'userName'>): string {
+  if (role.startsWith('address:')) return v9LiteralAddress(role) ?? 'Invalid email address';
   if (role.startsWith('group:')) return config.groups.find(group => group.id === role.slice(6))?.name ?? 'Unavailable group';
   if (role.startsWith('person:')) return env.userName(role.slice(7));
   return ({ employee: 'Employee', supervisor: 'Line manager', pbp: 'PBP', ta: 'TA', peopleOps: 'GBS People Ops', taskOwners: 'Task owners', hrSignatory: 'HR signatory', starter: 'Whoever started it' } as Partial<Record<Role,string>>)[role] ?? 'Unavailable recipient';
@@ -380,7 +385,7 @@ export function retryEmail(c: Case, config: Config, id: string, reason: string, 
   if (!reason.trim()) throw new V9Error('Record the delivery review reason before retrying.');
   if (original.templateId && !config.emails.some(email => email.id === original.templateId && email.active) || original.workflowId && !config.workflows.some(workflow => workflow.id === original.workflowId && workflow.status === 'published')) throw new V9Error('Turn on the email and workflow before retrying.');
   const accountRecipients = original.delivery.contact ? original.cc : [...original.to, ...original.cc];
-  if (accountRecipients.some(userId => !env.eligibleUser(userId))) throw new V9Error('Review the unavailable recipients before retrying.');
+  if (accountRecipients.some(userId => !eligibleRecipient(userId, env))) throw new V9Error('Review the unavailable recipients before retrying.');
   const next = structuredClone(original); next.id = env.nextId(); next.key = `retry:${original.id}:${next.id}`;
   next.retryOf = original.id; next.retryReason = reason.trim(); next.status = 'pending'; next.at = env.now; next.deliveredAt = null; next.failure = null;
   next.delivery!.queuedBy = { ...env.actor }; c.mails.push(next);
@@ -445,15 +450,15 @@ export function previewEmail(c: Case, config: Config, emailId: string, env: Envi
   try { merge(edit.subject + '\n' + edit.body, values, emailSensitiveKeys(config)); } catch { holds.push('Remove sensitive fields from the email text.'); }
   const contact = c.module === 'onb' && !c.facts.employeeUserId ? env.onboardingContact : undefined;
   const target = c.facts.employeeUserId ?? contact?.email;
-  const to = target && (contact || env.eligibleUser(target)) ? [{ id: target, name: contact ? c.facts.name : env.userName(target) }] : [];
+  const to = target && (contact || env.eligibleUser(target)) ? [{ id: target, name: contact ? c.facts.name : recipientName(target, env) }] : [];
   if (!to.length) holds.push('Link an available employee account or enter the onboarding contact before sending.');
   if (contact && email.links.length) holds.push('Link an employee account before sending document links.');
   const imageCount = (email.images ?? []).filter(image => body.text.includes('{image:' + image.id + '}')).length;
   const caseFileCount = c.files.filter(file => email.slots.some(slot => file.slot === `${email.id}:${slot.id}`)).length;
   if ((email.files?.length ?? 0) + imageCount + email.attachments.length + caseFileCount > MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT) holds.push('Keep the total attached files and inline images within 20.');
   if ([...(email.files ?? []), ...(email.images ?? []).filter(image => body.text.includes('{image:' + image.id + '}'))].reduce((sum, asset) => sum + asset.size, 0) > MANAGED_EMAIL_ATTACHMENT_MAX_BYTES) holds.push('Keep the total attached files and inline images within 20 MB.');
-  for (const role of email.cc) { const ids = recipients(c, config, role); if (!ids.length || ids.some(id => !env.eligibleUser(id))) holds.push(`Resolve the CC recipient: ${recipientLabel(role, config, env)}.`); }
-  const cc = [...new Set(email.cc.flatMap(role => recipients(c, config, role)))].filter(id => id !== target && env.eligibleUser(id)).map(id => ({ id, name: env.userName(id) }));
+  for (const role of email.cc) { const ids = recipients(c, config, role); if (!ids.length || ids.some(id => !eligibleRecipient(id, env))) holds.push(`Resolve the CC recipient: ${recipientLabel(role, config, env)}.`); }
+  const cc = [...new Set(email.cc.flatMap(role => recipients(c, config, role)))].filter(id => id !== target && eligibleRecipient(id, env)).map(id => ({ id, name: recipientName(id, env) }));
   const documents = [...new Set([...email.links, ...email.attachments])].flatMap(templateId => {
     const template = config.templates.find(template => template.id === templateId && template.module === c.module), document = activeDocument(c, templateId);
     if (!template) { holds.push('A linked document template is unavailable.'); return []; }
@@ -500,15 +505,15 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
   const to = test ? [env.actor.id] : perOwner ? targets : targets.slice(0, 1);
   const groupCc = !test && !perOwner && step.type === 'notify' ? targets.slice(1) : [];
   const ccRoles = [...step.cc, ...(email?.cc ?? [])];
-  if (!test) for (const role of ccRoles) { const ids = recipients(c, config, role); if (!ids.length || ids.some(id => !env.eligibleUser(id))) throw new V9Error(`Resolve the CC recipient: ${recipientLabel(role, config, env)}.`); }
+  if (!test) for (const role of ccRoles) { const ids = recipients(c, config, role); if (!ids.length || ids.some(id => !eligibleRecipient(id, env))) throw new V9Error(`Resolve the CC recipient: ${recipientLabel(role, config, env)}.`); }
   const ccTargets = [...new Set([...groupCc, ...ccRoles.flatMap(role => recipients(c, config, role))])];
-  if (!test && (ccTargets.some(id => !env.eligibleUser(id)) || !contact && to.some(id => !env.eligibleUser(id)))) throw new V9Error('A selected recipient is no longer eligible for delivery. Review the recipients before continuing.');
+  if (!test && (ccTargets.some(id => !eligibleRecipient(id, env)) || !contact && to.some(id => !eligibleRecipient(id, env)))) throw new V9Error('A selected recipient is no longer eligible for delivery. Review the recipients before continuing.');
   const sensitive = emailSensitiveKeys(config);
   for (const target of to) {
     const itemKey = `${key}:${target}`; if (c.mails.some(m => m.key === itemKey)) continue;
-    if (!contact && !env.eligibleUser(target)) throw new V9Error('The recipient is no longer eligible for delivery.');
+    if (!contact && !eligibleRecipient(target, env)) throw new V9Error('The recipient is no longer eligible for delivery.');
     const tasks = pendingPre(c).filter(t => t.assignee === target);
-    const values = { ...env.mergeValues, 'owner.name': contact ? c.facts.name : env.userName(target), 'pending.tasks': (roles.includes('taskOwners') && owners.includes(target) ? tasks : pendingPre(c)).map(t => `${t.name} (due ${t.dueOn})`).join('\n') };
+    const values = { ...env.mergeValues, 'owner.name': contact ? c.facts.name : recipientName(target, env), 'pending.tasks': (roles.includes('taskOwners') && owners.includes(target) ? tasks : pendingPre(c)).map(t => `${t.name} (due ${t.dueOn})`).join('\n') };
     const edits = email ? c.emailEdits?.[email.id] : null;
     const subject = merge(edits?.subject ?? email?.subject ?? (step.type === 'notify' ? step.subject : ''), values, sensitive), body = merge(edits?.body ?? email?.body ?? (step.type === 'notify' ? step.body : ''), values, sensitive);
     if (!test && (subject.missing.length || body.missing.length)) throw new V9Error(`Complete missing merge fields: ${[...new Set([...subject.missing, ...body.missing])].join(', ')}.`);
@@ -526,8 +531,8 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
     if (!['onboarding', 'hr', 'noreply'].includes(sender)) throw new V9Error('Choose a managed sender profile before sending.');
     const assets = structuredClone([...(email?.files ?? []), ...(email?.images ?? []).filter(image => body.text.includes('{image:' + image.id + '}'))]);
     if (assets.reduce((sum, asset) => sum + asset.size, 0) > MANAGED_EMAIL_ATTACHMENT_MAX_BYTES) throw new V9Error('Keep the total attached files and inline images within 20 MB.');
-    c.mails.push({ id: env.nextId(), key: itemKey, workflowId, templateId: email?.id ?? null, to: [target], cc, subject: subject.text, body: body.text, documentIds: docs.map(d => d.id), delivery: { version: 1, queuedBy: { ...env.actor }, sender: sender as 'onboarding' | 'hr' | 'noreply', linkDocumentIds: docs.filter(document => email?.links.includes(document.templateId)).map(document => document.id), pdfDocumentIds: docs.filter(document => email?.attachments.includes(document.templateId)).map(document => document.id), toNames: [contact ? c.facts.name : env.userName(target)], ccNames: cc.map(env.userName), ...(assets.length ? { assets } : {}), ...(contact ? { contact: { kind: 'onboardingContact' as const, caseId: c.id, email: contact.email, sourceRevision: contact.sourceRevision } } : {}) }, fileIds: c.files.filter(f => email?.slots.some(s => f.slot === `${email.id}:${s.id}`)).map(f => f.id), status: 'pending', test, at: env.now, deliveredAt: null, failure: null });
-    appendLog(c, env, test ? 'email.test.queued' : 'email.queued', `${email?.name ?? subject.text} · ${contact ? c.facts.name : env.userName(target)}`);
+    c.mails.push({ id: env.nextId(), key: itemKey, workflowId, templateId: email?.id ?? null, to: [target], cc, subject: subject.text, body: body.text, documentIds: docs.map(d => d.id), delivery: { version: 1, queuedBy: { ...env.actor }, sender: sender as 'onboarding' | 'hr' | 'noreply', linkDocumentIds: docs.filter(document => email?.links.includes(document.templateId)).map(document => document.id), pdfDocumentIds: docs.filter(document => email?.attachments.includes(document.templateId)).map(document => document.id), toNames: [contact ? c.facts.name : recipientName(target, env)], ccNames: cc.map(id => recipientName(id, env)), ...(assets.length ? { assets } : {}), ...(contact ? { contact: { kind: 'onboardingContact' as const, caseId: c.id, email: contact.email, sourceRevision: contact.sourceRevision } } : {}) }, fileIds: c.files.filter(f => email?.slots.some(s => f.slot === `${email.id}:${s.id}`)).map(f => f.id), status: 'pending', test, at: env.now, deliveredAt: null, failure: null });
+    appendLog(c, env, test ? 'email.test.queued' : 'email.queued', `${email?.name ?? subject.text} · ${contact ? c.facts.name : recipientName(target, env)}`);
   }
   return deliveryHold(c.mails.filter(mail => mail.workflowId === workflowId && mail.key.startsWith(key + ':')));
 }
@@ -548,7 +553,7 @@ export function planWorkflow(c: Case, config: Config, workflow: Workflow, env: P
   const matches = workflowMatches(c, workflow, env.today), lines: { text: string; ok: boolean }[] = [];
   if (!matches) return { matches, lines: [{ text: 'Skipped: this record does not match the conditions.', ok: false }] };
   lines.push({ text: 'Conditions match.', ok: true });
-  const names = (roles: Role[]) => roles.flatMap(role => { const ids = recipients(c, config, role); return ids.length ? ids.map(env.userName) : [`${role}: no linked recipient`]; }).join(', ');
+  const names = (roles: Role[]) => roles.flatMap(role => { const ids = recipients(c, config, role); return ids.length ? ids.map(id => recipientName(id, env)) : [`${role}: no linked recipient`]; }).join(', ');
   for (const step of workflow.steps) {
     if (step.type === 'doc') { const doc = activeDocument(c, step.template), template = config.templates.find(t => t.id === step.template); lines.push({ text: doc ? `Already generated: ${doc.name} (v${doc.version})` : `Would generate ${template?.name ?? 'a document'}`, ok: !!template }); }
     else if (step.type === 'email') { const email = config.emails.find(e => e.id === step.template); lines.push({ text: `Would email "${email?.name ?? ''}" to ${names((Array.isArray(step.to) ? step.to : [step.to]).slice(0, 1))}${step.cc.length ? ', CC ' + names(step.cc) : ''}`, ok: !!email?.active }); }

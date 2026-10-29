@@ -44,3 +44,11 @@ it('creates unsigned editable drafts without introducing a signature into attach
   expect(parsed.templates.find(template => template.id === 'Form')!.versions[0].fields).toMatchObject([{ id: 'field1', owner: 'employee' }]);
   expect(parsed.templates.find(template => template.id === 'Letter')).toMatchObject({ hrStep: 'before', employeeAck: true, versions: [{ state: 'draft', by: actor.name }] });
 });
+it('keeps an explicit default CC mailbox separate from directory people', () => {
+  render(<Editor/>); fireEvent.click(screen.getByRole('button', { name: 'CC by default' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Email address for CC by default' }), { target: { value: 'archive@fictional.invalid' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Add email address' }));
+  expect(saved().cc).toEqual(['address:archive@fictional.invalid']);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Email: archive@fictional.invalid' }));
+  expect(saved().cc).toEqual([]);
+});

@@ -26,6 +26,7 @@ describe('sealed letter PDF layout',()=>{
   const result=await renderLetterPdf({...input,verification:{url:'https://letters.fixture.test/letters/verify/'+'A'.repeat(43),caption:letterVerificationWords[language].caption},document:{version:1,language,blocks:[{type:'paragraph',content:[{type:'text',text:samples[language]}]},...input.document.blocks]}});expect((await PDFDocument.load(result.bytes)).getPageCount()).toBe(1);
   if(process.env.CI&&process.env.RUNNER_TEMP){const dir=join(process.env.RUNNER_TEMP,'aihr-focused','letter-pdf-fixtures');await mkdir(dir,{recursive:true});await writeFile(join(dir,`fictional-letter-${language}.pdf`),result.bytes);}
  });
+ it('refuses invalid document brand colours',async()=>{await expect(renderLetterPdf({...input,accentColor:'url(https://untrusted.invalid/logo)'})).rejects.toThrow('Invalid document brand colour');});
  it('refuses unresolved values and unsupported glyphs rather than sealing fabricated or substituted text',async()=>{
   await expect(renderLetterPdf({...input,document:{...input.document,blocks:[{type:'paragraph',content:[{type:'field',key:'employeeName'}]}]}})).rejects.toThrow('Unresolved letter field');
   await expect(renderLetterPdf({...input,title:'Unsupported 🦄'})).rejects.toThrow('Unsupported letter glyph');

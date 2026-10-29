@@ -93,3 +93,15 @@ it('saves the supplied source-action triggers without exposing date-only control
     expect(parseV9Config(config).workflows.at(-1)!.trigger.event).toBe(event);
   }
 });
+
+it('adds a validated email address as a destination rather than a named person', () => {
+  render(<Harness/>); fireEvent.click(screen.getByRole('button', { name: 'New workflow' })); fireEvent.click(screen.getByRole('button', { name: 'For Offboarding' }));
+  const drawer = within(screen.getByRole('dialog', { name: 'Edit workflow' }));
+  fireEvent.click(drawer.getByRole('button', { name: 'Add a step' })); fireEvent.click(drawer.getByRole('button', { name: 'Notify someone' })); fireEvent.click(drawer.getByRole('button', { name: 'To for step 1' }));
+  const picker = within(drawer.getByRole('group', { name: 'To for step 1' }));
+  expect(picker.getByRole('button', { name: 'Add email address' })).toBeDisabled();
+  fireEvent.change(picker.getByRole('textbox', { name: 'Email address for To for step 1' }), { target: { value: 'team@fictional.invalid' } });
+  fireEvent.click(picker.getByRole('button', { name: 'Add email address' }));
+  const config: Config = JSON.parse(screen.getByTestId('definition').textContent!);
+  expect(parseV9Config(config).workflows.at(-1)!.steps[0]).toMatchObject({ to: ['address:team@fictional.invalid'] });
+});
