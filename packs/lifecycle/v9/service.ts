@@ -13,7 +13,7 @@ import { v9Defaults } from '../../../lib/lifecycle-v9-defaults';
 import { parseV9Config, validateV9ConfigChange, v9Equal } from '../../../lib/lifecycle-v9-validation';
 import { readSettlementTx, type SettlementView } from './settlement';
 import { readV9PersonnelTx, pushV9PersonnelTx, lockV9PersonnelWritesTx, v9PersonnelWritableKeys } from '../../../core/lifecycle-v9-personnel';
-import { onboardingSetupTx, onboardingSaveGroupsTx } from '../onboarding/service';
+import { onboardingSetupTx, onboardingSaveGroupsTx, onboardingAssignmentLoadsTx, onboardingUnavailableTx } from '../onboarding/service';
 import { issuedToTx, returnAssetTx } from '../../../core/lifecycle-assets';
 import { resolveDocumentUpload } from '../../../core/employee-documents';
 
@@ -67,9 +67,8 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   const dates = new Set([today, c.facts.lastDay, c.facts.joinDate, ...c.tasks.map(t => t.dueOn)]);
   const anchor = c.module === 'onb' ? c.facts.joinDate : c.facts.lastDay;
   if (M.validDate(anchor)) for (const cl of config.checklists.filter(x => x.module === c.module)) for (const t of cl.tasks) dates.add(M.taskDate(c.module, anchor, t.due));
-  const unavailable = await tx.execute<{ user_id: string; on_date: string }>(sql`select u.id as user_id,d.day::text as on_date from app_user u join employment e on e.person_id=u.person_id and e.tenant_id=u.tenant_id cross join unnest(ARRAY[${sql.join([...dates].filter(M.validDate).map(d => sql`${d}::date`), sql`, `)}]::date[]) d(day) where u.tenant_id=${ctx.tenantId}::uuid and exists(select 1 from leave_request_date rd where rd.subject_employment_id=e.id and rd.tenant_id=u.tenant_id and rd.status='approved' and rd.leave_date=d.day and rd.days>0)`);
-  const all = await tx.execute<{ data: M.Case }>(sql`select data from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and data->>'state'='submitted'`);
-  const tasks = all.flatMap(r => r.data.tasks);
+  const unavailable = await onboardingUnavailableTx(tx, [...dates]);
+  const sharedLoads = await onboardingAssignmentLoadsTx(tx);
   const company = await tx.execute<{ name: string }>(sql`select legal_name as name from company where id=${c.facts.company}::uuid and tenant_id=${ctx.tenantId}::uuid`);
   const [personnel] = await tx.execute<{ position: string | null; department: string | null; business_group: string | null; email: string | null }>(sql`select pos.title as position,dept.name as department,bu.name as business_group,p.primary_email as email from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id left join position pos on pos.id::text=${c.facts.title} and pos.tenant_id=e.tenant_id left join department dept on dept.id::text=${c.facts.department} and dept.tenant_id=e.tenant_id left join business_unit bu on bu.id::text=${c.facts.businessGroup} and bu.tenant_id=e.tenant_id where e.id=${c.facts.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid`);
   const source = await readV9PersonnelTx(tx, ctx, c.facts.employmentId);
@@ -88,8 +87,8 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   if (calculation?.ready) Object.assign(values, { 'leave.remaining': String(calculation.remainingLeave), 'leave.encashDays': String(calculation.encashDays), 'leave.encashAmount': `${calculation.currency} ${calculation.amount!.toFixed(2)}`, 'leave.dailyRate': `${calculation.currency} ${calculation.dailyRate!.toFixed(2)}`, 'pay.finalPayDate': fmt(calculation.payDate) });
   return { today, now: new Date().toISOString(), actor: who, nextId: randomUUID,
     onLeave: (id, date) => unavailable.some(r => r.user_id === id && r.on_date === date),
-    openLoad: (id, group) => tasks.filter(t => t.assignee === id && t.group === group && !M.isResolved(t.status)).length,
-    lastAssigned: (id, group) => Math.max(0, ...all.flatMap(r => r.data.log).filter(l => l.action === 'task.assigned' && l.userId === id && l.groupId === group).map(l => Date.parse(l.at))),
+    openLoad: id => Number(sharedLoads.find(load => load.user_id === id)?.task_load ?? 0),
+    lastAssigned: id => { const last = sharedLoads.find(load => load.user_id === id)?.last_auto; return last ? Date.parse(last) || 0 : 0; },
     eligibleUser: id => users.some(u => u.id === id), userName: id => users.find(u => u.id === id)?.name ?? 'Unlinked user', mergeValues: values, signatoryUserId: signatory?.signatoryUserId ?? null };
 }
 export async function v9CaseDetail(ctx: SessionContext, id: string): Promise<CaseDetail> {
@@ -234,7 +233,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
         for (const task of c.tasks) if (task.assignee) extra[task.assignee] = (extra[task.assignee] ?? 0) + 1;
         const assets = await issuedToTx(tx, c.facts.employeeNo, c.facts.company);
         c.items = assets.map(asset => {
-          const assigned = M.assign(config, group?.id ?? null, c.revokeDate, env, extra);
+          const assigned = M.assign(config, group?.id ?? null, c.revokeDate, env, extra, 'memberOrder');
           if (assigned.userId) extra[assigned.userId] = (extra[assigned.userId] ?? 0) + 1;
           return { id: randomUUID(), name: `${asset.code} · ${asset.model ?? asset.assetType}`, kind: 'device' as const, sourceId: asset.id, group: group?.id ?? null, assignee: assigned.userId, dueOn: c.revokeDate, status: 'todo' as const, reason: '' };
         });

@@ -3,7 +3,11 @@ import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { hireEmployee, updatePersonProfilePartial } from '../core/org';
-import { v9Setup, v9Workspace, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnDocument, v9UploadFile, v9DownloadFile, onboardingContext } from '../packs/lifecycle/service';
+import { saveEmployeeDraft } from '../core/employee-draft';
+import { todayInKualaLumpur } from '../lib/hr-date';
+import { addDays } from '../lib/lifecycle-v9-model';
+import { currentReq } from '../lib/onboarding-model';
+import { v9Setup, v9Workspace, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnDocument, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 
 let base: Base, admin: SessionContext, employee: SessionContext, other: SessionContext, employmentId: string;
@@ -39,6 +43,35 @@ it('shares group ownership and detects a stale native group revision', async () 
   expect(native.config.groups.filter(g => g.name === 'Group Tech')).toHaveLength(1);
   expect(native.config.groups.find(g => g.name === 'Group Tech')!.members).toEqual([employee.userId]);
   await expect(v9SaveConfig(admin, before.config!.revision, before.config)).rejects.toThrow('Settings changed');
+});
+it('uses native checklist and claimed-equipment load for offboarding, without counting existing leaver work', async () => {
+  const context = await onboardingContext(admin), native = structuredClone(context.config), group = native.groups[0];
+  group.members = [base.adminUserId, other.userId!]; group.limit = 2;
+  native.checklists = [{ id: 'workload-checklist', name: 'Workload fixture', owner: base.adminUserId, createdAt: new Date().toISOString(), rules: {}, tasks: [{ id: 'prepare', name: 'Prepare workspace', by: 'group', group: group.id, method: 'rr', opens: null, due: 1, gate: false }] }];
+  native.catalogue = [{ id: 'workload-laptop', name: 'Fixture laptop', type: 'device', active: true, rules: {}, workflow: null, team: group.id, card: false }];
+  await onboardingSaveConfig(admin, context.revision, native);
+  await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Fictional workload joiner', primaryEmail: 'workload@test.invalid' }, employment: { companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId, hiredOn: todayInKualaLumpur() } }, currentStep: 1 });
+  let [joiner] = await onboardingList(admin);
+  await onboardingCommand(admin, joiner.case.id, joiner.revision, { type: 'save', patch: { hiring: 'new_hire', local: { supervisor: employmentId }, selected: ['workload-laptop'] } });
+  [joiner] = await onboardingList(admin);
+  await onboardingCommand(admin, joiner.case.id, joiner.revision, { type: 'submit' });
+  [joiner] = await onboardingList(admin);
+  expect(joiner.case.tasks[0].assignee).toBe(base.adminUserId);
+  const item = currentReq(joiner.case)!.items[0];
+  await onboardingCommand(admin, joiner.case.id, joiner.revision, { type: 'fulfil', itemId: item.id, status: 'progress' });
+  const load = await withTenant(admin, onboardingAssignmentLoadsTx);
+  expect(Number(load.find(l => l.user_id === base.adminUserId)?.task_load)).toBe(2);
+  expect(await withTenant(employee, onboardingAssignmentLoadsTx)).toEqual([]);
+  const config = (await v9Workspace(admin)).config!;
+  config.checklists = [{ id: 'workload-exit', name: 'Workload exit', module: 'off', rules: {}, tasks: [{ id: 'return-work', name: 'Prepare return', by: 'group', group: group.id, mode: 'rr', opens: null, due: 0, required: false, documentTemplate: null, documentAction: 'completed' }] }];
+  config.workflows = [];
+  await v9SaveConfig(admin, config.revision, config);
+  const id = await v9CreateOffboarding(admin, { employmentId, type: 'Resignation', noticeDate: todayInKualaLumpur(), lastDay: addDays(todayInKualaLumpur(), 30) });
+  await v9Command(admin, id, 1, { type: 'submit' });
+  const leaver = (await v9Workspace(admin)).cases.find(c => c.id === id)!;
+  expect(leaver.tasks[0].assignee).toBe(other.userId);
+  const after = await withTenant(admin, onboardingAssignmentLoadsTx);
+  expect(Number(after.find(l => l.user_id === other.userId)?.task_load)).toBe(0);
 });
 async function signedProposal() {
   const c = await prepared(), doc = c.documents[0];

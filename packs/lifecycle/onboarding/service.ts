@@ -60,28 +60,13 @@ async function environmentTx(tx: Tx, ctx: SessionContext, config: M.Config, all:
                 for (const t of cl.tasks)
                     dates.add(M.dayDate(f.joinDate, t.due));
     }
-    const unavailable: {
-        user_id: string;
-        on_date: string;
-    }[] = [];
-    const dateList = [...dates];
-    for (let offset = 0; offset < dateList.length; offset += 300)
-        unavailable.push(...rows<{
-            user_id: string;
-            on_date: string;
-        }>(await tx.execute(sql `select user_id,on_date::text from app.onboarding_unavailable(array[${sql.join(dateList.slice(offset, offset + 300).map(date => sql `${date}::date`), sql `, `)}])`)));
+    const unavailable = await onboardingUnavailableTx(tx, [...dates]);
     const leave: Record<string, string[]> = {};
     for (const x of unavailable)
         (leave[x.user_id] ??= []).push(x.on_date);
     const directory = await directoryTx(tx);
     const env: M.Environment = { now, today, userNames: Object.fromEntries(directory.map(u => [u.id, u.name])), id: randomUUID, nextNumber: () => M.fail('A requisition number was not reserved.'), leave, taskLoads: {}, lastTaskAssignment: {}, pendingApprovals: {}, lifetimeApprovals: {}, users: directory.map(u => u.id) };
-    const loads = rows<{
-        user_id: string;
-        task_load: string;
-        last_auto: string | null;
-        pending_approvals: string;
-        lifetime_approvals: string;
-    }>(await tx.execute(sql `select * from app.onboarding_assignment_loads()`));
+    const loads = await onboardingAssignmentLoadsTx(tx);
     for (const load of loads) {
         env.taskLoads[load.user_id] = Number(load.task_load);
         if (load.last_auto)
@@ -126,6 +111,17 @@ async function storeTx(tx: Tx, ctx: SessionContext, row: Row, c: M.Case, hr: boo
         M.fail('This case changed. Reload it before trying again.', 'conflict');
     if (hr)
         await tx.insert(secrets).values({ caseId: c.id, tenantId: ctx.tenantId, companyId: row.companyId, data }).onConflictDoUpdate({ target: secrets.caseId, set: { data, companyId: row.companyId } });
+}
+/** Shared workload projection. Caller supplies its existing tenant-bound transaction; SQL owns access. */
+export async function onboardingAssignmentLoadsTx(tx: Tx) {
+    return rows<{ user_id: string; task_load: string; last_auto: string | null; pending_approvals: string; lifetime_approvals: string }>(await tx.execute(sql`select * from app.onboarding_assignment_loads()`));
+}
+/** Availability only: retain the native Leave projection without returning absence reasons. */
+export async function onboardingUnavailableTx(tx: Tx, dates: readonly string[]) {
+    const result: { user_id: string; on_date: string }[] = [], dateList = [...new Set(dates.filter(M.validDate))];
+    for (let offset = 0; offset < dateList.length; offset += 300)
+        result.push(...rows<{ user_id: string; on_date: string }>(await tx.execute(sql`select user_id,on_date::text from app.onboarding_unavailable(array[${sql.join(dateList.slice(offset, offset + 300).map(date => sql`${date}::date`), sql`, `)}])`)));
+    return result;
 }
 export async function onboardingContext(ctx: SessionContext) {
     return withTenant(ctx, async (tx) => {

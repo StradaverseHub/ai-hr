@@ -150,7 +150,7 @@ export function resolvePbp(config: Config, facts: Facts): string | null {
   const score = (r: Rules) => (r.businessGroup?.length ? 4 : 0) + (r.company?.length ? 2 : 0) + (r.department?.length ? 1 : 0);
   return config.bpRules.filter(r => matches(r.rules, facts)).map((r, index) => ({ r, index })).sort((a, b) => score(b.r.rules) - score(a.r.rules) || a.index - b.index)[0]?.r.userId ?? null;
 }
-export function assign(config: Config, groupId: string | null, due: string, env: Environment, extra: Record<string, number>): { userId: string | null; reason: string | null } {
+export function assign(config: Config, groupId: string | null, due: string, env: Environment, extra: Record<string, number>, tieBreak: 'recent' | 'memberOrder' = 'recent'): { userId: string | null; reason: string | null } {
   const group = config.groups.find(g => g.id === groupId);
   if (!group) return { userId: null, reason: 'Choose an assignment group.' };
   const members = [...new Set(group.members)].filter(env.eligibleUser);
@@ -159,7 +159,7 @@ export function assign(config: Config, groupId: string | null, due: string, env:
   if (!available.length) return { userId: null, reason: `Everyone in ${group.name} is on leave on ${due}.` };
   const ranked = available.map(id => ({ id, load: env.openLoad(id, group.id) + (extra[id] ?? 0) }))
     .filter(x => !group.limit || x.load < group.limit)
-    .sort((a, b) => a.load - b.load || env.lastAssigned(a.id, group.id) - env.lastAssigned(b.id, group.id) || members.indexOf(a.id) - members.indexOf(b.id));
+    .sort((a, b) => a.load - b.load || (tieBreak === 'recent' ? env.lastAssigned(a.id, group.id) - env.lastAssigned(b.id, group.id) : 0) || members.indexOf(a.id) - members.indexOf(b.id));
   return ranked.length ? { userId: ranked[0].id, reason: null } : { userId: null, reason: `Everyone available in ${group.name} is at their limit of ${group.limit} open tasks.` };
 }
 export function appendLog(c: Case, env: Environment, action: string, detail: string, assignment?: { userId: string; groupId: string }): void {
@@ -177,7 +177,7 @@ export function submit(c: Case, config: Config, env: Environment): void {
     if (opensOn && opensOn > dueOn) throw new V9Error(`Opens on cannot follow due by for ${def.name}.`);
     const owner = def.by === 'employee' ? { userId: c.facts.employeeUserId, reason: c.facts.employeeUserId ? null : 'Employee login is not linked.' }
       : def.by === 'manager' ? { userId: c.facts.supervisorUserId, reason: c.facts.supervisorUserId ? null : 'Line manager login is not linked.' }
-      : def.mode === 'rr' ? assign(config, def.group, dueOn, env, extra) : { userId: null, reason: 'Manual assignment is required.' };
+      : def.mode === 'rr' ? assign(config, def.group, dueOn, env, extra, c.module === 'off' ? 'memberOrder' : 'recent') : { userId: null, reason: 'Manual assignment is required.' };
     if (owner.userId) extra[owner.userId] = (extra[owner.userId] ?? 0) + 1;
     return { ...structuredClone(def), dueOn, opensOn, assignee: owner.userId, assignmentFailure: owner.reason, status: 'todo' as const, reason: '' };
   });

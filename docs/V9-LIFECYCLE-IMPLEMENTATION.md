@@ -46,6 +46,8 @@ V9 now opens on New Joiners and composes the existing authorized onboarding regi
 
 HR document controls now save HR-owned fields, refresh unsigned Personnel snapshots, and support designated before/after signatures. HR answers freeze once either party signs. Closed employee cases expose read-only forms. The pending leaver calculator also exposes the reason needed to keep its source date. Focused checks verify these ownership and signature boundaries; complete delivery and document journeys remain pending.
 
+Shared assignment now consumes the native onboarding owner's aggregate workload and availability projections. The draft SQL adds claimed equipment work to that count and allows authorized HR to read these minimal projections. Offboarding preserves configured member order for equal loads; onboarding retains assignment recency. The supplied source's exclusion of other leaver cases from this count is retained deliberately. Eight V9 database checks pass on the owned draft overlay, including a real native joiner/checklist/equipment workload, group-cap selection and unrelated-user denial. Fifty-seven focused domain, native UI, runtime and repository-boundary checks also pass. These checks do not replace canonical migration rehearsal or the full release gate.
+
 ## Behavior that remains unchanged until an owner decision
 
 Post-last-working-day tasks block automatic closure. The two exit-form workflows count Monday through Friday, excluding no holidays in the supplied source. A late case may send the initial form message and its reminder on the same run. The acceptance-letter CC includes the line manager and PBP. Do not silently alter these behaviors while reproducing V9.

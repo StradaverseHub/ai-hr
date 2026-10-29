@@ -214,3 +214,50 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.lc_v9_self_task(uuid,integer,text,text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.lc_v9_self_task(uuid,integer,text,text,text) TO ai_hr_app;
+
+-- Source V9 openLoad counts native joiner group tasks and claimed equipment work globally.
+-- Offboarding uses this shared owner projection plus its temporary new-case load; existing
+-- leaver work is deliberately not added to the source algorithm. Only aggregate counts leave SQL.
+CREATE OR REPLACE FUNCTION app.onboarding_assignment_loads()
+RETURNS TABLE(user_id uuid,task_load bigint,last_auto text,pending_approvals bigint,lifetime_approvals bigint)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH permitted AS (
+ SELECT app.is_admin() OR app.onboarding_page_access() OR app.is_group_admin() OR EXISTS(
+ SELECT 1 FROM lc_onboarding_config cfg,jsonb_array_elements(cfg.data->'groups') g
+ WHERE cfg.tenant_id=app.current_tenant_id() AND (g->'members') ? app.current_user_id()::text) AS ok
+ ), cs AS (SELECT c.data FROM lc_onboarding_case c,permitted WHERE c.tenant_id=app.current_tenant_id() AND permitted.ok),
+ tasks AS (SELECT c.data->>'state' AS case_state,t FROM cs c,jsonb_array_elements(c.data->'tasks') t),
+ claimed_items AS (SELECT i FROM cs c,jsonb_array_elements(c.data->'requisitions') r,jsonb_array_elements(r->'items') i WHERE c.data->>'state'='submitted' AND r->>'cancelledAt' IS NULL AND i->>'removed'='false' AND i->>'state' NOT IN ('ready','handed')),
+ past_tasks AS (SELECT t FROM cs c,jsonb_array_elements(coalesce(c.data->'taskHistory','[]'::jsonb)) h,jsonb_array_elements(h) t),
+ auto_history AS (SELECT a FROM (SELECT t FROM tasks UNION ALL SELECT t FROM past_tasks) x,jsonb_array_elements(coalesce(t->'autoAssignments','[]'::jsonb)) a),
+ steps AS (SELECT c.data->>'state' AS case_state,r,i,s FROM cs c,jsonb_array_elements(c.data->'requisitions') r,jsonb_array_elements(r->'items') i,jsonb_array_elements(i->'steps') s WHERE s->>'type' IN ('group','routing')),
+ assigned AS (SELECT a FROM steps,jsonb_array_elements(coalesce(s->'assignments','[]'::jsonb)) a)
+ SELECT u.id,
+ (SELECT count(*) FROM tasks WHERE case_state='submitted' AND t->>'by'='group' AND t->>'assignee'=u.id::text AND t->>'status'<>'done') + (SELECT count(*) FROM claimed_items WHERE i->>'claim'=u.id::text),
+ (SELECT max(a->>'at') FROM auto_history WHERE a->>'user'=u.id::text),
+ (SELECT count(*) FROM steps WHERE case_state='submitted' AND r->>'cancelledAt' IS NULL AND i->>'removed'='false' AND i->>'approval'='pending' AND s->>'status'='pending' AND s->>'user'=u.id::text),
+ (SELECT count(*) FROM assigned WHERE a->>'user'=u.id::text)
+ FROM app_user u,permitted WHERE u.tenant_id=app.current_tenant_id() AND permitted.ok AND NOT app.login_blocked(u.id)
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_assignment_loads() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_assignment_loads() TO ai_hr_app;
+
+-- HR case assignment shares the existing availability-only Leave projection.
+CREATE OR REPLACE FUNCTION app.onboarding_unavailable(p_dates date[]) RETURNS TABLE(user_id uuid,on_date date)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH members AS (
+ SELECT DISTINCT (jsonb_array_elements_text(g->'members'))::uuid AS id
+ FROM lc_onboarding_config c,jsonb_array_elements(c.data->'groups') g
+ WHERE c.tenant_id=app.current_tenant_id() AND (app.is_admin() OR app.onboarding_page_access() OR app.is_group_admin() OR app.onboarding_group_member(g->>'id'))
+ ), dates AS (SELECT DISTINCT unnest(p_dates) d LIMIT 400)
+ SELECT DISTINCT u.id,dates.d FROM members m JOIN app_user u ON u.id=m.id AND u.tenant_id=app.current_tenant_id()
+ JOIN employment e ON e.person_id=u.person_id AND e.tenant_id=u.tenant_id
+ JOIN leave_request lr ON lr.employment_id=e.id AND lr.tenant_id=e.tenant_id
+ CROSS JOIN dates
+ WHERE (
+ EXISTS(SELECT 1 FROM leave_request_date ld WHERE ld.leave_request_id=lr.id AND ld.leave_date=dates.d AND ld.status='approved')
+ OR (lr.status='approved' AND dates.d BETWEEN lr.start_date AND lr.end_date
+ AND NOT EXISTS(SELECT 1 FROM leave_request_date ld WHERE ld.leave_request_id=lr.id)))
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_unavailable(date[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_unavailable(date[]) TO ai_hr_app;

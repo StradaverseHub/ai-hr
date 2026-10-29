@@ -32,7 +32,7 @@ The prototype stores all of this in browser memory. Production must persist revi
 
 ## Matching and assignment
 
-Further source inspection distinguishes the tie breakers: onboarding `rrPick` uses assignment recency after open load; offboarding submission uses `rrItemPick`, whose equal-load tie retains configured member order. Its `openLoad` reads joiner group tasks and claimed equipment work, with a temporary extra-load counter for the new case. It does not add other leaver cases to that source count. The V9 service's current workload projection still needs this precise owner integration; do not silently substitute group-specific V9-only task counts.
+Further source inspection distinguishes the tie breakers: onboarding `rrPick` uses assignment recency after open load; offboarding submission uses `rrItemPick`, whose equal-load tie retains configured member order. Its `openLoad` reads joiner group tasks and claimed equipment work, with a temporary extra-load counter for the new case. It does not add other leaver cases to that source count. The working candidate now consumes the native owner's workload and availability projections with these separate tie breakers. Its unallocated SQL draft extends the existing aggregate projection to include claimed equipment; it returns no task names or medical details.
 
 Rules use AND across populated dimensions and OR within each dimension. An empty dimension matches everyone. Checklists select the highest number of populated dimensions and then display order; manual selection and manual None are real choices. Both checklist types support employment type, contrary to one passage in the handover. Onboarding locks the automatic choice once the person is Active; submitted offboarding snapshots its work.
 

@@ -53,6 +53,17 @@ it('requires HR-owned answers before signing and freezes those fields after sign
   expect(() => M.saveDocument(c, document.id, { approval: 'false' }, 'hr', environment)).toThrow('frozen');
 });
 
+it('retains member order for offboarding equal loads while onboarding uses assignment recency', () => {
+  const { c, config, environment } = fixture();
+  environment.lastAssigned = id => id === 'hr' ? 100 : 0;
+  config.checklists = [{ id: 'shared', name: 'Shared group task', module: 'off', rules: {}, tasks: [{ id: 'work', name: 'Prepare work', by: 'group', group: 'ops', mode: 'rr', opens: null, due: 1, required: false, documentTemplate: null, documentAction: 'completed' }] }];
+  c.state = 'pending'; M.submit(c, config, environment);
+  expect(c.tasks[0].assignee).toBe('hr');
+  const onb = fixture('onb').c; onb.state = 'pending'; config.checklists[0].module = 'onb';
+  M.submit(onb, config, environment);
+  expect(onb.tasks[0].assignee).toBe('hr2');
+});
+
 describe('V9 calendar and matching parity', () => {
   it('keeps working-day triggers separate from the two checklist day conventions', () => {
     expect(M.addDays('2026-10-30', -10, true)).toBe('2026-10-16');
