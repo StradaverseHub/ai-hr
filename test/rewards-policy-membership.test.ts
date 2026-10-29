@@ -54,4 +54,11 @@ describe('approved Rewards company and BU membership',()=>{
    expect(rows.map(row=>({companyId:row.company_id,businessUnitId:row.business_unit_id}))).toEqual([{companyId:base.companyId,businessUnitId:globalUnit}]);
   }
  });
+ it('does not treat an ended lifecycle as a current membership merely because an old assignment remains open',async()=>{
+  const hired=await employee(globalUnit);
+  expect(await rewardPolicyMemberships(admin,[base.companyId])).toHaveLength(1);
+  await owner.db.update(schema.employment).set({resignationDate:today}).where(eq(schema.employment.id,hired.employmentId));
+  expect(await rewardPolicyMemberships(admin,[base.companyId])).toEqual([]);
+ });
+
 });
