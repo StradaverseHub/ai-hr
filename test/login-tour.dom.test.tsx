@@ -61,6 +61,7 @@ describe('login tour', () => {
     fireEvent.click(screen.getByRole('button', { name: tour.leave.pickB1 }));
     advance(1_100);
     expect(within(log()).getByText(tour.leave.pickB1Reply)).toBeInTheDocument();
+    advance(1_100);
     expect(within(log()).getByText(tour.leave.open2)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: tour.play })).toBeInTheDocument();
     advance(20_000);

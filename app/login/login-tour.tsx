@@ -36,6 +36,8 @@ const slotAt = (pos: number): Slot => ({ turn: Math.floor(pos / 3), part: (['ope
 function usePrefersReducedMotion() {
   const [reduced, setReduced] = useState(false);
   useEffect(() => {
+    // Older engines (and jsdom) have no matchMedia: treat that as no stated preference.
+    if (typeof window.matchMedia !== 'function') return;
     const query = window.matchMedia('(prefers-reduced-motion: reduce)');
     setReduced(query.matches);
     const change = () => setReduced(query.matches);
