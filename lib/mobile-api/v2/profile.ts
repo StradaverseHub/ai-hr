@@ -37,7 +37,15 @@ export type ProfileOption = z.infer<typeof ProfileOption>;
 export const ProfileFieldV2 = z.object({
   fieldId,
   label,
+  /** Coarse bucket, kept for app builds that predate `group`. A closed enum: never add a value (an installed app would reject it). */
   section: z.enum(['personal', 'contact']),
+  /**
+   * The web's own section the field sits in on My Profile (core: PERSONNEL_ESS_SECTION_LABEL_KEYS), with its title
+   * in the request's locale. Two fields can share a label ("Mobile Phone Number" under "Contact & address" and under
+   * "Correspondence address"); the group is what tells them apart. Optional so a newer app accepts an older server;
+   * an older app strips it. `key` is an opaque grouping id, never shown.
+   */
+  group: z.object({ key: z.string().min(1).max(120), title: label }).optional(),
   kind: ProfileFieldKind,
   /** The current stored value (a choice's value, an ISO date or text); null when not recorded. */
   value: z.string().max(4000).nullable(),

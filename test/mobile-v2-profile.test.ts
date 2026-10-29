@@ -126,6 +126,30 @@ describe('workspace', () => {
     expect((await workspace()).body.workspace.employmentId).toBe(s.employmentId);
   });
 
+  it('keeps the two phone pairs apart: each field carries the web section it sits in, titled as the web titles it', async () => {
+    const s = await worker('Section Fixture');
+    caller = s.ctx;
+    const r = await workspace(s.employmentId);
+    expect(ProfileWorkspaceResult.safeParse(r.body).success).toBe(true);
+    const fields = r.body.workspace.fields as { fieldId: string; label: string; section: string; group?: { key: string; title: string } }[];
+    const at = (id: string) => fields.find((f) => f.fieldId === id);
+    const pairs = [
+      ['profile.contact_and_permanent_address.phone', 'profile.correspondence_address.correspondencemobilephone'],
+      ['profile.contact_and_permanent_address.homephone', 'profile.correspondence_address.correspondencehomephone'],
+    ];
+    for (const [contact, correspondence] of pairs) {
+      // The premise of the defect: same label, same coarse section — only the group distinguishes them.
+      expect(at(contact)?.label).toBe(at(correspondence)?.label);
+      expect(at(contact)).toMatchObject({ section: 'contact', group: { key: 'Contact and permanent address', title: enCatalogue.people.detail.contactAddressTitle } });
+      expect(at(correspondence)).toMatchObject({ section: 'contact', group: { key: 'Correspondence address', title: enCatalogue.people.detail.correspondenceAddressTitle } });
+    }
+    expect(at(PREFERRED)).toMatchObject({ section: 'personal', group: { key: 'Personal details', title: enCatalogue.people.detail.personalDetails } });
+    // Every shown field is grouped, and no two fields in one group share a label.
+    for (const f of fields) expect(f.group?.title).toBeTruthy();
+    const seen = new Set(fields.map((f) => `${f.group!.key}|${f.label}`));
+    expect(seen.size).toBe(fields.length);
+  });
+
   it('a hidden field never leaves the server: not its value, baseline, choices or request lines', async () => {
     const s = await worker('Hidden Fixture');
     await saveProfileEditPolicy(admin(), { keys: [PHONE, PREFERRED], withdrawnReason: 'Fixture policy' });

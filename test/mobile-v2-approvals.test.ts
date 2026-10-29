@@ -18,8 +18,9 @@ import type { SessionContext } from '../db/client';
 import { endReportingLine, hireEmployee, setReportingLine } from '../core/org';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import { decideLeave, requestLeave, requestLeaveCancellation } from '../packs/leave/service';
+import { listLeaveRequests } from '../core/read';
 import {
-  checkIn, checkOut, decideAttendanceCorrection, reassignAttendanceWorkflowStageToHr, requestAttendanceCorrection,
+  checkIn, checkOut, decideAttendanceCorrection, listAttendanceCorrections, reassignAttendanceWorkflowStageToHr, requestAttendanceCorrection,
   saveAttendanceWorkflow, setAttendanceWorkflowEnabled,
 } from '../packs/attendance/service';
 import type { AttendanceWorkflowInput } from '../lib/attendance-workflow';
@@ -129,6 +130,30 @@ describe('the task list', () => {
     expect((await get('')).body.items.map((t: { id: string }) => t.id), 'an own request is never a task').not.toContain(ids[0]);
     blocked = true;
     expect((await get('')).status).toBe(401);
+  });
+});
+
+describe('list summaries', () => {
+  it('each native row carries what the web approvals page prints for it, from the same reader, and nothing for a row it does not return', async () => {
+    const ids = [await apply(employee, 0), await apply(employee, 1)];
+    caller = manager.ctx;
+    const items = (await get('')).body.items as { id: string; kind: string; summary?: Record<string, unknown> | null }[];
+    const web = await listLeaveRequests(manager.ctx, undefined, 200, { status: 'pending' });
+    for (const [n, id] of ids.entries()) {
+      const row = web.find((r) => r.id === id)!;
+      expect(items.find((t) => t.id === id)?.summary).toEqual({ label: row.leaveType, from: week(n).start, to: week(n).end, days: Number(row.days), amount: null, currency: null });
+    }
+    // Two requests by one person, same kind: the summaries are what tells the rows apart.
+    expect(new Set(ids.map((id) => JSON.stringify(items.find((t) => t.id === id)?.summary))).size).toBe(2);
+    // Every summary corresponds to a row the web reader returns to THIS caller; non-native kinds carry none.
+    for (const t of items) {
+      if (t.kind !== 'leave' || !t.summary) continue;
+      expect(web.some((r) => r.id === t.id)).toBe(true);
+    }
+    expect(items.filter((t) => !['leave', 'leaveCancellation', 'attendance', 'claim'].includes(t.kind)).every((t) => t.summary == null)).toBe(true);
+    // The colleague sees neither the row nor its dates.
+    caller = colleague.ctx;
+    expect(((await get('')).body.items as { id: string }[]).map((t) => t.id).filter((id) => ids.includes(id))).toEqual([]);
   });
 });
 
@@ -367,6 +392,33 @@ describe('attendance decisions (clock corrections and overtime share one decider
     expect(row.s).toBe('approved');
   });
 
+  it('shows the admitted approver the clock times on record when the employee asked, as the web approver sees them — and nobody else', async () => {
+    const id = await correction(['direct_manager']);
+    const opened = await detail(manager, 'attendance', id);
+    expect(opened.body).toMatchObject({ outcome: 'found', task: { proposedCheckIn: '09:00', proposedCheckOut: '18:00', original: { state: 'recorded', checkIn: '08:00', checkOut: '17:00' }, proposedPunches: null } });
+    // The same fact the web's approvals row prints (listAttendanceCorrections' snapshot), not a second read.
+    const [webRow] = await listAttendanceCorrections(manager.ctx, { status: 'pending', requestId: id });
+    expect(webRow.originalClockSnapshot).toMatchObject({ originalCheckIn: '08:00:00', originalCheckOut: '17:00:00' });
+    // The list row says which date.
+    caller = manager.ctx;
+    expect(((await get('')).body.items as { id: string; summary?: unknown }[]).find((t) => t.id === id)?.summary).toEqual({ label: null, from: WORKED, to: WORKED, days: null, amount: null, currency: null });
+    // Not assigned, own request, another manager: refusals carry no times at all.
+    expect((await detail(colleague, 'attendance', id)).body).toEqual({ outcome: 'refused', code: 'not_assigned' });
+    expect((await detail(employee, 'attendance', id)).body).toEqual({ outcome: 'refused', code: 'self_approval' });
+    const outsider = await hire('Olivia Other Manager', 'manager');
+    expect((await detail(outsider, 'attendance', id)).body).toEqual({ outcome: 'refused', code: 'not_assigned' });
+    caller = outsider.ctx;
+    expect(((await get('')).body.items as { id: string }[]).map((t) => t.id)).not.toContain(id);
+  });
+
+  it('a day with no attendance record says so; an overtime application carries no clock times', async () => {
+    const a = adminCtx(base), value = workflow(['direct_manager']);
+    await saveAttendanceWorkflow(a, value);
+    await setAttendanceWorkflowEnabled(a, base.companyId, value.applicationType, true);
+    const { correctionId: id } = await requestAttendanceCorrection(employee.ctx, { employmentId: employee.employmentId, date: WORKED, checkIn: '09:00', checkOut: '18:00', reason: 'Forgot to clock' });
+    expect((await detail(manager, 'attendance', id)).body).toMatchObject({ outcome: 'found', task: { original: { state: 'no_record', checkIn: null, checkOut: null } } });
+  });
+
   it('a stage reassigned to HR ends the manager’s admission', async () => {
     const id = await correction(['direct_manager'], { routingVersion: 2 });
     const opened = await detail(manager, 'attendance', id);
@@ -390,7 +442,7 @@ describe('attendance decisions (clock corrections and overtime share one decider
     caller = manager.ctx;
     expect((await get('')).body.items).toContainEqual(expect.objectContaining({ id, kind: 'attendance', nativeDecision: true }));
     const seen = await detail(manager, 'attendance', id);
-    expect(seen.body).toMatchObject({ outcome: 'found', task: { application: 'overtime', requestedOtMinutes: 60 } });
+    expect(seen.body).toMatchObject({ outcome: 'found', task: { application: 'overtime', requestedOtMinutes: 60, original: null, proposedPunches: null } });
     expect(['workday', 'rest_day', 'holiday']).toContain(seen.body.task.dayType);
     expect((await post(manager, 'attendance', id, { requestId: randomUUID(), decision: 'reject', reason: 'Not planned', expected: seen.body.task.expected })).body).toEqual({ outcome: 'accepted', status: 'rejected' });
   });

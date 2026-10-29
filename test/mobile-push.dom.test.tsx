@@ -235,6 +235,8 @@ describe('shift reminders on Me', () => {
     render(<><f.PushLifecycle /><f.ShiftReminderSetting /></>);
     await screen.findByText('reminderNeedsPermission');
     expect(f.ours()).toEqual([]);
+    // Blocked reminders are not shown as ON.
+    expect((screen.getByRole('switch') as HTMLInputElement).checked).toBe(false);
     fireEvent.click(screen.getByText('reminderAllow'));
     await waitFor(() => expect(f.ours()).toHaveLength(4));
     expect(f.Notifications.requestPermissionsAsync).toHaveBeenCalledOnce();
@@ -242,8 +244,24 @@ describe('shift reminders on Me', () => {
     const g = fixture({ permission: 'denied' });
     render(<><g.PushLifecycle /><g.ShiftReminderSetting /></>);
     await screen.findByText('reminderDenied');
+    expect((screen.getByRole('switch') as HTMLInputElement).checked).toBe(false);
     fireEvent.click(screen.getByText('pushOpenSettings'));
-    expect(g.openSettings).toHaveBeenCalled();
+    expect(g.openSettings).toHaveBeenCalledTimes(1);
+    // Turning the switch on while denied opens Settings; it does not pretend to turn anything on.
+    fireEvent.click(screen.getByRole('switch'));
+    expect(g.openSettings).toHaveBeenCalledTimes(2);
+    expect(g.stored.get('aihr.reminders.enabled')).not.toBe('0');
+  });
+
+  it('turning the switch on while permission is not yet asked asks for it, and shows ON once granted', async () => {
+    const f = fixture({ permission: 'undetermined' });
+    render(<><f.PushLifecycle /><f.ShiftReminderSetting /></>);
+    await screen.findByText('reminderNeedsPermission');
+    expect((screen.getByRole('switch') as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(screen.getByRole('switch'));
+    await waitFor(() => expect(f.ours()).toHaveLength(4));
+    expect(f.Notifications.requestPermissionsAsync).toHaveBeenCalledOnce();
+    await waitFor(() => expect((screen.getByRole('switch') as HTMLInputElement).checked).toBe(true));
   });
 
   it('a stored "off" is honoured from the start', async () => {

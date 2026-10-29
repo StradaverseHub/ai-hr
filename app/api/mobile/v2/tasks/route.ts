@@ -5,7 +5,8 @@
  */
 import { tasksPageV2 } from '@/core/mobile-approvals';
 import { mobileRoute } from '@/lib/mobile-api/handler';
+import { mobileLocale } from '@/lib/mobile-api/request';
 import { pageRequest } from '@/lib/mobile-api/v2/common';
 import { TASKS_CURSOR, TasksCursor, TasksPageV2 } from '@/lib/mobile-api/v2/tasks';
 
-export const GET = mobileRoute(TasksPageV2, async (s, req) => tasksPageV2(s, pageRequest(new URL(req.url), TASKS_CURSOR, TasksCursor)));
+export const GET = mobileRoute(TasksPageV2, async (s, req) => tasksPageV2(s, pageRequest(new URL(req.url), TASKS_CURSOR, TasksCursor), mobileLocale(req)));

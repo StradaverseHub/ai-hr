@@ -19,7 +19,7 @@ import { requestShiftReminderRefresh } from './shift-reminder-signal';
 import { Button, Card, LoadState, Muted, Row, Screen, SectionLabel, Title } from './ui';
 import {
   APPLICATION_STATUS, DAY_STATUS, EXCEPTION, addMonths, applicationKindText, askedText, fmtCalendarDate, fmtMinutes,
-  fmtMonth, fmtShiftTimes, monthWindow,
+  fmtMonth, fmtShiftTimes, fmtZoneName, monthWindow,
 } from './attendance-format';
 import {
   AttendanceDayResult, AttendanceRecordsV2, AttendanceRosterV2,
@@ -27,7 +27,7 @@ import {
 } from '../../lib/mobile-api/v2/attendance';
 
 export function TimeZoneNote({ zone }: { zone: string }) {
-  return <Muted>{t('attTimeZone', { zone })}</Muted>;
+  return <Muted>{t('attTimeZone', { zone: fmtZoneName(zone) })}</Muted>;
 }
 
 /** The schedule half of a day, in one line. */

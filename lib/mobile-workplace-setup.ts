@@ -62,23 +62,55 @@ export function workplaceSetupLinks(raw: string) {
   return { web, app: 'aihr://company' + fragment };
 }
 
-export function isWorkplaceSetupLink(value: string): boolean {
-  if (value.length > MAX_LINK_LENGTH) return value.startsWith('aihr://company') || value.includes(WORKPLACE_SETUP_PATH);
-  try {
-    const url = new URL(value);
-    return (url.protocol === 'aihr:' && url.hostname === 'company') || url.pathname === WORKPLACE_SETUP_PATH;
-  } catch { return false; }
+/**
+ * Links are split by hand, never through `URL`: React Native's URL (Libraries/Blob/URL.js) is a regex polyfill that
+ * only knows http(s) hosts, so `new URL('aihr://company#setup=…')` reports hostname '' and pathname '/', and every
+ * real app link was refused on the phone while node accepted it. The rules below are exact-string, so they do not
+ * depend on any runtime's URL normalisation either.
+ */
+const LINK = /^([A-Za-z][A-Za-z0-9+.-]*):\/\/([^/?#]*)([^?#]*)(\?[^#]*)?(#[\s\S]*)?$/;
+const SETUP_FRAGMENT = /^#setup=[A-Za-z0-9_-]+$/;
+function linkParts(value: string) {
+  const m = LINK.exec(value);
+  return m ? { scheme: m[1], authority: m[2], path: m[3], query: m[4] ?? '', fragment: m[5] ?? '' } : null;
 }
 
+/** Recognises a link meant for workplace setup (well-formed or not), so a malformed one is refused visibly. */
+export function isWorkplaceSetupLink(value: string): boolean {
+  if (value.length > MAX_LINK_LENGTH) return value.startsWith('aihr://company') || value.includes(WORKPLACE_SETUP_PATH);
+  const parts = linkParts(value);
+  if (!parts) return false;
+  const host = parts.authority.slice(parts.authority.lastIndexOf('@') + 1).toLowerCase();
+  return (parts.scheme.toLowerCase() === 'aihr' && host === 'company') || parts.path === WORKPLACE_SETUP_PATH;
+}
+
+/** Why a link was refused, so the app can say it. The link is public routing data; the codes reveal nothing else. */
+export class WorkplaceSetupLinkError extends Error {
+  constructor(readonly problem: 'invalid_link' | 'wrong_server' | 'missing_organization' | 'invalid', message: string) { super(message); this.name = 'WorkplaceSetupLinkError'; }
+}
+
+/** The signed setup text inside a well-formed link, before any check of its contents (the app verifies those first). */
+export function workplaceSetupLinkPayload(value: string): string {
+  const refused = new WorkplaceSetupLinkError('invalid_link', 'Invalid workplace setup link.');
+  if (value.length > MAX_LINK_LENGTH || !isWorkplaceSetupLink(value)) throw refused;
+  const parts = linkParts(value)!;
+  const native = parts.scheme === 'aihr' && parts.authority === 'company' && parts.path === '';
+  const web = parts.scheme === 'https' && parts.path === WORKPLACE_SETUP_PATH && parts.authority.length > 0 && !/[@\\\s]/.test(parts.authority);
+  if ((!native && !web) || parts.query || !SETUP_FRAGMENT.test(parts.fragment)) throw refused;
+  try { return decode(parts.fragment.slice('#setup='.length)); } catch { throw refused; }
+}
+
+/** Exactly `aihr://company#setup=…` or `https://<the profile's own origin>/login/mobile-setup#setup=…`. */
 export function readWorkplaceSetupLink(value: string): string {
-  if (value.length > MAX_LINK_LENGTH || !isWorkplaceSetupLink(value)) throw new Error('Invalid workplace setup link.');
-  const url = new URL(value);
-  const native = url.protocol === 'aihr:' && url.hostname === 'company' && !url.pathname && !url.port;
-  const web = url.protocol === 'https:' && url.pathname === WORKPLACE_SETUP_PATH;
-  if ((!native && !web) || url.username || url.password || url.search || !/^#setup=[A-Za-z0-9_-]+$/.test(url.hash))
-    throw new Error('Invalid workplace setup link.');
-  const raw = decode(url.hash.slice('#setup='.length));
-  const profile = workplaceSetupProfile(raw);
-  if (web && url.origin !== profile.apiOrigin) throw new Error('Workplace setup belongs to another server.');
+  const raw = workplaceSetupLinkPayload(value);
+  let profile: ReturnType<typeof workplaceSetupProfile>;
+  try { profile = workplaceSetupProfile(raw); }
+  catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid workplace setup.';
+    throw new WorkplaceSetupLinkError(/organization code/.test(message) ? 'missing_organization' : 'invalid', message);
+  }
+  const parts = linkParts(value)!;
+  if (parts.scheme === 'https' && 'https://' + parts.authority !== profile.apiOrigin)
+    throw new WorkplaceSetupLinkError('wrong_server', 'Workplace setup belongs to another server.');
   return raw;
 }

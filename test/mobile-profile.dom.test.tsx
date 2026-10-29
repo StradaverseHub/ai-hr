@@ -109,6 +109,49 @@ describe('my profile', () => {
     expect(f.apiPostV2).not.toHaveBeenCalled();
   });
 
+  it('fields sharing a label are told apart: grouped under the web section titles, qualified wherever read out of the group', async () => {
+    const contact = { key: 'Contact and permanent address', title: 'Contact & address' };
+    const corr = { key: 'Correspondence address', title: 'Correspondence address' };
+    const grouped = () => [
+      field({ fieldId: 'f.pref', label: 'Preferred name', section: 'personal', kind: 'text', value: 'Old', baseline: 'sha256:pref', group: { key: 'Personal details', title: 'Personal details' } }),
+      field({ fieldId: 'f.phone', label: 'Mobile Phone Number', value: '0121', group: contact }),
+      field({ fieldId: 'f.cphone', label: 'Mobile Phone Number', value: '0999', baseline: 'sha256:cphone', applies: 'after_approval', group: corr }),
+    ];
+    for (const x of grouped()) expect(v2profile.ProfileFieldV2.safeParse(x).success).toBe(true);
+    const f = fixture();
+    const { container, unmount } = render(<f.ProfileScreen />);
+    f.set('v2/profile', { data: found(grouped()) });
+    const text = container.textContent!;
+    const order = ['Personal details', 'Preferred name: Old', 'Contact & address', 'Mobile Phone Number: 0121', 'Correspondence address', 'Mobile Phone Number: 0999'].map((x) => text.indexOf(x));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(screen.queryByText('profileContact')).toBeNull();
+    unmount();
+
+    const g = fixture();
+    render(<g.ProfileEditScreen />);
+    g.set('v2/profile', { data: found(grouped()) });
+    // Two inputs, two distinct accessible names; a label no other field shares stays as it is.
+    fireEvent.change(screen.getByRole('textbox', { name: 'Mobile Phone Number — Correspondence address' }), { target: { value: '0888' } });
+    expect(screen.getByRole('textbox', { name: 'Mobile Phone Number — Contact & address' })).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: 'Preferred name' })).toBeTruthy();
+    fireEvent.click(screen.getByText('profileReview'));
+    expect(g.alert.mock.calls[0][1]).toBe('profileConfirmLine Mobile Phone Number — Correspondence address|0999|0888|profileAppliesApproval');
+    g.apiPostV2.mockResolvedValueOnce({ outcome: 'submitted', saved: [], waiting: ['f.cphone'], requestId: null });
+    await g.confirm();
+    expect((await screen.findByRole('alert')).textContent).toBe('profileSentForApproval Mobile Phone Number — Correspondence address');
+  });
+
+  it('a server without groups still renders the coarse sections, personal first', () => {
+    const f = fixture();
+    const { container } = render(<f.ProfileScreen />);
+    f.set('v2/profile', { data: found() });
+    const text = container.textContent!;
+    expect(text.indexOf('profilePersonal')).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf('profilePersonal')).toBeLessThan(text.indexOf('profileContact'));
+    expect(text.indexOf('profileContact')).toBeLessThan(text.indexOf('Mobile phone: profileNotRecorded'));
+  });
+
   it('a server path that is not relative is never opened', () => {
     const f = fixture();
     expect(f.profileWebUrl('//evil.example/x')).toBeNull();

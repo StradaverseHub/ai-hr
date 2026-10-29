@@ -310,7 +310,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
     {signedStatus?.status==='other_pending'&&!offline.otherExchange&&<Muted>{t('signedClockOtherPending')}</Muted>}
     {(current||coldStart)&&<>
       {current&&<View style={{borderBottomWidth:1,borderColor:palette.border,paddingBottom:18,gap:10}}>
-        <Text style={{color:palette.muted,fontSize:14}}>{current.date} · {current.shift.code??t('workday')}</Text>
+        <Text style={{color:palette.muted,fontSize:14}}>{current.shift.code?`${current.date} · ${current.shift.code}`:current.date}</Text>
         <Text style={{color:palette.text,fontSize:32,fontWeight:'700'}}>{current.clockedIn?t('onTheClock'):t('offTheClock')}</Text>
         <View style={{flexDirection:design.clockLayout==='rail'?'column':'row',justifyContent:'space-between',gap:8}}>
           <Muted>{current.shift.start&&current.shift.end?`${current.shift.start.slice(0,5)} → ${current.shift.end.slice(0,5)}`:t('noShift')}</Muted>

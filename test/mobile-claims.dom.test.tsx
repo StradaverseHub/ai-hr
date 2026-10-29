@@ -89,7 +89,7 @@ function fixture() {
     './auth': { authGeneration: () => 1, assertAuthGeneration: () => {} },
     './config': { config: { apiUrl: 'https://hr.test' }, identityNamespace: () => 'company' },
     './i18n': { appLocale: () => 'en', t },
-    './design': { DesignText: Text, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark') }) },
+    './design': { DesignText: Text, TenantBrand: () => <span>tenant-brand</span>, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark') }) },
     './session': { useSession: () => session },
     'react-native-safe-area-context': { SafeAreaView: View }, 'expo-router': { router: { push, back, replace } },
     'expo-crypto': { randomUUID: () => `${String(++seq).padStart(8, '0')}-bbbb-4bbb-8bbb-bbbbbbbbbbbb` },
@@ -124,6 +124,7 @@ describe('claims list', () => {
     const f = fixture();
     render(<f.ClaimsScreen />);
     await screen.findByText('Meals');
+    expect(screen.getByText('tenant-brand')).toBeTruthy();
     expect(screen.getByText('MYR 42.50 · 2026-10-26')).toBeTruthy();
     expect((f.apiGetPage.mock.calls[0][0] as { path: string }).path).toBe('v2/claims');
     fireEvent.click(screen.getByText('claimsNew'));
@@ -329,7 +330,7 @@ describe('receipt capture', () => {
     const parts = load('mobile/lib/claim-parts.tsx', {
       react: React, 'react/jsx-runtime': jsx, 'react-native': { AppState: { currentState: 'active' }, View: () => null, Image: () => null },
       'expo-image-picker': picker, 'expo-image-manipulator': manipulator, 'expo-document-picker': documents,
-      'expo-file-system': { File, Paths: { cache: { uri: 'file:///cache' } } }, './design': { DesignText: () => null, useTenantDesign: () => ({}) },
+      'expo-file-system': { File, Paths: { cache: { uri: 'file:///cache' } } }, './design': { DesignText: () => null, TenantBrand: () => null, useTenantDesign: () => ({}) },
       './protected-document': { adoptProtectedDocument: adopt }, './errors': errors, './i18n': { t: (k: string) => k },
       './ui': { Button: () => null, Muted: () => null, Row: () => null, fmtMoney: (v: string) => v }, '../../lib/mobile-api/v2/claims': v2claims, ...over,
     });

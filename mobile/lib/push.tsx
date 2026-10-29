@@ -153,6 +153,10 @@ export function ShiftReminderSetting() {
     void askNotificationPermission().then(() => { void syncPush(employmentId, true).catch(() => undefined); return requestShiftReminders(employmentId); })
       .catch(() => undefined).finally(() => setBusy(false));
   };
+  // The switch shows what will actually happen: reminders switched on but blocked by the phone's permission show OFF,
+  // with the reason and the one action that unblocks them. Turning it on then asks (or opens Settings when denied).
+  const blocked = on && (view === 'needs_permission' || view === 'denied');
+  const change = (value: boolean) => { if (value && blocked) { if (view === 'denied') openNotificationSettings(); else allow(); return; } toggle(value); };
   const note = !on ? 'reminderOffNote' : view === 'needs_permission' ? 'reminderNeedsPermission' : view === 'denied' ? 'reminderDenied'
     : view === 'not_offered' ? 'reminderNotOffered' : view === 'unavailable' ? 'reminderUnavailable' : null;
   return <>
@@ -160,7 +164,7 @@ export function ShiftReminderSetting() {
     <Card>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <Text style={{ color: palette.text, fontSize: 16, flex: 1 }}>{t('reminderToggle')}</Text>
-        <Switch accessibilityLabel={t('reminderToggle')} value={on} disabled={prefs == null} onValueChange={toggle} />
+        <Switch accessibilityLabel={t('reminderToggle')} value={on && !blocked} disabled={prefs == null || busy} onValueChange={change} />
       </View>
       <Muted>{t('reminderExplain')}</Muted>
       {note ? <Muted>{t(note)}</Muted> : null}
