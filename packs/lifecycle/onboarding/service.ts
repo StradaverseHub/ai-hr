@@ -550,7 +550,7 @@ export async function onboardingSyncDraftTx(ctx: SessionContext, tx: Tx, draftId
         return;
     const data = draft.data as EmployeeDraftData, p = data.profile ?? {}, e = data.employment ?? {};
     const [dept] = e.departmentId ? await tx.select({ businessUnitId: department.businessUnitId }).from(department).where(eq(department.id, e.departmentId)) : [];
-    const raw: Partial<M.Facts> = { fullName: p.fullName, employeeId: draft.reservedEmployeeCode ?? p.employeeCode, joinDate: e.hiredOn, title: e.positionId, department: e.departmentId, company: draft.companyId, businessGroup: dept?.businessUnitId ?? undefined, grade: e.gradeId, employmentType: e.employmentType, supervisor: e.reportingManagerEmploymentId, email: p.primaryEmail, costCentre: e.costCenterId, ic: p.icNumber, passport: p.passportNumber };
+    const raw: Partial<M.Facts> = { fullName: p.fullName, employeeId: draft.reservedEmployeeCode ?? p.employeeCode, joinDate: e.hiredOn, title: e.positionId, department: e.departmentId, company: draft.companyId, businessGroup: dept?.businessUnitId ?? undefined, grade: e.gradeId, employmentType: e.employmentType, confirmationDate: e.confirmationDate, provisionalEndOn: e.provisionalEndOn, supervisor: e.reportingManagerEmploymentId, email: p.primaryEmail, costCentre: e.costCenterId, ic: p.icNumber, passport: p.passportNumber };
     const source = Object.fromEntries(Object.entries(raw).filter(([, v]) => typeof v === 'string' && v.trim())) as Partial<M.Facts>;
     let number = row?.data.number;
     if (!number) {
@@ -644,7 +644,7 @@ async function saveConfig(ctx: SessionContext, revision: number, input: M.Config
             department: new Set((await tx.select({ id: department.id }).from(department)).map(x => x.id)),
             title: new Set((await tx.select({ id: position.id }).from(position)).map(x => x.id)),
             grade: new Set((await tx.select({ id: jobGrade.id }).from(jobGrade)).map(x => x.id)),
-            employmentType: new Set<string>(employmentTypeEnum.enumValues),
+            employmentType: new Set<string>([...employmentTypeEnum.enumValues, ...(next.v9ChecklistRevision ? ['Permanent','Contract','Probation','permanent','probation'] : [])]),
         };
         for (const rules of ruleSets(next))
             for (const [key, ids] of Object.entries(rules))
@@ -1078,7 +1078,7 @@ export async function refreshOnboardingPersonnel(ctx: SessionContext, runTenant:
       'fullName',p.full_name,'employeeId',e.employee_code,'email',p.primary_email,
       'joinDate',coalesce(e.join_date,e.hired_on)::text,'company',e.company_id::text,
       'department',a.department_id::text,'title',a.position_id::text,'businessGroup',a.business_unit_id::text,
-      'grade',e.grade_id::text,'employmentType',a.employment_type::text,'costCentre',a.cost_center_id::text,
+      'grade',e.grade_id::text,'employmentType',a.employment_type::text,'finalConfirmationDate',e.final_confirmation_date::text,'confirmationDate',e.confirmation_date::text,'probationEndDate',e.probation_end_date::text,'provisionalEndOn',e.provisional_end_on::text,'costCentre',a.cost_center_id::text,
       'supervisor',rl.manager_employment_id::text,'ic',stat.ic_number,'passport',stat.passport_number)) as source
     from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id
     left join lateral (select x.* from assignment x where x.employment_id=e.id and x.tenant_id=e.tenant_id and x.superseded_at is null

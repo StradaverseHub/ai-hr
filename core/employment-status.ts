@@ -1,3 +1,4 @@
+import { employmentConfirmationDate } from '../lib/employment-confirmation';
 /**
  * Employee Status — System-Controlled Lifecycle Management (R43 c26c3ce5).
  *
@@ -134,8 +135,7 @@ export function deriveEmploymentStatus(
   if (ended && today < ended) return 'active_serving_notice';
 
   // 5. Probation — before the effective (extended ?? normal) confirmation date.
-  const confirmation =
-    emp.finalConfirmationDate ?? emp.confirmationDate ?? emp.probationEndDate ?? emp.provisionalEndOn ?? null;
+  const confirmation = employmentConfirmationDate(emp);
   if (confirmation && today < confirmation) return 'probation';
 
   // 6. Active — past confirmation (or no confirmation date recorded), no resignation, not blacklisted.

@@ -1,3 +1,5 @@
+import { v9EmploymentRule } from './lifecycle-v9-employment';
+import type { EmploymentConfirmationDates } from './employment-confirmation';
 import { MANAGED_EMAIL_ATTACHMENT_MAX_BYTES, MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT } from './managed-email-policy';
 import { v9ImageTokens } from './lifecycle-v9-email-content';
 /** V9 lifecycle rules. Services supply authorized identity, Personnel facts and final-pay snapshots. */
@@ -9,7 +11,7 @@ export type ExitType = 'Resignation' | 'Termination' | 'Contract end' | 'Retirem
 export type CaseState = 'pending' | 'submitted' | 'cleared' | 'cancelled';
 export type RuleField = 'businessGroup' | 'company' | 'department' | 'grade' | 'employmentType' | 'title' | 'caseType';
 export type Rules = Partial<Record<RuleField, string[]>>;
-export type Facts = Record<RuleField, string> & {
+export type Facts = Record<RuleField, string> & EmploymentConfirmationDates & {
   name: string; employeeNo: string; employmentId: string; personId: string;
   joinDate: string; lastDay: string; noticeDate: string;
   employeeUserId: string | null; supervisorUserId: string | null; pbpUserId: string | null; taUserId: string | null; starterUserId?: string | null;
@@ -179,7 +181,7 @@ export function taskDate(module: Module, anchor: string, day: number): string {
   return addDays(anchor, module === 'onb' && day > 0 ? day - 1 : day);
 }
 export function matches(rules: Rules, facts: Facts): boolean {
-  return Object.entries(rules).every(([key, values]) => !values?.length || values.includes(facts[key as RuleField]));
+  return Object.entries(rules).every(([key, values]) => !values?.length || (key === 'employmentType' ? values.some(value => v9EmploymentRule(value, facts) === true) : values.includes(facts[key as RuleField])));
 }
 export function specificity(rules: Rules): number { return Object.values(rules).filter(v => v?.length).length; }
 export function matchChecklist(config: Config, c: Pick<Case, 'module' | 'facts' | 'override'>): { checklist: Checklist | null; tie: boolean } {
@@ -397,6 +399,7 @@ function acceptanceDeliveryHold(c: Case, emailId: string): string | null {
 export function workflowMatches(c: Case, workflow: Workflow, today: string): boolean {
   return c.module === workflow.module && workflow.conditions.every(condition => {
     if (condition.field === 'joinWithin') { if (!validDate(c.facts.joinDate)) return false; const days = (Date.parse(c.facts.joinDate) - Date.parse(today)) / DAY; return condition.op === 'lt' ? days < Number(condition.value) : condition.op === 'gte' && days >= Number(condition.value); }
+    if (condition.field === 'employmentType') { const result = v9EmploymentRule(condition.value, c.facts); return result !== null && (condition.op === 'is' ? result : condition.op === 'isNot' && !result); }
     return condition.op === 'is' ? c.facts[condition.field] === condition.value : condition.op === 'isNot' && c.facts[condition.field] !== condition.value;
   });
 }

@@ -1,5 +1,16 @@
 # AI HR V9 lifecycle alignment
 
+## Paused for account switch — 30 October 2026
+
+Paused at the owner's explicit request. Do not resume implementation, CI dispatch, merge or deployment until the owner resumes the task. Push, CI and eventual merge were approved earlier; production deployment was not.
+
+The last pushed implementation/integration checkpoint is `1f54062f621b19abe0b9505b7cf8eb5b57de2365`, which preserves published main/alpha `a3eb1eb0fbab48ca6b1b28c4c47a50151ffe5eee`. Its eight selected CI files/180 checks, whole compiler and Linux build passed in [current-base CI](https://github.com/StradaverseHub/ai-hr/actions/runs/40908736656). The canonical journal has 566 rows; V9 SQL remains unallocated.
+
+The local WIP checkpoint adds the owner-approved matching categories: Contract from contract employment; Probation from explicit canonical confirmation/probation dates; Permanent from other full-time employment. Part-time, Intern and Assignment do not match these category predicates. Raw employment types and identity IDs remain unchanged. Empty matching dimensions retain the supplied Any behavior. Confirmation dates remain Personnel-owned and are excluded from assigned-task responses. This includes a sixth unallocated SQL draft. The four-file database/model selection passed 122 checks and the five-file pure selection passed 106 checks; these selections overlap. A setup-less attempt and a wrongly selected no-database state-machine attempt are retained as failures, not passes. Additional category component tests were not created/run: automatic approval review rejected their pending command after the pause request arrived. The new WIP still needs component/browser verification, source-manifest regeneration and exact-candidate compiler/build CI after resumption.
+
+The owned preview, database and temporary browser tabs are stopped/closed. No main/alpha merge of this feature, staging installation or production deployment has occurred. Resume with checkout/ref freshness checks and the remaining-work section below; do not treat this WIP checkpoint as release acceptance.
+
+
 Status: **working candidate; not accepted or merged**. The owner authorized implementation, push, CI and merge. Production deployment requires separate authorization. The SQL is an unallocated draft; the application must not be released ahead of its coordinated migration.
 
 ## Product authority

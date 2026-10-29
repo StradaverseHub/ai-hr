@@ -3,7 +3,7 @@ import { installLifecycleV9Drafts } from './fixtures/lifecycle-v9/drafts';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
-import { hireEmployee, updatePersonProfilePartial } from '../core/org';
+import { hireEmployee, setEmploymentInfo, updatePersonProfilePartial } from '../core/org';
 import { saveEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { addDays } from '../lib/lifecycle-v9-model';
@@ -772,4 +772,20 @@ it('refuses a retry when a private per-person attachment has been replaced after
   const changed = (await v9CaseDetail(admin, c.id)).case;
   await expect(v9Command(admin, c.id, changed.revision, { type: 'emailRetry', id: mail.id, reason: 'Changed file is a different saved copy' })).rejects.toThrow('does not allow a retry');
   expect((await v9CaseDetail(admin, c.id)).case.mails.filter(attempt => attempt.retryOf === mail.id)).toEqual([]);
+});
+
+it('uses approved categories from real Personnel confirmation dates in both matching and source-event capture', async () => {
+  await setEmploymentInfo(admin, { employmentId, confirmationDate: '2027-01-01' });
+  const config = (await v9Workspace(admin)).config!;
+  config.checklists = [...config.checklists.filter(checklist => checklist.module === 'onb'), ...['Permanent','Contract','Probation'].map(category => ({ id: 'category-' + category, name: 'Fictional ' + category + ' checklist', module: 'off' as const, rules: { employmentType: [category] }, tasks: [{ id: 'category-task', name: 'Fictional category work', by: 'employee' as const, group: null, mode: 'manual' as const, opens: null, due: 0, required: true, documentTemplate: null, documentAction: 'completed' as const }] }))];
+  config.workflows = [{ id: 'category-event', name: 'Fictional category event', module: 'off', status: 'published', trigger: { event: 'taskDone', days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [{ field: 'employmentType', op: 'is', value: 'Probation' }], steps: [{ id: 'notice', type: 'notify', to: 'employee', cc: [], subject: 'Fictional probation task completed', body: '' }], description: '' }];
+  await v9SaveConfig(admin, config.revision, config);
+  const id = await v9CreateOffboarding(admin, { employmentId, type: 'Resignation', noticeDate: '2026-10-01', lastDay: '2026-11-01' }); await v9Command(admin, id, 1, { type: 'submit' });
+  const c = (await v9CaseDetail(admin, id)).case; expect(c.checklistId).toBe('category-Probation'); expect(c.facts.employmentType).toBe('full_time'); expect(c.facts.finalConfirmationDate).toBe('2027-01-01');
+  const [actual] = await owner.db.execute<{ employment_type: string }>(sql`select employment_type from assignment where employment_id=${employmentId}::uuid and superseded_at is null order by valid_from desc,id limit 1`); expect(actual.employment_type).toBe('full_time');
+  const examples = [[{ employmentType: 'contract', confirmationDate: '2027-01-01', joinDate: '2026-10-01' }, 'contract'], [{ employmentType: 'full_time', confirmationDate: '2027-01-01', joinDate: '2026-10-01' }, 'probation'], [{ employmentType: 'full_time', confirmationDate: '2026-10-01', joinDate: '2026-10-01' }, 'permanent'], [{ employmentType: 'full_time', probationEndDate: '2027-01-01', joinDate: '2026-10-01' }, 'probation'], [{ employmentType: 'full_time', confirmationDate: '2026-02-30', joinDate: '2026-10-01' }, null], ...['part_time','intern','assignment'].map(employmentType => [{ employmentType, confirmationDate: '2027-01-01', joinDate: '2026-10-01' }, null])] as const;
+  for (const [facts, expected] of examples) { const [result] = await withTenant(admin, tx => tx.execute<{ category: string | null }>(sql`select app.lc_v9_employment_class(${JSON.stringify(facts)}::jsonb) as category`)); expect(result.category).toBe(expected); }
+  const own = (await v9OwnWork(employee)).find(own => own.id === id)!; expect(own.facts).not.toHaveProperty('confirmationDate'); expect(own.facts).not.toHaveProperty('finalConfirmationDate');
+  await v9OwnTask(employee, { caseId: id, revision: c.revision, taskId: c.tasks[0].id, status: 'done', reason: '' });
+  expect((await v9CaseDetail(admin, id)).case.runs).toMatchObject([{ workflowId: 'category-event', sourceEvent: { kind: 'taskDone' } }]);
 });

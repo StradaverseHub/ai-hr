@@ -1,3 +1,5 @@
+import { v9EmploymentRule } from './lifecycle-v9-employment';
+import type { EmploymentConfirmationDates } from './employment-confirmation';
 /**
  * V3.1 onboarding domain. Separate from the legacy lc_case/ITR process.
  * These aggregate values are persisted under row locks; definition IDs never depend on array indexes.
@@ -20,7 +22,7 @@ export type Facts = {
     costCentre: string;
     ic: string;
     passport: string;
-};
+} & Partial<Record<keyof EmploymentConfirmationDates, string>>;
 export type Group = {
     id: Id;
     name: string;
@@ -274,11 +276,12 @@ export class OnboardingError extends Error {
 }
 export function fail(message: string, code = 'invalid', fields: string[] = []): never { throw new OnboardingError(message, code, fields); }
 export const facts = (c: Case): Partial<Facts> => ({ ...c.local, ...c.source });
-export const effectiveFacts = (c: Case): Facts => ({
+export const effectiveFacts = (c: Case): Required<Facts> => ({
+    finalConfirmationDate: '', confirmationDate: '', probationEndDate: '', provisionalEndOn: '',
     fullName: '', employeeId: '', joinDate: '', title: '', department: '', company: '', businessGroup: '', grade: '',
     employmentType: '', supervisor: '', gbsTa: '', email: '', costCentre: '', ic: '', passport: '', ...facts(c),
 });
-export const matches = (rules: Rules, f: Facts) => Object.entries(rules).every(([key, values]) => !values?.length || values.includes(f[key as keyof Facts]));
+export const matches = (rules: Rules, f: Facts) => Object.entries(rules).every(([key, values]) => !values?.length || (key === 'employmentType' ? values.some(value => ['permanent','contract','probation'].includes(value.toLowerCase()) ? v9EmploymentRule(value, f) === true : value === f.employmentType) : values.includes(f[key as keyof Facts] as string)));
 export const canonicalRules = (rules: Rules) => JSON.stringify(Object.entries(rules).filter(([, v]) => v?.length).sort(([a], [b]) => a.localeCompare(b)).map(([key, v]) => [key, [...v!].sort()]));
 export const specificity = (rules: Rules) => Object.values(rules).filter(v => v?.length).length;
 export function matchChecklist(config: Config, c: Case): {

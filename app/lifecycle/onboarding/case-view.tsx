@@ -43,7 +43,7 @@ export function OnboardingCaseView({ detail, options, mode = 'case', registerHre
             router.refresh();
         }
     });
-    const patch = (includeSelection=false): CasePatch => ({ local: Object.fromEntries(Object.entries(values).filter(([key, value]) => (actor.hr || !['ic', 'passport', 'costCentre'].includes(key)) && c.source[key as keyof Facts] === undefined && value !== undefined)), hiring, replacedEmployee: replaced, floor, deviceType, notes, selected, extras, checklistOverride: includeSelection ? override === 'automatic' ? null : override : c.checklistOverride });
+    const patch = (includeSelection=false): CasePatch => ({ local: Object.fromEntries(Object.entries(values).filter(([key, value]) => !['finalConfirmationDate','confirmationDate','probationEndDate','provisionalEndOn'].includes(key) && (actor.hr || !['ic', 'passport', 'costCentre'].includes(key)) && c.source[key as keyof Facts] === undefined && value !== undefined)), hiring, replacedEmployee: replaced, floor, deviceType, notes, selected, extras, checklistOverride: includeSelection ? override === 'automatic' ? null : override : c.checklistOverride });
     const save = (submit = false, includeSelection=submit) => start(async () => {
         setError('');
         setInvalid([]);
