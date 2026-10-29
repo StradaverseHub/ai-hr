@@ -68,7 +68,7 @@ it('uses native checklist and claimed-equipment load for offboarding, without co
   expect(await withTenant(employee, onboardingAssignmentLoadsTx)).toEqual([]);
   const config = (await v9Workspace(admin)).config!;
   config.checklists = [...config.checklists.filter(checklist => checklist.module === 'onb'), { id: 'workload-exit', name: 'Workload exit', module: 'off', rules: {}, tasks: [{ id: 'return-work', name: 'Prepare return', by: 'group', group: group.id, mode: 'rr', opens: null, due: 0, required: false, documentTemplate: null, documentAction: 'completed' }] }];
-  config.workflows = [];
+  for (const workflow of config.workflows) workflow.status = 'draft';
   await v9SaveConfig(admin, config.revision, config);
   const id = await v9CreateOffboarding(admin, { employmentId, type: 'Resignation', noticeDate: todayInKualaLumpur(), lastDay: addDays(todayInKualaLumpur(), 30) });
   await v9Command(admin, id, 1, { type: 'submit' });
@@ -309,6 +309,12 @@ it('lets only the linked activated joiner complete a released native document an
   expect(updatedPerson.phone).toBe('+60111111111');
   expect((await v9CaseDetail(admin, own.id)).case.pmChanges[0].status).toBe('pushed');
   expect(JSON.stringify((await v9OwnWork(joiner)).find(c => c.id === own.id))).not.toContain('pmChanges');
+  const [nativeHistory] = await owner.db.execute<{ count: number }>(sql`select count(*)::int as count from lc_onboarding_private_revision where case_id=${own.id}::uuid and data->'lifecycleV9'->'documents'->0->>'id'=${own.documents[0].id}`);
+  expect(nativeHistory.count).toBeGreaterThan(0);
+  expect((await v9Workspace(admin)).templateUsage?.find(row => row.templateId === 'native-self-form' && row.version === 1)).toEqual({ templateId: 'native-self-form', version: 1, documents: 1 });
+  const removeNativeWorkflow = (await v9Workspace(admin)).config!; removeNativeWorkflow.workflows = [];
+  await expect(v9SaveConfig(admin, removeNativeWorkflow.revision, removeNativeWorkflow)).rejects.toThrow('already run');
+
   await expect(v9OwnDocument(joiner, input)).rejects.toMatchObject({ cause: { message: expect.stringContaining('changed') } });
   // Independently drift the broader row as storage owner; private custody must still refuse redirection.
   const [differentSubject] = await owner.db.execute<{ id: string }>(sql`select id from employment where tenant_id=${base.tenantId}::uuid and person_id=${other.personId}::uuid`);
@@ -472,4 +478,23 @@ it('records sent truth without releasing a different document copy changed durin
   const c = (await v9CaseDetail(admin, caseId)).case;
   expect(c.mails[0].status).toBe('sent'); expect(c.documents[0]).toMatchObject({ name: 'Different current copy', status: 'draft', sentAt: null });
   expect(c.log.at(-1)?.action).toBe('email.documentChanged');
+});
+it('guards version deletion using deduplicated current and historical instances', async () => {
+  const c = await prepared(), config = (await v9Workspace(admin)).config!, template = config.templates.find(template => template.id === 'fixture-form')!;
+  template.versions.push({ ...structuredClone(template.versions[0]), version: 2 }); template.currentVersion = 2;
+  await v9SaveConfig(admin, config.revision, config);
+  // A real service command preserves the prior document instance before an owner-only loss injection.
+  await v9Command(admin, c.id, c.revision, { type: 'runWorkflows' });
+  await owner.client`update lc_v9_case set data=jsonb_set(data,'{documents}','[]'::jsonb) where id=${c.id}::uuid`;
+  const workspace = await v9Workspace(admin);
+  expect(workspace.templateUsage?.find(row => row.templateId === template.id && row.version === 1)).toEqual({ templateId: template.id, version: 1, documents: 1 });
+  const removeUsed = structuredClone(workspace.config!); removeUsed.templates.find(row => row.id === template.id)!.versions = [structuredClone(template.versions[1])];
+  await expect(v9SaveConfig(admin, removeUsed.revision, removeUsed)).rejects.toThrow('history');
+  const unused = structuredClone(workspace.config!), definition = unused.templates.find(row => row.id === template.id)!;
+  definition.versions.push({ ...structuredClone(definition.versions[0]), version: 3 });
+  await v9SaveConfig(admin, unused.revision, unused);
+  const removeUnused = (await v9Workspace(admin)).config!; removeUnused.templates.find(row => row.id === template.id)!.versions = removeUnused.templates.find(row => row.id === template.id)!.versions.filter(version => version.version !== 3);
+  await expect(v9SaveConfig(admin, removeUnused.revision, removeUnused)).resolves.toMatchObject({ revision: removeUnused.revision + 1 });
+  await expect(withTenant(employee, tx => tx.execute(sql`select * from app.lc_v9_document_usage()`))).rejects.toThrow();
+  await expect(withTenant(admin, tx => tx.execute(sql`select * from app.lc_v9_usage_instances()`))).rejects.toThrow();
 });

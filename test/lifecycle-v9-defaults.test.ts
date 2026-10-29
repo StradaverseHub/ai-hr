@@ -52,3 +52,16 @@ it('saves incomplete workflow drafts but independently rejects making them live'
   workflow.steps = [];
   expect(() => parseV9Config(config)).toThrow('Add at least one step');
 });
+it('deletes only an unused non-current version with canonical usage evidence', () => {
+  const previous = v9Defaults(), template = previous.templates[0];
+  template.versions = [1,2,3].map(version => ({ ...structuredClone(template.versions[0]), version, state: 'published' as const })); template.currentVersion = 2;
+  const next = structuredClone(previous); next.templates[0].versions = next.templates[0].versions.filter(version => version.version !== 3);
+  expect(() => validateV9ConfigChange(previous, next)).toThrow('history');
+  expect(() => validateV9ConfigChange(previous, next, [])).not.toThrow();
+  expect(() => validateV9ConfigChange(previous, next, [{ templateId: template.id, version: 3, documents: 1 }])).toThrow('history');
+  const current = structuredClone(previous); current.templates[0].versions = current.templates[0].versions.filter(version => version.version !== 2); current.templates[0].currentVersion = 1;
+  expect(() => validateV9ConfigChange(previous, current, [])).toThrow('in use');
+  const deleted = structuredClone(previous); deleted.templates.shift();
+  expect(() => validateV9ConfigChange(previous, deleted, [])).not.toThrow();
+  expect(() => validateV9ConfigChange(previous, deleted, [{ templateId: template.id, version: 1, documents: 1 }])).toThrow('Retire');
+});

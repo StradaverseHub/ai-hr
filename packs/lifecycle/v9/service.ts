@@ -24,7 +24,7 @@ import { resolveDocumentUpload } from '../../../core/employee-documents';
 type Row = { id: string; revision: number; company_id: string; data: M.Case; native?: true };
 export type DirectoryUser = { id: string; name: string };
 export type Options = { users: DirectoryUser[]; companies: { id: string; name: string }[]; employees: { id: string; name: string; employeeNo: string; companyId: string }[]; labels?: Partial<Record<M.RuleField, Record<string, string>>>; leaveTypes?: { id: string; name: string }[] };
-export type Workspace = { config: M.Config | null; cases: M.Case[]; options: Options; canConfigure: boolean; actor: M.Actor; personnelWritableKeys: string[] };
+export type Workspace = { config: M.Config | null; cases: M.Case[]; options: Options; canConfigure: boolean; actor: M.Actor; personnelWritableKeys: string[]; templateUsage?: M.TemplateUsage[] };
 export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'state' | 'facts' | 'tasks' | 'items' | 'documents'> & { own: boolean };
 export type CaseDetail = { case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -135,7 +135,8 @@ export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {
     const labels: NonNullable<Options['labels']> = { company: Object.fromEntries(companies.map(c => [c.id, c.name])), employmentType: { full_time: 'Full time', part_time: 'Part time', contract: 'Contract', intern: 'Intern' }, caseType: Object.fromEntries(['Resignation', 'Termination', 'Contract end', 'Retirement', 'Non-confirmation'].map(value => [value, value])) };
     for (const master of masters) (labels[master.kind] ??= {})[master.id] = master.name;
     const leaveTypes = await tx.execute<{ id: string; name: string }>(sql`select id,name from leave_type where tenant_id=${ctx.tenantId}::uuid and archived_at is null order by name,id`);
-    return { config, cases: rows.map(r => r.data), options: { companies: [...companies], users: [...users], employees: [...employees], labels, leaveTypes: [...leaveTypes] }, canConfigure: !!permission?.ok, actor: who, personnelWritableKeys: v9PersonnelWritableKeys };
+    const usage = config && permission?.ok ? await tx.execute<M.TemplateUsage>(sql`select template_id as "templateId",version,documents from app.lc_v9_document_usage()`) : [];
+    return { templateUsage: [...usage], config, cases: rows.map(r => r.data), options: { companies: [...companies], users: [...users], employees: [...employees], labels, leaveTypes: [...leaveTypes] }, canConfigure: !!permission?.ok, actor: who, personnelWritableKeys: v9PersonnelWritableKeys };
   });
 }
 export async function v9Setup(ctx: SessionContext): Promise<void> {
@@ -166,7 +167,9 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
   return withLifecycleTenant(ctx, async tx => {
     await lockTx(tx, ctx); await admin(tx); const previous = await configTx(tx, ctx, true);
     if (!previous || previous.revision !== revision) throw new M.V9Error('Settings changed. Refresh before saving.', 'conflict');
-    validateV9ConfigChange(previous, config);
+    const deletesVersion = previous.templates.some(template => { const retained = config.templates.find(next => next.id === template.id); return !retained || template.versions.some(version => !retained.versions.some(next => next.version === version.version)); });
+    const usage = deletesVersion ? await tx.execute<M.TemplateUsage>(sql`select template_id as "templateId",version,documents from app.lc_v9_document_usage()`) : [];
+    validateV9ConfigChange(previous, config, [...usage]);
     if (config.groupsRevision !== previous.groupsRevision) throw new M.V9Error('Assignment groups changed. Refresh before saving.', 'conflict');
     if (!v9Equal(config.groups, previous.groups)) {
       const saved = await onboardingSaveGroupsTx(ctx, tx, previous.groupsRevision!, config.groups);
@@ -179,7 +182,12 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
     if (config.companies?.some(c => !companies.some(co => co.id === c.companyId))) throw new M.V9Error('Choose an available company.');
     const removed = previous.workflows.filter(workflow => !config.workflows.some(next => next.id === workflow.id)).map(workflow => workflow.id);
     if (removed.length) {
-      const history = await tx.execute<{ id: string }>(sql`select id from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and exists(select 1 from jsonb_array_elements(data->'runs') r where r->>'workflowId' in (${sql.join(removed.map(id => sql`${id}`), sql`, `)})) limit 1`);
+      const history = await tx.execute<{ id: string }>(sql`with records as (
+        select id,data->'runs' as runs from lc_v9_case where tenant_id=${ctx.tenantId}::uuid
+        union all select case_id,data->'runs' from lc_v9_case_revision where tenant_id=${ctx.tenantId}::uuid
+        union all select case_id,data->'lifecycleV9'->'runs' from lc_onboarding_private where tenant_id=${ctx.tenantId}::uuid
+        union all select case_id,data->'lifecycleV9'->'runs' from lc_onboarding_private_revision where tenant_id=${ctx.tenantId}::uuid
+      ) select id from records where exists(select 1 from jsonb_array_elements(coalesce(runs,'[]'::jsonb)) r where r->>'workflowId' in (${sql.join(removed.map(id => sql`${id}`), sql`, `)})) limit 1`);
       if (history.length) throw new M.V9Error('A workflow has already run on a record. Keep it for history and pause it instead.');
     }
     await tx.execute(sql`insert into lc_v9_config_revision(tenant_id,revision,data,actor_user_id) values(${ctx.tenantId}::uuid,${revision},${JSON.stringify(previous)}::jsonb,${ctx.userId}::uuid)`);

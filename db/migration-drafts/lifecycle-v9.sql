@@ -256,6 +256,36 @@ $$;
 REVOKE ALL ON FUNCTION app.lc_v9_self_task(uuid,integer,text,text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.lc_v9_self_task(uuid,integer,text,text,text) TO ai_hr_app;
 
+-- Definition deletion uses current and historical instances from both canonical case owners.
+-- This helper exposes only identifiers, never answers, signatures, email text or Personnel facts.
+CREATE FUNCTION app.lc_v9_usage_instances()
+RETURNS TABLE(parent_id uuid,document_id text,template_id text,version_text text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH instances AS (
+  SELECT c.id AS parent_id,d.value AS document FROM lc_v9_case c CROSS JOIN LATERAL jsonb_array_elements(coalesce(c.data->'documents','[]'::jsonb)) d WHERE c.tenant_id=app.current_tenant_id()
+  UNION ALL SELECT c.case_id,d.value FROM lc_v9_case_revision c CROSS JOIN LATERAL jsonb_array_elements(coalesce(c.data->'documents','[]'::jsonb)) d WHERE c.tenant_id=app.current_tenant_id()
+  UNION ALL SELECT p.case_id,d.value FROM lc_onboarding_private p CROSS JOIN LATERAL jsonb_array_elements(coalesce(p.data->'lifecycleV9'->'documents','[]'::jsonb)) d WHERE p.tenant_id=app.current_tenant_id()
+  UNION ALL SELECT p.case_id,d.value FROM lc_onboarding_private_revision p CROSS JOIN LATERAL jsonb_array_elements(coalesce(p.data->'lifecycleV9'->'documents','[]'::jsonb)) d WHERE p.tenant_id=app.current_tenant_id()
+ )
+ SELECT parent_id,document->>'id',document->>'templateId',document->>'version' FROM instances
+$$;
+REVOKE ALL ON FUNCTION app.lc_v9_usage_instances() FROM PUBLIC;
+
+CREATE FUNCTION app.lc_v9_document_usage()
+RETURNS TABLE(template_id text,version integer,documents integer)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ IF app.current_user_id() IS NULL OR NOT app.is_group_admin() OR app.login_blocked(app.current_user_id()) THEN RAISE EXCEPTION 'Group administration access is required'; END IF;
+ IF EXISTS(SELECT 1 FROM app.lc_v9_usage_instances() i WHERE coalesce(i.document_id,'')='' OR coalesce(i.template_id,'')='' OR coalesce(i.version_text,'')!~'^[1-9][0-9]{0,8}$') THEN
+  RAISE EXCEPTION 'Lifecycle document history needs review before deleting definitions';
+ END IF;
+ RETURN QUERY SELECT i.template_id,i.version_text::integer,count(DISTINCT(i.parent_id,i.document_id))::integer
+  FROM app.lc_v9_usage_instances() i GROUP BY i.template_id,i.version_text;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.lc_v9_document_usage() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.lc_v9_document_usage() TO ai_hr_app;
+
 -- Source V9 openLoad counts native joiner group tasks and claimed equipment work globally.
 -- Offboarding uses this shared owner projection plus its temporary new-case load; existing
 -- leaver work is deliberately not added to the source algorithm. Only aggregate counts leave SQL.

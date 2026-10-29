@@ -55,6 +55,7 @@ export type Document = {
   hrStep?: Template['hrStep']; employeeAck?: boolean; signatoryUserId?: string | null; templateType?: Template['type'];
 };
 export type Role = 'employee' | 'supervisor' | 'pbp' | 'ta' | 'peopleOps' | 'taskOwners';
+export type TemplateUsage = { templateId: string; version: number; documents: number };
 export type EmailTemplate = {
   id: string; name: string; module: Module; active: boolean; sender: string;
   subject: string; body: string; cc: Role[]; links: string[]; attachments: string[];

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { V9Error, workflowProblems, type Config } from './lifecycle-v9-model';
+import { V9Error, workflowProblems, currentVersion, type Config, type TemplateUsage } from './lifecycle-v9-model';
 const id = z.string().min(1).max(120), text = z.string().max(20000), day = z.number().int().min(-3660).max(3660);
 const moduleSchema = z.enum(['onb', 'off']);
 const rules = z.object({ businessGroup: z.array(id).max(200).optional(), company: z.array(id).max(200).optional(), department: z.array(id).max(200).optional(), grade: z.array(id).max(200).optional(), employmentType: z.array(id).max(200).optional(), title: z.array(id).max(200).optional(), caseType: z.array(id).max(200).optional() }).strict();
@@ -73,10 +73,21 @@ export function parseV9Config(value: unknown) {
 }
 
 /** Published bodies are historical evidence; edits start a new numbered draft. */
-export function validateV9ConfigChange(previous: Config, next: Config): void {
-  for (const template of previous.templates) for (const published of template.versions.filter(v => v.state === 'published')) {
-    const retained = next.templates.find(t => t.id === template.id)?.versions.find(v => v.version === published.version);
-    if (!retained || !v9Equal(retained, published)) throw new V9Error('Published template versions are immutable. Create a new draft version to make changes.');
+export function validateV9ConfigChange(previous: Config, next: Config, usage?: TemplateUsage[]): void {
+  for (const template of previous.templates) {
+    const retainedTemplate = next.templates.find(next => next.id === template.id);
+    if (!retainedTemplate) {
+      if (!usage || usage.some(row => row.templateId === template.id && row.documents > 0)) throw new V9Error('A used template is kept for document history. Retire it instead.');
+      continue;
+    }
+    if (!retainedTemplate.versions.length) throw new V9Error('The only version cannot be deleted.');
+    for (const version of template.versions) {
+      const retained = retainedTemplate.versions.find(next => next.version === version.version);
+      if (!retained) {
+        if (template.versions.length < 2 || currentVersion(template)?.version === version.version) throw new V9Error('The only version or the version in use cannot be deleted.');
+        if ((!usage && version.state === 'published') || usage?.some(row => row.templateId === template.id && row.version === version.version && row.documents > 0)) throw new V9Error('A used version is kept for document history.');
+      } else if (version.state === 'published' && !v9Equal(retained, version)) throw new V9Error('Published template versions are immutable. Create a new draft version to make changes.');
+    }
   }
 }
 /** JSONB reorders object keys; array order remains part of the definition. */
