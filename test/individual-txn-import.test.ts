@@ -47,6 +47,16 @@ describe('durable Individual Transaction import',()=>{
   const replay=await validate('daily',[row('2026-07-30'),row('2026-07-31')]);expect(replay.preview.valid).toBe(0);
   await owner.db.update(schema.payComponent).set({rule:null}).where(eq(schema.payComponent.id,componentId));const unsupported=await validate('daily',[row('2026-08-10')]);expect(unsupported.preview.rows[0].reason).toBe('dailyItemUnsupported');
  });
+ it('34062f81: a Day by Day import prices calendar_days from each row\'s own date, in preview and on confirmation',async()=>{
+  // basic / calendar_days x days, paid in October (31 days). Expected figures are independent literals for RM5,000 and 1 day.
+  await owner.db.update(schema.payComponent).set({rule:{kind:'formula',start:{ref:'basic'},terms:[{op:'/',operand:{ref:'calendar_days'}},{op:'*',operand:{ref:'days'}}]}}).where(eq(schema.payComponent.id,componentId));
+  const expected:[string,string][]=[['2026-09-28','166.67'],['2026-10-10','161.29'],['2026-02-15','178.57'],['2024-02-15','172.41']];
+  const input=await validate('daily',expected.map(([date])=>[employeeCode,'Import Example','2026-10','IMP','BONUS',date,'1','daily']));
+  expect(input.preview).toMatchObject({valid:4,invalid:0});expect(input.preview.rows.map(r=>r.amount)).toEqual(expected.map(([,amount])=>amount));
+  const saved=await confirm(input.id);expect(saved.written).toBe(4);expect(saved.outcomes.map(o=>o.state)).toEqual(['imported','imported','imported','imported']);
+  const rows=await owner.db.select().from(schema.payrollIndividualTxn).where(eq(schema.payrollIndividualTxn.employmentId,employeeId));
+  expect(rows.map(r=>[r.txnDate,r.amount]).sort()).toEqual([...expected].sort());expect(new Set(rows.map(r=>r.payPeriod))).toEqual(new Set(['2026-10']));
+ });
  it('atomically refuses edited records, then safely reverses an eligible batch without deleting its log or manual entries',async()=>{
   const input=await validate('monthly',[monthly()]);const saved=await confirm(input.id),id=saved.outcomes[0].transactionId!;
   await owner.db.update(schema.payrollIndividualTxn).set({amount:'251.00'}).where(eq(schema.payrollIndividualTxn.id,id));await expect(revert(input.id)).rejects.toThrow('importRowsChanged');expect((await readIndividualImport(adminCtx(base),input.id,[base.companyId])).state).toBe('completed');
