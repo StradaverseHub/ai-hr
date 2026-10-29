@@ -73,7 +73,7 @@ import {lockImportAttemptTx,recordImportEventTx,recordImportItemTx} from './impo
  * when any row is unmatched, and the template chooser + this section's own notice say it BEFORE a
  * file is uploaded. The correction is being put to the reporter in the same words (AGENTS 31).
  */
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { getTableColumns, and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   appUser,
@@ -262,7 +262,7 @@ async function analyze(
     section,
     records.map(record=>norm(record.ic_number).replace(/\D/g,'')),
     suppliedTx,
-    {present:presentSet,focusCode:focusRowNum?normalizeEmployeeCode(norm(records[focusRowNum-1]?.[SECTION_KEY_COLUMN])):undefined},
+    {present:presentSet,residencyCodes:new Set(records.filter(record=>['tax_residency','is_resident','tax_circumstance','tax_category','epf_citizenship'].some(column=>norm(record[column]))).map(record=>normalizeEmployeeCode(record[SECTION_KEY_COLUMN]))),focusCode:focusRowNum?normalizeEmployeeCode(norm(records[focusRowNum-1]?.[SECTION_KEY_COLUMN])):undefined},
   );
 
   const { allowDuplicatedNric, allowDuplicatedEmail } = await (suppliedTx?readPeopleGeneralTx(suppliedTx):getPeopleGeneral(ctx));
@@ -406,7 +406,8 @@ async function analyze(
 }
 
 /** Read every employee this file names, plus the catalogs and the IC ownership map, in one pass. */
-async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: ImportSection, submittedNrics: string[],suppliedTx?:Tx,scope:{present?:Set<string>;focusCode?:string}={}) {
+async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: ImportSection, submittedNrics: string[],suppliedTx?:Tx,scope:{present?:Set<string>;focusCode?:string;residencyCodes?:Set<string>}={}) {
+  if(section==='bank_statutory'){const read=(tx:Tx)=>loadBankImportSubjects(tx,ctx,codes,scope);return suppliedTx?read(suppliedTx):withTenant(ctx,read);}
   const read=async (tx:Tx) => {
     // The tenant's employments, keyed by Employee ID and by work email. Both keys are needed: the
     // Direct Superior column accepts either, exactly as the wide importer's does.
@@ -436,16 +437,16 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
         // compares the cell against the stored value, and a column it cannot see always looks changed.
         // 23ad620e moved these five off `person` into the per-person register, so they are read the way
         // every other single-contact reader reads them — the highest-priority live row.
-        emergencyContactName: primaryEmergencyContactSql('full_name'),
-        emergencyContactRelationship: primaryEmergencyContactSql('relationship'),
-        emergencyContactPhone: primaryEmergencyContactSql('mobile_phone'),
-        emergencyContactPhone2: primaryEmergencyContactSql('home_phone'),
-        emergencyContactAddress: primaryEmergencyContactSql('address'),
+        emergencyContactName: section==='profile'?primaryEmergencyContactSql('full_name'):sql<string|null>`null`,
+        emergencyContactRelationship: section==='profile'?primaryEmergencyContactSql('relationship'):sql<string|null>`null`,
+        emergencyContactPhone: section==='profile'?primaryEmergencyContactSql('mobile_phone'):sql<string|null>`null`,
+        emergencyContactPhone2: section==='profile'?primaryEmergencyContactSql('home_phone'):sql<string|null>`null`,
+        emergencyContactAddress: section==='profile'?primaryEmergencyContactSql('address'):sql<string|null>`null`,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
-      .where(codes.size?inArray(employment.employeeCode,[...codes]):sql`false`);
+      .where(and(eq(employment.tenantId,ctx.tenantId),codes.size?inArray(employment.employeeCode,[...codes]):sql`false`));
 
     const byCode = new Map<string, Subject>();
     const wanted: typeof rows = [];
@@ -517,14 +518,6 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
         familyMembers: familyByPerson.get(r.personId) ?? [],
         country: r.country,
       };
-      if(section==='bank_statutory') {
-        // Residency is the employer-scoped selection the tab shows; read it only when this file can
-        // change or depend on it, and in a commit re-analysis only for the row being saved.
-        const residencyMatters=['tax_residency','is_resident','tax_circumstance','epf_citizenship'].some(c=>scope.present?.has(c));
-        const wantResidency=residencyMatters&&(!scope.focusCode||scope.focusCode===s.employeeCode);
-        const taxResidency=wantResidency?await readTaxResidencyTx(tx,ctx,{employmentId:s.employmentId,personId:s.personId,pack:s.pack,country:s.country},s.statutory as {taxCircumstance?:string|null}|null):'';
-        s.bankState=bankStatutoryStateFrom(s.statutory,{taxResidency,paymentMethod:r.paymentMethod});
-      }
       byCode.set(s.employeeCode, s);
     }
     // Catalog-governed vocabularies, so a typo in State / Country / a relationship is a DRY-RUN error
@@ -556,6 +549,26 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
     return { byCode, catalog, icOwners, emailOwners };
   };
   return suppliedTx?read(suppliedTx):withTenant(ctx,read);
+}
+
+/** Explicit bounded projection with the same legacy HR floor plus live Workforce target checks. */
+async function loadBankImportSubjects(tx:Tx,ctx:SessionContext,codes:Set<string>,scope:{focusCode?:string;residencyCodes?:Set<string>}){
+ type Row={employment_id:string;person_id:string;company_id:string;employee_code:string;hired_on:string;card_id:string|null;attendance_photo_setting:string|null;payment_method:string|null;full_name:string;primary_email:string;phone:string|null;country:string;statutory:Record<string,unknown>|null};
+ const byCode=new Map<string,Subject>(),columns=getTableColumns(employeeStatutoryMy),wanted=[...codes];
+ for(let offset=0;offset<wanted.length;offset+=1000){
+  const rows=await tx.execute<Row>(sql`select * from app.bank_import_subjects(${JSON.stringify(wanted.slice(offset,offset+1000))}::jsonb)`);
+  for(const row of rows){
+   const statutory=row.statutory?Object.fromEntries(Object.entries(columns).map(([key,column])=>[key,row.statutory![column.name]])):null;
+   const subject:Subject={employmentId:row.employment_id,personId:row.person_id,companyId:row.company_id,employeeCode:normalizeEmployeeCode(row.employee_code),fullName:row.full_name,primaryEmail:row.primary_email,phone:row.phone,hiredOn:String(row.hired_on),country:row.country,pack:requirePackFor(row.country),personRow:{},statutory,familyMembers:[],operations:{cardId:row.card_id,attendancePhotoSetting:row.attendance_photo_setting,paymentMethod:row.payment_method}};
+   const needsResidency=scope.residencyCodes?.has(subject.employeeCode)&&(!scope.focusCode||scope.focusCode===subject.employeeCode);
+   const taxResidency=needsResidency?await readTaxResidencyTx(tx,ctx,{employmentId:subject.employmentId,personId:subject.personId,pack:subject.pack,country:subject.country},statutory as {taxCircumstance?:string|null}|null):'';
+   subject.bankState=bankStatutoryStateFrom(statutory,{taxResidency,paymentMethod:row.payment_method});
+   byCode.set(subject.employeeCode,subject);
+  }
+ }
+ const options=await tx.select({category:profileOption.category,value:profileOption.value,label:profileOption.label,isActive:profileOption.isActive}).from(profileOption);
+ const catalog=new PersonnelImportCatalog();for(const option of options)catalog.addOption(option);
+ return{byCode,catalog,icOwners:new Map<string,Set<string>>(),emailOwners:new Map<string,string>()};
 }
 
 type BuildCtx = { errors: string[]; changes: string[] };

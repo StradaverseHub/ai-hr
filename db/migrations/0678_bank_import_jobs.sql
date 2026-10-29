@@ -68,9 +68,11 @@ CREATE POLICY bank_import_job_read ON bank_import_job FOR SELECT USING(tenant_id
 CREATE POLICY bank_import_job_insert ON bank_import_job FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND created_by=app.current_user_id() AND app.principal_snapshot_current());
 CREATE POLICY bank_import_job_update ON bank_import_job FOR UPDATE USING(app.bank_import_job_access(id)) WITH CHECK(app.bank_import_job_access(id));
 ALTER TABLE bank_import_chunk ENABLE ROW LEVEL SECURITY;
-CREATE POLICY bank_import_chunk_access ON bank_import_chunk FOR ALL USING(app.bank_import_job_access(job_id)) WITH CHECK(app.bank_import_job_access(job_id));
+-- The uncorrelated authorized-job set is computed once per statement, rather than proving the
+-- same creator/scope for every one of a 100k-row upload's rows. Job RLS remains authoritative.
+CREATE POLICY bank_import_chunk_access ON bank_import_chunk FOR ALL USING(job_id IN (SELECT id FROM bank_import_job)) WITH CHECK(job_id IN (SELECT id FROM bank_import_job));
 ALTER TABLE bank_import_row ENABLE ROW LEVEL SECURITY;
-CREATE POLICY bank_import_row_access ON bank_import_row FOR ALL USING(app.bank_import_job_access(job_id)) WITH CHECK(app.bank_import_job_access(job_id));
+CREATE POLICY bank_import_row_access ON bank_import_row FOR ALL USING(job_id IN (SELECT id FROM bank_import_job)) WITH CHECK(job_id IN (SELECT id FROM bank_import_job));
 REVOKE ALL ON bank_import_job,bank_import_chunk,bank_import_row FROM PUBLIC,ai_hr_app;
 GRANT SELECT,INSERT ON bank_import_job TO ai_hr_app;
 GRANT UPDATE(company_ids,state,uploaded_bytes,total,validated,valid,invalid,unchanged,processed,saved,failed,attempt_id,error,updated_at) ON bank_import_job TO ai_hr_app;
@@ -81,3 +83,32 @@ GRANT UPDATE(preview,company_id,employment_id,binding,state,error) ON bank_impor
 -- Preserve the 10 MiB ceiling for the other kinds. Bank source is uploaded in 1 MiB requests.
 ALTER TABLE import_attempt DROP CONSTRAINT import_attempt_source_content_check;
 ALTER TABLE import_attempt ADD CONSTRAINT import_attempt_source_content_check CHECK(octet_length(source_content)<=CASE WHEN kind='bank_statutory' THEN 134217728 ELSE 10485760 END);
+--> statement-breakpoint
+-- A bounded Bank import projection avoids rebuilding the legacy tenant-wide visible-employment set
+-- for every batch. This is narrower than raw-row admin access: current principal, legacy company HR
+-- authority AND both current Workforce target predicates remain required. Never returns other tenants,
+-- voided employments, salary/compensation rows or arbitrary person columns. Writes still use canonical owners.
+CREATE FUNCTION app.bank_import_subjects(p_codes jsonb)
+RETURNS TABLE(employment_id uuid,person_id uuid,company_id uuid,employee_code text,hired_on date,
+ card_id text,attendance_photo_setting text,payment_method text,full_name text,primary_email text,phone text,country text,statutory jsonb)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF jsonb_typeof(p_codes) IS DISTINCT FROM 'array' OR jsonb_array_length(p_codes)>1000 OR NOT app.principal_snapshot_current() THEN
+  RAISE EXCEPTION 'Import subject lookup refused' USING ERRCODE='42501';
+ END IF;
+ RETURN QUERY SELECT e.id,e.person_id,e.company_id,e.employee_code,e.hired_on,e.card_id,e.attendance_photo_setting,e.payment_method,
+ p.full_name,p.primary_email,p.phone,c.country,CASE WHEN s.id IS NULL THEN NULL ELSE to_jsonb(s)||jsonb_build_object(
+ 'epf_employee_rate',s.epf_employee_rate::text,'epf_employer_rate',s.epf_employer_rate::text,
+ 'epf_employee_amount',s.epf_employee_amount::text,'epf_employer_amount',s.epf_employer_amount::text,
+ 'tp3_net_remuneration',s.tp3_net_remuneration::text,'tp3_epf_claimed',s.tp3_epf_claimed::text,
+ 'tp3_pcb_paid',s.tp3_pcb_paid::text,'tp3_zakat_paid',s.tp3_zakat_paid::text,'tp3_lp',s.tp3_lp::text,
+ 'zakat_percent',s.zakat_percent::text,'zakat_fixed',s.zakat_fixed::text) END
+ FROM public.employment e JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+ JOIN public.company c ON c.id=e.company_id AND c.tenant_id=e.tenant_id
+ LEFT JOIN public.employee_statutory_my s ON s.person_id=p.id AND s.tenant_id=e.tenant_id
+ WHERE e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL
+ AND e.employee_code=ANY(ARRAY(SELECT jsonb_array_elements_text(p_codes)))
+ AND app.is_admin_for(c.id) AND app.access_workforce_employment(e.id,'workforce.view') AND app.access_workforce_person(p.id,'workforce.view');
+END $$;
+REVOKE ALL ON FUNCTION app.bank_import_subjects(jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.bank_import_subjects(jsonb) TO ai_hr_app;

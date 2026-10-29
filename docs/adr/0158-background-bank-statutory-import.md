@@ -27,7 +27,10 @@ Each saved HR row, immutable before/after item and durable row checkpoint commit
 completed rows. Completion records one shared confirmed event; the original source and successful changes
 remain in the existing Import History. Validation checks whole-file employee/Card ID collisions before
 chunking, preserving cross-batch refusals. Commit revalidation addresses only the one employee being saved
-and compares its preview binding under the existing writer locks.
+and compares its preview binding under the existing writer locks. A bounded Bank-specific read projection
+uses the current-principal proof, the existing company HR floor and live Workforce employment/person
+predicates; it avoids repeatedly materializing the legacy tenant-wide visibility set. Existing global
+row policies are unchanged. Queue child-row policies use the authorized job set once per statement.
 
 Do not use a web process promise, `after()`, an elapsed lease that can expire during a slow write, or a larger
 HTTP timeout as the queue. Process death releases the session lock while database checkpoints survive.

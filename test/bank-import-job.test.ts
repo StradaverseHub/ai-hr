@@ -39,6 +39,12 @@ describe('durable Bank & Statutory jobs',()=>{
   expect(await listBankImportJobs(weaker)).toEqual([]);
   await expect(getBankImportJob(weaker,id)).rejects.toThrow('unavailable');
  });
+ it('keeps the bounded subject projection closed to another tenant, a weaker role and oversized lookups',async()=>{
+  await employee();const other=adminCtx(await seedBase());
+  expect(await withTenant(other,tx=>tx.execute(sql`select * from app.bank_import_subjects('["BANK001"]'::jsonb)`))).toHaveLength(0);
+  expect(await withTenant({...ctx,roles:[],grants:[]},tx=>tx.execute(sql`select * from app.bank_import_subjects('["BANK001"]'::jsonb)`))).toHaveLength(0);
+  await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.bank_import_subjects(${JSON.stringify(Array(1001).fill('BANK001'))}::jsonb)`))).rejects.toThrow();
+ });
  it('makes upload retries idempotent and refuses mismatched parts or premature completion',async()=>{
   const bytes=content(['BANK001,T1']),job=(await createBankImportJob(ctx,{name:'one.csv',bytes:bytes.length,hash:createHash('sha256').update(bytes).digest('hex')})).job;
   await expect(bankImportCommand(ctx,job.id,'validate')).rejects.toThrow('every part');
@@ -98,6 +104,7 @@ describe('durable Bank & Statutory jobs',()=>{
   const [lock]=await owner.client`select pg_try_advisory_lock(hashtextextended('bank-import-worker',0)) as ok`;expect(lock.ok).toBe(true);await owner.client`select pg_advisory_unlock(hashtextextended('bank-import-worker',0))`;
  });
  it('stages and validates 100,001 distinct employees, with real updates at the first, middle and last row',async()=>{
+  const startedAt=Date.now(),checkpoint=(stage:string)=>console.info('[bank-import-capacity]',stage,`${Date.now()-startedAt}ms`);
   const exemplar=await employee();
   // Disposable fixture rows only: use the real canonical statutory setup as the template.
   await owner.client.begin(async fixture=>{
@@ -116,14 +123,18 @@ describe('durable Bank & Statutory jobs',()=>{
     ||jsonb_build_object('id',gen_random_uuid(),'person_id',e.person_id,'ic_number',null,'tax_number','TBASE')) replacement
    where e.tenant_id=${b.tenantId}::uuid and e.employee_code like 'SCALE%'`;
   });
+  await owner.client`analyze person`;await owner.client`analyze employment`;await owner.client`analyze employee_statutory_my`;
+  checkpoint('100001 employee fixture ready');
   const indexes=new Set([1,50001,100001]);
   const csv=content(Array.from({length:100001},(_,i)=>`SCALE${i+1},${indexes.has(i+1)?'TCHANGED':'TBASE'}`));
   const id=await admit(csv);await processBankImportJob(ctx,id);
+  checkpoint('100001 source rows staged');
   const staged=await getBankImportJob(ctx,id);expect(staged.job).toMatchObject({state:'validating',total:100001});
   expect(staged.rows).toHaveLength(100);
-  for(let batch=0;batch<1002;batch++)await processBankImportJob(ctx,id);
+  for(let batch=0;batch<1002;batch++){await processBankImportJob(ctx,id);if(batch%100===99)checkpoint(`${(batch+1)*100} rows validated`);}
   expect((await getBankImportJob(ctx,id)).job).toMatchObject({state:'ready',validated:100001,valid:3,invalid:0,unchanged:99998});
   await bankImportCommand(ctx,id,'confirm');await processBankImportJob(ctx,id);await processBankImportJob(ctx,id);
+  checkpoint('canonical first/middle/last writes complete');
   const done=(await getBankImportJob(ctx,id)).job;expect(done).toMatchObject({state:'completed',total:100001,processed:100001,saved:3,failed:0});
   const changed=await owner.client`select e.employee_code from employee_statutory_my s join employment e on e.person_id=s.person_id where e.tenant_id=${b.tenantId}::uuid and s.tax_number='TCHANGED' order by e.employee_code`;
   expect(changed.map(row=>row.employee_code)).toEqual(['SCALE1','SCALE100001','SCALE50001']);
