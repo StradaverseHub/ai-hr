@@ -13,7 +13,7 @@
  * The provider client is constructed PER CALL inside each adapter from the resolved key — never cached
  * at module scope (a singleton would serve one tenant's drafts with another tenant's key).
  */
-import { captureAiConfig,governed,textReservation } from './governance';
+import { captureAiConfig,governed,textReservation,type UngovernedProbe } from './governance';
 import { captureConversationInput, conversationInputDigest } from './conversation-input';
 import {draftInputDigest} from './draft-input';
 import {captureImageInput,imageInputDigest} from './image-input';
@@ -111,9 +111,9 @@ async function readImageTransport(cfg:ResolvedAiConfig,args:Omit<ImageReadArgs,'
 }
 
 /** Cheapest credential+model probe. Returns ok/false + a generic reason; never throws. */
-export function validateConfig(cfg: ResolvedAiConfig) {
-  cfg=captureAiConfig(cfg);
-  return adapterFor(cfg.provider).validate(cfg);
+export function validateConfig(probe: UngovernedProbe) {
+  const cfg=captureAiConfig(probe);
+  return governed(cfg,{operation:'probe',reservedTokens:0},()=>adapterFor(cfg.provider).validate(cfg));
 }
 
 /** Whether this provider can run the assistant loop (ADR-0082). A cheap UI gate that mirrors

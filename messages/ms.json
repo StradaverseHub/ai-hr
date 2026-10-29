@@ -24037,7 +24037,8 @@
     "operations": {
       "draft": "Draf",
       "conversation": "Pertukaran model",
-      "image": "Bacaan imej"
+      "image": "Bacaan imej",
+      "probe": "Semakan sambungan"
     },
     "reasons": {
       "paused": "Akses AI dijeda",

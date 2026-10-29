@@ -24037,7 +24037,8 @@
     "operations": {
       "draft": "Draft",
       "conversation": "Model exchange",
-      "image": "Image read"
+      "image": "Image read",
+      "probe": "Connection check"
     },
     "reasons": {
       "paused": "AI access paused",

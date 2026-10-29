@@ -24037,7 +24037,8 @@
     "operations": {
       "draft": "草稿",
       "conversation": "模型交互",
-      "image": "图像读取"
+      "image": "图像读取",
+      "probe": "连接检查"
     },
     "reasons": {
       "paused": "AI 访问已暂停",
