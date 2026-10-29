@@ -26,7 +26,7 @@
  *
  * Kept free of 'server-only' (mobile-command-receipt.ts says why).
  */
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { claimRequest, company, employment } from '../db/schema';
@@ -78,8 +78,8 @@ export function currencyOfEmployment(ctx: SessionContext, employmentId: string):
 export function currencyOfClaim(ctx: SessionContext, claimId: string): Promise<string | null> {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx.select({ currency: company.currency }).from(claimRequest)
-      .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
-      .innerJoin(company, eq(company.id, employment.companyId)).where(eq(claimRequest.id, claimId)).limit(1);
+      .innerJoin(sql`LATERAL app.delegated_approval_subject(${claimRequest.employmentId},'claims','claims.claim') AS approval_subject`,sql`true`)
+      .innerJoin(company, sql`${company.id}=approval_subject.company_id`).where(eq(claimRequest.id, claimId)).limit(1);
     return row?.currency ?? null;
   });
 }
@@ -88,8 +88,8 @@ export function currenciesOfClaims(ctx: SessionContext, claimIds: readonly strin
   if (!claimIds.length) return Promise.resolve(new Map());
   return withTenant(ctx, async (tx) => {
     const rows = await tx.select({ id: claimRequest.id, currency: company.currency }).from(claimRequest)
-      .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
-      .innerJoin(company, eq(company.id, employment.companyId)).where(inArray(claimRequest.id, [...claimIds]));
+      .innerJoin(sql`LATERAL app.delegated_approval_subject(${claimRequest.employmentId},'claims','claims.claim') AS approval_subject`,sql`true`)
+      .innerJoin(company, sql`${company.id}=approval_subject.company_id`).where(inArray(claimRequest.id, [...claimIds]));
     return new Map(rows.map((r) => [r.id, r.currency ?? null]));
   });
 }
