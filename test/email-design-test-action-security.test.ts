@@ -50,9 +50,15 @@ describe('Email designer authenticated test-to-self action',()=>{
   ports.internal.mockReturnValue(false);
   await expect(sendEmailDesignTestAction('invitation','en',document())).rejects.toThrow('A verified email address');expect(ports.send).not.toHaveBeenCalled();
  });
- it.each([[],[{...principal,app_user_id:'44444444-4444-4444-8444-444444444444'}],[{...principal,tenant_id:'55555555-5555-4555-8555-555555555555'}]])('refuses missing, other-user or cross-tenant native identity binding before SMTP: %j',async rows=>{
+ it.each([
+  {name:'missing identity binding',rows:[]},
+  {name:'another user binding',rows:[{...principal,app_user_id:'44444444-4444-4444-8444-444444444444'}]},
+  {name:'another tenant binding',rows:[{...principal,tenant_id:'55555555-5555-4555-8555-555555555555'}]},
+ ])('refuses $name before SMTP',async({rows})=>{
   ports.execute.mockReset().mockResolvedValueOnce([{allowed:true}]).mockResolvedValueOnce([]).mockResolvedValueOnce(rows);
-  await expect(sendEmailDesignTestAction('invitation','en',document())).rejects.toThrow('The signed-in identity changed.');expect(ports.send).not.toHaveBeenCalled();
+  await expect(sendEmailDesignTestAction('invitation','en',document())).rejects.toThrow('The signed-in identity changed.');
+  expect(ports.execute).toHaveBeenCalledTimes(3);expect(query(2).sql).toContain('app.principal_by_identity(');expect(query(2).params).toEqual([identity.issuer,identity.subject]);
+  expect(ports.send).not.toHaveBeenCalled();
  });
  it('looks up a forged issuer/subject as supplied and refuses its absent canonical binding',async()=>{
   const forged={...identity,issuer:'https://foreign.example.test/auth/tenant',subject:'forged-subject',email:'foreign@example.test'};ports.identity.mockResolvedValue(forged);
