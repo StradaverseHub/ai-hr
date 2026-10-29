@@ -199,13 +199,13 @@ function EpfElectionBody({
         <div className="grid grid-cols-2 gap-3 sm:col-span-2">
           {showEmployeeRate && (
             <PersonnelField fieldId="bank_statutory.epf_contribution.epfemployeerate" mode={formMode} context={{epfManualPercentage:manualPercentage}}>
-              <input {...personnelInput('bank_statutory.epf_contribution.epfemployeerate',formMode)} {...er.value} ref={employeeRef} {...bounds?.(m, 'employee')} required={formMode !== 'draft' && manualPercentage} aria-invalid={!!errors.employee} onInvalid={invalidRate('employee')} onInput={clearRate('employee')} placeholder="11" className={inputCls} />
+              <input {...personnelInput('bank_statutory.epf_contribution.epfemployeerate',formMode,{epfManualPercentage:manualPercentage})} {...er.value} ref={employeeRef} {...bounds?.(m, 'employee')} aria-invalid={!!errors.employee} onInvalid={invalidRate('employee')} onInput={clearRate('employee')} placeholder="11" className={inputCls} />
               {errors.employee && <span role="alert" className="text-xs text-destructive">{errors.employee}</span>}
             </PersonnelField>
           )}
           {showEmployerRate && (
             <PersonnelField fieldId="bank_statutory.epf_contribution.epfemployerrate" mode={formMode} context={{epfManualPercentage:manualPercentage}}>
-              <input {...personnelInput('bank_statutory.epf_contribution.epfemployerrate',formMode)} {...rr.value} ref={employerRef} {...bounds?.(m, 'employer')} required={formMode !== 'draft' && manualPercentage} aria-invalid={!!errors.employer} onInvalid={invalidRate('employer')} onInput={clearRate('employer')} placeholder="13" className={inputCls} />
+              <input {...personnelInput('bank_statutory.epf_contribution.epfemployerrate',formMode,{epfManualPercentage:manualPercentage})} {...rr.value} ref={employerRef} {...bounds?.(m, 'employer')} aria-invalid={!!errors.employer} onInvalid={invalidRate('employer')} onInput={clearRate('employer')} placeholder="13" className={inputCls} />
               {errors.employer && <span role="alert" className="text-xs text-destructive">{errors.employer}</span>}
             </PersonnelField>
           )}

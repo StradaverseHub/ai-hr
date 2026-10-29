@@ -15,8 +15,8 @@ import { personnelMarkupContract, personnelCaption } from './helpers/personnel-m
  *   §3 a refused election or residency is named on the still-needed list and holds Activate back;
  *   §4 a pre-r393 draft's Yes/No "Tax resident" shows as its mapped-forward choice;
  *   §5 FORM-MODE PARITY: the Active EPF election and Income Tax Resident select, rendered through the shared
- *      components, produce the markup from BEFORE the extraction, byte for byte, in six locales. The
- *      "before" JSX is copied verbatim below from build/r393-statutory@d358d909 (comments dropped).
+ *      components, retain the independently declared form contract in six locales, including approved manual-rate
+ *      requirements and mobile hint layout. The expected JSX below retains all native constraints.
  *
  * jsdom applies no CSS and computes no layout: rendering and interaction logic only.
  */
@@ -323,8 +323,9 @@ describe('§4 a pre-r393 draft shows its Yes/No "Tax resident" as the mapped-for
 });
 
 // ── §5 form-mode parity with the Active card ────────────────────────────────────────────────────────
-// Verbatim from components/epf-election.tsx and components/identity-tax-card.tsx BEFORE r393 step 3b
-// (comments dropped; markup unchanged).
+// Independent retained form contract from before extraction, with the approved distinct manual-rate
+// category, required native manual controls and full-width mobile hint applied explicitly below.
+// The comparison helper still preserves all constraints, values, options and layout classes.
 const beforeInputCls =
   'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
 function BeforeField({ label, children }: { label: string; children: ReactNode }) {
@@ -358,6 +359,7 @@ function beforeUiModeFrom(
   employeeAmount: number | null,
   employerAmount: number | null,
 ): BeforeUiMode {
+  if (mode === 'manual_percentage') return 'manual_percentage';
   if (mode === 'exempt') return 'none';
   if (mode === 'voluntary_excess') {
     return employeeRate != null && employerRate == null ? 'semi_auto' : 'voluntary_percentage';
@@ -401,18 +403,18 @@ function BeforeEpfElection({ mode, employeeRate, employerRate, employeeAmount, e
         <div className="grid grid-cols-2 gap-3 sm:col-span-2">
           {showEmployeeRate && (
             <BeforeField label={t('epfEmployeeRate')}>
-              <input name="epfEmployeeRate" aria-invalid="false" type="number" min="11" max="100" step="0.01" defaultValue={employeeRate ?? ''} placeholder="11" className={beforeInputCls} />
+              <input name="epfEmployeeRate" aria-invalid="false" type="number" min={m === 'manual_percentage' ? 1 : 11} max="100" step="0.01" required={m === 'manual_percentage'} defaultValue={employeeRate ?? ''} placeholder="11" className={beforeInputCls} />
             </BeforeField>
           )}
           {showEmployerRate && (
             <BeforeField label={t('epfEmployerRate')}>
-              <input name="epfEmployerRate" aria-invalid="false" type="number" min="12" max="100" step="0.01" defaultValue={employerRate ?? ''} placeholder="13" className={beforeInputCls} />
+              <input name="epfEmployerRate" aria-invalid="false" type="number" min={m === 'manual_percentage' ? 1 : 12} max="100" step="0.01" required={m === 'manual_percentage'} defaultValue={employerRate ?? ''} placeholder="13" className={beforeInputCls} />
             </BeforeField>
           )}
           {m === 'semi_auto' ? (
-            <p className="text-xs text-muted-foreground sm:col-span-2">{t('epfSemiAutoHint')}</p>
+            <p className="col-span-2 text-xs text-muted-foreground">{t('epfSemiAutoHint')}</p>
           ) : (
-            <p className="text-xs text-muted-foreground sm:col-span-2">{t('epfVoluntaryHint')}</p>
+            <p className="col-span-2 text-xs text-muted-foreground">{t(m === 'manual_percentage' ? 'epfManualPercentageHint' : 'epfVoluntaryHint')}</p>
           )}
         </div>
       )}
@@ -431,7 +433,7 @@ function BeforeEpfElection({ mode, employeeRate, employerRate, employeeAmount, e
           <BeforeField label={t('epfManualReason')}>
             <input name="epfManualReason" type="text" maxLength={500} required defaultValue={manualReason ?? ''} className={beforeInputCls} />
           </BeforeField>
-          <p className="text-xs text-muted-foreground sm:col-span-2">{t('epfManualAmountHint')}</p>
+          <p className="col-span-2 text-xs text-muted-foreground">{t('epfManualAmountHint')}</p>
         </div>
       )}
     </>
@@ -468,6 +470,7 @@ describe('§5 the Active EPF election and Income Tax Resident select retain the 
   const EPF_CASES: EpfProps[] = [
     { mode: null, employeeRate: null, employerRate: null, employeeAmount: null, employerAmount: null, manualReason: null },
     { mode: 'auto', employeeRate: null, employerRate: null, employeeAmount: null, employerAmount: null, manualReason: null },
+    { mode: 'manual_percentage', employeeRate: 5.5, employerRate: 6.5, employeeAmount: null, employerAmount: null, manualReason: null },
     { mode: 'voluntary_excess', employeeRate: 14.5, employerRate: 16, employeeAmount: null, employerAmount: null, manualReason: null },
     { mode: 'voluntary_excess', employeeRate: 20, employerRate: null, employeeAmount: null, employerAmount: null, manualReason: null },
     { mode: 'voluntary_excess', employeeRate: null, employerRate: null, employeeAmount: null, employerAmount: null, manualReason: null },

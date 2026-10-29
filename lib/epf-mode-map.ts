@@ -150,5 +150,10 @@ export function epfUiModeFrom(
 /** Stored fractional EPF rate to the percent shown by the existing Personnel election controls. */
 export function epfRateToPercent(value:string|number|null|undefined):number|null {
  if(value==null||value==='')return null;
- const amount=Number(value);return Number.isFinite(amount)?amount*100:null;
+ const amount=Number(value);if(!Number.isFinite(amount))return null;
+ // Persisted rates have four decimal places. Project their integer basis points to two-decimal
+ // percentage inputs without binary multiplication tails (0.1450 must display as 14.5). Leave
+ // unsupported extra precision visible so native/server validation can refuse it, rather than round it.
+ const basisPoints=amount*10000,integer=Math.round(basisPoints);
+ return Number.isSafeInteger(integer)&&Math.abs(basisPoints-integer)<0.0000001?integer/100:amount*100;
 }

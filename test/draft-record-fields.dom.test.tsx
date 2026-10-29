@@ -25,6 +25,7 @@
  * dev-server render check.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {EXPECTED_EPF_UI_CHOICES} from './helpers/epf-election-expectations';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
@@ -285,22 +286,15 @@ describe('Employment — probation, confirmation and the two notice periods', ()
 describe('Bank & Statutory — the EPF category, the employer-bears switches, the reliefs and the levy', () => {
   // r393 (685d2380 step 3b) — this test was "offers the record’s FOUR names": the draft deliberately left out
   // the three Manual (by Amount) categories because their figure could only be judged after the employee
-  // existed. The rule is now asked before Activate, so the draft offers the record's SEVEN — the same list.
-  it('the EPF category offers the record’s seven names and stores the one picked', async () => {
+  // existed. The rule is now asked before Activate, so the draft offers the same categories.
+  // The approved manual-rate change adds a distinct legacy top-up choice.
+  it('the EPF category offers eight distinct names and stores the one picked', async () => {
     wrap();
     await openTab(messages.people.detail.tabs.bankStatutory);
     const sel = field(detail.epfMode) as HTMLSelectElement;
-    // The lawful KWSP enum has four values and HR never sees it: the NAMES are the model, so they must
-    // be the record's own. 'manual_fixed' is retired and is offered on neither screen.
-    expect([...sel.options].map((o) => o.textContent)).toEqual([
-      detail.epfModeAuto,
-      detail.epfModeManualPercentage,
-      detail.epfModeSemiAuto,
-      detail.epfModeManualEmployeeAmount,
-      detail.epfModeManualEmployerAmount,
-      detail.epfModeManualBothAmount,
-      detail.epfModeExempt,
-    ]);
+    // The UI keeps manual percentage and legacy top-up distinct even though other categories share
+    // persisted calculation modes. 'manual_fixed' is retired and offered on neither screen.
+    expect([...sel.options].map((o) => ({value:o.value,label:o.textContent}))).toEqual(EXPECTED_EPF_UI_CHOICES.map(choice=>({value:choice.value,label:detail[choice.message]})));
     await userEvent.selectOptions(sel, 'semi_auto');
     await save();
     expect(savedData().statutory?.epfMode).toBe('semi_auto');

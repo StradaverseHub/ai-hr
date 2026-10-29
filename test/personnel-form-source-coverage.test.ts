@@ -1,6 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {fileURLToPath} from 'node:url';
 import {readFileSync} from 'node:fs';
+import {personnelInput} from '../lib/personnel-form-contract';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import {personnelFormSources,personnelImportSourceReader,PERSONNEL_FORM_ROOTS} from './helpers/personnel-form-files';
 import {auditPersonnelFormSource,type PersonnelSourceExemption} from './helpers/personnel-form-source';
@@ -55,6 +56,25 @@ describe('actual mounted Personnel form inventory',()=>{
     expect(issues,'complete mounted-form inventory').toEqual([]);
     expect(controlCount).toBeGreaterThan(100);
     expect(boundaries.get('components/profile-option-select.tsx')).toContain('owning Personnel widget');
+  });
+  it('owns EPF native requirements in descriptor context and bounds the transient conversion acknowledgement',()=>{
+    for(const side of ['employee','employer']){
+      const id=`bank_statutory.epf_contribution.epf${side}rate`;
+      expect(personnelInput(id,'edit',{epfManualPercentage:true}).required).toBe(true);
+      expect(personnelInput(id,'edit',{epfManualPercentage:false}).required).toBe(false);
+      expect(personnelInput(id,'draft',{epfManualPercentage:true}).required).toBe(false);
+    }
+    const file='components/epf-election.tsx',source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
+    const audit=(text:string)=>auditPersonnelFormSource(file,text,PERSONNEL_FIELDS,{exemptions:exemptions[file],resolveImportSource:personnelImportSourceReader(root)});
+    expect(audit(source).issues).toEqual([]);
+    expect(exemptions[file].map(({tag,name,context,hidden,occurrences})=>({tag,name,context,hidden,occurrences}))).toEqual([{tag:'input',name:'epfManualPercentageAdoptionConfirmed',context:'EpfElectionBody',hidden:false,occurrences:1}]);
+    const binding="personnelInput('bank_statutory.epf_contribution.epfemployeerate',formMode,{epfManualPercentage:manualPercentage})";
+    expect(source).toContain(binding);
+    expect(audit(source.replace(binding,binding+'} required={true')).issues.some(issue=>issue.message.includes('required bypasses descriptor'))).toBe(true);
+    const checkbox='<input type="checkbox" name="epfManualPercentageAdoptionConfirmed"';
+    expect(source).toContain(checkbox);
+    expect(audit(source.replace(checkbox,checkbox+' /><input type="checkbox" name="epfManualPercentageAdoptionConfirmed"')).issues.some(issue=>issue.message.includes('occurrence changed'))).toBe(true);
+    expect(audit(source.replace('name="epfManualPercentageAdoptionConfirmed"','name="unknownAcknowledgement"')).issues.some(issue=>issue.message.includes('Unbound Personnel control'))).toBe(true);
   });
   it('keeps Workforce transport exemptions finite and refuses invented or cross-register bindings',()=>{
     for(const kind of ['person','qualification','emergency','dependent'] as const)for(const {key,field}of workforceMaintenanceFields(kind)){
