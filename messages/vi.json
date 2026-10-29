@@ -28191,6 +28191,7 @@
       "expired": "Bản xem lại này đã hết hạn. Mở Nghỉ phép để kiểm tra hoặc tạo đơn.",
       "refused": "Không thể sử dụng bản xem lại này. Mở Nghỉ phép để kiểm tra đơn của bạn.",
       "unavailable": "Đi đường quen nhé: bản xem lại này chưa khả dụng. Mở Nghỉ phép để kiểm tra đơn của bạn.",
+      "useLeaveForm": "Yêu cầu này cần dùng biểu mẫu Nghỉ phép đầy đủ, ví dụ vì số dư của bạn không đủ, ngày đã qua hoặc loại nghỉ phép cần thêm thông tin. Chưa có gì được lưu. Hãy dùng Tiếp tục trong biểu mẫu Nghỉ phép.",
       "invalidSelection": "Chọn hồ sơ việc làm của chính bạn, loại nghỉ và ngày hợp lệ.",
       "needsRemark": "Thêm ghi chú nhân viên do bạn tự viết, rồi chuẩn bị lại bản xem lại.",
       "openRequests": "Mở các đơn nghỉ",
