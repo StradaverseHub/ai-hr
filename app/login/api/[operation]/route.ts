@@ -7,19 +7,15 @@ import { AuthBusyError } from '@/lib/internal-auth/crypto';
 import { InternalAuthError, startLogin, changeInitialPassword, verifyMfa, rotateRefresh, revokeSession, type AuthReply } from '@/lib/internal-auth/service';
 import { requestRecovery, completeRecovery } from '@/lib/internal-auth/recovery';
 import { startInvitation, acceptInternalInvitation } from '@/lib/internal-auth/invitations';
+import { readBoundedBody } from '@/lib/bounded-body';
+import { createRequestAdmission, createScopedAdmission, RequestBudgetExceeded, takeRequestBudget, trustedRequestSource } from '@/lib/request-budget';
+const admit = createRequestAdmission(8);
+const admitSource = createScopedAdmission(4);
 const responseHeaders = { 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' };
 async function readBody(request: Request): Promise<Record<string, unknown>> {
   if (request.headers.get('content-type')?.split(';')[0].trim() !== 'application/json') throw new InternalAuthError('invalidChallenge');
-  const reader = request.body?.getReader();
-  if (!reader) throw new InternalAuthError('invalidChallenge');
-  const chunks: Uint8Array[] = []; let size = 0;
-  for (;;) {
-    const next = await reader.read(); if (next.done) break;
-    size += next.value.byteLength; if (size > 8192) { await reader.cancel(); throw new InternalAuthError('invalidChallenge'); }
-    chunks.push(next.value);
-  }
   let value: unknown;
-  try { value = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+  try { value = JSON.parse(Buffer.from(await readBoundedBody(request, 8192, 10_000, request.signal)).toString('utf8')); }
   catch { throw new InternalAuthError('invalidChallenge'); }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new InternalAuthError('invalidChallenge');
   return value as Record<string, unknown>;
@@ -39,13 +35,19 @@ export async function POST(request: NextRequest, context: { params: Promise<{ op
   if ((origin && origin !== internalConfig().origin) || (!native && origin !== internalConfig().origin))
     return NextResponse.json({ error: 'forbidden' }, { status: 403, headers: responseHeaders });
   let result: AuthReply | { step: string };
+  let release: (() => void) | undefined;
+  let releaseSource: (() => void) | undefined;
   try {
+    release = admit();
+    const source = trustedRequestSource(request);
+    if (source) releaseSource = admitSource(source);
+    if (source) await takeRequestBudget(['auth-source', source, operation === 'recovery' || operation === 'invite' ? 'mail' : 'session'], operation === 'recovery' || operation === 'invite' ? 12 : 60, 60);
     const body = await readBody(request);
-    if (operation === 'login') result = await startLogin({ organization: text(body, 'organization', 64), username: text(body, 'username', 64), password: text(body, 'password', 128), native });
+    if (operation === 'login') result = await startLogin({ organization: text(body, 'organization', 64), username: text(body, 'username', 64), password: text(body, 'password', 128), native, sourceBudgeted:source!==null });
     else if (operation === 'password') result = await changeInitialPassword(text(body, 'challenge', 43), text(body, 'password', 128), native);
     else if (operation === 'mfa') result = await verifyMfa(text(body, 'challenge', 43), text(body, 'code', 64), native);
     else if (operation === 'refresh' && native) result = await rotateRefresh(text(body, 'refresh_token', 80));
-    else if (operation === 'invite') result = await startInvitation(text(body, 'token', 43), text(body, 'username', 64), text(body, 'password', 128), native);
+    else if (operation === 'invite') result = await startInvitation(text(body, 'token', 43), text(body, 'username', 64), text(body, 'password', 128), native, source!==null);
     else if (operation === 'accept-invite' && !native) {
       const identity = await (await import('@/lib/internal-auth/web-session')).currentInternalIdentity();
       if (!identity?.emailVerified) throw new InternalAuthError('invalidLogin');
@@ -55,7 +57,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ op
       const startedAt = Date.now();
       // Commit the request first, then keep SMTP latency out of the public response. This schedules
       // only the new request's one attempt; held failures are never replayed by a background worker.
-      await requestRecovery(text(body, 'organization', 64), text(body, 'username', 64), undefined, attempt => after(attempt),emailLocale.parse(body.locale??await getLocale()));
+      await requestRecovery(text(body, 'organization', 64), text(body, 'username', 64), undefined, attempt => after(attempt), source!==null, emailLocale.parse(body.locale??await getLocale()));
       await new Promise(resolve => setTimeout(resolve, Math.max(0, 250 - (Date.now() - startedAt))));
       result = { step: 'sent' };
     } else if (operation === 'reset') {
@@ -81,11 +83,13 @@ export async function POST(request: NextRequest, context: { params: Promise<{ op
     if ((operation === 'logout' || result.step === 'activated') && !native) response.cookies.set(INTERNAL_SESSION_COOKIE, '', { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 0 });
     return response;
   } catch (error) {
+    if (error instanceof RequestBudgetExceeded) return NextResponse.json({ error: 'rateLimited' }, { status: 429,
+      headers: { ...responseHeaders, 'retry-after': String(error.retryAfter) } });
     const code = error instanceof InternalAuthError ? error.code : error instanceof AuthBusyError ? 'unavailable' : 'unavailable';
     if (!(error instanceof InternalAuthError) && !(error instanceof AuthBusyError)) console.error('Internal authentication operation unavailable.');
     const response = NextResponse.json({ error: code }, { status: code === 'rateLimited' ? 429 : code === 'unavailable' ? 503 : code === 'invalidLogin' ? 401 : 400,
       headers: { ...responseHeaders, ...(code === 'rateLimited' ? { 'retry-after': '900' } : {}) } });
     if (operation === 'logout' && !native) response.cookies.set(INTERNAL_SESSION_COOKIE, '', { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 0 });
     return response;
-  }
+  } finally { releaseSource?.(); release?.(); }
 }

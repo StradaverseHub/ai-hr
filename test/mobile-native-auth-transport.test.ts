@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAuthState } from '../mobile/lib/auth-state';
 import { createInstallationStore } from '../mobile/lib/installation-store';
 import { providerLogoutUrl, sessionIdFromToken } from '../mobile/lib/provider-logout';
-import { SessionChangedError, SignInRequiredError, UnavailableError } from '../mobile/lib/errors';
+import { NetworkUnavailableError, SessionChangedError, SignInRequiredError, UnavailableError } from '../mobile/lib/errors';
+import {readBoundedBody} from '../lib/bounded-body';
 
 function token(sid: string) {
   return `header.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 300, sid })).toString('base64url')}.signature`;
@@ -33,27 +34,44 @@ function fixture(keycloak: boolean | "internal" = false) {
     beginSignIn: () => number; completeSignIn: (code: string, verifier: string, owner: number) => Promise<void>;
     signOut: () => Promise<void>; workosLogoutUrl: () => string | null } };
   const deviceModule = { exports: {} };
+  const endOfflineAnchor = vi.fn();
   runInNewContext(transpileModule(readFileSync('mobile/lib/device-registration.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText,
     { exports: deviceModule.exports, module: deviceModule, require: (id: string) => { if (id === 'expo-secure-store') return secure; throw new Error(id); } });
   const code = transpileModule(readFileSync('mobile/lib/auth.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText;
-  runInNewContext(code, { exports: output.exports, module: output, fetch: response, AbortController, AbortSignal, URLSearchParams, atob, setTimeout, clearTimeout,
+  runInNewContext(code, { exports: output.exports, module: output, fetch: response, AbortController, AbortSignal, URLSearchParams, TextDecoder, atob, setTimeout, clearTimeout,
     require: (id: string) => {
       if (id === 'expo-auth-session') return { makeRedirectUri: () => 'aihr://auth/callback' };
+      if (id === 'expo/fetch') return {fetch:response};
+      if (id === '../../lib/bounded-body') return {readBoundedBody};
       if (id === 'expo-secure-store') return secure;
       if (id === 'expo-file-system') return { File, Paths: { document: 'sandbox' } };
       if (id === './device-registration') return deviceModule.exports;
       if (id === './auth-state') return { createAuthState };
       if (id === './installation-store') return { createInstallationStore };
+      if (id === './submission-native') return { resetSubmissionInstallation: async()=>{} };
+      if (id === './offline-anchor') return { endOfflineAnchor };
       if (id === './provider-logout') return { providerLogoutUrl, sessionIdFromToken };
       if (id === './config') return { config: { authProvider: embedded ? 'internal' : keycloak ? 'keycloak' : 'workos', apiUrl: 'https://hr.test', issuer: 'https://identity.test/realms/test', workosClientId: 'public-client-id', scheme: 'aihr' }, configProblem: () => null, identityClientId: () => 'public-client-id', identityNamespace: () => namespace };
-      if (id === './errors') return { SignInRequiredError, UnavailableError };
+      if (id === './errors') return { SignInRequiredError, UnavailableError, NetworkUnavailableError };
       throw new Error(`Unexpected auth adapter dependency: ${id}`);
     } });
-  return { auth: output.exports, response, secure, files, initialRefresh, stored: () => stored };
+  return { auth: output.exports, response, secure, files, initialRefresh, stored: () => stored, endOfflineAnchor };
 }
 afterEach(() => vi.useRealTimers());
 
 describe('native WorkOS exchange — shipped adapter', () => {
+  it('bounds a chunked successful token response before parsing or persisting it',async()=>{
+    const f=fixture(),cancel=vi.fn();
+    f.response.mockResolvedValueOnce(new Response(new ReadableStream({start(controller){controller.enqueue(new Uint8Array(40000));},cancel})));
+    await expect(f.auth.refresh()).rejects.toBeInstanceOf(UnavailableError);
+    expect(cancel).toHaveBeenCalledOnce();expect(f.secure.setItemAsync).not.toHaveBeenCalled();
+  });
+  it('bounds the token response body independently of native fetch abort handling',async()=>{
+    vi.useFakeTimers();const f=fixture(),cancel=vi.fn();
+    f.response.mockResolvedValueOnce(new Response(new ReadableStream({start(){},cancel})));
+    const assertion=expect(f.auth.refresh()).rejects.toBeInstanceOf(UnavailableError);
+    await vi.advanceTimersByTimeAsync(15001);await assertion;expect(cancel).toHaveBeenCalledOnce();
+  });
   it.each([429, 500, 503])('HTTP %s is an outage and preserves the stored credential', async (status) => {
     const f = fixture(); const original = f.stored();
     f.response.mockResolvedValueOnce(new Response('', { status }));
@@ -169,5 +187,20 @@ describe('native embedded exchange — shipped adapter', () => {
     expect(url).toBe('https://hr.test/login/api/logout');
     expect(JSON.parse(String(init?.body))).toEqual({ refresh_token: f.initialRefresh });
     expect(init?.credentials).toBe('omit'); expect(f.auth.workosLogoutUrl()).toBeNull();
+  });
+});
+
+describe('offline clocking hooks in the shipped auth adapter', () => {
+  it('logout ends the device-only offline identity anchor alongside the credential', async () => {
+    const f = fixture(); await f.auth.signOut();
+    expect(f.endOfflineAnchor).toHaveBeenCalledOnce(); expect(f.stored()).toBeNull();
+  });
+  it('a refresh with no HTTP response is the offline connectivity signal; an HTTP outage is not', async () => {
+    const f = fixture(); f.response.mockRejectedValueOnce(new TypeError('Network request failed'));
+    const offline = await f.auth.refresh().catch((error: unknown) => error);
+    expect(offline).toBeInstanceOf(NetworkUnavailableError); expect(offline).toBeInstanceOf(UnavailableError);
+    f.response.mockResolvedValueOnce(new Response('', { status: 503 }));
+    const outage = await f.auth.refresh().catch((error: unknown) => error);
+    expect(outage).toBeInstanceOf(UnavailableError); expect(outage).not.toBeInstanceOf(NetworkUnavailableError);
   });
 });

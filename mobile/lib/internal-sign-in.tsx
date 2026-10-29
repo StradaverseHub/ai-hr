@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { fetch as nativeFetch } from 'expo/fetch';
 import { Image, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
@@ -36,7 +37,7 @@ export function InternalSignIn() {
       if (!step) {
         owner.current = beginSignIn();
         if (runtimeConnections && !company) throw new InternalSignInError('unavailable');
-        if (company) await verifyCompanyServer(company);
+        if (company) await verifyCompanyServer(company,nativeFetch);
         assertAuthGeneration(owner.current);
       }
       const result = await internalAuthRequest(!step ? 'login' : step.step === 'password' ? 'password' : 'mfa', body, owner.current!);

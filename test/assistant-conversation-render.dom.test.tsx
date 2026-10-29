@@ -4,7 +4,7 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viCopy from '../messages/vi.json';
-const state=vi.hoisted(()=>({locale:'en',data:{} as unknown,reviewLinks:vi.fn()}));
+const state=vi.hoisted(()=>({locale:'en',data:{} as unknown,reviewLinks:vi.fn(),proposalCard:vi.fn()}));
 const copies:Record<string,unknown>={en,ms,zh,ta,th,vi:viCopy};
 vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations:async(namespace:string)=>(key:string,params?:Record<string,string|number>)=>{
  let value:unknown=copies[state.locale];for(const part of [...namespace.split('.'),...key.split('.')])value=(value as Record<string,unknown>)[part];if(typeof value!=='string')throw Error('Missing translated conversation copy');return value.replace(/\{(\w+)\}/g,(_whole,field:string)=>String(params?.[field]??''));
@@ -15,6 +15,8 @@ vi.mock('../app/assistant/governed-job-actions',()=>({runGovernedPlanAction:vi.f
 // This spy tests the parent composition condition only; separate real-view footer cases own route boundaries.
 vi.mock('../components/assistant/conversation-review-links',()=>({ConversationReviewLinks:async(props:unknown)=>{state.reviewLinks(props);return null;}}));
 vi.mock('../components/assistant/module-specialist-findings',()=>({ModuleSpecialistFindings:()=>null}));
+// The inline review card is a client component with its own DOM tests; here only the composition is checked.
+vi.mock('../components/assistant/conversation-action-proposal',async()=>{const React=await import('react');return {ConversationActionProposal:(props:{action:string;hints:unknown})=>{state.proposalCard(props);return React.createElement('div',{'data-proposal-card':props.action});}};});
 vi.mock('../core/module-agent-releases',()=>({reopenGovernedModuleReadJobTx:vi.fn(),readGovernedSpecialistToolResultTx:vi.fn()}));
 vi.mock('../core/assistant-tools',()=>({toolsFor:()=>[]}));
 vi.mock('../core/assistant-read-session',()=>({withAssistantRead:vi.fn(async(_ctx:unknown,module:string,consume:(read:unknown)=>Promise<unknown>)=>consume({moduleWork:async()=>({module,capability:MODULE_AGENT_CAPABILITIES.find(row=>row[0]===module)![1],scope:'current-caller',data:state.data})}))}));
@@ -159,5 +161,25 @@ describe('grounded conversation rendering',()=>{
   state.locale=locale;const copy=localeCopy(locale).assistant.workspace;
   for(const plan of [{version:1,mode:'insufficient',code:'no_verified_facts'},{version:1,mode:'insufficient',code:'unsupported_explanation'},{version:1,mode:'refuse',code:'unsupported_request'},{version:1,mode:'refuse',code:'human_review_required'}] as const){const shown=render(await GroundedWorkspaceReply({ctx,reply:reply(plan)}));expect(screen.getByRole('status').textContent).toBe(copy.conversation[`${plan.mode}_${plan.code}` as keyof typeof copy.conversation]);expect(shown.container.querySelector('details')).toBeNull();shown.unmount();}
   const shown=render(await GroundedWorkspaceReply({ctx,reply:{...reply({version:1,mode:'clarify',slot:'period'}),conversation:null}}));expect(shown.container.textContent).toContain(copy.answers.generic);expect(shown.container.querySelector('form')).toBeNull();
+ });
+});
+describe('ADR-0151 §4.3 inline proposal card',()=>{
+ it('renders the card for an adjudicated proposal inside the exchange, with no review links or facts',async()=>{
+  state.proposalCard.mockClear();state.reviewLinks.mockClear();
+  const plan:AssistantAnswerPlan={version:1,mode:'propose',action:'leave.cancel',hints:{startDate:'2026-11-03'}};
+  const shown=render(await GroundedWorkspaceReply({ctx,exchangeId,reply:reply(plan)}));
+  expect(shown.container.querySelector('[data-proposal-card="leave.cancel"]')).not.toBeNull();
+  expect(state.proposalCard).toHaveBeenCalledWith({action:'leave.cancel',hints:{startDate:'2026-11-03'}});expect(state.reviewLinks).not.toHaveBeenCalled();
+ });
+ it('refuses a widened, fact-carrying or undeclared proposal before rendering any card',async()=>{
+  state.proposalCard.mockClear();
+  for(const [plan,facts] of [
+   [{version:1,mode:'propose',action:'leave.cancel',hints:{},actionId:'00000000-0000-4000-8000-000000000009'},[]],
+   [{version:1,mode:'propose',action:'payroll.close',hints:{}},[]],
+  ] as const){
+   const shown=render(await GroundedWorkspaceReply({ctx,exchangeId,reply:reply(plan as unknown as AssistantAnswerPlan,facts)}));
+   expect(screen.getByRole('status').textContent).toBe(en.assistant.workspace.conversation.unavailable);expect(shown.container.querySelector('[data-proposal-card]')).toBeNull();cleanup();
+  }
+  expect(state.proposalCard).not.toHaveBeenCalled();
  });
 });

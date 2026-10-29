@@ -1,0 +1,279 @@
+/** Local enrollment recovery. Only the server owns key enrollment/authorization; no trust tier here. */
+import {z} from 'zod';
+import {ClockSigningKey} from './clock-signing-key';
+import {AppleEnrollmentSettings,keyEnrollmentClientData,nativeKeyBindingData} from '../../lib/mobile-key-enrollment';
+import * as C from '../../lib/mobile-integrity-contract';
+import type {createIntegrityBridge} from './integrity-bridge';
+
+const uuid=z.string().uuid().transform(value=>value.toLowerCase());
+const hash32=z.string().length(44).regex(/^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$/);
+const artifact=z.string().min(4).max(87384).refine(value=>value.trim()===value).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$/)
+  .refine(value=>value.length/4*3-(value.endsWith('==')?2:value.endsWith('=')?1:0)<=65536);
+export const EnrollmentScope=z.object({namespace:z.string().min(1).max(2048),apiOrigin:AppleEnrollmentSettings.shape.apiOrigin,actorId:uuid,appInstallationId:uuid}).strict();
+export type EnrollmentScope=z.infer<typeof EnrollmentScope>;
+const intent=z.object({employmentId:uuid,requestId:uuid}).strict();
+const prepared=C.IntegrityEnrollmentPrepared.options[0];
+const bound=intent.extend({prepared}).strict();
+const keyed=bound.extend({vendorKeyId:hash32}).strict();
+const pending=z.discriminatedUnion('phase',[
+  intent.extend({phase:z.literal('requested')}).strict(),
+  bound.extend({phase:z.literal('prepared')}).strict(),bound.extend({phase:z.literal('key_requested')}).strict(),
+  keyed.extend({phase:z.literal('key_ready')}).strict(),keyed.extend({phase:z.literal('attestation_requested')}).strict(),
+  keyed.extend({phase:z.literal('proof_ready'),attestation:artifact}).strict(),
+]);
+const registered=keyed.extend({key:C.IntegrityKeyReceipt}).strict();
+const snapshotFields={revision:z.number().int().positive().max(999999999999999),scope:EnrollmentScope,
+  pending:pending.nullable(),key:registered.nullable()};
+const snapshot=z.discriminatedUnion('version',[
+  z.object({version:z.literal(1),...snapshotFields}).strict(),
+  z.object({version:z.literal(2),...snapshotFields,revocation:z.literal('requested')}).strict(),
+  // Keep v1/v2 bytes readable and unchanged until the first explicit retirement. Native Apple
+  // proof storage has sixteen lifetime records; retain at most fifteen predecessors plus current.
+  z.object({version:z.literal(3),...snapshotFields,retired:z.array(registered).min(1).max(15),revocation:z.literal('requested').optional()}).strict(),
+]);
+export type EnrollmentSnapshot=z.infer<typeof snapshot>;
+type Pending=z.infer<typeof pending>;
+type Prepared=z.infer<typeof prepared>;
+type Key=z.infer<typeof C.IntegrityKeyReceipt>;
+function checked<S extends z.ZodType>(schema:S,value:unknown):z.output<S>{try{return schema.parse(value);}catch{throw new EnrollmentJournalUnavailable();}}
+export class EnrollmentJournalUnavailable extends Error{constructor(){super('Device enrollment storage unavailable');this.name='EnrollmentJournalUnavailable';}}
+export class EnrollmentConflict extends Error{constructor(){super('Reconcile the retained device enrollment');this.name='EnrollmentConflict';}}
+function receiptMatches(key:Key,p:Prepared){
+  return key.originChallengeId===p.context.challengeId&&key.appId===p.context.target.appId&&key.environment===p.context.target.environment&&
+    key.proofKind===(p.context.target.requiredMetadata?'apple_app_metadata':'apple_key_proof');
+}
+function contextMatches(scope:EnrollmentScope,p:z.infer<typeof bound>){
+  const c=p.prepared.context;return c.actorId===scope.actorId&&c.apiOrigin===scope.apiOrigin&&c.appInstallationId===scope.appInstallationId&&
+    c.employmentId===p.employmentId&&c.requestId===p.requestId;
+}
+export function parseEnrollmentSnapshot(value:unknown,rawScope:EnrollmentScope):EnrollmentSnapshot{
+  try{
+    const scope=EnrollmentScope.parse(rawScope),s=snapshot.parse(value);
+    if(JSON.stringify(s.scope)!==JSON.stringify(scope)||s.pending&&s.key||s.version===3&&!s.key&&!s.pending)throw new Error();
+    if((s.version===2||s.version===3&&s.revocation==='requested')&&(!s.key||s.pending||s.key.key.revokedAt!==null))throw new Error();
+    if(s.pending&&s.pending.phase!=='requested'&&!contextMatches(scope,s.pending))throw new Error();
+    if(s.key&&(!contextMatches(scope,s.key)||!receiptMatches(s.key.key,s.key.prepared)))throw new Error();
+    const records=[...(s.version===3?s.retired:[]),...(s.key?[s.key]:[])];
+    if(s.version===3&&s.retired.some(record=>record.key.revokedAt===null||!contextMatches(scope,record)||!receiptMatches(record.key,record.prepared)))throw new Error();
+    const requests=[...records.map(record=>record.requestId),...(s.pending?[s.pending.requestId]:[])];
+    const challenges=[...records.map(record=>record.prepared.context.challengeId),...(s.pending&&s.pending.phase!=='requested'?[s.pending.prepared.context.challengeId]:[])];
+    const vendors=[...records.map(record=>record.vendorKeyId),...(s.pending&&'vendorKeyId' in s.pending?[s.pending.vendorKeyId]:[])];
+    if(new Set(requests).size!==requests.length||new Set(challenges).size!==challenges.length||new Set(vendors).size!==vendors.length||new Set(records.map(record=>record.key.keyId)).size!==records.length)throw new Error();
+    return s;
+  }catch{throw new EnrollmentJournalUnavailable();}
+}
+export type EnrollmentPorts={
+  assertCurrent():void;
+  read():Promise<EnrollmentSnapshot|null>;
+  commit(value:EnrollmentSnapshot):Promise<void>;
+  digest(value:string,encoding:'hex'|'base64'):Promise<string>;
+  native:ReturnType<typeof createIntegrityBridge>;
+  prepare(employmentId:string,intent:{requestId:string;appInstallationId:string}):Promise<unknown>;
+  complete(employmentId:string,input:z.infer<typeof C.IntegrityEnrollmentProof>):Promise<unknown>;
+  receipt(employmentId:string,input:z.infer<typeof C.IntegrityKeyLookupIntent>):Promise<unknown>;
+  revoke(employmentId:string,input:z.infer<typeof C.IntegrityRevokeIntent>):Promise<unknown>;
+};
+type PendingReason='server_unavailable'|'server_refused'|'vendor_outage'|'native_unavailable'|'unsupported'|'recovery_required'|'challenge_unavailable'|'history_full';
+export type EnrollmentStatus={status:'empty'}|{status:'pending';requestId:string;employmentId:string;phase:Pending['phase'];reason?:PendingReason}|
+  {status:'stored_key';keyId:string;revoked:boolean;reason?:PendingReason}|{status:'revocation_pending';keyId:string;reason?:PendingReason};
+// Shared across all journal instances/generations. A fresh operation always reads the commit pointer;
+// it never uses another owner's stale cached snapshot after an ambiguous write or account change.
+const queues=new Map<string,Promise<void>>();
+function exclusive<T>(key:string,run:()=>Promise<T>):Promise<T>{
+  const next=(queues.get(key)??Promise.resolve()).then(run),tail=next.then(()=>{},()=>{});queues.set(key,tail);
+  return next.finally(()=>{if(queues.get(key)===tail)queues.delete(key);});
+}
+export function createEnrollmentJournal(rawScope:EnrollmentScope,ports:EnrollmentPorts){
+  const scope=EnrollmentScope.parse(rawScope),queue=JSON.stringify(scope);
+  async function owned<T>(work:()=>Promise<T>){ports.assertCurrent();try{const value=await work();ports.assertCurrent();return value;}catch(error){ports.assertCurrent();throw error;}}
+  async function read(){
+    const raw=await owned(()=>ports.read());if(!raw)return {version:1 as const,revision:0,scope,pending:null,key:null};
+    const s=parseEnrollmentSnapshot(raw,scope);
+    if(s.pending&&s.pending.phase!=='requested')await checkPrepared(s.pending.prepared,s.pending);
+    for(const record of [...(s.version===3?s.retired:[]),...(s.key?[s.key]:[])]){await checkPrepared(record.prepared,record);await checkKeyBinding(record);}return s;
+  }
+  const history=(s:Awaited<ReturnType<typeof read>>)=>s.version===3?s.retired:[];
+  const revocationPending=(s:Awaited<ReturnType<typeof read>>)=>s.version===2||s.version===3&&s.revocation==='requested';
+  async function save(s:Awaited<ReturnType<typeof read>>,p:Pending|null,key:EnrollmentSnapshot['key']=null,revoking=false,retired=history(s)){
+    const next=parseEnrollmentSnapshot({version:retired.length?3:revoking?2:1,revision:s.revision+1,scope,pending:p,key,...(retired.length?{retired}:{}),...(revoking?{revocation:'requested'}:{})},scope);
+    try{await owned(()=>ports.commit(structuredClone(next)));}catch(error){ports.assertCurrent();throw new EnrollmentJournalUnavailable();}return next;
+  }
+  async function release(key:NonNullable<EnrollmentSnapshot['key']>){
+    // Cleanup is retried on later owned reads. Its unavailability must not turn a committed receipt
+    // back into a pending enrollment, but an obsolete owner must still stop before publishing state.
+    await owned(()=>ports.native.releaseAppleAttestation(key.vendorKeyId,key.prepared.clientDataHash));
+  }
+  async function registered(s:Awaited<ReturnType<typeof read>>,key:NonNullable<EnrollmentSnapshot['key']>){
+    await checkKeyBinding(key);
+    const next=await save(s,null,key);await release(key);return status(next);
+  }
+  async function checkKeyBinding(key:NonNullable<EnrollmentSnapshot['key']>){
+    const expected=await owned(()=>ports.digest(nativeKeyBindingData(key.prepared.context.challengeId,key.vendorKeyId),'hex'));
+    if(expected!==key.key.nativeKeyBinding)throw new EnrollmentConflict();
+  }
+  function status(s:Awaited<ReturnType<typeof read>>,reason?:PendingReason):EnrollmentStatus{
+    if(revocationPending(s)&&s.key)return {status:'revocation_pending',keyId:s.key.key.keyId,...(reason?{reason}:{})};
+    if(s.key)return {status:'stored_key',keyId:s.key.key.keyId,revoked:s.key.key.revokedAt!==null,...(reason?{reason}:{})};
+    return s.pending?{status:'pending',phase:s.pending.phase,requestId:s.pending.requestId,employmentId:s.pending.employmentId,...(reason?{reason}:{})}:{status:'empty'};
+  }
+  async function checkPrepared(p:Prepared,i:z.infer<typeof intent>){
+    if(!contextMatches(scope,{...i,prepared:p}))throw new EnrollmentConflict();
+    const hash=await owned(()=>ports.digest(keyEnrollmentClientData(p.context),'base64'));
+    const c=p.context,alias='aihr_'+await owned(()=>ports.digest(JSON.stringify(['aihr-key-alias',1,c.installationId,c.tenantId,c.actorId,c.appInstallationId,c.challengeId]),'hex'));
+    if(hash!==p.clientDataHash||alias!==p.alias)throw new EnrollmentConflict();
+  }
+  function nativeReason(result:{status:string;reason?:string}):PendingReason{
+    if(result.status==='unsupported')return 'unsupported';if(result.reason==='server_unavailable')return 'vendor_outage';
+    if(['recovery_required','binding_conflict','invalid_key'].includes(result.reason??''))return 'recovery_required';return 'native_unavailable';
+  }
+  async function keyReference(p:Prepared):Promise<{vendorKeyId:string}|{reason:PendingReason}>{
+    const value=await owned(()=>ports.native.appleKeyInfo(p.alias));
+    if(value.status!=='evidence')return {reason:nativeReason(value)};
+    return value.evidence===null?{reason:'recovery_required'}:{vendorKeyId:checked(hash32,value.evidence)};
+  }
+  async function reconcilePending(s:Awaited<ReturnType<typeof read>>,p:Exclude<Pending,{phase:'requested'}>,selected:string):Promise<EnrollmentStatus|null>{
+    const lookup=checked(C.IntegrityKeyLookupResult,await owned(()=>ports.receipt(selected,{originChallengeId:p.prepared.context.challengeId})));
+    if(lookup.outcome!=='key_receipt')return status(s,lookup.outcome==='refused'?'server_refused':'server_unavailable');
+    const found=lookup.key;if(!found)return null;
+    if(!receiptMatches(found,p.prepared))throw new EnrollmentConflict();
+    const reference=await keyReference(p.prepared);if('reason' in reference)return status(s,reference.reason);
+    if('vendorKeyId' in p&&p.vendorKeyId!==reference.vendorKeyId)throw new EnrollmentConflict();
+    return registered(s,{employmentId:p.employmentId,requestId:p.requestId,prepared:p.prepared,vendorKeyId:reference.vendorKeyId,key:found});
+  }
+  async function reconcileStored(s:Awaited<ReturnType<typeof read>>,selected:string){
+    const original=s.key!;
+    const lookup=checked(C.IntegrityKeyLookupResult,await owned(()=>ports.receipt(selected,{originChallengeId:original.prepared.context.challengeId})));
+    if(lookup.outcome!=='key_receipt')return status(s,lookup.outcome==='refused'?'server_refused':'server_unavailable');
+    const key=lookup.key;if(!key)return status(s,'recovery_required');
+    if(!receiptMatches(key,original.prepared)||JSON.stringify({...original.key,revokedAt:null})!==JSON.stringify({...key,revokedAt:null})||
+      original.key.revokedAt!==null&&original.key.revokedAt!==key.revokedAt)throw new EnrollmentConflict();
+    await checkKeyBinding({...original,key});
+    const next=key.revokedAt!==null&&original.key.revokedAt===null?await save(s,null,{...original,key}):s;
+    await release({...original,key});return status(next);
+  }
+  return {
+    /** Fresh receipt + local native reference only. Never generates/attests or adopts a retired key. */
+    signingKey:(employmentId:string)=>exclusive(queue,async()=>{
+      const selected=uuid.parse(employmentId);let s=await read();
+      if(!s.key||s.pending||revocationPending(s)||s.key.key.revokedAt!==null)throw new EnrollmentConflict();
+      const result=await reconcileStored(s,selected);if('reason' in result&&result.reason)throw new EnrollmentJournalUnavailable();
+      s=await read();if(!s.key||revocationPending(s)||s.key.key.revokedAt!==null)throw new EnrollmentConflict();
+      const record=s.key,reference=await keyReference(record.prepared);
+      if('reason' in reference||reference.vendorKeyId!==record.vendorKeyId)throw new EnrollmentConflict();
+      const c=record.prepared.context;
+      return ClockSigningKey.parse({platform:'ios',apiOrigin:c.apiOrigin,actorId:c.actorId,appInstallationId:c.appInstallationId,
+       installationId:c.installationId,tenantId:c.tenantId,keyId:record.key.keyId,appId:record.key.appId,nativeReference:record.vendorKeyId});
+    }),
+    /** The stored receipt's App Attest environment, for the offline context target. No network or native call. */
+    signingEnvironment:()=>exclusive(queue,async()=>{const s=await read();if(!s.key||s.pending||revocationPending(s)||s.key.key.revokedAt!==null)throw new EnrollmentConflict();return s.key.key.environment;}),
+    status:()=>exclusive(queue,async()=>{const s=await read();if(s.key)await release(s.key);return status(s);}),
+    /** Exact receipt recovery only: no prepare, attestation, proof upload or revocation replay. */
+    reconcile:(employmentId:string)=>exclusive(queue,async()=>{
+      const selected=uuid.parse(employmentId),s=await read();
+      if(s.key)return reconcileStored(s,selected);
+      if(!s.pending||s.pending.phase==='requested')return status(s);
+      return await reconcilePending(s,s.pending,selected)??status(s);
+    }),
+    revoke:(employmentId:string)=>exclusive(queue,async()=>{
+      const selected=uuid.parse(employmentId);let s=await read();
+      if(!s.key)throw new EnrollmentConflict();
+      if(s.key.key.revokedAt!==null){await release(s.key);return status(s);}
+      // Durable intent precedes transport. Neither a lost reply nor a restart restores local key use.
+      if(!revocationPending(s))s=await save(s,null,s.key,true);
+      const key=s.key!;
+      const value=checked(C.IntegrityRevocationResult,await owned(()=>ports.revoke(selected,{keyId:key.key.keyId})));
+      if(value.outcome!=='revoked')return {status:'revocation_pending' as const,keyId:key.key.keyId,reason:value.outcome==='refused'?'server_refused' as const:'server_unavailable' as const};
+      // Only the same immutable enrollment with an actual server revocation timestamp resolves intent.
+      const original={...key.key,revokedAt:null},returned={...value.key,revokedAt:null};
+      if(value.key.revokedAt===null||JSON.stringify(original)!==JSON.stringify(returned))throw new EnrollmentConflict();
+      const next=await save(s,null,{...key,key:value.key});await release(key);return status(next);
+    }),
+    begin:(employmentId:string,requestId:string)=>exclusive(queue,async()=>{
+      const i=intent.parse({employmentId,requestId}),s=await read();
+      if(s.key){await release(s.key);return status(s);}
+      if(s.pending){if(s.pending.employmentId!==i.employmentId)throw new EnrollmentConflict();return status(s);}
+      if(history(s).some(record=>record.requestId===i.requestId))throw new EnrollmentConflict();
+      return status(await save(s,{...i,phase:'requested'}));
+    }),
+    replace:(employmentId:string,requestId:string)=>exclusive(queue,async()=>{
+      const i=intent.parse({employmentId,requestId});let s=await read();if(!s.key||s.pending)throw new EnrollmentConflict();
+      // A cached revocation is insufficient. Only the same immutable receipt, freshly read through
+      // a current own selector, permits archiving the original registration before a new intent.
+      const confirmed=await reconcileStored(s,i.employmentId);if('reason' in confirmed&&confirmed.reason)return confirmed;
+      s=await read();if(!s.key||s.key.key.revokedAt===null)return status(s,'recovery_required');
+      const retired=history(s);if(retired.length===15)return status(s,'history_full');
+      if(s.key.requestId===i.requestId||retired.some(record=>record.requestId===i.requestId))throw new EnrollmentConflict();
+      return status(await save(s,{...i,phase:'requested'},null,false,[...retired,s.key]));
+    }),
+    advance:(employmentId:string)=>exclusive(queue,async()=>{
+      const selected=uuid.parse(employmentId);let s=await read(),p=s.pending;
+      if(!p)return s.key?reconcileStored(s,selected):status(s);
+      const recoveryOnly=p.employmentId!==selected;
+      if(recoveryOnly&&p.phase==='requested')return status(s,'recovery_required');
+      const intentRef={employmentId:p.employmentId,requestId:p.requestId};
+      let refreshed=false,reconciled=false;
+      for(let steps=0;steps<8;steps++){
+        ports.assertCurrent();
+        if(p.phase==='requested'){
+          const value=checked(C.IntegrityEnrollmentPrepared,await owned(()=>ports.prepare(intentRef.employmentId,{requestId:intentRef.requestId,appInstallationId:scope.appInstallationId})));
+          if(value.outcome!=='prepared')return status(s,value.outcome==='refused'?'server_refused':'server_unavailable');
+          await checkPrepared(value,p);p={...p,phase:'prepared',prepared:value};s=await save(s,p);refreshed=true;
+        }
+        await checkPrepared(p.prepared,p);
+        const preparedRef:Prepared=p.prepared;
+        if(!reconciled){
+          const found=await reconcilePending(s,p,selected);if(found)return found;
+          reconciled=true;
+        }
+        if(recoveryOnly)return status(s,'recovery_required');
+        if(p.phase==='proof_ready'){
+          // An absent lookup is not terminal: a concurrent completion may still commit. Replay only
+          // these exact saved bytes; the authoritative receipt owner reconciles before re-verification.
+          const proof=p;
+          const value=checked(C.IntegrityEnrollmentResult,await owned(()=>ports.complete(intentRef.employmentId,{requestId:intentRef.requestId,appInstallationId:scope.appInstallationId,
+            challengeId:preparedRef.context.challengeId,vendorKeyId:proof.vendorKeyId,attestation:proof.attestation})));
+          if(value.outcome!=='enrolled')return status(s,value.outcome==='refused'?'server_refused':'server_unavailable');
+          if(!receiptMatches(value.key,p.prepared))throw new EnrollmentConflict();
+          return registered(s,{employmentId:p.employmentId,requestId:p.requestId,prepared:p.prepared,vendorKeyId:p.vendorKeyId,key:value.key});
+        }
+        if(!refreshed){
+          const value=checked(C.IntegrityEnrollmentPrepared,await owned(()=>ports.prepare(intentRef.employmentId,{requestId:intentRef.requestId,appInstallationId:scope.appInstallationId})));
+          if(value.outcome!=='prepared')return status(s,value.outcome==='refused'?'server_refused':'server_unavailable');
+          await checkPrepared(value,p);
+          if(keyEnrollmentClientData(value.context)!==keyEnrollmentClientData(p.prepared.context)||value.alias!==p.prepared.alias||value.clientDataHash!==p.prepared.clientDataHash)throw new EnrollmentConflict();
+          p={...p,prepared:value};s=await save(s,p);refreshed=true;
+        }
+        if(p.prepared.state!=='active')return status(s,'challenge_unavailable');
+        const capability=ports.native.capabilities();ports.assertCurrent();
+        if(capability.status!=='evidence'||capability.evidence.platform!=='ios'||capability.evidence.keyMechanism!=='apple_app_attest')return status(s,'unsupported');
+        if(capability.evidence.appId!==p.prepared.context.target.appId.slice(11))throw new EnrollmentConflict();
+        const required=p.prepared.context.target.requiredMetadata;
+        if(required&&!required.bundleVersions.includes(capability.evidence.buildVersion))return status(s,'unsupported');
+        if(p.phase==='prepared'){
+          // Require the recovery method before generating any key on an older native binary.
+          if(!ports.native.appleProofRecoverySupported())return status(s,'unsupported');
+          p={...p,phase:'key_requested'};s=await save(s,p);
+          const value=await owned(()=>ports.native.generateAppleKey(preparedRef.alias));
+          if(value.status!=='evidence')return status(s,nativeReason(value));
+          p={...p,phase:'key_ready',vendorKeyId:checked(hash32,value.evidence)};s=await save(s,p);continue;
+        }
+        if(p.phase==='key_requested'){
+          const reference=await keyReference(p.prepared);if('reason' in reference)return status(s,reference.reason);const {vendorKeyId}=reference;
+          p={...p,phase:'key_ready',vendorKeyId};s=await save(s,p);continue;
+        }
+        const vendorKeyId:string=p.vendorKeyId;
+        const cache=await owned(()=>ports.native.appleAttestationInfo(vendorKeyId,preparedRef.clientDataHash));
+        if(cache.status!=='evidence')return status(s,nativeReason(cache));
+        if(cache.evidence.state==='completed'){
+          p={...p,phase:'proof_ready',attestation:checked(artifact,cache.evidence.attestation)};s=await save(s,p);continue;
+        }
+        if(cache.evidence.state==='released'||cache.evidence.state==='requested'||cache.evidence.state==='absent'&&p.phase==='attestation_requested')return status(s,'recovery_required');
+        p={...p,phase:'attestation_requested'};s=await save(s,p);
+        const value=await owned(()=>ports.native.attestAppleKey(vendorKeyId,preparedRef.clientDataHash));
+        if(value.status!=='evidence')return status(s,nativeReason(value));
+        p={...p,phase:'proof_ready',attestation:checked(artifact,value.evidence)};s=await save(s,p);
+      }
+      throw new EnrollmentJournalUnavailable();
+    }),
+  };
+}

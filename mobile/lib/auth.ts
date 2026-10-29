@@ -5,8 +5,12 @@ import { File, Paths } from 'expo-file-system';
 import * as SecureStore from 'expo-secure-store';
 import { createAuthState, type TokenPair } from './auth-state';
 import { config, configProblem, identityClientId, identityNamespace } from './config';
-import { SignInRequiredError, UnavailableError } from './errors';
+import { SignInRequiredError, UnavailableError, NetworkUnavailableError } from './errors';
 import { createInstallationStore } from './installation-store';
+import { resetSubmissionInstallation } from './submission-native';
+import { endOfflineAnchor } from './offline-anchor';
+import { fetch as nativeFetch } from 'expo/fetch';
+import { readBoundedBody } from '../../lib/bounded-body';
 import { providerLogoutUrl, sessionIdFromToken } from './provider-logout';
 
 const REFRESH_KEY = 'aihr.refreshToken';
@@ -23,12 +27,13 @@ async function authenticate(body: Record<string, string>): Promise<TokenPair> {
   if (configProblem()) throw new UnavailableError('Sign-in is not configured.');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
+  let responded = false;
   try {
     if (config.authProvider === 'internal' && body.grant_type !== 'refresh_token') throw new SignInRequiredError();
     const embedded = config.authProvider === 'internal';
     const endpoint = embedded ? config.apiUrl + '/login/api/refresh' : discovery.tokenEndpoint!;
     const params = { client_id: identityClientId(), ...body, ...(config.authProvider === 'keycloak' && body.grant_type === 'authorization_code' ? { redirect_uri: redirectUri() } : {}) };
-    const res = await fetch(endpoint, {
+    const res = await nativeFetch(endpoint, {
       method: 'POST',
       headers: { ...(embedded ? { 'x-aihr-client': 'native' } : {}), 'content-type': config.authProvider === 'keycloak' ? 'application/x-www-form-urlencoded' : 'application/json' },
       body: config.authProvider === 'keycloak' ? new URLSearchParams(params).toString() : JSON.stringify(params),
@@ -36,10 +41,12 @@ async function authenticate(body: Record<string, string>): Promise<TokenPair> {
       redirect: 'error',
       credentials: 'omit',
     });
+    responded = true;
+    if(!res.ok)void res.body?.cancel().catch(()=>{});
     // Throttling, bad configuration and outages preserve the credentials for a retry.
     if ([400, 401, 403].includes(res.status)) throw new SignInRequiredError();
     if (!res.ok) throw new UnavailableError();
-    const json: unknown = await res.json();
+    const json: unknown = JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await readBoundedBody(res,32768,15000,controller.signal)));
     if (typeof json !== 'object' || json === null ||
       !('access_token' in json) || typeof json.access_token !== 'string' || !json.access_token ||
       !('refresh_token' in json) || typeof json.refresh_token !== 'string' || !json.refresh_token) {
@@ -53,12 +60,14 @@ async function authenticate(body: Record<string, string>): Promise<TokenPair> {
     return { access_token: json.access_token, refresh_token: json.refresh_token, ...('expires_in' in json && typeof json.expires_in === 'number' ? { expires_in: json.expires_in } : {}), ...('id_token' in json && typeof json.id_token === 'string' ? { id_token: json.id_token } : {}) };
   } catch (error) {
     if (error instanceof SignInRequiredError || error instanceof UnavailableError) throw error;
-    throw new UnavailableError();
+    // An expired access token refreshes first: no response here is the same offline connectivity signal as in api.ts.
+    throw responded ? new UnavailableError() : new NetworkUnavailableError();
   } finally { clearTimeout(timeout); }
 }
 
 // iOS Keychain can outlive uninstall. This non-secret marker lives in the app sandbox.
 const storage = createInstallationStore({
+  resetPrivateData: resetSubmissionInstallation,
   markerExists: () => new File(Paths.document, 'aihr-installation-v1').exists,
   createMarker: () => new File(Paths.document, 'aihr-installation-v1').write('1'),
   logoutPending: () => {
@@ -68,7 +77,9 @@ const storage = createInstallationStore({
   markLogoutPending: () => new File(Paths.document, 'aihr-installation-v1').write('signed-out'),
   read: () => SecureStore.getItemAsync(REFRESH_KEY, STORE),
   write: (value) => SecureStore.setItemAsync(REFRESH_KEY, value, STORE),
-  remove: async () => { await Promise.all([clearClockDevice(), SecureStore.deleteItemAsync(REFRESH_KEY, STORE)]); },
+  // Logout ends the device-only offline identity anchor (never the sealed offline queue or its photos): an offline cold
+  // start can then never open another account's queue. The same employee's next online open rebuilds it.
+  remove: async () => { await Promise.all([clearClockDevice(), Promise.resolve().then(endOfflineAnchor), SecureStore.deleteItemAsync(REFRESH_KEY, STORE)]); },
 });
 let sessionId: string | null = null;
 let idToken: string | null = null;
@@ -115,8 +126,9 @@ const state: ReturnType<typeof createAuthState> = createAuthState({
     try {
       const record = JSON.parse(stored);
       if (record.namespace !== namespace || typeof record.refreshToken !== 'string') return;
-      await fetch(endpoint, { method: 'POST', credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(5000),
+      const reply=await nativeFetch(endpoint, { method: 'POST', credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(5000),
         headers: { 'content-type': 'application/json', 'x-aihr-client': 'native' }, body: JSON.stringify({ refresh_token: record.refreshToken }) });
+      void reply.body?.cancel().catch(()=>{});
     } catch { /* Local credentials are gone even when remote revocation is unavailable. */ }
   },
 });

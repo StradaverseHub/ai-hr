@@ -52,9 +52,9 @@ const bu: RunningLeaderStatus = { seat: 'bu', mode: 'running', cycleId: CYCLE, m
 const ledRecord: RecordLeaderStatus = { seat: 'bg', mode: 'record', cycleId: CYCLE, midYear: false, gated: false, people: 40 };
 
 describe('DQ-1: one switch for the Performance row of Where you stand', () => {
-  it('defaults to released results only', () => {
-    expect(WHERE_YOU_STAND_RULE).toBe('releasedOnly');
-    expect(perf.WHERE_YOU_STAND_RULE).toBe('releasedOnly');
+  it('follows the source (APR-028): the line manager\'s approved band shows before release', () => {
+    expect(WHERE_YOU_STAND_RULE).toBe('lineManagerApproved');
+    expect(perf.WHERE_YOU_STAND_RULE).toBe('lineManagerApproved');
   });
 
   it('released-only: before release a word, never the line manager\'s band; after release the band', () => {
@@ -81,13 +81,13 @@ describe('DQ-1: one switch for the Performance row of Where you stand', () => {
       own: { reviewId: randomUUID(), cycleId: CYCLE, cycleName: 'Fictional', periodEnd: `${todayInKualaLumpur().slice(0, 4)}-12-31` },
       review, tasks: [], feedbackOpen: [], feedbackSubmitted: 0, team: [], sessions: [], inCycle: new Set<string>(), now: new Date(),
     };
+    const releasedOnly = deriveHomeBlock({ ...input, standingRule: 'releasedOnly' });
+    expect(releasedOnly.standing.performance).toEqual({ state: 'notReleased' });
+    expect(keysOf(releasedOnly).has('band')).toBe(false);
+    expect(JSON.stringify(releasedOnly)).not.toContain('"AE"');
     const byDefault = deriveHomeBlock(input);
-    expect(byDefault.standing.performance).toEqual({ state: 'notReleased' });
-    expect(keysOf(byDefault).has('band')).toBe(false);
-    expect(JSON.stringify(byDefault)).not.toContain('"AE"');
-    const flipped = deriveHomeBlock({ ...input, standingRule: 'lineManagerApproved' });
-    expect(flipped.standing.performance).toEqual({ state: 'lineManagerApproved', band: 'AE' });
-    for (const blk of [byDefault, flipped]) expect([...keysOf(blk)].filter((k) => /score/i.test(k))).toEqual([]);
+    expect(byDefault.standing.performance).toEqual({ state: 'lineManagerApproved', band: 'AE' });
+    for (const blk of [releasedOnly, byDefault]) expect([...keysOf(blk)].filter((k) => /score/i.test(k))).toEqual([]);
   });
 });
 
@@ -240,7 +240,7 @@ describe('getPerformanceHome against real RLS: no unreleased band, for the emplo
   const year = () => Number(todayInKualaLumpur().slice(0, 4));
   beforeEach(async () => { await resetDb(); b = await seedBase(); await setModule(b.tenantId, 'performance', 'active'); a = await entitledCtx(b); });
 
-  it('the confirmed band stays off both pages until release; then the employee\'s row shows it', async () => {
+  it('APR-028: the employee sees their manager\'s confirmed band before release, the manager\'s page never carries it, and release shows the released band', async () => {
     const hire = (name: string): Promise<Hired> => hireEmployee(a, { person: { fullName: name, primaryEmail: `${randomUUID()}@pt-x3.test` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year() - 2}-01-01` });
     const subject = await hire('Home subject'), manager = await hire('Home manager');
     const [grade] = await owner.db.insert(schema.jobGrade).values({ tenantId: b.tenantId, code: '12', name: 'Grade 12' }).returning();
@@ -272,11 +272,13 @@ describe('getPerformanceHome against real RLS: no unreleased band, for the emplo
     for (const ctx of [self, mgr]) {
       const view = await perf.getPerformanceHome(ctx, undefined);
       expect(view.mode).toBe('running');
-      expect(JSON.stringify(view)).not.toContain(`"${band}"`);
       expect([...keysOf(view)].filter((k) => /score/i.test(k))).toEqual([]);
     }
+    // The manager's own page never carries the report's band.
+    expect(JSON.stringify(await perf.getPerformanceHome(mgr, undefined))).not.toContain(`"${band}"`);
+    // The source's rule (APR-028): the person's own Where you stand shows the manager's confirmed band before release.
     const mine = await perf.getPerformanceHome(self, undefined);
-    expect(mine.slot).toMatchObject({ kind: 'stand', standing: { performance: { state: 'notReleased' } } });
+    expect(mine.slot).toMatchObject({ kind: 'stand', standing: { performance: { state: 'lineManagerApproved', band } } });
 
     await perf.releaseOnehrResult(a, reviewId, 'performance', true);
     expect((await perf.getPerformanceHome(self, undefined)).slot).toMatchObject({ kind: 'stand', standing: { performance: { state: 'released', band } } });

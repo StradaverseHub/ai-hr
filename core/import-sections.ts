@@ -18,6 +18,10 @@ import { personnelFamilyValues, personnelFamilyCatalogErrors } from '../lib/pers
 import { personnelImportProposedValues, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
 import { isCalendarDate } from '../lib/calendar-date';
 import { setPersonComplianceFields } from './workforce-commands';
+import {applyBankStatutoryPatchTx,bankStatutoryDiff,bankStatutoryRefusal,buildBankStatutoryPatch,readBankStatutoryStateTx,readTaxResidencyTx} from './bank-statutory-import';
+import {bankStatutoryStateFrom,MERGED_STATUTORY_COLUMNS,type BankStatutoryItemState,type BankStatutoryState} from '../lib/bank-statutory-import';
+import {BANK_STATUTORY_LEGACY_COLUMNS} from '../lib/import-sections';
+import {lockImportAttemptTx,recordImportEventTx,recordImportItemTx} from './import-history';
 /**
  * Item 2983802f — THE PER-SECTION IMPORTER: update people who already exist, one subject area at a time.
  *
@@ -127,6 +131,10 @@ type Subject = {
   phone: string | null;
   hiredOn: string;
   pack: CountryPack;
+  /** The employee's company country (the pack that resolves their statutory rules). */
+  country: string;
+  /** 0db97f14 — the Bank & Statutory tab's view of this employee (bank_statutory files only). */
+  bankState?: BankStatutoryState;
   /** The person's stored profile columns this importer can write, for the merge + change diff. EVERY
    *  column in `PROFILE_PERSON_COLUMNS` is loaded here: a field the diff cannot see is a field the
    *  preview reports as changed when the cell equals what is already stored, which turns a re-uploaded
@@ -162,17 +170,6 @@ type BankPatch = {
   enableCustomHolderId: boolean;
   customHolderId: string | null;
 };
-type TaxPatch = {
-  taxNumber: string | null;
-  taxCategory: number;
-  numChildren: number;
-  taxResidency: string | null;
-  childReliefMode: string | null;
-  employerBearsTax: boolean;
-  disabledIndividual: boolean;
-  disabledSpouse: boolean;
-  childReliefTable: unknown;
-};
 type DependentPatch = DependentInput;
 
 /** Everything one valid row will do at commit. Built in the dry run; applied verbatim afterwards. */
@@ -185,14 +182,15 @@ type ResolvedSectionRow = {
   /** The Malaysian NRIC, with the stored `oldIcNumber` carried through so a save cannot clear it. */
   ic?: { icNumber?: string; oldIcNumber?: string };
   passportSupplied?:(keyof PassportPatch)[];
-  taxSupplied?:(keyof TaxPatch)[];
   compliance?: {dateOfBirth?:string;gender?:string;maritalStatus?:string};
   passport?: PassportPatch;
   operations?:PersonnelOperationalPatch;
   bank?: BankPatch;
   bankSupplied?:(keyof PersonnelBankValues)[];
   registrations?:{epfNumber?:string;socsoNumber?:string};
-  tax?: TaxPatch;
+  /** 0db97f14 — the supplied EPF/SOCSO/EIS/HRDF/tax cells, canonical, written by the merged statutory
+   *  writer over the locked row (never the file's cells alone). */
+  statutoryPatch?: Record<string,string>;
   /** One family member to add. */
   dependent?: DependentPatch;
 };
@@ -212,6 +210,8 @@ async function analyze(
   section: ImportSection,
   records: ImportRecord[],
   suppliedTx?:Tx,
+  /** Commit re-analysis of ONE row: only that row's employee needs the (per-employee) residency read. */
+  focusRowNum?:number,
 ): Promise<{ preview: SectionImportPreview; resolved: ResolvedSectionRow[] }> {
   const def = IMPORT_SECTION_DEFS[section];
   const present = records.length ? Object.keys(records[0]).map((c) => c.trim()) : [];
@@ -261,6 +261,7 @@ async function analyze(
     section,
     records.map(record=>norm(record.ic_number).replace(/\D/g,'')),
     suppliedTx,
+    {present:presentSet,focusCode:focusRowNum?normalizeEmployeeCode(norm(records[focusRowNum-1]?.[SECTION_KEY_COLUMN])):undefined},
   );
 
   const { allowDuplicatedNric, allowDuplicatedEmail } = await (suppliedTx?readPeopleGeneralTx(suppliedTx):getPeopleGeneral(ctx));
@@ -363,7 +364,7 @@ async function analyze(
     // handful of rows that really do move. `changes` is the truth here — every section pushes a column
     // onto it only when the cell DIFFERS from what is stored.
     const willWrite =
-      row.operations || row.personPatch || row.compliance || row.ic || row.passport || row.bank || row.registrations || row.tax || row.dependent;
+      row.operations || row.personPatch || row.compliance || row.ic || row.passport || row.bank || row.registrations || row.statutoryPatch || row.dependent;
     if (subject && errors.length === 0 && (!willWrite || changes.length === 0)) {
       row.result.verdict = 'skip';
       if (warnings.length === 0) {
@@ -404,7 +405,7 @@ async function analyze(
 }
 
 /** Read every employee this file names, plus the catalogs and the IC ownership map, in one pass. */
-async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: ImportSection, submittedNrics: string[],suppliedTx?:Tx) {
+async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: ImportSection, submittedNrics: string[],suppliedTx?:Tx,scope:{present?:Set<string>;focusCode?:string}={}) {
   const read=async (tx:Tx) => {
     // The tenant's employments, keyed by Employee ID and by work email. Both keys are needed: the
     // Direct Superior column accepts either, exactly as the wide importer's does.
@@ -512,7 +513,16 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
         operations:{cardId:r.cardId,attendancePhotoSetting:r.attendancePhotoSetting,paymentMethod:r.paymentMethod},
         statutory: statByPerson.get(r.personId) ?? null,
         familyMembers: familyByPerson.get(r.personId) ?? [],
+        country: r.country,
       };
+      if(section==='bank_statutory') {
+        // Residency is the employer-scoped selection the tab shows; read it only when this file can
+        // change or depend on it, and in a commit re-analysis only for the row being saved.
+        const residencyMatters=['tax_residency','is_resident','tax_circumstance','epf_citizenship'].some(c=>scope.present?.has(c));
+        const wantResidency=residencyMatters&&(!scope.focusCode||scope.focusCode===s.employeeCode);
+        const taxResidency=wantResidency?await readTaxResidencyTx(tx,ctx,{employmentId:s.employmentId,personId:s.personId,pack:s.pack,country:s.country},s.statutory as {taxCircumstance?:string|null}|null):'';
+        s.bankState=bankStatutoryStateFrom(s.statutory,{taxResidency,paymentMethod:r.paymentMethod});
+      }
       byCode.set(s.employeeCode, s);
     }
     // Catalog-governed vocabularies, so a typo in State / Country / a relationship is a DRY-RUN error
@@ -747,16 +757,13 @@ function buildBankStatutory(
     else { row.registrations=registrations;for(const [key,value] of Object.entries(registrations))if(value!==undefined && value!==(stored[key]??''))changes.push(key==='epfNumber'?'epf_number':'socso_number'); }
   }
   const bank=personnelBankValues(Object.fromEntries(PERSONNEL_BANK_COLUMNS.map(column=>[column,cell(column)??''])),stored?{bankName:stored.bankName as string|null,bankAccountNo:stored.bankAccountNo as string|null,enableCustomHolderName:Boolean(stored.enableCustomHolderName),customHolderName:stored.customHolderName as string|null,enableCustomHolderId:Boolean(stored.enableCustomHolderId),customHolderId:stored.customHolderId as string|null}:{});
-  const taxNumber = cell('tax_number');
-  const taxCategoryRaw = cell('tax_category');
-  const numChildrenRaw = cell('num_children');
   const touchesBank = bank.supplied.length>0;
-  const touchesTax = taxNumber !== undefined || taxCategoryRaw !== undefined || numChildrenRaw !== undefined;
-  if (!touchesBank && !touchesTax) return;
+  const touchesStatutory = [...MERGED_STATUTORY_COLUMNS,...BANK_STATUTORY_LEGACY_COLUMNS].some(c=>cell(c)!==undefined);
+  if (!touchesBank && !touchesStatutory) return;
 
-  // Both setters below require an existing statutory row (bank details and tax settings have no meaning
-  // without one, and the row is seeded by the employee's IC). Caught here so it is a preview error with
-  // a name attached rather than a service exception half-way through a 400-row file.
+  // Every writer below requires an existing statutory row (the row is seeded by the employee's IC).
+  // Caught here so it is a preview error with a name attached rather than a service exception half-way
+  // through a 400-row file.
   if (!stored) {
     errors.push(
       'This employee has no statutory record yet — save their identity number on their Personnel record first, then re-run this file',
@@ -769,44 +776,12 @@ function buildBankStatutory(
     for(const field of PERSONNEL_BANK_FIELDS)if(bank.supplied.includes(field.import.writerField! as keyof PersonnelBankValues) && bank.values[field.import.writerField! as keyof PersonnelBankValues]!==stored[field.import.writerField!])changes.push(field.import.column!);
   }
 
-  if (touchesTax) {
-    const storedCategory = Number(stored.taxCategory ?? 1);
-    let taxCategory = storedCategory;
-    if (taxCategoryRaw !== undefined) {
-      const n = Number(taxCategoryRaw);
-      if (![1, 2, 3].includes(n)) errors.push('tax_category must be 1, 2 or 3');
-      else {
-        taxCategory = n;
-        if (n !== storedCategory) changes.push('tax_category');
-      }
-    }
-    const storedChildren = Number(stored.numChildren ?? 0);
-    let numChildren = storedChildren;
-    if (numChildrenRaw !== undefined) {
-      const n = Number(numChildrenRaw.replace(/[,_]/g, ''));
-      if (!Number.isInteger(n) || n < 0) errors.push(`Invalid num_children "${numChildrenRaw}"`);
-      else {
-        numChildren = n;
-        if (n !== storedChildren) changes.push('num_children');
-      }
-    }
-    if (taxNumber !== undefined && taxNumber !== ((stored.taxNumber as string | null) ?? '')) changes.push('tax_number');
-    row.taxSupplied=Object.entries({taxNumber,taxCategory:taxCategoryRaw,numChildren:numChildrenRaw}).filter(([,value])=>value!==undefined).map(([key])=>key) as (keyof TaxPatch)[];
-    row.tax = {
-      taxNumber: taxNumber ?? ((stored.taxNumber as string | null) ?? null),
-      taxCategory,
-      numChildren,
-      // Everything else `setTax` writes, carried through from the stored row. Residency, the relief
-      // mode, the employer-bears flag, the two OKU flags and the s.48 relief grid have no import column
-      // — and the setter defaults every one of them to "nothing claimed" when it is not passed, which
-      // would quietly change somebody's PCB.
-      taxResidency: (stored.taxResidency as string | null) ?? null,
-      childReliefMode: (stored.childReliefMode as string | null) ?? null,
-      employerBearsTax: Boolean(stored.employerBearsTax),
-      disabledIndividual: Boolean(stored.disabledIndividual),
-      disabledSpouse: Boolean(stored.disabledSpouse),
-      childReliefTable: stored.childReliefTable ?? null,
-    };
+  if (touchesStatutory) {
+    // 0db97f14 — EPF/SOCSO/EIS, HRDF and every tax setting: canonical cells validated on the MERGED row
+    // with the tab's rules; written later by the merged writer over the locked row.
+    const built=buildBankStatutoryPatch(cell,subject,subject.bankState??bankStatutoryStateFrom(stored,{taxResidency:'',paymentMethod:subject.operations.paymentMethod}));
+    errors.push(...built.errors);changes.push(...built.changes);
+    if(Object.keys(built.patch).length)row.statutoryPatch=built.patch;
   }
 }
 
@@ -875,7 +850,7 @@ function buildFamily(
  * check constraint, a race with somebody editing the same person). The admin still has to be told
  * WHICH part of the row did not go in — and told it without the value that caused it.
  */
-export type WriteStep = 'person' | 'ic' | 'passport' | 'bank' | 'registrations' | 'tax' | 'operations' | 'dependent';
+export type WriteStep = 'person' | 'ic' | 'passport' | 'bank' | 'registrations' | 'tax' | 'statutory' | 'operations' | 'dependent';
 
 const WRITE_STEP_COLUMNS: Record<WriteStep, string> = {
   person: 'full_name / email / phone / address / emergency contact',
@@ -884,6 +859,7 @@ const WRITE_STEP_COLUMNS: Record<WriteStep, string> = {
   bank: 'bank_name / bank_account_no',
   registrations:'epf_number / socso_number',
   tax: 'tax_number / tax_category / num_children',
+  statutory: 'the EPF, SOCSO, EIS, HRDF and income tax settings',
   operations:'Card ID, Attendance Photo or Payment Method',
   dependent: 'the family member on this row',
 };
@@ -901,6 +877,10 @@ function isUniqueViolation(e: unknown): boolean {
 
 export function writeFailureMessage(step: WriteStep, e: unknown): string {
   if (pgSqlState(e) === 'PN001') return publicErrorMessage(e);
+  // 0db97f14 — the statutory owners' own refusals (EPF election, tax selection) name the column and
+  // the reason and carry no stored value, so they are shown as they are.
+  const refusal = bankStatutoryRefusal(e);
+  if (refusal) return `${refusal}. No changes from this row were saved.`;
   const cols = WRITE_STEP_COLUMNS[step];
   // All row writers share one explicit transaction; a refused writer rolls the row back.
   return isUniqueViolation(e)
@@ -928,9 +908,13 @@ export async function validateSectionImport(
  */
 export async function commitSectionImport(
   ctx: SessionContext,
-  p: { section: string; records: ImportRecord[]; fileName?: string },
+  p: { section: string; records: ImportRecord[]; fileName?: string;
+    /** 0db97f14 — record each employee's field-level change in this import attempt (ADR-0155), in the
+     *  SAME transaction as the change, then the attempt's confirmed event. Bank & Statutory only. */
+    history?: { attemptId: string } },
 ): Promise<SectionImportResult> {
-  p=structuredClone(p); ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  p=structuredClone(p);
+  if(p.history && p.section!=='bank_statutory')throw new Error('Import history is recorded for Bank & Statutory section files only.'); ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if(!isImportSection(p.section))throw new Error('Unknown import section. Employment updates use dated Movement import.');
   if(isPersonnelRegisterKind(p.section)) {
     const result=await commitRegisterSection(ctx,p.section,p.records);
@@ -961,7 +945,9 @@ export async function commitSectionImport(
     try {
       const wrote=await withTenant(ctx,async tx=>{
       await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-      const current=await analyze(ctx,p.section as ImportSection,p.records,tx);
+      // Writer locks first, then the attempt row: the same order as a revert, so the two cannot deadlock.
+      if(p.history)await lockImportAttemptTx(tx,ctx,p.history.attemptId,'bank_statutory');
+      const current=await analyze(ctx,p.section as ImportSection,p.records,tx,nominatedRow.result.rowNum);
       const fresh=current.resolved[nominatedRow.result.rowNum-1];
       if(current.preview.fileErrors.length||!fresh?.subject||fresh.subject.employmentId!==nominatedRow.subject!.employmentId||fresh.subject.personId!==nominatedRow.subject!.personId||fresh.subject.companyId!==nominatedRow.subject!.companyId||fresh.subject.employeeCode!==nominatedRow.subject!.employeeCode||fresh.subject.pack!==nominatedRow.subject!.pack)throw new Error('Section import inputs changed; preview the original file again.');
       if(fresh.result.errors.length)throw new Error('Section import inputs changed; preview the original file again.');
@@ -981,6 +967,8 @@ export async function commitSectionImport(
       const [freshPerson]=await tx.select().from(person).where(eq(person.id,s.personId)).for('update');
       if(!freshPerson)throw new Error('Personnel record is no longer available.');
       const [freshStat]=await tx.select().from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,s.personId)).for('update');
+      const historySubject={employmentId:s.employmentId,personId:s.personId,pack:s.pack,country:s.country};
+      const historyBefore=p.history?(await readBankStatutoryStateTx(tx,ctx,historySubject)).state:null;
       if (row.personPatch) {
         await updatePerson(ctx, {
           personId: s.personId,
@@ -1012,17 +1000,20 @@ export async function commitSectionImport(
         const setter=s.pack.statutory.setRegistrationNumbers;if(!setter)throw new Error('Registration-number updates are unavailable for this country pack.');
         await setter(ctx,{personId:s.personId,...row.registrations},tx);
       }
-      step = 'tax';
-      if(row.tax) {
+      step = 'statutory';
+      if(row.statutoryPatch) {
         if(!freshStat)throw new Error('Statutory setup is unavailable.');
-        const tax={...row.tax};
-        for(const key of Object.keys(tax) as (keyof TaxPatch)[])if(!row.taxSupplied?.includes(key))(tax as unknown as Record<string,unknown>)[key]=freshStat[key];
-        await s.pack.statutory.setTax(ctx,{personId:s.personId,...tax},tx);
+        await applyBankStatutoryPatchTx(tx,ctx,historySubject,row.statutoryPatch);
       }
       step='operations';
       if(row.operations)await applyPersonnelOperationalValuesTx(tx,ctx,s.employmentId,row.operations);
       step = 'dependent';
       if (row.dependent) await addDependentTx(tx,ctx,s.personId,row.dependent);
+      if(p.history && historyBefore) {
+        const diff=bankStatutoryDiff(historyBefore,(await readBankStatutoryStateTx(tx,ctx,historySubject)).state);
+        if(diff.changed.length)await recordImportItemTx(tx,ctx,{attemptId:p.history.attemptId,companyId:s.companyId,employmentId:s.employmentId,itemKey:`row-${row.result.rowNum}`,label:historyLabel(row.result),ordinal:row.result.rowNum,status:'applied',
+          before:{employeeCode:s.employeeCode,fields:diff.before} satisfies BankStatutoryItemState,after:{employeeCode:s.employeeCode,fields:diff.after} satisfies BankStatutoryItemState});
+      }
       return true;
       });
       if(!wrote)continue;
@@ -1044,7 +1035,25 @@ export async function commitSectionImport(
         employeeCode: row.result.employeeCode,
         message: writeFailureMessage(step, e),
       });
+      if(p.history) {
+        const message=failed.at(-1)!.message;
+        try{await withTenant(ctx,tx=>recordImportItemTx(tx,ctx,{attemptId:p.history!.attemptId,companyId:s.companyId,employmentId:s.employmentId,itemKey:`row-${row.result.rowNum}`,label:historyLabel(row.result),ordinal:row.result.rowNum,status:'failed',errors:[message]}));}
+        catch(recordError){console.error('[section-import] failed item history',recordError);}
+      }
     }
+  }
+
+  // 0db97f14 — rows refused by the dry run are recorded as failed items (for the companies in the attempt),
+  // then the confirmed event carries the counts the history list shows.
+  let attemptId:string|null=null;
+  if(p.history) {
+    const rejected=resolved.filter(r=>!r.result.ok&&r.result.errors.length);
+    await withTenant(ctx,async tx=>{
+      const attempt=await lockImportAttemptTx(tx,ctx,p.history!.attemptId,'bank_statutory');
+      for(const r of rejected)if(r.subject&&attempt.companyIds.includes(r.subject.companyId))await recordImportItemTx(tx,ctx,{attemptId:attempt.id,companyId:r.subject.companyId,employmentId:r.subject.employmentId,itemKey:`row-${r.result.rowNum}`,label:historyLabel(r.result),ordinal:r.result.rowNum,status:'failed',errors:r.result.errors});
+      await recordImportEventTx(tx,ctx,{attemptId:attempt.id,kind:'confirmed',importKind:'bank_statutory',detail:{succeeded:updated,failed:failed.length+rejected.length}});
+    });
+    attemptId=p.history.attemptId;
   }
 
   const runId = await recordSectionRun(ctx, {
@@ -1064,7 +1073,19 @@ export async function commitSectionImport(
     fileErrors: [],
     warnings,
     runId,
+    ...(attemptId?{attemptId}:{}),
   };
+}
+
+const historyLabel=(r:SectionRowResult)=>[r.employeeCode,r.employeeName].filter(Boolean).join(' · ')||`Row ${r.rowNum}`;
+
+/**
+ * 0db97f14 — the dry run with each row's employee and company, for the Bank & Statutory upload: which
+ * companies the attempt names and which rows are refused before anything is written.
+ */
+export async function analyzeSectionRows(ctx:SessionContext,section:ImportSection,records:ImportRecord[]){
+  const {preview,resolved}=await analyze(ctx,section,records);
+  return {fileErrors:preview.fileErrors,rows:resolved.map(r=>({rowNum:r.result.rowNum,employeeCode:r.result.employeeCode,employeeName:r.result.employeeName,verdict:r.result.verdict,ok:r.result.ok,errors:r.result.errors,changes:r.result.changes,companyId:r.subject?.companyId??null,employmentId:r.subject?.employmentId??null}))};
 }
 
 /**

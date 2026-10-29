@@ -14,11 +14,12 @@ import { type SessionContext, type Tx } from '../db/client';
 // catalog, limits, mileage and reimbursement screens and every server action behind them carried none.
 // See core/module-gate.ts for why the binding is the import and not a call in each function.
 import { withClaimsTenant as withTenant } from './module-gate';
+import { assertModuleGate } from './module-gate';
 import { actorOf, appendEvent } from '../db/events';
 import {
-  domainEvent,
   claimAttachment,
   claimFormField,
+  domainEvent,
   claimItem,
   claimMileageRate,
   claimPolicy,
@@ -52,6 +53,18 @@ const slugify = (s: string): string =>
 
 const today = (): string => todayInKualaLumpur();
 const num = (v: string | null): number | null => (v == null ? null : Number(v));
+
+/**
+ * M11 (mobile) — run in the CALLER's transaction when one is passed (the mobile command receipt's, so the claim
+ * write and the replay receipt commit or roll back together), else in a new gated one. The Claims module gate
+ * still applies on a passed transaction: binding the import above is what makes every entry point refuse a tenant
+ * without Claims, and a caller-supplied tx must not be a way around it. Web callers pass none: unchanged.
+ */
+async function withClaimsTx<T>(ctx: SessionContext, existingTx: Tx | undefined, run: (tx: Tx) => Promise<T>): Promise<T> {
+  if (!existingTx) return withTenant(ctx, run);
+  assertModuleGate(ctx, 'claims');
+  return run(existingTx);
+}
 
 /** UTC-date floor for the receipt window: the YYYY-MM-DD `days` before the given UTC date (inclusive on the
  *  caller's >= compare). Computed off the same UTC date string the UI picker uses, so the boundary the user
@@ -2277,31 +2290,11 @@ async function priceAndCheckClaimTx(
   let mileageStamp: ClaimMileageStamp | null = null;
   let amount: number;
   if (isMileage) {
-    const table = await resolveMileageRateBands(tx, p.claimTypeId, p.incurredOn, gradeId, vehicleClass);
-    if (table) {
-      const km = p.quantityKm;
-      if (km == null || !(km > 0)) throw new ClaimError('Distance (km) must be greater than zero');
-      const priced = priceMileage(table.bands, km);
-      amount = priced.amount;
-      mileageStamp = {
-        vehicleClass: table.vehicleClass,
-        source: table.source,
-        gradeId: table.gradeId,
-        tableValidFrom: table.validFrom,
-        bands: priced.breakdown,
-      };
-    } else if (policy?.rateConfig?.kind === 'mileage_flat') {
-      // BACK-COMPAT, unconditional: a tenant whose mileage type still carries the legacy flat scalar and
-      // has never built a band table prices exactly as it did before 0428.
-      amount = computeClaimAmount(policy.rateConfig, { quantityKm: p.quantityKm, enteredAmount: p.amount });
-    } else {
-      // Marked as the mileage type with neither a band table nor a legacy flat rate. Falling through to
-      // the receipt branch would take the form's amount — which is a hidden 0 on a mileage form — and
-      // refuse with "Amount must be greater than zero", pointing the employee at a box they cannot see.
-      throw new ClaimError(
-        'No mileage rate has been set up for this claim type yet. Ask an admin to add distance bands under Claims → Mileage Rates.',
-      );
-    }
+    // M11 — the branch moved VERBATIM into priceMileageTx so the mobile preview (previewMileageClaim) prices by
+    // this exact rule instead of a copy of it.
+    ({ amount, mileageStamp } = await priceMileageTx(tx, {
+      claimTypeId: p.claimTypeId, incurredOn: p.incurredOn, gradeId, vehicleClass, quantityKm: p.quantityKm, enteredAmount: p.amount, policy,
+    }));
   } else {
     // NOT the mileage type. A legacy mileage_flat rate_config left on the policy is IGNORED rather than
     // demanded: the tick is the only thing that makes a claim a mileage claim, so a type that lost it
@@ -2350,6 +2343,96 @@ async function priceAndCheckClaimTx(
   const fieldValues = validateClaimFieldValues(fields, p.fieldValues ?? null);
 
   return { amount, quantityKm, claimItemId, taxable: ct.defaultTaxable, mileageStamp, fieldValues };
+}
+
+/**
+ * THE mileage pricing rule (e7eb5d83 rev 4), shared by submit (priceAndCheckClaimTx) and the M11 preview
+ * (previewMileageClaim) so the figure an employee is shown before filing and the figure filing stores cannot come
+ * from two rules. The banded, grade-resolved table when one exists; else the legacy flat rate on the policy; else a
+ * refusal. Pure read in the caller's tx; the caller decides what to do with the amount.
+ */
+async function priceMileageTx(
+  tx: Tx,
+  p: {
+    claimTypeId: string;
+    incurredOn: string;
+    gradeId: string | null;
+    vehicleClass: string;
+    quantityKm: number | null | undefined;
+    enteredAmount: number | null | undefined;
+    policy: ClaimPolicyRow | null;
+  },
+): Promise<{ amount: number; mileageStamp: ClaimMileageStamp | null }> {
+  const table = await resolveMileageRateBands(tx, p.claimTypeId, p.incurredOn, p.gradeId, p.vehicleClass);
+  if (table) {
+    const km = p.quantityKm;
+    if (km == null || !(km > 0)) throw new ClaimError('Distance (km) must be greater than zero');
+    const priced = priceMileage(table.bands, km);
+    return {
+      amount: priced.amount,
+      mileageStamp: {
+        vehicleClass: table.vehicleClass,
+        source: table.source,
+        gradeId: table.gradeId,
+        tableValidFrom: table.validFrom,
+        bands: priced.breakdown,
+      },
+    };
+  }
+  if (p.policy?.rateConfig?.kind === 'mileage_flat') {
+    // BACK-COMPAT, unconditional: a tenant whose mileage type still carries the legacy flat scalar and
+    // has never built a band table prices exactly as it did before 0428.
+    return { amount: computeClaimAmount(p.policy.rateConfig, { quantityKm: p.quantityKm, enteredAmount: p.enteredAmount }), mileageStamp: null };
+  }
+  // Marked as the mileage type with neither a band table nor a legacy flat rate. Falling through to
+  // the receipt branch would take the form's amount — which is a hidden 0 on a mileage form — and
+  // refuse with "Amount must be greater than zero", pointing the employee at a box they cannot see.
+  throw new ClaimError(
+    'No mileage rate has been set up for this claim type yet. Ask an admin to add distance bands under Claims → Mileage Rates.',
+  );
+}
+
+/** M11 — what a mileage claim would be priced at, by priceMileageTx. */
+export type MileagePreview = {
+  /** EXACTLY the text submit stores for this amount (`amount.toFixed(2)`, insertClaimTx), never a re-rounding. */
+  amount: string;
+  /** The banded arithmetic (the stamp submit would write); null when the legacy flat rate priced it. */
+  bands: ClaimMileageStamp['bands'] | null;
+  /** valid_from of the banded table that priced it; null for the legacy flat rate. */
+  tableValidFrom: string | null;
+};
+
+/**
+ * M11 — the price of a mileage claim of `quantityKm` incurred on `incurredOn`, for the caller's OWN employment, by
+ * the rule submit uses (priceMileageTx, on the same grade and the policy in force on that date). A preview, not a
+ * reservation: the receipt window, the receipt requirement, the item rule and every limit are checked at submit,
+ * against the policy then in force — a preview is never a promise that a claim will be accepted.
+ *
+ * Own employment only (the claim form's rule, ownClaimFormAvailable): a manager cannot learn a subordinate's
+ * grade-resolved rate by naming their employment.
+ */
+export async function previewMileageClaim(
+  ctx: SessionContext,
+  p: { employmentId: string; claimTypeId: string; quantityKm: number; incurredOn: string; vehicleClass?: string | null },
+): Promise<MileagePreview> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.incurredOn)) throw new ClaimError('Incurred date must be YYYY-MM-DD');
+  return withTenant(ctx, async (tx) => {
+    if (!ctx.userId || !ctx.personId) throw new ClaimError('The own claim context is unavailable');
+    const own = await myOwnEmploymentSubjectsTx(tx, ctx, { profileEdit: true });
+    if (!own.some((row) => row.employmentId === p.employmentId)) throw new ClaimError('The own claim context is unavailable');
+    const [ct] = await tx.select().from(claimType).where(and(eq(claimType.id, p.claimTypeId), isNull(claimType.archivedAt))).limit(1);
+    if (!ct) throw new ClaimError('Unknown or archived claim type');
+    if (!ct.isMileage) throw new ClaimError('This claim type is not priced by distance');
+    const [emp] = await tx.select({ gradeId: employment.gradeId }).from(employment).where(eq(employment.id, p.employmentId)).limit(1);
+    const gradeId = emp?.gradeId ?? null;
+    const policy = await getActiveClaimPolicy(tx, p.claimTypeId, p.incurredOn, gradeId);
+    const priced = await priceMileageTx(tx, {
+      claimTypeId: p.claimTypeId, incurredOn: p.incurredOn, gradeId, vehicleClass: p.vehicleClass ?? 'any',
+      quantityKm: p.quantityKm, enteredAmount: null, policy,
+    });
+    if (!(priced.amount > 0)) throw new ClaimError('Amount must be greater than zero');
+    return { amount: priced.amount.toFixed(2), bands: priced.mileageStamp?.bands ?? null, tableValidFrom: priced.mileageStamp?.tableValidFrom ?? null };
+  });
 }
 
 /** The submit body, running INSIDE a caller-provided tx so it can be composed atomically with a receipt
@@ -2410,11 +2493,13 @@ export async function submitClaimWithAttachment(
   ctx: SessionContext,
   p: SubmitClaimInput,
   attachment: { fileName: string; mimeType: string; content: Buffer } | null,
+  /** M11: the mobile command receipt's transaction (withClaimsTx). Web callers pass none. */
+  existingTx?: Tx,
 ): Promise<{ id: string }> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.incurredOn)) throw new ClaimError('Incurred date must be YYYY-MM-DD');
   // Validate the attachment BEFORE opening the tx so a bad file never even starts a claim insert.
   if (attachment) assertValidAttachment(attachment.mimeType, attachment.content);
-  return withTenant(ctx, async (tx) => {
+  return withClaimsTx(ctx, existingTx, async (tx) => {
     const { id } = await insertClaimTx(tx, ctx, { ...p, hasReceipt: p.hasReceipt || attachment != null });
     if (attachment) {
       await insertClaimAttachmentTx(tx, ctx, {
@@ -2452,9 +2537,35 @@ export async function submitClaimWithAttachment(
  */
 export async function decideClaim(
   ctx: SessionContext,
-  p: { claimRequestId: string; decision: 'approve' | 'reject'; taxable?: boolean; deciderEmploymentId?: string | null },
+  p: {
+    claimRequestId: string;
+    decision: 'approve' | 'reject';
+    taxable?: boolean;
+    deciderEmploymentId?: string | null;
+    /**
+     * M11 (D12) — the approver's reason for a REJECTION, stamped on the `claim-request.rejected` event's payload
+     * (as leave stamps its reject reason) and read back by the employee through claimRecordFacts. Optional: the web
+     * passes none and its event stays payload-free, byte for byte. Ignored on an approval. claim_request has no
+     * reason column, and none is added here.
+     */
+    rejectReason?: string | null;
+  },
+  /** M11: the mobile command receipt's transaction (withClaimsTx). Web callers pass none. */
+  existingTx?: Tx,
 ): Promise<void> {
-  await withTenant(ctx, async (tx) => {
+  await withClaimsTx(ctx, existingTx, (tx) => decideClaimTx(tx, ctx, p));
+}
+
+/** decideClaim in the caller's transaction (ADR-0151): the Assistant's assigned claim decision commits the
+ *  decision and its own receipt together. Identical rules, locks and events; returns the decision event.
+ *  `rejectReason` (M11, D12) is stamped on the rejection event's payload, exactly as decideClaim documents. */
+export async function decideClaimTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { claimRequestId: string; decision: 'approve' | 'reject'; taxable?: boolean; deciderEmploymentId?: string | null; rejectReason?: string | null },
+): Promise<{ eventId: string; employmentId: string; status: 'approved' | 'rejected' }> {
+  const rejectReason = p.rejectReason?.trim() || null;
+  {
     // Unlocked peek, ONLY to learn which (employee × type) lock this claim belongs to. Nothing is decided
     // on it — the authoritative read is the FOR UPDATE one below, taken after the lock is held.
     const [head] = await tx
@@ -2509,7 +2620,7 @@ export async function decideClaim(
         .update(claimRequest)
         .set({ status: 'approved', taxable, decidedByEmploymentId: p.deciderEmploymentId ?? null, decidedAt: new Date() })
         .where(eq(claimRequest.id, claim.id));
-      await appendEvent(tx, {
+      const eventId = await appendEvent(tx, {
         tenantId: ctx.tenantId,
         aggregateType: 'claim-request',
         aggregateId: claim.id,
@@ -2517,22 +2628,25 @@ export async function decideClaim(
         actor: actorOf(ctx),
         subjectEmploymentId: claim.employmentId,
         payload: { taxable, payoutMethod: taxable ? 'payroll' : 'reimbursement' }, // amount on claim_request[aggregateId] (ADR-0030)
-      });
+      }, { returnId: true });
+      return { eventId, employmentId: claim.employmentId, status: 'approved' };
     } else {
       await tx
         .update(claimRequest)
         .set({ status: 'rejected', decidedByEmploymentId: p.deciderEmploymentId ?? null, decidedAt: new Date() })
         .where(eq(claimRequest.id, claim.id));
-      await appendEvent(tx, {
+      const eventId = await appendEvent(tx, {
         tenantId: ctx.tenantId,
         aggregateType: 'claim-request',
         aggregateId: claim.id,
         eventType: 'claim-request.rejected',
         actor: actorOf(ctx),
         subjectEmploymentId: claim.employmentId,
-      });
+        ...(rejectReason ? { payload: { rejectReason } } : {}),
+      }, { returnId: true });
+      return { eventId, employmentId: claim.employmentId, status: 'rejected' };
     }
-  });
+  }
 }
 
 /**
@@ -2544,8 +2658,14 @@ export async function decideClaim(
  * approve and a cancel racing on one claim resolve to exactly one of the two, and the loser is told the
  * claim is no longer pending instead of silently overwriting the winner.
  */
-export async function cancelClaim(ctx: SessionContext, claimRequestId: string,expectedEmploymentId?:string): Promise<void> {
-  await withTenant(ctx, (tx) => cancelClaimTx(tx, ctx, claimRequestId, expectedEmploymentId));
+export async function cancelClaim(
+  ctx: SessionContext,
+  claimRequestId: string,
+  expectedEmploymentId?: string,
+  /** M11: the mobile command receipt's transaction (withClaimsTx). Web callers pass none. */
+  existingTx?: Tx,
+): Promise<void> {
+  await withClaimsTx(ctx, existingTx, (tx) => cancelClaimTx(tx, ctx, claimRequestId, expectedEmploymentId));
 }
 
 /** cancelClaim in the caller's transaction (ADR-0151): the Assistant's claim-cancellation review commits
@@ -2773,12 +2893,14 @@ async function saveClaimDraftOwnerTx(tx:Tx,ctx:SessionContext,p:ClaimDraftInput,
     },{returnId:reviewed});
     return { id: row.id,savedEventId };
 }
-export async function saveClaimDraft(ctx:SessionContext,p:ClaimDraftInput,attachment:{fileName:string;mimeType:string;content:Buffer}|null=null):Promise<{id:string}>{
+/** `existingTx` — M11: the mobile command receipt's transaction (withClaimsTx). Web callers pass none. The date
+ *  and the file are validated before any transaction work, exactly as submitClaimWithAttachment does. */
+export async function saveClaimDraft(ctx:SessionContext,p:ClaimDraftInput,attachment:{fileName:string;mimeType:string;content:Buffer}|null=null,existingTx?:Tx):Promise<{id:string}>{
  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  attachment=attachment?{...attachment,content:Buffer.from(attachment.content)}:null;
  if(!/^\d{4}-\d{2}-\d{2}$/.test(p.incurredOn))throw new ClaimError('Incurred date must be YYYY-MM-DD');
  if(attachment)assertValidAttachment(attachment.mimeType,attachment.content);
- return withTenant(ctx,async tx=>{const result=await saveClaimDraftOwnerTx(tx,ctx,p,attachment);return{id:result.id};});
+ return withClaimsTx(ctx,existingTx,async tx=>{const result=await saveClaimDraftOwnerTx(tx,ctx,p,attachment);return{id:result.id};});
 }
 
 /** Source-specific reviewed draft ownership. This is not a global catalog lock: actual selected
@@ -2862,8 +2984,14 @@ export async function readOwnClaimDraftSavedReferenceTx(tx:Tx,supplied:SessionCo
 /** Delete a draft the caller owns, with any receipt already attached to it. Hard delete, not a status
  *  change: an unsubmitted claim never entered any ledger, so there is nothing for a tombstone to explain —
  *  and a 'deleted' status would be a sixth thing every reader of the enum has to know about. */
-export async function deleteClaimDraft(ctx: SessionContext, claimRequestId: string,expectedEmploymentId?:string): Promise<void> {
-  await withTenant(ctx, async (tx) => {
+export async function deleteClaimDraft(
+  ctx: SessionContext,
+  claimRequestId: string,
+  expectedEmploymentId?: string,
+  /** M11: the mobile command receipt's transaction (withClaimsTx). Web callers pass none. */
+  existingTx?: Tx,
+): Promise<void> {
+  await withClaimsTx(ctx, existingTx, async (tx) => {
     const [claim] = await tx
       .select({ id: claimRequest.id, status: claimRequest.status, employmentId: claimRequest.employmentId })
       .from(claimRequest)
@@ -2937,10 +3065,15 @@ async function transitionClaimDraftSubmissionTx(tx:Tx,ctx:SessionContext,d:{id:s
  return{submittedEventId};
 }
 
-export async function submitDraftClaims(ctx: SessionContext, p: { ids: string[];employmentId?:string }): Promise<{ submitted: number }> {
+export async function submitDraftClaims(
+  ctx: SessionContext,
+  p: { ids: string[]; employmentId?: string },
+  /** M11: the mobile command receipt's transaction (withClaimsTx). Web callers pass none. */
+  existingTx?: Tx,
+): Promise<{ submitted: number }> {
   const ids = Array.from(new Set(p.ids.filter((s) => typeof s === 'string' && s.length > 0)));
   if (ids.length === 0) throw new ClaimError('Select at least one draft claim to submit');
-  return withTenant(ctx, async (tx) => {
+  return withClaimsTx(ctx, existingTx, async (tx) => {
     const drafts = await tx
       .select({
         id: claimRequest.id,
@@ -3326,6 +3459,111 @@ export async function listPendingClaims(ctx: SessionContext,opts:{requestId?:str
     const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
     const atts = await attachmentsByClaim(tx, scoped.map((r) => r.id));
     return scoped.map((r) => toRow(r, atts));
+  });
+}
+
+/** M11 — the facts of a claim that the list row (ClaimRow) does not carry, for its detail screens. */
+export type ClaimRecordFacts = {
+  id: string;
+  /** The stored custom-field answers (validated + coerced at submit; as typed on a draft). */
+  fieldValues: Record<string, string | number | boolean | null> | null;
+  /**
+   * The label and kind of every field key this claim type has ever had, in designer order: the LIVE field for a key
+   * when there is one, else the most recent archived one (an archived field keeps the answers already stored).
+   */
+  fields: { fieldKey: string; label: string; kind: ClaimFieldKind }[];
+  /** The rate table the claim was priced under (stamped at submit); null when not banded mileage. */
+  mileage: ClaimMileageStamp | null;
+  /** When it was FILED: the latest `claim-request.submitted` event (a draft's creation is not its filing). */
+  submittedAt: string | null;
+  /** Who decided it, when the caller may read that person's name; null otherwise. */
+  decidedByName: string | null;
+  /** The approver's reason on the latest `claim-request.rejected` event (decideClaim's rejectReason), or null. */
+  rejectReason: string | null;
+  /**
+   * How an approved claim is paid — the payout rule of this file (ADR-0021 §3, the approve event's `payoutMethod`):
+   * taxable ⇒ through payroll, non-taxable ⇒ off-cycle reimbursement. Null until it is approved.
+   */
+  payoutRoute: 'payroll' | 'reimbursement' | null;
+  /** A taxable claim already queued onto a payroll batch (prefillClaimsForBatch). */
+  scheduledInPayroll: boolean;
+};
+
+/**
+ * M11 — ClaimRecordFacts for the given claims, under the caller's RLS (a claim the caller cannot read is simply
+ * absent). Read-only; the rows are the same ones listClaimsForEmployment / listPendingClaims return.
+ */
+export async function claimRecordFacts(ctx: SessionContext, claimIds: readonly string[]): Promise<Map<string, ClaimRecordFacts>> {
+  const ids = [...new Set(claimIds)];
+  return withTenant(ctx, async (tx) => {
+    const out = new Map<string, ClaimRecordFacts>();
+    if (ids.length === 0) return out;
+    const rows = await tx
+      .select({
+        id: claimRequest.id,
+        claimTypeId: claimRequest.claimTypeId,
+        status: claimRequest.status,
+        taxable: claimRequest.taxable,
+        fieldValues: claimRequest.fieldValues,
+        mileage: claimRequest.mileageRateApplied,
+        payrollBatchId: claimRequest.payrollBatchId,
+        decidedByName: person.fullName,
+      })
+      .from(claimRequest)
+      // LEFT joins: an undecided claim has no decider, and a decider the caller may not read leaves the name null.
+      .leftJoin(employment, eq(employment.id, claimRequest.decidedByEmploymentId))
+      .leftJoin(person, eq(person.id, employment.personId))
+      .where(inArray(claimRequest.id, ids))
+      .orderBy(claimRequest.id);
+    if (rows.length === 0) return out;
+    const typeIds = [...new Set(rows.map((r) => r.claimTypeId))];
+    const fieldRows = await tx
+      .select()
+      .from(claimFormField)
+      .where(inArray(claimFormField.claimTypeId, typeIds))
+      .orderBy(claimFormField.sortOrder, claimFormField.createdAt, claimFormField.id);
+    const events = await tx
+      .select({
+        aggregateId: domainEvent.aggregateId,
+        eventType: domainEvent.eventType,
+        occurredAt: domainEvent.occurredAt,
+        reason: sql<string | null>`${domainEvent.payload} ->> 'rejectReason'`,
+      })
+      .from(domainEvent)
+      .where(
+        and(
+          eq(domainEvent.aggregateType, 'claim-request'),
+          inArray(domainEvent.aggregateId, rows.map((r) => r.id)),
+          inArray(domainEvent.eventType, ['claim-request.submitted', 'claim-request.rejected']),
+        ),
+      )
+      .orderBy(domainEvent.sequence);
+    for (const r of rows) {
+      // Per key: the live field wins; else the newest archived one. Order is the designer's.
+      const byKey = new Map<string, typeof fieldRows[number]>();
+      for (const f of fieldRows.filter((f) => f.claimTypeId === r.claimTypeId)) {
+        const prior = byKey.get(f.fieldKey);
+        if (!prior || (prior.archivedAt != null && (f.archivedAt == null || f.createdAt > prior.createdAt))) byKey.set(f.fieldKey, f);
+      }
+      const mine = events.filter((e) => e.aggregateId === r.id);
+      const submitted = mine.filter((e) => e.eventType === 'claim-request.submitted').at(-1);
+      const rejected = mine.filter((e) => e.eventType === 'claim-request.rejected').at(-1);
+      const settled = r.status === 'approved' || r.status === 'paid';
+      out.set(r.id, {
+        id: r.id,
+        fieldValues: r.fieldValues ?? null,
+        fields: [...byKey.values()]
+          .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt.getTime() - b.createdAt.getTime())
+          .map((f) => ({ fieldKey: f.fieldKey, label: f.label, kind: f.kind as ClaimFieldKind })),
+        mileage: r.mileage ?? null,
+        submittedAt: submitted ? submitted.occurredAt.toISOString() : null,
+        decidedByName: r.decidedByName ?? null,
+        rejectReason: r.status === 'rejected' ? rejected?.reason?.trim() || null : null,
+        payoutRoute: settled ? (r.taxable ? 'payroll' : 'reimbursement') : null,
+        scheduledInPayroll: r.payrollBatchId != null,
+      });
+    }
+    return out;
   });
 }
 

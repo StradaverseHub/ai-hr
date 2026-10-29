@@ -15,6 +15,9 @@ vi.mock('../lib/authz',()=>({requireAdmin:async()=>({})}));
 vi.mock('../components/attendance-settings-navigation',()=>({AttendanceSettingsNavigation:()=>null}));
 vi.mock('../components/legacy-schedule-anchor',()=>({LegacyScheduleAnchor:()=>null}));
 vi.mock('../core/attendance-rule',()=>({ensureStandardRule:async()=>{},listAttendanceRules:async()=>[]}));
+// The Offline clocking card's server read (DB); its own card is covered by test/offline-clocking-card.dom.test.tsx.
+vi.mock('../app/admin/attendance-policy/offline-clocking-data',()=>({loadOfflineClockingSettings:async()=>[]}));
+vi.mock('../app/admin/attendance-policy/offline-clocking-actions',()=>({saveOfflineClockingAction:vi.fn()}));
 vi.mock('../app/admin/attendance-policy/rule-actions',()=>({copyAttendanceRuleAction:vi.fn(),deleteAttendanceRuleAction:vi.fn(),setAttendanceRuleStatusAction:vi.fn()}));
 import Page from '../app/admin/attendance/schedule/page';
 import {ScheduleGroupCard} from '../app/admin/attendance-policy/schedule-group-card';

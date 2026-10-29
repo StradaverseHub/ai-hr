@@ -9,7 +9,7 @@ describe('closed native outcome association contract',()=>{
  it('covers every declared effect action, without inventing Explorer or Assistant effects',()=>{
   const actions=Object.values(MODULE_AGENT_ACTIONS).flatMap(module=>module.actions.map(action=>action.id));
   expect(Object.keys(NATIVE_OUTCOME_ACTIONS).sort()).toEqual(actions.sort());
-  expect(NATIVE_REVIEW_ACTIONS).toHaveLength(22);expect(Object.keys(NATIVE_OUTCOME_ACTIONS)).toHaveLength(23);
+  expect(NATIVE_REVIEW_ACTIONS).toHaveLength(29);expect(Object.keys(NATIVE_OUTCOME_ACTIONS)).toHaveLength(30);
   expect(NON_EFFECT_OBSERVATIONS).toEqual({system_explorer:'authorized_schema_observation',assistant:'authorized_orchestration_read_execution'});
  });
  it('accepts only explicit consent, closed references and server-owned import versions',()=>{

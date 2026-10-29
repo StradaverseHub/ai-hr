@@ -9,7 +9,7 @@ import {assertWorkforceEmploymentTx,assertWorkforceCompanyTx} from './workforce-
 import {lockLabelCriteriaTx,visibleLabelIdsCondition} from './system-labels';
 import {provenCompanyDatesTx,dayBefore} from './employment-company';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {allocationInputSchema,normalizedAllocationRows,CostAllocationError,type CostAllocationInput} from '../lib/employment-cost-allocation';
+import {allocationInputSchema,normalizedAllocationRows,CostAllocationError,type CostAllocationInput,type AllocationSource} from '../lib/employment-cost-allocation';
 export {CostAllocationError} from '../lib/employment-cost-allocation';
 async function subjectTx(tx:Tx,ctx:SessionContext,id:string,date:string,write=false){
  await assertWorkforceEmploymentTx(tx,ctx,id,write?'maintain':'view');
@@ -60,7 +60,7 @@ export async function prepareCostAllocationsTx(tx:Tx,ctx:SessionContext,raw:unkn
 }
 export function previewEmploymentCostAllocations(ctx:SessionContext,raw:unknown){return withTenant(ctx,async tx=>{const p=await prepareCostAllocationsTx(tx,ctx,raw);return{...p.input,companyId:p.companyId,digest:p.digest,total:p.normalized.reduce((n,r)=>n+r.hundredths,0)};});}
 /** existingTx is mandatory for companion new-hire writes to join the employee's transaction. */
-export function saveEmploymentCostAllocations(ctx:SessionContext,raw:unknown,options:{digest?:string;source?:'manual'|'employee-import'|'allocation-import';existingTx?:Tx}={}){
+export function saveEmploymentCostAllocations(ctx:SessionContext,raw:unknown,options:{digest?:string;source?:AllocationSource;existingTx?:Tx}={}){
  return tenantMutation(ctx,options.existingTx,async tx=>{
   const p=await prepareCostAllocationsTx(tx,ctx,raw);if(options.digest!==undefined&&options.digest!==p.digest)throw new CostAllocationError('preview');
   const[result]=await tx.execute<{id:string}>(sql`select app.employment_cost_allocation_commit(${p.input.employmentId}::uuid,${p.companyId}::uuid,${p.input.effectiveDate}::date,${p.input.expectedRevision},${p.input.operation},${JSON.stringify(p.normalized)}::jsonb,${options.source??'manual'}) as id`);return{id:result.id,revision:p.input.expectedRevision+1};

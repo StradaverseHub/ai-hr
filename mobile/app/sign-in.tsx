@@ -1,4 +1,5 @@
 import { InternalSignIn } from '../lib/internal-sign-in';
+import { fetch as nativeFetch } from 'expo/fetch';
 /**
  * Sign-in (ADR-0088 §1): WorkOS hosted AuthKit in the system browser, authorization code + PKCE.
  * expo-auth-session generates the verifier and challenge and checks `state` on return.
@@ -38,7 +39,7 @@ function ProviderSignIn() {
     setConnectionError('');
     setBusy(true);
     try {
-      if(company) { try{await verifyCompanyServer(company);}catch{setConnectionError(companyCopy().signInUnavailable);return;} }
+      if(company) { try{await verifyCompanyServer(company,nativeFetch);}catch{setConnectionError(companyCopy().signInUnavailable);return;} }
       assertAuthGeneration(owner);
       if(configProblem())throw new Error('Company setup is no longer valid.');
       const pinnedDiscovery={authorizationEndpoint:discovery.authorizationEndpoint,tokenEndpoint:discovery.tokenEndpoint};

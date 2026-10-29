@@ -3781,6 +3781,97 @@
       "when": 1793190000000,
       "tag": "0670_ai_orchestrator_wave1_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 655,
+      "version": "7",
+      "when": 1793260000000,
+      "tag": "0675_import_attempt_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 656,
+      "version": "7",
+      "when": 1793270000000,
+      "tag": "0676_employment_import_void",
+      "breakpoints": true
+    },
+    {
+      "idx": 657,
+      "version": "7",
+      "when": 1793275000000,
+      "tag": "0671_ai_orchestrator_wave1b_decisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 658,
+      "version": "7",
+      "when": 1793300000000,
+      "tag": "0613_request_abuse_budgets",
+      "breakpoints": true
+    },
+    {
+      "idx": 659,
+      "version": "7",
+      "when": 1793300000001,
+      "tag": "0633_geofence_reported_uncertainty",
+      "breakpoints": true
+    },
+    {
+      "idx": 660,
+      "version": "7",
+      "when": 1793300000002,
+      "tag": "0634_mobile_integrity_challenges",
+      "breakpoints": true
+    },
+    {
+      "idx": 661,
+      "version": "7",
+      "when": 1793300000003,
+      "tag": "0635_mobile_integrity_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 662,
+      "version": "7",
+      "when": 1793300000004,
+      "tag": "0636_mobile_android_key_custody",
+      "breakpoints": true
+    },
+    {
+      "idx": 663,
+      "version": "7",
+      "when": 1793300000005,
+      "tag": "0647_mobile_offline_attendance",
+      "breakpoints": true
+    },
+    {
+      "idx": 664,
+      "version": "7",
+      "when": 1793300000006,
+      "tag": "0673_mobile_push_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 665,
+      "version": "7",
+      "when": 1793310000000,
+      "tag": "0672_ai_agent_principal",
+      "breakpoints": true
+    },
+    {
+      "idx": 666,
+      "version": "7",
+      "when": 1793320000000,
+      "tag": "0677_ai_hr_prepared_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 667,
+      "version": "7",
+      "when": 1793330000000,
+      "tag": "0674_assistant_outcome_measurement",
+      "breakpoints": true
     }
   ]
 }

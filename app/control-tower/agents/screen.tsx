@@ -6,6 +6,7 @@ import { getFormatter, getTranslations } from 'next-intl/server';
 import { type requireAdmin, isAdmin, isGroupAdmin } from '@/lib/authz';
 import { AI_RUN_STATE_FILTERS, aiManagementView, bulkAssistantDepartments, previewBulkAssistantAccess, type BulkAssistantPreview, type AiAllowanceUse, type AiRunFilter, type AiUsageSummary } from '@/core/ai-management';
 import { AI_FEATURES, isAiFeature } from '@/lib/ai/features';
+import type { AgentFeature } from '@/core/agent-principal';
 import { orchestrationQueue } from '@/core/hr-orchestrator';
 import { Badge, Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, btnGhost, inputCls, pageWideCls } from '@/components/ui';
 import { OrchestrationWorkQueue } from '../work-queue';
@@ -156,7 +157,11 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
         <tbody className="divide-y divide-border">{view.features.map(feature=>{
           const activity=view.usage.find(u=>u.feature_id===feature.id);
           return <tr key={feature.id} id={`ai-feature-${feature.id}`} className="scroll-mt-4">
-            <td className="px-5 py-4"><p className="font-medium">{t(`features.${feature.id}`)}</p><p className="mt-1 text-xs text-muted-foreground">{t(`kinds.${feature.kind}`)}{feature.id.startsWith('performance_')?` · ${t('imagesIncluded')}`:''}</p></td>
+            <td className="px-5 py-4"><p className="font-medium">{t(`features.${feature.id}`)}</p><p className="mt-1 text-xs text-muted-foreground">{t(`kinds.${feature.kind}`)}{feature.id.startsWith('performance_')?` · ${t('imagesIncluded')}`:''}</p>{(()=>{
+              // ADR-0151 §4.5 — the named agent principal runs a switched-on agent only under a named administrator's switch-on.
+              const sw=view.agentSwitches[feature.id as AgentFeature];
+              return sw?.state==='attributed'?<p className="mt-1 text-xs text-muted-foreground">{t('agentRunsAs',{by:sw.by??t('agentUnknownAdmin'),date:f.dateTime(sw.at,{dateStyle:'medium',timeZone:'Asia/Kuala_Lumpur'})})}</p>
+                :sw?.state==='unattributed'?<p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t('agentUnattributed')}</p>:null;})()}</td>
             <td className="px-5 py-4"><span className={feature.state==='ready'?'text-emerald-700 dark:text-emerald-300':'text-muted-foreground'}>{t(`states.${feature.state}`)}</span></td>
             <td className="px-5 py-4">{usage(activity)}{activity&&<p className="mt-1 text-xs text-muted-foreground">{t('exceptions',{blocked:numbers(activity.blocked),failed:numbers(activity.failed)})}</p>}</td>
             <td className="px-5 py-4">{feature.mayWrite?<form action={setAiFeatureAction}><input type="hidden" name="feature" value={feature.id}/><input type="hidden" name="enabled" value={String(!feature.enabled)}/><button type="submit" className={btnGhost} aria-label={`${t(feature.enabled?'pause':'enable')} · ${t(`features.${feature.id}`)}`}>{t(feature.enabled?'pause':'enable')}</button></form>:t(feature.kind==='platform'?'platformManaged':'readOnly')}</td>

@@ -33,6 +33,8 @@ export const MeEmployment = z.object({
 
 export const MeResponse = z.object({
   apiVersion: z.literal(MOBILE_API_VERSION),
+  /** Stable authenticated actor for encrypted local claim ownership; older v1 servers may omit it. */
+  actorId: z.string().uuid().optional(),
   person: z.object({ name: z.string().nullable(), email: z.string().nullable() }),
   /** Active employments only (as the web's /me). More than one ⇒ the app shows the employment picker. */
   employments: z.array(MeEmployment),
@@ -92,6 +94,12 @@ export const LeaveCard = z.object({
   sharedPool: z.boolean(),
   /** Message key suffix under `leave.table` for the entitlement notice, or null when none is due. */
   entitlementNotice: z.string().nullable(),
+  /**
+   * M07, additive — that notice as text in the caller's language (the web's `me.leaveBalanceTable` label and its
+   * explanation), so the app shows it without a catalogue of its own. Optional: an older server omits it, and an
+   * older app's schema (z.object, not strict) strips it.
+   */
+  entitlementNoticeText: z.object({ label: z.string(), detail: z.string().nullable() }).nullable().optional(),
 });
 
 export const LeaveResponse = z.object({
@@ -154,9 +162,17 @@ export const ClockResponse = z.object({
 });
 export type ClockResponse = z.infer<typeof ClockResponse>;
 export const ClockCommand = z.object({action:z.enum(['in','out']),requestId:z.string().uuid(),lat:z.number().finite().min(-90).max(90),lng:z.number().finite().min(-180).max(180),accuracy:z.number().finite().nonnegative(),sampledAt:z.number().finite().int().positive(),deviceToken:z.string().uuid().optional()}).strict();
+export const ClockLocationCommand=ClockCommand.pick({lat:true,lng:true,accuracy:true,sampledAt:true});
+export const ClockLocationResponse=z.object({
+  outcome:z.enum(['pass','not_enforced','location_required','invalid_location','poor_accuracy','no_assigned_site','outside_site','stale_fix','future_fix']),
+  siteId:z.string().uuid().nullable(),siteName:z.string().nullable(),distanceM:z.number().finite().nonnegative().nullable(),
+  radiusM:z.number().finite().nonnegative().nullable(),accuracyM:z.number().finite().nonnegative().nullable(),maximumAccuracyM:z.number().positive().nullable(),
+});
+export type ClockLocationResponse=z.infer<typeof ClockLocationResponse>;
+export {ClockPreparation,ClockAttemptReceipt,ClockAttemptsResponse} from '../clock-attempt';
 export const ClockResult = z.discriminatedUnion('outcome', [
   z.object({outcome:z.literal('accepted'),receipt:ClockReceipt}),
-  z.object({outcome:z.literal('refused'),code:z.enum(['corrected_day','clock_conflict','location_required','outside_geofence','photo_required','photo_invalid','device_required','mock_location'])}),
+  z.object({outcome:z.literal('refused'),code:z.enum(['corrected_day','clock_conflict','location_required','outside_geofence','photo_required','photo_invalid','device_required','mock_location','integrity_required']),locationReason:z.enum(['location_required','invalid_location','poor_accuracy','no_assigned_site','outside_site']).optional()}),
 ]);
 export type ClockResult = z.infer<typeof ClockResult>;
 export const DeviceCommand=z.object({label:z.string().trim().min(1).max(80)}).strict();
@@ -189,6 +205,19 @@ export const LeaveResult=z.discriminatedUnion('outcome',[
  z.object({outcome:z.literal('refused'),code:z.literal('leave_refused'),message:z.string().max(4000)}),
 ]);
 export type LeaveResult=z.infer<typeof LeaveResult>;
+
+/** Independent receipt lookup. No current-day filter, mutable status or submitted attachment is needed. */
+export const SubmissionReceiptResponse=z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('clock'),requestId:z.string().uuid(),receipt:ClockReceipt.nullable(),abandoned:z.literal(true).optional()}),
+  z.object({kind:z.literal('leave'),requestId:z.string().uuid(),receipt:LeaveResult.options[0].nullable(),abandoned:z.literal(true).optional()}),
+]);
+export type SubmissionReceiptResponse=z.infer<typeof SubmissionReceiptResponse>;
+export const SubmissionAbandonCommand=z.object({kind:z.enum(['clock','leave']),requestId:z.string().uuid()}).strict();
+export const SubmissionAbandonResponse=z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('clock'),requestId:z.string().uuid(),abandoned:z.boolean(),receipt:ClockReceipt.nullable()}).refine(v=>v.abandoned===(v.receipt===null)),
+  z.object({kind:z.literal('leave'),requestId:z.string().uuid(),abandoned:z.boolean(),receipt:LeaveResult.options[0].nullable()}).refine(v=>v.abandoned===(v.receipt===null)),
+]);
+export type SubmissionAbandonResponse=z.infer<typeof SubmissionAbandonResponse>;
 
 /** Read-only approval inbox; decisions retain their existing web workflow. */
 export const TasksResponse = z.object({ total: z.number().int().nonnegative(), items: z.array(z.object({ id: z.string().uuid(), kind: z.enum(['leave', 'leaveCancellation', 'attendance', 'profile', 'claim', 'resignation', 'managerReview', 'hrReview']), subject: z.string().nullable() })) });

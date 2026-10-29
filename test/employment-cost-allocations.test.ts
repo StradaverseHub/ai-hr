@@ -6,7 +6,10 @@ import {hireEmployee,transferEmploymentCompanyTx} from '../core/org';
 import {createCostCenter,deleteCostCenter,listCostCenters,listCostCentersForLabels} from '../core/admin';
 import {setLabelCriteria} from '../core/system-labels';
 import {getEmploymentCostAllocations,previewEmploymentCostAllocations,saveEmploymentCostAllocations} from '../core/employment-cost-allocations';
-import {previewCostAllocationImport,commitCostAllocationImport,costAllocationWorkbookReferences} from '../core/cost-allocation-import';
+import {previewCostAllocationImport,costAllocationWorkbookReferences,previewCostAllocationUpload,confirmCostAllocationUpload} from '../core/cost-allocation-import';
+import {toCsv} from '../lib/csv';
+import {ALLOCATION_COLUMNS} from '../lib/employment-cost-allocation';
+const allocationCsv=(records:Record<string,string>[])=>Buffer.from(toCsv([[...ALLOCATION_COLUMNS],...records.map(r=>ALLOCATION_COLUMNS.map(k=>r[k]??''))]));
 import {validateEmployeeImport,commitEmployeeImport} from '../core/import';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {dayBefore} from '../core/employment-company';
@@ -17,7 +20,7 @@ describe('Effective-dated employment cost allocation owner',()=>{
  const read=(date=today)=>getEmploymentCostAllocations(a,employmentId,date);
  async function save(rows:{costCenterId:string;percentage:string}[],date=today){const input={employmentId,effectiveDate:date,expectedRevision:(await read(date)).revision,operation:rows.length?'replace':'clear',rows};const preview=await previewEmploymentCostAllocations(a,input);return saveEmploymentCostAllocations(a,input,{digest:preview.digest});}
  beforeAll(migrateTestDb);beforeEach(async()=>{
-  await resetDb();b=await seedBase();a=adminCtx(b);
+  await resetDb();b=await seedBase();a=adminCtx(b);await owner.db.update(s.company).set({companyLabel:'ACME'}).where(eq(s.company.id,b.companyId));
   ({employmentId}=await hireEmployee(a,{person:{fullName:'Allocation Employee',primaryEmail:'allocation@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:hireDate,employeeCode:'ALLOC01'}));
   cc1=(await createCostCenter(a,{companyId:b.companyId,code:'ALLOC-A',name:'Allocation A'})).id;cc2=(await createCostCenter(a,{companyId:b.companyId,code:'ALLOC-B',name:'Allocation B'})).id;
  });afterAll(closeAll);
@@ -97,47 +100,50 @@ describe('Effective-dated employment cost allocation owner',()=>{
   await expect(withTenant(a,tx=>tx.execute(sql`select app.employment_cost_allocation_commit(${employmentId}::uuid,${b.companyId}::uuid,${today}::date,0,'replace',${JSON.stringify([{costCenterId:cc1,hundredths:6000},{costCenterId:cc2,hundredths:5000}])}::jsonb,'manual')`))).rejects.toThrow();
   await expect(withTenant(a,tx=>tx.insert(s.employmentCostAllocationHead).values({tenantId:b.tenantId,employmentId,revision:0}))).rejects.toThrow();expect((await read()).revision).toBe(0);
  });
- it('filters workbook code references by current maintain authority and refuses a denied selected company',async()=>{
+ it('lists workbook codes for every company the actor maintains, by Company Code, and nothing else',async()=>{
   const[other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Hidden catalogue company'}).returning();await createCostCenter(a,{companyId:other.id,code:'HIDDEN-CODE',name:'Hidden cost centre'});
   const[p]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Scoped allocation administrator',primaryEmail:'scoped-allocation@example.test'}).returning();const userId=await createAppUser(b.tenantId,p.id,'hr_admin');await owner.db.update(s.roleAssignment).set({companyId:b.companyId}).where(eq(s.roleAssignment.appUserId,userId));
   const scoped={...a,userId,personId:p.id,grants:[{role:'hr_admin',companyId:b.companyId}]};
-  const refs=await costAllocationWorkbookReferences(scoped,[b.companyId,other.id],b.companyId);expect(refs.some(r=>r.code==='ALLOC-A')).toBe(true);expect(JSON.stringify(refs)).not.toMatch(/HIDDEN-CODE|Hidden cost centre|Hidden catalogue company/);expect(refs.every(r=>r.companyId===b.companyId)).toBe(true);
-  await expect(costAllocationWorkbookReferences(scoped,[b.companyId,other.id],other.id)).rejects.toThrow(/permission|unavailable/i);
+  const refs=await costAllocationWorkbookReferences(scoped);expect(refs.companies).toEqual([{code:'ACME',name:'Acme Sdn Bhd'}]);expect(refs.costCenters.some(r=>r.code==='ALLOC-A'&&r.companyCode==='ACME')).toBe(true);expect(JSON.stringify(refs)).not.toMatch(/HIDDEN-CODE|Hidden cost centre|Hidden catalogue company/);
+  const all=await costAllocationWorkbookReferences(a);expect(all.companies.map(c=>c.name).sort()).toEqual(['Acme Sdn Bhd','Hidden catalogue company']);expect(all.costCenters.find(r=>r.code==='HIDDEN-CODE')?.companyCode).toBe('Hidden catalogue company');
  });
- it('resolves lowercase existing Employee IDs through the canonical normalizer',async()=>{
-  const records=[{company_id:b.companyId,employee_code:' alloc01 ',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'100'}];
-  const p=await previewCostAllocationImport(a,records);expect(p.groups).toHaveLength(1);expect(p.groups[0]).toMatchObject({employeeCode:'ALLOC01',employmentId,errors:[]});
-  expect(await commitCostAllocationImport(a,records,p.token)).toMatchObject([{employmentId,saved:true}]);expect((await read()).total).toBe(10000);
+ it('resolves lowercase existing Employee IDs and Company Codes through the canonical normalizers',async()=>{
+  const records=[{company_code:' acme ',employee_code:' alloc01 ',effective_date:today,operation:'Replace',cost_center_code:'ALLOC-A',percentage:'100'}];
+  const p=await previewCostAllocationImport(a,records);expect(p.groups).toHaveLength(1);expect(p.groups[0]).toMatchObject({employeeCode:'ALLOC01',companyId:b.companyId,employmentId,errors:[]});
+  const{attemptId,plan}=await previewCostAllocationUpload(a,{name:'allocations.csv',content:allocationCsv(records)});
+  expect(await confirmCostAllocationUpload(a,{attemptId,previewHash:plan.previewHash})).toMatchObject({succeeded:1,failed:0,results:[{saved:true}]});expect((await read()).total).toBe(10000);
  });
  it('combines mixed-case rows into one employee/date set and refuses an over-total without partial writes',async()=>{
-  const records=[{company_id:b.companyId,employee_code:'ALLOC01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'60'},{company_id:b.companyId,employee_code:'alloc01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-B',percentage:'40'}];
+  const records=[{company_code:'ACME',employee_code:'ALLOC01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'60'},{company_code:'Acme',employee_code:'alloc01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-B',percentage:'40'}];
   let p=await previewCostAllocationImport(a,records);expect(p.groups).toHaveLength(1);expect(p.groups[0].rowNums).toEqual([2,3]);expect(p.groups[0].errors).toEqual([]);
-  await commitCostAllocationImport(a,records,p.token);const before=await read();expect(before.total).toBe(10000);expect(before.rows).toHaveLength(2);
-  records[1].percentage='50';p=await previewCostAllocationImport(a,records);expect(p.groups).toHaveLength(1);expect(p.validCount).toBe(0);expect(p.groups[0].errors.join(' ')).toMatch(/100/);
-  const result=await commitCostAllocationImport(a,records,p.token);expect(result).toHaveLength(1);expect(result[0].saved).toBe(false);expect((await read()).revision).toBe(before.revision);expect((await read()).rows).toEqual(before.rows);
+  let upload=await previewCostAllocationUpload(a,{name:'a.csv',content:allocationCsv(records)});await confirmCostAllocationUpload(a,{attemptId:upload.attemptId,previewHash:upload.plan.previewHash});const before=await read();expect(before.total).toBe(10000);expect(before.rows).toHaveLength(2);
+  records[1].percentage='50';p=await previewCostAllocationImport(a,records);expect(p.groups).toHaveLength(1);expect(p.validCount).toBe(0);expect(p.groups[0].errors.join(' ')).toMatch(/Rows 2, 3: .*100/);
+  upload=await previewCostAllocationUpload(a,{name:'b.csv',content:allocationCsv(records)});expect(upload.plan.counts).toEqual({total:1,valid:0,invalid:1});
+  await expect(confirmCostAllocationUpload(a,{attemptId:upload.attemptId,previewHash:upload.plan.previewHash})).rejects.toThrow(/Correct the file/);expect((await read()).revision).toBe(before.revision);expect((await read()).rows).toEqual(before.rows);
  });
- it('groups repeated update rows, refuses the whole invalid employee set and rechecks the preview token',async()=>{
-  const records=[{company_id:b.companyId,employee_code:'ALLOC01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'50.01'},{company_id:b.companyId,employee_code:'ALLOC01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-B',percentage:'50'}];
-  let p=await previewCostAllocationImport(a,records);expect(p.groups[0].errors.join(' ')).toMatch(/100/);expect(p.groups[0].rowNums).toEqual([2,3]);await commitCostAllocationImport(a,records,p.token);expect((await read()).revision).toBe(0);
-  records[0].percentage='50';p=await previewCostAllocationImport(a,records);await owner.db.update(s.costCenter).set({label:'Changed since preview'}).where(eq(s.costCenter.id,cc1));await expect(commitCostAllocationImport(a,records,p.token)).rejects.toThrow(/Preview/);
-  p=await previewCostAllocationImport(a,records);const result=await commitCostAllocationImport(a,records,p.token);expect(result).toMatchObject([{saved:true,employmentId,effectiveDate:today}]);expect((await read()).total).toBe(10000);
+ it('groups repeated update rows, refuses the whole invalid employee set and rechecks the reviewed preview',async()=>{
+  const records=[{company_code:'ACME',employee_code:'ALLOC01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'50.01'},{company_code:'ACME',employee_code:'ALLOC01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-B',percentage:'50'}];
+  const p=await previewCostAllocationImport(a,records);expect(p.groups[0].errors.join(' ')).toMatch(/100/);expect(p.groups[0].rowNums).toEqual([2,3]);expect((await read()).revision).toBe(0);
+  records[0].percentage='50';let upload=await previewCostAllocationUpload(a,{name:'a.csv',content:allocationCsv(records)});await owner.db.update(s.costCenter).set({label:'Changed since preview'}).where(eq(s.costCenter.id,cc1));
+  await expect(confirmCostAllocationUpload(a,{attemptId:upload.attemptId,previewHash:upload.plan.previewHash})).rejects.toThrow(/changed since this file was checked/);expect((await read()).revision).toBe(0);
+  upload=await previewCostAllocationUpload(a,{name:'b.csv',content:allocationCsv(records)});const result=await confirmCostAllocationUpload(a,{attemptId:upload.attemptId,previewHash:upload.plan.previewHash});expect(result.results).toMatchObject([{saved:true,effectiveDate:today}]);expect((await read()).total).toBe(10000);
  });
  const record=()=>({full_name:'New Allocation Joiner',email:'new-allocation@fixture.test',department:'Finance',hired_on:today,employment_type:'full_time',employee_code:'NEWALLOC01',basic_salary:'2500',bank_name:'Maybank',bank_account_no:'001234567'});
  it('binds lowercase Employee IDs on both full new-joiner sheets to one canonical employee',async()=>{
   const employee={...record(),employee_code:'newalloc01'};
-  const allocationRecords=[{company_id:b.companyId,employee_code:'newalloc01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'100'}];
+  const allocationRecords=[{company_code:'ACME',employee_code:'newalloc01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'100'}];
   const preview=await validateEmployeeImport(a,{companyId:b.companyId,records:[employee],allocationRecords});expect(preview.fileErrors).toEqual([]);expect(preview.allocations?.groups).toMatchObject([{employeeCode:'NEWALLOC01',newEmployeeIndex:0,errors:[]}]);
   const result=await commitEmployeeImport(a,{companyId:b.companyId,records:[employee],allocationRecords,allocationToken:preview.allocations!.token});expect(result.imported).toBe(1);
   const[stored]=await owner.db.select().from(s.employment).where(eq(s.employment.employeeCode,'NEWALLOC01')).orderBy(asc(s.employment.id));expect((await getEmploymentCostAllocations(a,stored.id)).total).toBe(10000);
  });
  it('imports a new-joiner companion in the real employee transaction and leaves omitted sheets valid',async()=>{
-  const allocations=[{company_id:b.companyId,employee_code:'NEWALLOC01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'100'}];const preview=await validateEmployeeImport(a,{companyId:b.companyId,records:[record()],allocationRecords:allocations});expect(preview.fileErrors).toEqual([]);expect(preview.allocations?.validCount).toBe(1);
+  const allocations=[{company_code:'ACME',employee_code:'NEWALLOC01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'100'}];const preview=await validateEmployeeImport(a,{companyId:b.companyId,records:[record()],allocationRecords:allocations});expect(preview.fileErrors).toEqual([]);expect(preview.allocations?.validCount).toBe(1);
   const result=await commitEmployeeImport(a,{companyId:b.companyId,records:[record()],allocationRecords:allocations,allocationToken:preview.allocations!.token});expect(result.imported).toBe(1);
   const[e]=await owner.db.select().from(s.employment).where(eq(s.employment.employeeCode,'NEWALLOC01')).orderBy(asc(s.employment.id));expect((await getEmploymentCostAllocations(a,e.id)).total).toBe(10000);
   const absent=await commitEmployeeImport(a,{companyId:b.companyId,records:[{...record(),employee_code:'NOALLOC01',email:'no-allocation@fixture.test'}]});expect(absent.imported).toBe(1);const[n]=await owner.db.select().from(s.employment).where(eq(s.employment.employeeCode,'NOALLOC01')).orderBy(asc(s.employment.id));expect((await getEmploymentCostAllocations(a,n.id)).rows).toEqual([]);
  });
  it('rolls back new employee identity, assignment and compensation when the allocation writer refuses after hire',async()=>{
-  const allocations=[{company_id:b.companyId,employee_code:'NEWALLOC01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'100'}];const preview=await validateEmployeeImport(a,{companyId:b.companyId,records:[record()],allocationRecords:allocations});expect(preview.fileErrors).toEqual([]);
+  const allocations=[{company_code:'ACME',employee_code:'NEWALLOC01',effective_date:today,operation:'replace',cost_center_code:'ALLOC-A',percentage:'100'}];const preview=await validateEmployeeImport(a,{companyId:b.companyId,records:[record()],allocationRecords:allocations});expect(preview.fileErrors).toEqual([]);
   await owner.db.execute(sql`CREATE FUNCTION public.allocation_test_refuse() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture allocation owner refusal';END $$`);await owner.db.execute(sql`CREATE TRIGGER allocation_test_refuse BEFORE INSERT ON employment_cost_allocation_row FOR EACH ROW EXECUTE FUNCTION public.allocation_test_refuse()`);
   try{const result=await commitEmployeeImport(a,{companyId:b.companyId,records:[record()],allocationRecords:allocations,allocationToken:preview.allocations!.token});expect(result.imported).toBe(0);expect(result.fileErrors.join(' ')).toMatch(/rolled back/);expect(await owner.db.select().from(s.person).where(eq(s.person.primaryEmail,record().email))).toEqual([]);expect(await owner.db.select().from(s.employment).where(eq(s.employment.employeeCode,'NEWALLOC01'))).toEqual([]);const leaked=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from employment_cost_allocation_set where tenant_id=${b.tenantId}::uuid`);expect(leaked[0].n).toBe(0);}finally{await owner.db.execute(sql`DROP TRIGGER allocation_test_refuse ON employment_cost_allocation_row`);await owner.db.execute(sql`DROP FUNCTION public.allocation_test_refuse()`);}
  });

@@ -15,7 +15,8 @@ const base = 'http://127.0.0.1:3174';
 const tenant = '11111111-1111-1111-1111-111111111111';
 const target = 'ai_hr_orchestrator_browser';
 const locales = ['en', 'ms', 'zh', 'vi', 'th', 'ta'];
-const routes = ['/control-tower', '/control-tower/agents'];
+// /control-tower/agents became the AI administration area (1c868f527) and no longer holds the work queue.
+const routes = ['/control-tower'];
 const postgres = fileURLToPath(new URL('./postgres.sh', import.meta.url));
 const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(value);
 const git = (...args) => execFileSync('git', args, {encoding: 'utf8'}).trim();
@@ -41,6 +42,29 @@ export function validateFixture(value, reused) {
   }
   return value;
 }
+
+/**
+ * ADR-0151 §4.6c fictional prepared-action rows, inserted as the database owner. Counts per administrator are
+ * fixed: company A's employee 6 leave.apply plus 1 claims.cancel, company B's 1 leave.apply, and one
+ * tenant-wide Knowledge Base review that only the group administrator may count.
+ */
+export function outcomeFixtureSql(fixture) {
+  const actor = key => fixture.actors.find(row => row.key === key);
+  const [a, b, group] = [actor('A-employee'), actor('B-employee'), actor('group-admin')];
+  for (const row of [a, b, group]) assert(uuid(row.userId) && (row.personId === null || uuid(row.personId)));
+  const own = (who, kind, state, days, extra = '') => `('${kind}',gen_random_uuid(),'${fixture.tenantId}','${who.userId}','${who.personId}',
+    (select e.id from employment e where e.person_id='${who.personId}' order by e.created_at limit 1),'${who.companyId}',
+    ${state === 'awaiting_confirmation' ? `repeat('a',64),repeat('b',64)` : 'null,null'},'${state}',
+    now()-interval '${days} days',now()-interval '${days} days'+interval '${state === 'awaiting_confirmation' ? '30 days' : '10 minutes'}'${extra})`;
+  const apply = ",gen_random_uuid(),gen_random_uuid(),null,null,null", cancel = ",null,null,'claim_request',gen_random_uuid(),gen_random_uuid()", none = ',null,null,null,null,null';
+  const rows = [own(a, 'leave.apply', 'completed', 12, apply), own(a, 'leave.apply', 'completed', 9, apply), own(a, 'leave.apply', 'discarded', 8, none),
+    own(a, 'leave.apply', 'expired', 6, none), own(a, 'leave.apply', 'refused', 4, none), own(a, 'leave.apply', 'awaiting_confirmation', 0, none),
+    own(a, 'claims.cancel', 'completed', 3, cancel), own(b, 'leave.apply', 'discarded', 2, none),
+    `('knowledge_base.article.create',gen_random_uuid(),'${fixture.tenantId}','${group.userId}',null,null,null,null,null,'discarded',now()-interval '1 day',now()-interval '1 day'+interval '10 minutes'${none})`];
+  return `insert into app.assistant_own_leave_review(action_kind,id,tenant_id,user_id,person_id,employment_id,company_id,intent_digest,reviewed_digest,state,created_at,expires_at,
+    leave_request_id,submission_event_id,receipt_subject_kind,receipt_subject_id,receipt_event_id) values ${rows.join(',')}`;
+}
+export const OUTCOME_EXPECTED = {'group-admin': {apply: '7', kb: true}, 'A-hr': {apply: '6', kb: false}, 'B-hr': {apply: '1', kb: false}};
 
 export function receiptExpectation(scenario) {
   const success = ['succeeded', 'succeeded', 'succeeded', 'succeeded'];
@@ -144,16 +168,16 @@ async function main() {
       page.on('console', message => { if (message.type() === 'error') report.consoleErrors.push(scrub(message.text())); });
       page.on('response', response => { if (response.status() >= 500) report.serverErrors.push({url: response.url(), status: response.status()}); });
       await page.goto(base + '/login');
-      await page.locator(`form[action="/login/as"]:has(input[name="userId"][value="${actor.userId}"]) button[type="submit"]`).click();
+      await page.locator(`form[action="/login/as"]:has(input[name="userId"][value="${actor.userId}"]) button[type="submit"]:visible`).click();
       await page.waitForURL(url => url.pathname !== '/login' && url.pathname !== '/login/as');
       return {context, page};
     };
     const cardFor = (page, t) => page.getByRole('heading', {name: t.workTitle, exact: true}).locator('xpath=ancestor::*[@data-ui-card][1]');
+    // The renderer no longer exposes the "Change language" button this walkthrough used to click (run
+    // 40751449728 timed out waiting for it), so it sets the NEXT_LOCALE cookie that button's server action
+    // writes. Each visit still proves the locale by finding that locale's own copy on the page.
     const language = async (page, context, locale) => {
-      await page.getByRole('button', {name: 'Change language', exact: true}).click();
-      const response = page.waitForResponse(r => r.request().method() === 'POST' && Boolean(r.request().headers()['next-action']));
-      await page.locator(`button[name="locale"][value="${locale}"]`).click();
-      await (await response).finished();
+      await context.addCookies([{name: 'NEXT_LOCALE', value: locale, url: base}]);
       assert.equal((await context.cookies(base)).find(cookie => cookie.name === 'NEXT_LOCALE')?.value, locale);
     };
     const noPrivateText = async page => assert(!(await page.content()).includes(second.privateSentinel), 'Private receipt text reached HTML');
@@ -167,6 +191,8 @@ async function main() {
             for (const route of routes) {
               await page.goto(base + route); const t = catalogues[locale];
               if (actor.key.endsWith('-employee')) {
+                // A streamed response can carry requireAdmin's redirect to the client, after goto resolves.
+                await page.waitForURL(url => !routes.includes(url.pathname)).catch(() => {});
                 assert(!routes.includes(new URL(page.url()).pathname), 'Employee reached an administrative queue');
                 assert.equal(await page.getByRole('heading', {name: t.workTitle, exact: true}).count(), 0);
               } else {
@@ -215,6 +241,44 @@ async function main() {
         report.scenarios.push({scenario, ...expected});
       }
     } finally { await context.close(); }
+    // ADR-0151 §4.6c: the outcome view beside the process assessment, on fictional rows, per administrator scope.
+    psql(outcomeFixtureSql(second));
+    const messages = Object.fromEntries(locales.map(locale => [locale, JSON.parse(readFileSync(`messages/${locale}.json`, 'utf8'))]));
+    for (const [key, expected] of Object.entries(OUTCOME_EXPECTED)) {
+      const {context, page} = await login(second.actors.find(row => row.key === key));
+      try {
+        for (const viewport of [{name: 'desktop', width: 1440, height: 1000}, {name: 'mobile', width: 375, height: 812}]) {
+          await page.setViewportSize({width: viewport.width, height: viewport.height});
+          for (const locale of key === 'group-admin' ? locales : ['en']) {
+            await language(page, context, locale);
+            await page.goto(base + '/control-tower/opportunities');
+            const o = messages[locale].processAssessment.outcomes;
+            // The first-visit product tour covers the page; dismiss it as a person would.
+            const skip = page.getByRole('button', {name: messages[locale].onboarding.skip, exact: true});
+            if (await skip.isVisible().catch(() => false)) { await skip.click(); await skip.waitFor({state: 'hidden'}); }
+            // Streaming can leave a hidden copy of a card in the document; only the visible one is the page.
+            const section = title => page.locator('[data-ui-section-header]:visible', {hasText: title}).locator('xpath=ancestor::*[@data-ui-card][1]');
+            const table = section(o.title);
+            await table.waitFor({state: 'visible'});
+            const row = kind => table.locator('tr', {has: page.locator('span.font-mono', {hasText: new RegExp(`^${kind.replace('.', '\\.')}$`)})});
+            const cells = (await row('leave.apply').locator('td').allTextContents()).map(text => text.trim());
+            assert.equal(cells[2], expected.apply, `${key} leave.apply prepared`);
+            assert.equal(await row('knowledge_base.article.create').count(), expected.kb ? 1 : 0, `${key} tenant-wide row visibility`);
+            await section(o.coverageTitle).waitFor({state: 'visible'});
+            await noPrivateText(page);
+            const dimensions = await page.evaluate(() => ({width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth}));
+            assert(dimensions.scroll <= dimensions.width + 1, 'Outcome page overflows viewport');
+            const image = `outcomes-${key}-${locale}-${viewport.name}.png`;
+            await page.screenshot({path: join(out, image), fullPage: true, animations: 'disabled'});
+            // The shell scrolls inside its own container, so each new card is also captured whole.
+            const leaveCard = page.locator('[data-ui-card]:visible', {has: page.getByRole('heading', {name: messages[locale].processAssessment.processes.leave})});
+            for (const [part, locator] of [['table', table], ['coverage', section(o.coverageTitle)], ['leave', leaveCard]])
+              await locator.screenshot({path: join(out, `outcomes-${key}-${locale}-${viewport.name}-${part}.png`), animations: 'disabled'});
+            report.visits.push({actor: key, locale, route: '/control-tower/opportunities', viewport: viewport.name, image, dimensions});
+          }
+        }
+      } finally { await context.close(); }
+    }
     report.modelRunsAfter = Number(psql('select count(*) from ai_model_run'));
     assert.equal(report.modelRunsAfter, report.modelRunsBefore, 'Walkthrough created a model admission');
     assert.equal(report.browserErrors.length, 0); assert.equal(report.consoleErrors.length, 0); assert.equal(report.serverErrors.length, 0);

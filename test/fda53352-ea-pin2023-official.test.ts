@@ -138,8 +138,10 @@ describe('fda53352 · (c) an English EA is English all the way to the masthead',
     const s = src('lib/ea-pdf.ts');
     expect(s).toContain("eaFormWords(opts.locale ?? 'en')");
     // All three routes must pass one, or a document gets one language's captions and another's furniture.
+    // M09 — the employee's own form renders in app/me/ea/document.ts (shared by the web and mobile routes); the
+    // assertion followed the render call out of app/me/ea/[employmentId]/pdf/route.ts.
     for (const f of [
-      'app/me/ea/[employmentId]/pdf/route.ts',
+      'app/me/ea/document.ts',
       'app/payroll/ea/blank/route.ts',
       'app/payroll/statutory-forms/ea/shared.ts',
     ]) {

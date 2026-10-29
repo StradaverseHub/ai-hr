@@ -142,7 +142,8 @@ export type ProcessMeasures = {
 type Row = { started: number; completed: number; open: number; aged_open: number; rework: number;
   p50: number | string | null; p90: number | string | null; staff: number; employee: number; automated: number };
 
-async function measure(tx: Tx, id: ProcessId, from: Date): Promise<ProcessMeasures> {
+/** Cases started in [from, to); `to` omitted means up to now. Exported for the ADR-0151 §4.6c before/after. */
+export async function measure(tx: Tx, id: ProcessId, from: Date, to?: Date): Promise<ProcessMeasures> {
   const [r] = await tx.execute<Row>(sql`
     with rows as (${ROWS[id]}),
     cases as (
@@ -150,7 +151,8 @@ async function measure(tx: Tx, id: ProcessId, from: Date): Promise<ProcessMeasur
         -- Finished only once nothing in the case is still pending; the last decision closes it.
         case when not bool_or(is_open) then max(decided_at) end as finished_at,
         bool_or(is_open) as is_open, bool_or(is_rework) as is_rework, array_agg(row_id) as row_ids
-      from rows group by case_id having min(created_at) >= ${from.toISOString()}::timestamptz),
+      from rows group by case_id having min(created_at) >= ${from.toISOString()}::timestamptz
+        and (${to?.toISOString() ?? null}::timestamptz is null or min(created_at) < ${to?.toISOString() ?? null}::timestamptz)),
     -- Every id an action may be recorded against: each row, and the case's group id (an emergency
     -- submission is recorded on the group, not on either row).
     ids as (select distinct c.person_id, x.id as agg_id from cases c cross join lateral unnest(c.row_ids || c.case_id) as x(id)),
@@ -209,6 +211,13 @@ export function estimateLoad(staffActionsPer30: number, minutesPerAction: number
   return { hours, fte: hoursPerFte == null ? null : Math.round(hours / hoursPerFte * 100) / 100 };
 }
 
+/** Start of the window in Malaysia calendar days, matching every other period in the product. */
+export async function windowStart(tx: Tx, window: AssessmentWindow): Promise<Date> {
+  const [{ from_ms }] = await tx.execute<{ from_ms: string }>(sql`select (extract(epoch from (date_trunc('day', now() at time zone 'Asia/Kuala_Lumpur')
+    - make_interval(days => ${window}::int)) at time zone 'Asia/Kuala_Lumpur') * 1000)::bigint::text as from_ms`);
+  return new Date(Number(from_ms));
+}
+
 export type ProcessAssessment = {
   id: ProcessId; profile: Profile; enabled: boolean; measures: ProcessMeasures | null;
   role: AgentRole; staffActionsPer30: number | null;
@@ -217,10 +226,7 @@ export type ProcessAssessment = {
 export async function assessProcesses(ctx: SessionContext, window: AssessmentWindow = 90) {
   if (!isAdmin(ctx)) throw new Error('Only HR administrators may view the process assessment.');
   return withTenant(ctx, async tx => {
-    // Malaysia calendar days, matching every other period in the product.
-    const [{ from_ms }] = await tx.execute<{ from_ms: string }>(sql`select (extract(epoch from (date_trunc('day', now() at time zone 'Asia/Kuala_Lumpur')
-      - make_interval(days => ${window}::int)) at time zone 'Asia/Kuala_Lumpur') * 1000)::bigint::text as from_ms`);
-    const fromDate = new Date(Number(from_ms));
+    const fromDate = await windowStart(tx, window);
     const processes: ProcessAssessment[] = [];
     for (const id of PROCESS_IDS) {
       const profile = PROCESS_PROFILES[id];

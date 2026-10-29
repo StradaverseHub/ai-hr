@@ -17,6 +17,9 @@ import { isFixtureResetLockError } from './harness-reset-errors';
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
 
 const ALL_TABLES = [
+  'mobile_integrity_key',
+  'mobile_integrity_challenge', // Tenant claims reset; migration-owned installation identity remains stable.
+  'app_request_budget', // Shared admission state has no tenant FK; reset explicitly between cases.
   'login_presentation',
   'employment_cost_allocation_row','employment_cost_allocation_set','employment_cost_allocation_head',
   'job_document_attachment','job_document_review','job_document_audit','job_document_revision','job_document_form','job_document',
@@ -66,6 +69,7 @@ const ALL_TABLES = [
   'movement_event_type',
   'holiday', 'holiday_group_holiday', 'attendance', 'attendance_policy', 'travel_request',
   'letter_verification_rate','letter_access_token','letter_recipient_event','letter_artifact','letter_approval_decision','letter_revision','letter_record','letter_job','letter_counter','letter_generation_batch','letter_template_field','letter_template_version','letter_template','letter_merge_field_version','letter_policy_version','letter_asset','letter_capability_grant',
+  'import_attempt_event','import_attempt_item','import_attempt',
   'payroll_history_import_event','payroll_history_import_revision','payroll_history_import_snapshot','payroll_history_import_record','payroll_history_import_attempt',
   'payroll_batch', 'payslip', 'payroll_input', 'payroll_individual_txn', 'employee_cp38', 'company_statutory_my',
   'payroll_leave_exception', 'employment_holiday_calendar',

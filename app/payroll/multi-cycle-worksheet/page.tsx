@@ -18,6 +18,7 @@
  * Malaysian answer (ADR-0080 D1/D7 — this route never names `localization/my`).
  */
 import Link from 'next/link';
+import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin, actingCompanyCountry } from '@/lib/scope';
 import { packFor } from '@/localization/registry';
@@ -371,7 +372,7 @@ function WorkedExample({
                         {i === 0 ? (
                           <>
                             <td className="px-3 py-2" rowSpan={3}>
-                              {t('runLabel', { seq: r.runSeq, type: t(`runType.${r.runType}`) })}
+                              {t('runLabel', { seq: r.runSeq, type: payrollRunLabel(r, t(`runType.${r.runType}`)) })}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums" rowSpan={3}>
                               {money(r.normal)}

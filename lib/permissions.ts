@@ -105,7 +105,7 @@ export interface ScreenEntry {
  */
 export const SCREENS: readonly ScreenEntry[] = [
   // Shared authenticated shell; facts/effects additionally require current Assistant/native access.
-  {screenKey:'assistantWorkspace',href:'/assistant',labelKey:'nav.assistant',guard:'assistantSession',routes:['/assistant','/assistant/leave','/assistant/notifications','/assistant/profile','/assistant/performance','/assistant/claims','/assistant/testing','/assistant/org','/assistant/knowledge-base','/assistant/lifecycle','/assistant/toil','/assistant/approvals','/assistant/attendance','/assistant/pay-codes','/assistant/rewards','/assistant/payroll-close','/assistant/statutory','/assistant/payroll-runs'],hasScopeNote:true},
+  {screenKey:'assistantWorkspace',href:'/assistant',labelKey:'nav.assistant',guard:'assistantSession',routes:['/assistant','/assistant/leave','/assistant/notifications','/assistant/profile','/assistant/performance','/assistant/claims','/assistant/testing','/assistant/org','/assistant/knowledge-base','/assistant/lifecycle','/assistant/toil','/assistant/approvals','/assistant/hr','/assistant/attendance','/assistant/pay-codes','/assistant/rewards','/assistant/payroll-close','/assistant/statutory','/assistant/payroll-runs'],hasScopeNote:true},
   {screenKey:'jobDescriptions',href:'/admin/job-descriptions',labelKey:'nav.jobDescriptions',guard:'requireAdmin',routes:['/admin/job-descriptions','/admin/job-descriptions/new','/admin/job-descriptions/configuration','/admin/job-descriptions/[id]','/admin/job-descriptions/[id]/print']},
   {screenKey:'rewardsAccess',href:'/admin/rewards/access',labelKey:'rewardsAccess.title',guard:'scopedAdmin',routes:['/admin/rewards/access']},
   {screenKey:'peopleGeneral',href:'/admin/settings/people-general',labelKey:'nav.peopleGeneral',guard:'requireAdmin',routes:['/admin/settings/people-general']},
@@ -488,6 +488,11 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/personnel/new',
     ],
   },
+  // c4055300 / ADR-0155 — Import History. Its own column because what a reader sees is narrower than the
+  // page floor: an import is listed for Workforce view on at least one of its companies, each item only for
+  // its own company, the original file only with view on every company, and Revert only with Workforce
+  // maintain on every company. The guard MATCHES the pages' own requireAdmin().
+  {screenKey:'importHistory',href:'/admin/personnel/import/history',labelKey:'admin.users.screen.importHistory',guard:'requireAdmin',routes:['/admin/personnel/import/history','/admin/personnel/import/history/[attemptId]'],hasScopeNote:true},
   {
     // 05d2709a — Possible duplicate employee records. Its OWN column, deliberately NOT a fifth route on
     // personnelAdmin above: managing an employee and reviewing a cross-company list of people who may be

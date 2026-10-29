@@ -1,11 +1,13 @@
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as ScreenCapture from 'expo-screen-capture';
 import * as WebBrowser from 'expo-web-browser';
-import { createContext, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { AppState, Platform } from 'react-native';
 import { assertAuthGeneration, hasStoredSession, redirectUri, signOut as clearTokens, workosLogoutUrl } from './auth';
 import { t } from './i18n';
 import { createSessionState, type Visibility } from './session-state';
+import { sweepProtectedDocuments } from './protected-document';
+import { releasePushOnExit } from './push-core';
 
 type Controller = ReturnType<typeof createSessionState>;
 type Session = ReturnType<Controller['getSnapshot']> & {
@@ -45,20 +47,33 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         disableDeviceFallback: false, biometricsSecurityLevel: 'strong',
       })).success;
     },
-    clearTokens,
+    // Logout (explicit, failed unlock or revoked session) removes any protected document first.
+    async clearTokens() { sweepProtectedDocuments(); await clearTokens(); },
   }, visibility(AppState.currentState)));
   const snapshot = useSyncExternalStore(state.subscribe, state.getSnapshot, state.getSnapshot);
 
   useEffect(() => {
-    const change = AppState.addEventListener('change', (value) => state.setVisibility(visibility(value)));
+    sweepProtectedDocuments(); // launch: leftovers of a killed process
+    const change = AppState.addEventListener('change', (value) => {
+      const next = visibility(value);
+      if (next === 'background') sweepProtectedDocuments({ keepSharing: true }); // a document in an OS share is spared (M09)
+      state.setVisibility(next);
+    });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', state.blur) : null;
     void state.initialize();
     return () => { change.remove(); blur?.remove(); state.dispose(); };
   }, [state]);
+  // A document fetched for one employment never survives a switch to another. Stable, as before.
+  const setEmploymentId = useCallback((employmentId: string | null) => {
+    if (employmentId !== state.getSnapshot().employmentId) sweepProtectedDocuments();
+    state.setEmploymentId(employmentId);
+  }, [state]);
   const value = useMemo(() => ({
-    ...snapshot, setEmploymentId: state.setEmploymentId, unlock: state.unlock,
+    ...snapshot, setEmploymentId, unlock: state.unlock,
     async signOut() {
       const logoutUrl = workosLogoutUrl();
+      // M10/D8: revoke this phone's push binding and drop its shift reminders while the tokens still exist (bounded).
+      await releasePushOnExit('logout', state.getSnapshot().employmentId);
       await state.signOut(); // local removal is independent of provider reachability
       if (logoutUrl) {
         try { await WebBrowser.openAuthSessionAsync(logoutUrl, redirectUri()); }
@@ -66,7 +81,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
     },
     async markSignedIn(owner: number) { await protectScreen(); assertAuthGeneration(owner); state.markSignedIn(); },
-  }), [snapshot, state]);
+  }), [snapshot, state, setEmploymentId]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 export function useSession(): Session {

@@ -128,7 +128,7 @@ describe('the Performance block for a line manager and an employee (PM only)', (
     expect(must(blk.team, 'team row').chips).toContainEqual({ kind: 'calibration', count: 1 });
   });
 
-  it('an unreleased result shows no band anywhere; after release it appears', async () => {
+  it('APR-028: before release the person sees only their manager\'s confirmed band (no score); after release the released band', async () => {
     await perf.saveOnehrKpis(self, reviewId, await rev(self), [kpi(manager)], true);
     await perf.approveOnehrScorecard(mgr, reviewId, await rev(mgr), true, 'Objectives agreed.');
     await perf.submitOnehrResults(self, reviewId, await rev(self), [{ id: kpiId, actual: 2, note: 'Fictional record.' }], 'Delivered the agreed milestones this year.');
@@ -143,9 +143,8 @@ describe('the Performance block for a line manager and an employee (PM only)', (
     expect((await perf.getOnehrReview(self, reviewId))?.managerPerformance).toBe(band);
 
     const before = must(await block(self), 'subject block');
-    expect(before.standing.performance).toEqual({ state: 'notReleased' });
-    expect(keysOf(before).has('band')).toBe(false);
-    expect(JSON.stringify(before)).not.toContain(`"${band}"`);
+    expect(before.standing.performance).toEqual({ state: 'lineManagerApproved', band });
+    expect([...keysOf(before)].filter((k) => /score/i.test(k))).toEqual([]);
     expect(stepOf(before, 'kpi')?.state).toBe('done');
     expect(stepOf(before, 'results')?.state).toBe('locked');
 

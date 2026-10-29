@@ -18,8 +18,10 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const LABELS = path.resolve(__dirname, '../lib/ea-pdf-labels.ts');
+// M09 — the own-form route's label bundle call moved, with its render, to app/me/ea/document.ts (shared by the
+// web route and the mobile v2 route). The pin followed it; the route file itself now builds no labels at all.
 const ROUTES = [
-  '../app/me/ea/[employmentId]/pdf/route.ts',
+  '../app/me/ea/document.ts',
   '../app/payroll/ea/blank/route.ts',
 ].map((r) => path.resolve(__dirname, r));
 const en = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../messages/en.json'), 'utf8')) as Record<string, unknown>;
