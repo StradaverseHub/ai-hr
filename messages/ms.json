@@ -3211,7 +3211,8 @@
         "applied": "Berjaya",
         "failed": "Gagal",
         "unchanged": "Tiada perubahan"
-      }
+      },
+      "effective": "Proses akan datang menggunakan maklumat dibetulkan mulai {date}."
     }
   },
   "leave": {

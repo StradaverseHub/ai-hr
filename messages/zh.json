@@ -3211,7 +3211,8 @@
         "applied": "成功",
         "failed": "失败",
         "unchanged": "未更改"
-      }
+      },
+      "effective": "未来处理将从{date}起使用这些更正信息。"
     }
   },
   "leave": {

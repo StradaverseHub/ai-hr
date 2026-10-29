@@ -13,11 +13,12 @@ vi.mock('next/navigation',()=>({useRouter:()=>({refresh:actions.refresh})}));
 const {HireCorrectionModes,InformationChangesTable}=await import('../app/admin/personnel/information-correction-form');
 const {InformationCorrectionImport}=await import('../app/admin/personnel/import/information-correction-import');
 const values={companyId:'co-a',hiredOn:'2025-01-15',joinDate:'2025-01-15',gradeId:null,employmentType:'full_time'};
-const preview:InformationPreview={employmentId:'synthetic-employee',employeeCode:'EMP-001',name:'Aisha Fixture',fingerprint:'review-fingerprint',before:values,after:{...values,hiredOn:'2025-01-01'},beforeLabels:{...values,companyId:'DEMO · Demo Company'},afterLabels:{...values,companyId:'DEMO · Demo Company',hiredOn:'2025-01-01'},reason:'Correct signed employment record',changed:['hiredOn']};
+const preview:InformationPreview={effectiveOn:'2026-10-30',employmentId:'synthetic-employee',employeeCode:'EMP-001',name:'Aisha Fixture',fingerprint:'review-fingerprint',before:values,after:{...values,hiredOn:'2025-01-01'},beforeLabels:{...values,companyId:'DEMO · Demo Company'},afterLabels:{...values,companyId:'DEMO · Demo Company',hiredOn:'2025-01-01'},reason:'Correct signed employment record',changed:['hiredOn']};
 const context=()=>({preview:{...preview,changed:[],after:values},options:{companies:[{id:'co-a',code:'DEMO',name:'Demo Company'}],grades:[],employmentTypes:['full_time','part_time']},history:[]});
 afterEach(()=>{cleanup();vi.clearAllMocks();document.documentElement.removeAttribute('data-ui-theme');document.documentElement.classList.remove('dark');});
 it('requires a reason and an explicit before/after confirmation before saving the manual correction',async()=>{
- actions.context.mockResolvedValue(context());actions.preview.mockResolvedValue(preview);actions.save.mockResolvedValue({changed:true});
+ await page.viewport(1280,900);
+ actions.context.mockResolvedValue(context());actions.preview.mockResolvedValue(preview);actions.save.mockImplementation(async()=>{actions.context.mockResolvedValue({...context(),preview:{...context().preview,before:preview.after}});return{changed:true};});
  render(<NextIntlClientProvider locale="en" messages={en}><HireCorrectionModes employmentId={preview.employmentId}><p>Existing correction form</p></HireCorrectionModes></NextIntlClientProvider>);
  fireEvent.click(screen.getByRole('radio',{name:en.people.informationCorrection.title}));
  const field=await screen.findByLabelText('Group Join Date');fireEvent.change(field,{target:{value:'2025-01-01'}});
@@ -25,6 +26,7 @@ it('requires a reason and an explicit before/after confirmation before saving th
  fireEvent.change(screen.getByLabelText('Correction reason'),{target:{value:preview.reason}});
  fireEvent.click(screen.getByRole('button',{name:'Review corrections'}));
  expect(await screen.findByText('2025-01-15')).toBeVisible();expect(screen.getByText('2025-01-01')).toBeVisible();expect(actions.save).not.toHaveBeenCalled();
+ console.info('Manual review:',await page.screenshot({animations:'disabled',path:'../.vitest-attachments/information-only-manual-review.png'}));
  fireEvent.click(screen.getByRole('button',{name:'Confirm information-only correction'}));
  await waitFor(()=>expect(actions.save).toHaveBeenCalledWith({employmentId:preview.employmentId,changes:{hiredOn:'2025-01-01'},reason:preview.reason,fingerprint:preview.fingerprint}));
  expect(await screen.findByText(en.people.informationCorrection.saved)).toBeVisible();
@@ -37,6 +39,7 @@ it('shows Excel row errors before confirmation and displays durable batch result
  fireEvent.change(screen.getByLabelText(en.people.informationCorrection.file),{target:{files:[file]}});
  fireEvent.submit(screen.getByRole('button',{name:'Validate file'}).closest('form')!);
  expect(await screen.findByText('Employee ID is unavailable.')).toBeVisible();expect(actions.confirm).not.toHaveBeenCalled();
+ console.info('Excel review:',await page.screenshot({animations:'disabled',path:'../.vitest-attachments/information-only-excel-review.png'}));
  fireEvent.click(screen.getByRole('button',{name:'Confirm 1 valid correction'}));
  expect(await screen.findByText('1 successful · 1 failed · 0 unchanged')).toBeVisible();expect(screen.getByRole('link',{name:'View import batch history'})).toHaveAttribute('href','/admin/personnel/import/history/attempt-fixture');
 });

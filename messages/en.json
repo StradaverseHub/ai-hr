@@ -3211,7 +3211,8 @@
         "applied": "Successful",
         "failed": "Failed",
         "unchanged": "Unchanged"
-      }
+      },
+      "effective": "Future processing uses these corrected details from {date}."
     }
   },
   "leave": {

@@ -2,7 +2,7 @@ import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
 import * as XLSX from 'xlsx';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {hireEmployee,setEmploymentGrade} from '../core/org';
 import {assignLabelToCompanies} from '../core/system-labels';
 import {createMovementEvent,movementHistory,reverseMovementEvent} from '../core/movement';
@@ -10,6 +10,10 @@ import {withTenant} from '../db/client';
 import * as schema from '../db/schema';
 import {previewInformationCorrection,correctInformation,informationCorrectionHistory,informationCorrectionOptions} from '../core/information-correction';
 import {previewInformationUpload,confirmInformationUpload} from '../core/information-correction-import';
+import {PDFDocument} from 'pdf-lib';
+import {buildPayslipPdfData,renderPayslipPdf} from '../lib/payslip-pdf';
+import {labels as pdfLabels} from './fixtures/payslip-pdf-fixture';
+import {getImportAttempt,importAttemptSource} from '../core/import-history';
 import {eaStatement} from '../localization/my/reports';
 import {payslipForReview,listPayrollRegisterAcross} from '../core/payroll-view';
 import {INFORMATION_HEADERS,type InformationChanges} from '../lib/information-correction';
@@ -39,6 +43,11 @@ describe('8550b282 information-only corrections',()=>{
   expect(eaBefore).toBeTruthy();
   const before=await payslipForReview(ctx(),{companyIds:[b.companyId],payslipId:slip.id});
   expect(before).toBeTruthy();expect(before!.employmentType).toBe('full_time');
+  async function document(row:NonNullable<typeof before>){
+   const data=buildPayslipPdfData({...row,employee:row.employeeName},{epf:'EPF',socso:'SOCSO',skbbk:'SKBBK',eis:'EIS',tax:'PCB'},{currency:row.currency,jobGrade:row.jobGrade,employmentType:row.employmentType});
+   const bytes=await renderPayslipPdf(data,pdfLabels);const pdf=await PDFDocument.load(bytes,{updateMetadata:false});pdf.setCreationDate(new Date(0));pdf.setModificationDate(new Date(0));return Buffer.from(await pdf.save({useObjectStreams:false}));
+  }
+  const pdfBefore=await document(before!);expect(pdfBefore.length).toBeGreaterThan(1000);
   const ledgersBefore=await owner.db.select().from(schema.leaveLedger);
   await apply(id,{hiredOn:'2025-01-01',joinDate:'2025-01-03',gradeId:grade.id,employmentType:'part_time'});
   expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0]).toMatchObject({hiredOn:'2025-01-01',joinDate:'2025-01-03',gradeId:grade.id});
@@ -46,6 +55,7 @@ describe('8550b282 information-only corrections',()=>{
   expect((await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batch.id)))[0]).toEqual(batch);
   expect(await owner.db.select().from(schema.leaveLedger)).toEqual(ledgersBefore);
   const after=await payslipForReview(ctx(),{companyIds:[b.companyId],payslipId:slip.id});expect(after).toEqual(before);
+  expect(await document(after!)).toEqual(pdfBefore);
   expect(await eaStatement(ctx(),{employmentId:id,companyId:b.companyId,year:'2025'})).toEqual(eaBefore);
   const register=await listPayrollRegisterAcross(ctx(),{companyIds:[b.companyId],year:2025});expect(register.length).toBe(1);expect(register[0]).toMatchObject({jobGrade:null,employmentType:'full_time',net:'2660.00'});
   const versions=await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId,id));expect(versions).toHaveLength(2);expect(versions.find(a=>a.validTo===null)).toMatchObject({validFrom:todayInKualaLumpur(),employmentType:'part_time'});
@@ -81,6 +91,18 @@ describe('8550b282 information-only corrections',()=>{
   const versions=await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId,id));
   expect(versions.find(v=>v.validTo!==null)?.companyId).toBe(b.companyId);expect(versions.find(v=>v.validTo===null)?.companyId).toBe(destination.id);
   expect((await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batch.id)))[0]).toEqual(batch);expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,slip.id)))[0]).toEqual(slip);
+  const [hrPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Source company HR',primaryEmail:randomUUID()+'@example.test'}).returning();
+  const sourceUser=await createAppUser(b.tenantId,hrPerson.id,'hr_admin');await owner.db.update(schema.roleAssignment).set({companyId:b.companyId}).where(eq(schema.roleAssignment.appUserId,sourceUser));
+  const sourceCtx={...ctx(),userId:sourceUser,personId:hrPerson.id,grants:[{role:'hr_admin',companyId:b.companyId}]};
+  expect(await payslipForReview(sourceCtx,{companyIds:[b.companyId],payslipId:slip.id})).toMatchObject({companyId:b.companyId,employmentType:'full_time',net:'2660.00'});
+
+ });
+ it('requires a fresh review when the selected reference code changes',async()=>{
+  const id=await fixture();const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'G03',name:'Proposed grade'}).returning();
+  const changes={gradeId:grade.id},reason='Correct signed record';const reviewed=await previewInformationCorrection(ctx(),{employmentId:id,changes,reason});
+  await owner.db.update(schema.jobGrade).set({code:'G04'}).where(eq(schema.jobGrade.id,grade.id));
+  await expect(correctInformation(ctx(),{employmentId:id,changes,reason,fingerprint:reviewed.fingerprint,method:'manual'})).rejects.toThrow('changed after your review');
+  expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0].gradeId).toBeNull();
  });
  it('does not write an audit correction for unchanged information',async()=>{const id=await fixture();expect((await apply(id,{})).changed).toBe(false);expect(await informationCorrectionHistory(ctx(),id)).toHaveLength(0);});
  it('refuses a normal employee and another tenant',async()=>{
@@ -110,6 +132,35 @@ describe('8550b282 information-only corrections',()=>{
  });
  it('preserves leading zeros and accepts actual Excel dates; blank cells stay absent',()=>{
   const rows=parseInformationWorkbook(workbook([['DEMO','00001','','',45658,'','','','Correct record']]));expect(rows[0].employeeCode).toBe('00001');expect(rows[0].values['Group Join Date']).toBe('2025-01-01');expect(rows[0].values['Job Grade']).toBeUndefined();
+ });
+ it('serializes competing manual confirmations and records only the winning correction',async()=>{
+  const id=await fixture(),reason='Correct verified record';const first={hiredOn:'2025-01-01'},second={hiredOn:'2025-01-02'};
+  const a=await previewInformationCorrection(ctx(),{employmentId:id,changes:first,reason}),c=await previewInformationCorrection(ctx(),{employmentId:id,changes:second,reason});
+  const outcomes=await Promise.allSettled([correctInformation(ctx(),{employmentId:id,changes:first,reason,fingerprint:a.fingerprint,method:'manual'}),correctInformation(ctx(),{employmentId:id,changes:second,reason,fingerprint:c.fingerprint,method:'manual'})]);
+  expect(outcomes.filter(result=>result.status==='fulfilled')).toHaveLength(1);expect(outcomes.filter(result=>result.status==='rejected')).toHaveLength(1);expect(await informationCorrectionHistory(ctx(),id)).toHaveLength(1);
+ });
+ it('rolls back every field of a failed Excel employee while retaining earlier successful rows',async()=>{
+  const first=await fixture(),second=await fixture('EMP-002');const file=workbook([['DEMO','EMP-001','','','2025-01-01','','','','Correct first record'],['DEMO','EMP-002','','','2025-01-02','','','','Correct second record']]);
+  const preview=await previewInformationUpload(ctx(),{name:'partial.xlsx',content:file,operationKey:randomUUID()});expect(preview.plan.counts.valid).toBe(2);
+  await owner.db.update(schema.employment).set({orgBranch:'Changed after preview'}).where(eq(schema.employment.id,second));
+  const result=await confirmInformationUpload(ctx(),{attemptId:preview.attemptId,previewHash:preview.plan.previewHash});expect(result).toMatchObject({succeeded:1,failed:1});
+  expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,second)))[0].hiredOn).toBe('2025-01-15');expect(await informationCorrectionHistory(ctx(),second)).toHaveLength(0);expect(await informationCorrectionHistory(ctx(),first)).toHaveLength(1);
+ });
+ it('does not disclose a source/destination import plan to an administrator of only the source company',async()=>{
+  const id=await fixture();const [destination]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Private destination',companyLabel:'DEST'}).returning();
+  await assignLabelToCompanies(ctx(),{kind:'department',labelId:b.deptA,companyIds:[b.companyId,destination.id]});await assignLabelToCompanies(ctx(),{kind:'position',labelId:b.positionId,companyIds:[b.companyId,destination.id]});
+  const preview=await previewInformationUpload(ctx(),{name:'companies.xlsx',content:workbook([['DEMO','EMP-001','','DEST','','','','','Correct source company']]),operationKey:randomUUID()});expect(preview.plan.counts.valid).toBe(1);
+  const [emp]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id));const userId=await createAppUser(b.tenantId,emp.personId,'hr_admin');await owner.db.update(schema.roleAssignment).set({companyId:b.companyId}).where(eq(schema.roleAssignment.appUserId,userId));
+  const restricted={...ctx(),userId,personId:emp.personId,grants:[{role:'hr_admin',companyId:b.companyId}]};
+  expect(await getImportAttempt(restricted,preview.attemptId)).toBeNull();expect(await importAttemptSource(restricted,preview.attemptId)).toBeNull();
+ });
+ it('protects a later information decision from rollback of an earlier grade movement',async()=>{
+  const id=await fixture();const [gradeA]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'G02',name:'Operational grade'}).returning();const [gradeB]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'G03',name:'Corrected grade'}).returning();
+  await createMovementEvent(ctx(),{employmentId:id,kind:'promotion',effectiveDate:'2025-06-01',gradeId:gradeA.id});
+  const movement=(await movementHistory(ctx(),id)).find(row=>row.kind==='promotion');expect(movement).toBeTruthy();
+  await apply(id,{gradeId:gradeB.id});
+  await expect(reverseMovementEvent(ctx(),{employmentId:id,movementId:movement!.id,reason:'Attempt an older rollback'})).rejects.toThrow('later information-only correction');
+  expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0].gradeId).toBe(gradeB.id);
  });
  it('does not grant ordinary roles update or delete on retained snapshots',async()=>{
   const id=await fixture();await closedSlip(id);await apply(id,{hiredOn:'2025-01-01'});

@@ -3211,7 +3211,8 @@
         "applied": "Thành công",
         "failed": "Thất bại",
         "unchanged": "Không đổi"
-      }
+      },
+      "effective": "Xử lý trong tương lai sử dụng thông tin đã sửa từ {date}."
     }
   },
   "leave": {

@@ -84,9 +84,10 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  AND app.access_workforce_employment(e.id,'workforce.maintain')
  AND NOT EXISTS(SELECT 1 FROM public.payslip p JOIN public.payroll_batch b ON b.id=p.batch_id
  WHERE p.employment_id=e.id AND NOT EXISTS(SELECT 1 FROM public.information_payslip_snapshot f WHERE f.payslip_id=p.id)
- AND EXISTS(SELECT 1 FROM public.domain_event ev WHERE ev.tenant_id=e.tenant_id AND ev.subject_employment_id=e.id
+ AND EXISTS(SELECT 1 FROM public.domain_event ev WHERE ev.tenant_id=e.tenant_id
  AND ev.occurred_at>coalesce(b.closed_at,b.created_at)
- AND ev.event_type IN ('employment.grade.changed','employment.info.updated','employment.company.transferred','employment.company.changed','employment.company.transfer.reverted','employment.assignment.changed','assignment.transferred','employment.hire.corrected','employment.information.corrected'))));
+ AND ((ev.subject_employment_id=e.id AND ev.event_type IN ('employment.grade.changed','employment.info.updated','employment.company.transferred','employment.company.changed','employment.company.transfer.reverted','employment.assignment.changed','assignment.transferred','employment.hire.corrected','employment.information.corrected'))
+ OR (ev.aggregate_type='job-grade' AND ev.aggregate_id=e.grade_id AND ev.event_type IN ('job-grade.updated','job-grade.archived','job-grade.deleted'))))));
 $$;
 REVOKE ALL ON FUNCTION app.information_payroll_ready(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.information_payroll_ready(uuid) TO ai_hr_app;

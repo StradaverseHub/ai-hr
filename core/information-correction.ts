@@ -1,9 +1,10 @@
 /** Approved 8550b282: one transactional owner for manual and Excel information-only correction. */
 import {createHash} from 'node:crypto';
+import {alias} from 'drizzle-orm/pg-core';
 import {and,asc,desc,eq,inArray,isNull,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {appendEvent,actorOf} from '../db/events';
-import {employment,assignment,company,jobGrade,person,domainEvent} from '../db/schema';
+import {employment,assignment,company,jobGrade,person,appUser,domainEvent} from '../db/schema';
 import {lockEmploymentStatutoryOwnerTx} from './org';
 import {assertWorkforceEmploymentTx,assertWorkforceCompanyTx} from './workforce-access';
 import {allocationCompanyCode} from './cost-allocation-import';
@@ -12,6 +13,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {isCalendarDate} from '../lib/calendar-date';
 import {PERSONNEL_EMPLOYMENT_TYPES} from '../lib/personnel-choice-vocabulary';
 import {INFORMATION_FIELDS,type InformationChanges,type InformationValues,type InformationPreview} from '../lib/information-correction';
+const correctionActor=alias(person,'correction_actor'),correctionAccount=alias(appUser,'correction_account');
 export const INFORMATION_CORRECTED_EVENT='employment.information.corrected';
 export class InformationCorrectionError extends Error {constructor(message:string){super(message);this.name='InformationCorrectionError';}}
 function fail(message:string):never {throw new InformationCorrectionError(message);}
@@ -39,6 +41,7 @@ async function stateTx(tx:Tx,ctx:SessionContext,id:string){
 }
 export async function informationCorrectionOptions(ctx:SessionContext){return withTenant(ctx,async tx=>{
  if(!ctx.userId)fail('Sign in before reviewing employment corrections.');
+ const [principal]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() and app.is_admin() as ok`);if(!principal?.ok)fail('Only an authorised HR administrator can review employment corrections.');
  const companies=await tx.select({id:company.id,label:company.companyLabel,registration:company.registrationNo,name:company.legalName}).from(company).where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.principal_snapshot_current() and app.is_admin_for(${company.id}) and app.access_workforce_company(${company.id},'workforce.maintain')`));
  const grades=await tx.select({id:jobGrade.id,code:jobGrade.code,name:jobGrade.name}).from(jobGrade).where(and(eq(jobGrade.tenantId,ctx.tenantId),isNull(jobGrade.archivedAt)));
  return {companies:companies.map(c=>({id:c.id,name:c.name,code:allocationCompanyCode(c)})),grades,employmentTypes:[...PERSONNEL_EMPLOYMENT_TYPES]};
@@ -80,7 +83,12 @@ async function previewTx(tx:Tx,ctx:SessionContext,input:{employmentId:string;cha
  if(reason.length<3||reason.length>1000)fail('Provide a correction reason between 3 and 1,000 characters.');
  const state=await stateTx(tx,ctx,input.employmentId),v=await validateTx(tx,ctx,state,input.changes);
  if(INFORMATION_FIELDS.some(f=>v.before[f]!==v.after[f])){const [history]=await tx.execute<{ready:boolean}>(sql`select app.information_payroll_ready(${state.emp.id}::uuid) as ready`);if(!history?.ready)fail('Original historical information cannot be verified after intervening changes. Ask the payroll administrator to reconcile the historical document evidence before correcting this record.');}
- const preview:InformationPreview={employmentId:state.emp.id,employeeCode:state.emp.employeeCode??'',name:state.name,fingerprint:state.fingerprint,...v,beforeLabels:await labelsTx(tx,v.before),afterLabels:await labelsTx(tx,v.after),reason,changed:INFORMATION_FIELDS.filter(f=>v.before[f]!==v.after[f])};
+ const companyRefs=await tx.select({id:company.id,label:company.companyLabel,registration:company.registrationNo,name:company.legalName,country:company.country,currency:company.currency,archivedAt:company.archivedAt}).from(company).where(inArray(company.id,[v.before.companyId!,v.after.companyId!])).orderBy(asc(company.id)).for('share');
+ const gradeIds=[...new Set([v.before.gradeId,v.after.gradeId].filter((id):id is string=>!!id))];
+ const gradeRefs=gradeIds.length?await tx.select({id:jobGrade.id,code:jobGrade.code,name:jobGrade.name,archivedAt:jobGrade.archivedAt}).from(jobGrade).where(inArray(jobGrade.id,gradeIds)).orderBy(asc(jobGrade.id)).for('share'):[];
+ const effectiveOn=todayInKualaLumpur();
+ const fingerprint=hash({state:state.fingerprint,companies:companyRefs,grades:gradeRefs,effectiveOn});
+ const preview:InformationPreview={effectiveOn,employmentId:state.emp.id,employeeCode:state.emp.employeeCode??'',name:state.name,fingerprint,...v,beforeLabels:await labelsTx(tx,v.before),afterLabels:await labelsTx(tx,v.after),reason,changed:INFORMATION_FIELDS.filter(f=>v.before[f]!==v.after[f])};
  return {state,preview};
 }
 export function previewInformationCorrection(ctx:SessionContext,input:{employmentId:string;changes:InformationChanges;reason:string}){return withTenant(ctx,async tx=>(await previewTx(tx,ctx,input)).preview);}
@@ -92,7 +100,7 @@ export async function correctInformationTx(tx:Tx,ctx:SessionContext,input:{emplo
  // The preimage protects every existing persisted output before any master information changes.
  const [preserved]=await tx.execute<{count:number}>(sql`select app.preserve_information_payroll(${s.emp.id}::uuid) as count`);
  if(!preserved)fail('Historical payroll metadata could not be protected.');
- const effectiveOn=todayInKualaLumpur();
+ const effectiveOn=p.effectiveOn;
  let assignmentVersionId:string|null=null;
  if(p.changed.includes('companyId')||p.changed.includes('employmentType')){
   const {id:_id,createdAt:_created,recordedAt:_recorded,supersededAt:_superseded,...prior}=s.current;
@@ -106,4 +114,4 @@ export async function correctInformationTx(tx:Tx,ctx:SessionContext,input:{emplo
  return {preview:p,changed:true};
 }
 export function correctInformation(ctx:SessionContext,input:Parameters<typeof correctInformationTx>[2]){return withTenant(ctx,tx=>correctInformationTx(tx,ctx,input));}
-export function informationCorrectionHistory(ctx:SessionContext,employmentId:string){return withTenant(ctx,async tx=>{await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');const [allowed]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from employment where id=${employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and app.principal_snapshot_current() and app.is_admin_for(company_id)) as ok`);if(!allowed?.ok)fail('You do not have permission to review this correction history.');return tx.select({id:domainEvent.id,at:domainEvent.occurredAt,actorId:domainEvent.actorId,payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.subjectEmploymentId,employmentId),eq(domainEvent.eventType,INFORMATION_CORRECTED_EVENT))).orderBy(desc(domainEvent.sequence)).limit(100);});}
+export function informationCorrectionHistory(ctx:SessionContext,employmentId:string){return withTenant(ctx,async tx=>{await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');const [allowed]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from employment where id=${employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and app.principal_snapshot_current() and app.is_admin_for(company_id)) as ok`);if(!allowed?.ok)fail('You do not have permission to review this correction history.');return tx.select({id:domainEvent.id,at:domainEvent.occurredAt,actorId:domainEvent.actorId,actorName:correctionActor.fullName,payload:domainEvent.payload}).from(domainEvent).leftJoin(correctionAccount,and(eq(correctionAccount.id,domainEvent.actorId),eq(correctionAccount.tenantId,ctx.tenantId))).leftJoin(correctionActor,and(eq(correctionActor.id,correctionAccount.personId),eq(correctionActor.tenantId,ctx.tenantId))).where(and(eq(domainEvent.subjectEmploymentId,employmentId),eq(domainEvent.eventType,INFORMATION_CORRECTED_EVENT))).orderBy(desc(domainEvent.sequence)).limit(100);});}
