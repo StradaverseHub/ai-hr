@@ -582,3 +582,7 @@ The Personnel EPF/SOCSO review uses the generic assigned compatibility lifecycle
 ### WP9 — equipment acknowledgement compatibility (30 October 2026)
 
 Lifecycle acknowledgement uses the generic own compatibility lifecycle with an explicit exact-wire body protocol. The old caseNumber field stays in the private commitment and ciphertext in its original position; it is not dropped or re-created as public metadata. The current login/person, native case person, employment and company remain distinct and nullable as before, including email-owned unlinked prehire cases. Native case readiness, equipment normalization, actual submission SQL and completed historical receipt remain canonical. Complete case/person/employment privacy targets and login-only retirement remain intact. No migration is required.
+
+### WP9 — reporting graph compatibility (30 October 2026)
+
+Reporting-line change custody uses the generic assigned compatibility lifecycle with its exact original metadata, cached-review body, manager/previous-manager person snapshots and org-specific AAD/key purposes. The protocol does not add a contractVersion field to installed metadata or substitute the module-action commitment. Native Workforce graph/field/company authority, prior/new manager views, original target capture and canonical set-event proof remain unchanged. Current source preparation revalidates every cached graph fact before pending disclosure. Completed retries reconcile instead of executing; no migration or ciphertext rewrite is required.

@@ -1,26 +1,18 @@
-import {assertHumanReviewedActionTier} from '../../lib/ai/agent-action-tier-guard';
-import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
-import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
-/** Human-reviewed non-own Org custody. Native graph, original-actor event, body retirement and
- * completion share ONE top-level Tx. No synthetic employee, generic executor or second ledger. */
-import {createHash,randomUUID} from 'node:crypto';
-import {and,eq,sql,type SQL} from 'drizzle-orm';
+/** WP9: generic ASSIGNED reporting custody, retaining the original manager snapshots and org AAD. */
+import {and,eq,sql} from 'drizzle-orm';
 import {z} from 'zod';
-import {PrivateReviewNonce,newPrivateReviewNonce,privateReviewCommitment} from './private-review-commitment';
-import {withTenant,type SessionContext,type Tx} from '../../db/client';
+import type {Tx,SessionContext} from '../../db/client';
 import {employment} from '../../db/schema';
-import {assertAiPrincipalTx} from '../ai-principal';
-import {assertMayUseAssistant} from '../assistant-grant';
-import {resolveEntitlementsTx,assertModuleEnabled} from '../entitlements';
-import {assertAiActionUnpausedTx} from '../ai-governance';
-import {lockLeaveDependencyConfigurationTx} from '../../packs/leave/service';
-import {masterKeyAvailable,newDek,newKid,sealUnderDek,unsealUnderDek,unwrapDek,wrapDek} from '../../lib/pii/vault';
+import {createGenericAssignedCompatibilityStore} from './generic-assigned-review-store';
+import {withAgentActionGuard} from './agent-action-guard';
+import {PrivateReviewNonce,privateReviewCommitment} from './private-review-commitment';
 import {OwnLeaveSealedReview} from './own-leave-content';
+import {lockLeaveDependencyConfigurationTx} from '../../packs/leave/service';
 import {prepareReviewedReportingLineSourceTx,confirmReviewedReportingLineSourceTx,reconcileReviewedReportingLineSourceTx} from './reviewed-reporting-line-source';
 import {REVIEWED_REPORTING_LINE_ACTION as ACTION,ReviewedReportingLineHumanContent as Human,ReviewedReportingLineReview as Review} from '../../lib/assistant-actions/reviewed-reporting-line-contract';
-import {OrgActionPrepare,OrgActionConfirmation,OrgActionRetirement,OrgActionPreparedReview,OrgActionCompletedReceipt,OrgActionRetirementReceipt,OrgActionReviewIndexResult} from '../../lib/assistant-actions/org-action-review-contract';
+import {OrgActionConfirmation,OrgActionRetirement,OrgActionPreparedReview,OrgActionCompletedReceipt,OrgActionRetirementReceipt,OrgActionReviewIndexResult} from '../../lib/assistant-actions/org-action-review-contract';
 export class OrgActionReviewUnavailable extends Error{constructor(){super('That reporting review needs another look. Please use the employee record.');this.name='OrgActionReviewUnavailable';}}
-const fail=():never=>{throw new OrgActionReviewUnavailable();},hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex'),digest=z.string().regex(/^[a-f0-9]{64}$/);
+const fail=():never=>{throw new OrgActionReviewUnavailable();},digest=z.string().regex(/^[a-f0-9]{64}$/);
 const Binding=z.object({tenantId:z.guid(),userId:z.guid(),personId:z.guid().nullable(),employmentId:z.guid(),companyId:z.guid(),subjectPersonId:z.guid()}).strict();
 const Metadata=z.object({actionId:z.guid(),action:z.literal(ACTION),binding:Binding,managerPersonId:z.guid().nullable(),previousManagerPersonId:z.guid().nullable(),intentDigest:digest.nullable(),reviewedDigest:digest.nullable(),state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict();
 const Stored=z.object({metadata:Metadata,sealed:OwnLeaveSealedReview.nullable(),reportingLineId:z.guid().nullable(),setEventId:z.guid().nullable()}).strict().refine(r=>
@@ -28,44 +20,48 @@ const Stored=z.object({metadata:Metadata,sealed:OwnLeaveSealedReview.nullable(),
  &&(r.metadata.state==='completed')===(r.reportingLineId!==null&&r.setEventId!==null)
  &&((r.reportingLineId===null)===(r.setEventId===null))
  &&(r.metadata.state==='awaiting_confirmation'||(r.sealed===null&&r.metadata.intentDigest===null&&r.metadata.reviewedDigest===null&&r.metadata.managerPersonId===null&&r.metadata.previousManagerPersonId===null)));
-const Body=z.object({reviewNonce:PrivateReviewNonce,content:Human,review:Review,nativeReviewedDigest:digest}).strict();
-type Stored=z.infer<typeof Stored>;type Meta=z.infer<typeof Metadata>;type Body=z.infer<typeof Body>;
-const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
-const reviewed=(m:Pick<Meta,'binding'|'managerPersonId'|'previousManagerPersonId'>,body:Body)=>privateReviewCommitment([1,ACTION,m.binding,m.managerPersonId,m.previousManagerPersonId],body);
-function checked(m:Meta,value:unknown){const b=Body.parse(value);if(b.content.subordinateEmploymentId!==m.binding.employmentId||b.review.subordinateEmploymentId!==m.binding.employmentId||b.content.managerEmploymentId!==b.review.after.managerEmploymentId||hash(b.content)!==m.intentDigest||reviewed(m,b)!==m.reviewedDigest)return fail();return b;}
-function aad(m:Meta){if(m.state!=='awaiting_confirmation'||!m.intentDigest||!m.reviewedDigest)return fail();return JSON.stringify([1,ACTION,m.actionId,m.binding,m.managerPersonId,m.previousManagerPersonId,m.intentDigest,m.reviewedDigest]);}
-function seal(m:Meta,b:Body){let dek:Buffer|undefined;try{if(!masterKeyAvailable())return fail();const id=aad(m),text=JSON.stringify(checked(m,b));if(Buffer.byteLength(text)>32768)return fail();dek=newDek();const kid=newKid();return OwnLeaveSealedReview.parse({formatVersion:1,kid,wrappedDek:wrapDek(dek,'assistant:org-review:key:'+id),ciphertext:sealUnderDek(dek,kid,text,'assistant:org-review:body:'+id)});}finally{dek?.fill(0);}}
-function unseal(r:Stored){let dek:Buffer|undefined;try{if(!masterKeyAvailable())return fail();const id=aad(r.metadata),s=OwnLeaveSealedReview.parse(r.sealed);dek=unwrapDek(s.wrappedDek,'assistant:org-review:key:'+id);if(dek.length!==32)return fail();const text=unsealUnderDek(dek,s.ciphertext,'assistant:org-review:body:'+id);if(Buffer.byteLength(text)>32768)return fail();return checked(r.metadata,JSON.parse(text));}finally{dek?.fill(0);}}
-/** Admission precedes custody nomination/read/decryption, not merely the eventual native write.
- * Index/discard deliberately use only the separate fresh-login privacy path below. */
-async function ownInterval(tx:Tx,ctx:SessionContext){await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,'org');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,fresh.tenantId);return fresh;}
-async function read(tx:Tx,q:SQL){const [row]=await tx.execute<{review:unknown}>(q);return Stored.parse(row?.review);}
-function bound(r:Stored,ctx:SessionContext,id:string,subject:string){if(r.metadata.actionId!==id||r.metadata.binding.tenantId!==ctx.tenantId||r.metadata.binding.userId!==ctx.userId||r.metadata.binding.personId!==(ctx.personId??null)||r.metadata.binding.employmentId!==subject)return fail();}
-function pending(r:Stored,b=unseal(r)){const m=r.metadata;return{kind:'prepared' as const,review:OrgActionPreparedReview.parse({action:ACTION,contractVersion:1,actionId:m.actionId,reviewedDigest:m.reviewedDigest,createdAt:m.createdAt,expiresAt:m.expiresAt,content:b.content,review:b.review,consequence:'structural_reporting_change_not_delegation'})};}
-function retired(r:Stored){return{kind:'retired' as const,receipt:OrgActionRetirementReceipt.parse({action:ACTION,contractVersion:1,actionId:r.metadata.actionId,state:r.metadata.state})};}
-async function completed(tx:Tx,ctx:SessionContext,r:Stored){if(r.metadata.state!=='completed'||!r.reportingLineId||!r.setEventId)return fail();const receipt=await reconcileReviewedReportingLineSourceTx(tx,ctx,{reportingLineId:r.reportingLineId,setEventId:r.setEventId,subordinateEmploymentId:r.metadata.binding.employmentId});return{kind:'completed' as const,receipt:OrgActionCompletedReceipt.parse({action:ACTION,contractVersion:1,actionId:r.metadata.actionId,state:'completed',receipt})};}
-async function existing(tx:Tx,ctx:SessionContext,id:string){const [nom]=await tx.execute<{subject:unknown}>(sql`select app.assistant_org_review_subject(${id}::uuid) as subject`),subject=z.guid().parse(nom?.subject),r=await read(tx,sql`select app.assistant_org_review_read(${id}::uuid) as review`);bound(r,ctx,id,subject);return r;}
-export async function prepareOrgActionReview(supplied:SessionContext,input:unknown){assertHumanReviewedActionTier(supplied,'org.reporting.change','approve');const ctx=capture(supplied),parsed=OrgActionPrepare.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{const actor=await ownInterval(tx,ctx);const native=await prepareReviewedReportingLineSourceTx(tx,actor,p),body=Body.parse({reviewNonce:newPrivateReviewNonce(),content:native.content,review:native.review,nativeReviewedDigest:native.reviewedDigest});
- // Native preflight has already established subordinate maintain and both manager views.
- const lookup=async(id:string)=>{const [r]=await tx.select({personId:employment.personId,companyId:employment.companyId}).from(employment).where(and(eq(employment.tenantId,actor.tenantId),eq(employment.id,id))).limit(1);if(!r)return fail();return r;};
- const target=await lookup(p.subordinateEmploymentId),manager=await lookup(p.managerEmploymentId),prior=native.review.before?await lookup(native.review.before.managerEmploymentId):null,binding=Binding.parse({tenantId:actor.tenantId,userId:actor.userId,personId:actor.personId??null,employmentId:p.subordinateEmploymentId,companyId:target.companyId,subjectPersonId:target.personId});
- const partial={binding,managerPersonId:manager.personId,previousManagerPersonId:prior?.personId??null},m=Metadata.parse({...partial,actionId:randomUUID(),action:ACTION,intentDigest:hash(body.content),reviewedDigest:reviewed(partial,body),state:'awaiting_confirmation',createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+600000).toISOString()}),sealed=seal(m,body);
- const r=await read(tx,sql`select app.assistant_org_review_prepare(${m.actionId}::uuid,${binding.personId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${binding.subjectPersonId}::uuid,${p.managerEmploymentId}::uuid,${native.review.before?.managerEmploymentId??null}::uuid,${p.lineType},${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) as review`);bound(r,actor,m.actionId,p.subordinateEmploymentId);return pending(r);
- });}catch{return fail();}}
-export async function confirmOrgActionReview(supplied:SessionContext,input:unknown){assertHumanReviewedActionTier(supplied,'org.reporting.change','approve');const ctx=capture(supplied),parsed=OrgActionConfirmation.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{const actor=await ownInterval(tx,ctx);const r=await existing(tx,actor,p.actionId);if(r.metadata.state==='completed')return completed(tx,actor,r);if(r.metadata.state!=='awaiting_confirmation')return retired(r);if(r.metadata.reviewedDigest!==p.reviewedDigest)return fail();const body=unseal(r),native=await confirmReviewedReportingLineSourceTx(tx,actor,body.content,{action:ACTION,contractVersion:1,reviewedDigest:body.nativeReviewedDigest});await captureNativeOutcomeTargetsTx(tx,actor,{action:ACTION,sourceId:p.actionId,eventId:native.setEventId,targets:[{kind:'employment',id:body.content.subordinateEmploymentId},{kind:'employment',id:body.content.managerEmploymentId},...(body.review.before?[{kind:'employment' as const,id:body.review.before.managerEmploymentId}]:[])]});
- const done=await read(tx,sql`select app.assistant_org_review_complete(${p.actionId}::uuid,${p.reviewedDigest},${native.reportingLineId}::uuid,${native.setEventId}::uuid) as review`);bound(done,actor,p.actionId,r.metadata.binding.employmentId);if(done.reportingLineId!==native.reportingLineId||done.setEventId!==native.setEventId)return fail();return completed(tx,actor,done);});}catch{return fail();}}
-/** Reopening a pending review revalidates field visibility and ALL canonical source versions before
- * disclosing saved private graph facts. Completed reopening only reconciles the recorded edge. */
-export async function reopenOrgActionReview(supplied:SessionContext,actionId:unknown){const ctx=capture(supplied),parsed=z.guid().safeParse(actionId);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{const actor=await ownInterval(tx,ctx);const r=await existing(tx,actor,id);if(r.metadata.state==='completed')return completed(tx,actor,r);if(r.metadata.state!=='awaiting_confirmation')return retired(r);const body=unseal(r),fresh=await prepareReviewedReportingLineSourceTx(tx,actor,body.content);if(fresh.reviewedDigest!==body.nativeReviewedDigest||hash(fresh.content)!==hash(body.content)||hash(fresh.review)!==hash(body.review))return fail();return pending(r,body);});}catch{return fail();}}
-/** Owner-login privacy path: no subordinate read, Assistant grant or native graph execution. */
-export async function discardOrgActionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=OrgActionRetirement.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const [r]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_org_review_discard(${p.actionId}::uuid) as receipt`);return{kind:'retired' as const,receipt:OrgActionRetirementReceipt.parse(r?.receipt)};});}catch{return fail();}}
-export async function listOrgActionReviews(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);await tx.execute(sql`select app.assistant_own_leave_reviews_expire_own(100)`);const rows=await tx.execute<{actionId:unknown;state:unknown;createdAt:unknown;expiresAt:unknown}>(sql`select * from app.assistant_org_reviews_index()`);return OrgActionReviewIndexResult.parse({kind:'org_module_review_index',reviews:rows.map(r=>({action:ACTION,...r}))});});}catch{return fail();}}
 
-/** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
- * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
-export async function readCompletedOrgOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.guid().parse(value);await boundNativeOutcomeTransactionTx(tx);
- const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'org.reporting.change'},${id}::uuid) as completed`);
- if(terminal?.completed!==true)return fail();
- const actor=await ownInterval(tx,ctx),stored=await existing(tx,actor,id);const completion=await completed(tx,actor,stored);return{completion,eventId:z.guid().parse(stored.setEventId)};
+const Body=z.object({reviewNonce:PrivateReviewNonce,content:Human,review:Review,nativeReviewedDigest:digest}).strict().refine(b=>b.review.subordinateEmploymentId===b.content.subordinateEmploymentId&&b.content.managerEmploymentId===b.review.after.managerEmploymentId);
+type Stored=z.infer<typeof Stored>;
+type Source={subjectId:string};
+type NativePrepared=Awaited<ReturnType<typeof prepareReviewedReportingLineSourceTx>>&{targetPersonId:string;targetCompanyId:string;managerPersonId:string;previousManagerPersonId:string|null};
+async function ownInterval(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,ACTION,'approve');await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,fresh.tenantId);return fresh;}
+async function nativePrepare(tx:Tx,ctx:SessionContext,human:z.infer<typeof Human>):Promise<NativePrepared>{
+ const native=await prepareReviewedReportingLineSourceTx(tx,ctx,human);
+ // The native preflight has already established subordinate maintenance and both manager views.
+ const lookup=async(id:string)=>{const [row]=await tx.select({personId:employment.personId,companyId:employment.companyId}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,id))).limit(1);if(!row)return fail();return row;};
+ const target=await lookup(human.subordinateEmploymentId),manager=await lookup(human.managerEmploymentId),prior=native.review.before?await lookup(native.review.before.managerEmploymentId):null;
+ return{...native,targetPersonId:target.personId,targetCompanyId:target.companyId,managerPersonId:manager.personId,previousManagerPersonId:prior?.personId??null};
 }
+export const orgActionReviews=createGenericAssignedCompatibilityStore<
+ z.infer<typeof Human>,z.infer<typeof Binding>,Stored,Source,NativePrepared,Awaited<ReturnType<typeof confirmReviewedReportingLineSourceTx>>,
+ z.infer<typeof OrgActionPreparedReview>,z.infer<typeof OrgActionCompletedReceipt>,z.infer<typeof OrgActionRetirementReceipt>,z.infer<typeof OrgActionReviewIndexResult>
+>({
+ action:ACTION,tier:'approve',human:Human,metadata:Metadata,stored:Stored,
+ confirmation:OrgActionConfirmation,retirement:OrgActionRetirement,retired:OrgActionRetirementReceipt,index:OrgActionReviewIndexResult,indexKind:'org_module_review_index',
+ metadataInput:(common,_source,native)=>{const{contractVersion,...metadata}=common;void contractVersion;return{...metadata,managerPersonId:native.managerPersonId,previousManagerPersonId:native.previousManagerPersonId};},
+ crypto:{identity:m=>JSON.stringify([1,ACTION,m.actionId,m.binding,m.managerPersonId,m.previousManagerPersonId,m.intentDigest,m.reviewedDigest]),commitment:(m,wire)=>privateReviewCommitment([1,ACTION,m.binding,m.managerPersonId,m.previousManagerPersonId],wire),keyPurpose:'assistant:org-review:key:',bodyPurpose:'assistant:org-review:body:'},
+ body:{read:value=>Body.parse(value),write:body=>Body.parse(body),create:(native,reviewNonce)=>Body.parse({reviewNonce,content:native.content,review:native.review,nativeReviewedDigest:native.reviewedDigest}),assertCurrent:(body,current)=>{if(JSON.stringify(Body.parse(body).review)!==JSON.stringify(current.review))return fail();}},
+ async withInterval(tx,ctx,nomination,work){const actor=await ownInterval(tx,ctx);let subjectId:string;if(nomination.human)subjectId=nomination.human.subordinateEmploymentId;else{const id=z.guid().parse(nomination.actionId),[row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_org_review_subject(${id}::uuid) as subject`);subjectId=z.guid().parse(row?.subject);}return work(actor,{subjectId});},
+ binding:(ctx,source,_human,native)=>Binding.parse({tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null,employmentId:source.subjectId,companyId:native.targetCompanyId,subjectPersonId:native.targetPersonId}),
+ assertSubjectBinding:(binding,source)=>{if(binding.employmentId!==source.subjectId)return fail();},
+ assertHumanBinding:(binding,human)=>{if(human.subordinateEmploymentId!==binding.employmentId)return fail();},
+ prepareNative:nativePrepare,
+ confirmNative:(tx,ctx,body)=>confirmReviewedReportingLineSourceTx(tx,ctx,body.content,{action:ACTION,contractVersion:1,reviewedDigest:body.nativeReviewedDigest}),
+ pending:(row,body)=>OrgActionPreparedReview.parse({action:ACTION,contractVersion:1,actionId:row.metadata.actionId,reviewedDigest:row.metadata.reviewedDigest,createdAt:row.metadata.createdAt,expiresAt:row.metadata.expiresAt,content:body.content,review:Body.parse(body).review,consequence:'structural_reporting_change_not_delegation'}),
+ async completed(tx,ctx,row){if(!row.reportingLineId||!row.setEventId)return fail();const receipt=await reconcileReviewedReportingLineSourceTx(tx,ctx,{reportingLineId:row.reportingLineId,setEventId:row.setEventId,subordinateEmploymentId:row.metadata.binding.employmentId});return OrgActionCompletedReceipt.parse({action:ACTION,contractVersion:1,actionId:row.metadata.actionId,state:'completed',receipt});},
+ event:row=>row.setEventId,nativeEvent:native=>native.setEventId,
+ assertCompletion:(row,native)=>{if(row.reportingLineId!==native.reportingLineId||row.setEventId!==native.setEventId)return fail();},
+ targets:(_source,_native,_current,body)=>{const saved=Body.parse(body);return[{kind:'employment',id:saved.content.subordinateEmploymentId},{kind:'employment',id:saved.content.managerEmploymentId},...(saved.review.before?[{kind:'employment' as const,id:saved.review.before.managerEmploymentId}]:[])];},
+ async prepareRow(tx,m,sealed,_source,human,current){const b=m.binding;const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_org_review_prepare(${m.actionId}::uuid,${b.personId}::uuid,${b.employmentId}::uuid,${b.companyId}::uuid,${b.subjectPersonId}::uuid,${human.managerEmploymentId}::uuid,${current.review.before?.managerEmploymentId??null}::uuid,${human.lineType},${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) as review`);return row?.review;},
+ async readRow(tx,id){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_org_review_read(${id}::uuid) as review`);return row?.review;},
+ async completeRow(tx,id,expected,native){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_org_review_complete(${id}::uuid,${expected},${native.reportingLineId}::uuid,${native.setEventId}::uuid) as review`);return row?.review;},
+ async discardRow(tx,id){const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_org_review_discard(${id}::uuid) as receipt`);return row?.receipt;},
+ async indexRows(tx){await tx.execute(sql`select app.assistant_own_leave_reviews_expire_own(100)`);const rows=await tx.execute(sql`select * from app.assistant_org_reviews_index()`);return Array.from(rows).map(row=>({action:ACTION,...row}));},unavailable:fail,
+});
+export const prepareOrgActionReview=orgActionReviews.prepare;
+export const confirmOrgActionReview=orgActionReviews.confirm;
+export const reopenOrgActionReview=orgActionReviews.reopen;
+export const discardOrgActionReview=orgActionReviews.discard;
+export const listOrgActionReviews=orgActionReviews.list;
+export const readCompletedOrgOutcomeTx=orgActionReviews.readCompletedOutcomeTx;

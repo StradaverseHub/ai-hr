@@ -123,7 +123,7 @@ export const AGENT_ACTIONS=Object.freeze([
   permission:{actor:'hr_admin',guard:'core/assistant-actions/reviewed-reporting-line-source.ts#prepareReviewedReportingLineSourceTx'},subject:'other_employment',blastRadius:{max:1,unit:'reporting_line'},
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'repeat'},evaluationCases:[],
   screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:['app/admin/personnel/[employmentId]/actions.ts#setDirectSuperiorAction']},review:{route:'/assistant/org',handoff:'review_page'},
-  store:'dedicated',browserOwner:'org',pauseKey:'hr_assistant'}),
+  store:'generic_assigned',browserOwner:'org',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'leave.apply',module:'leave',owner:'leave',service:'packs/leave/service.ts#requestLeave',contractVersion:OWN_LEAVE_CONTRACT_VERSION,
   prepare:{status:'implemented',adapter:'leave_own_review_v1',inputSchema:'OwnLeaveHumanSelection+OwnLeaveHumanText',outputSchema:'OwnLeavePreparedReview'},
   confirm:{status:'implemented',adapter:'leave_own_review_v1',inputSchema:'OwnLeaveConfirmation',outputSchema:'OwnLeaveFinalReceipt'},
