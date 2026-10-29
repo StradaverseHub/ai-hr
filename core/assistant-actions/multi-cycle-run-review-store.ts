@@ -33,7 +33,7 @@ export const multiCycleRunReviews=createGenericOwnCompatibilityStore<
  binding:(ctx,source)=>Binding.parse({tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null,employmentId:null,...source}),
  assertSubjectBinding:(binding,source)=>{if(binding.companyId!==source.companyId||binding.payPeriod!==source.payPeriod||binding.payrollCycleId!==source.payrollCycleId||binding.runType!==source.runType)return fail();},
  assertHumanBinding:(binding,human)=>{if(human.input.companyId.toLowerCase()!==binding.companyId||human.input.payPeriod!==binding.payPeriod||human.input.payrollCycleId.toLowerCase()!==binding.payrollCycleId||human.input.runType!==binding.runType)return fail();},
- prepareNative:prepareReviewedMultiCycleRunSourceTx,
+ prepareNative:(tx,ctx,human)=>prepareReviewedMultiCycleRunSourceTx(tx,ctx,human),
  confirmNative:(tx,ctx,body)=>confirmReviewedMultiCycleRunSourceTx(tx,ctx,body.content,{action,contractVersion:1,reviewedDigest:body.nativeReviewedDigest}),
  pending:(row,body,current)=>MultiCycleRunPreparedReview.parse({action,contractVersion:1,actionId:row.metadata.actionId,reviewedDigest:row.metadata.reviewedDigest,createdAt:row.metadata.createdAt,expiresAt:row.metadata.expiresAt,content:body.content,review:current.review}),
  async completed(tx,ctx,row){if(!row.batchId||!row.eventId)return fail();const receipt=await reconcileReviewedMultiCycleRunSourceTx(tx,ctx,{batchId:row.batchId,createdEventId:row.eventId}),b=row.metadata.binding;if(receipt.companyId!==b.companyId||receipt.payPeriod!==b.payPeriod||receipt.createdPayrollCycleId!==b.payrollCycleId||receipt.runType!==b.runType)return fail();return MultiCycleRunCompletedReview.parse({action,contractVersion:1,actionId:row.metadata.actionId,state:'completed',receipt});},
