@@ -25664,7 +25664,8 @@
     "attachmentLimit": "最多3个PDF、PNG或JPEG文件，每个不超过5 MB，总计不超过10 MB。",
     "explicitlyExcluded": "已明确排除",
     "notIncluded": "未包含",
-    "transferCriteriaHelp": "员工选择也受下方条件限制。预览可确认最终覆盖范围。"
+    "transferCriteriaHelp": "员工选择也受下方条件限制。预览可确认最终覆盖范围。",
+    "primaryApprovalRequiresEditable": "如需提交审批申请，请选择“可编辑”。启用“需要审批”后，“仅查看”将禁止编辑主要紧急联系人。"
   },
   "labelsImportWizard": {
     "title": "导入组织标签",

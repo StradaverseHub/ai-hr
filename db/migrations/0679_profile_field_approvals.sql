@@ -155,6 +155,17 @@ END;$$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.profile_field_requires_approval(text) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+-- Explicit v5 approval requirements suspend the finite View Only primary-contact exception.
+-- Missing legacy rules retain their previous behavior; malformed explicit rules fail closed.
+CREATE FUNCTION app.profile_legacy_primary_requires_approval(p_field text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT COALESCE((SELECT value->'version'='5'::jsonb AND value->'approvals' ? p_field
+  AND value->'approvals'->p_field->'required' IS DISTINCT FROM 'false'::jsonb
+  FROM public.tenant_setting WHERE tenant_id=app.current_tenant_id() AND key='ess.profile_change_fields'),false);
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.profile_legacy_primary_requires_approval(text) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE TABLE app.profile_legacy_unassigned_request(request_id uuid PRIMARY KEY REFERENCES public.profile_change_request(id) ON DELETE CASCADE);
 --> statement-breakpoint
 REVOKE ALL ON app.profile_legacy_unassigned_request FROM PUBLIC,ai_hr_app;
@@ -542,9 +553,9 @@ BEGIN
    FOR b IN SELECT * FROM jsonb_each(delta) LOOP
     IF b.key='archived_at' AND b.value<>'null'::jsonb THEN
      IF EXISTS(SELECT 1 FROM app.access_profile_value_bindings() f WHERE f.owner='emergency' AND f.primary_key IS NOT NULL
-      AND NOT app.access_profile_value_editable(f.field_id,true)) THEN own_contact:=false;EXIT;END IF;
+      AND (NOT app.access_profile_value_editable(f.field_id,true) OR app.profile_legacy_primary_requires_approval(f.field_id))) THEN own_contact:=false;EXIT;END IF;
     ELSIF NOT EXISTS(SELECT 1 FROM app.access_profile_value_bindings() f WHERE f.owner='emergency' AND f.column_name=b.key
-     AND app.access_profile_value_editable(f.field_id,true)) THEN own_contact:=false;EXIT;END IF;
+     AND app.access_profile_value_editable(f.field_id,true) AND NOT app.profile_legacy_primary_requires_approval(f.field_id)) THEN own_contact:=false;EXIT;END IF;
    END LOOP;
    IF own_contact THEN RETURN NULL; END IF;
   END IF;

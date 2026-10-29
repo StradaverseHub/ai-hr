@@ -25664,7 +25664,8 @@
     "attachmentLimit": "Tối đa 3 tệp PDF, PNG hoặc JPEG, mỗi tệp 5 MB và tổng cộng 10 MB.",
     "explicitlyExcluded": "Đã loại trừ rõ ràng",
     "notIncluded": "Chưa bao gồm",
-    "transferCriteriaHelp": "Lựa chọn nhân viên còn bị giới hạn bởi tiêu chí bên dưới. Xem trước để xác nhận phạm vi cuối cùng."
+    "transferCriteriaHelp": "Lựa chọn nhân viên còn bị giới hạn bởi tiêu chí bên dưới. Xem trước để xác nhận phạm vi cuối cùng.",
+    "primaryApprovalRequiresEditable": "Để gửi yêu cầu phê duyệt, hãy chọn Có thể chỉnh sửa. Chỉ xem chặn chỉnh sửa liên hệ chính khi bật Yêu cầu phê duyệt."
   },
   "labelsImportWizard": {
     "title": "Nhập nhãn tổ chức",

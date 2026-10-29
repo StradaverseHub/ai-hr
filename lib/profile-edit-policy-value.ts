@@ -49,3 +49,6 @@ export function profileFieldApproval(raw:unknown,field:{id:string;ess:{edit:stri
  if(isProfileVisibilityPolicyValue(raw)&&raw.version===5&&raw.approvals[field.id])return raw.approvals[field.id];
  return {required:field.ess.edit==='approval',attachmentRequired:false};
 }
+
+/** An explicit approval choice supersedes only the old finite primary-contact exception. */
+export function profileLegacyPrimaryApprovalRequired(raw:unknown,fieldId:string):boolean{return isProfileVisibilityPolicyValue(raw)&&raw.version===5&&raw.approvals[fieldId]?.required===true;}

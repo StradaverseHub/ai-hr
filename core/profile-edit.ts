@@ -1,5 +1,5 @@
 import {appendEvent,actorOf} from '../db/events';
-import {profileFieldApproval} from '../lib/profile-edit-policy-value';
+import {profileFieldApproval,profileLegacyPrimaryApprovalRequired} from '../lib/profile-edit-policy-value';
 import {splitProfileSubmission} from '../lib/profile-submission-policy';
 import {getSetting} from './entitlements';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
@@ -135,7 +135,7 @@ export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:stri
   const visible=policy.visible;
   const addressVisible=PERSONNEL_FIELDS.filter(field=>field.owner==='person'&&field.ownerField.startsWith('permanent')).every(field=>visible.has(field.id));
   const safe=safeValues(projectEssVisible(values,visible),id=>maskedProfileBaseline(policy.ctx,subject,rows,id));
-  return {approvals:Object.fromEntries(PERSONNEL_FIELDS.filter(field=>visible.has(field.id)&&policy.editable.has(field.id)).map(field=>[field.id,profileFieldApproval(getSetting(policy.ctx,'ess.profile_change_fields'),field)])),visible:[...visible],employmentId:subject.id,personId:subject.personId,country:subject.country,...safe,registers:registers.map(row=>({...row,values:projectEssVisible(row.values,visible),baselines:projectEssVisible(row.baselines,visible),primary:essFactVisible(visible,'emergency','priority')&&row.primary})).filter(row=>Object.keys(row.values).length>0),editable:mayEdit?[...policy.editable].filter(id=>visible.has(id)):[],legacyPrimaryEditable:mayEdit?[...policy.legacyPrimary].filter(id=>visible.has(id)):[],addressReview:addressVisible&&addressNeedsReview(master),legacyAddress:addressVisible?legacyAddress(master):{},statutoryAvailable:Boolean(rows.pack),fieldReadOnlyReasons:projectEssVisible(fieldReadOnlyReasons,visible)} satisfies EssWorkspace;
+  return {approvals:Object.fromEntries(PERSONNEL_FIELDS.filter(field=>visible.has(field.id)&&policy.editable.has(field.id)).map(field=>[field.id,profileFieldApproval(getSetting(policy.ctx,'ess.profile_change_fields'),field)])),visible:[...visible],employmentId:subject.id,personId:subject.personId,country:subject.country,...safe,registers:registers.map(row=>({...row,values:projectEssVisible(row.values,visible),baselines:projectEssVisible(row.baselines,visible),primary:essFactVisible(visible,'emergency','priority')&&row.primary})).filter(row=>Object.keys(row.values).length>0),editable:mayEdit?[...policy.editable].filter(id=>visible.has(id)):[],legacyPrimaryEditable:mayEdit?[...policy.legacyPrimary].filter(id=>visible.has(id)&&!profileLegacyPrimaryApprovalRequired(getSetting(policy.ctx,'ess.profile_change_fields'),id)):[],addressReview:addressVisible&&addressNeedsReview(master),legacyAddress:addressVisible?legacyAddress(master):{},statutoryAvailable:Boolean(rows.pack),fieldReadOnlyReasons:projectEssVisible(fieldReadOnlyReasons,visible)} satisfies EssWorkspace;
  };
  return existingTx?run(existingTx):withTenant(ctx,run);
 }
@@ -173,7 +173,7 @@ export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employme
  if(!proposal)throw new EssProfileError('invalid');
  const cleanFields=(fields:EssFieldChange[],values:Record<string,EssScalar>,legacy=false,isNew=false,maskedToken?:(fieldId:string)=>string|undefined)=>fields.filter(change=>{
   const field=personnelField(change.fieldId)!;
-  if(!policy.editable.has(field.id)&&!(legacy&&policy.legacyPrimary.has(field.id)))throw new EssProfileError('fieldClosed',[field.id]);
+  if(!policy.editable.has(field.id)&&!(legacy&&policy.legacyPrimary.has(field.id)&&!profileLegacyPrimaryApprovalRequired(getSetting(policy.ctx,'ess.profile_change_fields'),field.id)))throw new EssProfileError('fieldClosed',[field.id]);
   const token=field.ess.masked?(maskedToken?maskedToken(field.id):maskedProfileBaseline(policy.ctx,subject,rows,field.id)):baseline(values[field.id]);
   if(field.ess.masked&&token===undefined&&!(isNew&&change.before===null))throw new EssProfileError('unavailable',[field.id]);
   if(!(isNew&&change.before===null)&&token!==change.before)throw new EssProfileError('stale',[field.id]);

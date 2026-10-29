@@ -25664,7 +25664,8 @@
     "attachmentLimit": "Up to 3 PDF, PNG or JPEG files, 5 MB each and 10 MB in total.",
     "explicitlyExcluded": "Explicitly excluded",
     "notIncluded": "Not included",
-    "transferCriteriaHelp": "Employee selections are also limited by the criteria below. Preview confirms the final coverage."
+    "transferCriteriaHelp": "Employee selections are also limited by the criteria below. Preview confirms the final coverage.",
+    "primaryApprovalRequiresEditable": "For approval requests, choose Editable. View Only blocks primary-contact edits when Approval Required is on."
   },
   "labelsImportWizard": {
     "title": "Import organisation labels",

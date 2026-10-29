@@ -25664,7 +25664,8 @@
     "attachmentLimit": "Sehingga 3 fail PDF, PNG atau JPEG, 5 MB setiap fail dan 10 MB keseluruhan.",
     "explicitlyExcluded": "Dikecualikan secara nyata",
     "notIncluded": "Tidak disertakan",
-    "transferCriteriaHelp": "Pilihan pekerja turut dihadkan oleh kriteria di bawah. Pratonton mengesahkan liputan akhir."
+    "transferCriteriaHelp": "Pilihan pekerja turut dihadkan oleh kriteria di bawah. Pratonton mengesahkan liputan akhir.",
+    "primaryApprovalRequiresEditable": "Untuk permintaan kelulusan, pilih Boleh Diedit. Lihat Sahaja menyekat suntingan hubungan utama apabila Kelulusan Diperlukan dihidupkan."
   },
   "labelsImportWizard": {
     "title": "Import label organisasi",

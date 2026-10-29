@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {setStatutoryProfileMY,setTaxProfileMY} from '../localization/my/statutory';
+import {addEmergencyContact,listEmergencyContacts} from '../core/emergency-contacts';
 import {listDependents} from '../core/dependents';
 import {hireEmployee} from '../core/org';
 import {readOwnProfileWorkspace,submitOwnProfileEdit} from '../core/profile-edit';
@@ -11,7 +12,7 @@ import {previewProfileRoutingPolicy,saveProfileRoutingPolicy} from '../core/prof
 import {listProfileAttachments,readProfileAttachment} from '../core/profile-attachments';
 import {essVisibleFields} from '../lib/personnel-ess-contract';
 import {editableProfileRoute,EMPTY_PROFILE_ROUTING,type ProfileRouteRule} from '../lib/profile-routing-policy';
-import {person,profileChangeRequest,domainEvent,employeeStatutoryMy} from '../db/schema';
+import {person,profileChangeRequest,domainEvent,employeeStatutoryMy,personEmergencyContact} from '../db/schema';
 import {withTenant,type SessionContext} from '../db/client';
 import {migrateTestDb,resetDb,seedBase,owner,adminCtx,createAppUser,closeAll,type Base} from './harness';
 let b:Base;
@@ -71,6 +72,29 @@ describe('per-field approval authority',()=>{
   const result=await submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal:{v:2,fields:[],registers:[{kind:'dependent',id:null,clientId:randomUUID(),fields:[{fieldId:name,before:null,value:'Child fixture'},{fieldId:relationship,before:null,value:'child'},{fieldId:dob,before:null,value:'2015-01-01'}]}]}});
   expect(result.waiting).toEqual([]);expect((await listDependents(s.ctx,{personId:s.personId}))).toHaveLength(1);
   expect((await owner.db.select().from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,s.personId)))[0].numChildren).toBe(1);
+ });
+ it('suspends finite primary-only edits for explicit approval-on View Only, retaining old defaults and the Editable approval lane',async()=>{
+  const s=await subject(),fieldId='profile.emergency_contact.fullname';
+  const contact=await addEmergencyContact(admin(),{personId:s.personId,fullName:'Original primary',priority:'primary'});
+  const fields=Object.fromEntries(essVisibleFields().map(field=>[field.id,'viewOnly' as const]));
+  await saveProfileVisibilityPolicy(admin(),{policy:{version:5,fields,primaryOnly:[fieldId],groups:{},approvals:{[fieldId]:{required:true,attachmentRequired:true}}},withdrawnReason:'Fixture approval control'});
+  const view=await readOwnProfileWorkspace(s.ctx,{employmentId:s.employmentId}),row=view.registers.find(row=>row.id===contact.id)!;
+  expect(view.legacyPrimaryEditable).not.toContain(fieldId);
+  const proposed={v:2,fields:[],registers:[{kind:'emergency',id:contact.id,clientId:contact.id,fields:[{fieldId,before:row.baselines[fieldId],value:'Unapproved change'}]}]};
+  await expect(submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal:proposed})).rejects.toMatchObject({code:'fieldClosed'});
+  await expect(withTenant(s.ctx,async tx=>{await tx.update(personEmergencyContact).set({fullName:'Raw bypass'}).where(eq(personEmergencyContact.id,contact.id));})).rejects.toThrow();
+  expect((await listEmergencyContacts(s.ctx,{personId:s.personId})).find(row=>row.id===contact.id)?.fullName).toBe('Original primary');
+  await saveProfileVisibilityPolicy(admin(),{policy:{version:4,fields,primaryOnly:[fieldId],groups:{}},withdrawnReason:'Legacy fixture'});
+  const legacy=await submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal:proposed});expect(legacy.saved).toEqual([fieldId]);expect(legacy.requestId).toBeNull();
+  await policy({[fieldId]:{required:true,attachmentRequired:true}});
+  const editable=await readOwnProfileWorkspace(s.ctx,{employmentId:s.employmentId}),current=editable.registers.find(row=>row.id===contact.id)!;
+  const requested={...proposed,registers:[{...proposed.registers[0],fields:[{fieldId,before:current.baselines[fieldId],value:'Approved primary'}]}]};
+  await expect(submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal:requested})).rejects.toMatchObject({code:'attachmentRequired'});
+  const result=await submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal:requested,attachments:[{fieldIds:[fieldId],fileName:'support.pdf',mimeType:'application/pdf',contentBase64:Buffer.from('%PDF-fixture').toString('base64')}]});
+  expect(result.saved).toEqual([]);expect(result.waiting).toEqual([fieldId]);
+  expect((await listEmergencyContacts(s.ctx,{personId:s.personId})).find(row=>row.id===contact.id)?.fullName).toBe('Unapproved change');
+  await decideProfileChange(admin(),{requestId:result.requestId!,decision:'approved'});
+  expect((await listEmergencyContacts(s.ctx,{personId:s.personId})).find(row=>row.id===contact.id)?.fullName).toBe('Approved primary');
  });
  it('keeps hidden and read-only upper bounds even when approvals are disabled',async()=>{
   const s=await subject();await policy({[first]:{required:false,attachmentRequired:false},[preferred]:{required:false,attachmentRequired:false}},{[first]:'hide',[preferred]:'viewOnly'});
