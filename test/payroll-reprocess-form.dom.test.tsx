@@ -520,3 +520,102 @@ describe('65e2d5de — Enter cannot submit this form', () => {
     expect(spy, 'the harness cannot see a submit at all — the guard cases prove nothing').toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * c3258a72 — EMPLOYEES WITH NOTHING TO PAY ARE "SKIPPED", NOT "NEW / PENDING".
+ *
+ * Before this, a no-monthly-basic employee with nothing payable sat in the amber New / Pending group,
+ * pre-ticked, so every reprocess tried them again, skipped them again, and left them looking pending. The
+ * server now states the run's decision on the row (`skip`); these cases pin what the screen does with it.
+ */
+describe('c3258a72 — the Skipped group', () => {
+  const tableWith = (container: HTMLElement, text: string) =>
+    [...container.querySelectorAll('table')].find((tb) => tb.querySelector('caption')?.textContent?.includes(text)) as
+      | HTMLTableElement
+      | undefined;
+  const skipRow = add({ employmentId: 's1', employeeCode: 'D0001', name: 'Dato Lim', warnings: ['nothingPayable'], skip: 'NOTHING_PAYABLE_THIS_PERIOD' });
+  const pendingRow = add({ employmentId: 'n1' });
+
+  it('a skip row goes to its own Skipped group with the reporter’s sentence, not to New / Pending', () => {
+    const { container } = form({ newCandidates: [pendingRow, skipRow] });
+    const pending = tableWith(container, 'New / Pending')!;
+    const skipped = tableWith(container, 'Skipped')!;
+    expect(pending, 'New / Pending group').toBeTruthy();
+    expect(skipped, 'Skipped group').toBeTruthy();
+    expect(pending.textContent).toContain('Siti Aminah');
+    expect(pending.textContent).not.toContain('Dato Lim');
+    expect(skipped.textContent).toContain('Dato Lim');
+    expect(skipped.textContent).toContain('No monthly basic salary and nothing was payable this month.');
+    expect(skipped.querySelector('tbody')!.textContent).not.toContain('New / Pending');
+    // Neither "deliberately left out" nor an "Also missing" gap: nothing is missing.
+    expect(container.textContent).not.toContain('Deliberately left out');
+    expect(container.textContent).not.toContain('Also missing');
+    // Order: pending finding first, then the completed skips, then the people already paid.
+    const tables = [...container.querySelectorAll('table')];
+    expect(tables.indexOf(pending)).toBeLessThan(tables.indexOf(skipped));
+    expect(tables[tables.length - 1]!.textContent).toContain('John Tan');
+  });
+
+  it('is NOT counted as pending: the New / Pending caption counts only the pending row', () => {
+    const { container } = form({ newCandidates: [pendingRow, skipRow] });
+    expect(tableWith(container, 'New / Pending')!.querySelector('caption')!.textContent).toContain('New / Pending — 1 employee(s)');
+    expect(tableWith(container, 'Skipped')!.querySelector('caption')!.textContent).toContain('Skipped — 1 employee(s)');
+  });
+
+  it('arrives UNTICKED while the pending row is pre-ticked; the total still spans every group', () => {
+    const { container } = form({ newCandidates: [pendingRow, skipRow] });
+    const data = new FormData(container.querySelector('form') as HTMLFormElement);
+    expect(data.getAll('employmentIds')).toEqual(['n1']);
+    const box = boxes().find((b) => b.value === 's1')!;
+    expect(box.checked).toBe(false);
+    expect(box.disabled, 'a skip is never un-tickable').toBe(false);
+    expect(screen.getByText('1 of 5 selected')).toBeInTheDocument();
+  });
+
+  it('only skipped people waiting ⇒ no New / Pending group at all, and nothing pre-ticked', () => {
+    const { container } = form({ newCandidates: [skipRow] });
+    expect(tableWith(container, 'New / Pending')).toBeUndefined();
+    expect(tableWith(container, 'Skipped')).toBeTruthy();
+    expect(submit()).toBeDisabled();
+  });
+
+  it('can still be ticked by hand, and is then reviewed and posted as an addition', async () => {
+    const user = userEvent.setup();
+    const { container } = form({ newCandidates: [skipRow] });
+    await user.click(boxes().find((b) => b.value === 's1')!);
+    expect(submit()).toBeEnabled();
+    const review = screen.getByText(/Before you submit/).closest('div') as HTMLElement;
+    expect(review.textContent).toContain('Dato Lim');
+    expect(review.textContent).toContain('1 of them are being added to this run for the first time');
+    const data = new FormData(container.querySelector('form') as HTMLFormElement);
+    expect(data.getAll('employmentIds')).toEqual(['s1']);
+  });
+
+  it('a deduction-only skip carries its own sentence', () => {
+    const { container } = form({
+      newCandidates: [add({ employmentId: 's2', name: 'Loan Lee', warnings: ['nothingPayable'], skip: 'DEDUCTION_ONLY_THIS_PERIOD' })],
+    });
+    const skipped = tableWith(container, 'Skipped')!;
+    expect(skipped.textContent).toContain(messages.payroll.batch.skipped.reason.DEDUCTION_ONLY_THIS_PERIOD);
+    expect(skipped.textContent).not.toContain('No monthly basic salary and nothing was payable this month.');
+  });
+
+  it('a no-basic row the server did NOT skip (money keyed since) is plain New / Pending, ticked', () => {
+    const { container } = form({ newCandidates: [add({ employmentId: 'f1', name: 'Fee Fong', warnings: ['nothingPayable'], skip: null })] });
+    expect(tableWith(container, 'Skipped')).toBeUndefined();
+    const pending = tableWith(container, 'New / Pending')!;
+    expect(pending.textContent).toContain('Eligible for this month and has no payslip on this run.');
+    expect(boxes().find((b) => b.value === 'f1')!.checked).toBe(true);
+  });
+
+  it('search filters the Skipped group too, and says so when it hides every skipped row', async () => {
+    const user = userEvent.setup();
+    const { container } = form({ newCandidates: [pendingRow, skipRow] });
+    await user.type(screen.getByPlaceholderText('Search by employee ID or name'), 'D0001');
+    expect(tableWith(container, 'Skipped')!.textContent).toContain('Dato Lim');
+    expect(tableWith(container, 'New / Pending')!.textContent).toContain('No employee matches your search.');
+    await user.clear(screen.getByPlaceholderText('Search by employee ID or name'));
+    await user.type(screen.getByPlaceholderText('Search by employee ID or name'), 'Siti');
+    expect(tableWith(container, 'Skipped')!.textContent).toContain('No employee matches your search.');
+  });
+});

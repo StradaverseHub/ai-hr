@@ -14,7 +14,9 @@ const wrap=(mode='manual_percentage',employeeRate:number|null=null,employerRate:
 describe('5e204d56 manual EPF percentages',()=>{
  it('keeps explicit manual elections distinct from historical top-up elections',()=>{
   expect(mapEpfUiMode('manual_percentage','5.5','6.5')).toMatchObject({epfMode:'manual_percentage',epfEmployeeRate:.055,epfEmployerRate:.065});
-  expect(mapEpfUiMode('voluntary_percentage','15','16').epfMode).toBe('voluntary_excess');
+  // b6dbadc5 — Top-up now persists as the additive mode; a stored legacy total-rate row still reopens as Top-up.
+  expect(mapEpfUiMode('voluntary_percentage','1','1').epfMode).toBe('topup_percentage');
+  expect(epfUiModeFrom('topup_percentage',1,1,null,null)).toBe('voluntary_percentage');
   expect(epfUiModeFrom('voluntary_excess',15,16,null,null)).toBe('voluntary_percentage');
   expect(epfUiModeFrom('voluntary_excess',15,null,null,null)).toBe('semi_auto');
   expect(epfUiModeFrom('manual_percentage',5.5,6.5,null,null)).toBe('manual_percentage');
@@ -60,13 +62,20 @@ describe('5e204d56 manual EPF percentages',()=>{
   expect(screen.queryByText(en.people.detail.epfManualEmployeeRateRequired)).toBeNull();
   expect(document.querySelector<HTMLInputElement>('input[name="unrelated"]')?.value).toBe('Keep this entry');
  });
- it('preserves a legacy top-up on reopening and requires explicit reviewed adoption',async()=>{
+ it('b6dbadc5: switching a legacy top-up to Manual (by percentage) shows no adoption message and no tick box',async()=>{
   wrap('voluntary_excess',15,16);
   const category=screen.getByRole('combobox');
   expect(category).toHaveValue('voluntary_percentage');
-  expect(document.querySelector<HTMLInputElement>('input[name="epfEmployeeRate"]')?.min).toBe('11');
+  // The legacy row shows its stored TOTAL figures; the browser bounds them only to 0–100 (the server decides).
+  const employee=document.querySelector<HTMLInputElement>('input[name="epfEmployeeRate"]')!;
+  expect(employee.min).toBe('0');expect(employee.max).toBe('100');
+  expect(screen.getByText(en.people.detail.epfTopupLegacyHint)).toBeVisible();
   await userEvent.selectOptions(category,'manual_percentage');
-  expect(screen.getByText(en.people.detail.epfManualAdoptionPreview)).toBeVisible();
-  expect(screen.getByRole('checkbox',{name:en.people.detail.epfManualAdoptionConfirm})).toBeRequired();
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  expect(document.querySelector('[name="epfManualPercentageAdoptionConfirmed"]')).toBeNull();
+  expect(en.people.detail).not.toHaveProperty('epfManualAdoptionPreview');
+  expect(en.people.detail).not.toHaveProperty('epfManualAdoptionConfirm');
+  const form=document.querySelector('form')!;
+  expect(form.checkValidity()).toBe(true);
  });
 });
