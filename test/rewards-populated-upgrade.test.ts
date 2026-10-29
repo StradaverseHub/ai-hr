@@ -60,7 +60,8 @@ it('preserves populated Rewards history, seats, shared policies and both notific
    }
    await actor(tx,ids.requester,'hr_admin');
    await tx`insert into employment(id,tenant_id,person_id,company_id,hired_on) values(${ids.employment},${ids.tenant},${ids.employeePerson},${ids.company},${`${year-1}-01-01`})`;
-   await tx`insert into assignment(tenant_id,employment_id,department_id,business_unit_id,employment_type,status,valid_from) values(${ids.tenant},${ids.employment},${ids.department},${ids.bu},'full_time','active',${`${year-1}-01-01`})`;
+   // 0331 removed assignment.status; lifecycle status is derived, as in the canonical hire writer.
+   await tx`insert into assignment(tenant_id,employment_id,department_id,business_unit_id,employment_type,valid_from) values(${ids.tenant},${ids.employment},${ids.department},${ids.bu},'full_time',${`${year-1}-01-01`})`;
    const [shared]=await tx`select app.reward_policy_group_commit(NULL,0,'Fictional legacy shared policy',${JSON.stringify(policy)}::jsonb,${JSON.stringify([{companyId:ids.company,businessUnitId:ids.bu}])}::jsonb) as version`;
    await tx`insert into reward_cycle(id,tenant_id,name,year,created_by) values(${ids.cycle},${ids.tenant},'Fictional legacy cycle',${year},${ids.requester})`;
    await tx`insert into reward_unit(id,tenant_id,cycle_id,company_id,business_unit_id,created_by,policy,snapshot_date,status,revision,policy_group_version_id) values(${ids.unit},${ids.tenant},${ids.cycle},${ids.company},${ids.bu},${ids.requester},${JSON.stringify(policy)}::jsonb,${day},'draft',2,${shared.version.versionId})`;
