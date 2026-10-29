@@ -27,7 +27,7 @@ import { MyReadinessWork } from '../app/me/readiness-work';
 import { OrchestrationWorkQueue } from '../app/control-tower/work-queue';
 
 const show = (element: React.ReactNode) => render(<NextIntlClientProvider locale={renderLocale} messages={catalogues[renderLocale]}>{element}</NextIntlClientProvider>);
-const empty = { actionsUnavailable: false, rows: [], total: 0, verified: 0, inactive: 0, observedAt: null, lastRun: null };
+const empty = { scheduledRun: false, actionsUnavailable: false, rows: [], total: 0, verified: 0, inactive: 0, observedAt: null, lastRun: null };
 const successfulSteps = { observe: 'succeeded', readiness: 'succeeded', claims: 'succeeded', verify: 'succeeded' } as const;
 function populatedQueue(): Awaited<ReturnType<typeof orchestrationQueue>> {
   const now = new Date();
@@ -51,6 +51,18 @@ describe('consolidated Control Tower', () => {
     expect(screen.getByRole('button', { name: 'Check current records' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Execution history' })).toBeNull();
   });
+  it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s shows the named scheduled pass to group and company HR with scoped work', async locale => {
+    renderLocale = locale;
+    for (const group of [true, false]) {
+      const view = { ...populatedQueue(), scheduledRun: true };
+      show(await OrchestrationWorkQueue({ view, canViewRuns: group }));
+      expect(screen.getByText(catalogues[locale].controlTower.orchestrator.scheduledScopeNote)).toBeTruthy();
+      expect(screen.queryByText(catalogues[locale].controlTower.orchestrator.unobserved)).toBeNull();
+      expect(screen.queryByRole('link', { name: catalogues[locale].controlTower.orchestrator.runs }) != null).toBe(group);
+      fireEvent.click(screen.getByText(catalogues[locale].controlTower.orchestrator.runDetails.title));
+      cleanup();
+    }
+  }, 60000);
   it('offers the system execution log only when the parent authorizes that view', async () => {
     show(await OrchestrationWorkQueue({ view: empty, canViewRuns: true }));
     expect(screen.getByRole('link', { name: 'Execution history' }).getAttribute('href')).toBe('/admin/scheduled-actions');

@@ -23,6 +23,7 @@
  * by everything it points at.
  */
 import { and, desc, eq, isNull } from 'drizzle-orm';
+import { agentSwitchStatesTx } from './agent-principal';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { resolveActiveAiConfig } from './ai-config';
@@ -131,7 +132,7 @@ export async function agentStatuses(ctx: SessionContext): Promise<AgentStatus[]>
   // Operator tooling, and platform-scoped — a customer cannot switch it on for themselves.
   const planDrafterOn = settingEnabled(ctx, 'feedback.ai_planning_enabled');
 
-  const [lastSweep, aiConfigured, assistant] = await Promise.all([
+  const [lastSweep, aiConfigured, assistant, switches] = await Promise.all([
     withTenant(ctx, async (tx) => {
       const [row] = await tx
         .select({ at: schema.payrollAnomalyVerdict.computedAt })
@@ -144,7 +145,10 @@ export async function agentStatuses(ctx: SessionContext): Promise<AgentStatus[]>
     // The narrator and the assistant both need a provider; neither can run on the platform's goodwill.
     withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx)).then((c) => c != null),
     mayUseAssistant(ctx).then((a) => a.allowed),
+    withTenant(ctx, tx => agentSwitchStatesTx(tx, ctx)),
   ]);
+
+  const nudgeAttributed = switches.some(s => s.feature === 'readiness_reminders' && s.state === 'attributed');
 
   const sweepFresh =
     lastSweep != null && Date.now() - lastSweep.getTime() < SWEEP_FRESH_DAYS * 24 * 60 * 60 * 1000;
@@ -201,14 +205,12 @@ export async function agentStatuses(ctx: SessionContext): Promise<AgentStatus[]>
       // evidence, the next is AI proposing there is some, and the difference is the whole ADR.
       id: 'hypotheses',
       kind: 'llm',
-      active: hypothesesOn && aiConfigured,
+      active: false,
       reasonKey: !payrollOn
         ? 'moduleOff'
         : !hypothesesOn
           ? 'hypothesesOff'
-          : aiConfigured
-            ? 'hypothesesOn'
-            : 'noProvider',
+          : 'scheduledModelNotAdmitted',
     },
     {
       // ADR-0084 §2.7, r240 — the input end. It sits after `hypotheses` because the pair is the honest
@@ -217,7 +219,7 @@ export async function agentStatuses(ctx: SessionContext): Promise<AgentStatus[]>
       // money, and the row says so rather than leaving that to the reader.
       id: 'triage',
       kind: 'llm',
-      active: triageOn && aiConfigured,
+      active: false,
       // ⚠️ `claimsOn`, hoisted, NOT `isModuleEnabled(ctx, 'claims')` inline. The roster guard reads every
       // quoted string in a `reasonKey:` expression and demands an i18n key for it, so a module code
       // written inline here becomes a phantom reason key the page never renders. Keep this expression to
@@ -226,17 +228,16 @@ export async function agentStatuses(ctx: SessionContext): Promise<AgentStatus[]>
         ? 'moduleOff'
         : !triageOn
           ? 'triageOff'
-          : aiConfigured
-            ? 'triageOn'
-            : 'noProvider',
+          : 'scheduledModelNotAdmitted',
     },
     {
       // ADR-0084 §2.5, r237. The only thing in this product that contacts a person with nobody pressing
       // send, which is exactly why it is listed rather than left implicit.
       id: 'nudge',
-      kind: 'llm',
-      active: nudgeOn,
-      reasonKey: nudgeOn ? 'nudgeOn' : 'nudgeOff',
+      kind: 'deterministic',
+      active: nudgeAttributed,
+      reasonKey: !nudgeOn ? 'nudgeOff' : nudgeAttributed
+        ? 'nudgeTemplates' : 'scheduledUnattributed',
     },
     // ⚠️ THE FOUR AUTHORING ASSISTS BELOW WERE MISSING FROM THIS ROSTER UNTIL r238, AND ADR-0084 §1
     // FINDING 3 IS ABOUT EXACTLY THAT: the page showed 6 agents while `core/` held six AI call sites it

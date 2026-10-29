@@ -21,6 +21,15 @@ const DISABLED_PROCESSORS = ['auto-beta-router','auto-router','context-compressi
   'fusion','jev-router','pareto-router','response-healing','switchyard-router','web','web-fetch'] as const;
 
 const unavailable = () => new AiGatewayError('AI provider response unavailable.');
+type FailurePhase = 'configuration' | 'request' | 'dispatch' | 'network' | 'response' | 'accounting' | 'completion' | 'cancelled';
+/** Closed operational metadata only. Never pass an exception, request or response to the sink.
+ * Public errors remain generic, and a broken diagnostic sink cannot replace that boundary. */
+function diagnosticFailure(phase: FailurePhase, status: number | null) {
+  const httpStatus = typeof status === 'number' && Number.isInteger(status) && status >= 100 && status <= 599 ? status : null;
+  try { console.warn('[ai-provider-transport-failure]', { provider: 'openrouter', phase, httpStatus }); }
+  catch { /* Logging cannot expose a sink exception or change provider failure semantics. */ }
+  return unavailable();
+}
 const name = z.string().regex(/^[A-Za-z_][A-Za-z0-9_-]{0,63}$/).refine(value=>value.trim()===value);
 const id = z.string().min(1).max(256).refine(value=>!/[\u0000-\u001f\u007f]/.test(value));
 export const OpenRouterModel = z.string().min(3).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*(?::free)?$/)
@@ -127,10 +136,13 @@ export async function readOpenRouterJsonResponse(response: Response, signal: Abo
 export type OpenRouterTerminalObservation=Readonly<{accounting:OpenRouterAccounting;elapsedMs:number}>;
 export function createOpenRouterTransport(fetcher: typeof fetch) {
   return async (configuration: unknown, args: ConverseArgs, signal?: AbortSignal,onTerminal?:(observation:OpenRouterTerminalObservation)=>void) => {
-    if (signal?.aborted) throw unavailable();
+    if (signal?.aborted) throw diagnosticFailure('cancelled', null);
     let cfg: z.infer<typeof OpenRouterTransportConfiguration>, body: string;
-    try { cfg = OpenRouterTransportConfiguration.parse(configuration); body = buildOpenRouterRequest({ model: cfg.model, routing: cfg.routing }, args); }
-    catch { throw unavailable(); }
+    let phase: FailurePhase = 'configuration', httpStatus: number | null = null;
+    try {
+      cfg = OpenRouterTransportConfiguration.parse(configuration);
+      phase = 'request'; body = buildOpenRouterRequest({ model: cfg.model, routing: cfg.routing }, args);
+    } catch { throw diagnosticFailure(phase, null); }
     const controller = new AbortController(), timeoutMs = args.timeoutMs ?? 30_000, started = performance.now();
     const abort = () => controller.abort();
     let abortWait!: () => void;
@@ -144,15 +156,19 @@ export function createOpenRouterTransport(fetcher: typeof fetch) {
     try {
       if (controller.signal.aborted) throw unavailable();
       const run = async () => {
+        phase = 'dispatch';
         consumeReviewedFreePost({provider:'openrouter',model:cfg.model,apiKey:cfg.apiKey,providerOptions:readOpenRouterOptions({version:1,routing:cfg.routing})},body);
         consumeReviewedMeteredPost({provider:'openrouter',model:cfg.model,apiKey:cfg.apiKey,providerOptions:readOpenRouterOptions({version:1,routing:cfg.routing})},body);
+        phase = 'network';
         const response = await fetcher(ENDPOINT, { method: 'POST', redirect: 'error', cache: 'no-store',
           headers: { Authorization: 'Bearer ' + cfg.apiKey, 'Content-Type': 'application/json' },
           body, signal: controller.signal });
+        phase = 'response'; httpStatus = response.status;
         let raw='';
         const expired=()=>performance.now()-started>=timeoutMs;
         const value = await readOpenRouterJsonResponse(response, controller.signal,expired,text=>{raw=text;});
         if (controller.signal.aborted || performance.now() - started >= timeoutMs) throw unavailable();
+        phase = 'accounting';
         const usage = value && typeof value === 'object' ? (value as Record<string, unknown>).usage : undefined;
         const accounting=readOpenRouterAccounting(usage),elapsedMs=performance.now()-started;
         // Complete bounded HTTP200 JSON may report a charge even when choices/error fields refuse
@@ -160,11 +176,12 @@ export function createOpenRouterTransport(fetcher: typeof fetch) {
         // Official: /docs/cookbook/administration/usage-accounting and /docs/api_reference/errors-and-debugging.
         onTerminal?.(Object.freeze({accounting,elapsedMs}));
         await observeOpenRouterSpendTerminal(raw,{provider:'openrouter',model:cfg.model,apiKey:cfg.apiKey,providerOptions:readOpenRouterOptions({version:1,routing:cfg.routing})},controller.signal,expired,fetcher,async metadataResponse=>{let text='';await readOpenRouterJsonResponse(metadataResponse,controller.signal,expired,raw=>{text=raw;});return text;});
+        phase = 'completion';
         const completion = readOpenRouterCompletion(value);
         return { completion, accounting, elapsedMs };
       };
       return await Promise.race([run(), cancelled]);
-    } catch { throw unavailable(); }
+    } catch { throw diagnosticFailure(controller.signal.aborted ? 'cancelled' : phase, httpStatus); }
     finally {
       clearTimeout(timer); signal?.removeEventListener('abort', abort);
       controller.signal.removeEventListener('abort', abortWait);

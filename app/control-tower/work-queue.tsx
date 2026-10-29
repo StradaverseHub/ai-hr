@@ -39,6 +39,7 @@ export async function OrchestrationWorkQueue({ view, refresh, canViewRuns = fals
       {canViewRuns && <Link href="/admin/scheduled-actions" className="text-primary hover:underline">{t('runs')}</Link>}
     </div>
     {view.observedAt && <p className="px-5 pt-3 text-xs text-muted-foreground">{t('observed', { date: f.dateTime(view.observedAt, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }) })}</p>}
+    {view.scheduledRun && <p className="px-5 pt-3 text-xs text-muted-foreground">{t('scheduledScopeNote')}</p>}
     {run && <details className="mx-5 mt-3 border-y border-border">
       <summary className="min-h-11 cursor-pointer rounded py-3 text-sm focus-visible:outline-2 focus-visible:outline-ring">
         <span className="font-medium">{t('runDetails.title')}</span>

@@ -10,6 +10,7 @@ import {assertModuleEnabled,resolveEntitlementsTx} from './entitlements';
 import {assertMayUseAssistant} from './assistant-grant';
 import {bindStrictAiSpendRoot} from './ai-governance';
 import {aiSpendAdmissionStep} from './ai-spend-capability';
+import {issueAssistantQuestionBudget,bindAssistantQuestionBudgetTx} from './assistant-question-budget';
 import type {ReadinessGapId} from './record-readiness';
 export type AiSpendTaskSource=Readonly<{kind:'assistant_question'}|{kind:'claim_request';sourceId:string}|{kind:'payroll_batch';sourceId:string}|{kind:'performance_guide_request';sourceId:string}|{kind:'readiness_template';gap:ReadinessGapId;audience:'employee'|'hr'}>;
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -27,7 +28,12 @@ export async function bindAiSpendTaskTx(tx:Tx,supplied:SessionContext,configurat
  if(p.kind==='assistant_question')await assertMayUseAssistant(fresh,tx);
  const[row]=await aiSpendAdmissionStep(()=>tx.execute<{root_id:string}>(sql`select app.ai_spend_task_issue(${feature},${p.kind},${nativeId}::uuid,${operation}) as root_id`),'The AI task identity could not be confirmed.');
  if(!row||!UUID.test(row.root_id))throw new AiGatewayError('The AI task identity could not be confirmed.');
- return bindStrictAiSpendRoot(configuration,{rootTaskId:row.root_id,kind:'agent'});
+ const rooted=bindStrictAiSpendRoot(configuration,{rootTaskId:row.root_id,kind:'agent'});
+ // The root and daily quota commit together before any provider admission. Other task kinds retain
+ // their native owners; this budget is only for a human Assistant question.
+ return p.kind==='assistant_question'
+  ?(await bindAssistantQuestionBudgetTx(tx,ctx,rooted,issueAssistantQuestionBudget(ctx,row.root_id))).configuration
+  :rooted;
 }
 
 /** Opaque metadata correlation, never source/effect authority. Only native message owners issue it

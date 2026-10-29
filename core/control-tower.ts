@@ -34,7 +34,7 @@ import * as schema from '../db/schema';
 import { proposalRates, type ProposalRates } from './agent-proposal';
 import { classifyClosures } from './recurrence-mining';
 import { resolveActiveAiConfig } from './ai-config';
-import { isModuleEnabled, settingEnabled } from './entitlements';
+import { agentSwitchStatesTx } from './agent-principal';
 
 /** ADR-0074 §"the reframe": the target the whole design serves. */
 export const TARGET_AUTO_CLEAR_RATE = 0.95;
@@ -259,7 +259,7 @@ export async function controlTowerView(ctx: SessionContext): Promise<ControlTowe
  * The order is causal, not alphabetical — a tenant with no provider ALSO has no proposals, and telling
  * them "nothing proposed yet" first would send them looking in the wrong place.
  */
-export type AgreementBlocker = 'no_provider' | 'no_agent_on' | 'nothing_proposed' | 'nothing_decided';
+export type AgreementBlocker = 'no_provider' | 'no_agent_on' | 'nothing_proposed' | 'nothing_decided' | 'scheduled_models_not_admitted';
 
 /**
  * ⚠️ **A REVERSAL RATE IS ONLY HONEST ONCE CLOSURES HAVE BEEN TESTED, WHICH IS NOT THE SAME AS APPROVED.**
@@ -334,15 +334,13 @@ export async function agreementView(ctx: SessionContext): Promise<AgreementView>
   });
   const proposals = rates.reduce((n, r) => n + r.total, 0);
 
-  // The gates, read from the system rather than assumed — the same sources the agent switchboard reads,
-  // so the two screens cannot disagree about whether anything is switched on.
+  // A provider enables human-triggered drafts only. Scheduled model spending is not admitted; only
+  // attributed fixed-template reminders can currently produce scheduled proposals.
   const aiConfigured = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx)).then((c) => c != null);
-  const anyAgentOn =
-    (isModuleEnabled(ctx, 'payroll') && settingEnabled(ctx, 'payroll.anomaly_hypotheses_enabled')) ||
-    settingEnabled(ctx, 'notifications.readiness_nudge_enabled') ||
-    (isModuleEnabled(ctx, 'claims') && settingEnabled(ctx, 'claims.input_triage_enabled'));
+  const switches = await withTenant(ctx, tx => agentSwitchStatesTx(tx, ctx));
+  const anyAgentOn = switches.some(s => s.feature === 'readiness_reminders' && s.state === 'attributed');
 
-  const blockedBy: AgreementBlocker[] = [];
+  const blockedBy: AgreementBlocker[] = ['scheduled_models_not_admitted'];
   if (!aiConfigured) blockedBy.push('no_provider');
   if (!anyAgentOn) blockedBy.push('no_agent_on');
   if (proposals === 0) blockedBy.push('nothing_proposed');

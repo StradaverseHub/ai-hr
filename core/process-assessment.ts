@@ -139,11 +139,11 @@ export type ProcessMeasures = {
   staffActions: number; employeeActions: number; automatedActions: number;
 };
 
-type Row = { started: number; completed: number; open: number; aged_open: number; rework: number;
+type Row = { people: number | null; started: number; completed: number; open: number; aged_open: number; rework: number;
   p50: number | string | null; p90: number | string | null; staff: number; employee: number; automated: number };
 
 /** Cases started in [from, to); `to` omitted means up to now. Exported for the ADR-0151 §4.6c before/after. */
-export async function measure(tx: Tx, id: ProcessId, from: Date, to?: Date): Promise<ProcessMeasures> {
+async function measureBaseline(tx: Tx, id: ProcessId, from: Date, to?: Date) {
   const [r] = await tx.execute<Row>(sql`
     with rows as (${ROWS[id]}),
     cases as (
@@ -164,7 +164,7 @@ export async function measure(tx: Tx, id: ProcessId, from: Date, to?: Date): Pro
         count(*) filter (where a.actor_type in ('system','agent'))::int as automated
       from acts a left join app_user u on u.id = a.actor_id),
     case_totals as (
-      select count(*)::int as started,
+      select count(*)::int as started, case when bool_or(person_id is null) then null else count(distinct person_id)::int end as people,
         count(*) filter (where finished_at is not null)::int as completed,
         count(*) filter (where is_open)::int as open,
         count(*) filter (where is_open and started_at < now() - make_interval(days => ${AGED_OPEN_DAYS}::int))::int as aged_open,
@@ -175,10 +175,15 @@ export async function measure(tx: Tx, id: ProcessId, from: Date, to?: Date): Pro
       from cases)
     select * from case_totals cross join act_totals`);
   const hours = (v: number | string | null) => v == null ? null : Math.round(Number(v) / 36) / 100;
-  return { started: r.started, completed: r.completed, open: r.open, agedOpen: r.aged_open, rework: r.rework,
+  return { peopleAffected: r.people, measures: { started: r.started, completed: r.completed, open: r.open, agedOpen: r.aged_open, rework: r.rework,
     closedUndecided: r.started - r.completed - r.open,
     medianHours: hours(r.p50), p90Hours: hours(r.p90),
-    staffActions: r.staff, employeeActions: r.employee, automatedActions: r.automated };
+    staffActions: r.staff, employeeActions: r.employee, automatedActions: r.automated } satisfies ProcessMeasures };
+}
+
+/** Existing measurement contract retained for outcome comparisons and their callers. */
+export async function measure(tx: Tx, id: ProcessId, from: Date, to?: Date): Promise<ProcessMeasures> {
+  return (await measureBaseline(tx, id, from, to)).measures;
 }
 
 export function recommendRole(profile: Profile, enabled: boolean, m: ProcessMeasures | null): AgentRole {
@@ -220,23 +225,28 @@ export async function windowStart(tx: Tx, window: AssessmentWindow): Promise<Dat
 
 export type ProcessAssessment = {
   id: ProcessId; profile: Profile; enabled: boolean; measures: ProcessMeasures | null;
-  role: AgentRole; staffActionsPer30: number | null;
+  role: AgentRole; staffActionsPer30: number | null; peopleAffected: number | null;
 };
 
 export async function assessProcesses(ctx: SessionContext, window: AssessmentWindow = 90) {
   if (!isAdmin(ctx)) throw new Error('Only HR administrators may view the process assessment.');
-  return withTenant(ctx, async tx => {
-    const fromDate = await windowStart(tx, window);
-    const processes: ProcessAssessment[] = [];
-    for (const id of PROCESS_IDS) {
-      const profile = PROCESS_PROFILES[id];
-      const enabled = profile.module == null || isModuleEnabled(ctx, profile.module);
-      const measures = enabled ? await measure(tx, id, fromDate) : null;
-      const staffActionsPer30 = measures && profile.actionsLinked ? Math.round(measures.staffActions * 30 / window * 10) / 10 : null;
-      processes.push({ id, profile, enabled, measures, role: recommendRole(profile, enabled, measures), staffActionsPer30 });
-    }
-    // Most staff handling first; unmeasurable and switched-off processes last, in catalogue order.
-    processes.sort((a, b) => (b.staffActionsPer30 ?? -1) - (a.staffActionsPer30 ?? -1));
-    return { version: ASSESSMENT_VERSION, window, from: fromDate, processes };
-  });
+  return withTenant(ctx, tx => assessProcessesTx(tx, ctx, window));
+}
+
+/** Shared read owner for the baseline and its ranked backlog projection; never a second counting rule. */
+export async function assessProcessesTx(tx: Tx, ctx: SessionContext, window: AssessmentWindow) {
+  if (!isAdmin(ctx)) throw new Error('Only HR administrators may view the process assessment.');
+  const fromDate = await windowStart(tx, window);
+  const processes: ProcessAssessment[] = [];
+  for (const id of PROCESS_IDS) {
+    const profile = PROCESS_PROFILES[id];
+    const enabled = profile.module == null || isModuleEnabled(ctx, profile.module);
+    const baseline = enabled ? await measureBaseline(tx, id, fromDate) : null;
+    const measures = baseline?.measures ?? null;
+    const staffActionsPer30 = measures && profile.actionsLinked ? Math.round(measures.staffActions * 30 / window * 10) / 10 : null;
+    processes.push({ id, profile, enabled, measures, role: recommendRole(profile, enabled, measures), staffActionsPer30, peopleAffected: baseline?.peopleAffected ?? null });
+  }
+  // Most staff handling first; unmeasurable and switched-off processes last, in catalogue order.
+  processes.sort((a, b) => (b.staffActionsPer30 ?? -1) - (a.staffActionsPer30 ?? -1));
+  return { version: ASSESSMENT_VERSION, window, from: fromDate, processes };
 }

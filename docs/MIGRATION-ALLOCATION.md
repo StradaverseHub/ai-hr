@@ -260,3 +260,17 @@ These three successor entries are source allocations, not a deployment record:
 
 The candidate must rehearse these together against the preserved prefix. Refresh refs and the target
 ledger again before any installation; reconcile an intervening append rather than overwriting it.
+
+## Owner-approved WP5 Assistant quota allocation — 29 October 2026
+
+Claim `0687_assistant_question_budget`, **idx677 / when1793330000013**. The owner approved this
+conditional successor in AI Enhancement, after the expanded release's actual562-row handoff.
+Fresh main/alpha `968354c00a71df7baccd499eb60757a3307ed61e` match healthy staging source/build.
+The complete ordered live ledger was independently compared using the repository's historical-byte
+identity verifier: all562 entries match, max1793330000012, tail0686. Both audited historical applied
+versions remain unchanged. Fresh published register439587e and reachable worktree journals had no
+competing0687 or when>=1793330000013. Board and the migration coordinator were notified before SQL.
+
+The existing562-entry journal prefix and all applied SQL bytes are preserved. The appended SQL SHA256
+is `ade48bffee0a5d6ebf72cdd61de36323f3650b81c805cd186701c5d8105e86c4`. This reserves source only; it authorizes no staging migration
+without the exact-candidate gate, populated upgrade proof, restore readiness and exclusive handoff.
