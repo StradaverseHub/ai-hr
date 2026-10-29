@@ -6,7 +6,7 @@ import { AgentBuildListAccessError } from '../core/agent-build-list';
 import { GET } from '../app/control-tower/opportunities/backlog/route';
 
 describe('ranked build-list download',()=>{
- beforeEach(()=>fixture.build.mockReset());
+ beforeEach(()=>{fixture.build.mockReset();});
  it('exports the complete ordered service packet using only current-session authority and a bounded window',async()=>{
   const entries=Array.from({length:75},(_,i)=>({rank:i+1,id:`entry-${i}`,tier:'approve',staffActionsPer30:3,peopleAffected:2}));
   fixture.build.mockResolvedValue({version:'backlog-v1',window:30,entries,assessment:{privateInternal:'not part of export'}});
