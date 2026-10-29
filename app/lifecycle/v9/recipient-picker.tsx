@@ -34,4 +34,3 @@ export function RecipientPicker({ label, value, change, disabled, single = false
     </div></fieldset>
   </details>;
 }
-
