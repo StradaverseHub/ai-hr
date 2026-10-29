@@ -1,4 +1,6 @@
 import {CountryStatutoryActionChoices,CountryStatutoryEditable,CountryStatutoryLabels,COUNTRY_STATUTORY_ACTION_RESPONSE_BYTES} from '../../lib/assistant-actions/module-action-http';
+import {withAgentActionPauseScope} from '../agent-action-pause-scope';
+import {isAgentActionId} from '../../lib/ai/agent-action-registry';
 import {prepareCountryStatutoryReview,confirmCountryStatutoryReview,reopenCountryStatutoryReview,discardCountryStatutoryReview,listCountryStatutoryReviews} from './country-statutory-review-store';
 import {reviewedCountryStatutoryChoiceMetadataTx,readReviewedCountryStatutoryEditableTx,readReviewedCountryStatutoryLabelsTx} from './reviewed-country-statutory-source';
 import {readMultiCycleRunCatalogue,searchMultiCycleRunScope} from './multi-cycle-run-choices';
@@ -142,6 +144,9 @@ async function presentOrgResult(ctx:SessionContext,result:Awaited<ReturnType<typ
 type ModuleActionBrowserSession=Awaited<ReturnType<typeof authenticateOwnLeaveBrowserSession>>;
 /** Resolve verified identity outside EACH effect/reopen transaction, never from a packet, cached
  * tenant config or encrypted body. Listing/retirement requires no provider-identity admission. */
+/** WP12 (R8): each registry action's own pause key, applied inside its owning transaction. A packet that names no
+ * registry action runs unscoped and is refused by the handler's own packet rules as before. */
+const moduleActionPauseScope=(actionId:string,work:()=>Promise<Response>)=>isAgentActionId(actionId)?withAgentActionPauseScope(actionId,work):work();
 export async function handleConfiguredModuleActionBrowserCommand(request:Request):Promise<Response>{
  let publicOrigin:string|undefined;try{publicOrigin=appOrigin();}catch{publicOrigin=undefined;}
  return createModuleActionBrowserHandler<ModuleActionBrowserSession>({authenticate:authenticateOwnLeaveBrowserSession,
@@ -176,7 +181,7 @@ export async function handleConfiguredModuleActionBrowserCommand(request:Request
   reopen:async(session,id)=>reopenModuleActionReview(session.ctx,id,await resolveOwnNotificationServerIdentity()),
   confirm:async(session,input)=>confirmModuleActionReview(session.ctx,input,await resolveOwnNotificationServerIdentity()),
   discard:(session,input)=>discardModuleActionReview(session.ctx,input),
- } satisfies RegisteredModuleActionBrowserOwners<ModuleActionBrowserSession>,{publicOrigin})(request);
+ } satisfies RegisteredModuleActionBrowserOwners<ModuleActionBrowserSession>,{publicOrigin,scope:moduleActionPauseScope})(request);
 }
 
 /** No employee query or amount preview. Native catalogue admin + actual Assistant/module/pause
