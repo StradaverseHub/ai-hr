@@ -8513,7 +8513,7 @@ const REPROCESS_ABANDONED_AFTER_MS = 10 * 60 * 1000;
 
 /**
  * cdb1c6ca — WHO ON THIS RUN IS STILL NEW / PENDING: eligible for the month, inside the run's own scope,
- * no payslip on it, and NOT a deliberate nothing-payable skip.
+ * no payslip on it, NOT removed from the run on purpose, and NOT a deliberate nothing-payable skip.
  *
  * Built from the reprocess screen's own reads so "pending" on that screen and "pending" here are one
  * answer: `listPayslipLessEligible` for the population (out-of-scope people are excluded — a chosen-list
@@ -8531,7 +8531,32 @@ async function closePendingEmployeesTx(tx: Tx, ctx: SessionContext, batchId: str
   // without a payslip (r226), so "eligible with no payslip" there is the run working, not work outstanding.
   const [run] = await tx.select({ runType: payrollBatch.runType }).from(payrollBatch).where(eq(payrollBatch.id, batchId)).limit(1);
   if (run?.runType !== 'regular') return [];
-  const rows =(await listPayslipLessEligibleTx(tx, ctx, { batchId })).filter((r) => !r.outsideScope);
+  const eligible = (await listPayslipLessEligibleTx(tx, ctx, { batchId })).filter((r) => !r.outsideScope);
+  if (eligible.length === 0) return [];
+  // cdb1c6ca (owner ruling 2026-10-30) — somebody REMOVED from this run ("Remove employee payroll", or an
+  // exclusion on reprocess, both written as a 'remove' result-history row) was left out on purpose, like a
+  // nothing-payable skip, so they do not hold Close shut. Only removals since the run's latest reset count:
+  // a reset rebuilds the run's figures, and an older removal says nothing about the new ones.
+  const [reset] = await tx
+    .select({ at: sql<Date | null>`max(${payrollStatusHistory.createdAt})` })
+    .from(payrollStatusHistory)
+    .where(and(eq(payrollStatusHistory.batchId, batchId), eq(payrollStatusHistory.action, 'rollback')));
+  const removedRows = await tx
+    .select({ employmentId: payrollEmployeeResultHistory.employmentId })
+    .from(payrollEmployeeResultHistory)
+    .where(
+      and(
+        eq(payrollEmployeeResultHistory.batchId, batchId),
+        eq(payrollEmployeeResultHistory.action, 'remove'),
+        inArray(
+          payrollEmployeeResultHistory.employmentId,
+          eligible.map((r) => r.employmentId),
+        ),
+        ...(reset?.at ? [gt(payrollEmployeeResultHistory.createdAt, new Date(reset.at))] : []),
+      ),
+    );
+  const removed = new Set(removedRows.map((r) => r.employmentId));
+  const rows = eligible.filter((r) => !removed.has(r.employmentId));
   if (rows.length === 0) return [];
   const skipCandidates = rows.filter((r) => r.blockers.length === 0 && r.warnings.includes('nothingPayable'));
   let skipped = new Set<string>();

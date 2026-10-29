@@ -52,7 +52,6 @@ import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import {
   BatchHasBlockingAnomaliesError,
-  BatchHasPendingEmployeesError,
   BatchNotResettableError,
   PayrollPermissionDeniedError,
   RemoveNoEmployeesError,
@@ -667,13 +666,10 @@ describe('Payroll — removeEmployeePayroll (DB)', () => {
     // …and narrowed to the removed employment, exactly like the loan/claim unwind in case b.
     expect((await verdictRow(review.id)).supersededAt).toBeNull();
 
-    // The point of all of it: Close is no longer refused over the removed employee's ANOMALY. cdb1c6ca —
-    // it is refused instead because that employee is now New / Pending on the run (eligible, no payslip),
-    // which names them for what they are: somebody still to be processed, not somebody with a blocked figure.
-    const refusal = await closeBatch(a, { batchId }).catch((e: unknown) => e);
-    expect(refusal).not.toBeInstanceOf(BatchHasBlockingAnomaliesError);
-    expect(refusal).toBeInstanceOf(BatchHasPendingEmployeesError);
-    expect((refusal as BatchHasPendingEmployeesError).employees.map((e) => e.employmentId)).toEqual([gone.employmentId]);
-    expect((await batchRow(batchId)).status).toBe('processed');
+    // The point of all of it: the very next thing the operator does now works. cdb1c6ca — and the removed
+    // employee (eligible, no payslip) is not New / Pending: they were removed on purpose (owner ruling
+    // 2026-10-30), so the pending gate lets the close through.
+    await closeBatch(a, { batchId });
+    expect((await batchRow(batchId)).status).toBe('closed');
   });
 });
