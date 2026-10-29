@@ -29,7 +29,7 @@ it without a parallel rewrite, and its behaviour must improve from how the syste
 | One physical store already owns every prepared action: `app.assistant_own_leave_review` (name historical), with an `action_kind` CHECK over the 19 actions, intent/reviewed digests, sealed encrypted content, a five-state lifecycle and per-action unique receipt-event columns. | `db/migrations/0622_own_leave_review_store.sql`, `core/assistant-actions/*-review-store.ts` |
 | Every action source re-checks login currency, Assistant grant, module entitlement and the `hr_assistant` pause before reading choices, preparing or confirming. | `core/assistant-actions/module-action-server.ts` |
 | Completed outcomes are linked to the job that produced them only through a closed, human-chosen association; semantics name what the effect does **not** prove (e.g. `submitted_not_approved`). | `lib/ai/module-native-outcomes.ts`, migration 0650 |
-| A governed improvement harness exists: candidate → ≥2 independent held-out evaluations with zero security/quality failures → promotion by an approver who is not the author → bounded jobs and ≤24h expiry → automatic baseline on regression. | `lib/ai/module-agent-improvement.ts`, `core/module-agent-releases.ts` |
+| A governed improvement harness exists: candidate → ≥2 independent held-out evaluations with zero security/quality failures → promotion by an approver who is neither the author nor an evaluator, at the user, company or tenant scope the approver chooses → bounded jobs and ≤24h expiry → baseline on expiry, exhaustion, source change, a refused configuration or a measured outcome regression (nightly sweep). | `core/module-agent-releases.ts`, migration 0695 (WP11) |
 | The Control Tower agent action catalogue has one type, `close_fixed_upstream`, `propose_only`, blast-radius cap 50. | `core/agent-actions.ts` |
 | The nightly orchestrator runs as an anonymous system context with role `hr_admin`. | `scripts/review-sweep.ts` |
 | Process assessment (ADR-0131 Phase 1) measures volume, elapsed time, staff actions and rework per process; no model participates. | `/control-tower/opportunities` |
@@ -446,14 +446,28 @@ This amendment corrects implementation claims; the accepted safety decisions rem
   `module-action-server.ts`. Fresh in-transaction checks and the owning service remain authoritative.
 - Twelve chat tools are hand-listed; the catalogue is not derived from the action registry yet. Chat tool
   reads execute sequentially. Preparation/confirmation stays outside the model loop regardless of order.
-- Production evaluation/promotion is in `core/module-agent-releases.ts`. The cited
-  `lib/ai/module-agent-improvement.ts` and `core/module-agent-orchestrator.ts` are test-only models, not
-  the live execution owner. Current candidate kinds are routing, read-plan prompt, canonical guidance and conversation.
-  Tool-description and argument-extraction candidates are not implemented. Routing cannot beat the
-  baseline under its present paired criteria. Fixed synthetic holdouts are not redacted production replay.
-- Promotions are per author; automatic baseline fallback follows exceptions/source or provider drift,
-  not measured outcome regression. Author differs from promoter; promoter/evaluator separation is still
-  incomplete. These remain R5/WP11 work. No learning or headcount reduction is established by this PR.
+- Production evaluation/promotion is in `core/module-agent-releases.ts`. Current candidate kinds are
+  read-plan prompt, canonical guidance and conversation. **WP11 (amendment 2026-10-29)** deleted the typed
+  routing kind (it could not beat the baseline: both arms did the same canonical work) and the test-only
+  `lib/ai/module-agent-improvement.ts` and `core/module-agent-orchestrator.ts`; stored routing rows stay
+  readable, are never applied and expire through maintenance. Tool-description and argument-extraction
+  candidates are not implemented. Fixed synthetic holdouts are not redacted production replay.
+- WP11: the approver chooses the promotion scope — user (the owner, the previous behaviour), company (current
+  employees of that company subtree) or tenant. Wider scopes are admitted for the canonical specialist kind
+  only, and only for candidates without personal feedback/outcome provenance (migration 0695); the other kinds
+  stay user-scoped. The promoter must differ from the author and from every counted evaluator.
+- WP11: `scripts/review-sweep.ts` runs promotion maintenance nightly as the tenant's named agent principal (no
+  model, no spend) and records its counts in `job_run.result`. Besides expiry and exhaustion it retires a live
+  promotion on a measured outcome regression: from the §4.6c action outcome counts, the unsuccessful rate
+  (discarded, expired, refused, proven reversed) since the promotion started exceeds the equal-length period
+  before it by ≥20 points, with ≥10 settled actions in each period (`lib/ai/promotion-outcome-regression.ts`).
+  The counts are not attributed to the promotion; the rule is a conservative non-causal brake that only
+  restores the baseline. "Incorrect" job feedback still does not roll back on its own.
+- WP11: the source manifest hashes only the AI behaviour surface listed in `scripts/ai-agent-source-scope.mjs`,
+  so a deploy that does not touch it no longer retires every promotion. Adversarial holdouts now cover all 12
+  chat tools and every implemented action entry in six locales (`lib/ai/assistant-adversarial-holdouts.ts`,
+  deterministic scorer gate; not part of the 256-case model-run conversation suite). No learning or headcount
+  reduction is established by this.
 - At this base the sweep uses a legacy no-login context; explicit orchestrator event attribution does not
   establish a named tenant principal. PR #41 is separate in-flight principal work. Scheduled model spend
   remains an owner decision; this documentation grants none.
