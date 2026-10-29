@@ -32,8 +32,8 @@ const DAY = 86_400_000;
  */
 export const ACTION_PROCESS: Partial<Record<NativeOutcomeAction, ProcessId>> = {
   'leave.apply': 'leave', 'leave.cancel': 'leave', 'leave.edit': 'leave', 'approvals.leave.decide': 'leave',
-  'claims.submit': 'claims', 'claims.draft.save': 'claims', 'claims.cancel': 'claims',
-  'attendance.correction.request': 'attendance_correction',
+  'claims.submit': 'claims', 'claims.draft.save': 'claims', 'claims.cancel': 'claims', 'approvals.claim.decide': 'claims',
+  'attendance.correction.request': 'attendance_correction', 'approvals.attendance.decide': 'attendance_correction',
   'ess.profile.request': 'profile_change',
 };
 
