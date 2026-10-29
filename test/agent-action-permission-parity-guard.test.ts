@@ -20,7 +20,7 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
  });
 
  it('probes the wave 1 and 1b generic families, and every probed entry has an agent store',()=>{
-  expect([...PROBED_ACTION_IDS].sort()).toEqual(['approvals.attendance.decide','attendance.overtime.request','approvals.claim.decide','approvals.toil.decide','claims.cancel','employees.movement.transfer','leave.adjustment.apply','leave.cancel','leave.edit','toil.credit.grant']);
+  expect([...PROBED_ACTION_IDS].sort()).toEqual(['approvals.attendance.decide','approvals.claim.decide','approvals.toil.decide','attendance.overtime.request','claims.cancel','employees.movement.transfer','leave.adjustment.apply','leave.cancel','leave.edit','toil.credit.grant']);
   for(const id of PROBED_ACTION_IDS)expect(AGENT_ACTIONS.find(action=>action.id===id)?.store,id).not.toBe('human_workflow_only');
  });
 

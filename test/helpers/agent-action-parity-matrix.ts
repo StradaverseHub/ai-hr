@@ -77,7 +77,12 @@ export const AGENT_ACTION_PARITY={
  'attendance.overtime.request':{kind:'probed',screen:OWN_REQUEST},
  'claims.draft.save':pending(NO_ADAPTER+' Module-action store.'),
  'claims.submit':pending(NO_ADAPTER+' Module-action store.'),
- 'claims.cancel':{kind:'probed',screen:OWN_REQUEST},
+ /** Observed on CI (run 40921791116): the native cancelClaim lets an administrator of the claimant's company
+  * cancel the claim ("Only the claimant or an admin can cancel this claim"); the Assistant action is the
+  * claimant's own cancellation only, so it is deliberately narrower for HR. */
+ 'claims.cancel':{kind:'probed',screen:{...OWN_REQUEST,company_hr:A,group_hr:A},narrowed:{
+  company_hr:'claims.cancel is the claimant\'s own Assistant action (subject own_employment); HR cancels another person\'s claim on the native claims screen only.',
+  group_hr:'claims.cancel is the claimant\'s own Assistant action (subject own_employment); HR cancels another person\'s claim on the native claims screen only.'}},
  'performance.review.acknowledge':pending(NO_ADAPTER+' Module-action store; needs a released review fixture.'),
  'performance.onehr.plan.acknowledge':pending(NO_ADAPTER+' Module-action store; needs a OneHR plan fixture.'),
  'rewards.post':pending(NO_ADAPTER+' Dedicated store; needs an approved reward unit and open batch.'),
