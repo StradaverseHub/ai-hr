@@ -15,7 +15,7 @@ let base: Base, admin: SessionContext, employee: SessionContext, other: SessionC
 beforeAll(async () => {
   // Draft rehearsal only. Move to the canonical append after coordinated journal allocation.
   await owner.client.unsafe(readFileSync('db/migration-drafts/lifecycle-v9.sql', 'utf8'));
-  await owner.client.unsafe(readFileSync('db/migration-drafts/lifecycle-v9-email.sql', 'utf8'));
+  try { await owner.client.unsafe(readFileSync('db/migration-drafts/lifecycle-v9-email.sql', 'utf8')); } catch (error) { const detail = error as { message: string; position?: string; where?: string }; throw new Error(`V9 companion draft: ${detail.message}; position ${detail.position}; ${detail.where ?? ''}`, { cause: error }); }
 });
 beforeEach(async () => {
   await resetDb(); base = await seedBase(); await setModule(base.tenantId, 'lifecycle', 'active'); admin = await entitledCtx(base);
@@ -413,10 +413,11 @@ it('records an actual late SMTP receipt while preserving a cancelled case', asyn
   expect(c.state).toBe('cancelled'); expect(c.mails[0].status).toBe('sent'); expect(c.finalFigures).toBeNull();
 });
 it('binds the private capability to its current subject, exact identity, saved documents and real file bytes', async () => {
-  const { caseId, system } = await queuedDelivery(true), origin = 'https://v9-capability.example', subject = randomUUID(); let verified = false;
-  await owner.client`insert into app_external_identity(issuer,subject,app_user_id) values(${origin + '/auth/' + base.tenantId},${subject},${employee.userId}::uuid)`;
+  const { caseId, system } = await queuedDelivery(true), origin = 'https://v9-capability.example', subject = randomUUID(); let verified = false, verificationError: unknown;
+  await owner.client`insert into app_external_identity(issuer,subject,app_user_id) values(${origin + '/auth/' + base.tenantId},${subject},${employee.userId!}::uuid)`;
   await v9DeliverEmails(system, owner, async request => {
     const read = async (token = request.leaseToken, installation = origin) => (await owner.client`select app.lc_v9_email_target(${request.deliveryId}::uuid,${token}::uuid,${installation}) as target`)[0].target;
+    try {
     const target = await read();
     expect(target).toMatchObject({ tenantId: base.tenantId, companyId: base.companyId, caseId, bindings: [{ userId: employee.userId, subject, issuer: origin + '/auth/' + base.tenantId }] });
     expect(await read(randomUUID())).toBeNull(); expect(await read(request.leaseToken, 'https://other.example')).toBeNull();
@@ -429,6 +430,46 @@ it('binds the private capability to its current subject, exact identity, saved d
     await owner.client`update lc_v9_case set data=jsonb_set(data,'{documents,0,name}','"Changed after queue"'::jsonb) where id=${caseId}::uuid`;
     expect(await read()).toBeNull();
     verified = true; return { outcome: 'skipped', error: 'notEligible' };
+    } catch (error) { verificationError = error; throw error; }
   });
+  if (verificationError) throw verificationError;
   expect(verified).toBe(true);
+});
+it('authorizes a real prehire contact without an app account and refuses an address changed after queue', async () => {
+  const config = (await v9Workspace(admin)).config!;
+  config.workflows = []; config.checklists = [{ id: 'contact-onb', name: 'Contact fixture', module: 'onb', rules: {}, tasks: [] }];
+  config.emails = [{ id: 'contact-welcome', name: 'Fictional contact welcome', module: 'onb', active: true, sender: 'onboarding', subject: 'Welcome {employee.name}', body: 'Before your first day.', cc: [], links: [], attachments: [], slots: [] }];
+  await v9SaveConfig(admin, config.revision, config);
+  await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Fictional prehire contact', primaryEmail: 'prehire-contact@fictional.invalid' }, employment: { companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId, hiredOn: addDays(todayInKualaLumpur(), 10) } }, currentStep: 1 });
+  let [native] = await onboardingList(admin);
+  await onboardingCommand(admin, native.case.id, native.revision, { type: 'save', patch: { hiring: 'new_hire', local: { supervisor: employmentId } } });
+  [native] = await onboardingList(admin); await onboardingCommand(admin, native.case.id, native.revision, { type: 'submit' });
+  const c = (await v9CaseDetail(admin, native.case.id)).case;
+  expect(c.facts.employeeUserId).toBeNull(); expect(c.facts.personId).toBe('');
+  expect((await v9PreviewEmail(admin, c.id, 'contact-welcome')).canSend).toBe(true);
+  await v9Command(admin, c.id, c.revision, { type: 'emailSend', emailId: 'contact-welcome' });
+  let verified = false;
+  const output = await v9DeliverEmails({ ...admin, userId: undefined, personId: null }, owner, async request => {
+    const read = async () => (await owner.client`select app.lc_v9_email_target(${request.deliveryId}::uuid,${request.leaseToken}::uuid,'https://prehire.example') as target`)[0].target;
+    expect(await read()).toMatchObject({ caseId: c.id, bindings: [], contact: { kind: 'onboardingContact', email: 'prehire-contact@fictional.invalid', caseId: c.id } });
+    await owner.client`update lc_onboarding_case set data=jsonb_set(data,'{source,email}','"changed-contact@fictional.invalid"'::jsonb) where id=${c.id}::uuid`;
+    expect(await read()).toBeNull(); verified = true;
+    return { outcome: 'skipped', error: 'recipientChanged' };
+  });
+  expect(verified).toBe(true); expect(output).toEqual({ attempted: 1, sent: 0, held: 0, failed: 1 });
+  expect((await v9CaseDetail(admin, c.id)).case.mails[0]).toMatchObject({ status: 'failed', failure: 'recipientChanged', to: ['prehire-contact@fictional.invalid'] });
+});
+it('records sent truth without releasing a different document copy changed during SMTP', async () => {
+  const { caseId, system } = await queuedDelivery();
+  const output = await v9DeliverEmails(system, owner, async request => {
+    await owner.client`update lc_v9_email_delivery set status='sending',started_at=now() where id=${request.deliveryId}::uuid and lease_token=${request.leaseToken}::uuid`;
+    // Controlled owner-only fault injection represents another writer changing the current copy.
+    await owner.client`update lc_v9_case set data=jsonb_set(jsonb_set(jsonb_set(data,'{documents,0,name}','"Different current copy"'::jsonb),'{documents,0,status}','"draft"'::jsonb),'{documents,0,sentAt}','null'::jsonb) where id=${caseId}::uuid`;
+    await owner.client`select app.lc_v9_email_finish(${request.deliveryId}::uuid,${request.leaseToken}::uuid,'sent',null)`;
+    return { outcome: 'sent', error: null };
+  });
+  expect(output).toEqual({ attempted: 1, sent: 1, held: 0, failed: 0 });
+  const c = (await v9CaseDetail(admin, caseId)).case;
+  expect(c.mails[0].status).toBe('sent'); expect(c.documents[0]).toMatchObject({ name: 'Different current copy', status: 'draft', sentAt: null });
+  expect(c.log.at(-1)?.action).toBe('email.documentChanged');
 });

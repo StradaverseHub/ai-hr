@@ -103,7 +103,7 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
     onLeave: (id, date) => unavailable.some(r => r.user_id === id && r.on_date === date),
     openLoad: id => Number(sharedLoads.find(load => load.user_id === id)?.task_load ?? 0),
     lastAssigned: id => { const last = sharedLoads.find(load => load.user_id === id)?.last_auto; return last ? Date.parse(last) || 0 : 0; },
-    eligibleUser: id => users.some(u => u.id === id), userName: id => users.find(u => u.id === id)?.name ?? 'Unlinked user', mergeValues: values, signatoryUserId: signatory?.signatoryUserId ?? null, requireDeliveryAck: true };
+    eligibleUser: id => users.some(u => u.id === id), userName: id => users.find(u => u.id === id)?.name ?? 'Unlinked user', mergeValues: values, signatoryUserId: signatory?.signatoryUserId ?? null, requireDeliveryAck: true, ...(native && !c.facts.employeeUserId && z.email().max(320).regex(/^[\x21-\x7e]+$/).safeParse(nf?.email?.trim()).success ? { onboardingContact: { email: nf!.email.trim(), sourceRevision: native.c.sourceVersion } } : {}) };
 }
 export async function v9CaseDetail(ctx: SessionContext, id: string): Promise<CaseDetail> {
   return withLifecycleTenant(ctx, async tx => {
@@ -410,7 +410,7 @@ export async function v9Sweep(ctx: SessionContext, connection: NotificationSweep
 export async function v9DeliverEmails(ctx: SessionContext, connection: NotificationSweepConnection, send: (request: LifecycleV9DeliveryRequest) => Promise<LifecycleV9DeliveryResult> = lifecycleV9EmailIpc) {
   assertModuleEnabled(ctx, 'lifecycle');
   if (ctx.userId) throw new M.V9Error('Lifecycle delivery requires the storage owner.', 'forbidden');
-  type Job = { id: string; case_id: string | null; onboarding_case_id: string | null; company_id: string; mail_id: string; status: string; lease_token: string | null; started_at: string | null; error_code: string | null };
+  type Job = { id: string; case_id: string | null; onboarding_case_id: string | null; company_id: string; mail_id: string; status: string; lease_token: string | null; started_at: string | null; error_code: string | null; payload: { documents: M.Document[] } };
   async function readCase(tx: Tx, job: Job): Promise<Row> {
     if (job.onboarding_case_id) {
       const native = await onboardingV9ReadTx(ctx, tx, job.onboarding_case_id);
@@ -428,7 +428,10 @@ export async function v9DeliverEmails(ctx: SessionContext, connection: Notificat
     if (status === 'sent') {
       const config = await configTx(tx, ctx); if (!config) return;
       // The private receipt, never the IPC response alone, proves the SMTP acknowledgement.
-      mail.status = 'sending'; M.markDelivered(c, mail.id, await environment(tx, ctx, c, config));
+      const env = await environment(tx, ctx, c, config);
+      const unchanged = new Set(job.payload.documents.filter(frozen => c.documents.some(current => v9Equal(current, frozen))).map(document => document.id));
+      mail.status = 'sending'; M.markDelivered(c, mail.id, env, unchanged);
+      if (c.state === 'submitted' && mail.documentIds.some(id => !unchanged.has(id))) M.appendLog(c, env, 'email.documentChanged', 'The queued copy was delivered. A changed current document needs review before release.');
     } else { mail.status = status; mail.failure = job.error_code; }
     await store(tx, ctx, row, c, 'emailReceipt');
     await tx.execute(sql`update lc_v9_email_delivery set projected_at=now() where id=${job.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);

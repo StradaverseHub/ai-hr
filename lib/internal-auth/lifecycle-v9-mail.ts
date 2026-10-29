@@ -17,7 +17,7 @@ export async function internalLifecycleV9Mail(input: LifecycleV9DeliveryRequest,
   if (!target) return { outcome: 'skipped', error: 'notEligible' };
   const active = await readActiveRelayTx(client);
   if (!active) return { outcome: 'skipped', error: 'relayUnavailable' };
-  const addresses: string[] = [];
+  const addresses: string[] = target.contact ? [target.contact.email] : [];
   for (const binding of target.bindings) {
     const credential = await readRecord<Credential>(client, `credential:${binding.subject}`);
     if (!credential || credential.subject !== binding.subject || credential.tenantId !== target.tenantId || credential.issuer !== internalIssuer(target.tenantId) || credential.issuer !== binding.issuer)
@@ -55,7 +55,7 @@ export async function internalLifecycleV9Mail(input: LifecycleV9DeliveryRequest,
   const text = mail.body + (links.length ? '\n\n' + links.join('\n') : '');
   const currentRelay = await readActiveRelayTx(client);
   if (!currentRelay || currentRelay.revision !== active.revision) return { outcome: 'skipped', error: 'relayUnavailable' };
-  const proof = { bindings: target.bindings, addresses, relayRevision: active.revision };
+  const proof = { bindings: target.bindings, contact: target.contact ?? null, addresses, relayRevision: active.revision };
   // A separate completed statement persists start BEFORE any external message bytes are sent.
   const started = (await client`select app.lc_v9_email_start(${id}::uuid,${token}::uuid,${origin},${JSON.stringify(proof)}::jsonb) as started`)[0]?.started === true;
   if (!started) return { outcome: 'skipped', error: 'notEligible' };

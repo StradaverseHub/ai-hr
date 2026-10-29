@@ -11,7 +11,7 @@ function mail(): Extract<Mail, { attachments: unknown }> { return { to, cc: [cc]
 beforeEach(() => { vi.resetAllMocks(); smtp.create.mockReturnValue({ sendMail: smtp.send, close: smtp.close }); smtp.send.mockResolvedValue({ accepted: [to, cc] }); });
 it('hands local PDF bytes to Nodemailer with the verified relay address and exact To/CC envelope', async () => {
   const pdf = await PDFDocument.create(); pdf.addPage(); pdf.setTitle('Fictional saved document'); const bytes = await pdf.save();
-  const input = { ...mail(), attachments: [{ filename: 'Fictional saved form.pdf', contentType: 'application/pdf' as const, bytes }] };
+  const input = { ...mail(), attachments: [{ filename: 'Fictional saved form.pdf', contentType: 'application/pdf' as const, bytes: Buffer.from(bytes) }] };
   await sendSmtp(relay, input);
   const sent = smtp.send.mock.calls[0][0];
   expect(sent).toMatchObject({ from: { name: 'HR Onboarding', address: relay.config.from }, to, cc: [cc], envelope: { from: relay.config.from, to: [to, cc] }, messageId: input.messageId, disableFileAccess: true, disableUrlAccess: true });

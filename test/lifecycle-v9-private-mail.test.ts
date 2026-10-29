@@ -76,3 +76,11 @@ it('records unknown SMTP outcome as uncertain and never issues a second send', a
   const finish = fixture.sql.mock.calls.find(call => call[0].join('?').includes('email_finish'))!;
   expect(finish.slice(-2)).toEqual(['uncertain','uncertain']);
 });
+it('sends a freshly authorized onboarding contact without treating its address as an authentication identity', async () => {
+  target.contact = { kind: 'onboardingContact', caseId: target.caseId, email: 'joiner-contact@fictional.invalid', sourceRevision: 'draft-1' };
+  target.bindings = []; target.payload.mail.to = [target.contact.email]; target.payload.mail.delivery!.contact = target.contact;
+  const transport = vi.fn(async () => {});
+  expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'sent', error: null });
+  expect(fixture.credential).not.toHaveBeenCalled(); expect(fixture.principal).not.toHaveBeenCalled();
+  expect(transport).toHaveBeenCalledExactlyOnceWith(relay.relay, expect.objectContaining({ to: 'joiner-contact@fictional.invalid', cc: [] }));
+});

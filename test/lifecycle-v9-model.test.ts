@@ -325,3 +325,20 @@ it('freezes a queued document and records a late acknowledgement without complet
   expect(c.state).toBe('cancelled'); expect(doc.status).toBe('draft');
   const logCount = c.log.length; M.markDelivered(c, c.mails[0].id, environment); expect(c.log).toHaveLength(logCount);
 });
+
+it('queues a Native welcome to its real business contact without fabricating an employee account', () => {
+  const { c, config, environment } = fixture('onb'); c.facts.employeeUserId = null;
+  environment.onboardingContact = { email: 'real-contact@fictional.invalid', sourceRevision: 'draft-source-1' };
+  environment.eligibleUser = id => ['hr','manager'].includes(id);
+  config.emails = [{ id: 'welcome', name: 'Welcome', module: 'onb', active: true, sender: 'onboarding', subject: 'Welcome {employee.name}', body: 'Before your first day.', cc: ['supervisor'], links: [], attachments: [], slots: [] }];
+  expect(M.previewEmail(c, config, 'welcome', environment)).toMatchObject({ canSend: true, to: [{ id: 'real-contact@fictional.invalid', name: 'Person' }] });
+  M.queueEmail(c, config, 'welcome', environment);
+  expect(c.facts.employeeUserId).toBeNull();
+  expect(c.mails[0]).toMatchObject({ to: ['real-contact@fictional.invalid'], cc: ['manager'], delivery: { contact: { kind: 'onboardingContact', caseId: c.id, email: 'real-contact@fictional.invalid', sourceRevision: 'draft-source-1' }, toNames: ['Person'] } });
+  config.templates = [{ ...template(), module: 'onb' }]; config.emails[0].links = ['exit'];
+  expect(M.previewEmail(c, config, 'welcome', environment).holds).toContain('Link an employee account before sending document links.');
+  expect(() => M.queueEmail(c, config, 'welcome', environment)).toThrow('Link an employee account');
+  expect(c.mails).toHaveLength(1);
+  const off = fixture().c; off.facts.employeeUserId = null; config.emails[0].module = 'off'; config.emails[0].links = [];
+  expect(() => M.queueEmail(off, config, 'welcome', environment)).toThrow('No recipient');
+});

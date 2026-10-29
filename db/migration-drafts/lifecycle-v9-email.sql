@@ -95,7 +95,7 @@ CREATE TRIGGER lc_v9_capture_native_mail AFTER INSERT OR UPDATE OF data ON lc_on
 -- The private sender still verifies each encrypted credential through its authentication owner.
 CREATE FUNCTION app.lc_v9_email_target(p_id uuid,p_token uuid,p_origin text) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
-DECLARE job lc_v9_email_delivery%ROWTYPE; state jsonb; subject jsonb; parent_state text; bindings jsonb; total integer;
+DECLARE job lc_v9_email_delivery%ROWTYPE; state jsonb; subject jsonb; parent_state text; bindings jsonb; total integer; contact jsonb; contact_email text; recipient_ids jsonb;
 BEGIN
  IF p_origin !~ '^https://[^/@?#[:space:]]+(:[0-9]+)?$' THEN RETURN NULL; END IF;
  SELECT * INTO job FROM lc_v9_email_delivery WHERE id=p_id AND lease_token=p_token
@@ -106,8 +106,8 @@ BEGIN
    INTO state,parent_state,subject FROM lc_v9_case c
    WHERE c.id=job.case_id AND c.tenant_id=job.tenant_id AND c.company_id=job.company_id;
  ELSE
-  SELECT p.data->'lifecycleV9',c.data->>'state',p.data->'lifecycleV9Subject'
-   INTO state,parent_state,subject FROM lc_onboarding_case c JOIN lc_onboarding_private p ON p.case_id=c.id AND p.tenant_id=c.tenant_id
+  SELECT p.data->'lifecycleV9',c.data->>'state',p.data->'lifecycleV9Subject',CASE WHEN c.data->'source' ? 'email' THEN c.data->'source'->>'email' ELSE c.data->'local'->>'email' END
+   INTO state,parent_state,subject,contact_email FROM lc_onboarding_case c JOIN lc_onboarding_private p ON p.case_id=c.id AND p.tenant_id=c.tenant_id
    WHERE c.id=job.onboarding_case_id AND c.tenant_id=job.tenant_id AND c.company_id=job.company_id
     AND (p.data->'lifecycleV9Subject'->>'personId') IS NOT DISTINCT FROM c.data->>'personId'
     AND (p.data->'lifecycleV9Subject'->>'employmentId') IS NOT DISTINCT FROM c.data->>'employmentId';
@@ -118,15 +118,24 @@ BEGIN
  -- A document changed through another writer must never be marked sent as a different copy.
  IF EXISTS(SELECT 1 FROM jsonb_array_elements(job.payload->'documents') frozen
   WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(state->'documents') current WHERE current=frozen)) THEN RETURN NULL; END IF;
- SELECT count(*) INTO total FROM jsonb_array_elements_text((job.payload->'mail'->'to') || coalesce(job.payload->'mail'->'cc','[]'::jsonb));
+ contact:=job.payload->'mail'->'delivery'->'contact';
+ IF contact IS NOT NULL THEN
+  IF job.onboarding_case_id IS NULL OR contact->>'kind' IS DISTINCT FROM 'onboardingContact' OR
+   contact->>'caseId' IS DISTINCT FROM job.onboarding_case_id::text OR contact->>'email' IS DISTINCT FROM trim(contact_email) OR
+   job.payload->'mail'->'to'->>0 IS DISTINCT FROM contact->>'email' OR
+   jsonb_array_length(job.payload->'mail'->'delivery'->'linkDocumentIds')<>0 THEN RETURN NULL; END IF;
+ END IF;
+ recipient_ids:=(CASE WHEN contact IS NULL THEN job.payload->'mail'->'to' ELSE '[]'::jsonb END)||coalesce(job.payload->'mail'->'cc','[]'::jsonb);
+ SELECT count(*) INTO total FROM jsonb_array_elements_text(recipient_ids);
  SELECT jsonb_agg(jsonb_build_object('userId',r.uid,'subject',identity.subject,'issuer',identity.issuer) ORDER BY r.ordinality)
   INTO bindings
-  FROM jsonb_array_elements_text((job.payload->'mail'->'to') || coalesce(job.payload->'mail'->'cc','[]'::jsonb)) WITH ORDINALITY r(uid,ordinality)
+  FROM jsonb_array_elements_text(recipient_ids) WITH ORDINALITY r(uid,ordinality)
   JOIN app_user u ON u.id::text=r.uid AND u.tenant_id=job.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
   JOIN app_external_identity identity ON identity.app_user_id=u.id AND identity.issuer=p_origin||'/auth/'||job.tenant_id::text AND identity.revoked_at IS NULL;
- IF jsonb_array_length(coalesce(bindings,'[]'::jsonb))<>total OR total<1 OR
+ bindings:=coalesce(bindings,'[]'::jsonb);
+ IF jsonb_array_length(bindings)<>total OR total<1 AND contact IS NULL OR
   (SELECT count(DISTINCT b->>'userId') FROM jsonb_array_elements(bindings) b)<>total THEN RETURN NULL; END IF;
- RETURN jsonb_build_object('id',job.id,'tenantId',job.tenant_id,'companyId',job.company_id,'caseId',coalesce(job.case_id,job.onboarding_case_id),'payload',job.payload,'bindings',bindings);
+ RETURN jsonb_build_object('id',job.id,'tenantId',job.tenant_id,'companyId',job.company_id,'caseId',coalesce(job.case_id,job.onboarding_case_id),'payload',job.payload,'bindings',bindings,'contact',contact);
 END;
 $$;
 REVOKE ALL ON FUNCTION app.lc_v9_email_target(uuid,uuid,text) FROM PUBLIC;
@@ -140,8 +149,8 @@ DECLARE target jsonb;
 BEGIN
  PERFORM 1 FROM lc_v9_email_delivery WHERE id=p_id AND lease_token=p_token FOR UPDATE;
  target:=app.lc_v9_email_target(p_id,p_token,p_origin);
- IF target IS NULL OR jsonb_typeof(p_proof) IS DISTINCT FROM 'object' OR p_proof->'bindings' IS DISTINCT FROM target->'bindings' OR
-    jsonb_typeof(p_proof->'addresses') IS DISTINCT FROM 'array' OR jsonb_array_length(p_proof->'addresses')<>jsonb_array_length(target->'bindings') OR
+ IF target IS NULL OR jsonb_typeof(p_proof) IS DISTINCT FROM 'object' OR p_proof->'bindings' IS DISTINCT FROM target->'bindings' OR p_proof->'contact' IS DISTINCT FROM target->'contact' OR
+    jsonb_typeof(p_proof->'addresses') IS DISTINCT FROM 'array' OR jsonb_array_length(p_proof->'addresses')<>jsonb_array_length(target->'bindings')+(CASE WHEN target->'contact' IS NOT NULL AND target->'contact'<>'null'::jsonb THEN 1 ELSE 0 END) OR
     coalesce(p_proof->>'relayRevision','')='' THEN RETURN false; END IF;
  UPDATE lc_v9_email_delivery SET status='sending',started_at=clock_timestamp(),recipient_proof=p_proof,updated_at=now()
   WHERE id=p_id AND lease_token=p_token AND status='leased' AND started_at IS NULL;
@@ -173,12 +182,12 @@ DECLARE target jsonb;
 BEGIN
  target:=app.lc_v9_email_target(p_id,p_token,p_origin);
  IF target IS NULL THEN RETURN; END IF;
- RETURN QUERY SELECT f.id,f.filename,f.mime_type,encode(f.content,'base64'),encode(digest(f.content,'sha256'),'hex')
+ RETURN QUERY SELECT f.id,f.filename,f.mime_type,encode(f.content,'base64'),encode(sha256(f.content),'hex')
   FROM jsonb_array_elements(target->'payload'->'files') frozen
   JOIN lc_v9_file f ON f.id::text=frozen->>'storageId' AND f.id::text=frozen->>'id'
    AND f.tenant_id=(target->>'tenantId')::uuid AND f.company_id=(target->>'companyId')::uuid
    AND coalesce(f.case_id,f.onboarding_case_id)=(target->>'caseId')::uuid
-   AND f.filename=frozen->>'name' AND encode(digest(f.content,'sha256'),'hex')=frozen->>'contentHash';
+   AND f.filename=frozen->>'name' AND encode(sha256(f.content),'hex')=frozen->>'contentHash';
 END;
 $$;
 REVOKE ALL ON FUNCTION app.lc_v9_email_files(uuid,uuid,text) FROM PUBLIC;

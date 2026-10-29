@@ -103,7 +103,7 @@ export type Mail = {
   fileIds: string[]; status: 'pending' | 'sending' | 'sent' | 'failed' | 'uncertain' | 'cancelled'; test: boolean;
   at: string; deliveredAt: string | null; failure: string | null;
   /** Frozen transport choices; older history without this must not be silently reinterpreted. */
-  delivery?: { version: 1; queuedBy: Actor; sender: 'onboarding' | 'hr' | 'noreply'; linkDocumentIds: string[]; pdfDocumentIds: string[]; toNames: string[]; ccNames: string[] };
+  delivery?: { version: 1; queuedBy: Actor; sender: 'onboarding' | 'hr' | 'noreply'; linkDocumentIds: string[]; pdfDocumentIds: string[]; toNames: string[]; ccNames: string[]; contact?: { kind: 'onboardingContact'; caseId: string; email: string; sourceRevision: string } };
 };
 export type PMChange = { id: string; documentId: string; field: string; before: string; after: string; status: 'proposed' | 'pushed' | 'conflict' | 'rejected'; sourceRevision: string };
 export type FinalFigures = { sourceRevision: string; lastDay: string; leaveDays: string; amount: string; currency: string; payDate: string; lockedAt: string; payrollReference: string };
@@ -139,6 +139,8 @@ export type Environment = {
   signatoryUserId?: string | null;
   /** Production workflows wait for the durable transport acknowledgement. */
   requireDeliveryAck?: boolean;
+  /** A real Native onboarding contact; this is never an app-user identity or login grant. */
+  onboardingContact?: { email: string; sourceRevision: string };
 };
 
 export class V9Error extends Error {
@@ -369,9 +371,11 @@ export function previewEmail(c: Case, config: Config, emailId: string, env: Envi
   const missing = [...new Set([...subject.missing, ...body.missing])];
   if (missing.length) holds.push(`Complete missing merge fields: ${missing.join(', ')}.`);
   try { merge(edit.subject + '\n' + edit.body, values, emailSensitiveKeys(config)); } catch { holds.push('Remove sensitive fields from the email text.'); }
-  const target = c.facts.employeeUserId;
-  const to = target && env.eligibleUser(target) ? [{ id: target, name: env.userName(target) }] : [];
-  if (!to.length) holds.push('Link an available employee account before sending.');
+  const contact = c.module === 'onb' && !c.facts.employeeUserId ? env.onboardingContact : undefined;
+  const target = c.facts.employeeUserId ?? contact?.email;
+  const to = target && (contact || env.eligibleUser(target)) ? [{ id: target, name: contact ? c.facts.name : env.userName(target) }] : [];
+  if (!to.length) holds.push('Link an available employee account or enter the onboarding contact before sending.');
+  if (contact && email.links.length) holds.push('Link an employee account before sending document links.');
   const cc = [...new Set(email.cc.flatMap(role => recipients(c, config, role)))].filter(id => id !== target && env.eligibleUser(id)).map(id => ({ id, name: env.userName(id) }));
   const documents = [...new Set([...email.links, ...email.attachments])].flatMap(templateId => {
     const template = config.templates.find(template => template.id === templateId && template.module === c.module), document = activeDocument(c, templateId);
@@ -404,7 +408,9 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
   if (slots.length && !test) return `Upload ${slots.map(s => s.label).join(', ')}.`;
   const roles = (Array.isArray(step.to) ? step.to.slice(0, 1) : [step.to]);
   const owners = pendingPre(c).map(t => t.assignee).filter((id): id is string => !!id);
-  const targets = [...new Set(roles.flatMap(role => role === 'taskOwners' ? owners : recipients(c, config, role)))];
+  const contact = !test && c.module === 'onb' && !c.facts.employeeUserId && roles[0] === 'employee' ? env.onboardingContact : undefined;
+  if (contact && email?.links.length) return 'Link an employee account before sending document links.';
+  const targets = contact ? [contact.email] : [...new Set(roles.flatMap(role => role === 'taskOwners' ? owners : recipients(c, config, role)))];
   if (!targets.length && !test) throw new V9Error('No recipient is linked. Resolve the recipient before continuing.');
   // The source fans out only Task owners. An ordinary email uses the role's first
   // destination; a Notify step puts the remaining group members in CC once.
@@ -414,9 +420,9 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
   const sensitive = emailSensitiveKeys(config);
   for (const target of to) {
     const itemKey = `${key}:${target}`; if (c.mails.some(m => m.key === itemKey)) continue;
-    if (!env.eligibleUser(target)) throw new V9Error('The recipient is no longer eligible for delivery.');
+    if (!contact && !env.eligibleUser(target)) throw new V9Error('The recipient is no longer eligible for delivery.');
     const tasks = pendingPre(c).filter(t => t.assignee === target);
-    const values = { ...env.mergeValues, 'owner.name': env.userName(target), 'pending.tasks': (roles.includes('taskOwners') && owners.includes(target) ? tasks : pendingPre(c)).map(t => `${t.name} (due ${t.dueOn})`).join('\n') };
+    const values = { ...env.mergeValues, 'owner.name': contact ? c.facts.name : env.userName(target), 'pending.tasks': (roles.includes('taskOwners') && owners.includes(target) ? tasks : pendingPre(c)).map(t => `${t.name} (due ${t.dueOn})`).join('\n') };
     const edits = email ? c.emailEdits?.[email.id] : null;
     const subject = merge(edits?.subject ?? email?.subject ?? (step.type === 'notify' ? step.subject : ''), values, sensitive), body = merge(edits?.body ?? email?.body ?? (step.type === 'notify' ? step.body : ''), values, sensitive);
     if (!test && (subject.missing.length || body.missing.length)) throw new V9Error(`Complete missing merge fields: ${[...new Set([...subject.missing, ...body.missing])].join(', ')}.`);
@@ -429,8 +435,8 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
     const cc = test ? [] : [...new Set([...groupCc, ...[...step.cc, ...(email?.cc ?? [])].flatMap(role => recipients(c, config, role))])].filter(id => id !== target && env.eligibleUser(id));
     const sender = email?.sender ?? 'noreply';
     if (!['onboarding', 'hr', 'noreply'].includes(sender)) throw new V9Error('Choose a managed sender profile before sending.');
-    c.mails.push({ id: env.nextId(), key: itemKey, workflowId, templateId: email?.id ?? null, to: [target], cc, subject: subject.text, body: body.text, documentIds: docs.map(d => d.id), delivery: { version: 1, queuedBy: { ...env.actor }, sender: sender as 'onboarding' | 'hr' | 'noreply', linkDocumentIds: docs.filter(document => email?.links.includes(document.templateId)).map(document => document.id), pdfDocumentIds: docs.filter(document => email?.attachments.includes(document.templateId)).map(document => document.id), toNames: [env.userName(target)], ccNames: cc.map(env.userName) }, fileIds: c.files.filter(f => email?.slots.some(s => f.slot === `${email.id}:${s.id}`)).map(f => f.id), status: 'pending', test, at: env.now, deliveredAt: null, failure: null });
-    appendLog(c, env, test ? 'email.test.queued' : 'email.queued', `${email?.name ?? subject.text} · ${env.userName(target)}`);
+    c.mails.push({ id: env.nextId(), key: itemKey, workflowId, templateId: email?.id ?? null, to: [target], cc, subject: subject.text, body: body.text, documentIds: docs.map(d => d.id), delivery: { version: 1, queuedBy: { ...env.actor }, sender: sender as 'onboarding' | 'hr' | 'noreply', linkDocumentIds: docs.filter(document => email?.links.includes(document.templateId)).map(document => document.id), pdfDocumentIds: docs.filter(document => email?.attachments.includes(document.templateId)).map(document => document.id), toNames: [contact ? c.facts.name : env.userName(target)], ccNames: cc.map(env.userName), ...(contact ? { contact: { kind: 'onboardingContact' as const, caseId: c.id, email: contact.email, sourceRevision: contact.sourceRevision } } : {}) }, fileIds: c.files.filter(f => email?.slots.some(s => f.slot === `${email.id}:${s.id}`)).map(f => f.id), status: 'pending', test, at: env.now, deliveredAt: null, failure: null });
+    appendLog(c, env, test ? 'email.test.queued' : 'email.queued', `${email?.name ?? subject.text} · ${contact ? c.facts.name : env.userName(target)}`);
   }
   return deliveryHold(c.mails.filter(mail => mail.workflowId === workflowId && mail.key.startsWith(key + ':')));
 }
@@ -501,12 +507,12 @@ export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: En
   return run;
 }
 /** Durable delivery acknowledgement is the only operation that marks email-linked documents sent. */
-export function markDelivered(c: Case, id: string, env: Environment): void {
+export function markDelivered(c: Case, id: string, env: Environment, unchangedDocumentIds?: ReadonlySet<string>): void {
   const mail = c.mails.find(m => m.id === id); if (!mail || mail.status === 'sent') return;
   if (mail.status !== 'sending' && (c.state !== 'submitted' || mail.status !== 'pending')) throw new V9Error('Delivery is no longer eligible.', 'conflict');
   mail.status = 'sent'; mail.deliveredAt = env.now; mail.failure = null;
   // A late acknowledgement records the truth without reopening a closed case.
-  if (!mail.test && c.state === 'submitted') for (const doc of c.documents.filter(d => mail.documentIds.includes(d.id))) {
+  if (!mail.test && c.state === 'submitted') for (const doc of c.documents.filter(d => mail.documentIds.includes(d.id) && (!unchangedDocumentIds || unchangedDocumentIds.has(d.id)))) {
     if (['draft', 'hrsigned'].includes(doc.status)) { doc.status = 'sent'; doc.sentAt = env.now; }
     linkedTasks(c, doc, 'sent');
   }
@@ -533,7 +539,7 @@ export function lastDayCheck(c: Case, config: Config, env: Environment, figures:
   if (!first) return 'unchanged';
   appendLog(c, env, 'case.reviewRequired', detail);
   const ops = recipients(c, config, 'peopleOps').filter(env.eligibleUser), pbp = resolvePbp(config, c.facts);
-  if (ops.length) c.mails.push({ id: env.nextId(), key: 'last-day-review', workflowId: null, templateId: null, to: [ops[0]], cc: [...new Set([...ops.slice(1), ...(pbp && env.eligibleUser(pbp) ? [pbp] : [])])].filter(id => id !== ops[0]), subject: `${c.facts.name}: last working day reached, case not closed`, body: `${c.facts.name}'s last working day (${c.facts.lastDay}) has been reached.\n\n${detail}\n\nPlease review the case.`, documentIds: [], fileIds: [], delivery: { version: 1, queuedBy: { ...env.actor }, sender: 'hr', linkDocumentIds: [], pdfDocumentIds: [], toNames: [env.userName(ops[0])], ccNames: [...new Set([...ops.slice(1), ...(pbp && env.eligibleUser(pbp) ? [pbp] : [])])].filter(id => id !== ops[0]).map(env.userName) }, status: 'pending', test: false, at: env.now, deliveredAt: null, failure: null });
+  if (ops.length) c.mails.push({ id: env.nextId(), key: 'last-day-review', workflowId: null, templateId: null, to: [ops[0]], cc: [...new Set([...ops.slice(1), ...(pbp && env.eligibleUser(pbp) ? [pbp] : [])])].filter(id => id !== ops[0]), subject: `${c.facts.name}: last working day reached, case not closed`, body: `${c.facts.name}'s last working day (${c.facts.lastDay}) has been reached.\n\n${detail}\n\nPlease review the case.`, documentIds: [], fileIds: [], delivery: { version: 1, queuedBy: { ...env.actor }, sender: 'noreply', linkDocumentIds: [], pdfDocumentIds: [], toNames: [env.userName(ops[0])], ccNames: [...new Set([...ops.slice(1), ...(pbp && env.eligibleUser(pbp) ? [pbp] : [])])].filter(id => id !== ops[0]).map(env.userName) }, status: 'pending', test: false, at: env.now, deliveredAt: null, failure: null });
   else appendLog(c, env, 'email.routingFailed', 'No eligible People Ops recipient for the last working day review.');
   return 'flagged';
 }
