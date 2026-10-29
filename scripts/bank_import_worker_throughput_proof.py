@@ -32,6 +32,7 @@ MAX_SECONDS=10800
 RESERVE_SECONDS=300
 MAX_OUTER=600*1024**2
 MEMBERS={'worker-package.zip':512*1024**2,'worker-manifest.json':32*1024**2,'worker-provenance.json':1024**2,'worker-runtime-proof.json':1024**2}
+WORKER_LOG_NAMES=['latch-holder.stderr',*[f'worker-{i}.{kind}' for i in range(5) for kind in ['stdout','stderr']]]
 
 def check(ok,message):
     if not ok: raise ValueError('CI throughput proof refused: '+message)
@@ -309,7 +310,8 @@ class Registry:
     def __init__(self,path):
         check(os.geteuid()==0,'root registry orchestration required');self.root=Path(path);check(self.root==root_directory(),'fixed current-run registry namespace required');protected(self.root,True)
         self.path=self.root/'registry.json';protected(self.path);self.data=json.loads(self.path.read_bytes())
-        check(set(self.data)=={'format','runId','controller','children','forcedCleanup','createdChildren','finishedChildren','resources'} and self.data['format']==1 and self.data['runId']==number(os.environ['GITHUB_RUN_ID']) and self.data['controller']==os.environ['GITHUB_SHA'] and isinstance(self.data['children'],list) and len(self.data['children'])<=128 and type(self.data['createdChildren']) is int and type(self.data['finishedChildren']) is int and 0<=self.data['finishedChildren']<=self.data['createdChildren']<=25000 and isinstance(self.data['resources'],list) and len(self.data['resources'])<=3,'closed bounded current-controller registry required')
+        check(set(self.data)=={'format','runId','controller','children','forcedCleanup','createdChildren','finishedChildren','resources','namespace'} and self.data['format']==1 and self.data['runId']==number(os.environ['GITHUB_RUN_ID']) and self.data['controller']==os.environ['GITHUB_SHA'] and isinstance(self.data['children'],list) and len(self.data['children'])<=128 and type(self.data['createdChildren']) is int and type(self.data['finishedChildren']) is int and 0<=self.data['finishedChildren']<=self.data['createdChildren']<=25000 and isinstance(self.data['resources'],list) and len(self.data['resources'])<=3,'closed bounded current-controller registry required')
+        check(set(self.data['namespace'])=={'dev','ino','state'} and self.data['namespace']['state'] in ['present','remove-pending','removed'],'closed cgroup namespace lifecycle required')
         self.gate=self.root/'gate.py';protected(self.gate);check(file_hash(self.gate)==file_hash(__file__),'registry gate bytes differ from current controller')
     def save(self): atomic_root(self.path,self.data)
     def register_area(self,path):
@@ -336,7 +338,7 @@ class Registry:
                 path=Path(resource['path']);info=protected(path,True)
                 check((info.st_dev,info.st_ino)==(resource['dev'],resource['ino']),'runtime area identity changed; refusing recursive removal')
                 # Keep bounded original stdout/stderr failure evidence before removal.
-                for name in ['latch-holder.stderr',*[f'worker-{i}.{kind}' for i in range(4) for kind in ['stdout','stderr']]]:
+                for name in WORKER_LOG_NAMES:
                     log=path/name
                     if not log.exists(): continue
                     protected(log)
@@ -375,26 +377,64 @@ class Registry:
         return actual
     def mark_exit(self,p):
         for record in self.data['children']:
-            if record['pid']==p.pid and record['state']=='active':
+            if record.get('pid')==p.pid and record['state']=='active':
                 record['state']='finished';record['returncode']=p.returncode;self.save();self.reap_empty();return
+    def group_for(self,record):
+        check(re.fullmatch('child-[0-9]{5}',record['cgroup']) and record['state'] in ['create-pending','created','active','finished','remove-pending','removed'],'invalid registered cgroup lifecycle')
+        parent=cgroup_root();info=protected(parent,True)
+        check({'dev':info.st_dev,'ino':info.st_ino}==record['namespace'],'owned cgroup namespace inode changed')
+        check(record['namespace']=={k:self.data['namespace'][k] for k in ['dev','ino']} and self.data['namespace']['state']=='present','child belongs to another/removing namespace')
+        group=parent/record['cgroup']
+        try: info=protected(group,True)
+        except FileNotFoundError:
+            check(record['state'] in ['create-pending','remove-pending','removed'],'uncertain missing cgroup');return None
+        identity={'dev':info.st_dev,'ino':info.st_ino}
+        if record['groupIdentity'] is None:
+            # A durable creation intent precedes mkdir. Before its inode has been
+            # saved, NO gate may launch; recover only this exact empty namespace.
+            check(record['state']=='create-pending' and not cgroup_members(group) and not any(p.is_dir() for p in group.iterdir()),'unidentified/nonempty pending cgroup; no signal permitted')
+            record['groupIdentity']=identity;record['state']='created';self.save()
+        check(record['groupIdentity']==identity,'owned child cgroup inode changed')
+        return group
+    def create_group(self,auxiliaries):
+        parent=cgroup_root();info=protected(parent,True)
+        check(self.data['namespace']=={'dev':info.st_dev,'ino':info.st_ino,'state':'present'},'owned cgroup namespace changed')
+        record={'cgroup':'child-'+str(self.data['createdChildren']).zfill(5),'namespace':{'dev':info.st_dev,'ino':info.st_ino},'groupIdentity':None,'state':'create-pending','auxiliaries':auxiliaries or []}
+        self.data['children'].append(record);self.data['createdChildren']+=1;self.save()
+        group=parent/record['cgroup'];group.mkdir(mode=0o755)
+        self.group_for(record)  # Persist exact inode BEFORE Popen or gate release.
+        return group,record
+    def remove_group(self,record):
+        group=self.group_for(record)
+        if group is not None:
+            check(not cgroup_members(group) and not any(p.is_dir() for p in group.iterdir()),'only exact empty owned cgroups may be removed')
+            record['state']='remove-pending';self.save()  # Durable BEFORE rmdir.
+            group.rmdir()
+        record['state']='removed';self.save()
+        self.data['children'].remove(record);self.data['finishedChildren']+=1;self.save()
+    def remove_namespace(self):
+        check(not self.data['children'],'cannot remove a namespace with registered child groups')
+        parent=cgroup_root();expected=self.data['namespace']
+        try: info=protected(parent,True)
+        except FileNotFoundError:
+            check(expected['state'] in ['remove-pending','removed'],'uncertain missing cgroup namespace')
+        else:
+            check({'dev':info.st_dev,'ino':info.st_ino}=={k:expected[k] for k in ['dev','ino']},'owned namespace inode changed')
+            check(not cgroup_members(parent) and not any(p.is_dir() for p in parent.iterdir()),'unregistered or populated namespace; removal refused')
+            expected['state']='remove-pending';self.save();parent.rmdir()
+        expected['state']='removed';self.save()
     def reap_empty(self):
         # Retain every live or uncertain descendant, but avoid quadratic registry
         # writes and thousands of empty cgroups during bounded progress sampling.
-        removed=[]
-        for record in self.data['children']:
-            if record['state']!='finished': continue
-            check(re.fullmatch('child-[0-9]{5}',record['cgroup']),'invalid registered cgroup name')
-            group=cgroup_root()/record['cgroup']
-            if not cgroup_members(group):
-                check(not any(p.is_dir() for p in group.iterdir()),'unexpected nested cgroup');group.rmdir();removed.append(record)
-        if removed:
-            self.data['children']=[r for r in self.data['children'] if r not in removed]
-            self.data['finishedChildren']+=len(removed);self.save()
+        for record in list(self.data['children']):
+            if record['state'] not in ['finished','remove-pending','removed']: continue
+            group=self.group_for(record)
+            if group is None or not cgroup_members(group): self.remove_group(record)
     def popen(self,argv,*,cwd='/',env=None,gate_timeout=30,auxiliaries=None,**options):
         env=dict(sorted((env or {}).items()));uid=options.pop('user',os.geteuid());gid=options.pop('group',os.getegid());options.pop('extra_groups',None);mask=options.pop('umask',0o022)
         check(type(uid) is int and type(gid) is int,'numeric owned child identities required')
         self.reap_empty();check(self.data['createdChildren']<25000 and len(self.data['children'])<128,'owned child registry count bound exceeded')
-        group=cgroup_root()/('child-'+str(self.data['createdChildren']).zfill(5));protected(cgroup_root(),True);group.mkdir(mode=0o755)
+        group,record=self.create_group(auxiliaries)
         config_r,config_w=os.pipe();ready_r,ready_w=os.pipe();release_r,release_w=os.pipe()
         gate_argv=[sys.executable,'-I','-B',str(self.gate),'gate',str(config_r),str(ready_w),str(release_r)]
         p=None
@@ -402,18 +442,20 @@ class Registry:
             p=subprocess.Popen(gate_argv,cwd=cwd,env=env,pass_fds=(config_r,ready_w,release_r),**options)
             os.close(config_r);config_r=None;os.close(ready_w);ready_w=None;os.close(release_r);release_r=None
             config={'argv':argv,'env':env,'cwd':str(cwd),'uid':uid,'gid':gid,'mask':mask,'cgroup':str(group)}
-            with os.fdopen(config_w,'wb') as stream: stream.write(canonical(config));config_w=None
+            config_stream=os.fdopen(config_w,'wb');config_w=None
+            with config_stream as stream: stream.write(canonical(config))
             ready,_,_=select.select([ready_r],[],[],gate_timeout);check(ready and os.read(ready_r,1)==b'R','owned gate readiness timeout')
             actual=proc_snapshot(p.pid);check(actual['parent']==os.getpid() and actual['uid']==[str(uid)]*4 and actual['gid']==[str(gid)]*4 and actual['exe']==str(Path(sys.executable).resolve()) and actual['cwd']==str(Path(cwd).resolve()) and actual['argv']==[v.encode() for v in gate_argv],'exact gated child identity differs')
             in_cgroup(p.pid,group);check(cgroup_members(group)==[p.pid],'gated cgroup must contain only the unreleased direct child')
             gate=serial_identity(actual)
             expected={**gate,'exe':str(Path(argv[0]).resolve()),'argv':argv,'envSha256':digest(b''.join((k+'='+v).encode()+b'\0' for k,v in env.items()))}
-            record={'pid':p.pid,'start':actual['start'],'parent':os.getpid(),'parentStart':proc_snapshot(os.getpid())['start'],'gate':gate,'exec':expected,'state':'active','cgroup':group.name,'auxiliaries':auxiliaries or []}
-            self.data['children'].append(record);self.data['createdChildren']+=1;self.save()
+            record.update({'pid':p.pid,'start':actual['start'],'parent':os.getpid(),'parentStart':proc_snapshot(os.getpid())['start'],'gate':gate,'exec':expected,'state':'active'});self.save()
             os.write(release_w,b'X');os.close(release_w);release_w=None
             return p
         except BaseException:
-            if p is not None and p.poll() is None: p.kill();p.wait(timeout=2)
+            try:
+                if p is not None and p.poll() is None: p.kill();p.wait(timeout=2)
+            except BaseException as cleanup_error: print('Unreleased direct gate cleanup also failed: '+type(cleanup_error).__name__,file=sys.stderr)
             raise
         finally:
             for fd in [config_r,config_w,ready_r,ready_w,release_r,release_w]:
@@ -449,13 +491,18 @@ class Registry:
         # Freeze before inventory, so inherited descendants cannot fork or exec
         # between validation and individual signals. Never use cgroup.kill.
         until=time.monotonic()+90;forced=False
-        for record in self.data['children']:
+        for record in list(self.data['children']):
             check(time.monotonic()<until,'bounded registry cleanup deadline exceeded')
-            check(re.fullmatch('child-[0-9]{5}',record['cgroup']),'invalid registered cgroup name')
-            group=cgroup_root()/record['cgroup']
-            if not group.exists():
-                check(record.get('cgroupRemoved') is True,'uncertain missing cgroup');continue
+            group=self.group_for(record)
+            if group is None: self.remove_group(record);continue
             members=cgroup_members(group)
+            if record['state'] in ['create-pending','created']:
+                # An unreleased gate gets EOF if its parent dies. It has no
+                # authority to exec; never signal an unidentified pending child.
+                deadline=min(until,time.monotonic()+3)
+                while members and time.monotonic()<deadline:
+                    time.sleep(0.02);members=cgroup_members(group)
+                check(not members,'unidentified pre-release process remains; no signal sent')
             if members:
                 protected(group/'cgroup.freeze');(group/'cgroup.freeze').write_text('1')
                 try:
@@ -481,11 +528,9 @@ class Registry:
                 deadline=min(until,time.monotonic()+5)
                 while cgroup_members(group):
                     check(time.monotonic()<deadline,'owned cgroup remains populated after cleanup');time.sleep(0.02)
-            group.rmdir();record['cgroupRemoved']=True;self.save()
-        protected(cgroup_root(),True);check(not cgroup_members(cgroup_root()),'unexpected process in per-run cgroup root')
-        check({p.name for p in cgroup_root().iterdir() if p.is_dir()}==set(),'unregistered child cgroup; cleanup refused')
+            self.remove_group(record)
         self.data['forcedCleanup']=self.data['forcedCleanup'] or forced;self.save()
-        cgroup_root().rmdir()
+        self.remove_namespace()
         self.cleanup_resources()
         check(not self.data['forcedCleanup'],'forced cleanup invalidates every receipt')
 
@@ -507,7 +552,8 @@ def initialize():
     check(os.geteuid()==0,'root accepted-input namespace required');root=root_directory();root.mkdir(mode=0o700)
     check(Path('/sys/fs/cgroup/cgroup.controllers').is_file(),'cgroup v2 required; no weaker descendant cleanup fallback')
     cgroup_root().mkdir(mode=0o755);protected(cgroup_root(),True)
-    atomic_root(root/'registry.json',{'format':1,'runId':number(os.environ['GITHUB_RUN_ID']),'controller':os.environ['GITHUB_SHA'],'children':[],'forcedCleanup':False,'createdChildren':0,'finishedChildren':0,'resources':[]})
+    info=protected(cgroup_root(),True)
+    atomic_root(root/'registry.json',{'format':1,'runId':number(os.environ['GITHUB_RUN_ID']),'controller':os.environ['GITHUB_SHA'],'children':[],'forcedCleanup':False,'createdChildren':0,'finishedChildren':0,'resources':[],'namespace':{'dev':info.st_dev,'ino':info.st_ino,'state':'present'}})
     fd=os.open(root/'gate.py',os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o400)
     with os.fdopen(fd,'wb') as out: out.write(Path(__file__).read_bytes());out.flush();os.fsync(out.fileno())
     return root
@@ -518,7 +564,7 @@ def export_cleanup_evidence(root,destination):
     for name in ['registry.json','budget.json',*[p.name for p in root.glob('cleanup-*')]]:
         path=root/name
         if not path.exists(): continue
-        check(re.fullmatch('(registry|budget)\.json|cleanup-(latch-holder\.stderr|worker-[0-3]\.(stdout|stderr))',name),'closed cleanup evidence names required')
+        check(name in ['registry.json','budget.json',*['cleanup-'+value for value in WORKER_LOG_NAMES]],'closed cleanup evidence names required')
         protected(path)
         with path.open('rb') as incoming: raw=incoming.read(1024**2+1)
         check(len(raw)<=1024**2,'bounded cleanup evidence required')

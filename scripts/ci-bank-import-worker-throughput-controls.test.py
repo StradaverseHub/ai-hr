@@ -2,6 +2,7 @@
 No application import, native process, database, network or release authority.
 """
 import copy
+from contextlib import contextmanager
 import importlib.util
 import json
 import os
@@ -17,7 +18,97 @@ HERE=Path(__file__).resolve().parent
 spec=importlib.util.spec_from_file_location('throughput_controls_subject',HERE/'bank_import_worker_throughput_proof.py')
 p=importlib.util.module_from_spec(spec);spec.loader.exec_module(p)
 
+@contextmanager
+def lifecycle_fixture():
+    # Fake cgroup directories only. No cgroup mount, child process, signal or DB.
+    with tempfile.TemporaryDirectory(prefix='throughput-lifecycle-controls-') as temporary:
+        parent=Path(temporary)/'namespace';parent.mkdir();info=parent.stat();snapshots=[]
+        registry=object.__new__(p.Registry)
+        registry.data={'format':1,'runId':1,'controller':'a'*40,'children':[],'forcedCleanup':False,'createdChildren':0,'finishedChildren':0,'resources':[],'namespace':{'dev':info.st_dev,'ino':info.st_ino,'state':'present'}}
+        registry.gate=Path(temporary)/'gate.py'
+        registry.save=lambda:snapshots.append(copy.deepcopy(registry.data))
+        with patch.object(p,'cgroup_root',return_value=parent),patch.object(p,'protected',side_effect=lambda path,directory=False:Path(path).lstat()),patch.object(p,'cgroup_members',return_value=[]):
+            yield registry,snapshots,parent
+
 class ConsumerRefusals(unittest.TestCase):
+    def test_launch_and_creation_window_failure_keep_durable_empty_ownership(self):
+        with lifecycle_fixture() as (registry,snapshots,parent):
+            # Popen cannot launch anything; the exact created inode was saved first.
+            with patch.object(p.subprocess,'Popen',side_effect=OSError('injected launch failure')),self.assertRaises(OSError):
+                registry.popen(['/owned/node'],env={'LANG':'C.UTF-8'})
+            self.assertEqual(snapshots[0]['children'][0]['state'],'create-pending')
+            self.assertEqual(snapshots[-1]['children'][0]['state'],'created')
+            self.assertIsNotNone(snapshots[-1]['children'][0]['groupIdentity'])
+            registry.remove_group(registry.data['children'][0]);self.assertEqual(registry.data['finishedChildren'],1)
+        with lifecycle_fixture() as (registry,snapshots,parent):
+            save=registry.save
+            def interrupted_save():
+                if registry.data['children'][0]['state']=='created': raise RuntimeError('death after mkdir before inode save')
+                save()
+            registry.save=interrupted_save
+            with self.assertRaises(RuntimeError): registry.create_group([])
+            registry.data=copy.deepcopy(snapshots[-1]);registry.save=save
+            self.assertEqual(registry.data['children'][0]['state'],'create-pending')
+            registry.remove_group(registry.data['children'][0]);self.assertEqual(registry.data['children'],[])
+
+    def test_pre_release_parent_death_waits_for_eof_without_unknown_signal(self):
+        with lifecycle_fixture() as (registry,snapshots,parent):
+            group,record=registry.create_group([])
+            # Model reload after parent death before ready/PID identity capture.
+            registry.data=copy.deepcopy(snapshots[-1]);observations=0
+            def members(path):
+                nonlocal observations
+                if path==group:
+                    observations+=1
+                    return [101] if observations==1 else []
+                return []
+            with patch.object(p,'cgroup_members',side_effect=members),patch.object(p.time,'sleep'),patch.object(p.os,'kill') as signal_child:
+                registry.cleanup();signal_child.assert_not_called()
+            self.assertEqual(registry.data['children'],[]);self.assertEqual(registry.data['namespace']['state'],'removed')
+        with lifecycle_fixture() as (registry,snapshots,parent):
+            group,record=registry.create_group([])
+            with patch.object(p,'cgroup_members',return_value=[101]),patch.object(p.os,'kill') as signal_child,self.assertRaises(ValueError):
+                # Pending inode adoption refuses unknown nonempty groups immediately.
+                record['state']='create-pending';record['groupIdentity']=None;registry.group_for(record)
+            signal_child.assert_not_called()
+
+    def test_rmdir_before_save_recovers_only_durable_removal_intent(self):
+        with lifecycle_fixture() as (registry,snapshots,parent):
+            group,record=registry.create_group([]);save=registry.save
+            def interrupted_save():
+                if record['state']=='removed': raise RuntimeError('death after rmdir before save')
+                save()
+            registry.save=interrupted_save
+            with self.assertRaises(RuntimeError): registry.remove_group(record)
+            self.assertFalse(group.exists());self.assertEqual(snapshots[-1]['children'][0]['state'],'remove-pending')
+            registry.data=copy.deepcopy(snapshots[-1]);registry.save=save
+            registry.remove_group(registry.data['children'][0]);self.assertEqual(registry.data['finishedChildren'],1)
+            registry.remove_namespace();self.assertEqual(registry.data['namespace']['state'],'removed')
+        with lifecycle_fixture() as (registry,snapshots,parent):
+            group,record=registry.create_group([]);group.rmdir()
+            with self.assertRaises(ValueError): registry.group_for(record)
+        with lifecycle_fixture() as (registry,snapshots,parent):
+            save=registry.save
+            def interrupted_namespace_save():
+                if registry.data['namespace']['state']=='removed': raise RuntimeError('death after namespace rmdir')
+                save()
+            registry.save=interrupted_namespace_save
+            with self.assertRaises(RuntimeError): registry.remove_namespace()
+            self.assertFalse(parent.exists());self.assertEqual(snapshots[-1]['namespace']['state'],'remove-pending')
+            registry.data=copy.deepcopy(snapshots[-1]);registry.save=save;registry.remove_namespace()
+            self.assertEqual(registry.data['namespace']['state'],'removed')
+
+    def test_all_five_worker_logs_are_closed_and_exportable(self):
+        wanted={'latch-holder.stderr',*[f'worker-{i}.{kind}' for i in range(5) for kind in ['stdout','stderr']]}
+        self.assertEqual(set(p.WORKER_LOG_NAMES),wanted);self.assertEqual(len(p.WORKER_LOG_NAMES),11)
+        with tempfile.TemporaryDirectory(prefix='throughput-log-controls-') as temporary:
+            root=Path(temporary)/'root';root.mkdir();destination=Path(temporary)/'bank-throughput-evidence';destination.mkdir(mode=0o700)
+            for name in wanted: (root/('cleanup-'+name)).write_bytes(b'fictional bounded log\n')
+            with patch.object(p,'protected',side_effect=lambda path,directory=False:Path(path).lstat()),patch.dict(os.environ,{'SUDO_UID':str(destination.stat().st_uid)}):
+                p.export_cleanup_evidence(root,destination)
+            self.assertEqual({path.name for path in destination.iterdir()},{'owned-cleanup-'+name for name in wanted})
+            self.assertTrue((destination/'owned-cleanup-worker-4.stderr').exists())
+
     def test_exact_owned_identity_refuses_reused_or_foreign_process(self):
         actual={'pid':101,'parent':99,'start':'2001','uid':['6001']*4,'gid':['6002']*4,'exe':'/owned/node','cwd':'/owned/runtime','argv':[b'/owned/node',b'--import',b'tsx'],'env':b'NODE_ENV=production\0'}
         expected=p.serial_identity(actual)

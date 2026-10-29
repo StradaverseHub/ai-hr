@@ -37,6 +37,18 @@ async function main(){
   assert.equal(live.rows,ROWS,'Captured subject mapping changed');
   return createHash('sha256').update(JSON.stringify(rows)).digest('hex');
  };
+ const systemRows=async(tx:any)=>{
+  const tenantRows=await tx`select to_jsonb(t)::text as row from tenant t where id='00000000-0000-0000-0000-000000000000'::uuid`;
+  const out:Record<string,unknown>={tenant:Array.from(tenantRows,(row:any)=>row.row)};
+  const tables=await tx`select n.nspname,c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace join pg_attribute a on a.attrelid=c.oid and a.attname='tenant_id' and a.atttypid='uuid'::regtype and not a.attisdropped where n.nspname in ('public','app') and c.relkind in ('r','p') order by n.nspname,c.relname`;
+  for(const table of tables){
+   const qualified=[table.nspname,table.relname].map((name:string)=>'"'+name.replaceAll('"','""')+'"').join('.');
+   const [row]=await tx.unsafe(`select count(*)::int as rows,md5(coalesce(string_agg(md5(to_jsonb(t)::text),'' order by to_jsonb(t)::text),'')) as hash from ${qualified} t where tenant_id='00000000-0000-0000-0000-000000000000'::uuid`);
+   out[qualified]=row;
+  }
+  return out;
+ };
+ const systemSnapshot=async()=>witness.begin(async(tx:any)=>{await tx`set transaction read only`;return systemRows(tx);});
  const fingerprints=async()=>witness.begin(async(tx:any)=>{
   await tx`set transaction read only`;
   const out:Record<string,unknown>={};
@@ -45,7 +57,7 @@ async function main(){
    const [row]=await tx.unsafe(`select count(*)::int as rows,md5(coalesce(string_agg(md5((${expression})::text),'' order by t.id),'')) as hash from public."${table}" t`);
    out[table]=row;
   }
-  return out;
+  out.systemRows=await systemRows(tx);return out;
  });
  const roles=async()=>{
   const rows=await owner`select r.rolname,r.rolsuper,r.rolbypassrls,c.relowner=r.oid as queue_owner from pg_roles r cross join pg_class c where r.rolname in ('ai_hr_app','ai_hr_owner') and c.oid='public.bank_import_job'::regclass order by r.rolname`;
@@ -54,8 +66,11 @@ async function main(){
  };
  try{
   if(phase==='setup'){
-   const [empty]=await witness`select (select count(*) from tenant)::int as tenants,(select count(*) from bank_import_job)::int as jobs`;
-   assert.deepEqual({...empty},{tenants:0,jobs:0},'Fresh disposable database required; never reuse an installation');
+   const tenants=await witness`select id,workos_org_id,name from tenant order by id`;
+   assert.deepEqual(tenants.map((row:any)=>({...row})),[{id:'00000000-0000-0000-0000-000000000000',workos_org_id:'org_system_auth_audit',name:'System (auth audit)'}],'Only the exact migration-owned auth system tenant may precede the fictional fixture');
+   const [empty]=await witness`select count(*)::int as jobs from bank_import_job`;
+   assert.equal(empty.jobs,0,'Fresh disposable database required; never reuse an installation');
+   const systemBaseline=await systemSnapshot();
    harness=await load(join(source,'test/harness.ts'));
    const b=await harness.seedBase(),ctx=harness.adminCtx(b);
    app=(await load(join(packet,'db/client.ts'))).client;
@@ -91,6 +106,7 @@ async function main(){
    await witness.unsafe('GRANT USAGE ON SCHEMA ci_import_cohort TO ai_hr_owner');
    await witness.unsafe('GRANT SELECT ON ci_import_cohort.target TO ai_hr_owner');
    const targetMappingSha256=await targetMapping();
+   assert.deepEqual(await systemSnapshot(),systemBaseline,'Fictional setup changed migration-owned system rows');
    save({ctx,tenantId:b.tenantId,rows:ROWS,targetMappingSha256,fingerprints:await fingerprints()});
    console.log(JSON.stringify({phase,syntheticOnly:true,rows:ROWS,targetMappingSha256}));return;
   }
