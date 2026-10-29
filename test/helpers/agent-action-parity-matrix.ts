@@ -60,6 +60,14 @@ const D='deny',A='allow';
  *     invisible ("correction request not found"). The routed-workflow probe below records the delegate
  *     under a one-level direct-manager workflow. */
 const ASSIGNED_DECISION={employee:D,manager:A,assigned_approver:D,company_hr:A,group_hr:A,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
+/** Routed attendance is a separate fixture from the unrouted matrix above. The native service admits
+ * the delegate for approve and reject; the Assistant offers and prepares, but confirm refuses. Keep this
+ * phase-specific gap explicit until the delegated-approvals package passes the routed stage/delegate slot. */
+export const ATTENDANCE_WORKFLOW_PARITY={
+ screen:{...ASSIGNED_DECISION,assigned_approver:A},
+ narrowed:{assigned_approver:{confirm:'AssignedDecisionUnavailable: the Assistant confirm does not pass the routed stage/delegate slot to decideAttendanceCorrection. Real fix belongs to the delegated-approvals package.'}},
+} as const;
+
 /** HR screen behind requireAdmin (isAdmin) whose service writes an administered employment under RLS. */
 const HR_ON_EMPLOYMENT={employee:D,manager:D,assigned_approver:D,company_hr:A,group_hr:A,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
 

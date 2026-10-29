@@ -3,13 +3,19 @@
  * test/agent-action-permission-parity.test.ts. */
 import {describe,expect,it} from 'vitest';
 import {AGENT_ACTIONS} from '../lib/ai/agent-action-registry';
-import {AGENT_ACTION_PARITY,PARITY_PENDING_CEILING,PARITY_PENDING_ORIGINAL,PARITY_ROLES,PROBED_ACTION_IDS,parityCoverageProblems,type ParityDeclaration} from './helpers/agent-action-parity-matrix';
+import {AGENT_ACTION_PARITY,ATTENDANCE_WORKFLOW_PARITY,PARITY_PENDING_CEILING,PARITY_PENDING_ORIGINAL,PARITY_ROLES,PROBED_ACTION_IDS,parityCoverageProblems,type ParityDeclaration} from './helpers/agent-action-parity-matrix';
 
 const registry=AGENT_ACTIONS.map(action=>({id:action.id,store:action.store}));
 const declarations:Readonly<Record<string,ParityDeclaration>>=AGENT_ACTION_PARITY;
 const probed:ParityDeclaration={kind:'probed',screen:{employee:'allow',manager:'deny',assigned_approver:'deny',company_hr:'deny',group_hr:'deny',payroll_partner:'deny',performance_comp_partner:'deny',performance_partner:'deny',another_company:'deny',another_tenant:'deny'}};
 
 describe('WP8 parity matrix coverage of the agent action registry',()=>{
+ it('declares the routed attendance delegate gap only at confirm, with a follow-up owner',()=>{
+  expect(ATTENDANCE_WORKFLOW_PARITY.screen.assigned_approver).toBe('allow');
+  expect(Object.keys(ATTENDANCE_WORKFLOW_PARITY.narrowed.assigned_approver)).toEqual(['confirm']);
+  expect(ATTENDANCE_WORKFLOW_PARITY.narrowed.assigned_approver.confirm).toContain('delegated-approvals');
+ });
+
  it('declares every registry entry, and only registry entries',()=>{
   expect(parityCoverageProblems(registry,declarations)).toEqual([]);
   expect(Object.keys(AGENT_ACTION_PARITY).sort()).toEqual(registry.map(entry=>entry.id).sort());

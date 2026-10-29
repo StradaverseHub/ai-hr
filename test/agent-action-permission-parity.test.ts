@@ -47,7 +47,7 @@ import {OWN_LEAVE_CANCELLATION_ACTION,OWN_LEAVE_EDIT_ACTION} from '../lib/assist
 import {HR_LEAVE_ADJUSTMENT_ACTION,HR_MOVEMENT_TRANSFER_ACTION,HR_LEAVE_CREDIT_ACTION} from '../lib/assistant-actions/hr-prepared-contract';
 import {AGENT_ACTIONS} from '../lib/ai/agent-action-registry';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {AGENT_ACTION_PARITY,ALWAYS_REFUSED,PARITY_PHASES,PARITY_ROLES,PROBED_ACTION_IDS,expectedAgentOutcome,type ParityOutcome,type ParityRole,type ProbedActionId} from './helpers/agent-action-parity-matrix';
+import {AGENT_ACTION_PARITY,ATTENDANCE_WORKFLOW_PARITY,ALWAYS_REFUSED,PARITY_PHASES,PARITY_ROLES,PROBED_ACTION_IDS,expectedAgentOutcome,type ParityPhase,type ParityOutcome,type ParityRole,type ProbedActionId} from './helpers/agent-action-parity-matrix';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 type Person={employmentId:string;personId:string};
@@ -278,10 +278,10 @@ async function observe(id:ProbedActionId,role:ParityRole,o:Options=DEFAULT_OPTIO
 }
 /** The parity invariants every probe must satisfy, whatever is declared: never wider than the screen,
  * never a cross-user confirmation, and cross-company/tenant refused everywhere. */
-function assertInvariants(id:string,role:ParityRole,observed:Observed,notes:Record<string,string>,narrowed:boolean){
+function assertInvariants(id:string,role:ParityRole,observed:Observed,notes:Record<string,string>,narrowed:boolean|Readonly<Partial<Record<ParityPhase,string>>>){
  const context=`${id} as ${role}: ${JSON.stringify({observed,notes})}`;
  for(const phase of PARITY_PHASES)if(observed.screen==='deny')expect(observed[phase],`${context} — the agent ${phase} is wider than the screen`).toBe('deny');
- for(const phase of PARITY_PHASES)expect(observed[phase],`${context} — agent ${phase} differs from the screen`).toBe(narrowed?'deny':observed.screen);
+ for(const phase of PARITY_PHASES)expect(observed[phase],`${context} — agent ${phase} differs from the screen`).toBe((typeof narrowed==='boolean'?narrowed:!!narrowed[phase])?'deny':observed.screen);
  expect(observed.crossUserConfirm,`${context} — confirmed another user's review`).not.toBe('allow');
  if(observed.prepare==='deny')expect(observed.crossUserConfirm,`${context} — a refused role must be probed for cross-user confirmation`).toBe('deny');
  if(ALWAYS_REFUSED.includes(role))expect({screen:observed.screen,offer:observed.offer,prepare:observed.prepare,confirm:observed.confirm},`${context} — cross-company/tenant must be refused everywhere`).toEqual({screen:'deny',offer:'deny',prepare:'deny',confirm:'deny'});
@@ -326,7 +326,10 @@ describe('ADR-0151 parity, attendance under a routed one-level workflow',()=>{
  it.each((['assigned_approver','manager','company_hr','employee'] as const).flatMap(role=>(['approved','rejected'] as const).map(decision=>[role,decision] as const)))('%s %s',async(role,decision)=>{
   const {observed,notes}=await observe('approvals.attendance.decide',role,{decision,workflow:true});
   console.info(`[parity:workflow] approvals.attendance.decide ${role} ${decision} ${JSON.stringify(observed)} ${JSON.stringify(notes)}`);
-  assertInvariants('approvals.attendance.decide (workflow)',role,observed,notes,false);
+  const narrowed=role==='assigned_approver'?ATTENDANCE_WORKFLOW_PARITY.narrowed.assigned_approver:false;
+  const context=assertInvariants('approvals.attendance.decide (workflow)',role,observed,notes,narrowed);
+  expect(observed.screen,`${context} — screen differs from routed declaration`).toBe(ATTENDANCE_WORKFLOW_PARITY.screen[role]);
+  if(role==='assigned_approver')expect(notes.confirm,context).toContain('AssignedDecisionUnavailable');
  },180_000);
 });
 
