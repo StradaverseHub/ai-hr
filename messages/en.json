@@ -22698,6 +22698,8 @@
       "previewError": "The preview could not be loaded. Try again.",
       "emailPreview": "Reminder email preview",
       "previewConsent": "This is a preview only. Delivery still requires email consent, the Performance email policy and an active relay.",
+      "previewFull": "Full email preview · recipient language: {locale}. Uses the saved layout and permitted recipient details.",
+      "previewScoped": "Scoped task summary only. The email layout, recipient language and personalized details are not shown.",
       "nothingWaiting": "Nothing is waiting in the open steps, so this person would receive no reminder."
     },
     "competencyInsight": {

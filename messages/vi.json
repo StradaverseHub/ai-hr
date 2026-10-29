@@ -22698,6 +22698,8 @@
       "previewError": "Không tải được bản xem trước. Vui lòng thử lại.",
       "emailPreview": "Xem trước email nhắc việc",
       "previewConsent": "Đây chỉ là bản xem trước. Việc gửi vẫn cần sự đồng ý nhận email, chính sách email Hiệu suất và dịch vụ email đang hoạt động.",
+      "previewFull": "Xem trước email đầy đủ · ngôn ngữ người nhận: {locale}. Dùng bố cục đã lưu và thông tin người nhận bạn được phép xem.",
+      "previewScoped": "Chỉ hiển thị tóm tắt công việc trong phạm vi quyền hạn. Không hiển thị bố cục email, ngôn ngữ người nhận hoặc thông tin cá nhân hóa.",
       "nothingWaiting": "Không có việc chờ trong các bước đang mở nên người này sẽ không nhận được lời nhắc."
     },
     "competencyInsight": {

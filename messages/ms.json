@@ -22698,6 +22698,8 @@
       "previewError": "Pratonton tidak dapat dimuatkan. Cuba lagi.",
       "emailPreview": "Pratonton e-mel peringatan",
       "previewConsent": "Ini pratonton sahaja. Penghantaran masih memerlukan persetujuan e-mel, dasar e-mel Prestasi dan geganti aktif.",
+      "previewFull": "Pratonton e-mel penuh · bahasa penerima: {locale}. Menggunakan susun atur tersimpan dan butiran penerima yang dibenarkan.",
+      "previewScoped": "Ringkasan tugasan mengikut skop sahaja. Susun atur e-mel, bahasa penerima dan butiran peribadi tidak dipaparkan.",
       "nothingWaiting": "Tiada tugas menunggu dalam langkah yang terbuka, jadi pekerja ini tidak akan menerima peringatan."
     },
     "competencyInsight": {
