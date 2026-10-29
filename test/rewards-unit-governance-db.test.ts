@@ -92,7 +92,7 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   const privileged=await getRewardUnitGovernance(ctro,unitId);expect(privileged.senior[0].award).toMatchObject({newBasicCents:550000,bonusCents:123400,confirmedBy:checker.userId});
   const restricted=await getRewardUnitGovernance(bu,unitId);expect(restricted.senior[0].award).toBeNull();expect(restricted.totals).toBeNull();
   const privateRows=await withTenant(payroll,tx=>tx.select().from(schema.rewardSeniorAward).where(eq(schema.rewardSeniorAward.unitId,unitId)));expect(privateRows).toEqual([]);
-  await expect(withTenant(payroll,tx=>tx.execute(sql`select app.reward_senior_awards_for_post(${unitId}::uuid)`))).rejects.toThrow(/posting authority/);
+  await expect(withTenant(payroll,tx=>tx.execute(sql`select app.reward_senior_awards_for_post(${unitId}::uuid)`))).rejects.toMatchObject({cause:{code:'42501',message:expect.stringContaining('posting authority')}});
  });
  it('refuses Senior confirmation after the live grade code changes under the same grade UUID',async()=>{
   const v=await view(),selection={employmentIds:[employeeId],adoptLegacy:false},preview=await previewRewardSeniorMembership(gr,unitId,v.unit.revision,selection);

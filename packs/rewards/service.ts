@@ -1041,7 +1041,7 @@ async function currentRewardPostEmployeeTx(tx:Tx,unit:typeof rewardUnit.$inferSe
       const [emp] = await tx.select().from(employment).where(eq(employment.id, e.source.employmentId)).for('update',reviewed?{noWait:true}:undefined);
       if (!emp || emp.companyId !== unit.companyId || emp.terminatedOn || emp.gradeId !== e.source.gradeId) throw new RewardError('An employee changed company, grade or employment status. Return and refresh the review.');
       if(isSeniorPlanMember(unit.policy,e.facts,e.source.grade)){
-        const [grade]=await tx.select({code:jobGrade.code}).from(jobGrade).where(eq(jobGrade.id,emp.gradeId!));
+        const [grade]=await tx.select({code:jobGrade.code}).from(jobGrade).where(eq(jobGrade.id,emp.gradeId!)).for('share',reviewed?{noWait:true}:undefined);
         const currentGrade=(grade?.code??'').replace(/^JG\s*/i,'').trim();
         if(currentGrade!==e.source.grade||!seniorGrade(currentGrade))throw new RewardError('The Senior employee grade changed after the snapshot. Return and refresh the review.');
       }
@@ -1265,6 +1265,12 @@ export async function pendingRewardReviews(ctx: SessionContext, companyIds: stri
 }
 
 /** In-app notification fan-out for the shared dispatcher; payloads contain no employee pay. */
+/** Pool changes concern every live approver, independently of the review's current routing stage. */
+export async function rewardPoolNotificationRecipients(tx:Tx,unitId:string):Promise<string[]>{
+ const rows=await tx.execute<{employmentId:string}>(sql`select app.reward_pool_notification_recipients(${unitId}::uuid) as "employmentId"`);
+ return rows.map(row=>row.employmentId);
+}
+
 export async function rewardNotificationRecipients(tx: Tx, unitId: string, stage: unknown): Promise<string[]> {
   if (typeof stage !== 'string') return [];
   const role = stage === 'approved' ? 'payroll' : stage === 'draft' ? 'bu' : stage;
