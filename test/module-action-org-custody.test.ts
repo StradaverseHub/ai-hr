@@ -93,7 +93,7 @@ describe('WP9 retained org reporting custody',()=>{
   const done=await confirmOrgActionReview(scoped,packet);expect(done.kind).toBe('completed');expect(await confirmOrgActionReview(scoped,packet)).toEqual(done);expect(await reopenOrgActionReview(scoped,old.actionId)).toEqual(done);expect((await state()).lines.length-before.lines.length).toBe(1);
  });
  it('retires an old pending graph review after grant removal without decrypting it',async()=>{
-  const before=await state(),old=await retainedOrgReview();await revokeAssistant(group(),{appUserId:scoped.userId!});const unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();
+  const old=await retainedOrgReview();await revokeAssistant(group(),{appUserId:scoped.userId!});const before=await state(),unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();
   expect((await discardOrgActionReview(scoped,{action,contractVersion:1,actionId:old.actionId})).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect(await state()).toEqual(before);
  });
  it('reconciles a lost committed reporting reply without another graph change',async()=>{
