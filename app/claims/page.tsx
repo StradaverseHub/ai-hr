@@ -4,7 +4,7 @@ import {notFound} from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { requireModule } from '@/lib/authz';
 import {ownClaimSubject} from './subject';
-import { getEmployeeClaimTypes, listClaimsForEmployment } from '@/packs/claims/service';
+import { claimRecordFacts, getEmployeeClaimTypes, listClaimsForEmployment } from '@/packs/claims/service';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { ClaimForm, type ClaimDraftPrefill, type ClaimFormType } from '@/components/claim-form';
 import { Button } from '@/components/ui';
@@ -71,6 +71,8 @@ export default async function ClaimsPage({
   // claim is with their manager when it is still sitting in their own list.
   const drafts = allClaims.filter((c) => c.status === 'draft');
   const claims = allClaims.filter((c) => c.status !== 'draft');
+  // The approver's reason on a rejection (stamped on the rejection event), read by the claims owner's own reader.
+  const rejectReasons = await claimRecordFacts(s, claims.filter((c) => c.status === 'rejected').map((c) => c.id));
   const editing = sp.draft ? drafts.find((d) => d.id === sp.draft) : undefined;
   if(selectedQuery.employmentId&&sp.draft!==undefined&&!editing)notFound();
   const draftPrefill: ClaimDraftPrefill | undefined = editing
@@ -255,6 +257,9 @@ export default async function ClaimsPage({
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[c.status] ?? 'bg-muted text-muted-foreground'}`}>
                       {t(`status_${c.status}` as 'status_pending')}
                     </span>
+                    {c.status === 'rejected' && rejectReasons.get(c.id)?.rejectReason && (
+                      <div className="mt-1 max-w-xs break-words text-xs text-muted-foreground">{t('rejectReasonShown', { reason: rejectReasons.get(c.id)!.rejectReason! })}</div>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     {c.status === 'pending' && (

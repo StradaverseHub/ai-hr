@@ -29,3 +29,44 @@ Public recovery commits its exact request/context before acknowledging it, then 
 ## Acceptance and limits
 
 Verify actual owner login/MFA/logout, browser and native expiry/revocation, a second organization with the same username, role/company refusals, verified SMTP receipt, password recovery and invitation enrollment. Rehearse database/key restore in an isolated installation. On-prem needs customer DNS/TLS and phone reachability via local network/VPN; signed company setup files do not install a CA or bypass TLS. The standard binary expects a certificate trusted by the phone’s system store. A registered DNS name with a publicly trusted certificate can resolve privately and use DNS-based issuance. A private-CA Android deployment needs a separately reviewed, domain-scoped enterprise app trust configuration; adding a user CA alone is insufficient for modern Android defaults ([Android documentation](https://developer.android.com/privacy-and-security/security-config)). Login/MFA require no external identity provider; mail delivery can use an internal relay. Physical device, blocked-egress, restored-state and production owner acceptance must each be recorded separately from local tests. Enterprise federation/passkeys and legacy-service removal are separate work.
+
+## Request abuse protection
+
+Apply migration `0613_request_abuse_budgets` before the server version using it. Mobile API budgets
+are shared PostgreSQL token buckets, scoped by authenticated tenant/user and read/write class.
+Reads allow a burst of 180 with a three-per-second refill; writes allow 30 with a half-per-second
+refill. Device-registration requests additionally allow five with a five-per-hour refill. Local
+admission caps outstanding mobile requests at 24 (12 per actor, 16 per trusted source)
+and auth requests at eight (four per trusted source) per process. These are
+resource limits, not authorization or an attestation verdict. A failed shared budget store returns
+503; exhausted capacity returns 429 and Retry-After. Existing v1 error codes remain compatible.
+
+Source fairness requires a reviewed ingress. Include `abuse-http.conf` once under nginx `http {}`,
+and the matching `abuse-auth-location.conf` / `abuse-mobile-location.conf` inside the installation's
+existing proxy locations. Preserve existing canonical host/protocol, TLS and proxy settings. Set a
+10-second `client_header_timeout` and a bounded `keepalive_timeout` at the server level. Start with
+the supplied bounded defaults and measure legitimate shared-office/mobile-carrier NAT bursts before
+widening rollout. These snippets are installation inputs, not evidence that a live proxy uses them.
+
+Only after verifying that the public ingress OVERWRITES `X-Aihr-Request-Source`, strips a forged
+client value and has no reachable bypass to the application listener, set
+`AIHR_TRUST_REQUEST_SOURCE=1` in private server configuration and restart the accepted server build.
+Never infer this setting from an incoming header. For a tunnel/proxy, configure real client-IP
+restoration only for its verified source networks; `$remote_addr` otherwise remains the immediate
+peer and may group all users together. Do not trust arbitrary X-Forwarded-For or enable trust merely
+to avoid that grouping. Keep the application listener private/loopback.
+With trust enabled, a missing, malformed or multi-address source header refuses admission with 503;
+it cannot silently disable the source budget.
+
+With verified source admission, shared budgets allow 60 session operations per source/minute and
+12 invitation/recovery starts per source/minute; mobile ingress allows 180 per source/minute.
+Password/MFA/target-account limits remain independent and shared across distributed sources.
+Installation-global login/recovery/invitation ceilings remain the compatibility fallback while
+source trust is disabled. They are skipped only by the server route after source admission succeeds,
+so public input cannot choose to bypass them. Their availability limitations therefore remain until
+actual ingress verification and activation. No active endpoint can assume source trust from docs.
+
+Acceptance: `nginx -t`, local/private/public path comparison, forged forwarding/source headers,
+slow/oversized bodies, parallel users behind a shared NAT, noisy and quiet tenants, correct 429 retry
+behavior, and database-store outage. Use synthetic users and a bounded staging load budget. Retain
+before/after configuration and results privately. Do not stress employee accounts or production.

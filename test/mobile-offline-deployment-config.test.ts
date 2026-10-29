@@ -1,0 +1,250 @@
+/** Offline deployment configuration and trusted-port assembly: real per-request env reads, catalog readiness, SQL/RLS,
+ * commit guards and rollback. Keyless (owner decision D16): no signing key, issuer registry or rotation is configured or
+ * read; the issued record is the authority. Device keys are generated in-process; enrollment proof is synthetic. The
+ * assembly builds the production snapshot port per request from the deployment (window, permit count, target: one
+ * owner); the test only observes its calls and can run a hook inside it. The real adjudicator decides uploaded claims. */
+import {createHash,generateKeyPairSync,randomBytes,randomUUID,sign} from 'node:crypto';
+import cbor from 'cbor';
+import {eq,sql} from 'drizzle-orm';
+import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import * as S from '../db/schema';
+import type {SessionContext} from '../db/client';
+import {hireEmployee} from '../core/org';
+import {createAppleEnrollmentService} from '../core/mobile-apple-enrollment';
+import type {OfflineContextIssuePorts} from '../core/mobile-offline-context';
+import {readMobileOfflineDeployment,isMobileOfflineStorageReady} from '../core/mobile-offline-rollout';
+import {createDeployedOfflineClockOperations} from '../lib/mobile-api/deployed-offline-clock';
+import {offlineClockContextClientData,parseOfflineClockContextJson,type OfflineClockContextData} from '../lib/mobile-offline-context';
+import {offlineClockClaimClientData,type OfflineClockClaimData} from '../lib/mobile-offline-clock';
+import * as attendance from '../packs/attendance/service';
+import {setAttendancePolicy} from '../packs/attendance/service';
+import {adminCtx,closeAll,createAppUser,harnessSnapshot,owner,resetDb,seedBase,type Base} from './harness';
+import {installOfflineDraftForWorker} from './helpers/mobile-offline-draft';
+import {installCustodyDraftForWorker} from './helpers/mobile-custody-draft';
+const apiOrigin='https://hr.example.com',appId='ABCDEFGHIJ.ai.hr';
+const ios={apiOrigin,target:{platform:'ios',appId,environment:'production',requiredMetadata:null}};
+const android={apiOrigin,target:{platform:'android',packageName:'ai.hr',certificateDigests:[Buffer.alloc(32,1).toString('base64')],versionCodes:['4'],securityLevels:['tee'],provisioningMetadata:'allow_legacy',minimumOsVersion:null,minimumOsPatchLevel:null,minimumVendorPatchLevel:null,minimumBootPatchLevel:null}};
+const androidPolicy={version:1,minimumDeviceIntegrity:'device',licensing:'licensed',maxTokenAgeMs:60000,allowedFutureSkewMs:1000,locationSignals:{mock:'deny_reported',simulated:'deny_reported',accessory:'allow'}};
+const ENV=['AIHR_MOBILE_OFFLINE_POLICY','AIHR_MOBILE_OFFLINE_SIGNING_KEY','AIHR_MOBILE_CLOCK_POLICY','AIHR_MOBILE_ENROLLMENT_POLICY'];
+let base:Base,restore:(()=>Promise<void>)|undefined,restoreCustody:(()=>Promise<void>)|undefined;
+beforeAll(async()=>{restoreCustody=await installCustodyDraftForWorker();restore=await installOfflineDraftForWorker();});
+// Observe the real port the assembly builds (and run a hook inside it); the values are never replaced.
+const realPort=attendance.offlineClockSnapshotPort,snapshot=vi.fn<OfflineContextIssuePorts['snapshot']>(async()=>undefined),deployments:unknown[]=[];
+let hook:(()=>void)|null=null;
+vi.spyOn(attendance,'offlineClockSnapshotPort').mockImplementation(deployment=>{deployments.push(deployment);const port=realPort(deployment);
+ return async(...args)=>{const run=hook;hook=null;run?.();await snapshot(...args);return port(...args);};});
+beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','synthetic-offline-deployment-fixture-secret-2026');for(const name of ENV)vi.stubEnv(name,'');snapshot.mockClear();deployments.length=0;hook=null;await resetDb();base=await seedBase();});
+/** The company's policy row through its own writer, then 0647's switch (the snapshot owner reads both). */
+async function offlineOn(enabled=true){
+ await setAttendancePolicy(adminCtx(base),{companyId:base.companyId,workStart:'09:00',workEnd:'18:00',breakMinutes:60,lateAfter:'09:15',halfDayBefore:'13:00',workingDays:[1,2,3,4,5]});
+ await owner.db.execute(sql`update attendance_policy set offline_clocking_enabled=${enabled} where company_id=${base.companyId}::uuid`);
+}
+afterAll(async()=>{try{await resetDb();await restore?.();await restoreCustody?.();}finally{vi.unstubAllEnvs();await closeAll();}});
+/** The pre-D16 issuer facts an old policy may still carry; the strict schema now refuses them. */
+const retiredIssuer={keyId:'a'.repeat(64),publicKey:'A'.repeat(43),validFrom:1,validUntil:8640000000000000,revoked:false};
+async function fixture(){
+ const e=await hireEmployee(adminCtx(base),{person:{fullName:'Offline deployment employee',primaryEmail:randomUUID()+'@deploy.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2024-01-01'}),userId=await createAppUser(base.tenantId,e.personId,'employee');
+ const ctx:SessionContext={tenantId:base.tenantId,userId,personId:e.personId,roles:['employee'],grants:[{role:'employee',companyId:base.companyId}],entitlements:harnessSnapshot(base.tenantId)};
+ const pair=generateKeyPairSync('ec',{namedCurve:'prime256v1'}),jwk=pair.publicKey.export({format:'jwk'}),vendorKeyId=createHash('sha256').update(Buffer.concat([Buffer.from([4]),Buffer.from(jwk.x!,'base64url'),Buffer.from(jwk.y!,'base64url')])).digest('base64');
+ const enrollment=createAppleEnrollmentService(ios,{verifyProof:async()=>({publicKey:pair.publicKey,keyId:vendorKeyId,environment:'production',metadata:{status:'unavailable'},receipt:Buffer.from('synthetic'),receiptVerification:'not_checked',revocation:'not_checked'})});
+ const intent={employmentId:e.employmentId,requestId:randomUUID(),appInstallationId:randomUUID()},begin=await enrollment.begin(ctx,intent);
+ const keyId=(await enrollment.complete(ctx,{...intent,challengeId:begin.challenge.id,vendorKeyId,attestation:Buffer.from('synthetic')})).keyId;
+ const [key]=await owner.db.select().from(S.mobileIntegrityKey).where(eq(S.mobileIntegrityKey.id,keyId));
+ const request=()=>({employmentId:e.employmentId,request:{requestId:randomUUID(),requestNonce:randomBytes(32).toString('base64url'),appInstallationId:intent.appInstallationId,keyId}});
+ return {e,ctx,key,pair,request,snapshot,ops:createDeployedOfflineClockOperations('ios'),onSnapshot:(next:()=>void)=>{hook=next;}};
+}
+type Fixture=Awaited<ReturnType<typeof fixture>>;
+const policyFor=(f:Fixture,overrides:Record<string,unknown>={})=>({version:1,mode:'active',windowMs:86400000,permitCount:2,maximumIssuesPerHour:4,
+ photoRetentionMs:2592000000,entries:[{tenantId:base.tenantId,companyId:base.companyId,actorIds:[f.ctx.userId]}],...overrides});
+const clockFor=(f:Fixture,platforms:Record<string,unknown>={ios:{configuration:ios},android:null},actorIds=[f.ctx.userId])=>JSON.stringify({version:1,entries:[{tenantId:base.tenantId,companyId:base.companyId,actorIds,legacySelfService:'allow_unverified',platforms}]});
+function configure(f:Fixture,overrides:Record<string,unknown>={}){
+ vi.stubEnv('AIHR_MOBILE_CLOCK_POLICY',clockFor(f));vi.stubEnv('AIHR_MOBILE_OFFLINE_POLICY',JSON.stringify(policyFor(f,overrides)));
+}
+const read=(f:Fixture,platform:'ios'|'android'='ios',companyId=base.companyId)=>readMobileOfflineDeployment(platform,f.ctx,companyId);
+const notConfigured={outcome:'unavailable',code:'not_configured'},configurationUnavailable={outcome:'unavailable',code:'configuration_unavailable'};
+async function refused(f:Fixture){await expect(read(f)).rejects.toMatchObject({reason:'configuration_unavailable'});expect(await f.ops.capabilities(f.ctx,f.e.employmentId)).toEqual(configurationUnavailable);}
+async function counts(){
+ const [row]=await owner.db.execute<{contexts:number;permits:number;claims:number;punches:number;issued:number;processed:number}>(sql`select (select count(*) from mobile_offline_context)::int contexts,(select count(*) from mobile_offline_permit)::int permits,
+  (select count(*) from mobile_offline_claim)::int claims,(select count(*) from attendance_punch)::int punches,(select count(*) from domain_event where event_type='mobile.offline.context.issued')::int issued,
+  (select count(*) from domain_event where event_type='mobile.offline.claim.processed')::int processed`);return {...row};
+}
+const contextOf=(raw:string)=>parseOfflineClockContextJson(raw);
+function signedClaim(f:Fixture,context:OfflineClockContextData,sequence:number,previousSha256:string|null){
+ const claim:OfflineClockClaimData={version:1,purpose:'attendance.clock.offline.claim',scope:context.scope,context:{id:context.id,sha256:createHash('sha256').update(offlineClockContextClientData(context)).digest('hex')},permit:context.permits[sequence-1],chain:{sequence,previousSha256},
+  command:{requestId:randomUUID(),action:'out',lat:3,lng:101,accuracy:5,sampledAt:context.issuedAt,photo:null},time:{claimedAt:context.issuedAt,elapsed:{status:'elapsed',minimumNs:'0',maximumNs:'1000000000',continuity:'same_process'}},
+  evidence:{platform:'ios',appId:'ai.hr',appVersion:'1',buildVersion:'4',provider:null,mock:null,simulated:null,accessory:null}};
+ const bytes=Buffer.from(offlineClockClaimClientData(claim)),auth=Buffer.alloc(37);createHash('sha256').update(f.key.appId).digest().copy(auth);auth.writeUInt32BE(sequence,33);
+ const nonce=createHash('sha256').update(auth).update(createHash('sha256').update(bytes).digest()).digest();
+ return {claim,proof:{platform:'ios' as const,assertion:cbor.encode({authenticatorData:auth,signature:sign('sha256',nonce,f.pair.privateKey)}).toString('base64')}};
+}
+/** Wait on the database clock until the claim's first whole proven second has passed (the adjudicator needs one). */
+async function settled(context:{issuedAt:number}){
+ const whole=Math.ceil(context.issuedAt/1000)*1000;
+ await owner.db.execute(sql`select pg_sleep(greatest(0,extract(epoch from (${new Date(whole).toISOString()}::timestamptz-clock_timestamp())))+0.02)`);
+}
+describe('offline deployment configuration',()=>{
+ it('stays off when the policy is absent, before any database, snapshot or vendor work',async()=>{
+  // A leftover pre-D16 key variable changes nothing: the policy alone decides.
+  const f=await fixture();vi.stubEnv('AIHR_MOBILE_CLOCK_POLICY',clockFor(f));vi.stubEnv('AIHR_MOBILE_OFFLINE_SIGNING_KEY','-----BEGIN PRIVATE KEY-----\\nleftover\\n-----END PRIVATE KEY-----');
+  expect(await read(f)).toBeNull();
+  expect(await f.ops.capabilities(f.ctx,f.e.employmentId)).toEqual(notConfigured);expect(await f.ops.issue(f.ctx,f.request())).toEqual(notConfigured);
+  expect(await f.ops.close(f.ctx,{contextId:randomUUID(),closeRequestId:randomUUID(),consumedThrough:0})).toEqual(notConfigured);expect(await f.ops.consume(f.ctx,{})).toEqual(notConfigured);
+  expect(f.snapshot).not.toHaveBeenCalled();expect(await counts()).toMatchObject({contexts:0,permits:0,issued:0});
+  expect(()=>createDeployedOfflineClockOperations('web' as never)).toThrow();expect(deployments).toEqual([]);
+ });
+ it('refuses malformed, out-of-bounds, inconsistent and oversized policy as configuration_unavailable',async()=>{
+  const f=await fixture(),valid=policyFor(f);configure(f);expect(await read(f)).toMatchObject({mode:'active'});
+  const bad:unknown[]=['{','null','[]',{...valid,version:2},{...valid,mode:'paused'},{...valid,extra:true},{...valid,windowMs:72*3600000+1},{...valid,windowMs:59999},{...valid,windowMs:1.5},{...valid,permitCount:0},{...valid,permitCount:33},
+   {...valid,maximumIssuesPerHour:0},{...valid,maximumIssuesPerHour:25},{...valid,photoRetentionMs:3599999},{...valid,photoRetentionMs:366*86400000+1},
+   // Retired by D16: issuer registry and signing key id are unknown keys now, so an old policy fails closed.
+   {...valid,issuers:[retiredIssuer]},{...valid,signingKeyId:retiredIssuer.keyId},{...valid,signingKeyId:retiredIssuer.keyId,issuers:[retiredIssuer]},
+   {...valid,entries:[{...valid.entries[0],actorIds:[f.ctx.userId,f.ctx.userId]}]},{...valid,entries:[valid.entries[0],{...valid.entries[0],actorIds:[randomUUID()]}]},{...valid,entries:[{...valid.entries[0],actorIds:[]}]},
+   {...valid,entries:[{...valid.entries[0],tenantId:'not-a-uuid'}]}];
+  for(const value of bad){vi.stubEnv('AIHR_MOBILE_OFFLINE_POLICY',typeof value==='string'?value:JSON.stringify(value));await refused(f);}
+  // Oversized: a valid policy padded past 262144 UTF-8 bytes is refused before parsing.
+  vi.stubEnv('AIHR_MOBILE_OFFLINE_POLICY',JSON.stringify(valid)+' '.repeat(262144));await refused(f);
+  vi.stubEnv('AIHR_MOBILE_OFFLINE_POLICY',JSON.stringify(valid));expect(await read(f)).toMatchObject({mode:'active'});
+  expect(f.snapshot).not.toHaveBeenCalled();expect(await counts()).toMatchObject({contexts:0});
+ });
+ it('needs no signing key in either mode and never reads AIHR_MOBILE_OFFLINE_SIGNING_KEY (owner decision D16)',async()=>{
+  const f=await fixture();configure(f);const ok=await read(f);
+  expect(ok).toEqual({platform:'ios',mode:'active',apiOrigin,target:{platform:'ios',appId,environment:'production'},clock:expect.anything(),windowMs:86400000,permitCount:2,maximumIssuesPerHour:4,photoRetentionMs:2592000000});
+  // Whatever the retired variable holds (a real Ed25519 key, an EC key, junk or nothing), the deployment is identical.
+  const ed=generateKeyPairSync('ed25519').privateKey.export({type:'pkcs8',format:'pem'}).toString(),ec=generateKeyPairSync('ec',{namedCurve:'prime256v1'}).privateKey.export({type:'pkcs8',format:'pem'}).toString();
+  for(const pem of [ed,ec,'not a key','x'.repeat(5000),'']){vi.stubEnv('AIHR_MOBILE_OFFLINE_SIGNING_KEY',pem);expect(await read(f)).toEqual(ok);}
+  configure(f,{mode:'drain'});expect(await read(f)).toMatchObject({mode:'drain'});
+ });
+ it('requires the actor in both the offline and the platform clock rollouts, which owns origin and target',async()=>{
+  const f=await fixture(),peer=await fixture();configure(f);
+  vi.stubEnv('AIHR_MOBILE_CLOCK_POLICY','');expect(await read(f)).toBeNull();expect(await f.ops.capabilities(f.ctx,f.e.employmentId)).toEqual(notConfigured);
+  vi.stubEnv('AIHR_MOBILE_CLOCK_POLICY',clockFor(f,undefined,[peer.ctx.userId]));expect(await read(f)).toBeNull();
+  const androidOnly={ios:null,android:{configuration:{settings:android,policy:androidPolicy},cloudProjectNumber:'123456789'}};
+  vi.stubEnv('AIHR_MOBILE_CLOCK_POLICY',clockFor(f,androidOnly));expect(await read(f)).toBeNull();
+  expect(await read(f,'android')).toMatchObject({platform:'android',apiOrigin,target:{platform:'android',appId:'ai.hr',environment:null}});
+  vi.stubEnv('AIHR_MOBILE_CLOCK_POLICY','{');await refused(f);
+  vi.stubEnv('AIHR_MOBILE_CLOCK_POLICY',clockFor(f));expect(await read(f,'ios',randomUUID())).toBeNull();
+  vi.stubEnv('AIHR_MOBILE_OFFLINE_POLICY',JSON.stringify(policyFor(f,{entries:[{tenantId:base.tenantId,companyId:base.companyId,actorIds:[peer.ctx.userId]}]})));expect(await read(f)).toBeNull();
+  expect(await f.ops.issue(f.ctx,f.request())).toEqual(notConfigured);
+  // Another actor's employment is refused before any deployment read.
+  configure(f);expect(await f.ops.capabilities(f.ctx,peer.e.employmentId)).toEqual({outcome:'refused',code:'subject_unavailable'});
+  expect(f.snapshot).not.toHaveBeenCalled();expect(await counts()).toMatchObject({contexts:0});
+ });
+ // AI_CONFIG_SECRET stays required: claims and their photos are stored encrypted (the context record is not, D16).
+ it('fails closed when draft 0647 storage or secret storage is not ready',async()=>{
+  const f=await fixture();configure(f);expect(await isMobileOfflineStorageReady(f.ctx)).toBe(true);await read(f);
+  await owner.db.execute(sql`ALTER TABLE mobile_offline_claim DISABLE TRIGGER mobile_offline_claim_ordered`);
+  try{expect(await isMobileOfflineStorageReady(f.ctx)).toBe(false);await refused(f);expect(await f.ops.issue(f.ctx,f.request())).toEqual(configurationUnavailable);}
+  finally{await owner.db.execute(sql`ALTER TABLE mobile_offline_claim ENABLE TRIGGER mobile_offline_claim_ordered`);}
+  expect(await isMobileOfflineStorageReady(f.ctx)).toBe(true);
+  vi.stubEnv('AI_CONFIG_SECRET','');await refused(f);
+  expect(f.snapshot).not.toHaveBeenCalled();expect(await counts()).toMatchObject({contexts:0});
+ });
+ it('sees every environment change on the next call, with no cache',async()=>{
+  const f=await fixture();configure(f);await offlineOn();expect(await read(f)).toMatchObject({windowMs:86400000,mode:'active'});
+  vi.stubEnv('AIHR_MOBILE_OFFLINE_POLICY',JSON.stringify(policyFor(f,{windowMs:3600000,permitCount:8})));expect(await read(f)).toMatchObject({windowMs:3600000,permitCount:8});
+  vi.stubEnv('AIHR_MOBILE_OFFLINE_POLICY',JSON.stringify(policyFor(f,{mode:'drain'})));expect(await read(f)).toMatchObject({mode:'drain'});
+  expect(await f.ops.capabilities(f.ctx,f.e.employmentId)).toMatchObject({outcome:'offline',enabled:false});
+  vi.stubEnv('AIHR_MOBILE_OFFLINE_POLICY','');expect(await read(f)).toBeNull();expect(await f.ops.capabilities(f.ctx,f.e.employmentId)).toEqual(notConfigured);
+ });
+});
+describe('deployed offline clock assembly',()=>{
+ it('issues with the deployment window, permit count and clock-rollout target, and recovers exact retries',async()=>{
+  const f=await fixture();configure(f);await offlineOn();
+  // No issuer registry is advertised (D16): the exact capability shape.
+  expect(await f.ops.capabilities(f.ctx,f.e.employmentId)).toEqual({outcome:'offline',enabled:true,apiOrigin,companyId:base.companyId,windowMs:86400000,permitCount:2});
+  const input=f.request(),issued=await f.ops.issue(f.ctx,input);if(issued.outcome!=='issued')throw new Error('Not issued: '+JSON.stringify(issued));
+  const context=contextOf(issued.context);
+  expect(context.policy.windowMs).toBe(86400000);expect(context.expiresAt-context.issuedAt).toBe(86400000);expect(context.permits).toHaveLength(2);
+  expect(context.target).toEqual({platform:'ios',appId,environment:'production'});expect(context.scope.apiOrigin).toBe(apiOrigin);
+  // The handed-out context is the recorded canonical JSON, with no issuer or signature.
+  expect(Object.keys(JSON.parse(issued.context))).not.toContain('issuer');expect(Object.keys(JSON.parse(issued.context))).not.toContain('signature');
+  expect((await owner.db.select().from(S.mobileOfflineContext))[0].contextJson).toBe(issued.context);
+  expect(await f.ops.issue(f.ctx,input)).toEqual(issued);expect(f.snapshot).toHaveBeenCalledOnce();expect(await counts()).toMatchObject({contexts:1,permits:2,issued:1});
+  // One owner: the port was built from the deployment's own window, permit count and clock-rollout target.
+  // Built per request (issue and its exact retry), always from the same deployment facts.
+  expect(deployments).toEqual(Array(2).fill({target:{platform:'ios',appId,environment:'production'},windowMs:86400000,permitCount:2}));
+  // The open stream is the lease: a second request is refused until it is reconciled.
+  expect(await f.ops.issue(f.ctx,f.request())).toEqual({outcome:'refused',code:'offline_pending'});
+  expect(await f.ops.issue(f.ctx,{employmentId:'not-a-uuid'})).toEqual({outcome:'refused',code:'invalid_request'});
+ });
+ it('refuses issuance cleanly when the trusted snapshot says offline is off, or the company requires a registered device',async()=>{
+  const f=await fixture();configure(f);
+  // No attendance_policy row: the company setting is OFF.
+  expect(await f.ops.capabilities(f.ctx,f.e.employmentId)).toEqual({outcome:'refused',code:'offline_disabled'});
+  expect(await f.ops.issue(f.ctx,f.request())).toEqual({outcome:'refused',code:'offline_disabled'});expect(f.snapshot).toHaveBeenCalledOnce();expect(await counts()).toMatchObject({contexts:0,permits:0,issued:0});
+  await offlineOn(false);expect(await f.ops.issue(f.ctx,f.request())).toEqual({outcome:'refused',code:'offline_disabled'});
+  // Owner decision 5 (2026-10-28): offline on, but the company requires a registered device. Nothing is written.
+  await offlineOn();await owner.db.execute(sql`update attendance_policy set require_registered_device=true where company_id=${base.companyId}::uuid`);
+  expect(await f.ops.issue(f.ctx,f.request())).toEqual({outcome:'refused',code:'device_required'});expect(await counts()).toMatchObject({contexts:0,permits:0,issued:0});
+  await owner.db.execute(sql`update attendance_policy set require_registered_device=false where company_id=${base.companyId}::uuid`);
+  expect((await f.ops.issue(f.ctx,f.request())).outcome).toBe('issued');expect(await counts()).toMatchObject({contexts:1,issued:1});
+ });
+ it('vetoes a deployment change during issuance and rolls back the context, permits, audit and budget',async()=>{
+  const f=await fixture(),input=f.request(),strict={maximumIssuesPerHour:1};configure(f,strict);await offlineOn();
+  const changes:[string,()=>void,unknown][]=[
+   ['drain',()=>vi.stubEnv('AIHR_MOBILE_OFFLINE_POLICY',JSON.stringify(policyFor(f,{...strict,mode:'drain'}))),{outcome:'unavailable',code:'draining'}],
+   ['removed',()=>vi.stubEnv('AIHR_MOBILE_OFFLINE_POLICY',''),notConfigured],
+   ['window',()=>vi.stubEnv('AIHR_MOBILE_OFFLINE_POLICY',JSON.stringify(policyFor(f,{...strict,windowMs:3600000}))),configurationUnavailable],
+   ['permit count',()=>vi.stubEnv('AIHR_MOBILE_OFFLINE_POLICY',JSON.stringify(policyFor(f,{...strict,permitCount:3}))),configurationUnavailable],
+   ['clock rollout',()=>vi.stubEnv('AIHR_MOBILE_CLOCK_POLICY',''),notConfigured],
+   ['retired issuer facts',()=>vi.stubEnv('AIHR_MOBILE_OFFLINE_POLICY',JSON.stringify(policyFor(f,{...strict,signingKeyId:retiredIssuer.keyId,issuers:[retiredIssuer]}))),configurationUnavailable],
+  ];
+  for(const [label,change,expected] of changes){
+   configure(f,strict);f.onSnapshot(change);expect(await f.ops.issue(f.ctx,input),label).toEqual(expected);
+   expect(await counts(),label).toMatchObject({contexts:0,permits:0,issued:0});
+  }
+  // Every vetoed attempt released its admission budget (one per hour), so the same request now issues; a key variable
+  // appearing mid-issuance is not read and vetoes nothing.
+  configure(f,strict);f.onSnapshot(()=>vi.stubEnv('AIHR_MOBILE_OFFLINE_SIGNING_KEY','not a key'));
+  expect((await f.ops.issue(f.ctx,input)).outcome).toBe('issued');expect(await counts()).toMatchObject({contexts:1,permits:2,issued:1});
+ });
+ it('in drain mode recovers exact responses with no key and closes, but refuses new issuance before any snapshot read',async()=>{
+  const f=await fixture();configure(f);await offlineOn();
+  const input=f.request(),issued=await f.ops.issue(f.ctx,input);if(issued.outcome!=='issued')throw new Error('Not issued');
+  configure(f,{mode:'drain'});
+  expect(await f.ops.capabilities(f.ctx,f.e.employmentId)).toMatchObject({outcome:'offline',enabled:false});
+  expect(await f.ops.issue(f.ctx,input)).toEqual(issued);
+  const closed=await f.ops.close(f.ctx,{contextId:issued.contextId,closeRequestId:randomUUID(),consumedThrough:0});expect(closed).toMatchObject({outcome:'closed',reason:'retired',consumedThrough:0});
+  expect(await f.ops.close(f.ctx,{contextId:randomUUID(),closeRequestId:randomUUID(),consumedThrough:0})).toEqual({outcome:'refused',code:'context_unavailable'});
+  // With the lease released, a new request reaches the issuance path and is refused as draining before the snapshot.
+  expect(await f.ops.issue(f.ctx,f.request())).toEqual({outcome:'unavailable',code:'draining'});expect(f.snapshot).toHaveBeenCalledOnce();
+  configure(f);expect((await f.ops.issue(f.ctx,f.request())).outcome).toBe('issued');expect(f.snapshot).toHaveBeenCalledTimes(2);
+  expect(await counts()).toMatchObject({contexts:2,permits:4,issued:2});
+ });
+ it('commits an offline_disabled refusal in drain mode, and vetoes a removed deployment after tentative claim writes',async()=>{
+  const f=await fixture();configure(f);await offlineOn();
+  const issued=await f.ops.issue(f.ctx,f.request());if(issued.outcome!=='issued')throw new Error('Not issued');const context=contextOf(issued.context);
+  configure(f,{mode:'drain'});
+  // The company switched offline OFF after issuance. The refusal commits and advances the stream.
+  await offlineOn(false);
+  const first=await f.ops.consume(f.ctx,signedClaim(f,context,1,null));
+  if(first.outcome!=='processed')throw new Error('No receipt: '+JSON.stringify(first));
+  expect(first.receipt).toMatchObject({outcome:'refused',reason:'offline_disabled',sequence:1,captureId:null});
+  expect(await counts()).toMatchObject({claims:1,punches:0,processed:1});
+  expect((await owner.db.select().from(S.mobileOfflineContext))[0]).toMatchObject({nextSequence:2,closedAt:null});
+  await offlineOn();
+  await settled(context);
+  const next=signedClaim(f,context,2,first.receipt.digest);
+  f.onSnapshot(()=>vi.stubEnv('AIHR_MOBILE_OFFLINE_POLICY',''));
+  expect(await f.ops.consume(f.ctx,next)).toEqual(notConfigured);expect(f.snapshot).toHaveBeenCalledTimes(2);
+  expect(await counts()).toMatchObject({claims:1,punches:0,processed:1});
+  const [stream]=await owner.db.select().from(S.mobileOfflineContext);expect(stream).toMatchObject({nextSequence:2,previousDigest:first.receipt.digest,closedAt:null});
+  expect((await owner.db.select().from(S.mobileIntegrityKey).where(eq(S.mobileIntegrityKey.id,f.key.id)))[0].assertionCounter).toBe(1);
+  configure(f,{mode:'drain'});const retried=await f.ops.consume(f.ctx,next);
+  if(retried.outcome!=='processed')throw new Error('No receipt: '+JSON.stringify(retried));expect(retried.receipt.sequence).toBe(2);
+  expect(await counts()).toMatchObject({claims:2,processed:2});expect((await owner.db.select().from(S.mobileOfflineContext))[0]).toMatchObject({nextSequence:3,closeReason:'exhausted'});
+  expect(await f.ops.consume(f.ctx,next)).toEqual(retried);
+ });
+ it('does not advertise or issue Android without a Google credential, and refuses an iOS key on the Android assembly',async()=>{
+  const f=await fixture();configure(f);await offlineOn();
+  vi.stubEnv('AIHR_MOBILE_CLOCK_POLICY',clockFor(f,{ios:{configuration:ios},android:{configuration:{settings:android,policy:androidPolicy},cloudProjectNumber:'123456789'}}));
+  vi.stubEnv('AIHR_MOBILE_GOOGLE_SERVICE_ACCOUNT','');
+  const issued=await f.ops.issue(f.ctx,f.request());if(issued.outcome!=='issued')throw new Error('Not issued');
+  const ops=createDeployedOfflineClockOperations('android');
+  expect(await ops.capabilities(f.ctx,f.e.employmentId)).toEqual(configurationUnavailable);expect(await ops.issue(f.ctx,f.request())).toEqual(configurationUnavailable);
+  // The Android preparer refuses a key of another platform before any provider work, even with a credential port.
+  const google=createDeployedOfflineClockOperations('android',{androidPlay:{accessToken:async()=>'synthetic-access',transport:async()=>{throw new Error('Unexpected vendor call');}}});
+  expect(await google.consume(f.ctx,signedClaim(f,contextOf(issued.context),1,null),undefined,{playIntegrityToken:'synthetic-play',syncBuildVersion:'4'})).toEqual(configurationUnavailable);
+  expect(await counts()).toMatchObject({claims:0});
+ });
+});

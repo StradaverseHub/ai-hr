@@ -7,7 +7,8 @@ vi.mock('../packs/attendance/service', () => ({
   ClockConflictError: class extends Error {}, CorrectedClockConflictError: class extends Error {},
   ClockLocationError: class extends Error {}, ClockContextChangedError: class extends Error {},
   AttendancePhotoRequiredError: class extends Error {}, GeolocationRequiredError: class extends Error {},
-  OutsideGeofenceError: class extends Error {},
+  OutsideGeofenceError: class extends Error {}, OwnClockEmploymentUnavailableError: class extends Error {},
+  ClockIntegrityRequiredError: class extends Error {}, ClockPolicyUnavailableError: class extends Error {},
 }));
 import { POST } from '../app/api/attendance/clock/route';
 

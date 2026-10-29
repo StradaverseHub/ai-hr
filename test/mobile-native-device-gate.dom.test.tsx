@@ -26,6 +26,8 @@ function deviceFixture(level: number) {
     if (id === 'expo-web-browser') return { openAuthSessionAsync: vi.fn() };
     if (id === 'react-native') return { Platform: { OS: 'ios' }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } };
     if (id === './session-state') return { createSessionState };
+    if (id === './protected-document') return { sweepProtectedDocuments: () => {} };
+    if (id === './push-core') return { releasePushOnExit: async () => undefined };
     if (id === './i18n') return { t: (key: string) => key };
     if (id === './auth') return { hasStoredSession: async () => true, signOut: clearTokens, assertAuthGeneration() {}, workosLogoutUrl: () => null, redirectUri: () => 'aihr://auth/callback' };
     throw new Error(`Unexpected device gate dependency: ${id}`);

@@ -6,6 +6,9 @@
 import type { VerifiedCompanyProfile } from './company-profile';
 import { validCompanyProfile } from '../../lib/mobile-connection';
 export const runtimeConnections = process.env.EXPO_PUBLIC_RUNTIME_CONNECTIONS === '1';
+/** Offline clocking build switch (owner decision 5, 2026-10-28). Default OFF: unless this is exactly '1' the app has no
+ * offline behaviour at all. Even when on, offline also needs the server's offline capabilities (enabled, same apiOrigin). */
+export const offlineClockingBuild = process.env.EXPO_PUBLIC_OFFLINE_CLOCKING === '1';
 let selected: VerifiedCompanyProfile | null = null;
 /** Called only after signature verification and successful session/file cleanup. */
 export function applyCompanyConnection(profile: VerifiedCompanyProfile | null) { selected = profile; }

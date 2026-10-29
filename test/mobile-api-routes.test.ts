@@ -21,7 +21,8 @@ import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { hireEmployee } from '../core/org';
 import { AuthRequiredError } from '../lib/auth-errors';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { mobileRoute } from '../lib/mobile-api/handler';
+import { mobileBinaryRoute, mobileRoute, MOBILE_PUSH_ENROLLMENT_PATH, type MobileBudget } from '../lib/mobile-api/handler';
+import { decodeCursor, refusalOf } from '../lib/mobile-api/v2/common';
 import {
   adminCtx,
   closeAll,
@@ -109,6 +110,7 @@ describe('GET /me', () => {
     const { res, text, body } = await call(getMe, 'me');
     expect(res.status).toBe(200);
     expect(body.apiVersion).toBe('v1');
+    expect(body.actorId).toBe(a.ctx.userId);
     expect(body.employments).toEqual([
       expect.objectContaining({ employmentId: a.employmentId, company: 'Acme Sdn Bhd' }),
     ]);
@@ -308,7 +310,72 @@ describe('mobileRoute — the wrapper every endpoint goes through', () => {
   });
 });
 
-describe('every mobile route goes through mobileRoute (the share-gate bypass depends on it)', () => {
+describe('mobileBinaryRoute — the wrapper for a protected file', () => {
+  const Refused = refusalOf(['not_released']);
+  const pdf = new TextEncoder().encode('%PDF-1.7 synthetic payslip');
+  const req = (path = 'v2/payslips/x/pdf') => new Request(`http://localhost/api/mobile/${path}`);
+  const free: MobileBudget = async () => {};
+
+  it('sends the bytes as a private, uncached attachment of an allowed type', async () => {
+    const h = mobileBinaryRoute(Refused, async () => ({ outcome: 'file' as const, contentType: 'application/pdf' as const, fileName: 'Payslip-2026-03.pdf', bytes: pdf }), {}, async () => adminCtx(base), free);
+    const res = await h(req());
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
+    expect(res.headers.get('content-type')).toBe('application/pdf');
+    expect(res.headers.get('content-disposition')).toBe('attachment; filename="Payslip-2026-03.pdf"');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(pdf);
+  });
+
+  it('never echoes an unsafe file name into the header', async () => {
+    const h = mobileBinaryRoute(Refused, async () => ({ outcome: 'file' as const, contentType: 'application/pdf' as const, fileName: '../"x\r\nset-cookie: a.pdf', bytes: pdf }), {}, async () => adminCtx(base), free);
+    expect((await h(req())).headers.get('content-disposition')).toBe('attachment; filename="document.pdf"');
+  });
+
+  it('refuses to send a disallowed type, an oversized body or bytes that are not a PDF', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const send = (file: Record<string, unknown>, maxBytes?: number) => mobileBinaryRoute(Refused, async () => ({ outcome: 'file', contentType: 'application/pdf', fileName: 'a.pdf', bytes: pdf, ...file }) as never, { maxBytes }, async () => adminCtx(base), free)(req());
+    for (const res of await Promise.all([send({ contentType: 'text/html' }), send({}, 8), send({ bytes: new TextEncoder().encode('<html>not a pdf') }), send({ bytes: new Uint8Array() })])) {
+      expect(res.status).toBe(500);
+      expect(await res.text()).toBe(JSON.stringify({ error: 'internal' }));
+      expect(res.headers.get('content-disposition')).toBeNull();
+    }
+    spy.mockRestore();
+  });
+
+  it('answers a declared refusal as JSON at 200 and an undeclared one as a contract failure', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const ok = await mobileBinaryRoute(Refused, async () => ({ outcome: 'refused' as const, code: 'not_released' as const }), {}, async () => adminCtx(base), free)(req());
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ outcome: 'refused', code: 'not_released' });
+    expect(ok.headers.get('cache-control')).toBe('no-store');
+    const drift = await mobileBinaryRoute(Refused, async () => ({ outcome: 'refused', code: 'other' }) as never, {}, async () => adminCtx(base), free)(req());
+    expect(drift.status).toBe(500);
+    spy.mockRestore();
+  });
+
+  it('maps a credential fault to 401 and a garbage cursor to 400, never 500', async () => {
+    const unauth = await mobileBinaryRoute(Refused, async () => { throw new Error('unreached'); }, {}, async () => { throw new AuthRequiredError('expired'); }, free)(req());
+    expect(unauth.status).toBe(401);
+    const garbage = await mobileRoute(z.object({ ok: z.literal(true) }), async () => { decodeCursor('list', '!!not-a-cursor', z.tuple([z.string()])); return { ok: true as const }; }, async () => adminCtx(base), free)(req('v2/list'));
+    expect(garbage.status).toBe(400);
+    expect(await garbage.json()).toEqual({ error: 'bad_request' });
+  });
+
+  it('meters PDFs 30/hour and push enrollment 10/hour per actor, beside the per-minute budgets', async () => {
+    const calls: unknown[][] = [];
+    const spyBudget: MobileBudget = async (...args) => { calls.push(args); };
+    const ctx = adminCtx(base);
+    await mobileBinaryRoute(Refused, async () => ({ outcome: 'refused' as const, code: 'not_released' as const }), {}, async () => ctx, spyBudget)(req());
+    expect(calls).toContainEqual([['mobile-document', ctx.tenantId, ctx.userId], 30, 3600]);
+    calls.length = 0;
+    await mobileRoute(z.object({ ok: z.literal(true) }), async () => ({ ok: true as const }), async () => ctx, spyBudget)(new Request(`http://localhost/api/mobile/v2${MOBILE_PUSH_ENROLLMENT_PATH}`, { method: 'POST' }));
+    expect(calls).toContainEqual([['mobile-push-enrollment', ctx.tenantId, ctx.userId], 10, 3600]);
+    expect(calls.some((c) => (c[0] as string[])[0] === 'mobile-document')).toBe(false);
+  });
+});
+
+describe('every mobile route goes through mobileRoute or mobileBinaryRoute (the share-gate bypass depends on it)', () => {
   const root = new URL('../app/api/mobile/', import.meta.url).pathname;
   const routes: string[] = [];
   const walk = (dir: string) => {
@@ -327,8 +394,8 @@ describe('every mobile route goes through mobileRoute (the share-gate bypass dep
   it.each(routes.map((r) => [r.slice(root.length)]))('%s', (rel) => {
     const src = stripComments(readFileSync(join(root, rel), 'utf8'));
     const exportsAll = src.match(/^export\s+/gm) ?? [];
-    const exportsWrapped = src.match(/^export const (GET|POST|PUT|PATCH|DELETE) = mobileRoute\(/gm) ?? [];
-    expect(exportsWrapped.length, 'every export is a method handler built by mobileRoute').toBe(exportsAll.length);
+    const exportsWrapped = src.match(/^export const (GET|POST|PUT|PATCH|DELETE) = (mobileRoute|mobileBinaryRoute)\(/gm) ?? [];
+    expect(exportsWrapped.length, 'every export is a method handler built by mobileRoute or mobileBinaryRoute').toBe(exportsAll.length);
     expect(src, 'no route resolves a session itself').not.toMatch(/\bgetSession\b|\bgetMobileSession\b|cookies\(/);
   });
 });

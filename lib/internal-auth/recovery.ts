@@ -12,8 +12,8 @@ type Recovery = { subject: string; version: string };
 export type RecoveryContext = { subject: string; issuer: string; tenantId: string; version: string; email: string; organization: string; username: string };
 /** Public request confirmation never discloses account existence or SMTP readiness. */
 export async function requestRecovery(organization: string, username: string, transport?: MailTransport,
-  dispatch: (attempt: () => Promise<void>) => void | Promise<void> = attempt => attempt()) {
-  await takeRate('recovery-global', 120, 3600_000);
+  dispatch: (attempt: () => Promise<void>) => void | Promise<void> = attempt => attempt(), sourceBudgeted = false) {
+  if (!sourceBudgeted) await takeRate('recovery-global', 120, 3600_000);
   await takeRate(`recovery:${canonicalOrg(organization)}:${username.trim().toLowerCase()}`, 3, 3600_000);
   const c = await credentialByLogin(organization, username);
   if (!c?.enabled || !c.emailVerified) return;

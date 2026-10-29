@@ -1,26 +1,60 @@
-import { useRef } from 'react';
-import { Pressable,TextInput,View } from 'react-native';
+import { useRef,useState } from 'react';
+import { AppState,Platform,Pressable,TextInput,View } from 'react-native';
+import DateTimePicker,{ DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { DesignText as Text } from './design';
 import * as DocumentPicker from 'expo-document-picker';
 import { File,Directory,Paths } from 'expo-file-system';
 import { randomUUID } from 'expo-crypto';
-import { apiPost,type LeaveOptionsResponse,type LeaveCommand } from './api';
+import { apiGet,apiPost,type LeaveOptionsResponse,type LeaveCommand } from './api';
 import { authGeneration,assertAuthGeneration } from './auth';
 import { appendAttachment } from './capture';
 import { useTenantDesign } from './design';
 import { SignInRequiredError,RequestRejectedError } from './errors';
+import { LeaveCommand as LeaveCommandSchema } from '../../lib/mobile-api/contract';
+import { useSubmissionRecovery } from './submission-recovery';
+import {SubmissionJournalFull} from './submission-journal';
 import { t,type MessageKey } from './i18n';
 import { useJourneyDrafts,removeLocalFile,type LeaveDraft,type LocalAttachment } from './journey-drafts';
 import { useSession } from './session';
 import { Button,Card,Muted,Row,fmtDays } from './ui';
 const durationLabels:Record<LeaveCommand['durationType'],MessageKey>={full_day:'fullDay',half_day_am:'halfAM',half_day_pm:'halfPM',hourly:'hourly'};
-export function LeaveRequestForm({options,today,onSubmitted}:{options:LeaveOptionsResponse;today:string;onSubmitted:()=>void}){
+const pad=(n:number)=>String(n).padStart(2,'0');
+/** A calendar date or clock time is the device's LOCAL wall value the person picked; it never passes through UTC. */
+const toPicker=(mode:'date'|'time',value:string|undefined,today:string)=>{
+  if(mode==='date'){const [y,m,d]=(value&&/^\d{4}-\d{2}-\d{2}$/.test(value)?value:today).split('-').map(Number);return new Date(y,m-1,d);}
+  const [h,min]=(value&&/^\d{2}:\d{2}$/.test(value)?value:'09:00').split(':').map(Number);return new Date(2000,0,1,h,min);
+};
+const fromPicker=(mode:'date'|'time',d:Date)=>mode==='date'?`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`:`${pad(d.getHours())}:${pad(d.getMinutes())}`;
+/**
+ * D9 — the platform's own date/time control instead of free text. Android opens the system dialog; iOS shows the
+ * spinner under the field and commits on Done, so a value is never set by merely looking at it.
+ */
+export function PickerField({label,mode,value,today,disabled,onChange}:{label:string;mode:'date'|'time';value:string|undefined;today:string;disabled:boolean;onChange:(value:string)=>void}){
+  const {palette}=useTenantDesign();const [open,setOpen]=useState<Date|null>(null);
+  function show(){
+    if(disabled)return;const seed=toPicker(mode,value,today);
+    if(Platform.OS==='android')DateTimePickerAndroid.open({value:seed,mode,is24Hour:true,onChange:(event,picked)=>{if(event.type==='set'&&picked)onChange(fromPicker(mode,picked));}});
+    else setOpen(open?null:seed);
+  }
+  return <View style={{gap:6,flex:1}}>
+    <Text style={{color:palette.muted,fontSize:14}}>{label}</Text>
+    <Button title={value||t('pickerChoose')} accessibilityLabel={label} kind="quiet" disabled={disabled} onPress={show}/>
+    {open&&Platform.OS!=='android'&&<>
+      <DateTimePicker accessibilityLabel={label} value={open} mode={mode} display="spinner" onChange={(_event,picked)=>{if(picked)setOpen(picked);}}/>
+      <Button title={t('pickerDone')} onPress={()=>{onChange(fromPicker(mode,open));setOpen(null);}}/>
+    </>}
+  </View>;
+}
+export function LeaveRequestForm({options,today,onSubmitted,notices={}}:{options:LeaveOptionsResponse;today:string;onSubmitted:()=>void;notices?:Record<string,{label:string;detail:string|null}>}){
   const {palette,design}=useTenantDesign();const {signOut}=useSession();
   const {leave:draft,putLeave}=useJourneyDrafts();const flight=useRef(false);
+  const recovery=useSubmissionRecovery('leave',options.employmentId??undefined,({command,file})=>{
+    putLeave({employmentId:options.employmentId??undefined,command:LeaveCommandSchema.parse(JSON.parse(command)),document:file,phase:'uncertain',message:t('leaveUncertain')});
+  });
   const selected=options.items.find(o=>o.id===draft?.command.leaveTypeId);
   const pending=draft?.phase==='submitting'||draft?.phase==='previewing';
   const disabled=pending||draft?.phase==='uncertain';
-  function begin(id:string){removeLocalFile(draft?.document);putLeave({phase:'edit',command:{requestId:randomUUID(),leaveTypeId:id,startDate:today,endDate:today,durationType:'full_day'}});}
+  function begin(id:string){removeLocalFile(draft?.document);putLeave({employmentId:options.employmentId??undefined,phase:'edit',command:{requestId:randomUUID(),leaveTypeId:id,startDate:today,endDate:today,durationType:'full_day'}});}
   function edit(patch:Partial<LeaveCommand>){if(!draft||disabled)return;putLeave({...draft,phase:'edit',preview:undefined,message:undefined,command:{...draft.command,...patch,requestId:randomUUID(),overrideConsent:[]}});}
   function checkbox(label:string,value:boolean,change:()=>void){return <Pressable accessibilityRole="checkbox" accessibilityState={{checked:value,disabled:!!disabled}} disabled={disabled} onPress={change} style={{minHeight:48,flexDirection:'row',gap:12,alignItems:'center'}}><View style={{width:24,height:24,borderWidth:1,borderColor:value?palette.accent:palette.border,borderRadius:4,alignItems:'center',justifyContent:'center'}}><Text style={{color:palette.accent}}>{value?'✓':''}</Text></View><Text style={{color:palette.text,flex:1,lineHeight:21}}>{label}</Text></Pressable>;}
   function field(label:string,value:string,change:(value:string)=>void,multiline=false){return <View style={{gap:6,flex:1}}><Text style={{color:palette.muted,fontSize:14}}>{label}</Text><TextInput accessibilityLabel={label} editable={!disabled} value={value} onChangeText={change} multiline={multiline} autoCorrect={multiline} autoCapitalize={multiline?'sentences':'none'} maxLength={multiline?2000:32} placeholderTextColor={palette.muted} style={{color:palette.text,minHeight:48,borderWidth:1,borderColor:palette.border,borderRadius:design.schemaVersion===2?design.composition.layout.radius:design.corners==='soft'?12:4,padding:12,fontSize:16,textAlignVertical:'top'}}/></View>;}
@@ -46,13 +80,44 @@ export function LeaveRequestForm({options,today,onSubmitted}:{options:LeaveOptio
     catch(e){putLeave({...draft,phase:'edit',message:t('genericError')},draft.command.requestId);if(e instanceof SignInRequiredError)void signOut();}finally{flight.current=false;}
   }
   async function submit(){
-    if(!draft||!options.employmentId||flight.current)return;flight.current=true;const owner=authGeneration();
-    putLeave({...draft,phase:'submitting',message:undefined});const form=new FormData();form.append('command',JSON.stringify(draft.command));if(draft.document)appendAttachment(form,'document',draft.document);
-    try{const result=await apiPost('leave-requests',form,{employmentId:options.employmentId});assertAuthGeneration(owner);
+    if(!draft||!options.employmentId||flight.current||!recovery.ready||AppState.currentState!=='active')return;flight.current=true;const owner=authGeneration();
+    let sent=false;
+    let uploadFile:LocalAttachment|undefined;
+    putLeave({...draft,phase:'submitting',message:undefined});
+    try{
+      const staged=await recovery.stage(JSON.stringify(draft.command),draft.document);assertAuthGeneration(owner);
+      uploadFile=staged.file;
+      if(!putLeave({...draft,document:staged.file,phase:'submitting'},draft.command.requestId))return;
+      const form=new FormData();form.append('command',staged.command);if(staged.file)appendAttachment(form,'document',staged.file);
+      sent=true;const result=await apiPost('leave-requests',form,{employmentId:options.employmentId});assertAuthGeneration(owner);
+      await recovery.resolve(draft.command.requestId);assertAuthGeneration(owner);
       if(result.outcome==='accepted'){removeLocalFile(draft.document);putLeave({...draft,phase:'done',document:undefined,message:result.holidayWarning||result.maternityAllowanceWarning?t('requestWarning'):undefined},draft.command.requestId);onSubmitted();}
       else putLeave({...draft,phase:'edit',message:result.message,command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}},draft.command.requestId);
-    }catch(e){putLeave(e instanceof RequestRejectedError?{...draft,phase:'edit',message:t('genericError'),command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}}:{...draft,phase:'uncertain',message:t('leaveUncertain')},draft.command.requestId);if(e instanceof SignInRequiredError)void signOut();}finally{flight.current=false;}
+    }catch(e){
+      let refused=false;
+      if(e instanceof RequestRejectedError&&[400,403,404,413,415,422].includes(e.status))try{await recovery.resolve(draft.command.requestId);refused=true;}catch{}
+      putLeave(refused?{...draft,phase:'edit',message:t('genericError'),command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}}:{...draft,phase:'uncertain',message:t(sent?'leaveUncertain':e instanceof SubmissionJournalFull?'pendingStorageFull':'submissionSaveFailed')},draft.command.requestId);
+      if(e instanceof SignInRequiredError)void signOut();
+    }finally{removeLocalFile(uploadFile);flight.current=false;}
   }
+  async function recover(){
+    if(!draft||!options.employmentId||flight.current)return;flight.current=true;const owner=authGeneration();
+    try{
+      const result=await apiGet('submission-receipt',{kind:'leave',requestId:draft.command.requestId,employmentId:options.employmentId});assertAuthGeneration(owner);
+      if(result.kind!=='leave'||result.requestId!==draft.command.requestId)throw new Error('Unexpected submission receipt');
+      if(result.kind==='leave'&&result.receipt){
+        await recovery.resolve(draft.command.requestId);assertAuthGeneration(owner);
+        if(putLeave({...draft,phase:'done',document:undefined,message:result.receipt.holidayWarning||result.receipt.maternityAllowanceWarning?t('requestWarning'):undefined},draft.command.requestId)){
+          removeLocalFile(draft.document);onSubmitted();
+        }
+      }else if(result.abandoned){
+        await recovery.resolve(draft.command.requestId);assertAuthGeneration(owner);removeLocalFile(draft.document);
+        putLeave({...draft,phase:'edit',document:undefined,message:t('pendingDiscarded'),command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}},draft.command.requestId);
+      }else putLeave({...draft,message:t('leaveUncertain')},draft.command.requestId);
+    }catch(e){putLeave({...draft,message:t('leaveUncertain')},draft.command.requestId);if(e instanceof SignInRequiredError)void signOut();}
+    finally{flight.current=false;}
+  }
+  if(!recovery.ready)return <View>{!!recovery.error&&<><Muted>{t('genericError')}</Muted><Button title={t('retry')} onPress={recovery.reload}/></>}{!recovery.error&&<Muted>{t('loading')}</Muted>}</View>;
   if(!draft)return <View style={{gap:10}}><Text style={{color:palette.text,fontSize:21,fontWeight:'600'}}>{t('requestLeave')}</Text>{options.items.map(o=><Button key={o.id} title={o.name} kind="quiet" onPress={()=>begin(o.id)}/>)}</View>;
   if(draft.phase==='done')return <Card><Text accessibilityRole="header" style={{color:palette.text,fontSize:22,fontWeight:'600'}}>{t('requestRecorded')}</Text>{draft.message&&<Muted>{draft.message}</Muted>}<Button title={t('viewHistory')} onPress={()=>putLeave(null)}/></Card>;
   const reviewMode=draft.phase==='review'||draft.phase==='uncertain'||draft.phase==='submitting';
@@ -61,10 +126,13 @@ export function LeaveRequestForm({options,today,onSubmitted}:{options:LeaveOptio
   return <View style={{gap:16}}>
     <Text style={{color:palette.text,fontSize:23,fontWeight:'600'}}>{selected?.name??t('leaveType')}</Text>
     {selected?.notice&&<Muted>{selected.notice}</Muted>}
+    {selected&&notices[selected.id]&&<View style={{gap:4}}><Text style={{color:palette.text,fontWeight:'600'}}>{notices[selected.id].label}</Text>{notices[selected.id].detail&&<Muted>{notices[selected.id].detail}</Muted>}</View>}
     {draft.message&&<Text accessibilityRole="alert" style={{color:palette.text,lineHeight:23}}>{draft.message}</Text>}
     {reviewMode?<>
       <Row label={t('startDate')} value={draft.command.startDate}/><Row label={t('endDate')} value={draft.command.endDate}/><Row label={t('leaveType')} value={t(durationLabels[draft.command.durationType])}/>
-      {draft.command.durationType==='hourly'?<><Row label={t('fromTime')} value={draft.command.fromTime??'—'}/><Row label={t('toTime')} value={draft.command.toTime??'—'}/><Muted>{t('hourlyReview')}</Muted></>:<Row label={t('deductedDays')} value={fmtDays(draft.preview?.days??null)}/>}
+      {draft.command.durationType==='hourly'&&<><Row label={t('fromTime')} value={draft.command.fromTime??'—'}/><Row label={t('toTime')} value={draft.command.toTime??'—'}/></>}
+      {/* The server previews an hourly window through the rule submission deducts by; an older server sends null. */}
+      {draft.command.durationType==='hourly'&&draft.preview?.days==null?<Muted>{t('hourlyReview')}</Muted>:<Row label={t('deductedDays')} value={fmtDays(draft.preview?.days??null)}/>}
       {!!draft.preview?.unpaidDays&&<Row label={t('unpaidDays')} value={fmtDays(draft.preview.unpaidDays)}/>}
       {draft.document&&<Row label={t('supportingDocument')} value={draft.document.name}/>}
       {draft.command.reason&&<Muted>{draft.command.reason}</Muted>}
@@ -74,15 +142,15 @@ export function LeaveRequestForm({options,today,onSubmitted}:{options:LeaveOptio
       </View>)}
       <Muted>{t('reviewBeforeSubmit')}</Muted>
       <Button title={pending?t('requesting'):draft.phase==='uncertain'?t('retrySameClock'):t('submitRequest')} disabled={!!pending||!!missingConsent||!!blocked} onPress={()=>void submit()}/>
-      {draft.phase==='uncertain'?<Button title={t('checkReceipt')} onPress={onSubmitted} kind="quiet"/>:<Button title={t('editRequest')} disabled={!!pending} kind="quiet" onPress={()=>putLeave({...draft,phase:'edit',command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}})}/>}
+      {draft.phase==='uncertain'?<Button title={t('checkReceipt')} onPress={()=>void recover()} kind="quiet"/>:<Button title={t('editRequest')} disabled={!!pending} kind="quiet" onPress={()=>putLeave({...draft,phase:'edit',command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}})}/>}
     </>:<>
       <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{selected?.durations.map(d=><Button key={d} title={t(durationLabels[d])} kind={d===draft.command.durationType?'primary':'quiet'} disabled={!!disabled} onPress={()=>edit({durationType:d,endDate:d==='full_day'?draft.command.endDate:draft.command.startDate})}/>)}</View>
-      {field(t('startDate'),draft.command.startDate,v=>edit({startDate:v,...(draft.command.durationType!=='full_day'?{endDate:v}:{})}))}
-      {draft.command.durationType==='full_day'&&field(t('endDate'),draft.command.endDate,v=>edit({endDate:v}))}
-      {draft.command.durationType==='hourly'&&<View style={{flexDirection:'row',gap:10}}>{field(t('fromTime'),draft.command.fromTime??'',v=>edit({fromTime:v}))}{field(t('toTime'),draft.command.toTime??'',v=>edit({toTime:v}))}</View>}
+      <PickerField label={t('startDate')} mode="date" value={draft.command.startDate} today={today} disabled={!!disabled} onChange={v=>edit({startDate:v,...(draft.command.durationType!=='full_day'?{endDate:v}:{})})}/>
+      {draft.command.durationType==='full_day'&&<PickerField label={t('endDate')} mode="date" value={draft.command.endDate} today={today} disabled={!!disabled} onChange={v=>edit({endDate:v})}/>}
+      {draft.command.durationType==='hourly'&&<View style={{flexDirection:'row',gap:10}}><PickerField label={t('fromTime')} mode="time" value={draft.command.fromTime} today={today} disabled={!!disabled} onChange={v=>edit({fromTime:v})}/><PickerField label={t('toTime')} mode="time" value={draft.command.toTime} today={today} disabled={!!disabled} onChange={v=>edit({toTime:v})}/></View>}
       {field(t('reason'),draft.command.reason??'',v=>edit({reason:v}),true)}
       {selected?.emergencySplit&&<><Text style={{color:palette.muted}}>{t('emergencyCategory')}</Text><View style={{gap:6}}>{(['illness','personal','other'] as const).map(c=><Button key={c} title={t(c)} kind={draft.command.reasonCategory===c?'primary':'quiet'} disabled={!!disabled} onPress={()=>edit({reasonCategory:c})}/>)}</View>{checkbox(t('unpaidConsent'),!!draft.command.unpaidConsent,()=>edit({unpaidConsent:!draft.command.unpaidConsent}))}</>}
-      {selected?.maternity&&<>{field(t('survivingChildren'),draft.command.survivingChildren==null?'':String(draft.command.survivingChildren),v=>edit({survivingChildren:v===''?undefined:Number(v)}))}{field(t('confinementDate'),draft.command.confinementDate??'',v=>edit({confinementDate:v||undefined}))}</>}
+      {selected?.maternity&&<>{field(t('survivingChildren'),draft.command.survivingChildren==null?'':String(draft.command.survivingChildren),v=>edit({survivingChildren:v===''?undefined:Number(v)}))}<PickerField label={t('confinementDate')} mode="date" value={draft.command.confinementDate} today={today} disabled={!!disabled} onChange={v=>edit({confinementDate:v})}/></>}
       {<View style={{gap:8}}><Text style={{color:palette.text,fontSize:16,fontWeight:'600'}}>{t('supportingDocument')}{selected?.requiresDocument?` · ${selected.mandatoryAfterDays?t('documentAfterDays',{n:selected.mandatoryAfterDays}):t('required')}`:''}</Text><Muted>{t('documentLimit',{n:Math.min(selected?.maxDocBytes??10485760,10485760)/1048576})}</Muted>{draft.document&&<><Muted>{draft.document.name}</Muted><Button title={t('removeDocument')} disabled={!!disabled} kind="quiet" onPress={()=>{removeLocalFile(draft.document);putLeave({...draft,document:undefined,command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}});}}/></>}<Button title={t('chooseDocument')} disabled={!!disabled} kind="quiet" onPress={()=>void pickDocument()}/>{field(t('employeeRemark')+(selected?.employeeRemarkRequired?` · ${t('required')}`:''),draft.command.employeeRemark??'',v=>edit({employeeRemark:v}),true)}</View>}
       <Button title={pending?t('loading'):t('reviewRequest')} disabled={!!pending} onPress={()=>void review()}/>
       <Button title={t('cancel')} disabled={!!pending} kind="quiet" onPress={()=>{removeLocalFile(draft.document);putLeave(null);}}/>

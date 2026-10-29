@@ -7,7 +7,7 @@ import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-
 import { todayInKualaLumpur } from '@/packs/leave/service';
 import { myUpcomingLeave, ownLeaveApprovalTrails, ownLeaveCancellations, ownLeaveRejections } from '@/core/my-leave';
 import { type UpcomingLeaveRow } from '@/components/leave/upcoming-leave';
-import { LEAVE_HISTORY_TABS, applicationDateOutcomeRows, approvalProgress, approverKindLabelKey, approverLine, cancellationLines, isPartiallyApproved, resolveHistoryTab, type HistoryLineDeps, type LeaveHistoryTab } from '@/lib/my-leave-history';
+import { LEAVE_HISTORY_TABS, applicationDateOutcomeRows, approvalProgress, approverKindLabelKey, approverLine, cancellationLines, isPartiallyApproved, ownLeaveWithdrawable, resolveHistoryTab, type HistoryLineDeps, type LeaveHistoryTab } from '@/lib/my-leave-history';
 import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import { Card } from '@/components/ui';
 import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
@@ -300,10 +300,7 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
     // Edit/cancel-by-status (item c9a19e34) + Cancel-dates (R5 Build #2): the same gates the old inline
     // list applied — every row here is the viewer's OWN (see the `mine` filter above).
     const actions =
-      r.status === 'pending' &&
-      r.parentGroupId == null &&
-      r.typeCode !== 'EMERGENCY' &&
-      r.typeCode !== 'REPLACEMENT' ? (
+      ownLeaveWithdrawable(r) ? (
         <>
           <EditLeaveDialog
             leaveRequestId={r.id}

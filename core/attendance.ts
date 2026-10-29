@@ -1,6 +1,7 @@
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 import {attendancePolicyAttestedRawTrace} from '../lib/attendance-policy-attested-trace';
+import {assessGeofence,type GeofenceAssessment} from '../lib/geofence-assessment';
 import {attendancePolicyUnclockedWorkDates,validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '../lib/attendance-policy-unclocked-work';
 import {perRowAttendanceBreakMinutes} from '../lib/attendance-break-count';
 import {attendancePolicyClockPlacement,attendancePolicyWorkPlacement,attendancePolicySchedulePlacement,type PolicyClockPlacement,type PolicyWorkPlacement,type PolicySchedulePlacement} from './attendance-policy-schedule';
@@ -215,6 +216,11 @@ export class GeolocationRequiredError extends Error {
   }
 }
 
+/** Same typed result is used by preview and every enforced punch writer. */
+export class GeofenceQualityError extends GeolocationRequiredError {
+  constructor(public readonly assessment:GeofenceAssessment){super();this.name='GeofenceQualityError';}
+}
+
 /** Thrown when geofencing is enabled and the employee's current position is outside every assigned
  *  site's radius (or they have zero active assigned sites — fail-closed). Carries enough context for the
  *  caller to write the attendance.geofence.blocked event in a SEPARATE transaction after this one rolls
@@ -238,6 +244,8 @@ export class OutsideGeofenceError extends Error {
        */
       radiusM: number | null;
       punch: 'in' | 'out';
+      accuracyM?: number;
+      reason?: 'outside_site'|'no_assigned_site';
     },
   ) {
     super(
@@ -256,14 +264,42 @@ type GeofenceCheck =
       clockingLocationId: string | null;
       distanceM: number | null;
       radiusM: number;
+      assessment:GeofenceAssessment;
     };
+
+/** The ONE owner of "which sites count" for an enforced geofence (r423, see resolveGeofence): assigned to the employment,
+ *  not archived, open to `companyId` (the employment's current company). resolveGeofence matches against
+ *  exactly these rows; the offline context snapshot signs them. Unordered: callers that compare sort by id.
+ *  A null-radius row is returned as stored (it can never match); a caller that cannot represent it filters. */
+export function assignedClockingSitesTx(tx: Tx, employmentId: string, companyId: string) {
+  return tx
+    .select({
+      id: clockingLocation.id,
+      name: clockingLocation.name,
+      lat: clockingLocation.lat,
+      lng: clockingLocation.lng,
+      radiusM: clockingLocation.radiusM,
+    })
+    .from(employeeClockingLocation)
+    .innerJoin(clockingLocation, eq(clockingLocation.id, employeeClockingLocation.clockingLocationId))
+    .where(
+      and(
+        eq(employeeClockingLocation.employmentId, employmentId),
+        isNull(clockingLocation.archivedAt),
+        sql`exists (select 1 from clocking_location_company gc
+                    where gc.clocking_location_id = ${clockingLocation.id} and gc.company_id = ${companyId})`,
+      ),
+    );
+}
 
 /**
  * Resolve the geofence outcome for one punch. When geofencing is OFF, never queries the assignment
  * join or computes a distance (ADR-0070 §8 — keeps the non-enforced hot path lean); stamps raw
  * coordinates only. When ON: loads the employment's active assigned sites and either returns the passing
  * match or THROWS OutsideGeofenceError (zero sites or outside every radius — fail-closed). Missing
- * coordinates while enforced THROWS GeolocationRequiredError before any query.
+ * coordinates or uncertainty while enforced THROWS GeolocationRequiredError.
+ * M03: every spatial comparison below includes reported uncertainty; an optional company cap is an
+ * additional restriction, never an enlargement of a site's radius. Provider authenticity is separate.
  *
  * ── 1fff489c: PER-SITE RADII. THIS IS A BEHAVIOUR CHANGE, NOT A COLUMN MOVE. ──────────────────────────
  *
@@ -276,7 +312,7 @@ type GeofenceCheck =
  *
  * The old logic would have picked A (nearest), compared 300 m against the employee radius, and refused a
  * punch that site B plainly authorises. The rule is therefore now "pass if ANY assigned active site has
- * distance ≤ its effective radius", and the nearest is computed ONLY to populate the refusal payload —
+ * distance + reported uncertainty ≤ its effective radius", and the nearest is computed ONLY to populate the refusal payload —
  * "you are 850 m from the nearest approved site" is still the most useful thing to tell somebody who has
  * been refused, even though nearness no longer decides anything.
  *
@@ -300,7 +336,7 @@ type GeofenceCheck =
  */
 export async function resolveGeofence(
   tx: Tx,
-  p: { employmentId: string; date: string; time: string; lat?: number; lng?: number; punch: 'in' | 'out'; skip?: boolean },
+  p: { employmentId: string; date: string; time: string; lat?: number; lng?: number; accuracy?:number; punch: 'in' | 'out'; skip?: boolean },
 ): Promise<GeofenceCheck> {
   if (p.skip) return { enforced: false, lat: null, lng: null };
   const [emp] = await tx
@@ -313,65 +349,36 @@ export async function resolveGeofence(
   if (!enabled) {
     return { enforced: false, lat: p.lat ?? null, lng: p.lng ?? null };
   }
-  if (p.lat == null || p.lng == null || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) {
-    throw new GeolocationRequiredError();
-  }
+  const [policy]=await tx.select({maximum:attendancePolicy.geofenceMaximumAccuracyM}).from(attendancePolicy)
+    .where(eq(attendancePolicy.companyId,emp!.companyId)).limit(1);
 
-  const sites = await tx
-    .select({
-      id: clockingLocation.id,
-      lat: clockingLocation.lat,
-      lng: clockingLocation.lng,
-      radiusM: clockingLocation.radiusM,
-    })
-    .from(employeeClockingLocation)
-    .innerJoin(clockingLocation, eq(clockingLocation.id, employeeClockingLocation.clockingLocationId))
-    .where(
-      and(
-        eq(employeeClockingLocation.employmentId, p.employmentId),
-        isNull(clockingLocation.archivedAt),
-        sql`exists (select 1 from clocking_location_company gc
-                    where gc.clocking_location_id = ${clockingLocation.id} and gc.company_id = ${emp!.companyId})`,
-      ),
-    );
+  const sites = await assignedClockingSitesTx(tx, p.employmentId, emp!.companyId);
 
-  /** The nearest site of ALL of them — for the refusal payload only. */
-  let nearest: { id: string; distanceM: number; radiusM: number | null } | null = null;
-  /** The nearest site that actually PASSES its own effective radius — the decision. */
-  let match: { id: string; distanceM: number; radiusM: number } | null = null;
-
-  for (const s of sites) {
-    const distanceM = haversineMetres(p.lat, p.lng, s.lat, s.lng);
-    const effectiveRadiusM = s.radiusM;
-    if (!nearest || distanceM < nearest.distanceM) {
-      nearest = { id: s.id, distanceM, radiusM: effectiveRadiusM };
-    }
-    if (effectiveRadiusM == null || distanceM > effectiveRadiusM) continue;
-    if (!match || distanceM < match.distanceM) {
-      match = { id: s.id, distanceM, radiusM: effectiveRadiusM };
-    }
-  }
-
-  if (!match) {
+  const assessment=assessGeofence(p,sites,policy?.maximum??null,haversineMetres);
+  if(assessment.outcome==='location_required'||assessment.outcome==='invalid_location'||assessment.outcome==='poor_accuracy')
+    throw new GeofenceQualityError(assessment);
+  if (assessment.outcome!=='pass') {
     throw new OutsideGeofenceError({
       employmentId: p.employmentId,
       date: p.date,
       time: p.time,
-      lat: p.lat,
-      lng: p.lng,
-      nearestLocationId: nearest?.id ?? null,
-      distanceM: nearest ? Math.round(nearest.distanceM) : null,
-      radiusM: nearest?.radiusM ?? null,
+      lat: p.lat!,
+      lng: p.lng!,
+      nearestLocationId: assessment.siteId,
+      distanceM: assessment.distanceM==null?null:Math.round(assessment.distanceM),
+      radiusM: assessment.radiusM,
+      accuracyM:p.accuracy!,reason:assessment.outcome,
       punch: p.punch,
     });
   }
   return {
     enforced: true,
-    lat: p.lat,
-    lng: p.lng,
-    clockingLocationId: match.id,
-    distanceM: Math.round(match.distanceM),
-    radiusM: match.radiusM,
+    lat: p.lat!,
+    lng: p.lng!,
+    clockingLocationId: assessment.siteId!,
+    distanceM: Math.round(assessment.distanceM!),
+    radiusM: assessment.radiusM!,
+    assessment,
   };
 }
 
@@ -418,6 +425,27 @@ const toMinutes = (t: string): number => {
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
 };
+
+/** Sole owner of the writers' minute-ordering refusals: checkInTx/checkOutTx throw `new Error(message)`, and the
+ *  clock planner (core/attendance-clock.ts) evaluates the same predicate before any write, so plan and apply
+ *  cannot disagree. Inputs are the day's live (non-voided) punch times and its aggregate check-in; null = in order. */
+export function clockPunchOrderRefusal(p: {
+  direction: 'in' | 'out'; time: string; preciseOrder?: boolean; crossesMidnight: boolean; durationOnly?: boolean;
+  dayExists: boolean; punchTimes: readonly string[]; checkInAt: string | null;
+}): string | null {
+  if (p.preciseOrder) return null;
+  const latest = p.punchTimes.reduce<string | null>((a, b) => (a == null || toMinutes(b) > toMinutes(a) ? b : a), null);
+  if (p.direction === 'in') {
+    // R45: on a non-cross-midnight day a later clock-in must follow every punch already recorded that day.
+    return p.dayExists && !p.crossesMidnight && !p.durationOnly && latest != null && toMinutes(p.time) <= toMinutes(latest)
+      ? 'Each clocking must be later than the previous one' : null;
+  }
+  // Order against the latest punch, or a legacy row's check-in that predates the punch table.
+  const anchor = latest ?? p.checkInAt;
+  if (!p.crossesMidnight && !p.durationOnly && anchor != null && toMinutes(p.time) <= toMinutes(anchor)) return 'Check-out must be after check-in';
+  if (anchor != null && toMinutes(p.time) === toMinutes(anchor)) return 'Check-out must differ from check-in';
+  return null;
+}
 
 /** ISO weekday (1=Mon … 7=Sun) of a YYYY-MM-DD date. */
 export const isoWeekday = (iso: string): number => {
@@ -1881,7 +1909,7 @@ export async function payableHoursForCycle(
   return payableMinutes / 60;
 }
 
-export type GeoInput = { lat: number; lng: number };
+export type GeoInput = { lat: number; lng: number;accuracy?:number };
 
 /** Map a resolved geofence outcome onto the attendance_punch geo columns (per-punch capture, ADR-0070 parity). */
 function punchGeoValues(geo: GeofenceCheck) {
@@ -2038,7 +2066,7 @@ function captureAttendanceContext(ctx: SessionContext): SessionContext {
 
 export async function checkInTx(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; deviceGateExempt?: boolean; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; deviceGateExempt?: boolean; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean; method?: 'web' | 'mobile_offline' },
   existingTx?: Tx,
 ) {
   ctx = captureAttendanceContext(ctx); p = structuredClone(p);
@@ -2069,17 +2097,18 @@ export async function checkInTx(
 
     // R45: a SECOND (or later) clock-in of the day is now allowed (multiple clocking). Keep punches monotonic
     // on a non-cross-midnight day: a new clocking must be later than every punch already recorded today.
-    if (existing && !sched.crossesMidnight && !sched.durationOnly && !p.preciseOrder) {
-      const [last] = await tx
+    // The rule itself is clockPunchOrderRefusal's; the latest punch is read only where it can refuse.
+    const [last] = existing && !sched.crossesMidnight && !sched.durationOnly && !p.preciseOrder
+      ? await tx
         .select({ punchAt: attendancePunch.punchAt })
         .from(attendancePunch)
         .where(and(eq(attendancePunch.attendanceId, existing.id), isNull(attendancePunch.voidedAt)))
         .orderBy(desc(attendancePunch.punchAt))
-        .limit(1);
-      if (last && toMinutes(p.time) <= toMinutes(last.punchAt)) {
-        throw new Error('Each clocking must be later than the previous one');
-      }
-    }
+        .limit(1)
+      : [];
+    const inOrder = clockPunchOrderRefusal({ direction: 'in', time: p.time, preciseOrder: p.preciseOrder, crossesMidnight: sched.crossesMidnight,
+      durationOnly: sched.durationOnly, dayExists: !!existing, punchTimes: last ? [last.punchAt] : [], checkInAt: existing?.checkInAt ?? null });
+    if (inOrder) throw new Error(inOrder);
 
     // ADR-0070: resolve the geofence outcome BEFORE writing. Throws (rolling back this transaction, no
     // row/event written) when enforced and outside every assigned site — the caller catches it outside
@@ -2090,6 +2119,7 @@ export async function checkInTx(
       time: p.time,
       lat: p.geo?.lat,
       lng: p.geo?.lng,
+      accuracy:p.geo?.accuracy,
       punch: 'in',
       // r423 — a time HR typed in has no phone position behind it: never compared with a location.
       skip: p.manual,
@@ -2116,7 +2146,7 @@ export async function checkInTx(
           checkInDistanceM: geo.enforced ? geo.distanceM : null,
           checkInGeofenceStatus: geo.enforced ? 'pass' : 'not_enforced',
           checkInRadiusM: geo.enforced ? geo.radiusM : null,
-          checkInMethod: 'web',
+          checkInMethod: p.method ?? 'web',
         })
         .returning({ id: attendance.id });
       attendanceId = row.id;
@@ -2131,7 +2161,7 @@ export async function checkInTx(
       attendanceDate: p.date,
       punchAt: p.time,
       direction: 'in',
-      method: 'web',
+      method: p.method ?? 'web',
       clockCaptureId: p.clockCaptureId,
       ...punchGeoValues(geo),
     });
@@ -2183,7 +2213,7 @@ export async function checkIn(
 
 export async function checkOutTx(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; deviceGateExempt?: boolean; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput; deviceToken?: string; deviceGateExempt?: boolean; clockCaptureId?: string; preciseOrder?: boolean; manual?: boolean; method?: 'web' | 'mobile_offline' },
   existingTx?: Tx,
 ) {
   ctx = captureAttendanceContext(ctx); p = structuredClone(p);
@@ -2242,15 +2272,9 @@ export async function checkOutTx(
       .select({ punchAt: attendancePunch.punchAt })
       .from(attendancePunch)
       .where(and(eq(attendancePunch.attendanceId, rec.id), isNull(attendancePunch.voidedAt)));
-    const anchor = existingPunches.length
-      ? existingPunches.reduce((a, b) => (toMinutes(b.punchAt) > toMinutes(a.punchAt) ? b : a)).punchAt
-      : rec.checkInAt;
-    if (!p.preciseOrder && !sched.crossesMidnight && !sched.durationOnly && anchor != null && toMinutes(p.time) <= toMinutes(anchor)) {
-      throw new Error('Check-out must be after check-in');
-    }
-    if (!p.preciseOrder && anchor != null && toMinutes(p.time) === toMinutes(anchor)) {
-      throw new Error('Check-out must differ from check-in');
-    }
+    const outOrder = clockPunchOrderRefusal({ direction: 'out', time: p.time, preciseOrder: p.preciseOrder, crossesMidnight: sched.crossesMidnight,
+      durationOnly: sched.durationOnly, dayExists: true, punchTimes: existingPunches.map((punch) => punch.punchAt), checkInAt: rec.checkInAt });
+    if (outOrder) throw new Error(outOrder);
 
     // ADR-0070: resolve the geofence outcome for the CHECK-OUT punch — independent of the check-in punch's
     // status/radius (a mid-day toggle or radius change is representable; each punch freezes its own).
@@ -2260,6 +2284,7 @@ export async function checkOutTx(
       time: p.time,
       lat: p.geo?.lat,
       lng: p.geo?.lng,
+      accuracy:p.geo?.accuracy,
       punch: 'out',
       skip: p.manual,
     });
@@ -2292,7 +2317,7 @@ export async function checkOutTx(
       attendanceDate: p.date,
       punchAt: p.time,
       direction: 'out',
-      method: 'web',
+      method: p.method ?? 'web',
       clockCaptureId: p.clockCaptureId,
       ...punchGeoValues(geo),
     });
@@ -2307,7 +2332,7 @@ export async function checkOutTx(
         checkOutDistanceM: geo.enforced ? geo.distanceM : null,
         checkOutGeofenceStatus: geo.enforced ? 'pass' : 'not_enforced',
         checkOutRadiusM: geo.enforced ? geo.radiusM : null,
-        checkOutMethod: 'web',
+        checkOutMethod: p.method ?? 'web',
       })
       .where(eq(attendance.id, rec.id));
 
@@ -3712,9 +3737,13 @@ function attendanceCorrectionSubmissionFailure(error:unknown):never{
     }
     throw error;
 }
-export async function requestAttendanceCorrection(ctx:SessionContext,p:AttendanceCorrectionRequestInput){
+/** `existingTx` — the caller's transaction, so another owner can file and decide in one atomic unit (the offline
+ *  claim resolution in packs/attendance/mobile-offline-claim-review.ts; the mobile command receipt). Omitted: its
+ *  own transaction, as before. Both paths run the same preparation, locks and insert (requestAttendanceCorrectionTx). */
+export async function requestAttendanceCorrection(ctx:SessionContext,p:AttendanceCorrectionRequestInput,existingTx?:Tx){
  const current=captureAttendanceContext(ctx),captured=structuredClone(p);normalizeAttendanceCorrectionRequest(captured);
- return withTenant(current,async tx=>{const result=await requestAttendanceCorrectionTx(tx,current,captured);return {correctionId:result.correctionId};}).catch(attendanceCorrectionSubmissionFailure);
+ const run=async(tx:Tx)=>{const result=await requestAttendanceCorrectionTx(tx,current,captured);return {correctionId:result.correctionId};};
+ return (existingTx?run(existingTx):withTenant(current,run)).catch(attendanceCorrectionSubmissionFailure);
 }
 
 /**
@@ -5958,8 +5987,59 @@ export function myAttendanceCorrections(
   employmentId: string,
   opts: { limit?: number; date?: string; status?: 'pending' | 'approved' | 'rejected' | 'cancelled' } = {},
 ): Promise<MyAttendanceRequestRow[]> {
-  const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? 100)), MY_ATTENDANCE_REQUEST_ROW_CEILING + 1);
+  // D13 (mobile M12): the read moved into `ownAttendanceRequestRowsTx` below so the keyset page reads the SAME
+  // rows in the SAME order; this caller asks for neither the keyset nor the cursor text and gets what it always got.
+  return withTenant(ctx, async (tx) => (await ownAttendanceRequestRowsTx(tx, employmentId, opts)).map(({ cursorAt: _cursorAt, ...row }) => row));
+}
+
+/**
+ * D13 (mobile M12) keyset position in `myAttendanceCorrections`' one order (attendance date desc, created desc, id
+ * desc): the row's attendance date, its exact `created_at` as UTC text with microseconds (`cursorAt`), and its id.
+ */
+export type MyAttendanceRequestCursor = { date: string; at: string; id: string };
+
+/**
+ * D13 (mobile M12) — the same own-request read as `myAttendanceCorrections`, one page at a time: strictly past
+ * `before` in the same order, optionally narrowed to `ids` (one request's detail re-read under the caller's own
+ * session), each row carrying its exact `cursorAt`. RLS still scopes the rows and `employmentId` still narrows them.
+ * No web caller passes either option.
+ */
+export function myAttendanceCorrectionsPage(
+  ctx: SessionContext,
+  employmentId: string,
+  opts: { limit: number; date?: string; status?: 'pending' | 'approved' | 'rejected' | 'cancelled'; before?: MyAttendanceRequestCursor | null; ids?: readonly string[] },
+): Promise<(MyAttendanceRequestRow & { cursorAt: string })[]> {
+  return withTenant(ctx, (tx) => ownAttendanceRequestRowsTx(tx, employmentId, opts));
+}
+
+/**
+ * D13 (mobile M12) — how many of ONE employment's requests the caller can see, per stored status (the four the
+ * history's chips filter by). The same RLS scope and employment narrowing as `myAttendanceCorrections`.
+ */
+export function myAttendanceCorrectionCounts(
+  ctx: SessionContext,
+  employmentId: string,
+): Promise<Record<'pending' | 'approved' | 'rejected' | 'cancelled', number>> {
   return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({ status: attendanceCorrection.status, n: sql<number>`count(*)::int` })
+      .from(attendanceCorrection)
+      .where(eq(attendanceCorrection.employmentId, employmentId))
+      .groupBy(attendanceCorrection.status);
+    const out = { pending: 0, approved: 0, rejected: 0, cancelled: 0 };
+    for (const r of rows) if (r.status in out) out[r.status as keyof typeof out] = Number(r.n);
+    return out;
+  });
+}
+
+async function ownAttendanceRequestRowsTx(
+  tx: Tx,
+  employmentId: string,
+  opts: { limit?: number; date?: string; status?: 'pending' | 'approved' | 'rejected' | 'cancelled'; before?: MyAttendanceRequestCursor | null; ids?: readonly string[] },
+): Promise<(MyAttendanceRequestRow & { cursorAt: string })[]> {
+  const limit = Math.min(Math.max(1, Math.trunc(opts.limit ?? 100)), MY_ATTENDANCE_REQUEST_ROW_CEILING + 1);
+  if (opts.ids && opts.ids.length === 0) return [];
+  {
     const rows = await tx
       .select({
         id: attendanceCorrection.id,
@@ -5982,12 +6062,16 @@ export function myAttendanceCorrections(
         appliedAt: attendanceCorrection.appliedAt,
         decidedAt: attendanceCorrection.decidedAt,
         createdAt: attendanceCorrection.createdAt,
+        cursorAt: sql<string>`to_char(${attendanceCorrection.createdAt} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
       })
       .from(attendanceCorrection)
       .where(and(
         eq(attendanceCorrection.employmentId, employmentId),
         opts.status ? eq(attendanceCorrection.status, opts.status) : undefined,
         opts.date ? eq(attendanceCorrection.attendanceDate, opts.date) : undefined,
+        opts.ids ? inArray(attendanceCorrection.id, [...opts.ids]) : undefined,
+        // Strictly after the cursor in the one order below (every key descending).
+        opts.before ? sql`(${attendanceCorrection.attendanceDate}, ${attendanceCorrection.createdAt}, ${attendanceCorrection.id}) < (${opts.before.date}::date, ${opts.before.at}::timestamptz, ${opts.before.id}::uuid)` : undefined,
       ))
       // Newest first BY THE ATTENDANCE DATE, then by when it was filed — the same ordering the Plan OT
       // list uses, so two lists on one screen are not sorted two different ways.
@@ -6011,7 +6095,12 @@ export function myAttendanceCorrections(
     );
     const workflows = await attendanceWorkflowsForTx(tx, rows.map(r => r.id));
     return rows.map((r) => ({ ...r, hasAttachment: withFiles.has(r.id), workflow: workflows.get(r.id) ?? null }));
-  });
+  }
+}
+
+export class AttendanceWithdrawRefusedError extends Error {
+  /** D13 (mobile M12): cancelOwnAttendanceCorrection's two state refusals, typed so a caller can tell them apart. Same sentences as before. */
+  constructor(readonly refusal: 'overtime' | 'not_pending', message: string) { super(message); this.name = 'AttendanceWithdrawRefusedError'; }
 }
 
 /**
@@ -6036,14 +6125,16 @@ export function myAttendanceCorrections(
 export async function cancelOwnAttendanceCorrection(
   ctx: SessionContext,
   p: { correctionId: string },
+  /** D13 (mobile M12): the caller's transaction (the mobile command receipt's). Omitted: its own, as before. */
+  existingTx?: Tx,
 ): Promise<{ status: 'cancelled' }> {
   p = structuredClone(p); ctx = captureAttendanceContext(ctx);
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
     const req = await lockAttendanceApplicationTx(tx, ctx, p.correctionId);
     if (!req) throw new Error('attendance request not found (or not visible)');
     await assertOwnCorrectionTx(tx, ctx, req.employmentId);
     if (attendanceApplicationType(req) === 'self_overtime') {
-      throw new Error('This is an overtime plan — withdraw it from the Self Overtime list.');
+      throw new AttendanceWithdrawRefusedError('overtime', 'This is an overtime plan — withdraw it from the Self Overtime list.');
     }
     if (req.status !== 'pending') {
       // r363 — DO NOT INTERPOLATE `req.status` HERE. It is the stored enum, and 4c8aae68 made
@@ -6055,7 +6146,7 @@ export async function cancelOwnAttendanceCorrection(
       // kernel. Naming the state is not what the sentence is for: the reader needs to know the request
       // is no longer pending and why that ends it, and "no longer waiting for a decision" is true of
       // approved, rejected and withdrawn alike. So it says that, and names nothing.
-      throw new Error('This request is no longer waiting for a decision, so it can no longer be withdrawn.');
+      throw new AttendanceWithdrawRefusedError('not_pending', 'This request is no longer waiting for a decision, so it can no longer be withdrawn.');
     }
     await tx
       .update(attendanceCorrection)
@@ -6071,7 +6162,8 @@ export async function cancelOwnAttendanceCorrection(
       payload: { date: req.attendanceDate, previousStatus: req.status, requestKind: req.requestKind },
     });
     return { status: 'cancelled' as const };
-  });
+  };
+  return existingTx ? run(existingTx) : withTenant(ctx, run);
 }
 
 /** SUBJECT-ONLY. Enforced in code rather than by RLS, because RLS makes an employee's own rows writable AND
@@ -6105,6 +6197,7 @@ export type AttendancePolicyView = {
   otApprovalCalculation: OtApprovalMethod;
   // Feedback 5249d43f: when TRUE, web clock-in/out requires a registered device (employee_device).
   requireRegisteredDevice: boolean;
+  geofenceMaximumAccuracyM:number|null;
   isDefault: boolean; // true ⇒ no row saved yet; the form shows engine defaults
 };
 
@@ -6128,6 +6221,7 @@ export function listAttendancePolicies(
         halfWorkingDays: attendancePolicy.halfWorkingDays,
         otApprovalCalculation: attendancePolicy.otApprovalCalculation,
         requireRegisteredDevice: attendancePolicy.requireRegisteredDevice,
+        geofenceMaximumAccuracyM:attendancePolicy.geofenceMaximumAccuracyM,
       })
       .from(attendancePolicy)
       .where(inArray(attendancePolicy.companyId, companyIds));
@@ -6147,6 +6241,7 @@ export function listAttendancePolicies(
             halfWorkingDays: DEFAULTS.halfWorkingDays,
             otApprovalCalculation: 'system_calculated' as OtApprovalMethod,
             requireRegisteredDevice: false,
+            geofenceMaximumAccuracyM:null,
             isDefault: true,
           };
     });
@@ -6179,6 +6274,8 @@ export async function setAttendancePolicy(
     // Feedback 5249d43f: require a registered device for web clocking. Optional — absent ⇒ false (the
     // checkbox posts nothing when unchecked; pre-existing callers keep the shipping default OFF).
     requireRegisteredDevice?: boolean;
+    // Undefined preserves an existing cap; null explicitly removes the additional company cap.
+    geofenceMaximumAccuracyM?:number|null;
   },
 ) {
   p=structuredClone(p);ctx=captureAttendanceContext(ctx);
@@ -6213,6 +6310,9 @@ export async function setAttendancePolicy(
   }
   const otApprovalCalculation: OtApprovalMethod = p.otApprovalCalculation ?? 'system_calculated';
   const requireRegisteredDevice = p.requireRegisteredDevice ?? false;
+  const geofenceMaximumAccuracyM=p.geofenceMaximumAccuracyM;
+  if(geofenceMaximumAccuracyM!=null&&(!Number.isInteger(geofenceMaximumAccuracyM)||geofenceMaximumAccuracyM<=0||geofenceMaximumAccuracyM>2147483647))
+    throw new Error('Maximum location uncertainty must be a positive whole number of metres.');
 
   return withTenant(ctx, async (tx) => {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
@@ -6231,10 +6331,11 @@ export async function setAttendancePolicy(
         halfWorkingDays,
         otApprovalCalculation,
         requireRegisteredDevice,
+        geofenceMaximumAccuracyM,
       })
       .onConflictDoUpdate({
         target: attendancePolicy.companyId,
-        set: { workStart, workEnd, breakMinutes, lateAfter, halfDayBefore, workingDays, halfWorkingDays, otApprovalCalculation, requireRegisteredDevice },
+        set: { workStart, workEnd, breakMinutes, lateAfter, halfDayBefore, workingDays, halfWorkingDays, otApprovalCalculation, requireRegisteredDevice,geofenceMaximumAccuracyM },
       })
       .returning({ id: attendancePolicy.id });
     await appendEvent(tx, {
@@ -6254,6 +6355,7 @@ export async function setAttendancePolicy(
         halfWorkingDays,
         otApprovalCalculation,
         requireRegisteredDevice,
+        ...(geofenceMaximumAccuracyM!==undefined?{geofenceMaximumAccuracyM}:{}),
       },
     });
     return row;
@@ -6439,7 +6541,7 @@ export async function addImportedPunchesBatchTx(
         policyPlanRequestedOn.set(key,todayInKualaLumpur(c.createdAt));
     }
   }
-  type Kid = { punchAt: string; direction: 'in' | 'out'; method: 'web' | 'import' | 'admin' };
+  type Kid = { punchAt: string; direction: 'in' | 'out'; method: 'web' | 'import' | 'admin' | 'mobile_offline' };
   const kidsBy = new Map<string, Kid[]>();
   const wanted = days.map((d) => rowBy.get(keyOf(d.employmentId, d.day))?.id).filter((x): x is string => !!x);
   for (const ids of chunk(wanted, 1000)) {
@@ -6744,7 +6846,7 @@ async function deriveStoredAttendanceTx(tx:Tx,schedule:ResolvedSchedule,p:{emplo
 /** Presentation/command anchoring only; calculation remains in the existing writer. */
 export async function clockScheduleForTx(tx: Tx, employmentId: string, date: string) {
   const schedule = await scheduleFor(tx, employmentId, date);
-  return { crossesMidnight: schedule.crossesMidnight, start: schedule.shiftStart, end: schedule.shiftEnd, code: schedule.displayShiftCode ?? null };
+  return { crossesMidnight: schedule.crossesMidnight, durationOnly: schedule.durationOnly === true, start: schedule.shiftStart, end: schedule.shiftEnd, code: schedule.displayShiftCode ?? null };
 }
 
 
@@ -7026,7 +7128,8 @@ export async function requestOwnClockRemoval(ctx:SessionContext,p:{punchId:strin
     const [previous]=await tx.select().from(attendanceCorrection).where(eq(attendanceCorrection.id,p.requestId)).limit(1);
     if(previous){if(previous.employmentId!==me.employmentId||previous.removalPunchId!==p.punchId||previous.reason!==reason||previous.clockChanges?.baseline!==p.baseline)throw new Error('This removal identity is already in use.');return {correctionId:previous.id};}
     const [target]=await tx.select({punch:attendancePunch,capture:attendanceClockCapture.id,deviceId:attendanceClockCapture.deviceId}).from(attendancePunch).innerJoin(attendanceClockCapture,eq(attendanceClockCapture.id,attendancePunch.clockCaptureId)).where(and(eq(attendancePunch.id,p.punchId),eq(attendancePunch.employmentId,me.employmentId),eq(attendanceClockCapture.employmentId,me.employmentId))).limit(1);
-    if(!target||target.deviceId||target.punch.voidedAt)throw new Error('This active Web Clocking record is not available for removal.');
+    // Owner decision 2026-10-28: an accepted offline punch is not the employee's to remove; HR corrects it.
+    if(!target||target.deviceId||target.punch.method==='mobile_offline'||target.punch.voidedAt)throw new Error('This active Web Clocking record is not available for removal.');
     const date=target.punch.attendanceDate;
     if(date>todayInKualaLumpur())throw new AttendanceCorrectionFutureDateError();
     // Payroll precedes attendance row locks, matching the final correction effect.

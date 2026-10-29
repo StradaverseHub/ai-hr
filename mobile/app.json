@@ -62,12 +62,19 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "Take a photo only when you choose to record attendance.",
+          "cameraPermission": "Take a photo only when you choose to: an attendance photo, or a receipt for an expense claim.",
           "photosPermission": false,
           "microphonePermission": false
         }
       ],
-      "expo-document-picker"
+      "expo-document-picker",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "aihr-updates",
+          "enableBackgroundRemoteNotifications": false
+        }
+      ]
     ],
     "scheme": "aihr",
     "experiments": {
