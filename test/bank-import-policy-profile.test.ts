@@ -147,8 +147,9 @@ describe('same-visibility Bank point-read policy experiment',()=>{
   try{
    for(const variant of ['original','global-case','hint-case'] as const){
     await install(original,baseline,variant);
-    for(const hint of ['off','on'] as const){
-     // The original off/on pair quantifies whether the untrusted hint alone does anything.
+    for(const hint of (variant==='original'?['off']:['off','on']) as ('off'|'on')[]){
+     // Original hint immunity is checked across every principal above; avoid repeating
+     // its expensive native baseline while retaining both candidate hint states.
      const rollback=Error('intentional candidate policy rollback');let elapsedMs=0;
      await expect(withTenant(context,async tx=>{
       await tx.execute(sql`select set_config(${HINT},${hint},true),set_config('statement_timeout','90s',true)`);
