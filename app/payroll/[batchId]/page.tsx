@@ -3,7 +3,7 @@ import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail, listReprocessEmployeeOutcomes, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory, type BatchScope } from '@/core/payroll';
+import { batchDetail, listRecalcChangeCategories, listReprocessEmployeeOutcomes, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory, type BatchScope } from '@/core/payroll';
 import { payrollReadiness, type PayrollReadiness } from '@/core/payroll-readiness';
 import {batchScopeHeadcount} from '@/packs/payroll/service';
 import {PendingMoneyStatus,PendingOvertimeCashAmount,PendingOvertimeCashDetails} from './pending-overtime';
@@ -105,6 +105,17 @@ export default async function BatchPage({
   const recalcEmploymentIds = Array.isArray(batch.recalcEmploymentIds)
     ? batch.recalcEmploymentIds.filter((x): x is string => typeof x === 'string')
     : [];
+  // 3244584c — WHAT KIND of employee change made each named person stale (a category, never a value —
+  // ADR-0030 Layer 0). Employees marked by a transaction/attendance edit carry none and are not listed.
+  const recalcCategories = needsRecalc ? await listRecalcChangeCategories(s, { batchId: batch.id }) : {};
+  const recalcChangeLines = slips
+    .filter((sl) => recalcCategories[sl.employmentId]?.length)
+    .map((sl) => ({
+      employmentId: sl.employmentId,
+      name: sl.name,
+      employeeCode: sl.employeeCode,
+      changes: recalcCategories[sl.employmentId].map((c) => t(`recalcChangeCategory.${c}`)).join(', '),
+    }));
   const PUBLICATION_LABEL: Record<PayrollPublicationState, string> = {
     history: t('publishStateHistory'),
     draft: t('publishStateDraft'),
@@ -525,6 +536,15 @@ export default async function BatchPage({
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
           <div className="font-medium">⚠ {t('recalcBannerTitle', { n: recalcEmploymentIds.length })}</div>
           <p className="mt-1">{t('recalcBannerBody')}</p>
+          {recalcChangeLines.length > 0 && (
+            <ul className="mt-1 list-disc pl-5">
+              {recalcChangeLines.map((line) => (
+                <li key={line.employmentId}>
+                  {t('recalcChangeLine', { name: line.employeeCode ? `${line.name} (${line.employeeCode})` : line.name, changes: line.changes })}
+                </li>
+              ))}
+            </ul>
+          )}
           {multiCycleOn && slips.length > 0 && (
             <Link href={`/payroll/${batch.id}/reprocess${fromSuffix}`} className="mt-1 inline-block font-medium underline">
               {t('recalcBannerAction')}

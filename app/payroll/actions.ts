@@ -35,6 +35,7 @@ import {
   removeEmployeePayroll,
   reprocessSelectedEmployees,
   PayrollReprocessStoppedError,
+  ReprocessRunBlockedError,
   resetProcessedBatch,
   setPayrollInput,
   unlockClosedBatch,
@@ -537,7 +538,10 @@ export async function reprocessSelectedAction(formData: FormData) {
             // employee short on a counterpart run that is already closed and can no longer take the days.
             e instanceof PayrollCounterpartClosedError
             ? t('generateBlockedByCounterpartClosed', { n: e.employmentIds.length })
-            : (await payrollNonCashErrorMessage(e)) ?? await payrollTaxSchemeErrorMessage(e);
+            // 3244584c — a closed period refused before any job existed: name it, not the generic error.
+            : e instanceof ReprocessRunBlockedError && e.code === 'PERIOD_CLOSED'
+              ? t('reprocessStopped_PERIOD_CLOSED')
+              : (await payrollNonCashErrorMessage(e)) ?? await payrollTaxSchemeErrorMessage(e);
     redirect(withQueryParam(back, 'error', msg));
   }
   revalidatePath('/payroll');

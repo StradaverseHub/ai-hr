@@ -23,7 +23,7 @@ import { ReprocessForm, type ReprocessAddCandidate, type ReprocessCandidate } fr
 // against a real reprocessed run; see the module header for why that is not a four-line inline map.
 // The href is spent on the EMPLOYEE NAME (rev.2, below) — the destination did not change, only what
 // the operator clicks to reach it.
-import { ReprocessOutcomePanel } from './outcomes';
+import { ReprocessOutcomePanel, reprocessStoppedMessageKey } from './outcomes';
 
 /**
  * e440991b — REPROCESS SELECTED EMPLOYEES, a screen of its own.
@@ -272,11 +272,11 @@ export default async function ReprocessPage({
       {/* THE RESULT, when there is one. It is rendered ABOVE the selection because after a submit this
           is what the operator came back for; the selection stays below so a second correction does not
           need a second navigation. */}
-      {thisJob?.status === 'failed' && <ErrorBanner message={t('reprocessStoppedPartial')} />}
+      {thisJob?.status === 'failed' && <ErrorBanner message={t(reprocessStoppedMessageKey(thisJob.error))} />}
       {thisJob && outcomes !== null && (outcomes.length > 0 || thisJob.status === 'completed') && (
         <ReprocessOutcomePanel outcomes={outcomes} history={disclosure} slips={slips} run={batch}
           currency={currency} batchId={batchId} from={listFrom} jobId={thisJob.id}
-          selected={thisJob.employmentIds.length} stopped={thisJob.status === 'failed'} />
+          selected={thisJob.employmentIds.length} stopped={thisJob.status === 'failed'} stoppedCode={thisJob.error} />
       )}
       {thisJob?.status === 'completed' && outcomes === null && (
         <Card className="px-4 py-3 text-sm">

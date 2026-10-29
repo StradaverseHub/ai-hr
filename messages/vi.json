@@ -6665,7 +6665,9 @@
       "reprocessOutcomeStatus": {
         "reprocessed": "Đã xử lý lại",
         "skipped": "Đã bỏ qua",
-        "validation_failed": "Cấu hình chưa đầy đủ"
+        "validation_failed": "Cấu hình chưa đầy đủ",
+        "excluded": "Đã loại trừ",
+        "not_eligible": "Không đủ điều kiện"
       },
       "reprocessNothingPayableFull": "Không xác định được khoản thu nhập phải trả trong kỳ lương này. Lương không được tính lại. Phiếu lương, danh sách của đợt lương, giao dịch và lịch sử hiện có được giữ nguyên.",
       "reprocessSucceededReason": "Đã lưu kết quả tính lương mới cho nhân viên này.",
@@ -6686,7 +6688,29 @@
       "reprocessLegacyOutcomeUnavailable": "Tác vụ trước đây không ghi nhận kết quả từng người. Lịch sử tính toán đã lưu vẫn có ở bên dưới.",
       "publishStateHistory": "Lịch sử đã nhập",
       "historyNoPayment": "Nhập lịch sử không ghi nhận ngày thanh toán.",
-      "unlockOverwrittenByImport": "Một phiếu lương trong đợt này đã bị ghi đè bởi Nhập lịch sử lương. Hãy hoàn tác lần nhập đó từ Log File trước khi mở khóa đợt."
+      "unlockOverwrittenByImport": "Một phiếu lương trong đợt này đã bị ghi đè bởi Nhập lịch sử lương. Hãy hoàn tác lần nhập đó từ Log File trước khi mở khóa đợt.",
+      "reprocessExclusion_RESIGNED_BEFORE_PERIOD": "Đã nghỉ việc trước tháng lương này.",
+      "reprocessExclusion_RESIGNED_BEFORE_PERIODDated": "Đã nghỉ việc trước tháng lương này (ngày làm việc cuối {date}).",
+      "reprocessExclusion_JOINED_AFTER_PERIOD": "Vào làm sau tháng lương này.",
+      "reprocessExclusion_JOINED_AFTER_PERIODDated": "Vào làm sau tháng lương này (ngày vào làm {date}).",
+      "reprocessExclusion_NOT_WITH_COMPANY_IN_PERIOD": "Không thuộc công ty này trong tháng lương này.",
+      "reprocessExclusion_NOT_WITH_COMPANY_IN_PERIODDated": "Không thuộc công ty này trong tháng lương này (chuyển đi ngày {date}).",
+      "reprocessExcludedRemoved": "Kết quả trước đó của nhân viên cho tháng này đã được gỡ khỏi kỳ lương và lưu trong lịch sử. Các kỳ trả góp khoản vay, yêu cầu bồi hoàn và giao dịch một lần mà kết quả đó đã dùng đều được giải phóng. Khoản thanh toán đã thực hiện không bị hoàn lại; hãy dùng các bước điều chỉnh hiện có cho việc đó.",
+      "reprocessNotEligibleRemovalOff": "Kết quả trước đó vẫn được giữ, vì tính năng gỡ nhân viên khỏi kỳ lương đang tắt cho công ty của bạn hoặc bạn không có quyền đó. Quản trị viên có thể gỡ bằng “Gỡ nhân viên khỏi kỳ lương này”.",
+      "reprocessNotEligibleLastOnRun": "Kết quả trước đó vẫn được giữ, vì đây là nhân viên duy nhất còn lại trong kỳ lương này. Hãy đặt lại kỳ lương để xóa kết quả.",
+      "reprocessOutcomeExclusionSummary": "Đã loại trừ: {excluded} · Không đủ điều kiện: {notEligible}",
+      "reprocessStopped_BATCH_NOT_PROCESSED": "Đã dừng xử lý: kỳ lương này không còn ở trạng thái Đã xử lý (có thể đã được phê duyệt, chi trả hoặc đặt lại). Các kết quả đã lưu vẫn hợp lệ. Hãy dùng các bước điều chỉnh hiện có cho kỳ lương đã chuyển sang bước tiếp theo.",
+      "reprocessStopped_PERIOD_CLOSED": "Đã dừng xử lý: kỳ trả lương của lần chạy này đã đóng. Các kết quả đã lưu vẫn hợp lệ. Hãy mở lại kỳ theo các bước hiện có trước khi xử lý lại.",
+      "reprocessStopped_PERMISSION_DENIED": "Đã dừng xử lý: bạn không còn quyền xử lý lại kỳ lương này. Các kết quả đã lưu vẫn hợp lệ. Hãy yêu cầu quản trị viên cấp quyền.",
+      "reprocessStopped_SUPERSEDED": "Đã dừng xử lý: một lần thử khác đã tiếp quản lần xử lý lại này. Các kết quả đã lưu vẫn hợp lệ. Hãy tải lại để xem kết quả mới nhất trước khi thử lại.",
+      "recalcChangeLine": "{name}: {changes}",
+      "recalcChangeCategory": {
+        "termination": "ngày nghỉ việc hoặc chấm dứt đã thay đổi",
+        "hire_date": "ngày vào làm đã thay đổi",
+        "transfer": "việc chuyển công ty đã thay đổi",
+        "compensation": "lương đã thay đổi",
+        "statutory": "thiết lập theo luật định đã thay đổi"
+      }
     },
     "transactions": {
       "title": "Nhập liệu giao dịch",
