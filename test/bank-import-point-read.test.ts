@@ -113,12 +113,12 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('Bank point-read hint remai
   const employeeId=await createAppUser(b.tenantId,own.personId,'employee');
   const employee:SessionContext={...ctx,userId:employeeId,personId:own.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
   const foreign=adminCtx(await seedBase());
-  const [partnerPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Point Partner'}).returning();
+  const [partnerPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Point Partner',primaryEmail:'point-partner@example.test'}).returning();
   const partnerId=await createAppUser(b.tenantId,partnerPerson.id,'employee');
   const [unrelated]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Unrelated Point Company'}).returning();
   await owner.db.update(schema.roleAssignment).set({role:'payroll_partner',companyId:unrelated.id}).where(eq(schema.roleAssignment.appUserId,partnerId));
   const partner:SessionContext={...ctx,userId:partnerId,personId:partnerPerson.id,roles:['payroll_partner'],grants:[{role:'payroll_partner',companyId:unrelated.id}]};
-  const [voidPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Voided Point Subject'}).returning();
+  const [voidPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Voided Point Subject',primaryEmail:'point-void@example.test'}).returning();
   let voidId='';
   await owner.client.begin(async tx=>{await tx`set local session_replication_role='replica'`;const [row]=await tx`insert into employment(tenant_id,person_id,company_id,hired_on,voided_at,voided_by,void_reason,voided_import_attempt_id) values(${b.tenantId}::uuid,${voidPerson.id}::uuid,${b.companyId}::uuid,'2026-01-05',now(),${b.adminUserId}::uuid,'Fictional point-read void',${randomUUID()}::uuid) returning id`;voidId=row.id;});
   const baselineRows=await owner.client`select to_jsonb(e) as value from employment e order by id`;
