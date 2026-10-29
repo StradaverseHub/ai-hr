@@ -6,6 +6,8 @@ import {AGENT_ACTION_TIER_CEILING,AGENT_ACTION_CATEGORY} from '../lib/ai/agent-c
 describe('runtime action tier enforcement (R17)',()=>{
  it('refuses unknown actions and handoffs, admitting only explicitly Automatic registry entries',()=>{
   expect(()=>assertAgentActionTier('unknown','confirm')).toThrow('tier unavailable');
+  // Independent approved catalogue: a future Automatic entry needs its own reviewed expectation.
+  expect(Object.keys(AGENT_ACTION_TIER_CEILING).filter(id=>AGENT_ACTION_TIER_CEILING[id as keyof typeof AGENT_ACTION_TIER_CEILING]==='automatic').sort()).toEqual(['approvals.attendance.chase','approvals.claim.chase','approvals.toil.chase','employees.review_overdue.remind']);
   for(const id of Object.keys(AGENT_ACTION_TIER_CEILING) as (keyof typeof AGENT_ACTION_TIER_CEILING)[]){
    if(AGENT_ACTION_TIER_CEILING[id]==='automatic'){
     expect(['read','reminder','chaser']).toContain(AGENT_ACTION_CATEGORY[id]);
