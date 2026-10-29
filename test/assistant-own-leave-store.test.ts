@@ -1,3 +1,4 @@
+import {setAgentActionPause} from '../core/ai-inventory';
 import * as dbClient from '../db/client';
 import * as vault from '../lib/pii/vault';
 import {ownLeaveReviewedDigest} from '../core/assistant-actions/own-leave-review-digest';
@@ -630,4 +631,11 @@ describe('WP9 original own-leave protocol compatibility',()=>{
  it('opens and completes an original non-nonce writer row once across digest refusal and replay',async()=>{const old=await retainedOwnLeaveReview();expect((await withTenant(ctx,tx=>reopenOwnLeaveReviewTx(tx,ctx,old.actionId,'en'))).kind).toBe('prepared');await expect(confirmOwnLeaveReview(ctx,{...old,reviewedDigest:'0'.repeat(64)},'en')).rejects.toThrow();const done=await confirmOwnLeaveReview(ctx,old,'en');expect(done.kind).toBe('completed');const after=await counts();expect(after.requests).toBe(1);expect(await confirmOwnLeaveReview(ctx,old,'en')).toEqual(done);expect(await withTenant(ctx,tx=>reopenOwnLeaveReviewTx(tx,ctx,old.actionId,'en'))).toEqual(done);expect(await counts()).toEqual(after);});
  it('retires original pending rows after grant removal without decrypting or requesting Leave',async()=>{const old=await retainedOwnLeaveReview();await revokeAssistant(adminCtx(base),{appUserId:ctx.userId!});const before=await counts(),unwrap=vi.spyOn(vault,'unwrapDek');try{const retired=await withTenant(ctx,tx=>discardOwnLeaveReviewTx(tx,ctx,{actionId:old.actionId,contractVersion:1}));expect(retired.kind).toBe('retired');expect(unwrap).not.toHaveBeenCalled();expect(await counts()).toMatchObject({requests:before.requests,model_runs:before.model_runs,bodies:0,pending:0});}finally{unwrap.mockRestore();}});
  it('reconciles a genuinely committed request after actual reply loss without a second request',async()=>{const r=await prepare(),real=dbClient.withTenant;const lost:typeof withTenant=async(who,work,options)=>{await real(who,work,options);throw Error('Fictional lost reply after commit');};const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(lost);try{await expect(confirmOwnLeaveReview(ctx,confirmation(r),'en')).rejects.toThrow();}finally{spy.mockRestore();}const after=await counts(),done=await withTenant(ctx,tx=>reopenOwnLeaveReviewTx(tx,ctx,r.actionId,'en'));expect(done.kind).toBe('completed');expect(after.requests).toBe(1);expect(await confirmOwnLeaveReview(ctx,confirmation(r),'en')).toEqual(done);expect(await counts()).toEqual(after);});
+});
+
+it('enforces the fixed own-leave action pause without browser scope and preserves privacy retirement',async()=>{
+ const r=await prepare();await setAgentActionPause(await groupCtx(),'leave.apply',true);const before=await counts();
+ await expect(confirmOwnLeaveReview(ctx,confirmation(r),'en')).rejects.toThrow();await expect(withTenant(ctx,tx=>reopenOwnLeaveReviewTx(tx,ctx,r.actionId,'en'))).rejects.toThrow();expect(await counts()).toEqual(before);
+ expect((await withTenant(ctx,tx=>discardOwnLeaveReviewTx(tx,ctx,{actionId:r.actionId,contractVersion:1}))).kind).toBe('retired');
+ await setAgentActionPause(await groupCtx(),'leave.apply',false);const fresh=await prepare();expect((await confirmOwnLeaveReview(ctx,confirmation(fresh),'en')).kind).toBe('completed');expect((await counts()).requests).toBe(1);
 });

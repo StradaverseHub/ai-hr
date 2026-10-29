@@ -3,6 +3,7 @@
  * Real migrated database and the real native decision services; fictional fixtures only.
  * Authored UNRUN (tests run on GitHub Actions under the owner's policy). */
 import {z} from 'zod';
+import {setAgentActionPause} from '../core/ai-inventory';
 import {createGenericAssignedReviewStore} from '../core/assistant-actions/generic-assigned-review-store';
 import {AssignedClaimDecision} from '../lib/assistant-actions/assigned-decision-contract';
 import {assignedDecisionUnavailable,withAssignedClaimSubjectTx,prepareAssignedClaimSourceTx,confirmAssignedClaimSourceTx,reconcileAssignedClaimSourceTx} from '../core/assistant-actions/assigned-decision-sources';
@@ -311,4 +312,12 @@ describe('claim rejection human reason and independent reviewed decisions',()=>{
   const [row]=await owner.db.execute<{first:string;second:string;count:number}>(sql`select (select status::text from public.claim_request where id=${firstId}::uuid) as first,(select status::text from public.claim_request where id=${secondId}::uuid) as second,(select count(*)::int from public.domain_event where aggregate_id=${firstId}::uuid and event_type='claim-request.approved') as count`);
   expect(row).toEqual({first:'approved',second:'pending',count:1});
  });
+});
+
+it('enforces the assigned kind own pause without browser scope while allowing private retirement',async()=>{
+ const k=KINDS.claim,id=await k.create(),otherId=await k.create(),first=await claimDecisionReviews.prepare(mgr,k.human(id)),second=await claimDecisionReviews.prepare(mgr,k.human(otherId)),before=await native(k,id);
+ await setAgentActionPause(group(),'approvals.claim.decide',true);
+ await expect(claimDecisionReviews.confirm(mgr,first.review)).rejects.toThrow();await expect(claimDecisionReviews.reopen(mgr,first.review.actionId)).rejects.toThrow();expect(await native(k,id)).toEqual(before);
+ expect((await claimDecisionReviews.discard(mgr,{actionId:first.review.actionId})).kind).toBe('retired');
+ await setAgentActionPause(group(),'approvals.claim.decide',false);expect((await claimDecisionReviews.confirm(mgr,second.review)).kind).toBe('completed');
 });
