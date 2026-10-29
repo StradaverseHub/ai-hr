@@ -385,7 +385,10 @@
   :root[data-ui-theme='atelier'] main:not(.login-shell) :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='file'], [type='color']), select, textarea):focus-visible {
     border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
   }
-  :root[data-ui-theme='atelier'] .atelier-ask textarea:focus-visible { box-shadow: none; }
+  /* A chat composer (data-ui-composer) rings its WHOLE frame on focus-within; the borderless textarea inside
+     must not take the field halo too, or the ring wraps only the text area and stops above the send bar.
+     Same specificity as the field rule above and later, so it wins without !important. */
+  :root[data-ui-theme='atelier'] main:not(.login-shell) [data-ui-composer] textarea:focus-visible { box-shadow: none; }
 
   /* Status pills: a leading dot, so state never rides on colour alone. */
   :root[data-ui-theme='atelier'] [data-ui-status] { gap: .375rem; padding-inline: .5rem .625rem; }

@@ -298,6 +298,12 @@ body {
   border-radius: var(--radius-sm, 4px);
 }
 
+/* A chat composer (data-ui-composer) draws one ring around its whole frame; its borderless textarea must not
+   add a second outline that covers only the text area. `:root` outranks Monolith's own :focus-visible rule. */
+:root [data-ui-composer] textarea:focus-visible {
+  outline: none;
+}
+
 /* Respect the OS setting: drop movement, keep the UI usable. */
 @media (prefers-reduced-motion: reduce) {
   *,

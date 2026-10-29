@@ -31,7 +31,7 @@ export function AtelierAskBox({
   const [value, setValue] = useState('');
   return (
     <form action={askAssistantAction} className="atelier-ask-form">
-      <div className="atelier-ask">
+      <div className="atelier-ask" data-ui-composer>
         <label htmlFor={id} className="sr-only">{label}</label>
         <textarea
           ref={ref}
