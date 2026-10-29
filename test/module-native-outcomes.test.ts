@@ -9,6 +9,10 @@ describe('closed native outcome association contract',()=>{
  it('covers every declared effect action, without inventing Explorer or Assistant effects',()=>{
   const actions=Object.values(MODULE_AGENT_ACTIONS).flatMap(module=>module.actions.map(action=>action.id));
   expect(Object.keys(NATIVE_OUTCOME_ACTIONS).sort()).toEqual(actions.sort());
+  for(const action of ['approvals.claim.chase','approvals.attendance.chase','approvals.toil.chase','employees.review_overdue.remind']){
+   expect(Object.hasOwn(NATIVE_OUTCOME_ACTIONS,action)).toBe(false);
+   expect(NativeOutcomeReference.safeParse({source:'review',action,actionId:randomUUID()}).success).toBe(false);
+  }
   expect(NATIVE_REVIEW_ACTIONS).toHaveLength(29);expect(Object.keys(NATIVE_OUTCOME_ACTIONS)).toHaveLength(30);
   expect(NON_EFFECT_OBSERVATIONS).toEqual({system_explorer:'authorized_schema_observation',assistant:'authorized_orchestration_read_execution'});
  });
