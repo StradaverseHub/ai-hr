@@ -115,3 +115,47 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 $$;
 REVOKE ALL ON FUNCTION app.reward_pool_notification_recipients(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_pool_notification_recipients(uuid) TO ai_hr_app;
+
+-- Preserve removal of untouched drafts without treating their initial owned projections as outside use.
+CREATE OR REPLACE FUNCTION app.reward_deletion_reason(wanted_unit uuid) RETURNS text LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE u reward_unit; link record; predicate text; used boolean;
+BEGIN
+ SELECT * INTO u FROM reward_unit WHERE id=wanted_unit AND tenant_id=app.current_tenant_id();
+ IF u.id IS NULL OR NOT app.reward_admin(u.company_id) THEN RAISE EXCEPTION 'Reward administration access denied' USING ERRCODE='42501'; END IF;
+ IF u.deleted_at IS NOT NULL THEN RETURN 'deleted'; END IF;
+ IF u.status<>'draft' THEN RETURN 'locked'; END IF;
+ IF u.posted_at IS NOT NULL OR u.posted_batch_id IS NOT NULL OR u.approved_digest IS NOT NULL
+  OR u.funding_cents<>'{"standard":0,"h":0}'::jsonb OR u.reserved_cents<>'{"standard":0,"h":0}'::jsonb THEN RETURN 'payroll'; END IF;
+ IF EXISTS(SELECT 1 FROM reward_decision WHERE tenant_id=u.tenant_id AND unit_id=u.id) THEN RETURN 'decisions'; END IF;
+ IF EXISTS(SELECT 1 FROM reward_unit WHERE tenant_id=u.tenant_id AND parent_unit_id=u.id) THEN RETURN 'children'; END IF;
+ IF EXISTS(SELECT 1 FROM domain_event WHERE tenant_id=u.tenant_id AND aggregate_type='reward-unit' AND aggregate_id=u.id
+  AND event_type IN ('reward-unit.recommendation-updated','reward-unit.facts-imported','reward-unit.senior-membership-updated','reward-unit.onehr-results-imported','reward-unit.lump-updated')) THEN RETURN 'recommendations'; END IF;
+ IF EXISTS(SELECT 1 FROM reward_entry WHERE tenant_id=u.tenant_id AND unit_id=u.id AND (
+  enacted_compensation_id IS NOT NULL OR source ? 'onehrFactImport'
+  OR facts <> '{"talent":null,"performance":null,"confidentiality":"standard","seniorPlan":false,"erCase":false,"pipCase":false,"erDecision":"pending","pipDecision":"pending","caseReason":"","segment":"","branch":"","reviewed":false}'::jsonb
+  OR recommendation <> '{"meritBp":null,"promotionGrade":null,"promotionBp":null,"specialBp":null,"multiplierBp":null,"bonusCents":null,"lumpCents":null,"reason":"","currentRoleSummary":"","proposedRoleSummary":""}'::jsonb
+ )) THEN RETURN 'recommendations'; END IF;
+ -- Initial governance snapshots are owned review scaffolding, retained by the tombstone.
+ -- Any proposal, confirmation, budget input, award or private history remains business evidence.
+ IF EXISTS(SELECT 1 FROM reward_governance g WHERE g.unit_id=u.id AND g.tenant_id=u.tenant_id AND g.state IS DISTINCT FROM
+  jsonb_build_object('version',1,'inputs',jsonb_build_object('forecastCents',NULL,'actualCents',NULL,'targetCents',NULL,'targetMonthsBp',0,'multiplierBp',CASE WHEN u.policy->>'bonusStructure'='branch' THEN 10000 ELSE NULL END,'branchRatings','{}'::jsonb),
+   'selection',jsonb_build_object('employmentIds','[]'::jsonb,'proposedBy',u.created_by,'confirmedBy',NULL,'confirmedAt',NULL),'exemption',NULL,'awards','{}'::jsonb,'previousPools',NULL))
+ THEN RETURN 'recommendations'; END IF;
+ IF EXISTS(SELECT 1 FROM reward_governance_public p WHERE p.unit_id=u.id AND p.tenant_id=u.tenant_id AND
+  (p.snapshot->>'status' IS DISTINCT FROM 'not-set' OR p.snapshot->'pools' IS DISTINCT FROM '{"standard":0,"h":0}'::jsonb OR p.snapshot->'selectionConfirmed' IS DISTINCT FROM 'false'::jsonb))
+ THEN RETURN 'recommendations'; END IF;
+ -- Fail closed for future relational consumers rather than assuming the original three tables
+ -- remain the complete dependency graph. Known owned rows are retained by the tombstone.
+ FOR link IN SELECT c.oid,c.conrelid,c.conkey,c.confkey FROM pg_constraint c
+  WHERE c.contype='f' AND c.confrelid='public.reward_unit'::regclass
+   AND c.conrelid NOT IN ('public.reward_member'::regclass,'public.reward_entry'::regclass,'public.reward_decision'::regclass,'public.reward_unit'::regclass,'public.reward_governance'::regclass,'public.reward_governance_public'::regclass)
+ LOOP
+  SELECT string_agg(format('to_jsonb(t)->%L = to_jsonb($1)->%L',a.attname,b.attname),' AND ' ORDER BY k.n) INTO predicate
+   FROM generate_subscripts(link.conkey,1) k(n)
+   JOIN pg_attribute a ON a.attrelid=link.conrelid AND a.attnum=link.conkey[k.n]
+   JOIN pg_attribute b ON b.attrelid='public.reward_unit'::regclass AND b.attnum=link.confkey[k.n];
+  EXECUTE format('SELECT EXISTS(SELECT 1 FROM %s t WHERE %s)',link.conrelid::regclass,predicate) INTO used USING u;
+  IF used THEN RETURN 'external'; END IF;
+ END LOOP;
+ RETURN NULL;
+END $$;
