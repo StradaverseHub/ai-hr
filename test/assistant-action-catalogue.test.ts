@@ -2,14 +2,14 @@
  * filtered per caller — caller authority ∩ registry ∩ tier ∩ switches and pauses — and its prompt block keeps the
  * prefix-caching order. Pure contract cases plus the core actor mapping; no provider, store or database. */
 import {describe,expect,it,vi} from 'vitest';
-vi.mock('../core/ai-governance',()=>({assertAiActionUnpausedTx:vi.fn()}));
+vi.mock('../core/ai-governance',()=>({assertAiActionUnpausedTx:vi.fn(),assertAgentActionUnpausedTx:vi.fn()}));
 vi.mock('../core/assistant-readable-modules',()=>({assistantReadableModules:()=>['leave','claims','attendance','approvals']}));
 import {AGENT_ACTIONS,getAgentAction} from '../lib/ai/agent-action-registry';
 import {ASSISTANT_PROPOSABLE_ACTIONS,ASSISTANT_PROPOSAL_FALLBACK,ASSISTANT_PROPOSAL_HINT_KEYS,ASSISTANT_PROPOSAL_MODULE,ASSISTANT_PROPOSAL_PROTOCOL} from '../lib/ai/assistant-action-proposal-hints';
 import {AGENT_ACTION_ACTORS,ASSISTANT_CHAT_ACTIONS,ASSISTANT_CHAT_PAUSE_KEYS,CHAT_PROPOSABLE_TIERS,CLOSED_PROPOSAL_CALLER,assistantProposalCatalogue,assistantProposalCatalogueBlock,syntheticAssistantProposalCaller,type AssistantProposalCaller} from '../lib/ai/assistant-action-catalogue';
 import {ASSISTANT_CONVERSATION_SYSTEM,buildAssistantConversationSystem} from '../lib/ai/assistant-conversation-system';
 import {AGENT_MODULE_CODES} from '../lib/ai/module-agents';
-import {assertAiActionUnpausedTx} from '../core/ai-governance';
+import {assertAiActionUnpausedTx,assertAgentActionUnpausedTx} from '../core/ai-governance';
 import {assistantActionActors,assistantProposalCallerTx,ProposalCallerUnavailableError} from '../core/assistant-action-catalogue';
 import {AiAllowanceError,AiGatewayError} from '../lib/ai/types';
 import {readFileSync} from 'node:fs';
@@ -95,6 +95,10 @@ describe('prompt block and the prefix-caching order rule',()=>{
   // The constant blocks name no action, so a caller's catalogue never leaks into the shared prefix.
   for(const action of ASSISTANT_PROPOSABLE_ACTIONS)expect(ASSISTANT_CONVERSATION_SYSTEM.join('\n')).not.toContain(action);
   expect(ASSISTANT_CONVERSATION_SYSTEM.join('\n')).toContain(ASSISTANT_PROPOSAL_PROTOCOL);
+ });
+ it('a per-action pause hides only that inline proposal',()=>{
+  const paused=assistantProposalCatalogue(with_({pausedKeys:['hr_assistant:leave.cancel']}));
+  expect(paused).not.toContain('leave.cancel');expect(paused).toContain('leave.edit');
  });
  it('is byte-stable for the same caller facts (no clock, locale or identifier bytes)',()=>{
   const once=buildAssistantConversationSystem('s',assistantProposalCatalogue(everyone)),twice=buildAssistantConversationSystem('s',assistantProposalCatalogue({...everyone}));

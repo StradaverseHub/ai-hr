@@ -19,7 +19,7 @@
  * and the caller's strategy block (lib/ai/assistant-conversation-system.ts), and lists actions in registry
  * order so one caller's prefix stays byte-stable between questions.
  */
-import {AGENT_ACTIONS,type AgentAction,type AgentActionActor,type AgentActionPauseKey} from './agent-action-registry';
+import {AGENT_ACTIONS,agentActionPauseKey,type AgentAction,type AgentActionActor,type AgentActionPauseKey,type AgentActionOwnPauseKey} from './agent-action-registry';
 import type {AgentTier} from './agent-action-tiers';
 import {AGENT_MODULE_CODES,type AgentModuleCode} from './module-agents';
 import {ASSISTANT_PROPOSAL_HINT_KEYS,isAssistantProposableAction,type AssistantProposableAction} from './assistant-action-proposal-hints';
@@ -27,7 +27,7 @@ import {ASSISTANT_PROPOSAL_HINT_KEYS,isAssistantProposableAction,type AssistantP
 /** Tiers that can be proposed as an inline card. Automatic and Handoff never are. */
 export const CHAT_PROPOSABLE_TIERS=Object.freeze(['confirm','approve'] as const satisfies readonly AgentTier[]);
 /** Every actor class in the registry's permission union. The type check below fails if the union grows. */
-export const AGENT_ACTION_ACTORS=Object.freeze(['self','assigned_approver','hr_admin','tenant_admin','payroll_admin','rewards_admin','assigned_tester'] as const satisfies readonly AgentActionActor[]);
+export const AGENT_ACTION_ACTORS=Object.freeze(['self','assigned_approver','hr_admin','tenant_admin','payroll_admin','rewards_admin','assigned_tester','agent_principal'] as const satisfies readonly AgentActionActor[]);
 type MissingActor=Exclude<AgentActionActor,typeof AGENT_ACTION_ACTORS[number]>;
 const actorsAreExhaustive:[MissingActor] extends [never]?true:never=true;void actorsAreExhaustive;
 
@@ -36,7 +36,7 @@ const actorsAreExhaustive:[MissingActor] extends [never]?true:never=true;void ac
 export type AssistantProposalCaller=Readonly<{
  readableModules:readonly AgentModuleCode[];
  actors:readonly AgentActionActor[];
- pausedKeys:readonly AgentActionPauseKey[];
+ pausedKeys:readonly (AgentActionPauseKey|AgentActionOwnPauseKey)[];
 }>;
 /** A caller that may propose nothing: the fail-closed value whenever current facts cannot be read. */
 export const CLOSED_PROPOSAL_CALLER:AssistantProposalCaller=Object.freeze({readableModules:Object.freeze([]),actors:Object.freeze([]),pausedKeys:Object.freeze([])});
@@ -57,7 +57,7 @@ export function assistantProposalCatalogue(caller:unknown):readonly AssistantPro
  if(caller===null||typeof caller!=='object')return Object.freeze([]);
  const facts=caller as Record<string,unknown>,readable=strings(facts.readableModules),actors=strings(facts.actors),paused=strings(facts.pausedKeys);
  if(!readable||!actors||!paused)return Object.freeze([]);
- return Object.freeze(ASSISTANT_CHAT_ACTIONS.filter(action=>readable.has(action.module)&&actors.has(action.permission.actor)&&!paused.has(action.pauseKey))
+ return Object.freeze(ASSISTANT_CHAT_ACTIONS.filter(action=>readable.has(action.module)&&actors.has(action.permission.actor)&&!paused.has(action.pauseKey)&&!paused.has(agentActionPauseKey(action)))
   .map(action=>action.id as AssistantProposableAction));
 }
 

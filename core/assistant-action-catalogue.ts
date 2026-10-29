@@ -5,10 +5,10 @@
  */
 import type {SessionContext,Tx} from '../db/client';
 import {isAdmin,isGroupAdmin,canManagePayroll,canManagePerfComp} from '../lib/authz-model';
-import type {AgentActionActor,AgentActionPauseKey} from '../lib/ai/agent-action-registry';
-import {ASSISTANT_CHAT_PAUSE_KEYS,type AssistantProposalCaller} from '../lib/ai/assistant-action-catalogue';
+import {agentActionPauseKey,type AgentActionActor,type AgentActionPauseKey,type AgentActionOwnPauseKey} from '../lib/ai/agent-action-registry';
+import {ASSISTANT_CHAT_PAUSE_KEYS,ASSISTANT_CHAT_ACTIONS,type AssistantProposalCaller} from '../lib/ai/assistant-action-catalogue';
 import {assistantReadableModules} from './assistant-readable-modules';
-import {assertAiActionUnpausedTx} from './ai-governance';
+import {assertAiActionUnpausedTx,assertAgentActionUnpausedTx} from './ai-governance';
 import {AiAllowanceError} from '../lib/ai/types';
 
 /** The registry actor classes this session currently holds, from its own roles and grants. A person-bound
@@ -27,10 +27,15 @@ export function assistantActionActors(ctx:SessionContext):readonly AgentActionAc
  * failure means the controls could not be checked right now; that THROWS, so the caller can tell "no longer
  * offered" (stale) from "could not check" (retryable) and still fail closed in both cases. */
 export async function assistantProposalCallerTx(tx:Tx,ctx:SessionContext):Promise<AssistantProposalCaller>{
- const pausedKeys:AgentActionPauseKey[]=[];
+ const pausedKeys:(AgentActionPauseKey|AgentActionOwnPauseKey)[]=[];
  for(const key of ASSISTANT_CHAT_PAUSE_KEYS){
   try{await tx.transaction(async savepoint=>{await assertAiActionUnpausedTx(savepoint,ctx,key);});}
   catch(error){if(error instanceof AiAllowanceError&&error.reason==='paused')pausedKeys.push(key);else throw new ProposalCallerUnavailableError();}
+ }
+ for(const action of ASSISTANT_CHAT_ACTIONS){
+  if(pausedKeys.includes(action.pauseKey))continue;
+  try{await tx.transaction(async savepoint=>{await assertAgentActionUnpausedTx(savepoint,action.id);});}
+  catch(error){if(error instanceof AiAllowanceError&&error.reason==='paused')pausedKeys.push(agentActionPauseKey(action));else throw new ProposalCallerUnavailableError();}
  }
  return Object.freeze({readableModules:Object.freeze(assistantReadableModules(ctx)),actors:assistantActionActors(ctx),pausedKeys:Object.freeze(pausedKeys)});
 }

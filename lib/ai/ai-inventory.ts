@@ -171,6 +171,8 @@ export const AI_DATA_REGISTER:Readonly<Record<AiFeatureId,AiDataRegisterEntry>>=
  module_agent_evaluation:{fields:['synthetic_only','admin_prompt'],redaction:'not_needed',images:false,anchor:'core/module-agent-prompt-harness.ts, core/assistant-conversation-harness.ts'},
  personnel_import_mapping:{fields:['column_headings','field_catalogue'],redaction:'none',images:false,anchor:'core/personnel-import-assistance.ts'},
  module_agent_planning:{fields:['question_text','admin_prompt'],redaction:'none',images:false,anchor:'core/module-agent-releases.ts (human question prompt)'},
+ approval_chasers:{fields:[],redaction:'not_needed',images:false,principalSendsNothing:true,anchor:'core/automatic-chasers.ts (fixed templates only)'},
+ review_chasers:{fields:[],redaction:'not_needed',images:false,principalSendsNothing:true,anchor:'core/automatic-chasers.ts (fixed templates only)'},
  readiness_reminders:{fields:['gap_codes'],redaction:'not_needed',images:false,principalSendsNothing:true,anchor:'core/readiness-nudge.ts'},
  claims_triage:{fields:['claim_details'],redaction:'pii_masked',images:false,principalSendsNothing:true,anchor:'core/input-triage.ts (claimAsText)'},
  payroll_hypotheses:{fields:['payroll_ratios'],redaction:'not_needed',images:false,anchor:'core/payroll-hypothesis.ts (featuresAsText)'},

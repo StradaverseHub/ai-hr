@@ -7,6 +7,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {loadAiWorkspace} from '../core/ai-workspace';
 import {grantAssistant} from '../core/assistant-grant';
+import {setAgentActionPause} from '../core/ai-inventory';
 import {setAiFeature} from '../core/ai-management';
 import {hireEmployee} from '../core/org';
 import {assistantProposalCallerTx} from '../core/assistant-action-catalogue';
@@ -65,6 +66,12 @@ describe('real caller facts and the real reopen path',()=>{
   expect(JSON.stringify(workspace)).not.toContain(plan.mode==='propose'?plan.action:'');
   await setAiFeature(group,'hr_assistant',true);
   expect(await reopened(ctx,id)).toEqual({plan,facts:[]});
+ });
+ it('an actual per-action pause hides only that catalogue item and makes its retained proposal stale',async()=>{
+  const {ctx,id,plan}=await callerWithSealedProposal();await setAgentActionPause(group,'leave.cancel',true);
+  const caller=await withTenant(ctx,tx=>assistantProposalCallerTx(tx,ctx));expect(caller.pausedKeys).toContain('hr_assistant:leave.cancel');
+  expect(assistantProposalCatalogue(caller)).not.toContain('leave.cancel');expect(assistantProposalCatalogue(caller)).toContain('leave.edit');
+  expect(await reopened(ctx,id)).toEqual({plan,proposalStale:true,facts:[]});await setAgentActionPause(group,'leave.cancel',false);expect(await reopened(ctx,id)).toEqual({plan,facts:[]});
  });
  it('the real reopen path marks a proposal stale (never preparable) once its module is switched off, and current again after',async()=>{
   await setModule(base.tenantId,'claims','active');
