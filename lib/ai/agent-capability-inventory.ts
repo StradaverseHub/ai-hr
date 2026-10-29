@@ -16,51 +16,26 @@
  * whose name is not a read verb. The initial classification (28 Oct 2026) was derived from names and paths
  * and reviewed for sensitive categories; a tier is fixed when the entry is actually registered.
  */
-import type {ModuleEffectActionId} from './module-agent-actions';
+import {AGENT_ACTIONS,type AgentActionId,type AgentActionOf} from './agent-action-registry';
 
 export {type AgentTier} from './agent-action-tiers';
-import type {AgentTier,AgentActionPolicy} from './agent-action-tiers';
+import type {AgentTier} from './agent-action-tiers';
 export const AGENT_HANDOFF_REASONS=['access_and_authentication','ai_governance','platform_operator','privacy_erasure','payroll_reversal','employment_exit_or_discipline'] as const;
 export const AGENT_INTERNAL_REASONS=['assistant_surface','session_and_presentation','other_client_same_service'] as const;
 export type AgentHandoffReason=(typeof AGENT_HANDOFF_REASONS)[number];
 export type AgentInternalReason=(typeof AGENT_INTERNAL_REASONS)[number];
-export type AgentCapabilityClass=`registered:${ModuleEffectActionId}`|`backlog:${Exclude<AgentTier,'handoff'>}`|`handoff:${AgentHandoffReason}`|`internal:${AgentInternalReason}`;
+export type AgentCapabilityClass=`registered:${AgentActionId}`|`backlog:${Exclude<AgentTier,'handoff'>}`|`handoff:${AgentHandoffReason}`|`internal:${AgentInternalReason}`;
 
-/** Highest tier each registered module action may use (§4.4). Every one is Confirm, Approve or Handoff
- * today; raising a ceiling is a reviewed change with its evidence window (§4.6e). Pay, approvals and access
- * never become Automatic. */
-export const AGENT_ACTION_TIER_CEILING=Object.freeze({
- 'leave.apply':'confirm','ess.profile.request':'confirm','attendance.correction.request':'confirm',
- 'toil.replacement.request':'confirm','claims.draft.save':'confirm','claims.submit':'confirm',
- 'performance.review.acknowledge':'confirm','performance.onehr.plan.acknowledge':'confirm',
- 'notifications.email_preferences.save':'confirm','lifecycle.acknowledgement.submit':'confirm',
- 'system_testing.execution.save':'confirm','knowledge_base.article.create':'confirm',
- 'approvals.leave.decide':'approve','org.reporting.change':'approve','payroll.close':'approve',
- 'multi_cycle_payroll.create_run':'approve','typed_pay_components.create':'approve','rewards.post':'approve',
- 'country-my.statutory.update':'approve','employees.import':'handoff','claims.cancel':'confirm','leave.cancel':'confirm','leave.edit':'confirm',
- 'attendance.overtime.request':'confirm','approvals.claim.decide':'approve','approvals.attendance.decide':'approve','approvals.toil.decide':'approve',
- 'leave.adjustment.apply':'approve','employees.movement.transfer':'approve','toil.credit.grant':'approve',
-} as const satisfies Record<ModuleEffectActionId,AgentTier>);
+/** Highest tier each registered module action may use (§4.4), derived from lib/ai/agent-action-registry.ts
+ * (WP7). Every one is Confirm, Approve or Handoff today; raising a ceiling is a reviewed change to the
+ * registry entry and its app.assistant_action_kind row, with its evidence window (§4.6e). */
+export const AGENT_ACTION_TIER_CEILING=Object.freeze(Object.fromEntries(AGENT_ACTIONS.map(action=>[action.id,action.policy.tier]))) as {readonly [K in AgentActionId]:AgentActionOf<K>['policy']['tier']};
 
 /** Category classification is independent of the execution tier. Sensitive entries cannot acquire
- * Automatic authority even if a future edit accidentally changes their tier ceiling. */
-export const AGENT_ACTION_CATEGORY=Object.freeze({
- 'leave.apply':'own_work','ess.profile.request':'own_work','attendance.correction.request':'own_work',
- 'toil.replacement.request':'own_work','claims.draft.save':'claim_money','claims.submit':'claim_money',
- 'performance.review.acknowledge':'own_work','performance.onehr.plan.acknowledge':'own_work',
- 'notifications.email_preferences.save':'own_work','lifecycle.acknowledgement.submit':'own_work',
- 'system_testing.execution.save':'own_work','knowledge_base.article.create':'own_work',
- 'approvals.leave.decide':'approvals','org.reporting.change':'personnel','payroll.close':'payroll',
- 'multi_cycle_payroll.create_run':'payroll','typed_pay_components.create':'pay','rewards.post':'pay',
- 'country-my.statutory.update':'payroll','employees.import':'personnel','claims.cancel':'claim_money',
- 'leave.cancel':'own_work','leave.edit':'own_work',
- 'attendance.overtime.request':'pay','approvals.claim.decide':'approvals','approvals.attendance.decide':'approvals','approvals.toil.decide':'approvals',
- 'leave.adjustment.apply':'approvals','employees.movement.transfer':'personnel','toil.credit.grant':'approvals',
-} as const);
-// A sensitive category paired with Automatic is a compile error, in addition to the runtime refusal.
-type CheckedPolicies={ [K in ModuleEffectActionId]: {category:(typeof AGENT_ACTION_CATEGORY)[K];tier:(typeof AGENT_ACTION_TIER_CEILING)[K]} };
-type ValidatePolicies<T extends Record<ModuleEffectActionId,AgentActionPolicy>>=T;
-export type RegisteredAgentActionPolicies=ValidatePolicies<CheckedPolicies>;
+ * Automatic authority: the registry's policy type makes a never-Automatic category paired with Automatic a
+ * compile error, assertAgentTierPolicy refuses it at runtime, and app.assistant_action_kind refuses it in SQL. */
+export const AGENT_ACTION_CATEGORY=Object.freeze(Object.fromEntries(AGENT_ACTIONS.map(action=>[action.id,action.policy.category]))) as {readonly [K in AgentActionId]:AgentActionOf<K>['policy']['category']};
+export type RegisteredAgentActionPolicies={[K in AgentActionId]:AgentActionOf<K>['policy']};
 
 export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<string,AgentCapabilityClass>>>>=Object.freeze({
  "app/admin/settings/email-templates/actions.ts":{"saveEmailDesignAction":"backlog:confirm","loadEmailDesignHistoryAction":"backlog:automatic","uploadEmailDesignAssetAction":"backlog:confirm","sendEmailDesignTestAction":"backlog:confirm"},
