@@ -82,3 +82,14 @@ it('selects existing assignment groups and named people using stable references'
   expect(parseV9Config(config).workflows.at(-1)!.steps[0]).toMatchObject({ to: ['group:fixture-reviewers'] });
   config.groups = config.groups.filter(group => group.id !== 'fixture-reviewers'); expect(() => parseV9Config(config)).toThrow('existing assignment group');
 });
+
+it('saves the supplied source-action triggers without exposing date-only controls', () => {
+  render(<Harness/>); fireEvent.click(screen.getByRole('button', { name: 'New workflow' })); fireEvent.click(screen.getByRole('button', { name: 'For Onboarding' }));
+  const drawer = within(screen.getByRole('dialog', { name: 'Edit workflow' }));
+  for (const event of ['docSigned', 'taskDone', 'fileUploaded']) {
+    fireEvent.change(drawer.getByLabelText('What starts it'), { target: { value: event } });
+    expect(drawer.queryByLabelText('Days')).not.toBeInTheDocument();
+    const config: Config = JSON.parse(screen.getByTestId('definition').textContent!);
+    expect(parseV9Config(config).workflows.at(-1)!.trigger.event).toBe(event);
+  }
+});

@@ -273,6 +273,7 @@ it('lets only the linked activated joiner complete a released native document an
   config.templates.push({ id: 'native-self-form', name: 'Fictional native self form', module: 'onb', type: 'Form', rules: {}, hrStep: 'none', employeeAck: false, retired: false, versions: [{ version: 1, state: 'published', at: '', by: '', blocks: [{ id: 'body', type: 'text', text: 'Hello {employee.name}', section: '' }], fields: [{ id: 'contact', label: 'Contact', type: 'phone', owner: 'employee', pmKey: 'mobile', required: true, sensitive: false, options: [], section: 'main', when: null }] }] });
   config.checklists = [...config.checklists.filter(checklist => checklist.module === 'off'), { id: 'native-self-checklist', name: 'Native self fixture', module: 'onb', rules: {}, tasks: [{ id: 'native-self-task', name: 'Complete native form', by: 'employee', group: null, mode: 'manual', opens: 1, due: 1, required: true, documentTemplate: 'native-self-form', documentAction: 'signed' }] }];
   config.workflows = [{ id: 'native-self-release', name: 'Release native self form', module: 'onb', status: 'published', trigger: { event: 'beforeJoin', days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [], steps: [{ id: 'release', type: 'doc', template: 'native-self-form', release: true }, { id: 'wait', type: 'waitSign', template: 'native-self-form', by: 'employee' }, { id: 'notify', type: 'notify', subject: 'Native form completed', body: '{employee.name} completed the form.', to: 'supervisor', cc: [] }], description: '' }];
+  for (const event of ['taskDone','docSigned'] as const) config.workflows.push({ id: 'native-' + event, name: 'Native ' + event, module: 'onb', status: 'published', trigger: { event, days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [], steps: [{ id: 'notice', type: 'notify', to: 'employee', cc: [], subject: 'Native recorded ' + event, body: '' }], description: '' });
   await v9SaveConfig(admin, config.revision, config);
   const draft = await saveEmployeeDraft(admin, { currentStep: 5, data: { profile: { fullName: 'Fictional activated V9 joiner', employeeCode: 'V9-NATIVE-SELF', primaryEmail: 'native-self@test.invalid' }, employment: { companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000' } } });
   const active = await completeEmployeeDraft(admin, draft.id);
@@ -301,14 +302,17 @@ it('lets only the linked activated joiner complete a released native document an
   const done = (await onboardingList(admin)).find(row => row.case.id === own.id)!;
   expect(done.case.tasks[0]).toMatchObject({ status: 'done', completedBy: userId });
   expect(done.case.history.at(-1)).toMatchObject({ action: 'document.signed', by: userId });
+  const sourceRuns = (await v9CaseDetail(admin, own.id)).case.runs.filter(run => run.sourceEvent);
+  expect(sourceRuns.map(run => run.sourceEvent!.kind).sort()).toEqual(['docSigned','taskDone']);
+  expect(sourceRuns.every(run => run.actor?.id === userId)).toBe(true);
   const system = { ...admin, userId: undefined, personId: null };
   const sweepAt = new Date(todayInKualaLumpur() + 'T15:59:00Z');
   await expect(v9Sweep(system, { withTenant }, sweepAt)).rejects.toThrow('storage owner');
   expect(await v9Sweep(system, owner, sweepAt)).toEqual({ processed: 1, failed: 0 });
   expect(await v9Sweep(system, owner, sweepAt)).toEqual({ processed: 0, failed: 0 });
   const detail = await v9CaseDetail(admin, own.id);
-  expect(detail.case.runs).toHaveLength(1); expect(detail.case.runs[0]).toMatchObject({ status: 'waiting', reason: 'Waiting for email delivery confirmation.' });
-  expect(detail.case.mails).toHaveLength(1); expect(detail.case.mails[0]).toMatchObject({ subject: 'Native form completed', status: 'pending', to: [employee.userId] });
+  expect(detail.case.runs).toHaveLength(3); expect(detail.case.runs[0]).toMatchObject({ status: 'waiting', reason: 'Waiting for email delivery confirmation.' });
+  expect(detail.case.mails).toHaveLength(3); expect(detail.case.mails[0]).toMatchObject({ subject: 'Native form completed', status: 'pending', to: [employee.userId] });
   expect(detail.case.documents[0].employeeSignature?.by.id).toBe(userId);
   expect(detail.case.pmChanges).toHaveLength(1);
   const pdf = await v9DownloadDocument(joiner, own.id, own.documents[0].id); expect(Buffer.from(pdf.content).subarray(0,5).toString()).toBe('%PDF-');
@@ -327,6 +331,7 @@ it('lets only the linked activated joiner complete a released native document an
   await expect(v9OwnDocument(joiner, input)).rejects.toMatchObject({ cause: { message: expect.stringContaining('changed') } });
   // Independently drift the broader row as storage owner; private custody must still refuse redirection.
   const [differentSubject] = await owner.db.execute<{ id: string }>(sql`select id from employment where tenant_id=${base.tenantId}::uuid and person_id=${other.personId}::uuid`);
+  expect(detail.case.mails.map(mail => mail.subject).sort()).toEqual(['Native form completed','Native recorded docSigned','Native recorded taskDone']);
   await owner.db.execute(sql`update lc_onboarding_case set employment_id=${differentSubject.id}::uuid,data=data||jsonb_build_object('employmentId',${differentSubject.id}::text,'personId',${other.personId}::text) where id=${own.id}::uuid`);
   expect((await v9OwnWork(other)).some(c => c.id === own.id)).toBe(false);
   await expect(v9OwnDocument(other, { ...input, revision: done.revision })).rejects.toMatchObject({ cause: { message: expect.stringContaining('not available') } });
@@ -692,4 +697,39 @@ it('resumes offboarding waits before 08:00 without starting date workflows or cl
   expect(after.state).toBe('submitted'); expect(after.mails.map(mail => mail.subject)).toEqual(['Resumed before 08:00']);
   expect(after.runs.some(run => run.workflowId === 'daily-date')).toBe(false);
   expect(await v9Sweep(system, owner, morning)).toEqual({ processed: 0, failed: 0 });
+});
+
+it('captures a real employee task completion with its original workflow definition and no historical backfill', async () => {
+  const c = await prepared(); const config = (await v9Workspace(admin)).config!;
+  config.workflows.push({ id: 'task-event', name: 'Task event', module: 'off', status: 'published', trigger: { event: 'taskDone', days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [{ field: 'caseType', op: 'is', value: 'Resignation' }], steps: [{ id: 'notice', type: 'notify', to: 'employee', cc: [], subject: 'Original completion definition', body: '' }], description: '' });
+  await v9SaveConfig(admin, config.revision, config);
+  await v9OwnTask(employee, { caseId: c.id, revision: c.revision, taskId: c.tasks[0].id, status: 'done', reason: '' });
+  const captured = await v9CaseDetail(admin, c.id); expect(captured.case.mails).toEqual([]);
+  expect(captured.case.runs.find(run => run.workflowId === 'task-event')).toMatchObject({ status: 'waiting', sourceEvent: { kind: 'taskDone', sourceId: c.tasks[0].id }, actor: { id: employee.userId } });
+  const edited = (await v9Workspace(admin)).config!;
+  const changed = edited.workflows.find(workflow => workflow.id === 'task-event')!.steps[0]; if (changed.type !== 'notify') throw Error('Expected notification'); changed.subject = 'Later definition';
+  edited.workflows.push({ ...structuredClone(edited.workflows.find(workflow => workflow.id === 'task-event')!), id: 'later-task-event' });
+  await v9SaveConfig(admin, edited.revision, edited);
+  const system = { ...admin, userId: undefined, personId: null }, morning = new Date(addDays(todayInKualaLumpur(), -1) + 'T23:00:00Z');
+  expect(await v9Sweep(system, owner, morning)).toEqual({ processed: 1, failed: 0 });
+  const resumed = (await v9CaseDetail(admin, c.id)).case;
+  expect(resumed.mails.map(mail => mail.subject)).toEqual(['Original completion definition']);
+  expect(resumed.runs.some(run => run.workflowId === 'later-task-event')).toBe(false);
+  expect(await v9Sweep(system, owner, morning)).toEqual({ processed: 0, failed: 0 });
+  await expect(withTenant(employee, tx => tx.execute(sql`select app.lc_v9_capture_source_runs(${base.tenantId}::uuid,'off','{}','{}','{}',1)`))).rejects.toMatchObject({ cause: { message: expect.stringContaining('permission denied') } });
+});
+
+it('captures actual saved employee signatures and private file receipts as distinct source events', async () => {
+  const c = await prepared(), config = (await v9Workspace(admin)).config!;
+  for (const event of ['docSigned', 'fileUploaded'] as const) config.workflows.push({ id: event, name: event, module: 'off', status: 'published', trigger: { event, days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [], steps: [{ id: 'notice', type: 'notify', to: 'employee', cc: [], subject: 'Actual ' + event, body: '' }], description: '' });
+  await v9SaveConfig(admin, config.revision, config);
+  await v9OwnDocument(employee, { caseId: c.id, revision: c.revision, documentId: c.documents[0].id, values: { mobile: '+60111111111', confirm: 'true' }, signature: { method: 'typed', value: 'V9 subject', consent: true } });
+  const signed = (await v9CaseDetail(admin, c.id)).case;
+  expect(signed.runs.find(run => run.workflowId === 'docSigned')).toMatchObject({ sourceEvent: { kind: 'docSigned', sourceId: c.documents[0].id } });
+  const fileId = await v9UploadFile(admin, { caseId: c.id, revision: signed.revision, slot: 'fixture-support', name: 'fictional-source-event.txt', content: Buffer.from('Fictional source event fixture') });
+  const uploaded = (await v9CaseDetail(admin, c.id)).case;
+  expect(uploaded.runs.find(run => run.workflowId === 'fileUploaded')).toMatchObject({ sourceEvent: { kind: 'fileUploaded', sourceId: fileId } });
+  await v9Sweep({ ...admin, userId: undefined, personId: null }, owner, new Date(addDays(todayInKualaLumpur(), -1) + 'T23:00:00Z'));
+  const result = (await v9CaseDetail(admin, c.id)).case;
+  expect(result.mails.map(mail => mail.subject).sort()).toEqual(['Actual docSigned', 'Actual fileUploaded']);
 });

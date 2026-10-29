@@ -423,3 +423,15 @@ it('routes a group notification once with remaining members in CC and an ordinar
   const named = fixture(); M.runWorkflow(named.c, named.config, workflow({ ...definition, steps: [{ id: 'named', type: 'notify', to: 'person:reviewer-b', cc: [], subject: 'Named review', body: '' }] }), named.environment, 'manual');
   expect(named.c.mails[0].to).toEqual(['reviewer-b']);
 });
+
+it('retains a captured event decision through resume and requires a reason before abandoning its unfinished run', () => {
+  const { c, config, environment, figures } = fixture();
+  const definition = workflow({ trigger: { event: 'taskDone', days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [{ field: 'caseType', op: 'is', value: 'Resignation' }], steps: [{ id: 'notice', type: 'notify', to: 'employee', cc: [], subject: 'Recorded action', body: '' }] });
+  c.runs.push({ id: 'workflow:once', workflowId: definition.id, revision: 1, date: environment.today, status: 'waiting', cursor: 0, reason: 'Source action recorded.', at: environment.now, definition, sourceEvent: { kind: 'taskDone', sourceId: 'task', at: environment.now, revision: 2 } });
+  expect(M.lastDayCheck(c, config, environment, figures)).toBe('flagged'); expect(c.state).toBe('submitted');
+  expect(c.review?.detail).toContain('recorded actions'); expect(() => M.close(c, figures, '', environment)).toThrow('exception reason');
+  c.facts.caseType = 'Retirement';
+  expect(M.runWorkflow(c, config, definition, environment, 'resume')?.status).toBe('done');
+  expect(c.mails.filter(mail => mail.workflowId === definition.id)).toMatchObject([{ subject: 'Recorded action' }]);
+  expect(M.unresolvedSourceRuns(c)).toEqual([]);
+});
