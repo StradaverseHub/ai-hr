@@ -3738,7 +3738,7 @@ export const bankPaymentExport = pgTable('bank_payment_export', {
   id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
   // Historical identity survives deletion of the bank's editable configuration.
   bankProfileId:uuid('bank_profile_id').notNull(),actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),
-  requestKey:uuid('request_key').notNull(),valueDate:date('value_date').notNull(),tapeId:integer('tape_id').notNull(),
+  requestKey:uuid('request_key').notNull(),requestFingerprint:text('request_fingerprint').notNull(),valueDate:date('value_date').notNull(),tapeId:integer('tape_id').notNull(),
   format:text('format').notNull(),sourceDigest:text('source_digest').notNull(),filename:text('filename').notNull(),
   content:text('content').notNull(),recordCount:integer('record_count').notNull(),totalCents:bigint('total_cents',{mode:'number'}).notNull(),createdAt:createdAt(),
 },t=>[uniqueIndex('bank_payment_export_tape_uq').on(t.tenantId,t.valueDate,t.tapeId),uniqueIndex('bank_payment_export_request_uq').on(t.tenantId,t.actorUserId,t.requestKey),check('bank_payment_export_tape_range',sql`${t.tapeId} between 1 and 999`)]);

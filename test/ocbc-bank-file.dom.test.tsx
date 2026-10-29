@@ -32,7 +32,19 @@ describe('OCBC supplied bank layouts',()=>{
   const p=salary();p.format='socso';p.testFile=true;p.payer.employerReference='SOCSO-TEST';const [h,d,t]=lines(p);
   expect(h.slice(109,137)).toBe('102026014YPAYROLL         8A');expect(h.slice(157,169)).toBe('SOCSO-TEST  ');expect(d.slice(101,115)).toBe('00000000123456');expect(t.slice(0,21)).toBe('990000100000000123456');expect(t.slice(21,41)).toBe(' '.repeat(20));
  });
- it.each(['lhdn','zakat'] as const)('refuses %s while its mandatory hash rule is unresolved',format=>{const p=salary();p.format=format;expect(()=>buildOcbcFile(p)).toThrow(/Hash Total/);});
+ it('writes LHDN PCB/CP38 counts and totals with exactly20 reserved blank hash bytes',()=>{
+  const p=salary();p.format='lhdn';p.payer.employerReference='123456';p.rows[0]={...p.rows[0],taxNumber:'9876543210',wifeCode:'0',pcbCents:1234,cp38Cents:567};p.rows.push({...p.rows[0],key:'CP38 ONLY',pcbCents:0,cp38Cents:100});
+  const [h,d,,t]=lines(p);expect(h.slice(90,130)).toBe('LHDN      00001234560000123456102026014N');expect(d.slice(2,25)).toBe('98765432100100000000001');expect(d.slice(119,137)).toBe('0000123400000567MY');
+  expect(t.slice(0,32)).toBe('99000010000001234000020000000667');expect(t.slice(32,52)).toBe(' '.repeat(20));expect(t.slice(52)).toBe(' '.repeat(428));expect(buildOcbcFile(p).totalCents).toBe(1901);
+ });
+ it('writes Zakat income and exact reserved blank hash bytes without zero filling the hash',()=>{
+  const p=salary();p.format='zakat';p.payer.employerReference='Z1234';p.rows[0].paymentType='PENDAPATAN';const [h,d,t]=lines(p);
+  expect(h.slice(90,131)).toBe('ZAKAT     Z1234102026014NPAYROLL         ');expect(d.slice(76,103)).toBe('00000000000123456PENDAPATAN');expect(t.slice(0,26)).toBe('99000000100000000000123456');expect(t.slice(26,46)).toBe(' '.repeat(20));expect(t.slice(46)).toBe(' '.repeat(434));
+ });
+ it('refuses missing Wife Code, fabricated country metadata, and unsupported Zakat state',()=>{
+  const p=salary();p.format='lhdn';p.payer.employerReference='123';p.rows[0].pcbCents=123;expect(()=>buildOcbcFile(p)).toThrow(/Wife Code/);p.rows[0].wifeCode='0';p.rows[0].passport='P123';expect(()=>buildOcbcFile(p)).toThrow(/country code/);p.format='zakat';p.rows[0].paymentType='PENDAPATAN';p.payer.settings.stateCode='013';expect(()=>buildOcbcFile(p)).toThrow(/014 only/);
+ });
+ it.each(['lhdn','zakat'] as const)('requires live indicator N for %s',format=>{const p=salary();p.format=format;p.testFile=true;expect(()=>buildOcbcFile(p)).toThrow(/indicator N/);});
  it('uses the supplied nine-digit routing, not the two-digit BNM code',()=>{expect(ocbcRouting('Maybank','123456789012')).toEqual({routingId:'100002270',account:'123456789012'});});
  it('applies the supplied ICBC prefix rule only for an actual 19-digit 01 account',()=>{expect(ocbcRouting('ICBC','0112345678901234567')).toEqual({routingId:'100002597',account:'12345678901234567'});expect(()=>ocbcRouting('ICBC','9912345678901234567')).toThrow(/length/);});
  it.each(['Royal Bank of Scotland','unknown bank'])('refuses unsupported receiving bank %s',bank=>expect(()=>ocbcRouting(bank,'123456789012')).toThrow(/routing/));

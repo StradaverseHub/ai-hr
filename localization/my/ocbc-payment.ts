@@ -3,13 +3,14 @@ import {assertModuleEnabled} from '../../core/entitlements';
 import {createHash} from 'node:crypto';
 import {and,asc,eq,inArray,isNull,sql} from 'drizzle-orm';
 import {type SessionContext,type Tx} from '../../db/client';
-import {withPayrollHistoryTenant} from '../../packs/payroll/service';
+import {withPayrollHistoryTenant} from '../../packs/payroll/history';
 import {appendEvent,actorOf} from '../../db/events';
-import {company,companyBankProfile,companyStatutoryMy,employeeStatutoryMy,employment,payrollBatch,payslip,person,bankPaymentExport} from '../../db/schema';
+import {company,companyBankProfile,companyStatutoryMy,companyStatutoryAuthority,employeeStatutoryMy,employment,payrollBatch,payslip,person,bankPaymentExport} from '../../db/schema';
 import {BankPaymentFileError,type BankPaymentFiles,type BankPaymentRequest} from '../country-pack';
 import {buildOcbcFile,OcbcFileError,type OcbcInput,type OcbcRow} from './ocbc-file';
 import {monthWagesFrom,monthWageFor} from './statutory-month-wage';
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const requestFingerprint=(p:BankPaymentRequest)=>hash({companyId:p.companyId,bankProfileId:p.bankProfileId,formatId:p.formatId,periodKey:p.periodKey,paymentDate:p.paymentDate,runSeq:p.runSeq??null,testFile:p.testFile,reference:p.reference});
 const FORMATS={'my.ocbc.salary':'salary','my.ocbc.kwsp':'kwsp','my.ocbc.socso':'socso','my.ocbc.lhdn':'lhdn','my.ocbc.zakat':'zakat'} as const;
 function cents(value:unknown,label:string){const raw=String(value??'');if(!/^\d+(\.\d{1,2})?$/.test(raw))throw new OcbcFileError(`${label}: saved payroll amount is missing, negative or invalid.`);const [whole,fraction='']=raw.split('.');const amount=Number(whole)*100+Number(fraction.padEnd(2,'0'));if(!Number.isSafeInteger(amount))throw new OcbcFileError(`${label}: amount exceeds supported precision.`);return amount;}
 async function authorize(tx:Tx,ctx:SessionContext,companyId:string){
@@ -25,12 +26,14 @@ async function source(tx:Tx,ctx:SessionContext,p:BankPaymentRequest){
  if(!co||co.country!=='MY')throw new BankPaymentFileError('Not found',404);
  const [bank]=await tx.select().from(companyBankProfile).where(and(eq(companyBankProfile.id,p.bankProfileId),eq(companyBankProfile.companyId,p.companyId),eq(companyBankProfile.tenantId,ctx.tenantId))).for('share');
  if(!bank||bank.bank!=='ocbc_bank'||bank.currency!=='MYR')throw new OcbcFileError('Choose an OCBC MYR bank account for this company.');
- if(format==='salary'&&(!Number.isInteger(p.runSeq)||p.runSeq!<1))throw new OcbcFileError('Choose exactly one ready payroll run for salary payment.');
+ if(format==='salary'&&(!Number.isInteger(p.runSeq)||p.runSeq!<1||p.runSeq!>9999))throw new OcbcFileError('Choose exactly one ready payroll run for salary payment.');
+ if(format!=='salary'&&p.runSeq!==undefined)throw new OcbcFileError('Statutory bank files cover the whole month. Remove the payroll run selection.');
+ if(format==='salary'&&p.testFile)throw new OcbcFileError('Salary files cannot use the statutory test indicator.');
  const batches=await tx.select({id:payrollBatch.id,runSeq:payrollBatch.runSeq,stale:payrollBatch.needsRecalcAt}).from(payrollBatch).where(and(eq(payrollBatch.tenantId,ctx.tenantId),eq(payrollBatch.companyId,p.companyId),eq(payrollBatch.payPeriod,p.periodKey),inArray(payrollBatch.status,['processed','closed']),isNull(payrollBatch.historyImportAttemptId),format==='salary'?eq(payrollBatch.runSeq,p.runSeq!):undefined)).orderBy(asc(payrollBatch.runSeq)).for('share');
  if(!batches.length)throw new OcbcFileError('No ready payroll runs exist for this selection. Imported history cannot initiate a bank payment.');
  if(batches.some(b=>b.stale))throw new OcbcFileError('Recalculate the selected payroll before generating its bank file.');
  const rows=await tx.select({employmentId:employment.id,personId:person.id,name:person.fullName,code:employment.employeeCode,method:employment.paymentMethod,net:payslip.netPay,statutory:payslip.statutory,runSeq:payrollBatch.runSeq,
-  bank:employeeStatutoryMy.bankName,account:employeeStatutoryMy.bankAccountNo,ic:employeeStatutoryMy.icNumber,passport:employeeStatutoryMy.passportNumber,socsoNumber:employeeStatutoryMy.socsoNumber,epfNumber:employeeStatutoryMy.epfNumber,
+  bank:employeeStatutoryMy.bankName,account:employeeStatutoryMy.bankAccountNo,ic:employeeStatutoryMy.icNumber,passport:employeeStatutoryMy.passportNumber,oldIc:employeeStatutoryMy.oldIcNumber,countryCode:employeeStatutoryMy.passportIssuingCountryCode,taxNumber:employeeStatutoryMy.taxNumber,socsoNumber:employeeStatutoryMy.socsoNumber,epfNumber:employeeStatutoryMy.epfNumber,
   customNameEnabled:employeeStatutoryMy.enableCustomHolderName,customName:employeeStatutoryMy.customHolderName,customIdEnabled:employeeStatutoryMy.enableCustomHolderId,customId:employeeStatutoryMy.customHolderId,
  }).from(payslip).innerJoin(payrollBatch,eq(payrollBatch.id,payslip.batchId)).innerJoin(employment,eq(employment.id,payslip.employmentId)).innerJoin(person,eq(person.id,employment.personId)).leftJoin(employeeStatutoryMy,eq(employeeStatutoryMy.personId,person.id))
  .where(inArray(payslip.batchId,batches.map(b=>b.id))).orderBy(asc(employment.employeeCode),asc(employment.id),asc(payrollBatch.runSeq));
@@ -51,10 +54,18 @@ async function source(tx:Tx,ctx:SessionContext,p:BankPaymentRequest){
   }else if(format==='socso'){
    const amount=cents(st?.socsoEmployee,key+' employee SOCSO')+cents(st?.socsoEmployer,key+' employer SOCSO');if(!amount)continue;
    const prior=grouped.get(r.employmentId);grouped.set(r.employmentId,{key,name:r.name,identity:r.ic?.trim().replace(/[-\s]/g,'')||r.socsoNumber?.trim()||'',amountCents:(prior?.amountCents??0)+amount});
+  }else if(format==='lhdn'){
+   const pcb=cents(st?.pcb??0,key+' PCB'),cp38=cents(st?.cp38??0,key+' CP38');if(!pcb&&!cp38)continue;
+   // The present personnel contract has no Wife Code. Do not invent it from tax category or TIN.
+   throw new OcbcFileError(`${key}: enter an explicit OCBC LHDN Wife Code (0–9). The current employee profile has no field for it.`);
+  }else if(format==='zakat'){
+   const amount=cents(st?.zakat??0,key+' salary-deducted Zakat');if(!amount)continue;const prior=grouped.get(r.employmentId);
+   grouped.set(r.employmentId,{key,name:r.name,identity:r.ic?.trim().replace(/[-\s]/g,'')||'',oldIdentity:r.oldIc??'',passport:r.passport??'',paymentType:'PENDAPATAN',amountCents:(prior?.amountCents??0)+amount});
   }
  }
  const [statutory]=await tx.select().from(companyStatutoryMy).where(eq(companyStatutoryMy.companyId,p.companyId));
- const input:OcbcInput={format,payer:{name:bank.orgName?.trim()||bank.accountName?.trim()||co.name,corporateId:bank.corporateId,account:bank.debitAccountNo,branch:bank.branch??'',employerReference:format==='kwsp'?statutory?.epfEmployerNo??'':statutory?.socsoEmployerCode??'',settings:{contactName:bank.fileContactName??'',contactPhone:bank.fileContactPhone??'',stateCode:bank.fileStateCode??'',requireIdCheck:bank.requirePayeeIdCheck}},paymentDate:p.paymentDate,periodKey:p.periodKey,tapeId:1,testFile:p.testFile,reference:p.reference,rows:[...grouped.values()]};
+ const [zakatAuthority]=format==='zakat'?await tx.select({accountNo:companyStatutoryAuthority.accountNo}).from(companyStatutoryAuthority).where(and(eq(companyStatutoryAuthority.companyId,p.companyId),eq(companyStatutoryAuthority.tenantId,ctx.tenantId),eq(companyStatutoryAuthority.authority,'zakat'))):[];
+ const input:OcbcInput={format,payer:{name:bank.orgName?.trim()||bank.accountName?.trim()||co.name,corporateId:bank.corporateId,account:bank.debitAccountNo,branch:bank.branch??'',employerReference:format==='kwsp'?statutory?.epfEmployerNo??'':format==='lhdn'?(statutory?.lhdnEmployerNo??'').replace(/\D/g,''):format==='zakat'?zakatAuthority?.accountNo??'':statutory?.socsoEmployerCode??'',settings:{contactName:bank.fileContactName??'',contactPhone:bank.fileContactPhone??'',stateCode:bank.fileStateCode??'',requireIdCheck:bank.requirePayeeIdCheck}},paymentDate:p.paymentDate,periodKey:p.periodKey,tapeId:1,testFile:p.testFile,reference:p.reference,rows:[...grouped.values()]};
  const built=buildOcbcFile(input);return {input,built,digest:hash({selection:{companyId:p.companyId,bankProfileId:p.bankProfileId,formatId:p.formatId,periodKey:p.periodKey,runSeq:p.runSeq??null},input}),companyName:co.name};
 }
 export const ocbcBankPaymentFiles:BankPaymentFiles={
@@ -63,13 +74,15 @@ export const ocbcBankPaymentFiles:BankPaymentFiles={
   await authorize(tx,ctx,p.companyId);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'bank-file-request:'+ctx.tenantId+':'+ctx.userId+':'+p.requestKey},0))`);
   const [existing]=await tx.select().from(bankPaymentExport).where(and(eq(bankPaymentExport.tenantId,ctx.tenantId),eq(bankPaymentExport.actorUserId,ctx.userId!),eq(bankPaymentExport.requestKey,p.requestKey)));
-  if(existing){if(existing.companyId!==p.companyId||existing.bankProfileId!==p.bankProfileId||existing.sourceDigest!==p.expectedDigest)throw new BankPaymentFileError('This download request changed. Preview it again.',409);return{content:existing.content,filename:existing.filename};}
+  if(existing){if(existing.companyId!==p.companyId||existing.bankProfileId!==p.bankProfileId||existing.sourceDigest!==p.expectedDigest||existing.requestFingerprint!==requestFingerprint(p))throw new BankPaymentFileError('This download request changed. Preview it again.',409);return{content:existing.content,filename:existing.filename};}
   // Drop transport-only confirmation fields before hashing the canonical request.
   const {expectedDigest,requestKey,...request}=p,value=await source(tx,ctx,request);
   if(value.digest!==expectedDigest)throw new BankPaymentFileError('Payroll or bank details changed after preview. Preview the file again.',409);
   const [sequence]=await tx.execute<{tape_id:number}>(sql`select app.next_bank_payment_tape(${p.companyId}::uuid,${p.paymentDate}::date) as tape_id`);
-  const tapeId=Number(sequence.tape_id),built=buildOcbcFile({...value.input,tapeId});
-  const [saved]=await tx.insert(bankPaymentExport).values({tenantId:ctx.tenantId,companyId:p.companyId,bankProfileId:p.bankProfileId,actorUserId:ctx.userId!,requestKey,valueDate:p.paymentDate,tapeId,format:p.formatId,sourceDigest:value.digest,filename:built.filename,content:built.content,recordCount:built.recordCount,totalCents:built.totalCents}).returning({id:bankPaymentExport.id});
+  const tapeId=Number(sequence.tape_id);
+  if(!Number.isInteger(tapeId)||tapeId<1||tapeId>999)throw new OcbcFileError('All 999 bank Tape IDs for this value date have been used. Choose another payment date.');
+  const built=buildOcbcFile({...value.input,tapeId});
+  const [saved]=await tx.insert(bankPaymentExport).values({tenantId:ctx.tenantId,companyId:p.companyId,bankProfileId:p.bankProfileId,actorUserId:ctx.userId!,requestKey,requestFingerprint:requestFingerprint(request),valueDate:p.paymentDate,tapeId,format:p.formatId,sourceDigest:value.digest,filename:built.filename,content:built.content,recordCount:built.recordCount,totalCents:built.totalCents}).returning({id:bankPaymentExport.id});
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'bank-payment-export',aggregateId:saved.id,eventType:'bank-payment-file.generated',actor:actorOf(ctx),payload:{companyId:p.companyId,bankProfileId:p.bankProfileId,format:p.formatId,periodKey:p.periodKey,recordCount:built.recordCount,totalCents:built.totalCents,testFile:p.testFile}});
   return{content:built.content,filename:built.filename};
  }),
