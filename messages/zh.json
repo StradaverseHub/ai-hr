@@ -24500,7 +24500,10 @@
       "performance_assistant": "绩效对话助手",
       "feedback_planning": "改进计划起草",
       "approval_chasers": "逾期审批提醒",
-      "review_chasers": "逾期评审提醒"
+      "review_chasers": "逾期评审提醒",
+      "clock_reminders": "缺少上班打卡提醒",
+      "document_reminders": "护照到期提醒",
+      "lifecycle_chasers": "入离职步骤提醒"
     },
     "kinds": {
       "assistant": "助手",

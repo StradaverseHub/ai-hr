@@ -24500,7 +24500,10 @@
       "performance_assistant": "Performance conversation assistant",
       "feedback_planning": "Improvement plan drafting",
       "approval_chasers": "Overdue approval reminders",
-      "review_chasers": "Overdue review reminders"
+      "review_chasers": "Overdue review reminders",
+      "clock_reminders": "Missing clock-in reminders",
+      "document_reminders": "Passport expiry reminders",
+      "lifecycle_chasers": "Lifecycle step reminders"
     },
     "kinds": {
       "assistant": "Assistant",

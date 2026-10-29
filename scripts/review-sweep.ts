@@ -134,22 +134,23 @@ async function main() {
       // observes readiness under their own login.
       // Each pass carries only the switch-ons it relies on, so every stamped effect names exactly its own authority.
       const orchestratorEnablements = enablements.filter(e => e.feature === 'readiness_reminders' || e.feature === 'claims_triage');
-      const chaserEnablements = enablements.filter(e => e.feature === 'approval_chasers' || e.feature === 'review_chasers');
+      const chaserEnablements = enablements.filter(e => e.feature === 'approval_chasers' || e.feature === 'review_chasers' || e.feature === 'clock_reminders' || e.feature === 'document_reminders' || e.feature === 'lifecycle_chasers');
       const orchestration = orchestratorEnablements.length > 0
         ? await runHrOrchestrator(agentContext(t.id, principalId, entitlements, orchestratorEnablements)) : null;
       const chasers = chaserEnablements.length > 0
         ? await runAutomaticChasers(agentContext(t.id, principalId, entitlements, chaserEnablements), { today, calendar: engineWorkingDayCalendar(ctx) }) : null;
-      const approvalRun = chasers?.approvals, reviewRun = chasers?.reviews;
+      const approvalRun = chasers?.approvals, reviewRun = chasers?.reviews, followupRun=chasers?.followups;
       const chaseSent = (approvalRun?.status === 'succeeded' ? approvalRun.value.sent : 0)
-        + (reviewRun?.status === 'succeeded' ? reviewRun.value.sent : 0);
+        + (reviewRun?.status === 'succeeded' ? reviewRun.value.sent : 0)
+        + (followupRun?.status === 'succeeded' ? followupRun.value.sent : 0);
       if (chasers) chaserTenants++;
       totalChases += chaseSent;
-      for (const run of [approvalRun, reviewRun]) if (run?.status === 'failed') console.error(`  Automatic chaser failed: ${run.error.name}: ${run.error.message}`);
-      for (const run of [approvalRun, reviewRun]) {
+      for (const run of [approvalRun, reviewRun, followupRun]) if (run?.status === 'failed') console.error(`  Automatic chaser failed: ${run.error.name}: ${run.error.message}`);
+      for (const run of [approvalRun, reviewRun, followupRun]) {
         if (run?.status !== 'succeeded') continue;
         const capped = Object.entries(run.value.byAction).filter(([, c]) => c?.cappedOut).map(([id]) => id);
         if (capped.length) console.error(`  ⚠ ${capped.join(', ')} reached the per-run cap; more remain.`);
-        if (run.value.stopped) console.error(`  ⚠ ${run.value.specialist} stopped: its switch changed during the run.`);
+        if (run.value.stopped) console.error(`  ⚠ ${'specialist' in run.value?run.value.specialist:'followups'} stopped: its switch changed during the run.`);
       }
       const nudge = orchestration?.nudge.status === 'succeeded' ? orchestration.nudge.value
         : { disabled: true, sent: 0, settled: 0, cooled: 0, orphaned: 0, cappedOut: false, awaitingReview: 0, changed: 0 };

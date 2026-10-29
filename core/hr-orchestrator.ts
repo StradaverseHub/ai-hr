@@ -12,6 +12,7 @@ import type { ReadinessAction } from '../lib/readiness-correction-actions';
 import { triagePendingClaims } from './input-triage';
 import { digestOf } from './agent-proposal';
 import { HR_HARNESS_VERSION, readinessTransition, runOrchestrationPass, summarizeOrchestrationPass } from './orchestrator-harness';
+import {runAutomaticFollowups} from './automatic-followups';
 import { AutomaticChaserRefusal, runApprovalChasers, runReviewChasers, type ChaserRunOptions } from './automatic-chasers';
 
 /** Run state is administrative. Employee self-service continues through its existing services.
@@ -162,7 +163,8 @@ export async function runAutomaticChasers(ctx: SessionContext, opts: ChaserRunOp
   };
   const approvals = await attempt(() => runApprovalChasers(ctx, opts));
   const reviews = await attempt(() => runReviewChasers(ctx, opts));
-  return { approvals, reviews, failed: approvals.status === 'failed' || reviews.status === 'failed' };
+  const followups = await attempt(() => runAutomaticFollowups(ctx, opts));
+  return { approvals, reviews, followups, failed: approvals.status === 'failed' || reviews.status === 'failed' || followups.status === 'failed' };
 }
 
 /** Scope follows the source employment even after a transfer. Never expose tenant-wide aggregates. */

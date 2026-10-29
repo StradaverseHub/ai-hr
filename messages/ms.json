@@ -24500,7 +24500,10 @@
       "performance_assistant": "Pembantu perbualan prestasi",
       "feedback_planning": "Draf pelan penambahbaikan",
       "approval_chasers": "Peringatan kelulusan tertunggak",
-      "review_chasers": "Peringatan semakan tertunggak"
+      "review_chasers": "Peringatan semakan tertunggak",
+      "clock_reminders": "Peringatan rekod masuk tiada",
+      "document_reminders": "Peringatan tamat tempoh pasport",
+      "lifecycle_chasers": "Peringatan langkah kitar hayat"
     },
     "kinds": {
       "assistant": "Pembantu",

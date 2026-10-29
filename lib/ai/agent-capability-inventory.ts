@@ -292,7 +292,10 @@ export const AGENT_PRINCIPAL_SPECIALISTS=Object.freeze({
  // WP13 (R18): fixed-template reminders only; the registry's Automatic entries name these specialists.
  approval_chasers:{tier:'automatic',setting:'notifications.approval_chasers_enabled',service:'core/automatic-chasers.ts#runApprovalChasers',effect:'reminder to the current approver of an overdue claim, attendance correction or replacement leave request'},
  review_chasers:{tier:'automatic',setting:'notifications.review_chasers_enabled',service:'core/automatic-chasers.ts#runReviewChasers',effect:'reminder to the manager or HR about a probation, contract or internship review undecided after its end date'},
-} as const satisfies Record<'readiness_reminders'|'claims_triage'|'approval_chasers'|'review_chasers',{tier:'automatic';setting:string;service:string;effect:string}>);
+ clock_reminders:{tier:'automatic',setting:'notifications.missing_clock_reminders_enabled',service:'core/automatic-followups.ts#runAutomaticFollowups',effect:'Remind employees when no clock-in is recorded for the previous scheduled working day. This never attests work or changes Attendance.'},
+ document_reminders:{tier:'automatic',setting:'notifications.passport_expiry_reminders_enabled',service:'core/automatic-followups.ts#runAutomaticFollowups',effect:'Remind the employee and authorised HR about a recorded passport expiry within 30 calendar days. No file is read or changed.'},
+ lifecycle_chasers:{tier:'automatic',setting:'notifications.lifecycle_step_chasers_enabled',service:'core/automatic-followups.ts#runAutomaticFollowups',effect:'Remind current lifecycle staff about actionable incomplete steps after three working days without a workflow transition. No task is completed.'},
+} as const satisfies Record<'readiness_reminders'|'claims_triage'|'approval_chasers'|'review_chasers'|'clock_reminders'|'document_reminders'|'lifecycle_chasers',{tier:'automatic';setting:string;service:string;effect:string}>);
 
 /** Counts by class, for a Control Tower coverage view and for measuring how the backlog moves. */
 export function agentCapabilityCoverage(){

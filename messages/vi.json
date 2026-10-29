@@ -24500,7 +24500,10 @@
       "performance_assistant": "Trợ lý hội thoại hiệu suất",
       "feedback_planning": "Soạn kế hoạch cải tiến",
       "approval_chasers": "Nhắc phê duyệt quá hạn",
-      "review_chasers": "Nhắc đánh giá quá hạn"
+      "review_chasers": "Nhắc đánh giá quá hạn",
+      "clock_reminders": "Nhắc thiếu chấm công vào",
+      "document_reminders": "Nhắc hộ chiếu sắp hết hạn",
+      "lifecycle_chasers": "Nhắc bước vòng đời nhân viên"
     },
     "kinds": {
       "assistant": "Trợ lý",

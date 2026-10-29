@@ -1,3 +1,4 @@
+import {currentFollowupTargetsTx} from './automatic-followups';
 import type { Tx as AiReadTx } from '../db/client';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { assessmentReviewTaskRecipientsTx,assessmentReminderRecipientsTx } from '../packs/performance/service';
@@ -986,6 +987,11 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       return [...new Set(out)];
     },
   },
+  'automatic-chase.followup-raised': [
+    {kind:'attendance.missing-clock',category:'attendance',render:p=>({severity:'action',title:'Please check your clock-in record',body:`No clock-in is recorded for ${typeof p?.waitingOn==='string'?p.waitingOn:''}. Check Attendance if a record is missing; this reminder does not establish whether you worked.`,linkPath:'/me'}),recipients:async(tx,ev,p)=>p?.source==='missing_clock'&&typeof p.stage==='string'&&ev.subjectEmploymentId?currentFollowupTargetsTx(tx,'missing_clock',ev.aggregateId,p.stage,ev.subjectEmploymentId):[]},
+    {kind:'profile.passport-expiry',category:'profile',render:p=>({severity:'action',title:'Recorded passport expiry approaching',body:`A recorded passport expiry is ${typeof p?.waitingOn==='string'?p.waitingOn:''}. Check the Personnel record and follow your renewal process.`,linkPath:'/me'}),recipients:async(tx,ev,p)=>p?.source==='passport_expiry'&&typeof p.stage==='string'&&ev.subjectEmploymentId?currentFollowupTargetsTx(tx,'passport_expiry',ev.aggregateId,p.stage,ev.subjectEmploymentId):[]},
+    {kind:'lifecycle.step-waiting',category:null,render:()=>({severity:'action',title:'Lifecycle checklist needs attention',body:'An actionable checklist step is still incomplete. Review the case; this reminder does not complete or verify any task.',linkPath:'/lifecycle'}),recipients:async(tx,ev,p)=>p?.source==='lifecycle_step'&&typeof p.stage==='string'&&ev.subjectEmploymentId?currentFollowupTargetsTx(tx,'lifecycle_step',ev.aggregateId,p.stage,ev.subjectEmploymentId):[]},
+  ],
   // 6e122302 — a Notice Board notice is A NOTIFICATION WITH A DIFFERENT PAYLOAD, which is why core/notice.ts
   // carries no delivery code of its own. Publishing appends notice.published; this entry fans it out to the
   // audience SNAPSHOT (notice_recipient) as ordinary in-app notifications, shown by the same bell as
