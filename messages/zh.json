@@ -9513,7 +9513,8 @@
         "confirmed": "已确认导入",
         "reverted": "已撤销导入",
         "revert-refused": "撤销被拒绝"
-      }
+      },
+      "inputType": "输入类型"
     }
   },
   "admin": {

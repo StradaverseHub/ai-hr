@@ -9513,7 +9513,8 @@
         "confirmed": "Đã xác nhận nhập",
         "reverted": "Đã hoàn tác nhập",
         "revert-refused": "Hoàn tác bị từ chối"
-      }
+      },
+      "inputType": "Loại đầu vào"
     }
   },
   "admin": {
