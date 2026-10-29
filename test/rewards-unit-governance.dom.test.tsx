@@ -12,7 +12,7 @@ describe('Senior offline decision salary input choice',()=>{
   expect(document.querySelector('input[name="increment"]')).toBeNull();
   await userEvent.click(screen.getByRole('radio',{name:en.rewards.governance.increment}));
   expect(document.querySelector('input[name="newBasic"]')).toBeNull();
-  const percent=screen.getByRole('spinbutton',{name:en.rewards.governance.increment});await userEvent.type(percent,'10');
+  const percent=screen.getByRole('spinbutton',{name:en.rewards.governance.increment});expect(percent).toHaveValue(null);await userEvent.type(percent,'10');
   const data=new FormData(screen.getByRole('form',{name:'Offline decision'}) as HTMLFormElement);
   expect(data.get('increment')).toBe('10');expect(data.has('newBasic')).toBe(false);
  });
