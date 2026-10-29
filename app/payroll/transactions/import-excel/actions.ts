@@ -28,6 +28,7 @@ import type { TxnImportKind, TxnImportPreview, TxnImportResult } from '@/lib/pay
 /** Dry run. Returns a verdict per row; writes nothing and appends no event — a preview is a read. */
 export async function validateTxnImportAction(csv: string, kind: TxnImportKind): Promise<TxnImportPreview> {
   const { s, scopeIds } = await scopedAdmin();
+  if(kind!=='fixed')return {kind:'individual',total:0,valid:0,invalid:0,rows:[],fileError:'individualImportMoved'};
   const { records } = parseCsvRecords(csv);
   return validateTxnImport(s, { kind, scopeIds, records });
 }
@@ -42,8 +43,9 @@ export async function validateTxnImportAction(csv: string, kind: TxnImportKind):
  */
 export async function commitTxnImportAction(csv: string, kind: TxnImportKind): Promise<TxnImportResult> {
   const { s, scopeIds } = await scopedAdmin();
+  if(kind!=='fixed')return {kind:'individual',written:0,failed:[],recalcBatchIds:[],fileError:'individualImportMoved'};
   const { records } = parseCsvRecords(csv);
   const result = await commitTxnImport(s, { kind, scopeIds, records });
-  revalidatePath(kind === 'fixed' ? '/payroll/transactions/fixed' : '/payroll/transactions/individual');
+  revalidatePath('/payroll/transactions/fixed');
   return result;
 }

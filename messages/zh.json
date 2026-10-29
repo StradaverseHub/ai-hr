@@ -8201,7 +8201,8 @@
       "fileError": {
         "emptyFile": "该文件没有数据行。",
         "tooManyRows": "该文件超过 2,000 行。请拆分后分批导入。",
-        "missingColumns": "该文件缺少必填列。请下载模板并保持其标题不变。"
+        "missingColumns": "该文件缺少必填列。请下载模板并保持其标题不变。",
+        "individualImportMoved": "请重新加载页面并使用当前的个人交易导入功能，以记录每个批次及各行结果。此旧表单未导入任何交易。"
       },
       "reason": {
         "employeeUnknown": "员工编号 {value} 不存在",

@@ -223,6 +223,8 @@ export type TxnImportPreview = {
 
 export type TxnImportResult = {
   kind: TxnImportKind;
+  /** A stale Individual client must reload into the batch-tracked import before any write. */
+  fileError?: string;
   /** Rows the commit actually wrote. */
   written: number;
   /** Rows that were valid in the preview but were refused at write time — a race, or a guard the

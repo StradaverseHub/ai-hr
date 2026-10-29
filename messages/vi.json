@@ -8201,7 +8201,8 @@
       "fileError": {
         "emptyFile": "Tệp đó không có dòng dữ liệu nào.",
         "tooManyRows": "Tệp đó có hơn 2.000 dòng. Hãy chia nhỏ và nhập theo từng phần.",
-        "missingColumns": "Tệp đó thiếu cột bắt buộc. Hãy tải mẫu và giữ nguyên tiêu đề của mẫu."
+        "missingColumns": "Tệp đó thiếu cột bắt buộc. Hãy tải mẫu và giữ nguyên tiêu đề của mẫu.",
+        "individualImportMoved": "Tải lại trang và dùng chức năng nhập Giao dịch cá nhân hiện tại để ghi lại từng lô và kết quả từng dòng. Biểu mẫu cũ này chưa nhập giao dịch nào."
       },
       "reason": {
         "employeeUnknown": "Mã nhân viên {value} không tồn tại",

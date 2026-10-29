@@ -8201,7 +8201,8 @@
       "fileError": {
         "emptyFile": "Fail itu tiada baris data.",
         "tooManyRows": "Fail itu melebihi 2,000 baris. Pecahkan dan import secara berperingkat.",
-        "missingColumns": "Fail itu kekurangan lajur wajib. Muat turun templat dan kekalkan tajuknya."
+        "missingColumns": "Fail itu kekurangan lajur wajib. Muat turun templat dan kekalkan tajuknya.",
+        "individualImportMoved": "Muat semula halaman ini dan gunakan import Transaksi Individu terkini yang merekodkan setiap kelompok dan hasil baris. Borang lama ini tidak mengimport sebarang transaksi."
       },
       "reason": {
         "employeeUnknown": "ID Pekerja {value} tidak wujud",
