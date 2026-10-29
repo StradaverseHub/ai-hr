@@ -443,6 +443,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  SELECT jsonb_build_object('id',c.id,'number',c.data->>'number','module','onb','revision',c.revision,'state',CASE WHEN c.data->>'state'='pending' THEN 'pending' ELSE c.data->>'state' END,
  'facts',jsonb_build_object('name',coalesce(c.data->'source'->>'fullName',c.data->'local'->>'fullName',''),'joinDate',coalesce(c.data->'source'->>'joinDate',c.data->'local'->>'joinDate',''),'lastDay','','company',c.company_id,'employmentId',c.employment_id,'personId',e.person_id,'employeeUserId',u.id),
  'tasks',coalesce((SELECT jsonb_agg(t||jsonb_build_object('by',CASE WHEN t->>'by'='joiner' THEN 'employee' ELSE t->>'by' END,'assignmentFailure',t->'failure','reason','')) FROM jsonb_array_elements(c.data->'tasks') t WHERE t->>'by'='joiner' OR t->>'assignee'=u.id::text),'[]'::jsonb),
+ 'equipment',coalesce((SELECT jsonb_agg(jsonb_build_object('id',i->>'id','name',i->>'name','kind',i->>'type','state',i->>'state','approval',i->>'approval','handedAt',r->'handedAt','receipt',i->'employeeReceipt')) FROM jsonb_array_elements(c.data->'requisitions') r,jsonb_array_elements(r->'items') i WHERE r->>'cancelledAt' IS NULL AND coalesce((i->>'removed')::boolean,false)=false AND i->>'approval' NOT IN ('rejected','withdrawn')),'[]'::jsonb),
  'items','[]'::jsonb,'documents',coalesce((SELECT jsonb_agg(d) FROM jsonb_array_elements(coalesce(p.data->'lifecycleV9'->'documents','[]'::jsonb)) d WHERE d->>'status' IN ('sent','opened','completed','signed','acknowledged','countersign')),'[]'::jsonb),'own',true)
  FROM lc_onboarding_case c JOIN lc_onboarding_private p ON p.case_id=c.id AND p.tenant_id=c.tenant_id
  JOIN employment e ON e.id=c.employment_id AND e.person_id::text=c.data->>'personId' AND e.tenant_id=c.tenant_id AND e.company_id=c.company_id
@@ -452,3 +453,59 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
 $$;
 REVOKE ALL ON FUNCTION app.onboarding_v9_work() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onboarding_v9_work() TO ai_hr_app;
+
+-- Shared catalogue deletion sees opaque V9 references, never private case content.
+CREATE OR REPLACE FUNCTION app.onboarding_v9_catalogue_references() RETURNS text[]
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH permitted AS (
+  SELECT app.current_tenant_id() AS tenant_id WHERE app.current_user_id() IS NOT NULL AND NOT app.login_blocked(app.current_user_id())
+  AND (app.is_group_admin() OR EXISTS(SELECT 1 FROM lc_onboarding_config n WHERE n.tenant_id=app.current_tenant_id() AND n.data->'access'->'onboarding' ? app.current_user_id()::text))
+ ), refs AS (
+  SELECT jsonb_array_elements_text(coalesce(c.data->'returnSelections','[]'::jsonb)) AS id FROM lc_v9_case c JOIN permitted p ON p.tenant_id=c.tenant_id WHERE c.module='off' AND c.data->>'state'='pending'
+  UNION ALL SELECT i->>'sourceCatalogueId' FROM lc_v9_case c JOIN permitted p ON p.tenant_id=c.tenant_id,jsonb_array_elements(c.data->'items') i WHERE c.module='off'
+ ) SELECT coalesce(array_agg(DISTINCT id ORDER BY id) FILTER(WHERE nullif(id,'') IS NOT NULL),ARRAY[]::text[]) FROM refs
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_v9_catalogue_references() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_v9_catalogue_references() TO ai_hr_app;
+
+-- Narrow self receipt: only the linked employee, current revision and an actually handed item.
+CREATE OR REPLACE FUNCTION app.onboarding_v9_receipt(p_id uuid,p_revision integer,p_item text,p_status text,p_note text)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE c lc_onboarding_case%ROWTYPE; prior jsonb; req jsonb; item jsonb; target jsonb; reqs jsonb:='[]'::jsonb; items jsonb; entry jsonb; actor_name text; uid uuid:=app.current_user_id(); found_item boolean:=false;
+BEGIN
+ IF uid IS NULL OR app.login_blocked(uid) OR p_status IS NULL OR p_status NOT IN ('received','problem') OR p_note IS NULL OR length(p_note)>4000 OR (p_status='problem' AND length(trim(p_note))=0) THEN RAISE EXCEPTION 'Equipment receipt not available'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtext('audit-chain:' || app.current_tenant_id()::text));
+ PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text || ':onboarding',0));
+ PERFORM pg_advisory_xact_lock(hashtextextended('lifecycle-v9:' || app.current_tenant_id()::text,0));
+ SELECT x.* INTO c FROM lc_onboarding_case x JOIN employment e ON e.id=x.employment_id AND e.tenant_id=x.tenant_id AND e.company_id=x.company_id AND e.person_id::text=x.data->>'personId'
+ JOIN app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id AND u.id=uid AND u.archived_at IS NULL
+ WHERE x.id=p_id AND x.tenant_id=app.current_tenant_id() FOR UPDATE OF x;
+ IF NOT FOUND OR c.data->>'state'<>'submitted' THEN RAISE EXCEPTION 'Equipment receipt not available'; END IF;
+ IF c.revision IS DISTINCT FROM p_revision THEN RAISE EXCEPTION 'This case changed. Refresh before trying again.'; END IF;
+ SELECT data INTO prior FROM lc_onboarding_private WHERE case_id=c.id AND tenant_id=c.tenant_id FOR UPDATE;
+ IF prior->'lifecycleV9' IS NULL OR prior->'lifecycleV9Subject'->>'employmentId' IS DISTINCT FROM c.employment_id::text OR prior->'lifecycleV9Subject'->>'personId' IS DISTINCT FROM c.data->>'personId' THEN RAISE EXCEPTION 'Equipment receipt not available'; END IF;
+ FOR req IN SELECT * FROM jsonb_array_elements(c.data->'requisitions') LOOP
+  items:='[]'::jsonb;
+  FOR item IN SELECT * FROM jsonb_array_elements(req->'items') LOOP
+   IF item->>'id'=p_item THEN
+    IF found_item OR req->>'cancelledAt' IS NOT NULL OR req->>'handedAt' IS NULL OR item->>'state'<>'handed' OR coalesce((item->>'removed')::boolean,false) OR item->>'approval' IN ('rejected','withdrawn','pending') OR item->'recovery' IS NOT NULL OR item->'employeeReceipt'->>'status'='received' THEN RAISE EXCEPTION 'Equipment receipt not available'; END IF;
+    found_item:=true;target:=item;
+    item:=item||jsonb_build_object('employeeReceipt',jsonb_build_object('status',p_status,'at',now(),'by',uid,'note',trim(p_note)));
+   END IF;
+   items:=items||jsonb_build_array(item);
+  END LOOP;
+  reqs:=reqs||jsonb_build_array(req||jsonb_build_object('items',items));
+ END LOOP;
+ IF NOT found_item THEN RAISE EXCEPTION 'Equipment receipt not available'; END IF;
+ SELECT coalesce(p.full_name,'User') INTO actor_name FROM app_user u LEFT JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE u.id=uid AND u.tenant_id=c.tenant_id AND u.archived_at IS NULL;
+ entry:=jsonb_build_object('id',gen_random_uuid(),'at',now(),'by',uid,'name',actor_name,'action','equipment.'||p_status,'detail',target->>'name');
+ INSERT INTO lc_onboarding_case_revision(tenant_id,case_id,company_id,revision,data) VALUES(c.tenant_id,c.id,c.company_id,c.revision,c.data);
+ INSERT INTO lc_onboarding_private_revision(tenant_id,case_id,company_id,revision,data) VALUES(c.tenant_id,c.id,c.company_id,c.revision,prior);
+ UPDATE lc_onboarding_case SET revision=c.revision+1,updated_at=now(),data=c.data||jsonb_build_object('requisitions',reqs,'history',coalesce(c.data->'history','[]'::jsonb)||jsonb_build_array(entry)) WHERE id=c.id AND tenant_id=c.tenant_id;
+ -- Preserve the paired private snapshot and all document/signature/proposal owners unchanged.
+ UPDATE lc_onboarding_private SET data=prior WHERE case_id=c.id AND tenant_id=c.tenant_id;
+ RETURN c.employment_id;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_v9_receipt(uuid,integer,text,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_v9_receipt(uuid,integer,text,text,text) TO ai_hr_app;

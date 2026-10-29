@@ -184,6 +184,7 @@ export type Item = {
     fulfilmentMethod?: 'rr' | 'manual';
     dueDay?: number;
     assignmentFailure?: string | null;
+    employeeReceipt?: { status: 'received' | 'problem'; at: string; by: Id; note: string };
     recovery?: { offboardingCaseId: string; outcome: 'returned' | 'revoked'; at: string; by: string; reason: string };
 };
 export type Requisition = {

@@ -33,6 +33,7 @@ export type Task = TaskDefinition & {
 };
 export type Item = {
   id: string; name: string; kind: 'system' | 'device'; sourceId: string | null;
+  sourceCatalogueId?: string;
   returnReported?: { at: string; by: string; note: string };
   nativeSource?: { caseId: string; requestId: string; itemId: string; requestNumber: string };
   group: string | null; assignee: string | null; dueOn: string;
@@ -137,6 +138,7 @@ export type Case = {
   submittedAt: string | null; closedAt: string | null; closedBy: Actor | null; closeReason: string;
   cancelReason: string; revokeDate: string; finalFigures: FinalFigures | null;
   review: { firstAt: string; open: number; overdue: number; notReturned: number; detail: string } | null;
+  returnSelections?: string[];
   caseValues?: Record<string,string>;
   revokeMode?: 'lastday' | 'date';
   emailEdits?: Record<string, { subject: string; body: string }>;

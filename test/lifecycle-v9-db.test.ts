@@ -8,7 +8,7 @@ import { saveEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { addDays } from '../lib/lifecycle-v9-model';
 import { currentReq } from '../lib/onboarding-model';
-import { v9UploadEmailAsset, v9DownloadEmailAsset, v9Setup, v9Sweep, v9DeliverEmails, v9DownloadDocument, v9CaseDetail, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnDocument, v9ReportOwnReturn, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx, onboardingHoldingsTx } from '../packs/lifecycle/service';
+import { v9UploadEmailAsset, v9DownloadEmailAsset, v9Setup, v9Sweep, v9DeliverEmails, v9DownloadDocument, v9CaseDetail, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnDocument, v9ReportOwnReturn, v9OwnEquipmentReceipt, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx, onboardingHoldingsTx } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 
 let base: Base, admin: SessionContext, employee: SessionContext, other: SessionContext, employmentId: string;
@@ -953,11 +953,32 @@ it('snapshots handed Native items by employment and records recovery on their or
   expect(holdings.map(item => item.name).sort()).toEqual(['Fictional handed account', 'Fictional handed device']);
   expect(await withTenant(admin, tx => onboardingHoldingsTx(admin, tx, employmentId, base.companyId))).toEqual([]);
   await expect(withTenant(employee, tx => onboardingHoldingsTx(employee, tx, active.employmentId, base.companyId))).rejects.toThrow('Company HR');
-  async function exit() {
+  async function exit(recovered = false) {
     const id = await v9CreateOffboarding(admin, { employmentId: active.employmentId, type: 'Resignation', noticeDate: todayInKualaLumpur(), lastDay: addDays(todayInKualaLumpur(), 30) });
-    await v9Command(admin, id, 1, { type: 'submit' }); return (await v9CaseDetail(admin, id)).case;
+    const preview=await v9CaseDetail(admin,id); expect(preview.returns?.held.map(item=>item.name).sort()).toEqual(recovered ? [] : ['Fictional handed account','Fictional handed device']); expect(preview.case.items).toEqual([]);
+    await v9Command(admin,id,preview.case.revision,{type:'returnSelections',ids:recovered ? [] : ['native-held-device']});
+    await v9Command(admin, id, (await v9CaseDetail(admin,id)).case.revision, { type: 'submit' }); return (await v9CaseDetail(admin, id)).case;
   }
   const holder:SessionContext={...employee,userId:await createAppUser(base.tenantId,joiner.case.personId!,'employee'),personId:joiner.case.personId};
+  await v9Command(admin,joiner.case.id,(await onboardingList(admin)).find(row=>row.case.id===joiner.case.id)!.revision,{type:'runWorkflows'});
+  let receiptWork=(await v9OwnWork(holder)).find(row=>row.id===joiner.case.id)!;
+  expect(receiptWork.equipment).toHaveLength(2);
+  const receiptItem=receiptWork.equipment!.find(item=>item.kind==='device')!;
+  expect(receiptItem.handedAt).toBeTruthy();
+  expect(receiptItem).not.toHaveProperty('steps');
+  await expect(v9OwnEquipmentReceipt(other,{caseId:joiner.case.id,revision:receiptWork.revision,itemId:receiptItem.id,status:'received',note:''})).rejects.toThrow();
+  await expect(v9OwnEquipmentReceipt(holder,{caseId:joiner.case.id,revision:receiptWork.revision,itemId:receiptItem.id,status:'problem',note:' '})).rejects.toThrow();
+  await v9OwnEquipmentReceipt(holder,{caseId:joiner.case.id,revision:receiptWork.revision,itemId:receiptItem.id,status:'problem',note:'Fictional charger missing'});
+  await expect(v9OwnEquipmentReceipt(holder,{caseId:joiner.case.id,revision:receiptWork.revision,itemId:receiptItem.id,status:'received',note:''})).rejects.toThrow();
+  receiptWork=(await v9OwnWork(holder)).find(row=>row.id===joiner.case.id)!;
+  expect(receiptWork.equipment!.find(item=>item.id===receiptItem.id)?.receipt).toMatchObject({status:'problem',by:holder.userId,note:'Fictional charger missing'});
+  await v9OwnEquipmentReceipt(holder,{caseId:joiner.case.id,revision:receiptWork.revision,itemId:receiptItem.id,status:'received',note:''});
+  receiptWork=(await v9OwnWork(holder)).find(row=>row.id===joiner.case.id)!;
+  await expect(v9OwnEquipmentReceipt(holder,{caseId:joiner.case.id,revision:receiptWork.revision,itemId:receiptItem.id,status:'problem',note:'repeat'})).rejects.toThrow();
+  const receiptOwner=(await onboardingList(admin)).find(row=>row.case.id===joiner.case.id)!;
+  expect(currentReq(receiptOwner.case)!.handedAt).toBe(receiptItem.handedAt);
+  expect(currentReq(receiptOwner.case)!.items.find(item=>item.id===receiptItem.id)).toMatchObject({state:'handed',employeeReceipt:{status:'received',by:holder.userId}});
+  expect(await withTenant(admin,tx=>onboardingHoldingsTx(admin,tx,active.employmentId,base.companyId))).toHaveLength(2);
   const first = await exit();
   await expect(exit()).rejects.toThrow('already has an open offboarding case');
   expect(first.items).toHaveLength(2);
@@ -997,7 +1018,7 @@ it('snapshots handed Native items by employment and records recovery on their or
   const finished = (await v9CaseDetail(admin, first.id)).case;
   await expect(v9Command(admin, first.id, finished.revision, { type: 'item', id: first.items[0].id, status: 'todo', reason: '' })).rejects.toThrow('issuing record');
   await v9Command(admin, first.id, finished.revision, { type: 'cancel', reason: 'Fictional duplicate-case recovery check.' });
-  expect((await exit()).items).toEqual([]);
+  expect((await exit(true)).items).toEqual([]);
 });
 
 it('applies live equipment bulk changes atomically and keeps completed items and group-scoped operators intact', async () => {
@@ -1053,4 +1074,50 @@ it('limits unsigned signer choices to fresh company HR and lets an authorized HR
   await expect(v9Command(other,c.id,c.revision,{type:'documentSign',id:counter.id,signature:{method:'typed',value:'Unrelated',consent:true}})).rejects.toThrow();
   await v9Command(admin,c.id,c.revision,{type:'documentSign',id:counter.id,signature:{method:'typed',value:'Authorized HR counter reviewer',consent:true}});c=(await v9CaseDetail(admin,c.id)).case;
   expect(c.documents.find(doc=>doc.id===counter.id)).toMatchObject({status:'signed',hrSignature:{by:{id:admin.userId},printedTitle:'Counter review title'}});
+});
+
+
+it('previews real holdings and selects existing catalogue identities before submission with retirement and deletion guards', async () => {
+  const native = await onboardingContext(admin), team = native.config.techGroup;
+  native.config.catalogue = [
+    { id: 'additional-system', name: 'Fictional extra account', type: 'system', active: true, rules: {}, workflow: null, team, card: false },
+    { id: 'retired-device', name: 'Fictional retired device', type: 'device', active: false, rules: {}, workflow: null, team, card: false },
+  ];
+  await onboardingSaveConfig(admin, native.revision, native.config);
+  const configuration = (await v9Workspace(admin)).config!;
+  for (const workflow of configuration.workflows) workflow.status = 'draft';
+  await v9SaveConfig(admin, configuration.revision, configuration);
+  const id = await v9CreateOffboarding(admin, { employmentId, type: 'Resignation', noticeDate: todayInKualaLumpur(), lastDay: addDays(todayInKualaLumpur(), 30) });
+  let detail = await v9CaseDetail(admin, id);
+  expect(detail.returns).toMatchObject({ held: [], selected: [], catalogue: [{ id: 'additional-system', active: true }, { id: 'retired-device', active: false }] });
+  expect(detail.case.items).toEqual([]);
+  await expect(v9CaseDetail(employee, id)).rejects.toThrow();
+  await expect(v9Command(admin, id, detail.case.revision, { type: 'returnSelections', ids: ['retired-device'] })).rejects.toThrow('active item');
+  await expect(v9Command(admin, id, detail.case.revision, { type: 'returnSelections', ids: ['unknown'] })).rejects.toThrow('active item');
+  await v9Command(admin, id, detail.case.revision, { type: 'returnSelections', ids: ['additional-system'] });
+  await expect(v9Command(admin, id, detail.case.revision, { type: 'returnSelections', ids: [] })).rejects.toThrow('changed');
+  detail = await v9CaseDetail(admin, id);
+  expect(detail.returns?.selected).toEqual(['additional-system']);
+  expect(detail.case.items).toEqual([]);
+  let updated = await onboardingContext(admin);
+  updated.config.catalogue = updated.config.catalogue.filter(item => item.id !== 'additional-system');
+  await expect(onboardingSaveConfig(admin, updated.revision, updated.config)).rejects.toThrow('Retire');
+  updated = await onboardingContext(admin);
+  updated.config.catalogue.find(item => item.id === 'additional-system')!.active = false;
+  await onboardingSaveConfig(admin, updated.revision, updated.config);
+  await expect(v9Command(admin, id, detail.case.revision, { type: 'submit' })).rejects.toThrow('no longer available');
+  expect((await v9CaseDetail(admin, id)).case.state).toBe('pending');
+  updated = await onboardingContext(admin);
+  updated.config.catalogue.find(item => item.id === 'additional-system')!.active = true;
+  await onboardingSaveConfig(admin, updated.revision, updated.config);
+  await v9Command(admin, id, detail.case.revision, { type: 'submit' });
+  detail = await v9CaseDetail(admin, id);
+  expect(detail).not.toHaveProperty('returns');
+  expect(detail.case.returnSelections).toEqual([]);
+  expect(detail.case.items).toMatchObject([{ name: 'Fictional extra account', sourceCatalogueId: 'additional-system', sourceId: null, group: team, status: 'todo' }]);
+  expect(detail.case.items[0]).not.toHaveProperty('nativeSource');
+  await expect(v9Command(admin, id, detail.case.revision, { type: 'returnSelections', ids: [] })).rejects.toThrow('before submission');
+  updated = await onboardingContext(admin);
+  updated.config.catalogue = updated.config.catalogue.filter(item => item.id !== 'additional-system');
+  await expect(onboardingSaveConfig(admin, updated.revision, updated.config)).rejects.toThrow('Retire');
 });

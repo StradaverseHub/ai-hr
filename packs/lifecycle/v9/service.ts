@@ -18,7 +18,7 @@ import { v9Defaults } from '../../../lib/lifecycle-v9-defaults';
 import { parseV9Config, validateV9ConfigChange, v9Equal } from '../../../lib/lifecycle-v9-validation';
 import { readSettlementTx, type SettlementView } from './settlement';
 import { readV9PersonnelTx, pushV9PersonnelTx, lockV9PersonnelWritesTx, v9PersonnelWritableKeys } from '../../../core/lifecycle-v9-personnel';
-import { onboardingFulfilmentGroupTx, onboardingHoldingsTx, onboardingRecoverHoldingTx, onboardingCommand, onboardingV9ReadTx, onboardingV9StoreTx, onboardingSetupTx, onboardingSaveGroupsTx, onboardingV9DefinitionsChangedTx, onboardingAssignmentLoadsTx, onboardingUnavailableTx } from '../onboarding/service';
+import { onboardingFulfilmentGroupTx, onboardingHoldingsTx, onboardingReturnCatalogueTx, onboardingRecoverHoldingTx, onboardingCommand, onboardingV9ReadTx, onboardingV9StoreTx, onboardingSetupTx, onboardingSaveGroupsTx, onboardingV9DefinitionsChangedTx, onboardingAssignmentLoadsTx, onboardingUnavailableTx } from '../onboarding/service';
 import { issuedToTx, returnAssetTx } from '../../../core/lifecycle-assets';
 import { lifecycleV9EmailIpc } from '../../../lib/lifecycle-v9-email-ipc';
 import type { LifecycleV9DeliveryRequest, LifecycleV9DeliveryResult } from '../../../lib/lifecycle-v9-delivery-model';
@@ -28,8 +28,9 @@ type Row = { id: string; revision: number; company_id: string; data: M.Case; nat
 export type DirectoryUser = { id: string; name: string };
 export type Options = { users: DirectoryUser[]; companies: { id: string; name: string; registrationNo?: string; address?: string }[]; employees: { id: string; name: string; employeeNo: string; companyId: string }[]; signatoryCandidates?: Record<string,string[]>; labels?: Partial<Record<M.RuleField, Record<string, string>>>; leaveTypes?: { id: string; name: string }[] };
 export type Workspace = { config: M.Config | null; cases: M.Case[]; options: Options; canConfigure: boolean; actor: M.Actor; personnelWritableKeys: string[]; templateUsage?: M.TemplateUsage[]; definitionUsage?: M.DefinitionUsage[] };
-export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'state' | 'facts' | 'tasks' | 'items' | 'documents'> & { own: boolean };
-export type CaseDetail = { case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
+export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'state' | 'facts' | 'tasks' | 'items' | 'documents'> & { own: boolean; equipment?: { id: string; name: string; kind: 'device'|'system'; state: string; approval: string; handedAt: string|null; receipt: {status:'received'|'problem';at:string;by:string;note:string}|null }[] };
+export type PendingReturns = { held:{id:string;name:string;kind:'system'|'device';group:string|null;source:'asset'|'onboarding';catalogueId?:string;requestNumber?:string}[]; catalogue:{id:string;name:string;kind:'system'|'device';group:string;active:boolean}[]; selected:string[] };
+export type CaseDetail = { returns?:PendingReturns; case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function identifier(value: string): string { if (!uuid.test(value)) throw new M.V9Error('A valid record identifier is required.'); return value; }
 async function admin(tx: Tx, companyId?: string): Promise<void> {
@@ -120,11 +121,15 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
     lastAssigned: id => { const last = sharedLoads.find(load => load.user_id === id)?.last_auto; return last ? Date.parse(last) || 0 : 0; },
     eligibleUser: id => users.some(u => u.id === id), userName: id => users.find(u => u.id === id)?.name ?? 'Unlinked user', mergeValues: values, signatoryUserId: signatory?.signatoryUserId ?? null, actorSignatoryTitle:v9SignatoryTitle(config,who.id,c.facts.company), requireDeliveryAck: true, ...(native && !c.facts.employeeUserId && z.email().max(320).regex(/^[\x21-\x7e]+$/).safeParse((native.c.caseContactEmail ?? nf?.email)?.trim()).success ? { onboardingContact: { email: (native.c.caseContactEmail ?? nf!.email).trim(), sourceRevision: native.c.sourceVersion } } : {}) };
 }
+async function pendingReturnsTx(tx:Tx,ctx:SessionContext,c:M.Case):Promise<PendingReturns> {
+  const assets=c.facts.employeeNo.trim()?await issuedToTx(tx,c.facts.employeeNo,c.facts.company):[],holdings=await onboardingHoldingsTx(ctx,tx,c.facts.employmentId,c.facts.company);
+  return {held:[...assets.map(asset=>({id:'asset:'+asset.id,name:`${asset.code} · ${asset.model??asset.assetType}`,kind:'device' as const,group:null,source:'asset' as const})),...holdings.map(item=>({id:'onboarding:'+item.itemId,name:item.name,kind:item.kind,group:item.group,source:'onboarding' as const,catalogueId:item.catalogueId,requestNumber:item.requestNumber}))],catalogue:await onboardingReturnCatalogueTx(ctx,tx,c.facts.company),selected:c.returnSelections??[]};
+}
 export async function v9CaseDetail(ctx: SessionContext, id: string): Promise<CaseDetail> {
   return withLifecycleTenant(ctx, async tx => {
     const row = await load(tx, ctx, id), config = await configTx(tx, ctx);
     if (!config) throw new M.V9Error('V9 configuration is not available.');
-    return { case: row.data, calculation: await readSettlementTx(tx, ctx, row.data, config), personnelWritableKeys: v9PersonnelWritableKeys, ...(row.native ? { native: { config, actor: await actor(tx, ctx) } } : {}) };
+    return { ...(row.data.module==='off'&&row.data.state==='pending'?{returns:await pendingReturnsTx(tx,ctx,row.data)}:{}), case: row.data, calculation: await readSettlementTx(tx, ctx, row.data, config), personnelWritableKeys: v9PersonnelWritableKeys, ...(row.native ? { native: { config, actor: await actor(tx, ctx) } } : {}) };
   });
 }
 
@@ -299,6 +304,7 @@ export type Command =
   | { type: 'runWorkflows' }
   | { type: 'retryWorkflow' | 'startWorkflow'; workflowId: string }
   | { type: 'override'; checklist: string }
+  | {type:'returnSelections';ids:string[]}
   | { type: 'assign' | 'assignItem'; id: string; userId: string }
   | { type: 'item'; id: string; status: M.Item['status']; reason: string };
 const commandId = z.string().min(1).max(120), reasonText = z.string().max(4000);
@@ -307,6 +313,7 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('pmPushSelected'), ids: z.array(commandId).min(1).max(500) }).strict(),
   z.object({ type: z.literal('pmKeep'), ids: z.array(commandId).min(1).max(500) }).strict(),
   z.object({ type: z.literal('caseFormSave'), values: z.record(commandId,z.string().max(10000)).refine(value=>Object.keys(value).length<=100), reason: reasonText, submit: z.boolean() }).strict(),
+  z.object({type:z.literal('returnSelections'),ids:z.array(commandId).max(100).refine(ids=>new Set(ids).size===ids.length)}).strict(),
   z.object({ type: z.literal('submit') }).strict(), z.object({ type: z.literal('runWorkflows') }).strict(),
   z.object({ type: z.literal('retryWorkflow'), workflowId: commandId }).strict(),
   z.object({ type: z.literal('startWorkflow'), workflowId: commandId }).strict(),
@@ -337,6 +344,12 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     const c = structuredClone(row.data); let env = await environment(tx, ctx, c, config);
     if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'documentTextEdit', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'runWorkflows', 'retryWorkflow', 'startWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
     if (row.native && ['pmPush', 'pmPushSelected'].includes(command.type) && !c.facts.employmentId) throw new M.V9Error('Activate this Personnel draft before applying its proposed changes.');
+    if(command.type==='returnSelections'){
+      if(c.module!=='off'||c.state!=='pending')throw new M.V9Error('Return selections can change only before submission.');
+      const available=await onboardingReturnCatalogueTx(ctx,tx,c.facts.company),previous=new Set(c.returnSelections??[]);
+      if(command.ids.some(id=>!previous.has(id)&&!available.some(item=>item.id===id&&item.active)))throw new M.V9Error('Choose an active item from the existing catalogue.');
+      c.returnSelections=[...command.ids];M.appendLog(c,env,'returns.selectionChanged',`${command.ids.length} additional return/revoke items selected.`);
+    }
     if (command.type === 'caseFormSave') {
       if (c.module !== 'off' || !['pending','submitted'].includes(c.state)) throw new M.V9Error('Reopen this case before editing its fields.');
       const fields = resolveV9CaseFields('off',config.caseForms?.off), before = offCaseFormValues(c);
@@ -362,12 +375,14 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       if (c.module === 'off') {
         const fulfillingGroup = await onboardingFulfilmentGroupTx(ctx, tx), group = config.groups.find(g => g.id === fulfillingGroup), extra: Record<string, number> = {};
         for (const task of c.tasks) if (task.assignee) extra[task.assignee] = (extra[task.assignee] ?? 0) + 1;
-        const assets = await issuedToTx(tx, c.facts.employeeNo, c.facts.company);
+        const assets = c.facts.employeeNo.trim()?await issuedToTx(tx, c.facts.employeeNo, c.facts.company):[];
         c.items = assets.map(asset => {
           const assigned = M.assign(config, group?.id ?? null, c.revokeDate, env, extra, 'memberOrder');
           if (assigned.userId) extra[assigned.userId] = (extra[assigned.userId] ?? 0) + 1;
           return { id: randomUUID(), name: `${asset.code} · ${asset.model ?? asset.assetType}`, kind: 'device' as const, sourceId: asset.id, group: group?.id ?? null, assignee: assigned.userId, dueOn: c.revokeDate, status: 'todo' as const, reason: '' };
         });
+        const catalogue=await onboardingReturnCatalogueTx(ctx,tx,c.facts.company),selections=(c.returnSelections??[]).map(id=>catalogue.find(item=>item.id===id&&item.active));
+        if(selections.some(item=>!item))throw new M.V9Error('An additional return item is no longer available. Review the catalogue selections before submission.');
         const holdings = await onboardingHoldingsTx(ctx, tx, c.facts.employmentId!, c.facts.company);
         for (const holding of holdings) {
           const groupId = config.groups.some(group => group.id === holding.group) ? holding.group : null;
@@ -375,6 +390,13 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
           if (assigned.userId) extra[assigned.userId] = (extra[assigned.userId] ?? 0) + 1;
           c.items.push({ id: randomUUID(), name: holding.name, kind: holding.kind, sourceId: null, nativeSource: { caseId: holding.caseId, requestId: holding.requestId, requestNumber: holding.requestNumber, itemId: holding.itemId }, group: groupId, assignee: assigned.userId, dueOn: c.revokeDate, status: 'todo', reason: '' });
         }
+        for(const item of selections){
+          if(!item||holdings.some(holding=>holding.catalogueId===item.id))continue;
+          const groupId=config.groups.some(group=>group.id===item.group)?item.group:null,assigned=M.assign(config,groupId,c.revokeDate,env,extra,'memberOrder');
+          if(assigned.userId)extra[assigned.userId]=(extra[assigned.userId]??0)+1;
+          c.items.push({id:randomUUID(),name:item.name,kind:item.kind,sourceId:null,sourceCatalogueId:item.id,group:groupId,assignee:assigned.userId,dueOn:c.revokeDate,status:'todo',reason:''});
+        }
+        c.returnSelections=[];
         M.appendLog(c, env, 'returns.created', `${assets.length} issued inventory assets and ${holdings.length} handed onboarding items loaded from their original records.`);
       }
       for (const w of config.workflows) { M.runWorkflow(c, config, w, env, 'submitted'); M.runWorkflow(c, config, w, env, 'date'); }
@@ -644,6 +666,16 @@ export async function v9ReportOwnReturn(ctx: SessionContext, input: {caseId:stri
     const [result]=await tx.execute<{employment:string}>(sql`select app.lc_v9_report_return(${input.caseId}::uuid,${input.revision},${input.itemId},${input.note}) as employment`);
     if(!result?.employment)throw new M.V9Error('Return declaration not available.');
     await record(tx,ctx,input.caseId,result.employment,'returnReported');
+  });
+}
+/** Employee receipt describes the handed item without changing approval, fulfilment or issuance. */
+export async function v9OwnEquipmentReceipt(ctx:SessionContext,input:{caseId:string;revision:number;itemId:string;status:'received'|'problem';note:string}):Promise<void> {
+  input=z.object({caseId:z.string().uuid(),revision:z.number().int().positive(),itemId:commandId,status:z.enum(['received','problem']),note:reasonText}).strict().parse(input);
+  await withLifecycleTenant(ctx,async tx=>{
+    await lockTx(tx,ctx);await actor(tx,ctx);
+    const [result]=await tx.execute<{employment:string}>(sql`select app.onboarding_v9_receipt(${input.caseId}::uuid,${input.revision},${input.itemId},${input.status},${input.note}) as employment`);
+    if(!result?.employment)throw new M.V9Error('Equipment receipt not available.');
+    await record(tx,ctx,input.caseId,result.employment,'equipmentReceipt');
   });
 }
 /** V9 adds only the formats explicitly accepted by its supplied file picker. */

@@ -1,0 +1,24 @@
+import { expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { PendingReturns } from '../app/lifecycle/v9/pending-returns';
+import { v9Defaults } from '../lib/lifecycle-v9-defaults';
+import type { Case } from '../lib/lifecycle-v9-model';
+import { readV9Case } from '../app/lifecycle/v9/actions';
+vi.mock('../app/lifecycle/v9/actions', () => ({ readV9Case: vi.fn() }));
+const c = { id: 'case', revision: 2 } as Case;
+it('keeps held records read-only and retains the catalogue search when a write fails', async () => {
+  vi.mocked(readV9Case).mockResolvedValue({ok:true,detail:{case:c,calculation:null,personnelWritableKeys:[],returns:{held:[{id:'held',name:'Held laptop',kind:'device',group:null,source:'asset'}],selected:['selected'],catalogue:[{id:'selected',name:'Extra account',kind:'system',group:'team',active:true},{id:'active',name:'New laptop',kind:'device',group:'team',active:true},{id:'retired',name:'New retired laptop',kind:'device',group:'team',active:false}]}}});
+  const command=vi.fn().mockResolvedValue({ok:false,error:'The case changed.'});
+  render(<PendingReturns c={c} config={v9Defaults()} busy={false} command={command}/>);
+  await screen.findByText('Held laptop');
+  expect(screen.queryByRole('button',{name:'Remove Held laptop'})).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:'Remove Extra account'}));
+  await waitFor(()=>expect(command).toHaveBeenCalledWith({type:'returnSelections',ids:[]}));
+  await screen.findByRole('alert');
+  fireEvent.change(screen.getByLabelText('Add an item to return and revoke'),{target:{value:'laptop'}});
+  expect(screen.queryByText('New retired laptop')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:'Add New laptop'}));
+  await waitFor(()=>expect(command).toHaveBeenLastCalledWith({type:'returnSelections',ids:['selected','active']}));
+  expect(screen.getByLabelText('Add an item to return and revoke')).toHaveValue('laptop');
+  expect(screen.getByRole('alert')).toHaveTextContent('The case changed.');
+});

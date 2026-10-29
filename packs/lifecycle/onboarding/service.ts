@@ -698,6 +698,11 @@ async function saveConfig(ctx: SessionContext, revision: number, input: M.Config
         for (const w of old.workflows)
             if (!next.workflows.some(n => n.id === w.id) && (next.catalogue.some(i => i.workflow === w.id) || next.exceptions.workflow === w.id))
                 M.fail('This workflow is still used by the catalogue or exceptions.');
+        const deletedCatalogue=old.catalogue.filter(item=>!next.catalogue.some(candidate=>candidate.id===item.id));
+        if(deletedCatalogue.length){
+            const [extension]=await tx.execute<{available:boolean}>(sql`select to_regprocedure('app.onboarding_v9_catalogue_references()') is not null as available`);
+            if(extension?.available){const [references]=await tx.execute<{ids:string[]}>(sql`select app.onboarding_v9_catalogue_references() as ids`);if(deletedCatalogue.some(item=>references?.ids.includes(item.id)))M.fail('This catalogue item is used by offboarding. Retire it instead of deleting its identity.');}
+        }
         const deleted = old.groups.filter(g => !next.groups.some(n => n.id === g.id));
         if (deleted.length) {
             const [extension] = await tx.execute<{ available: boolean }>(sql`select to_regprocedure('app.onboarding_v9_group_references()') is not null as available`);
@@ -1297,16 +1302,21 @@ export async function onboardingV9StoreTx(ctx: SessionContext, tx: Tx, id: strin
 export async function onboardingFulfilmentGroupTx(ctx: SessionContext, tx: Tx): Promise<string> {
     return (await configTx(tx, ctx)).config.techGroup;
 }
-export type OnboardingHolding = { caseId: string; requestId: string; requestNumber: string; itemId: string; name: string; kind: 'system' | 'device'; group: string };
+export type OnboardingHolding = { caseId: string; requestId: string; requestNumber: string; itemId: string; catalogueId: string; name: string; kind: 'system' | 'device'; group: string };
 async function holdingAuthorityTx(ctx: SessionContext, tx: Tx, companyId: string) {
     const [permission] = await tx.execute<{ ok: boolean }>(sql`select app.current_user_id() is not null and not app.login_blocked(app.current_user_id()) and app.is_admin_for(${companyId}::uuid) as ok`);
     if (!permission?.ok || !ctx.userId) M.fail('Company HR access is required to review issued onboarding items.', 'forbidden');
+}
+/** Catalogue identity/presentation stays with the Native owner; exits select existing IDs. */
+export async function onboardingReturnCatalogueTx(ctx:SessionContext,tx:Tx,companyId:string):Promise<{id:string;name:string;kind:'system'|'device';group:string;active:boolean}[]> {
+    await holdingAuthorityTx(ctx,tx,companyId);
+    return (await configTx(tx,ctx)).config.catalogue.map(item=>({id:item.id,name:item.name,kind:item.type,group:item.team,active:item.active}));
 }
 /** Issuance stays on the original handed requisition; names are never used to link a person or item. */
 export async function onboardingHoldingsTx(ctx: SessionContext, tx: Tx, employmentId: string, companyId: string): Promise<OnboardingHolding[]> {
     await holdingAuthorityTx(ctx, tx, companyId);
     const source = await tx.select().from(cases).where(and(eq(cases.tenantId, ctx.tenantId), eq(cases.companyId, companyId), eq(cases.employmentId, employmentId))).orderBy(asc(cases.id));
-    return source.flatMap(row => row.data.requisitions.flatMap(request => request.items.filter(item => !item.recovery && (item.state === 'handed' && !!request.handedAt || item.revokeNeeded)).map(item => ({ caseId: row.id, requestId: request.id, requestNumber: request.number, itemId: item.id, name: item.name, kind: item.type, group: item.team }))));
+    return source.flatMap(row => row.data.requisitions.flatMap(request => request.items.filter(item => !item.recovery && (item.state === 'handed' && !!request.handedAt || item.revokeNeeded)).map(item => ({ caseId: row.id, requestId: request.id, requestNumber: request.number, itemId: item.id, catalogueId:item.catalogueId, name: item.name, kind: item.type, group: item.team }))));
 }
 /** Records HR's confirmed recovery on the issuing owner, in the same transaction as offboarding. */
 export async function onboardingRecoverHoldingTx(ctx: SessionContext, tx: Tx, employmentId: string, companyId: string, source: Pick<OnboardingHolding, 'caseId' | 'requestId' | 'itemId'>, offboardingCaseId: string, reason: string) {

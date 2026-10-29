@@ -1,7 +1,7 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { requireModule } from '@/lib/authz';
-import { v9OwnDocument, v9OwnTask, v9ReportOwnReturn } from '@/packs/lifecycle/service';
+import { v9OwnDocument, v9OwnTask, v9ReportOwnReturn, v9OwnEquipmentReceipt } from '@/packs/lifecycle/service';
 import type { Signature } from '@/lib/lifecycle-v9-model';
 export async function saveOwnLifecycleDocument(input: { caseId: string; revision: number; documentId: string; values: Record<string, string>; signature?: Pick<Signature, 'method' | 'value' | 'consent'> }) {
   try { await v9OwnDocument(await requireModule('lifecycle'), input); revalidatePath('/me/lifecycle'); revalidatePath('/lifecycle/v9'); return { ok: true as const }; }
@@ -15,4 +15,9 @@ export async function updateOwnLifecycleTask(input: { caseId: string; revision: 
 export async function reportOwnLifecycleReturn(input:{caseId:string;revision:number;itemId:string;note:string}) {
   try {await v9ReportOwnReturn(await requireModule('lifecycle'),input);revalidatePath('/me/lifecycle');revalidatePath('/lifecycle/v9');return {ok:true as const};}
   catch {return {ok:false as const,error:'The return declaration could not be saved. Refresh the case and try again.'};}
+}
+
+export async function saveOwnLifecycleEquipmentReceipt(input:{caseId:string;revision:number;itemId:string;status:'received'|'problem';note:string}) {
+  try {await v9OwnEquipmentReceipt(await requireModule('lifecycle'),input);revalidatePath('/me/lifecycle');revalidatePath('/lifecycle/v9');revalidatePath('/lifecycle/onboarding');return {ok:true as const};}
+  catch {return {ok:false as const,error:'The equipment update could not be saved. Refresh and check that the item has been handed to you.'};}
 }
