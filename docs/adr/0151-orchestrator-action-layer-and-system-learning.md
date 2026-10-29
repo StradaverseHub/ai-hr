@@ -594,3 +594,7 @@ Own attendance correction custody uses the generic own compatibility lifecycle w
 ### WP9 assigned Leave decision custody
 
 The Leave decision adapter uses generic ASSIGNED compatibility custody. Its original sealed content, actor/subject binding, pending versus recorded source nomination, native step/event provenance, privacy targets and installed SQL remain authoritative. The shared guard requests Approve explicitly; the model cannot decide. No migration or ciphertext rewrite is needed.
+
+### WP9 Payroll close custody
+
+Payroll close uses generic OWN compatibility custody while the payroll pack retains Access/period/OT/batch locks, preflight-before-custody ordering, completion provenance, configured payslip release semantics and exact post-close privacy targets. Original SQL and sealed wire stay unchanged; explicit human Approve is required.

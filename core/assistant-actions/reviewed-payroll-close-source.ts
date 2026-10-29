@@ -2,15 +2,13 @@
  * checks/effects are shared with ordinary closeBatch. No model money, process, approval or transfer. */
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
-import {assertAiPrincipalTx} from '../ai-principal';
-import {assertMayUseAssistant} from '../assistant-grant';
-import {assertAiActionUnpausedTx} from '../ai-governance';
-import {resolveEntitlementsTx,assertModuleEnabled} from '../entitlements';
+import {withAgentActionGuard} from './agent-action-guard';
+import {assertModuleEnabled} from '../entitlements';
 import {prepareReviewedPayrollCloseTx,closeReviewedPayrollBatchTx,readReviewedPayrollCloseReferenceTx,withReviewedPayrollCloseIntervalTx as withNativeCloseIntervalTx} from '../../packs/payroll/service';
 import {ReviewedPayrollCloseHumanContent as Human,ReviewedPayrollCloseConfirmation as Confirmation,ReviewedPayrollClosePreparedSource as Prepared,ReviewedPayrollCloseSourceReceipt as Receipt} from '../../lib/assistant-actions/reviewed-payroll-close-contract';
 export class ReviewedPayrollCloseUnavailable extends Error{constructor(){super('That payroll close needs a final look. Please reopen the processed run.');this.name='ReviewedPayrollCloseUnavailable';}}
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
-export async function assertReviewedPayrollCloseActorTx(tx:Tx,supplied:SessionContext){const ctx=capture(supplied);await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,'payroll');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');return fresh;}
+export async function assertReviewedPayrollCloseActorTx(tx:Tx,supplied:SessionContext){const fresh=await withAgentActionGuard(tx,capture(supplied),'payroll.close','approve');assertModuleEnabled(fresh,'payroll');return fresh;}
 /** Actual native ownership prefix, not a source factory selected by any posted service name. */
 export async function withReviewedPayrollCloseSourceIntervalTx<T>(tx:Tx,supplied:SessionContext,batchId:string,run:(ctx:SessionContext,source:{batchId:string;companyId:string;payPeriodId:string;payPeriod:string})=>Promise<T>):Promise<T>{
  const fresh=await assertReviewedPayrollCloseActorTx(tx,supplied);return withNativeCloseIntervalTx(tx,fresh,batchId,(ctx,source)=>run(ctx,{batchId:source.id,companyId:source.companyId,payPeriodId:source.payPeriodId,payPeriod:source.payPeriod}));
