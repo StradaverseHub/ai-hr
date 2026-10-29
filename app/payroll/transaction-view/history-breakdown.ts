@@ -2,7 +2,17 @@ import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
 // 6b134681 — the ONE answer to "may these named rows replace the figure they sit under?", shared with the
 // printed document and the ESS payslip so the four payroll-result surfaces cannot disagree about one slip.
-import { payItemLinesReconcile } from '@/core/payslip-earning-lines';
+import {
+  payItemLinesForBuckets,
+  payItemLinesReconcile,
+  storedOvertimeLines,
+  type NamedPayItemLine,
+  type OtLegKind,
+  type PayItemRateDetail,
+  type StoredComponentLine,
+} from '@/core/payslip-earning-lines';
+// 5a5309d5 — the ONE answer to "is this record line a non-payable amount?", shared with the printed document.
+import { isNonPayableRecordLine } from '@/core/payslip-configured-contributions';
 import { payslipEmployerBorne, type EmployerBorneView } from '@/core/payslip-employer-borne';
 import { payslipStatutoryBases, type StatutoryBases } from '@/core/payslip-recompute';
 // 970e4143 — the one decider for how "Other deductions" is split into its named parts and what the CP38
@@ -27,6 +37,12 @@ import { payslipCp38Carve } from '@/core/payslip-cp38-line';
  *  description, and is not). Dropping it here would silently disable that branch on three screens.
  *  Absent ⇒ written before the stamp (f35f758a / r185) — see core/payroll.ts `PayslipRecordLine`. */
 export type RecordLine = { code: string; name: string; amount: number; nonPayable?: boolean };
+
+/** 5a5309d5 — a named line under a figure, plus what the run multiplied to reach it when it recorded that.
+ *  `otLeg` is set only on a statutory overtime leg from `statutory.otDetail` (core/payslip-earning-lines.ts
+ *  `storedOvertimeLines`): such a line has no pay item code or name, and the renderer labels it from the
+ *  leg. `detail` is present only when `qty × rate` is the amount printed beside it. */
+export type BreakdownSubLine = RecordLine & { detail?: PayItemRateDetail | null; otLeg?: OtLegKind | null };
 
 /** Which summarised figure a pay item's money landed in (feedback 862ed0ad). Mirrors the kernel's
  *  stamp in core/payroll.ts earningsOf — the names are a stored contract, not a display choice. */
@@ -170,15 +186,34 @@ export type HistoryBreakdown = {
    * refuse that; putting the same refusal in the derivation is what stops a fourth surface from
    * forgetting to ask. Same rule, same function — `payItemLinesReconcile`.
    */
-  overtimeLines: RecordLine[];
+  overtimeLines: BreakdownSubLine[];
   bonusLines: RecordLine[];
   /**
    * b240c0ff — the named pay items behind the "Other deductions" row (`absence.residual`), reconciled like
    * the three lists above: EMPTY unless they add up to that row exactly. Imported payroll history stamps
    * every deduction line it was given, so "UPL · Unpaid leave" and a second deduction are listed under the
    * row instead of vanishing into it. Nothing here moves a figure or a subtotal.
+   *
+   * 5a5309d5 — AND THE KERNEL'S OWN `deduct` STAMP, for this panel only. A run's deduction pay items
+   * (D0030 MONTHLY PARKING) were stamped into `componentLines` all along and folded into this row unnamed.
+   * Same gate: listed only when they add up to the row. A line whose money is already printed as the named
+   * Unpaid leave / Absent row above is left out first (see `otherDeductionItemLines` below), so nothing is
+   * counted twice. core/payslip-imported-lines.ts `deductionLinesFor`, which the payslip and the PDF read,
+   * is deliberately untouched: those surfaces are outside this item.
    */
   deductionLines: RecordLine[];
+  /**
+   * 5a5309d5 — the record lines THE RUN stamped non-payable (a BIK, a VOLA), split out of the mixed list
+   * into their own section. Same filter as the printed document's Non-payable box
+   * (`isNonPayableRecordLine`). A line without the stamp (written before r185) is NOT in here: the run
+   * never said it was non-payable, and asking today's catalogue would answer about last month's pay.
+   */
+  nonPayableLines: RecordLine[];
+  /** 5a5309d5 — the TOTAL printed under `nonPayableLines`: their stored amounts summed, nothing else. */
+  nonPayableTotal: number;
+  /** 5a5309d5 — every other record line, in stored order: what "Itemised payroll items" now lists.
+   *  `recordLines` above stays the WHOLE stored array, because the spreadsheet export reads it. */
+  itemisedRecordLines: RecordLine[];
   /** This run predates the per-item stamp (or had no pay items), so there is nothing to disclose. The
    *  screen must SAY this — an empty breakdown under a non-zero total reads as a defect. */
   detailNotRecorded: boolean;
@@ -217,8 +252,57 @@ function groupByBucket(lines: ComponentLine[]): Record<ComponentBucket, RecordLi
 
 /** The named lines for a figure, or nothing at all when they do not add up to it (6b134681). Rows that
  *  fall short of the total printed above them are the one failure a money screen may never commit. */
-function reconciled(lines: RecordLine[], total: number): RecordLine[] {
+function reconciled<L extends RecordLine>(lines: L[], total: number): L[] {
   return payItemLinesReconcile(lines, total) ? lines : [];
+}
+
+const round2 = (v: number) => Math.round(v * 100) / 100;
+
+/** A shared-derivation line as this panel's lines are shaped: a code is always a string here. The `detail`
+ *  key stays ABSENT when the run recorded none, so a line reads exactly as it did before 5a5309d5. */
+function asSubLine(l: NamedPayItemLine): BreakdownSubLine {
+  return {
+    code: l.code ?? '',
+    name: l.name,
+    amount: l.amount,
+    ...(l.detail ? { detail: l.detail } : {}),
+    ...(l.otLeg ? { otLeg: l.otLeg } : {}),
+  };
+}
+
+/**
+ * 5a5309d5 — WHICH LINES EXPLAIN THE OVERTIME FIGURE: the pay items in the `ot` bucket when the run had
+ * any, otherwise the statutory legs the attendance engine recorded in `statutory.otDetail`. The SAME
+ * preference lib/payslip-pdf.ts `overtimeLinesOf` applies, through the same two readers, so the printed
+ * payslip and this panel cannot itemise one slip's overtime differently. Reconciled by the caller.
+ */
+function overtimeSourceLines(componentLines: ComponentLine[], statutory: unknown): BreakdownSubLine[] {
+  const fromComponents = payItemLinesForBuckets(componentLines as StoredComponentLine[], ['ot']);
+  return (fromComponents.length > 0 ? fromComponents : storedOvertimeLines(statutory)).map(asSubLine);
+}
+
+/**
+ * 5a5309d5 — THE NAMED DEDUCTION ITEMS BEHIND "OTHER DEDUCTIONS", or nothing.
+ *
+ * `residual` is what the row prints once the named Unpaid leave / Absent rows and the applied CP38 are
+ * carved out (core/payslip-absence-lines.ts). When every `deduct` line adds up to it, they are the
+ * breakdown. When they do not, the one shape that can still be itemised honestly is a line carrying the
+ * SAME money a named absence row already prints (a tenant that keys a UPL pay item for a day the leave
+ * engine also stamped): that line is dropped — at most one per named row, matched on the exact amount —
+ * and the rest must then add up to the residual exactly. Anything else (a clamped deduction, a loan or a
+ * carry-forward inside the column) fails the gate and the bare total stands. Whatever is dropped, the rows
+ * printed always sum to the figure above them, because `payItemLinesReconcile` is the last word.
+ */
+function otherDeductionItemLines(lines: RecordLine[], absence: PayslipAbsenceLines): RecordLine[] {
+  if (!absence.showResidual || lines.length === 0) return [];
+  if (payItemLinesReconcile(lines, absence.residual)) return lines;
+  const remaining = [...lines];
+  for (const named of [absence.unpaidLeave, absence.absent]) {
+    if (!named) continue;
+    const at = remaining.findIndex((l) => round2(l.amount) === round2(named.amount));
+    if (at >= 0) remaining.splice(at, 1);
+  }
+  return remaining.length < lines.length ? reconciled(remaining, absence.residual) : [];
 }
 
 export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBreakdown {
@@ -247,6 +331,10 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
   // computing it twice is how the figure and the guard on the figure start to disagree.
   const allowanceNet = disp.allowance - otConvertAmount;
   const absence = payslipAbsenceLines(row.statutory, row.otherDeductions);
+  const recordLines = st.recordLines ?? [];
+  // 5a5309d5 — one pass, so a line is in exactly one of the two sections and none is lost or repeated.
+  const nonPayableLines = recordLines.filter(isNonPayableRecordLine);
+  const itemisedRecordLines = recordLines.filter((l) => !isNonPayableRecordLine(l));
   return {
     st,
     basic: disp.basic,
@@ -268,7 +356,10 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
     // would leave the section's own arithmetic wrong — the failure this kind of change invites.
     employerContributions: { epf, socso, eis, hrdf, total: epf + socso + eis + hrdf },
     employerBorne: payslipEmployerBorne(row.statutory),
-    recordLines: st.recordLines ?? [],
+    recordLines,
+    nonPayableLines,
+    nonPayableTotal: round2(nonPayableLines.reduce((t, l) => t + num(l.amount), 0)),
+    itemisedRecordLines,
     componentLines,
     componentsByBucket: byBucket,
     // 417d4937 — wage FIRST, then the PCB-exempt reimburse lines, so the order on screen matches the
@@ -286,10 +377,14 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
     // question (see the field docs above), so the named rows are handed out only when they add up to the
     // figure they explain; otherwise the caller gets an empty list and renders the bare total it always
     // did. An unstamped run yields [] here too, which is exactly the pre-862ed0ad rendering.
-    overtimeLines: reconciled(byBucket.ot, disp.overtime),
+    //
+    // 5a5309d5 — and, when the run's overtime came from ATTENDANCE rather than from a pay item, the
+    // statutory legs it recorded (rate, hours, amount), through the same gate against the same figure.
+    overtimeLines: reconciled(overtimeSourceLines(componentLines, row.statutory), disp.overtime),
     bonusLines: reconciled(byBucket.bonus, disp.bonus),
-    // Imported lines only: a kernel run's deduction stamp never replaces its row (core/payslip-imported-lines.ts).
-    deductionLines: absence.showResidual ? reconciled(groupByBucket(importedLines).deduct, absence.residual) : [],
+    // 5a5309d5 — the kernel's deduct stamp AND imported history's lines (both are in `byBucket`), for this
+    // panel only; the payslip and the PDF keep reading imported lines alone (core/payslip-imported-lines.ts).
+    deductionLines: otherDeductionItemLines(byBucket.deduct, absence),
     detailNotRecorded: componentLines.length === 0,
     // 0253dc7c — read through the kernel's own accessor so "absent" means the same thing here as it
     // does in the payslip-version diff. It returns null (never zeroes) for a slip with no stamp.

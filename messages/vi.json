@@ -7285,6 +7285,8 @@
           "capped": "Đang hiển thị {cap} kết quả gần nhất. Hãy thu hẹp bộ lọc phía trên để xem các tháng trước.",
           "itemsHeading": "Các khoản lương chi tiết",
           "itemsNote": "Các khoản một lần đã được tính trong tổng ở trên. Các khoản chỉ ghi nhận không phải thu nhập tiền mặt; phúc lợi chịu thuế có thể ảnh hưởng đến PCB và lương thực nhận.",
+          "nonPayableHeading": "Các khoản không chi trả",
+          "nonPayableNote": "Không chi trả cho nhân viên và không tính vào tổng lương hoặc lương thực nhận.",
           "itemRemark": "Được nhập là “{remark}”",
           "sourceHeading": "Các khoản này đến từ đâu",
           "sourceNote": "Các giao dịch riêng lẻ được ghi nhận cho nhân viên này trong kỳ tính lương này. Chúng được liệt kê bên cạnh các khoản đã ghi nhận chứ không ghép cặp với chúng: hai bản ghi có thể trùng khoản lương và số tiền, nên chỉ người nhập mới biết bản ghi nào ứng với khoản nào.",
