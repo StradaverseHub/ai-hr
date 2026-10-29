@@ -44,15 +44,30 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('continuous native Bank wor
    expect(url.pathname).toMatch(/^\/ai_hr_test(?:_[a-z0-9_]+)?$/);
   }
   expect(appUrl.host).toBe(ownerUrl.host);expect(appUrl.pathname).toBe(ownerUrl.pathname);
-  const witness=postgres(ownerUrl.toString(),{max:1,onnotice:()=>{},connection:{statement_timeout:'60000',lock_timeout:'5000'}});
+  const witness=postgres(ownerUrl.toString(),{max:1,onnotice:()=>{},connection:{statement_timeout:60000,lock_timeout:5000}});
   const remaining=()=>{const ms=deadline-performance.now();expect(ms,'13-minute work budget; cleanup reserved within 15-minute test').toBeGreaterThan(0);return ms;};
-  const q=async(text:string,params:unknown[]=[])=>{remaining();const rows=await witness.unsafe(text,params as never[]);remaining();return rows;};
-  const mutate=async(text:string,applied:()=>void)=>{remaining();await witness.unsafe(text).simple();applied();remaining();};
+  let phase='fixture-setup',sqlFailure:Record<string,unknown>|undefined,primaryDiagnostic:Record<string,unknown>|undefined;
+  const errorMetadata=(error:unknown)=>{
+   const pg=error as {code?:unknown;routine?:unknown}|null;
+   return {sqlState:typeof pg?.code==='string'&&/^[0-9A-Z]{5}$/.test(pg.code)?pg.code:undefined,
+    routine:typeof pg?.routine==='string'&&/^[a-zA-Z0-9_]{1,80}$/.test(pg.routine)?pg.routine:undefined};
+  };
+  const sqlDiagnostic=(text:string,error:unknown)=>({phase,sqlShapeSha256:hash(text.replace(/\s+/g,' ').trim()),...errorMetadata(error)});
+  const q=async(text:string,params:unknown[]=[])=>{
+   remaining();try{const rows=await witness.unsafe(text,params as never[]);remaining();return rows;}
+   catch(error){sqlFailure=sqlDiagnostic(text,error);throw error;}
+  };
+  const mutate=async(text:string,applied:()=>void)=>{
+   remaining();try{await witness.unsafe(text).simple();applied();remaining();}
+   catch(error){sqlFailure=sqlDiagnostic(text,error);throw error;}
+  };
   const queueRole='ci_bank_cont_'+process.pid+'_'+randomBytes(5).toString('hex');
   let roleCreated=false,queueTransferred=false,policyTouched=false,child:ChildProcess|undefined,exit:Promise<[number|null,NodeJS.Signals|null]>|undefined;
   let originalOwner='',originalPolicies:unknown,originalFences:unknown,originalFunction:unknown,originalLedger:unknown;
   let childStart='',peakRssKiB=0,stdout='',stderr='',stdoutBytes=0,stderrBytes=0,primary:unknown;
-  let childEnv:NodeJS.ProcessEnv={},expired=false;
+  // Intentional native-mode fidelity: fixture remains under Vitest test mode,
+  // while the source-entry child matches the sealed native gate's production mode.
+  let childEnv:NodeJS.ProcessEnv={NODE_ENV:'production'},expired=false;
   const measurements:Record<string,unknown>={};
   const samples:{elapsedMs:number;queryMs:number;state:string;saved:number;processed:number;validated:number;attemptPresent:boolean;serverMs:number}[]=[];
   let queryMs=0,probeCount=0;
@@ -95,6 +110,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('continuous native Bank wor
    const records=parseCsvRecords('full_name,email,department,hired_on,ic_number,basic_salary,employee_code\nContinuous Exemplar,continuous-exemplar@example.test,Finance,2026-01-05,900101105555,5000,CONT-EXEMPLAR').records;
    expect((await commitEmployeeImport(context,{companyId:base.companyId,records})).imported).toBe(1);
    const [exemplar]=await q("select e.person_id from employment e join employee_statutory_my s on s.person_id=e.person_id where e.tenant_id=$1::uuid and e.employee_code='CONT-EXEMPLAR'",[base.tenantId]);
+   phase='fictional-catalog-construction';
    await witness.begin(async tx=>{
     await tx`set local session_replication_role='replica'`;
     await tx`with people as(insert into person(tenant_id,full_name,primary_email)
@@ -108,25 +124,38 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('continuous native Bank wor
    for(const table of ['person','employment','employee_statutory_my'])await q(`ANALYZE public.${ident(table)}`);
    const [size]=await q("select count(*)::int as rows,count(distinct e.id)::int as employments,count(distinct e.person_id)::int as people,count(distinct e.company_id)::int as companies from employment e join employee_statutory_my s on s.person_id=e.person_id where e.tenant_id=$1::uuid and e.employee_code ~ '^CONT[0-9]+$' and s.tax_number='TBASE'",[base.tenantId]);
    expect({...size}).toEqual({rows:CATALOG,employments:CATALOG,people:CATALOG,companies:1});
+   phase='capture-target-identities';
    const targets=[...await q("select substring(e.employee_code from 5)::int as ordinal,e.id as employment_id,e.person_id,s.id as statutory_id,e.employee_code from employment e join employee_statutory_my s on s.person_id=e.person_id where e.tenant_id=$1::uuid and e.employee_code ~ '^CONT[0-9]+$' and substring(e.employee_code from 5)::int between 1 and $2 order by ordinal",[base.tenantId,SAVES])] as unknown as Target[];
    expect(targets.length).toBe(SAVES);for(const key of ['ordinal','employment_id','person_id','statutory_id','employee_code'] as const)expect(new Set(targets.map(t=>t[key])).size).toBe(SAVES);
    targets.forEach((t,i)=>{expect(t.ordinal).toBe(i+1);expect(t.employee_code).toBe('CONT'+(i+1));});
    const targetJson=JSON.stringify(targets),targetIds=JSON.stringify(targets.map(t=>t.statutory_id));
+   phase='json-transport-preflight';
+   // The payloads are already canonical JSON strings. Explicit TEXT wire types
+   // prevent Postgres.js from serializing them again as JSONB string scalars.
+   const [transport]=await q(`select jsonb_typeof($1::text::jsonb) as ids_type,
+    case when jsonb_typeof($1::text::jsonb)='array' then jsonb_array_length($1::text::jsonb) end as ids_length,
+    jsonb_typeof($2::text::jsonb) as targets_type,
+    case when jsonb_typeof($2::text::jsonb)='array' then jsonb_array_length($2::text::jsonb) end as targets_length`,[targetIds,targetJson]);
+   expect({...transport}).toEqual({ids_type:'array',ids_length:SAVES,targets_type:'array',targets_length:SAVES});
    const mapping=async()=>{
     const [r]=await q("select count(*)::int as rows,encode(sha256(convert_to(coalesce(string_agg(e.id::text||':'||e.person_id::text||':'||coalesce(e.employee_code,'')||':'||coalesce(s.id::text,''),'|' order by e.id),''),'UTF8')),'hex') as hash from employment e left join employee_statutory_my s on s.person_id=e.person_id where e.tenant_id=$1::uuid",[base.tenantId]);return {...r};
    };
-   const fingerprints=async()=>{
+   const fingerprints=async(stage:'baseline'|'final')=>{
     const facts:Record<string,unknown>={};
     for(const table of ['person','employment','assignment','compensation','employee_statutory_my']){
-     const expression=table==='employee_statutory_my'?"case when t.id in(select value::uuid from jsonb_array_elements_text($1::jsonb)) then to_jsonb(t)-'tax_number'-'updated_at' else to_jsonb(t) end":'to_jsonb(t)';
+     phase=stage+'-facts-'+table;
+     const expression=table==='employee_statutory_my'?"case when t.id in(select value::uuid from jsonb_array_elements_text($1::text::jsonb)) then to_jsonb(t)-'tax_number'-'updated_at' else to_jsonb(t) end":'to_jsonb(t)';
      const params=table==='employee_statutory_my'?[targetIds]:[];
      const [row]=await q(`select count(*)::int as rows,encode(sha256(convert_to(coalesce(string_agg(encode(sha256(convert_to((${expression})::text,'UTF8')),'hex'),'' order by t.id),''),'UTF8')),'hex') as hash from public.${ident(table)} t`,params);facts[table]={...row};
     }
     // Complete statutory rows for 99001 non-target subjects AND the canonical exemplar.
-    const [noncohort]=await q("select count(*)::int as rows,encode(sha256(convert_to(coalesce(string_agg(encode(sha256(convert_to(to_jsonb(s)::text,'UTF8')),'hex'),'' order by s.id),''),'UTF8')),'hex') as hash from employee_statutory_my s where s.id not in(select value::uuid from jsonb_array_elements_text($1::jsonb))",[targetIds]);
+    phase=stage+'-facts-complete-noncohort-statutory';
+    const [noncohort]=await q("select count(*)::int as rows,encode(sha256(convert_to(coalesce(string_agg(encode(sha256(convert_to(to_jsonb(s)::text,'UTF8')),'hex'),'' order by s.id),''),'UTF8')),'hex') as hash from employee_statutory_my s where s.id not in(select value::uuid from jsonb_array_elements_text($1::text::jsonb))",[targetIds]);
     expect(Number(noncohort.rows)).toBe(CATALOG-SAVES+1);facts.noncohort={...noncohort};return facts;
    };
-   const beforeMapping=await mapping(),beforeFacts=await fingerprints();expect(beforeMapping.rows).toBe(CATALOG+1);
+   phase='baseline-mapping';
+   const beforeMapping=await mapping(),beforeFacts=await fingerprints('baseline');expect(beforeMapping.rows).toBe(CATALOG+1);
+   phase='capture-policy-function-rls-ledger';
    originalPolicies=await policies();originalFunction=await functionSnapshot();originalFences=await catalog();originalLedger=await ledger();
    const baseline=(originalPolicies as {tablename:string;schemaname:string;policyname:string;qual:string}[]).find(p=>p.schemaname==='public'&&p.tablename==='employment'&&p.policyname==='employment_rls')!;
    expect(Boolean(baseline)).toBe(true);
@@ -135,10 +164,12 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('continuous native Bank wor
    // spelling in addition to formatting. The actual SQL fixture bytes stay unchanged.
    const compact=(text:string)=>text.replace(/\bAS\s+visible_employment_ids\b/gi,'').replace(/\s+/g,'').replace(/"/g,'');
    expect(compact(policy.toString()).split(compact(baseline.qual)).length).toBe(3);
+   phase='install-private-policy';
    await mutate(policy.toString(),()=>{policyTouched=true;});
    const installed=await policies();
    expect(installed.map(p=>p.schemaname+'.'+p.tablename+'.'+p.policyname)).toEqual((originalPolicies as typeof installed).map(p=>p.schemaname+'.'+p.tablename+'.'+p.policyname));
    installed.forEach((p,i)=>expect(p.tablename==='employment'&&p.policyname==='employment_rls'?{...p,qual:(originalPolicies as typeof installed)[i].qual}:p).toEqual((originalPolicies as typeof installed)[i]));
+   phase='temporary-queue-owner';
    const [physical]=await q("select r.rolname from pg_class c join pg_roles r on r.oid=c.relowner where c.oid='public.bank_import_job'::regclass");originalOwner=String(physical.rolname);
    const password=randomBytes(24).toString('hex');
    await mutate(`CREATE ROLE ${ident(queueRole)} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS PASSWORD '${password}'`,()=>{roleCreated=true;});
@@ -149,6 +180,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('continuous native Bank wor
    expect(roles.map(r=>[r.rolname,r.rolsuper,r.rolbypassrls,r.queue_owner])).toEqual([['ai_hr_app',false,false,false],[queueRole,false,false,true]].sort((a,z)=>String(a[0]).localeCompare(String(z[0]))));
    // A reserved APP backend proves LOCAL restoration after BOTH transaction outcomes.
    // This is deliberately not presented as proof about a different arbitrary pooled connection.
+   phase='reserved-app-backend-local-restoration';
    const reserved=await appClient.reserve();
    try{
     const [initial]=await reserved`select pg_backend_pid() as backend,current_user as role,nullif(current_setting(${HINT},true),'') as hint`;expect(initial.role).toBe('ai_hr_app');
@@ -160,8 +192,9 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('continuous native Bank wor
     }
    }finally{reserved.release();}
    const queueUrl=new URL(ownerUrl);queueUrl.username=queueRole;queueUrl.password=password;
-   childEnv={PATH:process.env.PATH!,HOME:process.env.HOME!,TMPDIR:process.env.TMPDIR??'/tmp',LANG:'C.UTF-8',TZ:'Asia/Kuala_Lumpur',NODE_ENV:'test',CI:'true',GITHUB_ACTIONS:'true',DATABASE_URL:appUrl.toString(),TEST_DATABASE_URL:appUrl.toString(),MIGRATION_DATABASE_URL:queueUrl.toString(),TEST_MIGRATION_DATABASE_URL:queueUrl.toString()};
+   childEnv={PATH:process.env.PATH!,HOME:process.env.HOME!,TMPDIR:process.env.TMPDIR??'/tmp',LANG:'C.UTF-8',TZ:'Asia/Kuala_Lumpur',NODE_ENV:'production',CI:'true',GITHUB_ACTIONS:'true',DATABASE_URL:appUrl.toString(),TEST_DATABASE_URL:appUrl.toString(),MIGRATION_DATABASE_URL:queueUrl.toString(),TEST_MIGRATION_DATABASE_URL:queueUrl.toString()};
    measurements.fixtureSetupMs=performance.now()-started;
+   phase='native-child-startup';
    const startup=performance.now();
    child=spawn(node,argv.slice(1),{cwd:root,env:childEnv,uid,gid,stdio:['ignore','pipe','pipe']});
    exit=new Promise<[number|null,NodeJS.Signals|null]>((resolve,reject)=>{child!.once('error',reject);child!.once('close',(code,signal)=>resolve([code,signal]));});
@@ -171,9 +204,11 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('continuous native Bank wor
    await once(child,'spawn');processFacts();
    while(true){remaining();processFacts();const [ready]=await q('select exists(select 1 from pg_stat_activity where usename=$1 and datname=current_database()) as ready',[queueRole]);if(ready.ready)break;await sleep(100);}
    measurements.startupToQueueConnectionObservedMs=performance.now()-startup;
+   phase='empty-queue-idle-observation';
    const idleStart=performance.now(),idleBefore=processFacts();await sleep(2100);const idleAfter=processFacts();
    const [empty]=await q('select count(*)::int as jobs from bank_import_job');expect(empty.jobs).toBe(0);
    measurements.emptyQueueIdleObservation={wallMs:performance.now()-idleStart,userTicks:idleAfter.userTicks-idleBefore.userTicks,systemTicks:idleAfter.systemTicks-idleBefore.systemTicks,knownSourceSleepMs:1000,precisePollCountMeasured:false};
+   phase='canonical-admission-and-chunks';
    const admissionStarted=performance.now(),bytes=Buffer.from('employee_code,tax_number\n'+targets.map(t=>t.employee_code+',TCONT'+t.ordinal+'\n').join(''));
    const jobId=(await createBankImportJob(context,{name:'continuous.csv',bytes:bytes.length,hash:hash(bytes)})).job.id;
    let parts=0;for(let offset=0;offset<bytes.length;offset+=BANK_IMPORT_CHUNK_BYTES)await uploadBankImportChunk(context,jobId,parts++,bytes.subarray(offset,offset+BANK_IMPORT_CHUNK_BYTES));
@@ -189,26 +224,32 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('continuous native Bank wor
     expect(samples.length).toBeLessThan(4000);return p;
    };
    const until=async(predicate:(p:Progress)=>boolean)=>{while(true){const p=await progress();if(predicate(p))return p;await sleep(Math.min(250,remaining()));}};
+   phase='native-validation';
    const validation=performance.now();await bankImportCommand(context,jobId,'validate');await until(p=>p.state==='ready');measurements.validationToReadyObservedMs=performance.now()-validation;
    expect((await getBankImportJob(context,jobId)).job).toMatchObject({state:'ready',total:SAVES,valid:SAVES,invalid:0,unchanged:0,saved:0});
+   phase='canonical-confirm';
    const confirmStarted=performance.now(),confirmation=await bankImportCommand(context,jobId,'confirm');measurements.confirmRequestMs=performance.now()-confirmStarted;
+   phase='native-attempt-creation';
    const withAttempt=await until(p=>Boolean(p.attempt_id));measurements.confirmToAttemptObservedMs=performance.now()-confirmStarted;
    measurements.savedAtFirstAttemptObservation=withAttempt.saved;
+   phase='native-continuous-save';
    const complete=await until(p=>p.state==='completed');const completionObserved=performance.now();measurements.confirmToCompletedObservedMs=completionObserved-confirmStarted;
    expect(complete).toMatchObject({state:'completed',total:SAVES,validated:SAVES,valid:SAVES,invalid:0,unchanged:0,processed:SAVES,saved:SAVES,failed:0});
+   phase='native-child-graceful-stop';
    const finalProcess=processFacts();await stopChild();const [code,signal]=await exit!;expect(code).toBe(0);expect(signal).toBeNull();expect(stdoutBytes).toBe(0);expect(stderrBytes).toBe(0);
+   phase='final-audit-values-and-checkpoints';
    const wrapup=performance.now();
    const [audit]=await q(`select count(*)::int as rows,count(distinct a.ordinal)::int as ordinals,count(distinct a.employment_id)::int as employments,
     count(*) filter(where a.status='applied' and a.item_key='row-'||a.ordinal and a.employment_id=t.employment_id and a.before->'fields'->>'tax_number'='TBASE' and a.after->'fields'->>'tax_number'='TCONT'||a.ordinal)::int as correct,
     extract(epoch from min(a.created_at))*1000 as first_ms,extract(epoch from max(a.created_at))*1000 as last_ms
-    from import_attempt_item a left join jsonb_to_recordset($2::jsonb) t(ordinal int,employment_id uuid) on t.ordinal=a.ordinal where a.attempt_id=$1::uuid`,[complete.attempt_id,targetJson]);
+    from import_attempt_item a left join jsonb_to_recordset($2::text::jsonb) t(ordinal int,employment_id uuid) on t.ordinal=a.ordinal where a.attempt_id=$1::uuid`,[complete.attempt_id,targetJson]);
    for(const key of ['rows','ordinals','employments','correct'])expect(audit[key]).toBe(SAVES);
    const [nativeAudit]=await q(`select count(*)::int as rows,count(distinct d.aggregate_id)::int as subjects,count(distinct d.subject_employment_id)::int as employments,
     count(*) filter(where d.tenant_id=$2::uuid and d.actor_type='user' and d.actor_id=$3::uuid and d.subject_employment_id=t.employment_id and d.payload->'before'->>'taxNumber'='TBASE' and d.payload->'after'->>'taxNumber'='TCONT'||t.ordinal)::int as correct
-    from domain_event d join jsonb_to_recordset($1::jsonb) t(ordinal int,statutory_id uuid,employment_id uuid) on t.statutory_id=d.aggregate_id
+    from domain_event d join jsonb_to_recordset($1::text::jsonb) t(ordinal int,statutory_id uuid,employment_id uuid) on t.statutory_id=d.aggregate_id
     where d.event_type='employee.tax.updated'`,[targetJson,base.tenantId,context.userId]);
    for(const key of ['rows','subjects','employments','correct'])expect(nativeAudit[key]).toBe(SAVES);
-   const [values]=await q("select count(*)::int as rows,count(distinct s.tax_number)::int as unique_values,count(*) filter(where e.id=t.employment_id and e.person_id=t.person_id and e.employee_code=t.employee_code and s.person_id=t.person_id and s.tax_number='TCONT'||t.ordinal)::int as correct from jsonb_to_recordset($1::jsonb) t(ordinal int,employment_id uuid,person_id uuid,statutory_id uuid,employee_code text) join employment e on e.id=t.employment_id join employee_statutory_my s on s.id=t.statutory_id",[targetJson]);
+   const [values]=await q("select count(*)::int as rows,count(distinct s.tax_number)::int as unique_values,count(*) filter(where e.id=t.employment_id and e.person_id=t.person_id and e.employee_code=t.employee_code and s.person_id=t.person_id and s.tax_number='TCONT'||t.ordinal)::int as correct from jsonb_to_recordset($1::text::jsonb) t(ordinal int,employment_id uuid,person_id uuid,statutory_id uuid,employee_code text) join employment e on e.id=t.employment_id join employee_statutory_my s on s.id=t.statutory_id",[targetJson]);
    expect({...values}).toEqual({rows:SAVES,unique_values:SAVES,correct:SAVES});
    const [queue]=await q("select count(*)::int as rows,count(distinct ordinal)::int as ordinals,count(*) filter(where state='applied')::int as applied from bank_import_row where job_id=$1::uuid",[jobId]);expect({...queue}).toEqual({rows:SAVES,ordinals:SAVES,applied:SAVES});
    const [tail]=await q("select (select count(*)::int from import_attempt where tenant_id=$1::uuid and source_hash=$2) as attempts,(select count(*)::int from import_attempt_event where attempt_id=$3::uuid and kind='confirmed') as confirmations,(select count(*)::int from bank_import_chunk where job_id=$4::uuid) as chunks",[base.tenantId,hash(bytes),complete.attempt_id,jobId]);expect({...tail}).toEqual({attempts:1,confirmations:1,chunks:0});
@@ -220,6 +261,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('continuous native Bank wor
    const nativeSaveMs=Number(complete.updated_ms)-Number(audit.first_ms);expect(nativeSaveMs).toBeGreaterThan(0);
    // Each start belongs to the actual canonical audit transaction, not a guessed
    // per-row setter duration. LEAD closes the final interval at completion start.
+   phase='canonical-row-interval-summary';
    const [distribution]=await q(`with starts as (
     select extract(epoch from created_at)*1000 as started_ms,
      lead(extract(epoch from created_at)*1000,1,$2::numeric) over(order by ordinal) as next_ms
@@ -236,14 +278,19 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('continuous native Bank wor
    expect(Object.values(rowIntervalDistribution).every(Number.isFinite)).toBe(true);
    expect(Math.abs(rowIntervalDistribution.sum_ms-nativeSaveMs),'All row intervals must telescope to the native-save interval within 1ms numeric/JS conversion tolerance').toBeLessThanOrEqual(1);
    measurements.canonicalRowTransactionStartIntervalDistribution={...rowIntervalDistribution,units:'milliseconds',sumAlignmentToleranceMs:1,semantics:'1000 ordinal-ordered canonical audit transaction-start intervals, last ending at completion transaction start. Includes row commits/checkpoints and between-tick work; NOT exact native-call latency. No per-row values are emitted.'};
-   expect(await mapping()).toEqual(beforeMapping);expect(await fingerprints()).toEqual(beforeFacts);
+   phase='final-mapping';
+   expect(await mapping()).toEqual(beforeMapping);expect(await fingerprints('final')).toEqual(beforeFacts);
+   phase='final-role-metadata-and-source-checks';
    expect(await functionSnapshot()).toEqual(originalFunction);expect(await ledger()).toEqual(originalLedger);
    const finalRoles=[...await q("select r.rolname,r.rolsuper,r.rolbypassrls,c.relowner=r.oid as queue_owner from pg_roles r cross join pg_class c where r.rolname in ('ai_hr_app',$1) and c.oid='public.bank_import_job'::regclass order by r.rolname",[queueRole])];expect(finalRoles).toEqual(roles);
    measurements.finalAssertionsMs=performance.now()-wrapup;
    measurements.databaseTransactionBoundaries={confirmationStartToAttemptStartMs:Number(attempt.created_ms)-Date.parse(confirmation.updatedAt),attemptStartToFirstRowStartMs:Number(audit.first_ms)-Number(attempt.created_ms),continuous1000RowCommitIntervalMs:nativeSaveMs,rowsPerSecond:SAVES/(nativeSaveMs/1000),lastRowStartToCompletionStartMs:Number(complete.updated_ms)-Number(audit.last_ms),completionStartToObservedCompletedUpperBoundMs:Number(complete.server_ms)-Number(complete.updated_ms),intervals,semantics:'Audit created_at is transaction-start time. Interval spans first applied-row transaction start to completion transaction start, includes row commits and between-batch work, excludes completion transaction body/commit. These are not directly instrumented worker tick timings.'};
    frozen();
-   console.info('[bank-worker-continuous-measurement]',JSON.stringify({kind:'SOURCE_ENTRY_CONTINUOUS_1000_OF_100001_NOT_ACCEPTANCE',source,policySha256:POLICY_SHA,migrationLedger:{rows:(originalLedger as unknown[]).length,sha256:hash(JSON.stringify(originalLedger))},visibleFunctionMetadataSha256:hash(JSON.stringify(originalFunction)),catalogRows:CATALOG,changedRows:SAVES,targetMappingSha256:hash(targetJson),fullCatalogMapping:beforeMapping,noncohortRows:CATALOG-SAVES+1,measurements,probeCount,progressQueryMs:queryMs,progressSamples:samples,worker:{pid:child.pid,uid,gid,...finalProcess},runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT,runner:{environment:process.env.RUNNER_ENVIRONMENT,os:process.env.RUNNER_OS,cpus:availableParallelism(),cpuModel:cpus()[0]?.model,totalMemoryBytes:totalmem(),node:process.version},nativeValuesAndAuditsVerified:true,noncohortFactsUnchanged:true,sourceChunksReleased:true,preciseTickInstrumentation:false,noRestartInTimedWindow:true,sealedPacketAccepted:false,full100001ThroughputAccepted:false,releaseAuthorized:false}));
-  }catch(error){primary=error;throw error;}finally{
+   console.info('[bank-worker-continuous-measurement]',JSON.stringify({kind:'SOURCE_ENTRY_CONTINUOUS_1000_OF_100001_NOT_ACCEPTANCE',source,policySha256:POLICY_SHA,migrationLedger:{rows:(originalLedger as unknown[]).length,sha256:hash(JSON.stringify(originalLedger))},visibleFunctionMetadataSha256:hash(JSON.stringify(originalFunction)),catalogRows:CATALOG,changedRows:SAVES,targetMappingSha256:hash(targetJson),fullCatalogMapping:beforeMapping,noncohortRows:CATALOG-SAVES+1,measurements,probeCount,progressQueryMs:queryMs,progressSamples:samples,worker:{pid:child.pid,uid,gid,nodeEnv:childEnv.NODE_ENV,sourceEntry:'transpiled-unsealed',...finalProcess},runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT,runner:{environment:process.env.RUNNER_ENVIRONMENT,os:process.env.RUNNER_OS,cpus:availableParallelism(),cpuModel:cpus()[0]?.model,totalMemoryBytes:totalmem(),node:process.version},nativeValuesAndAuditsVerified:true,noncohortFactsUnchanged:true,sourceChunksReleased:true,preciseTickInstrumentation:false,noRestartInTimedWindow:true,sealedPacketAccepted:false,full100001ThroughputAccepted:false,releaseAuthorized:false}));
+  }catch(error){
+   primary=error;primaryDiagnostic={phase,sqlFailure:sqlFailure?{...sqlFailure}:undefined,...errorMetadata(error)};throw error;
+  }finally{
+   phase='cleanup-restoration';
    clearTimeout(timer);
    const failures:unknown[]=[];
    try{await stopChild();}catch(error){failures.push(error);}
@@ -260,8 +307,11 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('continuous native Bank wor
    for(const check of [async()=>{if(originalPolicies)expect(await policies()).toEqual(originalPolicies);},async()=>{if(originalFunction)expect(await functionSnapshot()).toEqual(originalFunction);},async()=>{if(originalFences)expect(await catalog()).toEqual(originalFences);},async()=>{if(originalLedger)expect(await ledger()).toEqual(originalLedger);}])try{await check();}catch(error){failures.push(error);}
    try{await witness.end({timeout:5});}catch(error){failures.push(error);}
    try{frozen();}catch(error){failures.push(error);}
-   if(primary!==undefined){console.info('[bank-worker-continuous-failed]',JSON.stringify({elapsedMs:performance.now()-started,expired,measurements,probeCount,progressQueryMs:queryMs,progressSamples:samples,stdoutBytes,stderrBytes,stdoutSha256:hash(stdout),stderrSha256:hash(stderr)}));for(const error of failures)console.error('Continuous diagnostic cleanup after original failure:',error);}
-   else if(failures.length)throw failures[0];
+   if(primary!==undefined||failures.length){
+    console.info('[bank-worker-continuous-failed]',JSON.stringify({diagnostic:primaryDiagnostic??{phase,...errorMetadata(failures[0])},elapsedMs:performance.now()-started,expired,measurements,probeCount,progressQueryMs:queryMs,progressSamples:samples,stdoutBytes,stderrBytes,stdoutSha256:hash(stdout),stderrSha256:hash(stderr),cleanupFailureCount:failures.length}));
+    for(const error of failures)console.error('[bank-worker-continuous-cleanup-failed]',JSON.stringify({phase,...errorMetadata(error)}));
+    if(primary===undefined)throw failures[0];
+   }
   }
   console.info('[bank-worker-continuous-restored]',JSON.stringify({originalPoliciesAndFunctionRestored:true,originalOwnershipAndRlsRestored:true,temporaryQueueRoleRemoved:true,ledgerUnchanged:true,elapsedMs:performance.now()-started,releaseAuthorized:false}));
  },900000);
