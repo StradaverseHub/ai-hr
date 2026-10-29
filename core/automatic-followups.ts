@@ -93,3 +93,12 @@ export async function currentFollowupTargetsTx(tx:Tx,source:Source,itemId:string
  const staff=await tx.execute<{id:string}>(sql`select id from app.automatic_followup_staff(${item.companyId}::uuid,${source==='lifecycle_step'}) as id`);
  return [...new Set([...(source==='passport_expiry'?[item.employmentId]:[]),...staff.map(r=>r.id)])];
 }
+
+/** Observe chased lifecycle stages through the SAME native rule/phase owner as reminder dispatch.
+ * A stage no longer actionable is no longer waiting; this never claims that a human completed it. */
+export async function lifecycleChaseOutcomeTx(tx:Tx,references:unknown):Promise<{acted:number;waiting:number}>{
+ const refs=z.array(z.object({itemId:z.guid(),stage:z.string()}).strict()).parse(references),keys=new Set(refs.map(r=>r.itemId+':'+r.stage));
+ const uniqueIds=[...new Set(refs.map(r=>r.itemId))],current=new Set<string>(),today=todayInKualaLumpur();
+ for(let offset=0;offset<uniqueIds.length;offset+=2000)for(const row of await followupItemsTx(tx,'lifecycle_step',today,uniqueIds.slice(offset,offset+2000)))current.add(row.itemId+':'+row.stage);
+ const waiting=[...keys].filter(key=>current.has(key)).length;return{waiting,acted:keys.size-waiting};
+}

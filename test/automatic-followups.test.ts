@@ -104,6 +104,20 @@ describe('Reminder authority, boundaries and observations',()=>{
   await passport();await enabled(docKey);const other=await seedBase();const otherPrincipal=await agent(other);expect(await withTenant(otherPrincipal,tx=>followupItemsTx(tx,'passport_expiry',today(),[employee.employmentId]))).toEqual([]);
   const userId=await createAppUser(b.tenantId,employee.personId,'employee'),plain={...await entitledCtx(b,['employee']),userId,personId:employee.personId,roles:['employee' as const],grants:[{role:'employee' as const,companyId:null}]};expect(await withTenant(plain,tx=>followupItemsTx(tx,'passport_expiry',today(),[employee.employmentId]))).toEqual([]);
  });
+ it.each(['inapplicable','reconfigured','phase_locked'] as const)('observes an old lifecycle stage as no longer waiting when it becomes %s',async change=>{
+  await lifecycle();await enabled(lifeKey);await run();expect((await assistantOutcomes(root,30)).automatic.find(r=>r.action==='lifecycle.step.chase')).toMatchObject({items:1,waiting:1,acted:0});
+  if(change==='inapplicable')await owner.db.update(s.lcStepDef).set({rule:'laptop'}).where(and(eq(s.lcStepDef.tenantId,b.tenantId),eq(s.lcStepDef.stepKey,'first')));
+  else if(change==='phase_locked'){await owner.db.update(s.lcStepDef).set({phase:1}).where(and(eq(s.lcStepDef.tenantId,b.tenantId),eq(s.lcStepDef.stepKey,'first')));await owner.db.insert(s.lcStepDef).values({tenantId:b.tenantId,kind:'onboarding',stepKey:'new_prerequisite',phase:0,label:'Fictional prerequisite',rule:'always',sort:0});}
+  else await owner.db.insert(s.domainEvent).values({tenantId:b.tenantId,aggregateType:'lifecycle-config',aggregateId:b.tenantId,eventType:'lifecycle-config.steps-saved',actorType:'user',actorId:b.adminUserId,payload:{kind:'onboarding'}});
+  expect((await assistantOutcomes(root,30)).automatic.find(r=>r.action==='lifecycle.step.chase')).toMatchObject({items:1,waiting:0,acted:1});
+  const [raw]=await withTenant(root,tx=>tx.execute<{acted:number|null;waiting:number|null}>(sql`select acted,waiting from app.automatic_chase_outcome_summary((now()-interval '30 days')) where action_id='lifecycle.step.chase'`));expect(raw).toEqual({acted:null,waiting:null});
+  await expect(withTenant(await agent(),tx=>tx.execute(sql`select * from app.automatic_lifecycle_chased_stages(now()-interval '30 days')`))).rejects.toThrow();
+ });
+ it('observes a pending clock correction as no longer needing the record-gap nudge, without attesting work',async()=>{
+  await enabled(clockKey);await run();expect((await assistantOutcomes(root,30)).automatic.find(r=>r.action==='attendance.missing_clock.remind')).toMatchObject({waiting:1,acted:0});
+  await owner.db.insert(s.attendanceCorrection).values({tenantId:b.tenantId,employmentId:employee.employmentId,attendanceDate:yesterday(),proposedCheckIn:'09:00:00',reason:'Fictional waiting correction',status:'pending'});
+  expect((await assistantOutcomes(root,30)).automatic.find(r=>r.action==='attendance.missing_clock.remind')).toMatchObject({waiting:0,acted:1});expect(await owner.db.select().from(s.attendance).where(eq(s.attendance.employmentId,employee.employmentId))).toEqual([]);
+ });
  it('records scoped outcome observations after renewal without calling it causal credit',async()=>{
   const [p]=await passport();await enabled(docKey);await run();let result=await assistantOutcomes(root,30);expect(result.automatic.find(r=>r.action==='employees.passport_expiry.remind')).toMatchObject({chased:1,items:1,waiting:1,acted:0});await owner.db.update(s.employeeStatutoryMy).set({passportExpiryDate:date(365)}).where(eq(s.employeeStatutoryMy.id,p.id));result=await assistantOutcomes(root,30);expect(result.automatic.find(r=>r.action==='employees.passport_expiry.remind')).toMatchObject({waiting:0,acted:1});expect(model.calls).toBe(0);
  });

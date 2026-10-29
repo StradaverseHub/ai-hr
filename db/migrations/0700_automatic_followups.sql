@@ -111,6 +111,26 @@ REVOKE ALL ON FUNCTION app.automatic_followup_staff(uuid,boolean) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.automatic_followup_staff(uuid,boolean) TO ai_hr_app;
 
 --> statement-breakpoint
+-- Only references of scoped lifecycle stages leave this definer. TypeScript's canonical lifecycle
+-- rule/phase owner determines actionability; SQL does not implement a second lifecycle rule engine.
+CREATE FUNCTION app.automatic_lifecycle_chased_stages(p_from timestamptz)
+RETURNS TABLE(item_id uuid,stage text) LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();at_time timestamptz:=clock_timestamp();
+BEGIN
+ IF t IS NULL OR app.current_user_id() IS NULL OR p_from IS NULL OR p_from>at_time
+  OR app.principal_snapshot_current() IS NOT TRUE OR app.is_admin() IS NOT TRUE THEN
+  RAISE EXCEPTION 'Lifecycle outcome references unavailable' USING ERRCODE='42501';END IF;
+ RETURN QUERY SELECT DISTINCT d.aggregate_id,d.payload->>'stage'
+ FROM public.domain_event d JOIN public.lc_case c ON c.id=d.aggregate_id AND c.tenant_id=t
+ JOIN public.employment e ON e.id=d.subject_employment_id AND e.tenant_id=t
+ WHERE d.tenant_id=t AND d.event_type='automatic-chase.followup-raised' AND d.aggregate_type='automatic-chase'
+  AND d.actor_type='agent' AND d.payload->>'action'='lifecycle.step.chase'
+  AND d.occurred_at>=p_from AND d.occurred_at<=at_time AND app.is_admin_for(c.company_id);
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.automatic_lifecycle_chased_stages(timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.automatic_lifecycle_chased_stages(timestamptz) TO ai_hr_app;
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.automatic_chase_outcome_summary(p_from timestamptz)
  RETURNS TABLE(action_id text,chased integer,items integer,acted integer,waiting integer,first_chased_at timestamptz)
  LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -142,15 +162,15 @@ BEGIN
     WHEN 'attendance.missing_clock.remind' THEN EXISTS(SELECT 1 FROM public.employment q WHERE q.id=s.item AND q.tenant_id=t
      AND NOT EXISTS(SELECT 1 FROM public.attendance a WHERE a.employment_id=q.id AND a.tenant_id=t AND a.attendance_date=s.stage::date AND a.check_in_at IS NOT NULL)
      AND NOT EXISTS(SELECT 1 FROM public.attendance_punch a WHERE a.employment_id=q.id AND a.tenant_id=t AND a.attendance_date=s.stage::date AND a.direction::text='in' AND a.voided_at IS NULL)
-     AND NOT EXISTS(SELECT 1 FROM public.leave_request_date l WHERE l.subject_employment_id=q.id AND l.tenant_id=t AND l.leave_date=s.stage::date AND l.status::text IN ('pending','approved')))
+     AND NOT EXISTS(SELECT 1 FROM public.leave_request_date l WHERE l.subject_employment_id=q.id AND l.tenant_id=t AND l.leave_date=s.stage::date AND l.status::text IN ('pending','approved'))
+     AND NOT EXISTS(SELECT 1 FROM public.attendance_correction a WHERE a.employment_id=q.id AND a.tenant_id=t AND a.attendance_date=s.stage::date AND a.status::text IN ('pending','approved')))
     WHEN 'employees.passport_expiry.remind' THEN EXISTS(SELECT 1 FROM public.employment q JOIN public.employee_statutory_my p ON p.person_id=q.person_id AND p.tenant_id=t
      WHERE q.id=s.item AND q.tenant_id=t AND 'passport:'||p.passport_expiry_date::text=s.stage)
-    WHEN 'lifecycle.step.chase' THEN EXISTS(SELECT 1 FROM public.lc_case q WHERE q.id=s.item AND q.tenant_id=t AND q.status='in_progress'
-     AND NOT EXISTS(SELECT 1 FROM public.lc_case_step r WHERE r.case_id=q.id AND r.tenant_id=t AND r.step_key=split_part(s.stage,':',1) AND r.done))
+    WHEN 'lifecycle.step.chase' THEN NULL::boolean -- canonical native owner measures this in the outcome service
     ELSE true END AS still
   FROM (SELECT DISTINCT k,item,stage FROM scoped WHERE seen_at>=p_from AND seen_at<=at_time) s),
  sent AS (SELECT s.k,count(*)::int AS n FROM scoped s WHERE s.seen_at>=p_from AND s.seen_at<=at_time GROUP BY s.k)
- SELECT f.k,coalesce(sent.n,0),count(w.k)::int,count(*) FILTER (WHERE w.still=false)::int,count(*) FILTER (WHERE w.still)::int,f.f
+ SELECT f.k,coalesce(sent.n,0),count(w.k)::int,CASE WHEN f.k='lifecycle.step.chase' THEN NULL::int ELSE count(*) FILTER (WHERE w.still=false)::int END,CASE WHEN f.k='lifecycle.step.chase' THEN NULL::int ELSE count(*) FILTER (WHERE w.still)::int END,f.f
  FROM firsts f LEFT JOIN sent ON sent.k=f.k LEFT JOIN win w ON w.k=f.k GROUP BY f.k,f.f,sent.n ORDER BY f.k;
 END $$;
 --> statement-breakpoint
