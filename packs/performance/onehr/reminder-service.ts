@@ -1,12 +1,12 @@
 import {listEmailDesigns,saveEmailDesign} from '../../../core/email-design/service';
-import {defaultEmailDocument} from '../../../lib/email-design/model';
+import {defaultEmailDocument,emailDesignEnvelope,emailLocale} from '../../../lib/email-design/model';
 import {assessmentReminderWordsSchema,fillAssessmentReminderWords} from '../../../lib/assessment-reminder-mail';
 import { randomUUID } from 'node:crypto';
 import { and,asc,eq,sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { withTenant,type SessionContext,type Tx } from '../../../db/client';
 import { actorOf,appendEvent } from '../../../db/events';
-import { assessmentReminderEpoch,assessmentReminderRecipient,assessmentReminderRun,domainEvent,onehrCycle,reviewCycle,person } from '../../../db/schema';
+import { assessmentReminderEpoch,assessmentReminderRecipient,assessmentReminderRun,domainEvent,emailDesign,onehrCycle,reviewCycle,person,tenant } from '../../../db/schema';
 import { onehrLabel } from './person-labels';
 import { onehrEmployment } from './employment-projection';
 import { getSetting,isModuleEnabled,resolveEntitlementsTx } from '../../../core/entitlements';
@@ -92,19 +92,30 @@ export async function saveAssessmentReminderWords(ctx:SessionContext,raw:unknown
  const document=parsed?{...base,subject:parsed.subject,blocks:[base.blocks[0],{id:'00000000-0000-4000-8000-000000000003',type:'text',heading:'',runs:[{text:parsed.opening}],style:{}},base.blocks[1]]}:null;
  await saveEmailDesign(ctx,'assessment_reminder','en',document,current?.revision??0);
 }
-/** Same current work and template as delivery, without queuing mail or borrowing the recipient's identity. */
+/** Group HR sees an exact delivery preview; other administrators retain a labelled scoped task summary.
+ * Every field stays under the original viewer transaction. No recipient identity is borrowed. */
 export async function previewAssessmentReminder(ctx:SessionContext,cycleId:string,employeeCode:string){
  const code=z.string().trim().min(1).max(100).parse(employeeCode);
  if(!ctx.userId)throw Error('Sign in to preview a reminder.');
  return withTenant(ctx,async tx=>{
   await access(tx,cycleId);const state=await fresh(tx,ctx.tenantId),current=await work(tx,cycleId,state);
   // VF-07: employment through the OneHR projection view (HR: its own rows, unchanged).
-  const [employee]=await tx.select({id:onehrEmployment.id,name:onehrLabel.labelOrPerson(person.fullName,onehrEmployment.id)}).from(onehrEmployment).leftJoin(person,eq(person.id,onehrEmployment.personId)).where(and(eq(onehrEmployment.employeeCode,code),sql`app.onehr_admin(${onehrEmployment.companyId})`,sql`(${person.id} is not null or ${onehrLabel.visible(onehrEmployment.id)})`));
+  const [employee]=await tx.select({id:onehrEmployment.id,name:onehrLabel.labelOrPerson(person.fullName,onehrEmployment.id),visiblePersonId:person.id,firstName:person.firstName,fullName:person.fullName}).from(onehrEmployment).leftJoin(person,eq(person.id,onehrEmployment.personId)).where(and(eq(onehrEmployment.employeeCode,code),sql`app.onehr_admin(${onehrEmployment.companyId})`,sql`(${person.id} is not null or ${onehrLabel.visible(onehrEmployment.id)})`));
   if(!current||!employee||!current.graph.actors.some(actor=>actor.employmentIds.includes(employee.id)))throw Error('No employee with that ID is available in this cycle and your scope.');
   const actors=current.graph.actors.filter(actor=>actor.employmentIds.includes(employee.id));if(actors.length!==1)throw Error('This employee has more than one active account. Review the account mapping before previewing.');
   const actor=actors[0],recipient=current.recipients.find(recipient=>recipient.userId===actor.userId),tasks=recipient?.tasks??[];
   const mailRoutes=await routes(tx,cycleId,state);
-  return {employee:employee.name,employeeCode:code,eligible:mailRoutes.has(actor.userId),mail:{tasks,words:fillAssessmentReminderWords(await words(tx),actor.name,current.graph.cycle.name,tasks.length)}};
+  const base={employee:employee.name,employeeCode:code,eligible:mailRoutes.has(actor.userId)};
+  const [previewAccess]=await tx.execute<{full:boolean}>(sql`select app.email_design_admin() and app.is_group_admin() and nullif(current_setting('app.agent_principal_id',true),'') is null as full`);
+  if(!previewAccess?.full||!employee.visiblePersonId)return {...base,mode:'summary' as const,locale:null,design:null,mail:{tasks,words:null}};
+  const [preference]=await tx.execute<{locale:string}>(sql`select app.email_design_assessment_preview_locale(${cycleId}::uuid,${employee.id}::uuid,${mailRoutes.get(actor.userId)??employee.id}::uuid) as locale`);
+  const locale=emailLocale.parse(preference?.locale);
+  // Both reads retain invoker RLS. The native accessor above returns only a bounded locale.
+  const [layout]=await tx.select({document:emailDesign.document}).from(emailDesign).where(and(eq(emailDesign.kind,'assessment_reminder'),eq(emailDesign.locale,locale)));
+  const [organization]=await tx.select({name:tenant.name}).from(tenant).where(eq(tenant.id,ctx.tenantId));
+  if(!organization)throw Error('Email preview organization is unavailable.');
+  const design=emailDesignEnvelope.parse({kind:'assessment_reminder',locale,document:layout?.document??null,data:{first_name:employee.firstName??employee.fullName?.split(' ')[0]??'',company_name:organization.name,cycle:current.graph.cycle.name,count:String(tasks.length),things:tasks.length===1?'thing is':'things are'}});
+  return {...base,mode:'full' as const,locale,design,mail:{tasks,words:fillAssessmentReminderWords(await words(tx),actor.name,current.graph.cycle.name,tasks.length)}};
  });
 }
 

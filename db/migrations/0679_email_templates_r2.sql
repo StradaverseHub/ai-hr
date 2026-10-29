@@ -229,6 +229,37 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.email_design_assessment_words() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.email_design_assessment_words() TO ai_hr_app;
+--> statement-breakpoint
+-- Only the preference's locale leaves this scoped reader. Templates and person fields retain invoker RLS.
+-- The application chooses locale employment through its canonical module-aware routing owner, or the
+-- selected employment for a non-consenting preview; both must belong to the same exact cycle actor.
+CREATE FUNCTION app.email_design_assessment_preview_locale(p_cycle uuid,p_selected uuid,p_locale_employment uuid) RETURNS text
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE graph jsonb;actor jsonb;matches integer;language text;
+BEGIN
+ IF app.current_user_id() IS NULL OR nullif(current_setting('app.agent_principal_id',true),'') IS NOT NULL
+  OR NOT app.email_design_admin() OR NOT app.is_group_admin() OR NOT app.onehr_cycle_admin(p_cycle) THEN
+  RAISE EXCEPTION 'Email preview permission required' USING ERRCODE='42501';
+ END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=p_selected AND e.tenant_id=app.current_tenant_id() AND app.onehr_admin(e.company_id)) THEN
+  RAISE EXCEPTION 'Email preview target unavailable' USING ERRCODE='42501';
+ END IF;
+ graph:=app.assessment_pending_work(p_cycle);
+ SELECT count(*) INTO matches FROM jsonb_array_elements(coalesce(graph->'actors','[]'::jsonb)) a WHERE a->'employmentIds' ? p_selected::text;
+ IF matches<>1 THEN RAISE EXCEPTION 'Email preview actor unavailable' USING ERRCODE='42501'; END IF;
+ SELECT a INTO actor FROM jsonb_array_elements(graph->'actors') a WHERE a->'employmentIds' ? p_selected::text;
+ IF NOT (actor->'employmentIds' ? p_locale_employment::text) OR NOT EXISTS(
+  SELECT 1 FROM public.app_user u JOIN public.employment e ON e.person_id=u.person_id AND e.tenant_id=u.tenant_id
+  WHERE u.id=(actor->>'userId')::uuid AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+   AND e.id=p_locale_employment AND app.onehr_admin(e.company_id)
+ ) THEN RAISE EXCEPTION 'Email preview locale target unavailable' USING ERRCODE='42501'; END IF;
+ SELECT p.email_locale INTO language FROM public.notification_pref p
+ WHERE p.tenant_id=app.current_tenant_id() AND p.recipient_employment_id=p_locale_employment AND p.category='performance' AND p.channel='email';
+ RETURN CASE WHEN language IN ('en','ms','zh','vi','ta','th') THEN language ELSE 'en' END;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.email_design_assessment_preview_locale(uuid,uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.email_design_assessment_preview_locale(uuid,uuid,uuid) TO ai_hr_app;
 
 --> statement-breakpoint
 -- Recovery's application owner has already verified its encrypted exact account binding.

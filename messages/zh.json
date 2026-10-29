@@ -22698,6 +22698,8 @@
       "previewError": "无法加载预览，请重试。",
       "emailPreview": "提醒邮件预览",
       "previewConsent": "这仅为预览。发送仍需邮件同意、绩效邮件策略和有效的邮件服务。",
+      "previewFull": "完整邮件预览 · 收件人语言：{locale}。使用已保存的布局及获准查看的收件人资料。",
+      "previewScoped": "仅显示权限范围内的任务摘要。不显示邮件布局、收件人语言或个性化资料。",
       "nothingWaiting": "当前开放步骤中没有待办事项，因此该员工不会收到提醒。"
     },
     "competencyInsight": {
