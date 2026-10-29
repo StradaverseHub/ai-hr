@@ -3,6 +3,7 @@ sys.dont_write_bytecode=True
 import copy
 import hashlib
 import importlib.util
+import json
 from pathlib import Path
 import signal
 import tempfile
@@ -19,7 +20,7 @@ recovery=load('recovery','deploy/systemd/bank_import_worker_recovery.py')
 
 class VariantTests(unittest.TestCase):
     def setUp(self):
-        self.source=variant.KNOWN_SOURCE;self.controller='2'*40;self.archive='5'*64;self.ledger='6'*64
+        self.source='a'*40;self.controller='2'*40;self.archive='5'*64;self.ledger='6'*64
         self.ops=SimpleNamespace(ROOT=install.ROOT,check=install.check,service_unit=install.service_unit,root_protected=lambda *a,**k:None,read_bounded=install.read_bounded)
         self.manifest={'format':2,'kind':'bank-import-worker-package-v2','source':self.source,'controllerSource':self.controller,'producerSha256':'3'*64,'formatSha256':'4'*64,'runtime':fmt.RUNTIME.copy(),'lockSha256':'7'*64,'packageSha256':'8'*64,'entries':[]}
         manifest_hash=fmt.digest(fmt.canonical(self.manifest))
@@ -28,10 +29,57 @@ class VariantTests(unittest.TestCase):
     def witness(self,proof=None,ledger=None):
         variant.validate_runtime_witness(proof or self.proof,self.source,self.controller,self.archive,1234,self.manifest,ledger or self.ledger,123,fmt,self.ops)
     def test_fixed_variant_changes_only_working_directory_and_rejects_injected_identity(self):
-        old=install.service_unit(self.source).encode();new=variant.variant_unit(self.source,self.archive,self.ops)
-        expected=old.replace(('WorkingDirectory=/opt/aihr-import/releases/'+self.source+'\n').encode(),('WorkingDirectory=/opt/aihr-import/releases/'+self.source+'-'+self.archive+'\n').encode())
+        old=install.service_unit(variant.KNOWN_OLD_SOURCE).encode();new=variant.variant_unit(self.source,self.archive,self.ops)
+        expected=old.replace(('WorkingDirectory=/opt/aihr-import/releases/'+variant.KNOWN_OLD_SOURCE+'\n').encode(),('WorkingDirectory=/opt/aihr-import/releases/'+self.source+'-'+self.archive+'\n').encode())
         self.assertEqual(new,expected)
         with self.assertRaises(ValueError): variant.variant_unit(self.source,self.archive+'\nUser=root',self.ops)
+    def test_original_archive_uses_only_fixed_old_source_package_and_lock(self):
+        calls=[]
+        def inspect(*args):
+            calls.append(args)
+            return {'format':1}
+        old_fmt=SimpleNamespace(inspect_archive=inspect)
+        original=variant.inspect_original_archive(Path('/private/old.zip'),old_fmt,self.ops)
+        self.assertEqual(original,{'format':1})
+        self.assertEqual(variant.KNOWN_OLD_ARCHIVE,'e078748fa2857a8833ae5c035c9e6bab846d99151e6097aecf9686e686936c36')
+        self.assertEqual(calls,[(Path('/private/old.zip'),'968354c00a71df7baccd499eb60757a3307ed61e','4f124fa09e86cf46ed4d6052fd3291758418985ee412cfa73bfaf7b726eab24d','dc47148879a85197128657908246ea3886619967fcc4824496b1fecdc2a3ae57')])
+        self.assertNotEqual(self.manifest['packageSha256'],calls[0][3])
+        self.assertNotEqual(self.manifest['lockSha256'],calls[0][2])
+        old_fmt.inspect_archive=lambda *args:{'format':2}
+        with self.assertRaises(ValueError): variant.inspect_original_archive(Path('/private/old.zip'),old_fmt,self.ops)
+    def test_new_target_rejects_original_source_archive_and_injected_identity(self):
+        variant.validate_new_target(self.source,self.archive,self.controller,self.ops)
+        for source,archive,controller in [(variant.KNOWN_OLD_SOURCE,self.archive,self.controller),(self.source,variant.KNOWN_OLD_ARCHIVE,self.controller),(self.source+'\n',self.archive,self.controller),(self.source,self.archive,'bad')]:
+            with self.assertRaises(ValueError): variant.validate_new_target(source,archive,controller,self.ops)
+        for source,archive in [(variant.KNOWN_OLD_SOURCE,self.archive),(self.source,variant.KNOWN_OLD_ARCHIVE)]:
+            with self.assertRaises(ValueError): variant.variant_unit(source,archive,self.ops)
+    def test_new_runtime_requires_new_source_dependencies_and_562_without_relabelling(self):
+        self.witness()
+        self.assertNotEqual(self.source,variant.KNOWN_OLD_SOURCE)
+        for key,value in [('source',variant.KNOWN_OLD_SOURCE),('packageSha256',variant.KNOWN_OLD_PACKAGE),('lockSha256',variant.KNOWN_OLD_LOCK)]:
+            proof=copy.deepcopy(self.proof);proof[key]=value
+            with self.assertRaises(ValueError): self.witness(proof)
+        for count in [561,563,True]:
+            proof=copy.deepcopy(self.proof);proof['migrationLedger']['rows']=count
+            with self.assertRaises(ValueError): self.witness(proof)
+        proof=copy.deepcopy(self.proof);proof['migrationLedger']['sha256']='0'*64
+        with self.assertRaises(ValueError): self.witness(proof)
+        manifest_source=self.manifest['source'];self.manifest['source']=variant.KNOWN_OLD_SOURCE
+        with self.assertRaises(ValueError): self.witness()
+        self.manifest['source']=manifest_source
+    def test_live_applied_ledger_has_separate_digest_and_exact_562_ordered_rows(self):
+        rows=[{'id':index+1,'created_at':str(1700000000000+index),'hash':hashlib.sha256(str(index).encode()).hexdigest()} for index in range(562)]
+        projection=[{'created_at':row['created_at'],'hash':row['hash']} for row in rows]
+        expected=hashlib.sha256(json.dumps(projection,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        self.assertNotEqual(expected,self.ledger)
+        variant.validate_live_ledger(rows,expected,self.ops)
+        for invalid in [rows[:-1],rows+[{'id':563,'created_at':'1800000000000','hash':'0'*64}],list(reversed(rows))]:
+            with self.assertRaises(ValueError): variant.validate_live_ledger(invalid,expected,self.ops)
+        with self.assertRaises(ValueError): variant.validate_live_ledger(rows,self.ledger,self.ops)
+        invalid=copy.deepcopy(rows);invalid[0]['id']=True
+        with self.assertRaises(ValueError): variant.validate_live_ledger(invalid,expected,self.ops)
+        invalid=copy.deepcopy(rows);invalid[0]['hash']='INVALID'
+        with self.assertRaises(ValueError): variant.validate_live_ledger(invalid,expected,self.ops)
     def test_runtime_proof_requires_exact_controller_archive_provenance_and_schema(self):
         self.witness()
         for key,value in [('controllerSource','0'*40),('archiveSha256','0'*64),('provenanceSha256','0'*64),('runAttempt',2),('releaseAuthorized',True),('unreviewed',True)]:
