@@ -117,7 +117,9 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('0691 populated ordinary up
    const scoped=await login(t1.id,'scoped-a',null,'hr_admin',a),scopedChild=await login(t1.id,'scoped-child',null,'hr_admin',child),scopedB=await login(t1.id,'scoped-b',null,'hr_admin',b);
    const self=await login(t1.id,'self',ea.personId,'employee',null),partner=await login(t1.id,'payroll',null,'payroll_partner',b),foreign=await login(t2.id,'foreign-hr',null,'hr_admin',foreignCompany);
    for(const tenant of [String(t1.id),String(t2.id)])await storage.client`insert into app.ai_agent_principal(tenant_id) values(${tenant}::uuid) on conflict(tenant_id) do nothing`;
-   const principals=await storage.client`select id,tenant_id from app.ai_agent_principal order by tenant_id`;
+   // Ordinary migrations retain the pre-existing authentication tenant and its
+   // principal. Select only our two fixture principals; all rows remain in allFacts().
+   const principals=await storage.client`select id,tenant_id from app.ai_agent_principal where tenant_id in (${t1.id}::uuid,${t2.id}::uuid) order by tenant_id`;
    expect(principals.length).toBe(2);const principal1=String(principals.find(p=>p.tenant_id===t1.id)!.id),principal2=String(principals.find(p=>p.tenant_id===t2.id)!.id);
    const actors:Actor[]=[
     {name:'scoped-hr-a',ctx:scoped,expected:[ea.employmentId,ec.employmentId],human:true,agentValid:false},
