@@ -13,12 +13,14 @@ import {readOpenRouterOptions} from './openrouter-configuration';
 
 const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 const MAX_BYTES = 2 * 1024 * 1024;
-// Official OpenAPI ChatRequest plugin mapping checked 26 October 2026. Disable data-expanding,
-// routing and content-transforming defaults. Do NOT disable account security guardrails
-// (alignment/armor/moderation). Enforced account defaults may override request controls: independent
-// account-policy/capability evaluation is still required before live enablement, not proved here.
+// Official ChatRequest plugin schemas checked 29 October 2026 (pinned in the contract test).
+// Send opt-outs only for plugins with a documented boolean `enabled` property. In particular,
+// jev-router rejects this extra property; switchyard-router/web-fetch declare no off switch either.
+// Do not list those plugins as if `enabled:false` disabled them: listing a plugin can opt into it.
+// Account-default review remains mandatory; request opt-outs cannot certify enforced defaults.
+// Preserve account security guardrails (alignment/armor/moderation).
 const DISABLED_PROCESSORS = ['auto-beta-router','auto-router','context-compression','file-parser',
-  'fusion','jev-router','pareto-router','response-healing','switchyard-router','web','web-fetch'] as const;
+  'fusion','pareto-router','response-healing','web'] as const;
 
 const unavailable = () => new AiGatewayError('AI provider response unavailable.');
 type FailurePhase = 'configuration' | 'request' | 'dispatch' | 'network' | 'response' | 'accounting' | 'completion' | 'cancelled';
@@ -97,7 +99,7 @@ export function buildOpenRouterRequest(configuration: unknown, argumentsValue: u
       plugins: DISABLED_PROCESSORS.map(id=>({id,enabled:false})),
       ...(args.tools.length ? { tools: args.tools.map(tool => ({ type: 'function', function: {
         name: tool.name, description: tool.description, parameters: tool.inputSchema, strict: true,
-      } })), tool_choice: 'auto', parallel_tool_calls: false } : {}) })));
+      } })), tool_choice: 'auto' } : {}) })));
     if (Buffer.byteLength(body, 'utf8') > MAX_BYTES) throw unavailable();
     return body;
   } catch { throw unavailable(); }
@@ -178,6 +180,9 @@ export function createOpenRouterTransport(fetcher: typeof fetch) {
         await observeOpenRouterSpendTerminal(raw,{provider:'openrouter',model:cfg.model,apiKey:cfg.apiKey,providerOptions:readOpenRouterOptions({version:1,routing:cfg.routing})},controller.signal,expired,fetcher,async metadataResponse=>{let text='';await readOpenRouterJsonResponse(metadataResponse,controller.signal,expired,raw=>{text=raw;});return text;});
         phase = 'completion';
         const completion = readOpenRouterCompletion(value);
+        // Some approved endpoints support tools but not the optional parallel_tool_calls parameter.
+        // Preserve sequential tool execution deterministically instead of sending an unsupported flag.
+        if (completion.toolCalls.length > 1) throw unavailable();
         return { completion, accounting, elapsedMs };
       };
       return await Promise.race([run(), cancelled]);
