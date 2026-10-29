@@ -12,13 +12,15 @@ function format(locale: 'en' | 'ms') {
 }
 
 describe('readable business time zone', () => {
-  it('names the zone as people say it, in the app language, instead of the IANA id', () => {
-    expect(format('en').fmtZoneName('Asia/Kuala_Lumpur')).toBe('Malaysia Time');
-    expect(format('ms').fmtZoneName('Asia/Kuala_Lumpur')).toBe('Waktu Malaysia');
+  it('names the zone by its place, the same on every runtime and in every app language, instead of the IANA id', () => {
+    // Hermes names Asia/Kuala_Lumpur "Malaysia" and Node "Malaysia Time", so a runtime-supplied name read "in Malaysia." on the phone.
+    expect(format('en').fmtZoneName('Asia/Kuala_Lumpur')).toBe('Kuala Lumpur');
+    expect(format('ms').fmtZoneName('Asia/Kuala_Lumpur')).toBe('Kuala Lumpur');
+    expect(format('en').fmtZoneName('America/Argentina/Buenos_Aires')).toBe('Buenos Aires');
   });
-  it('falls back to the id for a zone the runtime cannot name or does not know', () => {
-    expect(format('en').fmtZoneName('Not/AZone')).toBe('Not/AZone');
+  it('falls back to the id where it names no place', () => {
     expect(format('en').fmtZoneName('Etc/GMT-3')).toBe('Etc/GMT-3');
+    expect(format('en').fmtZoneName('')).toBe('');
   });
   it('prints an instant in the named zone in the app style', () => {
     expect(format('en').fmtInstant('2026-10-29T03:01:18Z', 'Asia/Kuala_Lumpur')).toBe('29 Oct 2026, 11:01');

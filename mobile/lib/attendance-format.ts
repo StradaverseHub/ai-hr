@@ -36,15 +36,12 @@ export function fmtInstant(iso: string | null, zone: string): string {
   catch { return iso.slice(0, 16).replace('T', ' '); }
 }
 /**
- * A server-named IANA zone as people say it ("Malaysia Time", "Waktu Malaysia"), for "Dates and times are in {zone}".
- * Falls back to the id itself where the runtime has no name for it.
+ * A server-named IANA zone as a place people recognise ("Asia/Kuala_Lumpur" -> "Kuala Lumpur"), for "Dates and times are
+ * {zone} time". Taken from the id itself: Intl zone names differ by runtime (Hermes says "Malaysia", Node "Malaysia Time").
  */
 export function fmtZoneName(zone: string): string {
-  try {
-    const name = new Intl.DateTimeFormat(intlLocale(), { timeZone: zone, timeZoneName: 'long' }).formatToParts(new Date())
-      .find((part) => part.type === 'timeZoneName')?.value;
-    return name && !/^GMT[+-]/.test(name) ? name : zone;
-  } catch { return zone; }
+  const city = zone.split('/').pop()?.replace(/_/g, ' ').trim();
+  return city && /^[A-Za-z][A-Za-z .'-]*$/.test(city) ? city : zone;
 }
 /** Minutes as "7h 30m"; null as a dash. Formatting, not arithmetic on a figure the app owns. */
 export function fmtMinutes(n: number | null | undefined): string {
