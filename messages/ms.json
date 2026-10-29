@@ -7282,6 +7282,8 @@
           "capped": "Memaparkan {cap} keputusan terkini. Perhalusi penapis di atas untuk melihat bulan terdahulu.",
           "itemsHeading": "Butiran item gaji",
           "itemsNote": "Item sekali sahaja termasuk dalam jumlah di atas. Item rekod sahaja bukan pendapatan tunai; manfaat bercukai boleh menjejaskan PCB dan gaji bersih.",
+          "nonPayableHeading": "Amaun tidak dibayar",
+          "nonPayableNote": "Tidak dibayar kepada pekerja dan tidak termasuk dalam gaji kasar atau gaji bersih.",
           "itemRemark": "Dimasukkan sebagai “{remark}”",
           "sourceHeading": "Dari mana ia datang",
           "sourceNote": "Transaksi individu yang direkodkan terhadap pekerja ini pada larian gaji ini. Ia disenaraikan di sebelah item yang direkodkan dan bukan dipadankan dengannya: dua entri boleh berkongsi item gaji dan amaun yang sama, jadi hanya orang yang memasukkannya boleh menyatakan yang mana satu.",

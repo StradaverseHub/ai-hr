@@ -7282,6 +7282,8 @@
           "capped": "Showing the {cap} most recent results. Narrow the filters above to see earlier months.",
           "itemsHeading": "Itemised payroll items",
           "itemsNote": "One-off items are included in the totals above. Record-only items are not cash earnings; taxable benefits can affect PCB and net pay.",
+          "nonPayableHeading": "Non-payable amounts",
+          "nonPayableNote": "Not paid to the employee and not included in gross or net pay.",
           "itemRemark": "Entered as “{remark}”",
           "sourceHeading": "Where these came from",
           "sourceNote": "The individual transactions recorded against this employee on this payroll run. They are listed beside the recorded items rather than matched to them: two entries can share a pay item and an amount, so only the person who keyed them can say which is which.",
