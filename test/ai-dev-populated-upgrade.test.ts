@@ -46,7 +46,7 @@ it('upgrades the exact observed populated Board prefix without rewriting applied
  ownerUrl.pathname='/'+name;const storage=createDb(ownerUrl.toString(),{max:1});let created=false;
  const tenantIds:string[]=[];
  const tables=['tenant','company','person','app_user','employment','compensation','pay_period','payroll_batch','payroll_input','payslip','domain_event','tenant_setting'] as const;
- const ledger=()=>storage.client`select id::text as id,hash,created_at::text as created_at from drizzle.__drizzle_migrations order by id`;
+ const ledger=()=>storage.client`select m.id::text as id,m.hash,m.created_at::text as created_at from drizzle.__drizzle_migrations m order by m.id`;
  async function retainedRows(){
   const rows:Record<string,unknown>={};
   for(const table of tables){
