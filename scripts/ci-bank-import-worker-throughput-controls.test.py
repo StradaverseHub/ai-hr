@@ -26,6 +26,7 @@ def lifecycle_fixture():
     with tempfile.TemporaryDirectory(prefix='throughput-lifecycle-controls-') as temporary:
         parent=Path(temporary)/'namespace';parent.mkdir();info=parent.stat();snapshots=[]
         registry=object.__new__(p.Registry)
+        registry.root=Path(temporary)
         registry.data={'format':1,'runId':1,'controller':'a'*40,'children':[],'forcedCleanup':False,'createdChildren':0,'finishedChildren':0,'resources':[],'namespace':{'dev':info.st_dev,'ino':info.st_ino,'state':'present'}}
         registry.gate=Path(temporary)/'gate.py'
         registry.save=lambda:snapshots.append(copy.deepcopy(registry.data))
