@@ -21426,6 +21426,17 @@
         "budget": "Review the PAT, pool status, branch ratings and multiplier requirements before continuing.",
         "decision": "Complete the required Senior membership or offline decision and obtain independent confirmation.",
         "locked": "Return the review to draft before changing its locked inputs."
+      },
+      "handpick": "Handpick Senior plan members",
+      "reviewer": "Group Rewards reviewer",
+      "events": {
+        "inputs": "Unit inputs updated",
+        "selectionProposed": "Senior selection proposed",
+        "selectionConfirmed": "Senior selection confirmed",
+        "exemptionProposed": "Exemption proposed",
+        "exemptionConfirmed": "Exemption confirmed",
+        "awardProposed": "Senior amounts proposed",
+        "awardConfirmed": "Senior amounts confirmed"
       }
     }
   },

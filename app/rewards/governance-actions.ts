@@ -11,8 +11,9 @@ import { saveRewardUnitInputs, proposeRewardExemption, confirmRewardGovernance, 
 /** Decimal input to integer money/rates; never binary multiplication of an HR-entered decimal. */
 function scaled(value:FormDataEntryValue|null,places:number):number|null{
  const raw=String(value??'').trim();if(!raw)return null;
+ if(raw.length>64)throw new RewardError('Amount exceeds the supported limit.');
  if(!new RegExp(`^\\d+(?:\\.\\d{1,${places}})?$`).test(raw))throw new RewardError('Enter a nonnegative amount with the supported decimal precision.');
- const [whole,fraction='']=raw.split('.'),number=BigInt(whole)*10n**BigInt(places)+BigInt(fraction.padEnd(places,'0'));
+ const [whole,fraction='']=raw.split('.'),number=BigInt(whole)*BigInt(10)**BigInt(places)+BigInt(fraction.padEnd(places,'0'));
  const result=Number(number);if(!Number.isSafeInteger(result))throw new RewardError('Amount exceeds the supported limit.');return result;
 }
 async function change(f:FormData,work:(session:Awaited<ReturnType<typeof getSession>>,unitId:string,revision:number)=>Promise<unknown>){

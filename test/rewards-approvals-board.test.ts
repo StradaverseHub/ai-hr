@@ -1,3 +1,4 @@
+import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 /**
  * P1 WP-H1 (truthful Post) and WP-G (Rewards approvals board, reward calendar 0646). Fictional fixtures only.
@@ -52,11 +53,12 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
     await setRewardMember(admin, id, await rev(), actors.payrollOnly!.userId!, 'payroll');
     await setRewardMember(admin, id, await rev(), actors.grOnly!.userId!, 'gr');
     const v = await getRewardUnit(admin, id);
-    await saveRewardPolicy(admin, id, v.unit.revision, { ...v.unit.policy, effectiveFrom: today, patActual: 100, patTarget: 100, ranges: { '12': [300000, 600000, 1200000] } });
+    await configureRewardFixture(admin, id, v.unit.revision, { ...v.unit.policy, effectiveFrom: today, patActual: 100, patTarget: 100, ranges: { '12': [300000, 600000, 1200000] } });
     for (const row of (await getRewardUnit(admin, id)).rows) {
       const conf = people.find(p => p.salary * 100 === row.source.basicCents)?.confidentiality ?? 'standard';
       await saveRewardEntry(admin, id, await rev(), row.id, row.recommendation, { ...emptyFacts(), reviewed: true, talent: 'SCORE', performance: 'ME', confidentiality: conf });
     }
+    await refreshRewardFixtureBudget(admin,id);
     return id;
   }
   const submit = async (id: string, who: SessionContext = actors.bu!) => decideRewardUnit(who, id, (await getRewardUnit(who, id)).unit.revision, 'submit', OK);

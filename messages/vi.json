@@ -21426,6 +21426,17 @@
         "budget": "Kiểm tra PAT, trạng thái quỹ, xếp hạng chi nhánh và hệ số trước khi tiếp tục.",
         "decision": "Hoàn tất lựa chọn thành viên cấp cao hoặc quyết định ngoài hệ thống và lấy xác nhận độc lập.",
         "locked": "Đưa đợt xét duyệt về bản nháp trước khi thay đổi dữ liệu đã khóa."
+      },
+      "handpick": "Chọn thành viên kế hoạch cấp cao",
+      "reviewer": "Người xét duyệt Group Rewards",
+      "events": {
+        "inputs": "Đã cập nhật dữ liệu đơn vị",
+        "selectionProposed": "Đã đề xuất thành viên cấp cao",
+        "selectionConfirmed": "Đã xác nhận thành viên cấp cao",
+        "exemptionProposed": "Đã đề xuất miễn trừ",
+        "exemptionConfirmed": "Đã xác nhận miễn trừ",
+        "awardProposed": "Đã đề xuất số tiền cấp cao",
+        "awardConfirmed": "Đã xác nhận số tiền cấp cao"
       }
     }
   },

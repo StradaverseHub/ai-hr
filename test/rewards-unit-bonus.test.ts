@@ -1,3 +1,4 @@
+import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, asc, eq, isNull } from 'drizzle-orm';
@@ -54,12 +55,14 @@ describe('Rewards unit bonus inputs (fictional fixtures)', () => {
     actors.gr = admin;
     await setRewardMember(admin, unitId, (await view()).unit.revision, admin.userId!, 'payroll');
     const v = await view();
-    await saveRewardPolicy(admin, unitId, v.unit.revision, { ...v.unit.policy, effectiveFrom: today, patActual: 100, patTarget: 100, ranges: { '12': [300000, 500000, 700000] } });
+    await configureRewardFixture(admin, unitId, v.unit.revision, { ...v.unit.policy, effectiveFrom: today, patActual: 100, patTarget: 100, ranges: { '12': [300000, 500000, 700000] } });
     const v2 = await view();
     await saveRewardEntry(admin, unitId, v2.unit.revision, v2.rows[0].id, v2.rows[0].recommendation, { ...emptyFacts(), reviewed: true, talent: 'SCORE', performance: 'ME' });
+    await refreshRewardFixtureBudget(admin,unitId);
   });
   afterAll(closeAll);
   async function approve() {
+    await refreshRewardFixtureBudget(admin,unitId);
     const rev = (await view()).unit.revision;
     await decideRewardUnit(actors.bu!, unitId, rev, 'submit', 'Reviewed recommendations');
     for (const role of ['bg', 'gr', 'ctro', 'ec'] as const) await decideRewardUnit(actors[role]!, unitId, rev, 'approve', 'Reviewed recommendations');
@@ -127,7 +130,7 @@ describe('Rewards unit bonus inputs (fictional fixtures)', () => {
     });
     it('says Actual PAT is missing when it is zero, which is why the suggestion is 0.00', async () => {
       const v = await view();
-      await saveRewardPolicy(admin, unitId, v.unit.revision, { ...v.unit.policy, patActual: 0 });
+      await changeRewardFixtureInputs(admin,unitId,{patActual:0});
       const after = await view();
       expect(after.suggestion).toMatchObject({ patActualMissing: true, achievementBp: 0, poolMultiplierBp: 0 });
       expect(after.suggestedMultiplierBp).toBe(0);
@@ -149,18 +152,19 @@ describe('Rewards unit bonus inputs (fictional fixtures)', () => {
       expect(saved.unit.policy.multiplierBp).toBe(12000);
       // The policy owner keeps the reasoned value: a full policy save cannot silently change or clear it.
       await saveRewardPolicy(admin, unitId, saved.unit.revision, { ...saved.unit.policy, multiplierBp: null, exemptReason: 'Fictional acquisition integration' });
+      expect((await view()).unit.policy.exemptReason).toBe('');
+      await changeRewardFixtureInputs(admin,unitId,{exemptReason:'Fictional acquisition integration'});
       const exempt = await view();
       expect(exempt.unit.policy.multiplierBp).toBe(12000);
       const allowed = await previewRewardMultiplier(admin, unitId, exempt.unit.revision, 20000);
-      expect(allowed).toMatchObject({ beforeBp: 12000, exempt: true, blocked: false, plans: [{ over: true }, { over: false }] });
-      await saveRewardMultiplier(admin, unitId, exempt.unit.revision, 20000, 'Fictional approved budget exemption', allowed.digest);
-      expect((await view()).unit.policy.multiplierBp).toBe(20000);
+      expect(allowed).toMatchObject({ beforeBp: 12000, exempt: true, blocked: true, plans: [{ over: true }, { over: false }] });
+      await expect(saveRewardMultiplier(admin, unitId, exempt.unit.revision, 20000, 'Fictional approved budget exemption', allowed.digest)).rejects.toThrow(/final bonus pool/);
+      expect((await view()).unit.policy.multiplierBp).toBe(12000);
       const events = await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId, unitId), eq(schema.domainEvent.eventType, 'reward-unit.multiplier-updated'))).orderBy(asc(schema.domainEvent.sequence));
       expect(events.map(e => e.payload)).toEqual([
         { revision: v.unit.revision + 1, before: null, after: 12000, reason: 'Fictional unit-only override' },
-        { revision: exempt.unit.revision + 1, before: 12000, after: 20000, reason: 'Fictional approved budget exemption' },
       ]);
-      expect(events.map(e => [e.actorType, e.actorId])).toEqual([['user', admin.userId], ['user', admin.userId]]);
+      expect(events.map(e => [e.actorType, e.actorId])).toEqual([['user', admin.userId]]);
     });
     it('refuses non-Group Rewards reviewers, a submitted review and a branch-factor review', async () => {
       const v = await view();
