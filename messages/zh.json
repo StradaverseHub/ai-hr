@@ -21511,6 +21511,17 @@
         "budget": "继续前请核对税后利润、预算池状态、分行评级及倍数要求。",
         "decision": "请完成所需的高管成员选择或线下决策，并取得独立确认。",
         "locked": "请先将评审退回草稿，再修改已锁定的输入。"
+      },
+      "handpick": "选择高管计划成员",
+      "reviewer": "集团薪酬复核人",
+      "events": {
+        "inputs": "单位输入已更新",
+        "selectionProposed": "已提交高管成员选择",
+        "selectionConfirmed": "高管成员选择已确认",
+        "exemptionProposed": "已提交豁免申请",
+        "exemptionConfirmed": "豁免已确认",
+        "awardProposed": "已提交高管金额",
+        "awardConfirmed": "高管金额已确认"
       }
     },
     "policyGrids": {

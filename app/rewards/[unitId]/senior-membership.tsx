@@ -18,7 +18,7 @@ export function SeniorMembership({ value }: { value: Value }) {
   const rows = value.rows.filter(row => `${row.name} ${row.employeeCode}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const changed = preview?.rows.filter(row => row.member !== row.nextMember) ?? [];
   const clearPreview = () => { setPreview(null); setError(''); setSaved(false); };
-  return <section className="space-y-4 rounded-lg border border-border p-5" aria-label={t('seniorMembershipTitle')}>
+  return <section id="senior-membership" className="space-y-4 rounded-lg border border-border p-5" aria-label={t('seniorMembershipTitle')}>
     <h2 className="font-semibold">{t('seniorMembershipTitle')}</h2>
     <p className="max-w-3xl text-sm text-muted-foreground">{t('seniorMembershipHelp')}</p>
     {legacy && <div className="space-y-3 rounded-md border border-amber-500/30 p-3 text-sm">
@@ -31,7 +31,7 @@ export function SeniorMembership({ value }: { value: Value }) {
       <div className="max-h-80 overflow-auto rounded-md border border-border">
         {rows.length === 0 && <p className="p-4 text-sm text-muted-foreground">{t('noSeniorMembershipMatches')}</p>}
         {rows.map(row => <label key={row.employmentId} className="flex cursor-pointer items-center gap-3 border-b border-border p-3 text-sm last:border-0">
-          <input type="checkbox" disabled={!row.eligible} checked={selected.has(row.employmentId)} onChange={event => {
+          <input type="checkbox" disabled={!row.eligible&&!selected.has(row.employmentId)} checked={selected.has(row.employmentId)} onChange={event => {
             const checked = event.target.checked;
             setSelected(old => { const next = new Set(old); if (checked) next.add(row.employmentId); else next.delete(row.employmentId); return next; }); clearPreview();
           }} />

@@ -54,7 +54,10 @@ export function redactPatPolicy(policy:RewardPolicy,roles:readonly RewardRole[])
 }
 
 export function seniorSourceFingerprint(entry:RewardEntry){return JSON.stringify({employmentId:entry.source.employmentId,compensationId:entry.source.compensationId,basicCents:entry.source.basicCents,gradeId:entry.source.gradeId,grade:entry.source.grade});}
-export function governanceBasis(policy:RewardPolicy,entries:RewardEntry[]){const {patActual:_pa,patTarget:_pt,targetMonthsBp:_tm,multiplierBp:_m,branchRatings:_br,exemptReason:_er,unitGovernanceDigest:_gd,...group}=policy;return createHash('sha256').update(JSON.stringify({group,entries:entries.map(entry=>({id:entry.id,source:entry.source,facts:entry.facts})).sort((a,b)=>a.id.localeCompare(b.id))})).digest('hex');}
+export function governanceBasis(policy:RewardPolicy,entries:RewardEntry[]){
+ const group={year:policy.year,activeAsOf:policy.activeAsOf,minimumBonusRating:policy.minimumBonusRating,excludeNotice:policy.excludeNotice,excludeErCase:policy.excludeErCase,confirmedBy:policy.confirmedBy,blockedFrom:policy.blockedFrom,blockedTo:policy.blockedTo,payWindowKeep:policy.payWindowKeep,seniorMembershipMode:policy.seniorMembershipMode,seniorGrades:policy.seniorGrades};
+ return createHash('sha256').update(JSON.stringify({group,entries:entries.map(entry=>({id:entry.id,source:entry.source,facts:{performance:entry.facts.performance,seniorPlan:entry.facts.seniorPlan,erCase:entry.facts.erCase,confidentiality:entry.facts.confidentiality}})).sort((a,b)=>a.id.localeCompare(b.id))})).digest('hex');
+}
 
 export function governanceHistoryProjection(value:unknown,visibleEntries:RewardEntry[]):RewardGovernance|null{
  if(!value||typeof value!=='object')return null;

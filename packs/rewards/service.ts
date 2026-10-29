@@ -113,7 +113,7 @@ export async function getRewardUnitGovernance(ctx:SessionContext,unitId:string){
    senior:senior.map(entry=>({entryId:entry.id,employmentId:entry.employmentId,name:entry.source.name,employeeCode:entry.source.employeeCode,grade:entry.source.grade,
     basicCents:canAmounts?entry.source.basicCents:null,award:canAmounts?awardProjection[entry.id]??null:null,awaiting:!awardProjection[entry.id]?.confirmedBy})),
    totals:canAmounts?{count:senior.length,incrementCents:senior.reduce((n,e)=>n+Math.max(0,(awardProjection[e.id]?.confirmedBy?awardProjection[e.id].newBasicCents:e.source.basicCents)-e.source.basicCents),0),bonusCents:senior.reduce((n,e)=>n+(awardProjection[e.id]?.confirmedBy?awardProjection[e.id].bonusCents:0),0)}:null,
-   history:isGr&&ready?.ready?(await tx.select({id:rewardGovernanceHistory.id,kind:rewardGovernanceHistory.kind,reason:rewardGovernanceHistory.reason,actorId:rewardGovernanceHistory.actorId,createdAt:rewardGovernanceHistory.createdAt,before:rewardGovernanceHistory.before,after:rewardGovernanceHistory.after}).from(rewardGovernanceHistory).where(eq(rewardGovernanceHistory.unitId,unitId)).orderBy(desc(rewardGovernanceHistory.createdAt),desc(rewardGovernanceHistory.id))).map(event=>({...event,before:governanceHistoryProjection(event.before,visible),after:governanceHistoryProjection(event.after,visible)})):[],
+   history:isGr&&ready?.ready?(await tx.select({id:rewardGovernanceHistory.id,kind:rewardGovernanceHistory.kind,reason:rewardGovernanceHistory.reason,actorId:rewardGovernanceHistory.actorId,actorName:person.fullName,createdAt:rewardGovernanceHistory.createdAt,before:rewardGovernanceHistory.before,after:rewardGovernanceHistory.after}).from(rewardGovernanceHistory).leftJoin(appUser,eq(appUser.id,rewardGovernanceHistory.actorId)).leftJoin(person,eq(person.id,appUser.personId)).where(eq(rewardGovernanceHistory.unitId,unitId)).orderBy(desc(rewardGovernanceHistory.createdAt),desc(rewardGovernanceHistory.id))).map(event=>({...event,before:governanceHistoryProjection(event.before,visible),after:governanceHistoryProjection(event.after,visible)})):[],
   };
  });
 }
@@ -151,7 +151,8 @@ export async function confirmRewardGovernance(ctx:SessionContext,unitId:string,r
    const entry=entries.find(entry=>entry.id===entryId);if(!entry||!visibleEntry(entry,roles,ctx.personId)||!isSeniorPlanMember(unit.policy,entry.facts,entry.source.grade))throw new RewardError('This Senior plan entry is not available.');
    const award=after.awards[entry.id];if(award.sourceFingerprint!==seniorSourceFingerprint(entry))throw new RewardError('Employee salary or grade changed. Enter and check the offline decision again.');
    if(award.newBasicCents<entry.source.basicCents)throw new RewardError('The approved salary must not be below the current salary.');
-   await currentRewardPostEmployeeTx(tx,unit,{...calculateRewards([entry],unit.policy).rows[0]});
+   const [fresh]=await tx.execute<{current:boolean}>(sql`select app.reward_senior_source_current(${unitId}::uuid,${entry.id}::uuid) as current`);
+   if(!fresh?.current)throw new RewardError('Salary data changed after the snapshot. Return and refresh the review.');
   }
   decision.confirmedBy=idSchema.parse(ctx.userId);decision.confirmedAt=new Date().toISOString();
   await saveGovernanceTx(tx,ctx,unitId,before,after,`${kind}-confirmed`,'Independently checked and confirmed');
@@ -599,21 +600,21 @@ function assertMultiplierAuthority(unit: typeof rewardUnit.$inferSelect, revisio
   if (unit.kind !== 'annual') throw new RewardError('Off-cycle reviews inherit their annual policy.');
   if (unit.policy.bonusStructure === 'branch') throw new RewardError('The unit multiplier is not used because this review uses branch factors.');
 }
-function prepareRewardMultiplier(ctx: SessionContext, unit: typeof rewardUnit.$inferSelect, entries: RewardEntry[], multiplierBp: number | null) {
-  const now = calculateRewards(entries, unit.policy), next = calculateRewards(entries, { ...unit.policy, multiplierBp });
+function prepareRewardMultiplier(ctx: SessionContext, unit: typeof rewardUnit.$inferSelect, entries: RewardEntry[], multiplierBp: number | null,controls:import('./engine').RewardCalculationControls={}) {
+  const now = calculateRewards(entries, unit.policy,controls), next = calculateRewards(entries, { ...unit.policy, multiplierBp },controls);
   const utilisation = (b: { bonusUsedCents: number; bonusPoolCents: number }) => b.bonusPoolCents > 0 ? ratio(b.bonusUsedCents, 10000, b.bonusPoolCents, 'nearest') : null;
   const plans = (['standard', 'h'] as const).map(plan => ({ plan, nowBp: utilisation(now.budgets[plan]), afterBp: utilisation(next.budgets[plan]), over: next.budgets[plan].bonusUsedCents > next.budgets[plan].bonusPoolCents }));
   const exempt = !!unit.policy.exemptReason;
   const token = createHash('sha256').update(JSON.stringify({ actor: { userId: ctx.userId, personId: ctx.personId }, unitId: unit.id, revision: unit.revision, snapshot: digest(unit, entries), multiplierBp })).digest('hex');
-  return { unitId: unit.id, revision: unit.revision, beforeBp: unit.policy.multiplierBp, requestedBp: multiplierBp, effectiveBp: multiplierBp ?? next.suggestedMultiplierBp, plans, exempt, blocked: !exempt && plans.some(p => p.over), digest: token };
+  return { unitId: unit.id, revision: unit.revision, beforeBp: unit.policy.multiplierBp, requestedBp: multiplierBp, effectiveBp: multiplierBp ?? next.suggestedMultiplierBp, plans, exempt, blocked: (controls.poolStatus==='final'||!exempt) && plans.some(p => p.over), digest: token };
 }
 export async function previewRewardMultiplier(ctx: SessionContext, unitId: string, revision: number, multiplierBp: number | null) {
   const value = multiplierInputSchema.parse(multiplierBp);
   return withRewardsTenant(ctx, async tx => {
     const { unit, roles, entries } = await load(tx, unitId);
     assertMultiplierAuthority(unit, revision, roles);
-    if(await governancePublicTx(tx,unitId))throw new RewardError('Use the checked unit budget inputs to change this managed multiplier.');
-    return prepareRewardMultiplier(ctx, unit, entries, value);
+    const state=await governanceStateTx(tx,unitId),publicState=await governancePublicTx(tx,unitId);
+    return prepareRewardMultiplier(ctx, {...unit,policy:effectiveRewardPolicy(unit.policy,state)}, entries, value,publicState?{bonusPools:publicState.pools,poolStatus:publicState.status}:{});
   });
 }
 export async function saveRewardMultiplier(ctx: SessionContext, unitId: string, revision: number, multiplierBp: number | null, reason: string, previewDigest: string) {
@@ -623,12 +624,13 @@ export async function saveRewardMultiplier(ctx: SessionContext, unitId: string, 
   return withRewardsTenant(ctx, async tx => {
     const { unit, roles, entries } = await load(tx, unitId, true);
     assertMultiplierAuthority(unit, revision, roles);
-    if(await governancePublicTx(tx,unitId))throw new RewardError('Use the checked unit budget inputs to change this managed multiplier.');
-    const prepared = prepareRewardMultiplier(ctx, unit, entries, value);
+    const state=await governanceStateTx(tx,unitId),publicState=await governancePublicTx(tx,unitId),effective=effectiveRewardPolicy(unit.policy,state);
+    const prepared = prepareRewardMultiplier(ctx, {...unit,policy:effective}, entries, value,publicState?{bonusPools:publicState.pools,poolStatus:publicState.status}:{});
     if (prepared.digest !== previewDigest) throw new RewardError('The review changed. Check the impact again before saving.');
-    if (prepared.blocked) throw new RewardError('A plan would exceed 100% of its bonus pool and this review has no budget-cap exemption.');
-    await tx.update(rewardUnit).set({ policy: { ...unit.policy, multiplierBp: value } }).where(eq(rewardUnit.id, unitId)); await touch(tx, unitId);
-    await stamp(tx, ctx, unitId, 'multiplier-updated', { revision: unit.revision + 1, before: unit.policy.multiplierBp, after: value, reason: why });
+    if (prepared.blocked) throw new RewardError(publicState?.status==='final'?'A plan would exceed 100% of its final bonus pool. A budget exemption does not bypass the final-pool cap.':'A plan would exceed 100% of its bonus pool and this review has no budget-cap exemption.');
+    if(state?.inputs)await saveGovernanceTx(tx,ctx,unitId,state,{...state,inputs:{...state.inputs,multiplierBp:value}},'unit-inputs-updated',why);
+    else {await tx.update(rewardUnit).set({ policy: { ...unit.policy, multiplierBp: value } }).where(eq(rewardUnit.id, unitId)); await touch(tx, unitId);}
+    await stamp(tx, ctx, unitId, 'multiplier-updated', { revision: unit.revision + 1, before: effective.multiplierBp, after: value, reason: why });
   });
 }
 

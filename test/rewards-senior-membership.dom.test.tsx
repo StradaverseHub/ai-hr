@@ -14,7 +14,7 @@ vi.mock('../app/rewards/actions', () => ({ previewSeniorMembershipAction: action
 import { SeniorMembership } from '../app/rewards/[unitId]/senior-membership';
 
 const catalogues = {en, ms, zh, ta, th, vi:viMessages};
-const roster = [{employmentId:'employee-a',name:'Fictional A',employeeCode:'S-01',member:false},{employmentId:'employee-b',name:'Fictional B',employeeCode:'S-02',member:true}];
+const roster = [{employmentId:'employee-a',name:'Fictional A',employeeCode:'S-01',member:false,eligible:true,grade:'21'},{employmentId:'employee-b',name:'Fictional B',employeeCode:'S-02',member:true,eligible:true,grade:'22'}];
 function show(mode: 'named-members'|'legacy-grades' = 'named-members', locale: keyof typeof catalogues = 'en') {
   return render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]} onError={error => { throw error; }}>
     <SeniorMembership value={{unitId:'unit-01',revision:7,canEdit:true,mode,rows:roster}} />

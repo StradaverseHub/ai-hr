@@ -21511,6 +21511,17 @@
         "budget": "Semak PAT, status kumpulan, penarafan cawangan dan keperluan pengganda sebelum meneruskan.",
         "decision": "Lengkapkan keahlian Senior atau keputusan luar sistem yang diperlukan dan dapatkan pengesahan bebas.",
         "locked": "Kembalikan semakan kepada draf sebelum mengubah input yang dikunci."
+      },
+      "handpick": "Pilih ahli pelan Senior",
+      "reviewer": "Penyemak Group Rewards",
+      "events": {
+        "inputs": "Input unit dikemas kini",
+        "selectionProposed": "Pemilihan Senior dicadangkan",
+        "selectionConfirmed": "Pemilihan Senior disahkan",
+        "exemptionProposed": "Pengecualian dicadangkan",
+        "exemptionConfirmed": "Pengecualian disahkan",
+        "awardProposed": "Amaun Senior dicadangkan",
+        "awardConfirmed": "Amaun Senior disahkan"
       }
     },
     "policyGrids": {

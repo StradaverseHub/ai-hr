@@ -49,7 +49,7 @@ DO $$ BEGIN
 END $$;
 GRANT USAGE ON SCHEMA public,app TO ai_hr_rewards_post_reader;
 GRANT SELECT ON public.reward_unit,public.reward_senior_award TO ai_hr_rewards_post_reader;
-GRANT EXECUTE ON FUNCTION app.reward_roles(uuid),app.reward_admin(uuid),app.current_tenant_id() TO ai_hr_rewards_post_reader;
+GRANT EXECUTE ON FUNCTION app.reward_roles(uuid),app.reward_admin(uuid),app.current_tenant_id(),app.current_user_id() TO ai_hr_rewards_post_reader;
 CREATE POLICY reward_senior_award_post_read ON public.reward_senior_award FOR SELECT TO ai_hr_rewards_post_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.reward_unit u WHERE u.id=reward_senior_award.unit_id AND u.tenant_id=reward_senior_award.tenant_id AND u.status='approved' AND u.deleted_at IS NULL AND app.reward_admin(u.company_id) AND 'payroll'=ANY(ARRAY(SELECT app.reward_roles(u.id)))));
 CREATE POLICY reward_senior_award_write ON public.reward_senior_award FOR ALL USING(tenant_id=app.current_tenant_id() AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(unit_id)))) WITH CHECK(tenant_id=app.current_tenant_id() AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(unit_id))));
 GRANT SELECT,INSERT,UPDATE ON public.reward_governance_public TO ai_hr_app;
@@ -71,3 +71,31 @@ GRANT EXECUTE ON FUNCTION app.reward_senior_awards_for_post(uuid) TO ai_hr_app;
 
 ALTER TABLE public.payroll_input ADD COLUMN reward_provenance jsonb NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE public.payroll_input ADD CONSTRAINT payroll_input_reward_provenance_shape CHECK(jsonb_typeof(reward_provenance)='array');
+
+-- Scope-bound source freshness check for a GR checker who has no generic People/Compensation read.
+GRANT SELECT ON public.reward_entry,public.employment,public.compensation,public.app_user TO ai_hr_rewards_post_reader;
+CREATE POLICY reward_senior_source_employment_read ON public.employment FOR SELECT TO ai_hr_rewards_post_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.reward_entry e JOIN public.reward_unit u ON u.id=e.unit_id AND u.tenant_id=e.tenant_id WHERE e.employment_id=employment.id AND e.tenant_id=employment.tenant_id AND u.status='draft' AND u.deleted_at IS NULL AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(u.id)))));
+CREATE POLICY reward_senior_source_compensation_read ON public.compensation FOR SELECT TO ai_hr_rewards_post_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.reward_entry e JOIN public.reward_unit u ON u.id=e.unit_id AND u.tenant_id=e.tenant_id WHERE e.employment_id=compensation.employment_id AND e.tenant_id=compensation.tenant_id AND u.status='draft' AND u.deleted_at IS NULL AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(u.id)))));
+CREATE FUNCTION app.reward_senior_source_current(p_unit uuid,p_entry uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT EXISTS(SELECT 1 FROM public.reward_unit u JOIN public.reward_entry e ON e.unit_id=u.id AND e.tenant_id=u.tenant_id
+ JOIN public.app_user actor ON actor.id=app.current_user_id() AND actor.tenant_id=u.tenant_id
+ JOIN public.employment emp ON emp.id=e.employment_id AND emp.tenant_id=e.tenant_id
+ JOIN public.compensation c ON c.employment_id=emp.id AND c.tenant_id=emp.tenant_id AND c.valid_to IS NULL AND c.superseded_at IS NULL
+ WHERE u.id=p_unit AND e.id=p_entry AND u.tenant_id=app.current_tenant_id() AND u.status='draft' AND u.deleted_at IS NULL AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(u.id)))
+ AND actor.person_id IS NOT NULL AND e.source->>'personId'<>actor.person_id::text
+ AND emp.company_id=u.company_id AND emp.terminated_on IS NULL AND emp.grade_id IS NOT DISTINCT FROM nullif(e.source->>'gradeId','')::uuid
+ AND c.id=nullif(e.source->>'compensationId','')::uuid AND c.basic_salary*100=(e.source->>'basicCents')::numeric AND c.currency=e.source->>'currency' AND c.pay_mode::text=e.source->>'payMode')
+$$;
+ALTER FUNCTION app.reward_senior_source_current(uuid,uuid) OWNER TO ai_hr_rewards_post_reader;
+REVOKE ALL ON FUNCTION app.reward_senior_source_current(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_senior_source_current(uuid,uuid) TO ai_hr_app;
+
+CREATE UNIQUE INDEX reward_entry_tenant_unit_identity ON public.reward_entry(tenant_id,unit_id,id);
+ALTER TABLE public.reward_governance ADD CONSTRAINT reward_governance_tenant_unit FOREIGN KEY(tenant_id,unit_id) REFERENCES public.reward_unit(tenant_id,id);
+ALTER TABLE public.reward_governance_public ADD CONSTRAINT reward_governance_public_tenant_unit FOREIGN KEY(tenant_id,unit_id) REFERENCES public.reward_unit(tenant_id,id);
+ALTER TABLE public.reward_governance_history ADD CONSTRAINT reward_governance_history_tenant_unit FOREIGN KEY(tenant_id,unit_id) REFERENCES public.reward_unit(tenant_id,id);
+ALTER TABLE public.reward_senior_evidence ADD CONSTRAINT reward_senior_evidence_tenant_entry FOREIGN KEY(tenant_id,unit_id,entry_id) REFERENCES public.reward_entry(tenant_id,unit_id,id);
+ALTER TABLE public.reward_senior_award ADD CONSTRAINT reward_senior_award_tenant_entry FOREIGN KEY(tenant_id,unit_id,entry_id) REFERENCES public.reward_entry(tenant_id,unit_id,id);
+ALTER POLICY reward_governance_history_append ON public.reward_governance_history WITH CHECK(tenant_id=app.current_tenant_id() AND actor_id=app.current_user_id() AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(unit_id))));
+ALTER POLICY reward_senior_evidence_append ON public.reward_senior_evidence WITH CHECK(tenant_id=app.current_tenant_id() AND uploaded_by=app.current_user_id() AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(unit_id))));

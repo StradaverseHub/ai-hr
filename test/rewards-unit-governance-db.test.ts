@@ -7,7 +7,9 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
-import {getRewardUnit,createRewardUnit,getRewardUnitGovernance,saveRewardUnitInputs,confirmRewardGovernance,proposeRewardExemption,previewRewardSeniorMembership,saveRewardSeniorMembership,saveRewardSeniorAward,saveRewardEntry,postRewardUnit} from '../packs/rewards/service';
+import {getRewardUnit,createRewardUnit,getRewardUnitGovernance,saveRewardUnitInputs,confirmRewardGovernance,proposeRewardExemption,previewRewardSeniorMembership,saveRewardSeniorMembership,saveRewardSeniorAward,saveRewardEntry,postRewardUnit,decideRewardUnit} from '../packs/rewards/service';
+import {configureRewardFixture,refreshRewardFixtureBudget,ensureRewardGovernanceFixtureSchema} from './rewards-governance-fixture';
+import {createBatch,setPayrollInput,rewardPayrollProvenance} from '../packs/payroll/service';
 import {emptyFacts} from '../packs/rewards/model';
 import {owner,resetDb,seedBase,setModule,entitledCtx,createAppUser,closeAll,type Base} from './harness';
 import {setRewardMember} from './rewards-access-fixture';
@@ -20,7 +22,7 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   if(!process.env.TEST_DB_NAMESPACE)throw new Error('Use a private disposable test namespace.');
   // Reserved SQL is deliberately unjournaled until prerequisite allocation freezes. Apply only to
   // this namespaced worker database, whose ordinary migrations globalSetup already rehearsed.
-  await owner.client.unsafe(readFileSync('docs/migration-drafts/0689_rewards_unit_governance.sql','utf8'));
+  await ensureRewardGovernanceFixtureSchema();
  });
  beforeEach(async()=>{
   await resetDb();b=await seedBase();await setModule(b.tenantId,'rewards','active');gr=await entitledCtx(b);
@@ -52,7 +54,7 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   for(const actor of [bu,ctro,payroll]){
    const raw=await withTenant(actor,tx=>tx.select().from(schema.rewardGovernance).where(eq(schema.rewardGovernance.unitId,unitId)));expect(raw).toEqual([]);
    const data=await getRewardUnitGovernance(actor,unitId);expect(data.inputs).toBeNull();expect(data.legacyInputs).toBeNull();expect(data.history).toEqual([]);
-   expect(JSON.stringify(data)).not.toContain('900000');expect(data.pools.standard).toBe(grState.pools.standard);
+   expect(data).not.toHaveProperty('forecastCents');expect(data).not.toHaveProperty('actualCents');expect(data).not.toHaveProperty('targetCents');expect(data.inputs).toBeNull();expect(data.pools.standard).toBe(grState.pools.standard);
    const projected=await getRewardUnit(actor,unitId);expect(projected.unit.policy.patActual).toBe(0);expect(projected.suggestion).toBeNull();
    expect(projected.budgets.standard).toEqual((await view()).budgets.standard);
   }
@@ -109,6 +111,39 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
    await owner.db.execute(sql`ALTER TABLE reward_governance OWNER TO ${sql.identifier(current.name)}`);
    await owner.db.execute(sql`ALTER TABLE reward_senior_award OWNER TO ${sql.identifier(current.name)}`);
   }
+ });
+
+ it('posts confirmed Senior amounts once through the dedicated reader, preserving unrelated input and historical provenance',async()=>{
+  const actors:Record<string,SessionContext>={bu,ctro,gr};
+  for(const role of ['bg','ec'] as const){
+   const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional '+role+' approver',primaryEmail:role+'-positive@fixture.test'}).returning();
+   const userId=await createAppUser(b.tenantId,person.id,'employee'),actor={...gr,userId,personId:person.id,roles:['employee'],grants:undefined};
+   await setRewardMember(gr,unitId,(await view()).unit.revision,userId,role);actors[role]=actor;
+  }
+  await setRewardMember(gr,unitId,(await view()).unit.revision,gr.userId!,'payroll');
+  let v=await view();await configureRewardFixture(gr,unitId,v.unit.revision,{...v.unit.policy,effectiveFrom:today,patActual:1000000,patTarget:1000000});
+  v=await view();const selection={employmentIds:[employeeId],adoptLegacy:false},preview=await previewRewardSeniorMembership(gr,unitId,v.unit.revision,selection);
+  await saveRewardSeniorMembership(gr,unitId,v.unit.revision,selection,preview.digest);await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'selection');
+  v=await view();await saveRewardEntry(gr,unitId,v.unit.revision,entryId,v.rows[0].recommendation,{...v.rows[0].facts,reviewed:true});await refreshRewardFixtureBudget(gr,unitId);
+  await saveRewardSeniorAward(gr,unitId,(await view()).unit.revision,{entryId,newBasicCents:550000,incrementBp:null,bonusCents:123400,approvalReference:'SIGNED-OFFLINE',approvalDate:today,reason:'Signed offline approval independently retained',evidence:[]});
+  await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'award',entryId);
+  const revision=(await view()).unit.revision;await decideRewardUnit(bu,unitId,revision,'submit','Reviewed the checked Senior decision');
+  for(const role of ['bg','gr','ctro','ec'])await decideRewardUnit(actors[role],unitId,revision,'approve','Reviewed and accepted the decision');
+  const [bounded]=await withTenant(gr,tx=>tx.execute<{awards:Record<string,unknown>}>(sql`select app.reward_senior_awards_for_post(${unitId}::uuid) as awards`));
+  expect(bounded.awards[entryId]).toMatchObject({newBasicCents:550000,bonusCents:123400});expect(JSON.stringify(bounded)).not.toMatch(/PAT|evidence|SIGNED-OFFLINE|approvalReference/);
+  await setModule(b.tenantId,'payroll','active');const {batchId}=await createBatch(gr,{companyId:b.companyId,payPeriod:today.slice(0,7)});
+  await setPayrollInput(gr,{batchId,employmentId:employeeId,overtimeAmount:123,bonusAmount:55,tp1Deduction:44,zakat:9});
+  await expect(postRewardUnit(gr,unitId,revision,batchId)).resolves.toMatchObject({alreadyPosted:false});
+  await expect(postRewardUnit(gr,unitId,revision,batchId)).resolves.toMatchObject({alreadyPosted:true});
+  const [input]=await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId,batchId));
+  expect(input).toMatchObject({overtimeAmount:'123.00',bonusAmount:'1289.00',tp1Deduction:'44.00',zakat:'9.00'});
+  expect(input.rewardProvenance).toEqual([{unitId,entryId,revision,plan:'Senior plan',confirmedBy:checker.userId,confirmedAt:expect.any(String),historicalOnly:true}]);
+  const [{sources}]=await rewardPayrollProvenance(gr,batchId);expect(sources).toEqual(input.rewardProvenance);
+  const compensations=await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId,employeeId));expect(compensations.filter(row=>row.basicSalary==='5500.00')).toHaveLength(1);
+  // A subsequent manual change does not convert a historical source reference into a claim that the
+  // current bonus still equals the checked award.
+  await setPayrollInput(gr,{batchId,employmentId:employeeId,overtimeAmount:123,bonusAmount:2000,tp1Deduction:44,zakat:9});
+  expect((await rewardPayrollProvenance(gr,batchId))[0].sources[0].historicalOnly).toBe(true);
  });
 
 });
