@@ -28,10 +28,10 @@ async function actors(){
 const hex=(c:string)=>c.repeat(64);
 /** A typed routing row exactly as a pre-WP11 installation may still hold it. Inserted on the owner
  * connection because no application path can create this kind any more. */
-async function legacyRoutingPromotion(owner_user_id:string,approver:string,expired:boolean){
+async function legacyRoutingPromotion(owner_user_id:string,approver:string,expired:boolean,version=1){
  const candidateId=randomUUID(),promotionId=randomUUID();
  await owner.db.execute(sql`insert into public.ai_agent_candidate(id,tenant_id,owner_user_id,author_user_id,module_code,version,kind,configuration,candidate_digest,baseline_digest,source_digest,engine_digest,policy_digest,input_digest)
-  values(${candidateId}::uuid,${base.tenantId}::uuid,${owner_user_id}::uuid,${owner_user_id}::uuid,'assistant',1,'typed_route_priority_v1',${JSON.stringify({kind:'typed_route_priority_v1',priority:[...AGENT_MODULE_CODES].reverse()})}::jsonb,${hex('a')},${hex('b')},${hex('c')},${hex('d')},${hex('e')},${hex('f')})`);
+  values(${candidateId}::uuid,${base.tenantId}::uuid,${owner_user_id}::uuid,${owner_user_id}::uuid,'assistant',${version},'typed_route_priority_v1',${JSON.stringify({kind:'typed_route_priority_v1',priority:[...AGENT_MODULE_CODES].reverse()})}::jsonb,${hex('a')},${hex('b')},${hex('c')},${hex('d')},${hex('e')},${hex('f')})`);
  await owner.db.execute(sql`insert into public.ai_agent_promotion(id,tenant_id,candidate_id,owner_user_id,module_code,approver_user_id,receipt,max_jobs,created_at,expires_at)
   values(${promotionId}::uuid,${base.tenantId}::uuid,${candidateId}::uuid,${owner_user_id}::uuid,'assistant',${approver}::uuid,'legacy-sealed-routing-receipt',5,
    now()-interval '2 hours',${expired?sql`now()-interval '1 hour'`:sql`now()+interval '1 hour'`})`);
@@ -57,7 +57,7 @@ describe('governed module plans after the routing kind was deleted',()=>{
   expect(unused).toEqual({used:0,promotion:null});
   const visible=await withTenant(a.reviewer,tx=>tx.execute<{kind:string}>(sql`select kind from public.ai_agent_candidate where id=${live.candidateId}::uuid`));expect(Array.from(visible)).toEqual([{kind:'typed_route_priority_v1'}]);
   // A promotion row's times are immutable (the permit trigger), so an already-expired legacy row is stored separately.
-  const old=await legacyRoutingPromotion(a.author.userId!,a.reviewer.userId!,true);
+  const old=await legacyRoutingPromotion(a.author.userId!,a.reviewer.userId!,true,2);
   expect(await maintainModuleAgentReleases(a.reviewer)).toEqual({retired:1,outcomeRegressed:0});
   const [after]=await owner.db.execute<{expired:string|null;live:string|null;candidates:number;promotions:number}>(sql`select (select reason from public.ai_agent_rollback where promotion_id=${old.promotionId}::uuid) as expired,(select reason from public.ai_agent_rollback where promotion_id=${live.promotionId}::uuid) as live,(select count(*)::int from public.ai_agent_candidate) as candidates,(select count(*)::int from public.ai_agent_promotion) as promotions`);
   expect(after).toEqual({expired:'expired',live:null,candidates:2,promotions:2});
