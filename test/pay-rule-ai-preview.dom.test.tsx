@@ -37,7 +37,7 @@ describe('AI pay-rule draft requires a current employee sample before normal for
   expect(document.body.textContent).not.toContain('pay a million');
   fireEvent.click(screen.getByRole('button',{name:t.previewRun}));
   await waitFor(()=>expect(actions.preview).toHaveBeenCalledOnce());
-  await screen.findByText('500.00');
+  await screen.findByText(/^RM\s*500\.00$/);
   fireEvent.click(review);expect(form.checkValidity()).toBe(true);
   fireEvent.change(screen.getByRole('spinbutton'),{target:{value:'20'}});
   expect(review).not.toBeChecked();expect(form.checkValidity()).toBe(false);
@@ -46,7 +46,7 @@ describe('AI pay-rule draft requires a current employee sample before normal for
  it.each(Object.keys(copies) as (keyof typeof copies)[])('%s renders the reviewed sample and mandatory confirmation',async locale=>{
   const t=await request(locale);
   fireEvent.click(screen.getByRole('button',{name:t.previewRun}));
-  await screen.findByText('500.00');
+  await screen.findByText(/^RM\s*500\.00$/);
   fireEvent.click(screen.getByLabelText(t.aiPreviewReviewed));
   expect((screen.getByRole('form') as HTMLFormElement).checkValidity()).toBe(true);
   expect(actions.preview).toHaveBeenCalledWith(expect.objectContaining({rule:{kind:'percent_of',base:'basic',pct:10},employmentId:employee.employmentId}));
