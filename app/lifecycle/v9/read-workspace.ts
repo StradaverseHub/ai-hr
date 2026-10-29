@@ -11,5 +11,5 @@ export async function readV9Workspace(session: SessionContext) {
     const [rows, options] = await Promise.all([onboardingList(session), onboardingOptions(session)]);
     joiners = { config: context.config, rows, options };
   }
-  return { initial, viewer, joiners };
+  return { initial, viewer, joiners, nativeSettings: joiners ? { context, options: joiners.options } : null };
 }

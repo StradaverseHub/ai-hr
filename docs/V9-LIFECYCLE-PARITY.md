@@ -23,9 +23,9 @@ The prototype stores all of this in browser memory. Production must persist revi
 | Workflows | Module filter, trigger/conditions/ordered steps/description, working-day and repeat switches, skip conditions, dry run, case runs and preview/edit/test actions. |
 | Settings | Separate onboarding/offboarding/shared tabs; configurable visible/required case fields and population rules; equipment catalogue/providers/approval settings; notice/leave/pay/revocation policy; company letterhead/signatory and PBP routing. |
 | Assignment groups | Searchable membership, workload limits, leave awareness and an explanation of assignment behavior. |
-| Tasks | Cross-case queue, personal queue, outstanding/completed filters, day/calendar views, reassignment, bulk equipment assignment/dates and notes/mentions. |
+| Tasks | Mine / My teams / Done across case tasks and equipment/access work; reassignment, bulk equipment assignment/dates and notes/mentions. The calendar belongs to employee home. |
 | Request records | Onboarding REQ approvals/fulfilment and offboarding RVK return/revoke views, with case links and history. The handover omits the RVK view. |
-| Role profiles | Systems/devices bundles, matching rules, fallback, review date and population preview; applied items remain a case snapshot. |
+| Role profiles (unreachable legacy) | Final navigation does not bind the legacy profile handler. Active `profileFor` uses catalogue matching rules; do not create a second active profile subsystem. |
 | Module access | Module users, joiner page section presets and request-record groups. Production retains real identity, company scope and server checks. |
 | Employee view | Own staged tasks, documents/forms, required-field enforcement, read-only Personnel fields, upload, signing/acknowledgement and task completion. |
 | Personnel changes | Reviewable before/after proposals, explicit HR push, repeat protection and source-change handling. |

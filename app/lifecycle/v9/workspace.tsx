@@ -17,7 +17,7 @@ import { CaseStatus } from './case-status';
 import { CaseWorkflows } from './case-workflows';
 import { CaseEmails } from './email-composer';
 import { CaseDocument } from './case-document';
-import { WorkspaceSettings, MatchingRules } from './workspace-settings';
+import { WorkspaceSettings, MatchingRules, type NativeSettingsData } from './workspace-settings';
 import { CaseFiles } from './case-files';
 import { CaseCalculator } from './case-calculator';
 import { WorkflowEditor } from './workflow-editor';
@@ -25,6 +25,8 @@ import { TemplateImportDialog } from './template-import-dialog';
 import { DefinitionDelete, definitionDeleteReason } from './definition-delete';
 import { TemplateVersionHistory } from './template-version-history';
 import { TemplateVersionEditor } from './template-version-editor';
+import { RequestRecords } from './request-records';
+import { TaskQueue } from './task-queue';
 import { NativeJoiners, type NativeJoinersData } from './native-joiners';
 import { commandV9, createV9Offboarding, saveV9Config, setupV9 } from './actions';
 
@@ -41,7 +43,7 @@ function Dialog({ title, children, close }: { title: string; children: ReactNode
   useEffect(() => { ref.current?.showModal(); return () => ref.current?.close(); }, []);
   return <dialog className="v9-dialog" aria-label={title} ref={ref} onCancel={close}><header><h2>{title}</h2><button type="button" className="v9-button" aria-label="Close" onClick={close}><X size={18}/></button></header>{children}</dialog>;
 }
-export function V9Workspace({ initial, viewer, joiners = null, nativeCase }: { nativeCase?: { name: string; content: ReactNode }; initial: Workspace; viewer: ViewerIdentity; joiners?: NativeJoinersData | null }) {
+export function V9Workspace({ initial, viewer, joiners = null, nativeCase, nativeSettings = null }: { nativeSettings?: NativeSettingsData | null; nativeCase?: { name: string; content: ReactNode }; initial: Workspace; viewer: ViewerIdentity; joiners?: NativeJoinersData | null }) {
   const router = useRouter(), [busy, start] = useTransition();
   const [view, setView] = useState<View>('joiners'), [selected, setSelected] = useState<string | null>(null), [search, setSearch] = useState(''), [company, setCompany] = useState(''), [module, setModule] = useState<M.Module>('off');
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [creating, setCreating] = useState(false), [reason, setReason] = useState<{ type: 'cancel' | 'reopen'; value: string } | null>(null);
@@ -79,13 +81,13 @@ export function V9Workspace({ initial, viewer, joiners = null, nativeCase }: { n
       {current ? <CaseView c={current} config={config} users={initial.options.users} personnelWritableKeys={initial.personnelWritableKeys} busy={busy} command={command} onDocument={setDocument} onReason={type => setReason({ type, value: '' })}/> : <>
       {view === 'joiners' && !nativeCase && <NativeJoiners data={joiners} company={company} search={search}/>}
       {view === 'leavers' && <><div className="v9-notice">Start a case from the employee record, review the checklist and confirm the case to begin assignments and workflows.</div><CaseList cases={cases.filter(c => c.module === 'off')} open={setSelected}/></>}
-      {view === 'tasks' && <section className="v9-table-scroll"><table className="v9-table"><thead><tr>{['Task', 'Person', 'Assigned to', 'Due by', 'Status'].map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>{cases.flatMap(c => c.tasks.map(t => <tr key={c.id + t.id}><td><button type="button" className="v9-link" onClick={() => setSelected(c.id)}>{t.name}</button></td><td>{c.facts.name}</td><td>{initial.options.users.find(u => u.id === t.assignee)?.name ?? 'Unassigned'}</td><td>{date(t.dueOn)}</td><td>{t.status === 'notNeeded' ? 'Not needed' : t.status === 'progress' ? 'In progress' : t.status === 'done' ? 'Done' : 'To do'}</td></tr>))}</tbody></table>{!cases.some(c => c.tasks.length) && <p className="v9-panel v9-muted">No tasks to show.</p>}</section>}
-      {view === 'records' && <section className="v9-table-scroll"><table className="v9-table"><thead><tr>{['Request', 'Employee', 'Case', 'Items', 'Status'].map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>{cases.filter(c => c.module === 'off' && c.state !== 'pending').map(c => <tr key={c.id}><td><button type="button" className="v9-link" onClick={() => setSelected(c.id)}>RVK-{c.number.split('-').at(-1)}</button></td><td>{c.facts.name}</td><td>{c.number}</td><td>{c.items.filter(i => M.isResolved(i.status) || i.status === 'notReturned').length} of {c.items.length} done</td><td><Badge c={c}/></td></tr>)}</tbody></table><p className="v9-panel v9-muted"><Link href="/lifecycle/requisitions/onboarding" className="v9-link">Open onboarding request records</Link></p></section>}
+      {view === 'tasks' && <TaskQueue cases={initial.cases} config={config} native={joiners} actor={initial.actor.id} users={initial.options.users} company={company} search={search} openCase={setSelected}/>}
+      {view === 'records' && <RequestRecords cases={initial.cases} native={joiners} labels={initial.options.labels ?? {}} company={company} search={search} openCase={setSelected}/>}
       {(view === 'onbChecklists' || view === 'offChecklists') && <ChecklistEditor config={config} module={view === 'onbChecklists' ? 'onb' : 'off'} selected={pick} select={setPick} edit={edit} editable={initial.canConfigure}/>}
       {view === 'templates' && <TemplateEditor references={initial.definitionUsage} usage={initial.templateUsage} saved={configuration.state === 'saved'} config={config} selected={pick} select={setPick} module={module} setModule={setModule} edit={edit} editable={initial.canConfigure}/>}
       {view === 'workflows' && <WorkflowEditor cases={cases} users={initial.options.users} actor={initial.actor} labels={initial.options.labels ?? {}} config={config} selected={pick} select={setPick} module={module} setModule={setModule} edit={edit} editable={initial.canConfigure}/>}
       {view === 'groups' && <div className="v9-stack">{config.groups.map((g, index) => <section key={g.id} className="v9-panel"><h2>{g.name}</h2><div className="v9-fields"><Field label="Group name"><input className="v9-input" value={g.name} disabled={!initial.canConfigure} onChange={e => edit(n => { n.groups[index].name = e.target.value; })}/></Field><Field label="Open-task limit"><input className="v9-input" type="number" min={0} max={1000} value={g.limit} disabled={!initial.canConfigure} onChange={e => edit(n => { n.groups[index].limit = Number(e.target.value); })}/></Field></div><p className="v9-muted">Assign the least-loaded eligible member, skipping leave on the task due date and members at their group limit. Zero means unlimited.</p><div className="v9-actions">{initial.options.users.map(user => <label key={user.id} className="v9-actions"><input type="checkbox" checked={g.members.includes(user.id)} disabled={!initial.canConfigure} onChange={e => edit(n => { n.groups[index].members = e.target.checked ? [...g.members, user.id] : g.members.filter(id => id !== user.id); })}/>{user.name}</label>)}</div></section>)}</div>}
-      {view === 'settings' && <WorkspaceSettings config={config} options={initial.options} editable={initial.canConfigure} edit={edit}/>}
+      {view === 'settings' && <WorkspaceSettings nativeSettings={nativeSettings} config={config} options={initial.options} editable={initial.canConfigure} edit={edit}/>}
       {view === 'access' && <section className="v9-panel"><h2>Module access</h2><p>Access uses the signed-in account and company scope. Case administration and configuration changes are checked again when saved.</p><div className="v9-actions"><Link href="/admin/lifecycle/onboarding/access" className="v9-link">Onboarding module and page access</Link><Link href="/admin/access" className="v9-link">User roles and company permissions</Link></div></section>}
       </>}
     </main></div>
