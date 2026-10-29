@@ -16,7 +16,12 @@
         "route": "/me",
         "titleKey": "tour.me.contact.title",
         "bodyKey": "tour.me.contact.body",
-        "placement": "right"
+        "placement": "right",
+        "text": {
+          "title": "Review your profile changes",
+          "body": "Edit the fields your company permits and attach supporting documents where requested. The result distinguishes saved changes from changes waiting for approval; a request does not grant permission to approve your own change.",
+          "lang": "en"
+        }
       },
       {
         "id": "bank",
@@ -195,7 +200,12 @@
         "roles": [
           "hr_admin",
           "super_admin"
-        ]
+        ],
+        "text": {
+          "title": "Review payroll reports and payment files",
+          "body": "Use authorized payroll reports to check the results. In Payment submission, choose the required OCBC format and options, review the preview, and download only after checking the eligible source and totals. A download does not submit a payment to the bank.",
+          "lang": "en"
+        }
       },
       {
         "id": "generate",
@@ -220,7 +230,12 @@
         "route": "/admin/personnel",
         "titleKey": "tour.people.intro.title",
         "bodyKey": "tour.people.intro.body",
-        "placement": "center"
+        "placement": "center",
+        "text": {
+          "title": "Manage people and their profile rules",
+          "body": "Open an employee to review personal and statutory details. Manual EPF percentages require both rates. Profile field permissions and HR rules control who may change each field and whether a different person must approve it.",
+          "lang": "en"
+        }
       },
       {
         "id": "search",
@@ -575,7 +590,7 @@
         "placement": "bottom",
         "text": {
           "title": "Review the schedule configuration",
-          "body": "Use these settings to inspect shifts, schedules, breaks, file mappings and locations. Review the effective assignment before changing a result.",
+          "body": "Open Settings → Locations to inspect clocking points, coordinates and radius; retry a failed map without changing entered coordinates. Overtime setup guides you through four steps with a preview. Check effective assignments before changing an attendance result.",
           "lang": "en"
         },
         "roles": [
