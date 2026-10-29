@@ -8688,13 +8688,10 @@ const REPROCESS_ABANDONED_AFTER_MS = 10 * 60 * 1000;
  *
  * Built from the reprocess screen's own reads so "pending" on that screen and "pending" here are one
  * answer: `listPayslipLessEligible` for the population (out-of-scope people are excluded — a chosen-list
- * run is narrow on purpose), then the run page's skip narrowing — `narrowToNothingPayable` over
- * `pendingBatchMoney` — for who is deliberately left out. A row carrying a BLOCKER is never a skip: the
- * engine would refuse that person, not pay them nothing. An unavailable money read narrows to nobody
- * (`narrowToNothingPayable`'s own rule), so an unknown never lets a close through.
- *
- * ⚠️ INTEGRATION: c3258a72 is building ONE shared predicate for this skip decision (the reprocess screen's
- * Skipped group). When it lands, this helper should call it instead of narrowing here.
+ * run is narrow on purpose), then c3258a72's shared skip predicate — `nothingPayableSkipKind` over
+ * `pendingBatchMoney`, the same decision as the Reprocess screen's Skipped group — for who is deliberately
+ * left out. A row carrying a BLOCKER is never a skip: the engine would refuse that person, not pay them
+ * nothing. An unavailable money read skips nobody, so an unknown never lets a close through.
  */
 async function closePendingEmployeesTx(tx: Tx, ctx: SessionContext, batchId: string): Promise<CloseBlockingEmployee[]> {
   // cdb1c6ca — a REGULAR-run question, like the coverage control above it. An additional run (bonus,
@@ -8733,9 +8730,13 @@ async function closePendingEmployeesTx(tx: Tx, ctx: SessionContext, batchId: str
   let skipped = new Set<string>();
   if (skipCandidates.length > 0) {
     // Dynamic: core/payroll-view.ts imports this module, so a static import would be a cycle.
-    const { narrowToNothingPayable, pendingBatchMoneyTx } = await import('./payroll-view');
+    // c3258a72's shared predicate, so Close and the Reprocess screen's Skipped group are one answer. An
+    // unavailable overtime read skips nobody (the predicate's own rule): an unknown never lets a close through.
+    const { nothingPayableSkipKind, pendingBatchMoneyTx } = await import('./payroll-view');
     const pending = await pendingBatchMoneyTx(tx, ctx, { batchId });
-    skipped = new Set(narrowToNothingPayable(skipCandidates, pending).map((r) => r.employmentId));
+    skipped = new Set(
+      skipCandidates.filter((r) => nothingPayableSkipKind(r.employmentId, pending) !== null).map((r) => r.employmentId),
+    );
   }
   return rows
     .filter((r) => !skipped.has(r.employmentId))
