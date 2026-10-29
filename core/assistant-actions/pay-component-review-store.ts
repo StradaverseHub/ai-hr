@@ -28,7 +28,7 @@ export const payComponentReviews=createGenericOwnCompatibilityStore<
  async withInterval(tx,ctx,_nomination,work){return withReviewedPayComponentIntervalTx(tx,ctx,fresh=>work(fresh,null));},
  binding:(ctx)=>Binding.parse({tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null,employmentId:null,companyId:null}),
  assertSubjectBinding:()=>{},assertHumanBinding:()=>{},
- prepareNative:prepareReviewedPayComponentSourceTx,
+ prepareNative:(tx,ctx,human)=>prepareReviewedPayComponentSourceTx(tx,ctx,human),
  confirmNative:(tx,ctx,body)=>confirmReviewedPayComponentSourceTx(tx,ctx,body.content,{action,contractVersion:1,reviewedDigest:body.nativeReviewedDigest}),
  pending:(row,body,current)=>{const review=PayComponentPreparedReview.parse({action,contractVersion:1,actionId:row.metadata.actionId,reviewedDigest:row.metadata.reviewedDigest,createdAt:row.metadata.createdAt,expiresAt:row.metadata.expiresAt,content:body.content,review:current.review,consequence:'catalogue_created_no_employee_assignment_or_payroll_run'});if(Buffer.byteLength(JSON.stringify(review))>65536)return fail();return review;},
  async completed(tx,ctx,row){if(!row.componentId||!row.eventId)return fail();const receipt=await reconcileReviewedPayComponentSourceTx(tx,ctx,{componentId:row.componentId,createdEventId:row.eventId});return PayComponentCompletedReview.parse({action,contractVersion:1,actionId:row.metadata.actionId,state:'completed',receipt});},

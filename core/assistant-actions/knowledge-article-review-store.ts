@@ -28,7 +28,7 @@ export const knowledgeArticleReviews=createGenericOwnCompatibilityStore<
  async withInterval(tx,ctx,_nomination,work){return work(await assertKnowledgeArticleActorTx(tx,ctx),null);},
  binding:(ctx)=>Binding.parse({tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null,employmentId:null,companyId:null}),
  assertSubjectBinding:()=>{},assertHumanBinding:()=>{},
- prepareNative:prepareKnowledgeArticleSourceTx,
+ prepareNative:(tx,ctx,human)=>prepareKnowledgeArticleSourceTx(tx,ctx,human),
  confirmNative:(tx,ctx,body)=>confirmKnowledgeArticleSourceTx(tx,ctx,body.content,{action,contractVersion:1,reviewedDigest:body.nativeReviewedDigest}),
  pending:(row,body)=>KnowledgeArticlePreparedReview.parse({action,contractVersion:1,actionId:row.metadata.actionId,reviewedDigest:row.metadata.reviewedDigest,createdAt:row.metadata.createdAt,expiresAt:row.metadata.expiresAt,content:body.content,consequence:'publish_to_selected_audience'}),
  async completed(tx,ctx,row){if(!row.articleId||!row.eventId)return fail();const receipt=await reconcileKnowledgeArticleSourceTx(tx,ctx,{articleId:row.articleId,createdEventId:row.eventId});return KnowledgeArticleCompletedReview.parse({action,contractVersion:1,actionId:row.metadata.actionId,state:'completed',receipt});},
