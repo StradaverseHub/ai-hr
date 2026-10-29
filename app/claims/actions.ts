@@ -131,8 +131,8 @@ export async function cancelClaimAction(formData: FormData) {
   const selector=claimFormSelector(formData);
   let redirectTo: string;
   try {
-    const own=selector===undefined?null:await actionSubject(s,selector);
-    await cancelClaim(s, String(formData.get('id')),own?.employmentId);
+    const own=await actionSubject(s,selector);
+    await cancelClaim(s, String(formData.get('id')),own.employmentId);
     revalidatePath(BASE);
     redirectTo = returnUrl(selector,{toast:'Claim cancelled'});
   } catch (e) {

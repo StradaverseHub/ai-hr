@@ -7,7 +7,7 @@ import {AGENT_ACTION_PARITY,ATTENDANCE_WORKFLOW_PARITY,PARITY_PENDING_CEILING,PA
 
 const registry=AGENT_ACTIONS.map(action=>({id:action.id,store:action.store}));
 const declarations:Readonly<Record<string,ParityDeclaration>>=AGENT_ACTION_PARITY;
-const probed:ParityDeclaration={kind:'probed',screen:{employee:'allow',manager:'deny',assigned_approver:'deny',company_hr:'deny',group_hr:'deny',payroll_partner:'deny',performance_comp_partner:'deny',performance_partner:'deny',another_company:'deny',another_tenant:'deny'}};
+const probed:ParityDeclaration={kind:'probed',screen:{employee:'allow',manager:'deny',assigned_approver:'deny',company_hr:'deny',group_hr:'deny',super_admin:'deny',payroll_partner:'deny',performance_comp_partner:'deny',performance_partner:'deny',another_company:'deny',another_tenant:'deny'}};
 
 describe('WP8 parity matrix coverage of the agent action registry',()=>{
  it('requires routed delegate confirmation parity after the delegated-approvals fix',()=>{
@@ -20,12 +20,14 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
   expect(Object.keys(AGENT_ACTION_PARITY).sort()).toEqual(registry.map(entry=>entry.id).sort());
  });
 
- it('names the ten matrix roles (the nine review roles, with performance partners split in two), with both performance partner roles',()=>{
-  expect([...PARITY_ROLES]).toEqual(['employee','manager','assigned_approver','company_hr','group_hr','payroll_partner','performance_comp_partner','performance_partner','another_company','another_tenant']);
+ it('names the actual native roles, including the tenant super administrator, with both performance partner roles',()=>{
+  expect([...PARITY_ROLES]).toEqual(['employee','manager','assigned_approver','company_hr','group_hr','super_admin','payroll_partner','performance_comp_partner','performance_partner','another_company','another_tenant']);
  });
 
- it('probes the wave 1 and 1b generic families, and every probed entry has an agent store',()=>{
-  expect([...PROBED_ACTION_IDS].sort()).toEqual(['approvals.attendance.decide','approvals.claim.decide','approvals.toil.decide','attendance.overtime.request','claims.cancel','employees.movement.transfer','leave.adjustment.apply','leave.cancel','leave.edit','toil.credit.grant','toil.replacement.request']);
+ it('has a real adapter for every human review action, with no remaining pending ceiling',()=>{
+  const humanActions=[...PARITY_PENDING_ORIGINAL,'approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer','toil.credit.grant'];
+  expect([...PROBED_ACTION_IDS].sort()).toEqual(humanActions.sort());
+  expect(PROBED_ACTION_IDS).toHaveLength(29);expect(PARITY_PENDING_CEILING.size).toBe(0);
   for(const id of PROBED_ACTION_IDS)expect(AGENT_ACTIONS.find(action=>action.id===id)?.store,id).not.toBe('human_workflow_only');
  });
 
@@ -75,11 +77,11 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
  });
 
  it('keeps the pending list a shrinking ratchet of pre-existing entries',()=>{
-  const pending=Object.entries(AGENT_ACTION_PARITY).filter(([,d])=>d.kind==='pending').map(([id])=>id).sort();
+  const pending=Object.entries(declarations).filter(([,d])=>d.kind==='pending').map(([id])=>id).sort();
   // Exactly the ceiling: an adapter landing must remove its id here (the guard reports a stale ceiling entry).
   expect(pending).toEqual([...PARITY_PENDING_CEILING].sort());
-  expect(PARITY_PENDING_CEILING.size).toBeLessThanOrEqual(19);
-  const stale=parityCoverageProblems(registry,{...declarations,'leave.apply':probed});
+  expect(PARITY_PENDING_CEILING.size).toBe(0);
+  const stale=parityCoverageProblems(registry,declarations,new Set(['leave.apply']));
   expect(stale).toEqual(['leave.apply: has a probed declaration, so remove it from PARITY_PENDING_CEILING (the list only shrinks)']);
  });
 });

@@ -7,10 +7,19 @@ import {assignedDecisionUnavailable,withAssignedClaimSubjectTx,readAssignedClaim
  withAssignedAttendanceSubjectTx,readAssignedAttendanceChoicesTx,prepareAssignedAttendanceSourceTx,confirmAssignedAttendanceSourceTx,reconcileAssignedAttendanceSourceTx,
  withAssignedToilSubjectTx,readAssignedToilChoicesTx,prepareAssignedToilSourceTx,confirmAssignedToilSourceTx,reconcileAssignedToilSourceTx} from './assigned-decision-sources';
 
-export const claimDecisionReviews=createGenericAssignedReviewStore({
+const claimDecisionCustody=createGenericAssignedReviewStore({
  action:AssignedClaimDecision.action,human:AssignedClaimDecision.Human,consequence:AssignedClaimDecision.consequence,
  prepared:AssignedClaimDecision.Prepared,completed:AssignedClaimDecision.Completed,retired:AssignedClaimDecision.Retired,index:AssignedClaimDecision.Index,indexKind:AssignedClaimDecision.indexKind,
  withSubject:withAssignedClaimSubjectTx,prepare:prepareAssignedClaimSourceTx,confirm:confirmAssignedClaimSourceTx,reconcile:reconcileAssignedClaimSourceTx,unavailable:assignedDecisionUnavailable,
+});
+/** Apply the new input requirement only at preparation. Existing sealed bodies keep their
+ * original digest and content and continue through the unchanged reopen/confirm custody. */
+export const claimDecisionReviews=Object.freeze({...claimDecisionCustody,
+ async prepare(ctx:SessionContext,input:unknown){
+  const human=AssignedClaimDecision.Human.parse(input);
+  if(human.decision==='rejected'?!human.note?.trim():human.note!==undefined)throw assignedDecisionUnavailable();
+  return claimDecisionCustody.prepare(ctx,human);
+ },
 });
 export const attendanceDecisionReviews=createGenericAssignedReviewStore({
  action:AssignedAttendanceDecision.action,human:AssignedAttendanceDecision.Human,consequence:AssignedAttendanceDecision.consequence,

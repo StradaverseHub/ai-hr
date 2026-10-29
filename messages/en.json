@@ -18579,7 +18579,7 @@
         "rejectNote": "Your reason for rejecting (required)",
         "noteHelp": "Up to 1000 characters, in your own words.",
         "rejectNoteRequired": "A rejection needs your explanation.",
-        "claimNoNote": "Claim decisions here are recorded without a note.",
+        "claimNoNote": "Claim approvals here are recorded without a note. Rejections require your reason.",
         "consent": "I am making this decision myself and want to review it before it is recorded.",
         "prepare": "Review my decision",
         "reviewNote": "Nothing has been recorded yet. Check the details, then confirm.",
@@ -19344,6 +19344,20 @@
         "yes": "Yes",
         "no": "No",
         "doneCredit": "{days} day(s) of Leave Credit banked for {date}."
+      },
+      "bulkDecisions": {
+        "title": "Review saved decisions together",
+        "single": "Prepare one decision",
+        "intro": "Open each full saved review and select its confirmation checkbox. Confirm up to 20 reviewed decisions together.",
+        "scope": "Only this login’s saved reviews in the current flow are listed. Refreshing clears all selections.",
+        "load": "Load saved reviews",
+        "loading": "Loading saved reviews…",
+        "none": "No pending saved reviews are available.",
+        "unavailable": "Could not finish this request. Reload the list or reopen the affected saved review.",
+        "confirm": "Confirm {count, plural, one {# reviewed decision} other {# reviewed decisions}}",
+        "working": "Recording selected decisions…",
+        "independent": "Each decision is checked and recorded separately. A later refusal does not undo earlier decisions. Closing this page stops further requests; reopen reviews to check uncertain results.",
+        "finished": "Requests finished. Read each card’s result. Reopen any uncertain review before taking further action."
       }
     },
     "denied_unavailable": "A little snag on my side. Please try again in a moment.",
