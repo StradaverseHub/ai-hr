@@ -8,7 +8,7 @@ import { SETTING_CATALOG } from '../packs/catalog';
 import { assessmentAiDailyLimit } from '../packs/performance/onehr/ai-usage';
 
 const read = (p: string) => readFileSync(p, 'utf8');
-const MIGRATION = 'db/migrations/0692_ai_feature_switch_owner.sql';
+const MIGRATION = 'db/migrations/0703_ai_feature_switch_owner.sql';
 const journal: string[] = JSON.parse(read('db/migrations/meta/_journal.json')).entries.map((e: { tag: string }) => `db/migrations/${e.tag}.sql`);
 /** The live definition of a SQL function is its LAST definition in journal (apply) order. */
 const live = (marker: string) => {

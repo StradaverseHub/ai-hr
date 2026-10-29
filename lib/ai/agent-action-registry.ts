@@ -1,7 +1,7 @@
 /** ADR-0151 §4.2, review R3 (D4, D5) — THE ONE typed registry of Assistant agent actions.
  *
  * Adding an action = one defineAgentAction entry here + one INSERT row into app.assistant_action_kind in a new
- * migration (see db/migrations/0693_assistant_action_kind.sql). Every closed TypeScript list is derived from
+ * migration (see db/migrations/0704_assistant_action_kind.sql). Every closed TypeScript list is derived from
  * AGENT_ACTIONS: the effect-id union and module declarations (module-agent-actions.ts), the nomination parser,
  * the tier-ceiling and category maps (agent-capability-inventory.ts), the native-outcome list
  * (module-native-outcomes.ts), the human handoff routes and their enums (module-human-handoffs.ts), the

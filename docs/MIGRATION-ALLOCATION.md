@@ -300,3 +300,66 @@ without the exact-candidate gate, populated upgrade proof, restore readiness and
 ### AI review allocation status — provisional until integration freeze
 
 The AI review numbers and timestamps above are historical provisional reservations, not allocation authority or evidence of installation. In-flight Board/FEEDBACK migrations supersede those slots. All AI review SQL remains unapplied in this work: final names, journal indices and `when` values must be assigned together above the freshly verified live ledger at integration freeze. Additional AI follow-up drafts currently use provisional0700 automatic follow-ups,0701 template switch references and0702 delegated Leave receipts; these also require final allocation. No protected branch movement, migration application or deployment is authorized by this table.
+## Information-only correction development candidate — 30 October 2026
+
+Feedback 8550b282 owns source filename 0698_information_only_corrections. Fresh main/alpha a3eb1eb0f
+and staging retain the 566-row prefix through 0690 / 1793330000016. Reachable sources already claim
+0691 (Bank), 0692–0697 (AI) and other 0696/0697 candidates; those claims remain untouched.
+This isolated development journal uses idx681 / sequence1793330000030 solely to build and test the
+candidate against the current canonical prefix. It is NOT an installation allocation. Before branch
+integration or installation, obtain the coordinated source freeze, include every required allocated
+predecessor in its real order and reassign this unapplied journal entry. Never deploy this isolated
+journal beyond reserved predecessors. No applied SQL byte or canonical journal entry is changed.
+
+## Board-first staging allocation — 30 October 2026
+
+The owner explicitly instructed the Board chat to complete its full gate and deploy FIRST to staging.
+FEEDBACK, ENHANCEMENT, MOBILE and Onboarding were notified and hold staging mutations until verified
+Board handback. Fresh canonical main/alpha are 4f66743d56f34755bb662824e163bfbef5f6ff17; live staging
+reports the same healthy source/build and no stale build. The existing canonical prefix ends in
+0697_epf_topup_percentage, idx681 / sequence1793330000023. Preserve the complete567-entry prefix and
+every applied SQL hash.
+
+The development-only0698 reservation above is superseded for this authorized first release:
+
+| Owner | Index | Timestamp | Filename tag |
+| --- | ---: | ---: | --- |
+| Board information-only corrections,8550b282 |682|1793330000030|0698_information_only_corrections|
+
+The unapplied journal position is682. The0698 SQL remains a development candidate until its final
+exact-SHA gate, including the retained statutory-report projections; no applied SQL bytes change.
+Ordinary populated upgrade, whole gate, restore readiness
+and exact staging arrival are required before completion. No Bank, Feedback, Enhancement, Mobile or
+V9 feature source is implicitly included. Previously reviewed#62 fixture bytes remain included.
+
+Feedback's earlier approved idx682/sequence1793330000024 must NOT be installed after this release,
+because it would be skipped. Its owner reports superseding user approval for idx683/1793330000031,
+with its filename and SQL unchanged, only after merging the verified Board baseline and obtaining a
+fresh exact-SHA full gate. Its older focused/full-gate evidence stays tied to the older candidate.
+Other unapplied lower-timestamp claims likewise require a fresh coordinated append above the actual
+installed watermark before their own release. V9's eight drafts remain unallocated. This allocation
+grants no production deployment or human staging acceptance.
+
+
+## AI review source freeze above verified Board arrival — 30 October 2026
+
+This table supersedes ALL earlier provisional AI review filenames/idx/when reservations. The existing credential-free Board post-install export at `information-correction-release-controller-20261030/scratchpad/board-40951321829-ordered-ledger.json` captured568 ordered applied rows at2026-10-29T21:09:26.134Z, source `f752ac7f5d0323c5eae2280c3830af05b6da465f`, build `Cvj9_lgd4fATCyUYRwWz_`. A subsequent read-only deploy-state check matched source/build, stale_build0 and exit0. All568 applied source SQL files and journal records are preserved exactly, including the canonical historical0180/0212 applied-identity mapping. The applied watermark is1793330000030.
+
+FEEDBACK independently verified the export and retains its separately approved idx683 / when1793330000031. No confirmed competing0703–0712 reservation was reported; V9's eight drafts remain unallocated and are not included here. The unused idx683 in this AI-only journal is deliberate; do not invent or include Feedback source.
+
+Only unapplied AI files are renamed below; their complete SQL bytes, including historical comments/exception labels, remain unchanged. These are source-freeze allocations, not permission to install. Before installation, re-read the actual ledger and reconcile intervening appends without changing applied identities.
+
+| Previous draft | Allocated tag | idx | when | Unchanged SQL SHA256 |
+| --- | --- | ---: | ---: | --- |
+| 0692_ai_feature_switch_owner | 0703_ai_feature_switch_owner | 684 | 1793330000032 | 6fefed6eef2105dfc19a818a5c387dfbea10de014a732c1839d5921db02da78f |
+| 0693_assistant_action_kind | 0704_assistant_action_kind | 685 | 1793330000033 | 65b9aeb05a6980f6af46452307514af536da48df95b50d34d5cae0607cd21b8c |
+| 0694_ai_provider_change_gate | 0705_ai_provider_change_gate | 686 | 1793330000034 | acd288d90f61190327a327defd4671cea63f255f307a6ac73bee93b20c717441 |
+| 0695_assistant_learning_loop_scope | 0706_assistant_learning_loop_scope | 687 | 1793330000035 | 07da7779b5e3fe1fa6165c53827a478e15443f9fdd5928b209121db5d53ba4f1 |
+| 0696_ai_agent_action_pause | 0707_ai_agent_action_pause | 688 | 1793330000036 | 65865529b3d79342e6091437f0b99b92fdcb8e2e96f096a929c34b11bad54913 |
+| 0697_automatic_chasers | 0708_automatic_chasers | 689 | 1793330000037 | d8293d81627932b19028854328eab8d734b1eeca756a411f1aca438813d0f65a |
+| 0699_delegated_approvals | 0709_delegated_approvals | 690 | 1793330000038 | 11e6111da5fc22c1163004b995f7d0ec7a45126504b8939e3d1ddc3b45587732 |
+| 0700_automatic_followups | 0710_automatic_followups | 691 | 1793330000039 | 4759e4b988988220a0374ce0db644b4182b0005e3fe9b4e09cfe27f52e5b183c |
+| 0701_template_feature_switch_owner | 0711_template_feature_switch_owner | 692 | 1793330000040 | b351155710806e9e78656ed172ebb8ca2135284fe55298b38ed75f3679809d8b |
+| 0702_delegated_leave_review_receipts | 0712_delegated_leave_review_receipts | 693 | 1793330000041 | f3c8b4704c1100bc2449b753b470605826e01687a16ac1223dc8115f5b3b25b9 |
+
+The isolated candidate must pass exact-SHA focused ordering and populated568→578 upgrade checks, plus affected source/control/parity checks. Full release gates, deployments, protected-ref movement, GitHub PR merges and Bank/Board releases remain separately authorized actions.

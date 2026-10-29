@@ -369,7 +369,17 @@ describe('r415 · CP22A and the EA did not move — the base commit’s own read
 `;
     const snapshot = '},p.selfService?{readOnlySnapshot:true}:undefined);';
     for (const addition of [option, precondition, snapshot]) expect(now.split(addition), addition).toHaveLength(2);
-    const withoutMineBoundary = now.replace(option, '').replace(precondition, '').replace(snapshot, '});');
+    let withoutMineBoundary = now.replace(option, '').replace(precondition, '').replace(snapshot, '});');
+    // ADR-0163 adds only these exact dated identity/display bindings. Every remaining financial
+    // projection byte and the complete PDF/routing owners still match the original baseline.
+    const historicalBindings:readonly [string,string][]=[
+      ["        hiredOn: employmentInformationAt('hiredOn',sql`${p.year+'-12-31'}`,sql`${employment.hiredOn}`),","        hiredOn: employment.hiredOn,"],
+      ["        companyId: employmentInformationAt('companyId',sql`${p.year+'-12-31'}`,sql`${employment.companyId}`),","        companyId: employment.companyId,"],
+      ["      .innerJoin(company, eq(company.id,sql`${employmentInformationAt('companyId',sql`${p.year+'-12-31'}`,sql`${employment.companyId}`)}::uuid`))","      .innerJoin(company, eq(company.id, employment.companyId))"],
+    ];
+    for(const [dated,original] of historicalBindings){expect(withoutMineBoundary.split(dated),dated).toHaveLength(2);withoutMineBoundary=withoutMineBoundary.replace(dated,original);}
+    const reportTables=[['employment','employment',1],['person','person',1],['employee_statutory_my','employeeStatutoryMy',1],['assignment','assignment',1],['payslip','payslip',1],['tp1_relief','tp1Relief',1],['ea_override','eaOverride',1]] as const;
+    for(const [table,original,count] of reportTables){const wrapper=`informationReportRelation('${table}',p.companyId,p.year)`;expect(withoutMineBoundary.split(wrapper),wrapper).toHaveLength(count+1);withoutMineBoundary=withoutMineBoundary.replaceAll(wrapper,original);}
     expect(withoutMineBoundary).toBe(slice(show('localization/my/reports.ts')));
     const ea = fs.readFileSync(path.join(ROOT, 'lib/ea-pdf.ts'), 'utf8');
     expect(code(ea).length).toBeGreaterThan(2000);

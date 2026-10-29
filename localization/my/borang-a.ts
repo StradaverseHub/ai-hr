@@ -1,3 +1,5 @@
+import {sql} from 'drizzle-orm';
+import {employmentInformationAt,informationReportRelation} from '../../core/information-correction-history';
 /**
  * 9c8dad7a / 3aae0789 — BORANG A (KWSP monthly contribution form): the READ.
  *
@@ -213,13 +215,13 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
     if (auth?.signatoryPersonId) {
       const [rep] = await tx
         .select({ name: person.fullName, ic: employeeStatutoryMy.icNumber, title: position.title })
-        .from(person)
-        .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, person.id))
+        .from(informationReportRelation('person',params.companyId,params.periodKey))
+        .leftJoin(informationReportRelation('employee_statutory_my',params.companyId,params.periodKey), eq(employeeStatutoryMy.personId, person.id))
         // The signatory's CURRENT assignment (valid_to null) is where their Jawatan comes from. LEFT
         // joined throughout: a signatory who is not an employee of this company still prints their name.
         .leftJoin(
           employment,
-          and(eq(employment.personId, person.id), eq(employment.companyId, params.companyId)),
+          and(eq(employment.personId, person.id), eq(employmentInformationAt('companyId',sql`${params.periodKey+'-01'}`,sql`${employment.companyId}`),params.companyId)),
         )
         .leftJoin(
           assignment,
@@ -315,11 +317,11 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
         // additional run pays only the bonus bucket. NOT NULL DEFAULT 'regular'.
         runType: payrollBatch.runType,
       })
-      .from(payslip)
+      .from(informationReportRelation('payslip',params.companyId,params.periodKey))
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
-      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .innerJoin(informationReportRelation('employment',params.companyId,params.periodKey), eq(employment.id, payslip.employmentId))
+      .innerJoin(informationReportRelation('person',params.companyId,params.periodKey), eq(person.id, employment.personId))
+      .leftJoin(informationReportRelation('employee_statutory_my',params.companyId,params.periodKey), eq(employeeStatutoryMy.personId, employment.personId))
       .where(inArray(payslip.batchId, batchIds))
       .orderBy(person.fullName);
 

@@ -101,7 +101,7 @@ describe('ADR-0151 agent capability inventory',()=>{
  it('lets the agent principal run only Automatic specialists that exist and match its switches (ADR-0151 §4.5)',()=>{
   // The same switches migration 0672 names in its attribution read and its event stamp check.
   // WP13 (0697) replaced both policies with the same rule plus the two reminder specialists.
-  const migration=['0672_ai_agent_principal','0697_automatic_chasers','0700_automatic_followups'].map(tag=>fs.readFileSync(path.join(process.cwd(),`db/migrations/${tag}.sql`),'utf8')).join('\n');
+  const migration=['0672_ai_agent_principal','0708_automatic_chasers','0710_automatic_followups'].map(tag=>fs.readFileSync(path.join(process.cwd(),`db/migrations/${tag}.sql`),'utf8')).join('\n');
   expect(Object.keys(AGENT_PRINCIPAL_SPECIALISTS).sort()).toEqual(['approval_chasers','claims_triage','clock_reminders','document_reminders','lifecycle_chasers','readiness_reminders','review_chasers']);
   for(const entry of Object.values(AGENT_PRINCIPAL_SPECIALISTS))expect(migration).toContain(`'${entry.setting}'`);
   for(const [feature,entry] of Object.entries(AGENT_PRINCIPAL_SPECIALISTS)){

@@ -12,7 +12,7 @@ describe('AI source manifest boundary (scripts/ai-agent-source-scope.mjs)',()=>{
  it('names an explicit AI behaviour surface and excludes ordinary product files',()=>{
   for(const name of ['lib/ai/module-specialists.ts','lib/ai/assistant-conversation-holdouts.ts','lib/assistant-actions/own-leave-contract.ts','core/module-agent-releases.ts','core/module-specialist-harness.ts','core/module-native-outcome-references.ts',
    'core/assistant-tools.ts','core/assistant-actions/own-leave-store.ts','core/ai-governance.ts','core/agent-principal.ts','packs/catalog.ts','scripts/ai-agent-source-manifest.mjs','scripts/ai-agent-source-scope.mjs',
-   'db/migrations/0627_module_agent_improvement.sql','db/migrations/0628_employee_import_ai_evaluation.sql','db/migrations/0695_assistant_learning_loop_scope.sql','db/migrations/0642_module_specialist_diagnostic_playbook.sql'])expect(isAiSourceFile(name),name).toBe(true);
+   'db/migrations/0627_module_agent_improvement.sql','db/migrations/0628_employee_import_ai_evaluation.sql','db/migrations/0706_assistant_learning_loop_scope.sql','db/migrations/0642_module_specialist_diagnostic_playbook.sql'])expect(isAiSourceFile(name),name).toBe(true);
   for(const name of ['packs/payroll/service.ts','core/read.ts','core/leave.ts','app/assistant/page.tsx','messages/en.json','db/migrations/0684_ocbc_bank_payment_exports.sql','db/migrations/0687_maintenance_window.sql',
    'db/migrations/meta/_journal.json','test/wp11-learning-loop.test.ts','core/aircraft.ts','lib/ai/README.md','.github/workflows/x.json',AI_SOURCE_MANIFEST_OUTPUT])expect(isAiSourceFile(name),name).toBe(false);
  });

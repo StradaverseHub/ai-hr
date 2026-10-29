@@ -1550,13 +1550,6 @@
       "breakpoints": true
     },
     {
-      "idx": 240,
-      "version": "7",
-      "when": 1781862219000,
-      "tag": "0240_employment_blacklist",
-      "breakpoints": true
-    },
-    {
       "idx": 225,
       "version": "7",
       "when": 1781862224000,
@@ -1568,6 +1561,13 @@
       "version": "7",
       "when": 1781862229000,
       "tag": "0230_delegation_scope_reason",
+      "breakpoints": true
+    },
+    {
+      "idx": 240,
+      "version": "7",
+      "when": 1781862219000,
+      "tag": "0240_employment_blacklist",
       "breakpoints": true
     },
     {
@@ -3965,41 +3965,6 @@
       "breakpoints": true
     },
     {
-      "idx": 682,
-      "version": "7",
-      "when": 1793330000018,
-      "tag": "0692_ai_feature_switch_owner",
-      "breakpoints": true
-    },
-    {
-      "idx": 683,
-      "version": "7",
-      "when": 1793330000019,
-      "tag": "0693_assistant_action_kind",
-      "breakpoints": true
-    },
-    {
-      "idx": 684,
-      "version": "7",
-      "when": 1793330000020,
-      "tag": "0694_ai_provider_change_gate",
-      "breakpoints": true
-    },
-    {
-      "idx": 685,
-      "version": "7",
-      "when": 1793330000021,
-      "tag": "0695_assistant_learning_loop_scope",
-      "breakpoints": true
-    },
-    {
-      "idx": 686,
-      "version": "7",
-      "when": 1793330000022,
-      "tag": "0696_ai_agent_action_pause",
-      "breakpoints": true
-    },
-    {
       "idx": 681,
       "version": "7",
       "when": 1793330000023,
@@ -4007,38 +3972,80 @@
       "breakpoints": true
     },
     {
+      "idx": 682,
+      "version": "7",
+      "when": 1793330000030,
+      "tag": "0698_information_only_corrections",
+      "breakpoints": true
+    },
+    {
+      "idx": 684,
+      "version": "7",
+      "when": 1793330000032,
+      "tag": "0703_ai_feature_switch_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 685,
+      "version": "7",
+      "when": 1793330000033,
+      "tag": "0704_assistant_action_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 686,
+      "version": "7",
+      "when": 1793330000034,
+      "tag": "0705_ai_provider_change_gate",
+      "breakpoints": true
+    },
+    {
       "idx": 687,
       "version": "7",
-      "when": 1793330000023,
-      "tag": "0697_automatic_chasers",
+      "when": 1793330000035,
+      "tag": "0706_assistant_learning_loop_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 688,
+      "version": "7",
+      "when": 1793330000036,
+      "tag": "0707_ai_agent_action_pause",
       "breakpoints": true
     },
     {
       "idx": 689,
       "version": "7",
-      "when": 1793330000025,
-      "tag": "0699_delegated_approvals",
+      "when": 1793330000037,
+      "tag": "0708_automatic_chasers",
       "breakpoints": true
     },
     {
       "idx": 690,
       "version": "7",
-      "when": 1793330000026,
-      "tag": "0700_automatic_followups",
+      "when": 1793330000038,
+      "tag": "0709_delegated_approvals",
       "breakpoints": true
     },
     {
       "idx": 691,
       "version": "7",
-      "when": 1793330000027,
-      "tag": "0701_template_feature_switch_owner",
+      "when": 1793330000039,
+      "tag": "0710_automatic_followups",
       "breakpoints": true
     },
     {
       "idx": 692,
       "version": "7",
-      "when": 1793330000028,
-      "tag": "0702_delegated_leave_review_receipts",
+      "when": 1793330000040,
+      "tag": "0711_template_feature_switch_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 693,
+      "version": "7",
+      "when": 1793330000041,
+      "tag": "0712_delegated_leave_review_receipts",
       "breakpoints": true
     }
   ]
