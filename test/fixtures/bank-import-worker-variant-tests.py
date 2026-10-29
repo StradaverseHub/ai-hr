@@ -15,6 +15,7 @@ def load(name,path):
 fmt=load('fmt','deploy/systemd/bank_import_worker_format.py')
 install=load('install','deploy/systemd/bank_import_worker_installer_v2.py')
 variant=load('variant','deploy/systemd/bank_import_worker_variant.py')
+recovery=load('recovery','deploy/systemd/bank_import_worker_recovery.py')
 
 class VariantTests(unittest.TestCase):
     def setUp(self):
@@ -58,8 +59,38 @@ class VariantTests(unittest.TestCase):
             self.ops.stop_owned_first_install=failed
             with self.assertRaises(RuntimeError): variant.restore_unit_after_failure(b'old',b'new',self.ops)
             self.assertEqual(path.read_bytes(),b'new')
-            self.ops.stop_owned_first_install=lambda:None;path.write_bytes(b'foreign')
+            stops=[];self.ops.stop_owned_first_install=lambda:stops.append('stop');path.write_bytes(b'foreign')
             with self.assertRaises(ValueError): variant.restore_unit_after_failure(b'old',b'new',self.ops)
-            self.assertEqual(path.read_bytes(),b'foreign')
+            self.assertEqual(path.read_bytes(),b'foreign');self.assertEqual(stops,[])
+    def test_refusal_before_unit_mutation_does_not_stop_service(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'unit';path.write_bytes(b'old');events=[];self.ops.UNIT=path
+            self.ops.stop_owned_first_install=lambda:events.append('UNEXPECTED-stop')
+            with self.assertRaisesRegex(ValueError,'refused before mutation'):
+                with install.activation_guard(lambda:variant.restore_unit_after_failure(b'old',b'new',self.ops)):
+                    raise ValueError('refused before mutation')
+            self.assertEqual(events,[]);self.assertEqual(path.read_bytes(),b'old')
+    def test_fresh_preownership_check_refuses_foreign_start_without_cleanup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'unit';path.write_bytes(b'old');events=[]
+            commands={key:{'type':'a(sasbttttuii)','data':[]} for key in ['ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition']}
+            commands['ExecStart']={'type':'a(sasbttttuii)','data':[[str(install.NODE),[str(install.NODE),'--import','tsx','scripts/bank-import-runner.ts'],False,0,0,0,0,0,0,0]]}
+            properties={'ActiveState':'inactive','SubState':'dead','UnitFileState':'disabled','MainPID':'0','NRestarts':'0','_commands':commands}
+            self.ops.UNIT=path;self.ops.USER='test-worker';self.ops.service_properties=lambda:properties
+            self.ops.validate_service=lambda *args:events.append('typed-service-verified')
+            self.ops.never_started=recovery.never_started
+            self.ops.validate_command_proofs=install.validate_command_proofs
+            result=SimpleNamespace(returncode=1,stdout='');self.ops.command=lambda *args,**kwargs:result
+            self.ops.stop_owned_first_install=lambda:events.append('UNEXPECTED-stop')
+            variant.verify_inactive_before_ownership(b'old',Path(tmp),self.ops)
+            for changes in [{'ActiveState':'active','MainPID':'123'},{'NRestarts':'1'}]:
+                previous=properties.copy();properties.update(changes)
+                with self.assertRaises(ValueError): variant.verify_inactive_before_ownership(b'old',Path(tmp),self.ops)
+                properties.clear();properties.update(previous)
+            result.returncode=0;result.stdout='123\n'
+            with self.assertRaises(ValueError): variant.verify_inactive_before_ownership(b'old',Path(tmp),self.ops)
+            path.write_bytes(b'foreign')
+            with self.assertRaises(ValueError): variant.verify_inactive_before_ownership(b'old',Path(tmp),self.ops)
+            self.assertNotIn('UNEXPECTED-stop',events);self.assertEqual(path.read_bytes(),b'foreign')
 
 unittest.main()

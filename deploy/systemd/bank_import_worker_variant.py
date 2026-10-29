@@ -39,13 +39,22 @@ def atomic_unit_replace(path,expected,replacement,ops):
         if os.path.exists(name): os.unlink(name)
 
 def restore_unit_after_failure(old,new,ops):
-    # Read actual unit bytes after confirmed stop. No boolean can be lost between rename and signal.
-    ops.stop_owned_first_install()
+    # Exact new bytes prove our mutation even if interrupted between rename and a flag.
+    # A refusal before mutation must not stop a foreign or otherwise uncertain service.
     current=ops.read_bounded(ops.UNIT,65536)
-    if current==new:
-        atomic_unit_replace(ops.UNIT,new,old,ops);ops.command(['/usr/bin/systemctl','daemon-reload'])
-    else: ops.check(current==old,'unexpected unit bytes; stopped worker retained for administrator review')
+    if current==old: return
+    ops.check(current==new,'unexpected unit bytes; no service stop attempted; administrator review required')
+    ops.stop_owned_first_install()
+    atomic_unit_replace(ops.UNIT,new,old,ops);ops.command(['/usr/bin/systemctl','daemon-reload'])
     ops.check(ops.read_bounded(ops.UNIT,65536)==old,'original unit restoration not confirmed')
+
+def verify_inactive_before_ownership(old_unit,old_release,ops):
+    # A foreign start during lengthy archive checks is not ours to stop or roll back.
+    ops.root_protected(ops.UNIT,regular=True)
+    ops.check(ops.read_bounded(ops.UNIT,65536)==old_unit,'original unit changed during preflight')
+    properties=ops.service_properties();ops.validate_service(properties,old_release);ops.never_started(properties,ops)
+    processes=ops.command(['/usr/bin/ps','-u',ops.USER,'-o','pid='],allow_failure=True)
+    ops.check(processes.returncode in (0,1) and not processes.stdout.strip(),'worker identity acquired running processes during preflight')
 
 def validate_runtime_witness(proof,source,controller,archive,archive_bytes,manifest,ledger,run_id,fmt,ops):
     fields={'format','kind','source','controllerSource','producerSha256','formatSha256','archiveSha256','manifestSha256','provenanceSha256','packageSha256','lockSha256','runtime','runId','runAttempt','rootOwnedReadOnly','extractedOutsideCheckout','modulePathsClean','roleProof','migrationLedger','emptyQueue','nativeFixture','cli','extractedPostRunVerified','releaseAuthorized'}
@@ -135,9 +144,15 @@ def replace_never_started(argv,fmt,ops):
         if environment.get('NODE_EXTRA_CA_CERTS'): ops.root_protected(environment['NODE_EXTRA_CA_CERTS'],regular=True);ops.command(['/usr/sbin/runuser','--user',ops.USER,'--','/usr/bin/test','-r',environment['NODE_EXTRA_CA_CERTS']])
         ops.check(ops.deployment_state(args.source,args.build_id)==state,'web deployment changed during checks')
         ops.write_new(private/'old-unit',old_unit,0o600);ops.write_new(private/'new-unit',new_unit,0o600)
+        fresh_identity=pwd.getpwnam(ops.USER)
+        ops.check(fresh_identity==identity,'worker identity changed during preflight')
+        ops.validate_identity(fresh_identity,pwd.getpwall(),grp.getgrall(),ops)
+        ops.check(set(os.getgrouplist(ops.USER,fresh_identity.pw_gid))=={fresh_identity.pw_gid},'worker groups changed during preflight')
+        verify_inactive_before_ownership(old_unit,old_release,ops)
         with ops.activation_guard(lambda:restore_unit_after_failure(old_unit,new_unit,ops)):
             atomic_unit_replace(ops.UNIT,old_unit,new_unit,ops);ops.command(['/usr/bin/systemctl','daemon-reload'])
-            ops.validate_service(ops.service_properties(),new_release);ops.command(['/usr/bin/systemctl','start','aihr-bank-import.service']);pid=None
+            properties=ops.service_properties();ops.validate_service(properties,new_release);ops.never_started(properties,ops)
+            ops.command(['/usr/bin/systemctl','start','aihr-bank-import.service']);pid=None
             for attempt in range(3):
                 time.sleep(4);properties=ops.service_properties();ops.validate_service(properties,new_release)
                 ops.check(properties['ActiveState']=='active' and properties['SubState']=='running' and properties['NRestarts']=='0','corrected worker is not stable')
