@@ -333,7 +333,7 @@ export const AGENT_ACTIONS=Object.freeze([
   permission:{actor:'assigned_tester',guard:'core/assistant-actions/own-testing-execution-source.ts#withOwnTestingExecutionIntervalTx'},subject:'own_user',blastRadius:{max:1,unit:'test_execution_observation'},
   idempotencyKey:'review_action_id',policy:{tier:'confirm',category:'own_work'},reversal:{kind:'unknown'},evaluationCases:[],
   screen:{native:'app/system-testing/executions/[id]/page.tsx',entryPoints:['app/admin/system-testing/workspace-actions.ts#saveTestingObservationAction']},review:{route:'/assistant/testing',handoff:'review_page'},
-  store:'module_action',browserOwner:'testing',pauseKey:'hr_assistant'}),
+  store:'generic_own',browserOwner:'testing',pauseKey:'hr_assistant'}),
  /** ADR-0151 (amendment 2026-10-29): HR acts on another person's employment through the wave 1b assigned
   * store. The administrator confirms; the native service decides authority and the effect. */
  defineAgentAction({id:'leave.adjustment.apply',module:'leave',owner:'leave',service:'packs/leave/service.ts#applyLeaveAdjustmentBatchTx',contractVersion:1,

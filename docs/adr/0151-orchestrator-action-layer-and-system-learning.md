@@ -622,3 +622,7 @@ Claim draft saving uses generic OWN compatibility custody while retaining the ex
 ### WP9 closed Performance acknowledgement custody
 
 Standard-cycle and OneHR plan acknowledgements share one closed OWN custody adapter, retaining the original discriminated engine/intent/cached-review wire, original private digest, employee binding and native acknowledgement event proof. Reopen compares the exact original canonical review including its original nonce. This does not edit ratings, goals, career facts or promotion decisions.
+
+### WP9 USER-scoped testing observation custody
+
+Testing observations use generic OWN compatibility custody while retaining nullable PERSON/EMPLOYMENT/company identity, exact original intent/cached-review wire, 600000-byte body and 819200-byte cipher limits, real assignment interval and native run/event proof. No staff identity is fabricated; a recorded observation is never relabeled independent verification.
