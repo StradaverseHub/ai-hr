@@ -8203,7 +8203,8 @@
       "fileError": {
         "emptyFile": "That file has no data rows.",
         "tooManyRows": "That file has more than 2,000 rows. Split it and import in parts.",
-        "missingColumns": "That file is missing required columns. Download the template and use its headings unchanged."
+        "missingColumns": "That file is missing required columns. Download the template and use its headings unchanged.",
+        "individualImportMoved": "Reload this page and use the current Individual Transaction import. It records each import batch and its row results. No transactions were imported by this older form."
       },
       "reason": {
         "employeeUnknown": "Employee ID {value} does not exist",
