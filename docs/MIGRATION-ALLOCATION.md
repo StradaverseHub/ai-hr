@@ -7,6 +7,27 @@ owning release gate.
 
 ## Owner-approved combined board allocation — 29 October 2026
 
+### Successor work in progress after the installed expanded release
+
+The approved-board implementation session read staging at source/build
+968354c00a71df7baccd499eb60757a3307ed61e with 562 applied rows and maximum sequence
+1793330000012. Reachable AI commit dcea0fa560092c0940cf7872d5b4685093abac35 already
+reserves 0687_assistant_question_budget at index677/sequence1793330000013. Preserve
+that competing claim; it is not part of this session's current main/alpha baseline.
+
+These filenames are reserved for the remaining approved board requests. Their SQL remains
+under docs/migration-drafts until the complete predecessor prefix is reconciled at integration.
+Journal indices and sequences are deferred; this table does not authorize application.
+
+| Owner | Reserved filename | Purpose |
+| --- | --- | --- |
+| Approved transaction import | 0688_payroll_txn_import_attempts | Durable import outcomes, transaction ownership and safe batch revert |
+| Approved Rewards domain | 0689_rewards_unit_governance | Private unit inputs, independent confirmation and Senior plan decisions |
+| Approved Rewards configuration | 0690_rewards_policy_pair_membership | Enforce authoritative company/business-unit membership |
+
+Refresh canonical refs, competing reservations and the actual ledger before journal append.
+Do not skip the occupied 0687 predecessor, rewrite applied SQL or infer deployment authority.
+
 The owner subsequently expanded the same release to include Assistant file import and durable Bank & Statutory import. Both source owners agreed, and the owner explicitly approved this revised order while the central coordinator remained unavailable:
 
 | Index | Sequence | Migration | Exact SQL SHA256 |
