@@ -44,8 +44,8 @@ const originalLiveUsing=new Map<string,string>();
 const WRITE_TABLES = [...new Set(POLICIES.filter((p) => ['ALL', 'INSERT', 'UPDATE'].includes(p.cmd)).map((p) => p.table))].sort();
 
 // Existing UUID-rotated parents may already have their unique child slot occupied. Give the
-// three fresh subjects explicit empty parents, preserving the original negative-context matrix.
-const FRESH_SUBJECTS=['freshA','freshB','freshA1'] as const;
+// additional child subjects explicit empty parents, preserving every original positive/negative case.
+const FRESH_SUBJECTS=['freshChildA','freshChildB','freshChildA1'] as const;
 const POSITIVE_CHILD_TABLES=new Set(['attendance_punch','leave_cancellation_step','leave_request_date',
   'replacement_leave_request_date','employment_review_reminder','loan_repayment','payroll_batch','review_goal']);
 const POSITIVE_PARENT_TABLES=['attendance','leave_request','leave_cancellation_request',
@@ -77,7 +77,7 @@ let currentProfilePolicies:Row[]=[];
 const SUBJECTS = [
   'ceo', 'mid', 'leaf', 'leaf2', 'subco', 'bemp', 'midT', 'underMidT', 'termleaf', 'expired', 'future', 'hod', 'hodsub',
   'hSub', 'hA1', 'hB', 'hSubTerminated', 'hPast', 'nMember', 'a2sub', 'aUnderA1', 'r1', 'r2', 'rsub1', 'rsub2', 'dualA',
-  'dualA1', 'gone', 'delegate', 'payrollPartner', 'perfPartner', 'adminA', 't2emp', 't2boss', 'freshA', 'freshB', 'freshA1',
+  'dualA1', 'gone', 'delegate', 'payrollPartner', 'perfPartner', 'adminA', 't2emp', 't2boss', 'freshA', 'freshB', 'freshA1', ...FRESH_SUBJECTS,
 ];
 
 type Outcome = string; // "ok:<sorted returned rows>" or "err:<sqlstate>:<message>"
@@ -168,7 +168,8 @@ beforeAll(async () => {
   await loadVolatile();
   // FRESH subjects: employments with no generic rows yet, so a write is not masked by a one-per-employment
   // unique constraint. freshA reports to ceo, freshB to r2 (company B), freshA1 sits in the HOD's H_A1.
-  for (const [name, co, dept, mgr] of [['freshA', 'A', 'misc', 'ceo'], ['freshB', 'B', 'miscB', 'r2'], ['freshA1', 'A1', 'H_A1', null]] as const) {
+  for (const [name, co, dept, mgr] of [['freshA', 'A', 'misc', 'ceo'], ['freshB', 'B', 'miscB', 'r2'], ['freshA1', 'A1', 'H_A1', null],
+    ['freshChildA','A','misc','ceo'],['freshChildB','B','miscB','r2'],['freshChildA1','A1','H_A1',null]] as const) {
     const [pp] = await q(`insert into person (tenant_id, full_name, primary_email) values ($1, $2, $3) returning id`, [b.tenantId, name, `${name}_${randomUUID().slice(0, 8)}@r395.local`]);
     const [ee] = await q(`insert into employment (tenant_id, person_id, company_id, hired_on) values ($1, $2, $3, '2024-01-01') returning id, tenant_id, person_id, company_id`, [b.tenantId, pp.id, C[co]]);
     await q(`insert into assignment (tenant_id, employment_id, department_id, company_id, employment_type, valid_from) values ($1, $2, $3, $4, 'full_time', '2024-01-01')`, [b.tenantId, ee.id, D[dept], C[co]]);
