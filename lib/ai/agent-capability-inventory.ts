@@ -243,6 +243,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/payroll/back-pay/actions.ts":{"approveAndPostBackPayAction":"backlog:approve","calculateBackPayAction":"backlog:approve","cancelBackPayAction":"backlog:approve","verifyBackPayAction":"backlog:approve"},
  "app/payroll/configuration/actions.ts":{"archiveStatutoryAction":"backlog:approve","archiveStatutoryComponentAction":"backlog:approve","saveStatutoryAction":"backlog:approve","setStatutoryComponentAction":"backlog:approve"},
  "app/payroll/history-import/upload/route.ts#route":{"POST":"backlog:approve"},
+ "app/payroll/payment-submission/bank-file/route.ts#route":{"POST":"backlog:approve"},
  "app/payroll/history-import/workflow-actions.ts":{"confirmHistoryUploadAction":"backlog:approve","previewHistoryRevertAction":"backlog:automatic","revertHistoryUploadAction":"handoff:payroll_reversal"},
  "app/payroll/payslip-information/actions.ts":{"copyPayslipInformation":"backlog:approve","savePayslipInformation":"backlog:approve"},
  "app/payroll/pcb-payment-actions.ts":{"recordPcbPaymentAction":"backlog:approve"},
