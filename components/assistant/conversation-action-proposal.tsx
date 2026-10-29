@@ -94,7 +94,7 @@ export function ConversationActionProposal({action,hints:raw,availability='curre
  if(!isAssistantProposableAction(action)||(availability!=='current'&&availability!=='stale'&&availability!=='unverified'))return <p role="status" className="text-sm text-muted-foreground">{t('unavailable')}</p>;
  // A retry remounts the body, so the panel starts again from a fresh choices read with empty human fields.
  const retry=()=>setAttempt(value=>value+1),current=availability==='current';
- const body=!current?<ProposalNotCurrent availability={availability}/>
+ const body=availability!=='current'?<ProposalNotCurrent availability={availability}/>
   :action==='leave.cancel'||action==='leave.edit'?<LeaveChangeProposal key={attempt} action={action} hints={hints} onRetry={retry} onSettled={onSettled}/>
   :action===OWN_CLAIM_CANCELLATION_ACTION?<ClaimCancellationProposal key={attempt} hints={hints} onRetry={retry} onSettled={onSettled}/>
   :action===OWN_OVERTIME_REQUEST_ACTION?<OwnOvertimeRequestPanel prefill={{date:hints.date??'',plannedStartTime:hints.plannedStartTime??'',plannedEndTime:hints.plannedEndTime??''}} onSettled={onSettled}/>
