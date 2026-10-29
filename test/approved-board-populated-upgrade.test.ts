@@ -1,4 +1,4 @@
-/** Rehearse the approved-board release over the deployed 562-receipt prefix.
+/** Rehearse the approved-board release over the original 562 and current deployed 563-receipt prefixes.
  * Only an owned disposable localhost database; ordinary Drizzle receipts and all guards stay active. */
 import {createHash,randomUUID} from 'node:crypto';
 import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
@@ -14,17 +14,17 @@ import {defaultPolicy} from '../packs/rewards/model';
 type Journal={entries:{idx:number;when:number;tag:string}[];[key:string]:unknown};
 function identities(){return Object.fromEntries(['tenant','company','catalogueCompany','department','validBu','legacyBu','employeePerson','employeeUser','employment','hrUser','readerUser','cycle','unit','member','entry','decision','period','batch','input','txn','slip'].map(key=>[key,randomUUID()]));}
 
-it('upgrades populated payroll and Rewards from 562 to 566 receipts without rewriting money or historical scope',async()=>{
+it.each([562,563])('upgrades populated payroll and Rewards from %i to 566 receipts without rewriting money or historical scope',async(start)=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as Journal;
- const start=562,manifest=readMigrationFiles({migrationsFolder:'db/migrations'});
+ const manifest=readMigrationFiles({migrationsFolder:'db/migrations'});
  expect(journal.entries).toHaveLength(566);
- expect(journal.entries[start-1].tag).toBe('0686_ai_provider_custody_owner_rls');
+ expect(journal.entries[start-1].tag).toBe(start===562?'0686_ai_provider_custody_owner_rls':'0687_assistant_question_budget');
  expect(journal.entries.slice(start).map(({idx,when,tag})=>({idx,when,tag}))).toEqual([
   {idx:677,when:1793330000013,tag:'0687_assistant_question_budget'},
   {idx:678,when:1793330000014,tag:'0688_payroll_txn_import_attempts'},
   {idx:679,when:1793330000015,tag:'0689_rewards_unit_governance'},
   {idx:680,when:1793330000016,tag:'0690_rewards_policy_pair_membership'},
- ]);
+ ].slice(start-562));
  // Preserve the separately reserved AI predecessor exactly as committed at dcea0fa56.
  expect(createHash('sha256').update(readFileSync('db/migrations/0687_assistant_question_budget.sql')).digest('hex')).toBe('ade48bffee0a5d6ebf72cdd61de36323f3650b81c805cd186701c5d8105e86c4');
  // Historical journal order includes an already-applied timestamp inversion. Preserve it;
