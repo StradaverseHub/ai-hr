@@ -247,6 +247,14 @@ describe('first install and HTTPS boundaries', () => {
     expect(createMarker).not.toHaveBeenCalled();
     await store.read(); expect(remove).toHaveBeenCalledTimes(2); expect(createMarker).toHaveBeenCalledTimes(1);
   });
+  it('resets private encryption only on a new installation, preserving pending claims across logout',async()=>{
+    let marker=false,pending=false;
+    const resetPrivateData=vi.fn(async()=>{});
+    const ports={markerExists:()=>marker,createMarker:()=>{marker=true;pending=false;},logoutPending:()=>pending,
+      read:async()=>null,write:async()=>{},remove:async()=>{},resetPrivateData};
+    await createInstallationStore(ports).read();expect(resetPrivateData).toHaveBeenCalledTimes(1);
+    pending=true;await createInstallationStore(ports).read();expect(resetPrivateData).toHaveBeenCalledTimes(1);
+  });
   it('a logout marker refuses surviving credentials after a failed secure deletion and restart', async () => {
     let revoked = false;
     const ports = { markerExists: () => true, createMarker: () => { revoked = false; },

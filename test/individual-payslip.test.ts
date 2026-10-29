@@ -58,7 +58,11 @@ const ownDocumentSource = () => {
   const route = read('app/me/payslip/[payslipId]/pdf/route.ts');
   expect(route).toContain("import { myPayslipDocument } from '../../document'");
   expect(route).toContain('myPayslipDocument(await getSession(),payslipId)');
-  expect(route).toContain('renderPayslipPdf(data, strings.labels)');
+  // M09 — the render and file name moved to app/me/payslip/pdf-file.ts, shared with the mobile v2 route; the
+  // assertion followed it rather than being dropped. The route hands that module the own-only document.
+  expect(route).toContain("import { myPayslipPdfFile } from '../../pdf-file'");
+  expect(route).toContain('myPayslipPdfFile(document)');
+  expect(read('app/me/payslip/pdf-file.ts')).toContain('renderPayslipPdf(data, strings.labels)');
   const model = read('app/me/payslip/document.ts');
   expect(model).toContain("import 'server-only'");
   expect(model).toContain('await myPayslipDetail(s, payslipId)');
@@ -277,7 +281,8 @@ describe('5c198931 — one document, printed by both routes', () => {
       const route = pdfAssemblySource(f);
       expect(route, `${f} must resolve labels through the shared module`).toContain('payslipPdfStrings');
       expect(route).toContain('buildPayslipPdfData');
-      expect(read(f)).toContain('renderPayslipPdf');
+      // M09 — the employee's copy renders through the shared file module (pdf-file.ts), which the route calls.
+      expect(read(f === ESS ? 'app/me/payslip/pdf-file.ts' : f)).toContain('renderPayslipPdf');
     }
   });
 

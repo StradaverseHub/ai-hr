@@ -73,11 +73,12 @@ export function Muted({ children }: { children: ReactNode }) {
   return <Text style={[styles.muted, { color: palette.muted }]}>{children}</Text>;
 }
 
-export function Button({ title, onPress, kind = 'primary', disabled = false }: { title: string; onPress: () => void; kind?: 'primary' | 'quiet'; disabled?: boolean }) {
+export function Button({ title, onPress, kind = 'primary', disabled = false,accessibilityLabel }: { title: string; onPress: () => void; kind?: 'primary' | 'quiet'; disabled?: boolean;accessibilityLabel?:string }) {
   const { palette, design } = useTenantDesign();
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
@@ -88,18 +89,21 @@ export function Button({ title, onPress, kind = 'primary', disabled = false }: {
   );
 }
 
-/** Loading, or a failure told apart: "can't reach us, still signed in" vs a plain error. Null when there is data. */
-export function LoadState({ loading, error, onRetry }: { loading: boolean; error: Error | null; onRetry: () => void }) {
+/** Distinguish first load, same-scope refresh and retained data after a failed refresh. */
+export function LoadState({ loading, error, onRetry,hasData=false }: { loading: boolean; error: Error | null; onRetry: () => void;hasData?:boolean }) {
   const { palette } = useTenantDesign();
   if (error) {
     return (
       <Card>
         <Text style={[styles.body, { color: palette.text }]}>{error instanceof UnavailableError ? t('unavailable') : t('genericError')}</Text>
+        {hasData&&<Muted>{t('staleData')}</Muted>}
+        {error instanceof UnavailableError&&!!error.retryAfter&&<Muted>{t(error.retryAfter<=1?'retryAfterOne':'retryAfter',{seconds:Math.ceil(error.retryAfter)})}</Muted>}
+        {error instanceof UnavailableError&&!!error.supportId&&<Muted>{t('supportReference',{id:error.supportId})}</Muted>}
         <Button title={t('retry')} onPress={onRetry} kind="quiet" />
       </Card>
     );
   }
-  if (loading) return <ActivityIndicator style={{ marginTop: 24 }} accessibilityLabel={t('loading')} />;
+  if (loading) return hasData?<Muted>{t('refreshing')}</Muted>:<ActivityIndicator style={{ marginTop: 24 }} accessibilityLabel={t('loading')} />;
   return null;
 }
 

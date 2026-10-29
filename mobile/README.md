@@ -1,7 +1,7 @@
 # Native app foundation
 
 Run EAS commands from `mobile/`. EAS uploads from the Git root; the root `.easignore`
-admits only this app and its five shared contracts/helpers. The mobile `.easignore` also protects
+admits only this app and its six shared contracts/helpers. The mobile `.easignore` also protects
 standalone copies. Inspect the EAS archive before a cloud build; deployment settings,
 server code, local credentials and generated native/build folders must be absent.
 The backend release filter also excludes native build folders and signing inputs; mobile binaries
@@ -128,6 +128,40 @@ never writes attendance. VoiceOver/TalkBack users have a labelled two-step tap c
 motion disables the rail's return animation. Both clock directions remain available; the attendance
 kernel decides the result, including corrected-day refusals, photo rules and geofences.
 
+Preparation now asks the server for an own-employment location-quality preview through a bounded JSON
+POST; coordinates are not URL parameters. The review shows the assigned site, measured distance,
+radius and reported uncertainty when available. A preview never records attendance and never authorizes
+the later command. Every enforced web/native punch requires distance plus reported uncertainty to fit
+within an active assigned site open to the employment's current company. An optional company maximum
+uncertainty is configured in Attendance company policy settings; blank adds no extra cap. Missing,
+negative or invalid uncertainty cannot substitute for zero. Non-geofenced employees and manual HR
+entries retain their established behavior.
+
+Native preparation distinguishes blocked/approximate access, services disabled, mock flags, invalid
+fixes and stale/future samples. Approximate permission alone never overrides the shared site rule:
+if its reported uncertainty fits, preparation can continue. An approximate fix that fails the rule
+offers explicit precise-permission Settings guidance.
+Services discovery and one position request share a 20-second deadline; no automatic GPS retry follows
+a timeout. A late services response cannot start a new position query. These checks validate reported
+quality, not provider authenticity. Real indoor-site measurements, signed-device permission behavior
+and hardware attestation remain acceptance requirements before broader rollout.
+
+Preparation now saves an encrypted attempt before GPS or camera capture. If storage fails, preparation
+stops before location acquisition. A restart can recover the unsent reference after fresh own-identity
+verification; cancellation retains it, and a different direction requires review. The preparation
+contains only the action, reference and phone-reported start. It cannot be sent as a clock command.
+Its eventual command/evidence adopts the same reference atomically. Snapshot version 2 represents a
+preparation; version 1 commands remain readable. Older binaries refuse version 2 without discarding it.
+
+Employees can send the minimal attempt record separately. Confirmation also requires a receipt from
+`POST /api/mobile/v1/clock-attempts` before sending attendance. The server records the claim once per
+actor/employment/reference, distinguishes its receipt time from the unverified phone time, and never
+creates attendance from this report. A failed/lost attempt receipt retains the command and prevents
+attendance transmission. Deploy this server capability before distributing the new client; an older
+server refusal retains local evidence. No background replay, offline acceptance or backdating is enabled.
+The Clock screen also retrieves up to 20 recent reports for its selected employment and actor; it
+shows the phone claim and server receipt separately from accepted clock history.
+
 Native commands enforce registered-device policy. The registration token is stored in device-only
 unlocked SecureStore, is scoped to employment, and is deleted on logout/reinstall. This registration
 is **not device attestation**. One registration is retained locally; switching employment may require
@@ -147,9 +181,9 @@ never counted as approved absence. No caller-provided team or employment selecto
 
 In-progress journey state (entered fields, review previews and receipt metadata) remains in memory across the OS camera/document activity and subsequent
 privacy lock. Private routes, API caches and tenant design still unmount behind the privacy gate.
-Changing employment, changing account or signing out discards drafts. Selected documents/photos use
+Changing employment, changing account or signing out discards editable drafts. Selected documents/photos use
 app-private temporary cache; cancellation/completion/scope change deletes owned files and cold launch
-purges remaining journey/picker caches. Drafts are not persisted or submitted in the background.
+purges remaining journey/picker caches. Editable drafts are not persisted or submitted in the background.
 An uncertain network result preserves the exact command reference and evidence for an explicit retry;
 it never reports success without a server receipt. English/Malay copy ships in this foundation;
 four other native locales remain deferred.
@@ -305,3 +339,73 @@ ad hoc profile containing the test device UDID. Local SDK 57 iOS builds require 
 is insufficient. This request does not authorize public App Store/Play Store submission. Use synthetic
 data until the physical-device matrix above passes. Installing a binary does not activate the current
 server's internal login, enroll a user or activate SMTP.
+
+### Reliability transport changes
+
+The native API uses Expo's stream-capable fetch, validates successful responses with the shared
+endpoint schemas, and bounds response reads to 1 MiB with a 15-second exchange deadline that remains
+active through the body. Server-side mobile uploads have a 30-second body deadline as well as byte
+limits. Malformed/oversized/stalled responses remain unavailable, never accepted command receipts.
+Same-scope refresh keeps displayed data and offers an error/retry; scope changes still hide previous
+results immediately. Concurrent identical reads share one bounded request within the same identity,
+company connection and language. Each consumer can cancel independently; the last cancellation ends
+the shared request. Completed response bodies are not kept in a global cache. Valid `Retry-After`
+hints (up to one hour) delay repeated reads using a monotonic cooldown, with an explicit retry message
+and no automatic background retry. Refresh and stale-data labels distinguish retained data from a
+fresh response. Writes retain explicit immutable retry behavior.
+Unexpected API failures return an optional support reference. The native client accepts only a
+bounded UUID and can show it without displaying the server's raw error. The API wrapper's general
+failure logs contain only a fixed stage/event and that reference; error objects, SQL parameters,
+schema messages, URLs and HR payloads are not included. Expected authentication/rate refusals do not
+create a per-request failure log. The reference grants no access and proves no attendance outcome.
+Multipart attachments expose actual file bytes with their declared MIME, as required by Expo fetch;
+URI-only React Native file parts are not accepted by that transport. Verify this on signed binaries
+and through required/optional photo and document flows before distribution.
+
+### Submission receipt lookup
+
+`GET /api/mobile/v1/submission-receipt` resolves a clock or leave submission by its original request
+reference and own active employment. Both reads also require the original authenticated actor.
+Clock lookup reads the retained capture, independent of the current attendance-day projection;
+leave lookup reads the original transactional event receipt, independent of the latest history page.
+The existing Check receipt controls now use this endpoint. An unknown reference stays uncertain and
+never authorizes a new command or reports success.
+
+Before transmission, clock and leave save the exact command string, digest and owned attachment in
+an AES-256-GCM journal. Metadata and evidence bind the authenticated actor, active employment and
+installation namespace through authenticated encryption. The master key lives only in device-bound,
+unlocked SecureStore. An encrypted inactive metadata slot is written before the SecureStore commit
+pointer advances; a missing/corrupt committed slot refuses instead of falling back to an empty state.
+Resolution commits removal before attachment cleanup. App sandbox installation reset rotates the key
+and ignores surviving old Keychain pointers; restoring files without the device key quarantines them.
+
+After an online `/me` verifies the same actor and employment, the screens restore a pending command
+as uncertain and offer Check receipt or an explicit identical retry. They never replay automatically.
+Another account cannot open/transmit the claim. Logout preserves encrypted unresolved claims for the
+original authorized actor; decrypted temporary files and editable drafts are still cleared. A failure
+to save prevents transmission and says nothing was sent. Attachments are capped at 2 MiB for clock
+and 10 MiB for leave; only one unresolved command of each kind is admitted per scope.
+
+The Pending requests screen shows the available own-employment count after fresh identity verification.
+Me's voluntary logout/company-change paths offer receipt checks, review of the original submission,
+explicit server-confirmed discard, or keeping encrypted requests while leaving. An unavailable count
+is not displayed as zero, and leaving never waits for the inventory request. Forced revocation still
+closes access immediately. Locked/setup screens retain privacy and explain that review requires returning
+to the original account; setup links never authorize access to its pending evidence.
+
+`POST /api/mobile/v1/submission-abandon` is ordered under the same lock as its clock/leave writer.
+An accepted receipt wins without altering attendance, approval or leave balances. Otherwise, an immutable
+actor/employment/kind/reference-scoped abandonment prevents late delivery from recording. The receipt
+lookup's optional `abandoned` field recovers a lost discard response. Local evidence is resolved only
+after a terminal server result. This is not withdrawal of accepted leave or correction of attendance.
+
+New pending data uses a 64 MiB installation budget. Resolution can still commit at that cap, permitting
+cleanup; authenticated orphan/inactive-slot cleanup never evicts a referenced pending attachment. Temporary
+decrypted upload copies are removed when each attempt ends. Unresolved encrypted claims have no silent
+expiry: explicit server reconciliation/abandonment closes them. OS uninstall/key loss cannot provide a
+server decision and follows the quarantine/reset rules above. Device-bound at-rest encryption and app
+actor checks do not replace the hardware integrity work under M04.
+
+Pending claims are not accepted attendance or approved leave. Offline punch capture and cold-offline
+identity restoration remain disabled. Real-device kill/upload/relaunch, OS-protected key and backup/restore
+acceptance remain release work; model/adapter tests do not replace those checks.

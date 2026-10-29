@@ -1,0 +1,8 @@
+{
+  "source": "https://github.com/uebelack/node-app-attest/blob/f16c4bb71b737466872bc8b8a7dfd215364eaa83/test/verifyAssertion.test.js",
+  "license": "MIT; see node-app-attest-LICENSE.txt in this directory",
+  "assertion": "omlzaWduYXR1cmVYRzBFAiBB8BGAwkmFCg1M5J0mOYEun0SUN1/lse79/7ypG9WiMQIhAIHvqj7eg59B1PMFX1CN4GMGlsgfFtdL30pHCf7G/dNRcWF1dGhlbnRpY2F0b3JEYXRhWCXKPdw7T3iujcFZbHVrHX0mDSMrNms5PzEbrFbQPRA6rEAAAAAB",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEg69t2YzgcPTLUx8Zgu+rbcikeaEL\n8Ppb+HG0QTIulz8YUB9tgv1pDRruWk87nZC3our56pzIWaqXEbaWyamdzA==\n-----END PUBLIC KEY-----\n",
+  "payload": "{\"subject\":\"Lorem ipsum\",\"message\":\"Lorem ipsum dolor sit amet, consectetur adipiscing elit.\"}",
+  "appId": "V8H6LQ9448.io.uebelacker.AppAttestExample"
+}

@@ -310,6 +310,30 @@ export function isPartiallyApproved(
   return row.status === 'approved' && (row.hasRejectedDates === true || (trail?.perDateOutcome?.rejected.length ?? 0) > 0);
 }
 
+/**
+ * The status an employee reads for one of their OWN rows: Pending Cancellation (an approved row with a give-back
+ * waiting; leave_request.status stays 'approved'), else Partially approved (isPartiallyApproved), else the stored
+ * status — the rule components/leave/own-leave-history.tsx ownUpcomingView applies, for the native detail (M07).
+ * test/mobile-v2-leave.test.ts pins the two against each other.
+ */
+export type OwnLeaveStatusKey = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'partial' | 'pendingCancellation';
+export function ownLeaveStatusKey(
+  row: { status: string; pendingCancellationId?: string | null; hasRejectedDates?: boolean | null },
+  trail: Pick<ApprovalTrailFull, 'perDateOutcome'> | null | undefined,
+): OwnLeaveStatusKey | string {
+  if (row.status === 'approved' && row.pendingCancellationId != null) return 'pendingCancellation';
+  return isPartiallyApproved(row, trail) ? 'partial' : row.status;
+}
+
+/**
+ * The Withdraw (and Edit) gate on the employee's OWN row: a plain PENDING request, not grouped, not an Emergency or
+ * Replacement application. The service (cancelOwnLeave) re-asserts subject and status; this decides only whether
+ * the action is offered — on /leave/history and in the native detail (M07), from one place.
+ */
+export function ownLeaveWithdrawable(row: { status: string; parentGroupId: string | null; typeCode: string | null }): boolean {
+  return row.status === 'pending' && row.parentGroupId == null && row.typeCode !== 'EMERGENCY' && row.typeCode !== 'REPLACEMENT';
+}
+
 /** The application's per-date outcome as rows for the date breakdown (components/leave/leave-date-outcome.tsx),
  *  ascending by date. */
 export function applicationDateOutcomeRows(outcome: PerDateOutcomeInput): {

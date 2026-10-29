@@ -1,0 +1,1163 @@
+# Offline attendance protocol and integration design
+
+Status: proposed implementation design under ADR-0088 and M05 of the mobile review.
+Offline attendance remains disabled. Owner decision D16 (29 October 2026, keyless server) supersedes every passage below
+about a server context signature, issuer registry, signing key, rotation or KMS; those passages are kept as history and
+marked SUPERSEDED BY D16. See the D16 section at the end. This document does not claim implementation, migration
+allocation, field acceptance or rollout approval.
+
+The owner requested security/reliability before attendance integrity, offline attendance and the
+remaining employee/approver flows. Android and iPhone are the current targets; Huawei NEXT is
+deferred. No physical test devices are available. Preserve the approved offline-off default and
+the proposed 24-hour window / 72-hour cap as design limits, not live company configuration.
+
+## Verified integration constraints
+
+- `core/attendance-clock.ts` stamps online captures with a new server instant, applies the
+  two-minute sample rule and passes that instant to the canonical attendance writers.
+  Replaying an old online command cannot create a historical offline punch.
+- `db/schema.ts` defines clock methods as web/import/admin. Captures retain server-recorded time;
+  punch/day readers currently consume that instant for precise ordering and live-clock display.
+- `core/attendance.ts` owns day recomputation, duplicate/correction constraints and payroll-derived
+  figures. It deliberately permits out-first and otherwise unbalanced punch lists. Offline code
+  must not invent a stricter in/out state machine or calculate payable time.
+- The base submission journal owns one online clock command and its encrypted photo per employment.
+  The installed-account signed-clock journal owns the unresolved proof lease across employments.
+  These bounded owners do not currently provide a multi-claim offline queue.
+- `mobile/lib/clock-elapsed.ts` derives interval bounds without exporting raw uptime, wall/uptime
+  pairs, boot identifiers or runtime identifiers. iOS process restart makes continuity unknown.
+  These client reports are unverified evidence, not an authenticated clock.
+- Existing correction workflows and audit events own human amendments and previous figures.
+  Retained evidence must remain linked when an amendment voids or replaces a punch.
+- Company profile trust comes from keys installed in the binary. Never accept a verification key
+  embedded in an otherwise untrusted context as its own trust anchor.
+
+## Decision and alternatives
+
+Extend one installed-account proof-order owner for both online and offline commands. Do not add
+a competing offline Apple-assertion queue: accepting a newer online assertion first could invalidate
+older legitimate queued assertions. A pending offline stream prevents an unrelated online assertion
+until its earlier claims have stable server dispositions. Other work profiles expose only a pending
+count/reference summary; they cannot adopt or display another profile's private capture.
+
+Each offline claim has a different purpose and versioned wire contract from an online command.
+It carries a preissued permit, immutable claim UUID, scoped employment/key/context identity,
+sequence and previous claim digest, action, reported fix/source facts, claimed wall instant, elapsed
+interval evidence and exact photo digest. Persist intent and attachment ownership before signing,
+then persist the exact proof before upload/provider work. Retry never captures a replacement photo,
+changes the command, generates a new permit or silently switches to unsigned transport.
+
+Keep the existing online server-time behavior. An accepted offline claim needs a distinct
+`mobile_offline` provenance and effective instant; its upload receipt keeps the actual server arrival.
+Do not overload `serverRecordedAt` with a derived earlier instant. Readers, exports, correction
+history and current-status ordering must use an explicit effective-instant accessor with the
+existing server instant as the legacy/online fallback. Pay calculations continue through the
+canonical day/punch owners.
+
+Alternatives rejected:
+
+| Alternative | Reason |
+|---|---|
+| Retry online clock hours later | Wrong sample/arrival semantics; no historical claim adjudication |
+| Separate offline signature queue | Competing assertion-counter owner and loss after newer online proof |
+| Trust cached client policy or false mock flags | Snapshots and client reports do not authorize attendance |
+| Mark every received claim clocked-in | Receipt/review and authoritative punch are different facts |
+| Write a second payroll/day aggregate | Duplicates the existing canonical calculation owner |
+
+The first portable claim byte contract is `lib/mobile-offline-clock.ts`. It binds the complete scope,
+server-context digest, exact permit/nonce, context-local sequence/previous digest, original command,
+photo digest, claimed wall instant, reported elapsed interval and source/app facts. Its current
+32-slot context limit is a protocol resource bound, not an attendance policy or authorization.
+Unknown/expired time can be represented for a later named review/refusal; the parser does not
+apply the company's acceptance window. Local verification markers and raw native clock/boot/runtime
+snapshots are deliberately absent from the wire shape. Context issuance, trusted issuer registry,
+permit consumption, proof ordering, persistence and adjudication remain mandatory implementation
+steps; this parser exposes no route or offline business effect. (SUPERSEDED BY D16 for the issuer
+registry: the server-context digest is checked against the server's own issued record instead.)
+
+## Context, trust and local storage
+
+Issue context only after fresh own-employment authorization and reconciled device-key ownership.
+Bind origin, server installation, tenant, company, actor, employment, app installation and device
+key. Include the effective policy revision, bounded site/uncertainty/photo/device requirements,
+expected attendance baseline, issued/expiry instants, nonce and bounded permit inventory.
+
+SUPERSEDED BY D16 (29 October 2026): "Use purpose-separated server signatures and a trusted context-signing key
+registry. Establish that registry online through the verified company origin and authenticated installation/key scope;
+cache it separately from signed contexts in device-bound protected storage. A payload-supplied key cannot approve itself.
+The exact registry/key-rotation contract must be implemented and tested before issuing contexts; receipt encryption keys
+must not double as signing keys. Historical verification and exact terminal receipt lookup must survive ordinary
+signing-key rotation." Now: the server signs nothing; it records the exact canonical context it handed out and its
+digest, and accepts a claim only against that record and the phone's leased hardware key. The phone keeps strict shape
+and binding checks only; a payload-supplied key still approves nothing (there is no key to supply).
+
+Encrypt only the minimal context, claim queue, proofs and owned photo bytes. Extend the existing
+installation-wide quota and device-only key lifecycle. Do not persist salary, team, balance or inbox
+caches as a side effect. Keep raw native snapshots app-local; upload only the approved elapsed bounds
+and continuity outcome. Unknown/restarted continuity is a review reason, never reconstructed from
+device wall time. Mathematical bounds alone do not prove that a client honestly measured duration.
+
+An offline-off capture remains an attempt claim and must never mint a punch. Supported offline
+capture says saved/awaiting upload; it must not change server clocked-in status or claim payroll
+acceptance. Local cache simulation and synthetic SDK tests do not establish airplane-mode behavior.
+
+For the native anchor handshake, retain the original request-start and response-received snapshots
+under the same immutable request nonce across retries. The server mint instant lies within that
+exchange only after issuance/nonce binding is verified. Event elapsed lower bound comes from
+response-to-event; upper bound comes from original-request-to-event. Response-only subtraction
+would falsely remove network/server uncertainty. The local `elapsedFromServerExchange` helper
+reports these bounds without authenticating the server instant or granting attendance authority.
+
+## Server admission and adjudication
+
+1. Bound the manifest, individual artifacts and total request before expensive work. Authenticate
+   afresh. Resolve every claimed employment under the original actor/tenant; refuse adoption.
+2. Decode strictly, verify the context against the server's own issued record (digest, binding, permit; D16 replaced
+   "context signature/issuer"), scope and canonical command/photo hashes.
+   Recover exact committed claim receipts first under the same subject; a reused UUID with a
+   different digest is a conflict, not replay success.
+3. Verify native signatures and current upload-time Android evidence. Play Integrity at upload
+   describes that upload environment; it cannot retroactively authenticate an offline location.
+   Provider outage preserves retryability and does not become successful verification.
+4. Process a contiguous claim prefix in proof/counter order, with deterministic key then subject/day
+   locking consistent with existing integrity writers. Do not consume a later counter while an earlier
+   claim is missing. A partial-batch retry observes earlier receipts without re-consuming them.
+5. Recheck current own scope, key revocation, company rollout/policy, permit use and relevant
+   correction/payroll locks inside the acceptance transaction and again at the commit boundary.
+   Derive and retain claimed, fix, effective bounds and received instants separately.
+6. Persist one stable received/accepted/needs-review/refused outcome per claim. Only accepted claims
+   invoke the canonical attendance writer in that same transaction. A review/refusal must not create
+   a payable attendance fact. A committed refusal still has an auditable receipt and cannot later
+   be silently reinterpreted under another configuration.
+7. Human resolution uses current scoped correction permissions, expected revision and a reason.
+   Reuse correction/day owners; retain the original claim and audit lineage. Payroll-locked or already
+   corrected history goes through its existing authorized resolution path. No model supplies decisions.
+
+A chain detects changed/reordered interior records; it cannot prove an unsynced tail never existed.
+Order and duplicate rules must match the existing canonical behavior, including out-first days.
+Different devices and concurrent web/import activity are reconciled against actual current facts,
+not an assumed cached shift state. Policy/site changes require a named configured disposition;
+the snapshot alone never grants an exception.
+
+## Proposed persistence and delivery boundary
+
+Coordinate one additive migration before allocating a number. Expected logical entities are
+offline context/anchor, per-key permit/stream consumption and immutable per-claim disposition,
+with explicit links to accepted capture/punch and any canonical correction resolution. Keep tenant,
+actor, employment, device key and request uniqueness enforceable under RLS; do not trust submitted
+owner fields. Add offline provenance and distinct effective/arrival timestamp representation where
+the existing capture/punch readers need it. Preserve online bytes and behavior.
+
+Choose final table/column names after the transaction/key-order review. A separate resolution table
+is justified only if existing correction linkage cannot own that relationship. Do not add a second
+history of canonical day figures. Migration allocation must preserve the coordinator's other
+reservations and the existing held Android custody draft; reservation does not authorize apply.
+
+Provide versioned context/claim-batch/receipt and HR-resolution APIs. Do not insert new meanings or
+closed enum outcomes into installed v1 clients. Current native history/status, web timesheets,
+exports and correction views must label offline origin and show effective versus received time.
+Minimum-version/upgrade behavior is part of delivery, not an excuse to show an old client a
+mislabelled server-arrival instant. Keep all new issuance/acceptance rollout paths off by default.
+
+## Acceptance before enabling offline attendance
+
+- Airplane mode across a shift, sleep, force quit/update/reboot, wall-time/timezone changes, missing
+  keys, expired context/permit, photo loss, quota exhaustion and privacy/logout transitions.
+- Exact and reordered/partial/duplicate batches, missing predecessor, concurrent devices, newer
+  online proofs, reused UUID/different payload, altered coordinates/source/time/photo and counter races.
+- Wrong app/package/environment/origin/installation/actor/employment/key; revoked/replaced keys and
+  removed grants; vendor outage and unknown source capabilities.
+- Policy/site/schedule changes, out-first/unbalanced days, cross-midnight shifts, corrected and
+  payroll-locked history. Received/review/refused states create no payable punch.
+- Server-authored effective/arrival provenance in all relevant readers/reports; authorized human
+  resolution with reason, expected revision and retained original evidence.
+- Frozen hosted tests, negative guard probes, native compiler/production bundle checks and the
+  required full release gate. Physical iPhone/Android signed builds must exercise real vendor,
+  airplane-mode, continuity and OS-location behavior before rollout. Those witnesses are currently
+  unavailable; they must not be replaced with synthetic success.
+
+### Context signature primitive (SUPERSEDED BY D16)
+
+SUPERSEDED BY D16 (29 October 2026). `lib/mobile-api/offline-context-signature.ts` and the phone's Noble Ed25519
+verification were deleted. `lib/mobile-offline-context.ts` keeps the strict context schema (now without `issuer`),
+the positional digest bytes, and adds `offlineClockContextJson` / `parseOfflineClockContextJson` (the exact canonical
+JSON the server records and hands out) and `bindOfflineClockContext` (the binding check the phone runs). The text below
+is the original record.
+
+`lib/mobile-offline-context.ts` defines a bounded strict context and purpose-separated positional
+bytes. The signed context binds the original request UUID and client nonce, full scope, platform
+and application target, issuer identity, issuance/expiry, policy revision and snapshot, site set,
+attendance baseline and ordered one-use permit inventory. The issuance request accepts only
+request/nonce and existing installation/key references; callers cannot submit policy or ownership.
+Site order is canonicalized; permit order is significant. The 32-claim bound is shared with claims.
+
+`lib/mobile-api/offline-context-signature.ts` signs and verifies actual Ed25519 bytes against a
+separately supplied trusted issuer registry whose identifiers are SHA-256 of raw public keys.
+It rejects self-supplied envelope keys, unknown/revoked issuers, issuer validity gaps, cross-scope
+inputs and modified signed fields. It loads no key files, environment credentials or DB state.
+A valid result explicitly returns `authorization: not_granted`: signature validity alone decides
+neither current policy nor expiry adjudication, issued-record existence, permit consumption or a
+canonical attendance write. Registry provisioning/rotation, transactional issuance, native
+verification and batch adjudication remain separate unfinished work. Tests generate keys in memory;
+no actual deployment signing material is created or distributed by this primitive.
+
+
+The iPhone/Android verifier in `mobile/lib/offline-context.ts` uses the existing pinned Noble
+Ed25519 implementation in strict mode and Expo SHA-256. It verifies the same canonical server
+bytes and independently supplied issuer fingerprints; it additionally requires the original
+request UUID/nonce and expected app target from the current connection owner. Expected installation
+and key references must agree with expected scope. Trusted inputs are parsed into separate snapshots
+before asynchronous hashing, and ownership is checked before/after every hash, including failures.
+It returns signature validity with `authorization: not_granted`, without fetching, persisting,
+issuing or consuming permits, deciding elapsed-time trust or writing attendance. It remains an
+integration prerequisite; no offline screen/queue or registry endpoint is enabled by adding it.
+The host test executes the shipped adapter with actual Noble signature verification and Node
+SHA-256 in place of the Expo OS hashing port; that does not prove native OS or physical-device use.
+
+
+### One journal for online proofs and offline context exchange
+
+The installed-account signed clock snapshot now has a v2 form with mutually exclusive online pending
+work or an offline context exchange. Legacy v1 online snapshots normalize in memory, preserving
+original command/context/proof bytes; only subsequent committed transitions write v2. The encrypted
+storage domain, account scope, commit pointer and serialized queue remain the existing owner. An
+older binary refuses the new strict format rather than adopting an empty alternative journal.
+
+Offline reservation saves the original request binding, reconciled key reference and app-local
+request-start clock snapshot before the context request port may run. Same-binding retries retain
+that first anchor; another request/employment cannot replace it. After the response, a second local
+snapshot is captured before signature verification and committed alongside the exact verified raw
+context/digest. (D16: "signature verification" is now the keyless shape/binding check; the raw context is the exact
+canonical context JSON, no envelope.) A ready context is reverified before reuse, without fetching a replacement or moving
+the anchor. Online start, advance, receipt lookup and abandonment cannot bypass this owner. The
+employee clock displays a distinct unfinished offline-preparation state and disables online preparation.
+
+The existing sealed storage admits a bounded 256 KiB clock snapshot for escaped context/anchor data,
+within the unchanged 64 MiB installation quota. Offline acquisition is a new allocation, never a
+quota-exempt resolution merely because online pending is empty. Existing receipt-driven online
+resolution remains possible at the cap. Raw snapshots/native references stay in encrypted local state;
+only the strict binding goes to the context request port. No live adapter supplies these optional
+ports yet. Offline claim signing/storage, close/retirement recovery, registry provisioning, batch
+sync and server adjudication must be integrated before any offline entry point is enabled.
+
+### Durable local capture and photo handoff
+
+`captureOffline` now records a claim under the same installed-account owner. Before a new claim it
+reverifies the saved server context, checks its permit inventory and existing claim hashes, and binds
+the original base command, photo digest, actual reported app/source fields and elapsed evidence from
+the retained exchange anchors. Its app-local event snapshot remains outside canonical transport bytes.
+Unknown continuity stays unknown; claimed wall time grants no authority. No new in/out sequence rule
+is introduced. The context's 32-slot resource limit and installation byte quota remain explicit bounds.
+
+Each claim advances through `capture_requested`, `photo_retained`, and `captured`. The first commit
+precedes photo retention; the second precedes release of the original base slot. Same-ID retry keeps
+the original claim/event/permit, including after a lost commit or base-release acknowledgement.
+A different claim cannot pass an incomplete handoff. Local capture returns `acceptance: not_granted`;
+it neither creates a device proof nor sends a clock command, records attendance or clears the claim.
+
+The native store retains bounded image bytes with separate photo AAD under the existing device-only
+installation master and installed-account directory. It requires a committed matching claim and
+checks exact byte length/SHA-256. A staged sealed file is moved into place without overwrite; an
+existing retained file must decrypt and match. Tampering/missing data fail rather than silently
+replacing history. Only after that retained checkpoint may the base command/photo be released,
+allowing another offline capture without losing the earlier image. New photos and claims respect
+the installation quota. Strict phase-only progress with identical existing claims may finish at the
+cap, like existing receipt recovery; it cannot admit another command, context or image.
+
+The optional local capture ports are not supplied by a live offline screen/controller yet. Proof
+creation/recovery, authenticated registry provisioning, context issuance, stream consumption, batch
+sync, canonical effective/arrival provenance, HR resolution and the employee flow remain unfinished.
+The centrally reserved draft filename is `0647_mobile_offline_attendance`; journal index and timestamp
+remain integration-bound and must not be inferred from the filename or reused source metadata.
+
+For protocol feasibility, Apple's [App Attest explanation](https://developer.apple.com/videos/play/wwdc2021/10244/)
+describes assertion generation on the device after enrollment, without an Apple server call, and a
+server-validated increasing counter. Our inference is that preissued one-use challenges can support
+later local signing; this still needs actual airplane-mode/device measurements. Android's
+[Keystore documentation](https://developer.android.com/privacy-and-security/keystore) describes
+non-exportable key operations but also warns that a compromised process may still invoke its keys.
+Neither source establishes trusted GPS/capture time. Sync-time integrity cannot be presented as proof
+of capture-time integrity; server verification, policy and auditable review remain necessary.
+
+The native iPhone assertion handoff cache and its host-model CI path are described in ADR-0147.
+The application proof journal must own a completed proof before releasing that cache and must keep
+online/offline counter order serialized. Native cache support alone does not provide an offline
+signing flow. The one-use enrollment cache is unchanged; its requested-state recovery rules must
+not be relaxed to match repeatable assertion semantics.
+
+### Ordered local proof handoff
+
+Captured claims can advance to `signing` and `proof_ready`. The same installed-account owner
+commits signing reservation before inspecting/using native proof operations. It verifies retained
+claim hashes and the original server context before new proof work. A later claim cannot start
+proof generation before every prior proof is durable and its native handoff is released. Local
+capture may continue behind an uncertain earlier proof; signing cannot skip it. Stored state with
+out-of-order proofs is refused, rather than silently opened as a new queue.
+
+An iPhone completed-cache result recovers the original assertion without a new SDK call or a
+requirement to recover a now-missing photo first. An unknown live request remains held. Only native
+`retryable` or actual process-replacement permission allows explicit same-payload generation again.
+Before generating new proof, retained photos must still pass their owned integrity read. A proof
+is saved before native cleanup; lost proof-write/cleanup acknowledgements reuse the durable proof
+or cache on retry. Cleanup may finish without refetching the issuer registry (D16: there is none now), since it transfers
+local custody and grants no attendance authority. Ownership loss never publishes proof or advances
+cleanup state. No claim is sent or resolved as attendance by this signing method.
+
+The platform adapter signs exact purpose-separated offline UTF-8 bytes. Android uses the existing
+Keystore SHA256withECDSA operation and no Google network call during offline signing. iPhone uses
+only the new cached assertion API, never an uncached fallback. Current platform/app identity must
+match the captured key; capture-time reported app versions remain unchanged after a legitimate
+upgrade. The expected Apple bundle is the complete App ID after its ten-character prefix, not an
+arbitrary suffix. The matching local online guard now applies the same exact-bundle check as the
+existing server owner.
+
+Signed-claim envelopes carry only the original claim plus a platform-specific bounded canonical
+base64 artifact; they contain no client-supplied trust/counter/acceptance flag. Native proof bytes
+are still unverified inputs until the server performs cryptographic/key/permit/current-policy
+checks. The sealed clock journal now admits up to 1 MiB, needed for 32 possible 8 KiB iPhone
+artifacts plus context and metadata. Other journal bounds are unchanged. Photo admission reserves
+two clock-journal copies within the installation's existing allocation quota. Only identical-data
+phase reservation/handoff/native-cleanup transitions may finish at the cap; adding a proof or a
+claim still needs admission. These optional signing ports are not yet supplied by an employee flow.
+
+### Server key lease and transport invariants required for sync
+
+The same proof-order rule must hold on the server, including requests sent directly to the API.
+Offline context issuance must reconcile pending online work and acquire the registered key's
+stream lease. Existing online begin/complete paths must refuse conflicting work while that lease
+is active. Expiry alone cannot release it: unsynced proofs may already exist. Closing/retiring a
+context needs a durable scoped server result that makes old permits unusable and preserves claim
+provenance; revocation and HR review remain explicit outcomes. Client-only ordering is insufficient.
+
+In particular, do not generate a fresh iPhone transport assertion after all offline proofs and then
+advance its higher counter while only part of that backlog has been consumed. That would invalidate
+the remaining legitimate lower counters. Sync must validate original claim assertions in order and
+atomically consume their permits/counters/outcomes. Android's fresh sync-time Play evidence must bind
+the actual ordered submitted payload and must not be labeled capture-time integrity. Chunking,
+attachment admission, partial receipts and audited refusals must preserve those invariants. Final
+SQL and journal metadata for reserved 0647 must be coordinated before release; the reservation does
+not authorize stale metadata, migration application or rollout.
+
+
+### Server verification of original claim proofs
+
+`lib/mobile-api/offline-clock-proof.ts` binds an original signed claim to independently supplied
+context, registered public-key and stream snapshots. It checks the complete context scope/digest,
+exact issued permit inventory, registered key/app/environment and contiguous predecessor digest.
+iPhone verification reuses the existing strict App Attest primitive and returns its proposed
+strictly increasing counter. Android verification uses the same bounded canonical DER checks as
+online signatures but verifies the separate offline purpose/bytes; it never reinterprets an online
+signature or a hash of the canonical message as the original claim. Capture build reports are
+preserved, with current upload Play assessment and configured build policy owned separately.
+
+The result is `proof_valid` with `authorization: not_granted`, never a receipt or punch. The
+primitive does not authenticate its context/key/cursor arguments: the server stream transaction
+must load independently verified issued records and locked current registration/stream state,
+check authorization/revocation/policy and actual photos, then atomically commit counter/permit,
+adjudication and any canonical attendance effect. It does not classify expired/unknown time or
+mock indicators as accepted attendance, and it does not invent an in/out state machine. This
+server primitive is not mounted in an offline route. The migration and live flow remain pending.
+
+### Reserved persistence draft and online lease guard
+
+Unjournaled `0647_mobile_offline_attendance.sql` introduces context/stream, immutable permit
+inventory and immutable processed-claim outcomes. Context ownership binds tenant/actor/employment,
+company, registered key and both installations; canonical context and claim artifacts use bounded
+ciphertexts. (D16: the context is now the plaintext canonical JSON `context_json` with no `issuer_key_id`; claim and photo
+artifacts stay encrypted.) The per-key unique open context is the lease. Expiry leaves it held. Explicit closure
+retains a reason/request reference; an exhausted close requires the complete consumed prefix.
+Review/refused outcomes carry no capture or effective attendance instant. An accepted outcome must
+link the matching canonical capture and explicit effective bounds, with received time kept separate.
+These are persistence constraints, not an implemented issuance/adjudication or acceptance service.
+
+Deferred constraints require the original complete permit inventory at context creation and require
+each committed processed claim to have its advanced cursor and Apple counter in the same transaction.
+Composite references bind permit/ordinal and claim scope. Immutable triggers reject rewriting or
+removing retained records. A key-counter trigger also prevents an unrelated online advance while
+an open stream exists. A narrow security-definer function exposes only whether this actor's app/key
+has a lease, including when the original employment has become unreadable; it exposes no capture.
+Revoking the registered key invalidates its permits and allows other keys to proceed without
+rewriting the old context or claims. Ordinary expiry never has that effect.
+
+Online challenge admission checks the lease while holding its existing actor lock. Apple and Android
+proof consumers repeat it after acquiring their registered-key lock; Android also checks before
+spending a provider request. Existing exact terminal receipt recovery is retained. Before 0647 is
+installed, no offline lease can exist and established online behavior remains available. Partial or
+inaccessible installed storage fails closed. Future context issuance must acquire the same actor/key
+locks and reconcile active online challenges before inserting any lease; this draft does not yet
+provide that issuance path. Final SQL/hash/dependencies and journal allocation still require central
+coordination. No migration journal entry or application is authorized by the reserved filename.
+
+### Transactional context issuance service
+
+`core/mobile-offline-context.ts` now owns context/permit minting and exact response recovery in one
+attendance transaction. It authorizes the current own employment/company, takes the existing actor
+admission lock then the registered key lock, rechecks current subject/key ownership, and refuses
+unresolved offline leases or active online clock challenges. Fresh snapshots come only from a
+mandatory trusted policy/site/attendance/key-eligibility port; there is no phone-supplied policy or
+implicit offline enablement. A required bounded actor issuance budget is deployment configuration,
+separate from HR attendance rules. Duplicate request recovery precedes new snapshot/budget work.
+
+SUPERSEDED BY D16 (the original text): "New contexts use database time, explicit configured window bounded by the
+issuer validity, random one-use permits and actual Ed25519 signatures. AES-GCM stores the exact signed response under a
+purpose/tenant/actor/context/request AAD. Recovery checks the immutable record, canonical digest, original
+request/nonce/full scope, issuer/policy/time metadata and actual permit inventory. Ordinary signer rotation and snapshot
+changes do not replace the original signed response or time anchor." Now: new contexts use database time, exactly the
+configured window (`expiresAt = issuedAt + windowMs`), random one-use permits and no signature. The exact canonical JSON
+is stored in plaintext (`context_json`) beside its digest. Recovery checks that the stored text is canonical, its digest,
+the original request/nonce/full scope, policy/time metadata and the actual permit inventory, and returns the recorded
+bytes. Snapshot or deployment changes do not replace the original response or time anchor.
+Expired retries return the original context; they neither refresh its expiry nor release its lease.
+A closed request cannot mint another inventory. A new online challenge must be reconciled first.
+
+A mandatory final configuration/key-eligibility port runs after tentative context, permits and audit
+writes. The service then repeats own-company/key/storage, open-context and database-time checks.
+Failure rolls back all records, audit and issuance budget. The service exposes no HTTP route and has
+no default live policy/key loader. (D16: no key loader exists at all.) Trusted registry provisioning/rotation delivery (D16: removed), actual deployment
+snapshot/eligibility assembly, offline transport/consumption/adjudication and employee/HR flows still
+need integration. Issuance returns `authorization: not_granted`; it is not an attendance receipt.
+
+### Claim consumption owner decisions (28 October 2026)
+
+`core/mobile-offline-claim.ts` consumes one original claim in the locked attendance transaction.
+The owner settled three rules on 28 October 2026. Their implementation at `182f8fa66` passed
+hosted run [40561470126](https://github.com/StradaverseHub/ai-hr/actions/runs/40561470126).
+
+1. Request-ID collision is refused. After the actor, key and stream locks, the service takes the
+   subject lock the canonical clock writers take before their own request lookup. If an attendance
+   capture already holds the claim's request ID for that tenant and employment (the capture's
+   unique key; punches link to captures), the claim is refused with service-owned reason
+   `request_conflict` and the adjudicator is not called. The refusal is an ordinary terminal
+   outcome with counter, cursor and audit, and no capture or effective instant. An exact-digest
+   retry returns the same receipt. The adjudicator contract cannot return `request_conflict`.
+   Residual: an online capture created after this refusal commits is not refused by the online
+   writer, which does not read offline claims. An accepted claim cannot duplicate a capture, because
+   the capture unique key rejects the second insert.
+2. An accepted punch records exactly `effectiveAt` in the online writer's encoding. The linked live
+   punch's `punch_at` must equal the Asia/Kuala_Lumpur wall time of the integer-millisecond
+   `effectiveAt` at PostgreSQL `time` precision (microseconds). Its `attendance_date` must be the day
+   the online writer would file. Amended by a further owner decision on 28 October 2026: an offline
+   overnight clock-out belongs to the shift's start day, as the online writer files it, and must still
+   match `effectiveAt` exactly. The check and the online writer share one rule,
+   `clockAttendanceDateTx` in `core/attendance-clock.ts`. It returns the instant's MYT day, except
+   that a clock-out belongs to the start day of the newest open session when that day is the
+   instant's previous MYT day and its schedule crosses midnight. The service reads that session
+   (`openClockSessionDateTx`) under the subject lock before adjudication, as the writer reads it
+   before writing. The overnight out's instant is therefore the start day plus one day plus
+   `punch_at`. Any other date, a one-millisecond difference, an overnight out filed on the
+   instant's own day, or a clock-in filed on a prior day rolls back with `configuration_unavailable`,
+   the error already used for a missing linked punch. A writer that stores whole seconds can link only
+   a whole-second `effectiveAt`. The overnight amendment is UNVERIFIED until a hosted run passes.
+3. A group admin may read and delete only expired photo custody (`retained_until <=
+   clock_timestamp()`), never retained ciphertext; the purge's `DELETE ... RETURNING` passes the
+   same read policy. The actor's own read is unchanged. GRANTs, immutability and the deferred
+   custody constraint are unchanged.
+
+The owner also settled four adjudicator and HR rules on 28 October 2026. Each is DECIDED and NOT
+YET IMPLEMENTED: no code, policy or test enforces it yet.
+
+4. Effective instant (IMPLEMENTED, UNVERIFIED pending a hosted run). The effective instant is the
+   device's claimed time, rounded to whole seconds and clamped into the server-proven interval. If that
+   interval is wider than the company's configured limit (default 15 minutes, see below), the claim goes
+   to HR review. See "Deterministic adjudicator and company settings" below.
+5. Failed checks go to review (IMPLEMENTED, UNVERIFIED pending a hosted run). An ordering conflict, a
+   punch outside the geofence, a reported mock or simulated location or accessory, a missing registered
+   device, or processed payroll on that day sends the claim to `needs_review` for HR, not to refusal.
+   This supersedes ADR-0088's refusal wording for order conflicts. Closed payroll stays under the
+   existing lock owner, which the adjudicator consults before any write, and is also review.
+6. HR read access (IMPLEMENTED, UNVERIFIED pending a hosted run). HR users with attendance-correction
+   rights for the claim's company may read that company's offline claims and unexpired retained photos,
+   and each read is audited. Group admins still only purge expired photos. A human resolution path for
+   held claims was built with it. See "HR review and resolution of held claims" below.
+7. No self-removal (DECIDED, NOT YET IMPLEMENTED). Employees cannot remove their own offline
+   punches. They must request a correction, the same as registered-device captures.
+8. HR accept is a punch correction (owner decision 28 October 2026; IMPLEMENTED, UNVERIFIED pending a
+   hosted run). When HR accepts a held claim, the punch is inserted at its effective time through the
+   existing attendance-correction rules, like any HR punch correction. Later punches do not block it.
+   HR's decision, with its reason, overrides the original hold (geofence, photo, device). Payroll locks
+   and correction permissions still apply, and the day recalculates. This replaces the earlier accept
+   through the live clock rules. See "HR review and resolution of held claims" below.
+9. D-A, multi-level approval (owner decision 28 October 2026; IMPLEMENTED, UNVERIFIED pending a hosted
+   run). HR's accept files the correction and decides its first level. When the day's workflow has
+   further levels, the claim shows "pending approval" and the punch is written only when the final
+   approver approves, exactly as for any other correction. If a later approver rejects (or the
+   correction is withdrawn), the claim ends there: it stays resolved, and its state reads rejected
+   (or cancelled). This matches how a correction ends. A rejected or withdrawn correction is final and
+   is never reopened; trying again means filing a new correction for the day. The resolution stays
+   the claim's one immutable decision, so no second resolution or second correction can be attached.
+   The employee's view shows pending, accepted or rejected (cancelled after a withdrawal).
+10. D-B, who may accept while a photo is retained (owner decision 28 October 2026; IMPLEMENTED,
+   UNVERIFIED pending a hosted run). While a claim's photo is still retained (not expired, not
+   purged), only someone who can see it may accept: HR with correction rights who is not a group
+   admin. A group admin may reject at any time. It may accept once the photo has expired or been
+   purged, or when the claim has no photo. This is enforced in the service and in the resolution's
+   bound trigger.
+11. D-C, the correction owns the day (owner decision 28 October 2026; no change). An accepted claim's
+   correction owns the day, as for every correction.
+
+### Canonical offline attendance writer and provenance (28 October 2026)
+
+`captureOfflineClockTx` in `core/attendance-clock.ts`, exported through `packs/attendance/service`, is
+the only writer of an accepted offline punch. It runs in the caller's transaction (no nested
+transaction), as the claim service's `adjudicate` port requires. It remains unmounted: no route, no
+production adjudicator and no acceptance is enabled.
+
+- One owner, two halves. The online `captureEmployeeClockTx` is split into a read-only plan (every
+  validation and typed refusal, locks and reads only) and an apply step (capture, canonical punch,
+  audit). Web, native-online and offline share both. The online instant is still read after the
+  subject lock and request lookup, not at the call site, so online error order is unchanged.
+- Offline differences. The instant is the claim's `effectiveAt`, a whole second no later than the
+  receipt; the receipt instant `server_recorded_at` is the actual server time. The 120 s fresh-sample
+  rule does not apply. Ordering uses each capture's own instant (`effective_at`, else
+  `server_recorded_at`), so an offline instant earlier than an existing online clocking is refused even
+  though its upload arrives later. Any capture already holding the request ID refuses the plan. The
+  command digest is sha256 of `["mobile_offline", claimDigest]`, so an online replay of the same request
+  ID conflicts. A company requiring a registered device refuses offline clocking: a claim carries no
+  legacy device token.
+- `planOfflineClockTx` returns a plan or a typed refusal (`invalid_command`, `employment_unavailable`,
+  `clock_conflict`, `corrected_day`, `device_unavailable`, `photo_required`, `photo_invalid`,
+  `location_invalid`, `geofence_quality`, `outside_geofence`, `effective_time_invalid`) and writes nothing.
+  Other errors stay faults. If apply throws after its first write, the writer also aborts the caller's
+  transaction, so a caller that catches the error still cannot commit a partial clocking.
+- Minute ordering. `clockPunchOrderRefusal` in `core/attendance.ts` owns the minute-ordering refusals
+  that `checkInTx`/`checkOutTx` previously inlined. The plan evaluates the same predicate where those
+  writers would, so plan and apply cannot disagree.
+- Provenance in 0647. `clock_method` gains `mobile_offline` (PostgreSQL cannot drop an enum value; the
+  worker restore leaves it). `attendance_clock_capture.effective_at` (nullable; NULL is online) is
+  checked whole-second and not after `server_recorded_at`. The punch guard keeps all 0528 checks and
+  allows a capture-linked punch to be `web` or `mobile_offline`, `mobile_offline` exactly when the
+  capture has `effective_at`. A `mobile_offline` punch without a capture is refused for every role. The
+  claim trigger requires the claim's `effective_at` to equal its capture's, so the claim keeps a
+  checked copy, not a second truth. The consumption service also requires the linked capture's
+  `effective_at` to equal `effectiveAt` and the punch method to be `mobile_offline`.
+- `effective_at` is deliberately not declared in `db/schema.ts` while 0647 is unjournaled. Declaring
+  it would make every `select()`/`returning()` of the table name a column the live schema lacks. The
+  writer and the consumption check name it explicitly (`attendanceClockCaptureEffectiveAt`).
+- Readers are not yet updated. Reports, exports, correction history, current status, policy coverage
+  (0590 reads `server_recorded_at`) and the clocking import's `method === 'web'` rule still treat an
+  offline capture by its receipt instant or as non-web. This is required before enabling acceptance.
+
+This writer is UNVERIFIED until a hosted run passes.
+
+### Deterministic adjudicator and company settings (28 October 2026)
+
+IMPLEMENTED, UNVERIFIED pending a hosted run: no vitest, TypeScript, build or database command was run.
+`packs/attendance/mobile-offline-adjudicator.ts` (through `packs/attendance/service`) supplies the claim
+service's `adjudicate` port: `createOfflineAdjudicator({snapshot})` returns `decide`, `accept` and
+`adjudicate`. It is UNMOUNTED: no route or production wiring passes it to `createOfflineClaimService`,
+and no company has offline clocking enabled. No model takes part; every check is a current owner read
+in the claim's transaction, and `decide` finishes before the only write, the canonical offline writer.
+
+- Company settings (owner decision, 28 October 2026). Draft 0647 adds two columns to
+  `attendance_policy`, which has one row per company: `offline_clocking_enabled` (default false, as
+  ADR-0088 requires) and `offline_max_proven_window_seconds` (default 900, CHECK 60 to 86400).
+  `readOfflineClockingPolicyTx` reads them by name; no row is the default. The columns are not
+  declared in `db/schema.ts` while 0647 is unjournaled. Every existing writer leaves them at their
+  defaults or keeps them (the settings writer's upsert names only its own columns). There is no
+  settings screen or write service for them yet.
+- Decision order. A changed company is `scope_changed` (review). Offline off for the company at decision
+  time is refused as `offline_disabled`. A claimed time outside the context window, or a proven interval
+  wholly after it, is refused as `outside_context_window`. A missing interval is `continuity_unknown` or
+  `time_unverifiable` (review). An interval that runs past the window is `outside_context_window`
+  (review). One wider than the company maximum is `proven_window_too_wide` (review). One holding no whole
+  second is `time_unverifiable` (review). Then come reported mock, simulated or accessory flags; policy
+  or site drift against the trusted snapshot port (`policy_changed`, `site_changed`); a required
+  registered device (`device_required`); employment not active on the day (`employment_inactive`, the
+  clocking import's own rule, now `employedOnDate`); processed or closed payroll (`payroll_locked`); an
+  unreleased overtime settlement (`overtime_settled`); and an approved correction (`corrected_day`). Last
+  is the canonical read-only plan, whose typed refusals map to review reasons: ordering conflict becomes
+  `attendance_changed`, outside geofence `outside_geofence`, photo `photo_required`/`photo_invalid`, and
+  so on. Everything else accepts with the clamped instant.
+- No SQL abort. The payroll owner's definer raises unless the employment is the caller's own and active
+  today. The adjudicator first checks exactly that guard (`employment_inactive` otherwise), so a claim
+  transaction never aborts on it. Payroll is read before the plan takes the attendance row lock, the
+  order the correction and removal effects use.
+- New review/refusal reasons in `lib/mobile-offline-receipt.ts`: `offline_disabled`,
+  `proven_window_too_wide`, `employment_inactive` and `overtime_settled`.
+- Still open: the settings UI and write service, the HR review screen and routes (the service is
+  below), production wiring of the snapshot port (below), route mounting and enabling acceptance. Attendance-baseline drift is not used: the ordering plan
+  checks actual current facts, and a context's own accepted claims change its baseline.
+- The clocking import now counts a `mobile_offline` punch as an employee clocking: an uncoded import line
+  on an offline-clocked day is listed (`uncoded_on_clocked_day`), as on a web-clocked day.
+
+### Production offline clock snapshot (28 October 2026)
+
+IMPLEMENTED, UNVERIFIED pending a hosted run: no vitest, TypeScript, build or database command was run.
+`packs/attendance/mobile-offline-snapshot.ts` (through `packs/attendance/service`) is the one trusted
+current snapshot. `readOfflineClockSnapshotTx(tx, ctx, {employmentId, companyId, key}, {target,
+windowMs, permitCount})` returns exactly the `{policy, sites, attendance, target, permitCount}` shape
+context issuance parses, and `offlineClockSnapshotPort(deployment)` returns it as the port function.
+Context issuance and `createOfflineAdjudicator` must both take that same function, so an unchanged
+world signs and compares identical values and shows no drift. It is UNMOUNTED: no route or production
+wiring passes it yet, and no company has offline clocking enabled.
+
+- Owners. `offlineEnabled` is `readOfflineClockingPolicyTx`. `geofencingRequired` is
+  `employment.geofencing_enabled`. `maximumAccuracyM` is the company's
+  `attendance_policy.geofence_maximum_accuracy_m`, and is null while geofencing is off (the online
+  geofence does not read it then, so editing it is not drift). `photoRequirement` is
+  `employment.attendance_photo_setting`. The sites are `assignedClockingSitesTx` in
+  `core/attendance.ts`, the query extracted unchanged from `resolveGeofence`, which now calls it:
+  assigned, not archived, open to the employment's current company. A site with no radius can never
+  match and cannot be signed, so the snapshot leaves it out; with geofencing off there are no sites.
+  Sites are ordered by id. The attendance date, clocked-in state and open-since instant come from
+  `liveClockStateTx` in `core/attendance-clock-read.ts`, a thin export of the reader behind
+  `ownClockToday`. The baseline is `clockFingerprint` over `punchesForCorrectionTx` for that date, the
+  value `ownClockToday` reports as `removalBaseline`. Target, window and permit count are the
+  deployment's. The device requirement is not in the snapshot.
+- Revision. SHA-256 over the five policy fields in the context's positional order, with no
+  time, site or attendance value. Equal policy gives an equal revision; changing any policy field,
+  including the deployment window, changes it.
+- Values a context cannot represent (more than 32 sites, a site name over 200 characters, or
+  any other value outside the context schema) are refused with the context service's own typed
+  `OfflineContextIssueError('configuration_unavailable')`, so issuance refuses before recording and
+  writes nothing. Nothing is truncated. A subject company other than the employment's own is refused as
+  `binding_conflict`.
+- Adjudicator. A current snapshot that the port refuses as `configuration_unavailable`, or that does
+  not parse, is now `site_changed` review instead of an error, so a held claim can never stick. A
+  `binding_conflict` refusal is `scope_changed` review. Any other port failure still throws.
+- Tests: `test/mobile-offline-snapshot.test.ts` (draft 0647 in a disposable worker), using the real
+  issuance and claim services through `test/helpers/mobile-offline-service-fixture.ts`, which now
+  accepts an optional snapshot port and a pre-issuance hook.
+
+### HR review and resolution of held claims (28 October 2026)
+
+IMPLEMENTED, UNVERIFIED pending a hosted run: no vitest, TypeScript, build or database command was run.
+`packs/attendance/mobile-offline-claim-review.ts` holds the read and resolution services. It is
+UNMOUNTED: no route, screen or production caller, and it is not exported through the attendance facade.
+
+- Who reads (owner decision 6). Draft 0647 adds two SELECT policies. `mobile_offline_claim_review_read`
+  admits `app.can_correct_attendance(employment_id)`. `mobile_offline_photo_review_read` admits
+  `retained_until > clock_timestamp() AND NOT app.is_group_admin() AND app.can_correct_attendance(employment_id)`.
+  The photo row carries its claim's employment through its composite foreign key, so no join is needed. A
+  group admin has correction rights through `is_admin_for`, so the second policy names it explicitly: it
+  reads the claim, but a photo only once expired, for the purge. The actor's own policies are unchanged.
+  The service checks the same authority itself before reading.
+- Reads. `listOfflineClaimsForReview` returns claim metadata, outcome, reason, the signed command's action
+  and location, the reported source flags, photo digest and retention, and any resolution. It never
+  returns photo bytes or the proof. Pages are newest first (`received_at desc, id desc`), keyed by the
+  last claim id. Each returned claim appends `mobile.offline.claim.reviewed`.
+  `readOfflineClaimPhotoForReview` decrypts with the existing photo AAD, checks the digest and appends
+  `mobile.offline.photo.reviewed` (actor, claim, reason "review") for every read. No photo, an expired
+  photo or purged custody is a typed refusal.
+- Resolution table. `mobile_offline_claim_resolution` holds one immutable row per claim: decision
+  `accepted` or `rejected`, a reason (1 to 500 characters), the resolver and time (stamped by the server),
+  an input digest for retry, and for an accept the correction (`correction_id`), `effective_at` and
+  `day_revision`. Each correction is held by at most one resolution. The row stores no state and no punch
+  (D-A): `app.mobile_offline_claim_resolution_state` derives them. A reject reads `rejected`. An accept
+  reads its correction's status, with `approved` read as `accepted` (so `pending`, `accepted`, `rejected`
+  or `cancelled`). Its punch is the one the approved correction's applied changes added, found through
+  the `attendance.punch.added` event that names the correction. The function is a definer with the same
+  visibility as the resolution's read policy. `punch_id` and its unique constraint were removed. The
+  day revision is the correction model's baseline (`clockFingerprint` of the filed day's punches) the
+  resolver decided against. The claim row is never changed: it stays `needs_review` with no capture. The table has
+  GRANT SELECT and INSERT only, forced RLS and an immutable trigger on update and delete. Reads are for the
+  claim's actor or correction rights. Inserts need correction rights, the session's own user as resolver,
+  and a subject that is not the resolver's own employment (as 0533 refuses deciding one's own request).
+- Accept (decision 8, 28 October 2026; IMPLEMENTED, UNVERIFIED). Only a `needs_review` claim with a
+  proven interval and no resolution can be resolved. The resolver picks the instant. It must be a whole
+  second inside the proven interval, cut at the context's expiry, and the interval must not start before
+  issuance. The rule is `offlineEffectiveInstant`, the adjudicator's own, with no width limit, because
+  choosing inside a wide interval is the decision under review. The context window is read through
+  `app.mobile_offline_claim_window`, a definer that returns only those four instants to correction rights.
+  Context rows stay actor-only. The attendance day is the canonical clock day rule
+  (`clockAttendanceDateTx`), and an employment inactive on that day is refused. The punch is then written
+  by the existing correction owner, in the same transaction, as any HR punch correction:
+  `requestAttendanceCorrection` (which now takes an optional caller transaction) files a clock-data
+  correction whose entries are the day's live punches unchanged plus one entry at the accepted instant,
+  against the baseline read under the subject lock, with the resolution's reason; then
+  `decideAttendanceCorrection` approves its first level (`expectedStageIndex` 0, as the HR day screen
+  does). The correction owner is unchanged: it never learns about offline claims. The live
+  clock rules do not run, so later punches, geofence, photo setting and registered device do not refuse
+  it. The correction rules do: clock-data editing needs `app.can_admin_employment`, the decision needs
+  the existing workflow authority, closed payroll raises `AttendancePayrollClosedError` ("Reopen the
+  payroll") before the correction is inserted, a stale `expectedRevision` or a changed day raises
+  `ClockDataChangedError`, a pending request for the day raises `AttendanceCorrectionPendingError`, and an
+  existing punch at the same time and direction is refused. The final approval applies the punch set,
+  recomputes the day ("Corrected"), refreshes overtime and marks processed payroll for recalculation.
+  D-A: if the day's workflow needs a further approver, the correction stays pending. The resolution is
+  still recorded, its state reads `pending` with no punch, and the correction's own final decision
+  writes the punch later; nothing in the offline code runs then. The previous `correction_pending`
+  refusal is gone. While the correction is pending, an identical retry replays and any other
+  resolution is `resolution_conflict`. The correction owner's one-pending-per-day rule also holds the
+  day. After the first write any throw also aborts the transaction, so a caller that catches it cannot
+  commit a partial correction. The previous `overtime_settled` and `not_acceptable` refusals are gone
+  with the live-rule path; the correction owner decides those days. D-B: no photo is read or written by
+  an accept, but while the photo is retained a group admin's accept refuses with
+  `photo_review_required` before anything is written. The service compares the claim's
+  `photo_retained_until` with the database clock; custody is purged only after expiry, so that instant
+  decides. The bound trigger checks the custody row itself (`retained_until > clock_timestamp()`). A
+  group admin's reject is unaffected.
+- Provenance (decision 8). The punch is method `admin`, with no capture, exactly as a correction's punch.
+  `attendance_clock_capture.effective_at` stays the canonical offline writer's alone. The chain is claim,
+  then resolution (`effective_at`, `correction_id`, `punch_id`), then the approved correction and its
+  `attendance.punch.added` event naming that correction. The resolution's BEFORE INSERT trigger (definer)
+  binds an accept: a pending or approved clock-data correction of the claim's employment, whose
+  submitted entries add exactly one punch (one entry with no id) at the MYT wall time of `effective_at`
+  on the correction's day (or the next day, for an overnight out filed to its shift's start day). When
+  that correction is already approved, the live `admin` punch with no capture that it added must exist.
+  The same trigger refuses a group admin's accept while the photo custody is retained (D-B). Visible consequence: HR and the employee see the punch as an HR correction
+  ("Corrected", method admin), not as an offline clocking. The correction's reason is the HR resolution
+  reason, and attendance_correction's RLS (`app.can_see_employment`) lets the employee's session read that
+  row; which screens list it was not checked (UNKNOWN). The approved
+  correction then owns the day, as every punch correction does (r434): later clockings that day, online
+  or offline, are refused or held as `corrected_day` until HR corrects again. "Offline, accepted by HR" is
+  read through the resolution, not from the punch.
+- Linkage removed. The permissive capture insert policy `attendance_clock_capture_offline_resolution_insert`
+  and the `resolution` subject of `captureOfflineClockTx`/`planOfflineClockTx` are removed, restoring the
+  canonical writer's own-employment surface and 0500's insert policy as the only capture insert path for
+  the application role. The claim ordering trigger and the punch guard need no change: a correction's
+  `admin` punch with no capture already passes the guard for correction authority.
+- Reject records the resolution only. Every resolution appends `mobile.offline.claim.resolved` with the
+  actor, reason and held-for reason. A retry with the same decision, instant and reason by the same
+  resolver returns the recorded resolution, and any other input then conflicts.
+- Lock order. A resolution takes the subject advisory lock, then the correction owner's own order: the
+  payroll batches (by id) when filing, then on approval the same subject lock again (re-entrant), the
+  correction row, its workflow, payroll and the attendance day row. This is the tail of the consumption
+  order (actor admission, key, stream, subject, then payroll and attendance) with the first three locks
+  left out. A resolution never asks for an actor, key or stream lock, so it cannot wait on one while
+  holding the subject lock. Below the subject lock, both paths queue on the same per-employment lock.
+- Employee view. `ownOfflineClaimResolution` returns the actor's own claim outcome and its resolution
+  (decision, derived state `pending`/`accepted`/`rejected`/`cancelled`, instant, correction, derived
+  punch, time). HR's list and the resolve result carry the same derived state. It leaves out the resolver, reason and baseline. It is a separate
+  read, not a v1 receipt field.
+- Superseded RISK. The earlier accept ran every live clock rule at the chosen instant, so a claim
+  reviewed after later clockings, or held for geofence, photo or device, could not be accepted. Decision 8
+  (above) replaces that path. The former UNKNOWN about multi-level workflows is settled by D-A.
+- New suite: `test/mobile-offline-claim-review.test.ts`, including an accept behind a later offline
+  clocking the live rules refuse, geofence and photo holds overridden, the day recomputed, the provenance
+  chain and its trigger binding. The draft worker restore drops the new table and its three functions
+  (window, bound trigger, state) and checks each is gone (the capture policy no longer exists). D-A
+  and D-B cases (28 October 2026): a two-level accept pending with no punch until the final approval,
+  a later-level rejection, pending blocking a second resolution, and a group admin refused while the
+  photo is retained (service and trigger) but able to reject, or to accept after expiry or with no
+  photo.
+
+### Deployment configuration and assembly (28 October 2026; IMPLEMENTED, UNVERIFIED)
+
+Status: implemented on `claude/mobile-offline-assembly`; hosted verification pending. No route mounts it, so
+offline attendance stays off on every installation. Absent configuration is `not_configured`; anything malformed
+or inconsistent is `configuration_unavailable`. Nothing is cached: each request and each commit guard re-reads the
+environment.
+
+D16 (29 October 2026) changed this section: the issuer registry, `signingKeyId`, `AIHR_MOBILE_OFFLINE_SIGNING_KEY`, the
+signer rows of the fail-closed table, the signer facts of the commit guards and the drain-mode key rules are gone. The
+superseded wording is quoted where it was a decision.
+
+Owners. `AIHR_MOBILE_OFFLINE_POLICY` (`lib/mobile-offline-rollout-policy.ts`) owns the per-actor allowlist
+(tenant, company, actor ids), `windowMs`, `permitCount`, `maximumIssuesPerHour`, `photoRetentionMs` and `mode`.
+SUPERSEDED BY D16: "the issuer registry, `signingKeyId` ... `AIHR_MOBILE_OFFLINE_SIGNING_KEY` holds the Ed25519 PKCS#8
+PEM for `signingKeyId`." No key variable exists; a policy that still carries `issuers` or `signingKeyId` fails the strict
+schema (`configuration_unavailable`) until they are removed. The actor must also be in `AIHR_MOBILE_CLOCK_POLICY` for the platform. That entry owns
+`apiOrigin`, the app target and the Play settings; the offline policy does not repeat them. The snapshot port
+still owns offline-enabled, policy revision, sites and attendance. The assembly
+(`lib/mobile-api/deployed-offline-clock.ts`) puts the deployment's window, permit count and target into the
+snapshot it hands to issuance, and into the one it hands to the adjudicator. Both see the same values, so drift is
+measured consistently. A side effect: changing `windowMs` while claims are in flight sends those claims to review
+as `policy_changed`. It never accepts them.
+
+Schema bounds. These are engineering admission limits, not HR, retention or legal rules: version 1; mode `active`
+or `drain`; `windowMs` from 60 000 ms to 72 h; `permitCount` from 1 to 32;
+`maximumIssuesPerHour` from 1 to 24; `photoRetentionMs` from 1 h to 366 days; at most 100 entries, unique by
+tenant and company, each with 1 to 1000 unique actor ids; policy JSON at most 262 144 UTF-8 bytes. (Removed by D16:
+1 to 16 issuers keyed by public-key SHA-256, `signingKeyId` among them, key PEM at most 4096 bytes.)
+
+Fail-closed table (`core/mobile-offline-rollout.ts`, `readMobileOfflineDeployment`):
+
+| Condition | Result |
+| --- | --- |
+| `AIHR_MOBILE_OFFLINE_POLICY` absent or empty | `not_configured`, before any database or snapshot work |
+| Actor/company not in the offline entries | `not_configured` |
+| Actor not in the clock rollout for this platform, or that platform entry is null | `not_configured` |
+| Offline policy over 262 144 bytes, not JSON, or failing the schema (bounds, unknown keys, including the retired `issuers`/`signingKeyId`) | `configuration_unavailable` |
+| Clock rollout malformed | `configuration_unavailable` |
+| `AI_CONFIG_SECRET` storage unavailable (claims and photos are stored encrypted), integrity storage not ready, or 0647 storage not ready | `configuration_unavailable` |
+
+Removed by D16 (no key exists): "`signingKeyId` not among the issuers", "Active mode: signer revoked, not yet valid or
+expired, or no key configured" and "Key over 4096 bytes, unparsable, public, not Ed25519, or not matching the signer's
+public key". `AIHR_MOBILE_OFFLINE_SIGNING_KEY` is read by nothing; a leftover value changes nothing.
+| Attendance module not enabled for the company | `module_unavailable` |
+
+`isMobileOfflineStorageReady` follows the enrollment precedent. It reads only catalog metadata, as the
+application role, and checks four things. First, the four 0647 tables exist with forced RLS and SELECT/INSERT
+grants, plus UPDATE on the context's cursor and close columns. Second, all twelve 0647 triggers are present and
+enabled. Third, `app.mobile_offline_key_leased` can be executed. Fourth, the capture's `effective_at` column and
+the `mobile_offline` clock method exist. It detects missing or partial storage. It does not replace the migration
+release checks.
+
+Commit guards. Both run inside the service's own transaction, after its tentative writes, and use no pooled read.
+- `assertOfflineIssueCommit`, for a new issuance (`issue`). The deployment must still be configured for this
+  actor and the context's company, be in active mode (otherwise `draining`), and be identical in every fact it
+  records or admits: origin, target, clock entry, window, permit count and budget. The context must carry exactly
+  the configured window (`expiresAt = issuedAt + windowMs`) and permit count. A failure rolls back the context,
+  permits, audit and admission budget. (D16 removed the signer, key-digest and signer-validity facts.)
+- `assertOfflineIssueCommit`, for recovery (`recover`). The deployment must still be configured, active or drain,
+  with the same origin and target. The recorded bytes are returned; there is no issuer to keep listed.
+- `assertOfflineClaimCommit`. The deployment must still be configured, active or drain, with unchanged origin,
+  target, clock entry and photo retention. It deliberately does not check company offline-enabled, so an
+  adjudicated `offline_disabled` refusal commits and advances the stream. It does not check mode either: the
+  server's own issued record is the context's authority (D16; formerly "the stored AES-GCM record").
+
+Drain mode. Claim upload and close stay available. A new issuance is refused before any snapshot read or budget
+charge, and the commit guard refuses it again. An exact retry of an earlier issuance always recovers the original
+bytes (D16: no key is needed; formerly only "if a valid key is still configured"), so a phone that lost the response
+can learn its context id and close it. Removing the variable altogether stops close and upload too, and leaves open
+leases held until the key is revoked. Withdraw a deployment by switching to drain.
+
+Close (`closeOwnOfflineContext` in `core/mobile-offline-context.ts`). Authority is the bearer session's actor
+plus ownership of the context's registered key, revoked or not. The lock order is the actor admission lock, then
+the key, then the stream. The service retires the context (`retired`) only when the phone's `consumedThrough`
+equals `nextSequence - 1`. If the phone holds claims it has not uploaded, the result is `claims_pending`; if the
+phone is behind the server, it is `cursor_mismatch`. Either way nothing changes. An exact retry (same
+`closeRequestId` and `consumedThrough`) returns the recorded closure. Any other request on a closed or exhausted
+context is `context_closed`. A closed context is never reopened. One `mobile.offline.context.closed` event is
+written. Closing releases the lease, so online clocking and a new issuance work again. If the employment has
+become unreadable, RLS hides the context, and revoking the key is the release path. The deployed close finds the
+deployment through the company the context was issued under, and so does claim upload. Issuance gained the
+refusal `offline_disabled` for the case where the trusted snapshot reports offline as off; no rows are written.
+
+Platforms. iOS claim upload uses the claim's own App Attest assertion and creates no later transport assertion.
+Android claim upload runs the fresh, payload-bound Play preparer (see "Offline sync transport" below).
+
+Owner decisions (28 October 2026):
+1. SUPERSEDED BY D16 (29 October 2026). Signing key custody. An environment secret (`AIHR_MOBILE_OFFLINE_SIGNING_KEY`) for the fictional-data pilot;
+   a managed KMS before any real employee data. Rotation: publish the new issuer's public key at least 72 hours
+   plus one registry refresh ahead, then switch `signingKeyId`. Keep the old issuer listed and unrevoked until
+   its contexts expire. (Now: no signing key, KMS or rotation exists.)
+2. Limits are owned by the deployment: `windowMs` 24 h (cap 72 h), `permitCount` 8, `maximumIssuesPerHour` 4.
+3. `photoRetentionMs` is 30 days. The owner will confirm this with counsel before real data.
+4. If the Android Play verdict fails at sync, the transport refuses with no receipt. The phone keeps the claim
+   queued and retries; HR can revoke the key to release a stuck queue. This is enforced in the later transport
+   task, not here.
+5. Taken as recommended: a company that requires a registered device has issuance refused; drain mode when a
+   deployment is withdrawn; close requires the bearer session plus key ownership; a per-actor rollout allowlist;
+   Android freshness means a payload-bound token plus `maxTokenAgeMs`.
+
+NOT done here: KMS custody (D16: no longer needed). The routes and transport, the Android Play preparer, the issuer
+registry in capabilities (D16: removed again), the registered-device refusal and the snapshot wiring were done by the
+transport task below. Operator inputs still needed: the actor allowlist together with matching clock-rollout entries.
+(D16 removed the former inputs "an Ed25519 key pair generated off-repo, the issuer's `keyId`/`publicKey` and its
+`validFrom`/`validUntil` instants".)
+
+### Offline sync transport (28 October 2026; IMPLEMENTED, UNVERIFIED)
+
+Status: implemented on `claude/mobile-offline-claim-review`. No vitest, TypeScript, build or database command was run
+locally; hosted CI must verify it. Offline attendance stays off: every route answers HTTP 200
+`{outcome:'unavailable',code:'not_configured'}` until `AIHR_MOBILE_OFFLINE_POLICY` lists the actor, and a company whose
+`offline_clocking_enabled` is false is refused (`offline_disabled`) at capabilities and issuance and gets a refused
+receipt from the adjudicator at claim upload.
+
+Routes. All use `mobileRoute` (bearer session, no-store) and prove `?employmentId=` with `integrityEmployment` before
+reading a body or the deployment. Contracts are `lib/mobile-offline-contract.ts`; the HTTP layer is
+`lib/mobile-api/offline-sync-routes.ts`; the assembly is `lib/mobile-api/deployed-offline-clock.ts`.
+
+| Method and path (`/api/mobile/v2/integrity/{ios,android}/offline/...`) | Body (limit) | Success |
+| --- | --- | --- |
+| `GET capabilities` | none | `{outcome:'offline',enabled,apiOrigin,companyId,windowMs,permitCount}` (D16: no `issuers`) |
+| `POST context` | JSON `OfflineClockContextRequest` (1 KiB) | `{outcome:'issued',context,contextId,authorization:'not_granted'}` (`context`: the exact recorded canonical context JSON) |
+| `POST context/close` | JSON `{contextId,closeRequestId,consumedThrough}` (1 KiB) | `{outcome:'closed',...}` |
+| `POST claim` | multipart, 3 MiB total: `claim` JSON (16 KiB), `photo` (jpeg/png, 2 MiB), Android `playIntegrityToken` + `syncBuildVersion` | `{outcome:'processed',receipt}` |
+
+- `enabled` is false while the deployment drains; close and claim upload stay available. SUPERSEDED BY D16: "`issuers`
+  is the deployment's public context-signing registry, so a phone can verify a signed context." No registry is sent.
+- Refresh is re-posting the same context request: the exact original recorded bytes come back. A different nonce for the
+  same request id is `binding_conflict`; a second request while a context is open is `offline_pending`.
+- Framing and size violations are HTTP 400 `bad_request`, as on the online routes. A framed but malformed claim, or one
+  whose proof platform is not the route's, is the typed refusal `invalid_claim` and never reaches consumption.
+- Budgets: the existing per-actor write budget, plus a weighted claim allowance of 64 uploads per actor per hour
+  (`mobile-offline-claim` in `lib/mobile-api/handler.ts`; an engineering admission limit). `RequestBudgetExceeded`, from
+  that allowance or the issuance budget `maximumIssuesPerHour`, is HTTP 429 with `retry-after`.
+
+Error mapping. Refusals carry no receipt and change nothing. One code per service reason:
+
+| Source | Answer |
+| --- | --- |
+| `OfflineContextIssueError` | `refused` with its reason (`key_unavailable`, `binding_conflict`, `online_pending`, `context_closed`, `time_unavailable`, `offline_disabled`, `device_required`); `configuration_unavailable` is `unavailable` |
+| `OfflineContextCloseError` | `refused` with its reason (`context_unavailable`, `key_unavailable`, `context_closed`, `claims_pending`, `cursor_mismatch`, `binding_conflict`) |
+| `OfflineClaimError` | `refused` with its reason (`scope_unavailable`, `context_unavailable`, `key_unavailable`, `binding_conflict`, `chain_conflict`, `invalid_proof`, `attachment_mismatch`, `time_unavailable`); `configuration_unavailable` is `unavailable` |
+| `OfflineClockStreamError` | `offline_pending` refused, otherwise `configuration_unavailable` |
+| Android sync Play check | `refused` `sync_integrity` with `integrityReason`; provider problems are `unavailable` `proof_unavailable` (configuration: `configuration_unavailable`) |
+| Deployment | `not_configured`, `configuration_unavailable`, `module_unavailable`, `draining` (all `unavailable`) |
+| Subject | `subject_unavailable` (not own employment), `invalid_request` (assembly input parse) |
+
+Ordering (both platforms). The client sends claim N+1 only after claim N has a terminal receipt. Consumption verifies
+each claim's original proof against the stream cursor, so N+1 sent first is `chain_conflict` with nothing consumed. On
+iPhone the claim's own App Attest counter is verified and advanced inside consumption; no offline endpoint takes a
+transport assertion. An exact retry returns the terminal receipt without photo, token or provider call.
+
+Android sync integrity (`lib/mobile-api/offline-sync-integrity.ts`, owner decision 4). The standard token's requestHash
+is base64url(sha256(JSON `['aihr.mobile.integrity',1,'attendance.clock.offline.sync',claimDigest,signatureSha256,syncBuildVersion]`)):
+the receipt digest, the hex sha256 of the base64-decoded original signature and the uploading build. The verdict's
+versionCode must equal `syncBuildVersion` and be configured; the token must be no older than the clock rollout policy's
+`maxTokenAgeMs` (already in `AndroidClockIntegrityPolicy`, so no new policy field) and no further ahead than
+`allowedFutureSkewMs`. Package, certificates, app recognition, device integrity and licensing use the same policy;
+location-signal rules do not apply. The verdict describes the upload only. It does not authenticate capture-time build,
+integrity, location or time, and it is not stored. A failure is a refusal with no receipt; the phone keeps the claim
+queued. The check runs after receipt recovery and proof/chain verification, outside locks. The online verifier
+(`play-integrity.ts`) is unchanged; this sibling repeats its decode request and verdict shape. An Android deployment
+without a usable Google credential neither advertises nor issues (`configuration_unavailable`).
+
+Wiring. The assembly builds `offlineClockSnapshotPort({target,windowMs,permitCount})` per request from the resolved
+deployment and passes that same function to issuance and the adjudicator. The `deps.snapshot` override is gone, so
+window, permit count and target have one owner. Decision 5 is enforced in the issuance service: a company with
+`require_registered_device` gets `device_required`, after the offline-enabled check, before budget or writes. Exact
+recovery of an earlier request still works so the phone can close it. `OfflineContextIssueError` moved to
+`lib/mobile-offline-errors.ts` (re-exported, same class), so the attendance facade loads no `server-only` module.
+
+Tests: `test/mobile-offline-http.test.ts` (handler level) and `test/mobile-offline-deployment.test.ts` (mounted routes).
+`test/mobile-offline-deployment-config.test.ts` now observes the real port instead of injecting one.
+
+NOT done: the native client; storing the sync verdict or a sync audit event; physical-device, vendor and airplane-mode
+witnesses; settings UI for the company switch. (D16 removed the former items "delivering registry updates other than
+through capabilities" and "KMS custody".)
+
+### Native client sync engine (28 October 2026; IMPLEMENTED, UNVERIFIED)
+
+Status: implemented on `claude/mobile-offline-claim-review`; no vitest, TypeScript, Metro, Expo, build or device command was
+run locally (hosted CI must verify it). No screen calls it yet: the clock screen is unchanged, so online clocking behaves as
+before even with the switch on, until the UI task wires `beforeOnlinePunch`/`captureOfflinePunch`.
+
+Default off (owner decision 5). Unless `EXPO_PUBLIC_OFFLINE_CLOCKING==='1'` (`offlineClockingBuild` in `mobile/lib/config.ts`)
+`openOwnedSignedClock` supplies no offline ports, reads no anchor and sends nothing new, and every `mobile/lib/offline-sync.ts`
+function returns `off`/`online` before any storage, native or network work. With it on, offline also needs capabilities
+`{outcome:'offline',enabled:true,apiOrigin===config.apiUrl}`; `enabled:false` (drain) stops new arming while existing queues
+still upload and close.
+
+Server addition. Capabilities now return `companyId` (the selected employment's own company, the same owner the deployment
+lookup uses), so the phone can bind the context scope. The iPhone target environment is read from the stored key receipt
+(`signingEnvironment` on the Apple enrollment journal); Android's is null.
+
+State machine (one installed-account journal, `mobile/lib/signed-clock-journal.ts` + `offline-clock-state.ts`, sealed under the
+existing device-only master; every step commits before its side effect):
+
+| State | Meaning | Next |
+| --- | --- | --- |
+| E1 `context_requested` | binding + request-start snapshot saved before the context POST | E2; or none via `abandonReservation` only for `offline_pending`, `online_pending`, `offline_disabled`, `device_required`, `context_closed`, `key_unavailable` |
+| E2 `context_ready` | checked context (D16: shape and binding, no signature) + response snapshot; claims C1-C7 | E3, or E4 directly after the last permit's receipt (the server closed it as exhausted) |
+| E3 `closing` | `{close:{requestId,consumedThrough}}` saved before the close POST; only when every claim is settled | E4 on `closed`, or on `context_closed`/`key_unavailable`/`context_unavailable`; back to E2 on `cursor_mismatch` (unreceived claims requeued); held on `claims_pending`/`binding_conflict`; kept on `unavailable` or transport failure (identical resend) |
+| E4 closed | `offline:null`; the receipts move to the snapshot's `recent` list for the employee's view | re-arm |
+
+Claims: C1 `capture_requested`, C2 `photo_retained`, C3 `captured`, C4 `signing`, C5 `proof_ready` (+`nativeReleased`), C6
+`receipt_saved` (the exact receipt: request, context, sequence, digest and photo sha must match, else `SignedClockConflict` and
+nothing is saved), C7 `photo_deleted` (the retained photo deleted after C6 commits). Receipts form a strict prefix. A claim may
+carry `undeliverable:{reason,dismissed}`; the first undeliverable claim makes every later one undeliverable
+(`earlier_undeliverable`). `removeUndeliverable` records the employee's confirmed removal; removed claims' photos are deleted
+when the exchange clears (E4), because `cursor_mismatch` can reopen them for an exact re-upload. The installation quota admits
+receipt, photo-deletion, undeliverable and close transitions at the cap (`isOfflineResolution`); never a new claim or proof.
+
+Upload (`uploadNextOffline`, inside the serialized owner): the lowest claim without a receipt, only at C5 with native custody
+released; it never signs, and a retry resends the identical claim JSON and photo bytes. Mapping: `processed` -> C6/C7;
+`key_unavailable`, `context_closed`, `context_unavailable`, `binding_conflict`, `invalid_proof`, `attachment_mismatch`,
+`invalid_claim` and HTTP 400 -> undeliverable; `unavailable` codes, `chain_conflict`, network failures and 5xx -> queued with
+backoff (429 honours retry-after); `sync_integrity` with `stale_token`/`request_mismatch`/`invalid_token`/`token_missing` -> one
+immediate retry with a fresh token, other integrity reasons -> slow retry; 401 propagates and the queue stays. Other refusals
+(`scope_unavailable`, `time_unavailable`, ...) are a slow retry: they are not in the owner's undeliverable list.
+
+Transport (`mobile/lib/offline-clock-ports.ts`, wired by `openOwnedSignedClock`): the four endpoints in `mobile/lib/api.ts`;
+multipart claim upload with the retained photo bytes (no plaintext file); Android requests a fresh standard Play token per
+attempt with requestHash from `entry.digest` + hex sha256(base64-decoded original signature) + the RUNNING build's
+`capabilities().buildVersion` (`mobile/lib/offline-sync-hash.ts`, pinned to the server owner by
+`test/mobile-offline-sync-hash.test.ts`); iPhone makes no native call at upload. Photo deletion is guarded like `checkPhoto`
+(own exchange, settled claim). SUPERSEDED BY D16: "The issuer registry is a sealed cache replaced on every successful
+capabilities read and used to verify contexts, including offline at capture." There is no registry cache; the context
+check needs nothing but the journal's own saved context, so it works offline at capture unchanged.
+
+Identity anchor (blocker b). `{namespace,apiOrigin,actorId,employmentId,companyId,platform}` is a sealed file
+(`mobile/lib/offline-anchor.ts`; SecureStore size limits are UNKNOWN), written before the reservation and on each online sync of
+an existing exchange, cleared with the exchange. Only after a request got no HTTP response does `openOwnedSignedClock` (and the
+base submission journal) open from it instead of `me`. Logout (`auth.ts` `remove`) deletes the anchor file and nothing else: the
+sealed queue and photos stay, the same employee's next online open uploads them, and another account signing in has a different
+journal scope and no anchor, so it never sees or sends them.
+
+Connectivity test (decision 1): `NetworkUnavailableError` (`mobile/lib/errors.ts`), thrown by `api.ts` and the token refresh in
+`auth.ts` only when no HTTP response arrived (fetch rejected or the 15 s timeout fired first); still an `UnavailableError`, so
+online callers are unchanged. The probe is the offline capabilities read made immediately before a punch. No device-reachability
+API is used (none is in the dependency set). A hung server is indistinguishable from no network.
+
+Driver (`mobile/lib/offline-sync.ts`): `armOffline` (keep a context ready when online and idle), `beforeOnlinePunch` (route:
+online / offline / blocked; hands back a zero-claim context with `consumedThrough` 0; uploads saved claims first, strictly in
+order, and closes before allowing online), `afterOnlinePunch` (re-arm), `captureOfflinePunch` (capture + local signing, no
+network; the base command must already be saved by the clock screen), `syncOffline` (foreground/manual; backoff; at most 64
+upload attempts per rolling hour per account on this device), `offlineClaims` (Recorded / Held for HR review / Not recorded /
+Couldn't be sent / waiting), `removeUndeliverable`, `subscribeOfflineForeground`. Expiry (decision 7): capture is refused
+(`SignedClockUnavailable('expired')`) once the proven elapsed lower bound since the response reaches the context window;
+unknown continuity is allowed.
+
+Needs physical devices (not available; must not be replaced with synthetic success): airplane mode across a shift; cold start
+offline after force quit and reboot; iOS App Attest cached assertions with no network; Android Keystore signing offline and a
+real Play standard token bound to the sync requestHash and accepted by Google; `expo/fetch` multipart with in-memory `bytes()`
+parts on both platforms; real timeout/no-response behaviour of the OS network stack; sealed-file atomic replace
+(`moveSync` overwrite) on device file systems; behaviour across app upgrade with a queue present.
+
+Orchestrator decisions (28 October 2026), implemented:
+1. Removed deployment. `unavailable/not_configured` after offline was enabled means the deployment was removed (drain is the
+   graceful path). An E1 reservation answered `not_configured` (context POST or a later capabilities read) is abandoned;
+   an E2/E3 context with zero claims gets a best-effort close (same persisted closeRequestId) and is then dropped locally
+   (`releaseUnusedContext`). If a server lease really remains, the online punch receives the server's own `offline_pending`
+   refusal; the phone does not block itself. Saved claims stay sealed. `configuration_unavailable`, `module_unavailable` and
+   network failures stay transient (retry and hold).
+2. E3 with no answer. `beforeOnlinePunch`, `syncOffline` and the foreground subscription (`keepOfflineSynced`) resend the
+   persisted close with the same closeRequestId; online clocking resumes once it is answered `closed`.
+3. Another employment. The installed account has one exchange. `beforeOnlinePunch(c,{open})` opens the holding employment
+   (the exchange view exposes only its employmentId to the same actor, never its claims), hands back an unused context or
+   uploads its saved claims first, in order, and closes it, before the punching employment clocks online. Without `open` it is
+   `blocked: other_employment`. Offline capture is offered only to the employment that holds the ready context.
+
+`keepOfflineSynced(c)` subscribes to the foreground and runs `syncOffline` on every return to `active` (backoff respected),
+uploading saved claims, resending a saved close and re-arming without user action.
+
+Superseded the same day: the screens were built in `c46fd6848` (clock states, saved-punch list with reasons,
+Remove-with-confirmation, offline cold start from the anchored employment) and passed hosted checks (evidence in
+`docs/research/mobile-review-2026-10-27/platform-evidence.md`). Originally NOT done: the screens (clock-panel wiring, Couldn't-be-sent confirmation, outcome list, offline employment selection on an
+offline cold start); no HR-outcome fetch (decision 4).
+Still by design: no HR-outcome fetch on the phone (decision 4). HR resolves a held punch through an attendance
+correction, which the employee sees in My attendance > applications (M12, 29 October 2026).
+
+
+## Owner decision D16 — keyless server (29 October 2026) — IMPLEMENTED, UNVERIFIED
+
+Decision as recorded (owner, 29 October 2026): the product runs on customer premises and in our cloud, so offline
+attendance must not depend on a server-held key or a particular KMS. The server signs no offline context. It accepts a
+claim only when it matches the context the server itself recorded (`mobile_offline_context`: digest, nonce, device lease,
+permits, expiry) and is signed by the phone's own hardware key (App Attest / Android Keystore), which never leaves the
+phone. Removed: the `AIHR_MOBILE_OFFLINE_SIGNING_KEY` signer, the issuer registry and its rotation, and the phone's
+Ed25519 verification. Contexts are stored without the shared master secret if they contain nothing sensitive (verified
+during the build). Supersedes owner decision 1 (signing key custody) of 28 October 2026. Default off; 0647 remains an
+unapplied draft.
+
+Status: implemented on `claude/mobile-offline-keyless`. UNVERIFIED: no vitest, TypeScript, build, Metro or database
+command was run locally; hosted CI must verify it. Offline attendance stays off by default; draft 0647 is still
+unjournaled and unapplied (changed in place, see below). No physical device has exercised any of it.
+
+### What the server does now
+
+- Issuance (`core/mobile-offline-context.ts`) takes `{apiOrigin, maximumIssuesPerHour}` and the two trusted ports, and no
+  key material. A new context has `expiresAt = issuedAt + windowMs` exactly (formerly capped by the issuer validity) and
+  no `issuer` field. The server hands out `offlineClockContextJson(context)`: the canonical JSON of the strictly parsed
+  context, in schema key order. It records that exact text, unencrypted, in `mobile_offline_context.context_json`, beside
+  `context_digest` = SHA-256 of the positional bytes (`offlineClockContextClientData`), which every claim names. The final
+  issuance check also confirms the row still holds exactly those bytes and that digest.
+- Recovery and claims read the record through `readIssuedOfflineContextTx`. The stored text must be canonical
+  (re-serializing the parsed context reproduces it byte for byte), its digest must equal `context_digest`, every bound
+  column (id, request id/nonce, policy revision, issued/expiry instants, permit count, apiOrigin, tenant, actor,
+  employment, company, device key, both installations) must agree, and the permit rows must equal the recorded
+  inventory, else `configuration_unavailable`. No key, secret or signature is involved.
+- A claim is accepted only along this chain, unchanged except for where the context comes from: the claim names a context
+  id and digest; the service loads its own row for this tenant, actor, employment and device key (else
+  `context_unavailable`) under the existing actor, key and stream locks; `verifyOfflineClockProof` requires the claim
+  scope to equal the recorded scope, the claim digest to equal the recorded digest, the registered leased key to match
+  the recorded scope and target, the permit to be that context's permit for the ordinal, and the chain to continue the
+  recorded cursor; then the claim's own hardware proof is verified (App Attest assertion and counter on iPhone; Android
+  Keystore ECDSA, plus the payload-bound Play check at sync). Adjudication, receipts, replay and idempotency, drain mode,
+  the 15-minute proven window, HR review and every refusal code are unchanged.
+- Deployment (`core/mobile-offline-rollout.ts`, `lib/mobile-offline-rollout-policy.ts`): `AIHR_MOBILE_OFFLINE_POLICY` keeps
+  version, mode, windowMs, permitCount, maximumIssuesPerHour, photoRetentionMs and the actor allowlist; the Android/iOS
+  integrity policy stays in `AIHR_MOBILE_CLOCK_POLICY`. `issuers` and `signingKeyId` are gone, and a policy that still
+  carries them fails closed. `AIHR_MOBILE_OFFLINE_SIGNING_KEY` is read by nothing. `AI_CONFIG_SECRET` (already required for
+  other features) stays required, because claims and their photos are still stored encrypted; the offline feature needs
+  no new secret. In drain mode an exact retry now always recovers the recorded bytes.
+- Capabilities no longer carry `issuers`. `lib/mobile-api/offline-context-signature.ts` is deleted.
+
+### What the phone does now
+
+`mobile/lib/offline-context.ts` `verifyNativeOfflineClockContext(raw, binding, assertCurrent)` runs the shared
+`bindOfflineClockContext`: strict, bounded, canonical-text-only parsing; scope (apiOrigin, installation, tenant, company,
+actor, employment, app installation, device key), request id/nonce and app target must equal the current connection
+owner's own binding; then Expo SHA-256 gives the digest the claim references (`context_valid`, `authorization:
+not_granted`). Expiry and window rules are unchanged (schema refinements at parse, the capture-time elapsed bound and
+server adjudication). There is no signature verification and no sealed issuer-registry cache: `readIssuerRegistry` and
+`writeIssuerRegistry` and the `offline-issuers` device record are gone, and capabilities reads cache nothing. The journal's
+`rawContext` is the canonical context JSON itself (no `{context, signature}` envelope). FACT: `@noble/curves` is still
+used by the phone (`mobile/lib/company-profile.ts` verifies the signed company setup profile with it), so the dependency
+stays; no offline module imports it.
+
+### Storage finding: why the context record is plaintext
+
+Every field of a context, and where the same fact is already stored unencrypted:
+
+| Context field | Already plaintext in |
+| --- | --- |
+| `version`, `purpose`, `id`, `requestId`, `requestNonce` | constants; `mobile_offline_context.id`, `request_id`, `request_nonce` |
+| `scope` (apiOrigin, installation, tenant, company, actor, employment, app installation, device key) | the same row's columns; the deployment's clock rollout |
+| `target` (platform, app id, environment) | `mobile_integrity_key.platform`, `app_id`, `environment` |
+| `issuedAt`, `expiresAt` | `issued_at`, `expires_at` |
+| `policy` (revision, offline enabled, window, geofencing required, maximum accuracy, photo requirement) | `policy_revision`; `attendance_policy`; `employment.geofencing_enabled`, `attendance_photo_setting`; the deployment policy |
+| `sites` (id, name, lat, lng, radius) | `clocking_location` (the company's configured clocking sites) |
+| `attendance` (baseline fingerprint, date, clocked in, open since) | derived from `attendance_punch` and `attendance` |
+| `permits` (id, ordinal, nonce) | `mobile_offline_permit` |
+
+FACT: no salary, medical data, free text, photo or punch location is in a context (the claim carries the punch location
+and stays encrypted, as does its photo). Decision: plaintext, no `encryptSecret` on the context path. RISK (unchanged, not
+new): an administrator could configure a clocking site at someone's home; that coordinate is already plaintext in
+`clocking_location`, so the context adds no exposure. No DECISION REQUIRED arises from this finding.
+
+### Draft 0647 changes (in place; still unjournaled)
+
+`mobile_offline_context` loses `issuer_key_id`; `context_ciphertext` becomes `context_json text NOT NULL
+CHECK(octet_length(context_json) BETWEEN 2 AND 65536)`. Nothing else in 0647 referred to the issuer or the context
+ciphertext. The immutability trigger already refuses any change to these columns, for the table owner too. The
+test worker restore (`test/helpers/mobile-offline-draft.ts`) drops the whole table, so it needed no change; no function,
+table or trigger was added or removed. `db/schema.ts` declares `contextJson` and no `issuerKeyId`.
+
+### Refusal mapping (old to new)
+
+| Former outcome | Where | Now |
+| --- | --- | --- |
+| `invalid_signature`: context bytes altered | server verifier (`offline-context-signature.ts`, used by tests; the claim path already used the stored record) | A claim naming altered bytes names another digest: proof `context_mismatch`, refused `binding_conflict` (the phone marks it undeliverable) |
+| `issuer_unavailable`: unknown, revoked or out-of-validity issuer | server verifier | A context the server never recorded (forged, another deployment, lost to a backup restore) is refused `context_unavailable`; an expired one meets the unchanged window rules |
+| `invalid_signature` / `issuer_unavailable` on the phone | `mobile/lib/offline-context.ts` | None: the phone checks shape and binding only (`malformed`, `scope_mismatch`, `request_mismatch`, `target_mismatch` unchanged); the server's record refuses the claims |
+| Missing issuer-registry cache (`SignedClockUnavailable('configuration')`) | `mobile/lib/offline-clock-ports.ts` | None: nothing is cached |
+| AES-GCM failure of the stored record | `readIssuedOfflineContextTx` | Noncanonical text, digest or bound-column mismatch, or a different permit inventory: `configuration_unavailable` (same code) |
+| Signer/key deployment errors (`configuration_unavailable`) | `readMobileOfflineDeployment` | Gone; a policy still carrying `issuers`/`signingKeyId` is `configuration_unavailable` |
+| Drain with no key: even an exact retry was `draining` | `deployed-offline-clock.ts` | An exact retry returns the recorded bytes; a new issuance is still `draining` |
+| Receipt review reason `issuer_unavailable` | `lib/mobile-offline-receipt.ts` | Removed, with its HR labels (six locales) and the phone label `offlineReasonPassCheck`. No adjudicator ever produced it and no receipt can hold it (0647 was never applied). An unknown stored reason still shows the generic label on both screens |
+
+### Threat analysis: what the server signature protected, and what covers it now
+
+1. Tampering in transit. Before, the phone verified an Ed25519 signature. Now the context arrives over HTTPS from the
+   paired company origin (the company profile, signed with a key built into the app, pins `apiOrigin`). A context changed
+   in transit is still useless: each claim's hardware-key proof commits to the digest of the bytes the phone received,
+   and the server accepts only its recorded digest (`binding_conflict`). Residual: such a change can make a phone capture
+   claims that are then refused. That is denial of service, which an attacker able to break TLS could cause anyway.
+2. Authenticity (did this server issue it?). The server's own row, filtered by tenant, actor, employment and device key,
+   with canonical bytes, digest and permits, replaces signature plus registry. Anything unrecorded is `context_unavailable`.
+3. Integrity of the stored record. Before, AES-GCM with AAD. Now: the app role can change only cursor and close columns,
+   and the `mobile_offline_context_progress` trigger refuses any other change even for the table owner; every read checks
+   canonical bytes against the digest and the bound columns; and the hardware-signed claim names the original digest, so
+   rewriting both text and digest makes genuine claims fail closed, never accepts a claim the phone did not sign. An
+   attacker with superuser database access could already write attendance directly; that is outside this boundary
+   (unchanged).
+4. Replay. Permits and nonces are recorded per context. Consumption checks the chain cursor and the permit ordinal, with
+   unique permit, request and App Attest counter constraints. A permit replayed under a new request id is
+   `chain_conflict`; an exact retry returns the same receipt. The signature never protected replay; nothing changed.
+5. Cross-deployment (cloud versus on-premises). Before, the other deployment's registry lacked the key. Now the other
+   server has no record of the context id (`context_unavailable`), and the scope binds `apiOrigin` and the installation
+   (`scope_unavailable` or `binding_conflict`).
+6. Backup restore. A context issued after the backup point is unknown to the restored server, so its claims are refused
+   `context_unavailable` (the phone marks them undeliverable). RISK, unchanged by D16: for a context recorded before the
+   backup, the restored cursor is behind the phone's receipts, so the phone's next claim meets `chain_conflict` and waits;
+   and claims already receipted could be uploaded again by someone holding their bytes. Neither case was protected by the
+   signature.
+7. Device and employee proof. The leased hardware key signs every claim, exactly as before.
+8. Key compromise and custody. Before, a leaked signing key let anyone mint contexts that phones accepted (the server's
+   record check still applied), and the key needed a KMS and rotation. Now there is no key to leak, store or rotate.
+
+### Tests
+
+Updated or rewritten: `test/mobile-offline-context-keyless.test.ts` (formerly `mobile-offline-context-signature.test.ts`:
+canonical JSON and digest, binding check, retired fields refused, and a pin that no offline module reads
+`AIHR_MOBILE_OFFLINE_SIGNING_KEY`, imports a signer or Noble, or names the registry cache), the issuance, consumption
+(new stored-record cases: forged or altered digest, unknown context, another actor's context, another installation, app
+installation, device key or origin, replayed permit, a context issued with no key, a record rewritten behind its
+triggers), close, stream-storage (owner cannot rewrite the record), deployment-config, deployment, HTTP, clock-proof,
+context-journal, context-native (the shipped phone check, without Noble), sync, submission-native and native-client
+suites. NOT done: an ADR for D16 (the orchestrator decides), physical-device witnesses, journaling 0647.
+
+D16 hosted evidence (29 October 2026): run 40754796252 @ `c7e30c744` — all 37 selected offline/signed-clock files
+passed (16 DB, 21 no-DB), Linux build and both native bundles passed; root and native TypeScript failed once each
+(an ArrayBuffer-backed digest input on the phone; an uncast deliberately-invalid test target). Repaired at `8e6f6a92b`;
+run 40756216366: both type checks, both bundles and the three affected files passed. Context storage is plaintext:
+a context holds only ids, instants, nonces, policy facts, company clocking sites and an attendance fingerprint, all
+already stored unencrypted elsewhere. Claims and photos remain encrypted with the existing app secret
+(`AI_CONFIG_SECRET`), unchanged by D16; offline attendance needs no NEW secret. Pre-existing RISK, unchanged: after a
+database restore, already-receipted claims could be uploaded again and the phone's next claim waits on
+`chain_conflict`.

@@ -5,24 +5,46 @@ import { ImageManipulator,SaveFormat } from 'expo-image-manipulator';
 import { Directory,File,Paths } from 'expo-file-system';
 import { randomUUID } from 'expo-crypto';
 import { AppState } from 'react-native';
+import type {ClockSourceSignals} from '../../lib/mobile-clock-integrity';
 import type { LocalAttachment } from './journey-drafts';
 import { t } from './i18n';
-export async function capturePosition(){
+import {LocationCaptureError} from './errors';
+export async function capturePosition(assertCurrent?:()=>void){
+  assertCurrent?.();
   const permission=await Location.requestForegroundPermissionsAsync();
-  if(permission.status!=='granted')throw new Error(t('locationPermission'));
+  if(permission.status!=='granted')throw new LocationCaptureError(permission.canAskAgain?'permission_denied':'permission_blocked',t(permission.canAskAgain?'locationPermission':'locationPermissionBlocked'));
+  assertCurrent?.();
+  const permissionAccuracy:'precise'|'approximate'|'unavailable'=permission.android?.accuracy==='coarse'||permission.ios?.accuracy==='reduced'?'approximate':permission.android?.accuracy==='fine'||permission.ios?.accuracy==='full'?'precise':'unavailable';
   if(AppState.currentState!=='active')throw new Error(t('unlockContinue'));
   let timeout:ReturnType<typeof setTimeout>|undefined;
-  const fix=await Promise.race([Location.getCurrentPositionAsync({accuracy:Location.Accuracy.High}),new Promise<never>((_,reject)=>{timeout=setTimeout(()=>reject(new Error(t('locationTimeout'))),20000);})]).finally(()=>clearTimeout(timeout));
-  if(fix.mocked)throw new Error(t('mockLocation'));
+  let ended=false;
+  const fix=await Promise.race([(async()=>{
+    if(!await Location.hasServicesEnabledAsync())throw new LocationCaptureError('services_disabled',t('locationServicesDisabled'));
+    if(ended)throw new LocationCaptureError('unavailable',t('locationTimeout'));
+    if(AppState.currentState!=='active')throw new LocationCaptureError('unavailable',t('unlockContinue'));
+    assertCurrent?.();return Location.getCurrentPositionAsync({accuracy:Location.Accuracy.High});
+  })(),new Promise<never>((_,reject)=>{timeout=setTimeout(()=>reject(new LocationCaptureError('unavailable',t('locationTimeout'))),20000);})])
+    .catch(error=>{throw error instanceof LocationCaptureError?error:new LocationCaptureError('unavailable',t('locationTimeout'));})
+    .finally(()=>{ended=true;clearTimeout(timeout);});
+  if(AppState.currentState!=='active')throw new Error(t('unlockContinue'));
+  if(fix.mocked)throw new LocationCaptureError('mock_location',t('mockLocation'));
   const {latitude:lat,longitude:lng,accuracy}=fix.coords;
-  if(accuracy==null||![lat,lng,accuracy].every(Number.isFinite)||Date.now()-fix.timestamp>120000)throw new Error(t('locationTimeout'));
-  return {lat,lng,accuracy,sampledAt:fix.timestamp};
+  if(accuracy==null||![lat,lng,accuracy,fix.timestamp].every(Number.isFinite)||Math.abs(lat)>90||Math.abs(lng)>180||accuracy<0||fix.timestamp<=0)
+    throw new LocationCaptureError('invalid_fix',t('locationInvalid'));
+  if(Math.abs(Date.now()-fix.timestamp)>120000)throw new LocationCaptureError(fix.timestamp>Date.now()?'future_fix':'stale_fix',t(fix.timestamp>Date.now()?'locationFuture':'locationExpired'));
+  // Expo iOS emits a Double in milliseconds. The published v1 command uses whole milliseconds;
+  // truncation changes representation by less than 1 ms and never determines attendance time.
+  // Expo exposes a mock flag on supported Android builds. It does not expose a provider or
+  // iOS sourceInformation here; preserve unavailable facts as null, never as fabricated false.
+  const source:ClockSourceSignals={provider:null,mock:typeof fix.mocked==='boolean'?fix.mocked:null,simulated:null,accessory:null};
+  return {lat,lng,accuracy,sampledAt:Math.trunc(fix.timestamp),permissionAccuracy,source};
 }
-export async function capturePhoto():Promise<LocalAttachment|null>{
+export async function capturePhoto(assertCurrent?:()=>void):Promise<LocalAttachment|null>{
+  assertCurrent?.();
   const permission=await ImagePicker.requestCameraPermissionsAsync();
   if(!permission.granted)throw new Error(t('cameraPermission'));
   if(AppState.currentState!=='active')throw new Error(t('unlockContinue'));
-  const result=await ImagePicker.launchCameraAsync({mediaTypes:['images'],cameraType:ImagePicker.CameraType.front,quality:.7,exif:false});
+  assertCurrent?.();const result=await ImagePicker.launchCameraAsync({mediaTypes:['images'],cameraType:ImagePicker.CameraType.front,quality:.7,exif:false});
   if(result.canceled)return null;
   const original=result.assets[0];
   const image=ImageManipulator.manipulate(original.uri);
@@ -44,6 +66,7 @@ export async function capturePhoto():Promise<LocalAttachment|null>{
   }
 }
 export function appendAttachment(form:FormData,key:string,file:LocalAttachment){
-  // React Native's FormData file-part contract; do not set multipart Content-Type (fetch owns boundary).
-  form.append(key,{uri:file.uri,name:file.name,type:file.mimeType} as unknown as Blob);
+  // Expo fetch accepts the File's bytes; URI-only React Native parts are unsupported.
+  // Fetch owns the multipart boundary. Preserve MIME even for extensionless document caches.
+  form.append(key, {name:file.name,type:file.mimeType,bytes:()=>new File(file.uri).bytes()} as unknown as Blob);
 }

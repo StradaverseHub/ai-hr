@@ -9,6 +9,12 @@ import { publicErrorMessage } from '@/lib/public-error';
 import { scopedAdmin } from '@/lib/scope';
 import { listAttendanceApplicationHistory, attendanceApplicationFilterOptions, type AttendanceHistoryFilter } from '@/packs/attendance/service';
 import { PageHeader, Card, ErrorBanner, pageWideCls, inputCls } from '@/components/ui';
+import { OfflineClaimsReview } from './offline-review';
+import { loadOfflineReview, offlineReviewTabCount } from './offline-data';
+
+/** The Offline punches tab's address and its own query keys, which the status tabs never carry. */
+const OFFLINE_HREF = '/attendance/application-history?view=offline';
+const OFFLINE_KEYS = ['view', 'offline', 'before'];
 
 export default async function AttendanceApplicationHistoryPage({ searchParams }: {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -24,14 +30,17 @@ export default async function AttendanceApplicationHistoryPage({ searchParams }:
     page: Number(sp.page ?? 1), pageSize: Number(sp.pageSize ?? 25),
   };
   const emptyCounts = { pending: 0, approved: 0, rejected: 0, cancelled: 0, withdrawn: 0, cancelledWithdrawn: 0, all: 0 };
-  const [result, options] = await Promise.all([
+  // The Offline punches tab (draft 0647): null without the draft, and then there is no tab and no ?view=offline.
+  const [result, options, offlineCount] = await Promise.all([
     listAttendanceApplicationHistory(s, scopeIds, f).then(data => ({ data, error: null as string | null })).catch(e => ({ data: { rows: [], total: 0, counts: emptyCounts, page: 1, pageSize: 25 }, error: publicErrorMessage(e) })),
     attendanceApplicationFilterOptions(s, scopeIds),
+    offlineReviewTabCount(s, scopeIds),
   ]);
+  const offlineView = sp.view === 'offline' && offlineCount !== null;
   const { data, error } = result;
   const url = (page: number, nextStatus = status) => {
     const query = new URLSearchParams();
-    for (const [key, value] of Object.entries(sp)) if (value && key !== 'page' && key !== 'status') query.set(key, value);
+    for (const [key, value] of Object.entries(sp)) if (value && key !== 'page' && key !== 'status' && !OFFLINE_KEYS.includes(key)) query.set(key, value);
     if (nextStatus) query.set('status', nextStatus);
     query.set('page', String(page));
     return '/attendance/application-history?' + query;
@@ -67,6 +76,30 @@ export default async function AttendanceApplicationHistoryPage({ searchParams }:
     ['all', t('all'), data.counts.all],
   ] as const;
   const returnTo = attendanceHistoryReturn(url(data.page));
+  const tabClass = (active: boolean) => `inline-flex min-h-11 items-center gap-2 border-b-2 px-1 text-sm ${active ? 'border-primary font-semibold text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`;
+  const statusNav = <nav aria-label={t('statusNavigation')} className="flex flex-wrap gap-x-5 border-b border-border">
+    {tabs.map(([value, label, count]) => {
+      const active = !offlineView && (status === value || value === 'cancelled_withdrawn' && (status === 'cancelled' || status === 'withdrawn'));
+      return <Link key={value} href={url(1, value)} aria-label={`${label} ${count}`} aria-current={active ? 'page' : undefined} className={tabClass(active)}><span>{label}{' '}</span><span className="tabular-nums">{count}</span></Link>;
+    })}
+    {offlineCount !== null && <Link href={OFFLINE_HREF} aria-current={offlineView ? 'page' : undefined} className={tabClass(offlineView)}>{t('offline.tab', { count: offlineCount })}</Link>}
+  </nav>;
+  if (offlineView) {
+    const all = sp.offline === 'all', review = await loadOfflineReview(s, scopeIds, { all, before: sp.before });
+    const offlineHref = (q: Record<string, string>) => `${OFFLINE_HREF}${Object.entries(q).map(([k, v]) => `&${k}=${encodeURIComponent(v)}`).join('')}`;
+    return <div className={pageWideCls}>
+      <PageHeader title={t('title')} description={t('subtitle')} />
+      <div className="space-y-4">
+        {statusNav}
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+          <p className="text-muted-foreground">{t(all ? 'offline.showingAll' : 'offline.showingWaiting')}</p>
+          <Link className="inline-flex min-h-11 items-center text-primary underline" href={all ? OFFLINE_HREF : offlineHref({ offline: 'all' })}>{t(all ? 'offline.showWaiting' : 'offline.showAll')}</Link>
+        </div>
+        <OfflineClaimsReview rows={review.rows} groupAdmin={review.groupAdmin} all={all} />
+        {review.next && <div className="flex justify-end text-sm"><Link className="inline-flex min-h-11 items-center text-primary underline" href={offlineHref({ ...(all ? { offline: 'all' } : {}), before: review.next })}>{t('offline.older')}</Link></div>}
+      </div>
+    </div>;
+  }
   return <div className={pageWideCls}>
     <PageHeader title={t('title')} description={t('subtitle')} /><ErrorBanner message={error ?? undefined} />
     <CollapsibleEmployeePanel panel={employeePanel} keepPanelMounted
@@ -75,12 +108,7 @@ export default async function AttendanceApplicationHistoryPage({ searchParams }:
       detailHeader={selected ? <p className="min-w-0 flex-1 text-sm font-semibold">{selected.employeeCode ? `${selected.employeeCode} · ` : ''}{selected.name}</p> : undefined}>
     <AttendanceHistoryFilters selection={selection} panel={panel} defaultOpen={(await cookies()).get('attendance-history-panel')?.value === '1'}>
       <div className="space-y-4">
-        <nav aria-label={t('statusNavigation')} className="flex flex-wrap gap-x-5 border-b border-border">
-          {tabs.map(([value, label, count]) => {
-            const active = status === value || value === 'cancelled_withdrawn' && (status === 'cancelled' || status === 'withdrawn');
-            return <Link key={value} href={url(1, value)} aria-label={`${label} ${count}`} aria-current={active ? 'page' : undefined} className={`inline-flex min-h-11 items-center gap-2 border-b-2 px-1 text-sm ${active ? 'border-primary font-semibold text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}><span>{label}{' '}</span><span className="tabular-nums">{count}</span></Link>;
-          })}
-        </nav>
+        {statusNav}
         <AttendanceHistoryTable key={returnTo} rows={data.rows} returnTo={returnTo} />
         <div className="flex flex-wrap justify-between gap-4 text-sm"><p>{t('total', { count: data.total })}</p><nav aria-label={t('pagination')} className="flex items-center gap-4">{data.page > 1 && <Link className="inline-flex min-h-11 items-center text-primary underline" href={url(data.page - 1)}>{t('previous')}</Link>}<span>{t('page', { number: data.page })}</span>{data.page * data.pageSize < data.total && <Link className="inline-flex min-h-11 items-center text-primary underline" href={url(data.page + 1)}>{t('next')}</Link>}</nav></div>
       </div>

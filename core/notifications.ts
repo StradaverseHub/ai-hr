@@ -22,7 +22,7 @@ import { rewardNotificationRecipients } from '../packs/rewards/service';
 import { randomUUID } from 'node:crypto';
 import { notificationEmailCategory, type NotificationEmailCategory } from '../lib/notification-email-model';
 import {assertNotificationSweepConnection,noticeNotificationRecipientsTx,noticeSnapshotIdsTx,type NoticeRecipientReader,type NoticeEventReader,type NotificationSweepConnection} from './notice-projection';
-import { and, asc, desc, eq, gt, isNotNull, isNull, lte, ne, or, sql, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   appUser,
@@ -1092,42 +1092,68 @@ export type NotificationRow = {
   createdAt: Date;
 };
 
+/** D5 (mobile M10) keyset position: the row's exact `created_at` as UTC text with microseconds (`cursorAt`
+ *  from listNotificationsPage — a JS Date drops the microseconds and would skip or repeat rows) and its id. */
+export type NotificationCursor = { at: string; id: string };
+type NotificationFilter = { read?: boolean; action?: boolean; after?: NotificationCursor | null; ids?: readonly string[]; letterCompanyIds?: string[] };
+const notificationColumns = {
+  id: notification.id, kind: notification.kind, title: notification.title, body: notification.body, linkPath: notification.linkPath,
+  severity: notification.severity, readAt: notification.readAt, createdAt: notification.createdAt,
+};
+/** The one where-builder behind every recipient read: alpha's recipient rule (an employment narrows to its
+ *  rows PLUS the rows addressed to the caller's account — letter notices carry recipientUserId and no
+ *  employment) and letter-company scoping, with D5's keyset cursor and id narrowing. */
+function notificationWhere(ctx: SessionContext, employmentId: string | undefined, opts: NotificationFilter) {
+  return and(
+    employmentId ? or(eq(notification.recipientEmploymentId, employmentId), eq(notification.recipientUserId, ctx.userId ?? '00000000-0000-0000-0000-000000000000')) : undefined,
+    opts.read === true ? isNotNull(notification.readAt) : undefined,
+    opts.read === false ? isNull(notification.readAt) : undefined,
+    opts.letterCompanyIds !== undefined ? and(isNotNull(notification.recipientUserId), inArray(notification.companyId, opts.letterCompanyIds)) : undefined,
+    opts.action === true ? eq(notification.severity, 'action') : undefined,
+    opts.action === false ? ne(notification.severity, 'action') : undefined,
+    // Strictly after the cursor in the one order below: (created_at desc, id desc).
+    opts.after ? sql`(${notification.createdAt}, ${notification.id}) < (${opts.after.at}::timestamptz, ${opts.after.id}::uuid)` : undefined,
+    opts.ids ? (opts.ids.length ? inArray(notification.id, [...opts.ids]) : sql`false`) : undefined,
+  );
+}
+
 /** 3-tab bell (feedback 1514d366): `read` filters by readAt (true ⇒ only read — the History tab;
  *  false ⇒ only unread) and `action` by severity (see unreadNotificationCount). Both undefined ⇒
- *  the pre-existing unfiltered read, so current callers are byte-identical. */
+ *  the pre-existing unfiltered read, so current callers are byte-identical.
+ *  D5: newest first with `id` as the tie-break, so equal instants have one stable order; `after`
+ *  (optional, keyset) continues strictly past a NotificationCursor. No current caller passes it. */
 export function listNotifications(
   ctx: SessionContext,
   employmentId?: string,
-  opts: { limit?: number; read?: boolean; action?: boolean;letterCompanyIds?:string[] } = {}, existingTx?: AiReadTx
+  opts: { limit?: number; read?: boolean; action?: boolean; after?: NotificationCursor; letterCompanyIds?: string[] } = {}, existingTx?: AiReadTx
 ): Promise<NotificationRow[]> {
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
-  opts = { ...opts, letterCompanyIds:opts.letterCompanyIds?.slice() };
+  opts = { ...opts, letterCompanyIds:opts.letterCompanyIds?.slice(), after: opts.after ? { ...opts.after } : opts.after };
 
   return withCanonicalAiReadTx(ctx, existingTx, 'notifications', withTenant, (tx) =>
     tx
-      .select({
-        id: notification.id,
-        kind: notification.kind,
-        title: notification.title,
-        body: notification.body,
-        linkPath: notification.linkPath,
-        severity: notification.severity,
-        readAt: notification.readAt,
-        createdAt: notification.createdAt,
-      })
+      .select(notificationColumns)
       .from(notification)
-      .where(
-        and(
-          employmentId ? or(eq(notification.recipientEmploymentId, employmentId),eq(notification.recipientUserId,ctx.userId??'00000000-0000-0000-0000-000000000000')) : undefined,
-          opts.read === true ? isNotNull(notification.readAt) : undefined,
-          opts.read === false ? isNull(notification.readAt) : undefined,
-          opts.letterCompanyIds!==undefined?and(isNotNull(notification.recipientUserId),inArray(notification.companyId,opts.letterCompanyIds)):undefined,
-          opts.action === true ? eq(notification.severity, 'action') : undefined,
-          opts.action === false ? ne(notification.severity, 'action') : undefined,
-        ),
-      )
-      .orderBy(desc(notification.createdAt))
+      .where(notificationWhere(ctx, employmentId, opts))
+      .orderBy(desc(notification.createdAt), desc(notification.id))
       .limit(Math.min(Math.max(opts.limit ?? 20, 1), 100)),
+  );
+}
+
+/** D5 — one keyset page in listNotifications' order, each row with its exact cursor text. The caller asks
+ *  for one row more than it shows to learn whether another page exists. `ids` narrows to those rows (a
+ *  fresh re-read after a command). RLS still decides which rows exist for the caller. */
+export function listNotificationsPage(
+  ctx: SessionContext,
+  opts: { limit: number; after?: NotificationCursor | null; read?: boolean; ids?: readonly string[]; employmentId?: string },
+): Promise<(NotificationRow & { cursorAt: string })[]> {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({ ...notificationColumns, cursorAt: sql<string>`to_char(${notification.createdAt} at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')` })
+      .from(notification)
+      .where(notificationWhere(ctx, opts.employmentId, opts))
+      .orderBy(desc(notification.createdAt), desc(notification.id))
+      .limit(Math.min(Math.max(opts.limit, 1), 101)),
   );
 }
 

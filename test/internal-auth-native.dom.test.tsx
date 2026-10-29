@@ -17,6 +17,7 @@ function fixture(organization?: string) {
   const Input = ({ accessibilityLabel, value, onChangeText, secureTextEntry, editable }: any) => <input aria-label={accessibilityLabel} type={secureTextEntry ? 'password' : 'text'} value={value} disabled={editable === false} onChange={e => onChangeText(e.target.value)}/>;
   const output = { exports: {} as {InternalSignIn:React.ComponentType} };
   const ports: Record<string, unknown> = {
+    'expo/fetch':{fetch:vi.fn()},
     react: React, 'react/jsx-runtime': jsx,
     'react-native': { Text, View:Container, ScrollView:Container, TextInput:Input, Image:({accessibilityLabel,source}:any)=><img alt={accessibilityLabel} src={source.uri}/>, StyleSheet:{create:(v:unknown)=>v} },
     'expo-router':{router,Redirect:()=>null},'expo-web-browser':{openBrowserAsync:vi.fn()},
