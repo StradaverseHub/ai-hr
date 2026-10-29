@@ -262,6 +262,25 @@ add a second generic binding mode, **assigned**, modelled on the leave-decision 
 - Not yet covered: the other implemented actions keep their bespoke protocols and the existing human-review link
   card. Each needs its own typed hint shape and panel prefill before it can be proposed inline.
 
+### 5.3 Amendment, 30 Oct 2026: chat catalogue derived from the registry (review R6)
+
+- The proposable set is no longer a hand list. `lib/ai/assistant-action-catalogue.ts` derives it from
+  `AGENT_ACTIONS` (implemented prepare and confirm, an inline card hint shape, tier Confirm or Approve) and
+  filters it per caller on exactly three checks: the caller can read the action's module; the session holds the
+  action's registry actor class, derived coarsely from the session alone (any linked person holds `self` and
+  `assigned_approver`; admin classes come from roles and grants), so this is an offering filter, not
+  authority (the guarded choices, prepare and confirm paths re-check the real authority and the assigned
+  inbox); and the action's pause key is not paused (read fresh in a savepoint). A confirmed pause hides the
+  action; controls that cannot be read offer nothing at ask time and show a neutral retry on replay.
+- The same per-question snapshot is shown to the model as the LAST system block (after the constant blocks and
+  the per-user strategy, so the shared prefix stays first) and adjudicates the terminal plan. On replay the
+  sealed proposal is re-adjudicated against the caller's current facts; a structurally valid proposal that is no
+  longer offered renders as a refused "out of date" card with a refresh, and one whose facts or sources could
+  not be checked renders as a neutral "not checked" card with a retry. Neither is a preparable card.
+- Confirmation is unchanged: the separate same-origin, digest-bound human command on the card's panel.
+- Hint shapes stay per action (`assistant-action-proposal-hints.ts`); adding an inline card is one hint entry plus
+  its panel prefill. The other implemented actions keep the human-review link card.
+
 ## 6. Alternatives considered
 
 - **Give the agent its own broad role** (as the nightly sweep does today). Rejected: authority would no longer

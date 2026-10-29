@@ -19160,7 +19160,16 @@
         "openPage": "Open the usual page instead",
         "resolutionOne": "One of your current items matches your question and is selected. Check that it is the right one.",
         "resolutionSeveral": "More than one of your current items could match. Choose the one you mean.",
-        "resolutionNone": "None of your current items matches what you asked. Choose one from the list, or open the usual page."
+        "resolutionNone": "None of your current items matches what you asked. Choose one from the list, or open the usual page.",
+        "badgeReady": "Suggestion",
+        "badgeStale": "Out of date",
+        "staleNote": "Suggested earlier from your question. Nothing was prepared or changed.",
+        "staleBody": "Something changed since this was suggested, such as your access or a feature being switched off, so it can no longer be used here. Refresh to check what you can do now.",
+        "refresh": "Refresh",
+        "failureBody": "Your current items could not be loaded just now. Nothing was prepared or changed. Try again, or open the usual page.",
+        "retry": "Try again",
+        "badgeUnverified": "Not checked",
+        "unverifiedBody": "We couldn't check just now whether this suggestion is still available to you. Nothing was prepared or changed. Try again in a moment, or open the usual page."
       },
       "conversationGovernance": {
         "title": "Main-conversation improvement",

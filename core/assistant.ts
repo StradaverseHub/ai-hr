@@ -29,8 +29,11 @@
  *
  * THE SYSTEM PROMPT AND THE CACHE KEY MUST STAY STABLE. The cacheable prefix is `tools` + `system`, so a
  * single volatile byte — a clock value, a locale, a user id, anything tenant-shaped — invalidates the
- * prefix for every later request and quietly multiplies the cost of the feature. Both are built from
- * constants plus the authorized catalogue and the caller’s versioned conversation strategy. Read the comment on SYSTEM before adding a line to it.
+ * prefix for every later request and quietly multiplies the cost of the feature. The prefix is ordered most
+ * stable first: the module-filtered read tools, the constant system blocks, then the caller's versioned
+ * conversation strategy, then the caller's registry-derived proposal catalogue (review R6). The last two are
+ * per USER, not "stable per (tenant, role)". Read the comment on buildAssistantConversationSystem before
+ * adding a block.
  */
 import { randomUUID } from 'node:crypto';
 import { assistantSourceDigest, sealAssistantDisclosure, type AssistantSourceRead } from '../lib/ai/assistant-disclosure';
@@ -57,7 +60,8 @@ import {isAgentModuleCode,type AgentModuleCode} from '../lib/ai/module-agents';
 import { prepareAssistantConversation } from './assistant-provider-input';
 import { ASSISTANT_PUBLIC_REPLIES, assistantPublicToolResult } from '../lib/ai/assistant-public-replies';
 import { ASSISTANT_TOOLS, toolsFor, type AssistantTool, type ToolOutcome } from './assistant-tools';
-import { assistantReadableModules } from './assistant-readable-modules';
+import { assistantProposalCallerTx } from './assistant-action-catalogue';
+import { assistantProposalCatalogue, CLOSED_PROPOSAL_CALLER, type AssistantProposalCaller } from '../lib/ai/assistant-action-catalogue';
 
 /**
  * §2.5 fixes this at 8: enough for a genuinely multi-part question ("who on my team is on leave next
@@ -120,7 +124,7 @@ const MAX_QUESTION_CHARS = 2000;
 
 
 /**
- * The cache-routing hint. Stable per ROLE, and deliberately not per tenant or per user: OpenAI documents
+ * The cache-routing hint. One constant for every caller, deliberately not per tenant, role or user: OpenAI documents
  * `prompt_cache_key` as a routing hint and its own guidance is that an identifier-shaped key fragments
  * the cache to one entry per person, which is the opposite of what a shared prefix is for. `ConverseArgs`
  * states outright that it must never be a tenant id, user id or email.
@@ -203,6 +207,13 @@ export async function askAssistant(
   // ONE list, computed once: what the model is offered and what dispatch may run are the same array, so
   // a tool outside the tenant's modules cannot be reached by the model simply naming it.
   const offered = toolsFor(ctx);
+  // Review R6: the proposal catalogue is derived from the action registry and filtered for THIS caller
+  // (authority ∩ registry ∩ tier ∩ switches and pauses), read once before any provider call. The same
+  // snapshot is offered in the prompt and adjudicates the terminal plan, so a proposal can only name an
+  // action this caller was offered. No tool result or model text is an input to it. Unreadable facts
+  // offer nothing.
+  const proposalCaller: AssistantProposalCaller = await withTenant(ctx, (tx) => assistantProposalCallerTx(tx, ctx)).catch(() => CLOSED_PROPOSAL_CALLER);
+  const proposable = assistantProposalCatalogue(proposalCaller);
   const tools = offered.map((t) => t.spec);
   // Human turns only: the first question of the carried conversation, then each human reply with the
   // slot it answered, ending with this reply. No prior model answer is replayed.
@@ -235,7 +246,7 @@ export async function askAssistant(
       }
 
       const prepared = prepareAssistantConversation(ctx, cfg, {
-        system: buildAssistantConversationSystem(conversationStrategy.system),
+        system: buildAssistantConversationSystem(conversationStrategy.system, proposable),
         turns,
         tools,
         maxTokens: 2048,
@@ -258,10 +269,10 @@ export async function askAssistant(
         // Terminal model output proposes references, never displayable HR prose. Invalid/truncated
         // plans retain their audit text but acquire no conversational disclosure authority.
         // A proposal (ADR-0151 §4.3) is only a suggestion sealed in this same exchange record: nothing is
-        // prepared or written here. It also needs the caller's current module read set, read only for it.
+        // prepared or written here. It must be in the catalogue this caller was offered for this exchange.
         if (res.stop === 'end' && sourcesComplete) try {
           const parsed = parseAssistantAnswerPlan(res.text);
-          answerPlan = adjudicateAssistantAnswerPlan(parsed, answerReads, parsed.mode === 'propose' ? { readableModules: assistantReadableModules(ctx) } : {});
+          answerPlan = adjudicateAssistantAnswerPlan(parsed, answerReads, parsed.mode === 'propose' ? { proposalCaller } : {});
         } catch { answerPlan = undefined; }
         break;
       }
