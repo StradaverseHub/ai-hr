@@ -139,7 +139,10 @@ export function bankStatutoryTopupBasis(row:{epfMode?:string|null;epfEmployerRat
  return row?.epfMode==='voluntary_excess'&&row.epfEmployerRate!=null?'total':'additive';
 }
 /** b6dbadc5 — an import item's "before" state. The Top-up basis is recorded only when the item changed the EPF
- *  election (category or a rate), the only case revert reads it; other items keep their pre-b6dbadc5 shape. */
+ *  election (category or a rate), the only case revert reads it; other items keep their pre-b6dbadc5 shape.
+ *  NOT WIRED YET: the import writers live in core/import-sections.ts, which must stay byte-identical to the
+ *  installed Bank import worker source (test/ai-review-worker-compatibility.test.ts). Until that file may
+ *  change, items carry no basis, so revert refuses any import that changed a Top-up rate — fail-closed. */
 export function bankStatutoryBeforeState(employeeCode:string,fields:Record<string,string>,row:Parameters<typeof bankStatutoryTopupBasis>[0]):BankStatutoryItemState{
  return ['epf_category','epf_employee_rate','epf_employer_rate'].some(c=>c in fields)?{employeeCode,fields,epfTopupBasis:bankStatutoryTopupBasis(row)}:{employeeCode,fields};
 }
