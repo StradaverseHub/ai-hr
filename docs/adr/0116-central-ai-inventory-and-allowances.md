@@ -148,3 +148,29 @@ born-retired fallback after erasure. Unknown provider usage remains held rather 
 These are prepared source requirements, not a claim of migration or staging acceptance. See the
 [WP5 verification record](../reviews/ai-architecture-wp5-verification-2026-10.md) for exact checks and
 remaining evidence. The coordinated SQL and populated-upgrade rehearsal remain prerequisites.
+
+## October 2026 review amendment — one switch owner per AI feature (WP6)
+
+Every AI feature has exactly one switch. A feature with a catalogued setting (`lib/ai/features.ts`
+`setting`) is switched by that setting alone; a settingless feature by its `feature:` policy row.
+Migration 0692 moves the setting-to-feature map that SQL admission reads into the read-only reference
+table `app.ai_feature_setting`, seeded from `AI_FEATURES` (now including `feedback_planning`, which the
+earlier SQL copy omitted); a parity test keeps the two in step. The policy guard refuses a `feature:`
+row for a setting-backed feature by name. A row stored before that guard existed is ignored by the
+pause check and by admission, and the management page marks it as an ignored stale override rather
+than letting it act as a hidden off-switch. The setting read in SQL applies the same provenance rule
+as the application's entitlement snapshot.
+
+Owner decision 3 (29 October 2026): the six Performance AI switches default OFF, at install too. There
+is no backfill. A tenant with a stored value keeps it; one without now resolves OFF after deploy.
+
+The OneHR per-field limit (five successful drafts per person, field and Malaysia day) stays a
+Performance business quota beside the central allowances; both apply. It is not an `ai_admit`
+allowance because it counts different things: only adjudicated, saved drafts (failed, refused or
+superseded calls are not charged), keyed by a field that can span two Performance features, and
+idempotent by request. `ai_admit` counts every admitted provider call per feature, login, company or
+group. Folding it in would charge people for provider failures and needs a field dimension the
+central ledger does not have; that is a separate owner decision.
+
+These are prepared source requirements, not a claim of migration or staging acceptance. A
+populated-baseline migration rehearsal of 0692 remains a prerequisite.
