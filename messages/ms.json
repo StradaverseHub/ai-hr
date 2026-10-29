@@ -7466,6 +7466,18 @@
         "title": "Tetapan Maklumat Slip Gaji",
         "desc": "Pilih maklumat pekerjaan untuk slip gaji syarikat ini.",
         "cta": "Muat"
+      },
+      "corrections": {
+        "title": "Kawalan pembetulan gaji",
+        "label": "Benarkan tetapan semula gaji dan pembuangan gaji pekerja",
+        "description": "Paparkan Tetapkan semula gaji dan Buang Gaji Pekerja pada larian yang telah dikira tetapi belum diterbitkan. Mematikannya turut menyekat tindakan tersebut. Kebenaran dan semakan gaji sedia ada masih terpakai.",
+        "scope": "Terpakai kepada semua syarikat dalam penyewa ini. Menyimpan tetapan ini tidak mengubah hasil gaji.",
+        "readOnly": "Hanya pentadbir kumpulan boleh mengubah tetapan ini.",
+        "save": "Simpan tetapan pembetulan",
+        "saving": "Menyimpan…",
+        "saved": "Tetapan pembetulan gaji disimpan.",
+        "invalid": "Pilih nilai hidup atau mati yang sah.",
+        "failed": "Tetapan tidak dapat disimpan. Cuba lagi."
       }
     },
     "historyImport": {

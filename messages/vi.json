@@ -7466,6 +7466,18 @@
         "title": "Thiết lập thông tin phiếu lương",
         "desc": "Chọn thông tin việc làm hiển thị trên phiếu lương của công ty.",
         "cta": "Tải"
+      },
+      "corrections": {
+        "title": "Kiểm soát điều chỉnh bảng lương",
+        "label": "Cho phép đặt lại bảng lương và xóa lương nhân viên",
+        "description": "Hiển thị Đặt lại bảng lương và Xóa lương nhân viên trên các đợt đã tính nhưng chưa công bố. Tắt cài đặt cũng chặn các thao tác này. Các quyền và kiểm tra bảng lương hiện có vẫn áp dụng.",
+        "scope": "Áp dụng cho tất cả công ty trong đơn vị này. Lưu cài đặt không thay đổi kết quả bảng lương.",
+        "readOnly": "Chỉ quản trị viên cấp tập đoàn mới có thể thay đổi cài đặt này.",
+        "save": "Lưu cài đặt điều chỉnh",
+        "saving": "Đang lưu…",
+        "saved": "Đã lưu cài đặt điều chỉnh bảng lương.",
+        "invalid": "Chọn giá trị bật hoặc tắt hợp lệ.",
+        "failed": "Không thể lưu cài đặt. Vui lòng thử lại."
       }
     },
     "historyImport": {
