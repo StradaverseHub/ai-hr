@@ -68,7 +68,7 @@ export function OnboardingSettings({ context, options, initialTab = 'settings', 
     }, [context, embedded, busy]);
     useEffect(() => { if (embedded) onError?.(error); }, [embedded, error, onError]);
     useEffect(() => {
-        if (!embedded || !['settings','groups'].includes(tab) || config === initialSettings.current && !flagRetired) return;
+        if (!embedded || !['settings','groups','access'].includes(tab) || config === initialSettings.current && !flagRetired) return;
         const timer = setTimeout(() => save(config), 600);
         return () => clearTimeout(timer);
         // Saves use the serialized canonical writer and its acknowledged revision.

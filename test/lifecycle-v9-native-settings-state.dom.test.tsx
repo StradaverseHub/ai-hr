@@ -39,3 +39,11 @@ it('adopts a fresh Native revision when idle before starting another edit', asyn
   await act(async()=>{vi.advanceTimersByTime(600);});
   expect(mocks.save).toHaveBeenCalledWith(9,expect.objectContaining({groups:expect.arrayContaining([expect.objectContaining({name:'Fresh canonical group'})])}),{},false);
 });
+
+it('autosaves embedded module access through the canonical settings writer',async()=>{
+  vi.useFakeTimers();mocks.save.mockResolvedValue({error:null,revision:8});const value=context();
+  render(<NextIntlClientProvider locale="en" messages={messages}><OnboardingSettings context={value} options={options} embedded initialTab="access"/></NextIntlClientProvider>);
+  fireEvent.click(screen.getByRole('checkbox',{name:'Owner offboarding access'}));
+  await act(async()=>{vi.advanceTimersByTime(600);});
+  expect(mocks.save).toHaveBeenCalledWith(7,expect.objectContaining({access:{onboarding:['owner'],offboarding:['owner']}}),{},false);
+});

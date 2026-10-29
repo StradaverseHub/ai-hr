@@ -1222,6 +1222,14 @@ export async function onboardingUnreadNoticeCount(ctx: SessionContext): Promise<
     }>(await tx.execute(sql `select count(*)::text as count from lc_onboarding_notice where tenant_id=app.current_tenant_id() and user_id=app.current_user_id() and read_at is null and kind<>'digest'`))[0]?.count ?? 0));
 }
 
+/** Explicit V9 initialisation enables its initiating administrator, through the existing access owner. */
+export async function onboardingEnableV9OffboardingTx(ctx:SessionContext,tx:Tx) {
+    const {config,revision}=await configTx(tx,ctx),actor=await actorTx(tx,ctx,config);
+    if(!actor.master)M.fail('Only the Master Admin can initialise offboarding.','forbidden');
+    if(config.access.offboarding.includes(actor.id))return {revision};
+    return saveConfig(ctx,revision,{...config,access:{...config.access,offboarding:[...config.access.offboarding,actor.id]}},{},false,undefined,tx);
+}
+
 /** Shared assignment groups remain owned by the existing onboarding configuration service. */
 export async function onboardingSaveGroupsTx(ctx: SessionContext, tx: Tx, expected: number, groups: M.Group[]) {
     const { config, revision } = await configTx(tx, ctx);

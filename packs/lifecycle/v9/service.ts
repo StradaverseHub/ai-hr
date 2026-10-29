@@ -14,11 +14,12 @@ import * as M from '../../../lib/lifecycle-v9-model';
 import { v9EmploymentLabels } from '../../../lib/lifecycle-v9-employment';
 import { projectNativeCase, nativeDocumentState } from '../../../lib/lifecycle-v9-native';
 import { OnboardingError, nativeCaseFormValues, effectiveFacts as nativeFacts } from '../../../lib/onboarding-model';
+import { changeV9Note, type CaseNoteCommand } from '../../../lib/lifecycle-v9-notes';
 import { v9Defaults } from '../../../lib/lifecycle-v9-defaults';
 import { parseV9Config, validateV9ConfigChange, v9Equal } from '../../../lib/lifecycle-v9-validation';
 import { readSettlementTx, type SettlementView } from './settlement';
 import { readV9PersonnelTx, pushV9PersonnelTx, lockV9PersonnelWritesTx, v9PersonnelWritableKeys } from '../../../core/lifecycle-v9-personnel';
-import { onboardingFulfilmentGroupTx, onboardingHoldingsTx, onboardingReturnCatalogueTx, onboardingRecoverHoldingTx, onboardingCommand, onboardingV9ReadTx, onboardingV9StoreTx, onboardingSetupTx, onboardingSaveGroupsTx, onboardingV9DefinitionsChangedTx, onboardingAssignmentLoadsTx, onboardingUnavailableTx } from '../onboarding/service';
+import { onboardingFulfilmentGroupTx, onboardingHoldingsTx, onboardingReturnCatalogueTx, onboardingRecoverHoldingTx, onboardingCommand, onboardingV9ReadTx, onboardingV9StoreTx, onboardingSetupTx, onboardingEnableV9OffboardingTx, onboardingSaveGroupsTx, onboardingV9DefinitionsChangedTx, onboardingAssignmentLoadsTx, onboardingUnavailableTx } from '../onboarding/service';
 import { issuedToTx, returnAssetTx } from '../../../core/lifecycle-assets';
 import { lifecycleV9EmailIpc } from '../../../lib/lifecycle-v9-email-ipc';
 import type { LifecycleV9DeliveryRequest, LifecycleV9DeliveryResult } from '../../../lib/lifecycle-v9-delivery-model';
@@ -27,7 +28,7 @@ import { resolveDocumentUpload } from '../../../core/employee-documents';
 type Row = { id: string; revision: number; company_id: string; data: M.Case; native?: true };
 export type DirectoryUser = { id: string; name: string };
 export type Options = { users: DirectoryUser[]; companies: { id: string; name: string; registrationNo?: string; address?: string }[]; employees: { id: string; name: string; employeeNo: string; companyId: string }[]; signatoryCandidates?: Record<string,string[]>; labels?: Partial<Record<M.RuleField, Record<string, string>>>; leaveTypes?: { id: string; name: string }[] };
-export type Workspace = { config: M.Config | null; cases: M.Case[]; options: Options; canConfigure: boolean; actor: M.Actor; personnelWritableKeys: string[]; templateUsage?: M.TemplateUsage[]; definitionUsage?: M.DefinitionUsage[] };
+export type Workspace = { permissions?:{onboarding:boolean;offboarding:boolean;administration:boolean}; config: M.Config | null; cases: M.Case[]; options: Options; canConfigure: boolean; actor: M.Actor; personnelWritableKeys: string[]; templateUsage?: M.TemplateUsage[]; definitionUsage?: M.DefinitionUsage[] };
 export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'state' | 'facts' | 'tasks' | 'items' | 'documents'> & { own: boolean; equipment?: { id: string; name: string; kind: 'device'|'system'; state: string; approval: string; handedAt: string|null; receipt: {status:'received'|'problem';at:string;by:string;note:string}|null }[] };
 export type PendingReturns = { held:{id:string;name:string;kind:'system'|'device';group:string|null;source:'asset'|'onboarding';catalogueId?:string;requestNumber?:string}[]; catalogue:{id:string;name:string;kind:'system'|'device';group:string;active:boolean}[]; selected:string[] };
 export type CaseDetail = { returns?:PendingReturns; case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
@@ -38,7 +39,7 @@ async function admin(tx: Tx, companyId?: string): Promise<void> {
   if (!result?.ok) throw new M.V9Error('You do not have permission to change this lifecycle record.', 'forbidden');
 }
 async function companySignersTx(tx:Tx,tenantId:string,companyId:string):Promise<string[]> {
-  const users=await tx.execute<{id:string}>(sql`select u.id from app_user u where u.tenant_id=${tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and exists(select 1 from role_assignment r where r.tenant_id=u.tenant_id and r.app_user_id=u.id and r.role in ('super_admin','hr_admin') and (r.company_id is null or r.company_id=${companyId}::uuid)) order by u.id`);
+  const users=await tx.execute<{id:string}>(sql`select u.id from app_user u where u.tenant_id=${tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and exists(select 1 from lc_onboarding_config cfg where cfg.tenant_id=u.tenant_id and cfg.data->'access'->'offboarding' ? u.id::text) and exists(select 1 from role_assignment r where r.tenant_id=u.tenant_id and r.app_user_id=u.id and r.role in ('super_admin','hr_admin') and (r.company_id is null or r.company_id=${companyId}::uuid)) order by u.id`);
   return users.map(user=>user.id);
 }
 async function actor(tx: Tx, ctx: SessionContext): Promise<M.Actor> {
@@ -144,10 +145,11 @@ export async function v9PreviewEmail(ctx: SessionContext, caseId: string, emailI
 
 export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {
   return withLifecycleTenant(ctx, async tx => {
-    const who = await actor(tx, ctx), config = await configTx(tx, ctx);
-    const [permission] = await tx.execute<{ ok: boolean }>(sql`select app.is_group_admin() as ok`);
+    const who = await actor(tx, ctx); let config = await configTx(tx, ctx);
+    const [permission] = await tx.execute<{ ok: boolean;onboarding:boolean;offboarding:boolean;administration:boolean }>(sql`select app.is_group_admin() as ok, app.onboarding_page_access() as onboarding, app.lc_v9_off_access() as offboarding, app.is_admin() as administration`);
+    if(!config&&permission?.onboarding){const [shell]=await tx.execute<{data:M.Config|null}>(sql`select app.lc_v9_onboarding_shell() as data`);config=shell?.data??null;}
     const companies = await tx.execute<{ id: string; name: string; registrationNo: string; address: string }>(sql`select id,legal_name as name,coalesce(registration_no,'') as "registrationNo",concat_ws(', ',nullif(trim(address_line1),''),nullif(trim(address_line2),''),nullif(trim(address_line3),''),nullif(trim(postcode),''),nullif(trim(city),''),nullif(trim(state),''),nullif(trim(address_country),'')) as address from company where tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(id) order by legal_name,id`);
-    if (!permission?.ok && !companies.length) throw new M.V9Error('HR administration access is required. Open your assigned lifecycle tasks instead.', 'forbidden');
+    if (!permission?.ok && !permission?.offboarding && !permission?.onboarding) throw new M.V9Error('Onboarding or Offboarding module access is required. Open your assigned lifecycle tasks instead.', 'forbidden');
     const users = await tx.execute<DirectoryUser>(sql`select u.id,coalesce(p.full_name,'User') as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) order by name,u.id`);
     const signatoryCandidates=Object.fromEntries(await Promise.all(companies.map(async company=>[company.id,await companySignersTx(tx,ctx.tenantId,company.id)] as const)));
     const employees = await tx.execute<{ id: string; name: string; employeeNo: string; companyId: string }>(sql`select e.id,p.full_name as name,e.employee_code as "employeeNo",e.company_id as "companyId" from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(e.company_id) order by p.full_name,e.id`);
@@ -158,7 +160,7 @@ export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {
     const leaveTypes = await tx.execute<{ id: string; name: string }>(sql`select id,name from leave_type where tenant_id=${ctx.tenantId}::uuid and archived_at is null order by name,id`);
     const usage = config && permission?.ok ? await tx.execute<M.TemplateUsage>(sql`select template_id as "templateId",version,documents from app.lc_v9_document_usage()`) : [];
     const definitionUsage = config && permission?.ok ? await tx.execute<M.DefinitionUsage>(sql`select kind,definition_id as "definitionId",messages,runs from app.lc_v9_definition_usage()`) : [];
-    return { definitionUsage: [...definitionUsage], templateUsage: [...usage], config, cases: rows.map(r => r.data), options: { signatoryCandidates, companies: [...companies], users: [...users], employees: [...employees], labels, leaveTypes: [...leaveTypes] }, canConfigure: !!permission?.ok, actor: who, personnelWritableKeys: v9PersonnelWritableKeys };
+    return { permissions:{onboarding:!!permission?.onboarding,offboarding:!!permission?.offboarding,administration:!!permission?.ok||!!permission?.administration}, definitionUsage: [...definitionUsage], templateUsage: [...usage], config, cases: rows.map(r => r.data), options: { signatoryCandidates, companies: [...companies], users: [...users], employees: [...employees], labels, leaveTypes: [...leaveTypes] }, canConfigure: !!permission?.ok, actor: who, personnelWritableKeys: v9PersonnelWritableKeys };
   });
 }
 export async function v9Setup(ctx: SessionContext): Promise<void> {
@@ -167,6 +169,7 @@ export async function v9Setup(ctx: SessionContext): Promise<void> {
     await lockTx(tx, ctx); await admin(tx);
     if (await configTx(tx, ctx)) throw new M.V9Error('V9 is already configured.', 'conflict');
     await onboardingSetupTx(ctx, tx);
+    await onboardingEnableV9OffboardingTx(ctx,tx);
     const [previous] = await tx.execute<{ revision: number; data: { groups: M.Group[] } }>(sql`select revision,data from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
     const config = v9Defaults(previous?.data.groups ?? []);
     for (const checklist of config.checklists) { checklist.ownerUserId = ctx.userId!; checklist.createdAt = new Date().toISOString(); }
@@ -283,7 +286,7 @@ export async function v9CreateOffboarding(ctx: SessionContext, input: { employme
     await record(tx, ctx, id, employee.id, 'created'); return id;
   });
 }
-export type Command =
+export type Command = CaseNoteCommand
   | { type: 'pmPush'; id: string }
   | { type: 'pmPushSelected' | 'pmKeep'; ids: string[] }
   | { type: 'caseFormSave'; values: Record<string,string>; reason: string; submit: boolean }
@@ -309,6 +312,7 @@ export type Command =
   | { type: 'item'; id: string; status: M.Item['status']; reason: string };
 const commandId = z.string().min(1).max(120), reasonText = z.string().max(4000);
 const commandSchema = z.discriminatedUnion('type', [
+  z.object({type:z.literal('note'),id:commandId.optional(),context:commandId,body:z.string().max(10000),mentions:z.array(z.string().uuid()).max(50),deleted:z.boolean().optional()}).strict(),
   z.object({ type: z.literal('pmPush'), id: commandId }).strict(),
   z.object({ type: z.literal('pmPushSelected'), ids: z.array(commandId).min(1).max(500) }).strict(),
   z.object({ type: z.literal('pmKeep'), ids: z.array(commandId).min(1).max(500) }).strict(),
@@ -344,6 +348,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     const c = structuredClone(row.data); let env = await environment(tx, ctx, c, config);
     if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'documentTextEdit', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'runWorkflows', 'retryWorkflow', 'startWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
     if (row.native && ['pmPush', 'pmPushSelected'].includes(command.type) && !c.facts.employmentId) throw new M.V9Error('Activate this Personnel draft before applying its proposed changes.');
+    if(command.type==='note')changeV9Note(c,env,command);
     if(command.type==='returnSelections'){
       if(c.module!=='off'||c.state!=='pending')throw new M.V9Error('Return selections can change only before submission.');
       const available=await onboardingReturnCatalogueTx(ctx,tx,c.facts.company),previous=new Set(c.returnSelections??[]);

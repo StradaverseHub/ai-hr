@@ -36,6 +36,16 @@ CREATE TABLE lc_v9_file (
  uploaded_by uuid NOT NULL REFERENCES app_user(id), created_at timestamptz NOT NULL DEFAULT now(),
  CHECK(num_nonnulls(case_id,onboarding_case_id)=1)
 );
+-- Module membership is independent of the existing company HR scope.
+CREATE FUNCTION app.lc_v9_off_access(p_company uuid DEFAULT NULL) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT app.current_user_id() IS NOT NULL AND NOT app.login_blocked(app.current_user_id()) AND (
+ CASE WHEN p_company IS NULL THEN app.is_admin() ELSE app.is_admin_for(p_company) END AND EXISTS(
+ SELECT 1 FROM lc_onboarding_config cfg WHERE cfg.tenant_id=app.current_tenant_id() AND cfg.data->'access'->'offboarding' ? app.current_user_id()::text))
+$$;
+REVOKE ALL ON FUNCTION app.lc_v9_off_access(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.lc_v9_off_access(uuid) TO ai_hr_app;
+
 ALTER TABLE lc_v9_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lc_v9_config_revision ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lc_v9_case ENABLE ROW LEVEL SECURITY;
@@ -46,13 +56,13 @@ CREATE POLICY v9_config_insert ON lc_v9_config FOR INSERT WITH CHECK(tenant_id=a
 CREATE POLICY v9_config_update ON lc_v9_config FOR UPDATE USING(tenant_id=app.current_tenant_id() AND app.is_group_admin()) WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_group_admin());
 CREATE POLICY v9_config_revision_read ON lc_v9_config_revision FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.is_group_admin());
 CREATE POLICY v9_config_revision_append ON lc_v9_config_revision FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_group_admin());
-CREATE POLICY v9_case_read ON lc_v9_case FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id));
-CREATE POLICY v9_case_insert ON lc_v9_case FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id));
-CREATE POLICY v9_case_update ON lc_v9_case FOR UPDATE USING(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id));
-CREATE POLICY v9_case_revision_read ON lc_v9_case_revision FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id));
-CREATE POLICY v9_case_revision_append ON lc_v9_case_revision FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id));
-CREATE POLICY v9_file_read ON lc_v9_file FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id));
-CREATE POLICY v9_file_append ON lc_v9_file FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.is_admin_for(company_id) AND uploaded_by=app.current_user_id());
+CREATE POLICY v9_case_read ON lc_v9_case FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.lc_v9_off_access(company_id));
+CREATE POLICY v9_case_insert ON lc_v9_case FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.lc_v9_off_access(company_id));
+CREATE POLICY v9_case_update ON lc_v9_case FOR UPDATE USING(tenant_id=app.current_tenant_id() AND app.lc_v9_off_access(company_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND app.lc_v9_off_access(company_id));
+CREATE POLICY v9_case_revision_read ON lc_v9_case_revision FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.lc_v9_off_access(company_id));
+CREATE POLICY v9_case_revision_append ON lc_v9_case_revision FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.lc_v9_off_access(company_id));
+CREATE POLICY v9_file_read ON lc_v9_file FOR SELECT USING(tenant_id=app.current_tenant_id() AND (case_id IS NOT NULL AND app.lc_v9_off_access(company_id) OR onboarding_case_id IS NOT NULL AND app.is_admin_for(company_id) AND (app.onboarding_page_access() OR app.is_group_admin())));
+CREATE POLICY v9_file_append ON lc_v9_file FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND (case_id IS NOT NULL AND app.lc_v9_off_access(company_id) OR onboarding_case_id IS NOT NULL AND app.is_admin_for(company_id) AND (app.onboarding_page_access() OR app.is_group_admin())) AND uploaded_by=app.current_user_id());
 GRANT SELECT,INSERT,UPDATE ON lc_v9_config,lc_v9_case TO ai_hr_app;
 GRANT SELECT,INSERT ON lc_v9_config_revision,lc_v9_case_revision,lc_v9_file TO ai_hr_app;
 
@@ -509,3 +519,16 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.onboarding_v9_receipt(uuid,integer,text,text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onboarding_v9_receipt(uuid,integer,text,text,text) TO ai_hr_app;
+
+-- Read-only shell metadata for existing Onboarding module users. No offboarding settings,
+-- company signers, recipient addresses, templates, salary policy or case/private content.
+CREATE OR REPLACE FUNCTION app.lc_v9_onboarding_shell() RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT jsonb_build_object('version',9,'revision',v.revision,'groupsRevision',n.revision,'groups',n.data->'groups',
+ 'peopleOpsGroup',v.data->'peopleOpsGroup','checklists',coalesce((SELECT jsonb_agg(c) FROM jsonb_array_elements(v.data->'checklists') c WHERE c->>'module'='onb'),'[]'::jsonb),
+ 'templates','[]'::jsonb,'emails','[]'::jsonb,'workflows','[]'::jsonb,'bpRules','[]'::jsonb)
+ FROM lc_v9_config v JOIN lc_onboarding_config n ON n.tenant_id=v.tenant_id WHERE v.tenant_id=app.current_tenant_id()
+ AND app.current_user_id() IS NOT NULL AND NOT app.login_blocked(app.current_user_id()) AND app.onboarding_page_access()
+$$;
+REVOKE ALL ON FUNCTION app.lc_v9_onboarding_shell() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.lc_v9_onboarding_shell() TO ai_hr_app;

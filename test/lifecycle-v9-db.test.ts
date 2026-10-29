@@ -162,7 +162,7 @@ it('permits only the assigned employee task and keeps the private case hidden', 
   expect(JSON.stringify(visible)).not.toContain('pmChanges'); expect(JSON.stringify(visible)).not.toContain('finalFigures');
   expect(await v9OwnWork(other)).toEqual([]);
   await expect(v9OwnTask(other, { caseId: c.id, revision: c.revision, taskId: 'handover', status: 'done', reason: '' })).rejects.toThrow();
-  await expect(v9Workspace(other)).rejects.toThrow('HR administration');
+  await expect(v9Workspace(other)).rejects.toThrow('module access');
   await v9OwnTask(employee, { caseId: c.id, revision: c.revision, taskId: 'handover', status: 'done', reason: '' });
   expect((await v9OwnWork(employee))[0].tasks[0].status).toBe('done');
   await expect(v9OwnTask(employee, { caseId: c.id, revision: c.revision, taskId: 'handover', status: 'todo', reason: '' })).rejects.toThrow();
@@ -1052,6 +1052,7 @@ it('applies live equipment bulk changes atomically and keeps completed items and
 
 it('limits unsigned signer choices to fresh company HR and lets an authorized HR reviewer countersign',async()=>{
   let c=await prepared();const alternateId=await createAppUser(base.tenantId,other.personId!,'hr_admin'),alternate:SessionContext={...admin,userId:alternateId,personId:other.personId,roles:['hr_admin'],grants:undefined};
+  const signerAccess=await onboardingContext(admin);signerAccess.config.access.offboarding.push(alternateId);await onboardingSaveConfig(admin,signerAccess.revision,signerAccess.config);
   let config=(await v9Workspace(admin)).config!;config.companies=[{companyId:base.companyId,signatoryUserId:admin.userId!,signatoryTitle:'Default title',allowedSignatoryUserIds:[admin.userId!,alternateId]}];config.signatoryTitles={[alternateId]:'Alternate printed title'};
   config.templates.push({id:'signer-letter',name:'Fictional signer letter',module:'off',type:'Letter',rules:{},hrStep:'before',employeeAck:true,retired:false,versions:[{version:1,state:'published',at:'',by:'',blocks:[{id:'signature-name',type:'text',text:'{signatory.name} · {signatory.title}',section:''}],fields:[{id:'printed-signer',label:'Printed signer',type:'text',owner:'pmLocked',pmKey:'signatory.name',required:false,sensitive:false,options:[],section:'main',when:null},{id:'printed-title',label:'Printed title',type:'text',owner:'pmLocked',pmKey:'signatory.title',required:false,sensitive:false,options:[],section:'main',when:null}]}]});
   const bad=structuredClone(config);bad.companies![0].allowedSignatoryUserIds!.push(employee.userId!);await expect(v9SaveConfig(admin,bad.revision,bad)).rejects.toThrow('company HR');
@@ -1120,4 +1121,49 @@ it('previews real holdings and selects existing catalogue identities before subm
   updated = await onboardingContext(admin);
   updated.config.catalogue = updated.config.catalogue.filter(item => item.id !== 'additional-system');
   await expect(onboardingSaveConfig(admin, updated.revision, updated.config)).rejects.toThrow('Retire');
+});
+
+it('persists offboarding notes with canonical revisions and keeps private conversations out of self work',async()=>{
+  let c=await prepared();
+  await v9Command(admin,c.id,c.revision,{type:'note',context:'handover',body:'Fictional HR note for @Subject',mentions:[employee.userId!]});
+  c=(await v9CaseDetail(admin,c.id)).case;
+  const note=c.notes![0];expect(note).toMatchObject({by:admin.userId,context:'handover',body:'Fictional HR note for @Subject',mentions:[employee.userId]});
+  expect((await v9OwnWork(employee)).find(row=>row.id===c.id)).not.toHaveProperty('notes');
+  await expect(v9Command(employee,c.id,c.revision,{type:'note',id:note.id,context:'handover',body:'Overwrite',mentions:[]})).rejects.toThrow();
+  const before=c.revision;
+  await v9Command(admin,c.id,c.revision,{type:'note',id:note.id,context:'handover',body:'Fictional revised note',mentions:[]});
+  c=(await v9CaseDetail(admin,c.id)).case;
+  expect(c.notes![0].revisions).toMatchObject([{body:'Fictional HR note for @Subject',mentions:[employee.userId]}]);
+  const prior=await withTenant(admin,tx=>tx.execute<{data:{notes:{body:string}[]}}>(sql`select data from lc_v9_case_revision where case_id=${c.id}::uuid and revision=${before}`));
+  expect(prior[0].data.notes[0].body).toBe('Fictional HR note for @Subject');
+  await v9Command(admin,c.id,c.revision,{type:'note',id:note.id,context:'handover',body:'',mentions:[],deleted:true});
+  expect((await v9CaseDetail(admin,c.id)).case.notes![0]).toMatchObject({deleted:true,body:'Fictional revised note'});
+});
+
+it('separates module membership, company HR scope and the minimal onboarding shell',async()=>{
+  const c=await prepared();
+  await expect(v9Workspace(employee)).rejects.toThrow('module access');
+  let native=await onboardingContext(admin);native.config.access.onboarding.push(employee.userId!);native.config.access.offboarding.push(employee.userId!);
+  await onboardingSaveConfig(admin,native.revision,native.config);
+  const shell=await v9Workspace(employee);
+  expect(shell.permissions).toEqual({onboarding:true,offboarding:false,administration:false});
+  expect(shell.cases).toEqual([]);expect(shell.config!.checklists.every(checklist=>checklist.module==='onb')).toBe(true);
+  expect(shell.config).toMatchObject({templates:[],emails:[],workflows:[],bpRules:[]});
+  expect(shell.config).not.toHaveProperty('settlementPolicy');expect(shell.config).not.toHaveProperty('companies');
+  await expect(v9CaseDetail(employee,c.id)).rejects.toThrow();
+  const scopedId=await createAppUser(base.tenantId,other.personId!,'hr_admin');
+  await owner.client`update role_assignment set company_id=${base.companyId} where tenant_id=${base.tenantId} and app_user_id=${scopedId} and role='hr_admin'`;
+  const scoped:SessionContext={...admin,userId:scopedId,personId:other.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:base.companyId}]};
+  await expect(v9Workspace(scoped)).rejects.toThrow('module access');
+  await expect(v9CaseDetail(scoped,c.id)).rejects.toThrow();
+  native=await onboardingContext(admin);native.config.access.offboarding.push(scopedId);await onboardingSaveConfig(admin,native.revision,native.config);
+  expect((await v9Workspace(scoped)).permissions).toMatchObject({onboarding:false,offboarding:true});
+  expect((await v9CaseDetail(scoped,c.id)).case.id).toBe(c.id);
+  const foreign=await withTenant(scoped,tx=>tx.execute<{ok:boolean}>(sql`select app.lc_v9_off_access(${randomUUID()}::uuid) as ok`));expect(foreign[0].ok).toBe(false);
+  native=await onboardingContext(admin);native.config.access.offboarding=native.config.access.offboarding.filter(id=>id!==scopedId);await onboardingSaveConfig(admin,native.revision,native.config);
+  await expect(v9CaseDetail(scoped,c.id)).rejects.toThrow();
+  expect((await v9OwnWork(employee)).some(row=>row.id===c.id)).toBe(true);
+  native=await onboardingContext(admin);native.config.access.offboarding=native.config.access.offboarding.filter(id=>id!==admin.userId);await onboardingSaveConfig(admin,native.revision,native.config);
+  expect((await v9Workspace(admin)).permissions).toMatchObject({onboarding:true,offboarding:false,administration:true});
+  await expect(v9CaseDetail(admin,c.id)).rejects.toThrow();
 });

@@ -1,3 +1,4 @@
+import type { Note as LifecycleNote } from './onboarding-model';
 import { resolveV9CaseFields, missingV9CaseFields, offCaseFormValues, type CaseField } from './lifecycle-v9-case-form';
 import { v9LiteralAddress } from './lifecycle-v9-recipient';
 import { v9EmploymentRule } from './lifecycle-v9-employment';
@@ -138,6 +139,7 @@ export type Case = {
   submittedAt: string | null; closedAt: string | null; closedBy: Actor | null; closeReason: string;
   cancelReason: string; revokeDate: string; finalFigures: FinalFigures | null;
   review: { firstAt: string; open: number; overdue: number; notReturned: number; detail: string } | null;
+  notes?: LifecycleNote[];
   returnSelections?: string[];
   caseValues?: Record<string,string>;
   revokeMode?: 'lastday' | 'date';
