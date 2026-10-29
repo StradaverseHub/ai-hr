@@ -72,12 +72,14 @@ const EPF_EMPLOYER_STATUTORY_MAX = Math.max(DEFAULT_MY_STATUTORY.epf.employerRat
 const basisPoints = (rate: number) => Math.round(rate * 10000);
 
 /** Browser constraints derive the floors and caps from the same table as the server rule. b6dbadc5: a
- *  Top-up box takes the increment, 0 up to 100% less the highest statutory rate for that side; a legacy
- *  total-rate row (`legacyTotal`) keeps the old floor so its stored figures can be re-posted unchanged. */
+ *  Top-up box takes the increment, 0 up to 100% less the highest statutory rate for that side. A legacy
+ *  total-rate row (`legacyTotal`) shows TOTAL figures that may exceed that cap and may be re-posted
+ *  unchanged, or replaced by an increment below the old floor, so the browser bounds it only to 0–100%
+ *  and the server (`retainLegacyTotalTopup`, then `resolveEpfElection`) decides. */
 export function epfRateInputBounds(uiMode: string, side: 'employee' | 'employer', legacyTotal = false) {
   if (uiMode === 'manual_percentage') return {min: 1, max: 100};
-  if (uiMode === 'voluntary_percentage' && !legacyTotal)
-    return {min: 0, max: (10000 - basisPoints(side === 'employee' ? EPF_EMPLOYEE_STATUTORY_MAX : EPF_EMPLOYER_STATUTORY_MAX)) / 100};
+  if (uiMode === 'voluntary_percentage')
+    return legacyTotal ? {min: 0, max: 100} : {min: 0, max: (10000 - basisPoints(side === 'employee' ? EPF_EMPLOYEE_STATUTORY_MAX : EPF_EMPLOYER_STATUTORY_MAX)) / 100};
   return {min: (side === 'employee' ? EPF_EMPLOYEE_FLOOR : EPF_EMPLOYER_FLOOR) * 100, max:100};
 }
 

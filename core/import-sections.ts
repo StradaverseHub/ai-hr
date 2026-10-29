@@ -20,7 +20,7 @@ import { personnelImportProposedValues, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONN
 import { isCalendarDate } from '../lib/calendar-date';
 import { setPersonComplianceFields } from './workforce-commands';
 import {applyBankStatutoryPatchTx,bankStatutoryDiff,bankStatutoryRefusal,buildBankStatutoryPatch,readBankStatutoryStateTx,readTaxResidencyTx} from './bank-statutory-import';
-import {bankStatutoryStateFrom,bankStatutoryTopupBasis,MERGED_STATUTORY_COLUMNS,type BankStatutoryItemState,type BankStatutoryState} from '../lib/bank-statutory-import';
+import {bankStatutoryBeforeState,bankStatutoryStateFrom,MERGED_STATUTORY_COLUMNS,type BankStatutoryItemState,type BankStatutoryState} from '../lib/bank-statutory-import';
 import {BANK_STATUTORY_LEGACY_COLUMNS} from '../lib/import-sections';
 import {lockImportAttemptTx,recordImportEventTx,recordImportItemTx} from './import-history';
 /**
@@ -1027,7 +1027,7 @@ export async function commitSectionImport(
       if(p.history && historyBefore) {
         const diff=bankStatutoryDiff(historyBefore,(await readBankStatutoryStateTx(tx,ctx,historySubject)).state);
         if(diff.changed.length)await recordImportItemTx(tx,ctx,{attemptId:p.history.attemptId,companyId:s.companyId,employmentId:s.employmentId,itemKey:`row-${row.result.rowNum}`,label:historyLabel(row.result),ordinal:row.result.rowNum,status:'applied',
-          before:{employeeCode:s.employeeCode,fields:diff.before,epfTopupBasis:bankStatutoryTopupBasis(freshStat)} satisfies BankStatutoryItemState,after:{employeeCode:s.employeeCode,fields:diff.after} satisfies BankStatutoryItemState});
+          before:bankStatutoryBeforeState(s.employeeCode,diff.before,freshStat),after:{employeeCode:s.employeeCode,fields:diff.after} satisfies BankStatutoryItemState});
       }
       return true;
       });
@@ -1134,7 +1134,7 @@ export async function applyBankImportRowTx(tx:Tx,ctx:SessionContext,input:{recor
  if(row.statutoryPatch)await applyBankStatutoryPatchTx(tx,ctx,historySubject,row.statutoryPatch);
  if(row.operations)await applyPersonnelOperationalValuesTx(tx,ctx,subject.employmentId,row.operations);
  const diff=bankStatutoryDiff(before,(await readBankStatutoryStateTx(tx,ctx,historySubject)).state);
- if(diff.changed.length)await recordImportItemTx(tx,ctx,{attemptId:input.attemptId,companyId:subject.companyId,employmentId:subject.employmentId,itemKey:`row-${input.ordinal}`,label:historyLabel(row.result),ordinal:input.ordinal,status:'applied',before:{employeeCode:subject.employeeCode,fields:diff.before,epfTopupBasis:bankStatutoryTopupBasis(stored)},after:{employeeCode:subject.employeeCode,fields:diff.after}});
+ if(diff.changed.length)await recordImportItemTx(tx,ctx,{attemptId:input.attemptId,companyId:subject.companyId,employmentId:subject.employmentId,itemKey:`row-${input.ordinal}`,label:historyLabel(row.result),ordinal:input.ordinal,status:'applied',before:bankStatutoryBeforeState(subject.employeeCode,diff.before,stored),after:{employeeCode:subject.employeeCode,fields:diff.after}});
  return diff.changed.length>0;
 }
 

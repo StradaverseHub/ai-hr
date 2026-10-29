@@ -138,3 +138,8 @@ export type BankStatutoryItemState={employeeCode:string;fields:Record<string,str
 export function bankStatutoryTopupBasis(row:{epfMode?:string|null;epfEmployerRate?:string|number|null}|null|undefined):'additive'|'total'{
  return row?.epfMode==='voluntary_excess'&&row.epfEmployerRate!=null?'total':'additive';
 }
+/** b6dbadc5 — an import item's "before" state. The Top-up basis is recorded only when the item changed the EPF
+ *  election (category or a rate), the only case revert reads it; other items keep their pre-b6dbadc5 shape. */
+export function bankStatutoryBeforeState(employeeCode:string,fields:Record<string,string>,row:Parameters<typeof bankStatutoryTopupBasis>[0]):BankStatutoryItemState{
+ return ['epf_category','epf_employee_rate','epf_employer_rate'].some(c=>c in fields)?{employeeCode,fields,epfTopupBasis:bankStatutoryTopupBasis(row)}:{employeeCode,fields};
+}

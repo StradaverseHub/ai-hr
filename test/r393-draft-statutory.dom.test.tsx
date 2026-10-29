@@ -360,6 +360,7 @@ function beforeUiModeFrom(
   employerAmount: number | null,
 ): BeforeUiMode {
   if (mode === 'manual_percentage') return 'manual_percentage';
+  if (mode === 'topup_percentage') return 'voluntary_percentage';
   if (mode === 'exempt') return 'none';
   if (mode === 'voluntary_excess') {
     return employeeRate != null && employerRate == null ? 'semi_auto' : 'voluntary_percentage';
@@ -384,6 +385,12 @@ function BeforeEpfElection({ mode, employeeRate, employerRate, employeeAmount, e
   const [m, setM] = useState<BeforeUiMode>(beforeUiModeFrom(mode, employeeRate, employerRate, employeeAmount, employerAmount));
   const showEmployeeRate = m === 'manual_percentage' || m === 'voluntary_percentage' || m === 'semi_auto';
   const showEmployerRate = m === 'manual_percentage' || m === 'voluntary_percentage';
+  // b6dbadc5 — Top-up boxes are increments (0 up to 100% less the highest statutory rate) under their own
+  // captions; an unconverted legacy total-rate row keeps 0–100 and says why it shows full rates.
+  const topup = m === 'voluntary_percentage';
+  const legacy = topup && mode === 'voluntary_excess' && employerRate != null;
+  const min = (manual: number) => (m === 'manual_percentage' ? 1 : topup ? 0 : manual);
+  const max = (cap: string) => (topup && !legacy ? cap : '100');
   const amounts = beforeIsAmountMode(m) ? BEFORE_AMOUNT_MODES[m] : null;
   return (
     <>
@@ -402,19 +409,19 @@ function BeforeEpfElection({ mode, employeeRate, employerRate, employeeAmount, e
       {(showEmployeeRate || showEmployerRate) && (
         <div className="grid grid-cols-2 gap-3 sm:col-span-2">
           {showEmployeeRate && (
-            <BeforeField label={t('epfEmployeeRate')}>
-              <input name="epfEmployeeRate" aria-invalid="false" type="number" min={m === 'manual_percentage' ? 1 : 11} max="100" step="0.01" required={m === 'manual_percentage'} defaultValue={employeeRate ?? ''} placeholder="11" className={beforeInputCls} />
+            <BeforeField label={t(topup ? 'epfTopupEmployeeRate' : 'epfEmployeeRate')}>
+              <input name="epfEmployeeRate" aria-invalid="false" type="number" min={min(11)} max={max('89')} step="0.01" required={m === 'manual_percentage'} defaultValue={employeeRate ?? ''} placeholder={topup ? '0' : '11'} className={beforeInputCls} />
             </BeforeField>
           )}
           {showEmployerRate && (
-            <BeforeField label={t('epfEmployerRate')}>
-              <input name="epfEmployerRate" aria-invalid="false" type="number" min={m === 'manual_percentage' ? 1 : 12} max="100" step="0.01" required={m === 'manual_percentage'} defaultValue={employerRate ?? ''} placeholder="13" className={beforeInputCls} />
+            <BeforeField label={t(topup ? 'epfTopupEmployerRate' : 'epfEmployerRate')}>
+              <input name="epfEmployerRate" aria-invalid="false" type="number" min={min(12)} max={max('87')} step="0.01" required={m === 'manual_percentage'} defaultValue={employerRate ?? ''} placeholder={topup ? '0' : '13'} className={beforeInputCls} />
             </BeforeField>
           )}
           {m === 'semi_auto' ? (
             <p className="col-span-2 text-xs text-muted-foreground">{t('epfSemiAutoHint')}</p>
           ) : (
-            <p className="col-span-2 text-xs text-muted-foreground">{t(m === 'manual_percentage' ? 'epfManualPercentageHint' : 'epfVoluntaryHint')}</p>
+            <p className="col-span-2 text-xs text-muted-foreground">{t(m === 'manual_percentage' ? 'epfManualPercentageHint' : legacy ? 'epfTopupLegacyHint' : 'epfVoluntaryHint')}</p>
           )}
         </div>
       )}
@@ -472,6 +479,9 @@ describe('§5 the Active EPF election and Income Tax Resident select retain the 
     { mode: 'auto', employeeRate: null, employerRate: null, employeeAmount: null, employerAmount: null, manualReason: null },
     { mode: 'manual_percentage', employeeRate: 5.5, employerRate: 6.5, employeeAmount: null, employerAmount: null, manualReason: null },
     { mode: 'voluntary_excess', employeeRate: 14.5, employerRate: 16, employeeAmount: null, employerAmount: null, manualReason: null },
+    // b6dbadc5 — the additive Top-up mode, both sides and one side blank.
+    { mode: 'topup_percentage', employeeRate: 1, employerRate: 1, employeeAmount: null, employerAmount: null, manualReason: null },
+    { mode: 'topup_percentage', employeeRate: null, employerRate: 2, employeeAmount: null, employerAmount: null, manualReason: null },
     { mode: 'voluntary_excess', employeeRate: 20, employerRate: null, employeeAmount: null, employerAmount: null, manualReason: null },
     { mode: 'voluntary_excess', employeeRate: null, employerRate: null, employeeAmount: null, employerAmount: null, manualReason: null },
     { mode: 'manual_amount', employeeRate: null, employerRate: null, employeeAmount: 450.5, employerAmount: null, manualReason: 'Pre-1998 "member" & co' },
