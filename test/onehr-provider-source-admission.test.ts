@@ -26,13 +26,14 @@ import {defaultPolicy} from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import {createOnehrServiceFixtures,year} from './onehr-service-fixture';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import { switchOnPerformanceAi } from './performance-ai-switches-fixture';
 let b:Base,a:SessionContext,self:SessionContext,mgr:SessionContext,subject:{employmentId:string;personId:string},manager:{employmentId:string;personId:string},peers:{employmentId:string;ctx:SessionContext}[],cycleId:string,reviewId:string;
 let spendPrice:Awaited<ReturnType<typeof installSyntheticSpendCapability>>;
 let beforeAdmission:(()=>Promise<void>)|undefined,sourceChange:Promise<void>|undefined,afterSourceReplay:(()=>Promise<void>)|undefined,alterInput=false;
 const f=createOnehrServiceFixtures({get b(){return b;},get a(){return a;},get subject(){return subject;},get manager(){return manager;},get self(){return self;},get mgr(){return mgr;},get cycleId(){return cycleId;},get reviewId(){return reviewId;},get peers(){return peers;}});
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{spendPrice?.restore();vi.restoreAllMocks();vi.unstubAllEnvs();});
 beforeEach(async()=>{
- await resetDb();b=await seedBase();for(const code of ['performance','rewards'])await setModule(b.tenantId,code,'active');a=await entitledCtx(b);
+ await resetDb();b=await seedBase();for(const code of ['performance','rewards'])await setModule(b.tenantId,code,'active');await switchOnPerformanceAi(b.tenantId);a=await entitledCtx(b);
  subject=await f.hire('Assessment subject');manager=await f.hire('Assessment manager');
  const actor=async(personId:string,role:'employee'|'manager'):Promise<SessionContext>=>({...a,userId:await createAppUser(b.tenantId,personId,role),personId,roles:[role],grants:undefined});
  self=await actor(subject.personId,'employee');mgr=await actor(manager.personId,'manager');peers=[];

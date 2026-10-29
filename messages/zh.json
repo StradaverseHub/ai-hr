@@ -24665,7 +24665,9 @@
     "groupsPrecedence": "登录账号适用的额度：其个人额度；否则依次为所在部门、公司、角色的额度（同一层级有多个匹配时，适用最严格的上限）；否则为下方的默认额度。",
     "agentRunsAs": "以 HR 代理账户运行，由 {by} 于 {date} 开启。",
     "agentUnknownAdmin": "一位前任管理员",
-    "agentUnattributed": "开启时未记录具名管理员，因此 HR 代理账户不会运行。请先暂停再重新启用，以您的名义运行。"
+    "agentUnattributed": "开启时未记录具名管理员，因此 HR 代理账户不会运行。请先暂停再重新启用，以您的名义运行。",
+    "staleOverrideOn": "此功能先前保存的开关已被忽略，现仅按其设置运行。",
+    "staleOverrideOff": "此功能先前保存的暂停已被忽略，现仅按其设置运行。"
   },
   "accountEmail": {
     "title": "账户邮件发送记录",

@@ -24665,7 +24665,9 @@
     "groupsPrecedence": "Peruntukan yang terpakai bagi log masuk: peruntukan individunya; jika tiada, peruntukan jabatannya, kemudian syarikatnya, kemudian peranannya (jika beberapa sepadan pada tahap yang sama, had paling ketat terpakai); jika tiada, lalai di bawah.",
     "agentRunsAs": "Dijalankan sebagai akaun ejen HR, dihidupkan oleh {by} pada {date}.",
     "agentUnknownAdmin": "seorang bekas pentadbir",
-    "agentUnattributed": "Dihidupkan tanpa pentadbir yang dinamakan, jadi akaun ejen HR tidak menjalankannya. Jedakan dan dayakan semula untuk menjalankannya atas nama anda."
+    "agentUnattributed": "Dihidupkan tanpa pentadbir yang dinamakan, jadi akaun ejen HR tidak menjalankannya. Jedakan dan dayakan semula untuk menjalankannya atas nama anda.",
+    "staleOverrideOn": "Suis lama yang disimpan untuk ciri ini diabaikan. Ciri ini hanya mengikut tetapannya.",
+    "staleOverrideOff": "Jeda lama yang disimpan untuk ciri ini diabaikan. Ciri ini hanya mengikut tetapannya."
   },
   "accountEmail": {
     "title": "Penghantaran e-mel akaun",

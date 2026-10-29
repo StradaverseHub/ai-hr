@@ -24665,7 +24665,9 @@
     "groupsPrecedence": "Hạn mức áp dụng cho một tài khoản: hạn mức riêng; nếu không có thì của phòng ban, rồi công ty, rồi vai trò (nếu nhiều nhóm cùng cấp khớp, áp dụng giới hạn chặt nhất); nếu không có thì dùng mặc định bên dưới.",
     "agentRunsAs": "Chạy dưới tài khoản tác tử HR, do {by} bật vào {date}.",
     "agentUnknownAdmin": "một quản trị viên trước đây",
-    "agentUnattributed": "Đã bật mà không có quản trị viên được nêu tên, nên tài khoản tác tử HR không chạy. Hãy tạm dừng rồi bật lại để chạy dưới tên của bạn."
+    "agentUnattributed": "Đã bật mà không có quản trị viên được nêu tên, nên tài khoản tác tử HR không chạy. Hãy tạm dừng rồi bật lại để chạy dưới tên của bạn.",
+    "staleOverrideOn": "Công tắc cũ đã lưu cho tính năng này bị bỏ qua. Tính năng chỉ tuân theo cài đặt của nó.",
+    "staleOverrideOff": "Lệnh tạm dừng cũ đã lưu cho tính năng này bị bỏ qua. Tính năng chỉ tuân theo cài đặt của nó."
   },
   "accountEmail": {
     "title": "Lịch sử gửi email tài khoản",
