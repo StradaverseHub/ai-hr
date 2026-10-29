@@ -1,9 +1,11 @@
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {and,eq,sql} from 'drizzle-orm';
+import {and,asc,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {dispatchNotifications} from '../core/notifications';
+import {agentContext,ensureAgentPrincipal} from '../core/agent-principal';
+import {resolveEntitlementsTx} from '../core/entitlements';
 import {pgSqlState} from '../lib/db-error';
 import {hireEmployee} from '../core/org';
 import {createRewardUnit,getRewardConfiguration,getRewardUnit,previewRewardAccessChange,saveRewardAccessChange,decideRewardAccessRequest,rewardAccessRequests,rewardAccessAdministration,rewardAccessSuspensionRecipients,setRewardMember} from '../packs/rewards/service';
@@ -32,7 +34,67 @@ beforeEach(async()=>{
  await owner.db.update(s.assignment).set({businessUnitId:bu}).where(eq(s.assignment.employmentId,employmentId));
  const userId=await createAppUser(b.tenantId,employee.personId,'employee');target={...admin,userId,personId:employee.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
 });
+/** Use the canonical owner-created principal and real tenant entitlements, not a fictional user UUID. */
+async function namedAgent(){
+ const principalId=await ensureAgentPrincipal(owner.db,b.tenantId);
+ const entitlements=await owner.db.transaction(tx=>resolveEntitlementsTx(tx,b.tenantId));
+ const ctx=agentContext(b.tenantId,principalId,entitlements);
+ const [proof]=await withTenant(ctx,tx=>tx.execute<{principal:string|null;admin:boolean;reward_admin:boolean;roles:string[]}>(sql`select app.current_agent_principal() as principal,app.is_admin() as admin,app.reward_admin(${b.companyId}::uuid) as reward_admin,array(select app.reward_roles(${unitId}::uuid)) as roles`));
+ expect(proof).toEqual({principal:principalId,admin:false,reward_admin:false,roles:[]});
+ expect(await owner.db.select({id:s.appUser.id}).from(s.appUser).where(eq(s.appUser.id,principalId))).toEqual([]);
+ return ctx;
+}
+/** Owner reads prove refusals leave the real pending request, membership and audit stream unchanged. */
+async function securityState(){
+ return {
+  requests:await owner.db.select().from(s.rewardAccessRequest).where(eq(s.rewardAccessRequest.tenantId,b.tenantId)).orderBy(asc(s.rewardAccessRequest.id)),
+  members:await owner.db.select().from(s.rewardMember).where(eq(s.rewardMember.unitId,unitId)).orderBy(asc(s.rewardMember.id)),
+  events:await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.tenantId,b.tenantId)).orderBy(asc(s.domainEvent.sequence)),
+  observations:await owner.db.select().from(s.rewardAccessObservation).where(eq(s.rewardAccessObservation.tenantId,b.tenantId)).orderBy(asc(s.rewardAccessObservation.memberId),asc(s.rewardAccessObservation.stateKey)),
+  epochs:await owner.db.select().from(s.rewardAccessSourceEpoch).where(eq(s.rewardAccessSourceEpoch.tenantId,b.tenantId)).orderBy(asc(s.rewardAccessSourceEpoch.sourceKind),asc(s.rewardAccessSourceEpoch.sourceId)),
+  notices:await owner.db.select().from(s.notification).where(eq(s.notification.tenantId,b.tenantId)).orderBy(asc(s.notification.id)),
+  unit:await owner.db.select().from(s.rewardUnit).where(eq(s.rewardUnit.id,unitId)),
+ };
+}
+async function nativeRefused(promise:Promise<unknown>,state:string){
+ const error=await promise.then(()=>null,(error:unknown)=>error);
+ expect(error,'native authority must refuse this operation').not.toBeNull();expect(pgSqlState(error)).toBe(state);
+}
 describe('Rewards two-person access and live People eligibility',()=>{
+ it('refuses a real named agent as access requester, independent checker or Group Rewards holder without effects',async()=>{
+  const pending=await request({userId:target.userId!,role:'bu'}),agent=await namedAgent();
+  const before=await securityState();expect(before.requests).toHaveLength(1);expect(before.requests[0]).toMatchObject({id:pending.requestId,status:'pending'});expect(before.members).toHaveLength(1);expect(before.events.length).toBeGreaterThan(0);
+  // Reuse the canonical human-created request's exact valid changes: failure must be actor authority.
+  await nativeRefused(withTenant(agent,tx=>tx.execute(sql`select app.reward_access_request_create(${JSON.stringify(before.requests[0].changes)}::jsonb)`)),'23514');
+  await nativeRefused(withTenant(agent,tx=>tx.execute(sql`select app.reward_access_request_decide(${pending.requestId}::uuid,true,'')`)),'42501');
+  await expect(decideRewardAccessRequest(agent,pending.requestId,true)).rejects.toMatchObject({code:'scope'});
+  await nativeRefused(withTenant(agent,tx=>tx.insert(s.rewardMember).values({tenantId:b.tenantId,unitId,userId:agent.agent!.principalId,role:'gr'})),'42501');
+  expect(await securityState()).toEqual(before);
+  // The unchanged pending request remains executable by its real independent human checker.
+  expect(await decideRewardAccessRequest(checker,pending.requestId,true)).toEqual({status:'approved'});
+ });
+ it('refuses hybrid agent contexts carrying a human identity or administrator grants before Rewards effects',async()=>{
+  const pending=await request({userId:target.userId!,role:'bu'}),agent=await namedAgent(),before=await securityState();
+  expect(before.requests).toHaveLength(1);expect(before.requests[0]).toMatchObject({id:pending.requestId,status:'pending'});
+  const hybrids:SessionContext[]=[{...agent,userId:checker.userId},{...agent,personId:checker.personId},{...agent,roles:['hr_admin'],grants:undefined},{...agent,grants:[{role:'hr_admin',companyId:null}]},{...checker,agent:agent.agent}];
+  for(const hybrid of hybrids){
+   await expect(withTenant(hybrid,tx=>tx.execute(sql`select app.reward_access_request_create(${JSON.stringify(before.requests[0].changes)}::jsonb)`))).rejects.toThrow('An agent context cannot also carry a login or a grant.');
+   await expect(decideRewardAccessRequest(hybrid,pending.requestId,true)).rejects.toThrow('An agent context cannot also carry a login or a grant.');
+   await expect(withTenant(hybrid,tx=>tx.execute(sql`select app.reward_roles(${unitId}::uuid)`))).rejects.toThrow('An agent context cannot also carry a login or a grant.');
+  }
+  expect(await securityState()).toEqual(before);
+ });
+ it('refuses a named principal as a GR beneficiary and refuses its projection of a real suspension event',async()=>{
+  const pending=await request({userId:target.userId!,role:'bu'});await decideRewardAccessRequest(checker,pending.requestId,true);
+  await owner.db.update(s.employment).set({tenderResignationDate:today}).where(eq(s.employment.id,employmentId));await expect(getRewardUnit(target,unitId)).rejects.toThrow();
+  const [event]=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,unitId),eq(s.domainEvent.eventType,'reward-access.suspended')));expect(event).toBeTruthy();
+  const agent=await namedAgent(),before=await securityState();expect(before.members).toHaveLength(2);expect(before.observations).toHaveLength(1);
+  const changes=[{unitId,revision:(await revision()),before:null,after:{userId:agent.agent!.principalId,role:'gr'}}];
+  // Even a human administrator cannot turn the non-login principal into a role-bearing app_user.
+  await nativeRefused(withTenant(admin,tx=>tx.execute(sql`select app.reward_access_request_create(${JSON.stringify(changes)}::jsonb)`)),'42501');
+  await nativeRefused(withTenant(agent,tx=>tx.execute(sql`select app.reward_access_project_account_suspension(${event.id}::uuid)`)),'42501');
+  expect(await securityState()).toEqual(before);
+ });
  it('saves a pending request, refuses self/affected-user approval, and commits only the independent decision',async()=>{
   const initial=await revision(),pending=await request({userId:target.userId!,role:'bu'});
   expect(await revision()).toBe(initial);
