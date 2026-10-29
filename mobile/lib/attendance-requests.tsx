@@ -1,6 +1,7 @@
 /**
  * M12 (D13) — the two requests an employee files from the app: a missed-punch / correction request for one of their
- * own days, and a replacement-leave (Leave Credit) request. Overtime-plan application stays on the web (D13).
+ * own days, and a replacement-leave (Leave Credit) request. Overtime plans have their own screen since the Mobile WOW
+ * round (mobile/lib/ot-plan.tsx); withdrawing one and attaching files stay on the web.
  *
  * The app decides nothing. The day's clockings on record are shown read only as context; the request PROPOSES times
  * and a reason, and the kernel validates it (requestAttendanceCorrection / submitLeaveCreditRequest), snapshots the

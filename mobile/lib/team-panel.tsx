@@ -14,7 +14,7 @@ import { TeamAvailabilityV2,addCalendarDays,TEAM_WINDOW_DEFAULT_DAYS } from '../
  * anchored on the server's today. No leave type or reason is ever received.
  */
 /** `compact` (Home): only the away-today row, which expands; week navigation and the scope note stay on the Team screen. */
-export function TeamPanel({refreshToken=0,compact=false}:{refreshToken?:number;compact?:boolean}={}){
+export function TeamPanel({refreshToken=0,compact=false,hideTitle=false}:{refreshToken?:number;compact?:boolean;hideTitle?:boolean}={}){
   const {signOut}=useSession(),{palette}=useTenantDesign();
   const [from,setFrom]=useState<string|undefined>(undefined);
   const team=useApiV2('v2/team/availability',TeamAvailabilityV2,{from,to:from?addCalendarDays(from,TEAM_WINDOW_DEFAULT_DAYS-1):undefined},signOut);
@@ -30,7 +30,7 @@ export function TeamPanel({refreshToken=0,compact=false}:{refreshToken?:number;c
   const shift=(weeks:number)=>{if(!data)return;const next=addCalendarDays(data.from,7*weeks);setFrom(next===data.today?undefined:next);};
   if(data&&!data.enabled)return null;
   return <View style={compact?{gap:8}:{gap:12,borderTopWidth:1,borderColor:palette.border,paddingTop:20}}>
-    <Text style={{color:palette.text,fontSize:compact?17:21,fontWeight:'600'}}>{t('teamAvailability')}</Text>
+    {!hideTitle&&<Text style={{color:palette.text,fontSize:compact?17:21,fontWeight:'600'}}>{t('teamAvailability')}</Text>}
     {!compact&&<View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>
       <Button title={t('teamPrevWeek')} kind="quiet" disabled={!data} onPress={()=>shift(-1)}/>
       {/* The default window is the server's today and the six days after it (lib/mobile-api/v2/team.ts), not a calendar
