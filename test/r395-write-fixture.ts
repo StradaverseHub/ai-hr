@@ -43,6 +43,16 @@ let NEW_USING:string[]=[];
 const originalLiveUsing=new Map<string,string>();
 const WRITE_TABLES = [...new Set(POLICIES.filter((p) => ['ALL', 'INSERT', 'UPDATE'].includes(p.cmd)).map((p) => p.table))].sort();
 
+// Existing UUID-rotated parents may already have their unique child slot occupied. Give the
+// three fresh subjects explicit empty parents, preserving the original negative-context matrix.
+const FRESH_SUBJECTS=['freshA','freshB','freshA1'] as const;
+const POSITIVE_CHILD_TABLES=new Set(['attendance_punch','leave_cancellation_step','leave_request_date',
+  'replacement_leave_request_date','employment_review_reminder','loan_repayment','payroll_batch','review_goal']);
+const POSITIVE_PARENT_TABLES=['attendance','leave_request','leave_cancellation_request',
+  'replacement_leave_request','employment_review','employee_loan','pay_period','performance_review','performance_goal'] as const;
+const freshParents=new Map<string,Record<string,string>>();
+
+
 // The first 0515's person form — the defect, re-installable for the mutation run.
 const ADMIN_IN_SET_FN = `
 CREATE OR REPLACE FUNCTION app.visible_person_ids() RETURNS uuid[] LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
@@ -169,6 +179,25 @@ beforeAll(async () => {
     // A valid existing parent lets fresh-subject attachment INSERTs exercise RLS, not a binding error.
     await seedLegacyFeedbackParent(ee);
   }
+  // These are fixture-only parent inserts under the ordinary owner; no policy, trigger or
+  // uniqueness check is disabled. The cancellation parent binds the fresh leave request; both
+  // performance parents name the same subject; the pay period names the same company.
+  for(const [index,name] of FRESH_SUBJECTS.entries()){
+    const subject=empRow(name),bindings:Record<string,string>={};
+    for(const table of POSITIVE_PARENT_TABLES){
+      const build=BUILDERS.get(table);expect(build,`positive-control builder ${table}`).toBeTruthy();
+      const statement=await build!(subject,2000+index,false,bindings);
+      expect(statement,`positive-control parent ${table} for ${name}`).toBeTypeOf('string');
+      const [parent]=await q(statement!+' returning *');
+      expect(parent.tenant_id,`${table} tenant`).toBe(subject.tenant_id);
+      if(Object.hasOwn(parent,'employment_id'))expect(parent.employment_id,`${table} subject`).toBe(subject.id);
+      if(Object.hasOwn(parent,'person_id'))expect(parent.person_id,`${table} person`).toBe(subject.person_id);
+      if(Object.hasOwn(parent,'company_id'))expect(parent.company_id,`${table} company`).toBe(subject.company_id);
+      if(table==='leave_cancellation_request')expect(parent.leave_request_id).toBe(bindings.leave_request);
+      bindings[table]=String(parent.id);
+    }
+    freshParents.set(String(subject.id),bindings);
+  }
   const [d] = await q(`select pg_get_functiondef('app.visible_person_ids()'::regprocedure) as def`);
   originalPersonFn = d.def as string;
   if (process.env.R395_WRITE_MUTATION === 'admin_in_set') {
@@ -204,7 +233,8 @@ export const compareGenericWriteContext = async (i: number) => {
         if (build) {
           let k = 0;
           for (const s of SUBJECTS) {
-            const sql = await build(empRow(s), 1000 + k++, false);
+            const subject=empRow(s);
+            const sql = await build(subject, 1000 + k++, false,POSITIVE_CHILD_TABLES.has(t)?freshParents.get(String(subject.id)):undefined);
             if (!sql) continue;
             stmts.push(`${sql} returning ${proj(t)}`);
             labels.push(`insert ${t} for ${s}`);
@@ -216,6 +246,13 @@ export const compareGenericWriteContext = async (i: number) => {
       const { after, before } = await bothWays(ctx, stmts);
       for (let k = 0; k < stmts.length; k++) {
         expect(after[k], `${ctx.name}: ${labels[k]}`).toBe(before[k]);
+        if(ctx.name==='hr_admin group-wide'){
+          const match=/^insert (\w+) for (\w+)$/.exec(labels[k]);
+          if(match&&POSITIVE_CHILD_TABLES.has(match[1])&&FRESH_SUBJECTS.includes(match[2] as typeof FRESH_SUBJECTS[number])){
+            expect(before[k],`constraint-valid positive control: ${labels[k]}`).toMatch(/^ok:/);
+            expect(after[k],`current-policy positive control: ${labels[k]}`).toMatch(/^ok:/);
+          }
+        }
         tally('generic', labels[k].split(' for ')[0], before[k]);
       }
     };
