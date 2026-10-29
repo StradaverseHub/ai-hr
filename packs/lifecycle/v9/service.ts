@@ -256,6 +256,7 @@ export type Command =
   | { type: 'generate'; template: string }
   | { type: 'emailSend' | 'emailTest'; emailId: string }
   | { type: 'emailEdit'; emailId: string; subject: string; body: string }
+  | { type: 'documentTextEdit'; id: string; edits: Record<string, string> }
   | { type: 'documentSave'; id: string; values: Record<string, string> }
   | { type: 'documentSign'; id: string; signature: Pick<M.Signature, 'method' | 'value' | 'consent'> }
   | { type: 'documentRefresh'; id: string }
@@ -278,6 +279,7 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('generate'), template: commandId }).strict(),
   z.object({ type: z.literal('emailSend'), emailId: commandId }).strict(), z.object({ type: z.literal('emailTest'), emailId: commandId }).strict(),
   z.object({ type: z.literal('emailEdit'), emailId: commandId, subject: z.string().min(1).max(1000), body: z.string().max(20000) }).strict(),
+  z.object({ type: z.literal('documentTextEdit'), id: commandId, edits: z.record(commandId, z.string().max(20000)).refine(value => Object.keys(value).length <= 500) }).strict(),
   z.object({ type: z.literal('documentSave'), id: commandId, values: z.record(commandId, z.string().max(20000)) }).strict(),
   z.object({ type: z.literal('documentSign'), id: commandId, signature: z.object({ method: z.enum(['typed', 'drawn']), value: z.string().min(1).max(500000), consent: z.literal(true) }).strict() }).strict(),
   z.object({ type: z.literal('documentRefresh'), id: commandId }).strict(),
@@ -296,7 +298,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     const row = await load(tx, ctx, id); if (row.revision !== revision) throw new M.V9Error('This case changed. Refresh before trying again.', 'conflict');
     const config = await configTx(tx, ctx); if (!config) throw new M.V9Error('V9 configuration is unavailable.');
     const c = structuredClone(row.data), env = await environment(tx, ctx, c, config);
-    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'documentSave', 'documentSign', 'documentRefresh', 'runWorkflows', 'retryWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
+    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'documentTextEdit', 'documentSave', 'documentSign', 'documentRefresh', 'runWorkflows', 'retryWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
     if (row.native && ['pmPush', 'pmPushSelected'].includes(command.type) && !c.facts.employmentId) throw new M.V9Error('Activate this Personnel draft before applying its proposed changes.');
     if (command.type === 'submit') {
       M.submit(c, config, env);
@@ -334,6 +336,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     else if (command.type === 'generate') M.generate(c, config, command.template, env);
     else if (command.type === 'emailSend' || command.type === 'emailTest') M.queueEmail(c, config, command.emailId, env, command.type === 'emailTest');
     else if (command.type === 'emailEdit') { if (!config.emails.some(e => e.id === command.emailId && e.module === c.module) || command.body.length > 20000 || command.subject.length > 1000) throw new M.V9Error('Choose an available email and keep its content within the allowed length.'); c.emailEdits = { ...c.emailEdits, [command.emailId]: { subject: command.subject, body: command.body } }; M.appendLog(c, env, 'email.edited', 'Email text changed for this person only.'); }
+    else if (command.type === 'documentTextEdit') M.editDocumentText(c, config, command.id, command.edits, env);
     else if (command.type === 'documentSave') M.saveDocument(c, command.id, command.values, 'hr', env);
     else if (command.type === 'documentSign') M.signDocument(c, config, command.id, 'hr', { ...command.signature, by: env.actor, at: env.now }, env);
     else if (command.type === 'documentRefresh') { const document = c.documents.find(d => d.id === command.id); if (!document || document.status !== 'draft' || M.documentDeliveryReserved(c, command.id)) throw new M.V9Error('Only an unsigned draft not reserved for email delivery can refresh its source values.'); document.mergeValues = { ...env.mergeValues }; document.signatoryUserId = env.signatoryUserId ?? null; for (const field of document.fields) if (field.owner === 'pmLocked' && field.pmKey) document.values[field.id] = env.mergeValues[field.pmKey] ?? ''; M.appendLog(c, env, 'document.refreshed', document.name); }

@@ -25,3 +25,10 @@ it('offers countersigning only to the frozen company signatory and keeps signed 
   view.rerender(<CaseDocument c={{ state: 'cancelled' }} document={doc} actor={actor} busy={false} command={command}/>);
   expect(screen.queryByRole('button', { name: 'Sign and submit' })).not.toBeInTheDocument();
 });
+it('offers per-person wording only while the instance is an unsigned unreserved draft',()=>{
+  const doc=document();doc.blocks.unshift({id:'body',type:'text',text:'Draft wording',section:''});
+  const command=vi.fn(),view=render(<CaseDocument c={{state:'submitted'}} document={doc} actor={actor} busy={false} command={command}/>);
+  expect(screen.getByRole('button',{name:'Edit for this person'})).toBeEnabled();
+  doc.status='sent';view.rerender(<CaseDocument c={{state:'submitted'}} document={doc} actor={actor} busy={false} command={command}/>);expect(screen.queryByRole('button',{name:'Edit for this person'})).not.toBeInTheDocument();
+  doc.status='draft';view.rerender(<CaseDocument c={{state:'submitted',mails:[{id:'mail',key:'mail',workflowId:null,templateId:null,to:['employee'],cc:[],subject:'Fictional',body:'',documentIds:[doc.id],fileIds:[],status:'uncertain',test:false,at:'',deliveredAt:null,failure:null}]}} document={doc} actor={actor} busy={false} command={command}/>);expect(screen.queryByRole('button',{name:'Edit for this person'})).not.toBeInTheDocument();
+});

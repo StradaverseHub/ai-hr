@@ -367,3 +367,14 @@ it('holds an inactive workflow email without queueing and resumes once after rea
   config.emails[0].active = false; M.markDelivered(c, c.mails[0].id, environment);
   expect(M.runWorkflow(c, config, definition, environment, 'resume')?.status).toBe('done'); expect(c.mails).toHaveLength(1);
 });
+it('saves per-person wording only on unsigned unreserved drafts and resets without changing the template', () => {
+  const {c,config,environment}=fixture(),definition=template();definition.versions[0].blocks=[{id:'heading',type:'heading',text:'Template title',section:''},{id:'body',type:'text',text:'Template body',section:''},{id:'signature',type:'signature',text:'',section:''}];config.templates=[definition];
+  const doc=M.generate(c,config,definition.id,environment),original=structuredClone(definition);
+  M.editDocumentText(c,config,doc.id,{heading:'Person title',body:'Person body'},environment);expect(doc.edits).toEqual({heading:'Person title',body:'Person body'});expect(definition).toEqual(original);expect(c.log.at(-1)?.action).toBe('document.textEdited');
+  const before=structuredClone(doc);expect(()=>M.editDocumentText(c,config,doc.id,{body:'Changed',signature:'forged'},environment)).toThrow('editable');expect(doc).toEqual(before);
+  M.editDocumentText(c,config,doc.id,{},environment);expect(doc.edits).toEqual({});
+  doc.hrSignature={by:environment.actor,at:environment.now,method:'typed',value:'Fictional HR',consent:true};expect(()=>M.editDocumentText(c,config,doc.id,{body:'Changed'},environment)).toThrow('unsigned');doc.hrSignature=null;
+  doc.status='sent';expect(()=>M.editDocumentText(c,config,doc.id,{body:'Changed'},environment)).toThrow('unsigned');doc.status='draft';
+  c.mails.push({id:'reserved',key:'reserved',workflowId:null,templateId:null,to:['employee'],cc:[],subject:'Fictional',body:'',documentIds:[doc.id],fileIds:[],status:'uncertain',test:false,at:environment.now,deliveredAt:null,failure:null});expect(()=>M.editDocumentText(c,config,doc.id,{body:'Changed'},environment)).toThrow('reserved');c.mails=[];
+  definition.type='Attachment';delete doc.templateType;expect(()=>M.editDocumentText(c,config,doc.id,{body:'Changed'},environment)).toThrow('read-only');
+});

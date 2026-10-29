@@ -296,6 +296,20 @@ export function saveDocument(c: Case, id: string, values: Record<string, string>
   }
   appendLog(c, env, 'document.saved', doc.name);
 }
+/** Per-person wording is stored on the saved instance, never on the published template. */
+export function editDocumentText(c: Case, config: Config, id: string, edits: Record<string, string>, env: Environment): void {
+  const doc = c.documents.find(document => document.id === id);
+  if (!doc) throw new V9Error('Document not found.', 'not_found');
+  const template = config.templates.find(template => template.id === doc.templateId);
+  if (!template) throw new V9Error('Document template not found.', 'not_found');
+  if ((doc.templateType ?? template.type) === 'Attachment') throw new V9Error('Attachments are read-only PDFs.', 'forbidden');
+  if (c.state !== 'submitted' || doc.status !== 'draft' || doc.hrSignature || doc.employeeSignature || documentDeliveryReserved(c, id)) throw new V9Error('Only an unsigned draft not reserved for delivery can be edited.', 'conflict');
+  const editable = doc.blocks.filter(block => ['heading','subheading','text'].includes(block.type));
+  if (Object.keys(edits).length > 500 || Object.entries(edits).some(([key,value]) => !editable.some(block => block.id === key) || typeof value !== 'string' || value.length > 20000)) throw new V9Error('Choose an editable title, section heading or text block.', 'forbidden');
+  const saved = Object.fromEntries(Object.entries(edits).filter(([key,value]) => value !== editable.find(block => block.id === key)!.text));
+  doc.edits = saved;
+  appendLog(c, env, 'document.textEdited', doc.name);
+}
 export function signDocument(c: Case, config: Config, id: string, role: 'employee' | 'hr', signature: Signature, env: Environment): void {
   const doc = c.documents.find(d => d.id === id), template = doc && config.templates.find(t => t.id === doc.templateId);
   if (!doc || !template) throw new V9Error('Document not found.', 'not_found');

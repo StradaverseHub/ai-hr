@@ -256,6 +256,12 @@ it('keeps native onboarding document state private and preserves it through late
   expect((await v9CaseDetail(admin, row.case.id)).case.documents).toEqual(after.case.documents);
   await expect(v9CaseDetail(other, row.case.id)).rejects.toThrow();
   await expect(v9Command(admin, row.case.id, after.case.revision, { type: 'generate', template: template.id })).rejects.toThrow('changed');
+  const current=(await v9CaseDetail(admin,row.case.id)).case,block=current.documents[0].blocks.find(block=>block.type==='heading')!;
+  await v9Command(admin,row.case.id,current.revision,{type:'documentTextEdit',id:current.documents[0].id,edits:{[block.id]:'Fictional Native instance title'}});
+  const edited=(await v9CaseDetail(admin,row.case.id)).case;
+  expect(edited.documents[0].edits).toEqual({[block.id]:'Fictional Native instance title'});
+  expect((await v9Workspace(admin)).config!.templates.find(candidate=>candidate.id===template.id)!.versions[0].blocks.find(candidate=>candidate.id===block.id)!.text).toBe(block.text);
+
 });
 
 it('lets only the linked activated joiner complete a released native document and updates native task history', async () => {
@@ -617,4 +623,20 @@ it('protects an email referenced by a frozen waiting run even before any message
   config=workspace.config!;const changed=config.workflows.find(workflow=>workflow.id==='frozen-mail')!;changed.status='draft';changed.steps=[];
   config.emails=config.emails.filter(email=>email.id!=='waiting-email');
   await expect(v9SaveConfig(admin,config.revision,config)).rejects.toThrow('workflow history');
+});
+it('saves per-person text through the case owner, retains it in PDF content and denies employees', async () => {
+  const released=await prepared(),config=(await v9Workspace(admin)).config!;
+  await expect(v9Command(admin,released.id,released.revision,{type:'documentTextEdit',id:released.documents[0].id,edits:{body:'Released copy'}})).rejects.toThrow('unsigned');
+  config.templates.push({...structuredClone(config.templates.find(template=>template.id==='fixture-form')!),id:'draft-text',name:'Fictional draft text'});await v9SaveConfig(admin,config.revision,config);
+  await v9Command(admin,released.id,released.revision,{type:'generate',template:'draft-text'});
+  const c=(await v9CaseDetail(admin,released.id)).case,doc=c.documents.find(document=>document.templateId==='draft-text')!;
+  const edits={body:'Fictional case-specific wording for {employee.name}'};
+  await v9Command(admin,c.id,c.revision,{type:'documentTextEdit',id:doc.id,edits});
+  const after=(await v9CaseDetail(admin,c.id)).case;
+  expect(after.documents.find(document=>document.id===doc.id)!.edits).toEqual(edits);expect((await v9Workspace(admin)).config!.templates.find(template=>template.id===doc.templateId)!.versions[0].blocks[0].text).toBe('Contact update for {employee.name}');
+  const {v9PdfDocument}=await import('../lib/lifecycle-v9-pdf');expect(JSON.stringify(v9PdfDocument(after.documents.find(document=>document.id===doc.id)!,false))).toContain('Fictional case-specific wording for V9 subject');
+  const pdf=await v9DownloadDocument(admin,c.id,doc.id);expect(Buffer.from(pdf.content).subarray(0,5).toString()).toBe('%PDF-');
+  await expect(v9Command(employee,c.id,after.revision,{type:'documentTextEdit',id:doc.id,edits:{body:'Unauthorized'}})).rejects.toThrow();
+  await expect(v9Command(admin,c.id,c.revision,{type:'documentTextEdit',id:doc.id,edits:{body:'Stale'}})).rejects.toThrow('changed');
+  await v9Command(admin,c.id,after.revision,{type:'documentTextEdit',id:doc.id,edits:{}});expect((await v9CaseDetail(admin,c.id)).case.documents.find(document=>document.id===doc.id)!.edits).toEqual({});
 });

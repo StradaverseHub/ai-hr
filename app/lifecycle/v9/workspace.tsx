@@ -90,7 +90,7 @@ export function V9Workspace({ initial, viewer, joiners = null, nativeCase }: { n
     </main></div>
     {creating && <NewCase employees={initial.options.employees} busy={busy} close={() => setCreating(false)} submit={input => perform(async () => { const result = await createV9Offboarding(input); if (result.ok) setCreating(false); return result; }, 'Offboarding case created.')}/>}
     {reason && current && <Dialog title={reason.type === 'cancel' ? 'Cancel offboarding case' : 'Reopen cleared case'} close={() => setReason(null)}><div className="v9-stack"><Field label="Reason" required><textarea rows={3} value={reason.value} onChange={e => setReason({ ...reason, value: e.target.value })}/></Field><Button primary disabled={busy || !reason.value.trim()} onClick={() => { command({ type: reason.type, reason: reason.value }); setReason(null); }}>Confirm</Button></div></Dialog>}
-    {document && current && <Dialog title={document.name} close={() => setDocument(null)}><CaseDocument key={document.id} c={current} document={document} template={config.templates.find(t => t.id === document.templateId)} actor={initial.actor} busy={busy} command={value => { void command(value).then(result => { if (result.ok) setDocument(null); }); }}/></Dialog>}
+    {document && current && <Dialog title={document.name} close={() => setDocument(null)}><CaseDocument key={document.id} c={current} document={document} template={config.templates.find(t => t.id === document.templateId)} actor={initial.actor} busy={busy} command={value => command(value).then(result => { if (result.ok) setDocument(null); return result; })}/></Dialog>}
   </div></RuleLabels.Provider></ActorContext.Provider>;
 }
 function CaseList({ cases, open }: { cases: M.Case[]; open: (id: string) => void }) {
