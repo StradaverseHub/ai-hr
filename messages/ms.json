@@ -11223,7 +11223,48 @@
       "gatewayAddress": "Alamat gerbang",
       "gatewayAddressHelp": "Alamat https gerbang yang menerima permintaan gaya OpenAI, berakhir dengan laluan API-nya (selalunya /v1). Alamat awam sahaja. Alamat disemak semula sebelum setiap panggilan.",
       "gatewayPresetFlatkey": "Guna alamat Flatkey",
-      "gatewayModelHelp": "Masukkan nama model tepat seperti yang disenaraikan oleh gerbang."
+      "gatewayModelHelp": "Masukkan nama model tepat seperti yang disenaraikan oleh gerbang.",
+      "pendingSaveNote": "Menyimpan akan menyimpan ini sebagai perubahan yang menunggu. Konfigurasi semasa terus digunakan sehingga perubahan ini lulus semakan asas dan anda mengaktifkannya di bawah.",
+      "pendingBadge": "Perubahan menunggu",
+      "discardPending": "Buang perubahan yang menunggu",
+      "baseline": {
+        "title": "Perubahan penyedia dan model",
+        "intro": "Perubahan penyedia atau model dianggap sebagai satu keluaran. Ia kekal menunggu, dan konfigurasi semasa terus digunakan, sehingga ia lulus semakan asas atau pentadbir kumpulan menerima kegagalan dengan sebab.",
+        "none": "Tiada perubahan penyedia atau model yang menunggu.",
+        "target": "{provider} · {model}",
+        "kinds": {
+          "pending": "Perubahan menunggu",
+          "openrouter_candidate": "Calon OpenRouter yang disimpan",
+          "environment": "Lalai platform"
+        },
+        "status": {
+          "pending": "Menunggu",
+          "evaluating": "Sedang dinilai",
+          "passed": "Lulus",
+          "failed": "Gagal",
+          "accepted": "Diterima dengan sebab"
+        },
+        "suites": {
+          "read_plan": "Set ujian pelan bacaan",
+          "human_plan": "Set ujian soalan manusia"
+        },
+        "suiteProgress": "{passed} daripada {total} lulus, {failed} gagal",
+        "lastUpdated": "Dikemas kini {date}",
+        "acceptedReason": "Diterima pada {date}: {reason}",
+        "otherAdminRun": "Pentadbir lain memulakan larian ini. Menjalankan semakan akan memulakan larian anda sendiri.",
+        "consent": "Saya membenarkan permintaan sintetik tetap ini. Ia tidak mengandungi data HR dan dikira dalam peruntukan AI saya sendiri.",
+        "run": "Jalankan semakan asas",
+        "continue": "Teruskan semakan asas",
+        "batchNote": "Setiap larian menghantar paling banyak {count} permintaan dan berhenti pada kes pertama yang gagal. Jika penyedia atau peruntukan menolak permintaan, teruskan kemudian dari tempat ia berhenti.",
+        "acceptTitle": "Terima keputusan ini",
+        "acceptHelp": "Hanya pentadbir kumpulan boleh menerima larian yang gagal atau belum selesai. Sebab disimpan bersama larian dan dalam sejarah audit, dan hanya membenarkan pengaktifan perubahan ini sahaja.",
+        "acceptReason": "Sebab (sekurang-kurangnya 10 aksara)",
+        "acceptButton": "Terima dan benarkan pengaktifan",
+        "activate": "Aktifkan perubahan ini",
+        "openRouterActivate": "Aktifkan OpenRouter daripada kadnya di atas; resit penilaiannya sendiri masih diperlukan.",
+        "platformNotEvaluated": "Asas belum dinilai semula untuk model ini: {provider} · {model} (lalai platform sedang digunakan).",
+        "platformEvaluated": "Lalai platform {provider} · {model} mempunyai asas yang lulus atau diterima."
+      }
     },
     "attendancePolicy": {
       "pageTitle": "Tetapan syif",
@@ -24446,7 +24487,9 @@
     "groupsPrecedence": "Peruntukan yang terpakai bagi log masuk: peruntukan individunya; jika tiada, peruntukan jabatannya, kemudian syarikatnya, kemudian peranannya (jika beberapa sepadan pada tahap yang sama, had paling ketat terpakai); jika tiada, lalai di bawah.",
     "agentRunsAs": "Dijalankan sebagai akaun ejen HR, dihidupkan oleh {by} pada {date}.",
     "agentUnknownAdmin": "seorang bekas pentadbir",
-    "agentUnattributed": "Dihidupkan tanpa pentadbir yang dinamakan, jadi akaun ejen HR tidak menjalankannya. Jedakan dan dayakan semula untuk menjalankannya atas nama anda."
+    "agentUnattributed": "Dihidupkan tanpa pentadbir yang dinamakan, jadi akaun ejen HR tidak menjalankannya. Jedakan dan dayakan semula untuk menjalankannya atas nama anda.",
+    "featureCapsTitle": "Had ciri",
+    "featureCapsHelp": "Had bagi satu ciri AI di seluruh kumpulan. Setiap permintaan ciri itu dikira, sebagai tambahan kepada peruntukan setiap orang, kumpulan dan syarikat. Biarkan medan kosong untuk tiada had tambahan. Ciri yang dihidupkan melalui tetapan modul tidak disenaraikan."
   },
   "accountEmail": {
     "title": "Penghantaran e-mel akaun",

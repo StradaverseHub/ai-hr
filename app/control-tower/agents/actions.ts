@@ -9,7 +9,7 @@ import { AuthRequiredError } from '@/lib/auth-errors';
 import { isAiFeature } from '@/lib/ai/features';
 import {setAiSpendBudget} from '@/core/ai-spend-management';
 import { aiManagementHref, type AiManagementSection } from './sections';
-import { applyBulkAssistantAccess, clearGroupAllowance, setGroupAllowance, AiControlError, clearUserAllowance, parseAiAllowance, setAiAllowance, setAiFeature, setAssistantPermission } from '@/core/ai-management';
+import { applyBulkAssistantAccess, clearGroupAllowance, setGroupAllowance, AiControlError, clearUserAllowance, parseAiAllowance, setAiAllowance, setAiFeature, setAiFeatureCap, setAssistantPermission } from '@/core/ai-management';
 
 const PAGE = '/control-tower/agents';
 /** Refusals return to the section the admin was on, beside its error banner. */
@@ -128,4 +128,20 @@ export async function clearGroupAllowanceAction(formData: FormData) {
   } catch (e) { redirect(failedAt('allowances', await commandError(e))); }
   revalidatePath(PAGE, 'layout');
   redirect(aiManagementHref('allowances', { toast: 'saved', anchor: '#ai-groups' }));
+}
+
+/** WP14 / R19 — a tenant-wide cap on one AI feature (group administrators; the owner re-checks). */
+export async function setAiFeatureCapAction(formData: FormData) {
+  const t = await getTranslations('aiManagement');
+  const feature = formData.get('feature');
+  try {
+    const s = await getBrowserCommandSession();
+    if (!isAiFeature(feature)) throw new AiControlError(t('invalid'));
+    await setAiFeatureCap(s, { feature,
+      dailyRequests: parseAiAllowance(String(formData.get('dailyRequests') ?? ''), 1000000),
+      monthlyTokens: parseAiAllowance(String(formData.get('monthlyTokens') ?? ''), 1000000000000),
+      maxConcurrent: parseAiAllowance(String(formData.get('maxConcurrent') ?? ''), 1000000) });
+  } catch (e) { redirect(failedAt('allowances', await commandError(e))); }
+  revalidatePath(PAGE, 'layout');
+  redirect(aiManagementHref('allowances', { toast: 'saved', anchor: isAiFeature(feature) ? `#ai-feature-cap-${feature}` : '#feature-limits' }));
 }

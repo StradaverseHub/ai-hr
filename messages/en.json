@@ -11223,7 +11223,48 @@
       "gatewayAddress": "Gateway address",
       "gatewayAddressHelp": "The https address of a gateway that accepts OpenAI-style requests, ending in its API path (often /v1). Public addresses only. The address is checked again before every call.",
       "gatewayPresetFlatkey": "Use Flatkey’s address",
-      "gatewayModelHelp": "Enter the model name exactly as the gateway lists it."
+      "gatewayModelHelp": "Enter the model name exactly as the gateway lists it.",
+      "pendingSaveNote": "Saving stores this as a pending change. The current configuration keeps serving until the change passes its baseline checks and you activate it below.",
+      "pendingBadge": "Pending change",
+      "discardPending": "Discard pending change",
+      "baseline": {
+        "title": "Provider and model changes",
+        "intro": "A provider or model change is treated as a release. It stays pending, and the current configuration keeps serving, until it passes the baseline checks or a group administrator accepts a failure with a reason.",
+        "none": "No provider or model change is waiting.",
+        "target": "{provider} · {model}",
+        "kinds": {
+          "pending": "Pending change",
+          "openrouter_candidate": "Saved OpenRouter candidate",
+          "environment": "Platform default"
+        },
+        "status": {
+          "pending": "Pending",
+          "evaluating": "Evaluating",
+          "passed": "Passed",
+          "failed": "Failed",
+          "accepted": "Accepted with reason"
+        },
+        "suites": {
+          "read_plan": "Read-plan holdouts",
+          "human_plan": "Human-question holdouts"
+        },
+        "suiteProgress": "{passed} of {total} passed, {failed} failed",
+        "lastUpdated": "Last updated {date}",
+        "acceptedReason": "Accepted on {date}: {reason}",
+        "otherAdminRun": "Another administrator started this run. Running the checks starts your own run.",
+        "consent": "I authorize these fixed synthetic requests. They contain no HR data and count toward my own AI allowance.",
+        "run": "Run baseline checks",
+        "continue": "Continue baseline checks",
+        "batchNote": "Each run sends at most {count} requests and stops at the first failed case. If the provider or an allowance refuses a request, continue later from where it stopped.",
+        "acceptTitle": "Accept this result",
+        "acceptHelp": "Only a group administrator can accept a failed or unfinished run. The reason is kept with the run and in the audit history, and allows activation of this exact change only.",
+        "acceptReason": "Reason (at least 10 characters)",
+        "acceptButton": "Accept and allow activation",
+        "activate": "Activate this change",
+        "openRouterActivate": "Activate OpenRouter from its card above; its own evaluation receipt is still required.",
+        "platformNotEvaluated": "Baseline not re-evaluated for this model: {provider} · {model} (platform default in use).",
+        "platformEvaluated": "The platform default {provider} · {model} has a passed or accepted baseline."
+      }
     },
     "attendancePolicy": {
       "pageTitle": "Shift settings",
@@ -24446,7 +24487,9 @@
     "groupsPrecedence": "Which allowance applies to a login: its individual allowance; otherwise its department’s, then its company’s, then its role’s (when several match at the same level, the strictest limit applies); otherwise the default below.",
     "agentRunsAs": "Runs as the HR agent account, switched on by {by} on {date}.",
     "agentUnknownAdmin": "a former administrator",
-    "agentUnattributed": "Switched on without a named administrator, so the HR agent account does not run it. Pause it and enable it again to run it under your name."
+    "agentUnattributed": "Switched on without a named administrator, so the HR agent account does not run it. Pause it and enable it again to run it under your name.",
+    "featureCapsTitle": "Feature caps",
+    "featureCapsHelp": "A cap on one AI feature across the whole group. Every request of that feature counts, on top of each person's, group's and company's allowance. Leave a field blank for no extra cap. Features switched on by a module setting are not listed."
   },
   "accountEmail": {
     "title": "Account email deliveries",

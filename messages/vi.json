@@ -11223,7 +11223,48 @@
       "gatewayAddress": "Địa chỉ cổng",
       "gatewayAddressHelp": "Địa chỉ https của cổng nhận yêu cầu kiểu OpenAI, kết thúc bằng đường dẫn API (thường là /v1). Chỉ địa chỉ công khai. Địa chỉ được kiểm tra lại trước mỗi lần gọi.",
       "gatewayPresetFlatkey": "Dùng địa chỉ của Flatkey",
-      "gatewayModelHelp": "Nhập tên mô hình đúng như cổng liệt kê."
+      "gatewayModelHelp": "Nhập tên mô hình đúng như cổng liệt kê.",
+      "pendingSaveNote": "Khi lưu, thay đổi này được giữ ở trạng thái chờ. Cấu hình hiện tại vẫn được dùng cho đến khi thay đổi vượt qua kiểm tra cơ sở và bạn kích hoạt nó bên dưới.",
+      "pendingBadge": "Thay đổi đang chờ",
+      "discardPending": "Hủy thay đổi đang chờ",
+      "baseline": {
+        "title": "Thay đổi nhà cung cấp và mô hình",
+        "intro": "Thay đổi nhà cung cấp hoặc mô hình được xem như một lần phát hành. Thay đổi giữ trạng thái chờ, và cấu hình hiện tại vẫn được dùng, cho đến khi vượt qua kiểm tra cơ sở hoặc quản trị viên tập đoàn chấp nhận kết quả không đạt kèm lý do.",
+        "none": "Không có thay đổi nhà cung cấp hoặc mô hình nào đang chờ.",
+        "target": "{provider} · {model}",
+        "kinds": {
+          "pending": "Thay đổi đang chờ",
+          "openrouter_candidate": "Ứng viên OpenRouter đã lưu",
+          "environment": "Mặc định của nền tảng"
+        },
+        "status": {
+          "pending": "Đang chờ",
+          "evaluating": "Đang đánh giá",
+          "passed": "Đạt",
+          "failed": "Không đạt",
+          "accepted": "Đã chấp nhận kèm lý do"
+        },
+        "suites": {
+          "read_plan": "Bộ kiểm tra giữ lại về kế hoạch đọc",
+          "human_plan": "Bộ kiểm tra giữ lại về câu hỏi của người dùng"
+        },
+        "suiteProgress": "{passed}/{total} đạt, {failed} không đạt",
+        "lastUpdated": "Cập nhật lần cuối {date}",
+        "acceptedReason": "Đã chấp nhận ngày {date}: {reason}",
+        "otherAdminRun": "Một quản trị viên khác đã bắt đầu lượt chạy này. Chạy kiểm tra sẽ bắt đầu lượt chạy của riêng bạn.",
+        "consent": "Tôi cho phép các yêu cầu tổng hợp cố định này. Chúng không chứa dữ liệu nhân sự và được tính vào hạn mức AI của chính tôi.",
+        "run": "Chạy kiểm tra cơ sở",
+        "continue": "Tiếp tục kiểm tra cơ sở",
+        "batchNote": "Mỗi lượt chạy gửi tối đa {count} yêu cầu và dừng ở trường hợp không đạt đầu tiên. Nếu nhà cung cấp hoặc hạn mức từ chối một yêu cầu, hãy tiếp tục sau từ chỗ đã dừng.",
+        "acceptTitle": "Chấp nhận kết quả này",
+        "acceptHelp": "Chỉ quản trị viên tập đoàn mới có thể chấp nhận lượt chạy không đạt hoặc chưa hoàn tất. Lý do được lưu cùng lượt chạy và trong lịch sử kiểm toán, và chỉ cho phép kích hoạt đúng thay đổi này.",
+        "acceptReason": "Lý do (ít nhất 10 ký tự)",
+        "acceptButton": "Chấp nhận và cho phép kích hoạt",
+        "activate": "Kích hoạt thay đổi này",
+        "openRouterActivate": "Kích hoạt OpenRouter từ thẻ của nó ở trên; vẫn cần biên nhận đánh giá riêng của nó.",
+        "platformNotEvaluated": "Chưa đánh giá lại cơ sở cho mô hình này: {provider} · {model} (đang dùng mặc định của nền tảng).",
+        "platformEvaluated": "Mặc định của nền tảng {provider} · {model} đã có kết quả cơ sở đạt hoặc được chấp nhận."
+      }
     },
     "attendancePolicy": {
       "pageTitle": "Cài đặt ca làm việc",
@@ -24446,7 +24487,9 @@
     "groupsPrecedence": "Hạn mức áp dụng cho một tài khoản: hạn mức riêng; nếu không có thì của phòng ban, rồi công ty, rồi vai trò (nếu nhiều nhóm cùng cấp khớp, áp dụng giới hạn chặt nhất); nếu không có thì dùng mặc định bên dưới.",
     "agentRunsAs": "Chạy dưới tài khoản tác tử HR, do {by} bật vào {date}.",
     "agentUnknownAdmin": "một quản trị viên trước đây",
-    "agentUnattributed": "Đã bật mà không có quản trị viên được nêu tên, nên tài khoản tác tử HR không chạy. Hãy tạm dừng rồi bật lại để chạy dưới tên của bạn."
+    "agentUnattributed": "Đã bật mà không có quản trị viên được nêu tên, nên tài khoản tác tử HR không chạy. Hãy tạm dừng rồi bật lại để chạy dưới tên của bạn.",
+    "featureCapsTitle": "Giới hạn theo tính năng",
+    "featureCapsHelp": "Giới hạn cho một tính năng AI trên toàn tập đoàn. Mọi yêu cầu của tính năng đó đều được tính, ngoài hạn mức của từng người, nhóm và công ty. Để trống nếu không muốn thêm giới hạn. Các tính năng được bật bằng thiết lập mô-đun không được liệt kê."
   },
   "accountEmail": {
     "title": "Lịch sử gửi email tài khoản",
