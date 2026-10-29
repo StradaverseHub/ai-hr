@@ -1,3 +1,4 @@
+import {prepareReviewedLeaveDecisionTx,decideReviewedLeaveTx} from '../packs/leave/service';
 /** Authored UNRUN: requires coordinated shared review/AI-control SQL; no inline migration or guard bypass. */
 import {randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
@@ -77,6 +78,8 @@ describe('same physical non-own assigned Leave decision custody',()=>{
   const [step]=await owner.db.insert(s.leaveApprovalStep).values({tenantId:b.tenantId,leaveRequestId:human.leaveRequestId,subjectEmploymentId:subject.employmentId,stepIndex:0,approverKind:'direct_manager'}).returning();
   const noInheritance=()=>withTenant(who,async tx=>{expect(await tx.select().from(s.employment).where(eq(s.employment.id,subject.employmentId))).toEqual([]);expect(await tx.select().from(s.leaveLedger).where(eq(s.leaveLedger.employmentId,subject.employmentId))).toEqual([]);});
   await noInheritance();const r=await prepare({...human,currentStepId:step.id,decision,rejectReason:decision==='rejected'?'My delegated rejection reason':null},who);
+  const selected={leaveRequestId:r.content.leaveRequestId,currentStepId:r.content.currentStepId,decision:r.content.decision,rejectReason:r.content.rejectReason};
+  await expect(withTenant(who,async tx=>{const native=await prepareReviewedLeaveDecisionTx(tx,who,selected);await decideReviewedLeaveTx(tx,who,selected,native.reviewedDigest);throw Error('Fictional native branch rollback');})).rejects.toThrow('Fictional native branch rollback');
   expect((await confirm(r,who)).kind).toBe('completed');expect((await reopenLeaveDecisionReview(who,r.actionId)).kind).toBe('completed');expect((await confirm(r,who)).kind).toBe('completed');
   const events=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,human.leaveRequestId),eq(s.domainEvent.eventType,'leave-request.'+decision)));expect(events).toEqual([expect.objectContaining({actorId:userId,subjectEmploymentId:subject.employmentId})]);
   expect(await withTenant(who,tx=>tx.select({id:s.domainEvent.id}).from(s.domainEvent).where(eq(s.domainEvent.id,events[0].id)))).toEqual([{id:events[0].id}]);
