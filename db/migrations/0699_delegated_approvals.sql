@@ -60,13 +60,13 @@ GRANT EXECUTE ON FUNCTION app.delegated_subject_ids(text,text) TO ai_hr_app;
 --> statement-breakpoint
 -- Separate operation policies: do not add delegation to existing ALL policies (would grant DELETE).
 CREATE POLICY claim_delegate_read ON public.claim_request FOR SELECT TO ai_hr_app USING (
- tenant_id=app.current_tenant_id() AND status<>'draft' AND employment_id=ANY((SELECT app.delegated_subject_ids('claims','claims.claim'))::uuid[]));
+ tenant_id=app.current_tenant_id() AND status::text<>'draft' AND employment_id=ANY((SELECT app.delegated_subject_ids('claims','claims.claim'))::uuid[]));
 CREATE POLICY claim_delegate_decide ON public.claim_request FOR UPDATE TO ai_hr_app USING (
  tenant_id=app.current_tenant_id() AND status='pending' AND employment_id=ANY((SELECT app.delegated_subject_ids('claims','claims.claim'))::uuid[])) WITH CHECK (
  tenant_id=app.current_tenant_id() AND status IN ('approved','rejected') AND employment_id=ANY((SELECT app.delegated_subject_ids('claims','claims.claim'))::uuid[]));
 CREATE POLICY claim_delegate_attachment_read ON public.claim_attachment FOR SELECT TO ai_hr_app USING (
  tenant_id=app.current_tenant_id() AND employment_id=ANY((SELECT app.delegated_subject_ids('claims','claims.claim'))::uuid[])
- AND EXISTS(SELECT 1 FROM public.claim_request q WHERE q.id=claim_request_id AND q.employment_id=claim_attachment.employment_id AND q.tenant_id=claim_attachment.tenant_id AND q.status<>'draft'));
+ AND EXISTS(SELECT 1 FROM public.claim_request q WHERE q.id=claim_request_id AND q.employment_id=claim_attachment.employment_id AND q.tenant_id=claim_attachment.tenant_id AND q.status::text<>'draft'));
 --> statement-breakpoint
 CREATE FUNCTION app.unrouted_attendance_delegate(correction_id uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
