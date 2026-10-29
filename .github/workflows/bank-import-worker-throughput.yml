@@ -83,7 +83,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,THROUGHPUT_PROOF_MODE,GH_TOKEN \
+          sudo --preserve-env=GITHUB_WORKSPACE,GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,THROUGHPUT_PROOF_MODE,GH_TOKEN \
             python3 -I -B controller/scripts/bank_import_worker_throughput_proof.py authenticate \
             --source "$SOURCE_SHA" --producer "$PRODUCER_SHA" --run "$PRODUCER_RUN" \
             --job "$PRODUCER_JOB" --artifact "$PRODUCER_ARTIFACT" --digest "$PRODUCER_DIGEST"
@@ -142,7 +142,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,THROUGHPUT_PROOF_MODE \
+          sudo --preserve-env=GITHUB_WORKSPACE,GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,THROUGHPUT_PROOF_MODE \
             python3 -I -B controller/scripts/bank_import_worker_throughput_proof.py verify \
             --source "$GITHUB_WORKSPACE/source" --producer-controller "$GITHUB_WORKSPACE/producer"
       - name: Probe actual owned kernel cleanup before the short native lifecycle
@@ -151,7 +151,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,THROUGHPUT_PROOF_MODE \
+          sudo --preserve-env=GITHUB_WORKSPACE,GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,THROUGHPUT_PROOF_MODE \
             python3 -I -B controller/scripts/ci-bank-import-worker-kernel-cleanup-probe.py \
             --source "$GITHUB_WORKSPACE/source" --producer-controller "$GITHUB_WORKSPACE/producer" \
             --node "$(command -v node)" --report "$RUNNER_TEMP/bank-throughput-evidence/kernel-cleanup-probe.json"
@@ -168,7 +168,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,THROUGHPUT_PROOF_MODE \
+          sudo --preserve-env=GITHUB_WORKSPACE,GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,THROUGHPUT_PROOF_MODE \
             python3 -I -B controller/scripts/bank_import_worker_throughput_proof.py prepare \
             --source "$GITHUB_WORKSPACE/source" --producer-controller "$GITHUB_WORKSPACE/producer" --node "$(command -v node)"
       - name: Run fixed sealed native mode within remaining whole-job budget
@@ -178,7 +178,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,THROUGHPUT_PROOF_MODE,GH_TOKEN \
+          sudo --preserve-env=GITHUB_WORKSPACE,GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,THROUGHPUT_PROOF_MODE,GH_TOKEN \
             python3 -I -B controller/scripts/bank_import_worker_throughput_proof.py measure \
             --controller "$GITHUB_WORKSPACE/controller" --source "$GITHUB_WORKSPACE/source" \
             --producer-controller "$GITHUB_WORKSPACE/producer" --node "$(command -v node)" \
@@ -195,7 +195,7 @@ jobs:
           native=0
           database=0
           if [[ -f controller/scripts/bank_import_worker_throughput_proof.py ]]; then
-            sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,THROUGHPUT_PROOF_MODE \
+            sudo --preserve-env=GITHUB_WORKSPACE,GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,THROUGHPUT_PROOF_MODE \
               timeout --foreground --signal=TERM --kill-after=5s 100s \
               python3 -I -B controller/scripts/bank_import_worker_throughput_proof.py cleanup \
               --measurement-result "$MEASUREMENT_RESULT" --evidence-dir "$RUNNER_TEMP/bank-throughput-evidence" \
