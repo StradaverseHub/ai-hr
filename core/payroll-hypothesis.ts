@@ -509,8 +509,9 @@ function parseProposal(text: string): HypothesisProposal | null {
 export type HypothesisRun = {
   /** The tenant has not switched this on. Everything else is zero and nothing was spent. */
   disabled: boolean;
-  /** No AI provider configured, and nothing left to answer from the ledger. */
+  /** Compatibility flag; see modelBlockReason for the reason no model was admitted. */
   notConfigured: boolean;
+  modelBlockReason: 'no_provider' | 'principal_not_admitted' | null;
   /** Fewer than MIN_COHORT payslips: no peer group, so nothing ran. Not a clean pass. */
   cohortTooSmall: boolean;
   /** Auto-cleared, unresolved employees with at least one material feature. */
@@ -534,6 +535,7 @@ export type HypothesisRun = {
 const EMPTY: HypothesisRun = {
   disabled: false,
   notConfigured: false,
+  modelBlockReason: null,
   cohortTooSmall: false,
   candidates: 0,
   asked: 0,
@@ -674,6 +676,7 @@ export async function proposeHypotheses(
     // that as a model failure would drag the adjudication-pass rate down measuring the wrong thing.
     if (!cfg) {
       out.notConfigured = true;
+      out.modelBlockReason = ctx.userId ? 'no_provider' : 'principal_not_admitted';
       break;
     }
 

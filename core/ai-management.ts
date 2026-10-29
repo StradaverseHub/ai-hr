@@ -83,7 +83,11 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       const enabled = setting ? (fresh.entitlements.settings[f.setting!] ?? setting.defaultValue) === true : policies.find(p => p.scopeKey === `feature:${f.id}`)?.enabled !== false;
       const effective = enabled && (!setting || getSetting(fresh,f.setting!) === true);
       const moduleHeld = f.module == null || isModuleEnabled(fresh, f.module);
-      const state = !enabled ? 'paused' : !moduleHeld ? 'module' : !effective ? 'restricted' : !selectedProvider && f.id !== 'readiness_reminders' ? 'provider' : 'ready';
+      // A configured provider does not admit scheduled model spend. This is a runtime-status mirror,
+      // never an allowance or a grant to the principal.
+      const state = !enabled ? 'paused' : !moduleHeld ? 'module' : !effective ? 'restricted'
+        : f.kind === 'agent' ? f.id === 'readiness_reminders' ? 'templates' : 'scheduled'
+        : !selectedProvider ? 'provider' : 'ready';
       return {...f,enabled,state,mayWrite:isGroupAdmin(ctx)&&f.kind!=='platform'};
     });
     // ADR-0151 §4.5 — the switch-on each agent specialist runs under, and who made it. An agent that is on

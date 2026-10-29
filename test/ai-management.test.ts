@@ -106,6 +106,16 @@ describe('central AI allowance admission and durable accounting',()=>{
    await expect(rooted.governance!.run({operation:'draft',reservedTokens:100},async()=> 'must not run')).rejects.toThrow('paused');
   }finally{vi.unstubAllEnvs();}
  });
+ it('does not mistake a provider and enabled switches for scheduled model admission',async()=>{
+  for(const module of ['notifications','claims','payroll'])await setModule(base.tenantId,module as never,'active');
+  await setTenantSetting(group,{key:'notifications.readiness_nudge_enabled',value:true});
+  await setTenantSetting(group,{key:'claims.input_triage_enabled',value:true});
+  await setTenantSetting(group,{key:'payroll.anomaly_hypotheses_enabled',value:true});
+  const view=await aiManagementView(group);
+  expect(view.provider).not.toBeNull();
+  expect(view.features.find(f=>f.id==='readiness_reminders')).toMatchObject({enabled:true,state:'templates'});
+  for(const id of ['claims_triage','payroll_hypotheses'])expect(view.features.find(f=>f.id===id)).toMatchObject({enabled:true,state:'scheduled'});
+ });
  it('rechecks canonical switches rather than trusting a stale configuration',async()=>{
   await expect(withTenant(group,tx=>tx.insert(schema.aiControlPolicy).values({tenantId:base.tenantId,kind:'feature',scopeKey:'feature:performance_pm',featureId:'performance_pm',enabled:false}))).rejects.toThrow();
   await setTenantSetting(group,{key:'performance.ai_pm_enabled',value:true});

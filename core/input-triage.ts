@@ -259,9 +259,9 @@ function parseTriage(text: string): TriageProposal | null {
 export type TriageRun = {
   /** The tenant has not switched it on. Everything else is zero and nothing was spent. */
   disabled: boolean;
-  /** No AI provider configured, or the caller is not admitted to model spend (the agent principal,
-   *  ADR-0151 §4.5). Nothing is recorded — nothing was proposed. */
+  /** Compatibility flag; modelBlockReason distinguishes absence of a provider from admission. */
   notConfigured: boolean;
+  modelBlockReason: 'no_provider' | 'principal_not_admitted' | null;
   /** Pending claims inside the window that have not been triaged before. */
   candidates: number;
   /** Provider calls actually made. */
@@ -279,6 +279,7 @@ export type TriageRun = {
 const EMPTY: TriageRun = {
   disabled: false,
   notConfigured: false,
+  modelBlockReason: null,
   candidates: 0,
   asked: 0,
   queried: 0,
@@ -345,7 +346,7 @@ export async function triagePendingClaims(ctx: SessionContext): Promise<TriageRu
   // ADR-0151 §4.5: under the agent principal it runs only behind an attributed switch-on, and stops before
   // reading any claim — the principal is not admitted to model spend, so there is nothing it could ask. The
   // anonymous context this replaced reached the same outcome later, after reading every pending claim.
-  if (isAgentContext(ctx)) return agentHolds(ctx, 'claims_triage') ? { ...EMPTY, notConfigured: true } : { ...EMPTY, disabled: true };
+  if (isAgentContext(ctx)) return agentHolds(ctx, 'claims_triage') ? { ...EMPTY, notConfigured: true, modelBlockReason: 'principal_not_admitted' } : { ...EMPTY, disabled: true };
 
   const since = daysAgo(TRIAGE_WINDOW_DAYS);
   const claims=await withTenant(ctx,tx=>ctx.userId?pendingClaimAiSourceTx(tx,ctx,since):pendingClaimNativeSourceTx(tx,since));
@@ -377,7 +378,7 @@ export async function triagePendingClaims(ctx: SessionContext): Promise<TriageRu
   const cfg = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx, 'claims_triage')).catch(() => null);
   // NOT an error, and nothing is recorded: a tenant with no provider proposed nothing, and counting that
   // as a model failure would drag the pass rate down measuring the absence of a subscription.
-  if (!cfg) return { ...out, notConfigured: true };
+  if (!cfg) return { ...out, notConfigured: true, modelBlockReason: ctx.userId ? 'no_provider' : 'principal_not_admitted' };
 
   let looked = 0;
   for (const c of todo) {

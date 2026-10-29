@@ -1,5 +1,5 @@
 /** ADR-0109. One coordination layer above the existing governed HR services. */
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent } from '../db/events';
 import * as schema from '../db/schema';
@@ -24,6 +24,18 @@ function assertAdmin(ctx: SessionContext) {
   if (isAgentContext(ctx)) throw new Error('Orchestrator access denied');
   if (!(ctx.grants ?? ctx.roles?.map(role => ({ role, companyId: null })) ?? [])
     .some(g => g.role === 'hr_admin' || g.role === 'super_admin')) throw new Error('Orchestrator access denied');
+}
+
+/** Only metadata from a named scheduled tenant pass may be shared with company administrators.
+ * Counts and people always come from their own RLS-scoped case query; manual passes stay exact-scope. */
+function receiptScope(ctx: SessionContext) {
+  return or(
+    sql`${schema.domainEvent.payload} ->> 'scopeDigest' = ${scopeDigest(ctx)}`,
+    and(eq(schema.domainEvent.actorType, 'agent'),
+      sql`${schema.domainEvent.actorId}::text = ${schema.domainEvent.payload} -> 'agent' ->> 'principalId'`,
+      sql`${schema.domainEvent.payload} ->> 'scheduled' = 'true'`,
+      sql`${schema.domainEvent.payload} ->> 'scopeDigest' = ${digestOf(['all-employments'])}`),
+  );
 }
 
 function scopeDigest(ctx: SessionContext) {
@@ -107,7 +119,7 @@ export async function reconcileReadinessCases(ctx: SessionContext) {
     }
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'hr_orchestrator',
       aggregateId: ctx.tenantId, eventType: 'orchestrator.readiness-checked',
-      actor, payload: { scopeDigest: scopeDigest(ctx), harnessVersion: HR_HARNESS_VERSION, ...agentStamp(ctx) },
+      actor, payload: { scheduled: isAgentContext(ctx), scopeDigest: scopeDigest(ctx), harnessVersion: HR_HARNESS_VERSION, ...agentStamp(ctx) },
     });
     return counts;
   });
@@ -126,7 +138,7 @@ export async function runHrOrchestrator(ctx: SessionContext) {
     recordTrace: trace => withTenant(ctx, tx => appendEvent(tx, {
       tenantId: ctx.tenantId, aggregateType: 'hr_orchestrator', aggregateId: ctx.tenantId,
       eventType: 'orchestrator.pass-finished', actor: agentActor(ctx),
-      payload: { scopeDigest: scopeDigest(ctx), ...trace, ...agentStamp(ctx) },
+      payload: { scheduled: isAgentContext(ctx), scopeDigest: scopeDigest(ctx), ...trace, ...agentStamp(ctx) },
     })),
   });
 }
@@ -149,7 +161,7 @@ export async function orchestrationQueue(ctx: SessionContext) {
       .orderBy(asc(schema.hrOrchestrationCase.openedAt), asc(schema.hrOrchestrationCase.id));
     const checks = await tx.select({ at: schema.domainEvent.occurredAt }).from(schema.domainEvent)
       .where(and(eq(schema.domainEvent.eventType, 'orchestrator.readiness-checked'),
-        sql`${schema.domainEvent.payload} ->> 'scopeDigest' = ${scopeDigest(ctx)}`))
+        receiptScope(ctx)))
       .orderBy(desc(schema.domainEvent.occurredAt), desc(schema.domainEvent.sequence)).limit(1);
     const open = rows.filter(r => r.state === 'needs_input' || r.state === 'needs_review');
     const displayed = open.slice(0, 50);
@@ -162,15 +174,17 @@ export async function orchestrationQueue(ctx: SessionContext) {
       if (!(error instanceof EntitlementError)) throw error;
       actionsUnavailable = true;
     }
-    const runs = await tx.select({ at: schema.domainEvent.occurredAt, payload: schema.domainEvent.payload })
+    const runs = await tx.select({ at: schema.domainEvent.occurredAt, payload: schema.domainEvent.payload,
+      scheduled: sql<boolean>`${schema.domainEvent.payload} ->> 'scheduled' = 'true'` })
       .from(schema.domainEvent).where(and(eq(schema.domainEvent.eventType, 'orchestrator.pass-finished'),
-        sql`${schema.domainEvent.payload} ->> 'scopeDigest' = ${scopeDigest(ctx)}`))
+        receiptScope(ctx)))
       .orderBy(desc(schema.domainEvent.occurredAt), desc(schema.domainEvent.sequence)).limit(1);
     return { rows: displayed.map(row => ({ ...row, action: actions.get(`${row.employmentId}:${row.gap}`) ?? null })), total: open.length,
       actionsUnavailable,
       verified: rows.filter(r => r.state === 'verified').length,
       inactive: rows.filter(r => r.state === 'inactive').length,
       observedAt: checks.length ? checks[0].at : null,
+      scheduledRun: runs[0]?.scheduled === true,
       lastRun: runs.length ? { at: runs[0].at, ...summarizeOrchestrationPass(runs[0].payload) } : null,
     };
   }, { readOnlySnapshot: true });
