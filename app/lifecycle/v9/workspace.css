@@ -12,3 +12,8 @@
 
 .v9-rule-picker>summary{cursor:pointer;list-style:none;border:1px solid #d5d9e3;border-radius:8px;background:#fff;padding:10px 12px}
 .v9-rule-picker[open]>div{padding:12px;border:1px solid #d5d9e3;border-radius:8px;margin-top:6px;max-height:280px;overflow:auto}
+
+.v9-button{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.v9-badge{align-self:flex-start;width:fit-content}
+.v9-mobile-top{display:none}
+@media(max-width:760px){.v9-mobile-top{display:flex;align-items:center;justify-content:space-between;background:#fff;border-radius:16px;padding:12px 16px;font-weight:600}.v9-nav{display:none}.v9-nav.v9-nav-open{display:flex;flex-direction:column}.v9-nav strong{display:none}.v9-nav h2{width:auto}.v9-heading>div{min-width:0}.v9-heading h1{overflow-wrap:anywhere}}
