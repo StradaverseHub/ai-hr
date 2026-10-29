@@ -21,7 +21,7 @@ function ComposerFields({ tasks, labels, layout = 'stacked',question,setQuestion
   const textarea = useRef<HTMLTextAreaElement>(null);
   const choose = (task: Task) => { setQuestion(task.prompt); textarea.current?.focus(); };
   if (layout === 'hero') return <>
-    <div className="rounded-xl border border-border bg-card shadow-sm focus-within:ring-2 focus-within:ring-primary">
+    <div className="rounded-xl border border-border bg-card shadow-sm focus-within:ring-2 focus-within:ring-primary" data-ui-composer>
       <label htmlFor="assistant-question" className="sr-only">{labels.question}</label>
       <textarea ref={textarea} id="assistant-question" name="question" required rows={3} maxLength={2000}
         value={question} readOnly={pending} onChange={event => setQuestion(event.target.value)}
