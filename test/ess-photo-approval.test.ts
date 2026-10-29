@@ -110,16 +110,34 @@ describe('canonical photo request lifecycle and byte privacy',()=>{
   await expect(decideProfileChange(hr.ctx,{requestId,decision:'approved'})).rejects.toMatchObject({code:'stale'});
   expect((await getPersonPhoto(employee.ctx,employee.personId))?.content).toEqual(newer);
  });
- it('denies unrelated and revoked reviewers, retains old routing history and permits only the fresh assigned reviewer',async()=>{
+ it('preserves the recorded photo reviewer when rules change, without admitting the newly configured reviewer',async()=>{
   const {employee,hr,other}=await fixture();const {requestId}=await setOwnPersonPhoto(employee.ctx,{employmentId:employee.employmentId,content:png,fileName:'x.png'});
   expect(await getProfilePhotoProposal(other.ctx,requestId)).toBeNull();await expect(decideProfileChange(other.ctx,{requestId,decision:'approved'})).rejects.toThrow();
-  const [stored]=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,requestId));
-  await saveProfileRoutingPolicy(group(),{expectedRevision:stored.routeRevision!,enabled:true,rules:[rule(employee.employmentId,other.employmentId)]});
-  await expect(decideProfileChange(hr.ctx,{requestId,decision:'approved'})).rejects.toThrow();
+  const [before]=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,requestId));
+  await saveProfileRoutingPolicy(group(),{expectedRevision:before.routeRevision!,enabled:true,rules:[rule(employee.employmentId,other.employmentId)]});
+  const [retained]=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,requestId));
+  expect({routeId:retained.routeId,revision:retained.routeRevision,userId:retained.routeApproverUserId,employmentId:retained.routeApproverEmploymentId,context:retained.routeContext,history:retained.routeHistory}).toEqual({routeId:before.routeId,revision:before.routeRevision,userId:before.routeApproverUserId,employmentId:before.routeApproverEmploymentId,context:before.routeContext,history:before.routeHistory});
+  expect((await getProfilePhotoProposal(hr.ctx,requestId))?.content).toEqual(png);expect(await getProfilePhotoProposal(other.ctx,requestId)).toBeNull();
+  await expect(decideProfileChange(other.ctx,{requestId,decision:'approved'})).rejects.toThrow();
+  expect((await getPersonPhoto(employee.ctx,employee.personId))?.content).toEqual(original);
+  await decideProfileChange(hr.ctx,{requestId,decision:'approved'});
+  expect((await getPersonPhoto(employee.ctx,employee.personId))?.content).toEqual(png);
+  expect((await myProfileChangeRequests(employee.ctx)).find(row=>row.id===requestId)?.status).toBe('approved');
+ });
+ it('changes photo byte access only after explicit rerouting and refuses a revoked replacement reviewer',async()=>{
+  const {employee,hr,other}=await fixture();const {requestId}=await setOwnPersonPhoto(employee.ctx,{employmentId:employee.employmentId,content:png,fileName:'x.png'});
+  const [before]=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,requestId));
+  await saveProfileRoutingPolicy(group(),{expectedRevision:before.routeRevision!,enabled:true,rules:[rule(employee.employmentId,other.employmentId)]});
   await rerouteProfileRequest(group(),{requestId,reason:'Fictional HR assignment changed'});
-  expect(await getProfilePhotoProposal(hr.ctx,requestId)).toBeNull();expect((await getProfilePhotoProposal(other.ctx,requestId))?.content).toEqual(png);
+  const [rerouted]=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,requestId));
+  expect(rerouted.routeApproverUserId).toBe(other.ctx.userId);expect(rerouted.routeHistory).toEqual([expect.objectContaining({before:expect.objectContaining({approverUserId:hr.ctx.userId}),reason:'Fictional HR assignment changed'})]);
+  expect(await getProfilePhotoProposal(hr.ctx,requestId)).toBeNull();await expect(decideProfileChange(hr.ctx,{requestId,decision:'approved'})).rejects.toThrow();
+  expect((await getProfilePhotoProposal(other.ctx,requestId))?.content).toEqual(png);
   await owner.db.delete(roleAssignment).where(and(eq(roleAssignment.appUserId,other.ctx.userId!),eq(roleAssignment.role,'hr_admin')));
   expect(await getProfilePhotoProposal(other.ctx,requestId)).toBeNull();await expect(decideProfileChange(other.ctx,{requestId,decision:'approved'})).rejects.toThrow();
+  expect((await getPersonPhoto(employee.ctx,employee.personId))?.content).toEqual(original);
+  expect((await getProfilePhotoProposal(employee.ctx,requestId))?.content).toEqual(png);
+  expect((await myProfileChangeRequests(employee.ctx)).find(row=>row.id===requestId)?.status).toBe('pending');
  });
  it('withdraws and purges pending bytes atomically when the entire Profile tab is hidden',async()=>{
   const {employee}=await fixture();const {requestId}=await setOwnPersonPhoto(employee.ctx,{employmentId:employee.employmentId,content:png,fileName:'x.png'});
@@ -136,14 +154,19 @@ describe('canonical photo request lifecycle and byte privacy',()=>{
   expect(await getProfilePhotoProposal(employee.ctx,requestId)).toBeNull();
   await expect(setOwnPersonPhoto(employee.ctx,{employmentId:employee.employmentId,content:png,fileName:'x.png'})).rejects.toMatchObject({code:'permission'});
  });
- it('applies the same canonical exclusion resolver and request-type match at preview, save and submission',async()=>{
-  const employee=await worker('Explicitly excluded'),included=await worker('Included'),hr=await worker('HR','hr_admin');
-  const rules=[{...editableProfileRoute(rule(employee.employmentId,hr.employmentId)),employmentIds:[employee.employmentId,included.employmentId],excludedEmploymentIds:[employee.employmentId],requestTypes:['photo' as const]}];
-  const preview=await previewProfileRoutingPolicy(group(),{version:2,enabled:true,rules});expect(preview.matched).toBe(1);
-  await expect(saveProfileRoutingPolicy(group(),{version:2,expectedRevision:EMPTY_PROFILE_ROUTING.revision,enabled:true,rules})).rejects.toMatchObject({code:'changed'});
-  await saveProfileRoutingPolicy(group(),{version:2,expectedRevision:EMPTY_PROFILE_ROUTING.revision,enabled:true,rules,previewFingerprint:preview.fingerprint});
+ it.each([2,3] as const)('v%s applies the same positive IDs, exclusions and request type at preview, save and submission',async version=>{
+  const employee=await worker('Explicitly excluded'),included=await worker('Included'),outside=await worker('Outside positive IDs'),hr=await worker('HR','hr_admin');
+  const originalRule=rule(employee.employmentId,hr.employmentId);
+  const route={...(version===3?editableProfileRoute(originalRule):originalRule),employmentIds:[employee.employmentId,included.employmentId],excludedEmploymentIds:[employee.employmentId],excludedCriteria:{},requestTypes:['photo' as const]};
+  const rules=[route];
+  const preview=await previewProfileRoutingPolicy(group(),{version,enabled:true,rules});expect(preview.matched).toBe(1);
+  await expect(saveProfileRoutingPolicy(group(),{version,expectedRevision:EMPTY_PROFILE_ROUTING.revision,enabled:true,rules})).rejects.toMatchObject({code:'changed'});
+  await saveProfileRoutingPolicy(group(),{version,expectedRevision:EMPTY_PROFILE_ROUTING.revision,enabled:true,rules,previewFingerprint:preview.fingerprint});
   await setTenantSetting(group(),{key:'ess.profile_photo_edit',value:true});
-  await expect(setOwnPersonPhoto(employee.ctx,{employmentId:employee.employmentId,content:png,fileName:'x.png'})).rejects.toMatchObject({code:'missing'});
+  for(const refused of [employee,outside]){
+   await expect(setOwnPersonPhoto(refused.ctx,{employmentId:refused.employmentId,content:png,fileName:'x.png'})).rejects.toMatchObject({code:'missing'});
+   expect(await owner.db.select({id:profileChangeRequest.id}).from(profileChangeRequest).where(eq(profileChangeRequest.employmentId,refused.employmentId))).toEqual([]);
+  }
   const {requestId}=await setOwnPersonPhoto(included.ctx,{employmentId:included.employmentId,content:png,fileName:'x.png'});expect(requestId).toBeTruthy();
   await expect(submitOwnProfileEdit(included.ctx,{employmentId:included.employmentId,proposal:await proposed(included.ctx,included.employmentId)})).rejects.toMatchObject({code:'missing'});
  });

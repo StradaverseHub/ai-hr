@@ -3900,6 +3900,27 @@
       "when": 1793330000007,
       "tag": "0681_rewards_approval_participation",
       "breakpoints": true
+    },
+    {
+      "idx": 672,
+      "version": "7",
+      "when": 1793330000008,
+      "tag": "0682_epf_manual_percentage",
+      "breakpoints": true
+    },
+    {
+      "idx": 673,
+      "version": "7",
+      "when": 1793330000009,
+      "tag": "0683_profile_field_approvals",
+      "breakpoints": true
+    },
+    {
+      "idx": 674,
+      "version": "7",
+      "when": 1793330000010,
+      "tag": "0684_ocbc_bank_payment_exports",
+      "breakpoints": true
     }
   ]
 }

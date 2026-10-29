@@ -781,7 +781,6 @@ export function Sidebar({
     {href:'/me/tp3',labelKey:'myTp3',icon:Receipt},
     {href:'/me/ea',labelKey:'myEa',icon:Receipt,ownedSubpaths:['/me/ea']},
     {href:'/admin/claims/reimbursements',labelKey:'reimbursementsDue',icon:Receipt,adminOnly:true},
-    {href:'/admin/work-locations',labelKey:'workLocations',icon:Building2,adminOnly:true},
     {href:'/reports',labelKey:'reports',icon:FileBarChart,adminOnly:true,exactHref:true},
   ];
   const destinations = [...authorizedRows, ...additionalRows.filter(canSeeChild)];

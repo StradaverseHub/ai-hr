@@ -231,17 +231,17 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
    * twice; a stub that forwards before guarding would leak the destination to a non-administrator; and no
    * `ownedSubpaths` would mean a bookmark that lands on step 2 through the stub shows "Locations" unlit.
    */
-  it('Ops/Strata restores Work Locations exactly once under Attendance Configuration, retaining its guarded forward', () => {
+  it('1cd86ea5 keeps Locations only in Settings and retains guarded old links', () => {
     for (const href of RESTORED_CONFIGURATION_HREFS) {
       // `countQuoted` would also match the SAME quoted string inside `ownedSubpaths: […]` below — correct,
       // since that is not a row — so the row-specific shape `href: '…'` is counted directly instead.
       expect(
         [...SRC.matchAll(/\{\s*href:\s*'([^']+)'/g)].filter(match=>match[1]===href).length,
-        `${href} appears once as a configuration destination`,
-      ).toBe(1);
+        `${href} must not duplicate the Settings card as a flyout row`,
+      ).toBe(0);
       expect(navigationPlacement(href)).toEqual({area:'ops',module:'attendance',section:'config'});
-      const restored=SIDEBAR.split('\n').find(line=>new RegExp(`href:\\s*'${href}'`).test(line));
-      expect(restored).toMatch(/adminOnly:\s*true/);
+      const cards=fs.readFileSync(path.resolve(__dirname,'../app/admin/attendance/settings/cards.ts'),'utf8');
+      expect(cards.match(/key: 'locations', href: '\/admin\/work-locations\/clocking'/g)).toHaveLength(1);
       const stub = fs.readFileSync(path.resolve(__dirname, '..', `app${href}`, 'page.tsx'), 'utf8');
       const guard = stub.indexOf('requireAdmin()');
       const fwd = stub.indexOf('redirect(');

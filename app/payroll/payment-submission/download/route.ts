@@ -37,7 +37,7 @@ export async function GET(req: Request) {
   const format = submissionFormat(q.get('format') ?? '');
   // Unknown id, and "declared but not available", answer the same 404: the URL must not distinguish a
   // format that does not exist from one that exists and has no builder yet.
-  if (!format || !format.available) return new Response('Not found', { status: 404 });
+  if (!format || !format.available || format.transport === 'bank-post') return new Response('Not found', { status: 404 });
 
   const built = await format.build({
     companyId: q.get('companyId') ?? '',

@@ -593,7 +593,7 @@ describe('§2 activate a draft with every field set, and read every landing back
     // item a72610af — the EPF category, mapped to its lawful enum. r393 (685d2380 step 3b) — and the two
     // rates typed in PERCENT land as decimals (the record's own ×100 shows them back as 14.5 and 16.25).
     // The two assertions this replaced read "no rate on a draft" — retired with the narrowing.
-    expect(stat.epfMode, 'employee_statutory_my.epf_mode').toBe('voluntary_excess');
+    expect(stat.epfMode, 'employee_statutory_my.epf_mode').toBe('manual_percentage');
     expect(stat.epfEmployeeRate, 'employee_statutory_my.epf_employee_rate').toBe('0.1450');
     expect(stat.epfEmployerRate, 'employee_statutory_my.epf_employer_rate').toBe('0.1625');
     expect(stat.epfEmployeeAmount, 'employee_statutory_my.epf_employee_amount — not a manual category').toBeNull();

@@ -1,4 +1,4 @@
-/** Ops/Strata supersedes historical audience-position pins below; route, permission and source-inventory safeguards remain. */
+/** 1cd86ea5 removes the duplicate Work Locations rail row; Settings, route, permission and source-inventory safeguards remain. */
 /**
  * Item 639bf4a5 — the work-site register's HOME, its LISTING and its dedicated screens.
  *
@@ -108,6 +108,7 @@ import {
 import { CLOCKING_LIST, CLOCKING_NEW_PAGE, LOCATIONS_LIST, clockingEditPage } from '../app/admin/work-locations/clocking/form-fields';
 import { LOCATION_NEW_PAGE, locationEditPage, locationViewPage } from '../app/admin/work-locations/location-fields';
 
+import { ATTENDANCE_SETTINGS_CARDS } from '../app/admin/attendance/settings/cards';
 import { navigationPlacement, navigationRouteOwner } from '../lib/navigation-workspaces';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -141,14 +142,15 @@ const countQuoted = (haystack: string, href: string) => haystack.split(`'${href}
  * test/attendance-pack.test.ts and test/sidebar-attendance-group.test.ts; this section keeps only the
  * claims unique to THIS file's subject — the OLD address's own fate.
  */
-describe('Ops/Strata — Work Locations returns once under Attendance Configuration; redirects and role guards remain intact', () => {
-  it('restores only the canonical destination and keeps the obsolete address out of the rail', () => {
+describe('1cd86ea5 — Locations has one Settings card; redirects and role guards remain intact', () => {
+  it('keeps one canonical Settings card without a duplicate destination in the rail', () => {
     // `countQuoted` would also match the SAME quoted HREF inside `ownedSubpaths: […]` on the row above —
     // correct, since that is not a row of its own — so the row-specific shape `href: '…'` is counted.
-    expect([...(SIDEBAR+PACK).matchAll(/\{\s*href:\s*'([^']+)'/g)].filter(match=>match[1]===HREF), 'exactly one restored canonical destination').toHaveLength(1);
+    expect([...(SIDEBAR+PACK).matchAll(/\{\s*href:\s*'([^']+)'/g)].filter(match=>match[1]===HREF), 'no duplicate standalone destination').toHaveLength(0);
     expect(navigationPlacement(HREF)).toEqual({area:'ops',module:'attendance',section:'config'});
-    const restored=SIDEBAR.split('\n').find(line=>/href:\s*'\/admin\/work-locations'/.test(line));
-    expect(restored).toMatch(/adminOnly:\s*true/);
+    const settings=attendancePack.navNodes!.flatMap(node=>node.children??[]).find(row=>row.href==='/admin/attendance/settings');
+    expect(settings?.adminOnly).toBe(true);
+    expect(ATTENDANCE_SETTINGS_CARDS.filter(card=>card.key==='locations')).toEqual([{key:'locations',href:CLOCKING_LIST}]);
     expect(countQuoted(SIDEBAR + PACK, OLD_HREF), `${OLD_HREF} must have no menu row anywhere`).toBe(0);
     expect(SIDEBAR, 'and not under the r336 label either').not.toContain("labelKey: 'physicalWorkLocation'");
     expect(PACK, 'nor the retired label key').not.toContain("labelKey: 'workLocations'");
@@ -157,7 +159,7 @@ describe('Ops/Strata — Work Locations returns once under Attendance Configurat
     expect(countQuoted(SIDEBAR, '/admin/organization'), 'Organization keeps its own row').toBe(1);
   });
 
-  it('the direct restored destination wins its own path while Settings retains the clocking screens', () => {
+  it('Settings owns both the legacy destination and the clocking screens', () => {
     // r431 (bdfe4968) — "Locations" is a card on the Attendance Settings page, no longer a row: the row that
     // stays lit on it (and on the retired address, which r428 handed to it) is the Settings row.
     const node = attendancePack.navNodes!.find((n) => n.labelKey === 'attendanceSettings')!;
@@ -169,10 +171,10 @@ describe('Ops/Strata — Work Locations returns once under Attendance Configurat
     expect(row, 'the Settings row is a child of the Attendance settings node').toBeTruthy();
     expect(row!.ownedSubpaths, 'and it owns the retired address').toContain(HREF);
     expect(row!.ownedSubpaths, 'and the clocking list').toContain(CLOCKING_LIST);
-    const direct={href:HREF};
-    const destinations=[row!,direct];
+    expect(node.children.some(child=>child.href===HREF)).toBe(false);
+    const destinations=[row!];
     for (const sub of [HREF, `${HREF}/new`, `${HREF}/abc`, `${HREF}/abc/edit`]) {
-      expect(navigationRouteOwner(sub,'',destinations)?.destination.href, `${sub}: an exact/direct path wins the equivalent legacy owned prefix`).toBe(HREF);
+      expect(navigationRouteOwner(sub,'',destinations)?.destination.href, `${sub}: the retained legacy address belongs to Settings`).toBe('/admin/attendance/settings');
     }
     for (const sub of [CLOCKING_LIST, `${CLOCKING_LIST}/x`]) {
       expect(navigationRouteOwner(sub,'',destinations)?.destination.href, `${sub}: specific clocking ownership survives`).toBe('/admin/attendance/settings');
@@ -981,14 +983,15 @@ describe('639bf4a5 — the label is "Locations", in all six locales', () => {
     }
   });
 
-  it('the two retired names stay absent while the restored Work Locations destination remains admin-only', () => {
+  it('retired names stay absent and the single Locations entry remains admin-only', () => {
     for (const loc of LOCALES) {
       expect(catalog(loc).nav.clockingLocation, `${loc}: dead nav.clockingLocation (r336)`).toBeUndefined();
       expect(catalog(loc).nav.physicalWorkLocation, `${loc}: dead nav.physicalWorkLocation (r338)`).toBeUndefined();
-      // Ops/Strata restores a separate configuration entry; the clocking pack still has no duplicate.
+      // Preserve the compatible caption without restoring a duplicate navigation entry.
       expect(typeof catalog(loc).nav.workLocations, `${loc}: restored Work Locations caption`).toBe('string');
     }
-    expect(SIDEBAR).toContain("{href:'/admin/work-locations',labelKey:'workLocations',icon:Building2,adminOnly:true}");
+    expect(SIDEBAR).not.toContain("href:'/admin/work-locations',labelKey:'workLocations'");
+    expect(attendancePack.navNodes!.flatMap(node=>node.children??[]).find(row=>row.href==='/admin/attendance/settings')?.adminOnly).toBe(true);
     expect(PACK).not.toContain("labelKey: 'workLocations'");
     expect(SIDEBAR + PACK, 'no nav row still points at either retired key').not.toMatch(
       /labelKey: '(clockingLocation|physicalWorkLocation)'/,

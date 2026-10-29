@@ -118,7 +118,7 @@ async function runPayroll() {
 function build(id: string, query = new URLSearchParams()): Promise<SubmissionBuild> {
   const f = submissionFormat(id);
   if (!f) throw new Error(`no such format: ${id}`);
-  if (!f.available) throw new Error(`${id} declares no builder`);
+  if (!f.available || f.transport === 'bank-post') throw new Error(`${id} declares no builder`);
   return f.build({ companyId: b.companyId, periodKey: PERIOD, query });
 }
 
@@ -253,7 +253,7 @@ describe('20f6c6a8 (c) — generating a file writes NOTHING', () => {
   it('no statutory_report row and no domain event, for every format on the shelf', async () => {
     const before = await counts();
     for (const f of SUBMISSION_FORMATS) {
-      if (!f.available) continue;
+      if (!f.available || f.transport === 'bank-post') continue;
       const r = await f.build({ companyId: b.companyId, periodKey: PERIOD, query: new URLSearchParams() });
       expect(r.ok, `${f.id} must produce a file for this month: ${r.ok ? '' : r.message}`).toBe(true);
     }
@@ -271,7 +271,7 @@ describe('20f6c6a8 (c) — generating a file writes NOTHING', () => {
       .where(eq(schema.payrollBatch.companyId, b.companyId))
       .orderBy(schema.payrollBatch.id);
     for (const f of SUBMISSION_FORMATS) {
-      if (f.available) await f.build({ companyId: b.companyId, periodKey: PERIOD, query: new URLSearchParams() });
+      if (f.available && f.transport !== 'bank-post') await f.build({ companyId: b.companyId, periodKey: PERIOD, query: new URLSearchParams() });
     }
     const statusAfter = await owner.db
       .select({ id: schema.payrollBatch.id, status: schema.payrollBatch.status })
@@ -307,7 +307,7 @@ describe('20f6c6a8 (d) — a company with no statutory numbers is REFUSED, not g
 
   it('every format refuses, and none of them returns bytes', async () => {
     for (const f of SUBMISSION_FORMATS) {
-      if (!f.available) continue;
+      if (!f.available || f.transport === 'bank-post') continue;
       const r = await f.build({ companyId: b.companyId, periodKey: PERIOD, query: new URLSearchParams() });
       expect(r.ok, `${f.id} must refuse without a statutory identifier`).toBe(false);
       if (r.ok) continue;
@@ -342,7 +342,7 @@ describe('20f6c6a8 (d) — a company with no statutory numbers is REFUSED, not g
     await registerEmployer();
     scope.scopeIds = [];
     for (const f of SUBMISSION_FORMATS) {
-      if (!f.available) continue;
+      if (!f.available || f.transport === 'bank-post') continue;
       const r = await f.build({ companyId: b.companyId, periodKey: PERIOD, query: new URLSearchParams() });
       expect(r.ok, `${f.id} must not export a company outside the caller's scope`).toBe(false);
       if (!r.ok) expect(r.status, `${f.id} must answer the bare not-found`).toBe(404);
@@ -359,9 +359,9 @@ describe('20f6c6a8 — the registry itself', () => {
     ]);
   });
 
-  it('carries no salary or bank-statutory format in this round', () => {
-    expect(formatsInGroup('salary')).toEqual([]);
-    expect(formatsInGroup('bankStatutory')).toEqual([]);
+  it('offers salary and bank statutory formats with unconfirmed hash formats unavailable', () => {
+    expect(formatsInGroup('salary').map(f => f.id)).toEqual(['my.ocbc.salary']);
+    expect(formatsInGroup('bankStatutory').map(f => [f.id, f.available])).toEqual([['my.ocbc.kwsp', true], ['my.ocbc.socso', true], ['my.ocbc.lhdn', true], ['my.ocbc.zakat', true]]);
   });
 
   it('every format states its PROVENANCE, and states it truthfully', () => {

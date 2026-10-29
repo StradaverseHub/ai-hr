@@ -1,3 +1,4 @@
+import {ocbcBankPaymentFiles} from './ocbc-payment';
 import {childReliefTableHeadCount} from './statutory-tables';
 import {getTaxSelectionMY,saveTaxSelectionMY,initializeHiredTaxSelectionMYTx,initializeTransferredTaxSelectionMYTx,resolveTaxSelectionMY} from './tax-selection';
 import {listTaxSchemeDeclarationsMY,saveTaxSchemeDeclarationMY,revokeTaxSchemeDeclarationMY,resolveTaxSchemeMY} from './tax-scheme-declarations';
@@ -269,4 +270,5 @@ export const myPack: CountryPack = {
   // test/r340-cp39-payment-submission-download.test.ts, so a rename on either side fails rather than
   // silently taking the row's download away.
   paymentFiles: { 'my.lhdn.cp39-edata': cp39PaymentFile },
+  bankPaymentFiles:ocbcBankPaymentFiles,
 };

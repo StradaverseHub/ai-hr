@@ -171,6 +171,8 @@ describe('Card Assignment import uses canonical assignments and audit', () => {
     await owner.db.transaction(async tx => {
       await tx.execute(sql`ALTER TABLE public.employee_statutory_my DISABLE TRIGGER statutory_card_identifier_guard`);
       await tx.insert(schema.employeeStatutoryMy).values({ tenantId: b.tenantId, personId: target.personId, icNumber: '900101-01-5555' });
+      // Drain the owner-only 0679 deferred guard before changing the trigger definition.
+      await tx.execute(sql`SET CONSTRAINTS profile_direct_statutory_guard IMMEDIATE`);
       await tx.execute(sql`ALTER TABLE public.employee_statutory_my ENABLE TRIGGER statutory_card_identifier_guard`);
     });
     await expect(owner.db.update(schema.employment).set({ employeeCode: null }).where(eq(schema.employment.id, target.id))).resolves.toBeDefined();

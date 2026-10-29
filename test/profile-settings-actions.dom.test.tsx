@@ -24,6 +24,7 @@ vi.mock('@/app/admin/settings/profile-requests/actions',()=>({
 }));
 import Page from '../app/admin/settings/profile-requests/page';
 import {ProfileRoutingForm} from '../app/admin/settings/profile-requests/routing-form';
+import {ProfileRoutingSetup} from '../app/admin/settings/profile-requests/routing-setup';
 
 type ElementProps={children?:ReactNode;action?:unknown;previewAction?:unknown;[key:string]:unknown};
 function descendants(node:ReactNode):ReactElement<ElementProps>[] {
@@ -46,8 +47,9 @@ describe('Employee Change Requests actual page action composition',()=>{
   const photoForms=nodes.filter(node=>node.type==='form'&&node.props.action===actions.photo);
   expect(photoForms).toHaveLength(1);
   expect(nodes.filter(node=>node.type==='form'&&node.props.action===actions.legacy)).toHaveLength(0);
-  const routing=nodes.find(node=>node.type===ProfileRoutingForm);
-  expect(routing).toBeDefined();expect(routing!.props.action).toBe(actions.save);
+  expect(nodes.some(node=>node.type===ProfileRoutingForm)).toBe(false);
+  expect(nodes.some(node=>node.props.href==='/admin/settings/profile-requests/rules')).toBe(true);
+  const routing=await ProfileRoutingSetup({session:{tenantId:'fictional',userId:'fictional',roles:['hr_admin']} as never});expect(routing!.props.action).toBe(actions.save);
   expect(routing!.props.previewAction).toBe(actions.preview);
   expect(nodes.filter(node=>node.type==='form'&&node.props.action===actions.preview)).toHaveLength(0);
 
@@ -64,21 +66,21 @@ describe('Employee Change Requests actual page action composition',()=>{
  });
 
  it('Preview executes the page-supplied preview owner; Save keeps its revision and never aliases Preview',async()=>{
-  const tree=await pageTree(),routing=descendants(tree).find(node=>node.type===ProfileRoutingForm)!;
+  const routing=await ProfileRoutingSetup({session:{tenantId:'fictional',userId:'fictional',roles:['hr_admin']} as never});
   expect(routing.props.action).toBe(actions.save);expect(routing.props.previewAction).toBe(actions.preview);
-  render(tree);
+  render(routing);
   fireEvent.click(screen.getByRole('button',{name:'routingPreview'}));
   await waitFor(()=>expect(actions.preview).toHaveBeenCalledTimes(1));
   expect(await screen.findByRole('status')).toHaveTextContent('routingTypeMatched: 7');
   expect(actions.save).not.toHaveBeenCalled();expect(actions.photo).not.toHaveBeenCalled();
   const previewData=actions.preview.mock.calls[0][0] as FormData;
-  expect(JSON.parse(String(previewData.get('policy')))).toEqual({version:2,enabled:true,rules:[]});
+  expect(JSON.parse(String(previewData.get('policy')))).toEqual({version:3,enabled:true,rules:[]});
 
   const saveButton=screen.getByRole('button',{name:'routingSave'}),form=saveButton.closest('form');
   expect(form).not.toBeNull();
   await (routing.props.action as (data:FormData)=>Promise<void>)(new FormData(form!));
   expect(actions.save).toHaveBeenCalledTimes(1);
-  expect(JSON.parse(String((actions.save.mock.calls[0][0] as FormData).get('policy')))).toEqual({version:2,expectedRevision:'fictional-revision',enabled:true,rules:[],previewFingerprint:'a'.repeat(64)});
+  expect(JSON.parse(String((actions.save.mock.calls[0][0] as FormData).get('policy')))).toEqual({version:3,expectedRevision:'fictional-revision',enabled:true,rules:[],previewFingerprint:'a'.repeat(64)});
   expect(actions.preview).toHaveBeenCalledTimes(1);expect(actions.photo).not.toHaveBeenCalled();
  });
 });

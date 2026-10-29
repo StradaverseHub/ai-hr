@@ -64,6 +64,24 @@ export type ResolvedEpfElection = {
   epfManualReason: string | null;
 };
 
+/** Browser constraints derive top-up floors from the same table as the server rule. */
+export function epfRateInputBounds(uiMode: string, side: 'employee' | 'employer') {
+  return {min: uiMode === 'manual_percentage' ? 1 : (side === 'employee' ? EPF_EMPLOYEE_FLOOR : EPF_EMPLOYER_FLOOR) * 100, max:100};
+}
+
+/** One validation owner for manual rates, shared by persistence and defensive payroll reads. */
+export function manualEpfPercentageRates(employee: number | null | undefined, employer: number | null | undefined) {
+  const rate = (value: number | null | undefined, side: 'Employee' | 'Employer', field: EpfElectionField) => {
+    if (value == null) throw new InvalidEpfElectionError(`${side} Rate % is required when EPF Category is Manual (by percentage).`, field);
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0.01 || value > 1)
+      throw new InvalidEpfElectionError(`${side} Rate % must be between 1% and 100% when EPF Category is Manual (by percentage).`, field);
+    if (Math.abs(value * 10000 - Math.round(value * 10000)) > 0.0000001)
+      throw new InvalidEpfElectionError(`${side} Rate % must use no more than two decimal places.`, field);
+    return value;
+  };
+  return {employeeRate: rate(employee, 'Employee', 'epfEmployeeRate'), employerRate: rate(employer, 'Employer', 'epfEmployerRate')};
+}
+
 /**
  * Resolve + validate the per-side EPF election (Wave 2B; item 70b14723 adds 'manual_amount').
  *
@@ -111,8 +129,12 @@ export function resolveEpfElection(p: {
   epfManualReason?: string | null;
 }): ResolvedEpfElection {
   const mode: EpfMode =
-    p.epfMode === 'voluntary_excess' || p.epfMode === 'exempt' || p.epfMode === 'manual_amount' ? p.epfMode : 'auto';
+    p.epfMode === 'manual_percentage' || p.epfMode === 'voluntary_excess' || p.epfMode === 'exempt' || p.epfMode === 'manual_amount' ? p.epfMode : 'auto';
   const NO_AMOUNT = { epfEmployeeAmount: null, epfEmployerAmount: null, epfManualReason: null };
+  if (mode === 'manual_percentage') {
+    const rates = manualEpfPercentageRates(p.epfEmployeeRate, p.epfEmployerRate);
+    return { epfMode: mode, epfEmployeeRate: rates.employeeRate.toFixed(4), epfEmployerRate: rates.employerRate.toFixed(4), ...NO_AMOUNT };
+  }
   if (mode === 'manual_amount') {
     const amount = (v: number | null | undefined, label: string, field: EpfElectionField): string | null => {
       if (v == null) return null; // null = that side keeps the rule ("a blank side stays statutory")

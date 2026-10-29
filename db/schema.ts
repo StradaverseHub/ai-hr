@@ -3364,7 +3364,7 @@ export const compensation = pgTable(
 // is NOT auto-applied"): those legacy figures are RATES, yet the rate election cannot carry them either
 // because voluntary_excess is max(elected, statutory) and can only raise. A typed amount is the only
 // affordance there is. See docs/adr/0087-epf-manual-amount-categories.md.
-export const epfModeEnum = pgEnum('epf_mode', ['auto', 'voluntary_excess', 'exempt', 'manual_amount']);
+export const epfModeEnum = pgEnum('epf_mode', ['auto', 'voluntary_excess', 'exempt', 'manual_amount', 'manual_percentage']);
 
 // ───────────── Employee statutory profile — Malaysia pack (per-person) ─────────────
 // Pack-owned (localization/my). Statutory identity is per Person, not per Employment.
@@ -3587,6 +3587,7 @@ export const employeeStatutoryMy = pgTable(
   },
   (t) => [
     uniqueIndex('employee_statutory_my_person_uq').on(t.personId),
+    check('employee_statutory_my_manual_percentage_rates', sql`${t.epfMode}::text <> 'manual_percentage' OR (${t.epfEmployeeRate} IS NOT NULL AND ${t.epfEmployerRate} IS NOT NULL AND ${t.epfEmployeeRate} BETWEEN 0.01 AND 1 AND ${t.epfEmployerRate} BETWEEN 0.01 AND 1)`),
     check('employee_statutory_my_tax_applicability_epoch_check', sql`${t.taxApplicabilityEpoch} >= 0`),
     check('employee_statutory_my_tax_circumstance_check', sql`${t.taxCircumstance} IS NULL OR ${t.taxCircumstance} = 'none' OR (${t.taxCircumstance} = 'single' AND ${t.taxCategory} = 1) OR (${t.taxCircumstance} = 'spouse_not_working' AND ${t.taxCategory} = 2) OR (${t.taxCircumstance} IN ('spouse_working', 'widow_divorced') AND ${t.taxCategory} = 3)`),
     // Item e3ce0d4d — PARTIAL: real ICs stay unique per tenant, but multiple non-Malaysian rows carrying a
@@ -3718,6 +3719,10 @@ export const companyBankProfile = pgTable(
     currency: text('currency').notNull().default('MYR'),
     // At most one primary per company (partial unique index below). The default account a payment run
     // debits when nothing more specific is chosen.
+    fileContactName: text('file_contact_name'),
+    fileContactPhone: text('file_contact_phone'),
+    fileStateCode: text('file_state_code'),
+    requirePayeeIdCheck: boolean('require_payee_id_check').notNull().default(false),
     isPrimary: boolean('is_primary').notNull().default(false),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -3728,6 +3733,16 @@ export const companyBankProfile = pgTable(
     uniqueIndex('company_bank_profile_primary_uq').on(t.companyId).where(sql`is_primary`),
   ],
 );
+
+/** Generated bank upload artifacts. Never a paid/filed status; immutable, company-admin scoped. */
+export const bankPaymentExport = pgTable('bank_payment_export', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+  // Historical identity survives deletion of the bank's editable configuration.
+  bankProfileId:uuid('bank_profile_id').notNull(),actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),
+  requestKey:uuid('request_key').notNull(),requestFingerprint:text('request_fingerprint').notNull(),valueDate:date('value_date').notNull(),tapeId:integer('tape_id').notNull(),
+  format:text('format').notNull(),sourceDigest:text('source_digest').notNull(),filename:text('filename').notNull(),
+  content:text('content').notNull(),recordCount:integer('record_count').notNull(),totalCents:bigint('total_cents',{mode:'number'}).notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('bank_payment_export_tape_uq').on(t.tenantId,t.valueDate,t.tapeId),uniqueIndex('bank_payment_export_request_uq').on(t.tenantId,t.actorUserId,t.requestKey),check('bank_payment_export_tape_range',sql`${t.tapeId} between 1 and 999`)]);
 
 // Per-authority statutory payment configuration (R46 orgbank 84719377). company_statutory_my is one flat
 // row per company holding the employer REFERENCE NUMBERS; it cannot hold per-authority payment routing.
@@ -5828,6 +5843,12 @@ export const profileChangeRequest = pgTable(
   },
   (t) => [index('profile_change_request_employment_idx').on(t.employmentId, t.status),uniqueIndex('profile_change_request_pending_photo_person_uq').on(t.tenantId,t.personId).where(sql`${t.status}='pending' AND ${t.proposed}->>'kind'='photo'`)],
 );
+
+/** Supporting evidence belongs to one immutable submitted request and its declared fields. */
+export const profileChangeAttachment=pgTable('profile_change_attachment',{
+ id:id(),tenantId:tenantId(),requestId:uuid('request_id').notNull().references(()=>profileChangeRequest.id,{onDelete:'cascade'}),
+ fieldIds:jsonb('field_ids').$type<string[]>().notNull(),fileName:text('file_name').notNull(),mimeType:text('mime_type').notNull(),sizeBytes:integer('size_bytes').notNull(),content:bytea('content').notNull(),createdAt:createdAt(),
+},t=>[index('profile_change_attachment_request_idx').on(t.requestId)]);
 
 /** Bytes are retained only while the canonical profile request is pending. */
 export const profilePhotoProposal=pgTable('profile_photo_proposal',{

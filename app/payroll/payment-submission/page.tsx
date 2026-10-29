@@ -3,6 +3,7 @@ import { listCompanies } from '@/core/read';
 import { scopedAdmin } from '@/lib/scope';
 import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
 import { Card, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
+import { BankDownloadDialog } from './bank-download-dialog';
 import { DownloadDialog } from './download-dialog';
 import { SUBMISSION_GROUPS, formatsInGroup, type SubmissionFormat } from './registry';
 
@@ -10,9 +11,9 @@ import { SUBMISSION_GROUPS, formatsInGroup, type SubmissionFormat } from './regi
  * 20f6c6a8 — PAYMENT SUBMISSION: pick a month, see every file this employer can file for it, download it.
  *
  * "THE MODULE GENERATES A FILE AND HANDS IT OVER; IT TRANSMITS NOTHING." That is the item, and it is the
- * one sentence this screen has to keep true. Nothing here submits, files, marks or records: every button
- * is a GET that returns bytes. The screen says so in as many words (`nothingFiledNotice`) because an
- * operator who believes a download filed their PCB will miss a deadline believing it was met.
+ * one sentence this screen has to keep true. Government files use read-only GET downloads; bank files
+ * use a preview followed by POST, recording generation without marking anyone paid or filed.
+ * The notice says so because an operator who believes a download filed their PCB will miss a deadline believing it was met.
  *
  * ── THE SCREEN READS THE REGISTRY AND DOES NOT KNOW WHAT AN AUTHORITY IS ─────────────────────────
  * There is no `epf`/`socso`/`lhdn` anywhere below. It iterates `SUBMISSION_GROUPS`, asks
@@ -43,10 +44,10 @@ import { SUBMISSION_GROUPS, formatsInGroup, type SubmissionFormat } from './regi
  * Year and Payroll Month with a SHOW button"; it was Year and Month, and the company came from the
  * switcher at the top of the page. All three are in the pop-up now, as asked.
  *
- * STILL GET-DRIVEN, AND STILL NO SERVER ACTION. The dialog's Download is a plain `<form method="get">`
+ * GOVERNMENT DOWNLOADS REMAIN GET-DRIVEN, WITH NO SERVER ACTION. That dialog uses a GET form
  * pointed at the same route the row's link used to point at, so generating a file still records nothing.
- * The only client state on this screen is "is the pop-up open", inside the dialog; this file remains a
- * server component that hands the dialog flat props and no closure (the 500-on-every-request trap).
+ * Bank dialogs manage selection, preview and generation independently. This file remains a server
+ * component that hands each dialog flat props and no closure (the 500-on-every-request trap).
  *
  * ⚠️ NO FORM NESTING, AND NO FORM ON THE PAGE AT ALL ANY MORE. A form inside a form is invalid HTML and
  * browsers drop the inner one; the filter form that made that a hazard has been removed, and each dialog's
@@ -206,7 +207,13 @@ export default async function PaymentSubmissionPage({ searchParams }: { searchPa
                         // registry-drives-the-screen guard walks (test/payment-submission-screen-seam.test.ts
                         // renders this component and reads props; it never renders the dialog).
                         <div data-download={f.id}>
-                          <DownloadDialog
+                          {f.transport === 'bank-post' ? <BankDownloadDialog
+                            formatId={f.id} formatLabel={t(f.labelKey)} periodKind={f.periodKind}
+                            testIndicator={f.testIndicator} endpoint="/payroll/payment-submission/bank-file"
+                            companies={companies.map((c) => ({ value: c.id, label: c.name }))}
+                            defaultCompanyId={companyId} years={years} defaultYear={year}
+                            months={monthOptions} defaultMonth={month} defaultPaymentDate={today}
+                          /> : <DownloadDialog
                             formatId={f.id}
                             formatLabel={t(f.labelKey)}
                             // The format's OWN declaration of what has to be chosen. The screen does not
@@ -220,7 +227,7 @@ export default async function PaymentSubmissionPage({ searchParams }: { searchPa
                             months={monthOptions}
                             defaultMonth={month}
                             runsEndpoint={RUNS_ENDPOINT}
-                          />
+                          />}
                         </div>
                       ) : (
                         // No button at all, and none is possible: an unavailable descriptor has no

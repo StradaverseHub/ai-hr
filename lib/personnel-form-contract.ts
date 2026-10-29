@@ -2,7 +2,7 @@
 import { personnelField, type PersonnelFieldDescriptor } from './personnel-field-registry';
 import { personnelFieldChoices, personnelFieldLabel, personnelScalarIssue, type PersonnelLabelResolver } from './personnel-import-contract';
 import { isCalendarDate } from './calendar-date';
-export type PersonnelFormContext={localIdentity?:boolean;passportTrio?:boolean;payRate?:boolean;activeTaxSelection?:boolean;noBasicSalary?:boolean;manualEmployeeCode?:boolean;selectCompany?:boolean;movementEndDate?:boolean;employmentStartDate?:string;calendarAssignmentStartDate?:string};
+export type PersonnelFormContext={localIdentity?:boolean;passportTrio?:boolean;payRate?:boolean;activeTaxSelection?:boolean;noBasicSalary?:boolean;manualEmployeeCode?:boolean;selectCompany?:boolean;movementEndDate?:boolean;epfManualPercentage?:boolean;employmentStartDate?:string;calendarAssignmentStartDate?:string};
 export type PersonnelFormMode = 'create' | 'edit' | 'draft' | 'record';
 export function personnelFormField(id:string):PersonnelFieldDescriptor {
   const field=personnelField(id);

@@ -122,7 +122,7 @@ async function runPayroll() {
 function build(id: string, query = new URLSearchParams()): Promise<SubmissionBuild> {
   const f = submissionFormat(id);
   if (!f) throw new Error(`no such format: ${id}`);
-  if (!f.available) throw new Error(`${id} declares no builder — the row is not downloadable`);
+  if (!f.available || f.transport === 'bank-post') throw new Error(`${id} declares no builder — the row is not downloadable`);
   return f.build({ companyId: b.companyId, periodKey: PERIOD, query });
 }
 
@@ -139,7 +139,7 @@ describe('0d02d4a1 — the row is downloadable at all', () => {
       true,
     );
     // The discriminated union means this is a TYPE-level guarantee too: no `build` exists when unavailable.
-    if (lhdn!.available) expect(typeof lhdn!.build).toBe('function');
+    if (lhdn!.available && lhdn!.transport !== 'bank-post') expect(typeof lhdn!.build).toBe('function');
   });
 });
 
@@ -257,7 +257,7 @@ describe('0d02d4a1 (e) — a month that cannot be filed is REFUSED in words, nev
   it('a malformed company id or period resolves to the same bare 404', async () => {
     const f = submissionFormat(LHDN);
     expect(f?.available).toBe(true);
-    if (!f?.available) return;
+    if (!f?.available || f.transport === 'bank-post') return;
     for (const p of [
       { companyId: 'not-a-uuid', periodKey: PERIOD },
       { companyId: b.companyId, periodKey: '2026-13' },

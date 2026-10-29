@@ -137,11 +137,11 @@ describe('Wave 2B — EPF election service + kernel', () => {
     expect(row?.epfEmployeeRate).toBeNull();
     expect(row?.epfEmployerRate).toBeNull();
 
-    // Manual (by percentage) → voluntary_excess, both rates set.
+    // Manual percentage is now a distinct saved mode; the top-up mode remains separate.
     const pctEmp = await hire(a, base, 'UiPct');
     await persistUi(a, pctEmp.personId, '900101010002', 'manual_percentage', '15', '13');
     row = await getStatutoryProfileMY(a, pctEmp.personId);
-    expect(row?.epfMode).toBe('voluntary_excess');
+    expect(row?.epfMode).toBe('manual_percentage');
     expect(Number(row?.epfEmployeeRate)).toBeCloseTo(0.15, 4);
     expect(Number(row?.epfEmployerRate)).toBeCloseTo(0.13, 4);
 
@@ -192,7 +192,7 @@ describe('ADR-0046 — EPF UI-category → lawful-enum mapping (pure)', () => {
   const NO_AMOUNT = { epfEmployeeAmount: null, epfEmployerAmount: null, epfManualReason: null };
   it('maps each UI selection onto a lawful enum value', () => {
     expect(mapEpfUiMode('auto', null, null)).toEqual({ epfMode: 'auto', epfEmployeeRate: null, epfEmployerRate: null, ...NO_AMOUNT });
-    expect(mapEpfUiMode('manual_percentage', '15', '13')).toEqual({ epfMode: 'voluntary_excess', epfEmployeeRate: 0.15, epfEmployerRate: 0.13, ...NO_AMOUNT });
+    expect(mapEpfUiMode('manual_percentage', '15', '13')).toEqual({ epfMode: 'manual_percentage', epfEmployeeRate: 0.15, epfEmployerRate: 0.13, ...NO_AMOUNT });
     // Semi-Auto: employee rate elected, employer side forced statutory (null) even if a value is sent.
     expect(mapEpfUiMode('semi_auto', '15', '99')).toEqual({ epfMode: 'voluntary_excess', epfEmployeeRate: 0.15, epfEmployerRate: null, ...NO_AMOUNT });
     expect(mapEpfUiMode('none', '15', '13')).toEqual({ epfMode: 'exempt', epfEmployeeRate: null, epfEmployerRate: null, ...NO_AMOUNT });
