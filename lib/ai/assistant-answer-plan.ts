@@ -7,6 +7,9 @@
 import {JOB_FACT_FIELDS,type JobPresentation} from './module-jobs';
 import {isAgentModuleCode} from './module-agents';
 import {moduleHumanActionHandoffs} from './module-human-handoffs';
+import {parseModuleAgentActionNomination,getModuleAgentAction} from './module-agent-actions';
+import {ASSISTANT_PROPOSAL_MODULE,ASSISTANT_PROPOSAL_PROTOCOL,captureAssistantProposalHints,isAssistantProposableAction,type AssistantProposableAction,type AssistantProposalHints} from './assistant-action-proposal-hints';
+import type {AgentModuleCode} from './module-agents';
 import {SPECIALIST_FINDINGS,type SpecialistFinding} from './module-specialists';
 import {FOLLOWUP_CODES,type FollowupCode} from './module-specialist-followup';
 import {LEAVE_SUMMARY_EXPLAIN_KEYS,type LeaveSummaryExplainKey} from '../leave-summary-explain';
@@ -31,7 +34,13 @@ export type AssistantAnswerBlock=Readonly<{kind:'fact';read:number;card:number;f
 export type AssistantAnswerPlan=Readonly<{version:1;mode:'answer';blocks:readonly AssistantAnswerBlock[]}>|
  Readonly<{version:1;mode:'clarify';slot:AssistantClarificationSlot}>|
  Readonly<{version:1;mode:'insufficient';code:'no_verified_facts'|'unsupported_explanation'}>|
- Readonly<{version:1;mode:'refuse';code:'unsupported_request'|'human_review_required'}>;
+ Readonly<{version:1;mode:'refuse';code:'unsupported_request'|'human_review_required'}>|
+ /** ADR-0151 §4.3: a suggestion only. It names a declared, implemented, proposable action and typed
+  * selectors; it prepares nothing, carries no ID or human text, and is adjudicated against the modules
+  * the caller can currently read. The card resolves hints against the caller's own fresh choices. */
+ Readonly<{version:1;mode:'propose';action:AssistantProposableAction;hints:AssistantProposalHints}>;
+/** Current caller facts the propose mode needs; built by the caller's own source owner, never posted. */
+export type AssistantAnswerAdjudication=Readonly<{readableModules?:readonly AgentModuleCode[]}>;
 export type AssistantAnswerRead=Readonly<{read:number;presentation:JobPresentation;
  explanations:readonly Readonly<{card:number|null;code:AssistantExplanationCode}>[]}>;
 
@@ -44,12 +53,14 @@ export const ASSISTANT_ANSWER_PROTOCOL=[
  'or {"version":1,"mode":"answer","blocks":[{"kind":"explanation","read":0,"card":null,"code":"<available exact code>"}]}',
  'or {"version":1,"mode":"clarify","slot":"employment|leave_type|period|module"}',
  'or {"version":1,"mode":"insufficient","code":"no_verified_facts|unsupported_explanation"}',
- 'or {"version":1,"mode":"refuse","code":"unsupported_request|human_review_required"}.',
+ 'or {"version":1,"mode":"refuse","code":"unsupported_request|human_review_required"}',
+ 'or {"version":1,"mode":"propose","action":"<proposable action>","hints":{"<hint key>":"<value>"}}.',
  'Order 1 to 16 distinct fact/explanation blocks relevant to this question. The catalogue numbers original actual executed reads; use only its ordinals and available codes.',
  'A fact states only its recorded field. An explanation selects only its canonical clause for the same read/card (null means source-wide). Never infer causes, calculations, comparisons, decisions or permission reasons.',
  'Never invent or supply prose, HR values, URLs, effects or guessed selectors. Null, blank and omitted facts are unavailable; a partially withheld Leave card exposes only its remaining projected nonnull facts. Truncation proves neither absence nor all-clear.',
  'Clarify one missing selection using a slot only, without guessed choices. no_verified_facts requires no selectable evidence; unsupported_explanation means the requested meaning lacks support. Human review/confirmation remains separate.',
  'Use ordinary nonnegative integer ordinals and exact unescaped catalogue strings.',
+ ASSISTANT_PROPOSAL_PROTOCOL,
 ].join(' ');
 
 const explanationCodes=new Set<string>(ASSISTANT_EXPLANATION_CODES),factFields=new Set<string>(JOB_FACT_FIELDS);
@@ -97,6 +108,20 @@ export function captureAssistantAnswerPlan(value:unknown):AssistantAnswerPlan{
  if(row.mode==='refuse'){
   exact(row,['version','mode','code']);if(row.code!=='unsupported_request'&&row.code!=='human_review_required')return fail();
   return Object.freeze({version:1,mode:'refuse',code:row.code});
+ }
+ if(row.mode==='propose'){
+  exact(row,['version','mode','action','hints']);const action=row.action;if(!isAssistantProposableAction(action))return fail();
+  // The closed proposal list is not authority by itself: the action must still be a declared,
+  // implemented, human-selected prepare nomination for its own module, with no effect at nomination.
+  const module=ASSISTANT_PROPOSAL_MODULE[action],declared=getModuleAgentAction(module,action);
+  if(declared?.prepare.status!=='implemented'||declared.confirm.status!=='implemented')return fail();
+  let hints:AssistantProposalHints;
+  try{
+   const nomination=parseModuleAgentActionNomination({module,action,phase:'prepare'});
+   if(nomination.kind!=='prepare'||nomination.module!==module||nomination.action!==action||nomination.effect!=='none'||nomination.requiresHumanSelection!==true)return fail();
+   hints=captureAssistantProposalHints(action,row.hints);
+  }catch{return fail();}
+  return Object.freeze({version:1,mode:'propose',action,hints});
  }
  return fail();
 }
@@ -153,8 +178,10 @@ function currentReads(input:readonly AssistantAnswerRead[]):readonly CurrentRead
  * Known global codes are never evidence by themselves. The exact source owner supplies availability;
  * hidden/null facts cannot become assertions; permitted projected Mine fields remain selectable. A truncated read may still state an individual fact.
  */
-export function adjudicateAssistantAnswerPlan(value:unknown,current:readonly AssistantAnswerRead[]):AssistantAnswerPlan{
+export function adjudicateAssistantAnswerPlan(value:unknown,current:readonly AssistantAnswerRead[],caller:AssistantAnswerAdjudication={}):AssistantAnswerPlan{
  const plan=captureAssistantAnswerPlan(value),reads=currentReads(current),byRead=new Map(reads.map(read=>[read.read,read]));
+ // A proposal fails closed like any other unsupported plan unless the current caller can read its module.
+ if(plan.mode==='propose'){const readable=caller.readableModules;if(!Array.isArray(readable)||!readable.includes(ASSISTANT_PROPOSAL_MODULE[plan.action]))return fail();return plan;}
  if(plan.mode==='answer')for(const block of plan.blocks){
   const read=byRead.get(block.read);if(!read)return fail();
   if(block.kind==='fact'){const card=read.cards[block.card];if(!card||!card.facts[block.fact]?.known)return fail();}
