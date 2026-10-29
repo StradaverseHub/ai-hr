@@ -1,30 +1,23 @@
 import {createGenericOwnCompatibilityStore} from './generic-own-review-store';
 import {withAgentActionGuard} from './agent-action-guard';
 import {assertHumanReviewedActionTier} from '../../lib/ai/agent-action-tier-guard';
-import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
-import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 /** Human-reviewed shared custody extension. One existing physical review/body lifecycle; no second
  * execution ledger, model effect, provider, browser endpoint or client-supplied source receipt.
  * All commands own a top-level transaction and expose bounded errors only after whole rollback. */
-import {createHash,randomUUID} from 'node:crypto';
-import {and,eq,sql,type SQL} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {z} from 'zod';
-import {PrivateReviewNonce,newPrivateReviewNonce,privateReviewCommitment} from './private-review-commitment';
-import {withTenant,type SessionContext,type Tx} from '../../db/client';
+import {PrivateReviewNonce,newPrivateReviewNonce} from './private-review-commitment';
+import {type SessionContext,type Tx} from '../../db/client';
 import {employment} from '../../db/schema';
 import {lockLeaveDependenciesTx,lockLeaveDependencyReadConfigurationTx,lockLeaveDependencyConfigurationTx} from '../../packs/leave/service';
 import {assertAiPrincipalTx} from '../ai-principal';
-import {assertMayUseAssistant} from '../assistant-grant';
-import {assertAiActionUnpausedTx} from '../ai-governance';
-import {resolveEntitlementsTx,assertModuleEnabled} from '../entitlements';
-import {masterKeyAvailable,newDek,newKid,sealUnderDek,unsealUnderDek,unwrapDek,wrapDek} from '../../lib/pii/vault';
+import {assertModuleEnabled} from '../entitlements';
 import {ModuleActionPrepare,ModuleActionConfirmation,ModuleActionRetirementRequest,ModuleActionPreparedReview,ModuleActionCompletedReceipt,ModuleActionRetiredReceipt,ModuleActionReviewIndexResult,MODULE_NOTIFICATION_ACTION} from '../../lib/assistant-actions/module-action-review-contract';
 import {OwnNotificationPreferencesIntent,OwnNotificationPreferencesReview} from '../../lib/assistant-actions/own-notification-preferences-contract';
 import {OwnLeaveSealedReview} from './own-leave-content';
 import {prepareOwnNotificationPreferencesTx,confirmOwnNotificationPreferencesTx,reopenOwnNotificationPreferencesEventTx,type OwnNotificationServerIdentity} from './own-notification-preferences-source';
 export class ModuleActionReviewUnavailable extends Error{constructor(){super('This saved review is taking a little detour. Please reopen it and try again.');this.name='ModuleActionReviewUnavailable';}}
 const fail=():never=>{throw new ModuleActionReviewUnavailable();};
-const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const digest=z.string().regex(/^[a-f0-9]{64}$/);
 const Binding=z.object({tenantId:z.guid(),userId:z.guid(),personId:z.guid(),employmentId:z.guid(),companyId:z.guid()}).strict();
 const Metadata=z.object({actionId:z.guid(),action:z.literal(MODULE_NOTIFICATION_ACTION),contractVersion:z.literal(1),binding:Binding,
@@ -38,8 +31,6 @@ const Body=z.object({reviewNonce:PrivateReviewNonce,intent:OwnNotificationPrefer
 /** ADR-0131: every own-review list and privacy-only discard below binds the same login, tenant AND person
  * (assertAiPrincipalTx, then the person-bound legacy index/retire SQL). A stale or relinked session and
  * another person's review both end in the same generic refusal, which confirms nothing. */
-function capture(ctx:SessionContext):SessionContext{return {...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};}
-async function guard(tx:Tx,ctx:SessionContext,module:'notifications'|'ess'|'claims'|'performance'='notifications'){await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,module);await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');return fresh;}
 
 type NotificationHuman=z.infer<typeof OwnNotificationPreferencesIntent>;
 type NotificationView={reviewNonce:z.infer<typeof PrivateReviewNonce>;content:NotificationHuman;nativeReviewedDigest:string;review:z.infer<typeof OwnNotificationPreferencesReview>};
@@ -259,38 +250,29 @@ const ClaimSubmissionStored=z.object({metadata:ClaimSubmissionMetadata,sealed:Ow
  &&(value.metadata.state==='awaiting_confirmation'||(value.sealed===null&&value.metadata.intentDigest===null&&value.metadata.reviewedDigest===null)));
 type ClaimSubmissionStored=z.infer<typeof ClaimSubmissionStored>;
 const ClaimSubmissionBody=z.object({reviewNonce:PrivateReviewNonce,content:OwnClaimSubmissionHumanContent,review:OwnClaimSubmissionReview,nativeReviewedDigest:digest}).strict();type ClaimSubmissionBody=z.infer<typeof ClaimSubmissionBody>;
-function submissionIdentity(m:ClaimSubmissionMeta){if(m.state!=='awaiting_confirmation'||!m.intentDigest||!m.reviewedDigest)return fail();return JSON.stringify([1,m.action,m.actionId,m.binding,m.intentDigest,m.reviewedDigest]);}
-function submissionReviewed(binding:z.infer<typeof Binding>,body:ClaimSubmissionBody){return privateReviewCommitment([1,OWN_CLAIM_SUBMISSION_ACTION,binding],body);}
-function checkedSubmission(m:ClaimSubmissionMeta,value:unknown){const body=ClaimSubmissionBody.parse(value);if(body.content.employmentId!==m.binding.employmentId||body.review.employmentId!==m.binding.employmentId||body.content.draftId!==body.review.draftId||hash(body.content)!==m.intentDigest||submissionReviewed(m.binding,body)!==m.reviewedDigest)return fail();return body;}
-function sealSubmission(m:ClaimSubmissionMeta,body:ClaimSubmissionBody){let dek:Buffer|undefined;try{if(!masterKeyAvailable())return fail();const id=submissionIdentity(m),text=JSON.stringify(checkedSubmission(m,body));if(Buffer.byteLength(text)>32768)return fail();dek=newDek();const kid=newKid();return OwnLeaveSealedReview.parse({formatVersion:1,kid,wrappedDek:wrapDek(dek,'assistant:module-action:key:'+id),ciphertext:sealUnderDek(dek,kid,text,'assistant:module-action:body:'+id)});}finally{dek?.fill(0);}}
-function unsealSubmission(stored:ClaimSubmissionStored){let dek:Buffer|undefined;try{if(!masterKeyAvailable())return fail();const id=submissionIdentity(stored.metadata),sealed=OwnLeaveSealedReview.parse(stored.sealed);dek=unwrapDek(sealed.wrappedDek,'assistant:module-action:key:'+id);if(dek.length!==32)return fail();const text=unsealUnderDek(dek,sealed.ciphertext,'assistant:module-action:body:'+id);if(Buffer.byteLength(text)>32768)return fail();const body=checkedSubmission(stored.metadata,JSON.parse(text));if(body.content.draftId!==stored.claimId)return fail();return body;}finally{dek?.fill(0);}}
-async function readSubmission(tx:Tx,query:SQL){const [row]=await tx.execute<{review:unknown}>(query);return ClaimSubmissionStored.parse(row?.review);}
-function boundSubmission(stored:ClaimSubmissionStored,ctx:SessionContext,id:string,claimId?:string,employmentId?:string){const m=stored.metadata;if(m.actionId!==id||m.binding.tenantId!==ctx.tenantId||m.binding.userId!==ctx.userId||m.binding.personId!==ctx.personId||(claimId&&stored.claimId!==claimId)||(employmentId&&m.binding.employmentId!==employmentId))return fail();}
-function pendingSubmission(stored:ClaimSubmissionStored){const body=unsealSubmission(stored),m=stored.metadata;return {kind:'prepared' as const,review:ClaimSubmissionModuleActionPreparedReview.parse({action:OWN_CLAIM_SUBMISSION_ACTION,contractVersion:1,actionId:m.actionId,reviewedDigest:m.reviewedDigest,createdAt:m.createdAt,expiresAt:m.expiresAt,content:body.content,review:body.review,consequence:'submitted_for_approval_not_approved_or_reimbursed'})};}
-function retiredSubmission(stored:ClaimSubmissionStored){return {kind:'retired' as const,receipt:ClaimSubmissionModuleActionRetiredReceipt.parse({action:OWN_CLAIM_SUBMISSION_ACTION,contractVersion:1,actionId:stored.metadata.actionId,state:stored.metadata.state})};}
 async function completedSubmission(tx:Tx,ctx:SessionContext,stored:ClaimSubmissionStored){if(stored.metadata.state!=='completed'||!stored.eventId)return fail();const receipt=await reconcileOwnClaimSubmissionSourceTx(tx,ctx,{claimId:stored.claimId,submittedEventId:stored.eventId});if(receipt.employmentId!==stored.metadata.binding.employmentId)return fail();return {kind:'completed' as const,receipt:ClaimSubmissionModuleActionCompletedReceipt.parse({action:OWN_CLAIM_SUBMISSION_ACTION,contractVersion:1,actionId:stored.metadata.actionId,state:'completed',receipt,semantics:'submitted_not_approved_or_reimbursed'})};}
-async function submissionSubject(tx:Tx,id:string){const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_claim_submission_review_subject(${id}::uuid) as subject`);return z.guid().parse(row?.subject);}
-export async function prepareClaimSubmissionModuleActionReview(supplied:SessionContext,input:unknown){assertHumanReviewedActionTier(supplied,'claims.submit','confirm');const ctx=capture(supplied),parsed=ClaimSubmissionModuleActionPrepare.safeParse(input);if(!parsed.success)return fail();const human=parsed.data;try{return await withTenant(ctx,tx=>withOwnClaimSubmissionIntervalTx(tx,ctx,human.draftId,async(actor,own)=>{
- if(human.employmentId!==own.employmentId)return fail();const source=await prepareOwnClaimSubmissionSourceTx(tx,actor,human),body=ClaimSubmissionBody.parse({reviewNonce:newPrivateReviewNonce(),content:source.content,review:source.review,nativeReviewedDigest:source.reviewedDigest}),binding=Binding.parse({tenantId:actor.tenantId,userId:actor.userId,personId:actor.personId,employmentId:own.employmentId,companyId:own.companyId});
- const now=new Date(),m=ClaimSubmissionMetadata.parse({actionId:randomUUID(),action:OWN_CLAIM_SUBMISSION_ACTION,contractVersion:1,binding,intentDigest:hash(body.content),reviewedDigest:submissionReviewed(binding,body),state:'awaiting_confirmation',createdAt:now.toISOString(),expiresAt:new Date(now.getTime()+600000).toISOString()}),sealed=sealSubmission(m,body);
- const stored=await readSubmission(tx,sql`select app.assistant_claim_submission_review_prepare(${m.actionId}::uuid,${binding.personId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${own.draftId}::uuid,${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) as review`);boundSubmission(stored,actor,m.actionId,own.draftId,own.employmentId);return pendingSubmission(stored);
- }));}catch{return fail();}}
-export async function confirmClaimSubmissionModuleActionReview(supplied:SessionContext,input:unknown){assertHumanReviewedActionTier(supplied,'claims.submit','confirm');const ctx=capture(supplied),parsed=ClaimSubmissionModuleActionConfirmation.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{
- await assertAiPrincipalTx(tx,ctx);const claimId=await submissionSubject(tx,p.actionId);return withOwnClaimSubmissionIntervalTx(tx,ctx,claimId,async(actor,own)=>{
- const stored=await readSubmission(tx,sql`select app.assistant_claim_submission_review_read(${p.actionId}::uuid) as review`);boundSubmission(stored,actor,p.actionId,claimId,own.employmentId);
- if(stored.metadata.state==='completed')return completedSubmission(tx,actor,stored);if(stored.metadata.state!=='awaiting_confirmation')return retiredSubmission(stored);if(stored.metadata.reviewedDigest!==p.reviewedDigest)return fail();const body=unsealSubmission(stored),native=await confirmOwnClaimSubmissionSourceTx(tx,actor,body.content,{action:OWN_CLAIM_SUBMISSION_ACTION,contractVersion:1,reviewedDigest:body.nativeReviewedDigest});
- await captureNativeOutcomeTargetsTx(tx,actor,{action:OWN_CLAIM_SUBMISSION_ACTION,sourceId:p.actionId,eventId:native.submittedEventId,targets:[{kind:'employment',id:own.employmentId}]});
- const done=await readSubmission(tx,sql`select app.assistant_claim_submission_review_complete(${p.actionId}::uuid,${p.reviewedDigest},${native.claimId}::uuid,${native.submittedEventId}::uuid) as review`);boundSubmission(done,actor,p.actionId,claimId,own.employmentId);if(done.eventId!==native.submittedEventId)return fail();return completedSubmission(tx,actor,done);
- });});}catch{return fail();}}
-export async function reopenClaimSubmissionModuleActionReview(supplied:SessionContext,value:unknown){const ctx=capture(supplied),parsed=z.guid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
- await assertAiPrincipalTx(tx,ctx);const claimId=await submissionSubject(tx,id);return withOwnClaimSubmissionIntervalTx(tx,ctx,claimId,async(actor,own)=>{
- const stored=await readSubmission(tx,sql`select app.assistant_claim_submission_review_read(${id}::uuid) as review`);boundSubmission(stored,actor,id,claimId,own.employmentId);
- if(stored.metadata.state==='awaiting_confirmation'){const body=unsealSubmission(stored),fresh=await prepareOwnClaimSubmissionSourceTx(tx,actor,body.content);if(fresh.reviewedDigest!==body.nativeReviewedDigest||JSON.stringify(fresh.review)!==JSON.stringify(body.review)||JSON.stringify(fresh.content)!==JSON.stringify(body.content))return fail();return pendingSubmission(stored);}return stored.metadata.state==='completed'?completedSubmission(tx,actor,stored):retiredSubmission(stored);
- });});}catch{return fail();}}
-/** Purge pending custody after module/Assistant revocation using actual login/own-person authority.
- * Person relinks still refuse; bounded login expiry and canonical erasure remain independent owners. */
-export async function discardClaimSubmissionModuleActionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=ClaimSubmissionModuleActionRetirementRequest.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_legacy_review_retire(${p.actionId}::uuid,${OWN_CLAIM_SUBMISSION_ACTION}) as receipt`);return{kind:'retired' as const,receipt:ClaimSubmissionModuleActionRetiredReceipt.parse(row?.receipt)};});}catch{return fail();}}
-export async function listClaimSubmissionModuleActionReviews(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const rows=await tx.execute(sql`select action,action_id as "actionId",state,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt" from app.assistant_legacy_reviews_index(${OWN_CLAIM_SUBMISSION_ACTION})`);return ClaimSubmissionModuleActionReviewIndexResult.parse({kind:'claim_submission_module_review_index',reviews:Array.from(rows)});});}catch{return fail();}}
+
+type SubmissionHuman=z.infer<typeof OwnClaimSubmissionHumanContent>;
+type SubmissionSource={draftId:string;employmentId:string;companyId:string};
+const claimSubmissionReviews=createGenericOwnCompatibilityStore<SubmissionHuman,z.infer<typeof Binding>,ClaimSubmissionStored,SubmissionSource,Awaited<ReturnType<typeof prepareOwnClaimSubmissionSourceTx>>,Awaited<ReturnType<typeof confirmOwnClaimSubmissionSourceTx>>,z.infer<typeof ClaimSubmissionModuleActionPreparedReview>,z.infer<typeof ClaimSubmissionModuleActionCompletedReceipt>,z.infer<typeof ClaimSubmissionModuleActionRetiredReceipt>,z.infer<typeof ClaimSubmissionModuleActionReviewIndexResult>>({
+ action:OWN_CLAIM_SUBMISSION_ACTION,tier:'confirm',human:ClaimSubmissionModuleActionPrepare,metadata:ClaimSubmissionMetadata,stored:ClaimSubmissionStored,confirmation:ClaimSubmissionModuleActionConfirmation,retirement:ClaimSubmissionModuleActionRetirementRequest,retired:ClaimSubmissionModuleActionRetiredReceipt,index:ClaimSubmissionModuleActionReviewIndexResult,indexKind:'claim_submission_module_review_index',
+ body:{read:value=>{const body=ClaimSubmissionBody.parse(value);if(body.content.draftId!==body.review.draftId||body.content.employmentId!==body.review.employmentId)return fail();return body;},write:body=>ClaimSubmissionBody.parse(body),create:(native,reviewNonce)=>ClaimSubmissionBody.parse({reviewNonce,content:native.content,review:native.review,nativeReviewedDigest:native.reviewedDigest}),assertCurrent:(body,current)=>{if(JSON.stringify(ClaimSubmissionBody.parse(body).review)!==JSON.stringify(current.review))return fail();}},
+ async withInterval(tx,ctx,nomination,work){let draftId:string;if(nomination.human)draftId=nomination.human.draftId;else{await assertAiPrincipalTx(tx,ctx);const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_claim_submission_review_subject(${z.guid().parse(nomination.actionId)}::uuid) as subject`);draftId=z.guid().parse(row?.subject);}return withOwnClaimSubmissionIntervalTx(tx,ctx,draftId,work);},
+ binding:(ctx,own,human)=>{if(human.employmentId!==own.employmentId||human.draftId!==own.draftId)return fail();return Binding.parse({tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId,employmentId:own.employmentId,companyId:own.companyId});},assertSubjectBinding:(binding,own)=>{if(binding.employmentId!==own.employmentId||binding.companyId!==own.companyId)return fail();},assertStoredSubject:(row,source)=>{if(row.claimId!==source.draftId)return fail();},assertHumanBinding:(binding,human)=>{if(binding.employmentId!==human.employmentId)return fail();},
+ prepareNative:(tx,ctx,human)=>prepareOwnClaimSubmissionSourceTx(tx,ctx,human),confirmNative:(tx,ctx,body,source)=>{if(body.content.draftId!==source.draftId)return fail();return confirmOwnClaimSubmissionSourceTx(tx,ctx,body.content,{action:OWN_CLAIM_SUBMISSION_ACTION,contractVersion:1,reviewedDigest:body.nativeReviewedDigest});},
+ pending:(row,view)=>{const body=ClaimSubmissionBody.parse(view);if(body.content.draftId!==row.claimId)return fail();return ClaimSubmissionModuleActionPreparedReview.parse({action:OWN_CLAIM_SUBMISSION_ACTION,contractVersion:1,actionId:row.metadata.actionId,reviewedDigest:row.metadata.reviewedDigest,createdAt:row.metadata.createdAt,expiresAt:row.metadata.expiresAt,content:body.content,review:body.review,consequence:'submitted_for_approval_not_approved_or_reimbursed'});},
+ completed:async(tx,ctx,row)=>(await completedSubmission(tx,ctx,row)).receipt,event:row=>row.eventId,nativeEvent:native=>native.submittedEventId,assertCompletion:(row,native)=>{if(row.claimId!==native.claimId||row.eventId!==native.submittedEventId)return fail();},targets:source=>[{kind:'employment',id:source.employmentId}],
+ async prepareRow(tx,m,sealed,source){const b=m.binding,[row]=await tx.execute<{review:unknown}>(sql`select app.assistant_claim_submission_review_prepare(${m.actionId}::uuid,${b.personId}::uuid,${b.employmentId}::uuid,${b.companyId}::uuid,${source.draftId}::uuid,${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) as review`);return row?.review;},
+ async readRow(tx,id){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_claim_submission_review_read(${id}::uuid) as review`);return row?.review;},
+ async completeRow(tx,id,expected,native){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_claim_submission_review_complete(${id}::uuid,${expected},${native.claimId}::uuid,${native.submittedEventId}::uuid) as review`);return row?.review;},
+ async discardRow(tx,id){const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_legacy_review_retire(${id}::uuid,${OWN_CLAIM_SUBMISSION_ACTION}) as receipt`);return row?.receipt;},
+ async indexRows(tx){return Array.from(await tx.execute(sql`select action,action_id as "actionId",state,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt" from app.assistant_legacy_reviews_index(${OWN_CLAIM_SUBMISSION_ACTION})`));},unavailable:fail,
+});
+export const prepareClaimSubmissionModuleActionReview=claimSubmissionReviews.prepare;
+export const confirmClaimSubmissionModuleActionReview=claimSubmissionReviews.confirm;
+export const reopenClaimSubmissionModuleActionReview=claimSubmissionReviews.reopen;
+export const discardClaimSubmissionModuleActionReview=claimSubmissionReviews.discard;
+export const listClaimSubmissionModuleActionReviews=claimSubmissionReviews.list;
 
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
@@ -310,12 +292,7 @@ export const readCompletedTestingOutcomeTx=testingReviews.readCompletedOutcomeTx
 
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
-export async function readCompletedClaimSubmissionOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.guid().parse(value);await boundNativeOutcomeTransactionTx(tx);
- const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'claims.submit'},${id}::uuid) as completed`);
- if(terminal?.completed!==true)return fail();
- await assertAiPrincipalTx(tx,ctx);const claimId=await submissionSubject(tx,id);return withOwnClaimSubmissionIntervalTx(tx,ctx,claimId,async(actor,own)=>{const stored=await readSubmission(tx,sql`select app.assistant_claim_submission_review_read(${id}::uuid) as review`);boundSubmission(stored,actor,id,claimId,own.employmentId);const completion=await completedSubmission(tx,actor,stored);return{completion,eventId:z.guid().parse(stored.eventId)};});
-}
+export const readCompletedClaimSubmissionOutcomeTx=claimSubmissionReviews.readCompletedOutcomeTx;
 
 /** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
  * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */

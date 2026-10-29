@@ -237,7 +237,7 @@ export const AGENT_ACTIONS=Object.freeze([
   permission:{actor:'self',guard:'core/assistant-actions/own-claim-submission-source.ts#withOwnClaimSubmissionIntervalTx'},subject:'own_employment',blastRadius:{max:1,unit:'claim_request'},
   idempotencyKey:'review_action_id',policy:{tier:'confirm',category:'claim_money'},reversal:{kind:'action',by:'claims.cancel'},evaluationCases:[],
   screen:{native:'app/claims/page.tsx',entryPoints:['app/claims/actions.ts#submitDraftsAction']},review:{route:'/assistant/claims',handoff:'review_page'},
-  store:'module_action',browserOwner:'claimSubmission',pauseKey:'hr_assistant'}),
+  store:'generic_own',browserOwner:'claimSubmission',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'claims.cancel',module:'claims',owner:'claims',service:'packs/claims/service.ts#cancelClaimTx',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_claim_cancellation_review_v1',inputSchema:'ClaimCancellationReviewPrepare',outputSchema:'ClaimCancellationPreparedReview'},
   confirm:{status:'implemented',adapter:'module_claim_cancellation_review_v1',inputSchema:'ClaimCancellationReviewConfirmation',outputSchema:'ClaimCancellationCompletedReview'},

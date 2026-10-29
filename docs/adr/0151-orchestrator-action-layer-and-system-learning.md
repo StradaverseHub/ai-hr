@@ -626,3 +626,7 @@ Standard-cycle and OneHR plan acknowledgements share one closed OWN custody adap
 ### WP9 USER-scoped testing observation custody
 
 Testing observations use generic OWN compatibility custody while retaining nullable PERSON/EMPLOYMENT/company identity, exact original intent/cached-review wire, 600000-byte body and 819200-byte cipher limits, real assignment interval and native run/event proof. No staff identity is fabricated; a recorded observation is never relabeled independent verification.
+
+### WP9 claim submission custody
+
+Existing human draft submission uses generic OWN compatibility custody, keeping the original nonce/content/cached-review/native-digest wire, actual native claim interval, selected receipt set, request/event provenance and submission-only outcome. All seven module protocols now delegate encryption and lifecycle to the shared custody engine. Legacy own-leave remains a distinct pending protocol until its final compatibility increment.
