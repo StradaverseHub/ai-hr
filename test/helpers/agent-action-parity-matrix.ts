@@ -59,8 +59,6 @@ const HR_ON_EMPLOYMENT={employee:D,manager:D,assigned_approver:D,company_hr:A,gr
 const OWN_REQUEST={employee:A,manager:D,assigned_approver:D,company_hr:D,group_hr:D,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
 
 const CALLER_TENANT_ADMIN={...HR_ON_EMPLOYMENT,another_company:A,another_tenant:A} as const;
-const pending=(reason:string)=>({kind:'pending',reason}) as const;
-const NO_ADAPTER='No parity adapter yet: per-entry subject fixture and screen probe still to be written (WP8 follow-up).';
 
 export const AGENT_ACTION_PARITY={
  'approvals.claim.chase':{kind:'human_workflow_only',reason:'Automatic template-only notification; no human prepare/confirm store. Principal, scope, recipients and caps are covered by automatic-chasers.test.ts.'},
@@ -73,12 +71,12 @@ export const AGENT_ACTION_PARITY={
  'leave.cancel':{kind:'probed',screen:OWN_REQUEST},
  'leave.edit':{kind:'probed',screen:OWN_REQUEST},
  'ess.profile.request':{kind:'probed',screen:OWN_REQUEST},
- 'approvals.leave.decide':pending(NO_ADAPTER+' Dedicated leave-decision store (multi-step leave approval routing).'),
+ 'approvals.leave.decide':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'approvals.claim.decide':{kind:'probed',screen:ASSIGNED_DECISION},
  'approvals.attendance.decide':{kind:'probed',screen:ASSIGNED_DECISION},
  'approvals.toil.decide':{kind:'probed',screen:ASSIGNED_DECISION},
  'knowledge_base.article.create':{kind:'probed',scope:'caller_tenant',screen:CALLER_TENANT_ADMIN},
- 'payroll.close':pending(NO_ADAPTER+' Dedicated store; needs a processed payroll batch fixture.'),
+ 'payroll.close':{kind:'probed',screen:{...HR_ON_EMPLOYMENT,payroll_partner:A}},
  'attendance.correction.request':{kind:'probed',screen:OWN_REQUEST},
  'attendance.overtime.request':{kind:'probed',screen:OWN_REQUEST},
  'claims.draft.save':{kind:'probed',screen:OWN_REQUEST},
@@ -91,16 +89,16 @@ export const AGENT_ACTION_PARITY={
  'claims.cancel':{kind:'probed',screen:{...OWN_REQUEST,company_hr:A,group_hr:A},narrowed:{
   company_hr:'No native HR claim-cancel screen exists; HR is admitted only via cancelClaimAction with no employmentId posted (product question). The Assistant action is the claimant\'s own.',
   group_hr:'No native HR claim-cancel screen exists; HR is admitted only via cancelClaimAction with no employmentId posted (product question). The Assistant action is the claimant\'s own.'}},
- 'performance.review.acknowledge':pending(NO_ADAPTER+' Module-action store; needs a released review fixture.'),
- 'performance.onehr.plan.acknowledge':pending(NO_ADAPTER+' Module-action store; needs a OneHR plan fixture.'),
- 'rewards.post':pending(NO_ADAPTER+' Dedicated store; needs an approved reward unit and open batch.'),
- 'lifecycle.acknowledgement.submit':pending(NO_ADAPTER+' Dedicated store; needs a lifecycle case fixture.'),
+ 'performance.review.acknowledge':{kind:'probed',screen:OWN_REQUEST},
+ 'performance.onehr.plan.acknowledge':{kind:'probed',screen:OWN_REQUEST},
+ 'rewards.post':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'lifecycle.acknowledgement.submit':{kind:'probed',screen:OWN_REQUEST},
  'toil.replacement.request':{kind:'probed',screen:OWN_REQUEST},
- 'multi_cycle_payroll.create_run':pending(NO_ADAPTER+' Dedicated store; multi-cycle payroll flag.'),
+ 'multi_cycle_payroll.create_run':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'typed_pay_components.create':{kind:'probed',scope:'caller_tenant',screen:CALLER_TENANT_ADMIN},
- 'country-my.statutory.update':pending(NO_ADAPTER+' Dedicated store; country pack dispatch.'),
- 'notifications.email_preferences.save':pending(NO_ADAPTER+' Module-action store.'),
- 'system_testing.execution.save':pending(NO_ADAPTER+' Module-action store; needs an assigned test execution.'),
+ 'country-my.statutory.update':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'notifications.email_preferences.save':{kind:'probed',screen:OWN_REQUEST},
+ 'system_testing.execution.save':{kind:'probed',screen:OWN_REQUEST},
  'leave.adjustment.apply':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.movement.transfer':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'toil.credit.grant':{kind:'probed',screen:HR_ON_EMPLOYMENT},
@@ -118,11 +116,6 @@ export const PARITY_PENDING_ORIGINAL:readonly string[]=Object.freeze([
 /** The entries that existed before this harness and had no adapter when it landed. This list may only
  * shrink: an entry leaves it when its adapter lands, and no other id may ever be `pending`. */
 export const PARITY_PENDING_CEILING:ReadonlySet<string>=new Set([
- 'approvals.leave.decide',
- 'payroll.close',
- 'performance.review.acknowledge','performance.onehr.plan.acknowledge',
- 'rewards.post','lifecycle.acknowledgement.submit','multi_cycle_payroll.create_run',
- 'country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save',
 ]);
 
 export type ParityRegistryEntry={id:string;store:string};

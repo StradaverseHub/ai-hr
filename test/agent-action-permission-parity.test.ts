@@ -19,7 +19,7 @@
  * the cross-company and cross-tenant sessions act in their OWN company or tenant.
  * Real migrated database and real services; fictional fixtures only. */
 import {randomUUID} from 'node:crypto';
-import {eq,sql} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as schema from '../db/schema';
@@ -70,6 +70,37 @@ import {saveProfileEditPolicy} from '../core/profile-edit-policy';
 import {readOwnProfileWorkspace,submitOwnProfileEdit} from '../core/profile-edit';
 import {saveClaimDraft,submitDraftClaims} from '../packs/claims/service';
 
+
+const provider=vi.hoisted(()=>({current:vi.fn()}));
+vi.mock('../lib/identity/provider',()=>({currentProviderSession:provider.current}));
+import {prepareLeaveDecisionReview,confirmLeaveDecisionReview} from '../core/assistant-actions/leave-decision-review-store';
+import {preparePayrollCloseReview,confirmPayrollCloseReview} from '../core/assistant-actions/payroll-close-review-store';
+import {prepareMultiCycleRunReview,confirmMultiCycleRunReview} from '../core/assistant-actions/multi-cycle-run-review-store';
+import {prepareCountryStatutoryReview,confirmCountryStatutoryReview} from '../core/assistant-actions/country-statutory-review-store';
+import {prepareRewardsPostReview,confirmRewardsPostReview} from '../core/assistant-actions/rewards-post-review-store';
+import {prepareLifecycleAckReview,confirmLifecycleAckReview} from '../core/assistant-actions/lifecycle-ack-review-store';
+import {prepareReviewModuleActionReview,confirmReviewModuleActionReview,prepareOnehrModuleActionReview,confirmOnehrModuleActionReview,prepareTestingModuleActionReview,confirmTestingModuleActionReview,prepareModuleActionReview,confirmModuleActionReview} from '../core/assistant-actions/module-action-review-store';
+import {readAssignedLeaveModuleActionChoices,readPerformanceModuleActionChoices,readTestingModuleActionChoices,readLifecycleAckModuleActionAvailability,readPayrollCloseModuleActionChoices,readRewardsPostModuleActionChoices,readCountryStatutoryModuleActionChoices,readNotificationModuleActionChoices} from '../core/assistant-actions/module-action-server';
+import {readMultiCycleRunModuleActionChoices} from '../core/assistant-actions/multi-cycle-run-choices';
+import {resolveOwnNotificationServerIdentity} from '../core/assistant-actions/own-notification-preferences-source';
+import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../core/notification-email';
+import {decideLeave} from '../packs/leave/service';
+import * as perf from '../packs/performance/service';
+import {defaultPolicy as defaultOnehrPolicy} from '../packs/performance/onehr/model';
+import onehrFramework from '../packs/performance/onehr/framework.json';
+import {createBatch,generatePayslips,closeBatch,createAdditionalRunTx} from '../packs/payroll/service';
+import {upsertPayrollCycle} from '../core/payroll-cycle';
+import {requirePackFor} from '../localization/registry';
+import {createOnboardingCase,tickStep} from '../packs/lifecycle/service';
+import {submitMyAcknowledgement} from '../core/lifecycle-self';
+import {ONBOARDING_STEPS} from '../core/lifecycle-defaults';
+import * as testing from '../core/system-testing-workspace';
+import type {InstructionDefinition} from '../lib/system-testing/model';
+import * as rewards from '../packs/rewards/service';
+import {emptyFacts as emptyRewardFacts} from '../packs/rewards/model';
+import {setRewardMember} from './rewards-access-fixture';
+import {configureRewardFixture,refreshRewardFixtureBudget} from './rewards-governance-fixture';
+
 type Person={employmentId:string;personId:string};
 type DbRole=(typeof schema.roleEnum.enumValues)[number];
 type Decision='approved'|'rejected';
@@ -79,7 +110,7 @@ type Options={decision:Decision;workflow:boolean};
 const DEFAULT_OPTIONS:Options={decision:'approved',workflow:false};
 /** Who the item belongs to: the default fictional subject, or a positive-control subject in another company or tenant. */
 type Home={person:Person;base:Base;companyId:string;departmentId:string;name:string;session():Promise<SessionContext>};
-type Item={subjectId:string;employmentId:string;leaveTypeId:string;name:string;transferTo:string;date?:string;dates?:string[];managerId?:string;claimTypeId?:string;proposal?:unknown;code?:string};
+type Item={subjectId:string;employmentId:string;leaveTypeId:string;name:string;transferTo:string;date?:string;dates?:string[];managerId?:string;claimTypeId?:string;proposal?:unknown;code?:string;personId?:string;companyId?:string;cycleId?:string;batchId?:string;period?:string;stepId?:string|null;revision?:number;assignmentId?:string;versionId?:string};
 type Review={actionId:string;reviewedDigest:string};
 /** The store surface the harness uses; each concrete store is structurally assignable to it. */
 type Store={
@@ -99,7 +130,7 @@ type World={
 };
 type Family='assigned_decision'|'hr_on_employment'|'own';
 type Adapter={
- family:Family;store:Store;
+ family:Family;store:Store;independentScreen?:boolean;
  /** The page/route admission the screen's server action calls before its service (e.g. requireAdmin → isAdmin). */
  screenAdmits?:(who:SessionContext,item:Item)=>boolean|Promise<boolean>;
  /** The item one confirmation targets, belonging to the home subject. */
@@ -111,7 +142,7 @@ type Adapter={
  screen(tx:Tx,who:SessionContext,item:Item,actorEmploymentId:string|null,o:Options):Promise<unknown>;
 };
 
-const MODULES=['assistant','claims','attendance','toil','org','ess','knowledge_base','payroll','typed_pay_components'];
+const MODULES=['assistant','claims','attendance','toil','org','ess','knowledge_base','payroll','typed_pay_components','performance','multi_cycle_payroll','country-my','lifecycle','notifications','system_testing'];
 const SUBJECT_NAME='Fictional Parity Subject';
 /** HR calendar days from the repository's HR date owner. */
 function calendarDate(offset:number){const value=new Date(todayInKualaLumpur()+'T12:00:00Z');value.setUTCDate(value.getUTCDate()+offset);return value.toISOString().slice(0,10);}
@@ -191,7 +222,43 @@ const packetStore=(action:string,prepare:Store['prepare'],confirm:(ctx:SessionCo
 const preferredField='profile.personal_details.preferredname';
 const leaveNomination=(item:Item)=>({action:'leave.apply',contractVersion:1,employmentId:item.employmentId,leaveTypeId:item.leaveTypeId,date:item.date,durationType:'full_day'});
 const payInput=(item:Item)=>({code:item.code!,name:'Fictional human pay code',label:'Human label',description:'Fictional catalogue declaration',kind:'allowance' as const,includedInEpf:false,includedInSocsoEis:false,includedInPcb:false,includedInHrdfBase:false,isNonPayable:false,prorates:false,eaFormLine:null,roundingMethod:'none' as const,rule:null,epfBonus2012:false,pcbRemunerationType:null,pcbExemptionCode:null,displayCategory:'allowance' as const,orpOvertime:false,orpUnpaidLeave:false});
+
+const previousPeriod=()=>{const [year,month]=todayInKualaLumpur().split('-').map(Number);return new Date(Date.UTC(year,month-2,1)).toISOString().slice(0,7);};
+const additionalRunInput=(item:Item)=>({companyId:item.companyId!,payPeriod:item.period!,runType:'bonus' as const,payrollCycleId:item.cycleId!,scope:{employmentIds:[item.employmentId]}});
+const equipmentInput={contactNumber:'012-345',serialNumber:'FIC-SERIAL',accessories:'Human-declared mouse',pcType:'Laptop',hasMonitor:false,monitorSerial:null,receiptEmail:null,acknowledged:true};
+const testingGuide:InstructionDefinition={format:1,title:'Fictional human observation',objective:'Record a fictional manually observed value',functionKey:'personnel.profile',area:'personnel',moduleCode:'employees',category:'functional',priority:'medium',active:true,prerequisites:[],testData:[],steps:[{id:'observe',action:'Inspect fictional value',expected:'Value retained'}],expectedBehavior:'The observed value can be recorded',expectedFunction:'Personal Testing',permissions:['Only assigned tester records observations'],jurisdiction:null,configuration:null,screenKeys:['personnelAdmin']};
+const testingObservation=(item:Item)=>({executionId:item.subjectId,assignmentId:item.assignmentId!,versionId:item.versionId!,expectedRevision:item.revision!,status:'in_progress' as const,actualResult:'Fictional value inspected by a human',comments:'Human comment',defectNotes:'',improvementNotes:''});
+async function notificationIdentity(who:SessionContext){
+ const [person]=await owner.db.select({email:schema.person.primaryEmail}).from(schema.person).where(eq(schema.person.id,who.personId!));
+ const identity={issuer:'https://fictional.parity.test',subject:who.userId!,email:person.email!,emailVerified:true};
+ await owner.db.insert(schema.appExternalIdentity).values({issuer:identity.issuer,subject:identity.subject,appUserId:who.userId!}).onConflictDoNothing();provider.current.mockResolvedValue(identity);return identity;
+}
 const ADAPTERS:Record<ProbedActionId,Adapter>={
+ 'approvals.leave.decide':{family:'assigned_decision',store:packetStore('approvals.leave.decide',prepareLeaveDecisionReview,confirmLeaveDecisionReview),
+  async create(w,h){const item=await pendingLeave(w,h);const steps=await owner.db.select().from(schema.leaveApprovalStep).where(eq(schema.leaveApprovalStep.leaveRequestId,item.subjectId)).orderBy(schema.leaveApprovalStep.stepIndex);return {...item,stepId:steps.find(row=>row.status==='pending')?.id??null};},
+  human:(item,o)=>({action:'approvals.leave.decide',contractVersion:1,leaveRequestId:item.subjectId,currentStepId:item.stepId??null,decision:o.decision,rejectReason:o.decision==='rejected'?REJECT_REASON:null,confirmAssignedDecision:true}),
+  offered:async(who,item)=>listed(await readAssignedLeaveModuleActionChoices(who),'tasks','leaveRequestId',item.subjectId),screen:(tx,who,item,_actor,o)=>decideLeave(who,{leaveRequestId:item.subjectId,decision:o.decision,...(o.decision==='rejected'?{rejectReason:REJECT_REASON}:{})},tx)},
+ 'performance.review.acknowledge':{family:'own',screenAdmits:ownEmploymentScreen,store:packetStore('performance.review.acknowledge',prepareReviewModuleActionReview,confirmReviewModuleActionReview),
+  async create(w,h){const year=Number(todayInKualaLumpur().slice(0,4)),group=groupOf(h.base),{cycleId}=await perf.createCycle(group,{name:'Fictional Standard Review',companyId:h.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`,assessmentWorkflow:false});await perf.openCycle(group,{cycleId});const [review]=await owner.db.select({id:schema.performanceReview.id}).from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,h.person.employmentId)));await perf.submitSelfReview(await h.session(),{reviewId:review.id,selfRating:4});await perf.submitManagerReview(await w.as('manager'),{reviewId:review.id,managerRating:4,overallRating:4});await perf.releaseCycle(group,{cycleId});return itemOf(h,review.id);},
+  human:item=>({action:'performance.review.acknowledge',contractVersion:1,intent:{version:1,reviewId:item.subjectId,acknowledge:true}}),offered:async(who,item)=>listed(await readPerformanceModuleActionChoices(who),'items','sourceId',item.subjectId),screen:(tx,who,item)=>perf.acknowledgeReviewTx(tx,who,{reviewId:item.subjectId})},
+ 'performance.onehr.plan.acknowledge':{family:'own',screenAdmits:ownEmploymentScreen,store:packetStore('performance.onehr.plan.acknowledge',prepareOnehrModuleActionReview,confirmOnehrModuleActionReview),
+  async create(w,h){const year=Number(todayInKualaLumpur().slice(0,4)),group=groupOf(h.base),[grade]=await owner.db.insert(schema.jobGrade).values({tenantId:h.base.tenantId,code:'12',name:'Fictional Grade12'}).returning({id:schema.jobGrade.id});await owner.db.update(schema.employment).set({gradeId:grade.id}).where(eq(schema.employment.companyId,h.companyId));const {cycleId}=await perf.createCycle(group,{name:'Fictional OneHR Review',companyId:h.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`});await perf.configureOnehrCycle(group,cycleId,null,defaultOnehrPolicy(onehrFramework));await perf.openCycle(group,{cycleId});const [review]=await owner.db.select({id:schema.performanceReview.id}).from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,h.person.employmentId)));await perf.saveOnehrPlan(await h.session(),review.id,null,{career:{aspiration:'Fictional workshop practice',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[{id:randomUUID(),area:'Fictional facilitation',dueOn:'',onJob:'Human fixture workshop',fromOthers:'',formalLearning:'',status:'not_started'}]},true);let [plan]=await owner.db.select().from(schema.onehrPlan).where(and(eq(schema.onehrPlan.employmentId,h.person.employmentId),eq(schema.onehrPlan.planYear,year+1)));await perf.reviewOnehrPlan(await w.as('manager'),plan.id,plan.revision,'Agreed','Fictional career conversation',true,undefined,todayInKualaLumpur());[plan]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id));return itemOf(h,plan.id,{revision:plan.revision});},
+  human:item=>({action:'performance.onehr.plan.acknowledge',contractVersion:1,intent:{version:1,planId:item.subjectId,acknowledge:true}}),offered:async(who,item)=>listed(await readPerformanceModuleActionChoices(who),'items','sourceId',item.subjectId),screen:(tx,who,item)=>perf.acknowledgeOnehrPlanTx(tx,who,item.subjectId,item.revision!)},
+ 'payroll.close':{family:'hr_on_employment',independentScreen:true,store:packetStore('payroll.close',preparePayrollCloseReview,confirmPayrollCloseReview),
+  async create(_w,h){const group=groupOf(h.base),period=previousPeriod();await requirePackFor('MY').statutory.set(group,{personId:h.person.personId,icNumber:'900101019885'});const {batchId}=await createBatch(group,{companyId:h.companyId,payPeriod:period,scope:{employmentIds:[h.person.employmentId]}});await generatePayslips(group,{batchId});return itemOf(h,batchId);},human:item=>({action:'payroll.close',contractVersion:1,batchId:item.subjectId,confirmCloseProcessedRun:true}),offered:async(who,item)=>listed(await readPayrollCloseModuleActionChoices(who),'batches','batchId',item.subjectId),screen:(_tx,who,item)=>closeBatch(who,{batchId:item.subjectId})},
+ 'multi_cycle_payroll.create_run':{family:'hr_on_employment',store:packetStore('multi_cycle_payroll.create_run',prepareMultiCycleRunReview,confirmMultiCycleRunReview),
+  async create(_w,h){const cycle=await upsertPayrollCycle(groupOf(h.base),{companyId:h.companyId,name:'Fictional Bonus Cycle',code:'FIC-BONUS',runType:'bonus'});return itemOf(h,h.person.employmentId,{companyId:h.companyId,cycleId:cycle.id,period:previousPeriod()});},human:item=>({action:'multi_cycle_payroll.create_run',contractVersion:1,input:additionalRunInput(item),confirmDraftCreation:true}),offered:async(who,item)=>listed(await readMultiCycleRunModuleActionChoices(who),'companies','companyId',item.companyId!),screen:(tx,who,item)=>createAdditionalRunTx(tx,who,additionalRunInput(item))},
+ 'country-my.statutory.update':{family:'hr_on_employment',screenAdmits:isAdmin,independentScreen:true,store:packetStore('country-my.statutory.update',prepareCountryStatutoryReview,confirmCountryStatutoryReview),
+  async create(_w,h){await requirePackFor('MY').statutory.set(groupOf(h.base),{personId:h.person.personId,icNumber:'900101019885',epfNumber:'FIC-OLD'});return itemOf(h,h.person.employmentId,{personId:h.person.personId});},human:item=>({action:'country-my.statutory.update',contractVersion:1,employmentId:item.employmentId,confirmSharedPersonWrite:true,input:{personId:item.personId,epfNumber:'FIC-NEW',socsoNumber:'FIC-SOCSO',epfMode:'auto'}}),offered:async(who,item)=>listed(await readCountryStatutoryModuleActionChoices(who),'items','employmentId',item.employmentId),screen:(_tx,who,item)=>requirePackFor('MY').statutory.set(who,{personId:item.personId!,epfNumber:'FIC-NEW',socsoNumber:'FIC-SOCSO',epfMode:'auto'})},
+ 'lifecycle.acknowledgement.submit':{family:'own',independentScreen:true,store:packetStore('lifecycle.acknowledgement.submit',prepareLifecycleAckReview,confirmLifecycleAckReview),
+  async create(_w,h){const [person]=await owner.db.select({email:schema.person.primaryEmail}).from(schema.person).where(eq(schema.person.id,h.person.personId));const root=groupOf(h.base),c=await createOnboardingCase(root,{companyId:h.companyId,fullName:'Fictional equipment recipient',employeeNo:'F-'+randomUUID().slice(0,8),joinDate:todayInKualaLumpur(),laptopRequired:true,carparkRequired:false,newhireEmail:person.email!,personId:h.person.personId,employmentId:h.person.employmentId});for(const step of ONBOARDING_STEPS.filter(row=>row.phase===0&&row.rule!=='carpark'))await tickStep(root,'onboarding',c.number,step.key);await tickStep(root,'onboarding',c.number,'laptop_dist');return itemOf(h,c.id);},human:item=>({action:'lifecycle.acknowledgement.submit',contractVersion:1,caseId:item.subjectId,...equipmentInput}),offered:async(who,item)=>{const value=await readLifecycleAckModuleActionAvailability(who);return value.kind==='available'&&value.currentCase.caseId===item.subjectId;},screen:(_tx,who)=>submitMyAcknowledgement(who,equipmentInput)},
+ 'system_testing.execution.save':{family:'own',store:packetStore('system_testing.execution.save',prepareTestingModuleActionReview,confirmTestingModuleActionReview),
+  async create(_w,h){const root=groupOf(h.base),who=await h.session(),draft=await testing.saveTestInstructionDraft(root,{caseId:null,expectedRevision:0,definition:testingGuide}),version=await testing.publishTestInstruction(root,{caseId:draft.caseId,expectedDraftRevision:draft.revision,expectedVersionId:null}),assignment=await testing.assignTestingCase(root,{caseId:draft.caseId,testerUserId:who.userId!,expectedVersionId:version.versionId,active:true,expectedRevision:null}),execution=await testing.beginTestingExecution(who,{assignmentId:assignment.assignmentId,expectedVersionId:version.versionId,newAttempt:false});return itemOf(h,execution.executionId,{assignmentId:assignment.assignmentId,versionId:version.versionId,revision:execution.revision});},human:item=>({action:'system_testing.execution.save',contractVersion:1,intent:{version:1,humanObserved:true,observation:testingObservation(item)}}),offered:async(who,item)=>listed(await readTestingModuleActionChoices(who),'items','executionId',item.subjectId),screen:(tx,who,item)=>testing.saveTestingExecutionTx(tx,who,testingObservation(item))},
+ 'notifications.email_preferences.save':{family:'own',independentScreen:true,
+  store:{prepare:async(who,input)=>{await notificationIdentity(who);return prepareModuleActionReview(who,input,await resolveOwnNotificationServerIdentity());},confirm:async(who,p)=>{await notificationIdentity(who);return confirmModuleActionReview(who,{action:'notifications.email_preferences.save',contractVersion:1,...p},await resolveOwnNotificationServerIdentity());}},
+  async create(_w,h){await saveNotificationEmailPolicy(groupOf(h.base),['leave','claims']);return itemOf(h,h.person.employmentId);},human:item=>({action:'notifications.email_preferences.save',contractVersion:1,intent:{version:1,employmentId:item.employmentId,enabledCategories:['leave'],locale:'en',consent:'selected_categories_only'}}),offered:async(who,item)=>listed(await readNotificationModuleActionChoices(who),'employments','employmentId',item.employmentId),screen:async(_tx,who,item)=>saveNotificationEmailPreferences(who,item.employmentId,['leave'],'en',await notificationIdentity(who))},
+ 'rewards.post':{family:'hr_on_employment',independentScreen:true,store:packetStore('rewards.post',prepareRewardsPostReview,confirmRewardsPostReview),
+  async create(w,h){const root=groupOf(h.base),year=Number(todayInKualaLumpur().slice(0,4)),[bu]=await owner.db.insert(schema.businessUnit).values({tenantId:h.base.tenantId,companyId:h.companyId,code:'FIC-BU',name:'Fictional Unit'}).returning(),[grade]=await owner.db.insert(schema.jobGrade).values({tenantId:h.base.tenantId,code:'12',name:'Fictional Grade12'}).returning();await owner.db.update(schema.assignment).set({businessUnitId:bu.id}).where(eq(schema.assignment.employmentId,h.person.employmentId));await owner.db.update(schema.employment).set({gradeId:grade.id,confirmationDate:hiredOn()}).where(eq(schema.employment.id,h.person.employmentId));const unitId=await rewards.createRewardUnit(root,{name:'Fictional approved Rewards',year,companyId:h.companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur()});const actors:Record<string,SessionContext>={gr:root,bu:await h.session()};for(const seat of ['bg','ctro','ec'] as const){const person=await hire(h.base,'Fictional '+seat+' reviewer',h.companyId,h.base.deptB);actors[seat]=(await w.login(h.base,person,'employee',null)).ctx;}for(const seat of ['bu','bg','ctro','ec'] as const)await setRewardMember(root,unitId,(await rewards.getRewardUnit(root,unitId)).unit.revision,actors[seat].userId!,seat);for(const role of ['company_hr','group_hr','payroll_partner'] as const)await setRewardMember(root,unitId,(await rewards.getRewardUnit(root,unitId)).unit.revision,(await w.as(role)).userId!,'payroll');let view=await rewards.getRewardUnit(root,unitId);await configureRewardFixture(root,unitId,view.unit.revision,{...view.unit.policy,effectiveFrom:todayInKualaLumpur(),patActual:100,patTarget:100,ranges:{'12':[300000,500000,700000]}});view=await rewards.getRewardUnit(root,unitId);await rewards.saveRewardEntry(root,unitId,view.unit.revision,view.rows[0].id,view.rows[0].recommendation,{...emptyRewardFacts(),reviewed:true,talent:'SCORE',performance:'ME'});await refreshRewardFixtureBudget(root,unitId);view=await rewards.getRewardUnit(root,unitId);await rewards.decideRewardUnit(actors.bu,unitId,view.unit.revision,'submit','Fictional human recommendation');for(const role of view.route.slice(1))await rewards.decideRewardUnit(actors[role],unitId,view.unit.revision,'approve','Fictional human recommendation');const {batchId}=await createBatch(root,{companyId:h.companyId,payPeriod:todayInKualaLumpur().slice(0,7),scope:{employmentIds:[h.person.employmentId]}});return itemOf(h,unitId,{batchId,revision:view.unit.revision});},human:item=>({action:'rewards.post',contractVersion:1,unitId:item.subjectId,revision:item.revision,batchId:item.batchId,confirmWholeApprovedUnit:true}),offered:async(who,item)=>listed(await readRewardsPostModuleActionChoices(who),'units','unitId',item.subjectId),screen:(_tx,who,item)=>rewards.postRewardUnit(who,item.subjectId,item.revision!,item.batchId)},
  'leave.apply':{family:'own',screenAdmits:ownEmploymentScreen,
   store:{prepare:async(who,input)=>{const h=input as ReturnType<typeof leaveNomination>;const r=await withTenant(who,tx=>prepareOwnLeaveReviewTx(tx,who,h,{employmentId:h.employmentId,leaveTypeId:h.leaveTypeId},{reason:'Fictional parity leave reason',employeeRemark:''},'en'));if(r.kind!=='prepared')throw Error('No native leave candidate');return r;},confirm:(who,p)=>confirmOwnLeaveReview(who,{contractVersion:1,...p},'en')},
   async create(_w,h){await owner.db.insert(schema.leaveLedger).values({tenantId:h.base.tenantId,employmentId:h.person.employmentId,leaveTypeId:h.base.annualLeaveTypeId,entryType:'accrual',days:'10',effectiveOn:todayInKualaLumpur()});return itemOf(h,h.person.employmentId,{date:weekdays(1)[0]});},human:leaveNomination,
@@ -304,7 +371,7 @@ type Observed={screen:ParityOutcome}&Record<(typeof PARITY_PHASES)[number],Parit
 
 async function screenOutcome(adapter:Adapter,who:SessionContext,item:Item,actorEmploymentId:string|null,o:Options,notes:Record<string,string>):Promise<ParityOutcome>{
  if(adapter.screenAdmits&&!(await adapter.screenAdmits(who,item))){notes.screen='refused by the screen admission';return 'deny';}
- try{await withTenant(who,async tx=>{await adapter.screen(tx,who,item,actorEmploymentId,o);throw new Rollback();});}catch(error){if(error instanceof Rollback)return 'allow';notes.screen=why(error);}
+ try{if(adapter.independentScreen){await adapter.screen(undefined as unknown as Tx,who,item,actorEmploymentId,o);return 'allow';}await withTenant(who,async tx=>{await adapter.screen(tx,who,item,actorEmploymentId,o);throw new Rollback();});}catch(error){if(error instanceof Rollback)return 'allow';notes.screen=why(error);}
  return 'deny';
 }
 async function tryPrepare(adapter:Adapter,who:SessionContext,item:Item,o:Options,notes:Record<string,string>,key='prepare'):Promise<Review|null>{
@@ -318,8 +385,9 @@ async function tryConfirm(adapter:Adapter,who:SessionContext,review:Review,notes
 /** The roles the matrix permits for this entry, used as the reference preparer for cross-user confirmation. */
 async function observe(id:ProbedActionId,role:ParityRole,o:Options=DEFAULT_OPTIONS):Promise<{observed:Observed;notes:Record<string,string>}>{
  const adapter=ADAPTERS[id],declared=AGENT_ACTION_PARITY[id],notes:Record<string,string>={};
- const w=await buildWorld(),item=await adapter.create(w,w.home,o),who=await w.as(role);
+ let w=await buildWorld(),item=await adapter.create(w,w.home,o),who=await w.as(role);
  const screen=await screenOutcome(adapter,who,item,w.people[role].employmentId,o,notes);
+ if(adapter.independentScreen){w=await buildWorld();item=await adapter.create(w,w.home,o);who=await w.as(role);}
  let offer:ParityOutcome='deny';
  try{offer=await adapter.offered(who,item)?'allow':'deny';}catch(error){notes.offer=why(error);}
  const own=await tryPrepare(adapter,who,item,o,notes),prepare:ParityOutcome=own?'allow':'deny';
