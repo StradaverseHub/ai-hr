@@ -1,3 +1,4 @@
+import {assertHumanReviewedActionTier} from '../../lib/ai/agent-action-tier-guard';
 /** ADR-0151 wave 1: one custody implementation for every generic OWN action kind of migration 0670. Each kind
  * supplies a source adapter (subject interval, prepare, confirm, reconcile) and its contract schemas; this
  * owner keeps the sealed body, the digest-bound human confirmation, the effect-plus-receipt transaction, and
@@ -56,13 +57,13 @@ export function createGenericOwnReviewStore<Human extends {employmentId:string},
  const subject=async(tx:Tx,id:string)=>{const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_generic_review_subject(${id}::uuid,${action}) as subject`);return z.object({employmentId:z.guid(),subjectId:z.guid()}).strict().parse(row?.subject);};
  const readRow=(tx:Tx,id:string,discard=false)=>read(tx,discard?sql`select app.assistant_generic_review_read(${id}::uuid,${action},true) as review`:sql`select app.assistant_generic_review_read(${id}::uuid,${action}) as review`);
  return Object.freeze({
-  async prepare(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=spec.human.safeParse(input);if(!parsed.success)return fail();const human=parsed.data;try{return await withTenant(ctx,tx=>spec.withSubject(tx,ctx,spec.subjectOf(human),async(fresh,own)=>{
+  async prepare(supplied:SessionContext,input:unknown){assertHumanReviewedActionTier(supplied,action,'confirm');const ctx=capture(supplied),parsed=spec.human.safeParse(input);if(!parsed.success)return fail();const human=parsed.data;try{return await withTenant(ctx,tx=>spec.withSubject(tx,ctx,spec.subjectOf(human),async(fresh,own)=>{
    if(own.employmentId!==human.employmentId)return fail();
    const native=await spec.prepare(tx,fresh,human),body:Body={reviewNonce:newPrivateReviewNonce(),content:human,nativeReviewedDigest:native.reviewedDigest},binding=Binding.parse({tenantId:fresh.tenantId,userId:fresh.userId,personId:fresh.personId,employmentId:own.employmentId,companyId:own.companyId});
    const now=new Date(),m=Metadata.parse({actionId:randomUUID(),action,contractVersion:1,binding,intentDigest:hash(body.content),reviewedDigest:reviewed(binding,body),state:'awaiting_confirmation',createdAt:now.toISOString(),expiresAt:new Date(now.getTime()+600000).toISOString()}),sealed=seal(m,body);
    const stored=await read(tx,sql`select app.assistant_generic_review_prepare(${action},${m.actionId}::uuid,${binding.personId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${own.subjectId}::uuid,${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) as review`);bound(stored,fresh,m.actionId,own);return pending(stored,unseal(stored),native);
   }));}catch{return fail();}},
-  async confirm(supplied:SessionContext,input:{actionId:string;reviewedDigest:string}){const ctx=capture(supplied),p={actionId:z.guid().parse(input.actionId),reviewedDigest:digest.parse(input.reviewedDigest)};try{return await withTenant(ctx,async tx=>{
+  async confirm(supplied:SessionContext,input:{actionId:string;reviewedDigest:string}){assertHumanReviewedActionTier(supplied,action,'confirm');const ctx=capture(supplied),p={actionId:z.guid().parse(input.actionId),reviewedDigest:digest.parse(input.reviewedDigest)};try{return await withTenant(ctx,async tx=>{
    const nominee=await subject(tx,p.actionId);return spec.withSubject(tx,ctx,nominee.subjectId,async(fresh,own)=>{
     const stored=await readRow(tx,p.actionId);bound(stored,fresh,p.actionId,own);if(stored.metadata.state==='completed')return completed(tx,fresh,stored);if(stored.metadata.state!=='awaiting_confirmation')return retired(stored);if(stored.metadata.reviewedDigest!==p.reviewedDigest)return fail();
     const body=unseal(stored),native=await spec.confirm(tx,fresh,body.content,body.nativeReviewedDigest);

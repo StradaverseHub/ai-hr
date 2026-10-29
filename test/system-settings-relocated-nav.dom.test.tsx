@@ -57,8 +57,11 @@ describe('existing admin destinations relocated into System Configuration', () =
       expect(within(panel).getByRole('link', {name: nav[key]})).toHaveAttribute('href', href);
       expect(screen.getAllByRole('link', {name: nav[key]})).toHaveLength(1);
     }
-    expect(within(panel).getByRole('link', {name: nav.aiConfig})).toHaveAttribute('href', '/admin/ai');
-    expect(screen.getAllByRole('link', {name: nav.aiConfig})).toHaveLength(1);
+    expect(within(panel).queryByRole('link', {name: nav.aiConfig})).toBeNull();
+    expect(document.querySelector('a[href="/admin/ai"]')).toBeNull();
+    fireEvent.click(screen.getByRole('button', {name: nav.aiControlTower}));
+    const tower = screen.getByRole('navigation', {name: nav.aiControlTower});
+    expect(within(tower).getAllByRole('link').filter(link => link.getAttribute('href') === '/control-tower/agents')).toHaveLength(1);
   });
 
   it.each(relocated)('preserves active matching and reopen after a bookmarked %s load', (href, key) => {
@@ -112,8 +115,10 @@ describe('existing admin destinations relocated into System Configuration', () =
     const panel = openSettings();
     for (const [href, key] of relocated) expect(screen.getByRole('link', {name: en.nav[key]})).toHaveAttribute('href', href);
     expect(screen.getByRole('link', {name: en.nav.dataPrivacy})).toHaveAttribute('aria-current', 'page');
-    const ai = screen.getByRole('link', {name: en.nav.aiConfig});
-    expect(ai).toHaveAttribute('href', '/admin/ai');
-    expect(panel.contains(ai)).toBe(true);
+    expect(within(panel).queryByRole('link', {name: en.nav.aiConfig})).toBeNull();
+    expect(document.querySelector('a[href="/admin/ai"]')).toBeNull();
+    fireEvent.click(screen.getByRole('button', {name: en.nav.aiControlTower}));
+    const tower = screen.getByRole('navigation', {name: en.nav.aiControlTower});
+    expect(within(tower).getAllByRole('link').filter(link => link.getAttribute('href') === '/control-tower/agents')).toHaveLength(1);
   });
 });

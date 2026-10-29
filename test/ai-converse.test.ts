@@ -107,9 +107,11 @@ import {
 
 /* ---------------------------------------------------------------------------------------------- */
 
-const ANTHROPIC: ResolvedAiConfig = { provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-ant-test' };
-const OPENAI: ResolvedAiConfig = { provider: 'openai', model: 'gpt-5.5', apiKey: 'sk-oai-test' };
-const GOOGLE: ResolvedAiConfig = { provider: 'google', model: 'gemini-2.5-flash', apiKey: 'sk-goo-test' };
+// Explicit fixture admission: these tests exercise adapter protocol, not production authority.
+const fixtureGovernance:NonNullable<ResolvedAiConfig['governance']>={async run(_request,call){return call(()=>{});}};
+const ANTHROPIC: ResolvedAiConfig = { governance:fixtureGovernance, provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-ant-test' };
+const OPENAI: ResolvedAiConfig = { governance:fixtureGovernance, provider: 'openai', model: 'gpt-5.5', apiKey: 'sk-oai-test' };
+const GOOGLE: ResolvedAiConfig = { governance:fixtureGovernance, provider: 'google', model: 'gemini-2.5-flash', apiKey: 'sk-goo-test' };
 
 const SYSTEM = ['You are the ai-hr assistant.', 'Answer only from tool results.'];
 
@@ -212,11 +214,11 @@ describe('ADR-0082 — converse() dispatch and capability gate', () => {
     await converse(ANTHROPIC, { system: SYSTEM, turns: [{ role: 'user', content: 'hi' }], tools: [] });
     expect(lastAnthropicRequest().max_tokens).toBe(2048);
     // The SDK default is a 10-minute timeout with 2 retries — an 8-turn loop of that is hours.
-    expect(sdk.anthropic.clientOptions.at(-1)).toMatchObject({ timeout: 120_000, maxRetries: 1 });
+    expect(sdk.anthropic.clientOptions.at(-1)).toMatchObject({ timeout: 120_000, maxRetries: 0 });
 
     await converse(OPENAI, { system: SYSTEM, turns: [{ role: 'user', content: 'hi' }], tools: [], maxTokens: 64, timeoutMs: 5_000 });
     expect(lastOpenAiRequest().max_completion_tokens).toBe(64);
-    expect(sdk.openai.clientOptions.at(-1)).toMatchObject({ timeout: 5_000, maxRetries: 1 });
+    expect(sdk.openai.clientOptions.at(-1)).toMatchObject({ timeout: 5_000, maxRetries: 0 });
 
     await converse(GOOGLE, { system: SYSTEM, turns: [{ role: 'user', content: 'hi' }], tools: [], timeoutMs: 7_000 });
     expect(lastGoogleRequest().config).toMatchObject({ maxOutputTokens: 2048, httpOptions: { timeout: 7_000 } });
@@ -753,11 +755,10 @@ describe('ADR-0082 — generateDraft is untouched (the I11 tripwire)', () => {
     expect(req.tool_choice).toBeUndefined();
     expect(req.messages).toEqual([{ role: 'user', content: 'Write one.' }]);
     expect(req.max_tokens).toBe(2048);
-    // And the drafting client keeps the SDK defaults it has always run with — the converse ceilings are
-    // on a SEPARATE client factory.
+    // Draft payload/default timeout stays separate; governed calls disable hidden SDK retries.
     const opts = sdk.anthropic.clientOptions.at(-1) as Record<string, unknown>;
     expect(opts.timeout).toBeUndefined();
-    expect(opts.maxRetries).toBeUndefined();
+    expect(opts.maxRetries).toBe(0);
   });
 
   it('still THROWS on an empty draft, where converse deliberately does not', async () => {

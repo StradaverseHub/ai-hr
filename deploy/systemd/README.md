@@ -1,6 +1,6 @@
 # Scheduled sweeps — the units, and why none of them are installed by deploy.sh
 
-Five sweeps are built. **`deploy.sh` deliberately does not install or enable any of them**, because
+Six service/timer pairs are supplied, including AI custody and account-email retention. **`deploy.sh` deliberately does not install or enable any of them**, because
 scheduling a job that suspends a customer or writes billing data is an OWNER decision, not a
 deployment side effect. These files exist so that decision is a one-line `systemctl enable`, not a
 half-hour of writing units under pressure.

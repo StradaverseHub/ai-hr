@@ -1,4 +1,4 @@
-/** UNMOUNTED own-human Attendance request source. All canonical input shapes are retained; own
+/** Human-reviewed own-human Attendance request source. All canonical input shapes are retained; own
  * unclocked testimony still fails the native other-HR rule, and clockChanges still needs native admin.
  * Attachments, web-punch removal, decisions and on-behalf requests remain separate unavailable actions. */
 import {z} from 'zod';

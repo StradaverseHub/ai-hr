@@ -1,3 +1,4 @@
+import {assertHumanReviewedActionTier} from '../../lib/ai/agent-action-tier-guard';
 import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 import {isModuleEnabled} from '../entitlements';
@@ -96,6 +97,7 @@ async function completed(tx: Tx, actor: SessionContext, stored: StoredReview): P
 export async function prepareOwnLeaveReviewTx(tx: Tx, supplied: SessionContext,
   nomination: unknown, selection: unknown, humanText: unknown, locale?: string,
 ): Promise<PendingResult | Exclude<OwnLeaveCandidateResult, { kind: 'candidate' }>> {
+  assertHumanReviewedActionTier(supplied,'leave.apply','confirm');
   const ctx = captureContext(supplied);
   const outcome = await readOwnLeaveCandidateTx(tx, ctx, nomination, selection, humanText, locale);
   if (outcome.kind !== 'candidate') return outcome;
@@ -217,6 +219,7 @@ export async function runOwnLeaveReviewRetention(supplied: SessionContext, limit
 export async function confirmOwnLeaveReview(supplied: SessionContext, confirmationValue: unknown,
   locale?: string,
 ): Promise<CompletedResult | RetiredResult> {
+  assertHumanReviewedActionTier(supplied,'leave.apply','confirm');
   const ctx = captureContext(supplied), parsed = OwnLeaveConfirmation.safeParse(confirmationValue);
   if (!parsed.success) throw new OwnLeaveContentUnavailable();
   const confirmation = parsed.data;

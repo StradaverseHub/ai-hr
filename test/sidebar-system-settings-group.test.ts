@@ -119,7 +119,6 @@ const ADMIN_GROUP_FLAT_HREFS = [
   '/admin/notice-board',
   '/analytics',
   '/admin/audit',
-  '/admin/ai',
   '/admin/users',
 ] as const;
 
@@ -169,7 +168,7 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
       expect([...SIDEBAR.matchAll(/\{ href: '([^']+)'/g)].filter(match => match[1] === href)).toHaveLength(1);
       expect(adminGroupBlock()).not.toContain(`href: '${href}'`);
     }
-    expect(adminGroupBlock()).toContain("{ href: '/admin/ai', labelKey: 'aiConfig', icon: Sparkles }");
+    expect(adminGroupBlock()).not.toContain("href: '/admin/ai'");
     expect(node!).not.toContain("href: '/admin/ai'");
     expect(SIDEBAR).toContain("['/admin/settings/notifications','notifications'] as const");
     const source = (file: string) => fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8');

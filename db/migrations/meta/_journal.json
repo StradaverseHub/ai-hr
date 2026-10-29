@@ -3872,6 +3872,13 @@
       "when": 1793330000000,
       "tag": "0674_assistant_outcome_measurement",
       "breakpoints": true
+    },
+    {
+      "idx": 668,
+      "version": "7",
+      "when": 1793330000004,
+      "tag": "0678_ai_connection_probe_ledger",
+      "breakpoints": true
     }
   ]
 }

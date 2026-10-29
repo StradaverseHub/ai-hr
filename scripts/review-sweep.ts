@@ -1,7 +1,7 @@
 // `review:sweep` (0110) — automated probation/contract/internship review opener, run out-of-band
 // (CLI/cron) like accrue-earned.ts. Enumerates tenants with the owner role, then runs sweepDueReviews
-// per tenant with a SYSTEM context (no userId → the domain event's actor is `system`; roles:['hr_admin']
-// authorizes the writes and lets app.is_admin() see every tenant employment). Then dispatches
+// per tenant with the legacy no-login hr_admin engine context; engine effects use `system`.
+// The orchestrator resolves a named tenant principal separately and attributes its effects to it. Then dispatches
 // notifications IN THE SAME SCRIPT — otherwise the "notify manager + HR ~1 month prior" headline is dead
 // in a no-admin-traffic window (dispatchNotifications is otherwise only invoked opportunistically when an
 // admin renders a page). Notifications are gated behind the per-tenant `notifications` MODULE (off ⇒
@@ -14,6 +14,8 @@
 // is a second thing to forget to install". r230 is the proof: the anomaly sweep sat BUILT, DOCUMENTED and
 // never installed in the crontab for six weeks. The nudge agent is additionally OFF per tenant by default
 // (notifications.readiness_nudge_enabled), so an installed job with no opted-in tenant sends nothing.
+// The named scheduled principal is not admitted to model spend: readiness uses templates and claims triage
+// cannot draft. A configured provider alone does not make nightly AI available.
 // R51 722904dc/71b9143a: the SAME nightly pass also drives LEAVE APPROVAL ESCALATION
 // (sweepLeaveApprovalEscalations) — leave requests whose current approval step has sat pending past the
 // company's configured working-day threshold get a bell notification for the next approver. One job, no
@@ -74,8 +76,8 @@ async function main() {
   let notificationsCreated = 0;
   for (const t of tenants) {
     try {
-      // SYSTEM context: no userId, so actorOf(ctx) records the event actor as `system`. The group-wide
-      // hr_admin role authorizes the writes and lets the sweep see every tenant employment.
+      // Engine jobs retain the legacy no-login context: actorOf stamps system.
+      // The orchestrator uses the named tenant principal resolved below, without model spend.
       //
       // A REAL snapshot, not `entitlementsExempt: 'sweeps'`, because this sweep calls
       // `dispatchNotifications`, which is gated on the BILLABLE `notifications` module. The exempt
@@ -115,7 +117,7 @@ async function main() {
       const enablements = attributedEnablements(switches);
       const unattributed = switches.filter(s => s.state === 'unattributed').map(s => s.feature);
       if (unattributed.length > 0) console.error(`  ⚠ ${unattributed.join(', ')} switched on without a named administrator — not run; switch it off and on again in AI management.`);
-      // No attributed specialist: no pass tonight. An administrator's refresh in the Control Tower still
+      // No attributed scheduled feature: no orchestrator pass tonight. An administrator's refresh in the Control Tower still
       // observes readiness under their own login.
       const orchestration = enablements.length > 0
         ? await runHrOrchestrator(agentContext(t.id, principalId, entitlements, enablements)) : null;

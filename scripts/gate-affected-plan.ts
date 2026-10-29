@@ -25,6 +25,7 @@ import { classifyTestFiles } from './gate-db-classify';
 /** Named guards that sweep the repo. Matched as a file-name prefix under test/. */
 export const ALWAYS_RUN = [
   'function-access',
+  'ai-management-contract',
   'i18n-coverage',
   'server-client-boundary',
   'rsc-boundary-guard',

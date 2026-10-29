@@ -290,7 +290,7 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
 // map to the reporter's categories; each opens the Reports hub filtered to that category, where the
 // predefined reports AND the custom report builder live. Admin-only (every report surface is admin-gated).
 // AI management (28 Oct 2026, owner): one place to manage AI, each section its own page under
-// /control-tower/agents. A sub-menu in the AI Control Tower group rather than a tab row inside the page.
+// /control-tower/agents. A sub-menu in the Control Tower group rather than a tab row inside the page.
 // Overview is exact so it is not also current on the other sections. Spending opens only where a spend
 // policy exists; elsewhere its page returns to the Overview.
 const AI_MANAGEMENT_NODE: CollapsibleGroupItem = {
@@ -566,7 +566,6 @@ const GROUPS: Group[] = [
       { href: '/analytics', labelKey: 'analytics', icon: BarChart3 },
       REPORTS_NODE,
       { href: '/admin/audit', labelKey: 'auditTrail', icon: ScrollText },
-      { href: '/admin/ai', labelKey: 'aiConfig', icon: Sparkles },
       { href: '/admin/users', labelKey: 'securityPermission', icon: ShieldCheck },
     ],
   },
@@ -621,7 +620,7 @@ export function Sidebar({
   hasAssignedApproval?: boolean;
   /** Actual HR administration, independent of the broader partner administration rail. */
   canReviewProfileChanges?: boolean;
-  /** Actual HR administration: the AI Control Tower and AI configuration run requireAdmin, so the
+  /** Actual HR administration: the Control Tower and AI configuration run requireAdmin, so the
    * broader partner administration rail must not list them. */
   canAdministerAi?: boolean;
   /** Group-wide administration: a company administrator is sent from Provider back to the AI Overview. */

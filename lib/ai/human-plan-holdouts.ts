@@ -1,4 +1,4 @@
-/** Independent fixed human-question contract supplements the all-module routing suite.
+/** Independent fixed human-question contract; only two plans exercise data reads, so this is not all-module runtime coverage.
  * No expectations, security thresholds or candidate text are accepted from the caller/model.
  */
 import {routingDigest} from './module-agent-routing';
