@@ -19123,7 +19123,10 @@
         "action_approvals_claim_chase": "提醒审批人处理逾期报销",
         "action_approvals_attendance_chase": "提醒审批人处理逾期考勤申请",
         "action_approvals_toil_chase": "提醒审批人处理逾期调休申请",
-        "action_employees_review_overdue_remind": "提醒到期后仍未决定的评审"
+        "action_employees_review_overdue_remind": "提醒到期后仍未决定的评审",
+        "action_attendance_missing_clock_remind": "提醒员工检查缺少的上班打卡记录",
+        "action_employees_passport_expiry_remind": "提醒检查记录中的护照到期日",
+        "action_lifecycle_step_chase": "提醒负责人处理未完成的入离职步骤"
       },
       "conversation": {
         "answerLabel": "根据您的记录回答",
@@ -24500,7 +24503,10 @@
       "performance_assistant": "绩效对话助手",
       "feedback_planning": "改进计划起草",
       "approval_chasers": "逾期审批提醒",
-      "review_chasers": "逾期评审提醒"
+      "review_chasers": "逾期评审提醒",
+      "clock_reminders": "缺少上班打卡提醒",
+      "document_reminders": "护照到期提醒",
+      "lifecycle_chasers": "入离职步骤提醒"
     },
     "kinds": {
       "assistant": "助手",

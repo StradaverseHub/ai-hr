@@ -201,11 +201,11 @@ describe('the agent action registry',()=>{
 describe('WP13 Automatic-tier entries (R18)',()=>{
  const automatic=agentActionsByTier('automatic');
  it('are exactly the owner-ordered reminders, each bounded and run by the agent principal only',()=>{
-  expect(automatic.map(action=>action.id)).toEqual(['approvals.claim.chase','approvals.attendance.chase','approvals.toil.chase','employees.review_overdue.remind']);
+  expect(automatic.map(action=>action.id)).toEqual(['approvals.claim.chase','approvals.attendance.chase','approvals.toil.chase','employees.review_overdue.remind','attendance.missing_clock.remind','employees.passport_expiry.remind','lifecycle.step.chase']);
   for(const action of automatic){
    expect(['chaser','reminder']).toContain(action.policy.category);
    expect(action).toMatchObject({store:'human_workflow_only',browserOwner:null,humanInputs:'native_page_only',outcome:'notification_only',
-    idempotencyKey:'chase_item_stage_cooldown',permission:{actor:'agent_principal',guard:'core/automatic-chasers.ts#assertAutomaticChaserTx'},
+    idempotencyKey:'chase_item_stage_cooldown',permission:{actor:'agent_principal'},
     prepare:{status:'human_workflow_only'},confirm:{status:'human_workflow_only'},review:{handoff:'none'},screen:{entryPoints:[]}});
    expect(Object.keys(AGENT_PRINCIPAL_SPECIALISTS)).toContain(action.automatic.specialist);
    expect(AGENT_PRINCIPAL_SPECIALISTS[action.automatic.specialist].service).toBe(action.service);

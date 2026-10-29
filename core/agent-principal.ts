@@ -26,6 +26,9 @@ const SWITCHED_ON: Record<AgentFeature, (ctx: SessionContext) => boolean> = {
   claims_triage: ctx => settingEnabled(ctx, 'claims.input_triage_enabled'),
   approval_chasers: ctx => settingEnabled(ctx, 'notifications.approval_chasers_enabled'),
   review_chasers: ctx => settingEnabled(ctx, 'notifications.review_chasers_enabled'),
+  clock_reminders: ctx => settingEnabled(ctx, 'notifications.missing_clock_reminders_enabled'),
+  document_reminders: ctx => settingEnabled(ctx, 'notifications.passport_expiry_reminders_enabled'),
+  lifecycle_chasers: ctx => settingEnabled(ctx, 'notifications.lifecycle_step_chasers_enabled'),
 };
 
 export const isAgentContext = (ctx: SessionContext): ctx is SessionContext & { agent: NonNullable<SessionContext['agent']> } =>

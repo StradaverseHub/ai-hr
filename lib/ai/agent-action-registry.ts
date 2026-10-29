@@ -63,9 +63,9 @@ export type AgentActionEvaluationCase=Readonly<{suite:'assistant_conversation';c
  * `maxPerRun` reminders per tenant per run. `overdueAfterDays` counts WORKING days on the requester's roster minus
  * public holidays (the leave escalation's clock). These are registry defaults; per-company values are a follow-up.
  * Reminders only: never a decision, submission or record change. */
-export type AgentAutomaticSpecialist='approval_chasers'|'review_chasers';
-export type AgentAutomaticSource='claim'|'attendance_correction'|'replacement_leave'|'employment_review';
-export type AgentAutomaticPolicy=Readonly<{specialist:AgentAutomaticSpecialist;source:AgentAutomaticSource;overdueAfterDays:number;cooldownDays:number;maxPerItem:number;maxPerRun:number}>;
+export type AgentAutomaticSpecialist='approval_chasers'|'review_chasers'|'clock_reminders'|'document_reminders'|'lifecycle_chasers';
+export type AgentAutomaticSource='claim'|'attendance_correction'|'replacement_leave'|'employment_review'|'missing_clock'|'passport_expiry'|'lifecycle_step';
+export type AgentAutomaticPolicy=Readonly<{specialist:AgentAutomaticSpecialist;source:AgentAutomaticSource;/** Default working_wait. Fixed presence/expiry sources have explicit eligibility and no overdue-day interpretation. */eligibility?:'working_wait'|'previous_date_record_gap'|'recorded_expiry_30_calendar_days';overdueAfterDays:number;cooldownDays:number;maxPerItem:number;maxPerRun:number}>;
 
 /** The policy field reuses WP2's AgentActionPolicy union, so `{category:'pay',tier:'automatic'}` (or any
  * never-Automatic category paired with Automatic) is a compile error in the entry itself. */
@@ -97,6 +97,8 @@ export function defineAgentAction<const T extends AgentActionDefinition>(definit
  if((d.policy.tier==='automatic')!==(d.automatic!==undefined))fail('automatic policy');
  if(d.automatic){const a=d.automatic;
   if(d.store!=='human_workflow_only'||d.permission.actor!=='agent_principal'||d.outcome!=='notification_only'||d.idempotencyKey!=='chase_item_stage_cooldown')fail('automatic shape');
+  const eligibility=a.source==='missing_clock'?'previous_date_record_gap':a.source==='passport_expiry'?'recorded_expiry_30_calendar_days':'working_wait';
+  if((a.eligibility??'working_wait')!==eligibility)fail('automatic eligibility');
   if(![a.overdueAfterDays,a.cooldownDays,a.maxPerItem,a.maxPerRun].every(n=>Number.isSafeInteger(n)&&n>=1&&n<=1000))fail('automatic bounds');}
  else if(d.permission.actor==='agent_principal'||d.outcome==='notification_only')fail('automatic shape');
  return freezeDeep(definition);
@@ -394,6 +396,27 @@ export const AGENT_ACTIONS=Object.freeze([
   idempotencyKey:'chase_item_stage_cooldown',policy:{tier:'automatic',category:'reminder'},reversal:{kind:'final'},evaluationCases:[],
   screen:{native:'app/approvals/page.tsx',entryPoints:[]},review:{route:'/approvals',handoff:'none'},
   store:'human_workflow_only',browserOwner:null,pauseKey:'hr_assistant',automatic:{specialist:'review_chasers',source:'employment_review',overdueAfterDays:1,cooldownDays:7,maxPerItem:4,maxPerRun:100}}),
+ defineAgentAction({id:'attendance.missing_clock.remind',module:'attendance',owner:'attendance',service:'core/automatic-followups.ts#runAutomaticFollowups',contractVersion:1,
+  prepare:{status:'human_workflow_only',adapter:null,inputSchema:null,outputSchema:null},confirm:{status:'human_workflow_only',adapter:null,inputSchema:null,outputSchema:null},
+  outcome:'notification_only',semantics:'missing_record_reminded_no_work_attested',humanInputs:'native_page_only',
+  permission:{actor:'agent_principal',guard:'core/automatic-followups.ts#assertAutomaticFollowupTx'},subject:'assigned_request',blastRadius:{max:1,unit:'reminder_event_per_item_stage'},
+  idempotencyKey:'chase_item_stage_cooldown',policy:{tier:'automatic',category:'reminder'},reversal:{kind:'final'},evaluationCases:[],
+  screen:{native:'app/me/page.tsx',entryPoints:[]},review:{route:'/me',handoff:'none'},
+  store:'human_workflow_only',browserOwner:null,pauseKey:'hr_assistant',automatic:{specialist:'clock_reminders',source:'missing_clock',eligibility:'previous_date_record_gap',overdueAfterDays:1,cooldownDays:1,maxPerItem:1,maxPerRun:100}}),
+ defineAgentAction({id:'employees.passport_expiry.remind',module:'employees',owner:'personnel',service:'core/automatic-followups.ts#runAutomaticFollowups',contractVersion:1,
+  prepare:{status:'human_workflow_only',adapter:null,inputSchema:null,outputSchema:null},confirm:{status:'human_workflow_only',adapter:null,inputSchema:null,outputSchema:null},
+  outcome:'notification_only',semantics:'recorded_passport_expiry_reminded_no_document_changed',humanInputs:'native_page_only',
+  permission:{actor:'agent_principal',guard:'core/automatic-followups.ts#assertAutomaticFollowupTx'},subject:'assigned_request',blastRadius:{max:1,unit:'reminder_event_per_item_stage'},
+  idempotencyKey:'chase_item_stage_cooldown',policy:{tier:'automatic',category:'reminder'},reversal:{kind:'final'},evaluationCases:[],
+  screen:{native:'app/me/page.tsx',entryPoints:[]},review:{route:'/me',handoff:'none'},
+  store:'human_workflow_only',browserOwner:null,pauseKey:'hr_assistant',automatic:{specialist:'document_reminders',source:'passport_expiry',eligibility:'recorded_expiry_30_calendar_days',overdueAfterDays:1,cooldownDays:7,maxPerItem:4,maxPerRun:100}}),
+ defineAgentAction({id:'lifecycle.step.chase',module:'lifecycle',owner:'lifecycle',service:'core/automatic-followups.ts#runAutomaticFollowups',contractVersion:1,
+  prepare:{status:'human_workflow_only',adapter:null,inputSchema:null,outputSchema:null},confirm:{status:'human_workflow_only',adapter:null,inputSchema:null,outputSchema:null},
+  outcome:'notification_only',semantics:'actionable_step_reminded_no_task_completed',humanInputs:'native_page_only',
+  permission:{actor:'agent_principal',guard:'core/automatic-followups.ts#assertAutomaticFollowupTx'},subject:'assigned_request',blastRadius:{max:1,unit:'reminder_event_per_item_stage'},
+  idempotencyKey:'chase_item_stage_cooldown',policy:{tier:'automatic',category:'reminder'},reversal:{kind:'final'},evaluationCases:[],
+  screen:{native:'app/lifecycle/page.tsx',entryPoints:[]},review:{route:'/lifecycle',handoff:'none'},
+  store:'human_workflow_only',browserOwner:null,pauseKey:'hr_assistant',automatic:{specialist:'lifecycle_chasers',source:'lifecycle_step',eligibility:'working_wait',overdueAfterDays:3,cooldownDays:7,maxPerItem:3,maxPerRun:100}}),
 ] as const);
 
 export type AgentAction=(typeof AGENT_ACTIONS)[number];
