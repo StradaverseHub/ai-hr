@@ -88,3 +88,6 @@ export function createGenericAssignedReviewStore<Human extends {employmentId:str
   },
  });
 }
+
+/** Installed assigned protocols retain their exact source binding/self-decision rules and SQL verifier. */
+export {createReviewCustody as createGenericAssignedCompatibilityStore} from './generic-review-custody';

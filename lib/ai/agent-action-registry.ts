@@ -315,7 +315,7 @@ export const AGENT_ACTIONS=Object.freeze([
   permission:{actor:'hr_admin',guard:'core/assistant-actions/reviewed-country-statutory-source.ts#assertReviewedCountryStatutoryActorTx'},subject:'other_employment',blastRadius:{max:1,unit:'person_statutory_section'},
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'payroll'},reversal:{kind:'repeat'},evaluationCases:[],
   screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:['app/admin/personnel/[employmentId]/actions.ts#setStatutoryAction']},review:{route:'/assistant/statutory',handoff:'review_page'},
-  store:'dedicated',browserOwner:'countryStatutory',pauseKey:'hr_assistant'}),
+  store:'generic_assigned',browserOwner:'countryStatutory',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'notifications.email_preferences.save',module:'notifications',owner:'notifications',service:'core/notification-email.ts#saveNotificationEmailPreferences',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_notification_review_v1',inputSchema:'ModuleActionPrepare',outputSchema:'ModuleActionPreparedReview'},
   confirm:{status:'implemented',adapter:'module_notification_review_v1',inputSchema:'ModuleActionConfirmation',outputSchema:'ModuleActionCompletedReceipt'},
