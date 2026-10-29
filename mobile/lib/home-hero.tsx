@@ -2,14 +2,14 @@
  * Home, redesigned (Mobile WOW round): a branded hero with the greeting and today's clock status, one grid of quick
  * actions for everything an employee does, what needs them, their leave balances, who is away and the latest payslip.
  *
- * The rules of the declutter round still hold. Every card reads the SAME authorized endpoint its full screen reads and
- * opens that screen; Home itself records nothing. In particular Home never clocks: the clock button opens the Clock tab,
- * where the whole clock journey (location, review, receipts and assurances) lives. The live worked-time figure is the
- * server's `workedSeconds` plus the time since that answer arrived, for display only; the Clock tab and the server own
- * the recorded figure. Money arrives as text and is shown as text; the payslip amount stays hidden until tapped.
+ * Every card reads the SAME authorized endpoint its full screen reads. The clock card is the one exception to "Home
+ * records nothing" (owner request, 30 Oct 2026): its button clocks in or out in one tap through the Clock tab's own
+ * journey (ClockPanel, variant 'home'), never a second implementation. The live worked-time figure is the server's
+ * `workedSeconds` plus the time since that answer arrived, for display only. Money arrives as text and is shown as text; the payslip amount stays hidden until tapped.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Animated, Pressable, ScrollView, View, type ColorValue } from 'react-native';
+import { ActivityIndicator, Animated, Pressable, ScrollView, View, type ColorValue } from 'react-native';
+import { ClockPanel, type HomeClockView } from './clock-panel';
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DesignText as Text, TenantBrand, TenantSurface, useTenantDesign } from './design';
@@ -91,15 +91,21 @@ export function HomeHero({ name, unread, refreshToken }: { name: string | null; 
   </View>;
 }
 
-/** Today's status and live worked time inside the hero. Its button OPENS the Clock tab; nothing is recorded here. */
+/**
+ * Today's status and live worked time inside the hero, and ONE tap to clock in or out (owner request, Mobile WOW round).
+ * The tap runs the Clock tab's own journey (ClockPanel, variant 'home'): the same saved attempt, signed-clock checks,
+ * location assessment, required photo, receipts and recovery. Home shows its progress and its answer; anything that needs
+ * a decision (an unresolved submission, a review left open, device registration, location settings) is finished on the
+ * Clock tab, linked from the card. The live figure is the server's `workedSeconds` plus the time since that answer, for
+ * display only.
+ */
 function ClockHeroCard({ refreshToken }: { refreshToken: number }) {
-  const { employmentId, signOut } = useSession();
+  return <ClockPanel variant="home" refreshToken={refreshToken} renderHome={(view) => <ClockHeroView view={view} />} />;
+}
+function ClockHeroView({ view }: { view: HomeClockView }) {
   const { palette, reduceMotion } = useTenantDesign();
-  const clock = useApi('clock', { employmentId: employmentId ?? undefined }, signOut);
-  useFocusEffect(useCallback(() => { clock.reload(); }, [clock.reload]));
-  useEffect(() => { if (refreshToken) clock.reload(); }, [refreshToken, clock.reload]);
-  const today = clock.data?.state ?? null;
-  const receivedAt = useMemo(() => Date.now(), [clock.data]);
+  const today = view.current;
+  const receivedAt = useMemo(() => Date.now(), [today]);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!today?.clockedIn) return;
@@ -115,12 +121,13 @@ function ClockHeroCard({ refreshToken }: { refreshToken: number }) {
     ]));
     loop.start(); return () => loop.stop();
   }, [today?.clockedIn, reduceMotion, pulse]);
-  if (clock.data && !clock.data.enabled) return null;
   const on = palette.onButton as string;
   const worked = today ? today.workedSeconds + (today.clockedIn ? Math.max(0, (now - receivedAt) / 1000) : 0) : 0;
   const since = today?.openSince ? clockTime(today.openSince) : null;
+  const label = view.action === 'in' ? t('clockIn') : t('clockOut');
+  const done = view.doneAt ? clockTime(view.doneAt) : null;
   return <View style={{ borderRadius: 22, padding: 18, gap: 14, backgroundColor: tint(on, 0.1, 'transparent'), borderWidth: 1, borderColor: tint(on, 0.16, 'transparent') }}>
-    {!today && <TenantSurface band align="start"><LoadState loading={clock.loading} hasData={false} error={clock.error} onRetry={clock.reload} /></TenantSurface>}
+    {!today && <TenantSurface band align="start"><LoadState loading={view.loading} hasData={false} error={view.error} onRetry={view.reload} /></TenantSurface>}
     {today && <>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <Animated.View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: today.clockedIn ? '#30D158' : tint(on, 0.45, on), opacity: pulse }} />
@@ -134,12 +141,20 @@ function ClockHeroCard({ refreshToken }: { refreshToken: number }) {
           <Text accessibilityLabel={`${t('workedToday')}: ${fmtDuration(worked)}`} style={{ color: on, fontSize: 40, fontWeight: '800', letterSpacing: -1, fontVariant: ['tabular-nums'] }}>{fmtDuration(worked)}</Text>
           <Text style={{ color: on, opacity: 0.75, fontSize: 13 }}>{today.shift.code ? t('workedTodayShift', { shift: today.shift.code }) : t('workedToday')}</Text>
         </View>
-        <Tactile label={today.clockedIn ? t('clockOut') : t('clockIn')} hint={t('clockOpensTab')} onPress={() => router.navigate('/clock' as Href)}
-          style={{ minWidth: 112, minHeight: 52, borderRadius: 26, paddingHorizontal: 20, backgroundColor: on, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 }}>
-          <Icon name="clock" color={palette.button} size={18} />
-          <Text style={{ color: palette.button, fontSize: 16, fontWeight: '800' }}>{today.clockedIn ? t('clockOut') : t('clockIn')}</Text>
-        </Tactile>
+        <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint={t('clockOpensTab')} accessibilityState={{ disabled: view.disabled || view.busy, busy: view.busy }}
+          disabled={view.disabled || view.busy} onPress={view.clock}
+          style={({ pressed }) => [{ minWidth: 112, minHeight: 52, borderRadius: 26, paddingHorizontal: 20, backgroundColor: on, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
+            (pressed || view.disabled) && { opacity: 0.75 }, pressed && !reduceMotion && { transform: [{ scale: 0.97 }] }]}>
+          {view.busy ? <ActivityIndicator color={palette.button} /> : <Icon name="clock" color={palette.button} size={18} />}
+          <Text style={{ color: palette.button, fontSize: 16, fontWeight: '800' }}>{label}</Text>
+        </Pressable>
       </View>
+      {view.busy && <Text accessibilityLiveRegion="polite" style={{ color: on, fontSize: 14 }}>{t('preparingClock')}</Text>}
+      {done && !view.busy && <Text accessibilityRole="alert" style={{ color: on, fontSize: 15, fontWeight: '700' }}>✓ {t('clockRecorded')} · {done}</Text>}
+      {view.message && !view.busy && <Text accessibilityRole="alert" style={{ color: on, fontSize: 14, lineHeight: 20 }}>{view.message}</Text>}
+      {view.finishOnClockTab && <Pressable accessibilityRole="button" accessibilityLabel={t('finishOnClockTab')} onPress={() => router.navigate('/clock' as Href)} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Text style={{ color: on, fontSize: 15, fontWeight: '700', textDecorationLine: 'underline' }}>{t('finishOnClockTab')}</Text><Icon name="chevron" color={on} size={13} />
+      </Pressable>}
     </>}
   </View>;
 }

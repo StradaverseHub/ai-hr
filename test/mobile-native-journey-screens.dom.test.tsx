@@ -58,7 +58,7 @@ function fixture(platform:'ios'|'android'='ios'){
   const {ClockPanel}=load('mobile/lib/clock-panel.tsx',shared),{LeaveRequestForm}=load('mobile/lib/leave-request-form.tsx',shared),{TeamPanel}=load('mobile/lib/team-panel.tsx',shared);
   function Probe(){drafts=provider.useJourneyDrafts();return null;}
   const options={employmentId:'own',items:[{id:'annual',name:'Annual leave',durations:['full_day','half_day_am','hourly'],allowedMimeTypes:[],maxDocBytes:10485760,requiresDocument:false,emergencySplit:false}]};
-  function App({kind,refreshToken=0,visible=true,notices,cards,opts=options}:{kind:'clock'|'leave'|'team';refreshToken?:number;visible?:boolean;notices?:Record<string,{label:string;detail:string|null}>;cards?:any[];opts?:any}){return <provider.JourneyDraftProvider><Probe/>{!visible?null:kind==='clock'?<ClockPanel refreshToken={refreshToken}/>:kind==='team'?<TeamPanel refreshToken={refreshToken}/>:<LeaveRequestForm options={opts} today="2026-01-01" onSubmitted={reload} notices={notices} cards={cards}/>}</provider.JourneyDraftProvider>;}
+  function App({kind,refreshToken=0,visible=true,notices,cards,opts=options}:{kind:'clock'|'leave'|'team'|'homeClock';refreshToken?:number;visible?:boolean;notices?:Record<string,{label:string;detail:string|null}>;cards?:any[];opts?:any}){return <provider.JourneyDraftProvider><Probe/>{!visible?null:kind==='homeClock'?<ClockPanel variant="home" refreshToken={refreshToken} renderHome={(v:any)=><div><button disabled={v.disabled||v.busy} onClick={v.clock}>{'home:'+v.action}</button>{v.busy&&<span>homeBusy</span>}{v.doneAt&&<span>{'homeDone:'+v.doneAt}</span>}{v.message&&<span role="alert">{v.message}</span>}{v.finishOnClockTab&&<span>finishOnClockTab</span>}</div>}/>:kind==='clock'?<ClockPanel refreshToken={refreshToken}/>:kind==='team'?<TeamPanel refreshToken={refreshToken}/>:<LeaveRequestForm options={opts} today="2026-01-01" onSubmitted={reload} notices={notices} cards={cards}/>}</provider.JourneyDraftProvider>;}
   return {App,androidOpen,engine,anchorRead,session,post,signed,openSigned,alert,hasSignedAttempt,setSignedState:(value:SignedClockStatus)=>{signedState=value;},restoreClock:(value:unknown)=>{restoredClock=value;},preview,get,capture,reload,stage,resolve,prepareClock,reportAttempt,remove,teamState,clockState,photo,attemptsState,reloadAttempts,drafts:()=>drafts};
 }
 afterEach(cleanup);
@@ -144,6 +144,40 @@ describe('native clock job',()=>{
   it('cancelling a prepared capture writes nothing, and a definitive refusal permits a new attempt',async()=>{
     const f=fixture();render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');fireEvent.click(screen.getByText('cancel'));expect(f.post).not.toHaveBeenCalled();expect(f.drafts().clock).toMatchObject({phase:'idle',message:'attemptSavedNotSent'});
     fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');f.post.mockRejectedValueOnce(new errors.RequestRejectedError(400));fireEvent.click(screen.getByText('slideRecord'));await screen.findByText('slidePrepare');expect(f.drafts().clock.phase).toBe('idle');
+  });
+});
+describe('one-tap clock from Home (owner request, Mobile WOW round)',()=>{
+  const accepted=()=>({outcome:'accepted',receipt:contract.ClockReceipt.parse({id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',direction:'in',date:'2026-01-01',recordedAt:'2026-01-01T01:00:00Z',photoAvailable:false})});
+  it('one tap runs the Clock tab journey and records without a slide: saved attempt, location, assessment, then one command',async()=>{
+    const f=fixture();render(<f.App kind="homeClock"/>);expect(f.post).not.toHaveBeenCalled();
+    f.post.mockResolvedValueOnce(accepted());
+    fireEvent.click(screen.getByText('home:in'));
+    await screen.findByText('homeDone:2026-01-01T01:00:00Z');
+    expect(f.prepareClock).toHaveBeenCalledTimes(1);expect(f.capture).toHaveBeenCalledTimes(1);expect(f.preview).toHaveBeenCalledTimes(1);
+    expect(f.reportAttempt).toHaveBeenCalledTimes(1);expect(f.post).toHaveBeenCalledTimes(1);expect(f.post.mock.calls[0][0]).toBe('clock');
+    const command=JSON.parse((f.post.mock.calls[0][1] as FormData).get('command') as string);
+    expect(command).toMatchObject({action:'in',requestId:f.prepareClock.mock.calls[0][1]});
+    expect(f.drafts().clock.phase).toBe('done');
+  });
+  it('stops before sending when the company requires a registered phone, and sends the person to the Clock tab',async()=>{
+    const f=fixture();f.clockState.state.deviceRequired=true;render(<f.App kind="homeClock"/>);
+    fireEvent.click(screen.getByText('home:in'));
+    await screen.findByText('finishOnClockTab');
+    expect(f.post).not.toHaveBeenCalled();expect(f.drafts().clock.phase).toBe('review');
+  });
+  it('a lost answer is left for an explicit retry on the Clock tab, never resent by itself',async()=>{
+    const f=fixture();render(<f.App kind="homeClock"/>);
+    f.post.mockRejectedValueOnce(new errors.UnavailableError());
+    fireEvent.click(screen.getByText('home:in'));
+    await screen.findByText('finishOnClockTab');
+    expect(f.drafts().clock.phase).toBe('uncertain');expect(screen.getByRole('alert').textContent).toBe('clockUncertain');
+    await act(async()=>{await new Promise(r=>setTimeout(r,20));});expect(f.post).toHaveBeenCalledTimes(1);
+  });
+  it('a location refusal is shown on Home and nothing is sent',async()=>{
+    const f=fixture();f.preview.mockResolvedValueOnce({outcome:'outside_site',siteId:'s',siteName:'HQ',distanceM:900,radiusM:100,accuracyM:5,maximumAccuracyM:null});
+    render(<f.App kind="homeClock"/>);fireEvent.click(screen.getByText('home:in'));
+    await screen.findByRole('alert');expect(screen.getByRole('alert').textContent).toBe('locationOutsideSite');
+    expect(f.post).not.toHaveBeenCalled();expect(f.drafts().clock.phase).toBe('idle');
   });
 });
 describe('native leave job',()=>{
