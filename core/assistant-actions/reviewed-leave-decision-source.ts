@@ -2,15 +2,13 @@
  * governed review custody before exposure. Models cannot call confirm or supply a SessionContext. */
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
-import {assertAiPrincipalTx} from '../ai-principal';
-import {assertMayUseAssistant} from '../assistant-grant';
-import {assertAiActionUnpausedTx} from '../ai-governance';
-import {resolveEntitlementsTx,assertModuleEnabled} from '../entitlements';
+import {withAgentActionGuard} from './agent-action-guard';
+import {assertModuleEnabled} from '../entitlements';
 import {lockReviewedLeaveDecisionSourceTx,prepareReviewedLeaveDecisionTx,decideReviewedLeaveTx,readReviewedLeaveDecisionReferenceTx} from '../../packs/leave/service';
 import {ReviewedLeaveDecisionHumanContent as Human,ReviewedLeaveDecisionConfirmation as Confirmation,ReviewedLeaveDecisionPreparedSource as Prepared,ReviewedLeaveDecisionSourceReceipt as Receipt} from '../../lib/assistant-actions/reviewed-leave-decision-contract';
 export class ReviewedLeaveDecisionUnavailable extends Error{constructor(){super('That leave decision needs another look. Please reopen your assigned task.');this.name='ReviewedLeaveDecisionUnavailable';}}
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
-export async function assertReviewedLeaveDecisionActorTx(tx:Tx,supplied:SessionContext){const ctx=capture(supplied);await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,'leave');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');return fresh;}
+export async function assertReviewedLeaveDecisionActorTx(tx:Tx,supplied:SessionContext){const fresh=await withAgentActionGuard(tx,capture(supplied),'approvals.leave.decide','approve');assertModuleEnabled(fresh,'leave');return fresh;}
 const selection=(p:z.infer<typeof Human>)=>({leaveRequestId:p.leaveRequestId,currentStepId:p.currentStepId,decision:p.decision,rejectReason:p.rejectReason});
 export async function prepareReviewedLeaveDecisionSourceTx(tx:Tx,supplied:SessionContext,value:unknown):Promise<z.infer<typeof Prepared>>{
  const ctx=capture(supplied);try{const content=Human.parse(structuredClone(value)),fresh=await assertReviewedLeaveDecisionActorTx(tx,ctx),{reviewedDigest,...review}=await prepareReviewedLeaveDecisionTx(tx,fresh,selection(content));if(Buffer.byteLength(review.applicantReason??'','utf8')>16000||Buffer.byteLength(review.employeeRemark??'','utf8')>16000||Buffer.byteLength(JSON.stringify(review),'utf8')>49152)throw new ReviewedLeaveDecisionUnavailable();return Prepared.parse({kind:'prepared_source',content,review,reviewedDigest,consequence:'assigned_decision_request_may_remain_pending'});}catch{throw new ReviewedLeaveDecisionUnavailable();}

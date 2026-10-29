@@ -163,7 +163,7 @@ export const AGENT_ACTIONS=Object.freeze([
   permission:{actor:'assigned_approver',guard:'core/assistant-actions/reviewed-leave-decision-source.ts#assertReviewedLeaveDecisionActorTx'},subject:'assigned_request',blastRadius:{max:1,unit:'leave_approval_step_decision'},
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'approvals'},reversal:{kind:'final'},evaluationCases:[],
   screen:{native:'app/approvals/page.tsx',entryPoints:['app/approvals/actions.ts#approveLeaveAction']},review:{route:'/assistant/approvals',handoff:'review_page'},
-  store:'dedicated',browserOwner:'assignedDecision',pauseKey:'hr_assistant'}),
+  store:'generic_assigned',browserOwner:'assignedDecision',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'approvals.claim.decide',module:'approvals',owner:'claims',service:'packs/claims/service.ts#decideClaimTx',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_claim_decision_review_v1',inputSchema:'AssignedClaimDecision.Human',outputSchema:'AssignedClaimDecision.Prepared'},
   confirm:{status:'implemented',adapter:'module_claim_decision_review_v1',inputSchema:'AssignedClaimDecision.Confirmation',outputSchema:'AssignedClaimDecision.Completed'},

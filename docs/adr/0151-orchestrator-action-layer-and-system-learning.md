@@ -590,3 +590,7 @@ Reporting-line change custody uses the generic assigned compatibility lifecycle 
 ### WP9 — attendance request compatibility (30 October 2026)
 
 Own attendance correction custody uses the generic own compatibility lifecycle with an exact legacy intent-wire codec. Its private commitment/encryption still serialize `intent`, never a renamed content field. Existing own-employee/configuration/credit ownership, bounded canonical policy/day/payroll preparation before custody NOWAIT, exact encrypted snapshot reread and native correction/request binding remain unchanged. Completed retries lock and reconcile only the existing correction without pending preparation. The public action/version/intent packet and digest-bound confirmation are unchanged; native clock and other-HR rules still adjudicate every request. No migration is required.
+
+### WP9 assigned Leave decision custody
+
+The Leave decision adapter uses generic ASSIGNED compatibility custody. Its original sealed content, actor/subject binding, pending versus recorded source nomination, native step/event provenance, privacy targets and installed SQL remain authoritative. The shared guard requests Approve explicitly; the model cannot decide. No migration or ciphertext rewrite is needed.
