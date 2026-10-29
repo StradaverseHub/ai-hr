@@ -37,7 +37,7 @@ describe('atomic Malaysia-day Assistant question quota',()=>{
   await budget(1);const entered=deferred(),release=deferred();
   transport().mockImplementationOnce(async()=>{entered.resolve();await release.promise;return end;});
   const first=ask();try{
-   await entered.promise;
+   await Promise.race([entered.promise,first.then(()=>{throw Error('Fictional provider was not reached');})]);
    await expect(ask()).rejects.toMatchObject({code:'budget_daily'});
    expect(openaiAdapter.converse).toHaveBeenCalledOnce();
    const rows=await quotaRows();expect(rows).toHaveLength(1);expect(rows[0].exchange_id).toBeNull();
@@ -49,7 +49,7 @@ describe('atomic Malaysia-day Assistant question quota',()=>{
   await budget(10);const entered=deferred(),release=deferred();
   transport().mockImplementationOnce(async()=>{entered.resolve();await release.promise;return end;});
   const first=ask();try{
-   await entered.promise;
+   await Promise.race([entered.promise,first.then(()=>{throw Error('Fictional provider was not reached');})]);
    const [run]=await owner.db.select().from(s.aiModelRun).where(eq(s.aiModelRun.tenantId,base.tenantId));
    expect(Number(run.reservedTokens)).toBeGreaterThan(12);
    await budget(10,Number(run.reservedTokens));

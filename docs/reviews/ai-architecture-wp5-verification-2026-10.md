@@ -1,7 +1,9 @@
 # WP5 — prompt, output and quota hardening
 
 Scope: R11 and S3–S5 from the October review. Reverified against canonical main/alpha
-`ddacf666371db472d7070c285e21d62028e2068b`, rather than the review's `82f7c6570`.
+`ddacf666371db472d7070c285e21d62028e2068b`, then released main/alpha
+`968354c00a71df7baccd499eb60757a3307ed61e`, rather than the review's `82f7c6570`.
+The acted-on core source slices were unchanged by that released base; its import work is preserved.
 WP1 and WP3 remain separate PRs. AI-assisted file import belongs to the AI Import session.
 
 ## Current-source findings and changes
@@ -58,3 +60,15 @@ Not established: live provider injection behavior, provider invoices, translatio
 speakers, authenticated staging journeys, or production behavior. The pay preview is an interaction
 requirement; native server authorization/validation remains the write authority. Extracted performance
 passages may contain an employee's untrusted claims; they are never an automatic rating or HR decision.
+
+## Verified migration predecessor and source allocation
+
+Fresh main/alpha968354c00 matches healthy staging source/build. All562 ordered applied rows were
+independently checked through `expectedMigrationLedger`/`validateMigrationLedgerRows`, including
+the two explicitly archived historical byte identities; no checksum exception was invented.
+The live maximum is1793330000012. Fresh published claims and reachable worktree journals contain
+no competing0687/+13. The owner's conditional allocation therefore admits source append
+`0687_assistant_question_budget`, idx677/when1793330000013, preserving the complete562-entry prefix.
+The SQL and ordinary populated-upgrade fixture are now authored; real DB execution is pending.
+Board still holds staging for worker/provider acceptance. No migration, restart or deployment is
+performed by this source allocation. Focused check40843714356 passed at4a4b323a22888e62ed6023f25159fef20502722a.
