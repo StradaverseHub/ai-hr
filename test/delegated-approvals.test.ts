@@ -6,7 +6,7 @@ import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vit
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
-import {createCompany} from '../core/admin';
+import {createCompany,createDepartment} from '../core/admin';
 import {setCompensation} from '../core/comp';
 import {setRestDay} from '../core/roster';
 import {grantAssistant} from '../core/assistant-grant';
@@ -125,6 +125,25 @@ describe('request-bound delegated approval effects',()=>{
   const rows=await withTenant(root,tx=>tx.execute<{aggregate_id:string;on_behalf_of_employment_id:string}>(sql`select * from app.approval_history(NULL,NULL,ARRAY['replacement-leave-request']::text[],NULL,NULL,50,0)`));
   expect(rows).toEqual([expect.objectContaining({aggregate_id:id,on_behalf_of_employment_id:manager.employmentId})]);
  });
+ it('does not let a foreign-tenant scope row influence this delegation',async()=>{
+  const id=await claim(),other=await seedBase();
+  await owner.db.insert(schema.reportingLineScope).values({tenantId:other.tenantId,reportingLineId:lineId,module:'leave',taskType:'leave.application'});
+  expect(JSON.stringify(await readClaimDecisionChoices(delegate))).toContain(id);
+  await decideClaim(delegate,{claimRequestId:id,decision:'approve'});
+ });
+ it('clamps history for company HR even though the inherited function used admin-somewhere',async()=>{
+  const own=await claim();await decideClaim(root,{claimRequestId:own,decision:'reject'});
+  const company=await createCompany(root,{legalName:'Fictional History Other Company',country:'MY',currency:'MYR'});
+  const dept=await createDepartment(root,{companyId:company.id,name:'Fictional Other Department'});
+  const employee=await hireEmployee(root,{person:{fullName:'Fictional Hidden Claimant',primaryEmail:randomUUID()+'@fixture.test'},companyId:company.id,departmentId:dept.id,employmentType:'full_time',hiredOn:'2020-01-01'});
+  const foreign=(await submitClaim(root,{employmentId:employee.employmentId,claimTypeId,amount:42,incurredOn:todayInKualaLumpur()})).id;
+  await decideClaim(root,{claimRequestId:foreign,decision:'reject'});
+  const userId=await createAppUser(b.tenantId,stand.personId,'hr_admin');
+  await owner.db.update(schema.roleAssignment).set({companyId:b.companyId}).where(eq(schema.roleAssignment.appUserId,userId));
+  const scoped={...await entitledCtx(b,['hr_admin']),userId,personId:stand.personId,grants:[{role:'hr_admin' as const,companyId:b.companyId}]};
+  const rows=await withTenant(scoped,tx=>tx.execute<{aggregate_id:string}>(sql`select * from app.approval_history(NULL,NULL,ARRAY['claim-request']::text[],NULL,NULL,50,0)`));
+  expect(rows.map(r=>r.aggregate_id)).toEqual([own]);
+ });
  it('uses the real subject grade on approval, never the more generous no-grade policy',async()=>{
   const [g]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'LIMITED',name:'Limited',rank:1}).returning({id:schema.jobGrade.id});
   await owner.db.update(schema.employment).set({gradeId:g.id}).where(eq(schema.employment.id,subject.employmentId));
@@ -134,6 +153,28 @@ describe('request-bound delegated approval effects',()=>{
   const [q]=await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,id));expect(q.status).toBe('pending');
   const facts=await withTenant(delegate,tx=>tx.execute<{grade_id:string}>(sql`select * from app.claim_decision_subject_facts(${id}::uuid)`));expect(facts[0].grade_id).toBe(g.id);
   await noPersonnel();
+ });
+ it('counts earlier settled claims against the same subject limit',async()=>{
+  const first=await claim(80),second=await claim(80);
+  await decideClaim(root,{claimRequestId:first,decision:'approve'});
+  await setClaimPolicy(root,{claimTypeId,annualBudget:100,perClaimCap:1000,effectiveFrom:todayInKualaLumpur()});
+  await expect(decideClaim(delegate,{claimRequestId:second,decision:'approve'})).rejects.toThrow();
+  const rows=await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.employmentId,subject.employmentId));
+  expect(rows.find(r=>r.id===first)?.status).toBe('approved');expect(rows.find(r=>r.id===second)?.status).toBe('pending');
+ });
+ it('reads non-draft receipts without exposing drafts or their receipts',async()=>{
+  const id=await claim(),[q]=await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,id));
+  const draft=randomUUID();await owner.db.insert(schema.claimRequest).values({...q,id:draft,status:'draft'});
+  for(const claimRequestId of [id,draft])await owner.db.insert(schema.claimAttachment).values({tenantId:b.tenantId,claimRequestId,employmentId:subject.employmentId,fileName:'fictional.txt',mimeType:'text/plain',content:Buffer.from('fictional'),sizeBytes:9});
+  await withTenant(delegate,async tx=>{
+   expect((await tx.select().from(schema.claimRequest).where(eq(schema.claimRequest.employmentId,subject.employmentId))).map(r=>r.id)).toEqual([id]);
+   expect((await tx.select().from(schema.claimAttachment).where(eq(schema.claimAttachment.employmentId,subject.employmentId))).map(r=>r.claimRequestId)).toEqual([id]);
+  });
+ });
+ it('does not let a live alternate account authorise an archived calling login',async()=>{
+  await claim();await createAppUser(b.tenantId,stand.personId,'manager');
+  await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,delegate.userId!));
+  const [row]=await withTenant(delegate,tx=>tx.execute<{ok:boolean}>(sql`select app.can_decide_via_delegation(${subject.employmentId}::uuid,'claims','claims.claim') as ok`));expect(row.ok).toBe(false);
  });
  it('does not grant DELETE, editing amounts, or general decision-event visibility',async()=>{
   const id=await claim();

@@ -12,8 +12,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
    AND delegate.terminated_on IS NULL AND delegator.terminated_on IS NULL AND delegate.hired_on<=current_date
    AND EXISTS(SELECT 1 FROM public.app_user u WHERE u.person_id=delegate.person_id AND u.tenant_id=d.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))
    AND delegate.person_id<>subject.person_id
-   AND (wanted_module IS NULL OR NOT EXISTS(SELECT 1 FROM public.reporting_line_scope s WHERE s.reporting_line_id=d.id)
-    OR EXISTS(SELECT 1 FROM public.reporting_line_scope s WHERE s.reporting_line_id=d.id AND s.module=wanted_module AND (s.task_type IS NULL OR s.task_type=wanted_task)))
+   AND (wanted_module IS NULL OR NOT EXISTS(SELECT 1 FROM public.reporting_line_scope s WHERE s.reporting_line_id=d.id AND s.tenant_id=d.tenant_id)
+    OR EXISTS(SELECT 1 FROM public.reporting_line_scope s WHERE s.reporting_line_id=d.id AND s.tenant_id=d.tenant_id AND s.module=wanted_module AND (s.task_type IS NULL OR s.task_type=wanted_task)))
    AND (
     (d.scope_company_id IS NULL AND d.scope_business_unit_id IS NULL AND d.scope_department_id IS NULL AND subject.company_id=delegate.company_id)
     OR ((d.scope_company_id IS NOT NULL OR d.scope_business_unit_id IS NOT NULL OR d.scope_department_id IS NOT NULL)
@@ -256,7 +256,7 @@ CREATE OR REPLACE FUNCTION app.approval_history(
       AND de.subject_employment_id IS NOT NULL
       -- Self rows never appear: the tab is about the viewer's TEAM.
       AND de.subject_employment_id NOT IN (SELECT ce.id FROM caller_emp ce)
-      AND (app.is_admin() OR de.subject_employment_id IN (SELECT d.emp FROM down d))
+      AND (EXISTS(SELECT 1 FROM public.employment scoped_subject WHERE scoped_subject.id=de.subject_employment_id AND scoped_subject.tenant_id=de.tenant_id AND app.is_admin_for(scoped_subject.company_id)) OR de.subject_employment_id IN (SELECT d.emp FROM down d))
       AND (p_from IS NULL OR de.occurred_at >= p_from)
       AND (p_to IS NULL OR de.occurred_at < p_to)
       AND (p_aggregate_types IS NULL OR cardinality(p_aggregate_types) = 0
