@@ -558,3 +558,7 @@ subject authority and effect rules. Other stores have not been migrated by this 
 own-leave actor now calls `isAiPrincipalCurrentTx` for the existing principal/carrier check. No model writes
 or Automatic approval authority is added. Focused CI, combined-candidate acceptance and release gates
 remain separate evidence.
+
+### WP9 store 2 amendment — retained TOIL own-request custody (30 October 2026)
+
+The employee replacement-leave request now uses the generic own review owner with a typed compatibility repository for its installed SQL protocol. The repository translates projection names only: existing sealed bodies, binding order, encryption purposes, commitments, request/event columns and native SQL verifiers stay unchanged. Completion still runs the canonical native request service in the same top-level transaction; no credit or cash is granted by submission. Source authority composes the current registry guard and retains its own-employment and leave dependency interval. Retained old-writer rows and uncertain committed replies require real database evidence, and the action joins the screen/Assistant role matrix. No migration is required.

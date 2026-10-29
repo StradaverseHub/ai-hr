@@ -36,6 +36,8 @@ import {OWN_CLAIM_CANCELLATION_ACTION} from '../lib/assistant-actions/own-claim-
 import {requestAttendanceCorrection,requestAttendanceCorrectionTx,decideAttendanceCorrection,saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../packs/attendance/service';
 import {overtimeRequestReviews,readOvertimeRequestChoices} from '../core/assistant-actions/overtime-request-review-store';
 import {OWN_OVERTIME_REQUEST_ACTION} from '../lib/assistant-actions/own-overtime-request-contract';
+import {toilRequestReviews} from '../core/assistant-actions/toil-request-review-store';
+import {readToilRequestModuleActionChoices} from '../core/assistant-actions/module-action-server';
 import {myEmployment} from '../core/read';
 import {resolveEntitlementsTx} from '../core/entitlements';
 import {setToilPolicy,submitReplacementLeaveRequest,decideReplacementLeaveRequestTx,applyLeaveAdjustmentBatchTx,grantLeaveCreditRowsTx,requestLeave,cancelOwnLeaveTx,editLeaveRequestTx} from '../packs/leave/service';
@@ -214,6 +216,12 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   offered:async(who,item)=>listed(await readClaimCancellationChoices(who),'claims','claimId',item.subjectId),
   screen:(tx,who,item)=>cancelClaimTx(tx,who,item.subjectId)},
  // /me overtime screen: myRequestOvertime resolves the caller's own employment, then requestAttendanceCorrection.
+ 'toil.replacement.request':{family:'own',screenAdmits:ownEmploymentScreen,
+  store:{prepare:toilRequestReviews.prepare,confirm:toilRequestReviews.confirm},
+  async create(_w,h){const date=calendarDate(-3);await setRestDay(groupOf(h.base),{employmentId:h.person.employmentId,shiftDate:date});return itemOf(h,h.person.employmentId,{date});},
+  human:item=>({action:'toil.replacement.request',contractVersion:1,engine:'replacement_native',employmentId:item.employmentId,unit:'day',lines:[{workedDate:item.date,days:1}],reason:'Fictional human-declared worked rest day',firstScheduleConsent:false}),
+  offered:async(who,item)=>listed(await readToilRequestModuleActionChoices(who),'employments','employmentId',item.employmentId),
+  screen:(tx,who,item)=>submitReplacementLeaveRequest(who,{employmentId:item.employmentId,unit:'day',lines:[{workedDate:item.date!,days:1}],reason:'Fictional human-declared worked rest day',firstScheduleConsent:false,today:todayInKualaLumpur()},tx)},
  'attendance.overtime.request':{family:'own',store:overtimeRequestReviews,screenAdmits:ownEmploymentScreen,
   create:async(_w,h)=>itemOf(h,h.person.employmentId,{date:calendarDate(7)}),
   human:item=>({action:OWN_OVERTIME_REQUEST_ACTION,contractVersion:1,employmentId:item.employmentId,date:item.date,plannedStartTime:'18:00',plannedEndTime:'20:00',reason:'Fictional release preparation',remark:'Fictional optional note'}),

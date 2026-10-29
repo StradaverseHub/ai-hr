@@ -1,7 +1,9 @@
 /** Authored UNRUN. Requires coordinated shared custody SQL; no inline migration application. */
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import * as dbClient from '../db/client';
+import {newPrivateReviewNonce,privateReviewCommitment} from '../core/assistant-actions/private-review-commitment';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import * as vault from '../lib/pii/vault';
@@ -14,7 +16,7 @@ import {checkIn,checkOut} from '../packs/attendance/service';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {setAiAllowance} from '../core/ai-management';
 import {setToilPolicy,decideReplacementLeaveRequest,lockLeaveDependenciesTx,lockLeaveDependencyConfigurationTx,workedDayKindForEmployment} from '../packs/leave/service';
-import {prepareOwnToilReplacementSourceTx,confirmOwnToilReplacementSourceTx} from '../core/assistant-actions/own-toil-replacement-source';
+import {withOwnToilReplacementIntervalTx,prepareOwnToilReplacementSourceTx,confirmOwnToilReplacementSourceTx} from '../core/assistant-actions/own-toil-replacement-source';
 import {prepareToilRequestReview,confirmToilRequestReview,reopenToilRequestReview,discardToilRequestReview,listToilRequestReviews} from '../core/assistant-actions/toil-request-review-store';
 import {ToilRequestReviewConfirmation,ToilRequestReviewRetirement} from '../lib/assistant-actions/toil-request-review-contract';
 import {OWN_TOIL_REPLACEMENT_ACTION as action,type OwnToilReplacementHumanContent} from '../lib/assistant-actions/own-toil-replacement-contract';
@@ -69,4 +71,28 @@ describe('same physical actual worked-date TOIL request custody',()=>{
  });
  it('isolates an actual foreign tenant caller and native employment from saved own-review contents',async()=>{const r=await prepare(),foreign=await seedBase();await setModule(foreign.tenantId,'assistant','active');await setModule(foreign.tenantId,'toil','active');const h=await hireEmployee(adminCtx(foreign),{person:{fullName:'Fictional foreign TOIL caller',primaryEmail:randomUUID()+'@fixture.test'},companyId:foreign.companyId,departmentId:foreign.deptA,employmentType:'full_time',hiredOn:'2020-01-01'}),userId=await createAppUser(foreign.tenantId,h.personId,'employee');await grantAssistant(adminCtx(foreign),{appUserId:userId});const who:SessionContext={tenantId:foreign.tenantId,userId,personId:h.personId,roles:['employee'],grants:[{role:'employee',companyId:null}],entitlements:harnessSnapshot(foreign.tenantId)},before=await state();await expect(confirm(r,who)).rejects.toThrow();await expect(reopenToilRequestReview(who,r.actionId)).rejects.toThrow();await expect(prepare(legacy({employmentId:h.employmentId}))).rejects.toThrow();expect((await listToilRequestReviews(who)).reviews).toEqual([]);expect(await state()).toEqual(before);});
 
+});
+
+/** Independent pre-WP9 writer fixture: the old SQL and exact sealed-body identity, not the factory. */
+async function retainedToilReview(){return withTenant(ctx,tx=>withOwnToilReplacementIntervalTx(tx,ctx,e.employmentId,async(fresh,source)=>{
+ const native=await prepareOwnToilReplacementSourceTx(tx,fresh,legacy()),body={reviewNonce:newPrivateReviewNonce(),content:native.content,nativeReviewedDigest:native.reviewedDigest};
+ const binding={tenantId:fresh.tenantId,userId:fresh.userId!,personId:fresh.personId!,employmentId:source.employmentId,companyId:source.companyId};
+ const actionId=randomUUID(),intentDigest=createHash('sha256').update(JSON.stringify(body.content)).digest('hex'),reviewedDigest=privateReviewCommitment([1,action,binding],body),identity=JSON.stringify([1,action,actionId,binding,intentDigest,reviewedDigest]);
+ const dek=vault.newDek();try{const kid=vault.newKid();await tx.execute(sql`select app.assistant_toil_request_review_prepare(${actionId}::uuid,${binding.personId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${intentDigest},${reviewedDigest},${kid},${vault.wrapDek(dek,'assistant:module-action:key:'+identity)},${vault.sealUnderDek(dek,kid,JSON.stringify(body),'assistant:module-action:body:'+identity)})`);return{actionId,reviewedDigest};}finally{dek.fill(0);}
+}));}
+describe('WP9 generic own TOIL compatibility',()=>{
+ it('completes and reopens an old sealed review exactly once',async()=>{
+  const retained=await retainedToilReview();expect((await reopenToilRequestReview(ctx,retained.actionId)).kind).toBe('prepared');
+  const packet={action,contractVersion:1,...retained};await expect(confirmToilRequestReview(ctx,{...packet,reviewedDigest:'0'.repeat(64)})).rejects.toThrow();
+  const done=await confirmToilRequestReview(ctx,packet);expect(done.kind).toBe('completed');expect(await confirmToilRequestReview(ctx,packet)).toEqual(done);expect(await reopenToilRequestReview(ctx,retained.actionId)).toEqual(done);expect((await state()).requests).toHaveLength(1);
+ });
+ it('retires an old pending review after grant removal without decrypting it',async()=>{
+  const retained=await retainedToilReview();await revokeAssistant(adminCtx(b),{appUserId:ctx.userId!});const unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();
+  expect((await discardToilRequestReview(ctx,{action,contractVersion:1,actionId:retained.actionId})).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect((await state()).requests).toHaveLength(0);
+ });
+ it('reconciles a lost reply after the actual transaction commits without another request',async()=>{
+  const review=await prepare(),real=dbClient.withTenant;const lost:typeof withTenant=async(who,work,options)=>{await real(who,work,options);throw Error('Fictional lost reply after commit');};
+  const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(lost);try{await expect(confirm(review)).rejects.toThrow();}finally{spy.mockRestore();}
+  expect((await state()).requests).toHaveLength(1);const done=await reopenToilRequestReview(ctx,review.actionId);expect(done.kind).toBe('completed');expect(await confirm(review)).toEqual(done);expect((await state()).requests).toHaveLength(1);
+ });
 });

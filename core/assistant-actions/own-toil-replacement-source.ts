@@ -4,16 +4,14 @@
 import {and,eq,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
 import {employment,leaveType} from '../../db/schema';
-import {readOwnLeaveActorTx} from './own-leave-actor';
-import {assertAiActionUnpausedTx} from '../ai-governance';
-import {assertModuleEnabled} from '../entitlements';
+import {withAgentActionGuard} from './agent-action-guard';
 import {z} from 'zod';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {lockLeaveDependencyReadConfigurationTx,lockLeaveDependenciesTx,prepareLeaveCreditRequestTx,prepareReviewedReplacementLeaveRequestTx,submitReviewedReplacementLeaveRequestTx,readOwnReplacementSubmissionTx,type SubmitReplacementRequestInput} from '../../packs/leave/service';
 import {OwnToilReplacementHumanContent as Human,OwnToilReplacementConfirmation as Confirmation,OwnToilReplacementPreparedSource as Prepared,OwnToilReplacementSourceReceipt as Receipt} from '../../lib/assistant-actions/own-toil-replacement-contract';
 export class OwnToilReplacementUnavailable extends Error{constructor(){super('That time-in-lieu request needs another look. Please reopen your worked dates.');this.name='OwnToilReplacementUnavailable';}}
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
-export async function assertOwnToilReplacementActorTx(tx:Tx,supplied:SessionContext){const ctx=capture(supplied),fresh=await readOwnLeaveActorTx(tx,ctx);if(!fresh||!fresh.personId)throw new OwnToilReplacementUnavailable();assertModuleEnabled(fresh,'toil');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');return fresh;}
+export async function assertOwnToilReplacementActorTx(tx:Tx,supplied:SessionContext){if(!supplied.personId)throw new OwnToilReplacementUnavailable();return withAgentActionGuard(tx,capture(supplied),'toil.replacement.request');}
 async function actor(tx:Tx,ctx:SessionContext,employmentId:string){const fresh=await assertOwnToilReplacementActorTx(tx,ctx);await lockLeaveDependencyReadConfigurationTx(tx,fresh.tenantId);
  const nominate=()=>tx.select({id:employment.id,companyId:employment.companyId}).from(employment).where(and(eq(employment.id,employmentId),eq(employment.tenantId,fresh.tenantId),eq(employment.personId,fresh.personId!))).limit(1);const [before]=await nominate();if(!before)throw new OwnToilReplacementUnavailable();await lockLeaveDependenciesTx(tx,fresh.tenantId,[before.id]);const [credit]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${fresh.tenantId+':'+before.id},0)) as owned`);if(credit?.owned!==true)throw new OwnToilReplacementUnavailable();const [current]=await nominate();if(!current||current.id!==before.id||current.companyId!==before.companyId)throw new OwnToilReplacementUnavailable();return fresh;}
 async function nativeInput(tx:Tx,ctx:SessionContext,human:Human,day:string):Promise<SubmitReplacementRequestInput>{
