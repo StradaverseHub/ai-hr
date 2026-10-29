@@ -18,8 +18,8 @@ const step = z.discriminatedUnion('type', [
 export const v9ConfigSchema = z.object({
   version: z.literal(9), revision: z.number().int().positive(), groupsRevision: z.number().int().nonnegative().optional(),
   checklists: z.array(z.object({ id, name: z.string().min(1).max(200), module: moduleSchema, ownerUserId: z.string().uuid().optional(), createdAt: z.string().datetime().optional(), rules, tasks: z.array(task).max(300) }).strict()).max(200),
-  templates: z.array(z.object({ id, name: z.string().min(1).max(200), module: moduleSchema, type: z.enum(['Form', 'Letter', 'Acknowledgement', 'Attachment']), rules, hrStep: z.enum(['none', 'before', 'after']), employeeAck: z.boolean(), retired: z.boolean(), note: text.optional(), versions: z.array(z.object({ version: z.number().int().positive(), state: z.enum(['draft', 'published']), at: z.string().max(100), by: z.string().max(200), blocks: z.array(block).max(500), fields: z.array(field).max(500) }).strict()).max(100) }).strict()).max(200),
-  emails: z.array(z.object({ id, name: z.string().min(1).max(200), module: moduleSchema, active: z.boolean(), sender: id, subject: z.string().min(1).max(1000), body: text, cc: z.array(role).max(6), links: z.array(id).max(100), attachments: z.array(id).max(100), slots: z.array(z.object({ id, label: z.string().max(500), required: z.boolean() }).strict()).max(50) }).strict()).max(200),
+  templates: z.array(z.object({ id, name: z.string().min(1).max(200), module: moduleSchema, type: z.enum(['Form', 'Letter', 'Acknowledgement', 'Attachment']), rules, hrStep: z.enum(['none', 'before', 'after']), employeeAck: z.boolean(), retired: z.boolean(), currentVersion: z.number().int().positive().optional(), note: text.optional(), versions: z.array(z.object({ version: z.number().int().positive(), state: z.enum(['draft', 'published']), at: z.string().max(100), by: z.string().max(200), blocks: z.array(block).max(500), fields: z.array(field).max(500) }).strict()).max(100) }).strict()).max(200),
+  emails: z.array(z.object({ id, name: z.string().min(1).max(200), module: moduleSchema, active: z.boolean(), sender: id, subject: z.string().max(1000), body: text, cc: z.array(role).max(6), links: z.array(id).max(100), attachments: z.array(id).max(100), slots: z.array(z.object({ id, label: z.string().max(500), required: z.boolean() }).strict()).max(50) }).strict()).max(200),
   workflows: z.array(z.object({ id, name: z.string().min(1).max(200), module: moduleSchema, status: z.enum(['draft', 'published']), trigger: z.object({ event: z.enum(['submitted', 'beforeJoin', 'afterJoin', 'beforeLWD']), days: z.number().int().min(0).max(3660), workdays: z.boolean(), repeat: z.boolean(), skipIf: z.string().max(500).refine(s => ['', 'noPre', 'allDocsDone'].includes(s) || s.startsWith('task:')) }).strict(), conditions: z.array(z.object({ field: z.enum(['businessGroup', 'company', 'department', 'grade', 'employmentType', 'title', 'caseType', 'joinWithin']), op: z.enum(['is', 'isNot', 'lt', 'gte']), value: z.string().max(500) }).strict()).max(30), steps: z.array(step).max(100), description: text }).strict()).max(200),
   groups: z.array(z.object({ id, name: z.string().min(1).max(200), members: z.array(z.string().uuid()).max(1000), limit: z.number().int().min(0).max(10000) }).strict()).max(200),
   peopleOpsGroup: id.nullable(), bpRules: z.array(z.object({ rules: z.object({ businessGroup: z.array(id).optional(), company: z.array(id).optional(), department: z.array(id).optional() }).strict(), userId: z.string().uuid() }).strict()).max(500),
@@ -37,6 +37,7 @@ export function parseV9Config(value: unknown) {
   for (const email of config.emails) for (const id of [...email.links, ...email.attachments]) if (!templates.has(id)) throw Error('An email references an unavailable document template.');
   for (const template of config.templates) {
     unique(template.versions.map(v => String(v.version)), 'template version');
+    if (template.currentVersion !== undefined && !template.versions.some(version => version.version === template.currentVersion && version.state === 'published')) throw new V9Error('The version in use must be published.');
     if (template.versions.filter(v => v.state === 'draft').length > 1) throw new V9Error('A template can have only one draft version.');
     for (const version of template.versions) {
       unique(version.fields.map(f => f.id), 'form field'); unique(version.blocks.map(b => b.id), 'document block');
@@ -58,7 +59,14 @@ export function parseV9Config(value: unknown) {
     if (wf.module === 'onb' && wf.trigger.event === 'beforeLWD' || wf.module === 'off' && ['beforeJoin', 'afterJoin'].includes(wf.trigger.event)) throw new V9Error('Choose a trigger for this module.');
     for (const s of wf.steps) if ('template' in s && s.template) sameModule(wf.module, s.template, s.type === 'email' ? 'email' : 'document');
   }
-  for (const email of config.emails) for (const templateId of [...email.links, ...email.attachments]) sameModule(email.module, templateId, 'document');
+  for (const email of config.emails) {
+    if (email.active && !email.subject.trim()) throw new V9Error('Add a subject before activating this email.');
+    unique(email.slots.map(slot => slot.id), 'email file slot');
+    for (const slot of email.slots) if (!slot.label.trim()) throw new V9Error('Give each per-person file a label.');
+    for (const templateId of [...email.links, ...email.attachments]) sameModule(email.module, templateId, 'document');
+    for (const templateId of email.attachments) if (!['Letter', 'Attachment'].includes(config.templates.find(template => template.id === templateId)!.type)) throw new V9Error('Forms and acknowledgements are sent as links.');
+    for (const templateId of email.links) if (config.templates.find(template => template.id === templateId)!.type === 'Attachment') throw new V9Error('Attachments are sent as PDFs.');
+  }
   unique((config.companies ?? []).map(c => c.companyId), 'company signatory');
   return config as Config;
 }

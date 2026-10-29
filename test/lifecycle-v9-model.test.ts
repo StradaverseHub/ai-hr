@@ -230,3 +230,29 @@ it('keeps attachment PDFs read-only even if released or configured with a signat
   expect(M.workflowProblems(workflow({ steps: [{ id: 'sign', type: 'waitSign', template: attachment.id, by: 'employee' }] }), config)).toContain('Step 1: attachments do not require a signature.');
   expect(doc.employeeSignature).toBeNull();
 });
+
+
+it('lets HR reuse an older published version without rewriting an existing document', () => {
+  const { c, config, environment } = fixture(), definition = template();
+  const newer = structuredClone(definition.versions[0]); newer.version = 2; newer.blocks = [{ id: 'new', type: 'text', text: 'Newer published wording', section: '' }];
+  definition.versions.push(newer); config.templates = [definition];
+  const existing = M.generate(c, config, definition.id, environment);
+  definition.currentVersion = 1;
+  expect(M.currentVersion(definition)?.version).toBe(1);
+  expect(M.generate(c, config, definition.id, environment)).toBe(existing);
+  expect(existing.version).toBe(2);
+  const next = structuredClone(c); next.id = 'new-case'; next.documents = [];
+  expect(M.generate(next, config, definition.id, environment).version).toBe(1);
+  expect(existing.blocks[0].text).toBe('Newer published wording');
+});
+
+
+it('retains explicit email/workflow template references after retirement without crossing modules', () => {
+  const { c, config, environment } = fixture(), definition = template(); definition.retired = true; definition.rules = { department: ['another-department'] }; config.templates = [definition];
+  const workflowDefinition = workflow({ trigger: { event: 'submitted', days: 0, workdays: false, repeat: false, skipIf: '' }, steps: [{ id: 'document', type: 'doc', template: definition.id, release: false }] });
+  expect(M.workflowProblems(workflowDefinition, config)).toEqual([]);
+  expect(M.runWorkflow(c, config, workflowDefinition, environment, 'submitted')?.status).toBe('done');
+  expect(c.documents[0]).toMatchObject({ templateId: definition.id, version: 1 });
+  const other = structuredClone(c); other.module = 'onb'; other.documents = [];
+  expect(() => M.generate(other, config, definition.id, environment)).toThrow('this module');
+});

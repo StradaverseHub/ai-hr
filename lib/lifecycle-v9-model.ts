@@ -42,7 +42,7 @@ export type TemplateVersion = { version: number; state: 'draft' | 'published'; a
 export type Template = {
   id: string; name: string; module: Module; type: 'Form' | 'Letter' | 'Acknowledgement' | 'Attachment';
   rules: Rules; hrStep: 'none' | 'before' | 'after'; employeeAck: boolean; retired: boolean;
-  versions: TemplateVersion[]; note?: string;
+  versions: TemplateVersion[]; currentVersion?: number; note?: string;
 };
 export type ConfigSaveReceipt = { revision: number; groupsRevision: number; versionStamps?: { templateId: string; version: number; state: TemplateVersion['state']; at: string; by: string }[] };
 export type Signature = { by: Actor; at: string; method: 'typed' | 'drawn'; value: string; consent: true };
@@ -85,7 +85,7 @@ export function workflowProblems(workflow: Workflow, config: Pick<Config, 'templ
     if ('template' in step) {
       const template = (step.type === 'email' ? config.emails : config.templates).find(t => t.id === step.template && t.module === workflow.module);
       if (!template) problems.push(prefix + 'choose a template in the same module.');
-      else if ('versions' in template && (template.retired || !template.versions.some(v => v.state === 'published'))) problems.push(prefix + 'choose a published, active document template.');
+      else if ('versions' in template && !template.versions.some(v => v.state === 'published')) problems.push(prefix + 'choose a published document template.');
       else if (step.type === 'waitSign' && 'versions' in template && template.type === 'Attachment') problems.push(prefix + 'attachments do not require a signature.');
       else if ('active' in template && !template.active) problems.push(prefix + 'choose an active email template.');
     }
@@ -234,7 +234,10 @@ export function merge(text: string, values: Record<string, string>, sensitive: R
   });
   return { text: result, missing };
 }
-export function currentVersion(template: Template): TemplateVersion | null { return template.versions.filter(v => v.state === 'published').sort((a, b) => b.version - a.version)[0] ?? null; }
+export function currentVersion(template: Template): TemplateVersion | null {
+  const published = template.versions.filter(v => v.state === 'published');
+  return published.find(v => v.version === template.currentVersion) ?? published.sort((a, b) => b.version - a.version)[0] ?? null;
+}
 export function activeDocument(c: Case, templateId: string): Document | null { return c.documents.filter(d => d.templateId === templateId && d.status !== 'superseded' && d.status !== 'withdrawn').at(-1) ?? null; }
 export function validateFieldValue(field: Field, value: string): void {
   if (value.length > 20000) throw new V9Error('A field exceeds the allowed length.');
@@ -251,8 +254,10 @@ export function validateFieldValue(field: Field, value: string): void {
 export function documentFinal(d: Document): boolean { return ['completed', 'signed', 'acknowledged'].includes(d.status); }
 export function generate(c: Case, config: Config, templateId: string, env: Environment): Document {
   const existing = activeDocument(c, templateId); if (existing) return existing;
-  const template = config.templates.find(t => t.id === templateId && t.module === c.module && !t.retired);
-  if (!template || !matches(template.rules, c.facts)) throw new V9Error('No matching document template is available.');
+  const template = config.templates.find(t => t.id === templateId && t.module === c.module);
+  // As in the source opGenerate, an explicit workflow/email reference may retain a retired
+  // or nonmatching template. Retirement only removes it from automatic applicability/pickers.
+  if (!template) throw new V9Error('No document template is available for this module.');
   const version = currentVersion(template); if (!version) throw new V9Error('Publish the document template before using it.');
   const values: Record<string, string> = {};
   for (const field of version.fields) if (field.pmKey) values[field.id] = env.mergeValues[field.pmKey] ?? '';
@@ -349,7 +354,7 @@ export function previewEmail(c: Case, config: Config, emailId: string, env: Envi
   const cc = [...new Set(email.cc.flatMap(role => recipients(c, config, role)))].filter(id => id !== target && env.eligibleUser(id)).map(id => ({ id, name: env.userName(id) }));
   const documents = [...new Set([...email.links, ...email.attachments])].flatMap(templateId => {
     const template = config.templates.find(template => template.id === templateId && template.module === c.module), document = activeDocument(c, templateId);
-    if (!template || template.retired && !document) { holds.push('A linked document template is unavailable.'); return []; }
+    if (!template) { holds.push('A linked document template is unavailable.'); return []; }
     const version = document?.version ?? currentVersion(template)?.version ?? null;
     if (!version) holds.push(`Publish ${template.name} before sending.`);
     if ((document?.hrStep ?? template.hrStep) === 'before' && !document?.hrSignature) holds.push(`HR must review and sign ${template.name} before sending.`);
