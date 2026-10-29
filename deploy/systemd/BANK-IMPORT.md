@@ -20,9 +20,20 @@ its separately authorized installation; this document and the service template d
    terminal operational failure; canonical HR changes always use the app-role connection and the
    submitting actor's database-captured grants, checked against current access on every transaction.
 4. Verify the immutable release path, Node binary and dependency availability (including `tsx`). Adjust
-   the template's `WorkingDirectory`/`ExecStart` to that exact installation. The web identity must not
-   be able to edit the worker's code or credentials. Install and start `aihr-bank-import.service` after
-   the migration and web candidate are installed. Include this worker in future release restarts.
+   the trusted installer's fixed `WorkingDirectory`/`ExecStart` to that exact installation. Produce
+   `worker-package-v1` through the separate `bank-import-worker-package` GitHub workflow at the same
+   exact source as the passing full application gate. Authenticate its first-attempt successful run,
+   job, repository, workflow and artifact API SHA256 before inspecting its three closed members:
+   `worker-package.zip`, `worker-manifest.json` and `worker-provenance.json`. Verify the package/lock
+   identities, committed source hashes and closed Linux dependency tree. This package supplies bytes;
+   it never replaces the application gate or authorizes a deployment.
+   The administrator installer must receive independently pinned archive, private-environment and
+   reviewed-helper hashes. It must validate protected root-owned inputs and Node ancestors, extract
+   verified bytes into an empty protected release directory, and generate its service definition from
+   trusted instructions. Never run a service template or executable copied from web-writable state
+   as root. The web identity must not be able to edit the worker's code or credentials. Install and
+   start `aihr-bank-import.service` after the migration and web candidate are installed. Include this
+   worker in future release restarts; an installer limited to first installation must refuse updates.
 5. Check queue arrival, the worker's service health and a real authorized upload → preview → explicit
    confirmation → paginated progress → immutable history journey. Verify another admin cannot read
    the job and cannot submit the same exact file while its job is active. Rehearse a worker restart and
