@@ -29,7 +29,7 @@ GitHub Actions only; no local test/compiler/build/database slots.
 - `40839591512` at `d84ad844cc8d267453d593edde39d24a764714d6`: focused hardening/preview/naming
   checks passed (27 assertions), whole compiler passed. Includes twelve pay-rule component captures,
   six locales at desktop/mobile sizes. English desktop and Tamil mobile visually reviewed; those initial inert captures lost live select/checkbox
-  properties during HTML serialization. Layout evidence only; corrected form-state captures are pending. These are rendered fixture
+  properties during HTML serialization. Layout evidence only; corrected form-state captures were subsequently verified below. These are rendered fixture
   components, not an authenticated installation journey.
 - Native question binding/control-flow checks and whole compiler dispatched at
   `2bc348e20965894b9ea172294c0db06dfa104dfe`: passed 17 assertions and whole compiler.
@@ -39,10 +39,16 @@ GitHub Actions only; no local test/compiler/build/database slots.
 - `40842472332` at `720ead74655449eb7a42d467f2de5c21ec962dd2`: all 53 selected assertions passed,
   including corrected six-locale form-state captures. English desktop visually reviewed. Whole compiler
   failed on three optional-adapter narrowing errors in the new database fixture; corrected afterward.
-  Parent form code/category binding was subsequently strengthened after source review; new checks pending.
-- `test/assistant-question-budget.test.ts` is authored but **unrun** until the coordinated migration
-  is allocated and integrated. Its planned cases include concurrent daily admission, monthly held
-  estimates, unknown failed usage, legacy retired transcripts, source-owned clock and private scopes.
+  Parent form code/category binding was subsequently strengthened and verified at4a4b323a2.
+- `40843714356` at `4a4b323a22888e62ed6023f25159fef20502722a`: focused draft/preview and
+  whole compiler passed, including changes to live parent form code/category.
+- `40858127650` at `dcea0fa560092c0940cf7872d5b4685093abac35`: 126 focused assertions
+  (39 non-DB / 87 real DB) and whole compiler passed. Includes actual atomic quota admission and
+  ordinary populated upgrade; existing questions, usage, budgets, grants and migration prefix remain intact.
+- `40859063940` at `faf8f3232ce7489c5dd61a621cfe0a6dc65836d4`: 15 assertions passed,
+  including erasure plus access withdrawal during provider work and idempotent completed accounting.
+  The quota remains charged without restoring erased content or admitting another model call.
+
 
 ## Remaining evidence and limits
 
@@ -51,8 +57,8 @@ allocation/journal append was held behind Board's approved combined Board/Bank/A
 `0687_assistant_question_budget` at idx677/when1793330000013 only after independently verifying
 that release's 562-entry live ledger and checking fresh refs/claims. Its conditions were independently verified and the source allocation was subsequently claimed, as recorded below. No applied SQL is edited.
 
-After SQL integration: execute real app-role admission/erasure/concurrency cases, populated-baseline
-migration rehearsal, focused affected suites and the full frozen-candidate GitHub Actions gate.
+Real app-role admission/erasure/concurrency cases, populated-baseline migration rehearsal and
+focused affected suites have passed. The full frozen-candidate GitHub Actions gate remains required.
 Final integration must preserve WP1, WP3, AI Import and other released work, regenerate the source
 manifest and obtain a new exact-source/current-baseline full witness before staging deployment.
 
@@ -71,7 +77,7 @@ no competing0687/+13. The owner's conditional allocation therefore admits source
 `0687_assistant_question_budget`, idx677/when1793330000013, preserving the complete562-entry prefix.
 GitHub Actions40858127650 atdcea0fa560092c0940cf7872d5b4685093abac35 passed126 selected
 assertions (39 non-DB,87 DB), including the real quota and ordinary populated-upgrade fixtures.
-Whole compiler completion is pending. Two additional erasure/revocation and reconciliation tests
-were then added to explicitly cover quota custody through privacy retirement and lost acknowledgements.
+Whole compiler passed. The additional erasure/revocation and reconciliation cases passed atfaf8f3232,
+explicitly covering quota custody through privacy retirement and lost acknowledgements.
 Board still holds staging for worker/provider acceptance. No migration, restart or deployment is
 performed by this source allocation. Focused check40843714356 passed at4a4b323a22888e62ed6023f25159fef20502722a.
