@@ -274,3 +274,43 @@ competing0687 or when>=1793330000013. Board and the migration coordinator were n
 The existing562-entry journal prefix and all applied SQL bytes are preserved. The appended SQL SHA256
 is `ade48bffee0a5d6ebf72cdd61de36323f3650b81c805cd186701c5d8105e86c4`. This reserves source only; it authorizes no staging migration
 without the exact-candidate gate, populated upgrade proof, restore readiness and exclusive handoff.
+
+## Information-only correction development candidate — 30 October 2026
+
+Feedback 8550b282 owns source filename 0698_information_only_corrections. Fresh main/alpha a3eb1eb0f
+and staging retain the 566-row prefix through 0690 / 1793330000016. Reachable sources already claim
+0691 (Bank), 0692–0697 (AI) and other 0696/0697 candidates; those claims remain untouched.
+This isolated development journal uses idx681 / sequence1793330000030 solely to build and test the
+candidate against the current canonical prefix. It is NOT an installation allocation. Before branch
+integration or installation, obtain the coordinated source freeze, include every required allocated
+predecessor in its real order and reassign this unapplied journal entry. Never deploy this isolated
+journal beyond reserved predecessors. No applied SQL byte or canonical journal entry is changed.
+
+## Board-first staging allocation — 30 October 2026
+
+The owner explicitly instructed the Board chat to complete its full gate and deploy FIRST to staging.
+FEEDBACK, ENHANCEMENT, MOBILE and Onboarding were notified and hold staging mutations until verified
+Board handback. Fresh canonical main/alpha are 4f66743d56f34755bb662824e163bfbef5f6ff17; live staging
+reports the same healthy source/build and no stale build. The existing canonical prefix ends in
+0697_epf_topup_percentage, idx681 / sequence1793330000023. Preserve the complete567-entry prefix and
+every applied SQL hash.
+
+The development-only0698 reservation above is superseded for this authorized first release:
+
+| Owner | Index | Timestamp | Filename tag |
+| --- | ---: | ---: | --- |
+| Board information-only corrections,8550b282 |682|1793330000030|0698_information_only_corrections|
+
+The unapplied journal position is682. The0698 SQL remains a development candidate until its final
+exact-SHA gate, including the retained statutory-report projections; no applied SQL bytes change.
+Ordinary populated upgrade, whole gate, restore readiness
+and exact staging arrival are required before completion. No Bank, Feedback, Enhancement, Mobile or
+V9 feature source is implicitly included. Previously reviewed#62 fixture bytes remain included.
+
+Feedback's earlier approved idx682/sequence1793330000024 must NOT be installed after this release,
+because it would be skipped. Its owner reports superseding user approval for idx683/1793330000031,
+with its filename and SQL unchanged, only after merging the verified Board baseline and obtaining a
+fresh exact-SHA full gate. Its older focused/full-gate evidence stays tied to the older candidate.
+Other unapplied lower-timestamp claims likewise require a fresh coordinated append above the actual
+installed watermark before their own release. V9's eight drafts remain unallocated. This allocation
+grants no production deployment or human staging acceptance.

@@ -1,3 +1,5 @@
+import {sql} from 'drizzle-orm';
+import {employmentInformationAt,informationReportRelation} from '../../core/information-correction-history';
 /**
  * 8ca344bf — BORANG 8A (PERKESO monthly contribution schedule): the READ.
  *
@@ -274,8 +276,8 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
         passportNumber: employeeStatutoryMy.passportNumber,
         epfCitizenship: employeeStatutoryMy.epfCitizenship,
         nationality: person.nationality,
-        joinDate: employment.joinDate,
-        hiredOn: employment.hiredOn,
+        joinDate: employmentInformationAt('joinDate',sql`${payrollBatch.payPeriod} || '-01'`,sql`${employment.joinDate}`),
+        hiredOn: employmentInformationAt('hiredOn',sql`${payrollBatch.payPeriod} || '-01'`,sql`${employment.hiredOn}`),
         terminatedOn: employment.terminatedOn,
         // r408 — column (2)'s M: a termination of type 'death' inside the month.
         terminationType: employment.terminationType,
@@ -289,11 +291,11 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
         // no PERKESO money in it at all. NOT NULL DEFAULT 'regular'.
         runType: payrollBatch.runType,
       })
-      .from(payslip)
+      .from(informationReportRelation('payslip',params.companyId,params.periodKey))
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
-      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .innerJoin(informationReportRelation('employment',params.companyId,params.periodKey), eq(employment.id, payslip.employmentId))
+      .innerJoin(informationReportRelation('person',params.companyId,params.periodKey), eq(person.id, employment.personId))
+      .leftJoin(informationReportRelation('employee_statutory_my',params.companyId,params.periodKey), eq(employeeStatutoryMy.personId, employment.personId))
       .where(inArray(payslip.batchId, batchIds))
       .orderBy(person.fullName);
 

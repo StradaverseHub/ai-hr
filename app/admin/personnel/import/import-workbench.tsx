@@ -1,5 +1,6 @@
 'use client';
 
+import {InformationCorrectionImport} from './information-correction-import';
 import {CostAllocationImport} from './cost-allocation-import';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
@@ -42,12 +43,14 @@ export function ImportWorkbench({
 }) {
   const t = useTranslations('people.import');
   const allocations=useTranslations('costAllocations');
-  const [choice, setChoice] = useState<PersonnelImportChoice|'cost_allocations'>('full');
+  const information=useTranslations('people.informationCorrection');
+  const [choice, setChoice] = useState<PersonnelImportChoice|'cost_allocations'|'information_correction'>('full');
   const [committing, setCommitting] = useState(false);
 
   // Literal `t()` calls (see the note in section-import.tsx): a computed key is invisible to
   // test/i18n-coverage.test.ts check C, and a missing label would render the raw key on the screen.
-  const LABELS: Record<PersonnelImportChoice|'cost_allocations', { title: string; hint: string }> = {
+  const LABELS: Record<PersonnelImportChoice|'cost_allocations'|'information_correction', { title: string; hint: string }> = {
+    information_correction:{title:information('title'),hint:information('hint')},
     cost_allocations:{title:allocations('title'),hint:allocations('importHelp')},
     full: { title: t('sectionFull'), hint: t('sectionFullHint') },
     profile: { title: t('sectionProfile'), hint: t('sectionProfileHint') },
@@ -73,7 +76,7 @@ export function ImportWorkbench({
         <fieldset disabled={committing}>
           <legend className="sr-only">{t('sectionChooserTitle')}</legend>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {([...PERSONNEL_IMPORT_CHOICES,'cost_allocations'] as const).map((key) => {
+            {([...PERSONNEL_IMPORT_CHOICES,'cost_allocations','information_correction'] as const).map((key) => {
               const selected = choice === key;
               return (
                 <label
@@ -107,8 +110,8 @@ export function ImportWorkbench({
         </p>
       </Card>
 
-      {choice!=='cost_allocations'&&<ImportExplanations choice={choice}/>}
-      {choice==='cost_allocations'?<CostAllocationImport onCommitPendingChange={setCommitting}/>:choice === 'full' ? (
+      {choice!=='cost_allocations'&&choice!=='information_correction'&&<ImportExplanations choice={choice}/>}
+      {choice==='information_correction'?<InformationCorrectionImport onCommitPendingChange={setCommitting}/>:choice==='cost_allocations'?<CostAllocationImport onCommitPendingChange={setCommitting}/>:choice === 'full' ? (
         <EmployeeImport companies={companies} defaultCompanyId={defaultCompanyId} reference={reference} onCommitPendingChange={setCommitting} />
       ) : choice==='movement' ? (
         <MovementImport onCommitPendingChange={setCommitting}/>

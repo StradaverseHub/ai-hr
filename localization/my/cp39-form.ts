@@ -1,3 +1,5 @@
+import {sql} from 'drizzle-orm';
+import {employmentInformationAt,informationReportRelation} from '../../core/information-correction-history';
 /**
  * e0cd4583 — CP39 PRINTED FORM: the READ.
  *
@@ -199,12 +201,12 @@ export function cp39FormExtras(
     if (auth?.signatoryPersonId) {
       const [rep] = await tx
         .select({ name: person.fullName, ic: employeeStatutoryMy.icNumber, title: position.title })
-        .from(person)
-        .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, person.id))
+        .from(informationReportRelation('person',p.companyId,p.periodKey))
+        .leftJoin(informationReportRelation('employee_statutory_my',p.companyId,p.periodKey), eq(employeeStatutoryMy.personId, person.id))
         // The signatory's CURRENT assignment (valid_to null) is where their Jawatan comes from. LEFT
         // joined throughout: a signatory who is not an employee of this company still prints their name.
-        .leftJoin(employment, and(eq(employment.personId, person.id), eq(employment.companyId, p.companyId)))
-        .leftJoin(assignment, and(eq(assignment.employmentId, employment.id), isNull(assignment.validTo)))
+        .leftJoin(informationReportRelation('employment',p.companyId,p.periodKey), and(eq(employment.personId, person.id), eq(employmentInformationAt('companyId',sql`${p.periodKey+'-01'}`,sql`${employment.companyId}`),p.companyId)))
+        .leftJoin(informationReportRelation('assignment',p.companyId,p.periodKey), and(eq(assignment.employmentId, employment.id), isNull(assignment.validTo)))
         .leftJoin(position, eq(position.id, assignment.positionId))
         .where(eq(person.id, auth.signatoryPersonId))
         .limit(1);
@@ -249,8 +251,8 @@ export function cp39FormExtras(
           oldIc: employeeStatutoryMy.oldIcNumber,
           countryCode: employeeStatutoryMy.passportIssuingCountryCode,
         })
-        .from(employment)
-        .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+        .from(informationReportRelation('employment',p.companyId,p.periodKey))
+        .leftJoin(informationReportRelation('employee_statutory_my',p.companyId,p.periodKey), eq(employeeStatutoryMy.personId, employment.personId))
         .where(inArray(employment.id, p.employmentIds));
       for (const r of rows) {
         byEmployment.set(r.employmentId, {

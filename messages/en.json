@@ -3091,7 +3091,8 @@
         "cost_allocations": "Cost Center Allocation",
         "bank_statutory": "Bank & Statutory",
         "employee_full": "Everything — new employees",
-        "movement": "Movement"
+        "movement": "Movement",
+        "information_correction": "Information-Only Correction"
       },
       "reference": "Reference",
       "referenceLabel": "Reference {reference}",
@@ -3169,6 +3170,51 @@
         "created": "Created {code} · {name}",
         "willVoid": "This employee will be voided: removed from lists, headcount and payroll, kept in the audit trail. The Employee ID, email and NRIC are freed."
       }
+    },
+    "informationCorrection": {
+      "title": "Information-Only Correction",
+      "hint": "Correct existing employment information without recalculating completed transactions.",
+      "mode": "Correction mode",
+      "existing": "Organisation hire correction",
+      "protection": "Completed payroll, released payslips, finalized reports, historical statutory, leave, attendance and overtime stay unchanged. No historical recalculation will run.",
+      "warning": "Corrected information may affect future payroll, statutory reporting and employment policies. Use Employment Movement for genuine transfers and operational changes.",
+      "field": "Field",
+      "before": "Existing value",
+      "after": "Proposed value",
+      "reason": "Correction reason",
+      "review": "Review corrections",
+      "back": "Back to edit",
+      "confirm": "Confirm information-only correction",
+      "saving": "Saving…",
+      "loading": "Loading…",
+      "saved": "Information corrected. Completed transactions remain unchanged.",
+      "unchanged": "Unchanged — this row will be skipped.",
+      "history": "Correction history",
+      "noHistory": "No information-only corrections recorded.",
+      "importHelp": "Company Code verifies the existing company. New Company Code is optional. Blank correction cells mean unchanged. Use the reference sheets for system codes. Maximum 200 rows.",
+      "template": "Download Excel template",
+      "file": "Excel file (.xlsx)",
+      "validate": "Validate file",
+      "results": "Import results",
+      "resultCounts": "{succeeded} successful · {failed} failed · {unchanged} unchanged",
+      "previewCounts": "{total} rows · {valid} valid corrections · {invalid} errors",
+      "batchHistory": "View import batch history",
+      "row": "Row {row}",
+      "validOnly": "Only valid corrections will be applied. An unsuccessful row changes nothing for that employee.",
+      "confirmValid": "Confirm {count, plural, one {# valid correction} other {# valid corrections}}",
+      "fields": {
+        "companyId": "Company",
+        "hiredOn": "Group Join Date",
+        "joinDate": "Join Date",
+        "gradeId": "Job Grade",
+        "employmentType": "Employment Type"
+      },
+      "statuses": {
+        "applied": "Successful",
+        "failed": "Failed",
+        "unchanged": "Unchanged"
+      },
+      "effective": "Future processing uses these corrected details from {date}."
     }
   },
   "leave": {
