@@ -113,6 +113,13 @@ export async function delegateRecipient(tx: Tx, reportingLineId: string): Promis
  *  - hr_admin / hr_manager / custom_role resolve to HR authority (hrAdminsForCompany), matching
  *    assertCanDecideLeaveStep's decision-time gates.
  *  - payroll is the role_assignment payroll_partner check from assertCanDecideLeaveStep, lifted here. */
+/** Active stand-ins for exactly these current approvers; the SQL owner checks task, company and window. */
+export async function withApprovalDelegatesTx(tx:Tx,subjectEmploymentId:string,module:string,task:string,approvers:string[]):Promise<string[]>{
+ if(!approvers.length)return [];
+ const rows=await tx.execute<{id:string}>(sql`select app.active_delegate_employments(${subjectEmploymentId}::uuid,${module},${task},ARRAY[${sql.join(approvers.map(id=>sql`${id}::uuid`),sql`, `)}]) as id`);
+ return [...new Set([...approvers,...rows.map(row=>row.id)])].filter(id=>id!==subjectEmploymentId);
+}
+
 export async function approverEmploymentsForKind(
   tx: Tx,
   subjectEmploymentId: string,
@@ -414,6 +421,7 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       } else {
         approvers = await approverEmploymentsForKind(tx, ev.subjectEmploymentId, 'direct_manager');
       }
+      approvers=await withApprovalDelegatesTx(tx,ev.subjectEmploymentId,'leave','leave.cancellation',approvers);
       const hr = await hrAdminsForCompany(tx, ev.subjectEmploymentId);
       // Never the employee who asked (an HR admin or a manager cancelling their own leave).
       return [...new Set([...approvers, ...hr])].filter((id) => id !== ev.subjectEmploymentId);
@@ -557,6 +565,7 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     recipients: async (tx, ev, payload) => {
       if (!ev.subjectEmploymentId || payload?.requestedOtMinutes == null) return [];
       let out = await approverEmploymentsForKind(tx, ev.subjectEmploymentId, 'direct_manager');
+      out=await withApprovalDelegatesTx(tx,ev.subjectEmploymentId,'attendance','attendance.correction',out);
       if (out.length === 0) out = await hrAdminsForCompany(tx, ev.subjectEmploymentId);
       // Never notify the requester about their own request (an employee who is their own manager, or an
       // HR admin filing for themselves).

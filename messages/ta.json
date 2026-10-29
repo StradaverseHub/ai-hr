@@ -16240,6 +16240,7 @@
     "taskLabel": {
       "leaveApplication": "விடுப்பு விண்ணப்ப ஒப்புதல்",
       "leaveCancellation": "விடுப்பு ரத்து ஒப்புதல்",
+      "leaveReplacement": "மாற்று விடுப்பு",
       "attendanceCorrection": "வருகை திருத்த ஒப்புதல்",
       "claimsClaim": "உரிமைகோரல் ஒப்புதல்",
       "leaveRequestCreation": "விடுப்பு விண்ணப்பம் உருவாக்கம்",

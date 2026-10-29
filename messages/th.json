@@ -16240,6 +16240,7 @@
     "taskLabel": {
       "leaveApplication": "การอนุมัติคำขอลา",
       "leaveCancellation": "การอนุมัติยกเลิกการลา",
+      "leaveReplacement": "วันลาชดเชย",
       "attendanceCorrection": "การอนุมัติแก้ไขการเข้างาน",
       "claimsClaim": "การอนุมัติการเบิกจ่าย",
       "leaveRequestCreation": "การสร้างคำขอลา",

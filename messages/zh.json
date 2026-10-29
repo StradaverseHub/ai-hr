@@ -16240,6 +16240,7 @@
     "taskLabel": {
       "leaveApplication": "请假申请审批",
       "leaveCancellation": "请假取消审批",
+      "leaveReplacement": "替代休假",
       "attendanceCorrection": "考勤更正审批",
       "claimsClaim": "报销审批",
       "leaveRequestCreation": "请假申请提交",

@@ -16240,6 +16240,7 @@
     "taskLabel": {
       "leaveApplication": "Phê duyệt Đơn xin nghỉ",
       "leaveCancellation": "Phê duyệt Hủy nghỉ",
+      "leaveReplacement": "Nghỉ bù",
       "attendanceCorrection": "Phê duyệt Điều chỉnh chấm công",
       "claimsClaim": "Phê duyệt Yêu cầu bồi hoàn",
       "leaveRequestCreation": "Tạo đơn xin nghỉ phép",

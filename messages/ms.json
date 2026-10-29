@@ -16240,6 +16240,7 @@
     "taskLabel": {
       "leaveApplication": "Kelulusan Permohonan Cuti",
       "leaveCancellation": "Kelulusan Pembatalan Cuti",
+      "leaveReplacement": "Cuti gantian",
       "attendanceCorrection": "Kelulusan Pembetulan Kehadiran",
       "claimsClaim": "Kelulusan Tuntutan",
       "leaveRequestCreation": "Penciptaan Permohonan Cuti",

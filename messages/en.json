@@ -16240,6 +16240,7 @@
     "taskLabel": {
       "leaveApplication": "Leave Application Approval",
       "leaveCancellation": "Leave Cancellation Approval",
+      "leaveReplacement": "Replacement leave",
       "attendanceCorrection": "Attendance Correction Approval",
       "claimsClaim": "Claim Approval",
       "leaveRequestCreation": "Leave Request Creation",
