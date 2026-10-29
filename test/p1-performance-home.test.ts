@@ -240,7 +240,7 @@ describe('getPerformanceHome against real RLS: no unreleased band, for the emplo
   const year = () => Number(todayInKualaLumpur().slice(0, 4));
   beforeEach(async () => { await resetDb(); b = await seedBase(); await setModule(b.tenantId, 'performance', 'active'); a = await entitledCtx(b); });
 
-  it('the confirmed band stays off both pages until release; then the employee\'s row shows it', async () => {
+  it('APR-028: the employee sees their manager\'s confirmed band before release, the manager\'s page never carries it, and release shows the released band', async () => {
     const hire = (name: string): Promise<Hired> => hireEmployee(a, { person: { fullName: name, primaryEmail: `${randomUUID()}@pt-x3.test` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year() - 2}-01-01` });
     const subject = await hire('Home subject'), manager = await hire('Home manager');
     const [grade] = await owner.db.insert(schema.jobGrade).values({ tenantId: b.tenantId, code: '12', name: 'Grade 12' }).returning();
@@ -272,11 +272,13 @@ describe('getPerformanceHome against real RLS: no unreleased band, for the emplo
     for (const ctx of [self, mgr]) {
       const view = await perf.getPerformanceHome(ctx, undefined);
       expect(view.mode).toBe('running');
-      expect(JSON.stringify(view)).not.toContain(`"${band}"`);
       expect([...keysOf(view)].filter((k) => /score/i.test(k))).toEqual([]);
     }
+    // The manager's own page never carries the report's band.
+    expect(JSON.stringify(await perf.getPerformanceHome(mgr, undefined))).not.toContain(`"${band}"`);
+    // The source's rule (APR-028): the person's own Where you stand shows the manager's confirmed band before release.
     const mine = await perf.getPerformanceHome(self, undefined);
-    expect(mine.slot).toMatchObject({ kind: 'stand', standing: { performance: { state: 'notReleased' } } });
+    expect(mine.slot).toMatchObject({ kind: 'stand', standing: { performance: { state: 'lineManagerApproved', band } } });
 
     await perf.releaseOnehrResult(a, reviewId, 'performance', true);
     expect((await perf.getPerformanceHome(self, undefined)).slot).toMatchObject({ kind: 'stand', standing: { performance: { state: 'released', band } } });
