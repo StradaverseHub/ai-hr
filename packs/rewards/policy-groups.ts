@@ -105,7 +105,7 @@ export async function rewardPolicyForReviewTx(tx:Tx,versionId:string|undefined,c
 export function rewardPolicyMemberships(ctx:SessionContext,companyIds:readonly string[]){
  const ids=z.array(rewardPgUuid).max(500).parse(companyIds);
  return withRewardsTenant(ctx,async tx=>{
-  const rows=await tx.execute<{company_id:string;business_unit_id:string}>(sql`select * from app.reward_policy_memberships(${ids}::uuid[])`);
+  const rows=await tx.execute<{company_id:string;business_unit_id:string}>(sql`select * from app.reward_policy_memberships(ARRAY[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`);
   return rows.map(row=>({companyId:rewardPgUuid.parse(row.company_id),businessUnitId:rewardPgUuid.parse(row.business_unit_id)}));
  });
 }
