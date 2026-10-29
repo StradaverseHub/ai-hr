@@ -6668,7 +6668,9 @@
       "reprocessOutcomeStatus": {
         "reprocessed": "已重新处理",
         "skipped": "已跳过",
-        "validation_failed": "配置不完整"
+        "validation_failed": "配置不完整",
+        "excluded": "已排除",
+        "not_eligible": "不符合资格"
       },
       "reprocessNothingPayableFull": "本工资期间未确定任何应付收入。未重新计算工资。现有工资单、工资批次成员、交易和历史记录均已保留。",
       "reprocessSucceededReason": "已为此员工保存新的工资计算结果。",
@@ -6689,7 +6691,29 @@
       "reprocessLegacyOutcomeUnavailable": "此较早的任务未记录个人处理结果。其已保存的计算历史仍可在下方查看。",
       "publishStateHistory": "导入历史",
       "historyNoPayment": "历史导入不记录付款日期。",
-      "unlockOverwrittenByImport": "此工资运行中的工资单已被导入工资历史覆盖。请先从其 Log File 撤销该导入，再解锁此运行。"
+      "unlockOverwrittenByImport": "此工资运行中的工资单已被导入工资历史覆盖。请先从其 Log File 撤销该导入，再解锁此运行。",
+      "reprocessExclusion_RESIGNED_BEFORE_PERIOD": "已在本薪资月份之前离职。",
+      "reprocessExclusion_RESIGNED_BEFORE_PERIODDated": "已在本薪资月份之前离职（最后工作日 {date}）。",
+      "reprocessExclusion_JOINED_AFTER_PERIOD": "在本薪资月份之后入职。",
+      "reprocessExclusion_JOINED_AFTER_PERIODDated": "在本薪资月份之后入职（入职日期 {date}）。",
+      "reprocessExclusion_NOT_WITH_COMPANY_IN_PERIOD": "本薪资月份内不属于本公司。",
+      "reprocessExclusion_NOT_WITH_COMPANY_IN_PERIODDated": "本薪资月份内不属于本公司（于 {date} 调离）。",
+      "reprocessExcludedRemoved": "该员工本月的先前结果已从本次薪资运行中移除并保留在历史记录中。其使用的贷款分期、报销和一次性交易已释放。已发放的款项不会被撤销；如需处理，请使用现有的更正步骤。",
+      "reprocessNotEligibleRemovalOff": "先前结果仍予保留，因为贵公司已关闭从薪资运行中移除员工的功能，或您没有该权限。管理员可通过“从本次运行中移除员工”将其移除。",
+      "reprocessNotEligibleLastOnRun": "先前结果仍予保留，因为该员工是本次运行中仅剩的一名员工。请改为重置本次运行以清除结果。",
+      "reprocessOutcomeExclusionSummary": "已排除：{excluded} · 不符合资格：{notEligible}",
+      "reprocessStopped_BATCH_NOT_PROCESSED": "处理已停止：本次运行已不再处于“已处理”状态（可能已审批、已支付或已重置）。已保存的结果仍然有效。对于已进入后续阶段的运行，请使用现有的更正步骤。",
+      "reprocessStopped_PERIOD_CLOSED": "处理已停止：本次运行的薪资期间已关闭。已保存的结果仍然有效。请先按现有步骤重新开启期间，再重新处理。",
+      "reprocessStopped_PERMISSION_DENIED": "处理已停止：您已不再拥有重新处理本次运行的权限。已保存的结果仍然有效。请向管理员申请权限。",
+      "reprocessStopped_SUPERSEDED": "处理已停止：另一次尝试已接管本次重新处理。已保存的结果仍然有效。请刷新查看最新结果后再重试。",
+      "recalcChangeLine": "{name}：{changes}",
+      "recalcChangeCategory": {
+        "termination": "离职或终止日期已更改",
+        "hire_date": "入职日期已更改",
+        "transfer": "公司调动已更改",
+        "compensation": "薪资已更改",
+        "statutory": "法定设置已更改"
+      }
     },
     "transactions": {
       "title": "交易录入",

@@ -717,6 +717,11 @@ export async function terminateEmploymentTx(
   // Canonical direct callers need maintenance. An independent accepted resignation can compose only
   // its actual fixed request consequence, completed by status and immutable events before commit.
   await tx.execute(sql`select app.access_assert_termination(${p.employmentId}::uuid,${JSON.stringify(terminationPatch)}::jsonb)`);
+  const [priorExit] = await tx
+    .select({ terminatedOn: employment.terminatedOn })
+    .from(employment)
+    .where(eq(employment.id, p.employmentId))
+    .limit(1);
 
   await tx
     .update(employment)
@@ -796,6 +801,36 @@ export async function terminateEmploymentTx(
       ...(p.movement ? { movement: p.movement } : {}),
     },
   });
+
+  // 3244584c — every processed payroll run that paid this employee for a month from the (earlier of the
+  // old and new) exit date on is now stale: the exit month prorates, every later month excludes them.
+  if ((priorExit?.terminatedOn ?? null) !== p.terminationDate) {
+    await markPayrollRunsForEmploymentChangeTx(tx, ctx, {
+      employmentIds: [p.employmentId],
+      category: 'termination',
+      from: earlierDate(priorExit?.terminatedOn ?? null, p.terminationDate),
+    });
+  }
+}
+
+/** 3244584c — the earlier of two ISO dates; null only when both are. */
+function earlierDate(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  return a < b ? a : b;
+}
+
+/**
+ * 3244584c — the payroll facade, loaded at call time. This module is imported (transitively) by the payroll
+ * kernel itself, so a static import of the facade would make the two evaluate in a cycle.
+ */
+async function markPayrollRunsForEmploymentChangeTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: Parameters<typeof import('../packs/payroll/service').markRunsAffectedByEmploymentChangeTx>[2],
+) {
+  const { markRunsAffectedByEmploymentChangeTx } = await import('../packs/payroll/service');
+  return markRunsAffectedByEmploymentChangeTx(tx, ctx, p);
 }
 
 export async function terminateEmployment(ctx: SessionContext, p: TerminateEmploymentInput) {
@@ -2267,6 +2302,8 @@ export async function changeEmploymentCompany(
       .update(employment)
       .set({ companyId: p.newCompanyId, payrollPolicyId: null, costAllocation: null })
       .where(eq(employment.id, p.employmentId));
+    // 3244584c — a hire-time company correction has no effective date: every processed run that paid them.
+    await markPayrollRunsForEmploymentChangeTx(tx, ctx, { employmentIds: [p.employmentId], category: 'transfer', from: null });
 
     // Remove the open reporting line to an old-company manager (hireEmployee's hire-time edge).
     await tx
@@ -2570,6 +2607,8 @@ export async function transferEmploymentCompanyTx(
     .update(employment)
     .set({ companyId: p.newCompanyId, payrollPolicyId: null, costAllocation: null })
     .where(eq(employment.id, p.employmentId));
+  // 3244584c — the runs that paid them from the transfer date on now owe a recalculation (or an exclusion).
+  await markPayrollRunsForEmploymentChangeTx(tx, ctx, { employmentIds: [p.employmentId], category: 'transfer', from: p.effectiveDate });
 
   /**
    * Its own event type, NOT the `employment.company.changed` the pre-transaction correction appends.
@@ -3262,6 +3301,16 @@ export async function setEmploymentInfo(
     }
 
     await tx.update(employment).set(set).where(eq(employment.id, p.employmentId));
+    // 3244584c — hired_on is the first day the payroll engine pays (join_date is display-only there). A
+    // move that crossed a payslip was refused above, so this normally marks nothing; it is the backstop
+    // that keeps a processed run from silently paying from the old date.
+    if (set.hiredOn !== undefined && set.hiredOn !== before.hiredOn) {
+      await markPayrollRunsForEmploymentChangeTx(tx, ctx, {
+        employmentIds: [p.employmentId],
+        category: 'hire_date',
+        from: earlierDate(before.hiredOn ?? null, (set.hiredOn as string | null) ?? null),
+      });
+    }
     const after = { ...before, ...set };
     await appendEvent(tx, {
       tenantId: ctx.tenantId,

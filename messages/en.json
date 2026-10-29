@@ -5944,7 +5944,9 @@
       "reprocessOutcomeStatus": {
         "reprocessed": "Reprocessed",
         "skipped": "Skipped",
-        "validation_failed": "Configuration incomplete"
+        "validation_failed": "Configuration incomplete",
+        "excluded": "Excluded",
+        "not_eligible": "Not eligible"
       },
       "reprocessNothingPayableFull": "No payable earnings were resolved for this pay period. Payroll recalculation was not performed. Existing payslip, run membership, transactions and history were retained.",
       "reprocessSucceededReason": "A new payroll result was saved for this employee.",
@@ -5965,7 +5967,29 @@
       "reprocessLegacyOutcomeUnavailable": "This earlier job did not record individual outcomes. Its saved calculation history remains available below.",
       "publishStateHistory": "Imported history",
       "historyNoPayment": "No payment date is recorded by a history import.",
-      "unlockOverwrittenByImport": "A payslip in this run was overwritten by Import Payroll History. Revert that import from its Log File before unlocking the run."
+      "unlockOverwrittenByImport": "A payslip in this run was overwritten by Import Payroll History. Revert that import from its Log File before unlocking the run.",
+      "reprocessExclusion_RESIGNED_BEFORE_PERIOD": "Resigned before this payroll month.",
+      "reprocessExclusion_RESIGNED_BEFORE_PERIODDated": "Resigned before this payroll month (last day {date}).",
+      "reprocessExclusion_JOINED_AFTER_PERIOD": "Joins after this payroll month.",
+      "reprocessExclusion_JOINED_AFTER_PERIODDated": "Joins after this payroll month (join date {date}).",
+      "reprocessExclusion_NOT_WITH_COMPANY_IN_PERIOD": "Not with this company during this payroll month.",
+      "reprocessExclusion_NOT_WITH_COMPANY_IN_PERIODDated": "Not with this company during this payroll month (moved on {date}).",
+      "reprocessExcludedRemoved": "Their previous result for this month was removed from the run and kept in history. Loan instalments, claims and one-off transactions it used were released. A payment already made is not reversed; use the existing correction steps for that.",
+      "reprocessNotEligibleRemovalOff": "Their previous result is kept, because removing employees from a run is switched off for your company or you do not have that permission. An administrator can remove it with “Remove employees from this run”.",
+      "reprocessNotEligibleLastOnRun": "Their previous result is kept, because they are the only employee left on this run. Reset the run instead to clear it.",
+      "reprocessOutcomeExclusionSummary": "Excluded: {excluded} · Not eligible: {notEligible}",
+      "reprocessStopped_BATCH_NOT_PROCESSED": "Processing stopped: this run is no longer in Processed status (it may have been approved, paid or reset). Saved outcomes remain valid. Use the existing correction steps for a run that has moved on.",
+      "reprocessStopped_PERIOD_CLOSED": "Processing stopped: the pay period for this run is closed. Saved outcomes remain valid. Reopen the period through the existing steps before reprocessing.",
+      "reprocessStopped_PERMISSION_DENIED": "Processing stopped: you no longer have permission to reprocess this run. Saved outcomes remain valid. Ask an administrator for access.",
+      "reprocessStopped_SUPERSEDED": "Processing stopped: another attempt took over this reprocess. Saved outcomes remain valid. Refresh to see the latest result before trying again.",
+      "recalcChangeLine": "{name}: {changes}",
+      "recalcChangeCategory": {
+        "termination": "resignation or termination date changed",
+        "hire_date": "join date changed",
+        "transfer": "company transfer changed",
+        "compensation": "salary changed",
+        "statutory": "statutory settings changed"
+      }
     },
     "reports": {
       "pageTitle": "Payroll",

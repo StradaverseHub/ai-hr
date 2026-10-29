@@ -379,9 +379,57 @@ export class ReprocessNothingPayableError extends Error {
 /** A global failure stops further attempts, while previously committed employee checkpoints survive.
  * Public consumers use the exact job id and a localized safe message; the cause is for diagnostics. */
 export class PayrollReprocessStoppedError extends Error {
+  /** 3244584c — the run-level reason persisted on the job (`payroll_reprocess_job.error`). */
+  public readonly code: ReprocessRunErrorCode;
   constructor(public readonly jobId:string,cause:unknown) {
     super('Payroll processing stopped safely. Review the saved employee outcomes before retrying.',{cause});
     this.name='PayrollReprocessStoppedError';
+    this.code=reprocessRunErrorCode(cause);
+  }
+}
+
+/**
+ * 3244584c — WHY A WHOLE REPROCESS STOPPED, as a code the screen can name. Every one of these is a fact
+ * about the RUN (it is no longer processed, its period closed, the operator lost the permission, another
+ * worker took the job over), so it stays fatal: no later employee on the same run could succeed either.
+ * REPROCESS_STOPPED is kept for what is genuinely unexpected. A per-employee condition never reaches here —
+ * those are outcomes (see employeeReprocessValidation).
+ */
+export const REPROCESS_RUN_ERROR_CODES = ['BATCH_NOT_PROCESSED','PERIOD_CLOSED','PERMISSION_DENIED','SUPERSEDED','REPROCESS_STOPPED'] as const;
+export type ReprocessRunErrorCode = (typeof REPROCESS_RUN_ERROR_CODES)[number];
+
+/** 3244584c — a run-level refusal inside the per-employee loop; the message is unchanged from before. */
+export class ReprocessRunBlockedError extends Error {
+  constructor(public readonly code: Exclude<ReprocessRunErrorCode,'REPROCESS_STOPPED'|'BATCH_NOT_PROCESSED'|'PERMISSION_DENIED'>, message: string) {
+    super(message);
+    this.name = 'ReprocessRunBlockedError';
+  }
+}
+
+export function reprocessRunErrorCode(error: unknown): ReprocessRunErrorCode {
+  if (error instanceof ReprocessRunBlockedError) return error.code;
+  if (error instanceof BatchNotResettableError) return 'BATCH_NOT_PROCESSED';
+  if (error instanceof PayrollPermissionDeniedError) return 'PERMISSION_DENIED';
+  return 'REPROCESS_STOPPED';
+}
+
+/**
+ * 3244584c — the selected employee does not belong to this payroll month ANY MORE: their termination date
+ * now falls before it, their hire date after it, or the company history says they were with another
+ * company for all of it. Before this item the loop threw a bare Error for the company case (and the
+ * kernel's own window refused the other two), which stopped the WHOLE job with the generic message and
+ * left the stale payslip paying. It is a per-employee outcome — 'excluded' — and never a run failure.
+ */
+export type ReprocessExclusionReason = 'RESIGNED_BEFORE_PERIOD' | 'JOINED_AFTER_PERIOD' | 'NOT_WITH_COMPANY_IN_PERIOD';
+const REPROCESS_EXCLUSION_REASONS: ReadonlySet<string> = new Set<ReprocessExclusionReason>(['RESIGNED_BEFORE_PERIOD','JOINED_AFTER_PERIOD','NOT_WITH_COMPANY_IN_PERIOD']);
+export class ReprocessEmploymentNotInPeriodError extends Error {
+  constructor(public readonly reason: ReprocessExclusionReason, public readonly effectiveDate: string | null) {
+    super(reason === 'RESIGNED_BEFORE_PERIOD'
+      ? `The employment ended before this payroll month${effectiveDate ? ` (last day ${effectiveDate})` : ''}.`
+      : reason === 'JOINED_AFTER_PERIOD'
+        ? `The employment starts after this payroll month${effectiveDate ? ` (join date ${effectiveDate})` : ''}.`
+        : `The employee was not with this company during this payroll month${effectiveDate ? ` (moved on ${effectiveDate})` : ''}.`);
+    this.name = 'ReprocessEmploymentNotInPeriodError';
   }
 }
 
@@ -392,10 +440,14 @@ export type ReprocessEmployeeOutcome = {
   employmentId: string;
   name: string;
   employeeCode: string | null;
-  status: 'reprocessed' | 'skipped' | 'validation_failed';
-  reasonCode: 'NOTHING_PAYABLE' | 'PAYROLL_CONFIGURATION_INCOMPLETE' | 'TAX_SCHEME_CONFIGURATION_INCOMPLETE' | null;
+  /** 3244584c — 'excluded': no longer in this month, stale result removed through the removal owner;
+   *  'not_eligible': no longer in this month, but removal is switched off or not permitted, so the old
+   *  result is kept for an administrator to remove. */
+  status: 'reprocessed' | 'skipped' | 'validation_failed' | 'excluded' | 'not_eligible';
+  reasonCode: 'NOTHING_PAYABLE' | 'PAYROLL_CONFIGURATION_INCOMPLETE' | 'TAX_SCHEME_CONFIGURATION_INCOMPLETE' | ReprocessExclusionReason | null;
   validationCode?: string;
-  validationDetails?: { gap: string }[];
+  /** 3244584c — an exclusion carries its cause and the effective date (`gap` = the cause, `date` = ISO). */
+  validationDetails?: { gap: string; date?: string }[];
   resultRetained: boolean;
   payslipId: string | null;
   versionBefore: number | null;
@@ -417,6 +469,9 @@ export type ReprocessJobResult = {
   added: number;
   skipped: number;
   validationFailed: number;
+  /** 3244584c — absent on jobs written before this item. */
+  excluded?: number;
+  notEligible?: number;
   headcount: number;
   totals: Record<string, number>;
 };
@@ -436,6 +491,10 @@ function taxSchemeOutcomeDetails(error:Error): Pick<ReprocessEmployeeOutcome,'co
 function employeeReprocessValidation(error: unknown): Pick<ReprocessEmployeeOutcome,
   'status' | 'reasonCode' | 'validationCode' | 'validationDetails' | 'configuredTaxScheme' | 'effectiveTaxScheme'> | null {
   if (error instanceof ReprocessNothingPayableError) return {status:'skipped',reasonCode:'NOTHING_PAYABLE'};
+  // 3244584c — the removal decision (excluded vs not_eligible) is the loop's; this maps the cause only.
+  if (error instanceof ReprocessEmploymentNotInPeriodError) return {status:'excluded',reasonCode:error.reason,
+    validationCode:'employment_not_in_period',
+    validationDetails:[{gap:error.reason,...(error.effectiveDate?{date:error.effectiveDate}:{})}]};
   if (error instanceof ReprocessAddBlockedError) return {status:'validation_failed',
     reasonCode:'PAYROLL_CONFIGURATION_INCOMPLETE', validationCode:'payroll_readiness',
     validationDetails:error.rows.map(r=>({gap:r.gap}))};
@@ -784,7 +843,7 @@ const asIdArray = (v: unknown): string[] =>
 export async function markBatchNeedsRecalc(
   tx: Tx,
   ctx: SessionContext,
-  p: { batchId: string; employmentIds: string[] },
+  p: { batchId: string; employmentIds: string[]; category?: RecalcChangeCategory },
 ): Promise<void> {
   const adding = asIdArray(p.employmentIds);
   if (adding.length === 0) return;
@@ -808,7 +867,119 @@ export async function markBatchNeedsRecalc(
     aggregateId: p.batchId,
     eventType: 'payroll-batch.recalc-required',
     actor: actorOf(ctx),
-    payload: { employmentIds: next, addedEmploymentIds: adding },
+    // 3244584c — the KIND of change, when the writer knows it. A category, never a value (ADR-0030 Layer 0):
+    // "compensation" says the salary record moved, not to what.
+    payload: { employmentIds: next, addedEmploymentIds: adding, ...(p.category ? { changeCategory: p.category } : {}) },
+  });
+}
+
+/**
+ * 3244584c — WHAT KIND OF EMPLOYEE CHANGE made a processed run stale. Carried on the existing
+ * `payroll-batch.recalc-required` event (no column, no migration) and read back by
+ * `listRecalcChangeCategories` for the run screen.
+ */
+export const RECALC_CHANGE_CATEGORIES = ['termination', 'hire_date', 'transfer', 'compensation', 'statutory'] as const;
+export type RecalcChangeCategory = (typeof RECALC_CHANGE_CATEGORIES)[number];
+
+/**
+ * 3244584c — an employee record changed in a way the payroll engine reads; mark every PROCESSED run that
+ * already paid this employee for a month on or after the change's effective date.
+ *
+ * WHICH RUNS. Only runs holding a payslip for the employment: that is what can be stale, and it is what
+ * the Reprocess screen can select — marking a run for somebody it cannot select would leave a mark nobody
+ * can clear, and a run that can then never close. Only `processed` (markBatchNeedsRecalc refuses the
+ * rest). Only months whose END is on/after `from`: a salary change dated November does not touch October,
+ * a termination dated 15 August touches August (proration) and every later month (exclusion). `from: null`
+ * is a change with no effective date (a statutory setting, a hire-time company correction): every
+ * processed run that paid them is affected.
+ *
+ * ONLY WHAT THE ACTOR ADMINISTERS. The run must be one this session may write
+ * (`app.can_admin_payroll_for`), or the mark's UPDATE would fail RLS and take the HR save down with it.
+ * An HR-only operator therefore marks nothing — a limitation, stated rather than worked around.
+ */
+export async function markRunsAffectedByEmploymentChangeTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { employmentIds?: string[]; personId?: string; category: RecalcChangeCategory; from: string | null },
+): Promise<{ batchId: string; employmentIds: string[] }[]> {
+  const ids = asIdArray(p.employmentIds ?? []);
+  if (p.personId) {
+    const rows = await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, p.personId));
+    ids.push(...rows.map((r) => r.id).filter((id) => !ids.includes(id)));
+  }
+  if (ids.length === 0) return [];
+  const fromPeriod = p.from && /^\d{4}-\d{2}/.test(p.from) ? p.from.slice(0, 7) : null;
+  const rows = await tx
+    .select({ batchId: payslip.batchId, employmentId: payslip.employmentId })
+    .from(payslip)
+    .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+    .where(
+      and(
+        inArray(payslip.employmentId, ids),
+        eq(payrollBatch.status, 'processed'),
+        fromPeriod ? gte(payrollBatch.payPeriod, fromPeriod) : undefined,
+        sql`app.can_admin_payroll_for(${payrollBatch.companyId})`,
+      ),
+    );
+  const byBatch = new Map<string, Set<string>>();
+  for (const r of rows) byBatch.set(r.batchId, (byBatch.get(r.batchId) ?? new Set<string>()).add(r.employmentId));
+  const marked: { batchId: string; employmentIds: string[] }[] = [];
+  for (const [batchId, set] of [...byBatch].sort(([a], [b]) => a.localeCompare(b))) {
+    const employmentIds = [...set].sort();
+    await markBatchNeedsRecalc(tx, ctx, { batchId, employmentIds, category: p.category });
+    marked.push({ batchId, employmentIds });
+  }
+  return marked;
+}
+
+/**
+ * 3244584c — the change categories behind the run's CURRENT mark, per employment still waiting.
+ *
+ * "Current" = recorded after the last `payroll-batch.recalc-cleared` for this run (clearBatchRecalc writes
+ * it exactly when the mark empties), ordered by the event sequence rather than by clock, and narrowed to
+ * the employments the batch row still lists. An employment marked by a ledger/attendance writer carries no
+ * category and simply has none here.
+ */
+export async function listRecalcChangeCategories(
+  ctx: SessionContext,
+  p: { batchId: string },
+): Promise<Record<string, RecalcChangeCategory[]>> {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ ids: payrollBatch.recalcEmploymentIds, at: payrollBatch.needsRecalcAt })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch || batch.at == null) return {};
+    const waiting = new Set(asIdArray(batch.ids));
+    const [cleared] = await tx
+      .select({ seq: sql<number | null>`max(${domainEvent.sequence})` })
+      .from(domainEvent)
+      .where(and(eq(domainEvent.aggregateId, p.batchId), eq(domainEvent.eventType, 'payroll-batch.recalc-cleared')));
+    const events = await tx
+      .select({ payload: domainEvent.payload })
+      .from(domainEvent)
+      .where(
+        and(
+          eq(domainEvent.aggregateType, 'payroll-batch'),
+          eq(domainEvent.aggregateId, p.batchId),
+          eq(domainEvent.eventType, 'payroll-batch.recalc-required'),
+          cleared?.seq != null ? gt(domainEvent.sequence, Number(cleared.seq)) : undefined,
+        ),
+      )
+      .orderBy(domainEvent.sequence);
+    const out: Record<string, RecalcChangeCategory[]> = {};
+    for (const e of events) {
+      const payload = (e.payload ?? {}) as { changeCategory?: unknown; addedEmploymentIds?: unknown };
+      const category = payload.changeCategory;
+      if (typeof category !== 'string' || !(RECALC_CHANGE_CATEGORIES as readonly string[]).includes(category)) continue;
+      for (const id of asIdArray(payload.addedEmploymentIds)) {
+        if (!waiting.has(id)) continue;
+        const list = out[id] ?? (out[id] = []);
+        if (!list.includes(category as RecalcChangeCategory)) list.push(category as RecalcChangeCategory);
+      }
+    }
+    return out;
   });
 }
 
@@ -9146,7 +9317,7 @@ export async function reprocessSelectedEmployees(
       .from(payPeriod)
       .where(eq(payPeriod.id, batch.payPeriodId))
       .limit(1);
-    if (period?.status === 'closed') throw new Error('This pay period is closed.');
+    if (period?.status === 'closed') throw new ReprocessRunBlockedError('PERIOD_CLOSED', 'This pay period is closed.');
 
     // Cross-company membership intersection (a stale/cross-company id can never widen the run).
     //
@@ -9173,7 +9344,16 @@ export async function reprocessSelectedEmployees(
           inArray(employment.id, requested),
         ),
       );
-    const employmentIds = requested.filter((id) => companyEmps.some((e) => e.id === id));
+    // 3244584c — …OR STILL HOLDS A PAYSLIP ON THIS RUN. Somebody transferred out before the month has no
+    // company membership for it any more, and that is exactly the person whose stale result the loop must
+    // reach to exclude. A payslip on this very batch cannot widen anything: it is already on the run.
+    const onRun = await tx
+      .select({ id: payslip.employmentId })
+      .from(payslip)
+      .where(and(eq(payslip.batchId, p.batchId), inArray(payslip.employmentId, requested)));
+    const employmentIds = requested.filter(
+      (id) => companyEmps.some((e) => e.id === id) || onRun.some((r) => r.id === id),
+    );
     if (employmentIds.length === 0) throw new Error('None of the selected employees belong to this run.');
 
     // Idempotency: default key binds batch + exact selection + reason so an identical resubmit dedupes,
@@ -9242,7 +9422,7 @@ export async function reprocessSelectedEmployees(
         if(currentJob.batchId!==ownedBatch?.id||JSON.stringify(currentJob.employmentIds)!==JSON.stringify(enq.employmentIds))throw new Error('Payroll job source changed.');
         const prior = currentJob.result as ReprocessJobResult | null;
         if (currentJob.status!=='running' || prior?.workerToken!==workerToken)
-          throw new Error('This payroll processing attempt was superseded by a recovered worker.');
+          throw new ReprocessRunBlockedError('SUPERSEDED','This payroll processing attempt was superseded by a recovered worker.');
         if (prior && !decodeReprocessEmployeeOutcomes(prior,currentJob.employmentIds))
           throw new Error('Stored payroll employee outcomes are invalid.');
         if (prior?.outcomes?.some(r => r.employmentId === employmentId)) return;
@@ -9254,19 +9434,46 @@ export async function reprocessSelectedEmployees(
         if (currentBatch.status !== 'processed') throw new BatchNotResettableError();
         const [period] = await tx.select({status:payPeriod.status}).from(payPeriod)
           .where(eq(payPeriod.id,currentBatch.payPeriodId)).limit(1).for('share');
-        if (period?.status === 'closed') throw new Error('This pay period is closed.');
+        if (period?.status === 'closed') throw new ReprocessRunBlockedError('PERIOD_CLOSED','This pay period is closed.');
         const [year,month] = currentBatch.payPeriod.split('-').map(Number);
-        const [identity] = await tx.select({name:person.fullName,employeeCode:employment.employeeCode})
+        const periodStart = `${currentBatch.payPeriod}-01`;
+        const periodEnd = `${currentBatch.payPeriod}-${String(daysInMonth(year,month)).padStart(2,'0')}`;
+        // 3244584c — the identity is read WITHOUT the period filter, so an employee who no longer belongs
+        // to the month is still named on their outcome; membership is a column of the same read. A row
+        // RLS hides from this operator is still unexpected and still stops the job.
+        const [identity] = await tx.select({name:person.fullName,employeeCode:employment.employeeCode,
+          hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,
+          withCompany:sql<boolean>`${employedByCompanyDuring(currentBatch.companyId,periodStart,periodEnd)}`})
           .from(employment).innerJoin(person,eq(person.id,employment.personId))
-          .where(and(eq(employment.id,employmentId),employedByCompanyDuring(currentBatch.companyId,
-            `${currentBatch.payPeriod}-01`,`${currentBatch.payPeriod}-${String(daysInMonth(year,month)).padStart(2,'0')}`))).limit(1);
+          .where(eq(employment.id,employmentId)).limit(1);
         if (!identity) throw new Error('Selected employment no longer belongs to this payroll period.');
+        // 3244584c — the SAME window the kernel's earnings read applies (hiredOn ≤ end, terminatedOn null or
+        // ≥ start, with the company during the period), asked first so the answer is an outcome by name.
+        // A mid-period leaver or joiner is IN the month and is recalculated (prorated) as before.
+        // Only for somebody whose result IS on the run: that is the stale payslip to deal with. An employee
+        // with no payslip here is an addition, and an addition outside the month keeps its fbcf706d refusal.
+        const [onThisRun] = await tx.select({id:payslip.id}).from(payslip)
+          .where(and(eq(payslip.batchId,p.batchId),eq(payslip.employmentId,employmentId))).limit(1);
+        let exclusion: ReprocessEmploymentNotInPeriodError | null = null;
+        if (onThisRun && identity.terminatedOn && identity.terminatedOn < periodStart) {
+          exclusion = new ReprocessEmploymentNotInPeriodError('RESIGNED_BEFORE_PERIOD', identity.terminatedOn);
+        } else if (onThisRun && identity.hiredOn > periodEnd) {
+          exclusion = new ReprocessEmploymentNotInPeriodError('JOINED_AFTER_PERIOD', identity.hiredOn);
+        } else if (onThisRun && !identity.withCompany) {
+          // valid_to is EXCLUSIVE: the first day the employee was no longer with this company.
+          const [left] = await tx.select({validTo:assignment.validTo}).from(assignment)
+            .where(and(eq(assignment.employmentId,employmentId),isNull(assignment.supersededAt),
+              eq(assignment.companyId,currentBatch.companyId),isNotNull(assignment.validTo)))
+            .orderBy(desc(assignment.validTo)).limit(1);
+          exclusion = new ReprocessEmploymentNotInPeriodError('NOT_WITH_COMPANY_IN_PERIOD', left?.validTo ?? null);
+        }
         const [before] = await tx.select({id:payslip.id,version:payslip.version}).from(payslip)
           .where(and(eq(payslip.batchId,p.batchId),eq(payslip.employmentId,employmentId))).limit(1);
         let classification: ReprocessEmployeeOutcome['classification'];
         let historyId: string | null = null;
         let outcomeState: Pick<ReprocessEmployeeOutcome,'status'|'reasonCode'|'validationCode'|'validationDetails'|'configuredTaxScheme'|'effectiveTaxScheme'>;
         try {
+          if (exclusion) throw exclusion;
           // Nested drizzle transaction is a SAVEPOINT on this same connection, never another tenant
           // transaction. Collection, snapshot/delete, money, ledger and coverage all roll back together.
           const result = await tx.transaction(employeeTx => generatePayslipsTx(employeeTx, ctx, {
@@ -9282,14 +9489,38 @@ export async function reprocessSelectedEmployees(
           if (!validation) throw error;
           outcomeState = validation;
         }
+        // 3244584c — AN EXCLUDED EMPLOYEE'S OLD RESULT LEAVES THE RUN, through the removal owner itself
+        // (snapshot, loan/claim/one-off release, statutory adjustment, verdicts, totals by delta, recount,
+        // recalc mark, audit, event) and under the removal's own gates. Gate closed ⇒ 'not_eligible' and the
+        // result stays for an administrator. The last payslip on a run is never removed here: emptying a run
+        // is a Reset, so that one is not_eligible too (validationCode 'last_on_run').
+        if (outcomeState.status === 'excluded' && before && exclusion) {
+          const removable = settingEnabled(ctx, 'payroll.reset_enabled')
+            && await resolvePayrollPermission(tx, ctx, 'payroll.remove.employee', currentBatch.companyId);
+          if (!removable) {
+            outcomeState = {...outcomeState, status:'not_eligible'};
+          } else {
+            try {
+              const removed = await tx.transaction(removeTx => removeEmployeePayrollTx(removeTx, ctx, {
+                batchId:p.batchId, employmentIds:[employmentId], batch:currentBatch,
+                reason:`${p.reason?.trim() ? `${p.reason.trim()} — ` : ''}Excluded on reprocess: ${exclusion!.message}`,
+              }));
+              historyId = removed.historyIds[employmentId] ?? null;
+              if (!historyId) throw new Error('Excluded payroll result has no history checkpoint.');
+            } catch (error) {
+              if (!(error instanceof RemoveWholeRunError)) throw error;
+              outcomeState = {...outcomeState, status:'not_eligible', validationCode:'last_on_run'};
+            }
+          }
+        }
         const [after] = await tx.select({id:payslip.id,version:payslip.version,statutory:payslip.statutory}).from(payslip)
           .where(and(eq(payslip.batchId,p.batchId),eq(payslip.employmentId,employmentId))).limit(1);
         const savedScheme = (after?.statutory as {pcbMeta?:{calculationScheme?:unknown}} | undefined)?.pcbMeta?.calculationScheme;
         const outcome: ReprocessEmployeeOutcome = {
-          employmentId,...identity,...outcomeState,classification,
+          employmentId,name:identity.name,employeeCode:identity.employeeCode,...outcomeState,classification,
           ...(outcomeState.status==='reprocessed' && typeof savedScheme==='string'
             && (REPROCESS_TAX_SCHEMES as readonly string[]).includes(savedScheme) ? {effectiveTaxScheme:savedScheme as ReprocessTaxScheme}:{}),
-          resultRetained:outcomeState.status !== 'reprocessed' && !!before,
+          resultRetained:outcomeState.status === 'excluded' ? false : outcomeState.status !== 'reprocessed' && !!before,
           payslipId:after?.id ?? null,versionBefore:before?.version ?? null,
           versionAfter:after?.version ?? null,historyId,at:new Date().toISOString(),
         };
@@ -9303,6 +9534,8 @@ export async function reprocessSelectedEmployees(
           added:outcomes.filter(r=>r.classification==='added').length,
           skipped:outcomes.filter(r=>r.status==='skipped').length,
           validationFailed:outcomes.filter(r=>r.status==='validation_failed').length,
+          excluded:outcomes.filter(r=>r.status==='excluded').length,
+          notEligible:outcomes.filter(r=>r.status==='not_eligible').length,
           headcount:freshBatch.headcount,totals:(freshBatch.totals ?? {}) as Record<string,number>,
         };
         await tx.update(payrollReprocessJob).set({result:checkpoint,updatedAt:new Date()})
@@ -9314,6 +9547,7 @@ export async function reprocessSelectedEmployees(
             employmentId,employeeName:outcome.name,employeeCode:outcome.employeeCode,
             status:outcome.status,reasonCode:outcome.reasonCode,
             validationCode:outcome.validationCode ?? null,resultRetained:outcome.resultRetained,
+            exclusionDate:outcome.reasonCode && REPROCESS_EXCLUSION_REASONS.has(outcome.reasonCode) ? outcome.validationDetails?.[0]?.date ?? null : null,
             configuredTaxScheme:outcome.configuredTaxScheme ?? null,effectiveTaxScheme:outcome.effectiveTaxScheme ?? null,
             payslipId:outcome.payslipId,historyId:outcome.historyId,
             versionBefore:outcome.versionBefore,versionAfter:outcome.versionAfter},
@@ -9326,13 +9560,13 @@ export async function reprocessSelectedEmployees(
         .where(and(eq(payrollReprocessJob.id,job.id),eq(payrollReprocessJob.status,'running'),
           sql`${payrollReprocessJob.result}->>'workerToken' = ${workerToken}`))
         .returning({result:payrollReprocessJob.result});
-      if (!completed) throw new Error('This payroll processing attempt was superseded by a recovered worker.');
+      if (!completed) throw new ReprocessRunBlockedError('SUPERSEDED','This payroll processing attempt was superseded by a recovered worker.');
       return completed.result as ReprocessJobResult;
     });
     return {jobId:job.id,status:'completed' as const,...result};
   } catch (e) {
     await withTenant(ctx, tx => tx.update(payrollReprocessJob)
-      .set({status:'failed',error:'REPROCESS_STOPPED',updatedAt:new Date()})
+      .set({status:'failed',error:reprocessRunErrorCode(e),updatedAt:new Date()})
       .where(and(eq(payrollReprocessJob.id,job.id),eq(payrollReprocessJob.status,'running'),
         sql`${payrollReprocessJob.result}->>'workerToken' = ${workerToken}`)));
     throw new PayrollReprocessStoppedError(job.id,e);
@@ -9352,7 +9586,7 @@ export function decodeReprocessEmployeeOutcomes(result: unknown, selection: read
     const r = value as ReprocessEmployeeOutcome;
     if (!selected.has(r.employmentId) || seen.has(r.employmentId) || !uuid.test(r.employmentId)
       || typeof r.name !== 'string' || (r.employeeCode !== null && typeof r.employeeCode !== 'string')
-      || !['reprocessed','skipped','validation_failed'].includes(r.status)
+      || !['reprocessed','skipped','validation_failed','excluded','not_eligible'].includes(r.status)
       || typeof r.resultRetained !== 'boolean' || typeof r.at !== 'string' || !Number.isFinite(Date.parse(r.at))
       || (r.payslipId !== null && (typeof r.payslipId !== 'string' || !uuid.test(r.payslipId)))
       || (r.historyId !== null && (typeof r.historyId !== 'string' || !uuid.test(r.historyId)))
@@ -9366,11 +9600,16 @@ export function decodeReprocessEmployeeOutcomes(result: unknown, selection: read
     if (r.status === 'skipped' && r.reasonCode !== 'NOTHING_PAYABLE') return null;
     if (r.status === 'validation_failed' && (!['PAYROLL_CONFIGURATION_INCOMPLETE','TAX_SCHEME_CONFIGURATION_INCOMPLETE'].includes(r.reasonCode ?? '')
       || typeof r.validationCode !== 'string')) return null;
-    if (r.status !== 'reprocessed' && (r.historyId!==null || r.versionBefore!==r.versionAfter
+    // 3244584c — an exclusion either removed the payslip it found (history row, no result after) or found
+    // none to remove; 'not_eligible' kept it untouched, like any other retained outcome.
+    if ((r.status === 'excluded' || r.status === 'not_eligible') && !REPROCESS_EXCLUSION_REASONS.has(r.reasonCode ?? '')) return null;
+    if (r.status === 'excluded' && (r.resultRetained || r.payslipId!==null || r.versionAfter!==null
+      || (r.historyId===null) !== (r.versionBefore===null))) return null;
+    if (r.status !== 'reprocessed' && r.status !== 'excluded' && (r.historyId!==null || r.versionBefore!==r.versionAfter
       || r.resultRetained !== (r.payslipId!==null))) return null;
     if ([r.configuredTaxScheme,r.effectiveTaxScheme].some(v=>v!==undefined && !(REPROCESS_TAX_SCHEMES as readonly string[]).includes(v))) return null;
     if (r.validationDetails!==undefined && (!Array.isArray(r.validationDetails)
-      || r.validationDetails.some(d=>!d || typeof d.gap!=='string'))) return null;
+      || r.validationDetails.some(d=>!d || typeof d.gap!=='string' || (d.date!==undefined && typeof d.date!=='string')))) return null;
     seen.add(r.employmentId);
   }
   return rows as ReprocessEmployeeOutcome[];
@@ -9437,8 +9676,11 @@ export async function getReprocessJob(ctx: SessionContext, jobId: string) {
       .where(and(eq(payrollReprocessJob.id, jobId),sql`app.can_admin_payroll_for(${payrollBatch.companyId})`))
       .limit(1);
     if (!job || !(await resolvePayrollPermission(tx,ctx,'payroll.reprocess.selective',job.companyId))) return null;
-    const {companyId,...readableJob} = job;
-    return readableJob;
+    const {companyId,error,...readableJob} = job;
+    // 3244584c — the run-level stop reason as a KNOWN code only (null otherwise). The raw column is never
+    // handed to a screen: an unrecognised value is "unexpected", which keeps the generic message.
+    const stopCode = (REPROCESS_RUN_ERROR_CODES as readonly string[]).includes(error ?? '') ? error as ReprocessRunErrorCode : null;
+    return {...readableJob,error,stopCode};
   });
 }
 
@@ -9821,244 +10063,259 @@ export async function removeEmployeePayroll(
       .limit(1);
     if (period?.status === 'closed') throw new RemovePeriodClosedError();
 
-    // ── 2 + 3. WHAT IS ACTUALLY ON THIS RUN, AND THE SNAPSHOT, IN ONE READ. ──
-    //
-    // A bare `select()` (every column), row-locked. Both halves are deliberate:
-    //   • FOR UPDATE, so a concurrent removal or reprocess of the same run serialises instead of two
-    //     transactions computing a totals delta from the same stale stored figure;
-    //   • every column, because these rows ARE the snapshot written to
-    //     payroll_employee_result_history.before at step 6b — after the delete there is no other copy
-    //     of a removed payslip anywhere, so a narrowed projection here would silently decide what can
-    //     never be recovered.
-    const onRun = await tx
-      .select()
-      .from(payslip)
-      .where(eq(payslip.batchId, p.batchId))
-      .for('update');
-    const removing = onRun.filter((sl) => requested.includes(sl.employmentId));
-    if (removing.length === 0) throw new RemoveNoEmployeesError();
-    if (removing.length === onRun.length) throw new RemoveWholeRunError();
-    const removedIds = removing.map((sl) => sl.employmentId);
+    return removeEmployeePayrollTx(tx, ctx, { batchId: p.batchId, employmentIds: requested, reason, batch });
+  });
+}
 
-    // ── 4. THE UNWIND, narrowed to the selected employments and to them alone. ──
-    const { reversed: loanInstalmentsReversed, loansReopened } = await unwindAppliedLoanRepayments(tx, ctx, {
-      batchId: p.batchId,
-      employmentIds: removedIds,
-      cause: 'payroll-employee-removed',
-    });
-
-    // Claims THIS run paid, for these people only. Back to 'approved' but still STAMPED on the batch —
-    // the pre-generation queued state, so re-processing the corrected employee re-picks them. Somebody
-    // else's paid claim on the same run is not in the predicate and cannot move.
-    const revertedClaims = await tx
-      .update(claimRequest)
-      .set({ status: 'approved', paidAt: null, payoutRef: null })
-      .where(
-        and(
-          eq(claimRequest.payrollBatchId, p.batchId),
-          eq(claimRequest.status, 'paid'),
-          inArray(claimRequest.employmentId, removedIds),
-        ),
-      )
-      .returning({ id: claimRequest.id, employmentId: claimRequest.employmentId });
-    for (const c of revertedClaims) {
-      await appendEvent(tx, {
-        tenantId: ctx.tenantId,
-        aggregateType: 'claim-request',
-        aggregateId: c.id,
-        eventType: 'claim-request.payment-reversed',
-        actor: actorOf(ctx),
-        subjectEmploymentId: c.employmentId,
-        payload: { batchId: p.batchId, reason: 'payroll-employee-removed' },
-      });
-    }
-
-    // The one-off lines this run paid these people. Their payslips are about to be deleted, so the money
-    // has NOT been paid and the corrected re-run must pay it; leaving the marker would strand it.
-    await releaseIndividualTxnsConsumed(tx, p.batchId, removedIds);
-
-    // The statutory adjustment describes a payslip that will not exist, so it goes with it — and into
-    // the snapshot, because it is not recoverable from anywhere else afterwards. Deliberately NOT via
-    // `revertStatutoryAdjustment`: that calls markBatchNeedsRecalc, i.e. it marks the run as owing a
-    // recalculation for an employee who is no longer on it, which is the opposite of what step 6 does.
-    const adjustments = await tx
-      .delete(payrollStatutoryAdjustment)
-      .where(
-        and(
-          eq(payrollStatutoryAdjustment.batchId, p.batchId),
-          inArray(payrollStatutoryAdjustment.employmentId, removedIds),
-        ),
-      )
-      .returning();
-    const adjustmentByEmp = new Map(adjustments.map((a) => [a.employmentId, a]));
-
-    // The anomaly verdicts standing against these people describe a payslip that is about to stop
-    // existing, so they go with it. NOT cosmetic: `openBlockingVerdicts` is keyed on batchId and joins
-    // no payslip, so one unresolved BLOCK among them would keep refusing `closeBatch` for an employee
-    // who is no longer on the run — and Close is the operator's very next action after a removal. The
-    // regeneration paths (reset → draft → process again) never hit this because `evaluateBatchAnomalies`
-    // supersedes the whole batch's verdicts before writing the next generation; removal deliberately
-    // leaves the run PROCESSED and regenerates nothing. Superseded, never deleted — same idiom, same
-    // reason, as a re-evaluation (core/payroll-anomaly.ts).
-    const anomalyVerdictsSuperseded = await supersedeVerdictsForEmployments(tx, {
-      batchId: p.batchId,
-      employmentIds: removedIds,
-    });
-
-    // ── 5a. Delete the payslips. ──
-    await tx
-      .delete(payslip)
-      .where(and(eq(payslip.batchId, p.batchId), inArray(payslip.employmentId, removedIds)));
-
-    // ── 5b. Totals BY DELTA, exactly as the subset reprocess path does: subtract what the removed
-    //    payslips contributed from the stored figure, rather than re-summing the run. `hrdfEmployer` is
-    //    the totals key; the payslip's statutory blob spells the same figure `hrdf`. ──
-    const stored = (batch.totals ?? {}) as Record<string, number>;
-    const delta = { ...stored } as Record<string, number>;
-    const sub = (k: string, v: unknown) => {
-      delta[k] = round2((Number(delta[k]) || 0) - (Number(v) || 0));
+/**
+ * 3244584c — THE REMOVAL ITSELF, steps 2–6 above, inside the caller's transaction. Shared by the
+ * "Remove employees from this run" action and by a reprocess that finds an employee no longer belongs to
+ * the month, so an exclusion snapshots, unwinds, deletes, re-totals and audits exactly as a removal does
+ * rather than through a second copy. The CALLER owns the gates (reset switch, multi-cycle module,
+ * `payroll.remove.employee`, processed run, open period) and the batch lock; `batch` must have been read
+ * inside this transaction after that lock.
+ */
+export async function removeEmployeePayrollTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: {
+    batchId: string;
+    employmentIds: string[];
+    reason: string;
+    batch: {
+      companyId: string;
+      payPeriod: string;
+      payPeriodId: string;
+      runType: string;
+      runSeq: number | null;
+      totals: unknown;
+      employeeCount: number | null;
     };
-    for (const sl of removing) {
-      const st = (sl.statutory ?? {}) as Record<string, number>;
-      sub('gross', sl.grossPay);
-      sub('net', sl.netPay);
-      sub('deductions', sl.totalDeductions);
-      sub('employerCost', sl.employerCost);
-      sub('epfEmployee', st.epfEmployee);
-      sub('epfEmployer', st.epfEmployer);
-      sub('socsoEmployee', st.socsoEmployee);
-      sub('socsoEmployer', st.socsoEmployer);
-      sub('eisEmployee', st.eisEmployee);
-      sub('eisEmployer', st.eisEmployer);
-      sub('pcb', st.pcb);
-      sub('hrdfEmployer', st.hrdf);
-    }
-    // RECOUNTED off the payslips, never decremented — the stored figure is then a fact about the run
-    // rather than a running total a half-failed operation could leave one out of. Same reasoning as the
-    // headcount note on the subset reprocess path.
-    const [{ n: payslipCount } = { n: 0 }] = await tx
-      .select({ n: sql<number>`count(*)::int` })
-      .from(payslip)
-      .where(eq(payslip.batchId, p.batchId));
-    await tx
-      .update(payrollBatch)
-      .set({ totals: delta, employeeCount: Number(payslipCount) })
-      .where(eq(payrollBatch.id, p.batchId));
+  },
+) {
+  const { batch, reason } = p;
+  const requested = [...new Set(p.employmentIds.filter(Boolean))];
 
-    // ── 6a. The removed employees no longer have a figure that could be stale. ──
-    await clearBatchRecalc(tx, ctx, { batchId: p.batchId, employmentIds: removedIds });
+  // ── 2 + 3. WHAT IS ACTUALLY ON THIS RUN, AND THE SNAPSHOT, IN ONE READ. ──
+  //
+  // A bare `select()` (every column), row-locked. Both halves are deliberate:
+  //   • FOR UPDATE, so a concurrent removal or reprocess of the same run serialises instead of two
+  //     transactions computing a totals delta from the same stale stored figure;
+  //   • every column, because these rows ARE the snapshot written to
+  //     payroll_employee_result_history.before at step 6b — after the delete there is no other copy
+  //     of a removed payslip anywhere, so a narrowed projection here would silently decide what can
+  //     never be recovered.
+  const onRun = await tx
+    .select()
+    .from(payslip)
+    .where(eq(payslip.batchId, p.batchId))
+    .for('update');
+  const removing = onRun.filter((sl) => requested.includes(sl.employmentId));
+  if (removing.length === 0) throw new RemoveNoEmployeesError();
+  if (removing.length === onRun.length) throw new RemoveWholeRunError();
+  const removedIds = removing.map((sl) => sl.employmentId);
 
-    // ── 6b. AUDIT. One per-employee row carrying the WHOLE payslip.
-    //
-    //    `before` is the full row, not the six keys a reprocess records (grossPay / netPay /
-    //    totalDeductions / employerCost / version / statutory). The r194 restore attempt is why: those
-    //    six are not enough to rebuild a payslip, and after a REPROCESS there is still another copy —
-    //    the payslip itself. After a REMOVAL there is no other copy anywhere. This row is it.
-    const actor = actorOf(ctx);
-    for (const sl of removing) {
-      const adj = adjustmentByEmp.get(sl.employmentId) ?? null;
-      await tx.insert(payrollEmployeeResultHistory).values({
-        tenantId: ctx.tenantId,
-        batchId: p.batchId,
-        employmentId: sl.employmentId,
-        action: 'remove',
-        actorType: actor.type,
-        actorId: actor.id ?? null,
-        reason,
-        versionBefore: sl.version,
-        versionAfter: null,
-        before: { payslip: sl, statutoryAdjustment: adj } as Record<string, unknown>,
-        after: null,
-      });
-    }
+  // ── 4. THE UNWIND, narrowed to the selected employments and to them alone. ──
+  const { reversed: loanInstalmentsReversed, loansReopened } = await unwindAppliedLoanRepayments(tx, ctx, {
+    batchId: p.batchId,
+    employmentIds: removedIds,
+    cause: 'payroll-employee-removed',
+  });
 
-    // What the run has already sent downstream, and the later months computed with these payslips in
-    // the year to date. READ AND RECORDED, never a gate — the screen shows them before the confirm and
-    // the history row keeps them, so the record says what was known at the time.
-    const downstream = await batchDownstreamWarnings(tx, {
-      batchId: p.batchId,
-      companyId: batch.companyId,
-      payPeriod: batch.payPeriod,
+  // Claims THIS run paid, for these people only. Back to 'approved' but still STAMPED on the batch —
+  // the pre-generation queued state, so re-processing the corrected employee re-picks them. Somebody
+  // else's paid claim on the same run is not in the predicate and cannot move.
+  const revertedClaims = await tx
+    .update(claimRequest)
+    .set({ status: 'approved', paidAt: null, payoutRef: null })
+    .where(
+      and(
+        eq(claimRequest.payrollBatchId, p.batchId),
+        eq(claimRequest.status, 'paid'),
+        inArray(claimRequest.employmentId, removedIds),
+      ),
+    )
+    .returning({ id: claimRequest.id, employmentId: claimRequest.employmentId });
+  for (const c of revertedClaims) {
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'claim-request',
+      aggregateId: c.id,
+      eventType: 'claim-request.payment-reversed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: c.employmentId,
+      payload: { batchId: p.batchId, reason: 'payroll-employee-removed' },
     });
-    const laterRows = await tx
-      .select({ employmentId: payslip.employmentId, payPeriod: payrollBatch.payPeriod })
-      .from(payslip)
-      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-      .where(
-        and(
-          inArray(payslip.employmentId, removedIds),
-          gt(payrollBatch.payPeriod, batch.payPeriod),
-          inArray(payrollBatch.status, ['processed', 'closed']),
-        ),
-      );
-    const laterProcessedPeriods = [...new Set(laterRows.map((r) => r.payPeriod))].sort();
+  }
 
-    // ONE run-level status-history row. `from`/`to` are both 'processed' on purpose: the run does NOT
-    // change status, and that is the whole point of the feature. Both `action` columns are free text
-    // (db/schema.ts) — no migration for any of this.
-    await tx.insert(payrollStatusHistory).values({
+  // The one-off lines this run paid these people. Their payslips are about to be deleted, so the money
+  // has NOT been paid and the corrected re-run must pay it; leaving the marker would strand it.
+  await releaseIndividualTxnsConsumed(tx, p.batchId, removedIds);
+
+  // The statutory adjustment describes a payslip that will not exist, so it goes with it — and into
+  // the snapshot, because it is not recoverable from anywhere else afterwards. Deliberately NOT via
+  // `revertStatutoryAdjustment`: that calls markBatchNeedsRecalc, i.e. it marks the run as owing a
+  // recalculation for an employee who is no longer on it, which is the opposite of what step 6 does.
+  const adjustments = await tx
+    .delete(payrollStatutoryAdjustment)
+    .where(
+      and(
+        eq(payrollStatutoryAdjustment.batchId, p.batchId),
+        inArray(payrollStatutoryAdjustment.employmentId, removedIds),
+      ),
+    )
+    .returning();
+  const adjustmentByEmp = new Map(adjustments.map((a) => [a.employmentId, a]));
+
+  // The anomaly verdicts standing against these people describe a payslip that is about to stop
+  // existing, so they go with it. NOT cosmetic: `openBlockingVerdicts` is keyed on batchId and joins
+  // no payslip, so one unresolved BLOCK among them would keep refusing `closeBatch` for an employee
+  // who is no longer on the run — and Close is the operator's very next action after a removal. The
+  // regeneration paths (reset → draft → process again) never hit this because `evaluateBatchAnomalies`
+  // supersedes the whole batch's verdicts before writing the next generation; removal deliberately
+  // leaves the run PROCESSED and regenerates nothing. Superseded, never deleted — same idiom, same
+  // reason, as a re-evaluation (core/payroll-anomaly.ts).
+  const anomalyVerdictsSuperseded = await supersedeVerdictsForEmployments(tx, {
+    batchId: p.batchId,
+    employmentIds: removedIds,
+  });
+
+  // ── 5a. Delete the payslips. ──
+  await tx
+    .delete(payslip)
+    .where(and(eq(payslip.batchId, p.batchId), inArray(payslip.employmentId, removedIds)));
+
+  // ── 5b. Totals BY DELTA, exactly as the subset reprocess path does: subtract what the removed
+  //    payslips contributed from the stored figure, rather than re-summing the run. `hrdfEmployer` is
+  //    the totals key; the payslip's statutory blob spells the same figure `hrdf`. ──
+  const stored = (batch.totals ?? {}) as Record<string, number>;
+  const delta = { ...stored } as Record<string, number>;
+  const sub = (k: string, v: unknown) => {
+    delta[k] = round2((Number(delta[k]) || 0) - (Number(v) || 0));
+  };
+  for (const sl of removing) {
+    const st = (sl.statutory ?? {}) as Record<string, number>;
+    sub('gross', sl.grossPay);
+    sub('net', sl.netPay);
+    sub('deductions', sl.totalDeductions);
+    sub('employerCost', sl.employerCost);
+    sub('epfEmployee', st.epfEmployee);
+    sub('epfEmployer', st.epfEmployer);
+    sub('socsoEmployee', st.socsoEmployee);
+    sub('socsoEmployer', st.socsoEmployer);
+    sub('eisEmployee', st.eisEmployee);
+    sub('eisEmployer', st.eisEmployer);
+    sub('pcb', st.pcb);
+    sub('hrdfEmployer', st.hrdf);
+  }
+  // RECOUNTED off the payslips, never decremented — the stored figure is then a fact about the run
+  // rather than a running total a half-failed operation could leave one out of. Same reasoning as the
+  // headcount note on the subset reprocess path.
+  const [{ n: payslipCount } = { n: 0 }] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(payslip)
+    .where(eq(payslip.batchId, p.batchId));
+  await tx
+    .update(payrollBatch)
+    .set({ totals: delta, employeeCount: Number(payslipCount) })
+    .where(eq(payrollBatch.id, p.batchId));
+
+  // ── 6a. The removed employees no longer have a figure that could be stale. ──
+  await clearBatchRecalc(tx, ctx, { batchId: p.batchId, employmentIds: removedIds });
+
+  // ── 6b. AUDIT. One per-employee row carrying the WHOLE payslip.
+  //
+  //    `before` is the full row, not the six keys a reprocess records (grossPay / netPay /
+  //    totalDeductions / employerCost / version / statutory). The r194 restore attempt is why: those
+  //    six are not enough to rebuild a payslip, and after a REPROCESS there is still another copy —
+  //    the payslip itself. After a REMOVAL there is no other copy anywhere. This row is it.
+  const actor = actorOf(ctx);
+  const historyIds: Record<string, string> = {};
+  for (const sl of removing) {
+    const adj = adjustmentByEmp.get(sl.employmentId) ?? null;
+    const [h] = await tx.insert(payrollEmployeeResultHistory).values({
       tenantId: ctx.tenantId,
       batchId: p.batchId,
-      action: 'remove-employee',
-      fromStatus: 'processed',
-      toStatus: 'processed',
+      employmentId: sl.employmentId,
+      action: 'remove',
       actorType: actor.type,
       actorId: actor.id ?? null,
       reason,
-      before: { status: 'processed', totals: batch.totals, employeeCount: batch.employeeCount },
-      after: {
-        status: 'processed',
-        totals: delta,
-        employeeCount: Number(payslipCount),
-        employmentIds: removedIds,
-        payslipsRemoved: removing.length,
-        loanInstalmentsReversed,
-        loansReopened,
-        claimsReverted: revertedClaims.length,
-        statutoryAdjustmentsRemoved: adjustments.length,
-        anomalyVerdictsSuperseded,
-        paymentDisbursed: downstream.paymentDisbursed,
-        statutoryFiled: downstream.statutoryFiled,
-        statutoryReturnsFiled: downstream.statutoryFiledCount,
-        laterProcessedPeriods,
-      },
-    });
+      versionBefore: sl.version,
+      versionAfter: null,
+      before: { payslip: sl, statutoryAdjustment: adj } as Record<string, unknown>,
+      after: null,
+    }).returning({ id: payrollEmployeeResultHistory.id });
+    historyIds[sl.employmentId] = h.id;
+  }
 
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'payroll-batch',
-      aggregateId: p.batchId,
-      eventType: 'payroll-batch.employee-payroll-removed',
-      actor,
-      payload: {
-        companyId: batch.companyId,
-        payPeriod: batch.payPeriod,
-        payPeriodId: batch.payPeriodId,
-        runType: batch.runType,
-        runSeq: batch.runSeq,
-        reason,
-        employmentIds: removedIds,
-        payslipsRemoved: removing.length,
-        loanInstalmentsReversed,
-        loansReopened,
-        claimsReverted: revertedClaims.length,
-        statutoryAdjustmentsRemoved: adjustments.length,
-        anomalyVerdictsSuperseded,
-        headcountAfter: Number(payslipCount),
-        paymentDisbursed: downstream.paymentDisbursed,
-        statutoryFiled: downstream.statutoryFiled,
-        // r292 — ADDED beside `statutoryReportsForPeriod`, not instead of it. That field has always meant
-        // "artefacts recorded for the month" and re-pointing it at the narrower filed set would make
-        // events written before and after this round incomparable.
-        statutoryReturnsFiled: downstream.statutoryFiledCount,
-        statutoryReportsForPeriod: downstream.statutoryReportCount,
-        laterProcessedPeriods,
-      },
-    });
+  // What the run has already sent downstream, and the later months computed with these payslips in
+  // the year to date. READ AND RECORDED, never a gate — the screen shows them before the confirm and
+  // the history row keeps them, so the record says what was known at the time.
+  const downstream = await batchDownstreamWarnings(tx, {
+    batchId: p.batchId,
+    companyId: batch.companyId,
+    payPeriod: batch.payPeriod,
+  });
+  const laterRows = await tx
+    .select({ employmentId: payslip.employmentId, payPeriod: payrollBatch.payPeriod })
+    .from(payslip)
+    .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+    .where(
+      and(
+        inArray(payslip.employmentId, removedIds),
+        gt(payrollBatch.payPeriod, batch.payPeriod),
+        inArray(payrollBatch.status, ['processed', 'closed']),
+      ),
+    );
+  const laterProcessedPeriods = [...new Set(laterRows.map((r) => r.payPeriod))].sort();
 
-    return {
-      payslipsRemoved: removing.length,
+  // ONE run-level status-history row. `from`/`to` are both 'processed' on purpose: the run does NOT
+  // change status, and that is the whole point of the feature. Both `action` columns are free text
+  // (db/schema.ts) — no migration for any of this.
+  await tx.insert(payrollStatusHistory).values({
+    tenantId: ctx.tenantId,
+    batchId: p.batchId,
+    action: 'remove-employee',
+    fromStatus: 'processed',
+    toStatus: 'processed',
+    actorType: actor.type,
+    actorId: actor.id ?? null,
+    reason,
+    before: { status: 'processed', totals: batch.totals, employeeCount: batch.employeeCount },
+    after: {
+      status: 'processed',
+      totals: delta,
+      employeeCount: Number(payslipCount),
       employmentIds: removedIds,
+      payslipsRemoved: removing.length,
+      loanInstalmentsReversed,
+      loansReopened,
+      claimsReverted: revertedClaims.length,
+      statutoryAdjustmentsRemoved: adjustments.length,
+      anomalyVerdictsSuperseded,
+      paymentDisbursed: downstream.paymentDisbursed,
+      statutoryFiled: downstream.statutoryFiled,
+      statutoryReturnsFiled: downstream.statutoryFiledCount,
+      laterProcessedPeriods,
+    },
+  });
+
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'payroll-batch',
+    aggregateId: p.batchId,
+    eventType: 'payroll-batch.employee-payroll-removed',
+    actor,
+    payload: {
+      companyId: batch.companyId,
+      payPeriod: batch.payPeriod,
+      payPeriodId: batch.payPeriodId,
+      runType: batch.runType,
+      runSeq: batch.runSeq,
+      reason,
+      employmentIds: removedIds,
+      payslipsRemoved: removing.length,
       loanInstalmentsReversed,
       loansReopened,
       claimsReverted: revertedClaims.length,
@@ -10067,10 +10324,30 @@ export async function removeEmployeePayroll(
       headcountAfter: Number(payslipCount),
       paymentDisbursed: downstream.paymentDisbursed,
       statutoryFiled: downstream.statutoryFiled,
-      statutoryFiledCount: downstream.statutoryFiledCount,
+      // r292 — ADDED beside `statutoryReportsForPeriod`, not instead of it. That field has always meant
+      // "artefacts recorded for the month" and re-pointing it at the narrower filed set would make
+      // events written before and after this round incomparable.
+      statutoryReturnsFiled: downstream.statutoryFiledCount,
+      statutoryReportsForPeriod: downstream.statutoryReportCount,
       laterProcessedPeriods,
-    };
+    },
   });
+
+  return {
+    historyIds,
+    payslipsRemoved: removing.length,
+    employmentIds: removedIds,
+    loanInstalmentsReversed,
+    loansReopened,
+    claimsReverted: revertedClaims.length,
+    statutoryAdjustmentsRemoved: adjustments.length,
+    anomalyVerdictsSuperseded,
+    headcountAfter: Number(payslipCount),
+    paymentDisbursed: downstream.paymentDisbursed,
+    statutoryFiled: downstream.statutoryFiled,
+    statutoryFiledCount: downstream.statutoryFiledCount,
+    laterProcessedPeriods,
+  };
 }
 
 // Read-only list (no events.append per the CLAUDE.md skip rule). `payPeriod` is an OPTIONAL
