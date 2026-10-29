@@ -45,7 +45,7 @@ describe('offline workplace setup bundle',()=>{
     expect(JSON.parse(readWorkplaceSetupLink(readFileSync(resolve(f.output,'setup-link.txt'),'utf8').trim()))).toEqual(JSON.parse(raw));
     expect(raw).not.toContain('PRIVATE KEY');expect(()=>f.customer('--origin','https://hr.client.test','--organization','client-c','--name','Again')).toThrow();
   });
-  it.each([
+  it.each<[string, string[]]>([
     ['a reserved organization code',['--origin','https://hr.client.test','--organization','operator','--name','X']],
     ['a missing name',['--origin','https://hr.client.test','--organization','client-c']],
     ['an unknown flag',['--origin','https://hr.client.test','--organization','client-c','--name','X','--tenant','another']],

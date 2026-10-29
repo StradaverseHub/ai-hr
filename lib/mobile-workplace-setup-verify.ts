@@ -49,10 +49,11 @@ export function parseEnvelope(input: unknown): SignedEnvelope {
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)) refuse('malformed');
   const e = value as Record<string, unknown>;
-  if (Object.keys(e).sort().join(',') !== 'keyId,payload,signature' || typeof e.keyId !== 'string' ||
-      !/^[A-Za-z0-9_-]{1,100}$/.test(e.keyId) || typeof e.payload !== 'string' || typeof e.signature !== 'string' ||
-      !/^[A-Za-z0-9_-]{86}$/.test(e.signature) || e.payload.length > MAX_SETUP_LENGTH) refuse('malformed');
-  return { keyId: e.keyId as string, payload: e.payload as string, signature: e.signature as string };
+  const { keyId, payload, signature } = e;
+  if (Object.keys(e).sort().join(',') !== 'keyId,payload,signature' || typeof keyId !== 'string' ||
+      !/^[A-Za-z0-9_-]{1,100}$/.test(keyId) || typeof payload !== 'string' || typeof signature !== 'string' ||
+      !/^[A-Za-z0-9_-]{86}$/.test(signature) || payload.length > MAX_SETUP_LENGTH) return refuse('malformed');
+  return { keyId, payload, signature };
 }
 
 /**
@@ -63,13 +64,9 @@ export function parseEnvelope(input: unknown): SignedEnvelope {
 export function verifySignedSetup(input: unknown, trust: readonly TrustAnchor[], now = Math.floor(Date.now() / 1000)): VerifiedSetup {
   const envelope = parseEnvelope(input);
   const anchor = trust.find(entry => entry?.keyId === envelope.keyId);
-  if (!anchor || typeof anchor.publicKey !== 'string') refuse('untrusted_key');
-  let payload: Uint8Array, signature: Uint8Array, publicKeyBytes: Uint8Array;
-  try {
-    payload = setupBytes(envelope.payload);
-    signature = setupBytes(envelope.signature);
-    publicKeyBytes = setupBytes(anchor.publicKey);
-  } catch { refuse('malformed'); }
+  if (!anchor || typeof anchor.publicKey !== 'string') return refuse('untrusted_key');
+  const bytesOf = (value: string): Uint8Array => { try { return setupBytes(value); } catch { return refuse('malformed'); } };
+  const payload = bytesOf(envelope.payload), signature = bytesOf(envelope.signature), publicKeyBytes = bytesOf(anchor.publicKey);
   if (signature.length !== 64 || publicKeyBytes.length !== 32) refuse('malformed');
   let valid = false;
   try {
@@ -78,16 +75,18 @@ export function verifySignedSetup(input: unknown, trust: readonly TrustAnchor[],
   } catch { valid = false; }
   if (!valid) refuse('bad_signature');
   if (typeof anchor.expiresAt === 'number' && anchor.expiresAt <= now) refuse('untrusted_key');
-  let parsed: Record<string, unknown>;
-  try { parsed = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(payload)); } catch { refuse('invalid_profile'); }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) refuse('invalid_profile');
-  if (typeof parsed.expiresAt === 'number' && parsed.expiresAt <= now) refuse('expired');
-  if (typeof parsed.notBefore === 'number' && parsed.notBefore > now) refuse('not_yet_valid');
-  let profile: CompanyProfile;
-  try { profile = validCompanyProfile(parsed, now); } catch { refuse('invalid_profile'); }
+  const parsed = ((): Record<string, unknown> => {
+    let value: unknown;
+    try { value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(payload)); } catch { return refuse('invalid_profile'); }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return refuse('invalid_profile');
+    return value as Record<string, unknown>;
+  })();
+  const { expiresAt, notBefore } = parsed;
+  if (typeof expiresAt === 'number' && expiresAt <= now) refuse('expired');
+  if (typeof notBefore === 'number' && notBefore > now) refuse('not_yet_valid');
+  const profile = ((): CompanyProfile => { try { return validCompanyProfile(parsed, now); } catch { return refuse('invalid_profile'); } })();
   if (profile.authProvider !== 'internal' || typeof profile.organization !== 'string' || !profile.organization) refuse('not_workplace');
-  let links: { web: string; app: string };
-  try { links = workplaceSetupLinks(JSON.stringify(envelope)); } catch { refuse('invalid_profile'); }
+  const links = ((): { web: string; app: string } => { try { return workplaceSetupLinks(JSON.stringify(envelope)); } catch { return refuse('invalid_profile'); } })();
   return {
     envelope, profile: profile as CompanyProfile & { organization: string }, keyId: envelope.keyId,
     expiresAt: profile.expiresAt, expiresSoon: profile.expiresAt - now < SETUP_RENEWAL_WINDOW_SECONDS, links,

@@ -64,6 +64,8 @@ afterAll(async () => { rmSync(keys, { recursive: true, force: true }); await clo
 const internal = (origin = ORIGIN) => {
   vi.stubEnv('AUTH_PROVIDER', 'internal'); vi.stubEnv('AUTH_PUBLIC_ORIGIN', origin);
   vi.stubEnv('AUTH_SESSION_KEY', '8'.repeat(64)); vi.stubEnv('NEXT_PUBLIC_APP_URL', origin);
+  // /login/mobile-connection answers unavailable on a demo session, so issuance and display stand down there.
+  vi.stubEnv('ALLOW_DEMO_SESSION', 'false');
 };
 const signing = (path = goodKey) => vi.stubEnv('AIHR_MOBILE_SETUP_SIGNING_KEY', path);
 
@@ -205,13 +207,17 @@ describe('the per-tick pass over existing customers', () => {
     for (const t of tenants) expect((await valueOf(t.tenantId))!.method).toBe('issued');
   });
 
-  it('does nothing without the key, or when embedded sign-in is not selected', async () => {
+  it('does nothing without the key, when embedded sign-in is not selected, or on a demo session', async () => {
     internal();
     const c = await customer('idle-co');
     expect(await mobileSetupPass(owner)).toEqual({ issued: 0, failed: 0 });
     signing(); vi.stubEnv('AUTH_PROVIDER', 'workos');
     expect(await mobileSetupPass(owner)).toEqual({ issued: 0, failed: 0 });
+    internal(); signing(); vi.stubEnv('ALLOW_DEMO_SESSION', 'true');
+    expect(await mobileSetupPass(owner)).toEqual({ issued: 0, failed: 0 });
+    expect(await issueMobileSetup(owner, c.tenantId, 'missing')).toEqual({ outcome: 'skipped', reason: 'not_issuing' });
     expect(await stored(c.tenantId)).toBeNull();
+    expect(await events(c.tenantId)).toEqual([]);
   });
 });
 
