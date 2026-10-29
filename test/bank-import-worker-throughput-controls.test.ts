@@ -45,10 +45,10 @@ describe.skipIf(!githubLinux)('Bank worker throughput consumer refusal controls 
   expect(result.text).not.toMatch(/\b(?:skipped|FAILED|ERROR|FAIL)\b/i);
   executed++;
  },70_000);
- it('executes all eight pure resource ownership and recovery groups without skips',()=>{
+ it('executes all nine pure resource ownership and recovery groups without skips',()=>{
   const result=controls('scripts/ci-bank-import-worker-resource-lifecycle-controls.test.py');
   expect(result.exitCode).toBe(0);expect(result.stdout).toBe('');expect(result.truncated).toBe(false);
-  expect(result.text).toMatch(/^Ran 8 tests in [0-9.]+s\s*$/m);
+  expect(result.text).toMatch(/^Ran 9 tests in [0-9.]+s\s*$/m);
   expect(result.text).toMatch(/^OK\s*$/m);
   expect(result.text).not.toMatch(/\b(?:skipped|FAILED|ERROR|FAIL)\b/i);
   executed++;
