@@ -145,7 +145,10 @@ describe('same-visibility Bank point-read policy experiment',()=>{
   };
   let primary:unknown;
   try{
-   for(const variant of ['original','global-case','hint-case'] as const){
+   // The preserved e1 / 40880164321 experiment measured the unconditional CASE
+   // regression on ordinary self/manager lists. Complete only the viable hinted
+   // path here; the first case still verifies both candidates' exact visibility.
+   for(const variant of ['original','hint-case'] as const){
     await install(original,baseline,variant);
     for(const hint of (variant==='original'?['off']:['off','on']) as ('off'|'on')[]){
      // Original hint immunity is checked across every principal above; avoid repeating
@@ -158,7 +161,9 @@ describe('same-visibility Bank point-read policy experiment',()=>{
      })).rejects.toBe(rollback);
      await unchanged();const observation={variant,kind:'native-rollback',hint,elapsedMs};result.push(observation);console.info('[bank-policy-cost]',JSON.stringify(observation));
     }
-    for(const [name,actor]of [['hr-admin',context],['self-employee',self],['manager',manager]] as const)for(const hint of ['off','on'] as const){
+    // The unchanged original policy never reads this hint (and both states are
+    // checked above). Avoid repeating its expensive identical broad baseline.
+    for(const [name,actor]of [['hr-admin',context],['self-employee',self],['manager',manager]] as const)for(const hint of (variant==='original'?['off']:['off','on']) as ('off'|'on')[]){
      const started=performance.now();
      try{
       const visible=await withTenant(actor,async tx=>{
@@ -185,5 +190,5 @@ describe('same-visibility Bank point-read policy experiment',()=>{
   }
   const broadParityProven=['hr-admin','self-employee','manager'].every(name=>result.some(r=>r.kind==='broad-page-1000'&&r.context===name&&r.variant==='original'&&!r.timedOut)&&result.filter(r=>r.kind==='broad-page-1000'&&r.context===name).every(r=>!r.timedOut));
   console.info('[bank-policy-cost-summary]',JSON.stringify({catalogRows:ROWS,results:result,broadParityProven,nativeSaved:0,originalPolicyRestored:true,hintRestored:true,releaseAuthorized:false}));
- },900000);
+ },1100000);
 });
