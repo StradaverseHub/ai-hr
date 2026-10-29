@@ -68,7 +68,9 @@ describe('Rewards two-person access and live People eligibility',()=>{
   await nativeRefused(withTenant(agent,tx=>tx.execute(sql`select app.reward_access_request_create(${JSON.stringify(before.requests[0].changes)}::jsonb)`)),'23514');
   await nativeRefused(withTenant(agent,tx=>tx.execute(sql`select app.reward_access_request_decide(${pending.requestId}::uuid,true,'')`)),'42501');
   await expect(decideRewardAccessRequest(agent,pending.requestId,true)).rejects.toMatchObject({code:'scope'});
-  await nativeRefused(withTenant(agent,tx=>tx.insert(s.rewardMember).values({tenantId:b.tenantId,unitId,userId:agent.agent!.principalId,role:'gr'})),'42501');
+  // A real same-tenant login passes the link guard; this insert must fail at write authority.
+  expect(before.members.some(member=>member.userId===checker.userId&&member.role==='gr')).toBe(false);
+  await nativeRefused(withTenant(agent,tx=>tx.insert(s.rewardMember).values({tenantId:b.tenantId,unitId,userId:checker.userId!,role:'gr'})),'42501');
   expect(await securityState()).toEqual(before);
   // The unchanged pending request remains executable by its real independent human checker.
   expect(await decideRewardAccessRequest(checker,pending.requestId,true)).toEqual({status:'approved'});
