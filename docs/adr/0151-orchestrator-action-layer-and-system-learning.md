@@ -213,6 +213,42 @@ Plus the inline review card (§4.3) for the existing 19 actions, which removes t
 changing their owners. Later waves: HR lifecycle cases and prepared personnel changes, leave administration,
 payroll preparation (inputs and checks, never close or unlock as Automatic), then scheduled agents under §4.5.
 
+### 5.1 Amendment, 29 Oct 2026: assigned decisions on the generic receipt shape (wave 1b)
+
+Items 3–6 use migration 0671. Overtime (item 3) is a generic OWN kind whose subject is the caller's own
+employment, because the native request row exists only after confirmation. The three decisions (items 4–6)
+add a second generic binding mode, **assigned**, modelled on the leave-decision custody:
+
+- The review row keeps the decider's login and nullable person, and the subject's employment, company and
+  person. The subject person lives in the existing `decision_subject_person_id` column, so the existing
+  privacy-erasure and outcome-capture owners cover it without change.
+- Authority is the native service's. The adapter asks it (`assertCanDecide`, the frozen attendance workflow)
+  before preparing and the service decides again when it writes. The decider can never decide their own
+  request, for any role: the adapter, the SQL binding and the completion verifier each refuse it, although
+  `assertCanDecide` itself lets a super admin decide their own item on the screen.
+- Completion still proves the native row and event were committed in this transaction, by this login, for
+  this subject. An attendance decision binds the pending workflow level (and participant slot) into the
+  reviewed digest; it may record one level and leave the request pending.
+- One pending review per item per decider, so one approver's open review neither blocks nor reveals itself
+  to another approver of the same item. Index and discard are bound to the login's current person.
+
+### 5.2 Amendment, 29 Oct 2026: inline review cards (§4.3), first increment
+
+- The model proposes through a new answer-plan mode, never a tool:
+  `{"version":1,"mode":"propose","action":"<id>","hints":{...}}`. It is parsed by the same strict canonical-JSON
+  parser and sealed in the same exchange record as every other plan; no table or ledger is added and the chat
+  tool loop stays read-only. Nothing is prepared or written during the model turn.
+- Proposable now: the seven generic wave 1/1b actions with typed hints only (`leave.cancel` {startDate?},
+  `leave.edit` {startDate?, newStartDate, newEndDate}, `claims.cancel` {incurredOn?},
+  `attendance.overtime.request` {date, plannedStartTime, plannedEndTime}, and the three assigned decisions with
+  no hints). Hints carry no IDs, names or human text, and never a decision. A proposal is accepted only for an
+  implemented prepare nomination whose module the caller can currently read; otherwise it fails closed.
+- After the turn the card resolves hints against the caller's own fresh `choices` from the guarded module-action
+  endpoint: one match is preselected, zero or several ask the person to pick. Human fields start empty;
+  preparation, confirmation and lost-response reopening use the existing panels and digest-bound commands.
+- Not yet covered: the other implemented actions keep their bespoke protocols and the existing human-review link
+  card. Each needs its own typed hint shape and panel prefill before it can be proposed inline.
+
 ## 6. Alternatives considered
 
 - **Give the agent its own broad role** (as the nightly sweep does today). Rejected: authority would no longer

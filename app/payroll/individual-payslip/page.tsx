@@ -152,7 +152,7 @@ import { payslipSkbbkLineShown, payslipSkbbkSubject } from '@/core/payslip-skbbk
 import { payslipSegmentOf } from '@/core/payslip-segment';
 // r360 — the ONE rule that decides whether a payslip's cycle reads "Monthly" or "Regular", shared with
 // lib/payslip-pdf-strings.ts so the screen, the preview and the downloaded file all print one answer.
-import { payslipCycleLabel } from '@/core/payslip-cycle-label';
+import { payrollRunLabel, payslipCycleLabel } from '@/core/payslip-cycle-label';
 import { payrollPublicationState, PAYROLL_PUBLICATION_PILL } from '@/lib/payroll-publication';
 import { payslipProvenance } from '@/core/payslip-recompute';
 import { payrollProcessBack } from '../back';
@@ -182,6 +182,7 @@ import { SourceTxnBlock } from '../transaction-view/source-txn-block';
 // own code and description, never the category it was classified into.
 // 417d4937 — and the read-time repair for RECORD lines, whose stored name was a free-text remark until
 // r196 and stays wrong on every run calculated before that deploy unless the screen reads the catalogue.
+import { displayComponentLines } from '@/core/payslip-imported-lines';
 import { earningRowShown, payItemLabel, recordLineIdentity, storedComponentLines, payItemLinesForBuckets, storedOvertimeLines, payItemLinesReconcile } from '@/core/payslip-earning-lines';
 
 /** One cookie per screen — each collapses independently (the convention f3ae3245 set for Fixed). */
@@ -433,7 +434,7 @@ export default async function IndividualPayslipPage({
   // Rate evidence comes from the same validated snapshot reader as the PDF. The review's historical
   // grouped row may combine several components, so attach a rate only to one exact saved identity.
   // Ambiguous/partial evidence stays blank; no attendance or current catalogue is consulted.
-  const components=storedComponentLines(row?.statutory);
+  const components=displayComponentLines(row?.statutory);
   const recordedDetails={allowance:payItemLinesForBuckets(components,['wage','reimburse']),overtime:payItemLinesForBuckets(components,['ot']),bonus:payItemLinesForBuckets(components,['bonus'])};
   const detailFor=(line:{code:string;name:string;amount:number},kind:keyof typeof recordedDetails)=>{
     const matches=recordedDetails[kind].filter(candidate=>(candidate.code??'')===line.code&&candidate.name===line.name&&candidate.amount===line.amount);
@@ -591,9 +592,12 @@ export default async function IndividualPayslipPage({
               <option value="">{tTxn('view.filters.all')}</option>
               {runOptions.map((o) => (
                 <option key={o.value} value={o.value}>
-                  {o.runSeq > 1
-                    ? t('cycleRun', { cycle: tTxn(`individual.cycle.${o.runType}`), n: o.runSeq })
-                    : tTxn(`individual.cycle.${o.runType}`)}
+                  {/* b240c0ff — imported payroll history is named by its Pay Cycle ("Monthly - By Import"). */}
+                  {o.historyImportAttemptId
+                    ? payrollRunLabel(o, tTxn(`individual.cycle.${o.runType}`))
+                    : o.runSeq > 1
+                      ? t('cycleRun', { cycle: tTxn(`individual.cycle.${o.runType}`), n: o.runSeq })
+                      : tTxn(`individual.cycle.${o.runType}`)}
                 </option>
               ))}
             </select>
@@ -856,6 +860,15 @@ export default async function IndividualPayslipPage({
               />
             )}
             {absence.showResidual && <Row label={tSlip('otherDeductions')} value={rm(absence.residual)} />}
+            {/* b240c0ff — the named deduction items behind the row above (imported payroll history keeps
+                each line), only when they add up to it. Reconciled in the derivation. */}
+            {absence.showResidual && b.deductionLines.map((l, i) => (
+              <p key={`d${i}`} className="grid grid-cols-[2fr_1fr_1fr] gap-2 ps-3 text-xs text-muted-foreground">
+                <span className="min-w-0 break-words">{payItemLabel(l)}</span>
+                <span />
+                <span className="text-right tabular-nums">{rm(l.amount)}</span>
+              </p>
+            ))}
             {/* 6b4ca488 — NO minus sign. `deriveHistoryBreakdown` returns `totalDeductions` as a POSITIVE
                 magnitude (it always has), so the U+2212 that used to sit here was a literal character
                 glued onto an already-positive figure, not a negative value. It read as "minus RM1,234"

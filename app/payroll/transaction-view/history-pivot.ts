@@ -195,6 +195,11 @@ export type HistoryGridRow = {
   name: string;
   /** Third column — the reference's "Payment ID". */
   runType: ProcessedPayslipViewRow['runType'];
+  /** b240c0ff — set when the row's money came from the payroll-history import, so the column reads
+   *  "Monthly - By Import" (`payrollRunLabel`) instead of the stored "Adjustment". Imported history is keyed
+   *  apart from an ordinary adjustment run, by its cycle name. Absent on every other row. */
+  historyImportAttemptId?: string | null;
+  historyImportCycleName?: string | null;
   /** 3c88d593 — the PAYING company. Part of the row key, and the fourth column on screen. An employee who
    *  never changed entity gets the same one name repeated down it and rows identical to before. */
   companyId: string;
@@ -631,7 +636,10 @@ export function pivotHistoryGrid(p: {
     const slip = cellsFor(row, p.payItemNames);
     if (slip.detailNotRecorded) detailNotRecorded = true;
     if (slip.basesNotRecorded) basesNotRecorded = true;
-    const lk = lumpKey(row.companyId, row.runType);
+    // b240c0ff — imported history is its own run line (by Pay Cycle name), never merged into a genuine
+    // adjustment run's row: the two are different runs that merely share a stored run type.
+    const runKey = row.historyImportAttemptId ? `import:${(row.historyImportCycleName ?? '').trim()}` : row.runType;
+    const lk = lumpKey(row.companyId, runKey);
     const lump = lumpAccounted.get(lk) ?? { allowance: true, otherDeductions: true };
     lump.allowance &&= slip.lumpAccounted.allowance;
     lump.otherDeductions &&= slip.lumpAccounted.otherDeductions;
@@ -647,7 +655,7 @@ export function pivotHistoryGrid(p: {
       // 3c88d593 — and the PAYING COMPANY, for the same reason one level out: two employers' figures for
       // one (item, run type, month) are two different things and summing them hid an entity transfer
       // entirely. See this file's header for why no figure moves.
-      const key = `${c.kind}:${c.group}:${c.code}:${row.runType}:${row.companyId}`;
+      const key = `${c.kind}:${c.group}:${c.code}:${runKey}:${row.companyId}`;
       let target = acc.get(key);
       if (!target) {
         target = {
@@ -657,6 +665,9 @@ export function pivotHistoryGrid(p: {
           labelKey: c.labelKey,
           name: c.name,
           runType: row.runType,
+          ...(row.historyImportAttemptId
+            ? { historyImportAttemptId: row.historyImportAttemptId, historyImportCycleName: row.historyImportCycleName ?? null }
+            : {}),
           companyId: row.companyId,
           company: row.company,
           group: c.group,
@@ -695,7 +706,7 @@ export function pivotHistoryGrid(p: {
   const rows = [...acc.values()];
   let subjectFromCatalogue = false;
   const lumpFor = (r: HistoryGridRow) =>
-    lumpAccounted.get(lumpKey(r.companyId, r.runType)) ?? { allowance: false, otherDeductions: false };
+    lumpAccounted.get(lumpKey(r.companyId, r.historyImportAttemptId ? `import:${(r.historyImportCycleName ?? '').trim()}` : r.runType)) ?? { allowance: false, otherDeductions: false };
   for (const r of rows) {
     r.total = round2(r.months.reduce((s, m) => s + m, 0));
     // Ascending, so the two halves of a transferred month read in the order they were worked.

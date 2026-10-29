@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { personnelReferenceOptions } from '@/lib/personnel-template-reference';
 import {personnelImportBrowserKey} from '@/lib/personnel-import-browser-key';
 import { getPeopleGeneral } from '@/core/people-general';
@@ -116,6 +117,8 @@ export default async function ImportPage() {
           {/* cf43c909 — the record of what has been loaded. Always rendered, empty state included, so an
               admin who has never imported still learns that a history exists before they upload. */}
           <ImportHistory runs={importRuns} />
+          {/* c4055300 / ADR-0155 — the shared Import History: original file, before/after and Revert. */}
+          <p className="text-sm"><Link href="/admin/personnel/import/history" className="text-primary underline">{t('importHistoryLink')}</Link></p>
         </>
       )}
     </div>

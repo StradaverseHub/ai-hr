@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { Field, inputCls } from '@/components/ui';
 import { resumeHref } from '../selection-logic';
+import { payrollRunLabel } from '@/core/payslip-cycle-label';
 
 export type ExistingRun = {
   id: string;
@@ -12,6 +13,9 @@ export type ExistingRun = {
   runType: string;
   status: string;
   company: string;
+  /** b240c0ff — imported payroll history is listed by its Pay Cycle ("Monthly - By Import"). */
+  historyImportAttemptId?: string | null;
+  historyImportCycleName?: string | null;
 };
 
 /** Label availability comes from Global or each record's explicit company Criteria. */
@@ -207,7 +211,7 @@ export function StepPeriod({
             {runsForPeriod.map((r) => (
               <li key={r.id} className="flex items-center justify-between gap-2">
                 <span className="text-muted-foreground">
-                  {t(`runType.${r.runType}`)} · <span className="capitalize">{r.status}</span>
+                  {payrollRunLabel(r, t(`runType.${r.runType}`))} · <span className="capitalize">{r.status}</span>
                 </span>
                 {/* A DRAFT run resumes into the wizard at Employee Selection (the "who's in this run" step,
                     formerly bypassed for drafts). Processed/closed runs keep their direct read-only link. */}

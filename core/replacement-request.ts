@@ -963,6 +963,23 @@ export async function decideReplacementLeaveRequest(
   // reachable on purpose — refusing to let an admin clear a pending queue after the module lapses would
   // strand the request, and a rejection grants nothing.
   return withTenant(ctx, async (tx) => {
+    const { eventId: _eventId, employmentId: _employmentId, ...result } = await decideReplacementLeaveRequestTx(tx, ctx, p);
+    return result;
+  });
+}
+
+/** decideReplacementLeaveRequest in the caller's transaction (ADR-0151): the Assistant's assigned TOIL
+ *  decision commits the decision and its own receipt together. Identical locks, rules and events; also
+ *  returns the decision event and the subject employment. */
+export async function decideReplacementLeaveRequestTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { requestId: string; decision: 'approved' | 'rejected'; note?: string; decidedAt?: Date },
+): Promise<DecideReplacementRequestResult & { eventId: string; employmentId: string }> {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  p = { requestId: p.requestId, decision: p.decision, note: p.note,
+    decidedAt: p.decidedAt ? new Date(p.decidedAt.getTime()) : undefined };
+  {
     await lockAccessConfigurationTx(tx, ctx.tenantId);
     // Approval may create the shared replacement catalogue entry; own the exclusive phase first.
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
@@ -992,7 +1009,7 @@ export async function decideReplacementLeaveRequest(
         .update(replacementLeaveRequest)
         .set({ status: 'rejected', decidedAt, decidedByUserId: ctx.userId ?? null, decisionNote: p.note?.trim() || null })
         .where(eq(replacementLeaveRequest.id, p.requestId));
-      await appendEvent(tx, {
+      const eventId = await appendEvent(tx, {
         tenantId: ctx.tenantId,
         aggregateType: 'replacement-leave-request',
         aggregateId: p.requestId,
@@ -1000,8 +1017,8 @@ export async function decideReplacementLeaveRequest(
         actor: actorOf(ctx),
         subjectEmploymentId: req.employmentId,
         payload: { note: p.note ?? null },
-      });
-      return { status: 'rejected' as const, granted: 0, daysCredited: 0 };
+      }, { returnId: true });
+      return { status: 'rejected' as const, granted: 0, daysCredited: 0, eventId, employmentId: req.employmentId };
     }
 
     // Approving MINTS credits, so the add-on must be live for this half.
@@ -1112,7 +1129,7 @@ export async function decideReplacementLeaveRequest(
       })
       .where(eq(replacementLeaveRequest.id, p.requestId));
 
-    await appendEvent(tx, {
+    const eventId = await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'replacement-leave-request',
       aggregateId: p.requestId,
@@ -1120,10 +1137,10 @@ export async function decideReplacementLeaveRequest(
       actor: actorOf(ctx),
       subjectEmploymentId: req.employmentId,
       payload: { granted, daysCredited, expiresOn, decidedAt: decidedAt.toISOString(), submittedOn: req.submittedOn },
-    });
+    }, { returnId: true });
 
-    return { status: 'approved' as const, granted, daysCredited, expiresOn };
-  });
+    return { status: 'approved' as const, granted, daysCredited, expiresOn, eventId, employmentId: req.employmentId };
+  }
 }
 
 /**

@@ -487,6 +487,11 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/personnel/new',
     ],
   },
+  // c4055300 / ADR-0155 — Import History. Its own column because what a reader sees is narrower than the
+  // page floor: an import is listed for Workforce view on at least one of its companies, each item only for
+  // its own company, the original file only with view on every company, and Revert only with Workforce
+  // maintain on every company. The guard MATCHES the pages' own requireAdmin().
+  {screenKey:'importHistory',href:'/admin/personnel/import/history',labelKey:'admin.users.screen.importHistory',guard:'requireAdmin',routes:['/admin/personnel/import/history','/admin/personnel/import/history/[attemptId]'],hasScopeNote:true},
   {
     // 05d2709a — Possible duplicate employee records. Its OWN column, deliberately NOT a fifth route on
     // personnelAdmin above: managing an employee and reviewing a cross-company list of people who may be

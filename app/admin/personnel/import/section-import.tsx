@@ -33,6 +33,7 @@ import {
 } from '@/lib/import-sections';
 import type { ImportReference } from './employee-import';
 import { commitSectionAction, validateSectionAction,registerRecordsAction } from './section-actions';
+import { bankStatutoryChoices } from '@/lib/bank-statutory-import';
 
 /**
  * Item 2983802f — THE PER-SECTION IMPORT SCREEN: one subject area, existing employees only.
@@ -65,6 +66,8 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
   const [result, setResult] = useState<SectionImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  // 0db97f14 — the picked file itself, so a Bank & Statutory import records the ORIGINAL file in Import History.
+  const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   const [reading, setReading] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -119,7 +122,7 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
     reset();
     const revision = inputRevision.current;
     const readRevision = ++fileReadRevision.current;
-    setFileName(null);
+    setFileName(null);setSourceFile(null);
     setReading(true);
     try {
       // No extra sheets: a section file is ONE sheet by definition — that is what makes it a section.
@@ -127,11 +130,12 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
       if (revision !== inputRevision.current) return;
       setCsv(text);
       setFileName(name);
+      setSourceFile(file);
       setResult(null);
       runValidate(text);
     } catch (e) {
       if (revision !== inputRevision.current) return;
-      setFileName(null);
+      setFileName(null);setSourceFile(null);
       reset();
       setError(t(importFileMessageKey(e)));
     } finally {
@@ -167,7 +171,19 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
     try {
       const { buildXlsx } = await import('@/lib/spreadsheet');
       const sheet=isPersonnelRegisterKind(section)?section:section==='family'?'family':'employee';
-      const referenceLists=personnelTemplateReferenceLists(sheet,columns,reference,employeeColumnLabel,(key,fallback)=>personnelLabels.has(key)?personnelLabels(key):fallback);
+      const resolveLabel=(key:string,fallback:string)=>personnelLabels.has(key)?personnelLabels(key):fallback;
+      const referenceLists=personnelTemplateReferenceLists(sheet,columns,reference,employeeColumnLabel,resolveLabel);
+      // 0db97f14 — Yes/No, HRDF, tax category and bank lists for the Bank & Statutory settings.
+      if(section==='bank_statutory')for(const column of columns){
+        if(referenceLists.some(list=>list.column===column))continue;
+        const choices=bankStatutoryChoices(column);if(!choices.length)continue;
+        referenceLists.push({column,label:employeeColumnLabel(column),values:choices.map(choice=>choice.value),entries:choices.map(choice=>({value:choice.value,label:choice.labelKey?resolveLabel(choice.labelKey,choice.value):choice.label??choice.value}))});
+      }
+      // One Instructions row per column: what it is, whether it is required, and the values it accepts.
+      const columnRows=section==='bank_statutory'?[[],[t('instructionColumnsHeading')],...columns.map(column=>{
+        const list=referenceLists.find(item=>item.column===column);
+        return [employeeColumnLabel(column),column==='employee_code'?t('required'):t('optional'),[guidance(column,'employee','update'),list?t('instructionAccepted',{values:list.values.join(', ')}):''].filter(Boolean).join(' · ')];
+      })]:[];
       const extraSheets: NonNullable<import('@/lib/spreadsheet').BuildXlsxOptions['extraSheets']> = [];
       // Registry-owned choices and fresh catalogs follow the selected section.
       if (referenceLists.length > 0) {
@@ -190,7 +206,7 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
           t('instructionImportCodes'),
           t('instructionLargeLists'),
                 nricGuidance,
-        ]),[],...personnelImportExclusionRows(section,(key,fallback)=>personnelLabels.has(key)?personnelLabels(key):fallback)],
+        ]),...columnRows,[],...personnelImportExclusionRows(section,(key,fallback)=>personnelLabels.has(key)?personnelLabels(key):fallback)],
       });
       const bytes = await buildXlsx(columns.map(employeeColumnLabel), [], {
         sheetName: SECTION_SHEET_NAMES[section],
@@ -243,6 +259,17 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
       try {
         // The section name rides along on the history label so one history can hold both kinds of run
         // without an admin having to guess which was which.
+        if (section === 'bank_statutory') {
+          // 0db97f14 — the original file (or the pasted text as a CSV file) is recorded in Import History.
+          const body = sourceFile ?? new Blob([csv], { type: 'text/csv;charset=utf-8' });
+          const name = sourceFile?.name ?? 'pasted-bank-statutory.csv';
+          const response = await fetch('/admin/personnel/import/bank-statutory/upload?name=' + encodeURIComponent(name), { method: 'POST', body, headers: { 'x-upload-operation': crypto.randomUUID() } });
+          const payload = await response.json().catch(() => ({ error: null }));
+          if (!response.ok) { setError(response.status === 413 ? t('fileTooLarge') : payload.error ?? t('bankStatutoryUploadFailed')); return; }
+          setResult(payload as SectionImportResult);
+          router.refresh();
+          return;
+        }
         const r = await commitSectionAction(section, csv, `${label} · ${fileName ?? t('historyPasted')}`);
         setResult(r);
         router.refresh();
@@ -354,7 +381,7 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
                 onChange={(e) => {
                   if (commitPending.current) return;
                   setCsv(e.target.value);
-                  setFileName(null);
+                  setFileName(null);setSourceFile(null);
                   reset();
                 }}
                 spellCheck={false}
@@ -417,12 +444,17 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
             <Link href="/admin/personnel" className="text-primary hover:underline">
               {t('viewPeople')}
             </Link>
+            {result.attemptId && (
+              <Link href={`/admin/personnel/import/history/${result.attemptId}`} className="text-primary hover:underline">
+                {t('viewImportHistoryEntry')}
+              </Link>
+            )}
             <button
               type="button"
               className="text-muted-foreground hover:text-foreground"
               onClick={() => {
                 setCsv('');
-                setFileName(null);
+                setFileName(null);setSourceFile(null);
                 reset();
               }}
             >
