@@ -94,6 +94,46 @@ describe('guided Overtime Pattern editing',()=>{
   await waitFor(()=>expect(mocks.save).toHaveBeenCalledOnce());
   expect(mocks.save.mock.calls[0][0].draft.definition.eligibility).toEqual(eligibility);
  });
+ it('summarizes complete policy scope, recursive amounts, clocks, mappings and saved assignments',()=>{
+  const item=detail();const advanced=structuredClone(pattern);
+  advanced.definitions=[{id:'salary_base',expression:{id:'base_sum',type:'add',unit:'money',left:{id:'base_literal',type:'literal',unit:'money',currency:'MYR',value:'3700'},right:{id:'extra_literal',type:'literal',unit:'money',currency:'MYR',value:'175'}}}];
+  advanced.eligibleMinutes={id:'count',type:'field',unit:'minutes',field:'approvedMinutes'};
+  advanced.durationCap={id:'cap',type:'literal',unit:'minutes',value:'240'};
+  advanced.paymentCap={id:'money_cap',type:'literal',unit:'money',currency:'MYR',value:'888'};
+  advanced.eligibility={id:'clock',type:'clock',boundary:'end',operator:'between',value:{dayOffset:1,minute:60},upper:{dayOffset:2,minute:90}};
+  advanced.rates[0].tiers[0].payment={method:'hourly',multiplier:{id:'multiplier',type:'literal',unit:'scalar',value:'1.5'},rate:{id:'rate',type:'hourlyRate',unit:'moneyPerHour',base:{id:'base_ref',type:'ref',unit:'money',definitionId:'salary_base'},divisorMinutes:{id:'divisor',type:'literal',unit:'minutes',value:'10400'}}};
+  item.versions[0].definition=advanced;
+  item.assignments=[{id:'saved_assignment',versionId,validFrom:'2026-11-01',validTo:'2026-12-01',priority:2,target:{type:'individual',employmentIds:[employeeId]}} as typeof item.assignments[number]];
+  wrap(<OvertimeWorkspace detail={item} version={item.versions[0]} setup={{...setup,earningItems:[{id:advanced.rates[0].tiers[0].mapping.earningItemId,label:'Fictional OT earning'}]}}/>);tab('preview');
+  const preview=screen.getByRole('tabpanel',{name:/Preview/});
+  expect(within(preview).getAllByText('Fictional Company')).toHaveLength(2);
+  expect(within(preview).getByText(/3700.*175.*10400/)).toBeVisible();
+  expect(within(preview).getAllByText(/Next day 01:00.*Two days later 01:30/)[0]).toBeVisible();
+  expect(within(preview).getByText(/Fictional OT earning/)).toBeVisible();
+  expect(within(preview).getByText(/Fictional Employee/)).toBeVisible();
+  expect(within(preview).getByText(/2026-11-01.*2026-12-01/)).toBeVisible();
+  expect(within(preview).getByText('MYR 888')).toBeVisible();
+  expect(within(preview).queryByRole('textbox')).toBeNull();
+  expect(screen.getByText(words.guided.manageLifecycle).closest('details')).not.toHaveAttribute('open');
+ });
+ it('shows simple salary field/operator/currency amount controls and preserves advanced formula access',()=>{
+  editor();tab('eligibility');fireEvent.click(screen.getByRole('button',{name:words.guided.addSalaryCondition}));
+  const panel=screen.getByRole('tabpanel',{name:/Eligibility/});
+  expect(within(panel).getByLabelText(`${words.guided.comparisonAmount} · MYR`)).toBeVisible();
+  fireEvent.change(within(panel).getByLabelText(`${words.guided.comparisonAmount} · MYR`),{target:{value:'4000'}});
+  expect(within(panel).getByRole('heading',{name:words.guided.employeeEligibility})).toBeVisible();
+  expect(within(panel).getByRole('heading',{name:words.guided.eligibilityConditions})).toBeVisible();
+  const posted=JSON.parse((document.querySelector('input[name="overtimeDraft"]') as HTMLInputElement).value);
+  expect(posted.definition.eligibility.children[1].right).toMatchObject({type:'literal',unit:'money',currency:'MYR',value:'4000'});
+  expect(within(panel).getByText(words.guided.advancedCondition)).toBeVisible();
+ });
+ it('exposes named focusable table regions and a current-step label on narrow layouts',()=>{
+  editor();tab('rates');
+  expect(screen.getByRole('region',{name:'Overtime Rates · Configured rate'})).toHaveAttribute('tabindex','0');
+  expect(within(screen.getByRole('tabpanel',{name:/Overtime Rates/})).getByText(words.guided.horizontalScroll)).toBeInTheDocument();
+  expect(screen.getByText('Step 2 of 4 · Overtime Rates')).toBeInTheDocument();
+  expect(screen.getByRole('tab',{name:/General Settings/}).querySelector('svg path')).not.toBeNull();
+ });
  it('keeps pending drafts distinct from Save Pattern and never fabricates a missing value',async()=>{
   editor();tab('rates');
   fireEvent.change(screen.getByLabelText(words.guided.rateFor.replace('{row}','1')),{target:{value:''}});

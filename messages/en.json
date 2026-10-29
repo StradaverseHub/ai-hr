@@ -24737,6 +24737,14 @@
   },
   "overtimePatterns": {
     "guided": {
+      "comparisonAmount": "Comparison amount",
+      "eligibilityConditions": "Eligibility Conditions",
+      "advancedCondition": "Advanced condition formula",
+      "savedAssignments": "Saved employee assignments",
+      "noAssignments": "No saved assignments for this version. Eligibility criteria above are part of the pattern; assignments are managed separately.",
+      "superseded": "Superseded assignment",
+      "manageLifecycle": "Pattern activation and management",
+      "horizontalScroll": "Scroll horizontally to view every column. Keyboard: focus the table region, then use the left and right arrow keys.",
       "contradiction": "These conditions cannot match together. Review the comparison bounds and selected values. Saving preserves the rules as entered.",
       "selectedEmployees": "Limit to selected employees",
       "addSalaryCondition": "Add basic salary condition",

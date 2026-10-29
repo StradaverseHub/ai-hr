@@ -24737,6 +24737,14 @@
   },
   "overtimePatterns": {
     "guided": {
+      "comparisonAmount": "比较金额",
+      "eligibilityConditions": "资格条件",
+      "advancedCondition": "高级条件公式",
+      "savedAssignments": "已保存的员工分配",
+      "noAssignments": "此版本没有已保存的分配。以上资格条件属于模式配置；分配需单独管理。",
+      "superseded": "已被取代的分配",
+      "manageLifecycle": "模式启用与管理",
+      "horizontalScroll": "横向滚动以查看所有列。键盘操作：聚焦表格区域后，使用左右方向键。",
       "contradiction": "这些条件无法同时满足。请检查比较范围和所选值。保存会保留当前输入的规则。",
       "selectedEmployees": "仅适用于选定员工",
       "addSalaryCondition": "添加基本工资条件",

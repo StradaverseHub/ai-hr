@@ -24737,6 +24737,14 @@
   },
   "overtimePatterns": {
     "guided": {
+      "comparisonAmount": "Số tiền so sánh",
+      "eligibilityConditions": "Điều kiện đủ tiêu chuẩn",
+      "advancedCondition": "Công thức điều kiện nâng cao",
+      "savedAssignments": "Phân công nhân viên đã lưu",
+      "noAssignments": "Phiên bản này chưa có phân công đã lưu. Tiêu chí đủ điều kiện ở trên là một phần của mẫu; phân công được quản lý riêng.",
+      "superseded": "Phân công đã thay thế",
+      "manageLifecycle": "Kích hoạt và quản lý mẫu",
+      "horizontalScroll": "Cuộn ngang để xem tất cả các cột. Bàn phím: đặt tiêu điểm vào vùng bảng, rồi dùng phím mũi tên trái và phải.",
       "contradiction": "Các điều kiện này không thể đồng thời thỏa mãn. Hãy kiểm tra giới hạn so sánh và các giá trị đã chọn. Khi lưu, các quy tắc đã nhập sẽ được giữ nguyên.",
       "selectedEmployees": "Chỉ áp dụng cho nhân viên đã chọn",
       "addSalaryCondition": "Thêm điều kiện lương cơ bản",

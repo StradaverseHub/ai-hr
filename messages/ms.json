@@ -24737,6 +24737,14 @@
   },
   "overtimePatterns": {
     "guided": {
+      "comparisonAmount": "Amaun perbandingan",
+      "eligibilityConditions": "Syarat Kelayakan",
+      "advancedCondition": "Formula syarat lanjutan",
+      "savedAssignments": "Penugasan pekerja tersimpan",
+      "noAssignments": "Tiada penugasan tersimpan untuk versi ini. Kriteria kelayakan di atas ialah sebahagian daripada corak; penugasan diurus berasingan.",
+      "superseded": "Penugasan diganti",
+      "manageLifecycle": "Pengaktifan dan pengurusan corak",
+      "horizontalScroll": "Tatal mendatar untuk melihat semua lajur. Papan kekunci: fokus pada kawasan jadual, kemudian gunakan kekunci anak panah kiri dan kanan.",
       "contradiction": "Syarat ini tidak boleh dipenuhi serentak. Semak had perbandingan dan nilai yang dipilih. Penyimpanan mengekalkan peraturan seperti yang dimasukkan.",
       "selectedEmployees": "Hadkan kepada pekerja terpilih",
       "addSalaryCondition": "Tambah syarat gaji pokok",
