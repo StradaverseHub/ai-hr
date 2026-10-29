@@ -19,11 +19,14 @@ it('runs exact 968 worker bytes against the AI schema with new-web admission, co
  expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...unchanged],{encoding:'utf8'}).trim()).toBe('');
  const directory=mkdtempSync(join(tmpdir(),'aihr-worker-compat-'));
  try{
-  const archive=execFileSync('git',['archive',WORKER_SOURCE,'package.json','pnpm-lock.yaml','tsconfig.json','app','components','content','core','data','db','deploy','lib','messages','packs','public','scripts','types'],{maxBuffer:128*1024**2});
+  const available=new Set(execFileSync('git',['ls-tree','--name-only',WORKER_SOURCE],{encoding:'utf8'}).trim().split('\n'));
+  const roots=['package.json','pnpm-lock.yaml','tsconfig.json','app','components','content','core','data','db','deploy','lib','messages','packs','public','scripts','types'].filter(path=>available.has(path));
+  expect(roots).toEqual(expect.arrayContaining(['package.json','pnpm-lock.yaml','tsconfig.json','core','db','lib','scripts','packs']));
+  const archive=execFileSync('git',['archive',WORKER_SOURCE,...roots],{maxBuffer:128*1024**2});
   execFileSync('tar',['-xf','-','-C',directory],{input:archive,maxBuffer:1024**2});
-  // Real, read-only Linux dependency inodes, preserving internal pnpm links. No external module symlink,
+  // Real isolated dependency files, preserving internal pnpm links. No external module symlink,
   // installation files, frozen worker source or vendor network is modified by this disposable fixture.
-  execFileSync('cp',['-a','-l',join(process.cwd(),'node_modules'),join(directory,'node_modules')],{timeout:60000,maxBuffer:1024**2});
+  execFileSync('cp',['-a',...(process.platform==='linux'?['--reflink=auto']:[]),join(process.cwd(),'node_modules'),join(directory,'node_modules')],{timeout:60000,maxBuffer:1024**2});
   const tick=()=>{
    const result=spawnSync(process.execPath,['--import','tsx','scripts/bank-import-runner.ts','--once'],{
     cwd:directory,encoding:'utf8',timeout:30000,env:{...process.env,TSX_DISABLE_CACHE:'1',DATABASE_URL:process.env.DATABASE_URL,MIGRATION_DATABASE_URL:process.env.MIGRATION_DATABASE_URL},
