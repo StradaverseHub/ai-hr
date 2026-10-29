@@ -114,8 +114,20 @@ def validate_runtime_witness(proof,source,controller,archive,archive_bytes,manif
 def verify_source_bytes(source,manifest):
     source=Path(source).resolve()
     for row in manifest['entries']:
-        path=source/row['path'];check(path.resolve().is_relative_to(source),'source/dependency entry escapes frozen checkout')
-        if row['type']=='file': check(path.is_file() and not path.is_symlink() and path.stat().st_size==row['size'] and file_hash(path)==row['sha256'],'accepted file differs from frozen source/dependency bytes')
+        name=row['path']
+        check(isinstance(name,str) and 0<len(name.encode())<=4096 and not name.startswith('/') and '\\' not in name and all(part not in ('','.','..') for part in name.split('/')) and not any(ord(c)<32 or ord(c)==127 for c in name),'safe bounded manifest relative path required for source comparison')
+        path=source/name;check(path.resolve().is_relative_to(source),'source/dependency entry escapes frozen checkout: '+json.dumps(name,ensure_ascii=True))
+        if row['type']=='file':
+            actual_type='missing';actual_size=None;actual_hash=None;error_number=None
+            try:
+                info=path.lstat();actual_size=info.st_size
+                actual_type='file' if stat.S_ISREG(info.st_mode) else 'symlink' if stat.S_ISLNK(info.st_mode) else 'directory' if stat.S_ISDIR(info.st_mode) else 'other'
+                if actual_type=='file' and info.st_size<=256*1024**2: actual_hash=file_hash(path)
+            except OSError as error:
+                error_number=error.errno
+            if not (actual_type=='file' and actual_size==row['size'] and actual_hash==row['sha256'] and error_number is None):
+                detail={'path':name,'expectedType':'file','expectedSize':row['size'],'expectedSha256':row['sha256'],'actualType':actual_type,'actualSize':actual_size,'actualSha256':actual_hash,'readErrno':error_number}
+                check(False,'accepted file differs from frozen source/dependency bytes: '+json.dumps(detail,sort_keys=True,ensure_ascii=True))
         elif row['type']=='symlink': check(path.is_symlink() and os.readlink(path)==row['target'],'accepted source/dependency link differs')
         else: check(path.is_dir() and not path.is_symlink(),'accepted source/dependency directory differs')
 
