@@ -1,6 +1,8 @@
 import { expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { RequestRecords } from '../app/lifecycle/v9/request-records';
+import { WorkAssignee } from '../app/lifecycle/v9/work-assignee';
+import { ChecklistBulkAssignment } from '../app/lifecycle/v9/checklist-bulk-assignment';
 import { TaskQueue } from '../app/lifecycle/v9/task-queue';
 import { lifecycleQueueRows } from '../lib/lifecycle-v9-task-queue';
 import { blankCase, defaultConfig, type Environment, type Task } from '../lib/onboarding-model';
@@ -65,4 +67,34 @@ it('combines the canonical REQ and RVK records and retains native request number
   fireEvent.change(screen.getByRole('combobox', { name: 'Request type' }), { target: { value: 'off' } });
   expect(screen.queryByRole('link', { name: 'IT-REQ-0042' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'RVK-0009' })); expect(props.openCase).toHaveBeenCalledWith('same-case-id');
+});
+
+it('routes return/revoke ownership and progress to the item owner, preserving completed owners',async()=>{
+  const props=fixture();props.cases[0].items=[{id:'return-device',name:'Fictional return',kind:'device',sourceId:null,group:'shared',assignee:'hr',dueOn:'2026-11-01',status:'todo',reason:''},{id:'closed-device',name:'Completed return',kind:'device',sourceId:null,group:'shared',assignee:'hr',dueOn:'2026-10-01',status:'done',reason:''}];
+  mocks.off.mockResolvedValue({ok:true});render(<TaskQueue {...props}/>);
+  fireEvent.change(screen.getByRole('combobox',{name:'Assignee for Fictional return · Offboarding person'}),{target:{value:'hr'}});
+  await waitFor(()=>expect(mocks.off).toHaveBeenCalledWith('same-case-id',29,{type:'assignItem',id:'return-device',userId:'hr'}));
+  await waitFor(()=>expect(screen.getByRole('combobox',{name:'Status for Fictional return · Offboarding person'})).toBeEnabled());
+  fireEvent.change(screen.getByRole('combobox',{name:'Status for Fictional return · Offboarding person'}),{target:{value:'progress'}});
+  await waitFor(()=>expect(mocks.off).toHaveBeenCalledWith('same-case-id',29,{type:'item',id:'return-device',status:'progress',reason:''}));
+  fireEvent.click(screen.getByRole('tab',{name:/Done/}));expect(screen.getByText('Completed return')).toBeVisible();
+  expect(screen.queryByRole('combobox',{name:'Assignee for Completed return · Offboarding person'})).not.toBeInTheDocument();
+});
+
+it('requires an explicit bulk group-assignment selection before applying',()=>{
+  const checklist=v9Defaults().checklists.find(checklist=>checklist.module==='off')!,change=vi.fn();
+  render(<ChecklistBulkAssignment checklist={checklist} editable change={change}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Set assignment for all group tasks'}));
+  expect(screen.getByRole('button',{name:'Apply to group tasks'})).toBeDisabled();
+  fireEvent.click(screen.getByRole('radio',{name:/Manual for all group tasks/}));
+  fireEvent.click(screen.getByRole('button',{name:'Apply to group tasks'}));expect(change).toHaveBeenCalledExactlyOnceWith('manual');
+  expect(screen.getByRole('button',{name:'Set assignment for all group tasks'})).toHaveAttribute('aria-expanded','false');
+});
+
+it('offers only actual providing-group members and preserves an unavailable recorded owner',()=>{
+  const config=v9Defaults();config.groups=[{id:'fulfilling',name:'Providing team',members:['eligible'],limit:4}];const change=vi.fn();
+  const view=render(<WorkAssignee name="Fictional device" group="fulfilling" assignee="historical" config={config} users={[{id:'eligible',name:'Eligible member'},{id:'outsider',name:'Other team'},{id:'historical',name:'Historical owner'}]} busy={false} editable change={change}/>);
+  const picker=screen.getByRole('combobox',{name:'Assignee for Fictional device'});expect(screen.queryByRole('option',{name:'Other team'})).not.toBeInTheDocument();expect(screen.getByRole('option',{name:'Historical owner'})).toBeDisabled();
+  fireEvent.change(picker,{target:{value:'eligible'}});expect(change).toHaveBeenCalledExactlyOnceWith('eligible');
+  view.rerender(<WorkAssignee name="Fictional device" group="fulfilling" assignee="historical" config={config} users={[]} busy={false} editable={false} change={change}/>);expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
 });

@@ -28,3 +28,5 @@ export const v9DeliverEmails: Service['v9DeliverEmails'] = async (...args) => (a
 
 export const v9UploadEmailAsset: Service['v9UploadEmailAsset'] = async (...args) => (await load()).v9UploadEmailAsset(...args);
 export const v9DownloadEmailAsset: Service['v9DownloadEmailAsset'] = async (...args) => (await load()).v9DownloadEmailAsset(...args);
+
+export const v9ReportOwnReturn: Service['v9ReportOwnReturn'] = async (...args) => (await load()).v9ReportOwnReturn(...args);

@@ -1,8 +1,8 @@
 import { expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
-const actions = vi.hoisted(() => ({ task: vi.fn(), document: vi.fn() }));
-vi.mock('../app/me/lifecycle/actions', () => ({ updateOwnLifecycleTask: actions.task, saveOwnLifecycleDocument: actions.document }));
+const actions = vi.hoisted(() => ({ task: vi.fn(), document: vi.fn(), report: vi.fn() }));
+vi.mock('../app/me/lifecycle/actions', () => ({ updateOwnLifecycleTask: actions.task, saveOwnLifecycleDocument: actions.document, reportOwnLifecycleReturn:actions.report }));
 import { EmployeeLifecycle } from '../app/me/lifecycle/view';
 import type { LifecycleV9OwnCase } from '../packs/lifecycle/service';
 it('shows actual calendar dates, locks future tasks and labels another person’s assigned case', () => {

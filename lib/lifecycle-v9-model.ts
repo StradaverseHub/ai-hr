@@ -33,6 +33,7 @@ export type Task = TaskDefinition & {
 };
 export type Item = {
   id: string; name: string; kind: 'system' | 'device'; sourceId: string | null;
+  returnReported?: { at: string; by: string; note: string };
   nativeSource?: { caseId: string; requestId: string; itemId: string; requestNumber: string };
   group: string | null; assignee: string | null; dueOn: string;
   status: 'todo' | 'progress' | 'done' | 'notReturned' | 'notNeeded'; reason: string;

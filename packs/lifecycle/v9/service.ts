@@ -286,7 +286,7 @@ export type Command =
   | { type: 'runWorkflows' }
   | { type: 'retryWorkflow' | 'startWorkflow'; workflowId: string }
   | { type: 'override'; checklist: string }
-  | { type: 'assign'; id: string; userId: string }
+  | { type: 'assign' | 'assignItem'; id: string; userId: string }
   | { type: 'item'; id: string; status: M.Item['status']; reason: string };
 const commandId = z.string().min(1).max(120), reasonText = z.string().max(4000);
 const commandSchema = z.discriminatedUnion('type', [
@@ -309,7 +309,7 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('clear'), sourceRevision: z.string().regex(/^[a-f0-9]{64}$/), reason: reasonText }).strict(),
   z.object({ type: z.literal('settlementOptions'), reason: reasonText.min(1), options: z.object({ keepSourceDate: z.boolean(), offsetLeave: z.boolean(), override: z.object({ date: z.string().refine(M.validDate), reason: reasonText.min(1), kind: z.enum(['earlyRelease', 'waived', 'payInLieu', 'immediate', 'other']) }).strict().nullable(), reduceEncashment: z.object({ days: z.number().min(0).max(10000), reason: reasonText.min(1) }).strict().nullable() }).strict() }).strict(),
   z.object({ type: z.literal('cancel'), reason: reasonText }).strict(), z.object({ type: z.literal('reopen'), reason: reasonText }).strict(),
-  z.object({ type: z.literal('override'), checklist: commandId }).strict(), z.object({ type: z.literal('assign'), id: commandId, userId: z.string().uuid() }).strict(),
+  z.object({ type: z.literal('override'), checklist: commandId }).strict(), z.object({ type: z.literal('assign'), id: commandId, userId: z.string().uuid() }).strict(), z.object({ type: z.literal('assignItem'), id: commandId, userId: z.string().uuid() }).strict(),
   z.object({ type: z.literal('item'), id: commandId, status: z.enum(['todo', 'progress', 'done', 'notReturned', 'notNeeded']), reason: reasonText }).strict(),
 ]);
 export async function v9Command(ctx: SessionContext, id: string, revision: number, command: Command): Promise<void> {
@@ -427,8 +427,16 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     else if (command.type === 'assign') {
       if (c.state !== 'submitted') throw new M.V9Error('This case is not open.');
       const task = c.tasks.find(t => t.id === command.id); if (!task) throw new M.V9Error('Task not found.');
+      if (M.isResolved(task.status)) throw new M.V9Error('Completed work keeps its recorded owner.');
       if (!config.groups.some(g => g.id === task.group && g.members.includes(command.userId)) || !env.eligibleUser(command.userId)) throw new M.V9Error('Choose an eligible member of the task group.');
       task.assignee = command.userId; task.assignmentFailure = null; M.appendLog(c, env, 'task.reassigned', `${task.name} · ${env.userName(command.userId)}`, { userId: command.userId, groupId: task.group! });
+    } else if (command.type === 'assignItem') {
+      if (c.state !== 'submitted') throw new M.V9Error('This case is not open.');
+      const item = c.items.find(item => item.id === command.id); if (!item) throw new M.V9Error('Item not found.');
+      if (M.isResolved(item.status) || item.status === 'notReturned') throw new M.V9Error('Completed work keeps its recorded owner.');
+      if (!config.groups.some(group => group.id === item.group && group.members.includes(command.userId)) || !env.eligibleUser(command.userId)) throw new M.V9Error('Choose an eligible member of the providing group.');
+      item.assignee = command.userId;
+      M.appendLog(c, env, 'item.reassigned', `${item.name} · ${env.userName(command.userId)}`, { userId: command.userId, groupId: item.group! });
     } else if (command.type === 'item') {
       if (c.state !== 'submitted') throw new M.V9Error('This case is not open.');
       const item = c.items.find(i => i.id === command.id); if (!item) throw new M.V9Error('Item not found.');
@@ -601,6 +609,16 @@ export async function v9OwnTask(ctx: SessionContext, input: { caseId: string; re
     const [result] = await tx.execute<{ employment: string }>(sql`select app.lc_v9_self_task(${input.caseId}::uuid,${input.revision},${input.taskId},${input.status},${input.reason}) as employment`);
     if (!result?.employment) throw new M.V9Error('Task not available.', 'not_found');
     await record(tx, ctx, input.caseId, result.employment, 'assignedTaskUpdated');
+  });
+}
+/** A subject reports a device return; only the providing team/HR records actual recovery. */
+export async function v9ReportOwnReturn(ctx: SessionContext, input: {caseId:string;revision:number;itemId:string;note:string}): Promise<void> {
+  input=z.object({caseId:z.string().uuid(),revision:z.number().int().positive(),itemId:commandId,note:reasonText}).strict().parse(input);
+  await withLifecycleTenant(ctx,async tx=>{
+    await lockTx(tx,ctx);await actor(tx,ctx);
+    const [result]=await tx.execute<{employment:string}>(sql`select app.lc_v9_report_return(${input.caseId}::uuid,${input.revision},${input.itemId},${input.note}) as employment`);
+    if(!result?.employment)throw new M.V9Error('Return declaration not available.');
+    await record(tx,ctx,input.caseId,result.employment,'returnReported');
   });
 }
 /** V9 adds only the formats explicitly accepted by its supplied file picker. */

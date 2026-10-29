@@ -8,7 +8,7 @@ import { saveEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { addDays } from '../lib/lifecycle-v9-model';
 import { currentReq } from '../lib/onboarding-model';
-import { v9UploadEmailAsset, v9DownloadEmailAsset, v9Setup, v9Sweep, v9DeliverEmails, v9DownloadDocument, v9CaseDetail, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnDocument, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx, onboardingHoldingsTx } from '../packs/lifecycle/service';
+import { v9UploadEmailAsset, v9DownloadEmailAsset, v9Setup, v9Sweep, v9DeliverEmails, v9DownloadDocument, v9CaseDetail, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnDocument, v9ReportOwnReturn, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx, onboardingHoldingsTx } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 
 let base: Base, admin: SessionContext, employee: SessionContext, other: SessionContext, employmentId: string;
@@ -928,7 +928,7 @@ it('uses approved categories from real Personnel confirmation dates in both matc
 
 it('snapshots handed Native items by employment and records recovery on their original owner atomically', async () => {
   const context = await onboardingContext(admin), native = structuredClone(context.config);
-  native.groups.find(group => group.id === native.techGroup)!.members = [admin.userId!];
+  native.groups.find(group => group.id === native.techGroup)!.members = [admin.userId!, employee.userId!];
   native.catalogue = [
     { id: 'native-held-system', name: 'Fictional handed account', type: 'system', active: true, rules: {}, workflow: null, team: native.techGroup, card: false },
     { id: 'native-held-device', name: 'Fictional handed device', type: 'device', active: true, rules: {}, workflow: null, team: native.techGroup, card: false },
@@ -955,15 +955,39 @@ it('snapshots handed Native items by employment and records recovery on their or
     const id = await v9CreateOffboarding(admin, { employmentId: active.employmentId, type: 'Resignation', noticeDate: todayInKualaLumpur(), lastDay: addDays(todayInKualaLumpur(), 30) });
     await v9Command(admin, id, 1, { type: 'submit' }); return (await v9CaseDetail(admin, id)).case;
   }
+  const holder:SessionContext={...employee,userId:await createAppUser(base.tenantId,joiner.case.personId!,'employee'),personId:joiner.case.personId};
   const first = await exit();
   await expect(exit()).rejects.toThrow('already has an open offboarding case');
   expect(first.items).toHaveLength(2);
+  await expect(v9Command(admin, first.id, first.revision, {type:'assignItem',id:first.items[0].id,userId:other.userId!})).rejects.toThrow('providing group');
+  await expect(v9Command(employee, first.id, first.revision, {type:'assignItem',id:first.items[0].id,userId:employee.userId!})).rejects.toThrow();
+  await v9Command(admin, first.id, first.revision, {type:'assignItem',id:first.items[0].id,userId:employee.userId!});
+  const reassigned=(await v9CaseDetail(admin,first.id)).case;
+  expect(reassigned.items[0]).toMatchObject({...first.items[0],assignee:employee.userId});
+  expect(reassigned.log.at(-1)).toMatchObject({action:'item.reassigned',userId:employee.userId});
+  await expect(v9Command(admin,first.id,first.revision,{type:'assignItem',id:first.items[1].id,userId:employee.userId!})).rejects.toThrow('changed');
+  const device=first.items.find(item=>item.kind==='device')!,system=first.items.find(item=>item.kind==='system')!;
+  const ownCase=(await v9OwnWork(holder)).find(c=>c.id===first.id)!;
+  expect(ownCase.items).toHaveLength(2);expect(ownCase.facts).not.toHaveProperty('confirmationDate');
+  await expect(v9ReportOwnReturn(employee,{caseId:first.id,revision:reassigned.revision,itemId:device.id,note:''})).rejects.toThrow();
+  await expect(v9ReportOwnReturn(holder,{caseId:first.id,revision:reassigned.revision,itemId:system.id,note:''})).rejects.toThrow();
+  await expect(v9ReportOwnReturn(holder,{caseId:first.id,revision:first.revision,itemId:device.id,note:''})).rejects.toThrow();
+  await v9ReportOwnReturn(holder,{caseId:first.id,revision:reassigned.revision,itemId:device.id,note:'Fictional team desk receipt'});
+  const declared=(await v9CaseDetail(admin,first.id)).case;
+  expect(declared.items.find(item=>item.id===device.id)).toMatchObject({status:device.status,returnReported:{by:holder.userId,note:'Fictional team desk receipt'}});
+  expect(declared.items.find(item=>item.id===system.id)).not.toHaveProperty('returnReported');
+  expect(declared.tasks.find(task=>task.name==='Return your company items')).toMatchObject({status:'done'});
+  expect(await withTenant(admin,tx=>onboardingHoldingsTx(admin,tx,active.employmentId,base.companyId))).toHaveLength(2);
+  expect(currentReq((await onboardingList(admin)).find(row=>row.case.id===joiner.case.id)!.case)!.items.every(item=>!item.recovery)).toBe(true);
+  await expect(v9ReportOwnReturn(holder,{caseId:first.id,revision:declared.revision,itemId:device.id,note:'Duplicate'})).rejects.toThrow();
   for (const item of first.items) {
     expect(item.sourceId).toBeNull(); expect(item.nativeSource).toMatchObject({ caseId: joiner.case.id, requestId: currentReq(joiner.case)!.id });
     const fresh = (await v9CaseDetail(admin, first.id)).case;
     await v9Command(admin, first.id, fresh.revision, { type: 'item', id: item.id, status: 'done', reason: 'HR confirmed the recovery with the fulfilling team.' });
   }
   expect(await withTenant(admin, tx => onboardingHoldingsTx(admin, tx, active.employmentId, base.companyId))).toEqual([]);
+  const resolved=(await v9CaseDetail(admin,first.id)).case;
+  await expect(v9Command(admin,first.id,resolved.revision,{type:'assignItem',id:first.items[0].id,userId:admin.userId!})).rejects.toThrow('recorded owner');
   const recovered = (await onboardingList(admin)).find(row => row.case.id === joiner.case.id)!;
   expect(currentReq(recovered.case)!.items.map(item => item.recovery?.outcome).sort()).toEqual(['returned', 'revoked']);
   expect(currentReq(recovered.case)!.items.every(item => item.recovery?.offboardingCaseId === first.id)).toBe(true);
