@@ -288,8 +288,8 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
 
  'approvals.claim.decide':{family:'assigned_decision',store:claimDecisionReviews,
   create:pendingClaim,
-  // The claim decision contract carries no note; the approvals screen requires a reason to reject.
-  human:(item,o)=>({action:ASSIGNED_CLAIM_DECISION_ACTION,contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,decision:o.decision}),
+  // New claim rejections bind the same explicit human reason used by the native screen.
+  human:(item,o)=>({action:ASSIGNED_CLAIM_DECISION_ACTION,contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,decision:o.decision,...(o.decision==='rejected'?{note:REJECT_REASON}:{})}),
   offered:async(who,item)=>listed(await readClaimDecisionChoices(who),'items','subjectId',item.subjectId),
   screen:(tx,who,item,decider,o)=>decideClaimTx(tx,who,{claimRequestId:item.subjectId,decision:o.decision==='approved'?'approve':'reject',deciderEmploymentId:decider,rejectReason:o.decision==='rejected'?REJECT_REASON:null})},
  'approvals.attendance.decide':{family:'assigned_decision',store:attendanceDecisionReviews,
@@ -407,6 +407,10 @@ async function observe(id:ProbedActionId,role:ParityRole,o:Options=DEFAULT_OPTIO
  expect(await custody(),`${id}: foreign confirmation changed the owner's custody`).toEqual(held);
  expect(await effects(),`${id}: foreign confirmation wrote a native event`).toEqual(beforeEffects);
  const confirm:ParityOutcome=own?await tryConfirm(adapter,who,own,notes,'confirm'):'deny';
+ if(id==='approvals.claim.decide'&&o.decision==='rejected'&&confirm==='allow'){
+  const events=await owner.db.select({actorId:schema.domainEvent.actorId,payload:schema.domainEvent.payload}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,item.subjectId),eq(schema.domainEvent.eventType,'claim-request.rejected')));
+  expect(events,`${id}: rejection must preserve the same explicit human reason as the native screen`).toEqual([{actorId:who.userId,payload:{rejectReason:REJECT_REASON}}]);
+ }
  return {observed:{screen,offer,prepare,confirm,crossUserConfirm},notes};
 }
 /** The parity invariants every probe must satisfy, whatever is declared: never wider than the screen,
