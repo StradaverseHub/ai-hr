@@ -8,8 +8,9 @@ import { SignatureInput } from '@/components/lifecycle-v9/signature-input';
 import { saveOwnLifecycleDocument, updateOwnLifecycleTask } from './actions';
 
 const displayDate = (value: string) => /^\d{4}-\d{2}-\d{2}/.test(value) ? `${value.slice(8, 10)}/${value.slice(5, 7)}/${value.slice(0, 4)}` : value;
-export function EmployeeLifecycle({ cases }: { cases: LifecycleV9OwnCase[] }) {
-  const router = useRouter(), [busy, start] = useTransition(), [selected, setSelected] = useState<{ caseId: string; documentId: string } | null>(null), [values, setValues] = useState<Record<string, string>>({}), [error, setError] = useState(''), [notice, setNotice] = useState('');
+export function EmployeeLifecycle({ cases, initialSelection = null }: { cases: LifecycleV9OwnCase[]; initialSelection?: { caseId: string; documentId: string } | null }) {
+  const initialCase = cases.find(c => c.id === initialSelection?.caseId), initialDocument = initialCase?.documents.find(document => document.id === initialSelection?.documentId);
+  const router = useRouter(), [busy, start] = useTransition(), [selected, setSelected] = useState<{ caseId: string; documentId: string } | null>(initialDocument ? initialSelection : null), [values, setValues] = useState<Record<string, string>>(() => ({ ...initialDocument?.values })), [error, setError] = useState(''), [notice, setNotice] = useState('');
   const c = cases.find(c => c.id === selected?.caseId), doc = c?.documents.find(d => d.id === selected?.documentId);
   const canEdit = c?.own === true && c.state === 'submitted' && !!doc && doc.templateType !== 'Attachment' && ['sent', 'opened'].includes(doc.status);
   function open(c: LifecycleV9OwnCase, doc: Document) { setSelected({ caseId: c.id, documentId: doc.id }); setValues({ ...doc.values }); setError(''); setNotice(''); }

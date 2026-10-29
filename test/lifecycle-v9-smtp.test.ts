@@ -7,7 +7,7 @@ import { sendSmtp, type Mail, type Relay } from '../lib/internal-auth/smtp';
 import { MANAGED_EMAIL_ATTACHMENT_MAX_BYTES } from '../lib/managed-email-attachment';
 const relay: Relay = { config: { host: 'smtp.fixture.invalid', port: 465, security: 'tls', from: 'verified@fixture.invalid', fromName: 'Fictional verified sender', replyTo: '', auth: false, user: '' } };
 const to = 'employee@fixture.invalid', cc = 'supervisor@fixture.invalid';
-function mail(): Mail { return { to, cc: [cc], subject: 'Fictional saved document', text: 'Fictional case message.', messageId: '<v9-fixture-0001@fixture.invalid>', senderProfile: 'onboarding', attachments: [{ filename: 'Fictional form.pdf', contentType: 'application/pdf', bytes: Buffer.from('%PDF-fixture') }] }; }
+function mail(): Extract<Mail, { attachments: unknown }> { return { to, cc: [cc], subject: 'Fictional saved document', text: 'Fictional case message.', messageId: '<v9-fixture-0001@fixture.invalid>', senderProfile: 'onboarding', attachments: [{ filename: 'Fictional form.pdf', contentType: 'application/pdf', bytes: Buffer.from('%PDF-fixture') }] }; }
 beforeEach(() => { vi.resetAllMocks(); smtp.create.mockReturnValue({ sendMail: smtp.send, close: smtp.close }); smtp.send.mockResolvedValue({ accepted: [to, cc] }); });
 it('hands local PDF bytes to Nodemailer with the verified relay address and exact To/CC envelope', async () => {
   const pdf = await PDFDocument.create(); pdf.addPage(); pdf.setTitle('Fictional saved document'); const bytes = await pdf.save();

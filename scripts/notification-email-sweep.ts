@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { createDb,type SessionContext } from '../db/client';
 import { loadSweepScope,describeSkips } from '../core/sweep-scope';
 import { resolveEntitlementsTx,isModuleEnabled } from '../core/entitlements';
-import { sweepOnboarding, refreshOnboardingPersonnel, v9Sweep } from '../packs/lifecycle/service';
+import { sweepOnboarding, refreshOnboardingPersonnel, v9Sweep, v9DeliverEmails } from '../packs/lifecycle/service';
 import { sweepAssessmentReminders } from '../packs/performance/service';
 import { dispatchNotificationsFromSweep } from '../core/notifications';
 import { deliverNotificationEmails,deliverAttendanceCcEmails } from '../core/notification-email-delivery';
@@ -20,7 +20,7 @@ async function main(){
    try{
     const entitlements=await owner.db.transaction(tx=>resolveEntitlementsTx(tx,tenant.id));
     const ctx:SessionContext={tenantId:tenant.id,roles:['hr_admin'],entitlements};
-    if(isModuleEnabled(ctx,'lifecycle')){await refreshOnboardingPersonnel(ctx,owner.withTenant);await sweepOnboarding(ctx);const v9=await v9Sweep(ctx,owner);if(v9.failed>0)failed++;console.log(JSON.stringify({tenantId:tenant.id,lifecycleV9:v9}));}
+    if(isModuleEnabled(ctx,'lifecycle')){await refreshOnboardingPersonnel(ctx,owner.withTenant);await sweepOnboarding(ctx);const v9=await v9Sweep(ctx,owner);if(v9.failed>0)failed++;const mail=await v9DeliverEmails(ctx,owner);if(mail.failed>0)failed++;console.log(JSON.stringify({tenantId:tenant.id,lifecycleV9:v9,lifecycleV9Mail:mail}));}
     const letterAutomation=await sweepLetterAutomationFromSweep(ctx,owner);if(letterAutomation.failed>0)failed++;console.log(JSON.stringify({tenantId:tenant.id,letterAutomation}));
     if(!isModuleEnabled(ctx,'notifications')&&!(entitlements.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId)))continue;
     await sweepAssessmentReminders(ctx);

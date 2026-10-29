@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { hireEmployee, updatePersonProfilePartial } from '../core/org';
@@ -7,13 +8,14 @@ import { saveEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { addDays } from '../lib/lifecycle-v9-model';
 import { currentReq } from '../lib/onboarding-model';
-import { v9Setup, v9Sweep, v9DownloadDocument, v9CaseDetail, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnDocument, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx } from '../packs/lifecycle/service';
+import { v9Setup, v9Sweep, v9DeliverEmails, v9DownloadDocument, v9CaseDetail, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnDocument, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 
 let base: Base, admin: SessionContext, employee: SessionContext, other: SessionContext, employmentId: string;
 beforeAll(async () => {
   // Draft rehearsal only. Move to the canonical append after coordinated journal allocation.
   await owner.client.unsafe(readFileSync('db/migration-drafts/lifecycle-v9.sql', 'utf8'));
+  await owner.client.unsafe(readFileSync('db/migration-drafts/lifecycle-v9-email.sql', 'utf8'));
 });
 beforeEach(async () => {
   await resetDb(); base = await seedBase(); await setModule(base.tenantId, 'lifecycle', 'active'); admin = await entitledCtx(base);
@@ -296,7 +298,7 @@ it('lets only the linked activated joiner complete a released native document an
   expect(await v9Sweep(system, owner, sweepAt)).toEqual({ processed: 1, failed: 0 });
   expect(await v9Sweep(system, owner, sweepAt)).toEqual({ processed: 0, failed: 0 });
   const detail = await v9CaseDetail(admin, own.id);
-  expect(detail.case.runs).toHaveLength(1); expect(detail.case.runs[0].status).toBe('done');
+  expect(detail.case.runs).toHaveLength(1); expect(detail.case.runs[0]).toMatchObject({ status: 'waiting', reason: 'Waiting for email delivery confirmation.' });
   expect(detail.case.mails).toHaveLength(1); expect(detail.case.mails[0]).toMatchObject({ subject: 'Native form completed', status: 'pending', to: [employee.userId] });
   expect(detail.case.documents[0].employeeSignature?.by.id).toBe(userId);
   expect(detail.case.pmChanges).toHaveLength(1);
@@ -353,4 +355,80 @@ it('stores native attachments against their real parent, resumes file waits and 
   await expect(v9UploadFile(admin, { ...input, revision: after.revision, name: 'spoof.pdf' })).rejects.toThrow('contents');
   const foreign = await seedBase();
   await expect(owner.db.execute(sql`insert into lc_v9_file(tenant_id,onboarding_case_id,company_id,slot,filename,mime_type,content,uploaded_by) values(${base.tenantId}::uuid,${before.id}::uuid,${foreign.companyId}::uuid,'native-proof','wrong-company.txt','text/plain',decode('ZmljdGlvbmFs','base64'),${admin.userId}::uuid)`)).rejects.toMatchObject({ cause: { message: expect.stringContaining('does not belong') } });
+});
+
+async function queuedDelivery(withFile = false) {
+  const c = await prepared(), workspace = await v9Workspace(admin), config = workspace.config!;
+  config.emails.push({ id: 'receipt-fixture', name: 'Fictional receipt fixture', module: 'off', active: true, sender: 'hr', subject: 'Fictional saved message', body: 'Your recorded handover form.', cc: [], links: ['fixture-form'], attachments: [], slots: withFile ? [{ id: 'proof', label: 'Fictional proof', required: true }] : [] });
+  await v9SaveConfig(admin, config.revision, config);
+  if (withFile) await v9UploadFile(admin, { caseId: c.id, revision: c.revision, slot: 'receipt-fixture:proof', name: 'fictional-proof.txt', content: Buffer.from('Fictional attachment bytes') });
+  const revision = (await v9CaseDetail(admin, c.id)).case.revision;
+  await v9Command(admin, c.id, revision, { type: 'emailSend', emailId: 'receipt-fixture' });
+  const [job] = await owner.db.execute<{ id: string; payload: { mail: { id: string; subject: string }; documents: { id: string }[] } }>(sql`select id,payload from lc_v9_email_delivery where case_id=${c.id}::uuid`);
+  expect(job).toBeDefined(); return { caseId: c.id, job, system: { ...admin, userId: undefined, personId: null } };
+}
+it('captures one immutable private outbox snapshot and rejects direct application reads and writes', async () => {
+  const { caseId, job } = await queuedDelivery();
+  expect(job.payload.mail.subject).toBe('Fictional saved message'); expect(job.payload.documents.map(document => document.id)).toHaveLength(1);
+  await expect(withTenant(admin, tx => tx.execute(sql`select payload from lc_v9_email_delivery`))).rejects.toThrow();
+  await expect(withTenant(admin, tx => tx.execute(sql`update lc_v9_email_delivery set status='sent' where id=${job.id}::uuid`))).rejects.toThrow();
+  await expect(owner.db.execute(sql`update lc_v9_email_delivery set payload='{}'::jsonb where id=${job.id}::uuid`)).rejects.toMatchObject({ cause: { message: 'A queued lifecycle delivery is immutable' } });
+  const config = (await v9Workspace(admin)).config!; config.emails.find(email => email.id === 'receipt-fixture')!.body = 'Changed future template'; await v9SaveConfig(admin, config.revision, config);
+  const [snapshot] = await owner.db.execute<{ count: number; body: string }>(sql`select count(*)::int as count,min(payload->'mail'->>'body') as body from lc_v9_email_delivery where case_id=${caseId}::uuid`);
+  expect(snapshot).toEqual({ count: 1, body: 'Your recorded handover form.' });
+});
+it('does not mark a message sent merely because the IPC caller returns success', async () => {
+  const { caseId, system } = await queuedDelivery();
+  await expect(v9DeliverEmails(system, { withTenant }, async () => ({ outcome: 'sent', error: null }))).rejects.toThrow('storage owner');
+  const output = await v9DeliverEmails(system, owner, async request => {
+    expect(Object.keys(request).sort()).toEqual(['deliveryId','leaseToken']);
+    return { outcome: 'sent', error: null };
+  });
+  expect(output).toEqual({ attempted: 1, sent: 0, held: 0, failed: 1 });
+  expect((await v9CaseDetail(admin, caseId)).case.mails[0]).toMatchObject({ status: 'failed', deliveredAt: null, failure: 'notEligible' });
+});
+it('holds a lost acknowledgement after the committed start and never automatically resends it', async () => {
+  const { caseId, system } = await queuedDelivery(); let attempts = 0;
+  const output = await v9DeliverEmails(system, owner, async request => {
+    attempts++;
+    await owner.db.execute(sql`update lc_v9_email_delivery set status='sending',started_at=now() where id=${request.deliveryId}::uuid and lease_token=${request.leaseToken}::uuid`);
+    throw new Error('Controlled acknowledgement loss');
+  });
+  expect(output).toEqual({ attempted: 1, sent: 0, held: 1, failed: 0 });
+  expect((await v9CaseDetail(admin, caseId)).case.mails[0]).toMatchObject({ status: 'uncertain', deliveredAt: null, failure: 'uncertain' });
+  expect(await v9DeliverEmails(system, owner, async () => { attempts++; throw new Error('Unexpected resend'); })).toEqual({ attempted: 0, sent: 0, held: 0, failed: 0 });
+  expect(attempts).toBe(1);
+});
+it('records an actual late SMTP receipt while preserving a cancelled case', async () => {
+  const { caseId, system } = await queuedDelivery();
+  const output = await v9DeliverEmails(system, owner, async request => {
+    await owner.db.execute(sql`update lc_v9_email_delivery set status='sending',started_at=now() where id=${request.deliveryId}::uuid and lease_token=${request.leaseToken}::uuid`);
+    const c = (await v9CaseDetail(admin, caseId)).case;
+    await v9Command(admin, caseId, c.revision, { type: 'cancel', reason: 'Fictional cancellation after SMTP start' });
+    const [receipt] = await owner.db.execute<{ finished: boolean }>(sql`select app.lc_v9_email_finish(${request.deliveryId}::uuid,${request.leaseToken}::uuid,'sent',null) as finished`);
+    expect(receipt.finished).toBe(true); return { outcome: 'sent', error: null };
+  });
+  expect(output).toEqual({ attempted: 1, sent: 1, held: 0, failed: 0 });
+  const c = (await v9CaseDetail(admin, caseId)).case;
+  expect(c.state).toBe('cancelled'); expect(c.mails[0].status).toBe('sent'); expect(c.finalFigures).toBeNull();
+});
+it('binds the private capability to its current subject, exact identity, saved documents and real file bytes', async () => {
+  const { caseId, system } = await queuedDelivery(true), origin = 'https://v9-capability.example', subject = randomUUID(); let verified = false;
+  await owner.client`insert into app_external_identity(issuer,subject,app_user_id) values(${origin + '/auth/' + base.tenantId},${subject},${employee.userId}::uuid)`;
+  await v9DeliverEmails(system, owner, async request => {
+    const read = async (token = request.leaseToken, installation = origin) => (await owner.client`select app.lc_v9_email_target(${request.deliveryId}::uuid,${token}::uuid,${installation}) as target`)[0].target;
+    const target = await read();
+    expect(target).toMatchObject({ tenantId: base.tenantId, companyId: base.companyId, caseId, bindings: [{ userId: employee.userId, subject, issuer: origin + '/auth/' + base.tenantId }] });
+    expect(await read(randomUUID())).toBeNull(); expect(await read(request.leaseToken, 'https://other.example')).toBeNull();
+    const files = await owner.client`select * from app.lc_v9_email_files(${request.deliveryId}::uuid,${request.leaseToken}::uuid,${origin})`;
+    expect(files).toHaveLength(1); expect(files[0].filename).toBe('fictional-proof.txt'); expect(Buffer.from(files[0].bytes,'base64').toString()).toBe('Fictional attachment bytes');
+    await owner.client`update app_external_identity set revoked_at=now() where issuer=${origin + '/auth/' + base.tenantId} and subject=${subject}`;
+    expect(await read()).toBeNull();
+    await owner.client`update app_external_identity set revoked_at=null where issuer=${origin + '/auth/' + base.tenantId} and subject=${subject}`;
+    expect(await read()).not.toBeNull();
+    await owner.client`update lc_v9_case set data=jsonb_set(data,'{documents,0,name}','"Changed after queue"'::jsonb) where id=${caseId}::uuid`;
+    expect(await read()).toBeNull();
+    verified = true; return { outcome: 'skipped', error: 'notEligible' };
+  });
+  expect(verified).toBe(true);
 });

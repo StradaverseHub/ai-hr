@@ -17,6 +17,8 @@ import { readSettlementTx, type SettlementView } from './settlement';
 import { readV9PersonnelTx, pushV9PersonnelTx, lockV9PersonnelWritesTx, v9PersonnelWritableKeys } from '../../../core/lifecycle-v9-personnel';
 import { onboardingCommand, onboardingV9ReadTx, onboardingV9StoreTx, onboardingSetupTx, onboardingSaveGroupsTx, onboardingV9DefinitionsChangedTx, onboardingAssignmentLoadsTx, onboardingUnavailableTx } from '../onboarding/service';
 import { issuedToTx, returnAssetTx } from '../../../core/lifecycle-assets';
+import { lifecycleV9EmailIpc } from '../../../lib/lifecycle-v9-email-ipc';
+import type { LifecycleV9DeliveryRequest, LifecycleV9DeliveryResult } from '../../../lib/lifecycle-v9-delivery-model';
 import { resolveDocumentUpload } from '../../../core/employee-documents';
 
 type Row = { id: string; revision: number; company_id: string; data: M.Case; native?: true };
@@ -402,6 +404,90 @@ export async function v9Sweep(ctx: SessionContext, connection: NotificationSweep
     const changed = await connection.withTenant(ctx, async tx => { await lockTx(tx, ctx); return v9NativeTransitionTx(ctx, tx, id, now, dates); });
     if (changed.changed) output.processed++;
   } catch { output.failed++; }
+  return output;
+}
+/** Durable transport worker. Each claim/start/receipt is committed separately from external SMTP. */
+export async function v9DeliverEmails(ctx: SessionContext, connection: NotificationSweepConnection, send: (request: LifecycleV9DeliveryRequest) => Promise<LifecycleV9DeliveryResult> = lifecycleV9EmailIpc) {
+  assertModuleEnabled(ctx, 'lifecycle');
+  if (ctx.userId) throw new M.V9Error('Lifecycle delivery requires the storage owner.', 'forbidden');
+  type Job = { id: string; case_id: string | null; onboarding_case_id: string | null; company_id: string; mail_id: string; status: string; lease_token: string | null; started_at: string | null; error_code: string | null };
+  async function readCase(tx: Tx, job: Job): Promise<Row> {
+    if (job.onboarding_case_id) {
+      const native = await onboardingV9ReadTx(ctx, tx, job.onboarding_case_id);
+      return { id: native.c.id, revision: native.row.revision, company_id: native.row.companyId, data: projectNativeCase(native.c, native.row.revision, native.documentState, native.employeeUserId, native.supervisorUserId), native: true };
+    }
+    const [row] = await tx.execute<Row>(sql`select id,revision,company_id,data from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and id=${job.case_id}::uuid for update`);
+    if (!row || row.company_id !== job.company_id) throw new M.V9Error('Delivery subject changed.', 'conflict');
+    return row;
+  }
+  async function reconcile(tx: Tx, job: Job) {
+    const row = await readCase(tx, job), c = structuredClone(row.data), mail = c.mails.find(mail => mail.id === job.mail_id);
+    if (!mail || !['sent','failed','uncertain','cancelled','retry'].includes(job.status)) return;
+    const status = job.status === 'retry' ? 'failed' : job.status as M.Mail['status'];
+    if (mail.status === status && mail.failure === job.error_code) { await tx.execute(sql`update lc_v9_email_delivery set projected_at=now() where id=${job.id}::uuid and tenant_id=${ctx.tenantId}::uuid`); return; }
+    if (status === 'sent') {
+      const config = await configTx(tx, ctx); if (!config) return;
+      // The private receipt, never the IPC response alone, proves the SMTP acknowledgement.
+      mail.status = 'sending'; M.markDelivered(c, mail.id, await environment(tx, ctx, c, config));
+    } else { mail.status = status; mail.failure = job.error_code; }
+    await store(tx, ctx, row, c, 'emailReceipt');
+    await tx.execute(sql`update lc_v9_email_delivery set projected_at=now() where id=${job.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+  }
+  const output = { attempted: 0, sent: 0, held: 0, failed: 0 };
+  const pending = await connection.withTenant(ctx, async tx => {
+    const [owner] = await tx.execute<{ ok: boolean }>(sql`select current_user='ai_hr_owner' OR EXISTS(select 1 from pg_roles where rolname=current_user and rolsuper) as ok`);
+    if (!owner?.ok) throw new M.V9Error('Lifecycle delivery requires the storage owner.', 'forbidden');
+    await lockTx(tx, ctx);
+    await tx.execute(sql`update lc_v9_email_delivery set status='uncertain',completed_at=now(),error_code='uncertain',projected_at=null,updated_at=now() where tenant_id=${ctx.tenantId}::uuid and status='sending' and lease_until<=now()`);
+    await tx.execute(sql`update lc_v9_email_delivery set status='queued',lease_token=null,lease_until=null,updated_at=now() where tenant_id=${ctx.tenantId}::uuid and status='leased' and started_at is null and lease_until<=now()`);
+    const receipts = await tx.execute<Job>(sql`select * from lc_v9_email_delivery where tenant_id=${ctx.tenantId}::uuid and status in ('sent','failed','uncertain','cancelled','retry') and projected_at is null order by updated_at,id limit 100`);
+    const ids = await tx.execute<{ id: string }>(sql`select id from lc_v9_email_delivery where tenant_id=${ctx.tenantId}::uuid and status='queued' and next_attempt_at<=now() order by next_attempt_at,id limit 25`);
+    return { receipts, ids };
+  });
+  for (const receipt of pending.receipts) try {
+    await connection.withTenant(ctx, async tx => { await lockTx(tx, ctx); const [job] = await tx.execute<Job>(sql`select * from lc_v9_email_delivery where id=${receipt.id}::uuid and tenant_id=${ctx.tenantId}::uuid for update`); if (job) await reconcile(tx, job); });
+  } catch { output.failed++; }
+  for (const { id } of pending.ids) {
+    try {
+      const claim = await connection.withTenant(ctx, async tx => {
+        await lockTx(tx, ctx);
+        const [job] = await tx.execute<Job>(sql`select * from lc_v9_email_delivery where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid and status='queued' and next_attempt_at<=now() for update skip locked`);
+        if (!job) return null;
+        assertModuleEnabled(ctx, 'lifecycle', job.company_id);
+        const row = await readCase(tx, job), c = structuredClone(row.data), mail = c.mails.find(mail => mail.id === job.mail_id);
+        if (c.state !== 'submitted' || !mail || !mail.delivery || !['pending','sending'].includes(mail.status)) {
+          await tx.execute(sql`update lc_v9_email_delivery set status='cancelled',error_code='notEligible',updated_at=now() where id=${id}::uuid`); return null;
+        }
+        const token = randomUUID(); mail.status = 'sending'; mail.failure = null;
+        await store(tx, ctx, row, c, 'emailClaimed');
+        await tx.execute(sql`update lc_v9_email_delivery set status='leased',lease_token=${token}::uuid,lease_until=now()+interval '3 minutes',attempts=attempts+1,updated_at=now() where id=${id}::uuid and started_at is null`);
+        return { deliveryId: id, leaseToken: token };
+      });
+      if (!claim) continue;
+      output.attempted++;
+      let response: LifecycleV9DeliveryResult | null = null;
+      try { response = await send(claim); } catch { /* Only the durable started/receipt state determines replay safety. */ }
+      const status = await connection.withTenant(ctx, async tx => {
+        await lockTx(tx, ctx);
+        let [job] = await tx.execute<Job>(sql`select * from lc_v9_email_delivery where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid and lease_token=${claim.leaseToken}::uuid for update`);
+        if (!job) return 'uncertain';
+        if (job.status === 'leased' && !job.started_at) {
+          const held = response?.outcome === 'skipped' && response.error === 'relayUnavailable';
+          const error = response?.outcome === 'skipped' ? response.error ?? 'notEligible' : 'notEligible';
+          [job] = await tx.execute<Job>(sql`update lc_v9_email_delivery set status=${held ? 'queued' : 'failed'},error_code=${error},lease_token=null,lease_until=null,next_attempt_at=now()+interval '5 minutes',updated_at=now() where id=${id}::uuid returning *`);
+          if (held) {
+            const row = await readCase(tx, job), c = structuredClone(row.data), mail = c.mails.find(mail => mail.id === job.mail_id);
+            if (mail) { mail.status = c.state === 'submitted' ? 'pending' : 'cancelled'; mail.failure = error; await store(tx, ctx, row, c, 'emailHeld'); }
+            return 'held';
+          }
+        } else if (job.status === 'sending') {
+          [job] = await tx.execute<Job>(sql`update lc_v9_email_delivery set status='uncertain',completed_at=now(),error_code='uncertain',updated_at=now() where id=${id}::uuid returning *`);
+        }
+        await reconcile(tx, job); return job.status;
+      });
+      if (status === 'sent') output.sent++; else if (status === 'held' || status === 'uncertain') output.held++; else output.failed++;
+    } catch { output.failed++; }
+  }
   return output;
 }
 export async function v9OwnWork(ctx: SessionContext): Promise<OwnCase[]> {
