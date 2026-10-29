@@ -40,3 +40,21 @@ it('submits the edited offboarding fields together and retains input after a rej
   expect(await screen.findByRole('alert')).toHaveTextContent('Case changed');expect(screen.getByRole('combobox',{name:'Case type *'})).toHaveValue('Termination');
   expect(command.mock.calls[0][0].values).not.toHaveProperty('empNo');expect(command.mock.calls[0][0].values).not.toHaveProperty('lastDay');
 });
+
+it('distinguishes a retained case fact from Personnel truth while keeping it locked',()=>{
+  render(<CaseFormFields fields={resolveV9CaseFields('onb',defaultV9CaseFields('onb')).filter(field=>field.key==='supervisor')} facts={{}} values={{supervisor:'Fictional historical supervisor'}} retained={['supervisor']} hr editing change={vi.fn()}/>);
+  expect(screen.getByText(/Retained case value; missing in Personnel Management/)).toBeVisible();
+  expect(screen.getByLabelText('Retained case value, locked')).toBeVisible();
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+});
+it('updates the compact row controls through the shared definition owner',()=>{
+  render(<Editor/>);
+  expect(screen.getByRole('checkbox',{name:'Show Full name',exact:true})).toBeDisabled();
+  fireEvent.click(screen.getByRole('checkbox',{name:'HR only Employee no.',exact:true}));
+  fireEvent.click(screen.getByRole('checkbox',{name:'Required Floor / building',exact:true}));
+  fireEvent.click(screen.getByRole('button',{name:'Move Floor / building up',exact:true}));
+  const config=parseV9Config(JSON.parse(screen.getByTestId('definition').textContent!));
+  expect(config.caseForms!.onb!.find(field=>field.key==='empNo')).toMatchObject({hrOnly:true});
+  expect(config.caseForms!.onb!.find(field=>field.key==='floor')).toMatchObject({required:true});
+  expect(config.caseForms!.onb!.findIndex(field=>field.key==='floor')).toBeLessThan(config.caseForms!.onb!.findIndex(field=>field.key==='email'));
+});

@@ -59,20 +59,20 @@ export function V9Workspace({ initial, viewer, joiners = null, nativeCase, nativ
   const configuration = useV9Configuration(initial.config, saveV9Config, () => router.refresh());
   const config = configuration.draft, edit = configuration.edit, current = initial.cases.find(c => c.id === selected) ?? null;
   const cases = initial.cases.filter(c => (!company || c.facts.company === company) && (!search || `${c.facts.name} ${c.facts.employeeNo} ${c.number}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())));
-  function perform(operation: () => Promise<{ ok: boolean; error?: string }>, message = 'Changes saved.'): Promise<{ ok: boolean; error?: string }> {
+  function perform(operation: () => Promise<{ ok: boolean; error?: string }>, message = 'Changes saved.', reportError = true): Promise<{ ok: boolean; error?: string }> {
     setError(''); setNotice('');
     return new Promise(resolve => start(async () => {
       try {
         const result = await operation();
-        if (!result.ok) setError(result.error ?? 'The change could not be saved.');
+        if (!result.ok) { if (reportError) setError(result.error ?? 'The change could not be saved.'); }
         else { setNotice(message); router.refresh(); }
         resolve(result);
-      } catch { const result = { ok: false, error: 'The change could not be saved. Your edits are still here. Try again.' }; setError(result.error); resolve(result); }
+      } catch { const result = { ok: false, error: 'The change could not be saved. Your edits are still here. Try again.' }; if (reportError) setError(result.error); resolve(result); }
     }));
   }
   function command(value: Command): Promise<{ ok: boolean; error?: string }> {
     if (!current) return Promise.resolve({ ok: false, error: 'Open a case before making changes.' });
-    return perform(() => commandV9(current.id, current.revision, value), value.type === 'emailSend' ? 'Email queued for delivery.' : value.type === 'emailTest' ? 'Test email queued for delivery.' : 'Changes saved.');
+    return perform(() => commandV9(current.id, current.revision, value), value.type === 'emailSend' ? 'Email queued for delivery.' : value.type === 'emailTest' ? 'Test email queued for delivery.' : 'Changes saved.', value.type !== 'caseFormSave');
   }
   function navigate(next: View) { if (nativeCase && next === 'joiners') { router.push('/lifecycle/v9'); return; } setMobileNavigation(false); setView(next); setSelected(null); setDocument(null); setPick(''); setError(''); }
   const nav = (key: View, icon: ReactNode) => <button key={key} type="button" aria-current={view === key ? 'page' : undefined} onClick={() => navigate(key)}>{icon}<span>{titles[key]}</span></button>;
