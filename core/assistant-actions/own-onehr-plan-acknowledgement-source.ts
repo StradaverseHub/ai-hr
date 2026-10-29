@@ -1,4 +1,4 @@
-/** UNMOUNTED OneHR specialist action; separate from standard review acknowledgement. Shared custody
+/** Human-reviewed OneHR specialist action; separate from standard review acknowledgement. Shared custody
  * owns human POST, top-level receipt commit and completed retries. No ratings or promotion decisions. */
 import {createHash} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';

@@ -2,7 +2,7 @@
 import {redirect} from 'next/navigation';
 import {revalidatePath} from 'next/cache';
 import {getBrowserCommandSession} from '@/lib/session';
-import {createPromptAgentCandidate,evaluatePromptAgentCandidate,promotePromptAgentCandidate,rollbackRoutingAgent,runPromptPlannedSyntheticJob,createConversationAgentCandidate,evaluateConversationAgentCandidate,promoteConversationAgentCandidate,eraseOwnConversationStrategyMetadata} from '@/core/module-agent-releases';
+import {createPromptAgentCandidate,evaluatePromptAgentCandidate,promotePromptAgentCandidate,rollbackAssistantPromotion,runPromptPlannedSyntheticJob,createConversationAgentCandidate,evaluateConversationAgentCandidate,promoteConversationAgentCandidate,eraseOwnConversationStrategyMetadata} from '@/core/module-agent-releases';
 import {resolveOwnNotificationServerIdentity} from '@/core/assistant-actions/own-notification-preferences-source';
 import {MODULE_AGENT_SOURCE_DIGEST} from '@/lib/ai/module-agent-source-manifest';
 import {PROMPT_HOLDOUT_REQUEST_LIMIT} from '@/lib/ai/module-agent-prompt-candidate';
@@ -25,7 +25,7 @@ export async function promoteAgentCandidateAction(form:FormData){
  try{const ctx=await getBrowserCommandSession();await promotePromptAgentCandidate(ctx,{candidateId,maxJobs,hours});}catch{failed();}finish();
 }
 export async function rollbackAgentCandidateAction(form:FormData){
- const promotionId=String(form.get('promotionId')??'');try{const ctx=await getBrowserCommandSession();await rollbackRoutingAgent(ctx,{promotionId,reason:'human'});}catch{failed();}finish();
+ const promotionId=String(form.get('promotionId')??'');try{const ctx=await getBrowserCommandSession();await rollbackAssistantPromotion(ctx,{promotionId,reason:'human'});}catch{failed();}finish();
 }
 export async function tryAgentCandidateAction(form:FormData){
  const fixtureId=String(form.get('fixtureId')??'');if(form.get('consented')!=='yes')failed();

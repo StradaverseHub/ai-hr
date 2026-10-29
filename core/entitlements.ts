@@ -311,16 +311,15 @@ const SETTING_OWNER = new Map(SETTING_CATALOG.map((s) => [s.key, s.moduleCode]))
  * that stays in the environment" and "the 3am lever", but it was consulted only by `moduleEnabled` —
  * and FIVE of the nine env flags slice 3 retires are SETTINGS, not modules (`PAYROLL_RESET_ENABLED`,
  * `PAYROLL_UNLOCK_ENABLED`, `INDIVIDUAL_TXN_PAY_ENABLED`, `AUDIT_HASH_CHAIN_ENABLED`,
- * `FEEDBACK_AI_PLANNING_ENABLED`; see LEGACY_SETTING_ENV_GATES). After the flip, reopening a finalised
+ * `feedback.ai_planning_enabled`; the old FEEDBACK_AI_PLANNING_ENABLED flag is not read). After the flip, reopening a finalised
  * payroll run and the audit hash chain would have been per-tenant database rows with NO platform-wide
  * off switch at all — and `audit.hash_chain_enabled` has `moduleCode: null`, so no module kill could
  * ever have reached it even indirectly. Slice 3 deletes those env vars; the replacement lever has to
  * exist in the same primitive that replaces them, not one slice later.
  *
  * SETTING_KILL forces the CATALOG DEFAULT, never a value. Same asymmetry as MODULE_KILL, for the same
- * reason: an operator must not be able to hand a tenant a behaviour they never configured. Every
- * catalogued default is `false` today, so today it reads as "off" — but the promise is "the value the
- * product ships with", which is the only one that stays honest when a future setting defaults true.
+ * reason: an operator must not be able to hand a tenant a behaviour they never configured. Defaults vary: the six performance AI switches default true. This forces the shipped catalogue
+ * value, which is not necessarily off. Module entitlement still gates use.
  *
  * MODULE_KILL is TRANSITIVE onto that module's settings (`SETTING_OWNER`): killing `payroll` forces
  * `payroll.*` back to their defaults, because a setting is a behaviour OF a module and leaving one
@@ -897,8 +896,8 @@ export function settingEnabledOrDefault(ctx: EntitledContext, key: string): bool
  * blip into a 500 on /me and /approvals for the whole workforce.
  *
  * ⚠️ THE CALLER STATES THE FALLBACK, and that is the difference from `settingEnabledOrDefault`. The
- * boolean form can answer with the CATALOG DEFAULT because every catalogued default is the closed
- * answer. That is not true in general: `ess.profile_change_fields` defaults to the sentinel `'all'`,
+ * boolean form uses the CATALOG DEFAULT; callers must ensure that shipped value is an acceptable
+ * degraded answer (some performance AI defaults are true). That is not true in general: `ess.profile_change_fields` defaults to the sentinel `'all'`,
  * which is the OPEN answer and exactly right for a tenant who has never configured it — and exactly
  * wrong for a snapshot we could not read, where the honest degraded answer to "which fields may this
  * employee ask to change?" is NONE. So the page names the value it wants during an incident, at the call

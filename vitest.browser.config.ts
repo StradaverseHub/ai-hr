@@ -55,6 +55,8 @@ export default defineConfig({
     // browser dependency list authoritative; no server module is shimmed into the client runtime.
     noDiscovery: true,
     include: [
+      // ClockingMap imports this CommonJS package dynamically; noDiscovery needs it explicit.
+      'leaflet',
       'react',
       'react/jsx-dev-runtime',
       'react-dom',

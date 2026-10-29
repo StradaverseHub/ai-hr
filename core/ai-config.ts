@@ -1,3 +1,4 @@
+import {createUngovernedProbe} from '../lib/ai/governance';
 /**
  * AI provider configuration service (ADR-0023). Per-tenant BYOK: an admin configures a provider with
  * an encrypted key and activates one; the gateway resolves the active config (or the platform env
@@ -365,7 +366,7 @@ export async function testConnection(
   try{providerModel(p.provider,model);}catch{return {ok:false,error:'An explicit provider/model identifier is required.'};}
   const typed = p.apiKey?.trim() || undefined;
 
-  return withTenant(ctx, async (tx) => {
+  const prepared:ResolvedAiConfig|ValidateResult=await withTenant(ctx, async (tx) => {
     await assertConfigurationAdminTx(tx,ctx);
     let cfg: ResolvedAiConfig;
     if (typed) {
@@ -390,6 +391,20 @@ export async function testConnection(
       if (active.provider === 'ai_gateway' && p.providerOptions !== undefined) { try { gatewayBaseUrl = readGatewayOptions(p.providerOptions).baseUrl; } catch { return { ok: false, error: 'Enter a public https gateway address.' }; } }
       cfg = { ...active, model, ...(active.provider==='openrouter'&&p.providerOptions!==undefined?{providerOptions:routingOptions(p.providerOptions)}:{}), ...(gatewayBaseUrl?{gatewayBaseUrl}:{}) };
     }
-    return validateConfig(cfg);
+    return cfg;
   });
+  if(!('provider' in prepared))return prepared;
+  // Admission commits before transport. A crash retains a pending metadata-only probe record.
+  const cfg=prepared;
+  return validateConfig(createUngovernedProbe(cfg,async(request,call)=>{
+    if(request.operation!=='probe')throw new AiConfigError('Connection check unavailable.');
+    const id=await withTenant(ctx,async tx=>{
+      await assertConfigurationAdminTx(tx,ctx);
+      const [row]=await tx.execute<{id:string}>(sql`select app.ai_probe_start(${cfg.provider},${cfg.model}) as id`);
+      if(!row?.id)throw new AiConfigError('Connection check could not be recorded.');return row.id;
+    });
+    let succeeded=false;
+    try{const result=await call(()=>{},()=>{});succeeded=!!result&&typeof result==='object'&&'ok' in result&&result.ok===true;return result;}
+    finally{await withTenant(ctx,tx=>tx.execute(sql`select app.ai_settle(${id}::uuid,${succeeded},null::bigint)`));}
+  }));
 }

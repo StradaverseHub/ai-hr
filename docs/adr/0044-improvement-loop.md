@@ -22,7 +22,7 @@ This is strictly better on two axes:
 ## Decision
 
 The deployed app stays **capture + review only**. The **in-app planner is disabled** (gated
-`FEEDBACK_AI_PLANNING_ENABLED`, default off; IL-1). A loop run **here** does the rest:
+`feedback.ai_planning_enabled` tenant setting, default off; IL-1). A loop run **here** does the rest:
 
 ```
 SERVER (deployed app)                         OPERATOR LOOP (here)
@@ -39,7 +39,7 @@ feedback_request                              scripts/improve (ssh + psql)
 
 ### Components
 - **IL-1 (done)** — disable the in-app planner (`generateFeedbackPlan` throws unless
-  `FEEDBACK_AI_PLANNING_ENABLED=true`; the admin "generate now" button hides). Add the `deployed`
+  `feedback.ai_planning_enabled=true` in tenant settings; the admin "generate now" button hides). Add the `deployed`
   feedback status (migration 0094) + `markFeedbackDeployed`.
 - **IL-2 — plumbing** (`scripts/improve/`): pull (open/contested) feedback from the **server** DB, push a
   plan back (UPDATE + a `feedback.plan.drafted` `domain_event`, preserving the substrate), pull

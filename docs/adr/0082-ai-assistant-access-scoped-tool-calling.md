@@ -2,7 +2,7 @@
 
 > Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
 
-- **Status:** Proposed (buildable specification — no code written yet)
+- **Status:** Implemented read-only Assistant; human-confirmed actions extend it under ADR-0151. See the 29 October 2026 implementation amendment below; installation/acceptance are separate.
 - **Date:** 2026-08-26
 - **Implements:** [ADR-0007](0007-ai-native-architecture.md) §1/§2/§3/§6 and the
   [north star](../architecture/north-star.md) **Phase B — Assistant (read-only)**, which has been
@@ -99,7 +99,7 @@ Four new pieces, one extended:
 | `lib/ai/` **extended** | A second gateway method, `converse()` — multi-turn, tool-aware, provider-neutral |
 | `core/assistant-tools.ts` | The typed read-only tool registry; every tool wraps an existing `core/read.ts` function |
 | `core/assistant.ts` | The loop: budget check → converse → execute tools → repeat under a hard cap → audit |
-| `core/assistant-budget.ts` | Per-tenant token ceiling + per-user rate limit, as data |
+| `core/assistant.ts` and `core/assistant-access.ts` | Existing Assistant budget/access; gateway allowances are owned by ADR-0116 |
 | `app/assistant/` | The screen, streaming, six locales |
 
 ### 2.2 The gateway learns to converse — and this is the real engineering
@@ -583,3 +583,28 @@ surface that class of problem faster and more confidently than any screen has.
 - If a future round wants the assistant to *do* something rather than answer, that is Phase C and it
   needs ADR-0007 §6's propose→approve shape, an `agent` actor type, and an eval gate. It is not a tool
   added to §4's table.
+
+## Implementation amendment — 29 October 2026
+
+Source rechecked at matching main/alpha `b5758c54c`. Earlier design text is historical where it differs:
+
+- The current catalogue is twelve read-only tools in `core/assistant-tools.ts`. `search_handbook` remains
+  unimplemented; the earlier commitment is not evidence of a search tool or index.
+- `runTools` in `core/assistant.ts` runs tool calls **sequentially** in a caller-owned read
+  transaction and preserves result order. Earlier concurrent-loop descriptions do not describe runtime.
+- The baseline tool selector filters by module. The versioned conversation strategy can differ per user;
+  prompt-prefix reuse depends on that selected strategy and stable tool ordering, not just tenant/role.
+- There is no `core/assistant-budget.ts`. Assistant budget/accounting is in the Assistant service; gateway
+  admission/allowances are separate under ADR-0116. R11 records remaining budget/time-boundary work.
+- Transcript retirement is implemented: raw content retires after 30 days via the bounded maintenance
+  runner; own-clear and PDPA erasure are separate supported paths. Accounting rows/counters remain.
+  The former “STILL OPEN” retention item is superseded. On the read-only staging check of 29 October,
+  `aihr-ai-retention.timer` was **not installed** (`LoadState=not-found`, inactive). Source support is not
+  live retention evidence. The release owner must install/verify it per deploy/systemd/AI-RETENTION.md.
+- Current terms approved by the owner: Assistant, Control Tower, HR work queue, scheduled agent. Module
+  read capabilities are scoped reads, not autonomous actors. Legacy identifiers/redirects may remain for
+  in-flight callers and bookmarks; they confer no additional capability.
+
+See [AI threat model](../architecture/ai-threat-model.md) for leakage/injection, provider handling and
+retention limits. No training or fine-tuning on tenant data; every consequential effect still needs a
+person's confirmation through the owning service. No deployment is implied by this amendment.

@@ -1,4 +1,4 @@
-/** UNMOUNTED Rewards specialist. Trusted human command must own non-own/shared unit custody and
+/** Human-reviewed Rewards specialist. Trusted human command must own non-own/shared unit custody and
  * one top-level Tx. Models cannot calculate, approve or post, and never receive the private source. */
 import {z} from 'zod';
 import {sql} from 'drizzle-orm';

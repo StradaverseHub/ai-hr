@@ -138,6 +138,8 @@ export async function anomalySweep(url: string, opts: { dryRun?: boolean } = {})
         // installed. A second cron line is a second thing to forget to install, and this one has a hard
         // ordering dependency on the pass above, so a separate schedule could only get it wrong.
         //
+        // The current no-login context is refused by the AI principal gate before a model call.
+        // Provider configuration alone does not enable this scheduled model step.
         // IT NEVER FAILS THE BATCH. A provider outage, a rate limit, a ledger write that did not land —
         // none of that may cost the tenant the verdicts the deterministic pass just produced, which are
         // the part somebody depends on tonight.

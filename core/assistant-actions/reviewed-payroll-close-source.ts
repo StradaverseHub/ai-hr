@@ -1,4 +1,4 @@
-/** UNMOUNTED Payroll CLOSE specialist. Human custody/POST must own ONE top-level Tx. Canonical
+/** Human-reviewed Payroll CLOSE specialist. Human custody/POST must own ONE top-level Tx. Canonical
  * checks/effects are shared with ordinary closeBatch. No model money, process, approval or transfer. */
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';

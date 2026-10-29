@@ -1,3 +1,5 @@
+import {aiBoundaryViolations} from '../scripts/ai-caller-drift';
+import {guardFiles} from '../scripts/gate-affected-plan';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import ts from 'typescript';
@@ -5,14 +7,15 @@ import { describe, expect, it } from 'vitest';
 import { AI_FEATURES } from '../lib/ai/features';
 import { MODULE_CATALOG, SETTING_CATALOG } from '../packs/catalog';
 const read=(p:string)=>readFileSync(p,'utf8');
-const walk=(p:string):string[]=>readdirSync(p,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(join(p,e.name)):/\.(ts|tsx)$/.test(e.name)?[join(p,e.name)]:[]);
+const walk=(p:string):string[]=>readdirSync(p,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(join(p,e.name)):/\.(?:[cm]?[jt]sx?)$/.test(e.name)?[join(p,e.name)]:[]);
 const coreCallers:Record<string,string>={'core/assistant.ts':'hr_assistant','core/feedback.ts':'feedback_planning','core/input-triage.ts':'claims_triage','core/pay-rule-ai.ts':'pay_rule_draft','core/payroll-anomaly-narrate.ts':'payroll_explanation','core/payroll-hypothesis.ts':'payroll_hypotheses','core/performance.ts':'performance_pm','core/readiness-nudge.ts':'readiness_reminders','core/report-ai.ts':'report_insight'};
 // Callers whose provider configuration is issued for ONE named workload by a governed seam other than a
 // literal resolveActiveAiConfig: the snapshot-governed module agent flows (governedAiConfig in the release
 // owner, handed only to the two synthetic harnesses, which admit every call under that same feature) and the
 // personnel import header assistant (resolveActiveAiConfig through its FEATURE constant). Every entry names
 // registered features and must show each listed seam; an unregistered caller still fails above.
-const governedCallers:Record<string,{features:readonly string[];seams:readonly RegExp[];issuedBy?:string}>={
+const governedCallers:Record<string,{features:readonly string[];seams:readonly RegExp[];issuedBy?:string;issuerImport?:string}>={
+ 'lib/ai/provider-protocol.ts':{features:['provider_evaluation'],seams:[/if \(configuration\.provider !== 'openrouter' \|\| !configuration\.governance\) return unavailable\(\);/,/return await governance\.run\(request, async/],issuedBy:'core/ai-provider-readiness.ts',issuerImport:"from '../lib/ai/provider-protocol'"},
  'core/assistant-conversation-harness.ts':{features:['module_agent_evaluation'],seams:[/withAiAdmissionLifecycle\(cfg,\s*'module_agent_evaluation'/],issuedBy:'core/module-agent-releases.ts'},
  'core/module-agent-prompt-harness.ts':{features:['module_agent_evaluation'],seams:[/withAiAdmissionLifecycle\(cfg,\s*'module_agent_evaluation'/],issuedBy:'core/module-agent-releases.ts'},
  'core/module-agent-releases.ts':{features:['module_agent_evaluation','module_agent_planning'],seams:[/governedAiConfig\([^()]*'module_agent_evaluation'\)/,/governedAiConfig\([^()]*'module_agent_planning'\)/,/withAiAdmissionLifecycle\([^,()]*,\s*'module_agent_planning'/]},
@@ -25,26 +28,52 @@ const performanceSeam={file:'packs/performance/onehr/provider-source-draft.ts',c
 describe('complete AI management inventory and boundary',()=>{
  it('registers every production AI workload caller and keeps providers behind the shared gateway',()=>{
   const coreFound:string[]=[];let packCalls=0;
-  for(const file of [...walk('core'),...walk('packs'),...walk('app')]){
+  for(const file of [...walk('core'),...walk('packs'),...walk('app'),...walk('lib'),...walk('scripts')]){
    const src=read(file),tree=ts.createSourceFile(file,src,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
-   let calls=0;
-   const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&['generateDraft','readImage','converse',performanceSeam.call].includes(node.expression.text))calls++;ts.forEachChild(node,visit);};visit(tree);
-   for(const statement of tree.statements)if(ts.isImportDeclaration(statement)&&ts.isStringLiteral(statement.moduleSpecifier))expect(['openai','@anthropic-ai/sdk','@google/genai']).not.toContain(statement.moduleSpecifier.text);
+   let calls=0;const aliases=new Map<string,string>(),namespaces=new Set<string>();
+   for(const statement of tree.statements)if(ts.isImportDeclaration(statement)&&statement.importClause?.namedBindings){
+    const bindings=statement.importClause.namedBindings;
+    if(ts.isNamedImports(bindings))for(const name of bindings.elements)aliases.set(name.name.text,(name.propertyName??name.name).text);
+    else if(ts.isNamespaceImport(bindings)&&ts.isStringLiteral(statement.moduleSpecifier)&&/\/ai(?:\/index)?$/.test(statement.moduleSpecifier.text))namespaces.add(bindings.name.text);
+   }
+   const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)){
+    const call=ts.isIdentifier(node.expression)?aliases.get(node.expression.text)??node.expression.text:ts.isPropertyAccessExpression(node.expression)&&ts.isIdentifier(node.expression.expression)&&namespaces.has(node.expression.expression.text)?node.expression.name.text:'';
+    if(['generateDraft','readImage','converse',performanceSeam.call].includes(call))calls++;
+   }ts.forEachChild(node,visit);};visit(tree);
+   expect(aiBoundaryViolations(file,src),file).toEqual([]);
    if(!calls)continue;
-   if(file.startsWith('core/')){coreFound.push(file);const governed=governedCallers[file];
+   if(file.startsWith('core/')||governedCallers[file]){coreFound.push(file);const governed=governedCallers[file];
     if(governed){
      for(const feature of governed.features)expect(AI_FEATURES.some(f=>f.id===feature),`${file}:${feature}`).toBe(true);
      for(const seam of governed.seams)expect(src,`${file} ${seam}`).toMatch(seam);
-     if(governed.issuedBy){const issuer=read(governed.issuedBy);expect(issuer,`${governed.issuedBy} issues ${file}`).toContain(`from './${file.slice('core/'.length,-'.ts'.length)}'`);
+     if(governed.issuedBy){const issuer=read(governed.issuedBy);expect(issuer,`${governed.issuedBy} issues ${file}`).toContain(governed.issuerImport??`from './${file.slice('core/'.length,-'.ts'.length)}'`);
       for(const feature of governed.features)expect(issuer).toMatch(new RegExp(`governedAiConfig\\([^()]*'${feature}'\\)`));}
     }else{expect(coreCallers[file],`${file} needs a registered capability`).toBeTruthy();expect(src,`${file} resolves ${coreCallers[file]}`).toMatch(new RegExp(`resolveActiveAiConfig\\(tx,\\s*ctx,\\s*'${coreCallers[file]}'\\)`));}}
-   else{expect(file.startsWith('packs/performance/onehr/'),`${file} needs a governed configuration seam`).toBe(true);if(file===performanceSeam.file)expect(src).toMatch(performanceSeam.admission);else expect(src,`${file} resolves through assessmentAiConfigTx`).toContain('assessmentAiConfigTx');packCalls+=calls;}
+   else{expect(file.startsWith('packs/performance/onehr/'),`${file} needs a governed configuration seam`).toBe(true);if(file===performanceSeam.file)expect(src).toMatch(performanceSeam.admission);else {
+     const imported=new Set<string>();let admission=false,shared=false;
+     for(const statement of tree.statements)if(ts.isImportDeclaration(statement)&&ts.isStringLiteral(statement.moduleSpecifier)&&statement.importClause?.namedBindings&&ts.isNamedImports(statement.importClause.namedBindings))
+      for(const binding of statement.importClause.namedBindings.elements){const name=(binding.propertyName??binding.name).text;if(name==='withAiAdmissionCheck'&&statement.moduleSpecifier.text.endsWith('core/ai-governance')||name===performanceSeam.call&&statement.moduleSpecifier.text==='./provider-source-draft')imported.add(binding.name.text);}
+     const check=(node:ts.Node)=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&imported.has(node.expression.text)){if(node.expression.text===performanceSeam.call)shared=true;else admission=true;}ts.forEachChild(node,check);};check(tree);
+     expect(admission||shared,`${file} must call an imported admission owner or the governed Performance wrapper`).toBe(true);
+    }packCalls+=calls;}
   }
   expect(coreFound.sort()).toEqual([...Object.keys(coreCallers),...Object.keys(governedCallers)].sort());expect(packCalls).toBeGreaterThan(15);
   // Since the provider snapshot owner (ADR-0131, 64651f101) the tenant row and platform fallback are one
   // snapshot, so the active resolver issues exactly one governed configuration and nothing ungoverned.
   const config=read('core/ai-config.ts');expect(config.match(/governedAiConfig\(/g)?.length).toBe(1);
   expect(config).toMatch(/const snapshot\s*=\s*await resolveAiProviderSnapshotTx\(tx,\s*ctx\);\s*return snapshot\s*\?\s*governedAiConfig\(ctx,\s*snapshot,\s*feature\)\s*:\s*null;/);
+ });
+ it('rejects injected raw provider fetches and SDK imports in lib and scripts',()=>{
+  for(const file of ['lib/rogue.ts','scripts/rogue.ts']){
+   expect(aiBoundaryViolations(file,"const endpoint='https://api.openai.com/v1/chat/completions'; fetch(endpoint,{method:'POST'});" )).toContain('raw provider fetch outside gateway transport');
+   expect(aiBoundaryViolations(file,"import OpenAI from 'openai';")).toContain('provider SDK outside adapter');
+   expect(aiBoundaryViolations(file,"import {openaiAdapter} from '../lib/ai/providers/openai';")).toContain('provider adapter outside gateway');
+   expect(aiBoundaryViolations(file,"const endpoint='https://'+'api.openai.com'+'/v1/chat/completions'; const f=fetch; f(endpoint,{body:JSON.stringify({model,messages}),headers:{Authorization:key}});")).toContain('raw provider fetch outside gateway transport');
+   expect(aiBoundaryViolations(file,"const endpoint='https://'+'api.openai.com'+'/v1/chat/completions'; fetch(endpoint,{body:JSON.stringify({model,messages}),headers:{Authorization:key}});")).toContain('raw provider fetch outside gateway transport');
+   expect(aiBoundaryViolations(file,"import {createUngovernedProbe as bypass} from './governance'; bypass(cfg,run);")).toContain('probe capability outside connection test');
+   expect(aiBoundaryViolations(file,"globalThis.fetch(url,{headers:{Authorization:'Bearer '+apiKey},body:JSON.stringify({model:model,messages:messages})});")).toContain('raw provider fetch outside gateway transport');
+  }
+  expect(guardFiles(['test/ai-management-contract.test.ts','test/unrelated.test.ts'])).toEqual(['test/ai-management-contract.test.ts']);
  });
  it('keeps the SQL inventory, module catalogue and canonical switches consistent',()=>{
   // The live definition of a function is its LAST redefinition in journal (apply) order; 0568, 0621 and 0648 replaced ai_admit.

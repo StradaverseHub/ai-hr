@@ -167,9 +167,25 @@ sudo visudo -cf /etc/sudoers.d/aihr-restart   # must print "parsed OK"
 
 Edit `deploy/aihr-sudoers` first if your deploy user isn't `ubuntu` or `systemctl` isn't at `/usr/bin/systemctl`. Without this, just run `sudo systemctl restart aihr` yourself after each `deploy.sh`.
 
+## AI custody and transcript retention
+
+The application process and deploy.sh do not schedule AI retirement. The separate
+`aihr-ai-retention.timer` must be provisioned by the release owner using the immutable privileged
+maintenance bundle and prerequisites in [systemd/AI-RETENTION.md](systemd/AI-RETENTION.md).
+Source implements 30-day raw transcript retirement plus bounded expired-custody cleanup; this is
+not proof of installation, maximum cleanup lag or provider-side deletion.
+
+**Read-only staging observation, 29 October 2026:** through the documented private `aihr-staging`
+operator alias, `systemctl is-enabled aihr-ai-retention.timer` returned `not-found`, `is-active`
+returned `inactive`, and `systemctl show` returned `LoadState=not-found` with no trigger timestamps.
+The timer is absent on that observed target. This PR installs nothing. The release owner must verify
+migration prerequisites, bundle identity/ownership, a successful service pass, two timer-triggered
+passes and aggregate backlog/oldest-expired age before treating retention as operational. Monitor the
+failure/missing-pass/aging-backlog signals documented in AI-RETENTION.md; never log retained content.
+
 ## 5b. Scheduled sweeps (REQUIRED — the app does not run these itself)
 
-Four routine jobs keep leave and reviews correct. **Nothing in the app starts them.** Without this step
+Three routine jobs in the table below keep leave and reviews correct; separate sweeps and retention units are documented in deploy/systemd/. **Nothing in the app starts them.** Without this step
 they never run, and the failure is silent: leave quietly stops accruing, expired leave is never forfeited,
 probation and contract reviews are never opened, and the notifications that depend on the review sweep are
 only dispatched when an admin happens to load a page. The demo server ran for months in exactly that state.
@@ -177,7 +193,7 @@ only dispatched when an admin happens to load a page. The demo server ran for mo
 | Job | Schedule (server-local) | What it does |
 | --- | --- | --- |
 | `scripts/accrue-earned.ts` | `0 2 1 * *` | Tops earned-leave policies up to the amount earned |
-| `scripts/review-sweep.ts` | `0 3 * * *` | Opens due probation/contract reviews, sends reminders, dispatches notifications |
+| `scripts/review-sweep.ts` | `0 3 * * *` | Opens due reviews, applies due movements, escalates leave approvals, reconciles the HR work queue, runs readiness nudges and claims triage, and dispatches notifications |
 | `scripts/expire-carry.ts` | `0 3 1 4 *` | Forfeits carried-forward leave, just after the 31 Mar expiry |
 
 All three are idempotent — re-running grants, opens and forfeits nothing extra.

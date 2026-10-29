@@ -1,6 +1,7 @@
-/** UNMOUNTED source adapter, not a completed Assistant action. The future shared action command
- * must own one top-level authenticated Tx, encrypted review custody/expiry/erasure, human POST/CSRF,
- * exact completion receipt and uncertain-retry reconciliation. No route/model tool calls this file.
+/** Human-reviewed source adapter, bound by the shared prepared-action command, which must retain
+ * one top-level authenticated Tx, encrypted review custody/expiry/erasure, human POST/CSRF,
+ * exact completion receipt and uncertain-retry reconciliation. Browser commands reach this source
+ * through shared custody, outside the model loop.
  * Model nomination is not human content; a posted digest alone is not confirmation authorization. */
 import type {SessionContext,Tx} from '../../db/client';
 import {prepareOwnProfileChangeRequestReviewTx,requestReviewedOwnProfileChangeTx,readOwnProfileChangeSubmissionReferenceTx} from '../profile';
