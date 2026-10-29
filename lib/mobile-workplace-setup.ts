@@ -84,15 +84,33 @@ export function isWorkplaceSetupLink(value: string): boolean {
   return (parts.scheme.toLowerCase() === 'aihr' && host === 'company') || parts.path === WORKPLACE_SETUP_PATH;
 }
 
-/** Exactly `aihr://company#setup=…` or `https://<the profile's own origin>/login/mobile-setup#setup=…`. */
-export function readWorkplaceSetupLink(value: string): string {
-  if (value.length > MAX_LINK_LENGTH || !isWorkplaceSetupLink(value)) throw new Error('Invalid workplace setup link.');
+/** Why a link was refused, so the app can say it. The link is public routing data; the codes reveal nothing else. */
+export class WorkplaceSetupLinkError extends Error {
+  constructor(readonly problem: 'invalid_link' | 'wrong_server' | 'missing_organization' | 'invalid', message: string) { super(message); this.name = 'WorkplaceSetupLinkError'; }
+}
+
+/** The signed setup text inside a well-formed link, before any check of its contents (the app verifies those first). */
+export function workplaceSetupLinkPayload(value: string): string {
+  const refused = new WorkplaceSetupLinkError('invalid_link', 'Invalid workplace setup link.');
+  if (value.length > MAX_LINK_LENGTH || !isWorkplaceSetupLink(value)) throw refused;
   const parts = linkParts(value)!;
   const native = parts.scheme === 'aihr' && parts.authority === 'company' && parts.path === '';
   const web = parts.scheme === 'https' && parts.path === WORKPLACE_SETUP_PATH && parts.authority.length > 0 && !/[@\\\s]/.test(parts.authority);
-  if ((!native && !web) || parts.query || !SETUP_FRAGMENT.test(parts.fragment)) throw new Error('Invalid workplace setup link.');
-  const raw = decode(parts.fragment.slice('#setup='.length));
-  const profile = workplaceSetupProfile(raw);
-  if (web && 'https://' + parts.authority !== profile.apiOrigin) throw new Error('Workplace setup belongs to another server.');
+  if ((!native && !web) || parts.query || !SETUP_FRAGMENT.test(parts.fragment)) throw refused;
+  try { return decode(parts.fragment.slice('#setup='.length)); } catch { throw refused; }
+}
+
+/** Exactly `aihr://company#setup=…` or `https://<the profile's own origin>/login/mobile-setup#setup=…`. */
+export function readWorkplaceSetupLink(value: string): string {
+  const raw = workplaceSetupLinkPayload(value);
+  let profile: ReturnType<typeof workplaceSetupProfile>;
+  try { profile = workplaceSetupProfile(raw); }
+  catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid workplace setup.';
+    throw new WorkplaceSetupLinkError(/organization code/.test(message) ? 'missing_organization' : 'invalid', message);
+  }
+  const parts = linkParts(value)!;
+  if (parts.scheme === 'https' && 'https://' + parts.authority !== profile.apiOrigin)
+    throw new WorkplaceSetupLinkError('wrong_server', 'Workplace setup belongs to another server.');
   return raw;
 }
