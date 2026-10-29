@@ -79,3 +79,4 @@ export { payslipSegmentOf } from '../../core/payslip-segment';
 export * from '../../core/individual-txn-import';
 
 export {lockNativePayrollPeriodsTx} from '../../core/payroll-period-lock';
+export {rewardPayrollProvenance} from './reward-provenance';

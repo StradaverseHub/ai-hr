@@ -1,0 +1,83 @@
+import {readFileSync} from 'node:fs';
+import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {eq,sql} from 'drizzle-orm';
+import {withTenant,type SessionContext} from '../db/client';
+import * as schema from '../db/schema';
+import {hireEmployee} from '../core/org';
+import {setCompensation} from '../core/comp';
+import {getRewardUnit,createRewardUnit,getRewardUnitGovernance,saveRewardUnitInputs,confirmRewardGovernance,proposeRewardExemption,previewRewardSeniorMembership,saveRewardSeniorMembership,saveRewardSeniorAward,saveRewardEntry,postRewardUnit} from '../packs/rewards/service';
+import {emptyFacts} from '../packs/rewards/model';
+import {owner,resetDb,seedBase,setModule,entitledCtx,createAppUser,closeAll,type Base} from './harness';
+import {setRewardMember} from './rewards-access-fixture';
+import {todayInKualaLumpur} from '../lib/hr-date';
+const today=todayInKualaLumpur(),year=Number(today.slice(0,4));
+describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
+ let b:Base,gr:SessionContext,checker:SessionContext,bu:SessionContext,ctro:SessionContext,payroll:SessionContext,unitId:string,employeeId:string,entryId:string;
+ const view=()=>getRewardUnit(gr,unitId);
+ beforeAll(async()=>{
+  if(!process.env.TEST_DB_NAMESPACE)throw new Error('Use a private disposable test namespace.');
+  // Reserved SQL is deliberately unjournaled until prerequisite allocation freezes. Apply only to
+  // this namespaced worker database, whose ordinary migrations globalSetup already rehearsed.
+  await owner.client.unsafe(readFileSync('docs/migration-drafts/0689_rewards_unit_governance.sql','utf8'));
+ });
+ beforeEach(async()=>{
+  await resetDb();b=await seedBase();await setModule(b.tenantId,'rewards','active');gr=await entitledCtx(b);
+  const [adminPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional GR doer',primaryEmail:'grdoer@fixture.test'}).returning();
+  await owner.db.update(schema.appUser).set({personId:adminPerson.id}).where(eq(schema.appUser.id,gr.userId!));gr={...gr,personId:adminPerson.id};
+  const [buRow]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'GOV',name:'Governance fixture'}).returning();
+  const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'21',name:'Grade21'}).returning();
+  const hired=await hireEmployee(gr,{person:{fullName:'Fictional Senior employee',primaryEmail:'senior@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:`${year-2}-01-01`});employeeId=hired.employmentId;
+  await owner.db.update(schema.assignment).set({businessUnitId:buRow.id}).where(eq(schema.assignment.employmentId,employeeId));
+  await owner.db.update(schema.employment).set({gradeId:grade.id,confirmationDate:`${year-2}-04-01`}).where(eq(schema.employment.id,employeeId));
+  await setCompensation(gr,{employmentId:employeeId,basicSalary:5000,effectiveFrom:`${year-2}-01-01`});
+  unitId=await createRewardUnit(gr,{name:'Unit governance fixture',year,companyId:b.companyId,businessUnitId:buRow.id,snapshotDate:today});
+  async function actor(name:string,role:'gr'|'bu'|'ctro'|'payroll'){
+   const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:name,primaryEmail:name+'@fixture.test'}).returning();
+   const userId=await createAppUser(b.tenantId,person.id,'employee');
+   const ctx={...gr,userId,personId:person.id,roles:['employee'],grants:undefined};await setRewardMember(gr,unitId,(await view()).unit.revision,userId,role);return ctx;
+  }
+  checker=await actor('checker','gr');bu=await actor('bu','bu');ctro=await actor('ctro','ctro');payroll=await actor('payroll','payroll');
+  const v=await view();entryId=v.rows[0].id;
+  await saveRewardEntry(gr,unitId,v.unit.revision,entryId,v.rows[0].recommendation,{...emptyFacts(),reviewed:true,talent:'SCORE',performance:'ME'});
+ });
+ afterAll(closeAll);
+ const inputs={forecastCents:900000,actualCents:null,targetCents:1000000,targetMonthsBp:20000,multiplierBp:10000,branchRatings:{}};
+ async function saveInputs(){await saveRewardUnitInputs(gr,unitId,(await view()).unit.revision,inputs,'Reviewed the current unit PAT evidence');}
+ it('keeps raw PAT under GR SQL custody and gives approvers only exact pool snapshots',async()=>{
+  await saveInputs();
+  const grState=await getRewardUnitGovernance(gr,unitId);expect(grState.inputs?.forecastCents).toBe(900000);
+  for(const actor of [bu,ctro,payroll]){
+   const raw=await withTenant(actor,tx=>tx.select().from(schema.rewardGovernance).where(eq(schema.rewardGovernance.unitId,unitId)));expect(raw).toEqual([]);
+   const data=await getRewardUnitGovernance(actor,unitId);expect(data.inputs).toBeNull();expect(data.legacyInputs).toBeNull();expect(data.history).toEqual([]);
+   expect(JSON.stringify(data)).not.toContain('900000');expect(data.pools.standard).toBe(grState.pools.standard);
+   const projected=await getRewardUnit(actor,unitId);expect(projected.unit.policy.patActual).toBe(0);expect(projected.suggestion).toBeNull();
+   expect(projected.budgets.standard).toEqual((await view()).budgets.standard);
+  }
+ });
+ it('refuses same-user confirmation and serializes competing stale saves with one winner',async()=>{
+  const rev=(await view()).unit.revision;
+  const attempts=await Promise.allSettled([saveRewardUnitInputs(gr,unitId,rev,inputs,'First concurrent budget update'),saveRewardUnitInputs(gr,unitId,rev,{...inputs,forecastCents:800000},'Second concurrent budget update')]);
+  expect(attempts.filter(x=>x.status==='fulfilled')).toHaveLength(1);expect(attempts.filter(x=>x.status==='rejected')).toHaveLength(1);
+  await proposeRewardExemption(gr,unitId,(await view()).unit.revision,'Signed reason for the budget exemption');
+  await expect(confirmRewardGovernance(gr,unitId,(await view()).unit.revision,'exemption')).rejects.toThrow(/different/);
+  await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'exemption');expect((await getRewardUnitGovernance(gr,unitId)).exemption?.confirmedBy).toBe(checker.userId);
+ });
+ it('requires an independent selection check and amount check, retaining prior evidence and preventing same-person confirmation',async()=>{
+  const v=await view(),selection={employmentIds:[employeeId],adoptLegacy:false},preview=await previewRewardSeniorMembership(gr,unitId,v.unit.revision,selection);
+  await saveRewardSeniorMembership(gr,unitId,v.unit.revision,selection,preview.digest);
+  await expect(getRewardUnit(bu,unitId)).rejects.toThrow(/independent/);
+  await expect(confirmRewardGovernance(gr,unitId,(await view()).unit.revision,'selection')).rejects.toThrow(/different/);
+  await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'selection');
+  await saveRewardSeniorAward(gr,unitId,(await view()).unit.revision,{entryId,newBasicCents:550000,incrementBp:null,bonusCents:123400,approvalReference:'OFFLINE-1',approvalDate:today,reason:'Signed offline approval recorded',evidence:[]});
+  await expect(confirmRewardGovernance(gr,unitId,(await view()).unit.revision,'award',entryId)).rejects.toThrow(/different/);
+  await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'award',entryId);
+  const privileged=await getRewardUnitGovernance(ctro,unitId);expect(privileged.senior[0].award).toMatchObject({newBasicCents:550000,bonusCents:123400,confirmedBy:checker.userId});
+  const restricted=await getRewardUnitGovernance(bu,unitId);expect(restricted.senior[0].award).toBeNull();expect(restricted.totals).toBeNull();
+  const privateRows=await withTenant(payroll,tx=>tx.select().from(schema.rewardSeniorAward).where(eq(schema.rewardSeniorAward.unitId,unitId)));expect(privateRows).toEqual([]);
+  await expect(withTenant(payroll,tx=>tx.execute(sql`select app.reward_senior_awards_for_post(${unitId}::uuid)`))).rejects.toThrow(/posting authority/);
+ });
+ it('invalidates public budget evidence after eligibility changes rather than exposing PAT or silently using a stale pool',async()=>{
+  await saveInputs();const v=await view();await saveRewardEntry(gr,unitId,v.unit.revision,entryId,v.rows[0].recommendation,{...v.rows[0].facts,performance:'OU'});
+  expect((await view()).flags).toContainEqual(expect.objectContaining({code:'PAT-STALE',severity:'block'}));
+ });
+});

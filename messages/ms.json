@@ -21496,7 +21496,20 @@
       "history": "Sejarah keputusan unit",
       "auditValues": "Semak nilai sebelum dan selepas",
       "seniorTag": "Pelan Senior",
-      "handledSeparately": "Pelan Senior — dikendalikan berasingan"
+      "handledSeparately": "Pelan Senior — dikendalikan berasingan",
+      "before": "Sebelum",
+      "after": "Selepas",
+      "errors": {
+        "invalid": "Semak nilai dan ketepatan yang disokong, kemudian cuba lagi.",
+        "independent": "Pengguna Group Rewards yang lain mesti menyemak dan mengesahkan keputusan ini.",
+        "stale": "Semakan atau rekod pekerja ini telah berubah. Muat semula, semak nilai semasa dan hantar lagi.",
+        "salary": "Gaji pokok baharu tidak boleh kurang daripada gaji pokok semasa.",
+        "evidence": "Gunakan bukti PDF, PNG atau JPEG, maksimum 10 MB setiap fail dan 10 MB keseluruhan.",
+        "authority": "Peranan semasa anda tidak membenarkan operasi atau rekod ini.",
+        "budget": "Semak PAT, status kumpulan, penarafan cawangan dan keperluan pengganda sebelum meneruskan.",
+        "decision": "Lengkapkan keahlian Senior atau keputusan luar sistem yang diperlukan dan dapatkan pengesahan bebas.",
+        "locked": "Kembalikan semakan kepada draf sebelum mengubah input yang dikunci."
+      }
     },
     "policyGrids": {
       "ranges": "Julat gaji (MYR)",

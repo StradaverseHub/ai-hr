@@ -21496,7 +21496,20 @@
       "history": "Lịch sử quyết định đơn vị",
       "auditValues": "Xem giá trị trước và sau",
       "seniorTag": "Kế hoạch cấp cao",
-      "handledSeparately": "Kế hoạch cấp cao — xử lý riêng"
+      "handledSeparately": "Kế hoạch cấp cao — xử lý riêng",
+      "before": "Trước",
+      "after": "Sau",
+      "errors": {
+        "invalid": "Kiểm tra các giá trị và độ chính xác được hỗ trợ rồi thử lại.",
+        "independent": "Một người dùng Group Rewards khác phải kiểm tra và xác nhận quyết định này.",
+        "stale": "Đợt xét duyệt hoặc hồ sơ nhân viên đã thay đổi. Tải lại, kiểm tra giá trị hiện tại và gửi lại.",
+        "salary": "Lương cơ bản mới không được thấp hơn lương cơ bản hiện tại.",
+        "evidence": "Dùng chứng từ PDF, PNG hoặc JPEG, tối đa 10 MB mỗi tệp và tổng cộng 10 MB.",
+        "authority": "Vai trò hiện tại của bạn không cho phép thao tác hoặc hồ sơ này.",
+        "budget": "Kiểm tra PAT, trạng thái quỹ, xếp hạng chi nhánh và hệ số trước khi tiếp tục.",
+        "decision": "Hoàn tất lựa chọn thành viên cấp cao hoặc quyết định ngoài hệ thống và lấy xác nhận độc lập.",
+        "locked": "Đưa đợt xét duyệt về bản nháp trước khi thay đổi dữ liệu đã khóa."
+      }
     },
     "policyGrids": {
       "ranges": "Khoảng lương (MYR)",
