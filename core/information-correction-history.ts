@@ -8,3 +8,29 @@ export function frozenPayslipInformation(field:'grade'|'employmentType',fallback
 export function employmentInformationAt<F extends 'hiredOn'|'joinDate'|'companyId'>(field:F,asOf:SQL,fallback:SQL):SQL<F extends 'joinDate'?string|null:string>{
  return sql<F extends 'joinDate'?string|null:string>`case when exists(select 1 from ${domainEvent} ev where ev.tenant_id=app.current_tenant_id() and ev.subject_employment_id=${employment.id} and ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${asOf}::text) then (select ev.payload->'before'->>${field} from ${domainEvent} ev where ev.tenant_id=app.current_tenant_id() and ev.subject_employment_id=${employment.id} and ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${asOf}::text order by ev.sequence limit 1) else ${fallback}::text end`;
 }
+
+import type {Tx} from '../db/client';
+import type {PayslipReviewRow} from './payroll-view';
+type RunType=PayslipReviewRow['runType'];
+/** Only retained document fields can overlay a live transaction. Money and publication stay canonical. */
+const profileFields=['employeeName','employee','employeeCode','company','companyReg','currency','cycleName','informationFields','businessUnit','department','position','jobGrade','employmentType','division','branch','region','line','section','team','base','category','paymentMethod','bankName','bankAccountNo','icNumber','passportNumber','epfNumber','socsoNumber','taxNumber','employmentStatus'] as const;
+type RawDocumentRow=Omit<PayslipReviewRow,'bankAccountMasked'|'bankAccountFull'|'identityNumber'|'identityIsPassport'> & {bankAccountNo:string|null;icNumber:string|null;passportNumber:string|null;employmentStatus:string|null};
+type HistoricalDocument={metadata:Record<string,unknown>;batch:Record<string,unknown>;payslip:Record<string,unknown>};
+export function overlayInformationDocument<T extends object>(row:T,document:HistoricalDocument|null):T{
+ if(!document)return row;
+ const result={...row};for(const key of profileFields)if(key in row&&Object.hasOwn(document.metadata,key))Object.assign(result,{[key]:document.metadata[key]});return result;
+}
+export async function informationPayslipDocument(tx:Tx,id:string):Promise<HistoricalDocument|null>{
+ const [row]=await tx.execute<{document:HistoricalDocument|null}>(sql`select app.information_payslip_document(${id}::uuid) as document`);return row?.document??null;
+}
+export async function informationPayslipDocuments(tx:Tx,p:{companyIds:string[];year?:number;month?:number;cycle?:string;employmentId?:string}):Promise<HistoricalDocument[]>{
+ const rows=await tx.execute<{document:HistoricalDocument}>(sql`select document from app.information_payslip_documents(array[${sql.join(p.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${p.year??null}::integer,${p.month??null}::integer,${p.cycle??null}::text,${p.employmentId??null}::uuid) as document`);
+ if(rows.length>5000)throw new Error('Narrow the payroll period to view retained documents.');return rows.map(r=>r.document);
+}
+/** Fixed SQL projection supplies exact numeric strings, never JSON numeric conversions. */
+export function informationDocumentRow(d:HistoricalDocument):RawDocumentRow{
+ const b=d.batch,p=d.payslip;
+ return {...d.metadata,id:p.id,employmentId:p.employment_id,companyId:b.company_id,batchId:b.id,payPeriod:b.pay_period,runType:b.run_type as RunType,runSeq:b.run_seq,batchStatus:b.status,
+ historyImportAttemptId:b.history_import_attempt_id,historyImportCycleName:b.history_import_cycle_name,releasedAt:b.released_at?new Date(String(b.released_at)):null,version:p.version,
+ basic:p.basic_salary,allowance:p.allowance,overtime:p.overtime_pay,bonus:p.bonus,gross:p.gross_pay,statutory:p.statutory,otherDeductions:p.other_deductions,totalDeductions:p.total_deductions,net:p.net_pay,employerCost:p.employer_cost,daysWorked:p.days_worked,coverageFrom:p.coverage_from,coverageTo:p.coverage_to,payDate:b.history_import_attempt_id?null:b.batch_date} as RawDocumentRow;
+}

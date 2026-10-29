@@ -10,12 +10,13 @@ import {withTenant} from '../db/client';
 import * as schema from '../db/schema';
 import {previewInformationCorrection,correctInformation,informationCorrectionHistory,informationCorrectionOptions} from '../core/information-correction';
 import {previewInformationUpload,confirmInformationUpload} from '../core/information-correction-import';
+import {reconcileInformationSnapshots} from '../scripts/reconcile-information-snapshots';
 import {PDFDocument} from 'pdf-lib';
 import {buildPayslipPdfData,renderPayslipPdf} from '../lib/payslip-pdf';
 import {labels as pdfLabels} from './fixtures/payslip-pdf-fixture';
 import {getImportAttempt,importAttemptSource} from '../core/import-history';
 import {eaStatement} from '../localization/my/reports';
-import {payslipForReview,listPayrollRegisterAcross} from '../core/payroll-view';
+import {payslipForReview,listPayrollRegisterAcross,listPayslipRunsFor,listProcessedPayslipsAcross} from '../core/payroll-view';
 import {INFORMATION_HEADERS,type InformationChanges} from '../lib/information-correction';
 import {parseInformationWorkbook,informationWorkbook} from '../lib/information-correction-workbook';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -95,6 +96,13 @@ describe('8550b282 information-only corrections',()=>{
   const sourceUser=await createAppUser(b.tenantId,hrPerson.id,'hr_admin');await owner.db.update(schema.roleAssignment).set({companyId:b.companyId}).where(eq(schema.roleAssignment.appUserId,sourceUser));
   const sourceCtx={...ctx(),userId:sourceUser,personId:hrPerson.id,grants:[{role:'hr_admin',companyId:b.companyId}]};
   expect(await payslipForReview(sourceCtx,{companyIds:[b.companyId],payslipId:slip.id})).toMatchObject({companyId:b.companyId,employmentType:'full_time',net:'2660.00'});
+  expect(await listPayslipRunsFor(sourceCtx,{companyIds:[b.companyId],employmentId:id})).toMatchObject([{payslipId:slip.id,companyId:b.companyId}]);
+  expect(await listProcessedPayslipsAcross(sourceCtx,{companyIds:[b.companyId],year:2025,limit:1})).toMatchObject([{id:slip.id,net:'2660.00'}]);
+  expect(await listPayrollRegisterAcross(sourceCtx,{companyIds:[b.companyId],year:2025})).toMatchObject([{employmentType:'full_time',net:'2660.00'}]);
+  expect(await withTenant(sourceCtx,tx=>tx.select().from(schema.employment).where(eq(schema.employment.id,id)))).toEqual([]);
+  expect(await payslipForReview(sourceCtx,{companyIds:[destination.id],payslipId:slip.id})).toBeNull();
+  const employeeCtx={...sourceCtx,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
+  expect(await payslipForReview(employeeCtx,{companyIds:[b.companyId],payslipId:slip.id})).toBeNull();
 
  });
  it('requires a fresh review when the selected reference code changes',async()=>{
@@ -166,4 +174,22 @@ describe('8550b282 information-only corrections',()=>{
   const id=await fixture();await closedSlip(id);await apply(id,{hiredOn:'2025-01-01'});
   await expect(withTenant(ctx(),tx=>tx.execute(sql`delete from information_payslip_snapshot`))).rejects.toThrow();
  });
+ it('reconciles verified legacy metadata atomically, dry-run first, without changing payroll',async()=>{
+  const id=await fixture(),{slip}=await closedSlip(id);
+  const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'LEGACY',name:'Later grade'}).returning();
+  await setEmploymentGrade(ctx(),{employmentId:id,gradeId:grade.id});
+  await expect(apply(id,{hiredOn:'2025-01-01'})).rejects.toThrow('reconcile the historical');
+  const manifest={version:1 as const,tenantId:b.tenantId,actorUserId:ctx().userId,verifiedOriginals:true as const,items:[{payslipId:slip.id,employmentId:id,companyId:b.companyId,original:{grade:null,employmentType:'full_time' as const,hiredOn:'2025-01-15',joinDate:null},evidence:[{path:'private-original.pdf',sha256:'a'.repeat(64),reference:'Reviewed original statement'}]}]};
+  expect(await reconcileInformationSnapshots(owner,manifest)).toMatchObject({mode:'dry-run',missing:1});
+  expect(await owner.db.select().from(schema.informationPayslipSnapshot)).toHaveLength(0);
+  expect(await reconcileInformationSnapshots(owner,manifest,true)).toMatchObject({mode:'applied',missing:1});
+  expect(await reconcileInformationSnapshots(owner,manifest,true)).toMatchObject({missing:0,alreadyPreserved:1});
+  await expect(reconcileInformationSnapshots(owner,{...manifest,items:[{...manifest.items[0],original:{...manifest.items[0].original,grade:'Wrong'}}]},true)).rejects.toThrow('cannot be overwritten');
+  await apply(id,{hiredOn:'2025-01-01'});
+  expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,slip.id)))[0]).toEqual(slip);
+  expect(await payslipForReview(ctx(),{companyIds:[b.companyId],payslipId:slip.id})).toMatchObject({jobGrade:null,employmentType:'full_time'});
+  const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'employment.information.snapshot-reconciled'));
+  expect(events).toHaveLength(1);expect(JSON.stringify(events)).not.toContain('private-original.pdf');
+ });
+
 });

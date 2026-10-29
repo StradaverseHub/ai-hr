@@ -1,4 +1,4 @@
-import {frozenPayslipInformation} from './information-correction-history';
+import {frozenPayslipInformation,informationPayslipDocument,informationPayslipDocuments,informationDocumentRow,overlayInformationDocument} from './information-correction-history';
 import {payrollComparisonAvailability} from '../lib/payroll-comparison-result';
 import {recordedPayrollComparisonAmount, recordedPayrollComparisonCurrency, recordedPayrollProrationCoverage} from '../lib/payroll-comparison-source';
 import {payPeriodBounds, payslipCoverage} from './payslip-segment';
@@ -1051,7 +1051,7 @@ export function listProcessedPayslipsAcross(
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
   const cycle = cleanRunType(p.cycle);
   const limit = Number.isInteger(p.limit) && p.limit! > 0 ? p.limit! : undefined;
-  return withTenant(ctx, (tx) => {
+  return withTenant(ctx, async (tx) => {
     const q = tx
       .select({
         id: payslip.id,
@@ -1108,7 +1108,14 @@ export function listProcessedPayslipsAcross(
       .$dynamic();
     // An absent cap does not call .limit() at all, so every existing caller — including the CSV
     // export, which must never be clipped — issues exactly the query it issued before.
-    return limit ? q.limit(limit) : q;
+    const rows=await (limit ? q.limit(limit) : q);
+    const retained=await informationPayslipDocuments(tx,{...p,cycle});
+    const seen=new Set(rows.map(row=>row.id));
+    for(const document of retained){const r=informationDocumentRow(document);if(seen.has(r.id))continue;
+      rows.push({id:r.id,employmentId:r.employmentId,employeeName:r.employeeName,employeeCode:r.employeeCode,companyId:r.companyId,company:r.company,currency:r.currency,batchId:r.batchId!,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,batchStatus:r.batchStatus,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null,coverageFrom:r.coverageFrom??null,coverageTo:r.coverageTo??null,releasedAt:r.releasedAt,version:r.version,basic:r.basic,allowance:r.allowance,overtime:r.overtime,bonus:r.bonus,gross:r.gross,statutory:r.statutory,otherDeductions:r.otherDeductions,totalDeductions:r.totalDeductions,net:r.net});
+    }
+    rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
+    return limit?rows.slice(0,limit):rows;
   });
 }
 
@@ -1169,8 +1176,8 @@ export function listPayslipRunsFor(
   p: { companyIds: string[]; employmentId: string },
 ): Promise<PayslipRunRow[]> {
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, async (tx) => {
+    const rows=await tx
       .select({
         payslipId: payslip.id,
         companyId: payrollBatch.companyId,
@@ -1183,8 +1190,14 @@ export function listPayslipRunsFor(
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
       .where(and(inArray(payrollBatch.companyId, p.companyIds), eq(payslip.employmentId, p.employmentId)))
-      .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(payrollBatch.companyId)),
-  );
+      .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(payrollBatch.companyId));
+    const seen=new Set(rows.map(r=>r.payslipId));
+    for(const document of await informationPayslipDocuments(tx,p)){
+      const r=informationDocumentRow(document);if(seen.has(r.id))continue;
+      rows.push({payslipId:r.id,companyId:r.companyId,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null});
+    }
+    return rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.companyId.localeCompare(b.companyId));
+  });
 }
 
 // ───────────────────── 4. Payroll Register (feedback 622e12eb) ─────────────────────
@@ -1288,6 +1301,7 @@ export function listPayrollRegisterAcross(
   return withTenant(ctx, async (tx) => {
     const rows = await tx
       .select({
+        correctionSlipId:payslip.id,
         employeeCode: employment.employeeCode,
         employeeName: person.fullName,
         company: company.legalName,
@@ -1342,13 +1356,20 @@ export function listPayrollRegisterAcross(
       )
       .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName));
 
+    const retained=await informationPayslipDocuments(tx,{...p,cycle});
+    for(const document of retained){
+      const saved=informationDocumentRow(document),index=rows.findIndex(r=>r.correctionSlipId===saved.id);
+      if(index>=0)rows[index]=overlayInformationDocument(rows[index],document);
+      else rows.push({correctionSlipId:saved.id,employeeCode:saved.employeeCode,employeeName:saved.employeeName,company:saved.company,currency:saved.currency,department:saved.department,position:saved.position,jobGrade:saved.jobGrade,employmentStatus:saved.employmentStatus,employmentType:saved.employmentType,payPeriod:saved.payPeriod,payrollCycle:saved.runType,runSeq:saved.runSeq,historyImportAttemptId:saved.historyImportAttemptId??null,historyImportCycleName:saved.historyImportCycleName??null,daysWorked:saved.daysWorked??null,basic:saved.basic,allowance:saved.allowance,overtime:saved.overtime,bonus:saved.bonus,gross:saved.gross,statutory:saved.statutory,otherDeductions:saved.otherDeductions,totalDeductions:saved.totalDeductions,net:saved.net,employerCost:saved.employerCost});
+    }
+    rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
     return rows.map((r) => {
       const st = (r.statutory ?? {}) as Record<string, unknown>;
       const n = (k: string): number => {
         const v = Number(st[k] ?? 0);
         return Number.isFinite(v) ? v : 0;
       };
-      const { statutory: _statutory, ...rest } = r;
+      const { statutory: _statutory, correctionSlipId:_correctionSlipId, ...rest } = r;
       // 3c473773 — the EARNINGS columns follow this payslip's own box stamp, so the register cannot
       // disagree with the payslip about which box an amount is in. The DEDUCTION and EMPLOYER columns
       // below stay AS COMPUTED (the full employee share), which is this read's documented contract above
@@ -1511,7 +1532,7 @@ export function payslipForReview(
 ): Promise<PayslipReviewRow | null> {
   if (p.companyIds.length === 0) return Promise.resolve(null); // fail closed — no scope, no payslip
   return withTenant(ctx, async (tx) => {
-    const [row] = await tx
+    const [liveRow] = await tx
       .select({
         id: payslip.id,
         employmentId: payslip.employmentId,
@@ -1596,6 +1617,10 @@ export function payslipForReview(
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
       .where(and(eq(payslip.id, p.payslipId), inArray(payrollBatch.companyId, p.companyIds)))
       .limit(1);
+    const document=await informationPayslipDocument(tx,p.payslipId);
+    const retained=document?informationDocumentRow(document):null;
+    if(retained&&!p.companyIds.includes(retained.companyId))return null;
+    const row=liveRow?overlayInformationDocument(liveRow,document):retained;
     if (!row) return null;
     const { bankAccountNo, icNumber, passportNumber, ...rest } = row;
     const acct = (bankAccountNo ?? '').trim();

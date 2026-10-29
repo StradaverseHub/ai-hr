@@ -1,4 +1,4 @@
-import {frozenPayslipInformation} from './information-correction-history';
+import {frozenPayslipInformation,informationPayslipDocument,overlayInformationDocument} from './information-correction-history';
 import {readReviewedPayrollRunScopeLabelsTx} from './payroll-run-selection';
 import {visibleLabelIdsCondition} from './system-labels';
 import {isDeepStrictEqual} from 'node:util';
@@ -11023,7 +11023,7 @@ export function payslipDetail(ctx: SessionContext, payslipId: string, ownOnly = 
     // d28501b8 r2 — the employee's own copy is the payslip they were issued, even if an import later set it
     // aside for HR. Only the self path asks; HR detail stays on the effective figures.
     if (ownOnly) await tx.execute(sql`select set_config('app.payslip_self_issued','on',true)`);
-    const [row] = await tx
+    const [liveRow] = await tx
       .select({
         id: payslip.id,
         employmentId: payslip.employmentId,
@@ -11117,7 +11117,8 @@ export function payslipDetail(ctx: SessionContext, payslipId: string, ownOnly = 
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
       .where(and(eq(payslip.id, payslipId),isNull(payrollBatch.historyImportAttemptId), ownOnly ? ctx.personId ? and(eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`) : sql`false` : undefined))
       .limit(1);
-    if (!row) return null;
+    if (!liveRow) return null;
+    const row=overlayInformationDocument(liveRow,await informationPayslipDocument(tx,payslipId));
     // Step 6 — hide a payslip whose batch is not yet closed OR whose release instant has not passed, so the ESS
     // detail page + PDF route (which both call this) return notFound/404 until release. Admin surfaces use
     // different reads (payroll-view.ts) and are unaffected. A closed batch with a NULL releasedAt is a legacy

@@ -2,14 +2,14 @@
 CREATE TABLE information_payslip_snapshot (
  payslip_id uuid PRIMARY KEY,tenant_id uuid NOT NULL REFERENCES tenant(id),
  employment_id uuid NOT NULL REFERENCES employment(id),company_id uuid NOT NULL REFERENCES company(id),
- grade text,employment_type text,hired_on date NOT NULL,join_date date,
+ grade text,employment_type text,hired_on date NOT NULL,join_date date,document_metadata jsonb NOT NULL CHECK(jsonb_typeof(document_metadata)='object'),
  recorded_by uuid NOT NULL REFERENCES app_user(id),created_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE information_payslip_snapshot ENABLE ROW LEVEL SECURITY;
 ALTER TABLE information_payslip_snapshot FORCE ROW LEVEL SECURITY;
 CREATE POLICY information_snapshot_read ON information_payslip_snapshot FOR SELECT USING(
  tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
- AND EXISTS(SELECT 1 FROM payslip p WHERE p.id=information_payslip_snapshot.payslip_id AND p.employment_id=information_payslip_snapshot.employment_id));
+ AND (app.can_admin_payroll_for(company_id) OR EXISTS(SELECT 1 FROM payslip p WHERE p.id=information_payslip_snapshot.payslip_id AND p.employment_id=information_payslip_snapshot.employment_id)));
 CREATE POLICY information_snapshot_insert ON information_payslip_snapshot FOR INSERT WITH CHECK(
  tenant_id=app.current_tenant_id() AND recorded_by=app.current_user_id() AND app.principal_snapshot_current()
  AND app.is_admin_for(company_id) AND app.access_workforce_employment(employment_id,'workforce.maintain')
@@ -61,8 +61,8 @@ BEGIN
  WHERE p.employment_id=e.id AND (p.tenant_id<>e.tenant_id OR b.tenant_id<>e.tenant_id OR NOT app.is_admin_for(b.company_id))) THEN
   RAISE EXCEPTION 'Historical payroll company permission is required' USING ERRCODE='42501';
  END IF;
- INSERT INTO public.information_payslip_snapshot(payslip_id,tenant_id,employment_id,company_id,grade,employment_type,hired_on,join_date,recorded_by)
- SELECT p.id,e.tenant_id,e.id,b.company_id,g.name,a.employment_type::text,e.hired_on,e.join_date,app.current_user_id()
+ INSERT INTO public.information_payslip_snapshot(payslip_id,tenant_id,employment_id,company_id,grade,employment_type,hired_on,join_date,document_metadata,recorded_by)
+ SELECT p.id,e.tenant_id,e.id,b.company_id,g.name,a.employment_type::text,e.hired_on,e.join_date,app.information_document_metadata(p.id),app.current_user_id()
  FROM public.payslip p JOIN public.payroll_batch b ON b.id=p.batch_id
  LEFT JOIN public.job_grade g ON g.id=e.grade_id AND g.tenant_id=e.tenant_id
  WHERE p.employment_id=e.id ON CONFLICT(payslip_id) DO NOTHING;
@@ -91,3 +91,72 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.information_payroll_ready(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.information_payroll_ready(uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Shared pure SQL status owner, also called by core/employment-status-sql.ts.
+CREATE FUNCTION app.employment_status_on(p_blacklisted timestamptz,p_resignation date,p_last date,p_terminated date,p_final date,p_confirmation date,p_probation date,p_provisional date,p_day date) RETURNS text
+LANGUAGE sql IMMUTABLE AS $$
+ SELECT CASE WHEN p_blacklisted IS NOT NULL THEN 'blacklisted'
+ WHEN least(p_resignation,p_last,p_terminated) IS NOT NULL AND p_day>=least(p_resignation,p_last,p_terminated) THEN 'resigned'
+ WHEN least(p_resignation,p_last,p_terminated) IS NOT NULL THEN 'active_serving_notice'
+ WHEN app.employment_confirmation_date(p_final,p_confirmation,p_probation,p_provisional) IS NOT NULL AND p_day<app.employment_confirmation_date(p_final,p_confirmation,p_probation,p_provisional) THEN 'probation' ELSE 'active' END;
+$$;
+REVOKE ALL ON FUNCTION app.employment_status_on(timestamptz,date,date,date,date,date,date,date,date) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.employment_status_on(timestamptz,date,date,date,date,date,date,date,date) TO ai_hr_app;
+--> statement-breakpoint
+-- Internal fixed metadata projection. No salaries, transaction amounts or caller-supplied JSON.
+CREATE FUNCTION app.information_document_metadata(p_payslip uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object(
+ 'employeeName',p.full_name,'employee',p.full_name,'employeeCode',e.employee_code,
+ 'company',c.legal_name,'companyReg',c.registration_no,'currency',c.currency,
+ 'cycleName',CASE WHEN b.history_import_attempt_id IS NOT NULL THEN b.history_import_cycle_name||' - By Import' ELSE pc.name END,
+ 'informationFields',s.fields,'businessUnit',bu.name,'department',d.name,'position',pos.title,'jobGrade',g.name,'employmentType',a.employment_type,
+ 'division',e.org_division,'branch',e.org_branch,'region',e.org_region,'line',e.org_line,'section',e.org_section,'team',e.org_team,'base',e.org_base,'category',e.employment_category,
+ 'paymentMethod',e.payment_method,'bankName',st.bank_name,'bankAccountNo',st.bank_account_no,
+ 'icNumber',st.ic_number,'passportNumber',st.passport_number,'epfNumber',st.epf_number,'socsoNumber',st.socso_number,'taxNumber',st.tax_number,
+ 'employmentStatus',app.employment_status_on(e.blacklisted_at,e.resignation_date,e.last_working_date,e.terminated_on,e.final_confirmation_date,e.confirmation_date,e.probation_end_date,e.provisional_end_on,(now() at time zone 'Asia/Kuala_Lumpur')::date))
+ FROM public.payslip sl JOIN public.payroll_batch b ON b.id=sl.batch_id AND b.tenant_id=sl.tenant_id
+ JOIN public.employment e ON e.id=sl.employment_id AND e.tenant_id=sl.tenant_id JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+ JOIN public.company c ON c.id=b.company_id AND c.tenant_id=b.tenant_id
+ LEFT JOIN public.assignment a ON a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.valid_to IS NULL AND a.superseded_at IS NULL
+ LEFT JOIN public.department d ON d.id=a.department_id LEFT JOIN public.position pos ON pos.id=a.position_id
+ LEFT JOIN public.business_unit bu ON bu.id=a.business_unit_id LEFT JOIN public.job_grade g ON g.id=e.grade_id
+ LEFT JOIN public.employee_statutory_my st ON st.person_id=e.person_id AND st.tenant_id=e.tenant_id
+ LEFT JOIN public.payroll_cycle pc ON pc.id=b.payroll_cycle_id LEFT JOIN public.payslip_information_setting s ON s.company_id=b.company_id
+ WHERE sl.id=p_payslip AND sl.tenant_id=app.current_tenant_id();
+$$;
+REVOKE ALL ON FUNCTION app.information_document_metadata(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- Salary-document authority follows its paying company, without granting Workforce access to the
+-- employee's current destination profile. Self access retains the ordinary closed/released gate.
+CREATE FUNCTION app.information_payslip_document(p_payslip uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('metadata',f.document_metadata||jsonb_build_object('jobGrade',f.grade,'employmentType',f.employment_type),
+ 'batch',to_jsonb(b),'payslip',to_jsonb(p)||jsonb_build_object(
+ 'basic_salary',p.basic_salary::text,'allowance',p.allowance::text,'overtime_pay',p.overtime_pay::text,'bonus',p.bonus::text,
+ 'gross_pay',p.gross_pay::text,'other_deductions',p.other_deductions::text,'total_deductions',p.total_deductions::text,
+ 'net_pay',p.net_pay::text,'employer_cost',p.employer_cost::text,'days_worked',p.days_worked::text))
+ FROM public.information_payslip_snapshot f JOIN public.payslip p ON p.id=f.payslip_id AND p.employment_id=f.employment_id AND p.tenant_id=f.tenant_id
+ JOIN public.payroll_batch b ON b.id=p.batch_id AND b.company_id=f.company_id AND b.tenant_id=f.tenant_id
+ JOIN public.employment e ON e.id=p.employment_id AND e.tenant_id=f.tenant_id
+ WHERE p.id=p_payslip AND f.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
+ AND (app.payroll_history_effective(p.id) OR app.payroll_history_self_issued(p.id))
+ AND (app.can_admin_payroll_for(b.company_id) OR (app.is_self_person(e.person_id) AND b.status='closed' AND (b.released_at IS NULL OR b.released_at<=now())));
+$$;
+REVOKE ALL ON FUNCTION app.information_payslip_document(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.information_payslip_document(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.information_payslip_documents(p_companies uuid[],p_year integer,p_month integer,p_cycle text,p_employment uuid DEFAULT NULL) RETURNS SETOF jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT document FROM public.information_payslip_snapshot f JOIN public.payslip p ON p.id=f.payslip_id AND p.tenant_id=f.tenant_id
+ JOIN public.payroll_batch b ON b.id=p.batch_id AND b.tenant_id=f.tenant_id
+ CROSS JOIN LATERAL (SELECT app.information_payslip_document(p.id) AS document) value
+ WHERE f.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND cardinality(p_companies)<=100
+ AND b.company_id=ANY(p_companies) AND app.can_admin_payroll_for(b.company_id)
+ AND (p_employment IS NULL OR p.employment_id=p_employment)
+ AND (p_year IS NULL OR left(b.pay_period,4)=p_year::text) AND (p_month IS NULL OR substring(b.pay_period,6,2)=lpad(p_month::text,2,'0'))
+ AND (p_cycle IS NULL OR b.run_type::text=p_cycle) AND document IS NOT NULL
+ ORDER BY b.pay_period DESC,b.run_seq,p.id LIMIT 5001;
+$$;
+REVOKE ALL ON FUNCTION app.information_payslip_documents(uuid[],integer,integer,text,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.information_payslip_documents(uuid[],integer,integer,text,uuid) TO ai_hr_app;

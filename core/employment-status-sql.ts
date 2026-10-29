@@ -74,21 +74,5 @@ export function employmentStatusSql(
   today: string = todayInKualaLumpur(),
   columns: EmploymentStatusColumns = statusColumns,
 ): SQL<EmploymentStatus> {
-  const ended = sql`least(${columns.resignationDate}, ${columns.lastWorkingDate}, ${columns.terminatedOn})`;
-  const confirmation = confirmationDateSql(columns);
-  return sql<EmploymentStatus>`case
-    when ${columns.blacklistedAt} is not null then 'blacklisted'
-    /* R81 'withhold' has NO branch here on purpose. The TypeScript twin reads emp.payrollHoldAt, an
-       input that no column feeds (Payroll has no salary-hold setting yet), so the SQL twin has nothing
-       to read and the branch would be a dead "when false then withhold". The two implementations
-       therefore agree on every row the database can actually produce, which is what
-       test/personnel-status-sync.test.ts pins. A BLOCK comment, not a line comment: this fragment is
-       composed into larger statements and a stray -- would comment out whatever followed it on one line.
-       When the payroll hold lands it adds the column, this branch, and the TS input together, in ONE
-       change. */
-    when ${ended} is not null and ${today}::date >= ${ended} then 'resigned'
-    when ${ended} is not null then 'active_serving_notice'
-    when ${confirmation} is not null and ${today}::date < ${confirmation} then 'probation'
-    else 'active'
-  end`;
+  return sql<EmploymentStatus>`app.employment_status_on((${columns.blacklistedAt})::timestamptz,(${columns.resignationDate})::date,(${columns.lastWorkingDate})::date,(${columns.terminatedOn})::date,(${columns.finalConfirmationDate})::date,(${columns.confirmationDate})::date,(${columns.probationEndDate})::date,(${columns.provisionalEndOn})::date,${today}::date)`;
 }
