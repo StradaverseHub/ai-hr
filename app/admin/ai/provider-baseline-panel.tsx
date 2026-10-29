@@ -65,6 +65,9 @@ export async function AiProviderBaselinePanel({ session }: { session: SessionCon
   return <Card id="ai-provider-changes" className="scroll-mt-4 p-5">
     <SectionHeader title={t('title')} />
     <p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('intro')}</p>
+    {view.active && !view.active.evaluated && <p role="status" className="mt-3 text-sm font-medium text-amber-700 dark:text-amber-300">
+      {t('activeNotEvaluated', { provider: view.active.label, model: view.active.model })}
+    </p>}
     {view.platform && <p role="status" className={`mt-3 text-sm ${view.platform.evaluated ? '' : 'font-medium text-amber-700 dark:text-amber-300'}`}>
       {t(view.platform.evaluated ? 'platformEvaluated' : 'platformNotEvaluated', { provider: view.platform.label, model: view.platform.model })}
     </p>}

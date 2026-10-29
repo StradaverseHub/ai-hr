@@ -11357,7 +11357,8 @@
         "activate": "Aktifkan perubahan ini",
         "openRouterActivate": "Aktifkan OpenRouter daripada kadnya di atas; resit penilaiannya sendiri masih diperlukan.",
         "platformNotEvaluated": "Asas belum dinilai semula untuk model ini: {provider} · {model} (lalai platform sedang digunakan).",
-        "platformEvaluated": "Lalai platform {provider} · {model} mempunyai asas yang lulus atau diterima."
+        "platformEvaluated": "Lalai platform {provider} · {model} mempunyai asas yang lulus atau diterima.",
+        "activeNotEvaluated": "Asas belum dinilai semula untuk model ini: {provider} · {model} (konfigurasi aktif anda). Ia terus digunakan. Untuk menilainya, simpan semula sebagai perubahan yang menunggu dan jalankan semakan asas."
       }
     },
     "attendancePolicy": {

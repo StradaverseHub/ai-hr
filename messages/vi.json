@@ -11357,7 +11357,8 @@
         "activate": "Kích hoạt thay đổi này",
         "openRouterActivate": "Kích hoạt OpenRouter từ thẻ của nó ở trên; vẫn cần biên nhận đánh giá riêng của nó.",
         "platformNotEvaluated": "Chưa đánh giá lại cơ sở cho mô hình này: {provider} · {model} (đang dùng mặc định của nền tảng).",
-        "platformEvaluated": "Mặc định của nền tảng {provider} · {model} đã có kết quả cơ sở đạt hoặc được chấp nhận."
+        "platformEvaluated": "Mặc định của nền tảng {provider} · {model} đã có kết quả cơ sở đạt hoặc được chấp nhận.",
+        "activeNotEvaluated": "Chưa đánh giá lại cơ sở cho mô hình này: {provider} · {model} (cấu hình đang hoạt động của bạn). Cấu hình vẫn được sử dụng. Để đánh giá, hãy lưu lại cấu hình này dưới dạng thay đổi đang chờ và chạy kiểm tra cơ sở."
       }
     },
     "attendancePolicy": {

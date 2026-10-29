@@ -56,6 +56,9 @@ export type AiProviderChangeView = Readonly<{
   targets: readonly BaselineTargetView[];
   /** Present only while the tenant runs on the platform default. */
   platform: Readonly<{ provider: string; label: string; model: string; fingerprint: string; evaluated: boolean }> | null;
+  /** The tenant's own active configuration. `evaluated` is false when no passed or accepted run admitted its exact
+   * current version (every configuration activated before 0694, or one changed in place since). It keeps serving. */
+  active: Readonly<{ provider: string; label: string; model: string; evaluated: boolean }> | null;
 }>;
 type RunRow = { id: string; target_kind: string; target_id: string | null; target_version: string | null; config_fingerprint: string; suite_digest: string;
   state: string; suites: unknown; started_by_user_id: string; updated_at: Date | string; accepted_reason: string | null; accepted_at: Date | string | null };
@@ -86,8 +89,11 @@ export function getAiProviderChangeView(ctx: SessionContext): Promise<AiProvider
     await adminTx(tx, ctx);
     const pending = await tx.execute<{ id: string; version_token: string; provider: string; model: string; key_last4: string }>(sql`select id,version_token,provider,model,key_last4 from app.ai_provider_pending_view_v1()`);
     const candidates = await providerCandidatesTx(tx, ctx);
-    const [live] = await tx.execute<{ active: boolean }>(sql`select exists(select 1 from public.ai_provider_config where is_active) as active`);
-    const env = live?.active === false ? envFallbackConfig() : null;
+    const [current] = await tx.execute<{ provider: string; model: string; evaluated: boolean }>(sql`select c.provider::text as provider,c.model,
+      exists(select 1 from public.ai_provider_baseline_run r where r.id=c.baseline_run_id and r.tenant_id=c.tenant_id and r.state in ('passed','accepted')
+       and r.provider=c.provider::text and r.model=c.model) as evaluated
+      from public.ai_provider_config c where c.tenant_id=${ctx.tenantId}::uuid and c.is_active limit 1`);
+    const env = current ? null : envFallbackConfig();
     const rows = Array.from(await tx.execute<RunRow>(sql`select id,target_kind,target_id,target_version,config_fingerprint,suite_digest,state,suites,started_by_user_id,updated_at,accepted_reason,accepted_at
       from public.ai_provider_baseline_run where tenant_id=${ctx.tenantId}::uuid order by updated_at desc,id limit 200`));
     const label = (provider: string) => isProvider(provider) ? PROVIDER_META[provider].label : provider;
@@ -110,7 +116,8 @@ export function getAiProviderChangeView(ctx: SessionContext): Promise<AiProvider
       targets.push(view);
       platform = Object.freeze({ provider: env.provider, label: label(env.provider), model: env.model, fingerprint, evaluated: view.activatable });
     }
-    return Object.freeze({ targets: Object.freeze(targets), platform });
+    const active = current ? Object.freeze({ provider: current.provider, label: label(current.provider), model: current.model, evaluated: current.evaluated === true }) : null;
+    return Object.freeze({ targets: Object.freeze(targets), platform, active });
   });
 }
 

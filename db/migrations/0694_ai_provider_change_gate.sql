@@ -98,6 +98,27 @@ CREATE POLICY ai_provider_baseline_run_owner_custody ON public.ai_provider_basel
   AND tenant_id=app.current_tenant_id() AND app.is_group_admin()
  );
 --> statement-breakpoint
+-- The live row remembers the passed or accepted run that admitted it. Any later in-place change of provider, model,
+-- key or options that does not name a new run clears it, so AI management can flag a configuration whose exact
+-- current version was never baseline-evaluated (including every configuration activated before this migration).
+-- Display evidence only: it never blocks the active configuration from serving. No FK: run history outlives rows.
+ALTER TABLE public.ai_provider_config ADD COLUMN baseline_run_id uuid;
+--> statement-breakpoint
+GRANT SELECT (baseline_run_id) ON public.ai_provider_config TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.ai_provider_config_baseline_guard() RETURNS trigger
+ LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.baseline_run_id IS NOT DISTINCT FROM OLD.baseline_run_id AND (NEW.provider IS DISTINCT FROM OLD.provider OR NEW.model IS DISTINCT FROM OLD.model
+  OR NEW.api_key_ciphertext IS DISTINCT FROM OLD.api_key_ciphertext OR NEW.provider_options IS DISTINCT FROM OLD.provider_options)
+ THEN NEW.baseline_run_id:=NULL;END IF;
+ RETURN NEW;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.ai_provider_config_baseline_guard() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER ai_provider_config_baseline_guard BEFORE UPDATE ON public.ai_provider_config FOR EACH ROW EXECUTE FUNCTION app.ai_provider_config_baseline_guard();
+--> statement-breakpoint
 -- Progress is {"<suite>":{"total":n,"passed":p,"failed":f,"next":x}}, with passed+failed=next<=total. The state is
 -- DERIVED here, never posted: failed if any case failed, passed once every suite is complete, else evaluating.
 CREATE FUNCTION app._ai_provider_baseline_state(progress jsonb) RETURNS text
@@ -261,10 +282,10 @@ BEGIN
  rid:=app.ai_provider_baseline_gate_v1('pending',p.id,p.version_token,wanted_suite);
  IF rid IS NULL THEN RAISE EXCEPTION 'AI baseline required';END IF;
  UPDATE ai_provider_config c SET is_active=false WHERE c.tenant_id=p.tenant_id AND c.is_active;
- INSERT INTO ai_provider_config(tenant_id,provider,model,api_key_ciphertext,key_last4,provider_options,is_active,created_by_user_id,updated_by_user_id)
- VALUES(p.tenant_id,p.provider::ai_provider,p.model,p.api_key_ciphertext,p.key_last4,p.provider_options,true,app.current_user_id(),app.current_user_id())
+ INSERT INTO ai_provider_config(tenant_id,provider,model,api_key_ciphertext,key_last4,provider_options,is_active,created_by_user_id,updated_by_user_id,baseline_run_id)
+ VALUES(p.tenant_id,p.provider::ai_provider,p.model,p.api_key_ciphertext,p.key_last4,p.provider_options,true,app.current_user_id(),app.current_user_id(),rid)
  ON CONFLICT(tenant_id,provider) DO UPDATE SET model=excluded.model,api_key_ciphertext=excluded.api_key_ciphertext,key_last4=excluded.key_last4,
- provider_options=excluded.provider_options,is_active=true,updated_at=now(),updated_by_user_id=app.current_user_id() RETURNING ai_provider_config.id INTO cid;
+ provider_options=excluded.provider_options,is_active=true,updated_at=now(),updated_by_user_id=app.current_user_id(),baseline_run_id=excluded.baseline_run_id RETURNING ai_provider_config.id INTO cid;
  DELETE FROM ai_provider_pending_config x WHERE x.id=p.id;
  RETURN QUERY SELECT cid,rid;
 END $$;

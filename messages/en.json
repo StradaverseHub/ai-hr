@@ -11357,7 +11357,8 @@
         "activate": "Activate this change",
         "openRouterActivate": "Activate OpenRouter from its card above; its own evaluation receipt is still required.",
         "platformNotEvaluated": "Baseline not re-evaluated for this model: {provider} · {model} (platform default in use).",
-        "platformEvaluated": "The platform default {provider} · {model} has a passed or accepted baseline."
+        "platformEvaluated": "The platform default {provider} · {model} has a passed or accepted baseline.",
+        "activeNotEvaluated": "Baseline not re-evaluated for this model: {provider} · {model} (your active configuration). It keeps serving. To evaluate it, save it again as a pending change and run the baseline checks."
       }
     },
     "attendancePolicy": {

@@ -14,6 +14,9 @@ import { anthropicAdapter } from '../lib/ai/providers/anthropic';
 import { openaiAdapter } from '../lib/ai/providers/openai';
 import { PROVIDER_BASELINE_SUITES, PROVIDER_BASELINE_SUITE_DIGEST, PROVIDER_BASELINE_REQUEST_LIMIT } from '../lib/ai/provider-baseline-suites';
 import { activateDirectProviderFixture, acceptBaselineFixture, startBaselineRunFixture } from './ai-provider-change-fixture';
+import { activateSyntheticCandidate } from './provider-evaluation-fixture';
+import { encryptSecret } from '../lib/ai/crypto';
+import { readOpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
 import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let base: Base;
@@ -207,6 +210,31 @@ describe('provider and model change gate (WP14)', () => {
     expect(await withTenant(foreign, tx => resolveActiveAiConfig(tx, foreign))).toBeNull();
     expect((await pendingRows()).map(r => [r.tenant_id, r.provider])).toEqual([[base.tenantId, 'anthropic']]);
     expect((await runRow(runId)).state).toBe('evaluating');
+  });
+
+  it('flags an active configuration that no passed or accepted baseline admitted, and never blocks it', async () => {
+    const ctx = adminCtx(base);
+    // A configuration activated before 0694 has no admitting run: flagged, still serving.
+    await owner.db.insert(schema.aiProviderConfig).values({ tenantId: base.tenantId, provider: 'openai', model: 'fictional-legacy-model',
+      apiKeyCiphertext: encryptSecret('fixture-legacy-key', base.tenantId), keyLast4: '-key', isActive: true });
+    expect((await getAiProviderChangeView(ctx)).active).toEqual({ provider: 'openai', label: 'OpenAI', model: 'fictional-legacy-model', evaluated: false });
+    expect(await live()).toMatchObject({ provider: 'openai', model: 'fictional-legacy-model', apiKey: 'fixture-legacy-key' });
+    // Gated activation records the admitting run for that exact version.
+    await activateDirectProviderFixture(ctx, { provider: 'openai', model: 'fictional-evaluated-model' });
+    expect((await getAiProviderChangeView(ctx)).active).toMatchObject({ model: 'fictional-evaluated-model', evaluated: true });
+    const row = async () => (await owner.db.select().from(schema.aiProviderConfig).where(and(eq(schema.aiProviderConfig.tenantId, base.tenantId), eq(schema.aiProviderConfig.isActive, true))))[0];
+    expect((await row()).baselineRunId).toMatch(/^[0-9a-f-]{36}$/);
+    // Any in-place change that names no new run clears it (0694 trigger); the configuration keeps serving.
+    await owner.db.update(schema.aiProviderConfig).set({ model: 'fictional-edited-in-place' }).where(eq(schema.aiProviderConfig.tenantId, base.tenantId));
+    expect((await row()).baselineRunId).toBeNull();
+    expect((await getAiProviderChangeView(ctx)).active).toMatchObject({ model: 'fictional-edited-in-place', evaluated: false });
+    expect(await live()).toMatchObject({ provider: 'openai', model: 'fictional-edited-in-place' });
+    await owner.db.update(schema.aiProviderConfig).set({ isActive: false }).where(eq(schema.aiProviderConfig.tenantId, base.tenantId));
+    // OpenRouter promotion records its admitting run too.
+    await saveAiProviderConfig(ctx, { provider: 'openrouter', model: 'fictional/model', apiKey: 'fixture-openrouter-key',
+      providerOptions: readOpenRouterOptions({ version: 1, routing: { allowedProviders: ['approved-a'], allowFallbacks: false, sort: 'latency' } }) });
+    await activateSyntheticCandidate(ctx);
+    expect((await getAiProviderChangeView(ctx)).active).toMatchObject({ provider: 'openrouter', model: 'fictional/model', evaluated: true });
   });
 
   it('fingerprints the platform default model and says when it has not been re-evaluated', async () => {

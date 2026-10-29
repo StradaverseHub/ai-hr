@@ -69,6 +69,19 @@ describe('provider change baseline panel', () => {
     expect(container.textContent).toContain(t.openRouterActivate);
     expect(container.textContent).not.toMatch(/admin\.ai\.baseline/);
   });
+  it.each(Object.keys(catalogues) as Locale[])('flags an active configuration without an admitting baseline in %s, and only then', async locale => {
+    state.locale = locale;
+    const t = catalogues[locale].admin.ai.baseline;
+    state.view = { platform: null, targets: [], active: { provider: 'openai', label: 'OpenAI', model: 'fictional-legacy-model', evaluated: false } };
+    const first = render(await AiProviderBaselinePanel({ session: {} as never }));
+    const notice = screen.getByRole('status');
+    expect(t.activeNotEvaluated).toContain('{model}');
+    expect(notice.textContent).toBe(t.activeNotEvaluated.replace('{provider}', 'OpenAI').replace('{model}', 'fictional-legacy-model'));
+    first.unmount();
+    state.view = { platform: null, targets: [], active: { provider: 'openai', label: 'OpenAI', model: 'fictional-legacy-model', evaluated: true } };
+    render(await AiProviderBaselinePanel({ session: {} as never }));
+    expect(screen.queryByRole('status')).toBeNull();
+  });
   it('states when the platform default has a passed or accepted baseline and when nothing is waiting', async () => {
     state.locale = 'en'; state.view = { platform: { ...view.platform, evaluated: true }, targets: [] };
     render(await AiProviderBaselinePanel({ session: {} as never }));

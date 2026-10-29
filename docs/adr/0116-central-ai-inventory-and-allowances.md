@@ -148,3 +148,32 @@ born-retired fallback after erasure. Unknown provider usage remains held rather 
 These are prepared source requirements, not a claim of migration or staging acceptance. See the
 [WP5 verification record](../reviews/ai-architecture-wp5-verification-2026-10.md) for exact checks and
 remaining evidence. The coordinated SQL and populated-upgrade rehearsal remain prerequisites.
+
+## Provider and model change gate — WP14, 29 Oct 2026
+
+Review recommendation R19 treats a provider or model change as a release (migration 0694).
+
+- **Pending, then baseline, then activate.** Saving a direct provider (Anthropic, OpenAI, Google, AI gateway)
+  stores a pending change; the gateway never reads it and the active configuration keeps serving. The OpenRouter
+  candidate was already pending. A current group administrator runs the fixed baseline holdout suites against
+  the pending configuration from AI management › Provider: the read-plan holdouts and the human-question
+  holdouts with the checked-in baseline prompt, adjudicated deterministically. Activation is refused until a
+  run of that exact version (a re-save mints a new version) has passed. OpenRouter promotion also needs its
+  existing evaluation receipt. The run state is derived by the database from per-suite counts, never posted.
+- **Accept with reason.** A group administrator may accept a failed or unfinished run of the current version
+  with a recorded reason (10–1000 characters). The acceptance is kept on the run, audited as
+  `ai-control.provider-baseline-accepted`, and admits activation of that version only.
+- **Whose spend.** Baseline requests are the administrator's own: feature `provider_evaluation` under that
+  administrator's ordinary allowances, with the run row as the spend root. The scheduled agent principal never
+  runs them and gets no model spend (owner decision 2, 29 Oct 2026).
+- **Existing and platform configurations.** The live row records the run that admitted it; any later in-place
+  change clears it. AI management flags an active configuration without such a run (including every
+  configuration activated before 0694), and the platform default (environment key and `AI_DRAFT_MODEL`,
+  fingerprinted by provider and model) while a tenant uses it, as "baseline not re-evaluated for this model".
+  The flag never stops a configuration from serving.
+- **Per-feature caps.** A feature row may now hold daily-request, monthly-token and concurrency caps, which
+  `ai_admit` already applies to every run of that feature in the tenant, on top of all other allowances. Only
+  group administrators set them, and only for features without a module setting. Setting-backed features
+  (scheduled agents, Performance AI) cannot carry a cap, because WP6 gives each of them a single switch owner;
+  extending caps to them is a follow-up if needed.
+- **Not yet covered.** The tool-calling Assistant conversation holdout suite is not part of the baseline gate.

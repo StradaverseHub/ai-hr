@@ -268,6 +268,8 @@ export async function setActiveProvider(ctx: SessionContext, p: { provider: stri
       let promoted: { rowId: string; evaluationId: string };
       try { promoted = await activateOpenRouterCandidateTx(tx, ctx, p.evaluationReceipt); }
       catch { throw new AiConfigError('A current evaluated OpenRouter candidate and account-policy review are required.'); }
+      // The promoted row remembers the run that admitted this exact version (0694 clears it on any later in-place change).
+      await tx.update(aiProviderConfig).set({ baselineRunId: gate.id }).where(eq(aiProviderConfig.id, promoted.rowId));
       await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'ai-provider-config', aggregateId: promoted.rowId,
         eventType: 'ai-provider-config.activated', actor: actorOf(ctx), payload: { provider: p.provider, model: candidate.model, evaluationId: promoted.evaluationId,
           protocolSuiteVersion: 1, accountReviewVersion: 1, baselineRunId: gate.id } });

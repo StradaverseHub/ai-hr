@@ -11357,7 +11357,8 @@
         "activate": "启用此更改",
         "openRouterActivate": "请在上方的 OpenRouter 卡片中启用；仍需其自身的评估凭证。",
         "platformNotEvaluated": "此模型尚未重新进行基线评估：{provider} · {model}（正在使用平台默认配置）。",
-        "platformEvaluated": "平台默认配置 {provider} · {model} 已通过或已接受基线检查。"
+        "platformEvaluated": "平台默认配置 {provider} · {model} 已通过或已接受基线检查。",
+        "activeNotEvaluated": "此模型尚未重新进行基线评估：{provider} · {model}（您当前启用的配置）。该配置会继续使用。如需评估，请将其重新保存为待生效更改并运行基线检查。"
       }
     },
     "attendancePolicy": {
