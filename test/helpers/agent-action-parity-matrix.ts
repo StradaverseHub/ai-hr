@@ -39,7 +39,7 @@ export type ParityOutcome='allow'|'deny';
 export const ALWAYS_REFUSED:readonly ParityRole[]=['another_company','another_tenant'];
 
 export type ParityDeclaration=
- | Readonly<{kind:'probed';scope?:'caller_tenant'|'caller_login';scopeReason?:string;screen:Readonly<Record<ParityRole,ParityOutcome>>;narrowed?:Readonly<Partial<Record<ParityRole,string>>>}>
+ | Readonly<{kind:'probed';scope?:'caller_tenant'|'caller_login';scopeReason?:string;screen:Readonly<Record<ParityRole,ParityOutcome>>;page?:Readonly<Record<ParityRole,ParityOutcome>>;narrowed?:Readonly<Partial<Record<ParityRole,string>>>;narrowedPhases?:Readonly<Partial<Record<ParityRole,Readonly<Partial<Record<ParityPhase,string>>>>>>}>
  /** No agent prepare or confirm exists (registry store human_workflow_only): the agent can only hand off. */
  | Readonly<{kind:'human_workflow_only';reason:string}>
  /** Predates WP8; must be in PARITY_PENDING_CEILING. Never valid for a new entry. */
@@ -72,12 +72,12 @@ export const AGENT_ACTION_PARITY={
  'leave.cancel':{kind:'probed',screen:OWN_REQUEST},
  'leave.edit':{kind:'probed',screen:OWN_REQUEST},
  'ess.profile.request':{kind:'probed',screen:OWN_REQUEST},
- 'approvals.leave.decide':{kind:'probed',screen:ASSIGNED_DECISION},
+ 'approvals.leave.decide':{kind:'probed',screen:ASSIGNED_DECISION,narrowedPhases:{assigned_approver:{prepare:'Native leave decisions and the exact task offer admit the current delegate, but reviewed custody still selects the private employment row after step authority and refuses request-only delegates (core/leave.ts lockReviewedLeaveDecisionSourceTx). Verified on 40944662433; routed to delegated-approvals follow-up.',confirm:'Native leave decisions and the exact task offer admit the current delegate, but reviewed custody still selects the private employment row after step authority and refuses request-only delegates (core/leave.ts lockReviewedLeaveDecisionSourceTx). Verified on 40944662433; routed to delegated-approvals follow-up.'}}},
  'approvals.claim.decide':{kind:'probed',screen:ASSIGNED_DECISION},
  'approvals.attendance.decide':{kind:'probed',screen:ASSIGNED_DECISION},
  'approvals.toil.decide':{kind:'probed',screen:ASSIGNED_DECISION},
  'knowledge_base.article.create':{kind:'probed',scope:'caller_tenant',scopeReason:'The closed input has no tenant selector. Native creation is inside the caller tenant; foreign-tenant own creation is valid, while review custody never crosses logins or tenants.',screen:CALLER_TENANT_ADMIN},
- 'payroll.close':{kind:'probed',screen:{...HR_ON_EMPLOYMENT,payroll_partner:A}},
+ 'payroll.close':{kind:'probed',screen:HR_ON_EMPLOYMENT,page:HR_ON_EMPLOYMENT},
  'attendance.correction.request':{kind:'probed',screen:OWN_REQUEST},
  'attendance.overtime.request':{kind:'probed',screen:OWN_REQUEST},
  'claims.draft.save':{kind:'probed',screen:OWN_REQUEST},
@@ -89,9 +89,9 @@ export const AGENT_ACTION_PARITY={
  'rewards.post':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'lifecycle.acknowledgement.submit':{kind:'probed',screen:OWN_REQUEST},
  'toil.replacement.request':{kind:'probed',screen:OWN_REQUEST},
- 'multi_cycle_payroll.create_run':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'multi_cycle_payroll.create_run':{kind:'probed',screen:HR_ON_EMPLOYMENT,page:HR_ON_EMPLOYMENT},
  'typed_pay_components.create':{kind:'probed',scope:'caller_tenant',scopeReason:'The closed input has no tenant selector. Native creation is inside the caller tenant; foreign-tenant own creation is valid, while review custody never crosses logins or tenants.',screen:CALLER_TENANT_ADMIN},
- 'country-my.statutory.update':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'country-my.statutory.update':{kind:'probed',screen:{...HR_ON_EMPLOYMENT,another_company:A},narrowed:{another_company:'Legacy native Personnel statutory write permits this tenant HR actor through its shared-person setter; reviewed source additionally requires is_admin_for(company), can_admin_payroll_employment and access_workforce_employment(workforce.maintain), plus full sensitive field scope. Keep that company-bound refusal; verify actual native withWrite interval on the next SHA. Native setter result observed in 40944662433.'}},
  'notifications.email_preferences.save':{kind:'probed',screen:OWN_REQUEST},
  'system_testing.execution.save':{kind:'probed',screen:OWN_REQUEST},
  'leave.adjustment.apply':{kind:'probed',screen:HR_ON_EMPLOYMENT},
@@ -131,20 +131,25 @@ export function parityCoverageProblems(registry:readonly ParityRegistryEntry[],d
   if(d.scope&&!d.scopeReason?.trim())problems.push(`${entry.id}: caller scope requires a boundary reason`);
   for(const role of PARITY_ROLES)if(d.screen[role]!=='allow'&&d.screen[role]!=='deny')problems.push(`${entry.id}: no screen outcome for ${role}`);
   for(const role of Object.keys(d.screen))if(!(PARITY_ROLES as readonly string[]).includes(role))problems.push(`${entry.id}: unknown role ${role}`);
-  for(const role of ALWAYS_REFUSED)if(!d.scope&&d.screen[role]!=='deny')problems.push(`${entry.id}: ${role} must be refused`);
+  for(const role of ALWAYS_REFUSED)if(!d.scope&&d.screen[role]!=='deny'&&!(role==='another_company'&&d.narrowed?.[role]))problems.push(`${entry.id}: ${role} must be refused`);
   const narrowed=d.narrowed??{};
   for(const [role,reason] of Object.entries(narrowed)){
    if(!(PARITY_ROLES as readonly string[]).includes(role)){problems.push(`${entry.id}: narrowed unknown role ${role}`);continue;}
    if(d.screen[role as ParityRole]!=='allow')problems.push(`${entry.id}: narrowing ${role} is meaningless (the screen refuses it); the agent may never be wider`);
    if(!reason?.trim())problems.push(`${entry.id}: narrowing ${role} without a reason`);
   }
+  for(const [role,phases] of Object.entries(d.narrowedPhases??{})){
+   if(!(PARITY_ROLES as readonly string[]).includes(role)){problems.push(`${entry.id}: narrowed unknown role ${role}`);continue;}
+   if(d.screen[role as ParityRole]!=='allow')problems.push(`${entry.id}: narrowing ${role} is meaningless (the screen refuses it); the agent may never be wider`);
+   for(const [phase,reason] of Object.entries(phases??{}))if(!(PARITY_PHASES as readonly string[]).includes(phase)||!reason?.trim())problems.push(`${entry.id}: narrowing ${role}/${phase} without a valid phase and reason`);
+  }
   // Non-vacuity: at least one role must be allowed by the screen AND the agent, or every check is "deny = deny".
-  if(!PARITY_ROLES.some(role=>d.screen[role]==='allow'&&!narrowed[role]))problems.push(`${entry.id}: no role is allowed by both the screen and the agent, so the matrix proves nothing`);
+  if(!PARITY_ROLES.some(role=>d.screen[role]==='allow'&&!narrowed[role]&&!d.narrowedPhases?.[role]))problems.push(`${entry.id}: no role is allowed by both the screen and the agent, so the matrix proves nothing`);
  }
  return problems;
 }
 
 /** The expected agent outcome for a role: the screen's, unless the agent is declared narrower. */
-export function expectedAgentOutcome(d:Extract<ParityDeclaration,{kind:'probed'}>,role:ParityRole):ParityOutcome{return d.narrowed?.[role]?'deny':d.screen[role];}
+export function expectedAgentOutcome(d:Extract<ParityDeclaration,{kind:'probed'}>,role:ParityRole,phase:ParityPhase='confirm'):ParityOutcome{return d.narrowed?.[role]||d.narrowedPhases?.[role]?.[phase]?'deny':d.screen[role];}
 export type ProbedActionId={[K in keyof typeof AGENT_ACTION_PARITY]:(typeof AGENT_ACTION_PARITY)[K]['kind'] extends 'probed'?K:never}[keyof typeof AGENT_ACTION_PARITY];
 export const PROBED_ACTION_IDS=Object.freeze((Object.keys(AGENT_ACTION_PARITY) as (keyof typeof AGENT_ACTION_PARITY)[]).filter((id):id is ProbedActionId=>AGENT_ACTION_PARITY[id].kind==='probed'));
