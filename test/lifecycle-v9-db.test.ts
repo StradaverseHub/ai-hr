@@ -7,7 +7,7 @@ import { saveEmployeeDraft } from '../core/employee-draft';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { addDays } from '../lib/lifecycle-v9-model';
 import { currentReq } from '../lib/onboarding-model';
-import { v9Setup, v9Workspace, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnDocument, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx } from '../packs/lifecycle/service';
+import { v9Setup, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnDocument, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 
 let base: Base, admin: SessionContext, employee: SessionContext, other: SessionContext, employmentId: string;
@@ -179,4 +179,27 @@ it('validates the complete reviewed selection before writing Personnel and rejec
   const [after] = await owner.client`select phone from person where id=${employee.personId!}::uuid`;
   expect(after.phone).toBe('+60111112222');
   await expect(v9Command(admin, c.id, c.revision, { type: 'pmPushSelected', ids: [id] })).rejects.toThrow('changed');
+});
+
+it('returns actual config revisions and authenticated version stamps for automatic-save acknowledgments', async () => {
+  const before = await v9Workspace(admin), config = before.config!, template = config.templates.find(template => template.versions.length === 1 && template.versions[0].state === 'published')!;
+  const published = structuredClone(template.versions[0]);
+  template.versions.push({ ...structuredClone(published), version: 2, state: 'draft', by: 'Fabricated actor', at: '1800-01-01' });
+  const receipt = await v9SaveConfig(admin, config.revision, config);
+  expect(receipt).toMatchObject({ revision: config.revision + 1, groupsRevision: config.groupsRevision });
+  expect(receipt.versionStamps).toContainEqual({ templateId: template.id, version: 2, state: 'draft', at: todayInKualaLumpur(), by: before.actor.name });
+  const saved = (await v9Workspace(admin)).config!;
+  expect(saved.templates.find(t => t.id === template.id)!.versions[0]).toEqual(published);
+  saved.templates.find(t => t.id === template.id)!.versions[1].state = 'published';
+  const next = await v9SaveConfig(admin, saved.revision, saved);
+  expect(next.versionStamps).toContainEqual({ templateId: template.id, version: 2, state: 'published', at: todayInKualaLumpur(), by: before.actor.name });
+});
+
+it('previews an HR-held acceptance message without changing its case and refuses unrelated users', async () => {
+  const c = await prepared(), before = structuredClone(c);
+  const preview = await v9PreviewEmail(admin, c.id, 'e3');
+  expect(preview.emailId).toBe('e3'); expect(preview.canSend).toBe(false);
+  expect(preview.holds.some(hold => hold.includes('HR must review and sign'))).toBe(true);
+  expect((await v9Workspace(admin)).cases.find(row => row.id === c.id)).toEqual(before);
+  await expect(v9PreviewEmail(other, c.id, 'e3')).rejects.toThrow();
 });

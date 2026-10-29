@@ -204,3 +204,18 @@ it('pauses a waiting run without replacing its frozen definition, then resumes t
   expect(c.runs[0].status).toBe('done'); expect(c.runs[0].definition).toEqual(snapshot);
   expect(c.mails[0].subject).toBe('Original subject');
 });
+
+it('previews current email values and holds without mutating the case or queuing a message', () => {
+  const { c, config, environment } = fixture();
+  config.templates = [template()]; config.templates[0].hrStep = 'before';
+  config.emails = [{ id: 'notice', name: 'Exit notice', module: 'off', active: true, sender: 'mailbox', subject: 'Hello {employee.name}', body: 'Last day: {leaver.lastDay}', cc: ['supervisor'], links: ['exit'], attachments: [], slots: [{ id: 'proof', label: 'Supporting proof', required: true }] }];
+  environment.mergeValues['leaver.lastDay'] = '30/10/2026';
+  const before = JSON.stringify({ c, config }); environment.nextId = () => { throw Error('Preview allocated a live ID'); };
+  const preview = M.previewEmail(c, config, 'notice', environment);
+  expect(preview).toMatchObject({ subject: 'Hello Person', body: 'Last day: 30/10/2026', to: [{ id: 'employee', name: 'employee' }], cc: [{ id: 'manager', name: 'manager' }], canSend: false });
+  expect(preview.holds).toContain('HR must review and sign Exit form before sending.');
+  expect(preview.holds).toContain('Upload Supporting proof.');
+  expect(JSON.stringify({ c, config })).toBe(before);
+  config.emails[0].body = 'Bank: {employee.bankAcc}'; environment.mergeValues['employee.bankAcc'] = '123456789';
+  expect(M.previewEmail(c, config, 'notice', environment).holds).toContain('Remove sensitive fields from the email text.');
+});

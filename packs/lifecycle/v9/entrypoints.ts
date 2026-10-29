@@ -19,3 +19,5 @@ export const v9Sweep: Service['v9Sweep'] = async (...args) => (await load()).v9S
 export const v9OwnTask: Service['v9OwnTask'] = async (...args) => (await load()).v9OwnTask(...args);
 export const v9UploadFile: Service['v9UploadFile'] = async (...args) => (await load()).v9UploadFile(...args);
 export const v9DownloadFile: Service['v9DownloadFile'] = async (...args) => (await load()).v9DownloadFile(...args);
+
+export const v9PreviewEmail: Service['v9PreviewEmail'] = async (...args) => (await load()).v9PreviewEmail(...args);

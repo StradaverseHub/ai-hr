@@ -43,6 +43,7 @@ export type Template = {
   rules: Rules; hrStep: 'none' | 'before' | 'after'; employeeAck: boolean; retired: boolean;
   versions: TemplateVersion[]; note?: string;
 };
+export type ConfigSaveReceipt = { revision: number; groupsRevision: number; versionStamps?: { templateId: string; version: number; state: TemplateVersion['state']; at: string; by: string }[] };
 export type Signature = { by: Actor; at: string; method: 'typed' | 'drawn'; value: string; consent: true };
 export type Document = {
   id: string; templateId: string; version: number; name: string;
@@ -320,6 +321,48 @@ function skipReason(c: Case, workflow: Workflow): string {
   if (skip.startsWith('task:') && c.tasks.some(t => t.name.toLocaleLowerCase() === skip.slice(5).toLocaleLowerCase() && isResolved(t.status))) return 'Linked task is done.';
   return '';
 }
+export type EmailPreview = {
+  emailId: string; name: string; subject: string; body: string;
+  edit: { subject: string; body: string }; to: Actor[]; cc: Actor[];
+  documents: { templateId: string; name: string; version: number | null; generated: boolean }[];
+  holds: string[]; canSend: boolean;
+};
+/** Preview uses current authorized facts without generating documents, allocating IDs or queuing mail. */
+export function previewEmail(c: Case, config: Config, emailId: string, env: Environment): EmailPreview {
+  const email = config.emails.find(email => email.id === emailId && email.module === c.module);
+  if (!email) throw new V9Error('Email template not found.', 'not_found');
+  const holds: string[] = [], edit = c.emailEdits?.[email.id] ?? { subject: email.subject, body: email.body };
+  const values = { ...env.mergeValues, 'owner.name': c.facts.name, 'pending.tasks': pendingPre(c).map(t => `${t.name} (due ${t.dueOn})`).join('\n') };
+  const subject = merge(edit.subject, values), body = merge(edit.body, values);
+  if (c.state !== 'submitted') holds.push('Submit or reopen the case before sending.');
+  if (!email.active) holds.push('This email template is inactive.');
+  const missing = [...new Set([...subject.missing, ...body.missing])];
+  if (missing.length) holds.push(`Complete missing merge fields: ${missing.join(', ')}.`);
+  try { merge(edit.subject + '\n' + edit.body, values, emailSensitiveKeys(config)); } catch { holds.push('Remove sensitive fields from the email text.'); }
+  const target = c.facts.employeeUserId;
+  const to = target && env.eligibleUser(target) ? [{ id: target, name: env.userName(target) }] : [];
+  if (!to.length) holds.push('Link an available employee account before sending.');
+  const cc = [...new Set(email.cc.flatMap(role => recipients(c, config, role)))].filter(id => id !== target && env.eligibleUser(id)).map(id => ({ id, name: env.userName(id) }));
+  const documents = [...new Set([...email.links, ...email.attachments])].flatMap(templateId => {
+    const template = config.templates.find(template => template.id === templateId && template.module === c.module), document = activeDocument(c, templateId);
+    if (!template || template.retired && !document) { holds.push('A linked document template is unavailable.'); return []; }
+    const version = document?.version ?? currentVersion(template)?.version ?? null;
+    if (!version) holds.push(`Publish ${template.name} before sending.`);
+    if ((document?.hrStep ?? template.hrStep) === 'before' && !document?.hrSignature) holds.push(`HR must review and sign ${template.name} before sending.`);
+    return [{ templateId, name: document?.name ?? template.name, version, generated: !!document }];
+  });
+  for (const slot of email.slots) if (slot.required && !c.files.some(file => file.slot === `${email.id}:${slot.id}`)) holds.push(`Upload ${slot.label}.`);
+  if (email.id === 'e3') {
+    const acceptance = activeDocument(c, 't4');
+    if (!acceptance?.hrSignature && !holds.some(hold => hold.startsWith('HR must review and sign'))) holds.push('HR must review and sign the acceptance letter before sending.');
+  }
+  return { emailId, name: email.name, subject: subject.text, body: body.text, edit: { ...edit }, to, cc, documents, holds: [...new Set(holds)], canSend: holds.length === 0 };
+}
+function emailSensitiveKeys(config: Config): Set<string> {
+  const identityKeys = ['icNo', 'passportNo', 'taxNo', 'epfNo', 'bankAcc', 'bankAccount', 'bankAccountNo', 'spIc', 'spTax'];
+  return new Set([...identityKeys.flatMap(key => [key, `employee.${key}`]), ...config.templates.flatMap(t => t.versions.flatMap(v => v.fields.filter(f => f.sensitive).flatMap(f => [f.id, ...(f.pmKey ? [f.pmKey, `employee.${f.pmKey}`] : [])])))]);
+}
+
 function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 'notify' }>, key: string, workflowId: string | null, env: Environment, test = false): string | null {
   if (c.mails.some(m => m.key === key)) return null;
   const email = step.type === 'email' ? config.emails.find(e => e.id === step.template && (e.active || test) && e.module === c.module) : null;
@@ -331,8 +374,7 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
   const targets = [...new Set(roles.flatMap(role => role === 'taskOwners' ? owners : recipients(c, config, role)))];
   if (!targets.length && !test) throw new V9Error('No recipient is linked. Resolve the recipient before continuing.');
   const to = test ? [env.actor.id] : targets;
-  const identityKeys = ['icNo', 'passportNo', 'taxNo', 'epfNo', 'bankAcc', 'bankAccount', 'bankAccountNo', 'spIc', 'spTax'];
-  const sensitive = new Set([...identityKeys.flatMap(key => [key, `employee.${key}`]), ...config.templates.flatMap(t => t.versions.flatMap(v => v.fields.filter(f => f.sensitive).flatMap(f => [f.id, ...(f.pmKey ? [f.pmKey, `employee.${f.pmKey}`] : [])])))]);
+  const sensitive = emailSensitiveKeys(config);
   for (const target of to) {
     const itemKey = `${key}:${target}`; if (c.mails.some(m => m.key === itemKey)) continue;
     if (!env.eligibleUser(target)) throw new V9Error('The recipient is no longer eligible for delivery.');

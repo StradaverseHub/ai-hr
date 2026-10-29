@@ -99,6 +99,15 @@ export async function v9CaseDetail(ctx: SessionContext, id: string): Promise<Cas
   });
 }
 
+export async function v9PreviewEmail(ctx: SessionContext, caseId: string, emailId: string): Promise<M.EmailPreview> {
+  emailId = z.string().min(1).max(120).parse(emailId);
+  return withLifecycleTenant(ctx, async tx => {
+    const row = await load(tx, ctx, caseId), config = await configTx(tx, ctx);
+    if (!config) throw new M.V9Error('V9 configuration is not available.');
+    return M.previewEmail(row.data, config, emailId, await environment(tx, ctx, row.data, config));
+  });
+}
+
 export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {
   return withLifecycleTenant(ctx, async tx => {
     const who = await actor(tx, ctx), config = await configTx(tx, ctx);
@@ -134,9 +143,9 @@ export async function v9Setup(ctx: SessionContext): Promise<void> {
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-config', aggregateId: ctx.tenantId, eventType: 'lifecycle-v9.configured', actor: actorOf(ctx), payload: { version: 9 } });
   });
 }
-export async function v9SaveConfig(ctx: SessionContext, revision: number, input: unknown): Promise<void> {
+export async function v9SaveConfig(ctx: SessionContext, revision: number, input: unknown): Promise<M.ConfigSaveReceipt> {
   const config = parseV9Config(input) as M.Config;
-  await withLifecycleTenant(ctx, async tx => {
+  return withLifecycleTenant(ctx, async tx => {
     await lockTx(tx, ctx); await admin(tx); const previous = await configTx(tx, ctx, true);
     if (!previous || previous.revision !== revision) throw new M.V9Error('Settings changed. Refresh before saving.', 'conflict');
     validateV9ConfigChange(previous, config);
@@ -156,9 +165,15 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
       if (history.length) throw new M.V9Error('A workflow has already run on a record. Keep it for history and pause it instead.');
     }
     await tx.execute(sql`insert into lc_v9_config_revision(tenant_id,revision,data,actor_user_id) values(${ctx.tenantId}::uuid,${revision},${JSON.stringify(previous)}::jsonb,${ctx.userId}::uuid)`);
+    const who = await actor(tx, ctx);
+    for (const template of config.templates) for (const version of template.versions) {
+      const before = previous.templates.find(t => t.id === template.id)?.versions.find(v => v.version === version.version);
+      if (!before || before.state === 'draft' && !v9Equal(before, version)) { version.at = todayInKualaLumpur(); version.by = who.name; }
+    }
     config.revision = revision + 1;
     await tx.execute(sql`update lc_v9_config set data=${JSON.stringify(config)}::jsonb,revision=${config.revision},updated_at=now() where tenant_id=${ctx.tenantId}::uuid`);
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-config', aggregateId: ctx.tenantId, eventType: 'lifecycle-v9.configurationChanged', actor: actorOf(ctx), payload: { revision: config.revision } });
+    return { revision: config.revision, groupsRevision: config.groupsRevision ?? 0, versionStamps: config.templates.flatMap(template => template.versions.map(version => ({ templateId: template.id, version: version.version, state: version.state, at: version.at, by: version.by }))) };
   });
 }
 
