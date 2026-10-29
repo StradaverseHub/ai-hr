@@ -1,8 +1,16 @@
 name: bank-import-worker-throughput
-run-name: CI-only 100001 native saves · consumer ${{ github.sha }} · application ${{ inputs.source_sha }}
+run-name: CI-only ${{ inputs.proof_mode }} · consumer ${{ github.sha }} · application ${{ inputs.source_sha }}
 on:
   workflow_dispatch:
     inputs:
+      proof_mode:
+        description: Fixed short native lifecycle preflight or full 100001-save proof
+        required: true
+        type: choice
+        default: preflight-401
+        options:
+          - preflight-401
+          - full-100001
       source_sha:
         description: Reviewed final application R, exact 40 lowercase SHA; no historical source fallback
         required: true
@@ -39,10 +47,11 @@ jobs:
     runs-on: ubuntu-24.04
     # PROPOSAL ONLY: independent review and accepted final-R packet are required
     # before dispatch. This does not authorize a release or paid runner change.
-    timeout-minutes: 180
+    timeout-minutes: ${{ inputs.proof_mode == 'preflight-401' && 20 || 180 }}
     env:
       TZ: Asia/Kuala_Lumpur
       SOURCE_SHA: ${{ inputs.source_sha }}
+      THROUGHPUT_PROOF_MODE: ${{ inputs.proof_mode }}
       PRODUCER_SHA: ${{ inputs.producer_sha }}
       PRODUCER_RUN: ${{ inputs.producer_run_id }}
       PRODUCER_JOB: ${{ inputs.producer_job_id }}
@@ -74,7 +83,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,GH_TOKEN \
+          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,THROUGHPUT_PROOF_MODE,GH_TOKEN \
             python3 -I -B controller/scripts/bank_import_worker_throughput_proof.py authenticate \
             --source "$SOURCE_SHA" --producer "$PRODUCER_SHA" --run "$PRODUCER_RUN" \
             --job "$PRODUCER_JOB" --artifact "$PRODUCER_ARTIFACT" --digest "$PRODUCER_DIGEST"
@@ -109,7 +118,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH \
+          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,THROUGHPUT_PROOF_MODE \
             python3 -I -B controller/scripts/bank_import_worker_throughput_proof.py verify \
             --source "$GITHUB_WORKSPACE/source" --producer-controller "$GITHUB_WORKSPACE/producer"
       - name: Prepare only this workflow's disposable PostgreSQL and distinct physical queue owner
@@ -125,21 +134,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH \
+          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,THROUGHPUT_PROOF_MODE \
             python3 -I -B controller/scripts/bank_import_worker_throughput_proof.py prepare \
             --source "$GITHUB_WORKSPACE/source" --producer-controller "$GITHUB_WORKSPACE/producer" --node "$(command -v node)"
-      - name: Measure actual sealed native 100001 saves within remaining whole-job budget
+      - name: Run fixed sealed native mode within remaining whole-job budget
         id: measurement
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,GH_TOKEN \
+          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,THROUGHPUT_PROOF_MODE,GH_TOKEN \
             python3 -I -B controller/scripts/bank_import_worker_throughput_proof.py measure \
             --controller "$GITHUB_WORKSPACE/controller" --source "$GITHUB_WORKSPACE/source" \
             --producer-controller "$GITHUB_WORKSPACE/producer" --node "$(command -v node)" \
-            --report "$RUNNER_TEMP/bank-throughput-evidence/native-100001.json"
+            --mode "$THROUGHPUT_PROOF_MODE" --report "$RUNNER_TEMP/bank-throughput-evidence/native-${THROUGHPUT_PROOF_MODE}.json"
       - name: Always stop exact owned descendants and disposable database
         id: cleanup
         if: ${{ always() }}
@@ -152,7 +161,7 @@ jobs:
           native=0
           database=0
           if [[ -f controller/scripts/bank_import_worker_throughput_proof.py ]]; then
-            sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH \
+            sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,THROUGHPUT_PROOF_MODE \
               timeout --foreground --signal=TERM --kill-after=5s 100s \
               python3 -I -B controller/scripts/bank_import_worker_throughput_proof.py cleanup \
               --measurement-result "$MEASUREMENT_RESULT" --evidence-dir "$RUNNER_TEMP/bank-throughput-evidence" \

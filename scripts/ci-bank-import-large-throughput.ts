@@ -6,11 +6,13 @@ import {createRequire} from 'node:module';
 import {join,resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 
-const ROWS=100001,APP='postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test';
+const CATALOG_ROWS=100001,APP='postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test';
 const OWNER='postgres://ai_hr_owner@127.0.0.1:5433/ai_hr_test';
 const WITNESS='postgres://postgres@127.0.0.1:5433/ai_hr_test';
 async function main(){
- const [phase,packetArg,sourceArg,statePath]=process.argv.slice(2);
+ const [phase,packetArg,sourceArg,statePath,mode]=process.argv.slice(2);
+ assert(mode==='full-100001'||mode==='preflight-401','Fixed reviewed fixture mode required');
+ const ROWS=mode==='preflight-401'?401:100001;
  assert(process.env.GITHUB_ACTIONS==='true'&&process.env.CI==='true'&&process.platform==='linux','Disposable Linux GHA only');
  assert.equal(process.env.DATABASE_URL,APP);assert.equal(process.env.MIGRATION_DATABASE_URL,OWNER);
  assert.equal(process.env.TEST_DATABASE_URL,APP);assert.equal(process.env.TEST_MIGRATION_DATABASE_URL,OWNER);
@@ -86,7 +88,7 @@ async function main(){
     await tx`set local session_replication_role='replica'`;
     await tx`with people as (
      insert into person(tenant_id,full_name,primary_email)
-     select ${b.tenantId}::uuid,'Throughput '||n,'throughput-'||n||'@example.test' from generate_series(1,${ROWS}) n returning id,full_name
+     select ${b.tenantId}::uuid,'Throughput '||n,'throughput-'||n||'@example.test' from generate_series(1,${CATALOG_ROWS}) n returning id,full_name
     ) insert into employment(tenant_id,person_id,company_id,employee_code,hired_on)
      select ${b.tenantId}::uuid,id,${b.companyId}::uuid,'LOAD'||substring(full_name from 12),'2026-01-05'::date from people`;
     await tx`insert into employee_statutory_my
@@ -97,24 +99,31 @@ async function main(){
    });
    for(const table of ['person','employment','employee_statutory_my'])await witness.unsafe(`analyze public."${table}"`);
    const [count]=await witness`select count(*)::int as rows from employment e join employee_statutory_my s on s.person_id=e.person_id where e.tenant_id=${b.tenantId}::uuid and e.employee_code ~ '^LOAD[0-9]+$' and s.tax_number='TBASE'`;
-   assert.equal(count.rows,ROWS);
+   assert.equal(count.rows,CATALOG_ROWS);
    await witness.unsafe('CREATE SCHEMA ci_import_cohort');
    await witness.unsafe('REVOKE ALL ON SCHEMA ci_import_cohort FROM PUBLIC,ai_hr_app,ai_hr_owner');
    await witness.unsafe('CREATE TABLE ci_import_cohort.target (ordinal integer PRIMARY KEY,employee_code text UNIQUE NOT NULL,person_id uuid UNIQUE NOT NULL,employment_id uuid UNIQUE NOT NULL,statutory_id uuid UNIQUE NOT NULL)');
-   await witness`insert into ci_import_cohort.target select substring(e.employee_code from 5)::int,e.employee_code,e.person_id,e.id,s.id from employment e join employee_statutory_my s on s.person_id=e.person_id where e.tenant_id=${b.tenantId}::uuid and e.employee_code ~ '^LOAD[0-9]+$'`;
+   await witness`insert into ci_import_cohort.target select substring(e.employee_code from 5)::int,e.employee_code,e.person_id,e.id,s.id from employment e join employee_statutory_my s on s.person_id=e.person_id where e.tenant_id=${b.tenantId}::uuid and case when e.employee_code ~ '^LOAD[0-9]+$' then substring(e.employee_code from 5)::int<=${ROWS} else false end`;
    await witness.unsafe('REVOKE ALL ON ci_import_cohort.target FROM PUBLIC,ai_hr_app,ai_hr_owner');
    await witness.unsafe('GRANT USAGE ON SCHEMA ci_import_cohort TO ai_hr_owner');
    await witness.unsafe('GRANT SELECT ON ci_import_cohort.target TO ai_hr_owner');
    const targetMappingSha256=await targetMapping();
    assert.deepEqual(await systemSnapshot(),systemBaseline,'Fictional setup changed migration-owned system rows');
-   save({ctx,tenantId:b.tenantId,rows:ROWS,targetMappingSha256,fingerprints:await fingerprints()});
-   console.log(JSON.stringify({phase,syntheticOnly:true,rows:ROWS,targetMappingSha256}));return;
+   save({ctx,tenantId:b.tenantId,rows:ROWS,mode,catalogRows:CATALOG_ROWS,targetMappingSha256,fingerprints:await fingerprints()});
+   console.log(JSON.stringify({phase,syntheticOnly:true,rows:ROWS,mode,catalogRows:CATALOG_ROWS,targetMappingSha256}));return;
   }
-  const state=JSON.parse(readFileSync(statePath,'utf8'));assert.equal(state.rows,ROWS);
+  const state=JSON.parse(readFileSync(statePath,'utf8'));assert.equal(state.rows,ROWS);assert.equal(state.mode,mode);assert.equal(state.catalogRows,CATALOG_ROWS);
   assert.equal(await targetMapping(),state.targetMappingSha256,'Immutable captured target IDs changed');
   await roles();app=(await load(join(packet,'db/client.ts'))).client;
   const api=await load(join(packet,'core/bank-import-job.ts'));
   const transport=await load(join(packet,'lib/bank-import-job.ts'));
+  const taxEvents=async(tx:any,attemptId:string)=>{
+   const [events]=await tx`select count(*)::int as rows,count(distinct d.id)::int as ids,count(distinct d.aggregate_id)::int as statutory,count(distinct d.subject_employment_id)::int as employments,count(distinct d.payload->>'personId')::int as people,count(distinct (d.actor_type::text||':'||d.actor_id::text))::int as actors,
+    count(*) filter(where d.aggregate_type='employee-statutory' and d.aggregate_id=t.statutory_id and d.subject_employment_id=t.employment_id and d.payload->>'personId'=t.person_id::text and d.actor_type='user' and d.actor_id=${state.ctx.userId}::uuid and d.payload->'before'->>'taxNumber'='TBASE' and d.payload->'after'->>'taxNumber'='TLOAD'||t.ordinal and not(d.payload?'auto') and not(d.payload?'provenance') and exists(select 1 from import_attempt_item a join bank_import_row r on r.job_id=${state.jobId}::uuid and r.ordinal=a.ordinal and r.state='applied' where a.attempt_id=${attemptId}::uuid and a.ordinal=t.ordinal and a.employment_id=t.employment_id and a.status='applied' and a.before->'fields'->>'tax_number'=d.payload->'before'->>'taxNumber' and a.after->'fields'->>'tax_number'=d.payload->'after'->>'taxNumber'))::int as correct
+    from domain_event d left join ci_import_cohort.target t on t.statutory_id=d.aggregate_id
+    where d.tenant_id=${state.tenantId}::uuid and d.event_type='employee.tax.updated' and (d.aggregate_id in(select statutory_id from ci_import_cohort.target) or d.subject_employment_id in(select employment_id from ci_import_cohort.target) or d.payload->>'personId' in(select person_id::text from ci_import_cohort.target))`;
+   return {...events};
+  };
   const bytes=()=>Buffer.from('employee_code,tax_number\n'+Array.from({length:ROWS},(_,i)=>`LOAD${i+1},TLOAD${i+1}\n`).join(''));
   const duplicate=async()=>{
    const file=bytes(),hash=createHash('sha256').update(file).digest('hex');assert.equal(hash,state.sourceHash);
@@ -134,9 +143,10 @@ async function main(){
     await api.uploadBankImportChunk(state.ctx,id,parts,chunk);await api.uploadBankImportChunk(state.ctx,id,parts,chunk);
     const {job}=await api.getBankImportJob(state.ctx,id);assert.equal(job.uploadedBytes,Math.min(file.length,offset+chunk.length));parts++;
    }
-   assert(parts>=2,'Must exercise real multi-part upload');
+   if(mode==='full-100001')assert(parts>=2,'Full proof must exercise real multi-part upload');
+   else assert.equal(parts,1,'Preflight does not prove multipart coverage');
    await api.bankImportCommand(state.ctx,id,'validate');
-   console.log(JSON.stringify({phase,jobId:id,rows:ROWS,sourceBytes:file.length,parts,retriedEveryPart:true,concurrentAdmissionJoined:true}));return;
+   console.log(JSON.stringify({phase,jobId:id,rows:ROWS,sourceBytes:file.length,parts,multipartCoverage:mode==='full-100001',retriedEveryPart:true,concurrentAdmissionJoined:true}));return;
   }
   if(phase==='duplicate'){
    const result=await duplicate(),{job}=await api.getBankImportJob(state.ctx,state.jobId);
@@ -144,7 +154,7 @@ async function main(){
    console.log(JSON.stringify({phase,...result,state:job.state,validated:job.validated,processed:job.processed,saved:job.saved}));return;
   }
   if(phase==='ready-confirm'){
-   const {job,rows}=await api.getBankImportJob(state.ctx,state.jobId),last=await api.getBankImportJob(state.ctx,state.jobId,1000);
+   const {job,rows}=await api.getBankImportJob(state.ctx,state.jobId),last=await api.getBankImportJob(state.ctx,state.jobId,Math.floor((ROWS-1)/100));
    assert.equal(job.state,'ready');assert.equal(job.total,ROWS);assert.equal(job.validated,ROWS);assert.equal(job.valid,ROWS);assert.equal(job.invalid,0);assert.equal(job.unchanged,0);assert.equal(job.saved,0);
    assert.equal(rows.length,100);assert.equal(rows[0].ordinal,1);assert.equal(last.rows.length,1);assert.equal(last.rows[0].ordinal,ROWS);
    const [unchanged]=await owner`select count(*)::int as rows from ci_import_cohort.target t join employee_statutory_my s on s.id=t.statutory_id and s.person_id=t.person_id where s.tax_number='TBASE'`;
@@ -181,9 +191,11 @@ async function main(){
    const [subject]=await witness`select s.tax_number from ci_import_cohort.target t join employee_statutory_my s on s.id=t.statutory_id and s.person_id=t.person_id where t.ordinal=${state.pauseOrdinal}`;
    const [row]=await witness`select r.state,j.saved,j.processed,j.attempt_id from bank_import_row r join bank_import_job j on j.id=r.job_id where r.job_id=${state.jobId}::uuid and r.ordinal=${state.pauseOrdinal}`;
    const [audit]=await witness`select count(*)::int as rows from import_attempt_item where attempt_id=${row.attempt_id}::uuid and ordinal=${state.pauseOrdinal}`;
+   const [events]=await witness`select count(*)::int as rows from domain_event d where d.tenant_id=${state.tenantId}::uuid and d.event_type='employee.tax.updated' and exists(select 1 from ci_import_cohort.target t where t.ordinal=${state.pauseOrdinal} and (d.aggregate_id=t.statutory_id or d.subject_employment_id=t.employment_id or d.payload->>'personId'=t.person_id::text))`;
    assert.equal(subject.tax_number,'TBASE');assert.equal(row.state,'valid');assert.equal(audit.rows,0);
+   assert.equal(events.rows,0,'Uncommitted/rolled-back tax domain event leaked');
    assert.equal(row.saved,state.pauseBaseline+100);assert.equal(row.processed,row.saved);
-   console.log(JSON.stringify({phase,ordinal:state.pauseOrdinal,saved:row.saved,targetStillBaseline:true,noAuditOrCheckpointLeak:true}));return;
+   console.log(JSON.stringify({phase,ordinal:state.pauseOrdinal,saved:row.saved,targetStillBaseline:true,noAuditOrCheckpointLeak:true,noNativeTaxEventLeak:true}));return;
   }
   if(phase==='disarm-pause'){
    await witness.unsafe('DROP TRIGGER ci_throughput_pause ON public.bank_import_row');
@@ -203,8 +215,11 @@ async function main(){
    assert.equal(job.processed,job.saved);assert(job.saved>0&&job.saved<=ROWS);
    assert.deepEqual({...queue},{total:ROWS,applied:job.saved,remaining:ROWS-job.saved,first:1,last:ROWS,distinct_ordinals:ROWS});
    for(const key of ['rows','ordinals','employees','correct'])assert.equal(audit[key],job.saved,'Audit/checkpoint mismatch: '+key);
+   const nativeTaxEvents=await taxEvents(tx,job.attempt_id);
+   for(const key of ['rows','ids','statutory','employments','people','correct'])assert.equal(nativeTaxEvents[key],job.saved,'Native domain event/checkpoint mismatch: '+key);
+   assert.equal(nativeTaxEvents.actors,1,'All native tax events must name the authenticated user');
    assert.deepEqual({...values},{total:ROWS,changed:job.saved,baseline:ROWS-job.saved,unique_changed:job.saved});
-   return {job:{...job},queue:{...queue},audit:{...audit},values:{...values}};
+   return {job:{...job},queue:{...queue},audit:{...audit},values:{...values},nativeTaxEvents};
   });
   if(phase==='complete'){
    assert.equal(proof.job.state,'completed');assert.equal(proof.job.total,ROWS);assert.equal(proof.job.validated,ROWS);assert.equal(proof.job.saved,ROWS);

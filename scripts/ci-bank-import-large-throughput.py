@@ -18,7 +18,6 @@ import signal
 import stat
 import subprocess
 import sys
-import tempfile
 
 REFUSED_SOURCE='968354c00a71df7baccd499eb60757a3307ed61e'
 DEADLINE=STARTED+10790
@@ -27,7 +26,6 @@ ROWS=100001
 APP='postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test'
 OWNER='postgres://ai_hr_owner@127.0.0.1:5433/ai_hr_test'
 WITNESS='postgres://postgres@127.0.0.1:5433/ai_hr_test'
-USER='aihr-import-throughput-ci'
 BASE={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','TZ':'Asia/Kuala_Lumpur'}
 
 def require(ok,message):
@@ -44,16 +42,19 @@ def deadline_alarm(signum,frame):
 def supervisor_budget(argv):
     # No parsing diagnostics or I/O in the supervisor. The child does full argparse
     # validation before work and confirms this exact budget; malformed input cannot run.
-    seconds=10800
+    preflight='--mode=preflight-401' in argv or any(word=='--mode' and index+1<len(argv) and argv[index+1]=='preflight-401' for index,word in enumerate(argv))
+    maximum=900 if preflight else 10800
+    minimum=60 if preflight else 900
+    seconds=maximum
     for index,word in enumerate(argv):
         if word=='--max-seconds':
-            if index+1==len(argv): return 10800
+            if index+1==len(argv): return maximum
             raw=argv[index+1]
         elif word.startswith('--max-seconds='): raw=word.split('=',1)[1]
         else: continue
         try: seconds=int(raw)
-        except ValueError: return 10800
-        if not 900<=seconds<=10800: return 10800
+        except ValueError: return maximum
+        if not minimum<=seconds<=maximum: return maximum
     return seconds
 
 def supervise_controller(seconds):
@@ -125,8 +126,14 @@ def main(supervised_seconds):
     for name in ['controller','producer-controller','application-source','source','package-dir','node','accepted-controller','accepted-run-id','archive-sha256','manifest-sha256','provenance-sha256','runtime-proof-sha256','report']:
         parser.add_argument('--'+name,required=True)
     parser.add_argument('--max-seconds',type=int,default=10800)
+    parser.add_argument('--mode',choices=['full-100001','preflight-401'],default='full-100001')
     args=parser.parse_args()
-    require(900<=args.max_seconds<=10800,'at most the proposed 180-minute standard-runner whole-job budget')
+    preflight=args.mode=='preflight-401'
+    minimum,maximum=(60,900) if preflight else (900,10800)
+    require(minimum<=args.max_seconds<=maximum,'fixed mode total-controller budget differs')
+    require(os.environ.get('THROUGHPUT_PROOF_MODE','full-100001')==args.mode,'workflow and proof modes differ')
+    global ROWS
+    ROWS=401 if preflight else 100001
     require(sys.flags.isolated==1 and sys.flags.dont_write_bytecode==1,'invoke reviewed orchestration with Python -I -B')
     require(os.geteuid()==0 and os.environ.get('GITHUB_ACTIONS')=='true' and os.environ.get('CI')=='true' and os.uname().sysname=='Linux','root orchestration on disposable Linux GHA only')
     require(args.max_seconds==supervised_seconds,'controller and external supervisor budgets must match')
@@ -145,7 +152,7 @@ def main(supervised_seconds):
     run=os.environ.get('GITHUB_RUN_ID','');require(re.fullmatch('[1-9][0-9]*',run or '') and os.environ.get('GITHUB_RUN_ATTEMPT')=='1','original GHA run only')
     require(re.fullmatch('[a-f0-9]{40}',args.accepted_controller or '') and re.fullmatch('[1-9][0-9]*',args.accepted_run_id or ''),'independently authenticated producer identity required')
     for value in [args.archive_sha256,args.manifest_sha256,args.provenance_sha256,args.runtime_proof_sha256]: require(re.fullmatch('[a-f0-9]{64}',value or ''),'independently authenticated input digest required')
-    require(900<=args.max_seconds<=10800,'at most the proposed 180-minute standard-runner whole-job budget')
+    require(minimum<=args.max_seconds<=maximum,'fixed mode total-controller budget differs')
     controller,producer,source,package=[Path(p).resolve(strict=True) for p in [args.controller,args.producer_controller,args.source,args.package_dir]]
     checkouts=[controller,producer,source]
     require(len(set(checkouts))==3 and all(not a.is_relative_to(b) for a in checkouts for b in checkouts if a!=b),'three separate frozen checkouts required')
@@ -169,8 +176,7 @@ def main(supervised_seconds):
     provenance=json.loads((package/'worker-provenance.json').read_bytes());accepted=json.loads((package/'worker-runtime-proof.json').read_bytes())
     require((package/'worker-provenance.json').read_bytes()==fmt.canonical(provenance),'canonical accepted provenance required')
     require(provenance['producerSha256']==file_hash(producer/'scripts/bank-import-worker-package.py') and provenance['formatSha256']==file_hash(producer/'deploy/systemd/bank_import_worker_format.py'),'accepted producer code differs')
-    area=Path(tempfile.mkdtemp(prefix='aihr-large-throughput-ci-',dir='/opt'));os.chmod(area,0o755)
-    REGISTRY.register_area(area)
+    area=REGISTRY.prepare_area()
     archive=area/'accepted.zip';shutil.copyfile(package/'worker-package.zip',archive);os.chmod(archive,0o400)
     require(file_hash(archive)==args.archive_sha256,'accepted private archive changed')
     runtime=area/'runtime';runtime.mkdir(mode=0o700)
@@ -201,12 +207,7 @@ def main(supervised_seconds):
     node=area/'node';shutil.copyfile(Path(args.node).resolve(strict=True),node);os.chmod(node,0o555)
     actual=json.loads(command([str(node),'-e',"console.log(JSON.stringify({node:process.versions.node,abi:process.versions.modules,platform:process.platform,arch:process.arch,glibc:process.report.getReport().header.glibcVersionRuntime}))"]).stdout)
     require(actual==fmt.RUNTIME==manifest['runtime'],'actual Node/host differs from accepted runtime')
-    try: pwd.getpwnam(USER)
-    except KeyError: pass
-    else: raise ValueError('CI-only worker identity already exists')
-    command(['/usr/sbin/useradd','--system','--user-group','--no-create-home','--home-dir','/nonexistent','--shell','/usr/sbin/nologin',USER])
-    worker=pwd.getpwnam(USER);require(worker.pw_uid>0 and worker.pw_gid>0,'dedicated nonroot worker required')
-    REGISTRY.register_user(worker)
+    worker=REGISTRY.prepare_user();require(worker.pw_uid>0 and worker.pw_gid>0,'dedicated nonroot worker required')
     runner_uid=source.stat().st_uid
     require(runner_uid>0 and runner_uid==controller.stat().st_uid==producer.stat().st_uid and package.stat().st_uid==0 and str(runner_uid)==os.environ.get('SUDO_UID'),'original nonroot Actions fixture identity and root-authenticated packet required')
     runner=pwd.getpwuid(runner_uid);require(runner_uid!=worker.pw_uid,'separate fixture and worker identities required')
@@ -217,7 +218,7 @@ def main(supervised_seconds):
     native_auxiliaries=validator.auxiliary_contracts(runtime,manifest)
     fixture_auxiliaries=validator.auxiliary_contracts(source,manifest)
     state=fixture_work/'state.json';fixture=controller/'scripts/ci-bank-import-large-throughput.ts'
-    def fixture_argv(name): return [str(node),'--import',str(source/'node_modules/tsx/dist/loader.mjs'),str(fixture),name,str(runtime),str(source),str(state)]
+    def fixture_argv(name): return [str(node),'--import',str(source/'node_modules/tsx/dist/loader.mjs'),str(fixture),name,str(runtime),str(source),str(state),args.mode]
     def phase(name,timeout=180):
         result=command(fixture_argv(name),cwd=runtime,env=fixture_env,timeout=timeout,user=runner_uid,group=runner.pw_gid,extra_groups=[],umask=0o077,auxiliaries=fixture_auxiliaries)
         require(result.stderr=='','unexpected fictional fixture stderr: '+result.stderr[-12000:]);return json.loads(result.stdout)
@@ -296,6 +297,17 @@ def main(supervised_seconds):
             row=sample()
             if predicate(row): return row
             time.sleep(remaining(2))
+    def tick_status():
+        return query("SELECT row_to_json(j)::text FROM (SELECT state,total,validated,valid,invalid,unchanged,processed,saved,failed FROM bank_import_job) j;")
+    def preflight_ticks(predicate,maximum_ticks):
+        require(preflight and 1<=maximum_ticks<=6,'bounded fixed preflight ticks only')
+        last_pid=None
+        for tick in range(maximum_ticks):
+            last_pid=launch(once=True);exited(0);row=tick_status()
+            require(row['state']!='failed' and row['failed']==0 and row['invalid']==0,'preflight native tick failed')
+            event('preflight-native-once-tick',tick=tick+1,**row)
+            if predicate(row): return last_pid
+        raise ValueError('Preflight exhausted fixed native CLI tick bound')
     try:
         setup=phase('setup',600);setup_seconds=time.monotonic()-fixture_started;event('fixture-created',rows=setup['rows'])
         command(['/usr/lib/postgresql/16/bin/psql',WITNESS,'-X','-v','ON_ERROR_STOP=1','-c','ALTER ROLE ai_hr_owner NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;'])
@@ -307,12 +319,19 @@ def main(supervised_seconds):
         require(len(ledger)==ledger_expected['rows'] and digest(json.dumps([{'created_at':r['created_at'],'hash':r['hash']} for r in ledger],sort_keys=True,separators=(',',':')).encode())==ledger_expected['sha256'],'exact fresh ordinary source migration ledger differs; no staging-ledger claim')
         launch(once=True);exited(0);event('actual-empty-cli-started')
         admitted=phase('admit',300);event('multipart-admission',**{k:v for k,v in admitted.items() if k!='phase'});validation_started=time.monotonic()
-        launch();wait_until(lambda row:row['state']=='validating' and row['validated']>0);phase('duplicate');event('validation-duplicate-prevented')
-        wait_until(lambda row:row['state']=='ready');signal_owned(signal.SIGTERM);exited(0);validation_seconds=time.monotonic()-validation_started;event('validated',rows=ROWS)
+        if preflight:
+            preflight_ticks(lambda row:row['state']=='ready',6);phase('duplicate');event('preflight-ready-duplicate-prevented')
+        else:
+            launch();wait_until(lambda row:row['state']=='validating' and row['validated']>0);phase('duplicate');event('validation-duplicate-prevented')
+            wait_until(lambda row:row['state']=='ready');signal_owned(signal.SIGTERM);exited(0)
+        validation_seconds=time.monotonic()-validation_started;event('validated',rows=ROWS)
         preview=phase('ready-confirm',300);event('confirmed',valid=preview['valid']);save_started=time.monotonic()
-        first_pid=launch();wait_until(lambda row:row['saved']>=100);signal_owned(signal.SIGTERM);exited(0)
+        if preflight: first_pid=preflight_ticks(lambda row:row['saved']==100,2)
+        else:
+            first_pid=launch();wait_until(lambda row:row['saved']>=100);signal_owned(signal.SIGTERM);exited(0)
         first=phase('checkpoint',300);require(first['job']['saved']<ROWS and first['job']['saved']%100==0,'graceful stop must preserve a nonterminal native batch boundary')
-        phase('duplicate');event('graceful-checkpoint',saved=first['job']['saved'],oldPid=first_pid)
+        if preflight: require(first['job']['saved']==100,'preflight exact first native batch required')
+        phase('duplicate');event('preflight-once-checkpoint' if preflight else 'graceful-checkpoint',saved=first['job']['saved'],oldPid=first_pid)
         pause=phase('arm-pause');hold_pause(pause['ordinal']);latch_started=time.monotonic()
         second_pid=launch();require(second_pid!=first_pid,'fresh worker PID required')
         while True:
@@ -330,8 +349,12 @@ def main(supervised_seconds):
         phase('assert-rollback');phase('disarm-pause')
         second=phase('checkpoint',300);require(first['job']['saved']<=second['job']['saved']<ROWS,'forced restart checkpoint must advance without completing')
         phase('duplicate');event('forced-checkpoint',saved=second['job']['saved'],oldPid=second_pid)
-        third_pid=launch();require(third_pid not in [first_pid,second_pid],'fresh resume process required')
-        wait_until(lambda row:row['state']=='completed');signal_owned(signal.SIGTERM);exited(0)
+        if preflight:
+            third_pid=preflight_ticks(lambda row:row['state']=='completed',6)
+            require(third_pid not in [first_pid,second_pid],'fresh bounded resume process required')
+        else:
+            third_pid=launch();require(third_pid not in [first_pid,second_pid],'fresh resume process required')
+            wait_until(lambda row:row['state']=='completed');signal_owned(signal.SIGTERM);exited(0)
         complete=phase('complete',600)
         require(re.fullmatch('[a-f0-9]{64}',setup['targetMappingSha256']) and complete['targetMappingSha256']==setup['targetMappingSha256'] and complete['targetMappingUnchanged'] is True,'captured immutable target mapping changed')
         save_seconds=time.monotonic()-save_started;event('all-native-saves-verified',saved=complete['job']['saved'],saveSeconds=round(save_seconds,3))
@@ -343,6 +366,10 @@ def main(supervised_seconds):
         require(report.parent.stat().st_uid==runner_uid and not report.parent.stat().st_mode&0o022,'report parent must belong to original runner without group/world writes')
         proof={'format':1,'kind':'DISPOSABLE_NATIVE_100001_SAVE_MEASUREMENT_NOT_RELEASE','controllerSource':controller_sha,'applicationSource':application_source,'acceptedProducerController':args.accepted_controller,'acceptedRunId':int(args.accepted_run_id),'acceptedMembers':names,'runId':int(run),'runAttempt':1,'runtime':actual,'rows':ROWS,'saved':complete['job']['saved'],'auditItems':complete['audit']['rows'],'roleProof':role_proof,'ordinaryLedgerSha256':LEDGER,'sealedPacketUnchanged':True,'noStagingAccess':True,'nativeWorkersNonroot':True,'gracefulRestartVerified':True,'forcedRestartVerified':True,'inFlightNativeRollbackVerified':True,'testOnlyCheckpointLatchRemoved':True,'databaseRoleAndRlsFlagsUnchanged':True,'duplicateActivePreventionVerified':True,'sourceChunksReleased':complete['sourceChunksReleased'],'unrelatedFactsUnchanged':complete['unrelatedFactsUnchanged'],'targetMappingSha256':complete['targetMappingSha256'],'targetMappingUnchanged':complete['targetMappingUnchanged'],'maxSeconds':args.max_seconds,'hardDeadlineScope':'external-supervisor-until-controller-exit','cleanupReserveSeconds':10,'elapsedSeconds':round(time.monotonic()-started,3),'artifactAndEnvironmentSetupSeconds':round(fixture_started-started,3),'setupSeconds':round(setup_seconds,3),'validationSecondsIncludingProbes':round(validation_seconds,3),'saveSecondsIncludingRecoveryAndProbes':round(save_seconds,3),'checkpointLatchHeldSeconds':round(latch_seconds,3),'observedPausedSeconds':round(observed_pause_seconds,3),'workerPeakRssKiB':peak_rss,'events':events,'samples':samples,'releaseAuthorized':False}
         proof.update({'migrationLedger':ledger_expected,'acceptedProducerJobId':inputs['producer']['job'],'acceptedArtifactId':inputs['producer']['artifact'],'acceptedArtifactZipSha256':inputs['producer']['digest'],'actualSourceDependencyBytesVerified':True,'ownedDescendantCgroupsEmptyBeforePublication':True,'acceptanceRequires':'script-exit-zero AND whole-workflow-success AND owned-cleanup-success; JSON alone is invalid','wholeJobBudgetProposalSeconds':10800,'workflowCleanupEvidenceReserveSeconds':300})
+        proof.update({'mode':args.mode,'catalogRows':100001,'nativeTaxDomainEvents':complete['nativeTaxEvents'],'nativeTaxDomainEventRollbackVerified':True,'multipartCoverageVerified':not preflight,'full100001SaveProof':not preflight})
+        if preflight:
+            require(complete['job']['saved']==401 and args.max_seconds<=900,'preflight cannot publish a full-throughput claim')
+            proof.update({'kind':'CI_NATIVE_PREFLIGHT_NOT_FULL_100001','gracefulRestartVerified':False,'boundedNativeOnceCheckpointVerified':True,'wholeJobBudgetProposalSeconds':1200})
         remaining()
         # A timeout retains incomplete bytes as failure evidence, never as the final receipt.
         pending=report.with_name(report.name+'.incomplete')
