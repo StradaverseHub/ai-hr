@@ -1,7 +1,7 @@
 /** Controller development controls only. No application imports, DB fixtures or release acceptance. */
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import {execFileSync} from 'node:child_process';
-import {closeSync,mkdtempSync,openSync,readFileSync,rmSync} from 'node:fs';
+import {closeSync,mkdtempSync,openSync,readFileSync,readSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
@@ -16,6 +16,18 @@ function execute(file:string,args:string[]){
  try{
   const stdout=execFileSync(file,args,{cwd:process.cwd(),encoding:'utf8',timeout:60_000,maxBuffer:4*1024**2,stdio:['ignore','pipe',stderrFd]});
   return {exitCode:0,stdout,stderr:readFileSync(stderrPath,'utf8')};
+ }catch(error){
+  // A redirected child stderr is absent from execFileSync's error. Preserve bounded failure
+  // evidence before cleanup, then retain the original exit/signal/timeout failure unchanged.
+  let reader:number|undefined;
+  try{
+   reader=openSync(stderrPath,'r');
+   const bytes=Buffer.alloc(64*1024);
+   const count=readSync(reader,bytes,0,bytes.length,0);
+   if(count)console.error('Producer control child stderr (first 64 KiB):\n'+bytes.subarray(0,count).toString('utf8'));
+  }catch{console.error('Producer control child stderr could not be read before cleanup.');}
+  finally{if(reader!==undefined){try{closeSync(reader);}catch{/* Preserve the original child failure. */}}}
+  throw error;
  }finally{closeSync(stderrFd);rmSync(directory,{recursive:true,force:true});}
 }
 
