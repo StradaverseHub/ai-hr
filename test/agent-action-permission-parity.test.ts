@@ -80,7 +80,9 @@ async function login(base:Base,person:Person,role:DbRole,companyId:string|null):
 }
 
 async function buildWorld():Promise<World>{
- const b=await seedBase(),group=groupOf(b);for(const code of MODULES)await setModule(b.tenantId,code,'active');
+ const b=await seedBase();for(const code of MODULES)await setModule(b.tenantId,code,'active');
+ // The fixture admin's synthetic entitlement snapshot is a point-in-time read: take it after the modules are on.
+ const group=groupOf(b);
  const other=await createCompany(group,{legalName:'Fictional other employer',country:'MY',currency:'MYR'} as never);
  const otherDept=await createDepartment(group,{companyId:other.id,name:'Fictional other department'} as never) as {id:string};
  // Only the subject sits in department A.
