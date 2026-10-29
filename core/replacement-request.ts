@@ -49,6 +49,8 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockLeaveDependencyConfigurationTx,lockLeaveDependencyReadConfigurationTx, lockLeaveDependenciesTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import {isOwnPersonTx,ownPersonPredicate} from './own-person';
+import {scopeOf} from '../lib/delegation-scope';
+import {withDelegatedRequestEffectTx} from './delegated-request-effect';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide,assertAssignedWorkPrincipalTx,isApprovalDecisionRefusal } from './approvals';
 import {
@@ -1004,7 +1006,7 @@ export async function decideReplacementLeaveRequestTx(
 
     // Line-manager-or-admin, with the self-grant ban. The plan is explicit that this is the whole approval
     // model — NOT core/leave-approval-template.ts's multi-level chain.
-    await assertCanDecide(tx, ctx, req.employmentId, 'replacement leave request');
+    await assertCanDecide(tx, ctx, req.employmentId, 'replacement leave request',scopeOf('leave.replacement'));
 
     const decidedAt = p.decidedAt ?? new Date();
 
@@ -1028,6 +1030,8 @@ export async function decideReplacementLeaveRequestTx(
     // Approving MINTS credits, so the add-on must be live for this half.
     assertModuleEnabled(ctx, 'toil');
 
+    const {granted,daysCredited,creditedMinutes,expiresOn}=await withDelegatedRequestEffectTx(tx,ctx,{id:p.requestId,kind:'replacement_leave',employmentId:req.employmentId},async(effectTx)=>{
+    const tx=effectTx;
     let lines: (typeof replacementLeaveRequestDate.$inferSelect)[];
     try {
       lines = await tx.select().from(replacementLeaveRequestDate)
@@ -1117,6 +1121,9 @@ export async function decideReplacementLeaveRequestTx(
       creditedMinutes += banked ? banked.eligibleMinutes : minutes;
       expiresOn = res.expiresOn;
     }
+
+    return {granted,daysCredited,creditedMinutes,expiresOn};
+    });
 
     await tx
       .update(replacementLeaveRequest)
@@ -1319,9 +1326,9 @@ function pendingReplacementHeads(tx: Tx, opts: { companyIds?: string[];requestId
       .select({
         id: replacementLeaveRequest.id,
         employmentId: replacementLeaveRequest.employmentId,
-        personId: employment.personId,
-        employee: person.fullName,
-        employeeCode: employment.employeeCode, // Employee ID left-of-name (feedback 38668d9b)
+        personId: sql<string>`approval_subject.person_id`,
+        employee: sql<string>`approval_subject.employee`,
+        employeeCode: sql<string|null>`approval_subject.employee_code`, // Employee ID left-of-name (feedback 38668d9b)
         unit: replacementLeaveRequest.unit,
         totalDays: replacementLeaveRequest.totalDays,
         totalHours: replacementLeaveRequest.totalHours,
@@ -1330,13 +1337,12 @@ function pendingReplacementHeads(tx: Tx, opts: { companyIds?: string[];requestId
         reason: replacementLeaveRequest.reason,
       })
       .from(replacementLeaveRequest)
-      .innerJoin(employment, eq(employment.id, replacementLeaveRequest.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(sql`LATERAL app.delegated_approval_subject(${replacementLeaveRequest.employmentId},'leave','leave.replacement') AS approval_subject`,sql`true`)
       .where(
         and(
           eq(replacementLeaveRequest.status, 'pending'),
           opts.requestId?eq(replacementLeaveRequest.id,opts.requestId):undefined,
-          opts.companyIds===undefined?undefined:inArray(employment.companyId,opts.companyIds),
+          opts.companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(opts.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`,
         ),
       )
       .orderBy(desc(replacementLeaveRequest.createdAt))
@@ -1347,16 +1353,15 @@ export function listPendingReplacementLeaveTasks(ctx:SessionContext,opts:{compan
  return withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
   const candidates=await tx.select({id:replacementLeaveRequest.id,employmentId:replacementLeaveRequest.employmentId,
-   personId:employment.personId,employee:person.fullName,createdAt:replacementLeaveRequest.createdAt})
-   .from(replacementLeaveRequest).innerJoin(employment,and(eq(employment.id,replacementLeaveRequest.employmentId),eq(employment.tenantId,replacementLeaveRequest.tenantId)))
-   .leftJoin(person,eq(person.id,employment.personId))
+   personId:sql<string>`approval_subject.person_id`,employee:sql<string>`approval_subject.employee`,createdAt:replacementLeaveRequest.createdAt})
+   .from(replacementLeaveRequest).innerJoin(sql`LATERAL app.delegated_approval_subject(${replacementLeaveRequest.employmentId},'leave','leave.replacement') AS approval_subject`,sql`true`)
    .where(and(eq(replacementLeaveRequest.status,'pending'),eq(replacementLeaveRequest.tenantId,ctx.tenantId),
-    sql`NOT app.is_self_person(${employment.personId})`,
-    opts.companyIds===undefined?undefined:inArray(employment.companyId,opts.companyIds)))
+    sql`NOT app.is_self_person(approval_subject.person_id)`,
+    opts.companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(opts.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
    .orderBy(desc(replacementLeaveRequest.createdAt),replacementLeaveRequest.id);
   const result=[];
   for(const row of candidates){
-   try{await assertCanDecide(tx,ctx,row.employmentId,'replacement leave request');}
+   try{await assertCanDecide(tx,ctx,row.employmentId,'replacement leave request',scopeOf('leave.replacement'));}
    catch(error){if(isApprovalDecisionRefusal(error,'replacement leave request'))continue;throw error;}
    result.push({id:row.id,personId:row.personId,employee:row.employee,createdAt:row.createdAt});
   }
@@ -1401,7 +1406,7 @@ export async function listPendingReplacementLeaveRequests(
     const key=JSON.stringify([request.employmentId,line.workedDate,line.fromTime,line.toTime]);
     let review=exactReviews.get(key);
     if(!review){
-      review=legacyDays.has(dayKey)?{basis:'legacy'}:await leaveCreditClaimReview(ctx,{employmentId:request.employmentId,workedDate:line.workedDate,claimStart:line.fromTime??undefined,claimEnd:line.toTime??undefined});
+      review=legacyDays.has(dayKey)?{basis:'legacy'}:await withTenant(ctx,tx=>withDelegatedRequestEffectTx(tx,ctx,{id:request.id,kind:'replacement_leave',employmentId:request.employmentId},effectTx=>leaveCreditClaimReviewTx(effectTx,ctx,{employmentId:request.employmentId,workedDate:line.workedDate,claimStart:line.fromTime??undefined,claimEnd:line.toTime??undefined})));
       exactReviews.set(key,review);if(review.basis==='legacy')legacyDays.add(dayKey);
     }
     const routeMismatch=review.basis==='formula'&&((line.sourceType==='extended_hours')!==(review.workedDayKind==='workday'));

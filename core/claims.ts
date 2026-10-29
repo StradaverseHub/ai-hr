@@ -2583,8 +2583,10 @@ export async function decideClaimTx(
 
     if (p.decision === 'approve') {
       const taxable = p.taxable ?? claim.taxable;
-      const [emp] = await tx.select({ gradeId: employment.gradeId }).from(employment).where(eq(employment.id, claim.employmentId)).limit(1);
-      const policy = await getActiveClaimPolicy(tx, claim.claimTypeId, claim.incurredOn, emp?.gradeId ?? null);
+      const [emp] = await tx.execute<{gradeId:string|null;companyId:string;country:string}>(sql`select grade_id as "gradeId",company_id as "companyId",country from app.claim_decision_subject_facts(${claim.id}::uuid)`);
+      // A legitimate null grade is a fact; an invisible/missing subject is never a null-grade fallback.
+      if(!emp)throw new ClaimError('Claim approval subject facts unavailable');
+      const policy = await getActiveClaimPolicy(tx, claim.claimTypeId, claim.incurredOn, emp.gradeId);
       const amount = Number(claim.amount);
       const settled: ClaimStatus[] = [...SETTLED_STATUSES];
       const common = {
@@ -2601,7 +2603,7 @@ export async function decideClaimTx(
       // checked on the way in can be exceeded by the order approvals happen to be granted in.
       if (claim.claimItemId != null) {
         const itemPolicy = await getActiveClaimPolicy(
-          tx, claim.claimTypeId, claim.incurredOn, emp?.gradeId ?? null, claim.claimItemId,
+          tx, claim.claimTypeId, claim.incurredOn, emp.gradeId, claim.claimItemId,
         );
         if (itemPolicy != null) {
           const [it] = await tx
@@ -3303,7 +3305,7 @@ export type ClaimRow = {
   attachments: { id: string; fileName: string; sizeBytes: number }[];
 };
 
-function rowSelect() {
+function rowSelect(delegated=false) {
   return {
     id: claimRequest.id,
     claimTypeId: claimRequest.claimTypeId,
@@ -3321,9 +3323,9 @@ function rowSelect() {
     decidedAt: claimRequest.decidedAt,
     paidAt: claimRequest.paidAt,
     employmentId: claimRequest.employmentId,
-    claimantName: person.fullName,
-    employeeCode: employment.employeeCode,
-    personId: employment.personId,
+    claimantName: delegated?sql<string>`approval_subject.employee`:person.fullName,
+    employeeCode: delegated?sql<string|null>`approval_subject.employee_code`:employment.employeeCode,
+    personId: delegated?sql<string>`approval_subject.person_id`:employment.personId,
   };
 }
 
@@ -3446,13 +3448,12 @@ export async function ownClaimStatuses(ctx: SessionContext, limit: number, exist
 export async function listPendingClaims(ctx: SessionContext,opts:{requestId?:string}={}): Promise<ClaimRow[]> {
   return withTenant(ctx, async (tx) => {
     const rows = await tx
-      .select(rowSelect())
+      .select(rowSelect(true))
       .from(claimRequest)
       .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
       // LEFT join: zero-item / legacy claims must still appear in the approvals inbox.
       .leftJoin(claimItem, eq(claimItem.id, claimRequest.claimItemId))
-      .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(sql`LATERAL app.delegated_approval_subject(${claimRequest.employmentId},'claims','claims.claim') AS approval_subject`,sql`true`)
       .where(and(eq(claimRequest.status, 'pending'),opts.requestId?eq(claimRequest.id,opts.requestId):undefined))
       .orderBy(desc(claimRequest.createdAt));
     // R51 (baf56348): trim delegation-routed rows whose subject is outside the delegation's org coverage.
@@ -3809,12 +3810,11 @@ export async function markReimbursementsPaid(
 export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
  const candidates=await withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,personId:employment.personId,
-   employee:person.fullName,createdAt:claimRequest.createdAt}).from(claimRequest)
-   .innerJoin(employment,and(eq(employment.id,claimRequest.employmentId),eq(employment.tenantId,claimRequest.tenantId)))
-   .leftJoin(person,eq(person.id,employment.personId))
-   .where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),sql`NOT app.is_self_person(${employment.personId})`,
-    companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
+  const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,personId:sql<string>`approval_subject.person_id`,
+   employee:sql<string>`approval_subject.employee`,createdAt:claimRequest.createdAt}).from(claimRequest)
+   .innerJoin(sql`LATERAL app.delegated_approval_subject(${claimRequest.employmentId},'claims','claims.claim') AS approval_subject`,sql`true`)
+   .where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),sql`NOT app.is_self_person(approval_subject.person_id)`,
+    companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
    .orderBy(desc(claimRequest.createdAt),claimRequest.id);
   return filterDelegationOrgScopeTx(tx,ctx,rows,row=>row.employmentId);
  });

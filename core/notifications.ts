@@ -116,6 +116,13 @@ export async function delegateRecipient(tx: Tx, reportingLineId: string): Promis
  *  - hr_admin / hr_manager / custom_role resolve to HR authority (hrAdminsForCompany), matching
  *    assertCanDecideLeaveStep's decision-time gates.
  *  - payroll is the role_assignment payroll_partner check from assertCanDecideLeaveStep, lifted here. */
+/** Active stand-ins for exactly these current approvers; the SQL owner checks task, company and window. */
+export async function withApprovalDelegatesTx(tx:Tx,subjectEmploymentId:string,module:string,task:string,approvers:string[]):Promise<string[]>{
+ if(!approvers.length)return [];
+ const rows=await tx.execute<{id:string}>(sql`select app.active_delegate_employments(${subjectEmploymentId}::uuid,${module},${task},ARRAY[${sql.join(approvers.map(id=>sql`${id}::uuid`),sql`, `)}]) as id`);
+ return [...new Set([...approvers,...rows.map(row=>row.id)])].filter(id=>id!==subjectEmploymentId);
+}
+
 export async function approverEmploymentsForKind(
   tx: Tx,
   subjectEmploymentId: string,
@@ -216,8 +223,8 @@ export async function approverEmploymentsForKind(
 /** WP13 — who can decide a chased approval NOW, re-read at dispatch. Claims and replacement leave follow
  *  assertCanDecide (the subject's administrative manager, else the company's HR admins); an attendance request
  *  with a frozen workflow chases the current stage's effective approvers who have not yet decided, as the
- *  workflow resolves them. Returns null when the item is no longer pending at `stage`. Delegates are not chased,
- *  as for the leave escalation. */
+ *  workflow resolves them. Returns null when the item is no longer pending at `stage`. Active matching stand-ins
+ *  are chased only where the native route supports delegation; frozen v3/v4 participants remain exact. */
 export async function currentApproverEmploymentsTx(tx: Tx, source: string, itemId: string, subjectEmploymentId: string, stage: string): Promise<string[] | null> {
   let out: string[] = [];
   if (source === 'claim' || source === 'replacement_leave') {
@@ -225,23 +232,26 @@ export async function currentApproverEmploymentsTx(tx: Tx, source: string, itemI
       ? await tx.select({ status: claimRequest.status, employmentId: claimRequest.employmentId }).from(claimRequest).where(eq(claimRequest.id, itemId)).limit(1)
       : await tx.select({ status: replacementLeaveRequest.status, employmentId: replacementLeaveRequest.employmentId }).from(replacementLeaveRequest).where(eq(replacementLeaveRequest.id, itemId)).limit(1);
     if (!row || row.status !== 'pending' || row.employmentId !== subjectEmploymentId || stage !== 'pending') return null;
-    out = await approverEmploymentsForKind(tx, subjectEmploymentId, 'direct_manager');
+    out = await withApprovalDelegatesTx(tx,subjectEmploymentId,source==='claim'?'claims':'leave',source==='claim'?'claims.claim':'leave.replacement',await approverEmploymentsForKind(tx, subjectEmploymentId, 'direct_manager'));
   } else if (source === 'attendance_correction') {
     const [row] = await tx.select({ status: attendanceCorrection.status, employmentId: attendanceCorrection.employmentId })
       .from(attendanceCorrection).where(eq(attendanceCorrection.id, itemId)).limit(1);
     if (!row || row.status !== 'pending' || row.employmentId !== subjectEmploymentId) return null;
     // Loaded on use: the attendance workflow owner is large and this registry is imported widely.
-    const { attendanceWorkflowForTx } = await import('./attendance-workflow');
+    const { attendanceWorkflowForTx } = await import('../packs/attendance/service');
     const flow = await attendanceWorkflowForTx(tx, itemId);
     // The chased stage key: level and participant decisions recorded at it (0697 agent_overdue_approvals).
     const key = flow ? `${flow.currentStage}.${flow.participantDecisions.filter((d) => d.stageIndex === flow.currentStage).length}` : '0.0';
     if (key !== stage) return null;
-    const approver = async (a: { kind: string; employmentId?: string | null }) => {
+    const approver = async (a: { kind: string; employmentId?: string | null },delegatable=false) => {
       if (a.kind === 'hr_admin') out.push(...(await hrAdminsForCompany(tx, subjectEmploymentId)));
-      else if (a.employmentId) out.push(a.employmentId);
+      else if (a.kind === 'direct_manager'&&delegatable) {
+        const assigned=a.employmentId?[a.employmentId]:await approverEmploymentsForKind(tx,subjectEmploymentId,'direct_manager');
+        out.push(...await withApprovalDelegatesTx(tx,subjectEmploymentId,'attendance','attendance.correction',assigned));
+      } else if (a.employmentId) out.push(a.employmentId);
       else if (a.kind === 'direct_manager') out.push(...(await approverEmploymentsForKind(tx, subjectEmploymentId, 'direct_manager')));
     };
-    if (!flow) out = await approverEmploymentsForKind(tx, subjectEmploymentId, 'direct_manager');
+    if (!flow) out = await withApprovalDelegatesTx(tx,subjectEmploymentId,'attendance','attendance.correction',await approverEmploymentsForKind(tx, subjectEmploymentId, 'direct_manager'));
     else if (flow.routingVersion === 3 || flow.routingVersion === 4) {
       // Participant routes: only who can act NOW, by the workflow's own outstanding rule (a sequential level
       // has exactly one; 0697 app.attendance_chase_outstanding over 0592's attendance_workflow_v3_outstanding).
@@ -249,7 +259,7 @@ export async function currentApproverEmploymentsTx(tx: Tx, source: string, itemI
         sql`select participant_kind, participant_employment_id from app.attendance_chase_outstanding(${itemId}::uuid)`);
       for (const r of Array.from(rows)) await approver({ kind: r.participant_kind, employmentId: r.participant_employment_id });
     } else {
-      for (const a of flow.effectiveStages[flow.currentStage]?.approvers ?? []) await approver(a);
+      for (const a of flow.effectiveStages[flow.currentStage]?.approvers ?? []) await approver(a,true);
     }
   } else return null;
   // Never the requester; an item with nobody to decide it falls back to HR, so a chase never silently vanishes.
@@ -486,6 +496,7 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       } else {
         approvers = await approverEmploymentsForKind(tx, ev.subjectEmploymentId, 'direct_manager');
       }
+      approvers=await withApprovalDelegatesTx(tx,ev.subjectEmploymentId,'leave','leave.cancellation',approvers);
       const hr = await hrAdminsForCompany(tx, ev.subjectEmploymentId);
       // Never the employee who asked (an HR admin or a manager cancelling their own leave).
       return [...new Set([...approvers, ...hr])].filter((id) => id !== ev.subjectEmploymentId);
@@ -629,6 +640,7 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     recipients: async (tx, ev, payload) => {
       if (!ev.subjectEmploymentId || payload?.requestedOtMinutes == null) return [];
       let out = await approverEmploymentsForKind(tx, ev.subjectEmploymentId, 'direct_manager');
+      out=await withApprovalDelegatesTx(tx,ev.subjectEmploymentId,'attendance','attendance.correction',out);
       if (out.length === 0) out = await hrAdminsForCompany(tx, ev.subjectEmploymentId);
       // Never notify the requester about their own request (an employee who is their own manager, or an
       // HR admin filing for themselves).

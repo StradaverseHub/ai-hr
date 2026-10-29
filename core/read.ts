@@ -1555,14 +1555,13 @@ export function listLeaveRequests(
 ) {
   return withTenant(ctx, async (tx) => {
     const rows = await tx
-      .select(leaveRequestSelection)
+      .select({...leaveRequestSelection,personId:sql<string>`approval_subject.person_id`,employee:sql<string>`approval_subject.employee`,employeeCode:sql<string|null>`approval_subject.employee_code`})
       .from(leaveRequest)
-      .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(sql`LATERAL app.delegated_approval_subject(${leaveRequest.employmentId},'leave','leave.application') AS approval_subject`,sql`true`)
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
       .where(
         and(
-          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+          companyIds && companyIds.length ? sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])` : undefined,
           opts?.status ? eq(leaveRequest.status, opts.status) : undefined,
           opts?.requestId ? eq(leaveRequest.id,opts.requestId) : undefined,
         ),
@@ -1870,9 +1869,9 @@ export function listPendingLeaveCancellations(ctx: SessionContext, companyIds?: 
         id: leaveCancellationRequest.id,
         leaveRequestId: leaveCancellationRequest.leaveRequestId,
         employmentId: leaveCancellationRequest.employmentId,
-        personId: employment.personId,
-        employee: person.fullName,
-        employeeCode: employment.employeeCode,
+        personId: sql<string>`approval_subject.person_id`,
+        employee: sql<string>`approval_subject.employee`,
+        employeeCode: sql<string|null>`approval_subject.employee_code`,
         leaveType: leaveType.name,
         i18n: leaveType.i18n,
         typeCode: leaveType.code,
@@ -1891,14 +1890,13 @@ export function listPendingLeaveCancellations(ctx: SessionContext, companyIds?: 
       })
       .from(leaveCancellationRequest)
       .innerJoin(leaveRequest, eq(leaveRequest.id, leaveCancellationRequest.leaveRequestId))
-      .innerJoin(employment, eq(employment.id, leaveCancellationRequest.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(sql`LATERAL app.delegated_approval_subject(${leaveCancellationRequest.employmentId},'leave','leave.cancellation') AS approval_subject`,sql`true`)
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
       .where(
         and(
           eq(leaveCancellationRequest.status, 'pending'),
           requestId?eq(leaveCancellationRequest.id,requestId):undefined,
-          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+          companyIds && companyIds.length ? sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])` : undefined,
         ),
       )
       .orderBy(desc(leaveCancellationRequest.createdAt));

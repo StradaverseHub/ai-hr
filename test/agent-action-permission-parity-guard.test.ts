@@ -10,10 +10,9 @@ const declarations:Readonly<Record<string,ParityDeclaration>>=AGENT_ACTION_PARIT
 const probed:ParityDeclaration={kind:'probed',screen:{employee:'allow',manager:'deny',assigned_approver:'deny',company_hr:'deny',group_hr:'deny',payroll_partner:'deny',performance_comp_partner:'deny',performance_partner:'deny',another_company:'deny',another_tenant:'deny'}};
 
 describe('WP8 parity matrix coverage of the agent action registry',()=>{
- it('declares the routed attendance delegate gap only at confirm, with a follow-up owner',()=>{
+ it('requires routed delegate confirmation parity after the delegated-approvals fix',()=>{
   expect(ATTENDANCE_WORKFLOW_PARITY.screen.assigned_approver).toBe('allow');
-  expect(Object.keys(ATTENDANCE_WORKFLOW_PARITY.narrowed.assigned_approver)).toEqual(['confirm']);
-  expect(ATTENDANCE_WORKFLOW_PARITY.narrowed.assigned_approver.confirm).toContain('delegated-approvals');
+  expect(ATTENDANCE_WORKFLOW_PARITY).not.toHaveProperty('narrowed');
  });
 
  it('declares every registry entry, and only registry entries',()=>{

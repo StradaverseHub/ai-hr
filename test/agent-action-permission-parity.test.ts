@@ -138,6 +138,8 @@ async function buildWorld():Promise<World>{
   another_company:[b,'hr_admin',other.id],another_tenant:[foreign,'hr_admin',null]};
  const sessions=new Map<ParityRole,Promise<SessionContext>>();
  const as=(role:ParityRole)=>{let s=sessions.get(role);if(!s){const [base,dbRole,companyId]=grantOf[role];s=login(base,people[role],dbRole,companyId).then(r=>r.ctx);sessions.set(role,s);}return s;};
+ // Delegated effects require the delegator's live calculation identity, independently of the role being probed.
+ await as('manager');
  const home:Home={person:subject,base:b,companyId:b.companyId,departmentId:b.deptA,name:SUBJECT_NAME,session:()=>as('employee')};
  return {b,foreign,companyB:other.id,deptOther:otherDept.id,subject,people,group,managerLineId:managerLine.reportingLineId,home,as,login,claimTypes:new Map()};
 }
@@ -326,10 +328,8 @@ describe('ADR-0151 parity, attendance under a routed one-level workflow',()=>{
  it.each((['assigned_approver','manager','company_hr','employee'] as const).flatMap(role=>(['approved','rejected'] as const).map(decision=>[role,decision] as const)))('%s %s',async(role,decision)=>{
   const {observed,notes}=await observe('approvals.attendance.decide',role,{decision,workflow:true});
   console.info(`[parity:workflow] approvals.attendance.decide ${role} ${decision} ${JSON.stringify(observed)} ${JSON.stringify(notes)}`);
-  const narrowed=role==='assigned_approver'?ATTENDANCE_WORKFLOW_PARITY.narrowed.assigned_approver:false;
-  const context=assertInvariants('approvals.attendance.decide (workflow)',role,observed,notes,narrowed);
+  const context=assertInvariants('approvals.attendance.decide (workflow)',role,observed,notes,false);
   expect(observed.screen,`${context} — screen differs from routed declaration`).toBe(ATTENDANCE_WORKFLOW_PARITY.screen[role]);
-  if(role==='assigned_approver')expect(notes.confirm,context).toContain('AssignedDecisionUnavailable');
  },180_000);
 });
 

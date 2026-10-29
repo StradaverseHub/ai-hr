@@ -16240,6 +16240,7 @@
     "taskLabel": {
       "leaveApplication": "Phê duyệt Đơn xin nghỉ",
       "leaveCancellation": "Phê duyệt Hủy nghỉ",
+      "leaveReplacement": "Nghỉ bù",
       "attendanceCorrection": "Phê duyệt Điều chỉnh chấm công",
       "claimsClaim": "Phê duyệt Yêu cầu bồi hoàn",
       "leaveRequestCreation": "Tạo đơn xin nghỉ phép",
@@ -16251,11 +16252,11 @@
       "leaveCancellation": "Hủy nghỉ phép"
     },
     "coverageTitle": "Phạm vi ủy quyền",
-    "coverageHint": "Chọn phần tổ chức mà người thay thế phụ trách. Để trống một cấp để bao gồm toàn bộ dưới cấp trước đó.",
+    "coverageHint": "Để trống Công ty để áp dụng cho công ty của người thay thế. Chọn rõ một công ty để áp dụng cho công ty khác. Các cấp dưới để trống bao gồm tất cả trong công ty đã chọn.",
     "coverageCompany": "Công ty",
     "coverageBusinessUnit": "Đơn vị kinh doanh",
     "coverageDepartment": "Phòng ban",
-    "coverageAllCompanies": "Tất cả công ty",
+    "coverageAllCompanies": "Công ty của người thay thế",
     "coverageAllBusinessUnits": "Tất cả đơn vị kinh doanh",
     "coverageAllDepartments": "Tất cả phòng ban",
     "eligibleHint": "Chỉ liệt kê những người phê duyệt cùng cấp với người ủy quyền.",

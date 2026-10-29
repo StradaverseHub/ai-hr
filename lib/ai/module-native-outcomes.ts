@@ -1,11 +1,13 @@
 /** Closed evidence links, not an executor, permission oracle, quality score or causal credit. */
 import {z} from 'zod';
 import type {AgentModuleCode} from './module-agents';
-import {AGENT_ACTIONS,type AgentActionId,type AgentActionOf,type AgentReviewActionId} from './agent-action-registry';
+import {AGENT_ACTIONS,type AgentAction,type AgentActionOf,type AgentReviewActionId} from './agent-action-registry';
 const Id=z.guid().transform(value=>value.toLowerCase());
-type NativeOutcomeEntry<K extends AgentActionId>=Readonly<{module:AgentActionOf<K>['module'];semantics:string}>;
-/** WP7: derived from the registry in its order; each entry's semantics is its registry `semantics`. */
-export const NATIVE_OUTCOME_ACTIONS=Object.freeze(Object.fromEntries(AGENT_ACTIONS.map(action=>[action.id,Object.freeze({module:action.module,semantics:action.semantics})]))) as {readonly [K in AgentActionId]:NativeOutcomeEntry<K>} satisfies Readonly<Record<AgentActionId,Readonly<{module:AgentModuleCode;semantics:string}>>>;
+type NativeEffectActionId=Exclude<AgentAction,{readonly outcome:'notification_only'}>['id'];
+type NativeOutcomeEntry<K extends NativeEffectActionId>=Readonly<{module:AgentActionOf<K>['module'];semantics:string}>;
+/** Human native effects only, in registry order. Automatic reminders have separate event evidence;
+ * they cannot become human-linked native effect receipts. */
+export const NATIVE_OUTCOME_ACTIONS=Object.freeze(Object.fromEntries(AGENT_ACTIONS.filter(action=>action.outcome!=='notification_only').map(action=>[action.id,Object.freeze({module:action.module,semantics:action.semantics})]))) as {readonly [K in NativeEffectActionId]:NativeOutcomeEntry<K>} satisfies Readonly<Record<NativeEffectActionId,Readonly<{module:AgentModuleCode;semantics:string}>>>;
 export type NativeOutcomeAction=keyof typeof NATIVE_OUTCOME_ACTIONS;
 /** Every action with a prepared-review store row; the human import workflow is its own source below. */
 export const NATIVE_REVIEW_ACTIONS:readonly AgentReviewActionId[]=Object.freeze(AGENT_ACTIONS.filter(action=>action.store!=='human_workflow_only').map(action=>action.id as AgentReviewActionId));

@@ -18,6 +18,7 @@ export type DelegationModule = 'leave' | 'attendance' | 'claims';
 export type DelegationTaskType =
   | 'leave.application'
   | 'leave.cancellation'
+  | 'leave.replacement'
   // R51 (20f09fc3) — request-side leave duties. These record & limit what was handed over; they map to NO
   // decide flow (the SQL matcher requires exact task_type equality, so they grant zero approval authority).
   | 'leave.request.creation'
@@ -27,7 +28,7 @@ export type DelegationTaskType =
   | 'claims.claim';
 
 export const DELEGATION_SCOPE: { module: DelegationModule; tasks: DelegationTaskType[] }[] = [
-  { module: 'leave', tasks: ['leave.application', 'leave.cancellation'] },
+  { module: 'leave', tasks: ['leave.application', 'leave.cancellation', 'leave.replacement'] },
   { module: 'attendance', tasks: ['attendance.correction'] },
   { module: 'claims', tasks: ['claims.claim'] },
 ];
@@ -35,6 +36,7 @@ export const DELEGATION_SCOPE: { module: DelegationModule; tasks: DelegationTask
 export const moduleOfTask: Record<DelegationTaskType, DelegationModule> = {
   'leave.application': 'leave',
   'leave.cancellation': 'leave',
+  'leave.replacement': 'leave',
   'leave.request.creation': 'leave',
   'leave.request.amendment': 'leave',
   'leave.cancellation_request.creation': 'leave',
@@ -57,6 +59,7 @@ export function isDelegationTaskType(v: string): v is DelegationTaskType {
 export const taskLabelKey: Record<DelegationTaskType, string> = {
   'leave.application': 'leaveApplication',
   'leave.cancellation': 'leaveCancellation',
+  'leave.replacement': 'leaveReplacement',
   'leave.request.creation': 'leaveRequestCreation',
   'leave.request.amendment': 'leaveAmendmentRequest',
   'leave.cancellation_request.creation': 'leaveCancellationRequest',

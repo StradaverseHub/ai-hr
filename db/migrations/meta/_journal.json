@@ -3977,6 +3977,13 @@
       "when": 1793330000023,
       "tag": "0697_automatic_chasers",
       "breakpoints": true
+    },
+    {
+      "idx": 689,
+      "version": "7",
+      "when": 1793330000025,
+      "tag": "0699_delegated_approvals",
+      "breakpoints": true
     }
   ]
 }

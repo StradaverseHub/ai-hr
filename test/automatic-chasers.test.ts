@@ -142,7 +142,8 @@ describe('WP13 Automatic-tier chasers under the agent principal', () => {
       const p = e.payload as Record<string, unknown>;
       expect(p).toMatchObject({ companyId: base.companyId, chaseNumber: 1, agent: { principalId, enabledBy: [{ feature: 'approval_chasers', userId: base.adminUserId }] } });
       // Only ids, stage and dates: no amount, description, reason or name leaves the source.
-      expect(JSON.stringify(p)).not.toMatch(/312|Fictional|secret|Chaser fixture/);
+      expect(Object.keys(p).sort()).toEqual(['action','source','stage','companyId','waitingOn','workingDaysWaiting','chaseNumber','agent'].sort());
+      expect(JSON.stringify(p)).not.toMatch(/312\.50|Fictional|secret|Chaser fixture/);
     }
     // The approver acts on one claim after the sweep: the registry re-checks at dispatch and tells nobody.
     await owner.db.update(schema.claimRequest).set({ status: 'approved' }).where(eq(schema.claimRequest.id, laterDecided));
@@ -153,6 +154,24 @@ describe('WP13 Automatic-tier chasers under the agent principal', () => {
     expect(sent.some(n => n.recipientEmploymentId === E.employmentId || n.recipientEmploymentId === H.employmentId)).toBe(false);
     for (const n of sent) { expect(n.body).toMatch(/waiting for your decision for \d+ working day/); expect(n.body).not.toMatch(/312|Fictional/); expect(n.linkPath).toBe('/approvals'); }
     expect(model.calls).toBe(0);
+  });
+
+  it('chases matching stand-ins for claims, unrouted attendance and replacement leave, with no model call',async()=>{
+    const {E,M}=await fixture(),stand=await hire(base),report=await hire(base);
+    await reportsTo(base,report.employmentId,stand.employmentId);
+    await createAppUser(base.tenantId,stand.personId,'manager');
+    const [line]=await owner.db.insert(schema.reportingLine).values({tenantId:base.tenantId,subordinateEmploymentId:M.employmentId,managerEmploymentId:stand.employmentId,lineType:'delegate',validFrom:'2020-01-01'}).returning({id:schema.reportingLine.id});
+    await claim(base,E.employmentId,daysAgo(10));await correction(base,E.employmentId,daysAgo(10));await replacement(base,E.employmentId,daysAgo(10));
+    await switchEvent(base,APPROVALS,true);await runApprovalChasers(await agent(),{calendar:calendar()});
+    await dispatchNotifications(adminCtx(base));
+    const events=await chaseEvents();expect(events).toHaveLength(3);
+    for(const event of events)expect((await notificationsFor([event.id])).map(n=>n.recipientEmploymentId).sort()).toEqual([M.employmentId,stand.employmentId].sort());
+    expect(model.calls).toBe(0);
+    // A matching task is required even on reminders. Retired receipts remain, so use a new overdue item.
+    await owner.db.insert(schema.reportingLineScope).values({tenantId:base.tenantId,reportingLineId:line.id,module:'leave',taskType:'leave.application'});
+    const second=await claim(base,E.employmentId,daysAgo(10));await runApprovalChasers(await agent(),{calendar:calendar()});await dispatchNotifications(adminCtx(base));
+    const [last]=(await chaseEvents()).filter(e=>e.aggregateId===second);
+    expect((await notificationsFor([last.id])).map(n=>n.recipientEmploymentId)).toEqual([M.employmentId]);
   });
 
   it('falls back to the company HR when the subject has no manager, and never tells another company or tenant', async () => {

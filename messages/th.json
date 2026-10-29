@@ -16240,6 +16240,7 @@
     "taskLabel": {
       "leaveApplication": "การอนุมัติคำขอลา",
       "leaveCancellation": "การอนุมัติยกเลิกการลา",
+      "leaveReplacement": "วันลาชดเชย",
       "attendanceCorrection": "การอนุมัติแก้ไขการเข้างาน",
       "claimsClaim": "การอนุมัติการเบิกจ่าย",
       "leaveRequestCreation": "การสร้างคำขอลา",
@@ -16251,11 +16252,11 @@
       "leaveCancellation": "การยกเลิกการลา"
     },
     "coverageTitle": "ขอบเขตการมอบหมาย",
-    "coverageHint": "เลือกส่วนขององค์กรที่ผู้ทำการแทนรับผิดชอบ เว้นว่างระดับใดเพื่อครอบคลุมทั้งหมดภายใต้ระดับก่อนหน้า",
+    "coverageHint": "เว้นบริษัทว่างเพื่อครอบคลุมบริษัทของผู้ทำหน้าที่แทน หากต้องการครอบคลุมบริษัทอื่น ให้เลือกบริษัทนั้นอย่างชัดเจน ระดับย่อยที่เว้นว่างจะครอบคลุมทั้งหมดภายในบริษัทที่เลือก",
     "coverageCompany": "บริษัท",
     "coverageBusinessUnit": "หน่วยธุรกิจ",
     "coverageDepartment": "แผนก",
-    "coverageAllCompanies": "ทุกบริษัท",
+    "coverageAllCompanies": "บริษัทของผู้ทำหน้าที่แทน",
     "coverageAllBusinessUnits": "ทุกหน่วยธุรกิจ",
     "coverageAllDepartments": "ทุกแผนก",
     "eligibleHint": "แสดงเฉพาะผู้อนุมัติที่มีระดับเดียวกับผู้มอบหมายเท่านั้น",
