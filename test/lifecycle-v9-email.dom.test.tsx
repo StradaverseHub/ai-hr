@@ -15,9 +15,9 @@ it('opens a read-only preview and shows the HR signature hold without sending or
   fireEvent.click(screen.getByRole('button', { name: `Preview ${definition.emails[0].name}` }));
   expect(await screen.findByText('Hello Fictional leaver')).toBeInTheDocument();
   expect(screen.getByRole('region', { name: 'Before this email can be sent' })).toHaveTextContent('HR must review and sign');
-  expect(screen.getByRole('button', { name: 'Send email', exact: true })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Send email' })).toBeDisabled();
   expect(command).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Send test', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Send test' }));
   expect(command).toHaveBeenCalledExactlyOnceWith({ type: 'emailTest', emailId: 'e3' });
 });
 it('keeps per-person edits separate from the shared template', async () => {
@@ -25,7 +25,7 @@ it('keeps per-person edits separate from the shared template', async () => {
   render(<CaseEmails c={c} config={definition} busy={false} command={command}/>);
   fireEvent.click(screen.getByRole('button', { name: `Preview ${definition.emails[0].name}` }));
   await screen.findByText('Hello Fictional leaver');
-  fireEvent.click(screen.getByRole('button', { name: 'Edit for this person', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit for this person' }));
   expect(screen.getByLabelText('Subject')).toHaveValue('Hello {employee.name}');
   fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Reviewed for this person only.' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save for this person' }));

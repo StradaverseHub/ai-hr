@@ -19,7 +19,7 @@ export type TaskDefinition = {
   mode: 'rr' | 'manual'; opens: number | null; due: number; required: boolean;
   documentTemplate: string | null; documentAction: 'completed' | 'signed' | 'sent';
 };
-export type Checklist = { id: string; name: string; module: Module; rules: Rules; tasks: TaskDefinition[] };
+export type Checklist = { id: string; name: string; module: Module; rules: Rules; tasks: TaskDefinition[]; ownerUserId?: string; createdAt?: string };
 export type Task = TaskDefinition & {
   opensOn: string | null; dueOn: string; assignee: string | null;
   status: 'todo' | 'progress' | 'done' | 'notNeeded'; reason: string; assignmentFailure: string | null;

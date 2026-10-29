@@ -28,3 +28,5 @@
 .v9-dialog:not(.v9-drawer){margin:auto;inset:0}
 
 .v9-recipient-picker>summary{list-style:none}.v9-recipient-picker>summary::-webkit-details-marker{display:none}@media(max-width:760px){.v9-workflow-list .v9-workflow-description{flex-basis:100%}.v9-workflow-list .v9-heading>.v9-actions{width:100%}}
+
+.v9-native-documents{min-height:0;margin-top:24px}

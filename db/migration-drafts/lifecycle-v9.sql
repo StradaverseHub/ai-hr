@@ -121,7 +121,7 @@ GRANT EXECUTE ON FUNCTION app.lc_v9_work(uuid) TO ai_hr_app;
 
 CREATE FUNCTION app.lc_v9_self_document(p_id uuid,p_revision integer,p_document text,p_values jsonb,p_signature jsonb DEFAULT NULL)
 RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
-DECLARE c lc_v9_case%ROWTYPE; d jsonb; f jsonb; t jsonb; cfg jsonb; actor_name text;
+DECLARE c lc_v9_case%ROWTYPE; native_case lc_onboarding_case%ROWTYPE; native_private jsonb; is_native boolean:=false; d jsonb; f jsonb; t jsonb; cfg jsonb; actor_name text;
  key text; value jsonb; vals jsonb; next_docs jsonb:='[]'::jsonb; next_tasks jsonb:='[]'::jsonb;
  next_pm jsonb; signing boolean:=p_signature IS NOT NULL; next_status text; changes jsonb; own_user uuid:=app.current_user_id();
 BEGIN
@@ -129,7 +129,18 @@ BEGIN
  SELECT x.* INTO c FROM lc_v9_case x JOIN employment e ON e.id=x.employment_id AND e.tenant_id=x.tenant_id
  JOIN app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id AND u.id=own_user AND u.archived_at IS NULL
  WHERE x.id=p_id AND x.tenant_id=app.current_tenant_id() FOR UPDATE OF x;
- IF NOT FOUND OR c.data->>'state'<>'submitted' THEN RAISE EXCEPTION 'Document not available'; END IF;
+ IF NOT FOUND THEN
+  SELECT x.* INTO native_case FROM lc_onboarding_case x
+  JOIN employment e ON e.id=x.employment_id AND e.person_id::text=x.data->>'personId' AND e.tenant_id=x.tenant_id AND e.company_id=x.company_id
+  JOIN app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id AND u.id=own_user AND u.archived_at IS NULL
+  WHERE x.id=p_id AND x.tenant_id=app.current_tenant_id() FOR UPDATE OF x;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Document not available'; END IF;
+  SELECT data INTO native_private FROM lc_onboarding_private WHERE case_id=native_case.id AND tenant_id=native_case.tenant_id FOR UPDATE;
+  IF native_private->'lifecycleV9' IS NULL OR native_private->'lifecycleV9Subject'->>'employmentId' IS DISTINCT FROM native_case.employment_id::text OR native_private->'lifecycleV9Subject'->>'personId' IS DISTINCT FROM native_case.data->>'personId' THEN RAISE EXCEPTION 'Document not available'; END IF;
+  is_native:=true; c.id:=native_case.id; c.tenant_id:=native_case.tenant_id; c.company_id:=native_case.company_id; c.employment_id:=native_case.employment_id; c.revision:=native_case.revision;
+  c.data:=(native_private->'lifecycleV9')||jsonb_build_object('state',native_case.data->>'state','tasks',native_case.data->'tasks','sourceRevision',native_case.data->>'sourceVersion');
+ END IF;
+ IF c.data->>'state'<>'submitted' THEN RAISE EXCEPTION 'Document not available'; END IF;
  IF c.revision IS DISTINCT FROM p_revision THEN RAISE EXCEPTION 'This case changed. Refresh before trying again.'; END IF;
  SELECT x INTO d FROM jsonb_array_elements(c.data->'documents') x WHERE x->>'id'=p_document AND x->>'status' IN ('sent','opened');
  IF d IS NULL THEN RAISE EXCEPTION 'Document is not open for completion'; END IF;
@@ -173,12 +184,19 @@ BEGIN
  END IF;
  FOR changes IN SELECT * FROM jsonb_array_elements(c.data->'documents') LOOP next_docs:=next_docs||jsonb_build_array(CASE WHEN changes->>'id'=p_document THEN d ELSE changes END); END LOOP;
  FOR t IN SELECT * FROM jsonb_array_elements(c.data->'tasks') LOOP
-  IF signing AND next_status IN ('signed','acknowledged') AND t->>'documentTemplate'=d->>'templateId' AND t->>'documentAction' IN ('signed','completed') THEN t:=t||jsonb_build_object('status','done'); END IF;
+  IF signing AND next_status IN ('signed','acknowledged') AND t->>'documentTemplate'=d->>'templateId' AND t->>'documentAction' IN ('signed','completed') THEN t:=t||jsonb_build_object('status','done')||CASE WHEN is_native THEN jsonb_build_object('completedAt',now(),'completedBy',own_user) ELSE '{}'::jsonb END; END IF;
   next_tasks:=next_tasks||jsonb_build_array(t);
  END LOOP;
- INSERT INTO lc_v9_case_revision(tenant_id,case_id,company_id,revision,data,actor_user_id) VALUES(c.tenant_id,c.id,c.company_id,c.revision,c.data,own_user);
  changes:=jsonb_build_object('id',gen_random_uuid(),'at',now(),'actor',jsonb_build_object('id',own_user,'name',actor_name),'action',CASE WHEN signing THEN 'document.signed' ELSE 'document.saved' END,'detail',d->>'name');
- UPDATE lc_v9_case SET revision=c.revision+1,updated_at=now(),data=c.data||jsonb_build_object('revision',c.revision+1,'documents',next_docs,'tasks',next_tasks,'pmChanges',next_pm,'log',(c.data->'log')||jsonb_build_array(changes)) WHERE id=c.id;
+ IF is_native THEN
+  INSERT INTO lc_onboarding_case_revision(tenant_id,case_id,company_id,revision,data) VALUES(c.tenant_id,c.id,c.company_id,c.revision,native_case.data);
+  INSERT INTO lc_onboarding_private_revision(tenant_id,case_id,company_id,revision,data) VALUES(c.tenant_id,c.id,c.company_id,c.revision,native_private);
+  UPDATE lc_onboarding_case SET revision=c.revision+1,updated_at=now(),data=native_case.data||jsonb_build_object('tasks',next_tasks,'history',coalesce(native_case.data->'history','[]'::jsonb)||jsonb_build_array(jsonb_build_object('id',gen_random_uuid(),'at',now(),'by',own_user,'name',actor_name,'action',CASE WHEN signing THEN 'document.signed' ELSE 'document.saved' END,'detail',d->>'name'))) WHERE id=c.id AND tenant_id=c.tenant_id;
+  UPDATE lc_onboarding_private SET data=jsonb_set(native_private,'{lifecycleV9}',(native_private->'lifecycleV9')||jsonb_build_object('documents',next_docs,'pmChanges',next_pm,'log',coalesce(c.data->'log','[]'::jsonb)||jsonb_build_array(changes))) WHERE case_id=c.id AND tenant_id=c.tenant_id;
+ ELSE
+  INSERT INTO lc_v9_case_revision(tenant_id,case_id,company_id,revision,data,actor_user_id) VALUES(c.tenant_id,c.id,c.company_id,c.revision,c.data,own_user);
+  UPDATE lc_v9_case SET revision=c.revision+1,updated_at=now(),data=c.data||jsonb_build_object('revision',c.revision+1,'documents',next_docs,'tasks',next_tasks,'pmChanges',next_pm,'log',(c.data->'log')||jsonb_build_array(changes)) WHERE id=c.id;
+ END IF;
  RETURN c.employment_id;
 END;
 $$;
@@ -261,3 +279,32 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
 $$;
 REVOKE ALL ON FUNCTION app.onboarding_unavailable(date[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onboarding_unavailable(date[]) TO ai_hr_app;
+
+-- Only shared checklist definitions cross this projection; document bodies and case data stay private.
+CREATE OR REPLACE FUNCTION app.onboarding_v9_checklists() RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT jsonb_build_object('revision',c.revision,'at',to_char(coalesce((SELECT min(r.created_at) FROM lc_v9_config_revision r WHERE r.tenant_id=c.tenant_id),c.updated_at) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'owner',(
+   SELECT r.actor_user_id FROM lc_v9_config_revision r WHERE r.tenant_id=c.tenant_id AND r.actor_user_id IS NOT NULL ORDER BY r.revision LIMIT 1
+ ),'checklists',coalesce((SELECT jsonb_agg(x ORDER BY ord) FROM jsonb_array_elements(c.data->'checklists') WITH ORDINALITY AS d(x,ord) WHERE x->>'module'='onb'),'[]'::jsonb))
+ FROM lc_v9_config c WHERE c.tenant_id=app.current_tenant_id() AND (
+ (app.current_user_id() IS NOT NULL AND NOT app.login_blocked(app.current_user_id()) AND EXISTS(SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=c.tenant_id AND u.archived_at IS NULL))
+ OR (app.current_user_id() IS NULL AND (session_user='ai_hr_owner' OR EXISTS(SELECT 1 FROM pg_roles WHERE rolname=session_user AND rolsuper))))
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_v9_checklists() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_v9_checklists() TO ai_hr_app;
+
+-- A linked employee sees released native documents and their own tasks, never HR-private proposals or drafts.
+CREATE OR REPLACE FUNCTION app.onboarding_v9_work() RETURNS SETOF jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT jsonb_build_object('id',c.id,'number',c.data->>'number','module','onb','revision',c.revision,'state',CASE WHEN c.data->>'state'='pending' THEN 'pending' ELSE c.data->>'state' END,
+ 'facts',jsonb_build_object('name',coalesce(c.data->'source'->>'fullName',c.data->'local'->>'fullName',''),'joinDate',coalesce(c.data->'source'->>'joinDate',c.data->'local'->>'joinDate',''),'lastDay','','company',c.company_id,'employmentId',c.employment_id,'personId',e.person_id,'employeeUserId',u.id),
+ 'tasks',coalesce((SELECT jsonb_agg(t||jsonb_build_object('by',CASE WHEN t->>'by'='joiner' THEN 'employee' ELSE t->>'by' END,'assignmentFailure',t->'failure','reason','')) FROM jsonb_array_elements(c.data->'tasks') t WHERE t->>'by'='joiner' OR t->>'assignee'=u.id::text),'[]'::jsonb),
+ 'items','[]'::jsonb,'documents',coalesce((SELECT jsonb_agg(d) FROM jsonb_array_elements(coalesce(p.data->'lifecycleV9'->'documents','[]'::jsonb)) d WHERE d->>'status' IN ('sent','opened','completed','signed','acknowledged','countersign')),'[]'::jsonb),'own',true)
+ FROM lc_onboarding_case c JOIN lc_onboarding_private p ON p.case_id=c.id AND p.tenant_id=c.tenant_id
+ JOIN employment e ON e.id=c.employment_id AND e.person_id::text=c.data->>'personId' AND e.tenant_id=c.tenant_id AND e.company_id=c.company_id
+ JOIN app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id AND u.id=app.current_user_id() AND u.archived_at IS NULL
+ WHERE c.tenant_id=app.current_tenant_id() AND NOT app.login_blocked(u.id) AND p.data ? 'lifecycleV9' AND p.data->'lifecycleV9Subject'->>'employmentId'=e.id::text AND p.data->'lifecycleV9Subject'->>'personId'=e.person_id::text
+ ORDER BY c.created_at,c.id
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_v9_work() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_v9_work() TO ai_hr_app;

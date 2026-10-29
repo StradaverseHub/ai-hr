@@ -1,6 +1,10 @@
+import { documentFinal } from '../../../lib/lifecycle-v9-model';
+import type { NativeDocumentState } from '../../../lib/lifecycle-v9-native';
+import { onboardingV9Checklists, type V9ChecklistProjection } from '../../../lib/onboarding-v9-checklists';
 import { organisationChoiceLabels } from '../../../lib/organisation-choice-label';
 import { onboardingConfigSchema, onboardingTaskSchema, onboardingCommandSchema, onboardingNoteSchema } from '../../../lib/onboarding-validation';
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { withLifecycleTenant as withTenant } from '../../../core/module-gate';
 import { type SessionContext, type Tx } from '../../../db/client';
@@ -27,6 +31,12 @@ async function configTx(tx: Tx, ctx: SessionContext): Promise<{
     config: M.Config;
     revision: number;
 }> {
+    const [extension] = await tx.execute<{ available: boolean }>(sql`select to_regprocedure('app.onboarding_v9_checklists()') is not null as available`);
+    if (extension?.available) {
+        const [row] = await tx.execute<{ data: M.Config; revision: number; projection: V9ChecklistProjection | null }>(sql`select data,revision,app.onboarding_v9_checklists() as projection from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
+        if (row?.projection) return { config: { ...row.data, checklists: onboardingV9Checklists(row.projection), v9ChecklistRevision: row.projection.revision }, revision: row.revision };
+        return { config: row?.data ?? M.defaultConfig(''), revision: row?.revision ?? 0 };
+    }
     const [row] = await tx.select().from(configs).where(eq(configs.tenantId, ctx.tenantId));
     return { config: row?.data ?? M.defaultConfig(''), revision: row?.revision ?? 0 };
 }
@@ -109,8 +119,12 @@ async function storeTx(tx: Tx, ctx: SessionContext, row: Row, c: M.Case, hr: boo
     const updated = await tx.update(cases).set({ data: value, companyId: row.companyId, employmentId: c.employmentId, revision: row.revision + 1, updatedAt: new Date() }).where(and(eq(cases.id, row.id), eq(cases.revision, row.revision))).returning({ id: cases.id });
     if (!updated.length)
         M.fail('This case changed. Reload it before trying again.', 'conflict');
-    if (hr)
-        await tx.insert(secrets).values({ caseId: c.id, tenantId: ctx.tenantId, companyId: row.companyId, data }).onConflictDoUpdate({ target: secrets.caseId, set: { data, companyId: row.companyId } });
+    if (hr) {
+        const [existing] = await tx.select({ data: secrets.data }).from(secrets).where(eq(secrets.caseId, c.id));
+        const retained = { ...existing?.data, ...data };
+        await tx.insert(secrets).values({ caseId: c.id, tenantId: ctx.tenantId, companyId: row.companyId, data: retained }).onConflictDoUpdate({ target: secrets.caseId, set: { data: retained, companyId: row.companyId } });
+        if (Object.prototype.hasOwnProperty.call(retained, 'lifecycleV9')) await tx.execute(sql`update lc_onboarding_private set data=jsonb_set(data,'{lifecycleV9Subject}',${JSON.stringify({ personId: c.personId, employmentId: c.employmentId })}::jsonb,true) where case_id=${c.id}::uuid and tenant_id=${ctx.tenantId}::uuid and (data->'lifecycleV9Subject'->>'employmentId') is null`);
+    }
 }
 /** Shared workload projection. Caller supplies its existing tenant-bound transaction; SQL owns access. */
 export async function onboardingAssignmentLoadsTx(tx: Tx) {
@@ -479,7 +493,7 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
                 M.log(c, actor, env, 'acknowledgement.submitted');
                 break;
         }
-        if (command.type === 'submit')
+        if (command.type === 'submit' || command.type === 'saveSubmit')
             await assignRoleTasksTx(tx, c);
         await storeTx(tx, ctx, row, c, actor.hr);
         await auditTx(tx, ctx, c, command.type);
@@ -599,6 +613,9 @@ async function saveConfig(ctx: SessionContext, revision: number, input: M.Config
                 M.fail('Save the new checklist before editing its tasks.');
             checklist!.tasks = taskEdit.tasks;
         }
+        if (old.v9ChecklistRevision && !isDeepStrictEqual(old.checklists, next.checklists))
+            M.fail('Manage these checklists in the V9 workspace.');
+        if (old.v9ChecklistRevision) next.v9ChecklistRevision = old.v9ChecklistRevision;
         jsonSize(next);
         if (JSON.stringify(old.access) !== JSON.stringify(next.access) && !actor.master)
             M.fail('Only the Master Admin changes module access.', 'forbidden');
@@ -732,7 +749,10 @@ async function saveConfig(ctx: SessionContext, revision: number, input: M.Config
         }
         if (!current)
             M.fail('Initialise onboarding first.');
-        const saved = await tx.update(configs).set({ data: next, revision: current + 1, updatedAt: new Date() }).where(and(eq(configs.tenantId, ctx.tenantId), eq(configs.revision, current))).returning();
+        const [stored] = await tx.select().from(configs).where(eq(configs.tenantId, ctx.tenantId));
+        const persisted = old.v9ChecklistRevision ? { ...next, checklists: stored.data.checklists } : next;
+        delete persisted.v9ChecklistRevision;
+        const saved = await tx.update(configs).set({ data: persisted, revision: current + 1, updatedAt: new Date() }).where(and(eq(configs.tenantId, ctx.tenantId), eq(configs.revision, current))).returning();
         if (!saved.length)
             M.fail('Settings changed. Reload before saving.', 'conflict');
         await tx.execute(sql `insert into lc_onboarding_config_history(tenant_id,revision,data,actor_user_id) values(${ctx.tenantId}::uuid,${current + 1},${JSON.stringify(next)}::jsonb,${actor.id}::uuid)`);
@@ -1164,4 +1184,60 @@ export async function onboardingSaveGroupsTx(ctx: SessionContext, tx: Tx, expect
     if (revision !== expected) M.fail('Assignment groups changed. Refresh before saving.', 'conflict');
     if (config.groups.some(g => !groups.some(next => next.id === g.id))) M.fail('Use the assignment group replacement flow before deleting a shared group.');
     return saveConfig(ctx, revision, { ...config, groups }, {}, false, undefined, tx);
+}
+
+/** V9 owns shared definitions; native onboarding owns task snapshots and their reconciliation. */
+export async function onboardingV9DefinitionsChangedTx(ctx: SessionContext, tx: Tx, expected: number, definitions: V9ChecklistProjection['checklists'], sourceRevision: number) {
+    await lockOnboardingTx(tx, ctx.tenantId);
+    const { config, revision } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config);
+    if (!actor.master || !actor.module) M.fail('Master Admin and Onboarding access are required to change shared checklists.', 'forbidden');
+    if (revision !== expected) M.fail('Assignment groups or checklists changed. Refresh before saving.', 'conflict');
+    const { now, today } = clock();
+    const next = { ...config, checklists: onboardingV9Checklists({ revision: sourceRevision, owner: actor.id, at: now, checklists: definitions }), v9ChecklistRevision: sourceRevision };
+    M.validateConfig(next);
+    const list = await tx.select().from(cases).orderBy(asc(cases.id)).for('update');
+    const env: M.Environment = { now, today, id: randomUUID, nextNumber: () => '', leave: {}, taskLoads: {}, lastTaskAssignment: {}, pendingApprovals: {}, lifetimeApprovals: {}, users: [] };
+    for (const row of list) {
+        const c = structuredClone(row.data);
+        if (c.personnelStatus !== 'Draft' || c.state !== 'submitted') continue;
+        if (JSON.stringify(M.matchChecklist(config, c).checklist) === JSON.stringify(M.matchChecklist(next, c).checklist)) continue;
+        c.reconcileNeeded = true;
+        M.log(c, actor, env, 'configuration.changed', 'Shared V9 checklist changed; review the task reconciliation.');
+        await storeTx(tx, ctx, row, c, false);
+        await auditTx(tx, ctx, c, 'checklist_reconciliation_required');
+    }
+    // Advance the native revision without copying the V9 definitions into a second live store.
+    const updated = await tx.update(configs).set({ revision: revision + 1, updatedAt: new Date() }).where(and(eq(configs.tenantId, ctx.tenantId), eq(configs.revision, revision))).returning({ revision: configs.revision });
+    if (!updated.length) M.fail('Settings changed. Refresh before saving.', 'conflict');
+    await tx.execute(sql`insert into lc_onboarding_config_history(tenant_id,revision,data,actor_user_id) values(${ctx.tenantId}::uuid,${revision + 1},${JSON.stringify(next)}::jsonb,${actor.id}::uuid)`);
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'onboarding-config', aggregateId: ctx.tenantId, eventType: 'onboarding.v9_checklists.updated', actor: actorOf(ctx), payload: { revision: revision + 1, sourceRevision } });
+    return { revision: revision + 1 };
+}
+
+/** Private V9 document state follows the native case and its revision/history. */
+export async function onboardingV9ReadTx(ctx: SessionContext, tx: Tx, id: string) {
+    const result = await loadTx(tx, ctx, id, true);
+    if (!result.actor.module || !result.actor.hr) M.fail('Onboarding and company HR access are required.', 'forbidden');
+    const [privateRow] = await tx.execute<{ state: NativeDocumentState | null; subject: { employmentId: string | null; personId: string | null } | null }>(sql`select data->'lifecycleV9' as state,data->'lifecycleV9Subject' as subject from lc_onboarding_private where case_id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+    if (privateRow?.subject?.employmentId && (privateRow.subject.employmentId !== result.c.employmentId || privateRow.subject.personId !== result.c.personId)) M.fail('The private document subject no longer matches this case. Review its Personnel link.', 'conflict');
+    const subjects = result.c.personId ? await tx.execute<{ id: string }>(sql`select id from app_user where person_id=${result.c.personId}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null and not app.login_blocked(id) order by id limit 2`) : [];
+    const supervisor = M.effectiveFacts(result.c).supervisor;
+    const roles = await tx.execute<{ kind: string; user_id: string }>(sql`select * from app.onboarding_task_actors(${result.c.personId}::uuid,${/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(supervisor) ? supervisor : null}::uuid)`);
+    return { ...result, documentState: privateRow?.state ?? null, employeeUserId: subjects.length === 1 ? subjects[0].id : null, supervisorUserId: roles.find(role => role.kind === 'manager')?.user_id ?? null };
+}
+export async function onboardingV9StoreTx(ctx: SessionContext, tx: Tx, id: string, expected: number, state: NativeDocumentState, completed: string[], action: string) {
+    const { row, c, actor } = await onboardingV9ReadTx(ctx, tx, id);
+    if (row.revision !== expected) M.fail('This case changed. Refresh before trying again.', 'conflict');
+    const { now, today } = clock();
+    for (const task of c.tasks) if (completed.includes(task.id) && task.documentTemplate && task.status !== 'done') {
+        const document = state.documents.find(d => d.templateId === task.documentTemplate && !['superseded', 'withdrawn'].includes(d.status));
+        const satisfied = document && (task.documentAction === 'sent' ? !!document.sentAt : documentFinal(document));
+        if (!satisfied) M.fail('Complete the linked document before finishing this task.');
+        task.status = 'done'; task.completedAt = now; task.completedBy = actor.id;
+    }
+    const env: M.Environment = { now, today, id: randomUUID, nextNumber: () => '', leave: {}, taskLoads: {}, lastTaskAssignment: {}, pendingApprovals: {}, lifetimeApprovals: {}, users: [] };
+    M.log(c, actor, env, 'document.' + action, 'V9 document state updated.');
+    await storeTx(tx, ctx, row, c, true);
+    await tx.execute(sql`update lc_onboarding_private set data=data||jsonb_build_object('lifecycleV9',${JSON.stringify(state)}::jsonb,'lifecycleV9Subject',${JSON.stringify({ personId: c.personId, employmentId: c.employmentId })}::jsonb) where case_id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+    await auditTx(tx, ctx, c, 'document.' + action);
 }

@@ -58,6 +58,9 @@ export type TaskDef = {
     opens: number | null;
     due: number;
     gate: boolean;
+    required?: boolean;
+    documentTemplate?: Id | null;
+    documentAction?: 'completed' | 'signed' | 'sent';
 };
 export type Checklist = {
     id: Id;
@@ -98,6 +101,7 @@ export type Config = {
         confirmingGroup: string;
     };
     recentActiveDays: number;
+    v9ChecklistRevision?: number;
 };
 export type Actor = {
     id: Id;
@@ -670,6 +674,8 @@ export function setTask(config: Config, c: Case, taskId: Id, status: Task['statu
         fail('Task not found.');
     if (t.assignee !== a.id)
         fail('Only the assigned person can update this task.', 'forbidden');
+    if (t.documentTemplate && status === 'done')
+        fail('Complete the linked document to finish this task.');
     if (t.by === 'joiner' && t.gate && status === 'done')
         fail('Complete the device acknowledgement form to finish this task.');
     if (t.opensOn && t.opensOn > env.today)

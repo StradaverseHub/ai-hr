@@ -24,12 +24,12 @@ it('edits ordered steps and conditions into a definition accepted by the service
   fireEvent.click(within(drawer).getByRole('button', { name: 'Add condition' }));
   fireEvent.change(within(drawer).getByLabelText('Condition 1 value'), { target: { value: 'Resignation' } });
   fireEvent.click(within(drawer).getByRole('button', { name: 'Add a step' }));
-  fireEvent.click(within(drawer).getByRole('button', { name: 'Notify someone', exact: true }));
+  fireEvent.click(within(drawer).getByRole('button', { name: 'Notify someone' }));
   fireEvent.change(within(drawer).getByLabelText('Subject for step 1'), { target: { value: 'Review handover' } });
   fireEvent.click(within(drawer).getByRole('button', { name: 'To for step 1' }));
   fireEvent.click(within(within(drawer).getByRole('group', { name: 'To for step 1' })).getByRole('checkbox', { name: 'Employee' }));
   fireEvent.click(within(drawer).getByRole('button', { name: 'Add a step' }));
-  fireEvent.click(within(drawer).getByRole('button', { name: 'Generate a document', exact: true }));
+  fireEvent.click(within(drawer).getByRole('button', { name: 'Generate a document' }));
   expect(within(drawer).getByRole('button', { name: 'Make it live' })).toBeDisabled();
   fireEvent.change(within(drawer).getByLabelText('Document template for step 2'), { target: { value: 'txl' } });
   fireEvent.click(within(drawer).getByRole('button', { name: 'Move step 2 up' }));

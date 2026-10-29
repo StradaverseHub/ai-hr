@@ -9,20 +9,22 @@ import { todayInKualaLumpur, timeInKualaLumpur } from '../../../lib/hr-date';
 import type { NotificationSweepConnection } from '../../../core/notice-projection';
 import { assertModuleEnabled } from '../../../core/entitlements';
 import * as M from '../../../lib/lifecycle-v9-model';
+import { projectNativeCase, nativeDocumentState } from '../../../lib/lifecycle-v9-native';
+import { effectiveFacts as nativeFacts } from '../../../lib/onboarding-model';
 import { v9Defaults } from '../../../lib/lifecycle-v9-defaults';
 import { parseV9Config, validateV9ConfigChange, v9Equal } from '../../../lib/lifecycle-v9-validation';
 import { readSettlementTx, type SettlementView } from './settlement';
 import { readV9PersonnelTx, pushV9PersonnelTx, lockV9PersonnelWritesTx, v9PersonnelWritableKeys } from '../../../core/lifecycle-v9-personnel';
-import { onboardingSetupTx, onboardingSaveGroupsTx, onboardingAssignmentLoadsTx, onboardingUnavailableTx } from '../onboarding/service';
+import { onboardingCommand, onboardingV9ReadTx, onboardingV9StoreTx, onboardingSetupTx, onboardingSaveGroupsTx, onboardingV9DefinitionsChangedTx, onboardingAssignmentLoadsTx, onboardingUnavailableTx } from '../onboarding/service';
 import { issuedToTx, returnAssetTx } from '../../../core/lifecycle-assets';
 import { resolveDocumentUpload } from '../../../core/employee-documents';
 
-type Row = { id: string; revision: number; company_id: string; data: M.Case };
+type Row = { id: string; revision: number; company_id: string; data: M.Case; native?: true };
 export type DirectoryUser = { id: string; name: string };
 export type Options = { users: DirectoryUser[]; companies: { id: string; name: string }[]; employees: { id: string; name: string; employeeNo: string; companyId: string }[]; labels?: Partial<Record<M.RuleField, Record<string, string>>>; leaveTypes?: { id: string; name: string }[] };
 export type Workspace = { config: M.Config | null; cases: M.Case[]; options: Options; canConfigure: boolean; actor: M.Actor; personnelWritableKeys: string[] };
 export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'state' | 'facts' | 'tasks' | 'items' | 'documents'> & { own: boolean };
-export type CaseDetail = { case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[] };
+export type CaseDetail = { case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function identifier(value: string): string { if (!uuid.test(value)) throw new M.V9Error('A valid record identifier is required.'); return value; }
 async function admin(tx: Tx, companyId?: string): Promise<void> {
@@ -47,12 +49,20 @@ async function lockTx(tx: Tx, ctx: SessionContext): Promise<void> {
 }
 async function load(tx: Tx, ctx: SessionContext, id: string): Promise<Row> {
   const [row] = await tx.execute<Row>(sql`select id,revision,company_id,data from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and id=${identifier(id)}::uuid for update`);
-  if (!row) throw new M.V9Error('Case not found or unavailable.', 'not_found'); await admin(tx, row.company_id); return row;
+  if (!row) {
+    const native = await onboardingV9ReadTx(ctx, tx, id);
+    return { id: native.c.id, revision: native.row.revision, company_id: native.row.companyId, data: projectNativeCase(native.c, native.row.revision, native.documentState, native.employeeUserId, native.supervisorUserId), native: true };
+  }
+  await admin(tx, row.company_id); return row;
 }
 async function record(tx: Tx, ctx: SessionContext, id: string, employmentId: string, action: string): Promise<void> {
   await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-case', aggregateId: id, eventType: `lifecycle-v9.${action}`, actor: actorOf(ctx), subjectEmploymentId: employmentId, payload: { caseId: id, action } });
 }
 async function store(tx: Tx, ctx: SessionContext, row: Row, next: M.Case, action: string): Promise<void> {
+  if (row.native) {
+    await onboardingV9StoreTx(ctx, tx, row.id, row.revision, nativeDocumentState(next), next.tasks.filter(task => task.status === 'done' && task.documentTemplate).map(task => task.id), action);
+    return;
+  }
   await tx.execute(sql`insert into lc_v9_case_revision(tenant_id,case_id,company_id,revision,data,actor_user_id) values(${ctx.tenantId}::uuid,${row.id}::uuid,${row.company_id}::uuid,${row.revision},${JSON.stringify(row.data)}::jsonb,${ctx.userId ?? null}::uuid)`);
   next.revision = row.revision + 1;
   const updated = await tx.execute<{ id: string }>(sql`update lc_v9_case set data=${JSON.stringify(next)}::jsonb,revision=${next.revision},updated_at=now() where id=${row.id}::uuid and tenant_id=${ctx.tenantId}::uuid and revision=${row.revision} returning id`);
@@ -70,8 +80,10 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   const unavailable = await onboardingUnavailableTx(tx, [...dates]);
   const sharedLoads = await onboardingAssignmentLoadsTx(tx);
   const company = await tx.execute<{ name: string }>(sql`select legal_name as name from company where id=${c.facts.company}::uuid and tenant_id=${ctx.tenantId}::uuid`);
-  const [personnel] = await tx.execute<{ position: string | null; department: string | null; business_group: string | null; email: string | null }>(sql`select pos.title as position,dept.name as department,bu.name as business_group,p.primary_email as email from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id left join position pos on pos.id::text=${c.facts.title} and pos.tenant_id=e.tenant_id left join department dept on dept.id::text=${c.facts.department} and dept.tenant_id=e.tenant_id left join business_unit bu on bu.id::text=${c.facts.businessGroup} and bu.tenant_id=e.tenant_id where e.id=${c.facts.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid`);
-  const source = await readV9PersonnelTx(tx, ctx, c.facts.employmentId);
+  const [personnel] = c.facts.employmentId ? await tx.execute<{ position: string | null; department: string | null; business_group: string | null; email: string | null }>(sql`select pos.title as position,dept.name as department,bu.name as business_group,p.primary_email as email from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id left join position pos on pos.id::text=${c.facts.title} and pos.tenant_id=e.tenant_id left join department dept on dept.id::text=${c.facts.department} and dept.tenant_id=e.tenant_id left join business_unit bu on bu.id::text=${c.facts.businessGroup} and bu.tenant_id=e.tenant_id where e.id=${c.facts.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid`) : [];
+  const native = c.module === 'onb' ? await onboardingV9ReadTx(ctx, tx, c.id) : null;
+  const nf = native ? nativeFacts(native.c) : null;
+  const source = c.facts.employmentId ? await readV9PersonnelTx(tx, ctx, c.facts.employmentId) : { email: nf?.email ?? '', icNo: nf?.ic ?? '', passportNo: nf?.passport ?? '' };
   const fmt = (value: string) => M.validDate(value) ? value.slice(8) + '/' + value.slice(5, 7) + '/' + value.slice(0, 4) : '';
   const values: Record<string, string> = { ...source,
     'employee.name': c.facts.name, 'employee.empNo': c.facts.employeeNo, 'employee.position': personnel?.position ?? c.facts.title, 'employee.department': personnel?.department ?? c.facts.department,
@@ -95,7 +107,7 @@ export async function v9CaseDetail(ctx: SessionContext, id: string): Promise<Cas
   return withLifecycleTenant(ctx, async tx => {
     const row = await load(tx, ctx, id), config = await configTx(tx, ctx);
     if (!config) throw new M.V9Error('V9 configuration is not available.');
-    return { case: row.data, calculation: await readSettlementTx(tx, ctx, row.data, config), personnelWritableKeys: v9PersonnelWritableKeys };
+    return { case: row.data, calculation: await readSettlementTx(tx, ctx, row.data, config), personnelWritableKeys: v9PersonnelWritableKeys, ...(row.native ? { native: { config, actor: await actor(tx, ctx) } } : {}) };
   });
 }
 
@@ -125,12 +137,14 @@ export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {
   });
 }
 export async function v9Setup(ctx: SessionContext): Promise<void> {
+  if (!ctx.userId) throw new M.V9Error('Sign in to configure this workspace.', 'forbidden');
   await withLifecycleTenant(ctx, async tx => {
     await lockTx(tx, ctx); await admin(tx);
     if (await configTx(tx, ctx)) throw new M.V9Error('V9 is already configured.', 'conflict');
     await onboardingSetupTx(ctx, tx);
     const [previous] = await tx.execute<{ revision: number; data: { groups: M.Group[] } }>(sql`select revision,data from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
     const config = v9Defaults(previous?.data.groups ?? []);
+    for (const checklist of config.checklists) { checklist.ownerUserId = ctx.userId!; checklist.createdAt = new Date().toISOString(); }
     const shared = [...(previous?.data.groups ?? [])];
     for (const group of config.groups) if (!shared.some(g => g.id === group.id)) shared.push(group);
     const saved = await onboardingSaveGroupsTx(ctx, tx, previous!.revision, shared);
@@ -139,6 +153,8 @@ export async function v9Setup(ctx: SessionContext): Promise<void> {
     const resolveRules = (rules: M.Rules) => { for (const key of Object.keys(rules) as M.RuleField[]) { if (key === 'employmentType' || key === 'caseType') continue; rules[key] = rules[key]?.flatMap(value => { if (uuid.test(value)) return [value]; const found = masters.filter(m => m.kind === key && [m.name.toLocaleLowerCase(), m.code?.toLocaleLowerCase()].includes(value.toLocaleLowerCase())); return found.length ? found.map(m => m.id) : [value]; }); } };
     for (const cl of config.checklists) resolveRules(cl.rules);
     for (const template of config.templates) resolveRules(template.rules);
+    const definitions = await onboardingV9DefinitionsChangedTx(ctx, tx, config.groupsRevision!, config.checklists.filter(checklist => checklist.module === 'onb'), config.revision);
+    config.groupsRevision = definitions.revision;
     await tx.execute(sql`insert into lc_v9_config(tenant_id,data) values(${ctx.tenantId}::uuid,${JSON.stringify(config)}::jsonb)`);
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-config', aggregateId: ctx.tenantId, eventType: 'lifecycle-v9.configured', actor: actorOf(ctx), payload: { version: 9 } });
   });
@@ -166,11 +182,21 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
     }
     await tx.execute(sql`insert into lc_v9_config_revision(tenant_id,revision,data,actor_user_id) values(${ctx.tenantId}::uuid,${revision},${JSON.stringify(previous)}::jsonb,${ctx.userId}::uuid)`);
     const who = await actor(tx, ctx);
+    for (const checklist of config.checklists) {
+      const before = previous.checklists.find(before => before.id === checklist.id), owner = before?.ownerUserId;
+      if (owner && checklist.ownerUserId && checklist.ownerUserId !== owner) throw new M.V9Error('Keep the checklist owner while editing its settings.');
+      checklist.ownerUserId = owner ?? who.id; checklist.createdAt = before?.createdAt ?? new Date().toISOString();
+    }
     for (const template of config.templates) for (const version of template.versions) {
       const before = previous.templates.find(t => t.id === template.id)?.versions.find(v => v.version === version.version);
       if (!before || before.state === 'draft' && !v9Equal(before, version)) { version.at = todayInKualaLumpur(); version.by = who.name; }
     }
     config.revision = revision + 1;
+    const beforeChecklists = previous.checklists.filter(checklist => checklist.module === 'onb'), nextChecklists = config.checklists.filter(checklist => checklist.module === 'onb');
+    if (!v9Equal(beforeChecklists, nextChecklists)) {
+      const definitions = await onboardingV9DefinitionsChangedTx(ctx, tx, config.groupsRevision!, nextChecklists, config.revision);
+      config.groupsRevision = definitions.revision;
+    }
     await tx.execute(sql`update lc_v9_config set data=${JSON.stringify(config)}::jsonb,revision=${config.revision},updated_at=now() where tenant_id=${ctx.tenantId}::uuid`);
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-config', aggregateId: ctx.tenantId, eventType: 'lifecycle-v9.configurationChanged', actor: actorOf(ctx), payload: { revision: config.revision } });
     return { revision: config.revision, groupsRevision: config.groupsRevision ?? 0, versionStamps: config.templates.flatMap(template => template.versions.map(version => ({ templateId: template.id, version: version.version, state: version.state, at: version.at, by: version.by }))) };
@@ -247,6 +273,8 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     const row = await load(tx, ctx, id); if (row.revision !== revision) throw new M.V9Error('This case changed. Refresh before trying again.', 'conflict');
     const config = await configTx(tx, ctx); if (!config) throw new M.V9Error('V9 configuration is unavailable.');
     const c = structuredClone(row.data), env = await environment(tx, ctx, c, config);
+    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'documentSave', 'documentSign', 'documentRefresh', 'runWorkflows', 'retryWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
+    if (row.native && ['pmPush', 'pmPushSelected'].includes(command.type) && !c.facts.employmentId) throw new M.V9Error('Activate this Personnel draft before applying its proposed changes.');
     if (command.type === 'submit') {
       M.submit(c, config, env);
       if (c.module === 'off') {
@@ -297,7 +325,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     else if (command.type === 'reopen') M.reopen(c, command.reason, env);
     else if (command.type === 'runWorkflows') {
       for (const w of config.workflows) M.runWorkflow(c, config, w, env, 'date');
-      const calculation = await readSettlementTx(tx, ctx, c, config);
+      const calculation = c.module === 'off' ? await readSettlementTx(tx, ctx, c, config) : null;
       const figures = calculation?.ready && calculation.lastDay === c.facts.lastDay ? { sourceRevision: calculation.sourceRevision, lastDay: calculation.lastDay, leaveDays: String(calculation.encashDays), amount: calculation.amount!.toFixed(2), currency: calculation.currency, payDate: calculation.payDate, lockedAt: env.now, payrollReference: randomUUID() } : null;
       M.lastDayCheck(c, config, env, figures);
     }
@@ -342,7 +370,7 @@ export async function v9Sweep(ctx: SessionContext, connection: NotificationSweep
       const c = structuredClone(row.data), env = await environment(tx, ctx, c, config);
       env.today = todayInKualaLumpur(now); env.now = now.toISOString();
       for (const w of config.workflows) { if (c.runs.some(r => r.workflowId === w.id && r.status === 'waiting')) M.runWorkflow(c, config, w, env, 'resume'); M.runWorkflow(c, config, w, env, 'date'); }
-      const calculation = await readSettlementTx(tx, ctx, c, config);
+      const calculation = c.module === 'off' ? await readSettlementTx(tx, ctx, c, config) : null;
       const figures = calculation?.ready && calculation.lastDay === c.facts.lastDay ? { sourceRevision: calculation.sourceRevision, lastDay: calculation.lastDay, leaveDays: String(calculation.encashDays), amount: calculation.amount!.toFixed(2), currency: calculation.currency, payDate: calculation.payDate, lockedAt: env.now, payrollReference: randomUUID() } : null;
       M.lastDayCheck(c, config, env, figures);
       if (JSON.stringify(c) === JSON.stringify(row.data)) return false;
@@ -355,12 +383,14 @@ export async function v9Sweep(ctx: SessionContext, connection: NotificationSweep
 export async function v9OwnWork(ctx: SessionContext): Promise<OwnCase[]> {
   return withLifecycleTenant(ctx, async tx => {
     await actor(tx, ctx);
-    const rows = await tx.execute<{ data: OwnCase }>(sql`select app.lc_v9_work(null) as data`);
+    const rows = await tx.execute<{ data: OwnCase }>(sql`select app.lc_v9_work(null) as data union all select app.onboarding_v9_work() as data`);
     return rows.map(r => r.data);
   });
 }
 export async function v9OwnTask(ctx: SessionContext, input: { caseId: string; revision: number; taskId: string; status: 'todo' | 'progress' | 'done'; reason: string }): Promise<void> {
   input = z.object({ caseId: z.string().uuid(), revision: z.number().int().positive(), taskId: commandId, status: z.enum(['todo', 'progress', 'done']), reason: reasonText }).strict().parse(input);
+  const native = await withLifecycleTenant(ctx, async tx => { await actor(tx, ctx); const [row] = await tx.execute<{ native: boolean }>(sql`select exists(select 1 from lc_onboarding_case where id=${input.caseId}::uuid and tenant_id=${ctx.tenantId}::uuid) as native`); return row?.native; });
+  if (native) { await onboardingCommand(ctx, input.caseId, input.revision, { type: 'task', taskId: input.taskId, status: input.status }); return; }
   await withLifecycleTenant(ctx, async tx => {
     await lockTx(tx, ctx); await actor(tx, ctx);
     const [result] = await tx.execute<{ employment: string }>(sql`select app.lc_v9_self_task(${input.caseId}::uuid,${input.revision},${input.taskId},${input.status},${input.reason}) as employment`);
@@ -376,6 +406,7 @@ export async function v9UploadFile(ctx: SessionContext, input: { caseId: string;
   try { mimeType = resolveDocumentUpload(input.name, content).mimeType; } catch { throw new M.V9Error('The file contents do not match a supported PDF, Word, Excel, image or text file.'); }
   return withLifecycleTenant(ctx, async tx => {
     await lockTx(tx, ctx); const row = await load(tx, ctx, input.caseId), config = await configTx(tx, ctx);
+    if (row.native) throw new M.V9Error('Upload this attachment through the onboarding case.');
     if (!config || !['pending', 'submitted'].includes(row.data.state)) throw new M.V9Error('This case is not open for uploads.');
     const retained = row.data.files.find(f => f.slot === input.slot && f.contentHash === contentHash);
     if (retained) return retained.id;
