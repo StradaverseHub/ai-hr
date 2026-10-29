@@ -175,7 +175,8 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
  'approvals.attendance.decide':{family:'assigned_decision',store:attendanceDecisionReviews,
   // A future planned overtime request (deferred approval: no attendance day is needed or written).
   async create(w,h,o){
-   if(o.workflow){const group=groupOf(h.base);
+   // Activation resolves the direct manager's live login, so it must exist before the workflow is saved.
+   if(o.workflow){await w.as('manager');const group=groupOf(h.base);
     await saveAttendanceWorkflow(group,{companyId:h.companyId,code:'FIC_PARITY_OT',name:'Fictional parity overtime',description:'Fictional one-level route',applicationType:'self_overtime',priority:100,criteria:{departmentIds:[h.departmentId]},
      stages:[{name:'Manager review',level:{kind:'direct_manager',employmentId:null,alternates:[]}}],active:true});
     await setAttendanceWorkflowEnabled(group,h.companyId,'self_overtime',true);}
@@ -236,7 +237,8 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
 };
 
 class Rollback extends Error{constructor(){super('parity probe rollback');}}
-const why=(error:unknown)=>error instanceof Error?`${error.name}: ${error.message}`.slice(0,240):String(error).slice(0,240);
+/** The refusal, with the driver's underlying cause (e.g. an RLS violation behind a 'Failed query'). */
+const why=(error:unknown):string=>{if(!(error instanceof Error))return String(error).slice(0,240);const cause=(error as {cause?:unknown}).cause;return `${error.name}: ${error.message.slice(0,160)}`+(cause instanceof Error?` | cause: ${cause.message.slice(0,200)}`:'');};
 /** confirm = the role confirms its OWN review ('deny' when it has none). crossUserConfirm = the role tries to
  * confirm a review another permitted role prepared ('n/a' for permitted roles). */
 type Observed={screen:ParityOutcome}&Record<(typeof PARITY_PHASES)[number],ParityOutcome>&{crossUserConfirm:ParityOutcome|'n/a'};
