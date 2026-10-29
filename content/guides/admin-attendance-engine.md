@@ -22,7 +22,15 @@ Open [File mappings](/admin/attendance/file-mappings) to define the device file'
 
 ## Clocking locations and devices
 
-Configure approved locations through [Work locations](/admin/work-locations). Web/mobile clocking may require location permission, an allowed location and the configured device checks. A denied browser permission or an out-of-range location needs investigation; creating a manual punch is not a substitute for diagnosing the clocking policy.
+Open [Attendance settings](/admin/attendance/settings), choose **Locations**, then create or open a [Clocking location](/admin/work-locations/clocking). Set the location, latitude, longitude and geofencing radius in metres. Check the map and coordinates before saving. If the map cannot load, use its Retry action or enter the coordinates directly; a missing map does not establish that the coordinates are correct.
+
+Web/mobile clocking may require location permission, an allowed location and the configured device checks. A denied browser permission or an out-of-range location needs investigation; creating a manual punch is not a substitute for diagnosing the clocking policy.
+
+## Set up overtime patterns
+
+Open [Overtime patterns](/admin/attendance/settings/overtime-patterns) from Attendance settings. The setup has four steps: **General Settings**, **Overtime Rates**, **Eligibility** and **Preview**. Enter the general settings, review the applicable rates, define eligibility, then inspect the complete preview. Resolve validation messages before continuing.
+
+Review the pattern's company and effective settings before saving. Saving a draft, activating a pattern and assigning it to employees are separate actions; check the resulting status and intended assignments. A preview does not activate a pattern or authorize payment for recorded hours.
 
 ## Payroll handoff
 
