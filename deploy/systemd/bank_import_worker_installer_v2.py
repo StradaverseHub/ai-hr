@@ -22,6 +22,7 @@ NODE=Path('/opt/node22/bin/node')
 ENV=Path('/etc/aihr/import-worker.env')
 UNIT=Path('/etc/systemd/system/aihr-bank-import.service')
 USER='aihr-import'
+LOCK_DIRECTORY=Path('/run/aihr-bank-import')
 BASE_ENV={'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','LANG':'C.UTF-8'}
 ENV_KEYS={'DATABASE_URL','MIGRATION_DATABASE_URL','AUDIT_HASH_CHAIN_ENABLED','NODE_EXTRA_CA_CERTS','PGSSLMODE','PGSSLROOTCERT','PGSSLCERT','PGSSLKEY'}
 
@@ -40,6 +41,12 @@ def root_protected(path,regular=False):
         check(not stat.S_ISLNK(info.st_mode) and info.st_uid==0 and not info.st_mode&0o022,'root-owned non-writable path and ancestors required')
         if item==path and regular: check(stat.S_ISREG(info.st_mode) and info.st_nlink==1 and not info.st_mode&(stat.S_ISUID|stat.S_ISGID),'root-owned non-setid regular executable/file required')
         elif item!=path or not regular: check(stat.S_ISDIR(info.st_mode),'protected directory required')
+
+def install_lock_directory():
+    root_protected(LOCK_DIRECTORY.parent)
+    if not LOCK_DIRECTORY.exists(): LOCK_DIRECTORY.mkdir(mode=0o755)
+    root_protected(LOCK_DIRECTORY)
+    return LOCK_DIRECTORY
 
 def read_bounded(path,limit):
     fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
@@ -168,8 +175,8 @@ def install(argv,fmt):
     for value in (args.archive_sha256,args.lock_sha256,args.package_sha256,args.env_sha256): check(re.fullmatch('[a-f0-9]{64}',value or ''),'independently authenticated digests required')
     root_protected(NODE,regular=True)
     check(command([str(NODE),'--version']).stdout.strip()=='v22.23.3','reviewed Node runtime required')
-    root_protected('/run/lock')
-    lock_fd=os.open('/run/lock/aihr-bank-import-install.lock',os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
+    lock_directory=install_lock_directory()
+    lock_fd=os.open(lock_directory/'install.lock',os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
     lock_info=os.fstat(lock_fd);check(lock_info.st_uid==0 and stat.S_ISREG(lock_info.st_mode) and lock_info.st_nlink==1 and not lock_info.st_mode&0o077,'private administrator lock required')
     fcntl.flock(lock_fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
     check(not UNIT.exists() and not UNIT.is_symlink() and not ENV.exists() and not ENV.is_symlink(),'first installation only; existing unit/environment needs separate review')
