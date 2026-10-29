@@ -26,7 +26,8 @@ GitHub Actions only; no local test/compiler/build/database slots.
 - `40839067279` at `b474e3625a7e711c2cfeefe760a268b8f9ee2a92`: report authority fixture checks passed.
 - `40839591512` at `d84ad844cc8d267453d593edde39d24a764714d6`: focused hardening/preview/naming
   checks passed (27 assertions), whole compiler passed. Includes twelve pay-rule component captures,
-  six locales at desktop/mobile sizes. English desktop visually reviewed. These are rendered fixture
+  six locales at desktop/mobile sizes. English desktop and Tamil mobile visually reviewed; those initial inert captures lost live select/checkbox
+  properties during HTML serialization. Layout evidence only; corrected form-state captures are pending. These are rendered fixture
   components, not an authenticated installation journey.
 - Native question binding/control-flow checks and whole compiler dispatched at
   `2bc348e20965894b9ea172294c0db06dfa104dfe`; results pending.

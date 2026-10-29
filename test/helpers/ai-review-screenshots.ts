@@ -37,3 +37,23 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
  writeFileSync(join(out,`${locale}-${section}.json`),JSON.stringify(rows,null,2)+'\n');
  if(rows.some(row=>row.overflow))throw Error('Rendered fixture overflows its viewport; inspect the captured evidence.');
 }
+
+/** Serialize live form properties as attributes before an inert browser rendering. innerHTML alone
+ * drops a controlled select's current selection and a checkbox's reviewed state. */
+export function aiReviewDomHtml(element:HTMLElement):string{
+ const clone=element.cloneNode(true) as HTMLElement;
+ const inputs=clone.querySelectorAll('input');
+ element.querySelectorAll('input').forEach((source,index)=>{
+  const target=inputs[index];target.setAttribute('value',source.value);
+  if(source.checked)target.setAttribute('checked','');else target.removeAttribute('checked');
+ });
+ const selects=clone.querySelectorAll('select');
+ element.querySelectorAll('select').forEach((source,index)=>{
+  [...source.options].forEach((option,i)=>{const target=selects[index].options[i];
+   if(option.selected)target.setAttribute('selected','');else target.removeAttribute('selected');
+  });
+ });
+ const textareas=clone.querySelectorAll('textarea');
+ element.querySelectorAll('textarea').forEach((source,index)=>{textareas[index].textContent=source.value;});
+ return clone.innerHTML;
+}

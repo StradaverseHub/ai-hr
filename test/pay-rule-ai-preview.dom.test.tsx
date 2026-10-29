@@ -7,7 +7,7 @@ import zh from '../messages/zh.json';
 import viCopy from '../messages/vi.json';
 import th from '../messages/th.json';
 import ta from '../messages/ta.json';
-import {captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
+import {captureAiReviewScreenshots,aiReviewDomHtml} from './helpers/ai-review-screenshots';
 const copies={en,ms,zh,vi:viCopy,th,ta};
 const actions=vi.hoisted(()=>({draft:vi.fn(),preview:vi.fn(),search:vi.fn(),toast:vi.fn()}));
 vi.mock('../app/admin/pay-components/actions',()=>({draftPayRuleAction:actions.draft,previewPayRuleAction:actions.preview,searchPreviewEmployeesAction:actions.search}));
@@ -50,7 +50,9 @@ describe('AI pay-rule draft requires a current employee sample before normal for
   fireEvent.click(screen.getByLabelText(t.aiPreviewReviewed));
   expect((screen.getByRole('form') as HTMLFormElement).checkValidity()).toBe(true);
   expect(actions.preview).toHaveBeenCalledWith(expect.objectContaining({rule:{kind:'percent_of',base:'basic',pct:10},employmentId:employee.employmentId}));
-  await captureAiReviewScreenshots(document.body.innerHTML,locale,'pay-rule');
+  expect(screen.getAllByRole('combobox')[0]).toHaveValue('percent_of');
+  expect(screen.getByLabelText(t.aiPreviewReviewed)).toBeChecked();
+  await captureAiReviewScreenshots(aiReviewDomHtml(document.body),locale,'pay-rule');
  },60000);
  it('keeps AI unavailable when no authorized employee sample can be selected',()=>{
   render(<NextIntlClientProvider locale="en" messages={en}><PayRuleEditor {...props} previewEmployees={[]}/></NextIntlClientProvider>);
