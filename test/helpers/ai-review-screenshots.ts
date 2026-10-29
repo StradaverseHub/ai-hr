@@ -10,7 +10,9 @@ async function applicationCss(){
   const plugin=load('@tailwindcss/postcss');
   const postcss=createRequire(load.resolve('@tailwindcss/postcss'))('postcss');
   const result=await postcss([plugin({base:process.cwd()})]).process(readFileSync('app/globals.css','utf8'),{from:join(process.cwd(),'app/globals.css')});
-  return result.css as string;
+  const jakarta=readFileSync('test/fixtures/topbar-fonts/jakarta-latin.woff2').toString('base64');
+  const mono=readFileSync('test/fixtures/topbar-fonts/geist-mono-latin.woff2').toString('base64');
+  return result.css+`\n@font-face{font-family:ReviewJakarta;src:url(data:font/woff2;base64,${jakarta}) format('woff2');font-weight:100 900;font-style:normal;font-display:block;}@font-face{font-family:ReviewMono;src:url(data:font/woff2;base64,${mono}) format('woff2');font-weight:100 900;font-style:normal;font-display:block;}:root{--font-jakarta:ReviewJakarta;--font-geist-mono:ReviewMono;}`;
  })();return css;
 }
 export async function captureAiReviewScreenshots(html:string,locale:string,section:'overview'|'queue'|'probe'){
@@ -25,11 +27,11 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
  try{for(const [device,width,height] of [['desktop',1440,1000],['mobile',390,844]] as const){
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
   await page.route('**/*',route=>route.abort());
-  await page.setContent(`<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body class="bg-background text-foreground p-4">${html}</body></html>`);
+  await page.setContent(`<!doctype html><html lang="${locale}" data-ui-theme="classic"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body class="bg-background text-foreground p-4 font-sans">${html}</body></html>`);
   await page.addStyleTag({content:styles});await page.evaluate(()=>document.fonts.ready);
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1);
   const file=`${locale}-${section}-${device}.png`;await page.screenshot({path:join(out,file),fullPage:true});
-  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,fixture:'real components; fictional data owners; no authenticated server journey'});
+  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme:'classic',fixture:'real components; fictional data owners; no authenticated server journey'});
   await page.close();
  }}finally{await browser.close();}
  writeFileSync(join(out,`${locale}-${section}.json`),JSON.stringify(rows,null,2)+'\n');

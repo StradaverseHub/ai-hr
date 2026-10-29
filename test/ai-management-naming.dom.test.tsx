@@ -26,14 +26,14 @@ vi.mock('../app/control-tower/work-queue',()=>({OrchestrationWorkQueue:()=>null}
 vi.mock('../app/control-tower/agents/actions',()=>({applyBulkAssistantAction:vi.fn(),clearGroupAllowanceAction:vi.fn(),setGroupAllowanceAction:vi.fn(),clearUserAllowanceAction:vi.fn(),setAiSpendBudgetAction:vi.fn(),setAiAllowanceAction:vi.fn(),setAiFeatureAction:vi.fn(),setAssistantPermissionAction:vi.fn()}));
 import {Sidebar} from '../components/sidebar';
 import {AiManagementScreen} from '../app/control-tower/agents/screen';
-afterEach(cleanup);
+afterEach(()=>{cleanup();document.documentElement.removeAttribute('data-ui-theme');});
 const queueNames={en:'HR work queue',ms:'Baris kerja HR',zh:'HR 工作队列',vi:'Hàng đợi công việc HR',th:'คิวงาน HR',ta:'HR பணிவரிசை'};
 describe('approved AI vocabulary in six rendered locales',()=>{
  it.each(Object.keys(copies) as (keyof typeof copies)[])('%s renders read capabilities and the HR work queue without implying model availability',async locale=>{
-  state.locale=locale;
+  state.locale=locale;document.documentElement.setAttribute('data-ui-theme','classic');
   const renderSection=async(section:'overview'|'orchestrator')=>{
    const page=await AiManagementScreen({session:{tenantId:'fictional',userId:'fictional',roles:['hr_admin']} as never,section,searchParams:Promise.resolve({})});
-   return render(<NextIntlClientProvider locale={locale} messages={copies[locale] as any}><div className="flex min-h-screen"><div className="h-screen shrink-0"><Sidebar isAdmin canAdministerAi canConfigureAiProvider canApprove canAccessTeam enabledModules={null} defaultCollapsed={false}/></div><main className="min-w-0 flex-1 p-4">{page}</main></div></NextIntlClientProvider>);
+   return render(<NextIntlClientProvider locale={locale} messages={copies[locale] as any}><div className="flex min-h-screen max-sm:flex-col"><div className="h-screen shrink-0 max-sm:h-auto"><Sidebar isAdmin canAdministerAi canConfigureAiProvider canApprove canAccessTeam enabledModules={null} defaultCollapsed={false}/></div><main className="min-w-0 flex-1 p-4">{page}</main></div></NextIntlClientProvider>);
   };
   await renderSection('overview');expect(screen.getByText(copies[locale].aiManagement.mapAssistant)).toBeInTheDocument();
   const overview=document.body.innerHTML;
