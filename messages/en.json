@@ -7464,6 +7464,18 @@
         "title": "Payslip Information Setup",
         "desc": "Choose which employment fields appear on this company’s payslips.",
         "cta": "Load"
+      },
+      "corrections": {
+        "title": "Payroll correction controls",
+        "label": "Allow payroll reset and employee removal",
+        "description": "Show Reset payroll and Remove Employee Payroll on calculated, unpublished runs. Turning this off also blocks those actions. Existing payroll permissions and checks still apply.",
+        "scope": "Applies to all companies in this tenant. Saving this setting does not change any payroll results.",
+        "readOnly": "Only group admins can change this setting.",
+        "save": "Save correction setting",
+        "saving": "Saving…",
+        "saved": "Payroll correction setting saved.",
+        "invalid": "Choose a valid on or off value.",
+        "failed": "Could not save the setting. Try again."
       }
     },
     "historyImport": {

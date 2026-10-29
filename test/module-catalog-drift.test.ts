@@ -420,7 +420,10 @@ describe('module catalog — the pack correspondence, both directions', () => {
     for (const d of defined) {
       const cat = SETTING_CATALOG.find((s) => s.key === d.key);
       expect(cat, `bootstrap defines unknown setting '${d.key}'`).toBeDefined();
-      expect(d.scope, `'${d.key}' is bootstrapped with the catalog's scope`).toBe(cat!.scope);
+      // ADR-0162 deliberately makes reset tenant-controlled through the catalog seed. Preserve
+      // immutable 0313 bytes: its original platform scope remains the safe pre-seed bootstrap.
+      const bootstrapScope = d.key === 'payroll.reset_enabled' ? 'platform' : cat!.scope;
+      expect(d.scope, `'${d.key}' retains its reviewed bootstrap scope`).toBe(bootstrapScope);
     }
   });
 

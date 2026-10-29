@@ -1205,29 +1205,29 @@ describe('slice 2 — getSetting', () => {
     // predicate on a table ai_hr_app holds full CRUD over by design. The fold now drops that row.
     //
     // Defence in DEPTH, not a replacement: the write policy is still the control. This is what makes a
-    // policy regression visible instead of silently effective — payroll.reset_enabled reopens a
+    // policy regression visible instead of silently effective — payroll.unlock_enabled reopens a
     // finalised payroll run.
     await owner.db.execute(
       sql`INSERT INTO tenant_setting (tenant_id, key, value, source)
-          VALUES (${base.tenantId}, 'payroll.reset_enabled', 'true'::jsonb, 'customer')`,
+          VALUES (${base.tenantId}, 'payroll.unlock_enabled', 'true'::jsonb, 'customer')`,
     );
     const ctx = await ctxFor(base.tenantId);
     expect(ctx.entitlements!.settings, 'the row must not reach the snapshot at all').not.toHaveProperty(
-      'payroll.reset_enabled',
+      'payroll.unlock_enabled',
     );
-    expect(getSetting(ctx, 'payroll.reset_enabled'), 'a customer cannot self-grant a platform switch').toBe(false);
+    expect(getSetting(ctx, 'payroll.unlock_enabled'), 'a customer cannot self-grant a platform switch').toBe(false);
 
     // …and the two legitimate cases still work, so the filter is a provenance check and not a blanket ban:
     // a PLATFORM-written value on a platform-scoped key, and a CUSTOMER-written value on a tenant-scoped one.
     await owner.db.execute(
-      sql`UPDATE tenant_setting SET source = 'platform' WHERE tenant_id = ${base.tenantId} AND key = 'payroll.reset_enabled'`,
+      sql`UPDATE tenant_setting SET source = 'platform' WHERE tenant_id = ${base.tenantId} AND key = 'payroll.unlock_enabled'`,
     );
     await owner.db.execute(
       sql`INSERT INTO tenant_setting (tenant_id, key, value, source)
           VALUES (${base.tenantId}, 'payroll.individual_txn_pay_enabled', 'true'::jsonb, 'customer')`,
     );
     const after = await ctxFor(base.tenantId);
-    expect(getSetting(after, 'payroll.reset_enabled'), 'Stradaverse may set it').toBe(true);
+    expect(getSetting(after, 'payroll.unlock_enabled'), 'Stradaverse may set it').toBe(true);
     expect(getSetting(after, 'payroll.individual_txn_pay_enabled'), 'a tenant-scoped key IS customer-writable').toBe(
       true,
     );

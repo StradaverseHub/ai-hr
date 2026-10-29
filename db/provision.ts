@@ -391,8 +391,8 @@ export async function provisionTenant(tx: Tx, input: ProvisionInput): Promise<Pr
     // hatch already open, even though the demo deployment has all three env flags ON today", and it
     // confines the parity argument to an already-provisioned tenant.
     //
-    // The hatch would also be unclosable. Both keys are `scope='platform'`, and 0313's
-    // `tenant_setting_write` policy requires `scope='tenant'`, so `ai_hr_app` can never delete them;
+    // The hatch would also be unclosable. Unlock remains `scope='platform'`, and 0313's
+    // `tenant_setting_write` policy requires `scope='tenant'`, so `ai_hr_app` cannot delete that platform value;
     // the plane that could is slice 7. An over-grant here is permanent in a way an under-grant is not.
     //
     // THAT SAME ARGUMENT IS WHY THIS WRITES ALMOST NOTHING. `settingsOnInstallFor` emits a row only for
@@ -400,7 +400,7 @@ export async function provisionTenant(tx: Tx, input: ProvisionInput): Promise<Pr
     // `payroll.individual_txn_pay_enabled`, when payroll is bought — and every other key resolves to its
     // default with no row at all. The first version wrote all three payroll keys as explicit `false`,
     // which is behaviourally identical to no row and strictly worse: the ROW is unwritable by
-    // `ai_hr_app` for the two platform-scoped keys, and `scripts/reconcile-entitlement-parity.ts` reads
+    // `ai_hr_app` for the platform-scoped unlock key, and `scripts/reconcile-entitlement-parity.ts` reads
     // any existing row as "a decision was recorded, leave it alone". A row that changes nothing and
     // forecloses both levers is the definition of a bad default. See settingsOnInstallFor for the
     // full reasoning.
