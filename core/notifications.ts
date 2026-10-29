@@ -1,7 +1,7 @@
 import type { Tx as AiReadTx } from '../db/client';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { assessmentReviewTaskRecipientsTx,assessmentReminderRecipientsTx } from '../packs/performance/service';
-import { rewardAccessSuspensionEventRecipients,rewardNotificationRecipients } from '../packs/rewards/service';
+import { rewardAccessSuspensionEventRecipients,rewardNotificationRecipients,rewardPoolNotificationRecipients } from '../packs/rewards/service';
 /**
  * Notification engine (ADR-0034) — 34-2 registry + dispatch + reads. A sweep reads new domain events after a
  * per-tenant cursor and turns the mapped ones into recipient-scoped notifications. Gated by the per-tenant
@@ -275,7 +275,7 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
   'reward-unit.final-pool-changed': {
     kind:'rewards.final-pool-changed',category:'rewards',
     render:(_payload,event)=>({severity:'action',title:'Rewards pool updated',body:'Group Rewards changed the bonus pool or its status. Review the current pool and budget checks before approving.',linkPath:`/rewards/${event.aggregateId}#unit-governance`}),
-    recipients:async(tx,event)=>[...new Set((await Promise.all(['bu','bg','gr','ctro','ec'].map(stage=>rewardNotificationRecipients(tx,event.aggregateId,stage)))).flat())],
+    recipients:(tx,event)=>rewardPoolNotificationRecipients(tx,event.aggregateId),
   },
   'reward-unit.approved': {
     kind: 'rewards.approved', category: 'rewards',

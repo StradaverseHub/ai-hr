@@ -101,3 +101,17 @@ ALTER TABLE public.reward_senior_evidence ADD CONSTRAINT reward_senior_evidence_
 ALTER TABLE public.reward_senior_award ADD CONSTRAINT reward_senior_award_tenant_entry FOREIGN KEY(tenant_id,unit_id,entry_id) REFERENCES public.reward_entry(tenant_id,unit_id,id);
 ALTER POLICY reward_governance_history_append ON public.reward_governance_history WITH CHECK(tenant_id=app.current_tenant_id() AND actor_id=app.current_user_id() AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(unit_id))));
 ALTER POLICY reward_senior_evidence_append ON public.reward_senior_evidence WITH CHECK(tenant_id=app.current_tenant_id() AND uploaded_by=app.current_user_id() AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(unit_id))));
+
+-- Pool changes notify all currently eligible approval seats, rather than only the current route stage.
+CREATE FUNCTION app.reward_pool_notification_recipients(wanted_unit uuid) RETURNS SETOF uuid
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT DISTINCT e.id FROM public.reward_unit r JOIN public.reward_member m ON m.unit_id=r.id AND m.tenant_id=r.tenant_id
+ JOIN public.app_user u ON u.id=m.user_id AND u.tenant_id=r.tenant_id
+ JOIN public.employment e ON e.person_id=u.person_id AND e.tenant_id=r.tenant_id AND e.company_id=r.company_id
+ WHERE r.id=wanted_unit AND r.tenant_id=app.current_tenant_id() AND r.deleted_at IS NULL
+ AND app.is_admin() AND (app.current_user_id() IS NULL OR app.reward_admin(r.company_id))
+ AND m.role IN ('bu','bg','gr','ctro','ec') AND app.reward_member_eligible_internal(m.id)
+ AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND e.terminated_on IS NULL
+$$;
+REVOKE ALL ON FUNCTION app.reward_pool_notification_recipients(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_pool_notification_recipients(uuid) TO ai_hr_app;
