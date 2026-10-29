@@ -495,3 +495,18 @@ pass. Its case rows and counts still come from the caller's existing RLS-scoped 
 pass is not evidence of that company's outcomes. Manual pass receipts still match exact administrative
 scope. This adds no execution ledger or database authority. See the [WP1 verification contract](../reviews/ai-architecture-wp1-verification-2026-10.md);
 this amendment alone proves no gate result or installation.
+
+### WP7 one action registry (§4.2) — 30 October 2026
+
+`lib/ai/agent-action-registry.ts` is the one registry §4.2 asked for. Each `defineAgentAction` entry
+declares the §4.2 fields plus its custody store family, browser dispatch owner and AI pause key; its tier
+ceiling reuses the WP2 policy type, so a never-Automatic category paired with Automatic does not compile.
+The effect-id union, module declarations, nomination parser, tier-ceiling and category maps, native-outcome
+list, handoff routes, completed-outcome readers and browser dispatch owners are derived from it.
+
+Migration 0693 adds `app.assistant_action_kind` (read-only to the application role) with one row per entry.
+The prepared-review store and the native-outcome association reference it through validated foreign keys,
+and the closed `action_kind`/`action` CHECK lists are dropped. Adding an action is one registry entry plus
+one `INSERT` row in a new migration; its owning service, store adapter and per-kind SQL column rule and
+verifier remain the action's own behaviour (WP9 collapses the stores). A parity test holds registry = seeded
+rows = capability inventory = tier-ceiling map. This amendment proves no gate result or installation.
