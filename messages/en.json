@@ -24786,11 +24786,12 @@
       },
       "alerts": {
         "title": "AI needs attention",
-        "help": "The same checks run on the server through the scheduled-job alert path, so they reach operators even when nobody opens this page.",
+        "help": "The hourly server check covers AI failure rate, refusals under the scheduled agent, spending this month against the tenant spending cap, and AI switch overrides that disagree with the real switch, and it alerts operators. Allowance limits, and switches held off by a module or the platform, are checked only on this page.",
         "failure_rate": "{count} AI calls failed in the last 24 hours ({detail} of calls).",
         "principal_refusals": "{count} AI requests by the scheduled agent were refused in the last 24 hours. Scheduled work should send nothing to a model.",
         "spend_near_cap": "{count} spending or usage caps are at or near their limit.",
-        "switch_drift": "{count} AI switches are set on but do not take effect ({detail})."
+        "switch_drift": "{count} AI switches are set on but do not take effect ({detail}).",
+        "unavailable": "AI alerts could not be checked just now. This is not an all-clear: refresh the page, or ask an operator to read the server alert log."
       },
       "rangeFrom": "From",
       "rangeTo": "To",
@@ -24798,7 +24799,8 @@
       "paging": "Run history pages",
       "previous": "Previous",
       "next": "Next",
-      "pageOf": "Page {page}"
+      "pageOf": "Page {page}",
+      "pausedTitle": "Paused actions"
     }
   },
   "accountEmail": {

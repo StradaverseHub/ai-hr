@@ -9,7 +9,7 @@ import { AGENT_PRINCIPAL_SPECIALISTS } from '../lib/ai/agent-capability-inventor
 import { JOB_KEYS } from '../core/job-run';
 import {
   AI_ALERT_THRESHOLDS, AI_COMPONENT_KINDS, AI_DATA_FIELDS, AI_DATA_REGISTER, AI_RUN_MAX_RANGE_DAYS, AI_RUN_PAGE_SIZE, AI_SCHEDULED_JOBS,
-  ORCHESTRATOR_STEPS, aiInventoryComponents, aiRunPageOffset, aiRunRangeBounds, evaluateAiAlerts, parseAiRunRange, registryRow, switchDrift,
+  ORCHESTRATOR_STEPS, SWEEP_DRIFT_REASONS, aiInventoryComponents, staleOverrideDisagrees, aiRunPageOffset, aiRunRangeBounds, evaluateAiAlerts, parseAiRunRange, registryRow, switchDrift,
   type AiAlertInput,
 } from '../lib/ai/ai-inventory';
 import { withAgentActionPauseScope, currentAgentActionScope } from '../core/agent-action-pause-scope';
@@ -101,6 +101,13 @@ describe('configured-vs-effective switch drift', () => {
     // A default nobody chose is not drift, nor is a switch that is off.
     expect(switchDrift([f({ state: 'module', configured: false }), f({ enabled: false, state: 'paused' })])).toEqual([]);
   });
+  it('shares one stale-override rule between the banner and the cron sweep', () => {
+    expect(staleOverrideDisagrees(true, false)).toBe(true); expect(staleOverrideDisagrees(false, false)).toBe(false);
+    expect(SWEEP_DRIFT_REASONS).toEqual(['stale_override']);
+    const sweep = read('core/ai-alert-sweep.ts');
+    expect(sweep).toContain('staleOverrideDisagrees(r.override_on===true,r.switch_on===true)');
+    expect(read('lib/ai/ai-inventory.ts')).toContain('if(f.staleOverride&&staleOverrideDisagrees(f.staleOverride.enabled,f.enabled))');
+  });
   it('reports a stale override that disagrees with the real switch, and an unattributed agent', () => {
     expect(switchDrift([f({ staleOverride: { enabled: false } })])).toEqual([{ featureId: 'claims_triage', reason: 'stale_override' }]);
     expect(switchDrift([f({ staleOverride: { enabled: true } })])).toEqual([]);
@@ -159,6 +166,9 @@ describe('six-locale copy', () => {
       for (const k of AI_DATA_FIELDS) expect(inv.register.fields[k], `${locale} ${k}`).toBeTruthy();
       for (const k of ['pii_masked', 'partial', 'none', 'not_needed']) expect(inv.register.redaction[k]).toBeTruthy();
       for (const k of ['failure_rate', 'principal_refusals', 'spend_near_cap', 'switch_drift']) expect(inv.alerts[k]).toContain('{count}');
+      for (const k of ['help', 'unavailable']) expect(inv.alerts[k], `${locale} alerts.${k}`).toBeTruthy();
+      expect(inv.pausedTitle).toBeTruthy();
+      expect(m.scheduledActions.jobs['ai-alerts'].name).toBeTruthy();
       for (const j of AI_SCHEDULED_JOBS) expect(inv.jobs[j.id.replace('.', '-')]).toBeTruthy();
       for (const s of ORCHESTRATOR_STEPS) expect(inv.steps[s.id]).toBeTruthy();
       if (locale !== 'en') expect(inv.title).not.toBe(JSON.parse(read('messages/en.json')).aiManagement.inv.title);
@@ -174,8 +184,12 @@ describe('static wiring', () => {
     const body = gov.slice(at, gov.indexOf('\n}\n', at));
     expect(body.indexOf('app.ai_action_unpaused')).toBeLessThan(body.indexOf('assertAgentActionUnpausedTx'));
     expect(currentAgentActionScope()).toBeUndefined();
-    await withAgentActionPauseScope('leave.cancel', async () => { expect(currentAgentActionScope()).toBe('leave.cancel'); });
+    await withAgentActionPauseScope('leave.cancel', async () => { expect(currentAgentActionScope()).toEqual({ action: 'leave.cancel' }); });
+    await withAgentActionPauseScope(null, async () => { expect(currentAgentActionScope()).toEqual({ action: null }); });
     expect(currentAgentActionScope()).toBeUndefined();
+    // A review-route packet that names no registry action still runs in a (fail-closed) scope.
+    expect(read('core/assistant-actions/module-action-server.ts')).toContain('withAgentActionPauseScope(isAgentActionId(actionId)?actionId:null,work)');
+    expect(body).toContain("if(route&&route.action===null)throw new AiAllowanceError('paused');");
     await expect(withAgentActionPauseScope('no.such_action', async () => 1)).rejects.toThrow('Unknown agent action');
   });
   it('appends migration 0696 with grants, RLS and a definer-only writer', () => {
@@ -188,7 +202,12 @@ describe('static wiring', () => {
     expect(src).toContain('REVOKE ALL ON app.ai_agent_action_pause FROM PUBLIC,ai_hr_app;');
     expect(src).toContain('GRANT SELECT ON app.ai_agent_action_pause TO ai_hr_app;');
     expect(src).not.toMatch(/GRANT (INSERT|UPDATE|DELETE)[^;]*ai_agent_action_pause/);
-    expect(src).toContain("IF NOT app.is_group_admin() THEN RAISE EXCEPTION");
+    expect(src).toContain("IF app.principal_snapshot_current() IS NOT TRUE THEN RAISE EXCEPTION");
+    expect(src.indexOf('app.principal_snapshot_current() IS NOT TRUE')).toBeLessThan(src.indexOf("IF app.is_group_admin() IS NOT TRUE THEN RAISE EXCEPTION"));
+    // Full rows for group administrators only; everyone else gets (action_id, paused) through the narrow definer.
+    expect(src).toContain('USING(tenant_id=app.current_tenant_id() AND app.is_group_admin());');
+    expect(src).toContain('RETURNS TABLE(action_id text,paused boolean)');
+    expect(src).toContain('GRANT EXECUTE ON FUNCTION app.ai_agent_action_pauses() TO ai_hr_app;');
     expect(src).toContain("PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(tid::text));");
     expect(src).toContain('REFERENCES app.assistant_action_kind(id)');
   });

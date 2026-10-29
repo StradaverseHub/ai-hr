@@ -15,7 +15,7 @@ import ta from '../messages/ta.json';
 import {aiInventoryComponents,registryRow,AI_DATA_REGISTER} from '../lib/ai/ai-inventory';
 import {AI_FEATURES} from '../lib/ai/features';
 const copies={en,ms,zh,vi:viCopy,th,ta};
-const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'th'|'ta',group:true}));
+const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'th'|'ta',group:true,alertsUnavailable:false}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:any)=>createTranslator({locale:state.locale,messages:copies[state.locale] as any,namespace}),getFormatter:async()=>createFormatter({locale:state.locale,timeZone:'Asia/Kuala_Lumpur'})}));
 vi.mock('next/navigation',()=>({redirect:vi.fn(),usePathname:()=>'/control-tower/agents/inventory',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
@@ -39,12 +39,12 @@ vi.mock('../core/ai-inventory',async()=>{
  const registry=()=>({scope:'registry',rows:aiInventoryComponents().map(c=>({...registryRow(c),actionPaused:c.kind==='action'?c.id==='leave.cancel':null}))});
  return {
   aiInventoryView:async()=>(state.group?full():registry()),
-  aiManagementAlerts:async()=>(state.group?full().alerts:[]),
+  aiManagementAlerts:async()=>(!state.group?{status:'not_shown'}:state.alertsUnavailable?{status:'unavailable'}:{status:'ok',alerts:full().alerts}),
   aiRunHistory:async()=>({range:{from:'2026-10-01',to:'2026-10-30',page:2},hasMore:true,rows:Array.from({length:3},(_,i)=>({id:`fictional-run-${i}`,actor:'Fictional reviewer',feature:'hr_assistant',operation:'conversation',provider:'openrouter',model:'fictional/model',state:i===1?'failed':'completed',reason:null,actual:120,reserved:400,startedAt:new Date(at.getTime()-i*60000),reportedCredits:'0.001',roundTripMs:900,observationStatus:'reported'}))}),
  };
 });
 import {AiManagementScreen} from '../app/control-tower/agents/screen';
-afterEach(()=>{cleanup();state.group=true;});
+afterEach(()=>{cleanup();state.group=true;state.alertsUnavailable=false;});
 const session={tenantId:'fictional',userId:'fictional',roles:['hr_admin']} as never;
 const renderPage=async(locale:keyof typeof copies,section:'inventory'|'runs',searchParams={})=>{
  const page=await AiManagementScreen({session,section,searchParams:Promise.resolve(searchParams)});
@@ -62,6 +62,12 @@ describe('AI inventory in six rendered locales',()=>{
   expect(screen.getAllByRole('button',{name:`${inv.resumeAction} · leave.cancel`}).length).toBe(2);
   expect(screen.getAllByRole('button',{name:`${inv.pauseAction} · leave.edit`}).length).toBe(2);
   expect(screen.getAllByText(inv.outOfBandHelp).length).toBeGreaterThan(0);
+  // Mobile: paused actions listed first, every group collapsed by default, each row a compact expandable summary.
+  expect(screen.getByRole('heading',{level:3,name:new RegExp(inv.pausedTitle)})).toBeInTheDocument();
+  const groups=[...document.querySelectorAll('details.md\\:hidden')] as HTMLDetailsElement[];
+  expect(groups.length).toBe(Object.keys(inv.kinds).length);expect(groups.every(g=>!g.open)).toBe(true);
+  const actions=groups.find(g=>g.querySelector('summary')?.textContent?.includes(inv.kinds.action))!;
+  expect(actions.querySelector('li details summary')?.textContent).toContain('leave.cancel');
   const register=screen.getByRole('table',{name:inv.register.title});
   expect(within(register).getAllByRole('row').length).toBe(AI_FEATURES.length+1);
   expect(within(register).getAllByText(inv.register.redaction.none).length).toBe(Object.values(AI_DATA_REGISTER).filter(e=>e.redaction==='none').length);
@@ -81,6 +87,13 @@ describe('AI inventory in six rendered locales',()=>{
   expect(screen.getAllByText(inv.actionPaused).length).toBeGreaterThan(0);
   expect(aiInventoryComponents().map(registryRow).length).toBeGreaterThan(40);
   await captureAiReviewScreenshots(document.body.innerHTML,locale,'inventory-company');
+ },60000);
+
+ it.each(Object.keys(copies) as (keyof typeof copies)[])('%s: a failed alert check is shown as not checked, never as all clear',async locale=>{
+  state.locale=locale;state.group=true;state.alertsUnavailable=true;const inv=copies[locale].aiManagement.inv;
+  await renderPage(locale,'inventory');
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.getAllByRole('status').some(node=>node.textContent===inv.alerts.unavailable)).toBe(true);
  },60000);
 
  it.each(Object.keys(copies) as (keyof typeof copies)[])('%s: run history shows the date range and pages',async locale=>{

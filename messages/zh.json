@@ -24786,11 +24786,12 @@
       },
       "alerts": {
         "title": "AI 需要关注",
-        "help": "相同的检查也会在服务器上通过定时作业警报通道运行，因此即使无人打开此页面，运维人员也会收到通知。",
+        "help": "服务器每小时检查 AI 调用失败率、定时代理被拒绝的请求、本月支出与租户支出上限的对比，以及与实际开关不一致的 AI 开关覆盖，并向运维人员发出警报。额度上限以及被模块或平台关闭的开关仅在此页面检查。",
         "failure_rate": "过去 24 小时内有 {count} 次 AI 调用失败（占调用的 {detail}）。",
         "principal_refusals": "过去 24 小时内定时代理的 {count} 次 AI 请求被拒绝。定时工作不应向模型发送任何内容。",
         "spend_near_cap": "{count} 个支出或使用上限已达到或接近其限额。",
-        "switch_drift": "{count} 个 AI 开关已设为开启但未生效（{detail}）。"
+        "switch_drift": "{count} 个 AI 开关已设为开启但未生效（{detail}）。",
+        "unavailable": "暂时无法检查 AI 警报。这并不表示一切正常：请刷新页面，或请运维人员查看服务器警报日志。"
       },
       "rangeFrom": "从",
       "rangeTo": "至",
@@ -24798,7 +24799,8 @@
       "paging": "运行历史分页",
       "previous": "上一页",
       "next": "下一页",
-      "pageOf": "第 {page} 页"
+      "pageOf": "第 {page} 页",
+      "pausedTitle": "已暂停的操作"
     }
   },
   "accountEmail": {

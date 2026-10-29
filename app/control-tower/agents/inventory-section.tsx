@@ -26,9 +26,9 @@ export async function AiInventorySection({inventory,mayPause}:{inventory:AiInven
       default: return r.id;
     }
   };
-  const tier = (r:Row) => r.tier ? <Badge variant={r.tier==='automatic'?'warning':undefined}>{t(`inv.tiers.${r.tier}`)}</Badge> : <span className="text-muted-foreground">{r.category==='read'?t('inv.readOnly'):'—'}</span>;
+  const tier = (r:Row) => r.tier ? <Badge className="whitespace-nowrap" variant={r.tier==='automatic'?'warning':undefined}>{t(`inv.tiers.${r.tier}`)}</Badge> : <span className="text-muted-foreground">{r.category==='read'?t('inv.readOnly'):'—'}</span>;
   const pause = (r:Row) => r.pauseKey ? <span className="break-all font-mono text-xs">{r.pauseKey}</span> : <span className="text-muted-foreground">—</span>;
-  const pausedState = (r:Row) => r.kind==='action' ? (isPaused(r) ? <Badge variant="danger">{t('inv.actionPaused')}</Badge> : <span className="text-xs text-emerald-700 dark:text-emerald-300">{t('inv.actionActive')}</span>) : null;
+  const pausedState = (r:Row) => r.kind==='action' ? (isPaused(r) ? <Badge className="whitespace-nowrap" variant="danger">{t('inv.actionPaused')}</Badge> : <span className="text-xs text-emerald-700 dark:text-emerald-300">{t('inv.actionActive')}</span>) : null;
   const pauseControl = (r:Row) => mayPause && full && r.kind==='action' ? <form action={setAgentActionPauseAction}>
     <input type="hidden" name="action" value={r.id}/><input type="hidden" name="paused" value={String(!isPaused(r))}/>
     <button type="submit" className={btnGhost} aria-label={`${t(isPaused(r)?'inv.resumeAction':'inv.pauseAction')} · ${r.id}`}>{t(isPaused(r)?'inv.resumeAction':'inv.pauseAction')}</button>
@@ -55,22 +55,43 @@ export async function AiInventorySection({inventory,mayPause}:{inventory:AiInven
       case 'audit': return rt ? <span className="text-xs">{audit(rt)}</span> : null;
     }
   };
+  const pausedRows = (inventory.rows as readonly Row[]).filter(r=>r.kind==='action'&&isPaused(r));
   const groups = AI_COMPONENT_KINDS.map(kind=>({kind,rows:(inventory.rows as readonly Row[]).filter(r=>r.kind===kind)})).filter(g=>g.rows.length>0);
   return <>
     <Card id="ai-inventory" className="scroll-mt-4 overflow-hidden">
       <div className="p-5"><SectionHeader title={t('inv.title')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('inv.intro')}</p>
         {!full&&<p className="mt-2 max-w-4xl text-sm text-muted-foreground" role="note">{t('inv.registryNotice')}</p>}
         {full&&<p className="mt-2 max-w-4xl text-xs text-muted-foreground">{t('inv.costHelp')}</p>}</div>
+      {/* Mobile: paused actions first, then each group collapsed; a row is a compact summary that expands. */}
+      {pausedRows.length>0&&<section aria-labelledby="ai-paused-mobile" className="border-t border-border px-4 py-3 md:hidden">
+        <h3 id="ai-paused-mobile" className="text-sm font-semibold">{t('inv.pausedTitle')} <span className="font-normal text-muted-foreground">({n(pausedRows.length)})</span></h3>
+        <ul className="mt-1 space-y-1">{pausedRows.map(r=><li key={r.key} className="flex flex-wrap items-center gap-2 text-sm"><a href={`#${rowAnchor(r.key)}-card`} className="break-all text-primary hover:underline">{name(r)}</a>{pausedState(r)}</li>)}</ul>
+      </section>}
       {groups.map(({kind,rows})=><section key={kind} aria-labelledby={`ai-kind-${kind}`} className="border-t border-border">
-        <h3 id={`ai-kind-${kind}`} className="bg-muted/40 px-5 py-2 text-sm font-semibold">{t(`inv.kinds.${kind as AiComponentKind}`)} <span className="font-normal text-muted-foreground">({n(rows.length)})</span></h3>
-        <div className="hidden md:block overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><caption className="sr-only">{t(`inv.kinds.${kind as AiComponentKind}`)}</caption>
-          <thead className="border-b border-border"><tr>{cols.map(c=><th key={c} scope="col" className="px-5 py-2 text-xs font-medium text-muted-foreground">{t(`inv.cols.${c}`)}</th>)}</tr></thead>
-          <tbody className="divide-y divide-border">{rows.map(r=><tr key={r.key} id={rowAnchor(r.key)} className="scroll-mt-4 align-top">{cols.map(c=><td key={c} className="px-5 py-3">{cell(r,c)}</td>)}</tr>)}</tbody>
-        </table></div>
-        <ul className="divide-y divide-border md:hidden">{rows.map(r=><li key={r.key} id={`${rowAnchor(r.key)}-card`} className="px-4 py-3">
-          {cell(r,'component')}
-          <dl className="mt-2 grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">{cols.filter(c=>c!=='component').map(c=><div key={c} className="contents"><dt className="break-words text-xs text-muted-foreground">{t(`inv.cols.${c}`)}</dt><dd className="min-w-0 break-words">{cell(r,c)}</dd></div>)}</dl>
-        </li>)}</ul>
+        <div className="hidden md:block">
+          <h3 id={`ai-kind-${kind}`} className="bg-muted/40 px-5 py-2 text-sm font-semibold">{t(`inv.kinds.${kind as AiComponentKind}`)} <span className="font-normal text-muted-foreground">({n(rows.length)})</span></h3>
+          <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><caption className="sr-only">{t(`inv.kinds.${kind as AiComponentKind}`)}</caption>
+            <thead className="border-b border-border"><tr>{cols.map(c=><th key={c} scope="col" className="px-5 py-2 text-xs font-medium text-muted-foreground">{t(`inv.cols.${c}`)}</th>)}</tr></thead>
+            <tbody className="divide-y divide-border">{rows.map(r=><tr key={r.key} id={rowAnchor(r.key)} className="scroll-mt-4 align-top">{cols.map(c=><td key={c} className="px-5 py-3">{cell(r,c)}</td>)}</tr>)}</tbody>
+          </table></div>
+        </div>
+        <details className="group md:hidden">
+          <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-2 bg-muted/40 px-4 py-2 text-sm font-semibold">
+            <span>{t(`inv.kinds.${kind as AiComponentKind}`)} <span className="font-normal text-muted-foreground">({n(rows.length)})</span></span>
+            {rows.some(isPaused)&&<Badge className="whitespace-nowrap" variant="danger">{t('inv.actionPaused')}</Badge>}
+          </summary>
+          <ul className="divide-y divide-border">{[...rows].sort((a,b)=>Number(isPaused(b))-Number(isPaused(a))).map(r=><li key={r.key} id={`${rowAnchor(r.key)}-card`} className="scroll-mt-4">
+            <details>
+              <summary className="flex min-h-11 cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 text-sm">
+                <span className="min-w-0 break-all font-medium">{name(r)}</span>{r.tier&&tier(r)}{r.kind==='action'&&isPaused(r)&&pausedState(r)}
+              </summary>
+              <div className="px-4 pb-3">
+                {cell(r,'component')}
+                <dl className="mt-2 grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">{cols.filter(c=>c!=='component').map(c=><div key={c} className="contents"><dt className="break-words text-xs text-muted-foreground">{t(`inv.cols.${c}`)}</dt><dd className="min-w-0 break-words">{cell(r,c)}</dd></div>)}</dl>
+              </div>
+            </details>
+          </li>)}</ul>
+        </details>
       </section>)}
     </Card>
     {inventory.scope==='full'&&<Card id="ai-data-register" className="scroll-mt-4 overflow-hidden">

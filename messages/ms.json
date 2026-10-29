@@ -24786,11 +24786,12 @@
       },
       "alerts": {
         "title": "AI memerlukan perhatian",
-        "help": "Semakan yang sama dijalankan pada pelayan melalui laluan amaran kerja berjadual, supaya ia sampai kepada operator walaupun tiada sesiapa membuka halaman ini.",
+        "help": "Semakan pelayan setiap jam merangkumi kadar kegagalan AI, penolakan di bawah ejen berjadual, perbelanjaan bulan ini berbanding had perbelanjaan penyewa, dan suis AI yang diatasi yang berbeza daripada suis sebenar, lalu memberi amaran kepada operator. Had elaun, serta suis yang ditahan oleh modul atau platform, hanya disemak pada halaman ini.",
         "failure_rate": "{count} panggilan AI gagal dalam 24 jam lalu ({detail} daripada panggilan).",
         "principal_refusals": "{count} permintaan AI oleh ejen berjadual ditolak dalam 24 jam lalu. Kerja berjadual sepatutnya tidak menghantar apa-apa kepada model.",
         "spend_near_cap": "{count} had perbelanjaan atau penggunaan telah atau hampir mencapai hadnya.",
-        "switch_drift": "{count} suis AI dihidupkan tetapi tidak berkuat kuasa ({detail})."
+        "switch_drift": "{count} suis AI dihidupkan tetapi tidak berkuat kuasa ({detail}).",
+        "unavailable": "Amaran AI tidak dapat disemak sekarang. Ini bukan tanda semuanya baik: muat semula halaman, atau minta operator membaca log amaran pelayan."
       },
       "rangeFrom": "Dari",
       "rangeTo": "Hingga",
@@ -24798,7 +24799,8 @@
       "paging": "Halaman sejarah larian",
       "previous": "Sebelumnya",
       "next": "Seterusnya",
-      "pageOf": "Halaman {page}"
+      "pageOf": "Halaman {page}",
+      "pausedTitle": "Tindakan yang dijeda"
     }
   },
   "accountEmail": {

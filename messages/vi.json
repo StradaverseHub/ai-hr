@@ -24786,11 +24786,12 @@
       },
       "alerts": {
         "title": "AI cần được chú ý",
-        "help": "Các kiểm tra tương tự chạy trên máy chủ qua đường cảnh báo của công việc theo lịch, nên vẫn đến được nhà vận hành ngay cả khi không ai mở trang này.",
+        "help": "Kiểm tra máy chủ hằng giờ bao gồm tỷ lệ lỗi AI, các yêu cầu bị từ chối của tác tử theo lịch, chi tiêu tháng này so với hạn mức chi tiêu của khách thuê, và các ghi đè công tắc AI khác với công tắc thực, rồi cảnh báo nhà vận hành. Hạn mức sử dụng và các công tắc bị phân hệ hoặc nền tảng giữ tắt chỉ được kiểm tra trên trang này.",
         "failure_rate": "{count} lượt gọi AI thất bại trong 24 giờ qua ({detail} số lượt gọi).",
         "principal_refusals": "{count} yêu cầu AI của tác tử theo lịch bị từ chối trong 24 giờ qua. Công việc theo lịch không được gửi gì đến mô hình.",
         "spend_near_cap": "{count} giới hạn chi tiêu hoặc sử dụng đã đạt hoặc sắp đạt mức trần.",
-        "switch_drift": "{count} công tắc AI được bật nhưng không có hiệu lực ({detail})."
+        "switch_drift": "{count} công tắc AI được bật nhưng không có hiệu lực ({detail}).",
+        "unavailable": "Hiện không thể kiểm tra cảnh báo AI. Điều này không có nghĩa là mọi thứ ổn: hãy tải lại trang hoặc nhờ nhà vận hành xem nhật ký cảnh báo của máy chủ."
       },
       "rangeFrom": "Từ",
       "rangeTo": "Đến",
@@ -24798,7 +24799,8 @@
       "paging": "Các trang lịch sử chạy",
       "previous": "Trước",
       "next": "Tiếp",
-      "pageOf": "Trang {page}"
+      "pageOf": "Trang {page}",
+      "pausedTitle": "Thao tác đã tạm dừng"
     }
   },
   "accountEmail": {

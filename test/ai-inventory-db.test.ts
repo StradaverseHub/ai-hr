@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { aiManagementView, AiControlError } from '../core/ai-management';
-import { aiInventoryView, aiRunHistory, setAgentActionPause } from '../core/ai-inventory';
+import { aiInventoryView, aiManagementAlerts, aiRunHistory, setAgentActionPause } from '../core/ai-inventory';
 import { aiAlertExitCode, aiAlertSweep } from '../core/ai-alert-sweep';
 import { assertAiActionUnpausedTx } from '../core/ai-governance';
 import { withAgentActionPauseScope } from '../core/agent-action-pause-scope';
@@ -123,6 +123,37 @@ describe('per-action pause key hr_assistant:<actionId> (0696)', () => {
   });
 });
 
+describe('review fixes: stale principal, narrow pause view, fail-closed scope', () => {
+  it('refuses a pause from a stale principal claim, in core and in the SQL writer', async () => {
+    // A login whose STORED grant is company-scoped, presenting a group-wide claim: app.is_group_admin() alone would
+    // accept the claim; the principal snapshot does not.
+    const [u] = await owner.db.insert(schema.appUser).values({ tenantId: base.tenantId, workosUserId: `user_wp12_stale_${Date.now()}` }).returning({ id: schema.appUser.id });
+    await owner.db.insert(schema.roleAssignment).values({ tenantId: base.tenantId, appUserId: u.id, companyId: base.companyId, role: 'hr_admin' });
+    const stale: SessionContext = { ...adminCtx(base), userId: u.id, grants: [{ role: 'hr_admin', companyId: null }] };
+    await expect(setAgentActionPause(stale, 'leave.cancel', true)).rejects.toThrow();
+    await expect(withTenant(stale, tx => tx.execute(sql`select app.ai_agent_action_pause_set('leave.cancel',true)`)))
+      .rejects.toMatchObject({ cause: { message: expect.stringContaining('Current principal could not be confirmed') } });
+    // The same login with its true (company-scoped) claim is a company HR administrator: registry view only.
+    const current: SessionContext = { ...adminCtx(base), userId: u.id, grants: [{ role: 'hr_admin', companyId: base.companyId }] };
+    expect((await aiInventoryView(current, await aiManagementView(current))).scope).toBe('registry');
+    expect(Array.from(await owner.db.execute(sql`select * from app.ai_agent_action_pause`))).toEqual([]);
+  });
+
+  it('shows non-admins only (action_id, paused); the full row stays with group administrators', async () => {
+    await setAgentActionPause(group, 'leave.cancel', true);
+    expect(Array.from(await withTenant(companyHr, tx => tx.execute(sql`select * from app.ai_agent_action_pause`)))).toEqual([]);
+    const narrow = Array.from(await withTenant(companyHr, tx => tx.execute(sql`select * from app.ai_agent_action_pauses()`)));
+    expect(narrow).toEqual([{ action_id: 'leave.cancel', paused: true }]);
+    const fullRows = Array.from(await withTenant(group, tx => tx.execute<{ action_id: string; updated_by_user_id: string }>(sql`select action_id,updated_by_user_id from app.ai_agent_action_pause`)));
+    expect(fullRows).toEqual([{ action_id: 'leave.cancel', updated_by_user_id: base.adminUserId }]);
+  });
+
+  it('fails closed when a review-route command cannot name its action', async () => {
+    await expect(withAgentActionPauseScope(null, () => pauseCheck(group))).rejects.toBeInstanceOf(AiAllowanceError);
+    await expect(pauseCheck(group)).resolves.toBeUndefined();
+  });
+});
+
 describe('run history paging and date range', () => {
   it('pages 50 newest-first within the default 30 days and widens to an explicit range', async () => {
     await runs(base.tenantId, [
@@ -160,9 +191,20 @@ describe('alerts and drift (R20)', () => {
       await tx.execute(sql`SET LOCAL session_replication_role = replica`);
       await tx.insert(schema.aiControlPolicy).values({ tenantId: base.tenantId, kind: 'feature', scopeKey: 'feature:performance_pm', featureId: 'performance_pm', enabled: true });
     });
+    // A stale row that AGREES with its switch (performance_tc defaults off) is not drift, on either surface.
+    await owner.db.transaction(async tx => {
+      await tx.execute(sql`SET LOCAL session_replication_role = replica`);
+      await tx.insert(schema.aiControlPolicy).values({ tenantId: base.tenantId, kind: 'feature', scopeKey: 'feature:performance_tc', featureId: 'performance_tc', enabled: false });
+    });
+    // Older than the 30 Kuala Lumpur days: outside the 30-day use.
+    await runs(base.tenantId, [{ minutesAgo: 60 * 24 * 32 }]);
     const view = await aiInventoryView(group, await aiManagementView(group));
     if (view.scope !== 'full') throw Error('expected full scope');
     expect(view.alerts.map(a => [a.kind, a.level, a.count])).toEqual([['failure_rate', 'warning', 4], ['principal_refusals', 'critical', 1], ['switch_drift', 'warning', 1]]);
+    // 30-day use counts actual tokens only (6 completed x 7); failed and blocked reservations are not cost.
+    expect(view.rows.find(r => r.key === 'chat:hr_assistant')!.runtime.use30).toMatchObject({ runs: 10, failed: 4, blocked: 1, tokens: 42 });
+    expect(await aiManagementAlerts(group, await aiManagementView(group))).toMatchObject({ status: 'ok', alerts: view.alerts });
+    expect(await aiManagementAlerts(companyHr, await aiManagementView(companyHr))).toEqual({ status: 'not_shown' });
     expect(view.alerts.find(a => a.kind === 'switch_drift')!.detail).toBe('performance_pm');
     const sweep = await aiAlertSweep(owner.db);
     expect(sweep.alerts.filter(a => a.tenantId === base.tenantId).map(a => a.alert.kind)).toEqual(['failure_rate', 'principal_refusals', 'switch_drift']);
