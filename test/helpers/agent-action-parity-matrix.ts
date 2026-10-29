@@ -39,7 +39,7 @@ export type ParityOutcome='allow'|'deny';
 export const ALWAYS_REFUSED:readonly ParityRole[]=['another_company','another_tenant'];
 
 export type ParityDeclaration=
- | Readonly<{kind:'probed';scope?:'caller_tenant'|'caller_login';scopeReason?:string;screen:Readonly<Record<ParityRole,ParityOutcome>>;page?:Readonly<Record<ParityRole,ParityOutcome>>;narrowed?:Readonly<Partial<Record<ParityRole,string>>>;narrowedPhases?:Readonly<Partial<Record<ParityRole,Readonly<Partial<Record<ParityPhase,string>>>>>>}>
+ | Readonly<{kind:'probed';scope?:'caller_tenant'|'caller_login';scopeReason?:string;screen:Readonly<Record<ParityRole,ParityOutcome>>;page?:Readonly<Record<ParityRole,ParityOutcome>>;narrowed?:Readonly<Partial<Record<ParityRole,string>>>}>
  /** No agent prepare or confirm exists (registry store human_workflow_only): the agent can only hand off. */
  | Readonly<{kind:'human_workflow_only';reason:string}>
  /** Predates WP8; must be in PARITY_PENDING_CEILING. Never valid for a new entry. */
@@ -138,18 +138,13 @@ export function parityCoverageProblems(registry:readonly ParityRegistryEntry[],d
    if(d.screen[role as ParityRole]!=='allow')problems.push(`${entry.id}: narrowing ${role} is meaningless (the screen refuses it); the agent may never be wider`);
    if(!reason?.trim())problems.push(`${entry.id}: narrowing ${role} without a reason`);
   }
-  for(const [role,phases] of Object.entries(d.narrowedPhases??{})){
-   if(!(PARITY_ROLES as readonly string[]).includes(role)){problems.push(`${entry.id}: narrowed unknown role ${role}`);continue;}
-   if(d.screen[role as ParityRole]!=='allow')problems.push(`${entry.id}: narrowing ${role} is meaningless (the screen refuses it); the agent may never be wider`);
-   for(const [phase,reason] of Object.entries(phases??{}))if(!(PARITY_PHASES as readonly string[]).includes(phase)||!reason?.trim())problems.push(`${entry.id}: narrowing ${role}/${phase} without a valid phase and reason`);
-  }
   // Non-vacuity: at least one role must be allowed by the screen AND the agent, or every check is "deny = deny".
-  if(!PARITY_ROLES.some(role=>d.screen[role]==='allow'&&!narrowed[role]&&!d.narrowedPhases?.[role]))problems.push(`${entry.id}: no role is allowed by both the screen and the agent, so the matrix proves nothing`);
+  if(!PARITY_ROLES.some(role=>d.screen[role]==='allow'&&!narrowed[role]))problems.push(`${entry.id}: no role is allowed by both the screen and the agent, so the matrix proves nothing`);
  }
  return problems;
 }
 
 /** The expected agent outcome for a role: the screen's, unless the agent is declared narrower. */
-export function expectedAgentOutcome(d:Extract<ParityDeclaration,{kind:'probed'}>,role:ParityRole,phase:ParityPhase='confirm'):ParityOutcome{return d.narrowed?.[role]||d.narrowedPhases?.[role]?.[phase]?'deny':d.screen[role];}
+export function expectedAgentOutcome(d:Extract<ParityDeclaration,{kind:'probed'}>,role:ParityRole):ParityOutcome{return d.narrowed?.[role]?'deny':d.screen[role];}
 export type ProbedActionId={[K in keyof typeof AGENT_ACTION_PARITY]:(typeof AGENT_ACTION_PARITY)[K]['kind'] extends 'probed'?K:never}[keyof typeof AGENT_ACTION_PARITY];
 export const PROBED_ACTION_IDS=Object.freeze((Object.keys(AGENT_ACTION_PARITY) as (keyof typeof AGENT_ACTION_PARITY)[]).filter((id):id is ProbedActionId=>AGENT_ACTION_PARITY[id].kind==='probed'));

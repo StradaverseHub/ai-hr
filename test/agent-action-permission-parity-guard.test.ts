@@ -3,7 +3,7 @@
  * test/agent-action-permission-parity.test.ts. */
 import {describe,expect,it} from 'vitest';
 import {AGENT_ACTIONS} from '../lib/ai/agent-action-registry';
-import {AGENT_ACTION_PARITY,ATTENDANCE_WORKFLOW_PARITY,PARITY_PENDING_CEILING,PARITY_PENDING_ORIGINAL,PARITY_ROLES,PROBED_ACTION_IDS,expectedAgentOutcome,parityCoverageProblems,type ParityDeclaration} from './helpers/agent-action-parity-matrix';
+import {AGENT_ACTION_PARITY,ATTENDANCE_WORKFLOW_PARITY,PARITY_PENDING_CEILING,PARITY_PENDING_ORIGINAL,PARITY_ROLES,PROBED_ACTION_IDS,parityCoverageProblems,type ParityDeclaration} from './helpers/agent-action-parity-matrix';
 
 const registry=AGENT_ACTIONS.map(action=>({id:action.id,store:action.store}));
 const declarations:Readonly<Record<string,ParityDeclaration>>=AGENT_ACTION_PARITY;
@@ -29,13 +29,6 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
   expect([...PROBED_ACTION_IDS].sort()).toEqual(humanActions.sort());
   expect(PROBED_ACTION_IDS).toHaveLength(29);expect(PARITY_PENDING_CEILING.size).toBe(0);
   for(const id of PROBED_ACTION_IDS)expect(AGENT_ACTIONS.find(action=>action.id===id)?.store,id).not.toBe('human_workflow_only');
- });
-
- it('keeps exact-task offer evidence distinct from phase-specific narrower findings',()=>{
-  const d:Extract<ParityDeclaration,{kind:'probed'}>={...probed as Extract<ParityDeclaration,{kind:'probed'}>,narrowedPhases:{employee:{prepare:'Fictional preparation limitation',confirm:'Fictional confirmation limitation'}}};
-  expect(expectedAgentOutcome(d,'employee','offer')).toBe('allow');
-  expect(expectedAgentOutcome(d,'employee','prepare')).toBe('deny');
-  expect(expectedAgentOutcome(d,'employee','confirm')).toBe('deny');
  });
 
  it('fails a new registry entry that arrives without matrix fixtures',()=>{
