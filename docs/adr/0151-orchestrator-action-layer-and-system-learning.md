@@ -578,3 +578,7 @@ Multi-cycle draft creation uses the generic own compatibility lifecycle with its
 ### WP9 — statutory profile compatibility (30 October 2026)
 
 The Personnel EPF/SOCSO review uses the generic assigned compatibility lifecycle, retaining the actual actor/target/person/statutory/company/country binding and installed encrypted row format. Workforce write admission, granular native field/company authority, native PERSON/statutory tuple ownership, pending preflight before custody NOWAIT, exact snapshot reread and complete erasure targets remain source-owned. The country pack remains the sole statutory writer; no Identity/Tax/Bank/TP3/Zakat or payroll calculation authority is added. Existing uppercase action-ID reopening remains supported through a protocol-local normalization option. No migration is required.
+
+### WP9 — equipment acknowledgement compatibility (30 October 2026)
+
+Lifecycle acknowledgement uses the generic own compatibility lifecycle with an explicit exact-wire body protocol. The old caseNumber field stays in the private commitment and ciphertext in its original position; it is not dropped or re-created as public metadata. The current login/person, native case person, employment and company remain distinct and nullable as before, including email-owned unlinked prehire cases. Native case readiness, equipment normalization, actual submission SQL and completed historical receipt remain canonical. Complete case/person/employment privacy targets and login-only retirement remain intact. No migration is required.

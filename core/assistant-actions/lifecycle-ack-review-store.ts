@@ -1,22 +1,14 @@
-import {assertHumanReviewedActionTier} from '../../lib/ai/agent-action-tier-guard';
-import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
-import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
-/** Human-reviewed Lifecycle acknowledgement in the same physical review/body lifecycle. Native email-owned
- * prehire cases stay unlinked; caller person, case person and employment are distinct actual facts. */
-import {createHash,randomUUID} from 'node:crypto';
-import {sql,type SQL} from 'drizzle-orm';
+/** WP9: generic OWN lifecycle acknowledgement custody, preserving native unlinked prehire identity. */
+import {sql} from 'drizzle-orm';
 import {z} from 'zod';
-import {PrivateReviewNonce,newPrivateReviewNonce,privateReviewCommitment} from './private-review-commitment';
-import {withTenant,type SessionContext,type Tx} from '../../db/client';
-import {assertAiPrincipalTx} from '../ai-principal';
-import {masterKeyAvailable,newDek,newKid,sealUnderDek,unsealUnderDek,unwrapDek,wrapDek} from '../../lib/pii/vault';
+import {createGenericOwnCompatibilityStore} from './generic-own-review-store';
+import {PrivateReviewNonce} from './private-review-commitment';
 import {OwnLeaveSealedReview} from './own-leave-content';
 import {OWN_LIFECYCLE_ACKNOWLEDGEMENT_ACTION as action,OwnLifecycleAcknowledgementHumanContent as Human} from '../../lib/assistant-actions/own-lifecycle-acknowledgement-contract';
-import {LifecycleAckReviewPrepare,LifecycleAckReviewConfirmation,LifecycleAckReviewRetirement,LifecycleAckPreparedReview,LifecycleAckCompletedReview,LifecycleAckRetiredReview,LifecycleAckReviewIndex} from '../../lib/assistant-actions/lifecycle-ack-review-contract';
+import {LifecycleAckReviewConfirmation,LifecycleAckReviewRetirement,LifecycleAckPreparedReview,LifecycleAckCompletedReview,LifecycleAckRetiredReview,LifecycleAckReviewIndex} from '../../lib/assistant-actions/lifecycle-ack-review-contract';
 import {prepareOwnLifecycleAcknowledgementSourceTx,confirmOwnLifecycleAcknowledgementSourceTx,reconcileOwnLifecycleAcknowledgementSourceTx,withOwnLifecycleAcknowledgementIntervalTx,assertOwnLifecycleAcknowledgementActorTx} from './own-lifecycle-acknowledgement-source';
 export class LifecycleAckReviewUnavailable extends Error{constructor(){super('Your equipment review is playing hide-and-seek. Please reopen it and try again.');this.name='LifecycleAckReviewUnavailable';}}
-const fail=():never=>{throw new LifecycleAckReviewUnavailable();},hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex'),digest=z.string().regex(/^[a-f0-9]{64}$/);
-const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
+const fail=():never=>{throw new LifecycleAckReviewUnavailable();},digest=z.string().regex(/^[a-f0-9]{64}$/);
 const Binding=z.object({tenantId:z.guid(),userId:z.guid(),personId:z.guid().nullable(),employmentId:z.guid().nullable(),companyId:z.guid().nullable(),caseId:z.guid(),casePersonId:z.guid().nullable()}).strict();
 const Metadata=z.object({actionId:z.guid(),action:z.literal(action),contractVersion:z.literal(1),binding:Binding,intentDigest:digest.nullable(),reviewedDigest:digest.nullable(),state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict();type Meta=z.infer<typeof Metadata>;
 const Stored=z.object({metadata:Metadata,sealed:OwnLeaveSealedReview.nullable(),eventId:z.guid().nullable()}).strict().refine(value=>
@@ -24,43 +16,40 @@ const Stored=z.object({metadata:Metadata,sealed:OwnLeaveSealedReview.nullable(),
  &&(value.metadata.state==='completed')===(value.eventId!==null)
  &&(value.metadata.state==='awaiting_confirmation'||(value.sealed===null&&value.metadata.intentDigest===null&&value.metadata.reviewedDigest===null)));
 type Stored=z.infer<typeof Stored>;
-const Body=z.object({reviewNonce:PrivateReviewNonce,content:Human,caseNumber:z.string().min(1).max(100),nativeReviewedDigest:digest}).strict();type Body=z.infer<typeof Body>;
-function identity(m:Meta){if(m.state!=='awaiting_confirmation'||!m.intentDigest||!m.reviewedDigest)return fail();return JSON.stringify([1,m.action,m.actionId,m.binding,m.intentDigest,m.reviewedDigest]);}
-const reviewed=(binding:z.infer<typeof Binding>,body:Body)=>privateReviewCommitment([1,action,binding],body);
-function checked(m:Meta,value:unknown){const body=Body.parse(value);if(body.content.caseId!==m.binding.caseId||hash(body.content)!==m.intentDigest||reviewed(m.binding,body)!==m.reviewedDigest)return fail();return body;}
-function seal(m:Meta,body:Body){let dek:Buffer|undefined;try{if(!masterKeyAvailable())return fail();const id=identity(m),text=JSON.stringify(checked(m,body));if(Buffer.byteLength(text)>32768)return fail();dek=newDek();const kid=newKid();return OwnLeaveSealedReview.parse({formatVersion:1,kid,wrappedDek:wrapDek(dek,'assistant:module-action:key:'+id),ciphertext:sealUnderDek(dek,kid,text,'assistant:module-action:body:'+id)});}finally{dek?.fill(0);}}
-function unseal(stored:Stored){let dek:Buffer|undefined;try{if(!masterKeyAvailable())return fail();const id=identity(stored.metadata),sealed=OwnLeaveSealedReview.parse(stored.sealed);dek=unwrapDek(sealed.wrappedDek,'assistant:module-action:key:'+id);if(dek.length!==32)return fail();const text=unsealUnderDek(dek,sealed.ciphertext,'assistant:module-action:body:'+id);if(Buffer.byteLength(text)>32768)return fail();return checked(stored.metadata,JSON.parse(text));}finally{dek?.fill(0);}}
-async function read(tx:Tx,query:SQL){const [row]=await tx.execute<{review:unknown}>(query);return Stored.parse(row?.review);}
 type Source={caseId:string;caseNumber:string;casePersonId:string|null;employmentId:string|null;companyId:string|null};
-function bound(stored:Stored,ctx:SessionContext,id:string,source:Source){const m=stored.metadata;if(m.actionId!==id||m.binding.tenantId!==ctx.tenantId||m.binding.userId!==ctx.userId||m.binding.personId!==(ctx.personId??null)||m.binding.caseId!==source.caseId||m.binding.casePersonId!==source.casePersonId||m.binding.employmentId!==source.employmentId||m.binding.companyId!==source.companyId)return fail();}
-function pending(stored:Stored){const body=unseal(stored),m=stored.metadata;return {kind:'prepared' as const,review:LifecycleAckPreparedReview.parse({action,contractVersion:1,actionId:m.actionId,reviewedDigest:m.reviewedDigest,createdAt:m.createdAt,expiresAt:m.expiresAt,content:body.content,caseNumber:body.caseNumber,consequence:'equipment_acknowledgement_only'})};}
-function retired(stored:Stored){return{kind:'retired' as const,receipt:LifecycleAckRetiredReview.parse({action,contractVersion:1,actionId:stored.metadata.actionId,state:stored.metadata.state})};}
-async function completed(tx:Tx,ctx:SessionContext,stored:Stored){if(stored.metadata.state!=='completed'||!stored.eventId)return fail();const receipt=await reconcileOwnLifecycleAcknowledgementSourceTx(tx,ctx,{caseId:stored.metadata.binding.caseId,submittedEventId:stored.eventId});return{kind:'completed' as const,receipt:LifecycleAckCompletedReview.parse({action,contractVersion:1,actionId:stored.metadata.actionId,state:'completed',receipt})};}
-async function subject(tx:Tx,id:string){const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_lifecycle_ack_review_subject(${id}::uuid) as subject`);return z.guid().parse(row?.subject);}
-export async function prepareLifecycleAckReview(supplied:SessionContext,input:unknown){assertHumanReviewedActionTier(supplied,'lifecycle.acknowledgement.submit','confirm');const ctx=capture(supplied),parsed=LifecycleAckReviewPrepare.safeParse(input);if(!parsed.success)return fail();const human=parsed.data;try{return await withTenant(ctx,tx=>withOwnLifecycleAcknowledgementIntervalTx(tx,ctx,human.caseId,async(fresh,source)=>{
- const native=await prepareOwnLifecycleAcknowledgementSourceTx(tx,fresh,human),body=Body.parse({reviewNonce:newPrivateReviewNonce(),content:native.content,caseNumber:native.caseNumber,nativeReviewedDigest:native.reviewedDigest}),binding=Binding.parse({tenantId:fresh.tenantId,userId:fresh.userId,personId:fresh.personId??null,employmentId:source.employmentId,companyId:source.companyId,caseId:source.caseId,casePersonId:source.casePersonId});
- const now=new Date(),m=Metadata.parse({actionId:randomUUID(),action,contractVersion:1,binding,intentDigest:hash(body.content),reviewedDigest:reviewed(binding,body),state:'awaiting_confirmation',createdAt:now.toISOString(),expiresAt:new Date(now.getTime()+600000).toISOString()}),sealed=seal(m,body);
- const stored=await read(tx,sql`select app.assistant_lifecycle_ack_review_prepare(${m.actionId}::uuid,${binding.personId}::uuid,${binding.caseId}::uuid,${binding.casePersonId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) as review`);bound(stored,fresh,m.actionId,source);return pending(stored);
- }));}catch{return fail();}}
-export async function confirmLifecycleAckReview(supplied:SessionContext,input:unknown){assertHumanReviewedActionTier(supplied,'lifecycle.acknowledgement.submit','confirm');const ctx=capture(supplied),parsed=LifecycleAckReviewConfirmation.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{
- const actor=await assertOwnLifecycleAcknowledgementActorTx(tx,ctx),caseId=await subject(tx,p.actionId);return withOwnLifecycleAcknowledgementIntervalTx(tx,actor,caseId,async(fresh,source)=>{
- const stored=await read(tx,sql`select app.assistant_lifecycle_ack_review_read(${p.actionId}::uuid) as review`);bound(stored,fresh,p.actionId,source);if(stored.metadata.state==='completed')return completed(tx,fresh,stored);if(stored.metadata.state!=='awaiting_confirmation')return retired(stored);if(stored.metadata.reviewedDigest!==p.reviewedDigest)return fail();const body=unseal(stored),native=await confirmOwnLifecycleAcknowledgementSourceTx(tx,fresh,body.content,{action,contractVersion:1,reviewedDigest:body.nativeReviewedDigest});
- await captureNativeOutcomeTargetsTx(tx,fresh,{action:action,sourceId:p.actionId,eventId:native.submittedEventId,targets:[{kind:'lifecycle_case',id:source.caseId},...(source.employmentId?[{kind:'employment' as const,id:source.employmentId}]:[]),...(source.casePersonId?[{kind:'person' as const,id:source.casePersonId}]:[])]});
- const done=await read(tx,sql`select app.assistant_lifecycle_ack_review_complete(${p.actionId}::uuid,${p.reviewedDigest},${native.caseId}::uuid,${native.submittedEventId}::uuid) as review`);bound(done,fresh,p.actionId,source);if(done.eventId!==native.submittedEventId)return fail();return completed(tx,fresh,done);
- });});}catch{return fail();}}
-export async function reopenLifecycleAckReview(supplied:SessionContext,value:unknown){const ctx=capture(supplied),parsed=z.guid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
- const actor=await assertOwnLifecycleAcknowledgementActorTx(tx,ctx),caseId=await subject(tx,id);return withOwnLifecycleAcknowledgementIntervalTx(tx,actor,caseId,async(fresh,source)=>{
- const stored=await read(tx,sql`select app.assistant_lifecycle_ack_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);if(stored.metadata.state==='awaiting_confirmation'){const body=unseal(stored),native=await prepareOwnLifecycleAcknowledgementSourceTx(tx,fresh,body.content);if(native.reviewedDigest!==body.nativeReviewedDigest||native.caseNumber!==body.caseNumber||JSON.stringify(native.content)!==JSON.stringify(body.content))return fail();return pending(stored);}return stored.metadata.state==='completed'?completed(tx,fresh,stored):retired(stored);
- });});}catch{return fail();}}
-/** Login-only metadata/discard survives module/grant loss, case cancellation/replacement and relink. */
-export async function discardLifecycleAckReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=LifecycleAckReviewRetirement.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_lifecycle_ack_review_discard(${p.actionId}::uuid) as receipt`);return {kind:'retired' as const,receipt:LifecycleAckRetiredReview.parse(row?.receipt)};});}catch{return fail();}}
-export async function listLifecycleAckReviews(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const rows=await tx.execute(sql`select action,1 as "contractVersion",action_id as "actionId",state,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt" from app.assistant_lifecycle_ack_reviews_index()`);return LifecycleAckReviewIndex.parse({kind:'lifecycle_ack_review_index',reviews:Array.from(rows)});});}catch{return fail();}}
-
-/** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
- * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
-export async function readCompletedLifecycleAckOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.guid().parse(value);await boundNativeOutcomeTransactionTx(tx);
- const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'lifecycle.acknowledgement.submit'},${id}::uuid) as completed`);
- if(terminal?.completed!==true)return fail();
- const actor=await assertOwnLifecycleAcknowledgementActorTx(tx,ctx),caseId=await subject(tx,id);return withOwnLifecycleAcknowledgementIntervalTx(tx,actor,caseId,async(fresh,source)=>{const stored=await read(tx,sql`select app.assistant_lifecycle_ack_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.guid().parse(stored.eventId)};});
-}
+// This extra field is part of the old commitment and ciphertext, not optional new metadata.
+const Body=z.object({reviewNonce:PrivateReviewNonce,content:Human,caseNumber:z.string().min(1).max(100),nativeReviewedDigest:digest}).strict();
+export const lifecycleAckReviews=createGenericOwnCompatibilityStore<
+ z.infer<typeof Human>,z.infer<typeof Binding>,Stored,Source,
+ Awaited<ReturnType<typeof prepareOwnLifecycleAcknowledgementSourceTx>>,Awaited<ReturnType<typeof confirmOwnLifecycleAcknowledgementSourceTx>>,
+ z.infer<typeof LifecycleAckPreparedReview>,z.infer<typeof LifecycleAckCompletedReview>,z.infer<typeof LifecycleAckRetiredReview>,z.infer<typeof LifecycleAckReviewIndex>
+>({
+ action,tier:'confirm',human:Human,metadata:Metadata,stored:Stored,
+ confirmation:LifecycleAckReviewConfirmation,retirement:LifecycleAckReviewRetirement,retired:LifecycleAckRetiredReview,index:LifecycleAckReviewIndex,indexKind:'lifecycle_ack_review_index',
+ body:{read:value=>Body.parse(value),write:body=>Body.parse(body),create:(native,reviewNonce)=>Body.parse({reviewNonce,content:native.content,caseNumber:native.caseNumber,nativeReviewedDigest:native.reviewedDigest}),assertCurrent:(body,current)=>{if(Body.parse(body).caseNumber!==current.caseNumber)return fail();}},
+ async withInterval(tx,ctx,nomination,work){const actor=await assertOwnLifecycleAcknowledgementActorTx(tx,ctx);let caseId:string;
+  if(nomination.human)caseId=nomination.human.caseId;else{const id=z.guid().parse(nomination.actionId),[row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_lifecycle_ack_review_subject(${id}::uuid) as subject`);caseId=z.guid().parse(row?.subject);}
+  return withOwnLifecycleAcknowledgementIntervalTx(tx,actor,caseId,work);
+ },
+ binding:(ctx,source)=>Binding.parse({tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null,employmentId:source.employmentId,companyId:source.companyId,caseId:source.caseId,casePersonId:source.casePersonId}),
+ assertSubjectBinding:(binding,source)=>{if(binding.caseId!==source.caseId||binding.casePersonId!==source.casePersonId||binding.employmentId!==source.employmentId||binding.companyId!==source.companyId)return fail();},
+ assertHumanBinding:(binding,human)=>{if(human.caseId!==binding.caseId)return fail();},
+ prepareNative:(tx,ctx,human)=>prepareOwnLifecycleAcknowledgementSourceTx(tx,ctx,human),
+ confirmNative:(tx,ctx,body)=>confirmOwnLifecycleAcknowledgementSourceTx(tx,ctx,body.content,{action,contractVersion:1,reviewedDigest:body.nativeReviewedDigest}),
+ pending:(row,body)=>LifecycleAckPreparedReview.parse({action,contractVersion:1,actionId:row.metadata.actionId,reviewedDigest:row.metadata.reviewedDigest,createdAt:row.metadata.createdAt,expiresAt:row.metadata.expiresAt,content:body.content,caseNumber:Body.parse(body).caseNumber,consequence:'equipment_acknowledgement_only'}),
+ async completed(tx,ctx,row){if(!row.eventId)return fail();const receipt=await reconcileOwnLifecycleAcknowledgementSourceTx(tx,ctx,{caseId:row.metadata.binding.caseId,submittedEventId:row.eventId});return LifecycleAckCompletedReview.parse({action,contractVersion:1,actionId:row.metadata.actionId,state:'completed',receipt});},
+ event:row=>row.eventId,nativeEvent:native=>native.submittedEventId,
+ assertCompletion:(row,native)=>{if(row.eventId!==native.submittedEventId||row.metadata.binding.caseId!==native.caseId)return fail();},
+ targets:source=>[{kind:'lifecycle_case',id:source.caseId},...(source.employmentId?[{kind:'employment' as const,id:source.employmentId}]:[]),...(source.casePersonId?[{kind:'person' as const,id:source.casePersonId}]:[])],
+ async prepareRow(tx,m,sealed){const b=m.binding;const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_lifecycle_ack_review_prepare(${m.actionId}::uuid,${b.personId}::uuid,${b.caseId}::uuid,${b.casePersonId}::uuid,${b.employmentId}::uuid,${b.companyId}::uuid,${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) as review`);return row?.review;},
+ async readRow(tx,id){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_lifecycle_ack_review_read(${id}::uuid) as review`);return row?.review;},
+ async completeRow(tx,id,expected,native){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_lifecycle_ack_review_complete(${id}::uuid,${expected},${native.caseId}::uuid,${native.submittedEventId}::uuid) as review`);return row?.review;},
+ async discardRow(tx,id){const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_lifecycle_ack_review_discard(${id}::uuid) as receipt`);return row?.receipt;},
+ async indexRows(tx){return Array.from(await tx.execute(sql`select action,1 as "contractVersion",action_id as "actionId",state,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt" from app.assistant_lifecycle_ack_reviews_index()`));},unavailable:fail,
+});
+export const prepareLifecycleAckReview=lifecycleAckReviews.prepare;
+export const confirmLifecycleAckReview=lifecycleAckReviews.confirm;
+export const reopenLifecycleAckReview=lifecycleAckReviews.reopen;
+export const discardLifecycleAckReview=lifecycleAckReviews.discard;
+export const listLifecycleAckReviews=lifecycleAckReviews.list;
+export const readCompletedLifecycleAckOutcomeTx=lifecycleAckReviews.readCompletedOutcomeTx;

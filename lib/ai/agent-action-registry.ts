@@ -279,7 +279,7 @@ export const AGENT_ACTIONS=Object.freeze([
   permission:{actor:'self',guard:'core/assistant-actions/own-lifecycle-acknowledgement-source.ts#assertOwnLifecycleAcknowledgementActorTx'},subject:'own_user',blastRadius:{max:1,unit:'lifecycle_case_acknowledgement'},
   idempotencyKey:'review_action_id',policy:{tier:'confirm',category:'own_work'},reversal:{kind:'final'},evaluationCases:[],
   screen:{native:'app/lifecycle/me/page.tsx',entryPoints:['app/lifecycle/actions.ts#acknowledgeAction']},review:{route:'/assistant/lifecycle',handoff:'review_page'},
-  store:'dedicated',browserOwner:'lifecycleAck',pauseKey:'hr_assistant'}),
+  store:'generic_own',browserOwner:'lifecycleAck',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'toil.replacement.request',module:'toil',owner:'leave',service:'packs/leave/service.ts#submitReplacementLeaveRequest',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_toil_request_review_v1',inputSchema:'ToilRequestReviewPrepare',outputSchema:'ToilRequestPreparedReview'},
   confirm:{status:'implemented',adapter:'module_toil_request_review_v1',inputSchema:'ToilRequestReviewConfirmation',outputSchema:'ToilRequestCompletedReview'},
