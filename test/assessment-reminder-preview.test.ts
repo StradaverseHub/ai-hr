@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {and,eq,sql} from 'drizzle-orm';
+import {and,eq,inArray,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -26,7 +26,8 @@ beforeEach(async()=>{
  await owner.db.update(schema.person).set({firstName:'Canonical <First>'}).where(eq(schema.person.id,subject.personId));
  const userId=await createAppUser(b.tenantId,subject.personId,'employee');recipient={...admin,userId,personId:subject.personId,roles:['employee'],grants:undefined};
  await createAppUser(b.tenantId,manager.personId,'manager');await setReportingLine(admin,{subordinateEmploymentId:employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:`${year-2}-01-01`});
- const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'12',name:'Fictional grade'}).returning();await owner.db.update(schema.employment).set({gradeId:grade.id}).where(eq(schema.employment.id,employmentId));
+ // Both hires become cycle participants; each needs one resolvable leadership framework.
+ const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'12',name:'Fictional grade'}).returning();await owner.db.update(schema.employment).set({gradeId:grade.id}).where(inArray(schema.employment.id,[employmentId,manager.employmentId]));
  ({cycleId}=await perf.createCycle(admin,{name:'Fictional preview cycle',companyId:b.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`}));
  const policy=defaultPolicy(framework);policy.profiles=[{id:randomUUID(),companyId:b.companyId,grade:'12',name:'Fictional profile',competencies:[{id:'preview-skill',principle:'Technical',text:'Fictional competency',future:false}]}];
  await perf.configureOnehrCycle(admin,cycleId,null,policy);await perf.openCycle(admin,{cycleId});
@@ -39,7 +40,7 @@ async function localeReader(ctx:SessionContext,selected=employmentId,languageEmp
 async function readWitness(){return (await owner.client`select (select count(*)::int from domain_event) as events,(select count(*)::int from performance_assessment_reminder_run) as runs,(select count(*)::int from notification_delivery) as deliveries,(select count(*)::int from email_design_version) as versions,(select coalesce(jsonb_agg(to_jsonb(p) order by p.id),'[]'::jsonb) from notification_pref p) as preferences`)[0];}
 describe('read-only assessment email preview authority',()=>{
  it('reads disabled recipient preference or English default without consent, queue, event or context changes',async()=>{
-  expect(await localeReader(admin)).toBe('en');await saveNotificationEmailPreferences(recipient,employmentId,[],'ms');
+  expect(await localeReader(admin)).toBe('en');await saveNotificationEmailPreferences(recipient,employmentId,[],'ms',null);
   const before=await readWitness();expect(await localeReader(admin)).toBe('ms');const preview=await perf.previewAssessmentReminder(admin,cycleId,employeeCode);
   expect(preview).toMatchObject({mode:'full',locale:'ms',eligible:false,design:{kind:'assessment_reminder',locale:'ms',document:null,data:{first_name:'Canonical <First>'}}});expect(preview.mail.tasks.length).toBeGreaterThan(0);expect(await readWitness()).toEqual(before);
  });
@@ -51,7 +52,7 @@ describe('read-only assessment email preview authority',()=>{
   await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,admin.userId!));await expect(localeReader(admin)).rejects.toThrow();
  });
  it('keeps a company administrator task summary available without reading templates or recipient language',async()=>{
-  await saveNotificationEmailPreferences(recipient,employmentId,[],'ms');const before=await readWitness();
+  await saveNotificationEmailPreferences(recipient,employmentId,[],'ms',null);const before=await readWitness();
   const limited=await perf.previewAssessmentReminder({...admin,grants:[{role:'hr_admin',companyId:b.companyId}]},cycleId,employeeCode);
   expect(limited).toMatchObject({mode:'summary',locale:null,design:null,eligible:false,mail:{words:null}});expect(limited.mail.tasks.length).toBeGreaterThan(0);expect(await readWitness()).toEqual(before);
  });
