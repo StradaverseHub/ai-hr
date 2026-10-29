@@ -1,4 +1,5 @@
 /** Actual effective People assignments, never catalogue ownership/availability, decide future Rewards pairs. */
+import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
@@ -11,7 +12,14 @@ import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type
 import {todayInKualaLumpur} from '../lib/hr-date';
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4));
 let base:Base,admin:SessionContext,otherCompany:string,globalUnit:string,localUnit:string;
-beforeAll(migrateTestDb);afterAll(closeAll);
+beforeAll(async()=>{
+ await migrateTestDb();
+ const [state]=await owner.db.execute<{present:boolean}>(sql`select to_regprocedure('app.reward_policy_memberships(uuid[])') is not null as present`);
+ if(!state.present){
+  const draft=readFileSync(new URL('../docs/migration-drafts/0690_rewards_policy_pair_membership.sql',import.meta.url),'utf8');
+  await owner.db.transaction(async tx=>{for(const statement of draft.split('--> statement-breakpoint').filter(statement=>statement.trim()))await tx.execute(sql.raw(statement));});
+ }
+});afterAll(closeAll);
 beforeEach(async()=>{
  await resetDb();base=await seedBase();await setModule(base.tenantId,'rewards','active');admin=await entitledCtx(base);
  const [company]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Unassigned fixture company'}).returning();otherCompany=company.id;
