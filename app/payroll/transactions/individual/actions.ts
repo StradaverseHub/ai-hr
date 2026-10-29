@@ -7,7 +7,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { BatchNotDraftError, PayrollPermissionDeniedError, batchEditImpact } from '@/core/payroll';
 import { listIndividualTxnsAcross, listUnattachedTxnSummary } from '@/core/payroll-view';
 import { buildTxnPanel, type TxnPanel } from './existing-context';
-import { deriveIndividualTxnAmount, TxnQuantityRequiredError } from '@/core/pay-components';
+import { deriveIndividualTxnAmount, TxnEffectiveDateInvalidError, TxnQuantityRequiredError } from '@/core/pay-components';
 import { PayRuleEvalError } from '@/core/pay-rule';
 import {
   createIndividualTxnsBulk,
@@ -61,7 +61,7 @@ const txnErrorKey = (e: unknown): string =>
       // different things to be told, and only one of them is about authority.
       e instanceof EmploymentNotActiveInPeriodError
       ? 'addToRunNotEmployed'
-      : e instanceof InvalidTxnDateError
+      : e instanceof InvalidTxnDateError || e instanceof TxnEffectiveDateInvalidError
     ? 'invalidEffectiveDate'
     : // 2da9937a — a pay item that works its amount out from a keyed quantity, saved without one. Two keys
       // rather than one interpolated sentence: the screen resolves an error key with no values, and the
@@ -381,6 +381,8 @@ async function amountForWrite(
     quantity: number | null;
     unit: string | null;
     typed: number;
+    /** 34062f81 — the row's Effective Date: `calendar_days` follows THIS date's month, not the pay month. */
+    txnDate: string;
   },
 ): Promise<number> {
   if (!p.componentId) return p.typed;
@@ -396,6 +398,7 @@ async function amountForWrite(
     payPeriod: p.payPeriod,
     quantity: p.quantity,
     unit: p.unit,
+    effectiveDate: p.txnDate,
   });
   return d.derived ? d.amount : p.typed;
 }
@@ -432,6 +435,12 @@ export async function previewTxnAmountAction(input: {
   payPeriod: string;
   quantity: number | null;
   unit: string | null;
+  /**
+   * 34062f81 — the Effective Date on the form, so the preview prices `calendar_days` against the same
+   * month the save will. Empty/absent while the operator has not picked one yet ⇒ the pay month (the
+   * save itself always carries a validated date, and the screen re-asks the moment one is entered).
+   */
+  txnDate?: string | null;
 }): Promise<TxnAmountPreview> {
   const { s, scopeIds } = await scopedAdmin();
   if (!input.companyId || !scopeIds.includes(input.companyId)) return { ok: false, error: 'outOfScope' };
@@ -445,6 +454,7 @@ export async function previewTxnAmountAction(input: {
       payPeriod: input.payPeriod,
       quantity: input.quantity,
       unit: input.unit,
+      effectiveDate: input.txnDate ? input.txnDate : null,
     });
     if (!d.derived) return { ok: true, derived: false };
     const tr = await getTranslations('payRule');
@@ -473,9 +483,14 @@ export async function previewTxnAmountAction(input: {
  * controls, which is exactly the race the single-value version's store-the-key-with-the-answer guard
  * exists to survive. One request, one answer set, the same guard shape.
  *
- * IT TAKES DISTINCT QUANTITIES, NOT ROWS. The derived amount is a function of (item, employment, company,
- * month, quantity, unit) and of nothing else, so five days of 2.00 hours are five copies of one answer.
- * The client dedupes (`distinctQuantities` in day-lines.ts) and maps the figures back onto its rows.
+ * IT TAKES DISTINCT (DATE, QUANTITY) PAIRS, NOT ROWS. 34062f81 — the derived amount is a function of
+ * (item, employment, company, pay month, quantity, unit) AND of the month the line's Effective Date falls
+ * in, because `calendar_days` is that month's length (28-Sep-2026 divides by 30, 10-Oct-2026 by 31). Two
+ * lines with the same quantity in different months are therefore two questions, not one; two lines on the
+ * same date with the same quantity are still one. The client dedupes (`distinctDayEntries` in
+ * day-lines.ts) and maps each answer back onto its rows by the same (date, quantity) key. A line with no
+ * date yet is sent with `txnDate: ''` and priced against the pay month, as before — the save always
+ * carries a validated date and the screen re-asks the moment one is entered.
  *
  * The evaluator is `deriveIndividualTxnAmount` — the same call the single preview makes and the same one
  * the SAVE makes. There is exactly one place in this system that prices a pay item, and this is not a
@@ -492,13 +507,18 @@ export type TxnAmountsPreview =
   | {
       ok: true;
       derived: true;
-      /** One entry per requested quantity, keyed by the quantity as the client normalised it. */
-      amounts: { quantity: string; amount: string }[];
+      /** One entry per requested (date, quantity), echoed back exactly as the client normalised them. */
+      amounts: { txnDate: string; quantity: string; amount: string }[];
       code: string;
       inputUnit: 'hours' | 'days' | null;
       /** Localised, exactly as the single-value preview does it. Null when nothing divided by zero. */
       zeroDivisor: string | null;
     };
+
+/** The most distinct (date, quantity) pairs one preview request prices. A month's grid is at most 31
+ *  dates, and two stints on a day are legal, so this is roomy for a real grid while still bounding the
+ *  work one request can ask of the server. */
+const DAY_PREVIEW_MAX_ENTRIES = 93;
 
 export async function previewTxnAmountsAction(input: {
   componentId: string;
@@ -506,26 +526,37 @@ export async function previewTxnAmountsAction(input: {
   companyId: string;
   payPeriod: string;
   unit: string | null;
-  /** Already deduplicated and normalised by the caller. Capped server-side regardless. */
-  quantities: string[];
+  /** Already deduplicated and normalised by the caller. Deduplicated and capped server-side regardless. */
+  entries: { txnDate: string; quantity: string }[];
 }): Promise<TxnAmountsPreview> {
   const { s, scopeIds } = await scopedAdmin();
   if (!input.companyId || !scopeIds.includes(input.companyId)) return { ok: false, error: 'outOfScope' };
   if (!input.componentId || !input.employmentId) return { ok: true, derived: false };
   if (!isPayPeriod(input.payPeriod)) return { ok: false, error: 'periodInvalid' };
-  // A month has at most 31 days, so 31 DISTINCT quantities is already the ceiling a real grid can reach.
   // The cap is here rather than only on the client because the client is not the authority on request size.
-  const quantities = [...new Set(input.quantities)].slice(0, 31);
-  if (quantities.length === 0) return { ok: true, derived: false };
+  const seen = new Set<string>();
+  const entries: { txnDate: string; quantity: string }[] = [];
+  for (const e of Array.isArray(input.entries) ? input.entries : []) {
+    const txnDate = typeof e?.txnDate === 'string' ? e.txnDate : '';
+    const quantity = typeof e?.quantity === 'string' ? e.quantity : '';
+    const k = `${txnDate}|${quantity}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    entries.push({ txnDate, quantity });
+    if (entries.length >= DAY_PREVIEW_MAX_ENTRIES) break;
+  }
+  if (entries.length === 0) return { ok: true, derived: false };
   try {
-    const results: { quantity: string; amount: string }[] = [];
+    const results: { txnDate: string; quantity: string; amount: string }[] = [];
     let code = '';
     let inputUnit: 'hours' | 'days' | null = null;
     let zeroDivisor: { divisor: string; step: number } | null = null;
     let anyDerived = false;
-    for (const q of quantities) {
+    for (const { txnDate, quantity: q } of entries) {
       const n = Number(q);
       if (!Number.isFinite(n)) continue;
+      // Each dated line is priced ON ITS OWN, with its own Effective Date — a malformed date is refused by
+      // the evaluator (TxnEffectiveDateInvalidError → 'invalidEffectiveDate'), never silently re-dated.
       const d = await deriveIndividualTxnAmount(s, {
         componentId: input.componentId,
         employmentId: input.employmentId,
@@ -533,6 +564,7 @@ export async function previewTxnAmountsAction(input: {
         payPeriod: input.payPeriod,
         quantity: n,
         unit: input.unit,
+        effectiveDate: txnDate === '' ? null : txnDate,
       });
       if (!d.derived) continue;
       anyDerived = true;
@@ -544,7 +576,7 @@ export async function previewTxnAmountsAction(input: {
       // PER-DAY ROUNDING, and it happens HERE, once, in the same `toFixed(2)` the single-entry preview and
       // the write both use. This is why five days of a split can total a cent away from the same hours
       // keyed as one figure — the amount shown against a date is the amount that date is worth.
-      results.push({ quantity: q, amount: d.amount.toFixed(2) });
+      results.push({ txnDate, quantity: q, amount: d.amount.toFixed(2) });
     }
     if (!anyDerived) return { ok: true, derived: false };
     const tr = await getTranslations('payRule');
@@ -628,6 +660,9 @@ export async function createIndividualTxnDayGridAction(input: {
         quantity: l.quantity,
         unit: input.unit,
         typed: l.amount,
+        // 34062f81 — EACH LINE'S OWN DATE: a line dated in February is divided by February's days even
+        // when its neighbour, with the same quantity, is dated in October.
+        txnDate: l.txnDate,
       });
       rows.push({
         kind: input.kind,
@@ -713,6 +748,7 @@ export async function createIndividualTxnAction(
       quantity: input.quantity,
       unit: input.unit,
       typed: input.amount,
+      txnDate: input.txnDate,
     });
     const { ids, widenedEmploymentIds } = await createIndividualTxnsBulk(s, {
       ...(input.batchId ? { batchId: input.batchId } : { companyId: input.companyId, payPeriod: input.payPeriod }),
@@ -776,6 +812,9 @@ export async function updateIndividualTxnAction(
       quantity: input.quantity,
       unit: input.unit,
       typed: input.amount,
+      // 34062f81 — the date the row WILL carry after this edit (the service keeps the stored one when the
+      // form sends none), so moving a line to another month re-prices its calendar days.
+      txnDate: input.txnDate ?? existing.txnDate,
     });
     await updateIndividualTxn(s, {
       id: input.id,
