@@ -570,3 +570,7 @@ Knowledge article publication uses the generic own compatibility lifecycle. Its 
 ### WP9 — pay catalogue creation compatibility (30 October 2026)
 
 Typed pay-component catalogue creation uses the generic own compatibility lifecycle, bound to the actual current login with null employment/company. The source retains current payroll and typed-pay-component module gates, canonical catalogue locking and native administrator authority. Human content, installed SQL/ciphertext formats, 32KiB sealed-body limit, 64KiB outward-review cap, atomic created-event proof and historical-create reconciliation remain unchanged. No employee assignment, payroll run or model-calculated value is introduced; no migration is required.
+
+### WP9 — additional payroll draft compatibility (30 October 2026)
+
+Multi-cycle draft creation uses the generic own compatibility lifecycle with its exact installed company/month/cycle/run-type binding, 45KB sealed-body cap and source-owned erasure targets. Its explicit peek protocol keeps current actor and canonical source interval before encrypted nomination, full native preflight before custody NOWAIT, and an exact snapshot reread before execution. Completed rows reconcile without preparing or creating another run. Sensitive Approve-tier authority stays explicit; no payroll processing, closing, payslip or payment is performed. No migration or ciphertext rewrite is required.

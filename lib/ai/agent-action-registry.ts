@@ -296,7 +296,7 @@ export const AGENT_ACTIONS=Object.freeze([
   permission:{actor:'payroll_admin',guard:'core/assistant-actions/reviewed-multi-cycle-run-source.ts#assertReviewedMultiCycleRunActorTx'},subject:'company',blastRadius:{max:1,unit:'draft_additional_run_one_company_period'},
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'payroll'},reversal:{kind:'entry_point',by:'app/payroll/actions.ts#deleteDraftBatchAction'},evaluationCases:[],
   screen:{native:'app/payroll/process/page.tsx',entryPoints:['app/payroll/process/actions.ts#createRunAction']},review:{route:'/assistant/payroll-runs',handoff:'review_page'},
-  store:'dedicated',browserOwner:'multiCycleRun',pauseKey:'hr_assistant'}),
+  store:'generic_own',browserOwner:'multiCycleRun',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'typed_pay_components.create',module:'typed_pay_components',owner:'payroll',service:'packs/payroll/service.ts#createPayComponent',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_pay_component_review_v1',inputSchema:'PayComponentReviewPrepare',outputSchema:'PayComponentPreparedReview'},
   confirm:{status:'implemented',adapter:'module_pay_component_review_v1',inputSchema:'PayComponentReviewConfirmation',outputSchema:'PayComponentCompletedReview'},
