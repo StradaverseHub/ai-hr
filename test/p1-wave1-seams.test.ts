@@ -1,3 +1,4 @@
+import {configureRewardFixture as saveRewardPolicy,refreshRewardFixtureBudget} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 /**
  * P1 wave 1 (APR-020) — the seams between WP-F (returned Rewards reviews), WP-B1 (Calibration destination)
@@ -26,7 +27,7 @@ import { listPendingTasks, type InboxModules, type PendingTaskItem } from '../co
 import * as perf from '../packs/performance/service';
 import { defaultPolicy } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
-import { createRewardUnit, decideRewardUnit, getRewardUnit, returnedRewardUnits, saveRewardEntry, saveRewardPolicy } from '../packs/rewards/service';
+import { createRewardUnit, decideRewardUnit, getRewardUnit, returnedRewardUnits, saveRewardEntry } from '../packs/rewards/service';
 import { emptyFacts } from '../packs/rewards/model';
 import { PACK_TASK_KINDS } from '../lib/assigned-work';
 import { HOME_TASK_KINDS, validateEmployeeHomeConfiguration } from '../lib/employee-home';
@@ -87,6 +88,7 @@ describe('(a) a returned Rewards review in the shared task list', () => {
     await saveRewardPolicy(a, unitId, v.unit.revision, { ...v.unit.policy, effectiveFrom: today, patActual: 100, patTarget: 100, ranges: { '12': [300000, 500000, 700000] } });
     const v2 = await view();
     await saveRewardEntry(a, unitId, v2.unit.revision, v2.rows[0].id, v2.rows[0].recommendation, { ...emptyFacts(), reviewed: true, talent: 'SCORE', performance: 'ME' });
+    await refreshRewardFixtureBudget(a,unitId);
     expect(await decideRewardUnit(actors.bu, unitId, (await view()).unit.revision, 'submit', 'Reviewed recommendations')).toBe('bg');
     expect(await decideRewardUnit(actors.bg, unitId, (await view()).unit.revision, 'return', 'Merit for the sales team needs a rethink')).toBe('draft');
 

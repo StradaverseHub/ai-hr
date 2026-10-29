@@ -187,12 +187,12 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
 /**
  * SETTINGS — the per-tenant behaviour values.
  *
- * The FOUR `platform`-scoped rows here are the ones that must NOT be customer-writable, and the
+ * The platform-scoped rows here must NOT be customer-writable, and the
  * reasoning is recorded per row rather than in a design doc nobody reads at 2am:
- *   - the two payroll risk switches reopen or wipe a finalised payroll run,
+ *   - payroll unlock reopens a closed payroll run,
  *   - `audit.hash_chain_enabled` is the tamper-evidence itself, and
  *   - `feedback.ai_planning_enabled` is operator tooling, not a customer feature.
- * A customer sees the first three; only Stradaverse changes any of them. `defaultOnInstall: false` on
+ * Payroll reset/removal is tenant-controlled by group admins (ADR-0162). `defaultOnInstall: false` on
  * the risk switches is deliberate — a purchased module must never arrive with an escape hatch already
  * open, even though the demo deployment has both env flags ON today (F4).
  *
@@ -215,7 +215,7 @@ export const SETTING_CATALOG: SettingCatalogEntry[] = [
   { key: 'performance.ai_review_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Prepare guided review summaries and record trends.', sortOrder: 213 },
   { key: 'performance.ai_idp_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Suggest development goals and career plan drafts.', sortOrder: 214 },
   { key: 'performance.ai_calib_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Assist calibration summaries, conversations and curve fit.', sortOrder: 215 },
-  { key: 'payroll.reset_enabled', moduleCode: 'payroll', scope: 'platform', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Allow reverting a processed payroll run to draft. Weakens payroll controls; enabling is an audited platform action.', sortOrder: 10 },
+  { key: 'payroll.reset_enabled', moduleCode: 'payroll', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Allow payroll reset and employee removal on processed runs. Group admins control this tenant-wide setting; changes are audited.', sortOrder: 10 },
   { key: 'payroll.unlock_enabled', moduleCode: 'payroll', scope: 'platform', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Allow unlocking a closed payroll run back to processed. Reverses the statutory freeze; enabling is an audited platform action.', sortOrder: 20 },
   // `defaultOnInstall: true` — the ONLY entry that differs from its bare default, and deliberately so
   // (review r3). This is not a risk switch: it decides whether the one-off transaction ledger is paid or
@@ -226,7 +226,7 @@ export const SETTING_CATALOG: SettingCatalogEntry[] = [
   // silently stop reaching the payslip, with no error and no way to notice. That is the same
   // silent-downgrade shape the parity set exists to prevent, and unlike the two switches above it is
   // `scope: 'tenant'`, so 0313's `tenant_setting_write` policy lets `ai_hr_app` change it once slice 7
-  // ships a settings screen. The two platform risk switches stay `false`: a purchased module must not
+  // ships a settings screen. Both risk switches keep install-default `false`: a purchased module must not
   // arrive able to revert a processed run or unlock a closed one.
   { key: 'payroll.individual_txn_pay_enabled', moduleCode: 'payroll', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: true, customerVisible: true, description: 'Let the payroll kernel pay and deduct the one-off transaction ledger, instead of keeping it record-only.', sortOrder: 30 },
   { key: 'audit.hash_chain_enabled', moduleCode: null, scope: 'platform', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Tamper-evident hash chaining over the audit log. Integrity control — Stradaverse-managed, and one-way once enabled (slice 8).', sortOrder: 100 },

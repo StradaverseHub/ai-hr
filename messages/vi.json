@@ -7375,7 +7375,8 @@
             "employerBorne": "Do người sử dụng lao động chịu",
             "gross": "Lương gộp",
             "totalDeductions": "Tổng khấu trừ",
-            "net": "Lương thực lãnh"
+            "net": "Lương thực lãnh",
+            "totalOvertime": "Tổng tiền tăng ca"
           },
           "subject": {
             "epf": "EPF",
@@ -7385,7 +7386,8 @@
             "tax": "Thuế",
             "yes": "Y",
             "no": "N"
-          }
+          },
+          "overtimeIncludedInGross": "Đã bao gồm trong tổng lương"
         },
         "panel": {
           "heading": "Chọn nhân viên",
@@ -7464,6 +7466,18 @@
         "title": "Thiết lập thông tin phiếu lương",
         "desc": "Chọn thông tin việc làm hiển thị trên phiếu lương của công ty.",
         "cta": "Tải"
+      },
+      "corrections": {
+        "title": "Kiểm soát điều chỉnh bảng lương",
+        "label": "Cho phép đặt lại bảng lương và xóa lương nhân viên",
+        "description": "Hiển thị Đặt lại bảng lương và Xóa lương nhân viên trên các đợt đã tính nhưng chưa công bố. Tắt cài đặt cũng chặn các thao tác này. Các quyền và kiểm tra bảng lương hiện có vẫn áp dụng.",
+        "scope": "Áp dụng cho tất cả công ty trong đơn vị này. Lưu cài đặt không thay đổi kết quả bảng lương.",
+        "readOnly": "Chỉ quản trị viên cấp tập đoàn mới có thể thay đổi cài đặt này.",
+        "save": "Lưu cài đặt điều chỉnh",
+        "saving": "Đang lưu…",
+        "saved": "Đã lưu cài đặt điều chỉnh bảng lương.",
+        "invalid": "Chọn giá trị bật hoặc tắt hợp lệ.",
+        "failed": "Không thể lưu cài đặt. Vui lòng thử lại."
       }
     },
     "historyImport": {
@@ -8201,7 +8215,8 @@
       "fileError": {
         "emptyFile": "Tệp đó không có dòng dữ liệu nào.",
         "tooManyRows": "Tệp đó có hơn 2.000 dòng. Hãy chia nhỏ và nhập theo từng phần.",
-        "missingColumns": "Tệp đó thiếu cột bắt buộc. Hãy tải mẫu và giữ nguyên tiêu đề của mẫu."
+        "missingColumns": "Tệp đó thiếu cột bắt buộc. Hãy tải mẫu và giữ nguyên tiêu đề của mẫu.",
+        "individualImportMoved": "Tải lại trang và dùng chức năng nhập Giao dịch cá nhân hiện tại để ghi lại từng lô và kết quả từng dòng. Biểu mẫu cũ này chưa nhập giao dịch nào."
       },
       "reason": {
         "employeeUnknown": "Mã nhân viên {value} không tồn tại",
@@ -8236,11 +8251,17 @@
         "duplicateInRun": "Kỳ lương này đã có {code} {amount} cho nhân viên này",
         "duplicateInFile": "Dòng {row} của tệp này đã có {code} cho nhân viên này với cùng số tiền",
         "duplicateImported": "Dòng này của tệp này đã được nhập trước đó",
-        "runMissingForCycle": "Chưa có kỳ lương {cycle} đang mở cho {period} — hãy tạo trước rồi nhập"
+        "runMissingForCycle": "Chưa có kỳ lương {cycle} đang mở cho {period} — hãy tạo trước rồi nhập",
+        "dailyItemUnsupported": "Khoản lương này không hỗ trợ nhập hàng ngày tính tiền từ số lượng.",
+        "inputTypeInvalid": "Loại đầu vào phải là đơn vị nhập thủ công được hỗ trợ và đúng quy tắc khoản lương.",
+        "cycleAmbiguous": "Chu kỳ lương bị thiếu hoặc không rõ. Chọn mã hoặc tên chính xác thuộc công ty nhân viên.",
+        "runAmbiguous": "Có nhiều kỳ có thể sửa khớp với chu kỳ và tháng. Giải quyết sự trùng khớp trước khi nhập.",
+        "previewChanged": "Khoản lương hoặc số tiền tính đã thay đổi sau xem trước. Kiểm tra một lần nhập mới trước khi xác nhận."
       },
       "warning": {
         "runAlreadyProcessed": "Kỳ lương {period} đã tạo phiếu lương. Dòng này sẽ được thêm vào và kỳ lương được đánh dấu cần xử lý lại — chưa được trả cho đến khi bạn xử lý lại.",
-        "bonusRunExists": "Tháng này có kỳ thưởng, nhưng {code} đang vào kỳ lương thường. Điền “bonus” vào cột Chu kỳ lương để chuyển sang kỳ thưởng."
+        "bonusRunExists": "Tháng này có kỳ thưởng, nhưng {code} đang vào kỳ lương thường. Điền “bonus” vào cột Chu kỳ lương để chuyển sang kỳ thưởng.",
+        "employeeNameMismatch": "Tên cung cấp không khớp Mã nhân viên. Hệ thống dùng Mã nhân viên."
       }
     },
     "borang8a": {
@@ -9435,6 +9456,79 @@
       "acknowledge": "Tôi hiểu. Thay thế các bản ghi đã chọn bằng giá trị trong tệp của tôi. Giá trị gốc vẫn nằm trong lịch sử kiểm toán và có thể hoàn tác từ Log File.",
       "confirmOverwrite": "Xác nhận ghi đè và nhập",
       "importNewOnly": "Chỉ nhập bản ghi mới"
+    },
+    "individualImport": {
+      "open": "Nhập Excel",
+      "log": "Nhật ký nhập",
+      "logHint": "Xem các lô nhập giao dịch cá nhân và kết quả gốc từng dòng.",
+      "back": "Giao dịch cá nhân",
+      "close": "Đóng",
+      "workflow": "Tải mẫu phù hợp, kiểm tra tệp, xem các dòng rồi xác nhận giao dịch hợp lệ.",
+      "choose": "1. Chọn phương thức nhập và tệp",
+      "method": "Phương thức nhập",
+      "monthly": "Một tổng cho cả tháng",
+      "daily": "Theo từng ngày",
+      "monthlyTemplate": "Tải mẫu hàng tháng",
+      "dailyTemplate": "Tải mẫu theo ngày",
+      "dailyHint": "Nhập theo ngày yêu cầu khoản lương hỗ trợ nhập hàng ngày và tính tiền từ số lượng.",
+      "file": "Tệp",
+      "working": "Đang xử lý…",
+      "validate": "Kiểm tra tệp",
+      "preview": "2. Xem trước và xác nhận",
+      "results": "Kết quả nhập",
+      "details": "Xem chi tiết",
+      "previewCounts": "{total} dòng · {valid} hợp lệ · {invalid} không hợp lệ",
+      "resultCounts": "{written} đã nhập · {failed} thất bại · {invalid} chưa nhập",
+      "row": "Dòng Excel",
+      "employee": "Nhân viên",
+      "payItem": "Khoản lương",
+      "effectiveDate": "Ngày hiệu lực",
+      "amount": "Số tiền",
+      "outcome": "Kết quả",
+      "confirmHint": "Chỉ nhập các dòng hợp lệ. Dòng không hợp lệ không tạo giao dịch. Kiểm tra cảnh báo trước khi xác nhận.",
+      "confirm": "Xác nhận nhập",
+      "reference": "Mã lô",
+      "time": "Ngày và giờ",
+      "user": "Mã người dùng",
+      "validated": "Đã kiểm tra",
+      "completed": "Hoàn tất",
+      "reverted": "Đã hoàn tác",
+      "empty": "Không có bản nhập trong phạm vi công ty đã chọn.",
+      "revert": "Hoàn tác nhập",
+      "revertWarning": "Hoàn tác lô {id} ({file})? Chỉ đảo {count} giao dịch do lô này tạo. Nhật ký gốc được giữ lại.",
+      "revertControls": "Từ chối toàn bộ nếu bản ghi đã thay đổi hoặc quy định lương hiện tại không cho phép. Giao dịch thủ công và lô khác không bị ảnh hưởng.",
+      "revertConfirm": "Tôi xác nhận hoàn tác lô nhập được nêu.",
+      "processedConfirm": "Nếu quy định hiện hành cho phép sửa giao dịch đã xử lý, tôi hiểu rằng phải tính lại lương.",
+      "revertedAt": "Hoàn tác lúc",
+      "month": "Tháng lương",
+      "cycle": "Chu kỳ lương",
+      "quantity": "Số lượng",
+      "remark": "Ghi chú",
+      "imported": "Đã nhập",
+      "invalid": "Không hợp lệ",
+      "failed": "Không thể hoàn tất thao tác. Vui lòng thử lại.",
+      "revertFailed": "Không thể hoàn tác lô. Kiểm tra bản ghi đã sửa hoặc kỳ lương đã đóng.",
+      "importAccessDenied": "Bản nhập này không thuộc phạm vi công ty hiện tại của bạn.",
+      "operationChanged": "Nội dung tải lên đã thay đổi. Chọn lại tệp và kiểm tra như một lần nhập mới.",
+      "templateMismatch": "Tiêu đề cột không khớp phương thức nhập. Dùng đúng mẫu và không sửa tiêu đề.",
+      "fileTooLarge": "Tệp quá lớn. Chia thành các tệp nhỏ hơn.",
+      "emptyFile": "Trang dữ liệu không có dòng nào.",
+      "tooManyRows": "Mỗi tệp không quá 2.000 dòng.",
+      "invalidFormat": "Chọn tệp Excel .xlsx.",
+      "revertUnavailable": "Lô này không có bản ghi nhập hoàn tất để hoàn tác.",
+      "importRowsChanged": "Bản ghi nhập đã thay đổi hoặc bị xóa. Không có bản ghi nào được đảo.",
+      "confirmProcessedRevert": "Xác nhận cần tính lại lương đã xử lý trước khi hoàn tác lô này.",
+      "instructions": "Chỉ điền trang đầu và giữ nguyên tiêu đề. Month with Year dùng YYYY-MM; Effective Date dùng YYYY-MM-DD và độc lập với tháng lương. Dùng mã nhân viên và khoản lương trong các trang tham chiếu. Pay Cycle nhận mã hoặc tên chính xác của chu kỳ đang hoạt động thuộc công ty nhân viên; chỉ để trống khi có đúng một chu kỳ. Tên nhân viên là tùy chọn. Input Type hàng tháng dùng amount, qty, hours, days hoặc units theo quy tắc khoản lương. Hệ thống tính số tiền theo công thức. Mỗi dòng hàng ngày được giữ riêng và phải theo quy tắc tính tiền từ số lượng. Áp dụng kiểm tra trùng lặp và quy định lương hiện có.",
+      "downloadErrors": "Tải lỗi theo dòng",
+      "older": "Các lần nhập cũ hơn",
+      "audit": "Lịch sử nhập và hoàn tác",
+      "event": {
+        "validated": "Đã kiểm tra",
+        "confirmed": "Đã xác nhận nhập",
+        "reverted": "Đã hoàn tác nhập",
+        "revert-refused": "Hoàn tác bị từ chối"
+      },
+      "inputType": "Loại đầu vào"
     }
   },
   "admin": {
@@ -20865,8 +20959,8 @@
     "effectiveFrom": "Salary effective date",
     "joinedBefore": "Joined before",
     "confirmedBy": "Confirmed by",
-    "blockedFrom": "Pay-change exclusion starts",
-    "blockedTo": "Pay-change exclusion ends",
+    "blockedFrom": "Ngày bắt đầu loại trừ",
+    "blockedTo": "Ngày kết thúc loại trừ",
     "seniorGrades": "Senior-plan grades (comma separated)",
     "rangesHelp": "Salary ranges: grade, minimum RM, midpoint RM, maximum RM (one grade per line)",
     "patActual": "Actual PAT (RM)",
@@ -21048,7 +21142,10 @@
       "retry": "Thử lại",
       "conflict": "{unit} đã thuộc {name} cho năm {year}.",
       "excludedCompany": "Loại trừ cho năm",
-      "companyArchived": "Đã lưu trữ"
+      "companyArchived": "Đã lưu trữ",
+      "selectedSummary": "Công ty và đơn vị kinh doanh đã chọn",
+      "membershipChanged": "Quan hệ tổ chức đã đổi; hãy kiểm tra lựa chọn.",
+      "noMembership": "Không có đơn vị kinh doanh hiện tại trong Quản lý nhân sự."
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",
@@ -21374,7 +21471,129 @@
         "lumpReason": "Budget-cap exemption reason (blank = caps apply)",
         "payWindowKeep": "Eligibility and effective dates"
       }
-    }
+    },
+    "governance": {
+      "title": "Dữ liệu ngân sách đơn vị",
+      "unavailable": "Các điều khiển dữ liệu đơn vị sẽ khả dụng sau khi cập nhật cơ sở dữ liệu cần thiết.",
+      "status": {
+        "legacy": "Giữ nguyên cơ sở ngân sách cũ — không tự động thay đổi",
+        "not-set": "Chưa thiết lập",
+        "provisional": "Tạm tính (9+3)",
+        "final": "Chính thức (Thực tế)"
+      },
+      "standardPool": "Quỹ thưởng Tiêu chuẩn",
+      "hPool": "Quỹ thưởng JG H",
+      "oldNewDifference": "Quỹ cũ {old} → quỹ mới {next}; chênh lệch {difference}",
+      "forecast": "Dự báo PAT 9+3 (MYR)",
+      "actual": "PAT thực tế (MYR)",
+      "target": "PAT mục tiêu (MYR)",
+      "targetMonths": "Số tháng thưởng mục tiêu",
+      "multiplier": "Điều chỉnh hệ số đơn vị",
+      "branchRatings": "Xếp hạng chi nhánh PPCH",
+      "chooseRating": "Chọn xếp hạng",
+      "changeReason": "Lý do thay đổi",
+      "saveInputs": "Lưu dữ liệu đơn vị",
+      "patHelp": "Dùng PAT thực tế khi có. Trước đó, dự báo tạo quỹ tạm tính. Giá trị bằng không hoặc giá trị giữ chỗ hiển thị Chưa thiết lập.",
+      "adoptLegacy": "Kiểm tra cơ sở đã lưu trước khi áp dụng dữ liệu đơn vị. Việc lưu chỉ áp dụng các số liệu này cho đợt xét duyệt này.",
+      "exemption": "Miễn trừ trần ngân sách",
+      "confirmed": "Đã xác nhận và khóa",
+      "awaitingCheck": "Đang chờ kiểm tra độc lập",
+      "independentConfirm": "Tôi đã kiểm tra chứng từ — xác nhận",
+      "proposeExemption": "Gửi miễn trừ để người thứ hai phê duyệt",
+      "seniorTitle": "Kế hoạch cấp cao — quyết định ngoài hệ thống",
+      "seniorHelp": "Thành viên JG 21–23 được chọn nằm ngoài mọi quỹ tiêu chuẩn và khoản hỗ trợ một lần. Người dùng Group Rewards thứ hai kiểm tra lựa chọn và số tiền cuối cùng.",
+      "seniorTotals": "Kế hoạch cấp cao (ngoài các quỹ ngân sách): {count} người, tăng lương {increment}, thưởng {bonus}",
+      "selection": "Xác nhận thành viên cấp cao",
+      "noSenior": "Chưa chọn thành viên kế hoạch cấp cao.",
+      "awaitingOffline": "Chờ quyết định ngoài hệ thống",
+      "newBasic": "Lương cơ bản mới (MYR)",
+      "bonus": "Số tiền thưởng (MYR)",
+      "currentBasic": "Lương cơ bản hiện tại",
+      "chooseAmountInput": "Nhập tỷ lệ tăng lương hoặc lương cơ bản mới, không nhập cả hai.",
+      "increment": "Tăng lương %",
+      "reference": "Mã phê duyệt ngoài hệ thống",
+      "approvalDate": "Ngày phê duyệt",
+      "evidence": "Chứng từ hỗ trợ (PDF, PNG hoặc JPEG; tối đa 10 MB mỗi tệp)",
+      "proposeAward": "Gửi số tiền để người thứ hai phê duyệt",
+      "history": "Lịch sử quyết định đơn vị",
+      "auditValues": "Xem giá trị trước và sau",
+      "seniorTag": "Kế hoạch cấp cao",
+      "handledSeparately": "Kế hoạch cấp cao — xử lý riêng",
+      "before": "Trước",
+      "after": "Sau",
+      "errors": {
+        "invalid": "Kiểm tra các giá trị và độ chính xác được hỗ trợ rồi thử lại.",
+        "independent": "Một người dùng Group Rewards khác phải kiểm tra và xác nhận quyết định này.",
+        "stale": "Đợt xét duyệt hoặc hồ sơ nhân viên đã thay đổi. Tải lại, kiểm tra giá trị hiện tại và gửi lại.",
+        "salary": "Lương cơ bản mới không được thấp hơn lương cơ bản hiện tại.",
+        "evidence": "Dùng chứng từ PDF, PNG hoặc JPEG, tối đa 10 MB mỗi tệp và tổng cộng 10 MB.",
+        "authority": "Vai trò hiện tại của bạn không cho phép thao tác hoặc hồ sơ này.",
+        "budget": "Kiểm tra PAT, trạng thái quỹ, xếp hạng chi nhánh và hệ số trước khi tiếp tục.",
+        "decision": "Hoàn tất lựa chọn thành viên cấp cao hoặc quyết định ngoài hệ thống và lấy xác nhận độc lập.",
+        "locked": "Đưa đợt xét duyệt về bản nháp trước khi thay đổi dữ liệu đã khóa."
+      },
+      "handpick": "Chọn thành viên kế hoạch cấp cao",
+      "reviewer": "Người xét duyệt Group Rewards",
+      "events": {
+        "inputs": "Đã cập nhật dữ liệu đơn vị",
+        "selectionProposed": "Đã đề xuất thành viên cấp cao",
+        "selectionConfirmed": "Đã xác nhận thành viên cấp cao",
+        "exemptionProposed": "Đã đề xuất miễn trừ",
+        "exemptionConfirmed": "Đã xác nhận miễn trừ",
+        "awardProposed": "Đã đề xuất số tiền cấp cao",
+        "awardConfirmed": "Đã xác nhận số tiền cấp cao"
+      }
+    },
+    "policyGrids": {
+      "ranges": "Khoảng lương (MYR)",
+      "bonusMatrix": "Số tháng thưởng theo bậc",
+      "branchFactors": "Hệ số chi nhánh",
+      "import": "Nhập từ Excel",
+      "copy": "Sao chép cấu hình năm trước",
+      "columns": "Các cột Excel: {columns}",
+      "fileError": "Dùng tệp .xlsx tối đa 2 MB với các cột đúng thứ tự.",
+      "choosePrevious": "Chọn cấu hình năm {year}",
+      "version": "Phiên bản {version}",
+      "noPrevious": "Không có cấu hình năm trước mà bạn được phép xem.",
+      "cancel": "Hủy",
+      "preview": "Xem trước giá trị đề xuất",
+      "proposalInvalid": "Sửa ô không hợp lệ sau khi áp dụng; chưa thể lưu khi còn lỗi.",
+      "proposalHelp": "Kiểm tra các giá trị trước khi áp dụng vào bản nháp.",
+      "apply": "Áp dụng vào bản nháp",
+      "grade": "Bậc",
+      "segment": "Phân khúc",
+      "minimum": "Tối thiểu",
+      "midpoint": "Trung điểm",
+      "maximum": "Tối đa",
+      "noRange": "Không có khoảng",
+      "invalidCell": "Nhập giá trị hợp lệ: đủ bậc, tăng nghiêm ngặt, UA = 0 và đúng độ chính xác thập phân.",
+      "remove": "Xóa",
+      "addSegment": "Thêm phân khúc"
+    },
+    "eligibilitySummary": {
+      "title": "Điều kiện được xét theo",
+      "activeAsOf": "Đang làm việc tại ngày",
+      "joinedBefore": "Gia nhập trước",
+      "confirmedBy": "Xác nhận trước",
+      "effectiveFrom": "Lương có hiệu lực từ",
+      "salaryWindow": "Loại khỏi tăng lương: lương cơ bản thay đổi trong {from}–{to}. Thưởng vẫn theo điều kiện riêng.",
+      "bonus": "Thưởng: xếp hạng tối thiểu {rating}.",
+      "notice": "Loại nhân viên đang trong thời hạn báo trước.",
+      "er": "Loại nhân viên có vụ việc ER.",
+      "senior": "Kế hoạch Senior (JG 21–23): chọn từng người trong kỳ xét; mức thưởng cuối được xử lý riêng.",
+      "seniorLegacy": "Thành viên Senior theo quy tắc bậc cũ đã lưu.",
+      "legacyDefaults": "Phiên bản này có trước các thiết lập điều kiện rõ ràng. Quy tắc bản chụp cũ vẫn áp dụng; kiểm tra dữ liệu trước khi lưu phiên bản mới.",
+      "unavailable": "Không có chi tiết điều kiện. Làm mới cấu hình trước khi tiếp tục.",
+      "minimumRating": "Xếp hạng thưởng tối thiểu",
+      "legacySnapshot": "Quy tắc cũ: trạng thái tại bản chụp nguồn đã lưu",
+      "legacyMinimum": "Quy tắc cũ: chưa lưu mức xếp hạng thưởng tối thiểu."
+    },
+    "salaryExclusion": {
+      "label": "Loại khỏi tăng lương – lương cơ bản thay đổi trong",
+      "help": "Không tính tăng lương và không tính vào cơ sở quỹ tăng lương. Vẫn đủ điều kiện thưởng, tính theo lương cơ bản đã điều chỉnh và được tính vào quỹ thưởng. Điều chuyển ngang không đổi lương cơ bản không bị loại."
+    },
+    "unitInputsHelp": "Ngân sách đơn vị, PAT, hệ số, xếp hạng chi nhánh và miễn trừ được quản lý riêng trong kỳ xét.",
+    "unitInputsLink": "Mở dữ liệu đơn vị"
   },
   "identityEmail": {
     "title": "Gửi email",
@@ -29386,7 +29605,8 @@
       "bonusReference": "Bảng tham chiếu số tháng thưởng",
       "bonusByGrade": "Theo bậc và xếp loại ({count, plural, other {# bậc}})",
       "exemption": "Miễn trừ trần ngân sách",
-      "noExemption": "Không (áp dụng trần)"
+      "noExemption": "Không (áp dụng trần)",
+      "unitInputs": "Ngân sách, hệ số và miễn trừ của đơn vị được đặt riêng trong từng kỳ xét."
     },
     "actions": {
       "editDeadlines": "Sửa hạn chót",

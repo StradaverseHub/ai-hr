@@ -126,12 +126,13 @@ export async function setTenantSetting(
     if(p.key==='ess.profile_change_fields'||p.key==='ess.profile_change_approver'||p.key==='ess.profile_photo_edit'||p.key===PROFILE_ROUTING_KEY)await lockProfileEditPolicyTx(tx,ctx.tenantId);
     await tx
       .insert(schema.tenantSetting)
-      .values({ tenantId: ctx.tenantId, key: p.key, value: p.value as never, source: 'customer' })
+      .values({ tenantId: ctx.tenantId, key: p.key, value: p.value as never, source: 'customer', updatedBy: ctx.userId ?? null })
       .onConflictDoUpdate({
         target: [schema.tenantSetting.tenantId, schema.tenantSetting.key],
         // `source` is re-stated on the update arm on purpose: a row the platform wrote and the customer
         // then changed is a CUSTOMER row, and 0313 says provenance follows the write.
-        set: { value: p.value as never, source: 'customer', updatedAt: sql`now()` },
+        // Attribute this edit to its current actor, including when another admin wrote the prior row.
+        set: { value: p.value as never, source: 'customer', updatedBy: ctx.userId ?? null, updatedAt: sql`now()` },
       });
 
     await appendEvent(tx, {

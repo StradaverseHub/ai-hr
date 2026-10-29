@@ -148,6 +148,7 @@ export function TxnImportButtons({
       setError(null);
       try {
         const r = await commitTxnImportAction(csv, kind);
+        if(r.fileError){setError(t(`fileError.${r.fileError}` as never));setResult(null);setPreview(null);return;}
         setResult(r);
         setPreview(null);
         router.refresh();

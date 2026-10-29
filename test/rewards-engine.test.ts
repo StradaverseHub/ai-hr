@@ -73,7 +73,7 @@ describe('Reward Desk deterministic calculation and confidentiality', () => {
     expect(result.rows[0].bonusEligible).toBe(false);
     expect(result.rows[0].lumpEligible).toBe(false);
     expect(result.rows[1].bonusEligible).toBe(true);
-    expect(result.rows[0].incrementEligible).toBe(true);
+    expect(result.rows[0].incrementEligible).toBe(false);
     expect(result.rows[1].incrementEligible).toBe(true);
   });
   it('preserves a saved legacy grade rule until conversion is explicitly adopted', () => {

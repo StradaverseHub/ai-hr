@@ -1,3 +1,4 @@
+import {rewardPolicyMemberships} from '@/packs/rewards/service';
 import {RewardReviewActions} from './review-actions';
 import {RewardReviewCreateForm} from './create-review-form';
 import Link from 'next/link';
@@ -19,6 +20,7 @@ export default async function RewardsConfigurationPage({ searchParams }: { searc
   const t = await getTranslations('rewards'); const { error,sharedError,deleted,deletionError,cancelled,...filter } = await searchParams;
   const td=await getTranslations('rewardsDeletion'),tc=await getTranslations('rewardsConfig'),locale=await getLocale();
   const choices = await rewardSetupChoices(s, scopeIds);
+  const memberships=await rewardPolicyMemberships(s,choices.companies.map(c=>c.id));
   const all = await listRewardUnits(s, choices.companies.map(c => c.id));
   // Filters narrow the server-rendered list; options come from the reviews the viewer can already see.
   const units = all.filter(u => (!filter.cycle || u.cycleId === filter.cycle) && (!filter.company || u.companyId === filter.company) && (!filter.unit || u.businessUnitId === filter.unit) && (!filter.stage || u.status === filter.stage));
@@ -52,6 +54,6 @@ export default async function RewardsConfigurationPage({ searchParams }: { searc
         <td className="px-3 py-3">{u.people == null || u.verified == null ? tc('notAvailable') : u.people === 0 ? <span className="text-muted-foreground">{tc('noPeople')}</span> : u.verified === u.people ? <Badge variant="success" className="normal-case">{tc('allVerified')}</Badge> : <Badge variant="warning" className="normal-case">{tc('verifiedOf', { verified: u.verified, total: u.people })}</Badge>}</td>
         <td className="px-3 py-3"><RewardReviewActions review={u}/></td></tr>)}</tbody>
     </table>{!all.length ? <p className="max-w-2xl px-5 py-10 text-sm text-muted-foreground">{t('adminEmpty')}</p> : !units.length && <p className="max-w-2xl px-5 py-10 text-sm text-muted-foreground">{tc('filters.empty')}</p>}</div>
-    {choices.companies.length>0&&<Card><SectionHeader title={t('createUnit')}/><RewardReviewCreateForm actorUserId={s.userId??''} today={today} companies={choices.companies} units={choices.units} cycles={choices.cycles} shared={shared}/></Card>}
+    {choices.companies.length>0&&<Card><SectionHeader title={t('createUnit')}/><RewardReviewCreateForm actorUserId={s.userId??''} today={today} companies={choices.companies} units={choices.units} memberships={memberships} cycles={choices.cycles} shared={shared}/></Card>}
   </div>;
 }

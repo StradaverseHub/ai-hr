@@ -6993,6 +6993,8 @@ export const payrollInput = pgTable(
     bonusAmount: numeric('bonus_amount', { precision: 12, scale: 2 }).notNull().default('0'),
     // PCB inputs (LHDN spec): TP1 optional deductions claimed this month (LP₁) and zakat paid
     // via salary deduction — zakat offsets the month's MTD per §E.5 and accumulates into Z.
+    /** Historical source references only; manual edits never make these a current amount owner. */
+    rewardProvenance:jsonb('reward_provenance').$type<{unitId:string;entryId:string;revision:number;plan:'Senior plan';confirmedBy:string;confirmedAt:string;historicalOnly:true}[]>().notNull().default([]),
     tp1Deduction: numeric('tp1_deduction', { precision: 12, scale: 2 }).notNull().default('0'),
     // ADR-0050 §0.4 provenance: who last set tp1_deduction. 'tp1_self' = a TP1 self-relief prefill set it
     // (refreshable by a later prefill); null (default) = an admin keyed it / never prefilled (sticky — a
@@ -10420,6 +10422,26 @@ export const rewardUnit = pgTable('reward_unit', {
   postedAt: timestamp('posted_at', { withTimezone: true }), createdAt: createdAt(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
+/** Private unit-level inputs and independent Senior decisions; public projections are service-owned. */
+export const rewardGovernance = pgTable('reward_governance', {
+  unitId: uuid('unit_id').primaryKey().references(()=>rewardUnit.id), tenantId:tenantId(),
+  state:jsonb('state').$type<import('../packs/rewards/governance-model').RewardGovernance>().notNull(),
+  updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+});
+export const rewardGovernancePublic=pgTable('reward_governance_public',{
+ unitId:uuid('unit_id').primaryKey().references(()=>rewardUnit.id),tenantId:tenantId(),snapshot:jsonb('snapshot').$type<import('../packs/rewards/governance-model').RewardPublicGovernance>().notNull(),
+});
+export const rewardSeniorAward=pgTable('reward_senior_award',{
+ tenantId:tenantId(),unitId:uuid('unit_id').notNull().references(()=>rewardUnit.id),entryId:uuid('entry_id').primaryKey().references(()=>rewardEntry.id),award:jsonb('award').$type<import('../packs/rewards/governance-model').SeniorAward>().notNull(),
+});
+export const rewardGovernanceHistory = pgTable('reward_governance_history', {
+ id:id(),tenantId:tenantId(),unitId:uuid('unit_id').notNull().references(()=>rewardUnit.id), actorId:uuid('actor_id').notNull().references(()=>appUser.id),
+ kind:text('kind').notNull(),reason:text('reason').notNull(),before:jsonb('before_state'),after:jsonb('after_state').notNull(),createdAt:createdAt(),
+});
+export const rewardSeniorEvidence=pgTable('reward_senior_evidence',{
+ id:id(),tenantId:tenantId(),unitId:uuid('unit_id').notNull().references(()=>rewardUnit.id),entryId:uuid('entry_id').notNull().references(()=>rewardEntry.id),
+ uploadedBy:uuid('uploaded_by').notNull().references(()=>appUser.id),name:text('name').notNull(),mime:text('mime').notNull(),content:text('content').notNull(),createdAt:createdAt(),
+});
 export const rewardMember = pgTable('reward_member', {
   id: id(), tenantId: tenantId(), unitId: uuid('unit_id').notNull().references(() => rewardUnit.id),
   userId: uuid('user_id').notNull().references(() => appUser.id),
@@ -11453,3 +11475,16 @@ const agentPrincipalPrivate=pgSchema('app');
 export const aiAgentPrincipal=agentPrincipalPrivate.table('ai_agent_principal',{
  id:id(),tenantId:uuid('tenant_id').notNull().unique().references(()=>tenant.id),createdAt:createdAt(),
 });
+
+/** Canonical row meaning approved by the import preview; codes and names are only lookup inputs. */
+export type PayrollTxnImportBinding={employmentId:string;companyId:string;departmentId:string|null;componentId:string;intendedCycleId:string|null;targetBatchId:string|null;targetCycle:string;payPeriod:string;txnDate:string;kind:string;quantity:number|null;unit:string|null;sourceRef:string;notes:string|null};
+/** Individual transaction import attempts retain original row outcomes after reversal. */
+export const payrollTxnImportAttempt=pgTable('payroll_txn_import_attempt',{
+ id:id(),tenantId:tenantId(),operationId:uuid('operation_id').notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),
+ companyIds:jsonb('company_ids').$type<string[]>().notNull(),sourceName:text('source_name').notNull(),sourceHash:text('source_hash').notNull(),method:text('method').$type<'monthly'|'daily'>().notNull(),
+ bindings:jsonb('bindings').$type<Record<string,PayrollTxnImportBinding>>().notNull().default({}),
+ records:jsonb('records').$type<Record<string,string>[]>().notNull(),preview:jsonb('preview').$type<import('../lib/payroll-txn-import-schema').TxnImportPreview>().notNull(),
+ outcomes:jsonb('outcomes').$type<import('../lib/individual-txn-import-model').IndividualImportOutcome[]>().notNull().default([]),
+ state:text('state').$type<'validated'|'completed'|'reverted'>().notNull().default('validated'),written:integer('written').notNull().default(0),recalcBatchIds:jsonb('recalc_batch_ids').$type<string[]>().notNull().default([]),
+ createdAt:createdAt(),revertedAt:timestamp('reverted_at',{withTimezone:true}),revertedBy:uuid('reverted_by').references(()=>appUser.id),
+},t=>[uniqueIndex('payroll_txn_import_operation').on(t.tenantId,t.createdBy,t.operationId)]);
