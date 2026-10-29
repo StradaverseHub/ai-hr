@@ -1,5 +1,5 @@
 /** Historical display resolution: a stored null is meaningful and must not fall back to corrected master data. */
-import {sql,type SQL} from 'drizzle-orm';
+import {sql,getTableColumns,type SQL} from 'drizzle-orm';
 import {informationPayslipSnapshot,payslip,payrollBatch,employment,domainEvent} from '../db/schema';
 export function frozenPayslipInformation(field:'grade'|'employmentType',fallback:SQL){
  return sql<string|null>`case when exists(select 1 from ${informationPayslipSnapshot} f where f.payslip_id=${payslip.id}) then (select ${field==='grade'?sql`f.grade`:sql`f.employment_type`} from ${informationPayslipSnapshot} f where f.payslip_id=${payslip.id}) else ${fallback}::text end`;
@@ -9,8 +9,10 @@ export function employmentInformationAt<F extends 'hiredOn'|'joinDate'|'companyI
  return sql<F extends 'joinDate'?string|null:string>`case when exists(select 1 from ${domainEvent} ev where ev.tenant_id=app.current_tenant_id() and ev.subject_employment_id=${employment.id} and ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${asOf}::text) then (select ev.payload->'before'->>${field} from ${domainEvent} ev where ev.tenant_id=app.current_tenant_id() and ev.subject_employment_id=${employment.id} and ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${asOf}::text order by ev.sequence limit 1) else ${fallback}::text end`;
 }
 
+import {QueryBuilder} from 'drizzle-orm/pg-core';
+import * as reportSchema from '../db/schema';
 import type {Tx} from '../db/client';
-import type {PayslipReviewRow} from './payroll-view';
+import type {PayslipReviewRow} from '../packs/payroll/service';
 import type {EmploymentStatus} from './employment-status';
 type RunType=PayslipReviewRow['runType'];
 /** Only retained document fields can overlay a live transaction. Money and publication stay canonical. */
@@ -39,4 +41,18 @@ export function informationDocumentRow(d:HistoricalDocument):RawDocumentRow{
  return {...d.metadata,id:p.id,employmentId:p.employment_id,companyId:b.company_id,batchId:b.id,payPeriod:b.pay_period,runType:b.run_type as RunType,runSeq:b.run_seq,batchStatus:b.status,
  historyImportAttemptId:b.history_import_attempt_id,historyImportCycleName:b.history_import_cycle_name,releasedAt:b.released_at?new Date(String(b.released_at)):null,version:p.version,
  basic:p.basic_salary,allowance:p.allowance,overtime:p.overtime_pay,bonus:p.bonus,gross:p.gross_pay,statutory:p.statutory,otherDeductions:p.other_deductions,totalDeductions:p.total_deductions,net:p.net_pay,employerCost:p.employer_cost,daysWorked:p.days_worked,coverageFrom:p.coverage_from,coverageTo:p.coverage_to,payDate:b.history_import_attempt_id?null:b.batch_date} as RawDocumentRow;
+}
+
+/** Report-only relation. Visible rows retain their ordinary owner; only missing retained rows are added.
+ * The database projection exposes prescribed financial-report fields, never a current Workforce row.
+ */
+export function informationReportRelation<K extends 'employment'|'person'|'employee_statutory_my'|'payslip'|'assignment'|'tp1_relief'|'ea_override'>(kind:K,companyId:string|undefined,period:string){
+ const table=sql.raw(kind),key=sql.raw(kind==='employee_statutory_my'?'person_id':'id'),jsonKey=sql.raw(kind==='employee_statutory_my'?"'person_id'":"'id'");
+ const relation=sql`(select live.* from ${table} live union all select retained.* from
+ (select distinct on (data->>${jsonKey}) data from app.information_report_records(${kind},${companyId??null}::uuid,${period}) with ordinality source(data,source_order) where data->>${jsonKey} is not null order by data->>${jsonKey},source_order) records
+ cross join lateral jsonb_populate_record(null::${table},records.data) retained
+ where not exists(select 1 from ${table} visible where visible.${key}=retained.${key})) ${table}`;
+ const tables={employment:reportSchema.employment,person:reportSchema.person,employee_statutory_my:reportSchema.employeeStatutoryMy,payslip:reportSchema.payslip,assignment:reportSchema.assignment,tp1_relief:reportSchema.tp1Relief,ea_override:reportSchema.eaOverride};
+ const fields=Object.fromEntries(Object.entries(getTableColumns(tables[kind])).map(([key,column])=>[key,sql`${column}`.mapWith(column).as(column.name)]));
+ return new QueryBuilder().select(fields).from(relation).as(kind);
 }

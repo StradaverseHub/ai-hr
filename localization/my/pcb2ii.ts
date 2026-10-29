@@ -1,4 +1,4 @@
-import {employmentInformationAt} from '../../core/information-correction-history';
+import {employmentInformationAt,informationReportRelation} from '../../core/information-correction-history';
 /**
  * 72b100cd — the READ behind PCB 2(II): one employee, one year, twelve months of tax deducted and paid.
  *
@@ -98,13 +98,13 @@ export async function pcb2iiStatement(
         staffNo: employment.employeeCode,
         companyId: employmentInformationAt('companyId',sql`${p.year+'-12-31'}`,sql`${employment.companyId}`),
       })
-      .from(employment)
-      .innerJoin(person, eq(person.id, employment.personId))
+      .from(informationReportRelation('employment',p.companyId,p.year))
+      .innerJoin(informationReportRelation('person',p.companyId,p.year), eq(person.id, employment.personId))
       // The employment's OWN company, joined but no longer SELECTED (r328). It stays because it is part of
       // this read's visibility: an employment whose company the caller cannot see has never resolved here,
       // and dropping the join would quietly widen that. The employer BLOCK is read separately, below.
       .innerJoin(company, eq(company.id,sql`${employmentInformationAt('companyId',sql`${p.year+'-12-31'}`,sql`${employment.companyId}`)}::uuid`))
-      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .leftJoin(informationReportRelation('employee_statutory_my',p.companyId,p.year), eq(employeeStatutoryMy.personId, employment.personId))
       .where(eq(employment.id, p.employmentId))
       .limit(1);
     if (!info) return null;
@@ -148,7 +148,7 @@ export async function pcb2iiStatement(
     // `loadYearRows` uses; the batch's pay period is what the dating rule below consumes.
     const slips = await tx
       .select({ payPeriod: payrollBatch.payPeriod, statutory: payslip.statutory })
-      .from(payslip)
+      .from(informationReportRelation('payslip',p.companyId,p.year))
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
       .where(
         and(

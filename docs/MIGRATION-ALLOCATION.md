@@ -301,8 +301,9 @@ The development-only0698 reservation above is superseded for this authorized fir
 | --- | ---: | ---: | --- |
 | Board information-only corrections,8550b282 |682|1793330000030|0698_information_only_corrections|
 
-Only the unapplied journal position changes from development idx681 to682; the0698 SQL bytes are
-unchanged from the tested implementation. Ordinary populated upgrade, whole gate, restore readiness
+The unapplied journal position is682. The0698 SQL remains a development candidate until its final
+exact-SHA gate, including the retained statutory-report projections; no applied SQL bytes change.
+Ordinary populated upgrade, whole gate, restore readiness
 and exact staging arrival are required before completion. No Bank, Feedback, Enhancement, Mobile or
 V9 feature source is implicitly included. Previously reviewed#62 fixture bytes remain included.
 

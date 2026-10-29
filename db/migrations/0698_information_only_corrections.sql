@@ -166,3 +166,91 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.information_payslip_documents(uuid[],integer,integer,text,uuid,boolean) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.information_payslip_documents(uuid[],integer,integer,text,uuid,boolean) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Report-only fixed projections supplement missing former-employer sources. The underlying Workforce
+-- tables and their RLS stay unchanged. Canonical transactions remain the sole financial source.
+CREATE FUNCTION app.information_report_records(p_kind text,p_company uuid,p_period text) RETURNS SETOF jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF p_kind NOT IN ('employment','person','employee_statutory_my','payslip','assignment','tp1_relief','ea_override')
+ OR p_period !~ '^[0-9]{4}(-(0[1-9]|1[0-2]))?$' OR NOT app.principal_snapshot_current() THEN RETURN; END IF;
+ RETURN QUERY
+ SELECT item FROM public.information_payslip_snapshot f
+ JOIN public.payslip sl ON sl.id=f.payslip_id AND sl.employment_id=f.employment_id AND sl.tenant_id=f.tenant_id
+ JOIN public.payroll_batch b ON b.id=sl.batch_id AND b.company_id=f.company_id AND b.tenant_id=f.tenant_id
+ JOIN public.employment e ON e.id=f.employment_id AND e.tenant_id=f.tenant_id
+ JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+ LEFT JOIN public.employee_statutory_my st ON st.person_id=e.person_id AND st.tenant_id=e.tenant_id
+ LEFT JOIN LATERAL(SELECT ev.payload->'before' AS value FROM public.domain_event ev WHERE ev.tenant_id=e.tenant_id AND ev.subject_employment_id=e.id AND ev.event_type='employment.information.corrected' AND ev.payload->>'effectiveOn'>CASE WHEN length(p_period)=4 THEN p_period||'-12-31' ELSE p_period||'-01' END ORDER BY ev.sequence LIMIT 1) prior ON true
+ CROSS JOIN LATERAL jsonb_array_elements(CASE p_kind
+ WHEN 'employment' THEN jsonb_build_array(jsonb_build_object('id',e.id,'tenant_id',e.tenant_id,'person_id',e.person_id,
+ 'company_id',coalesce(prior.value->>'companyId',e.company_id::text),'employee_code',f.document_metadata->>'employeeCode',
+ 'hired_on',coalesce(prior.value->>'hiredOn',e.hired_on::text),'join_date',CASE WHEN prior.value IS NOT NULL THEN prior.value->>'joinDate' ELSE e.join_date::text END,
+ 'terminated_on',e.terminated_on,'termination_type',e.termination_type))
+ WHEN 'person' THEN jsonb_build_array(jsonb_build_object('id',p.id,'tenant_id',p.tenant_id,'full_name',f.document_metadata->>'employeeName','nationality',p.nationality))
+ WHEN 'employee_statutory_my' THEN jsonb_build_array(jsonb_build_object('person_id',st.person_id,'tenant_id',st.tenant_id,'ic_number',st.ic_number,'passport_number',st.passport_number,
+ 'tax_number',st.tax_number,'epf_number',st.epf_number,'socso_number',st.socso_number,'tax_category',st.tax_category,'num_children',st.num_children,'child_relief_mode',st.child_relief_mode,'child_relief_table',st.child_relief_table,
+ 'epf_citizenship',st.epf_citizenship,'old_ic_number',st.old_ic_number,'passport_issuing_country_code',st.passport_issuing_country_code))
+ WHEN 'payslip' THEN jsonb_build_array(app.information_payslip_document(sl.id)->'payslip')
+ WHEN 'assignment' THEN coalesce((SELECT jsonb_agg(jsonb_build_object('id',a.id,'tenant_id',a.tenant_id,'employment_id',a.employment_id,'position_id',a.position_id,'valid_from',a.valid_from,'valid_to',a.valid_to,'superseded_at',a.superseded_at) ORDER BY a.valid_from,a.id)
+ FROM public.assignment a WHERE a.tenant_id=e.tenant_id AND a.employment_id=e.id AND a.valid_from<=CASE WHEN length(p_period)=4 THEN (p_period||'-12-31')::date ELSE (p_period||'-01')::date END),'[]'::jsonb)
+ WHEN 'tp1_relief' THEN coalesce((SELECT jsonb_agg(jsonb_build_object('id',r.id,'tenant_id',r.tenant_id,'person_id',r.person_id,'deduction_month',r.deduction_month,'approved_month',r.approved_month,'created_at',r.created_at,'tp1_amount',r.tp1_amount::text,'categories',r.categories,'assessment_year',r.assessment_year,'status',r.status) ORDER BY r.created_at,r.id)
+ FROM public.tp1_relief r WHERE r.tenant_id=e.tenant_id AND r.person_id=e.person_id AND r.assessment_year=left(p_period,4)::integer AND r.status='approved'),'[]'::jsonb)
+ WHEN 'ea_override' THEN coalesce((SELECT jsonb_agg(jsonb_build_object('id',r.id,'tenant_id',r.tenant_id,'employment_id',r.employment_id,'year',r.year,'field',r.field,'amount',r.amount::text,'reason',r.reason) ORDER BY r.field)
+ FROM public.ea_override r WHERE r.tenant_id=e.tenant_id AND r.employment_id=e.id AND r.year=left(p_period,4)),'[]'::jsonb)
+ ELSE '[]'::jsonb END) item
+ WHERE f.tenant_id=app.current_tenant_id() AND (p_company IS NULL OR b.company_id=p_company)
+ AND left(b.pay_period,length(p_period))=p_period AND app.can_admin_payroll_for(b.company_id)
+ AND app.information_payslip_document(sl.id) IS NOT NULL
+ ORDER BY b.pay_period DESC,b.run_seq DESC,sl.id;
+END $$;
+REVOKE ALL ON FUNCTION app.information_report_records(text,uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.information_report_records(text,uuid,text) TO ai_hr_app;
+
+--> statement-breakpoint
+-- The existing signatory owner retains its self/effective-year rules, with the same retained paying-company authority.
+CREATE OR REPLACE FUNCTION app.ea_signatory(p_employment_id uuid, p_company_id uuid, p_year text)
+RETURNS TABLE(officer_name text, officer_position text)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp AS $$
+  SELECT sp.full_name, title.title
+  FROM public.employment subject
+  JOIN public.company co ON co.id = p_company_id AND co.tenant_id = subject.tenant_id
+  JOIN public.company_statutory_authority auth
+    ON auth.company_id = co.id AND auth.tenant_id = co.tenant_id AND auth.authority = 'lhdn'
+  JOIN public.person sp ON sp.id = auth.signatory_person_id AND sp.tenant_id = co.tenant_id
+  LEFT JOIN LATERAL (
+    SELECT pos.title
+    FROM public.employment se
+    JOIN public.assignment a ON a.employment_id = se.id AND a.tenant_id = se.tenant_id
+    JOIN public.position pos ON pos.id = a.position_id AND pos.tenant_id = se.tenant_id
+    WHERE se.person_id = sp.id AND se.company_id = co.id AND se.tenant_id = co.tenant_id
+      AND se.hired_on <= (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+      AND (se.terminated_on IS NULL OR se.terminated_on >= (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+      AND a.superseded_at IS NULL
+      AND a.valid_from <= (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+      AND (a.valid_to IS NULL OR a.valid_to > (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+      AND COALESCE(a.company_id, se.company_id) = co.id
+    ORDER BY a.valid_from DESC, se.hired_on DESC, a.id
+    LIMIT 1
+  ) title ON true
+  WHERE subject.id = p_employment_id AND subject.tenant_id = app.current_tenant_id()
+    AND p_year ~ '^[0-9]{4}$'
+    AND (
+      EXISTS (SELECT 1 FROM public.app_user u
+        WHERE u.id = app.current_user_id() AND u.tenant_id = subject.tenant_id AND u.person_id = subject.person_id)
+      OR (app.can_admin_payroll_for(co.id) AND (app.can_admin_payroll_for(subject.company_id)
+        OR EXISTS(SELECT 1 FROM public.information_payslip_snapshot f
+          JOIN public.payslip sl ON sl.id=f.payslip_id AND sl.employment_id=f.employment_id AND sl.tenant_id=f.tenant_id
+          JOIN public.payroll_batch b ON b.id=sl.batch_id AND b.company_id=f.company_id AND b.tenant_id=f.tenant_id
+          WHERE f.employment_id=subject.id AND f.tenant_id=subject.tenant_id AND b.company_id=co.id
+          AND b.pay_period LIKE p_year||'-%' AND app.information_payslip_document(sl.id) IS NOT NULL)))
+    )
+    AND (subject.company_id = co.id OR EXISTS (
+      SELECT 1 FROM public.payslip ps
+      JOIN public.payroll_batch pb ON pb.id = ps.batch_id AND pb.tenant_id = ps.tenant_id
+      WHERE app.payroll_history_effective(ps.id) AND ps.employment_id = subject.id AND ps.tenant_id = subject.tenant_id
+        AND pb.company_id = co.id AND pb.pay_period LIKE p_year || '-%'
+    ));
+$$;

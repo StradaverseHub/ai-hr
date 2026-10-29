@@ -4,6 +4,7 @@ import {and,eq,sql} from 'drizzle-orm';
 import * as XLSX from 'xlsx';
 import {adminCtx,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {hireEmployee,setEmploymentGrade} from '../core/org';
+import {upsertCompanyStatutoryAuthority} from '../core/statutory-authority';
 import {assignLabelToCompanies} from '../core/system-labels';
 import {createMovementEvent,movementHistory,reverseMovementEvent} from '../core/movement';
 import {withTenant} from '../db/client';
@@ -16,7 +17,9 @@ import {PDFDocument} from 'pdf-lib';
 import {buildPayslipPdfData,renderPayslipPdf} from '../lib/payslip-pdf';
 import {labels as pdfLabels} from './fixtures/payslip-pdf-fixture';
 import {getImportAttempt,importAttemptSource} from '../core/import-history';
-import {eaStatement} from '../localization/my/reports';
+import {reportPreview} from '../core/reporting';
+import {pcb2iiStatement} from '../localization/my/pcb2ii';
+import {eaStatement,eaCompaniesInYear} from '../localization/my/reports';
 import {payslipForReview,listPayrollRegisterAcross,listPayslipRunsFor,listProcessedPayslipsAcross} from '../core/payroll-view';
 import {INFORMATION_HEADERS,type InformationChanges} from '../lib/information-correction';
 import {parseInformationWorkbook,informationWorkbook} from '../lib/information-correction-workbook';
@@ -28,10 +31,10 @@ async function fixture(code='EMP-001'){
  const hired=await hireEmployee(ctx(),{person:{fullName:'Aisha Fixture',primaryEmail:randomUUID()+'@example.test'},companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:'2025-01-15'});
  await owner.db.update(schema.employment).set({employeeCode:code}).where(eq(schema.employment.id,hired.employmentId));return hired.employmentId;
 }
-async function closedSlip(employmentId:string){
+async function closedSlip(employmentId:string,statutory:Record<string,unknown>={epfEmployee:330,epfEmployer:390,pcb:10}){
  const [period]=await owner.db.insert(schema.payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period:'2025-01',status:'closed'}).returning();
  const [batch]=await owner.db.insert(schema.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:period.id,payPeriod:'2025-01',batchDate:'2025-01-25',status:'closed',releasedAt:new Date('2025-01-25T00:00:00Z')}).returning();
- const [slip]=await owner.db.insert(schema.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId,basicSalary:'3000.00',grossPay:'3000.00',statutory:{epfEmployee:330,epfEmployer:390,pcb:10},totalDeductions:'340.00',netPay:'2660.00',employerCost:'3390.00'}).returning();return {batch,slip};
+ const [slip]=await owner.db.insert(schema.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId,basicSalary:'3000.00',grossPay:'3000.00',statutory,totalDeductions:'340.00',netPay:'2660.00',employerCost:'3390.00'}).returning();return {batch,slip};
 }
 async function apply(id:string,changes:InformationChanges,reason='Correct signed employment record'){
  const p=await previewInformationCorrection(ctx(),{employmentId:id,changes,reason});return correctInformation(ctx(),{employmentId:id,changes,reason,fingerprint:p.fingerprint,method:'manual'});
@@ -89,10 +92,20 @@ describe('8550b282 information-only corrections',()=>{
   expect(await owner.db.select().from(schema.informationPayslipSnapshot)).toHaveLength(0);
  });
  it('corrects a compatible company without moving prior payroll or its dated assignment',async()=>{
-  const id=await fixture(),{slip,batch}=await closedSlip(id);
+  const id=await fixture(),{slip,batch}=await closedSlip(id,{epfEmployee:315,epfEmployer:369,pcb:10,socsoEmployee:12,socsoEmployer:18,eisEmployee:3,eisEmployer:3,bases:{epf:3000,socso:3000,eis:3000}});
   const [destination]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Destination',companyLabel:'DEST'}).returning();
   await assignLabelToCompanies(ctx(),{kind:'department',labelId:b.deptA,companyIds:[b.companyId,destination.id]});
   await assignLabelToCompanies(ctx(),{kind:'position',labelId:b.positionId,companyIds:[b.companyId,destination.id]});
+  const officerId=await fixture('OFFICER');
+  const [officer]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,officerId));
+  await upsertCompanyStatutoryAuthority(ctx(),{companyId:b.companyId,authority:'lhdn',signatoryPersonId:officer.personId});
+  const [subject]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id));
+  await owner.db.insert(schema.tp1Relief).values({tenantId:b.tenantId,personId:subject.personId,assessmentYear:2025,status:'approved',tp1Amount:'120.00',deductionMonth:1,approvedMonth:1});
+  await owner.db.insert(schema.eaOverride).values({tenantId:b.tenantId,employmentId:id,year:'2025',field:'gross',amount:'3100.00',reason:'Verified declared amendment'});
+  const eaBefore=await eaStatement(ctx(),{employmentId:id,companyId:b.companyId,year:'2025'});expect(eaBefore).toBeTruthy();
+  const pcbBefore=await pcb2iiStatement(ctx(),{employmentId:id,companyId:b.companyId,year:'2025',selectedDate:'2025-02-01'});expect(pcbBefore).toBeTruthy();
+  const reportRequests=['my.cp39','my.borang-a','my.borang-8a','my.socso-eis','my.hrd-levy','my.cp8d'].map(reportId=>({companyId:b.companyId,reportId,periodKey:reportId==='my.cp8d'?'2025':'2025-01'}));
+  const reportsBefore=await Promise.all(reportRequests.map(p=>reportPreview(ctx(),p)));for(const report of reportsBefore)expect(report.rows.length).toBeGreaterThan(0);
   await apply(id,{companyId:destination.id});
   expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0].companyId).toBe(destination.id);
   const versions=await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId,id));
@@ -102,6 +115,12 @@ describe('8550b282 information-only corrections',()=>{
   const sourceUser=await createAppUser(b.tenantId,hrPerson.id,'hr_admin');await owner.db.update(schema.roleAssignment).set({companyId:b.companyId}).where(eq(schema.roleAssignment.appUserId,sourceUser));
   const sourceCtx={...ctx(),userId:sourceUser,personId:hrPerson.id,grants:[{role:'hr_admin',companyId:b.companyId}]};
   expect(await payslipForReview(sourceCtx,{companyIds:[b.companyId],payslipId:slip.id})).toMatchObject({companyId:b.companyId,employmentType:'full_time',net:'2660.00'});
+  expect(await eaStatement(sourceCtx,{employmentId:id,companyId:b.companyId,year:'2025'})).toEqual(eaBefore);
+  expect(await pcb2iiStatement(sourceCtx,{employmentId:id,companyId:b.companyId,year:'2025',selectedDate:'2025-02-01'})).toEqual(pcbBefore);
+  expect(await eaCompaniesInYear(sourceCtx,{employmentId:id,year:'2025'})).toEqual([{companyId:b.companyId,name:(await owner.db.select().from(schema.company).where(eq(schema.company.id,b.companyId)))[0].legalName,isCurrent:false}]);
+  for(const [index,p] of reportRequests.entries())expect(await reportPreview(sourceCtx,p),p.reportId).toEqual(reportsBefore[index]);
+  const forbiddenProjection=await withTenant(sourceCtx,tx=>tx.execute<{data:Record<string,unknown>}>(sql`select data from app.information_report_records('employment',${b.companyId}::uuid,'2025') data`));expect(forbiddenProjection).toHaveLength(1);expect(forbiddenProjection[0].data).not.toHaveProperty('work_state');expect(forbiddenProjection[0].data).not.toHaveProperty('grade_id');
+  expect(await withTenant(sourceCtx,tx=>tx.execute(sql`select * from app.information_report_records('employment',${destination.id}::uuid,'2025')`))).toEqual([]);
   expect(await listPayslipRunsFor(sourceCtx,{companyIds:[b.companyId],employmentId:id})).toMatchObject([{payslipId:slip.id,companyId:b.companyId}]);
   expect(await listProcessedPayslipsAcross(sourceCtx,{companyIds:[b.companyId],year:2025,limit:1})).toMatchObject([{id:slip.id,net:'2660.00'}]);
   expect(await listProcessedPayslipsAcross(sourceCtx,{companyIds:[...Array.from({length:100},()=>randomUUID()),b.companyId],year:2025,limit:1})).toMatchObject([{id:slip.id,net:'2660.00'}]);
@@ -111,6 +130,7 @@ describe('8550b282 information-only corrections',()=>{
   expect(await payslipForReview(sourceCtx,{companyIds:[destination.id],payslipId:slip.id})).toBeNull();
   const employeeCtx={...sourceCtx,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
   expect(await payslipForReview(employeeCtx,{companyIds:[b.companyId],payslipId:slip.id})).toBeNull();
+  expect(await withTenant(employeeCtx,tx=>tx.execute(sql`select * from app.information_report_records('employment',${b.companyId}::uuid,'2025')`))).toEqual([]);
 
  });
  it('requires a fresh review when the selected reference code changes',async()=>{

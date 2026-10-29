@@ -147,4 +147,20 @@ describe('actual mounted Personnel form inventory',()=>{
     expect(extra).not.toBe(source);
     expect(auditPersonnelFormSource(file,extra,PERSONNEL_FIELDS,{exemptions:exemptions[file],resolveImportSource:personnelImportSourceReader(root)}).issues.some(issue=>issue.message.includes('occurrence changed'))).toBe(true);
   });
+  it('resolves the information workflow from its actual finite map and refuses invented or unbounded controls',()=>{
+    const file='app/admin/personnel/information-correction-form.tsx',source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
+    const reader=personnelImportSourceReader(root);
+    const audit=(text:string,resolveImportSource=reader)=>auditPersonnelFormSource(file,text,PERSONNEL_FIELDS,{exemptions:exemptions[file],resolveImportSource});
+    expect(audit(source)).toMatchObject({controls:5,issues:[]});
+    const binding='INFORMATION_FIELD_IDS[field]';expect(source).toContain(binding);
+    expect(audit(source.replaceAll(binding,'INFORMATION_FIELD_IDS[unregisteredKey]')).issues.some(issue=>issue.message.includes('Unresolved Personnel binding'))).toBe(true);
+    const wrongMap=(from:string,specifier:string)=>{const text=reader(from,specifier);return specifier==='@/lib/information-correction'?text?.replace('employment.employment_dates_and_service.hiredon','unregistered.personnel.fact'):text;};
+    expect(audit(source,wrongMap).issues.some(issue=>issue.message.includes('Unknown Personnel form field'))).toBe(true);
+    const unbounded=(from:string,specifier:string)=>{const text=reader(from,specifier);return specifier==='@/lib/information-correction'?text?.replace(/export const INFORMATION_FIELDS=\[[^\n]+\] as const;/,'export const INFORMATION_FIELDS=unboundedCorrectionKeys();'):text;};
+    expect(audit(source,unbounded).issues.some(issue=>issue.message.includes('Unresolved Personnel binding'))).toBe(true);
+    const reason='<textarea name="informationCorrectionReason"';expect(source).toContain(reason);
+    expect(audit(source.replace(reason,'<textarea name="informationCorrectionReason"/>'+reason)).issues.some(issue=>issue.message.includes('occurrence changed'))).toBe(true);
+    expect(exemptions[file].map(item=>({name:item.name,occurrences:item.occurrences}))).toEqual([{name:'informationCorrectionReason',occurrences:1},{name:'correction-mode',occurrences:2}]);
+  });
+
 });
