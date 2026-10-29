@@ -1,3 +1,4 @@
+import {establishRewardMembership,migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 /**
@@ -5,7 +6,7 @@ import {setRewardMember} from './rewards-access-fixture';
  * Every service call runs through withTenant as the app role (ai_hr_app, NOBYPASSRLS); direct RLS probes too.
  */
 import { readFileSync } from 'node:fs';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { createTranslator } from 'next-intl';
 import { withTenant, type SessionContext } from '../db/client';
@@ -20,6 +21,7 @@ import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModu
 import { todayInKualaLumpur } from '../lib/hr-date';
 import en from '../messages/en.json';
 
+beforeAll(migrateRewardMembershipFixture);
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
 const shift = (days: number) => new Date(Date.parse(`${today}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 type Seat = Exclude<RewardRole, 'gr'> | 'grOnly' | 'payrollOnly';
@@ -35,8 +37,7 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
     return p;
   }
   async function employee(code: string, salary: number, bu: string) {
-    const hire = await hireEmployee(admin, { person: { fullName: `Board ${code}`, primaryEmail: `${code}-${n++}@board.test` }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
-    await owner.db.update(schema.assignment).set({ businessUnitId: bu }).where(eq(schema.assignment.employmentId, hire.employmentId));
+    const hire = await hireEmployee(admin, { person: { fullName: `Board ${code}`, primaryEmail: `${code}-${n++}@board.test` }, companyId: b.companyId, departmentId: b.deptA, businessUnitId:bu, employmentType: 'full_time', hiredOn: `${year - 2}-01-01` });
     const [grade] = await owner.db.select().from(schema.jobGrade).where(and(eq(schema.jobGrade.tenantId, b.tenantId), eq(schema.jobGrade.code, '12')));
     await owner.db.update(schema.employment).set({ gradeId: grade.id, confirmationDate: `${year - 2}-04-01` }).where(eq(schema.employment.id, hire.employmentId));
     await setCompensation(admin, { employmentId: hire.employmentId, basicSalary: salary, effectiveFrom: `${year - 2}-01-01` });
@@ -248,6 +249,7 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
       const id = await unit('MAIN', [{ salary: 5000 }]);
       const other = await createCompany(admin, { legalName: 'Board Other Co (fictional)', companyLabel: 'BRD-OTHER' });
       const [obu] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: other.id, code: 'OTH', name: 'Other unit' }).returning();
+      await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:other.id,businessUnitId:obu.id,year});
       const otherUnit = await createRewardUnit(admin, { name: 'Board cycle', year, companyId: other.id, businessUnitId: obu.id, snapshotDate: today });
       expect((await rewardApprovalsBoard(admin, [b.companyId])).map(r => r.id)).toEqual([id]);
       expect((await rewardApprovalsBoard(admin, [b.companyId, other.id])).map(r => r.id).sort()).toEqual([id, otherUnit].sort());
