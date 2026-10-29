@@ -415,7 +415,7 @@ async function requestProfileChangeOwnerTx(tx:Tx,ctx:SessionContext,p:OwnProfile
   if(matching.length>1)throw new EssProfileError('unavailable');
   if(matching.length===1){
    const storedFiles=await tx.select({fieldIds:profileChangeAttachment.fieldIds,fileName:profileChangeAttachment.fileName,mimeType:profileChangeAttachment.mimeType,content:profileChangeAttachment.content}).from(profileChangeAttachment).where(eq(profileChangeAttachment.requestId,matching[0].id));
-   const evidence=(files:typeof attachments)=>files.map(file=>JSON.stringify({fieldIds:[...file.fieldIds].sort(),fileName:file.fileName,mimeType:file.mimeType,sha256:createHash('sha256').update(file.content).digest('hex')})).sort();
+   const evidence=(files:{fieldIds:string[];fileName:string;mimeType:string;content:Uint8Array}[])=>files.map(file=>JSON.stringify({fieldIds:[...file.fieldIds].sort(),fileName:file.fileName,mimeType:file.mimeType,sha256:createHash('sha256').update(file.content).digest('hex')})).sort();
    if(JSON.stringify(evidence(storedFiles))!==JSON.stringify(evidence(attachments)))throw new EssProfileError('stale');
    if(expectedReviewedDigest!==undefined){
     const [existing]=await tx.select({routeId:profileChangeRequest.routeId,routeRevision:profileChangeRequest.routeRevision,routeApproverUserId:profileChangeRequest.routeApproverUserId,routeApproverEmploymentId:profileChangeRequest.routeApproverEmploymentId,routeContext:profileChangeRequest.routeContext}).from(profileChangeRequest).where(eq(profileChangeRequest.id,matching[0].id)).limit(1);
