@@ -1,6 +1,7 @@
 /** Native candidate storage and protocol custody with staging's non-bypass database-owner shape.
  * No provider call or HR writer. Ownership/role changes and all synthetic rows roll back together. */
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import {saveOpenRouterCandidateTx,providerCandidatesTx} from '../core/ai-provider-readiness';
@@ -10,7 +11,7 @@ let base:Base;
 beforeAll(migrateTestDb);
 beforeEach(async()=>{await resetDb();base=await seedBase();vi.stubEnv('AI_CONFIG_SECRET','fictional-restricted-provider-owner-key');});
 afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
-it('saves, reloads, evaluates and promotes through restricted-owner custody while denying direct app access',async()=>{
+it('upgrades forced-RLS custody and saves, reloads, evaluates and promotes through a restricted owner',async()=>{
  const ctx=adminCtx(base),role='provider_custody_'+randomUUID().replaceAll('-','');
  const rollback=new Error('rollback-provider-owner-fixture');let verified=false;
  try{await owner.withTenant(ctx,async tx=>{
@@ -35,8 +36,19 @@ it('saves, reloads, evaluates and promotes through restricted-owner custody whil
    const [guard]=await tx.execute(sql`SELECT relrowsecurity,relforcerowsecurity FROM pg_class WHERE oid=${'public.'+table}::regclass`);
    expect(guard).toEqual({relrowsecurity:true,relforcerowsecurity:true});
   }
+  // Rehearse the exact append-only SQL against the pre-fix state, even when the full journal
+  // already installed it. This proves both the native failure and correction in one transaction.
+  await tx.execute(sql`DROP POLICY IF EXISTS ai_provider_candidate_owner_custody ON public.ai_provider_candidate`);
+  await tx.execute(sql`DROP POLICY IF EXISTS ai_provider_protocol_evaluation_owner_custody ON public.ai_provider_protocol_evaluation`);
   await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);
   const routing=readOpenRouterOptions({version:1,routing:{allowedProviders:['openai'],allowFallbacks:false,sort:'latency'}});
+  await expect(tx.transaction(attempt=>attempt.execute(sql`SELECT app.ai_provider_candidate_save_v1(
+   'fictional/owner-model','synthetic-ciphertext-never-sent','sent',${JSON.stringify(routing)}::jsonb)`)))
+   .rejects.toMatchObject({cause:expect.objectContaining({code:'42501'})});
+  await tx.execute(sql`RESET ROLE`);
+  const migration=readFileSync(new URL('../db/migrations/0686_ai_provider_custody_owner_rls.sql',import.meta.url),'utf8');
+  for(const statement of migration.split('--> statement-breakpoint'))await tx.execute(sql.raw(statement));
+  await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);
   const id=await saveOpenRouterCandidateTx(tx,ctx,{model:'fictional/owner-model',apiKey:'fixture-never-sent-key',providerOptions:routing});
   const [saved]=await providerCandidatesTx(tx,ctx);
   expect(saved).toMatchObject({id,model:'fictional/owner-model',keyLast4:'-key'});
@@ -51,13 +63,19 @@ it('saves, reloads, evaluates and promotes through restricted-owner custody whil
   expect(proof).toHaveLength(1);
   for(const table of ['ai_provider_candidate','ai_provider_protocol_evaluation'])
    await expect(tx.transaction(attempt=>attempt.execute(sql.raw(`SELECT * FROM public.${table}`)))).rejects.toThrow();
-  // A different tenant, a removed admin grant and missing principal each remain denied by issuers.
+  // A different tenant and missing principal remain denied by issuers.
   for(const patch of [{tenant:randomUUID(),user:ctx.userId!},{tenant:ctx.tenantId,user:''}]){
    await expect(tx.transaction(async attempt=>{
     await attempt.execute(sql`SELECT set_config('app.tenant_id',${patch.tenant},true),set_config('app.user_id',${patch.user},true)`);
     await attempt.execute(sql`SELECT * FROM app.ai_provider_candidate_view_v1()`);
    })).rejects.toThrow();
   }
+  await expect(tx.transaction(async attempt=>{
+   await attempt.execute(sql`RESET ROLE`);
+   await attempt.execute(sql`DELETE FROM public.role_assignment WHERE tenant_id=${ctx.tenantId}::uuid AND app_user_id=${ctx.userId!}::uuid`);
+   await attempt.execute(sql`SET LOCAL ROLE ai_hr_app`);
+   await attempt.execute(sql`SELECT * FROM app.ai_provider_candidate_view_v1()`);
+  })).rejects.toThrow();
   const [consumed]=await tx.execute(sql`SELECT app.ai_provider_evaluation_consume_v1(${evaluation}::uuid,${fingerprint},${principal}) AS id`);
   expect(consumed.id).toBe(evaluation);
   const [promoted]=await tx.execute(sql`SELECT app.ai_provider_candidate_promote_v1(${evaluation}::uuid) AS id`);

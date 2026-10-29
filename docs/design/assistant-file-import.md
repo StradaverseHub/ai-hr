@@ -88,3 +88,19 @@ documents and stub the paid provider; they do not establish live-model extractio
 staging installation. Release still requires the repository gate, rendered authenticated native
 import journeys, migration-prefix verification for the release as a whole, and a staging provider
 fixture with an explicitly authorised small request.
+
+## Provider setup and restricted database owners
+
+OpenRouter Save stores an inactive candidate. The existing provider page then requires account
+policy review, explicit consent to synthetic protocol calls and activation of the unchanged
+candidate. A successful candidate save is separate from a working hosted route or accepted file
+preparation. Failed key saves require the user to enter the key directly again after repair.
+
+Migration 0686 gives the existing candidate and protocol-evaluation owner functions tenant-bound
+custody policies. Both tables retain FORCE RLS and their app-role table revocations. A policy
+requires the actual table owner and the existing fresh group-administrator predicate; it does not
+grant ordinary app queries access to ciphertext or evaluation rows. The regression exercises the
+pre-fix 42501 failure, the exact upgrade SQL, native storage/promotion and direct-access, foreign
+tenant, missing-principal, stale-grant and consumed-evaluation refusals with a non-bypass owner.
+Synthetic database fixtures do not establish hosted-provider readiness or permission to save HR
+records. Staging file verification must stop before every native import confirmation.
