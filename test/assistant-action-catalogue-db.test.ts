@@ -19,7 +19,7 @@ let base:Base,group:SessionContext;
 beforeAll(migrateTestDb);
 beforeEach(async()=>{
  vi.stubEnv('AI_CONFIG_SECRET','fictional-catalogue-disclosure-only');await resetDb();base=await seedBase();
- await setModule(base.tenantId,'assistant','active');await setModule(base.tenantId,'leave','active');
+ await setModule(base.tenantId,'assistant','active'); // leave is a core module: always enabled, no row.
  group={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
 });
 afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
