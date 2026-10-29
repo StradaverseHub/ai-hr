@@ -106,6 +106,8 @@ describe('preparation and confirmation stay with the person',()=>{
   fireEvent.click(screen.getByRole('button',{name:'reopen'}));await screen.findByRole('heading',{name:'done'});
   expect(packets()[3]).toEqual({action:'attendance.overtime.request',operation:'reopen',actionId});
   expect(packets().filter(packet=>packet.operation==='confirm')).toHaveLength(1);expect(packets().filter(packet=>packet.operation==='prepare')).toHaveLength(1);
+  // Confirmed: no longer a suggestion, so the badge and the "nothing prepared" note are gone.
+  expect(document.querySelector('section[data-card-state]')?.getAttribute('data-card-state')).toBe('settled');expect(screen.queryByText('badgeReady')).toBeNull();
  });
  it('cancels a preselected own leave request only after the person consents and clicks',async()=>{
   fetcher.mockResolvedValueOnce(json({kind:'choices',requests:[leave(own1,'2026-11-03')],truncated:false})).mockRejectedValueOnce(Error('lost'));
@@ -128,7 +130,7 @@ describe('preparation and confirmation stay with the person',()=>{
 
 describe('a stale proposal is refused with a refresh (review R6)',()=>{
  it('reads nothing, offers no preparation, and refreshes the server-adjudicated conversation on request',()=>{
-  const {container}=render(<ConversationActionProposal action="leave.cancel" hints={{startDate:'2026-11-03'}} stale/>);
+  const {container}=render(<ConversationActionProposal action="leave.cancel" hints={{startDate:'2026-11-03'}} availability="stale"/>);
   expect(container.querySelector('section')?.getAttribute('data-card-state')).toBe('stale');
   expect(screen.getByText('badgeStale')).toBeTruthy();expect(screen.getByText('staleBody')).toBeTruthy();
   expect(screen.queryByRole('button',{name:'prepare'})).toBeNull();expect(screen.queryByRole('combobox')).toBeNull();
@@ -137,6 +139,15 @@ describe('a stale proposal is refused with a refresh (review R6)',()=>{
   expect(screen.getByText('openPage').getAttribute('href')).toBe('/assistant/leave?flow=change');
  });
  it('still refuses a malformed stale proposal outright',()=>{
-  refresh.mockClear();render(<ConversationActionProposal action="payroll.close" hints={{}} stale/>);expect(screen.getByText('unavailable')).toBeTruthy();expect(refresh).not.toHaveBeenCalled();
+  refresh.mockClear();render(<ConversationActionProposal action="payroll.close" hints={{}} availability="stale"/>);expect(screen.getByText('unavailable')).toBeTruthy();expect(refresh).not.toHaveBeenCalled();cleanup();
+  render(<ConversationActionProposal action="leave.cancel" hints={{}} availability={'maybe' as never}/>);expect(screen.getByText('unavailable')).toBeTruthy();
+ });
+ it('an unverified proposal is neutral and retryable, never called out of date, and still offers no preparation',()=>{
+  refresh.mockClear();const {container}=render(<ConversationActionProposal action="claims.cancel" hints={{}} availability="unverified"/>);
+  expect(container.querySelector('section')?.getAttribute('data-card-state')).toBe('unverified');
+  expect(screen.getByText('badgeUnverified')).toBeTruthy();expect(screen.getByText('unverifiedBody')).toBeTruthy();
+  expect(screen.queryByText('badgeStale')).toBeNull();expect(screen.queryByText('staleBody')).toBeNull();
+  expect(screen.queryByRole('button',{name:'prepare'})).toBeNull();expect(fetcher).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'retry'}));expect(refresh).toHaveBeenCalledTimes(1);
  });
 });

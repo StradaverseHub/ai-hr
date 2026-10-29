@@ -19158,7 +19158,9 @@
         "staleBody": "Something changed since this was suggested, such as your access or an Assistant pause, so it can no longer be used here. Refresh to check what you can do now.",
         "refresh": "Refresh",
         "failureBody": "Your current items could not be loaded just now. Nothing was prepared or changed. Try again, or open the usual page.",
-        "retry": "Try again"
+        "retry": "Try again",
+        "badgeUnverified": "Not checked",
+        "unverifiedBody": "We couldn't check just now whether this suggestion is still available to you. Nothing was prepared or changed. Try again in a moment, or open the usual page."
       },
       "conversationGovernance": {
         "title": "Main-conversation improvement",

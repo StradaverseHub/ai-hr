@@ -19158,7 +19158,9 @@
         "staleBody": "Sesuatu telah berubah sejak cadangan ini dibuat, seperti akses anda atau jeda Pembantu, jadi ia tidak boleh digunakan di sini lagi. Muat semula untuk melihat apa yang boleh anda lakukan sekarang.",
         "refresh": "Muat semula",
         "failureBody": "Item semasa anda tidak dapat dimuatkan buat masa ini. Tiada apa-apa yang disediakan atau diubah. Cuba lagi, atau buka halaman biasa.",
-        "retry": "Cuba lagi"
+        "retry": "Cuba lagi",
+        "badgeUnverified": "Belum disemak",
+        "unverifiedBody": "Kami tidak dapat menyemak buat masa ini sama ada cadangan ini masih tersedia untuk anda. Tiada apa-apa yang disediakan atau diubah. Cuba lagi sebentar lagi, atau buka halaman biasa."
       },
       "conversationGovernance": {
         "title": "Penambahbaikan perbualan utama",

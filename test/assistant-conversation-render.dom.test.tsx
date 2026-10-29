@@ -169,15 +169,19 @@ describe('ADR-0151 §4.3 inline proposal card',()=>{
   const plan:AssistantAnswerPlan={version:1,mode:'propose',action:'leave.cancel',hints:{startDate:'2026-11-03'}};
   const shown=render(await GroundedWorkspaceReply({ctx,exchangeId,reply:reply(plan)}));
   expect(shown.container.querySelector('[data-proposal-card="leave.cancel"]')).not.toBeNull();
-  expect(state.proposalCard).toHaveBeenCalledWith({action:'leave.cancel',hints:{startDate:'2026-11-03'},stale:false});expect(state.reviewLinks).not.toHaveBeenCalled();
+  expect(state.proposalCard).toHaveBeenCalledWith({action:'leave.cancel',hints:{startDate:'2026-11-03'},availability:'current'});expect(state.reviewLinks).not.toHaveBeenCalled();
  });
- it('R6: renders a stale proposal as the refused stale card, and refuses the stale marker on any other plan',async()=>{
+ it('R6: renders stale and unverified proposals as their own non-preparable cards, and refuses those markers on any other plan',async()=>{
   state.proposalCard.mockClear();
   const plan:AssistantAnswerPlan={version:1,mode:'propose',action:'leave.cancel',hints:{}};
   const shown=render(await GroundedWorkspaceReply({ctx,exchangeId,reply:{...reply(plan),conversation:{plan,facts:[],proposalStale:true}}}));
-  expect(shown.container.querySelector('[data-proposal-card="leave.cancel"]')).not.toBeNull();expect(state.proposalCard).toHaveBeenCalledWith({action:'leave.cancel',hints:{},stale:true});cleanup();
+  expect(shown.container.querySelector('[data-proposal-card="leave.cancel"]')).not.toBeNull();expect(state.proposalCard).toHaveBeenCalledWith({action:'leave.cancel',hints:{},availability:'stale'});cleanup();
   state.proposalCard.mockClear();
-  for(const conversation of[{plan:{version:1,mode:'refuse',code:'human_review_required'},facts:[],proposalStale:true},{plan,facts:[],proposalStale:false}]){
+  render(await GroundedWorkspaceReply({ctx,exchangeId,reply:{...reply(plan),conversation:{plan,facts:[],proposalUnverified:true}}}));
+  expect(state.proposalCard).toHaveBeenCalledWith({action:'leave.cancel',hints:{},availability:'unverified'});cleanup();
+  state.proposalCard.mockClear();
+  for(const conversation of[{plan:{version:1,mode:'refuse',code:'human_review_required'},facts:[],proposalStale:true},{plan,facts:[],proposalStale:false},
+   {plan,facts:[],proposalUnverified:false},{plan,facts:[],proposalStale:true,proposalUnverified:true},{plan:{version:1,mode:'refuse',code:'unsupported_request'},facts:[],proposalUnverified:true}]){
    render(await GroundedWorkspaceReply({ctx,exchangeId,reply:{...reply(plan),conversation:conversation as never}}));
    expect(screen.getByRole('status').textContent).toBe(en.assistant.workspace.conversation.unavailable);cleanup();
   }

@@ -10,7 +10,10 @@ import {AGENT_ACTION_ACTORS,ASSISTANT_CHAT_ACTIONS,ASSISTANT_CHAT_PAUSE_KEYS,CHA
 import {ASSISTANT_CONVERSATION_SYSTEM,buildAssistantConversationSystem} from '../lib/ai/assistant-conversation-system';
 import {AGENT_MODULE_CODES} from '../lib/ai/module-agents';
 import {assertAiActionUnpausedTx} from '../core/ai-governance';
-import {assistantActionActors,assistantProposalCallerTx} from '../core/assistant-action-catalogue';
+import {assistantActionActors,assistantProposalCallerTx,ProposalCallerUnavailableError} from '../core/assistant-action-catalogue';
+import {AiAllowanceError,AiGatewayError} from '../lib/ai/types';
+import {readFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
 import type {SessionContext,Tx} from '../db/client';
 
 const everyone:AssistantProposalCaller={readableModules:[...AGENT_MODULE_CODES],actors:[...AGENT_ACTION_ACTORS],pausedKeys:[]};
@@ -106,13 +109,35 @@ describe('current caller facts (core owner)',()=>{
   expect(assistantActionActors({...base,personId:null,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]})).toEqual(['assigned_tester','hr_admin','tenant_admin','payroll_admin','rewards_admin']);
   expect(assistantActionActors({tenantId:'fictional-tenant'})).toEqual([]);
  });
- it('reads each pause fresh in a savepoint and treats an unconfirmed pause as paused',async()=>{
+ it('reads each pause fresh in a savepoint: a confirmed pause is paused, an unconfirmable control throws (never “stale”)',async()=>{
   const tx={transaction:vi.fn(async(work:(savepoint:unknown)=>Promise<unknown>)=>work({}))} as unknown as Tx;
   const ctx={...base,personId:'fictional-person',roles:['employee']};
   vi.mocked(assertAiActionUnpausedTx).mockResolvedValueOnce(undefined);
   expect(await assistantProposalCallerTx(tx,ctx)).toEqual({readableModules:['leave','claims','attendance','approvals'],actors:['self','assigned_approver','assigned_tester'],pausedKeys:[]});
-  vi.mocked(assertAiActionUnpausedTx).mockRejectedValueOnce(Error('paused'));
+  vi.mocked(assertAiActionUnpausedTx).mockRejectedValueOnce(new AiAllowanceError('paused'));
   const paused=await assistantProposalCallerTx(tx,ctx);expect(paused.pausedKeys).toEqual([...ASSISTANT_CHAT_PAUSE_KEYS]);expect(assistantProposalCatalogue(paused)).toEqual([]);
   expect(vi.mocked(assertAiActionUnpausedTx).mock.calls.map(call=>call[2])).toEqual([...ASSISTANT_CHAT_PAUSE_KEYS,...ASSISTANT_CHAT_PAUSE_KEYS]);
+  // Could not check (controls unconfirmed, another allowance refusal, a broken savepoint): the owner throws, so
+  // the replay shows a neutral retry instead of claiming the suggestion is out of date.
+  for(const failure of[new AiGatewayError('AI action controls could not be confirmed.'),new AiAllowanceError('daily_limit'),Error('connection reset')]){
+   vi.mocked(assertAiActionUnpausedTx).mockRejectedValueOnce(failure);
+   await expect(assistantProposalCallerTx(tx,ctx)).rejects.toBeInstanceOf(ProposalCallerUnavailableError);
+  }
+ });
+});
+
+describe('client bundle boundary',()=>{
+ it('the hint file loads no registry at runtime (type-only import), so client panels never pull the server registry through it',()=>{
+  const source=readFileSync('lib/ai/assistant-action-proposal-hints.ts','utf8');
+  const runtime=source.split('\n').filter(line=>/^import\s/.test(line)&&!/^import\s+type\s/.test(line));
+  expect(runtime.length).toBeGreaterThan(0);for(const line of runtime)expect(line).not.toMatch(/agent-action-registry|assistant-action-catalogue|module-agent|\.\.\/core|server-only/);
+ });
+ it('no client component imports the catalogue, the registry or a server-only module directly',()=>{
+  const files=execFileSync('git',['grep','-l',"^'use client'",'--','components','app'],{encoding:'utf8'}).trim().split('\n').filter(Boolean);
+  expect(files.length).toBeGreaterThan(0);
+  for(const file of files){
+   const imports=readFileSync(file,'utf8').split('\n').filter(line=>/^import\s/.test(line)&&!/^import\s+type\s/.test(line));
+   for(const line of imports)expect(line,file).not.toMatch(/assistant-action-catalogue|agent-action-registry|['"]server-only['"]/);
+  }
  });
 });

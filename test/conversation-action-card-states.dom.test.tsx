@@ -37,7 +37,7 @@ afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 
 function mount(locale:Locale,node:React.ReactNode){
  return render(<NextIntlClientProvider locale={locale} messages={copies[locale] as never} timeZone="Asia/Kuala_Lumpur">
-  <main className="mx-auto w-full max-w-3xl space-y-4"><p className="text-sm text-muted-foreground">{copies[locale].assistant.workspace.proposal.note}</p>{node}</main>
+  <main className="mx-auto w-full max-w-3xl space-y-4">{node}</main>
  </NextIntlClientProvider>);
 }
 async function capture(locale:Locale,state:string){
@@ -56,9 +56,9 @@ async function toReview(locale:Locale){
 }
 
 describe('in-chat action card states in six locales',()=>{
- it.each(Object.keys(copies) as Locale[])('%s renders ready, confirming, confirmed, discarded, stale and failure',async locale=>{
+ it.each(Object.keys(copies) as Locale[])('%s renders ready, confirming, confirmed, discarded, stale, unverified and failure',async locale=>{
   const p=copies[locale].assistant.workspace.proposal;
-  for(const key of['badgeReady','badgeStale','staleNote','staleBody','refresh','failureBody','retry'] as const)expect(p[key],`${locale}.${key}`).toBeTruthy();
+  for(const key of['badgeReady','badgeStale','badgeUnverified','staleNote','staleBody','unverifiedBody','refresh','failureBody','retry'] as const)expect(p[key],`${locale}.${key}`).toBeTruthy();
 
   // READY: the server's canonical prepared review, waiting for the person's own confirmation.
   let release:(value:Response)=>void=()=>undefined;
@@ -75,6 +75,8 @@ describe('in-chat action card states in six locales',()=>{
   // CONFIRMED: the receipt as recorded by the owning service.
   release(json(completed));
   await screen.findByRole('heading',{name:d.done});expect(screen.getByText(d.doneFinal)).toBeTruthy();
+  // Settled: no longer a suggestion, so the badge and the "nothing prepared" note are gone.
+  await waitFor(()=>expect(screen.queryByText(p.badgeReady)).toBeNull());expect(screen.queryByText(p.note)).toBeNull();
   await capture(locale,'confirmed');
   const bodies=fetcher.mock.calls.map(call=>JSON.parse(call[1].body));
   expect(bodies.map(body=>body.operation)).toEqual(['choices','prepare','confirm']);
@@ -86,16 +88,25 @@ describe('in-chat action card states in six locales',()=>{
   d=await toReview(locale);
   fireEvent.click(screen.getByRole('button',{name:d.discard}));
   await waitFor(()=>expect(document.body.textContent).toContain(d.states.discarded));
+  await waitFor(()=>expect(screen.queryByText(p.badgeReady)).toBeNull());expect(screen.queryByText(p.note)).toBeNull();
   expect(fetcher.mock.calls.map(call=>JSON.parse(call[1].body).operation)).toEqual(['choices','prepare','discard']);
   await capture(locale,'discarded');
   cleanup();fetcher.mockReset();
 
   // STALE: the sealed suggestion is no longer in this person's current catalogue. Refused; refresh offered.
-  mount(locale,<ConversationActionProposal action={claimAction} hints={{}} stale/>);
+  mount(locale,<ConversationActionProposal action={claimAction} hints={{}} availability="stale"/>);
   expect(screen.getByText(p.badgeStale)).toBeTruthy();expect(screen.getByText(p.staleBody)).toBeTruthy();
   expect(screen.queryByRole('button',{name:d.prepare})).toBeNull();expect(fetcher).not.toHaveBeenCalled();
   await capture(locale,'stale');
   fireEvent.click(screen.getByRole('button',{name:p.refresh}));expect(refresh).toHaveBeenCalledTimes(1);
+  cleanup();
+
+  // UNVERIFIED: the catalogue could not be checked just now. Neutral, retryable, never "out of date".
+  mount(locale,<ConversationActionProposal action={claimAction} hints={{}} availability="unverified"/>);
+  expect(screen.getByText(p.badgeUnverified)).toBeTruthy();expect(screen.getByText(p.unverifiedBody)).toBeTruthy();expect(screen.queryByText(p.badgeStale)).toBeNull();
+  expect(screen.queryByRole('button',{name:d.prepare})).toBeNull();expect(fetcher).not.toHaveBeenCalled();
+  await capture(locale,'unverified');
+  fireEvent.click(screen.getByRole('button',{name:p.retry}));expect(refresh).toHaveBeenCalledTimes(2);
   cleanup();
 
   // FAILURE: the card's own choices read failed. Plain reason, a safe retry (a read) and the usual page.

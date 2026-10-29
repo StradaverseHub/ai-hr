@@ -9,6 +9,7 @@ import type {AgentActionActor,AgentActionPauseKey} from '../lib/ai/agent-action-
 import {ASSISTANT_CHAT_PAUSE_KEYS,type AssistantProposalCaller} from '../lib/ai/assistant-action-catalogue';
 import {assistantReadableModules} from './assistant-readable-modules';
 import {assertAiActionUnpausedTx} from './ai-governance';
+import {AiAllowanceError} from '../lib/ai/types';
 
 /** The registry actor classes this session currently holds, from its own roles and grants. A person-bound
  * class needs a linked person; the assigned inbox and tester assignment are still decided per item. */
@@ -21,12 +22,18 @@ export function assistantActionActors(ctx:SessionContext):readonly AgentActionAc
  return Object.freeze((Object.keys(held) as AgentActionActor[]).filter(actor=>held[actor]));
 }
 
-/** Read the caller's facts inside the caller's own transaction. Each pause is read fresh in its own savepoint;
- * a pause that cannot be confirmed as unpaused counts as paused (fail closed). */
+/** Read the caller's facts inside the caller's own transaction. Each pause is read fresh in its own savepoint.
+ * A confirmed pause (AiAllowanceError) is a FACT: the key is paused and its actions are not offered. Any other
+ * failure means the controls could not be checked right now; that THROWS, so the caller can tell "no longer
+ * offered" (stale) from "could not check" (retryable) and still fail closed in both cases. */
 export async function assistantProposalCallerTx(tx:Tx,ctx:SessionContext):Promise<AssistantProposalCaller>{
  const pausedKeys:AgentActionPauseKey[]=[];
  for(const key of ASSISTANT_CHAT_PAUSE_KEYS){
-  try{await tx.transaction(async savepoint=>{await assertAiActionUnpausedTx(savepoint,ctx,key);});}catch{pausedKeys.push(key);}
+  try{await tx.transaction(async savepoint=>{await assertAiActionUnpausedTx(savepoint,ctx,key);});}
+  catch(error){if(error instanceof AiAllowanceError&&error.reason==='paused')pausedKeys.push(key);else throw new ProposalCallerUnavailableError();}
  }
  return Object.freeze({readableModules:Object.freeze(assistantReadableModules(ctx)),actors:assistantActionActors(ctx),pausedKeys:Object.freeze(pausedKeys)});
 }
+
+/** The caller's catalogue facts could not be read just now (not a pause, not a refusal). */
+export class ProposalCallerUnavailableError extends Error{constructor(){super('Assistant proposal catalogue could not be checked.');this.name='ProposalCallerUnavailableError';}}

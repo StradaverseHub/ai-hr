@@ -14,7 +14,6 @@ import { agentReviewWorkspaceTx,specialistReviewWorkspaceTx,reopenOwnModulePlanT
 import {loadGovernedWorkspaceJobTx} from './workspace-module-jobs';
 import {workspaceGroundedAnswers} from './workspace-grounded-answers';
 import {assistantProposalCallerTx} from './assistant-action-catalogue';
-import {CLOSED_PROPOSAL_CALLER} from '../lib/ai/assistant-action-catalogue';
 
 export async function loadAiWorkspace(ctx: SessionContext, options:{includeHistory?:boolean;includeGovernance?:boolean;selectedExchangeId?:string;governedJobId?:string;proposalId?:string}={}) {
   const includeHistory=options.includeHistory!==false,includeGovernance=options.includeGovernance!==false,selectedExchangeId=options.selectedExchangeId,governedJobId=options.governedJobId,proposalId=options.proposalId;
@@ -47,8 +46,9 @@ export async function loadAiWorkspace(ctx: SessionContext, options:{includeHisto
     }).from(assistantExchange).where(and(eq(assistantExchange.appUserId, userId),isNull(assistantExchange.contentRetiredAt),sql`${assistantExchange.askedAt}>clock_timestamp()-interval '30 days'`))
       .orderBy(desc(assistantExchange.askedAt), desc(assistantExchange.id)).limit(10):[];
     // Review R6: a replayed proposal is re-adjudicated against the caller's CURRENT registry-derived
-    // catalogue, read in this request; only a selected exchange can replay one.
-    const proposalCaller=includeHistory&&selectedExchangeId?await assistantProposalCallerTx(tx,fresh).catch(()=>CLOSED_PROPOSAL_CALLER):CLOSED_PROPOSAL_CALLER;
+    // catalogue, read in this request; only a selected exchange can replay one. null = could not be checked
+    // right now: the card shows a neutral retry, never "out of date" and never a preparable card.
+    const proposalCaller=includeHistory&&selectedExchangeId?await assistantProposalCallerTx(tx,fresh).catch(()=>null):null;
     const history = includeHistory?await withAssistantReadTx(fresh, tx, async session => {
       const replay = workspaceGroundedAnswers(fresh, session,tx,proposalCaller);
       const history = [];

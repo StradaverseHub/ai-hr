@@ -97,7 +97,7 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
  const[copy,text]=await Promise.all([getTranslations('assistant.workspace.conversation'),canonicalJobText()]);
  const unavailable=()=> <p role="status" className="text-sm text-muted-foreground">{copy('unavailable')}</p>;
  try{
-  const plan=conversation.plan;if(!closedConversationFields(conversation,['plan','facts',...(conversation.clarificationAllowed===undefined?[]:['clarificationAllowed']),...(conversation.segments===undefined?[]:['segments']),...(conversation.proposalStale===undefined?[]:['proposalStale'])])||!Array.isArray(conversation.facts)||(conversation.clarificationAllowed!==undefined&&conversation.clarificationAllowed!==false)||(conversation.proposalStale!==undefined&&(conversation.proposalStale!==true||plan?.mode!=='propose'))||!plan||plan.version!==1)return unavailable();
+  const plan=conversation.plan;if(!closedConversationFields(conversation,['plan','facts',...(conversation.clarificationAllowed===undefined?[]:['clarificationAllowed']),...(conversation.segments===undefined?[]:['segments']),...(conversation.proposalStale===undefined?[]:['proposalStale']),...(conversation.proposalUnverified===undefined?[]:['proposalUnverified'])])||!Array.isArray(conversation.facts)||(conversation.clarificationAllowed!==undefined&&conversation.clarificationAllowed!==false)||(conversation.proposalStale!==undefined&&(conversation.proposalStale!==true||plan?.mode!=='propose'))||(conversation.proposalUnverified!==undefined&&(conversation.proposalUnverified!==true||plan?.mode!=='propose'||conversation.proposalStale!==undefined))||!plan||plan.version!==1)return unavailable();
   if(plan.mode!=='answer'&&conversation.segments!==undefined)return unavailable();
   if(plan.mode==='clarify'){
    if(!closedConversationFields(plan,['version','mode','slot'])||!['employment','leave_type','period','module'].includes(plan.slot)||conversation.facts.length!==0)return unavailable();
@@ -114,8 +114,9 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
   if(plan.mode==='propose'){
    if(!closedConversationFields(plan,['version','mode','action','hints'])||conversation.facts.length!==0||!isAssistantProposableAction(plan.action))return unavailable();
    if(!moduleHumanActionHandoffs(ASSISTANT_PROPOSAL_MODULE[plan.action]).some(handoff=>handoff.action===plan.action))return unavailable();
-   // Review R6: a sealed proposal the caller's current catalogue no longer offers is refused with a refresh.
-   return <ConversationActionProposal action={plan.action} hints={plan.hints} stale={conversation.proposalStale===true}/>;
+   // Review R6: a sealed proposal the caller's current catalogue no longer offers is refused with a refresh;
+   // one that could not be checked right now gets a neutral retry. Neither can be prepared from.
+   return <ConversationActionProposal action={plan.action} hints={plan.hints} availability={conversation.proposalStale===true?'stale':conversation.proposalUnverified===true?'unverified':'current'}/>;
   }
   if(plan.mode==='insufficient'||plan.mode==='refuse'){
    const codes=plan.mode==='insufficient'?['no_verified_facts','unsupported_explanation']:['unsupported_request','human_review_required'];

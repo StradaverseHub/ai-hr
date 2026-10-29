@@ -63,11 +63,15 @@ describe('sealed source plans nominate current typed facts, never certify model 
   const binding={...fixture().binding,answer:JSON.stringify(plan)};const receipt=sealAssistantDisclosure(binding,[],plan);
   const offered=await workspaceGroundedAnswers(ctx,session,undefined,syntheticAssistantProposalCaller(['leave']))(binding,receipt);
   expect(offered).toMatchObject({mode:'generic',conversation:{plan,facts:[]}});expect(offered.conversation?.proposalStale).toBeUndefined();
-  const changed:(AssistantProposalCaller|undefined)[]=[undefined,{readableModules:['leave'],actors:['self'],pausedKeys:['hr_assistant']},
+  const changed:AssistantProposalCaller[]=[{readableModules:['leave'],actors:['self'],pausedKeys:['hr_assistant']},
    {readableModules:['claims'],actors:['self'],pausedKeys:[]},{readableModules:['leave'],actors:['hr_admin'],pausedKeys:[]}];
   for(const caller of changed){
    const stale=await workspaceGroundedAnswers(ctx,session,undefined,caller)(binding,receipt);
    expect(stale.mode,JSON.stringify(caller)).toBe('generic');expect(stale.conversation).toEqual({plan,proposalStale:true,facts:[]});
+  }
+  // Facts that could not be read (null, or omitted) are NOT "no longer offered": neutral and retryable instead.
+  for(const replay of[workspaceGroundedAnswers(ctx,session,undefined,null),workspaceGroundedAnswers(ctx,session)]){
+   const unknown=await replay(binding,receipt);expect(unknown.mode).toBe('generic');expect(unknown.conversation).toEqual({plan,proposalUnverified:true,facts:[]});
   }
  });
 });

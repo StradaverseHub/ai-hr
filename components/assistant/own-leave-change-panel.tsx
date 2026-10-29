@@ -29,12 +29,14 @@ export async function readOwnLeaveChangeResponse(response:Response,packet:LeaveC
  * only when exactly one of the caller's own pending requests starts on the named date (or, with no date,
  * when only one is pending). Stored reason and remark are shown as they are and sent only if edited. */
 export type OwnLeaveChangeProposalPrefill=Readonly<{action:Action;startDate?:string;newStartDate?:string;newEndDate?:string}>;
-export function OwnLeaveChangePanel({choices:raw,resumeActionId,resumeAction,prefill}:{choices:OwnLeaveChangeChoices;resumeActionId?:string;resumeAction?:Action;prefill?:OwnLeaveChangeProposalPrefill}){
+export function OwnLeaveChangePanel({choices:raw,resumeActionId,resumeAction,prefill,onSettled}:{choices:OwnLeaveChangeChoices;resumeActionId?:string;resumeAction?:Action;prefill?:OwnLeaveChangeProposalPrefill;onSettled?:(settled:boolean)=>void}){
  const parsed=OwnLeaveChangeChoices.safeParse(raw),choices=parsed.success?parsed.data:{kind:'unavailable' as const},t=useTranslations('ownLeaveChange'),f=useFormatter(),id=useId();
  const proposedDates=prefill?.action===editAction?prefill:undefined;
  // Resolved once against the caller's own fresh choices; the result is a preselection or a question.
  const [proposal]=useState(()=>prefill&&choices.kind==='choices'?resolveProposalChoice(choices.requests,leaveProposalMatches(prefill)):null),proposed=proposal?.kind==='one'?proposal.row:undefined;
  const [state,setState]=useState<State>(()=>resumeActionId&&resumeAction?{kind:'uncertain',actionId:z.uuid().safeParse(resumeActionId).success?resumeActionId:null,action:resumeAction}:{kind:'selection'});
+ // An inline chat card (review R6) drops its suggestion chrome once the review is confirmed or retired.
+ useEffect(()=>{onSettled?.(state.kind==='completed'||state.kind==='retired');},[state.kind,onSettled]);
  const [requestId,setRequestId]=useState(proposed?.leaveRequestId??''),[mode,setMode]=useState<Action>(prefill?.action??cancelAction),[start,setStart]=useState(proposed?proposedDates?.newStartDate??proposed.startDate:''),[end,setEnd]=useState(proposed?proposedDates?.newEndDate??proposed.endDate:''),[reason,setReason]=useState(proposed?.reason??''),[remark,setRemark]=useState(proposed?.employeeRemark??'');
  const [consent,setConsent]=useState(false),[confirm,setConfirm]=useState(false),[busy,setBusy]=useState<string|null>(null),[error,setError]=useState(''),[index,setIndex]=useState<Row[]|null>(null),[now,setNow]=useState(()=>Date.now());
  const flight=useRef(false),alive=useRef(true),sequence=useRef(0),abort=useRef<AbortController|null>(null),status=useRef<HTMLParagraphElement>(null);

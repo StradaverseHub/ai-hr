@@ -28,10 +28,12 @@ export const assignedDecisionKind=(action:AssignedDecisionAction):Kind=>action==
 /** ADR-0151 §4.3 inline card: a chat proposal carries no hints for a decision. The item is preselected only
  * when the approver's own fresh inbox holds exactly one; the decision and note always stay the approver's. */
 export type AssignedDecisionProposalPrefill=Readonly<Record<never,never>>;
-export function AssignedDecisionPanel({action,resumeActionId,prefill}:{action:AssignedDecisionAction;resumeActionId?:string;prefill?:AssignedDecisionProposalPrefill}){
+export function AssignedDecisionPanel({action,resumeActionId,prefill,onSettled}:{action:AssignedDecisionAction;resumeActionId?:string;prefill?:AssignedDecisionProposalPrefill;onSettled?:(settled:boolean)=>void}){
  const t=useTranslations('assistant.workspace.decisionActions'),f=useFormatter(),id=useId(),kind=assignedDecisionKind(action),contract=ASSIGNED_DECISION_CONTRACTS[action] as unknown as Contract;
  const [choices,setChoices]=useState<Choices>({kind:'loading'});
  const [state,setState]=useState<State>(()=>resumeActionId?{kind:'uncertain',actionId:z.uuid().safeParse(resumeActionId).success?resumeActionId:null}:{kind:'selection'});
+ // An inline chat card (review R6) drops its suggestion chrome once the review is confirmed or retired.
+ useEffect(()=>{onSettled?.(state.kind==='completed'||state.kind==='retired');},[state.kind,onSettled]);
  const [subjectId,setSubjectId]=useState(''),[decision,setDecision]=useState<AssignedDecision|''>(''),[note,setNote]=useState('');
  const [consent,setConsent]=useState(false),[confirm,setConfirm]=useState(false),[busy,setBusy]=useState<string|null>(null),[error,setError]=useState(''),[index,setIndex]=useState<Row[]|null>(null),[now,setNow]=useState(()=>Date.now());
  const flight=useRef(false),alive=useRef(true),sequence=useRef(0),abort=useRef<AbortController|null>(null),status=useRef<HTMLParagraphElement>(null);

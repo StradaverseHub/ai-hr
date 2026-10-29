@@ -1,11 +1,12 @@
 /** ADR-0151 §4.3 inline review cards: the typed hint shape of each registry action that has an inline chat
- * card. Pure and browser-safe (zod and registry metadata only): no session, store, provider or effect.
+ * card. Pure and browser-safe (zod only, registry types only): no session, store, provider or effect.
  *
  * WHICH ACTIONS A CHAT ANSWER MAY PROPOSE is not decided here. lib/ai/assistant-action-catalogue.ts derives
  * the catalogue from the agent action registry (review R6, ADR-0151 §4.6a) and filters it per caller:
  * caller authority ∩ registry ∩ tier ∩ switches and pauses. This file only owns the one thing the registry
  * cannot: each card's typed selectors. A key here must be a registry id whose prepare phase is implemented
- * (a compile error otherwise), and the action's module comes from the registry, never from a second list.
+ * (a compile error otherwise). This file is browser-safe and imports registry TYPES only; the module copy below
+ * is pinned to the registry by test.
  *
  * A hint is a typed selector the person can verify on the card (a date or a clock time). It is never an
  * ID, a name, a reason, a remark, a note, a description or a decision. Hints are resolved after the turn
@@ -18,7 +19,8 @@
  * here before the registry-derived catalogue can offer it inline.
  */
 import {z} from 'zod';
-import {getAgentAction,type AgentPreparableActionId} from './agent-action-registry';
+// TYPE-ONLY: client panels import this file, so it must not load the registry at runtime.
+import type {AgentPreparableActionId} from './agent-action-registry';
 import type {AgentModuleCode} from './module-agents';
 
 const date=z.iso.date(),time=z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
@@ -34,9 +36,13 @@ export const ASSISTANT_PROPOSAL_HINT_KEYS=Object.freeze({
 } as const satisfies Partial<Record<AgentPreparableActionId,readonly string[]>>);
 export type AssistantProposableAction=keyof typeof ASSISTANT_PROPOSAL_HINT_KEYS;
 export const ASSISTANT_PROPOSABLE_ACTIONS=Object.freeze(Object.keys(ASSISTANT_PROPOSAL_HINT_KEYS) as AssistantProposableAction[]);
-/** The module each inline-card action belongs to, read from the registry (one owner per fact). */
-export const ASSISTANT_PROPOSAL_MODULE:Readonly<Record<AssistantProposableAction,AgentModuleCode>>=Object.freeze(Object.fromEntries(
- ASSISTANT_PROPOSABLE_ACTIONS.map(action=>[action,getAgentAction(action).module])) as Record<AssistantProposableAction,AgentModuleCode>);
+/** The module each inline-card action belongs to. A client-safe copy of the registry's `module` (this file is
+ * imported by client panels and must not load the registry at runtime); test/assistant-action-catalogue.test.ts
+ * fails if it differs from the registry, and the server catalogue reads the registry itself. */
+export const ASSISTANT_PROPOSAL_MODULE=Object.freeze({
+ 'leave.cancel':'leave','leave.edit':'leave','claims.cancel':'claims','attendance.overtime.request':'attendance',
+ 'approvals.claim.decide':'approvals','approvals.attendance.decide':'approvals','approvals.toil.decide':'approvals',
+} as const satisfies Record<AssistantProposableAction,AgentModuleCode>);
 /** The existing review page for each inline-card action (the registry's `review.route` plus the panel's
  * flow): the card's fallback and reopen destination. test/assistant-action-catalogue.test.ts pins the route. */
 export const ASSISTANT_PROPOSAL_FALLBACK=Object.freeze({
