@@ -26,7 +26,21 @@ describe('bounded original-install cleanup recovery',()=>{
   const {g,a}=fixture(),before=installJson(g);expect(()=>validateInstallGrant(g,{now:NOW})).toThrow();
   expect(validateRecoveryAuthorization(a,g,{now:NOW,initial:true})).toBe(a);expect(installJson(g)).toBe(before);
  });
- for(const [label,mutate] of Object.entries({scope:(a:any)=>a.scope='install',policy:(a:any)=>a.policy='other',source:(a:any)=>a.source='b'.repeat(40),grant:(a:any)=>a.grantSha256='0'.repeat(64),helper:(a:any)=>a.helperCi.source='a'.repeat(40),originalRun:(a:any)=>a.originalCi.runId++,failed:(a:any)=>a.helperCi.result='FAIL',partial:(a:any)=>a.helperCi.tier='focused',expired:(a:any)=>a.expiresAt=iso(),overlong:(a:any)=>a.expiresAt=iso(1800001),stale:(a:any)=>a.originalCi.revalidatedAt=iso(-60001),extra:(a:any)=>a.extra=true})){
+ const authorizationMutations: Record<string, (a: any) => void> = {
+  scope: (a): void => { a.scope = 'install'; },
+  policy: (a): void => { a.policy = 'other'; },
+  source: (a): void => { a.source = 'b'.repeat(40); },
+  grant: (a): void => { a.grantSha256 = '0'.repeat(64); },
+  helper: (a): void => { a.helperCi.source = 'a'.repeat(40); },
+  originalRun: (a): void => { a.originalCi.runId++; },
+  failed: (a): void => { a.helperCi.result = 'FAIL'; },
+  partial: (a): void => { a.helperCi.tier = 'focused'; },
+  expired: (a): void => { a.expiresAt = iso(); },
+  overlong: (a): void => { a.expiresAt = iso(1800001); },
+  stale: (a): void => { a.originalCi.revalidatedAt = iso(-60001); },
+  extra: (a): void => { a.extra = true; },
+ };
+ for(const [label,mutate] of Object.entries(authorizationMutations)){
   it('refuses '+label+' authorization',()=>{const {g,a}=fixture();mutate(a);expect(()=>validateRecoveryAuthorization(a,g,{now:NOW,initial:true})).toThrow();});
  }
  it.each([-60001,60001])('refuses observation outside the unchanged 60-second bound (%s)',delta=>expect(()=>assertFreshObservation(iso(delta),NOW)).toThrow());
