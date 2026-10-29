@@ -1,4 +1,5 @@
 'use client';
+import {useAssistantImportIntake} from '@/components/assistant/import-handoff';
 import {useRef,useState} from 'react';
 import {useTranslations} from 'next-intl';
 import Link from 'next/link';
@@ -39,6 +40,7 @@ export function HistoryWorkflow({codes}:{codes:Code[]}){
    const url=URL.createObjectURL(new Blob([bytes as BlobPart],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})),link=document.createElement('a');link.href=url;link.download=PAYROLL_HISTORY_XLSX_FILENAME;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch{setError(t('failed'));}finally{setBusy(null);}
  }
+ useAssistantImportIntake('payroll_history',text=>{setFile(new File([text],'assistant-prepared.csv',{type:'text/csv'}));setPreview(null);operation.current=null;setDone(false);},setError);
  const replaceable=preview?preview.plan.rows.filter(row=>row.operation==='replace'):[];
  const tickedWarnings=[...new Set(replaceable.filter(row=>ticked.has(historyRecordKey(row))).flatMap(row=>row.warnings??[]))];
  const blocked=!preview||busy!==null||!confirmed||preview.plan.counts.invalid>0||preview.plan.issues.length>0;

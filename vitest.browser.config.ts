@@ -74,6 +74,7 @@ export default defineConfig({
       'jszip',
       'pdf-lib',
       'pdfjs-dist',
+      'xlsx',
     ],
   },
   test: {

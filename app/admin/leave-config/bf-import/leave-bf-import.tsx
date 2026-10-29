@@ -1,4 +1,5 @@
 'use client';
+import {useAssistantImportIntake} from '@/components/assistant/import-handoff';
 
 import { useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
@@ -229,6 +230,8 @@ export function LeaveBfImport({ runs, showRunLog = true, historyOnly = false, on
           : templateTaken
             ? 'uploadExcel'
             : 'downloadTemplate';
+
+  useAssistantImportIntake('leave_bf',text=>{if(!historyOnly){reset();setCsv(text);setSource({kind:'paste'});}},setError);
 
   if (historyOnly) return <>{error && <p role="alert" className="mb-3 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}<ImportLog runs={runs} onDownload={downloadErrors} onRollback={rollback} busy={pending} /></>;
 

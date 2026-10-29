@@ -37,6 +37,8 @@ import { mayUseAssistant } from '@/core/assistant-grant';
 import { NoticePopupSlot } from '@/components/notice/notice-surfaces';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
+import {AssistantImportHandoffProvider} from '@/components/assistant/import-handoff';
+import {personnelImportBrowserKey} from '@/lib/personnel-import-browser-key';
 import { viewerIdentity } from '@/lib/viewer';
 import { visibleModuleCodes } from '@/lib/nav-entitlements';
 import { AuthRequiredError } from '@/lib/auth-errors';
@@ -456,7 +458,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   still allows PROGRAMMATIC scrolling — so any focus/scrollIntoView deep in a long
                   page shifted the whole canvas (header + sidebar off-screen) with no wheel recovery.
                   Making main the containing block keeps that overflow inside the scroller. */}
-              <main className="relative min-w-0 flex-1 overflow-y-auto pb-1">{children}</main>
+              <main className="relative min-w-0 flex-1 overflow-y-auto pb-1"><AssistantImportHandoffProvider key={personnelImportBrowserKey(session,scopeIds??allowed.map(company=>company.id))}>{children}</AssistantImportHandoffProvider></main>
               <ShellStatusLine companies={allowed} selected={scopeIds} />
             </div>
           </div>
