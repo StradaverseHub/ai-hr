@@ -12,8 +12,8 @@ beforeAll(() => {
   HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
 });
 function Harness({ editable = true }: { editable?: boolean }) {
-  const [config, setConfig] = useState(v9Defaults), [selected, select] = useState(''), [module, setModule] = useState<'off' | 'onb'>('off');
-  return <><WorkflowEditor config={config} selected={selected} select={select} module={module} setModule={setModule} editable={editable} edit={change => setConfig(value => { const next = structuredClone(value); change(next); return next; })} cases={[]} users={[]} actor={{ id: 'hr', name: 'HR' }} labels={{ caseType: { Resignation: 'Resignation' } }}/><output data-testid="definition">{JSON.stringify(config)}</output></>;
+  const [config, setConfig] = useState(() => { const config = v9Defaults(); config.groups.push({ id: 'fixture-reviewers', name: 'Fictional review group', members: ['11111111-1111-4111-8111-111111111111'], limit: 0 }); return config; }), [selected, select] = useState(''), [module, setModule] = useState<'off' | 'onb'>('off');
+  return <><WorkflowEditor config={config} selected={selected} select={select} module={module} setModule={setModule} editable={editable} edit={change => setConfig(value => { const next = structuredClone(value); change(next); return next; })} cases={[]} users={[{ id: '11111111-1111-4111-8111-111111111111', name: 'Fictional reviewer' }]} actor={{ id: 'hr', name: 'HR' }} labels={{ caseType: { Resignation: 'Resignation' } }}/><output data-testid="definition">{JSON.stringify(config)}</output></>;
 }
 it('edits ordered steps and conditions into a definition accepted by the service validator', () => {
   render(<Harness/>);
@@ -67,4 +67,18 @@ it('offers actual signatory and starter roles in To and CC selections',()=>{
  fireEvent.click(within(drawer).getByRole('button',{name:'Add a step'}));fireEvent.click(within(drawer).getByRole('button',{name:'Notify someone'}));fireEvent.click(within(drawer).getByRole('button',{name:'To for step 1'}));fireEvent.click(within(within(drawer).getByRole('group',{name:'To for step 1'})).getByRole('checkbox',{name:'Whoever started it'}));
  fireEvent.click(within(drawer).getByRole('button',{name:'CC for step 1'}));fireEvent.click(within(within(drawer).getByRole('group',{name:'CC for step 1'})).getByRole('checkbox',{name:'HR signatory'}));
  const config:Config=JSON.parse(screen.getByTestId('definition').textContent!);expect(config.workflows.at(-1)?.steps[0]).toMatchObject({to:['starter'],cc:['hrSignatory']});expect(()=>parseV9Config(config)).not.toThrow();
+});
+
+it('selects existing assignment groups and named people using stable references', () => {
+  render(<Harness/>); fireEvent.click(screen.getByRole('button', { name: 'New workflow' })); fireEvent.click(screen.getByRole('button', { name: 'For Offboarding' }));
+  const drawer = within(screen.getByRole('dialog', { name: 'Edit workflow' }));
+  fireEvent.click(drawer.getByRole('button', { name: 'Add a step' })); fireEvent.click(drawer.getByRole('button', { name: 'Notify someone' }));
+  fireEvent.click(drawer.getByRole('button', { name: 'To for step 1' }));
+  fireEvent.change(drawer.getByRole('combobox', { name: 'Assignment group for To for step 1' }), { target: { value: 'fixture-reviewers' } });
+  fireEvent.click(drawer.getByRole('button', { name: 'CC for step 1' }));
+  fireEvent.change(drawer.getByRole('combobox', { name: 'Named person for CC for step 1' }), { target: { value: '11111111-1111-4111-8111-111111111111' } });
+  const config: Config = JSON.parse(screen.getByTestId('definition').textContent!);
+  expect(config.workflows.at(-1)!.steps[0]).toMatchObject({ to: ['group:fixture-reviewers'], cc: ['person:11111111-1111-4111-8111-111111111111'] });
+  expect(parseV9Config(config).workflows.at(-1)!.steps[0]).toMatchObject({ to: ['group:fixture-reviewers'] });
+  config.groups = config.groups.filter(group => group.id !== 'fixture-reviewers'); expect(() => parseV9Config(config)).toThrow('existing assignment group');
 });

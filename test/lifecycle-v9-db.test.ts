@@ -659,3 +659,17 @@ it('fires the HR-signature workflow from an actual sign command and starts a man
   const next=(await v9Workspace(admin)).config!;next.workflows.find(workflow=>workflow.id==='event-manual')!.status='draft';await v9SaveConfig(admin,next.revision,next);
   await expect(v9Command(admin,c.id,c.revision,{type:'startWorkflow',workflowId:'event-manual'})).rejects.toThrow('live workflow');
 });
+
+it('accepts tenant directory recipients and rejects foreign people and deleted recipient groups', async () => {
+  const c = await prepared(); const config = (await v9Workspace(admin)).config!;
+  config.groups.push({ id: 'review-recipient-group', name: 'Fictional reviewers', members: [admin.userId!, other.userId!], limit: 0 });
+  config.workflows.push({ id: 'directory-review', name: 'Directory review', module: 'off', status: 'published', trigger: { event: 'manual', days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [], steps: [{ id: 'notice', type: 'notify', to: 'group:review-recipient-group', cc: [`person:${other.userId}`], subject: 'Directory review', body: 'Fictional' }], description: '' });
+  await v9SaveConfig(admin, config.revision, config);
+  const before = await v9CaseDetail(admin, c.id); await v9Command(admin, c.id, before.case.revision, { type: 'startWorkflow', workflowId: 'directory-review' });
+  const mail = (await v9CaseDetail(admin, c.id)).case.mails.find(mail => mail.workflowId === 'directory-review');
+  expect(mail).toMatchObject({ to: [admin.userId], cc: [other.userId], status: 'pending' });
+  const invalid = (await v9Workspace(admin)).config!;
+  const notice = invalid.workflows.find(workflow => workflow.id === 'directory-review')!.steps[0]; if (!('to' in notice)) throw new Error('Expected notification step');
+  notice.cc = [`person:${randomUUID()}`]; await expect(v9SaveConfig(admin, invalid.revision, invalid)).rejects.toThrow('available person from this tenant');
+  notice.cc = []; invalid.groups = invalid.groups.filter(group => group.id !== 'review-recipient-group'); await expect(v9SaveConfig(admin, invalid.revision, invalid)).rejects.toThrow('existing assignment group');
+});

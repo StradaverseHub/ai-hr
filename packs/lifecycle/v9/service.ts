@@ -190,6 +190,12 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
     }
     const users = await tx.execute<{ id: string }>(sql`select id from app_user where tenant_id=${ctx.tenantId}::uuid and archived_at is null`);
     if (config.groups.some(g => g.members.some(id => !users.some(u => u.id === id)))) throw new M.V9Error('A group includes an unavailable user.');
+    const recipientRoles = [...config.emails.flatMap(email => email.cc), ...config.workflows.flatMap(workflow => workflow.steps.flatMap(step => 'to' in step ? [...(Array.isArray(step.to) ? step.to : [step.to]), ...step.cc] : [] ))];
+    for (const role of recipientRoles) {
+      if (role.startsWith('person:') && !users.some(user => user.id === role.slice(7))) throw new M.V9Error('Choose an available person from this tenant for the recipient.');
+      if (role.startsWith('group:') && !config.groups.some(group => group.id === role.slice(6))) throw new M.V9Error('Choose an existing assignment group for the recipient.');
+    }
+
     if (config.bpRules.some(r => !users.some(u => u.id === r.userId)) || config.companies?.some(c => c.signatoryUserId && !users.some(u => u.id === c.signatoryUserId))) throw new M.V9Error('Choose an available user for the PBP and company signatory.');
     const companies = await tx.execute<{ id: string }>(sql`select id from company where tenant_id=${ctx.tenantId}::uuid`);
     if (config.companies?.some(c => !companies.some(co => co.id === c.companyId))) throw new M.V9Error('Choose an available company.');

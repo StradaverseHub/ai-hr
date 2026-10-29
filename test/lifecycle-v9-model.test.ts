@@ -407,3 +407,19 @@ it('resolves the actual case submitter and company signatory without using the w
  const missing=fixture();expect(M.runWorkflow(missing.c,missing.config,definition,missing.environment,'manual')?.status).toBe('failed');expect(missing.c.mails).toEqual([]);
  const submitted=fixture();submitted.c.state='pending';submitted.c.facts.starterUserId='wrong';M.submit(submitted.c,submitted.config,submitted.environment);expect(submitted.c.facts.starterUserId).toBe(submitted.environment.actor.id);
 });
+
+
+it('routes a group notification once with remaining members in CC and an ordinary email to its first member', () => {
+  const { c, config, environment } = fixture();
+  config.groups.push({ id: 'recipient-group', name: 'Fictional reviewers', members: ['reviewer-a', 'reviewer-b'], limit: 0 });
+  const definition = workflow({ trigger: { event: 'manual', days: 0, workdays: false, repeat: false, skipIf: '' }, steps: [{ id: 'notice', type: 'notify', to: 'group:recipient-group', cc: ['person:reviewer-b'], subject: 'Review', body: 'Body' }] });
+  M.runWorkflow(c, config, definition, environment, 'manual');
+  expect(c.mails).toHaveLength(1); expect(c.mails[0]).toMatchObject({ to: ['reviewer-a'], cc: ['reviewer-b'] });
+  const ordinary = fixture(); ordinary.config.groups = config.groups;
+  ordinary.config.emails.push({ id: 'group-mail', name: 'Group mail', module: 'off', active: true, sender: 'hr', subject: 'Group mail', body: 'Body', cc: [], links: [], attachments: [], slots: [] });
+  const emailWorkflow = workflow({ ...definition, steps: [{ id: 'email', type: 'email', template: 'group-mail', to: 'group:recipient-group', cc: [] }] });
+  M.runWorkflow(ordinary.c, ordinary.config, emailWorkflow, ordinary.environment, 'manual');
+  expect(ordinary.c.mails).toHaveLength(1); expect(ordinary.c.mails[0]).toMatchObject({ to: ['reviewer-a'], cc: [] });
+  const named = fixture(); M.runWorkflow(named.c, named.config, workflow({ ...definition, steps: [{ id: 'named', type: 'notify', to: 'person:reviewer-b', cc: [], subject: 'Named review', body: '' }] }), named.environment, 'manual');
+  expect(named.c.mails[0].to).toEqual(['reviewer-b']);
+});

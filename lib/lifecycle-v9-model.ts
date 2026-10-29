@@ -56,7 +56,7 @@ export type Document = {
   mergeValues?: Record<string, string>;
   hrStep?: Template['hrStep']; employeeAck?: boolean; signatoryUserId?: string | null; templateType?: Template['type'];
 };
-export type Role = 'employee' | 'supervisor' | 'pbp' | 'ta' | 'peopleOps' | 'taskOwners' | 'hrSignatory' | 'starter';
+export type Role = 'employee' | 'supervisor' | 'pbp' | 'ta' | 'peopleOps' | 'taskOwners' | 'hrSignatory' | 'starter' | `group:${string}` | `person:${string}`;
 export type EmailAsset = { id: string; kind: 'file' | 'image'; name: string; mimeType: string; size: number; contentHash: string; at: string; by: string };
 export type DefinitionUsage = { kind: 'document' | 'email'; definitionId: string; messages: number; runs: number };
 export type TemplateUsage = { templateId: string; version: number; documents: number };
@@ -353,6 +353,8 @@ export function signDocument(c: Case, config: Config, id: string, role: 'employe
   if (documentFinal(doc)) linkedTasks(c, doc, 'signed'); appendLog(c, env, 'document.signed', `${doc.name} · ${role}`);
 }
 function recipients(c: Case, config: Config, role: Role): string[] {
+  if (role.startsWith('person:')) return [role.slice(7)];
+  if (role.startsWith('group:')) return config.groups.find(group => group.id === role.slice(6))?.members ?? [];
   if (role === 'peopleOps') return config.groups.find(g => g.id === config.peopleOpsGroup)?.members ?? [];
   if (role === 'taskOwners') return [...new Set(pendingPre(c).map(t => t.assignee).filter((id): id is string => !!id))];
   const id = role === 'employee' ? c.facts.employeeUserId : role === 'supervisor' ? c.facts.supervisorUserId : role === 'pbp' ? resolvePbp(config, c.facts) : role === 'ta' ? c.facts.taUserId : role === 'hrSignatory' ? config.companies?.find(company => company.companyId === c.facts.company)?.signatoryUserId : role === 'starter' ? c.facts.starterUserId ?? c.log.find(log => log.action === 'case.submitted')?.actor.id : null;
