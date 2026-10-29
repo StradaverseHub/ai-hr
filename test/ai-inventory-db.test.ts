@@ -74,6 +74,7 @@ describe('AI inventory access (ADR-0151 §4.7)', () => {
     expect(full.alerts).toEqual([]);
     expect((await aiRunHistory(group, {})).rows).toEqual([]);
     const registry = await aiInventoryView(companyHr, await aiManagementView(companyHr));
+    if (registry.scope !== 'registry') throw Error('expected registry scope');
     expect(registry.rows.find(r => r.key === 'action:leave.edit')!.actionPaused).toBe(false);
     // The table itself is tenant-scoped under RLS.
     const visible = await withTenant(group, tx => tx.execute(sql`select tenant_id from app.ai_agent_action_pause`));
@@ -96,6 +97,7 @@ describe('per-action pause key hr_assistant:<actionId> (0696)', () => {
     expect(row.runtime.actionPaused).toBe(true);
     expect(row.runtime.audit.count).toBe(1);
     const registry = await aiInventoryView(companyHr, await aiManagementView(companyHr));
+    if (registry.scope !== 'registry') throw Error('expected registry scope');
     expect(registry.rows.find(r => r.key === 'action:leave.cancel')!.actionPaused).toBe(true);
     await setAgentActionPause(group, 'leave.cancel', false);
     await expect(withAgentActionPauseScope('leave.cancel', () => pauseCheck(group))).resolves.toBeUndefined();
