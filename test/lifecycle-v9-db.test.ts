@@ -45,6 +45,38 @@ it('shares group ownership and detects a stale native group revision', async () 
   expect(native.config.groups.find(g => g.name === 'Group Tech')!.members).toEqual([employee.userId]);
   await expect(v9SaveConfig(admin, before.config!.revision, before.config)).rejects.toThrow('Settings changed');
 });
+it('protects shared groups referenced by V9 recipients and open offboarding snapshots', async () => {
+  const native = await onboardingContext(admin), ids = ['v9-people-ops', 'v9-mail-group', 'v9-flow-group', 'v9-snapshot-group', 'v9-unused-group'];
+  native.config.groups.push(...ids.map(id => ({ id, name: id, members: [base.adminUserId], limit: 0 })));
+  await onboardingSaveConfig(admin, native.revision, native.config);
+  let config = (await v9Workspace(admin)).config!;
+  config.peopleOpsGroup = ids[0];
+  config.emails[0].cc.push(`group:${ids[1]}`);
+  for (const workflow of config.workflows) workflow.status = 'draft';
+  config.workflows.push({ id: 'group-ref', name: 'Group reference', module: 'off', status: 'draft', trigger: { event: 'manual', days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [], steps: [{ id: 'notify', type: 'notify', subject: 'Review', body: 'Review', to: [`group:${ids[2]}`], cc: [] }], description: '' });
+  config.checklists = [...config.checklists.filter(checklist => checklist.module === 'onb'), { id: 'group-ref-exit', name: 'Group snapshot', module: 'off', rules: {}, tasks: [{ id: 'review', name: 'Review handover', by: 'group', group: ids[3], mode: 'manual', opens: null, due: 0, required: true, documentTemplate: null, documentAction: 'completed' }] }];
+  await v9SaveConfig(admin, config.revision, config);
+  const id = await v9CreateOffboarding(admin, { employmentId, type: 'Resignation', noticeDate: todayInKualaLumpur(), lastDay: addDays(todayInKualaLumpur(), 30) });
+  await v9Command(admin, id, 1, { type: 'submit' });
+  config = (await v9Workspace(admin)).config!;
+  config.checklists.find(checklist => checklist.id === 'group-ref-exit')!.tasks[0].group = config.groups[0].id;
+  await v9SaveConfig(admin, config.revision, config);
+  const refs = await withTenant(admin, tx => tx.execute<{ ids: string[] }>(sql`select app.onboarding_v9_group_references() as ids`));
+  expect(refs[0].ids).toEqual(expect.arrayContaining(ids.slice(0, 4)));
+  expect(refs[0].ids).not.toContain(ids[4]);
+  expect(await withTenant(other, tx => tx.execute<{ ids: string[] }>(sql`select app.onboarding_v9_group_references() as ids`))).toEqual([{ ids: [] }]);
+  for (const group of ids.slice(0, 4)) {
+    const current = await onboardingContext(admin), proposed = structuredClone(current.config);
+    proposed.groups = proposed.groups.filter(candidate => candidate.id !== group);
+    await expect(onboardingSaveConfig(admin, current.revision, proposed, { [group]: current.config.groups[0].id })).rejects.toThrow('used by V9');
+  }
+  const current = await onboardingContext(admin);
+  current.config.groups = current.config.groups.filter(group => group.id !== ids[4]);
+  await onboardingSaveConfig(admin, current.revision, current.config);
+  expect((await onboardingContext(admin)).config.groups.some(group => group.id === ids[4])).toBe(false);
+  expect((await v9Workspace(admin)).cases.find(row => row.id === id)!.tasks[0].group).toBe(ids[3]);
+});
+
 it('uses native checklist and claimed-equipment load for offboarding, without counting existing leaver work', async () => {
   const context = await onboardingContext(admin), native = structuredClone(context.config), group = native.groups[0];
   group.members = [base.adminUserId, other.userId!]; group.limit = 2;
@@ -220,6 +252,13 @@ it('projects V9 checklist definitions into native cases and preserves their task
   [joiner] = await onboardingList(admin);
   expect(joiner.case.tasks.map(task => task.name)).toEqual(original.tasks.map(task => task.name));
   expect(joiner.case.confirmedChecklist!.id).toBe('c1');
+  expect(joiner.case.reconcileNeeded).toBeFalsy();
+  const unrelated = await onboardingContext(admin);
+  unrelated.config.recentActiveDays += 1;
+  await onboardingSaveConfig(admin, unrelated.revision, unrelated.config);
+  const unchanged = (await onboardingList(admin)).find(row => row.case.id === joiner.case.id)!;
+  expect(unchanged.revision).toBe(joiner.revision);
+  expect(unchanged.case.reconcileNeeded).toBeFalsy();
   const snapshot = structuredClone(joiner.case.tasks), config = (await v9Workspace(admin)).config!, expectedNativeRevision = (await onboardingContext(admin)).revision;
   config.checklists.find(checklist => checklist.id === 'c1')!.tasks[0].name = 'Reviewed welcome pack';
   const receipt = await v9SaveConfig(admin, config.revision, config);

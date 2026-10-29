@@ -40,3 +40,5 @@
 .v9-prewrap{white-space:pre-wrap;overflow-wrap:anywhere}
 
 .v9-workspace [role="tablist"] [role="tab"]{border-radius:999px;min-height:40px;padding:0 16px}
+
+.v9-calendar-scroll{overflow-x:auto}.v9-calendar-week{display:grid;grid-template-columns:repeat(7,minmax(115px,1fr));gap:8px}.v9-calendar-day{min-width:0;padding:10px 8px;border:1px solid #eef0f4;border-radius:10px}.v9-calendar-day h3{display:flex;align-items:baseline;gap:6px;margin:0 0 10px;font-size:13px;font-weight:600}.v9-calendar-day [aria-current=date]{color:var(--v9-accent)}.v9-calendar-event{font-size:12px;line-height:1.35;border-radius:6px;padding:4px 6px;margin:4px 0;overflow-wrap:anywhere;background:#f6f7fb;color:#3b3f4c}.v9-calendar-late{background:#fdecec;color:#a12b2b}.v9-calendar-key{background:#fff4db;color:#6b4100}

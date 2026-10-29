@@ -358,6 +358,29 @@ $$;
 REVOKE ALL ON FUNCTION app.onboarding_unavailable(date[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onboarding_unavailable(date[]) TO ai_hr_app;
 
+-- Native group deletion checks opaque references without exposing offboarding cases or communication content.
+CREATE OR REPLACE FUNCTION app.onboarding_v9_group_references() RETURNS text[]
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH permitted AS (
+  SELECT app.current_tenant_id() AS tenant_id WHERE app.current_user_id() IS NOT NULL
+  AND NOT app.login_blocked(app.current_user_id())
+  AND (app.is_group_admin() OR EXISTS(SELECT 1 FROM lc_onboarding_config n WHERE n.tenant_id=app.current_tenant_id() AND n.data->'access'->'onboarding' ? app.current_user_id()::text))
+ ), cfg AS (SELECT c.data FROM lc_v9_config c JOIN permitted p ON p.tenant_id=c.tenant_id),
+ roles AS (
+  SELECT jsonb_array_elements_text(coalesce(e->'cc','[]'::jsonb)) AS role FROM cfg,jsonb_array_elements(data->'emails') e
+  UNION ALL
+  SELECT jsonb_array_elements_text(CASE WHEN jsonb_typeof(s->'to')='array' THEN s->'to' WHEN s ? 'to' THEN jsonb_build_array(s->'to') ELSE '[]'::jsonb END || coalesce(s->'cc','[]'::jsonb)) FROM cfg,jsonb_array_elements(data->'workflows') w,jsonb_array_elements(w->'steps') s
+ ), refs AS (
+  SELECT data->>'peopleOpsGroup' AS id FROM cfg
+  UNION ALL SELECT t->>'group' FROM cfg,jsonb_array_elements(data->'checklists') cl,jsonb_array_elements(cl->'tasks') t
+  UNION ALL SELECT substring(role FROM 7) FROM roles WHERE role LIKE 'group:%'
+  UNION ALL SELECT t->>'group' FROM lc_v9_case c JOIN permitted p ON p.tenant_id=c.tenant_id,jsonb_array_elements(coalesce(c.data->'tasks','[]'::jsonb)||coalesce(c.data->'items','[]'::jsonb)) t
+   WHERE c.module='off' AND c.data->>'state' IN ('pending','submitted') AND t->>'status' NOT IN ('done','notNeeded')
+ ) SELECT coalesce(array_agg(DISTINCT id ORDER BY id) FILTER(WHERE nullif(id,'') IS NOT NULL),ARRAY[]::text[]) FROM refs
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_v9_group_references() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_v9_group_references() TO ai_hr_app;
+
 -- Only shared checklist definitions cross this projection; document bodies and case data stay private.
 CREATE OR REPLACE FUNCTION app.onboarding_v9_checklists() RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$

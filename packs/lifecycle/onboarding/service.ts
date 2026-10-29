@@ -682,6 +682,14 @@ async function saveConfig(ctx: SessionContext, revision: number, input: M.Config
             if (!next.workflows.some(n => n.id === w.id) && (next.catalogue.some(i => i.workflow === w.id) || next.exceptions.workflow === w.id))
                 M.fail('This workflow is still used by the catalogue or exceptions.');
         const deleted = old.groups.filter(g => !next.groups.some(n => n.id === g.id));
+        if (deleted.length) {
+            const [extension] = await tx.execute<{ available: boolean }>(sql`select to_regprocedure('app.onboarding_v9_group_references()') is not null as available`);
+            if (extension?.available) {
+                const [references] = await tx.execute<{ ids: string[] }>(sql`select app.onboarding_v9_group_references() as ids`);
+                if (deleted.some(group => references?.ids.includes(group.id)))
+                    M.fail('This group is used by V9 checklists, recipients or open offboarding work. Reassign that work and update those settings before deleting it.');
+            }
+        }
         for (const g of deleted) {
             const replacement = replacements[g.id] ?? '';
             if (replacement && !next.groups.some(n => n.id === replacement))
@@ -743,7 +751,7 @@ async function saveConfig(ctx: SessionContext, revision: number, input: M.Config
             }
             if (c.personnelStatus === 'Draft') {
                 const before = M.matchChecklist(old, c).checklist, after = M.matchChecklist(next, c).checklist;
-                if (JSON.stringify(before) !== JSON.stringify(after) && c.state === 'submitted') {
+                if (!isDeepStrictEqual(before, after) && c.state === 'submitted') {
                     c.reconcileNeeded = true;
                     changed = true;
                 }
@@ -1214,7 +1222,7 @@ export async function onboardingV9DefinitionsChangedTx(ctx: SessionContext, tx: 
     for (const row of list) {
         const c = structuredClone(row.data);
         if (c.personnelStatus !== 'Draft' || c.state !== 'submitted') continue;
-        if (JSON.stringify(M.matchChecklist(config, c).checklist) === JSON.stringify(M.matchChecklist(next, c).checklist)) continue;
+        if (isDeepStrictEqual(M.matchChecklist(config, c).checklist, M.matchChecklist(next, c).checklist)) continue;
         c.reconcileNeeded = true;
         M.log(c, actor, env, 'configuration.changed', 'Shared V9 checklist changed; review the task reconciliation.');
         await storeTx(tx, ctx, row, c, false);
