@@ -22,12 +22,14 @@ be used as an executable alternative.
 
 | Index | Sequence | Migration | Exact SQL SHA256 |
 | ---: | ---: | --- | --- |
-| 669 | 1793330000005 | 0679_email_templates_r2 | b259d07e4964830eb6781a5efdeaf0c64bc5278a6efefb7883fd8e93bc38ddfe |
+| 669 | 1793330000005 | 0679_email_templates_r2 | 07cb3af8566b1c9be162f88e5b16d912471cb1eb9ec2582ef7f9224620cdb622 |
 | 670 | 1793330000006 | 0680_rewards_exclusions_history | 8497edb87cbc4d4929700f3a8ba8abe3519cd2ce13c50f5f16a522a56093c344 |
 | 671 | 1793330000007 | 0681_rewards_approval_participation | 2600e08cde3498f3ce5f2c1fbd4fb1418ab22b7e87db3852768a1b932baa9cdc |
 | 672 | 1793330000008 | 0682_epf_manual_percentage | afe1902eef73ba0489c5690155c069a9eec1a0fb2758dcc94cb3451f03a6ea36 |
 | 673 | 1793330000009 | 0683_profile_field_approvals | 3bbc6af156e7440477c182b5a8cda9d64700d31cc91f584d2f63a9537ca81f97 |
 | 674 | 1793330000010 | 0684_ocbc_bank_payment_exports | f59a9a34b95b66c929ebe0385d048927eab791835f78e98c696930d4472eaeb6 |
+
+The unapplied 0679 body now includes a bounded, read-only recipient-locale accessor for Group HR reminder previews. It returns no template, identity, address or preference-enabled state, grants no table access, and changes no stored records. Its source hash above supersedes the earlier b259d07e4964830eb6781a5efdeaf0c64bc5278a6efefb7883fd8e93bc38ddfe draft after the full-gate renderer/locale defect was diagnosed. The original failed candidate and historical allocation notes retain that older hash. Filenames, indices and sequences are unchanged; no applied migration was modified.
 
 These six entries are an unapplied source allocation. The combined candidate requires a fresh
 complete GitHub Actions witness, populated ordinary-journal upgrade proof, a current private

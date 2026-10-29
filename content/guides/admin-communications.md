@@ -30,3 +30,5 @@ Inspect the recorded delivery status and safe error category. A failed delivery 
 ## Installation email is separate
 
 [Email delivery](/admin/settings/email) requires a separately enrolled installation capability and supported identity session. It is not granted by HR or customer-provisioning operator roles. Its save-draft, send-test and activate workflow controls the installation relay. Saving a draft is not activation, and application deployment does not imply a human confirmed receipt of the test message.
+
+Group HR can preview the complete assessment reminder in the recipient’s saved language when the required person details are visible. Other authorized administrators see a labelled summary of tasks within their scope; it is not the complete delivery preview.
