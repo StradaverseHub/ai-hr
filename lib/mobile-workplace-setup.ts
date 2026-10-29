@@ -62,23 +62,37 @@ export function workplaceSetupLinks(raw: string) {
   return { web, app: 'aihr://company' + fragment };
 }
 
-export function isWorkplaceSetupLink(value: string): boolean {
-  if (value.length > MAX_LINK_LENGTH) return value.startsWith('aihr://company') || value.includes(WORKPLACE_SETUP_PATH);
-  try {
-    const url = new URL(value);
-    return (url.protocol === 'aihr:' && url.hostname === 'company') || url.pathname === WORKPLACE_SETUP_PATH;
-  } catch { return false; }
+/**
+ * Links are split by hand, never through `URL`: React Native's URL (Libraries/Blob/URL.js) is a regex polyfill that
+ * only knows http(s) hosts, so `new URL('aihr://company#setup=…')` reports hostname '' and pathname '/', and every
+ * real app link was refused on the phone while node accepted it. The rules below are exact-string, so they do not
+ * depend on any runtime's URL normalisation either.
+ */
+const LINK = /^([A-Za-z][A-Za-z0-9+.-]*):\/\/([^/?#]*)([^?#]*)(\?[^#]*)?(#[\s\S]*)?$/;
+const SETUP_FRAGMENT = /^#setup=[A-Za-z0-9_-]+$/;
+function linkParts(value: string) {
+  const m = LINK.exec(value);
+  return m ? { scheme: m[1], authority: m[2], path: m[3], query: m[4] ?? '', fragment: m[5] ?? '' } : null;
 }
 
+/** Recognises a link meant for workplace setup (well-formed or not), so a malformed one is refused visibly. */
+export function isWorkplaceSetupLink(value: string): boolean {
+  if (value.length > MAX_LINK_LENGTH) return value.startsWith('aihr://company') || value.includes(WORKPLACE_SETUP_PATH);
+  const parts = linkParts(value);
+  if (!parts) return false;
+  const host = parts.authority.slice(parts.authority.lastIndexOf('@') + 1).toLowerCase();
+  return (parts.scheme.toLowerCase() === 'aihr' && host === 'company') || parts.path === WORKPLACE_SETUP_PATH;
+}
+
+/** Exactly `aihr://company#setup=…` or `https://<the profile's own origin>/login/mobile-setup#setup=…`. */
 export function readWorkplaceSetupLink(value: string): string {
   if (value.length > MAX_LINK_LENGTH || !isWorkplaceSetupLink(value)) throw new Error('Invalid workplace setup link.');
-  const url = new URL(value);
-  const native = url.protocol === 'aihr:' && url.hostname === 'company' && !url.pathname && !url.port;
-  const web = url.protocol === 'https:' && url.pathname === WORKPLACE_SETUP_PATH;
-  if ((!native && !web) || url.username || url.password || url.search || !/^#setup=[A-Za-z0-9_-]+$/.test(url.hash))
-    throw new Error('Invalid workplace setup link.');
-  const raw = decode(url.hash.slice('#setup='.length));
+  const parts = linkParts(value)!;
+  const native = parts.scheme === 'aihr' && parts.authority === 'company' && parts.path === '';
+  const web = parts.scheme === 'https' && parts.path === WORKPLACE_SETUP_PATH && parts.authority.length > 0 && !/[@\\\s]/.test(parts.authority);
+  if ((!native && !web) || parts.query || !SETUP_FRAGMENT.test(parts.fragment)) throw new Error('Invalid workplace setup link.');
+  const raw = decode(parts.fragment.slice('#setup='.length));
   const profile = workplaceSetupProfile(raw);
-  if (web && url.origin !== profile.apiOrigin) throw new Error('Workplace setup belongs to another server.');
+  if (web && 'https://' + parts.authority !== profile.apiOrigin) throw new Error('Workplace setup belongs to another server.');
   return raw;
 }
