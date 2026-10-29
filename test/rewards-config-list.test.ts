@@ -140,7 +140,9 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
     expect(calendar[1].payload).toMatchObject({ before: { due: { bg: addDays(today, 5) } }, after: { due: { bg: addDays(today, 9) } } });
     expect((await row()).due).toBe(addDays(today, 9));
     const [policy] = (await events('reward-unit.policy-updated')).slice(-1);
-    expect(policy.payload).toMatchObject({ before: { patActual: 0, effectiveFrom: `${year + 1}-01-01` }, after: { patActual: 100, effectiveFrom: today } });
+    expect(policy.payload).toMatchObject({ before: { effectiveFrom: `${year + 1}-01-01` }, after: { effectiveFrom: today } });
+    expect(Object.keys((policy.payload as { before: object }).before)).not.toContain('patActual');
+    expect(Object.keys((policy.payload as { after: object }).after)).not.toContain('patActual');
     expect(Object.keys((policy.payload as { after: object }).after)).not.toContain('meritMatrix');
   });
   it('9040c2eb: carries the exact board projection for BU and EC seats and metadata only for a seatless admin',async()=>{

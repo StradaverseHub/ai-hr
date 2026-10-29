@@ -104,7 +104,7 @@ export async function getRewardUnitGovernance(ctx:SessionContext,unitId:string){
   const canAmounts=maySeeSeniorAmounts(roles),isGr=roles.includes('gr');
   const [ready]=await tx.execute<{ready:boolean}>(sql`select to_regclass('public.reward_governance') is not null as ready`);
   return {unitId,revision:unit.revision,canEdit:isGr&&unit.status==='draft'&&unit.kind==='annual',isGr,canAmounts,managed:!!publicState,
-   available:ready?.ready===true,legacyInputs:isGr?{forecastCents:null,actualCents:unit.policy.patActual||null,targetCents:unit.policy.patTarget>100?unit.policy.patTarget:null,targetMonthsBp:unit.policy.targetMonthsBp,multiplierBp:unit.policy.bonusStructure==='branch'?10000:unit.policy.multiplierBp,branchRatings:unit.policy.branchRatings}:null,
+   available:ready?.ready===true,legacyInputs:isGr?{forecastCents:null,actualCents:unit.policy.patActual,targetCents:unit.policy.patTarget,targetMonthsBp:unit.policy.targetMonthsBp,multiplierBp:unit.policy.bonusStructure==='branch'?10000:unit.policy.multiplierBp,branchRatings:unit.policy.branchRatings}:null,
    poolStatus:publicState?.status??'legacy',inputs:isGr?(state?.inputs??null):null,selection:isGr?state?.selection??null:null,
    exemption:isGr?state?.exemption??null:null,previousPools:publicState?.previousPools??null,
    pools:{standard:calculated.budgets.standard.bonusPoolCents,h:calculated.budgets.h.bonusPoolCents},
@@ -667,8 +667,8 @@ function prepareSeniorSelection(ctx: SessionContext, unit: typeof rewardUnit.$in
   const selected = new Set(input.employmentIds);
   if (selected.size !== input.employmentIds.length) throw new RewardError('Select each employee only once.');
   const visible = new Set(entries.filter(entry => visibleEntry(entry, roles, ctx.personId)).map(entry => entry.employmentId));
-  if (input.employmentIds.some(id => !entries.some(entry=>entry.employmentId===id&&seniorGrade(entry.source.grade)))) throw new RewardError('Only employees in JG 21, 22 or 23 may be selected for the Senior plan.');
   if (input.employmentIds.some(id => !visible.has(id))) throw new RewardError('A selected employee is not in your visible review roster. Reload the review.');
+  if (input.employmentIds.some(id => !entries.some(entry=>entry.employmentId===id&&seniorGrade(entry.source.grade)))) throw new RewardError('Only employees in JG 21, 22 or 23 may be selected for the Senior plan.');
   const legacy = unit.policy.seniorMembershipMode !== 'named-members';
   if (legacy && !input.adoptLegacy) throw new RewardError('Confirm conversion from the saved grade rule to named membership.');
   const updated = entries.map(entry => {
