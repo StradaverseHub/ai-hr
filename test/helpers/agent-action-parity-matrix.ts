@@ -94,7 +94,7 @@ export const AGENT_ACTION_PARITY={
  'performance.onehr.plan.acknowledge':pending(NO_ADAPTER+' Module-action store; needs a OneHR plan fixture.'),
  'rewards.post':pending(NO_ADAPTER+' Dedicated store; needs an approved reward unit and open batch.'),
  'lifecycle.acknowledgement.submit':pending(NO_ADAPTER+' Dedicated store; needs a lifecycle case fixture.'),
- 'toil.replacement.request':pending(NO_ADAPTER+' Dedicated store.'),
+ 'toil.replacement.request':{kind:'probed',screen:OWN_REQUEST},
  'multi_cycle_payroll.create_run':pending(NO_ADAPTER+' Dedicated store; multi-cycle payroll flag.'),
  'typed_pay_components.create':pending(NO_ADAPTER+' Dedicated store; typed pay components flag.'),
  'country-my.statutory.update':pending(NO_ADAPTER+' Dedicated store; country pack dispatch.'),
@@ -120,7 +120,7 @@ export const PARITY_PENDING_CEILING:ReadonlySet<string>=new Set([
  'org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide',
  'knowledge_base.article.create','payroll.close','attendance.correction.request',
  'claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge',
- 'rewards.post','lifecycle.acknowledgement.submit','toil.replacement.request','multi_cycle_payroll.create_run',
+ 'rewards.post','lifecycle.acknowledgement.submit','multi_cycle_payroll.create_run',
  'typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save',
 ]);
 

@@ -287,7 +287,7 @@ export const AGENT_ACTIONS=Object.freeze([
   permission:{actor:'self',guard:'core/assistant-actions/own-toil-replacement-source.ts#assertOwnToilReplacementActorTx'},subject:'own_employment',blastRadius:{max:1,unit:'replacement_request_up_to_32_worked_dates'},
   idempotencyKey:'review_action_id',policy:{tier:'confirm',category:'own_work'},reversal:{kind:'entry_point',by:'app/leave/credit/actions.ts#cancelLeaveCreditRequestAction'},evaluationCases:[],
   screen:{native:'app/leave/page.tsx',entryPoints:['app/leave/actions.ts#submitReplacementLeaveRequestAction']},review:{route:'/assistant/toil',handoff:'review_page'},
-  store:'dedicated',browserOwner:'toil',pauseKey:'hr_assistant'}),
+  store:'generic_own',browserOwner:'toil',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'multi_cycle_payroll.create_run',module:'multi_cycle_payroll',owner:'payroll',service:'packs/payroll/service.ts#createAdditionalRun',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_multi_cycle_run_review_v1',inputSchema:'MultiCycleRunReviewPrepare',outputSchema:'MultiCycleRunPreparedReview'},
   confirm:{status:'implemented',adapter:'module_multi_cycle_run_review_v1',inputSchema:'MultiCycleRunReviewConfirmation',outputSchema:'MultiCycleRunCompletedReview'},
