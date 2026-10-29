@@ -223,7 +223,11 @@ describe('§2 the EPF boxes appear per category, post nothing, and keep the stri
     const epf = () => within(section('epf')!);
     for (const [cat, boxes] of Object.entries(EXPECT)) {
       await userEvent.selectOptions(epf().getByLabelText(d.epfMode), cat);
-      const shown = (Object.keys(BOXES) as (keyof typeof BOXES)[]).filter((k) => epf().queryByLabelText(personnelCaption(BOXES[k])) !== null);
+      // b6dbadc5 — Top-up's two rate boxes carry their own "Top-up … Rate %" captions.
+      const caption = (k: keyof typeof BOXES) =>
+        cat === 'voluntary_percentage' && k === 'epfEmployeeRate' ? d.epfTopupEmployeeRate
+          : cat === 'voluntary_percentage' && k === 'epfEmployerRate' ? d.epfTopupEmployerRate : BOXES[k];
+      const shown = (Object.keys(BOXES) as (keyof typeof BOXES)[]).filter((k) => epf().queryByLabelText(personnelCaption(caption(k))) !== null);
       expect(shown, `${cat}: boxes shown`).toEqual(boxes);
       for (const el of section('epf')!.querySelectorAll('input, select')) expect(el.getAttribute('name'), `${cat}: no name`).toBeNull();
     }
@@ -275,14 +279,26 @@ describe('§3 what Activate would refuse is named on the still-needed list and h
   const d = en.people.detail;
   const f = en.people.wizard.fields;
 
-  it('a below-floor rate names the Employee rate box; fixing it releases Activate', async () => {
-    wrap(draftOf({ epfMode: 'voluntary_percentage' }));
-    expect(activate().disabled, 'legacy blank rates retain the statutory rule').toBe(false);
+  it('a below-floor Semi-Auto rate names the Employee rate box; fixing it releases Activate', async () => {
+    wrap(draftOf({ epfMode: 'semi_auto', epfEmployeeRate: '' }));
     await userEvent.type(within(section('epf')!).getByLabelText(personnelCaption(d.epfEmployeeRate)), '10');
     expect(bankStatutoryNeeds(en)?.textContent ?? '', 'still needed').toContain(f.epfEmployeeRate);
     expect(activate().disabled, 'Activate held back').toBe(true);
     await userEvent.clear(within(section('epf')!).getByLabelText(personnelCaption(d.epfEmployeeRate)));
     await userEvent.type(within(section('epf')!).getByLabelText(personnelCaption(d.epfEmployeeRate)), '12');
+    expect(bankStatutoryNeeds(en), 'nothing owed').toBeNull();
+    expect(activate().disabled).toBe(false);
+  });
+
+  it('b6dbadc5: a Top-up above the 100% cap names the Employee rate box; a 1% top-up releases Activate', async () => {
+    wrap(draftOf({ epfMode: 'voluntary_percentage' }));
+    expect(activate().disabled, 'blank top-ups add nothing').toBe(false);
+    const box = () => within(section('epf')!).getByLabelText(personnelCaption(d.epfTopupEmployeeRate));
+    await userEvent.type(box(), '90');
+    expect(bankStatutoryNeeds(en)?.textContent ?? '', 'still needed').toContain(f.epfEmployeeRate);
+    expect(activate().disabled, 'Activate held back').toBe(true);
+    await userEvent.clear(box());
+    await userEvent.type(box(), '1');
     expect(bankStatutoryNeeds(en), 'nothing owed').toBeNull();
     expect(activate().disabled).toBe(false);
   });
