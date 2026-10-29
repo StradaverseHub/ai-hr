@@ -248,8 +248,13 @@ async function issueMobileSetupAfterProvisioning(owner: ReturnType<typeof create
   } catch { console.error('· mobile setup issuance could not run.'); }
 }
 
-/** Renewals, address changes, retries and customers provisioned before automatic issuance (ADR-0161). */
+/** Operator intents, then renewals, address changes, retries and earlier customers (ADR-0161). */
 async function runMobileSetupStage(owner: ReturnType<typeof createDb>): Promise<void> {
+  // Independent halves: an intent failure must not stop renewals, and the reverse.
+  try {
+    const {runMobileSetupRequestTick}=await import('./mobile-setup-issuance');
+    await runMobileSetupRequestTick(owner);
+  } catch { console.error('Mobile setup request tick failed.'); }
   try {
     const {mobileSetupPass}=await import('./mobile-setup-issuance');
     const result=await mobileSetupPass(owner);

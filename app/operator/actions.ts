@@ -6,6 +6,7 @@ import { renameOperatorCustomer,requestOperatorModuleChange } from '@/core/opera
 import { publicErrorMessage } from '@/lib/public-error';
 import type { OperatorActionState } from './action-state';
 import { claimActivationUrl, createProvisionRequest, requestReissue } from '@/core/operator';
+import { requestOperatorMobileSetupImport, requestOperatorMobileSetupIssue } from '@/core/operator-mobile-setup';
 
 /**
  * Operator console server actions.
@@ -76,4 +77,21 @@ export async function changeCustomerModuleAction(_previous:OperatorActionState,f
     revalidatePath('/operator');revalidatePath(`/operator/customers/${String(formData.get('tenantId')??'')}`);
     return {ok:false,error:publicErrorMessage(error)};
   }
+}
+/** ADR-0161 — records an intent only. The provisioning runner signs; this process never loads the key. */
+export async function requestMobileSetupIssueAction(_previous:OperatorActionState,formData:FormData):Promise<OperatorActionState> {
+  const tenantId=String(formData.get('tenantId')??'');
+  try {
+    await requestOperatorMobileSetupIssue(await getSession(),tenantId);
+    revalidatePath(`/operator/customers/${tenantId}`);return {ok:true,error:null};
+  }catch(error){return {ok:false,error:publicErrorMessage(error)};}
+}
+/** ADR-0161 — an uploaded company.aihr.json, verified here for an immediate answer and again by the runner. */
+export async function importMobileSetupAction(_previous:OperatorActionState,formData:FormData):Promise<OperatorActionState> {
+  const tenantId=String(formData.get('tenantId')??''),file=formData.get('setupFile');
+  try {
+    if(!(file instanceof File)||file.size<1||file.size>16_384)throw new Error('Choose a signed workplace setup file (company.aihr.json) of at most 16 KB.');
+    await requestOperatorMobileSetupImport(await getSession(),tenantId,await file.text());
+    revalidatePath(`/operator/customers/${tenantId}`);return {ok:true,error:null};
+  }catch(error){return {ok:false,error:publicErrorMessage(error)};}
 }

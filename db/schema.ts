@@ -9453,6 +9453,30 @@ export const moduleChangeRequest = pgTable(
   (t) => [index('module_change_request_claim_idx').on(t.status, t.createdAt)],
 );
 
+/**
+ * ADR-0161 — an operator's mobile workplace setup INTENT ("issue / reissue" or "import a signed setup").
+ * SELECT-only to the app role (own tenant, RLS); written only by app.operator_request_mobile_setup and
+ * executed by the owner-role provisioning runner, which alone may hold the signing key. One open intent
+ * per customer (partial unique index). `setup` is the uploaded signed envelope for an import: public
+ * routing data, never a key. `error` is a reason code.
+ */
+export const mobileSetupRequest = pgTable(
+  'mobile_setup_request',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    action: text('action').notNull(), // issue | import
+    status: text('status').notNull().default('pending'), // pending | running | done | failed
+    setup: jsonb('setup').$type<{ keyId: string; payload: string; signature: string }>(),
+    error: text('error'),
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
+    requestedBy: uuid('requested_by').notNull(),
+    createdAt: createdAt(),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+  },
+  (t) => [index('mobile_setup_request_claim_idx').on(t.status, t.createdAt, t.id)],
+);
+
 /** The per-tenant value. Writes are gated on setting_definition.scope by the RLS policy, not by code. */
 export const tenantSetting = pgTable(
   'tenant_setting',

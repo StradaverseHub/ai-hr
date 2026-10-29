@@ -1,14 +1,16 @@
 /**
  * Automatic mobile workplace setup issuance (ADR-0161) — the owner-role half, run ONLY by the
- * provisioning runner (scripts/provision-runner.ts). Two entry points:
+ * provisioning runner (scripts/provision-runner.ts). Entry points:
  *
  *   • issueMobileSetup — right after a customer's provisioning commits 'done' (tenant and organization
  *     code exist), and for each customer the pass below finds due.
  *   • mobileSetupPass  — once per tick: issues for an active embedded-sign-in customer with no usable
  *     setup, renews one inside its 30-day window, reissues after this installation's address changed,
  *     and retries a failed attempt after an hour. Bounded per tick.
+ *   • runMobileSetupRequestTick — one operator intent per tick from `mobile_setup_request`: an explicit
+ *     issue/reissue, or the import of a setup Stradaverse signed elsewhere.
  *
- * Both do nothing unless this installation is configured to sign (AIHR_MOBILE_SETUP_SIGNING_KEY). An
+ * Issuing does nothing unless this installation is configured to sign (AIHR_MOBILE_SETUP_SIGNING_KEY). An
  * installation without the key — a customer-run on-premise server — never issues; it holds a setup that
  * Stradaverse signed and that was imported. Issuance failure NEVER fails provisioning: the reason code is
  * recorded beside the previous setup and the attempt is retried later.
@@ -16,10 +18,10 @@
  * Never logged or recorded: key material, the key path, the signed payload.
  */
 import type { KeyObject } from 'node:crypto';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, lt, or, sql } from 'drizzle-orm';
 import type { createDb, Tx } from '../db/client';
 import { appendEvent } from '../db/events';
-import { tenant, tenantSetting } from '../db/schema';
+import { mobileSetupRequest, tenant, tenantSetting } from '../db/schema';
 import { internalConfig, internalSelected } from '../lib/internal-auth/config';
 import { readRecord } from '../lib/internal-auth/record-store';
 import type { Organization } from '../lib/internal-auth/service';
@@ -28,7 +30,7 @@ import {
   WorkplaceSetupSignerError, approvedAnchor, loadSigningKey, setupHosting, signCompanyProfile, workplaceProfile,
 } from '../lib/mobile-workplace-setup-signer';
 import { WorkplaceSetupRefusal, verifySignedSetup, verifyWorkplaceSetup } from '../lib/mobile-workplace-setup-verify';
-import { MOBILE_SETUP_SETTING_KEY, parseStoredSetup, type StoredWorkplaceSetup } from '../lib/mobile-workplace-setup-record';
+import { MOBILE_SETUP_SETTING_KEY, mobileSetupSigningConfigured, parseStoredSetup, type StoredWorkplaceSetup } from '../lib/mobile-workplace-setup-record';
 
 type Owner = ReturnType<typeof createDb>;
 type Env = Readonly<Record<string, string | undefined>>;
@@ -39,7 +41,9 @@ export const MOBILE_SETUP_RETRY_SECONDS = 3600;
 export const MOBILE_SETUP_PASS_LIMIT = 20;
 const SYSTEM_TENANT = '00000000-0000-0000-0000-000000000000';
 
-export type MobileSetupTrigger = 'provisioned' | 'missing' | 'renewal' | 'origin_changed' | 'invalid' | 'retry';
+export type MobileSetupTrigger = 'provisioned' | 'missing' | 'renewal' | 'origin_changed' | 'invalid' | 'retry' | 'requested';
+/** The operator intent being executed, carried into the audit payload (never the setup itself). */
+export type MobileSetupRequestRef = { id: string; requestedBy: string };
 export type MobileSetupOutcome =
   | { outcome: 'issued' | 'reissued'; keyId: string; expiresAt: number }
   | { outcome: 'skipped'; reason: 'not_issuing' | 'current' }
@@ -54,13 +58,13 @@ export class IssuanceError extends Error {
  * configured, not embedded sign-in, or a state in which /login/mobile-connection answers unavailable.
  */
 export function issuingOrigin(env: Env = process.env): string | null {
-  if (!(env.AIHR_MOBILE_SETUP_SIGNING_KEY ?? '').trim()) return null;
+  if (!mobileSetupSigningConfigured(env)) return null;
   if (!internalSelected(env) || env.ALLOW_DEMO_SESSION === 'true') return null;
   try { return internalConfig(env).origin; } catch { return null; }
 }
 
 /** Why the stored setup is due for a new one, or null while it is usable and outside its renewal window. */
-export function mobileSetupDue(stored: StoredWorkplaceSetup, origin: string, now: number): Exclude<MobileSetupTrigger, 'provisioned' | 'retry'> | null {
+export function mobileSetupDue(stored: StoredWorkplaceSetup, origin: string, now: number): Exclude<MobileSetupTrigger, 'provisioned' | 'retry' | 'requested'> | null {
   if (!stored.setup) return 'missing';
   try {
     const verified = verifySignedSetup(stored.setup, INSTALLED_APP_TRUST, now);
@@ -75,6 +79,7 @@ export function mobileSetupDue(stored: StoredWorkplaceSetup, origin: string, now
 const failureCode = (error: unknown): string =>
   error instanceof WorkplaceSetupSignerError || error instanceof WorkplaceSetupRefusal || error instanceof IssuanceError ? error.code : 'unexpected';
 const iso = (seconds: number) => new Date(seconds * 1000).toISOString();
+const requestAudit = (request?: MobileSetupRequestRef) => request ? { requestId: request.id, requestedBy: request.requestedBy } : {};
 
 async function lockedStored(tx: Tx, tenantId: string): Promise<StoredWorkplaceSetup> {
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'mobile-setup:' + tenantId},0))`);
@@ -109,7 +114,7 @@ async function recordFailure(owner: Owner, tenantId: string, reason: string, tri
  */
 export async function issueMobileSetup(
   owner: Owner, tenantId: string, trigger: MobileSetupTrigger,
-  options: { now?: number; env?: Env; key?: KeyObject } = {},
+  options: { now?: number; env?: Env; key?: KeyObject; force?: boolean; request?: MobileSetupRequestRef } = {},
 ): Promise<MobileSetupOutcome> {
   const env = options.env ?? process.env;
   const origin = issuingOrigin(env);
@@ -128,15 +133,16 @@ export async function issueMobileSetup(
     const verified = verifyWorkplaceSetup(envelope, { trust: INSTALLED_APP_TRUST, origin, organization: organization.code, now });
     return await owner.db.transaction(async (tx): Promise<MobileSetupOutcome> => {
       const previous = await lockedStored(tx, tenantId);
-      // An overlapping tick may have stored a usable setup since this attempt began.
-      if (mobileSetupDue(previous, origin, now) === null) return { outcome: 'skipped', reason: 'current' };
+      // An overlapping tick may have stored a usable setup since this attempt began. An operator's
+      // explicit reissue (force) signs anyway: that is what the operator asked for.
+      if (!options.force && mobileSetupDue(previous, origin, now) === null) return { outcome: 'skipped', reason: 'current' };
       await writeStored(tx, tenantId, { version: 1, setup: envelope, method: 'issued', recordedAt: iso(now), failure: null });
       const reissued = previous.setup !== null;
       await appendEvent(tx, {
         tenantId, aggregateType: 'tenant', aggregateId: tenantId,
         eventType: reissued ? 'mobile.workplace-setup.reissued' : 'mobile.workplace-setup.issued',
         actor: { type: 'system' },
-        payload: { keyId: verified.keyId, expiresAt: iso(verified.expiresAt), method: 'issued', trigger },
+        payload: { keyId: verified.keyId, expiresAt: iso(verified.expiresAt), method: 'issued', trigger, ...requestAudit(options.request) },
       });
       return { outcome: reissued ? 'reissued' : 'issued', keyId: verified.keyId, expiresAt: verified.expiresAt };
     });
@@ -154,7 +160,7 @@ export async function issueMobileSetup(
  * customer's organization code, and has not expired. Throws the refusal; stores nothing on refusal.
  */
 export async function importMobileSetup(
-  owner: Owner, tenantId: string, input: unknown, options: { now?: number; env?: Env } = {},
+  owner: Owner, tenantId: string, input: unknown, options: { now?: number; env?: Env; request?: MobileSetupRequestRef } = {},
 ): Promise<{ keyId: string; expiresAt: number; replaced: boolean }> {
   const env = options.env ?? process.env;
   if (!internalSelected(env)) throw new WorkplaceSetupRefusal('origin_mismatch');
@@ -169,7 +175,7 @@ export async function importMobileSetup(
     await appendEvent(tx, {
       tenantId, aggregateType: 'tenant', aggregateId: tenantId, eventType: 'mobile.workplace-setup.imported',
       actor: { type: 'system' },
-      payload: { keyId: verified.keyId, expiresAt: iso(verified.expiresAt), method: 'imported', replaced: previous.setup !== null },
+      payload: { keyId: verified.keyId, expiresAt: iso(verified.expiresAt), method: 'imported', replaced: previous.setup !== null, ...requestAudit(options.request) },
     });
     return { keyId: verified.keyId, expiresAt: verified.expiresAt, replaced: previous.setup !== null };
   });
@@ -211,4 +217,55 @@ export async function mobileSetupPass(
     }
   }
   return { issued, failed };
+}
+
+/** A claimed intent left 'running' by a killed runner returns to the queue after this long. */
+export const MOBILE_SETUP_REQUEST_STALE_MINUTES = 10;
+
+/**
+ * Execute ONE operator intent from `mobile_setup_request` per tick (ADR-0161): "issue / reissue" signs
+ * with this installation's key even when the stored setup is still current; "import" stores a setup
+ * Stradaverse signed elsewhere after the same verification the import command applies. The claim commits
+ * before the work, and the terminal write is guarded by the claim stamp (module-change-runner idiom).
+ * An installation without the key refuses an issue intent with `key_not_configured`.
+ */
+export async function runMobileSetupRequestTick(
+  owner: Owner, options: { now?: number; env?: Env } = {},
+): Promise<'idle' | 'done' | 'failed'> {
+  const env = options.env ?? process.env;
+  // Source can reach a server minutes before its migration runs (deploy.sh builds before migrating).
+  const [present] = await owner.db.execute<{ ok: boolean }>(sql`select to_regclass('public.mobile_setup_request') is not null as ok`);
+  if (!present?.ok) return 'idle';
+  const staleBefore = new Date(Date.now() - MOBILE_SETUP_REQUEST_STALE_MINUTES * 60_000);
+  await owner.db.update(mobileSetupRequest).set({ status: 'pending', claimedAt: null })
+    .where(and(eq(mobileSetupRequest.status, 'running'), or(isNull(mobileSetupRequest.claimedAt), lt(mobileSetupRequest.claimedAt, staleBefore))));
+  const [claimed] = await owner.db.update(mobileSetupRequest).set({ status: 'running', claimedAt: new Date() })
+    .where(and(eq(mobileSetupRequest.status, 'pending'), eq(mobileSetupRequest.id,
+      sql`(select id from mobile_setup_request where status = 'pending' order by created_at asc, id asc limit 1 for update skip locked)`)))
+    .returning();
+  if (!claimed) return 'idle';
+  const request: MobileSetupRequestRef = { id: claimed.id, requestedBy: claimed.requestedBy };
+  let error: string | null = null;
+  try {
+    if (claimed.action === 'issue') {
+      // No key here: the on-premise case, which imports instead. A key but no embedded sign-in (or a demo
+      // session) means /login/mobile-connection would refuse the app, so a setup would be unusable.
+      if (!issuingOrigin(env)) error = mobileSetupSigningConfigured(env) ? 'signing_unavailable' : 'key_not_configured';
+      else {
+        const result = await issueMobileSetup(owner, claimed.tenantId, 'requested', { now: options.now, env, force: true, request });
+        if (result.outcome === 'failed') error = result.reason;
+        else if (result.outcome === 'skipped' && result.reason === 'not_issuing') error = 'signing_unavailable';
+      }
+    } else if (claimed.action === 'import') {
+      await importMobileSetup(owner, claimed.tenantId, claimed.setup, { now: options.now, env, request });
+    } else error = 'unexpected';
+  } catch (caught) {
+    error = failureCode(caught);
+  }
+  await owner.db.update(mobileSetupRequest)
+    .set({ status: error ? 'failed' : 'done', error, decidedAt: new Date() })
+    .where(and(eq(mobileSetupRequest.id, claimed.id), eq(mobileSetupRequest.status, 'running'), eq(mobileSetupRequest.claimedAt, claimed.claimedAt!)));
+  if (error) console.error(`· mobile setup ${claimed.action} request ${claimed.id} refused: ${error}`);
+  else console.log(`✓ mobile setup ${claimed.action} request ${claimed.id} done`);
+  return error ? 'failed' : 'done';
 }

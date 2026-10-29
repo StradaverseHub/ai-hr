@@ -40,3 +40,12 @@ export function parseStoredSetup(value: unknown): StoredWorkplaceSetup {
     ? { reason: (v.failure as Record<string, string>).reason, at: (v.failure as Record<string, string>).at } : null;
   return { version: 1, setup, method, recordedAt: setup ? isoOrNull(v.recordedAt) : null, failure };
 }
+
+/**
+ * Whether this installation is configured to sign. Reads only whether the PATH variable is set — never
+ * the key file — so the web tier may use it to explain that "Issue" is unavailable. The runner remains
+ * the authority: it loads and checks the key, and refuses an intent it cannot honour.
+ */
+export function mobileSetupSigningConfigured(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
+  return Boolean((env.AIHR_MOBILE_SETUP_SIGNING_KEY ?? '').trim());
+}
