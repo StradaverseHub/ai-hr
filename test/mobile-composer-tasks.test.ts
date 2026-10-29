@@ -51,7 +51,7 @@ it('the composer\'s v2 source lists every kind the approvals screen does, replac
   const r = await GETv2(new Request('https://hr.test/api/mobile/v2/tasks?limit=20&tenantId=foreign'));
   expect(r.status).toBe(200);
   // No {noticeAcknowledgements:false}: the same population as the approvals screen and Home's count.
-  expect(ports.tasks).toHaveBeenCalledWith(principal, undefined, { attendance: true, claims: false });
+  expect(ports.tasks).toHaveBeenCalledWith(principal, undefined, { attendance: true, claims: false, performance: false, rewards: false });
   const body = await r.json();
   expect(body.items.map((t: { kind: string }) => t.kind)).toEqual(['leave', 'replacementLeave', 'noticeAcknowledgement']);
   expect(body.items[0]).toEqual({ id: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa', kind: 'leave', subject: { name: 'Scoped colleague', code: null }, createdAt: '2026-10-28T01:00:00.000Z', nativeDecision: true, webPath: null });

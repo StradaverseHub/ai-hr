@@ -36,7 +36,16 @@ const audit=(companyId:string)=>owner.db.select({eventType:S.domainEvent.eventTy
  .where(and(eq(S.domainEvent.tenantId,base.tenantId),eq(S.domainEvent.eventType,'attendance-policy.offline-clocking.updated'),sql`${S.domainEvent.payload}->>'companyId'=${companyId}`)).orderBy(asc(S.domainEvent.sequence));
 const installed=async()=>(await owner.db.execute<{installed:boolean}>(sql`select exists(select 1 from pg_attribute where attrelid='attendance_policy'::regclass and attname='offline_clocking_enabled' and not attisdropped) installed`))[0].installed;
 
+// 0647 is journaled for the staging release, so a worker now has its two settings columns. The absent-columns path is
+// still the settings owner's defensive refusal (a database the release has not reached), so this case removes exactly
+// those two columns for its own duration and restores them byte-for-byte as 0647 defines them.
+const OFFLINE_SETTINGS_COLUMNS=sql.raw(`ALTER TABLE attendance_policy ADD COLUMN offline_clocking_enabled boolean NOT NULL DEFAULT false,
+ ADD COLUMN offline_max_proven_window_seconds integer NOT NULL DEFAULT 900
+  CONSTRAINT attendance_policy_offline_window_ck CHECK(offline_max_proven_window_seconds BETWEEN 60 AND 86400)`);
 describe('on a database without draft 0647',()=>{
+ let removed=false;
+ beforeAll(async()=>{if(await installed()){await owner.db.execute(sql`ALTER TABLE attendance_policy DROP COLUMN offline_clocking_enabled, DROP COLUMN offline_max_proven_window_seconds`);removed=true;}});
+ afterAll(async()=>{if(removed){await resetDb();await owner.db.execute(OFFLINE_SETTINGS_COLUMNS);expect(await installed()).toBe(true);}});
  it('refuses the save cleanly, writes nothing, and reads the engine default with no columns',async()=>{
   // Non-vacuous: the columns really are absent here.
   expect(await installed()).toBe(false);

@@ -31,7 +31,7 @@ import type { z } from 'zod';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { claimRequest, company, employment } from '../db/schema';
 import * as claims from '../packs/claims/service';
-import { isModuleEnabledOrFalse, ModuleNotEnabledError } from './entitlements';
+import { isModuleEnabled, ModuleNotEnabledError } from './entitlements';
 import { MobileCommandOwnerRequired, withMobileCommandReceipt } from './mobile-command-receipt';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { publicErrorMessage } from '../lib/public-error';
@@ -52,7 +52,7 @@ type Facts = claims.ClaimRecordFacts;
 
 const NOT_FOUND = { outcome: 'refused', code: 'not_found' } as const;
 const ZERO_COUNTS = { draft: 0, pending: 0, approved: 0, rejected: 0, cancelled: 0, paid: 0 };
-export const claimsEnabled = (ctx: SessionContext) => isModuleEnabledOrFalse(ctx, 'claims');
+export const claimsEnabled = (ctx: SessionContext) => isModuleEnabled(ctx, 'claims');
 
 /** A required amount (a sum the kernel always computes); a missing one is a contract fault, never a printed zero. */
 function sum(n: unknown): string {

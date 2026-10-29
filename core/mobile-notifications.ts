@@ -18,7 +18,7 @@
  */
 import type { SessionContext } from '../db/client';
 import { AuthRequiredError } from '../lib/auth-errors';
-import { isModuleEnabledOrFalse } from './entitlements';
+import { isModuleEnabled } from './entitlements';
 import { listNotificationsPage, markAllNotificationsRead, markNotificationRead, unreadNotificationCount } from './notifications';
 import { pendingTaskCountV2 } from './mobile-approvals';
 import { notificationDestination, type DestinationAccess } from '../lib/mobile-api/notification-destination';
@@ -29,8 +29,8 @@ import {
 } from '../lib/mobile-api/v2/notifications';
 
 type PageRow = Awaited<ReturnType<typeof listNotificationsPage>>[number];
-const enabled = (ctx: SessionContext) => isModuleEnabledOrFalse(ctx, 'notifications');
-const accessOf = (ctx: SessionContext): DestinationAccess => ({ payroll: isModuleEnabledOrFalse(ctx, 'payroll') });
+const enabled = (ctx: SessionContext) => isModuleEnabled(ctx, 'notifications');
+const accessOf = (ctx: SessionContext): DestinationAccess => ({ payroll: isModuleEnabled(ctx, 'payroll') });
 const clip = (text: string, max: number) => (text.length <= max ? text : text.slice(0, max - 1) + '…');
 const iso = (d: Date | string) => (d instanceof Date ? d : new Date(d)).toISOString();
 

@@ -18,7 +18,7 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { mobilePushRegistration } from '../db/schema';
-import { isModuleEnabledOrFalse } from './entitlements';
+import { isModuleEnabled } from './entitlements';
 import { withMobileCommandReceipt } from './mobile-command-receipt';
 import { pushDeliveryAvailability } from '../lib/mobile-push-config';
 import {
@@ -26,7 +26,7 @@ import {
   type PushEnrollmentCommand, type PushRevokeCommand, type PushStatusV2,
 } from '../lib/mobile-api/v2/push';
 
-const enabled = (ctx: SessionContext) => isModuleEnabledOrFalse(ctx, 'notifications');
+const enabled = (ctx: SessionContext) => isModuleEnabled(ctx, 'notifications');
 const R = mobilePushRegistration;
 
 /** Enroll (or keep) this installation's token for the caller. Replays its first answer under the same requestId. */

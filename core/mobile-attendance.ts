@@ -38,7 +38,7 @@
  */
 import type { z } from 'zod';
 import type { SessionContext } from '../db/client';
-import { isModuleEnabledOrFalse, ModuleNotEnabledError } from './entitlements';
+import { isModuleEnabled, ModuleNotEnabledError } from './entitlements';
 import { listLeaveTypes } from './read';
 import { pickReplacementLeaveType } from './ess-view';
 import { myRosterWindow, shiftCrossesMidnight } from './roster';
@@ -68,8 +68,8 @@ type PunchMap = Awaited<ReturnType<typeof att.attendancePunchesForRange>>;
 type RequestRow = att.MyAttendanceRequestRow;
 type Workflow = NonNullable<RequestRow['workflow']>;
 
-export const attendanceEnabled = (ctx: SessionContext) => isModuleEnabledOrFalse(ctx, 'attendance');
-const leaveCreditEnabled = (ctx: SessionContext) => isModuleEnabledOrFalse(ctx, 'toil');
+export const attendanceEnabled = (ctx: SessionContext) => isModuleEnabled(ctx, 'attendance');
+const leaveCreditEnabled = (ctx: SessionContext) => isModuleEnabled(ctx, 'toil');
 const NOT_FOUND = { outcome: 'refused', code: 'not_found' } as const;
 const MODULE_OFF = { outcome: 'refused', code: 'module_off' } as const;
 const ZERO_COUNTS = { pending: 0, approved: 0, rejected: 0, cancelled: 0 };

@@ -19,7 +19,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { domainEvent } from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
-import { isModuleEnabledOrFalse } from './entitlements';
+import { isModuleEnabled } from './entitlements';
 import { myReleasedPayslipRuns } from './read';
 import { myEaSources } from './reporting';
 import { canonicalJson, MobileCommandOwnerRequired, withMobileCommandReceipt } from './mobile-command-receipt';
@@ -31,7 +31,7 @@ import {
 } from '../lib/mobile-api/v2/pay';
 
 const refused = <C extends string>(code: C) => ({ outcome: 'refused' as const, code });
-export const payrollEnabled = (ctx: SessionContext) => isModuleEnabledOrFalse(ctx, 'payroll');
+export const payrollEnabled = (ctx: SessionContext) => isModuleEnabled(ctx, 'payroll');
 
 // ── Index ──────────────────────────────────────────────────────────────────────────────────────────────────────
 

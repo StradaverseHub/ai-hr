@@ -17,8 +17,7 @@ import {offlineClockReportedBounds,type OfflineClockReportedBounds} from '../lib
 import {readIssuedOfflineContextTx} from './mobile-offline-context';
 import {ownIntegrityEnrollmentCompanyTx} from './mobile-integrity-key';
 import {withAttendanceTenant} from './module-gate';
-import {lockAttendanceLeaveDependenciesTx} from './attendance';
-import {attendanceClockCaptureEffectiveAt,clockAttendanceDateTx,openClockSessionDateTx} from '../packs/attendance/service';
+import {attendanceClockCaptureEffectiveAt,clockAttendanceDateTx,lockAttendanceLeaveDependenciesTx,openClockSessionDateTx} from '../packs/attendance/service';
 type KeyRow=typeof mobileIntegrityKey.$inferSelect;
 type ClaimRow=typeof mobileOfflineClaim.$inferSelect;
 export type OfflineClaimFacts={claim:OfflineClockSignedClaim['claim'];context:OfflineClockContextData;key:Readonly<KeyRow>;
