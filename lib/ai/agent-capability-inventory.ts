@@ -120,6 +120,8 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/personnel/column-actions.ts":{"resetEmployeeColumnsAction":"backlog:approve","saveEmployeeColumnsAction":"backlog:approve"},
  "app/admin/personnel/import/actions.ts":{"associateReusedEmployeeImportHeaderAction":"backlog:approve","beginEmployeeImportEvaluationAction":"backlog:approve","commitImportAction":"registered:employees.import","eraseOwnImportEvaluationMetadataAction":"handoff:privacy_erasure","prepareEmployeeImportEvaluationCommitAction":"backlog:approve","recordEmployeeImportEvaluationTelemetryAction":"backlog:approve","reopenEmployeeImportEvaluationAction":"backlog:approve","validateImportAction":"backlog:automatic"},
  "app/admin/personnel/import/assistance-actions.ts":{"assistPersonnelImportHeadersAction":"backlog:approve","preparePersonnelImportHeadersAction":"backlog:approve","reopenPersonnelImportHeadersAction":"backlog:approve"},
+ "app/admin/personnel/import/bank-statutory/jobs/[jobId]/route.ts#route":{"POST":"backlog:approve","PUT":"backlog:approve"},
+ "app/admin/personnel/import/bank-statutory/jobs/route.ts#route":{"POST":"backlog:approve"},
  "app/admin/personnel/import/bank-statutory/upload/route.ts#route":{"POST":"backlog:approve"},
  "app/admin/personnel/import/cost-allocation-actions.ts":{"allocationImportReferencesAction":"backlog:approve","allocationWorkbookReferencesAction":"backlog:approve","confirmAllocationImportAction":"backlog:approve"},
  "app/admin/personnel/import/cost-allocation/upload/route.ts#route":{"POST":"backlog:approve"},
