@@ -99,7 +99,7 @@ export function buildOpenRouterRequest(configuration: unknown, argumentsValue: u
       plugins: DISABLED_PROCESSORS.map(id=>({id,enabled:false})),
       ...(args.tools.length ? { tools: args.tools.map(tool => ({ type: 'function', function: {
         name: tool.name, description: tool.description, parameters: tool.inputSchema, strict: true,
-      } })), tool_choice: 'auto', parallel_tool_calls: false } : {}) })));
+      } })), tool_choice: 'auto' } : {}) })));
     if (Buffer.byteLength(body, 'utf8') > MAX_BYTES) throw unavailable();
     return body;
   } catch { throw unavailable(); }
@@ -180,6 +180,9 @@ export function createOpenRouterTransport(fetcher: typeof fetch) {
         await observeOpenRouterSpendTerminal(raw,{provider:'openrouter',model:cfg.model,apiKey:cfg.apiKey,providerOptions:readOpenRouterOptions({version:1,routing:cfg.routing})},controller.signal,expired,fetcher,async metadataResponse=>{let text='';await readOpenRouterJsonResponse(metadataResponse,controller.signal,expired,raw=>{text=raw;});return text;});
         phase = 'completion';
         const completion = readOpenRouterCompletion(value);
+        // Some approved endpoints support tools but not the optional parallel_tool_calls parameter.
+        // Preserve sequential tool execution deterministically instead of sending an unsupported flag.
+        if (completion.toolCalls.length > 1) throw unavailable();
         return { completion, accounting, elapsedMs };
       };
       return await Promise.race([run(), cancelled]);
