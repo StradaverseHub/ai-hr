@@ -146,7 +146,13 @@ $$;
 REVOKE ALL ON FUNCTION app.information_payslip_document(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.information_payslip_document(uuid) TO ai_hr_app;
 --> statement-breakpoint
-CREATE FUNCTION app.information_payslip_documents(p_companies uuid[],p_year integer,p_month integer,p_cycle text,p_employment uuid DEFAULT NULL) RETURNS SETOF jsonb
+-- The same imported-history cycle filter used by normal and retained payroll lists.
+CREATE FUNCTION app.payroll_filter_run_type(p_import uuid,p_stored text,p_configured text) RETURNS text
+LANGUAGE sql IMMUTABLE AS $$ SELECT CASE WHEN p_import IS NOT NULL THEN coalesce(p_configured,p_stored) ELSE p_stored END $$;
+REVOKE ALL ON FUNCTION app.payroll_filter_run_type(uuid,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.payroll_filter_run_type(uuid,text,text) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.information_payslip_documents(p_companies uuid[],p_year integer,p_month integer,p_cycle text,p_employment uuid DEFAULT NULL,p_intended boolean DEFAULT false) RETURNS SETOF jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT document FROM public.information_payslip_snapshot f JOIN public.payslip p ON p.id=f.payslip_id AND p.tenant_id=f.tenant_id
  JOIN public.payroll_batch b ON b.id=p.batch_id AND b.tenant_id=f.tenant_id
@@ -155,8 +161,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  AND b.company_id=ANY(p_companies) AND app.can_admin_payroll_for(b.company_id)
  AND (p_employment IS NULL OR p.employment_id=p_employment)
  AND (p_year IS NULL OR left(b.pay_period,4)=p_year::text) AND (p_month IS NULL OR substring(b.pay_period,6,2)=lpad(p_month::text,2,'0'))
- AND (p_cycle IS NULL OR b.run_type::text=p_cycle) AND document IS NOT NULL
+ AND (p_cycle IS NULL OR (CASE WHEN p_intended THEN app.payroll_filter_run_type(b.history_import_attempt_id,b.run_type::text,(select pc.run_type::text from public.payroll_cycle pc where pc.id=b.payroll_cycle_id)) ELSE b.run_type::text END)=p_cycle) AND document IS NOT NULL
  ORDER BY b.pay_period DESC,b.run_seq,p.id LIMIT 5001;
 $$;
-REVOKE ALL ON FUNCTION app.information_payslip_documents(uuid[],integer,integer,text,uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.information_payslip_documents(uuid[],integer,integer,text,uuid) TO ai_hr_app;
+REVOKE ALL ON FUNCTION app.information_payslip_documents(uuid[],integer,integer,text,uuid,boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.information_payslip_documents(uuid[],integer,integer,text,uuid,boolean) TO ai_hr_app;

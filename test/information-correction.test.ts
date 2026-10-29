@@ -10,6 +10,7 @@ import {withTenant} from '../db/client';
 import * as schema from '../db/schema';
 import {previewInformationCorrection,correctInformation,informationCorrectionHistory,informationCorrectionOptions} from '../core/information-correction';
 import {previewInformationUpload,confirmInformationUpload} from '../core/information-correction-import';
+import {openLeaveYear,accrueEarnedLeave,reprojectEntitlementForEmployment} from '../core/leave';
 import {reconcileInformationSnapshots} from '../scripts/reconcile-information-snapshots';
 import {PDFDocument} from 'pdf-lib';
 import {buildPayslipPdfData,renderPayslipPdf} from '../lib/payslip-pdf';
@@ -38,7 +39,11 @@ async function apply(id:string,changes:InformationChanges,reason='Correct signed
 function workbook(rows:unknown[][]){const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([[...INFORMATION_HEADERS],...rows]),'Corrections');return XLSX.write(book,{type:'buffer',bookType:'xlsx'}) as Buffer;}
 describe('8550b282 information-only corrections',()=>{
  it('corrects dates, grade and type after closure while preserving payroll and report rendering',async()=>{
-  const id=await fixture(),{slip,batch}=await closedSlip(id);
+  const id=await fixture();
+  await owner.db.insert(schema.leaveLedger).values([{tenantId:b.tenantId,employmentId:id,leaveTypeId:b.annualLeaveTypeId,entryType:'accrual',days:'9.00',effectiveOn:'2025-01-15'},{tenantId:b.tenantId,employmentId:id,leaveTypeId:b.annualLeaveTypeId,entryType:'debit',days:'-1.00',effectiveOn:'2025-01-20'}]);
+  await owner.db.insert(schema.attendance).values({tenantId:b.tenantId,employmentId:id,attendanceDate:'2025-01-20',checkInAt:'09:00',checkOutAt:'19:00',status:'present',dayType:'workday',workedMinutes:600,otMinutes:120,ot15Minutes:120});
+  const attendanceBefore=await owner.db.select().from(schema.attendance);expect(attendanceBefore).toHaveLength(1);
+  const {slip,batch}=await closedSlip(id);
   const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'G03',name:'Senior'}).returning();
   const eaBefore=await eaStatement(ctx(),{employmentId:id,companyId:b.companyId,year:'2025'});
   expect(eaBefore).toBeTruthy();
@@ -49,12 +54,13 @@ describe('8550b282 information-only corrections',()=>{
    const bytes=await renderPayslipPdf(data,pdfLabels);const pdf=await PDFDocument.load(bytes,{updateMetadata:false});pdf.setCreationDate(new Date(0));pdf.setModificationDate(new Date(0));return Buffer.from(await pdf.save({useObjectStreams:false}));
   }
   const pdfBefore=await document(before!);expect(pdfBefore.length).toBeGreaterThan(1000);
-  const ledgersBefore=await owner.db.select().from(schema.leaveLedger);
+  const ledgersBefore=await owner.db.select().from(schema.leaveLedger);expect(ledgersBefore).toHaveLength(2);
   await apply(id,{hiredOn:'2025-01-01',joinDate:'2025-01-03',gradeId:grade.id,employmentType:'part_time'});
   expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0]).toMatchObject({hiredOn:'2025-01-01',joinDate:'2025-01-03',gradeId:grade.id});
   expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,slip.id)))[0]).toEqual(slip);
   expect((await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batch.id)))[0]).toEqual(batch);
   expect(await owner.db.select().from(schema.leaveLedger)).toEqual(ledgersBefore);
+  expect(await owner.db.select().from(schema.attendance)).toEqual(attendanceBefore);
   const after=await payslipForReview(ctx(),{companyIds:[b.companyId],payslipId:slip.id});expect(after).toEqual(before);
   expect(await document(after!)).toEqual(pdfBefore);
   expect(await eaStatement(ctx(),{employmentId:id,companyId:b.companyId,year:'2025'})).toEqual(eaBefore);
@@ -98,6 +104,8 @@ describe('8550b282 information-only corrections',()=>{
   expect(await payslipForReview(sourceCtx,{companyIds:[b.companyId],payslipId:slip.id})).toMatchObject({companyId:b.companyId,employmentType:'full_time',net:'2660.00'});
   expect(await listPayslipRunsFor(sourceCtx,{companyIds:[b.companyId],employmentId:id})).toMatchObject([{payslipId:slip.id,companyId:b.companyId}]);
   expect(await listProcessedPayslipsAcross(sourceCtx,{companyIds:[b.companyId],year:2025,limit:1})).toMatchObject([{id:slip.id,net:'2660.00'}]);
+  expect(await listProcessedPayslipsAcross(sourceCtx,{companyIds:[...Array.from({length:100},()=>randomUUID()),b.companyId],year:2025,limit:1})).toMatchObject([{id:slip.id,net:'2660.00'}]);
+  const filter=await withTenant(sourceCtx,tx=>tx.execute<{type:string}>(sql`select app.payroll_filter_run_type(${randomUUID()}::uuid,'regular','bonus') as type`));expect(filter[0].type).toBe('bonus');
   expect(await listPayrollRegisterAcross(sourceCtx,{companyIds:[b.companyId],year:2025})).toMatchObject([{employmentType:'full_time',net:'2660.00'}]);
   expect(await withTenant(sourceCtx,tx=>tx.select().from(schema.employment).where(eq(schema.employment.id,id)))).toEqual([]);
   expect(await payslipForReview(sourceCtx,{companyIds:[destination.id],payslipId:slip.id})).toBeNull();
@@ -179,7 +187,7 @@ describe('8550b282 information-only corrections',()=>{
   const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'LEGACY',name:'Later grade'}).returning();
   await setEmploymentGrade(ctx(),{employmentId:id,gradeId:grade.id});
   await expect(apply(id,{hiredOn:'2025-01-01'})).rejects.toThrow('reconcile the historical');
-  const manifest={version:1 as const,tenantId:b.tenantId,actorUserId:ctx().userId,verifiedOriginals:true as const,items:[{payslipId:slip.id,employmentId:id,companyId:b.companyId,original:{grade:null,employmentType:'full_time' as const,hiredOn:'2025-01-15',joinDate:null},evidence:[{path:'private-original.pdf',sha256:'a'.repeat(64),reference:'Reviewed original statement'}]}]};
+  const manifest={version:1 as const,tenantId:b.tenantId,actorUserId:ctx().userId!,verifiedOriginals:true as const,items:[{payslipId:slip.id,employmentId:id,companyId:b.companyId,original:{grade:null,employmentType:'full_time' as const,hiredOn:'2025-01-15',joinDate:null},evidence:[{path:'private-original.pdf',sha256:'a'.repeat(64),reference:'Reviewed original statement'}]}]};
   expect(await reconcileInformationSnapshots(owner,manifest)).toMatchObject({mode:'dry-run',missing:1});
   expect(await owner.db.select().from(schema.informationPayslipSnapshot)).toHaveLength(0);
   expect(await reconcileInformationSnapshots(owner,manifest,true)).toMatchObject({mode:'applied',missing:1});
@@ -190,6 +198,19 @@ describe('8550b282 information-only corrections',()=>{
   expect(await payslipForReview(ctx(),{companyIds:[b.companyId],payslipId:slip.id})).toMatchObject({jobGrade:null,employmentType:'full_time'});
   const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'employment.information.snapshot-reconciled'));
   expect(events).toHaveLength(1);expect(JSON.stringify(events)).not.toContain('private-original.pdf');
+ });
+
+ it('blocks later historical leave sweeps and reprojections while allowing future processing',async()=>{
+  const id=await fixture();await closedSlip(id);
+  await owner.db.insert(schema.leaveLedger).values({tenantId:b.tenantId,employmentId:id,leaveTypeId:b.annualLeaveTypeId,entryType:'accrual',days:'9.00',effectiveOn:'2025-01-15'});
+  await apply(id,{hiredOn:'2025-01-01'});
+  const before=await owner.db.select().from(schema.leaveLedger);expect(before).toHaveLength(1);
+  await expect(openLeaveYear(ctx(),{year:2025,employmentIds:[id]})).rejects.toThrow('Historical leave processing');
+  await expect(accrueEarnedLeave(ctx(),{asOf:'2025-02-01',employmentIds:[id]})).rejects.toThrow('Historical leave processing');
+  await expect(accrueEarnedLeave({tenantId:b.tenantId,roles:['hr_admin'],entitlementsExempt:'sweeps'},{asOf:'2025-02-01',employmentIds:[id]})).rejects.toThrow('Historical leave processing');
+  await expect(reprojectEntitlementForEmployment(ctx(),{employmentId:id,asOf:'2025-02-01',trigger:'fixture'})).rejects.toThrow('Historical leave processing');
+  expect(await owner.db.select().from(schema.leaveLedger)).toEqual(before);
+  await expect(accrueEarnedLeave(ctx(),{asOf:todayInKualaLumpur(),employmentIds:[id],dryRun:true})).resolves.toBeTruthy();
  });
 
 });

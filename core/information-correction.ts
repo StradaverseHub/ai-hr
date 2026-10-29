@@ -5,6 +5,7 @@ import {and,asc,desc,eq,inArray,isNull,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {appendEvent,actorOf} from '../db/events';
 import {employment,assignment,company,jobGrade,person,appUser,domainEvent} from '../db/schema';
+import {lockLeaveDependenciesTx} from './leave-dependency-lock';
 import {lockEmploymentStatutoryOwnerTx} from './org';
 import {assertWorkforceEmploymentTx,assertWorkforceCompanyTx} from './workforce-access';
 import {allocationCompanyCode} from './cost-allocation-import';
@@ -25,6 +26,7 @@ async function administratorTx(tx:Tx,ctx:SessionContext,companyId:string){
 }
 async function stateTx(tx:Tx,ctx:SessionContext,id:string){
  await assertWorkforceEmploymentTx(tx,ctx,id,'maintain');
+ await lockLeaveDependenciesTx(tx,ctx.tenantId,[id]);
  await lockEmploymentStatutoryOwnerTx(tx,id);
  const [emp]=await tx.select().from(employment).where(and(eq(employment.id,id),eq(employment.tenantId,ctx.tenantId))).for('update');
  if(!emp)fail('Employee record is unavailable.');

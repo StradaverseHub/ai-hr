@@ -168,7 +168,7 @@ const cleanRunType = (v: unknown): RunType | undefined =>
  * ("Monthly - By Import"), so a reader filtering by cycle must find it under that cycle's run type, not
  * under "Adjustment". Every other run answers its own `run_type`, byte-identical to before.
  */
-const filterRunTypeSql = sql`(case when ${payrollBatch.historyImportAttemptId} is not null then coalesce((select pc.run_type from payroll_cycle pc where pc.id = ${payrollBatch.payrollCycleId}), ${payrollBatch.runType}) else ${payrollBatch.runType} end)`;
+const filterRunTypeSql = sql`app.payroll_filter_run_type(${payrollBatch.historyImportAttemptId},${payrollBatch.runType}::text,(select pc.run_type::text from payroll_cycle pc where pc.id=${payrollBatch.payrollCycleId}))`;
 
 /** Optional period narrowing on a 'YYYY-MM' pay-period column (default payroll_batch.pay_period; the
  *  Individual inquiry passes the txn row's own pay_period so unattached rows filter too): year+month →
@@ -1109,12 +1109,12 @@ export function listProcessedPayslipsAcross(
     // An absent cap does not call .limit() at all, so every existing caller — including the CSV
     // export, which must never be clipped — issues exactly the query it issued before.
     const rows=await (limit ? q.limit(limit) : q);
-    const retained=await informationPayslipDocuments(tx,{...p,cycle});
+    const retained=await informationPayslipDocuments(tx,{...p,cycle,intendedCycle:true});
     const seen=new Set(rows.map(row=>row.id));
     for(const document of retained){const r=informationDocumentRow(document);if(seen.has(r.id))continue;
       rows.push({id:r.id,employmentId:r.employmentId,employeeName:r.employeeName,employeeCode:r.employeeCode,companyId:r.companyId,company:r.company,currency:r.currency,batchId:r.batchId!,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,batchStatus:r.batchStatus,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null,coverageFrom:r.coverageFrom??null,coverageTo:r.coverageTo??null,releasedAt:r.releasedAt,version:r.version,basic:r.basic,allowance:r.allowance,overtime:r.overtime,bonus:r.bonus,gross:r.gross,statutory:r.statutory,otherDeductions:r.otherDeductions,totalDeductions:r.totalDeductions,net:r.net});
     }
-    rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
+    if(retained.length)rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
     return limit?rows.slice(0,limit):rows;
   });
 }
@@ -1362,7 +1362,7 @@ export function listPayrollRegisterAcross(
       if(index>=0)rows[index]=overlayInformationDocument(rows[index],document);
       else rows.push({correctionSlipId:saved.id,employeeCode:saved.employeeCode,employeeName:saved.employeeName,company:saved.company,currency:saved.currency,department:saved.department,position:saved.position,jobGrade:saved.jobGrade,employmentStatus:saved.employmentStatus,employmentType:saved.employmentType,payPeriod:saved.payPeriod,payrollCycle:saved.runType,runSeq:saved.runSeq,historyImportAttemptId:saved.historyImportAttemptId??null,historyImportCycleName:saved.historyImportCycleName??null,daysWorked:saved.daysWorked??null,basic:saved.basic,allowance:saved.allowance,overtime:saved.overtime,bonus:saved.bonus,gross:saved.gross,statutory:saved.statutory,otherDeductions:saved.otherDeductions,totalDeductions:saved.totalDeductions,net:saved.net,employerCost:saved.employerCost});
     }
-    rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
+    if(retained.length)rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
     return rows.map((r) => {
       const st = (r.statutory ?? {}) as Record<string, unknown>;
       const n = (k: string): number => {

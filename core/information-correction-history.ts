@@ -23,9 +23,14 @@ export function overlayInformationDocument<T extends object>(row:T,document:Hist
 export async function informationPayslipDocument(tx:Tx,id:string):Promise<HistoricalDocument|null>{
  const [row]=await tx.execute<{document:HistoricalDocument|null}>(sql`select app.information_payslip_document(${id}::uuid) as document`);return row?.document??null;
 }
-export async function informationPayslipDocuments(tx:Tx,p:{companyIds:string[];year?:number;month?:number;cycle?:string;employmentId?:string}):Promise<HistoricalDocument[]>{
- const rows=await tx.execute<{document:HistoricalDocument}>(sql`select document from app.information_payslip_documents(array[${sql.join(p.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${p.year??null}::integer,${p.month??null}::integer,${p.cycle??null}::text,${p.employmentId??null}::uuid) as document`);
- if(rows.length>5000)throw new Error('Narrow the payroll period to view retained documents.');return rows.map(r=>r.document);
+export async function informationPayslipDocuments(tx:Tx,p:{companyIds:string[];year?:number;month?:number;cycle?:string;employmentId?:string;intendedCycle?:boolean}):Promise<HistoricalDocument[]>{
+ const documents:HistoricalDocument[]=[],companies=[...new Set(p.companyIds)];
+ for(let offset=0;offset<companies.length;offset+=100){
+  const rows=await tx.execute<{document:HistoricalDocument}>(sql`select document from app.information_payslip_documents(array[${sql.join(companies.slice(offset,offset+100).map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${p.year??null}::integer,${p.month??null}::integer,${p.cycle??null}::text,${p.employmentId??null}::uuid,${p.intendedCycle??false}::boolean) as document`);
+  documents.push(...rows.map(r=>r.document));
+  if(documents.length>5000)throw new Error('Narrow the payroll period to view retained documents.');
+ }
+ return documents;
 }
 /** Fixed SQL projection supplies exact numeric strings, never JSON numeric conversions. */
 export function informationDocumentRow(d:HistoricalDocument):RawDocumentRow{
