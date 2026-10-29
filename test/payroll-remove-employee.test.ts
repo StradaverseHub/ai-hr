@@ -438,6 +438,14 @@ describe('Payroll — removeEmployeePayroll (DB)', () => {
     ).rejects.toBeInstanceOf(RemoveNoEmployeesError);
     expect(await slipsOf(batchId)).toEqual(before);
 
+    // cdb1c6ca — Close now refuses while an eligible employee is still New / Pending, and the stranger is
+    // exactly that (employed all May, no payslip on the run). They left before May for this case's
+    // purpose, which is the closed-run refusal below, not the pending gate.
+    await owner.db
+      .update(schema.employment)
+      .set({ terminatedOn: '2026-04-30' })
+      .where(eq(schema.employment.id, stranger.employmentId));
+
     // d2 — close the run, which closes its (single-run) pay period, then try again.
     await closeBatch(a, { batchId });
     expect((await batchRow(batchId)).status).toBe('closed');
@@ -658,7 +666,9 @@ describe('Payroll — removeEmployeePayroll (DB)', () => {
     // …and narrowed to the removed employment, exactly like the loan/claim unwind in case b.
     expect((await verdictRow(review.id)).supersededAt).toBeNull();
 
-    // The point of all of it: the very next thing the operator does now works.
+    // The point of all of it: the very next thing the operator does now works. cdb1c6ca — and the removed
+    // employee (eligible, no payslip) is not New / Pending: they were removed on purpose (owner ruling
+    // 2026-10-30), so the pending gate lets the close through.
     await closeBatch(a, { batchId });
     expect((await batchRow(batchId)).status).toBe('closed');
   });

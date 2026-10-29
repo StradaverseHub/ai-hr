@@ -121,8 +121,15 @@ export type TaxProfile = {
  * mode that can go down, and it is the only affordance the system has for that member.
  */
 /** 5e204d56: manual_percentage is an explicit operator election, 1–100% on both sides,
- * independent of schedule floors and age/citizenship branches. Legacy modes retain their behavior. */
-export type EpfMode = 'auto' | 'voluntary_excess' | 'exempt' | 'manual_amount' | 'manual_percentage';
+ * independent of schedule floors and age/citizenship branches. Legacy modes retain their behavior.
+ *
+ * b6dbadc5: 'topup_percentage' is Top-up (existing percentage election) as an ADDITIVE top-up: each stored
+ * rate is an INCREMENT added to the statutory rate of whichever rule applies that month (Part A with its
+ * wage-banded employer rate, Part E, the non-citizen flat rate), so the statutory minimum is always kept
+ * and the top-up never replaces it. A null side adds nothing. The combined rate is capped at 100%
+ * (`resolveEpfElection` refuses more at save time; `topupRate` clamps defensively). `voluntary_excess`
+ * keeps its total-rate max(elected, statutory) meaning for Semi-Auto and for unconverted legacy rows. */
+export type EpfMode = 'auto' | 'voluntary_excess' | 'exempt' | 'manual_amount' | 'manual_percentage' | 'topup_percentage';
 export type EpfElection = {
   mode: EpfMode;
   employeeRate?: number | null;
@@ -170,9 +177,18 @@ function manualEpfSide(election: EpfElection | undefined, side: 'employeeAmount'
   return Math.max(0, round2(Number(v)));
 }
 
+/** b6dbadc5 — the additive top-up on one side: statutory + increment, capped at 100%. A null or non-finite
+ *  increment adds nothing (the side stays statutory). */
+function topupRate(statutory: number, increment: number | null | undefined): number {
+  const add = increment == null || !Number.isFinite(Number(increment)) ? 0 : Math.max(0, Number(increment));
+  // Basis points, so 0.11 + 0.01 is exactly 0.12 rather than 0.12000000000000001 before the round-up.
+  return Math.min(10000, Math.round(statutory * 10000) + Math.round(add * 10000)) / 10000;
+}
+
 /**
  * Effective EPF rates for a wage given an election, enforcing the statutory FLOOR: an elected rate
- * is `max(elected, statutory)` so i-Topup can only raise it. 'exempt' is 0/0. The statutory employer
+ * is `max(elected, statutory)` so i-Topup can only raise it. b6dbadc5: a 'topup_percentage' side is
+ * statutory + increment (see `topupRate`). 'exempt' is 0/0. The statutory employer
  * rate is wage-banded (13% ≤ threshold, else 12%).
  *
  * `wage` is whatever base the caller is charging: since bdf7d248 `epf()` passes the COMBINED month
@@ -187,6 +203,8 @@ export function resolveEpfRates(
   const mode = election?.mode ?? 'auto';
   if (mode === 'exempt') return { employeeRate: 0, employerRate: 0 };
   if (mode === 'manual_percentage') return manualEpfPercentageRates(election?.employeeRate, election?.employerRate);
+  if (mode === 'topup_percentage')
+    return { employeeRate: topupRate(cfg.employeeRate, election?.employeeRate), employerRate: topupRate(statutoryEmployer, election?.employerRate) };
   const elect = (elected: number | null | undefined, floor: number) =>
     mode === 'voluntary_excess' && elected != null ? Math.max(elected, floor) : floor;
   return {
@@ -255,7 +273,10 @@ export function epf(
   // i-Topup / voluntary excess can only RAISE a side above the statutory floor. `resolveEpfRates`
   // floors the elected rate at statutory, and the schedule amount is itself ≥ the statutory percentage
   // of the base, so `max` here is what makes an under-floor election a no-op rather than a reduction.
-  if ((election?.mode ?? 'auto') === 'voluntary_excess') {
+  // b6dbadc5 — the additive top-up uses the same raise: the elected rate is statutory + increment, so with
+  // a 0% (or blank) increment the schedule amount stands, and a converted legacy row computes exactly what
+  // max(total, statutory) computed before.
+  if ((election?.mode ?? 'auto') === 'voluntary_excess' || election?.mode === 'topup_percentage') {
     const { employeeRate, employerRate } = resolveEpfRates(base, cfg, election);
     if (election?.employeeRate != null) employee = Math.max(employee, ceilRinggit(base * employeeRate));
     if (election?.employerRate != null) employer = Math.max(employer, ceilRinggit(base * employerRate));
@@ -277,10 +298,12 @@ export function epf(
 
 export type EpfCitizenship = 'citizen' | 'pr' | 'non_citizen';
 
-/** Flat-rate EPF side (non-citizen 2%/2%), round up to RM1; respects exempt / i-Topup excess. */
+/** Flat-rate EPF side (non-citizen 2%/2%), round up to RM1; respects exempt / i-Topup excess and the
+ *  b6dbadc5 additive top-up (2% + increment). */
 function epfFlatSide(base: number, statRate: number, electedRate: number | null | undefined, mode: string): number {
   if (mode === 'exempt' || statRate === 0 || base <= 0) return 0;
-  const rate = mode === 'voluntary_excess' && electedRate != null ? Math.max(electedRate, statRate) : statRate;
+  const rate = mode === 'voluntary_excess' && electedRate != null ? Math.max(electedRate, statRate)
+    : mode === 'topup_percentage' ? topupRate(statRate, electedRate) : statRate;
   return ceilRinggit(base * rate);
 }
 
@@ -347,6 +370,7 @@ function epfContributionByRule(
   const mode = election?.mode ?? 'auto';
   const bonus = Math.max(0, additional);
 
+  // b6dbadc5 — no top-up here either: from 75 there is no EPF contribution to add a top-up to.
   if (age != null && age >= EPF_NO_CONTRIB_AGE) return { employee: 0, employer: 0, employeeOnBonus: 0 };
   const senior = age != null && age >= EPF_SENIOR_AGE;
 
@@ -370,6 +394,19 @@ function epfContributionByRule(
     const erRate = cfg.seniorEmployerRate ?? 0.04;
     const band = wage <= scheduleMax ? bandFor(partE, wage) : null;
     const wageEmployer = band ? band.employer : ceilRinggit(wage * erRate);
+    // b6dbadc5 — the additive top-up applies on Part E as well: employee 0% + increment, employer 4% +
+    // increment (never below the Part E band). With no increment this is exactly the statutory branch below.
+    // `voluntary_excess` still does not reach Part E, as before.
+    if (mode === 'topup_percentage' && (election?.employeeRate != null || election?.employerRate != null)) {
+      const side = (amount: number, statRate: number, increment: number | null | undefined) =>
+        amount > 0 ? ceilRinggit(amount * topupRate(statRate, increment)) : 0;
+      const employeeOnBonus = side(bonus, 0, election?.employeeRate);
+      return {
+        employee: side(wage, 0, election?.employeeRate) + employeeOnBonus,
+        employer: Math.max(wageEmployer, side(wage, erRate, election?.employerRate)) + (bonus > 0 ? side(bonus, erRate, election?.employerRate) : 0),
+        employeeOnBonus,
+      };
+    }
     return {
       employee: 0,
       employer: wageEmployer + (bonus > 0 ? ceilRinggit(bonus * erRate) : 0),

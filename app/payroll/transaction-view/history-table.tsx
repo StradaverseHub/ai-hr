@@ -8,13 +8,19 @@ import { useTranslations } from 'next-intl';
 import { Badge, EmployeeName } from '@/components/ui';
 import type { ReprocessEmployeeOutcome } from '@/packs/payroll/service';
 import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
-import { deriveHistoryBreakdown } from './history-breakdown';
+import { deriveHistoryBreakdown, type BreakdownSubLine } from './history-breakdown';
 // 6b134681 / 417d4937 — one label format for a pay item, shared with the ESS payslip and the printed
 // document: the item's own code and description, never the category it was classified into.
 // 417d4937 — and the ONE answer to "what is this recorded line actually called?", which is a different
 // question from the one above: a record line's stored name was a free-text remark until r196, so it is
 // repaired from the catalogue at READ time with the words that were typed kept beside it as the remark.
-import { payItemLabel, recordLineIdentity, type PayItemNames } from '@/core/payslip-earning-lines';
+import {
+  payItemLabel,
+  recordLineIdentity,
+  type OtLegKind,
+  type PayItemNames,
+  type PayItemRateDetail,
+} from '@/core/payslip-earning-lines';
 // 3c88d593 — which days of the period a payslip claims, from the payslip's OWN record. Two lines for one
 // month is otherwise indistinguishable from a duplicate on this list.
 import { payslipSegmentOf } from '@/core/payslip-segment';
@@ -53,19 +59,47 @@ const rm = (n: unknown) =>
  *  Recorded items rows below and the printed payslip. A description alone is not an identification: two
  *  pay items may legitimately share a name, and the reporter's whole complaint is that the result screen
  *  stopped naming the item that was keyed. */
-function SubLines({ lines, fmt }: { lines: { code: string; name: string; amount: number }[]; fmt: (n: number) => string }) {
+/*  5a5309d5 — a line may also carry what the run multiplied (`detail`: 4 hours) and, for a statutory
+ *  overtime leg recorded by the attendance engine, the leg it is (`otLeg`). Such a leg has no pay item code
+ *  or name of its own, so it is labelled from the payslip document's own leg words (`legLabel`), and its
+ *  hours are printed beside the amount (`qtyLabel`). A line without either renders exactly as before. */
+function SubLines({
+  lines,
+  fmt,
+  legLabel,
+  qtyLabel,
+}: {
+  lines: BreakdownSubLine[];
+  fmt: (n: number) => string;
+  legLabel?: (k: OtLegKind) => string;
+  qtyLabel?: (d: PayItemRateDetail) => string;
+}) {
   if (lines.length === 0) return null;
   return (
     <ul className="mb-1 ms-3 border-s border-border/60 ps-3">
       {lines.map((l, i) => (
         <li key={`${l.code}-${i}`} className="flex items-baseline justify-between gap-4 py-0.5 text-xs text-muted-foreground">
-          <span>{payItemLabel(l)}</span>
-          <span className="tabular-nums">{fmt(l.amount)}</span>
+          <span>{l.otLeg && legLabel ? legLabel(l.otLeg) : payItemLabel(l)}</span>
+          <span className="flex items-baseline gap-4">
+            {l.detail && qtyLabel && <span className="tabular-nums">{qtyLabel(l.detail)}</span>}
+            <span className="tabular-nums">{fmt(l.amount)}</span>
+          </span>
         </li>
       ))}
     </ul>
   );
 }
+
+/** 5a5309d5 — the me.payslip label for each statutory overtime leg, the same words the payslip document
+ *  prints (lib/payslip-pdf-strings.ts `otLegs`). Exhaustive over OtLegKind so the i18n guard's literal
+ *  scan sees every key. */
+const OT_LEG_LABEL: Record<OtLegKind, 'otLegWorkday' | 'otLegRestDay' | 'otLegRestDayExcess' | 'otLegHoliday' | 'otLegHolidayExcess'> = {
+  workday: 'otLegWorkday',
+  rest_day: 'otLegRestDay',
+  rest_day_excess: 'otLegRestDayExcess',
+  holiday: 'otLegHoliday',
+  holiday_excess: 'otLegHolidayExcess',
+};
 
 function Row({ label, value, muted }: { label: string; value: React.ReactNode; muted?: boolean }) {
   return (
@@ -114,6 +148,14 @@ export function HistoryTable({
   // payslip DOCUMENT already resolves it (lib/payslip-pdf-strings.ts), so this panel reads the one
   // existing sentence rather than minting a sixth translation of it under `me.` or `payroll.`.
   const tIp = useTranslations('payroll.individualPayslip');
+  // 5a5309d5 — "4 hours" beside an overtime line: the composition the payslip screens already print.
+  const otLegLabel = (k: OtLegKind) => tSlip(OT_LEG_LABEL[k]);
+  const qtyLabel = (d: PayItemRateDetail) =>
+    d.unit === 'hours'
+      ? `${d.qty} ${tSlip(d.qty === 1 ? 'hourUnit' : 'hoursUnit')}`
+      : d.unit === 'days'
+        ? `${d.qty} ${tSlip(d.qty === 1 ? 'dayUnit' : 'daysUnit')}`
+        : `${d.qty}`;
   const [open, setOpen] = useState<Set<string>>(new Set());
   const q = useClientPageQuery();
   const { rows: pageRows, state } = paginateRows(rows, q);
@@ -269,7 +311,9 @@ export function HistoryTable({
                               hands out the lines only when they add up to the figure they explain — the
                               same rule the printed payslip and the ESS payslip apply, so all four payroll
                               result surfaces read one payslip the same way. */}
-                          <SubLines lines={b.overtimeLines} fmt={rm} />
+                          {/* 5a5309d5 — and overtime the ATTENDANCE engine paid (1.5 / 2.0 / 3.0 legs), with
+                              the hours each leg recorded, through the same reconciliation gate. */}
+                          <SubLines lines={b.overtimeLines} fmt={rm} legLabel={otLegLabel} qtyLabel={qtyLabel} />
                           {b.otConvertAmount > 0 && (
                             <Row label={tSlip('otConverted', { item: st.otConvert!.name })} value={rm(b.otConvertAmount)} />
                           )}
@@ -378,7 +422,8 @@ export function HistoryTable({
                             <Row label={tSlip('otherDeductions')} value={rm(b.absence.residual)} />
                           )}
                           {/* b240c0ff — the named deduction items behind "Other deductions" (imported payroll
-                              history keeps each line), only when they add up to it. */}
+                              history keeps each line), only when they add up to it.
+                              5a5309d5 — and a payroll run's own deduction pay items (Monthly Parking). */}
                           <SubLines lines={b.deductionLines} fmt={rm} />
                           {/* 6b4ca488 — no minus prefix; see the note on the same line in
                               app/payroll/individual-payslip/page.tsx. `b.totalDeductions` is a positive
@@ -476,12 +521,36 @@ export function HistoryTable({
                             the stored code and keeps the words that were typed beside it as the remark —
                             nothing is rewritten and nothing is hidden. The amount and the code never move.
                             A code the catalogue does not hold (every TXN_* synthetic line) is unchanged. */}
-                        {b.recordLines.length > 0 && (
+                        {/* ── Non-payable amounts (5a5309d5) ──
+                            The lines the RUN stamped non-payable (a BIK, a VOLA) used to sit inside the mixed
+                            list below with nothing saying they were never paid. They get their own box, a
+                            total and a note. Same filter as the printed payslip's Non-payable box, and a
+                            line written before that stamp existed stays below — it is never re-derived. The
+                            name is the one the run stored: a BIK's name is never repaired (recordLineIdentity). */}
+                        {b.nonPayableLines.length > 0 && (
+                          <section className="rounded-lg border border-border bg-muted/40 px-4 py-3 sm:col-span-2">
+                            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              {t('view.history.nonPayableHeading')}
+                            </h3>
+                            {b.nonPayableLines.map((l, i) => (
+                              <Row key={`${l.code}-${i}`} label={recordLineIdentity(l, payItemNames).label} value={rm(l.amount)} muted />
+                            ))}
+                            <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
+                              <span>{tSlip('nonPayableTotal')}</span>
+                              <span className="tabular-nums">{rm(b.nonPayableTotal)}</span>
+                            </div>
+                            <p className="mt-2 text-xs text-muted-foreground">{t('view.history.nonPayableNote')}</p>
+                          </section>
+                        )}
+
+                        {/* 5a5309d5 — the non-payable lines above have left this list; it is hidden when
+                            nothing else remains. */}
+                        {b.itemisedRecordLines.length > 0 && (
                           <section className="sm:col-span-2">
                             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               {t('view.history.itemsHeading')}
                             </h3>
-                            {b.recordLines.map((l, i) => {
+                            {b.itemisedRecordLines.map((l, i) => {
                               const id = recordLineIdentity(l, payItemNames);
                               return (
                                 <div

@@ -8,6 +8,8 @@ import { MY_EA_REPORTING } from './ea-reporting';
  * holiday calendar, and payroll calculators (EPF/SOCSO/EIS/PCB) join here in later slices.
  */
 import { validateEpfElection } from './epf-election';
+import { convertLegacyEpfTopupsMY } from './epf-topup-conversion-db';
+import { legacyTopupConversionCsv } from './epf-topup-conversion';
 import { readReviewedStatutoryEditableMYTx,reviewedStatutoryChoiceMetadataMYTx,readReviewedStatutoryLabelsMYTx,lockReviewedStatutoryProfileMYTx,withStatutoryProfileWriteMY,prepareReviewedStatutoryProfileMYTx,confirmReviewedStatutoryProfileMYTx,readReviewedStatutoryProfileReferenceMYTx,correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, getStatutoryEditSnapshotMY, isValidIC, normalizeIC, setBankProfileMY, setRegistrationNumbersMY, setIcProfileMY, canApplyIcProfileChangeMY, setOthersStatutoryMY, setPassportProfileMY, validatePassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026, MY_STATES } from './holidays';
@@ -117,6 +119,10 @@ export const myPack: CountryPack = {
     // Feedback 57840a6e — the corrective step for the explicit "No" rows the OLD checkbox captured from
     // the company default. Consumed by scripts/correct-hrdf-opt-outs.ts through the registry.
     correctAccidentalHrdfOptOuts: correctAccidentalHrdfOptOutsMY,
+    // b6dbadc5 — the one-off conversion of pre-additive Top-up elections, consumed by
+    // scripts/convert-epf-topup-percentage.ts through the registry.
+    convertLegacyEpfTopups: convertLegacyEpfTopupsMY,
+    legacyEpfTopupCsv: legacyTopupConversionCsv,
     validateIC: isValidIC,
     canApplyIcChange:canApplyIcProfileChangeMY,
     // Rung 5a (D6) — IC canonicalisation + MyKad-derived DOB, consumed by the bulk importer through

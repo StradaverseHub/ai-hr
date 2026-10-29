@@ -57,7 +57,7 @@ describe('actual mounted Personnel form inventory',()=>{
     expect(controlCount).toBeGreaterThan(100);
     expect(boundaries.get('components/profile-option-select.tsx')).toContain('owning Personnel widget');
   });
-  it('owns EPF native requirements in descriptor context and bounds the transient conversion acknowledgement',()=>{
+  it('owns EPF native requirements in descriptor context and mounts no unbound acknowledgement',()=>{
     for(const side of ['employee','employer']){
       const id=`bank_statutory.epf_contribution.epf${side}rate`;
       expect(personnelInput(id,'edit',{epfManualPercentage:true}).required).toBe(true);
@@ -67,14 +67,15 @@ describe('actual mounted Personnel form inventory',()=>{
     const file='components/epf-election.tsx',source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
     const audit=(text:string)=>auditPersonnelFormSource(file,text,PERSONNEL_FIELDS,{exemptions:exemptions[file],resolveImportSource:personnelImportSourceReader(root)});
     expect(audit(source).issues).toEqual([]);
-    expect(exemptions[file].map(({tag,name,context,hidden,occurrences})=>({tag,name,context,hidden,occurrences}))).toEqual([{tag:'input',name:'epfManualPercentageAdoptionConfirmed',context:'EpfElectionBody',hidden:false,occurrences:1}]);
+    // b6dbadc5 — the 5e204d56 adoption tick box is retired, and with it the module's only exemption.
+    expect(exemptions[file]).toBeUndefined();
+    expect(source).not.toContain('name="epfManualPercentageAdoptionConfirmed"');
     const binding="personnelInput('bank_statutory.epf_contribution.epfemployeerate',formMode,{epfManualPercentage:manualPercentage})";
     expect(source).toContain(binding);
     expect(audit(source.replace(binding,binding+'} required={true')).issues.some(issue=>issue.message.includes('required bypasses descriptor'))).toBe(true);
-    const checkbox='<input type="checkbox" name="epfManualPercentageAdoptionConfirmed"';
-    expect(source).toContain(checkbox);
-    expect(audit(source.replace(checkbox,checkbox+' /><input type="checkbox" name="epfManualPercentageAdoptionConfirmed"')).issues.some(issue=>issue.message.includes('occurrence changed'))).toBe(true);
-    expect(audit(source.replace('name="epfManualPercentageAdoptionConfirmed"','name="unknownAcknowledgement"')).issues.some(issue=>issue.message.includes('Unbound Personnel control'))).toBe(true);
+    const anchor='{/* b6dbadc5 — the Manual (by percentage) adoption message';
+    expect(source).toContain(anchor);
+    expect(audit(source.replace(anchor,'<input type="checkbox" name="epfManualPercentageAdoptionConfirmed" />'+anchor)).issues.some(issue=>issue.message.includes('Unbound Personnel control'))).toBe(true);
   });
   it('keeps Workforce transport exemptions finite and refuses invented or cross-register bindings',()=>{
     for(const kind of ['person','qualification','emergency','dependent'] as const)for(const {key,field}of workforceMaintenanceFields(kind)){

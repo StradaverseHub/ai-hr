@@ -66,7 +66,7 @@ import { packFor } from '@/localization/registry';
 // stores these on employee_dependent, so core/dependents is their pack-neutral home; the MY pack's
 // CHILD_RELIEF_CATEGORY_KEYS is the same list expressed for the ruleset side.
 import { CHILD_RELIEF_CATEGORIES } from '@/core/dependents';
-import { mapEpfUiMode } from '@/lib/epf-mode-map';
+import { mapEpfUiMode, retainLegacyTotalTopup } from '@/lib/epf-mode-map';
 // 420ebab5 part two — the section contract the consolidated per-tab Save shares with the page and the
 // client scope. It lives outside this file because a `'use server'` module may only export async functions.
 import {
@@ -1485,9 +1485,8 @@ async function applyStatutorySection(
   // save; that turned "no MyKad" into "cannot record EPF/SOCSO at all" for exactly the passport holders
   // e3ce0d4d set out to support. The setter now accepts a null, so pass the stored value straight through.
   const icNumber = current.icNumber;
-  if (current?.epfMode === 'voluntary_excess' && current.epfEmployerRate != null && formData.get('epfMode') === 'manual_percentage' && formData.get('epfManualPercentageAdoptionConfirmed') !== 'on') {
-    throw new Error('Review and confirm the change from the existing top-up election to Manual (by percentage).');
-  }
+  // b6dbadc5 — no adoption confirmation any more: switching a stored top-up to Manual (by percentage) is
+  // saved directly (ADR-0158 addendum). The 5e204d56 check of `epfManualPercentageAdoptionConfirmed` is gone.
   await pack.statutory.set(s, {
     personId,
     icNumber,
@@ -1538,14 +1537,16 @@ async function applyStatutorySection(
     // full-row overwrite with every input mounted, so a hidden box still posts whatever the previous
     // category left in it. resolveEpfElection() re-asserts the same nulling server-side and is the only
     // place that validates (blank-for-a-manual-category, negative, missing reason).
-    ...mapEpfUiMode(
+    // b6dbadc5 — an unconverted legacy total-rate top-up re-posted with its own figures stays as it is
+    // (`retainLegacyTotalTopup`); every other Top-up save is an additive top-up.
+    ...retainLegacyTotalTopup(mapEpfUiMode(
       formData.get('epfMode') as string | null,
       formData.get('epfEmployeeRate') as string | null,
       formData.get('epfEmployerRate') as string | null,
       formData.get('epfEmployeeAmount') as string | null,
       formData.get('epfEmployerAmount') as string | null,
       formData.get('epfManualReason') as string | null,
-    ),
+    ), current),
     // Bank fields RELOCATED to their own Bank Information card with a dedicated partial save (setBankAction,
     // item ef720d3a). This form no longer carries them, but setStatutoryProfileMY is a FULL overwrite of the
     // bank columns — so read the stored values and pass them through unchanged. Without this, every statutory

@@ -302,7 +302,7 @@ export interface CountryPackClient {
      * pack's OWN rule (MY: `resolveEpfElection`, reached through `mapEpfUiMode`), never a copy of it.
      * Optional: a jurisdiction with no elective contribution has nothing to refuse.
      */
-    epfRateInputBounds?: (uiMode: string, side: 'employee' | 'employer') => { min: number; max: number };
+    epfRateInputBounds?: (uiMode: string, side: 'employee' | 'employer', legacyTotal?: boolean) => { min: number; max: number };
     epfElectionGap?: (
       uiMode: string | null | undefined,
       employeeRate: string | null | undefined,
@@ -432,6 +432,11 @@ export interface CountryPack {
      * CLI resolves jurisdiction through the registry instead of importing the MY module directly.
      */
     correctAccidentalHrdfOptOuts: MyStatutoryModule['correctAccidentalHrdfOptOutsMY'];
+    /** b6dbadc5 — one-off conversion of pre-additive Top-up elections to the additive mode (MY only).
+     *  Read-only unless `apply`; consumed by scripts/convert-epf-topup-percentage.ts. */
+    convertLegacyEpfTopups?: typeof import('./my/epf-topup-conversion-db')['convertLegacyEpfTopupsMY'];
+    /** b6dbadc5 — the old/new review file for HR from the conversion's rows. */
+    legacyEpfTopupCsv?: typeof import('./my/epf-topup-conversion')['legacyTopupConversionCsv'];
     /** National-ID validity check (MY: MyKad 12-digit IC). */
     validateIC: (ic: string) => boolean;
     /** Canonical storage form of a national ID (MY: digits only). */

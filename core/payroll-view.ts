@@ -52,9 +52,11 @@ import { employmentStatusSql } from './employment-status-sql';
 import {
   collectableCycleIds,
   intendedCycleFilter,
+  listPayslipLessEligible,
   resolveBatchScopeFilter,
   type BatchScope,
   type PayrollSkipReason,
+  type PayslipLessEligibleRow,
 } from './payroll';
 // 3c473773 — pure, db-free: which payslip box each earning belongs in, from the payslip's own stamp.
 import { payslipDisplayEarnings } from './pay-display-category';
@@ -2554,11 +2556,20 @@ const PENDING_MONEY_DOORS: readonly PendingMoneyDoor[] = [
  * are none here).
  */
 export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): Promise<PendingBatchMoney> {
+  return withTenant(ctx, (tx) => pendingBatchMoneyTx(tx, ctx, p));
+}
+
+/**
+ * cdb1c6ca — the same read inside a caller's transaction. Close asks "who is deliberately skipped" while
+ * it holds the run's locks, and a nested `withTenant` would open a SECOND connection that never joins
+ * them (db/client.ts). The body is unchanged; only who opens the transaction moved.
+ */
+export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: string }): Promise<PendingBatchMoney> {
   const typedComponents = isModuleEnabled(ctx, 'typed_pay_components');
   // Matches generatePayslips' own dependency: the individual fold rides the per-component fold, so with
   // typed components off a payable one-off row has nothing to fold through and pays nothing either.
   const individualTxnPay = typedComponents && settingEnabled(ctx, 'payroll.individual_txn_pay_enabled');
-  return withTenant(ctx, async (tx) => {
+  return (async () => {
     let inertRows = 0;
     const empty: PendingBatchMoney = { lines: [], byDoor: [], employees: 0, earnings: 0, deductions: 0, inertRows: 0 };
     const [batch] = await tx
@@ -2805,7 +2816,7 @@ export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): 
       inertRows,
       formulaOvertimeReview,
     };
-  });
+  })();
 }
 
 /**
@@ -2833,11 +2844,73 @@ export function narrowToNothingPayable<T extends { employmentId: string }>(
   rows: readonly T[],
   pending: PendingBatchMoney | null,
 ): T[] {
-  if (!pending) return [...rows];
-  // An unavailable obligation cannot justify a definite 'will be skipped' notice.
-  if (pending.formulaOvertimeReview?.status === 'unavailable') return [];
-  const paid = new Set(pending.lines.filter((l) => l.amount > 0).map((l) => l.employmentId));
-  return rows.filter((r) => !paid.has(r.employmentId));
+  // c3258a72 — one answer: the run page's notice, the Reprocess screen's Skipped group and the close-batch
+  // check all ask `nothingPayableSkipKind`, so "will be skipped" cannot mean two things on two screens.
+  return rows.filter((r) => nothingPayableSkipKind(r.employmentId, pending) !== null);
+}
+
+/** c3258a72 — the two regular-run skip reasons a no-monthly-basic employee can carry. */
+export type NothingPayableSkipKind = Extract<PayrollSkipReason, 'NOTHING_PAYABLE_THIS_PERIOD' | 'DEDUCTION_ONLY_THIS_PERIOD'>;
+
+/**
+ * c3258a72 — THE SHARED PREDICATE: is this no-monthly-basic employee one the run leaves out, and in which
+ * words? Returns the same reason `generatePayslips`' `regularRunNothingPayable` stamps, or null when the run
+ * would pay them (or when that cannot honestly be said).
+ *
+ * PRECONDITION: `employmentId` is a member of `preProcessChecksTx`' `nothingPayable` list — the salary
+ * record names no monthly basic. This function only answers the money half, from the "what will this run
+ * pay" card (`pendingBatchMoney`), for the reasons `narrowToNothingPayable` gives above:
+ *   • a POSITIVE line ⇒ null — a keyed director's fee means the run pays them;
+ *   • only NEGATIVE lines ⇒ DEDUCTION_ONLY_THIS_PERIOD — skipped too, in its own words;
+ *   • no line ⇒ NOTHING_PAYABLE_THIS_PERIOD;
+ *   • an unavailable formula-overtime read ⇒ null — an unknown obligation cannot justify a definite skip;
+ *   • `pending === null` (no card on the screen, e.g. the wizard before a batch exists) ⇒
+ *     NOTHING_PAYABLE_THIS_PERIOD, the forward-looking sentence, as `narrowToNothingPayable` always did.
+ * Pure; the authoritative decision is still the kernel's at generate time.
+ */
+export function nothingPayableSkipKind(
+  employmentId: string,
+  pending: PendingBatchMoney | null,
+): NothingPayableSkipKind | null {
+  if (!pending) return 'NOTHING_PAYABLE_THIS_PERIOD';
+  if (pending.formulaOvertimeReview?.status === 'unavailable') return null;
+  let deduction = false;
+  for (const l of pending.lines) {
+    if (l.employmentId !== employmentId) continue;
+    if (l.amount > 0) return null;
+    if (l.amount < 0) deduction = true;
+  }
+  return deduction ? 'DEDUCTION_ONLY_THIS_PERIOD' : 'NOTHING_PAYABLE_THIS_PERIOD';
+}
+
+/** c3258a72 — a payslip-less eligible employee, with the run's skip decision stated as a field. */
+export type PayslipLessEligibleWithSkipRow = PayslipLessEligibleRow & {
+  /** Non-null ⇒ the run has nothing to pay them this month: Skipped, not New / Pending. */
+  skip: NothingPayableSkipKind | null;
+};
+
+/**
+ * c3258a72 — `listPayslipLessEligible`, with each row's skip decision made explicit.
+ *
+ * The Reprocess screen used to put everyone on that list into "New / Pending", ticked, so an employee with no
+ * monthly basic and nothing payable was retried — and skipped again — on every reprocess. The `nothingPayable`
+ * warning there comes from the salary record alone; this narrows it against the run's money doors with
+ * `nothingPayableSkipKind`, so a director whose fee has been keyed since stays pending and is paid.
+ *
+ * NEVER SKIPPED: a row with a readiness BLOCKER (a genuine fault stays a fault, never a quiet "Skipped"),
+ * and a row OUTSIDE the run's chosen list — `pendingBatchMoney` reads only the run's scope, so for them it
+ * cannot see keyed money and has no basis for saying nothing is payable. The card is read only when some
+ * row could be skipped. Read-only, no event.
+ */
+export async function listPayslipLessEligibleWithSkip(
+  ctx: SessionContext,
+  p: { batchId: string },
+): Promise<PayslipLessEligibleWithSkipRow[]> {
+  const rows = await listPayslipLessEligible(ctx, p);
+  const could = (r: PayslipLessEligibleRow) =>
+    r.blockers.length === 0 && !r.outsideScope && r.warnings.includes('nothingPayable');
+  const pending = rows.some(could) ? await pendingBatchMoney(ctx, p) : null;
+  return rows.map((r) => ({ ...r, skip: pending && could(r) ? nothingPayableSkipKind(r.employmentId, pending) : null }));
 }
 
 // ───────────────────── 9. When a run was processed (dashboard "Processed date") ─────────────────────

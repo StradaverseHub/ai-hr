@@ -64,9 +64,47 @@ export type ResolvedEpfElection = {
   epfManualReason: string | null;
 };
 
-/** Browser constraints derive top-up floors from the same table as the server rule. */
-export function epfRateInputBounds(uiMode: string, side: 'employee' | 'employer') {
-  return {min: uiMode === 'manual_percentage' ? 1 : (side === 'employee' ? EPF_EMPLOYEE_FLOOR : EPF_EMPLOYER_FLOOR) * 100, max:100};
+/** b6dbadc5 — the highest statutory rate a side can carry under any rule (Part A: employee 11%, employer
+ *  13% at or below the RM5,000 step). An additive top-up is refused when statutory + top-up could exceed 100%
+ *  in some month, so the cap is measured against the highest statutory rate, not this month's. */
+const EPF_EMPLOYEE_STATUTORY_MAX = DEFAULT_MY_STATUTORY.epf.employeeRate;
+const EPF_EMPLOYER_STATUTORY_MAX = Math.max(DEFAULT_MY_STATUTORY.epf.employerRateLow, DEFAULT_MY_STATUTORY.epf.employerRateHigh);
+const basisPoints = (rate: number) => Math.round(rate * 10000);
+
+/** Browser constraints derive the floors and caps from the same table as the server rule. b6dbadc5: a
+ *  Top-up box takes the increment, 0 up to 100% less the highest statutory rate for that side. A legacy
+ *  total-rate row (`legacyTotal`) shows TOTAL figures that may exceed that cap and may be re-posted
+ *  unchanged, or replaced by an increment below the old floor, so the browser bounds it only to 0–100%
+ *  and the server (`retainLegacyTotalTopup`, then `resolveEpfElection`) decides. */
+export function epfRateInputBounds(uiMode: string, side: 'employee' | 'employer', legacyTotal = false) {
+  if (uiMode === 'manual_percentage') return {min: 1, max: 100};
+  if (uiMode === 'voluntary_percentage')
+    return legacyTotal ? {min: 0, max: 100} : {min: 0, max: (10000 - basisPoints(side === 'employee' ? EPF_EMPLOYEE_STATUTORY_MAX : EPF_EMPLOYER_STATUTORY_MAX)) / 100};
+  return {min: (side === 'employee' ? EPF_EMPLOYEE_FLOOR : EPF_EMPLOYER_FLOOR) * 100, max:100};
+}
+
+/** b6dbadc5 — one validation owner for the additive top-up increments. Blank (null) adds nothing; 0% is
+ *  allowed and also adds nothing; a negative, a non-number, more than two decimals, or an increment that
+ *  would take statutory + top-up above 100% is refused, naming the box. */
+export function topupEpfPercentageRates(employee: number | null | undefined, employer: number | null | undefined) {
+  const rate = (value: number | null | undefined, side: 'Employee' | 'Employer', statutoryMax: number, field: EpfElectionField) => {
+    if (value == null) return null;
+    if (typeof value !== 'number' || !Number.isFinite(value))
+      throw new InvalidEpfElectionError(`Top-up ${side} Rate % is not a number — enter a percentage or leave it blank.`, field);
+    const cap = (10000 - basisPoints(statutoryMax)) / 100;
+    if (value < 0 || basisPoints(value) > 10000 - basisPoints(statutoryMax))
+      throw new InvalidEpfElectionError(
+        `Top-up ${side} Rate % must be from 0% to ${cap}%: the normal EPF rate (up to ${(statutoryMax * 100).toFixed(0)}%) plus the top-up cannot exceed 100%.`,
+        field,
+      );
+    if (Math.abs(value * 10000 - Math.round(value * 10000)) > 0.0000001)
+      throw new InvalidEpfElectionError(`Top-up ${side} Rate % must use no more than two decimal places.`, field);
+    return value;
+  };
+  return {
+    employeeRate: rate(employee, 'Employee', EPF_EMPLOYEE_STATUTORY_MAX, 'epfEmployeeRate'),
+    employerRate: rate(employer, 'Employer', EPF_EMPLOYER_STATUTORY_MAX, 'epfEmployerRate'),
+  };
 }
 
 /** One validation owner for manual rates, shared by persistence and defensive payroll reads. */
@@ -86,7 +124,10 @@ export function manualEpfPercentageRates(employee: number | null | undefined, em
  * Resolve + validate the per-side EPF election (Wave 2B; item 70b14723 adds 'manual_amount').
  *
  * RATES ('voluntary_excess'): i-Topup can only RAISE a rate, never lower it below statutory; rates
- * outside [floor, 1] are rejected. Rates are kept only for 'voluntary_excess'.
+ * outside [floor, 1] are rejected. Rates are kept only for the rate modes.
+ *
+ * TOP-UP ('topup_percentage', b6dbadc5): the rates are INCREMENTS added to the statutory rate; see
+ * `topupEpfPercentageRates` for what is refused.
  *
  * ══ AMOUNTS ('manual_amount', item 70b14723) — WHAT IS REFUSED, AND THE ONE THING THAT IS NOT ══
  *
@@ -129,8 +170,12 @@ export function resolveEpfElection(p: {
   epfManualReason?: string | null;
 }): ResolvedEpfElection {
   const mode: EpfMode =
-    p.epfMode === 'manual_percentage' || p.epfMode === 'voluntary_excess' || p.epfMode === 'exempt' || p.epfMode === 'manual_amount' ? p.epfMode : 'auto';
+    p.epfMode === 'manual_percentage' || p.epfMode === 'voluntary_excess' || p.epfMode === 'exempt' || p.epfMode === 'manual_amount' || p.epfMode === 'topup_percentage' ? p.epfMode : 'auto';
   const NO_AMOUNT = { epfEmployeeAmount: null, epfEmployerAmount: null, epfManualReason: null };
+  if (mode === 'topup_percentage') {
+    const rates = topupEpfPercentageRates(p.epfEmployeeRate, p.epfEmployerRate);
+    return { epfMode: mode, epfEmployeeRate: rates.employeeRate?.toFixed(4) ?? null, epfEmployerRate: rates.employerRate?.toFixed(4) ?? null, ...NO_AMOUNT };
+  }
   if (mode === 'manual_percentage') {
     const rates = manualEpfPercentageRates(p.epfEmployeeRate, p.epfEmployerRate);
     return { epfMode: mode, epfEmployeeRate: rates.employeeRate.toFixed(4), epfEmployerRate: rates.employerRate.toFixed(4), ...NO_AMOUNT };

@@ -13,7 +13,8 @@ const inputCls =
   'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
 
 /** Existing elections retain their stored calculation mode. Manual percentage is explicit,
- * requires both rates and does not inherit the legacy top-up floor. */
+ * requires both rates and does not inherit the legacy top-up floor. b6dbadc5 — Top-up takes per-side
+ * INCREMENTS added to the normal EPF rate, under its own "Top-up … Rate %" captions. */
 type UiMode =
   | 'auto'
   | 'manual_percentage'
@@ -169,12 +170,17 @@ function EpfElectionBody({
   const showEmployeeRate = m === 'manual_percentage' || m === 'voluntary_percentage' || m === 'semi_auto';
   const showEmployerRate = m === 'manual_percentage' || m === 'voluntary_percentage';
   const manualPercentage = m === 'manual_percentage';
+  const topup = m === 'voluntary_percentage';
+  // b6dbadc5 — an unconverted pre-additive row shows its stored TOTAL rates until something is changed.
+  const legacyTotal = topup && legacyPercentage;
   const employeeRef = useRef<HTMLInputElement>(null), employerRef = useRef<HTMLInputElement>(null);
   const bounds = clientPackFor('MY')?.statutory.epfRateInputBounds;
   const [errors, setErrors] = useState<Partial<Record<'employee' | 'employer', string>>>({});
   const invalidRate = (side: 'employee' | 'employer') => (event: InvalidEvent<HTMLInputElement>) => {
-    if (!manualPercentage) return;
-    const message = t(event.currentTarget.validity.valueMissing ? (side === 'employee' ? 'epfManualEmployeeRateRequired' : 'epfManualEmployerRateRequired') : 'epfManualRateRange');
+    if (!manualPercentage && !(topup && !legacyTotal)) return;
+    const message = topup
+      ? t('epfTopupRateRange', {max: bounds?.(m, side).max ?? 100})
+      : t(event.currentTarget.validity.valueMissing ? (side === 'employee' ? 'epfManualEmployeeRateRequired' : 'epfManualEmployerRateRequired') : 'epfManualRateRange');
     event.currentTarget.setCustomValidity(message);
     setErrors(previous => ({...previous, [side]:message}));
   };
@@ -198,28 +204,27 @@ function EpfElectionBody({
       {(showEmployeeRate || showEmployerRate) && (
         <div className="grid grid-cols-2 gap-3 sm:col-span-2">
           {showEmployeeRate && (
-            <PersonnelField fieldId="bank_statutory.epf_contribution.epfemployeerate" mode={formMode} context={{epfManualPercentage:manualPercentage}}>
-              <input {...personnelInput('bank_statutory.epf_contribution.epfemployeerate',formMode,{epfManualPercentage:manualPercentage})} {...er.value} ref={employeeRef} {...bounds?.(m, 'employee')} aria-invalid={!!errors.employee} onInvalid={invalidRate('employee')} onInput={clearRate('employee')} placeholder="11" className={inputCls} />
+            <PersonnelField fieldId="bank_statutory.epf_contribution.epfemployeerate" mode={formMode} context={{epfManualPercentage:manualPercentage}} labelKey={topup ? 'people.detail.epfTopupEmployeeRate' : undefined}>
+              <input {...personnelInput('bank_statutory.epf_contribution.epfemployeerate',formMode,{epfManualPercentage:manualPercentage})} {...er.value} ref={employeeRef} {...bounds?.(m, 'employee', legacyTotal)} aria-invalid={!!errors.employee} onInvalid={invalidRate('employee')} onInput={clearRate('employee')} placeholder={topup ? '0' : '11'} className={inputCls} />
               {errors.employee && <span role="alert" className="text-xs text-destructive">{errors.employee}</span>}
             </PersonnelField>
           )}
           {showEmployerRate && (
-            <PersonnelField fieldId="bank_statutory.epf_contribution.epfemployerrate" mode={formMode} context={{epfManualPercentage:manualPercentage}}>
-              <input {...personnelInput('bank_statutory.epf_contribution.epfemployerrate',formMode,{epfManualPercentage:manualPercentage})} {...rr.value} ref={employerRef} {...bounds?.(m, 'employer')} aria-invalid={!!errors.employer} onInvalid={invalidRate('employer')} onInput={clearRate('employer')} placeholder="13" className={inputCls} />
+            <PersonnelField fieldId="bank_statutory.epf_contribution.epfemployerrate" mode={formMode} context={{epfManualPercentage:manualPercentage}} labelKey={topup ? 'people.detail.epfTopupEmployerRate' : undefined}>
+              <input {...personnelInput('bank_statutory.epf_contribution.epfemployerrate',formMode,{epfManualPercentage:manualPercentage})} {...rr.value} ref={employerRef} {...bounds?.(m, 'employer', legacyTotal)} aria-invalid={!!errors.employer} onInvalid={invalidRate('employer')} onInput={clearRate('employer')} placeholder={topup ? '0' : '13'} className={inputCls} />
               {errors.employer && <span role="alert" className="text-xs text-destructive">{errors.employer}</span>}
             </PersonnelField>
           )}
           {m === 'semi_auto' ? (
             <p className="col-span-2 text-xs text-muted-foreground">{t('epfSemiAutoHint')}</p>
           ) : (
-            <p className="col-span-2 text-xs text-muted-foreground">{t(manualPercentage ? 'epfManualPercentageHint' : 'epfVoluntaryHint')}</p>
+            <p className="col-span-2 text-xs text-muted-foreground">{t(manualPercentage ? 'epfManualPercentageHint' : legacyTotal ? 'epfTopupLegacyHint' : 'epfVoluntaryHint')}</p>
           )}
         </div>
       )}
-      {manualPercentage && legacyPercentage && <div className="space-y-2 rounded-md border border-border p-3 text-sm sm:col-span-2">
-        <p>{t('epfManualAdoptionPreview')}</p>
-        <label className="flex items-start gap-2"><input type="checkbox" name="epfManualPercentageAdoptionConfirmed" required className="mt-1" />{t('epfManualAdoptionConfirm')}</label>
-      </div>}
+      {/* b6dbadc5 — the Manual (by percentage) adoption message and its confirmation tick box were removed at
+          the reporter's request (reversing the 5e204d56 clause; ADR-0158, b6dbadc5 addendum): choosing the category, entering
+          both rates and saving is the whole decision. */}
       {/* ── ITEM 70b14723 — THE RINGGIT BOXES, AND ONLY THE ONES THE CATEGORY NAMES ──────────────────────
           Conditional exactly as the rate boxes are, for the same reason: this form is a FULL-ROW OVERWRITE
           with everything mounted, so what is not rendered is not posted and `mapEpfUiMode` nulls the rest.

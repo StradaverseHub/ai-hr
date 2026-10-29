@@ -84,9 +84,10 @@ describe('9f8cd608 · A — the row menu is handed links only', () => {
       'ConfirmSubmit',
     );
     expect(menuBody, 'a form is back inside the menu').not.toContain('<form');
-    // Three actions, three links — nothing was lost on the way to links-only.
-    expect((menuBody.match(/<Link/g) ?? []).length).toBe(3);
-    for (const label of ["tb('reprocessAction')", "tb('removeAction')", "tb('resetPayroll')"]) {
+    // Four actions, four links — nothing was lost on the way to links-only. (cdb1c6ca added Close Batch,
+    // as a link to its own confirmation screen for exactly this file's reason.)
+    expect((menuBody.match(/<Link/g) ?? []).length).toBe(4);
+    for (const label of ["tb('reprocessAction')", "tb('removeAction')", "tb('closeBatch')", "tb('resetPayroll')"]) {
       expect(menuBody, `the menu lost ${label}`).toContain(label);
     }
   });

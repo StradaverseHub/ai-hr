@@ -35,10 +35,12 @@ describe('EPF Info Card (127dffba)', () => {
    * that literal was the disabled "coming soon" option, names no side and carries no figure.
    */
   it('mapEpfUiMode still yields only LAWFUL enum values (including manual percentage since 0678)', () => {
-    const lawful = new Set(['auto', 'voluntary_excess', 'exempt', 'manual_amount', 'manual_percentage']);
+    // b6dbadc5 — Top-up persists as the additive 'topup_percentage' (migration 0697).
+    const lawful = new Set(['auto', 'voluntary_excess', 'exempt', 'manual_amount', 'manual_percentage', 'topup_percentage']);
     for (const ui of [
       'auto',
       'manual_percentage',
+      'voluntary_percentage',
       'semi_auto',
       'manual_fixed',
       'manual_employee_amount',

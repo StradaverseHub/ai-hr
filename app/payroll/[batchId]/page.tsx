@@ -1,9 +1,10 @@
 import Link from 'next/link';
-import { payrollRunLabel } from '@/core/payslip-cycle-label';
+import { payrollCloseCycleLabel, payrollRunLabel } from '@/core/payslip-cycle-label';
 import { notFound } from 'next/navigation';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
+import { formatPayPeriodMonth } from '@/lib/hr-date';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail, listReprocessEmployeeOutcomes, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory, type BatchScope } from '@/core/payroll';
+import { batchDetail, listBatches, listRecalcChangeCategories, listReprocessEmployeeOutcomes, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory, type BatchScope } from '@/core/payroll';
 import { payrollReadiness, type PayrollReadiness } from '@/core/payroll-readiness';
 import {batchScopeHeadcount} from '@/packs/payroll/service';
 import {PendingMoneyStatus,PendingOvertimeCashAmount,PendingOvertimeCashDetails} from './pending-overtime';
@@ -105,6 +106,17 @@ export default async function BatchPage({
   const recalcEmploymentIds = Array.isArray(batch.recalcEmploymentIds)
     ? batch.recalcEmploymentIds.filter((x): x is string => typeof x === 'string')
     : [];
+  // 3244584c — WHAT KIND of employee change made each named person stale (a category, never a value —
+  // ADR-0030 Layer 0). Employees marked by a transaction/attendance edit carry none and are not listed.
+  const recalcCategories = needsRecalc ? await listRecalcChangeCategories(s, { batchId: batch.id }) : {};
+  const recalcChangeLines = slips
+    .filter((sl) => recalcCategories[sl.employmentId]?.length)
+    .map((sl) => ({
+      employmentId: sl.employmentId,
+      name: sl.name,
+      employeeCode: sl.employeeCode,
+      changes: recalcCategories[sl.employmentId].map((c) => t(`recalcChangeCategory.${c}`)).join(', '),
+    }));
   const PUBLICATION_LABEL: Record<PayrollPublicationState, string> = {
     history: t('publishStateHistory'),
     draft: t('publishStateDraft'),
@@ -189,6 +201,24 @@ export default async function BatchPage({
   // r134 — the four payroll-cycle names (regular / off_cycle / bonus / adjustment) are catalogued under
   // payroll.list, NOT payroll.batch. See the Cycle field below.
   const tList = await getTranslations('payroll.list');
+  // cdb1c6ca — the Close batch confirmation names the run's own payroll month and pay cycle, worded exactly
+  // as the list's Close Batch screen words it (one label rule: payrollCloseCycleLabel). Only a processed
+  // run offers Close, so only it pays for the cycle-name read.
+  const closePrompt =
+    batch.status === 'processed'
+      ? {
+          month: formatPayPeriodMonth(batch.payPeriod, await getLocale()),
+          cycle: payrollCloseCycleLabel(
+            {
+              ...batch,
+              payrollCycleName:
+                (await listBatches(s, [batch.companyId], batch.payPeriod)).find((b) => b.id === batch.id)
+                  ?.payrollCycleName ?? null,
+            },
+            tList(`runType.${batch.runType}`),
+          ),
+        }
+      : null;
   const configReadiness: PayrollReadiness | null =
     batch.status === 'draft'
       ? await payrollReadiness(s, {
@@ -464,9 +494,10 @@ export default async function BatchPage({
                       defaults to 'destructive' (red), and closing a run is not destructive. */}
                   <ConfirmSubmit
                     variant="secondary"
-                    title={t('closeConfirmTitle')}
+                    title={t('closeConfirmTitle', { month: closePrompt?.month ?? batch.payPeriod, cycle: closePrompt?.cycle ?? '' })}
                     description={t('closeConfirmBody', { n: slips.length })}
                     confirmLabel={t('closeConfirmYes')}
+                    cancelLabel={t('closeConfirmNo')}
                   >
                     {t('closeBatch')}
                   </ConfirmSubmit>
@@ -525,6 +556,15 @@ export default async function BatchPage({
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
           <div className="font-medium">⚠ {t('recalcBannerTitle', { n: recalcEmploymentIds.length })}</div>
           <p className="mt-1">{t('recalcBannerBody')}</p>
+          {recalcChangeLines.length > 0 && (
+            <ul className="mt-1 list-disc pl-5">
+              {recalcChangeLines.map((line) => (
+                <li key={line.employmentId}>
+                  {t('recalcChangeLine', { name: line.employeeCode ? `${line.name} (${line.employeeCode})` : line.name, changes: line.changes })}
+                </li>
+              ))}
+            </ul>
+          )}
           {multiCycleOn && slips.length > 0 && (
             <Link href={`/payroll/${batch.id}/reprocess${fromSuffix}`} className="mt-1 inline-block font-medium underline">
               {t('recalcBannerAction')}

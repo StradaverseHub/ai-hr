@@ -1128,6 +1128,11 @@ export const SCREENS: readonly ScreenEntry[] = [
       // granular key asserted inside resetProcessedBatch — this registry is coarse "can the role open the
       // screen at all" by design.)
       '/payroll/[batchId]/reset',
+      // cdb1c6ca — Close Batch, reached from the Payroll Process list's row menu: a screen of its own for the
+      // same reason Reset is (9f8cd608). Same requireAdmin guard as the run page, registered so
+      // test/function-access.test.ts keeps it grantable. The per-action authority is still payroll.close,
+      // asserted inside closeBatch.
+      '/payroll/[batchId]/close',
       // ADR-0076 — the payroll exceptions queue. Same requireAdmin guard as the run page it hangs off,
       // and registered here for the same reason the reprocess screen above is: a guarded page with no
       // matrix column fails the suite rather than silently becoming a screen nobody can grant or revoke.

@@ -4,8 +4,8 @@ import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail, decodeReprocessEmployeeOutcomes, getReprocessJob, listBatches, listPayslipLessEligible, reprocessEligibility } from '@/core/payroll';
-import { listRecomputeDisclosure } from '@/core/payroll-view';
+import { batchDetail, decodeReprocessEmployeeOutcomes, getReprocessJob, listBatches, reprocessEligibility } from '@/core/payroll';
+import { listPayslipLessEligibleWithSkip, listRecomputeDisclosure } from '@/core/payroll-view';
 import { STATUTORY_BASE_KEYS, type StatutoryBaseKey, type StatutoryLineKey } from '@/core/payslip-recompute';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { Card, EmployeeCode, EmployeeName, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
@@ -23,7 +23,7 @@ import { ReprocessForm, type ReprocessAddCandidate, type ReprocessCandidate } fr
 // against a real reprocessed run; see the module header for why that is not a four-line inline map.
 // The href is spent on the EMPLOYEE NAME (rev.2, below) — the destination did not change, only what
 // the operator clicks to reach it.
-import { ReprocessOutcomePanel } from './outcomes';
+import { ReprocessOutcomePanel, reprocessStoppedMessageKey } from './outcomes';
 
 /**
  * e440991b — REPROCESS SELECTED EMPLOYEES, a screen of its own.
@@ -208,7 +208,10 @@ export default async function ReprocessPage({
   // month's processing and its record and re-runs the whole company. The read resolves the SAME period
   // window the engine computes and calls the same readiness checks, so what is listed here is what
   // pressing the button will actually do. Plain serialisable data — no closures cross to the client.
-  const newCandidates: ReprocessAddCandidate[] = (await listPayslipLessEligible(s, { batchId })).map((r) => ({
+  // c3258a72 — `skip` is the run's own decision that there is nothing to pay them (no monthly basic and no
+  // positive money on any door), narrowed exactly as the run page narrows its notice; the form puts those
+  // rows in their own Skipped group instead of New / Pending.
+  const newCandidates: ReprocessAddCandidate[] = (await listPayslipLessEligibleWithSkip(s, { batchId })).map((r) => ({
     employmentId: r.employmentId,
     employeeCode: r.employeeCode,
     name: r.name,
@@ -216,6 +219,7 @@ export default async function ReprocessPage({
     outsideScope: r.outsideScope,
     blockers: r.blockers,
     warnings: r.warnings,
+    skip: r.skip,
   }));
 
   // 97a9b0ab — every recomputation this run has had, each diffed against the calculation it replaced
@@ -272,11 +276,11 @@ export default async function ReprocessPage({
       {/* THE RESULT, when there is one. It is rendered ABOVE the selection because after a submit this
           is what the operator came back for; the selection stays below so a second correction does not
           need a second navigation. */}
-      {thisJob?.status === 'failed' && <ErrorBanner message={t('reprocessStoppedPartial')} />}
+      {thisJob?.status === 'failed' && <ErrorBanner message={t(reprocessStoppedMessageKey(thisJob.stopCode))} />}
       {thisJob && outcomes !== null && (outcomes.length > 0 || thisJob.status === 'completed') && (
         <ReprocessOutcomePanel outcomes={outcomes} history={disclosure} slips={slips} run={batch}
           currency={currency} batchId={batchId} from={listFrom} jobId={thisJob.id}
-          selected={thisJob.employmentIds.length} stopped={thisJob.status === 'failed'} />
+          selected={thisJob.employmentIds.length} stopped={thisJob.status === 'failed'} stoppedCode={thisJob.stopCode} />
       )}
       {thisJob?.status === 'completed' && outcomes === null && (
         <Card className="px-4 py-3 text-sm">

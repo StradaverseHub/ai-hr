@@ -335,7 +335,8 @@ describe('every payroll-result surface asks before it itemises (6b134681)', () =
   it('the History grid and Individual Payslip read the RECONCILED lists, never the raw buckets', () => {
     const breakdown = code('app/payroll/transaction-view/history-breakdown.ts');
     expect(breakdown).toContain('payItemLinesReconcile(lines, total) ? lines : []');
-    expect(breakdown).toContain('overtimeLines: reconciled(byBucket.ot, disp.overtime)');
+    // 5a5309d5 — the source falls back to the attendance legs; the gate is the same.
+    expect(breakdown).toContain('overtimeLines: reconciled(overtimeSourceLines(componentLines, row.statutory), disp.overtime)');
     expect(breakdown).toContain('bonusLines: reconciled(byBucket.bonus, disp.bonus)');
 
     // THE MISS ITSELF: mapping `componentsByBucket.ot` / `.bonus` beside a figure that comes from
@@ -660,10 +661,14 @@ describe('recordLineIdentity — repairing a stale record-line label (417d4937)'
     expect(recordLineIdentity({ code: 'A0040', name: 'A0020 - DIRECTOR FEE' }, catalogue).name)
       .toBe('MEAL ALLOWANCE');
     const pdf = readSrc('lib/payslip-pdf.ts');
-    expect(pdf, 'the flag is read as === true here too, or the two readers disagree').toContain(
-      '.filter((l) => l?.nonPayable === true && !isRecordedEmployerContribution(l))',
+    // 5a5309d5 — the filter moved to one owner in core, shared with Transaction View → History.
+    expect(pdf, 'the PDF must read the shared predicate, or the two readers disagree').toContain(
+      '.filter((l) => isNonPayableRecordLine(l))',
     );
     const contribution = readSrc('core/payslip-configured-contributions.ts');
+    expect(contribution, 'the flag is read as === true in the shared predicate').toContain(
+      "return (line as Record<string, unknown>).nonPayable === true && !isRecordedEmployerContribution(line);",
+    );
     expect(contribution, 'only an explicit processed contribution stamp leaves the legacy Other list')
       .toContain("return value.nonPayable === true && value.kind === 'contribution';");
     expect(pdf, 'the employer list must use the same recorded-classification reader')

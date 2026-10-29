@@ -1,5 +1,7 @@
 /** EPF presentation categories map to explicit calculation modes. Manual percentage is distinct
- * from legacy top-up elections: reopening and saving an existing top-up never converts it. */
+ * from top-up elections. b6dbadc5 — Top-up (existing percentage election) now persists as the ADDITIVE
+ * `topup_percentage` mode; an unconverted pre-b6dbadc5 two-rate `voluntary_excess` row is retained
+ * unchanged when it is re-posted untouched (see `retainLegacyTotalTopup`). */
 // Rung 5b (ADR-0080 D1/D6): the lawful-enum vocabulary arrives via the contract, not the MY pack.
 import type { EpfMode } from '../localization/country-pack';
 
@@ -99,8 +101,11 @@ export function mapEpfUiMode(
   switch (uiMode) {
     case 'manual_percentage':
       return { epfMode: 'manual_percentage', epfEmployeeRate: pct(rawEmployeeRate), epfEmployerRate: pct(rawEmployerRate), ...NO_AMOUNT };
+    // b6dbadc5 — the two boxes are per-side INCREMENTS on top of the statutory rate (blank = nothing added),
+    // persisted as their own mode. NOT voluntary_excess: Semi-Auto keeps that mode's total-rate meaning, and
+    // sharing it would make the two categories indistinguishable on a stored row.
     case 'voluntary_percentage':
-      return { epfMode: 'voluntary_excess', epfEmployeeRate: pct(rawEmployeeRate), epfEmployerRate: pct(rawEmployerRate), ...NO_AMOUNT };
+      return { epfMode: 'topup_percentage', epfEmployeeRate: pct(rawEmployeeRate), epfEmployerRate: pct(rawEmployerRate), ...NO_AMOUNT };
     case 'semi_auto':
       // Employee side elected; employer side forced statutory (null) — that's "semi-auto".
       return { epfMode: 'voluntary_excess', epfEmployeeRate: pct(rawEmployeeRate), epfEmployerRate: null, ...NO_AMOUNT };
@@ -135,6 +140,7 @@ export function epfUiModeFrom(
 ): EpfUiMode {
   if (mode === 'exempt') return 'none';
   if (mode === 'manual_percentage') return 'manual_percentage';
+  if (mode === 'topup_percentage') return 'voluntary_percentage';
   if (mode === 'voluntary_excess') {
     // Semi-Auto = employee side elected, employer side left statutory (null).
     return employeeRate != null && employerRate == null ? 'semi_auto' : 'voluntary_percentage';
@@ -145,6 +151,34 @@ export function epfUiModeFrom(
     if (employerAmount != null) return 'manual_employer_amount';
   }
   return 'auto';
+}
+
+/**
+ * b6dbadc5 — a stored pre-additive Top-up: `voluntary_excess` with an employer rate, whose rates are TOTAL
+ * rates applied as max(elected, statutory). Employee-only rows are Semi-Auto and are not legacy top-ups.
+ * scripts/convert-epf-topup-percentage.ts converts these rows; until it has run they still exist.
+ */
+export function isLegacyTotalTopup(mode: string | null | undefined, employerRate: string | number | null | undefined): boolean {
+  return mode === 'voluntary_excess' && employerRate != null && employerRate !== '';
+}
+
+const basisPoints = (v: string | number | null | undefined) => (v == null || v === '' ? null : Math.round(Number(v) * 10000));
+
+/**
+ * b6dbadc5 — the full-row writers (Personnel card, Bank & Statutory import, reviewed statutory action) re-post
+ * the stored EPF election on every save. An unconverted legacy row reopens under Top-up showing its TOTAL
+ * rates, so re-posting those same figures must not silently become an additive top-up of the same size
+ * (11% total would turn into 11% on top of 11%). When the posted Top-up figures are exactly the stored
+ * legacy figures, the stored election is kept as it is; any other figure is a new additive top-up.
+ */
+export function retainLegacyTotalTopup(
+  mapped: EpfElectionFields,
+  current: { epfMode?: string | null; epfEmployeeRate?: string | number | null; epfEmployerRate?: string | number | null } | null | undefined,
+): EpfElectionFields {
+  if (mapped.epfMode !== 'topup_percentage' || !current || !isLegacyTotalTopup(current.epfMode, current.epfEmployerRate)) return mapped;
+  const same = basisPoints(mapped.epfEmployeeRate) === basisPoints(current.epfEmployeeRate)
+    && basisPoints(mapped.epfEmployerRate) === basisPoints(current.epfEmployerRate);
+  return same ? { ...mapped, epfMode: 'voluntary_excess' } : mapped;
 }
 
 /** Stored fractional EPF rate to the percent shown by the existing Personnel election controls. */

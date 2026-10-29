@@ -100,6 +100,8 @@ it('preserves existing EPF elections and pending profile custody through the ord
   const elections=await storage.client`select id,epf_mode::text as mode,epf_employee_rate::text as employee_rate,epf_employer_rate::text as employer_rate from employee_statutory_my where tenant_id in (${enabled.tenant},${legacy.tenant}) order by id`;
   expect(elections).toEqual(expect.arrayContaining([{id:enabled.statutory,mode:'auto',employee_rate:null,employer_rate:null},{id:legacy.statutory,mode:'voluntary_excess',employee_rate:'0.1450',employer_rate:'0.1600'}]));expect(elections).toHaveLength(2);
   const [addedMode]=await storage.client`select count(*)::integer as count from pg_enum e join pg_type t on t.oid=e.enumtypid where t.typname='epf_mode' and e.enumlabel='manual_percentage'`;expect(addedMode.count).toBe(1);
+  // b6dbadc5 (0697) — the additive Top-up mode is added; the legacy total-rate row above is NOT converted by the migration.
+  const [topupMode]=await storage.client`select count(*)::integer as count from pg_enum e join pg_type t on t.oid=e.enumtypid where t.typname='epf_mode' and e.enumlabel='topup_percentage'`;expect(topupMode.count).toBe(1);
   const markers=await storage.client`select request_id from app.profile_legacy_unassigned_request order by request_id`;expect(markers.map(row=>row.request_id)).toEqual([legacyId]);
   await custody(enabled,enabled.hrUser,[assignedId],[blockedUnassignedId,malformedId,legacyId]);
   await custody(enabled,enabled.otherUser,[],[assignedId,blockedUnassignedId,malformedId]);
