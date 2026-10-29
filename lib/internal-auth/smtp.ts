@@ -53,7 +53,7 @@ export const sendSmtp:MailTransport=async(relay,input)=>{
       ...(mail.messageId?{messageId:mail.messageId}:{}),
       ...(attachments.length?{attachments:attachments.map(attachment=>({filename:attachment.filename,
         content:Buffer.isBuffer(attachment.bytes)?attachment.bytes:Buffer.from(attachment.bytes),
-        contentType:attachment.contentType}))}:{}),
+        contentType:attachment.contentType,...('cid' in attachment && typeof attachment.cid==='string'?{cid:attachment.cid,contentDisposition:'inline' as const}:{})}))}:{}),
       disableFileAccess:true,disableUrlAccess:true});
     if(mail.attachments!==undefined){
       const accepted=new Set((result.accepted as unknown[]).map(value=>typeof value==='string'?value.toLowerCase():value&&typeof value==='object'&&'address' in value?String(value.address).toLowerCase():''));

@@ -20,7 +20,7 @@ beforeEach(() => {
   fixture.sql.mockImplementation(async (strings: TemplateStringsArray) => {
     const sql = strings.join('?');
     if (sql.includes('email_target')) return [{ target }];
-    if (sql.includes('email_files')) return [];
+    if (sql.includes('email_files') || sql.includes('email_assets')) return [];
     if (sql.includes('email_start')) return [{ started: true }];
     if (sql.includes('email_finish')) return [{ finished: true }];
     throw Error('Unexpected private SQL');
@@ -83,4 +83,19 @@ it('sends a freshly authorized onboarding contact without treating its address a
   expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'sent', error: null });
   expect(fixture.credential).not.toHaveBeenCalled(); expect(fixture.principal).not.toHaveBeenCalled();
   expect(transport).toHaveBeenCalledExactlyOnceWith(relay.relay, expect.objectContaining({ to: 'joiner-contact@fictional.invalid', cc: [] }));
+});
+it('loads frozen shared files and inline image bytes before committing a single SMTP attempt', async () => {
+  const file = { id: randomUUID(), kind: 'file' as const, name: 'Fictional handbook.txt', mimeType: 'text/plain', size: 8, contentHash: 'a'.repeat(64), at: '2026-10-29T00:00:00Z', by: 'Fictional HR' }, image = { ...file, id: randomUUID(), kind: 'image' as const, name: 'Fictional logo.png', mimeType: 'image/png' };
+  target.payload.mail.delivery!.assets = [file,image]; target.payload.mail.body = `Saved <text>\n{image:${image.id}}`;
+  fixture.sql.mockImplementation(async (strings: TemplateStringsArray) => {
+    const sql = strings.join('?');
+    if (sql.includes('email_target')) return [{ target }];
+    if (sql.includes('email_assets')) return [file,image].map(asset => ({ id: asset.id, kind: asset.kind, filename: asset.name, mime_type: asset.mimeType, bytes: Buffer.from('fictional-bytes').toString('base64') }));
+    if (sql.includes('email_files')) return [];
+    if (sql.includes('email_start')) return [{ started: true }];
+    if (sql.includes('email_finish')) return [{ finished: true }];
+    throw Error('Unexpected private SQL');
+  });
+  const transport = vi.fn(async () => {}); expect(await internalLifecycleV9Mail(request,transport)).toEqual({ outcome: 'sent', error: null });
+  expect(transport).toHaveBeenCalledExactlyOnceWith(relay.relay, expect.objectContaining({ text: 'Saved <text>\n[Image: Fictional logo.png]', html: expect.stringContaining(`src="cid:v9-image.${image.id}@aihr"`), attachments: [{ filename: file.name, contentType: 'text/plain', bytes: Buffer.from('fictional-bytes') }, { filename: image.name, contentType: 'image/png', bytes: Buffer.from('fictional-bytes'), cid: `v9-image.${image.id}@aihr` }] }));
 });

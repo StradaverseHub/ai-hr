@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { installLifecycleV9Drafts } from './fixtures/lifecycle-v9/drafts';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
@@ -8,14 +8,13 @@ import { saveEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { addDays } from '../lib/lifecycle-v9-model';
 import { currentReq } from '../lib/onboarding-model';
-import { v9Setup, v9Sweep, v9DeliverEmails, v9DownloadDocument, v9CaseDetail, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnDocument, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx } from '../packs/lifecycle/service';
+import { v9UploadEmailAsset, v9DownloadEmailAsset, v9Setup, v9Sweep, v9DeliverEmails, v9DownloadDocument, v9CaseDetail, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnDocument, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 
 let base: Base, admin: SessionContext, employee: SessionContext, other: SessionContext, employmentId: string;
 beforeAll(async () => {
-  // Draft rehearsal only. Move to the canonical append after coordinated journal allocation.
-  await owner.client.unsafe(readFileSync('db/migration-drafts/lifecycle-v9.sql', 'utf8'));
-  try { await owner.client.unsafe(readFileSync('db/migration-drafts/lifecycle-v9-email.sql', 'utf8')); } catch (error) { const detail = error as { message: string; position?: string; where?: string }; throw new Error(`V9 companion draft: ${detail.message}; position ${detail.position}; ${detail.where ?? ''}`, { cause: error }); }
+  await installLifecycleV9Drafts(owner.client);
+  assetPng = await (await import('sharp')).default({ create: { width: 2, height: 2, channels: 4, background: { r: 79, g: 70, b: 229, alpha: 1 } } }).png().toBuffer();
 });
 beforeEach(async () => {
   await resetDb(); base = await seedBase(); await setModule(base.tenantId, 'lifecycle', 'active'); admin = await entitledCtx(base);
@@ -497,4 +496,80 @@ it('guards version deletion using deduplicated current and historical instances'
   await expect(v9SaveConfig(admin, removeUnused.revision, removeUnused)).resolves.toMatchObject({ revision: removeUnused.revision + 1 });
   await expect(withTenant(employee, tx => tx.execute(sql`select * from app.lc_v9_document_usage()`))).rejects.toThrow();
   await expect(withTenant(admin, tx => tx.execute(sql`select * from app.lc_v9_usage_instances()`))).rejects.toThrow();
+});
+let assetPng: Buffer;
+it('keeps shared email bytes private and immutable and validates the actual upload receipt', async () => {
+  const config = (await v9Workspace(admin)).config!, content = Buffer.from('Fictional shared handbook');
+  const input = { revision: config.revision, emailId: 'e1', kind: 'file' as const, name: 'Fictional handbook.txt', content };
+  const asset = await v9UploadEmailAsset(admin,input); expect(asset).toMatchObject({ kind: 'file', name: input.name, size: content.length });
+  expect(await v9UploadEmailAsset(admin,input)).toEqual(asset);
+  expect((await v9DownloadEmailAsset(admin,asset.id)).content).toEqual(content);
+  await expect(v9UploadEmailAsset(employee,input)).rejects.toThrow('permission');
+  await expect(v9DownloadEmailAsset(employee,asset.id)).rejects.toThrow('not found');
+  await expect(withTenant(admin,tx=>tx.execute(sql`update lc_v9_email_asset set content='tampered' where id=${asset.id}::uuid`))).rejects.toThrow();
+  const tampered = structuredClone(config); tampered.emails.find(email=>email.id==='e1')!.files = [{ ...asset, size: 1 }];
+  await expect(v9SaveConfig(admin,config.revision,tampered)).rejects.toThrow('receipt');
+  const wrongParent = structuredClone(config); wrongParent.emails.find(email=>email.id==='e2')!.files = [asset];
+  await expect(v9SaveConfig(admin,config.revision,wrongParent)).rejects.toThrow('receipt');
+  config.emails.find(email=>email.id==='e1')!.files = [asset]; await v9SaveConfig(admin,config.revision,config);
+  expect((await v9Workspace(admin)).config!.emails.find(email=>email.id==='e1')!.files).toEqual([asset]);
+});
+it('accepts only supported bounded email images through the existing raster validator', async () => {
+  const config = (await v9Workspace(admin)).config!, input = { revision: config.revision, emailId: 'e1', kind: 'image' as const, name: 'Fictional logo.png', content: assetPng };
+  const image = await v9UploadEmailAsset(admin,input); expect(image).toMatchObject({ kind: 'image', mimeType: 'image/png', size: assetPng.length });
+  expect((await v9DownloadEmailAsset(admin,image.id)).content).toEqual(assetPng);
+  await expect(v9UploadEmailAsset(admin,{...input, content: Buffer.alloc(1048577)})).rejects.toThrow('1 MB');
+  await expect(v9UploadEmailAsset(admin,{...input, name: 'script.svg', content: Buffer.from('<svg/>')})).rejects.toThrow();
+  await expect(v9UploadEmailAsset(admin,{...input, content: Buffer.from('Not an image')})).rejects.toThrow('contents');
+});
+it('retains the queued shared files and inline images after the future definition is changed', async () => {
+  const c = await prepared(), config = (await v9Workspace(admin)).config!;
+  config.emails.push({ id: 'asset-message', name: 'Fictional shared asset message', module: 'off', active: true, sender: 'hr', subject: 'Fictional assets', body: 'Saved body', cc: [], links: [], attachments: [], slots: [] });
+  const saved = await v9SaveConfig(admin,config.revision,config);
+  const file = await v9UploadEmailAsset(admin,{ revision: saved.revision, emailId: 'asset-message', kind: 'file', name: 'Fictional handbook.txt', content: Buffer.from('Fictional handbook bytes') });
+  const image = await v9UploadEmailAsset(admin,{ revision: saved.revision, emailId: 'asset-message', kind: 'image', name: 'Fictional logo.png', content: assetPng });
+  const linked = (await v9Workspace(admin)).config!, email = linked.emails.find(email=>email.id==='asset-message')!;
+  email.files = [file]; email.images = [image]; email.body = `Saved body\n{image:${image.id}}`; await v9SaveConfig(admin,linked.revision,linked);
+  await v9Command(admin,c.id,c.revision,{ type: 'emailSend', emailId: email.id });
+  const future = (await v9Workspace(admin)).config!, nextEmail = future.emails.find(email=>email.id==='asset-message')!;
+  nextEmail.files = []; nextEmail.images = []; nextEmail.body = 'Future message'; await v9SaveConfig(admin,future.revision,future);
+  const origin = 'https://asset-packet.example', subject = randomUUID();
+  await owner.client`insert into app_external_identity(issuer,subject,app_user_id) values(${origin + '/auth/' + base.tenantId},${subject},${employee.userId!}::uuid)`;
+  let verified = false, verificationError: unknown;
+  await v9DeliverEmails({ ...admin, userId: undefined, personId: null },owner,async request=>{
+    try {
+      const [target] = await owner.client`select app.lc_v9_email_target(${request.deliveryId}::uuid,${request.leaseToken}::uuid,${origin}) as target`;
+      expect(target.target.payload.mail).toMatchObject({ body: `Saved body\n{image:${image.id}}`, delivery: { assets: [file,image] } });
+      const assets = await owner.client`select * from app.lc_v9_email_assets(${request.deliveryId}::uuid,${request.leaseToken}::uuid,${origin})`;
+      expect(assets).toHaveLength(2);
+      expect(Buffer.from(assets.find(asset=>asset.kind==='file')!.bytes,'base64').toString()).toBe('Fictional handbook bytes');
+      expect(Buffer.from(assets.find(asset=>asset.kind==='image')!.bytes,'base64')).toEqual(assetPng);
+      verified = true; return { outcome: 'skipped', error: 'notEligible' };
+    } catch (error) { verificationError = error; throw error; }
+  });
+  if (verificationError) throw verificationError; expect(verified).toBe(true);
+});
+it('does not link or disclose a shared email asset from another tenant', async () => {
+  const foreignBase = await seedBase(); await setModule(foreignBase.tenantId,'lifecycle','active'); const foreignAdmin = await entitledCtx(foreignBase); await v9Setup(foreignAdmin);
+  const foreignConfig = (await v9Workspace(foreignAdmin)).config!;
+  const asset = await v9UploadEmailAsset(foreignAdmin,{ revision: foreignConfig.revision, emailId: 'e1', kind: 'file', name: 'Foreign fictional handbook.txt', content: Buffer.from('Foreign fictional content') });
+  await expect(v9DownloadEmailAsset(admin,asset.id)).rejects.toThrow('not found');
+  expect(await withTenant(admin,tx=>tx.execute(sql`select id from lc_v9_email_asset where id=${asset.id}::uuid`))).toEqual([]);
+  const localConfig = (await v9Workspace(admin)).config!; localConfig.emails.find(email=>email.id==='e1')!.files = [asset];
+  await expect(v9SaveConfig(admin,localConfig.revision,localConfig)).rejects.toThrow('receipt');
+});
+it('supports the source CSV, GIF and WebP file formats with actual byte validation', async () => {
+  const config = (await v9Workspace(admin)).config!, revision = config.revision;
+  const sharp = (await import('sharp')).default, webp = await sharp(assetPng).webp().toBuffer(), gif = await sharp(assetPng).gif().toBuffer();
+  for (const file of [{ name: 'Fictional.csv', content: Buffer.from('Name,Status\nFictional,Ready'), mime: 'text/csv' }, { name: 'Fictional.gif', content: gif, mime: 'image/gif' }, { name: 'Fictional.webp', content: webp, mime: 'image/webp' }]) {
+    const asset = await v9UploadEmailAsset(admin,{ revision, emailId: 'e1', kind: 'file', name: file.name, content: file.content });
+    expect(asset.mimeType).toBe(file.mime); expect((await v9DownloadEmailAsset(admin,asset.id)).content).toEqual(file.content);
+  }
+  await expect(v9UploadEmailAsset(admin,{ revision, emailId: 'e1', kind: 'file', name: 'Fake.gif', content: assetPng })).rejects.toThrow('contents');
+  await expect(v9UploadEmailAsset(admin,{ revision, emailId: 'e1', kind: 'file', name: 'Binary.csv', content: Buffer.from([0,1,2]) })).rejects.toThrow('contents');
+});
+it('keeps the person-specific attachment frozen while its queued delivery is pending', async () => {
+  const { caseId }=await queuedDelivery(true),before=(await v9CaseDetail(admin,caseId)).case;
+  await expect(v9UploadFile(admin,{caseId,revision:before.revision,slot:'receipt-fixture:proof',name:'Fictional replacement.txt',content:Buffer.from('Changed after queue')})).rejects.toThrow('reserved');
+  const after=(await v9CaseDetail(admin,caseId)).case;expect(after.revision).toBe(before.revision);expect(after.files).toEqual(before.files);
 });

@@ -1,3 +1,4 @@
+import { v9EmailContent, v9ImageCid } from '../lifecycle-v9-email-content';
 import { client } from '../../db/client';
 import { renderV9DocumentPdf } from '../lifecycle-v9-pdf';
 import { lifecycleV9DeliveryRequest, type LifecycleV9DeliveryRequest, type LifecycleV9DeliveryResult, type LifecycleV9MailTarget } from '../lifecycle-v9-delivery-model';
@@ -44,7 +45,11 @@ export async function internalLifecycleV9Mail(input: LifecycleV9DeliveryRequest,
   }
   const storedFiles = await client`select * from app.lc_v9_email_files(${id}::uuid,${token}::uuid,${origin})`;
   if (storedFiles.length !== files.length) return { outcome: 'skipped', error: 'notEligible' };
-  for (const file of storedFiles) attachments.push(managedEmailAttachment.parse({ filename: file.filename, contentType: file.mime_type, bytes: Buffer.from(file.bytes, 'base64') }));
+  for (const reference of files) { const file = storedFiles.find(file => file.id === reference.id); if (!file) return { outcome: 'skipped', error: 'notEligible' }; attachments.push(managedEmailAttachment.parse({ filename: file.filename, contentType: file.mime_type, bytes: Buffer.from(file.bytes, 'base64') })); }
+  const assetReferences = mail.delivery.assets ?? [];
+  const assets = assetReferences.length ? await client`select * from app.lc_v9_email_assets(${id}::uuid,${token}::uuid,${origin})` : [];
+  if (assets.length !== assetReferences.length) return { outcome: 'skipped', error: 'notEligible' };
+  for (const reference of assetReferences) { const asset = assets.find(asset => asset.id === reference.id); if (!asset) return { outcome: 'skipped', error: 'notEligible' }; attachments.push(managedEmailAttachment.parse({ filename: asset.filename, contentType: asset.mime_type, bytes: Buffer.from(asset.bytes, 'base64'), ...(asset.kind === 'image' ? { cid: v9ImageCid(asset.id) } : {}) })); }
   if (attachments.length > MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT || attachments.reduce((sum, file) => sum + file.bytes.byteLength, 0) > MANAGED_EMAIL_ATTACHMENT_MAX_BYTES)
     return { outcome: 'skipped', error: 'notEligible' };
   const links = mail.delivery.linkDocumentIds.map(documentId => {
@@ -52,7 +57,7 @@ export async function internalLifecycleV9Mail(input: LifecycleV9DeliveryRequest,
     if (!document) throw new Error('Queued document link is unavailable');
     return document.name + ': ' + notificationEmailLink(origin, `/me/lifecycle?case=${encodeURIComponent(target.caseId)}&document=${encodeURIComponent(documentId)}`);
   });
-  const text = mail.body + (links.length ? '\n\n' + links.join('\n') : '');
+  const content = v9EmailContent(mail.body + (links.length ? '\n\n' + links.join('\n') : ''), assetReferences.filter(asset => asset.kind === 'image'));
   const currentRelay = await readActiveRelayTx(client);
   if (!currentRelay || currentRelay.revision !== active.revision) return { outcome: 'skipped', error: 'relayUnavailable' };
   const proof = { bindings: target.bindings, contact: target.contact ?? null, addresses, relayRevision: active.revision };
@@ -61,7 +66,7 @@ export async function internalLifecycleV9Mail(input: LifecycleV9DeliveryRequest,
   if (!started) return { outcome: 'skipped', error: 'notEligible' };
   let result: LifecycleV9DeliveryResult;
   try {
-    await transport(active.relay, { to: addresses[0], cc: addresses.slice(1), subject: mail.subject, text, attachments, senderProfile: mail.delivery.sender, messageId: `<lifecycle-v9.${id}@${new URL(origin).hostname}>` });
+    await transport(active.relay, { to: addresses[0], cc: addresses.slice(1), subject: mail.subject, ...content, attachments, senderProfile: mail.delivery.sender, messageId: `<lifecycle-v9.${id}@${new URL(origin).hostname}>` });
     result = { outcome: 'sent', error: null };
   } catch (error) { result = notificationSmtpFailure(error); }
   const finished = (await client`select app.lc_v9_email_finish(${id}::uuid,${token}::uuid,${result.outcome},${result.error}) as finished`)[0]?.finished === true;

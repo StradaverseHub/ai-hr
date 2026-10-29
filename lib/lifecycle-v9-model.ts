@@ -1,3 +1,5 @@
+import { MANAGED_EMAIL_ATTACHMENT_MAX_BYTES, MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT } from './managed-email-policy';
+import { v9ImageTokens } from './lifecycle-v9-email-content';
 /** V9 lifecycle rules. Services supply authorized identity, Personnel facts and final-pay snapshots. */
 import { validV9SignatureValue } from './lifecycle-v9-signature';
 import { isCalendarDate } from './calendar-date';
@@ -55,11 +57,12 @@ export type Document = {
   hrStep?: Template['hrStep']; employeeAck?: boolean; signatoryUserId?: string | null; templateType?: Template['type'];
 };
 export type Role = 'employee' | 'supervisor' | 'pbp' | 'ta' | 'peopleOps' | 'taskOwners';
+export type EmailAsset = { id: string; kind: 'file' | 'image'; name: string; mimeType: string; size: number; contentHash: string; at: string; by: string };
 export type TemplateUsage = { templateId: string; version: number; documents: number };
 export type EmailTemplate = {
   id: string; name: string; module: Module; active: boolean; sender: string;
   subject: string; body: string; cc: Role[]; links: string[]; attachments: string[];
-  slots: { id: string; label: string; required: boolean }[];
+  slots: { id: string; label: string; required: boolean }[]; files?: EmailAsset[]; images?: EmailAsset[];
 };
 export type Trigger = {
   event: 'submitted' | 'beforeJoin' | 'afterJoin' | 'beforeLWD'; days: number;
@@ -104,7 +107,7 @@ export type Mail = {
   fileIds: string[]; status: 'pending' | 'sending' | 'sent' | 'failed' | 'uncertain' | 'cancelled'; test: boolean;
   at: string; deliveredAt: string | null; failure: string | null;
   /** Frozen transport choices; older history without this must not be silently reinterpreted. */
-  delivery?: { version: 1; queuedBy: Actor; sender: 'onboarding' | 'hr' | 'noreply'; linkDocumentIds: string[]; pdfDocumentIds: string[]; toNames: string[]; ccNames: string[]; contact?: { kind: 'onboardingContact'; caseId: string; email: string; sourceRevision: string } };
+  delivery?: { version: 1; queuedBy: Actor; sender: 'onboarding' | 'hr' | 'noreply'; linkDocumentIds: string[]; pdfDocumentIds: string[]; toNames: string[]; ccNames: string[]; assets?: EmailAsset[]; contact?: { kind: 'onboardingContact'; caseId: string; email: string; sourceRevision: string } };
 };
 export type PMChange = { id: string; documentId: string; field: string; before: string; after: string; status: 'proposed' | 'pushed' | 'conflict' | 'rejected'; sourceRevision: string };
 export type FinalFigures = { sourceRevision: string; lastDay: string; leaveDays: string; amount: string; currency: string; payDate: string; lockedAt: string; payrollReference: string };
@@ -358,7 +361,7 @@ export type EmailPreview = {
   emailId: string; name: string; subject: string; body: string;
   edit: { subject: string; body: string }; to: Actor[]; cc: Actor[];
   documents: { templateId: string; name: string; version: number | null; generated: boolean }[];
-  holds: string[]; canSend: boolean;
+  holds: string[]; canSend: boolean; assets?: EmailAsset[];
 };
 /** Preview uses current authorized facts without generating documents, allocating IDs or queuing mail. */
 export function previewEmail(c: Case, config: Config, emailId: string, env: Environment): EmailPreview {
@@ -369,6 +372,7 @@ export function previewEmail(c: Case, config: Config, emailId: string, env: Envi
   const subject = merge(edit.subject, values), body = merge(edit.body, values);
   if (c.state !== 'submitted') holds.push('Submit or reopen the case before sending.');
   if (!email.active) holds.push('This email template is inactive.');
+  if (v9ImageTokens(body.text).some(id => !email.images?.some(image => image.id === id))) holds.push('Insert an available inline image before sending.');
   const missing = [...new Set([...subject.missing, ...body.missing])];
   if (missing.length) holds.push(`Complete missing merge fields: ${missing.join(', ')}.`);
   try { merge(edit.subject + '\n' + edit.body, values, emailSensitiveKeys(config)); } catch { holds.push('Remove sensitive fields from the email text.'); }
@@ -377,6 +381,10 @@ export function previewEmail(c: Case, config: Config, emailId: string, env: Envi
   const to = target && (contact || env.eligibleUser(target)) ? [{ id: target, name: contact ? c.facts.name : env.userName(target) }] : [];
   if (!to.length) holds.push('Link an available employee account or enter the onboarding contact before sending.');
   if (contact && email.links.length) holds.push('Link an employee account before sending document links.');
+  const imageCount = (email.images ?? []).filter(image => body.text.includes('{image:' + image.id + '}')).length;
+  const caseFileCount = c.files.filter(file => email.slots.some(slot => file.slot === `${email.id}:${slot.id}`)).length;
+  if ((email.files?.length ?? 0) + imageCount + email.attachments.length + caseFileCount > MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT) holds.push('Keep the total attached files and inline images within 20.');
+  if ([...(email.files ?? []), ...(email.images ?? []).filter(image => body.text.includes('{image:' + image.id + '}'))].reduce((sum, asset) => sum + asset.size, 0) > MANAGED_EMAIL_ATTACHMENT_MAX_BYTES) holds.push('Keep the total attached files and inline images within 20 MB.');
   const cc = [...new Set(email.cc.flatMap(role => recipients(c, config, role)))].filter(id => id !== target && env.eligibleUser(id)).map(id => ({ id, name: env.userName(id) }));
   const documents = [...new Set([...email.links, ...email.attachments])].flatMap(templateId => {
     const template = config.templates.find(template => template.id === templateId && template.module === c.module), document = activeDocument(c, templateId);
@@ -391,7 +399,8 @@ export function previewEmail(c: Case, config: Config, emailId: string, env: Envi
     const acceptance = activeDocument(c, 't4');
     if (!acceptance?.hrSignature && !holds.some(hold => hold.startsWith('HR must review and sign'))) holds.push('HR must review and sign the acceptance letter before sending.');
   }
-  return { emailId, name: email.name, subject: subject.text, body: body.text, edit: { ...edit }, to, cc, documents, holds: [...new Set(holds)], canSend: holds.length === 0 };
+  const assets = [...(email.files ?? []), ...(email.images ?? []).filter(image => body.text.includes('{image:' + image.id + '}'))];
+  return { emailId, name: email.name, subject: subject.text, body: body.text, edit: { ...edit }, to, cc, documents, holds: [...new Set(holds)], canSend: holds.length === 0, ...(assets.length ? { assets: structuredClone(assets) } : {}) };
 }
 function emailSensitiveKeys(config: Config): Set<string> {
   const identityKeys = ['icNo', 'passportNo', 'taxNo', 'epfNo', 'bankAcc', 'bankAccount', 'bankAccountNo', 'spIc', 'spTax'];
@@ -427,6 +436,7 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
     const edits = email ? c.emailEdits?.[email.id] : null;
     const subject = merge(edits?.subject ?? email?.subject ?? (step.type === 'notify' ? step.subject : ''), values, sensitive), body = merge(edits?.body ?? email?.body ?? (step.type === 'notify' ? step.body : ''), values, sensitive);
     if (!test && (subject.missing.length || body.missing.length)) throw new V9Error(`Complete missing merge fields: ${[...new Set([...subject.missing, ...body.missing])].join(', ')}.`);
+    if (v9ImageTokens(body.text).some(id => !email?.images?.some(image => image.id === id))) throw new V9Error('Insert an available inline image before sending.');
     const docs = [...new Set([...(email?.links ?? []), ...(email?.attachments ?? [])])].flatMap(id => {
       const d = activeDocument(c, id) ?? (test ? null : generate(c, config, id, env)), template = config.templates.find(t => t.id === id);
       if (!d) return [];
@@ -434,9 +444,13 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
       return [d];
     });
     const cc = test ? [] : [...new Set([...groupCc, ...[...step.cc, ...(email?.cc ?? [])].flatMap(role => recipients(c, config, role))])].filter(id => id !== target && env.eligibleUser(id));
+    const assetCount = (email?.files?.length ?? 0) + (email?.images ?? []).filter(image => body.text.includes('{image:' + image.id + '}')).length;
+    if (assetCount + (email?.attachments.length ?? 0) + c.files.filter(file => email?.slots.some(slot => file.slot === `${email.id}:${slot.id}`)).length > MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT) throw new V9Error('Keep the total attached files and inline images within 20.');
     const sender = email?.sender ?? 'noreply';
     if (!['onboarding', 'hr', 'noreply'].includes(sender)) throw new V9Error('Choose a managed sender profile before sending.');
-    c.mails.push({ id: env.nextId(), key: itemKey, workflowId, templateId: email?.id ?? null, to: [target], cc, subject: subject.text, body: body.text, documentIds: docs.map(d => d.id), delivery: { version: 1, queuedBy: { ...env.actor }, sender: sender as 'onboarding' | 'hr' | 'noreply', linkDocumentIds: docs.filter(document => email?.links.includes(document.templateId)).map(document => document.id), pdfDocumentIds: docs.filter(document => email?.attachments.includes(document.templateId)).map(document => document.id), toNames: [contact ? c.facts.name : env.userName(target)], ccNames: cc.map(env.userName), ...(contact ? { contact: { kind: 'onboardingContact' as const, caseId: c.id, email: contact.email, sourceRevision: contact.sourceRevision } } : {}) }, fileIds: c.files.filter(f => email?.slots.some(s => f.slot === `${email.id}:${s.id}`)).map(f => f.id), status: 'pending', test, at: env.now, deliveredAt: null, failure: null });
+    const assets = structuredClone([...(email?.files ?? []), ...(email?.images ?? []).filter(image => body.text.includes('{image:' + image.id + '}'))]);
+    if (assets.reduce((sum, asset) => sum + asset.size, 0) > MANAGED_EMAIL_ATTACHMENT_MAX_BYTES) throw new V9Error('Keep the total attached files and inline images within 20 MB.');
+    c.mails.push({ id: env.nextId(), key: itemKey, workflowId, templateId: email?.id ?? null, to: [target], cc, subject: subject.text, body: body.text, documentIds: docs.map(d => d.id), delivery: { version: 1, queuedBy: { ...env.actor }, sender: sender as 'onboarding' | 'hr' | 'noreply', linkDocumentIds: docs.filter(document => email?.links.includes(document.templateId)).map(document => document.id), pdfDocumentIds: docs.filter(document => email?.attachments.includes(document.templateId)).map(document => document.id), toNames: [contact ? c.facts.name : env.userName(target)], ccNames: cc.map(env.userName), ...(assets.length ? { assets } : {}), ...(contact ? { contact: { kind: 'onboardingContact' as const, caseId: c.id, email: contact.email, sourceRevision: contact.sourceRevision } } : {}) }, fileIds: c.files.filter(f => email?.slots.some(s => f.slot === `${email.id}:${s.id}`)).map(f => f.id), status: 'pending', test, at: env.now, deliveredAt: null, failure: null });
     appendLog(c, env, test ? 'email.test.queued' : 'email.queued', `${email?.name ?? subject.text} · ${contact ? c.facts.name : env.userName(target)}`);
   }
   return deliveryHold(c.mails.filter(mail => mail.workflowId === workflowId && mail.key.startsWith(key + ':')));

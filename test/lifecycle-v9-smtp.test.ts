@@ -49,3 +49,11 @@ it('keeps plain CC outside the leased managed-delivery contract', async () => {
   await expect(sendSmtp(relay, input as unknown as Mail)).rejects.toMatchObject({ code: 'invalid' });
   expect(smtp.create).not.toHaveBeenCalled();
 });
+it('sends owned image bytes with a bounded CID and inline disposition while keeping file access disabled', async () => {
+  const id = '9ea43e78-c325-4f88-8313-1b6fc3a1a78e';
+  await sendSmtp(relay,{ ...mail(), html: `<div><img src="cid:v9-image.${id}@aihr"/></div>`, attachments: [{ filename: 'Fictional logo.png', contentType: 'image/png', bytes: Buffer.from('fictional-image-bytes'), cid: `v9-image.${id}@aihr` }] });
+  expect(smtp.send).toHaveBeenCalledWith(expect.objectContaining({ attachments: [{ filename: 'Fictional logo.png', contentType: 'image/png', content: Buffer.from('fictional-image-bytes'), cid: `v9-image.${id}@aihr`, contentDisposition: 'inline' }], disableFileAccess: true, disableUrlAccess: true }));
+  smtp.create.mockClear();
+  await expect(sendSmtp(relay,{ ...mail(), attachments: [{ filename: 'Fictional.pdf', contentType: 'application/pdf', bytes: Buffer.from('%PDF-'), cid: `v9-image.${id}@aihr` }] })).rejects.toMatchObject({ code: 'invalid' });
+  expect(smtp.create).not.toHaveBeenCalled();
+});

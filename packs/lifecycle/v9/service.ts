@@ -167,6 +167,12 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
   return withLifecycleTenant(ctx, async tx => {
     await lockTx(tx, ctx); await admin(tx); const previous = await configTx(tx, ctx, true);
     if (!previous || previous.revision !== revision) throw new M.V9Error('Settings changed. Refresh before saving.', 'conflict');
+    const references = config.emails.flatMap(email => [...(email.files ?? []), ...(email.images ?? [])].map(asset => ({ emailId: email.id, asset })));
+    if (references.length) {
+      const ids = [...new Set(references.map(reference => reference.asset.id))];
+      const assets = await tx.execute<EmailAssetRow>(sql`select *,octet_length(content) as size from lc_v9_email_asset where tenant_id=${ctx.tenantId}::uuid and id in (${sql.join(ids.map(id => sql`${id}::uuid`),sql`,`)})`);
+      for (const reference of references) { const actual = assets.find(asset => asset.id === reference.asset.id && asset.email_template_id === reference.emailId); if (!actual || !v9Equal(emailAssetMetadata(actual), reference.asset)) throw new M.V9Error('An email file no longer matches its uploaded receipt. Upload or select the actual file again.', 'conflict'); }
+    }
     const deletesVersion = previous.templates.some(template => { const retained = config.templates.find(next => next.id === template.id); return !retained || template.versions.some(version => !retained.versions.some(next => next.version === version.version)); });
     const usage = deletesVersion ? await tx.execute<M.TemplateUsage>(sql`select template_id as "templateId",version,documents from app.lc_v9_document_usage()`) : [];
     validateV9ConfigChange(previous, config, [...usage]);
@@ -519,17 +525,26 @@ export async function v9OwnTask(ctx: SessionContext, input: { caseId: string; re
     await record(tx, ctx, input.caseId, result.employment, 'assignedTaskUpdated');
   });
 }
+/** V9 adds only the formats explicitly accepted by its supplied file picker. */
+async function resolveV9Upload(name: string, content: Buffer): Promise<{ mimeType: string }> {
+  if (!content.length || content.length > 10485760 || !/\.(pdf|png|jpe?g|gif|webp|docx?|xlsx?|txt|csv)$/i.test(name)) throw new M.V9Error('Unsupported V9 file.');
+  if (/\.csv$/i.test(name)) { resolveDocumentUpload('upload.txt', content); return { mimeType: 'text/csv' }; }
+  if (/\.(gif|webp)$/i.test(name)) { const mimeType = /\.gif$/i.test(name) ? 'image/gif' : 'image/webp'; await (await import('../../../lib/email-design/assets')).validateEmailRaster(content, mimeType); return { mimeType }; }
+  return resolveDocumentUpload(name, content);
+}
 export async function v9UploadFile(ctx: SessionContext, input: { caseId: string; revision: number; slot: string; name: string; content: Buffer }): Promise<string> {
   identifier(input.caseId);
   if (!ctx.userId || !Number.isSafeInteger(input.revision) || input.revision < 1 || !input.name || input.name.length > 180 || /[\x00-\x1f\x7f/\\]/.test(input.name) || !input.slot || input.slot.length > 240 || !Buffer.isBuffer(input.content) || !input.content.length || input.content.length > 10 * 1024 * 1024) throw new M.V9Error('Choose a supported file of at most 10 MB with a safe filename.');
   const content = Buffer.from(input.content), contentHash = createHash('sha256').update(content).digest('hex');
   let mimeType: string;
-  try { mimeType = resolveDocumentUpload(input.name, content).mimeType; } catch { throw new M.V9Error('The file contents do not match a supported PDF, Word, Excel, image or text file.'); }
+  try { mimeType = (await resolveV9Upload(input.name, content)).mimeType; } catch { throw new M.V9Error('The file contents do not match a supported PDF, Word, Excel, image or text file.'); }
   return withLifecycleTenant(ctx, async tx => {
     await lockTx(tx, ctx); const row = await load(tx, ctx, input.caseId), config = await configTx(tx, ctx);
     if (!config || !['pending', 'submitted'].includes(row.data.state)) throw new M.V9Error('This case is not open for uploads.');
     const retained = row.data.files.find(f => f.slot === input.slot && f.contentHash === contentHash);
     if (retained) return retained.id;
+    const previousFile = row.data.files.find(file => file.slot === input.slot);
+    if (previousFile && row.data.mails.some(mail => !mail.test && ['pending','sending','uncertain'].includes(mail.status) && mail.fileIds.includes(previousFile.id))) throw new M.V9Error('This file is reserved for a queued delivery. Review that delivery before replacing it.', 'conflict');
     if (row.revision !== input.revision) throw new M.V9Error('This case changed. Refresh before uploading.', 'conflict');
     const slots = [...config.emails.filter(e => e.module === row.data.module).flatMap(e => e.slots.map(s => `${e.id}:${s.id}`)), ...config.workflows.filter(w => w.module === row.data.module).flatMap(w => w.steps.filter(s => s.type === 'waitFile').map(s => s.slot)), ...row.data.runs.flatMap(r => r.definition?.steps.filter(s => s.type === 'waitFile').map(s => s.slot) ?? [])];
     if (!slots.includes(input.slot)) throw new M.V9Error('Choose a configured attachment slot for this case.');
@@ -563,6 +578,38 @@ export async function v9OwnDocument(ctx: SessionContext, input: { caseId: string
   });
 }
 
+type EmailAssetRow = { id: string; email_template_id: string; kind: 'file' | 'image'; filename: string; mime_type: string; size: number; content_hash: string; created_at: string; uploaded_by_name: string };
+function emailAssetMetadata(row: EmailAssetRow): M.EmailAsset { return { id: row.id, kind: row.kind, name: row.filename, mimeType: row.mime_type, size: Number(row.size), contentHash: row.content_hash, at: new Date(row.created_at).toISOString(), by: row.uploaded_by_name }; }
+/** Immutable bytes are uploaded first; the ordinary versioned definition writer links the receipt. */
+export async function v9UploadEmailAsset(ctx: SessionContext, input: { revision: number; emailId: string; kind: 'file' | 'image'; name: string; content: Buffer }): Promise<M.EmailAsset> {
+  if (!Number.isSafeInteger(input.revision) || input.revision < 1 || !['file','image'].includes(input.kind) || !input.name || !/\.(pdf|png|jpe?g|gif|webp|docx?|xlsx?|txt|csv)$/i.test(input.name) || input.name.length > 180 || /[\x00-\x1f\x7f/\\:]/.test(input.name) || !Buffer.isBuffer(input.content) || !input.content.length || input.content.length > (input.kind === 'image' ? 1048576 : 10485760)) throw new M.V9Error('Choose a supported file of at most 10 MB, or an email image of at most 1 MB.');
+  const content = Buffer.from(input.content); let mimeType: string;
+  try { mimeType = (await resolveV9Upload(input.name, content)).mimeType; } catch { throw new M.V9Error('The file contents do not match a supported PDF, Word, Excel, image or text file.'); }
+  if (input.kind === 'image') {
+    if (!['image/png','image/jpeg','image/gif','image/webp'].includes(mimeType)) throw new M.V9Error('Use PNG, JPG, GIF or WebP for an email image.');
+    try { await (await import('../../../lib/email-design/assets')).validateEmailAsset(content, mimeType); } catch { throw new M.V9Error('Choose a readable PNG, JPG, GIF or WebP email image within the supported dimensions.'); }
+  }
+  return withLifecycleTenant(ctx, async tx => {
+    await lockTx(tx, ctx); await admin(tx); const who = await actor(tx, ctx), config = await configTx(tx, ctx, true);
+    if (!config || config.revision !== input.revision) throw new M.V9Error('Settings changed. Refresh before uploading.', 'conflict');
+    const email = config.emails.find(email => email.id === input.emailId); if (!email) throw new M.V9Error('Email template not found.', 'not_found');
+    const hash = createHash('sha256').update(content).digest('hex');
+    const [existing] = await tx.execute<EmailAssetRow>(sql`select *,octet_length(content) as size from lc_v9_email_asset where tenant_id=${ctx.tenantId}::uuid and email_template_id=${email.id} and kind=${input.kind} and filename=${input.name} and content_hash=${hash} order by created_at,id limit 1`);
+    if (existing) return emailAssetMetadata(existing);
+    const [row] = await tx.execute<EmailAssetRow>(sql`insert into lc_v9_email_asset(tenant_id,email_template_id,kind,filename,mime_type,content,uploaded_by,uploaded_by_name) values(${ctx.tenantId}::uuid,${email.id},${input.kind},${input.name},${mimeType},decode(${content.toString('base64')},'base64'),${who.id}::uuid,${who.name}) returning *,octet_length(content) as size`);
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-email-asset', aggregateId: row.id, eventType: 'lifecycle-v9.emailAssetUploaded', actor: actorOf(ctx), payload: { emailTemplateId: email.id, kind: input.kind, bytes: content.length, contentHash: hash } });
+    return emailAssetMetadata(row);
+  });
+}
+export async function v9DownloadEmailAsset(ctx: SessionContext, id: string): Promise<{ name: string; mimeType: string; content: Buffer }> {
+  identifier(id);
+  return withLifecycleTenant(ctx, async tx => {
+    await actor(tx, ctx);
+    const [row] = await tx.execute<{ filename: string; mime_type: string; bytes: string }>(sql`select a.filename,a.mime_type,encode(a.content,'base64') as bytes from lc_v9_email_asset a where a.id=${id}::uuid and a.tenant_id=${ctx.tenantId}::uuid and (a.uploaded_by=${ctx.userId}::uuid or exists(select 1 from lc_v9_config c cross join lateral jsonb_array_elements(c.data->'emails') e cross join lateral jsonb_array_elements(coalesce(e->'files','[]'::jsonb)||coalesce(e->'images','[]'::jsonb)) f where c.tenant_id=a.tenant_id and e->>'id'=a.email_template_id and f->>'id'=a.id::text))`);
+    if (!row) throw new M.V9Error('Email file not found or unavailable.', 'not_found');
+    return { name: row.filename, mimeType: row.mime_type, content: Buffer.from(row.bytes, 'base64') };
+  });
+}
 /** Authorized saved instance only: HR scope or the linked employee's released-document projection. */
 export async function v9DownloadDocument(ctx: SessionContext, caseId: string, documentId: string): Promise<{ name: string; content: Uint8Array }> {
   identifier(caseId); documentId = commandId.parse(documentId);

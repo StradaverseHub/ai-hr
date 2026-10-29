@@ -342,3 +342,14 @@ it('queues a Native welcome to its real business contact without fabricating an 
   const off = fixture().c; off.facts.employeeUserId = null; config.emails[0].module = 'off'; config.emails[0].links = [];
   expect(() => M.queueEmail(off, config, 'welcome', environment)).toThrow('No recipient');
 });
+it('freezes shared asset receipts and holds a known oversized packet before queueing', () => {
+  const { c,config,environment }=fixture();
+  const file: M.EmailAsset={id:'9ea43e78-c325-4f88-8313-1b6fc3a1a78e',kind:'file',name:'Fictional handbook.txt',mimeType:'text/plain',size:20,contentHash:'a'.repeat(64),at:environment.now,by:'Fictional HR'};
+  const image: M.EmailAsset={...file,id:'9ea43e78-c325-4f88-8313-1b6fc3a1a78f',kind:'image',name:'Fictional logo.png',mimeType:'image/png'};
+  config.emails=[{id:'media',name:'Fictional media',module:'off',active:true,sender:'hr',subject:'Fictional',body:`Body\n{image:${image.id}}`,cc:[],links:[],attachments:[],slots:[],files:[file],images:[image]}];
+  expect(M.previewEmail(c,config,'media',environment).assets).toEqual([file,image]);M.queueEmail(c,config,'media',environment);
+  config.emails[0].files![0].name='Changed future filename';expect(c.mails[0].delivery?.assets?.[0].name).toBe('Fictional handbook.txt');
+  const oversized=fixture();oversized.config.emails=[{...structuredClone(config.emails[0]),body:'Large packet',images:[],files:[{...file,size:10485760},{...file,id:'9ea43e78-c325-4f88-8313-1b6fc3a1a780',size:10485760}]}];
+  expect(M.previewEmail(oversized.c,oversized.config,'media',oversized.environment).holds).toContain('Keep the total attached files and inline images within 20 MB.');
+  expect(()=>M.queueEmail(oversized.c,oversized.config,'media',oversized.environment)).toThrow('20 MB');expect(oversized.c.mails).toEqual([]);
+});
