@@ -3977,6 +3977,13 @@
       "when": 1793330000019,
       "tag": "0693_assistant_action_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 686,
+      "version": "7",
+      "when": 1793330000022,
+      "tag": "0696_ai_agent_action_pause",
+      "breakpoints": true
     }
   ]
 }
