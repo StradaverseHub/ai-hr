@@ -210,9 +210,9 @@ function EpfElectionBody({
             </PersonnelField>
           )}
           {m === 'semi_auto' ? (
-            <p className="text-xs text-muted-foreground sm:col-span-2">{t('epfSemiAutoHint')}</p>
+            <p className="col-span-2 text-xs text-muted-foreground">{t('epfSemiAutoHint')}</p>
           ) : (
-            <p className="text-xs text-muted-foreground sm:col-span-2">{t(manualPercentage ? 'epfManualPercentageHint' : 'epfVoluntaryHint')}</p>
+            <p className="col-span-2 text-xs text-muted-foreground">{t(manualPercentage ? 'epfManualPercentageHint' : 'epfVoluntaryHint')}</p>
           )}
         </div>
       )}
@@ -248,7 +248,7 @@ function EpfElectionBody({
           <PersonnelField fieldId="bank_statutory.epf_contribution.epfmanualreason" mode={formMode}>
             <input {...personnelInput('bank_statutory.epf_contribution.epfmanualreason',formMode)} maxLength={500} {...mr.value} className={inputCls} />
           </PersonnelField>
-          <p className="text-xs text-muted-foreground sm:col-span-2">{t('epfManualAmountHint')}</p>
+          <p className="col-span-2 text-xs text-muted-foreground">{t('epfManualAmountHint')}</p>
         </div>
       )}
     </>
