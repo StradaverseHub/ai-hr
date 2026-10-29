@@ -308,6 +308,40 @@ HR server (and a separate identity server only when using a legacy adapter). Pri
 supported OS/app; provisioning alone does not prove the app trusts that CA. There is no TLS bypass.
 QR scanning uses the phone’s camera and the HTTPS setup page; there is no in-app scanner or hosted company directory.
 
+### Automatic workplace setups (ADR-0161)
+
+On an installation Stradaverse operates, the operator no longer signs workplace setups by hand. When a
+customer created in the operator console finishes provisioning, the provisioning runner signs that
+customer's setup (this server's `AUTH_PUBLIC_ORIGIN`, the customer's organization code and account name,
+valid for 365 days) and stores it as the customer's `mobile.workplace_setup` platform setting. Each
+runner tick also issues setups for existing customers that have none, renews a setup inside its last 30
+days, reissues after the server address changes and retries a failed attempt after an hour. A failed
+issuance is recorded on the customer and never fails provisioning. This requires, in the runner's
+environment, `AIHR_MOBILE_SETUP_SIGNING_KEY` (absolute path to the Ed25519 private key, outside the
+application directory, mode 0600, whose public key is already in `connections/trust.json`) and optionally
+`AIHR_MOBILE_SETUP_HOSTING` (`cloud`, the default, or `on-premise`). Without the key nothing is issued.
+
+The customer's administrators find the link, QR code, organization code, expiry and install steps under
+System Configuration › **Mobile app**. The page re-verifies the stored setup first — signature against the
+app's anchors, this server, this organization, not expired — and otherwise asks them to contact their
+provider. The operator console does not show or reissue setups yet (that needs a migration; see the ADR).
+
+**Customer-run on-premise servers never hold the signing key.** Stradaverse signs their setup offline and
+the installation administrator imports it on that server:
+
+```sh
+# Stradaverse, with the private key, outside the repository:
+node --import tsx scripts/mobile-company-profile.ts customer /PRIVATE/operator.pem /OUTPUT/customer-a-setup \
+  --origin https://hr.customer-a.example --organization customer-a --name "Customer A" --hosting on-premise
+# The customer's installation administrator, on their server, as the database owner:
+node --env-file=.env.production --import tsx scripts/mobile-setup-import.ts TENANT_UUID /PATH/company.aihr.json
+```
+
+The `customer` command builds the profile from flags, so nobody writes profile JSON by hand. The import
+accepts the file only when it verifies against the app's anchors, names that server's
+`AUTH_PUBLIC_ORIGIN` and that customer's organization code, and has not expired; otherwise it stores
+nothing and says why.
+
 ### Installable test builds
 
 `eas.json` defines a standalone preview APK and an ad hoc iPhone build, an Android cloud-compilation

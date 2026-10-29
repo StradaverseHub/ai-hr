@@ -320,6 +320,21 @@ recheck), and a runner killed mid-flight is reclaimed after 10 minutes rather th
 
 The log is safe to keep: the activation URL is **never** written to it.
 
+**Automatic mobile workplace setups (ADR-0161) — optional, Stradaverse-operated installations only.**
+The runner signs each new customer's mobile workplace setup after provisioning, and renews, reissues or
+retries setups once per tick, only when its environment (`.env.production`) names a signing key:
+
+| Variable | Meaning |
+| --- | --- |
+| `AIHR_MOBILE_SETUP_SIGNING_KEY` | Absolute path to the Ed25519 private key (PEM). Outside `/opt/ai-hr` (deploys replace that tree), a regular file with mode `0600`, owned by the runner's user. Its public key must already be in `mobile/connections/trust.json`. Unset = this installation never issues. |
+| `AIHR_MOBILE_SETUP_HOSTING` | `cloud` (default when blank) or `on-premise`; shown to employees in the app's review screen. |
+
+Never put the key itself, or a copy of it, in `.env.production`, the repository or a backup that leaves the
+host. A customer-run on-premise server must not be given this key: it imports a setup Stradaverse signed, with
+`scripts/mobile-setup-import.ts` (see mobile/README.md). The setting definition arrives through
+`scripts/seed-catalogs.ts`, which `deploy.sh` already runs. The log records tenant ids and reason codes only,
+never the key, its path or a signed setup.
+
 Verify:
 
 ```bash

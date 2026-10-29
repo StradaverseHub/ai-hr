@@ -45,7 +45,7 @@ export type MobileSetupOutcome =
   | { outcome: 'skipped'; reason: 'not_issuing' | 'current' }
   | { outcome: 'failed'; reason: string };
 
-class IssuanceError extends Error {
+export class IssuanceError extends Error {
   constructor(readonly code: 'organization_unavailable' | 'customer_unavailable') { super(`mobile-setup:${code}`); }
 }
 
@@ -145,6 +145,34 @@ export async function issueMobileSetup(
     try { await recordFailure(owner, tenantId, reason, trigger, now); } catch { /* the reason is still returned and logged */ }
     return { outcome: 'failed', reason };
   }
+}
+
+/**
+ * Store a setup that Stradaverse signed elsewhere — the path for an installation that does not hold the
+ * signing key (a customer-run on-premise server). Accepted only when it verifies against the app's
+ * anchors, is embedded sign-in, names THIS installation's sign-in origin (issuer included) and THIS
+ * customer's organization code, and has not expired. Throws the refusal; stores nothing on refusal.
+ */
+export async function importMobileSetup(
+  owner: Owner, tenantId: string, input: unknown, options: { now?: number; env?: Env } = {},
+): Promise<{ keyId: string; expiresAt: number; replaced: boolean }> {
+  const env = options.env ?? process.env;
+  if (!internalSelected(env)) throw new WorkplaceSetupRefusal('origin_mismatch');
+  const origin = internalConfig(env).origin;
+  const now = Math.floor(options.now ?? Date.now() / 1000);
+  const organization = await readRecord<Organization>(owner.client, `tenant:${tenantId}`);
+  if (!organization?.code || organization.tenantId !== tenantId) throw new IssuanceError('organization_unavailable');
+  const verified = verifyWorkplaceSetup(input, { trust: INSTALLED_APP_TRUST, origin, organization: organization.code, now });
+  return owner.db.transaction(async tx => {
+    const previous = await lockedStored(tx, tenantId);
+    await writeStored(tx, tenantId, { version: 1, setup: verified.envelope, method: 'imported', recordedAt: iso(now), failure: null });
+    await appendEvent(tx, {
+      tenantId, aggregateType: 'tenant', aggregateId: tenantId, eventType: 'mobile.workplace-setup.imported',
+      actor: { type: 'system' },
+      payload: { keyId: verified.keyId, expiresAt: iso(verified.expiresAt), method: 'imported', replaced: previous.setup !== null },
+    });
+    return { keyId: verified.keyId, expiresAt: verified.expiresAt, replaced: previous.setup !== null };
+  });
 }
 
 /**

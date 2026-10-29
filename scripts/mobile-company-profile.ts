@@ -24,7 +24,7 @@ const MESSAGES: Record<SignerFailure, string> = {
   key_untrusted: 'This key is not in the installed app trust anchors.',
   anchor_validity: 'The setup would outlive the validity of its app trust anchor.',
   hosting_invalid: 'Hosting must be cloud or on-premise.',
-  profile_invalid: 'Invalid, expired or unsupported company setup file.',
+  profile_invalid: 'Invalid company setup: check the HTTPS origin, organization code and display name.',
 };
 
 /** `--flag value` pairs only; a repeated, unknown or valueless flag is refused rather than guessed. */
