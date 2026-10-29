@@ -25927,7 +25927,8 @@
       "review_required": "Source, identity or linked defect review is required.",
       "invalid": "Check the fields, expected results and selected decisions.",
       "limit": "The supported size or record limit was exceeded.",
-      "module_unavailable": "System Testing is not enabled for this account."
+      "module_unavailable": "System Testing is not enabled for this account.",
+      "feedback_unavailable": "Feedback is turned off for this account."
     },
     "updateReasons": {
       "new_reviewed_guide": "New reviewed guide",

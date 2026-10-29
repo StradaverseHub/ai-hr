@@ -25927,7 +25927,8 @@
       "review_required": "Cần xem xét nguồn, định danh hoặc lỗi liên kết.",
       "invalid": "Kiểm tra trường, kết quả mong đợi và quyết định đã chọn.",
       "limit": "Đã vượt giới hạn kích thước hoặc số bản ghi.",
-      "module_unavailable": "Tài khoản này chưa bật Kiểm thử hệ thống."
+      "module_unavailable": "Tài khoản này chưa bật Kiểm thử hệ thống.",
+      "feedback_unavailable": "Phản hồi đã bị tắt cho tài khoản này."
     },
     "updateReasons": {
       "new_reviewed_guide": "Hướng dẫn mới đã xem xét",

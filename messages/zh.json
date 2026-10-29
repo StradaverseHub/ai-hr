@@ -25927,7 +25927,8 @@
       "review_required": "需要审阅源码、身份或关联缺陷。",
       "invalid": "请检查字段、预期结果和所选决定。",
       "limit": "超出支持的大小或记录数量限制。",
-      "module_unavailable": "此账户未启用系统测试。"
+      "module_unavailable": "此账户未启用系统测试。",
+      "feedback_unavailable": "此账户已关闭反馈功能。"
     },
     "updateReasons": {
       "new_reviewed_guide": "新的已审阅指南",

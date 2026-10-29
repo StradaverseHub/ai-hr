@@ -25927,7 +25927,8 @@
       "review_required": "Semakan sumber, identiti atau kecacatan dipautkan diperlukan.",
       "invalid": "Semak medan, hasil dijangka dan keputusan dipilih.",
       "limit": "Had saiz atau rekod disokong telah dilebihi.",
-      "module_unavailable": "System Testing tidak didayakan untuk akaun ini."
+      "module_unavailable": "System Testing tidak didayakan untuk akaun ini.",
+      "feedback_unavailable": "Maklum balas dimatikan untuk akaun ini."
     },
     "updateReasons": {
       "new_reviewed_guide": "Panduan disemak baharu",
