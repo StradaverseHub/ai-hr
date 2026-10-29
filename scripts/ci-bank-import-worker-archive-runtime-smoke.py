@@ -81,7 +81,8 @@ def main():
     command(['/usr/sbin/useradd','--system','--user-group','--no-create-home','--home-dir','/nonexistent','--shell','/usr/sbin/nologin',USER])
     identity=pwd.getpwnam(USER);require(identity.pw_uid>0 and identity.pw_gid>0,'dedicated nonroot identity required')
     work=area/'fixture-private';work.mkdir(mode=0o700);os.chown(work,identity.pw_uid,identity.pw_gid)
-    env={'PATH':str(area)+':/usr/bin:/bin','LANG':'C.UTF-8','TZ':'Asia/Kuala_Lumpur','HOME':str(work),'TMPDIR':str(work),'NODE_ENV':'production','GITHUB_ACTIONS':'true','CI':'true','DATABASE_URL':APP,'MIGRATION_DATABASE_URL':OWNER,'TEST_DATABASE_URL':APP,'TEST_MIGRATION_DATABASE_URL':OWNER,'AUDIT_HASH_CHAIN_ENABLED':'false'}
+    # Unset deferred gates match test/env.ts: explicit audit '=false' is also OFF, but intentionally warns.
+    env={'PATH':str(area)+':/usr/bin:/bin','LANG':'C.UTF-8','TZ':'Asia/Kuala_Lumpur','HOME':str(work),'TMPDIR':str(work),'NODE_ENV':'production','GITHUB_ACTIONS':'true','CI':'true','DATABASE_URL':APP,'MIGRATION_DATABASE_URL':OWNER,'TEST_DATABASE_URL':APP,'TEST_MIGRATION_DATABASE_URL':OWNER}
     # Controller/canonical fixture preparation belongs to the original unprivileged checkout owner.
     # GitHub's runner home may be private: do not chmod its ancestors or make the real worker borrow its UID.
     runner_uid=source.stat().st_uid
@@ -102,7 +103,7 @@ def main():
     def fixture_phase(phase):
         # Source loader/harness are fixture setup only under their original owner, never the actual worker CLI.
         result=as_fixture([str(node),'--import',str(loader),str(fixture),phase,str(runtime),str(source),str(state)],120)
-        require(result.stderr=='','unexpected fixture stderr; cannot claim clean runtime')
+        require(result.stderr=='','unexpected CI-only fictional fixture stderr in '+phase+'; cannot claim clean runtime: '+result.stderr[-12000:])
         return json.loads(result.stdout)
     def verify_tree():
         require(runtime.stat().st_uid==0 and stat.S_IMODE(runtime.stat().st_mode)==0o555,'root-owned read-only runtime root changed')
@@ -122,7 +123,7 @@ def main():
     def worker_once():
         verify_tree()
         result=as_user([str(node),'--import','tsx','scripts/bank-import-runner.ts','--once'],90)
-        require(result.stdout=='' and result.stderr=='','actual archived CLI emitted unexpected stdout/stderr')
+        require(result.stdout=='' and result.stderr=='','actual archived CLI emitted unexpected CI-only stdout/stderr: stdout='+result.stdout[-12000:]+'; stderr='+result.stderr[-12000:])
         child_results.append(result);return result
     empty_result=worker_once();after=fixture_phase('snapshot')
     require(before==after,'empty queue worker unexpectedly mutated public DB rows or migration/role proof')
