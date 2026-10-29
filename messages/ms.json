@@ -17153,7 +17153,14 @@
         "diagnosticState_no_followup": "Tiada susulan dikenal pasti dalam paparan terhad ini. Ini bukan jaminan kesediaan umum.",
         "diagnosticScope": "Keputusan ini menggunakan rekod semasa yang dibenarkan di atas. Ia tidak membuat perubahan; sebarang aliran kerja manusia memerlukan niat anda sendiri.",
         "diagnosticInspect": "Periksa rekod semasa",
-        "diagnosticRecord": "Periksa rekod sumber {n} di atas."
+        "diagnosticRecord": "Periksa rekod sumber {n} di atas.",
+        "scopeLegend": "Terpakai kepada",
+        "scopeUser": "Hanya pemilik calon",
+        "scopeCompany": "Semua orang dalam satu syarikat",
+        "scopeTenant": "Semua orang dalam organisasi",
+        "scopeCompanyChoice": "Syarikat",
+        "scopeHint": "Skop yang lebih luas hanya terpakai kepada calon tanpa isyarat peribadi; promosi syarikat dan organisasi menjejaskan Pembantu orang lain.",
+        "scopeSignalsOnly": "Calon ini menggunakan isyarat peribadi, jadi ia hanya boleh terpakai kepada pemiliknya."
       },
       "specialistFindings": {
         "scope_current_caller": "Nota ini hanya menggunakan rekod semasa yang boleh anda akses.",

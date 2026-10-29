@@ -17153,7 +17153,14 @@
         "diagnosticState_no_followup": "此有限视图中未发现跟进事项。这不保证整体已准备就绪。",
         "diagnosticScope": "此判断仅使用上方当前获准访问的记录。它不作任何更改；开始人工工作流程前仍需您的明确意愿。",
         "diagnosticInspect": "查看当前记录",
-        "diagnosticRecord": "查看上方第 {n} 条来源记录。"
+        "diagnosticRecord": "查看上方第 {n} 条来源记录。",
+        "scopeLegend": "适用范围",
+        "scopeUser": "仅限候选项的所有者",
+        "scopeCompany": "某一家公司的所有人",
+        "scopeTenant": "整个组织的所有人",
+        "scopeCompanyChoice": "公司",
+        "scopeHint": "更大的范围仅适用于不含个人信号的候选项；公司和组织级推广会影响其他人的助手。",
+        "scopeSignalsOnly": "此候选项使用了个人信号，因此只能适用于其所有者。"
       },
       "specialistFindings": {
         "scope_current_caller": "这些说明仅使用您当前获准查看的记录。",

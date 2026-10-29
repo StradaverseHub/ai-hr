@@ -1,4 +1,5 @@
 import {SpecialistCandidateChoices} from './specialist-candidate-choices';
+import {SpecialistPromotionChoices} from './specialist-promotion-choices';
 import {randomUUID} from 'node:crypto';
 import {getTranslations} from 'next-intl/server';
 import {Card,inputCls,btnPrimary} from '../ui';
@@ -47,7 +48,8 @@ export async function ModuleSpecialistReview({view}:{view:View}){
     <button type="submit" className={`${btnPrimary} min-h-11`}>{t('evaluate')}</button>
    </form>}
    {promotable.length>0&&<form action={promoteSpecialistCandidateAction} className="space-y-3">
-    <label className="block text-sm">{t('chooseCandidate')}<select name="candidateId" required className={`${inputCls} mt-1 min-h-11 w-full`}>{promotable.map(row=><option key={row.id} value={row.id}>{record(row)}</option>)}</select></label>
+    <SpecialistPromotionChoices candidates={promotable.map(row=>({value:row.id,label:record(row),personalSignals:row.personalSignals}))} companies={view.companies}
+     messages={{chooseCandidate:t('chooseCandidate'),scopeLegend:t('scopeLegend'),scopeUser:t('scopeUser'),scopeCompany:t('scopeCompany'),scopeTenant:t('scopeTenant'),company:t('scopeCompanyChoice'),scopeHint:t('scopeHint'),scopeSignalsOnly:t('scopeSignalsOnly')}}/>
     <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">{t('maxJobs')}<input name="maxJobs" type="number" min={1} max={100} defaultValue={5} required className={`${inputCls} mt-1 min-h-11 w-full`}/></label>
      <label className="text-sm">{t('hours')}<input name="hours" type="number" min={1} max={24} defaultValue={1} required className={`${inputCls} mt-1 min-h-11 w-full`}/></label></div>
     <p className="text-xs text-muted-foreground">{t('promotionScope')}</p><button type="submit" className={`${btnPrimary} min-h-11`}>{t('promote')}</button>

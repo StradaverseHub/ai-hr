@@ -17153,7 +17153,14 @@
         "diagnosticState_no_followup": "Không thấy việc cần theo dõi trong phạm vi giới hạn này. Đây không phải bảo đảm sẵn sàng chung.",
         "diagnosticScope": "Quyết định này dùng các hồ sơ hiện tại được phép xem ở trên. Không thay đổi dữ liệu; mọi quy trình do người thực hiện vẫn cần ý định rõ ràng của bạn.",
         "diagnosticInspect": "Xem hồ sơ hiện tại",
-        "diagnosticRecord": "Xem hồ sơ nguồn số {n} ở trên."
+        "diagnosticRecord": "Xem hồ sơ nguồn số {n} ở trên.",
+        "scopeLegend": "Áp dụng cho",
+        "scopeUser": "Chỉ chủ sở hữu của ứng viên",
+        "scopeCompany": "Mọi người trong một công ty",
+        "scopeTenant": "Mọi người trong tổ chức",
+        "scopeCompanyChoice": "Công ty",
+        "scopeHint": "Phạm vi rộng hơn chỉ áp dụng cho ứng viên không có tín hiệu cá nhân; việc nâng cấp cho công ty và tổ chức ảnh hưởng đến Trợ lý của người khác.",
+        "scopeSignalsOnly": "Ứng viên này dùng tín hiệu cá nhân nên chỉ có thể áp dụng cho chủ sở hữu."
       },
       "specialistFindings": {
         "scope_current_caller": "Các ghi chú này chỉ dùng những hồ sơ hiện tại mà bạn được phép xem.",

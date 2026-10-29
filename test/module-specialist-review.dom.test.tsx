@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 /** Authored UNRUN. Presentation/POST boundaries only, not native authority or promotion proof. */
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {cleanup,render,screen,within} from '@testing-library/react';
+import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 vi.mock('next-intl/server',()=>({getTranslations:vi.fn(async(namespace:string)=>(key:string,values?:Record<string,unknown>)=>namespace+'.'+key+(values?' '+JSON.stringify(values):''))}));
 vi.mock('../app/assistant/specialist-review-actions',()=>({createSpecialistCandidateAction:vi.fn(),evaluateSpecialistCandidateAction:vi.fn(),promoteSpecialistCandidateAction:vi.fn(),rollbackSpecialistCandidateAction:vi.fn(),runSpecialistJobAction:vi.fn()}));
 import {ModuleSpecialistFindings} from '../components/assistant/module-specialist-findings';
@@ -9,9 +9,10 @@ import {executeCanonicalSpecialist} from '../lib/ai/module-specialists';
 import {ModuleSpecialistReview,SpecialistJobComposer} from '../components/assistant/module-specialist-review';
 afterEach(cleanup);
 function view(){return{modules:[{module:'leave' as const,nextVersion:3}],candidates:[
- {id:'own',module:'leave' as const,version:1,playbook:'canonical_domain_v1' as const,own:true,evaluations:2,passingEvaluators:2,incompleteEvaluators:0},
- {id:'missing-domain',module:'leave' as const,version:2,playbook:'canonical_followup_v1' as const,own:false,evaluations:2,passingEvaluators:0,incompleteEvaluators:2},
- {id:'independently-passed',module:'leave' as const,version:3,playbook:'canonical_followup_v1' as const,own:false,evaluations:2,passingEvaluators:2,incompleteEvaluators:0}],
+ {id:'own',module:'leave' as const,version:1,playbook:'canonical_domain_v1' as const,own:true,evaluations:2,passingEvaluators:2,incompleteEvaluators:0,personalSignals:false as boolean|null},
+ {id:'missing-domain',module:'leave' as const,version:2,playbook:'canonical_followup_v1' as const,own:false,evaluations:2,passingEvaluators:0,incompleteEvaluators:2,personalSignals:false as boolean|null},
+ {id:'independently-passed',module:'leave' as const,version:3,playbook:'canonical_followup_v1' as const,own:false,evaluations:2,passingEvaluators:2,incompleteEvaluators:0,personalSignals:false as boolean|null}],
+ companies:[{id:'company-a',name:'Fictional Alpha Sdn Bhd'},{id:'company-b',name:'Fictional Beta Sdn Bhd'}],
  promotions:[],ownNativeSignalChoices:[{associationId:'own-completed-link',module:'leave' as const,action:'leave.apply' as const,semantics:'submitted_not_approved',createdAt:'2026-01-01'}],nativeSignalChoicesTruncated:false,ownSignalChoices:[{id:'own-verified-signal',module:'leave' as const,outcome:'needs_correction' as const,createdAt:'2026-01-01'}],signalChoicesTruncated:true};}
 describe('specialist human governance presentation',()=>{
  it('labels the picker with the NEXT candidate version and each saved row with its OWN candidate version',async()=>{
@@ -71,4 +72,34 @@ it('defaults native candidate evidence to none and never posts an event, receipt
  const {container}=render(await ModuleSpecialistReview({view:view()}));const select=container.querySelector<HTMLSelectElement>('select[name="nativeSignalId"]')!;
  expect(select.value).toBe('');expect(select.required).toBe(false);expect(Array.from(select.options).map(row=>row.value)).toEqual(['','own-completed-link']);
  for(const name of ['eventId','receipt','quality','causalCredit'])expect(container.querySelector(`[name="${name}"]`)).toBeNull();
+});
+
+// WP11 (R5): the approver chooses the promotion scope; companyId is posted only for company scope.
+describe('promotion scope chosen by the approver',()=>{
+ const promoteForm=(container:HTMLElement)=>container.querySelector<HTMLInputElement>('input[name="maxJobs"]')!.closest('form')!;
+ it('renders three scope radios with the owner default, a company select only for company scope, and posts scope/companyId',async()=>{
+  const{container}=render(await ModuleSpecialistReview({view:view()}));const form=promoteForm(container);
+  const radios=Array.from(form.querySelectorAll<HTMLInputElement>('input[type="radio"][name="scope"]'));
+  expect(radios.map(row=>row.value)).toEqual(['user','company','tenant']);expect(radios.map(row=>row.checked)).toEqual([true,false,false]);expect(radios.every(row=>!row.disabled)).toBe(true);
+  expect(within(form).getByText('assistant.workspace.specialists.scopeLegend')).toBeInTheDocument();
+  for(const key of ['scopeUser','scopeCompany','scopeTenant','scopeHint'])expect(within(form).getByText('assistant.workspace.specialists.'+key)).toBeInTheDocument();
+  expect(form.querySelector('select[name="companyId"]')).toBeNull();
+  let posted=new FormData(form);expect(posted.get('scope')).toBe('user');expect(posted.has('companyId')).toBe(false);
+  fireEvent.click(radios[1]);
+  const company=form.querySelector<HTMLSelectElement>('select[name="companyId"]')!;expect(company).not.toBeNull();
+  expect(Array.from(company.options).map(row=>[row.value,row.textContent])).toEqual([['company-a','Fictional Alpha Sdn Bhd'],['company-b','Fictional Beta Sdn Bhd']]);
+  fireEvent.change(company,{target:{value:'company-b'}});
+  posted=new FormData(form);expect(posted.get('scope')).toBe('company');expect(posted.get('companyId')).toBe('company-b');expect(posted.get('candidateId')).toBe('independently-passed');
+  fireEvent.click(radios[2]);
+  expect(form.querySelector('select[name="companyId"]')).toBeNull();posted=new FormData(form);expect(posted.get('scope')).toBe('tenant');expect(posted.has('companyId')).toBe(false);
+  expect(within(form).queryByText('assistant.workspace.specialists.scopeSignalsOnly')).toBeNull();
+ });
+ it('keeps a candidate with personal signals owner-only and says why',async()=>{
+  const v={...view(),candidates:view().candidates.map(row=>row.id==='independently-passed'?{...row,personalSignals:true}:row)};
+  const{container}=render(await ModuleSpecialistReview({view:v}));const form=promoteForm(container);
+  const radios=Array.from(form.querySelectorAll<HTMLInputElement>('input[type="radio"][name="scope"]'));
+  expect(radios.map(row=>row.disabled)).toEqual([false,true,true]);expect(radios[0].checked).toBe(true);
+  expect(within(form).getByText('assistant.workspace.specialists.scopeSignalsOnly')).toBeInTheDocument();
+  expect(new FormData(form).get('scope')).toBe('user');
+ });
 });
