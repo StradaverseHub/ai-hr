@@ -5,7 +5,7 @@ import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
-import {defaultPolicy,createRewardUnit,listRewardUnits,saveRewardPolicy,listRewardPolicyGroups,rewardSharedPolicyChoices,saveRewardPolicyGroup,rewardPolicyGroupUsage,getRewardConfiguration} from '../packs/rewards/service';
+import {rewardPolicyTaken,defaultPolicy,createRewardUnit,listRewardUnits,saveRewardPolicy,listRewardPolicyGroups,rewardSharedPolicyChoices,saveRewardPolicyGroup,rewardPolicyGroupUsage,getRewardConfiguration} from '../packs/rewards/service';
 import type {RewardPolicy} from '../packs/rewards/model';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {pgSqlState} from '../lib/db-error';
@@ -56,7 +56,7 @@ describe('shared reward configuration versions',()=>{
   const v=await saveRewardPolicyGroup(admin,{groupId:null,expectedRevision:0,name:'Fictional global pair',policy,targets:[{companyId:b.companyId,businessUnitId:globalBu}]});
   expect(v.targets).toEqual([{companyId:b.companyId,businessUnitId:globalBu}]);
   expect(await rewardSharedPolicyChoices(admin,[companyB])).toEqual([]);
-  await expect(saveRewardPolicyGroup(admin,{groupId:null,expectedRevision:0,name:'Fictional overlap',policy,targets:v.targets})).rejects.toMatchObject({code:'invalid'});
+  await expect(saveRewardPolicyGroup(admin,{groupId:null,expectedRevision:0,name:'Fictional overlap',policy,targets:v.targets})).rejects.toMatchObject({code:'overlap',conflicts:[{companyId:b.companyId,businessUnitId:globalBu,groupId:v.groupId,name:v.name}]});
   await expect(saveRewardPolicyGroup(admin,{groupId:null,expectedRevision:0,name:'Fictional invalid pair',policy,targets:[{companyId:b.companyId,businessUnitId:buB}]})).rejects.toMatchObject({code:'scope'});
  });
  it('allows an authorised company to consume its own pair while hiding other companies and refusing partial edits of the group',async()=>{
@@ -68,6 +68,21 @@ describe('shared reward configuration versions',()=>{
   await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.id,actor.grantId));
   expect(await rewardSharedPolicyChoices(actor.ctx,[b.companyId])).toEqual([]);
   await expect(saveRewardPolicyGroup(actor.ctx,{groupId:null,expectedRevision:0,name:'Revoked actor cannot save',policy,targets:[{companyId:b.companyId,businessUnitId:globalBu}]})).rejects.toMatchObject({code:'scope'});
+ });
+ it('reads current taken pairs by reward year and company authority, including partially administered groups',async()=>{
+  const v=await createGroup(),actor=await scopeActor();
+  expect(await rewardPolicyTaken(actor.ctx,[b.companyId,companyB],year)).toEqual([{companyId:b.companyId,businessUnitId:buA,groupId:v.groupId,name:v.name}]);
+  expect(await rewardPolicyTaken(actor.ctx,[b.companyId,companyB],year+1)).toEqual([]);
+  await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.id,actor.grantId));
+  expect(await rewardPolicyTaken(actor.ctx,[b.companyId],year)).toEqual([]);
+ });
+ it('serializes racing overlapping creations and returns the winning configuration name to the loser',async()=>{
+  const create=(name:string)=>saveRewardPolicyGroup(admin,{groupId:null,expectedRevision:0,name,policy,targets:[{companyId:b.companyId,businessUnitId:buA}]});
+  const results=await Promise.allSettled([create('Race A'),create('Race B')]);
+  const winner=results.find(row=>row.status==='fulfilled'),loser=results.find(row=>row.status==='rejected');
+  expect(winner?.status).toBe('fulfilled');expect(loser?.status).toBe('rejected');
+  if(winner?.status==='fulfilled'&&loser?.status==='rejected')expect(loser.reason).toMatchObject({code:'overlap',conflicts:[{companyId:b.companyId,businessUnitId:buA,name:winner.value.name,groupId:winner.value.groupId}]});
+  expect(await listRewardPolicyGroups(admin)).toHaveLength(1);
  });
  it('keeps versions/targets private and immutable and refuses rewriting unit lineage',async()=>{
   const v=await createGroup(),reviewId=await unit(b.companyId,buA,v.versionId);

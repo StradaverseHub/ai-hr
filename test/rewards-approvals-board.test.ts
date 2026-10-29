@@ -12,7 +12,7 @@ import { hireEmployee } from '../core/org';
 import { assignRole, createCompany } from '../core/admin';
 import { setCompensation } from '../core/comp';
 import { createBatch, setPayrollInput } from '../packs/payroll/service';
-import { canPostRewardUnit, createRewardUnit, decideRewardUnit, getRewardCalendar, getRewardUnit, postRewardUnit, rewardApprovalsBoard, rewardDueWording, saveRewardCalendar, saveRewardEntry, saveRewardPolicy, sendReadyRewardUnits, setRewardMember, emptyRewardCalendar } from '../packs/rewards/service';
+import { canPostRewardUnit, createRewardUnit, decideRewardUnit, getRewardCalendar, getRewardUnit, listRewardReviewStatus, postRewardUnit, rewardApprovalsBoard, rewardDueWording, saveRewardCalendar, saveRewardEntry, saveRewardPolicy, sendReadyRewardUnits, setRewardMember, emptyRewardCalendar } from '../packs/rewards/service';
 import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -209,6 +209,8 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
         const [row] = (await rewardApprovalsBoard(who, [b.companyId])).filter(r => r.id === id);
         expect(row, label).toBeDefined();
         expect(row.people, label).toBe(review.rows.length);
+        const [overview]=(await listRewardReviewStatus(who,[b.companyId])).rows;
+        expect(overview).toMatchObject({salary:row.salary,bonus:row.bonus,blocking:row.blocking,exceptions:row.exceptions,waiting:row.waiting});
         expect(row.salary?.increaseCents, label).toBe(pooledIncrease(review));
         expect(row.blocking, label).toBe(review.flags.filter(f => f.severity === 'block').length);
         expect(row.exceptions, label).toBe(review.flags.filter(f => f.severity === 'exception').length);
