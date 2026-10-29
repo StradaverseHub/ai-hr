@@ -55,3 +55,9 @@ export function redactPatPolicy(policy:RewardPolicy,roles:readonly RewardRole[])
 
 export function seniorSourceFingerprint(entry:RewardEntry){return JSON.stringify({employmentId:entry.source.employmentId,compensationId:entry.source.compensationId,basicCents:entry.source.basicCents,gradeId:entry.source.gradeId,grade:entry.source.grade});}
 export function governanceBasis(policy:RewardPolicy,entries:RewardEntry[]){const {patActual:_pa,patTarget:_pt,targetMonthsBp:_tm,multiplierBp:_m,branchRatings:_br,exemptReason:_er,unitGovernanceDigest:_gd,...group}=policy;return createHash('sha256').update(JSON.stringify({group,entries:entries.map(entry=>({id:entry.id,source:entry.source,facts:entry.facts})).sort((a,b)=>a.id.localeCompare(b.id))})).digest('hex');}
+
+export function governanceHistoryProjection(value:unknown,visibleEntries:RewardEntry[]):RewardGovernance|null{
+ if(!value||typeof value!=='object')return null;
+ const state=value as RewardGovernance,ids=new Set(visibleEntries.map(entry=>entry.id)),employmentIds=new Set(visibleEntries.map(entry=>entry.source.employmentId));
+ return {...state,selection:state.selection?{...state.selection,employmentIds:state.selection.employmentIds.filter(id=>employmentIds.has(id))}:null,awards:Object.fromEntries(Object.entries(state.awards??{}).filter(([id])=>ids.has(id)))};
+}

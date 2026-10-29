@@ -21413,7 +21413,20 @@
       "history": "单位决策记录",
       "auditValues": "查看变更前后数值",
       "seniorTag": "高管计划",
-      "handledSeparately": "高管计划：单独处理"
+      "handledSeparately": "高管计划：单独处理",
+      "before": "变更前",
+      "after": "变更后",
+      "errors": {
+        "invalid": "请核对输入值及支持的小数精度后重试。",
+        "independent": "必须由另一位集团薪酬用户独立核对并确认此决定。",
+        "stale": "评审或员工记录已变更。请重新加载、核对当前数值后再次提交。",
+        "salary": "新基本工资不得低于当前基本工资。",
+        "evidence": "请使用 PDF、PNG 或 JPEG 凭证，每份及总计均不得超过 10 MB。",
+        "authority": "您当前的角色无权执行此操作或查看此记录。",
+        "budget": "继续前请核对税后利润、预算池状态、分行评级及倍数要求。",
+        "decision": "请完成所需的高管成员选择或线下决策，并取得独立确认。",
+        "locked": "请先将评审退回草稿，再修改已锁定的输入。"
+      }
     }
   },
   "identityEmail": {

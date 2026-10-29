@@ -42,7 +42,15 @@ ALTER TABLE public.reward_senior_award FORCE ROW LEVEL SECURITY;
 CREATE POLICY reward_governance_public_read ON public.reward_governance_public FOR SELECT USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.reward_unit u WHERE u.id=reward_governance_public.unit_id AND u.tenant_id=reward_governance_public.tenant_id));
 CREATE POLICY reward_governance_public_write ON public.reward_governance_public FOR ALL USING(tenant_id=app.current_tenant_id() AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(unit_id)))) WITH CHECK(tenant_id=app.current_tenant_id() AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(unit_id))));
 CREATE POLICY reward_senior_award_read ON public.reward_senior_award FOR SELECT USING(tenant_id=app.current_tenant_id() AND ARRAY(SELECT app.reward_roles(unit_id)) && ARRAY['gr','ctro','ec']);
-CREATE POLICY reward_senior_award_owner_read ON public.reward_senior_award FOR SELECT USING(tenant_id=app.current_tenant_id() AND current_user=(SELECT pg_catalog.pg_get_userbyid(c.relowner) FROM pg_catalog.pg_class c WHERE c.oid='public.reward_senior_award'::regclass));
+-- A dedicated nonlogin function owner, never the runtime/table owner, owns the bounded posting read.
+DO $$ BEGIN
+ IF NOT EXISTS(SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='ai_hr_rewards_post_reader') THEN CREATE ROLE ai_hr_rewards_post_reader NOLOGIN NOSUPERUSER NOBYPASSRLS NOINHERIT; END IF;
+ IF EXISTS(SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='ai_hr_rewards_post_reader' AND (rolcanlogin OR rolsuper OR rolbypassrls)) THEN RAISE EXCEPTION 'Unsafe rewards posting reader role'; END IF;
+END $$;
+GRANT USAGE ON SCHEMA public,app TO ai_hr_rewards_post_reader;
+GRANT SELECT ON public.reward_unit,public.reward_senior_award TO ai_hr_rewards_post_reader;
+GRANT EXECUTE ON FUNCTION app.reward_roles(uuid),app.reward_admin(uuid),app.current_tenant_id() TO ai_hr_rewards_post_reader;
+CREATE POLICY reward_senior_award_post_read ON public.reward_senior_award FOR SELECT TO ai_hr_rewards_post_reader USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.reward_unit u WHERE u.id=reward_senior_award.unit_id AND u.tenant_id=reward_senior_award.tenant_id AND u.status='approved' AND u.deleted_at IS NULL AND app.reward_admin(u.company_id) AND 'payroll'=ANY(ARRAY(SELECT app.reward_roles(u.id)))));
 CREATE POLICY reward_senior_award_write ON public.reward_senior_award FOR ALL USING(tenant_id=app.current_tenant_id() AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(unit_id)))) WITH CHECK(tenant_id=app.current_tenant_id() AND 'gr'=ANY(ARRAY(SELECT app.reward_roles(unit_id))));
 GRANT SELECT,INSERT,UPDATE ON public.reward_governance_public TO ai_hr_app;
 GRANT SELECT,INSERT,UPDATE,DELETE ON public.reward_senior_award TO ai_hr_app;
@@ -57,5 +65,9 @@ BEGIN
  SELECT coalesce(jsonb_object_agg(a.entry_id::text,a.award - 'evidence' - 'approvalReference' - 'reason' - 'approvalDate'),'{}'::jsonb) INTO result FROM public.reward_senior_award a WHERE a.unit_id=p_unit AND a.tenant_id=app.current_tenant_id() AND a.award->>'confirmedBy' IS NOT NULL;
  RETURN result;
 END $$;
+ALTER FUNCTION app.reward_senior_awards_for_post(uuid) OWNER TO ai_hr_rewards_post_reader;
 REVOKE ALL ON FUNCTION app.reward_senior_awards_for_post(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_senior_awards_for_post(uuid) TO ai_hr_app;
+
+ALTER TABLE public.payroll_input ADD COLUMN reward_provenance jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE public.payroll_input ADD CONSTRAINT payroll_input_reward_provenance_shape CHECK(jsonb_typeof(reward_provenance)='array');

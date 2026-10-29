@@ -6993,6 +6993,8 @@ export const payrollInput = pgTable(
     bonusAmount: numeric('bonus_amount', { precision: 12, scale: 2 }).notNull().default('0'),
     // PCB inputs (LHDN spec): TP1 optional deductions claimed this month (LP₁) and zakat paid
     // via salary deduction — zakat offsets the month's MTD per §E.5 and accumulates into Z.
+    /** Historical source references only; manual edits never make these a current amount owner. */
+    rewardProvenance:jsonb('reward_provenance').$type<{unitId:string;entryId:string;revision:number;plan:'Senior plan';confirmedBy:string;confirmedAt:string;historicalOnly:true}[]>().notNull().default([]),
     tp1Deduction: numeric('tp1_deduction', { precision: 12, scale: 2 }).notNull().default('0'),
     // ADR-0050 §0.4 provenance: who last set tp1_deduction. 'tp1_self' = a TP1 self-relief prefill set it
     // (refreshable by a later prefill); null (default) = an admin keyed it / never prefilled (sticky — a
@@ -10430,14 +10432,14 @@ export const rewardGovernancePublic=pgTable('reward_governance_public',{
  unitId:uuid('unit_id').primaryKey().references(()=>rewardUnit.id),tenantId:tenantId(),snapshot:jsonb('snapshot').$type<import('../packs/rewards/governance-model').RewardPublicGovernance>().notNull(),
 });
 export const rewardSeniorAward=pgTable('reward_senior_award',{
- tenantId:tenantId(),unitId:uuid('unit_id').notNull().references(()=>rewardUnit.id),entryId:uuid('entry_id').primaryKey(),award:jsonb('award').$type<import('../packs/rewards/governance-model').SeniorAward>().notNull(),
+ tenantId:tenantId(),unitId:uuid('unit_id').notNull().references(()=>rewardUnit.id),entryId:uuid('entry_id').primaryKey().references(()=>rewardEntry.id),award:jsonb('award').$type<import('../packs/rewards/governance-model').SeniorAward>().notNull(),
 });
 export const rewardGovernanceHistory = pgTable('reward_governance_history', {
  id:id(),tenantId:tenantId(),unitId:uuid('unit_id').notNull().references(()=>rewardUnit.id), actorId:uuid('actor_id').notNull().references(()=>appUser.id),
  kind:text('kind').notNull(),reason:text('reason').notNull(),before:jsonb('before_state'),after:jsonb('after_state').notNull(),createdAt:createdAt(),
 });
 export const rewardSeniorEvidence=pgTable('reward_senior_evidence',{
- id:id(),tenantId:tenantId(),unitId:uuid('unit_id').notNull().references(()=>rewardUnit.id),entryId:uuid('entry_id').notNull(),
+ id:id(),tenantId:tenantId(),unitId:uuid('unit_id').notNull().references(()=>rewardUnit.id),entryId:uuid('entry_id').notNull().references(()=>rewardEntry.id),
  uploadedBy:uuid('uploaded_by').notNull().references(()=>appUser.id),name:text('name').notNull(),mime:text('mime').notNull(),content:text('content').notNull(),createdAt:createdAt(),
 });
 export const rewardMember = pgTable('reward_member', {

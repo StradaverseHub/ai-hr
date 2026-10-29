@@ -21413,7 +21413,20 @@
       "history": "Unit decision history",
       "auditValues": "Inspect before and after values",
       "seniorTag": "Senior plan",
-      "handledSeparately": "Senior plan — handled separately"
+      "handledSeparately": "Senior plan — handled separately",
+      "before": "Before",
+      "after": "After",
+      "errors": {
+        "invalid": "Check the entered values and supported precision, then try again.",
+        "independent": "A different Group Rewards user must check and confirm this decision.",
+        "stale": "This review or employee record changed. Reload, review the current values and submit again.",
+        "salary": "The new basic salary must not be lower than the current basic salary.",
+        "evidence": "Use supported PDF, PNG or JPEG evidence, at most 10 MB per file and 10 MB in total.",
+        "authority": "Your current role does not allow this operation or record.",
+        "budget": "Review the PAT, pool status, branch ratings and multiplier requirements before continuing.",
+        "decision": "Complete the required Senior membership or offline decision and obtain independent confirmation.",
+        "locked": "Return the review to draft before changing its locked inputs."
+      }
     }
   },
   "identityEmail": {
