@@ -107,7 +107,7 @@ CREATE FUNCTION app.reward_pool_notification_recipients(wanted_unit uuid) RETURN
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
  SELECT DISTINCT e.id FROM public.reward_unit r JOIN public.reward_member m ON m.unit_id=r.id AND m.tenant_id=r.tenant_id
  JOIN public.app_user u ON u.id=m.user_id AND u.tenant_id=r.tenant_id
- JOIN public.employment e ON e.person_id=u.person_id AND e.tenant_id=r.tenant_id AND e.company_id=r.company_id
+ JOIN public.employment e ON e.person_id=u.person_id AND e.tenant_id=r.tenant_id AND (e.company_id=r.company_id OR m.role IN ('gr','ctro','ec'))
  WHERE r.id=wanted_unit AND r.tenant_id=app.current_tenant_id() AND r.deleted_at IS NULL
  AND app.is_admin() AND (app.current_user_id() IS NULL OR app.reward_admin(r.company_id))
  AND m.role IN ('bu','bg','gr','ctro','ec') AND app.reward_member_eligible_internal(m.id)
