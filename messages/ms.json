@@ -6474,10 +6474,10 @@
       "publishStatePublished": "Diterbitkan kepada pekerja",
       "unpublishedBannerTitle": "Slip gaji ini belum kelihatan kepada pekerja",
       "unpublishedBannerBody": "Proses ini telah dikira tetapi belum diterbitkan. Pekerja tidak dapat melihat slip gaji mereka sehingga anda menutupnya. Penutupan akan memberitahu setiap pekerja dalam proses ini bahawa slip gaji mereka sedia, dan menerbitkannya — serta-merta, atau pada tarikh pelepasan slip gaji yang ditetapkan bagi syarikat jika ada.",
-      "closeConfirmTitle": "Tutup proses ini dan terbitkan kepada pekerja?",
+      "closeConfirmTitle": "Adakah anda pasti mahu menutup gaji bagi {month} dan {cycle}?",
       "closeConfirmBody": "Ini akan menerbitkan {n} slip gaji kepada pekerja dalam proses ini dan memberitahu setiap seorang. Penerbitan adalah serta-merta melainkan syarikat ini mempunyai tarikh pelepasan slip gaji yang ditetapkan, maka ia dijadualkan pada tarikh tersebut. Setelah ditutup, proses ini tidak boleh diubah.",
-      "closeConfirmYes": "Ya, tutup dan terbitkan",
-      "closeDone": "Proses gaji ditutup — slip gaji diterbitkan kepada pekerja.",
+      "closeConfirmYes": "Ya",
+      "closeDone": "Kelompok gaji berjaya ditutup.",
       "closeNotProcessed": "Hanya proses gaji yang telah diproses boleh ditutup.",
       "closePermissionDenied": "Anda tiada kebenaran untuk menutup proses gaji.",
       "publishedBy": "Diterbitkan oleh {actor} pada {when}",
@@ -6715,7 +6715,14 @@
         "transfer": "pertukaran syarikat diubah",
         "compensation": "gaji diubah",
         "statutory": "tetapan berkanun diubah"
-      }
+      },
+      "closeConfirmNo": "Tidak",
+      "closeBack": "Kembali ke Proses Gaji",
+      "closeSummaryPayslips": "Slip gaji",
+      "closeBlockedPending": "Proses ini tidak boleh ditutup: {n} pekerja yang layak untuk proses ini masih Baharu / Belum Selesai: {names}. Proses mereka melalui Proses semula dahulu, kemudian tutup semula.",
+      "closeBlockedReprocessRunning": "Proses ini tidak boleh ditutup semasa proses semula masih berjalan padanya. Tunggu sehingga proses semula selesai, kemudian tutup semula.",
+      "closeBlockedReprocessFailed": "Proses ini tidak boleh ditutup: proses semula terkini gagal bagi {n} pekerja: {names}. Betulkan masalah yang dilaporkan dan proses semula mereka, kemudian tutup semula.",
+      "closeBlockedAndMore": " dan {n} lagi"
     },
     "transactions": {
       "title": "Kemasukan Transaksi",

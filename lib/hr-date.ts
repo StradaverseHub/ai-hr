@@ -51,3 +51,18 @@ export function yearOptions(today: string, selected?: string, back = 6): string[
   }
   return years;
 }
+
+/**
+ * cdb1c6ca — a payroll month ('YYYY-MM') as words in the reader's locale: "October 2026", "Oktober 2026".
+ *
+ * A pay period is a CALENDAR MONTH, not an instant, so it is formatted against a synthetic UTC date with
+ * a UTC formatter — matched ends, so no host or tenant offset can move it into the neighbouring month.
+ * Anything that is not a well-formed period is returned unchanged rather than formatted into a wrong one.
+ */
+export function formatPayPeriodMonth(payPeriod: string, locale: string): string {
+  const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(payPeriod);
+  if (!m) return payPeriod;
+  return new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
+    new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, 1)),
+  );
+}

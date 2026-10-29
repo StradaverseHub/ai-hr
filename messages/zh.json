@@ -6474,10 +6474,10 @@
       "publishStatePublished": "已发布给员工",
       "unpublishedBannerTitle": "这些工资单尚未对员工可见",
       "unpublishedBannerBody": "此批次已计算但尚未发布。在您关闭它之前，员工无法看到自己的工资单。关闭会通知此批次中的每位员工其工资单已就绪，并将其发布 — 立即发布，或在公司已设定的工资单发布日期发布。",
-      "closeConfirmTitle": "关闭此批次并发布给员工？",
+      "closeConfirmTitle": "确定要关闭 {month} 的 {cycle} 薪资吗？",
       "closeConfirmBody": "此操作会向此批次中的员工发布 {n} 份工资单，并逐一通知他们。除非此公司设定了工资单发布日期（那样会排定在该日期），否则将立即发布。关闭后，此批次不可再修改。",
-      "closeConfirmYes": "是，关闭并发布",
-      "closeDone": "薪资批次已关闭 — 工资单已发布给员工。",
+      "closeConfirmYes": "是",
+      "closeDone": "薪资批次已成功关闭。",
       "closeNotProcessed": "只有已处理的薪资批次才能关闭。",
       "closePermissionDenied": "您没有关闭薪资批次的权限。",
       "publishedBy": "由 {actor} 于 {when} 发布",
@@ -6715,7 +6715,14 @@
         "transfer": "公司调动已更改",
         "compensation": "薪资已更改",
         "statutory": "法定设置已更改"
-      }
+      },
+      "closeConfirmNo": "否",
+      "closeBack": "返回薪资处理",
+      "closeSummaryPayslips": "工资单",
+      "closeBlockedPending": "无法关闭此批次：此批次中有 {n} 名符合资格的员工仍为新增 / 待处理：{names}。请先通过重新处理为他们处理薪资，然后再关闭。",
+      "closeBlockedReprocessRunning": "此批次仍有重新处理正在运行，无法关闭。请等待重新处理完成后再关闭。",
+      "closeBlockedReprocessFailed": "无法关闭此批次：{n} 名员工最近一次重新处理失败：{names}。请修正所报告的问题并重新处理他们，然后再关闭。",
+      "closeBlockedAndMore": " 等另外 {n} 人"
     },
     "transactions": {
       "title": "交易录入",
