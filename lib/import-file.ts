@@ -112,18 +112,19 @@ export async function readImportFile(
   file: File,
   /** Item 2983802f — worksheets to read ALONGSIDE the first one, by name (the employee importer asks
    *  for its Family sheet). Ignored for a .csv upload, which has exactly one sheet. */
-  opts?: { extraSheets?: readonly string[];allowedSheets?:readonly string[];captureSource?:boolean;preparePersonnel?:boolean },
+  opts?: { extraSheets?: readonly string[];allowedSheets?:readonly string[];captureSource?:boolean;preparePersonnel?:boolean;maxFileBytes?:number;maxCsvBytes?:number;maxRows?:number;maxCells?:number },
 ): Promise<ImportFileRead> {
   const format = importFileFormat(file.name);
   if (!format) throw new ImportFileError('UNSUPPORTED_FILE_TYPE');
-  if (file.size > MAX_IMPORT_FILE_BYTES) throw new ImportFileError('FILE_TOO_LARGE');
+  const maxFileBytes=opts?.maxFileBytes??MAX_IMPORT_FILE_BYTES,maxCsvBytes=opts?.maxCsvBytes??MAX_IMPORT_CSV_BYTES;
+  if (file.size > maxFileBytes) throw new ImportFileError('FILE_TOO_LARGE');
 
   let text: string;
   let dependentsText = '';
   let extraTexts:Record<string,string>|undefined;
   let source:PersonnelWorksheetSource|undefined,preparation:PersonnelWorkbookSource|undefined;
   if (format === 'csv') {
-    if (file.size > MAX_IMPORT_CSV_BYTES) throw new ImportFileError('FILE_TOO_LARGE');
+    if (file.size > maxCsvBytes) throw new ImportFileError('FILE_TOO_LARGE');
     try {
       text = await file.text();
     } catch {
@@ -134,7 +135,7 @@ export async function readImportFile(
     const wanted = opts?.extraSheets ?? [];
     let extra: Record<string, string> = {};
     try {
-      const decoded = await workbookToCsvTexts(await file.arrayBuffer(), wanted,false,opts?.allowedSheets,opts?.captureSource,opts?.preparePersonnel);
+      const decoded = await workbookToCsvTexts(await file.arrayBuffer(), wanted,false,opts?.allowedSheets,opts?.captureSource,opts?.preparePersonnel,opts?.maxRows?{maxRows:opts.maxRows,maxCells:opts.maxCells??20_000_000}:undefined);
       text = decoded.first;
       source=decoded.source;preparation=decoded.preparation;
       extra = decoded.extra;
@@ -149,7 +150,7 @@ export async function readImportFile(
     // enforced AFTER the decode for this path — that is the size the server action actually receives.
     // BOTH sheets are counted: they travel as two arguments of the same server action, so the ceiling
     // that protects it is the ceiling on their sum.
-    if (new Blob([text,...Object.values(extra)]).size > MAX_IMPORT_CSV_BYTES) throw new ImportFileError('FILE_TOO_LARGE');
+    if (new Blob([text,...Object.values(extra)]).size > maxCsvBytes) throw new ImportFileError('FILE_TOO_LARGE');
   }
   if (text.trim() === ''&&!preparation?.sheets.length) throw new ImportFileError(format === 'csv' ? 'EMPTY_FILE' : 'EMPTY_SHEET');
 

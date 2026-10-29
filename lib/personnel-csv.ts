@@ -10,12 +10,14 @@ export class PersonnelCsvError extends Error {
  constructor(message:string){super(message);this.name='PersonnelCsvError';}
 }
 /** Strict RFC4180 syntax. Preserve embedded line endings; only record delimiters consume CRLF. */
-function strictPersonnelCsvSource(text:string):{rows:string[][];rowNumbers:number[]} {
- const source=text.replace(/^\uFEFF/,''),rows:string[][]=[],rowNumbers:number[]=[];let recordNumber=1;let row:string[]=[],field='',state:'plain'|'quoted'|'closed'='plain';
+function strictPersonnelCsvSource(text:string,rowLimit?:number):{rows:string[][];rowNumbers:number[]} {
+ const source=text.replace(/^\uFEFF/,''),rows:string[][]=[],rowNumbers:number[]=[];let recordNumber=1,cellCount=0;let row:string[]=[],field='',state:'plain'|'quoted'|'closed'='plain';
  const fail=()=>{throw new PersonnelCsvError(`Malformed CSV near data row ${rows.length+1}. Close quoted cells and use doubled quotes inside them.`);};
- const endField=()=>{row.push(field);field='';state='plain';};
- const endRow=()=>{endField();if(row.some(value=>value!=='')){rows.push(row);rowNumbers.push(recordNumber);}recordNumber++;row=[];};
+ const budget=()=>{throw new PersonnelCsvError('The file exceeds the import row, column or cell size limit.');};
+ const endField=()=>{if(rowLimit&&(row.length>=256||++cellCount>20_000_000))budget();row.push(field);field='';state='plain';};
+ const endRow=()=>{endField();if(row.some(value=>value!=='')){if(rowLimit&&rows.length>=rowLimit)budget();rows.push(row);rowNumbers.push(recordNumber);}recordNumber++;row=[];};
  for(let i=0;i<source.length;i++) {
+  if(rowLimit&&field.length>1048576)budget();
   const c=source[i];
   if(state==='quoted') {
    if(c==='"'){if(source[i+1]==='"'){field+='"';i++;}else state='closed';}else field+=c;
@@ -48,8 +50,8 @@ export function buildPersonnelCsv(sheet:PersonnelImportSheet,rows:readonly (read
  return serialize([[PERSONNEL_CSV_FRAME,PERSONNEL_CSV_VERSION,sheet,'Keep this first row. Protected text starts with ~p1~; keep its prefix when editing.'],
   ...rows.map(row=>row.map(value=>encodePersonnelCsvCell(value==null?'':String(value))))]);
 }
-export function parsePersonnelCsv(text:string,sheet:PersonnelImportSheet):string[][] {
- return decodePersonnelCsvRows(parseStrictPersonnelCsv(text),sheet);
+export function parsePersonnelCsv(text:string,sheet:PersonnelImportSheet,rowLimit?:number):string[][] {
+ return decodePersonnelCsvRows(strictPersonnelCsvSource(text,rowLimit).rows,sheet);
 }
 /** Same frame decoder for already-decoded worksheet rows, preserving physical blank/formula rows. */
 export function decodePersonnelCsvRows(rows:string[][],sheet:PersonnelImportSheet):string[][] {

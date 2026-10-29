@@ -70,7 +70,7 @@ function currentPersonnelHeaders(column:string,sheet:PersonnelImportSheet,resolv
   return [...new Set(labels)];
 }
 /** Resolve BEFORE creating records: duplicate old/new headings must never overwrite a cell. */
-export type PersonnelImportHeaderOptions = {columns:readonly string[];sheet?:PersonnelImportSheet;resolvers?:readonly PersonnelLabelResolver[];generation?:number};
+export type PersonnelImportHeaderOptions = {columns:readonly string[];sheet?:PersonnelImportSheet;resolvers?:readonly PersonnelLabelResolver[];generation?:number;rowLimit?:number};
 /** Same whole-file grammar/alias owner as the strict parser. Suggestions are not validation. */
 export function personnelImportHeaderCandidates(headings:readonly string[], options:PersonnelImportHeaderOptions) {
   const sheet=options.sheet??'employee';
@@ -115,7 +115,7 @@ export function personnelImportHeaderCandidates(headings:readonly string[], opti
 }
 
 export function parsePersonnelImportCsv(text:string, options:PersonnelImportHeaderOptions) {
-  const rows=parsePersonnelCsv(text,options.sheet??'employee');
+  const rows=parsePersonnelCsv(text,options.sheet??'employee',options.rowLimit);
   if(!rows.length)return {headers:[] as string[],records:[] as Record<string,string>[],warnings:[] as string[]};
   const sheet=options.sheet??'employee';
   const candidates=personnelImportHeaderCandidates(rows[0],options);

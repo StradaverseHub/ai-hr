@@ -39,6 +39,7 @@ function assertSection(section: string) {
 /** Dry-run validation for one section file. Returns a per-row verdict; writes nothing. */
 export async function validateSectionAction(section: string, csv: string): Promise<SectionImportPreview> {
   const s = await requireAdmin();
+  if(section==='bank_statutory')throw new Error('Reload the importer to validate this file in the background.');
   const { records,warnings } = parseSection(section,csv);
   const preview=await validateSectionImport(s, { section: assertSection(section), records });
   for(const row of preview.rows)row.warnings.push(...warnings);
@@ -56,6 +57,7 @@ export async function commitSectionAction(
   fileName?: string,
 ): Promise<SectionImportResult> {
   const s = await requireAdmin();
+  if(section==='bank_statutory')throw new Error('Reload the importer to review and confirm the background import.');
   const { records } = parseSection(section,csv);
   const result = await commitSectionImport(s, {
     section: assertSection(section),

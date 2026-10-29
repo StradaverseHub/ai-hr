@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import { getPeopleGeneral, readPeopleGeneralTx, occupiedNricsTx } from './people-general';
 import { NRIC_DUPLICATE_MESSAGE, NRIC_FILE_DUPLICATE_MESSAGE } from '../lib/nric-policy-message';
@@ -443,7 +444,8 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
-      .innerJoin(company, eq(company.id, employment.companyId));
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(codes.size?inArray(employment.employeeCode,[...codes]):sql`false`);
 
     const byCode = new Map<string, Subject>();
     const wanted: typeof rows = [];
@@ -1086,6 +1088,41 @@ const historyLabel=(r:SectionRowResult)=>[r.employeeCode,r.employeeName].filter(
 export async function analyzeSectionRows(ctx:SessionContext,section:ImportSection,records:ImportRecord[]){
   const {preview,resolved}=await analyze(ctx,section,records);
   return {fileErrors:preview.fileErrors,rows:resolved.map(r=>({rowNum:r.result.rowNum,employeeCode:r.result.employeeCode,employeeName:r.result.employeeName,verdict:r.result.verdict,ok:r.result.ok,errors:r.result.errors,changes:r.result.changes,companyId:r.subject?.companyId??null,employmentId:r.subject?.employmentId??null}))};
+}
+
+/** Bounded background preview: same canonical analyzer, with an opaque concurrency binding. */
+const sectionBinding=(row:ResolvedSectionRow)=>createHash('sha256').update(JSON.stringify({...row,result:undefined,subject:undefined})).digest('hex');
+export async function analyzeBankImportBatch(ctx:SessionContext,records:ImportRecord[]){
+ const {preview,resolved}=await analyze(ctx,'bank_statutory',records);
+ return{fileErrors:preview.fileErrors,rows:resolved.map(row=>({preview:row.result,companyId:row.subject?.companyId??null,employmentId:row.subject?.employmentId??null,binding:sectionBinding(row)}))};
+}
+/** Caller commits the HR mutation, history item and queue checkpoint in ONE transaction. */
+export async function applyBankImportRowTx(tx:Tx,ctx:SessionContext,input:{record:ImportRecord;binding:string;employmentId:string;companyId:string;attemptId:string;ordinal:number}){
+ await tx.execute(sql`select app.access_workforce_write_lock()`);
+ await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ await lockImportAttemptTx(tx,ctx,input.attemptId,'bank_statutory');
+ const current=await analyze(ctx,'bank_statutory',[input.record],tx);
+ const row=current.resolved[0],subject=row?.subject;
+ if(current.preview.fileErrors.length||!subject||subject.employmentId!==input.employmentId||subject.companyId!==input.companyId||row.result.errors.length)throw new Error('Personnel changed or access was removed. Validate this row again.');
+ if(row.result.verdict==='skip')return false;
+ if(!row.result.ok||sectionBinding(row)!==input.binding)throw new Error('Personnel changed after validation. Validate this row again.');
+ await assertWorkforceEmploymentTx(tx,ctx,subject.employmentId,'maintain');
+ await assertWorkforcePersonTx(tx,ctx,subject.personId,'maintain');
+ const [stored]=await tx.select().from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,subject.personId)).for('update');
+ if(!stored)throw new Error('Statutory setup is unavailable.');
+ const historySubject={employmentId:subject.employmentId,personId:subject.personId,pack:subject.pack,country:subject.country};
+ const before=(await readBankStatutoryStateTx(tx,ctx,historySubject)).state;
+ if(row.bank){
+  const bank={...row.bank};
+  for(const field of PERSONNEL_BANK_FIELDS){const key=field.import.writerField! as keyof PersonnelBankValues;if(!row.bankSupplied?.includes(key))(bank as unknown as Record<string,unknown>)[key]=(stored as unknown as Record<string,unknown>)[key]??(field.type==='boolean'?false:null);}
+  await subject.pack.statutory.setBank(ctx,{personId:subject.personId,...bank},tx);
+ }
+ if(row.registrations){const setter=subject.pack.statutory.setRegistrationNumbers;if(!setter)throw new Error('Registration updates are unavailable.');await setter(ctx,{personId:subject.personId,...row.registrations},tx);}
+ if(row.statutoryPatch)await applyBankStatutoryPatchTx(tx,ctx,historySubject,row.statutoryPatch);
+ if(row.operations)await applyPersonnelOperationalValuesTx(tx,ctx,subject.employmentId,row.operations);
+ const diff=bankStatutoryDiff(before,(await readBankStatutoryStateTx(tx,ctx,historySubject)).state);
+ if(diff.changed.length)await recordImportItemTx(tx,ctx,{attemptId:input.attemptId,companyId:subject.companyId,employmentId:subject.employmentId,itemKey:`row-${input.ordinal}`,label:historyLabel(row.result),ordinal:input.ordinal,status:'applied',before:{employeeCode:subject.employeeCode,fields:diff.before},after:{employeeCode:subject.employeeCode,fields:diff.after}});
+ return diff.changed.length>0;
 }
 
 /**

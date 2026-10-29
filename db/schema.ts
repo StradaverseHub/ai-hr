@@ -11267,6 +11267,21 @@ export const importAttemptEvent=pgTable('import_attempt_event',{
  kind:text('kind').notNull().$type<import('../lib/import-history').ImportEventKind>(),actorId:uuid('actor_id').notNull().references(()=>appUser.id),
  reason:text('reason'),detail:jsonb('detail').notNull().default({}).$type<Record<string,unknown>>(),createdAt:createdAt(),
 },t=>[index('import_attempt_event_attempt_idx').on(t.tenantId,t.attemptId,t.createdAt),uniqueIndex('import_attempt_confirm_once_uq').on(t.attemptId).where(sql`${t.kind}='confirmed'`),uniqueIndex('import_attempt_revert_once_uq').on(t.attemptId).where(sql`${t.kind}='reverted'`)]);
+/** Mutable operational checkpoints; immutable HR change history remains in import_attempt*. */
+export const bankImportJob=pgTable('bank_import_job',{
+ id:id(),tenantId:tenantId(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),context:jsonb('context').notNull(),companyIds:uuid('company_ids').array().notNull().default(sql`'{}'::uuid[]`),
+ sourceName:text('source_name').notNull(),sourceHash:text('source_hash').notNull(),sourceBytes:integer('source_bytes').notNull(),uploadedBytes:integer('uploaded_bytes').notNull().default(0),
+ state:text('state').notNull().default('uploading'),total:integer('total').notNull().default(0),validated:integer('validated').notNull().default(0),valid:integer('valid').notNull().default(0),
+ invalid:integer('invalid').notNull().default(0),unchanged:integer('unchanged').notNull().default(0),processed:integer('processed').notNull().default(0),saved:integer('saved').notNull().default(0),failed:integer('failed').notNull().default(0),
+ attemptId:uuid('attempt_id').references(()=>importAttempt.id),error:text('error'),createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('bank_import_job_active_source').on(t.tenantId,t.sourceHash).where(sql`${t.state} in ('uploading','queued','validating','ready','importing')`),index('bank_import_job_queue').on(t.createdAt).where(sql`${t.state} in ('queued','validating','importing')`)]);
+export const bankImportChunk=pgTable('bank_import_chunk',{
+ jobId:uuid('job_id').notNull().references(()=>bankImportJob.id,{onDelete:'cascade'}),part:integer('part').notNull(),content:bytea('content').notNull(),
+},t=>[primaryKey({columns:[t.jobId,t.part]})]);
+export const bankImportRow=pgTable('bank_import_row',{
+ jobId:uuid('job_id').notNull().references(()=>bankImportJob.id,{onDelete:'cascade'}),ordinal:integer('ordinal').notNull(),record:jsonb('record').notNull(),preview:jsonb('preview'),
+ companyId:uuid('company_id').references(()=>company.id),employmentId:uuid('employment_id').references(()=>employment.id),binding:text('binding'),state:text('state').notNull().default('pending'),error:text('error'),
+},t=>[primaryKey({columns:[t.jobId,t.ordinal]}),index('bank_import_row_pending').on(t.jobId,t.state,t.ordinal)]);
 /** Current import amounts for batch dashboards; original closed batch counters stay immutable. */
 const payrollHistoryBatchView=pgView('payroll_history_effective_batch').as(qb=>qb.select({
  ...getTableColumns(payrollBatch),

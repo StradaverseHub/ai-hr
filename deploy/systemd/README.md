@@ -1,5 +1,7 @@
 # Scheduled sweeps — the units, and why none of them are installed by deploy.sh
 
+For the dedicated Bank & Statutory background worker, follow [BANK-IMPORT.md](BANK-IMPORT.md).
+
 Five sweeps are built. **`deploy.sh` deliberately does not install or enable any of them**, because
 scheduling a job that suspends a customer or writes billing data is an OWNER decision, not a
 deployment side effect. These files exist so that decision is a one-line `systemctl enable`, not a
