@@ -41,3 +41,14 @@ it('links supplied Facility tasks to the existing group identity', () => {
   expect(config.groups.some(g => g.id === 'g-facility')).toBe(false);
   expect(config.checklists.flatMap(c => c.tasks).filter(t => t.group === 'facility')).toHaveLength(2);
 });
+
+it('saves incomplete workflow drafts but independently rejects making them live', () => {
+  const config = v9Defaults();
+  const workflow = config.workflows[0];
+  workflow.status = 'draft'; workflow.steps = [{ id: 'draft-step', type: 'doc', template: '', release: false }];
+  expect(() => parseV9Config(config)).not.toThrow();
+  workflow.status = 'published';
+  expect(() => parseV9Config(config)).toThrow('choose a template');
+  workflow.steps = [];
+  expect(() => parseV9Config(config)).toThrow('Add at least one step');
+});

@@ -150,8 +150,11 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
     if (config.bpRules.some(r => !users.some(u => u.id === r.userId)) || config.companies?.some(c => c.signatoryUserId && !users.some(u => u.id === c.signatoryUserId))) throw new M.V9Error('Choose an available user for the PBP and company signatory.');
     const companies = await tx.execute<{ id: string }>(sql`select id from company where tenant_id=${ctx.tenantId}::uuid`);
     if (config.companies?.some(c => !companies.some(co => co.id === c.companyId))) throw new M.V9Error('Choose an available company.');
-    const running = await tx.execute<{ id: string }>(sql`select id from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and exists(select 1 from jsonb_array_elements(data->'runs') r where r->>'status' in ('running','waiting')) limit 1`);
-    if (running.length && !v9Equal(previous.workflows, config.workflows)) throw new M.V9Error('A workflow is waiting on a case. Finish or cancel that execution before changing workflows.');
+    const removed = previous.workflows.filter(workflow => !config.workflows.some(next => next.id === workflow.id)).map(workflow => workflow.id);
+    if (removed.length) {
+      const history = await tx.execute<{ id: string }>(sql`select id from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and exists(select 1 from jsonb_array_elements(data->'runs') r where r->>'workflowId' in (${sql.join(removed.map(id => sql`${id}`), sql`, `)})) limit 1`);
+      if (history.length) throw new M.V9Error('A workflow has already run on a record. Keep it for history and pause it instead.');
+    }
     await tx.execute(sql`insert into lc_v9_config_revision(tenant_id,revision,data,actor_user_id) values(${ctx.tenantId}::uuid,${revision},${JSON.stringify(previous)}::jsonb,${ctx.userId}::uuid)`);
     config.revision = revision + 1;
     await tx.execute(sql`update lc_v9_config set data=${JSON.stringify(config)}::jsonb,revision=${config.revision},updated_at=now() where tenant_id=${ctx.tenantId}::uuid`);
@@ -183,6 +186,7 @@ export async function v9CreateOffboarding(ctx: SessionContext, input: { employme
 }
 export type Command =
   | { type: 'pmPush'; id: string }
+  | { type: 'pmPushSelected' | 'pmKeep'; ids: string[] }
   | { type: 'submit' }
   | { type: 'task'; id: string; status: M.Task['status']; reason: string }
   | { type: 'generate'; template: string }
@@ -202,6 +206,8 @@ export type Command =
 const commandId = z.string().min(1).max(120), reasonText = z.string().max(4000);
 const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('pmPush'), id: commandId }).strict(),
+  z.object({ type: z.literal('pmPushSelected'), ids: z.array(commandId).min(1).max(500) }).strict(),
+  z.object({ type: z.literal('pmKeep'), ids: z.array(commandId).min(1).max(500) }).strict(),
   z.object({ type: z.literal('submit') }).strict(), z.object({ type: z.literal('runWorkflows') }).strict(),
   z.object({ type: z.literal('retryWorkflow'), workflowId: commandId }).strict(),
   z.object({ type: z.literal('task'), id: commandId, status: z.enum(['todo', 'progress', 'done', 'notNeeded']), reason: reasonText }).strict(),
@@ -221,7 +227,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
   command = commandSchema.parse(command);
   if (!Number.isSafeInteger(revision) || revision < 1) throw new M.V9Error('A current case revision is required.');
   await withLifecycleTenant(ctx, async tx => {
-    if (command.type === 'pmPush') await lockV9PersonnelWritesTx(tx, ctx);
+    if (command.type === 'pmPush' || command.type === 'pmPushSelected') await lockV9PersonnelWritesTx(tx, ctx);
     await lockTx(tx, ctx);
     const row = await load(tx, ctx, id); if (row.revision !== revision) throw new M.V9Error('This case changed. Refresh before trying again.', 'conflict');
     const config = await configTx(tx, ctx); if (!config) throw new M.V9Error('V9 configuration is unavailable.');
@@ -241,12 +247,22 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       }
       for (const w of config.workflows) { M.runWorkflow(c, config, w, env, 'submitted'); M.runWorkflow(c, config, w, env, 'date'); }
     }
-    else if (command.type === 'pmPush') {
-      const proposal = c.pmChanges.find(p => p.id === command.id);
-      if (!proposal || proposal.status === 'pushed') throw new M.V9Error('This proposal is unavailable or already applied.');
+    else if (command.type === 'pmPush' || command.type === 'pmPushSelected' || command.type === 'pmKeep') {
+      const ids = command.type === 'pmPush' ? [command.id] : command.ids;
+      if (new Set(ids).size !== ids.length) throw new M.V9Error('Review each proposed change once.');
+      const proposals = ids.map(id => c.pmChanges.find(proposal => proposal.id === id));
+      if (proposals.some(proposal => !proposal || proposal.status === 'pushed' || proposal.status === 'rejected')) throw new M.V9Error('This proposal is unavailable or already applied.');
       if (c.state !== 'submitted') throw new M.V9Error('Reopen this case before applying Personnel changes.');
-      proposal.status = await pushV9PersonnelTx(tx, ctx, { employmentId: c.facts.employmentId, field: proposal.field, before: proposal.before, after: proposal.after });
-      M.appendLog(c, env, proposal.status === 'pushed' ? 'personnel.pushed' : 'personnel.conflict', `${proposal.field}: ${proposal.status === 'pushed' ? 'reviewed change applied' : 'Personnel source changed; review in Personnel Management'}`);
+      for (const proposal of proposals) {
+        if (!proposal) throw new M.V9Error('Proposal unavailable.');
+        if (command.type === 'pmKeep') {
+          proposal.status = 'rejected';
+          M.appendLog(c, env, 'personnel.kept', `${proposal.field}: kept on the case only`);
+        } else {
+          proposal.status = await pushV9PersonnelTx(tx, ctx, { employmentId: c.facts.employmentId, field: proposal.field, before: proposal.before, after: proposal.after });
+          M.appendLog(c, env, proposal.status === 'pushed' ? 'personnel.pushed' : 'personnel.conflict', `${proposal.field}: ${proposal.status === 'pushed' ? 'reviewed change applied' : 'Personnel source changed; review in Personnel Management'}`);
+        }
+      }
     }
     else if (command.type === 'task') M.completeTask(c, command.id, command.status, command.reason, env);
     else if (command.type === 'generate') M.generate(c, config, command.template, env);

@@ -141,3 +141,42 @@ it('rejects fabricated subjects, stale writes and cross-tenant case identifiers'
   await expect(v9Command(foreign, c.id, c.revision, { type: 'cancel', reason: 'not my tenant' })).rejects.toThrow('not found');
   expect((await v9Workspace(admin)).cases.find(x => x.id === c.id)?.state).toBe('submitted');
 });
+
+it('edits a workflow while preserving waiting run definitions and refuses deletion of its history', async () => {
+  const c = await prepared(), config = (await v9Workspace(admin)).config!;
+  const initial = structuredClone(c.runs[0].definition);
+  config.workflows[0].name = 'Revised for future cases';
+  config.workflows[0].steps = [{ id: 'new-action', type: 'notify', subject: 'Future cases', body: '', to: ['employee'], cc: [] }];
+  await v9SaveConfig(admin, config.revision, config);
+  const changed = await v9Workspace(admin);
+  expect(changed.cases.find(row => row.id === c.id)!.runs[0].definition).toEqual(initial);
+  expect(changed.config!.workflows[0].name).toBe('Revised for future cases');
+  const removed = structuredClone(changed.config!); removed.workflows = [];
+  await expect(v9SaveConfig(admin, removed.revision, removed)).rejects.toThrow('history');
+  await v9UploadFile(admin, { caseId: c.id, revision: c.revision, slot: 'fixture-support', name: 'support.pdf', content: Buffer.from('%PDF-1.4\nfixture\n%%EOF') });
+  const resumed = (await v9Workspace(admin)).cases.find(row => row.id === c.id)!;
+  expect(resumed.runs[0].status).toBe('done');
+  expect(resumed.runs[0].definition).toEqual(initial);
+  expect(resumed.mails).toHaveLength(0);
+});
+
+it('pushes only the reviewed selection and keeps other proposals on the case with an audit record', async () => {
+  const c = await signedProposal(), id = c.pmChanges[0].id;
+  await v9Command(admin, c.id, c.revision, { type: 'pmKeep', ids: [id] });
+  const kept = (await v9Workspace(admin)).cases.find(row => row.id === c.id)!;
+  expect(kept.pmChanges[0].status).toBe('rejected'); expect(kept.log.at(-1)!.action).toBe('personnel.kept');
+  const [person] = await owner.client`select phone from person where id=${employee.personId!}::uuid`;
+  expect(person.phone).toBe('+60123456789');
+  await expect(v9Command(admin, kept.id, kept.revision, { type: 'pmPushSelected', ids: [id] })).rejects.toThrow('already applied');
+});
+it('validates the complete reviewed selection before writing Personnel and rejects stale revisions', async () => {
+  const c = await signedProposal(), id = c.pmChanges[0].id;
+  await expect(v9Command(admin, c.id, c.revision, { type: 'pmPushSelected', ids: [id, 'fabricated'] })).rejects.toThrow('unavailable');
+  await expect(v9Command(admin, c.id, c.revision, { type: 'pmPushSelected', ids: [id, id] })).rejects.toThrow('once');
+  const [before] = await owner.client`select phone from person where id=${employee.personId!}::uuid`;
+  expect(before.phone).toBe('+60123456789');
+  await v9Command(admin, c.id, c.revision, { type: 'pmPushSelected', ids: [id] });
+  const [after] = await owner.client`select phone from person where id=${employee.personId!}::uuid`;
+  expect(after.phone).toBe('+60111112222');
+  await expect(v9Command(admin, c.id, c.revision, { type: 'pmPushSelected', ids: [id] })).rejects.toThrow('changed');
+});

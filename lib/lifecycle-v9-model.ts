@@ -41,7 +41,7 @@ export type TemplateVersion = { version: number; state: 'draft' | 'published'; a
 export type Template = {
   id: string; name: string; module: Module; type: 'Form' | 'Letter' | 'Acknowledgement' | 'Attachment';
   rules: Rules; hrStep: 'none' | 'before' | 'after'; employeeAck: boolean; retired: boolean;
-  versions: TemplateVersion[];
+  versions: TemplateVersion[]; note?: string;
 };
 export type Signature = { by: Actor; at: string; method: 'typed' | 'drawn'; value: string; consent: true };
 export type Document = {
@@ -73,14 +73,34 @@ export type Workflow = {
   conditions: { field: RuleField | 'joinWithin'; op: 'is' | 'isNot' | 'lt' | 'gte'; value: string }[];
   steps: Step[]; description: string;
 };
-export type Run = { id: string; workflowId: string; revision: number; date: string; status: 'running' | 'waiting' | 'done' | 'skipped' | 'failed'; cursor: number; reason: string; at: string; definition?: Workflow };
+/** Drafts can be incomplete. Activation must be safe and independently validated by the service. */
+export function workflowProblems(workflow: Workflow, config: Pick<Config, 'templates' | 'emails'>): string[] {
+  const problems: string[] = [];
+  if (!workflow.name.trim()) problems.push('Give this workflow a name.');
+  if (!workflow.steps.length) problems.push('Add at least one step.');
+  for (const [i, step] of workflow.steps.entries()) {
+    const prefix = `Step ${i + 1}: `;
+    if ('template' in step) {
+      const template = (step.type === 'email' ? config.emails : config.templates).find(t => t.id === step.template && t.module === workflow.module);
+      if (!template) problems.push(prefix + 'choose a template in the same module.');
+      else if ('versions' in template && (template.retired || !template.versions.some(v => v.state === 'published'))) problems.push(prefix + 'choose a published, active document template.');
+      else if ('active' in template && !template.active) problems.push(prefix + 'choose an active email template.');
+    }
+    if (step.type === 'waitFile' && !step.slot.trim()) problems.push(prefix + 'choose a file slot.');
+    if (step.type === 'notify' && !step.subject.trim()) problems.push(prefix + 'add a subject.');
+    if ('to' in step && !(Array.isArray(step.to) ? step.to.length : step.to)) problems.push(prefix + 'choose a recipient.');
+  }
+  for (const [i, condition] of workflow.conditions.entries()) if (!condition.value.trim() || condition.field === 'joinWithin' && !/^\d+$/.test(condition.value)) problems.push(`Condition ${i + 1}: choose a valid value.`);
+  return problems;
+}
+export type Run = { id: string; workflowId: string; revision: number; date: string; status: 'running' | 'waiting' | 'done' | 'skipped' | 'failed'; cursor: number; reason: string; at: string; definition?: Workflow; actor?: Actor };
 export type Mail = {
   id: string; key: string; workflowId: string | null; templateId: string | null;
   to: string[]; cc: string[]; subject: string; body: string; documentIds: string[];
   fileIds: string[]; status: 'pending' | 'sent' | 'failed' | 'cancelled'; test: boolean;
   at: string; deliveredAt: string | null; failure: string | null;
 };
-export type PMChange = { id: string; documentId: string; field: string; before: string; after: string; status: 'proposed' | 'pushed' | 'conflict'; sourceRevision: string };
+export type PMChange = { id: string; documentId: string; field: string; before: string; after: string; status: 'proposed' | 'pushed' | 'conflict' | 'rejected'; sourceRevision: string };
 export type FinalFigures = { sourceRevision: string; lastDay: string; leaveDays: string; amount: string; currency: string; payDate: string; lockedAt: string; payrollReference: string };
 export type Case = {
   version: 9; id: string; number: string; module: Module; revision: number; state: CaseState;
@@ -306,7 +326,7 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
   if (step.type === 'email' && !email) throw new V9Error('The email template is inactive or unavailable.');
   const slots = email?.slots.filter(s => s.required && !c.files.some(f => f.slot === `${email.id}:${s.id}`)) ?? [];
   if (slots.length && !test) return `Upload ${slots.map(s => s.label).join(', ')}.`;
-  const roles = Array.isArray(step.to) ? step.to : [step.to];
+  const roles = (Array.isArray(step.to) ? step.to.slice(0, 1) : [step.to]);
   const owners = pendingPre(c).map(t => t.assignee).filter((id): id is string => !!id);
   const targets = [...new Set(roles.flatMap(role => role === 'taskOwners' ? owners : recipients(c, config, role)))];
   if (!targets.length && !test) throw new V9Error('No recipient is linked. Resolve the recipient before continuing.');
@@ -344,19 +364,23 @@ export function queueEmail(c: Case, config: Config, emailId: string, env: Enviro
   const held = enqueue(c, config, { id: key, type: 'email', template: emailId, to: 'employee', cc: [] }, key, null, env, test);
   if (held) throw new V9Error(held);
 }
-/** Evaluate a draft on detached state. A dry run cannot advance a case or consume real IDs. */
-export function previewWorkflow(c: Case, config: Config, workflow: Workflow, env: Environment): { run: Run | null; documents: Document[]; mails: Mail[] } {
-  const copy = structuredClone(c), definition = structuredClone(workflow);
-  definition.status = 'published';
-  copy.runs = copy.runs.filter(r => r.workflowId !== workflow.id);
-  copy.mails = copy.mails.filter(m => m.workflowId !== workflow.id);
-  const previousDocuments = new Set(copy.documents.map(d => d.id)), previousMails = new Set(copy.mails.map(m => m.id));
-  let sequence = 0;
-  const previewEnv = { ...env, nextId: () => `preview-${++sequence}` };
-  const run = runWorkflow(copy, config, definition, previewEnv, definition.trigger.event === 'submitted' ? 'submitted' : 'date');
-  return { run, documents: copy.documents.filter(d => !previousDocuments.has(d.id)), mails: copy.mails.filter(m => !previousMails.has(m.id)) };
+/** Source dry run: inspect every step against current data, independent of submission/date eligibility. */
+export function planWorkflow(c: Case, config: Config, workflow: Workflow, env: Pick<Environment, 'today' | 'userName'>): { matches: boolean; lines: { text: string; ok: boolean }[] } {
+  const matches = workflowMatches(c, workflow, env.today), lines: { text: string; ok: boolean }[] = [];
+  if (!matches) return { matches, lines: [{ text: 'Skipped: this record does not match the conditions.', ok: false }] };
+  lines.push({ text: 'Conditions match.', ok: true });
+  const names = (roles: Role[]) => roles.flatMap(role => { const ids = recipients(c, config, role); return ids.length ? ids.map(env.userName) : [`${role}: no linked recipient`]; }).join(', ');
+  for (const step of workflow.steps) {
+    if (step.type === 'doc') { const doc = activeDocument(c, step.template), template = config.templates.find(t => t.id === step.template); lines.push({ text: doc ? `Already generated: ${doc.name} (v${doc.version})` : `Would generate ${template?.name ?? 'a document'}`, ok: !!template }); }
+    else if (step.type === 'email') { const email = config.emails.find(e => e.id === step.template); lines.push({ text: `Would email "${email?.name ?? ''}" to ${names((Array.isArray(step.to) ? step.to : [step.to]).slice(0, 1))}${step.cc.length ? ', CC ' + names(step.cc) : ''}`, ok: !!email }); }
+    else if (step.type === 'notify') lines.push({ text: `Would alert ${names((Array.isArray(step.to) ? step.to : [step.to]).slice(0, 1))}`, ok: true });
+    else if (step.type === 'waitFile') { const present = c.files.some(file => file.slot === step.slot); lines.push({ text: present ? `${step.label || 'The file'} is uploaded, so it carries on.` : `Would wait: ${step.label || 'the file'} is not uploaded yet.`, ok: present }); }
+    else { const doc = activeDocument(c, step.template), name = config.templates.find(t => t.id === step.template)?.name ?? 'the document', signed = step.by === 'hr' ? !!doc?.hrSignature : !!doc && documentFinal(doc); lines.push({ text: signed ? `${name} is signed, so it carries on.` : `Would wait for ${name} to be signed by ${step.by === 'hr' ? 'the HR signatory' : c.facts.name}.`, ok: signed }); }
+  }
+  return { matches, lines };
 }
 export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: Environment, event: 'submitted' | 'date' | 'resume'): Run | null {
+  if (c.state !== 'submitted' || workflow.status !== 'published') return null;
   const unfinished = c.runs.find(r => r.workflowId === workflow.id && (r.status === 'waiting' || r.status === 'failed'));
   if (unfinished?.definition) workflow = unfinished.definition;
   if (c.state !== 'submitted' || workflow.status !== 'published' || !workflowMatches(c, workflow, env.today)) return null;
@@ -373,7 +397,7 @@ export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: En
   const runKey = waiting?.id ?? `${workflow.id}:${repeat ? env.today : 'once'}`;
   let run = c.runs.find(r => r.id === runKey);
   if (run?.status === 'done') return run;
-  if (!run) { run = { id: runKey, workflowId: workflow.id, revision: config.revision, date: env.today, status: 'running', cursor: 0, reason: '', at: env.now, definition: structuredClone(workflow) }; c.runs.push(run); }
+  if (!run) { run = { id: runKey, workflowId: workflow.id, revision: config.revision, date: env.today, status: 'running', cursor: 0, reason: '', at: env.now, definition: structuredClone(workflow), actor: { ...env.actor } }; c.runs.push(run); }
   const skip = skipReason(c, workflow); if (skip) { if (run.status !== 'skipped' || run.reason !== skip) appendLog(c, env, 'workflow.skipped', `${workflow.name}: ${skip}`); run.status = 'skipped'; run.reason = skip; return run; }
   run.status = 'running';
   try {

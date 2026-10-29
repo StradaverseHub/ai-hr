@@ -13,29 +13,28 @@ function task(id: string, dueOn = '2026-10-30', owner = 'hr'): M.Task { return {
 function workflow(overrides: Partial<M.Workflow> = {}): M.Workflow { return { id: 'workflow', name: 'Reminder', module: 'off', status: 'published', trigger: { event: 'beforeLWD', days: 5, workdays: false, repeat: true, skipIf: 'noPre' }, conditions: [], steps: [{ id: 'notify', type: 'notify', subject: 'Work for {employee.name}', body: 'Hi {owner.name}\n{pending.tasks}', to: 'taskOwners', cc: [] }], description: '', ...overrides }; }
 function template(): M.Template { return { id: 'exit', name: 'Exit form', module: 'off', type: 'Form', rules: {}, hrStep: 'none', employeeAck: false, retired: false, versions: [{ version: 1, state: 'published', at: '', by: '', blocks: [], fields: [{ id: 'answer', label: 'Your answer', type: 'text', owner: 'employee', pmKey: 'mobile', required: true, sensitive: false, options: [], section: 'main', when: null }] }] }; }
 
-it('previews a draft with the real date and wait rules without mutating inputs or allocating live IDs', () => {
+it('plans every draft step for a pending case without date gating, mutation or live ID allocation', () => {
   const { c, config, environment } = fixture();
-  c.tasks = [task('Return laptop')];
-  const definition = workflow({ status: 'draft', steps: [{ id: 'reminder', type: 'notify', subject: 'Reminder', body: '{pending.tasks}', to: ['taskOwners'], cc: [] }, { id: 'file', type: 'waitFile', slot: 'proof', label: 'Proof of return' }] });
+  c.state = 'pending'; c.tasks = [task('Return laptop')];
+  const definition = workflow({ status: 'draft', steps: [{ id: 'file', type: 'waitFile', slot: 'proof', label: 'Proof of return' }, { id: 'reminder', type: 'notify', subject: 'Reminder', body: '{pending.tasks}', to: ['taskOwners'], cc: [] }] });
   const snapshot = JSON.stringify({ c, config, definition });
   environment.nextId = () => { throw Error('Live allocation called'); };
-  const result = M.previewWorkflow(c, config, definition, environment);
-  expect(result.run).toMatchObject({ status: 'waiting', cursor: 1, reason: 'Waiting for Proof of return.' });
-  expect(result.mails).toHaveLength(1);
-  expect(result.mails[0]).toMatchObject({ to: ['hr'], status: 'pending', body: 'Return laptop (due 2026-10-30)' });
+  const result = M.planWorkflow(c, config, definition, { ...environment, today: '2026-10-24' });
+  expect(result.matches).toBe(true);
+  expect(result.lines).toEqual([{ text: 'Conditions match.', ok: true }, { text: 'Would wait: Proof of return is not uploaded yet.', ok: false }, { text: 'Would alert hr', ok: true }]);
   expect(JSON.stringify({ c, config, definition })).toBe(snapshot);
-  expect(M.previewWorkflow(c, config, definition, { ...environment, today: '2026-10-24' }).run).toBeNull();
+  definition.conditions = [{ field: 'caseType', op: 'is', value: 'Retirement' }];
+  expect(M.planWorkflow(c, config, definition, environment)).toEqual({ matches: false, lines: [{ text: 'Skipped: this record does not match the conditions.', ok: false }] });
 });
 
-it('deduplicates multiple To roles while keeping each task owner reminder private', () => {
+it('uses the first To role from the source wire format', () => {
   const { c, config, environment } = fixture();
   c.facts.supervisorUserId = 'hr';
   c.tasks = [task('Return laptop', '2026-10-30', 'hr'), task('Revoke access', '2026-10-30', 'hr2')];
   const definition = workflow({ steps: [{ id: 'reminder', type: 'notify', subject: 'Reminder', body: '{pending.tasks}', to: ['supervisor', 'taskOwners'], cc: [] }] });
   M.runWorkflow(c, config, definition, environment, 'date');
-  expect(c.mails).toHaveLength(2);
-  expect(c.mails.find(m => m.to[0] === 'hr')?.body).toBe('Return laptop (due 2026-10-30)');
-  expect(c.mails.find(m => m.to[0] === 'hr2')?.body).toBe('Revoke access (due 2026-10-30)');
+  expect(c.mails).toHaveLength(1);
+  expect(c.mails[0]).toMatchObject({ to: ['hr'], body: 'Return laptop (due 2026-10-30)\nRevoke access (due 2026-10-30)' });
 });
 
 it('requires HR-owned answers before signing and freezes those fields after signature', () => {
@@ -188,4 +187,20 @@ describe('V9 employee documents and clearance', () => {
     const { c, config, environment } = fixture(); expect(M.lastDayCheck(c, config, environment, null)).toBe('flagged'); expect(c.state).toBe('submitted');
     M.cancel(c, 'Duplicate case', environment); expect(c.mails.every(m => m.status === 'cancelled')).toBe(true); expect(M.lastDayCheck(c, config, environment, null)).toBe('unchanged');
   });
+});
+
+it('pauses a waiting run without replacing its frozen definition, then resumes the original steps', () => {
+  const { c, config, environment } = fixture();
+  const original = workflow({ trigger: { event: 'submitted', days: 0, workdays: false, repeat: false, skipIf: '' }, steps: [{ id: 'wait', type: 'waitFile', slot: 'proof', label: 'Return evidence' }, { id: 'notice', type: 'notify', subject: 'Original subject', body: '', to: ['employee'], cc: [] }] });
+  M.runWorkflow(c, config, original, environment, 'submitted');
+  expect(c.runs[0]).toMatchObject({ status: 'waiting', actor: environment.actor });
+  const snapshot = structuredClone(c.runs[0].definition);
+  const revised = structuredClone(original); revised.status = 'draft'; revised.steps = [];
+  c.files.push({ id: 'file', slot: 'proof', name: 'proof.pdf', storageId: 'private' });
+  expect(M.runWorkflow(c, config, revised, environment, 'resume')).toBeNull();
+  expect(c.runs[0].status).toBe('waiting'); expect(c.mails).toHaveLength(0);
+  revised.status = 'published';
+  M.runWorkflow(c, config, revised, environment, 'resume');
+  expect(c.runs[0].status).toBe('done'); expect(c.runs[0].definition).toEqual(snapshot);
+  expect(c.mails[0].subject).toBe('Original subject');
 });
