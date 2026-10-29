@@ -1,3 +1,4 @@
+import {completeSharedRewardPolicy,establishRewardMembership,migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 /** Real owners/RLS/rollback cases, prepared but not run until the complete resource handover. */
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
@@ -11,9 +12,9 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {pgSqlState} from '../lib/db-error';
 let b:Base,admin:SessionContext,companyB:string,buA:string,buB:string,globalBu:string,policy:RewardPolicy;
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4));
-beforeAll(migrateTestDb);
+beforeAll(migrateRewardMembershipFixture);
 beforeEach(async()=>{
- await resetDb();b=await seedBase();await setModule(b.tenantId,'rewards','active');admin=await entitledCtx(b);policy=defaultPolicy(year);
+ await resetDb();b=await seedBase();await setModule(b.tenantId,'rewards','active');admin=await entitledCtx(b);policy=completeSharedRewardPolicy(year);
  const [c]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional reward company B'}).returning({id:schema.company.id});companyB=c.id;
  const units=await owner.withTenant({...admin,grants:[{role:'hr_admin',companyId:null}]},tx=>tx.insert(schema.businessUnit).values([
   {tenantId:b.tenantId,companyId:b.companyId,code:'B25-REWARD-A',label:'Fictional Unit A',name:'Different legacy A'},
@@ -21,6 +22,9 @@ beforeEach(async()=>{
   {tenantId:b.tenantId,companyId:b.companyId,code:'B25-REWARD-GLOBAL',label:'Fictional global unit',name:'Different legacy global',isGlobal:true},
  ]).returning({id:schema.businessUnit.id,code:schema.businessUnit.code}));
  buA=units.find(u=>u.code==='B25-REWARD-A')!.id;buB=units.find(u=>u.code==='B25-REWARD-B')!.id;globalBu=units.find(u=>u.code==='B25-REWARD-GLOBAL')!.id;
+ await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:buA,departmentId:b.deptA,year});
+ await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:companyB,businessUnitId:buB,year});
+ await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:globalBu,departmentId:b.deptA,year});
 });
 afterAll(closeAll);
 const targets=()=>[{companyId:b.companyId,businessUnitId:buA},{companyId:companyB,businessUnitId:buB}];
@@ -120,6 +124,7 @@ describe('shared reward configuration versions',()=>{
   const v=await createGroup(),foreign=await seedBase();
   await setModule(foreign.tenantId,'rewards','active');const foreignCtx=await entitledCtx(foreign);
   const [foreignUnit]=await owner.db.insert(schema.businessUnit).values({tenantId:foreign.tenantId,companyId:foreign.companyId,code:'FOREIGN-BU',label:'Unrelated unit',name:'Unrelated legacy'}).returning({id:schema.businessUnit.id});
+  await establishRewardMembership(foreignCtx,{tenantId:foreign.tenantId,companyId:foreign.companyId,businessUnitId:foreignUnit.id,departmentId:foreign.deptA,year});
   expect(await listRewardPolicyGroups(foreignCtx)).toEqual([]);
   expect(await rewardPolicyGroupUsage(foreignCtx,v.groupId)).toEqual([]);
   expect(await rewardSharedPolicyChoices(foreignCtx,[b.companyId])).toEqual([]);

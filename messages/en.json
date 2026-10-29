@@ -21558,7 +21558,9 @@
     "salaryExclusion": {
       "label": "Salary increase exclusion – basic salary changed between",
       "help": "Excluded from the salary increase and from the salary increase pool base. Still eligible for bonus, calculated on the adjusted basic salary, and counted in the bonus pool. Lateral transfers with no change to basic salary are not excluded."
-    }
+    },
+    "unitInputsHelp": "Unit budgets, PAT, multipliers, branch ratings and exemptions are maintained separately in the review.",
+    "unitInputsLink": "Open unit inputs"
   },
   "identityEmail": {
     "title": "Email delivery",

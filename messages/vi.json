@@ -21558,7 +21558,9 @@
     "salaryExclusion": {
       "label": "Loại khỏi tăng lương – lương cơ bản thay đổi trong",
       "help": "Không tính tăng lương và không tính vào cơ sở quỹ tăng lương. Vẫn đủ điều kiện thưởng, tính theo lương cơ bản đã điều chỉnh và được tính vào quỹ thưởng. Điều chuyển ngang không đổi lương cơ bản không bị loại."
-    }
+    },
+    "unitInputsHelp": "Ngân sách đơn vị, PAT, hệ số, xếp hạng chi nhánh và miễn trừ được quản lý riêng trong kỳ xét.",
+    "unitInputsLink": "Mở dữ liệu đơn vị"
   },
   "identityEmail": {
     "title": "Gửi email",
