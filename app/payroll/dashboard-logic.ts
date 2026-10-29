@@ -235,6 +235,8 @@ export function applyFilters<
     payPeriod: string;
     companyId: string;
     runType: string;
+    /** b240c0ff — set by listBatches; imported history filters under its imported cycle's run type. */
+    filterRunType?: string | null;
     status: string;
     needsRecalcAt?: Date | string | null;
   },
@@ -250,7 +252,7 @@ export function applyFilters<
     (r) =>
       periods.has(r.payPeriod) &&
       (companies.size === 0 || companies.has(r.companyId)) &&
-      (cycles.size === 0 || cycles.has(r.runType)) &&
+      (cycles.size === 0 || cycles.has(r.filterRunType ?? r.runType)) &&
       // 0b326d5f — the status filter reaches the DERIVED state as well as the stored one, and the two
       // are OR-ed rather than swapped. That is the decision, stated: "Processed" still means every
       // processed run INCLUDING the stale ones (the plan's promise that nothing which already
