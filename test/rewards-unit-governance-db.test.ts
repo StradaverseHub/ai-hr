@@ -1,3 +1,5 @@
+import {ensureAgentPrincipal,agentContext} from '../core/agent-principal';
+import {resolveEntitlementsTx} from '../core/entitlements';
 import {readFileSync} from 'node:fs';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
@@ -39,6 +41,7 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   checker=await actor('checker','gr');bu=await actor('bu','bu');ctro=await actor('ctro','ctro');payroll=await actor('payroll','payroll');
   const v=await view();entryId=v.rows[0].id;
   await saveRewardEntry(gr,unitId,v.unit.revision,entryId,v.rows[0].recommendation,{...emptyFacts(),reviewed:true,talent:'SCORE',performance:'ME'});
+  await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'selection');
  });
  afterAll(closeAll);
  const inputs={forecastCents:900000,actualCents:null,targetCents:1000000,targetMonthsBp:20000,multiplierBp:10000,branchRatings:{}};
@@ -80,4 +83,32 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   await saveInputs();const v=await view();await saveRewardEntry(gr,unitId,v.unit.revision,entryId,v.rows[0].recommendation,{...v.rows[0].facts,performance:'OU'});
   expect((await view()).flags).toContainEqual(expect.objectContaining({code:'PAT-STALE',severity:'block'}));
  });
+ it('denies no-seat callers and named agents, including a restricted physical table owner',async()=>{
+  await saveInputs();
+  const [outsiderPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'No-seat fictional caller',primaryEmail:'noseat@fixture.test'}).returning();
+  const outsiderUser=await createAppUser(b.tenantId,outsiderPerson.id,'employee');
+  const outsider:SessionContext={...gr,userId:outsiderUser,personId:outsiderPerson.id,roles:['employee'],grants:undefined};
+  const snapshots=await withTenant(outsider,tx=>tx.select().from(schema.rewardGovernancePublic).where(eq(schema.rewardGovernancePublic.unitId,unitId)));expect(snapshots).toEqual([]);
+  const agentId=await ensureAgentPrincipal(owner.db,b.tenantId),entitlements=await owner.db.transaction(tx=>resolveEntitlementsTx(tx,b.tenantId));
+  const agent=agentContext(b.tenantId,agentId,entitlements);
+  await expect(saveRewardUnitInputs(agent,unitId,(await view()).unit.revision,inputs,'Agent must not write private PAT')).rejects.toThrow();
+  const [current]=await owner.db.execute<{name:string}>(sql`select current_user as name`);
+  await owner.db.execute(sql`DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='aihr_test_rewards_owner') THEN CREATE ROLE aihr_test_rewards_owner NOLOGIN NOSUPERUSER NOBYPASSRLS INHERIT; END IF; END $$`);
+  await owner.db.execute(sql`GRANT ai_hr_app TO aihr_test_rewards_owner`);
+  await owner.db.execute(sql`ALTER TABLE reward_governance OWNER TO aihr_test_rewards_owner`);
+  await owner.db.execute(sql`ALTER TABLE reward_senior_award OWNER TO aihr_test_rewards_owner`);
+  try{
+   for(const actor of [outsider,agent])await owner.db.transaction(async tx=>{
+    await tx.execute(sql`select set_config('app.tenant_id',${b.tenantId},true),set_config('app.user_id',${actor.userId??''},true),set_config('app.roles','employee',true),set_config('app.grants','[]',true),set_config('app.agent_principal_id',${actor.agent?.principalId??''},true)`);
+    await tx.execute(sql`SET LOCAL ROLE aihr_test_rewards_owner`);
+    expect(await tx.select().from(schema.rewardGovernance).where(eq(schema.rewardGovernance.unitId,unitId))).toEqual([]);
+    expect(await tx.select().from(schema.rewardSeniorAward).where(eq(schema.rewardSeniorAward.unitId,unitId))).toEqual([]);
+   });
+   const [role]=await owner.db.execute<{canAssume:boolean}>(sql`select pg_has_role('ai_hr_app','ai_hr_rewards_post_reader','MEMBER') as "canAssume"`);expect(role.canAssume).toBe(false);
+  }finally{
+   await owner.db.execute(sql`ALTER TABLE reward_governance OWNER TO ${sql.identifier(current.name)}`);
+   await owner.db.execute(sql`ALTER TABLE reward_senior_award OWNER TO ${sql.identifier(current.name)}`);
+  }
+ });
+
 });

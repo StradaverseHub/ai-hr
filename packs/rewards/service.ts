@@ -545,6 +545,15 @@ export async function createRewardUnit(ctx: SessionContext, raw: { name?: string
     const [unit] = await tx.insert(rewardUnit).values({ tenantId: ctx.tenantId, createdBy: ctx.userId!, cycleId, companyId: p.companyId, businessUnitId: p.businessUnitId, policy: shared?.policy??defaultPolicy(p.year),policyGroupVersionId:shared?.versionId??null, snapshotDate: p.snapshotDate }).returning();
     await tx.insert(rewardMember).values({ tenantId: ctx.tenantId, unitId: unit.id, userId: ctx.userId!, role: 'gr' });
     const employees = await snapshotEmployees(tx, ctx, unit);
+    const [governanceReady]=await tx.execute<{ready:boolean}>(sql`select to_regclass('public.reward_governance') is not null as ready`);
+    if(governanceReady?.ready){
+      // Only newly-created reviews adopt the unit-owned workflow automatically. Existing reviews
+      // retain their exact saved budget basis until Group Rewards explicitly adopts new inputs.
+      const state:RewardGovernance={...emptyGovernance(),inputs:{forecastCents:null,actualCents:null,targetCents:null,targetMonthsBp:0,multiplierBp:unit.policy.bonusStructure==='branch'?10000:null,branchRatings:{}},selection:{employmentIds:[],proposedBy:idSchema.parse(ctx.userId),confirmedBy:null,confirmedAt:null}};
+      await tx.insert(rewardGovernance).values({tenantId:ctx.tenantId,unitId:unit.id,state});
+      await tx.update(rewardUnit).set({policy:{...unit.policy,unitGovernanceDigest:createHash('sha256').update(JSON.stringify(state)).digest('hex')}}).where(eq(rewardUnit.id,unit.id));
+      await projectGovernanceTx(tx,ctx,unit.id,state);
+    }
     await stamp(tx, ctx, unit.id, 'created', { cycleId, employeeCount: employees.size,...(shared?{sharedPolicyGroupId:shared.groupId,sharedPolicyVersionId:shared.versionId,sharedPolicyRevision:shared.revision}:{}) });
     return unit.id;
   });
