@@ -140,14 +140,14 @@ REVOKE ALL ON FUNCTION app.delegated_approval_subject(uuid,text,text) FROM PUBLI
 GRANT EXECUTE ON FUNCTION app.delegated_approval_subject(uuid,text,text) TO ai_hr_app;
 --> statement-breakpoint
 -- Only a pending delegated request can resolve a current manager's calculation identity. No general lookup.
-CREATE FUNCTION app.delegated_request_effect_identity(request_id uuid,request_kind text) RETURNS TABLE(user_id uuid,roles text,grants jsonb)
+CREATE FUNCTION app.delegated_request_effect_identity(p_request_id uuid,p_request_kind text) RETURNS TABLE(user_id uuid,roles text,grants jsonb)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  WITH subject AS (
   SELECT q.employment_id,'leave'::text AS module,'leave.replacement'::text AS task FROM public.replacement_leave_request q
-   WHERE request_kind='replacement_leave' AND q.id=request_id AND q.tenant_id=app.current_tenant_id() AND q.status='pending'
+   WHERE p_request_kind='replacement_leave' AND q.id=p_request_id AND q.tenant_id=app.current_tenant_id() AND q.status='pending'
   UNION ALL
   SELECT q.employment_id,'attendance','attendance.correction' FROM public.attendance_correction q
-   WHERE request_kind='attendance' AND q.id=request_id AND q.tenant_id=app.current_tenant_id() AND q.status='pending'
+   WHERE p_request_kind='attendance' AND q.id=p_request_id AND q.tenant_id=app.current_tenant_id() AND q.status='pending'
     AND NOT EXISTS(SELECT 1 FROM public.attendance_workflow_request w WHERE w.correction_id=q.id AND w.tenant_id=q.tenant_id)
  )
  SELECT u.id,string_agg(DISTINCT r.role::text,',' ORDER BY r.role::text),jsonb_agg(jsonb_build_object('role',r.role::text,'companyId',r.company_id) ORDER BY r.role::text,r.company_id)
