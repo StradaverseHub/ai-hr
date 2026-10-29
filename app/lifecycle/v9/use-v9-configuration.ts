@@ -8,6 +8,7 @@ type State = 'saved' | 'pending' | 'saving' | 'error';
 export function useV9Configuration(initial: Config | null, save: (revision: number, value: Config) => Promise<Result>, refreshed: () => void, delay = 500) {
   const [draft, setDraft] = useState(initial), [state, setState] = useState<State>('saved'), [error, setError] = useState('');
   const latest = useRef(initial), generation = useRef(0), savedGeneration = useRef(0), active = useRef(true), inFlight = useRef(false), timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const baselineGroups = useRef(structuredClone(initial?.groups ?? []));
   const revision = useRef(initial?.revision ?? 0), groupsRevision = useRef(initial?.groupsRevision ?? 0), saveRef = useRef(save), refreshedRef = useRef(refreshed), runRef = useRef<() => Promise<void>>(async () => {});
   saveRef.current = save; refreshedRef.current = refreshed;
   const schedule = useCallback(() => { if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(() => { timer.current = null; void runRef.current(); }, delay); }, [delay]);
@@ -21,6 +22,7 @@ export function useV9Configuration(initial: Config | null, save: (revision: numb
       if (!active.current) return;
       if (!result.ok) { setError(result.error); setState('error'); return; }
       revision.current = result.result.revision; groupsRevision.current = result.result.groupsRevision; savedGeneration.current = sentGeneration;
+      baselineGroups.current = structuredClone(value.groups);
       const next = structuredClone(latest.current!);
       for (const stamp of result.result.versionStamps ?? []) {
         const version = next.templates.find(template => template.id === stamp.templateId)?.versions.find(version => version.version === stamp.version);
@@ -35,9 +37,15 @@ export function useV9Configuration(initial: Config | null, save: (revision: numb
   };
   useEffect(() => { active.current = true; return () => { active.current = false; if (timer.current) clearTimeout(timer.current); }; }, []);
   useEffect(() => {
+    // Groups have their own canonical writer. Refresh that read-only reference without
+    // replacing pending workflow/template edits, but never overwrite an intended group edit.
+    if (initial && latest.current && !inFlight.current && (initial.groupsRevision ?? 0) > groupsRevision.current && JSON.stringify(latest.current.groups) === JSON.stringify(baselineGroups.current)) {
+      groupsRevision.current = initial.groupsRevision ?? 0; baselineGroups.current = structuredClone(initial.groups);
+      latest.current = { ...latest.current, groups: structuredClone(initial.groups), groupsRevision: groupsRevision.current }; setDraft(latest.current);
+    }
     if (inFlight.current || generation.current !== savedGeneration.current || initial && initial.revision < revision.current) return;
-    latest.current = initial; revision.current = initial?.revision ?? 0; groupsRevision.current = initial?.groupsRevision ?? 0; setDraft(initial);
-  }, [initial]);
+    latest.current = initial; revision.current = initial?.revision ?? 0; groupsRevision.current = initial?.groupsRevision ?? 0; baselineGroups.current = structuredClone(initial?.groups ?? []); setDraft(initial);
+  }, [initial, state]);
   function edit(change: (value: Config) => void) {
     if (!latest.current) return;
     const next = structuredClone(latest.current); change(next); latest.current = next; generation.current++; setDraft(next); setState(inFlight.current ? 'saving' : 'pending'); setError(''); schedule();

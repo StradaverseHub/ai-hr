@@ -179,6 +179,9 @@ export type Item = {
     removed: boolean;
     retiredFlag: boolean;
     revokeNeeded: boolean;
+    fulfilmentMethod?: 'rr' | 'manual';
+    dueDay?: number;
+    assignmentFailure?: string | null;
     recovery?: { offboardingCaseId: string; outcome: 'returned' | 'revoked'; at: string; by: string; reason: string };
 };
 export type Requisition = {
@@ -220,6 +223,7 @@ export type Case = {
     deviceType: string;
     floor: string;
     notes: string;
+    equipmentOverrides?: Record<string, { group?: string; method?: 'rr' | 'manual'; due?: number }>;
     selected: Id[];
     extras: Extra[];
     checklistOverride: Id | 'none' | null;
@@ -431,6 +435,62 @@ function autoApprove(item: Item, c: Case, a: Actor, env: Environment) {
     }
     refreshApproval(item);
 }
+export function equipmentDate(c: Case, item: Pick<Item, 'dueDay'>): string {
+    const join = effectiveFacts(c).joinDate, day = item.dueDay ?? 1;
+    if (day === 0) { if (!validDate(join)) fail('Choose a valid join date.'); return join; }
+    const due = dayDate(join, day); if (!validDate(due)) fail('The equipment due date is outside the supported calendar.'); return due;
+}
+function validateEquipmentOverrides(config: Config, c: Case) {
+    for (const [id, override] of Object.entries(c.equipmentOverrides ?? {})) {
+        if (!config.catalogue.some(item => item.id === id) || override.group !== undefined && !config.groups.some(group => group.id === override.group) || override.method !== undefined && !['rr','manual'].includes(override.method) || override.due !== undefined && (!Number.isInteger(override.due) || override.due < -999 || override.due > 9999)) fail('Review the equipment assignment overrides.');
+    }
+}
+export type EquipmentBulk = { ids: string[]; group?: string; method?: 'rr' | 'manual'; due?: number };
+export function assignEquipment(config: Config, c: Case, item: Item, a: Actor, env: Environment) {
+    const group = config.groups.find(group => group.id === item.team), due = equipmentDate(c, item);
+    const candidates = (group?.members ?? []).filter(id => env.users.includes(id) && available(env, id, due) && (!group!.limit || (env.taskLoads[id] ?? 0) < group!.limit));
+    candidates.sort((a, b) => (env.taskLoads[a] ?? 0) - (env.taskLoads[b] ?? 0) || group!.members.indexOf(a) - group!.members.indexOf(b));
+    item.claim = candidates[0] ?? null;
+    item.assignmentFailure = item.claim ? null : 'No eligible member is available on ' + due + ' within this team’s open-task limit.';
+    if (item.claim) env.taskLoads[item.claim] = (env.taskLoads[item.claim] ?? 0) + 1;
+    log(c, a, env, item.claim ? 'item.assigned' : 'item.assignment_failed', item.name);
+}
+export function manualEquipment(config: Config, c: Case, id: string, user: string | null, a: Actor, env: Environment, rr = false) {
+    const request = currentReq(c), item = request?.items.find(item => item.id === id);
+    if (c.state !== 'submitted' || !request || request.cancelledAt || request.handedAt || !item || !activeItem(item) || ['ready','handed'].includes(item.state)) fail('Choose an open approved equipment item.');
+    if (!a.module && !inGroup(config, item.team, a.id)) fail('Only the fulfilling team or onboarding editors can assign this item.', 'forbidden');
+    if (user && (!env.users.includes(user) || !inGroup(config, item.team, user))) fail('Choose an eligible member of the fulfilling team.');
+    if (item.claim) env.taskLoads[item.claim] = Math.max(0, (env.taskLoads[item.claim] ?? 0) - 1);
+    item.claim = null; item.assignmentFailure = null;
+    if (rr) assignEquipment(config, c, item, a, env);
+    else { item.claim = user; if (user) env.taskLoads[user] = (env.taskLoads[user] ?? 0) + 1; log(c, a, env, 'item.assigned', item.name + (user ? ' · ' + (env.userNames?.[user] ?? 'Team member') : ' · unassigned')); }
+}
+export function bulkEquipment(config: Config, c: Case, change: EquipmentBulk, a: Actor, env: Environment) {
+    moduleActor(a);
+    if (!change.ids.length || new Set(change.ids).size !== change.ids.length || change.group === undefined && change.method === undefined && change.due === undefined) fail('Choose items and at least one equipment change.');
+    if (change.group !== undefined && !config.groups.some(group => group.id === change.group)) fail('Choose an existing assignment group.');
+    if (change.method !== undefined && !['rr','manual'].includes(change.method)) fail('Choose Round robin or Manual.');
+    if (change.due !== undefined && (!Number.isInteger(change.due) || change.due < -999 || change.due > 9999)) fail('Choose an equipment due day from -999 to 9999.');
+    let changed = change.ids.length;
+    if (c.state === 'pending') {
+        if (change.ids.some(id => ![...c.selected, ...c.extras.map(item => item.catalogueId)].includes(id) || !config.catalogue.some(item => item.id === id))) fail('Choose only items selected on this case.');
+        c.equipmentOverrides ??= {};
+        for (const id of change.ids) c.equipmentOverrides[id] = { ...c.equipmentOverrides[id], ...(change.group !== undefined ? { group: change.group } : {}), ...(change.method !== undefined ? { method: change.method } : {}), ...(change.due !== undefined ? { due: change.due } : {}) };
+    } else {
+        const request = currentReq(c);
+        if (c.state !== 'submitted' || !request || request.cancelledAt || request.handedAt) fail('This requisition is closed.');
+        if (change.ids.some(id => !request.items.some(item => item.id === id))) fail('An equipment item is no longer available.');
+        const targets = request.items.filter(item => change.ids.includes(item.id) && !item.removed && !['rejected','withdrawn'].includes(item.approval) && !['ready','handed'].includes(item.state));
+        changed = targets.length; if (!changed) fail('No open equipment items match this change.');
+        for (const item of targets) {
+            if (change.due !== undefined) { item.dueDay = change.due; }
+            if (change.method !== undefined) item.fulfilmentMethod = change.method;
+            if (change.group !== undefined && change.group !== item.team) { if (item.claim) env.taskLoads[item.claim] = Math.max(0, (env.taskLoads[item.claim] ?? 0) - 1); item.team = change.group; item.claim = null; item.assignmentFailure = null; }
+            if ((item.fulfilmentMethod ?? (config.v9ChecklistRevision ? 'rr' : 'manual')) === 'rr' && !item.claim && activeItem(item)) assignEquipment(config, c, item, a, env);
+        }
+    }
+    log(c, a, env, 'equipment.bulk_updated', changed + ' items · ' + [change.group ? 'team ' + config.groups.find(group => group.id === change.group)!.name : '', change.method ?? '', change.due !== undefined ? 'due Day ' + change.due : ''].filter(Boolean).join(' · '));
+}
 export function addItem(config: Config, c: Case, r: Requisition, cat: Catalogue, source: 'matched' | 'exception', fromCase: boolean, reason: string, send: boolean, confirmedBy: Id | null, a: Actor, env: Environment): Item {
     if (!cat.active)
         fail('This catalogue item is retired.');
@@ -456,8 +516,13 @@ export function addItem(config: Config, c: Case, r: Requisition, cat: Catalogue,
             env.lifetimeApprovals[id] = (env.lifetimeApprovals[id] ?? 0) + 1;
         }
     }
+    if (config.v9ChecklistRevision) {
+        const override = c.equipmentOverrides?.[cat.id];
+        item.team = override?.group ?? item.team; item.fulfilmentMethod = override?.method ?? 'rr'; item.dueDay = override?.due ?? -1;
+    }
     r.items.push(item);
     autoApprove(item, c, a, env);
+    if (item.fulfilmentMethod === 'rr' && activeItem(item)) assignEquipment(config, c, item, a, env);
     log(c, a, env, 'item.added', cat.name);
     return item;
 }
@@ -475,6 +540,7 @@ export function validateCase(config: Config, c: Case) {
     if (c.checklistOverride && c.checklistOverride !== 'none' && !config.checklists.some(cl => cl.id === c.checklistOverride) && !(c.personnelStatus === 'Active' && c.confirmedChecklist?.id === c.checklistOverride))
         fail('The selected checklist is unavailable. Choose another checklist or No checklist.', 'invalid', ['checklistOverride']);
     const f = effectiveFacts(c), missing = missingCaseFields(c);
+    validateEquipmentOverrides(config, c);
     if (missing.length)
         fail('Complete: ' + missing.map(key => REQUIRED_FIELD_LABELS[key] ?? key).join(', '), 'required', missing);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(f.joinDate) || Number.isNaN(Date.parse(f.joinDate)) || new Date(f.joinDate).toISOString().slice(0, 10) !== f.joinDate)
@@ -609,7 +675,7 @@ export function reconcileItems(config: Config, c: Case, a: Actor, env: Environme
         r.noteVersion++;
     }
 }
-export type CasePatch = Partial<Pick<Case, 'hiring' | 'replacedEmployee' | 'deviceType' | 'floor' | 'notes' | 'selected' | 'extras' | 'checklistOverride'>> & {
+export type CasePatch = Partial<Pick<Case, 'hiring' | 'replacedEmployee' | 'deviceType' | 'floor' | 'notes' | 'selected' | 'extras' | 'checklistOverride' | 'equipmentOverrides'>> & {
     local?: Partial<Facts>;
 };
 export function saveCase(config: Config, c: Case, patch: CasePatch, a: Actor, env: Environment) {
@@ -624,9 +690,10 @@ export function saveCase(config: Config, c: Case, patch: CasePatch, a: Actor, en
             fail('HR access is required.', 'forbidden');
         c.local[key as keyof Facts] = value;
     }
-    for (const key of ['hiring', 'replacedEmployee', 'deviceType', 'floor', 'notes', 'selected', 'extras', 'checklistOverride'] as const)
+    for (const key of ['hiring', 'replacedEmployee', 'deviceType', 'floor', 'notes', 'selected', 'extras', 'checklistOverride', 'equipmentOverrides'] as const)
         if (patch[key] !== undefined)
             (c as unknown as Record<string, unknown>)[key] = structuredClone(patch[key]);
+    validateEquipmentOverrides(config, c);
     if (c.state === 'submitted') {
         if (priorChecklist !== JSON.stringify(matchChecklist(config, c).checklist))
             c.reconcileNeeded = true;
@@ -743,6 +810,7 @@ export function decide(config: Config, c: Case, itemIds: Id[], decision: 'approv
         refreshApproval(item);
         if (decision === 'approve')
             autoApprove(item, c, a, env);
+        if (item.fulfilmentMethod === 'rr' && !item.claim && activeItem(item)) assignEquipment(config, c, item, a, env);
     }
 }
 export function assignApproval(config: Config, c: Case, itemId: Id, stepId: Id, user: Id | null, a: Actor, env: Environment) {
@@ -764,6 +832,7 @@ export function assignApproval(config: Config, c: Case, itemId: Id, stepId: Id, 
                 s.fallback = !id && s.method === 'rr';
                 s.unavailable = !id;
                 autoApprove(i, c, a, env);
+                if (i.fulfilmentMethod === 'rr' && !i.claim && activeItem(i)) assignEquipment(config, c, i, a, env);
             }
     log(c, a, env, 'approval.assigned', item.name);
 }
@@ -773,8 +842,10 @@ export function fulfil(config: Config, c: Case, itemId: Id, status: 'todo' | 'pr
         fail('This item is not available for fulfilment.');
     if (!member(config, i.team, a.id))
         fail('Only the fulfilling team can work this item.', 'forbidden');
+    if (i.fulfilmentMethod && ['ready','handed'].includes(i.state)) { if (status === 'done') return; fail('Completed equipment stays on its requisition.', 'conflict'); }
     if (i.claim && i.claim !== a.id)
         fail('A teammate has claimed this item.', 'conflict');
+    if (i.claim && !['ready','handed'].includes(i.state)) env.taskLoads[i.claim] = Math.max(0, (env.taskLoads[i.claim] ?? 0) - 1);
     if (status === 'todo') {
         i.state = i.card && i.stage === 'tech' ? 'printed' : 'todo';
         i.claim = null;
@@ -782,6 +853,7 @@ export function fulfil(config: Config, c: Case, itemId: Id, status: 'todo' | 'pr
     else if (status === 'progress') {
         i.state = 'progress';
         i.claim = a.id;
+        env.taskLoads[a.id] = (env.taskLoads[a.id] ?? 0) + 1;
     }
     else {
         i.claim = null;
@@ -792,9 +864,12 @@ export function fulfil(config: Config, c: Case, itemId: Id, status: 'todo' | 'pr
             if (!tech)
                 fail('Configure the Group Tech fulfilling group before printing access cards.');
             i.team = tech.id;
+            if (i.fulfilmentMethod === 'rr') assignEquipment(config, c, i, a, env);
         }
-        else
+        else {
             i.state = 'ready';
+            if (i.fulfilmentMethod) i.claim = a.id;
+        }
     }
     log(c, a, env, 'item.status', i.name + ' · ' + i.state);
 }

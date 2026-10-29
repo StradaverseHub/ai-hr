@@ -46,7 +46,7 @@ The existing system already resolves Business Group from a draft department and,
 
 Persist dates as ISO and display dates day-first. The business clock belongs to the repository's Malaysia date helper, never a hardcoded prototype date or the server host timezone.
 
-Onboarding checklist Day 1 is the join date. Positive Day N means join date plus N minus 1; negative days are literal days before joining. Offboarding checklist Day 0 is the last working day and its offsets are literal. Workflow afterJoin offsets are elapsed days, so offset 6 releases on onboarding Day 7.
+Onboarding checklist Day 1 is the join date. Positive Day N means join date plus N minus 1; negative days are literal days before joining. Offboarding checklist Day 0 is the last working day and its offsets are literal. Workflow afterJoin offsets are elapsed days, so offset 6 releases on onboarding Day 7. Equipment/access uses a separate source control: its default is Day -1, and its four-character due-day input accepts Day0 as the join-date anchor. This does not change the checklist Day0 rejection.
 
 The supplied working-day trigger counts Monday to Friday and does not exclude holidays. A before-anchor workflow catches up within its due-to-anchor window; after-anchor workflows catch up after their due date. It is not an exact-date-only scheduler. A waiting execution resumes when its condition is met, while previously completed send steps remain deduplicated.
 

@@ -1,6 +1,6 @@
 import type { Case, Config } from './lifecycle-v9-model';
 import { isResolved } from './lifecycle-v9-model';
-import { currentReq, effectiveFacts, type Case as NativeCase, type Config as NativeConfig } from './onboarding-model';
+import { currentReq, effectiveFacts, equipmentDate, type Case as NativeCase, type Config as NativeConfig } from './onboarding-model';
 export type LifecycleQueueRow = {
   id: string; caseId: string; revision: number; owner: 'native' | 'v9'; module: 'onb' | 'off';
   kind: 'checklist' | 'system' | 'device' | 'return' | 'revoke'; taskId: string; title: string; person: string;
@@ -21,7 +21,7 @@ export function lifecycleQueueRows(cases: Case[], config: Config, native: { conf
     for (const task of c.tasks) out.push({ ...base, id: `native:${c.id}:task:${task.id}`, kind: 'checklist', taskId: task.id, title: task.name, due: task.dueOn, assignee: task.assignee, group: task.group, status: task.status, done: task.status === 'done', mine: task.assignee === actor, team: native!.config.groups.some(g => g.id === task.group && g.members.includes(actor)), locked: task.gate && !req?.handedAt ? 'After Day 1 handover' : task.opensOn && task.opensOn > today ? `Opens ${task.opensOn}` : null, document: !!task.documentTemplate });
     for (const item of req?.cancelledAt ? [] : req?.items ?? []) {
       if (item.removed || item.approval === 'withdrawn' || item.approval === 'rejected') continue;
-      out.push({ ...base, id: `native:${c.id}:item:${item.id}`, kind: item.type, taskId: item.id, title: item.name, due: facts.joinDate, assignee: item.claim, group: item.team, status: item.state, done: item.state === 'ready' || item.state === 'handed', mine: item.claim === actor, team: native!.config.groups.some(g => g.id === item.team && g.members.includes(actor)), locked: item.approval === 'pending' ? 'Awaiting approval' : null, document: false });
+      out.push({ ...base, id: `native:${c.id}:item:${item.id}`, kind: item.type, taskId: item.id, title: item.name, due: equipmentDate(c, item), assignee: item.claim, group: item.team, status: item.state, done: item.state === 'ready' || item.state === 'handed', mine: item.claim === actor, team: native!.config.groups.some(g => g.id === item.team && g.members.includes(actor)), locked: item.approval === 'pending' ? 'Awaiting approval' : null, document: false });
     }
   }
   return out.sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999') || a.person.localeCompare(b.person) || a.id.localeCompare(b.id));

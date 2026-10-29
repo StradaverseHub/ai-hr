@@ -12,8 +12,9 @@ import { specificity, canonicalRules } from '@/lib/onboarding-model';
 import { saveOnboardingConfig, saveOnboardingChecklistTasks } from '@/app/lifecycle/onboarding/v31-actions';
 type Context = Awaited<ReturnType<typeof onboardingContext>>;
 type Options = Awaited<ReturnType<typeof onboardingOptions>>;
-export function OnboardingSettings({ context, options, initialTab = 'settings', embedded = false }: {
+export function OnboardingSettings({ context, options, initialTab = 'settings', embedded = false, onError }: {
     embedded?: boolean;
+    onError?: (error: string) => void;
     context: Context;
     options: Options;
     initialTab?: 'checklists' | 'settings' | 'groups' | 'access';
@@ -25,13 +26,14 @@ export function OnboardingSettings({ context, options, initialTab = 'settings', 
     const [selectedChecklist,setSelectedChecklist]=useState(context.config.checklists.find(c=>c.owner===context.actor.id)?.id??context.config.checklists[0]?.id??'');
     const selectedChecklistId=config.checklists.some(c=>c.id===selectedChecklist)?selectedChecklist:config.checklists[0]?.id;
     const actor = context.actor, directory = context.directory;
-    const configRef = useRef(config), revisionRef = useRef(context.revision), queue = useRef(Promise.resolve()), failed = useRef(false);
-    const change = (fn: (c: OnboardingConfig) => void) => { const n = structuredClone(configRef.current); fn(n); configRef.current = n; setConfig(n); setSaved(''); return n; };
+    const configRef = useRef(config), revisionRef = useRef(context.revision), queue = useRef(Promise.resolve()), failed = useRef(false), edits = useRef(0), dirty = useRef(false), writes = useRef(0);
+    const change = (fn: (c: OnboardingConfig) => void) => { const n = structuredClone(configRef.current); fn(n); edits.current++; dirty.current = true; configRef.current = n; setConfig(n); setSaved(''); return n; };
     const enqueue = (write: (revision: number) => Promise<{
         error: string | null;
         revision: number | null;
         code?: string;
     }>, onFailure?:()=>void) => start(async () => {
+        writes.current++;
         const pending = queue.current.then(async () => {
             if (failed.current) { onFailure?.(); return; }
             setError('');
@@ -49,12 +51,24 @@ export function OnboardingSettings({ context, options, initialTab = 'settings', 
             }
         }).catch(() => { failed.current = true; setError('The change could not be saved. Reload and try again.'); onFailure?.(); });
         queue.current = pending;
-        await pending;
+        await pending; writes.current--;
     });
-    const save = (value = configRef.current, onFailure?:()=>void) => { const snapshot = structuredClone(value); enqueue(revision => saveOnboardingConfig(revision, snapshot, replacements, flagRetired),onFailure); };
+    const save = (value = configRef.current, onFailure?:()=>void) => {
+        const snapshot = structuredClone(value), generation = edits.current;
+        enqueue(async revision => {
+            const result = await saveOnboardingConfig(revision, snapshot, replacements, flagRetired);
+            if (!result.error && result.revision !== null && edits.current === generation) { dirty.current = false; initialSettings.current = configRef.current; if (flagRetired) setFlagRetired(false); }
+            return result;
+        }, onFailure);
+    };
     const initialSettings = useRef(config);
     useEffect(() => {
-        if (!embedded || tab !== 'settings' || config === initialSettings.current && !flagRetired) return;
+        if (!embedded || dirty.current || writes.current || busy || failed.current || context.revision < revisionRef.current) return;
+        configRef.current = context.config; revisionRef.current = context.revision; initialSettings.current = context.config; setConfig(context.config);
+    }, [context, embedded, busy]);
+    useEffect(() => { if (embedded) onError?.(error); }, [embedded, error, onError]);
+    useEffect(() => {
+        if (!embedded || !['settings','groups'].includes(tab) || config === initialSettings.current && !flagRetired) return;
         const timer = setTimeout(() => save(config), 600);
         return () => clearTimeout(timer);
         // Saves use the serialized canonical writer and its acknowledged revision.

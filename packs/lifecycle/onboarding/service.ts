@@ -64,6 +64,7 @@ async function environmentTx(tx: Tx, ctx: SessionContext, config: M.Config, all:
     for (const c of all) {
         for (const t of c.tasks)
             dates.add(t.dueOn);
+        for (const item of M.currentReq(c)?.items ?? []) if (M.validDate(M.effectiveFacts(c).joinDate)) dates.add(M.equipmentDate(c, item));
         const f = M.effectiveFacts(c);
         if (M.validDate(f.joinDate))
             for (const cl of config.checklists)
@@ -277,7 +278,7 @@ export async function onboardingMarkSeen(ctx: SessionContext, id: string) {
         await tx.insert(seen).values({ tenantId: ctx.tenantId, userId: uid(ctx), caseId: id }).onConflictDoUpdate({ target: [seen.tenantId, seen.userId, seen.caseId], set: { seenAt: new Date() } });
     });
 }
-export type OnboardingCommand = {
+export type OnboardingCommand = ({ type: 'equipmentBulk' } & M.EquipmentBulk) | { type: 'equipmentAssignee'; itemId: string; user: string | null; roundRobin: boolean } | {
     type: 'save';
     patch: M.CasePatch;
 } | {
@@ -387,6 +388,15 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
             case 'retryApproval':
                 M.retryApprovals(config, c, command.itemId, actor, env);
                 break;
+            case 'equipmentAssignee': { M.manualEquipment(config, c, command.itemId, command.user, actor, env, command.roundRobin); break; }
+            case 'equipmentBulk': {
+                if (command.due !== undefined && c.state === 'submitted') {
+                    const due = M.equipmentDate(c, { dueDay: command.due });
+                    for (const absence of await onboardingUnavailableTx(tx, [due])) (env.leave[absence.user_id] ??= []).push(absence.on_date);
+                }
+                M.bulkEquipment(config, c, command, actor, env);
+                break;
+            }
             case 'itemTeam': {
                 if (!actor.module || c.state !== 'submitted' || !r || r.handedAt)
                     M.fail('Only onboarding editors can repair an open requisition team.', 'forbidden');
@@ -402,7 +412,7 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
                 if (c.state !== 'submitted' || !r || r.handedAt)
                     M.fail('This requisition is closed.');
                 const item = r?.items.find(i => i.id === command.itemId);
-                if (!item || !item.claim || !(actor.master || actor.module && actor.hr))
+                if (!item || !item.claim || ['ready','handed'].includes(item.state) || !(actor.master || actor.module && actor.hr))
                     M.fail('Only an authorised administrator can release another claim.', 'forbidden');
                 item.claim = null;
                 item.state = item.card && item.stage === 'tech' ? 'printed' : 'todo';
@@ -900,7 +910,7 @@ export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTa
                             add({ kind: 'manualApproval', title: 'Choose an approver: ' + s.label, itemIds: [i.id], stepId: s.id, team: true });
                         }
                     if (M.activeItem(i) && i.state !== 'ready' && i.state !== 'handed' && M.inGroup(config, i.team, actor.id))
-                        add({ kind: 'team', title: i.name, itemIds: [i.id], status: i.state === 'progress' ? 'progress' : 'todo', team: true, assigned: i.claim === actor.id, locked: !!i.claim && i.claim !== actor.id, claimedBy: i.claim ? names.find(u => u.id === i.claim)?.name ?? 'A teammate' : null });
+                        add({ kind: 'team', title: i.name, itemIds: [i.id], due: M.equipmentDate(c, i), status: i.state === 'progress' ? 'progress' : 'todo', team: true, assigned: i.claim === actor.id, locked: !!i.claim && i.claim !== actor.id, claimedBy: i.claim ? names.find(u => u.id === i.claim)?.name ?? 'A teammate' : null });
                 }
                 if (M.inGroup(config, config.techGroup, actor.id) && !r.items.some(i => !i.removed && i.approval === 'pending') && r.items.filter(M.activeItem).every(i => i.state === 'ready'))
                     add({ kind: 'handover', title: 'Record Day 1 handover', team: true, overdue: !!f.joinDate && f.joinDate <= today });

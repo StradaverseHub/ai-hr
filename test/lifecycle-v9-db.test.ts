@@ -55,7 +55,7 @@ it('uses native checklist and claimed-equipment load for offboarding, without co
   await v9SaveConfig(admin, onboardingDefinitions.revision, onboardingDefinitions);
   await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Fictional workload joiner', primaryEmail: 'workload@test.invalid' }, employment: { companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId, hiredOn: todayInKualaLumpur() } }, currentStep: 1 });
   let [joiner] = await onboardingList(admin);
-  await onboardingCommand(admin, joiner.case.id, joiner.revision, { type: 'save', patch: { hiring: 'new_hire', local: { supervisor: employmentId }, selected: ['workload-laptop'] } });
+  await onboardingCommand(admin, joiner.case.id, joiner.revision, { type: 'save', patch: { hiring: 'new_hire', local: { supervisor: employmentId }, selected: ['workload-laptop'], equipmentOverrides: { 'workload-laptop': { method: 'manual' } } } });
   [joiner] = await onboardingList(admin);
   await onboardingCommand(admin, joiner.case.id, joiner.revision, { type: 'submit' });
   [joiner] = await onboardingList(admin);
@@ -837,4 +837,33 @@ it('snapshots handed Native items by employment and records recovery on their or
   await expect(v9Command(admin, first.id, finished.revision, { type: 'item', id: first.items[0].id, status: 'todo', reason: '' })).rejects.toThrow('issuing record');
   await v9Command(admin, first.id, finished.revision, { type: 'cancel', reason: 'Fictional duplicate-case recovery check.' });
   expect((await exit()).items).toEqual([]);
+});
+
+it('applies live equipment bulk changes atomically and keeps completed items and group-scoped operators intact', async () => {
+  const context = await onboardingContext(admin), config = structuredClone(context.config), team = config.techGroup, second = randomUUID();
+  config.groups.find(group => group.id === team)!.members = [admin.userId!];
+  config.groups.push({ id: second, name: 'Fictional second equipment team', members: [other.userId!], limit: 0 });
+  config.catalogue = ['bulk-one','bulk-two'].map(id => ({ id, name: 'Fictional ' + id, type: 'system', active: true, rules: {}, workflow: null, team, card: false }));
+  await onboardingSaveConfig(admin, context.revision, config);
+  const shared = (await v9Workspace(admin)).config!; for (const workflow of shared.workflows) workflow.status = 'draft'; await v9SaveConfig(admin, shared.revision, shared);
+  const draft = await saveEmployeeDraft(admin, { currentStep: 1, data: { profile: { fullName: 'Fictional bulk joiner' }, employment: { companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId, hiredOn: addDays(todayInKualaLumpur(), 5) } } });
+  let row = (await onboardingList(admin)).find(row => row.case.sourceDraftId === draft.id)!;
+  await onboardingCommand(admin, row.case.id, row.revision, { type: 'saveSubmit', patch: { hiring: 'new_hire', local: { supervisor: employmentId }, selected: config.catalogue.map(item => item.id) } });
+  row = (await onboardingList(admin)).find(candidate => candidate.case.id === row.case.id)!;
+  const [ready, pending] = currentReq(row.case)!.items;
+  expect(ready.claim).toBe(admin.userId); expect(pending.fulfilmentMethod).toBe('rr'); expect(pending.dueDay).toBe(-1);
+  await onboardingCommand(admin, row.case.id, row.revision, { type: 'fulfil', itemId: ready.id, status: 'done' });
+  row = (await onboardingList(admin)).find(candidate => candidate.case.id === row.case.id)!; const completed = structuredClone(currentReq(row.case)!.items[0]);
+  await onboardingCommand(admin, row.case.id, row.revision, { type: 'equipmentBulk', ids: [ready.id,pending.id], group: second, method: 'rr', due: 0 });
+  row = (await onboardingList(admin)).find(candidate => candidate.case.id === row.case.id)!;
+  expect(currentReq(row.case)!.items[0]).toEqual(completed);
+  expect(currentReq(row.case)!.items[1]).toMatchObject({ id: pending.id, team: second, claim: other.userId, dueDay: 0 });
+  await expect(onboardingCommand(other, row.case.id, row.revision, { type: 'equipmentAssignee', itemId: pending.id, user: employee.userId!, roundRobin: false })).rejects.toThrow('eligible member');
+  await onboardingCommand(other, row.case.id, row.revision, { type: 'fulfil', itemId: pending.id, status: 'progress' });
+  row = (await onboardingList(admin)).find(candidate => candidate.case.id === row.case.id)!;
+  expect(currentReq(row.case)!.items[1].state).toBe('progress');
+  await expect(onboardingCommand(employee, row.case.id, row.revision, { type: 'fulfil', itemId: pending.id, status: 'done' })).rejects.toThrow();
+  const snapshot = JSON.stringify(row.case);
+  await expect(onboardingCommand(admin, row.case.id, row.revision, { type: 'equipmentBulk', ids: [pending.id,randomUUID()], group: team })).rejects.toThrow('no longer available');
+  expect(JSON.stringify((await onboardingList(admin)).find(candidate => candidate.case.id === row.case.id)!.case)).toBe(snapshot);
 });

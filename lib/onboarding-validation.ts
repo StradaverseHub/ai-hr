@@ -16,6 +16,7 @@ export const onboardingConfigSchema = z.object({
 }).strict();
 const fact = z.string().max(500);
 export const onboardingPatchSchema = z.object({
+    equipmentOverrides: z.record(id, z.object({ group: id.optional(), method: z.enum(['rr','manual']).optional(), due: z.number().int().min(-999).max(9999).optional() }).strict()).refine(value => Object.keys(value).length <= 500).optional(),
     local: z.object({ fullName: fact, employeeId: fact, joinDate: fact, title: fact, department: fact, company: fact, businessGroup: fact, grade: fact, employmentType: fact, supervisor: fact, gbsTa: fact, email: fact, costCentre: fact, ic: fact, passport: fact }).partial().strict().optional(),
     hiring: z.enum(['', 'new_hire', 'replacement']).optional(), replacedEmployee: fact.optional(), deviceType: fact.optional(), floor: fact.optional(), notes: z.string().max(10000).optional(),
     selected: z.array(id).max(500).optional(), extras: z.array(z.object({ catalogueId: id, reason: z.string().max(2000), approval: z.boolean() }).strict()).max(500).optional(), checklistOverride: z.string().max(100).nullable().optional(),
@@ -25,6 +26,8 @@ export const onboardingCommandSchema = z.discriminatedUnion('type', [
     z.object({ type: z.literal('saveSubmit'), patch: onboardingPatchSchema }).strict(), z.object({ type: z.literal('submit') }).strict(), z.object({ type: z.literal('cancel'), reason: z.string().min(1).max(1000), note: z.string().max(10000).optional() }).strict(), z.object({ type: z.literal('reopen') }).strict(),
     z.object({ type: z.literal('releaseClaim'), itemId: id }).strict(),
     z.object({ type: z.literal('retryApproval'), itemId: id }).strict(),
+    z.object({ type: z.literal('equipmentAssignee'), itemId: id, user: id.nullable(), roundRobin: z.boolean() }).strict(),
+    z.object({ type: z.literal('equipmentBulk'), ids: z.array(id).min(1).max(500), group: id.optional(), method: z.enum(['rr','manual']).optional(), due: z.number().int().min(-999).max(9999).optional() }).strict(),
     z.object({ type: z.literal('itemTeam'), itemId: id, group: z.string().max(100) }).strict(),
     z.object({ type: z.literal('taskGroup'), taskId: id, group: z.string().max(100) }).strict(),
     z.object({ type: z.literal('task'), taskId: id, status: z.enum(['todo', 'progress', 'done']) }).strict(),

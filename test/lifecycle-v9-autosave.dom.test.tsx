@@ -8,7 +8,7 @@ function deferred<T>() { let resolve!: (value: T) => void; const promise = new P
 type Result = { ok: true; result: ConfigSaveReceipt } | { ok: false; error: string };
 function Harness({ initial, save, refreshed }: { initial: Config; save: (revision: number, value: Config) => Promise<Result>; refreshed: () => void }) {
   const { draft, edit, state, error, retry } = useV9Configuration(initial, save, refreshed, 50);
-  return <><input aria-label="Workflow name" value={draft!.workflows[0].name} onChange={e => edit(value => { value.workflows[0].name = e.target.value; })}/><output>{state}</output><p>{error}</p><button onClick={retry}>Retry</button></>;
+  return <><input aria-label="Workflow name" value={draft!.workflows[0].name} onChange={e => edit(value => { value.workflows[0].name = e.target.value; })}/><output>{state}</output><p>{error}</p><button onClick={retry}>Retry</button><button onClick={() => edit(value => { value.groups[0].name = 'Explicit local group edit'; })}>Edit group</button></>;
 }
 it('serializes saves, retains typing in flight and uses the actual acknowledged revisions', async () => {
   vi.useFakeTimers(); const first = deferred<Result>(), second = deferred<Result>(), save = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise), refreshed = vi.fn(), initial = v9Defaults(); initial.groupsRevision = 8;
@@ -38,4 +38,27 @@ it('keeps a rejected draft visible and stops retrying until explicitly retried',
   await act(async () => { vi.advanceTimersByTime(5000); }); expect(save).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(save).toHaveBeenCalledTimes(2);
+});
+
+it('refreshes the canonical group reference while preserving a pending workflow edit', async () => {
+  vi.useFakeTimers(); const initial = v9Defaults(); initial.groupsRevision = 7;
+  const save = vi.fn().mockResolvedValue({ok:true,result:{revision:2,groupsRevision:9}}), refreshed = vi.fn();
+  const view = render(<Harness initial={initial} save={save} refreshed={refreshed}/>);
+  fireEvent.change(screen.getByRole('textbox'),{target:{value:'Unsaved workflow change'}});
+  const fresh = structuredClone(initial); fresh.groupsRevision = 8; fresh.groups[0].name = 'Canonical group rename';
+  view.rerender(<Harness initial={fresh} save={save} refreshed={refreshed}/>);
+  expect(screen.getByRole('textbox')).toHaveValue('Unsaved workflow change');
+  await act(async()=>{vi.advanceTimersByTime(50);});
+  expect(save.mock.calls[0][1]).toMatchObject({groupsRevision:8,groups:expect.arrayContaining([expect.objectContaining({name:'Canonical group rename'})]),workflows:expect.arrayContaining([expect.objectContaining({name:'Unsaved workflow change'})])});
+});
+it('does not rebase an explicit group edit over another group owner revision', async () => {
+  vi.useFakeTimers(); const initial = v9Defaults(); initial.groupsRevision = 7;
+  const save = vi.fn().mockResolvedValue({ok:false,error:'Assignment groups changed. Refresh before saving.'}), refreshed = vi.fn();
+  const view = render(<Harness initial={initial} save={save} refreshed={refreshed}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Edit group'}));
+  const fresh=structuredClone(initial); fresh.groupsRevision=8; fresh.groups[0].name='Another owner edit';
+  view.rerender(<Harness initial={fresh} save={save} refreshed={refreshed}/>);
+  await act(async()=>{vi.advanceTimersByTime(50);});
+  expect(save.mock.calls[0][1]).toMatchObject({groupsRevision:7,groups:expect.arrayContaining([expect.objectContaining({name:'Explicit local group edit'})])});
+  expect(screen.getByText('Assignment groups changed. Refresh before saving.')).toBeVisible();
 });
