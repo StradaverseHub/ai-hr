@@ -26,9 +26,11 @@ function actionOf(entry:AgentAction){
   prepare:phaseOf(entry.prepare),confirm:phaseOf(entry.confirm),human:'canonical_workflow_required' as const,outcome:entry.outcome});
 }
 /** The action whose owning service IS the module's public boundary leads (it sets the module phases);
- * the others follow in registry order. */
+ * the others follow in registry order. WP13: Automatic-tier reminders are not chat actions (no model nominates,
+ * prepares or confirms them; the agent principal runs them), so they stay out of the module contract and every
+ * existing specialist native-contract digest is unchanged by adding one. */
 function actionsOf<M extends AgentModuleCode>(module:M,publicBoundary:string):readonly Action<M>[]{
- const rows=agentActionsByModule(module) as readonly AgentAction[],primary=rows.filter(row=>row.service===publicBoundary);
+ const rows=(agentActionsByModule(module) as readonly AgentAction[]).filter(row=>row.policy.tier!=='automatic'),primary=rows.filter(row=>row.service===publicBoundary);
  return Object.freeze([...primary,...rows.filter(row=>!primary.includes(row))].map(actionOf)) as unknown as readonly Action<M>[];
 }
 function declaration<M extends AgentModuleCode>(module:M,owner:CanonicalOwner,publicBoundary:string,source:string,money:Declaration<M>['money']='not_exposed',coverage:Declaration<M>['coverage']='partial_actions'):Declaration<M>{

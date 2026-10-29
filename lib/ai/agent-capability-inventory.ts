@@ -289,7 +289,10 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
 export const AGENT_PRINCIPAL_SPECIALISTS=Object.freeze({
  readiness_reminders:{tier:'automatic',setting:'notifications.readiness_nudge_enabled',service:'core/readiness-nudge.ts#sweepReadinessNudges',effect:'reminder to the employee or HR about a missing record field'},
  claims_triage:{tier:'automatic',setting:'claims.input_triage_enabled',service:'core/input-triage.ts#triagePendingClaims',effect:'question to the claimant; not admitted to a model under the principal'},
-} as const satisfies Record<'readiness_reminders'|'claims_triage',{tier:'automatic';setting:string;service:string;effect:string}>);
+ // WP13 (R18): fixed-template reminders only; the registry's Automatic entries name these specialists.
+ approval_chasers:{tier:'automatic',setting:'notifications.approval_chasers_enabled',service:'core/automatic-chasers.ts#runApprovalChasers',effect:'reminder to the current approver of an overdue claim, attendance correction or replacement leave request'},
+ review_chasers:{tier:'automatic',setting:'notifications.review_chasers_enabled',service:'core/automatic-chasers.ts#runReviewChasers',effect:'reminder to the manager or HR about a probation, contract or internship review undecided after its end date'},
+} as const satisfies Record<'readiness_reminders'|'claims_triage'|'approval_chasers'|'review_chasers',{tier:'automatic';setting:string;service:string;effect:string}>);
 
 /** Counts by class, for a Control Tower coverage view and for measuring how the backlog moves. */
 export function agentCapabilityCoverage(){

@@ -51,13 +51,14 @@ import { holidayDatesFor } from './holidays';
  *  conversion here goes through this zone (there is no timezone column on tenant or company today). */
 export const HR_LOCAL_TZ = 'Asia/Kuala_Lumpur';
 
-/** A timestamptz as an ISO yyyy-mm-dd calendar date in HR_LOCAL_TZ (en-CA yields yyyy-mm-dd). */
-function localDate(ts: Date): string {
+/** A timestamptz as an ISO yyyy-mm-dd calendar date in HR_LOCAL_TZ (en-CA yields yyyy-mm-dd). Shared with the
+ *  Automatic-tier approval chasers (core/automatic-chasers.ts, WP13), which generalise this sweep's clock. */
+export function localDate(ts: Date): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: HR_LOCAL_TZ }).format(ts);
 }
 
 /** Pure ISO date + days (UTC string maths — no TZ drift, mirrors employment-review's subtractDays). */
-function addDaysIso(isoDate: string, days: number): string {
+export function addDaysIso(isoDate: string, days: number): string {
   const t = Date.UTC(Number(isoDate.slice(0, 4)), Number(isoDate.slice(5, 7)) - 1, Number(isoDate.slice(8, 10)));
   return new Date(t + days * 86_400_000).toISOString().slice(0, 10);
 }

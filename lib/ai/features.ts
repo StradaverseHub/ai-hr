@@ -7,6 +7,9 @@ export const AI_FEATURES = [
   {id:'module_agent_planning',module:'assistant',kind:'feature',setting:null},
   {id:'readiness_reminders',module:'notifications',kind:'agent',setting:'notifications.readiness_nudge_enabled'},
   {id:'claims_triage',module:'claims',kind:'agent',setting:'claims.input_triage_enabled'},
+  // WP13 (R18): deterministic scheduled reminders under the agent principal. Template-only: no model caller.
+  {id:'approval_chasers',module:'notifications',kind:'agent',setting:'notifications.approval_chasers_enabled'},
+  {id:'review_chasers',module:'notifications',kind:'agent',setting:'notifications.review_chasers_enabled'},
   {id:'payroll_hypotheses',module:'payroll',kind:'agent',setting:'payroll.anomaly_hypotheses_enabled'},
   {id:'payroll_explanation',module:'payroll',kind:'feature',setting:null},
   {id:'pay_rule_draft',module:'payroll',kind:'feature',setting:null},
