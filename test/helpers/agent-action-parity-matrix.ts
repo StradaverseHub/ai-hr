@@ -46,8 +46,11 @@ export type ParityDeclaration=
 
 const D='deny',A='allow';
 /** Decision on another person's pending request: the native assertCanDecide family (self-ban, admin role,
- * current administrative manager, active delegate of that manager), under RLS. */
-const ASSIGNED_DECISION={employee:D,manager:A,assigned_approver:A,company_hr:A,group_hr:A,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
+ * current administrative manager), under RLS. Observed on CI (run 40919722456): the manager's active
+ * whole-scope delegate is REFUSED by the native claim, attendance and replacement-leave services, because the
+ * request row is not visible to them under RLS ("not found"); test/approval-history.test.ts already records
+ * that delegation is non-functional for those modules today. The agent matches the screen. */
+const ASSIGNED_DECISION={employee:D,manager:A,assigned_approver:D,company_hr:A,group_hr:A,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
 /** HR screen behind requireAdmin (isAdmin) whose service writes an administered employment under RLS. */
 const HR_ON_EMPLOYMENT={employee:D,manager:D,assigned_approver:D,company_hr:A,group_hr:A,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
 
