@@ -6,7 +6,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import * as workspace from '../core/system-testing-workspace';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
-import {runModuleReadPlan} from '../core/module-agent-orchestrator';
+import {runModuleReadPlan} from './module-read-plan';
 import {setAiFeature} from '../core/ai-management';
 import {loadAiWorkspace} from '../core/ai-workspace';
 import {type InstructionDefinition} from '../lib/system-testing/model';

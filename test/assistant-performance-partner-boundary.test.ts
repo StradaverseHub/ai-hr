@@ -14,7 +14,7 @@ import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {setAiAllowance} from '../core/ai-management';
 import {assertAiPrincipalTx} from '../core/ai-principal';
 import {toolsFor} from '../core/assistant-tools';
-import {runModuleReadPlan} from '../core/module-agent-orchestrator';
+import {runModuleReadPlan} from './module-read-plan';
 import {withAssistantRead} from '../core/assistant-read-session';
 import * as ownReads from '../core/read';
 import * as perf from '../packs/performance/service';

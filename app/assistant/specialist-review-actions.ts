@@ -5,6 +5,7 @@ import {getBrowserCommandSession} from '@/lib/session';
 import {resolveOwnNotificationServerIdentity} from '@/core/assistant-actions/own-notification-preferences-source';
 import {isAgentModuleCode} from '@/lib/ai/module-agents';
 import {createCanonicalSpecialistCandidate,evaluateCanonicalSpecialistCandidate,promoteCanonicalSpecialistCandidate,rollbackAssistantPromotion,runGovernedSpecialistJob} from '@/core/module-agent-releases';
+import {isAgentPromotionScope} from '@/lib/ai/agent-promotion-scope';
 
 // Specialist candidate review lives on AI management › Assistant; running a specialist job stays on the
 // employee Assistant page.
@@ -25,9 +26,12 @@ export async function evaluateSpecialistCandidateAction(form:FormData){
  const candidateId=String(form.get('candidateId')??'');if(form.get('consented')!=='yes')fail();
  try{const ctx=await getBrowserCommandSession();await evaluateCanonicalSpecialistCandidate(ctx,candidateId);}catch{fail();}finish();
 }
+/** WP11: the approver's scope choice is posted as `scope` (user | company | tenant) and, for company,
+ * `companyId`. Absent means 'user', the pre-WP11 behaviour. The owner rechecks everything. */
 export async function promoteSpecialistCandidateAction(form:FormData){
- const candidateId=String(form.get('candidateId')??''),maxJobs=Number(form.get('maxJobs')),hours=Number(form.get('hours'));
- try{const ctx=await getBrowserCommandSession();await promoteCanonicalSpecialistCandidate(ctx,{candidateId,maxJobs,hours});}catch{fail();}finish();
+ const candidateId=String(form.get('candidateId')??''),maxJobs=Number(form.get('maxJobs')),hours=Number(form.get('hours')),posted=String(form.get('scope')??'user'),companyId=String(form.get('companyId')??'');
+ if(!isAgentPromotionScope(posted))return fail();const scope=posted;
+ try{const ctx=await getBrowserCommandSession();await promoteCanonicalSpecialistCandidate(ctx,{candidateId,maxJobs,hours,...(scope==='user'?{}:{scope}),...(scope==='company'?{companyId}:{})});}catch{fail();}finish();
 }
 export async function rollbackSpecialistCandidateAction(form:FormData){
  const promotionId=String(form.get('promotionId')??'');
