@@ -4,7 +4,7 @@ import {and,asc,desc,eq,inArray,lt,or,sql} from 'drizzle-orm';
 import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {appendEvent,actorOf} from '../db/events';
-import {domainEvent,payComponent,payrollBatch,payrollIndividualTxn,payrollTxnImportAttempt as attempt} from '../db/schema';
+import {domainEvent,payComponent,payrollBatch,payrollIndividualTxn,payrollTxnImportAttempt as attempt,type PayrollTxnImportBinding} from '../db/schema';
 import {adminCompaniesTx} from './read';
 import {isAdmin} from '../lib/authz-model';
 import {analyzeTxnImport,txnImportReason} from './payroll-txn-import';
@@ -25,6 +25,13 @@ async function scope(ctx:SessionContext,ids:string[],tx?:Tx){
 const safePreview=(p:TxnImportPreview):TxnImportPreview=>({...p,rows:p.rows.map(row=>row.reason==='unexpected'?{...row,detail:undefined}:row)});
 const digest=(s:string)=>createHash('sha256').update(s).digest('hex');
 const snapshot=(row:typeof payrollIndividualTxn.$inferSelect)=>JSON.parse(JSON.stringify(row)) as Record<string,unknown>;
+type IndividualAnalysis=Extract<Awaited<ReturnType<typeof analyzeTxnImport>>,{kind:'individual'}>;
+type ResolvedRow=IndividualAnalysis['resolved'] extends Map<number,infer Row>?Row:never;
+function canonicalBinding(r:ResolvedRow):PayrollTxnImportBinding{return {
+ employmentId:r.employmentId,companyId:r.companyId,departmentId:r.departmentId,componentId:r.componentId,
+ intendedCycleId:r.intendedCycleId??null,targetBatchId:r.targetBatchId,targetCycle:r.targetCycle,payPeriod:r.payPeriod,
+ txnDate:r.txnDate,kind:r.kind,quantity:r.quantity,unit:r.unit,sourceRef:r.sourceRef,notes:r.notes,
+};}
 async function eventIds(tx:Tx,id:string){return (await tx.select({id:domainEvent.id}).from(domainEvent).where(and(eq(domainEvent.aggregateId,id),eq(domainEvent.aggregateType,'payroll-individual-txn'))).orderBy(asc(domainEvent.id))).map(e=>e.id);}
 function project(r:typeof attempt.$inferSelect):IndividualImportAttempt{return {id:r.id,sourceName:r.sourceName,method:r.method,createdBy:r.createdBy,createdAt:r.createdAt.toISOString(),state:r.state,records:r.records,preview:safePreview(r.preview),outcomes:r.outcomes,written:r.written,recalcBatchIds:r.recalcBatchIds,revertedAt:r.revertedAt?.toISOString()??null,revertedBy:r.revertedBy};}
 async function owned(tx:Tx,ctx:SessionContext,id:string,scopeIds:string[],lock=false){
@@ -44,7 +51,9 @@ export async function validateIndividualImport(ctx:SessionContext,p:{operationId
  const name=p.sourceName.trim();if(!name.toLowerCase().endsWith('.xlsx')||name.length>255)throw new IndividualImportError('invalidFormat');
  let records:Record<string,string>[]=[],fileError:string|undefined;
  try{records=parseIndividualImport(p.csv,p.method);}catch(e){fileError=e instanceof Error?e.message:'templateMismatch';}
- const preview=fileError?{kind:'individual' as const,total:0,valid:0,invalid:0,rows:[],fileError}:(await analyzeTxnImport(ctx,{kind:'individual',scopeIds:ids,records})).preview;
+ const analysis=fileError?null:await analyzeTxnImport(ctx,{kind:'individual',scopeIds:ids,records});
+ const bindings:Record<string,PayrollTxnImportBinding>=analysis?.kind==='individual'?Object.fromEntries([...analysis.resolved].map(([number,row])=>[String(number),canonicalBinding(row)])):{};
+ const preview=fileError?{kind:'individual' as const,total:0,valid:0,invalid:0,rows:[],fileError}:analysis!.preview;
  const sanitized=safePreview(preview);
  const sourceHash=digest(JSON.stringify({method:p.method,csv:p.csv}));
  return withTenant(ctx,async tx=>{
@@ -52,7 +61,7 @@ export async function validateIndividualImport(ctx:SessionContext,p:{operationId
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+ctx.userId+':'+p.operationId},0))`);
   const [old]=await tx.select().from(attempt).where(and(eq(attempt.operationId,p.operationId),eq(attempt.createdBy,ctx.userId!),eq(attempt.tenantId,ctx.tenantId)));
   if(old){if(old.sourceHash!==sourceHash||JSON.stringify(old.companyIds)!==JSON.stringify(ids))throw new IndividualImportError('operationChanged');return project(old);}
-  const [r]=await tx.insert(attempt).values({tenantId:ctx.tenantId,operationId:p.operationId,createdBy:ctx.userId!,companyIds:ids,sourceName:name,sourceHash,method:p.method,records,preview:sanitized}).returning();
+  const [r]=await tx.insert(attempt).values({tenantId:ctx.tenantId,operationId:p.operationId,createdBy:ctx.userId!,companyIds:ids,sourceName:name,sourceHash,method:p.method,records,bindings,preview:sanitized}).returning();
   await stamp(tx,ctx,r.id,'validated',{total:preview.total,valid:preview.valid,invalid:preview.invalid});return project(r);
  });
 }
@@ -64,16 +73,24 @@ export async function confirmIndividualImport(ctx:SessionContext,p:{id:string;sc
  const nominee=await analyzeTxnImport(ctx,{kind:'individual',scopeIds:p.scopeIds,records:initial.records});
  if(nominee.kind!=='individual')throw new IndividualImportError('templateMismatch');
  return withTenant(ctx,async tx=>{
-  await lockNativePayrollPeriodsTx(tx,ctx,[...nominee.resolved.values()].map(r=>({companyId:r.companyId,payPeriod:r.payPeriod})));
+  await lockNativePayrollPeriodsTx(tx,ctx,[...Object.values(initial.bindings),...nominee.resolved.values()].map(r=>({companyId:r.companyId,payPeriod:r.payPeriod})));
   const r=await owned(tx,ctx,p.id,p.scopeIds,true);if(r.state!=='validated')return project(r);
+  // The bounded owner helper locks only this authorized attempt's immutable canonical identities.
+  // Employment intentionally has no runtime UPDATE grant, so ordinary SELECT FOR SHARE is unavailable.
+  try{await tx.execute(sql`select app.payroll_txn_import_lock_bindings(${r.id}::uuid)`);}catch{throw new IndividualImportError('previewChanged');}
   const analysis=await analyzeTxnImport(ctx,{kind:'individual',scopeIds:p.scopeIds,records:r.records});if(analysis.kind!=='individual')throw new IndividualImportError('templateMismatch');
   analysis.preview=safePreview(analysis.preview);
   const outcomes:IndividualImportOutcome[]=[],recalc=new Set<string>();
   for(const row of analysis.preview.rows){
    const resolved=analysis.resolved.get(row.rowNum);
-   if(!row.ok||!resolved){outcomes.push({row,state:'invalid'});continue;}
    const originally=r.preview.rows.find(old=>old.rowNum===row.rowNum);
-   if(!originally?.ok||originally.amount!==row.amount){outcomes.push({row:{...row,ok:false,reason:'previewChanged'},state:'failed'});continue;}
+   const originalBinding=r.bindings[String(row.rowNum)];
+   // An unbound legacy attempt or a changed lookup must never acquire a new payee/target on confirmation.
+   if(originally?.ok&&(!resolved||!originalBinding||!isDeepStrictEqual(originalBinding,canonicalBinding(resolved))||originally.amount!==row.amount)){
+    outcomes.push({row:{...row,ok:false,reason:'previewChanged'},state:'failed'});continue;
+   }
+   if(!row.ok||!resolved){outcomes.push({row,state:'invalid'});continue;}
+   if(!originally?.ok){outcomes.push({row:{...row,ok:false,reason:'previewChanged'},state:'failed'});continue;}
    try{
     const result=await tx.transaction(async savepoint=>{
      if(resolved.targetBatchId)await savepoint.select({id:payrollBatch.id}).from(payrollBatch).where(eq(payrollBatch.id,resolved.targetBatchId)).for('update');

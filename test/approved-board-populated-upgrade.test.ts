@@ -123,8 +123,8 @@ it('upgrades populated payroll and Rewards from 562 to 566 receipts without rewr
     await actor(tx,f,f.hrUser,'hr_admin',true);
     expect(await tx`select * from app.reward_policy_memberships(ARRAY[${f.company}::uuid,${fixtures.find(other=>other!==f)!.company}::uuid])`).toEqual([{company_id:f.company,business_unit_id:f.validBu}]);
     await tx`insert into reward_governance(unit_id,tenant_id,state) values(${f.unit},${f.tenant},'{"version":1,"forecastCents":12345}'::jsonb)`;
-    const [attempt]=await tx`insert into payroll_txn_import_attempt(tenant_id,operation_id,created_by,company_ids,source_name,source_hash,method,records,preview) values(${f.tenant},${randomUUID()},${f.hrUser},${JSON.stringify([f.company])}::jsonb,'new.xlsx',${'a'.repeat(64)},'monthly','[]'::jsonb,'{"rows":[]}'::jsonb) returning state,written,outcomes,recalc_batch_ids,reverted_at,reverted_by,created_at`;
-    expect(attempt).toMatchObject({state:'validated',written:0,outcomes:[],recalc_batch_ids:[],reverted_at:null,reverted_by:null});expect(attempt.created_at).toBeTruthy();
+    const [attempt]=await tx`insert into payroll_txn_import_attempt(tenant_id,operation_id,created_by,company_ids,source_name,source_hash,method,records,preview) values(${f.tenant},${randomUUID()},${f.hrUser},${JSON.stringify([f.company])}::jsonb,'new.xlsx',${'a'.repeat(64)},'monthly','[]'::jsonb,'{"rows":[]}'::jsonb) returning state,written,outcomes,recalc_batch_ids,reverted_at,reverted_by,created_at,bindings`;
+    expect(attempt).toMatchObject({bindings:{},state:'validated',written:0,outcomes:[],recalc_batch_ids:[],reverted_at:null,reverted_by:null});expect(attempt.created_at).toBeTruthy();
    });
    await expect(storage.client.begin(async tx=>{await actor(tx,f,f.hrUser,'hr_admin',true);await tx`select app.reward_policy_group_commit(NULL,0,'Rejected catalogue-only target',${JSON.stringify(policy)}::jsonb,${JSON.stringify([{companyId:f.company,businessUnitId:f.legacyBu}])}::jsonb)`;})).rejects.toMatchObject({code:'42501'});
   }
