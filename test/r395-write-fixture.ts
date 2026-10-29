@@ -43,6 +43,18 @@ let NEW_USING:string[]=[];
 const originalLiveUsing=new Map<string,string>();
 const WRITE_TABLES = [...new Set(POLICIES.filter((p) => ['ALL', 'INSERT', 'UPDATE'].includes(p.cmd)).map((p) => p.table))].sort();
 
+// Existing UUID-rotated parents may already have their unique child slot occupied. Give the
+// additional child subjects explicit empty parents, preserving every original positive/negative case.
+const FRESH_SUBJECTS=['freshChildA','freshChildB','freshChildA1'] as const;
+const ORIGINAL_FRESH_SUBJECTS=new Set(['freshA','freshB','freshA1']);
+const DIRECT_PARENT_TABLES=new Set(['attendance','employment_review','performance_review']);
+const POSITIVE_CHILD_TABLES=new Set(['attendance_punch','leave_cancellation_step','leave_request_date',
+  'replacement_leave_request_date','employment_review_reminder','loan_repayment','payroll_batch','review_goal']);
+const POSITIVE_PARENT_TABLES=['attendance','leave_request','leave_cancellation_request',
+  'replacement_leave_request','employment_review','employee_loan','pay_period','performance_review','performance_goal'] as const;
+const freshParents=new Map<string,Record<string,string>>();
+
+
 // The first 0515's person form — the defect, re-installable for the mutation run.
 const ADMIN_IN_SET_FN = `
 CREATE OR REPLACE FUNCTION app.visible_person_ids() RETURNS uuid[] LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
@@ -67,7 +79,7 @@ let currentProfilePolicies:Row[]=[];
 const SUBJECTS = [
   'ceo', 'mid', 'leaf', 'leaf2', 'subco', 'bemp', 'midT', 'underMidT', 'termleaf', 'expired', 'future', 'hod', 'hodsub',
   'hSub', 'hA1', 'hB', 'hSubTerminated', 'hPast', 'nMember', 'a2sub', 'aUnderA1', 'r1', 'r2', 'rsub1', 'rsub2', 'dualA',
-  'dualA1', 'gone', 'delegate', 'payrollPartner', 'perfPartner', 'adminA', 't2emp', 't2boss', 'freshA', 'freshB', 'freshA1',
+  'dualA1', 'gone', 'delegate', 'payrollPartner', 'perfPartner', 'adminA', 't2emp', 't2boss', 'freshA', 'freshB', 'freshA1', ...FRESH_SUBJECTS,
 ];
 
 type Outcome = string; // "ok:<sorted returned rows>" or "err:<sqlstate>:<message>"
@@ -158,7 +170,8 @@ beforeAll(async () => {
   await loadVolatile();
   // FRESH subjects: employments with no generic rows yet, so a write is not masked by a one-per-employment
   // unique constraint. freshA reports to ceo, freshB to r2 (company B), freshA1 sits in the HOD's H_A1.
-  for (const [name, co, dept, mgr] of [['freshA', 'A', 'misc', 'ceo'], ['freshB', 'B', 'miscB', 'r2'], ['freshA1', 'A1', 'H_A1', null]] as const) {
+  for (const [name, co, dept, mgr] of [['freshA', 'A', 'misc', 'ceo'], ['freshB', 'B', 'miscB', 'r2'], ['freshA1', 'A1', 'H_A1', null],
+    ['freshChildA','A','misc','ceo'],['freshChildB','B','miscB','r2'],['freshChildA1','A1','H_A1',null]] as const) {
     const [pp] = await q(`insert into person (tenant_id, full_name, primary_email) values ($1, $2, $3) returning id`, [b.tenantId, name, `${name}_${randomUUID().slice(0, 8)}@r395.local`]);
     const [ee] = await q(`insert into employment (tenant_id, person_id, company_id, hired_on) values ($1, $2, $3, '2024-01-01') returning id, tenant_id, person_id, company_id`, [b.tenantId, pp.id, C[co]]);
     await q(`insert into assignment (tenant_id, employment_id, department_id, company_id, employment_type, valid_from) values ($1, $2, $3, $4, 'full_time', '2024-01-01')`, [b.tenantId, ee.id, D[dept], C[co]]);
@@ -168,6 +181,25 @@ beforeAll(async () => {
     EMPS.push(ee);
     // A valid existing parent lets fresh-subject attachment INSERTs exercise RLS, not a binding error.
     await seedLegacyFeedbackParent(ee);
+  }
+  // These are fixture-only parent inserts under the ordinary owner; no policy, trigger or
+  // uniqueness check is disabled. The cancellation parent binds the fresh leave request; both
+  // performance parents name the same subject; the pay period names the same company.
+  for(const [index,name] of FRESH_SUBJECTS.entries()){
+    const subject=empRow(name),bindings:Record<string,string>={};
+    for(const table of POSITIVE_PARENT_TABLES){
+      const build=BUILDERS.get(table);expect(build,`positive-control builder ${table}`).toBeTruthy();
+      const statement=await build!(subject,2000+index,false,bindings);
+      expect(statement,`positive-control parent ${table} for ${name}`).toBeTypeOf('string');
+      const [parent]=await q(statement!+' returning *');
+      expect(parent.tenant_id,`${table} tenant`).toBe(subject.tenant_id);
+      if(Object.hasOwn(parent,'employment_id'))expect(parent.employment_id,`${table} subject`).toBe(subject.id);
+      if(Object.hasOwn(parent,'person_id'))expect(parent.person_id,`${table} person`).toBe(subject.person_id);
+      if(Object.hasOwn(parent,'company_id'))expect(parent.company_id,`${table} company`).toBe(subject.company_id);
+      if(table==='leave_cancellation_request')expect(parent.leave_request_id).toBe(bindings.leave_request);
+      bindings[table]=String(parent.id);
+    }
+    freshParents.set(String(subject.id),bindings);
   }
   const [d] = await q(`select pg_get_functiondef('app.visible_person_ids()'::regprocedure) as def`);
   originalPersonFn = d.def as string;
@@ -204,7 +236,8 @@ export const compareGenericWriteContext = async (i: number) => {
         if (build) {
           let k = 0;
           for (const s of SUBJECTS) {
-            const sql = await build(empRow(s), 1000 + k++, false);
+            const subject=empRow(s);
+            const sql = await build(subject, 1000 + k++, false,POSITIVE_CHILD_TABLES.has(t)?freshParents.get(String(subject.id)):undefined);
             if (!sql) continue;
             stmts.push(`${sql} returning ${proj(t)}`);
             labels.push(`insert ${t} for ${s}`);
@@ -216,6 +249,14 @@ export const compareGenericWriteContext = async (i: number) => {
       const { after, before } = await bothWays(ctx, stmts);
       for (let k = 0; k < stmts.length; k++) {
         expect(after[k], `${ctx.name}: ${labels[k]}`).toBe(before[k]);
+        if(ctx.name==='hr_admin group-wide'){
+          const match=/^insert (\w+) for (\w+)$/.exec(labels[k]);
+          if(match&&((POSITIVE_CHILD_TABLES.has(match[1])&&FRESH_SUBJECTS.includes(match[2] as typeof FRESH_SUBJECTS[number]))
+            ||(DIRECT_PARENT_TABLES.has(match[1])&&ORIGINAL_FRESH_SUBJECTS.has(match[2])))){
+            expect(before[k],`constraint-valid positive control: ${labels[k]}`).toMatch(/^ok:/);
+            expect(after[k],`current-policy positive control: ${labels[k]}`).toMatch(/^ok:/);
+          }
+        }
         tally('generic', labels[k].split(' for ')[0], before[k]);
       }
     };
