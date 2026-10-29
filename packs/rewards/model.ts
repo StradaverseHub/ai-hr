@@ -18,6 +18,7 @@ type Three = [number, number, number];
 type Five = [number, number, number, number, number];
 export type RewardPolicy = {
   year: number; effectiveFrom: string; joinedBefore: string; confirmedBy: string; blockedFrom: string; blockedTo: string;
+  unitGovernanceDigest?: string; activeAsOf?: string; minimumBonusRating?: typeof performances[number]; excludeNotice?: boolean; excludeErCase?: boolean;
   standardPools: Three; hPools: Three; meritMatrix: Record<typeof talents[number], Three>;
   bonusMatrix: Record<string, Five>; ranges: Record<string, Three>; seniorGrades: string[];
   // Absence means the persisted legacy grade rule. Never default old snapshots on parse.
@@ -45,6 +46,7 @@ export type Recommendation = {
 export const policySchema: z.ZodType<RewardPolicy> = z.object({
   year: z.number().int().min(2000).max(2200),
   effectiveFrom: isoDateSchema,
+  unitGovernanceDigest:z.string().regex(/^[a-f0-9]{64}$/).optional(), activeAsOf: isoDateSchema.optional(), minimumBonusRating:z.enum(performances).optional(), excludeNotice:z.boolean().optional(), excludeErCase:z.boolean().optional(),
   joinedBefore: isoDateSchema,
   confirmedBy: isoDateSchema,
   blockedFrom: isoDateSchema,
