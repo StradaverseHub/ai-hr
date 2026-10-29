@@ -1,4 +1,4 @@
-/** UNMOUNTED non-own-subject assigned-work source. Parent command MUST own a top-level Tx and
+/** Human-reviewed non-own-subject assigned-work source. Parent command MUST own a top-level Tx and
  * governed review custody before exposure. Models cannot call confirm or supply a SessionContext. */
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';

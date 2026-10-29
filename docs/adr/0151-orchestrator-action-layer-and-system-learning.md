@@ -430,3 +430,40 @@ A prior-transaction event is refused as proof.
 
 Tier ceiling: Approve. These are HR decisions about someone else's record, and HR is the person who
 confirms.
+
+## Implementation and vocabulary amendment — 29 October 2026
+
+Verified source base: matching main/alpha `b5758c54c`, not the original decision-time `c0dd878b1`.
+This amendment corrects implementation claims; the accepted safety decisions remain binding.
+
+- The catalogue declares **23** action IDs, including the `employees.import` Handoff. **22** have prepared
+  human-review paths; the three own leave/claim changes are now included. Wave 1b's four additions and
+  HR-admin prepared work are separate in-flight changes and are not counted as merged here.
+- Inventory spellings are `registered`, `backlog:<tier>`, `handoff:<reason>` and `internal:<reason>`.
+  These implement the design's classification intent; `human_only` and `not_user_facing` are design
+  vocabulary, not current literal values. A backlog entry is not an executable capability.
+- Authorization composition is spread across source adapters and custody services, not centralized in
+  `module-action-server.ts`. Fresh in-transaction checks and the owning service remain authoritative.
+- Twelve chat tools are hand-listed; the catalogue is not derived from the action registry yet. Chat tool
+  reads execute sequentially. Preparation/confirmation stays outside the model loop regardless of order.
+- Production evaluation/promotion is in `core/module-agent-releases.ts`. The cited
+  `lib/ai/module-agent-improvement.ts` and `core/module-agent-orchestrator.ts` are test-only models, not
+  the live execution owner. Current candidate kinds are routing, read-plan prompt, canonical guidance and conversation.
+  Tool-description and argument-extraction candidates are not implemented. Routing cannot beat the
+  baseline under its present paired criteria. Fixed synthetic holdouts are not redacted production replay.
+- Promotions are per author; automatic baseline fallback follows exceptions/source or provider drift,
+  not measured outcome regression. Author differs from promoter; promoter/evaluator separation is still
+  incomplete. These remain R5/WP11 work. No learning or headcount reduction is established by this PR.
+- At this base the sweep uses a legacy no-login context; explicit orchestrator event attribution does not
+  establish a named tenant principal. PR #41 is separate in-flight principal work. Scheduled model spend
+  remains an owner decision; this documentation grants none.
+- The owner approved **Assistant**, **Control Tower**, **HR work queue**, **scheduled agent**, dropping
+  “module agent” and “specialist” from user-facing language. Code now names the logical bindings module
+  read capabilities. Compatibility exports and historical URLs/DB names remain while concurrent consumers
+  migrate; these are not distinct authority owners. The duplicate Administration → AI navigation entry
+  is removed; the existing redirect remains available to bookmarks.
+
+The 29 October read-only staging check found the retention timer absent. Installation is release-owner
+work under [deployment instructions](../../deploy/DEPLOY.md). See the [AI threat model](../architecture/ai-threat-model.md).
+WP2 and WP4 are separate review candidates; their gate and installation status must be read from their
+exact PR evidence, not inferred from these amendments. No deployment was performed.

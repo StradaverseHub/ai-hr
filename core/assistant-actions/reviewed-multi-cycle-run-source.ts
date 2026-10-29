@@ -1,4 +1,4 @@
-/** UNMOUNTED additional-run CREATE source. Persistent action custody must serialize NEW creation
+/** Human-reviewed additional-run CREATE source. Persistent action custody must serialize NEW creation
  * and own the top-level Tx before human POST/UI exposure. Direct repeated source calls may create
  * additional native drafts; this layer does not invent an idempotency/execution ledger.
  * No money, payroll processing/closing, employee pay preview, payslip or payment is performed. */

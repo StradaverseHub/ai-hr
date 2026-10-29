@@ -1,4 +1,4 @@
-/** UNMOUNTED source adapter. Requires the unapplied reviewed native SQL owner draft. Shared human
+/** Human-reviewed source adapter. Uses the journalled native acknowledgement SQL owner (0629). Shared human
  * custody/POST/CSRF/confirmation UI and actual security acceptance remain separate prerequisites.
  * No model execution, email delivery, provisioning, asset reassignment or reimbursement. */
 import {createHash} from 'node:crypto';

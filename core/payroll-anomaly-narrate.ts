@@ -3,7 +3,7 @@ import {draftInputDigest} from '../lib/ai/draft-input';
 import {assertAiPrincipalTx} from './ai-principal';
 import {resolveEntitlementsTx,assertModuleEnabled} from './entitlements';
 /**
- * ADR-0076 §2.6 — THE ANOMALY NARRATOR. The only place an LLM touches the payroll control tower.
+ * ADR-0076 §2.6 — THE ANOMALY NARRATOR. One payroll explanation surface; payroll-hypothesis also uses the gateway.
  *
  * The queue has been showing operators a detector id and a row of `key=value` in monospace since r177.
  * That is evidence, and it is the right thing to keep — but it is written for whoever built the detector,

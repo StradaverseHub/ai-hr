@@ -1,7 +1,7 @@
 import {assertHumanReviewedActionTier} from '../../lib/ai/agent-action-tier-guard';
 import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
-/** UNMOUNTED closed KB publication in the existing physical review/body lifecycle. No arbitrary
+/** Human-reviewed closed KB publication in the existing physical review/body lifecycle. No arbitrary
  * executor, second ledger, provider drafting or HTTP/tool exposure. A current author confirms actual
  * human content; completed retries reconcile native metadata and NEVER create another article. */
 import {createHash,randomUUID} from 'node:crypto';

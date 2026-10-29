@@ -1,4 +1,4 @@
-/** UNMOUNTED authorised Workforce action. The HR principal stays distinct from the target employee.
+/** Human-reviewed authorised Workforce action. The HR principal stays distinct from the target employee.
  * A governed non-own-subject custody binding/human POST is still required; the existing own-person
  * review table must not be reused by impersonating this subordinate. No all-tenant graph is returned. */
 import {z} from 'zod';

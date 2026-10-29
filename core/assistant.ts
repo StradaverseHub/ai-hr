@@ -30,7 +30,7 @@
  * THE SYSTEM PROMPT AND THE CACHE KEY MUST STAY STABLE. The cacheable prefix is `tools` + `system`, so a
  * single volatile byte — a clock value, a locale, a user id, anything tenant-shaped — invalidates the
  * prefix for every later request and quietly multiplies the cost of the feature. Both are built from
- * constants and the caller's ROLE only. Read the comment on SYSTEM before adding a line to it.
+ * constants plus the authorized catalogue and the caller’s versioned conversation strategy. Read the comment on SYSTEM before adding a line to it.
  */
 import { randomUUID } from 'node:crypto';
 import { assistantSourceDigest, sealAssistantDisclosure, type AssistantSourceRead } from '../lib/ai/assistant-disclosure';
@@ -403,8 +403,8 @@ export async function askAssistant(
 }
 
 /**
- * Execute one bounded model batch in a single caller-owned read transaction. Promises may queue
- * concurrently, but every canonical query uses that same connection and source authority boundary.
+ * Execute one bounded model batch sequentially in a single caller-owned read transaction.
+ * Every canonical query uses that same connection and source authority boundary.
  * Result order remains the request order. No provider call happens inside this transaction.
  */
 async function runTools(

@@ -1,7 +1,7 @@
 import {assertHumanReviewedActionTier} from '../../lib/ai/agent-action-tier-guard';
 import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
-/** UNMOUNTED approved-unit Rewards post custody. Models never calculate, approve or post money. */
+/** Human-reviewed approved-unit Rewards post custody. Models never calculate, approve or post money. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';
 import {z} from 'zod';

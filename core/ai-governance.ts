@@ -22,8 +22,7 @@ async function forcedPauseTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promi
 }
 
 /**
- * SOURCE-ONLY until ai-action-controls.sql has a coordinated, journalled migration and passes its
- * app-role acceptance. Not wired to an endpoint. This is a pause prerequisite, NEVER action authority.
+ * Runtime pause prerequisite used by human action services (migration 0621), NEVER action authority.
  * The caller owns fresh authentication/module/subject/consent checks and the exact transaction.
  * Keep that transaction open through the effect so policy writers cannot race its ai-control lock.
  * No model admission, reservation, quota reset, usage settlement or provider call occurs here.

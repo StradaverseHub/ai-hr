@@ -1,7 +1,7 @@
 import {assertHumanReviewedActionTier} from '../../lib/ai/agent-action-tier-guard';
 import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
-/** UNMOUNTED non-own Org custody. Native graph, original-actor event, body retirement and
+/** Human-reviewed non-own Org custody. Native graph, original-actor event, body retirement and
  * completion share ONE top-level Tx. No synthetic employee, generic executor or second ledger. */
 import {createHash,randomUUID} from 'node:crypto';
 import {and,eq,sql,type SQL} from 'drizzle-orm';

@@ -1,7 +1,7 @@
 // `review:sweep` (0110) — automated probation/contract/internship review opener, run out-of-band
 // (CLI/cron) like accrue-earned.ts. Enumerates tenants with the owner role, then runs sweepDueReviews
-// per tenant with a SYSTEM context (no userId → the domain event's actor is `system`; roles:['hr_admin']
-// authorizes the writes and lets app.is_admin() see every tenant employment). Then dispatches
+// per tenant with the legacy no-login hr_admin context. Services using actorOf stamp `system`;
+// the deterministic orchestrator stamps its own events `agent`. This is not a named agent principal. Then dispatches
 // notifications IN THE SAME SCRIPT — otherwise the "notify manager + HR ~1 month prior" headline is dead
 // in a no-admin-traffic window (dispatchNotifications is otherwise only invoked opportunistically when an
 // admin renders a page). Notifications are gated behind the per-tenant `notifications` MODULE (off ⇒
@@ -14,6 +14,8 @@
 // is a second thing to forget to install". r230 is the proof: the anomaly sweep sat BUILT, DOCUMENTED and
 // never installed in the crontab for six weeks. The nudge agent is additionally OFF per tenant by default
 // (notifications.readiness_nudge_enabled), so an installed job with no opted-in tenant sends nothing.
+// With the current no-login context, model admission refuses: readiness uses templates and claims triage
+// cannot draft. A configured provider alone does not make nightly AI available.
 // R51 722904dc/71b9143a: the SAME nightly pass also drives LEAVE APPROVAL ESCALATION
 // (sweepLeaveApprovalEscalations) — leave requests whose current approval step has sat pending past the
 // company's configured working-day threshold get a bell notification for the next approver. One job, no
@@ -74,8 +76,8 @@ async function main() {
   let notificationsCreated = 0;
   for (const t of tenants) {
     try {
-      // SYSTEM context: no userId, so actorOf(ctx) records the event actor as `system`. The group-wide
-      // hr_admin role authorizes the writes and lets the sweep see every tenant employment.
+      // Legacy no-login context: actorOf stamps system; the orchestrator stamps agent explicitly.
+      // Named tenant-principal integration is separate work; this context is not admitted to model spend.
       //
       // A REAL snapshot, not `entitlementsExempt: 'sweeps'`, because this sweep calls
       // `dispatchNotifications`, which is gated on the BILLABLE `notifications` module. The exempt
