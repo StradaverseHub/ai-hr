@@ -24,6 +24,8 @@ export type AgentFeature = AgentEnablement['feature'];
 const SWITCHED_ON: Record<AgentFeature, (ctx: SessionContext) => boolean> = {
   readiness_reminders: ctx => settingEnabled(ctx, 'notifications.readiness_nudge_enabled'),
   claims_triage: ctx => settingEnabled(ctx, 'claims.input_triage_enabled'),
+  approval_chasers: ctx => settingEnabled(ctx, 'notifications.approval_chasers_enabled'),
+  review_chasers: ctx => settingEnabled(ctx, 'notifications.review_chasers_enabled'),
 };
 
 export const isAgentContext = (ctx: SessionContext): ctx is SessionContext & { agent: NonNullable<SessionContext['agent']> } =>

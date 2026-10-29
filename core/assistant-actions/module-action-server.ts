@@ -21,7 +21,7 @@ import {reviewedPayrollCloseChoiceMetadataTx} from '../../packs/payroll/service'
 import {preparePayrollCloseReview,confirmPayrollCloseReview,reopenPayrollCloseReview,discardPayrollCloseReview,listPayrollCloseReviews} from './payroll-close-review-store';
 import {withTenant,type SessionContext} from '../../db/client';
 import {appOrigin} from '../../lib/real-auth';
-import {AttendanceActionChoices,AttendanceClockSelection,AttendanceClockSource,AssignedLeaveActionChoices,ToilRequestActionChoices,LifecycleAckActionAvailability,KnowledgeActionAvailability,OrgActionSearch,OrgActionChoices,TestingActionChoices,ClaimActionChoices,PerformanceActionChoices,createModuleActionBrowserHandler} from '../../lib/assistant-actions/module-action-http';
+import {AttendanceActionChoices,AttendanceClockSelection,AttendanceClockSource,AssignedLeaveActionChoices,ToilRequestActionChoices,LifecycleAckActionAvailability,KnowledgeActionAvailability,OrgActionSearch,OrgActionChoices,TestingActionChoices,ClaimActionChoices,PerformanceActionChoices,createModuleActionBrowserHandler,type RegisteredModuleActionBrowserOwners} from '../../lib/assistant-actions/module-action-http';
 import {authenticateOwnLeaveBrowserSession} from './own-leave-server';
 import {resolveOwnNotificationServerIdentity} from './own-notification-preferences-source';
 import {prepareModuleActionReview,confirmModuleActionReview,reopenModuleActionReview,discardModuleActionReview,listModuleActionReviews,prepareProfileModuleActionReview,confirmProfileModuleActionReview,reopenProfileModuleActionReview,discardProfileModuleActionReview,listProfileModuleActionReviews,prepareReviewModuleActionReview,confirmReviewModuleActionReview,reopenReviewModuleActionReview,discardReviewModuleActionReview,listReviewModuleActionReviews,prepareOnehrModuleActionReview,confirmOnehrModuleActionReview,reopenOnehrModuleActionReview,discardOnehrModuleActionReview,listOnehrModuleActionReviews} from './module-action-review-store';
@@ -138,11 +138,13 @@ async function orgLabels(supplied:SessionContext,selection:Parameters<typeof rev
 /** Exact trusted native references become human labels only after fresh purpose checks. A failure
  * after an already committed confirmation remains transport uncertainty, never evidence of rollback. */
 async function presentOrgResult(ctx:SessionContext,result:Awaited<ReturnType<typeof reopenOrgActionReview>>){if(result.kind==='prepared'){const r=result.review;return{...result,review:{...r,labels:await orgLabels(ctx,{subordinateEmploymentId:r.content.subordinateEmploymentId,managerEmploymentId:r.content.managerEmploymentId,previousManagerEmploymentId:r.review.before?.managerEmploymentId??null})}};}if(result.kind==='completed'){const r=result.receipt.receipt,{subordinate,manager}=await orgLabels(ctx,{subordinateEmploymentId:r.subordinateEmploymentId,managerEmploymentId:r.managerEmploymentId,previousManagerEmploymentId:null});return{...result,receipt:{...result.receipt,labels:{subordinate,manager}}};}return result;}
+/** WP7: the owners below must cover every browser owner the agent action registry names (compile-time). */
+type ModuleActionBrowserSession=Awaited<ReturnType<typeof authenticateOwnLeaveBrowserSession>>;
 /** Resolve verified identity outside EACH effect/reopen transaction, never from a packet, cached
  * tenant config or encrypted body. Listing/retirement requires no provider-identity admission. */
 export async function handleConfiguredModuleActionBrowserCommand(request:Request):Promise<Response>{
  let publicOrigin:string|undefined;try{publicOrigin=appOrigin();}catch{publicOrigin=undefined;}
- return createModuleActionBrowserHandler({authenticate:authenticateOwnLeaveBrowserSession,
+ return createModuleActionBrowserHandler<ModuleActionBrowserSession>({authenticate:authenticateOwnLeaveBrowserSession,
   countryStatutory:{readEditable:(session,id)=>readCountryStatutoryModuleActionEditable(session.ctx,id),list:session=>listCountryStatutoryReviews(session.ctx),prepare:async(session,input)=>countryStatutoryBrowserResult(session.ctx,await prepareCountryStatutoryReview(session.ctx,input)),reopen:async(session,id)=>countryStatutoryBrowserResult(session.ctx,await reopenCountryStatutoryReview(session.ctx,id)),confirm:async(session,input)=>countryStatutoryBrowserResult(session.ctx,await confirmCountryStatutoryReview(session.ctx,input)),discard:(session,input)=>discardCountryStatutoryReview(session.ctx,input)},
   rewardsPost:{list:session=>listRewardsPostReviews(session.ctx),prepare:(session,input)=>prepareRewardsPostReview(session.ctx,input),reopen:(session,id)=>reopenRewardsPostReview(session.ctx,id),confirm:(session,input)=>confirmRewardsPostReview(session.ctx,input),discard:(session,input)=>discardRewardsPostReview(session.ctx,input)},
   multiCycleRun:{catalogue:(session,input)=>readMultiCycleRunCatalogue(session.ctx,input),scopeSearch:(session,input)=>searchMultiCycleRunScope(session.ctx,input),list:session=>listMultiCycleRunReviews(session.ctx),prepare:(session,input)=>prepareMultiCycleRunReview(session.ctx,input),reopen:(session,id)=>reopenMultiCycleRunReview(session.ctx,id),confirm:(session,input)=>confirmMultiCycleRunReview(session.ctx,input),discard:(session,input)=>discardMultiCycleRunReview(session.ctx,input)},
@@ -174,7 +176,7 @@ export async function handleConfiguredModuleActionBrowserCommand(request:Request
   reopen:async(session,id)=>reopenModuleActionReview(session.ctx,id,await resolveOwnNotificationServerIdentity()),
   confirm:async(session,input)=>confirmModuleActionReview(session.ctx,input,await resolveOwnNotificationServerIdentity()),
   discard:(session,input)=>discardModuleActionReview(session.ctx,input),
- },{publicOrigin})(request);
+ } satisfies RegisteredModuleActionBrowserOwners<ModuleActionBrowserSession>,{publicOrigin})(request);
 }
 
 /** No employee query or amount preview. Native catalogue admin + actual Assistant/module/pause

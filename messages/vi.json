@@ -19118,7 +19118,11 @@
         "action_claims_cancel": "Đã hủy yêu cầu đang chờ; không có khoản nào được thanh toán",
         "action_leave_adjustment_apply": "Đã ghi nhận điều chỉnh nghỉ phép của nhân sự; số dư thay đổi từ ngày hiệu lực",
         "action_employees_movement_transfer": "Đã ghi nhận thay đổi phân công của nhân sự; áp dụng ngay hoặc chờ đến ngày hiệu lực",
-        "action_toil_credit_grant": "Đã ghi phép bù do nhân sự cấp; giờ làm thêm ngày đó không còn được trả lương"
+        "action_toil_credit_grant": "Đã ghi phép bù do nhân sự cấp; giờ làm thêm ngày đó không còn được trả lương",
+        "action_approvals_claim_chase": "Nhắc người duyệt về yêu cầu hoàn chi quá hạn",
+        "action_approvals_attendance_chase": "Nhắc người duyệt về yêu cầu chấm công quá hạn",
+        "action_approvals_toil_chase": "Nhắc người duyệt về yêu cầu nghỉ bù quá hạn",
+        "action_employees_review_overdue_remind": "Nhắc về đánh giá chưa quyết định sau ngày kết thúc"
       },
       "conversation": {
         "answerLabel": "Câu trả lời từ hồ sơ của bạn",
@@ -24493,7 +24497,9 @@
       "performance_idp": "Kế hoạch phát triển và nghề nghiệp",
       "performance_calib": "Hỗ trợ hiệu chỉnh",
       "performance_assistant": "Trợ lý hội thoại hiệu suất",
-      "feedback_planning": "Soạn kế hoạch cải tiến"
+      "feedback_planning": "Soạn kế hoạch cải tiến",
+      "approval_chasers": "Nhắc phê duyệt quá hạn",
+      "review_chasers": "Nhắc đánh giá quá hạn"
     },
     "kinds": {
       "assistant": "Trợ lý",
@@ -26809,7 +26815,15 @@
       "coverageHandoff": "Giữ ở màn hình riêng",
       "coverageInternal": "Không phải việc của người dùng",
       "coverageHelp": "Các số chưa có sẽ giảm dần khi thao tác được mở cho Trợ lý. Thao tác giữ ở màn hình riêng là theo chính sách, ví dụ quyền truy cập, cài đặt AI và đảo ngược bảng lương.",
-      "version": "quy tắc kết quả {version}"
+      "version": "quy tắc kết quả {version}",
+      "automaticTitle": "Điều gì xảy ra sau các lời nhắc theo lịch",
+      "automaticSubtitle": "Các lời nhắc mà tác tử theo lịch đã gửi từ {from}, và mỗi mục được nhắc đã được xử lý tiếp hay chưa. Chỉ số lượng.",
+      "colReminders": "Lời nhắc đã gửi",
+      "colItems": "Mục được nhắc",
+      "colActed": "Đã xử lý sau đó",
+      "colStillWaiting": "Vẫn đang chờ",
+      "automaticNone": "Không có lời nhắc theo lịch nào được gửi trong kỳ này cho các công ty bạn quản lý.",
+      "automaticLimit": "Đã xử lý sau đó nghĩa là mục không còn chờ ở bước đã được nhắc. Điều này không chứng minh lời nhắc là nguyên nhân. Lời nhắc dùng mẫu cố định; không dùng mô hình AI."
     }
   },
   "cardImport": {

@@ -236,6 +236,11 @@ export const SETTING_CATALOG: SettingCatalogEntry[] = [
   // arrive with the module. `scope: 'tenant'` so 0313's tenant_setting_write policy lets an admin change
   // it; `defaultOnInstall: false` so buying notifications never starts a chaser nobody asked for.
   { key: 'notifications.readiness_nudge_enabled', moduleCode: 'notifications', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Let the system chase incomplete employee records on a schedule — the employee for their own bank details, HR for everything only HR can key in.', sortOrder: 120 },
+  // WP13 (R18) — the two Automatic-tier reminder switches, OFF for the nudge's reasons: they message real approvers
+  // on a schedule with nobody pressing send. Turned on in AI management, which records the administrator the
+  // agent principal then runs under. Fixed templates only; no model and no spend.
+  { key: 'notifications.approval_chasers_enabled', moduleCode: 'notifications', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Let the system remind approvers about claims, attendance corrections and replacement leave requests that have waited too long for a decision. Reminders only; nothing is approved or rejected.', sortOrder: 121 },
+  { key: 'notifications.review_chasers_enabled', moduleCode: 'notifications', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Let the system remind the manager or HR when a probation, contract or internship review is still undecided after its end date. Reminders only; nothing is decided.', sortOrder: 122 },
   // ADR-0084 §2.6 — the hypothesis layer's switch, OFF for the same two reasons the nudge agent's is.
   // It spends the tenant's own provider budget (ADR-0023, BYOK) on a nightly schedule nobody triggered,
   // and it puts rows in their exceptions queue that a MODEL chose to put there. Both are opt-in. The
@@ -461,6 +466,9 @@ export const LEGACY_SETTING_ENV_GATES: Readonly<Record<string, string | null>> =
   // legacy value to honour — and null keeps it out of `legacyEnabledSettingsIn`, which is the correct
   // outcome: an automated chaser must never arrive switched on by a backfill.
   'notifications.readiness_nudge_enabled': null,
+  // WP13 — new scheduled reminders, never a deployment flag; no backfill may switch them on.
+  'notifications.approval_chasers_enabled': null,
+  'notifications.review_chasers_enabled': null,
   // `null` for the same reason as the row above: ADR-0084 §2.6 is NEW rather than migrated from a
   // deployment flag, so there is no legacy value to honour — and null keeps it out of
   // `legacyEnabledSettingsIn`, which is the correct outcome. A backfill must never switch on something

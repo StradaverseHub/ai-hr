@@ -19118,7 +19118,11 @@
         "action_claims_cancel": "待审批报销已取消；未支付任何款项",
         "action_leave_adjustment_apply": "已记录人事假期调整；余额自生效日期起变化",
         "action_employees_movement_transfer": "已记录人事岗位调动；立即生效或待到生效日期",
-        "action_toil_credit_grant": "已记入人事假期抵扣；该日期的加班不再支付"
+        "action_toil_credit_grant": "已记入人事假期抵扣；该日期的加班不再支付",
+        "action_approvals_claim_chase": "提醒审批人处理逾期报销",
+        "action_approvals_attendance_chase": "提醒审批人处理逾期考勤申请",
+        "action_approvals_toil_chase": "提醒审批人处理逾期调休申请",
+        "action_employees_review_overdue_remind": "提醒到期后仍未决定的评审"
       },
       "conversation": {
         "answerLabel": "根据您的记录回答",
@@ -24493,7 +24497,9 @@
       "performance_idp": "发展与职业计划",
       "performance_calib": "校准辅助",
       "performance_assistant": "绩效对话助手",
-      "feedback_planning": "改进计划起草"
+      "feedback_planning": "改进计划起草",
+      "approval_chasers": "逾期审批提醒",
+      "review_chasers": "逾期评审提醒"
     },
     "kinds": {
       "assistant": "助手",
@@ -26809,7 +26815,15 @@
       "coverageHandoff": "保留在原界面",
       "coverageInternal": "非用户任务",
       "coverageHelp": "随着更多操作开放给助手，“尚未”的数量会减少。保留在原界面的操作是出于政策，例如访问权限、AI 设置和薪资冲销。",
-      "version": "结果规则 {version}"
+      "version": "结果规则 {version}",
+      "automaticTitle": "定时提醒之后的情况",
+      "automaticSubtitle": "自 {from} 以来定时代理发送的提醒，以及每个被催办的事项此后是否已推进。仅显示数量。",
+      "colReminders": "已发送提醒",
+      "colItems": "被催办事项",
+      "colActed": "此后已处理",
+      "colStillWaiting": "仍在等待",
+      "automaticNone": "在此期间，您管理的公司没有发送任何定时提醒。",
+      "automaticLimit": "“此后已处理”表示该事项已不再停留在被催办时的环节，并不证明是提醒促成的。提醒使用固定模板，不使用 AI 模型。"
     }
   },
   "cardImport": {
