@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 /** ADR-0151 wave 1b: the assigned decision panel's browser protocol for claims, attendance and replacement
  * leave. Only an item from the server's choices can be decided, the review shows the server's stored facts,
- * a claim decision carries no note, an attendance rejection needs one, and a lost confirmation is reopened
+ * claim approvals carry no note, claim and attendance rejections need one, and a lost confirmation is reopened
  * rather than retried. Authority and effects are proved by the DB tests. */
 import React from 'react';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
@@ -80,4 +80,11 @@ it('shows an empty inbox with the truncation note, and unavailable choices, with
  await screen.findByText('toil.none');expect(screen.getByText('truncated')).toBeTruthy();expect(screen.queryByRole('button',{name:'prepare'})).toBeNull();cleanup();
  fetcher.mockReset();fetcher.mockResolvedValueOnce(json({kind:'unavailable'}));render(<AssignedDecisionPanel action={attendanceAction}/>);
  await screen.findByText('choicesUnavailable');expect(screen.queryByRole('button',{name:'prepare'})).toBeNull();
+});
+
+it('requires the claimant rejection reason and shows the reviewed reason',async()=>{
+ const note='My own rejection explanation',content={action:claimAction,contractVersion:1,employmentId,subjectId,decision:'rejected',note};
+ fetcher.mockResolvedValueOnce(json(choices(claimItem))).mockResolvedValueOnce(json(prepared(claimAction,content,claimItem)));
+ render(<AssignedDecisionPanel action={claimAction}/>);fireEvent.change(await screen.findByLabelText('claim.item'),{target:{value:subjectId}});fireEvent.click(screen.getByLabelText('reject'));fireEvent.click(screen.getByLabelText('consent'));expect(prepareButton().disabled).toBe(true);
+ fireEvent.change(screen.getByLabelText('rejectNote'),{target:{value:note}});fireEvent.click(prepareButton());await screen.findByRole('heading',{name:'reviewTitle'});expect(packets()[1].input.note).toBe(note);expect(screen.getByText(note)).toBeTruthy();
 });

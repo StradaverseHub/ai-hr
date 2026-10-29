@@ -18579,7 +18579,7 @@
         "rejectNote": "Lý do từ chối của bạn (bắt buộc)",
         "noteHelp": "Tối đa 1000 ký tự, bằng lời của chính bạn.",
         "rejectNoteRequired": "Từ chối cần có lời giải thích của bạn.",
-        "claimNoNote": "Quyết định về yêu cầu thanh toán tại đây được ghi nhận không kèm ghi chú.",
+        "claimNoNote": "Việc duyệt yêu cầu ở đây được ghi nhận không kèm ghi chú. Khi từ chối, bạn phải nêu lý do.",
         "consent": "Tôi tự đưa ra quyết định này và muốn xem lại trước khi được ghi nhận.",
         "prepare": "Xem lại quyết định của tôi",
         "reviewNote": "Chưa có gì được ghi nhận. Hãy kiểm tra chi tiết rồi xác nhận.",
@@ -19344,6 +19344,20 @@
         "yes": "Có",
         "no": "Không",
         "doneCredit": "Đã ghi {days} ngày phép bù cho {date}."
+      },
+      "bulkDecisions": {
+        "title": "Xem chung các quyết định đã lưu",
+        "single": "Chuẩn bị một quyết định",
+        "intro": "Mở từng bản xem xét đầy đủ đã lưu và chọn ô xác nhận của bản đó. Xác nhận chung tối đa 20 quyết định đã xem xét.",
+        "scope": "Chỉ liệt kê các bản xem xét của tài khoản đăng nhập này trong luồng hiện tại. Tải lại sẽ xóa mọi lựa chọn.",
+        "load": "Tải các bản xem xét đã lưu",
+        "loading": "Đang tải các bản xem xét đã lưu…",
+        "none": "Không có bản xem xét đã lưu nào đang chờ.",
+        "unavailable": "Không thể hoàn tất yêu cầu này. Tải lại danh sách hoặc mở lại bản xem xét đã lưu bị ảnh hưởng.",
+        "confirm": "Xác nhận {count} quyết định đã xem xét",
+        "working": "Đang ghi nhận các quyết định đã chọn…",
+        "independent": "Mỗi quyết định được kiểm tra và ghi nhận riêng. Việc từ chối sau đó không hoàn tác quyết định trước. Đóng trang này sẽ dừng các yêu cầu tiếp theo; mở lại bản xem xét để kiểm tra kết quả chưa chắc chắn.",
+        "finished": "Các yêu cầu đã kết thúc. Đọc kết quả trên từng thẻ. Mở lại bản xem xét có kết quả chưa chắc chắn trước khi thực hiện thêm."
       }
     },
     "denied_unavailable": "Phía tôi gặp chút trục trặc. Vui lòng thử lại sau giây lát.",
