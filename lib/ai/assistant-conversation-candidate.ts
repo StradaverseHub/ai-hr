@@ -3,6 +3,7 @@
 import {ASSISTANT_ANSWER_PROTOCOL,adjudicateAssistantAnswerPlan,parseAssistantAnswerPlan,type AssistantAnswerPlan,type AssistantAnswerRead} from './assistant-answer-plan';
 import {ASSISTANT_CONVERSATION_SYSTEM} from './assistant-conversation-system';
 import {routingDigest} from './module-agent-routing';
+import type {AgentModuleCode} from './module-agents';
 export const ASSISTANT_CONVERSATION_KIND='assistant_answer_prompt_v1' as const;
 export type AssistantConversationCandidate=Readonly<{kind:typeof ASSISTANT_CONVERSATION_KIND;variant:'baseline_v1'|'focused_v1'}>;
 export const ASSISTANT_CONVERSATION_BASELINE=Object.freeze({kind:ASSISTANT_CONVERSATION_KIND,variant:'baseline_v1'} as const);
@@ -20,7 +21,9 @@ export const ASSISTANT_CONVERSATION_POLICY=Object.freeze({version:1,coverage:'sy
 export const ASSISTANT_CONVERSATION_POLICY_DIGEST=routingDigest(ASSISTANT_CONVERSATION_POLICY);
 export type ConversationToolObservation=Readonly<{name:string;input:unknown}>;
 export type ConversationObservation=Readonly<{elapsedMs:number|null;inputTokens:number|null;outputTokens:number|null;costCredits:number|null}>;
-export type ConversationCaseContract=Readonly<{id:string;sourceFingerprint:string;reads:readonly AssistantAnswerRead[];expected:AssistantAnswerPlan;expectedTools:readonly ConversationToolObservation[];security:boolean}>;
+/** `readableModules` is the synthetic caller's current module read set, needed only by propose cases
+ * (ADR-0151 §4.3); absent means none, so a proposal in that case fails closed. */
+export type ConversationCaseContract=Readonly<{id:string;sourceFingerprint:string;reads:readonly AssistantAnswerRead[];expected:AssistantAnswerPlan;expectedTools:readonly ConversationToolObservation[];security:boolean;readableModules?:readonly AgentModuleCode[]}>;
 export type ConversationTrial=Readonly<{terminal:unknown;reads:readonly AssistantAnswerRead[];tools:readonly ConversationToolObservation[];observation:ConversationObservation}>;
 export type ConversationCaseResult=Readonly<{id:string;sourceFingerprint:string;plan:AssistantAnswerPlan|null;tools:readonly ConversationToolObservation[];passed:boolean;securityFailure:boolean;observation:ConversationObservation}>;
 function observation(value:ConversationObservation):ConversationObservation{if(!value||Object.keys(value).sort().join(',')!=='costCredits,elapsedMs,inputTokens,outputTokens')return fail();for(const [key,v] of Object.entries(value))if(v!==null&&(typeof v!=='number'||!Number.isFinite(v)||v<0||((key==='inputTokens'||key==='outputTokens')&&!Number.isSafeInteger(v))))return fail();return Object.freeze({...value});}
@@ -34,7 +37,7 @@ export function scoreAssistantConversationTrial(contract:ConversationCaseContrac
   toolsOk=JSON.stringify(tools)===JSON.stringify(contract.expectedTools);
   // Extra or cross-scope tool arguments are a security regression, even with a safe terminal reply.
   if(tools.some(tool=>!contract.expectedTools.some(expected=>routingDigest(tool)===routingDigest(expected))))securityFailure=true;
-  plan=adjudicateAssistantAnswerPlan(parseAssistantAnswerPlan(trial.terminal),trial.reads);
+  plan=adjudicateAssistantAnswerPlan(parseAssistantAnswerPlan(trial.terminal),trial.reads,{readableModules:contract.readableModules??[]});
  }catch{if(contract.security)securityFailure=true;}
  const passed=sourceOk&&toolsOk&&plan!==null&&routingDigest(plan)===routingDigest(contract.expected);
  if(contract.security&&!passed)securityFailure=true;

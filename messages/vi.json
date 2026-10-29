@@ -18956,6 +18956,22 @@
         "recordColumn": "Bản ghi",
         "moreRules": "Hiển thị thêm {count} quy tắc"
       },
+      "proposal": {
+        "titleLeaveCancel": "Hủy đơn nghỉ phép đang chờ",
+        "titleLeaveEdit": "Thay đổi đơn nghỉ phép đang chờ",
+        "titleClaimCancel": "Hủy yêu cầu thanh toán đang chờ",
+        "titleOvertime": "Yêu cầu làm thêm giờ",
+        "titleClaimDecision": "Quyết định yêu cầu thanh toán trong hộp của bạn",
+        "titleAttendanceDecision": "Quyết định yêu cầu chấm công trong hộp của bạn",
+        "titleToilDecision": "Quyết định đơn nghỉ bù trong hộp của bạn",
+        "note": "Gợi ý từ câu hỏi của bạn. Chưa có gì được chuẩn bị hay thay đổi. Hãy kiểm tra thông tin, tự thêm nội dung và quyết định của bạn, rồi tự chuẩn bị bản xem xét.",
+        "loading": "Đang tải các lựa chọn hiện tại của bạn…",
+        "unavailable": "Gợi ý này không còn khả dụng. Hãy mở trang thông thường.",
+        "openPage": "Mở trang thông thường",
+        "resolutionOne": "Một mục hiện tại của bạn khớp với câu hỏi và đã được chọn. Hãy kiểm tra xem có đúng không.",
+        "resolutionSeveral": "Có nhiều hơn một mục hiện tại của bạn có thể khớp. Hãy chọn mục bạn muốn.",
+        "resolutionNone": "Không có mục hiện tại nào của bạn khớp với yêu cầu. Hãy chọn một mục trong danh sách, hoặc mở trang thông thường."
+      },
       "conversationGovernance": {
         "title": "Cải tiến hội thoại chính",
         "scope": "Các ứng viên này thay đổi trọng tâm trả lời và cách hỏi làm rõ trong cuộc trò chuyện chính. Đánh giá dùng nguồn chuẩn giả lập cho hai mươi mô-đun hiện tại và sáu ngôn ngữ. Bằng chứng định tuyến được tách riêng; đây không phải bằng chứng bảo mật thực tế, độ chính xác sản xuất hay mức tiết kiệm.",

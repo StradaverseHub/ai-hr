@@ -4,9 +4,8 @@ import { withTenant, type SessionContext } from '../db/client';
 import { assistantExchange } from '../db/schema';
 import { assertAiPrincipalTx } from './ai-principal';
 import { mayUseAssistant, type AssistantAccess } from './assistant-grant';
-import {MODULE_JOBS} from '../lib/ai/module-jobs';
-import {isAdmin} from '../lib/authz-model';
-import { resolveEntitlementsTx,isModuleEnabled } from './entitlements';
+import { resolveEntitlementsTx } from './entitlements';
+import {assistantReadableModules} from './assistant-readable-modules';
 import { toolsFor } from './assistant-tools';
 import { workspaceTasksFor } from '../lib/ai/workspace-tasks';
 import { withAssistantReadTx } from './assistant-read-session';
@@ -62,7 +61,7 @@ export async function loadAiWorkspace(ctx: SessionContext, options:{includeHisto
     }):[];
     const agentReview=includeGovernance?await agentReviewWorkspaceTx(tx,fresh):null;
     const specialistReview=includeGovernance?await specialistReviewWorkspaceTx(tx,fresh):null;
-    const jobModules=MODULE_JOBS.filter(([code])=>isModuleEnabled(fresh,code)&&(code!=='system_explorer'||isAdmin(fresh))).map(([code])=>code);
+    const jobModules=assistantReadableModules(fresh);
     return { access, taskIds, history,agentReview,specialistReview,jobModules,governedJob,proposal,planningPermit,planningAvailability };
   });}catch{return {access:{allowed:false as const,reason:'unavailable' as const},taskIds:[],history:[],jobModules:[],agentReview:null,specialistReview:null,governedJob:null,proposal:null,planningPermit:null,planningAvailability:'resting' as const};}
 }

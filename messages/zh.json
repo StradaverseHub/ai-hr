@@ -18956,6 +18956,22 @@
         "recordColumn": "记录",
         "moreRules": "显示其余 {count} 条规则"
       },
+      "proposal": {
+        "titleLeaveCancel": "取消待审批的请假申请",
+        "titleLeaveEdit": "修改待审批的请假申请",
+        "titleClaimCancel": "取消待审批的报销",
+        "titleOvertime": "申请加班",
+        "titleClaimDecision": "处理收件箱中的报销审批",
+        "titleAttendanceDecision": "处理收件箱中的考勤申请",
+        "titleToilDecision": "处理收件箱中的补休申请",
+        "note": "这是根据您的问题提出的建议，目前尚未准备或更改任何内容。请核对详情，填写您自己的说明和决定，然后亲自准备审核。",
+        "loading": "正在加载您当前的选项…",
+        "unavailable": "此建议已不可用，请改为打开常用页面。",
+        "openPage": "改为打开常用页面",
+        "resolutionOne": "您当前有一项与问题相符，已为您选中。请确认是否正确。",
+        "resolutionSeveral": "您当前有多项可能相符，请选择您指的那一项。",
+        "resolutionNone": "您当前没有与所问内容相符的项目。请从列表中选择，或打开常用页面。"
+      },
       "conversationGovernance": {
         "title": "主对话改进",
         "scope": "这些候选方案改变主聊天的回答重点和澄清方式。评估使用覆盖当前二十个模块、六种语言的虚构规范来源。路由证据单独管理；这不证明真实安全性、生产准确性或节省成效。",

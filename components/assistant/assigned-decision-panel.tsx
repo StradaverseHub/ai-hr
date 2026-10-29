@@ -11,6 +11,8 @@ import {Button,inputCls} from '@/components/ui';
 import {formatMinutesToHM} from '@/lib/overtime-duration';
 import {ASSIGNED_CLAIM_DECISION_ACTION,ASSIGNED_ATTENDANCE_DECISION_ACTION,ASSIGNED_DECISION_CONTRACTS,type AssignedDecisionAction,type AssignedDecision,AssignedClaimItem,AssignedAttendanceItem,AssignedToilItem} from '@/lib/assistant-actions/assigned-decision-contract';
 import {checkGenericPacket,packetActionId,sendGenericModuleAction} from './generic-module-action-transport';
+import {resolveProposalChoice,type ProposalResolutionKind} from '@/lib/ai/assistant-action-proposal-hints';
+import {ProposalResolutionNote} from './proposal-resolution-note';
 type ClaimItem=z.infer<typeof AssignedClaimItem>;type AttendanceItem=z.infer<typeof AssignedAttendanceItem>;type ToilItem=z.infer<typeof AssignedToilItem>;type Item=ClaimItem|AttendanceItem|ToilItem;
 type Kind='claim'|'attendance'|'toil';
 type Review={actionId:string;reviewedDigest:string;createdAt:string;expiresAt:string;content:{employmentId:string;subjectId:string;decision:AssignedDecision;note?:string};review:Item};
@@ -23,13 +25,17 @@ type State={kind:'selection'}|{kind:'review';review:Review}|{kind:'completed';re
 const NOTE_LIMIT=1000;
 const fail=()=>Error('Assigned decision unavailable.');
 export const assignedDecisionKind=(action:AssignedDecisionAction):Kind=>action===ASSIGNED_CLAIM_DECISION_ACTION?'claim':action===ASSIGNED_ATTENDANCE_DECISION_ACTION?'attendance':'toil';
-export function AssignedDecisionPanel({action,resumeActionId}:{action:AssignedDecisionAction;resumeActionId?:string}){
+/** ADR-0151 §4.3 inline card: a chat proposal carries no hints for a decision. The item is preselected only
+ * when the approver's own fresh inbox holds exactly one; the decision and note always stay the approver's. */
+export type AssignedDecisionProposalPrefill=Readonly<Record<never,never>>;
+export function AssignedDecisionPanel({action,resumeActionId,prefill}:{action:AssignedDecisionAction;resumeActionId?:string;prefill?:AssignedDecisionProposalPrefill}){
  const t=useTranslations('assistant.workspace.decisionActions'),f=useFormatter(),id=useId(),kind=assignedDecisionKind(action),contract=ASSIGNED_DECISION_CONTRACTS[action] as unknown as Contract;
  const [choices,setChoices]=useState<Choices>({kind:'loading'});
  const [state,setState]=useState<State>(()=>resumeActionId?{kind:'uncertain',actionId:z.uuid().safeParse(resumeActionId).success?resumeActionId:null}:{kind:'selection'});
  const [subjectId,setSubjectId]=useState(''),[decision,setDecision]=useState<AssignedDecision|''>(''),[note,setNote]=useState('');
  const [consent,setConsent]=useState(false),[confirm,setConfirm]=useState(false),[busy,setBusy]=useState<string|null>(null),[error,setError]=useState(''),[index,setIndex]=useState<Row[]|null>(null),[now,setNow]=useState(()=>Date.now());
  const flight=useRef(false),alive=useRef(true),sequence=useRef(0),abort=useRef<AbortController|null>(null),status=useRef<HTMLParagraphElement>(null);
+ const prefilled=useRef(false),[resolution,setResolution]=useState<ProposalResolutionKind|null>(null);
  const review=state.kind==='review'?state.review:null;
  useEffect(()=>{if(!busy&&state.kind!=='selection')status.current?.focus();},[state,busy]);
  useEffect(()=>{setNow(Date.now());if(!review)return;const timer=setTimeout(()=>setNow(Date.now()),Math.min(2147483647,Math.max(0,Date.parse(review.expiresAt)-Date.now())));return()=>clearTimeout(timer);},[review]);
@@ -40,7 +46,10 @@ export function AssignedDecisionPanel({action,resumeActionId}:{action:AssignedDe
   flight.current=true;setBusy(op);setError('');setIndex(null);const controller=new AbortController();abort.current=controller;
   try{
    const result=await sendGenericModuleAction(packet,controller.signal);if(!alive.current||sequence.current!==token)return;
-   if(op==='choices'){setChoices(contract.Choices.parse(result) as Choices);return;}
+   if(op==='choices'){const loaded=contract.Choices.parse(result) as Choices;setChoices(loaded);
+    // A chat proposal is applied once, to the first fresh choices: never to a later reload.
+    if(prefill&&!prefilled.current&&loaded.kind==='choices'){prefilled.current=true;const found=resolveProposalChoice(loaded.items,()=>true);setResolution(found.kind);if(found.kind==='one')setSubjectId(found.row.subjectId);}
+    return;}
    if(op==='list'){setIndex((contract.Index.parse(result) as {reviews:Row[]}).reviews);return;}
    if(result.kind==='prepared'){const prepared=contract.Prepared.parse((result as {review:unknown}).review) as Review;clear();setState({kind:'review',review:prepared});return;}
    if(result.kind==='completed'){const receipt=contract.Completed.parse((result as {receipt:unknown}).receipt) as Receipt;if(state.kind==='review'&&receipt.receipt.subjectId!==state.review.content.subjectId)throw fail();clear();setState({kind:'completed',receipt});return;}
@@ -86,7 +95,7 @@ export function AssignedDecisionPanel({action,resumeActionId}:{action:AssignedDe
   {error&&<p role="alert" className="text-sm">{error}</p>}
   {state.kind==='selection'&&choices.kind!=='loading'&&(choices.kind==='unavailable'?<div className="space-y-2"><p className="text-sm">{t('choicesUnavailable')}</p><Link href="/approvals" className="inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('manual')}</Link></div>
    :items.length===0?<div className="space-y-2"><p className="text-sm">{t(`${kind}.none`)}</p>{choices.truncated&&<p className="text-xs">{t('truncated')}</p>}</div>
-   :<form onSubmit={prepare} className="space-y-4"><p className="text-sm text-muted-foreground">{t('intro')}</p><fieldset disabled={busy!==null} className="space-y-4">
+   :<form onSubmit={prepare} className="space-y-4">{resolution&&<ProposalResolutionNote kind={resolution}/>}<p className="text-sm text-muted-foreground">{t('intro')}</p><fieldset disabled={busy!==null} className="space-y-4">
    <div><label htmlFor={`${id}-item`} className="block text-sm font-medium">{t(`${kind}.item`)}</label><select id={`${id}-item`} required value={subjectId} className={`${inputCls} mt-1`} onChange={event=>{setSubjectId(event.target.value);setConsent(false);}}><option value="">{t('choose')}</option>{items.map(row=><option key={row.subjectId} value={row.subjectId}>{describe(row)}</option>)}</select></div>
    <fieldset className="space-y-2"><legend className="text-sm font-medium">{t('decision')}</legend>
     <label className="flex items-center gap-2 text-sm"><input type="radio" name={`${id}-decision`} checked={decision==='approved'} onChange={()=>{setDecision('approved');setConsent(false);}}/>{t('approve')}</label>

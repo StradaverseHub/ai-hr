@@ -18956,6 +18956,22 @@
         "recordColumn": "Rekod",
         "moreRules": "Tunjukkan {count} peraturan lagi"
       },
+      "proposal": {
+        "titleLeaveCancel": "Batalkan permohonan cuti yang belum selesai",
+        "titleLeaveEdit": "Ubah permohonan cuti yang belum selesai",
+        "titleClaimCancel": "Batalkan tuntutan belum selesai",
+        "titleOvertime": "Mohon lebih masa",
+        "titleClaimDecision": "Putuskan tuntutan dalam peti masuk anda",
+        "titleAttendanceDecision": "Putuskan permohonan kehadiran dalam peti masuk anda",
+        "titleToilDecision": "Putuskan permohonan cuti gantian dalam peti masuk anda",
+        "note": "Dicadangkan daripada soalan anda. Tiada apa-apa yang disediakan atau diubah. Semak butiran, tambah kata-kata dan keputusan anda sendiri, kemudian sediakan semakan itu sendiri.",
+        "loading": "Memuatkan pilihan semasa anda…",
+        "unavailable": "Cadangan ini tidak lagi tersedia. Buka halaman biasa sebagai ganti.",
+        "openPage": "Buka halaman biasa sebagai ganti",
+        "resolutionOne": "Satu daripada item semasa anda sepadan dengan soalan anda dan telah dipilih. Pastikan ia item yang betul.",
+        "resolutionSeveral": "Lebih daripada satu item semasa anda mungkin sepadan. Pilih item yang anda maksudkan.",
+        "resolutionNone": "Tiada item semasa anda yang sepadan dengan permintaan anda. Pilih satu daripada senarai, atau buka halaman biasa."
+      },
       "conversationGovernance": {
         "title": "Penambahbaikan perbualan utama",
         "scope": "Calon ini mengubah fokus dan penjelasan susulan dalam sembang utama. Penilaian menggunakan sumber kanonik rekaan bagi dua puluh modul semasa dan enam bahasa. Bukti penghalaan berasingan; ini bukan bukti keselamatan sebenar, ketepatan pengeluaran atau penjimatan.",
