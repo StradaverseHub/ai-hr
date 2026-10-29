@@ -45,28 +45,12 @@ export type ParityDeclaration=
  | Readonly<{kind:'pending';reason:string}>;
 
 const D='deny',A='allow';
-/** Decision on another person's pending request (approved, no attendance workflow): the native assertCanDecide
- * family (self-ban, admin role, current administrative manager), under RLS.
- * The manager's active whole-scope delegate is REFUSED by every native decision service here, for different
- * reasons per module (observed on CI, run 40919722456; the agent refuses identically). The owner has decided
- * delegates SHOULD be able to decide these; a separate product fix package owns that. Recorded, not fixed:
- *   - claims: claim_request_rls has no delegation branch (db/migrations/0515 :403-404), so the claim is
- *     invisible to the delegate ("Claim not found"). A real gap.
- *   - replacement leave (TOIL): the delegate passes the request read and assertCanDecide, then approval fails
- *     with ToilNotEligibleError "No employment on record" because the subject's employment row is hidden from
- *     the delegate (core/toil.ts ~1458). The rejected-decision probe below records whether rejection differs.
- *   - attendance: the delegate policies (0533 :181, 0570 :641, 0592 :386-398) admit only workflow-routed
- *     requests (routing version 1/2 with a direct_manager stage). With no workflow configured the request is
- *     invisible ("correction request not found"). The routed-workflow probe below records the delegate
- *     under a one-level direct-manager workflow. */
-const ASSIGNED_DECISION={employee:D,manager:A,assigned_approver:D,company_hr:A,group_hr:A,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
-/** Routed attendance is a separate fixture from the unrouted matrix above. The native service admits
- * the delegate for approve and reject; the Assistant offers and prepares, but confirm refuses. Keep this
- * phase-specific gap explicit until the delegated-approvals package repairs and proves confirmation. */
-export const ATTENDANCE_WORKFLOW_PARITY={
- screen:{...ASSIGNED_DECISION,assigned_approver:A},
- narrowed:{assigned_approver:{confirm:'AssignedDecisionUnavailable at Assistant confirm despite native approve/reject, offer and prepare being allowed. The current source already forwards the routed stage; the delegated-approvals package must diagnose and fix the remaining effect/receipt gap.'}},
-} as const;
+/** Native request decisions now admit the current, same-company, matching-task stand-in through
+ * the delegated-approvals package. Personnel and balances remain invisible; only request facts and
+ * the request-bound native calculation/effect path are available. */
+const ASSIGNED_DECISION={employee:D,manager:A,assigned_approver:A,company_hr:A,group_hr:A,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
+/** The routed delegate confirm gap declared by WP8 is repaired here by own-decision event visibility. */
+export const ATTENDANCE_WORKFLOW_PARITY={screen:ASSIGNED_DECISION} as const;
 
 /** HR screen behind requireAdmin (isAdmin) whose service writes an administered employment under RLS. */
 const HR_ON_EMPLOYMENT={employee:D,manager:D,assigned_approver:D,company_hr:A,group_hr:A,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
@@ -78,6 +62,10 @@ const pending=(reason:string)=>({kind:'pending',reason}) as const;
 const NO_ADAPTER='No parity adapter yet: per-entry subject fixture and screen probe still to be written (WP8 follow-up).';
 
 export const AGENT_ACTION_PARITY={
+ 'approvals.claim.chase':{kind:'human_workflow_only',reason:'Automatic template-only notification; no human prepare/confirm store. Principal, scope, recipients and caps are covered by automatic-chasers.test.ts.'},
+ 'approvals.attendance.chase':{kind:'human_workflow_only',reason:'Automatic template-only notification; no human prepare/confirm store. Principal, scope, recipients and caps are covered by automatic-chasers.test.ts.'},
+ 'approvals.toil.chase':{kind:'human_workflow_only',reason:'Automatic template-only notification; no human prepare/confirm store. Principal, scope, recipients and caps are covered by automatic-chasers.test.ts.'},
+ 'employees.review_overdue.remind':{kind:'human_workflow_only',reason:'Automatic template-only notification; no human prepare/confirm store. Principal, scope, recipients and caps are covered by automatic-chasers.test.ts.'},
  'employees.import':{kind:'human_workflow_only',reason:'No agent prepare or confirm: the Assistant only hands off to the native import page, which keeps its own admission.'},
  'org.reporting.change':pending(NO_ADAPTER+' Dedicated store (WP9 collapses it).'),
  'leave.apply':pending(NO_ADAPTER+' Own-leave store.'),

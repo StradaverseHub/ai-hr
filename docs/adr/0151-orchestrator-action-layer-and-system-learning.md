@@ -530,8 +530,9 @@ one stamped `automatic-chase.*` event per item; nothing is approved, rejected, s
 notification registry re-checks that the item still waits at the chased stage and tells its current approver
 (claims and replacement leave: the administrative manager on a current, non-superseded line, else company HR;
 participant-routed attendance: only the participants the workflow's outstanding rule says can act now, so one in
-a sequential level; reviews: the manager at the manager stage, else company HR). Delegates are
-not chased, as for the leave escalation. Reminders before a review's end date stay the existing engine job.
+a sequential level; reviews: the manager at the manager stage, else company HR). The delegated-approvals
+package adds active matching stand-ins for claims, replacement leave and delegate-capable attendance routes;
+frozen v3/v4 participants remain exact. The leave escalation is unchanged. Reminders before a review's end date stay the existing engine job.
 
 The two switches are template-only AI management agents: they never enter model admission, and the AI control
 context is unchanged. Migration 0697 adds the reference rows, the principal's read and stamp policies for the new

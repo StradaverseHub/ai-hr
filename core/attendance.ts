@@ -4032,7 +4032,7 @@ export async function decideAttendanceCorrection(
     }
     let restoreIdentity: { userId: string; roles: string; grants: string } | undefined;
     let delegatedIdentity: {user_id:string;roles:string;grants:unknown} | undefined;
-    if (workflowStage.delegatedFinalStageIndex != null || (!workflowStage.versionedFinalEffect && p.decision==='approved')) {
+    if (workflowStage.delegatedFinalStageIndex != null || (!workflowStage.routed && p.decision==='approved')) {
       const identities = workflowStage.delegatedFinalStageIndex != null
         ? await tx.execute(sql`select * from app.attendance_workflow_effect_identity(${cor.id}::uuid,${workflowStage.delegatedFinalStageIndex})`) as unknown as {user_id:string;roles:string;grants:unknown}[]
         : await tx.execute(sql`select * from app.delegated_request_effect_identity(${cor.id}::uuid,'attendance')`) as unknown as {user_id:string;roles:string;grants:unknown}[];

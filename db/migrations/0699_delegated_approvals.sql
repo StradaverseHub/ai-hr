@@ -334,6 +334,10 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  JOIN public.employment subject ON subject.id=subject_id AND subject.tenant_id=d.tenant_id
  WHERE subject.tenant_id=app.current_tenant_id() AND app.is_admin_for(subject.company_id)
   AND d.subordinate_employment_id=ANY(delegators)
+  AND ((wanted_module='leave' AND wanted_task<>'leave.replacement') OR EXISTS(
+   SELECT 1 FROM public.reporting_line adm WHERE adm.tenant_id=d.tenant_id AND adm.subordinate_employment_id=subject_id
+    AND adm.manager_employment_id=d.subordinate_employment_id AND adm.line_type='administrative' AND adm.superseded_at IS NULL
+    AND adm.valid_from<=current_date AND (adm.valid_to IS NULL OR adm.valid_to>current_date)))
   AND app.delegation_line_covers(d.id,subject_id,wanted_module,wanted_task);
 $$;
 --> statement-breakpoint
