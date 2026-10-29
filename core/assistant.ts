@@ -56,6 +56,7 @@ import {isAgentModuleCode,type AgentModuleCode} from '../lib/ai/module-agents';
 import { prepareAssistantConversation } from './assistant-provider-input';
 import { ASSISTANT_PUBLIC_REPLIES, assistantPublicToolResult } from '../lib/ai/assistant-public-replies';
 import { ASSISTANT_TOOLS, toolsFor, type AssistantTool, type ToolOutcome } from './assistant-tools';
+import { assistantReadableModules } from './assistant-readable-modules';
 
 /**
  * §2.5 fixes this at 8: enough for a genuinely multi-part question ("who on my team is on leave next
@@ -316,8 +317,11 @@ export async function askAssistant(
         answer = res.text;
         // Terminal model output proposes references, never displayable HR prose. Invalid/truncated
         // plans retain their audit text but acquire no conversational disclosure authority.
+        // A proposal (ADR-0151 §4.3) is only a suggestion sealed in this same exchange record: nothing is
+        // prepared or written here. It also needs the caller's current module read set, read only for it.
         if (res.stop === 'end' && sourcesComplete) try {
-          answerPlan = adjudicateAssistantAnswerPlan(parseAssistantAnswerPlan(res.text), answerReads);
+          const parsed = parseAssistantAnswerPlan(res.text);
+          answerPlan = adjudicateAssistantAnswerPlan(parsed, answerReads, parsed.mode === 'propose' ? { readableModules: assistantReadableModules(ctx) } : {});
         } catch { answerPlan = undefined; }
         break;
       }

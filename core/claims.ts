@@ -2553,8 +2553,19 @@ export async function decideClaim(
   /** M11: the mobile command receipt's transaction (withClaimsTx). Web callers pass none. */
   existingTx?: Tx,
 ): Promise<void> {
+  await withClaimsTx(ctx, existingTx, (tx) => decideClaimTx(tx, ctx, p));
+}
+
+/** decideClaim in the caller's transaction (ADR-0151): the Assistant's assigned claim decision commits the
+ *  decision and its own receipt together. Identical rules, locks and events; returns the decision event.
+ *  `rejectReason` (M11, D12) is stamped on the rejection event's payload, exactly as decideClaim documents. */
+export async function decideClaimTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { claimRequestId: string; decision: 'approve' | 'reject'; taxable?: boolean; deciderEmploymentId?: string | null; rejectReason?: string | null },
+): Promise<{ eventId: string; employmentId: string; status: 'approved' | 'rejected' }> {
   const rejectReason = p.rejectReason?.trim() || null;
-  await withClaimsTx(ctx, existingTx, async (tx) => {
+  {
     // Unlocked peek, ONLY to learn which (employee × type) lock this claim belongs to. Nothing is decided
     // on it — the authoritative read is the FOR UPDATE one below, taken after the lock is held.
     const [head] = await tx
@@ -2609,7 +2620,7 @@ export async function decideClaim(
         .update(claimRequest)
         .set({ status: 'approved', taxable, decidedByEmploymentId: p.deciderEmploymentId ?? null, decidedAt: new Date() })
         .where(eq(claimRequest.id, claim.id));
-      await appendEvent(tx, {
+      const eventId = await appendEvent(tx, {
         tenantId: ctx.tenantId,
         aggregateType: 'claim-request',
         aggregateId: claim.id,
@@ -2617,13 +2628,14 @@ export async function decideClaim(
         actor: actorOf(ctx),
         subjectEmploymentId: claim.employmentId,
         payload: { taxable, payoutMethod: taxable ? 'payroll' : 'reimbursement' }, // amount on claim_request[aggregateId] (ADR-0030)
-      });
+      }, { returnId: true });
+      return { eventId, employmentId: claim.employmentId, status: 'approved' };
     } else {
       await tx
         .update(claimRequest)
         .set({ status: 'rejected', decidedByEmploymentId: p.deciderEmploymentId ?? null, decidedAt: new Date() })
         .where(eq(claimRequest.id, claim.id));
-      await appendEvent(tx, {
+      const eventId = await appendEvent(tx, {
         tenantId: ctx.tenantId,
         aggregateType: 'claim-request',
         aggregateId: claim.id,
@@ -2631,9 +2643,10 @@ export async function decideClaim(
         actor: actorOf(ctx),
         subjectEmploymentId: claim.employmentId,
         ...(rejectReason ? { payload: { rejectReason } } : {}),
-      });
+      }, { returnId: true });
+      return { eventId, employmentId: claim.employmentId, status: 'rejected' };
     }
-  });
+  }
 }
 
 /**
