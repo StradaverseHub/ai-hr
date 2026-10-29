@@ -72,7 +72,7 @@ export const AGENT_ACTION_PARITY={
  'leave.cancel':{kind:'probed',screen:OWN_REQUEST},
  'leave.edit':{kind:'probed',screen:OWN_REQUEST},
  'ess.profile.request':{kind:'probed',screen:OWN_REQUEST},
- 'approvals.leave.decide':{kind:'probed',screen:ASSIGNED_DECISION,narrowedPhases:{assigned_approver:{prepare:'Native leave decisions and the exact task offer admit the current delegate, but reviewed custody still selects the private employment row after step authority and refuses request-only delegates (core/leave.ts lockReviewedLeaveDecisionSourceTx). Verified on 40944662433; routed to delegated-approvals follow-up.',confirm:'Native leave decisions and the exact task offer admit the current delegate, but reviewed custody still selects the private employment row after step authority and refuses request-only delegates (core/leave.ts lockReviewedLeaveDecisionSourceTx). Verified on 40944662433; routed to delegated-approvals follow-up.'}}},
+ 'approvals.leave.decide':{kind:'probed',screen:ASSIGNED_DECISION},
  'approvals.claim.decide':{kind:'probed',screen:ASSIGNED_DECISION},
  'approvals.attendance.decide':{kind:'probed',screen:ASSIGNED_DECISION},
  'approvals.toil.decide':{kind:'probed',screen:ASSIGNED_DECISION},

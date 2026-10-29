@@ -31,11 +31,11 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
   for(const id of PROBED_ACTION_IDS)expect(AGENT_ACTIONS.find(action=>action.id===id)?.store,id).not.toBe('human_workflow_only');
  });
 
- it('keeps exact-task offer evidence distinct from narrower delegated leave preparation',()=>{
-  const d=AGENT_ACTION_PARITY['approvals.leave.decide'];
-  expect(expectedAgentOutcome(d,'assigned_approver','offer')).toBe('allow');
-  expect(expectedAgentOutcome(d,'assigned_approver','prepare')).toBe('deny');
-  expect(expectedAgentOutcome(d,'assigned_approver','confirm')).toBe('deny');
+ it('keeps exact-task offer evidence distinct from phase-specific narrower findings',()=>{
+  const d:Extract<ParityDeclaration,{kind:'probed'}>={...probed as Extract<ParityDeclaration,{kind:'probed'}>,narrowedPhases:{employee:{prepare:'Fictional preparation limitation',confirm:'Fictional confirmation limitation'}}};
+  expect(expectedAgentOutcome(d,'employee','offer')).toBe('allow');
+  expect(expectedAgentOutcome(d,'employee','prepare')).toBe('deny');
+  expect(expectedAgentOutcome(d,'employee','confirm')).toBe('deny');
  });
 
  it('fails a new registry entry that arrives without matrix fixtures',()=>{
