@@ -618,3 +618,7 @@ Profile change requests use generic OWN compatibility custody, retaining the ori
 ### WP9 claim draft custody
 
 Claim draft saving uses generic OWN compatibility custody while retaining the exact sealed provisional amount/quantity/taxable fields, original human content and native source fingerprint. Canonical Claims remains the sole money/rule owner; confirmation only saves a draft, never submits or reimburses. Existing rows and native provenance remain unchanged.
+
+### WP9 closed Performance acknowledgement custody
+
+Standard-cycle and OneHR plan acknowledgements share one closed OWN custody adapter, retaining the original discriminated engine/intent/cached-review wire, original private digest, employee binding and native acknowledgement event proof. Reopen compares the exact original canonical review including its original nonce. This does not edit ratings, goals, career facts or promotion decisions.
