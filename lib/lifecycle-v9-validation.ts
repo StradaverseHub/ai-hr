@@ -12,8 +12,8 @@ const step = z.discriminatedUnion('type', [
   z.object({ id, type: z.literal('doc'), template: id, release: z.boolean() }).strict(),
   z.object({ id, type: z.literal('waitSign'), template: id, by: z.enum(['hr', 'employee']) }).strict(),
   z.object({ id, type: z.literal('waitFile'), slot: id, label: z.string().max(500) }).strict(),
-  z.object({ id, type: z.literal('email'), template: id, to: role, cc: z.array(role).max(6) }).strict(),
-  z.object({ id, type: z.literal('notify'), subject: z.string().min(1).max(1000), body: text, to: role, cc: z.array(role).max(6) }).strict(),
+  z.object({ id, type: z.literal('email'), template: id, to: z.union([role, z.array(role).min(1).max(6)]), cc: z.array(role).max(6) }).strict(),
+  z.object({ id, type: z.literal('notify'), subject: z.string().min(1).max(1000), body: text, to: z.union([role, z.array(role).min(1).max(6)]), cc: z.array(role).max(6) }).strict(),
 ]);
 export const v9ConfigSchema = z.object({
   version: z.literal(9), revision: z.number().int().positive(), groupsRevision: z.number().int().nonnegative().optional(),

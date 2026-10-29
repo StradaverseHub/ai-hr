@@ -66,8 +66,8 @@ export type Step =
   | { id: string; type: 'doc'; template: string; release: boolean }
   | { id: string; type: 'waitSign'; template: string; by: 'hr' | 'employee' }
   | { id: string; type: 'waitFile'; slot: string; label: string }
-  | { id: string; type: 'email'; template: string; to: Role; cc: Role[] }
-  | { id: string; type: 'notify'; subject: string; body: string; to: Role; cc: Role[] };
+  | { id: string; type: 'email'; template: string; to: Role | Role[]; cc: Role[] }
+  | { id: string; type: 'notify'; subject: string; body: string; to: Role | Role[]; cc: Role[] };
 export type Workflow = {
   id: string; name: string; module: Module; status: 'draft' | 'published'; trigger: Trigger;
   conditions: { field: RuleField | 'joinWithin'; op: 'is' | 'isNot' | 'lt' | 'gte'; value: string }[];
@@ -276,6 +276,7 @@ export function signDocument(c: Case, config: Config, id: string, role: 'employe
 }
 function recipients(c: Case, config: Config, role: Role): string[] {
   if (role === 'peopleOps') return config.groups.find(g => g.id === config.peopleOpsGroup)?.members ?? [];
+  if (role === 'taskOwners') return [...new Set(pendingPre(c).map(t => t.assignee).filter((id): id is string => !!id))];
   const id = role === 'employee' ? c.facts.employeeUserId : role === 'supervisor' ? c.facts.supervisorUserId : role === 'pbp' ? resolvePbp(config, c.facts) : role === 'ta' ? c.facts.taUserId : null;
   return id ? [id] : [];
 }
@@ -299,7 +300,9 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
   if (step.type === 'email' && !email) throw new V9Error('The email template is inactive or unavailable.');
   const slots = email?.slots.filter(s => s.required && !c.files.some(f => f.slot === `${email.id}:${s.id}`)) ?? [];
   if (slots.length && !test) return `Upload ${slots.map(s => s.label).join(', ')}.`;
-  const targets = step.to === 'taskOwners' ? [...new Set(pendingPre(c).map(t => t.assignee).filter((id): id is string => !!id))] : recipients(c, config, step.to);
+  const roles = Array.isArray(step.to) ? step.to : [step.to];
+  const owners = pendingPre(c).map(t => t.assignee).filter((id): id is string => !!id);
+  const targets = [...new Set(roles.flatMap(role => role === 'taskOwners' ? owners : recipients(c, config, role)))];
   if (!targets.length && !test) throw new V9Error('No recipient is linked. Resolve the recipient before continuing.');
   const to = test ? [env.actor.id] : targets;
   const identityKeys = ['icNo', 'passportNo', 'taxNo', 'epfNo', 'bankAcc', 'bankAccount', 'bankAccountNo', 'spIc', 'spTax'];
@@ -308,7 +311,7 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
     const itemKey = `${key}:${target}`; if (c.mails.some(m => m.key === itemKey)) continue;
     if (!env.eligibleUser(target)) throw new V9Error('The recipient is no longer eligible for delivery.');
     const tasks = pendingPre(c).filter(t => t.assignee === target);
-    const values = { ...env.mergeValues, 'owner.name': env.userName(target), 'pending.tasks': (step.to === 'taskOwners' ? tasks : pendingPre(c)).map(t => `${t.name} (due ${t.dueOn})`).join('\n') };
+    const values = { ...env.mergeValues, 'owner.name': env.userName(target), 'pending.tasks': (roles.includes('taskOwners') && owners.includes(target) ? tasks : pendingPre(c)).map(t => `${t.name} (due ${t.dueOn})`).join('\n') };
     const edits = email ? c.emailEdits?.[email.id] : null;
     const subject = merge(edits?.subject ?? email?.subject ?? (step.type === 'notify' ? step.subject : ''), values, sensitive), body = merge(edits?.body ?? email?.body ?? (step.type === 'notify' ? step.body : ''), values, sensitive);
     if (!test && (subject.missing.length || body.missing.length)) throw new V9Error(`Complete missing merge fields: ${[...new Set([...subject.missing, ...body.missing])].join(', ')}.`);
@@ -334,6 +337,18 @@ export function queueEmail(c: Case, config: Config, emailId: string, env: Enviro
   const key = test ? `test:${env.nextId()}` : acceptance ? `acceptance:${doc!.id}` : `manual:${env.nextId()}`;
   const held = enqueue(c, config, { id: key, type: 'email', template: emailId, to: 'employee', cc: [] }, key, null, env, test);
   if (held) throw new V9Error(held);
+}
+/** Evaluate a draft on detached state. A dry run cannot advance a case or consume real IDs. */
+export function previewWorkflow(c: Case, config: Config, workflow: Workflow, env: Environment): { run: Run | null; documents: Document[]; mails: Mail[] } {
+  const copy = structuredClone(c), definition = structuredClone(workflow);
+  definition.status = 'published';
+  copy.runs = copy.runs.filter(r => r.workflowId !== workflow.id);
+  copy.mails = copy.mails.filter(m => m.workflowId !== workflow.id);
+  const previousDocuments = new Set(copy.documents.map(d => d.id)), previousMails = new Set(copy.mails.map(m => m.id));
+  let sequence = 0;
+  const previewEnv = { ...env, nextId: () => `preview-${++sequence}` };
+  const run = runWorkflow(copy, config, definition, previewEnv, definition.trigger.event === 'submitted' ? 'submitted' : 'date');
+  return { run, documents: copy.documents.filter(d => !previousDocuments.has(d.id)), mails: copy.mails.filter(m => !previousMails.has(m.id)) };
 }
 export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: Environment, event: 'submitted' | 'date' | 'resume'): Run | null {
   const unfinished = c.runs.find(r => r.workflowId === workflow.id && (r.status === 'waiting' || r.status === 'failed'));

@@ -13,6 +13,31 @@ function task(id: string, dueOn = '2026-10-30', owner = 'hr'): M.Task { return {
 function workflow(overrides: Partial<M.Workflow> = {}): M.Workflow { return { id: 'workflow', name: 'Reminder', module: 'off', status: 'published', trigger: { event: 'beforeLWD', days: 5, workdays: false, repeat: true, skipIf: 'noPre' }, conditions: [], steps: [{ id: 'notify', type: 'notify', subject: 'Work for {employee.name}', body: 'Hi {owner.name}\n{pending.tasks}', to: 'taskOwners', cc: [] }], description: '', ...overrides }; }
 function template(): M.Template { return { id: 'exit', name: 'Exit form', module: 'off', type: 'Form', rules: {}, hrStep: 'none', employeeAck: false, retired: false, versions: [{ version: 1, state: 'published', at: '', by: '', blocks: [], fields: [{ id: 'answer', label: 'Your answer', type: 'text', owner: 'employee', pmKey: 'mobile', required: true, sensitive: false, options: [], section: 'main', when: null }] }] }; }
 
+it('previews a draft with the real date and wait rules without mutating inputs or allocating live IDs', () => {
+  const { c, config, environment } = fixture();
+  c.tasks = [task('Return laptop')];
+  const definition = workflow({ status: 'draft', steps: [{ id: 'reminder', type: 'notify', subject: 'Reminder', body: '{pending.tasks}', to: ['taskOwners'], cc: [] }, { id: 'file', type: 'waitFile', slot: 'proof', label: 'Proof of return' }] });
+  const snapshot = JSON.stringify({ c, config, definition });
+  environment.nextId = () => { throw Error('Live allocation called'); };
+  const result = M.previewWorkflow(c, config, definition, environment);
+  expect(result.run).toMatchObject({ status: 'waiting', cursor: 1, reason: 'Waiting for Proof of return.' });
+  expect(result.mails).toHaveLength(1);
+  expect(result.mails[0]).toMatchObject({ to: ['hr'], status: 'pending', body: 'Return laptop (due 2026-10-30)' });
+  expect(JSON.stringify({ c, config, definition })).toBe(snapshot);
+  expect(M.previewWorkflow(c, config, definition, { ...environment, today: '2026-10-24' }).run).toBeNull();
+});
+
+it('deduplicates multiple To roles while keeping each task owner reminder private', () => {
+  const { c, config, environment } = fixture();
+  c.facts.supervisorUserId = 'hr';
+  c.tasks = [task('Return laptop', '2026-10-30', 'hr'), task('Revoke access', '2026-10-30', 'hr2')];
+  const definition = workflow({ steps: [{ id: 'reminder', type: 'notify', subject: 'Reminder', body: '{pending.tasks}', to: ['supervisor', 'taskOwners'], cc: [] }] });
+  M.runWorkflow(c, config, definition, environment, 'date');
+  expect(c.mails).toHaveLength(2);
+  expect(c.mails.find(m => m.to[0] === 'hr')?.body).toBe('Return laptop (due 2026-10-30)');
+  expect(c.mails.find(m => m.to[0] === 'hr2')?.body).toBe('Revoke access (due 2026-10-30)');
+});
+
 describe('V9 calendar and matching parity', () => {
   it('keeps working-day triggers separate from the two checklist day conventions', () => {
     expect(M.addDays('2026-10-30', -10, true)).toBe('2026-10-16');

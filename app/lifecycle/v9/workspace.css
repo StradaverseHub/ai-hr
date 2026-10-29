@@ -17,3 +17,5 @@
 .v9-badge{align-self:flex-start;width:fit-content}
 .v9-mobile-top{display:none}
 @media(max-width:760px){.v9-mobile-top{display:flex;align-items:center;justify-content:space-between;background:#fff;border-radius:16px;padding:12px 16px;font-weight:600}.v9-nav{display:none}.v9-nav.v9-nav-open{display:flex;flex-direction:column}.v9-nav strong{display:none}.v9-nav h2{width:auto}.v9-heading>div{min-width:0}.v9-heading h1{overflow-wrap:anywhere}}
+
+.v9-dialog.v9-drawer{position:fixed;inset:0 0 0 auto;margin:0;width:min(820px,100%);max-width:100%;height:100dvh;max-height:100dvh;border-radius:0;padding:20px;overflow-y:auto}.v9-drawer>header{align-items:flex-start}.v9-workflow-section{display:flex;flex-direction:column;gap:12px;border-left:3px solid var(--v9-accent);padding-left:12px}.v9-role-picker{border:0;padding:0;margin:0;min-width:0}.v9-role-picker legend{font-size:12.5px;font-weight:600;margin-bottom:8px}.v9-role-picker label{display:inline-flex;gap:6px;align-items:center}

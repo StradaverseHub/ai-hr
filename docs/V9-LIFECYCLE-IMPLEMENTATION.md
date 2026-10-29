@@ -34,6 +34,14 @@ Fifteen focused embedded-logic checks passed during analysis. These are independ
 4. Verify rules, security, concurrency, migrations, build and rendered complete journeys. Finish review and documentation follow the Impeccable workflow.
 5. Refresh and integrate the verified candidate into main and alpha at the same commit, preserving concurrent work. This merge request does not authorize a production deployment.
 
+## Authoring controls implemented in the working candidate
+
+The workflow list opens the source's right-hand editor with Steps and Test tabs. Administrators can edit triggers, conditions, ordered document/email/notification steps, signature and file waits, multiple To roles and CC. A dry run evaluates a detached case through the same engine, with isolated preview identifiers; it cannot save case changes or send mail. Existing waiting runs retain their frozen definitions. Task-owner messages remain separate and contain only their own pending tasks, including when another To role resolves to the same person.
+
+Document drafts expose block ordering, text, tables, signatures and field configuration, including ownership, width, required/sensitive flags, section membership and conditional visibility. Preview uses the same document renderer as the employee form. Published bodies remain immutable. File import, complete version management and full rendered comparison with the supplied HTML remain outstanding.
+
+Focused authoring verification covers 32 checks across five domain/DOM files, including server-valid workflow output, read-only configuration access, detached dry runs and table previews. This is development evidence, not whole-system acceptance or migration evidence. The working branch has been published with the owner's explicit push/CI/merge authorization; its current integration refresh preserves the concurrent Rewards and attendance changes from canonical main.
+
 ## Behavior that remains unchanged until an owner decision
 
 Post-last-working-day tasks block automatic closure. The two exit-form workflows count Monday through Friday, excluding no holidays in the supplied source. A late case may send the initial form message and its reminder on the same run. The acceptance-letter CC includes the line manager and PBP. Do not silently alter these behaviors while reproducing V9.

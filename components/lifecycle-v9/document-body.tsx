@@ -13,7 +13,9 @@ export function DocumentBody({ document, values = document.values, editableBy, d
     else if (block.type === 'heading') content = <h2>{text}</h2>;
     else if (block.type === 'subheading') content = <h3>{text}</h3>;
     else if (block.type === 'text') content = <p style={{ whiteSpace: 'pre-wrap' }}>{text}</p>;
-    else if (block.type === 'field') {
+    else if (block.type === 'fields') {
+      content = <div className="v9-document-grid">{document.fields.filter(f => f.section === block.section && (!f.when || values[f.when.field] === f.when.value)).map(field => <div key={field.id} className={field.width === 'half' ? 'v9-form-half' : 'v9-form-full'}><DocumentField field={field} value={values[field.id] ?? ''} disabled={disabled || editableBy !== field.owner} change={value => change?.(field.id, value)}/></div>)}</div>;
+    } else if (block.type === 'field') {
       const field = document.fields.find(f => f.id === block.fieldId);
       if (!field || field.when && values[field.when.field] !== field.when.value) return null;
       return <div key={block.id} className={field.width === 'half' ? 'v9-form-half' : 'v9-form-full'}><DocumentField field={field} value={values[field.id] ?? ''} disabled={disabled || editableBy !== field.owner} change={value => change?.(field.id, value)}/></div>;
