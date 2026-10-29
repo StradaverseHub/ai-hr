@@ -85,15 +85,17 @@ CREATE POLICY ai_provider_pending_config_owner_custody ON public.ai_provider_pen
   AND tenant_id=app.current_tenant_id() AND app._ai_provider_evaluation_actor_valid()
  );
 --> statement-breakpoint
+-- The application role may SELECT this table, so its policies are planned for that role too: use only functions the
+-- role may execute. Every writer below re-checks app._ai_provider_evaluation_actor_valid() itself.
 CREATE POLICY ai_provider_baseline_run_owner_custody ON public.ai_provider_baseline_run
  FOR ALL TO PUBLIC
  USING (
   current_user=pg_get_userbyid((SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid='public.ai_provider_baseline_run'::regclass))
-  AND tenant_id=app.current_tenant_id() AND app._ai_provider_evaluation_actor_valid()
+  AND tenant_id=app.current_tenant_id() AND app.is_group_admin()
  )
  WITH CHECK (
   current_user=pg_get_userbyid((SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid='public.ai_provider_baseline_run'::regclass))
-  AND tenant_id=app.current_tenant_id() AND app._ai_provider_evaluation_actor_valid()
+  AND tenant_id=app.current_tenant_id() AND app.is_group_admin()
  );
 --> statement-breakpoint
 -- Progress is {"<suite>":{"total":n,"passed":p,"failed":f,"next":x}}, with passed+failed=next<=total. The state is
