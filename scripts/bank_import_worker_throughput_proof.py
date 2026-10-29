@@ -26,7 +26,7 @@ import zipfile
 REPO='StradaverseHub/ai-hr'
 REPOSITORY_ID=1333414856
 PRODUCER_WORKFLOW='.github/workflows/bank-import-worker-package.yml'
-CONSUMER_WORKFLOW='.github/workflows/bank-import-worker-throughput.yml'
+CONSUMER_WORKFLOW='.github/workflows/bank-import-worker-package.yml'
 REFUSED_SOURCE='968354c00a71df7baccd499eb60757a3307ed61e'
 MAX_SECONDS=10800
 RESERVE_SECONDS=300

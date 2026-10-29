@@ -1,26 +1,53 @@
-name: bank-import-worker-package
-run-name: Archived worker runtime gate · controller ${{ github.sha }} · source ${{ inputs.source_sha }}
+name: bank-import-worker-throughput
+run-name: CI-only 100001 native saves · consumer ${{ github.sha }} · application ${{ inputs.source_sha }}
 on:
   workflow_dispatch:
     inputs:
       source_sha:
-        description: Exact frozen application source (40 lowercase hexadecimal characters)
+        description: Reviewed final application R, exact 40 lowercase SHA; no historical source fallback
+        required: true
+        type: string
+      producer_sha:
+        description: Separately reviewed producer controller, exact 40 lowercase SHA
+        required: true
+        type: string
+      producer_run_id:
+        description: Authenticated successful first-attempt producer run numeric ID
+        required: true
+        type: string
+      producer_job_id:
+        description: Exact successful worker-package job numeric ID
+        required: true
+        type: string
+      producer_artifact_id:
+        description: Exact closed four-member worker-package-v2 artifact numeric ID
+        required: true
+        type: string
+      producer_artifact_sha256:
+        description: Independently accepted API artifact ZIP SHA256, 64 lowercase hexadecimal characters
         required: true
         type: string
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: bank-import-worker-package-${{ github.ref }}
+  group: bank-import-worker-throughput
   cancel-in-progress: false
 jobs:
-  worker-package:
-    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.run_attempt == 1 }}
+  throughput:
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.event_name == 'workflow_dispatch' && github.run_attempt == 1 }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    # PROPOSAL ONLY: independent review and accepted final-R packet are required
+    # before dispatch. This does not authorize a release or paid runner change.
+    timeout-minutes: 180
     env:
       TZ: Asia/Kuala_Lumpur
       SOURCE_SHA: ${{ inputs.source_sha }}
+      PRODUCER_SHA: ${{ inputs.producer_sha }}
+      PRODUCER_RUN: ${{ inputs.producer_run_id }}
+      PRODUCER_JOB: ${{ inputs.producer_job_id }}
+      PRODUCER_ARTIFACT: ${{ inputs.producer_artifact_id }}
+      PRODUCER_DIGEST: ${{ inputs.producer_artifact_sha256 }}
       DATABASE_URL: postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test
       MIGRATION_DATABASE_URL: postgres://ai_hr_owner@127.0.0.1:5433/ai_hr_test
       TEST_DATABASE_URL: postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test
@@ -29,18 +56,35 @@ jobs:
       AIHR_CI_PG_MEMORY_GIB: '2'
       AIHR_CI_PG_JIT: 'on'
     steps:
-      - name: Checkout immutable workflow controller
+      - name: Record first-step time before any checkout or setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "THROUGHPUT_FIRST_STEP_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
+          mkdir -m 700 "$RUNNER_TEMP/bank-throughput-evidence"
+      - name: Checkout exact consumer controller
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ github.sha }}
           path: controller
           persist-credentials: false
-      - name: Reject missing or mutable application source pin
+      - name: Authenticate successful producer job and closed API artifact before source execution
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
-      - name: Checkout exact frozen application source
+          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,GH_TOKEN \
+            python3 -I -B controller/scripts/bank_import_worker_throughput_proof.py authenticate \
+            --source "$SOURCE_SHA" --producer "$PRODUCER_SHA" --run "$PRODUCER_RUN" \
+            --job "$PRODUCER_JOB" --artifact "$PRODUCER_ARTIFACT" --digest "$PRODUCER_DIGEST"
+      - name: Checkout separately pinned producer controller
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ inputs.producer_sha }}
+          path: producer
+          persist-credentials: false
+      - name: Checkout exact final application source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ inputs.source_sha }}
@@ -51,14 +95,24 @@ jobs:
           node: '22.23.3'
           path: source
           mobile: 'false'
-      - name: Verify bounded worker package controls
+      - name: Exercise all eleven bounded consumer refusal and lifecycle control groups
         working-directory: controller
+        shell: bash
         run: |
-          node --test scripts/bank-import-worker-package.test.mjs
-          python3 -I -B scripts/ci-bank-import-worker-producer-controls.test.py
-      - name: Produce v2 worker bytes from clean frozen application source
-        run: node controller/scripts/bank-import-worker-package.mjs "$GITHUB_WORKSPACE/source" "$RUNNER_TEMP/worker-package" "$SOURCE_SHA"
-      - name: Prepare owned disposable PostgreSQL and distinct physical owner
+          set -euo pipefail
+          python3 -I -B scripts/ci-bank-import-worker-throughput-controls.test.py \
+            2>&1 | tee "$RUNNER_TEMP/bank-throughput-evidence/consumer-controls.log"
+          grep -Eq '^Ran 11 tests in [0-9.]+s$' "$RUNNER_TEMP/bank-throughput-evidence/consumer-controls.log"
+          grep -Eq '^OK$' "$RUNNER_TEMP/bank-throughput-evidence/consumer-controls.log"
+          ! grep -Eiq 'skipped|FAILED|ERROR|FAIL' "$RUNNER_TEMP/bank-throughput-evidence/consumer-controls.log"
+      - name: Independently verify actual packet bytes against clean pinned source and dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH \
+            python3 -I -B controller/scripts/bank_import_worker_throughput_proof.py verify \
+            --source "$GITHUB_WORKSPACE/source" --producer-controller "$GITHUB_WORKSPACE/producer"
+      - name: Prepare only this workflow's disposable PostgreSQL and distinct physical queue owner
         shell: bash
         run: |
           set -euo pipefail
@@ -67,33 +121,69 @@ jobs:
             psql -U postgres -p 5433 -X -v ON_ERROR_STOP=1 \
             -c 'CREATE ROLE ai_hr_owner LOGIN SUPERUSER;' \
             -c 'ALTER DATABASE ai_hr_test OWNER TO ai_hr_owner;'
-      - name: Apply exact frozen ordinary journal and catalogs
-        working-directory: source
+      - name: Normally migrate actual complete final-R ordinary journal and seed catalogs
         shell: bash
         run: |
           set -euo pipefail
-          pnpm db:migrate
-          node --import tsx scripts/seed-catalogs.ts
-      - name: Gate actual extracted archived worker and native synthetic job
+          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH \
+            python3 -I -B controller/scripts/bank_import_worker_throughput_proof.py prepare \
+            --source "$GITHUB_WORKSPACE/source" --producer-controller "$GITHUB_WORKSPACE/producer" --node "$(command -v node)"
+      - name: Measure actual sealed native 100001 saves within remaining whole-job budget
+        id: measurement
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          sudo --preserve-env=GITHUB_ACTIONS,CI,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT \
-            python3 -I -B controller/scripts/ci-bank-import-worker-archive-runtime-smoke.py \
+          sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH,GH_TOKEN \
+            python3 -I -B controller/scripts/bank_import_worker_throughput_proof.py measure \
             --controller "$GITHUB_WORKSPACE/controller" --source "$GITHUB_WORKSPACE/source" \
-            --source-sha "$SOURCE_SHA" --package-dir "$RUNNER_TEMP/worker-package" --node "$(command -v node)"
-      - name: Upload closed authenticated bytes and actual runtime proof
+            --producer-controller "$GITHUB_WORKSPACE/producer" --node "$(command -v node)" \
+            --report "$RUNNER_TEMP/bank-throughput-evidence/native-100001.json"
+      - name: Always stop exact owned descendants and disposable database
+        id: cleanup
+        if: ${{ always() }}
+        timeout-minutes: 4
+        env:
+          MEASUREMENT_RESULT: ${{ steps.measurement.outcome }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          native=0
+          database=0
+          if [[ -f controller/scripts/bank_import_worker_throughput_proof.py ]]; then
+            sudo --preserve-env=GITHUB_ACTIONS,CI,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_REPOSITORY_ID,GITHUB_EVENT_NAME,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,THROUGHPUT_FIRST_STEP_EPOCH \
+              timeout --foreground --signal=TERM --kill-after=5s 100s \
+              python3 -I -B controller/scripts/bank_import_worker_throughput_proof.py cleanup \
+              --measurement-result "$MEASUREMENT_RESULT" --evidence-dir "$RUNNER_TEMP/bank-throughput-evidence" \
+              > "$RUNNER_TEMP/bank-throughput-evidence/owned-cleanup.json" 2>&1 || native=$?
+          else
+            native=125
+          fi
+          if [[ -f controller/.github/ci/postgres.sh ]]; then
+            timeout --foreground --signal=TERM --kill-after=5s 65s bash controller/.github/ci/postgres.sh stop || database=$?
+          else
+            database=125
+          fi
+          printf '{"nativeCleanupExit":%s,"databaseCleanupExit":%s,"receiptRequiresWholeWorkflowSuccess":true,"releaseAuthorized":false}\n' \
+            "$native" "$database" > "$RUNNER_TEMP/bank-throughput-evidence/cleanup-result.json"
+          [[ "$native" == 0 && "$database" == 0 ]]
+      - name: Require measurement exit zero and successful owned cleanup
+        if: ${{ always() }}
+        shell: bash
+        env:
+          MEASUREMENT_RESULT: ${{ steps.measurement.outcome }}
+          CLEANUP_RESULT: ${{ steps.cleanup.outcome }}
+        run: |
+          set -euo pipefail
+          [[ "$MEASUREMENT_RESULT" == success && "$CLEANUP_RESULT" == success ]]
+          echo 'CI-only measurement completed; acceptance requires this entire original workflow to finish SUCCESS. A surviving JSON receipt alone is invalid. No release authority.'
+      - name: Retain bounded measurement and cleanup evidence including failures
+        if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: worker-package-v2
-          path: |
-            ${{ runner.temp }}/worker-package/worker-package.zip
-            ${{ runner.temp }}/worker-package/worker-manifest.json
-            ${{ runner.temp }}/worker-package/worker-provenance.json
-            ${{ runner.temp }}/worker-package/worker-runtime-proof.json
+          name: bank-throughput-ci-evidence
+          path: ${{ runner.temp }}/bank-throughput-evidence/
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
-      - name: Stop owned disposable PostgreSQL
-        if: ${{ always() }}
-        run: bash controller/.github/ci/postgres.sh stop
