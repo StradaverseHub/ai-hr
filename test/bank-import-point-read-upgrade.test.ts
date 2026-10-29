@@ -99,12 +99,12 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('0691 populated ordinary up
    const employees:Employee[]=[];
    const employee=async(tenant:string,companyId:string,label:string,voided=false)=>{
     const [p]=await storage.client`insert into person(tenant_id,full_name,primary_email,voided_at)
-     values(${tenant}::uuid,${'Fictional retained '+label},${'point-upgrade-'+label+'@example.invalid'},${voided?new Date('2026-10-01T00:00:00Z'):null}) returning id`;
+     values(${tenant}::uuid,${'Fictional retained '+label},${'point-upgrade-'+label+'@example.invalid'},${voided?'2026-10-01T00:00:00Z':null}::timestamptz) returning id`;
     // A retained historical void has the full constraint-valid bundle and an actual
     // employee-full attempt. Ordinary triggers/constraints stay enabled throughout.
     const [e]=await storage.client`insert into employment(tenant_id,person_id,company_id,employee_code,hired_on,payment_method,voided_at,voided_by,void_reason,voided_import_attempt_id,voided_employee_code)
      values(${tenant}::uuid,${p.id}::uuid,${companyId}::uuid,${voided?null:'UP-'+label},'2026-01-05','bank_transfer',
-      ${voided?new Date('2026-10-01T00:00:00Z'):null},${voided?group.userId:null}::uuid,${voided?'Fictional retained import void':null},${voided?attempt.id:null}::uuid,${voided?'UP-VOID':null}) returning id`;
+      ${voided?'2026-10-01T00:00:00Z':null}::timestamptz,${voided?group.userId:null}::uuid,${voided?'Fictional retained import void':null},${voided?attempt.id:null}::uuid,${voided?'UP-VOID':null}) returning id`;
     await storage.client`insert into employee_statutory_my(tenant_id,person_id,tax_number,bank_name,bank_account_no)
      values(${tenant}::uuid,${p.id}::uuid,${'T-RETAIN-'+label},'Maybank','0001234567')`;
     const value={tenantId:tenant,personId:String(p.id),employmentId:String(e.id),companyId,voided};employees.push(value);return value;
