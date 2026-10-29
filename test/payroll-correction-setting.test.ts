@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
@@ -39,7 +40,7 @@ describe('group-admin payroll correction setting', () => {
 
   it('catalog upgrade preserves a platform-enabled override and lets its group admin disable it', async () => {
     await owner.db.update(schema.settingDefinition).set({ scope: 'platform' }).where(eq(schema.settingDefinition.key, key));
-    await owner.db.insert(schema.tenantSetting).values({ tenantId: base.tenantId, key, value: true, source: 'platform' });
+    await owner.db.insert(schema.tenantSetting).values({ tenantId: base.tenantId, key, value: true, source: 'platform', updatedBy: randomUUID() });
     const before = await settingRows();
     try {
       await seedCatalogs(owner.db);
@@ -53,6 +54,20 @@ describe('group-admin payroll correction setting', () => {
     expect(getSetting(await resolved(group()), key)).toBe(true);
     await setTenantSetting(group(), { key, value: false });
     expect(getSetting(await resolved(group()), key)).toBe(false);
+  });
+
+  it('attributes each save to the current group admin even after another admin edited it',async()=>{
+    const [person]=await owner.db.insert(schema.person).values({tenantId:base.tenantId,fullName:'Fictional second group admin',primaryEmail:randomUUID()+'@corrections.test'}).returning();
+    const [user]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,personId:person.id,workosUserId:randomUUID()}).returning();
+    await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:user.id,role:'hr_admin'});
+    const second:SessionContext={...group(),userId:user.id,personId:person.id};
+    await setTenantSetting(group(),{key,value:true});
+    expect((await settingRows()).find(row=>row.key===key)?.updatedBy).toBe(base.adminUserId);
+    await setTenantSetting(second,{key,value:false});
+    expect((await settingRows()).find(row=>row.key===key)).toMatchObject({value:false,source:'customer',updatedBy:user.id});
+    await setTenantSetting(group(),{key,value:true});
+    expect((await settingRows()).find(row=>row.key===key)).toMatchObject({value:true,updatedBy:base.adminUserId});
+    expect((await events()).map(event=>event.actorId)).toEqual([base.adminUserId,user.id,base.adminUserId]);
   });
 
   it('does not change another tenant or the platform-only unlock setting', async () => {

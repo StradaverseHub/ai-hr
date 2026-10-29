@@ -37,6 +37,15 @@ Freeze and record final SQL hashes after repairs, rehearse the ordinary populate
 recheck the actual installed prefix before application. No database or deployment acceptance is
 implied by this source allocation.
 
+Final source SQL hashes for the review candidate (not an application receipt):
+
+| Migration | SHA256 |
+| --- | --- |
+| 0687_assistant_question_budget | ade48bffee0a5d6ebf72cdd61de36323f3650b81c805cd186701c5d8105e86c4 |
+| 0688_payroll_txn_import_attempts | d8cd57bbd6e0f73deab48353a527782750a5e5f040e945bb4020eace58b8348c |
+| 0689_rewards_unit_governance | b9ee4db5644da405b58f83303d8096c9a186b4808b5e943859759785536c68c3 |
+| 0690_rewards_policy_pair_membership | 9489f45cbf7ade53d2729d577d8da9045966f02954126fb72e14bc3fc7d4fd44 |
+
 Refresh canonical refs, competing reservations and the actual ledger before journal append.
 Do not skip the occupied 0687 predecessor, rewrite applied SQL or infer deployment authority.
 
