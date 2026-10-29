@@ -49,6 +49,16 @@ describe('per-field approval authority',()=>{
   expect((await owner.db.select().from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,s.personId)))[0]).toMatchObject({bankName:'Maybank',bankAccountNo:'9876543210'});
   await expect(withTenant(s.ctx,async tx=>{await tx.execute(sql`select app.profile_direct_begin(${s.employmentId}::uuid,${JSON.stringify({v:2,fields:[{fieldId:account,value:'1111111111'}],registers:[]})}::jsonb)`);await tx.update(employeeStatutoryMy).set({bankAccountNo:'1111111111',numChildren:99}).where(eq(employeeStatutoryMy.personId,s.personId));})).rejects.toThrow();
  });
+ it('reviews a complete new bank pair together when only the account requires approval',async()=>{
+  const s=await subject(),bank='bank_statutory.bank_information.bankname',account='bank_statutory.bank_information.bankaccountno';
+  await setStatutoryProfileMY(admin(),{personId:s.personId,icNumber:null});
+  await policy({[bank]:{required:false,attachmentRequired:false},[account]:{required:true,attachmentRequired:false}});
+  const result=await submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal:await proposal(s,{[bank]:'Maybank',[account]:'1234567890'})});
+  expect(result.saved).toEqual([]);expect(result.waiting).toEqual([bank,account]);
+  expect((await owner.db.select().from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,s.personId)))[0]).toMatchObject({bankName:null,bankAccountNo:null});
+  await decideProfileChange(admin(),{requestId:result.requestId!,decision:'approved'});
+  expect((await owner.db.select().from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,s.personId)))[0]).toMatchObject({bankName:'Maybank',bankAccountNo:'1234567890'});
+ });
  it('seeds a missing statutory identity row using only canonical fields and installation defaults',async()=>{
   const s=await subject(),oldIc='profile.identity_and_passport.oldicnumber';await policy({[oldIc]:{required:false,attachmentRequired:false}});
   const result=await submitOwnProfileEdit(s.ctx,{employmentId:s.employmentId,proposal:await proposal(s,{[oldIc]:'OLD-FIXTURE-100'})});

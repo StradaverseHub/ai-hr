@@ -14,3 +14,18 @@ describe('versioned field approvals and submission partitioning',()=>{
   const result=splitProfileSubmission(raw,proposal);expect(result.immediate.fields).toEqual([proposal.fields[0]]);expect(result.waiting.fields).toEqual([proposal.fields[1]]);expect(result.immediate.registers).toEqual([]);expect(result.waiting.registers).toEqual(proposal.registers);
  });
 });
+it.each([
+ ['bank_statutory.bank_information.bankname','bank_statutory.bank_information.bankaccountno'],
+ ['profile.personal_details.nationality','profile.identity_and_passport.passportnumber'],
+ ['profile.identity_and_passport.icnumber','profile.identity_and_passport.oldicnumber'],
+ ['bank_statutory.bank_information.enablecustomholdername','bank_statutory.bank_information.customholdername'],
+])('keeps coupled scalar fields together: %s', (one,two)=>{
+ const all=requireFields(one,two);
+ const raw={version:5,fields:Object.fromEntries(all.map(id=>[id,'editable'])),primaryOnly:[],groups:{},approvals:{[one]:{required:false,attachmentRequired:false},[two]:{required:true,attachmentRequired:false}}};
+ const fields=all.map(fieldId=>({fieldId,before:null,value:'value'}));const result=splitProfileSubmission(raw,{v:2,fields,registers:[]});expect(result.immediate.fields).toEqual([]);expect(result.waiting.fields).toEqual(fields);
+});
+function requireFields(...ids:string[]){for(const id of ids)expect(personnelField(id),id).toBeTruthy();return ids;}
+it('holds an existing register row together when any submitted companion needs approval',()=>{
+ const fields=[{fieldId:familyName,before:null,value:'Child'},{fieldId:relationship,before:null,value:'child'}];const registers=[{kind:'dependent' as const,id:'existing',clientId:'existing',fields}];
+ const result=splitProfileSubmission(policy({[familyName]:{required:false,attachmentRequired:false}}),{v:2,fields:[],registers});expect(result.immediate.registers).toEqual([]);expect(result.waiting.registers).toEqual(registers);
+});
