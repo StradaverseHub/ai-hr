@@ -38,7 +38,7 @@ export async function assessmentReminderPreviewAction(form:FormData){
 
 export async function assessmentReminderPersonPreviewAction(cycleId:string,employeeCode:string){
  try{
-  const ctx=await getSession(),preview=await previewAssessmentReminder(ctx,cycleId,employeeCode),language=await getLocale(),locale=notificationEmailLocales.find(locale=>locale===language)??'en',origin=appOrigin();
-  return {result:{employee:preview.employee,employeeCode:preview.employeeCode,eligible:preview.eligible,message:preview.mail.tasks.length?assessmentReminderMessage(preview.mail,locale,origin?new URL('/performance/workspace',origin).href:'/performance/workspace'):null}};
+  const ctx=await getSession(),preview=await previewAssessmentReminder(ctx,cycleId,employeeCode),language=preview.mode==='full'?preview.locale:await getLocale(),locale=notificationEmailLocales.find(locale=>locale===language)??'en',origin=appOrigin();
+  return {result:{employee:preview.employee,employeeCode:preview.employeeCode,eligible:preview.eligible,mode:preview.mode,locale,message:preview.mail.tasks.length?assessmentReminderMessage(preview.mail,locale,origin?new URL('/me/performance',origin).href:'/me/performance',preview.design):null}};
  }catch(error){return {error:publicErrorMessage(error)};}
 }

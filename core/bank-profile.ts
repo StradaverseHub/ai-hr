@@ -39,6 +39,10 @@ export type CompanyBankProfileInput = {
   swiftCode?: string | null;
   currency?: string | null;
   isPrimary?: boolean;
+  fileContactName?:string|null;
+  fileContactPhone?:string|null;
+  fileStateCode?:string|null;
+  requirePayeeIdCheck?:boolean;
 };
 
 const clean = (v: string | null | undefined): string | null => v?.trim() || null;
@@ -75,6 +79,7 @@ export async function upsertCompanyBankProfile(ctx: SessionContext, p: CompanyBa
     swiftCode: clean(p.swiftCode),
     currency,
     isPrimary,
+    ...(p.fileContactName!==undefined?{fileContactName:clean(p.fileContactName)}:{}),...(p.fileContactPhone!==undefined?{fileContactPhone:clean(p.fileContactPhone)}:{}),...(p.fileStateCode!==undefined?{fileStateCode:clean(p.fileStateCode)}:{}),...(p.requirePayeeIdCheck!==undefined?{requirePayeeIdCheck:p.requirePayeeIdCheck}:{}),
   };
 
   return withTenant(ctx, async (tx) => {
@@ -192,6 +197,7 @@ const PROFILE_COLUMNS = {
   swiftCode: companyBankProfile.swiftCode,
   currency: companyBankProfile.currency,
   isPrimary: companyBankProfile.isPrimary,
+  fileContactName:companyBankProfile.fileContactName,fileContactPhone:companyBankProfile.fileContactPhone,fileStateCode:companyBankProfile.fileStateCode,requirePayeeIdCheck:companyBankProfile.requirePayeeIdCheck,
 };
 
 /** List a company's bank accounts (admin-only via RLS). */

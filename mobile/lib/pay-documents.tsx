@@ -25,7 +25,7 @@ import { router } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import * as Sharing from 'expo-sharing';
 import type { z } from 'zod';
-import { DesignText as Text, useTenantDesign } from './design';
+import { DesignText as Text, TenantBrand, useTenantDesign } from './design';
 import { apiDownload, apiGetV2, apiPostV2, v2Download } from './api';
 import { authGeneration } from './auth';
 import { config, identityNamespace } from './config';
@@ -240,6 +240,7 @@ export function PayslipsScreen() {
   return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={['top']}>
     <PagedList list={shown} keyOf={itemKey} emptyText={enabled === false ? t('payrollOff') : t('noPayslips')} contentContainerStyle={{ padding: 20, gap: 8 }}
       header={<View style={{ gap: 12 }}>
+        <TenantBrand />
         <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
         <Title>{t('payTitle')}</Title>
         <Button title={t('payEaOpen')} kind="quiet" onPress={() => router.push('/pay/ea')} />

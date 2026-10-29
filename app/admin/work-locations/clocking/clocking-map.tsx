@@ -57,8 +57,8 @@ export function ClockingMap({ provider }: { provider: MapProvider }) {
   const tileRef = useRef<Leaflet.TileLayer | null>(null);
   const [status, setStatus] = useState<Status>('loading');
   const [hasPoint, setHasPoint] = useState(false);
-  const [tileFailed, setTileFailed] = useState(false);
   const [satellite, setSatellite] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   const satelliteAvailable = provider.satelliteTileUrl !== null;
   // Primitives, not the object: `provider` is a fresh object on every server render, and depending on it
@@ -72,6 +72,7 @@ export function ClockingMap({ provider }: { provider: MapProvider }) {
     const form = ownerForm(hostRef.current);
     let cancelled = false;
     let detach: (() => void) | null = null;
+    setStatus('loading');
 
     void (async () => {
       try {
@@ -95,20 +96,27 @@ export function ClockingMap({ provider }: { provider: MapProvider }) {
         mapRef.current = map;
 
         const subs = subdomains.split(',').filter((s) => s !== '');
-        const tiles = L.tileLayer(tileUrl, {
-          maxZoom,
-          subdomains: subs.length > 0 ? subs : 'abc',
-          // Edge security headers can replace the document policy with `same-origin`.
-          // OSM requires Referer on web tile requests. Set it on each image so only the
-          // site origin crosses origins; page paths, queries and form values stay private.
-          referrerPolicy: 'strict-origin-when-cross-origin',
-        });
-        setTileFailed(false);
-        const tileEvents = {
-          loading: () => { if (!cancelled) setTileFailed(false); },
-          tileerror: () => { if (!cancelled) setTileFailed(true); },
+        // The public edge may use same-origin for documents. OSM requires a Referer:
+        // send only our origin on these images, never a form path or its query string.
+        const tiles = L.tileLayer(tileUrl, { maxZoom, subdomains: subs.length > 0 ? subs : 'abc', referrerPolicy: 'strict-origin-when-cross-origin' });
+        // Initialising Leaflet is not proof that the provider delivered a map.
+        let tileError = false;
+        let tileTimeout: ReturnType<typeof setTimeout> | null = null;
+        const failed = () => { tileError = true; if (!cancelled) setStatus('unavailable'); };
+        const loading = () => {
+          tileError = false;
+          if (tileTimeout) clearTimeout(tileTimeout);
+          if (!cancelled) setStatus('loading');
+          tileTimeout = setTimeout(failed, 12000);
         };
-        tiles.on(tileEvents);
+        const loaded = () => {
+          if (tileTimeout) clearTimeout(tileTimeout);
+          if (!cancelled && !tileError) setStatus('ready');
+        };
+        tiles.on('loading', loading);
+        tiles.on('tileload', loaded);
+        tiles.on('tileerror', failed);
+        loading();
         tiles.addTo(map);
         tileRef.current = tiles;
 
@@ -194,17 +202,22 @@ export function ClockingMap({ provider }: { provider: MapProvider }) {
         // The card can still be settling when the map initialises; Leaflet sizes itself once, from the
         // container, and a stale size is the classic half-drawn map.
         const resize = setTimeout(() => map.invalidateSize(), 0);
+        const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => map.invalidateSize());
+        observer?.observe(canvas);
 
         detach = () => {
           if (timer) clearTimeout(timer);
           clearTimeout(resize);
-          tiles.off(tileEvents);
+          observer?.disconnect();
+          if (tileTimeout) clearTimeout(tileTimeout);
+          tiles.off('loading', loading);
+          tiles.off('tileload', loaded);
+          tiles.off('tileerror', failed);
           form?.removeEventListener('input', onInput);
           form?.removeEventListener(MAP_FOCUS_EVENT, onFocusRequest);
         };
 
         apply('fit');
-        setStatus('ready');
       } catch {
         // The free supplier guarantees nothing and a chunk can fail to load. Say so, and leave the boxes
         // above — which are what actually gets saved — completely untouched.
@@ -219,15 +232,15 @@ export function ClockingMap({ provider }: { provider: MapProvider }) {
       mapRef.current = null;
       tileRef.current = null;
     };
-  }, [tileUrl, maxZoom, subdomains]);
+  }, [tileUrl, maxZoom, subdomains, attempt]);
 
   // The Satellite swap is a tile-source change and nothing else — the marker, the circle and the view all
   // stay exactly where they are. It can only ever run when the seam reported a satellite URL.
   useEffect(() => {
     const tiles = tileRef.current;
-    if (status !== 'ready' || !tiles) return;
+    if (!tiles) return;
     tiles.setUrl(satellite && provider.satelliteTileUrl !== null ? provider.satelliteTileUrl : tileUrl);
-  }, [satellite, provider.satelliteTileUrl, tileUrl, status]);
+  }, [satellite, provider.satelliteTileUrl, tileUrl]);
 
   // Leaflet writes its own English titles onto the zoom buttons. Six locales are the house rule, and this
   // is the only text Leaflet renders that is not ours.
@@ -247,7 +260,7 @@ export function ClockingMap({ provider }: { provider: MapProvider }) {
 
   const viewButton = 'rounded px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45';
   return (
-    <div ref={hostRef} className="px-4 pb-4">
+    <div ref={hostRef} className="relative isolate z-0 px-4 pb-4">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs font-medium text-muted-foreground">{t('mapHeading')}</span>
         <div className="inline-flex items-center gap-0.5 rounded-md border border-input p-0.5">
@@ -279,14 +292,13 @@ export function ClockingMap({ provider }: { provider: MapProvider }) {
 
       <div className="relative h-80 w-full overflow-hidden rounded-md border border-border bg-muted sm:h-96">
         <div ref={canvasRef} className="absolute inset-0" />
-        {(status !== 'ready' || tileFailed) && (
-          <p
-            role="status"
-            className="pointer-events-none absolute inset-0 z-[800] flex items-center justify-center bg-muted p-4 text-center text-xs text-muted-foreground">
-            {status === 'loading' ? t('mapLoading') : t('mapUnavailable')}
-          </p>
+        {status !== 'ready' && (
+          <div className="absolute inset-0 z-[800] flex flex-col items-center justify-center gap-3 bg-background/95 p-4 text-center text-sm" role="status">
+            <p>{status === 'loading' ? t('mapLoading') : t('mapUnavailable')}</p>
+            <button type="button" onClick={() => { setSatellite(false); setAttempt(value => value + 1); }} className="rounded-md border border-input bg-background px-3 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-ring">{t('mapRetry')}</button>
+          </div>
         )}
-        {status === 'ready' && !tileFailed && !hasPoint && (
+        {status === 'ready' && !hasPoint && (
           <p className="pointer-events-none absolute inset-x-0 bottom-0 z-[800] bg-background/90 px-3 py-1.5 text-center text-xs text-muted-foreground">
             {t('mapNoPoint')}
           </p>

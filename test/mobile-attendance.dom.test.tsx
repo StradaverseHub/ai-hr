@@ -117,7 +117,7 @@ function fixture() {
   const applications = load('mobile/lib/attendance-applications.tsx', { ...base, './api': api, './paged-list': paged, './attendance-format': format, './attendance-records': recordsLib });
   const requests = load('mobile/lib/attendance-requests.tsx', { ...base, './api': api, './attendance-format': format, './attendance-records': recordsLib, './attendance-applications': applications, './leave-request-form': { PickerField } });
   const confirm = async (index = 0) => { const buttons = alert.mock.calls[index][2]; await act(async () => { buttons[1].onPress(); }); };
-  return { ...recordsLib, ...applications, ...requests, get, apiGetPage, apiPostV2, push, back, replace, alert, signOut, confirm };
+  return { ...recordsLib, ...applications, ...requests, fmtZoneName: format.fmtZoneName, get, apiGetPage, apiPostV2, push, back, replace, alert, signOut, confirm };
 }
 afterEach(cleanup);
 
@@ -127,7 +127,10 @@ describe('records and roster', () => {
     render(<f.AttendanceHomeScreen />);
     await screen.findByText('NIGHT 22:00–06:00 attNextDay');
     expect(f.get.mock.calls[0]).toEqual(['v2/attendance/records', { employmentId: 'own' }]);
-    expect(screen.getByText(`attTimeZone ${ZONE}`)).toBeTruthy();
+    // The note names the zone for people ("Malaysia Time"), never the raw IANA id.
+    const zoneName = f.fmtZoneName(ZONE);
+    expect(zoneName).not.toBe(ZONE);
+    expect(screen.getByText(`attTimeZone ${zoneName}`)).toBeTruthy();
     expect(screen.getByText('attInOut 22:00|06:00')).toBeTruthy();
     expect(screen.getByText('attRestDay')).toBeTruthy();
     expect(screen.getByText('attException attExceptionOdd')).toBeTruthy();

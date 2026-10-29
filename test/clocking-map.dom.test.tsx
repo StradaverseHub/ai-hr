@@ -92,12 +92,9 @@ vi.mock('leaflet', () => {
       state.tileUrls.push(url);
       state.tileOptions = options;
       const layer = {
-        addTo: () => layer,
-        on(events: Record<string, () => void>) {
-          Object.assign(state.tileEvents, events);
-          return layer;
-        },
-        off() { state.tileEvents = {}; return layer; },
+        on(event: string, listener: () => void) { state.tileEvents[event] = listener; return layer; },
+        off(event: string) { delete state.tileEvents[event]; return layer; },
+        addTo() { queueMicrotask(() => state.tileEvents.tileload?.()); return layer; },
         setUrl(next: string) {
           state.tileUrls.push(next);
           return layer;
@@ -159,6 +156,7 @@ vi.mock('leaflet', () => {
   return {
     default: leaflet,
     __state: state,
+    __tileEvent(event: string) { state.tileEvents[event]?.(); },
     __reset() {
       onMap = new Set<object>();
       Object.assign(state, {
@@ -205,7 +203,7 @@ vi.mock('../app/admin/actions', () => ({
 import * as leafletModule from 'leaflet';
 import { ClockingLocationForm } from '../app/admin/work-locations/clocking/clocking-form';
 import type { ClockingFormValues } from '../app/admin/work-locations/clocking/form-fields';
-const fake = leafletModule as unknown as { __state: FakeState; __reset: () => void };
+const fake = leafletModule as unknown as { __state: FakeState; __reset: () => void; __tileEvent: (event: string) => void };
 
 /** A point that is NOT the island's fallback centre, so "the marker moved" cannot pass by accident. */
 const PENANG = { lat: '5.4141', lng: '100.3288' } as const;
@@ -280,6 +278,8 @@ describe('fa2db8cb rev 2 — the map: a marker, the radius as a circle, and a Sa
     expect(boxes().radiusM.value).toBe('150');
     act(() => fake.__state.tileEvents.loading?.());
     expect(screen.queryByText(/The map could not be loaded/)).toBeNull();
+    act(() => fake.__tileEvent('tileload'));
+    expect(screen.queryByRole('status')).toBeNull();
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
@@ -624,5 +624,20 @@ describe('0fe1ca2e rev 6 (r335) — the real one-card form: the search still fil
     await screen.findByRole('button', { name: /Menara KL, Jalan Punchak/ });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(formActions.create, 'Enter submits a form by default — the key handler preventDefaults first').not.toHaveBeenCalled();
+  });
+});
+
+
+describe('clocking map provider recovery', () => {
+  it('reports a failed tile and retries without changing entered coordinates', async () => {
+    render(<NextIntlClientProvider locale="en" messages={messages}><form><input name="lat" defaultValue="5.4141" /><input name="lng" defaultValue="100.3288" /><input name="radiusM" defaultValue="175" /><ClockingMap provider={OSM_PROVIDER} /></form></NextIntlClientProvider>);
+    await waitFor(() => expect(fake.__state.mapOptions).not.toBeNull());
+    await act(async () => fake.__tileEvent('tileerror'));
+    expect(screen.getByText(/The map could not be loaded/)).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'Retry map' }));
+    await waitFor(() => expect(screen.queryByText(/The map could not be loaded/)).toBeNull());
+    expect(document.querySelector<HTMLInputElement>('input[name="lat"]')?.value).toBe('5.4141');
+    expect(document.querySelector<HTMLInputElement>('input[name="radiusM"]')?.value).toBe('175');
+    expect(fake.__state.circle?.radius).toBe(175);
   });
 });

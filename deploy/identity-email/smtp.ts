@@ -1,4 +1,6 @@
 /** Used only by the root-installed service. Never import this transport into a web action. */
+import {renderEmailDesign} from '../../lib/email-design/render';
+import {emailDesignEnvelope,type EmailDesignEnvelope} from '../../lib/email-design/model';
 import nodemailer from 'nodemailer';
 import type { EmailConfig } from '../../lib/identity/email-model';
 import type { WorkflowMailTarget,WorkflowMail } from './notifications';
@@ -23,6 +25,7 @@ async function sendManagedSmtp(config:EmailConfig,password:string|undefined,emai
 export async function sendWorkflowSmtp(config:EmailConfig,password:string|undefined,target:WorkflowMailTarget,mail:WorkflowMail) {
  return sendManagedSmtp(config,password,target.email,{messageId:mail.messageId,...workflowEmailMessage(mail)});
 }
-export async function sendEmployeeMasterSmtp(config:EmailConfig,password:string|undefined,target:MasterDeliveryTarget,attachment:MasterPreparedAttachment,messageId:string) {
- return sendManagedSmtp(config,password,target.email,{messageId,...employeeMasterMailMessage(target.locale),attachment});
+export async function sendEmployeeMasterSmtp(config:EmailConfig,password:string|undefined,target:MasterDeliveryTarget,attachment:MasterPreparedAttachment,messageId:string,rawDesign?:EmailDesignEnvelope) {
+ const design=rawDesign?emailDesignEnvelope.parse(rawDesign):null;if(design&&(design.kind!=='employee_master_report'||design.locale!==target.locale))throw Error('Email design binding changed.');
+ return sendManagedSmtp(config,password,target.email,{messageId,...renderEmailDesign(design?.document??null,'employee_master_report',target.locale,employeeMasterMailMessage(target.locale),design?.data),attachment});
 }

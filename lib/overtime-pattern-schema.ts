@@ -301,7 +301,16 @@ function parseOvertimePattern(raw: unknown, draft: boolean): OvertimePattern {
         }
         const tiers = overtimeList(rate.tiers, L.tiers, path + '.tiers').map((raw, j) => {
             const p = `${path}.tiers.${j}`, tier = overtimeObject(raw, p);
-            overtimeKeys(tier, ['id', 'from', 'to', 'payment', 'mapping'], p);
+            overtimeKeys(tier, ['id', 'from', 'to', 'payment', 'mapping', 'rounding'], p);
+            let tierRounding: import('./overtime-pattern-model').OvertimeTier['rounding'];
+            if (tier.rounding != null) {
+                const rowRound = overtimeObject(tier.rounding, p + '.rounding');
+                overtimeKeys(rowRound, ['step', 'mode'], p + '.rounding');
+                const step = draft ? controlString(rowRound.step, p + '.rounding.step', 64) : overtimeDecimal(rowRound.step, p + '.rounding.step', true);
+                if (!MODES.includes(rowRound.mode as string) || !draft && decimalCompare(step, '0') <= 0) overtimeRefuse('invalid', p + '.rounding', 'Choose a positive duration step and rounding mode.');
+                if (durationRounding) overtimeRefuse('conflict', p + '.rounding', 'Choose row rounding or pattern rounding, not both.');
+                tierRounding = {step, mode: rowRound.mode as OvertimeRoundingMode};
+            }
             const tierId = s.id(tier.id, p + '.id'), from = draft ? controlString(tier.from, p + '.from', 64) : overtimeDecimal(tier.from, p + '.from', true), to = tier.to === null ? null : draft ? controlString(tier.to, p + '.to', 64) : overtimeDecimal(tier.to, p + '.to', true);
             if (!draft && to !== null && decimalCompare(to, from) <= 0)
                 overtimeRefuse('invalid', p, 'Tier bounds must form a positive half-open range.');
@@ -312,6 +321,7 @@ function parseOvertimePattern(raw: unknown, draft: boolean): OvertimePattern {
                 const rate = s.expression(pay.rate, p + '.payment.rate'), multiplier = s.expression(pay.multiplier, p + '.payment.multiplier');
                 if (!draft && (rate.unit !== 'moneyPerHour' || multiplier.unit !== 'scalar'))
                     overtimeRefuse('type', p, 'Hourly payments require a rate and scalar multiplier.');
+                if (!draft && [rate, multiplier].some(value => value.type === 'literal' && value.value.startsWith('-') && !/^-0(?:\.0+)?$/.test(value.value))) overtimeRefuse('invalid', p + '.payment', 'Overtime rates and multipliers cannot be negative.');
                 payment = { method: 'hourly', rate, multiplier };
             }
             else {
@@ -327,7 +337,7 @@ function parseOvertimePattern(raw: unknown, draft: boolean): OvertimePattern {
             overtimeKeys(m, ['earningItemId', 'currency'], p + '.mapping');
             if (!draft && m.currency !== currency.code)
                 overtimeRefuse('currency', p, 'Every mapping must use the declared currency.');
-            return { id: tierId, from, to, payment, mapping: { earningItemId: draft ? controlString(m.earningItemId, p + '.mapping.earningItemId') : overtimeUuid(m.earningItemId, p + '.mapping.earningItemId'), currency: draft ? controlString(m.currency, p + '.mapping.currency', 16) : currency.code } };
+            return { id: tierId, from, to, payment, ...(tierRounding ? {rounding: tierRounding} : {}), mapping: { earningItemId: draft ? controlString(m.earningItemId, p + '.mapping.earningItemId') : overtimeUuid(m.earningItemId, p + '.mapping.earningItemId'), currency: draft ? controlString(m.currency, p + '.mapping.currency', 16) : currency.code } };
         });
         if (!draft && (!tiers.length || decimalCompare(tiers[0].from, '0') !== 0))
             overtimeRefuse('invalid', path, 'Tier coverage starts at zero.');

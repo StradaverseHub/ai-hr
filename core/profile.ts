@@ -1,3 +1,6 @@
+import {splitProfileSubmission} from '../lib/profile-submission-policy';
+import {validateProfileAttachments,saveProfileAttachmentsTx} from './profile-attachments';
+import {profileFieldApproval} from '../lib/profile-edit-policy-value';
 import {createHash} from 'node:crypto';
 import {profileVisibilityFingerprint} from '../lib/profile-policy-fingerprint';
 import {getSetting} from './entitlements';
@@ -45,7 +48,7 @@ import { isCalendarDate } from '../lib/calendar-date';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { type Tx, withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
-import { company,domainEvent,employeeDependent,employeeQualification,personEmergencyContact,employeeStatutoryMy, employment, person, profileChangeRequest,personPhoto } from '../db/schema';
+import { company,domainEvent,employeeDependent,employeeQualification,personEmergencyContact,employeeStatutoryMy, employment, person, profileChangeRequest,profileChangeAttachment,personPhoto } from '../db/schema';
 import { assertCanDecide, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
 // 9583deac stage two — the ONE declaration of which fields may be requested, what each is called on
 // both screens, and which table/column an approval writes it to. See the header of that file.
@@ -344,8 +347,8 @@ export async function updateOwnContact(
   if(!await isOwnPersonTx(tx,ctx))throw new EssProfileError('permission');
   if(Object.keys(p).some(key=>!['phone','personalEmail'].includes(key)&&p[key as keyof typeof p]!==undefined))throw new EssProfileError('addressReview');
   const patch:{phone?:string|null;personalEmail?:string|null}={};
-  if(p.phone!==undefined){if(!policy.editable.has('profile.contact_and_permanent_address.phone'))throw new EssProfileError('fieldClosed');patch.phone=clean(p.phone);}
-  if(p.personalEmail!==undefined){if(!policy.editable.has('profile.contact_and_permanent_address.personalemail'))throw new EssProfileError('fieldClosed');patch.personalEmail=clean(p.personalEmail);}
+  if(p.phone!==undefined){if(!policy.editable.has('profile.contact_and_permanent_address.phone')||profileFieldApproval(getSetting(ctx,'ess.profile_change_fields'),personnelField('profile.contact_and_permanent_address.phone')!).required)throw new EssProfileError('fieldClosed');patch.phone=clean(p.phone);}
+  if(p.personalEmail!==undefined){if(!policy.editable.has('profile.contact_and_permanent_address.personalemail')||profileFieldApproval(getSetting(ctx,'ess.profile_change_fields'),personnelField('profile.contact_and_permanent_address.personalemail')!).required)throw new EssProfileError('fieldClosed');patch.personalEmail=clean(p.personalEmail);}
   if(!Object.keys(patch).length)return;
   const changed=await tx.update(person).set(patch).where(and(ownPersonPredicate(ctx),eq(person.id,ctx.personId!))).returning({id:person.id});
   if(changed.length!==1)throw new EssProfileError('permission');
@@ -357,7 +360,7 @@ export async function updateOwnContact(
 /** New submissions use the versioned owner exclusively; stored legacy requests retain decisions/history.
  * The current owner validates exact subject, policy, baselines, options and effective writer behavior.
  */
-type OwnProfileChangeInput={employmentId:string;proposed:ProfileChangeProposed|EssProfileProposal};
+type OwnProfileChangeInput={employmentId:string;proposed:ProfileChangeProposed|EssProfileProposal;attachments?:import('../lib/profile-attachment').ProfileAttachmentInput[]};
 async function prepareProfileChangeRequestTx(tx:Tx,ctx:SessionContext,p:OwnProfileChangeInput){
   await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   const policy=await freshProfileEditPolicyTx(tx,ctx);ctx=policy.ctx;
@@ -366,15 +369,20 @@ async function prepareProfileChangeRequestTx(tx:Tx,ctx:SessionContext,p:OwnProfi
   // Legacy rows remain decidable/readable; no new request may bypass the versioned owner.
   if(!p.proposed||typeof p.proposed!=='object'||Array.isArray(p.proposed)||!('v' in p.proposed)||p.proposed.v!==2)throw new EssProfileError('invalid');
   const checked=await prepareProfileProposalTx(tx,ctx,p.employmentId,p.proposed);
-  if(checked.immediateRegisters.length||checked.proposal.fields.some(field=>personnelField(field.fieldId)?.ess.edit!=='approval'))throw new EssProfileError('invalid');
+  const partition=splitProfileSubmission(getSetting(ctx,'ess.profile_change_fields'),checked.proposal);
+  if(checked.immediateRegisters.length||partition.immediate.fields.length||partition.immediate.registers.length)throw new EssProfileError('invalid');
   const proposed=checked.proposal;
+  const attachments=validateProfileAttachments(p.attachments??[]),keys=new Set(proposed.fields.concat(proposed.registers.flatMap(row=>row.fields)).map(field=>field.fieldId));
+  if(attachments.some(file=>file.fieldIds.some(id=>!keys.has(id))))throw new EssProfileError('invalid');
+  const required=[...keys].filter(id=>profileFieldApproval(getSetting(ctx,'ess.profile_change_fields'),personnelField(id)!).attachmentRequired);
+  if(required.some(id=>!attachments.some(file=>file.fieldIds.includes(id))))throw new EssProfileError('attachmentRequired',required);
   const route=await resolveProfileRouteTx(tx,ctx,p.employmentId);
   if(!proposed.fields.length&&!proposed.registers.length)throw new EssProfileError('invalid');
-  return {ctx,policy,checked,proposed,route};
+  return {ctx,policy,checked,proposed,route,attachments};
 }
 export type CanonicalOwnProfileChangeReview={employmentId:string;proposal:EssProfileProposal;reviewedDigest:string};
 async function canonicalProfileChangeReviewTx(tx:Tx,prepared:Awaited<ReturnType<typeof prepareProfileChangeRequestTx>>):Promise<CanonicalOwnProfileChangeReview>{
- const {ctx,policy,checked,proposed,route}=prepared;
+ const {ctx,policy,checked,proposed,route,attachments}=prepared;
  if(!ownProfileProposalIsIntact(proposed,policy.visible))throw new EssProfileError('fieldClosed');
  // Only safe row-version metadata enters the source fingerprint. Never hash a hidden current
  // bank/identity/salary value into a client-review token. The canonical validator retains its locks.
@@ -388,7 +396,7 @@ async function canonicalProfileChangeReviewTx(tx:Tx,prepared:Awaited<ReturnType<
  if(changed.some(change=>!['person','compliance','dependent','qualification','emergency'].includes(personnelField(change.fieldId)!.ess.binding!.owner))&&!checked.rows.snapshotSupported)throw new EssProfileError('unavailable');
  const projection=projectOwnProfileProposal(proposed,policy.visible) as EssProfileProposal;
  const routing=readProfileRoutingPolicy(ctx);
- const reviewedDigest=createHash('sha256').update(JSON.stringify(['own-profile-change-request:v1',{tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId,employmentId:checked.subject.id,companyId:checked.subject.companyId,country:checked.subject.country},projection,profileVisibilityFingerprint(getSetting(ctx,'ess.profile_change_fields')),versions,{statutory:checked.rows.snapshot?{id:checked.rows.snapshot.rowId,revision:checked.rows.snapshot.revision}:null,dependentVersions,qualificationVersions,emergencyVersions},{revision:routing.revision,enabled:routing.enabled},route])).digest('hex');
+ const reviewedDigest=createHash('sha256').update(JSON.stringify(['own-profile-change-request:v1',{tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId,employmentId:checked.subject.id,companyId:checked.subject.companyId,country:checked.subject.country},projection,profileVisibilityFingerprint(getSetting(ctx,'ess.profile_change_fields')),versions,{statutory:checked.rows.snapshot?{id:checked.rows.snapshot.rowId,revision:checked.rows.snapshot.revision}:null,dependentVersions,qualificationVersions,emergencyVersions},{revision:routing.revision,enabled:routing.enabled},route,attachments.map(file=>({fieldIds:[...file.fieldIds].sort(),fileName:file.fileName,mimeType:file.mimeType,sha256:createHash('sha256').update(file.content).digest('hex')}))])).digest('hex');
  return {employmentId:checked.subject.id,proposal:projection,reviewedDigest};
 }
 /** Read-only canonical review owner for a human-authored v2 approval request. No action custody,
@@ -400,12 +408,15 @@ export async function prepareOwnProfileChangeRequestReviewTx(tx:Tx,ctx:SessionCo
  return canonicalProfileChangeReviewTx(tx,await prepareProfileChangeRequestTx(tx,ctx,p));
 }
 async function requestProfileChangeOwnerTx(tx:Tx,ctx:SessionContext,p:OwnProfileChangeInput,expectedReviewedDigest?:string){
- const prepared=await prepareProfileChangeRequestTx(tx,ctx,p);ctx=prepared.ctx;const {proposed,route}=prepared;
+ const prepared=await prepareProfileChangeRequestTx(tx,ctx,p);ctx=prepared.ctx;const {proposed,route,attachments}=prepared;
  if(expectedReviewedDigest!==undefined){if(!/^[a-f0-9]{64}$/.test(expectedReviewedDigest)||(await canonicalProfileChangeReviewTx(tx,prepared)).reviewedDigest!==expectedReviewedDigest)throw new EssProfileError('stale');}
   // Policy advisory serializes canonical submissions. Exact retry reuses one pending proposal.
   const matching=await tx.select({id:profileChangeRequest.id}).from(profileChangeRequest).where(and(eq(profileChangeRequest.personId,ctx.personId!),eq(profileChangeRequest.employmentId,p.employmentId),eq(profileChangeRequest.status,'pending'),sql`${profileChangeRequest.proposed}=${JSON.stringify(proposed)}::jsonb`)).orderBy(profileChangeRequest.createdAt,profileChangeRequest.id).limit(2);
   if(matching.length>1)throw new EssProfileError('unavailable');
   if(matching.length===1){
+   const storedFiles=await tx.select({fieldIds:profileChangeAttachment.fieldIds,fileName:profileChangeAttachment.fileName,mimeType:profileChangeAttachment.mimeType,content:profileChangeAttachment.content}).from(profileChangeAttachment).where(eq(profileChangeAttachment.requestId,matching[0].id));
+   const evidence=(files:{fieldIds:string[];fileName:string;mimeType:string;content:Uint8Array}[])=>files.map(file=>JSON.stringify({fieldIds:[...file.fieldIds].sort(),fileName:file.fileName,mimeType:file.mimeType,sha256:createHash('sha256').update(file.content).digest('hex')})).sort();
+   if(JSON.stringify(evidence(storedFiles))!==JSON.stringify(evidence(attachments)))throw new EssProfileError('stale');
    if(expectedReviewedDigest!==undefined){
     const [existing]=await tx.select({routeId:profileChangeRequest.routeId,routeRevision:profileChangeRequest.routeRevision,routeApproverUserId:profileChangeRequest.routeApproverUserId,routeApproverEmploymentId:profileChangeRequest.routeApproverEmploymentId,routeContext:profileChangeRequest.routeContext}).from(profileChangeRequest).where(eq(profileChangeRequest.id,matching[0].id)).limit(1);
     const context=existing?.routeContext as {asOf?:unknown;companyId?:unknown;fingerprint?:unknown}|null;
@@ -415,6 +426,7 @@ async function requestProfileChangeOwnerTx(tx:Tx,ctx:SessionContext,p:OwnProfile
   }
   const [row]=await tx.insert(profileChangeRequest).values({tenantId:ctx.tenantId,employmentId:p.employmentId,personId:ctx.personId!,proposed,...(route??{})}).returning({id:profileChangeRequest.id});
   const fields='v' in proposed&&proposed.v===2?[...proposed.fields.map(field=>field.fieldId),...proposed.registers.flatMap(record=>record.fields.map(field=>field.fieldId))]:Object.keys(proposed);
+  if(attachments.length)await saveProfileAttachmentsTx(tx,ctx,row.id,attachments);
   const requestedEventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'profile-change',aggregateId:row.id,eventType:'profile-change.requested',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{employmentId:p.employmentId,fields,...(route?{approverEmploymentId:route.routeApproverEmploymentId,routeId:route.routeId,routeRevision:route.routeRevision}:{})}},{returnId:expectedReviewedDigest!==undefined});
   return {requestId:row.id,requestedEventId,replayed:false};
 }
@@ -605,9 +617,7 @@ export async function setPersonComplianceFields(
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const roles = ctx.roles ?? [];
-  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
-    throw new Error('Only an admin can set gender / marital status.');
-  }
+  const administrator=roles.includes('super_admin')||roles.includes('hr_admin');
   // Reuse the module-private sanitiser (whitelist → null on unrecognised; DOB validated to ISO shape).
   // Only include a field in the write set when the caller provided it (undefined = leave as-is; explicit
   // null = clear). b4682879 adds date of birth to this compliance-gated setter (it drives EPF age bands).
@@ -634,7 +644,8 @@ export async function setPersonComplianceFields(
     await tx.execute(sql`select app.access_workforce_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockProfileValueWritesTx(tx,ctx.tenantId);
-    // Resolve the person from the employment (RLS confines this select to admin scope).
+    if(!administrator){const [direct]=await tx.execute<{allowed:boolean}>(sql`select app.profile_direct_subject(${p.employmentId}::uuid) as allowed`);if(!direct?.allowed)throw new EssProfileError('permission');}
+    // Resolve the person through the authenticated subject or existing administrator scope.
     const [emp] = await tx
       .select({ personId: employment.personId })
       .from(employment)

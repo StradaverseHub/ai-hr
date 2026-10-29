@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 const service = vi.hoisted(() => ({ startLogin: vi.fn(), changeInitialPassword: vi.fn(), verifyMfa: vi.fn(), rotateRefresh: vi.fn(), revokeSession: vi.fn() }));
+const intl=vi.hoisted(()=>({getLocale:vi.fn(async()=> 'en')}));
+vi.mock('next-intl/server',()=>({getLocale:intl.getLocale}));
 const recovery = vi.hoisted(() => ({ requestRecovery: vi.fn(), completeRecovery: vi.fn() }));
 const postResponse = vi.hoisted(() => ({ after: vi.fn() }));
 vi.mock('next/server', async original => ({ ...await original<typeof import('next/server')>(), after: postResponse.after }));
@@ -15,7 +17,7 @@ const access = 'aihr_' + 'a'.repeat(43), refresh = 'aihr_refresh_' + 'b'.repeat(
 function request(operation: string, body: unknown, headers: Record<string, string> = {}) {
   return POST(new NextRequest(`https://hr.test/login/api/${operation}`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body) }), { params: Promise.resolve({ operation }) });
 }
-beforeEach(() => { vi.stubEnv('AUTH_PROVIDER', 'internal'); vi.stubEnv('AUTH_PUBLIC_ORIGIN', 'https://hr.test'); vi.stubEnv('AUTH_SESSION_KEY', 'a'.repeat(64)); vi.clearAllMocks(); });
+beforeEach(() => { vi.stubEnv('AUTH_PROVIDER', 'internal'); vi.stubEnv('AUTH_PUBLIC_ORIGIN', 'https://hr.test'); vi.stubEnv('AUTH_SESSION_KEY', 'a'.repeat(64)); vi.clearAllMocks();intl.getLocale.mockResolvedValue('en'); });
 afterEach(() => vi.unstubAllEnvs());
 describe('embedded auth HTTP trust and credential carriers', () => {
   it('refuses missing or foreign browser Origin before attempting a password check', async () => {
@@ -108,8 +110,15 @@ describe('embedded auth HTTP trust and credential carriers', () => {
     const response = await request('recovery', { organization: 'alpha', username: 'user' }, { origin: 'https://hr.test' });
     expect(response.status).toBe(200);expect(await response.json()).toEqual({step:'sent'});
     expect(postResponse.after).toHaveBeenCalledWith(delivery);expect(delivery).not.toHaveBeenCalled();
+    expect(recovery.requestRecovery).toHaveBeenNthCalledWith(1,'alpha','user',undefined,expect.any(Function),false,'en');
     recovery.requestRecovery.mockImplementation(async () => {});
     const unknown = await request('recovery', { organization: 'alpha', username: 'unknown' }, { origin: 'https://hr.test' });
     expect(unknown.status).toBe(200);expect(await unknown.json()).toEqual({step:'sent'});
+  });
+  it('passes explicit recovery language independently from server-owned source admission',async()=>{
+    recovery.requestRecovery.mockResolvedValue(undefined);
+    const response=await request('recovery',{organization:'alpha',username:'user',locale:'ms'},{origin:'https://hr.test'});
+    expect(response.status).toBe(200);expect(await response.json()).toEqual({step:'sent'});
+    expect(recovery.requestRecovery).toHaveBeenCalledWith('alpha','user',undefined,expect.any(Function),false,'ms');expect(intl.getLocale).not.toHaveBeenCalled();
   });
 });

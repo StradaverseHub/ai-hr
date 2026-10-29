@@ -1,4 +1,5 @@
 'use client';
+import {useAssistantImportIntake} from '@/components/assistant/import-handoff';
 
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -192,6 +193,11 @@ export function TxnImportButtons({
   };
 
   const failedRows = preview?.rows.filter((r) => !r.ok) ?? [];
+
+  useAssistantImportIntake(kind==='fixed'?'payroll_fixed':'payroll_individual',text=>{
+    reset();setCsv(text);setOpen(true);
+    startTransition(async()=>{try{setPreview(await validateTxnImportAction(text,kind));}catch{setError(t('fileReadError'));}});
+  },setError);
 
   return (
     <>

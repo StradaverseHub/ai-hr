@@ -119,7 +119,7 @@ function fixture() {
     'react-native-safe-area-context': { SafeAreaView: View }, 'expo-router': { router: { push, back } },
     'expo-crypto': { randomUUID: () => `${String(++seq).padStart(8, '0')}-bbbb-4bbb-8bbb-bbbbbbbbbbbb` },
     'expo-sharing': { shareAsync, isAvailableAsync },
-    './design': { DesignText: Text, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark') }) },
+    './design': { DesignText: Text, TenantBrand: () => <span>tenant-brand</span>, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark') }) },
     './session': { useSession: () => ({ employmentId: EMP, signOut }) },
   });
   /** Press the confirming (second) button of the Nth alert. */
@@ -323,6 +323,8 @@ describe('the payslip index and offline', () => {
     ] });
     render(<f.PayslipsScreen />);
     await screen.findByText('Acme Sdn Bhd · 2026');
+    // The same tenant header as every other screen.
+    expect(screen.getByText('tenant-brand')).toBeTruthy();
     expect(f.apiGetV2.mock.calls[0][0]).toBe('v2/payslips');
     expect(f.apiGetV2.mock.calls[0][1]).toBe(v2pay.PayslipIndexV2);
     expect(screen.getByText('Beta Bhd · 2026')).toBeTruthy();

@@ -137,7 +137,7 @@ describe('b4682879 — person profile fields', () => {
     expect(serialized).not.toContain('Indian');
   });
 
-  it('setPersonComplianceFields sets date of birth (admin), and rejects a non-admin', async () => {
+  it('setPersonComplianceFields sets date of birth (admin), and refuses an unprepared non-admin without changing the record', async () => {
     const E = await hire('DobSetter');
     await setPersonComplianceFields(adminCtx(b), { employmentId: E.employmentId, dateOfBirth: '1990-04-15' });
     expect((await personRow(E.personId)).dateOfBirth).toBe('1990-04-15');
@@ -149,9 +149,11 @@ describe('b4682879 — person profile fields', () => {
 
     const uid = await createAppUser(b.tenantId, E.personId, 'employee');
     const empCtx: SessionContext = { tenantId: b.tenantId, userId: uid, personId: E.personId, roles: ['employee'] };
+    const before=await personRow(E.personId);
     await expect(
-      setPersonComplianceFields(empCtx, { employmentId: E.employmentId, dateOfBirth: '1990-04-15' }),
-    ).rejects.toThrow(/admin/i);
+      setPersonComplianceFields(empCtx, { employmentId: E.employmentId, dateOfBirth: '2000-01-01' }),
+    ).rejects.toMatchObject({code:'permission',fieldIds:[]});
+    expect(await personRow(E.personId)).toEqual(before);
   });
 
   it('refuses mixed legacy aliases atomically, saves permitted contact details immediately and approves canonical Permanent/Emergency changes', async () => {

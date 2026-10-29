@@ -8,9 +8,9 @@ vi.mock('next/image', () => ({ default: (props: Record<string, unknown>) => <img
 const navigation = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => navigation }));
 const fetcher = vi.fn<typeof fetch>();
-function view(props: Parameters<typeof InternalAuthForm>[0] = {}) {
+function view(props: Parameters<typeof InternalAuthForm>[0] = {},locale='en') {
   vi.stubGlobal('fetch', fetcher);
-  return render(<NextIntlClientProvider locale="en" messages={en}><InternalAuthForm organization="alpha" {...props}/></NextIntlClientProvider>);
+  return render(<NextIntlClientProvider locale={locale} messages={en}><InternalAuthForm organization="alpha" {...props}/></NextIntlClientProvider>);
 }
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); fetcher.mockReset(); navigation.replace.mockReset(); window.history.replaceState(null, '', '/'); });
 describe('embedded browser forms', () => {
@@ -25,6 +25,11 @@ describe('embedded browser forms', () => {
     const [url, init] = fetcher.mock.calls[0]; expect(url).toBe('/login/api/login');
     expect(JSON.parse(String(init?.body))).toEqual({ organization: 'alpha', username: 'employee', password: 'Private fixture password' });
     expect(init).toMatchObject({ method: 'POST', credentials: 'same-origin', redirect: 'error' });
+  });
+  it('binds a public recovery request to the language selected on the login page',async()=>{
+    fetcher.mockResolvedValue(Response.json({step:'sent'}));view({mode:'recovery'},'ms');const user=userEvent.setup();
+    await user.type(screen.getByLabelText(en.internalAuth.username),'employee');await user.click(screen.getByRole('button',{name:en.internalAuth.sendLink}));
+    await waitFor(()=>expect(fetcher).toHaveBeenCalledOnce());const [url,init]=fetcher.mock.calls[0];expect(url).toBe('/login/api/recovery');expect(JSON.parse(String(init?.body))).toMatchObject({locale:'ms',organization:'alpha',username:'employee'});
   });
   it('finishes activation at login with the organization filled after recovery codes are saved', async () => {
     fetcher.mockResolvedValueOnce(Response.json({ step: 'enroll', challenge: 'a'.repeat(43), secret: 'MANUALKEY', qr: 'data:image/png;base64,fixture' }))

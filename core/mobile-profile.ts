@@ -37,7 +37,7 @@ import { personnelFieldLabel, type PersonnelLabelResolver } from '../lib/personn
 import { personnelFieldChoices } from '../lib/personnel-import-contract';
 import { profileProposalReviewLines, type ProfileProposalCurrent } from '../lib/profile-proposal-display';
 import { profileHiddenTabs } from '../lib/profile-edit-policy-value';
-import { EssProfileError } from '../lib/personnel-ess-model';
+import { EssProfileError, PERSONNEL_ESS_SECTION_LABEL_KEYS } from '../lib/personnel-ess-model';
 import {
   PROFILE_CHANGES_MAX, PROFILE_REQUESTS_MAX, ProfileChangeResult, ProfileRequestStatus,
   type ProfileChangeCommand, type ProfileCommandRefusal, type ProfileFieldKind, type ProfileFieldV2, type ProfileOption,
@@ -61,6 +61,15 @@ function kindOf(field: PersonnelFieldDescriptor): ProfileFieldKind {
   if (field.type === 'choice') return 'choice';
   if (field.form?.widget === 'email') return 'email';
   return /phone$/i.test(field.ess.binding?.field ?? '') ? 'phone' : 'text';
+}
+/**
+ * The web's section for a field, titled as app/me/profile-editor.tsx titles it. "Contact and permanent address" and
+ * "Correspondence address" both carry "Mobile Phone Number" / "Home Phone Number" (people.detail.phone/homePhone); the
+ * coarse `section` merges them, the group keeps them apart.
+ */
+function sectionGroup(field: PersonnelFieldDescriptor, labels: PersonnelLabelResolver): { key: string; title: string } {
+  const key = PERSONNEL_ESS_SECTION_LABEL_KEYS[field.section];
+  return { key: clip(field.section, 120), title: clip(key ? labels(`people.detail.${key}`, field.section) : field.section, 300) };
 }
 const clip = (text: string, max: number) => (text.length > max ? text.slice(0, max) : text);
 const iso = (d: Date | string | null | undefined) => (d == null ? null : (d instanceof Date ? d : new Date(String(d))).toISOString());
@@ -141,6 +150,7 @@ export async function ownProfileWorkspaceV2(ctx: SessionContext, employmentId: s
       fieldId: field.id,
       label: clip(personnelFieldLabel(field, labels), 300),
       section: field.section === 'Personal details' ? 'personal' : 'contact',
+      group: sectionGroup(field, labels),
       kind: kindOf(field),
       value,
       valueLabel: value === null ? null : options?.find((o) => o.value === value)?.label ?? null,

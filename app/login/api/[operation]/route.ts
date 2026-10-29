@@ -1,3 +1,5 @@
+import {getLocale} from 'next-intl/server';
+import {emailLocale} from '@/lib/email-design/model';
 import { after, NextRequest, NextResponse } from 'next/server';
 import { toDataURL } from 'qrcode';
 import { internalSelected, internalReady, internalConfig, INTERNAL_SESSION_COOKIE } from '@/lib/internal-auth/config';
@@ -55,7 +57,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ op
       const startedAt = Date.now();
       // Commit the request first, then keep SMTP latency out of the public response. This schedules
       // only the new request's one attempt; held failures are never replayed by a background worker.
-      await requestRecovery(text(body, 'organization', 64), text(body, 'username', 64), undefined, attempt => after(attempt), source!==null);
+      await requestRecovery(text(body, 'organization', 64), text(body, 'username', 64), undefined, attempt => after(attempt), source!==null, emailLocale.parse(body.locale??await getLocale()));
       await new Promise(resolve => setTimeout(resolve, Math.max(0, 250 - (Date.now() - startedAt))));
       result = { step: 'sent' };
     } else if (operation === 'reset') {

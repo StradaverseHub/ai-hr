@@ -61,6 +61,7 @@ async function workflowRelay(){
  return activeWorkflowRelay(state,await admin('') as {smtpServer?:Record<string,string>});
 }
 const notifications=createNotificationEmailService({
+ design:async(id,token,kind,locale,cc=false)=>(await database`select identity_email.delivery_design(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''},${kind},${locale},${cc}) as design`)[0]?.design,
  lettersReady:async()=>{try{const [row]=await database`select to_regprocedure('identity_email.letter_delivery_target(uuid,uuid,text)') is not null and has_function_privilege(current_user,'identity_email.delivery_target(uuid,uuid,text)','EXECUTE') as ready`;return row?.ready===true;}catch{return false;}},
  origin:process.env.WORKFLOW_EMAIL_ORIGIN||'https://unconfigured.invalid',
  ready:async()=>{
@@ -93,6 +94,7 @@ const notifications=createNotificationEmailService({
 });
 const reportTarget=masterRenderContext.extend({email:z.email().max(320),subject:z.string().min(1).max(512)}).strict();
 const reports=createMasterReportDeliveryService({
+ design:async(id,token)=>(await database`select identity_email.report_design(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''}) as design`)[0]?.design,
  origin:process.env.WORKFLOW_EMAIL_ORIGIN||'https://unconfigured.invalid',
  ready:async()=>{if(!await reportRendererReady())return false;try{return (await notifications({op:'status'})).ready===true;}catch{return false;}},
  target:async(id,token)=>{const [row]=await database`select identity_email.report_target(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''}) as target`;const parsed=reportTarget.safeParse(row?.target);return parsed.success?parsed.data:null;},
@@ -101,7 +103,7 @@ const reports=createMasterReportDeliveryService({
  authorize:authorizeMasterReportFile,
  start:async(id,token,target)=>{return (await database`select identity_email.start_report(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''},${database.json(target)}::jsonb) as started`)[0]?.started===true;},
  finish:async(id,token,outcome,reason,metadata)=>(await database`select identity_email.finish_report(${id}::uuid,${token}::uuid,${outcome},${reason},${metadata?.rowCount??null}::integer,${metadata?.scopeIds??null}::uuid[]) as finished`)[0]?.finished===true,
- send:async(target,attachment,messageId)=>{const relay=await workflowRelay();if(!relay)throw new Error('Managed relay unavailable.');const config=relay.config;if(config.auth&&!/^smtp-[0-9a-f-]{36}$/.test(relay.vaultKey||''))throw new Error('Managed relay unavailable.');const password=config.auth?await readFile('/var/lib/aihr-identity-email/vault/ai-hr_'+relay.vaultKey,'utf8'):undefined;await sendEmployeeMasterSmtp(config,password,target,attachment,messageId);},
+ send:async(target,attachment,messageId,design)=>{const relay=await workflowRelay();if(!relay)throw new Error('Managed relay unavailable.');const config=relay.config;if(config.auth&&!/^smtp-[0-9a-f-]{36}$/.test(relay.vaultKey||''))throw new Error('Managed relay unavailable.');const password=config.auth?await readFile('/var/lib/aihr-identity-email/vault/ai-hr_'+relay.vaultKey,'utf8'):undefined;await sendEmployeeMasterSmtp(config,password,target,attachment,messageId,design);},
 });
 // A concurrent lease is refused immediately, leaving its pending reclaim to the durable queue.
 const handleReport=createSingleReportHandler(reports,removeMasterReportFile);

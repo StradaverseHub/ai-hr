@@ -1,5 +1,6 @@
 import {describe,it,expect,vi} from 'vitest';
 import {randomUUID} from 'node:crypto';
+import {defaultEmailDocument} from '../lib/email-design/model';
 import {buildXlsx} from '../lib/spreadsheet';
 import {fingerprintReportBytes} from '../lib/employee-master-artifact';
 import {XLSX_EMAIL_ATTACHMENT_CONTENT_TYPE,XLSX_EMAIL_ATTACHMENT_MAX_BYTES} from '../lib/email-attachment';
@@ -20,9 +21,15 @@ describe('internal report transport, no provider/key/store ownership',()=>{
   const f=await fixture();expect(await f.run(f.input)).toEqual({outcome:'sent'});
   expect(f.deps.broker).toHaveBeenNthCalledWith(1,{phase:'inspect',occurrenceId:f.input.occurrenceId,leaseToken:f.input.leaseToken});
   expect(f.deps.broker).toHaveBeenNthCalledWith(2,{phase:'start',occurrenceId:f.input.occurrenceId,leaseToken:f.input.leaseToken,inspectionProof:'opaque_inspection_proof',expectedArtifact:fingerprintReportBytes(f.attachment.bytes,f.attachment.contentType)});
-  expect(f.deps.send).toHaveBeenCalledWith(f.relay,f.target,f.attachment,`<employee-master-${f.input.occurrenceId}@report-acceptance.invalid>`);
+  expect(f.deps.send).toHaveBeenCalledWith(f.relay,f.target,f.attachment,`<employee-master-${f.input.occurrenceId}@report-acceptance.invalid>`,undefined);
   expect(Array.from(f.attachment.bytes.slice(0,2))).toEqual([80,75]);
   expect(f.deps.finish).toHaveBeenCalledWith(f.input.occurrenceId,f.input.leaseToken,'sent',null,{rowCount:1,scopeIds:f.target.companyIds});
+ });
+ it('forwards only the validated design returned by canonical start with the same exact recipient and workbook',async()=>{
+  const f=await fixture(),design={kind:'employee_master_report' as const,locale:'en' as const,document:{...defaultEmailDocument('employee_master_report'),subject:'Fictional reviewed report'},data:{company_name:'Fictional company'}};
+  vi.mocked(f.deps.broker).mockResolvedValueOnce({ok:true,phase:'inspect',target:f.target,inspectionProof:'opaque_inspection_proof'}).mockResolvedValueOnce({ok:true,phase:'start',target:f.target,artifact:fingerprintReportBytes(f.attachment.bytes,f.attachment.contentType),relay:f.relay,design});
+  expect(await f.run(f.input)).toEqual({outcome:'sent'});expect(f.deps.send).toHaveBeenCalledTimes(1);
+  expect(f.deps.send).toHaveBeenCalledWith(f.relay,f.target,f.attachment,`<employee-master-${f.input.occurrenceId}@report-acceptance.invalid>`,design);
  });
  it('uses readiness without nonce or relay disclosure and still requires renderer readiness',async()=>{
   const f=await fixture();expect(await f.run({op:'status'})).toEqual({version:1,ready:true});expect(f.deps.broker).toHaveBeenCalledWith({phase:'status'});expect(f.deps.prepare).not.toHaveBeenCalled();

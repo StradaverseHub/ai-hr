@@ -54,7 +54,9 @@ it('the composer\'s v2 source lists every kind the approvals screen does, replac
   expect(ports.tasks).toHaveBeenCalledWith(principal, undefined, { attendance: true, claims: false, performance: false, rewards: false });
   const body = await r.json();
   expect(body.items.map((t: { kind: string }) => t.kind)).toEqual(['leave', 'replacementLeave', 'noticeAcknowledgement']);
-  expect(body.items[0]).toEqual({ id: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa', kind: 'leave', subject: { name: 'Scoped colleague', code: null }, createdAt: '2026-10-28T01:00:00.000Z', nativeDecision: true, webPath: null });
+  expect(body.items[0]).toEqual({ id: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa', kind: 'leave', subject: { name: 'Scoped colleague', code: null }, createdAt: '2026-10-28T01:00:00.000Z', nativeDecision: true, webPath: null, summary: null });
+  // Non-native kinds never carry a summary.
+  expect(body.items.slice(1).every((t: { summary: unknown }) => t.summary === null)).toBe(true);
   expect(body.nextCursor).toBeNull();
   expect(r.headers.get('cache-control')).toBe('no-store');
 });

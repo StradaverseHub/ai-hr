@@ -34,6 +34,9 @@ export function Screen({
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.bg }]} edges={design.schemaVersion === 2 && design.composition.navigation.style === 'top' ? [] : ['top']}>
       <ScrollView
+        // A tap on a button while the keyboard is up acts at once (it used to only dismiss the keyboard, and the shifted
+        // layout could put the next tap on another control).
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={[styles.scroll, design.schemaVersion === 2 && { padding: design.composition.layout.padding, gap: design.composition.layout.gap, paddingBottom: 32 }]}
         refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={() => { reload(); onRefresh(); }} /> : undefined}
       >
@@ -73,13 +76,18 @@ export function Muted({ children }: { children: ReactNode }) {
   return <Text style={[styles.muted, { color: palette.muted }]}>{children}</Text>;
 }
 
-export function Button({ title, onPress, kind = 'primary', disabled = false,accessibilityLabel }: { title: string; onPress: () => void; kind?: 'primary' | 'quiet'; disabled?: boolean;accessibilityLabel?:string }) {
+/**
+ * Also the app's chip: a row of Buttons with the chosen one `primary`. Never disable the chosen chip to mark it — the
+ * disabled fade turned the tenant colour into a different tint; pass `selected` for assistive technology instead.
+ * Every button is at least 44×44 pt with side padding, so a one-glyph "‹" is a touch target, not a sliver.
+ */
+export function Button({ title, onPress, kind = 'primary', disabled = false,accessibilityLabel,selected }: { title: string; onPress: () => void; kind?: 'primary' | 'quiet'; disabled?: boolean;accessibilityLabel?:string;selected?:boolean }) {
   const { palette, design } = useTenantDesign();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ disabled }}
+      accessibilityState={selected === undefined ? { disabled } : { disabled, selected }}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [styles.button, { backgroundColor: design.schemaVersion === 2 && design.composition.layout.button !== 'solid' ? design.composition.layout.button === 'soft' ? palette.card : 'transparent' : palette.button, borderColor: palette.text, borderWidth: design.schemaVersion === 2 && design.composition.layout.button === 'outline' ? 1 : 0, borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 18 : 6 }, kind === 'quiet' && styles.buttonQuiet, kind === 'quiet' && { borderColor: palette.border }, (pressed || disabled) && { opacity: 0.7 }]}
@@ -137,7 +145,7 @@ const styles = StyleSheet.create({
   strong: { fontSize: 17, fontWeight: '700' },
   muted: { fontSize: 14, color: colors.muted },
   body: { fontSize: 15, color: colors.text },
-  button: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 4 },
+  button: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
   buttonQuiet: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
   buttonTextQuiet: { color: colors.accent },

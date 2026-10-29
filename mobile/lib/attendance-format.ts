@@ -35,6 +35,17 @@ export function fmtInstant(iso: string | null, zone: string): string {
   try { return new Intl.DateTimeFormat(intlLocale(), { timeZone: zone, day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso)); }
   catch { return iso.slice(0, 16).replace('T', ' '); }
 }
+/**
+ * A server-named IANA zone as people say it ("Malaysia Time", "Waktu Malaysia"), for "Dates and times are in {zone}".
+ * Falls back to the id itself where the runtime has no name for it.
+ */
+export function fmtZoneName(zone: string): string {
+  try {
+    const name = new Intl.DateTimeFormat(intlLocale(), { timeZone: zone, timeZoneName: 'long' }).formatToParts(new Date())
+      .find((part) => part.type === 'timeZoneName')?.value;
+    return name && !/^GMT[+-]/.test(name) ? name : zone;
+  } catch { return zone; }
+}
 /** Minutes as "7h 30m"; null as a dash. Formatting, not arithmetic on a figure the app owns. */
 export function fmtMinutes(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return '—';

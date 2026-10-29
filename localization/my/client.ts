@@ -24,7 +24,7 @@ import { defaultSocsoEisNumber } from './socso-eis';
 // Tax card prices the grid the admin is typing into with the PACK's arithmetic, not a copy of it.
 import { childReliefFor } from './child-relief';
 // r393 (685d2380 step 3b) — the EPF election rule, from the db-free leaf `setStatutoryProfileMY` calls.
-import { epfElectionGap } from './epf-election';
+import { epfElectionGap, epfRateInputBounds } from './epf-election';
 
 export const myClientPack: CountryPackClient = {
   country: 'MY',
@@ -42,6 +42,7 @@ export const myClientPack: CountryPackClient = {
     // tax residency on its Bank & Statutory tab with the pack's OWN rules (./epf-election.ts,
     // ./tax-selection-codes.ts), the same ones the writers refuse with after `hireEmployee`.
     epfElectionGap,
+    epfRateInputBounds,
     draftTaxResidencyGap,
   },
   leave: {

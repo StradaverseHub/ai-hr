@@ -26,7 +26,7 @@
  *
  * Kept free of 'server-only' (mobile-command-receipt.ts says why).
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { z } from 'zod';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { claimRequest, company, employment } from '../db/schema';
@@ -81,6 +81,16 @@ export function currencyOfClaim(ctx: SessionContext, claimId: string): Promise<s
       .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
       .innerJoin(company, eq(company.id, employment.companyId)).where(eq(claimRequest.id, claimId)).limit(1);
     return row?.currency ?? null;
+  });
+}
+/** currencyOfClaim for many claims in one read (the approvals list); a claim RLS hides is simply absent. */
+export function currenciesOfClaims(ctx: SessionContext, claimIds: readonly string[]): Promise<Map<string, string | null>> {
+  if (!claimIds.length) return Promise.resolve(new Map());
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx.select({ id: claimRequest.id, currency: company.currency }).from(claimRequest)
+      .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
+      .innerJoin(company, eq(company.id, employment.companyId)).where(inArray(claimRequest.id, [...claimIds]));
+    return new Map(rows.map((r) => [r.id, r.currency ?? null]));
   });
 }
 

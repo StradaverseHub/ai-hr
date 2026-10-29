@@ -31,6 +31,7 @@ function fixture(){
  const unsafe=vi.fn(async(statement:string,args:unknown[]=[])=>{
   if(!inTransaction)throw new Error('Escaped transaction');events.push(statement);
   if(statement.includes('current_user as name'))return [{name:'ai_hr_app',rolsuper:false,rolbypassrls:false,privileged:false}];
+  if(statement.includes('email_design_report'))return [{design:{document:null,kind:'employee_master_report',locale:'en'}}];
   if(statement.includes('internal_auth_report_lock_context'))return [{value:lockStatus==='ready'?{status:'ready',context}:{status:lockStatus}}];
   if(statement.includes('app.internal_auth_read')){
    const key=String(args[0]);expect(args[1]).toBe(true);const value=key==='email-state'?{revision,active,drafts:{operator:{password:'draft-secret'}}}:credentials.get(key.slice('credential:'.length));
@@ -60,7 +61,7 @@ describe('application-token handoff and fresh authorization after token acquisit
   const f=fixture();f.active=oauth;const inspection=await inspected(f);f.events.length=0;
   f.d.prepareRelay=vi.fn(async value=>{expect(f.inTransaction).toBe(false);expect(f.started).toBe(false);expect(value).toEqual(oauth);expect(f.events.at(-1)).toBe('COMMIT');f.events.push('TOKEN');return delivery();});
   const result=await executeReportBrokerRequest(request(inspection.inspectionProof),f.d);
-  expect(result).toEqual({ok:true,phase:'start',target,artifact,relay:delivery()});expect(f.started).toBe(true);expect(f.events.filter(e=>e==='BEGIN')).toHaveLength(2);
+  expect(result).toEqual({ok:true,phase:'start',target,artifact,relay:delivery(),design:{document:null,kind:'employee_master_report',locale:'en'}});expect(f.started).toBe(true);expect(f.events.filter(e=>e==='BEGIN')).toHaveLength(2);
   expect(f.events.indexOf('TOKEN')).toBeLessThan(f.events.findIndex(e=>e.includes('internal_auth_report_start')));expect(JSON.stringify(result)).not.toContain(oauth.password);expect(f.events.at(-1)).toBe('COMMIT');
  });
  it.each(['revision','secret','disabled','contact','permissions','expiredProof','expiredToken','wrongConfig','provider'] as const)('does not mark started or disclose relay after %s changes during acquisition',async kind=>{
@@ -94,7 +95,7 @@ describe('inspection AEAD, role separation and committed one-attempt output',()=
   const f=fixture(),inspection=await inspected(f);expect(inspection).not.toHaveProperty('relay');expect(JSON.stringify(inspection)).not.toContain('synthetic');
   const proof=openReportInspection(inspection.inspectionProof,nonce,now)!;expect(proof.identities.owner.userId).toBe(owner);expect(proof.identities.recipient.userId).toBe(recipient);expect(proof.identities.owner.personId).toBeNull();
   f.events.length=0;const result=await executeReportBrokerRequest(request(inspection.inspectionProof),f.d);
-  expect(result).toEqual({ok:true,phase:'start',target,artifact,relay});expect(f.events[0]).toBe('RENDERER');expect(f.events[1]).toBe('BEGIN');expect(f.events.at(-1)).toBe('COMMIT');expect(f.started).toBe(true);expect(JSON.stringify(result)).not.toContain('draft-secret');
+  expect(result).toEqual({ok:true,phase:'start',target,artifact,relay,design:{document:null,kind:'employee_master_report',locale:'en'}});expect(f.events[0]).toBe('RENDERER');expect(f.events[1]).toBe('BEGIN');expect(f.events.at(-1)).toBe('COMMIT');expect(f.started).toBe(true);expect(JSON.stringify(result)).not.toContain('draft-secret');
   expect(f.events.filter(event=>event==='BEGIN')).toHaveLength(1);expect(f.events.some(event=>event.includes('set local statement_timeout'))).toBe(true);
  });
  it('refuses tamper, foreign nonce, wrong purpose/origin and expired proof before renderer/DB',async()=>{

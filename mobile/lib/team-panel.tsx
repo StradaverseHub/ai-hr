@@ -32,7 +32,9 @@ export function TeamPanel({refreshToken=0}:{refreshToken?:number}={}){
     <Text style={{color:palette.text,fontSize:21,fontWeight:'600'}}>{t('teamAvailability')}</Text>
     <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>
       <Button title={t('teamPrevWeek')} kind="quiet" disabled={!data} onPress={()=>shift(-1)}/>
-      <Button title={t('teamThisWeek')} kind={from===undefined?'primary':'quiet'} disabled={from===undefined} onPress={()=>setFrom(undefined)}/>
+      {/* The default window is the server's today and the six days after it (lib/mobile-api/v2/team.ts), not a calendar
+          week: the company's week start is not known to the app, so the label says what the window is. */}
+      <Button title={t('teamNext7Days')} kind={from===undefined?'primary':'quiet'} selected={from===undefined} onPress={()=>setFrom(undefined)}/>
       <Button title={t('teamNextWeek')} kind="quiet" disabled={!data} onPress={()=>shift(1)}/>
     </View>
     {data&&<Muted>{t('teamWindow',{from:data.from,to:data.to})}</Muted>}

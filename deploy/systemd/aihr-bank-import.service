@@ -1,0 +1,27 @@
+[Unit]
+Description=AI HR Bank and Statutory import worker
+After=network-online.target aihr.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aihr-import
+Group=aihr-import
+WorkingDirectory=/opt/ai-hr
+# Private root-owned configuration containing DATABASE_URL and MIGRATION_DATABASE_URL.
+# Never add the owner credential to the web service's runtime.env.
+EnvironmentFile=/etc/aihr/import-worker.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/env node --import tsx scripts/bank-import-runner.ts
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=300
+KillMode=control-group
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

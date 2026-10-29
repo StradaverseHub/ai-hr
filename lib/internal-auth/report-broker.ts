@@ -1,4 +1,5 @@
 /** Isolated application composition. Every Auth/SQL read receives the SAME explicit transaction. */
+import {emailDesignEnvelope} from '../email-design/model';
 import {z} from 'zod';
 import {internalConfig,internalSelected} from './config';
 import {readRecord,type AuthSql} from './record-store';
@@ -116,11 +117,13 @@ async function start(request:Extract<ReportBrokerRequest,{phase:'start'}>,d:Repo
   if(prepared&&(prepared.revision!==m.relay.revision||prepared.secretDigest!==reportProofDigest(m.relay.relay)))refuse();
   const delivery=prepared?assertFreshDeliveryRelay(prepared.relay,now()):m.relay.relay;
   if(prepared&&reportProofDigest(delivery.config)!==reportProofDigest(m.relay.relay.config))refuse('unavailable');
+  const [designRow]=await tx.unsafe('select app.email_design_report($1::uuid,$2::uuid,$3::text) design',[request.occurrenceId,request.leaseToken,origin]);
+  const design=emailDesignEnvelope.parse(designRow?.design);
   const [row]=await tx.unsafe('select app.internal_auth_report_start($1::uuid,$2::uuid,$3::text,($4::text)::jsonb,($5::text)::jsonb) value',
    [request.occurrenceId,request.leaseToken,origin,JSON.stringify(c),JSON.stringify(manifest.artifact)]);
   if(row?.value!=='started')refuse(row?.value==='busy'?'busy':row?.value==='notEligible'?'notEligible':'unavailable');
   // Validate the whole response BEFORE commit; malformed output must roll back started.
-  return reportBrokerResponse.parse({ok:true,phase:'start',target:c.target,artifact:manifest.artifact,relay:delivery});
+  return reportBrokerResponse.parse({ok:true,phase:'start',target:c.target,artifact:manifest.artifact,relay:delivery,design});
  });
  let result=await attempt();
  if('prepare' in result){

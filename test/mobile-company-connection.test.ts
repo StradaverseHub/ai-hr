@@ -60,3 +60,32 @@ describe('public enrollment capability checks',()=>{
  it('rejects an identity endpoint redirect or absent PKCE support in discovery',async()=>{const p=verified(),e=connectionEndpoints(p);for(const changed of [{token_endpoint:'https://attacker.test/token'},{code_challenge_methods_supported:['plain']}]){const fetcher=vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json(p)).mockResolvedValueOnce(Response.json({issuer:p.issuer,authorization_endpoint:e.authorizationEndpoint,token_endpoint:e.tokenEndpoint,end_session_endpoint:e.logoutEndpoint,code_challenge_methods_supported:['S256'],...changed}));await expect(verifyCompanyServer(p,fetcher)).rejects.toThrow(/does not match/);}});
  it('publishes only operator configuration, never request-supplied tenant or secret data',async()=>{vi.stubEnv('AUTH_PROVIDER','keycloak');vi.stubEnv('ALLOW_DEMO_SESSION','false');const env={KEYCLOAK_ISSUER:base.issuer,AUTH_PUBLIC_ORIGIN:base.apiOrigin,KEYCLOAK_WEB_CLIENT_ID:'web',KEYCLOAK_WEB_CLIENT_SECRET:'private-secret',KEYCLOAK_MOBILE_CLIENT_ID:base.clientId,KEYCLOAK_API_AUDIENCE:base.audience,AUTH_SESSION_KEY:'a'.repeat(64)};for(const[k,v]of Object.entries(env))vi.stubEnv(k,v);try{const r=await GET();expect(r.status).toBe(200);const text=await r.text();expect(text).not.toContain('private-secret');expect(Object.keys(JSON.parse(text)).sort()).toEqual(['apiOrigin','apiVersion','audience','authProvider','clientId','connectionVersion','issuer']);expect(r.headers.get('cache-control')).toBe('no-store');vi.stubEnv('ALLOW_DEMO_SESSION','true');expect((await GET()).status).toBe(503);}finally{vi.unstubAllEnvs();}});
 });
+
+import shippedTrust from '../mobile/connections/trust.json';
+import shippedCatalogue from '../mobile/connections/profiles.json';
+import { CompanySetupError } from '../mobile/lib/company-profile';
+describe('the built-in company catalogue', () => {
+  // Judged at each profile's own notBefore, so this does not start failing on a calendar date.
+  it('ships only profiles signed by a shipped trust anchor, each naming the staging server and its organization', () => {
+    expect(shippedCatalogue.length).toBeGreaterThan(0);
+    for (const entry of shippedCatalogue) {
+      const raw = JSON.stringify(entry), claimed = JSON.parse(Buffer.from(entry.payload, 'base64url').toString()) as CompanyProfile;
+      const profile = verifyCompanyProfile(raw, shippedTrust, claimed.notBefore);
+      expect(profile).toMatchObject({ apiOrigin: 'https://onehr-staging.chinhingroup.com', organization: 'aihr-test', authProvider: 'internal' });
+    }
+    expect(shippedCatalogue.map(e => e.keyId).every(id => shippedTrust.some(k => k.keyId === id))).toBe(true);
+  });
+  it('no longer trusts the retired key whose private half is lost', () => {
+    expect(shippedTrust.map(k => k.keyId)).toEqual(['aihr-test-2026-10b']);
+    expect(JSON.stringify(shippedCatalogue)).not.toContain('aihr-test-2026-10"');
+  });
+  it('says why a setup is refused', () => {
+    const at = (fn: () => unknown) => { try { fn(); } catch (e) { return e instanceof CompanySetupError ? [e.problem, e.at] : e; } };
+    const entry = shippedCatalogue[0], claimed = JSON.parse(Buffer.from(entry.payload, 'base64url').toString()) as CompanyProfile;
+    expect(at(() => verifyCompanyProfile(JSON.stringify(entry), shippedTrust, claimed.expiresAt))).toEqual(['expired', claimed.expiresAt]);
+    expect(at(() => verifyCompanyProfile(JSON.stringify(entry), shippedTrust, claimed.notBefore - 1))).toEqual(['not_yet_valid', claimed.notBefore]);
+    expect(at(() => verifyCompanyProfile(JSON.stringify(entry), []))).toEqual(['untrusted', undefined]);
+    expect(at(() => verifyCompanyProfile('not json', shippedTrust))).toEqual(['not_setup', undefined]);
+    expect(at(() => verifyCompanyProfile(JSON.stringify({ ...entry, signature: entry.signature.replace(/^./, c => c === 'A' ? 'B' : 'A') }), shippedTrust, claimed.notBefore))).toEqual(['bad_signature', undefined]);
+  });
+});

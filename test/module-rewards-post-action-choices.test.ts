@@ -1,3 +1,4 @@
+import {setRewardMember} from './rewards-access-fixture';
 /** Authored UNRUN: actual approved fictional units/native financial owners, coordinated drafts required. */
 import {randomUUID} from 'node:crypto';
 import {and,eq,isNull,sql} from 'drizzle-orm';
@@ -10,7 +11,7 @@ import {assignRole,revokeRole} from '../core/admin';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {setAiFeature} from '../core/ai-management';
 import {createBatch,setPayrollInput} from '../packs/payroll/service';
-import {createRewardUnit,getRewardUnit,saveRewardPolicy,saveRewardEntry,setRewardMember,decideRewardUnit} from '../packs/rewards/service';
+import { createRewardUnit, getRewardUnit, saveRewardPolicy, saveRewardEntry, decideRewardUnit } from '../packs/rewards/service';
 import {emptyFacts,type RewardRole} from '../packs/rewards/model';
 import {REVIEWED_REWARDS_POST_ACTION as action,type ReviewedRewardsPostHumanContent as Human} from '../lib/assistant-actions/reviewed-rewards-post-contract';
 import {todayInKualaLumpur} from '../lib/hr-date';

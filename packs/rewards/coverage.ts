@@ -24,7 +24,7 @@ export type RewardUnitCoverage = { unitId: string; roles: RewardRoleCoverage[]; 
 export async function rewardUnitCoverage(tx: Tx, unitIds: string[]): Promise<RewardUnitCoverage[]> {
     if (!unitIds.length) return [];
     const units = await tx.select({ id: rewardUnit.id, kind: rewardUnit.kind, offcycle: rewardUnit.offcycle }).from(rewardUnit).where(inArray(rewardUnit.id, unitIds));
-    const holders = await tx.select({ unitId: rewardMember.unitId, role: rewardMember.role, userId: rewardMember.userId, name: person.fullName, email: person.primaryEmail }).from(rewardMember).innerJoin(appUser, and(eq(appUser.id, rewardMember.userId), eq(appUser.tenantId, rewardMember.tenantId))).leftJoin(person, and(eq(person.id, appUser.personId), sql `app.access_workforce_person(${person.id}, 'workforce.view')`)).where(and(inArray(rewardMember.unitId, unitIds), activeRewardLogin())).orderBy(asc(person.fullName), asc(appUser.id));
+    const holders = await tx.select({ unitId: rewardMember.unitId, role: rewardMember.role, userId: rewardMember.userId, name: person.fullName, email: person.primaryEmail }).from(rewardMember).innerJoin(appUser, and(eq(appUser.id, rewardMember.userId), eq(appUser.tenantId, rewardMember.tenantId))).leftJoin(person, and(eq(person.id, appUser.personId), sql `app.access_workforce_person(${person.id}, 'workforce.view')`)).where(and(inArray(rewardMember.unitId, unitIds), sql`app.reward_member_eligible(${rewardMember.id})`)).orderBy(asc(person.fullName), asc(appUser.id));
     const byId = new Map(units.map(u => [u.id, u]));
     return unitIds.filter(id => byId.has(id)).map(unitId => {
         const required = rewardRequiredRoles(byId.get(unitId)!), mine = holders.filter(h => h.unitId === unitId);

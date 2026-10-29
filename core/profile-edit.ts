@@ -1,3 +1,7 @@
+import {appendEvent,actorOf} from '../db/events';
+import {profileFieldApproval,profileLegacyPrimaryApprovalRequired} from '../lib/profile-edit-policy-value';
+import {splitProfileSubmission} from '../lib/profile-submission-policy';
+import {getSetting} from './entitlements';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {projectEssVisible,essFactVisible} from '../lib/personnel-ess-visibility';
 import {createHash} from 'node:crypto';
@@ -26,7 +30,7 @@ import {CHILD_RELIEF_PERCENTAGES,dependentFieldApplies} from '../lib/dependent-v
 import {EMERGENCY_CONTACT_PRIORITIES} from '../lib/emergency-contact-vocabulary';
 
 export type EssRecord={kind:EssRegisterChange['kind'];id:string;values:Record<string,EssScalar>;baselines:Record<string,string>;primary:boolean};
-export type EssWorkspace={visible?:string[];employmentId:string;personId:string;country:string|null;values:Record<string,EssScalar>;baselines:Record<string,string>;registers:EssRecord[];editable:string[];legacyPrimaryEditable:string[];addressReview:boolean;legacyAddress:Record<string,string|null>;statutoryAvailable:boolean;fieldReadOnlyReasons?:Record<string,'derivedChildCount'>};
+export type EssWorkspace={visible?:string[];employmentId:string;personId:string;country:string|null;values:Record<string,EssScalar>;baselines:Record<string,string>;registers:EssRecord[];editable:string[];legacyPrimaryEditable:string[];addressReview:boolean;legacyAddress:Record<string,string|null>;statutoryAvailable:boolean;fieldReadOnlyReasons?:Record<string,'derivedChildCount'>;approvals?:Record<string,{required:boolean;attachmentRequired:boolean}>};
 const scalar=(value:unknown):EssScalar=>value==null?null:typeof value==='string'||typeof value==='number'||typeof value==='boolean'?value:null;
 const record=(value:object)=>value as Record<string,unknown>; // typed owner rows, used only for explicit descriptor projections
 const text=(values:Record<string,EssScalar>,key:string):string|null|undefined=>{const value=values[key];if(value===undefined||value===null||typeof value==='string')return value;throw new EssProfileError('invalid');};
@@ -131,7 +135,7 @@ export function readOwnProfileWorkspace(ctx:SessionContext,p:{employmentId?:stri
   const visible=policy.visible;
   const addressVisible=PERSONNEL_FIELDS.filter(field=>field.owner==='person'&&field.ownerField.startsWith('permanent')).every(field=>visible.has(field.id));
   const safe=safeValues(projectEssVisible(values,visible),id=>maskedProfileBaseline(policy.ctx,subject,rows,id));
-  return {visible:[...visible],employmentId:subject.id,personId:subject.personId,country:subject.country,...safe,registers:registers.map(row=>({...row,values:projectEssVisible(row.values,visible),baselines:projectEssVisible(row.baselines,visible),primary:essFactVisible(visible,'emergency','priority')&&row.primary})).filter(row=>Object.keys(row.values).length>0),editable:mayEdit?[...policy.editable].filter(id=>visible.has(id)):[],legacyPrimaryEditable:mayEdit?[...policy.legacyPrimary].filter(id=>visible.has(id)):[],addressReview:addressVisible&&addressNeedsReview(master),legacyAddress:addressVisible?legacyAddress(master):{},statutoryAvailable:Boolean(rows.pack),fieldReadOnlyReasons:projectEssVisible(fieldReadOnlyReasons,visible)} satisfies EssWorkspace;
+  return {approvals:Object.fromEntries(PERSONNEL_FIELDS.filter(field=>visible.has(field.id)&&policy.editable.has(field.id)).map(field=>[field.id,profileFieldApproval(getSetting(policy.ctx,'ess.profile_change_fields'),field)])),visible:[...visible],employmentId:subject.id,personId:subject.personId,country:subject.country,...safe,registers:registers.map(row=>({...row,values:projectEssVisible(row.values,visible),baselines:projectEssVisible(row.baselines,visible),primary:essFactVisible(visible,'emergency','priority')&&row.primary})).filter(row=>Object.keys(row.values).length>0),editable:mayEdit?[...policy.editable].filter(id=>visible.has(id)):[],legacyPrimaryEditable:mayEdit?[...policy.legacyPrimary].filter(id=>visible.has(id)&&!profileLegacyPrimaryApprovalRequired(getSetting(policy.ctx,'ess.profile_change_fields'),id)):[],addressReview:addressVisible&&addressNeedsReview(master),legacyAddress:addressVisible?legacyAddress(master):{},statutoryAvailable:Boolean(rows.pack),fieldReadOnlyReasons:projectEssVisible(fieldReadOnlyReasons,visible)} satisfies EssWorkspace;
  };
  return existingTx?run(existingTx):withTenant(ctx,run);
 }
@@ -169,7 +173,7 @@ export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employme
  if(!proposal)throw new EssProfileError('invalid');
  const cleanFields=(fields:EssFieldChange[],values:Record<string,EssScalar>,legacy=false,isNew=false,maskedToken?:(fieldId:string)=>string|undefined)=>fields.filter(change=>{
   const field=personnelField(change.fieldId)!;
-  if(!policy.editable.has(field.id)&&!(legacy&&policy.legacyPrimary.has(field.id)))throw new EssProfileError('fieldClosed',[field.id]);
+  if(!policy.editable.has(field.id)&&!(legacy&&policy.legacyPrimary.has(field.id)&&!profileLegacyPrimaryApprovalRequired(getSetting(policy.ctx,'ess.profile_change_fields'),field.id)))throw new EssProfileError('fieldClosed',[field.id]);
   const token=field.ess.masked?(maskedToken?maskedToken(field.id):maskedProfileBaseline(policy.ctx,subject,rows,field.id)):baseline(values[field.id]);
   if(field.ess.masked&&token===undefined&&!(isNew&&change.before===null))throw new EssProfileError('unavailable',[field.id]);
   if(!(isNew&&change.before===null)&&token!==change.before)throw new EssProfileError('stale',[field.id]);
@@ -278,7 +282,7 @@ async function applyScalarFieldsTx(tx:Tx,prepared:Awaited<ReturnType<typeof prep
  const {ctx,subject,master,rows}=prepared;
  const grouped=(owner:string)=>patch(fields.filter(change=>personnelField(change.fieldId)!.ess.binding!.owner===owner));
  const own=grouped('person');
- if(Object.keys(own).length&&fields.every(change=>personnelField(change.fieldId)!.ess.edit==='immediate')){await updateOwnContact(ctx,{phone:text(own,'phone'),personalEmail:text(own,'personalEmail')},tx);return;}
+ if(ctx.personId===master.id&&Object.keys(own).length&&fields.every(change=>personnelField(change.fieldId)!.ess.edit==='immediate'&&!profileFieldApproval(getSetting(ctx,'ess.profile_change_fields'),personnelField(change.fieldId)!).required)){await updateOwnContact(ctx,{phone:text(own,'phone'),personalEmail:text(own,'personalEmail')},tx);return;}
  if(Object.keys(own).length)await updatePersonProfilePartial(ctx,{personId:master.id,fullName:text(own,'fullName')??undefined,primaryEmail:text(own,'primaryEmail')??undefined,phone:text(own,'phone'),...personInput(own),via:'employee-profile'},tx);
  const compliance=grouped('compliance');if(Object.keys(compliance).length)await setPersonComplianceFields(ctx,{employmentId:subject.id,dateOfBirth:text(compliance,'dateOfBirth'),gender:text(compliance,'gender'),maritalStatus:text(compliance,'maritalStatus')},tx);
  const pack=rows.pack,stat=rows.stat;
@@ -298,17 +302,21 @@ async function applyScalarFieldsTx(tx:Tx,prepared:Awaited<ReturnType<typeof prep
 /** No-op/cancel do not call this owner. Omitted facts retain; explicit clears are validated.
  * `existingTx` (optional, M13): run inside a caller's transaction (the mobile command receipt), so a refusal rolls
  * the receipt back with everything else. The web passes none and keeps its own transaction. */
-export function submitOwnProfileEdit(ctx:SessionContext,p:{employmentId:string;proposal:unknown},existingTx?:Tx){
+export function submitOwnProfileEdit(ctx:SessionContext,p:{employmentId:string;proposal:unknown;attachments?:import('../lib/profile-attachment').ProfileAttachmentInput[]},existingTx?:Tx){
  p=structuredClone(p); ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  const run=async(tx:Tx)=>{
   const prepared=await prepareProfileProposalTx(tx,ctx,p.employmentId,p.proposal);
-  const immediate=prepared.proposal.fields.filter(change=>personnelField(change.fieldId)!.ess.edit==='immediate');
-  const waiting={v:2 as const,fields:prepared.proposal.fields.filter(change=>personnelField(change.fieldId)!.ess.edit==='approval'),registers:prepared.proposal.registers};
-  // Immediate changes and request insert share this exact Tx; a late refusal rolls everything back.
-  await applyScalarFieldsTx(tx,prepared,immediate);
+  const raw=getSetting(prepared.ctx,'ess.profile_change_fields');
+  const {immediate,waiting}=splitProfileSubmission(raw,prepared.proposal);
+  if(immediate.fields.length||immediate.registers.length){
+   await tx.execute(sql`select app.profile_direct_begin(${prepared.subject.id}::uuid,${JSON.stringify(immediate)}::jsonb)`);
+   await applyScalarFieldsTx(tx,prepared,immediate.fields);
+   for(const row of immediate.registers)await applyRegisterTx(tx,prepared.ctx,prepared.subject,row);
+   await appendEvent(tx,{tenantId:prepared.ctx.tenantId,aggregateType:'person',aggregateId:prepared.subject.personId,eventType:'profile.self-applied',actor:actorOf(prepared.ctx),subjectEmploymentId:prepared.subject.id,payload:{fields:immediate.fields.concat(immediate.registers.flatMap(row=>row.fields)).map(field=>field.fieldId)}});
+  }
   for(const row of prepared.immediateRegisters)await applyRegisterTx(tx,prepared.ctx,prepared.subject,row);
-  const result=waiting.fields.length||waiting.registers.length?await requestProfileChange(prepared.ctx,{employmentId:prepared.subject.id,proposed:waiting},tx):null;
-  return {saved:immediate.map(field=>field.fieldId).concat(prepared.immediateRegisters.flatMap(row=>row.fields.map(field=>field.fieldId))),waiting:waiting.fields.map(field=>field.fieldId).concat(waiting.registers.flatMap(row=>row.fields.map(field=>field.fieldId))),requestId:result?.requestId??null};
+  const result=waiting.fields.length||waiting.registers.length?await requestProfileChange(prepared.ctx,{employmentId:prepared.subject.id,proposed:waiting,attachments:p.attachments},tx):null;
+  return {saved:immediate.fields.map(field=>field.fieldId).concat(immediate.registers.flatMap(row=>row.fields.map(field=>field.fieldId)),prepared.immediateRegisters.flatMap(row=>row.fields.map(field=>field.fieldId))),waiting:waiting.fields.map(field=>field.fieldId).concat(waiting.registers.flatMap(row=>row.fields.map(field=>field.fieldId))),requestId:result?.requestId??null};
  };
  return existingTx?run(existingTx):withTenant(ctx,run);
 }

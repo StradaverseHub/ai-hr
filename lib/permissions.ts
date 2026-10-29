@@ -140,6 +140,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'myHomeGreetings',href:'/me/greetings/[id]',labelKey:'employeeHome.greetingDetail.title',guard:'scopedSession',routes:['/me/greetings/[id]']},
   {screenKey:'myCalendar',href:'/me/calendar',labelKey:'employeeHome.calendar.title',guard:'scopedSession',routes:['/me/calendar'],hasScopeNote:true},
   { screenKey: 'loginPresentation', href: '/admin/settings/login', labelKey: 'nav.loginPresentation', guard: 'scopedAdmin', routes: ['/admin/settings/login'], hasScopeNote: true },
+  {screenKey:'emailTemplates',href:'/admin/settings/email-templates',labelKey:'nav.emailTemplates',guard:'scopedAdmin',routes:['/admin/settings/email-templates'],hasScopeNote:true},
   { screenKey: 'identityEmail', href: '/admin/settings/email', labelKey: 'nav.identityEmail', guard: 'scopedSession', routes: ['/admin/settings/email'], hasScopeNote: true },
   { screenKey: 'rewards', href: '/rewards', labelKey: 'nav.rewards', guard: 'scopedSession', routes: ['/rewards', '/rewards/[unitId]', '/rewards/[unitId]/people/[entryId]'] },
   { screenKey: 'rewardsApprovals', href: '/rewards/approvals', labelKey: 'rewards.board.title', guard: 'scopedSession', routes: ['/rewards/approvals'] },
@@ -576,6 +577,13 @@ export const SCREENS: readonly ScreenEntry[] = [
     labelKey: 'nav.profileRequestSettings',
     guard: 'requireAdmin',
     routes: ['/admin/settings/profile-requests'],
+  },
+  {
+    screenKey: 'profileApprovalRules',
+    href: '/admin/settings/profile-requests/rules',
+    labelKey: 'essProfile.approvalRules',
+    guard: 'requireAdmin',
+    routes: ['/admin/settings/profile-requests/rules'],
   },
   {
     // R22 7d309da7: Personnel profile dropdown catalog (religion/race/nationality/state/country/relationship).

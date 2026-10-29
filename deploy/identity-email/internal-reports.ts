@@ -1,4 +1,6 @@
 /** Internal report transport consumes canonical broker material, never Auth records or keys. */
+import {renderEmailDesign} from '../../lib/email-design/render';
+import {emailDesignEnvelope,type EmailDesignEnvelope} from '../../lib/email-design/model';
 import {masterDeliveryRequest,type MasterDeliveryOutcome,type MasterDeliveryReason} from '../../lib/employee-master-delivery-model';
 import {fingerprintReportBytes} from '../../lib/employee-master-artifact';
 import {xlsxEmailAttachment,XLSX_EMAIL_ATTACHMENT_MAX_BYTES} from '../../lib/email-attachment';
@@ -12,13 +14,14 @@ export interface InternalReportDependencies {
  rendererReady():Promise<boolean>;
  prepare(id:string,token:string,target:MasterDeliveryTarget):Promise<MasterPreparedAttachment>;
  finish(id:string,token:string,outcome:MasterDeliveryOutcome,reason:MasterDeliveryReason|null,metadata?:{rowCount:number;scopeIds:string[]}):Promise<boolean>;
- send(relay:Relay,target:MasterDeliveryTarget,attachment:MasterPreparedAttachment,messageId:string):Promise<void>;
+ send(relay:Relay,target:MasterDeliveryTarget,attachment:MasterPreparedAttachment,messageId:string,design?:EmailDesignEnvelope):Promise<void>;
  origin:string;
 }
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
-export async function sendInternalEmployeeMasterSmtp(relay:Relay,target:MasterDeliveryTarget,attachment:MasterPreparedAttachment,messageId:string){
+export async function sendInternalEmployeeMasterSmtp(relay:Relay,target:MasterDeliveryTarget,attachment:MasterPreparedAttachment,messageId:string,rawDesign?:EmailDesignEnvelope){
  const payload=xlsxEmailAttachment.parse({bytes:attachment.bytes,filename:attachment.filename,contentType:attachment.contentType});
- await sendSmtp(relay,{to:target.email,...employeeMasterMailMessage(target.locale),messageId,
+ const design=rawDesign?emailDesignEnvelope.parse(rawDesign):null;if(design&&(design.kind!=='employee_master_report'||design.locale!==target.locale))throw Error('Email design binding changed.');
+ await sendSmtp(relay,{to:target.email,...renderEmailDesign(design?.document??null,'employee_master_report',target.locale,employeeMasterMailMessage(target.locale),design?.data),messageId,
   attachment:payload});
 }
 export function createInternalMasterReportDeliveryService(d:InternalReportDependencies){
@@ -57,7 +60,7 @@ export function createInternalMasterReportDeliveryService(d:InternalReportDepend
   try{intact=same(started.target,target)&&same(started.artifact,artifact)&&same(fingerprintReportBytes(attachment.bytes,attachment.contentType),started.artifact);}catch{/* Invalid/detached bytes are a definite pre-SMTP failure. */}
   if(!intact)return finish('failed','generationFailed',metadata);
   let outcome:MasterDeliveryOutcome='sent',reason:MasterDeliveryReason|null=null;
-  try{await d.send(started.relay,started.target,attachment,`<employee-master-${id}@${origin.hostname}>`);}
+  try{await d.send(started.relay,started.target,attachment,`<employee-master-${id}@${origin.hostname}>`,started.design);}
   catch(error){const failure=notificationSmtpFailure(error);outcome=failure.outcome==='uncertain'?'uncertain':'failed';reason=outcome==='uncertain'?'uncertain':failure.error==='smtpRejected'?'smtpRejected':'smtpUnavailable';}
   return finish(outcome,reason,metadata);
  };

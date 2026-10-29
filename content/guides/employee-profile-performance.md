@@ -3,9 +3,9 @@ Use [My Workspace](/me) for personal information and [My performance](/me/perfor
 ## Update personal information
 
 1. Open your personal details and review the editable fields.
-2. Save ordinary contact changes through the form provided.
-3. For fields that require review, use **Request a change**, provide the requested information and submit for approval.
-4. Check the request outcome before assuming the authoritative record has changed. Bank and tax changes can have payroll consequences and may need HR review.
+2. Enter changes through the form provided. Your employer's field settings determine which changes save directly and which require review.
+3. For fields that require review, use **Request a change**, provide the requested information and attach supporting evidence when required. A request supports up to three files, with a maximum of 5 MiB per file and 10 MiB in total; use a supported file type.
+4. Check which fields were saved and which are waiting for approval. Related details, such as parts of a bank account, may wait together for review. A submitted request does not mean those values have changed in your authoritative record. Bank and tax changes can have payroll consequences.
 
 Do not create a second account to change employment details. Ask HR to correct the existing person/employment record or login link.
 

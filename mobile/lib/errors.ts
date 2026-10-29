@@ -18,6 +18,12 @@ export class UnavailableError extends Error {
   }
 }
 
+/** HTTP 429: the server is shedding load or this user's request rate (lib/mobile-api/handler.ts admission). Still an
+ * UnavailableError for every screen; the read coordinator may retry a READ once when the stated wait is short. */
+export class ThrottledError extends UnavailableError {
+  constructor(retryAfter?: number) { super(undefined, retryAfter); this.name = 'ThrottledError'; }
+}
+
 /** The offline-clocking connectivity test (owner decision 1, 2026-10-28): the request produced NO HTTP response at all
  * (the fetch rejected, or our own timeout fired before any status arrived). A 5xx, 429, malformed body or caller abort
  * is a plain UnavailableError. Still an UnavailableError, so every existing online caller behaves exactly as before.

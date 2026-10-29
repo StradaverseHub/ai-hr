@@ -9,7 +9,7 @@ import {createReadCoordinator,retryAfterSeconds} from '../mobile/lib/read-coordi
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiOriginProblem } from '../mobile/lib/config';
-import { SessionChangedError, SignInRequiredError, UnavailableError, RequestRejectedError, NetworkUnavailableError } from '../mobile/lib/errors';
+import { SessionChangedError, SignInRequiredError, UnavailableError, RequestRejectedError, NetworkUnavailableError, ThrottledError } from '../mobile/lib/errors';
 import * as offlineContract from '../lib/mobile-offline-contract';
 import * as v2Common from '../lib/mobile-api/v2/common';
 import { z } from 'zod';
@@ -45,8 +45,8 @@ function clientFixture() {
       if (id === '../../lib/mobile-offline-contract') return offlineContract;
       if (id === './auth') return auth;
       if (id === './config') return { config, apiOriginProblem, configProblem: () => null,identityNamespace:()=>namespace };
-      if (id === './read-coordinator') return {retryAfterSeconds,createReadCoordinator:(ports:Parameters<typeof createReadCoordinator>[0])=>createReadCoordinator({...ports,now:()=>monotonic})};
-      if (id === './errors') return { SessionChangedError, SignInRequiredError, UnavailableError, RequestRejectedError, NetworkUnavailableError };
+      if (id === './read-coordinator') return {retryAfterSeconds,createReadCoordinator:(ports:Parameters<typeof createReadCoordinator>[0],...limits:[number?,number?])=>createReadCoordinator({...ports,now:()=>monotonic},...limits)};
+      if (id === './errors') return { SessionChangedError, SignInRequiredError, UnavailableError, RequestRejectedError, NetworkUnavailableError, ThrottledError };
       if (id === './i18n') return { appLocale: () => locale };
       if (id === '../../lib/mobile-api/v2/common') return v2Common;
       if (id === './protected-document') return { writeProtectedDocument: written };
@@ -168,11 +168,40 @@ describe('native API transport', () => {
     expect(await first).toBeInstanceOf(SessionChangedError);expect(await second).toBeInstanceOf(SessionChangedError);
     release(Response.json(employee('Obsolete employee')));expect(fresh).toEqual(employee('Employment one'));expect(f.response).toHaveBeenCalledTimes(2);
   });
-  it('honors a safe read Retry-After without automatic or repeated manual network attempts',async()=>{
-    const f=clientFixture();f.response.mockResolvedValueOnce(new Response('',{status:429,headers:{'retry-after':'2'}}));
-    await expect(f.api.apiGet('me')).rejects.toMatchObject({retryAfter:2});
-    await expect(f.api.apiGet('me')).rejects.toMatchObject({retryAfter:2});expect(f.response).toHaveBeenCalledOnce();
-    f.advanceCooldown(2001);await expect(f.api.apiGet('me')).resolves.toEqual(employee('Employment one'));expect(f.response).toHaveBeenCalledTimes(2);
+  it('honors a longer read Retry-After without automatic or repeated manual network attempts',async()=>{
+    const f=clientFixture();f.response.mockResolvedValueOnce(new Response('',{status:429,headers:{'retry-after':'5'}}));
+    await expect(f.api.apiGet('me')).rejects.toMatchObject({retryAfter:5});
+    await expect(f.api.apiGet('me')).rejects.toMatchObject({retryAfter:5});expect(f.response).toHaveBeenCalledOnce();
+    f.advanceCooldown(5001);await expect(f.api.apiGet('me')).resolves.toEqual(employee('Employment one'));expect(f.response).toHaveBeenCalledTimes(2);
+  });
+  it('retries a read refused by the per-user in-flight admission once, after the short stated wait, and never twice',async()=>{
+    vi.useFakeTimers({toFake:['setTimeout','clearTimeout']});
+    const f=clientFixture(),busy=()=>new Response('',{status:429,headers:{'retry-after':'1'}});
+    f.response.mockResolvedValueOnce(busy());
+    const first=f.api.apiGet('me');
+    await vi.advanceTimersByTimeAsync(999);expect(f.response).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(300);expect(await first).toEqual(employee('Employment one'));expect(f.response).toHaveBeenCalledTimes(2);
+    f.response.mockResolvedValueOnce(busy()).mockResolvedValueOnce(busy());
+    const second=f.api.apiGet('v2/integrity/keys').catch((error:unknown)=>error);
+    await vi.advanceTimersByTimeAsync(5000);
+    const refused=await second;expect(refused).toBeInstanceOf(ThrottledError);expect(refused).toMatchObject({retryAfter:1});expect(f.response).toHaveBeenCalledTimes(4);
+    // A write is never retried here.
+    f.response.mockResolvedValueOnce(busy());
+    await expect(f.api.apiPost('clock',new FormData())).rejects.toBeInstanceOf(ThrottledError);await vi.advanceTimersByTimeAsync(5000);expect(f.response).toHaveBeenCalledTimes(5);
+  });
+  it('keeps at most six reads in flight and starts the queued ones as answers arrive',async()=>{
+    const f=clientFixture(),held:((r:Response)=>void)[]=[];let answered=0,peak=0;
+    f.response.mockImplementation(()=>new Promise<Response>(resolve=>{held.push(resolve);peak=Math.max(peak,f.response.mock.calls.length-answered);}));
+    const paths=['me','leave','payslips','notifications','tasks','team','clock','leave-options','leave-requests','design','clock-attempts','submission-receipt','v2/integrity/keys'];
+    const all=Promise.all(paths.map(path=>f.api.apiGet(path).catch(()=>undefined)));
+    await vi.waitFor(()=>expect(f.response).toHaveBeenCalledTimes(6));
+    await new Promise(r=>setTimeout(r,20));expect(f.response).toHaveBeenCalledTimes(6);
+    while(answered<paths.length){
+      await vi.waitFor(()=>expect(held.length).toBeGreaterThan(0));
+      held.shift()!(answered%2?Response.json(employee('Answer')):new Response('',{status:503}));answered++;
+      await new Promise(r=>setTimeout(r,0));
+    }
+    await all;expect(f.response).toHaveBeenCalledTimes(paths.length);expect(peak).toBe(6);
   });
   it('never starts a write in the background, including after a delayed token refresh',async()=>{
     const f=clientFixture();f.appState.currentState='background';
