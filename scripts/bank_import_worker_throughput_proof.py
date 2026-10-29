@@ -164,7 +164,7 @@ def verify_packet(source,producer):
     return inputs,manifest,ledger
 
 def check_metadata(run,jobs,artifact,pins):
-    for value in [run.get('id'),run.get('run_attempt'),artifact.get('id'),*[v for j in jobs for v in [j.get('id'),j.get('run_id'),j.get('run_attempt')]]:
+    for value in [run.get('id'),run.get('run_attempt'),artifact.get('id'),*[v for j in jobs for v in [j.get('id'),j.get('run_id'),j.get('run_attempt')]]]:
         check(type(value) is int,'API identity integers must not be booleans or strings')
     check(run.get('id')==pins['run'] and run.get('run_attempt')==1 and run.get('event')=='workflow_dispatch' and run.get('path')==PRODUCER_WORKFLOW and run.get('head_sha')==pins['producer'] and run.get('status')=='completed' and run.get('conclusion')=='success','producer first-attempt completed successful run differs')
     for key in ['repository','head_repository']: check(run.get(key,{}).get('id')==REPOSITORY_ID and run[key].get('full_name')==REPO,'producer repository differs')
