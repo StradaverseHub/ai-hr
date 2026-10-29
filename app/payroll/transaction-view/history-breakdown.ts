@@ -197,7 +197,7 @@ export type HistoryBreakdown = {
    * 5a5309d5 — AND THE KERNEL'S OWN `deduct` STAMP, for this panel only. A run's deduction pay items
    * (D0030 MONTHLY PARKING) were stamped into `componentLines` all along and folded into this row unnamed.
    * Same gate: listed only when they add up to the row. A line whose money is already printed as the named
-   * Unpaid leave / Absent row above is left out first (see `deductionLinesFor` below), so nothing is
+   * Unpaid leave / Absent row above is left out first (see `otherDeductionItemLines` below), so nothing is
    * counted twice. core/payslip-imported-lines.ts `deductionLinesFor`, which the payslip and the PDF read,
    * is deliberately untouched: those surfaces are outside this item.
    */
@@ -293,7 +293,7 @@ function overtimeSourceLines(componentLines: ComponentLine[], statutory: unknown
  * carry-forward inside the column) fails the gate and the bare total stands. Whatever is dropped, the rows
  * printed always sum to the figure above them, because `payItemLinesReconcile` is the last word.
  */
-function deductionLinesFor(lines: RecordLine[], absence: PayslipAbsenceLines): RecordLine[] {
+function otherDeductionItemLines(lines: RecordLine[], absence: PayslipAbsenceLines): RecordLine[] {
   if (!absence.showResidual || lines.length === 0) return [];
   if (payItemLinesReconcile(lines, absence.residual)) return lines;
   const remaining = [...lines];
@@ -384,7 +384,7 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow): HistoryBre
     bonusLines: reconciled(byBucket.bonus, disp.bonus),
     // 5a5309d5 — the kernel's deduct stamp AND imported history's lines (both are in `byBucket`), for this
     // panel only; the payslip and the PDF keep reading imported lines alone (core/payslip-imported-lines.ts).
-    deductionLines: deductionLinesFor(byBucket.deduct, absence),
+    deductionLines: otherDeductionItemLines(byBucket.deduct, absence),
     detailNotRecorded: componentLines.length === 0,
     // 0253dc7c — read through the kernel's own accessor so "absent" means the same thing here as it
     // does in the payslip-version diff. It returns null (never zeroes) for a slip with no stamp.
