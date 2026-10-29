@@ -45,6 +45,7 @@ describe('one AI inventory (R8)', () => {
       expect(row.tier).toBe(a.policy.tier); expect(row.category).toBe(a.policy.category);
       expect(row.pauseKey).toBe(`hr_assistant:${a.id}`); expect(agentActionPauseKey(a)).toBe(row.pauseKey);
       expect(a.pauseKey).toBe('hr_assistant');
+      expect(row.featureId).toBe(a.policy.tier==='automatic'?a.automatic.specialist:'hr_assistant');
     }
   });
 

@@ -5,6 +5,8 @@ import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
+import {AI_FEATURES} from '../lib/ai/features';
+import {assertAiActionUnpausedTx} from '../core/ai-governance';
 import { aiManagementView, setAiFeature } from '../core/ai-management';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -35,7 +37,7 @@ describe('one switch owner per AI feature (0692)', () => {
   it('seeds the reference table the application can read but not change', async () => {
     const rows = await withTenant(group, tx => tx.execute<{ feature_id: string; setting_key: string }>(sql`select feature_id,setting_key from app.ai_feature_setting order by feature_id`));
     expect(Array.from(rows)).toContainEqual({ feature_id: 'feedback_planning', setting_key: 'feedback.ai_planning_enabled' });
-    expect(rows.length).toBe(10);
+    expect(Array.from(rows).map(r=>[r.feature_id,r.setting_key]).sort()).toEqual(AI_FEATURES.filter(f=>f.setting!==null).map(f=>[f.id,f.setting]).sort());
     await expect(withTenant(group, tx => tx.execute(sql`insert into app.ai_feature_setting(feature_id,setting_key) values('hr_assistant','assistant.launcher_enabled')`)))
       .rejects.toMatchObject({ cause: { code: '42501' } });
     await expect(withTenant(group, tx => tx.execute(sql`delete from app.ai_feature_setting where feature_id='feedback_planning'`)))
@@ -91,4 +93,15 @@ describe('one switch owner per AI feature (0692)', () => {
     await setAiFeature(group, 'report_insight', false);
     expect((await aiManagementView(group)).features.find(f => f.id === 'report_insight')).toMatchObject({ enabled: false, staleOverride: null });
   });
+});
+
+describe('template-only specialist switch mapping grants no model admission',()=>{
+ it.each(['approval_chasers','review_chasers','clock_reminders','document_reminders','lifecycle_chasers'] as const)('%s has one setting owner while SQL and service model admission still refuse',async feature=>{
+  const definition=AI_FEATURES.find(f=>f.id===feature)!;expect(definition.setting).toBeTruthy();
+  await setAiFeature(group,feature,true);
+  const [setting]=await owner.db.select().from(schema.tenantSetting).where(and(eq(schema.tenantSetting.tenantId,base.tenantId),eq(schema.tenantSetting.key,definition.setting!)));expect(setting.value).toBe(true);
+  await expect(withTenant(group,tx=>assertAiActionUnpausedTx(tx,group,feature))).rejects.toThrow('no model call');
+  await expect(admit(feature)).rejects.toThrow();
+  await expect(withTenant(group,tx=>tx.insert(schema.aiControlPolicy).values({tenantId:base.tenantId,kind:'feature',scopeKey:'feature:'+feature,featureId:feature,enabled:true}))).rejects.toThrow();
+ });
 });

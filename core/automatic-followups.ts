@@ -1,3 +1,5 @@
+import {assertAgentActionUnpausedTx} from './agent-action-pause';
+import {AiAllowanceError} from '../lib/ai/types';
 /** WP13 c/d/e. Fixed-template, principal-only reminders. This module never calls a model, writes clocks,
  * changes documents or completes lifecycle work. Sources disclose only ids/dates and lifecycle rule facts. */
 import {and,desc,eq,sql} from 'drizzle-orm';
@@ -32,6 +34,7 @@ export async function assertAutomaticFollowupTx(tx:Tx,ctx:SessionContext,actionI
  assertAgentActionTier(action.id,'automatic');if(!isAgentContext(ctx))throw new AutomaticChaserRefusal('not_agent');
  const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId),entitlementsExempt:undefined};const specialist=specialistOf(action);
  if(!switches[specialist](fresh)||!await agentSpecialistCurrentTx(tx,fresh,specialist))throw new AutomaticChaserRefusal('switched_off');
+ try{await assertAgentActionUnpausedTx(tx,action.id);}catch(error){if(error instanceof AiAllowanceError&&error.reason==='paused')throw new AutomaticChaserRefusal('switched_off');throw error;}
  if(!isModuleEnabled(fresh,'notifications')||!isModuleEnabled(fresh,moduleOf(sourceOf(action))))throw new AutomaticChaserRefusal('module_off');
  return{action,fresh};
 }

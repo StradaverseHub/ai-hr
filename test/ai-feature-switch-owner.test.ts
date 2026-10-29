@@ -18,12 +18,10 @@ const live = (marker: string) => {
   expect(at).toBeGreaterThanOrEqual(0); expect(end).toBeGreaterThan(at);
   return { file: files.at(-1)!, body: src.slice(at, end) };
 };
-const seed = () => {
-  const src = read(MIGRATION), at = src.indexOf('INSERT INTO app.ai_feature_setting(feature_id,setting_key) VALUES');
-  expect(at).toBeGreaterThanOrEqual(0);
-  const block = src.slice(at, src.indexOf(';', at));
-  return [...block.matchAll(/\('([^']+)','([^']+)'\)/g)].map(m => [m[1], m[2]] as const);
-};
+const seed = () => journal.flatMap(file=>{
+  const inserts=[...read(file).matchAll(/INSERT INTO app\.ai_feature_setting\(feature_id,setting_key\) VALUES([\s\S]*?);/g)];
+  return inserts.flatMap(insert=>[...insert[1].matchAll(/\('([^']+)','([^']+)'\)/g)].map(m=>[m[1],m[2]] as const));
+});
 const settingBacked = AI_FEATURES.flatMap(f => f.setting === null ? [] : [[f.id, f.setting] as const]);
 const sorted = (rows: readonly (readonly [string, string])[]) => rows.map(r => r.join('=')).sort();
 const PERFORMANCE_KEYS = ['360', 'tc', 'pm', 'review', 'idp', 'calib'].map(id => `performance.ai_${id}_enabled`);
