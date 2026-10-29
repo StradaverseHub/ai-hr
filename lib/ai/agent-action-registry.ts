@@ -195,7 +195,7 @@ export const AGENT_ACTIONS=Object.freeze([
   permission:{actor:'hr_admin',guard:'core/assistant-actions/knowledge-article-source.ts#assertKnowledgeArticleActorTx'},subject:'tenant',blastRadius:{max:1,unit:'knowledge_article'},
   idempotencyKey:'review_action_id',policy:{tier:'confirm',category:'own_work'},reversal:{kind:'entry_point',by:'app/knowledge-base/actions.ts#archiveDocumentAction'},evaluationCases:[],
   screen:{native:'app/knowledge-base/page.tsx',entryPoints:['app/knowledge-base/actions.ts#createArticleAction']},review:{route:'/assistant/knowledge-base',handoff:'review_page'},
-  store:'dedicated',browserOwner:'knowledge',pauseKey:'hr_assistant'}),
+  store:'generic_own',browserOwner:'knowledge',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'payroll.close',module:'payroll',owner:'payroll',service:'packs/payroll/service.ts#closeBatch',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_payroll_close_review_v1',inputSchema:'PayrollCloseReviewPrepare',outputSchema:'PayrollClosePreparedReview'},
   confirm:{status:'implemented',adapter:'module_payroll_close_review_v1',inputSchema:'PayrollCloseReviewConfirmation',outputSchema:'PayrollCloseCompletedReview'},
