@@ -30,12 +30,19 @@ describe('single-template Movement import screen (ac6645ec)',()=>{
   mount();choose();fireEvent.click(screen.getByRole('button',{name:'Check file'}));await screen.findByRole('heading',{name:'Review events before importing'});
   const first=mocks.fetch.mock.calls[0][1].body as FormData;expect(first.get('operation')).toBe('preview');expect((first.get('file') as File).name).toBe('movements.xlsx');expect(first.get('companyId')).toBeNull();
   const checks=screen.getAllByRole('checkbox',{name:'Include employee'});expect(checks[0]).toBeDisabled();expect(checks[1]).toBeChecked();
-  expect(screen.getByText(en.people.import.movement.issues.before_mismatch+' · Department')).toBeInTheDocument();expect(screen.getByText('BAD · Fictional invalid · EXT · Fictional A')).toBeInTheDocument();
+  expect(screen.getByText(en.people.import.movement.issues.before_mismatch+' · Department')).toBeInTheDocument();
+  // d9e33556 — each movement names its worksheet and original Excel rows.
+  expect(screen.getByText(/Movements · Rows 2 · Invalid/)).toBeInTheDocument();expect(screen.getByText(/Movements · Rows 4 · Valid/)).toBeInTheDocument();expect(screen.getByText('BAD · Fictional invalid · EXT · Fictional A')).toBeInTheDocument();
   const save=screen.getByRole('button',{name:'Confirm and import selected events'});expect(save).toBeDisabled();fireEvent.click(screen.getByRole('checkbox',{name:/I confirm that 2/}));expect(save).toBeEnabled();
   mocks.fetch.mockResolvedValueOnce(response({ok:true,result:{...preview,attemptId:'attempt-1',imported:1,failed:0,excluded:2,byEventType:[],employees:preview.employees.map(e=>({...e,rows:e.rows.map(r=>({...r,status:e.employeeCode==='GOOD'?'imported':'excluded'}))}))}}));fireEvent.click(save);
   await screen.findByRole('heading',{name:'Import result'});const body=mocks.fetch.mock.calls[1][1].body as FormData;
   expect(body.get('attemptId')).toBe('attempt-1');expect(body.get('previewHash')).toBe('hash-1');expect(JSON.parse(String(body.get('employees')))).toEqual(['company-a|GOOD']);expect(body.get('fingerprints')).toBeNull();expect(body.get('selection')).toBeNull();
   expect(screen.getByRole('link',{name:'View this import in Import History'})).toHaveAttribute('href','/admin/personnel/import/history/attempt-1');
+ });
+ it('lists file-level issues distinctly: an unchanged template has no entries, not an unsupported structure (d9e33556)',async()=>{
+  mocks.fetch.mockResolvedValueOnce(response({ok:true,attemptId:'attempt-2',previewHash:'hash-2',preview:{inputHash:'',selection:[],fileErrors:['no_movement_entries'],employees:[],excluded:0,valid:0}}));mount();choose();fireEvent.click(screen.getByRole('button',{name:'Check file'}));
+  const alert=await screen.findByRole('alert');expect(alert).toHaveTextContent(en.people.import.movement.issues.no_movement_entries);expect(alert).not.toHaveTextContent(en.people.import.movement.issues.workbook_structure_invalid);
+  expect(screen.queryByRole('button',{name:'Confirm and import selected events'})).toBeNull();
  });
  it('shows the import history refusal message as returned',async()=>{
   mocks.fetch.mockResolvedValueOnce(response({ok:false,error:'workbook_old_layout'}));mount();choose();fireEvent.click(screen.getByRole('button',{name:'Check file'}));
