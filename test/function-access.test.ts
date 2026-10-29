@@ -166,6 +166,18 @@ describe('function-access registry (lib/permissions)', () => {
     expect(SCREENS.filter((x) => x.href === '/performance/leaders')).toEqual([]);
   });
 
+  // ADR-0161 — System Configuration › Mobile app: customer administrators only. The operator role reaches
+  // no requireAdmin column (it is not an admin role), which the guard-derived count below also proves.
+  it('registers /admin/settings/mobile-app as an admin-only column whose page calls requireAdmin in code', () => {
+    const screen = SCREENS.find((row) => row.screenKey === 'mobileWorkplaceSetup');
+    expect(screen).toMatchObject({ href: '/admin/settings/mobile-app', guard: 'requireAdmin', labelKey: 'nav.mobileWorkplaceSetup' });
+    expect(screen?.routes).toEqual(['/admin/settings/mobile-app']);
+    const page = codeWithoutComments(fs.readFileSync(path.join(APP, 'admin/settings/mobile-app/page.tsx'), 'utf8'));
+    expect(page).toMatch(/await requireAdmin\(\)/);
+    expect(guardedRoutes()).toContain('/admin/settings/mobile-app');
+    for (const role of roleEnum.enumValues) expect(canReach(role, screen!), role).toBe(role === 'hr_admin' || role === 'super_admin');
+  });
+
   it('screenKeys are unique (no duplicate columns)', () => {
     const keys = SCREENS.map((s) => s.screenKey);
     expect(new Set(keys).size).toBe(keys.length);
