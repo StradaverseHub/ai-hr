@@ -55,7 +55,13 @@ export function ClockingAddressSearch({ provider }: { provider: MapProvider }) {
     const seq = ++requestSeq.current;
     setState({ status: 'searching' });
     try {
-      const res = await fetch(geocodeRequestUrl(provider, q), { headers: { Accept: 'application/json' }, cache: 'no-store' });
+      const res = await fetch(geocodeRequestUrl(provider, q), {
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+        // Like map tiles, search must identify the site even behind a same-origin edge policy.
+        referrerPolicy: 'strict-origin-when-cross-origin',
+        credentials: 'omit',
+      });
       if (!res.ok) throw new Error(`geocoder answered ${res.status}`);
       const results = parseGeocodeResults(await res.json());
       if (seq !== requestSeq.current) return;

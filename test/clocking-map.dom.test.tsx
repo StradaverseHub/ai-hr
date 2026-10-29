@@ -24,7 +24,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { ClockingAddressSearch } from '../app/admin/work-locations/clocking/address-search';
@@ -35,6 +35,8 @@ import { CLOCKING_FIELDS } from '../app/admin/work-locations/clocking/form-field
 type FakeState = {
   mapOptions: Record<string, unknown> | null;
   tileUrls: string[];
+  tileOptions: Record<string, unknown> | null;
+  tileEvents: Record<string, () => void>;
   marker: { latLng: [number, number] | null; onMap: boolean } | null;
   circle: { latLng: [number, number] | null; radius: number; onMap: boolean } | null;
   views: [number, number][];
@@ -49,6 +51,8 @@ vi.mock('leaflet', () => {
   const state: FakeState = {
     mapOptions: null,
     tileUrls: [],
+    tileOptions: null,
+    tileEvents: {},
     marker: null,
     circle: null,
     views: [],
@@ -84,10 +88,16 @@ vi.mock('leaflet', () => {
       state.mapOptions = options;
       return mapApi;
     },
-    tileLayer(url: string) {
+    tileLayer(url: string, options: Record<string, unknown>) {
       state.tileUrls.push(url);
+      state.tileOptions = options;
       const layer = {
         addTo: () => layer,
+        on(events: Record<string, () => void>) {
+          Object.assign(state.tileEvents, events);
+          return layer;
+        },
+        off() { state.tileEvents = {}; return layer; },
         setUrl(next: string) {
           state.tileUrls.push(next);
           return layer;
@@ -154,6 +164,8 @@ vi.mock('leaflet', () => {
       Object.assign(state, {
         mapOptions: null,
         tileUrls: [],
+        tileOptions: null,
+        tileEvents: {},
         marker: null,
         circle: null,
         views: [],
@@ -250,6 +262,27 @@ afterEach(() => {
 });
 
 describe('fa2db8cb rev 2 — the map: a marker, the radius as a circle, and a Satellite control that tells the truth', () => {
+  it('sends an origin-only referrer on tiles even when the document policy is same-origin', async () => {
+    render(<Harness provider={OSM_PROVIDER} />);
+    await mapReady();
+    expect(fake.__state.tileOptions?.referrerPolicy).toBe('strict-origin-when-cross-origin');
+  });
+
+  it('reports tile failures without changing form values and recovers on the next load', async () => {
+    render(<Harness provider={OSM_PROVIDER} />);
+    await mapReady();
+    typeInto(boxes().lat, PENANG.lat);
+    typeInto(boxes().lng, PENANG.lng);
+    typeInto(boxes().radiusM, '150');
+    act(() => fake.__state.tileEvents.tileerror?.());
+    expect(screen.getByText(/The map could not be loaded/)).toBeInTheDocument();
+    expect(boxes().lat.value).toBe(PENANG.lat);
+    expect(boxes().radiusM.value).toBe('150');
+    act(() => fake.__state.tileEvents.loading?.());
+    expect(screen.queryByText(/The map could not be loaded/)).toBeNull();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it('with NO key the Satellite control renders, is DISABLED, and says why — the map still draws', async () => {
     render(<Harness provider={OSM_PROVIDER} />);
     await mapReady();
@@ -392,6 +425,7 @@ describe('fa2db8cb rev 2 — the address search: on submit only, and it fills in
 
     const result = await screen.findByRole('button', { name: /Menara KL, Jalan Punchak/ });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ referrerPolicy: 'strict-origin-when-cross-origin', credentials: 'omit' });
     expect(String(fetchMock.mock.calls[0][0]), 'the query is encoded, once').toContain('q=Menara%20KL');
     expect(onSubmit, 'Search is not a submit button').not.toHaveBeenCalled();
 
