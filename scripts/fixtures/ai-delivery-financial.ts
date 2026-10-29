@@ -15,7 +15,7 @@ import {createClaimType,saveClaimDraft,submitClaim} from '../../packs/claims/ser
 import * as performance from '../../packs/performance/service';
 import {defaultPolicy} from '../../packs/performance/onehr/model';
 import framework from '../../packs/performance/onehr/framework.json';
-import {createRewardUnit,getRewardUnit,saveRewardPolicy,saveRewardEntry,setRewardMember,decideRewardUnit} from '../../packs/rewards/service';
+import {createRewardUnit,getRewardUnit,saveRewardPolicy,saveRewardEntry,previewRewardAccessChange,saveRewardAccessChange,decideRewardAccessRequest,decideRewardUnit} from '../../packs/rewards/service';
 import {emptyFacts,type RewardRole} from '../../packs/rewards/model';
 const refuse=():never=>{throw Error('Fictional financial fixture prerequisites could not be confirmed. Preserve partial setup; do not retry automatically.');};
 export type AiDeliveryFinancialFixture={
@@ -33,8 +33,9 @@ export async function populateAiDeliveryFinancial(c:AiDeliveryFixtureContext):Pr
  const grade=await createJobGrade(admin,{code:'JG12',name:'Fictional browser grade 12'}),unit=await createBusinessUnit(admin,{companyId:c.companyId,code:'AI_BROWSER_FIN',name:'Fictional browser financial unit'});
  for(const[index,actor]of actors.entries()){
   await setEmploymentGrade(admin,{employmentId:actor.employmentId,gradeId:grade.id});
-  // Reward decision-makers remain outside the selected cohort: preserve native own-person masking.
-  if(actor.employmentId===c.actors.self.employmentId)await setEmploymentAssignment(admin,{employmentId:actor.employmentId,effectiveDate:c.today,departmentId:c.departmentId,businessUnitId:unit.id});
+  // BU authority follows an actual current assignment. Native own-person masking still hides the
+  // operator's own reward; all other decision-makers stay outside this selected cohort.
+  if([c.actors.self.employmentId,c.actors.operator.employmentId].includes(actor.employmentId))await setEmploymentAssignment(admin,{employmentId:actor.employmentId,effectiveDate:c.today,departmentId:c.departmentId,businessUnitId:unit.id});
   await setCompensation(admin,{employmentId:actor.employmentId,basicSalary:3000+index*100,monthlyAllowance:0,effectiveFrom});
   await requirePackFor('MY').statutory.set(admin,{personId:actor.personId,icNumber:`91070703${String(index+1).padStart(4,'0')}`,epfNumber:`FIC-EPF-${index+1}`,socsoNumber:`FIC-SOCSO-${index+1}`});
  }
@@ -70,7 +71,18 @@ export async function populateAiDeliveryFinancial(c:AiDeliveryFixtureContext):Pr
  }
  const rewardId=await createRewardUnit(admin,{name:'Fictional approved browser reward',year,companyId:c.companyId,businessUnitId:unit.id,snapshotDate:c.today});
  const memberships:readonly[RewardRole,typeof c.actors.operator][]=[['bu',c.actors.operator],['bg',c.actors.reviewers[0]],['ctro',c.actors.reviewers[1]],['ec',c.actors.peer],['payroll',c.actors.operator]];
- for(const[role,actor]of memberships)await setRewardMember(admin,rewardId,(await getRewardUnit(admin,rewardId)).unit.revision,actor.userId,role);
+ // This fixture is human-authored prerequisite setup, not the later selected browser target effect.
+ // Legacy membership setters now only propose: exercise the real independent approval owner.
+ const checker=c.actors.manager.ctx;
+ if(!checker.userId||checker.userId===admin.userId||memberships.some(([,actor])=>actor.userId===checker.userId))return refuse();
+ for(const[role,actor]of memberships){
+  const preview=await previewRewardAccessChange(admin,{unitId:rewardId,revision:(await getRewardUnit(admin,rewardId)).unit.revision,before:null,after:{userId:actor.userId,role}});
+  const {digest,...input}=preview,request=await saveRewardAccessChange(admin,input,digest);
+  if(!request.pending||(await decideRewardAccessRequest(checker,request.requestId,true)).status!=='approved')return refuse();
+  if(!(await getRewardUnit(actor.ctx,rewardId)).roles.includes(role))return refuse();
+ }
+ const operatorReview=await getRewardUnit(c.actors.operator.ctx,rewardId);
+ if(operatorReview.rows.some(row=>row.source.personId===c.actors.operator.personId))return refuse();
  let reward=await getRewardUnit(admin,rewardId);await saveRewardPolicy(admin,rewardId,reward.unit.revision,{...reward.unit.policy,effectiveFrom:c.today,patActual:100,patTarget:100,ranges:{'12':[300000,500000,700000]}});
  reward=await getRewardUnit(admin,rewardId);if(!reward.rows.length)return refuse();
  for(const row of reward.rows)await saveRewardEntry(admin,rewardId,(await getRewardUnit(admin,rewardId)).unit.revision,row.id,row.recommendation,{...emptyFacts(),reviewed:true,talent:'SCORE',performance:'ME'});

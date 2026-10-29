@@ -76,6 +76,7 @@ const SYSTEM_SETTINGS_CHILD_HREFS = [
   '/admin/settings/profile-requests',
   '/admin/settings/login',
   '/admin/settings/email',
+  '/admin/settings/email-templates',
   // 3f44a539 / 4a8a4fff — relocated existing rows; AI remains a flat Administration destination.
   '/admin/settings/notifications',
   '/admin/scheduled-actions',
@@ -155,6 +156,12 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
   it('carries EVERY child in the declared order — no row appended, clipped or reshuffled unnoticed', () => {
     const hrefs = [...node!.matchAll(/href: '([^']+)'/g)].map((m) => m[1]);
     expect(hrefs).toEqual([...SYSTEM_SETTINGS_CHILD_HREFS]);
+  });
+
+  it('keeps Email templates adjacent to delivery and restricted to administrators', () => {
+    expect(node!).toContain("{ href: '/admin/settings/email-templates', labelKey: 'emailTemplates', icon: Mail, adminOnly: true }");
+    expect(countQuoted(SIDEBAR, '/admin/settings/email-templates')).toBe(1);
+    expect(navigationPlacement('/admin/settings/email-templates')).toEqual({area:'system'});
   });
 
   it('relocates the exact three entries once, preserving keys, icons and the inherited admin audience', () => {
