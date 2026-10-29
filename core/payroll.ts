@@ -8430,6 +8430,9 @@ async function preparePayrollCloseTx(tx:Tx,ctx:SessionContext,p:{batchId:string}
         if (bad.length > 0) throw new PayrollCoverageIncompleteError(bad);
       }
     }
+    // cdb1c6ca — THE THREE OUTSTANDING-WORK GATES, after every existing one and still BEFORE any write, so a
+    // refused close leaves the run processed and changes nothing. See `assertNoOutstandingCloseWorkTx`.
+    await assertNoOutstandingCloseWorkTx(tx, ctx, p.batchId);
     // Step 6 (f3148da1) — compute the payslip RELEASE instant NOW, under this admin session (which can read the
     // company release config; the ESS employee session cannot, so the gate must be materialized here, not at
     // read time). We read the company's release config + pay-day and derive releasedAt from the close instant;
@@ -8446,6 +8449,15 @@ async function applyPayrollCloseTx(tx:Tx,ctx:SessionContext,p:{batchId:string},p
       .update(payrollBatch)
       .set({ status: 'closed', closedAt: sql`now()`, releasedAt })
       .where(eq(payrollBatch.id, p.batchId));
+    // cdb1c6ca — the run's cycle and sequence for the audit payload below. Read here rather than added to the
+    // prepared `batch`, which the reviewed close path fingerprints: the audit record must not change what a
+    // reviewed close was bound to.
+    const [closedRun] = await tx
+      .select({ runSeq: payrollBatch.runSeq, payrollCycleId: payrollBatch.payrollCycleId, payrollCycleName: payrollCycle.name })
+      .from(payrollBatch)
+      .leftJoin(payrollCycle, eq(payrollCycle.id, payrollBatch.payrollCycleId))
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
     // Scoped Payroll partners may INSERT the native batch event but cannot SELECT audit rows.
     // Return only our successfully inserted identity; the existing fixed-purpose reader proves it.
     const closedEventId=returnEventId?randomUUID():undefined;
@@ -8456,7 +8468,20 @@ async function applyPayrollCloseTx(tx:Tx,ctx:SessionContext,p:{batchId:string},p
       aggregateId: p.batchId,
       eventType: 'payroll-batch.closed',
       actor: actorOf(ctx),
-      payload: { releasedAt: releasedAt.toISOString() },
+      // cdb1c6ca — WHICH run was closed, readable off the audit row alone: company, payroll month, pay cycle,
+      // run identity and the status move. Actor and time are the event's own columns. References only — no
+      // amount rides here (ADR-0030); the figures stay on the payslips.
+      payload: {
+        releasedAt: releasedAt.toISOString(),
+        companyId: batch.companyId,
+        payPeriod: batch.payPeriod,
+        payrollCycleId: closedRun?.payrollCycleId ?? null,
+        payrollCycleName: closedRun?.payrollCycleName ?? null,
+        runType: batch.runType,
+        runSeq: closedRun?.runSeq ?? null,
+        fromStatus: 'processed',
+        toStatus: 'closed',
+      },
     });
 
     // Wave 2C (ADR-0024): close the parent pay_period once ALL its runs are closed, so the statutory
@@ -8477,6 +8502,157 @@ async function applyPayrollCloseTx(tx:Tx,ctx:SessionContext,p:{batchId:string},p
       });
     }
     return returnEventId?{closedEventId}:undefined;
+}
+
+/**
+ * cdb1c6ca — how long a `running` reprocess job is still "running" before it counts as abandoned. The
+ * SAME ten minutes `reprocessSelectedEmployees` uses to decide a running job may be reclaimed: a job older
+ * than that is one the reprocess screen itself would take over, so it cannot also be holding Close shut.
+ */
+const REPROCESS_ABANDONED_AFTER_MS = 10 * 60 * 1000;
+
+/**
+ * cdb1c6ca — WHO ON THIS RUN IS STILL NEW / PENDING: eligible for the month, inside the run's own scope,
+ * no payslip on it, and NOT a deliberate nothing-payable skip.
+ *
+ * Built from the reprocess screen's own reads so "pending" on that screen and "pending" here are one
+ * answer: `listPayslipLessEligible` for the population (out-of-scope people are excluded — a chosen-list
+ * run is narrow on purpose), then the run page's skip narrowing — `narrowToNothingPayable` over
+ * `pendingBatchMoney` — for who is deliberately left out. A row carrying a BLOCKER is never a skip: the
+ * engine would refuse that person, not pay them nothing. An unavailable money read narrows to nobody
+ * (`narrowToNothingPayable`'s own rule), so an unknown never lets a close through.
+ *
+ * ⚠️ INTEGRATION: c3258a72 is building ONE shared predicate for this skip decision (the reprocess screen's
+ * Skipped group). When it lands, this helper should call it instead of narrowing here.
+ */
+async function closePendingEmployeesTx(tx: Tx, ctx: SessionContext, batchId: string): Promise<CloseBlockingEmployee[]> {
+  const rows = (await listPayslipLessEligibleTx(tx, ctx, { batchId })).filter((r) => !r.outsideScope);
+  if (rows.length === 0) return [];
+  const skipCandidates = rows.filter((r) => r.blockers.length === 0 && r.warnings.includes('nothingPayable'));
+  let skipped = new Set<string>();
+  if (skipCandidates.length > 0) {
+    // Dynamic: core/payroll-view.ts imports this module, so a static import would be a cycle.
+    const { narrowToNothingPayable, pendingBatchMoneyTx } = await import('./payroll-view');
+    const pending = await pendingBatchMoneyTx(tx, ctx, { batchId });
+    skipped = new Set(narrowToNothingPayable(skipCandidates, pending).map((r) => r.employmentId));
+  }
+  return rows
+    .filter((r) => !skipped.has(r.employmentId))
+    .map((r) => ({ employmentId: r.employmentId, employeeCode: r.employeeCode, name: r.name }));
+}
+
+/**
+ * cdb1c6ca — Close refuses while work on the run is outstanding. Close publishes the month and freezes the
+ * run, so it must not finalise a run that is still being worked on or that failed part-way:
+ *
+ *   1. a reprocess is still RUNNING (queued or running, touched inside the abandonment window). Checked
+ *      first: a running job can still add or recalculate people, so the other two answers are not final.
+ *   2. somebody eligible is still NEW / PENDING (`closePendingEmployeesTx`).
+ *   3. somebody's LATEST reprocess FAILED: their latest outcome across this run's jobs is
+ *      `validation_failed`, or they were selected on a job that stopped (`failed`) before reaching them and
+ *      nothing has succeeded for them since. A job created before the run's latest reset (`rollback` in
+ *      payroll_status_history) belongs to figures that no longer exist and is ignored.
+ *
+ * Reads only; throws before any write. Names employees by code and name only.
+ */
+async function assertNoOutstandingCloseWorkTx(tx: Tx, ctx: SessionContext, batchId: string): Promise<void> {
+  const abandonedBefore = new Date(Date.now() - REPROCESS_ABANDONED_AFTER_MS);
+  const live = await tx
+    .select({ id: payrollReprocessJob.id })
+    .from(payrollReprocessJob)
+    .where(
+      and(
+        eq(payrollReprocessJob.batchId, batchId),
+        inArray(payrollReprocessJob.status, ['queued', 'running']),
+        gte(payrollReprocessJob.updatedAt, abandonedBefore),
+      ),
+    );
+  if (live.length > 0) throw new BatchReprocessInProgressError(live.map((j) => j.id));
+
+  const pending = await closePendingEmployeesTx(tx, ctx, batchId);
+  if (pending.length > 0) throw new BatchHasPendingEmployeesError(pending);
+
+  const [reset] = await tx
+    .select({ at: sql<Date | null>`max(${payrollStatusHistory.createdAt})` })
+    .from(payrollStatusHistory)
+    .where(and(eq(payrollStatusHistory.batchId, batchId), eq(payrollStatusHistory.action, 'rollback')));
+  const resetAt = reset?.at ? new Date(reset.at).getTime() : null;
+  const jobs = (
+    await tx
+      .select({
+        id: payrollReprocessJob.id,
+        status: payrollReprocessJob.status,
+        selection: payrollReprocessJob.employmentIds,
+        result: payrollReprocessJob.result,
+        createdAt: payrollReprocessJob.createdAt,
+        updatedAt: payrollReprocessJob.updatedAt,
+      })
+      .from(payrollReprocessJob)
+      .where(eq(payrollReprocessJob.batchId, batchId))
+  ).filter((j) => resetAt == null || j.createdAt.getTime() > resetAt);
+  if (jobs.length === 0) return;
+
+  // The latest outcome per employee across this run's jobs — the same ordering listReprocessEmployeeOutcomes
+  // uses (attempt instant, then job id), so the run screen and this gate agree about which one is current.
+  const latest = new Map<string, ReprocessEmployeeOutcome & { jobId: string }>();
+  for (const job of jobs) {
+    for (const row of decodeReprocessEmployeeOutcomes(job.result, job.selection) ?? []) {
+      const old = latest.get(row.employmentId);
+      if (!old || Date.parse(row.at) > Date.parse(old.at) || (Date.parse(row.at) === Date.parse(old.at) && job.id > old.jobId))
+        latest.set(row.employmentId, { ...row, jobId: job.id });
+    }
+  }
+  const failed = new Map<string, CloseBlockingEmployee>();
+  for (const row of latest.values()) {
+    if (row.status === 'validation_failed')
+      failed.set(row.employmentId, { employmentId: row.employmentId, employeeCode: row.employeeCode, name: row.name });
+  }
+  const unfinished: string[] = [];
+  for (const job of jobs) {
+    if (job.status !== 'failed') continue;
+    const reached = new Set((decodeReprocessEmployeeOutcomes(job.result, job.selection) ?? []).map((r) => r.employmentId));
+    for (const employmentId of job.selection ?? []) {
+      if (reached.has(employmentId) || failed.has(employmentId)) continue;
+      const after = latest.get(employmentId);
+      // Superseded only by a LATER outcome that is not itself a failure.
+      if (after && after.status !== 'validation_failed' && Date.parse(after.at) > job.updatedAt.getTime()) continue;
+      unfinished.push(employmentId);
+    }
+  }
+  if (unfinished.length > 0) {
+    const people = await tx
+      .select({ employmentId: employment.id, employeeCode: employment.employeeCode, name: person.fullName })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(inArray(employment.id, [...new Set(unfinished)]));
+    for (const who of people) failed.set(who.employmentId, who);
+  }
+  if (failed.size > 0) {
+    throw new BatchHasFailedReprocessError(
+      [...failed.values()].sort((a, b) => (a.employeeCode ?? a.name).localeCompare(b.employeeCode ?? b.name)),
+    );
+  }
+}
+
+/**
+ * cdb1c6ca — the companies, of those given, where this caller may CLOSE payroll: payroll scope for the
+ * company (`app.can_admin_payroll_for`) AND the granular `payroll.close` key — the same two questions the
+ * reviewed close path asks. One transaction for the whole list, resolved per COMPANY rather than per row,
+ * so the Payroll Process list can offer Close Batch only where pressing it can succeed. A visibility read;
+ * `closeBatch` remains the authority.
+ */
+export function payrollCloseCompanyIds(ctx: SessionContext, companyIds: readonly string[]): Promise<Set<string>> {
+  const ids = [...new Set(companyIds)];
+  if (ids.length === 0) return Promise.resolve(new Set());
+  return withTenant(ctx, async (tx) => {
+    const scoped = await tx
+      .select({ id: company.id })
+      .from(company)
+      .where(and(inArray(company.id, ids), sql`app.can_admin_payroll_for(${company.id})`));
+    const allowed = new Set<string>();
+    for (const row of scoped) if (await resolvePayrollPermission(tx, ctx, 'payroll.close', row.id)) allowed.add(row.id);
+    return allowed;
+  });
 }
 
 export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
@@ -8932,6 +9108,43 @@ export class BatchNotCloseableError extends Error {
   constructor() {
     super('Only a processed batch can be closed');
     this.name = 'BatchNotCloseableError';
+  }
+}
+
+/**
+ * cdb1c6ca — WHO a close refusal is about. Employee code and name only: the refusal is shown to the
+ * operator and carried in a redirect, so it names people and never carries an amount or a payslip figure.
+ */
+export type CloseBlockingEmployee = { employmentId: string; employeeCode: string | null; name: string };
+
+/**
+ * cdb1c6ca — Close refused: somebody eligible for this run is still New / Pending — period-eligible, in
+ * the run's own scope, no payslip on it, and not a deliberate nothing-payable skip. Closing would publish
+ * the month without them and freeze the run they belong on.
+ */
+export class BatchHasPendingEmployeesError extends Error {
+  constructor(readonly employees: CloseBlockingEmployee[]) {
+    super(`This payroll run has ${employees.length} employee(s) still pending processing.`);
+    this.name = 'BatchHasPendingEmployeesError';
+  }
+}
+
+/** cdb1c6ca — Close refused: a reprocess job on this run is still running (inside its abandonment window). */
+export class BatchReprocessInProgressError extends Error {
+  constructor(readonly jobIds: string[]) {
+    super('A reprocess is still running on this payroll run.');
+    this.name = 'BatchReprocessInProgressError';
+  }
+}
+
+/**
+ * cdb1c6ca — Close refused: the latest reprocess outcome for these employees is a failure — a
+ * validation failure, or a stopped job that never reached them — and nothing later has succeeded for them.
+ */
+export class BatchHasFailedReprocessError extends Error {
+  constructor(readonly employees: CloseBlockingEmployee[]) {
+    super(`The latest reprocess failed for ${employees.length} employee(s) on this payroll run.`);
+    this.name = 'BatchHasFailedReprocessError';
   }
 }
 /**
@@ -10136,6 +10349,9 @@ export function listBatches(
         // that exists is the one the operator's chosen cycle will be paid by: `remarks` above answers that
         // only for the two off_cycle presets that happen to carry a label, and by string comparison.
         payrollCycleId: payrollBatch.payrollCycleId,
+        // cdb1c6ca — that cycle's NAME, for the Close Batch prompt ("… for October 2026 and Monthly
+        // Salary?"). Additive like the fields above; the join was already here for `filterRunType`.
+        payrollCycleName: payrollCycle.name,
         // b240c0ff — the run type the list's Payroll Cycle FILTER matches. Imported history is stored as
         // 'adjustment' on purpose (regular-uniqueness index, live-run guard), but it is labelled
         // '<cycle> - By Import', so it must filter under the run type of the cycle it was imported for
@@ -10699,7 +10915,20 @@ export function listPayslipLessEligible(
   ctx: SessionContext,
   p: { batchId: string },
 ): Promise<PayslipLessEligibleRow[]> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, (tx) => listPayslipLessEligibleTx(tx, ctx, p));
+}
+
+/**
+ * cdb1c6ca — the same read inside the caller's transaction, so Close can ask it while it holds the run's
+ * locks (a nested `withTenant` opens a second connection that never joins them — db/client.ts). The body
+ * is unchanged; only who opens the transaction moved.
+ */
+function listPayslipLessEligibleTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { batchId: string },
+): Promise<PayslipLessEligibleRow[]> {
+  return (async () => {
     const [batch] = await tx
       .select({
         companyId: payrollBatch.companyId,
@@ -10791,7 +11020,7 @@ export function listPayslipLessEligible(
       blockers: blockerBy.get(r.employmentId) ?? [],
       warnings: warningBy.get(r.employmentId) ?? [],
     }));
-  });
+  })();
 }
 
 /** Read-only pre-processing advisory for a PROSPECTIVE run that has no batch yet (R37 70764928 — the

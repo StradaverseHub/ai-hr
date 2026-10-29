@@ -2554,11 +2554,20 @@ const PENDING_MONEY_DOORS: readonly PendingMoneyDoor[] = [
  * are none here).
  */
 export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): Promise<PendingBatchMoney> {
+  return withTenant(ctx, (tx) => pendingBatchMoneyTx(tx, ctx, p));
+}
+
+/**
+ * cdb1c6ca — the same read inside a caller's transaction. Close asks "who is deliberately skipped" while
+ * it holds the run's locks, and a nested `withTenant` would open a SECOND connection that never joins
+ * them (db/client.ts). The body is unchanged; only who opens the transaction moved.
+ */
+export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: string }): Promise<PendingBatchMoney> {
   const typedComponents = isModuleEnabled(ctx, 'typed_pay_components');
   // Matches generatePayslips' own dependency: the individual fold rides the per-component fold, so with
   // typed components off a payable one-off row has nothing to fold through and pays nothing either.
   const individualTxnPay = typedComponents && settingEnabled(ctx, 'payroll.individual_txn_pay_enabled');
-  return withTenant(ctx, async (tx) => {
+  return (async () => {
     let inertRows = 0;
     const empty: PendingBatchMoney = { lines: [], byDoor: [], employees: 0, earnings: 0, deductions: 0, inertRows: 0 };
     const [batch] = await tx
@@ -2805,7 +2814,7 @@ export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): 
       inertRows,
       formulaOvertimeReview,
     };
-  });
+  })();
 }
 
 /**

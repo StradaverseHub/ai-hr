@@ -1,9 +1,10 @@
 import Link from 'next/link';
-import { payrollRunLabel } from '@/core/payslip-cycle-label';
+import { payrollCloseCycleLabel, payrollRunLabel } from '@/core/payslip-cycle-label';
 import { notFound } from 'next/navigation';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
+import { formatPayPeriodMonth } from '@/lib/hr-date';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail, listReprocessEmployeeOutcomes, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory, type BatchScope } from '@/core/payroll';
+import { batchDetail, listBatches, listReprocessEmployeeOutcomes, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory, type BatchScope } from '@/core/payroll';
 import { payrollReadiness, type PayrollReadiness } from '@/core/payroll-readiness';
 import {batchScopeHeadcount} from '@/packs/payroll/service';
 import {PendingMoneyStatus,PendingOvertimeCashAmount,PendingOvertimeCashDetails} from './pending-overtime';
@@ -189,6 +190,24 @@ export default async function BatchPage({
   // r134 — the four payroll-cycle names (regular / off_cycle / bonus / adjustment) are catalogued under
   // payroll.list, NOT payroll.batch. See the Cycle field below.
   const tList = await getTranslations('payroll.list');
+  // cdb1c6ca — the Close batch confirmation names the run's own payroll month and pay cycle, worded exactly
+  // as the list's Close Batch screen words it (one label rule: payrollCloseCycleLabel). Only a processed
+  // run offers Close, so only it pays for the cycle-name read.
+  const closePrompt =
+    batch.status === 'processed'
+      ? {
+          month: formatPayPeriodMonth(batch.payPeriod, await getLocale()),
+          cycle: payrollCloseCycleLabel(
+            {
+              ...batch,
+              payrollCycleName:
+                (await listBatches(s, [batch.companyId], batch.payPeriod)).find((b) => b.id === batch.id)
+                  ?.payrollCycleName ?? null,
+            },
+            tList(`runType.${batch.runType}`),
+          ),
+        }
+      : null;
   const configReadiness: PayrollReadiness | null =
     batch.status === 'draft'
       ? await payrollReadiness(s, {
@@ -464,9 +483,10 @@ export default async function BatchPage({
                       defaults to 'destructive' (red), and closing a run is not destructive. */}
                   <ConfirmSubmit
                     variant="secondary"
-                    title={t('closeConfirmTitle')}
+                    title={t('closeConfirmTitle', { month: closePrompt?.month ?? batch.payPeriod, cycle: closePrompt?.cycle ?? '' })}
                     description={t('closeConfirmBody', { n: slips.length })}
                     confirmLabel={t('closeConfirmYes')}
+                    cancelLabel={t('closeConfirmNo')}
                   >
                     {t('closeBatch')}
                   </ConfirmSubmit>
