@@ -117,7 +117,7 @@ describe('WP9 retained multi-cycle draft custody',()=>{
   const done=await confirmMultiCycleRunReview(ctx,packet);expect(done.kind).toBe('completed');expect(await confirmMultiCycleRunReview(ctx,packet)).toEqual(done);expect(await reopenMultiCycleRunReview(ctx,old.actionId)).toEqual(done);expect((await state()).batches.length-before.batches.length).toBe(1);
  });
  it('retires an old pending draft after grant removal without decryption',async()=>{
-  const before=await state(),old=await retainedMultiCycleReview();await revokeAssistant(ctx,{appUserId:ctx.userId!});const unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();
+  const old=await retainedMultiCycleReview();await revokeAssistant(ctx,{appUserId:ctx.userId!});const before=await state(),unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();
   expect((await discardMultiCycleRunReview(ctx,{action,contractVersion:1,actionId:old.actionId})).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect(await state()).toEqual(before);
  });
  it('reconciles a lost committed reply without another draft or payroll effect',async()=>{

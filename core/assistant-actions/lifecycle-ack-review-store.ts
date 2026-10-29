@@ -34,7 +34,7 @@ export const lifecycleAckReviews=createGenericOwnCompatibilityStore<
  binding:(ctx,source)=>Binding.parse({tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null,employmentId:source.employmentId,companyId:source.companyId,caseId:source.caseId,casePersonId:source.casePersonId}),
  assertSubjectBinding:(binding,source)=>{if(binding.caseId!==source.caseId||binding.casePersonId!==source.casePersonId||binding.employmentId!==source.employmentId||binding.companyId!==source.companyId)return fail();},
  assertHumanBinding:(binding,human)=>{if(human.caseId!==binding.caseId)return fail();},
- prepareNative:prepareOwnLifecycleAcknowledgementSourceTx,
+ prepareNative:(tx,ctx,human)=>prepareOwnLifecycleAcknowledgementSourceTx(tx,ctx,human),
  confirmNative:(tx,ctx,body)=>confirmOwnLifecycleAcknowledgementSourceTx(tx,ctx,body.content,{action,contractVersion:1,reviewedDigest:body.nativeReviewedDigest}),
  pending:(row,body)=>LifecycleAckPreparedReview.parse({action,contractVersion:1,actionId:row.metadata.actionId,reviewedDigest:row.metadata.reviewedDigest,createdAt:row.metadata.createdAt,expiresAt:row.metadata.expiresAt,content:body.content,caseNumber:Body.parse(body).caseNumber,consequence:'equipment_acknowledgement_only'}),
  async completed(tx,ctx,row){if(!row.eventId)return fail();const receipt=await reconcileOwnLifecycleAcknowledgementSourceTx(tx,ctx,{caseId:row.metadata.binding.caseId,submittedEventId:row.eventId});return LifecycleAckCompletedReview.parse({action,contractVersion:1,actionId:row.metadata.actionId,state:'completed',receipt});},

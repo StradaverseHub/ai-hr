@@ -92,7 +92,7 @@ describe('WP9 retained lifecycle acknowledgement custody',()=>{
   const done=await confirmLifecycleAckReview(ctx,packet);expect(done.kind).toBe('completed');expect(await confirmLifecycleAckReview(ctx,packet)).toEqual(done);expect(await reopenLifecycleAckReview(ctx,old.actionId)).toEqual(done);expect(await custody(old.actionId)).toMatchObject({employment_id:null,lifecycle_case_person_id:null,state:'completed'});
  });
  it('retires an old pending acknowledgement after grant removal without decrypting it',async()=>{
-  const before=await state(),old=await retainedLifecycleReview();await revokeAssistant(admin(),{appUserId:ctx.userId!});const unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();
+  const old=await retainedLifecycleReview();await revokeAssistant(admin(),{appUserId:ctx.userId!});const before=await state(),unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();
   expect((await discardLifecycleAckReview(ctx,{action,contractVersion:1,actionId:old.actionId})).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect(await state()).toEqual(before);
  });
  it('reconciles a lost committed reply without submitting another acknowledgement',async()=>{
