@@ -11439,3 +11439,13 @@ const agentPrincipalPrivate=pgSchema('app');
 export const aiAgentPrincipal=agentPrincipalPrivate.table('ai_agent_principal',{
  id:id(),tenantId:uuid('tenant_id').notNull().unique().references(()=>tenant.id),createdAt:createdAt(),
 });
+
+/** Individual transaction import attempts retain original row outcomes after reversal. */
+export const payrollTxnImportAttempt=pgTable('payroll_txn_import_attempt',{
+ id:id(),tenantId:tenantId(),operationId:uuid('operation_id').notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),
+ companyIds:jsonb('company_ids').$type<string[]>().notNull(),sourceName:text('source_name').notNull(),sourceHash:text('source_hash').notNull(),method:text('method').$type<'monthly'|'daily'>().notNull(),
+ records:jsonb('records').$type<Record<string,string>[]>().notNull(),preview:jsonb('preview').$type<import('../lib/payroll-txn-import-schema').TxnImportPreview>().notNull(),
+ outcomes:jsonb('outcomes').$type<import('../lib/individual-txn-import-model').IndividualImportOutcome[]>().notNull().default([]),
+ state:text('state').$type<'validated'|'completed'|'reverted'>().notNull().default('validated'),written:integer('written').notNull().default(0),recalcBatchIds:jsonb('recalc_batch_ids').$type<string[]>().notNull().default([]),
+ createdAt:createdAt(),revertedAt:timestamp('reverted_at',{withTimezone:true}),revertedBy:uuid('reverted_by').references(()=>appUser.id),
+},t=>[uniqueIndex('payroll_txn_import_operation').on(t.tenantId,t.createdBy,t.operationId)]);

@@ -290,3 +290,12 @@ export const TXN_IMPORT_REQUIRED_COLUMNS: Record<TxnImportKind, readonly string[
   fixed: ['employee_id', 'pay_item_code', 'amount', 'start_date'],
   individual: ['employee_id', 'pay_item_code', 'transaction_date'],
 };
+
+
+/** Individual import v2: data-sheet contracts. Fixed/legacy imports retain their existing contract. */
+export type IndividualImportMethod = 'monthly' | 'daily';
+export const INDIVIDUAL_IMPORT_HEADERS = {
+ monthly: ['Employee ID','Employee Name (Optional)','Month with Year','Pay Cycle','Pay Item','Effective Date','Input Type','Quantity','Amount','Remark'],
+ daily: ['Employee ID','Employee Name (Optional)','Month with Year','Pay Cycle','Pay Item','Effective Date','Quantity','Remarks'],
+} as const;
+export const INDIVIDUAL_IMPORT_SHEET = {monthly:'Monthly Transactions',daily:'Daily Transactions'} as const;
