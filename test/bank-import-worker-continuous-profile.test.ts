@@ -31,6 +31,12 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('continuous native Bank wor
   const uid=process.getuid!(),gid=process.getgid!();expect(uid,'The source-entry worker must remain the nonroot Actions user').toBeGreaterThan(0);
   const root=realpathSync(resolve('.')),node=realpathSync(process.execPath),argv=[node,'--import','tsx','scripts/bank-import-runner.ts'];
   const source=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8',timeout:5000}).trim();expect(source).toMatch(/^[a-f0-9]{40}$/);
+  expect(process.env.AIHR_CI_HEAD,'Focused controller must provide the frozen source SHA').toMatch(/^[a-f0-9]{40}$/);
+  const frozen=()=>{
+   expect(execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8',timeout:5000}).trim()).toBe(process.env.AIHR_CI_HEAD);
+   expect(execFileSync('git',['status','--porcelain','--untracked-files=all'],{cwd:root,encoding:'utf8',timeout:5000}),'Frozen source must have no tracked or untracked changes; normal ignored runtime files are allowed').toBe('');
+  };
+  expect(source).toBe(process.env.AIHR_CI_HEAD);frozen();
   const policy=readFileSync(resolve(root,'test/fixtures/bank-import-point-read-profile.sql'));expect(hash(policy)).toBe(POLICY_SHA);
   const appUrl=new URL(process.env.TEST_DATABASE_URL!),ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);
   for(const url of [appUrl,ownerUrl]){
@@ -212,11 +218,30 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('continuous native Bank wor
    const boundaryTimes=boundaries.map(r=>Number(r.started_ms)).concat(Number(complete.updated_ms));
    const intervals=boundaries.map((r,i)=>({firstOrdinal:Number(r.ordinal),rows:100,transactionStartIntervalMs:boundaryTimes[i+1]-boundaryTimes[i]}));expect(intervals.every(r=>r.transactionStartIntervalMs>=0)).toBe(true);
    const nativeSaveMs=Number(complete.updated_ms)-Number(audit.first_ms);expect(nativeSaveMs).toBeGreaterThan(0);
+   // Each start belongs to the actual canonical audit transaction, not a guessed
+   // per-row setter duration. LEAD closes the final interval at completion start.
+   const [distribution]=await q(`with starts as (
+    select extract(epoch from created_at)*1000 as started_ms,
+     lead(extract(epoch from created_at)*1000,1,$2::numeric) over(order by ordinal) as next_ms
+    from import_attempt_item where attempt_id=$1::uuid
+   ), intervals as(select next_ms-started_ms as ms from starts)
+   select count(*)::int as count,count(*) filter(where ms>=0)::int as nonnegative,
+    min(ms) as min_ms,avg(ms) as mean_ms,
+    percentile_cont(0.50) within group(order by ms::double precision) as p50_ms,
+    percentile_cont(0.95) within group(order by ms::double precision) as p95_ms,
+    percentile_cont(0.99) within group(order by ms::double precision) as p99_ms,
+    max(ms) as max_ms,sum(ms) as sum_ms from intervals`,[complete.attempt_id,complete.updated_ms]);
+   const rowIntervalDistribution=Object.fromEntries(Object.entries(distribution).map(([key,value])=>[key,Number(value)]));
+   expect(rowIntervalDistribution.count).toBe(SAVES);expect(rowIntervalDistribution.nonnegative).toBe(SAVES);
+   expect(Object.values(rowIntervalDistribution).every(Number.isFinite)).toBe(true);
+   expect(Math.abs(rowIntervalDistribution.sum_ms-nativeSaveMs),'All row intervals must telescope to the native-save interval within 1ms numeric/JS conversion tolerance').toBeLessThanOrEqual(1);
+   measurements.canonicalRowTransactionStartIntervalDistribution={...rowIntervalDistribution,units:'milliseconds',sumAlignmentToleranceMs:1,semantics:'1000 ordinal-ordered canonical audit transaction-start intervals, last ending at completion transaction start. Includes row commits/checkpoints and between-tick work; NOT exact native-call latency. No per-row values are emitted.'};
    expect(await mapping()).toEqual(beforeMapping);expect(await fingerprints()).toEqual(beforeFacts);
    expect(await functionSnapshot()).toEqual(originalFunction);expect(await ledger()).toEqual(originalLedger);
    const finalRoles=[...await q("select r.rolname,r.rolsuper,r.rolbypassrls,c.relowner=r.oid as queue_owner from pg_roles r cross join pg_class c where r.rolname in ('ai_hr_app',$1) and c.oid='public.bank_import_job'::regclass order by r.rolname",[queueRole])];expect(finalRoles).toEqual(roles);
    measurements.finalAssertionsMs=performance.now()-wrapup;
    measurements.databaseTransactionBoundaries={confirmationStartToAttemptStartMs:Number(attempt.created_ms)-Date.parse(confirmation.updatedAt),attemptStartToFirstRowStartMs:Number(audit.first_ms)-Number(attempt.created_ms),continuous1000RowCommitIntervalMs:nativeSaveMs,rowsPerSecond:SAVES/(nativeSaveMs/1000),lastRowStartToCompletionStartMs:Number(complete.updated_ms)-Number(audit.last_ms),completionStartToObservedCompletedUpperBoundMs:Number(complete.server_ms)-Number(complete.updated_ms),intervals,semantics:'Audit created_at is transaction-start time. Interval spans first applied-row transaction start to completion transaction start, includes row commits and between-batch work, excludes completion transaction body/commit. These are not directly instrumented worker tick timings.'};
+   frozen();
    console.info('[bank-worker-continuous-measurement]',JSON.stringify({kind:'SOURCE_ENTRY_CONTINUOUS_1000_OF_100001_NOT_ACCEPTANCE',source,policySha256:POLICY_SHA,migrationLedger:{rows:(originalLedger as unknown[]).length,sha256:hash(JSON.stringify(originalLedger))},visibleFunctionMetadataSha256:hash(JSON.stringify(originalFunction)),catalogRows:CATALOG,changedRows:SAVES,targetMappingSha256:hash(targetJson),fullCatalogMapping:beforeMapping,noncohortRows:CATALOG-SAVES+1,measurements,probeCount,progressQueryMs:queryMs,progressSamples:samples,worker:{pid:child.pid,uid,gid,...finalProcess},runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT,runner:{environment:process.env.RUNNER_ENVIRONMENT,os:process.env.RUNNER_OS,cpus:availableParallelism(),cpuModel:cpus()[0]?.model,totalMemoryBytes:totalmem(),node:process.version},nativeValuesAndAuditsVerified:true,noncohortFactsUnchanged:true,sourceChunksReleased:true,preciseTickInstrumentation:false,noRestartInTimedWindow:true,sealedPacketAccepted:false,full100001ThroughputAccepted:false,releaseAuthorized:false}));
   }catch(error){primary=error;throw error;}finally{
    clearTimeout(timer);
@@ -234,6 +259,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('continuous native Bank wor
    }
    for(const check of [async()=>{if(originalPolicies)expect(await policies()).toEqual(originalPolicies);},async()=>{if(originalFunction)expect(await functionSnapshot()).toEqual(originalFunction);},async()=>{if(originalFences)expect(await catalog()).toEqual(originalFences);},async()=>{if(originalLedger)expect(await ledger()).toEqual(originalLedger);}])try{await check();}catch(error){failures.push(error);}
    try{await witness.end({timeout:5});}catch(error){failures.push(error);}
+   try{frozen();}catch(error){failures.push(error);}
    if(primary!==undefined){console.info('[bank-worker-continuous-failed]',JSON.stringify({elapsedMs:performance.now()-started,expired,measurements,probeCount,progressQueryMs:queryMs,progressSamples:samples,stdoutBytes,stderrBytes,stdoutSha256:hash(stdout),stderrSha256:hash(stderr)}));for(const error of failures)console.error('Continuous diagnostic cleanup after original failure:',error);}
    else if(failures.length)throw failures[0];
   }
