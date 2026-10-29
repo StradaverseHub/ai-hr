@@ -305,7 +305,7 @@ export const AGENT_ACTIONS=Object.freeze([
   permission:{actor:'tenant_admin',guard:'core/assistant-actions/reviewed-pay-component-source.ts#withReviewedPayComponentIntervalTx'},subject:'tenant',blastRadius:{max:1,unit:'pay_component_catalogue_entry'},
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'pay'},reversal:{kind:'entry_point',by:'app/admin/pay-components/actions.ts#archiveComponentAction'},evaluationCases:[],
   screen:{native:'app/admin/pay-components/new/page.tsx',entryPoints:['app/admin/pay-components/actions.ts#createComponentAction']},review:{route:'/assistant/pay-codes',handoff:'review_page'},
-  store:'dedicated',browserOwner:'payComponent',pauseKey:'hr_assistant'}),
+  store:'generic_own',browserOwner:'payComponent',pauseKey:'hr_assistant'}),
  /** Country dispatch resolves the company's actual pack through requirePackFor and its typed statutory.set
   * member; direct MY imports are forbidden to adapters. */
  defineAgentAction({id:'country-my.statutory.update',module:'country-my',owner:'country_pack_my',service:'localization/registry.ts#requirePackFor',serviceMember:'statutory.set',contractVersion:1,

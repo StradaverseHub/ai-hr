@@ -566,3 +566,7 @@ The employee replacement-leave request now uses the generic own review owner wit
 ### WP9 — login-bound publication compatibility (30 October 2026)
 
 Knowledge article publication uses the generic own compatibility lifecycle. Its binding remains the real author login/current person with null employment and company; source author and audience checks remain canonical. The generic owner controls the same ten-minute metadata, sealed body, private commitment, digest-bound confirmation, atomic native effect/completion and completed-only reconciliation. Installed SQL functions and row/ciphertext formats are retained through typed adapters, including existing creation provenance fences. Login-only privacy retirement remains separate from source authority. No migration or row rewrite is required.
+
+### WP9 — pay catalogue creation compatibility (30 October 2026)
+
+Typed pay-component catalogue creation uses the generic own compatibility lifecycle, bound to the actual current login with null employment/company. The source retains current payroll and typed-pay-component module gates, canonical catalogue locking and native administrator authority. Human content, installed SQL/ciphertext formats, 32KiB sealed-body limit, 64KiB outward-review cap, atomic created-event proof and historical-create reconciliation remain unchanged. No employee assignment, payroll run or model-calculated value is introduced; no migration is required.
