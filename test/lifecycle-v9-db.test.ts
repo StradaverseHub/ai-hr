@@ -733,3 +733,41 @@ it('captures actual saved employee signatures and private file receipts as disti
   const result = (await v9CaseDetail(admin, c.id)).case;
   expect(result.mails.map(mail => mail.subject).sort()).toEqual(['Actual docSigned', 'Actual fileUploaded']);
 });
+
+it('requires a definite private receipt before an HR retry and retains the original started delivery', async () => {
+  const c = await prepared(), config = (await v9Workspace(admin)).config!;
+  config.workflows.push({ id: 'receipt-retry', name: 'Receipt retry', module: 'off', status: 'published', trigger: { event: 'manual', days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [], steps: [{ id: 'notice', type: 'notify', to: 'employee', cc: [], subject: 'Fictional retry receipt', body: 'Original saved body' }], description: '' });
+  await v9SaveConfig(admin, config.revision, config); await v9Command(admin, c.id, c.revision, { type: 'startWorkflow', workflowId: 'receipt-retry' });
+  const before = (await v9CaseDetail(admin, c.id)).case, original = before.mails.find(mail => mail.workflowId === 'receipt-retry')!;
+  await expect(v9Command(admin, c.id, before.revision, { type: 'emailRetry', id: original.id, reason: 'No failure yet' })).rejects.toThrow('does not allow a retry');
+  // Isolated SQL receipt fixture: this is not evidence of an external SMTP rejection or delivery.
+  await owner.db.execute(sql`update lc_v9_email_delivery set status='uncertain',started_at=now(),completed_at=now(),error_code='uncertain' where tenant_id=${base.tenantId}::uuid and case_id=${c.id}::uuid and mail_id=${original.id}`);
+  const held = structuredClone(before); const mail = held.mails.find(mail => mail.id === original.id)!; mail.status = 'failed'; mail.failure = 'smtpTemporary';
+  await owner.db.execute(sql`update lc_v9_case set data=${JSON.stringify(held)}::jsonb where id=${c.id}::uuid`);
+  await expect(v9Command(admin, c.id, held.revision, { type: 'emailRetry', id: original.id, reason: 'Projection cannot override uncertainty' })).rejects.toThrow('does not allow a retry');
+  await owner.db.execute(sql`update lc_v9_email_delivery set status='failed',error_code='smtpTemporary' where tenant_id=${base.tenantId}::uuid and case_id=${c.id}::uuid and mail_id=${original.id}`);
+  const [receipt] = await owner.db.execute<{ started_at: string; payload: unknown }>(sql`select started_at,payload from lc_v9_email_delivery where tenant_id=${base.tenantId}::uuid and case_id=${c.id}::uuid and mail_id=${original.id}`);
+  const [denied] = await withTenant(other, tx => tx.execute<{ allowed: boolean }>(sql`select app.lc_v9_email_retryable(${c.id}::uuid,${original.id}) as allowed`)); expect(denied.allowed).toBe(false);
+  await v9Command(admin, c.id, held.revision, { type: 'emailRetry', id: original.id, reason: 'Fictional relay rejection reviewed.' });
+  const after = (await v9CaseDetail(admin, c.id)).case, retry = after.mails.find(mail => mail.retryOf === original.id)!;
+  expect(retry).toMatchObject({ body: original.body, status: 'pending', retryReason: 'Fictional relay rejection reviewed.' }); expect(after.mails.find(mail => mail.id === original.id)?.status).toBe('failed');
+  const rows = await owner.db.execute<{ mail_id: string; status: string; started_at: string | null; payload: unknown }>(sql`select mail_id,status,started_at,payload from lc_v9_email_delivery where tenant_id=${base.tenantId}::uuid and case_id=${c.id}::uuid order by created_at,id`);
+  expect(rows).toHaveLength(2); expect(rows.find(row => row.mail_id === original.id)).toMatchObject({ status: 'failed', started_at: receipt.started_at, payload: receipt.payload }); expect(rows.find(row => row.mail_id === retry.id)).toMatchObject({ status: 'queued', started_at: null });
+  await expect(v9Command(admin, c.id, after.revision, { type: 'emailRetry', id: original.id, reason: 'Duplicate attempt' })).rejects.toThrow('does not allow a retry');
+});
+
+it('refuses a retry when a private per-person attachment has been replaced after failure', async () => {
+  const c = await prepared(), config = (await v9Workspace(admin)).config!;
+  config.emails.push({ id: 'retry-file-copy', name: 'Fictional saved file copy', module: 'off', active: true, sender: 'hr', subject: 'Fictional file receipt', body: '', cc: [], links: [], attachments: [], slots: [{ id: 'personal', label: 'Fictional personal file', required: true }] });
+  await v9SaveConfig(admin, config.revision, config);
+  await v9UploadFile(admin, { caseId: c.id, revision: c.revision, slot: 'retry-file-copy:personal', name: 'fictional-original.txt', content: Buffer.from('Fictional original saved copy') });
+  const uploaded = (await v9CaseDetail(admin, c.id)).case; await v9Command(admin, c.id, uploaded.revision, { type: 'emailSend', emailId: 'retry-file-copy' });
+  const queued = (await v9CaseDetail(admin, c.id)).case, mail = queued.mails.find(mail => mail.templateId === 'retry-file-copy')!;
+  await owner.db.execute(sql`update lc_v9_email_delivery set status='failed',started_at=now(),completed_at=now(),error_code='smtpTemporary' where tenant_id=${base.tenantId}::uuid and case_id=${c.id}::uuid and mail_id=${mail.id}`);
+  mail.status = 'failed'; mail.failure = 'smtpTemporary'; await owner.db.execute(sql`update lc_v9_case set data=${JSON.stringify(queued)}::jsonb where id=${c.id}::uuid`);
+  const [before] = await withTenant(admin, tx => tx.execute<{ allowed: boolean }>(sql`select app.lc_v9_email_retryable(${c.id}::uuid,${mail.id}) as allowed`)); expect(before.allowed).toBe(true);
+  await v9UploadFile(admin, { caseId: c.id, revision: queued.revision, slot: 'retry-file-copy:personal', name: 'fictional-replacement.txt', content: Buffer.from('Fictional replacement saved copy') });
+  const changed = (await v9CaseDetail(admin, c.id)).case;
+  await expect(v9Command(admin, c.id, changed.revision, { type: 'emailRetry', id: mail.id, reason: 'Changed file is a different saved copy' })).rejects.toThrow('does not allow a retry');
+  expect((await v9CaseDetail(admin, c.id)).case.mails.filter(attempt => attempt.retryOf === mail.id)).toEqual([]);
+});

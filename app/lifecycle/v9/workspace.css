@@ -36,3 +36,5 @@
 .v9-email-metadata{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}.v9-email-metadata>.v9-actions{align-self:end;min-height:40px}.v9-email-title{font-size:17px!important;font-weight:600!important;flex:1;min-width:0}.v9-email-drawer::backdrop{background:#1b1d2947}
 
 .v9-template-list{border:0;border-radius:14px;padding:16px 20px;gap:10px}.v9-template-list h2{font-size:16px;font-weight:600;margin:0}.v9-template-list header p{font-size:13px;color:#474b5c;margin:0}
+
+.v9-prewrap{white-space:pre-wrap;overflow-wrap:anywhere}

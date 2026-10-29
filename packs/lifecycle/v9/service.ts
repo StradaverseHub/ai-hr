@@ -269,6 +269,7 @@ export type Command =
   | { type: 'clear'; sourceRevision: string; reason: string }
   | { type: 'settlementOptions'; options: NonNullable<M.Case['settlementOptions']>; reason: string }
   | { type: 'cancel' | 'reopen'; reason: string }
+  | { type: 'emailRetry'; id: string; reason: string }
   | { type: 'runWorkflows' }
   | { type: 'retryWorkflow' | 'startWorkflow'; workflowId: string }
   | { type: 'override'; checklist: string }
@@ -285,6 +286,7 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('task'), id: commandId, status: z.enum(['todo', 'progress', 'done', 'notNeeded']), reason: reasonText }).strict(),
   z.object({ type: z.literal('generate'), template: commandId }).strict(),
   z.object({ type: z.literal('emailSend'), emailId: commandId }).strict(), z.object({ type: z.literal('emailTest'), emailId: commandId }).strict(),
+  z.object({ type: z.literal('emailRetry'), id: commandId, reason: reasonText }).strict(),
   z.object({ type: z.literal('emailEdit'), emailId: commandId, subject: z.string().min(1).max(1000), body: z.string().max(20000) }).strict(),
   z.object({ type: z.literal('documentTextEdit'), id: commandId, edits: z.record(commandId, z.string().max(20000)).refine(value => Object.keys(value).length <= 500) }).strict(),
   z.object({ type: z.literal('documentSave'), id: commandId, values: z.record(commandId, z.string().max(20000)) }).strict(),
@@ -305,7 +307,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     const row = await load(tx, ctx, id); if (row.revision !== revision) throw new M.V9Error('This case changed. Refresh before trying again.', 'conflict');
     const config = await configTx(tx, ctx); if (!config) throw new M.V9Error('V9 configuration is unavailable.');
     const c = structuredClone(row.data), env = await environment(tx, ctx, c, config);
-    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'documentTextEdit', 'documentSave', 'documentSign', 'documentRefresh', 'runWorkflows', 'retryWorkflow', 'startWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
+    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'documentTextEdit', 'documentSave', 'documentSign', 'documentRefresh', 'runWorkflows', 'retryWorkflow', 'startWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
     if (row.native && ['pmPush', 'pmPushSelected'].includes(command.type) && !c.facts.employmentId) throw new M.V9Error('Activate this Personnel draft before applying its proposed changes.');
     if (command.type === 'submit') {
       M.submit(c, config, env);
@@ -342,6 +344,11 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     else if (command.type === 'task') M.completeTask(c, command.id, command.status, command.reason, env);
     else if (command.type === 'generate') M.generate(c, config, command.template, env);
     else if (command.type === 'emailSend' || command.type === 'emailTest') M.queueEmail(c, config, command.emailId, env, command.type === 'emailTest');
+    else if (command.type === 'emailRetry') {
+      const [receipt] = await tx.execute<{ allowed: boolean }>(sql`select app.lc_v9_email_retryable(${c.id}::uuid,${command.id}) as allowed`);
+      if (!receipt?.allowed) throw new M.V9Error('The recorded delivery or saved copy does not allow a retry. Review the delivery before sending another copy.', 'conflict');
+      M.retryEmail(c, config, command.id, command.reason, env);
+    }
     else if (command.type === 'emailEdit') { if (!config.emails.some(e => e.id === command.emailId && e.module === c.module) || command.body.length > 20000 || command.subject.length > 1000) throw new M.V9Error('Choose an available email and keep its content within the allowed length.'); c.emailEdits = { ...c.emailEdits, [command.emailId]: { subject: command.subject, body: command.body } }; M.appendLog(c, env, 'email.edited', 'Email text changed for this person only.'); }
     else if (command.type === 'documentTextEdit') M.editDocumentText(c, config, command.id, command.edits, env);
     else if (command.type === 'documentSave') M.saveDocument(c, command.id, command.values, 'hr', env);

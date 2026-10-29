@@ -462,3 +462,18 @@ it('reports the existing acceptance delivery instead of pretending to queue a se
   }
   M.queueEmail(c, config, 'e3', environment, true); expect(c.mails).toHaveLength(2); expect(c.mails[1].test).toBe(true);
 });
+
+it('keeps a failed receipt while its explicit retry waits for its own acknowledgement', () => {
+  const { c, config, environment } = fixture(); environment.requireDeliveryAck = true;
+  const definition = workflow({ trigger: { event: 'manual', days: 0, workdays: false, repeat: false, skipIf: '' }, steps: [{ id: 'notice', type: 'notify', to: 'employee', cc: [], subject: 'Retry the saved copy', body: 'Original body' }] }); config.workflows = [definition];
+  M.runWorkflow(c, config, definition, environment, 'manual'); const original = c.mails[0]; original.status = 'failed'; original.failure = 'smtpTemporary';
+  expect(() => M.retryEmail(c, config, original.id, '', environment)).toThrow('review reason');
+  const retry = M.retryEmail(c, config, original.id, 'Relay rejection reviewed and resolved.', environment);
+  expect(original.status).toBe('failed'); expect(retry).toMatchObject({ retryOf: original.id, body: 'Original body', status: 'pending', retryReason: 'Relay rejection reviewed and resolved.' });
+  expect(() => M.retryEmail(c, config, original.id, 'Duplicate retry', environment)).toThrow('cannot be retried');
+  expect(M.runWorkflow(c, config, definition, environment, 'resume')?.status).toBe('waiting'); expect(c.mails).toHaveLength(2);
+  M.markDelivered(c, retry.id, environment); expect(M.runWorkflow(c, config, definition, environment, 'resume')?.status).toBe('done');
+  expect(M.unresolvedWorkflowDeliveries(c)).toEqual([]); expect(original.status).toBe('failed');
+  retry.status = 'cancelled'; expect(M.unresolvedWorkflowDeliveries(c)).toEqual([retry]);
+  retry.status = 'uncertain'; expect(() => M.retryEmail(c, config, retry.id, 'Uncertain', environment)).toThrow('cannot be retried');
+});

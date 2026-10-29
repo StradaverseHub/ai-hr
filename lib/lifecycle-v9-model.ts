@@ -116,7 +116,7 @@ export type Mail = {
   id: string; key: string; workflowId: string | null; templateId: string | null;
   to: string[]; cc: string[]; subject: string; body: string; documentIds: string[];
   fileIds: string[]; status: 'pending' | 'sending' | 'sent' | 'failed' | 'uncertain' | 'cancelled'; test: boolean;
-  at: string; deliveredAt: string | null; failure: string | null;
+  at: string; deliveredAt: string | null; failure: string | null; retryOf?: string; retryReason?: string;
   /** Frozen transport choices; older history without this must not be silently reinterpreted. */
   delivery?: { version: 1; queuedBy: Actor; sender: 'onboarding' | 'hr' | 'noreply'; linkDocumentIds: string[]; pdfDocumentIds: string[]; toNames: string[]; ccNames: string[]; assets?: EmailAsset[]; contact?: { kind: 'onboardingContact'; caseId: string; email: string; sourceRevision: string } };
 };
@@ -365,14 +365,33 @@ function recipientLabel(role: Role, config: Config, env: Pick<Environment, 'user
   if (role.startsWith('person:')) return env.userName(role.slice(7));
   return ({ employee: 'Employee', supervisor: 'Line manager', pbp: 'PBP', ta: 'TA', peopleOps: 'GBS People Ops', taskOwners: 'Task owners', hrSignatory: 'HR signatory', starter: 'Whoever started it' } as Partial<Record<Role,string>>)[role] ?? 'Unavailable recipient';
 }
+export function effectiveDelivery(c: Pick<Case, 'mails'>, original: Mail): Mail {
+  let current = original; const seen = new Set<string>();
+  while (!seen.has(current.id)) { seen.add(current.id); const next = c.mails.find(mail => mail.retryOf === current.id); if (!next) break; current = next; }
+  return current;
+}
+export function retryEmail(c: Case, config: Config, id: string, reason: string, env: Environment): Mail {
+  if (c.state !== 'submitted') throw new V9Error('Reopen the case before retrying delivery.', 'conflict');
+  const original = c.mails.find(mail => mail.id === id);
+  if (!original || original.status !== 'failed' || !original.delivery || !['smtpTemporary','smtpRejected','smtpAuthentication','smtpTls'].includes(original.failure ?? '') || c.mails.some(mail => mail.retryOf === id)) throw new V9Error('This delivery needs review and cannot be retried.', 'conflict');
+  if (!reason.trim()) throw new V9Error('Record the delivery review reason before retrying.');
+  if (original.templateId && !config.emails.some(email => email.id === original.templateId && email.active) || original.workflowId && !config.workflows.some(workflow => workflow.id === original.workflowId && workflow.status === 'published')) throw new V9Error('Turn on the email and workflow before retrying.');
+  const accountRecipients = original.delivery.contact ? original.cc : [...original.to, ...original.cc];
+  if (accountRecipients.some(userId => !env.eligibleUser(userId))) throw new V9Error('Review the unavailable recipients before retrying.');
+  const next = structuredClone(original); next.id = env.nextId(); next.key = `retry:${original.id}:${next.id}`;
+  next.retryOf = original.id; next.retryReason = reason.trim(); next.status = 'pending'; next.at = env.now; next.deliveredAt = null; next.failure = null;
+  next.delivery!.queuedBy = { ...env.actor }; c.mails.push(next);
+  appendLog(c, env, 'email.retryQueued', reason.trim()); return next;
+}
 function acceptanceDeliveryHold(c: Case, emailId: string): string | null {
   if (c.module !== 'off' || emailId !== 'e3') return null;
   const document = activeDocument(c, 't4');
   if (!document) return null;
   const mail = c.mails.find(mail => !mail.test && mail.workflowId === null && mail.key.startsWith(`acceptance:${document.id}:`));
   if (!mail) return null;
-  if (mail.status === 'sent') return 'The acceptance email has already been sent for this document.';
-  if (['pending','sending'].includes(mail.status)) return 'The acceptance email is already queued or sending. Review its delivery history.';
+  const current = effectiveDelivery(c, mail);
+  if (current.status === 'sent') return 'The acceptance email has already been sent for this document.';
+  if (['pending','sending'].includes(current.status)) return 'The acceptance email is already queued or sending. Review its delivery history.';
   return 'Review the previous acceptance delivery before sending another copy.';
 }
 export function workflowMatches(c: Case, workflow: Workflow, today: string): boolean {
@@ -453,7 +472,8 @@ function emailSensitiveKeys(config: Config): Set<string> {
 }
 
 function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 'notify' }>, key: string, workflowId: string | null, env: Environment, test = false): string | null {
-  const existing = c.mails.filter(mail => mail.workflowId === workflowId && (mail.key === key || mail.key.startsWith(key + ':')));
+  const original = c.mails.filter(mail => mail.workflowId === workflowId && (mail.key === key || mail.key.startsWith(key + ':')));
+  const existing = [...new Map(original.map(mail => { const current = effectiveDelivery(c, mail); return [current.id, current] as const; })).values()];
   const deliveryHold = (mails: Mail[]) => !workflowId || !env.requireDeliveryAck || mails.every(mail => mail.status === 'sent') ? null : mails.some(mail => mail.status === 'uncertain') ? 'Delivery outcome is uncertain. Review the delivery receipt before continuing.' : mails.some(mail => ['failed', 'cancelled'].includes(mail.status)) ? 'Email delivery did not complete. Review the delivery failure.' : 'Waiting for email delivery confirmation.';
   // Resume the original recipients even if roles or task ownership changed meanwhile.
   if (existing.length) return deliveryHold(existing);
@@ -586,7 +606,7 @@ export function markDelivered(c: Case, id: string, env: Environment, unchangedDo
   }
   appendLog(c, env, 'email.sent', mail.subject);
 }
-export function unresolvedWorkflowDeliveries(c: Pick<Case, 'mails'>): Mail[] { return c.mails.filter(mail => !mail.test && mail.workflowId !== null && ['pending','sending','uncertain','failed'].includes(mail.status)); }
+export function unresolvedWorkflowDeliveries(c: Pick<Case, 'mails'>): Mail[] { return c.mails.filter(mail => !mail.test && mail.workflowId !== null && ['pending','sending','uncertain','failed','cancelled'].includes(mail.status) && !c.mails.some(next => next.retryOf === mail.id)); }
 export function unresolvedSourceRuns(c: Pick<Case, 'runs'>): Run[] { return c.runs.filter(run => run.sourceEvent && ['running','waiting','failed'].includes(run.status)); }
 export function close(c: Case, figures: FinalFigures, reason: string, env: Environment, automatic = false): void {
   if (c.module !== 'off' || c.state !== 'submitted') throw new V9Error('Only an open offboarding case can be cleared.', 'conflict');
