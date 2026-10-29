@@ -4026,6 +4026,13 @@
       "when": 1793330000027,
       "tag": "0701_template_feature_switch_owner",
       "breakpoints": true
+    },
+    {
+      "idx": 692,
+      "version": "7",
+      "when": 1793330000028,
+      "tag": "0702_delegated_leave_review_receipts",
+      "breakpoints": true
     }
   ]
 }
