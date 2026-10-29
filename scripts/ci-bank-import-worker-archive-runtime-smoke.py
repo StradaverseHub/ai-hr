@@ -82,12 +82,26 @@ def main():
     identity=pwd.getpwnam(USER);require(identity.pw_uid>0 and identity.pw_gid>0,'dedicated nonroot identity required')
     work=area/'fixture-private';work.mkdir(mode=0o700);os.chown(work,identity.pw_uid,identity.pw_gid)
     env={'PATH':str(area)+':/usr/bin:/bin','LANG':'C.UTF-8','TZ':'Asia/Kuala_Lumpur','HOME':str(work),'TMPDIR':str(work),'NODE_ENV':'production','GITHUB_ACTIONS':'true','CI':'true','DATABASE_URL':APP,'MIGRATION_DATABASE_URL':OWNER,'TEST_DATABASE_URL':APP,'TEST_MIGRATION_DATABASE_URL':OWNER,'AUDIT_HASH_CHAIN_ENABLED':'false'}
-    state=work/'fixture.json';fixture=controller/'scripts/ci-bank-import-worker-archive-runtime-smoke.ts'
+    # Controller/canonical fixture preparation belongs to the original unprivileged checkout owner.
+    # GitHub's runner home may be private: do not chmod its ancestors or make the real worker borrow its UID.
+    runner_uid=source.stat().st_uid
+    require(runner_uid>0 and runner_uid==controller.stat().st_uid==package.stat().st_uid and str(runner_uid)==os.environ.get('SUDO_UID'),'exact original nonroot Actions checkout/invoker identity required')
+    runner=pwd.getpwuid(runner_uid)
+    require(runner.pw_uid!=identity.pw_uid,'fixture runner and actual worker must be separate identities')
+    fixture_work=area/'controller-fixture-private';fixture_work.mkdir(mode=0o700);os.chown(fixture_work,runner.pw_uid,runner.pw_gid)
+    fixture_env={**env,'HOME':str(fixture_work),'TMPDIR':str(fixture_work)}
+    state=fixture_work/'fixture.json';fixture=controller/'scripts/ci-bank-import-worker-archive-runtime-smoke.ts'
+    loader=source/'node_modules/tsx/dist/loader.mjs'
+    def as_fixture(argv,timeout=60):
+        return command(['/usr/sbin/runuser','--user',runner.pw_name,'--','/usr/bin/env','-i',*[k+'='+v for k,v in fixture_env.items()],*argv],cwd=runtime,timeout=timeout)
     def as_user(argv,timeout=60):
         return command(['/usr/sbin/runuser','--user',USER,'--','/usr/bin/env','-i',*[k+'='+v for k,v in env.items()],*argv],cwd=runtime,timeout=timeout)
+    access_check="const fs=require('node:fs');for(const p of process.argv.slice(1))fs.accessSync(p,fs.constants.R_OK);"
+    as_fixture([str(node),'-e',access_check,str(loader),str(fixture),str(source/'test/harness.ts'),str(runtime/'db/client.ts')])
+    as_user([str(node),'-e',access_check,str(runtime/'scripts/bank-import-runner.ts'),str(runtime/'node_modules/tsx/dist/loader.mjs')])
     def fixture_phase(phase):
-        # Canonical source test/harness is fixture setup only, never imported by the actual worker CLI.
-        result=as_user([str(node),'--import',str(source/'node_modules/tsx/dist/loader.mjs'),str(fixture),phase,str(runtime),str(source),str(state)],120)
+        # Source loader/harness are fixture setup only under their original owner, never the actual worker CLI.
+        result=as_fixture([str(node),'--import',str(loader),str(fixture),phase,str(runtime),str(source),str(state)],120)
         require(result.stderr=='','unexpected fixture stderr; cannot claim clean runtime')
         return json.loads(result.stdout)
     def verify_tree():
