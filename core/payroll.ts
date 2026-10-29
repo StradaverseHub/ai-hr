@@ -10136,9 +10136,16 @@ export function listBatches(
         // that exists is the one the operator's chosen cycle will be paid by: `remarks` above answers that
         // only for the two off_cycle presets that happen to carry a label, and by string comparison.
         payrollCycleId: payrollBatch.payrollCycleId,
+        // b240c0ff — the run type the list's Payroll Cycle FILTER matches. Imported history is stored as
+        // 'adjustment' on purpose (regular-uniqueness index, live-run guard), but it is labelled
+        // '<cycle> - By Import', so it must filter under the run type of the cycle it was imported for
+        // (Monthly -> regular). Every other run filters on its stored run type. Display and gating still
+        // read `runType`; this field is consumed only by app/payroll/dashboard-logic.ts applyFilters.
+        filterRunType: sql<string>`case when ${payrollBatch.historyImportAttemptId} is not null and ${payrollCycle.runType} is not null then ${payrollCycle.runType}::text else ${payrollBatch.runType}::text end`,
       })
       .from(payrollHistoryEffectiveBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .leftJoin(payrollCycle, eq(payrollCycle.id, payrollBatch.payrollCycleId))
       .where(
         and(
           companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined,
