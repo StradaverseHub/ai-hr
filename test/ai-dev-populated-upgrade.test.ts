@@ -35,7 +35,7 @@ it('upgrades the exact observed populated Board prefix without rewriting applied
  expect(journal.entries.slice(prefix).map(({tag,idx,when})=>({tag,idx,when}))).toEqual(TAIL.map((tag,i)=>({tag,idx:684+i,when:1793330000032+i})));
  // The canonical identity owner recognizes only the two retained historical SQL versions. It reads the
  // archived original bytes; this is not a checksum waiver or replacement of applied source.
- const expected=expectedMigrationLedger(process.cwd());
+ const expected:{tag:string;created_at:string;hash:string;sourceSha256?:string}[]=expectedMigrationLedger(process.cwd());
  expect(validateMigrationLedgerRows(expected.slice(0,prefix),witness.rows)).toEqual(witness.proof);
  expect(expected.slice(0,prefix).filter(row=>'sourceSha256' in row).map(row=>row.tag).sort()).toEqual(['0180_profile_option','0212_dashboard_card_config']);
 
