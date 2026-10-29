@@ -29,7 +29,7 @@ function fixture(platform:'ios'|'android'='ios'){
   const native={Alert:{alert},View,Text,Pressable,TextInput:(p:any)=><input aria-label={p.accessibilityLabel} disabled={!p.editable} value={p.value} onChange={e=>p.onChangeText(e.target.value)}/>,Image:()=>null,AppState:{currentState:'active'},Platform:{OS:platform}};
   const base={'react-native':native,'./session':{useSession:()=>session},'./auth':{authGeneration:()=>1,assertAuthGeneration:()=>{}},'./design':{DesignText:Text,useTenantDesign:()=>({design:DEFAULT_MOBILE_DESIGN,palette:mobilePalette(DEFAULT_MOBILE_DESIGN,'dark')})},'./errors':errors,'./i18n':{appLocale:()=>'en',t:(s:string,v?:any)=>s==='awayToday'?`${s} ${v.n}/${v.total}`:s},'expo-crypto':{randomUUID:()=>`${String(++sequence).padStart(8,'0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`},'expo-router':{useFocusEffect:()=>{},router:{push:vi.fn()}}};
   const provider=load('mobile/lib/journey-drafts.tsx',{...base,'expo-file-system':{File:class{exists=false},Directory:class{exists=false},Paths:{cache:'cache'}}});
-  const ui={InfoNote:({short,detail}:any)=><span><span>{short}</span><span>{detail}</span></span>,HeaderBack:()=><button aria-label="back">‹</button>,ListRow:({label,value,onPress}:any)=><button aria-label={value?`${label}, ${value}`:label} onClick={onPress}>{label}{value?`: ${value}`:''}</button>,Screen:({children,footer}:any)=><div>{children}{footer}</div>,Title:({children}:any)=><h1>{children}</h1>,Button:(p:any)=><button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,Card:View,Muted:Text,Row:({label,value}:any)=><p>{label}: {value}</p>,LoadState:()=>null,fmtDays:(n:unknown)=>n==null?'—':String(n)};
+  const ui={Chip:(p:any)=><button disabled={p.disabled} aria-pressed={!!p.selected} onClick={p.onPress}>{p.title}</button>,NoteLine:({text}:any)=><span>{text}</span>,InfoNote:({short,detail}:any)=><span><span>{short}</span><span>{detail}</span></span>,HeaderBack:()=><button aria-label="back">‹</button>,ListRow:({label,value,onPress}:any)=><button aria-label={value?`${label}, ${value}`:label} onClick={onPress}>{label}{value?`: ${value}`:''}</button>,Screen:({children,footer}:any)=><div>{children}{footer}</div>,Title:({children}:any)=><h1>{children}</h1>,Button:(p:any)=><button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,Card:View,Muted:Text,Row:({label,value}:any)=><p>{label}: {value}</p>,LoadState:()=>null,fmtDays:(n:unknown)=>n==null?'—':String(n)};
   const clockState={enabled:true,employmentId:'own',state:{date:'2026-01-01',clockedIn:false,geofencingRequired:false,workedSeconds:0,shift:{code:null,start:null,end:null},attendancePhotoSetting:'not_required',deviceRequired:false,captures:[],legacy:[]}};
   const teamState={enabled:true,today:'2026-01-01',from:'2026-01-01',to:'2026-01-07',scope:'my_team',companies:1,memberCount:2,truncated:false,items:[{employmentId:'a',name:'Approved Away',dates:[{date:'2026-01-01',status:'approved',session:'full_day'}]},{employmentId:'b',name:'Pending Colleague',dates:[{date:'2026-01-01',status:'pending',session:'AM'}]}]};
   let signedState:SignedClockStatus={status:'empty'},restoredClock:any;
@@ -62,6 +62,8 @@ function fixture(platform:'ios'|'android'='ios'){
   return {App,androidOpen,engine,anchorRead,session,post,signed,openSigned,alert,hasSignedAttempt,setSignedState:(value:SignedClockStatus)=>{signedState=value;},restoreClock:(value:unknown)=>{restoredClock=value;},preview,get,capture,reload,stage,resolve,prepareClock,reportAttempt,remove,teamState,clockState,photo,attemptsState,reloadAttempts,drafts:()=>drafts};
 }
 afterEach(cleanup);
+/** Start a request and choose its type in the leave-type list (nothing is pre-selected). */
+function startRequest(name='Annual leave'){fireEvent.click(screen.getByText('requestLeave'));fireEvent.click(screen.getByRole('button',{name:'leaveType, chooseLeaveType'}));fireEvent.click(screen.getByRole('radio',{name:new RegExp('^'+name)}));}
 describe('native clock job',()=>{
   it('allows an approximate fix when the shared site rule passes and keeps permission metadata out of the strict preview body',async()=>{
     const f=fixture();f.clockState.state.geofencingRequired=true;
@@ -146,13 +148,13 @@ describe('native clock job',()=>{
 });
 describe('native leave job',()=>{
   it('does not send a leave command if its durable save fails after preview',async()=>{
-    const f=fixture();render(<f.App kind="leave"/>);fireEvent.click(screen.getByText('requestLeave'));
+    const f=fixture();render(<f.App kind="leave"/>);startRequest();
     f.post.mockResolvedValueOnce({days:1,overrides:[]});fireEvent.click(screen.getByText('reviewRequest'));await screen.findByText('submitRequest');
     f.stage.mockRejectedValueOnce(new Error('Disk full'));fireEvent.click(screen.getByText('submitRequest'));
     await screen.findByText('checkReceipt');expect(f.post).toHaveBeenCalledTimes(1);expect(f.post.mock.calls[0][0]).toBe('leave-preview');
   });
   it('requires a server preview and each material consent before submitting; timeout retry preserves reference',async()=>{
-    const f=fixture();render(<f.App kind="leave"/>);fireEvent.click(screen.getByText('requestLeave'));expect(f.post).not.toHaveBeenCalled();
+    const f=fixture();render(<f.App kind="leave"/>);startRequest();expect(f.post).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText('+ addReasonOrDocument'));fireEvent.change(screen.getByRole('textbox',{name:'reason'}),{target:{value:'Personal travel'}});
     f.post.mockResolvedValueOnce({days:1,unpaidDays:0,overrides:[{consentToken:'conversion',action:'convert_to_emergency',fromTypeName:'Annual leave',toTypeName:'Emergency leave',needsConsent:true}]});
     fireEvent.click(screen.getByText('reviewRequest'));await screen.findByText('submitRequest');expect(f.post).toHaveBeenCalledTimes(1);expect(f.post.mock.calls[0][0]).toBe('leave-preview');expect(screen.getByText('submitRequest')).toBeDisabled();
@@ -160,10 +162,10 @@ describe('native leave job',()=>{
     const original=(f.post.mock.calls[1][1] as FormData).get('command');f.post.mockResolvedValueOnce({outcome:'accepted',id:'receipt'});fireEvent.click(screen.getByText('retrySameClock'));await screen.findByText('requestRecorded');expect((f.post.mock.calls[2][1] as FormData).get('command')).toBe(original);expect(f.reload).toHaveBeenCalledTimes(1);
   });
   it('shows half/hour pickers from eligibility, and cancellation never submits',()=>{
-    const f=fixture();render(<f.App kind="leave"/>);fireEvent.click(screen.getByText('requestLeave'));fireEvent.click(screen.getByText('hourly'));expect(screen.getByText('fromTime')).toBeTruthy();expect(screen.getByText('toTime')).toBeTruthy();expect(screen.queryByText('endDate')).toBeNull();expect(screen.queryByRole('textbox',{name:'fromTime'})).toBeNull();fireEvent.click(screen.getByText('cancel'));expect(f.post).not.toHaveBeenCalled();expect(f.drafts().leave).toBeNull();
+    const f=fixture();render(<f.App kind="leave"/>);startRequest();fireEvent.click(screen.getByText('hourly'));expect(screen.getByText('fromTime')).toBeTruthy();expect(screen.getByText('toTime')).toBeTruthy();expect(screen.queryByText('endDate')).toBeNull();expect(screen.queryByRole('textbox',{name:'fromTime'})).toBeNull();fireEvent.click(screen.getByText('cancel'));expect(f.post).not.toHaveBeenCalled();expect(f.drafts().leave).toBeNull();
   });
   it('D9: a picked time is the local wall value, set only on Done, and the hourly preview figure is shown',async()=>{
-    const f=fixture();render(<f.App kind="leave"/>);fireEvent.click(screen.getByText('requestLeave'));fireEvent.click(screen.getByText('hourly'));
+    const f=fixture();render(<f.App kind="leave"/>);startRequest();fireEvent.click(screen.getByText('hourly'));
     // iOS: opening the spinner sets nothing; Done commits what it shows.
     fireEvent.click(screen.getAllByText('pickerChoose')[0]);expect(f.drafts().leave.command.fromTime).toBeUndefined();
     fireEvent.change(screen.getByRole('textbox',{name:'fromTime'}),{target:{value:'09:30'}});expect(f.drafts().leave.command.fromTime).toBeUndefined();
@@ -175,12 +177,12 @@ describe('native leave job',()=>{
     expect(screen.getByText('deductedDays: 0.25')).toBeTruthy();expect(screen.queryByText('hourlyReview')).toBeNull();
   });
   it('D9: an older server that previews no hourly figure keeps the server-checks sentence',async()=>{
-    const f=fixture();render(<f.App kind="leave"/>);fireEvent.click(screen.getByText('requestLeave'));fireEvent.click(screen.getByText('hourly'));
+    const f=fixture();render(<f.App kind="leave"/>);startRequest();fireEvent.click(screen.getByText('hourly'));
     f.post.mockResolvedValueOnce({days:null,unpaidDays:null,emergencySplit:false,overrides:[]});fireEvent.click(screen.getByText('reviewRequest'));await screen.findByText('submitRequest');
     expect(screen.getByText('hourlyReview')).toBeTruthy();expect(screen.queryByText(/deductedDays/)).toBeNull();
   });
   it('D9: Android opens the system dialog and a dismissed dialog changes nothing',()=>{
-    const f=fixture('android');render(<f.App kind="leave"/>);fireEvent.click(screen.getByText('requestLeave'));
+    const f=fixture('android');render(<f.App kind="leave"/>);startRequest();
     // Start date is the first picker; End date shows the same day on a fresh full-day draft.
     fireEvent.click(screen.getAllByText('2026-01-01',{selector:'button'})[0]);expect(f.androidOpen).toHaveBeenCalledTimes(1);expect(screen.queryByRole('textbox',{name:'startDate'})).toBeNull();
     const opened=f.androidOpen.mock.calls[0][0];expect(opened.mode).toBe('date');
@@ -189,7 +191,7 @@ describe('native leave job',()=>{
   });
   it('shows the server-translated entitlement notice for the selected type',()=>{
     const f=fixture();render(<f.App kind="leave" notices={{annual:{label:'Entitlement not generated',detail:'HR has not generated it yet.'}}}/>);
-    expect(screen.queryByText('Entitlement not generated')).toBeNull();fireEvent.click(screen.getByText('requestLeave'));
+    expect(screen.queryByText('Entitlement not generated')).toBeNull();startRequest();
     expect(screen.getByText('Entitlement not generated')).toBeTruthy();expect(screen.getByText('HR has not generated it yet.')).toBeTruthy();
   });
 });
@@ -199,7 +201,7 @@ describe('one-screen leave request (declutter round)',()=>{
   it('the bar shows the SERVER preview\'s day count for the exact request on screen and the server\'s balance, never a figure of its own',async()=>{
     vi.useFakeTimers();
     try{
-      const f=fixture();render(<f.App kind="leave" cards={[card()]}/>);fireEvent.click(screen.getByText('requestLeave'));
+      const f=fixture();render(<f.App kind="leave" cards={[card()]}/>);startRequest();
       // A five-calendar-day range the server counts as 2 days (a weekend, a holiday): the app must show 2, not 5.
       fireEvent.click(screen.getAllByText('2026-01-01',{selector:'button'})[1]);fireEvent.change(screen.getByRole('textbox',{name:'endDate'}),{target:{value:'2026-01-05'}});fireEvent.click(screen.getByText('pickerDone'));
       expect(f.drafts().leave.command).toMatchObject({startDate:'2026-01-01',endDate:'2026-01-05'});
@@ -224,30 +226,52 @@ describe('one-screen leave request (declutter round)',()=>{
   it('a failed preview says the days are shown on review; it never falls back to counting dates',async()=>{
     vi.useFakeTimers();
     try{
-      const f=fixture();render(<f.App kind="leave" cards={[card()]}/>);fireEvent.click(screen.getByText('requestLeave'));
+      const f=fixture();render(<f.App kind="leave" cards={[card()]}/>);startRequest();
       f.post.mockRejectedValueOnce(new errors.UnavailableError());
       await act(async()=>{await vi.advanceTimersByTimeAsync(450);});
       expect(screen.getByText('leaveBarNoCount')).toBeTruthy();expect(screen.queryByText('1')).toBeNull();
     }finally{vi.useRealTimers();}
   });
   it('"Add reason or document" is collapsed by default, and opens itself, marked required, when the type\'s server data requires a document or remark',()=>{
-    const f=fixture();const ui=render(<f.App kind="leave"/>);fireEvent.click(screen.getByText('requestLeave'));
+    const f=fixture();const ui=render(<f.App kind="leave"/>);startRequest();
     expect(screen.getByText('+ addReasonOrDocument')).toBeTruthy();expect(screen.queryByRole('textbox',{name:'reason'})).toBeNull();
     ui.unmount();
     for(const rule of [{requiresDocument:true,mandatoryAfterDays:null,employeeRemarkRequired:false},{requiresDocument:false,mandatoryAfterDays:null,employeeRemarkRequired:true}]){
       const g=fixture();const opts={employmentId:'own',items:[{id:'medical',name:'Medical leave',durations:['full_day'],allowedMimeTypes:[],maxDocBytes:10485760,emergencySplit:false,...rule}]};
-      const r=render(<g.App kind="leave" opts={opts}/>);fireEvent.click(screen.getByText('requestLeave'));
+      const r=render(<g.App kind="leave" opts={opts}/>);startRequest('Medical leave');
       expect(screen.queryByText('+ addReasonOrDocument')).toBeNull();expect(screen.getByText('addReasonOrDocument · required')).toBeTruthy();
       expect(screen.getByRole('textbox',{name:'reason'})).toBeTruthy();
       r.unmount();
     }
   });
-  it('type chips carry each type\'s server balance; switching type keeps the dates',()=>{
-    const f=fixture();const opts={employmentId:'own',items:[{id:'annual',name:'Annual leave',durations:['full_day','half_day_am'],allowedMimeTypes:[],maxDocBytes:10485760,requiresDocument:false,emergencySplit:false},{id:'medical',name:'Medical leave',durations:['full_day'],allowedMimeTypes:[],maxDocBytes:10485760,requiresDocument:false,emergencySplit:false}]};
-    render(<f.App kind="leave" opts={opts} cards={[card(),card({leaveTypeId:'medical',leaveType:'Medical leave',canApplyFor:14})]}/>);fireEvent.click(screen.getByText('requestLeave'));
-    expect(screen.getByText('Annual leave · 10')).toBeTruthy();expect(screen.getByText('Medical leave · 14')).toBeTruthy();
-    fireEvent.click(screen.getByText('dayPartFirstHalf'));fireEvent.click(screen.getByText('Medical leave · 14'));
+  it('nothing is pre-selected: the type row reads "Choose leave type", no preview is asked, and Review refuses inline without disabling itself',async()=>{
+    vi.useFakeTimers();
+    try{
+      const f=fixture();render(<f.App kind="leave" cards={[card()]}/>);fireEvent.click(screen.getByText('requestLeave'));
+      expect(f.drafts().leave.command.leaveTypeId).toBe('');
+      expect(screen.getByRole('button',{name:'leaveType, chooseLeaveType'})).toBeTruthy();
+      await act(async()=>{await vi.advanceTimersByTimeAsync(450);});expect(f.post).not.toHaveBeenCalled();
+      const review=screen.getByText('reviewRequest');expect(review).not.toBeDisabled();
+      fireEvent.click(review);expect(screen.getByRole('alert').textContent).toBe('chooseLeaveTypeFirst');
+      expect(f.post).not.toHaveBeenCalled();expect(f.drafts().leave.phase).toBe('edit');
+    }finally{vi.useRealTimers();}
+  });
+  it('the type list shows one compact row per type with its server balance; choosing one closes the list and keeps the dates',()=>{
+    const f=fixture();const opts={employmentId:'own',items:[{id:'annual',name:'Annual leave',durations:['full_day','half_day_am'],allowedMimeTypes:[],maxDocBytes:10485760,requiresDocument:false,emergencySplit:false,notice:'Apply 3 days ahead.'},{id:'medical',name:'Medical leave',durations:['full_day'],allowedMimeTypes:[],maxDocBytes:10485760,requiresDocument:false,emergencySplit:false,notice:null}]};
+    render(<f.App kind="leave" opts={opts} cards={[card(),card({leaveTypeId:'medical',leaveType:'Medical leave',canApplyFor:14})]}/>);
+    startRequest('Annual leave');
+    expect(screen.getByRole('button',{name:'leaveType, Annual leave · 10'})).toBeTruthy();expect(screen.getByText('Apply 3 days ahead.')).toBeTruthy();
+    fireEvent.click(screen.getByText('dayPartFirstHalf'));
+    fireEvent.click(screen.getByRole('button',{name:'leaveType, Annual leave · 10'}));
+    expect(screen.getByRole('radio',{name:'Annual leave, 10'})).toBeTruthy();expect(screen.getByRole('radio',{name:'Medical leave, 14'})).toBeTruthy();
+    // While the list is open the request is not cancellable from it by accident.
+    expect(screen.queryByText('cancel')).toBeNull();
+    fireEvent.click(screen.getByRole('radio',{name:'Medical leave, 14'}));
+    expect(screen.queryByRole('radio')).toBeNull();
     expect(f.drafts().leave.command).toMatchObject({leaveTypeId:'medical',durationType:'full_day',startDate:'2026-01-01'});
+    expect(screen.getByRole('button',{name:'leaveType, Medical leave · 14'})).toBeTruthy();
+    // Day-part chips only for the parts the type offers: Medical offers full days only, so none are shown.
+    expect(screen.queryByText('dayPartFirstHalf')).toBeNull();
   });
 });
 
@@ -271,7 +295,7 @@ describe('explicit receipt lookup',()=>{
     expect(f.get).toHaveBeenCalledWith('submission-receipt',{kind:'clock',requestId:id,employmentId:'own'});
   });
   it('leave Check receipt resolves its accepted response instead of merely refreshing history',async()=>{
-    const f=fixture();render(<f.App kind="leave"/>);fireEvent.click(screen.getByText('requestLeave'));f.post.mockResolvedValueOnce({days:1,overrides:[]});
+    const f=fixture();render(<f.App kind="leave"/>);startRequest();f.post.mockResolvedValueOnce({days:1,overrides:[]});
     fireEvent.click(screen.getByText('reviewRequest'));await screen.findByText('submitRequest');f.post.mockRejectedValueOnce(new errors.UnavailableError());
     fireEvent.click(screen.getByText('submitRequest'));await screen.findByText('checkReceipt');const id=f.drafts().leave.command.requestId;
     f.get.mockResolvedValueOnce({kind:'leave',requestId:id,receipt:{outcome:'accepted',id:'accepted',holidayWarning:false,maternityAllowanceWarning:false}});

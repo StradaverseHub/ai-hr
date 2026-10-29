@@ -16,7 +16,7 @@ import { useApi } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { useSession } from '../../lib/session';
 import { useQueuedOfflinePunches } from '../../lib/offline-clock';
-import { PushPrompt, ShiftReminderSetting } from '../../lib/push';
+import { NotificationsRow, ShiftReminderSetting } from '../../lib/push';
 import { Card, ListRow, LoadState, Muted, Screen, SectionLabel, Title } from '../../lib/ui';
 
 export default function Me() {
@@ -65,9 +65,9 @@ export default function Me() {
       </View>
 
       <SectionLabel>{t('meSectionDevice')}</SectionLabel>
-      <ShiftReminderSetting />
-      <PushPrompt />
       <View>
+        <ShiftReminderSetting />
+        <NotificationsRow />
         <ListRow label={t('integrityKeysTitle')} onPress={() => router.push('/integrity-keys')} />
         <ListRow label={t('pendingTitle')} onPress={() => router.push('/pending-submissions')} />
         {company && <ListRow label={companyCopy().change} onPress={() => router.push({ pathname: '/pending-submissions', params: { intent: 'company' } })} />}

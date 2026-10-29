@@ -151,6 +151,32 @@ export function InfoNote({ short, detail }: { short: string; detail: string }) {
   );
 }
 
+/**
+ * A compact choice chip: a 44 pt touch height but only as wide as its words (12 pt side padding), so a row of them
+ * wraps instead of stacking full-width buttons. The chosen one is filled; `selected` is announced.
+ */
+export function Chip({ title, onPress, selected = false, disabled = false, accessibilityLabel }: { title: string; onPress: () => void; selected?: boolean; disabled?: boolean; accessibilityLabel?: string }) {
+  const { palette } = useTenantDesign();
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} accessibilityState={{ selected, disabled }} disabled={disabled} onPress={onPress}
+      style={({ pressed }) => [styles.chip, { borderColor: selected ? palette.accent : palette.border, backgroundColor: selected ? palette.accent : 'transparent' }, (pressed || disabled) && { opacity: 0.7 }]}>
+      <Text style={{ color: selected ? palette.bg : palette.text, fontSize: 15, fontWeight: selected ? '600' : '400' }}>{title}</Text>
+    </Pressable>
+  );
+}
+
+/** A server-authored note kept to two muted lines; the "i" shows the whole text (and a screen reader reads it all). */
+export function NoteLine({ text }: { text: string }) {
+  const { palette } = useTenantDesign();
+  const [open, setOpen] = useState(false);
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={text} accessibilityState={{ expanded: open }} onPress={() => setOpen(!open)} style={{ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <Text numberOfLines={open ? undefined : 2} style={[styles.muted, { color: palette.muted, flexShrink: 1 }]}>{text}</Text>
+      <Text style={{ color: palette.accent, fontSize: 16 }}>ⓘ</Text>
+    </Pressable>
+  );
+}
+
 /** Distinguish first load, same-scope refresh and retained data after a failed refresh. */
 export function LoadState({ loading, error, onRetry,hasData=false }: { loading: boolean; error: Error | null; onRetry: () => void;hasData?:boolean }) {
   const { palette } = useTenantDesign();
@@ -203,6 +229,7 @@ const styles = StyleSheet.create({
   buttonQuiet: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
   buttonTextQuiet: { color: colors.accent },
+  chip: { minHeight: 44, minWidth: 44, paddingHorizontal: 12, borderWidth: 1, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   back: { alignSelf: 'flex-start', minWidth: 44, minHeight: 44, justifyContent: 'center', marginLeft: -6 },
   listRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingVertical: 12, borderBottomWidth: 1 },
 });
