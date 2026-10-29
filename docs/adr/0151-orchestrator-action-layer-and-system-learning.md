@@ -692,3 +692,26 @@ The original own-leave Tx APIs and candidate/refusal union remain explicit nativ
 The owner approved composing at most twenty existing prepared approval reviews in the current flow. Each full native review must be explicitly opened and its own confirmation selected; one count-labelled confirmation then sends the existing guarded browser command for each selected review sequentially. There is no new action kind, model tool, batch privilege or shared transaction. Every item repeats the current native authority, source, expiry, pause and digest checks. Earlier commits survive a later refusal. Each card presents its own canonical receipt, retirement or uncertainty; uncertain responses require reopening the same review, never automatic retry. Reloading or a server scope refresh clears selections; leaving the page stops subsequent requests and aborts an in-flight request without claiming rollback.
 
 New claim rejection preparations require the person's reason and bind it inside the existing sealed human content; the native claims service records that reason on its rejection event. Approval notes are not accepted. Existing sealed no-reason claim reviews remain readable and confirmable with their original digest and content. The new preparation requirement does not rewrite old evidence or invent a reason.
+## Owner decisions — 29 October 2026
+
+Given by the owner in chat on 2026-10-29, answering the review's decision list
+([review §7.2](../reviews/ai-architecture-review-2026-10.md), [handoff §7](../reviews/ai-architecture-handoff-2026-10.md)).
+This amends; the sections above are unchanged and remain binding.
+
+1. **Automatic-tier order (answers §8 Q2).** Follow the review's recommendation, in this order:
+   (a) chase overdue approvers on claims, attendance corrections and replacement leave, by generalising
+   `core/leave-escalation.ts`; (b) probation and contract-end reminders; (c) missing clock-in nudges;
+   (d) expiring documents; (e) lifecycle step chasing. All are deterministic and use no model.
+2. **No model spend for the scheduled agent principal.** Scheduled work (§4.5) stays template-only; the
+   principal gets no allowance subject of its own.
+3. **Performance AI switches default to off.** All six `performance.ai_*_enabled` switches default to off,
+   matching every other AI switch.
+4. **Naming.** Already approved and recorded in the
+   [WP15 verification](../reviews/ai-architecture-wp15-verification-2026-10.md) and the
+   vocabulary amendment above: "Assistant", "Control Tower", "HR work queue", "scheduled agent"; "module
+   agent" and "specialist" are dropped from the UI.
+5. **Bulk manager decisions (answers §8 Q1).** Approved in principle, with each item still individually
+   reviewed. It must be designed as its own package; WP6–WP14 do not implement it, and single-item decisions
+   remain the shipped behaviour until that package is accepted.
+
+These decisions grant no deployment and prove no implementation, gate result or installation.

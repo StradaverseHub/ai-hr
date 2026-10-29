@@ -5,6 +5,27 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## AI architecture review WP6–WP14 reservations — 29 October 2026
+
+Reserved for the AI architecture review packages (handoff `docs/reviews/ai-architecture-handoff-2026-10.md`).
+Only a package that truly needs a migration uses its number.
+
+| Package | Migration file | Journal `when` | Final journal idx |
+| --- | ---: | ---: | ---: |
+| WP6 | 0692 | 1793330000018 | 682 |
+| WP7 | 0693 | 1793330000019 | 683 |
+| WP14 | 0694 | 1793330000020 | 684 |
+| WP11 | 0695 | 1793330000021 | 685 |
+| WP12 | 0696 | 1793330000022 | 686 |
+| WP13 | 0697 | 1793330000023 | 687 |
+| WP9 store 1 | 0698 | 1793330000024 | 688 |
+
+These follow Board 0688–0690 (idx 678–680, `when` 1793330000014–16) and Bank 0691 (idx 681, `when`
+1793330000017), which are unapplied reservations owned by others. The final idx values assume those land
+first. The live staging ledger watermark was **not** freshly queried for this reservation (last verified:
+563 rows through 0687); it must be re-read, together with canonical branch journals, before integration or
+application. These reservations grant no deployment.
+
 ## Owner-approved combined board allocation — 29 October 2026
 
 ### Successor work in progress after the installed expanded release
@@ -274,3 +295,8 @@ competing0687 or when>=1793330000013. Board and the migration coordinator were n
 The existing562-entry journal prefix and all applied SQL bytes are preserved. The appended SQL SHA256
 is `ade48bffee0a5d6ebf72cdd61de36323f3650b81c805cd186701c5d8105e86c4`. This reserves source only; it authorizes no staging migration
 without the exact-candidate gate, populated upgrade proof, restore readiness and exclusive handoff.
+
+
+### AI review allocation status — provisional until integration freeze
+
+The AI review numbers and timestamps above are historical provisional reservations, not allocation authority or evidence of installation. In-flight Board/FEEDBACK migrations supersede those slots. All AI review SQL remains unapplied in this work: final names, journal indices and `when` values must be assigned together above the freshly verified live ledger at integration freeze. Additional AI follow-up drafts currently use provisional0700 automatic follow-ups,0701 template switch references and0702 delegated Leave receipts; these also require final allocation. No protected branch movement, migration application or deployment is authorized by this table.

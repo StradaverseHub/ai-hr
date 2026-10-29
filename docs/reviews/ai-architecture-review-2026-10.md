@@ -257,6 +257,8 @@ headcount goal more than any architectural clean-up.
    agent", and dropping "module agent" and "specialist" from the UI.
 5. **Bulk manager decisions.** ADR-0151 §8 Q1.
 
+**Resolved 29 Oct 2026.** The owner answered all five in chat: R18 order as recommended (a)–(e), all deterministic; no model spend for the agent principal; performance AI switches default off; naming as proposed (already approved); bulk manager decisions approved in principle as a separate package outside WP6–WP14. Recorded in [ADR-0151, Owner decisions — 29 October 2026](../adr/0151-orchestrator-action-layer-and-system-learning.md#owner-decisions--29-october-2026).
+
 ## 8. Q4 — Gaps against the owner goal and ADR-0151
 
 **Capabilities.**
