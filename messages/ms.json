@@ -19114,7 +19114,11 @@
         "action_claims_cancel": "Tuntutan belum selesai dibatalkan; tiada bayaran dibuat",
         "action_leave_adjustment_apply": "Pelarasan cuti oleh HR direkodkan; baki berubah mulai tarikh berkuat kuasa",
         "action_employees_movement_transfer": "Pergerakan tugasan oleh HR direkodkan; dilaksanakan sekarang atau menunggu tarikhnya",
-        "action_toil_credit_grant": "Kredit Cuti oleh HR disimpan; lebih masa pada tarikh itu tidak lagi dibayar"
+        "action_toil_credit_grant": "Kredit Cuti oleh HR disimpan; lebih masa pada tarikh itu tidak lagi dibayar",
+        "action_approvals_claim_chase": "Ingatkan pelulus tentang tuntutan tertunggak",
+        "action_approvals_attendance_chase": "Ingatkan pelulus tentang permohonan kehadiran tertunggak",
+        "action_approvals_toil_chase": "Ingatkan pelulus tentang permohonan cuti ganti tertunggak",
+        "action_employees_review_overdue_remind": "Ingatkan tentang semakan yang belum diputuskan selepas tarikh tamat"
       },
       "conversation": {
         "answerLabel": "Jawapan daripada rekod anda",
@@ -24489,7 +24493,9 @@
       "performance_idp": "Pelan pembangunan dan kerjaya",
       "performance_calib": "Bantuan penentukuran",
       "performance_assistant": "Pembantu perbualan prestasi",
-      "feedback_planning": "Draf pelan penambahbaikan"
+      "feedback_planning": "Draf pelan penambahbaikan",
+      "approval_chasers": "Peringatan kelulusan tertunggak",
+      "review_chasers": "Peringatan semakan tertunggak"
     },
     "kinds": {
       "assistant": "Pembantu",
@@ -26805,7 +26811,15 @@
       "coverageHandoff": "Kekal pada skrinnya sendiri",
       "coverageInternal": "Bukan tugas pengguna",
       "coverageHelp": "Kiraan belum akan berkurang apabila tindakan menjadi tersedia kepada Pembantu. Tindakan yang kekal pada skrinnya sendiri berbuat demikian mengikut dasar, contohnya akses, tetapan AI dan pembalikan gaji.",
-      "version": "peraturan hasil {version}"
+      "version": "peraturan hasil {version}",
+      "automaticTitle": "Apa yang berlaku selepas peringatan berjadual",
+      "automaticSubtitle": "Peringatan yang dihantar oleh ejen berjadual sejak {from}, dan sama ada setiap item yang diingatkan telah bergerak sejak itu. Kiraan sahaja.",
+      "colReminders": "Peringatan dihantar",
+      "colItems": "Item diingatkan",
+      "colActed": "Diambil tindakan sejak itu",
+      "colStillWaiting": "Masih menunggu",
+      "automaticNone": "Tiada peringatan berjadual dihantar dalam tempoh ini untuk syarikat yang anda tadbir.",
+      "automaticLimit": "Diambil tindakan sejak itu bermaksud item tidak lagi menunggu pada peringkat ia diingatkan. Ini tidak membuktikan peringatan itu puncanya. Peringatan menggunakan templat tetap; tiada model AI digunakan."
     }
   },
   "cardImport": {
