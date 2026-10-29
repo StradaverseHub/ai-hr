@@ -40,9 +40,30 @@ for(const [width,height] of [[1280,900],[390,844]]){
   fireEvent.change(screen.getByLabelText(copy.target),{target:{value:'payroll_history'}});
   fireEvent.change(screen.getByLabelText(copy.request),{target:{value:'Prepare these payroll history records'}});
   fireEvent.click(screen.getByLabelText(copy.consent));fireEvent.click(screen.getByRole('button',{name:copy.prepare}));
-  await screen.findByText('Draft: 1 records');
+  await screen.findByText('Draft: 1 record');
   expect(screen.getByRole('button',{name:copy.review})).toBeDisabled();
   expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
-  console.info('Assistant file import review screenshot:',await page.screenshot({element:document.querySelector('main')!,path:`../.vitest-attachments/assistant-file-import-${width}.png`,animations:'disabled',scale:'css'}));
+  const main=document.querySelector('main')!;
+  async function capture(suffix=''){
+  await page.viewport(width,Math.ceil(main.scrollHeight+32));window.scrollTo(0,0);await document.fonts.ready;
+  await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
+  const wrapper=window.frameElement?.parentElement;
+  const originalStyle=wrapper?.getAttribute('style'),originalScale=wrapper?.getAttribute('data-scale');
+  wrapper?.style.setProperty('transform','none','important');wrapper?.setAttribute('data-scale','1');
+  try{
+   const screenshot=await page.screenshot({element:main,path:`../.vitest-attachments/assistant-file-import-${width}${suffix}.png`,animations:'disabled',scale:'css',base64:true,
+    style:'#vitest-tester [data-scale], #tester-ui [data-scale] { transform: none !important; }'});
+   const bytes=Uint8Array.from(atob(screenshot.base64),char=>char.charCodeAt(0)),header=new DataView(bytes.buffer);
+   expect(header.getUint32(16)).toBe(Math.min(width,768));
+   expect(header.getUint32(20)).toBeGreaterThanOrEqual(Math.floor(main.getBoundingClientRect().height)-1);
+  }finally{
+   if(wrapper){if(originalStyle==null)wrapper.removeAttribute('style');else wrapper.setAttribute('style',originalStyle);if(originalScale==null)wrapper.removeAttribute('data-scale');else wrapper.setAttribute('data-scale',originalScale);}
+  }
+  }
+  await capture();
+  fireEvent.click(screen.getByLabelText(copy.reviewed));
+  fireEvent.click(screen.getByText(copy.source));
+  expect(screen.getByRole('button',{name:copy.review})).toBeEnabled();
+  await capture('-ready');
  });
 }

@@ -68,7 +68,8 @@ one explicit provider dispatch per click, with no automatic retries. Larger inpu
 truncated. The existing spreadsheet decoder adds its own decoded-size/range limits. Only PDFs
 with extractable text on every page are accepted. Scanned, mixed scanned/text, encrypted and
 unreadable documents must be converted to a readable text PDF or spreadsheet first. OCR is not
-part of this change. PDF parsing has a 15-second cleanup deadline and disables dynamic evaluation.
+part of this change. PDF parsing has a 15-second cleanup deadline and extracts text without rendering
+the document or running document scripts.
 
 Changing the file, target, sheet or request invalidates the draft and disclosure consent. Discard
 or expiry invalidates in-flight results. A failed provider or malformed output shows a generic

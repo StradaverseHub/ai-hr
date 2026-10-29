@@ -1,10 +1,10 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { lazy, Suspense, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { btnPrimary, inputCls } from '../ui';
 import type { AiWorkspaceTaskId } from '../../lib/ai/workspace-tasks';
-import {AssistantFileImport} from './file-import';
+const AssistantFileImport=lazy(()=>import('./file-import').then(module=>({default:module.AssistantFileImport})));
 
 type Task = { id: AiWorkspaceTaskId; label: string; prompt: string };
 type Props = {
@@ -70,5 +70,5 @@ function ComposerFields({ tasks, labels, layout = 'stacked',question,setQuestion
 export function WorkspaceComposer({ action, tasks, labels, layout,fileImport }: Props) {
   const [question,setQuestion]=useState('');
   const composer=<form action={action} className="space-y-4"><ComposerFields tasks={tasks} labels={labels} layout={layout} question={question} setQuestion={setQuestion}/></form>;
-  return fileImport?<AssistantFileImport normalComposer={composer} instruction={question} onInstructionChange={setQuestion}/>:composer;
+  return fileImport?<Suspense fallback={composer}><AssistantFileImport normalComposer={composer} instruction={question} onInstructionChange={setQuestion}/></Suspense>:composer;
 }

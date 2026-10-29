@@ -16,11 +16,15 @@ const copy=en.assistant.fileImport;
 const source='E001 -25.50';
 const draft=captureImportDraft('payroll_history',source,{rows:[{cells:[{field:'employee_no',start:0,end:4},{field:'amount',start:5,end:11}]}]});
 function wrap(ui:React.ReactNode=<AssistantFileImport/>){return render(<NextIntlClientProvider locale="en" messages={en}><AssistantImportHandoffProvider>{ui}</AssistantImportHandoffProvider></NextIntlClientProvider>);}
-async function attach(){fireEvent.change(screen.getByLabelText(copy.attach,{selector:'input'}),{target:{files:[new File(['data'],'records.pdf')]}});await screen.findByText('records.pdf');}
+async function attach(){await screen.findByRole('button',{name:copy.attach});fireEvent.change(screen.getByLabelText(copy.attach,{selector:'input'}),{target:{files:[new File(['data'],'records.pdf')]}});await screen.findByText('records.pdf');}
 beforeEach(()=>{vi.resetAllMocks();mocks.read.mockResolvedValue({name:'records.pdf',parts:[{label:'records.pdf',text:source}]});mocks.prepare.mockResolvedValue({ok:true,draft});window.history.replaceState({},'', '/assistant');});
 afterEach(cleanup);
 
 describe('source-bound extraction',()=>{
+ it('bounds repeated evidence expansion before returning a draft',()=>{
+  const rows=Array.from({length:200},(_,index)=>({cells:[{field:'amount',start:index,end:index+2000}]}));
+  expect(()=>captureImportDraft('payroll_history','a'.repeat(2200),{rows})).toThrow('Draft too large');
+ });
  it('uses whole spreadsheet cells, preserving CSV quotes, line breaks and signed amounts',()=>{
   const source='employee_no,amount,notes\r\n0007,-25.50,"He said ""Hi""\nagain"\r\n';
   const result=captureImportDraft('payroll_individual',source,{rows:[{cells:[{field:'employee_id',cellId:'r2c1'},{field:'amount',cellId:'r2c2'},{field:'notes',cellId:'r2c3'}]}]},'','table');
@@ -75,7 +79,7 @@ describe('file preparation and review',()=>{
   fireEvent.change(screen.getByLabelText(copy.request),{target:{value:'Prepare these payroll records'}});
   expect(prepare).toBeDisabled();expect(mocks.prepare).not.toHaveBeenCalled();
   fireEvent.click(screen.getByLabelText(copy.consent));fireEvent.click(prepare);
-  await screen.findByText('Draft: 1 records');
+  await screen.findByText('Draft: 1 record');
   expect(mocks.prepare).toHaveBeenCalledWith({target:'payroll_history',source,sourceKind:'text',instruction:'Prepare these payroll records',consent:true});
   const next=screen.getByRole('button',{name:copy.review});expect(next).toBeDisabled();expect(mocks.push).not.toHaveBeenCalled();
   fireEvent.click(screen.getByLabelText(copy.reviewed));fireEvent.click(next);
@@ -87,7 +91,7 @@ describe('file preparation and review',()=>{
   wrap();await attach();fireEvent.change(screen.getByLabelText(copy.request),{target:{value:'Prepare records'}});fireEvent.click(screen.getByLabelText(copy.consent));fireEvent.click(screen.getByRole('button',{name:copy.prepare}));
   fireEvent.click(screen.getByRole('button',{name:copy.discard}));finish({ok:true,draft});
   await waitFor(()=>expect(screen.queryByRole('status')).toBeNull());
-  expect(screen.queryByText('Draft: 1 records')).toBeNull();expect(mocks.push).not.toHaveBeenCalled();
+  expect(screen.queryByText('Draft: 1 record')).toBeNull();expect(mocks.push).not.toHaveBeenCalled();
  });
  it('requires choosing one sheet, invalidates consent when the sheet changes and sends only that sheet',async()=>{
   mocks.read.mockResolvedValue({name:'records.pdf',parts:[{label:'Sheet A',text:'one'},{label:'Sheet B',text:'two'}]});

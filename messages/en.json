@@ -19247,7 +19247,7 @@
       "reading": "Reading file…",
       "preparing": "Preparing draft… You can discard it while it runs.",
       "prepareError": "Preparation was unavailable or returned an invalid draft. Check provider access and allowances, or try a smaller, clearer source. Nothing has been imported.",
-      "draft": "Draft: {count} records",
+      "draft": "Draft: {count, plural, one {# record} other {# records}}",
       "draftHint": "Compare every record with the source. AI can omit records or put a value in the wrong field. Blank cells need review; this draft has not passed import validation.",
       "edit": "Edit prepared CSV",
       "editHint": "Changes update the table above. Keep the column headings and CSV quoting intact.",

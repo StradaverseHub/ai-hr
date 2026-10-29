@@ -64,11 +64,14 @@ export function captureImportDraft(target:AssistantImportTarget,source:string,va
   }
   return columns.map(column=>values.get(column)??'');
  });
+ importDraftCsv({columns,rows}); // Bound the expanded response as well as the provider's JSON.
  return {columns,rows,spans:parsed.rows.map(row=>row.cells)};
 }
 export function importDraftCsv(draft:Pick<ImportDraft,'columns'|'rows'>):string{
  if(!draft.rows.length||draft.rows.some(row=>row.length!==draft.columns.length))throw Error('Invalid draft');
  // Import transport, not spreadsheet export: preserve signed amounts and literal identifiers.
  const cell=(value:string)=>/[",\r\n]/.test(value)?'"'+value.replace(/"/g,'""')+'"':value;
- return [draft.columns,...draft.rows].map(row=>row.map(cell).join(',')).join('\r\n')+'\r\n';
+ const text=[draft.columns,...draft.rows].map(row=>row.map(cell).join(',')).join('\r\n')+'\r\n';
+ if(new TextEncoder().encode(text).byteLength>180000)throw Error('Draft too large');
+ return text;
 }

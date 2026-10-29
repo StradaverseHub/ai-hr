@@ -15,8 +15,8 @@ export async function readAssistantImportFile(file:File):Promise<ImportFileSourc
  }
  const pdfjs=await import('pdfjs-dist');
  pdfjs.GlobalWorkerOptions.workerSrc=new URL('pdfjs-dist/build/pdf.worker.min.mjs',import.meta.url).toString();
- const loading=pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer()),isEvalSupported:false,useSystemFonts:true});
- const deadline=setTimeout(()=>{void loading.destroy();},15000);
+ const loading=pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer()),useSystemFonts:true});
+ const deadline=setTimeout(()=>{void loading.destroy().catch(()=>undefined);},15000);
  try{
   const pdf=await loading.promise;
   if(pdf.numPages>20)throw Error('size');
