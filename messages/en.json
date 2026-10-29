@@ -15036,6 +15036,9 @@
     "recordHistory": "Record history"
   },
   "payRule": {
+    "assistNotAuthorised": "Your access to pay-rule drafting could not be confirmed.",
+    "aiPreviewRequired": "Run an employee sample with the current rule, then confirm you reviewed it before saving. Changing the rule or employee requires a new preview.",
+    "aiPreviewReviewed": "I reviewed the current employee sample.",
     "sectionTitle": "How is this calculated?",
     "sectionHint": "Choose how the amount is measured. \"Fixed Value\" keeps today's behaviour.",
     "kindLabel": "Input Type",
@@ -24220,7 +24223,7 @@
     "noCompanies": "No companies in your administrative scope.",
     "inherited": "Existing controls",
     "businessLimits": "Module access, feature permissions and the existing Performance limit of five successful drafts per field per user per day continue to apply.",
-    "legacyAssistant": "Additional Assistant budget: {daily} questions per user per day and {tokens} tokens per month for the whole organisation. This existing budget resets at 08:00 Malaysia time.",
+    "legacyAssistant": "Additional Assistant budget: {daily} questions per user per Malaysia day and {tokens} tokens per Malaysia month for the whole organisation. New questions count before a model call. Earlier monthly totals keep their original accounting period.",
     "humanDecisions": "AI remains advisory. Existing approvals and human decisions for pay, ratings, hiring and access remain required.",
     "spendTitle": "AI inference allocation (USD)",
     "spendTab": "Spending",

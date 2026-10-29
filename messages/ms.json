@@ -15036,6 +15036,9 @@
     "recordHistory": "Sejarah rekod"
   },
   "payRule": {
+    "assistNotAuthorised": "Akses anda untuk mendraf peraturan gaji tidak dapat disahkan.",
+    "aiPreviewRequired": "Jalankan sampel pekerja dengan peraturan semasa, kemudian sahkan anda menyemaknya sebelum menyimpan. Perubahan peraturan atau pekerja memerlukan pratonton baharu.",
+    "aiPreviewReviewed": "Saya telah menyemak sampel pekerja semasa.",
     "sectionTitle": "Bagaimana ia dikira?",
     "sectionHint": "Pilih cara jumlah itu diukur. \"Nilai tetap\" mengekalkan tingkah laku semasa.",
     "kindLabel": "Jenis Input",
@@ -24220,7 +24223,7 @@
     "noCompanies": "Tiada syarikat dalam skop pentadbiran anda.",
     "inherited": "Kawalan sedia ada",
     "businessLimits": "Akses modul, kebenaran ciri dan had Performance sedia ada sebanyak lima draf berjaya setiap medan setiap pengguna sehari masih terpakai.",
-    "legacyAssistant": "Belanjawan Assistant tambahan: {daily} soalan setiap pengguna sehari dan {tokens} token sebulan bagi seluruh organisasi. Belanjawan sedia ada ini ditetapkan semula pada 08:00 waktu Malaysia.",
+    "legacyAssistant": "Belanjawan Assistant tambahan: {daily} soalan setiap pengguna bagi setiap hari Malaysia dan {tokens} token sebulan Malaysia untuk seluruh organisasi. Soalan baharu dikira sebelum panggilan model. Jumlah bulanan terdahulu mengekalkan tempoh perakaunan asal.",
     "humanDecisions": "AI kekal sebagai penasihat. Kelulusan dan keputusan manusia bagi gaji, penilaian, pengambilan dan akses masih diperlukan.",
     "spendTitle": "Peruntukan inferens AI (USD)",
     "spendTab": "Perbelanjaan",

@@ -256,7 +256,7 @@ export async function draftPayRuleAction(p: {
   const t = await getTranslations('payRule');
   try {
     const s=await getBrowserCommandSession();
-    if(!isAdmin(s))return {error:t('assistFailed')};
+    if(!isAdmin(s))return {error:t('assistNotAuthorised')};
     const { rule, explanation } = await draftPayRule(s, {
       description: captured.description,
       componentCode: captured.componentCode,
@@ -265,7 +265,7 @@ export async function draftPayRuleAction(p: {
     return { rule, explanation };
   } catch (e) {
     if (e instanceof PayRuleDraftError) {
-      return { error: e.reason === 'not_configured' ? t('assistUnconfigured') : t('assistFailed') };
+      return { error: e.reason === 'not_configured' ? t('assistUnconfigured') : e.reason === 'forbidden' ? t('assistNotAuthorised') : t('assistFailed') };
     }
     return { error:t('assistFailed') };
   }

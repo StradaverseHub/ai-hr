@@ -2,6 +2,7 @@ import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { aiControlPolicy, aiModelRun, appUser, assistantGrant, company, person, assistantBudget } from '../db/schema';
+import {todayInKualaLumpur} from '../lib/hr-date';
 import { isAdmin, isGroupAdmin } from '../lib/authz-model';
 import { AI_FEATURES, isAiFeature, type AiFeatureId } from '../lib/ai/features';
 import { resolveEntitlementsTx, isModuleEnabled, getSetting } from './entitlements';
@@ -172,7 +173,7 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       .from(aiModelRun).leftJoin(appUser,eq(aiModelRun.userId,appUser.id)).leftJoin(person,eq(appUser.personId,person.id))
       .where(and(runFilter.state?eq(aiModelRun.state,runFilter.state):undefined,runFilter.feature?eq(aiModelRun.featureId,runFilter.feature):undefined))
       .orderBy(desc(aiModelRun.startedAt),desc(aiModelRun.id)).limit(50) : [];
-    const legacyBudgets = isGroupAdmin(ctx) ? await tx.select({monthly:assistantBudget.monthlyTokenCeiling,daily:assistantBudget.perUserDailyQuestions,effectiveFrom:assistantBudget.effectiveFrom}).from(assistantBudget).where(and(eq(assistantBudget.tenantId,ctx.tenantId),sql`${assistantBudget.archivedAt} is null`,sql`${assistantBudget.effectiveFrom} <= (now() at time zone 'UTC')::date`)).orderBy(desc(assistantBudget.effectiveFrom),desc(assistantBudget.id)).limit(1) : [];
+    const legacyBudgets = isGroupAdmin(ctx) ? await tx.select({monthly:assistantBudget.monthlyTokenCeiling,daily:assistantBudget.perUserDailyQuestions,effectiveFrom:assistantBudget.effectiveFrom}).from(assistantBudget).where(and(eq(assistantBudget.tenantId,ctx.tenantId),sql`${assistantBudget.archivedAt} is null`,sql`${assistantBudget.effectiveFrom} <= ${todayInKualaLumpur()}::date`)).orderBy(desc(assistantBudget.effectiveFrom),desc(assistantBudget.id)).limit(1) : [];
     // Company administrators see only their own companies' aggregates here: no login identities.
     const attention = {
       companies: companies.filter(pressing),
