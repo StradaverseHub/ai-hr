@@ -15,7 +15,7 @@ async function applicationCss(){
   return result.css+`\n@font-face{font-family:ReviewJakarta;src:url(data:font/woff2;base64,${jakarta}) format('woff2');font-weight:100 900;font-style:normal;font-display:block;}@font-face{font-family:ReviewMono;src:url(data:font/woff2;base64,${mono}) format('woff2');font-weight:100 900;font-style:normal;font-display:block;}:root{--font-jakarta:ReviewJakarta;--font-geist-mono:ReviewMono;}`;
  })();return css;
 }
-export async function captureAiReviewScreenshots(html:string,locale:string,section:'overview'|'queue'|'probe'|'scheduled-group'|'scheduled-company'){
+export async function captureAiReviewScreenshots(html:string,locale:string,section:'overview'|'queue'|'probe'|'scheduled-group'|'scheduled-company',fixture='real components; fictional data owners; no authenticated server journey'){
  const evidence=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
  if(!evidence)return;
  if(process.env.GITHUB_ACTIONS!=='true')throw Error('Visual capture requires the selected GitHub Actions runner.');
@@ -31,7 +31,7 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   await page.addStyleTag({content:styles});await page.evaluate(()=>document.fonts.ready);
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1);
   const file=`${locale}-${section}-${device}.png`;await page.screenshot({path:join(out,file),fullPage:true});
-  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme:'classic',fixture:'real components; fictional data owners; no authenticated server journey'});
+  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme:'classic',fixture});
   await page.close();
  }}finally{await browser.close();}
  writeFileSync(join(out,`${locale}-${section}.json`),JSON.stringify(rows,null,2)+'\n');

@@ -19268,7 +19268,7 @@
       "actions": "收尾者",
       "actionsDoes": "找出因员工记录中缺少某些内容而产生的异常——而该内容现已录入。它会提议关闭这些异常；由你批准，并在你批准时对每一条重新检查。它从不修改员工记录。",
       "hypotheses": "第二意见",
-      "hypothesesDoes": "对固定检查已放行的员工再看一次，把每个人与同一次发薪中的同事作比较。它只能提请复核——永远不能阻止发薪——凡是无法用你自己的数字重新验证的建议，都会在你看到之前被丢弃。",
+      "hypothesesDoes": "定时运行不使用 AI 起草。定时执行主体尚未获准使用模型预算；配置供应商不会启用此功能。",
       "nudge": "催办者",
       "nudgeDoes": "发现谁的记录缺少发薪所需的内容，并通知唯一能补上的人——银行资料通知员工本人，只有 HR 能录入的内容通知 HR。在你开启之前，它不会发出任何消息。",
       "payRuleDrafter": "薪资规则起草者",
@@ -19280,7 +19280,7 @@
       "planDrafter": "方案起草者",
       "planDrafterDoes": "为产品内提出的改进请求起草回复。这是我们自己的工具，不属于你的套餐功能。",
       "triage": "报销单审读者",
-      "triageDoes": "在报销单提交后即读一遍，若说明与单据其余内容对不上，就去问提交的人——在审批人花时间之前。它只能提问：不能拒绝、修改或裁定任何一张单。",
+      "triageDoes": "定时运行不使用 AI 起草。定时执行主体尚未获准使用模型预算；配置供应商不会启用此功能。",
       "onehrEvidenceDrafter": "Assessment evidence draft",
       "onehrEvidenceDrafterDoes": "Selects and orders authorized evidence passages for a human to edit. Deterministic checks resolve every passage; it cannot invent claims or make assessment or pay decisions."
     },
@@ -24087,6 +24087,8 @@
     },
     "states": {
       "ready": "就绪",
+      "templates": "仅固定模板",
+      "scheduled": "定时 AI 不可用",
       "paused": "已暂停",
       "module": "模块不可用",
       "provider": "需要服务商",

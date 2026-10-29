@@ -480,3 +480,18 @@ The orchestrator now uses the named tenant principal with attributed switch enab
 no model-spend authority. Outcome measurement is merged; its comparisons remain non-causal. Other
 architecture packages, including scheduled-status behavior and generic parity, are not implemented by
 this integration. Final gate and staging arrival are separate evidence, recorded on the release PR.
+
+### WP1 scheduled-status contract — 29 October 2026
+
+A configured provider or a specialist switch is not admission for the named principal. Scheduled model
+spending remains unapproved. The readiness pass uses fixed templates; claims triage reports
+`principal_not_admitted` before reading claims. Missing provider for a signed-in caller is `no_provider`.
+The anonymous model steps in anomaly-sweep and feedback-plan are retired; deterministic anomaly checks
+and recurrence continue, and the legacy feedback cron command explicitly logs a no-op. Administrator
+planning through the existing signed-in service remains available.
+
+Company HR may read only sanitized execution-status metadata of an explicitly marked named scheduled
+pass. Its case rows and counts still come from the caller's existing RLS-scoped source query; a tenant
+pass is not evidence of that company's outcomes. Manual pass receipts still match exact administrative
+scope. This adds no execution ledger or database authority. See the [WP1 verification contract](../reviews/ai-architecture-wp1-verification-2026-10.md);
+this amendment alone proves no gate result or installation.

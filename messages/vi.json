@@ -19268,7 +19268,7 @@
       "actions": "Người khép việc",
       "actionsDoes": "Tìm những ngoại lệ phát sinh vì hồ sơ nhân viên thiếu thông tin — và hồ sơ đó nay đã có. Nó đề xuất đóng chúng; bạn phê duyệt, và mỗi mục được kiểm tra lại ngay lúc đó. Nó không bao giờ thay đổi hồ sơ nhân viên.",
       "hypotheses": "Ý kiến thứ hai",
-      "hypothesesDoes": "Xem lại những người đã được các kiểm tra cố định cho qua, và so sánh từng người với đồng nghiệp trong cùng kỳ trả lương. Nó chỉ có thể đề nghị xem lại — không bao giờ chặn được kỳ trả lương — và bất kỳ đề xuất nào chúng tôi không thể suy lại từ chính con số của bạn đều bị loại bỏ trước khi bạn nhìn thấy.",
+      "hypothesesDoes": "Các lượt chạy theo lịch không dùng AI để soạn thảo. Chủ thể theo lịch chưa được phép chi cho mô hình; cấu hình nhà cung cấp không bật quyền này.",
       "nudge": "Người nhắc việc",
       "nudgeDoes": "Phát hiện hồ sơ của ai còn thiếu thứ mà việc trả lương cần, rồi nhắc đúng người có thể bổ sung — nhân viên cho thông tin ngân hàng của chính họ, HR cho những gì chỉ HR nhập được. Nó không gửi gì cho đến khi bạn bật.",
       "payRuleDrafter": "Người soạn quy tắc lương",
@@ -19280,7 +19280,7 @@
       "planDrafter": "Người soạn kế hoạch",
       "planDrafterDoes": "Soạn phản hồi cho một yêu cầu cải tiến được gửi từ trong sản phẩm. Đây là công cụ của chúng tôi, không phải tính năng trong gói của bạn.",
       "triage": "Người đọc đơn hoàn ứng",
-      "triageDoes": "Đọc từng đơn hoàn ứng ngay khi được nộp và, nếu phần mô tả không khớp với phần còn lại của đơn, hỏi lại người đã nộp — trước khi người duyệt mất thời gian cho nó. Nó chỉ có thể đặt câu hỏi: không thể từ chối, sửa hay quyết định bất kỳ đơn nào.",
+      "triageDoes": "Các lượt chạy theo lịch không dùng AI để soạn thảo. Chủ thể theo lịch chưa được phép chi cho mô hình; cấu hình nhà cung cấp không bật quyền này.",
       "onehrEvidenceDrafter": "Assessment evidence draft",
       "onehrEvidenceDrafterDoes": "Selects and orders authorized evidence passages for a human to edit. Deterministic checks resolve every passage; it cannot invent claims or make assessment or pay decisions."
     },
@@ -24087,6 +24087,8 @@
     },
     "states": {
       "ready": "Sẵn sàng",
+      "templates": "Chỉ dùng mẫu cố định",
+      "scheduled": "AI theo lịch không khả dụng",
       "paused": "Tạm dừng",
       "module": "Mô-đun không khả dụng",
       "provider": "Cần nhà cung cấp",

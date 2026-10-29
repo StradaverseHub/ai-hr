@@ -10,7 +10,25 @@
  *  6. It sees that a correction is pending without reading what the correction says.
  */
 import { and, eq, sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createFormatter, createTranslator, NextIntlClientProvider } from 'next-intl';
+import en from '../messages/en.json';
+import ms from '../messages/ms.json';
+import zh from '../messages/zh.json';
+import viCopy from '../messages/vi.json';
+import th from '../messages/th.json';
+import ta from '../messages/ta.json';
+import { captureAiReviewScreenshots } from './helpers/ai-review-screenshots';
+const copies = { en, ms, zh, vi: viCopy, th, ta };
+const visual = vi.hoisted(() => ({ locale: 'en' as 'en'|'ms'|'zh'|'vi'|'th'|'ta' }));
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: any) => createTranslator({ locale: visual.locale, messages: copies[visual.locale], namespace }),
+  getFormatter: async () => createFormatter({ locale: visual.locale, timeZone: 'Asia/Kuala_Lumpur' }),
+}));
+vi.mock('../app/control-tower/orchestrator-actions', () => ({ refreshOrchestrationAction: vi.fn() }));
+import { OrchestrationWorkQueue } from '../app/control-tower/work-queue';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
@@ -211,6 +229,9 @@ describe('ADR-0151 §4.5 — named agent principal', () => {
   it('shows scheduled execution metadata to company HR while keeping cases and counts in their scope', async () => {
     await setModule(base.tenantId, 'notifications', 'active');
     await personMissingBank();
+    const [foreignCompany] = await owner.db.insert(schema.company).values({ tenantId: base.tenantId, legalName: 'Fictional other company' }).returning({ id: schema.company.id });
+    const [foreignPerson] = await owner.db.insert(schema.person).values({ tenantId: base.tenantId, fullName: 'Foreign Company Fixture' }).returning({ id: schema.person.id });
+    await owner.db.insert(schema.employment).values({ tenantId: base.tenantId, personId: foreignPerson.id, companyId: foreignCompany.id, hiredOn: '2024-01-01' });
     await switchEvent(NUDGE_SETTING_KEY, true);
     const ctx = await agent();
     await runHrOrchestrator(ctx);
@@ -222,7 +243,9 @@ describe('ADR-0151 §4.5 — named agent principal', () => {
     expect(company.observedAt).toEqual(group.observedAt);
     expect(company.scheduledRun).toBe(true);
     expect(company.total).toBeGreaterThan(0);
-    expect(company.rows.every(r => r.company === group.rows[0].company)).toBe(true);
+    expect(group.total).toBeGreaterThan(company.total);
+    expect(company.rows.some(r => r.name === 'Foreign Company Fixture')).toBe(false);
+    expect(company.rows.every(r => r.company === 'Acme Sdn Bhd')).toBe(true);
     const unassigned = { ...scoped, grants: [{ role: 'hr_admin', companyId: crypto.randomUUID() }] };
     const empty = await orchestrationQueue(unassigned);
     expect(empty.rows).toEqual([]);
@@ -232,7 +255,19 @@ describe('ADR-0151 §4.5 — named agent principal', () => {
     const other = await seedBase();
     expect((await orchestrationQueue(adminCtx(other))).lastRun).toBeNull();
     expect(JSON.stringify(company.lastRun)).not.toContain(ctx.agent!.principalId);
-  });
+    // Render the real view returned after this fixture's scheduled pass, for both administrative scopes.
+    for (const locale of Object.keys(copies) as (keyof typeof copies)[]) {
+      visual.locale = locale;
+      for (const [role, view] of [['group', group], ['company', company]] as const) {
+        const element = await OrchestrationWorkQueue({ view, canViewRuns: role === 'group' });
+        const html = renderToStaticMarkup(createElement(NextIntlClientProvider, { locale, messages: copies[locale] }, element));
+        expect(html).not.toContain(copies[locale].controlTower.orchestrator.unobserved);
+        if (role === 'company') expect(html).not.toContain('Foreign Company Fixture');
+        await captureAiReviewScreenshots(html.replace('<details class=', '<details open class='), locale,
+          role === 'group' ? 'scheduled-group' : 'scheduled-company', 'real component and scoped service read model after named scheduled fixture pass; no authenticated server journey');
+      }
+    }
+  }, 120000);
 
   it('reports fixed-template reminders and never reports scheduled models as active', async () => {
     await setModule(base.tenantId, 'notifications', 'active');

@@ -19268,7 +19268,7 @@
       "actions": "The closer",
       "actionsDoes": "Finds exceptions that were raised because something was missing from an employee record — and that record now has it. It proposes closing them; you approve, and each one is checked again as you do. It never changes an employee record.",
       "hypotheses": "The second opinion",
-      "hypothesesDoes": "Looks again at the people the fixed checks cleared, and compares each of them with their colleagues on the same payroll run. It can only ever ask for a second look — it can never block a run — and anything it suggests that we cannot re-derive from your own figures is thrown away before you see it.",
+      "hypothesesDoes": "AI drafting is not used in scheduled runs. The scheduled principal is not admitted to model spending; a configured provider does not enable it.",
       "nudge": "The chaser",
       "nudgeDoes": "Notices whose record is missing something payroll needs, and tells the one person who can fix it — the employee for their own bank details, HR for everything only HR can key in. It sends nothing until you switch it on.",
       "payRuleDrafter": "The pay-rule drafter",
@@ -19280,7 +19280,7 @@
       "planDrafter": "The plan drafter",
       "planDrafterDoes": "Drafts a reply to an improvement request raised from inside the product. This is our own tooling rather than a feature of your plan.",
       "triage": "The claim reader",
-      "triageDoes": "Reads each expense claim as it is filed and, if the description does not fit the rest of the claim, asks the person who filed it — before an approver spends time on it. It can only ever ask a question: it cannot refuse a claim, change one, or decide one.",
+      "triageDoes": "AI drafting is not used in scheduled runs. The scheduled principal is not admitted to model spending; a configured provider does not enable it.",
       "onehrEvidenceDrafter": "Assessment evidence draft",
       "onehrEvidenceDrafterDoes": "Selects and orders authorized evidence passages for a human to edit. Deterministic checks resolve every passage; it cannot invent claims or make assessment or pay decisions."
     },
@@ -24087,6 +24087,8 @@
     },
     "states": {
       "ready": "Ready",
+      "templates": "Fixed templates only",
+      "scheduled": "Scheduled AI unavailable",
       "paused": "Paused",
       "module": "Module unavailable",
       "provider": "Provider required",

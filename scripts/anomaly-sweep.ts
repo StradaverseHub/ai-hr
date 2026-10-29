@@ -149,7 +149,7 @@ export async function anomalySweep(url: string, opts: { dryRun?: boolean } = {})
     // and running it before the loop would always be one cycle stale.
     //
     // ⚠️ ITS OWN try/catch, and it is LAST on purpose. This is telemetry about our own accuracy; a
-    // failure here must not cost the tenant the verdicts and hypotheses this pass already produced, which
+    // failure here must not cost the tenant the deterministic verdicts this pass already produced, which
     // are the part somebody depends on tonight.
     //
     // No tenant switch, deliberately — see core/recurrence-mining.ts. It writes one timestamp to a

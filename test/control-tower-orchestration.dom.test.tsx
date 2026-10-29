@@ -1,4 +1,3 @@
-import { captureAiReviewScreenshots } from './helpers/ai-review-screenshots';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { createTranslator, NextIntlClientProvider } from 'next-intl';
@@ -61,7 +60,6 @@ describe('consolidated Control Tower', () => {
       expect(screen.queryByText(catalogues[locale].controlTower.orchestrator.unobserved)).toBeNull();
       expect(screen.queryByRole('link', { name: catalogues[locale].controlTower.orchestrator.runs }) != null).toBe(group);
       fireEvent.click(screen.getByText(catalogues[locale].controlTower.orchestrator.runDetails.title));
-      await captureAiReviewScreenshots(document.body.innerHTML, locale, group ? 'scheduled-group' : 'scheduled-company');
       cleanup();
     }
   }, 60000);
