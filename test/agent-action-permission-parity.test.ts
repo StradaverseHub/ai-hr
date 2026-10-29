@@ -10,7 +10,7 @@
  *   - AGENT prepare: the registry entry's store prepares a review of the same item.
  *   - AGENT confirm: the role confirms ITS OWN review (which runs the native service again); 'deny' when it
  *     has none.
- *   - CROSS-USER CONFIRM (refused roles only): a permitted role prepares a review, and this role must not be
+ *   - CROSS-USER CONFIRM (every role): a permitted role prepares a review, and this role must not be
  *     able to confirm it. The reference review must exist, or the test fails.
  * It requires the observed screen outcome to equal the declared one, every agent phase to equal the screen
  * (or to be refused where the matrix declares the agent narrower), and never an agent allow where the screen
@@ -142,7 +142,7 @@ type Adapter={
  screen(tx:Tx,who:SessionContext,item:Item,actorEmploymentId:string|null,o:Options):Promise<unknown>;
 };
 
-const MODULES=['assistant','claims','attendance','toil','payroll','typed_pay_components','performance','multi_cycle_payroll','country-my','lifecycle','notifications','system_testing'];
+const MODULES=['assistant','claims','attendance','toil','payroll','rewards','typed_pay_components','performance','multi_cycle_payroll','country-my','lifecycle','notifications','system_testing'];
 const SUBJECT_NAME='Fictional Parity Subject';
 /** HR calendar days from the repository's HR date owner. */
 function calendarDate(offset:number){const value=new Date(todayInKualaLumpur()+'T12:00:00Z');value.setUTCDate(value.getUTCDate()+offset);return value.toISOString().slice(0,10);}
@@ -366,7 +366,7 @@ class Rollback extends Error{constructor(){super('parity probe rollback');}}
 /** The refusal, with the driver's underlying cause (e.g. an RLS violation behind a 'Failed query'). */
 const why=(error:unknown):string=>{if(!(error instanceof Error))return String(error).slice(0,240);const cause=(error as {cause?:unknown}).cause;return `${error.name}: ${error.message.slice(0,160)}`+(cause instanceof Error?` | cause: ${cause.message.slice(0,200)}`:'');};
 /** confirm = the role confirms its OWN review ('deny' when it has none). crossUserConfirm = the role tries to
- * confirm a review another permitted role prepared ('n/a' for permitted roles). */
+ * confirm a review another permitted login prepared. */
 type Observed={screen:ParityOutcome}&Record<(typeof PARITY_PHASES)[number],ParityOutcome>&{crossUserConfirm:ParityOutcome|'n/a'};
 
 async function screenOutcome(adapter:Adapter,who:SessionContext,item:Item,actorEmploymentId:string|null,o:Options,notes:Record<string,string>):Promise<ParityOutcome>{
