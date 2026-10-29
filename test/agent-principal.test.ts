@@ -230,7 +230,7 @@ describe('ADR-0151 §4.5 — named agent principal', () => {
     await setModule(base.tenantId, 'notifications', 'active');
     await personMissingBank();
     const [foreignCompany] = await owner.db.insert(schema.company).values({ tenantId: base.tenantId, legalName: 'Fictional other company' }).returning({ id: schema.company.id });
-    const [foreignPerson] = await owner.db.insert(schema.person).values({ tenantId: base.tenantId, fullName: 'Foreign Company Fixture' }).returning({ id: schema.person.id });
+    const [foreignPerson] = await owner.db.insert(schema.person).values({ tenantId: base.tenantId, fullName: 'Foreign Company Fixture', primaryEmail: 'other.company.fixture@example.test' }).returning({ id: schema.person.id });
     await owner.db.insert(schema.employment).values({ tenantId: base.tenantId, personId: foreignPerson.id, companyId: foreignCompany.id, hiredOn: '2024-01-01' });
     await switchEvent(NUDGE_SETTING_KEY, true);
     const ctx = await agent();

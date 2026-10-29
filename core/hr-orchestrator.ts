@@ -174,7 +174,8 @@ export async function orchestrationQueue(ctx: SessionContext) {
       if (!(error instanceof EntitlementError)) throw error;
       actionsUnavailable = true;
     }
-    const runs = await tx.select({ at: schema.domainEvent.occurredAt, payload: schema.domainEvent.payload })
+    const runs = await tx.select({ at: schema.domainEvent.occurredAt, payload: schema.domainEvent.payload,
+      scheduled: sql<boolean>`${schema.domainEvent.payload} ->> 'scheduled' = 'true'` })
       .from(schema.domainEvent).where(and(eq(schema.domainEvent.eventType, 'orchestrator.pass-finished'),
         receiptScope(ctx)))
       .orderBy(desc(schema.domainEvent.occurredAt), desc(schema.domainEvent.sequence)).limit(1);
@@ -183,7 +184,7 @@ export async function orchestrationQueue(ctx: SessionContext) {
       verified: rows.filter(r => r.state === 'verified').length,
       inactive: rows.filter(r => r.state === 'inactive').length,
       observedAt: checks.length ? checks[0].at : null,
-      scheduledRun: runs[0]?.payload?.scheduled === true,
+      scheduledRun: runs[0]?.scheduled === true,
       lastRun: runs.length ? { at: runs[0].at, ...summarizeOrchestrationPass(runs[0].payload) } : null,
     };
   }, { readOnlySnapshot: true });
