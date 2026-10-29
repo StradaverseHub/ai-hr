@@ -26,6 +26,23 @@ def fixture():
             yield registry,snapshots,opt,proc
 
 class ResourceLifecycle(unittest.TestCase):
+    def test_closed_probe_scopes_refuse_cross_scope_wrong_run_and_unreleased_baseline(self):
+        with patch.object(p,'invocation'),patch.dict(os.environ,{'GITHUB_RUN_ID':'123'}):
+            self.assertEqual(str(p.root_directory()),'/opt/aihr-throughput-123-1')
+            self.assertEqual(str(p.root_directory('kernel-eof')),'/opt/aihr-throughput-123-1-kernel-eof')
+            for scope in ['',True,'other','../kernel-eof']:
+                with self.assertRaises(ValueError): p.root_directory(scope)
+            with patch.object(p.os,'geteuid',return_value=0):
+                for path,scope in [('/opt/aihr-throughput-124-1-kernel-eof','kernel-eof'),('/opt/aihr-throughput-123-1-kernel-orphan','kernel-eof')]:
+                    with self.assertRaises(ValueError): p.Registry(path,scope)
+        for scope in [None,'kernel-orphan']:
+            registry=object.__new__(p.Registry);registry._probe_case=scope
+            with self.assertRaises(ValueError): registry.popen(['/never/executed'],_release=False)
+            with self.assertRaises(AttributeError): registry.probe_case='kernel-eof'
+        p.check_gate_namespace(Path('/opt/aihr-throughput-123-1-kernel-eof'),'kernel-eof')
+        for path,scope in [('/opt/aihr-throughput-123-1-kernel-eof',None),('/opt/aihr-throughput-123-1-kernel-orphan','kernel-eof'),('/tmp/aihr-throughput-123-1-kernel-eof','kernel-eof')]:
+            with self.assertRaises(ValueError): p.check_gate_namespace(Path(path),scope)
+
     def test_area_intent_precedes_failed_allocation(self):
         with fixture() as (registry,snapshots,opt,proc):
             real_mkdir=Path.mkdir
@@ -96,9 +113,10 @@ class ResourceLifecycle(unittest.TestCase):
     def test_initialization_recovery_accepts_only_owned_empty_pending_namespaces(self):
         with fixture() as (registry,snapshots,opt,proc):
             root=opt/'initializing';root.mkdir();group=opt/'cgroup';group.mkdir();intent=opt/'intent.json'
-            data={'runId':123,'controller':'a'*40,'state':'preparing','rootIdentity':None,'namespaceIdentity':None}
+            data={'runId':123,'controller':'a'*40,'state':'preparing','rootIdentity':None,'namespaceIdentity':None,'probeCase':None}
             intent.write_bytes(p.canonical(data))
             with patch.object(p,'root_directory',return_value=root),patch.object(p,'cgroup_root',return_value=group),patch.object(p,'initialization_path',return_value=intent),patch.object(p,'cgroup_members',return_value=[]):
+                with self.assertRaises(ValueError): p.initialization_intent('kernel-eof')
                 self.assertTrue(p.recover_initialization());self.assertTrue(p.recover_initialization());self.assertFalse(group.exists())
                 data=json.loads(intent.read_bytes());data['rootIdentity']['ino']+=1;intent.write_bytes(p.canonical(data))
                 with self.assertRaises(ValueError): p.recover_initialization()

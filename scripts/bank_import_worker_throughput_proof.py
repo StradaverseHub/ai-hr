@@ -230,11 +230,15 @@ def current_job():
     check(job.get('name')=='throughput' and job.get('run_id')==run and job.get('head_sha')==head and job.get('run_attempt')==1 and job.get('status')=='in_progress' and job.get('labels')==['ubuntu-24.04'],'current standard-runner job differs')
     first=float(os.environ.get('THROUGHPUT_FIRST_STEP_EPOCH','nan'));return job,remaining_job_seconds(job.get('started_at'),time.time(),first)
 
-def root_directory():
-    invocation();return Path('/opt')/('aihr-throughput-'+os.environ['GITHUB_RUN_ID']+'-1')
+def probe_suffix(probe_case):
+    check(probe_case in [None,'kernel-eof','kernel-orphan'],'unknown kernel probe scope refused')
+    return '' if probe_case is None else '-'+probe_case
 
-def cgroup_root():
-    invocation();return Path('/sys/fs/cgroup')/('aihr-throughput-'+os.environ['GITHUB_RUN_ID']+'-1')
+def root_directory(probe_case=None):
+    invocation();return Path('/opt')/('aihr-throughput-'+os.environ['GITHUB_RUN_ID']+'-1'+probe_suffix(probe_case))
+
+def cgroup_root(probe_case=None):
+    invocation();return Path('/sys/fs/cgroup')/('aihr-throughput-'+os.environ['GITHUB_RUN_ID']+'-1'+probe_suffix(probe_case))
 
 def cgroup_members(folder):
     protected(folder,True);protected(folder/'cgroup.procs')
@@ -348,16 +352,25 @@ def same_identity(actual,expected):
     return all(actual[k]==expected[k] for k in ['pid','start','uid','gid','exe','cwd','argv']) and digest(actual['env'])==expected['envSha256']
 
 class Registry:
-    def __init__(self,path):
-        check(os.geteuid()==0,'root registry orchestration required');self.root=Path(path);check(self.root==root_directory(),'fixed current-run registry namespace required');protected(self.root,True)
+    def __init__(self,path,probe_case=None):
+        probe_suffix(probe_case);self._probe_case=probe_case
+        check(os.geteuid()==0,'root registry orchestration required');self.root=Path(path);check(self.root==root_directory(probe_case),'fixed current-run registry namespace required');protected(self.root,True)
         self.path=self.root/'registry.json';protected(self.path);self.data=json.loads(self.path.read_bytes())
         check(set(self.data)=={'format','runId','controller','children','forcedCleanup','createdChildren','finishedChildren','resources','namespace'} and self.data['format']==1 and self.data['runId']==number(os.environ['GITHUB_RUN_ID']) and self.data['controller']==os.environ['GITHUB_SHA'] and isinstance(self.data['children'],list) and len(self.data['children'])<=128 and type(self.data['createdChildren']) is int and type(self.data['finishedChildren']) is int and 0<=self.data['finishedChildren']<=self.data['createdChildren']<=25000 and isinstance(self.data['resources'],list) and len(self.data['resources'])<=3,'closed bounded current-controller registry required')
         check(set(self.data['namespace'])=={'dev','ino','state'} and self.data['namespace']['state'] in ['present','remove-pending','removed'],'closed cgroup namespace lifecycle required')
         self.gate=self.root/'gate.py';protected(self.gate);check(file_hash(self.gate)==file_hash(__file__),'registry gate bytes differ from current controller')
+        intent=initialization_intent(probe_case)
+        check(intent['state']=='ready' and intent['rootIdentity']=={'dev':self.root.stat().st_dev,'ino':self.root.stat().st_ino},'registry initialization/scope is not ready')
     def save(self): atomic_root(self.path,self.data)
+    @property
+    def probe_case(self): return self._probe_case
+    def cgroup_directory(self): return cgroup_root(getattr(self,'probe_case',None))
+    def worker_name(self):
+        case=getattr(self,'probe_case',None);probe_suffix(case)
+        return 'aihr-import-throughput-ci' if case is None else 'aihr-import-'+case+'-ci'
     def prepare_area(self):
         check(not any(r['type']=='area' for r in self.data['resources']),'one exact runtime area allocation required')
-        path=Path('/opt')/('aihr-large-throughput-ci-'+os.environ['GITHUB_RUN_ID']+'_1')
+        path=Path('/opt')/('aihr-large-throughput-ci-'+os.environ['GITHUB_RUN_ID']+'_1'+probe_suffix(getattr(self,'probe_case',None)))
         check(not os.path.lexists(path),'runtime allocation path already exists; refusing adoption')
         resource={'type':'area','path':str(path),'dev':None,'ino':None,'state':'create-pending'}
         self.data['resources'].append(resource);self.save()
@@ -365,7 +378,7 @@ class Registry:
         info=protected(path,True);resource.update(dev=info.st_dev,ino=info.st_ino,state='present');self.save()
         return path
     def prepare_user(self):
-        name='aihr-import-throughput-ci'
+        name=self.worker_name()
         check(not any(r['type']=='user' for r in self.data['resources']),'one exact worker allocation required')
         check(not any(u.pw_name==name for u in pwd.getpwall()) and not any(g.gr_name==name for g in grp.getgrall()),'worker account/group already exists; refusing adoption')
         used={u.pw_uid for u in pwd.getpwall()}|{u.pw_gid for u in pwd.getpwall()}|{g.gr_gid for g in grp.getgrall()}
@@ -381,7 +394,7 @@ class Registry:
         resource['state']='present';self.save();return user
     def register_area(self,path):
         path=Path(path);info=protected(path,True)
-        check(path.parent==Path('/opt') and re.fullmatch('aihr-large-throughput-ci-[A-Za-z0-9_]+',path.name) and not any(r['type']=='area' for r in self.data['resources']),'one exact newly owned runtime area required')
+        check(path.parent==Path('/opt') and re.fullmatch('aihr-large-throughput-ci-[A-Za-z0-9_]+',path.name) and getattr(self,'probe_case',None) is None and not any(r['type']=='area' for r in self.data['resources']),'one exact newly owned runtime area required')
         self.data['resources'].append({'type':'area','path':str(path),'dev':info.st_dev,'ino':info.st_ino,'state':'present'});self.save()
     def register_user(self,user):
         check(user.pw_name=='aihr-import-throughput-ci' and user.pw_uid>0 and user.pw_gid>0 and user.pw_dir=='/nonexistent' and user.pw_shell=='/usr/sbin/nologin' and not any(r['type']=='user' for r in self.data['resources']),'one dedicated native worker user required')
@@ -401,7 +414,8 @@ class Registry:
         for resource in self.data['resources']:
             if resource['type']=='area':
                 path=Path(resource['path']);state=resource['state']
-                check(path.parent==Path('/opt') and re.fullmatch('aihr-large-throughput-ci-[A-Za-z0-9_]+',path.name) and state in ['create-pending','present','remove-pending','removed'],'invalid owned runtime lifecycle')
+                expected='aihr-large-throughput-ci-'+os.environ['GITHUB_RUN_ID']+'_1'+probe_suffix(getattr(self,'probe_case',None))
+                check(path.parent==Path('/opt') and (path.name==expected or getattr(self,'probe_case',None) is None and re.fullmatch('aihr-large-throughput-ci-[A-Za-z0-9_]+',path.name)) and state in ['create-pending','present','remove-pending','removed'],'invalid owned runtime lifecycle')
                 try: info=protected(path,True)
                 except FileNotFoundError:
                     check(state in ['create-pending','remove-pending','removed'],'unexplained missing runtime area')
@@ -421,6 +435,7 @@ class Registry:
                 check(shutil.rmtree.avoids_symlink_attacks,'fd-safe recursive owned-area removal required');shutil.rmtree(path)
                 resource['state']='removed';self.save()
             elif resource['type']=='user':
+                check(resource['name']==self.worker_name(),'worker belongs to another probe namespace')
                 state=resource['state'];check(state in ['create-pending','present','remove-pending','removed'],'invalid worker lifecycle')
                 try: user=pwd.getpwnam(resource['name'])
                 except KeyError: user=None
@@ -468,7 +483,7 @@ class Registry:
                 record['state']='finished';record['returncode']=p.returncode;self.save();self.reap_empty();return
     def group_for(self,record):
         check(re.fullmatch('child-[0-9]{5}',record['cgroup']) and record['state'] in ['create-pending','created','active','finished','remove-pending','removed'],'invalid registered cgroup lifecycle')
-        parent=cgroup_root();info=protected(parent,True)
+        parent=self.cgroup_directory();info=protected(parent,True)
         check({'dev':info.st_dev,'ino':info.st_ino}==record['namespace'],'owned cgroup namespace inode changed')
         check(record['namespace']=={k:self.data['namespace'][k] for k in ['dev','ino']} and self.data['namespace']['state']=='present','child belongs to another/removing namespace')
         group=parent/record['cgroup']
@@ -484,7 +499,7 @@ class Registry:
         check(record['groupIdentity']==identity,'owned child cgroup inode changed')
         return group
     def create_group(self,auxiliaries):
-        parent=cgroup_root();info=protected(parent,True)
+        parent=self.cgroup_directory();info=protected(parent,True)
         check(self.data['namespace']=={'dev':info.st_dev,'ino':info.st_ino,'state':'present'},'owned cgroup namespace changed')
         record={'cgroup':'child-'+str(self.data['createdChildren']).zfill(5),'namespace':{'dev':info.st_dev,'ino':info.st_ino},'groupIdentity':None,'state':'create-pending','auxiliaries':auxiliaries or []}
         self.data['children'].append(record);self.data['createdChildren']+=1;self.save()
@@ -501,7 +516,7 @@ class Registry:
         self.data['children'].remove(record);self.data['finishedChildren']+=1;self.save()
     def remove_namespace(self):
         check(not self.data['children'],'cannot remove a namespace with registered child groups')
-        parent=cgroup_root();expected=self.data['namespace']
+        parent=self.cgroup_directory();expected=self.data['namespace']
         try: info=protected(parent,True)
         except FileNotFoundError:
             check(expected['state'] in ['remove-pending','removed'],'uncertain missing cgroup namespace')
@@ -517,7 +532,8 @@ class Registry:
             if record['state'] not in ['finished','remove-pending','removed']: continue
             group=self.group_for(record)
             if group is None or not cgroup_members(group): self.remove_group(record)
-    def popen(self,argv,*,cwd='/',env=None,gate_timeout=30,auxiliaries=None,**options):
+    def popen(self,argv,*,cwd='/',env=None,gate_timeout=30,auxiliaries=None,_release=True,**options):
+        check(_release is True or _release is False and getattr(self,'probe_case',None)=='kernel-eof','unreleased gate is restricted to exact EOF probe scope')
         env=dict(sorted((env or {}).items()));uid=options.pop('user',os.geteuid());gid=options.pop('group',os.getegid());options.pop('extra_groups',None);mask=options.pop('umask',0o022)
         check(type(uid) is int and type(gid) is int,'numeric owned child identities required')
         self.reap_empty();check(self.data['createdChildren']<25000 and len(self.data['children'])<128,'owned child registry count bound exceeded')
@@ -528,7 +544,7 @@ class Registry:
         try:
             p=subprocess.Popen(gate_argv,cwd=cwd,env=env,pass_fds=(config_r,ready_w,release_r),**options)
             os.close(config_r);config_r=None;os.close(ready_w);ready_w=None;os.close(release_r);release_r=None
-            config={'argv':argv,'env':env,'cwd':str(cwd),'uid':uid,'gid':gid,'mask':mask,'cgroup':str(group)}
+            config={'argv':argv,'env':env,'cwd':str(cwd),'uid':uid,'gid':gid,'mask':mask,'cgroup':str(group),'probeCase':getattr(self,'probe_case',None)}
             config_stream=os.fdopen(config_w,'wb');config_w=None
             with config_stream as stream: stream.write(canonical(config))
             ready,_,_=select.select([ready_r],[],[],gate_timeout);check(ready and os.read(ready_r,1)==b'R','owned gate readiness timeout')
@@ -537,7 +553,10 @@ class Registry:
             gate=serial_identity(actual)
             expected={**gate,'exe':str(Path(argv[0]).resolve()),'argv':argv,'envSha256':digest(b''.join((k+'='+v).encode()+b'\0' for k,v in env.items()))}
             record.update({'pid':p.pid,'start':actual['start'],'parent':os.getpid(),'parentStart':proc_snapshot(os.getpid())['start'],'gate':gate,'exec':expected,'state':'active'});self.save()
-            os.write(release_w,b'X');os.close(release_w);release_w=None
+            if _release:
+                os.write(release_w,b'X');os.close(release_w);release_w=None
+            else:
+                p._aihr_probe_release_fd=release_w;release_w=None
             return p
         except BaseException:
             try:
@@ -571,7 +590,7 @@ class Registry:
             check(time.monotonic()<deadline,'surviving owned descendants invalidate proof completion');time.sleep(0.02)
         for record in self.data['children']:
             check(re.fullmatch('child-[0-9]{5}',record['cgroup']),'invalid registered cgroup name')
-            check(not cgroup_members(cgroup_root()/record['cgroup']),'surviving owned descendants invalidate proof completion')
+            check(not cgroup_members(self.cgroup_directory()/record['cgroup']),'surviving owned descendants invalidate proof completion')
         check(not self.data['children'] and self.data['createdChildren']==self.data['finishedChildren'],'unreaped child registry prevents success')
         check(not self.data['forcedCleanup'],'forced cleanup invalidates every receipt')
     def cleanup(self):
@@ -621,35 +640,41 @@ class Registry:
         self.cleanup_resources()
         check(not self.data['forcedCleanup'],'forced cleanup invalidates every receipt')
 
+def check_gate_namespace(gate_root,probe_case):
+    suffix=probe_suffix(probe_case)
+    check(gate_root.parent==Path('/opt') and re.fullmatch('aihr-throughput-[1-9][0-9]*-1'+re.escape(suffix),gate_root.name),'gate/configuration probe namespace mismatch')
+
 def gate_main(words):
     check(len(words)==3 and os.geteuid()==0,'root owned gate invocation required')
     config_fd,ready_fd,release_fd=map(int,words)
     with os.fdopen(config_fd,'rb') as incoming: raw=incoming.read(1024**2+1)
     check(len(raw)<=1024**2,'gate configuration bound');c=json.loads(raw)
-    check(set(c)=={'argv','env','cwd','uid','gid','mask','cgroup'} and isinstance(c['argv'],list) and c['argv'] and all(isinstance(v,str) and '\0' not in v for v in c['argv']) and isinstance(c['env'],dict),'closed gate configuration required')
+    check(set(c)=={'argv','env','cwd','uid','gid','mask','cgroup','probeCase'} and isinstance(c['argv'],list) and c['argv'] and all(isinstance(v,str) and '\0' not in v for v in c['argv']) and isinstance(c['env'],dict),'closed gate configuration required')
     gate_root=Path(__file__).resolve().parent
-    check(gate_root.parent==Path('/opt') and re.fullmatch('aihr-throughput-[1-9][0-9]*-1',gate_root.name),'fixed root-owned gate namespace required');protected(gate_root,True);protected(__file__)
+    check(gate_root.parent==Path('/opt') and re.fullmatch('aihr-throughput-[1-9][0-9]*-1(?:-kernel-(?:eof|orphan))?',gate_root.name),'fixed root-owned gate namespace required');protected(gate_root,True);protected(__file__)
+    check_gate_namespace(gate_root,c['probeCase'])
     group=Path(c['cgroup']);check(group.parent==Path('/sys/fs/cgroup')/gate_root.name and re.fullmatch('child-[0-9]{5}',group.name),'fixed registered cgroup required');protected(group,True);protected(group/'cgroup.procs');(group/'cgroup.procs').write_text(str(os.getpid()));in_cgroup(os.getpid(),group)
     os.chdir(c['cwd']);os.setgroups([]);os.setgid(c['gid']);os.setuid(c['uid']);os.umask(c['mask']);os.write(ready_fd,b'R');os.close(ready_fd)
     release=os.read(release_fd,1);os.close(release_fd)
     if release!=b'X': os._exit(125)
     os.execve(c['argv'][0],c['argv'],c['env'])
 
-def initialization_path(): return root_directory().with_name(root_directory().name+'-init.json')
+def initialization_path(probe_case=None):
+    root=root_directory(probe_case);return root.with_name(root.name+'-init.json')
 
-def initialization_intent():
-    path=initialization_path();check(protected(path).st_size<=65536,'bounded initialization intent required');raw=path.read_bytes();data=json.loads(raw)
+def initialization_intent(probe_case=None):
+    path=initialization_path(probe_case);check(protected(path).st_size<=65536,'bounded initialization intent required');raw=path.read_bytes();data=json.loads(raw)
     check(raw==canonical(data),'canonical initialization intent required')
-    check(set(data)=={'runId','controller','state','rootIdentity','namespaceIdentity'} and data['runId']==number(os.environ['GITHUB_RUN_ID']) and data['controller']==os.environ['GITHUB_SHA'] and data['state'] in ['preparing','ready','aborted'],'exact initialization intent required')
+    check(set(data)=={'runId','controller','state','rootIdentity','namespaceIdentity','probeCase'} and data['runId']==number(os.environ['GITHUB_RUN_ID']) and data['controller']==os.environ['GITHUB_SHA'] and data['probeCase']==probe_case and data['state'] in ['preparing','ready','aborted'],'exact initialization intent required')
     return data
 
-def recover_initialization():
+def recover_initialization(probe_case=None):
     """No child/allocation is authorized until the complete gate/registry is ready."""
-    path=initialization_path();root=root_directory()
+    path=initialization_path(probe_case);root=root_directory(probe_case)
     if not os.path.lexists(path):
-        check(not os.path.lexists(root) and not os.path.lexists(cgroup_root()),'namespace exists without owned initialization intent; manual inspection required')
+        check(not os.path.lexists(root) and not os.path.lexists(cgroup_root(probe_case)),'namespace exists without owned initialization intent; manual inspection required')
         return True
-    data=initialization_intent()
+    data=initialization_intent(probe_case)
     if os.path.lexists(root):
         info=protected(root,True);actual={'dev':info.st_dev,'ino':info.st_ino}
         if data['rootIdentity'] is None:
@@ -658,7 +683,7 @@ def recover_initialization():
         check(data['rootIdentity']==actual,'initialization root inode changed')
     else: check(data['rootIdentity'] is None and data['state']!='ready','owned initialization root unexpectedly missing')
     if data['state']=='ready': return False
-    group=cgroup_root()
+    group=cgroup_root(probe_case)
     if os.path.lexists(group):
         info=protected(group,True);actual={'dev':info.st_dev,'ino':info.st_ino}
         check(data['namespaceIdentity'] in (None,actual) and not cgroup_members(group) and not any(p.is_dir() for p in group.iterdir()),'uncertain/populated initialization cgroup; manual inspection required')
@@ -666,22 +691,23 @@ def recover_initialization():
         data['namespaceIdentity']=actual;atomic_root(path,data);group.rmdir()
     data['state']='aborted';atomic_root(path,data);return True
 
-def initialize():
-    check(os.geteuid()==0,'root accepted-input namespace required');root=root_directory()
-    check(not os.path.lexists(root) and not os.path.lexists(cgroup_root()) and not os.path.lexists(initialization_path()),'initialization namespace already exists; refusing adoption')
-    data={'runId':number(os.environ['GITHUB_RUN_ID']),'controller':os.environ['GITHUB_SHA'],'state':'preparing','rootIdentity':None,'namespaceIdentity':None}
-    atomic_root(initialization_path(),data)  # BEFORE either namespace allocation.
-    root.mkdir(mode=0o700);info=protected(root,True);data['rootIdentity']={'dev':info.st_dev,'ino':info.st_ino};atomic_root(initialization_path(),data)
+def initialize(probe_case=None):
+    check(os.geteuid()==0,'root accepted-input namespace required');root=root_directory(probe_case)
+    check(not os.path.lexists(root) and not os.path.lexists(cgroup_root(probe_case)) and not os.path.lexists(initialization_path(probe_case)),'initialization namespace already exists; refusing adoption')
+    data={'runId':number(os.environ['GITHUB_RUN_ID']),'controller':os.environ['GITHUB_SHA'],'state':'preparing','rootIdentity':None,'namespaceIdentity':None,'probeCase':probe_case}
+    atomic_root(initialization_path(probe_case),data)  # BEFORE either namespace allocation.
+    root.mkdir(mode=0o700);info=protected(root,True);data['rootIdentity']={'dev':info.st_dev,'ino':info.st_ino};atomic_root(initialization_path(probe_case),data)
     check(Path('/sys/fs/cgroup/cgroup.controllers').is_file(),'cgroup v2 required; no weaker descendant cleanup fallback')
-    cgroup_root().mkdir(mode=0o755);info=protected(cgroup_root(),True)
-    data['namespaceIdentity']={'dev':info.st_dev,'ino':info.st_ino};atomic_root(initialization_path(),data)
+    cgroup_root(probe_case).mkdir(mode=0o755);info=protected(cgroup_root(probe_case),True)
+    data['namespaceIdentity']={'dev':info.st_dev,'ino':info.st_ino};atomic_root(initialization_path(probe_case),data)
     atomic_root(root/'registry.json',{'format':1,'runId':number(os.environ['GITHUB_RUN_ID']),'controller':os.environ['GITHUB_SHA'],'children':[],'forcedCleanup':False,'createdChildren':0,'finishedChildren':0,'resources':[],'namespace':{'dev':info.st_dev,'ino':info.st_ino,'state':'present'}})
     fd=os.open(root/'gate.py',os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o400)
     with os.fdopen(fd,'wb') as out: out.write(Path(__file__).read_bytes());out.flush();os.fsync(out.fileno())
-    data['state']='ready';atomic_root(initialization_path(),data)
+    data['state']='ready';atomic_root(initialization_path(probe_case),data)
     return root
 
-def export_cleanup_evidence(root,destination):
+def export_cleanup_evidence(root,destination,probe_case=None):
+    probe_suffix(probe_case);prefix='owned-' if probe_case is None else 'owned-'+probe_case+'-'
     destination=Path(destination);info=destination.lstat()
     check(destination.resolve(strict=True)==destination and destination.name=='bank-throughput-evidence' and stat.S_ISDIR(info.st_mode) and str(info.st_uid)==os.environ.get('SUDO_UID') and not info.st_mode&0o022,'original private runner evidence directory required')
     for name in ['registry.json','budget.json',*[p.name for p in root.glob('cleanup-*')]]:
@@ -691,7 +717,37 @@ def export_cleanup_evidence(root,destination):
         protected(path)
         with path.open('rb') as incoming: raw=incoming.read(1024**2+1)
         check(len(raw)<=1024**2,'bounded cleanup evidence required')
-        evidence_bytes(destination/('owned-'+name),raw,refresh=True,mode=0o644)
+        evidence_bytes(destination/(prefix+name),raw,refresh=True,mode=0o644)
+
+def cleanup_scope(probe_case,measurement_result,evidence_dir):
+    root=root_directory(probe_case);registry=None;failure=None
+    try:
+        if not recover_initialization(probe_case):
+            registry=Registry(root,probe_case)
+            try: registry.cleanup()
+            except ValueError as error:
+                # A probe intentionally invalidates its own receipt. This never waives baseline failure.
+                check(probe_case=='kernel-orphan' and str(error)=='CI throughput proof refused: forced cleanup invalidates every receipt' and registry.data['forcedCleanup'] and not registry.data['children'] and registry.data['namespace']['state']=='removed','independent namespace cleanup failed: '+str(error))
+    except BaseException as error: failure=error
+    if registry is not None and (probe_case is not None or failure is not None or measurement_result!='success'):
+        try: registry.invalidate_receipt()
+        except BaseException as error:
+            print('Exact receipt invalidation also failed: '+str(error),file=sys.stderr)
+            if failure is None: failure=error
+    try:
+        export_cleanup_evidence(root,evidence_dir,probe_case)
+        intent=initialization_path(probe_case)
+        if os.path.lexists(intent):
+            initialization_intent(probe_case)
+            prefix='owned-' if probe_case is None else 'owned-'+probe_case+'-'
+            evidence_bytes(Path(evidence_dir)/(prefix+'initialization.json'),intent.read_bytes(),refresh=True,mode=0o644)
+    except BaseException as error:
+        print('Bounded cleanup evidence export also failed: '+str(error),file=sys.stderr)
+        if failure is None: failure=error
+    if failure is not None: raise failure
+
+def cleanup_deadline(signum,frame):
+    raise TimeoutError('Independent namespace cleanup deadline exceeded; remaining scopes must still be attempted')
 
 def cli():
     if len(sys.argv)>1 and sys.argv[1]=='gate': gate_main(sys.argv[2:]);return
@@ -709,27 +765,15 @@ def cli():
     if args.mode=='budget':
         job,seconds=current_job();print(json.dumps({'jobId':job['id'],'startedAt':job['started_at'],'maxSeconds':seconds,'wholeJobSeconds':job_seconds(),'cleanupEvidenceReserveSeconds':RESERVE_SECONDS,'mode':proof_mode()}));return
     if args.mode=='cleanup':
-        root=root_directory();registry=None;failure=None
-        try:
-            if not recover_initialization(): registry=Registry(root);registry.cleanup()
-        except BaseException as error: failure=error
-        if registry is not None and (failure is not None or args.measurement_result!='success'):
-            try: registry.invalidate_receipt()
+        failures=[];previous=signal.signal(signal.SIGALRM,cleanup_deadline)
+        for case in [None,'kernel-eof','kernel-orphan']:
+            signal.setitimer(signal.ITIMER_REAL,55 if case is None else 15)
+            try: cleanup_scope(case,args.measurement_result,Path(args.evidence_dir).absolute())
             except BaseException as error:
-                print('Exact receipt invalidation also failed: '+str(error),file=sys.stderr)
-                if failure is None: failure=error
-        if root.exists():
-            try:
-                destination=Path(args.evidence_dir).absolute()
-                export_cleanup_evidence(root,destination)
-                intent=initialization_path()
-                if os.path.lexists(intent):
-                    initialization_intent()
-                    evidence_bytes(destination/'owned-initialization.json',intent.read_bytes(),refresh=True,mode=0o644)
-            except BaseException as error:
-                print('Bounded cleanup evidence export also failed: '+str(error),file=sys.stderr)
-                if failure is None: failure=error
-        if failure is not None: raise failure
+                failures.append(error);print('Independent cleanup failed for '+str(case)+': '+str(error),file=sys.stderr)
+            finally: signal.setitimer(signal.ITIMER_REAL,0)
+        signal.signal(signal.SIGALRM,previous)
+        if failures: raise failures[0]
         print(json.dumps({'ownedRegistryCleanupSucceeded':True,'releaseAuthorized':False}));return
     if args.mode in ['verify','prepare','measure']:
         inputs,manifest,ledger=verify_packet(args.source,args.producer_controller)
