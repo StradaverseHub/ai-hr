@@ -52,6 +52,7 @@ import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import {
   BatchHasBlockingAnomaliesError,
+  BatchHasPendingEmployeesError,
   BatchNotResettableError,
   PayrollPermissionDeniedError,
   RemoveNoEmployeesError,
@@ -438,6 +439,14 @@ describe('Payroll — removeEmployeePayroll (DB)', () => {
     ).rejects.toBeInstanceOf(RemoveNoEmployeesError);
     expect(await slipsOf(batchId)).toEqual(before);
 
+    // cdb1c6ca — Close now refuses while an eligible employee is still New / Pending, and the stranger is
+    // exactly that (employed all May, no payslip on the run). They left before May for this case's
+    // purpose, which is the closed-run refusal below, not the pending gate.
+    await owner.db
+      .update(schema.employment)
+      .set({ terminatedOn: '2026-04-30' })
+      .where(eq(schema.employment.id, stranger.employmentId));
+
     // d2 — close the run, which closes its (single-run) pay period, then try again.
     await closeBatch(a, { batchId });
     expect((await batchRow(batchId)).status).toBe('closed');
@@ -658,8 +667,13 @@ describe('Payroll — removeEmployeePayroll (DB)', () => {
     // …and narrowed to the removed employment, exactly like the loan/claim unwind in case b.
     expect((await verdictRow(review.id)).supersededAt).toBeNull();
 
-    // The point of all of it: the very next thing the operator does now works.
-    await closeBatch(a, { batchId });
-    expect((await batchRow(batchId)).status).toBe('closed');
+    // The point of all of it: Close is no longer refused over the removed employee's ANOMALY. cdb1c6ca —
+    // it is refused instead because that employee is now New / Pending on the run (eligible, no payslip),
+    // which names them for what they are: somebody still to be processed, not somebody with a blocked figure.
+    const refusal = await closeBatch(a, { batchId }).catch((e: unknown) => e);
+    expect(refusal).not.toBeInstanceOf(BatchHasBlockingAnomaliesError);
+    expect(refusal).toBeInstanceOf(BatchHasPendingEmployeesError);
+    expect((refusal as BatchHasPendingEmployeesError).employees.map((e) => e.employmentId)).toEqual([gone.employmentId]);
+    expect((await batchRow(batchId)).status).toBe('processed');
   });
 });
