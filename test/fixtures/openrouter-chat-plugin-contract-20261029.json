@@ -1,0 +1,932 @@
+{
+  "source": "https://openrouter.ai/openapi.json",
+  "retrievedOn": "2026-10-29",
+  "sourceSha256": "57dd13eb5c3a7d64d478274a016c2822bb409f18d5f91b68d17628818d904220",
+  "scope": "Validation-keyword projection of ChatRequest.plugins and transitive component references. Descriptive annotations omitted. No account or request data.",
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "items": {
+      "oneOf": [
+        {
+          "$ref": "#/components/schemas/AutoRouterPlugin"
+        },
+        {
+          "$ref": "#/components/schemas/AutoBetaRouterPlugin"
+        },
+        {
+          "$ref": "#/components/schemas/ModerationPlugin"
+        },
+        {
+          "$ref": "#/components/schemas/WebSearchPlugin"
+        },
+        {
+          "$ref": "#/components/schemas/WebFetchPlugin"
+        },
+        {
+          "$ref": "#/components/schemas/FileParserPlugin"
+        },
+        {
+          "$ref": "#/components/schemas/ResponseHealingPlugin"
+        },
+        {
+          "$ref": "#/components/schemas/ContextCompressionPlugin"
+        },
+        {
+          "$ref": "#/components/schemas/ParetoRouterPlugin"
+        },
+        {
+          "$ref": "#/components/schemas/FusionPlugin"
+        },
+        {
+          "$ref": "#/components/schemas/SwitchyardRouterPlugin"
+        },
+        {
+          "$ref": "#/components/schemas/JevRouterPlugin"
+        },
+        {
+          "$ref": "#/components/schemas/AlignmentPlugin"
+        },
+        {
+          "$ref": "#/components/schemas/ArmorPlugin"
+        }
+      ]
+    },
+    "type": "array",
+    "components": {
+      "schemas": {
+        "AlignmentPlugin": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "enum": [
+                "alignment"
+              ],
+              "type": "string"
+            },
+            "instruct": {
+              "type": "boolean"
+            },
+            "max_retries": {
+              "type": "integer"
+            },
+            "mode": {
+              "enum": [
+                "enforce",
+                "audit"
+              ],
+              "type": "string"
+            },
+            "rules": {
+              "items": {
+                "$ref": "#/components/schemas/AlignmentRule"
+              },
+              "maxItems": 128,
+              "minItems": 1,
+              "type": "array"
+            },
+            "threshold": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "id",
+            "rules"
+          ],
+          "type": "object"
+        },
+        "AlignmentRule": {
+          "additionalProperties": false,
+          "properties": {
+            "rule": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            },
+            "watch": {
+              "items": {
+                "enum": [
+                  "content",
+                  "tool_calls",
+                  "refusal",
+                  "images",
+                  "audio"
+                ],
+                "type": "string"
+              },
+              "maxItems": 5,
+              "minItems": 1,
+              "type": "array",
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "rule",
+            "watch"
+          ],
+          "type": "object"
+        },
+        "ArmorAutoMode": {
+          "properties": {
+            "allow": {
+              "items": {
+                "anyOf": [
+                  {
+                    "maxLength": 8122,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ArmorRule"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "environment": {
+              "items": {
+                "anyOf": [
+                  {
+                    "maxLength": 4122,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ArmorEnvironmentEntry"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "hard_deny": {
+              "items": {
+                "anyOf": [
+                  {
+                    "maxLength": 8122,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ArmorRule"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "soft_deny": {
+              "items": {
+                "anyOf": [
+                  {
+                    "maxLength": 8122,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ArmorRule"
+                  }
+                ]
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "ArmorContext": {
+          "additionalProperties": {},
+          "properties": {
+            "auto_mode": {
+              "$ref": "#/components/schemas/ArmorAutoMode"
+            },
+            "v": {
+              "enum": [
+                1
+              ],
+              "type": "number"
+            }
+          },
+          "required": [
+            "v"
+          ],
+          "type": "object"
+        },
+        "ArmorEnvironmentEntry": {
+          "properties": {
+            "name": {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            "value": {
+              "maxLength": 4000,
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "value"
+          ],
+          "type": "object"
+        },
+        "ArmorPlugin": {
+          "additionalProperties": false,
+          "properties": {
+            "classifier_context": {
+              "$ref": "#/components/schemas/ArmorContext"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "evaluate_native_tools": {
+              "type": "boolean"
+            },
+            "id": {
+              "enum": [
+                "armor"
+              ],
+              "type": "string"
+            },
+            "mode": {
+              "enum": [
+                "enforce",
+                "audit"
+              ],
+              "type": "string"
+            },
+            "on_error": {
+              "enum": [
+                "log",
+                "block"
+              ],
+              "type": "string"
+            },
+            "output_mode": {
+              "enum": [
+                "text",
+                "custom_item",
+                "claude_code_compatibility"
+              ],
+              "type": "string"
+            },
+            "use_cc_style_default_rules": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "ArmorRule": {
+          "properties": {
+            "id": {
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9_-]*$",
+              "type": "string"
+            },
+            "instructions": {
+              "maxLength": 8000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "name": {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            "threshold": {
+              "format": "double",
+              "type": "number"
+            }
+          },
+          "required": [
+            "id",
+            "instructions"
+          ],
+          "type": "object"
+        },
+        "AutoBetaRouterPlugin": {
+          "properties": {
+            "allowed_models": {
+              "items": {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              "maxItems": 1024,
+              "type": "array"
+            },
+            "cost_quality_tradeoff": {
+              "maximum": 10,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "cost_tier": {
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ],
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "excluded_models": {
+              "items": {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              "maxItems": 1024,
+              "type": "array"
+            },
+            "id": {
+              "enum": [
+                "auto-beta-router"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "AutoRouterPlugin": {
+          "properties": {
+            "allowed_models": {
+              "items": {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              "maxItems": 1024,
+              "type": "array"
+            },
+            "cost_quality_tradeoff": {
+              "maximum": 10,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "cost_tier": {
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max"
+              ],
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "excluded_models": {
+              "items": {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              "maxItems": 1024,
+              "type": "array"
+            },
+            "id": {
+              "enum": [
+                "auto-router"
+              ],
+              "type": "string"
+            },
+            "pin_model": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "ContextCompressionEngine": {
+          "enum": [
+            "middle-out"
+          ],
+          "type": "string"
+        },
+        "ContextCompressionPlugin": {
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "engine": {
+              "$ref": "#/components/schemas/ContextCompressionEngine"
+            },
+            "id": {
+              "enum": [
+                "context-compression"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "FileParserPlugin": {
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "id": {
+              "enum": [
+                "file-parser"
+              ],
+              "type": "string"
+            },
+            "pdf": {
+              "$ref": "#/components/schemas/PDFParserOptions"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "FusionPlugin": {
+          "properties": {
+            "analysis_models": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 8,
+              "minItems": 1,
+              "type": "array"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "id": {
+              "enum": [
+                "fusion"
+              ],
+              "type": "string"
+            },
+            "max_tool_calls": {
+              "maximum": 16,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "model": {
+              "type": "string"
+            },
+            "preset": {
+              "enum": [
+                "general-high",
+                "general-budget",
+                "general-fast"
+              ],
+              "type": "string"
+            },
+            "tools": {
+              "items": {
+                "properties": {
+                  "parameters": {
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "format": "double",
+                                "type": "number"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "format": "double",
+                                "type": "number"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "type": "object"
+                  },
+                  "type": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type"
+                ],
+                "type": "object"
+              },
+              "maxItems": 8,
+              "type": "array"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "JevRouterPlugin": {
+          "additionalProperties": false,
+          "properties": {
+            "allowed_models": {
+              "items": {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              "maxItems": 1024,
+              "type": "array"
+            },
+            "cost_tier": {
+              "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+              "type": "string"
+            },
+            "excluded_models": {
+              "items": {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              "maxItems": 1024,
+              "type": "array"
+            },
+            "id": {
+              "enum": [
+                "jev-router"
+              ],
+              "type": "string"
+            },
+            "models": {
+              "items": {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              "maxItems": 1024,
+              "type": "array"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "ModerationPlugin": {
+          "properties": {
+            "id": {
+              "enum": [
+                "moderation"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "PDFParserEngine": {
+          "anyOf": [
+            {
+              "enum": [
+                "mistral-ocr",
+                "native",
+                "cloudflare-ai"
+              ],
+              "type": "string"
+            },
+            {
+              "enum": [
+                "pdf-text"
+              ],
+              "type": "string"
+            }
+          ]
+        },
+        "PDFParserOptions": {
+          "properties": {
+            "engine": {
+              "$ref": "#/components/schemas/PDFParserEngine"
+            }
+          },
+          "type": "object"
+        },
+        "ParetoRouterPlugin": {
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "id": {
+              "enum": [
+                "pareto-router"
+              ],
+              "type": "string"
+            },
+            "max_price": {
+              "format": "double",
+              "minimum": 0,
+              "type": "number"
+            },
+            "min_coding_score": {
+              "format": "double",
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            "price_source": {
+              "enum": [
+                "prompt",
+                "weighted_avg"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "ResponseHealingPlugin": {
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "id": {
+              "enum": [
+                "response-healing"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "SwitchyardRouterPlugin": {
+          "properties": {
+            "algorithm": {
+              "enum": [
+                "capability",
+                "stage",
+                "auto",
+                "random",
+                "composite",
+                "passthrough"
+              ],
+              "type": "string"
+            },
+            "id": {
+              "enum": [
+                "switchyard-router"
+              ],
+              "type": "string"
+            },
+            "judge_model": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "WebFetchPlugin": {
+          "properties": {
+            "allowed_domains": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "blocked_domains": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "id": {
+              "enum": [
+                "web-fetch"
+              ],
+              "type": "string"
+            },
+            "max_content_tokens": {
+              "type": "integer"
+            },
+            "max_uses": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "WebSearchEngine": {
+          "enum": [
+            "native",
+            "exa",
+            "firecrawl",
+            "parallel",
+            "perplexity"
+          ],
+          "type": "string"
+        },
+        "WebSearchMode": {
+          "enum": [
+            "instant",
+            "fast",
+            "auto",
+            "deep-lite",
+            "deep",
+            "deep-reasoning",
+            "turbo",
+            "basic",
+            "advanced"
+          ],
+          "type": "string"
+        },
+        "WebSearchPlugin": {
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "engine": {
+              "$ref": "#/components/schemas/WebSearchEngine"
+            },
+            "exclude_domains": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "id": {
+              "enum": [
+                "web"
+              ],
+              "type": "string"
+            },
+            "include_domains": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "max_results": {
+              "type": "integer"
+            },
+            "max_uses": {
+              "type": "integer"
+            },
+            "mode": {
+              "$ref": "#/components/schemas/WebSearchMode"
+            },
+            "search_prompt": {
+              "type": "string"
+            },
+            "user_location": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/WebSearchUserLocation"
+                },
+                {
+                  "required": [
+                    "type"
+                  ]
+                }
+              ]
+            },
+            "x_search": {
+              "$ref": "#/components/schemas/XSearchOptions"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "WebSearchUserLocation": {
+          "properties": {
+            "city": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "country": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "region": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "timezone": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "approximate"
+              ],
+              "type": "string"
+            }
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "XSearchOptions": {
+          "additionalProperties": false,
+          "properties": {
+            "allowed_x_handles": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 20,
+              "type": "array"
+            },
+            "enable_image_understanding": {
+              "type": "boolean"
+            },
+            "enable_video_understanding": {
+              "type": "boolean"
+            },
+            "excluded_x_handles": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 20,
+              "type": "array"
+            },
+            "from_date": {
+              "format": "date",
+              "type": "string"
+            },
+            "to_date": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    }
+  }
+}

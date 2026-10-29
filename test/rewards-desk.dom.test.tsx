@@ -13,7 +13,7 @@ import {changedRewardMatrixCells} from '../app/rewards/[unitId]/desk/reference-m
 import {BonusPoolWorking} from '../app/rewards/[unitId]/desk/bonus-pool-working';
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 const budget={payrollCents:1000000,pools:[50000,10000,5000],used:[30000,12000,2000],bonusPayrollCents:1000000,bonusPoolCents:200000,bonusUsedCents:180000,balanceCents:20000} as PlanBudget;
-const view={unit:{id:'unit',status:'draft',kind:'annual',snapshotDate:'2026-10-29',policy:{...defaultPolicy(2026),patActual:90,patTarget:100,targetMonthsBp:20000}},budgets:{standard:budget,h:{...budget,pools:[0,0,0],used:[0,0,0],bonusPoolCents:0,bonusUsedCents:0}},returned:null,due:null} as unknown as Awaited<ReturnType<typeof getRewardUnit>>;
+const view={roles:['gr'],unit:{id:'unit',status:'draft',kind:'annual',snapshotDate:'2026-10-29',policy:{...defaultPolicy(2026),patActual:90,patTarget:100,targetMonthsBp:20000}},budgets:{standard:budget,h:{...budget,pools:[0,0,0],used:[0,0,0],bonusPoolCents:0,bonusUsedCents:0}},returned:null,due:null} as unknown as Awaited<ReturnType<typeof getRewardUnit>>;
 const wrap=(node:React.ReactNode)=><NextIntlClientProvider locale="en" messages={en}>{node}</NextIntlClientProvider>;
 afterEach(cleanup);
 describe('Reward Desk step 1',()=>{

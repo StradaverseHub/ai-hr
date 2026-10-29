@@ -10,6 +10,9 @@ import {
 } from '@/core/payroll-readiness';
 import { statutoryPackStale } from '@/lib/statutory-readiness';
 import { Card, PageHeader, pageWideCls } from '@/components/ui';
+import { isGroupAdmin } from '@/lib/authz-model';
+import { settingEnabledOrDefault } from '@/core/entitlements';
+import { PayrollCorrectionsForm } from './corrections-form';
 
 /**
  * Feature 2.0 — Payroll Configuration landing (information architecture over existing config surfaces).
@@ -17,7 +20,7 @@ import { Card, PageHeader, pageWideCls } from '@/components/ui';
  * modelled on the approved Feature 1.2 Transactions hub. Like that precedent we render ONLY the wired
  * destinations — no "coming soon" placeholders.
  *
- * No schema, no service, no DomainEvent (deliberate, not an omission): this page performs no writes.
+ * Configuration writes use their audited destination services; payroll correction controls use setTenantSetting.
  * Config *changes* are already audited by the destination services (core/payroll-config.ts,
  * core/pay-components.ts), so the audit / "only active settings" guarantees live there, not here.
  *
@@ -148,6 +151,21 @@ export default async function PayrollSetupPage({
   return (
     <div className={pageWideCls}>
       <PageHeader title={t('title')} description={t('subtitle')} />
+
+      <PayrollCorrectionsForm
+        enabled={settingEnabledOrDefault(s, 'payroll.reset_enabled')}
+        canEdit={isGroupAdmin(s)}
+        labels={{
+          title: t('corrections.title'),
+          label: t('corrections.label'),
+          description: t('corrections.description'),
+          scope: t('corrections.scope'),
+          readOnly: t('corrections.readOnly'),
+          save: t('corrections.save'),
+          saving: t('corrections.saving'),
+          saved: t('corrections.saved'),
+        }}
+      />
 
       {problems.length > 0 && (
         <Card className="border-amber-300 dark:border-amber-500/40">

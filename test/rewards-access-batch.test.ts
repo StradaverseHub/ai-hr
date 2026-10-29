@@ -1,5 +1,6 @@
+import {establishRewardMembership,migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 import {previewRewardAccessBatch,saveRewardAccessBatch} from './rewards-access-fixture';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import type { SessionContext } from '../db/client';
@@ -9,6 +10,7 @@ import { createRewardUnit, getRewardConfiguration, previewRewardAccessCopy, rewa
 import type { RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
+beforeAll(migrateRewardMembershipFixture);
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
 /** f38e5d8e — multi-review access batches and copying access from an earlier cycle. */
 describe('Rewards access batches', () => {
@@ -32,6 +34,7 @@ describe('Rewards access batches', () => {
         const [o] = await owner.db.insert(s.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code: 'OPS', name: 'Operations' }).returning();
         const [f] = await owner.db.insert(s.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code: 'FIN', name: 'Finance' }).returning();
         ops = o.id; fin = f.id;
+        for(const businessUnitId of [ops,fin])await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId,departmentId:b.deptA,year});
         first = await createRewardUnit(admin, { name: 'Earlier cycle', year, companyId: b.companyId, businessUnitId: ops, snapshotDate: today });
         cycle = (await getRewardConfiguration(admin, first)).unit.cycleId;
     });
@@ -39,6 +42,7 @@ describe('Rewards access batches', () => {
     it('refuses a whole batch that touches one locked review and saves a valid batch once, reporting existing rows', async () => {
         const second = await createRewardUnit(admin, { name: 'Second', cycleId: cycle, year, companyId: b.companyId, businessUnitId: fin, snapshotDate: today });
         const [lockedBu] = await owner.db.insert(s.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code: 'LCK', name: 'Locked' }).returning();
+        await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:lockedBu.id,departmentId:b.deptA,year});
         const locked = await createRewardUnit(admin, { name: 'Locked', cycleId: cycle, year, companyId: b.companyId, businessUnitId: lockedBu.id, snapshotDate: today });
         const ctro = await account('Group CTRO');
         const all = [await change(first, ctro, 'ctro'), await change(second, ctro, 'ctro'), await change(locked, ctro, 'ctro')];

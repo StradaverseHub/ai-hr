@@ -14,7 +14,7 @@ export async function saveSharedRewardPolicyAction(form:FormData):Promise<Shared
   const current=groupId?(await listRewardPolicyGroups(session)).find(group=>group.groupId===groupId):null;
   if(groupId&&(!current||current.revision!==expectedRevision))return {ok:false,code:'changed'};
   const rawTargets=form.get('targets');if(typeof rawTargets!=='string'||rawTargets.length>100000)return {ok:false,code:'invalid'};
-  const base=current?.policy??defaultPolicy(year),policy=rewardPolicyFromForm(form,{...base,year});
+  const base=current?.policy??defaultPolicy(year),policy=rewardPolicyFromForm(form,{...base,year},{context:'shared'});
   const version=await saveRewardPolicyGroup(session,{groupId,expectedRevision,name:String(form.get('name')??''),policy,targets:JSON.parse(rawTargets)});
   revalidatePath('/admin/rewards','layout');return {ok:true,value:{groupId:version.groupId,revision:version.revision}};
  }catch(error){
