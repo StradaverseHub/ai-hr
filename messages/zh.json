@@ -489,7 +489,8 @@
     "aiManagementOrchestrator": "HR 工作队列",
     "aiManagementRuns": "最近模型调用",
     "moduleELetter": "电子信函",
-    "emailTemplates": "邮件模板"
+    "emailTemplates": "邮件模板",
+    "aiManagementInventory": "AI 清单"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -16430,6 +16431,10 @@
       "reports-employee-master-deliver": {
         "name": "员工主档报表发送",
         "description": "检查到期的每周及每月报表，核验收件人当前同意和权限，并记录发送结果。"
+      },
+      "ai-alerts": {
+        "name": "AI 警报检查",
+        "description": "每小时检查失败的 AI 调用、定时代理被拒绝的请求、接近月度上限的 AI 支出以及被覆盖的 AI 开关，并向运维人员发出警报。"
       }
     }
   },
@@ -24685,7 +24690,138 @@
     "groupsPrecedence": "登录账号适用的额度：其个人额度；否则依次为所在部门、公司、角色的额度（同一层级有多个匹配时，适用最严格的上限）；否则为下方的默认额度。",
     "agentRunsAs": "以 HR 代理账户运行，由 {by} 于 {date} 开启。",
     "agentUnknownAdmin": "一位前任管理员",
-    "agentUnattributed": "开启时未记录具名管理员，因此 HR 代理账户不会运行。请先暂停再重新启用，以您的名义运行。"
+    "agentUnattributed": "开启时未记录具名管理员，因此 HR 代理账户不会运行。请先暂停再重新启用，以您的名义运行。",
+    "staleOverrideOn": "此功能先前保存的开关已被忽略，现仅按其设置运行。",
+    "staleOverrideOff": "此功能先前保存的暂停已被忽略，现仅按其设置运行。",
+    "inv": {
+      "title": "AI 清单",
+      "intro": "所有 AI 组件集中在一个列表中：助手对话、其读取绑定、定时专员、每个助手操作及其层级、定时作业、内置 AI 功能、夜间 HR 工作队列步骤以及运维改进循环。每一行显示由什么开关控制、由什么暂停，以及过去 30 天的运行情况。",
+      "registryNotice": "您看到的是贵公司的只读登记与层级视图。开关、额度、运行记录、成本和审计历史仅向集团管理员显示。",
+      "costHelp": "使用量和成本涵盖过去 30 天。成本为每次调用报告的令牌数和服务商额度；此处不认证美元金额。助手操作和读取绑定的模型使用计入助手对话。",
+      "never": "从未",
+      "readOnly": "只读",
+      "actionPaused": "已暂停",
+      "actionActive": "运行中",
+      "pauseAction": "暂停此操作",
+      "resumeAction": "恢复此操作",
+      "outOfBand": "带外",
+      "outOfBandHelp": "产品之外的运维工具。为完整起见列出；由平台管理，不在此页面操作。",
+      "on": "开",
+      "off": "关",
+      "allowanceDefault": "默认每个登录：每天 {daily} 次请求 · 每月 {tokens} 个令牌",
+      "allowanceNone": "无默认上限",
+      "countedUnderChat": "模型使用计入助手对话",
+      "use30": "{runs} 次调用 · {tokens} 个令牌 · {failed} 次失败 · {blocked} 次拦截",
+      "credits": "服务商报告的额度：{credits}",
+      "creditsUnknown": "服务商未报告额度",
+      "outcomes": "{prepared} 已准备 · {completed} 已完成 · {refused} 已拒绝 · {discarded} 已丢弃 · {expired} 已过期",
+      "rates": "{completed} 已完成 · {refused} 已拒绝",
+      "audit": "{count} 次变更 · 最近 {date}",
+      "auditNone": "30 天内无变更",
+      "jobs": {
+        "review-sweep": "夜间 HR 工作队列运行",
+        "ai-retention": "AI 运行历史保留",
+        "ai-alerts": "AI 警报检查"
+      },
+      "steps": {
+        "observe": "检查员工记录",
+        "readiness": "发送记录提醒",
+        "claims": "询问不清楚的报销"
+      },
+      "improve": "运维改进循环（反馈规划）",
+      "tiers": {
+        "automatic": "自动",
+        "confirm": "确认",
+        "approve": "审批",
+        "handoff": "转交"
+      },
+      "switchKinds": {
+        "setting": "设置",
+        "policy": "AI 开关",
+        "platform": "平台",
+        "module": "模块",
+        "none": "无"
+      },
+      "kinds": {
+        "chat": "助手对话",
+        "read_binding": "读取绑定",
+        "specialist": "定时专员",
+        "action": "助手操作",
+        "scheduled_job": "定时作业",
+        "embedded_feature": "内置 AI 功能",
+        "orchestrator_step": "HR 工作队列步骤",
+        "operator_loop": "运维循环（带外）"
+      },
+      "cols": {
+        "component": "组件",
+        "tier": "层级",
+        "switch": "开关",
+        "pauseKey": "暂停键",
+        "allowance": "额度",
+        "lastRun": "最近运行",
+        "use30": "30 天使用量与成本",
+        "outcomes": "结果（30 天）",
+        "audit": "审计事件"
+      },
+      "register": {
+        "title": "服务商数据登记",
+        "intro": "针对每个 AI 功能：哪些类型的数据会离开贵公司发送给 AI 服务商，以及发送前会遮盖什么。在选择或更换服务商之前请先阅读。",
+        "namesNote": "遮盖会移除电子邮件地址、马来西亚身份证号码和电话号码，但从不移除姓名。",
+        "principalNothing": "定时运行不向服务商发送任何内容（仅使用模板）。",
+        "imagesYes": "发送图片",
+        "imagesNo": "无图片",
+        "cols": {
+          "feature": "功能",
+          "fields": "发送的数据",
+          "redaction": "遮盖",
+          "images": "图片"
+        },
+        "fields": {
+          "question_text": "输入的问题或指令",
+          "scoped_hr_records": "用户可读取的 HR 记录（休假、档案、薪资摘要、报销）",
+          "pasted_import_source": "粘贴的导入数据",
+          "admin_prompt": "管理员编写的指令",
+          "synthetic_only": "仅虚构测试数据",
+          "column_headings": "上传文件的列标题",
+          "gap_codes": "仅缺失字段代码",
+          "claim_details": "报销类型、项目、金额、日期和说明",
+          "payroll_ratios": "匿名薪资比率",
+          "payroll_figures": "不含姓名的薪资数字",
+          "rule_description": "薪资规则说明",
+          "field_catalogue": "字段列表",
+          "performance_text": "绩效评语、目标和反馈文本",
+          "first_name": "名字",
+          "full_names": "全名",
+          "approver_names": "审批人和作者姓名",
+          "attachment_text": "从附件读取的文本",
+          "image_attachments": "图片附件",
+          "product_feedback_text": "产品反馈文本"
+        },
+        "redaction": {
+          "pii_masked": "已遮盖",
+          "partial": "部分遮盖",
+          "none": "未遮盖",
+          "not_needed": "无需遮盖"
+        }
+      },
+      "alerts": {
+        "title": "AI 需要关注",
+        "help": "服务器每小时检查 AI 调用失败率、定时代理被拒绝的请求、本月支出与租户支出上限的对比，以及与实际开关不一致的 AI 开关覆盖，并向运维人员发出警报。额度上限以及被模块或平台关闭的开关仅在此页面检查。",
+        "failure_rate": "过去 24 小时内有 {count} 次 AI 调用失败（占调用的 {detail}）。",
+        "principal_refusals": "过去 24 小时内定时代理的 {count} 次 AI 请求被拒绝。定时工作不应向模型发送任何内容。",
+        "spend_near_cap": "{count} 个支出或使用上限已达到或接近其限额。",
+        "switch_drift": "{count} 个 AI 开关已设为开启但未生效（{detail}）。",
+        "unavailable": "暂时无法检查 AI 警报。这并不表示一切正常：请刷新页面，或请运维人员查看服务器警报日志。"
+      },
+      "rangeFrom": "从",
+      "rangeTo": "至",
+      "rangeShown": "显示 {from} 至 {to} · 第 {page} 页，每页 {size} 次调用",
+      "paging": "运行历史分页",
+      "previous": "上一页",
+      "next": "下一页",
+      "pageOf": "第 {page} 页",
+      "pausedTitle": "已暂停的操作"
+    }
   },
   "accountEmail": {
     "title": "账户邮件发送记录",

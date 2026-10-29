@@ -1550,6 +1550,13 @@
       "breakpoints": true
     },
     {
+      "idx": 240,
+      "version": "7",
+      "when": 1781862219000,
+      "tag": "0240_employment_blacklist",
+      "breakpoints": true
+    },
+    {
       "idx": 225,
       "version": "7",
       "when": 1781862224000,
@@ -1561,13 +1568,6 @@
       "version": "7",
       "when": 1781862229000,
       "tag": "0230_delegation_scope_reason",
-      "breakpoints": true
-    },
-    {
-      "idx": 240,
-      "version": "7",
-      "when": 1781862219000,
-      "tag": "0240_employment_blacklist",
       "breakpoints": true
     },
     {
@@ -3965,10 +3965,24 @@
       "breakpoints": true
     },
     {
+      "idx": 682,
+      "version": "7",
+      "when": 1793330000018,
+      "tag": "0692_ai_feature_switch_owner",
+      "breakpoints": true
+    },
+    {
       "idx": 683,
       "version": "7",
       "when": 1793330000019,
       "tag": "0693_assistant_action_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 686,
+      "version": "7",
+      "when": 1793330000022,
+      "tag": "0696_ai_agent_action_pause",
       "breakpoints": true
     },
     {

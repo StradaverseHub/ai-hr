@@ -8,6 +8,8 @@ import { getBrowserCommandSession } from '@/lib/session';
 import { AuthRequiredError } from '@/lib/auth-errors';
 import { isAiFeature } from '@/lib/ai/features';
 import {setAiSpendBudget} from '@/core/ai-spend-management';
+import { setAgentActionPause } from '@/core/ai-inventory';
+import { isAgentActionId } from '@/lib/ai/agent-action-registry';
 import { aiManagementHref, type AiManagementSection } from './sections';
 import { applyBulkAssistantAccess, clearGroupAllowance, setGroupAllowance, AiControlError, clearUserAllowance, parseAiAllowance, setAiAllowance, setAiFeature, setAssistantPermission } from '@/core/ai-management';
 
@@ -128,4 +130,18 @@ export async function clearGroupAllowanceAction(formData: FormData) {
   } catch (e) { redirect(failedAt('allowances', await commandError(e))); }
   revalidatePath(PAGE, 'layout');
   redirect(aiManagementHref('allowances', { toast: 'saved', anchor: '#ai-groups' }));
+}
+
+/** WP12 (R8): pause or resume ONE agent action (`hr_assistant:<actionId>`). Group administrators only; the owner and
+ *  the database re-check. Returns to the action's inventory row. */
+export async function setAgentActionPauseAction(formData: FormData) {
+  const t = await getTranslations('aiManagement');
+  const action = formData.get('action'), paused = String(formData.get('paused'));
+  try {
+    const s = await getBrowserCommandSession();
+    if (!isAgentActionId(action) || !['true','false'].includes(paused)) throw new AiControlError(t('invalid'));
+    await setAgentActionPause(s, action, paused === 'true');
+  } catch (e) { redirect(failedAt('inventory', await commandError(e))); }
+  revalidatePath(PAGE, 'layout');
+  redirect(aiManagementHref('inventory', {toast:'saved', anchor:isAgentActionId(action) ? `#ai-component-action-${String(action).replace(/[^a-z0-9_-]/gi,'-')}` : '#ai-inventory'}));
 }

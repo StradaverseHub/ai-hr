@@ -12,6 +12,7 @@ import {captureStrictAiSpendRoot,requiresAiTaskRoot,type StrictAiSpendRoot} from
 export type {StrictAiSpendRoot} from '../lib/ai/spend-allocation';
 import {aiSpendAdmissionStep,resolveAiSpendPolicyTx,resolveReviewedAiSpendCapabilityTx,withReviewedAiSpendDispatch} from './ai-spend-capability';
 import {aiSpendConfigurationDigest,createAiSpendReceiptScope} from '../lib/ai/spend-receipt';
+import {currentAgentActionScope} from './agent-action-pause-scope';
 
 /** Reuse the gateway's fresh setting/platform-kill resolution for deterministic action checks. */
 async function forcedPauseTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promise<boolean>{
@@ -35,6 +36,19 @@ export async function assertAiActionUnpausedTx(tx:Tx,ctx:SessionContext,feature:
  const [control]=await tx.execute<{unpaused:boolean}>(sql`select app.ai_action_unpaused(${feature},${forcedPause}) as unpaused`);
  if(control?.unpaused===false)throw new AiAllowanceError('paused');
  if(control?.unpaused!==true)throw new AiGatewayError('AI action controls could not be confirmed.');
+ // WP12 (R8): inside an Assistant review-route command, that action's own pause key under hr_assistant (0696).
+ // A review-route command whose action could not be named fails closed.
+ const route=currentAgentActionScope();
+ if(route&&route.action===null)throw new AiAllowanceError('paused');
+ if(route?.action&&feature==='hr_assistant')await assertAgentActionUnpausedTx(tx,route.action);
+}
+
+/** One registry action's own pause (`hr_assistant:<actionId>`). Call only after the hr_assistant module check,
+ * in the effect's transaction; it takes the same ai-control lock. Grants nothing. */
+export async function assertAgentActionUnpausedTx(tx:Tx,actionId:string):Promise<void>{
+ const [row]=await tx.execute<{unpaused:boolean}>(sql`select app.ai_agent_action_unpaused(${actionId}) as unpaused`);
+ if(row?.unpaused===false)throw new AiAllowanceError('paused');
+ if(row?.unpaused!==true)throw new AiGatewayError('AI action controls could not be confirmed.');
 }
 
 /** Trusted command checks are additional refusal conditions, never model-supplied capabilities.

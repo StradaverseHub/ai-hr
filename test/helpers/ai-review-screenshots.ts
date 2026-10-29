@@ -31,7 +31,7 @@ const FONT_ORIGIN='https://review-fonts.invalid/';
 const scriptFontCss=SCRIPT_FONTS.map(font=>`@font-face{font-family:'${font.family}';src:url(${FONT_ORIGIN}${font.file}) format('${font.format}');font-weight:${font.weight};font-style:normal;font-display:block;}`).join('');
 const fontBytes=new Map<string,Buffer>();
 function scriptFont(file:string):Buffer{let bytes=fontBytes.get(file);if(!bytes){bytes=brotliDecompressSync(readFileSync(join('assets/fonts',file)));fontBytes.set(file,bytes);}return bytes;}
-export async function captureAiReviewScreenshots(html:string,locale:string,section:'overview'|'queue'|'probe'|'scheduled-group'|'scheduled-company'|'build-list'|'pay-rule'|'delegation-replacement'|`chat-card-${string}`,fixture='real components; fictional data owners; no authenticated server journey'){
+export async function captureAiReviewScreenshots(html:string,locale:string,section:'overview'|'queue'|'probe'|'scheduled-group'|'scheduled-company'|'build-list'|'pay-rule'|'delegation-replacement'|'inventory-group'|'inventory-company'|'runs-paged'|`chat-card-${string}`,fixture='real components; fictional data owners; no authenticated server journey'){
  const evidence=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
  if(!evidence)return;
  if(process.env.GITHUB_ACTIONS!=='true')throw Error('Visual capture requires the selected GitHub Actions runner.');

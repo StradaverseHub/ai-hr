@@ -123,7 +123,8 @@ export const TENANT_STATUS_UNRESOLVED = 'unresolved';
  *     notices. The honest answer for a caller with no entitlement data is "I cannot know", never "yes".
  *   - `getSetting`      → THE CATALOG DEFAULT, not the tenant's configured value. A setting is a VALUE,
  *     and there is no "open" for a value; the only answer available without a snapshot is the default.
- *     Defaults vary; performance AI switches default true. A marked caller reads catalogue values, not necessarily OFF.
+ *     Every catalogued BOOLEAN default is false (the six performance AI switches since owner decision 3, WP6), so a
+ *     marked caller reads every switch OFF; non-boolean settings read their catalogued value.
  * That is a trap for exactly one shape of caller: a sweep that ends up BEHIND a setting. The concrete
  * case is `scripts/feedback-plan.ts` and `feedback.ai_planning_enabled` (default false) — the moment
  * slice 3 swaps that env read for `settingEnabled(ctx, …)` the cron silently plans nothing. The fix is
