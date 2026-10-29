@@ -18,5 +18,5 @@ test('closed worker package format rejects altered bytes, links, inventory and p
 test('worker installer refuses mutable trust inputs and fixes the privileged service definition',()=>{
  const result=pythonCases('test/fixtures/bank-import-worker-installer-tests.py');
  assert.equal(result.status,0,result.stdout+'\n'+result.stderr);
- assert.match(result.stderr,/Ran 7 tests/);
+ assert.match(result.stderr,/Ran 8 tests/);
 });

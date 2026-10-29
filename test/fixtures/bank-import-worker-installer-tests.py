@@ -60,5 +60,12 @@ class WorkerInstallerTests(unittest.TestCase):
         def run(argv,**kwargs): return SimpleNamespace(returncode=0,stdout='ActiveState=active\nMainPID=123\nUnitFileState=disabled\n')
         with patch.object(install,'command',side_effect=run),patch.object(install.time,'monotonic',side_effect=[0,0,331]),patch.object(install.time,'sleep'):
             with self.assertRaisesRegex(RuntimeError,'could not confirm'): install.stop_owned_first_install()
+    def test_lock_uses_dedicated_verified_directory_instead_of_shared_run_lock(self):
+        self.assertEqual(install.LOCK_DIRECTORY,Path('/run/aihr-bank-import'))
+        with tempfile.TemporaryDirectory() as tmp:
+            directory=Path(tmp)/'dedicated';checked=[]
+            with patch.object(install,'LOCK_DIRECTORY',directory),patch.object(install,'root_protected',side_effect=lambda path:checked.append(Path(path))):
+                self.assertEqual(install.install_lock_directory(),directory)
+            self.assertTrue(directory.is_dir());self.assertEqual(checked,[Path(tmp),directory])
 
 unittest.main()
