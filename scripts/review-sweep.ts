@@ -18,15 +18,20 @@
 // (sweepLeaveApprovalEscalations) — leave requests whose current approval step has sat pending past the
 // company's configured working-day threshold get a bell notification for the next approver. One job, no
 // second cron line to drift.
+// ADR-0151 §4.5 (0672): the ORCHESTRATOR pass runs as the tenant's named agent principal, not as this
+// script's anonymous hr_admin context. The principal holds no grant; it runs only the specialists an
+// administrator switched on (attributed by their switch-on event), and every effect names both. The
+// deterministic engine jobs above it (reviews, escalation, movements, dispatch) stay system jobs.
 // Idempotent: a re-run opens nothing already open (and escalation fires once per (group, step) ever).
 // Schedule daily, e.g.
 //   0 3 * * *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/review-sweep.ts
-import { createDb, type SessionContext } from '../db/client';
+import { createDb, withTenant, type SessionContext } from '../db/client';
 import { describeSkips, loadSweepScope } from '../core/sweep-scope';
 import { sweepDueReviews, sweepReviewReminders } from '../core/employment-review';
 import { sweepLeaveApprovalEscalations } from '../core/leave-escalation';
 import { sweepDueMovements } from '../core/movement-apply';
 import { runHrOrchestrator } from '../core/hr-orchestrator';
+import { agentContext, agentSwitchStatesTx, attributedEnablements, ensureAgentPrincipal } from '../core/agent-principal';
 import { drainNotificationProjection } from '../core/orchestrator-harness';
 import { dispatchNotificationsFromSweep } from '../core/notifications';
 import { todayInKualaLumpur } from '../core/leave';
@@ -104,15 +109,24 @@ async function main() {
       // become notifications in this same pass rather than waiting a day for the next admin page load.
       // Returns `disabled` for a tenant that has not switched it on, which is the default and is not a
       // failure; those tenants are simply not counted below.
-      const orchestration = await runHrOrchestrator(ctx);
-      const nudge = orchestration.nudge.status === 'succeeded' ? orchestration.nudge.value
+      // Attribution is read inside the principal's own transaction (it may read only those switch events).
+      const principalId = await ensureAgentPrincipal(owner.db, t.id);
+      const switches = await withTenant(agentContext(t.id, principalId, entitlements), tx => agentSwitchStatesTx(tx, agentContext(t.id, principalId, entitlements)));
+      const enablements = attributedEnablements(switches);
+      const unattributed = switches.filter(s => s.state === 'unattributed').map(s => s.feature);
+      if (unattributed.length > 0) console.error(`  ⚠ ${unattributed.join(', ')} switched on without a named administrator — not run; switch it off and on again in AI management.`);
+      // No attributed specialist: no pass tonight. An administrator's refresh in the Control Tower still
+      // observes readiness under their own login.
+      const orchestration = enablements.length > 0
+        ? await runHrOrchestrator(agentContext(t.id, principalId, entitlements, enablements)) : null;
+      const nudge = orchestration?.nudge.status === 'succeeded' ? orchestration.nudge.value
         : { disabled: true, sent: 0, settled: 0, cooled: 0, orphaned: 0, cappedOut: false, awaitingReview: 0, changed: 0 };
-      const triage = orchestration.triage.status === 'succeeded' ? orchestration.triage.value
+      const triage = orchestration?.triage.status === 'succeeded' ? orchestration.triage.value
         : { disabled: true, queried: 0, candidates: 0, cleared: 0, rejected: 0, notConfigured: false, cappedOut: false };
       if (!nudge.disabled) nudgeTenants++;
       if (!triage.disabled) triageTenants++;
       totalQueries += triage.queried;
-      if (orchestration.failed) console.error('  Orchestrator requires attention: a step failed.');
+      if (orchestration?.failed) console.error('  Orchestrator requires attention: a step failed.');
 
       // Project the new started/reminder/escalation/nudge events into notifications now — gated on the
       // tenant's `notifications` entitlement, which the snapshot above makes this context answer truthfully.
@@ -122,7 +136,7 @@ async function main() {
         notificationCappedTenants++;
         console.error('  Notification queue reached its batch limit; more work may remain.');
       }
-      if (orchestration.failed || projection.cappedOut) failures++;
+      if (orchestration?.failed || projection.cappedOut) failures++;
       totalOpened += opened;
       totalReminders += reminders;
       totalEscalated += escalated;
@@ -155,7 +169,7 @@ async function main() {
               (triage.queried > 0 ? ` — ${triage.queried} question(s) raised` : ' — none to ask about') +
               (triage.cleared > 0 ? `, ${triage.cleared} read and clear` : '') +
               (triage.rejected > 0 ? `, ⚠ ${triage.rejected} discarded` : '') +
-              (triage.notConfigured ? ' [no AI provider]' : '') +
+              (triage.notConfigured ? ' [no model admission]' : '') +
               (triage.cappedOut ? ' — ⚠ CAPPED, more remain' : '')),
       );
     } catch (e) {

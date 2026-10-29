@@ -276,6 +276,15 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/ui-theme-actions.ts":{"setUiTheme":"internal:session_and_presentation"},
 });
 
+/** ADR-0151 §4.5 — what the named agent principal runs unattended: Automatic-tier specialists only, each
+ * behind its existing tenant switch and attributed to the administrator who switched it on. These are not
+ * human entry points, so they are listed here rather than in the inventory above. Adding one is a reviewed
+ * change to this list (core/agent-principal.ts derives its switches from it) and to migration 0672's policies. */
+export const AGENT_PRINCIPAL_SPECIALISTS=Object.freeze({
+ readiness_reminders:{tier:'automatic',setting:'notifications.readiness_nudge_enabled',service:'core/readiness-nudge.ts#sweepReadinessNudges',effect:'reminder to the employee or HR about a missing record field'},
+ claims_triage:{tier:'automatic',setting:'claims.input_triage_enabled',service:'core/input-triage.ts#triagePendingClaims',effect:'question to the claimant; not admitted to a model under the principal'},
+} as const satisfies Record<'readiness_reminders'|'claims_triage',{tier:'automatic';setting:string;service:string;effect:string}>);
+
 /** Counts by class, for a Control Tower coverage view and for measuring how the backlog moves. */
 export function agentCapabilityCoverage(){
  const counts:Record<string,number>={};

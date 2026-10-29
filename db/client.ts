@@ -61,7 +61,17 @@ export type SessionContext = {
    * while the tenant is suspended, which is the point of suspending it.
    */
   statutoryOverride?: string;
+  /**
+   * ADR-0151 §4.5 — the tenant's named agent principal, for unattended Automatic-tier work only. Never a
+   * login: a context carrying it must have no userId and no grant (withTenant refuses otherwise), so every
+   * administrator and person branch of RLS is false for it and only its own policies (0672) apply.
+   * `enablements` names, per specialist, the administrator and the switch-on event it runs under.
+   */
+  agent?: { principalId: string; enablements: readonly AgentEnablement[] };
 };
+
+/** One switched-on specialist and who switched it on (the actor of that `tenant-setting.changed` event). */
+export type AgentEnablement = { feature: 'readiness_reminders' | 'claims_triage'; userId: string; eventId: string };
 
 // Reuse pools across hot-reloads (dev) so HMR doesn't leak Postgres connections.
 const globalForPg = globalThis as unknown as {
@@ -178,6 +188,9 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     if (!ctx || !ctx.tenantId) {
       throw new Error('withTenant was called without a valid session context (missing tenantId).');
     }
+    if (ctx.agent && (ctx.userId || ctx.personId || (ctx.grants?.length ?? 0) > 0 || (ctx.roles?.length ?? 0) > 0)) {
+      throw new Error('An agent context cannot also carry a login or a grant.');
+    }
     // Backward-compat: a context with only `roles` becomes group-wide grants (companyId null).
     const grants = ctx.grants ?? (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
     const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
@@ -188,7 +201,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
       // My Leave). The four are independent and all evaluated in this one row, so the outcome is the
       // same; test/r394-with-tenant-one-round-trip.test.ts pins both the values and the single statement.
       await tx.execute(
-        sql`select set_config('app.tenant_id', ${ctx.tenantId}, true), set_config('app.user_id', ${ctx.userId ?? ''}, true), set_config('app.roles', ${roleNames.join(',')}, true), set_config('app.grants', ${JSON.stringify(grants)}, true)`,
+        sql`select set_config('app.tenant_id', ${ctx.tenantId}, true), set_config('app.user_id', ${ctx.userId ?? ''}, true), set_config('app.roles', ${roleNames.join(',')}, true), set_config('app.grants', ${JSON.stringify(grants)}, true), set_config('app.agent_principal_id', ${ctx.agent?.principalId ?? ''}, true)`,
       );
       // ADR-0030 Layer 2 gate: the domain_event hash-chain trigger only fires when this GUC is 'on'.
       // Off by default → chain columns stay NULL → byte-identical behaviour (deployment flag).

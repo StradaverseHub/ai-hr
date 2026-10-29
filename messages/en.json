@@ -24064,7 +24064,10 @@
     "groupsNone": "No group allowances yet.",
     "groupRemove": "Remove group allowance",
     "groupAdd": "Add or update a group",
-    "groupsPrecedence": "Which allowance applies to a login: its individual allowance; otherwise its department’s, then its company’s, then its role’s (when several match at the same level, the strictest limit applies); otherwise the default below."
+    "groupsPrecedence": "Which allowance applies to a login: its individual allowance; otherwise its department’s, then its company’s, then its role’s (when several match at the same level, the strictest limit applies); otherwise the default below.",
+    "agentRunsAs": "Runs as the HR agent account, switched on by {by} on {date}.",
+    "agentUnknownAdmin": "a former administrator",
+    "agentUnattributed": "Switched on without a named administrator, so the HR agent account does not run it. Pause it and enable it again to run it under your name."
   },
   "accountEmail": {
     "title": "Account email deliveries",

@@ -3851,6 +3851,13 @@
       "when": 1793300000006,
       "tag": "0673_mobile_push_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 665,
+      "version": "7",
+      "when": 1793310000000,
+      "tag": "0672_ai_agent_principal",
+      "breakpoints": true
     }
   ]
 }

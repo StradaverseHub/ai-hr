@@ -285,3 +285,73 @@ Still open, outside wave 1:
 3. Provider data handling: wave 1 uses the tenant's existing configured provider under the existing Assistant
    grant, allowances and pause; it sends no prepared-action content to any new provider. Any provider change
    remains a separate decision (ADR-0131 amendment of 2026-10-25).
+
+## Amendment, 2026-10-29: the named agent principal (§4.5)
+
+Status: implementation decision for §4.5 under the owner's 2026-10-29 instruction to build the agent account
+and the first HR-admin actions. Verified in source at main `82f7c6570`. Accepted here is not merged, tested or
+installed.
+
+### Facts that shaped it
+
+| Fact | Where |
+| --- | --- |
+| The nightly pass's only authority is the session setting `app.grants=[{hr_admin, null}]`; nothing checks it against a login or role row. Every row it reads it reads through the `is_admin*` branches. | `scripts/review-sweep.ts`, `db/client.ts`, migration 0016 |
+| No model call is ever admitted for it: provider, spend and claims-source admission all require a current login (`assertAiPrincipalTx`). Readiness reminders always use the fixed templates, and claims triage always reports "no AI provider". | `core/ai-principal.ts`, `core/readiness-nudge.ts`, `core/input-triage.ts` |
+| Pending profile corrections are invisible to it (the restrictive `access_profile_review_read` needs a login), so a person who already submitted a correction can still be chased. | migration 0579, `core/readiness-actions.ts` |
+| Its events are `actor_type='agent'` with no `actor_id`, and its proposals carry no decider. Process assessment counts `agent` and `system` actions as automated. | `core/hr-orchestrator.ts`, `core/process-assessment.ts` |
+
+### Decision
+
+1. **Identity.** `app.ai_agent_principal` holds one row per tenant (an id and a creation time). It is not an
+   `app_user`, has no `role_assignment` and no credentials, so no login path can resolve to it. A session
+   context carries it as `agent: { principalId, enablements }`. `withTenant` sets the principal in its own
+   transaction-local setting and refuses an agent context that also carries a login or any grant.
+2. **Authority.** An agent context holds **no grants**: `is_admin()`, `is_admin_for()` and every login branch
+   are false. `app.current_agent_principal()` (SECURITY DEFINER) returns the principal only when that setting
+   names this tenant's row, there is no login and there are no grants. Additive policies for that predicate give
+   exactly what the two specialists use:
+   - `hr_orchestration_case`: read, open and update cases;
+   - `employment`: read (company, person, payment method, termination), used to find recipients and leavers;
+   - `agent_proposal`: read, record and settle `readiness_fix` proposals only;
+   - `domain_event`: read `readiness.nudge-raised` only (for de-duplication).
+
+   Statutory numbers, bank accounts, compensation and pending correction values are **not** readable. Two
+   presence-only functions return, per active employment, whether each readiness field is present, and per
+   pending correction, the names of the fields it touches. They never return values.
+3. **Every effect is attributable.** A restrictive insert policy on `domain_event` binds any agent-context
+   event to:
+   - `actor_type='agent'`;
+   - `actor_id` = the principal;
+   - a closed list of orchestrator and nudge event types;
+   - a payload `agent` stamp naming the principal and, for each switch it relies on, the administrator and
+     the `tenant-setting.changed` event that switched it on.
+
+   A restrictive insert policy on `agent_proposal` limits an agent context to `readiness_fix`.
+4. **Enablement reuses the existing switches.** `notifications.readiness_nudge_enabled` and
+   `claims.input_triage_enabled` stay the switches. A group administrator changes them in AI management
+   (`setAiFeature` → `setTenantSetting`, ADR-0116), and every customer write goes through `setTenantSetting`. The administrator who switched an agent on is the actor of
+   the latest `tenant-setting.changed` event for that key, when its value is `true`. A switch that is on without
+   such an event (set by the platform or before events existed) is **unattributed**: that agent does not run,
+   the nightly log says so, and AI management shows "an administrator must switch this on again". The nightly
+   pass runs only when at least one specialist is on and attributed. Pausing is switching off; the principal has
+   no switch of its own.
+5. **No model calls under the principal (unchanged behaviour, now explicit).** Readiness reminders keep their
+   fixed templates, and claims triage under the principal stops before reading claims. Admitting the principal to
+   model spend needs its own allowance subject in ADR-0116 admission and the provider data-handling decision in
+   §8.3. It is a separate, reviewed change.
+6. **Scope.** Only the orchestrator pass (`runHrOrchestrator`) moves to the principal. The deterministic engine
+   jobs in the same script remain system jobs with their existing context: review opening and reminders, leave
+   escalation, future-dated movements and notification dispatch. They are not agents.
+
+### Consequences
+
+- Correction: the agent now sees which gaps already have a pending correction and stops chasing those people.
+  The values in those corrections stay unreadable to it.
+- Tenants with no attributed agent no longer get a nightly readiness observation. An HR administrator's refresh
+  in the Control Tower still runs it under their own login.
+- Event readers that join `actor_id` to `app_user` find no user for agent events, as before (they were `NULL`).
+- Rejected alternatives:
+  - a real `app_user` for the agent: it could be granted roles, sign-in could resolve it, and it would pass the
+    login-only AI admission by construction;
+  - keeping `hr_admin` and filtering in code: authority would be unenforced at the database.
