@@ -422,6 +422,7 @@
     "lifecycleConfig": "Cấu hình Tiếp nhận & IT",
     "rewards": "Đãi ngộ",
     "identityEmail": "Gửi email",
+    "mobileWorkplaceSetup": "Ứng dụng di động",
     "workflowEmail": "Thông báo quy trình",
     "applicationHistory": "Lịch sử đơn",
     "attendanceApprovalWorkflow": "Quy trình phê duyệt",
@@ -27929,6 +27930,22 @@
     "network": "Máy chủ HR riêng có thể yêu cầu Wi-Fi công ty hoặc VPN.",
     "invalid": "Liên kết thiết lập không hợp lệ hoặc đã hết hạn. Hãy yêu cầu quản trị viên cung cấp liên kết mới.",
     "checking": "Đang chuẩn bị thiết lập nơi làm việc…"
+  },
+  "mobileAppSetup": {
+    "title": "Ứng dụng di động",
+    "description": "Chia sẻ liên kết hoặc mã QR này để nhân viên kết nối ứng dụng AI HR với tổ chức của bạn.",
+    "unavailable": "Thiết lập ứng dụng di động cho tổ chức của bạn chưa sẵn sàng. Hãy đề nghị nhà cung cấp AI HR của bạn cấp thiết lập.",
+    "expiresSoon": "Thiết lập này hết hạn vào {date}. Thiết lập đã gia hạn sẽ xuất hiện tại đây trước ngày đó; nếu không, hãy liên hệ nhà cung cấp AI HR của bạn. Nhân viên đã kết nối bằng thiết lập này sẽ cần liên kết mới sau khi thiết lập hết hạn.",
+    "workplace": "Nơi làm việc",
+    "organizationCode": "Mã tổ chức",
+    "validUntil": "Có hiệu lực đến",
+    "qrAlt": "Mã QR mở thiết lập nơi làm việc AI HR",
+    "linkLabel": "Liên kết thiết lập",
+    "stepsTitle": "Cách nhân viên kết nối",
+    "stepInstall": "Cài đặt ứng dụng AI HR trên điện thoại. Công ty sẽ cho nhân viên biết nơi tải ứng dụng.",
+    "stepOpen": "Quét mã QR này bằng camera điện thoại, hoặc mở liên kết thiết lập trên điện thoại.",
+    "stepConfirm": "Nhấn Mở AI HR, kiểm tra nơi làm việc và mã tổ chức, xác nhận, rồi đăng nhập bằng tên người dùng và mật khẩu của mình.",
+    "noCredentials": "Liên kết này không chứa mật khẩu hay dữ liệu nhân viên. Nó chỉ cho ứng dụng biết cần dùng máy chủ và tổ chức nào."
   },
   "offlineClocking": {
     "settings": {

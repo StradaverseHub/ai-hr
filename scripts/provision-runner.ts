@@ -15,7 +15,8 @@
  *
  *   node --import tsx scripts/provision-runner.ts
  *
- * PER TICK, IN ORDER: stale reclaim → claim one → email pre-check → provision → reissue pass.
+ * PER TICK, IN ORDER: stale reclaim → claim one → email pre-check → provision (then, once 'done' has
+ * committed, that customer's mobile setup) → reissue pass → mobile setup pass (ADR-0161).
  */
 import type { createDb } from '../db/client';
 import { createHash, randomBytes } from 'node:crypto';
@@ -198,10 +199,11 @@ async function provisionOne(
     return;
   }
 
+  let provisioned: string | null = null;
   try {
     const {internalSelected} = await import('../lib/internal-auth/config');
     if (internalSelected() && !req.organizationCode) throw new Error('An organization code is required. Retry with a new customer request including its code.');
-    await owner.db.transaction(async (tx) => {
+    const tenantId = await owner.db.transaction(async (tx) => {
       const result = await provisionTenant(tx, {
         name: req.customerName,
         adminEmail: req.adminEmail,
@@ -220,15 +222,39 @@ async function provisionOne(
           updatedAt: new Date(),
         })
         .where(eq(tenantProvisionRequest.id, req.id));
+      return result.tenantId;
     });
     // The URL is NEVER logged — it is a bearer credential, and this runner's output goes to a cron log.
     console.log(`✓ provisioned "${req.customerName}" (request ${req.id})`);
+    provisioned = tenantId;
   } catch (e) {
     const stepErr = e instanceof ProvisionStepError ? e : null;
     const stepKey = stepErr?.step ?? null;
     await markFailed(owner.db, req.id, stepKey, e instanceof Error ? e.message : String(e));
     console.error(`✗ request ${req.id} failed at step ${stepKey ?? 'unknown'}: ${String(e)}`);
   }
+  // ADR-0161 — AFTER 'done' has committed and OUTSIDE the try above, whose catch marks the request
+  // failed: a mobile setup problem is recorded on the customer and can never undo a provisioned one.
+  if (provisioned) await issueMobileSetupAfterProvisioning(owner, provisioned);
+}
+
+/** The customer's tenant and organization code now exist. Does nothing on an installation without a key. */
+async function issueMobileSetupAfterProvisioning(owner: ReturnType<typeof createDb>, tenantId: string): Promise<void> {
+  try {
+    const {issueMobileSetup}=await import('./mobile-setup-issuance');
+    const result=await issueMobileSetup(owner,tenantId,'provisioned');
+    if(result.outcome==='issued'||result.outcome==='reissued')console.log(`✓ mobile setup issued for tenant ${tenantId}`);
+    else if(result.outcome==='failed')console.error(`· mobile setup for tenant ${tenantId} failed: ${result.reason}`);
+  } catch { console.error('· mobile setup issuance could not run.'); }
+}
+
+/** Renewals, address changes, retries and customers provisioned before automatic issuance (ADR-0161). */
+async function runMobileSetupStage(owner: ReturnType<typeof createDb>): Promise<void> {
+  try {
+    const {mobileSetupPass}=await import('./mobile-setup-issuance');
+    const result=await mobileSetupPass(owner);
+    if(result.issued||result.failed)console.log(`· mobile setups: ${result.issued} issued, ${result.failed} failed`);
+  } catch { console.error('Mobile setup pass failed.'); }
 }
 
 /**
@@ -336,6 +362,7 @@ export async function runProvisionTick(owner: ReturnType<typeof createDb>): Prom
   const claimed = await claimNext(owner.db);
   if (claimed) await provisionOne(owner, claimed);
   const reissued = await reissuePass(owner);
+  await runMobileSetupStage(owner);
   // The installed provisioning timer is the owner-role executor for both operator intent queues.
   const {runModuleChangeTick} = await import('./module-change-runner');
   await runModuleChangeTick(owner);

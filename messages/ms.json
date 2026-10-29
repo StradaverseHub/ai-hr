@@ -422,6 +422,7 @@
     "lifecycleConfig": "Konfigurasi Orientasi & IT",
     "rewards": "Ganjaran",
     "identityEmail": "Penghantaran e-mel",
+    "mobileWorkplaceSetup": "Aplikasi mudah alih",
     "workflowEmail": "Pemberitahuan aliran kerja",
     "applicationHistory": "Sejarah Permohonan",
     "attendanceApprovalWorkflow": "Aliran Kerja Kelulusan",
@@ -27929,6 +27930,22 @@
     "network": "Pelayan HR persendirian mungkin memerlukan Wi-Fi syarikat atau VPN.",
     "invalid": "Pautan persediaan ini tidak sah atau telah tamat tempoh. Minta pautan baharu daripada pentadbir.",
     "checking": "Menyediakan persediaan tempat kerja…"
+  },
+  "mobileAppSetup": {
+    "title": "Aplikasi mudah alih",
+    "description": "Kongsi pautan atau kod QR ini supaya pekerja boleh menyambungkan aplikasi AI HR kepada organisasi anda.",
+    "unavailable": "Persediaan aplikasi mudah alih untuk organisasi anda belum tersedia. Minta pembekal AI HR anda mengeluarkannya.",
+    "expiresSoon": "Persediaan ini tamat tempoh pada {date}. Persediaan yang diperbaharui akan dipaparkan di sini sebelum tarikh itu; jika tidak, hubungi pembekal AI HR anda. Pekerja yang disambungkan dengan persediaan ini memerlukan pautan baharu selepas ia tamat tempoh.",
+    "workplace": "Tempat kerja",
+    "organizationCode": "Kod organisasi",
+    "validUntil": "Sah sehingga",
+    "qrAlt": "Kod QR yang membuka persediaan tempat kerja AI HR",
+    "linkLabel": "Pautan persediaan",
+    "stepsTitle": "Cara pekerja menyambung",
+    "stepInstall": "Pasang aplikasi AI HR pada telefon. Syarikat anda memberitahu pekerja di mana untuk mendapatkannya.",
+    "stepOpen": "Imbas kod QR ini dengan kamera telefon, atau buka pautan persediaan pada telefon.",
+    "stepConfirm": "Ketik Buka AI HR, semak tempat kerja dan kod organisasi, sahkan, kemudian log masuk dengan nama pengguna dan kata laluan mereka.",
+    "noCredentials": "Pautan ini tidak mengandungi kata laluan atau data pekerja. Ia hanya memberitahu aplikasi pelayan dan organisasi yang perlu digunakan."
   },
   "offlineClocking": {
     "settings": {

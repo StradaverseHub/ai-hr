@@ -187,11 +187,12 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
 /**
  * SETTINGS — the per-tenant behaviour values.
  *
- * The FOUR `platform`-scoped rows here are the ones that must NOT be customer-writable, and the
+ * The FIVE `platform`-scoped rows here are the ones that must NOT be customer-writable, and the
  * reasoning is recorded per row rather than in a design doc nobody reads at 2am:
  *   - the two payroll risk switches reopen or wipe a finalised payroll run,
- *   - `audit.hash_chain_enabled` is the tamper-evidence itself, and
- *   - `feedback.ai_planning_enabled` is operator tooling, not a customer feature.
+ *   - `audit.hash_chain_enabled` is the tamper-evidence itself,
+ *   - `feedback.ai_planning_enabled` is operator tooling, not a customer feature, and
+ *   - `mobile.workplace_setup` (ADR-0161) is signed routing data that sends employees' phones to a server.
  * A customer sees the first three; only Stradaverse changes any of them. `defaultOnInstall: false` on
  * the risk switches is deliberate — a purchased module must never arrive with an escape hatch already
  * open, even though the demo deployment has both env flags ON today (F4).
@@ -293,6 +294,14 @@ export const SETTING_CATALOG: SettingCatalogEntry[] = [
   { key: 'assistant.launcher_enabled', moduleCode: 'assistant', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: null, customerVisible: true, description: 'Show the floating Assistant button on other pages.', sortOrder: 310 },
   { key: 'assistant.launcher_position', moduleCode: 'assistant', scope: 'tenant', valueType: 'string', defaultValue: 'bottom-right', defaultOnInstall: null, customerVisible: true, description: 'Corner of the floating Assistant button: bottom-right or bottom-left.', sortOrder: 311 },
   { key: 'assistant.launcher_hidden_areas', moduleCode: 'assistant', scope: 'tenant', valueType: 'string', defaultValue: '', defaultOnInstall: null, customerVisible: true, description: 'Areas where the floating Assistant button is hidden.', sortOrder: 312 },
+  // ADR-0161 — the customer's ONE current signed mobile workplace setup (public routing data: server
+  // address, organization code, display name, validity; never a credential). PLATFORM-scoped because
+  // only the owner-role provisioning runner may write it: 0313's tenant_setting_write refuses ai_hr_app
+  // for platform keys, so no customer path can plant a setup that routes employees elsewhere. Customer
+  // administrators read it through tenant_setting_read, and the Mobile app page re-verifies it (signature,
+  // this server, this organization, expiry) before showing anything. customerVisible:false keeps it off
+  // the settings screen: it is signed data, not a switch. `{}` = no setup yet; nothing is written at install.
+  { key: 'mobile.workplace_setup', moduleCode: null, scope: 'platform', valueType: 'json', defaultValue: {}, defaultOnInstall: null, customerVisible: false, description: 'Signed mobile app workplace setup for this customer. Public routing data only; written by the platform and verified before display.', sortOrder: 400 },
 ];
 
 /*
@@ -482,6 +491,8 @@ export const LEGACY_SETTING_ENV_GATES: Readonly<Record<string, string | null>> =
   'assistant.launcher_enabled': null,
   'assistant.launcher_position': null,
   'assistant.launcher_hidden_areas': null,
+  // ADR-0161 — signed platform data written by the provisioning runner, never a deployment flag.
+  'mobile.workplace_setup': null,
 };
 
 /**

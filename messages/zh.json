@@ -422,6 +422,7 @@
     "lifecycleConfig": "入职与IT配置",
     "rewards": "薪酬奖励",
     "identityEmail": "邮件发送",
+    "mobileWorkplaceSetup": "移动应用",
     "workflowEmail": "工作流程通知",
     "applicationHistory": "申请历史",
     "attendanceApprovalWorkflow": "审批流程",
@@ -27929,6 +27930,22 @@
     "network": "私有 HR 服务器可能需要连接公司 Wi-Fi 或 VPN。",
     "invalid": "此设置链接无效或已过期。请向管理员索取新链接。",
     "checking": "正在准备工作单位设置…"
+  },
+  "mobileAppSetup": {
+    "title": "移动应用",
+    "description": "分享此链接或二维码，让员工将 AI HR 应用连接到您的组织。",
+    "unavailable": "您组织的移动应用设置尚不可用。请联系您的 AI HR 服务提供商签发。",
+    "expiresSoon": "此设置将于 {date} 到期。续期后的设置会在此之前显示在这里；如果没有显示，请联系您的 AI HR 服务提供商。使用此设置连接的员工在其到期后需要使用新的链接。",
+    "workplace": "工作单位",
+    "organizationCode": "组织代码",
+    "validUntil": "有效期至",
+    "qrAlt": "打开 AI HR 工作单位设置的二维码",
+    "linkLabel": "设置链接",
+    "stepsTitle": "员工如何连接",
+    "stepInstall": "在手机上安装 AI HR 应用。公司会告诉员工从哪里获取。",
+    "stepOpen": "用手机相机扫描此二维码，或在手机上打开设置链接。",
+    "stepConfirm": "点按“打开 AI HR”，核对工作单位和组织代码并确认，然后使用自己的用户名和密码登录。",
+    "noCredentials": "此链接不包含任何密码或员工数据，只告诉应用要使用哪个服务器和组织。"
   },
   "offlineClocking": {
     "settings": {

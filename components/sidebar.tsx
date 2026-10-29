@@ -386,6 +386,9 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
     // Admins can inspect SMTP setup; only an enrolled installation identity can change it.
     { href: '/admin/settings/login', labelKey: 'loginPresentation', icon: Settings2, adminOnly: true, loginPresentationOnly: true },
     { href: '/admin/settings/email', labelKey: 'identityEmail', icon: Mail, identityEmailOnly: true },
+    // ADR-0161 — the customer's mobile workplace setup link and QR. Read-only and admin-gated in-page
+    // (requireAdmin); Smartphone is not used elsewhere in this node, so the collapsed rail has no collision.
+    { href: '/admin/settings/mobile-app', labelKey: 'mobileWorkplaceSetup', icon: Smartphone, adminOnly: true },
     // 3f44a539 / 4a8a4fff — existing destinations, relocated from the flat Administration menu.
     // Explicit child admin gates preserve their previous group-level audience: the installation email
     // operator can open this node, but may still see only the identityEmailOnly child above.

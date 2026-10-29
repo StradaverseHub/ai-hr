@@ -422,6 +422,7 @@
     "lifecycleConfig": "Onboarding & IT config",
     "rewards": "Rewards",
     "identityEmail": "Email delivery",
+    "mobileWorkplaceSetup": "Mobile app",
     "workflowEmail": "Workflow notifications",
     "applicationHistory": "Application History",
     "attendanceApprovalWorkflow": "Approval Workflow",
@@ -27929,6 +27930,22 @@
     "network": "A private HR server may require your company Wi-Fi or VPN.",
     "invalid": "This setup link is invalid or expired. Ask your administrator for a new link.",
     "checking": "Preparing your workplace setup…"
+  },
+  "mobileAppSetup": {
+    "title": "Mobile app",
+    "description": "Share this link or QR code so employees can connect the AI HR app to your organization.",
+    "unavailable": "The mobile app setup for your organization is not available yet. Ask your AI HR provider to issue it.",
+    "expiresSoon": "This setup expires on {date}. A renewed setup appears here before then; if it does not, ask your AI HR provider. Employees connected with this setup need the new link after it expires.",
+    "workplace": "Workplace",
+    "organizationCode": "Organization code",
+    "validUntil": "Valid until",
+    "qrAlt": "QR code that opens the AI HR workplace setup",
+    "linkLabel": "Setup link",
+    "stepsTitle": "How employees connect",
+    "stepInstall": "Install the AI HR app on the phone. Your company tells employees where to get it.",
+    "stepOpen": "Scan this QR code with the phone camera, or open the setup link on the phone.",
+    "stepConfirm": "Tap Open AI HR, check the workplace and organization code, confirm, then sign in with their username and password.",
+    "noCredentials": "The link contains no passwords or employee data. It only tells the app which server and organization to use."
   },
   "offlineClocking": {
     "settings": {

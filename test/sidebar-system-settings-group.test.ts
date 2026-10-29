@@ -76,6 +76,8 @@ const SYSTEM_SETTINGS_CHILD_HREFS = [
   '/admin/settings/profile-requests',
   '/admin/settings/login',
   '/admin/settings/email',
+  // ADR-0161 — Mobile app: the customer's signed workplace setup link and QR, beside the sign-in rows.
+  '/admin/settings/mobile-app',
   // 3f44a539 / 4a8a4fff — relocated existing rows; AI remains a flat Administration destination.
   '/admin/settings/notifications',
   '/admin/scheduled-actions',

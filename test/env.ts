@@ -73,3 +73,8 @@ delete process.env.SYSTEM_EXPLORER_ENABLED;
 // the untracked .env.local, and the drift test's final assertion names every gate individually — one
 // developer exporting it would fail the suite with a message pointing at this file.
 delete process.env.ASSISTANT_ENABLED;
+// ADR-0161 — a developer's .env.local may point at a real operator signing key. Automatic mobile setup
+// issuance runs inside every provisioning tick, so leaving it here would make provisioning tests sign
+// with that key. Tests that exercise issuance supply their own throwaway key per test.
+delete process.env.AIHR_MOBILE_SETUP_SIGNING_KEY;
+delete process.env.AIHR_MOBILE_SETUP_HOSTING;

@@ -141,6 +141,8 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'myCalendar',href:'/me/calendar',labelKey:'employeeHome.calendar.title',guard:'scopedSession',routes:['/me/calendar'],hasScopeNote:true},
   { screenKey: 'loginPresentation', href: '/admin/settings/login', labelKey: 'nav.loginPresentation', guard: 'scopedAdmin', routes: ['/admin/settings/login'], hasScopeNote: true },
   { screenKey: 'identityEmail', href: '/admin/settings/email', labelKey: 'nav.identityEmail', guard: 'scopedSession', routes: ['/admin/settings/email'], hasScopeNote: true },
+  // ADR-0161 — read-only: the customer's own signed mobile workplace setup, shown only after re-verification.
+  { screenKey: 'mobileWorkplaceSetup', href: '/admin/settings/mobile-app', labelKey: 'nav.mobileWorkplaceSetup', guard: 'requireAdmin', routes: ['/admin/settings/mobile-app'] },
   { screenKey: 'rewards', href: '/rewards', labelKey: 'nav.rewards', guard: 'scopedSession', routes: ['/rewards', '/rewards/[unitId]', '/rewards/[unitId]/people/[entryId]'] },
   { screenKey: 'rewardsApprovals', href: '/rewards/approvals', labelKey: 'rewards.board.title', guard: 'scopedSession', routes: ['/rewards/approvals'] },
   { screenKey: 'rewardsAdmin', href: '/admin/rewards', labelKey: 'rewards.adminTitle', guard: 'scopedAdmin', routes: ['/admin/rewards','/admin/rewards/shared'] },
