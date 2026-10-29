@@ -98,3 +98,19 @@ Routine coordinator: CI/efficiency `01a16cee-9004-72c2-aaf0-932d4d0a1582`; AI de
 `01a16f03-759a-7630-ab49-3fe0c7d69699`. Allocation decisions remain in that coordinating chat. Before
 any future journal append, obtain the final coordinated index/timestamp set from the actual source
 freeze and preserve the exact applied prefix. No human migration or deployed record is changed here.
+
+## Approved board candidate — 29 October 2026
+
+The approved-board candidate preserves the exact `main`/`alpha` journal prefix at
+`46049dead200d6f436d10f5984c06634502a6286`. Both refs were freshly fetched before this append;
+the staging ledger still contained553 rows with maximum timestamp1793330000000.
+These three successor entries are source allocations, not a deployment record:
+
+| Owner | Index | Timestamp | Filename tag |
+| --- | ---: | ---: | --- |
+| Approved board: EPF |668|1793330000001|0678_epf_manual_percentage|
+| Approved board: profile approvals |669|1793330000002|0679_profile_field_approvals|
+| Approved board: OCBC files |670|1793330000003|0680_ocbc_bank_payment_exports|
+
+The candidate must rehearse these together against the preserved prefix. Refresh refs and the target
+ledger again before any installation; reconcile an intervening append rather than overwriting it.

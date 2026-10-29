@@ -3872,6 +3872,27 @@
       "when": 1793330000000,
       "tag": "0674_assistant_outcome_measurement",
       "breakpoints": true
+    },
+    {
+      "idx": 668,
+      "version": "7",
+      "when": 1793330000001,
+      "tag": "0678_epf_manual_percentage",
+      "breakpoints": true
+    },
+    {
+      "idx": 669,
+      "version": "7",
+      "when": 1793330000002,
+      "tag": "0679_profile_field_approvals",
+      "breakpoints": true
+    },
+    {
+      "idx": 670,
+      "version": "7",
+      "when": 1793330000003,
+      "tag": "0680_ocbc_bank_payment_exports",
+      "breakpoints": true
     }
   ]
 }
