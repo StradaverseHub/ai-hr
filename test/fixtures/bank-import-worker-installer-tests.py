@@ -5,6 +5,8 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 
 spec=importlib.util.spec_from_file_location('worker_installer',Path(__file__).resolve().parents[2]/'deploy/systemd/bank_import_worker_installer_v2.py')
 install=importlib.util.module_from_spec(spec);spec.loader.exec_module(install)
@@ -44,5 +46,19 @@ class WorkerInstallerTests(unittest.TestCase):
         for key,value in [('User','root'),('DropInPaths','/unreviewed.conf'),('ExecStartPre','+/bin/sh malicious')]:
             wrong={**properties,key:value}
             with self.assertRaises(ValueError): install.validate_service(wrong,release)
+    def test_cleanup_disables_and_confirms_even_after_stop_timeout(self):
+        calls=[]
+        def run(argv,**kwargs):
+            calls.append(argv)
+            if 'stop' in argv: raise TimeoutError('fictional stop timeout')
+            if 'disable' in argv: return SimpleNamespace(returncode=0,stdout='')
+            return SimpleNamespace(returncode=0,stdout='ActiveState=inactive\nMainPID=0\nUnitFileState=disabled\n')
+        with patch.object(install,'command',side_effect=run):
+            self.assertEqual(install.stop_owned_first_install(),{'stopped':True,'disabled':True,'requestWarnings':['stop request unavailable']})
+        self.assertEqual([args[1] for args in calls],['stop','disable','show'])
+    def test_cleanup_never_claims_success_when_worker_still_running(self):
+        def run(argv,**kwargs): return SimpleNamespace(returncode=0,stdout='ActiveState=active\nMainPID=123\nUnitFileState=disabled\n')
+        with patch.object(install,'command',side_effect=run),patch.object(install.time,'monotonic',side_effect=[0,0,331]),patch.object(install.time,'sleep'):
+            with self.assertRaisesRegex(RuntimeError,'could not confirm'): install.stop_owned_first_install()
 
 unittest.main()

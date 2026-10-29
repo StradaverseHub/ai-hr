@@ -134,6 +134,32 @@ def validate_service(properties,release):
     for key in ['DropInPaths','ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition','PassEnvironment','RootDirectory','RootImage','PAMName']:
         check(properties.get(key)=='','unreviewed service override: '+key)
 
+def stop_owned_first_install():
+    """Normal managed stop; independently disable even if the stop request fails or times out."""
+    request_errors=[]
+    try:
+        try:
+            result=command(['/usr/bin/systemctl','stop','--no-block','aihr-bank-import.service'],allow_failure=True)
+            if result.returncode: request_errors.append('stop request failed')
+        except Exception: request_errors.append('stop request unavailable')
+    finally:
+        try:
+            result=command(['/usr/bin/systemctl','disable','aihr-bank-import.service'],allow_failure=True)
+            if result.returncode: request_errors.append('disable request failed')
+        except Exception: request_errors.append('disable request unavailable')
+    # The unit permits a 300-second transaction drain. No individual command blocks longer than
+    # 45 seconds; wait through that complete grace period plus a margin, without killing DB jobs.
+    deadline=time.monotonic()+330
+    while time.monotonic()<deadline:
+        try:
+            report=command(['/usr/bin/systemctl','show','aihr-bank-import.service','--no-pager','--property=ActiveState','--property=MainPID','--property=UnitFileState'])
+            properties=dict(line.split('=',1) for line in report.stdout.splitlines() if '=' in line)
+            if properties.get('ActiveState') in ('inactive','failed') and properties.get('MainPID')=='0' and properties.get('UnitFileState') in ('disabled','not-found'):
+                return {'stopped':True,'disabled':True,'requestWarnings':request_errors}
+        except Exception: pass
+        time.sleep(2)
+    raise RuntimeError('Worker failure recovery could not confirm stopped and disabled; administrator intervention is required. Jobs and upload chunks were preserved.')
+
 def install(argv,fmt):
     parser=argparse.ArgumentParser()
     for name in ('archive','archive-sha256','source','build-id','lock-sha256','package-sha256','env-sha256'): parser.add_argument('--'+name,required=True)
@@ -217,7 +243,6 @@ def install(argv,fmt):
         print(json.dumps(record))
     except Exception:
         if unit_written:
-            command(['/usr/bin/systemctl','stop','aihr-bank-import.service'],allow_failure=True)
-            command(['/usr/bin/systemctl','disable','aihr-bank-import.service'],allow_failure=True)
+            stop_owned_first_install()
         raise
     finally: os.close(lock_fd)
