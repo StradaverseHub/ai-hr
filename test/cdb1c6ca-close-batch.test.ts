@@ -64,17 +64,28 @@ beforeEach(async () => {
   hiredOn = `${Number(period.slice(0, 4)) - 1}-01-01`;
 });
 
-async function hire(name: string, code: string, basic: number, opts: { companyId?: string; on?: string } = {}) {
+async function hire(
+  name: string,
+  code: string,
+  basic: number,
+  opts: { companyId?: string; departmentId?: string; on?: string } = {},
+) {
   const on = opts.on ?? hiredOn;
   const e = await hireEmployee(ctx, {
     person: { fullName: name, primaryEmail: `${randomUUID()}@fixture.test` },
     companyId: opts.companyId ?? b.companyId,
-    departmentId: b.deptA,
+    departmentId: opts.departmentId ?? b.deptA,
     employeeCode: code,
     employmentType: 'full_time',
     hiredOn: on,
   });
-  await setCompensation(ctx, { employmentId: e.employmentId, basicSalary: basic, effectiveFrom: on });
+  await setCompensation(ctx, {
+    employmentId: e.employmentId,
+    basicSalary: basic,
+    effectiveFrom: on,
+    // r369 — a record with no monthly basic must say why.
+    ...(basic === 0 ? { remarks: 'Fictional quarterly director fees' } : {}),
+  });
   ic += 1;
   await requirePackFor('MY').statutory.set(ctx, { personId: e.personId, icNumber: `90010101${String(ic).padStart(4, '0')}` });
   return e.employmentId;
@@ -153,11 +164,18 @@ async function outcome(batchId: string, employmentId: string, status: 'validatio
 describe('cdb1c6ca · A — Yes closes only the selected run', () => {
   it('a sibling run in the same month and another company’s run are untouched; the month closes with its last run', async () => {
     const ada = await hire('Fictional Ada', 'CB001', 5000);
+    // Paid by the regular run, nothing on the bonus run: an additional run leaves her out on purpose (r226),
+    // so she must not read as New / Pending there.
+    await hire('Fictional Cara', 'CB006', 3000);
     const [other] = await owner.db
       .insert(s.company)
       .values({ tenantId: b.tenantId, legalName: 'Fictional Other Co', companyLabel: 'FIC-O' })
       .returning();
-    await hire('Fictional Ben', 'CB900', 4000, { companyId: other.id });
+    const [otherDept] = await owner.db
+      .insert(s.department)
+      .values({ tenantId: b.tenantId, companyId: other.id, name: 'Fictional Other Dept' })
+      .returning();
+    await hire('Fictional Ben', 'CB900', 4000, { companyId: other.id, departmentId: otherDept.id });
     const regular = await processedRun();
     const { batchId: bonus } = await createAdditionalRun(ctx, { companyId: b.companyId, payPeriod: period, runType: 'bonus' });
     await setPayrollInput(ctx, { batchId: bonus, employmentId: ada, overtimeAmount: 0, bonusAmount: 100 });

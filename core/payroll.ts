@@ -8526,7 +8526,12 @@ const REPROCESS_ABANDONED_AFTER_MS = 10 * 60 * 1000;
  * Skipped group). When it lands, this helper should call it instead of narrowing here.
  */
 async function closePendingEmployeesTx(tx: Tx, ctx: SessionContext, batchId: string): Promise<CloseBlockingEmployee[]> {
-  const rows = (await listPayslipLessEligibleTx(tx, ctx, { batchId })).filter((r) => !r.outsideScope);
+  // cdb1c6ca — a REGULAR-run question, like the coverage control above it. An additional run (bonus,
+  // off-cycle, adjustment) pays only the people it has something for and deliberately leaves everyone else
+  // without a payslip (r226), so "eligible with no payslip" there is the run working, not work outstanding.
+  const [run] = await tx.select({ runType: payrollBatch.runType }).from(payrollBatch).where(eq(payrollBatch.id, batchId)).limit(1);
+  if (run?.runType !== 'regular') return [];
+  const rows =(await listPayslipLessEligibleTx(tx, ctx, { batchId })).filter((r) => !r.outsideScope);
   if (rows.length === 0) return [];
   const skipCandidates = rows.filter((r) => r.blockers.length === 0 && r.warnings.includes('nothingPayable'));
   let skipped = new Set<string>();
@@ -8547,7 +8552,7 @@ async function closePendingEmployeesTx(tx: Tx, ctx: SessionContext, batchId: str
  *
  *   1. a reprocess is still RUNNING (queued or running, touched inside the abandonment window). Checked
  *      first: a running job can still add or recalculate people, so the other two answers are not final.
- *   2. somebody eligible is still NEW / PENDING (`closePendingEmployeesTx`).
+ *   2. somebody eligible is still NEW / PENDING on a regular run (`closePendingEmployeesTx`).
  *   3. somebody's LATEST reprocess FAILED: their latest outcome across this run's jobs is
  *      `validation_failed`, or they were selected on a job that stopped (`failed`) before reaching them and
  *      nothing has succeeded for them since. A job created before the run's latest reset (`rollback` in
