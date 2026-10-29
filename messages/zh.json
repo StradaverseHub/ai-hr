@@ -21417,7 +21417,9 @@
     "salaryExclusion": {
       "label": "加薪排除期 — 基本薪资变更期间",
       "help": "不计入加薪及加薪预算基数。仍可获得按调整后基本薪资计算的奖金，并计入奖金预算。基本薪资未变的平级调动不予排除。"
-    }
+    },
+    "unitInputsHelp": "单位预算、PAT、倍数、分支评级及豁免在评审中单独维护。",
+    "unitInputsLink": "打开单位输入"
   },
   "identityEmail": {
     "title": "邮件发送",

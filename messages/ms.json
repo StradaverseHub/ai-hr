@@ -21417,7 +21417,9 @@
     "salaryExclusion": {
       "label": "Pengecualian kenaikan gaji – gaji asas berubah antara",
       "help": "Dikecualikan daripada kenaikan gaji dan asas kumpulan kenaikan gaji. Masih layak menerima bonus berdasarkan gaji asas terlaras dan dikira dalam kumpulan bonus. Pertukaran setara tanpa perubahan gaji asas tidak dikecualikan."
-    }
+    },
+    "unitInputsHelp": "Belanjawan unit, PAT, pengganda, penarafan cawangan dan pengecualian diurus berasingan dalam semakan.",
+    "unitInputsLink": "Buka input unit"
   },
   "identityEmail": {
     "title": "Penghantaran e-mel",
