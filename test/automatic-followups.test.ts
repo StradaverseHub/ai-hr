@@ -5,10 +5,11 @@ import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 const model=vi.hoisted(()=>({calls:0}));
 vi.mock('../lib/ai',async original=>({...await original<typeof import('../lib/ai')>(),generateDraft:async()=>{model.calls++;throw Error('Model forbidden');},converse:async()=>{model.calls++;throw Error('Model forbidden');}}));
+import * as dbClient from '../db/client';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {agentContext,agentSwitchStatesTx,attributedEnablements,ensureAgentPrincipal} from '../core/agent-principal';
+import {agentContext,agentStamp,agentSwitchStatesTx,attributedEnablements,ensureAgentPrincipal} from '../core/agent-principal';
 import {resolveEntitlementsTx} from '../core/entitlements';
 import {runAutomaticFollowups,followupItemsTx,FOLLOWUP_EVENT,currentFollowupTargetsTx} from '../core/automatic-followups';
 import {AutomaticChaserRefusal,engineWorkingDayCalendar} from '../core/automatic-chasers';
@@ -32,8 +33,8 @@ async function lifecycle(){
  await owner.db.insert(s.lcStepDef).values([{tenantId:b.tenantId,kind:'onboarding',stepKey:'first',phase:0,label:'Fictional first',ownerTeam:'IT',rule:'always',sort:1},{tenantId:b.tenantId,kind:'onboarding',stepKey:'later',phase:1,label:'Fictional next',ownerTeam:'HR',rule:'always',sort:2},{tenantId:b.tenantId,kind:'onboarding',stepKey:'carpark',phase:0,label:'Fictional unused',rule:'carpark',sort:3}]);
  const [c]=await owner.db.insert(s.lcCase).values({tenantId:b.tenantId,kind:'onboarding',companyId:b.companyId,number:'FICT-'+(++seq),fullName:'FICTIONAL-PRIVATE-CASE',employeeNo:'FICT',employmentId:employee.employmentId,personId:employee.personId,laptopRequired:false,carparkRequired:false,createdAt:past}).returning();return c;
 }
-beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.unstubAllEnvs();});
-beforeEach(async()=>{await resetDb();b=await seedBase();for(const module of ['notifications','attendance','lifecycle'])await setModule(b.tenantId,module,'active');root={...await entitledCtx(b),grants:[{role:'hr_admin',companyId:null}]};employee=await hire('FICTIONAL-PRIVATE-EMPLOYEE',false);staff=await hire('Fictional lifecycle staff');const userId=await createAppUser(b.tenantId,staff.personId,'employee');await owner.db.insert(s.lcStaff).values({tenantId:b.tenantId,userId,companyId:b.companyId,level:'agent'});model.calls=0;});
+beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.unstubAllEnvs();vi.restoreAllMocks();});
+beforeEach(async()=>{await resetDb();b=await seedBase();for(const module of ['notifications','attendance','lifecycle'])await setModule(b.tenantId,module,'active');root={...await entitledCtx(b),grants:[{role:'hr_admin',companyId:null}]};await owner.db.insert(s.attendancePolicy).values({tenantId:b.tenantId,companyId:b.companyId,workingDays:[1,2,3,4,5,6,7],halfWorkingDays:[]}).onConflictDoUpdate({target:s.attendancePolicy.companyId,set:{workingDays:[1,2,3,4,5,6,7],halfWorkingDays:[]}});employee=await hire('FICTIONAL-PRIVATE-EMPLOYEE',false);staff=await hire('Fictional lifecycle staff');const userId=await createAppUser(b.tenantId,staff.personId,'employee');await owner.db.insert(s.lcStaff).values({tenantId:b.tenantId,userId,companyId:b.companyId,level:'agent'});model.calls=0;});
 
 describe('Automatic missing-clock record reminders',()=>{
  it('reminds the employee once, without creating any clock/attendance fact or claiming work',async()=>{
@@ -90,7 +91,7 @@ describe('Reminder authority, boundaries and observations',()=>{
  });
  it('refuses re-switched attribution and SETTING_KILL and never enters model admission',async()=>{
   await passport();await enabled(docKey);const ctx=await agent();await enabled(docKey);expect((await runAutomaticFollowups(ctx,{calendar:async()=>5})).sent).toBe(0);vi.stubEnv('SETTING_KILL',docKey);expect((await run()).sent).toBe(0);vi.unstubAllEnvs();
-  for(const feature of ['clock_reminders','document_reminders','lifecycle_chasers'])await expect(withTenant(root,tx=>assertAiActionUnpausedTx(tx,root,feature))).rejects.toThrow('no model call');expect(model.calls).toBe(0);
+  for(const feature of ['clock_reminders','document_reminders','lifecycle_chasers'] as const)await expect(withTenant(root,tx=>assertAiActionUnpausedTx(tx,root,feature))).rejects.toThrow('no model call');expect(model.calls).toBe(0);
  });
  it('keeps another tenant source hidden and denies unscoped login projection',async()=>{
   await passport();await enabled(docKey);const other=await seedBase();const otherPrincipal=await agent(other);expect(await withTenant(otherPrincipal,tx=>followupItemsTx(tx,'passport_expiry',today(),[employee.employmentId]))).toEqual([]);
@@ -116,9 +117,15 @@ describe('Additional source and recipient refusals',()=>{
   await owner.db.delete(s.lcStaff).where(eq(s.lcStaff.tenantId,b.tenantId));await dispatchNotifications(root,{});expect(await owner.db.select().from(s.notification).where(eq(s.notification.kind,'lifecycle.step-waiting'))).toHaveLength(0);
  });
  it('suppresses renewed source immediately between candidate selection and its effect transaction',async()=>{
-  const [p]=await passport();await enabled(docKey);const ctx=await agent();
-  await owner.db.update(s.employeeStatutoryMy).set({passportExpiryDate:date(365)}).where(eq(s.employeeStatutoryMy.id,p.id));expect((await runAutomaticFollowups(ctx,{calendar:async()=>5})).sent).toBe(0);
+  const [p]=await passport();await enabled(docKey);const ctx=await agent(),real=dbClient.withTenant;
+  const changed:typeof withTenant=async(who,work,opts)=>{await owner.db.update(s.employeeStatutoryMy).set({passportExpiryDate:date(365)}).where(eq(s.employeeStatutoryMy.id,p.id));return real(who,work,opts);};
+  const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(real).mockImplementationOnce(changed);
+  try{expect((await runAutomaticFollowups(ctx,{calendar:async()=>5})).sent).toBe(0);}finally{spy.mockRestore();}
   const foreignId=randomUUID();await expect(withTenant(ctx,tx=>tx.execute(sql`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) values(${b.tenantId}::uuid,'employment',${foreignId}::uuid,'employment.terminated','agent',${ctx.agent!.principalId}::uuid,'{}'::jsonb)`))).rejects.toThrow();
+ });
+ it('rejects free-text or non-numeric data hidden in an otherwise valid reminder envelope',async()=>{
+  await passport();await enabled(docKey);const ctx=await agent();const valid={action:'employees.passport_expiry.remind',source:'passport_expiry',stage:'passport:'+date(10),companyId:b.companyId,waitingOn:date(10),eligibleOn:today(),chaseNumber:1,...agentStamp(ctx,['document_reminders'])};
+  for(const payload of [{...valid,privateName:'Fictional secret'},{...valid,chaseNumber:{privateName:'Fictional secret'}}])await expect(withTenant(ctx,tx=>tx.insert(s.domainEvent).values({tenantId:b.tenantId,aggregateType:'automatic-chase',aggregateId:employee.employmentId,eventType:FOLLOWUP_EVENT,actorType:'agent',actorId:ctx.agent!.principalId,subjectEmploymentId:employee.employmentId,payload}))).rejects.toThrow();
  });
  it('caps a passport run at 100 recorded subjects',async()=>{
   await passport();for(let n=0;n<100;n++){const e=await hire('Fictional bounded passport '+n);await passport(date(10),e.personId);}await enabled(docKey);const result=await run();expect(result.byAction['employees.passport_expiry.remind']).toMatchObject({sent:100,cappedOut:true});expect(await events()).toHaveLength(100);

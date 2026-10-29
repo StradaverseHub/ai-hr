@@ -19123,7 +19123,10 @@
         "action_approvals_claim_chase": "தாமதமான கோரிக்கை குறித்து ஒப்புதலாளருக்கு நினைவூட்டு",
         "action_approvals_attendance_chase": "தாமதமான வருகை கோரிக்கை குறித்து ஒப்புதலாளருக்கு நினைவூட்டு",
         "action_approvals_toil_chase": "தாமதமான மாற்று விடுப்பு கோரிக்கை குறித்து ஒப்புதலாளருக்கு நினைவூட்டு",
-        "action_employees_review_overdue_remind": "முடிவு தேதிக்குப் பிறகும் முடிவு செய்யப்படாத மதிப்பாய்வு குறித்து நினைவூட்டு"
+        "action_employees_review_overdue_remind": "முடிவு தேதிக்குப் பிறகும் முடிவு செய்யப்படாத மதிப்பாய்வு குறித்து நினைவூட்டு",
+        "action_attendance_missing_clock_remind": "விடுபட்ட வருகைப் பதிவைச் சரிபார்க்க பணியாளருக்கு நினைவூட்டவும்",
+        "action_employees_passport_expiry_remind": "பதிவுசெய்த கடவுச்சீட்டு காலாவதியை நினைவூட்டவும்",
+        "action_lifecycle_step_chase": "முடிக்கப்படாத பணிவாழ்க்கை படிநிலையைப் பணியாளர்களுக்கு நினைவூட்டவும்"
       },
       "conversation": {
         "answerLabel": "உங்கள் பதிவுகளிலிருந்து பதில்",

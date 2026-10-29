@@ -19123,7 +19123,10 @@
         "action_approvals_claim_chase": "Ingatkan pelulus tentang tuntutan tertunggak",
         "action_approvals_attendance_chase": "Ingatkan pelulus tentang permohonan kehadiran tertunggak",
         "action_approvals_toil_chase": "Ingatkan pelulus tentang permohonan cuti ganti tertunggak",
-        "action_employees_review_overdue_remind": "Ingatkan tentang semakan yang belum diputuskan selepas tarikh tamat"
+        "action_employees_review_overdue_remind": "Ingatkan tentang semakan yang belum diputuskan selepas tarikh tamat",
+        "action_attendance_missing_clock_remind": "Ingatkan pekerja tentang rekod masuk yang tiada",
+        "action_employees_passport_expiry_remind": "Ingatkan tarikh tamat tempoh pasport yang direkodkan",
+        "action_lifecycle_step_chase": "Ingatkan petugas tentang langkah kitar hayat yang belum selesai"
       },
       "conversation": {
         "answerLabel": "Jawapan daripada rekod anda",

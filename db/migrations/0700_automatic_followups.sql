@@ -15,8 +15,7 @@ CREATE POLICY domain_event_agent_read ON public.domain_event FOR SELECT TO ai_hr
    AND payload->>'key' IN ('notifications.readiness_nudge_enabled','claims.input_triage_enabled',
     'notifications.approval_chasers_enabled','notifications.review_chasers_enabled','notifications.missing_clock_reminders_enabled','notifications.passport_expiry_reminders_enabled','notifications.lifecycle_step_chasers_enabled'))));
 --> statement-breakpoint
--- 3. Every agent effect stays attributable. Replaces 0672's restrictive check with the same rule plus the two
--- chase event types and the two specialists. A chase must name the specialist it runs under.
+-- Preserve attribution enforcement while adding only the closed follow-up event/action/source/stage shapes.
 DROP POLICY domain_event_agent_stamp ON public.domain_event;
 --> statement-breakpoint
 CREATE POLICY domain_event_agent_stamp ON public.domain_event AS RESTRICTIVE FOR INSERT TO ai_hr_app
@@ -34,6 +33,8 @@ CREATE POLICY domain_event_agent_stamp ON public.domain_event AS RESTRICTIVE FOR
      WHERE x->>'feature'='review_chasers'))
    OR (event_type='automatic-chase.followup-raised' AND aggregate_type='automatic-chase'
     AND payload-ARRAY['action','source','stage','companyId','waitingOn','eligibleOn','chaseNumber','agent']='{}'::jsonb
+    AND jsonb_typeof(payload->'chaseNumber')='number' AND payload->>'chaseNumber' ~ '^[1-4]$'
+    AND payload->>'companyId' ~* '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$'
     AND pg_input_is_valid(payload->>'waitingOn','date') AND pg_input_is_valid(payload->>'eligibleOn','date')
     AND ((payload->>'action'='attendance.missing_clock.remind' AND payload->>'source'='missing_clock' AND payload->>'stage' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' AND pg_input_is_valid(payload->>'stage','date'))
      OR (payload->>'action'='employees.passport_expiry.remind' AND payload->>'source'='passport_expiry' AND payload->>'stage' ~ '^passport:[0-9]{4}-[0-9]{2}-[0-9]{2}$' AND pg_input_is_valid(substring(payload->>'stage' from 10),'date'))
@@ -60,7 +61,7 @@ BEGIN
  IF p_source='missing_clock' THEN
   RETURN QUERY SELECT jsonb_build_object('itemId',e.id,'employmentId',e.id,'companyId',e.company_id,'stage',(p_today-1)::text,'waitingOn',(p_today-1)::text)
    FROM public.employment e
-   WHERE e.tenant_id=t AND e.hired_on<=p_today-1 AND (e.terminated_on IS NULL OR e.terminated_on>p_today-1)
+   WHERE e.tenant_id=t AND e.hired_on<=p_today-1 AND (e.terminated_on IS NULL OR e.terminated_on>p_today)
     AND (app.current_agent_principal() IS NOT NULL OR (app.is_admin_for(e.company_id) AND (app.current_user_id() IS NULL OR app.principal_snapshot_current())))
     AND (p_ids IS NULL OR e.id=ANY(p_ids))
     AND NOT EXISTS(SELECT 1 FROM public.attendance a WHERE a.employment_id=e.id AND a.tenant_id=t AND a.attendance_date=p_today-1 AND a.check_in_at IS NOT NULL)
@@ -84,7 +85,7 @@ BEGIN
    'defs',coalesce((SELECT jsonb_agg(jsonb_build_object('key',d.step_key,'phase',d.phase,'rule',d.rule,'sort',d.sort,'active',d.active) ORDER BY d.phase,d.sort,d.step_key)
     FROM public.lc_step_def d WHERE d.tenant_id=t AND d.kind=c.kind),'[]'::jsonb),
    'records',coalesce((SELECT jsonb_agg(jsonb_build_object('key',r.step_key,'done',r.done)) FROM public.lc_case_step r WHERE r.tenant_id=t AND r.case_id=c.id),'[]'::jsonb))
-   FROM public.lc_case c JOIN public.employment e ON e.id=c.employment_id AND e.tenant_id=t AND e.company_id=c.company_id
+   FROM public.lc_case c JOIN public.employment e ON e.id=c.employment_id AND e.tenant_id=t
    WHERE c.tenant_id=t AND c.status='in_progress' AND c.kind IN ('onboarding','offboarding')
     AND (app.current_agent_principal() IS NOT NULL OR (app.is_admin_for(c.company_id) AND (app.current_user_id() IS NULL OR app.principal_snapshot_current()))) AND (p_ids IS NULL OR c.id=ANY(p_ids))
    ORDER BY c.created_at,c.id LIMIT p_limit;
@@ -125,7 +126,7 @@ BEGIN
   FROM public.domain_event d JOIN public.employment e ON e.id=d.subject_employment_id AND e.tenant_id=t
   WHERE d.tenant_id=t AND d.aggregate_type='automatic-chase' AND d.actor_type='agent'
    AND d.event_type IN ('automatic-chase.approval-raised','automatic-chase.review-raised','automatic-chase.followup-raised')
-   AND app.is_admin_for(e.company_id)),
+   AND CASE WHEN d.payload->>'action'='lifecycle.step.chase' THEN EXISTS(SELECT 1 FROM public.lc_case q WHERE q.id=d.aggregate_id AND q.tenant_id=t AND app.is_admin_for(q.company_id)) ELSE app.is_admin_for(e.company_id) END),
  firsts AS (SELECT s.k,min(s.seen_at) AS f FROM scoped s GROUP BY s.k),
  -- One row per chased (item, stage) in the window, judged against the native record now.
  win AS (
