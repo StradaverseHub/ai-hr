@@ -84,7 +84,8 @@ describe('signed workplace setup routing', () => {
  */
 function reactNativeUrl(): typeof URL {
   const mobile = createRequire(new URL('../mobile/package.json', import.meta.url));
-  const babel = mobile('@babel/core') as typeof import('@babel/core');
+  // Loaded from the app's own dependencies; the repository root does not install @babel/core or its types.
+  const babel = mobile('@babel/core') as { transformSync(code: string, options: Record<string, unknown>): { code?: string | null } | null };
   const file = mobile.resolve('react-native/Libraries/Blob/URL.js');
   const code = babel.transformSync(readFileSync(file, 'utf8'), { babelrc: false, configFile: false, filename: file,
     plugins: [mobile.resolve('@babel/plugin-transform-flow-strip-types'), mobile.resolve('@babel/plugin-transform-modules-commonjs')] })!.code!;
