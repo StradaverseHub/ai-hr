@@ -18932,7 +18932,8 @@
         "action_leave_edit": "待审批请假已修改；仍未批准",
         "action_claims_cancel": "待审批报销已取消；未支付任何款项",
         "action_leave_adjustment_apply": "已记录人事假期调整；余额自生效日期起变化",
-        "action_employees_movement_transfer": "已记录人事岗位调动；立即生效或待到生效日期"
+        "action_employees_movement_transfer": "已记录人事岗位调动；立即生效或待到生效日期",
+        "action_toil_credit_grant": "已记入人事假期抵扣；该日期的加班不再支付"
       },
       "conversation": {
         "answerLabel": "根据您的记录回答",
@@ -19109,7 +19110,34 @@
         "reviewNote": "请审阅下方保存的信息。",
         "retired": "此审阅已关闭。",
         "uncertain": "结果不确定。请重新打开已保存的审阅查看情况；不会重复发送。",
-        "uncertainUnknown": "结果不确定。请查找您保存的审阅以查看情况。"
+        "uncertainUnknown": "结果不确定。请查找您保存的审阅以查看情况。",
+        "creditFlow": "假期抵扣",
+        "credit": {
+          "title": "为工作日授予假期抵扣",
+          "description": "为一名员工的某一工作日授予抵扣。日期、工时和原因由您填写，抵扣额由假期抵扣规则决定。",
+          "intro": "先找到员工，然后像在“假期抵扣”页面一样填写工作日期及开始和结束时间。",
+          "consequence": "确认后，将按公司的假期抵扣规则记入抵扣。该日期已记录的加班将不再支付。"
+        },
+        "workedDate": "工作日期",
+        "claimStart": "开始时间",
+        "claimEnd": "结束时间",
+        "dayType": "日期类型（来自排班）",
+        "dayTypes": {
+          "rest_day": "休息日",
+          "off_day": "休假日",
+          "holiday": "公共假日",
+          "workday": "工作日"
+        },
+        "creditDays": "抵扣（按假期抵扣规则）",
+        "creditDaysValue": "{days} 天",
+        "creditLegacy": "确认时按公司规则计算",
+        "overtimeMinutes": "该日期已记录的加班",
+        "overtimeWarning": "此抵扣将停止支付该日期的加班费。",
+        "firstSchedule": "适用第一附表",
+        "firstScheduleConsent": "员工同意以调休代替加班费（第一附表）",
+        "yes": "是",
+        "no": "否",
+        "doneCredit": "已为 {date} 记入 {days} 天假期抵扣。"
       }
     },
     "denied_unavailable": "我这边遇到了小状况，请稍后再试。",

@@ -77,3 +77,18 @@ it('refuses a prepared review for another employee than the one chosen',async()=
  render(<HrPreparedPanel action={leaveAction}/>);await fillLeave();fireEvent.click(screen.getByLabelText('consent'));fireEvent.click(prepareButton());
  await waitFor(()=>expect(screen.getByRole('alert').textContent).toBe('unavailable'));expect(screen.queryByRole('heading',{name:'reviewTitle'})).toBeNull();
 });
+it('prepares a Leave Credit from the date and hours HR enters and shows the engine\'s figures and overtime warning',async()=>{
+ const creditAction='toil.credit.grant';
+ const content={action:creditAction,contractVersion:1,employmentId,subjectId:employmentId,workedDate:'2026-10-25',claimStart:'09:00',claimEnd:'17:00',reason:'Fictional stock-take',firstScheduleConsent:false};
+ const item={...person,subjectId:employmentId,workedDate:'2026-10-25',dayType:'rest_day',claimStart:'09:00',claimEnd:'17:00',creditDays:1,overtimeMinutes:120,firstScheduleEligible:false,firstScheduleConsent:false,reason:'Fictional stock-take'};
+ fetcher.mockResolvedValueOnce(json({kind:'choices',employees:[person],truncated:false}))
+  .mockResolvedValueOnce(json({kind:'prepared',review:{action:creditAction,contractVersion:1,actionId:id,reviewedDigest:'e'.repeat(64),createdAt:stamp(-1000),expiresAt:stamp(60000),content,review:item,consequence:'hr_leave_credit_banked_overtime_on_date_not_paid'}}));
+ const {HR_LEAVE_CREDIT_ACTION}=await import('../lib/assistant-actions/hr-prepared-contract');
+ render(<HrPreparedPanel action={HR_LEAVE_CREDIT_ACTION}/>);await loaded();await waitFor(()=>expect(screen.getByRole('status').textContent).toBe(''));
+ fireEvent.change(screen.getByLabelText('employee'),{target:{value:employmentId}});
+ fireEvent.change(screen.getByLabelText('workedDate'),{target:{value:'2026-10-25'}});fireEvent.change(screen.getByLabelText('claimStart'),{target:{value:'09:00'}});
+ fireEvent.change(screen.getByLabelText('claimEnd'),{target:{value:'17:00'}});fireEvent.change(screen.getByLabelText('reason'),{target:{value:'Fictional stock-take'}});
+ fireEvent.click(screen.getByLabelText('consent'));fireEvent.click(prepareButton());
+ await screen.findByRole('heading',{name:'reviewTitle'});expect(packets()[1]).toEqual({action:creditAction,operation:'prepare',input:content});
+ expect(screen.getByText('dayTypes.rest_day')).toBeTruthy();expect(screen.getByText('creditDaysValue:1')).toBeTruthy();expect(screen.getByText('overtimeWarning')).toBeTruthy();
+});

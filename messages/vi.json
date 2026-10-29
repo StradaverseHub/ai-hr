@@ -18932,7 +18932,8 @@
         "action_leave_edit": "Đã thay đổi đơn nghỉ đang chờ; vẫn chưa được duyệt",
         "action_claims_cancel": "Đã hủy yêu cầu đang chờ; không có khoản nào được thanh toán",
         "action_leave_adjustment_apply": "Đã ghi nhận điều chỉnh nghỉ phép của nhân sự; số dư thay đổi từ ngày hiệu lực",
-        "action_employees_movement_transfer": "Đã ghi nhận thay đổi phân công của nhân sự; áp dụng ngay hoặc chờ đến ngày hiệu lực"
+        "action_employees_movement_transfer": "Đã ghi nhận thay đổi phân công của nhân sự; áp dụng ngay hoặc chờ đến ngày hiệu lực",
+        "action_toil_credit_grant": "Đã ghi phép bù do nhân sự cấp; giờ làm thêm ngày đó không còn được trả lương"
       },
       "conversation": {
         "answerLabel": "Câu trả lời từ hồ sơ của bạn",
@@ -19109,7 +19110,34 @@
         "reviewNote": "Xem lại các thông tin đã lưu bên dưới.",
         "retired": "Bản xem lại này đã đóng.",
         "uncertain": "Kết quả chưa chắc chắn. Mở lại bản xem lại đã lưu để xem điều gì đã xảy ra; không có gì được gửi lại.",
-        "uncertainUnknown": "Kết quả chưa chắc chắn. Tìm các bản xem lại đã lưu để xem điều gì đã xảy ra."
+        "uncertainUnknown": "Kết quả chưa chắc chắn. Tìm các bản xem lại đã lưu để xem điều gì đã xảy ra.",
+        "creditFlow": "Ngày phép bù",
+        "credit": {
+          "title": "Cấp ngày phép bù cho ngày đã làm việc",
+          "description": "Cấp phép bù cho một nhân viên cho một ngày họ đã làm việc. Bạn nhập ngày, giờ và lý do; quy tắc ngày phép bù quyết định số ngày.",
+          "intro": "Tìm nhân viên, sau đó nhập ngày làm việc cùng giờ bắt đầu và kết thúc, giống trên màn hình Ngày phép bù.",
+          "consequence": "Khi bạn xác nhận, ngày phép bù được ghi theo quy tắc của công ty. Giờ làm thêm đã ghi nhận trong ngày đó sẽ không còn được trả lương."
+        },
+        "workedDate": "Ngày làm việc",
+        "claimStart": "Giờ bắt đầu",
+        "claimEnd": "Giờ kết thúc",
+        "dayType": "Loại ngày (theo lịch làm việc)",
+        "dayTypes": {
+          "rest_day": "Ngày nghỉ",
+          "off_day": "Ngày nghỉ bù",
+          "holiday": "Ngày lễ",
+          "workday": "Ngày làm việc"
+        },
+        "creditDays": "Phép bù (theo quy tắc ngày phép bù)",
+        "creditDaysValue": "{days} ngày",
+        "creditLegacy": "Được tính theo quy tắc công ty khi bạn xác nhận",
+        "overtimeMinutes": "Giờ làm thêm đã ghi nhận trong ngày này",
+        "overtimeWarning": "Khoản phép bù này sẽ dừng việc trả lương làm thêm cho ngày này.",
+        "firstSchedule": "Thuộc Phụ lục Thứ nhất",
+        "firstScheduleConsent": "Nhân viên đồng ý nghỉ bù thay cho tiền làm thêm (Phụ lục Thứ nhất)",
+        "yes": "Có",
+        "no": "Không",
+        "doneCredit": "Đã ghi {days} ngày phép bù cho {date}."
       }
     },
     "denied_unavailable": "Phía tôi gặp chút trục trặc. Vui lòng thử lại sau giây lát.",

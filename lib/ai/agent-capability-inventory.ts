@@ -38,7 +38,7 @@ export const AGENT_ACTION_TIER_CEILING=Object.freeze({
  'multi_cycle_payroll.create_run':'approve','typed_pay_components.create':'approve','rewards.post':'approve',
  'country-my.statutory.update':'approve','employees.import':'handoff','claims.cancel':'confirm','leave.cancel':'confirm','leave.edit':'confirm',
  'attendance.overtime.request':'confirm','approvals.claim.decide':'approve','approvals.attendance.decide':'approve','approvals.toil.decide':'approve',
- 'leave.adjustment.apply':'approve','employees.movement.transfer':'approve',
+ 'leave.adjustment.apply':'approve','employees.movement.transfer':'approve','toil.credit.grant':'approve',
 } as const satisfies Record<ModuleEffectActionId,AgentTier>);
 
 export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<string,AgentCapabilityClass>>>>=Object.freeze({
@@ -66,7 +66,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/leave-config/bf-import/actions.ts":{"commitLeaveBfImportAction":"backlog:approve","reverseLeaveBfImportAction":"backlog:approve","validateLeaveBfImportAction":"backlog:automatic"},
  "app/admin/leave-config/earned-accrual/actions.ts":{"previewEarnedAccrualWithReasonAction":"backlog:automatic"},
  "app/admin/leave-config/history-import/actions.ts":{"commitLeaveHistoryImportAction":"backlog:approve","validateLeaveHistoryImportAction":"backlog:automatic"},
- "app/admin/leave-config/leave-credit/actions.ts":{"grantLeaveCreditRowsAction":"backlog:approve","leaveCreditGrantClaimReviewAction":"backlog:approve","leaveCreditGrantContextAction":"backlog:approve","leaveCreditGrantDayFactsAction":"backlog:approve","reverseLeaveCreditAction":"backlog:approve"},
+ "app/admin/leave-config/leave-credit/actions.ts":{"grantLeaveCreditRowsAction":"registered:toil.credit.grant","leaveCreditGrantClaimReviewAction":"backlog:approve","leaveCreditGrantContextAction":"backlog:approve","leaveCreditGrantDayFactsAction":"backlog:approve","reverseLeaveCreditAction":"backlog:approve"},
  "app/admin/leave/adjustments/actions.ts":{"applyLeaveAdjustmentAction":"registered:leave.adjustment.apply","previewLeaveAdjustmentAction":"backlog:automatic","reverseLeaveAdjustmentAction":"backlog:approve"},
  "app/admin/leave/entitlements/templates/actions.ts":{"countEligibilityTargetsAction":"backlog:automatic","createEligibilityRuleAction":"backlog:approve","createEntitlementTemplateAction":"backlog:approve","deleteEligibilityRuleAction":"backlog:approve","deleteEntitlementTemplateAction":"backlog:approve","retireEligibilityRuleAction":"backlog:approve","retireEntitlementTemplateAction":"backlog:approve","setLeaveTypeDefaultTemplateAction":"backlog:approve","updateEligibilityRuleAction":"backlog:approve","updateEntitlementTemplateAction":"backlog:approve"},
  "app/admin/leave/generate/actions.ts":{"previewLeaveGenerationAction":"backlog:automatic"},

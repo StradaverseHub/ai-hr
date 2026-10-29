@@ -18932,7 +18932,8 @@
         "action_leave_edit": "Pending leave changed; still not approved",
         "action_claims_cancel": "Pending claim cancelled; nothing paid",
         "action_leave_adjustment_apply": "HR leave adjustment recorded; balance changes from its effective date",
-        "action_employees_movement_transfer": "HR assignment movement recorded; applied now or pending until its date"
+        "action_employees_movement_transfer": "HR assignment movement recorded; applied now or pending until its date",
+        "action_toil_credit_grant": "HR Leave Credit banked; overtime on that date is no longer paid"
       },
       "conversation": {
         "answerLabel": "Answer from your records",
@@ -19109,7 +19110,34 @@
         "reviewNote": "Review the stored details below.",
         "retired": "This review is closed.",
         "uncertain": "The result is not certain. Reopen the saved review to see what happened; nothing is sent again.",
-        "uncertainUnknown": "The result is not certain. Find your saved reviews to see what happened."
+        "uncertainUnknown": "The result is not certain. Find your saved reviews to see what happened.",
+        "creditFlow": "Leave Credit",
+        "credit": {
+          "title": "Grant Leave Credit for a day worked",
+          "description": "Credit one employee for one date they worked. You enter the date, the hours and the reason; the Leave Credit rules decide the credit.",
+          "intro": "Find the employee, then enter the date worked and the start and end time, as on the Leave Credit screen.",
+          "consequence": "When you confirm, the credit is banked under the company's Leave Credit rules. Any overtime recorded on that date will no longer be paid."
+        },
+        "workedDate": "Date worked",
+        "claimStart": "Start time",
+        "claimEnd": "End time",
+        "dayType": "Day type (from the roster)",
+        "dayTypes": {
+          "rest_day": "Rest day",
+          "off_day": "Off day",
+          "holiday": "Public holiday",
+          "workday": "Working day"
+        },
+        "creditDays": "Credit (from the Leave Credit rules)",
+        "creditDaysValue": "{days} day(s)",
+        "creditLegacy": "Worked out by the company's rules when you confirm",
+        "overtimeMinutes": "Overtime already recorded on this date",
+        "overtimeWarning": "Overtime pay for this date will be stopped by this credit.",
+        "firstSchedule": "Covered by the First Schedule",
+        "firstScheduleConsent": "The employee agreed to take time off instead of overtime pay (First Schedule)",
+        "yes": "Yes",
+        "no": "No",
+        "doneCredit": "{days} day(s) of Leave Credit banked for {date}."
       }
     },
     "denied_unavailable": "A little snag on my side. Please try again in a moment.",

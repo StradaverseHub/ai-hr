@@ -9,7 +9,7 @@ import {useEffect,useId,useRef,useState,type FormEvent} from 'react';
 import {useFormatter,useTranslations} from 'next-intl';
 import {z} from 'zod';
 import {Button,inputCls} from '@/components/ui';
-import {HR_LEAVE_ADJUSTMENT_ACTION,HR_PREPARED_CONTRACTS,type HrPreparedAction} from '@/lib/assistant-actions/hr-prepared-contract';
+import {HR_LEAVE_ADJUSTMENT_ACTION,HR_LEAVE_CREDIT_ACTION,HR_PREPARED_CONTRACTS,type HrPreparedAction} from '@/lib/assistant-actions/hr-prepared-contract';
 import {checkGenericPacket,packetActionId,sendGenericModuleAction} from './generic-module-action-transport';
 type Option={id:string;name:string};
 type Subject={employmentId:string;employeeName:string;employeeCode:string|null;companyName:string};
@@ -21,7 +21,7 @@ type Retired={actionId:string;state:'discarded'|'expired'|'refused'};type Row={a
 type Contract={Choices:z.ZodType;Index:z.ZodType;Prepared:z.ZodType;Completed:z.ZodType;Retired:z.ZodType};
 type State={kind:'selection'}|{kind:'review';review:Review}|{kind:'completed';receipt:Receipt}|{kind:'retired';receipt:Retired}|{kind:'uncertain';actionId:string|null};
 const fail=()=>Error('HR action unavailable.');
-export const hrPreparedKind=(action:HrPreparedAction)=>action===HR_LEAVE_ADJUSTMENT_ACTION?'leave' as const:'movement' as const;
+export const hrPreparedKind=(action:HrPreparedAction)=>action===HR_LEAVE_ADJUSTMENT_ACTION?'leave' as const:action===HR_LEAVE_CREDIT_ACTION?'credit' as const:'movement' as const;
 export function HrPreparedPanel({action,resumeActionId,initialEmploymentId}:{action:HrPreparedAction;resumeActionId?:string;initialEmploymentId?:string}){
  const t=useTranslations('assistant.workspace.hrActions'),f=useFormatter(),id=useId(),kind=hrPreparedKind(action),contract=HR_PREPARED_CONTRACTS[action] as unknown as Contract;
  const [choices,setChoices]=useState<Choices>({kind:'idle'});
@@ -60,10 +60,12 @@ export function HrPreparedPanel({action,resumeActionId,initialEmploymentId}:{act
  const leaveReady=kind==='leave'&&!!field('leaveTypeId')&&!!field('direction')&&/^(?:[1-9]\d{0,2}|0)(?:\.[05])?$/.test(field('days'))&&Number(field('days'))>0&&!!field('effectiveOn')&&field('reason').trim().length>0;
  const destination=['departmentId','positionId','businessUnitId','locationId'].some(name=>!!field(name));
  const movementReady=kind==='movement'&&!!field('kind')&&!!field('effectiveDate')&&destination;
- const ready=!!selected&&consent&&(leaveReady||movementReady);
+ const creditReady=kind==='credit'&&!!field('workedDate')&&/^\d{2}:\d{2}$/.test(field('claimStart'))&&/^\d{2}:\d{2}$/.test(field('claimEnd'))&&field('claimStart')!==field('claimEnd')&&field('reason').trim().length>0;
+ const ready=!!selected&&consent&&(leaveReady||movementReady||creditReady);
  function prepare(event:FormEvent){event.preventDefault();if(!ready||!selected||flight.current)return;
   const base={action,contractVersion:1,employmentId:selected.employmentId,subjectId:selected.employmentId};
   const input=kind==='leave'?{...base,leaveTypeId:field('leaveTypeId'),direction:field('direction'),days:field('days'),effectiveOn:field('effectiveOn'),reason:field('reason')}
+   :kind==='credit'?{...base,workedDate:field('workedDate'),claimStart:field('claimStart'),claimEnd:field('claimEnd'),reason:field('reason'),firstScheduleConsent:field('firstScheduleConsent')==='true'}
    :{...base,kind:field('kind'),effectiveDate:field('effectiveDate'),departmentId:field('departmentId')||null,positionId:field('positionId')||null,businessUnitId:field('businessUnitId')||null,locationId:field('locationId')||null,...(field('remarks').trim()?{remarks:field('remarks')}:{})};
   void dispatch({action,operation:'prepare',input});
  }
@@ -74,14 +76,18 @@ export function HrPreparedPanel({action,resumeActionId,initialEmploymentId}:{act
  const fact=(label:string,value:string)=><div><dt className="font-medium">{t(label)}</dt><dd className="whitespace-pre-wrap break-words">{value}</dd></div>;
  const none=t('notChanged');
  // Days are shown exactly as the stored signed string; nothing is recalculated.
- const facts=(row:Item)=>kind==='leave'?<>{fact('employee',person(row))}{fact('leaveType',String(row.leaveTypeName))}{fact('signedDays',String(row.signedDays))}{fact('effectiveOn',day(String(row.effectiveOn)))}{fact('reason',String(row.reason))}</>
+ const facts=(row:Item)=>kind==='credit'?<>{fact('employee',person(row))}{fact('workedDate',day(String(row.workedDate)))}{fact('dayType',t(`dayTypes.${String(row.dayType)}`))}{fact('claimStart',String(row.claimStart))}{fact('claimEnd',String(row.claimEnd))}
+   {fact('creditDays',row.creditDays==null?t('creditLegacy'):t('creditDaysValue',{days:f.number(Number(row.creditDays))}))}
+   {fact('overtimeMinutes',f.number(Number(row.overtimeMinutes)))}{fact('firstSchedule',t(row.firstScheduleEligible?'yes':'no'))}{row.firstScheduleEligible===true&&fact('firstScheduleConsent',t(row.firstScheduleConsent?'yes':'no'))}{fact('reason',String(row.reason))}
+   {Number(row.overtimeMinutes)>0&&<p role="note" className="text-sm font-medium">{t('overtimeWarning')}</p>}</>
+  :kind==='leave'?<>{fact('employee',person(row))}{fact('leaveType',String(row.leaveTypeName))}{fact('signedDays',String(row.signedDays))}{fact('effectiveOn',day(String(row.effectiveOn)))}{fact('reason',String(row.reason))}</>
   :<>{fact('employee',person(row))}{fact('movementKind',t(`kinds.${String(row.kind)}`))}{fact('effectiveDate',day(String(row.effectiveDate)))}{fact('department',(row.department as string|null)??none)}{fact('position',(row.position as string|null)??none)}{fact('businessUnit',(row.businessUnit as string|null)??none)}{fact('location',(row.location as string|null)??none)}{fact('remarks',(row.remarks as string|null)??t('notProvided'))}</>;
  const select=(name:string,label:string,options:Option[]|undefined)=><div><label htmlFor={`${id}-${name}`} className="block text-sm font-medium">{t(label)}</label><select id={`${id}-${name}`} value={field(name)} className={`${inputCls} mt-1`} onChange={event=>set(name,event.target.value)}><option value="">{t('keepCurrent')}</option>{(options??[]).map(row=><option key={row.id} value={row.id}>{row.name}</option>)}</select></div>;
  const statusText=busy?(busy==='choices'?t('loading'):t('working')):state.kind==='review'?t('reviewNote'):state.kind==='completed'?t('done'):state.kind==='retired'?t('retired'):state.kind==='uncertain'?t(state.actionId?'uncertain':'uncertainUnknown'):'';
  return <section className="min-w-0 space-y-4" aria-label={t(`${kind}.title`)} aria-busy={busy!==null}>
   <p ref={status} tabIndex={-1} role="status" aria-live="polite" className="text-sm outline-none">{statusText}</p>
   {error&&<p role="alert" className="text-sm">{error}</p>}
-  {state.kind==='selection'&&(choices.kind==='unavailable'?<div className="space-y-2"><p className="text-sm">{t('choicesUnavailable')}</p><Link href={kind==='leave'?'/admin/leave-config/adjustments':'/admin/personnel'} className="inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('manual')}</Link></div>
+  {state.kind==='selection'&&(choices.kind==='unavailable'?<div className="space-y-2"><p className="text-sm">{t('choicesUnavailable')}</p><Link href={kind==='leave'?'/admin/leave-config/adjustments':kind==='credit'?'/admin/leave-config/leave-credit':'/admin/personnel'} className="inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('manual')}</Link></div>
    :<form onSubmit={prepare} className="space-y-4"><p className="text-sm text-muted-foreground">{t(`${kind}.intro`)}</p><fieldset disabled={busy!==null} className="space-y-4">
    <div className="flex flex-wrap items-end gap-2"><div className="min-w-0 flex-1"><label htmlFor={`${id}-query`} className="block text-sm font-medium">{t('search')}</label><input id={`${id}-query`} value={query} maxLength={80} className={`${inputCls} mt-1`} onChange={event=>setQuery(event.target.value)}/></div><Button type="button" variant="outline" onClick={()=>load('',query)}>{t('searchButton')}</Button></div>
    <div><label htmlFor={`${id}-employee`} className="block text-sm font-medium">{t('employee')}</label><select id={`${id}-employee`} required value={employmentId} className={`${inputCls} mt-1`} onChange={event=>{setEmploymentId(event.target.value);clear();if(kind==='movement'&&event.target.value)load(event.target.value,query);}}><option value="">{t('choose')}</option>{listed.map(row=><option key={row.employmentId} value={row.employmentId}>{person(row)}</option>)}</select>
@@ -92,6 +98,12 @@ export function HrPreparedPanel({action,resumeActionId,initialEmploymentId}:{act
     <div><label htmlFor={`${id}-days`} className="block text-sm font-medium">{t('days')}</label><input id={`${id}-days`} inputMode="decimal" required value={field('days')} aria-describedby={`${id}-days-help`} className={`${inputCls} mt-1`} onChange={event=>set('days',event.target.value)}/><p id={`${id}-days-help`} className="text-xs text-muted-foreground">{t('daysHelp')}</p></div>
     <div><label htmlFor={`${id}-on`} className="block text-sm font-medium">{t('effectiveOn')}</label><input id={`${id}-on`} type="date" required value={field('effectiveOn')} className={`${inputCls} mt-1`} onChange={event=>set('effectiveOn',event.target.value)}/></div>
     <div><label htmlFor={`${id}-reason`} className="block text-sm font-medium">{t('reason')}</label><textarea id={`${id}-reason`} required maxLength={500} value={field('reason')} aria-describedby={`${id}-reason-help`} className={`${inputCls} mt-1`} onChange={event=>set('reason',event.target.value)}/><p id={`${id}-reason-help`} className="text-xs text-muted-foreground">{t('reasonHelp')}</p></div>
+   </>:kind==='credit'?<>
+    <div><label htmlFor={`${id}-worked`} className="block text-sm font-medium">{t('workedDate')}</label><input id={`${id}-worked`} type="date" required value={field('workedDate')} className={`${inputCls} mt-1`} onChange={event=>set('workedDate',event.target.value)}/></div>
+    <div className="flex flex-wrap gap-3"><div><label htmlFor={`${id}-start`} className="block text-sm font-medium">{t('claimStart')}</label><input id={`${id}-start`} type="time" required value={field('claimStart')} className={`${inputCls} mt-1`} onChange={event=>set('claimStart',event.target.value)}/></div>
+     <div><label htmlFor={`${id}-end`} className="block text-sm font-medium">{t('claimEnd')}</label><input id={`${id}-end`} type="time" required value={field('claimEnd')} className={`${inputCls} mt-1`} onChange={event=>set('claimEnd',event.target.value)}/></div></div>
+    <div><label htmlFor={`${id}-reason`} className="block text-sm font-medium">{t('reason')}</label><textarea id={`${id}-reason`} required maxLength={500} value={field('reason')} aria-describedby={`${id}-reason-help`} className={`${inputCls} mt-1`} onChange={event=>set('reason',event.target.value)}/><p id={`${id}-reason-help`} className="text-xs text-muted-foreground">{t('reasonHelp')}</p></div>
+    <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={field('firstScheduleConsent')==='true'} onChange={event=>set('firstScheduleConsent',String(event.target.checked))} className="mt-1"/>{t('firstScheduleConsent')}</label>
    </>:<>
     <fieldset className="space-y-2"><legend className="text-sm font-medium">{t('movementKind')}</legend>{(['transfer','orgAssignmentChange'] as const).map(value=><label key={value} className="flex items-center gap-2 text-sm"><input type="radio" name={`${id}-kind`} checked={field('kind')===value} onChange={()=>set('kind',value)}/>{t(`kinds.${value}`)}</label>)}</fieldset>
     <div><label htmlFor={`${id}-date`} className="block text-sm font-medium">{t('effectiveDate')}</label><input id={`${id}-date`} type="date" required value={field('effectiveDate')} aria-describedby={`${id}-date-help`} className={`${inputCls} mt-1`} onChange={event=>set('effectiveDate',event.target.value)}/><p id={`${id}-date-help`} className="text-xs text-muted-foreground">{t('effectiveDateHelp')}</p></div>
@@ -109,7 +121,7 @@ export function HrPreparedPanel({action,resumeActionId,initialEmploymentId}:{act
    <div className="flex flex-wrap gap-3"><Button type="button" disabled={busy!==null||!confirm||expired} onClick={()=>decide('confirm')}>{t('confirm')}</Button><Button type="button" variant="outline" disabled={busy!==null} onClick={()=>decide('discard')}>{t('discard')}</Button></div></div>}
   {state.kind==='uncertain'&&state.actionId&&<Button type="button" disabled={busy!==null} onClick={()=>void dispatch({action,operation:'reopen',actionId:state.actionId})}>{t('reopen')}</Button>}
   {state.kind==='completed'&&<div className="space-y-2 rounded-lg border border-border p-4"><h3 className="font-semibold">{t('done')}</h3>
-   <p className="text-sm">{kind==='leave'?t('doneLeave'):t(state.receipt.receipt.recorded==='scheduled'?'doneScheduled':'doneApplied')}</p></div>}
+   <p className="text-sm">{kind==='leave'?t('doneLeave'):kind==='credit'?t('doneCredit',{days:f.number(Number(state.receipt.receipt.daysCredited)),date:day(String(state.receipt.receipt.workedDate))}):t(state.receipt.receipt.recorded==='scheduled'?'doneScheduled':'doneApplied')}</p></div>}
   {state.kind==='retired'&&<p className="text-sm">{t('retiredState')}: {t(`states.${state.receipt.state}`)}</p>}
   {(state.kind==='completed'||state.kind==='retired'||state.kind==='uncertain'&&!state.actionId)&&<Button type="button" variant="outline" disabled={busy!==null} onClick={()=>{clear();setState({kind:'selection'});setIndex(null);setError('');load();}}>{t('another')}</Button>}
   <div className="space-y-3 border-t border-border pt-4"><Button type="button" variant="outline" disabled={busy!==null} onClick={()=>void dispatch({action,operation:'list'})}>{t('find')}</Button><p className="text-xs text-muted-foreground">{t('indexScope')}</p>

@@ -14,18 +14,18 @@ import {assertAiActionUnpausedTx} from '../ai-governance';
 import {resolveEntitlementsTx,assertModuleEnabled} from '../entitlements';
 import {isAdmin} from '../../lib/authz-model';
 import {todayInKualaLumpur} from '../../lib/hr-date';
-import {applyLeaveAdjustmentBatchTx} from '../../packs/leave/service';
+import {applyLeaveAdjustmentBatchTx,grantLeaveCreditRowsTx,leaveCreditGrantDayFactsTx,leaveCreditGrantContextTx,leaveCreditClaimReviewTx} from '../../packs/leave/service';
 import {createMovementEventTx} from '../movement';
 import {assertWorkforceEmploymentTx} from '../workforce-access';
 import type {AssignedSubject} from './generic-assigned-review-store';
-import {HrChoicesSelection,HrLeaveAdjustment,HrMovementTransfer,type HrLeaveAdjustmentHuman,type HrMovementTransferHuman} from '../../lib/assistant-actions/hr-prepared-contract';
+import {HrChoicesSelection,HrLeaveAdjustment,HrMovementTransfer,HrLeaveCredit,type HrLeaveAdjustmentHuman,type HrMovementTransferHuman,type HrLeaveCreditHuman} from '../../lib/assistant-actions/hr-prepared-contract';
 export class HrPreparedUnavailable extends Error{constructor(){super('That change needs another look. Please reopen it from the employee.');this.name='HrPreparedUnavailable';}}
 export const hrPreparedUnavailable=():never=>{throw new HrPreparedUnavailable();};
 const fail=hrPreparedUnavailable;
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
 const digestOf=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const rowsOf=<T>(rows:unknown)=>rows as unknown as T[];
-type Module='leave'|'employees';
+type Module='leave'|'employees'|'toil';
 async function actor(tx:Tx,supplied:SessionContext,module:Module){
  const ctx=capture(supplied);await assertAiPrincipalTx(tx,ctx);
  const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};
@@ -145,4 +145,51 @@ export async function reconcileHrMovementSourceTx(tx:Tx,fresh:SessionContext,ref
   and d.subject_employment_id=${reference.employmentId}::uuid and d.actor_type='user' and d.actor_id=${fresh.userId}::uuid and jsonb_typeof(d.payload->'movement')='object'`));
  if(!row||reference.subjectId!==reference.employmentId)return fail();
  return HrMovementTransfer.Receipt.parse({kind:'moved',subjectId:reference.subjectId,eventId:reference.eventId,employmentId:reference.employmentId,recorded:row.eventType==='employment.movement.scheduled'?'scheduled':'applied'});
+}
+
+// Leave Credit (hr_manual_grant): one worked date per review.
+/** The Leave Credit screen's own boundary: administrator of the employee's company (assertAdminForEmploymentTx). */
+const creditAuthority=(tx:Tx,fresh:SessionContext,employmentId:string)=>leaveCreditGrantContextTx(tx,fresh,{employmentId,today:todayInKualaLumpur()});
+export async function readHrLeaveCreditChoicesTx(tx:Tx,supplied:SessionContext,selection?:unknown){
+ const fresh=await actor(tx,supplied,'toil'),{query}=HrChoicesSelection.parse(selection??{query:''});
+ return HrLeaveCredit.Choices.parse({kind:'choices',...await searchSubjects(tx,fresh,query)});
+}
+export async function withHrLeaveCreditSubjectTx<T>(tx:Tx,supplied:SessionContext,subjectId:string,mode:'pending'|'recorded',work:(fresh:SessionContext,subject:AssignedSubject)=>Promise<T>):Promise<T>{
+ const fresh=await actor(tx,supplied,'toil'),row=await subjectRow(tx,fresh,subjectId);if(!row)return fail();notSelf(fresh,row.subjectPersonId);
+ if(mode==='pending'){const context=await creditAuthority(tx,fresh,row.employmentId);if(context.ownRecord||!context.policyEnabled)return fail();}
+ return work(fresh,subjectOf(row));
+}
+/** Every figure is the engine's: the roster's day type, the credit preview and the overtime already recorded. */
+async function leaveCreditReview(tx:Tx,fresh:SessionContext,human:HrLeaveCreditHuman){
+ const row=await subjectRow(tx,fresh,human.subjectId);if(!row||row.employmentId!==human.employmentId)return fail();notSelf(fresh,row.subjectPersonId);
+ if(human.workedDate>todayInKualaLumpur())return fail();
+ const context=await creditAuthority(tx,fresh,row.employmentId),facts=await leaveCreditGrantDayFactsTx(tx,fresh,{employmentId:row.employmentId,workedDate:human.workedDate});
+ if(context.ownRecord||!context.policyEnabled||facts.alreadyCredited)return fail();
+ if(context.firstSchedule&&human.firstScheduleConsent&&!context.allowFirstSchedule)return fail();
+ const preview=await leaveCreditClaimReviewTx(tx,fresh,{employmentId:row.employmentId,workedDate:human.workedDate,claimStart:human.claimStart,claimEnd:human.claimEnd});
+ if(preview.basis==='unavailable'||preview.basis==='formula'&&preview.status!=='ready')return fail();
+ return HrLeaveCredit.Item.parse({employmentId:row.employmentId,subjectId:row.employmentId,employeeName:row.employeeName,employeeCode:row.employeeCode,companyName:row.companyName,
+  workedDate:human.workedDate,dayType:facts.kind,claimStart:human.claimStart,claimEnd:human.claimEnd,creditDays:preview.basis==='formula'?preview.creditDays:null,
+  overtimeMinutes:Math.max(0,Math.round(Number(facts.overtimeMinutes)||0)),firstScheduleEligible:context.firstSchedule,firstScheduleConsent:human.firstScheduleConsent,reason:human.reason.trim()});
+}
+export async function prepareHrLeaveCreditSourceTx(tx:Tx,fresh:SessionContext,human:HrLeaveCreditHuman){const review=await leaveCreditReview(tx,fresh,human);return{review,reviewedDigest:digestOf(review)};}
+export async function confirmHrLeaveCreditSourceTx(tx:Tx,fresh:SessionContext,human:HrLeaveCreditHuman,reviewedDigest:string){
+ const review=await leaveCreditReview(tx,fresh,human);if(digestOf(review)!==reviewedDigest)return fail();
+ // The native grant re-checks admin authority and own record, locks the dependencies, adjudicates the posted
+ // day type against the roster, derives the credit, refuses a credited date and records one accrual and event.
+ const done=await grantLeaveCreditRowsTx(tx,fresh,{employmentId:human.employmentId,rows:[{workedDate:human.workedDate,dayType:review.dayType,claimStart:human.claimStart,claimEnd:human.claimEnd}],
+  reason:human.reason.trim(),firstScheduleConsent:human.firstScheduleConsent,today:todayInKualaLumpur()});
+ if(done.rows.length!==1||done.rows[0].workedDate!==human.workedDate)return fail();
+ const [event]=rowsOf<{id:string}>(await tx.execute(sql`select d.id from public.domain_event d where d.tenant_id=${fresh.tenantId}::uuid and d.aggregate_type='toil-accrual'
+  and d.aggregate_id=${done.rows[0].accrualId}::uuid and d.event_type='toil.accrued' and d.actor_id=${fresh.userId}::uuid and d.subject_employment_id=${human.employmentId}::uuid and ${currentEvent} limit 1`));
+ if(!event)return fail();
+ return{eventId:event.id,receipt:await reconcileHrLeaveCreditSourceTx(tx,fresh,{subjectId:human.subjectId,eventId:event.id,employmentId:human.employmentId})};
+}
+export async function reconcileHrLeaveCreditSourceTx(tx:Tx,fresh:SessionContext,reference:{subjectId:string;eventId:string;employmentId:string}){
+ const [row]=rowsOf<{accrualId:string;workedDate:string;days:string;expiresOn:string|null}>(await tx.execute(sql`select a.id as "accrualId",to_char(a.worked_date,'YYYY-MM-DD') as "workedDate",a.days_credited::text as days,to_char(a.expires_on,'YYYY-MM-DD') as "expiresOn"
+  from public.toil_accrual a join public.domain_event d on d.aggregate_id=a.id and d.tenant_id=a.tenant_id
+  where d.id=${reference.eventId}::uuid and a.tenant_id=${fresh.tenantId}::uuid and a.employment_id=${reference.employmentId}::uuid and a.source='hr_manual_grant'
+   and d.aggregate_type='toil-accrual' and d.event_type='toil.accrued' and d.actor_type='user' and d.actor_id=${fresh.userId}::uuid`));
+ if(!row||reference.subjectId!==reference.employmentId)return fail();
+ return HrLeaveCredit.Receipt.parse({kind:'credited',subjectId:reference.subjectId,eventId:reference.eventId,employmentId:reference.employmentId,accrualId:row.accrualId,workedDate:row.workedDate,daysCredited:Number(row.days),expiresOn:row.expiresOn});
 }

@@ -6,7 +6,8 @@
 import {z} from 'zod';
 export const HR_LEAVE_ADJUSTMENT_ACTION='leave.adjustment.apply' as const;
 export const HR_MOVEMENT_TRANSFER_ACTION='employees.movement.transfer' as const;
-export const HR_PREPARED_ACTIONS=[HR_LEAVE_ADJUSTMENT_ACTION,HR_MOVEMENT_TRANSFER_ACTION] as const;
+export const HR_LEAVE_CREDIT_ACTION='toil.credit.grant' as const;
+export const HR_PREPARED_ACTIONS=[HR_LEAVE_ADJUSTMENT_ACTION,HR_MOVEMENT_TRANSFER_ACTION,HR_LEAVE_CREDIT_ACTION] as const;
 export type HrPreparedAction=typeof HR_PREPARED_ACTIONS[number];
 const uuid=z.guid(),digest=z.string().regex(/^[a-f0-9]{64}$/),date=z.iso.date(),name=z.string().min(1).max(240),code=z.string().max(100).nullable();
 /** No transform: the store compares the parsed content with the posted input byte for byte. */
@@ -39,6 +40,22 @@ const MovementChoices=z.discriminatedUnion('kind',[z.object({kind:z.literal('cho
  departments:z.array(option).max(200),positions:z.array(option).max(200),businessUnits:z.array(option).max(200),locations:z.array(option).max(200)}).strict(),z.object({kind:z.literal('unavailable')}).strict()]);
 const MovementReceipt=z.object({kind:z.literal('moved'),subjectId:uuid,eventId:uuid,employmentId:uuid,recorded:z.enum(['applied','scheduled'])}).strict();
 
+// Leave Credit: one date the employee worked and the window HR enters. The engine names the day type from the
+// roster, derives the credit and its expiry, and refuses an already-credited date; nothing here is a figure.
+const time=z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
+const LeaveCreditHuman=z.object({action:z.literal(HR_LEAVE_CREDIT_ACTION),contractVersion:z.literal(1),employmentId:uuid,subjectId:uuid,
+ workedDate:date,claimStart:time,claimEnd:time,reason,firstScheduleConsent:z.boolean()}).strict()
+ .refine(v=>v.subjectId===v.employmentId&&v.claimStart!==v.claimEnd);
+const LeaveCreditItem=z.object({employmentId:uuid,subjectId:uuid,employeeName:name,employeeCode:code,companyName:name,workedDate:date,
+ dayType:z.enum(['rest_day','off_day','holiday','workday']),claimStart:time,claimEnd:time,
+ /** The engine's preview; null when the company's legacy rule decides at grant time. */
+ creditDays:z.number().positive().max(2).nullable(),
+ /** ⚠️ MONEY: overtime minutes already recorded on the date, whose pay the credit would suppress. */
+ overtimeMinutes:z.number().int().nonnegative(),
+ firstScheduleEligible:z.boolean(),firstScheduleConsent:z.boolean(),reason:z.string().max(500)}).strict();
+const LeaveCreditChoices=z.discriminatedUnion('kind',[z.object({kind:z.literal('choices'),employees:z.array(HrSubject).max(25),truncated:z.boolean()}).strict(),z.object({kind:z.literal('unavailable')}).strict()]);
+const LeaveCreditReceipt=z.object({kind:z.literal('credited'),subjectId:uuid,eventId:uuid,employmentId:uuid,accrualId:uuid,workedDate:date,daysCredited:z.number().positive(),expiresOn:date.nullable()}).strict();
+
 function contract<A extends HrPreparedAction,H extends z.ZodType<{employmentId:string;subjectId:string}>,I extends z.ZodObject,C extends z.ZodType,R extends z.ZodObject>(action:A,human:H,item:I,choices:C,receipt:R,consequence:string,indexKind:string){
  const base={action:z.literal(action),contractVersion:z.literal(1)};
  return {
@@ -56,6 +73,9 @@ function contract<A extends HrPreparedAction,H extends z.ZodType<{employmentId:s
 export const HrLeaveAdjustment=contract(HR_LEAVE_ADJUSTMENT_ACTION,LeaveAdjustmentHuman,LeaveAdjustmentItem,LeaveAdjustmentChoices,LeaveAdjustmentReceipt,'hr_leave_adjustment_balance_changes_from_effective_date','leave_adjustment_review_index');
 /** A past or current date applies now; a future date waits as a pending movement until that morning. */
 export const HrMovementTransfer=contract(HR_MOVEMENT_TRANSFER_ACTION,MovementHuman,MovementItem,MovementChoices,MovementReceipt,'hr_movement_applies_on_effective_date','movement_transfer_review_index');
-export const HR_PREPARED_CONTRACTS={[HR_LEAVE_ADJUSTMENT_ACTION]:HrLeaveAdjustment,[HR_MOVEMENT_TRANSFER_ACTION]:HrMovementTransfer} as const;
+/** The credit is banked under the company's Leave Credit rules; overtime recorded on that date is no longer paid. */
+export const HrLeaveCredit=contract(HR_LEAVE_CREDIT_ACTION,LeaveCreditHuman,LeaveCreditItem,LeaveCreditChoices,LeaveCreditReceipt,'hr_leave_credit_banked_overtime_on_date_not_paid','leave_credit_review_index');
+export const HR_PREPARED_CONTRACTS={[HR_LEAVE_ADJUSTMENT_ACTION]:HrLeaveAdjustment,[HR_MOVEMENT_TRANSFER_ACTION]:HrMovementTransfer,[HR_LEAVE_CREDIT_ACTION]:HrLeaveCredit} as const;
 export type HrLeaveAdjustmentHuman=z.infer<typeof LeaveAdjustmentHuman>;
 export type HrMovementTransferHuman=z.infer<typeof MovementHuman>;
+export type HrLeaveCreditHuman=z.infer<typeof LeaveCreditHuman>;

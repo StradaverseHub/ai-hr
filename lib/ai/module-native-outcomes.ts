@@ -34,6 +34,7 @@ export const NATIVE_OUTCOME_ACTIONS=Object.freeze({
  'system_testing.execution.save':entry('system_testing','human_reported_observation_not_independent_verification'),
  'leave.adjustment.apply':entry('leave','hr_adjustment_written_balance_from_effective_date'),
  'employees.movement.transfer':entry('employees','hr_assignment_movement_applied_or_scheduled'),
+ 'toil.credit.grant':entry('toil','hr_leave_credit_banked_overtime_on_date_not_paid'),
 } satisfies Record<ModuleEffectActionId,Readonly<{module:AgentModuleCode;semantics:string}>>);
 export type NativeOutcomeAction=keyof typeof NATIVE_OUTCOME_ACTIONS;
 export const NATIVE_REVIEW_ACTIONS=Object.freeze(Object.keys(NATIVE_OUTCOME_ACTIONS).filter((action):action is Exclude<NativeOutcomeAction,'employees.import'>=>action!=='employees.import'));

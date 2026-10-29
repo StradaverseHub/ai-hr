@@ -284,9 +284,11 @@ a native service that already checks the HR administrator's authority over that 
 
 1. `leave.adjustment.apply`: add or deduct leave days for one employee and one leave type, with an effective
    date and a reason (`applyLeaveAdjustmentBatch`, individual mode, one employment).
-2. `toil.credit.grant`: grant Leave Credit for days one employee worked
-   (`grantLeaveCreditRows`, `hr_manual_grant`). The engine computes every credit, expiry and First Schedule
-   floor.
+2. `toil.credit.grant`: grant Leave Credit for one date one employee worked
+   (`grantLeaveCreditRows`, `hr_manual_grant`). HR enters the date, the hours worked, the reason and the
+   First Schedule consent. The engine names the day type from the roster, computes the credit, expiry and
+   First Schedule floor, refuses a date already credited, and shows the overtime the credit would stop
+   paying.
 3. `employees.movement.transfer`: an assignment-only Transfer or Organisation Assignment Change with an
    effective date (`createMovementEventTx`). Department, position, business unit and location only; no grade,
    pay, company or end of employment. A future date is recorded as a pending movement, exactly as on the
@@ -321,7 +323,7 @@ this employment. The completion verifier proves, per kind:
 
 - leave adjustment: a batch of this login, a ledger row for this employment and leave type, and the
   `leave.adjustment.applied` event on that batch;
-- Leave Credit: the grant event for this employment;
+- Leave Credit: an `hr_manual_grant` accrual for this employment and its `toil.accrued` event;
 - movement: the movement's own event for this employment, either applied or scheduled.
 
 A prior-transaction event is refused as proof.

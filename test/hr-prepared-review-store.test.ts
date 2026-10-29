@@ -9,11 +9,12 @@ import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {createCompany,createDepartment} from '../core/admin';
 import {grantAssistant} from '../core/assistant-grant';
-import {applyLeaveAdjustmentBatchTx} from '../packs/leave/service';
+import {applyLeaveAdjustmentBatchTx,grantLeaveCreditRowsTx,setToilPolicy} from '../packs/leave/service';
+import {setRestDay} from '../core/roster';
 import {createMovementEventTx} from '../core/movement';
-import {leaveAdjustmentReviews,movementTransferReviews,readLeaveAdjustmentChoices,readMovementTransferChoices} from '../core/assistant-actions/hr-prepared-review-store';
+import {leaveAdjustmentReviews,movementTransferReviews,leaveCreditReviews,readLeaveAdjustmentChoices,readMovementTransferChoices,readLeaveCreditChoices} from '../core/assistant-actions/hr-prepared-review-store';
 import {readCompletedNativeOutcomeTx} from '../core/assistant-actions/completed-outcome-readers';
-import {HR_LEAVE_ADJUSTMENT_ACTION,HR_MOVEMENT_TRANSFER_ACTION} from '../lib/assistant-actions/hr-prepared-contract';
+import {HR_LEAVE_ADJUSTMENT_ACTION,HR_MOVEMENT_TRANSFER_ACTION,HR_LEAVE_CREDIT_ACTION} from '../lib/assistant-actions/hr-prepared-contract';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
@@ -34,7 +35,9 @@ type Kind={action:string;store:Store;choices:(ctx:SessionContext,selection?:unkn
  nativeTx(tx:Tx,who:SessionContext,employmentId:string):Promise<string>;
 };
 
-let b:Base,subject:Person,hrPerson:Person,outsider:Person,hr:SessionContext,stranger:SessionContext,otherCompanyHr:SessionContext;
+let creditDate:string,b:Base,subject:Person,hrPerson:Person,outsider:Person,hr:SessionContext,stranger:SessionContext,otherCompanyHr:SessionContext;
+/** HR calendar days from the repository's HR date owner. */
+function calendarDate(offset:number){const value=new Date(todayInKualaLumpur()+'T12:00:00Z');value.setUTCDate(value.getUTCDate()+offset);return value.toISOString().slice(0,10);}
 const hiredOn=()=>`${Number(todayInKualaLumpur().slice(0,4))-2}-01-01`;
 const groupOf=(base:Base)=>({...adminCtx(base),grants:[{role:'hr_admin' as const,companyId:null}]});
 const group=()=>groupOf(b);
@@ -48,9 +51,12 @@ async function login(personId:string,role:Role,base:Base=b,companyId:string|null
 beforeAll(async()=>{await migrateTestDb();const [installed]=await owner.db.execute<{ok:boolean}>(sql`select app._assistant_assigned_review_subject_kind('leave.adjustment.apply')='employment' as ok`);expect(installed.ok,'Migration 0677 must be installed.').toBe(true);});
 afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-hr-prepared-custody-key-1234');
- await resetDb();b=await seedBase();for(const code of ['assistant'])await setModule(b.tenantId,code,'active');
+ await resetDb();b=await seedBase();for(const code of ['assistant','toil'])await setModule(b.tenantId,code,'active');
  subject=await hire('Fictional Adjusted Employee');hrPerson=await hire('Fictional HR Administrator');outsider=await hire('Fictional Unrelated Colleague');
- hr=await login(hrPerson.personId,'hr_admin');stranger=await login(outsider.personId,'employee');
+ hr=await login(hrPerson.personId,'hr_admin');
+ // Leave Credit: the company policy on, and a rostered rest day both the subject and the HR person worked.
+ await setToilPolicy(group(),{companyId:b.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true});
+ creditDate=calendarDate(-3);for(const who of [subject,hrPerson])await setRestDay(group(),{employmentId:who.employmentId,shiftDate:creditDate});stranger=await login(outsider.personId,'employee');
  // An HR administrator scoped to ANOTHER company of the same tenant (wrong company scope).
  const other=await createCompany(group(),{legalName:'Fictional other employer',country:'MY',currency:'MYR'} as never);
  const otherDept=await createDepartment(group(),{companyId:other.id,name:'Fictional other department'} as never);
@@ -58,7 +64,15 @@ beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-hr-prepared-custod
  otherCompanyHr=await login(otherPerson.personId,'hr_admin',b,other.id);
 });
 
-const KINDS:Record<'leave'|'movement',Kind>={
+const KINDS:Record<'leave'|'movement'|'credit',Kind>={
+ credit:{action:HR_LEAVE_CREDIT_ACTION,store:leaveCreditReviews,choices:readLeaveCreditChoices,
+  human:employmentId=>({action:HR_LEAVE_CREDIT_ACTION,contractVersion:1,employmentId,subjectId:employmentId,workedDate:creditDate,claimStart:'09:00',claimEnd:'17:00',reason:'Fictional weekend stock-take',firstScheduleConsent:false}),
+  async effects(employmentId){
+   const [rows]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.toil_accrual where employment_id=${employmentId}::uuid and source='hr_manual_grant'`);
+   const events=await owner.db.execute<{id:string;actor_id:string|null}>(sql`select id,actor_id from public.domain_event where subject_employment_id=${employmentId}::uuid and event_type='toil.accrued' order by sequence`);
+   return {rows:rows.n,events:Array.from(events)};},
+  async nativeTx(tx,who,employmentId){const done=await grantLeaveCreditRowsTx(tx,who,{employmentId,rows:[{workedDate:creditDate,dayType:'rest_day',claimStart:'09:00',claimEnd:'17:00'}],reason:'Fictional native credit'});
+   const [row]=await tx.execute<{id:string}>(sql`select id from public.domain_event where aggregate_id=${done.rows[0].accrualId}::uuid and event_type='toil.accrued'`);return row.id;}},
  leave:{action:HR_LEAVE_ADJUSTMENT_ACTION,store:leaveAdjustmentReviews,choices:readLeaveAdjustmentChoices,
   human:employmentId=>({action:HR_LEAVE_ADJUSTMENT_ACTION,contractVersion:1,employmentId,subjectId:employmentId,leaveTypeId:b.annualLeaveTypeId,direction:'add',days:'1.5',effectiveOn:todayInKualaLumpur(),reason:'Fictional correction of a missed carry-forward'}),
   async effects(employmentId){
@@ -79,7 +93,7 @@ const KINDS:Record<'leave'|'movement',Kind>={
 const receiptOf=(done:{kind:string;receipt:unknown})=>(done.receipt as {receipt:unknown}).receipt as {eventId:string;employmentId:string;subjectId:string};
 async function custody(id:string){const [row]=await owner.db.execute(sql`select r.action_kind,r.state,r.user_id,r.person_id,r.employment_id,r.company_id,r.decision_subject_person_id,r.receipt_subject_kind,r.receipt_subject_id,r.receipt_event_id,r.intent_digest,r.reviewed_digest,(select count(*)::int from app.assistant_own_leave_review_content c where c.action_id=r.id) as bodies from app.assistant_own_leave_review r where r.id=${id}::uuid`);return row;}
 
-describe.each(['leave','movement'] as const)('ADR-0151 HR-prepared %s custody',name=>{
+describe.each(['leave','movement','credit'] as const)('ADR-0151 HR-prepared %s custody',name=>{
  const k=()=>KINDS[name];
  const prepare=async(who:SessionContext,value:unknown)=>(await k().store.prepare(who,value)).review;
  const confirm=(r:{actionId:string;reviewedDigest:string},who:SessionContext)=>k().store.confirm(who,{actionId:r.actionId,reviewedDigest:r.reviewedDigest});
@@ -169,5 +183,21 @@ describe('ADR-0151 HR-prepared movement scope',()=>{
   const [employment]=await owner.db.select({companyId:schema.employment.companyId}).from(schema.employment).where(eq(schema.employment.id,subject.employmentId));expect(employment.companyId).toBe(b.companyId);
   // The contract has no grade, pay or company field; an extra key is refused before anything is prepared.
   for(const extra of [{gradeId:randomUUID()},{companyId:randomUUID()},{basicSalary:9000},{kind:'termination'}])await expect(movementTransferReviews.prepare(hr,{...KINDS.movement.human(subject.employmentId),...extra})).rejects.toThrow();
+ });
+});
+
+describe('ADR-0151 HR-prepared Leave Credit rules stay the engine\'s',()=>{
+ it('shows the roster day type and engine figures, and refuses a date already credited',async()=>{
+  const human=KINDS.credit.human(subject.employmentId);
+  const r=(await leaveCreditReviews.prepare(hr,human)).review;
+  expect(r.review).toMatchObject({dayType:'rest_day',workedDate:creditDate,overtimeMinutes:0,firstScheduleConsent:false});
+  expect((await leaveCreditReviews.confirm(hr,{actionId:r.actionId,reviewedDigest:r.reviewedDigest})).kind).toBe('completed');
+  const credited=await KINDS.credit.effects(subject.employmentId);expect(credited.rows).toBe(1);
+  // The same date again: the engine reports it credited, so no review can be prepared.
+  await expect(leaveCreditReviews.prepare(hr,human)).rejects.toThrow();
+  // A future date is refused before the engine is asked.
+  const future=new Date(todayInKualaLumpur()+'T12:00:00Z');future.setUTCDate(future.getUTCDate()+2);
+  await expect(leaveCreditReviews.prepare(hr,{...human,workedDate:future.toISOString().slice(0,10)})).rejects.toThrow();
+  expect(await KINDS.credit.effects(subject.employmentId)).toEqual(credited);
  });
 });

@@ -18932,7 +18932,8 @@
         "action_leave_edit": "Cuti belum selesai diubah; masih belum diluluskan",
         "action_claims_cancel": "Tuntutan belum selesai dibatalkan; tiada bayaran dibuat",
         "action_leave_adjustment_apply": "Pelarasan cuti oleh HR direkodkan; baki berubah mulai tarikh berkuat kuasa",
-        "action_employees_movement_transfer": "Pergerakan tugasan oleh HR direkodkan; dilaksanakan sekarang atau menunggu tarikhnya"
+        "action_employees_movement_transfer": "Pergerakan tugasan oleh HR direkodkan; dilaksanakan sekarang atau menunggu tarikhnya",
+        "action_toil_credit_grant": "Kredit Cuti oleh HR disimpan; lebih masa pada tarikh itu tidak lagi dibayar"
       },
       "conversation": {
         "answerLabel": "Jawapan daripada rekod anda",
@@ -19109,7 +19110,34 @@
         "reviewNote": "Semak butiran yang disimpan di bawah.",
         "retired": "Semakan ini telah ditutup.",
         "uncertain": "Keputusannya tidak pasti. Buka semula semakan yang disimpan untuk melihat apa yang berlaku; tiada apa-apa dihantar semula.",
-        "uncertainUnknown": "Keputusannya tidak pasti. Cari semakan anda yang disimpan untuk melihat apa yang berlaku."
+        "uncertainUnknown": "Keputusannya tidak pasti. Cari semakan anda yang disimpan untuk melihat apa yang berlaku.",
+        "creditFlow": "Kredit Cuti",
+        "credit": {
+          "title": "Beri Kredit Cuti untuk hari bekerja",
+          "description": "Kreditkan seorang pekerja untuk satu tarikh mereka bekerja. Anda masukkan tarikh, waktu dan sebab; peraturan Kredit Cuti menentukan kredit.",
+          "intro": "Cari pekerja, kemudian masukkan tarikh bekerja serta waktu mula dan tamat, sama seperti di skrin Kredit Cuti.",
+          "consequence": "Apabila anda mengesahkan, kredit disimpan mengikut peraturan Kredit Cuti syarikat. Kerja lebih masa yang direkodkan pada tarikh itu tidak lagi dibayar."
+        },
+        "workedDate": "Tarikh bekerja",
+        "claimStart": "Waktu mula",
+        "claimEnd": "Waktu tamat",
+        "dayType": "Jenis hari (daripada jadual)",
+        "dayTypes": {
+          "rest_day": "Hari rehat",
+          "off_day": "Hari kelepasan",
+          "holiday": "Cuti umum",
+          "workday": "Hari bekerja"
+        },
+        "creditDays": "Kredit (daripada peraturan Kredit Cuti)",
+        "creditDaysValue": "{days} hari",
+        "creditLegacy": "Dikira mengikut peraturan syarikat apabila anda mengesahkan",
+        "overtimeMinutes": "Kerja lebih masa yang sudah direkodkan pada tarikh ini",
+        "overtimeWarning": "Bayaran kerja lebih masa untuk tarikh ini akan dihentikan oleh kredit ini.",
+        "firstSchedule": "Tertakluk kepada Jadual Pertama",
+        "firstScheduleConsent": "Pekerja bersetuju mengambil cuti ganti dan bukan bayaran lebih masa (Jadual Pertama)",
+        "yes": "Ya",
+        "no": "Tidak",
+        "doneCredit": "{days} hari Kredit Cuti disimpan untuk {date}."
       }
     },
     "denied_unavailable": "Ada sedikit masalah di pihak saya. Sila cuba lagi sebentar nanti.",

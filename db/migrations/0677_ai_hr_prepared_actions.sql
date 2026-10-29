@@ -1,7 +1,8 @@
--- ADR-0151 (amendment 2026-10-29): the first HR-administrator actions, as two kinds of the wave 1b ASSIGNED
+-- ADR-0151 (amendment 2026-10-29): the first HR-administrator actions, as three kinds of the wave 1b ASSIGNED
 -- family (0671): the caller is the administrator, the subject is ANOTHER person's employment.
 --  * leave.adjustment.apply: one employee, one leave type (applyLeaveAdjustmentBatch, individual mode).
 --  * employees.movement.transfer: an assignment-only Transfer or Organisation Assignment Change.
+--  * toil.credit.grant: an HR manual Leave Credit for one date one employee worked (grantLeaveCreditRows).
 -- The stored subject is the employment itself (receipt_subject_kind='employment'); the subject person is kept
 -- in decision_subject_person_id exactly as 0671 does, so the erasure and outcome-capture owners cover it.
 -- 0671's verifier and binding are wrapped, not copied: they are renamed and the new functions delegate every
@@ -10,7 +11,7 @@
 DO $$
 DECLARE def text;
  old_list constant text:='''approvals.toil.decide''::text]';
- new_list constant text:='''approvals.toil.decide''::text, ''leave.adjustment.apply''::text, ''employees.movement.transfer''::text]';
+ new_list constant text:='''approvals.toil.decide''::text, ''leave.adjustment.apply''::text, ''employees.movement.transfer''::text, ''toil.credit.grant''::text]';
 BEGIN
  -- The generic-kind list of the per-kind column rule gains the two kinds; the legacy ELSE expression is
  -- carried over byte-for-byte from the live definition. Exactly one occurrence must match.
@@ -26,7 +27,7 @@ ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT assistant_review_deci
 --> statement-breakpoint
 ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_review_decision_columns CHECK(CASE
  WHEN action_kind='approvals.leave.decide' THEN decision_request_id IS NOT NULL AND decision_subject_person_id IS NOT NULL AND ((state='completed')=(decision_event_id IS NOT NULL))
- WHEN action_kind IN ('approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer') THEN decision_subject_person_id IS NOT NULL
+ WHEN action_kind IN ('approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer','toil.credit.grant') THEN decision_subject_person_id IS NOT NULL
   AND decision_request_id IS NULL AND decision_step_id IS NULL AND decision_event_id IS NULL AND decision_applicant_person_id IS NULL
  ELSE decision_request_id IS NULL AND decision_step_id IS NULL AND decision_event_id IS NULL AND decision_subject_person_id IS NULL AND decision_applicant_person_id IS NULL END);
 --> statement-breakpoint
@@ -34,7 +35,7 @@ ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT assistant_review_acti
 --> statement-breakpoint
 ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_review_action_kind CHECK(action_kind IN ('leave.apply','notifications.email_preferences.save','ess.profile.request','claims.draft.save','performance.review.acknowledge','performance.onehr.plan.acknowledge','system_testing.execution.save','claims.submit','org.reporting.change','knowledge_base.article.create','lifecycle.acknowledgement.submit','toil.replacement.request','approvals.leave.decide','attendance.correction.request','typed_pay_components.create','rewards.post','payroll.close','country-my.statutory.update','multi_cycle_payroll.create_run',
  'claims.cancel','leave.cancel','leave.edit','attendance.overtime.request','approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide',
- 'leave.adjustment.apply','employees.movement.transfer'));
+ 'leave.adjustment.apply','employees.movement.transfer','toil.credit.grant'));
 --> statement-breakpoint
 ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT assistant_review_generic_receipt;
 --> statement-breakpoint
@@ -42,7 +43,7 @@ ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT assistant_review_gene
 ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_review_generic_receipt CHECK(CASE
  WHEN action_kind IN ('claims.cancel','approvals.claim.decide') THEN receipt_subject_kind='claim_request' AND receipt_subject_id IS NOT NULL AND ((state='completed')=(receipt_event_id IS NOT NULL))
  WHEN action_kind IN ('leave.cancel','leave.edit') THEN receipt_subject_kind='leave_request' AND receipt_subject_id IS NOT NULL AND ((state='completed')=(receipt_event_id IS NOT NULL))
- WHEN action_kind IN ('attendance.overtime.request','leave.adjustment.apply','employees.movement.transfer') THEN receipt_subject_kind='employment' AND receipt_subject_id=employment_id AND ((state='completed')=(receipt_event_id IS NOT NULL))
+ WHEN action_kind IN ('attendance.overtime.request','leave.adjustment.apply','employees.movement.transfer','toil.credit.grant') THEN receipt_subject_kind='employment' AND receipt_subject_id=employment_id AND ((state='completed')=(receipt_event_id IS NOT NULL))
  WHEN action_kind='approvals.attendance.decide' THEN receipt_subject_kind='attendance_correction' AND receipt_subject_id IS NOT NULL AND ((state='completed')=(receipt_event_id IS NOT NULL))
  WHEN action_kind='approvals.toil.decide' THEN receipt_subject_kind='replacement_leave_request' AND receipt_subject_id IS NOT NULL AND ((state='completed')=(receipt_event_id IS NOT NULL))
  ELSE receipt_subject_kind IS NULL AND receipt_subject_id IS NULL AND receipt_event_id IS NULL END);
@@ -52,18 +53,18 @@ DROP INDEX app.assistant_review_generic_pending_subject;
 --> statement-breakpoint
 CREATE UNIQUE INDEX assistant_review_generic_pending_subject ON app.assistant_own_leave_review(tenant_id,action_kind,receipt_subject_id)
  WHERE receipt_subject_id IS NOT NULL AND state='awaiting_confirmation'
-  AND action_kind NOT IN ('approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer');
+  AND action_kind NOT IN ('approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer','toil.credit.grant');
 --> statement-breakpoint
 DROP INDEX app.assistant_review_assigned_pending_subject;
 --> statement-breakpoint
 CREATE UNIQUE INDEX assistant_review_assigned_pending_subject ON app.assistant_own_leave_review(tenant_id,action_kind,receipt_subject_id,user_id)
  WHERE receipt_subject_id IS NOT NULL AND state='awaiting_confirmation'
-  AND action_kind IN ('approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer');
+  AND action_kind IN ('approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer','toil.credit.grant');
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app._assistant_assigned_review_subject_kind(p_kind text) RETURNS text
  LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT CASE p_kind WHEN 'approvals.claim.decide' THEN 'claim_request' WHEN 'approvals.attendance.decide' THEN 'attendance_correction'
-  WHEN 'approvals.toil.decide' THEN 'replacement_leave_request' WHEN 'leave.adjustment.apply' THEN 'employment' WHEN 'employees.movement.transfer' THEN 'employment' END;
+  WHEN 'approvals.toil.decide' THEN 'replacement_leave_request' WHEN 'leave.adjustment.apply' THEN 'employment' WHEN 'employees.movement.transfer' THEN 'employment' WHEN 'toil.credit.grant' THEN 'employment' END;
 $$;
 REVOKE ALL ON FUNCTION app._assistant_assigned_review_subject_kind(text) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -90,7 +91,7 @@ DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id()
 BEGIN
  SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u;
  IF NOT FOUND OR p_event IS NULL THEN RETURN false;END IF;
- IF r.action_kind NOT IN ('leave.adjustment.apply','employees.movement.transfer') THEN
+ IF r.action_kind NOT IN ('leave.adjustment.apply','employees.movement.transfer','toil.credit.grant') THEN
   RETURN app._assistant_generic_review_verify_0671(p_id,p_event);END IF;
  IF r.receipt_subject_id IS DISTINCT FROM r.employment_id
   OR NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=r.employment_id AND e.tenant_id=t AND e.company_id=r.company_id
@@ -107,6 +108,13 @@ BEGIN
     AND EXISTS(SELECT 1 FROM public.leave_ledger l WHERE l.adjustment_batch_id=b.id AND l.tenant_id=t AND l.employment_id=r.employment_id
      AND l.entry_type='adjustment' AND l.xmin=x));
  END IF;
+ IF r.action_kind='toil.credit.grant' THEN
+  -- An HR manual Leave Credit for this employment, banked now, with its own accrual event.
+  RETURN EXISTS(SELECT 1 FROM public.toil_accrual a JOIN public.domain_event d ON d.aggregate_id=a.id AND d.tenant_id=a.tenant_id
+   WHERE a.tenant_id=t AND a.employment_id=r.employment_id AND a.source='hr_manual_grant' AND a.xmin=x
+    AND d.id=p_event AND d.aggregate_type='toil-accrual' AND d.event_type='toil.accrued'
+    AND d.actor_type='user' AND d.actor_id=u AND d.subject_employment_id=r.employment_id AND d.xmin=x);
+ END IF;
  -- Movement: the movement's owning (non-secondary) history event for this employment, written now.
  RETURN EXISTS(SELECT 1 FROM public.domain_event d WHERE d.id=p_event AND d.tenant_id=t AND d.subject_employment_id=r.employment_id
   AND d.actor_type='user' AND d.actor_id=u AND d.xmin=x AND jsonb_typeof(d.payload->'movement')='object'
@@ -114,17 +122,17 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app._assistant_generic_review_verify(uuid,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
--- Outcome linking (ADR-0151 §4.6c): the two kinds join the association list and the readers.
+-- Outcome linking (ADR-0151 §4.6c): the three kinds join the association list and the readers.
 ALTER TABLE public.ai_native_outcome_association DROP CONSTRAINT ai_native_outcome_association_action;
 --> statement-breakpoint
 ALTER TABLE public.ai_native_outcome_association ADD CONSTRAINT ai_native_outcome_association_action CHECK(action IN('employees.import',
 'org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide','knowledge_base.article.create','payroll.close','attendance.correction.request','claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge','rewards.post','lifecycle.acknowledgement.submit','toil.replacement.request','multi_cycle_payroll.create_run','typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save','claims.cancel','leave.cancel','leave.edit',
-'attendance.overtime.request','approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer'));
+'attendance.overtime.request','approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer','toil.credit.grant'));
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.native_outcome_review_completed(p_kind text,p_id uuid) RETURNS boolean
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
  SELECT app.current_user_id() IS NOT NULL AND app.current_tenant_id() IS NOT NULL
- AND app.principal_snapshot_current() AND p_kind IN('org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide','knowledge_base.article.create','payroll.close','attendance.correction.request','claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge','rewards.post','lifecycle.acknowledgement.submit','toil.replacement.request','multi_cycle_payroll.create_run','typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save','claims.cancel','leave.cancel','leave.edit','attendance.overtime.request','approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer')
+ AND app.principal_snapshot_current() AND p_kind IN('org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide','knowledge_base.article.create','payroll.close','attendance.correction.request','claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge','rewards.post','lifecycle.acknowledgement.submit','toil.replacement.request','multi_cycle_payroll.create_run','typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save','claims.cancel','leave.cancel','leave.edit','attendance.overtime.request','approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer','toil.credit.grant')
  AND EXISTS(SELECT 1 FROM app.assistant_own_leave_review r WHERE r.id=p_id AND r.tenant_id=app.current_tenant_id()
   AND r.user_id=app.current_user_id() AND r.action_kind=p_kind AND r.state='completed'
   AND r.created_at<=now() AND r.created_at>now()-interval '30 days')
@@ -154,7 +162,7 @@ CREATE OR REPLACE FUNCTION app.native_outcome_targets_require(p_tenant uuid,p_us
    WHEN 'system_testing.execution.save' THEN r.testing_event_id WHEN 'claims.cancel' THEN r.receipt_event_id WHEN 'leave.cancel' THEN r.receipt_event_id WHEN 'leave.edit' THEN r.receipt_event_id
    WHEN 'attendance.overtime.request' THEN r.receipt_event_id WHEN 'approvals.claim.decide' THEN r.receipt_event_id
    WHEN 'approvals.attendance.decide' THEN r.receipt_event_id WHEN 'approvals.toil.decide' THEN r.receipt_event_id
-   WHEN 'leave.adjustment.apply' THEN r.receipt_event_id WHEN 'employees.movement.transfer' THEN r.receipt_event_id END=p_event)))
+   WHEN 'leave.adjustment.apply' THEN r.receipt_event_id WHEN 'employees.movement.transfer' THEN r.receipt_event_id WHEN 'toil.credit.grant' THEN r.receipt_event_id END=p_event)))
 $$;
 REVOKE ALL ON FUNCTION app.native_outcome_targets_require(uuid,uuid,uuid,text,uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.native_outcome_targets_require(uuid,uuid,uuid,text,uuid,uuid) TO ai_hr_app;
@@ -164,19 +172,19 @@ CREATE OR REPLACE FUNCTION app.native_outcome_completed_review_choices(p_kinds j
  LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
 BEGIN
  IF app.current_tenant_id() IS NULL OR app.current_user_id() IS NULL OR NOT app.principal_snapshot_current()
- OR jsonb_typeof(p_kinds) IS DISTINCT FROM 'array' OR jsonb_array_length(p_kinds) NOT BETWEEN 1 AND 28
+ OR jsonb_typeof(p_kinds) IS DISTINCT FROM 'array' OR jsonb_array_length(p_kinds) NOT BETWEEN 1 AND 29
  THEN RAISE EXCEPTION 'Outcome choices unavailable'; END IF;
  IF EXISTS(SELECT 1 FROM jsonb_array_elements(p_kinds) v WHERE jsonb_typeof(v)<>'string')
  OR (SELECT count(DISTINCT v) FROM jsonb_array_elements_text(p_kinds) v)<>jsonb_array_length(p_kinds)
  OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(p_kinds) v WHERE v NOT IN
- ('org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide','knowledge_base.article.create','payroll.close','attendance.correction.request','claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge','rewards.post','lifecycle.acknowledgement.submit','toil.replacement.request','multi_cycle_payroll.create_run','typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save','claims.cancel','leave.cancel','leave.edit','attendance.overtime.request','approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer'))
+ ('org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide','knowledge_base.article.create','payroll.close','attendance.correction.request','claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge','rewards.post','lifecycle.acknowledgement.submit','toil.replacement.request','multi_cycle_payroll.create_run','typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save','claims.cancel','leave.cancel','leave.edit','attendance.overtime.request','approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer','toil.credit.grant'))
  THEN RAISE EXCEPTION 'Outcome choices unavailable'; END IF;
  RETURN QUERY SELECT r.action_kind,r.id,r.created_at FROM app.assistant_own_leave_review r
  WHERE r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id()
  AND r.state='completed' AND r.action_kind IN(SELECT jsonb_array_elements_text(p_kinds))
  AND r.created_at<=now() AND r.created_at>now()-interval '30 days'
  AND app.native_outcome_capture_available(r.action_kind,r.id)
- ORDER BY r.created_at DESC,r.id DESC LIMIT 28;
+ ORDER BY r.created_at DESC,r.id DESC LIMIT 29;
 END $$;
 REVOKE ALL ON FUNCTION app.native_outcome_completed_review_choices(jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.native_outcome_completed_review_choices(jsonb) TO ai_hr_app;
