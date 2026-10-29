@@ -522,7 +522,7 @@ describe('WP8 assigned tester without staff identity',()=>{
    return {...await sessionFor(base,user.id,null,'employee',null),personId:null};
   };
   const who=await newTester(w.b),other=await newTester(w.b),foreign=await newTester(w.foreign);
-  const assignment=await testing.assignTestingCase(w.group,{caseId:originalAssignment.caseId,testerUserId:who.userId!,expectedVersionId:original.versionId!,active:true,expectedRevision:null});
+  const assignment=await testing.assignTestingCase(w.group,{caseId:originalAssignment.testCaseId,testerUserId:who.userId!,expectedVersionId:original.versionId!,active:true,expectedRevision:null});
   const execution=await testing.beginTestingExecution(who,{assignmentId:assignment.assignmentId,expectedVersionId:original.versionId!,newAttempt:false});
   const item={...original,subjectId:execution.executionId,assignmentId:assignment.assignmentId,revision:execution.revision};
   const observation=testingObservation(item),notes:Record<string,string>={};
@@ -530,6 +530,6 @@ describe('WP8 assigned tester without staff identity',()=>{
   expect(await adapter.offered(who,item)).toBe(true);const review=await tryPrepare(adapter,who,item,DEFAULT_OPTIONS,notes);expect(review,JSON.stringify(notes)).not.toBeNull();
   expect(await tryConfirm(adapter,other,review!,notes,'other')).toBe('deny');expect(await tryConfirm(adapter,foreign,review!,notes,'foreign')).toBe('deny');
   expect(await tryConfirm(adapter,who,review!,notes,'confirm'),JSON.stringify(notes)).toBe('allow');
-  const [run]=await owner.db.select().from(schema.testRun).where(eq(schema.testRun.executionId,item.subjectId));expect(run).toMatchObject({runByUserId:who.userId,actualResult:observation.actualResult,status:observation.status});
+  const [run]=await owner.db.select().from(schema.testRun).where(eq(schema.testRun.executionId,item.subjectId));expect(run).toMatchObject({runByUserId:who.userId,actualResult:observation.actualResult,executionStatus:observation.status});
  },180_000);
 });

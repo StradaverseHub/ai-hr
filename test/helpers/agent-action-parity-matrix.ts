@@ -72,7 +72,7 @@ export const AGENT_ACTION_PARITY={
  'leave.cancel':{kind:'probed',screen:OWN_REQUEST},
  'leave.edit':{kind:'probed',screen:OWN_REQUEST},
  'ess.profile.request':{kind:'probed',screen:OWN_REQUEST},
- 'approvals.leave.decide':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'approvals.leave.decide':{kind:'probed',screen:ASSIGNED_DECISION},
  'approvals.claim.decide':{kind:'probed',screen:ASSIGNED_DECISION},
  'approvals.attendance.decide':{kind:'probed',screen:ASSIGNED_DECISION},
  'approvals.toil.decide':{kind:'probed',screen:ASSIGNED_DECISION},
