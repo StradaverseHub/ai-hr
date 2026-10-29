@@ -8,7 +8,7 @@ describe('runtime action tier enforcement (R17)',()=>{
  it('refuses unknown actions and handoffs, admitting only explicitly Automatic registry entries',()=>{
   expect(()=>assertAgentActionTier('unknown','confirm')).toThrow('tier unavailable');
   // Independent approved catalogue: a future Automatic entry needs its own reviewed expectation.
-  expect(Object.keys(AGENT_ACTION_TIER_CEILING).filter(id=>AGENT_ACTION_TIER_CEILING[id as keyof typeof AGENT_ACTION_TIER_CEILING]==='automatic').sort()).toEqual(['approvals.attendance.chase','approvals.claim.chase','approvals.toil.chase','employees.review_overdue.remind']);
+  expect(Object.keys(AGENT_ACTION_TIER_CEILING).filter(id=>AGENT_ACTION_TIER_CEILING[id as keyof typeof AGENT_ACTION_TIER_CEILING]==='automatic').sort()).toEqual(['approvals.attendance.chase','approvals.claim.chase','approvals.toil.chase','attendance.missing_clock.remind','employees.passport_expiry.remind','employees.review_overdue.remind','lifecycle.step.chase']);
   for(const id of Object.keys(AGENT_ACTION_TIER_CEILING) as (keyof typeof AGENT_ACTION_TIER_CEILING)[]){
    if(AGENT_ACTION_TIER_CEILING[id]==='automatic'){
     expect(['read','reminder','chaser']).toContain(AGENT_ACTION_CATEGORY[id]);
@@ -74,7 +74,7 @@ describe('merged assigned-review tier boundaries',()=>{
 });
 
 describe('Automatic reminders have no human review adapter',()=>{
- it.each(['approvals.claim.chase','approvals.attendance.chase','approvals.toil.chase','employees.review_overdue.remind'] as const)('refuses %s before transaction/native authority',async action=>{
+ it.each(['approvals.claim.chase','approvals.attendance.chase','approvals.toil.chase','employees.review_overdue.remind','attendance.missing_clock.remind','employees.passport_expiry.remind','lifecycle.step.chase'] as const)('refuses %s before transaction/native authority',async action=>{
   const tx={} as Parameters<typeof withAgentActionGuard>[0],ctx={tenantId:'tenant',userId:'human'} as SessionContext;
   await expect(withAgentActionGuard(tx,ctx,action)).rejects.toThrow('no human review adapter');
   expect(db.withTenant).not.toHaveBeenCalled();

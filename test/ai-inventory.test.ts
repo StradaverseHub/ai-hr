@@ -195,9 +195,10 @@ describe('static wiring', () => {
   });
   it('appends migration 0696 with grants, RLS and a definer-only writer', () => {
     const journal = JSON.parse(read('db/migrations/meta/_journal.json')).entries;
-    const last = journal.at(-1);
+    const position=journal.findIndex((entry:{tag:string})=>entry.tag==='0696_ai_agent_action_pause'),last=journal[position];
+    expect(position).toBeGreaterThan(journal.findIndex((entry:{tag:string})=>entry.tag==='0693_assistant_action_kind'));
     expect(last).toMatchObject({ idx: 686, when: 1793330000022, tag: '0696_ai_agent_action_pause' });
-    expect(journal.at(-2).tag).toBe('0693_assistant_action_kind');
+    expect(journal.filter((entry:{tag:string})=>entry.tag==='0696_ai_agent_action_pause')).toHaveLength(1);
     const src = read('db/migrations/0696_ai_agent_action_pause.sql');
     expect(src).toContain('ALTER TABLE app.ai_agent_action_pause ENABLE ROW LEVEL SECURITY;');
     expect(src).toContain('REVOKE ALL ON app.ai_agent_action_pause FROM PUBLIC,ai_hr_app;');
