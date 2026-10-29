@@ -19,9 +19,10 @@ import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { resolveEntitlementsTx } from '../core/entitlements';
 import { sweepReadinessNudges, NUDGE_SETTING_KEY } from '../core/readiness-nudge';
 import { triagePendingClaims, TRIAGE_SETTING_KEY } from '../core/input-triage';
-import { runHrOrchestrator } from '../core/hr-orchestrator';
+import { orchestrationQueue, runHrOrchestrator } from '../core/hr-orchestrator';
 import { agentContext, agentSwitchStatesTx, attributedEnablements, ensureAgentPrincipal } from '../core/agent-principal';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, setModule, setSetting, type Base } from './harness';
+import { agentStatuses } from '../core/control-domains';
+import { adminCtx, entitledCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, setModule, setSetting, type Base } from './harness';
 
 /** The Postgres text through Drizzle's wrapper, so a refusal is proven to be RLS and not a fixture error. */
 function pgText(e: unknown): string {
@@ -207,10 +208,49 @@ describe('ADR-0151 §4.5 — named agent principal', () => {
     expect(await nudges()).toHaveLength(0);
   });
 
+  it('shows scheduled execution metadata to company HR while keeping cases and counts in their scope', async () => {
+    await setModule(base.tenantId, 'notifications', 'active');
+    await personMissingBank();
+    await switchEvent(NUDGE_SETTING_KEY, true);
+    const ctx = await agent();
+    await runHrOrchestrator(ctx);
+    const group = await orchestrationQueue(adminCtx(base));
+    const scoped = { ...adminCtx(base), grants: [{ role: 'hr_admin', companyId: base.companyId }] };
+    const company = await orchestrationQueue(scoped);
+    expect(group.lastRun?.failed).toBe(false);
+    expect(company.lastRun).toEqual(group.lastRun);
+    expect(company.observedAt).toEqual(group.observedAt);
+    expect(company.scheduledRun).toBe(true);
+    expect(company.total).toBeGreaterThan(0);
+    expect(company.rows.every(r => r.company === group.rows[0].company)).toBe(true);
+    const unassigned = { ...scoped, grants: [{ role: 'hr_admin', companyId: crypto.randomUUID() }] };
+    const empty = await orchestrationQueue(unassigned);
+    expect(empty.rows).toEqual([]);
+    expect(empty.total).toBe(0);
+    // Only execution status is tenant-wide, never the other companies' work counts or people.
+    expect(empty.lastRun).toEqual(company.lastRun);
+    const other = await seedBase();
+    expect((await orchestrationQueue(adminCtx(other))).lastRun).toBeNull();
+    expect(JSON.stringify(company.lastRun)).not.toContain(ctx.agent!.principalId);
+  });
+
+  it('reports fixed-template reminders and never reports scheduled models as active', async () => {
+    await setModule(base.tenantId, 'notifications', 'active');
+    await setModule(base.tenantId, 'claims', 'active');
+    await setModule(base.tenantId, 'payroll', 'active');
+    await switchEvent(NUDGE_SETTING_KEY, true);
+    await switchEvent(TRIAGE_SETTING_KEY, true);
+    await setSetting(base.tenantId, 'payroll.anomaly_hypotheses_enabled', true);
+    const roster = await agentStatuses(await entitledCtx(base));
+    expect(roster.find(r => r.id === 'nudge')).toMatchObject({ kind: 'deterministic', active: true, reasonKey: 'nudgeTemplates' });
+    for (const id of ['hypotheses', 'triage']) expect(roster.find(r => r.id === id))
+      .toMatchObject({ active: false, reasonKey: 'scheduledModelNotAdmitted' });
+  });
+
   it('triage under the principal reads no claim and is not admitted to a model', async () => {
     await setModule(base.tenantId, 'claims', 'active');
     expect(await triagePendingClaims(await agent())).toMatchObject({ disabled: true });
     await switchEvent(TRIAGE_SETTING_KEY, true);
-    expect(await triagePendingClaims(await agent())).toMatchObject({ disabled: false, notConfigured: true, candidates: 0, asked: 0 });
+    expect(await triagePendingClaims(await agent())).toMatchObject({ disabled: false, notConfigured: true, modelBlockReason: 'principal_not_admitted', candidates: 0, asked: 0 });
   });
 });

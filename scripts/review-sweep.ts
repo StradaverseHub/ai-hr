@@ -71,6 +71,13 @@ async function main() {
   let nudgeTenants = 0;
   let triageTenants = 0;
   let totalQueries = 0;
+  let triageCandidates = 0;
+  let triageCalls = 0;
+  let triageCleared = 0;
+  let triageRejected = 0;
+  let triagePrincipalNotAdmittedTenants = 0;
+  let triageNoProviderTenants = 0;
+  let triageCappedTenants = 0;
   let failures = 0;
   let notificationCappedTenants = 0;
   let notificationsCreated = 0;
@@ -124,10 +131,17 @@ async function main() {
       const nudge = orchestration?.nudge.status === 'succeeded' ? orchestration.nudge.value
         : { disabled: true, sent: 0, settled: 0, cooled: 0, orphaned: 0, cappedOut: false, awaitingReview: 0, changed: 0 };
       const triage = orchestration?.triage.status === 'succeeded' ? orchestration.triage.value
-        : { disabled: true, queried: 0, candidates: 0, cleared: 0, rejected: 0, notConfigured: false, cappedOut: false };
+        : { disabled: true, queried: 0, candidates: 0, cleared: 0, rejected: 0, notConfigured: false, modelBlockReason: null, asked: 0, cappedOut: false };
       if (!nudge.disabled) nudgeTenants++;
       if (!triage.disabled) triageTenants++;
       totalQueries += triage.queried;
+      triageCandidates += triage.candidates;
+      triageCalls += triage.asked;
+      triageCleared += triage.cleared;
+      triageRejected += triage.rejected;
+      triagePrincipalNotAdmittedTenants += Number(triage.modelBlockReason === 'principal_not_admitted');
+      triageNoProviderTenants += Number(triage.modelBlockReason === 'no_provider');
+      triageCappedTenants += Number(triage.cappedOut);
       if (orchestration?.failed) console.error('  Orchestrator requires attention: a step failed.');
 
       // Project the new started/reminder/escalation/nudge events into notifications now — gated on the
@@ -155,7 +169,7 @@ async function main() {
           // did reads as complete when it was truncated (AGENTS: no silent caps).
           (nudge.disabled
             ? ', nudges off'
-            : `, ${nudge.sent} nudge(s)` +
+            : `, ${nudge.sent} nudge(s) using fixed templates [principal_not_admitted]` +
               (nudge.cooled > 0 ? `, ${nudge.cooled} in cooldown` : '') +
               (nudge.settled > 0 ? `, ${nudge.settled} outcome(s) judged` : '') +
               (nudge.orphaned > 0 ? ` — ⚠ ${nudge.orphaned} gap(s) with NO ONE to notify` : '') +
@@ -167,11 +181,13 @@ async function main() {
           // front of an employee, and it is the number this feature is measured on.
           (triage.disabled
             ? ', triage off'
-            : `, triage ${triage.candidates} claim(s)` +
+            : triage.modelBlockReason
+              ? `, triage not run [${triage.modelBlockReason}]; ${triage.asked} model call(s)`
+              : `, triage ${triage.candidates} claim(s)` +
               (triage.queried > 0 ? ` — ${triage.queried} question(s) raised` : ' — none to ask about') +
               (triage.cleared > 0 ? `, ${triage.cleared} read and clear` : '') +
               (triage.rejected > 0 ? `, ⚠ ${triage.rejected} discarded` : '') +
-              (triage.notConfigured ? ' [no model admission]' : '') +
+              (triage.modelBlockReason ? ` [${triage.modelBlockReason}]` : '') +
               (triage.cappedOut ? ' — ⚠ CAPPED, more remain' : '')),
       );
     } catch (e) {
@@ -206,6 +222,15 @@ async function main() {
         readinessAwaitingReview: totalAwaitingReview,
         readinessChangedBeforeSend: totalChangedBeforeSend,
         nudgeTenants,
+        triageTenants,
+        triageCandidates,
+        triageCalls,
+        triageQueries: totalQueries,
+        triageCleared,
+        triageRejected,
+        triagePrincipalNotAdmittedTenants,
+        triageNoProviderTenants,
+        triageCappedTenants,
         notificationsCreated,
         notificationCappedTenants,
       },

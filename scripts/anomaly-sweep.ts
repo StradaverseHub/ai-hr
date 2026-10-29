@@ -30,7 +30,6 @@ import { resolveEntitlementsTx } from '../core/entitlements';
 import { payrollBatch } from '../db/schema';
 import { describeSkips, loadSweepScope } from '../core/sweep-scope';
 import { evaluateBatchAnomalies } from '../core/payroll-anomaly';
-import { proposeHypotheses } from '../core/payroll-hypothesis';
 import { mineClosureRecurrences } from '../core/recurrence-mining';
 import { recordJobRun } from '../core/job-run';
 
@@ -58,6 +57,8 @@ export type SweepResult = {
   hypotheses: number;
   /** Provider calls the hypothesis layer actually made. Zero on a tenant that has not switched it on. */
   hypothesisCalls: number;
+  /** The scheduled model step is retired pending a separately admitted principal. */
+  hypothesisPrincipalNotAdmittedBatches: number;
   /** ADR-0084 §2.4 — closures whose finding came back at the employee's next payroll. Reversals written. */
   reversalsFound: number;
   /** Closures a clean next cycle vindicated. */
@@ -86,6 +87,7 @@ export async function anomalySweep(url: string, opts: { dryRun?: boolean } = {})
     skipped: scope.skipped.length,
     hypotheses: 0,
     hypothesisCalls: 0,
+    hypothesisPrincipalNotAdmittedBatches: 0,
     reversalsFound: 0,
     closuresHeld: 0,
     closuresPending: 0,
@@ -130,35 +132,10 @@ export async function anomalySweep(url: string, opts: { dryRun?: boolean } = {})
             `${run.block} block, coverage ${(run.coverage * 100).toFixed(1)}%`,
         );
 
-        // ADR-0084 §2.6 — AFTER the deterministic pass, over what it AUTO-CLEARED, and never before:
-        // the rules decide who is already going to a human, and this layer only looks at the rest.
-        //
-        // ⚠️ FOLDED IN HERE RATHER THAN GIVEN ITS OWN CRON LINE, for the reason r230 proved the hard
-        // way — `anomaly-sweep` itself sat BUILT and DOCUMENTED for six weeks without ever being
-        // installed. A second cron line is a second thing to forget to install, and this one has a hard
-        // ordering dependency on the pass above, so a separate schedule could only get it wrong.
-        //
-        // The current no-login context is refused by the AI principal gate before a model call.
-        // Provider configuration alone does not enable this scheduled model step.
-        // IT NEVER FAILS THE BATCH. A provider outage, a rate limit, a ledger write that did not land —
-        // none of that may cost the tenant the verdicts the deterministic pass just produced, which are
-        // the part somebody depends on tonight.
-        try {
-          const h = await proposeHypotheses(ctx, { batchId: batch.id });
-          out.hypotheses += h.raised;
-          out.hypothesisCalls += h.asked;
-          if (!h.disabled) {
-            console.log(
-              `    hypotheses: ${h.candidates} candidate(s) — ${h.raised} raised, ${h.declined} ordinary, ` +
-                `${h.rejected} discarded, ${h.suppressed} suppressed, ${h.asked} call(s), ${h.cached} cached` +
-                (h.cohortTooSmall ? ' [run too small for a peer group]' : '') +
-                (h.notConfigured ? ' [no AI provider]' : '') +
-                (h.cappedOut ? ' [CAPPED — candidates left]' : ''),
-            );
-          }
-        } catch (e) {
-          console.error(`  hypotheses FAILED ${t.name} ${batch.payPeriod}: ${(e as Error).message}`);
-        }
+        // WP1: retire the anonymous model step. A named principal has no payroll-source or model-spend
+        // admission; a provider and switch alone cannot grant either. Keep the deterministic evaluation.
+        out.hypothesisPrincipalNotAdmittedBatches += 1;
+        console.log('    hypotheses: scheduled model step retired [principal_not_admitted]; 0 model calls');
       } catch (e) {
         out.failures += 1;
         // One bad batch must not end the sweep — the other tenants still need their queues filled.
@@ -223,6 +200,8 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop()
           tenantsProcessed: r.tenants,
           tenantsFailed: r.failures,
           tenantsSkipped: r.skipped,
+          result: { hypotheses: r.hypotheses, hypothesisCalls: r.hypothesisCalls,
+            hypothesisPrincipalNotAdmittedBatches: r.hypothesisPrincipalNotAdmittedBatches },
         });
       }
       process.exit(r.failures > 0 ? 1 : 0);
