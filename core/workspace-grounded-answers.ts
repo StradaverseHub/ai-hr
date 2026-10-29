@@ -9,23 +9,33 @@ import {openAssistantAnswerDisclosure,type AssistantDisclosureBinding} from '../
 import {loadCanonicalToolJob,loadGovernedSpecialistToolJob,type CanonicalModuleJobView} from './workspace-module-jobs';
 import {isGroundedToolName,GROUNDED_TOOL_MODULES} from '../lib/ai/grounded-tool-presentation';
 import {assistantAnswerExplanationAvailability,type AssistantAnswerExplanation} from '../lib/ai/assistant-answer-explanations';
-import {adjudicateAssistantAnswerPlan,type AssistantAnswerPlan,type AssistantAnswerRead} from '../lib/ai/assistant-answer-plan';
+import {adjudicateAssistantAnswerPlan,captureAssistantAnswerPlan,type AssistantAnswerPlan,type AssistantAnswerRead} from '../lib/ai/assistant-answer-plan';
 import {isAgentModuleCode,type AgentModuleCode} from '../lib/ai/module-agents';
-import {assistantReadableModules} from './assistant-readable-modules';
+import {CLOSED_PROPOSAL_CALLER,type AssistantProposalCaller} from '../lib/ai/assistant-action-catalogue';
 export type AssistantConversationSegment=Readonly<{kind:'fact';view:CanonicalModuleJobView;card:number;fact:number}>|Readonly<{kind:'explanation';view:CanonicalModuleJobView;explanation:AssistantAnswerExplanation}>;
-export type AssistantConversationView=Readonly<{plan:AssistantAnswerPlan;clarificationAllowed?:false;segments?:readonly AssistantConversationSegment[];facts:readonly Readonly<{view:CanonicalModuleJobView;card:number;fact:number}>[]}>;
+/** `proposalStale` (review R6): a sealed, well-formed proposal that the caller's CURRENT catalogue no longer
+ * offers (authority, module, tier or pause changed). The card refuses it and offers a refresh; it is never
+ * prepared from. */
+export type AssistantConversationView=Readonly<{plan:AssistantAnswerPlan;clarificationAllowed?:false;proposalStale?:true;segments?:readonly AssistantConversationSegment[];facts:readonly Readonly<{view:CanonicalModuleJobView;card:number;fact:number}>[]}>;
 export type GroundedWorkspaceAnswer=Readonly<{mode:'grounded'|'generic'|'unavailable';views:readonly CanonicalModuleJobView[];fallbackModules:readonly AgentModuleCode[];partial:boolean;tools:readonly string[];conversation?:AssistantConversationView|null}>;
-export function workspaceGroundedAnswers(ctx:SessionContext,session:AssistantReadSession,tx?:Tx){
+export function workspaceGroundedAnswers(ctx:SessionContext,session:AssistantReadSession,tx?:Tx,proposalCaller:AssistantProposalCaller=CLOSED_PROPOSAL_CALLER){
  let remaining=32;const cache=new Map<string,Promise<CanonicalModuleJobView>>();
- // A sealed proposal is re-adjudicated against the caller's CURRENT module read set on every replay.
- const caller=(plan:AssistantAnswerPlan)=>plan.mode==='propose'?{readableModules:assistantReadableModules(ctx)}:{};
+ // A sealed proposal is re-adjudicated against the caller's CURRENT registry-derived catalogue on every
+ // replay; the owner passes facts read in this same request (absent facts offer nothing).
+ const caller=(plan:AssistantAnswerPlan)=>plan.mode==='propose'?{proposalCaller}:{};
+ /** A structurally valid sealed proposal that the current catalogue no longer offers is shown as stale:
+  * refused, with a refresh. It is never rendered as a preparable card. */
+ const stale=(plan:AssistantAnswerPlan):AssistantConversationView|null=>{
+  if(plan.mode!=='propose')return null;
+  try{const captured=captureAssistantAnswerPlan(plan);return captured.mode==='propose'?Object.freeze({plan:captured,proposalStale:true as const,facts:Object.freeze([])}):null;}catch{return null;}
+ };
  return async(binding:AssistantDisclosureBinding,receipt:unknown):Promise<GroundedWorkspaceAnswer>=>{
   const empty=(mode:'generic'|'unavailable'):GroundedWorkspaceAnswer=>Object.freeze({mode,views:Object.freeze([]),fallbackModules:Object.freeze([]),partial:false,tools:Object.freeze([])});
   try{await withAssistantRead(ctx,null,async()=>undefined,session);}catch{return empty('unavailable');}
   if(binding.tenantId!==ctx.tenantId||binding.userId!==ctx.userId)return empty('unavailable');
   const disclosure=openAssistantAnswerDisclosure(binding,receipt);if(disclosure===null)return empty('unavailable');
   const {reads,plan}=disclosure;
-  if(reads.length===0){if(plan)try{return Object.freeze({...empty('generic'),conversation:Object.freeze({plan:adjudicateAssistantAnswerPlan(plan,[],caller(plan)),...(plan.mode==='clarify'&&!canClarifyAssistantQuestion(binding.question)?{clarificationAllowed:false as const}:{}),facts:Object.freeze([])})});}catch{return empty('unavailable');}return empty('generic');}
+  if(reads.length===0){if(plan)try{return Object.freeze({...empty('generic'),conversation:Object.freeze({plan:adjudicateAssistantAnswerPlan(plan,[],caller(plan)),...(plan.mode==='clarify'&&!canClarifyAssistantQuestion(binding.question)?{clarificationAllowed:false as const}:{}),facts:Object.freeze([])})});}catch{const view=stale(plan);return view?Object.freeze({...empty('generic'),conversation:view}):empty('unavailable');}return empty('generic');}
   const answerReads:AssistantAnswerRead[]=[],indexedViews=new Map<number,CanonicalModuleJobView>();
   const views:CanonicalModuleJobView[]=[],fallback=new Set<AgentModuleCode>(),tools:string[]=[],seen=new Set<string>();let partial=reads.length>8;
   for(const [read,source] of reads.slice(0,8).entries()){
@@ -49,7 +59,7 @@ export function workspaceGroundedAnswers(ctx:SessionContext,session:AssistantRea
    const facts=segments.flatMap(segment=>segment.kind==='fact'?[Object.freeze({view:segment.view,card:segment.card,fact:segment.fact})]:[]);
    conversation=Object.freeze({plan:checked,...(checked.mode==='clarify'&&!canClarifyAssistantQuestion(binding.question)?{clarificationAllowed:false as const}:{}),
     ...(segments.some(segment=>segment.kind==='explanation')?{segments:Object.freeze(segments)}:{}),facts:Object.freeze(facts)});
-  }catch{return empty('unavailable');}
+  }catch{conversation=stale(plan);if(!conversation)return empty('unavailable');}
   return Object.freeze({conversation,mode:views.length?'grounded':'unavailable',views:Object.freeze(views),fallbackModules:Object.freeze([...fallback]),partial,tools:Object.freeze(tools)});
  };
 }

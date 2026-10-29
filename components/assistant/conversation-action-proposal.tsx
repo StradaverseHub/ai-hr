@@ -9,9 +9,18 @@
  * Hints never carry IDs: each panel resolves them against the caller's own fresh choices from the guarded
  * endpoint, so only the caller's own (or own-inbox) items can ever appear, and one match is preselected
  * while zero or several ask the person to pick. Every human field (reason, remark, note, decision) starts
- * empty. The existing page stays one click away as the fallback and reopen destination. */
+ * empty. The existing page stays one click away as the fallback and reopen destination.
+ *
+ * Card states (review R6). The card itself owns three: READY (the panel), STALE (the sealed suggestion is no
+ * longer in the caller's current registry-derived catalogue: refused, with a refresh and the usual page; no
+ * choices are read) and FAILURE (the card's own choices read failed: a plain reason and a retry, which is
+ * safe because it is a read). The panels own the review lifecycle: confirming (busy), confirmed (receipt),
+ * discarded/expired/refused (retired) and a lost or refused confirmation (reopen the same action id, never
+ * confirm again). Mobile: content stacks and every action is full width. */
 import Link from 'next/link';
 import {useEffect,useId,useState} from 'react';
+import {useRouter} from 'next/navigation';
+import {Button} from '@/components/ui';
 import {useTranslations} from 'next-intl';
 import {ASSISTANT_PROPOSAL_FALLBACK,captureAssistantProposalHints,isAssistantProposableAction,type AssistantProposableAction,type AssistantProposalHints} from '@/lib/ai/assistant-action-proposal-hints';
 import {OWN_LEAVE_EDIT_ACTION,type OwnLeaveChangeChoices} from '@/lib/assistant-actions/own-leave-change-contract';
@@ -35,7 +44,15 @@ function useOwnChoices<T>(load:(signal:AbortSignal)=>Promise<T>,unavailable:T):T
  },[]);
  return choices;
 }
-function LeaveChangeProposal({action,hints}:{action:'leave.cancel'|'leave.edit';hints:AssistantProposalHints}){
+/** FAILURE: the card's own choices read failed. Retrying is safe: it is a read and prepares nothing. */
+function ProposalFailure({onRetry}:{onRetry:()=>void}){
+ const t=useTranslations('assistant.workspace.proposal');
+ return <div className="space-y-3" data-card-state="failure">
+  <p role="alert" className="text-sm">{t('failureBody')}</p>
+  <Button type="button" variant="outline" onClick={onRetry}>{t('retry')}</Button>
+ </div>;
+}
+function LeaveChangeProposal({action,hints,onRetry}:{action:'leave.cancel'|'leave.edit';hints:AssistantProposalHints;onRetry:()=>void}){
  const t=useTranslations('assistant.workspace.proposal');
  const choices=useOwnChoices<OwnLeaveChangeChoices>(async signal=>{
   const packet=(action===OWN_LEAVE_EDIT_ACTION?LeaveEditModuleActionBrowserPacket:LeaveCancellationModuleActionBrowserPacket).parse({action,operation:'choices'}) as LeaveChangeModuleActionBrowserPacket;
@@ -43,9 +60,10 @@ function LeaveChangeProposal({action,hints}:{action:'leave.cancel'|'leave.edit';
   return result.kind==='choices'?result:{kind:'unavailable'};
  },{kind:'unavailable'});
  if(!choices)return <p role="status" className="text-sm">{t('loading')}</p>;
+ if(choices.kind==='unavailable')return <ProposalFailure onRetry={onRetry}/>;
  return <OwnLeaveChangePanel choices={choices} prefill={{action,startDate:hints.startDate,newStartDate:hints.newStartDate,newEndDate:hints.newEndDate}}/>;
 }
-function ClaimCancellationProposal({hints}:{hints:AssistantProposalHints}){
+function ClaimCancellationProposal({hints,onRetry}:{hints:AssistantProposalHints;onRetry:()=>void}){
  const t=useTranslations('assistant.workspace.proposal');
  const choices=useOwnChoices<OwnClaimCancellationChoices>(async signal=>{
   const packet=ClaimCancellationModuleActionBrowserPacket.parse({action:OWN_CLAIM_CANCELLATION_ACTION,operation:'choices'});
@@ -53,21 +71,38 @@ function ClaimCancellationProposal({hints}:{hints:AssistantProposalHints}){
   return result.kind==='choices'?result:{kind:'unavailable'};
  },{kind:'unavailable'});
  if(!choices)return <p role="status" className="text-sm">{t('loading')}</p>;
+ if(choices.kind==='unavailable')return <ProposalFailure onRetry={onRetry}/>;
  return <ModuleClaimCancellationPanel choices={choices} prefill={{incurredOn:hints.incurredOn}}/>;
 }
-export function ConversationActionProposal({action,hints:raw}:{action:unknown;hints:unknown}){
- const t=useTranslations('assistant.workspace.proposal'),headingId=useId();
+/** STALE: refused. Nothing is read or prepared; a refresh re-checks the current catalogue on the server. */
+function ProposalStale(){
+ const t=useTranslations('assistant.workspace.proposal'),router=useRouter();
+ return <div className="space-y-3" data-card-state="stale">
+  <p role="status" className="text-sm">{t('staleBody')}</p>
+  <Button type="button" onClick={()=>router.refresh()}>{t('refresh')}</Button>
+ </div>;
+}
+const LINK='inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+export function ConversationActionProposal({action,hints:raw,stale=false}:{action:unknown;hints:unknown;stale?:boolean}){
+ const t=useTranslations('assistant.workspace.proposal'),headingId=useId(),[attempt,setAttempt]=useState(0);
  // The server already adjudicated this proposal; the card still refuses anything outside the closed shape.
  let hints:AssistantProposalHints;try{hints=captureAssistantProposalHints(action,raw);}catch{return <p role="status" className="text-sm text-muted-foreground">{t('unavailable')}</p>;}
  if(!isAssistantProposableAction(action))return <p role="status" className="text-sm text-muted-foreground">{t('unavailable')}</p>;
- const body=action==='leave.cancel'||action==='leave.edit'?<LeaveChangeProposal action={action} hints={hints}/>
-  :action===OWN_CLAIM_CANCELLATION_ACTION?<ClaimCancellationProposal hints={hints}/>
+ // A retry remounts the body, so the panel starts again from a fresh choices read with empty human fields.
+ const retry=()=>setAttempt(value=>value+1);
+ const body=stale?<ProposalStale/>
+  :action==='leave.cancel'||action==='leave.edit'?<LeaveChangeProposal key={attempt} action={action} hints={hints} onRetry={retry}/>
+  :action===OWN_CLAIM_CANCELLATION_ACTION?<ClaimCancellationProposal key={attempt} hints={hints} onRetry={retry}/>
   :action===OWN_OVERTIME_REQUEST_ACTION?<OwnOvertimeRequestPanel prefill={{date:hints.date??'',plannedStartTime:hints.plannedStartTime??'',plannedEndTime:hints.plannedEndTime??''}}/>
   :<AssignedDecisionPanel action={action} prefill={{}}/>;
- return <section aria-labelledby={headingId} className="space-y-3 rounded-lg border border-border p-4">
-  <h2 id={headingId} className="text-base font-semibold">{t(TITLES[action])}</h2>
-  <p className="text-xs text-muted-foreground">{t('note')}</p>
+ // Mobile: everything stacks in one column and every action is full width; desktop keeps the panels' rows.
+ return <section aria-labelledby={headingId} data-card-state={stale?'stale':'ready'} className="min-w-0 space-y-3 rounded-lg border border-border bg-card p-4 max-sm:[&_.flex-wrap]:flex-col max-sm:[&_.flex-wrap]:items-stretch max-sm:[&_button]:w-full">
+  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+   <h2 id={headingId} className="text-base font-semibold">{t(TITLES[action])}</h2>
+   <span className={`w-fit shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${stale?'bg-muted text-muted-foreground':'bg-primary/10 text-primary'}`}>{t(stale?'badgeStale':'badgeReady')}</span>
+  </div>
+  <p className="text-xs text-muted-foreground">{t(stale?'staleNote':'note')}</p>
   {body}
-  <Link href={ASSISTANT_PROPOSAL_FALLBACK[action]} className="inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('openPage')}</Link>
+  <Link href={ASSISTANT_PROPOSAL_FALLBACK[action]} className={`${LINK} max-sm:w-full`}>{t('openPage')}</Link>
  </section>;
 }
