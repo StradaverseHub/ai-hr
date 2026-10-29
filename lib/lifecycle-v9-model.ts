@@ -58,6 +58,7 @@ export type Document = {
 };
 export type Role = 'employee' | 'supervisor' | 'pbp' | 'ta' | 'peopleOps' | 'taskOwners';
 export type EmailAsset = { id: string; kind: 'file' | 'image'; name: string; mimeType: string; size: number; contentHash: string; at: string; by: string };
+export type DefinitionUsage = { kind: 'document' | 'email'; definitionId: string; messages: number; runs: number };
 export type TemplateUsage = { templateId: string; version: number; documents: number };
 export type EmailTemplate = {
   id: string; name: string; module: Module; active: boolean; sender: string;
@@ -80,7 +81,7 @@ export type Workflow = {
   steps: Step[]; description: string;
 };
 /** Drafts can be incomplete. Activation must be safe and independently validated by the service. */
-export function workflowProblems(workflow: Workflow, config: Pick<Config, 'templates' | 'emails'>): string[] {
+export function workflowProblems(workflow: Workflow, config: Pick<Config, 'templates' | 'emails'>, options: { allowInactiveEmail?: boolean } = {}): string[] {
   const problems: string[] = [];
   if (!workflow.name.trim()) problems.push('Give this workflow a name.');
   if (!workflow.steps.length) problems.push('Add at least one step.');
@@ -91,7 +92,7 @@ export function workflowProblems(workflow: Workflow, config: Pick<Config, 'templ
       if (!template) problems.push(prefix + 'choose a template in the same module.');
       else if ('versions' in template && !template.versions.some(v => v.state === 'published')) problems.push(prefix + 'choose a published document template.');
       else if (step.type === 'waitSign' && 'versions' in template && template.type === 'Attachment') problems.push(prefix + 'attachments do not require a signature.');
-      else if ('active' in template && !template.active) problems.push(prefix + 'choose an active email template.');
+      else if ('active' in template && !template.active && !options.allowInactiveEmail) problems.push(prefix + 'choose an active email template.');
     }
     if (step.type === 'waitFile' && !step.slot.trim()) problems.push(prefix + 'choose a file slot.');
     if (step.type === 'notify' && !step.subject.trim()) problems.push(prefix + 'add a subject.');
@@ -413,7 +414,10 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
   // Resume the original recipients even if roles or task ownership changed meanwhile.
   if (existing.length) return deliveryHold(existing);
   const email = step.type === 'email' ? config.emails.find(e => e.id === step.template && (e.active || test) && e.module === c.module) : null;
-  if (step.type === 'email' && !email) throw new V9Error('The email template is inactive or unavailable.');
+  if (step.type === 'email' && !email) {
+    if (workflowId && config.emails.some(email => email.id === step.template && email.module === c.module && !email.active)) return 'This email is turned off. Turn it on before continuing.';
+    throw new V9Error('The email template is inactive or unavailable.');
+  }
   const slots = email?.slots.filter(s => s.required && !c.files.some(f => f.slot === `${email.id}:${s.id}`)) ?? [];
   if (slots.length && !test) return `Upload ${slots.map(s => s.label).join(', ')}.`;
   const roles = (Array.isArray(step.to) ? step.to.slice(0, 1) : [step.to]);
@@ -474,7 +478,7 @@ export function planWorkflow(c: Case, config: Config, workflow: Workflow, env: P
   const names = (roles: Role[]) => roles.flatMap(role => { const ids = recipients(c, config, role); return ids.length ? ids.map(env.userName) : [`${role}: no linked recipient`]; }).join(', ');
   for (const step of workflow.steps) {
     if (step.type === 'doc') { const doc = activeDocument(c, step.template), template = config.templates.find(t => t.id === step.template); lines.push({ text: doc ? `Already generated: ${doc.name} (v${doc.version})` : `Would generate ${template?.name ?? 'a document'}`, ok: !!template }); }
-    else if (step.type === 'email') { const email = config.emails.find(e => e.id === step.template); lines.push({ text: `Would email "${email?.name ?? ''}" to ${names((Array.isArray(step.to) ? step.to : [step.to]).slice(0, 1))}${step.cc.length ? ', CC ' + names(step.cc) : ''}`, ok: !!email }); }
+    else if (step.type === 'email') { const email = config.emails.find(e => e.id === step.template); lines.push({ text: `Would email "${email?.name ?? ''}" to ${names((Array.isArray(step.to) ? step.to : [step.to]).slice(0, 1))}${step.cc.length ? ', CC ' + names(step.cc) : ''}`, ok: !!email?.active }); }
     else if (step.type === 'notify') lines.push({ text: `Would alert ${names((Array.isArray(step.to) ? step.to : [step.to]).slice(0, 1))}`, ok: true });
     else if (step.type === 'waitFile') { const present = c.files.some(file => file.slot === step.slot); lines.push({ text: present ? `${step.label || 'The file'} is uploaded, so it carries on.` : `Would wait: ${step.label || 'the file'} is not uploaded yet.`, ok: present }); }
     else { const doc = activeDocument(c, step.template), name = config.templates.find(t => t.id === step.template)?.name ?? 'the document', signed = step.by === 'hr' ? !!doc?.hrSignature : !!doc && documentFinal(doc); lines.push({ text: signed ? `${name} is signed, so it carries on.` : `Would wait for ${name} to be signed by ${step.by === 'hr' ? 'the HR signatory' : c.facts.name}.`, ok: signed }); }

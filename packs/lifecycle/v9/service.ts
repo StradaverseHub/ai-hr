@@ -24,7 +24,7 @@ import { resolveDocumentUpload } from '../../../core/employee-documents';
 type Row = { id: string; revision: number; company_id: string; data: M.Case; native?: true };
 export type DirectoryUser = { id: string; name: string };
 export type Options = { users: DirectoryUser[]; companies: { id: string; name: string }[]; employees: { id: string; name: string; employeeNo: string; companyId: string }[]; labels?: Partial<Record<M.RuleField, Record<string, string>>>; leaveTypes?: { id: string; name: string }[] };
-export type Workspace = { config: M.Config | null; cases: M.Case[]; options: Options; canConfigure: boolean; actor: M.Actor; personnelWritableKeys: string[]; templateUsage?: M.TemplateUsage[] };
+export type Workspace = { config: M.Config | null; cases: M.Case[]; options: Options; canConfigure: boolean; actor: M.Actor; personnelWritableKeys: string[]; templateUsage?: M.TemplateUsage[]; definitionUsage?: M.DefinitionUsage[] };
 export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'state' | 'facts' | 'tasks' | 'items' | 'documents'> & { own: boolean };
 export type CaseDetail = { case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -136,7 +136,8 @@ export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {
     for (const master of masters) (labels[master.kind] ??= {})[master.id] = master.name;
     const leaveTypes = await tx.execute<{ id: string; name: string }>(sql`select id,name from leave_type where tenant_id=${ctx.tenantId}::uuid and archived_at is null order by name,id`);
     const usage = config && permission?.ok ? await tx.execute<M.TemplateUsage>(sql`select template_id as "templateId",version,documents from app.lc_v9_document_usage()`) : [];
-    return { templateUsage: [...usage], config, cases: rows.map(r => r.data), options: { companies: [...companies], users: [...users], employees: [...employees], labels, leaveTypes: [...leaveTypes] }, canConfigure: !!permission?.ok, actor: who, personnelWritableKeys: v9PersonnelWritableKeys };
+    const definitionUsage = config && permission?.ok ? await tx.execute<M.DefinitionUsage>(sql`select kind,definition_id as "definitionId",messages,runs from app.lc_v9_definition_usage()`) : [];
+    return { definitionUsage: [...definitionUsage], templateUsage: [...usage], config, cases: rows.map(r => r.data), options: { companies: [...companies], users: [...users], employees: [...employees], labels, leaveTypes: [...leaveTypes] }, canConfigure: !!permission?.ok, actor: who, personnelWritableKeys: v9PersonnelWritableKeys };
   });
 }
 export async function v9Setup(ctx: SessionContext): Promise<void> {
@@ -163,10 +164,10 @@ export async function v9Setup(ctx: SessionContext): Promise<void> {
   });
 }
 export async function v9SaveConfig(ctx: SessionContext, revision: number, input: unknown): Promise<M.ConfigSaveReceipt> {
-  const config = parseV9Config(input) as M.Config;
   return withLifecycleTenant(ctx, async tx => {
     await lockTx(tx, ctx); await admin(tx); const previous = await configTx(tx, ctx, true);
     if (!previous || previous.revision !== revision) throw new M.V9Error('Settings changed. Refresh before saving.', 'conflict');
+    const config = parseV9Config(input, previous) as M.Config;
     const references = config.emails.flatMap(email => [...(email.files ?? []), ...(email.images ?? [])].map(asset => ({ emailId: email.id, asset })));
     if (references.length) {
       const ids = [...new Set(references.map(reference => reference.asset.id))];
@@ -176,6 +177,12 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
     const deletesVersion = previous.templates.some(template => { const retained = config.templates.find(next => next.id === template.id); return !retained || template.versions.some(version => !retained.versions.some(next => next.version === version.version)); });
     const usage = deletesVersion ? await tx.execute<M.TemplateUsage>(sql`select template_id as "templateId",version,documents from app.lc_v9_document_usage()`) : [];
     validateV9ConfigChange(previous, config, [...usage]);
+    const removedDefinitions = [...previous.templates.filter(template => !config.templates.some(next => next.id === template.id)).map(template => ({ kind: 'document', id: template.id })), ...previous.emails.filter(email => !config.emails.some(next => next.id === email.id)).map(email => ({ kind: 'email', id: email.id }))];
+    if (removedDefinitions.length) {
+      const references = await tx.execute<M.DefinitionUsage>(sql`select kind,definition_id as "definitionId",messages,runs from app.lc_v9_definition_usage()`);
+      for (const removed of removedDefinitions) if (references.some(reference => reference.kind === removed.kind && reference.definitionId === removed.id && (reference.messages > 0 || reference.runs > 0))) throw new M.V9Error(removed.kind === 'email' ? 'An email with delivery or workflow history cannot be deleted. Turn it off instead.' : 'A template with workflow history cannot be deleted. Retire it instead.');
+    }
+
     if (config.groupsRevision !== previous.groupsRevision) throw new M.V9Error('Assignment groups changed. Refresh before saving.', 'conflict');
     if (!v9Equal(config.groups, previous.groups)) {
       const saved = await onboardingSaveGroupsTx(ctx, tx, previous.groupsRevision!, config.groups);

@@ -353,3 +353,17 @@ it('freezes shared asset receipts and holds a known oversized packet before queu
   expect(M.previewEmail(oversized.c,oversized.config,'media',oversized.environment).holds).toContain('Keep the total attached files and inline images within 20 MB.');
   expect(()=>M.queueEmail(oversized.c,oversized.config,'media',oversized.environment)).toThrow('20 MB');expect(oversized.c.mails).toEqual([]);
 });
+
+it('holds an inactive workflow email without queueing and resumes once after reactivation', () => {
+  const { c, config, environment } = fixture(); environment.requireDeliveryAck = true;
+  config.emails = [{ id: 'off-email', name: 'Disabled email', module: 'off', active: false, sender: 'hr', subject: 'Fictional notice', body: 'Body', cc: [], links: [], attachments: [], slots: [] }];
+  const definition = workflow({ trigger: { event: 'submitted', days: 0, workdays: false, repeat: false, skipIf: '' }, steps: [{ id: 'send', type: 'email', template: 'off-email', to: 'employee', cc: [] }] });
+  expect(M.planWorkflow(c, config, definition, environment).lines.at(-1)?.ok).toBe(false);
+  expect(M.runWorkflow(c, config, definition, environment, 'submitted')).toMatchObject({ status: 'waiting', cursor: 0, reason: 'This email is turned off. Turn it on before continuing.' });
+  expect(c.mails).toEqual([]); M.runWorkflow(c, config, definition, environment, 'resume'); expect(c.mails).toEqual([]);
+  config.emails[0].active = true;
+  expect(M.runWorkflow(c, config, definition, environment, 'resume')?.reason).toBe('Waiting for email delivery confirmation.'); expect(c.mails).toHaveLength(1);
+  // An already queued immutable intent is reconciled even if the definition is turned off later.
+  config.emails[0].active = false; M.markDelivered(c, c.mails[0].id, environment);
+  expect(M.runWorkflow(c, config, definition, environment, 'resume')?.status).toBe('done'); expect(c.mails).toHaveLength(1);
+});

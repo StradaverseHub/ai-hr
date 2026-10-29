@@ -27,7 +27,7 @@ export const v9ConfigSchema = z.object({
   settlementPolicy: z.object({ bands: z.array(z.object({ id, name: z.string().min(1).max(200), grades: z.array(id).max(200), permanent: period, contract: period, probation: period }).strict()).max(100), defaultNotice: period, noticeDays: z.enum(['calendar', 'working']), allowLeaveOffset: z.boolean(), includeAllowances: z.boolean(), encashmentCap: z.number().min(0).max(10000).nullable(), rateBasis: z.number().positive().max(366), payDay: z.number().int().min(1).max(31), leaveTypeIds: z.array(z.string().uuid()).max(100) }).strict().optional(),
   companies: z.array(z.object({ companyId: z.string().uuid(), signatoryUserId: z.string().uuid().nullable(), signatoryTitle: z.string().max(500) }).strict()).max(500).optional(),
 }).strict();
-export function parseV9Config(value: unknown) {
+export function parseV9Config(value: unknown, previous?: Config) {
   const config = v9ConfigSchema.parse(value);
   const unique = (values: string[], what: string) => { if (new Set(values).size !== values.length) throw new V9Error(`Duplicate ${what} identifiers.`); };
   unique(config.groups.map(g => g.id), 'group'); unique(config.checklists.map(g => g.id), 'checklist'); unique(config.templates.map(g => g.id), 'template'); unique(config.emails.map(g => g.id), 'email'); unique(config.workflows.map(g => g.id), 'workflow');
@@ -56,7 +56,13 @@ export function parseV9Config(value: unknown) {
     if (t.documentAction !== 'sent' && config.templates.find(d => d.id === t.documentTemplate)?.type === 'Attachment') throw new V9Error('Attachments can complete a task when sent, but cannot be signed.');
   }
   for (const wf of config.workflows) {
-    if (wf.status === 'published') { const problems = workflowProblems(wf as Config['workflows'][number], config as Config); if (problems.length) throw new V9Error(problems.join(' ')); }
+    if (wf.status === 'published') {
+      // Turning an email off preserves an unchanged live workflow; its next email step holds.
+      // A new or edited live workflow still has to select active email definitions.
+      const before = previous?.workflows.find(workflow => workflow.id === wf.id);
+      const problems = workflowProblems(wf as Config['workflows'][number], config as Config, { allowInactiveEmail: before?.status === 'published' && v9Equal(before, wf) });
+      if (problems.length) throw new V9Error(problems.join(' '));
+    }
     for (const step of wf.steps) if ('cc' in step && step.cc.includes('taskOwners')) throw new V9Error('Task owners cannot be CC recipients.');
     if (wf.module === 'onb' && wf.trigger.event === 'beforeLWD' || wf.module === 'off' && ['beforeJoin', 'afterJoin'].includes(wf.trigger.event)) throw new V9Error('Choose a trigger for this module.');
     for (const s of wf.steps) if ('template' in s && s.template) sameModule(wf.module, s.template, s.type === 'email' ? 'email' : 'document');

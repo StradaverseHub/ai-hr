@@ -453,6 +453,7 @@ it('authorizes a real prehire contact without an app account and refuses an addr
   expect(c.facts.employeeUserId).toBeNull(); expect(c.facts.personId).toBe('');
   expect((await v9PreviewEmail(admin, c.id, 'contact-welcome')).canSend).toBe(true);
   await v9Command(admin, c.id, c.revision, { type: 'emailSend', emailId: 'contact-welcome' });
+  expect((await v9Workspace(admin)).definitionUsage?.find(row => row.kind === 'email' && row.definitionId === 'contact-welcome')).toEqual({ kind: 'email', definitionId: 'contact-welcome', messages: 1, runs: 0 });
   let verified = false;
   const output = await v9DeliverEmails({ ...admin, userId: undefined, personId: null }, owner, async request => {
     const read = async () => (await owner.client`select app.lc_v9_email_target(${request.deliveryId}::uuid,${request.leaseToken}::uuid,'https://prehire.example') as target`)[0].target;
@@ -572,4 +573,48 @@ it('keeps the person-specific attachment frozen while its queued delivery is pen
   const { caseId }=await queuedDelivery(true),before=(await v9CaseDetail(admin,caseId)).case;
   await expect(v9UploadFile(admin,{caseId,revision:before.revision,slot:'receipt-fixture:proof',name:'Fictional replacement.txt',content:Buffer.from('Changed after queue')})).rejects.toThrow('reserved');
   const after=(await v9CaseDetail(admin,caseId)).case;expect(after.revision).toBe(before.revision);expect(after.files).toEqual(before.files);
+});
+
+it('persists turning off an email referenced by an unchanged live workflow', async () => {
+  const before = (await v9Workspace(admin)).config!, next = structuredClone(before);
+  const workflow = next.workflows.find(workflow => workflow.status === 'published' && workflow.steps.some(step => step.type === 'email'))!;
+  const step = workflow.steps.find(step => step.type === 'email')!;
+  if (step.type !== 'email') throw Error('Expected email step');
+  next.emails.find(email => email.id === step.template)!.active = false;
+  await v9SaveConfig(admin, before.revision, next);
+  const saved = (await v9Workspace(admin)).config!;
+  expect(saved.emails.find(email => email.id === step.template)?.active).toBe(false);
+  expect(saved.workflows.find(candidate => candidate.id === workflow.id)).toEqual(workflow);
+  saved.workflows.find(candidate => candidate.id === workflow.id)!.name += ' changed';
+  await expect(v9SaveConfig(admin, saved.revision, saved)).rejects.toThrow('active email');
+});
+it('deletes unused whole definitions but retains canonical historical delivery evidence', async () => {
+  let config = (await v9Workspace(admin)).config!;
+  config.emails.push({ id:'unused-email',name:'Unused fictional email',module:'off',active:false,sender:'hr',subject:'',body:'',cc:[],links:[],attachments:[],slots:[] });
+  config.templates.push({ id:'unused-template',name:'Unused fictional template',module:'off',type:'Form',rules:{},hrStep:'none',employeeAck:false,retired:false,versions:[{version:1,state:'draft',at:'',by:'',blocks:[],fields:[]}] });
+  await v9SaveConfig(admin,config.revision,config);
+  config=(await v9Workspace(admin)).config!;config.emails=config.emails.filter(email=>email.id!=='unused-email');config.templates=config.templates.filter(template=>template.id!=='unused-template');
+  await v9SaveConfig(admin,config.revision,config);
+  expect((await v9Workspace(admin)).config!.emails.some(email=>email.id==='unused-email')).toBe(false);
+  const {caseId}=await queuedDelivery();const c=(await v9CaseDetail(admin,caseId)).case;
+  await v9Command(admin,caseId,c.revision,{type:'runWorkflows'});
+  await owner.client`update lc_v9_case set data=jsonb_set(data,'{mails}','[]'::jsonb) where id=${caseId}::uuid`;
+  const workspace=await v9Workspace(admin);
+  expect(workspace.definitionUsage?.find(row=>row.kind==='email'&&row.definitionId==='receipt-fixture')).toEqual({kind:'email',definitionId:'receipt-fixture',messages:1,runs:0});
+  config=workspace.config!;config.emails=config.emails.filter(email=>email.id!=='receipt-fixture');
+  await expect(v9SaveConfig(admin,config.revision,config)).rejects.toThrow('Turn it off');
+  await expect(withTenant(employee,tx=>tx.execute(sql`select * from app.lc_v9_definition_usage()`))).rejects.toThrow();
+  const foreign=await seedBase();await setModule(foreign.tenantId,'lifecycle','active');const foreignAdmin=await entitledCtx(foreign);await v9Setup(foreignAdmin);
+  expect((await v9Workspace(foreignAdmin)).definitionUsage).toEqual([]);
+});
+it('protects an email referenced by a frozen waiting run even before any message is queued', async () => {
+  const c=await prepared();let config=(await v9Workspace(admin)).config!;
+  config.emails.push({id:'waiting-email',name:'Waiting fictional email',module:'off',active:true,sender:'hr',subject:'Fictional',body:'Fictional',cc:[],links:[],attachments:[],slots:[]});
+  config.workflows.push({id:'frozen-mail',name:'Fictional frozen reference',module:'off',status:'published',trigger:{event:'beforeLWD',days:30,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'file',type:'waitFile',slot:'frozen-proof',label:'Fictional proof'},{id:'mail',type:'email',template:'waiting-email',to:'employee',cc:[]}],description:''});
+  await v9SaveConfig(admin,config.revision,config);await v9Command(admin,c.id,c.revision,{type:'runWorkflows'});
+  const workspace=await v9Workspace(admin);
+  expect(workspace.definitionUsage?.find(row=>row.kind==='email'&&row.definitionId==='waiting-email')).toEqual({kind:'email',definitionId:'waiting-email',messages:0,runs:1});
+  config=workspace.config!;const changed=config.workflows.find(workflow=>workflow.id==='frozen-mail')!;changed.status='draft';changed.steps=[];
+  config.emails=config.emails.filter(email=>email.id!=='waiting-email');
+  await expect(v9SaveConfig(admin,config.revision,config)).rejects.toThrow('workflow history');
 });

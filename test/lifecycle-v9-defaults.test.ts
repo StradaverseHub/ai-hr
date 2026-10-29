@@ -65,3 +65,18 @@ it('deletes only an unused non-current version with canonical usage evidence', (
   expect(() => validateV9ConfigChange(previous, deleted, [])).not.toThrow();
   expect(() => validateV9ConfigChange(previous, deleted, [{ templateId: template.id, version: 1, documents: 1 }])).toThrow('Retire');
 });
+
+it('allows turning an email off while protecting new or edited live workflow activation', () => {
+  const previous = v9Defaults(), next = structuredClone(previous);
+  const workflow = next.workflows.find(workflow => workflow.status === 'published' && workflow.steps.some(step => step.type === 'email'))!;
+  const step = workflow.steps.find(step => step.type === 'email')!;
+  if (step.type !== 'email') throw Error('Expected email step');
+  next.emails.find(email => email.id === step.template)!.active = false;
+  expect(() => parseV9Config(next, previous)).not.toThrow();
+  expect(parseV9Config(next, previous).emails.find(email => email.id === step.template)?.active).toBe(false);
+  expect(() => parseV9Config(next)).toThrow('active email');
+  workflow.name += ' changed';
+  expect(() => parseV9Config(next, previous)).toThrow('active email');
+  workflow.status = 'draft';
+  expect(() => parseV9Config(next, previous)).not.toThrow();
+});

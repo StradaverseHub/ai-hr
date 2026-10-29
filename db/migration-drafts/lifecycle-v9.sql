@@ -286,6 +286,31 @@ $$;
 REVOKE ALL ON FUNCTION app.lc_v9_document_usage() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.lc_v9_document_usage() TO ai_hr_app;
 
+-- Group-admin aggregates preserve queued messages and frozen workflow references without exposing bodies.
+CREATE FUNCTION app.lc_v9_definition_usage()
+RETURNS TABLE(kind text,definition_id text,messages integer,runs integer)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+BEGIN
+ IF app.current_user_id() IS NULL OR NOT app.is_group_admin() OR app.login_blocked(app.current_user_id()) THEN RAISE EXCEPTION 'Group administration access is required'; END IF;
+ RETURN QUERY WITH records AS (
+  SELECT c.id AS parent_id,c.data FROM lc_v9_case c WHERE c.tenant_id=app.current_tenant_id()
+  UNION ALL SELECT c.case_id,c.data FROM lc_v9_case_revision c WHERE c.tenant_id=app.current_tenant_id()
+  UNION ALL SELECT p.case_id,p.data->'lifecycleV9' FROM lc_onboarding_private p WHERE p.tenant_id=app.current_tenant_id()
+  UNION ALL SELECT p.case_id,p.data->'lifecycleV9' FROM lc_onboarding_private_revision p WHERE p.tenant_id=app.current_tenant_id()
+ ), refs AS (
+  SELECT 'email'::text AS kind,m.value->>'templateId' AS definition_id,c.parent_id,m.value->>'id' AS record_id,'message'::text AS source
+   FROM records c CROSS JOIN LATERAL jsonb_array_elements(coalesce(c.data->'mails','[]'::jsonb)) m WHERE m.value->>'templateId' IS NOT NULL
+  UNION ALL SELECT CASE WHEN s.value->>'type'='email' THEN 'email' ELSE 'document' END,s.value->>'template',c.parent_id,r.value->>'id','run'
+   FROM records c CROSS JOIN LATERAL jsonb_array_elements(coalesce(c.data->'runs','[]'::jsonb)) r
+    CROSS JOIN LATERAL jsonb_array_elements(coalesce(r.value->'definition'->'steps','[]'::jsonb)) s
+   WHERE s.value->>'type' IN ('doc','waitSign','email') AND coalesce(s.value->>'template','')<>''
+ ) SELECT f.kind,f.definition_id,(count(DISTINCT(f.parent_id,f.record_id)) FILTER(WHERE source='message'))::integer,
+  (count(DISTINCT(f.parent_id,f.record_id)) FILTER(WHERE source='run'))::integer FROM refs f GROUP BY f.kind,f.definition_id;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.lc_v9_definition_usage() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.lc_v9_definition_usage() TO ai_hr_app;
+
 -- Source V9 openLoad counts native joiner group tasks and claimed equipment work globally.
 -- Offboarding uses this shared owner projection plus its temporary new-case load; existing
 -- leaver work is deliberately not added to the source algorithm. Only aggregate counts leave SQL.
