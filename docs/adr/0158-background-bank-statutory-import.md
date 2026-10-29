@@ -40,6 +40,8 @@ file may be deliberately reimported; unchanged rows are skipped. SHA256 identifi
 semantic equivalence of separately re-saved Excel archives.
 
 Worker installation and recovery requirements are in [the operator guide](../../deploy/systemd/BANK-IMPORT.md).
-Migration 0678 and its appended journal entry are an owned source allocation based on the freshly fetched
-main/alpha journal; final integration must reconcile any later allocation and the target's actual watermark.
+Unapplied draft migration 0685 preserves the original Bank SQL bytes. The owner approved index 675 and
+timestamp 1793330000011 after the combined release's exact 560-entry source prefix; its journal append
+belongs to the final combined integration. The former draft 0678 journal entry is removed to avoid the
+now-applied AI migration. Preserve the actual installed ledger and every canonical SQL byte.
 No production schema, worker or application change is authorized merely by adding these files.

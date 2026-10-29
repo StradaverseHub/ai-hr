@@ -53,3 +53,16 @@ checkpoints and canonical writes; it is not a production throughput benchmark of
 Job inputs/previews are personal data retained for audit/recovery. Source upload chunks are deleted on
 cancel or successful completion; the confirmed attempt retains the original source under the existing
 Import History policy. No automated job/preview erasure policy is introduced by this release.
+
+For the combined staging release, migration `0685_bank_import_jobs.sql` is an unapplied draft until the
+release owner appends its agreed index/timestamp after the exact predecessor source prefix. This
+component branch deliberately carries no replacement journal entry. Its earlier focused CI results
+remain evidence for their original commits; the integrated candidate requires a fresh complete gate.
+
+A failed or absent worker is a release blocker even if the web build is healthy. Keep queued jobs and
+uploaded chunks intact while repairing its service or credentials. Do not fall back to the legacy
+synchronous import while new jobs can still write: legacy requests do not honor the active-file
+reservation. Before any web rollback, prevent new Bank submissions and account for every active job;
+retain its matching worker release, source, private configuration and database backup. There is no
+automatic schema rollback. A worker-only restart uses the same durable checkpoints and may safely
+resume after an interrupted row transaction rolls back.
