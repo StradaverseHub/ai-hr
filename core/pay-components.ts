@@ -1418,7 +1418,16 @@ export function deriveIndividualTxnAmount(
   if (p.effectiveDate != null && !isTransactionEffectiveDate(p.effectiveDate)) {
     return Promise.reject(new TxnEffectiveDateInvalidError(p.effectiveDate));
   }
-  return withTenant(ctx, async (tx): Promise<IndividualTxnAmountDerivation> => {
+  return withTenant(ctx, (tx) => deriveIndividualTxnAmountTx(tx, ctx, p));
+}
+
+/** Same pricing owner, kept in the caller's ledger transaction for an import confirmation. */
+export async function deriveIndividualTxnAmountTx(
+ tx:Tx,ctx:SessionContext,p:Parameters<typeof deriveIndividualTxnAmount>[1],
+):Promise<IndividualTxnAmountDerivation>{
+    if (p.effectiveDate != null && !isTransactionEffectiveDate(p.effectiveDate)) {
+      throw new TxnEffectiveDateInvalidError(p.effectiveDate);
+    }
     // COMPANY SCOPE IS AN APPLICATION CONCERN — RLS only isolates tenants. Without this an admin scoped to
     // one company could ask what a formula pays for an employee in another and read their basic salary
     // back out of the figure. Answering "nothing derived" rather than throwing is deliberate: the write
@@ -1477,7 +1486,7 @@ export function deriveIndividualTxnAmount(
       inputUnit,
       zeroDivisor: r.zeroDivisor,
     };
-  });
+
 }
 
 // ── 2da9937a — the worked overtime examples the reporter asked for ───────────────────────────────────

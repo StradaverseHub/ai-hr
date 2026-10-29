@@ -2712,8 +2712,8 @@ export default async function EmployeePage({
                 ×100'd here into the percent the box shows. */}
             <EpfElection
               mode={statutory?.epfMode ?? null}
-              employeeRate={statutory?.epfEmployeeRate ? Number(statutory.epfEmployeeRate) * 100 : null}
-              employerRate={statutory?.epfEmployerRate ? Number(statutory.epfEmployerRate) * 100 : null}
+              employeeRate={countryPack?.client.payroll.epfRateToPercent?.(statutory?.epfEmployeeRate) ?? null}
+              employerRate={countryPack?.client.payroll.epfRateToPercent?.(statutory?.epfEmployerRate) ?? null}
               employeeAmount={statutory?.epfEmployeeAmount != null ? Number(statutory.epfEmployeeAmount) : null}
               employerAmount={statutory?.epfEmployerAmount != null ? Number(statutory.epfEmployerAmount) : null}
               manualReason={statutory?.epfManualReason ?? null}

@@ -1,3 +1,4 @@
+import {completeSharedRewardPolicy,establishRewardMembership,migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 import {randomUUID} from 'node:crypto';
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
@@ -9,15 +10,17 @@ import {createOffcycleReview,changeRewardCompanyExclusion,rewardCompanyExclusion
 import {todayInKualaLumpur} from '../lib/hr-date';
 let b:Base,admin:SessionContext,companyB:string,buA:string,buB:string;
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4));
-beforeAll(migrateTestDb);
+beforeAll(migrateRewardMembershipFixture);
 beforeEach(async()=>{
  await resetDb();b=await seedBase();await setModule(b.tenantId,'rewards','active');admin=await entitledCtx(b);
  const [company]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional company B'}).returning();companyB=company.id;
  const units=await owner.withTenant(admin,tx=>tx.insert(s.businessUnit).values([{tenantId:b.tenantId,companyId:b.companyId,code:'GOV-A',name:'Unit A',label:'Unit A'},{tenantId:b.tenantId,companyId:companyB,code:'GOV-B',name:'Unit B',label:'Unit B'}]).returning());
  buA=units.find(row=>row.code==='GOV-A')!.id;buB=units.find(row=>row.code==='GOV-B')!.id;
+ await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:buA,departmentId:b.deptA,year});
+ await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:companyB,businessUnitId:buB,year});
 });
 afterAll(closeAll);
-const group=(targets=[{companyId:b.companyId,businessUnitId:buA}])=>saveRewardPolicyGroup(admin,{groupId:null,expectedRevision:0,name:`Fictional ${randomUUID()}`,policy:defaultPolicy(year),targets});
+const group=(targets=[{companyId:b.companyId,businessUnitId:buA}])=>saveRewardPolicyGroup(admin,{groupId:null,expectedRevision:0,name:`Fictional ${randomUUID()}`,policy:completeSharedRewardPolicy(year),targets});
 describe('shared Rewards company participation and history',()=>{
  it('records exclusion and ending reasons, denies new shared coverage/reviews, and leaves old reviews intact',async()=>{
   await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_company_exclusion_change(${b.companyId}::uuid,${year},repeat(chr(12)||chr(160),12),NULL)`))).rejects.toBeDefined();
@@ -68,7 +71,7 @@ describe('shared Rewards company participation and history',()=>{
    await tx`select set_config('app.tenant_id',${admin.tenantId},true),set_config('app.user_id',${admin.userId!},true),set_config('app.roles','hr_admin',true),set_config('app.grants',${JSON.stringify(admin.grants??[{role:'hr_admin',companyId:null}])},true)`;
    await tx`select count(*) from reward_company_exclusion`;
    await changeRewardCompanyExclusion(admin,{companyId:b.companyId,year,reason:'Company excluded after snapshot was pinned',endId:null});
-   await tx`select app.reward_policy_group_commit(NULL,0,'Stale snapshot must not save',${JSON.stringify(defaultPolicy(year))}::jsonb,${JSON.stringify([{companyId:b.companyId,businessUnitId:buA}])}::jsonb)`;
+   await tx`select app.reward_policy_group_commit(NULL,0,'Stale snapshot must not save',${JSON.stringify(completeSharedRewardPolicy(year))}::jsonb,${JSON.stringify([{companyId:b.companyId,businessUnitId:buA}])}::jsonb)`;
   })).rejects.toMatchObject({code:'40001'});
  });
  it('orders versions newest first and derives archived and locked states from stored owners',async()=>{

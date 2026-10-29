@@ -53,11 +53,11 @@ export default async function RewardConfigurationPage({ params, searchParams }: 
     {!v.canConfigure && <p className="max-w-3xl text-sm text-muted-foreground">{unit.status === 'draft' ? t('configurationPermission') : t('locked')}</p>}
     <RewardCalendarForm unitId={unitId} revision={calendar.revision} values={calendar.values} canEdit={!readOnly && calendar.canEdit} />
     {senior && <SeniorMembership key={senior.revision} value={senior} />}
-    <RewardPolicyContent readOnly={readOnly} canConfigure={v.canConfigure} unitId={unitId} revision={unit.revision} policy={unit.policy} />
+    <RewardPolicyContent readOnly={readOnly} canReadPat={v.canReadPat} canConfigure={v.canConfigure} unitId={unitId} revision={unit.revision} policy={unit.policy} />
   </div>;
 }
 
-async function RewardPolicyContent({readOnly,canConfigure,unitId,revision,policy}:{readOnly:boolean;canConfigure:boolean;unitId:string;revision:number;policy:import('@/packs/rewards/model').RewardPolicy}){
- if(readOnly||!canConfigure)return <RewardPolicyFields policy={policy} readOnly/>;
+async function RewardPolicyContent({readOnly,canConfigure,canReadPat,unitId,revision,policy}:{readOnly:boolean;canConfigure:boolean;canReadPat:boolean;unitId:string;revision:number;policy:import('@/packs/rewards/model').RewardPolicy}){
+ if(readOnly||!canConfigure)return <RewardPolicyFields policy={policy} readOnly unitId={unitId} hideUnitInputs={!canReadPat}/>;
  return <PolicyForm unitId={unitId} revision={revision} policy={policy}/>;
 }

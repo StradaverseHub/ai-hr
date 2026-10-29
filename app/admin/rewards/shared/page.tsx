@@ -7,6 +7,7 @@ import {todayInKualaLumpur} from '@/lib/hr-date';
 import {adminCompanies,companyTree} from '@/core/read';
 import {rewardCompanyExclusions,rewardPolicyHistory,rewardPolicyTaken,listRewardPolicyGroups,rewardPolicyGroupUsage,rewardSetupChoices,defaultPolicy} from '@/packs/rewards/service';
 import {Card,PageHeader} from '@/components/ui';
+import {rewardPolicyMemberships} from '@/packs/rewards/service';
 import {RewardPolicyFields} from '@/app/rewards/[unitId]/policy-form';
 import {SharedRewardHistory} from './history';
 import {SharedRewardEditor} from './editor';
@@ -24,6 +25,7 @@ export default async function SharedRewardPolicyPage({searchParams}:{searchParam
   const group=parent??(tree.some(child=>child.parentId===company.id)?node:null);
   return {...company,groupId:group?.id??null,groupName:group?.name??null};
  });
+ const memberships=await rewardPolicyMemberships(s,choices.companies.map(company=>company.id));
  const taken=await rewardPolicyTaken(s,choices.companies.map(company=>company.id),policy.year);
  const exclusions=await rewardCompanyExclusions(s);
  const selectedHistory=selected&&params.version?await rewardPolicyHistory(s,selected.groupId):[];
@@ -33,7 +35,7 @@ export default async function SharedRewardPolicyPage({searchParams}:{searchParam
  return <div className="mx-auto max-w-6xl space-y-6"><PageHeader title={t('title')} description={t('description')}/>
   <RewardsAdminTabs current="shared"/><p className="text-sm text-muted-foreground">{t('currencyHelp')}</p>
   <SharedRewardHistory session={s} groups={groups} groupId={groupId} showVersions={params.versions} versionId={params.version} compare={params.compare} companies={choices.companies} units={choices.units}/>
-  {choices.companies.length>0&&<SharedRewardEditor actorUserId={s.userId??''} groupId={selected?.groupId??null} revision={selected?.revision??0} name={selected?.name??''} year={policy.year} targets={selected?.targets??[]} companies={groupedCompanies} units={choices.units} initialTaken={taken} loadTakenAction={loadSharedRewardTakenAction} canManageUnits={companies.length>0} exclusions={exclusions} exclusionAction={changeSharedRewardExclusionAction}
+  {choices.companies.length>0&&<SharedRewardEditor actorUserId={s.userId??''} groupId={selected?.groupId??null} revision={selected?.revision??0} name={selected?.name??''} year={policy.year} targets={selected?.targets??[]} companies={groupedCompanies} units={choices.units} memberships={memberships} initialTaken={taken} loadTakenAction={loadSharedRewardTakenAction} canManageUnits={companies.length>0} exclusions={exclusions} exclusionAction={changeSharedRewardExclusionAction}
    policyFields={<RewardPolicyFields policy={policy} context="shared"/>} saveAction={saveSharedRewardPolicyAction}/>}
   {selected&&<Card id="configuration-usage" className="space-y-3 p-4"><h2 className="font-semibold">{t('usage')}</h2><p className="text-sm text-muted-foreground">{t('usageHelp')}</p>{usage.length?<ul className="divide-y">{usage.map(row=><li key={row.unitId} className="py-2 text-sm"><Link className="text-primary hover:underline" href={`/admin/rewards/${row.unitId}`}>{row.cycle} · {row.company} · {row.businessUnit} · {t('version',{version:row.revision})}</Link></li>)}</ul>:<p className="text-sm text-muted-foreground">{t('unused')}</p>}</Card>}
  </div>;

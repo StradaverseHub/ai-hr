@@ -1,3 +1,4 @@
+import {initializeRewardGovernanceFixture} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
@@ -34,6 +35,7 @@ describe('Rewards source refresh preview and confirm', () => {
     for (const key of ['same', 'notice', 'grade', 'salary', 'terminated', 'moved']) await hire(key);
     await hire('confirmed', false);
     unitId = await createRewardUnit(admin, { name: 'Refresh rewards', year, companyId: b.companyId, businessUnitId: buId, snapshotDate: earlier });
+    await initializeRewardGovernanceFixture(admin,unitId);
     const [p] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: 'BU reviewer', primaryEmail: 'bu@refresh.test' }).returning();
     const userId = await createAppUser(b.tenantId, p.id, 'employee');
     bu = { ...admin, userId, personId: p.id, roles: ['employee'], grants: undefined };

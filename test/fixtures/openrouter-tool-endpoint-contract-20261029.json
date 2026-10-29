@@ -1,0 +1,19 @@
+{
+  "source": "https://openrouter.ai/api/v1/models/openai/gpt-6-luna/endpoints",
+  "retrievedOn": "2026-10-29",
+  "sourceSha256": "a622777a70fae6c8b0eaab5b22de73f53c4469eb56714ab370ef4c14dd67408f",
+  "scope": "Public endpoint capability example; no account, key or generation data.",
+  "provider": "azure",
+  "supportedParameters": [
+    "reasoning",
+    "include_reasoning",
+    "max_completion_tokens",
+    "tools",
+    "tool_choice",
+    "seed",
+    "response_format",
+    "structured_outputs",
+    "verbosity",
+    "reasoning_effort"
+  ]
+}

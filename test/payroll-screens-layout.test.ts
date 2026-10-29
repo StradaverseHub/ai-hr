@@ -295,6 +295,8 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
     'app/payroll/statutory-detail/page.tsx',
     'app/payroll/transactions/adjustments/page.tsx',
     'app/payroll/transactions/import-components/page.tsx',
+    // A viewport-bounded upload/preview dialog, not its parent Individual Transactions page.
+    'app/payroll/transactions/import-excel/individual-import.tsx',
     // Not a page at all: an INNER measure inside the transaction-view history tab.
     'app/payroll/transaction-view/history-table.tsx',
   ] as const;

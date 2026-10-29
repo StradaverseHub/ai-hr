@@ -27,7 +27,8 @@ export async function buildTxnTemplateReference(
 ): Promise<TxnTemplateReference> {
   const t = await getTranslations('payroll.txnImport');
   const tc = await getTranslations('payroll.transactions.individual');
-  const [employees, components] = await Promise.all([listEmployees(s, scopeIds), listPayComponents(s, { readyOnly: true })]);
+  // An empty application scope must never become the tenant-wide default in a catalogue reader.
+  const [employees, components] = scopeIds.length === 0 ? [[], []] : await Promise.all([listEmployees(s, scopeIds), listPayComponents(s, { readyOnly: true })]);
 
   return {
     headings: {
