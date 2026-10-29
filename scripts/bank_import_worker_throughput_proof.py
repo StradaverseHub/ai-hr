@@ -546,7 +546,9 @@ class Registry:
         identity=candidates[0];marker='aihr-ci-'+os.environ['GITHUB_RUN_ID']+'-'+os.environ['GITHUB_SHA']
         resource={'type':'user','name':name,'uid':identity,'gid':identity,'home':'/nonexistent','shell':'/usr/sbin/nologin','gecos':marker,'state':'create-pending'}
         self.data['resources'].append(resource);self.save()
-        for argv in [['/usr/sbin/groupadd','--gid',str(identity),name],['/usr/sbin/useradd','--system','--no-log-init','--no-create-home','--key','CREATE_MAIL_SPOOL=no','--uid',str(identity),'--gid',str(identity),'--home-dir','/nonexistent','--shell','/usr/sbin/nologin','--comment',marker,name]]:
+        # shadow useradd skips mail creation for --system; CREATE_MAIL_SPOOL
+        # belongs to /etc/default/useradd, not the --key login.defs overrides.
+        for argv in [['/usr/sbin/groupadd','--gid',str(identity),name],['/usr/sbin/useradd','--system','--no-log-init','--no-create-home','--uid',str(identity),'--gid',str(identity),'--home-dir','/nonexistent','--shell','/usr/sbin/nologin','--comment',marker,name]]:
             result=self.run(argv,env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'},timeout=20)
             check(result.returncode==0,'exact worker allocation failed; stderr='+result.stderr[-12000:])
         user=pwd.getpwnam(name)

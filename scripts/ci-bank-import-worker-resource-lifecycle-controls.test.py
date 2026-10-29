@@ -109,6 +109,18 @@ class ResourceLifecycle(unittest.TestCase):
                 raise RuntimeError('interrupted group allocation')
             registry.run=command
             with patch.object(p.pwd,'getpwall',return_value=[]),patch.object(p.grp,'getgrall',return_value=[]),self.assertRaises(RuntimeError): registry.prepare_user()
+        with fixture() as (registry,snapshots,opt,proc):
+            commands=[]
+            def command(argv,**kwargs):
+                commands.append(argv)
+                self.assertEqual(snapshots[-1]['resources'][0]['state'],'create-pending')
+                if argv[0]=='/usr/sbin/groupadd': return SimpleNamespace(returncode=0)
+                self.assertIn('--system',argv);self.assertIn('--no-create-home',argv);self.assertIn('--no-log-init',argv)
+                self.assertNotIn('--key',argv);self.assertNotIn('CREATE_MAIL_SPOOL=no',argv)
+                raise RuntimeError('interrupted user allocation')
+            registry.run=command
+            with patch.object(p.pwd,'getpwall',return_value=[]),patch.object(p.grp,'getgrall',return_value=[]),self.assertRaises(RuntimeError): registry.prepare_user()
+            self.assertEqual(len(commands),2)
 
     def test_initialization_recovery_accepts_only_owned_empty_pending_namespaces(self):
         with fixture() as (registry,snapshots,opt,proc):
