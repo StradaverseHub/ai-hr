@@ -6,6 +6,7 @@ import type { Actor, Case, Config } from '@/lib/lifecycle-v9-model';
 import { matches, currentVersion } from '@/lib/lifecycle-v9-model';
 import type { LifecycleV9Command } from '@/packs/lifecycle/service';
 import { commandV9, readV9Case } from './actions';
+import { CaseFiles } from './case-files';
 import { CaseDocument } from './case-document';
 import { PersonnelReview } from './personnel-review';
 import { CaseEmails } from './email-composer';
@@ -38,6 +39,7 @@ export function NativeCaseDocuments({ initial, config, actor, writableKeys }: { 
       {c.state === 'pending' && <p className="v9-notice">Submit the onboarding case to start its documents.</p>}
     </section>
     <PersonnelReview c={c} busy={busy} writableKeys={writableKeys} command={value => void command(value)}/>
+    <CaseFiles key={c.id} c={c} config={config}/>
     <CaseEmails c={c} config={config} busy={busy} command={command}/>
     {document && <dialog className="v9-dialog" aria-label={document.name} ref={dialog} onCancel={() => select(null)}><header><h2>{document.name}</h2><button type="button" className="v9-button" aria-label="Close document" onClick={() => select(null)}><X size={18}/></button></header><CaseDocument key={`${document.id}:${c.revision}`} c={c} document={document} template={config.templates.find(template => template.id === document.templateId)} actor={actor} busy={busy} command={value => void command(value)}/></dialog>}
   </div></section>;

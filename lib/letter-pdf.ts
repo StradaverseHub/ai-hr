@@ -5,10 +5,13 @@ import {toBuffer} from 'qrcode';
 
 type Document=ReturnType<typeof renderLetterDocument>['document'];
 type Run={text:string;font:PDFFont;width:number;italic:boolean;underline:boolean};
+export type LetterPdfSignature={name:string;caption:string;timestamp:string;stamp?:Uint8Array};
 export type LetterPdfInput={
  document:Document;reference:string;title:string;
  /** Already-localized evidence of the authenticated internal approval, never a legal signature claim. */
- signature:{name:string;caption:string;timestamp:string;stamp?:Uint8Array};
+ signature:LetterPdfSignature;
+ /** A second authenticated party for countersigned lifecycle documents. */
+ additionalSignatures?:LetterPdfSignature[];
  letterhead?:Uint8Array;
  verification?:{url:string;caption:string};
  /** Internal report exports may span more pages; official letters retain the smaller default. */
@@ -17,7 +20,9 @@ export type LetterPdfInput={
 /** Only frozen, resolved text and private validated PNG bytes enter this renderer. No fetch or HR reads. */
 export async function renderLetterPdf(input:LetterPdfInput){
  const maxPages=input.maxPages??200;if(!Number.isInteger(maxPages)||maxPages<1||maxPages>2000)throw new Error('Invalid PDF page limit');
- const strings:string[]=[input.reference,input.title,input.signature.name,input.signature.caption,input.signature.timestamp];
+ if(input.additionalSignatures&&input.additionalSignatures.length>1)throw new Error('Too many document signatures');
+ const signatures=[input.signature,...input.additionalSignatures??[]];
+ const strings:string[]=[input.reference,input.title,...signatures.flatMap(signature=>[signature.name,signature.caption,signature.timestamp])];
  if(input.verification)strings.push(input.verification.caption);
  for(const block of input.document.blocks){
   const cells=block.type==='table'?block.rows.flat():block.type==='list'?block.items:[block.content];
@@ -27,7 +32,7 @@ export async function renderLetterPdf(input:LetterPdfInput){
  const pdf=await PDFDocument.create();pdf.setTitle(input.title);pdf.setSubject(input.reference);pdf.setProducer('ai-hr');
  const regular=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);
  const faces=await embedPayslipFaces(pdf,payslipFaceScripts(strings));
- const header=input.letterhead?await pdf.embedPng(input.letterhead):null,stamp=input.signature.stamp?await pdf.embedPng(input.signature.stamp):null;
+ const header=input.letterhead?await pdf.embedPng(input.letterhead):null;
  const width=595.28,height=841.89,left=48,right=width-48,bottom=58,bodyWidth=right-left;
  let page=pdf.addPage([width,height]),y=height-48;
  const bounds:{page:number;x:number;y:number;width:number;height:number}[]=[];
@@ -86,9 +91,13 @@ export async function renderLetterPdf(input:LetterPdfInput){
    }y-=12;
   }
  }
- space(140);y-=16;
- if(stamp){const dimensions=stamp.scale(Math.min(150/stamp.width,65/stamp.height));page.drawImage(stamp,{x:left,y:y-dimensions.height,width:dimensions.width,height:dimensions.height});y-=dimensions.height+10;}
- paragraph(plain(input.signature.name),11,true);paragraph(plain(input.signature.caption),9);paragraph(plain(input.signature.timestamp),9);
+ for(const signature of signatures){
+  const stamp=signature.stamp?await pdf.embedPng(signature.stamp):null;
+  const signatureHeight=16+(stamp?Math.min(150/stamp.width,65/stamp.height)*stamp.height+10:0)+wrap(plain(signature.name),bodyWidth-4,11,true).length*11*1.65+wrap(plain(signature.caption),bodyWidth-4,9).length*9*1.65+wrap(plain(signature.timestamp),bodyWidth-4,9).length*9*1.65+21;
+  space(signatures.length===1?140:Math.max(140,signatureHeight));y-=16;
+  if(stamp){const dimensions=stamp.scale(Math.min(150/stamp.width,65/stamp.height));page.drawImage(stamp,{x:left,y:y-dimensions.height,width:dimensions.width,height:dimensions.height});y-=dimensions.height+10;}
+  paragraph(plain(signature.name),11,true);paragraph(plain(signature.caption),9);paragraph(plain(signature.timestamp),9);
+ }
  if(input.verification){
   const url=new URL(input.verification.url);if(url.protocol!=='https:'||url.username||url.password||input.verification.url.length>1024)throw new Error('Invalid letter verification URL');
   const qr=await pdf.embedPng(await toBuffer(input.verification.url,{type:'png',width:512,margin:4,errorCorrectionLevel:'M'}));space(150);page.drawImage(qr,{x:left,y:y-104,width:104,height:104});y-=114;paragraph(plain(input.verification.caption),9);

@@ -219,3 +219,14 @@ it('previews current email values and holds without mutating the case or queuing
   config.emails[0].body = 'Bank: {employee.bankAcc}'; environment.mergeValues['employee.bankAcc'] = '123456789';
   expect(M.previewEmail(c, config, 'notice', environment).holds).toContain('Remove sensitive fields from the email text.');
 });
+
+
+it('keeps attachment PDFs read-only even if released or configured with a signature step', () => {
+  const { c, config, environment } = fixture();
+  const attachment = template(); attachment.type = 'Attachment'; config.templates = [attachment];
+  const doc = M.generate(c, config, attachment.id, environment); doc.status = 'sent';
+  expect(() => M.saveDocument(c, doc.id, { answer: 'Tampered' }, 'employee', environment)).toThrow('read-only');
+  expect(() => M.signDocument(c, config, doc.id, 'employee', { method: 'typed', value: 'Person', consent: true, by: environment.actor, at: environment.now }, environment)).toThrow('read-only');
+  expect(M.workflowProblems(workflow({ steps: [{ id: 'sign', type: 'waitSign', template: attachment.id, by: 'employee' }] }), config)).toContain('Step 1: attachments do not require a signature.');
+  expect(doc.employeeSignature).toBeNull();
+});

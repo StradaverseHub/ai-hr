@@ -1,4 +1,5 @@
 /** V9 lifecycle rules. Services supply authorized identity, Personnel facts and final-pay snapshots. */
+import { validV9SignatureValue } from './lifecycle-v9-signature';
 import { isCalendarDate } from './calendar-date';
 import type { SettlementPolicy, SettlementInput } from './lifecycle-v9-calculator';
 export type Module = 'onb' | 'off';
@@ -51,7 +52,7 @@ export type Document = {
   blocks: Block[]; fields: Field[]; values: Record<string, string>; edits: Record<string, string>;
   hrSignature: Signature | null; employeeSignature: Signature | null; createdAt: string; sentAt: string | null;
   mergeValues?: Record<string, string>;
-  hrStep?: Template['hrStep']; employeeAck?: boolean; signatoryUserId?: string | null;
+  hrStep?: Template['hrStep']; employeeAck?: boolean; signatoryUserId?: string | null; templateType?: Template['type'];
 };
 export type Role = 'employee' | 'supervisor' | 'pbp' | 'ta' | 'peopleOps' | 'taskOwners';
 export type EmailTemplate = {
@@ -85,6 +86,7 @@ export function workflowProblems(workflow: Workflow, config: Pick<Config, 'templ
       const template = (step.type === 'email' ? config.emails : config.templates).find(t => t.id === step.template && t.module === workflow.module);
       if (!template) problems.push(prefix + 'choose a template in the same module.');
       else if ('versions' in template && (template.retired || !template.versions.some(v => v.state === 'published'))) problems.push(prefix + 'choose a published, active document template.');
+      else if (step.type === 'waitSign' && 'versions' in template && template.type === 'Attachment') problems.push(prefix + 'attachments do not require a signature.');
       else if ('active' in template && !template.active) problems.push(prefix + 'choose an active email template.');
     }
     if (step.type === 'waitFile' && !step.slot.trim()) problems.push(prefix + 'choose a file slot.');
@@ -254,7 +256,7 @@ export function generate(c: Case, config: Config, templateId: string, env: Envir
   const version = currentVersion(template); if (!version) throw new V9Error('Publish the document template before using it.');
   const values: Record<string, string> = {};
   for (const field of version.fields) if (field.pmKey) values[field.id] = env.mergeValues[field.pmKey] ?? '';
-  const doc: Document = { id: env.nextId(), templateId, version: version.version, name: template.name, status: 'draft', blocks: structuredClone(version.blocks), fields: structuredClone(version.fields), values, edits: {}, hrSignature: null, employeeSignature: null, createdAt: env.now, sentAt: null, mergeValues: { ...env.mergeValues }, hrStep: template.hrStep, employeeAck: template.employeeAck, signatoryUserId: env.signatoryUserId ?? null };
+  const doc: Document = { id: env.nextId(), templateId, version: version.version, name: template.name, status: 'draft', blocks: structuredClone(version.blocks), fields: structuredClone(version.fields), values, edits: {}, hrSignature: null, employeeSignature: null, createdAt: env.now, sentAt: null, mergeValues: { ...env.mergeValues }, templateType: template.type, hrStep: template.hrStep, employeeAck: template.employeeAck, signatoryUserId: env.signatoryUserId ?? null };
   c.documents.push(doc); appendLog(c, env, 'document.generated', `${doc.name} version ${doc.version}`); return doc;
 }
 function linkedTasks(c: Case, doc: Document, action: TaskDefinition['documentAction']): void {
@@ -264,6 +266,7 @@ export function saveDocument(c: Case, id: string, values: Record<string, string>
   const doc = c.documents.find(d => d.id === id); if (!doc) throw new V9Error('Document not found.', 'not_found');
   if (c.state !== 'submitted' || documentFinal(doc) || ['withdrawn', 'superseded'].includes(doc.status)) throw new V9Error('This document is no longer editable.', 'conflict');
   if (owner === 'hr' && (doc.hrSignature || doc.employeeSignature)) throw new V9Error('Signed document fields are frozen. Prepare a new document to make this correction.', 'conflict');
+  if (owner === 'employee' && doc.templateType === 'Attachment') throw new V9Error('Attachments are read-only PDFs.', 'forbidden');
   if (owner === 'employee' && !['sent', 'opened'].includes(doc.status)) throw new V9Error('This document has not been released to you.');
   for (const [key, value] of Object.entries(values)) {
     const field = doc.fields.find(f => f.id === key); if (!field || field.owner !== owner) throw new V9Error('This field cannot be changed.', 'forbidden');
@@ -275,9 +278,10 @@ export function saveDocument(c: Case, id: string, values: Record<string, string>
 export function signDocument(c: Case, config: Config, id: string, role: 'employee' | 'hr', signature: Signature, env: Environment): void {
   const doc = c.documents.find(d => d.id === id), template = doc && config.templates.find(t => t.id === doc.templateId);
   if (!doc || !template) throw new V9Error('Document not found.', 'not_found');
+  if ((doc.templateType ?? template.type) === 'Attachment') throw new V9Error('Attachments are read-only PDFs and do not require a signature.', 'conflict');
   const hrStep = doc.hrStep ?? template.hrStep, employeeAck = doc.employeeAck ?? template.employeeAck;
   if (c.state !== 'submitted' || ['superseded', 'withdrawn'].includes(doc.status)) throw new V9Error('This document is no longer open.', 'conflict');
-  if (!signature.consent || !signature.value.trim() || signature.by.id !== env.actor.id) throw new V9Error('Confirm consent and provide your own signature.');
+  if (!signature.consent || !validV9SignatureValue(signature.method, signature.value) || signature.by.id !== env.actor.id) throw new V9Error('Confirm consent and provide your own signature.');
   const missing = doc.blocks.filter(b => ['heading', 'subheading', 'text'].includes(b.type)).flatMap(b => merge(doc.edits[b.id] ?? b.text, { ...doc.mergeValues, ...doc.values }).missing);
   if (missing.length) throw new V9Error(`Complete missing document fields: ${[...new Set(missing)].join(', ')}.`);
   if (role === 'employee') {

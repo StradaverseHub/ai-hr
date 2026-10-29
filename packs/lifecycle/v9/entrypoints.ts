@@ -21,3 +21,5 @@ export const v9UploadFile: Service['v9UploadFile'] = async (...args) => (await l
 export const v9DownloadFile: Service['v9DownloadFile'] = async (...args) => (await load()).v9DownloadFile(...args);
 
 export const v9PreviewEmail: Service['v9PreviewEmail'] = async (...args) => (await load()).v9PreviewEmail(...args);
+
+export const v9DownloadDocument: Service['v9DownloadDocument'] = async (...args) => (await load()).v9DownloadDocument(...args);

@@ -6,7 +6,7 @@ import { documentFinal, type Actor, type Case, type Document, type Template } fr
 import type { LifecycleV9Command } from '@/packs/lifecycle/service';
 
 export function CaseDocument({ c, document, template, actor, busy, command }: {
-  c: Pick<Case, 'state'>; document: Document; template?: Template; actor: Actor; busy: boolean;
+  c: Pick<Case, 'state'> & Partial<Pick<Case, 'id'>>; document: Document; template?: Template; actor: Actor; busy: boolean;
   command: (command: LifecycleV9Command) => void;
 }) {
   const [values, setValues] = useState({ ...document.values });
@@ -15,9 +15,9 @@ export function CaseDocument({ c, document, template, actor, busy, command }: {
   const canEditFields = editable && !document.hrSignature && !document.employeeSignature;
   const dirty = fields.some(field => (values[field.id] ?? '') !== (document.values[field.id] ?? ''));
   const hrStep = document.hrStep ?? template?.hrStep;
-  const needsSignature = editable && (hrStep === 'before' && document.status === 'draft' || hrStep === 'after' && document.status === 'countersign');
+  const needsSignature = editable && (document.templateType ?? template?.type) !== 'Attachment' && (hrStep === 'before' && document.status === 'draft' || hrStep === 'after' && document.status === 'countersign');
   const signatory = document.signatoryUserId === actor.id;
-  return <div className="v9-stack"><DocumentBody document={document} values={values} editableBy="hr" disabled={busy || !canEditFields} change={(id, value) => setValues(previous => ({ ...previous, [id]: value }))}/>
+  return <div className="v9-stack">{c.id && <a className="v9-button" href={`/lifecycle/v9/documents/${encodeURIComponent(c.id)}/${encodeURIComponent(document.id)}`}>Download PDF</a>}<DocumentBody document={document} values={values} editableBy="hr" disabled={busy || !canEditFields} change={(id, value) => setValues(previous => ({ ...previous, [id]: value }))}/>
     {canEditFields && fields.length > 0 && <button type="button" className="v9-button" disabled={busy || !dirty} onClick={() => command({ type: 'documentSave', id: document.id, values: Object.fromEntries(fields.filter(f => values[f.id] !== undefined).map(f => [f.id, values[f.id]])) })}>Save HR fields</button>}
     {editable && document.status === 'draft' && <button type="button" className="v9-button" disabled={busy || dirty} onClick={() => command({ type: 'documentRefresh', id: document.id })}>Refresh Personnel values</button>}
     {needsSignature && (signatory ? <>{dirty && <p className="v9-notice">Save your changes before signing this document.</p>}<SignatureInput name={actor.name} busy={busy || dirty} submit={signature => command({ type: 'documentSign', id: document.id, signature })}/></> : <p className="v9-notice">This document is waiting for the designated company HR signatory.</p>)}

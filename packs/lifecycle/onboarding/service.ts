@@ -1251,7 +1251,7 @@ export async function onboardingV9StoreTx(ctx: SessionContext, tx: Tx, id: strin
         task.status = 'done'; task.completedAt = now; task.completedBy = actor.id;
     }
     const env: M.Environment = { now, today, id: randomUUID, nextNumber: () => '', leave: {}, taskLoads: {}, lastTaskAssignment: {}, pendingApprovals: {}, lifetimeApprovals: {}, users: [] };
-    M.log(c, actor, env, 'document.' + action, 'V9 document state updated.');
+    M.log(c, actor, env, 'document.' + action, action === 'workflow' ? 'Workflow progress recorded.' : action === 'generate' ? 'Document generated.' : 'Document activity recorded.');
     await storeTx(tx, ctx, row, c, true);
     await tx.execute(sql`update lc_onboarding_private set data=data||jsonb_build_object('lifecycleV9',${JSON.stringify(state)}::jsonb,'lifecycleV9Subject',${JSON.stringify({ personId: c.personId, employmentId: c.employmentId })}::jsonb) where case_id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
     await auditTx(tx, ctx, c, 'document.' + action);

@@ -10,7 +10,7 @@ import type { NotificationSweepConnection } from '../../../core/notice-projectio
 import { assertModuleEnabled } from '../../../core/entitlements';
 import * as M from '../../../lib/lifecycle-v9-model';
 import { projectNativeCase, nativeDocumentState } from '../../../lib/lifecycle-v9-native';
-import { effectiveFacts as nativeFacts } from '../../../lib/onboarding-model';
+import { OnboardingError, effectiveFacts as nativeFacts } from '../../../lib/onboarding-model';
 import { v9Defaults } from '../../../lib/lifecycle-v9-defaults';
 import { parseV9Config, validateV9ConfigChange, v9Equal } from '../../../lib/lifecycle-v9-validation';
 import { readSettlementTx, type SettlementView } from './settlement';
@@ -56,7 +56,7 @@ async function load(tx: Tx, ctx: SessionContext, id: string): Promise<Row> {
   await admin(tx, row.company_id); return row;
 }
 async function record(tx: Tx, ctx: SessionContext, id: string, employmentId: string, action: string): Promise<void> {
-  await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-case', aggregateId: id, eventType: `lifecycle-v9.${action}`, actor: actorOf(ctx), subjectEmploymentId: employmentId, payload: { caseId: id, action } });
+  await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-case', aggregateId: id, eventType: `lifecycle-v9.${action}`, actor: actorOf(ctx), subjectEmploymentId: employmentId || null, payload: { caseId: id, action } });
 }
 async function store(tx: Tx, ctx: SessionContext, row: Row, next: M.Case, action: string): Promise<void> {
   if (row.native) {
@@ -430,7 +430,6 @@ export async function v9UploadFile(ctx: SessionContext, input: { caseId: string;
   try { mimeType = resolveDocumentUpload(input.name, content).mimeType; } catch { throw new M.V9Error('The file contents do not match a supported PDF, Word, Excel, image or text file.'); }
   return withLifecycleTenant(ctx, async tx => {
     await lockTx(tx, ctx); const row = await load(tx, ctx, input.caseId), config = await configTx(tx, ctx);
-    if (row.native) throw new M.V9Error('Upload this attachment through the onboarding case.');
     if (!config || !['pending', 'submitted'].includes(row.data.state)) throw new M.V9Error('This case is not open for uploads.');
     const retained = row.data.files.find(f => f.slot === input.slot && f.contentHash === contentHash);
     if (retained) return retained.id;
@@ -438,7 +437,7 @@ export async function v9UploadFile(ctx: SessionContext, input: { caseId: string;
     const slots = [...config.emails.filter(e => e.module === row.data.module).flatMap(e => e.slots.map(s => `${e.id}:${s.id}`)), ...config.workflows.filter(w => w.module === row.data.module).flatMap(w => w.steps.filter(s => s.type === 'waitFile').map(s => s.slot)), ...row.data.runs.flatMap(r => r.definition?.steps.filter(s => s.type === 'waitFile').map(s => s.slot) ?? [])];
     if (!slots.includes(input.slot)) throw new M.V9Error('Choose a configured attachment slot for this case.');
     const id = randomUUID();
-    await tx.execute(sql`insert into lc_v9_file(id,tenant_id,case_id,company_id,slot,filename,mime_type,content,uploaded_by) values(${id}::uuid,${ctx.tenantId}::uuid,${row.id}::uuid,${row.company_id}::uuid,${input.slot},${input.name},${mimeType},decode(${content.toString('base64')},'base64'),${ctx.userId}::uuid)`);
+    await tx.execute(sql`insert into lc_v9_file(id,tenant_id,case_id,onboarding_case_id,company_id,slot,filename,mime_type,content,uploaded_by) values(${id}::uuid,${ctx.tenantId}::uuid,${row.native ? null : row.id}::uuid,${row.native ? row.id : null}::uuid,${row.company_id}::uuid,${input.slot},${input.name},${mimeType},decode(${content.toString('base64')},'base64'),${ctx.userId}::uuid)`);
     const c = structuredClone(row.data), env = await environment(tx, ctx, c, config);
     c.files = [...c.files.filter(f => f.slot !== input.slot), { id, slot: input.slot, name: input.name, storageId: id, contentHash }];
     M.appendLog(c, env, 'file.uploaded', `${input.name} · ${input.slot}`);
@@ -450,7 +449,7 @@ export async function v9DownloadFile(ctx: SessionContext, caseId: string, fileId
   identifier(caseId); identifier(fileId);
   return withLifecycleTenant(ctx, async tx => {
     await lockTx(tx, ctx); const row = await load(tx, ctx, caseId);
-    const [file] = await tx.execute<{ filename: string; mime_type: string; bytes: string }>(sql`select filename,mime_type,encode(content,'base64') as bytes from lc_v9_file where id=${fileId}::uuid and tenant_id=${ctx.tenantId}::uuid and case_id=${row.id}::uuid`);
+    const [file] = await tx.execute<{ filename: string; mime_type: string; bytes: string }>(sql`select filename,mime_type,encode(content,'base64') as bytes from lc_v9_file where id=${fileId}::uuid and tenant_id=${ctx.tenantId}::uuid and (case_id=${row.id}::uuid or onboarding_case_id=${row.id}::uuid)`);
     if (!file) throw new M.V9Error('File not found or unavailable.', 'not_found');
     await record(tx, ctx, row.id, row.data.facts.employmentId, 'fileDownloaded');
     return { name: file.filename, mimeType: file.mime_type, content: Buffer.from(file.bytes, 'base64') };
@@ -465,4 +464,20 @@ export async function v9OwnDocument(ctx: SessionContext, input: { caseId: string
     if (!result?.employment) throw new M.V9Error('Document not available.', 'not_found');
     await record(tx, ctx, input.caseId, result.employment, input.signature ? 'employeeDocumentSigned' : 'employeeDocumentSaved');
   });
+}
+
+/** Authorized saved instance only: HR scope or the linked employee's released-document projection. */
+export async function v9DownloadDocument(ctx: SessionContext, caseId: string, documentId: string): Promise<{ name: string; content: Uint8Array }> {
+  identifier(caseId); documentId = commandId.parse(documentId);
+  let document: M.Document | undefined, reference = '';
+  try {
+    const detail = await v9CaseDetail(ctx, caseId); document = detail.case.documents.find(d => d.id === documentId); reference = detail.case.number;
+  } catch (error) {
+    if (!(error instanceof M.V9Error || error instanceof OnboardingError) || !['forbidden', 'not_found'].includes(error.code)) throw error;
+    const own = (await v9OwnWork(ctx)).find(c => c.id === caseId); document = own?.documents.find(d => d.id === documentId); reference = own?.number ?? '';
+  }
+  if (!document) throw new M.V9Error('Document not found or unavailable.', 'not_found');
+  const { renderV9DocumentPdf } = await import('../../../lib/lifecycle-v9-pdf');
+  const result = await renderV9DocumentPdf(document, reference);
+  return { name: document.name.replace(/[^\p{L}\p{N} ._()-]/gu, '_') + '.pdf', content: result.bytes };
 }

@@ -48,7 +48,10 @@ export function parseV9Config(value: unknown) {
   const sameModule = (module: 'onb' | 'off', id: string, kind: 'email' | 'document') => {
     if (!(kind === 'email' ? config.emails : config.templates).some(t => t.id === id && t.module === module)) throw new V9Error('Linked templates must belong to the same module.');
   };
-  for (const cl of config.checklists) for (const t of cl.tasks) if (t.documentTemplate) sameModule(cl.module, t.documentTemplate, 'document');
+  for (const cl of config.checklists) for (const t of cl.tasks) if (t.documentTemplate) {
+    sameModule(cl.module, t.documentTemplate, 'document');
+    if (t.documentAction !== 'sent' && config.templates.find(d => d.id === t.documentTemplate)?.type === 'Attachment') throw new V9Error('Attachments can complete a task when sent, but cannot be signed.');
+  }
   for (const wf of config.workflows) {
     if (wf.status === 'published') { const problems = workflowProblems(wf as Config['workflows'][number], config as Config); if (problems.length) throw new V9Error(problems.join(' ')); }
     for (const step of wf.steps) if ('cc' in step && step.cc.includes('taskOwners')) throw new V9Error('Task owners cannot be CC recipients.');

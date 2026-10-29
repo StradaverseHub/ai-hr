@@ -30,10 +30,11 @@ CREATE TABLE lc_v9_case_revision (
 );
 CREATE TABLE lc_v9_file (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id uuid NOT NULL REFERENCES tenant(id),
- case_id uuid NOT NULL REFERENCES lc_v9_case(id), company_id uuid NOT NULL REFERENCES company(id),
+ case_id uuid REFERENCES lc_v9_case(id), onboarding_case_id uuid REFERENCES lc_onboarding_case(id), company_id uuid NOT NULL REFERENCES company(id),
  document_id text, slot text NOT NULL, filename text NOT NULL, mime_type text NOT NULL,
  content bytea NOT NULL CHECK(octet_length(content)<=10485760),
- uploaded_by uuid NOT NULL REFERENCES app_user(id), created_at timestamptz NOT NULL DEFAULT now()
+ uploaded_by uuid NOT NULL REFERENCES app_user(id), created_at timestamptz NOT NULL DEFAULT now(),
+ CHECK(num_nonnulls(case_id,onboarding_case_id)=1)
 );
 ALTER TABLE lc_v9_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lc_v9_config_revision ENABLE ROW LEVEL SECURITY;
@@ -71,13 +72,16 @@ GRANT UPDATE(status,reviewed_by,review_note,updated_at) ON lc_v9_payroll_handove
 
 -- Tenant and company integrity is enforced independently of service validation and RLS visibility.
 CREATE FUNCTION app.lc_v9_integrity() RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $$
-DECLARE row_data jsonb:=to_jsonb(NEW); parent lc_v9_case%ROWTYPE; subject employment%ROWTYPE;
+DECLARE row_data jsonb:=to_jsonb(NEW); parent lc_v9_case%ROWTYPE; native_parent lc_onboarding_case%ROWTYPE; subject employment%ROWTYPE;
 BEGIN
  IF TG_TABLE_NAME='lc_v9_case' THEN
   SELECT * INTO subject FROM employment WHERE id=NEW.employment_id AND tenant_id=NEW.tenant_id AND company_id=NEW.company_id;
   IF NOT FOUND OR NEW.data->'facts'->>'personId' IS DISTINCT FROM subject.person_id::text THEN RAISE EXCEPTION 'Lifecycle subject does not belong to this company'; END IF;
   IF NEW.data->>'id' IS DISTINCT FROM NEW.id::text OR NEW.data->>'module' IS DISTINCT FROM NEW.module OR NEW.data->'facts'->>'company' IS DISTINCT FROM NEW.company_id::text OR NEW.data->'facts'->>'employmentId' IS DISTINCT FROM NEW.employment_id::text THEN RAISE EXCEPTION 'Lifecycle case subject mismatch'; END IF;
   IF NEW.data->>'version' IS DISTINCT FROM '9' OR coalesce(NEW.data->>'state','') NOT IN ('pending','submitted','cleared','cancelled') OR (NEW.data->>'revision')::integer IS DISTINCT FROM NEW.revision THEN RAISE EXCEPTION 'Invalid lifecycle state or revision'; END IF;
+ ELSIF TG_TABLE_NAME='lc_v9_file' AND row_data->>'onboarding_case_id' IS NOT NULL THEN
+  SELECT * INTO native_parent FROM lc_onboarding_case WHERE id=(row_data->>'onboarding_case_id')::uuid AND tenant_id=NEW.tenant_id AND company_id=NEW.company_id;
+  IF NOT FOUND OR row_data->>'case_id' IS NOT NULL THEN RAISE EXCEPTION 'Lifecycle file does not belong to this company'; END IF;
  ELSIF TG_TABLE_NAME IN ('lc_v9_case_revision','lc_v9_file','lc_v9_payroll_handover') THEN
   SELECT * INTO parent FROM lc_v9_case WHERE id=(row_data->>'case_id')::uuid AND tenant_id=(row_data->>'tenant_id')::uuid AND company_id=(row_data->>'company_id')::uuid;
   IF NOT FOUND THEN RAISE EXCEPTION 'Lifecycle parent does not belong to this company'; END IF;
@@ -119,6 +123,23 @@ $$;
 REVOKE ALL ON FUNCTION app.lc_v9_work(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.lc_v9_work(uuid) TO ai_hr_app;
 
+CREATE FUNCTION app.lc_v9_signature_valid(signature jsonb) RETURNS boolean
+LANGUAGE plpgsql IMMUTABLE SET search_path=public,pg_temp AS $$
+DECLARE value text:=signature->>'value'; image bytea; width bigint; height bigint;
+BEGIN
+ IF jsonb_typeof(signature) IS DISTINCT FROM 'object' OR signature->'consent' IS DISTINCT FROM 'true'::jsonb OR jsonb_typeof(signature->'value') IS DISTINCT FROM 'string' OR length(trim(coalesce(value,'')))=0 THEN RETURN false; END IF;
+ IF signature->>'method'='typed' THEN RETURN length(value)<=200 AND value !~ '[[:cntrl:]]'; END IF;
+ IF coalesce(signature->>'method','')<>'drawn' OR length(value)>500000 OR value !~ '^data:image/png;base64,[A-Za-z0-9+/]+={0,2}$' THEN RETURN false; END IF;
+ image:=decode(split_part(value,',',2),'base64');
+ IF octet_length(image)<24 OR encode(substring(image from 1 for 16),'hex')<>'89504e470d0a1a0a0000000d49484452' THEN RETURN false; END IF;
+ width:=get_byte(image,16)::bigint*16777216+get_byte(image,17)::bigint*65536+get_byte(image,18)::bigint*256+get_byte(image,19);
+ height:=get_byte(image,20)::bigint*16777216+get_byte(image,21)::bigint*65536+get_byte(image,22)::bigint*256+get_byte(image,23);
+ RETURN width BETWEEN 1 AND 2048 AND height BETWEEN 1 AND 1024 AND width*height<=2097152;
+EXCEPTION WHEN OTHERS THEN RETURN false;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.lc_v9_signature_valid(jsonb) FROM PUBLIC;
+
 CREATE FUNCTION app.lc_v9_self_document(p_id uuid,p_revision integer,p_document text,p_values jsonb,p_signature jsonb DEFAULT NULL)
 RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE c lc_v9_case%ROWTYPE; native_case lc_onboarding_case%ROWTYPE; native_private jsonb; is_native boolean:=false; d jsonb; f jsonb; t jsonb; cfg jsonb; actor_name text;
@@ -144,6 +165,8 @@ BEGIN
  IF c.revision IS DISTINCT FROM p_revision THEN RAISE EXCEPTION 'This case changed. Refresh before trying again.'; END IF;
  SELECT x INTO d FROM jsonb_array_elements(c.data->'documents') x WHERE x->>'id'=p_document AND x->>'status' IN ('sent','opened');
  IF d IS NULL THEN RAISE EXCEPTION 'Document is not open for completion'; END IF;
+ SELECT x INTO cfg FROM lc_v9_config conf,jsonb_array_elements(conf.data->'templates') x WHERE conf.tenant_id=c.tenant_id AND x->>'id'=d->>'templateId';
+ IF coalesce(d->>'templateType',cfg->>'type')='Attachment' THEN RAISE EXCEPTION 'Attachments are read-only PDFs'; END IF;
  vals:=coalesce(d->'values','{}'::jsonb);
  FOR key,value IN SELECT * FROM jsonb_each(p_values) LOOP
   SELECT x INTO f FROM jsonb_array_elements(d->'fields') x WHERE x->>'id'=key AND x->>'owner'='employee';
@@ -168,7 +191,7 @@ BEGIN
  SELECT coalesce(p.full_name,'Employee') INTO actor_name FROM app_user u LEFT JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE u.id=own_user AND u.tenant_id=c.tenant_id;
  next_pm:=coalesce(c.data->'pmChanges','[]'::jsonb);
  IF signing THEN
-  IF coalesce(p_signature->>'method','') NOT IN ('typed','drawn') OR coalesce(p_signature->>'consent','')<>'true' OR length(trim(coalesce(p_signature->>'value','')))=0 OR octet_length(p_signature::text)>524288 THEN RAISE EXCEPTION 'Confirm consent and provide your signature'; END IF;
+  IF NOT app.lc_v9_signature_valid(p_signature) OR octet_length(p_signature::text)>524288 THEN RAISE EXCEPTION 'Confirm consent and provide your signature'; END IF;
   IF EXISTS(SELECT 1 FROM jsonb_array_elements(d->'blocks') b CROSS JOIN LATERAL regexp_matches(coalesce(b->>'text',''),'\{([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)?)\}','g') AS token(parts) WHERE coalesce(vals->>(parts[1]),d->'mergeValues'->>(parts[1]),'')='') THEN RAISE EXCEPTION 'Complete missing document fields before signing'; END IF;
   FOR f IN SELECT * FROM jsonb_array_elements(d->'fields') LOOP
    IF coalesce((f->>'required')::boolean,false) AND (f->'when' IS NULL OR f->'when'='null'::jsonb OR vals->>(f->'when'->>'field')=f->'when'->>'value') AND (length(trim(coalesce(vals->>(f->>'id'),'')))=0 OR f->>'type'='checkbox' AND vals->>(f->>'id')<>'true' OR f->>'type'='table' AND vals->>(f->>'id')='[]') THEN RAISE EXCEPTION 'Complete required fields before signing'; END IF;

@@ -7,7 +7,7 @@ import { saveEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { addDays } from '../lib/lifecycle-v9-model';
 import { currentReq } from '../lib/onboarding-model';
-import { v9Setup, v9Sweep, v9CaseDetail, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnDocument, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx } from '../packs/lifecycle/service';
+import { v9Setup, v9Sweep, v9DownloadDocument, v9CaseDetail, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnDocument, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 
 let base: Base, admin: SessionContext, employee: SessionContext, other: SessionContext, employmentId: string;
@@ -248,6 +248,9 @@ it('keeps native onboarding document state private and preserves it through late
   const [storage] = await owner.db.execute<{ public_data: Record<string, unknown>; private_data: Record<string, unknown>; copies: number }>(sql`select c.data as public_data,p.data as private_data,(select count(*)::int from lc_v9_case where id=c.id) as copies from lc_onboarding_case c join lc_onboarding_private p on p.case_id=c.id where c.id=${row.case.id}::uuid`);
   expect(storage.public_data).not.toHaveProperty('lifecycleV9'); expect(storage.public_data).not.toHaveProperty('documents');
   expect(storage.private_data).toHaveProperty('lifecycleV9.documents'); expect(storage.copies).toBe(0);
+  const pdf = await v9DownloadDocument(admin, row.case.id, after.case.documents[0].id);
+  expect(pdf.name).toContain('Private native fixture'); expect(Buffer.from(pdf.content).subarray(0,5).toString()).toBe('%PDF-');
+  await expect(v9DownloadDocument(other, row.case.id, after.case.documents[0].id)).rejects.toThrow('not found or unavailable');
   await onboardingCommand(admin, row.case.id, after.case.revision, { type: 'save', patch: { notes: 'Native case edit after document generation' } });
   expect((await v9CaseDetail(admin, row.case.id)).case.documents).toEqual(after.case.documents);
   await expect(v9CaseDetail(other, row.case.id)).rejects.toThrow();
@@ -277,6 +280,12 @@ it('lets only the linked activated joiner complete a released native document an
   const input = { caseId: own.id, revision: own.revision, documentId: own.documents[0].id, values: { contact: '+60111111111' }, signature: { method: 'typed' as const, value: 'Fictional activated V9 joiner', consent: true as const } };
   await expect(v9OwnDocument(other, input)).rejects.toMatchObject({ cause: { message: expect.stringContaining('not available') } });
   await expect(v9OwnDocument(joiner, { ...input, values: { forbidden: 'HR field tampering' } })).rejects.toMatchObject({ cause: { message: expect.stringContaining('cannot be changed') } });
+  for (const signature of [{ method: 'typed', value: 'Fictional', consent: 'true' }, { method: 'typed', value: 7, consent: true }, { method: 'typed', value: 'x'.repeat(201), consent: true }, { method: 'drawn', value: 'https://untrusted.invalid/signature.png', consent: true }]) await expect(v9OwnDocument(joiner, { ...input, signature: signature as unknown as typeof input.signature })).rejects.toMatchObject({ cause: { message: expect.stringContaining('provide your signature') } });
+  // A released PDF attachment must remain read-only through direct service/SQL calls too.
+  await owner.db.execute(sql`update lc_onboarding_private set data=jsonb_set(data,'{lifecycleV9,documents,0,templateType}','"Attachment"'::jsonb) where case_id=${own.id}::uuid`);
+  await expect(v9OwnDocument(joiner, input)).rejects.toMatchObject({ cause: { message: expect.stringContaining('read-only PDFs') } });
+  await expect(v9OwnDocument(joiner, { ...input, signature: undefined })).rejects.toMatchObject({ cause: { message: expect.stringContaining('read-only PDFs') } });
+  await owner.db.execute(sql`update lc_onboarding_private set data=jsonb_set(data,'{lifecycleV9,documents,0,templateType}','"Form"'::jsonb) where case_id=${own.id}::uuid`);
   await v9OwnDocument(joiner, input);
   const done = (await onboardingList(admin)).find(row => row.case.id === own.id)!;
   expect(done.case.tasks[0]).toMatchObject({ status: 'done', completedBy: userId });
@@ -291,6 +300,8 @@ it('lets only the linked activated joiner complete a released native document an
   expect(detail.case.mails).toHaveLength(1); expect(detail.case.mails[0]).toMatchObject({ subject: 'Native form completed', status: 'pending', to: [employee.userId] });
   expect(detail.case.documents[0].employeeSignature?.by.id).toBe(userId);
   expect(detail.case.pmChanges).toHaveLength(1);
+  const pdf = await v9DownloadDocument(joiner, own.id, own.documents[0].id); expect(Buffer.from(pdf.content).subarray(0,5).toString()).toBe('%PDF-');
+  await expect(v9DownloadDocument(other, own.id, own.documents[0].id)).rejects.toThrow('not found or unavailable');
   await v9Command(admin, own.id, detail.case.revision, { type: 'pmPushSelected', ids: [detail.case.pmChanges[0].id] });
   const [updatedPerson] = await owner.db.execute<{ phone: string }>(sql`select phone from person where id=${subject.person_id}::uuid`);
   expect(updatedPerson.phone).toBe('+60111111111');
@@ -319,4 +330,27 @@ it('does not enroll historical native cases in V9 automation until HR adopts the
   expect((await onboardingList(admin))[0].revision).toBe(before.revision);
   const [privateRow] = await owner.db.execute<{ data: Record<string, unknown> }>(sql`select data from lc_onboarding_private where case_id=${before.case.id}::uuid`);
   expect(privateRow.data).not.toHaveProperty('lifecycleV9');
+});
+
+it('stores native attachments against their real parent, resumes file waits and rejects cross-company references', async () => {
+  const config = (await v9Workspace(admin)).config!;
+  config.templates.push({ id: 'native-proof-attachment', name: 'Fictional proof summary', module: 'onb', type: 'Attachment', rules: {}, hrStep: 'none', employeeAck: false, retired: false, versions: [{ version: 1, state: 'published', at: '', by: '', blocks: [{ id: 'body', type: 'text', text: 'Evidence received for {employee.name}', section: '' }], fields: [] }] });
+  config.workflows = [{ id: 'native-proof-wait', name: 'Wait for native proof', module: 'onb', status: 'published', trigger: { event: 'submitted', days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [], steps: [{ id: 'wait', type: 'waitFile', slot: 'native-proof', label: 'Fictional evidence' }, { id: 'document', type: 'doc', template: 'native-proof-attachment', release: false }], description: '' }];
+  await v9SaveConfig(admin, config.revision, config);
+  await saveEmployeeDraft(admin, { currentStep: 1, data: { profile: { fullName: 'Fictional native files', primaryEmail: 'native-files@test.invalid' }, employment: { companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId, hiredOn: todayInKualaLumpur() } } });
+  const [pending] = await onboardingList(admin);
+  await onboardingCommand(admin, pending.case.id, pending.revision, { type: 'saveSubmit', patch: { hiring: 'new_hire', local: { supervisor: employmentId } } });
+  const before = (await v9CaseDetail(admin, pending.case.id)).case; expect(before.runs[0].status).toBe('waiting');
+  const content = Buffer.from('Fictional native attachment evidence.');
+  const input = { caseId: before.id, revision: before.revision, slot: 'native-proof', name: 'fictional-evidence.txt', content };
+  const fileId = await v9UploadFile(admin, input); expect(await v9UploadFile(admin, input)).toBe(fileId);
+  const after = (await v9CaseDetail(admin, before.id)).case;
+  expect(after.files).toHaveLength(1); expect(after.runs[0].status).toBe('done'); expect(after.documents[0].templateType).toBe('Attachment');
+  const [storage] = await owner.db.execute<{ case_id: string | null; onboarding_case_id: string }>(sql`select case_id,onboarding_case_id from lc_v9_file where id=${fileId}::uuid`);
+  expect(storage).toEqual({ case_id: null, onboarding_case_id: before.id });
+  expect((await v9DownloadFile(admin, before.id, fileId)).content.equals(content)).toBe(true);
+  await expect(v9DownloadFile(other, before.id, fileId)).rejects.toThrow();
+  await expect(v9UploadFile(admin, { ...input, revision: after.revision, name: 'spoof.pdf' })).rejects.toThrow('contents');
+  const foreign = await seedBase();
+  await expect(owner.db.execute(sql`insert into lc_v9_file(tenant_id,onboarding_case_id,company_id,slot,filename,mime_type,content,uploaded_by) values(${base.tenantId}::uuid,${before.id}::uuid,${foreign.companyId}::uuid,'native-proof','wrong-company.txt','text/plain',decode('ZmljdGlvbmFs','base64'),${admin.userId}::uuid)`)).rejects.toMatchObject({ cause: { message: expect.stringContaining('does not belong') } });
 });
