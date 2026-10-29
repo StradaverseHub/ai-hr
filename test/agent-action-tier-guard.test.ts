@@ -4,9 +4,17 @@ import {assertAgentTierPolicy,NEVER_AUTOMATIC_CATEGORIES,type AgentActionPolicy}
 import {AGENT_ACTION_TIER_CEILING,AGENT_ACTION_CATEGORY} from '../lib/ai/agent-capability-inventory';
 
 describe('runtime action tier enforcement (R17)',()=>{
- it('refuses unknown actions, handoffs, and every currently registered action in an Automatic executor',()=>{
+ it('refuses unknown actions and handoffs, admitting only explicitly Automatic registry entries',()=>{
   expect(()=>assertAgentActionTier('unknown','confirm')).toThrow('tier unavailable');
-  for(const id of Object.keys(AGENT_ACTION_TIER_CEILING))expect(()=>assertAgentActionTier(id,'automatic'),id).toThrow();
+  // Independent approved catalogue: a future Automatic entry needs its own reviewed expectation.
+  expect(Object.keys(AGENT_ACTION_TIER_CEILING).filter(id=>AGENT_ACTION_TIER_CEILING[id as keyof typeof AGENT_ACTION_TIER_CEILING]==='automatic').sort()).toEqual(['approvals.attendance.chase','approvals.claim.chase','approvals.toil.chase','employees.review_overdue.remind']);
+  for(const id of Object.keys(AGENT_ACTION_TIER_CEILING) as (keyof typeof AGENT_ACTION_TIER_CEILING)[]){
+   if(AGENT_ACTION_TIER_CEILING[id]==='automatic'){
+    expect(['read','reminder','chaser']).toContain(AGENT_ACTION_CATEGORY[id]);
+    expect(()=>assertAgentActionTier(id,'automatic'),id).not.toThrow();
+    expect(()=>assertHumanReviewedActionTier({userId:'human'},id,'confirm'),id).toThrow();
+   }else expect(()=>assertAgentActionTier(id,'automatic'),id).toThrow();
+  }
   expect(()=>assertAgentActionTier('employees.import','confirm')).toThrow();
  });
  it('refuses Confirm execution of Approve entries but preserves human approval and stricter review',()=>{
