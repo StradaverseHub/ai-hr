@@ -686,6 +686,15 @@ Existing human draft submission uses generic OWN compatibility custody, keeping 
 ### WP9 final own-leave protocol boundary
 
 The original own-leave Tx APIs and candidate/refusal union remain explicit native protocol adapters. Their non-nonce protected wire, native candidate integrity recipe, purpose/AAD ordering, balance visibility and SQL repository are unchanged. Both own-leave and all generic families now use one review-envelope codec and one held-row transaction state owner for completed replay, retirement and pending confirmation digest admission. Native candidate creation/projection and exact SQL completion proof stay with their canonical source adapters; no original ciphertext is rewritten or reinterpreted.
+### WP8 completion amendment — native boundaries and assigned users (30 October 2026)
+
+Every human review action has an authored concrete native-screen/Assistant fixture adapter; the historical pending ceiling is empty and the original frozen action list remains immutable. Authored coverage is not passing runtime evidence; exact-SHA Actions results and outstanding findings govern acceptance. The matrix includes the actual tenant `super_admin` role. Payroll and Rewards administrator actors are native permission/seat predicates, not invented role-enum values. A separate positive control exercises an assigned tester with no person or employment, alongside the employee-linked tester matrix.
+
+Foreign target-company and target-tenant requests remain refused. Tenant-owned catalogue creation is different: its closed input has no tenant selector, so a foreign-tenant administrator may create in their own tenant. Those declarations state that boundary rather than falsely declaring a native refusal. Notification preferences retain an own-employment selector and get positive controls on both sides of the company/tenant boundary. Every actor, including permitted actors and a second login linked to the same person, is challenged with another login's review before any source effect.
+
+Native APIs that own a transaction are probed on separately constructed equivalent fictional worlds before the Assistant world is created. The native result cannot contaminate the Assistant's pending fixture; the owning screen service and actual current role/scope checks remain the authority. These checks are GitHub Actions focused evidence only, not deployment or release acceptance.
+
+The owner chose claimant-only cancellation on 30 October: its web action always resolves and binds the caller's own employment, including the legacy no-selector request. The current parity declaration therefore uses the own-action boundary; the earlier HR-only unbound service path is historical evidence at its original SHA. The reviewed bulk decision dependency now preserves an explicit human claim rejection reason for new preparations. Exact-SHA native-event evidence must establish that equivalence; actor admission alone does not prove equivalent human intent.
 
 ### Reviewed bulk manager decisions
 
@@ -715,3 +724,5 @@ This amends; the sections above are unchanged and remain binding.
    remain the shipped behaviour until that package is accepted.
 
 These decisions grant no deployment and prove no implementation, gate result or installation.
+
+WP8 preserves the narrower observations from focused run 40944662433: the delegated leave offer/native decision admitted the stand-in while review preparation refused a private employment projection; the separate delegated-approvals follow-up replaces that projection with its existing request-bound subject owner after unchanged authority and locks. Its new candidate must prove full delegate parity. The native MY statutory setter also admitted another-company HR while the reviewed source required company Workforce/Payroll scope and all sensitive field categories. That Assistant refusal remains deliberately narrower; the actual native split-card write interval is probed separately. Payroll page discoverability (`requireAdmin`/`scopedAdmin`) is recorded separately from the authenticated action/service admission and its granular close permission. No page guard by itself grants authority to change a service permission.

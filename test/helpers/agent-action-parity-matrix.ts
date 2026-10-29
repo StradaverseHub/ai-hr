@@ -7,7 +7,8 @@
  *   1. the observed screen outcome equals the value declared here (an independent expected value);
  *   2. every agent phase equals the screen outcome, except where a role is listed in `narrowed` (the agent
  *      refuses something the screen allows, with the reason). The agent may be NARROWER, never wider;
- *   3. another company and another tenant are refused by the screen and by every agent phase.
+ *   3. foreign target requests are refused by every agent phase. A broader legacy native action needs an
+ *      explicit narrower finding; caller-tenant catalogue creation states its separate owner boundary.
  *
  * Coverage rule (test/agent-action-permission-parity-guard.test.ts): every registry entry has a declaration
  * here, and `satisfies Record<AgentActionId,…>` makes a missing one a compile error as well. A new entry must
@@ -21,6 +22,7 @@
  *                             active whole-scope `delegate` line); the approval routing assigns them
  *   company_hr                hr_admin granted for the subject's company only
  *   group_hr                  hr_admin granted group-wide (company null)
+ *   super_admin               actual tenant administrator role, group-wide (no fabricated tenant_admin role)
  *   payroll_partner           payroll_partner for the subject's company
  *   performance_comp_partner  performance_comp_partner for the subject's company
  *   performance_partner       performance_partner (OneHR, ADR-0142) for the subject's company
@@ -29,16 +31,17 @@
  */
 import type {AgentActionId} from '../../lib/ai/agent-action-registry';
 
-export const PARITY_ROLES=['employee','manager','assigned_approver','company_hr','group_hr','payroll_partner','performance_comp_partner','performance_partner','another_company','another_tenant'] as const;
+export const PARITY_ROLES=['employee','manager','assigned_approver','company_hr','group_hr','super_admin','payroll_partner','performance_comp_partner','performance_partner','another_company','another_tenant'] as const;
 export type ParityRole=(typeof PARITY_ROLES)[number];
 export const PARITY_PHASES=['offer','prepare','confirm'] as const;
 export type ParityPhase=(typeof PARITY_PHASES)[number];
 export type ParityOutcome='allow'|'deny';
-/** Roles that must always be refused, by the screen and by every agent phase, for every entry. */
+/** Foreign target actors must be refused by the agent; native exceptions require an explicit narrower
+ * finding, and caller-owned catalogue creation declares its separate scope. */
 export const ALWAYS_REFUSED:readonly ParityRole[]=['another_company','another_tenant'];
 
 export type ParityDeclaration=
- | Readonly<{kind:'probed';screen:Readonly<Record<ParityRole,ParityOutcome>>;narrowed?:Readonly<Partial<Record<ParityRole,string>>>}>
+ | Readonly<{kind:'probed';scope?:'caller_tenant'|'caller_login';scopeReason?:string;screen:Readonly<Record<ParityRole,ParityOutcome>>;page?:Readonly<Record<ParityRole,ParityOutcome>>;narrowed?:Readonly<Partial<Record<ParityRole,string>>>}>
  /** No agent prepare or confirm exists (registry store human_workflow_only): the agent can only hand off. */
  | Readonly<{kind:'human_workflow_only';reason:string}>
  /** Predates WP8; must be in PARITY_PENDING_CEILING. Never valid for a new entry. */
@@ -48,18 +51,17 @@ const D='deny',A='allow';
 /** Native request decisions now admit the current, same-company, matching-task stand-in through
  * the delegated-approvals package. Personnel and balances remain invisible; only request facts and
  * the request-bound native calculation/effect path are available. */
-const ASSIGNED_DECISION={employee:D,manager:A,assigned_approver:A,company_hr:A,group_hr:A,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
+const ASSIGNED_DECISION={employee:D,manager:A,assigned_approver:A,company_hr:A,group_hr:A,super_admin:A,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
 /** The routed delegate confirm gap declared by WP8 is repaired here by own-decision event visibility. */
 export const ATTENDANCE_WORKFLOW_PARITY={screen:ASSIGNED_DECISION} as const;
 
 /** HR screen behind requireAdmin (isAdmin) whose service writes an administered employment under RLS. */
-const HR_ON_EMPLOYMENT={employee:D,manager:D,assigned_approver:D,company_hr:A,group_hr:A,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
+const HR_ON_EMPLOYMENT={employee:D,manager:D,assigned_approver:D,company_hr:A,group_hr:A,super_admin:A,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
 
 /** The subject's own pending request on their own screen: the native creator-only rule. */
-const OWN_REQUEST={employee:A,manager:D,assigned_approver:D,company_hr:D,group_hr:D,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
+const OWN_REQUEST={employee:A,manager:D,assigned_approver:D,company_hr:D,group_hr:D,super_admin:D,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
 
-const pending=(reason:string)=>({kind:'pending',reason}) as const;
-const NO_ADAPTER='No parity adapter yet: per-entry subject fixture and screen probe still to be written (WP8 follow-up).';
+const CALLER_TENANT_ADMIN={...HR_ON_EMPLOYMENT,another_company:A,another_tenant:A} as const;
 
 export const AGENT_ACTION_PARITY={
  'approvals.claim.chase':{kind:'human_workflow_only',reason:'Automatic template-only notification; no human prepare/confirm store. Principal, scope, recipients and caps are covered by automatic-chasers.test.ts.'},
@@ -70,39 +72,33 @@ export const AGENT_ACTION_PARITY={
  'employees.passport_expiry.remind':{kind:'human_workflow_only',reason:'Automatic template-only notification; no human prepare/confirm store. Principal, source, recipients and caps are covered by automatic-followups.test.ts.'},
  'lifecycle.step.chase':{kind:'human_workflow_only',reason:'Automatic template-only notification; no human prepare/confirm store. Principal, source, recipients and caps are covered by automatic-followups.test.ts.'},
  'employees.import':{kind:'human_workflow_only',reason:'No agent prepare or confirm: the Assistant only hands off to the native import page, which keeps its own admission.'},
- 'org.reporting.change':pending(NO_ADAPTER+' Dedicated store (WP9 collapses it).'),
- 'leave.apply':pending(NO_ADAPTER+' Own-leave store.'),
+ 'org.reporting.change':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'leave.apply':{kind:'probed',screen:OWN_REQUEST},
  'leave.cancel':{kind:'probed',screen:OWN_REQUEST},
  'leave.edit':{kind:'probed',screen:OWN_REQUEST},
- 'ess.profile.request':pending(NO_ADAPTER+' Module-action store.'),
- 'approvals.leave.decide':pending(NO_ADAPTER+' Dedicated leave-decision store (multi-step leave approval routing).'),
+ 'ess.profile.request':{kind:'probed',screen:OWN_REQUEST},
+ 'approvals.leave.decide':{kind:'probed',screen:ASSIGNED_DECISION},
  'approvals.claim.decide':{kind:'probed',screen:ASSIGNED_DECISION},
  'approvals.attendance.decide':{kind:'probed',screen:ASSIGNED_DECISION},
  'approvals.toil.decide':{kind:'probed',screen:ASSIGNED_DECISION},
- 'knowledge_base.article.create':pending(NO_ADAPTER+' Dedicated store.'),
- 'payroll.close':pending(NO_ADAPTER+' Dedicated store; needs a processed payroll batch fixture.'),
- 'attendance.correction.request':pending(NO_ADAPTER+' Dedicated store.'),
+ 'knowledge_base.article.create':{kind:'probed',scope:'caller_tenant',scopeReason:'The closed input has no tenant selector. Native creation is inside the caller tenant; foreign-tenant own creation is valid, while review custody never crosses logins or tenants.',screen:CALLER_TENANT_ADMIN},
+ 'payroll.close':{kind:'probed',screen:HR_ON_EMPLOYMENT,page:CALLER_TENANT_ADMIN},
+ 'attendance.correction.request':{kind:'probed',screen:OWN_REQUEST},
  'attendance.overtime.request':{kind:'probed',screen:OWN_REQUEST},
- 'claims.draft.save':pending(NO_ADAPTER+' Module-action store.'),
- 'claims.submit':pending(NO_ADAPTER+' Module-action store.'),
- /** Observed on CI (run 40921791116): there is NO native HR screen for cancelling another person's claim —
-  * /claims lists only the caller's own claims. HR "allow" exists only because cancelClaimAction accepts any
-  * claim id when no employmentId is posted (app/claims/actions.ts :129-136) and cancelClaimTx then admits any
-  * hr_admin/super_admin by role (core/claims.ts :2684-2695). Whether that unposted path should exist is a
-  * product question. The Assistant's claims.cancel is the claimant's own action, so it is narrower. */
- 'claims.cancel':{kind:'probed',screen:{...OWN_REQUEST,company_hr:A,group_hr:A},narrowed:{
-  company_hr:'No native HR claim-cancel screen exists; HR is admitted only via cancelClaimAction with no employmentId posted (product question). The Assistant action is the claimant\'s own.',
-  group_hr:'No native HR claim-cancel screen exists; HR is admitted only via cancelClaimAction with no employmentId posted (product question). The Assistant action is the claimant\'s own.'}},
- 'performance.review.acknowledge':pending(NO_ADAPTER+' Module-action store; needs a released review fixture.'),
- 'performance.onehr.plan.acknowledge':pending(NO_ADAPTER+' Module-action store; needs a OneHR plan fixture.'),
- 'rewards.post':pending(NO_ADAPTER+' Dedicated store; needs an approved reward unit and open batch.'),
- 'lifecycle.acknowledgement.submit':pending(NO_ADAPTER+' Dedicated store; needs a lifecycle case fixture.'),
+ 'claims.draft.save':{kind:'probed',screen:OWN_REQUEST},
+ 'claims.submit':{kind:'probed',screen:OWN_REQUEST},
+ /** Owner decision 30 Oct: the web cancellation action resolves the claimant's own employment. */
+ 'claims.cancel':{kind:'probed',screen:OWN_REQUEST},
+ 'performance.review.acknowledge':{kind:'probed',screen:OWN_REQUEST},
+ 'performance.onehr.plan.acknowledge':{kind:'probed',screen:OWN_REQUEST},
+ 'rewards.post':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'lifecycle.acknowledgement.submit':{kind:'probed',screen:OWN_REQUEST},
  'toil.replacement.request':{kind:'probed',screen:OWN_REQUEST},
- 'multi_cycle_payroll.create_run':pending(NO_ADAPTER+' Dedicated store; multi-cycle payroll flag.'),
- 'typed_pay_components.create':pending(NO_ADAPTER+' Dedicated store; typed pay components flag.'),
- 'country-my.statutory.update':pending(NO_ADAPTER+' Dedicated store; country pack dispatch.'),
- 'notifications.email_preferences.save':pending(NO_ADAPTER+' Module-action store.'),
- 'system_testing.execution.save':pending(NO_ADAPTER+' Module-action store; needs an assigned test execution.'),
+ 'multi_cycle_payroll.create_run':{kind:'probed',screen:HR_ON_EMPLOYMENT,page:CALLER_TENANT_ADMIN},
+ 'typed_pay_components.create':{kind:'probed',scope:'caller_tenant',scopeReason:'The closed input has no tenant selector. Native creation is inside the caller tenant; foreign-tenant own creation is valid, while review custody never crosses logins or tenants.',screen:CALLER_TENANT_ADMIN},
+ 'country-my.statutory.update':{kind:'probed',screen:{...HR_ON_EMPLOYMENT,another_company:A},narrowed:{another_company:'Legacy native Personnel statutory write permits this tenant HR actor through its shared-person setter; reviewed source additionally requires is_admin_for(company), can_admin_payroll_employment and access_workforce_employment(workforce.maintain), plus full sensitive field scope. Keep that company-bound refusal; verify actual native withWrite interval on the next SHA. Native setter result observed in 40944662433.'}},
+ 'notifications.email_preferences.save':{kind:'probed',screen:OWN_REQUEST},
+ 'system_testing.execution.save':{kind:'probed',screen:OWN_REQUEST},
  'leave.adjustment.apply':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.movement.transfer':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'toil.credit.grant':{kind:'probed',screen:HR_ON_EMPLOYMENT},
@@ -120,11 +116,6 @@ export const PARITY_PENDING_ORIGINAL:readonly string[]=Object.freeze([
 /** The entries that existed before this harness and had no adapter when it landed. This list may only
  * shrink: an entry leaves it when its adapter lands, and no other id may ever be `pending`. */
 export const PARITY_PENDING_CEILING:ReadonlySet<string>=new Set([
- 'org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide',
- 'knowledge_base.article.create','payroll.close','attendance.correction.request',
- 'claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge',
- 'rewards.post','lifecycle.acknowledgement.submit','multi_cycle_payroll.create_run',
- 'typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save',
 ]);
 
 export type ParityRegistryEntry={id:string;store:string};
@@ -142,9 +133,10 @@ export function parityCoverageProblems(registry:readonly ParityRegistryEntry[],d
   if((entry.store==='human_workflow_only')!==(d.kind==='human_workflow_only'))problems.push(`${entry.id}: human_workflow_only declaration must match the registry store (${entry.store})`);
   if(d.kind==='pending'){if(!ceiling.has(entry.id))problems.push(`${entry.id}: a new entry cannot be pending; it needs a probed declaration and a DB adapter`);if(!d.reason.trim())problems.push(`${entry.id}: pending without a reason`);continue;}
   if(d.kind==='human_workflow_only'){if(!d.reason.trim())problems.push(`${entry.id}: human_workflow_only without a reason`);continue;}
+  if(d.scope&&!d.scopeReason?.trim())problems.push(`${entry.id}: caller scope requires a boundary reason`);
   for(const role of PARITY_ROLES)if(d.screen[role]!=='allow'&&d.screen[role]!=='deny')problems.push(`${entry.id}: no screen outcome for ${role}`);
   for(const role of Object.keys(d.screen))if(!(PARITY_ROLES as readonly string[]).includes(role))problems.push(`${entry.id}: unknown role ${role}`);
-  for(const role of ALWAYS_REFUSED)if(d.screen[role]!=='deny')problems.push(`${entry.id}: ${role} must be refused`);
+  for(const role of ALWAYS_REFUSED)if(!d.scope&&d.screen[role]!=='deny'&&!(role==='another_company'&&d.narrowed?.[role]))problems.push(`${entry.id}: ${role} must be refused`);
   const narrowed=d.narrowed??{};
   for(const [role,reason] of Object.entries(narrowed)){
    if(!(PARITY_ROLES as readonly string[]).includes(role)){problems.push(`${entry.id}: narrowed unknown role ${role}`);continue;}

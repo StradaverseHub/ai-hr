@@ -4,13 +4,13 @@
  * For every probed registry entry and every matrix role, in a fresh fictional world (tenant with two
  * companies, plus a foreign tenant), this runs:
  *   - SCREEN: the owning screen's own admission (the page/route guard the server action calls, when it has
- *     one) and then the owning service itself under the role's own session, inside a transaction that is
- *     always rolled back. No second permission model: the outcome is whatever the native code decides.
+ *     one) and then the owning service itself under the role's own session. Supplied-Tx APIs roll back;
+ *     transaction-owning APIs use an equivalent separate fictional world. Native code decides the result.
  *   - AGENT offer: the Assistant's choices read for that action lists this specific item.
  *   - AGENT prepare: the registry entry's store prepares a review of the same item.
  *   - AGENT confirm: the role confirms ITS OWN review (which runs the native service again); 'deny' when it
  *     has none.
- *   - CROSS-USER CONFIRM (refused roles only): a permitted role prepares a review, and this role must not be
+ *   - CROSS-USER CONFIRM (every role): a permitted role prepares a review, and this role must not be
  *     able to confirm it. The reference review must exist, or the test fails.
  * It requires the observed screen outcome to equal the declared one, every agent phase to equal the screen
  * (or to be refused where the matrix declares the agent narrower), and never an agent allow where the screen
@@ -19,7 +19,7 @@
  * the cross-company and cross-tenant sessions act in their OWN company or tenant.
  * Real migrated database and real services; fictional fixtures only. */
 import {randomUUID} from 'node:crypto';
-import {eq} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as schema from '../db/schema';
@@ -52,6 +52,55 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {AGENT_ACTION_PARITY,ATTENDANCE_WORKFLOW_PARITY,ALWAYS_REFUSED,PARITY_PHASES,PARITY_ROLES,PROBED_ACTION_IDS,expectedAgentOutcome,type ParityPhase,type ParityOutcome,type ParityRole,type ProbedActionId} from './helpers/agent-action-parity-matrix';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
+
+vi.mock('server-only',()=>({}));
+vi.mock('../lib/real-auth',()=>({appOrigin:()=>undefined}));
+vi.mock('../core/assistant-actions/own-leave-server',()=>({authenticateOwnLeaveBrowserSession:vi.fn(()=>{throw Error('No HTTP authentication in DB parity fixtures');})}));
+import {prepareOwnLeaveReviewTx,confirmOwnLeaveReview} from '../core/assistant-actions/own-leave-store';
+import {readOwnLeaveCandidateTx} from '../core/assistant-actions/own-leave-candidate';
+import {prepareProfileModuleActionReview,confirmProfileModuleActionReview,prepareClaimModuleActionReview,confirmClaimModuleActionReview,prepareClaimSubmissionModuleActionReview,confirmClaimSubmissionModuleActionReview} from '../core/assistant-actions/module-action-review-store';
+import {readProfileModuleActionChoices,readClaimModuleActionChoices,readAttendanceCorrectionModuleActionChoices,readKnowledgeModuleActionAvailability,readPayComponentModuleActionChoices,readOrgModuleActionChoices} from '../core/assistant-actions/module-action-server';
+import {prepareAttendanceCorrectionReview,confirmAttendanceCorrectionReview} from '../core/assistant-actions/attendance-correction-review-store';
+import {prepareKnowledgeArticleReview,confirmKnowledgeArticleReview} from '../core/assistant-actions/knowledge-article-review-store';
+import {preparePayComponentReview,confirmPayComponentReview} from '../core/assistant-actions/pay-component-review-store';
+import {prepareOrgActionReview,confirmOrgActionReview} from '../core/assistant-actions/org-action-review-store';
+import {createArticleTx} from '../core/knowledge-base';
+import {createPayComponentTx} from '../packs/payroll/service';
+import {saveProfileEditPolicy} from '../core/profile-edit-policy';
+import {readOwnProfileWorkspace,submitOwnProfileEdit} from '../core/profile-edit';
+import {saveClaimDraft,submitDraftClaims} from '../packs/claims/service';
+
+
+const provider=vi.hoisted(()=>({current:vi.fn()}));
+vi.mock('../lib/identity/provider',()=>({currentProviderSession:provider.current}));
+import {prepareLeaveDecisionReview,confirmLeaveDecisionReview} from '../core/assistant-actions/leave-decision-review-store';
+import {preparePayrollCloseReview,confirmPayrollCloseReview} from '../core/assistant-actions/payroll-close-review-store';
+import {prepareMultiCycleRunReview,confirmMultiCycleRunReview} from '../core/assistant-actions/multi-cycle-run-review-store';
+import {prepareCountryStatutoryReview,confirmCountryStatutoryReview} from '../core/assistant-actions/country-statutory-review-store';
+import {prepareRewardsPostReview,confirmRewardsPostReview} from '../core/assistant-actions/rewards-post-review-store';
+import {prepareLifecycleAckReview,confirmLifecycleAckReview} from '../core/assistant-actions/lifecycle-ack-review-store';
+import {prepareReviewModuleActionReview,confirmReviewModuleActionReview,prepareOnehrModuleActionReview,confirmOnehrModuleActionReview,prepareTestingModuleActionReview,confirmTestingModuleActionReview,prepareModuleActionReview,confirmModuleActionReview} from '../core/assistant-actions/module-action-review-store';
+import {readAssignedLeaveModuleActionChoices,readPerformanceModuleActionChoices,readTestingModuleActionChoices,readLifecycleAckModuleActionAvailability,readPayrollCloseModuleActionChoices,readRewardsPostModuleActionChoices,readCountryStatutoryModuleActionChoices,readNotificationModuleActionChoices} from '../core/assistant-actions/module-action-server';
+import {readMultiCycleRunModuleActionChoices} from '../core/assistant-actions/multi-cycle-run-choices';
+import {resolveOwnNotificationServerIdentity} from '../core/assistant-actions/own-notification-preferences-source';
+import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../core/notification-email';
+import {decideLeave} from '../packs/leave/service';
+import * as perf from '../packs/performance/service';
+import {defaultPolicy as defaultOnehrPolicy} from '../packs/performance/onehr/model';
+import onehrFramework from '../packs/performance/onehr/framework.json';
+import {createBatch,generatePayslips,closeBatch,createAdditionalRunTx} from '../packs/payroll/service';
+import {upsertPayrollCycle} from '../core/payroll-cycle';
+import {requirePackFor} from '../localization/registry';
+import {createOnboardingCase,tickStep} from '../packs/lifecycle/service';
+import {submitMyAcknowledgement} from '../core/lifecycle-self';
+import {ONBOARDING_STEPS} from '../core/lifecycle-defaults';
+import * as testing from '../core/system-testing-workspace';
+import type {InstructionDefinition} from '../lib/system-testing/model';
+import * as rewards from '../packs/rewards/service';
+import {emptyFacts as emptyRewardFacts} from '../packs/rewards/model';
+import {setRewardMember} from './rewards-access-fixture';
+import {configureRewardFixture,refreshRewardFixtureBudget} from './rewards-governance-fixture';
+
 type Person={employmentId:string;personId:string};
 type DbRole=(typeof schema.roleEnum.enumValues)[number];
 type Decision='approved'|'rejected';
@@ -61,7 +110,7 @@ type Options={decision:Decision;workflow:boolean};
 const DEFAULT_OPTIONS:Options={decision:'approved',workflow:false};
 /** Who the item belongs to: the default fictional subject, or a positive-control subject in another company or tenant. */
 type Home={person:Person;base:Base;companyId:string;departmentId:string;name:string;session():Promise<SessionContext>};
-type Item={subjectId:string;employmentId:string;leaveTypeId:string;name:string;transferTo:string;date?:string;dates?:string[]};
+type Item={subjectId:string;employmentId:string;leaveTypeId:string;name:string;transferTo:string;date?:string;dates?:string[];managerId?:string;claimTypeId?:string;proposal?:unknown;code?:string;personId?:string;companyId?:string;cycleId?:string;batchId?:string;period?:string;stepId?:string|null;revision?:number;assignmentId?:string;versionId?:string};
 type Review={actionId:string;reviewedDigest:string};
 /** The store surface the harness uses; each concrete store is structurally assignable to it. */
 type Store={
@@ -81,7 +130,7 @@ type World={
 };
 type Family='assigned_decision'|'hr_on_employment'|'own';
 type Adapter={
- family:Family;store:Store;
+ family:Family;store:Store;independentScreen?:boolean;pageAdmits?:(who:SessionContext)=>boolean;
  /** The page/route admission the screen's server action calls before its service (e.g. requireAdmin → isAdmin). */
  screenAdmits?:(who:SessionContext,item:Item)=>boolean|Promise<boolean>;
  /** The item one confirmation targets, belonging to the home subject. */
@@ -93,7 +142,7 @@ type Adapter={
  screen(tx:Tx,who:SessionContext,item:Item,actorEmploymentId:string|null,o:Options):Promise<unknown>;
 };
 
-const MODULES=['assistant','claims','attendance','toil'];
+const MODULES=['assistant','claims','attendance','toil','payroll','rewards','typed_pay_components','performance','multi_cycle_payroll','country-my','lifecycle','notifications','system_testing'];
 const SUBJECT_NAME='Fictional Parity Subject';
 /** HR calendar days from the repository's HR date owner. */
 function calendarDate(offset:number){const value=new Date(todayInKualaLumpur()+'T12:00:00Z');value.setUTCDate(value.getUTCDate()+offset);return value.toISOString().slice(0,10);}
@@ -101,7 +150,7 @@ const hiredOn=()=>`${Number(todayInKualaLumpur().slice(0,4))-2}-01-01`;
 /** Taken after the modules are on: the fixture admin's synthetic entitlement snapshot is a point-in-time read. */
 const groupOf=(base:Base):SessionContext=>({...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]});
 const hire=(base:Base,name:string,companyId:string,departmentId:string):Promise<Person>=>hireEmployee(groupOf(base),{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId,departmentId,employmentType:'full_time',hiredOn:hiredOn()});
-async function sessionFor(base:Base,userId:string,personId:string,role:DbRole,companyId:string|null):Promise<SessionContext>{
+async function sessionFor(base:Base,userId:string,personId:string|null,role:DbRole,companyId:string|null):Promise<SessionContext>{
  const entitlements=await owner.db.transaction(tx=>resolveEntitlementsTx(tx,base.tenantId));
  return {tenantId:base.tenantId,userId,personId,roles:[role],grants:[{role,companyId}],entitlements};
 }
@@ -121,7 +170,7 @@ async function buildWorld():Promise<World>{
  const subject=await hire(b,SUBJECT_NAME,b.companyId,b.deptA);
  const at=(name:string)=>hire(b,name,b.companyId,b.deptB);
  const manager=await at('Fictional Parity Line Manager'),approver=await at('Fictional Parity Delegate'),approverReport=await at('Fictional Parity Delegate Report');
- const companyHr=await at('Fictional Parity Company HR'),groupHr=await at('Fictional Parity Group HR'),payroll=await at('Fictional Parity Payroll Partner');
+ const companyHr=await at('Fictional Parity Company HR'),groupHr=await at('Fictional Parity Group HR'),superAdmin=await at('Fictional Parity Tenant Administrator'),payroll=await at('Fictional Parity Payroll Partner');
  const perfComp=await at('Fictional Parity Performance Comp Partner'),perf=await at('Fictional Parity Performance Partner');
  const otherCompanyHr=await hire(b,'Fictional Parity Other-Company HR',other.id,otherDept.id);
  const managerLine=await setReportingLine(group,{subordinateEmploymentId:subject.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:hiredOn()});
@@ -132,10 +181,10 @@ async function buildWorld():Promise<World>{
  await setToilPolicy(group,{companyId:b.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true});
  const foreign=await seedBase();for(const code of MODULES)await setModule(foreign.tenantId,code,'active');
  const foreignHr=await hire(foreign,'Fictional Parity Foreign HR',foreign.companyId,foreign.deptB);
- const people:Record<ParityRole,Person>={employee:subject,manager,assigned_approver:approver,company_hr:companyHr,group_hr:groupHr,payroll_partner:payroll,
+ const people:Record<ParityRole,Person>={employee:subject,manager,assigned_approver:approver,company_hr:companyHr,group_hr:groupHr,super_admin:superAdmin,payroll_partner:payroll,
   performance_comp_partner:perfComp,performance_partner:perf,another_company:otherCompanyHr,another_tenant:foreignHr};
  const grantOf:Record<ParityRole,[Base,DbRole,string|null]>={employee:[b,'employee',null],manager:[b,'manager',null],assigned_approver:[b,'employee',null],
-  company_hr:[b,'hr_admin',b.companyId],group_hr:[b,'hr_admin',null],payroll_partner:[b,'payroll_partner',b.companyId],
+  company_hr:[b,'hr_admin',b.companyId],group_hr:[b,'hr_admin',null],super_admin:[b,'super_admin',null],payroll_partner:[b,'payroll_partner',b.companyId],
   performance_comp_partner:[b,'performance_comp_partner',b.companyId],performance_partner:[b,'performance_partner',b.companyId],
   another_company:[b,'hr_admin',other.id],another_tenant:[foreign,'hr_admin',null]};
  const sessions=new Map<ParityRole,Promise<SessionContext>>();
@@ -169,11 +218,78 @@ async function pendingLeave(_w:World,h:Home):Promise<Item>{
 }
 const REJECT_REASON='Fictional explicit rejection reason';
 
+const packetStore=(action:string,prepare:Store['prepare'],confirm:(ctx:SessionContext,input:unknown)=>Promise<{kind:string}>):Store=>({prepare,confirm:(ctx,p)=>confirm(ctx,{action,contractVersion:1,...p})});
+const preferredField='profile.personal_details.preferredname';
+const leaveNomination=(item:Item)=>({action:'leave.apply',contractVersion:1,employmentId:item.employmentId,leaveTypeId:item.leaveTypeId,date:item.date,durationType:'full_day'});
+const payInput=(item:Item)=>({code:item.code!,name:'Fictional human pay code',label:'Human label',description:'Fictional catalogue declaration',kind:'allowance' as const,includedInEpf:false,includedInSocsoEis:false,includedInPcb:false,includedInHrdfBase:false,isNonPayable:false,prorates:false,eaFormLine:null,roundingMethod:'none' as const,rule:null,epfBonus2012:false,pcbRemunerationType:null,pcbExemptionCode:null,displayCategory:'allowance' as const,orpOvertime:false,orpUnpaidLeave:false});
+
+const previousPeriod=()=>{const [year,month]=todayInKualaLumpur().split('-').map(Number);return new Date(Date.UTC(year,month-2,1)).toISOString().slice(0,7);};
+const additionalRunInput=(item:Item)=>({companyId:item.companyId!,payPeriod:item.period!,runType:'bonus' as const,payrollCycleId:item.cycleId!,scope:{employmentIds:[item.employmentId]}});
+const equipmentInput={contactNumber:'012-345',serialNumber:'FIC-SERIAL',accessories:'Human-declared mouse',pcType:'Laptop',hasMonitor:false,monitorSerial:null,receiptEmail:null,acknowledged:true};
+const testingGuide:InstructionDefinition={format:1,title:'Fictional human observation',objective:'Record a fictional manually observed value',functionKey:'personnel.profile',area:'personnel',moduleCode:'employees',category:'functional',priority:'medium',active:true,prerequisites:[],testData:[],steps:[{id:'observe',action:'Inspect fictional value',expected:'Value retained'}],expectedBehavior:'The observed value can be recorded',expectedFunction:'Personal Testing',permissions:['Only assigned tester records observations'],jurisdiction:null,configuration:null,screenKeys:['personnelAdmin']};
+const testingObservation=(item:Item)=>({executionId:item.subjectId,assignmentId:item.assignmentId!,versionId:item.versionId!,expectedRevision:item.revision!,status:'in_progress' as const,actualResult:'Fictional value inspected by a human',comments:'Human comment',defectNotes:'',improvementNotes:''});
+async function notificationIdentity(who:SessionContext){
+ const [person]=await owner.db.select({email:schema.person.primaryEmail}).from(schema.person).where(eq(schema.person.id,who.personId!));
+ const identity={issuer:'https://fictional.parity.test',subject:who.userId!,email:person.email!,emailVerified:true};
+ await owner.db.insert(schema.appExternalIdentity).values({issuer:identity.issuer,subject:identity.subject,appUserId:who.userId!}).onConflictDoNothing();provider.current.mockResolvedValue(identity);return identity;
+}
 const ADAPTERS:Record<ProbedActionId,Adapter>={
+ 'approvals.leave.decide':{family:'assigned_decision',store:packetStore('approvals.leave.decide',prepareLeaveDecisionReview,confirmLeaveDecisionReview),
+  async create(w,h){const item=await pendingLeave(w,h);const steps=await owner.db.select().from(schema.leaveApprovalStep).where(eq(schema.leaveApprovalStep.leaveRequestId,item.subjectId)).orderBy(schema.leaveApprovalStep.stepIndex);return {...item,stepId:steps.find(row=>row.status==='pending')?.id??null};},
+  human:(item,o)=>({action:'approvals.leave.decide',contractVersion:1,leaveRequestId:item.subjectId,currentStepId:item.stepId??null,decision:o.decision,rejectReason:o.decision==='rejected'?REJECT_REASON:null,confirmAssignedDecision:true}),
+  offered:async(who,item)=>listed(await readAssignedLeaveModuleActionChoices(who),'tasks','leaveRequestId',item.subjectId),screen:(tx,who,item,_actor,o)=>decideLeave(who,{leaveRequestId:item.subjectId,decision:o.decision,...(o.decision==='rejected'?{rejectReason:REJECT_REASON}:{})},tx)},
+ 'performance.review.acknowledge':{family:'own',screenAdmits:ownEmploymentScreen,store:packetStore('performance.review.acknowledge',prepareReviewModuleActionReview,confirmReviewModuleActionReview),
+  async create(w,h){const year=Number(todayInKualaLumpur().slice(0,4)),group=groupOf(h.base),{cycleId}=await perf.createCycle(group,{name:'Fictional Standard Review',companyId:h.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`,assessmentWorkflow:false});await perf.openCycle(group,{cycleId});const [review]=await owner.db.select({id:schema.performanceReview.id}).from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,h.person.employmentId)));await perf.submitSelfReview(await h.session(),{reviewId:review.id,selfRating:4});await perf.submitManagerReview(await w.as('manager'),{reviewId:review.id,managerRating:4,overallRating:4});await perf.releaseCycle(group,{cycleId});return itemOf(h,review.id);},
+  human:item=>({action:'performance.review.acknowledge',contractVersion:1,intent:{version:1,reviewId:item.subjectId,acknowledge:true}}),offered:async(who,item)=>listed(await readPerformanceModuleActionChoices(who),'items','sourceId',item.subjectId),screen:(tx,who,item)=>perf.acknowledgeReviewTx(tx,who,{reviewId:item.subjectId})},
+ 'performance.onehr.plan.acknowledge':{family:'own',screenAdmits:ownEmploymentScreen,store:packetStore('performance.onehr.plan.acknowledge',prepareOnehrModuleActionReview,confirmOnehrModuleActionReview),
+  async create(w,h){const year=Number(todayInKualaLumpur().slice(0,4)),group=groupOf(h.base),[grade]=await owner.db.insert(schema.jobGrade).values({tenantId:h.base.tenantId,code:'12',name:'Fictional Grade12'}).returning({id:schema.jobGrade.id});await owner.db.update(schema.employment).set({gradeId:grade.id}).where(eq(schema.employment.companyId,h.companyId));const {cycleId}=await perf.createCycle(group,{name:'Fictional OneHR Review',companyId:h.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`});await perf.configureOnehrCycle(group,cycleId,null,defaultOnehrPolicy(onehrFramework));await perf.openCycle(group,{cycleId});const [review]=await owner.db.select({id:schema.performanceReview.id}).from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,h.person.employmentId)));await perf.saveOnehrPlan(await h.session(),review.id,null,{career:{aspiration:'Fictional workshop practice',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[{id:randomUUID(),area:'Fictional facilitation',dueOn:'',onJob:'Human fixture workshop',fromOthers:'',formalLearning:'',status:'not_started'}]},true);let [plan]=await owner.db.select().from(schema.onehrPlan).where(and(eq(schema.onehrPlan.employmentId,h.person.employmentId),eq(schema.onehrPlan.planYear,year+1)));await perf.reviewOnehrPlan(await w.as('manager'),plan.id,plan.revision,'Agreed','Fictional career conversation',true,undefined,todayInKualaLumpur());[plan]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id));return itemOf(h,plan.id,{revision:plan.revision});},
+  human:item=>({action:'performance.onehr.plan.acknowledge',contractVersion:1,intent:{version:1,planId:item.subjectId,acknowledge:true}}),offered:async(who,item)=>listed(await readPerformanceModuleActionChoices(who),'items','sourceId',item.subjectId),screen:(tx,who,item)=>perf.acknowledgeOnehrPlanTx(tx,who,item.subjectId,item.revision!)},
+ 'payroll.close':{family:'hr_on_employment',pageAdmits:isAdmin,independentScreen:true,store:packetStore('payroll.close',preparePayrollCloseReview,confirmPayrollCloseReview),
+  async create(_w,h){const group=groupOf(h.base),period=previousPeriod();await requirePackFor('MY').statutory.set(group,{personId:h.person.personId,icNumber:'900101019885'});const {batchId}=await createBatch(group,{companyId:h.companyId,payPeriod:period,scope:{employmentIds:[h.person.employmentId]}});await generatePayslips(group,{batchId});return itemOf(h,batchId);},human:item=>({action:'payroll.close',contractVersion:1,batchId:item.subjectId,confirmCloseProcessedRun:true}),offered:async(who,item)=>listed(await readPayrollCloseModuleActionChoices(who),'batches','batchId',item.subjectId),screen:(_tx,who,item)=>closeBatch(who,{batchId:item.subjectId})},
+ 'multi_cycle_payroll.create_run':{family:'hr_on_employment',pageAdmits:isAdmin,store:packetStore('multi_cycle_payroll.create_run',prepareMultiCycleRunReview,confirmMultiCycleRunReview),
+  async create(_w,h){const cycle=await upsertPayrollCycle(groupOf(h.base),{companyId:h.companyId,name:'Fictional Bonus Cycle',code:'FIC-BONUS',runType:'bonus'});return itemOf(h,h.person.employmentId,{companyId:h.companyId,cycleId:cycle.id,period:previousPeriod()});},human:item=>({action:'multi_cycle_payroll.create_run',contractVersion:1,input:additionalRunInput(item),confirmDraftCreation:true}),offered:async(who,item)=>listed(await readMultiCycleRunModuleActionChoices(who),'companies','companyId',item.companyId!),screen:(tx,who,item)=>createAdditionalRunTx(tx,who,additionalRunInput(item))},
+ 'country-my.statutory.update':{family:'hr_on_employment',screenAdmits:isAdmin,independentScreen:true,store:packetStore('country-my.statutory.update',prepareCountryStatutoryReview,confirmCountryStatutoryReview),
+  async create(_w,h){await requirePackFor('MY').statutory.set(groupOf(h.base),{personId:h.person.personId,icNumber:'900101019885',epfNumber:'FIC-OLD'});return itemOf(h,h.person.employmentId,{personId:h.person.personId});},human:item=>({action:'country-my.statutory.update',contractVersion:1,employmentId:item.employmentId,confirmSharedPersonWrite:true,input:{personId:item.personId,epfNumber:'FIC-NEW',socsoNumber:'FIC-SOCSO',epfMode:'auto'}}),offered:async(who,item)=>listed(await readCountryStatutoryModuleActionChoices(who),'items','employmentId',item.employmentId),screen:async(_tx,who,item)=>{const pack=requirePackFor('MY');if(!pack.statutory.withWrite)throw Error('Missing native statutory write interval');return pack.statutory.withWrite(who,item.personId!,async(tx,current)=>{if(!current)throw Error('Missing native statutory profile');return pack.statutory.set(who,{personId:item.personId!,icNumber:current.icNumber,epfNumber:'FIC-NEW',socsoNumber:'FIC-SOCSO',epfMode:'auto'},tx);});}},
+ 'lifecycle.acknowledgement.submit':{family:'own',independentScreen:true,store:packetStore('lifecycle.acknowledgement.submit',prepareLifecycleAckReview,confirmLifecycleAckReview),
+  async create(_w,h){const [person]=await owner.db.select({email:schema.person.primaryEmail}).from(schema.person).where(eq(schema.person.id,h.person.personId));const root=groupOf(h.base),c=await createOnboardingCase(root,{companyId:h.companyId,fullName:'Fictional equipment recipient',employeeNo:'F-'+randomUUID().slice(0,8),joinDate:todayInKualaLumpur(),laptopRequired:true,carparkRequired:false,newhireEmail:person.email!,personId:h.person.personId,employmentId:h.person.employmentId});for(const step of ONBOARDING_STEPS.filter(row=>row.phase===0&&row.rule!=='carpark'))await tickStep(root,'onboarding',c.number,step.key);await tickStep(root,'onboarding',c.number,'laptop_dist');return itemOf(h,c.id);},human:item=>({action:'lifecycle.acknowledgement.submit',contractVersion:1,caseId:item.subjectId,...equipmentInput}),offered:async(who,item)=>{const value=await readLifecycleAckModuleActionAvailability(who);return value.kind==='available'&&value.currentCase.caseId===item.subjectId;},screen:(_tx,who)=>submitMyAcknowledgement(who,equipmentInput)},
+ 'system_testing.execution.save':{family:'own',store:packetStore('system_testing.execution.save',prepareTestingModuleActionReview,confirmTestingModuleActionReview),
+  async create(_w,h){const root=groupOf(h.base),who=await h.session(),draft=await testing.saveTestInstructionDraft(root,{caseId:null,expectedRevision:0,definition:testingGuide}),version=await testing.publishTestInstruction(root,{caseId:draft.caseId,expectedDraftRevision:draft.revision,expectedVersionId:null}),assignment=await testing.assignTestingCase(root,{caseId:draft.caseId,testerUserId:who.userId!,expectedVersionId:version.versionId,active:true,expectedRevision:null}),execution=await testing.beginTestingExecution(who,{assignmentId:assignment.assignmentId,expectedVersionId:version.versionId,newAttempt:false});return itemOf(h,execution.executionId,{assignmentId:assignment.assignmentId,versionId:version.versionId,revision:execution.revision});},human:item=>({action:'system_testing.execution.save',contractVersion:1,intent:{version:1,humanObserved:true,observation:testingObservation(item)}}),offered:async(who,item)=>listed(await readTestingModuleActionChoices(who),'items','executionId',item.subjectId),screen:(tx,who,item)=>testing.saveTestingExecutionTx(tx,who,testingObservation(item))},
+ 'notifications.email_preferences.save':{family:'own',independentScreen:true,
+  store:{prepare:async(who,input)=>{await notificationIdentity(who);return prepareModuleActionReview(who,input,await resolveOwnNotificationServerIdentity());},confirm:async(who,p)=>{await notificationIdentity(who);return confirmModuleActionReview(who,{action:'notifications.email_preferences.save',contractVersion:1,...p},await resolveOwnNotificationServerIdentity());}},
+  async create(_w,h){await saveNotificationEmailPolicy(groupOf(h.base),['leave','claims']);return itemOf(h,h.person.employmentId);},human:item=>({action:'notifications.email_preferences.save',contractVersion:1,intent:{version:1,employmentId:item.employmentId,enabledCategories:['leave'],locale:'en',consent:'selected_categories_only'}}),offered:async(who,item)=>listed(await readNotificationModuleActionChoices(who),'employments','employmentId',item.employmentId),screen:async(_tx,who,item)=>saveNotificationEmailPreferences(who,item.employmentId,['leave'],'en',await notificationIdentity(who))},
+ 'rewards.post':{family:'hr_on_employment',independentScreen:true,store:packetStore('rewards.post',prepareRewardsPostReview,confirmRewardsPostReview),
+  async create(w,h){const root=groupOf(h.base),year=Number(todayInKualaLumpur().slice(0,4)),[bu]=await owner.db.insert(schema.businessUnit).values({tenantId:h.base.tenantId,companyId:h.companyId,code:'FIC-BU',name:'Fictional Unit'}).returning(),[grade]=await owner.db.insert(schema.jobGrade).values({tenantId:h.base.tenantId,code:'12',name:'Fictional Grade12'}).returning();await owner.db.update(schema.assignment).set({businessUnitId:bu.id}).where(eq(schema.assignment.employmentId,h.person.employmentId));await owner.db.update(schema.employment).set({gradeId:grade.id,confirmationDate:hiredOn()}).where(eq(schema.employment.id,h.person.employmentId));const unitId=await rewards.createRewardUnit(root,{name:'Fictional approved Rewards',year,companyId:h.companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur()});const actors:Record<string,SessionContext>={gr:root,bu:await h.session()};for(const seat of ['bg','ctro','ec'] as const){const person=await hire(h.base,'Fictional '+seat+' reviewer',h.companyId,h.base.deptB);actors[seat]=(await w.login(h.base,person,'employee',null)).ctx;}for(const seat of ['bu','bg','ctro','ec'] as const)await setRewardMember(root,unitId,(await rewards.getRewardUnit(root,unitId)).unit.revision,actors[seat].userId!,seat);for(const role of ['company_hr','group_hr','super_admin','payroll_partner'] as const)await setRewardMember(root,unitId,(await rewards.getRewardUnit(root,unitId)).unit.revision,(await w.as(role)).userId!,'payroll');let view=await rewards.getRewardUnit(root,unitId);await configureRewardFixture(root,unitId,view.unit.revision,{...view.unit.policy,effectiveFrom:todayInKualaLumpur(),patActual:100,patTarget:100,ranges:{'12':[300000,500000,700000]}});view=await rewards.getRewardUnit(root,unitId);await rewards.saveRewardEntry(root,unitId,view.unit.revision,view.rows[0].id,view.rows[0].recommendation,{...emptyRewardFacts(),reviewed:true,talent:'SCORE',performance:'ME'});await refreshRewardFixtureBudget(root,unitId);view=await rewards.getRewardUnit(root,unitId);await rewards.decideRewardUnit(actors.bu,unitId,view.unit.revision,'submit','Fictional human recommendation');for(const role of view.route.slice(1))await rewards.decideRewardUnit(actors[role],unitId,view.unit.revision,'approve','Fictional human recommendation');const {batchId}=await createBatch(root,{companyId:h.companyId,payPeriod:todayInKualaLumpur().slice(0,7),scope:{employmentIds:[h.person.employmentId]}});return itemOf(h,unitId,{batchId,revision:view.unit.revision});},human:item=>({action:'rewards.post',contractVersion:1,unitId:item.subjectId,revision:item.revision,batchId:item.batchId,confirmWholeApprovedUnit:true}),offered:async(who,item)=>listed(await readRewardsPostModuleActionChoices(who),'units','unitId',item.subjectId),screen:(_tx,who,item)=>rewards.postRewardUnit(who,item.subjectId,item.revision!,item.batchId)},
+ 'leave.apply':{family:'own',screenAdmits:ownEmploymentScreen,
+  store:{prepare:async(who,input)=>{const h=input as ReturnType<typeof leaveNomination>;const r=await withTenant(who,tx=>prepareOwnLeaveReviewTx(tx,who,h,{employmentId:h.employmentId,leaveTypeId:h.leaveTypeId},{reason:'Fictional parity leave reason'},'en'));if(r.kind!=='prepared')throw Error('No native leave candidate');return r;},confirm:(who,p)=>confirmOwnLeaveReview(who,{contractVersion:1,...p},'en')},
+  async create(_w,h){await owner.db.insert(schema.leaveLedger).values({tenantId:h.base.tenantId,employmentId:h.person.employmentId,leaveTypeId:h.base.annualLeaveTypeId,entryType:'accrual',days:'10',effectiveOn:todayInKualaLumpur()});return itemOf(h,h.person.employmentId,{date:weekdays(1)[0]});},human:leaveNomination,
+  offered:async(who,item)=>(await withTenant(who,tx=>readOwnLeaveCandidateTx(tx,who,leaveNomination(item),{employmentId:item.employmentId,leaveTypeId:item.leaveTypeId},{reason:'Fictional parity leave reason'},'en'))).kind==='candidate',
+  screen:(tx,who,item)=>requestLeave(who,{employmentId:item.employmentId,leaveTypeId:item.leaveTypeId,startDate:item.date!,endDate:item.date!,durationType:'full_day',reason:'Fictional parity leave reason'},tx)},
+ 'ess.profile.request':{family:'own',screenAdmits:ownEmploymentScreen,store:packetStore('ess.profile.request',prepareProfileModuleActionReview,confirmProfileModuleActionReview),
+  async create(_w,h){await saveProfileEditPolicy(groupOf(h.base),{keys:[preferredField],withdrawnReason:'Fictional parity policy'});const workspace=await readOwnProfileWorkspace(await h.session(),{employmentId:h.person.employmentId});return itemOf(h,h.person.employmentId,{proposal:{v:2,fields:[{fieldId:preferredField,before:workspace.baselines[preferredField],value:'Fictional preferred name'}],registers:[]}});},
+  human:item=>({action:'ess.profile.request',contractVersion:1,employmentId:item.employmentId,proposal:item.proposal}),offered:async(who,item)=>listed(await readProfileModuleActionChoices(who),'employments','employmentId',item.employmentId),
+  screen:(tx,who,item)=>submitOwnProfileEdit(who,{employmentId:item.employmentId,proposal:item.proposal},tx)},
+ 'attendance.correction.request':{family:'own',screenAdmits:ownEmploymentScreen,store:packetStore('attendance.correction.request',prepareAttendanceCorrectionReview,confirmAttendanceCorrectionReview),
+  create:async(_w,h)=>itemOf(h,h.person.employmentId,{date:calendarDate(7)}),human:item=>({action:'attendance.correction.request',contractVersion:1,intent:{version:1,employmentId:item.employmentId,date:item.date,reason:'Fictional planned correction',requestedOtMinutes:60,plannedStartTime:'18:00',plannedEndTime:'19:00',requestKind:'self_overtime'}}),
+  offered:async(who,item)=>listed(await readAttendanceCorrectionModuleActionChoices(who),'employments','employmentId',item.employmentId),screen:(tx,who,item)=>requestAttendanceCorrectionTx(tx,who,{employmentId:item.employmentId,date:item.date!,reason:'Fictional planned correction',requestedOtMinutes:60,plannedStartTime:'18:00',plannedEndTime:'19:00',requestKind:'self_overtime'})},
+ 'claims.draft.save':{family:'own',screenAdmits:ownEmploymentScreen,store:packetStore('claims.draft.save',prepareClaimModuleActionReview,confirmClaimModuleActionReview),
+  async create(w,h){const pending=await pendingClaim(w,h);return {...itemOf(h,h.person.employmentId),claimTypeId:w.claimTypes.get(h.base.tenantId)!};},
+  human:item=>({action:'claims.draft.save',contractVersion:1,employmentId:item.employmentId,draftId:null,claimTypeId:item.claimTypeId,claimItemId:null,enteredAmount:42.5,quantityKm:null,incurredOn:todayInKualaLumpur(),description:'Fictional draft receipt',fieldValues:null,retainedAttachmentIds:[]}),
+  offered:async(who,item)=>listed(await readClaimModuleActionChoices(who),'employments','employmentId',item.employmentId),screen:(tx,who,item)=>saveClaimDraft(who,{employmentId:item.employmentId,claimTypeId:item.claimTypeId!,amount:42.5,incurredOn:todayInKualaLumpur(),description:'Fictional draft receipt'},null,tx)},
+ 'claims.submit':{family:'own',screenAdmits:ownEmploymentScreen,store:packetStore('claims.submit',prepareClaimSubmissionModuleActionReview,confirmClaimSubmissionModuleActionReview),
+  async create(w,h){await pendingClaim(w,h);const claimTypeId=w.claimTypes.get(h.base.tenantId)!;const draft=await saveClaimDraft(await h.session(),{employmentId:h.person.employmentId,claimTypeId,amount:42.5,incurredOn:todayInKualaLumpur(),description:'Fictional draft submission'});return itemOf(h,draft.id,{claimTypeId});},
+  human:item=>({action:'claims.submit',contractVersion:1,employmentId:item.employmentId,draftId:item.subjectId,receiptIds:[],submitForApproval:true}),offered:async(who,item)=>listed(await readClaimModuleActionChoices(who),'drafts','id',item.subjectId),screen:(tx,who,item)=>submitDraftClaims(who,{ids:[item.subjectId],employmentId:item.employmentId},tx)},
+ 'knowledge_base.article.create':{family:'hr_on_employment',screenAdmits:isAdmin,store:packetStore('knowledge_base.article.create',prepareKnowledgeArticleReview,confirmKnowledgeArticleReview),create:async(_w,h)=>itemOf(h,h.person.employmentId),
+  human:()=>({action:'knowledge_base.article.create',contractVersion:1,title:'Fictional human publication',body:'Fictional human article body',category:'Training',audience:'employee'}),offered:async who=>(await readKnowledgeModuleActionAvailability(who)).kind==='available',screen:(tx,who)=>createArticleTx(tx,who,{title:'Fictional human publication',body:'Fictional human article body',category:'Training',audience:'employee'})},
+ 'typed_pay_components.create':{family:'hr_on_employment',screenAdmits:isAdmin,store:packetStore('typed_pay_components.create',preparePayComponentReview,confirmPayComponentReview),create:async(_w,h)=>itemOf(h,h.person.employmentId,{code:'FIC_'+randomUUID().slice(0,8).toUpperCase()}),
+  human:item=>({action:'typed_pay_components.create',contractVersion:1,input:payInput(item),confirmCatalogCreate:true}),offered:async who=>(await readPayComponentModuleActionChoices(who)).kind==='choices',screen:(tx,who,item)=>createPayComponentTx(tx,who,payInput(item))},
+ 'org.reporting.change':{family:'hr_on_employment',screenAdmits:isAdmin,store:packetStore('org.reporting.change',prepareOrgActionReview,confirmOrgActionReview),create:async(w,h)=>itemOf(h,h.person.employmentId,{managerId:w.people.group_hr.employmentId}),
+  human:item=>({action:'org.reporting.change',contractVersion:1,subordinateEmploymentId:item.employmentId,managerEmploymentId:item.managerId,lineType:'functional',validFrom:todayInKualaLumpur(),confirmReportingChange:true}),
+  offered:async(who,item)=>{const result=await readOrgModuleActionChoices(who,{role:'subordinate',query:item.name});return result.items.some(row=>row.employmentId===item.employmentId);},screen:(tx,who,item)=>setReportingLine(who,{subordinateEmploymentId:item.employmentId,managerEmploymentId:item.managerId!,lineType:'functional',validFrom:todayInKualaLumpur()},tx)},
+
  'approvals.claim.decide':{family:'assigned_decision',store:claimDecisionReviews,
   create:pendingClaim,
-  // The claim decision contract carries no note; the approvals screen requires a reason to reject.
-  human:(item,o)=>({action:ASSIGNED_CLAIM_DECISION_ACTION,contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,decision:o.decision}),
+  // New claim rejections bind the same explicit human reason used by the native screen.
+  human:(item,o)=>({action:ASSIGNED_CLAIM_DECISION_ACTION,contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,decision:o.decision,...(o.decision==='rejected'?{note:REJECT_REASON}:{})}),
   offered:async(who,item)=>listed(await readClaimDecisionChoices(who),'items','subjectId',item.subjectId),
   screen:(tx,who,item,decider,o)=>decideClaimTx(tx,who,{claimRequestId:item.subjectId,decision:o.decision==='approved'?'approve':'reject',deciderEmploymentId:decider,rejectReason:o.decision==='rejected'?REJECT_REASON:null})},
  'approvals.attendance.decide':{family:'assigned_decision',store:attendanceDecisionReviews,
@@ -208,13 +324,13 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:OWN_LEAVE_EDIT_ACTION,contractVersion:1,employmentId:item.employmentId,leaveRequestId:item.subjectId,startDate:item.dates![1],endDate:item.dates![2]}),
   offered:async(who,item)=>listed(await readLeaveChangeChoices(who),'requests','leaveRequestId',item.subjectId),
   screen:(tx,who,item)=>editLeaveRequestTx(tx,who,{leaveRequestId:item.subjectId,leaveTypeId:item.leaveTypeId,startDate:item.dates![1],endDate:item.dates![2],durationType:'full_day',today:todayInKualaLumpur()})},
- // Claims page: cancelClaimAction calls cancelClaim(session, id, employmentId-if-posted) with no page admission.
- 'claims.cancel':{family:'own',
+ // Claims page: cancelClaimAction always resolves the caller's own employment before cancellation.
+ 'claims.cancel':{family:'own',screenAdmits:ownEmploymentScreen,
   store:{prepare:prepareClaimCancellationReview,confirm:(who,r)=>confirmClaimCancellationReview(who,{action:OWN_CLAIM_CANCELLATION_ACTION,contractVersion:1,...r})},
   create:pendingClaim,
   human:item=>({action:OWN_CLAIM_CANCELLATION_ACTION,contractVersion:1,employmentId:item.employmentId,claimId:item.subjectId,cancel:true}),
   offered:async(who,item)=>listed(await readClaimCancellationChoices(who),'claims','claimId',item.subjectId),
-  screen:(tx,who,item)=>cancelClaimTx(tx,who,item.subjectId)},
+  screen:(tx,who,item)=>cancelClaimTx(tx,who,item.subjectId,item.employmentId)},
  // /me overtime screen: myRequestOvertime resolves the caller's own employment, then requestAttendanceCorrection.
  'toil.replacement.request':{family:'own',screenAdmits:ownEmploymentScreen,
   store:{prepare:toilRequestReviews.prepare,confirm:toilRequestReviews.confirm},
@@ -250,12 +366,12 @@ class Rollback extends Error{constructor(){super('parity probe rollback');}}
 /** The refusal, with the driver's underlying cause (e.g. an RLS violation behind a 'Failed query'). */
 const why=(error:unknown):string=>{if(!(error instanceof Error))return String(error).slice(0,240);const cause=(error as {cause?:unknown}).cause;return `${error.name}: ${error.message.slice(0,160)}`+(cause instanceof Error?` | cause: ${cause.message.slice(0,200)}`:'');};
 /** confirm = the role confirms its OWN review ('deny' when it has none). crossUserConfirm = the role tries to
- * confirm a review another permitted role prepared ('n/a' for permitted roles). */
-type Observed={screen:ParityOutcome}&Record<(typeof PARITY_PHASES)[number],ParityOutcome>&{crossUserConfirm:ParityOutcome|'n/a'};
+ * confirm a review another permitted login prepared. */
+type Observed={screen:ParityOutcome;page?:ParityOutcome}&Record<(typeof PARITY_PHASES)[number],ParityOutcome>&{crossUserConfirm:ParityOutcome|'n/a'};
 
 async function screenOutcome(adapter:Adapter,who:SessionContext,item:Item,actorEmploymentId:string|null,o:Options,notes:Record<string,string>):Promise<ParityOutcome>{
  if(adapter.screenAdmits&&!(await adapter.screenAdmits(who,item))){notes.screen='refused by the screen admission';return 'deny';}
- try{await withTenant(who,async tx=>{await adapter.screen(tx,who,item,actorEmploymentId,o);throw new Rollback();});}catch(error){if(error instanceof Rollback)return 'allow';notes.screen=why(error);}
+ try{if(adapter.independentScreen){await adapter.screen(undefined as unknown as Tx,who,item,actorEmploymentId,o);return 'allow';}await withTenant(who,async tx=>{await adapter.screen(tx,who,item,actorEmploymentId,o);throw new Rollback();});}catch(error){if(error instanceof Rollback)return 'allow';notes.screen=why(error);}
  return 'deny';
 }
 async function tryPrepare(adapter:Adapter,who:SessionContext,item:Item,o:Options,notes:Record<string,string>,key='prepare'):Promise<Review|null>{
@@ -269,32 +385,42 @@ async function tryConfirm(adapter:Adapter,who:SessionContext,review:Review,notes
 /** The roles the matrix permits for this entry, used as the reference preparer for cross-user confirmation. */
 async function observe(id:ProbedActionId,role:ParityRole,o:Options=DEFAULT_OPTIONS):Promise<{observed:Observed;notes:Record<string,string>}>{
  const adapter=ADAPTERS[id],declared=AGENT_ACTION_PARITY[id],notes:Record<string,string>={};
- const w=await buildWorld(),item=await adapter.create(w,w.home,o),who=await w.as(role);
+ let w=await buildWorld(),item=await adapter.create(w,w.home,o),who=await w.as(role);
  const screen=await screenOutcome(adapter,who,item,w.people[role].employmentId,o,notes);
+ if(adapter.independentScreen){w=await buildWorld();item=await adapter.create(w,w.home,o);who=await w.as(role);}
  let offer:ParityOutcome='deny';
  try{offer=await adapter.offered(who,item)?'allow':'deny';}catch(error){notes.offer=why(error);}
  const own=await tryPrepare(adapter,who,item,o,notes),prepare:ParityOutcome=own?'allow':'deny';
+ // Probe another login BEFORE any effect changes the shared source. A permitted actor must not be
+ // able to adopt another permitted actor's review, including another login linked to the same person.
+ const reference=PARITY_ROLES.find(r=>r!==role&&expectedAgentOutcome(declared,r)==='allow');
+ let theirs:Review|null,crossActor=who;
+ if(reference){const referenceActor=await w.as(reference);notes.crossUserReference=reference;theirs=await tryPrepare(adapter,referenceActor,item,o,notes,'reference');}
+ else if(own){crossActor=(await w.login(w.b,w.subject,'employee',null)).ctx;notes.crossUserReference='same_person_new_login_attempts_original_review';theirs=own;}
+ else throw Error(`${id}: no permitted reference actor for custody refusal: ${JSON.stringify(notes)}`);
+ if(!theirs)throw Error(`${id}: reference preparation failed, so cross-user confirmation proves nothing: ${notes.reference}`);
+ const custody=()=>owner.db.execute(sql`select r.state,r.intent_digest,r.reviewed_digest,(select count(*)::int from app.assistant_own_leave_review_content c where c.action_id=r.id) as bodies from app.assistant_own_leave_review r where r.id=${theirs.actionId}::uuid`);
+ const effects=()=>owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).orderBy(schema.domainEvent.id);
+ const held=await custody(),beforeEffects=await effects();expect(held).toHaveLength(1);
+ const crossUserConfirm=await tryConfirm(adapter,crossActor,theirs,notes,'crossUserConfirm');
+ expect(await custody(),`${id}: foreign confirmation changed the owner's custody`).toEqual(held);
+ expect(await effects(),`${id}: foreign confirmation wrote a native event`).toEqual(beforeEffects);
  const confirm:ParityOutcome=own?await tryConfirm(adapter,who,own,notes,'confirm'):'deny';
- let crossUserConfirm:ParityOutcome|'n/a'='n/a';
- if(!own){
-  // Any role the agent permits for the default (approved) matrix; the reference review MUST exist.
-  const reference=PARITY_ROLES.find(r=>r!==role&&expectedAgentOutcome(declared,r)==='allow');
-  if(!reference)throw Error(`${id}: no permitted reference role for the cross-user confirm of ${role}`);
-  const theirs=await tryPrepare(adapter,await w.as(reference),item,o,notes,'reference');
-  if(!theirs)throw Error(`${id}: reference role ${reference} could not prepare, so the cross-user confirm of ${role} proves nothing: ${notes.reference}`);
-  notes.crossUserReference=reference;crossUserConfirm=await tryConfirm(adapter,who,theirs,notes,'crossUserConfirm');
+ if(id==='approvals.claim.decide'&&o.decision==='rejected'&&confirm==='allow'){
+  const events=await owner.db.select({actorId:schema.domainEvent.actorId,payload:schema.domainEvent.payload}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,item.subjectId),eq(schema.domainEvent.eventType,'claim-request.rejected')));
+  expect(events,`${id}: rejection must preserve the same explicit human reason as the native screen`).toEqual([{actorId:who.userId,payload:{rejectReason:REJECT_REASON}}]);
  }
- return {observed:{screen,offer,prepare,confirm,crossUserConfirm},notes};
+ return {observed:{screen,offer,prepare,confirm,crossUserConfirm,...(adapter.pageAdmits?{page:adapter.pageAdmits(who)?'allow' as const:'deny' as const}:{})},notes};
 }
 /** The parity invariants every probe must satisfy, whatever is declared: never wider than the screen,
  * never a cross-user confirmation, and cross-company/tenant refused everywhere. */
-function assertInvariants(id:string,role:ParityRole,observed:Observed,notes:Record<string,string>,narrowed:boolean|Readonly<Partial<Record<ParityPhase,string>>>){
+function assertInvariants(id:string,role:ParityRole,observed:Observed,notes:Record<string,string>,narrowed:boolean|Readonly<Partial<Record<ParityPhase,string>>>,scope?:'caller_tenant'|'caller_login'){
  const context=`${id} as ${role}: ${JSON.stringify({observed,notes})}`;
  for(const phase of PARITY_PHASES)if(observed.screen==='deny')expect(observed[phase],`${context} — the agent ${phase} is wider than the screen`).toBe('deny');
  for(const phase of PARITY_PHASES)expect(observed[phase],`${context} — agent ${phase} differs from the screen`).toBe((typeof narrowed==='boolean'?narrowed:!!narrowed[phase])?'deny':observed.screen);
  expect(observed.crossUserConfirm,`${context} — confirmed another user's review`).not.toBe('allow');
  if(observed.prepare==='deny')expect(observed.crossUserConfirm,`${context} — a refused role must be probed for cross-user confirmation`).toBe('deny');
- if(ALWAYS_REFUSED.includes(role))expect({screen:observed.screen,offer:observed.offer,prepare:observed.prepare,confirm:observed.confirm},`${context} — cross-company/tenant must be refused everywhere`).toEqual({screen:'deny',offer:'deny',prepare:'deny',confirm:'deny'});
+ if(!scope&&ALWAYS_REFUSED.includes(role)){expect({offer:observed.offer,prepare:observed.prepare,confirm:observed.confirm},`${context} — cross-company/tenant agent must refuse`).toEqual({offer:'deny',prepare:'deny',confirm:'deny'});if(role==='another_tenant'||!(typeof narrowed==='boolean'?narrowed:Object.keys(narrowed).length>0))expect(observed.screen,`${context} — foreign native action must refuse absent an explicit narrower finding`).toBe('deny');}
  return context;
 }
 
@@ -314,7 +440,9 @@ describe.each([...PROBED_ACTION_IDS])('ADR-0151 parity: %s',id=>{
  it.each([...PARITY_ROLES])('%s gets the screen\'s allow/deny on offer, prepare and own confirm, and no cross-user confirm',async role=>{
   const declared=AGENT_ACTION_PARITY[id],{observed,notes}=await observe(id,role);
   console.info(`[parity] ${id} ${role} ${JSON.stringify(observed)} ${JSON.stringify(notes)}`);
-  const context=assertInvariants(id,role,observed,notes,expectedAgentOutcome(declared,role)==='deny'&&declared.screen[role]==='allow');
+  const phaseNarrowing=Object.fromEntries(PARITY_PHASES.filter(phase=>expectedAgentOutcome(declared,role)==='deny'&&declared.screen[role]==='allow').map(phase=>[phase,'Declared narrower finding']));
+  const context=assertInvariants(id,role,observed,notes,phaseNarrowing,'scope' in declared?declared.scope:undefined);
+  if('page' in declared)expect(observed.page,`${context} — native page discoverability differs`).toBe(declared.page[role]);
   // The owning screen behaves as declared (independent expected value).
   expect(observed.screen,`${context} — screen differs from the declared matrix`).toBe(declared.screen[role]);
  },180_000);
@@ -326,7 +454,7 @@ describe.each(DECISIONS)('ADR-0151 parity, rejected decision: %s',id=>{
  it.each([...PARITY_ROLES])('%s gets the screen\'s allow/deny when rejecting',async role=>{
   const {observed,notes}=await observe(id,role,{decision:'rejected',workflow:false});
   console.info(`[parity:rejected] ${id} ${role} ${JSON.stringify(observed)} ${JSON.stringify(notes)}`);
-  assertInvariants(id,role,observed,notes,false);
+  const declared=AGENT_ACTION_PARITY[id];assertInvariants(id,role,observed,notes,Object.fromEntries(PARITY_PHASES.filter(phase=>expectedAgentOutcome(declared,role)==='deny'&&declared.screen[role]==='allow').map(phase=>[phase,'Declared narrower finding'])));
  },180_000);
 });
 
@@ -375,7 +503,7 @@ describe('ADR-0151 parity: permission removed between prepare and confirm',()=>{
 
 /** Positive controls: the cross-company and cross-tenant sessions are refused above only because of the
  * boundary. Here each acts on an item in its OWN company or tenant and must be able to prepare and confirm. */
-const CONTROLS:[ProbedActionId,'another_company'|'another_tenant'][]=(['approvals.claim.decide','leave.adjustment.apply','leave.cancel'] as const).flatMap(id=>(['another_company','another_tenant'] as const).map(role=>[id,role] as [ProbedActionId,'another_company'|'another_tenant']));
+const CONTROLS:[ProbedActionId,'another_company'|'another_tenant'][]=(['approvals.claim.decide','leave.adjustment.apply','leave.cancel','notifications.email_preferences.save'] as const).flatMap(id=>(['another_company','another_tenant'] as const).map(role=>[id,role] as [ProbedActionId,'another_company'|'another_tenant']));
 describe('ADR-0151 parity positive controls: the boundary sessions act inside their own company or tenant',()=>{
  it.each(CONTROLS)('%s as %s on its own side of the boundary',async(id,role)=>{
   const w=await buildWorld(),adapter=ADAPTERS[id],who=await w.as(role),notes:Record<string,string>={};
@@ -389,5 +517,29 @@ describe('ADR-0151 parity positive controls: the boundary sessions act inside th
   const confirm=review?await tryConfirm(adapter,who,review,notes,'confirm'):'deny';
   console.info(`[parity:control] ${id} ${role} ${JSON.stringify({screen,offer,prepare:review?'allow':'deny',confirm})} ${JSON.stringify(notes)}`);
   expect({screen,offer,prepare:review?'allow':'deny',confirm},JSON.stringify(notes)).toEqual({screen:'allow',offer:true,prepare:'allow',confirm:'allow'});
+ },180_000);
+});
+
+/** A standalone assigned tester is a USER, with no fabricated PERSON or EMPLOYMENT. The role matrix
+ * above additionally probes the employee-linked assigned tester against all other native actors. */
+describe('WP8 assigned tester without staff identity',()=>{
+ it('records the assigned login observation and refuses another login and another tenant',async()=>{
+  const w=await buildWorld(),adapter=ADAPTERS['system_testing.execution.save'],original=await adapter.create(w,w.home,DEFAULT_OPTIONS);
+  const [originalAssignment]=await owner.db.select().from(schema.testAssignment).where(eq(schema.testAssignment.id,original.assignmentId!));
+  const newTester=async(base:Base)=>{
+   const [user]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:'user_'+randomUUID(),personId:null}).returning({id:schema.appUser.id});
+   await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:user.id,role:'employee',companyId:null});await grantAssistant(groupOf(base),{appUserId:user.id});
+   return {...await sessionFor(base,user.id,null,'employee',null),personId:null};
+  };
+  const who=await newTester(w.b),other=await newTester(w.b),foreign=await newTester(w.foreign);
+  const assignment=await testing.assignTestingCase(w.group,{caseId:originalAssignment.testCaseId,testerUserId:who.userId!,expectedVersionId:original.versionId!,active:true,expectedRevision:null});
+  const execution=await testing.beginTestingExecution(who,{assignmentId:assignment.assignmentId,expectedVersionId:original.versionId!,newAttempt:false});
+  const item={...original,subjectId:execution.executionId,assignmentId:assignment.assignmentId,revision:execution.revision};
+  const observation=testingObservation(item),notes:Record<string,string>={};
+  expect(await screenOutcome(adapter,who,item,null,DEFAULT_OPTIONS,notes),JSON.stringify(notes)).toBe('allow');
+  expect(await adapter.offered(who,item)).toBe(true);const review=await tryPrepare(adapter,who,item,DEFAULT_OPTIONS,notes);expect(review,JSON.stringify(notes)).not.toBeNull();
+  expect(await tryConfirm(adapter,other,review!,notes,'other')).toBe('deny');expect(await tryConfirm(adapter,foreign,review!,notes,'foreign')).toBe('deny');
+  expect(await tryConfirm(adapter,who,review!,notes,'confirm'),JSON.stringify(notes)).toBe('allow');
+  const [run]=await owner.db.select().from(schema.testRun).where(eq(schema.testRun.executionId,item.subjectId));expect(run).toMatchObject({runByUserId:who.userId,actualResult:observation.actualResult,executionStatus:observation.status});
  },180_000);
 });
