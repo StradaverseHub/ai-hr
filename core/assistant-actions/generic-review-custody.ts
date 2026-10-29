@@ -21,7 +21,7 @@ export type ReviewBody<H>={reviewNonce:z.infer<typeof PrivateReviewNonce>;conten
 export type ReviewCustodySpec<H,B extends ReviewActorBinding,R extends ReviewRow<B>,S,P extends {content:H;reviewedDigest:string},N,Prepared,Completed,Retired,Index>={
  /** Exact installed wire schema/ordering may include legacy fields (e.g. case number or intent alias).
   * Commitments and ciphertext use write(), never the normalized control-flow view. */
- body?:{read(value:unknown):ReviewBody<H>;write(body:ReviewBody<H>):unknown;create(native:P,nonce:z.infer<typeof PrivateReviewNonce>):ReviewBody<H>;assertCurrent(body:ReviewBody<H>,current:P):void};
+ body?:{read(value:unknown):ReviewBody<H>;write(body:ReviewBody<H>):{reviewNonce:z.infer<typeof PrivateReviewNonce>};create(native:P,nonce:z.infer<typeof PrivateReviewNonce>):ReviewBody<H>;assertCurrent(body:ReviewBody<H>,current:P):void};
  action:NativeOutcomeAction;tier:'confirm'|'approve';maxBodyBytes?:32768|45000;normalizeActionId?:(id:string)=>string;human:z.ZodType<H>;metadata:z.ZodType<ReviewMetadata<B>>;stored:z.ZodType<R>;
  confirmation:z.ZodType<{actionId:string;reviewedDigest:string}>;retirement:z.ZodType<{actionId:string}>;
  retired:z.ZodType<Retired>;index:z.ZodType<Index>;indexKind:string;
