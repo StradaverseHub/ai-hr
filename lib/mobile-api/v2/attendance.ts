@@ -1,7 +1,8 @@
 /**
  * M12 (D13) — the employee's own attendance in the app: records and the personal roster (read only), own application
- * history and detail, the missed-punch/correction request, withdrawing an own pending application, and the
- * replacement-leave (Leave Credit) request. Overtime-plan application stays on the web (D13). v2 only: every shape
+ * history and detail, the missed-punch/correction request, withdrawing an own pending application, the
+ * replacement-leave (Leave Credit) request and the self overtime plan (Apply OT Plan, without its attachment;
+ * withdrawing a plan stays on the web). v2 only: every shape
  * here is new, and v1's enums are closed (common.ts). Imported by route handlers AND by the Expo app, so this file
  * stays dependency-free (zod and common.ts only, no server module, no 'server-only').
  *
@@ -22,6 +23,9 @@
  *   GET  /api/mobile/v2/attendance/replacement-leave/day?employmentId&date&start&end → ReplacementLeaveDayResult
  *   POST /api/mobile/v2/attendance/replacement-leave?employmentId {requestId, rows[], reason, firstScheduleConsent}
  *                                                                          → ReplacementLeaveResult
+ *   GET  /api/mobile/v2/attendance/overtime-plans/offer?employmentId       → OvertimePlanOfferV2
+ *   POST /api/mobile/v2/attendance/overtime-plans?employmentId {requestId, date, plannedStart, plannedEnd, reason, remark?}
+ *                                                                          → OvertimePlanResult
  */
 import { z } from 'zod';
 import { commandOf, pageOf, refusalOf } from './common';
@@ -235,7 +239,8 @@ export type AttendanceDayResult = z.infer<typeof AttendanceDayResult>;
  * Command refusals. `not_found`: not the caller's own selected employment's (or guessed); `module_off`: the
  * Attendance module is off; `request_conflict`: the requestId already recorded a different command;
  * `future`, `pending_exists`, `payroll_closed`, `workflow_unavailable`, `invalid`: the kernel's own refusals
- * (requestAttendanceCorrection / AttendanceLevelError / AttendanceWorkflowError), `message` carries its sentence;
+ * (requestAttendanceCorrection / AttendanceLevelError / AttendanceWorkflowError), `message` carries its sentence —
+ * for an overtime plan `invalid` also carries the kernel's "already approved / already counted for this date";
  * `not_withdrawable`: the application is no longer pending, or is an overtime plan (withdrawn on the web).
  */
 export const ATTENDANCE_COMMAND_REFUSALS = [
@@ -351,3 +356,45 @@ export const ReplacementLeaveResult = z.discriminatedUnion('outcome', [
   ReplacementLeaveRefusal,
 ]);
 export type ReplacementLeaveResult = z.infer<typeof ReplacementLeaveResult>;
+
+
+// ── Self overtime plan (Apply OT Plan) ─────────────────────────────────────────────────────────────────
+
+/**
+ * Why the app may not offer the plan form: `module_off` — the Attendance module is off (the web's attendance layout
+ * redirects away); `no_employment` — the login has no active employment (the web's apply page shows "not linked").
+ * Those are the only two cases the web's apply page refuses; nothing else hides its form.
+ */
+export const OvertimePlanUnavailable = z.enum(['module_off', 'no_employment']);
+export type OvertimePlanUnavailable = z.infer<typeof OvertimePlanUnavailable>;
+export const OvertimePlanOfferV2 = z.object({
+  /** The Attendance module is on. */
+  enabled: z.boolean(),
+  employmentId: z.string().uuid().nullable(),
+  allowed: z.boolean(),
+  reason: OvertimePlanUnavailable.nullable(),
+  timeZone,
+  /** The kernel's business day today. A past date is accepted (overtime claimed after the fact), as on the web. */
+  today: isoDate,
+});
+export type OvertimePlanOfferV2 = z.infer<typeof OvertimePlanOfferV2>;
+
+/**
+ * One overtime plan for one date: the planned window (`HH:MM`, an end before the start runs into the next day, equal
+ * times are refused — lib/overtime-duration.ts plannedOvertimeMinutes, the web form's own rule), a mandatory reason
+ * and an optional remark. The minutes are derived on the server from the window, never sent by the app.
+ */
+export const OvertimePlanCommand = commandOf({
+  date: calendarDate,
+  plannedStart: clock,
+  plannedEnd: clock,
+  reason: z.string().trim().min(1).max(500),
+  remark: z.string().trim().max(2000).optional(),
+});
+export type OvertimePlanCommand = z.infer<typeof OvertimePlanCommand>;
+/** `minutes`: the planned minutes the kernel recorded (requestedOtMinutes). Refusals as AttendanceCommandRefusal. */
+export const OvertimePlanResult = z.discriminatedUnion('outcome', [
+  z.object({ outcome: z.literal('submitted'), id: z.string().uuid(), date: isoDate, minutes: z.number().int() }),
+  AttendanceCommandRefusal,
+]);
+export type OvertimePlanResult = z.infer<typeof OvertimePlanResult>;

@@ -14,6 +14,10 @@
  *                the routing is the workflow snapshot recorded with the request (attendanceWorkflowsForTx)
  *   correction   requestAttendanceCorrection, in the mobile command receipt's transaction (its existing `existingTx`)
  *   withdraw     cancelOwnAttendanceCorrection, in the receipt's transaction (D13 seam)
+ *   OT plan      app/attendance/plan-ot/apply + myRequestOvertime (app/me/actions.ts): the minutes derived from the
+ *                planned window by plannedOvertimeMinutes, then requestAttendanceCorrection with requestedOtMinutes,
+ *                the window, the reason and the remark, in the receipt's transaction. The page refuses only a login
+ *                with no employment, and the attendance layout only a tenant without the module; nothing else.
  *   Leave Credit replacementRequestAvailability + leaveCreditOfferForEmployment + pickReplacementLeaveType (My Leave),
  *                extendedHoursDayForEmployment + leaveCreditClaimReview (the Leave Credit table's per-date reads),
  *                submitLeaveCreditRequest in the receipt's transaction (D13 seam) — app/leave/credit/actions.ts
@@ -49,12 +53,14 @@ import * as leave from '../packs/leave/service';
 import { attendanceApplicationType, AttendanceWorkflowError } from '../lib/attendance-workflow';
 import { AttendanceLevelError } from '../lib/attendance-workflow-v3';
 import { claimCrossesMidnight } from '../lib/extended-hours';
+import { plannedOvertimeMinutes } from '../lib/overtime-duration';
 import { isDatabaseError } from '../lib/db-error';
 import { HR_LOCAL_TZ, todayInKualaLumpur } from '../lib/hr-date';
 import { publicErrorMessage } from '../lib/public-error';
 import { encodeCursor } from '../lib/mobile-api/v2/common';
 import {
-  ATTENDANCE_APPLICATIONS_CURSOR, AttendanceCorrectionResult, AttendanceWithdrawResult, ReplacementLeaveResult,
+  ATTENDANCE_APPLICATIONS_CURSOR, AttendanceCorrectionResult, AttendanceWithdrawResult, OvertimePlanResult, ReplacementLeaveResult,
+  type OvertimePlanCommand, type OvertimePlanOfferV2,
   type AttendanceApplicationDetailV2, type AttendanceApplicationKind, type AttendanceApplicationLevelV2,
   type AttendanceApplicationResult, type AttendanceApplicationsPageV2, type AttendanceApplicationStatus,
   type AttendanceApplicationSummaryV2, type AttendanceCommandRefusal, type AttendanceCommandRefusalCode,
@@ -273,6 +279,9 @@ export function attendanceCommandRefusal(e: unknown): AttendanceCommandRefusal {
   if (e instanceof att.AttendanceCorrectionPendingError) return refuse('pending_exists');
   if (e instanceof att.AttendancePayrollClosedError) return refuse('payroll_closed');
   if (e instanceof AttendanceLevelError || e instanceof AttendanceWorkflowError) return refuse('workflow_unavailable');
+  // The overtime plan's two dated refusals (an approved plan still waiting for the day; overtime already counted on
+  // it). Typed for the web's localized sentence; here the kernel's own sentence travels as the message.
+  if (e instanceof att.OvertimePlanAlreadyApprovedError || e instanceof att.OvertimeAlreadyCountedError) return refuse('invalid');
   if (e instanceof att.ClockDataChangedError || plainRefusal(e)) return refuse('invalid');
   throw e;
 }
@@ -308,6 +317,40 @@ export async function withdrawOwnAttendanceApplicationV2(ctx: SessionContext, em
   }, async (tx) => {
     await att.cancelOwnAttendanceCorrection(ctx, { correctionId: id }, tx);
     return { outcome: 'withdrawn' as const, id };
+  }), attendanceCommandRefusal);
+}
+
+// ── Self overtime plan (Apply OT Plan) ─────────────────────────────────────────────────────────────────────
+
+/** Whether the web's Apply OT Plan page would offer its form: the module (attendance layout) and an own employment. */
+export async function overtimePlanOfferV2(ctx: SessionContext, employmentId: string | null): Promise<OvertimePlanOfferV2> {
+  const base = { timeZone: HR_LOCAL_TZ, today: todayInKualaLumpur() };
+  if (!attendanceEnabled(ctx)) return { enabled: false, employmentId: null, allowed: false, reason: 'module_off', ...base };
+  if (!employmentId) return { enabled: true, employmentId: null, allowed: false, reason: 'no_employment', ...base };
+  return { enabled: true, employmentId, allowed: true, reason: null, ...base };
+}
+
+/**
+ * File an overtime plan for one of the caller's own dates, as myRequestOvertime does: the minutes are the planned
+ * window's (plannedOvertimeMinutes — an inverted or equal window is refused there, before anything is written), then
+ * requestAttendanceCorrection with requestedOtMinutes, the window, the reason and the remark. The kernel files it as
+ * `self_overtime`, validates it and routes it. Replays its first accepted answer under the same requestId.
+ */
+export async function requestOwnOvertimePlanV2(ctx: SessionContext, employmentId: string, p: OvertimePlanCommand): Promise<z.output<typeof OvertimePlanResult>> {
+  if (!attendanceEnabled(ctx)) return MODULE_OFF;
+  const minutes = plannedOvertimeMinutes(p.plannedStart, p.plannedEnd);
+  // myRequestOvertime's own sentence for the same refusal.
+  if (minutes == null) return { outcome: 'refused', code: 'invalid', message: 'Enter different valid start and end times.' };
+  const reason = p.reason.trim(), remark = p.remark?.trim() || null;
+  return command<typeof OvertimePlanResult, AttendanceCommandRefusal>(() => withMobileCommandReceipt(ctx, {
+    kind: 'attendance.overtime-plan', requestId: p.requestId,
+    intent: { date: p.date, plannedStart: p.plannedStart, plannedEnd: p.plannedEnd, reason, remark },
+    actorEmploymentId: employmentId, response: OvertimePlanResult,
+  }, async (tx) => {
+    const out = await att.requestAttendanceCorrection(ctx, {
+      employmentId, date: p.date, requestedOtMinutes: minutes, reason, remark, plannedStartTime: p.plannedStart, plannedEndTime: p.plannedEnd,
+    }, tx);
+    return { outcome: 'submitted' as const, id: out.correctionId, date: p.date, minutes };
   }), attendanceCommandRefusal);
 }
 
