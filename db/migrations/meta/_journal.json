@@ -3865,6 +3865,13 @@
       "when": 1793320000000,
       "tag": "0677_ai_hr_prepared_actions",
       "breakpoints": true
+    },
+    {
+      "idx": 667,
+      "version": "7",
+      "when": 1793330000000,
+      "tag": "0674_assistant_outcome_measurement",
+      "breakpoints": true
     }
   ]
 }
