@@ -69,7 +69,7 @@ export async function AiInventorySection({inventory,mayPause}:{inventory:AiInven
         </table></div>
         <ul className="divide-y divide-border md:hidden">{rows.map(r=><li key={r.key} id={`${rowAnchor(r.key)}-card`} className="px-4 py-3">
           {cell(r,'component')}
-          <dl className="mt-2 grid grid-cols-[minmax(6rem,auto)_1fr] gap-x-3 gap-y-1 text-sm">{cols.filter(c=>c!=='component').map(c=><div key={c} className="contents"><dt className="text-xs text-muted-foreground">{t(`inv.cols.${c}`)}</dt><dd className="min-w-0 break-words">{cell(r,c)}</dd></div>)}</dl>
+          <dl className="mt-2 grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">{cols.filter(c=>c!=='component').map(c=><div key={c} className="contents"><dt className="break-words text-xs text-muted-foreground">{t(`inv.cols.${c}`)}</dt><dd className="min-w-0 break-words">{cell(r,c)}</dd></div>)}</dl>
         </li>)}</ul>
       </section>)}
     </Card>

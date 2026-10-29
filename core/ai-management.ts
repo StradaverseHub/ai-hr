@@ -94,7 +94,10 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       const state = !enabled ? 'paused' : !moduleHeld ? 'module' : !effective ? 'restricted'
         : f.kind === 'agent' ? f.id === 'readiness_reminders' ? 'templates' : 'scheduled'
         : !selectedProvider ? 'provider' : 'ready';
-      return {...f,enabled,state,staleOverride,mayWrite:isGroupAdmin(ctx)&&f.kind!=='platform'};
+      // WP12 (R20): whether an administrator actually set this switch (a stored setting or a `feature:` row), so drift
+      // reports a switch someone turned on that does not take effect, never a default nobody chose.
+      const configured = setting ? fresh.entitlements.settings[f.setting!] !== undefined : featureRow !== undefined;
+      return {...f,enabled,state,staleOverride,configured,mayWrite:isGroupAdmin(ctx)&&f.kind!=='platform'};
     });
     // ADR-0151 §4.5 — the switch-on each agent specialist runs under, and who made it. An agent that is on
     // without a named administrator does not run until somebody switches it off and on again.

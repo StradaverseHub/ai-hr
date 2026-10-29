@@ -129,7 +129,9 @@ export function evaluateAiAlerts(i:AiAlertInput):AiAlert[]{
 export const SWITCH_DRIFT_REASONS=['stale_override','module_off','platform_restricted','unattributed_agent'] as const;
 export type SwitchDriftReason=(typeof SWITCH_DRIFT_REASONS)[number];
 export type SwitchDrift=Readonly<{featureId:string;reason:SwitchDriftReason}>;
-export type SwitchDriftFeature=Readonly<{id:string;enabled:boolean;state:string;staleOverride:{enabled:boolean}|null}>;
+export type SwitchDriftFeature=Readonly<{id:string;enabled:boolean;state:string;staleOverride:{enabled:boolean}|null;
+ /** An administrator stored this switch (not a default). Module/platform drift is reported only for a configured switch. */
+ configured?:boolean}>;
 /** Configured-vs-effective: a switch an administrator set ON that does not take effect, or a stored override the
  * gateway ignores (0692) that disagrees with the real switch, or an agent specialist switched on with no named
  * administrator (ADR-0151 §4.5: it does not run). `state` is aiManagementView's computed state. */
@@ -137,8 +139,8 @@ export function switchDrift(features:readonly SwitchDriftFeature[],agentSwitches
  const out:SwitchDrift[]=[];
  for(const f of features){
   if(f.staleOverride&&f.staleOverride.enabled!==f.enabled)out.push({featureId:f.id,reason:'stale_override'});
-  if(f.enabled&&f.state==='module')out.push({featureId:f.id,reason:'module_off'});
-  if(f.enabled&&f.state==='restricted')out.push({featureId:f.id,reason:'platform_restricted'});
+  if(f.configured!==false&&f.enabled&&f.state==='module')out.push({featureId:f.id,reason:'module_off'});
+  if(f.configured!==false&&f.enabled&&f.state==='restricted')out.push({featureId:f.id,reason:'platform_restricted'});
   if(agentSwitches[f.id]?.state==='unattributed')out.push({featureId:f.id,reason:'unattributed_agent'});
  }
  return out;
