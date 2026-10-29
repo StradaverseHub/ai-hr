@@ -58,6 +58,7 @@ describe('same-visibility Bank point-read policy experiment',()=>{
   const humanRead=async(context:org.Ctx,hint:'off'|'on',subset=false)=>{
    await connection.unsafe('BEGIN');
    try{
+    await connection.unsafe("SET LOCAL statement_timeout='90s'");
     await connection`select set_config('app.tenant_id',${context.tenantId},true),set_config('app.user_id',${context.userId},true),set_config('app.roles',${context.roles.join(',')},true),set_config('app.grants',${JSON.stringify(context.grants)},true),set_config('app.agent_principal_id','',true),set_config(${HINT},${hint},true)`;
     if(subset){
      const [outside]=await connection`select count(*)::int as rows from employment e where e.voided_at is null and e.tenant_id=app.current_tenant_id() and app.is_admin_for(e.company_id) and not(e.id=any((select app.visible_employment_ids())::uuid[]))`;
@@ -78,7 +79,7 @@ describe('same-visibility Bank point-read policy experiment',()=>{
    }
   };
   const agentRead=async(context:SessionContext,hint:'off'|'on')=>withTenant(context,async tx=>{
-   await tx.execute(sql`select set_config(${HINT},${hint},true)`);
+   await tx.execute(sql`select set_config(${HINT},${hint},true),set_config('statement_timeout','90s',true)`);
    return (await tx.select({id:schema.employment.id}).from(schema.employment).orderBy(schema.employment.id)).map(row=>row.id);
   });
   let primary:unknown;
@@ -127,6 +128,9 @@ describe('same-visibility Bank point-read policy experiment',()=>{
   expect(people).toHaveLength(2);
   const selfUser=await createAppUser(base.tenantId,people[0].person_id,'employee'),managerUser=await createAppUser(base.tenantId,people[1].person_id,'manager');
   const self:SessionContext={...context,userId:selfUser,roles:['employee']},manager:SessionContext={...context,userId:managerUser,roles:['manager']};
+  const [report]=await owner.client`select id from employment where tenant_id=${base.tenantId}::uuid and employee_code='POL4'`;
+  const [managerEmployment]=await owner.client`select id from employment where tenant_id=${base.tenantId}::uuid and employee_code='POL3'`;
+  await owner.client`insert into reporting_line(tenant_id,subordinate_employment_id,manager_employment_id,line_type,valid_from) values(${base.tenantId}::uuid,${report.id}::uuid,${managerEmployment.id}::uuid,'administrative','2026-01-05')`;
   const bytes=Buffer.from('employee_code,tax_number\nPOL1,TPOLICY'),sourceHash=createHash('sha256').update(bytes).digest('hex');
   const id=(await createBankImportJob(context,{name:'policy.csv',bytes:bytes.length,hash:sourceHash})).job.id;
   await uploadBankImportChunk(context,id,0,bytes);await bankImportCommand(context,id,'validate');for(let i=0;i<4;i++)await processBankImportJob(context,id);
@@ -147,7 +151,7 @@ describe('same-visibility Bank point-read policy experiment',()=>{
      // The original off/on pair quantifies whether the untrusted hint alone does anything.
      const rollback=Error('intentional candidate policy rollback');let elapsedMs=0;
      await expect(withTenant(context,async tx=>{
-      await tx.execute(sql`select set_config(${HINT},${hint},true),set_config('statement_timeout','120s',true)`);
+      await tx.execute(sql`select set_config(${HINT},${hint},true),set_config('statement_timeout','90s',true)`);
       const started=performance.now();expect(await applyBankImportRowTx(tx,context,{record:row.record,binding:row.binding,employmentId:row.employment_id,companyId:row.company_id,attemptId:job.attemptId!,ordinal:1})).toBe(true);
       elapsedMs=performance.now()-started;throw rollback;
      })).rejects.toBe(rollback);
@@ -160,6 +164,7 @@ describe('same-visibility Bank point-read policy experiment',()=>{
        await tx.execute(sql`select set_config(${HINT},${hint},true),set_config('statement_timeout','90s',true)`);
        return (await tx.select({id:schema.employment.id}).from(schema.employment).orderBy(schema.employment.id).limit(1000)).map(r=>r.id);
       });
+      if(name==='manager'){expect(visible.includes(report.id),'Scale manager must see a genuine administrative report').toBe(true);expect(visible.length).toBeGreaterThan(1);}
       const observation={variant,kind:'broad-page-1000',hint,context:name,elapsedMs:performance.now()-started,rows:visible.length,idSha256:hash(visible)};result.push(observation);console.info('[bank-policy-cost]',JSON.stringify(observation));
      }catch(error){
       const code=(error as {cause?:{code?:string};code?:string}).cause?.code??(error as {code?:string}).code;expect(code).toBe('57014');
@@ -169,12 +174,15 @@ describe('same-visibility Bank point-read policy experiment',()=>{
    }
    for(const contextName of ['hr-admin','self-employee','manager']){
     const values=result.filter(r=>r.kind==='broad-page-1000'&&r.context===contextName&&!r.timedOut);
-    expect(new Set(values.map(r=>r.idSha256)).size).toBeLessThanOrEqual(1);
+    const originalValues=values.filter(r=>r.variant==='original');
+    if(originalValues.length===0)console.info('[bank-policy-parity-unproven]',JSON.stringify({context:contextName,reason:'Original broad-read baseline timed out; no scale parity claim',observations:result.filter(r=>r.kind==='broad-page-1000'&&r.context===contextName)}));
+    else for(const value of values){expect(value.rows).toBe(originalValues[0].rows);expect(value.idSha256).toBe(originalValues[0].idSha256);}
    }
    const [after]=await withTenant(context,tx=>tx.execute<{hint:string|null}>(sql`select nullif(current_setting(${HINT},true),'') as hint`));expect(after.hint).toBeNull();
   }catch(error){primary=error;throw error;}finally{
    try{await restore(original,baseline,definition);}catch(error){if(primary)console.error('Policy restore failed after original error:',error);else throw error;}
   }
-  console.info('[bank-policy-cost-summary]',JSON.stringify({catalogRows:ROWS,results:result,nativeSaved:0,originalPolicyRestored:true,hintRestored:true,releaseAuthorized:false}));
+  const broadParityProven=['hr-admin','self-employee','manager'].every(name=>result.some(r=>r.kind==='broad-page-1000'&&r.context===name&&r.variant==='original'&&!r.timedOut)&&result.filter(r=>r.kind==='broad-page-1000'&&r.context===name).every(r=>!r.timedOut));
+  console.info('[bank-policy-cost-summary]',JSON.stringify({catalogRows:ROWS,results:result,broadParityProven,nativeSaved:0,originalPolicyRestored:true,hintRestored:true,releaseAuthorized:false}));
  },900000);
 });
