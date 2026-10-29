@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {adjudicateAiPayRule} from '../lib/ai/pay-rule-proposal';
+import {adjudicateAiPayRule} from '../packs/payroll/ai-rule-proposal';
 import {adjudicateNarrative} from '../lib/ai/evidence-selection';
 import {adjudicateTriage,parseTriage,TRIAGE_QUESTIONS,type ClaimFacts} from '../core/input-triage';
 

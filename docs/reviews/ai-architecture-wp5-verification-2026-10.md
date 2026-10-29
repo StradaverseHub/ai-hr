@@ -81,3 +81,17 @@ Whole compiler passed. The additional erasure/revocation and reconciliation case
 explicitly covering quota custody through privacy retirement and lost acknowledgements.
 Board still holds staging for worker/provider acceptance. No migration, restart or deployment is
 performed by this source allocation. Focused check40843714356 passed at4a4b323a22888e62ed6023f25159fef20502722a.
+
+## Original full-gate failure and repair
+
+Full GitHub Actions run40860303973 completed every planned chunk at
+`2f4d4fea09e93a101e70864f212bb7959070e06c`. Its only failed application test was
+`test/payroll-pack-drift.test.ts`: the new `lib/ai/pay-rule-proposal.ts` imported the payroll
+implementation directly outside the pack boundary. The final verifier also failed because that
+required test failed; it is not another application regression. Original failed logs and plan are
+retained privately. No PASS is claimed for that source.
+
+The repair moves the unchanged pure adjudicator into `packs/payroll/ai-rule-proposal.ts`, consumed
+by the payroll implementation itself and its test. Canonical numeric validation remains the same,
+no server-facade dependency cycle is added, and the import-debt allowlist is unchanged. Focused
+affected checks and a new exact-source complete gate remain required.
