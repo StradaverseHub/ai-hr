@@ -101,7 +101,7 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
     onLeave: (id, date) => unavailable.some(r => r.user_id === id && r.on_date === date),
     openLoad: id => Number(sharedLoads.find(load => load.user_id === id)?.task_load ?? 0),
     lastAssigned: id => { const last = sharedLoads.find(load => load.user_id === id)?.last_auto; return last ? Date.parse(last) || 0 : 0; },
-    eligibleUser: id => users.some(u => u.id === id), userName: id => users.find(u => u.id === id)?.name ?? 'Unlinked user', mergeValues: values, signatoryUserId: signatory?.signatoryUserId ?? null };
+    eligibleUser: id => users.some(u => u.id === id), userName: id => users.find(u => u.id === id)?.name ?? 'Unlinked user', mergeValues: values, signatoryUserId: signatory?.signatoryUserId ?? null, requireDeliveryAck: true };
 }
 export async function v9CaseDetail(ctx: SessionContext, id: string): Promise<CaseDetail> {
   return withLifecycleTenant(ctx, async tx => {
@@ -313,7 +313,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     else if (command.type === 'emailEdit') { if (!config.emails.some(e => e.id === command.emailId && e.module === c.module) || command.body.length > 20000 || command.subject.length > 1000) throw new M.V9Error('Choose an available email and keep its content within the allowed length.'); c.emailEdits = { ...c.emailEdits, [command.emailId]: { subject: command.subject, body: command.body } }; M.appendLog(c, env, 'email.edited', 'Email text changed for this person only.'); }
     else if (command.type === 'documentSave') M.saveDocument(c, command.id, command.values, 'hr', env);
     else if (command.type === 'documentSign') M.signDocument(c, config, command.id, 'hr', { ...command.signature, by: env.actor, at: env.now }, env);
-    else if (command.type === 'documentRefresh') { const document = c.documents.find(d => d.id === command.id); if (!document || document.status !== 'draft') throw new M.V9Error('Only an unsigned draft can refresh its source values.'); document.mergeValues = { ...env.mergeValues }; document.signatoryUserId = env.signatoryUserId ?? null; for (const field of document.fields) if (field.owner === 'pmLocked' && field.pmKey) document.values[field.id] = env.mergeValues[field.pmKey] ?? ''; M.appendLog(c, env, 'document.refreshed', document.name); }
+    else if (command.type === 'documentRefresh') { const document = c.documents.find(d => d.id === command.id); if (!document || document.status !== 'draft' || M.documentDeliveryReserved(c, command.id)) throw new M.V9Error('Only an unsigned draft not reserved for email delivery can refresh its source values.'); document.mergeValues = { ...env.mergeValues }; document.signatoryUserId = env.signatoryUserId ?? null; for (const field of document.fields) if (field.owner === 'pmLocked' && field.pmKey) document.values[field.id] = env.mergeValues[field.pmKey] ?? ''; M.appendLog(c, env, 'document.refreshed', document.name); }
     else if (command.type === 'settlementOptions') { if (!['pending', 'submitted'].includes(c.state)) throw new M.V9Error('Reopen this case before changing its figures.'); c.settlementOptions = command.options; M.appendLog(c, env, 'settlement.adjusted', command.reason); }
     else if (command.type === 'clear') {
       const calculation = await readSettlementTx(tx, ctx, c, config);

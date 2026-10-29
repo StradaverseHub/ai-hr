@@ -100,8 +100,10 @@ export type Run = { id: string; workflowId: string; revision: number; date: stri
 export type Mail = {
   id: string; key: string; workflowId: string | null; templateId: string | null;
   to: string[]; cc: string[]; subject: string; body: string; documentIds: string[];
-  fileIds: string[]; status: 'pending' | 'sent' | 'failed' | 'cancelled'; test: boolean;
+  fileIds: string[]; status: 'pending' | 'sending' | 'sent' | 'failed' | 'uncertain' | 'cancelled'; test: boolean;
   at: string; deliveredAt: string | null; failure: string | null;
+  /** Frozen transport choices; older history without this must not be silently reinterpreted. */
+  delivery?: { version: 1; queuedBy: Actor; sender: 'onboarding' | 'hr' | 'noreply'; linkDocumentIds: string[]; pdfDocumentIds: string[]; toNames: string[]; ccNames: string[] };
 };
 export type PMChange = { id: string; documentId: string; field: string; before: string; after: string; status: 'proposed' | 'pushed' | 'conflict' | 'rejected'; sourceRevision: string };
 export type FinalFigures = { sourceRevision: string; lastDay: string; leaveDays: string; amount: string; currency: string; payDate: string; lockedAt: string; payrollReference: string };
@@ -135,6 +137,8 @@ export type Environment = {
   userName: (userId: string) => string;
   mergeValues: Record<string, string>;
   signatoryUserId?: string | null;
+  /** Production workflows wait for the durable transport acknowledgement. */
+  requireDeliveryAck?: boolean;
 };
 
 export class V9Error extends Error {
@@ -267,10 +271,15 @@ export function generate(c: Case, config: Config, templateId: string, env: Envir
 function linkedTasks(c: Case, doc: Document, action: TaskDefinition['documentAction']): void {
   for (const task of c.tasks) if (task.documentTemplate === doc.templateId && (task.documentAction === action || task.documentAction === 'completed' && action === 'signed')) task.status = 'done';
 }
+export function documentDeliveryReserved(c: Pick<Case, 'mails'>, documentId: string): boolean {
+  return c.mails.some(mail => !mail.test && ['pending', 'sending', 'uncertain'].includes(mail.status) && mail.documentIds.includes(documentId));
+}
 export function saveDocument(c: Case, id: string, values: Record<string, string>, owner: 'employee' | 'hr', env: Environment): void {
   const doc = c.documents.find(d => d.id === id); if (!doc) throw new V9Error('Document not found.', 'not_found');
   if (owner === 'employee' && doc.templateType === 'Attachment') throw new V9Error('Attachments are read-only PDFs.', 'forbidden');
   if (c.state !== 'submitted' || documentFinal(doc) || ['withdrawn', 'superseded'].includes(doc.status)) throw new V9Error('This document is no longer editable.', 'conflict');
+  if (owner === 'hr' && documentDeliveryReserved(c, id)) throw new V9Error('This document is frozen for email delivery.', 'conflict');
+  if (owner === 'hr' && doc.status !== 'draft') throw new V9Error('Released document fields are frozen. Prepare a new document to make this correction.', 'conflict');
   if (owner === 'hr' && (doc.hrSignature || doc.employeeSignature)) throw new V9Error('Signed document fields are frozen. Prepare a new document to make this correction.', 'conflict');
   if (owner === 'employee' && !['sent', 'opened'].includes(doc.status)) throw new V9Error('This document has not been released to you.');
   for (const [key, value] of Object.entries(values)) {
@@ -286,6 +295,7 @@ export function signDocument(c: Case, config: Config, id: string, role: 'employe
   if ((doc.templateType ?? template.type) === 'Attachment') throw new V9Error('Attachments are read-only PDFs and do not require a signature.', 'conflict');
   const hrStep = doc.hrStep ?? template.hrStep, employeeAck = doc.employeeAck ?? template.employeeAck;
   if (c.state !== 'submitted' || ['superseded', 'withdrawn'].includes(doc.status)) throw new V9Error('This document is no longer open.', 'conflict');
+  if (role === 'hr' && documentDeliveryReserved(c, id)) throw new V9Error('This document is frozen for email delivery.', 'conflict');
   if (!signature.consent || !validV9SignatureValue(signature.method, signature.value) || signature.by.id !== env.actor.id) throw new V9Error('Confirm consent and provide your own signature.');
   const missing = doc.blocks.filter(b => ['heading', 'subheading', 'text'].includes(b.type)).flatMap(b => merge(doc.edits[b.id] ?? b.text, { ...doc.mergeValues, ...doc.values }).missing);
   if (missing.length) throw new V9Error(`Complete missing document fields: ${[...new Set(missing)].join(', ')}.`);
@@ -384,7 +394,10 @@ function emailSensitiveKeys(config: Config): Set<string> {
 }
 
 function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 'notify' }>, key: string, workflowId: string | null, env: Environment, test = false): string | null {
-  if (c.mails.some(m => m.key === key)) return null;
+  const existing = c.mails.filter(mail => mail.workflowId === workflowId && (mail.key === key || mail.key.startsWith(key + ':')));
+  const deliveryHold = (mails: Mail[]) => !workflowId || !env.requireDeliveryAck || mails.every(mail => mail.status === 'sent') ? null : mails.some(mail => mail.status === 'uncertain') ? 'Delivery outcome is uncertain. Review the delivery receipt before continuing.' : mails.some(mail => ['failed', 'cancelled'].includes(mail.status)) ? 'Email delivery did not complete. Review the delivery failure.' : 'Waiting for email delivery confirmation.';
+  // Resume the original recipients even if roles or task ownership changed meanwhile.
+  if (existing.length) return deliveryHold(existing);
   const email = step.type === 'email' ? config.emails.find(e => e.id === step.template && (e.active || test) && e.module === c.module) : null;
   if (step.type === 'email' && !email) throw new V9Error('The email template is inactive or unavailable.');
   const slots = email?.slots.filter(s => s.required && !c.files.some(f => f.slot === `${email.id}:${s.id}`)) ?? [];
@@ -393,7 +406,11 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
   const owners = pendingPre(c).map(t => t.assignee).filter((id): id is string => !!id);
   const targets = [...new Set(roles.flatMap(role => role === 'taskOwners' ? owners : recipients(c, config, role)))];
   if (!targets.length && !test) throw new V9Error('No recipient is linked. Resolve the recipient before continuing.');
-  const to = test ? [env.actor.id] : targets;
+  // The source fans out only Task owners. An ordinary email uses the role's first
+  // destination; a Notify step puts the remaining group members in CC once.
+  const perOwner = roles.includes('taskOwners');
+  const to = test ? [env.actor.id] : perOwner ? targets : targets.slice(0, 1);
+  const groupCc = !test && !perOwner && step.type === 'notify' ? targets.slice(1) : [];
   const sensitive = emailSensitiveKeys(config);
   for (const target of to) {
     const itemKey = `${key}:${target}`; if (c.mails.some(m => m.key === itemKey)) continue;
@@ -409,11 +426,13 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
       if ((d.hrStep ?? template?.hrStep) === 'before' && d.status === 'draft' && !test) throw new V9Error('HR must sign the letter before it can be sent.');
       return [d];
     });
-    const cc = test ? [] : [...new Set([...step.cc, ...(email?.cc ?? [])].flatMap(role => recipients(c, config, role)))].filter(id => id !== target && env.eligibleUser(id));
-    c.mails.push({ id: env.nextId(), key: itemKey, workflowId, templateId: email?.id ?? null, to: [target], cc, subject: subject.text, body: body.text, documentIds: docs.map(d => d.id), fileIds: c.files.filter(f => email?.slots.some(s => f.slot === `${email.id}:${s.id}`)).map(f => f.id), status: 'pending', test, at: env.now, deliveredAt: null, failure: null });
+    const cc = test ? [] : [...new Set([...groupCc, ...[...step.cc, ...(email?.cc ?? [])].flatMap(role => recipients(c, config, role))])].filter(id => id !== target && env.eligibleUser(id));
+    const sender = email?.sender ?? 'noreply';
+    if (!['onboarding', 'hr', 'noreply'].includes(sender)) throw new V9Error('Choose a managed sender profile before sending.');
+    c.mails.push({ id: env.nextId(), key: itemKey, workflowId, templateId: email?.id ?? null, to: [target], cc, subject: subject.text, body: body.text, documentIds: docs.map(d => d.id), delivery: { version: 1, queuedBy: { ...env.actor }, sender: sender as 'onboarding' | 'hr' | 'noreply', linkDocumentIds: docs.filter(document => email?.links.includes(document.templateId)).map(document => document.id), pdfDocumentIds: docs.filter(document => email?.attachments.includes(document.templateId)).map(document => document.id), toNames: [env.userName(target)], ccNames: cc.map(env.userName) }, fileIds: c.files.filter(f => email?.slots.some(s => f.slot === `${email.id}:${s.id}`)).map(f => f.id), status: 'pending', test, at: env.now, deliveredAt: null, failure: null });
     appendLog(c, env, test ? 'email.test.queued' : 'email.queued', `${email?.name ?? subject.text} · ${env.userName(target)}`);
   }
-  return null;
+  return deliveryHold(c.mails.filter(mail => mail.workflowId === workflowId && mail.key.startsWith(key + ':')));
 }
 export function queueEmail(c: Case, config: Config, emailId: string, env: Environment, test = false): void {
   if (c.state !== 'submitted') throw new V9Error('Only an open case can send email.', 'conflict');
@@ -484,9 +503,10 @@ export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: En
 /** Durable delivery acknowledgement is the only operation that marks email-linked documents sent. */
 export function markDelivered(c: Case, id: string, env: Environment): void {
   const mail = c.mails.find(m => m.id === id); if (!mail || mail.status === 'sent') return;
-  if (c.state !== 'submitted' || mail.status === 'cancelled') throw new V9Error('Delivery is no longer eligible.', 'conflict');
+  if (mail.status !== 'sending' && (c.state !== 'submitted' || mail.status !== 'pending')) throw new V9Error('Delivery is no longer eligible.', 'conflict');
   mail.status = 'sent'; mail.deliveredAt = env.now; mail.failure = null;
-  if (!mail.test) for (const doc of c.documents.filter(d => mail.documentIds.includes(d.id))) {
+  // A late acknowledgement records the truth without reopening a closed case.
+  if (!mail.test && c.state === 'submitted') for (const doc of c.documents.filter(d => mail.documentIds.includes(d.id))) {
     if (['draft', 'hrsigned'].includes(doc.status)) { doc.status = 'sent'; doc.sentAt = env.now; }
     linkedTasks(c, doc, 'sent');
   }
@@ -513,7 +533,7 @@ export function lastDayCheck(c: Case, config: Config, env: Environment, figures:
   if (!first) return 'unchanged';
   appendLog(c, env, 'case.reviewRequired', detail);
   const ops = recipients(c, config, 'peopleOps').filter(env.eligibleUser), pbp = resolvePbp(config, c.facts);
-  if (ops.length) c.mails.push({ id: env.nextId(), key: 'last-day-review', workflowId: null, templateId: null, to: [ops[0]], cc: [...new Set([...ops.slice(1), ...(pbp && env.eligibleUser(pbp) ? [pbp] : [])])].filter(id => id !== ops[0]), subject: `${c.facts.name}: last working day reached, case not closed`, body: `${c.facts.name}'s last working day (${c.facts.lastDay}) has been reached.\n\n${detail}\n\nPlease review the case.`, documentIds: [], fileIds: [], status: 'pending', test: false, at: env.now, deliveredAt: null, failure: null });
+  if (ops.length) c.mails.push({ id: env.nextId(), key: 'last-day-review', workflowId: null, templateId: null, to: [ops[0]], cc: [...new Set([...ops.slice(1), ...(pbp && env.eligibleUser(pbp) ? [pbp] : [])])].filter(id => id !== ops[0]), subject: `${c.facts.name}: last working day reached, case not closed`, body: `${c.facts.name}'s last working day (${c.facts.lastDay}) has been reached.\n\n${detail}\n\nPlease review the case.`, documentIds: [], fileIds: [], delivery: { version: 1, queuedBy: { ...env.actor }, sender: 'hr', linkDocumentIds: [], pdfDocumentIds: [], toNames: [env.userName(ops[0])], ccNames: [...new Set([...ops.slice(1), ...(pbp && env.eligibleUser(pbp) ? [pbp] : [])])].filter(id => id !== ops[0]).map(env.userName) }, status: 'pending', test: false, at: env.now, deliveredAt: null, failure: null });
   else appendLog(c, env, 'email.routingFailed', 'No eligible People Ops recipient for the last working day review.');
   return 'flagged';
 }

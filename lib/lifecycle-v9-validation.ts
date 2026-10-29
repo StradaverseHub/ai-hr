@@ -60,6 +60,7 @@ export function parseV9Config(value: unknown) {
     for (const s of wf.steps) if ('template' in s && s.template) sameModule(wf.module, s.template, s.type === 'email' ? 'email' : 'document');
   }
   for (const email of config.emails) {
+    if (email.active && !['onboarding', 'hr', 'noreply'].includes(email.sender)) throw new V9Error('Choose a managed sender profile before activating this email.');
     if (email.active && !email.subject.trim()) throw new V9Error('Add a subject before activating this email.');
     unique(email.slots.map(slot => slot.id), 'email file slot');
     for (const slot of email.slots) if (!slot.label.trim()) throw new V9Error('Give each per-person file a label.');

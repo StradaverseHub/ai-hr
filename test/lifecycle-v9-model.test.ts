@@ -268,3 +268,60 @@ it('finishes sent attachment PDFs and skips reminders using completed email-link
   expect(M.runWorkflow(c, config, reminder, environment, 'submitted')).toMatchObject({ status: 'skipped', reason: 'All documents done.' });
   expect(c.mails).toHaveLength(0);
 });
+
+
+it('freezes link/PDF routing and displayed recipients at queue time and locks released HR fields', () => {
+  const { c, config, environment } = fixture(), form = template(), attachment = template(); attachment.id = 'pdf'; attachment.type = 'Attachment'; config.templates = [form, attachment];
+  config.emails = [{ id: 'email', name: 'Frozen delivery', module: 'off', active: true, sender: 'hr', subject: 'Saved for {employee.name}', body: 'Saved wording', cc: ['supervisor'], links: [form.id], attachments: [attachment.id], slots: [] }];
+  M.queueEmail(c, config, 'email', environment);
+  const mail = c.mails[0], formDocument = c.documents.find(document => document.templateId === form.id)!;
+  expect(mail.delivery).toEqual({ version: 1, queuedBy: environment.actor, sender: 'hr', linkDocumentIds: [formDocument.id], pdfDocumentIds: [c.documents.find(document => document.templateId === attachment.id)!.id], toNames: ['employee'], ccNames: ['manager'] });
+  config.emails[0].sender = 'onboarding'; config.emails[0].attachments = []; config.emails[0].links = []; config.emails[0].body = 'Changed later';
+  expect(mail.delivery!.sender).toBe('hr'); expect(mail.delivery!.pdfDocumentIds).toHaveLength(1); expect(mail.body).toBe('Saved wording');
+  formDocument.fields[0].owner = 'hr'; formDocument.status = 'sent'; const before = structuredClone(formDocument.values);
+  expect(() => M.saveDocument(c, formDocument.id, { answer: 'Changed after release' }, 'hr', environment)).toThrow('Released document fields are frozen');
+  expect(formDocument.values).toEqual(before);
+});
+
+
+it('uses one People Ops destination for email and one group notice with remaining members in CC', () => {
+  const emailCase = fixture(), notifyCase = fixture();
+  emailCase.config.emails = [{ id: 'mail', name: 'People Ops email', module: 'off', active: true, sender: 'hr', subject: 'Notice', body: 'Fictional notice', cc: [], links: [], attachments: [], slots: [] }];
+  const trigger: M.Trigger = { event: 'submitted', days: 0, workdays: false, repeat: false, skipIf: '' };
+  M.runWorkflow(emailCase.c, emailCase.config, workflow({ trigger, steps: [{ id: 'email', type: 'email', template: 'mail', to: 'peopleOps', cc: [] }] }), emailCase.environment, 'submitted');
+  expect(emailCase.c.mails.map(mail => ({ to: mail.to, cc: mail.cc }))).toEqual([{ to: ['hr'], cc: [] }]);
+  M.runWorkflow(notifyCase.c, notifyCase.config, workflow({ trigger, steps: [{ id: 'notify', type: 'notify', subject: 'Group notice', body: 'Fictional notice', to: 'peopleOps', cc: [] }] }), notifyCase.environment, 'submitted');
+  expect(notifyCase.c.mails.map(mail => ({ to: mail.to, cc: mail.cc }))).toEqual([{ to: ['hr'], cc: ['hr2'] }]);
+});
+
+it('holds a production workflow until every original owner delivery is confirmed', () => {
+  const { c, config, environment } = fixture(); environment.requireDeliveryAck = true;
+  c.tasks = [task('First owner', environment.today, 'hr'), task('Second owner', environment.today, 'manager')];
+  const definition = workflow();
+  expect(M.runWorkflow(c, config, definition, environment, 'date')).toMatchObject({ status: 'waiting', cursor: 0, reason: 'Waiting for email delivery confirmation.' });
+  expect(c.mails.map(mail => mail.to)).toEqual([['hr'], ['manager']]);
+  M.markDelivered(c, c.mails[0].id, environment);
+  c.tasks[1].assignee = 'replacement';
+  expect(M.runWorkflow(c, config, definition, environment, 'resume')?.status).toBe('waiting');
+  expect(c.mails).toHaveLength(2);
+  c.mails[1].status = 'uncertain';
+  expect(M.runWorkflow(c, config, definition, environment, 'resume')?.reason).toContain('uncertain');
+  c.mails[1].status = 'sending'; M.markDelivered(c, c.mails[1].id, environment);
+  expect(M.runWorkflow(c, config, definition, environment, 'resume')?.status).toBe('done');
+  expect(c.mails).toHaveLength(2);
+});
+
+it('freezes a queued document and records a late acknowledgement without completing a cancelled case', () => {
+  const { c, config, environment } = fixture();
+  const definition = template(); definition.versions[0].fields[0].owner = 'hr'; config.templates = [definition];
+  const doc = M.generate(c, config, definition.id, environment);
+  config.emails = [{ id: 'queued', name: 'Queued form', module: 'off', active: true, sender: 'hr', subject: 'Review', body: 'Review your form.', cc: [], links: [definition.id], attachments: [], slots: [] }];
+  M.queueEmail(c, config, 'queued', environment);
+  expect(M.documentDeliveryReserved(c, doc.id)).toBe(true);
+  expect(() => M.saveDocument(c, doc.id, { answer: 'Changed after queue' }, 'hr', environment)).toThrow('frozen for email');
+  c.mails[0].status = 'sending'; M.cancel(c, 'Withdrawal', environment);
+  M.markDelivered(c, c.mails[0].id, environment);
+  expect(c.mails[0]).toMatchObject({ status: 'sent', deliveredAt: environment.now });
+  expect(c.state).toBe('cancelled'); expect(doc.status).toBe('draft');
+  const logCount = c.log.length; M.markDelivered(c, c.mails[0].id, environment); expect(c.log).toHaveLength(logCount);
+});
