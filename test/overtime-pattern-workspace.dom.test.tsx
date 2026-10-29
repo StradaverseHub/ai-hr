@@ -103,7 +103,7 @@ describe('guided Overtime Pattern editing',()=>{
   advanced.eligibility={id:'clock',type:'clock',boundary:'end',operator:'between',value:{dayOffset:1,minute:60},upper:{dayOffset:2,minute:90}};
   advanced.rates[0].tiers[0].payment={method:'hourly',multiplier:{id:'multiplier',type:'literal',unit:'scalar',value:'1.5'},rate:{id:'rate',type:'hourlyRate',unit:'moneyPerHour',base:{id:'base_ref',type:'ref',unit:'money',definitionId:'salary_base'},divisorMinutes:{id:'divisor',type:'literal',unit:'minutes',value:'10400'}}};
   item.versions[0].definition=advanced;
-  item.assignments=[{id:'saved_assignment',versionId,validFrom:'2026-11-01',validTo:'2026-12-01',priority:2,target:{type:'individual',employmentIds:[employeeId]}} as typeof item.assignments[number]];
+  item.assignments=[{id:'saved_assignment',versionId,validFrom:'2026-11-01',validTo:'2026-12-01',priority:2,target:{type:'individual',employmentIds:[employeeId]},revision:1,createdAt:new Date('2026-10-29T00:00:00Z'),tenantId:companyId,closeReason:null,createdBy:null,supersededAt:null}];
   wrap(<OvertimeWorkspace detail={item} version={item.versions[0]} setup={{...setup,earningItems:[{id:advanced.rates[0].tiers[0].mapping.earningItemId,label:'Fictional OT earning'}]}}/>);tab('preview');
   const preview=screen.getByRole('tabpanel',{name:/Preview/});
   expect(within(preview).getAllByText('Fictional Company')).toHaveLength(2);
