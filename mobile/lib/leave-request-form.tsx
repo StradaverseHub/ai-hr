@@ -17,7 +17,7 @@ import { t,type MessageKey } from './i18n';
 import { useJourneyDrafts,removeLocalFile,type LeaveDraft,type LocalAttachment } from './journey-drafts';
 import { useSession } from './session';
 import { cardFigure } from './home-cards';
-import { Button,Card,Chip,InfoNote,ListRow,Muted,NoteLine,Row,Screen,Title,fmtDays } from './ui';
+import { Button,Card,Chip,HeaderBack,InfoNote,ListRow,Muted,NoteLine,Row,Screen,Title,fmtDays } from './ui';
 const durationLabels:Record<LeaveCommand['durationType'],MessageKey>={full_day:'fullDay',half_day_am:'halfAM',half_day_pm:'halfPM',hourly:'hourly'};
 const pad=(n:number)=>String(n).padStart(2,'0');
 /** A calendar date or clock time is the device's LOCAL wall value the person picked; it never passes through UTC. */
@@ -202,14 +202,14 @@ export function LeaveRequestForm({options,today,onSubmitted,notices={},cards=[]}
   </View>);
   const bar=<View style={{flexDirection:'row',alignItems:'center',gap:12,paddingHorizontal:16,paddingTop:10,paddingBottom:10,borderTopWidth:1,borderColor:palette.border,backgroundColor:palette.bg}}>
     <View style={{flex:1,gap:2}}>
-      <Text accessibilityLiveRegion="polite" style={{color:palette.text,fontSize:16,fontWeight:'600',fontVariant:['tabular-nums']}}>{shownLive&&shownLive.days!=null?fmtDays(shownLive.days):shownLive?.failed?t('leaveBarNoCount'):t('leaveBarCounting')}</Text>
+      <Text accessibilityLiveRegion="polite" style={{color:palette.text,fontSize:16,fontWeight:'600',fontVariant:['tabular-nums']}}>{!draft.command.leaveTypeId?t('chooseLeaveType'):shownLive&&shownLive.days!=null?fmtDays(shownLive.days):shownLive?.failed?t('leaveBarNoCount'):t('leaveBarCounting')}</Text>
       {card&&!card.takenOnly&&<Muted>{t('leaveBarAvailable',{days:fmtDays(cardFigure(card))})}</Muted>}
     </View>
     <Button title={pending?t('loading'):t('reviewRequest')} disabled={!!pending} onPress={()=>void review()}/>
   </View>;
   const figureOf=(id:string)=>{const c=cards.find(x=>x.leaveTypeId===id);return c?fmtDays(cardFigure(c)):null;};
   if(picking)return frame(<View accessibilityRole="radiogroup" accessibilityLabel={t('leaveType')}>
-    <ListRow label={t('back')} onPress={()=>setPicking(false)}/>
+    <HeaderBack onPress={()=>setPicking(false)}/>
     {options.items.map(o=>{const on=o.id===draft.command.leaveTypeId,figure=figureOf(o.id);
       return <Pressable key={o.id} accessibilityRole="radio" accessibilityLabel={[o.name,figure].filter(Boolean).join(', ')} accessibilityState={{selected:on,disabled:!!disabled}} disabled={!!disabled}
         onPress={()=>{if(!on)switchType(o.id);setPicking(false);}} style={{minHeight:48,paddingVertical:10,borderBottomWidth:1,borderColor:palette.border,gap:2}}>

@@ -109,10 +109,11 @@ export function Button({ title, onPress, kind = 'primary', disabled = false,acce
  * The one back control of a detail screen: a compact "‹" at the top-left, a 44×44 pt target, announced as "Back".
  * Replaces the full-width quiet "Back" button every detail screen used to end with.
  */
-export function HeaderBack() {
+/** `onPress` overrides the stack's back for an in-screen panel (e.g. a list that replaced the form). */
+export function HeaderBack({ onPress }: { onPress?: () => void } = {}) {
   const { palette } = useTenantDesign();
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={t('back')} hitSlop={8} onPress={() => router.back()}
+    <Pressable accessibilityRole="button" accessibilityLabel={t('back')} hitSlop={8} onPress={onPress ?? (() => router.back())}
       style={({ pressed }) => [styles.back, pressed && { opacity: 0.6 }]}>
       <Text style={{ color: palette.accent, fontSize: 30, lineHeight: 32 }}>‹</Text>
     </Pressable>

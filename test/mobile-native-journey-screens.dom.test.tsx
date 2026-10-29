@@ -29,7 +29,7 @@ function fixture(platform:'ios'|'android'='ios'){
   const native={Alert:{alert},View,Text,Pressable,TextInput:(p:any)=><input aria-label={p.accessibilityLabel} disabled={!p.editable} value={p.value} onChange={e=>p.onChangeText(e.target.value)}/>,Image:()=>null,AppState:{currentState:'active'},Platform:{OS:platform}};
   const base={'react-native':native,'./session':{useSession:()=>session},'./auth':{authGeneration:()=>1,assertAuthGeneration:()=>{}},'./design':{DesignText:Text,useTenantDesign:()=>({design:DEFAULT_MOBILE_DESIGN,palette:mobilePalette(DEFAULT_MOBILE_DESIGN,'dark')})},'./errors':errors,'./i18n':{appLocale:()=>'en',t:(s:string,v?:any)=>s==='awayToday'?`${s} ${v.n}/${v.total}`:s},'expo-crypto':{randomUUID:()=>`${String(++sequence).padStart(8,'0')}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`},'expo-router':{useFocusEffect:()=>{},router:{push:vi.fn()}}};
   const provider=load('mobile/lib/journey-drafts.tsx',{...base,'expo-file-system':{File:class{exists=false},Directory:class{exists=false},Paths:{cache:'cache'}}});
-  const ui={Chip:(p:any)=><button disabled={p.disabled} aria-pressed={!!p.selected} onClick={p.onPress}>{p.title}</button>,NoteLine:({text}:any)=><span>{text}</span>,InfoNote:({short,detail}:any)=><span><span>{short}</span><span>{detail}</span></span>,HeaderBack:()=><button aria-label="back">‹</button>,ListRow:({label,value,onPress}:any)=><button aria-label={value?`${label}, ${value}`:label} onClick={onPress}>{label}{value?`: ${value}`:''}</button>,Screen:({children,footer}:any)=><div>{children}{footer}</div>,Title:({children}:any)=><h1>{children}</h1>,Button:(p:any)=><button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,Card:View,Muted:Text,Row:({label,value}:any)=><p>{label}: {value}</p>,LoadState:()=>null,fmtDays:(n:unknown)=>n==null?'—':String(n)};
+  const ui={Chip:(p:any)=><button disabled={p.disabled} aria-pressed={!!p.selected} onClick={p.onPress}>{p.title}</button>,NoteLine:({text}:any)=><span>{text}</span>,InfoNote:({short,detail}:any)=><span><span>{short}</span><span>{detail}</span></span>,HeaderBack:({onPress}:any)=><button aria-label="back" onClick={onPress}>‹</button>,ListRow:({label,value,onPress}:any)=><button aria-label={value?`${label}, ${value}`:label} onClick={onPress}>{label}{value?`: ${value}`:''}</button>,Screen:({children,footer}:any)=><div>{children}{footer}</div>,Title:({children}:any)=><h1>{children}</h1>,Button:(p:any)=><button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,Card:View,Muted:Text,Row:({label,value}:any)=><p>{label}: {value}</p>,LoadState:()=>null,fmtDays:(n:unknown)=>n==null?'—':String(n)};
   const clockState={enabled:true,employmentId:'own',state:{date:'2026-01-01',clockedIn:false,geofencingRequired:false,workedSeconds:0,shift:{code:null,start:null,end:null},attendancePhotoSetting:'not_required',deviceRequired:false,captures:[],legacy:[]}};
   const teamState={enabled:true,today:'2026-01-01',from:'2026-01-01',to:'2026-01-07',scope:'my_team',companies:1,memberCount:2,truncated:false,items:[{employmentId:'a',name:'Approved Away',dates:[{date:'2026-01-01',status:'approved',session:'full_day'}]},{employmentId:'b',name:'Pending Colleague',dates:[{date:'2026-01-01',status:'pending',session:'AM'}]}]};
   let signedState:SignedClockStatus={status:'empty'},restoredClock:any;
@@ -251,6 +251,8 @@ describe('one-screen leave request (declutter round)',()=>{
       expect(f.drafts().leave.command.leaveTypeId).toBe('');
       expect(screen.getByRole('button',{name:'leaveType, chooseLeaveType'})).toBeTruthy();
       await act(async()=>{await vi.advanceTimersByTimeAsync(450);});expect(f.post).not.toHaveBeenCalled();
+      // No type, no preview asked — so the bar must not claim to be counting (it would never resolve).
+      expect(screen.queryByText('leaveBarCounting')).toBeNull();expect(screen.getByText('chooseLeaveType')).toBeTruthy();
       const review=screen.getByText('reviewRequest');expect(review).not.toBeDisabled();
       fireEvent.click(review);expect(screen.getByRole('alert').textContent).toBe('chooseLeaveTypeFirst');
       expect(f.post).not.toHaveBeenCalled();expect(f.drafts().leave.phase).toBe('edit');
@@ -264,8 +266,10 @@ describe('one-screen leave request (declutter round)',()=>{
     fireEvent.click(screen.getByText('dayPartFirstHalf'));
     fireEvent.click(screen.getByRole('button',{name:'leaveType, Annual leave · 10'}));
     expect(screen.getByRole('radio',{name:'Annual leave, 10'})).toBeTruthy();expect(screen.getByRole('radio',{name:'Medical leave, 14'})).toBeTruthy();
-    // While the list is open the request is not cancellable from it by accident.
-    expect(screen.queryByText('cancel')).toBeNull();
+    // While the list is open the request is not cancellable from it by accident; its way out is the header back arrow.
+    expect(screen.queryByText('cancel')).toBeNull();expect(screen.queryByRole('button',{name:'back'})).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'back'}));expect(screen.queryByRole('radio')).toBeNull();expect(f.drafts().leave.command.leaveTypeId).toBe('annual');
+    fireEvent.click(screen.getByRole('button',{name:'leaveType, Annual leave · 10'}));
     fireEvent.click(screen.getByRole('radio',{name:'Medical leave, 14'}));
     expect(screen.queryByRole('radio')).toBeNull();
     expect(f.drafts().leave.command).toMatchObject({leaveTypeId:'medical',durationType:'full_day',startDate:'2026-01-01'});
