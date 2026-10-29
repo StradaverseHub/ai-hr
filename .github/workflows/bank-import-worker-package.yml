@@ -114,6 +114,18 @@ jobs:
           grep -Eq '^Ran 13 tests in [0-9.]+s$' "$RUNNER_TEMP/bank-throughput-evidence/consumer-controls.log"
           grep -Eq '^OK$' "$RUNNER_TEMP/bank-throughput-evidence/consumer-controls.log"
           ! grep -Eiq 'skipped|FAILED|ERROR|FAIL' "$RUNNER_TEMP/bank-throughput-evidence/consumer-controls.log"
+      - name: Exercise all eight bounded resource ownership and recovery control groups
+        working-directory: controller
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout --foreground --signal=TERM --kill-after=5s 60s \
+            python3 -I -B scripts/ci-bank-import-worker-resource-lifecycle-controls.test.py \
+            2>&1 | tee "$RUNNER_TEMP/bank-throughput-evidence/resource-controls.log"
+          grep -Eq '^Ran 8 tests in [0-9.]+s$' "$RUNNER_TEMP/bank-throughput-evidence/resource-controls.log"
+          grep -Eq '^OK$' "$RUNNER_TEMP/bank-throughput-evidence/resource-controls.log"
+          ! grep -Eiq 'skipped|FAILED|ERROR|FAIL' "$RUNNER_TEMP/bank-throughput-evidence/resource-controls.log"
       - name: Independently verify actual packet bytes against clean pinned source and dependencies
         shell: bash
         run: |

@@ -7,7 +7,7 @@ import {join} from 'node:path';
 
 const githubLinux=process.env.GITHUB_ACTIONS==='true'&&process.env.CI==='true'&&process.platform==='linux';
 
-function controls(){
+function controls(script:'scripts/ci-bank-import-worker-throughput-controls.test.py'|'scripts/ci-bank-import-worker-resource-lifecycle-controls.test.py'){
  const directory=mkdtempSync(join(tmpdir(),'bank-throughput-controls-'));
  const stderrPath=join(directory,'stderr');
  const stderrFd=openSync(stderrPath,'wx',0o600);
@@ -20,7 +20,7 @@ function controls(){
   }finally{if(reader!==undefined){try{closeSync(reader);}catch{/* Retain the original child result. */}}}
  };
  try{
-  const stdout=execFileSync('python3',['-I','-B','scripts/ci-bank-import-worker-throughput-controls.test.py'],{cwd:process.cwd(),encoding:'utf8',timeout:60_000,maxBuffer:1024**2,stdio:['ignore','pipe',stderrFd]});
+  const stdout=execFileSync('python3',['-I','-B',script],{cwd:process.cwd(),encoding:'utf8',timeout:60_000,maxBuffer:1024**2,stdio:['ignore','pipe',stderrFd]});
   return {exitCode:0,stdout,...boundedStderr()};
  }catch(error){
   try{const stderr=boundedStderr();if(stderr.text)console.error('Consumer control child stderr (first 64 KiB):\n'+stderr.text);}
@@ -34,15 +34,23 @@ function controls(){
 }
 
 describe.skipIf(!githubLinux)('Bank worker throughput consumer refusal controls on disposable GitHub Linux',()=>{
- let executed=false;
+ let executed=0;
  beforeAll(()=>{expect(githubLinux,'Actual GitHub Linux CI is required').toBe(true);});
- afterAll(()=>{expect(executed,'The real thirteen-group child report must be checked').toBe(true);});
+ afterAll(()=>{expect(executed,'Both real child control reports must be checked').toBe(2);});
  it('executes all thirteen pure refusal, lifecycle, warning, download and evidence groups without skips',()=>{
-  const result=controls();
+  const result=controls('scripts/ci-bank-import-worker-throughput-controls.test.py');
   expect(result.exitCode).toBe(0);expect(result.stdout).toBe('');expect(result.truncated).toBe(false);
   expect(result.text).toMatch(/^Ran 13 tests in [0-9.]+s\s*$/m);
   expect(result.text).toMatch(/^OK\s*$/m);
   expect(result.text).not.toMatch(/\b(?:skipped|FAILED|ERROR|FAIL)\b/i);
-  executed=true;
+  executed++;
+ },70_000);
+ it('executes all eight pure resource ownership and recovery groups without skips',()=>{
+  const result=controls('scripts/ci-bank-import-worker-resource-lifecycle-controls.test.py');
+  expect(result.exitCode).toBe(0);expect(result.stdout).toBe('');expect(result.truncated).toBe(false);
+  expect(result.text).toMatch(/^Ran 8 tests in [0-9.]+s\s*$/m);
+  expect(result.text).toMatch(/^OK\s*$/m);
+  expect(result.text).not.toMatch(/\b(?:skipped|FAILED|ERROR|FAIL)\b/i);
+  executed++;
  },70_000);
 });

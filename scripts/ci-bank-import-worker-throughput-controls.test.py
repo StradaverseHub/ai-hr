@@ -182,10 +182,16 @@ class ConsumerRefusals(unittest.TestCase):
 
     def test_entire_job_budget_and_evidence_reserve(self):
         started=p.parse_time('2026-10-29T00:00:00Z')
-        self.assertEqual(p.remaining_job_seconds('2026-10-29T00:00:00Z',started+600,started+10),9900)
-        self.assertEqual(p.remaining_job_seconds('2026-10-29T00:00:00Z',started+1200,started+10),9300)
-        for now,first in [(started+10000,started+10),(started-1,started),(started+60,float('nan'))]:
-            with self.assertRaises(ValueError): p.remaining_job_seconds('2026-10-29T00:00:00Z',now,first)
+        with patch.dict(os.environ,{'THROUGHPUT_PROOF_MODE':'full-100001'}):
+            self.assertEqual(p.remaining_job_seconds('2026-10-29T00:00:00Z',started+600,started+10),9900)
+            self.assertEqual(p.remaining_job_seconds('2026-10-29T00:00:00Z',started+1200,started+10),9300)
+            for now,first in [(started+10000,started+10),(started-1,started),(started+60,float('nan'))]:
+                with self.assertRaises(ValueError): p.remaining_job_seconds('2026-10-29T00:00:00Z',now,first)
+        with patch.dict(os.environ,{'THROUGHPUT_PROOF_MODE':'preflight-401'}):
+            self.assertEqual(p.remaining_job_seconds('2026-10-29T00:00:00Z',started,started),900)
+            self.assertEqual(p.remaining_job_seconds('2026-10-29T00:00:00Z',started+600,started+10),300)
+            self.assertEqual(p.remaining_job_seconds('2026-10-29T00:00:00Z',started+840,started+10),60)
+            with self.assertRaises(ValueError): p.remaining_job_seconds('2026-10-29T00:00:00Z',started+841,started+10)
 
     def test_authenticated_first_attempt_closed_identity(self):
         pins={'producer':'a'*40,'source':'b'*40,'run':101,'job':202,'artifact':303,'digest':'c'*64}
