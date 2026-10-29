@@ -42,7 +42,7 @@ describe('app.assistant_action_kind',()=>{
   // No closed membership list survives on either table (per-kind column rules use CASE and stay).
   const lists=await owner.db.execute(sql`select conname from pg_constraint where contype='c'
    and conrelid in ('app.assistant_own_leave_review'::regclass,'public.ai_native_outcome_association'::regclass)
-   and (pg_get_constraintdef(oid) like 'CHECK ((action_kind = ANY (ARRAY[%' or pg_get_constraintdef(oid) like 'CHECK ((action = ANY (ARRAY[%'))`);
+   and (pg_get_constraintdef(oid) like 'CHECK ((action_kind = ANY (ARRAY[%' or pg_get_constraintdef(oid) like 'CHECK ((action = ANY (ARRAY[%')`);
   expect([...lists]).toEqual([]);
  });
 
@@ -72,7 +72,7 @@ describe('app.assistant_action_kind',()=>{
    await tx.execute(sql`insert into public.domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) values(${event}::uuid,${base.tenantId}::uuid,'fictional-wp7',${randomUUID()}::uuid,'fictional-wp7.created','user',${base.adminUserId}::uuid,'{}'::jsonb)`);
    await tx.execute(sql`insert into app.assistant_own_leave_review(id,action_kind,tenant_id,user_id,state,pay_component_id,pay_component_created_event_id,created_at,expires_at)
     values(${randomUUID()}::uuid,'typed_pay_components.create',${base.tenantId}::uuid,${base.adminUserId}::uuid,'completed',${randomUUID()}::uuid,${event}::uuid,now(),now()+interval '10 minutes')`);
-   await refused(()=>tx.transaction(nested=>nested.execute(sql`delete from app.assistant_action_kind where id='typed_pay_components.create'`)),'23001');
+   await refused(()=>tx.transaction(nested=>nested.execute(sql`delete from app.assistant_action_kind where id='typed_pay_components.create'`)),'23503');
    throw Error(ROLLBACK);
   })).rejects.toThrow(ROLLBACK);
  });
