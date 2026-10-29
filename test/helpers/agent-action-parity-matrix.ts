@@ -38,7 +38,7 @@ export type ParityOutcome='allow'|'deny';
 export const ALWAYS_REFUSED:readonly ParityRole[]=['another_company','another_tenant'];
 
 export type ParityDeclaration=
- | Readonly<{kind:'probed';screen:Readonly<Record<ParityRole,ParityOutcome>>;narrowed?:Readonly<Partial<Record<ParityRole,string>>>}>
+ | Readonly<{kind:'probed';scope?:'caller_tenant'|'caller_login';screen:Readonly<Record<ParityRole,ParityOutcome>>;narrowed?:Readonly<Partial<Record<ParityRole,string>>>}>
  /** No agent prepare or confirm exists (registry store human_workflow_only): the agent can only hand off. */
  | Readonly<{kind:'human_workflow_only';reason:string}>
  /** Predates WP8; must be in PARITY_PENDING_CEILING. Never valid for a new entry. */
@@ -58,6 +58,7 @@ const HR_ON_EMPLOYMENT={employee:D,manager:D,assigned_approver:D,company_hr:A,gr
 /** The subject's own pending request on their own screen: the native creator-only rule. */
 const OWN_REQUEST={employee:A,manager:D,assigned_approver:D,company_hr:D,group_hr:D,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
 
+const CALLER_TENANT_ADMIN={...HR_ON_EMPLOYMENT,another_company:A,another_tenant:A} as const;
 const pending=(reason:string)=>({kind:'pending',reason}) as const;
 const NO_ADAPTER='No parity adapter yet: per-entry subject fixture and screen probe still to be written (WP8 follow-up).';
 
@@ -67,21 +68,21 @@ export const AGENT_ACTION_PARITY={
  'approvals.toil.chase':{kind:'human_workflow_only',reason:'Automatic template-only notification; no human prepare/confirm store. Principal, scope, recipients and caps are covered by automatic-chasers.test.ts.'},
  'employees.review_overdue.remind':{kind:'human_workflow_only',reason:'Automatic template-only notification; no human prepare/confirm store. Principal, scope, recipients and caps are covered by automatic-chasers.test.ts.'},
  'employees.import':{kind:'human_workflow_only',reason:'No agent prepare or confirm: the Assistant only hands off to the native import page, which keeps its own admission.'},
- 'org.reporting.change':pending(NO_ADAPTER+' Dedicated store (WP9 collapses it).'),
- 'leave.apply':pending(NO_ADAPTER+' Own-leave store.'),
+ 'org.reporting.change':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'leave.apply':{kind:'probed',screen:OWN_REQUEST},
  'leave.cancel':{kind:'probed',screen:OWN_REQUEST},
  'leave.edit':{kind:'probed',screen:OWN_REQUEST},
- 'ess.profile.request':pending(NO_ADAPTER+' Module-action store.'),
+ 'ess.profile.request':{kind:'probed',screen:OWN_REQUEST},
  'approvals.leave.decide':pending(NO_ADAPTER+' Dedicated leave-decision store (multi-step leave approval routing).'),
  'approvals.claim.decide':{kind:'probed',screen:ASSIGNED_DECISION},
  'approvals.attendance.decide':{kind:'probed',screen:ASSIGNED_DECISION},
  'approvals.toil.decide':{kind:'probed',screen:ASSIGNED_DECISION},
- 'knowledge_base.article.create':pending(NO_ADAPTER+' Dedicated store.'),
+ 'knowledge_base.article.create':{kind:'probed',scope:'caller_tenant',screen:CALLER_TENANT_ADMIN},
  'payroll.close':pending(NO_ADAPTER+' Dedicated store; needs a processed payroll batch fixture.'),
- 'attendance.correction.request':pending(NO_ADAPTER+' Dedicated store.'),
+ 'attendance.correction.request':{kind:'probed',screen:OWN_REQUEST},
  'attendance.overtime.request':{kind:'probed',screen:OWN_REQUEST},
- 'claims.draft.save':pending(NO_ADAPTER+' Module-action store.'),
- 'claims.submit':pending(NO_ADAPTER+' Module-action store.'),
+ 'claims.draft.save':{kind:'probed',screen:OWN_REQUEST},
+ 'claims.submit':{kind:'probed',screen:OWN_REQUEST},
  /** Observed on CI (run 40921791116): there is NO native HR screen for cancelling another person's claim —
   * /claims lists only the caller's own claims. HR "allow" exists only because cancelClaimAction accepts any
   * claim id when no employmentId is posted (app/claims/actions.ts :129-136) and cancelClaimTx then admits any
@@ -96,7 +97,7 @@ export const AGENT_ACTION_PARITY={
  'lifecycle.acknowledgement.submit':pending(NO_ADAPTER+' Dedicated store; needs a lifecycle case fixture.'),
  'toil.replacement.request':{kind:'probed',screen:OWN_REQUEST},
  'multi_cycle_payroll.create_run':pending(NO_ADAPTER+' Dedicated store; multi-cycle payroll flag.'),
- 'typed_pay_components.create':pending(NO_ADAPTER+' Dedicated store; typed pay components flag.'),
+ 'typed_pay_components.create':{kind:'probed',scope:'caller_tenant',screen:CALLER_TENANT_ADMIN},
  'country-my.statutory.update':pending(NO_ADAPTER+' Dedicated store; country pack dispatch.'),
  'notifications.email_preferences.save':pending(NO_ADAPTER+' Module-action store.'),
  'system_testing.execution.save':pending(NO_ADAPTER+' Module-action store; needs an assigned test execution.'),
@@ -117,11 +118,11 @@ export const PARITY_PENDING_ORIGINAL:readonly string[]=Object.freeze([
 /** The entries that existed before this harness and had no adapter when it landed. This list may only
  * shrink: an entry leaves it when its adapter lands, and no other id may ever be `pending`. */
 export const PARITY_PENDING_CEILING:ReadonlySet<string>=new Set([
- 'org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide',
- 'knowledge_base.article.create','payroll.close','attendance.correction.request',
- 'claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge',
+ 'approvals.leave.decide',
+ 'payroll.close',
+ 'performance.review.acknowledge','performance.onehr.plan.acknowledge',
  'rewards.post','lifecycle.acknowledgement.submit','multi_cycle_payroll.create_run',
- 'typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save',
+ 'country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save',
 ]);
 
 export type ParityRegistryEntry={id:string;store:string};
@@ -141,7 +142,7 @@ export function parityCoverageProblems(registry:readonly ParityRegistryEntry[],d
   if(d.kind==='human_workflow_only'){if(!d.reason.trim())problems.push(`${entry.id}: human_workflow_only without a reason`);continue;}
   for(const role of PARITY_ROLES)if(d.screen[role]!=='allow'&&d.screen[role]!=='deny')problems.push(`${entry.id}: no screen outcome for ${role}`);
   for(const role of Object.keys(d.screen))if(!(PARITY_ROLES as readonly string[]).includes(role))problems.push(`${entry.id}: unknown role ${role}`);
-  for(const role of ALWAYS_REFUSED)if(d.screen[role]!=='deny')problems.push(`${entry.id}: ${role} must be refused`);
+  for(const role of ALWAYS_REFUSED)if(!d.scope&&d.screen[role]!=='deny')problems.push(`${entry.id}: ${role} must be refused`);
   const narrowed=d.narrowed??{};
   for(const [role,reason] of Object.entries(narrowed)){
    if(!(PARITY_ROLES as readonly string[]).includes(role)){problems.push(`${entry.id}: narrowed unknown role ${role}`);continue;}

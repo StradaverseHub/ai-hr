@@ -19,7 +19,7 @@
  * the cross-company and cross-tenant sessions act in their OWN company or tenant.
  * Real migrated database and real services; fictional fixtures only. */
 import {randomUUID} from 'node:crypto';
-import {eq} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as schema from '../db/schema';
@@ -52,6 +52,24 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {AGENT_ACTION_PARITY,ATTENDANCE_WORKFLOW_PARITY,ALWAYS_REFUSED,PARITY_PHASES,PARITY_ROLES,PROBED_ACTION_IDS,expectedAgentOutcome,type ParityPhase,type ParityOutcome,type ParityRole,type ProbedActionId} from './helpers/agent-action-parity-matrix';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
+
+vi.mock('server-only',()=>({}));
+vi.mock('../lib/real-auth',()=>({appOrigin:()=>undefined}));
+vi.mock('../core/assistant-actions/own-leave-server',()=>({authenticateOwnLeaveBrowserSession:vi.fn(()=>{throw Error('No HTTP authentication in DB parity fixtures');})}));
+import {prepareOwnLeaveReviewTx,confirmOwnLeaveReview} from '../core/assistant-actions/own-leave-store';
+import {readOwnLeaveCandidateTx} from '../core/assistant-actions/own-leave-candidate';
+import {prepareProfileModuleActionReview,confirmProfileModuleActionReview,prepareClaimModuleActionReview,confirmClaimModuleActionReview,prepareClaimSubmissionModuleActionReview,confirmClaimSubmissionModuleActionReview} from '../core/assistant-actions/module-action-review-store';
+import {readProfileModuleActionChoices,readClaimModuleActionChoices,readAttendanceCorrectionModuleActionChoices,readKnowledgeModuleActionAvailability,readPayComponentModuleActionChoices,readOrgModuleActionChoices} from '../core/assistant-actions/module-action-server';
+import {prepareAttendanceCorrectionReview,confirmAttendanceCorrectionReview} from '../core/assistant-actions/attendance-correction-review-store';
+import {prepareKnowledgeArticleReview,confirmKnowledgeArticleReview} from '../core/assistant-actions/knowledge-article-review-store';
+import {preparePayComponentReview,confirmPayComponentReview} from '../core/assistant-actions/pay-component-review-store';
+import {prepareOrgActionReview,confirmOrgActionReview} from '../core/assistant-actions/org-action-review-store';
+import {createArticleTx} from '../core/knowledge-base';
+import {createPayComponentTx} from '../packs/payroll/service';
+import {saveProfileEditPolicy} from '../core/profile-edit-policy';
+import {readOwnProfileWorkspace,submitOwnProfileEdit} from '../core/profile-edit';
+import {saveClaimDraft,submitDraftClaims} from '../packs/claims/service';
+
 type Person={employmentId:string;personId:string};
 type DbRole=(typeof schema.roleEnum.enumValues)[number];
 type Decision='approved'|'rejected';
@@ -61,7 +79,7 @@ type Options={decision:Decision;workflow:boolean};
 const DEFAULT_OPTIONS:Options={decision:'approved',workflow:false};
 /** Who the item belongs to: the default fictional subject, or a positive-control subject in another company or tenant. */
 type Home={person:Person;base:Base;companyId:string;departmentId:string;name:string;session():Promise<SessionContext>};
-type Item={subjectId:string;employmentId:string;leaveTypeId:string;name:string;transferTo:string;date?:string;dates?:string[]};
+type Item={subjectId:string;employmentId:string;leaveTypeId:string;name:string;transferTo:string;date?:string;dates?:string[];managerId?:string;claimTypeId?:string;proposal?:unknown;code?:string};
 type Review={actionId:string;reviewedDigest:string};
 /** The store surface the harness uses; each concrete store is structurally assignable to it. */
 type Store={
@@ -93,7 +111,7 @@ type Adapter={
  screen(tx:Tx,who:SessionContext,item:Item,actorEmploymentId:string|null,o:Options):Promise<unknown>;
 };
 
-const MODULES=['assistant','claims','attendance','toil'];
+const MODULES=['assistant','claims','attendance','toil','org','ess','knowledge_base','payroll','typed_pay_components'];
 const SUBJECT_NAME='Fictional Parity Subject';
 /** HR calendar days from the repository's HR date owner. */
 function calendarDate(offset:number){const value=new Date(todayInKualaLumpur()+'T12:00:00Z');value.setUTCDate(value.getUTCDate()+offset);return value.toISOString().slice(0,10);}
@@ -169,7 +187,38 @@ async function pendingLeave(_w:World,h:Home):Promise<Item>{
 }
 const REJECT_REASON='Fictional explicit rejection reason';
 
+const packetStore=(action:string,prepare:Store['prepare'],confirm:(ctx:SessionContext,input:unknown)=>Promise<{kind:string}>):Store=>({prepare,confirm:(ctx,p)=>confirm(ctx,{action,contractVersion:1,...p})});
+const preferredField='profile.personal_details.preferredname';
+const leaveNomination=(item:Item)=>({action:'leave.apply',contractVersion:1,employmentId:item.employmentId,leaveTypeId:item.leaveTypeId,date:item.date,durationType:'full_day'});
+const payInput=(item:Item)=>({code:item.code!,name:'Fictional human pay code',label:'Human label',description:'Fictional catalogue declaration',kind:'allowance' as const,includedInEpf:false,includedInSocsoEis:false,includedInPcb:false,includedInHrdfBase:false,isNonPayable:false,prorates:false,eaFormLine:null,roundingMethod:'none' as const,rule:null,epfBonus2012:false,pcbRemunerationType:null,pcbExemptionCode:null,displayCategory:'allowance' as const,orpOvertime:false,orpUnpaidLeave:false});
 const ADAPTERS:Record<ProbedActionId,Adapter>={
+ 'leave.apply':{family:'own',screenAdmits:ownEmploymentScreen,
+  store:{prepare:async(who,input)=>{const h=input as ReturnType<typeof leaveNomination>;const r=await withTenant(who,tx=>prepareOwnLeaveReviewTx(tx,who,h,{employmentId:h.employmentId,leaveTypeId:h.leaveTypeId},{reason:'Fictional parity leave reason',employeeRemark:''},'en'));if(r.kind!=='prepared')throw Error('No native leave candidate');return r;},confirm:(who,p)=>confirmOwnLeaveReview(who,{contractVersion:1,...p},'en')},
+  async create(_w,h){await owner.db.insert(schema.leaveLedger).values({tenantId:h.base.tenantId,employmentId:h.person.employmentId,leaveTypeId:h.base.annualLeaveTypeId,entryType:'accrual',days:'10',effectiveOn:todayInKualaLumpur()});return itemOf(h,h.person.employmentId,{date:weekdays(1)[0]});},human:leaveNomination,
+  offered:async(who,item)=>(await withTenant(who,tx=>readOwnLeaveCandidateTx(tx,who,leaveNomination(item),{employmentId:item.employmentId,leaveTypeId:item.leaveTypeId},{reason:'Fictional parity leave reason',employeeRemark:''},'en'))).kind==='candidate',
+  screen:(tx,who,item)=>requestLeave(who,{employmentId:item.employmentId,leaveTypeId:item.leaveTypeId,startDate:item.date!,endDate:item.date!,durationType:'full_day',reason:'Fictional parity leave reason'},tx)},
+ 'ess.profile.request':{family:'own',screenAdmits:ownEmploymentScreen,store:packetStore('ess.profile.request',prepareProfileModuleActionReview,confirmProfileModuleActionReview),
+  async create(_w,h){await saveProfileEditPolicy(groupOf(h.base),{keys:[preferredField],withdrawnReason:'Fictional parity policy'});const workspace=await readOwnProfileWorkspace(await h.session(),{employmentId:h.person.employmentId});return itemOf(h,h.person.employmentId,{proposal:{v:2,fields:[{fieldId:preferredField,before:workspace.baselines[preferredField],value:'Fictional preferred name'}],registers:[]}});},
+  human:item=>({action:'ess.profile.request',contractVersion:1,employmentId:item.employmentId,proposal:item.proposal}),offered:async(who,item)=>listed(await readProfileModuleActionChoices(who),'employments','employmentId',item.employmentId),
+  screen:(tx,who,item)=>submitOwnProfileEdit(who,{employmentId:item.employmentId,proposal:item.proposal},tx)},
+ 'attendance.correction.request':{family:'own',screenAdmits:ownEmploymentScreen,store:packetStore('attendance.correction.request',prepareAttendanceCorrectionReview,confirmAttendanceCorrectionReview),
+  create:async(_w,h)=>itemOf(h,h.person.employmentId,{date:calendarDate(7)}),human:item=>({action:'attendance.correction.request',contractVersion:1,intent:{version:1,employmentId:item.employmentId,date:item.date,reason:'Fictional planned correction',requestedOtMinutes:60,plannedStartTime:'18:00',plannedEndTime:'19:00',requestKind:'self_overtime'}}),
+  offered:async(who,item)=>listed(await readAttendanceCorrectionModuleActionChoices(who),'employments','employmentId',item.employmentId),screen:(tx,who,item)=>requestAttendanceCorrectionTx(tx,who,{employmentId:item.employmentId,date:item.date!,reason:'Fictional planned correction',requestedOtMinutes:60,plannedStartTime:'18:00',plannedEndTime:'19:00',requestKind:'self_overtime'})},
+ 'claims.draft.save':{family:'own',screenAdmits:ownEmploymentScreen,store:packetStore('claims.draft.save',prepareClaimModuleActionReview,confirmClaimModuleActionReview),
+  async create(w,h){const pending=await pendingClaim(w,h);return {...itemOf(h,h.person.employmentId),claimTypeId:w.claimTypes.get(h.base.tenantId)!};},
+  human:item=>({action:'claims.draft.save',contractVersion:1,employmentId:item.employmentId,draftId:null,claimTypeId:item.claimTypeId,claimItemId:null,enteredAmount:42.5,quantityKm:null,incurredOn:todayInKualaLumpur(),description:'Fictional draft receipt',fieldValues:null,retainedAttachmentIds:[]}),
+  offered:async(who,item)=>listed(await readClaimModuleActionChoices(who),'employments','employmentId',item.employmentId),screen:(tx,who,item)=>saveClaimDraft(who,{employmentId:item.employmentId,claimTypeId:item.claimTypeId!,amount:42.5,incurredOn:todayInKualaLumpur(),description:'Fictional draft receipt'},null,tx)},
+ 'claims.submit':{family:'own',screenAdmits:ownEmploymentScreen,store:packetStore('claims.submit',prepareClaimSubmissionModuleActionReview,confirmClaimSubmissionModuleActionReview),
+  async create(w,h){await pendingClaim(w,h);const claimTypeId=w.claimTypes.get(h.base.tenantId)!;const draft=await saveClaimDraft(await h.session(),{employmentId:h.person.employmentId,claimTypeId,amount:42.5,incurredOn:todayInKualaLumpur(),description:'Fictional draft submission'});return itemOf(h,draft.id,{claimTypeId});},
+  human:item=>({action:'claims.submit',contractVersion:1,employmentId:item.employmentId,draftId:item.subjectId,receiptIds:[],submitForApproval:true}),offered:async(who,item)=>listed(await readClaimModuleActionChoices(who),'drafts','id',item.subjectId),screen:(tx,who,item)=>submitDraftClaims(who,{ids:[item.subjectId],employmentId:item.employmentId},tx)},
+ 'knowledge_base.article.create':{family:'hr_on_employment',screenAdmits:isAdmin,store:packetStore('knowledge_base.article.create',prepareKnowledgeArticleReview,confirmKnowledgeArticleReview),create:async(_w,h)=>itemOf(h,h.person.employmentId),
+  human:()=>({action:'knowledge_base.article.create',contractVersion:1,title:'Fictional human publication',body:'Fictional human article body',category:'Training',audience:'employee'}),offered:async who=>(await readKnowledgeModuleActionAvailability(who)).kind==='available',screen:(tx,who)=>createArticleTx(tx,who,{title:'Fictional human publication',body:'Fictional human article body',category:'Training',audience:'employee'})},
+ 'typed_pay_components.create':{family:'hr_on_employment',screenAdmits:isAdmin,store:packetStore('typed_pay_components.create',preparePayComponentReview,confirmPayComponentReview),create:async(_w,h)=>itemOf(h,h.person.employmentId,{code:'FIC_'+randomUUID().slice(0,8).toUpperCase()}),
+  human:item=>({action:'typed_pay_components.create',contractVersion:1,input:payInput(item),confirmCatalogCreate:true}),offered:async who=>(await readPayComponentModuleActionChoices(who)).kind==='choices',screen:(tx,who,item)=>createPayComponentTx(tx,who,payInput(item))},
+ 'org.reporting.change':{family:'hr_on_employment',screenAdmits:isAdmin,store:packetStore('org.reporting.change',prepareOrgActionReview,confirmOrgActionReview),create:async(w,h)=>itemOf(h,h.person.employmentId,{managerId:w.people.group_hr.employmentId}),
+  human:item=>({action:'org.reporting.change',contractVersion:1,subordinateEmploymentId:item.employmentId,managerEmploymentId:item.managerId,lineType:'functional',validFrom:todayInKualaLumpur(),confirmReportingChange:true}),
+  offered:async(who,item)=>{const result=await readOrgModuleActionChoices(who,{role:'subordinate',query:item.name});return result.items.some(row=>row.employmentId===item.employmentId);},screen:(tx,who,item)=>setReportingLine(who,{subordinateEmploymentId:item.employmentId,managerEmploymentId:item.managerId!,lineType:'functional',validFrom:todayInKualaLumpur()},tx)},
+
  'approvals.claim.decide':{family:'assigned_decision',store:claimDecisionReviews,
   create:pendingClaim,
   // The claim decision contract carries no note; the approvals screen requires a reason to reject.
@@ -274,27 +323,28 @@ async function observe(id:ProbedActionId,role:ParityRole,o:Options=DEFAULT_OPTIO
  let offer:ParityOutcome='deny';
  try{offer=await adapter.offered(who,item)?'allow':'deny';}catch(error){notes.offer=why(error);}
  const own=await tryPrepare(adapter,who,item,o,notes),prepare:ParityOutcome=own?'allow':'deny';
+ // Probe another login BEFORE any effect changes the shared source. A permitted actor must not be
+ // able to adopt another permitted actor's review, including another login linked to the same person.
+ const reference=PARITY_ROLES.find(r=>r!==role&&expectedAgentOutcome(declared,r)==='allow');
+ let referenceActor:SessionContext;
+ if(reference){referenceActor=await w.as(reference);notes.crossUserReference=reference;}
+ else if(own){referenceActor=(await w.login(w.b,w.subject,'employee',null)).ctx;notes.crossUserReference='same_person_new_login';}
+ else throw Error(`${id}: no permitted reference actor for custody refusal`);
+ const theirs=await tryPrepare(adapter,referenceActor,item,o,notes,'reference');
+ if(!theirs)throw Error(`${id}: reference preparation failed, so cross-user confirmation proves nothing: ${notes.reference}`);
+ const crossUserConfirm=await tryConfirm(adapter,who,theirs,notes,'crossUserConfirm');
  const confirm:ParityOutcome=own?await tryConfirm(adapter,who,own,notes,'confirm'):'deny';
- let crossUserConfirm:ParityOutcome|'n/a'='n/a';
- if(!own){
-  // Any role the agent permits for the default (approved) matrix; the reference review MUST exist.
-  const reference=PARITY_ROLES.find(r=>r!==role&&expectedAgentOutcome(declared,r)==='allow');
-  if(!reference)throw Error(`${id}: no permitted reference role for the cross-user confirm of ${role}`);
-  const theirs=await tryPrepare(adapter,await w.as(reference),item,o,notes,'reference');
-  if(!theirs)throw Error(`${id}: reference role ${reference} could not prepare, so the cross-user confirm of ${role} proves nothing: ${notes.reference}`);
-  notes.crossUserReference=reference;crossUserConfirm=await tryConfirm(adapter,who,theirs,notes,'crossUserConfirm');
- }
  return {observed:{screen,offer,prepare,confirm,crossUserConfirm},notes};
 }
 /** The parity invariants every probe must satisfy, whatever is declared: never wider than the screen,
  * never a cross-user confirmation, and cross-company/tenant refused everywhere. */
-function assertInvariants(id:string,role:ParityRole,observed:Observed,notes:Record<string,string>,narrowed:boolean|Readonly<Partial<Record<ParityPhase,string>>>){
+function assertInvariants(id:string,role:ParityRole,observed:Observed,notes:Record<string,string>,narrowed:boolean|Readonly<Partial<Record<ParityPhase,string>>>,scope?:'caller_tenant'|'caller_login'){
  const context=`${id} as ${role}: ${JSON.stringify({observed,notes})}`;
  for(const phase of PARITY_PHASES)if(observed.screen==='deny')expect(observed[phase],`${context} — the agent ${phase} is wider than the screen`).toBe('deny');
  for(const phase of PARITY_PHASES)expect(observed[phase],`${context} — agent ${phase} differs from the screen`).toBe((typeof narrowed==='boolean'?narrowed:!!narrowed[phase])?'deny':observed.screen);
  expect(observed.crossUserConfirm,`${context} — confirmed another user's review`).not.toBe('allow');
  if(observed.prepare==='deny')expect(observed.crossUserConfirm,`${context} — a refused role must be probed for cross-user confirmation`).toBe('deny');
- if(ALWAYS_REFUSED.includes(role))expect({screen:observed.screen,offer:observed.offer,prepare:observed.prepare,confirm:observed.confirm},`${context} — cross-company/tenant must be refused everywhere`).toEqual({screen:'deny',offer:'deny',prepare:'deny',confirm:'deny'});
+ if(!scope&&ALWAYS_REFUSED.includes(role))expect({screen:observed.screen,offer:observed.offer,prepare:observed.prepare,confirm:observed.confirm},`${context} — cross-company/tenant must be refused everywhere`).toEqual({screen:'deny',offer:'deny',prepare:'deny',confirm:'deny'});
  return context;
 }
 
@@ -314,7 +364,7 @@ describe.each([...PROBED_ACTION_IDS])('ADR-0151 parity: %s',id=>{
  it.each([...PARITY_ROLES])('%s gets the screen\'s allow/deny on offer, prepare and own confirm, and no cross-user confirm',async role=>{
   const declared=AGENT_ACTION_PARITY[id],{observed,notes}=await observe(id,role);
   console.info(`[parity] ${id} ${role} ${JSON.stringify(observed)} ${JSON.stringify(notes)}`);
-  const context=assertInvariants(id,role,observed,notes,expectedAgentOutcome(declared,role)==='deny'&&declared.screen[role]==='allow');
+  const context=assertInvariants(id,role,observed,notes,expectedAgentOutcome(declared,role)==='deny'&&declared.screen[role]==='allow','scope' in declared?declared.scope:undefined);
   // The owning screen behaves as declared (independent expected value).
   expect(observed.screen,`${context} — screen differs from the declared matrix`).toBe(declared.screen[role]);
  },180_000);
