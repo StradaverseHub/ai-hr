@@ -70,6 +70,7 @@ describe('same physical non-own assigned Leave decision custody',()=>{
 
  it.each(['approved','rejected'] as const)('uses the narrow assigned-subject projection for a delegated %s review without Personnel or ledger inheritance',async decision=>{
   const manager=await hire('Fictional request manager'),stand=await hire('Fictional stand-in'),report=await hire('Fictional stand-in report');
+  for(const person of [manager,stand,report])await owner.db.update(s.employment).set({departmentId:b.deptB}).where(eq(s.employment.id,person.employmentId));
   for(const [sub,mgr] of [[subject,manager],[report,stand]])await setReportingLine(group(),{subordinateEmploymentId:sub.employmentId,managerEmploymentId:mgr.employmentId,lineType:'administrative',validFrom:'2020-01-01'});
   await setReportingLine(group(),{subordinateEmploymentId:manager.employmentId,managerEmploymentId:stand.employmentId,lineType:'delegate',validFrom:'2020-01-01'});
   const userId=await createAppUser(b.tenantId,stand.personId,'manager');await grantAssistant(group(),{appUserId:userId});const who:SessionContext={...await entitledCtx(b,['manager']),userId,personId:stand.personId,grants:[{role:'manager',companyId:null}]};
