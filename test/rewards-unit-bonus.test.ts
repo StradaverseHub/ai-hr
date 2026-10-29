@@ -1,3 +1,4 @@
+import {establishRewardMembership} from './rewards-shared-policy-fixture';
 import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -55,7 +56,7 @@ describe('Rewards unit bonus inputs (fictional fixtures)', () => {
     actors.gr = admin;
     await setRewardMember(admin, unitId, (await view()).unit.revision, admin.userId!, 'payroll');
     const v = await view();
-    await configureRewardFixture(admin, unitId, v.unit.revision, { ...v.unit.policy, effectiveFrom: today, patActual: 100, patTarget: 100, ranges: { '12': [300000, 500000, 700000] } });
+    await configureRewardFixture(admin, unitId, v.unit.revision, { ...v.unit.policy, effectiveFrom: today, patActual: 100, patTarget: 100, targetMonthsBp: 20000, ranges: { '12': [300000, 500000, 700000] } });
     const v2 = await view();
     await saveRewardEntry(admin, unitId, v2.unit.revision, v2.rows[0].id, v2.rows[0].recommendation, { ...emptyFacts(), reviewed: true, talent: 'SCORE', performance: 'ME' });
     await refreshRewardFixtureBudget(admin,unitId);
@@ -103,6 +104,7 @@ describe('Rewards unit bonus inputs (fictional fixtures)', () => {
     });
     it('saving a multiplier and a lump sum changes only that review, never another unit of the same scope', async () => {
       const [other] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code: 'SS', name: 'Southern Sales' }).returning();
+      await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:other.id,departmentId:b.deptA,year});
       const otherId = await createRewardUnit(admin, { name: 'Annual rewards', year, companyId: b.companyId, businessUnitId: other.id, snapshotDate: today });
       const [beforeOther] = await owner.db.select().from(schema.rewardUnit).where(eq(schema.rewardUnit.id, otherId));
       const v = await view();
@@ -171,7 +173,7 @@ describe('Rewards unit bonus inputs (fictional fixtures)', () => {
       await expect(previewRewardMultiplier(actors.bu!, unitId, v.unit.revision, 12000)).rejects.toThrow(/Only Group Rewards/);
       const preview = await previewRewardMultiplier(admin, unitId, v.unit.revision, 12000);
       await expect(saveRewardMultiplier(actors.bg!, unitId, v.unit.revision, 12000, 'Fictional unit-only override', preview.digest)).rejects.toThrow(/Only Group Rewards/);
-      await saveRewardPolicy(admin, unitId, v.unit.revision, { ...v.unit.policy, bonusStructure: 'branch' });
+      await saveRewardPolicy(admin, unitId, v.unit.revision, { ...v.unit.policy, bonusStructure: 'branch',branchFactors:{Fictional:[0,5000,10000,15000,20000]} });
       await expect(previewRewardMultiplier(admin, unitId, v.unit.revision + 1, 12000)).rejects.toThrow(/branch factors/);
       const branch = await view();
       await saveRewardPolicy(admin, unitId, branch.unit.revision, { ...branch.unit.policy, bonusStructure: 'standard' });
