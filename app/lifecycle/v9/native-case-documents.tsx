@@ -28,7 +28,7 @@ export function NativeCaseDocuments({ initial, config, actor, writableKeys, user
         if (!result.ok) { setError(result.error); resolve(result); return; }
         const refreshed = await readV9Case(c.id);
         if (!refreshed.ok) { setError(refreshed.error); resolve(refreshed); return; }
-        setCase(refreshed.detail.case); setNotice(value.type === 'emailSend' || value.type === 'emailTest' ? 'Email queued for delivery.' : 'Changes saved.'); router.refresh(); resolve({ ok: true });
+        setCase(refreshed.detail.case); if(value.type==='documentSign')select(null); setNotice(value.type === 'emailSend' || value.type === 'emailTest' ? 'Email queued for delivery.' : 'Changes saved.'); router.refresh(); resolve({ ok: true });
       } catch { const result = { ok: false, error: 'The change could not be saved. Refresh and try again.' }; setError(result.error); resolve(result); }
     }));
   }

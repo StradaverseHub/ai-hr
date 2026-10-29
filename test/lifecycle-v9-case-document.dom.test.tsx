@@ -39,3 +39,10 @@ it('offers the company permitted list for an unsigned instance without changing 
   expect(screen.queryByRole('option',{name:'Other company HR'})).not.toBeInTheDocument();fireEvent.change(screen.getByRole('combobox',{name:'HR signatory for this document'}),{target:{value:'alternate'}});expect(command).toHaveBeenCalledExactlyOnceWith({type:'documentSignatory',id:doc.id,userId:'alternate'});expect(config.companies[0].signatoryUserId).toBe(actor.id);
   view.rerender(<CaseDocument c={{state:'submitted'}} document={{...doc,status:'hrsigned'}} config={config} actor={actor} busy={false} command={command}/>);expect(screen.queryByRole('combobox',{name:'HR signatory for this document'})).not.toBeInTheDocument();
 });
+
+it('shows signing rejection inside the open document and retains the signature input',async()=>{
+  const doc=document(),command=vi.fn().mockResolvedValue({ok:false,error:'Complete missing Personnel and Leave details.'});
+  render(<CaseDocument c={{state:'submitted'}} document={doc} actor={actor} busy={false} command={command}/>);
+  fireEvent.change(screen.getByRole('textbox',{name:'Type your full name'}),{target:{value:'Fictional reviewer'}});fireEvent.click(screen.getByRole('checkbox'));fireEvent.click(screen.getByRole('button',{name:'Sign and submit'}));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Complete missing Personnel and Leave details.');expect(screen.getByRole('alert')).toHaveFocus();expect(screen.getByRole('textbox',{name:'Type your full name'})).toHaveValue('Fictional reviewer');expect(doc.hrSignature).toBeNull();
+});

@@ -33,3 +33,8 @@ it('bounds signature images and retains both drawn marks in a countersigned PDF'
   const result = await renderV9DocumentPdf(document, 'OB-FICTIONAL-1', true); const pdf = await PDFDocument.load(result.bytes); expect(pdf.getPageCount()).toBeGreaterThanOrEqual(1);
   expect(pdf.context.enumerateIndirectObjects().filter(([, object]) => object instanceof PDFRawStream && object.dict.get(PDFName.of('Subtype'))?.toString() === '/Image').length).toBeGreaterThanOrEqual(2);
 });
+it('prints frozen signer names, titles and unsigned status in the signature blocks',()=>{
+  const document=fixture();document.hrSignature=null;document.employeeSignature=null;document.signatoryUserId='frozen-hr';
+  document.mergeValues!['signatory.name']='Fictional frozen HR';document.mergeValues!['signatory.title']='Frozen printed title';document.blocks.push({id:'hr-sign',type:'signature',role:'hr',label:'Yours sincerely,',text:'',section:''});
+  const output=JSON.stringify(v9PdfDocument(document));expect(output).toContain('Fictional frozen HR');expect(output).toContain('Frozen printed title, Fictional Company');expect(output).toContain('Not signed yet');
+});

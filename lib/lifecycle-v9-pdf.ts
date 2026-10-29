@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import { v9SignaturePresentation } from './lifecycle-v9-signature-presentation';
 import { v9Letterhead } from './lifecycle-v9-letterhead';
 import { renderLetterPdf, type LetterPdfInput } from './letter-pdf';
 import { merge, V9Error, type Document, type Field, type Signature } from './lifecycle-v9-model';
@@ -30,7 +31,7 @@ export function v9PdfDocument(document: Document, requireComplete = false): Lett
     else if (block.type === 'fields') document.fields.filter(field => field.section === block.section).forEach(field);
     else if (block.type === 'field') { const definition = document.fields.find(field => field.id === block.fieldId); if (definition) field(definition); }
     else if (block.type === 'table') blocks.push({ type: 'table', rows: [(block.columns ?? '').split(/[,|]/).map(cell => cell.trim()), ...(block.rows ?? '').split('\n').filter(Boolean).map(row => row.split('|').map(cell => resolved(cell.trim())))].map(row => row.map(cell => text(cell))) });
-    else if (block.type === 'signature') blocks.push({ type: 'paragraph', content: text(resolved(block.label ?? '')) });
+    else if (block.type === 'signature') { const presentation=v9SignaturePresentation(document,block.role==='hr'?'hr':'employee'); blocks.push({type:'paragraph',content:text(resolved(block.label??''))},{type:'paragraph',content:[{type:'text',text:presentation.name,marks:['bold']}]},{type:'paragraph',content:text(presentation.detail)},{type:'paragraph',content:text(presentation.status)}); }
   }
   return { version: 1, language: 'en', blocks };
 }

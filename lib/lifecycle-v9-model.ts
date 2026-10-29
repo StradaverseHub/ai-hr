@@ -53,7 +53,7 @@ export type Template = {
   versions: TemplateVersion[]; currentVersion?: number; note?: string;
 };
 export type ConfigSaveReceipt = { revision: number; groupsRevision: number; versionStamps?: { templateId: string; version: number; state: TemplateVersion['state']; at: string; by: string }[] };
-export type Signature = { by: Actor; at: string; method: 'typed' | 'drawn'; value: string; consent: true };
+export type Signature = { printedTitle?: string; by: Actor; at: string; method: 'typed' | 'drawn'; value: string; consent: true };
 export type Document = {
   id: string; templateId: string; version: number; name: string;
   status: 'draft' | 'sent' | 'opened' | 'completed' | 'hrsigned' | 'countersign' | 'signed' | 'acknowledged' | 'superseded' | 'withdrawn';
@@ -162,6 +162,7 @@ export type Environment = {
   userName: (userId: string) => string;
   mergeValues: Record<string, string>;
   signatoryUserId?: string | null;
+  actorSignatoryTitle?: string;
   /** Production workflows wait for the durable transport acknowledgement. */
   requireDeliveryAck?: boolean;
   /** A real Native onboarding contact; this is never an app-user identity or login grant. */
@@ -366,7 +367,7 @@ export function signDocument(c: Case, config: Config, id: string, role: 'employe
       validateFieldValue(field, value);
       if (field.required && (!value.trim() || field.type === 'checkbox' && value !== 'true' || field.type === 'table' && value === '[]')) throw new V9Error(`Complete ${field.label} before signing.`);
     }
-    doc.hrSignature = { ...signature, at: env.now, by: { ...env.actor } }; doc.status = hrStep === 'before' ? 'hrsigned' : 'signed';
+    doc.hrSignature = { ...signature, at: env.now, by: { ...env.actor }, printedTitle: hrStep === 'after' ? env.actorSignatoryTitle ?? '' : doc.mergeValues?.['signatory.title'] ?? env.mergeValues['signatory.title'] ?? '' }; doc.status = hrStep === 'before' ? 'hrsigned' : 'signed';
   }
   if (documentFinal(doc)) linkedTasks(c, doc, 'signed'); appendLog(c, env, 'document.signed', `${doc.name} · ${role}`);
 }

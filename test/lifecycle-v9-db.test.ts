@@ -1044,13 +1044,13 @@ it('limits unsigned signer choices to fresh company HR and lets an authorized HR
   await v9Command(admin,c.id,c.revision,{type:'documentRefresh',id:doc.id});c=(await v9CaseDetail(admin,c.id)).case;expect(c.documents.find(d=>d.id===doc.id)?.signatoryUserId).toBe(alternateId);
   await expect(v9Command(admin,c.id,c.revision,{type:'documentSign',id:doc.id,signature:{method:'typed',value:'Wrong designated signer',consent:true}})).rejects.toThrow('designated');
   await v9Command(alternate,c.id,c.revision,{type:'documentSign',id:doc.id,signature:{method:'typed',value:'Alternate HR',consent:true}});c=(await v9CaseDetail(admin,c.id)).case;
-  await expect(v9Command(admin,c.id,c.revision,{type:'documentSignatory',id:doc.id,userId:admin.userId!})).rejects.toThrow('unsigned');
+  await expect(v9Command(admin,c.id,c.revision,{type:'documentSignatory',id:doc.id,userId:admin.userId!})).rejects.toThrow('unsigned');expect(c.documents.find(document=>document.id===doc.id)?.hrSignature?.printedTitle).toBe('Alternate printed title');
   config=(await v9Workspace(admin)).config!;expect(config.companies![0].signatoryUserId).toBe(admin.userId);
-  config.companies![0].signatoryUserId=alternateId;config.templates.push({...structuredClone(config.templates.find(template=>template.id==='signer-letter')!),id:'counter-letter',hrStep:'after'});
+  config.companies![0].signatoryUserId=alternateId;config.signatoryTitles![admin.userId!]='Counter review title';config.templates.push({...structuredClone(config.templates.find(template=>template.id==='signer-letter')!),id:'counter-letter',hrStep:'after'});
   config.workflows.push({id:'counter-release',name:'Fictional counter release',module:'off',status:'published',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'release',type:'doc',template:'counter-letter',release:true}],description:''});
   await v9SaveConfig(admin,config.revision,config);await v9Command(admin,c.id,c.revision,{type:'startWorkflow',workflowId:'counter-release'});c=(await v9CaseDetail(admin,c.id)).case;const counter=c.documents.find(doc=>doc.templateId==='counter-letter')!;expect(counter.signatoryUserId).toBe(alternateId);
   await v9OwnDocument(employee,{caseId:c.id,revision:c.revision,documentId:counter.id,values:{},signature:{method:'typed',value:'Employee acknowledgement',consent:true}});c=(await v9CaseDetail(admin,c.id)).case;expect(c.documents.find(doc=>doc.id===counter.id)?.status).toBe('countersign');
   await expect(v9Command(other,c.id,c.revision,{type:'documentSign',id:counter.id,signature:{method:'typed',value:'Unrelated',consent:true}})).rejects.toThrow();
   await v9Command(admin,c.id,c.revision,{type:'documentSign',id:counter.id,signature:{method:'typed',value:'Authorized HR counter reviewer',consent:true}});c=(await v9CaseDetail(admin,c.id)).case;
-  expect(c.documents.find(doc=>doc.id===counter.id)).toMatchObject({status:'signed',hrSignature:{by:{id:admin.userId}}});
+  expect(c.documents.find(doc=>doc.id===counter.id)).toMatchObject({status:'signed',hrSignature:{by:{id:admin.userId},printedTitle:'Counter review title'}});
 });
