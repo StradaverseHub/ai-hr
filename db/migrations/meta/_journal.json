@@ -3942,6 +3942,13 @@
       "when": 1793330000013,
       "tag": "0687_assistant_question_budget",
       "breakpoints": true
+    },
+    {
+      "idx": 685,
+      "version": "7",
+      "when": 1793330000021,
+      "tag": "0695_assistant_learning_loop_scope",
+      "breakpoints": true
     }
   ]
 }
