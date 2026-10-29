@@ -2,6 +2,10 @@
  * replacement-leave (TOIL) request through the generic assigned-review store (migration 0671).
  * Real migrated database and the real native decision services; fictional fixtures only.
  * Authored UNRUN (tests run on GitHub Actions under the owner's policy). */
+import {z} from 'zod';
+import {createGenericAssignedReviewStore} from '../core/assistant-actions/generic-assigned-review-store';
+import {AssignedClaimDecision} from '../lib/assistant-actions/assigned-decision-contract';
+import {assignedDecisionUnavailable,withAssignedClaimSubjectTx,prepareAssignedClaimSourceTx,confirmAssignedClaimSourceTx,reconcileAssignedClaimSourceTx} from '../core/assistant-actions/assigned-decision-sources';
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
@@ -70,7 +74,7 @@ beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-assigned-decision-
 const KINDS:Record<'claim'|'attendance'|'toil',Kind>={
  claim:{action:ASSIGNED_CLAIM_DECISION_ACTION,store:claimDecisionReviews,choices:readClaimDecisionChoices,table:'claim_request',subjectKind:'claim_request',decided:d=>'claim-request.'+d,
   async create(){return (await submitClaim(subjectCtx,{employmentId:subject.employmentId,claimTypeId,amount:42.5,incurredOn:todayInKualaLumpur(),description:'Fictional taxi fare'})).id;},
-  human:(id,decision='approved')=>({action:ASSIGNED_CLAIM_DECISION_ACTION,contractVersion:1,employmentId:subject.employmentId,subjectId:id,decision}),
+  human:(id,decision='approved')=>({action:ASSIGNED_CLAIM_DECISION_ACTION,contractVersion:1,employmentId:subject.employmentId,subjectId:id,decision,...decision==='rejected'?{note:'Fictional explicit rejection reason'}:{}}),
   elsewhere:id=>cancelClaim(subjectCtx,id),
   async nativeTx(tx,who,id){return (await decideClaimTx(tx,who,{claimRequestId:id,decision:'approve'})).eventId;},
   nativeDecide:(who,id)=>decideClaim(who,{claimRequestId:id,decision:'approve'})},
@@ -275,5 +279,36 @@ describe('ADR-0151 assigned attendance decision in a multi-level workflow',()=>{
   expect(receiptOf(final)).toEqual({kind:'decided',subjectId:id,eventId:approved[0].id,employmentId:subject.employmentId,decision:'approved',recorded:'final',currentStatus:'approved'});
   // The manager's level receipt still names its own level event, now reading the settled status.
   expect(receiptOf(await k.store.reopen(mgr,first.actionId) as {kind:string;receipt:unknown})).toEqual({kind:'decided',subjectId:id,eventId:stage[0].id,employmentId:subject.employmentId,decision:'approved',recorded:'level',currentStatus:'approved'});
+ });
+});
+
+describe('claim rejection human reason and independent reviewed decisions',()=>{
+ it('requires a reason for new rejections, binds and records it on the native event',async()=>{
+  const k=KINDS.claim,id=await k.create(),content=k.human(id,'rejected');
+  await expect(claimDecisionReviews.prepare(mgr,{...content,note:undefined})).rejects.toThrow();
+  await expect(claimDecisionReviews.prepare(mgr,{...content,note:'   '})).rejects.toThrow();
+  await expect(claimDecisionReviews.prepare(mgr,{...k.human(id),note:'Approval note would be lost'})).rejects.toThrow();
+  const result=await claimDecisionReviews.prepare(mgr,{...content,note:'Original human rejection reason'});
+  expect(result.review.content.note).toBe('Original human rejection reason');
+  await claimDecisionReviews.confirm(mgr,result.review);
+  const [event]=await owner.db.execute<{payload:{rejectReason:string}}>(sql`select payload from public.domain_event where aggregate_id=${id}::uuid and event_type='claim-request.rejected'`);
+  expect(event.payload.rejectReason).toBe('Original human rejection reason');
+ });
+ it('reads and completes an actual old-writer sealed no-reason rejection without changing its digest',async()=>{
+  const c=AssignedClaimDecision,legacy=createGenericAssignedReviewStore({action:c.action,human:c.Human.extend({note:z.never().optional()}),consequence:c.consequence,prepared:c.Prepared,completed:c.Completed,retired:c.Retired,index:c.Index,indexKind:c.indexKind,withSubject:withAssignedClaimSubjectTx,prepare:(tx,ctx,human)=>prepareAssignedClaimSourceTx(tx,ctx,c.Human.parse(human)),confirm:(tx,ctx,human,digest)=>confirmAssignedClaimSourceTx(tx,ctx,c.Human.parse(human),digest),reconcile:reconcileAssignedClaimSourceTx,unavailable:assignedDecisionUnavailable});
+  const id=await KINDS.claim.create(),old=await legacy.prepare(mgr,{...KINDS.claim.human(id,'rejected'),note:undefined});
+  const reopened=await claimDecisionReviews.reopen(mgr,old.review.actionId);expect(reopened.kind).toBe('prepared');
+  if(reopened.kind!=='prepared')throw Error('Expected original saved review');
+  expect(reopened.review.reviewedDigest).toBe(old.review.reviewedDigest);expect(reopened.review.content.note).toBeUndefined();
+  await claimDecisionReviews.confirm(mgr,old.review);
+  const [event]=await owner.db.execute<{payload:Record<string,unknown>|null}>(sql`select payload from public.domain_event where aggregate_id=${id}::uuid and event_type='claim-request.rejected'`);
+  expect(event.payload?.rejectReason).toBeUndefined();
+ });
+ it('keeps the first native commit when a later selected review loses authority; reopening never duplicates it',async()=>{
+  const firstId=await KINDS.claim.create(),secondId=await KINDS.claim.create(),first=await claimDecisionReviews.prepare(mgr,KINDS.claim.human(firstId)),second=await claimDecisionReviews.prepare(mgr,KINDS.claim.human(secondId));
+  await claimDecisionReviews.confirm(mgr,first.review);await revokeAssistant(group(),{appUserId:mgr.userId!});
+  await expect(claimDecisionReviews.confirm(mgr,second.review)).rejects.toThrow();
+  const [row]=await owner.db.execute<{first:string;second:string;count:number}>(sql`select (select status::text from public.claim_request where id=${firstId}::uuid) as first,(select status::text from public.claim_request where id=${secondId}::uuid) as second,(select count(*)::int from public.domain_event where aggregate_id=${firstId}::uuid and event_type='claim-request.approved') as count`);
+  expect(row).toEqual({first:'approved',second:'pending',count:1});
  });
 });

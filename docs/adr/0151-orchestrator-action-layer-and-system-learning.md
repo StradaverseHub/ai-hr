@@ -562,3 +562,10 @@ remain separate evidence.
 ### WP9 store 2 amendment — retained TOIL own-request custody (30 October 2026)
 
 The employee replacement-leave request now uses the generic own review owner with a typed compatibility repository for its installed SQL protocol. The repository translates projection names only: existing sealed bodies, binding order, encryption purposes, commitments, request/event columns and native SQL verifiers stay unchanged. Completion still runs the canonical native request service in the same top-level transaction; no credit or cash is granted by submission. Source authority composes the current registry guard and retains its own-employment and leave dependency interval. Retained old-writer rows and uncertain committed replies require real database evidence, and the action joins the screen/Assistant role matrix. No migration is required.
+
+
+### Reviewed bulk manager decisions
+
+The owner approved composing at most twenty existing prepared approval reviews in the current flow. Each full native review must be explicitly opened and its own confirmation selected; one count-labelled confirmation then sends the existing guarded browser command for each selected review sequentially. There is no new action kind, model tool, batch privilege or shared transaction. Every item repeats the current native authority, source, expiry, pause and digest checks. Earlier commits survive a later refusal. Each card presents its own canonical receipt, retirement or uncertainty; uncertain responses require reopening the same review, never automatic retry. Reloading or a server scope refresh clears selections; leaving the page stops subsequent requests and aborts an in-flight request without claiming rollback.
+
+New claim rejection preparations require the person's reason and bind it inside the existing sealed human content; the native claims service records that reason on its rejection event. Approval notes are not accepted. Existing sealed no-reason claim reviews remain readable and confirmable with their original digest and content. The new preparation requirement does not rewrite old evidence or invent a reason.

@@ -18579,7 +18579,7 @@
         "rejectNote": "Sebab anda menolak (wajib)",
         "noteHelp": "Sehingga 1000 aksara, dalam perkataan anda sendiri.",
         "rejectNoteRequired": "Penolakan memerlukan penjelasan anda.",
-        "claimNoNote": "Keputusan tuntutan di sini direkodkan tanpa nota.",
+        "claimNoNote": "Kelulusan tuntutan di sini direkodkan tanpa nota. Penolakan memerlukan alasan anda.",
         "consent": "Saya membuat keputusan ini sendiri dan mahu menyemaknya sebelum ia direkodkan.",
         "prepare": "Semak keputusan saya",
         "reviewNote": "Belum ada apa-apa yang direkodkan. Semak butiran, kemudian sahkan.",
@@ -19344,6 +19344,20 @@
         "yes": "Ya",
         "no": "Tidak",
         "doneCredit": "{days} hari Kredit Cuti disimpan untuk {date}."
+      },
+      "bulkDecisions": {
+        "title": "Semak keputusan tersimpan bersama",
+        "single": "Sediakan satu keputusan",
+        "intro": "Buka setiap semakan penuh yang tersimpan dan tandakan kotak pengesahannya. Sahkan sehingga 20 keputusan yang telah disemak bersama.",
+        "scope": "Hanya semakan tersimpan bagi log masuk ini dalam aliran semasa disenaraikan. Memuat semula mengosongkan semua pilihan.",
+        "load": "Muatkan semakan tersimpan",
+        "loading": "Memuatkan semakan tersimpan…",
+        "none": "Tiada semakan tersimpan yang menunggu tersedia.",
+        "unavailable": "Permintaan ini tidak dapat diselesaikan. Muat semula senarai atau buka semula semakan tersimpan yang terlibat.",
+        "confirm": "Sahkan {count} keputusan yang disemak",
+        "working": "Merekodkan keputusan terpilih…",
+        "independent": "Setiap keputusan diperiksa dan direkodkan secara berasingan. Penolakan kemudian tidak membatalkan keputusan terdahulu. Menutup halaman ini menghentikan permintaan seterusnya; buka semula semakan untuk menyemak hasil yang tidak pasti.",
+        "finished": "Permintaan selesai. Baca hasil pada setiap kad. Buka semula semakan yang tidak pasti sebelum bertindak lagi."
       }
     },
     "denied_unavailable": "Ada sedikit masalah di pihak saya. Sila cuba lagi sebentar nanti.",
