@@ -578,6 +578,13 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: ['/admin/settings/profile-requests'],
   },
   {
+    screenKey: 'profileApprovalRules',
+    href: '/admin/settings/profile-requests/rules',
+    labelKey: 'essProfile.approvalRules',
+    guard: 'requireAdmin',
+    routes: ['/admin/settings/profile-requests/rules'],
+  },
+  {
     // R22 7d309da7: Personnel profile dropdown catalog (religion/race/nationality/state/country/relationship).
     // fbdeee87: relocated INTO the System Labels surface as a tab — the catalog is unchanged (flat tenant-wide
     // table, requireAdmin), only its route moved under /admin/settings/system-labels/. The old standalone route

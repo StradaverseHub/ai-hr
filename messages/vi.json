@@ -25578,7 +25578,8 @@
       "stale": "Bản ghi đã thay đổi. Giữ bản sao nội dung đã sửa, tải lại và kiểm tra trước khi lưu lại.",
       "unavailable": "Bản ghi hoặc dịch vụ quốc gia cần thiết không khả dụng. Chưa gửi thay đổi nào.",
       "addressReview": "Sử dụng các trường địa chỉ thường trú hoặc liên hệ trong hồ sơ nhân sự. Địa chỉ cũ được giữ lại.",
-      "system": "Không thể lưu thay đổi. Nội dung đã nhập vẫn còn. Hãy thử lại hoặc liên hệ nhân sự kèm mã tham chiếu."
+      "system": "Không thể lưu thay đổi. Nội dung đã nhập vẫn còn. Hãy thử lại hoặc liên hệ nhân sự kèm mã tham chiếu.",
+      "attachmentRequired": "Các trường được liệt kê cần tài liệu hỗ trợ."
     },
     "register": {
       "dependent": "Gia đình và người phụ thuộc",
@@ -25642,7 +25643,28 @@
     "routingOverlapping": "Khớp trùng",
     "routingIneligible": "Phân công không đủ điều kiện",
     "routingSearch": "Tìm yêu cầu đang chờ",
-    "routingFirstPage": "Đầu danh sách yêu cầu đang chờ"
+    "routingFirstPage": "Đầu danh sách yêu cầu đang chờ",
+    "approvalRequired": "Cần phê duyệt",
+    "attachmentRequirement": "Yêu cầu tệp đính kèm",
+    "requiredAttachedFile": "Bắt buộc đính kèm tệp",
+    "notRequiredAttachedFile": "Không bắt buộc đính kèm tệp",
+    "manageApprovalRules": "Quản lý quy tắc phê duyệt nhân sự",
+    "backToFieldPermissions": "Quay lại quyền trường",
+    "anyApprover": "Bất kỳ một người phê duyệt đủ điều kiện nào cũng có thể quyết định. Phê duyệt hoàn tất yêu cầu; từ chối kết thúc yêu cầu và đóng các việc còn lại.",
+    "includedEmployees": "Nhân viên được bao gồm",
+    "excludedEmployees": "Nhân viên bị loại trừ",
+    "includedCriteria": "Tiêu chí bao gồm",
+    "excludedCriteria": "Tiêu chí loại trừ",
+    "selectAllResults": "Chọn mọi kết quả tìm kiếm",
+    "allMatching": "Bao gồm mọi nhân viên đáp ứng tiêu chí, trừ những người bị loại trừ bên dưới. Di chuyển nhân viên chỉ thay đổi danh sách loại trừ, không thay đổi tiêu chí.",
+    "explicitEmployees": "Chỉ bao gồm nhân viên đã chọn đáp ứng tiêu chí.",
+    "includeSelected": "Bao gồm người đã chọn",
+    "excludeSelected": "Loại trừ người đã chọn",
+    "supportingFiles": "Tài liệu hỗ trợ",
+    "attachmentLimit": "Tối đa 3 tệp PDF, PNG hoặc JPEG, mỗi tệp 5 MB và tổng cộng 10 MB.",
+    "explicitlyExcluded": "Đã loại trừ rõ ràng",
+    "notIncluded": "Chưa bao gồm",
+    "transferCriteriaHelp": "Lựa chọn nhân viên còn bị giới hạn bởi tiêu chí bên dưới. Xem trước để xác nhận phạm vi cuối cùng."
   },
   "labelsImportWizard": {
     "title": "Nhập nhãn tổ chức",

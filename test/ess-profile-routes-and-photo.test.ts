@@ -52,13 +52,13 @@ describe('named profile routing against real request/organisation owners',()=>{
   const [after]=await owner.db.select({phone:person.phone}).from(person).where(eq(person.id,employee.personId));expect(after).toEqual(before);
   expect(await owner.db.select({id:profileChangeRequest.id}).from(profileChangeRequest).where(eq(profileChangeRequest.personId,employee.personId))).toEqual([]);
  });
- it('requires explicit reasoned rerouting after revision changes and keeps the original route history',async()=>{
+ it('preserves an existing pending assignment across revision changes and allows explicit reasoned rerouting',async()=>{
   const employee=await worker('Subject'),hr=await worker('HR one','hr_admin'),replacement=await worker('HR two','hr_admin');
   const route=rule(employee.employmentId,hr.employmentId);
   const first=await saveProfileRoutingPolicy(group(),{expectedRevision:EMPTY_PROFILE_ROUTING.revision,enabled:true,rules:[route]});
   const submitted=await submitOwnProfileEdit(employee.ctx,{employmentId:employee.employmentId,proposal:await proposed(employee.ctx,employee.employmentId)});
   await saveProfileRoutingPolicy(group(),{expectedRevision:first.revision,enabled:true,rules:[{...route,approverEmploymentId:replacement.employmentId}]});
-  await expect(decideProfileChange(hr.ctx,{requestId:submitted.requestId!,decision:'approved'})).rejects.toThrow();
+  expect((await listProfileChangeRequests(hr.ctx,{status:'pending'})).map(row=>row.id)).toContain(submitted.requestId);
   await expect(Promise.resolve().then(()=>rerouteProfileRequest(group(),{requestId:submitted.requestId!,reason:''}))).rejects.toMatchObject({code:'reasonRequired'});
   await rerouteProfileRequest(group(),{requestId:submitted.requestId!,reason:'Fictional responsibility change'});
   const [stored]=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,submitted.requestId!));

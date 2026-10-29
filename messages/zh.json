@@ -25578,7 +25578,8 @@
       "stale": "已保存记录已更改。请保留您的编辑内容，重新加载并核对后再保存。",
       "unavailable": "所需记录或国家服务不可用。未提交任何更改。",
       "addressReview": "请使用人事永久地址或通讯地址字段。旧版地址已保留。",
-      "system": "无法保存更改。您的输入仍保留在此处。请重试，或将参考编号提供给人事部门。"
+      "system": "无法保存更改。您的输入仍保留在此处。请重试，或将参考编号提供给人事部门。",
+      "attachmentRequired": "所列字段必须附上证明文件。"
     },
     "register": {
       "dependent": "家庭及受养人",
@@ -25642,7 +25643,28 @@
     "routingOverlapping": "重叠匹配",
     "routingIneligible": "无资格的分配",
     "routingSearch": "搜索待办申请",
-    "routingFirstPage": "返回待办申请首页"
+    "routingFirstPage": "返回待办申请首页",
+    "approvalRequired": "需要审批",
+    "attachmentRequirement": "附件要求",
+    "requiredAttachedFile": "必须附上文件",
+    "notRequiredAttachedFile": "无需附上文件",
+    "manageApprovalRules": "管理人力资源审批规则",
+    "backToFieldPermissions": "返回字段权限",
+    "anyApprover": "任一符合资格的审批人均可决定。批准将完成申请；拒绝将驳回申请并关闭其他待办。",
+    "includedEmployees": "包含的员工",
+    "excludedEmployees": "排除的员工",
+    "includedCriteria": "包含条件",
+    "excludedCriteria": "排除条件",
+    "selectAllResults": "选择全部搜索结果",
+    "allMatching": "符合条件的所有员工均包含在内，以下排除者除外。移动员工只改变排除名单，不改变条件。",
+    "explicitEmployees": "仅包含所选且符合条件的员工。",
+    "includeSelected": "包含所选员工",
+    "excludeSelected": "排除所选员工",
+    "supportingFiles": "证明文件",
+    "attachmentLimit": "最多3个PDF、PNG或JPEG文件，每个不超过5 MB，总计不超过10 MB。",
+    "explicitlyExcluded": "已明确排除",
+    "notIncluded": "未包含",
+    "transferCriteriaHelp": "员工选择也受下方条件限制。预览可确认最终覆盖范围。"
   },
   "labelsImportWizard": {
     "title": "导入组织标签",

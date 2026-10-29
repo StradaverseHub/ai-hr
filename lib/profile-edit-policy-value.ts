@@ -3,8 +3,9 @@ export type ProfileFieldPermission='editable'|'viewOnly'|'hide';
 export type ProfileEditPolicyValue = {readonly version:2;readonly fields:readonly string[]};
 type VisibilityFields={readonly fields:Readonly<Record<string,ProfileFieldPermission>>;readonly primaryOnly:readonly string[]};
 export type ProfileVisibilityPolicyValue=VisibilityFields&(
- {readonly version:3}|{readonly version:4;readonly groups:Readonly<Record<string,ProfileFieldPermission>>}
+ {readonly version:3}|{readonly version:4;readonly groups:Readonly<Record<string,ProfileFieldPermission>>}|{readonly version:5;readonly groups:Readonly<Record<string,ProfileFieldPermission>>;readonly approvals:Readonly<Record<string,ProfileFieldApproval>>}
 );
+export type ProfileFieldApproval={readonly required:boolean;readonly attachmentRequired:boolean};
 /** Group identities use the same stable tab/section vocabulary as the field registry. */
 export const profileTabPolicyKey=(tab:string)=>`tab:${tab}`;
 export const profileSectionPolicyKey=(tab:string,section:string)=>`section:${tab}/${section}`;
@@ -24,8 +25,9 @@ const key=(value:unknown):value is string=>typeof value==='string'&&value.length
 export function isProfileVisibilityPolicyValue(raw:unknown):raw is ProfileVisibilityPolicyValue{
  if(!raw||typeof raw!=='object'||Array.isArray(raw))return false;
  const value=raw as Record<string,unknown>;
- if(!((value.version===3&&Object.keys(value).length===3)||(value.version===4&&Object.keys(value).length===4))||!value.fields||typeof value.fields!=='object'||Array.isArray(value.fields)||!Array.isArray(value.primaryOnly))return false;
- if(value.version===4){if(!value.groups||typeof value.groups!=='object'||Array.isArray(value.groups))return false;const groups=Object.entries(value.groups);if(groups.length>128||groups.some(([id,cap])=>!key(id)||!permission(cap)))return false;}
+ if(!((value.version===3&&Object.keys(value).length===3)||(value.version===4&&Object.keys(value).length===4)||(value.version===5&&Object.keys(value).length===5))||!value.fields||typeof value.fields!=='object'||Array.isArray(value.fields)||!Array.isArray(value.primaryOnly))return false;
+ if(value.version===4||value.version===5){if(!value.groups||typeof value.groups!=='object'||Array.isArray(value.groups))return false;const groups=Object.entries(value.groups);if(groups.length>128||groups.some(([id,cap])=>!key(id)||!permission(cap)))return false;}
+ if(value.version===5){if(!value.approvals||typeof value.approvals!=='object'||Array.isArray(value.approvals))return false;const rules=Object.entries(value.approvals);if(rules.length>512||rules.some(([id,v])=>!key(id)||!v||typeof v!=='object'||Array.isArray(v)||Object.keys(v).length!==2||typeof (v as ProfileFieldApproval).required!=='boolean'||typeof (v as ProfileFieldApproval).attachmentRequired!=='boolean'||(!(v as ProfileFieldApproval).required&&(v as ProfileFieldApproval).attachmentRequired)))return false;}
  const entries=Object.entries(value.fields);
  return entries.length<=512&&entries.every(([id,permission])=>key(id)&&typeof permission==='string'&&['editable','viewOnly','hide'].includes(permission))&&value.primaryOnly.length<=512&&value.primaryOnly.every(key)&&new Set(value.primaryOnly).size===value.primaryOnly.length;
 }
@@ -40,4 +42,10 @@ export function isLegacyProfileEditPolicy(raw:unknown):boolean {
 }
 
 /** The profile tab controller receives only explicit hidden tab identities, never raw policy data. */
-export function profileHiddenTabs(raw:unknown):string[]{return isProfileVisibilityPolicyValue(raw)&&raw.version===4?Object.entries(raw.groups).filter(([id,value])=>id.startsWith('tab:')&&value==='hide').map(([id])=>id.slice(4)):[];}
+export function profileHiddenTabs(raw:unknown):string[]{return isProfileVisibilityPolicyValue(raw)&&raw.version!==3?Object.entries(raw.groups).filter(([id,value])=>id.startsWith('tab:')&&value==='hide').map(([id])=>id.slice(4)):[];}
+
+/** Default follows the descriptor's established behavior until an explicit field rule is saved. */
+export function profileFieldApproval(raw:unknown,field:{id:string;ess:{edit:string}}):ProfileFieldApproval{
+ if(isProfileVisibilityPolicyValue(raw)&&raw.version===5&&raw.approvals[field.id])return raw.approvals[field.id];
+ return {required:field.ess.edit==='approval',attachmentRequired:false};
+}

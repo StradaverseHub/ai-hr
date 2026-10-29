@@ -25578,7 +25578,8 @@
       "stale": "The saved record has changed. Keep a copy of your edits, then reload and review before saving again.",
       "unavailable": "The required record or country service is unavailable. Nothing was submitted.",
       "addressReview": "Use the Personnel Permanent or Correspondence address fields. The legacy address has been retained.",
-      "system": "The changes could not be saved. Your input remains here. Please try again or contact HR with the reference."
+      "system": "The changes could not be saved. Your input remains here. Please try again or contact HR with the reference.",
+      "attachmentRequired": "A supporting document is required for the listed fields."
     },
     "register": {
       "dependent": "Family and dependents",
@@ -25642,7 +25643,28 @@
     "routingOverlapping": "Overlapping matches",
     "routingIneligible": "Ineligible assignments",
     "routingSearch": "Search pending requests",
-    "routingFirstPage": "Start of pending requests"
+    "routingFirstPage": "Start of pending requests",
+    "approvalRequired": "Approval Required",
+    "attachmentRequirement": "Attachment requirement",
+    "requiredAttachedFile": "Required Attached File",
+    "notRequiredAttachedFile": "Not Required Attached File",
+    "manageApprovalRules": "Manage HR Approval Rules",
+    "backToFieldPermissions": "Back to field permissions",
+    "anyApprover": "Any one eligible approver can decide. An approval completes the request; a rejection rejects it and closes the remaining tasks.",
+    "includedEmployees": "Included Employees",
+    "excludedEmployees": "Excluded Employees",
+    "includedCriteria": "Included criteria",
+    "excludedCriteria": "Excluded criteria",
+    "selectAllResults": "Select all search results",
+    "allMatching": "All employees matching the criteria are included unless excluded below. Moving employees changes the exclusions; it does not change the criteria.",
+    "explicitEmployees": "Only selected employees matching the criteria are included.",
+    "includeSelected": "Include Selected",
+    "excludeSelected": "Exclude Selected",
+    "supportingFiles": "Supporting documents",
+    "attachmentLimit": "Up to 3 PDF, PNG or JPEG files, 5 MB each and 10 MB in total.",
+    "explicitlyExcluded": "Explicitly excluded",
+    "notIncluded": "Not included",
+    "transferCriteriaHelp": "Employee selections are also limited by the criteria below. Preview confirms the final coverage."
   },
   "labelsImportWizard": {
     "title": "Import organisation labels",

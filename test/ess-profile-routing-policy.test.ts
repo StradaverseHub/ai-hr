@@ -18,14 +18,23 @@ describe('bounded named HR route transport',()=>{
 describe('versioned request-type routes and explicit exclusions',()=>{
  it('preserves an old route and upgrades it to explicit empty exclusions without reinterpreting omitted selections',()=>{
   const next=editableProfileRoute(rule);expect(next.criteria).toEqual(rule.criteria);expect(next.excludedCriteria).toEqual({});expect(next.excludedEmploymentIds).toEqual([]);expect(next.requestTypes).toEqual(['fields','photo']);
-  expect(isProfileRoutingPolicy({...EMPTY_PROFILE_ROUTING,version:2,rules:[next]})).toBe(true);
+  expect(isProfileRoutingPolicy({...EMPTY_PROFILE_ROUTING,version:3,rules:[next]})).toBe(true);
  });
  it('refuses unknown request types and unbounded or malformed excluded identities',()=>{
   const next=editableProfileRoute(rule);
-  for(const patch of [{requestTypes:[]},{requestTypes:['photo','photo']},{requestTypes:['payroll']},{excludedEmploymentIds:['unknown']},{excludedEmploymentIds:[id,id]},{excludedCriteria:{companyIds:{none:true}}}])expect(isProfileRoutingPolicy({...EMPTY_PROFILE_ROUTING,version:2,rules:[{...next,...patch}]})).toBe(false);
+  for(const patch of [{requestTypes:[]},{requestTypes:['photo','photo']},{requestTypes:['payroll']},{excludedEmploymentIds:['unknown']},{excludedEmploymentIds:[id,id]},{excludedCriteria:{companyIds:{none:true}}}])expect(isProfileRoutingPolicy({...EMPTY_PROFILE_ROUTING,version:3,rules:[{...next,...patch}]})).toBe(false);
  });
  it('keeps the two stored generations distinct and refuses an implicit V2 migration',()=>{
   expect(isProfileRoutingPolicy({...EMPTY_PROFILE_ROUTING,rules:[editableProfileRoute(rule)]})).toBe(false);
   expect(isProfileRoutingPolicy({...EMPTY_PROFILE_ROUTING,version:2,rules:[rule]})).toBe(false);
  });
+});
+
+describe('any-one multi-principal routes',()=>{
+ it('requires a bounded non-empty unique list, matching primary, and explicit selection mode',()=>{
+  const next=editableProfileRoute(rule),policy={...EMPTY_PROFILE_ROUTING,version:3,rules:[next]};
+  expect(isProfileRoutingPolicy(policy)).toBe(true);
+  for(const patch of [{approverEmploymentIds:[]},{approverEmploymentIds:[other,other]},{approverEmploymentIds:[id]},{decisionMode:'all'},{employeeSelection:'implicit'}])expect(isProfileRoutingPolicy({...policy,rules:[{...next,...patch}]})).toBe(false);
+ });
+ it('keeps an explicitly emptied selection empty during later edits',()=>{expect(editableProfileRoute({...editableProfileRoute(rule),employmentIds:[],employeeSelection:'selected'}).employeeSelection).toBe('selected');});
 });

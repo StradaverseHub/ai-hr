@@ -25578,7 +25578,8 @@
       "stale": "Rekod tersimpan telah berubah. Simpan salinan suntingan, kemudian muat semula dan semak sebelum menyimpan lagi.",
       "unavailable": "Rekod atau perkhidmatan negara yang diperlukan tidak tersedia. Tiada apa dihantar.",
       "addressReview": "Gunakan medan alamat Tetap atau Surat-menyurat Personel. Alamat legasi dikekalkan.",
-      "system": "Perubahan tidak dapat disimpan. Input anda kekal di sini. Cuba lagi atau hubungi HR dengan rujukan."
+      "system": "Perubahan tidak dapat disimpan. Input anda kekal di sini. Cuba lagi atau hubungi HR dengan rujukan.",
+      "attachmentRequired": "Dokumen sokongan diperlukan untuk medan yang disenaraikan."
     },
     "register": {
       "dependent": "Keluarga dan tanggungan",
@@ -25642,7 +25643,28 @@
     "routingOverlapping": "Padanan bertindih",
     "routingIneligible": "Penugasan tidak layak",
     "routingSearch": "Cari permintaan menunggu",
-    "routingFirstPage": "Permulaan permintaan menunggu"
+    "routingFirstPage": "Permulaan permintaan menunggu",
+    "approvalRequired": "Kelulusan Diperlukan",
+    "attachmentRequirement": "Keperluan lampiran",
+    "requiredAttachedFile": "Fail Lampiran Diperlukan",
+    "notRequiredAttachedFile": "Fail Lampiran Tidak Diperlukan",
+    "manageApprovalRules": "Urus Peraturan Kelulusan HR",
+    "backToFieldPermissions": "Kembali ke kebenaran medan",
+    "anyApprover": "Mana-mana seorang pelulus yang layak boleh membuat keputusan. Kelulusan melengkapkan permintaan; penolakan menolak permintaan dan menutup tugas lain.",
+    "includedEmployees": "Pekerja Disertakan",
+    "excludedEmployees": "Pekerja Dikecualikan",
+    "includedCriteria": "Kriteria disertakan",
+    "excludedCriteria": "Kriteria dikecualikan",
+    "selectAllResults": "Pilih semua hasil carian",
+    "allMatching": "Semua pekerja yang memenuhi kriteria disertakan kecuali yang dikecualikan di bawah. Pemindahan mengubah pengecualian, bukan kriteria.",
+    "explicitEmployees": "Hanya pekerja dipilih yang memenuhi kriteria disertakan.",
+    "includeSelected": "Sertakan Dipilih",
+    "excludeSelected": "Kecualikan Dipilih",
+    "supportingFiles": "Dokumen sokongan",
+    "attachmentLimit": "Sehingga 3 fail PDF, PNG atau JPEG, 5 MB setiap fail dan 10 MB keseluruhan.",
+    "explicitlyExcluded": "Dikecualikan secara nyata",
+    "notIncluded": "Tidak disertakan",
+    "transferCriteriaHelp": "Pilihan pekerja turut dihadkan oleh kriteria di bawah. Pratonton mengesahkan liputan akhir."
   },
   "labelsImportWizard": {
     "title": "Import label organisasi",

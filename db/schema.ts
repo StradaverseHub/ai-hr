@@ -5843,6 +5843,12 @@ export const profileChangeRequest = pgTable(
   (t) => [index('profile_change_request_employment_idx').on(t.employmentId, t.status),uniqueIndex('profile_change_request_pending_photo_person_uq').on(t.tenantId,t.personId).where(sql`${t.status}='pending' AND ${t.proposed}->>'kind'='photo'`)],
 );
 
+/** Supporting evidence belongs to one immutable submitted request and its declared fields. */
+export const profileChangeAttachment=pgTable('profile_change_attachment',{
+ id:id(),tenantId:tenantId(),requestId:uuid('request_id').notNull().references(()=>profileChangeRequest.id,{onDelete:'cascade'}),
+ fieldIds:jsonb('field_ids').$type<string[]>().notNull(),fileName:text('file_name').notNull(),mimeType:text('mime_type').notNull(),sizeBytes:integer('size_bytes').notNull(),content:bytea('content').notNull(),createdAt:createdAt(),
+},t=>[index('profile_change_attachment_request_idx').on(t.requestId)]);
+
 /** Bytes are retained only while the canonical profile request is pending. */
 export const profilePhotoProposal=pgTable('profile_photo_proposal',{
  requestId:uuid('request_id').primaryKey().references(()=>profileChangeRequest.id),

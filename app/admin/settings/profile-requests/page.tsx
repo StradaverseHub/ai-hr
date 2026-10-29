@@ -1,12 +1,10 @@
-import {readProfileRoutingPolicy,profileApproverCandidates} from '@/core/profile-routing';
-import {ProfileRoutingForm} from './routing-form';
-import {listCompanies,listDepartments,listJobGrades,listEmployees} from '@/core/read';
-import {listBusinessUnits,listCostCenters,listPositions} from '@/core/admin';
-import {listAllProfileOptions} from '@/core/profile-options';
-import {buildOrgCriteriaSections} from '@/core/org-criteria-form';
+import Link from 'next/link';
+import {listEmployees} from '@/core/read';
+import {profileRuleApprovers} from '@/lib/profile-routing-policy';
+import {readProfileRoutingPolicy} from '@/core/profile-routing';
 import {PermissionMatrix} from './permission-matrix';
 import {profileVisibilityFingerprint} from '@/lib/profile-policy-fingerprint';
-import {isProfileVisibilityPolicyValue} from '@/lib/profile-edit-policy-value';
+import {isProfileVisibilityPolicyValue,profileFieldApproval} from '@/lib/profile-edit-policy-value';
 import {resolveEssVisibleIds,linkedEssFieldIds} from '@/lib/personnel-ess-visibility';
 import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
@@ -15,14 +13,10 @@ import {essVisibleFields,resolveEssEditableIds,resolveEssPrimaryEditableIds} fro
 import {ESS_PROFILE_TABS,PERSONNEL_ESS_SECTION_LABEL_KEYS} from '@/lib/personnel-ess-model';
 import {personnelFieldLabel} from '@/lib/personnel-field-label';
 import { pendingProfileChangeCountsByKey } from '@/core/profile';
-import { profileChangeAllowedKeys, profileChangeApprover } from '@/core/tenant-settings';
-import {
-  PROFILE_REQUEST_APPROVERS,
-  requestableFieldsForTab,
-  type RequestableField,
-} from '@/lib/profile-requestable-fields';
+import { profileChangeApprover } from '@/core/tenant-settings';
+
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, pageWideCls } from '@/components/ui';
-import { saveProfileRequestFieldsAction,saveOwnPhotoSettingAction,saveNamedProfileRoutingAction,previewNamedProfileRoutingAction } from './actions';
+import { saveProfileRequestFieldsAction,saveOwnPhotoSettingAction } from './actions';
 
 /**
  * ── r261 · STAGE THREE OF BOARD ITEM 9583deac: THE TWO SETTINGS ─────────────────────────────────────
@@ -80,17 +74,15 @@ export default async function ProfileRequestSettingsPage({
    */
   const raw=getSetting(s,'ess.profile_change_fields');
   const allowed=resolveEssEditableIds(raw),primaryAllowed=resolveEssPrimaryEditableIds(raw),visible=resolveEssVisibleIds(raw);
-  const legacyAllowed=profileChangeAllowedKeys(s);
+  const routing=readProfileRoutingPolicy(s),routingEmployees=routing.rules.length?await listEmployees(s):[];
+  const approverNames=new Map(routingEmployees.map(employee=>[employee.employmentId,`${employee.employeeCode} · ${employee.name}`]));
   const te=await getTranslations('essProfile');
   const labels=await getTranslations();
   const tabKeys=['profile','family','job','careerMovement','attendance','bankStatutory','payroll','leave','documents','qualification','others'];
   const approver = profileChangeApprover(s);
   const pendingByKey = await pendingProfileChangeCountsByKey(s);
   const mayWrite = isGroupAdmin(s);
-  const [companies,departments,grades,positions,costCenters,businessUnits,profileOptions,employees]=await Promise.all([listCompanies(s),listDepartments(s),listJobGrades(s),listPositions(s),listCostCenters(s),listBusinessUnits(s),listAllProfileOptions(s),listEmployees(s)]);
-  const [crit,org,employmentType]=await Promise.all([getTranslations('admin.leave.adjustmentsCriteria'),getTranslations('admin.profileOptions.category'),getTranslations('people.wizard.employmentType')]);
-  const approverIds=new Set(await profileApproverCandidates(s));
-  const sections=buildOrgCriteriaSections({companies,departments,grades,positions,costCenters,businessUnits,profileOptions},{crit,org,employmentType});
+
 
 
 
@@ -109,7 +101,7 @@ export default async function ProfileRequestSettingsPage({
 
       <Card className="p-5"><SectionHeader title={te('approvalRules')}/><p className="mt-2 text-sm text-muted-foreground">{te('photoEditHelp')}</p><form action={saveOwnPhotoSettingAction} className="mt-4 space-y-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="enabled" defaultChecked={getSetting(s,'ess.profile_photo_edit')===true} disabled={!mayWrite}/>{te('allowOwnPhoto')}</label>{mayWrite&&<button type="submit" className={btnPrimary}>{te('savePhotoPermission')}</button>}</form>
 
-      <div className="border-t border-border pt-5"><SectionHeader title={te('namedRouting')}/><ProfileRoutingForm policy={readProfileRoutingPolicy(s)} sections={sections} employees={employees.map(employee=>({id:employee.employmentId,label:`${employee.employeeCode} · ${employee.name}`}))} approvers={employees.filter(employee=>approverIds.has(employee.employmentId)).map(employee=>({id:employee.employmentId,label:`${employee.employeeCode} · ${employee.name}`}))} disabled={!mayWrite} action={saveNamedProfileRoutingAction} previewAction={previewNamedProfileRoutingAction} labels={{enabled:te('routingEnabled'),help:te('routingHelp'),name:te('routingName'),approver:te('routingApprover'),choose:te('routingChoose'),employees:te('routingEmployees'),criteriaHelp:te('routingCriteriaHelp'),remove:te('routingRemove'),add:te('routingAdd'),save:te('routingSave'),preview:te('routingPreview'),previewFailed:te('routingSaveFailed'),matched:te('routingTypeMatched'),missing:te('routingTypeMissing'),overlapping:te('routingOverlapping'),ineligible:te('routingIneligible'),requestTypes:te('requestTypes'),fields:te('fieldRequests'),photo:te('photoRequests'),included:te('included'),excluded:te('excluded'),exclusionHelp:te('exclusionHelp'),search:te('routingSearch'),unavailable:te('unavailableSelection'),noApprovers:te('noValidApprovers'),noMatches:te('noMatches')}}/></div>
+      <div className="mt-5 space-y-3 border-t border-border pt-5"><SectionHeader title={te('namedRouting')}/><p className="text-sm text-muted-foreground">{te('anyApprover')}</p><ul className="list-inside list-disc text-sm">{routing.rules.map(rule=><li key={rule.id}>{rule.name}: {profileRuleApprovers(rule).map(id=>approverNames.get(id)??te('unavailableSelection')).join(', ')}</li>)}</ul><Link href="/admin/settings/profile-requests/rules" className={btnPrimary}>{te('manageApprovalRules')}</Link></div>
 
       <p className="border-t border-border pt-4 text-sm text-muted-foreground">{te('approvalAuthorityFloor')}: {t(`approverOption.${approver}`)}</p></Card>
 
@@ -123,7 +115,7 @@ export default async function ProfileRequestSettingsPage({
           {t('lockWithdrawsNotice')}
         </p>
         <form action={saveProfileRequestFieldsAction} className="mt-4 space-y-5"><input type="hidden" name="policyFingerprint" value={profileVisibilityFingerprint(raw)}/>
-          <PermissionMatrix disabled={!mayWrite} groups={isProfileVisibilityPolicyValue(raw)&&raw.version===4?{...raw.groups}:{}} rows={essVisibleFields().map(field=>({linked:linkedEssFieldIds(field.id),id:field.id,tab:field.tab,section:field.section,tabLabel:tp(`tabs.${tabKeys[ESS_PROFILE_TABS.indexOf(field.tab as typeof ESS_PROFILE_TABS[number])]}`),label:personnelFieldLabel(field,(key,fallback)=>labels.has(key)?labels(key):fallback),group:`${tp(`tabs.${tabKeys[ESS_PROFILE_TABS.indexOf(field.tab as typeof ESS_PROFILE_TABS[number])]}`)} · ${PERSONNEL_ESS_SECTION_LABEL_KEYS[field.section]?tp(PERSONNEL_ESS_SECTION_LABEL_KEYS[field.section]):field.section}`,canEdit:Boolean(field.ess.binding&&['immediate','approval'].includes(field.ess.edit)),permission:isProfileVisibilityPolicyValue(raw)?raw.fields[field.id]??'hide':!visible.has(field.id)?'hide':allowed.has(field.id)?'editable':'viewOnly',primaryOnly:isProfileVisibilityPolicyValue(raw)?raw.primaryOnly.includes(field.id):primaryAllowed.has(field.id),waiting:(pendingByKey.get(field.id)??0)+(field.ess.binding?.legacyKey?pendingByKey.get(field.ess.binding.legacyKey)??0:0)}))} labels={{editable:te('editable'),viewOnly:te('viewOnly'),hide:te('hide'),field:te('field'),all:te('selectAll'),primaryOnly:te('primaryOnly'),waiting:te('waiting'),groupHelp:te('groupPermissionHelp'),tabPermission:te('tabPermission'),sectionPermission:te('sectionPermission')}}/>
+          <PermissionMatrix disabled={!mayWrite} groups={isProfileVisibilityPolicyValue(raw)&&raw.version!==3?{...raw.groups}:{}} rows={essVisibleFields().map(field=>({linked:linkedEssFieldIds(field.id),id:field.id,tab:field.tab,section:field.section,tabLabel:tp(`tabs.${tabKeys[ESS_PROFILE_TABS.indexOf(field.tab as typeof ESS_PROFILE_TABS[number])]}`),label:personnelFieldLabel(field,(key,fallback)=>labels.has(key)?labels(key):fallback),group:`${tp(`tabs.${tabKeys[ESS_PROFILE_TABS.indexOf(field.tab as typeof ESS_PROFILE_TABS[number])]}`)} · ${PERSONNEL_ESS_SECTION_LABEL_KEYS[field.section]?tp(PERSONNEL_ESS_SECTION_LABEL_KEYS[field.section]):field.section}`,approval:profileFieldApproval(raw,field),canEdit:Boolean(field.ess.binding&&['immediate','approval'].includes(field.ess.edit)),permission:isProfileVisibilityPolicyValue(raw)?raw.fields[field.id]??'hide':!visible.has(field.id)?'hide':allowed.has(field.id)?'editable':'viewOnly',primaryOnly:isProfileVisibilityPolicyValue(raw)?raw.primaryOnly.includes(field.id):primaryAllowed.has(field.id),waiting:(pendingByKey.get(field.id)??0)+(field.ess.binding?.legacyKey?pendingByKey.get(field.ess.binding.legacyKey)??0:0)}))} labels={{editable:te('editable'),viewOnly:te('viewOnly'),hide:te('hide'),field:te('field'),all:te('selectAll'),primaryOnly:te('primaryOnly'),waiting:te('waiting'),groupHelp:te('groupPermissionHelp'),tabPermission:te('tabPermission'),sectionPermission:te('sectionPermission'),approvalRequired:te('approvalRequired'),attachment:te('attachmentRequirement'),attachmentRequired:te('requiredAttachedFile'),attachmentOptional:te('notRequiredAttachedFile')}}/>
           {mayWrite ? (
             <button type="submit" className={btnPrimary}>
               {t('saveFields')}

@@ -59,7 +59,7 @@ export default async function MePage({
   const visibilityPolicy=getSetting(presentation.ctx,'ess.profile_change_fields');
   const hiddenTabs=new Set<string>(profileHiddenTabs(visibilityPolicy));
   const tabVisible=(tab:string)=>!hiddenTabs.has(tab);
-  const sectionVisible=(tab:string,section:string)=>tabVisible(tab)&&(!isProfileVisibilityPolicyValue(visibilityPolicy)||visibilityPolicy.version!==4||visibilityPolicy.groups[profileSectionPolicyKey(tab,section)]!=='hide');
+  const sectionVisible=(tab:string,section:string)=>tabVisible(tab)&&(!isProfileVisibilityPolicyValue(visibilityPolicy)||visibilityPolicy.version===3||visibilityPolicy.groups[profileSectionPolicyKey(tab,section)]!=='hide');
   const canSee=(owner:string,field:string)=>essFactVisible(visible,owner,field);
   const own=await myOwnEmploymentSubjects(s,{profileEdit:true});
   const selected=requestedEmploymentId?own.find(row=>row.employmentId===requestedEmploymentId):own.length===1?own[0]:null;

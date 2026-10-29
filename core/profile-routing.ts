@@ -13,7 +13,7 @@ import {isAdmin,isGroupAdmin} from '../lib/authz-model';
 import {PERSONNEL_EMPLOYMENT_TYPES} from '../lib/personnel-choice-vocabulary';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {resolveOrgCriteriaTargets,ORG_DATED_ASSIGNMENT_CRITERIA,ORG_EMPLOYMENT_COLUMN_CRITERIA,ORG_CRITERIA_FIELDS,ORG_CRITERIA_DATE_FIELDS,ORG_CRITERIA_NUMBER_FIELDS,type OrgCriteria} from './org-criteria';
-import {EMPTY_PROFILE_ROUTING,PROFILE_ROUTING_KEY,isProfileRoutingPolicy,type ProfileRoutingPolicy,type ProfileRouteRule,type ProfileRequestType} from '../lib/profile-routing-policy';
+import {EMPTY_PROFILE_ROUTING,PROFILE_ROUTING_KEY,isProfileRoutingPolicy,type ProfileRoutingPolicy,type ProfileRouteRule,type ProfileRequestType,profileRuleApprovers} from '../lib/profile-routing-policy';
 export class ProfileRoutingError extends Error{
  constructor(readonly code:'invalid'|'missing'|'overlap'|'unauthorized'|'changed'|'reasonRequired'){super(`Profile routing: ${code}`);this.name='ProfileRoutingError';}
 }
@@ -39,8 +39,9 @@ function validateCriteria(criteria:ProfileRouteRule['criteria']){
  if(typeof criteria.minYearsOfService==='number'&&typeof criteria.maxYearsOfService==='number'&&criteria.minYearsOfService>criteria.maxYearsOfService)throw new ProfileRoutingError('invalid');
 }
 async function routeTargets(tx:Tx,rule:ProfileRouteRule,subjectId?:string,asOf=todayInKualaLumpur()){
+ if(rule.employeeSelection==='selected'&&!rule.employmentIds.length)return [];
  const ids=subjectId?[subjectId]:rule.employmentIds;
- if(subjectId&&rule.employmentIds.length&&!rule.employmentIds.includes(subjectId))return [];
+ if(subjectId&&(rule.employeeSelection==='selected'||rule.employmentIds.length>0)&&!rule.employmentIds.includes(subjectId))return [];
  const included=await resolveOrgCriteriaTargets(tx,{criteria:rule.criteria as OrgCriteria,asOf,...(ids.length?{employmentIds:ids}:{})});
  const excluded=new Set(rule.excludedEmploymentIds??[]);
  // An empty exclusion is no exclusion. Passing {} to the resolver would exclude everybody.
@@ -82,21 +83,30 @@ export async function resolveProfileRouteTx(tx:Tx,ctx:SessionContext,subjectId:s
  const matches:ProfileRouteRule[]=[];
  for(const rule of policy.rules)if((!rule.requestTypes||rule.requestTypes.includes(requestType))&&(await routeTargets(tx,rule,subjectId,asOf)).includes(subjectId))matches.push(rule);
  if(matches.length!==1)throw new ProfileRoutingError(matches.length?'overlap':'missing');
- const rule=matches[0],principal=await namedPrincipal(tx,rule.approverEmploymentId,subjectId);
- return {routeId:rule.id,routeRevision:policy.revision,routeApproverUserId:principal.user_id,routeApproverEmploymentId:principal.employment_id,routeContext};
+ const rule=matches[0],principals=[];
+ for(const id of profileRuleApprovers(rule))principals.push(await namedPrincipal(tx,id,subjectId));
+ const principal=principals[0];
+ return {routeId:rule.id,routeRevision:policy.revision,routeApproverUserId:principal.user_id,routeApproverEmploymentId:principal.employment_id,routeContext:policy.version===3?{...routeContext,version:3,decisionMode:'any',approvers:principals.map(row=>({userId:row.user_id,employmentId:row.employment_id}))}:routeContext};
 }
 type ProfileRouteDecisionBase=Pick<typeof profileChangeRequest.$inferSelect,'employmentId'|'routeId'|'routeRevision'|'routeApproverUserId'|'routeApproverEmploymentId'|'routeContext'>;
 /** Writers pass their real row; metadata-only eligibility readers must supply the actual stored type.
  * A missing classifier must not silently route a photo request through the fields default. */
 export type ProfileRouteDecisionSubject=ProfileRouteDecisionBase&({proposed:unknown}|{requestType:ProfileRequestType});
 export async function assertProfileRouteDecisionTx(tx:Tx,ctx:SessionContext,request:ProfileRouteDecisionSubject){
- const policy=readProfileRoutingPolicy(ctx);
- if(!request.routeId){if(policy.enabled)throw new ProfileRoutingError('changed');return;}
+ if(!request.routeId){if(request.routeApproverUserId||request.routeApproverEmploymentId||request.routeContext)throw new ProfileRoutingError('changed');return;}
+ const snapshot=request.routeContext as {version?:unknown;decisionMode?:unknown;approvers?:{userId:string;employmentId:string}[];fingerprint?:unknown}|null;
+ if(snapshot?.version===3){
+  if(snapshot.decisionMode!=='any'||!Array.isArray(snapshot.approvers)||!snapshot.approvers.length||snapshot.approvers.length>32)throw new ProfileRoutingError('changed');
+  const assigned=snapshot.approvers.find(row=>row.userId===ctx.userId);
+  if(!assigned||!z.uuid().safeParse(assigned.employmentId).success)throw new ProfileRoutingError('unauthorized');
+  const principal=await namedPrincipal(tx,assigned.employmentId,request.employmentId);
+  if(principal.user_id!==assigned.userId||(await subjectContext(tx,ctx,request.employmentId,todayInKualaLumpur())).fingerprint!==snapshot.fingerprint)throw new ProfileRoutingError('changed');
+  return;
+ }
  const requestType='proposed' in request?profileRequestType(request.proposed):request.requestType;
  if(requestType!=='photo'&&requestType!=='fields')throw new ProfileRoutingError('changed');
- const current=await resolveProfileRouteTx(tx,ctx,request.employmentId,requestType);
- if(!current||current.routeId!==request.routeId||current.routeRevision!==request.routeRevision||current.routeApproverUserId!==request.routeApproverUserId||current.routeApproverEmploymentId!==request.routeApproverEmploymentId||current.routeContext.fingerprint!==(request.routeContext as {fingerprint?:unknown}|null)?.fingerprint)throw new ProfileRoutingError('changed');
- if(ctx.userId!==current.routeApproverUserId)throw new ProfileRoutingError('unauthorized');
+ const principal=await namedPrincipal(tx,request.routeApproverEmploymentId??'',request.employmentId);
+ if(ctx.userId!==request.routeApproverUserId||principal.user_id!==request.routeApproverUserId||principal.employment_id!==request.routeApproverEmploymentId||(await subjectContext(tx,ctx,request.employmentId,todayInKualaLumpur())).fingerprint!==snapshot?.fingerprint)throw new ProfileRoutingError('changed');
 }
 export function profileRequestType(proposed:unknown):ProfileRequestType{return proposed&&typeof proposed==='object'&&!Array.isArray(proposed)&&'v' in proposed&&proposed.v===3?'photo':'fields';}
 /** SQL twin for bounded queue metadata: never select the proposal values/byte reference just to route it. */
@@ -104,9 +114,9 @@ export function profileRequestTypeSql(proposed:SQL):SQL<ProfileRequestType>{retu
 
 /** Used identically for queue, detail and decided counts; row RLS is an independent fence. */
 export function profileRouteReaderPredicate(ctx:SessionContext){
- return sql`app.profile_route_reader(${profileChangeRequest.employmentId},${profileChangeRequest.routeApproverUserId},${profileChangeRequest.routeApproverEmploymentId},${profileChangeRequest.status}::text)`;
+ return sql`app.profile_request_reader(${profileChangeRequest.id})`;
 }
-export async function saveProfileRoutingPolicy(ctx:SessionContext,p:{expectedRevision:string;enabled:boolean;rules:ProfileRouteRule[];version?:1|2;previewFingerprint?:string}){
+export async function saveProfileRoutingPolicy(ctx:SessionContext,p:{expectedRevision:string;enabled:boolean;rules:ProfileRouteRule[];version?:1|2|3;previewFingerprint?:string}){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  try{p=structuredClone(p);}catch{throw new ProfileRoutingError('invalid');}
  return withTenant(ctx,async tx=>{
@@ -116,14 +126,14 @@ export async function saveProfileRoutingPolicy(ctx:SessionContext,p:{expectedRev
   if(before.revision!==p.expectedRevision||before.enabled&&!p.enabled)throw new ProfileRoutingError('changed');
   const value={version:p.version??1,enabled:p.enabled,revision:randomUUID(),rules:p.rules};
   if(!isProfileRoutingPolicy(value))throw new ProfileRoutingError('invalid');
-  if(value.version===2){const preview=await previewRoutingTx(tx,fresh.ctx,value);if(!p.previewFingerprint||p.previewFingerprint!==preview.fingerprint)throw new ProfileRoutingError('changed');}
+  if(value.version!==1){const preview=await previewRoutingTx(tx,fresh.ctx,value);if(!p.previewFingerprint||p.previewFingerprint!==preview.fingerprint)throw new ProfileRoutingError('changed');}
   const candidates=await tx.execute(sql`select employment_id from app.profile_route_candidates()`);
   const candidateIds=new Set((candidates as unknown as {employment_id:string}[]).map(row=>row.employment_id));
-  if(value.rules.some(rule=>!candidateIds.has(rule.approverEmploymentId)))throw new ProfileRoutingError('unauthorized');
+  if(value.rules.some(rule=>profileRuleApprovers(rule).some(id=>!candidateIds.has(id))))throw new ProfileRoutingError('unauthorized');
   const covered=new Set<string>();
   for(const rule of value.rules){validateCriteria(rule.criteria);if(rule.excludedCriteria)validateCriteria(rule.excludedCriteria);const targets=await routeTargets(tx,rule);
    for(const type of rule.requestTypes??['fields'])for(const id of targets){const key=type+':'+id;if(covered.has(key))throw new ProfileRoutingError('overlap');covered.add(key);}
-   if(await eligibleTargetCount(tx,rule.approverEmploymentId,targets)!==targets.length)throw new ProfileRoutingError('unauthorized');
+   for(const id of profileRuleApprovers(rule))if(await eligibleTargetCount(tx,id,targets)!==targets.length)throw new ProfileRoutingError('unauthorized');
   }
   if(value.enabled&&!value.rules.length)throw new ProfileRoutingError('missing');
   await setTenantSetting(fresh.ctx,{key:PROFILE_ROUTING_KEY,value},tx);
@@ -176,7 +186,7 @@ export function profileApproverCandidates(ctx:SessionContext){
  });
 }
 /** Configuration-only counts reuse the same target and authority owners; no profile values returned. */
-export function previewProfileRoutingPolicy(ctx:SessionContext,input:{enabled:boolean;rules:ProfileRouteRule[];version?:1|2}){
+export function previewProfileRoutingPolicy(ctx:SessionContext,input:{enabled:boolean;rules:ProfileRouteRule[];version?:1|2|3}){
  return withTenant(ctx,async tx=>{
   if(!isGroupAdmin(ctx))throw new ProfileRoutingError('unauthorized');
   const fresh=await freshProfileEditPolicyTx(tx,ctx);
@@ -190,9 +200,9 @@ async function previewRoutingTx(tx:Tx,ctx:SessionContext,value:ProfileRoutingPol
  const candidateIds=new Set((candidateRows as unknown as {employment_id:string}[]).map(row=>row.employment_id));
  const snapshot:unknown[]=[];
  for(const rule of value.rules){validateCriteria(rule.criteria);if(rule.excludedCriteria)validateCriteria(rule.excludedCriteria);const targets=await routeTargets(tx,rule);
-  if(!candidateIds.has(rule.approverEmploymentId))ineligible++;
+  if(profileRuleApprovers(rule).some(id=>!candidateIds.has(id)))ineligible++;
   for(const type of rule.requestTypes??['fields'])for(const id of targets){const key=type+':'+id;matches.set(key,(matches.get(key)??0)+1);}
-  const eligible=await eligibleTargetCount(tx,rule.approverEmploymentId,targets);ineligible+=targets.length-eligible;
+  const eligible=[];for(const id of profileRuleApprovers(rule)){const count=await eligibleTargetCount(tx,id,targets);ineligible+=targets.length-count;eligible.push({id,count});}
   snapshot.push({id:rule.id,targets:[...targets].sort(),eligible});
  }
  const population=await resolveOrgCriteriaTargets(tx,{criteria:{},asOf:todayInKualaLumpur()});
