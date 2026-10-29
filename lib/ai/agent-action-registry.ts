@@ -212,7 +212,7 @@ export const AGENT_ACTIONS=Object.freeze([
   permission:{actor:'self',guard:'core/assistant-actions/own-attendance-correction-source.ts#assertOwnAttendanceCorrectionActorTx'},subject:'own_employment',blastRadius:{max:1,unit:'attendance_correction_one_date'},
   idempotencyKey:'review_action_id',policy:{tier:'confirm',category:'own_work'},reversal:{kind:'entry_point',by:'app/me/actions.ts#myCancelAttendanceRequest'},evaluationCases:[],
   screen:{native:'app/attendance/my-records/[date]/page.tsx',entryPoints:['app/attendance/my-records/[date]/actions.ts#requestOwnAttendanceDayAction','app/me/actions.ts#myRequestCorrection']},review:{route:'/assistant/attendance',handoff:'review_page'},
-  store:'dedicated',browserOwner:'attendance',pauseKey:'hr_assistant'}),
+  store:'generic_own',browserOwner:'attendance',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'attendance.overtime.request',module:'attendance',owner:'attendance',service:'packs/attendance/service.ts#requestAttendanceCorrectionTx',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_overtime_request_review_v1',inputSchema:'OwnOvertimeHumanContent',outputSchema:'OvertimeRequestPreparedReview'},
   confirm:{status:'implemented',adapter:'module_overtime_request_review_v1',inputSchema:'OvertimeRequestReviewConfirmation',outputSchema:'OvertimeRequestCompletedReview'},

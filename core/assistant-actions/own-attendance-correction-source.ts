@@ -9,19 +9,13 @@ import type {SessionContext,Tx} from '../../db/client';
 import {attendanceCorrection,domainEvent,employment} from '../../db/schema';
 import {OwnAttendanceCorrectionIntent,OwnAttendanceCorrectionReview,OwnAttendanceCorrectionReceipt} from '../../lib/assistant-actions/own-attendance-correction-contract';
 import {prepareAttendanceCorrectionRequestTx,requestAttendanceCorrectionTx,attendanceCorrectionPreparedDigest,type AttendanceCorrectionRequestInput} from '../../packs/attendance/service';
-import {assertAiPrincipalTx} from '../ai-principal';
-import {assertMayUseAssistant} from '../assistant-grant';
-import {assertAiActionUnpausedTx} from '../ai-governance';
-import {assertModuleEnabled,resolveEntitlementsTx} from '../entitlements';
+import {withAgentActionGuard} from './agent-action-guard';
 const fail=():never=>{throw Error('Attendance request could not be confirmed.');};
 function inputOf(intent:OwnAttendanceCorrectionIntent):AttendanceCorrectionRequestInput{
  const {version:_,clockChanges,unclockedWork,...input}=intent;return {...input,clockChanges:clockChanges??undefined,unclockedWork:unclockedWork??undefined};
 }
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
-export async function assertOwnAttendanceCorrectionActorTx(tx:Tx,supplied:SessionContext){
- const current=capture(supplied);await assertAiPrincipalTx(tx,current);
- const fresh={...current,entitlements:await resolveEntitlementsTx(tx,current.tenantId)};await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,'attendance');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');if(!fresh.personId)return fail();return fresh;
-}
+export async function assertOwnAttendanceCorrectionActorTx(tx:Tx,supplied:SessionContext){const fresh=await withAgentActionGuard(tx,capture(supplied),'attendance.correction.request');if(!fresh.personId)return fail();return fresh;}
 async function guard(tx:Tx,supplied:SessionContext,employmentId:string){
  const fresh=await assertOwnAttendanceCorrectionActorTx(tx,supplied);await lockLeaveDependencyReadConfigurationTx(tx,fresh.tenantId);
  const nominate=()=>tx.select({id:employment.id,companyId:employment.companyId}).from(employment).where(and(eq(employment.id,employmentId),eq(employment.tenantId,fresh.tenantId),eq(employment.personId,fresh.personId!))).limit(1);

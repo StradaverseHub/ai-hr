@@ -586,3 +586,7 @@ Lifecycle acknowledgement uses the generic own compatibility lifecycle with an e
 ### WP9 — reporting graph compatibility (30 October 2026)
 
 Reporting-line change custody uses the generic assigned compatibility lifecycle with its exact original metadata, cached-review body, manager/previous-manager person snapshots and org-specific AAD/key purposes. The protocol does not add a contractVersion field to installed metadata or substitute the module-action commitment. Native Workforce graph/field/company authority, prior/new manager views, original target capture and canonical set-event proof remain unchanged. Current source preparation revalidates every cached graph fact before pending disclosure. Completed retries reconcile instead of executing; no migration or ciphertext rewrite is required.
+
+### WP9 — attendance request compatibility (30 October 2026)
+
+Own attendance correction custody uses the generic own compatibility lifecycle with an exact legacy intent-wire codec. Its private commitment/encryption still serialize `intent`, never a renamed content field. Existing own-employee/configuration/credit ownership, bounded canonical policy/day/payroll preparation before custody NOWAIT, exact encrypted snapshot reread and native correction/request binding remain unchanged. Completed retries lock and reconcile only the existing correction without pending preparation. The public action/version/intent packet and digest-bound confirmation are unchanged; native clock and other-HR rules still adjudicate every request. No migration is required.
