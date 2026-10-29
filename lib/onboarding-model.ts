@@ -1,3 +1,4 @@
+import type { JoinerSectionSetting, JoinerSections } from './onboarding-page-access';
 import { resolveV9CaseFields, missingV9CaseFields, validateV9CaseValue, type CaseField } from './lifecycle-v9-case-form';
 import { v9EmploymentRule } from './lifecycle-v9-employment';
 import type { EmploymentConfirmationDates } from './employment-confirmation';
@@ -93,6 +94,10 @@ export type Config = {
     access: {
         onboarding: Id[];
         offboarding: Id[];
+        joinerViewGroups?: Id[];
+        joinerSections?: Record<Id,JoinerSectionSetting>;
+        recordGroups?: Id[];
+        recordHR?: boolean;
     };
     countEquipment: boolean;
     techGroup: string;
@@ -111,6 +116,10 @@ export type Actor = {
     id: Id;
     name: string;
     module: boolean;
+    page?: boolean;
+    sections?: JoinerSections | null;
+    caseActions?: boolean;
+    records?: boolean;
     hr: boolean;
     master: boolean;
 };
@@ -933,6 +942,7 @@ export function validateConfig(config: Config) {
         if (new Set(list.map(x => x.id)).size !== list.length)
             fail('Definition identifiers must be unique.');
     const groups = new Set(config.groups.map(g => g.id)), flows = new Set(config.workflows.map(w => w.id)), routes = new Set(config.routings.map(r => r.id));
+    if ([...(config.access.joinerViewGroups??[]),...(config.access.recordGroups??[]),...Object.keys(config.access.joinerSections??{})].some(id=>!groups.has(id)))fail('Choose existing groups for page and request-record access.');
     const allowedRules = (rules: Rules, allowed: string[], single = false) => {
         for (const [key, values] of Object.entries(rules))
             if (values?.length && (!allowed.includes(key) || single && values.length > 1))

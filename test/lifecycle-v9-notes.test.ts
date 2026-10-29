@@ -1,7 +1,8 @@
 import { expect, it } from 'vitest';
 import { changeV9Note } from '../lib/lifecycle-v9-notes';
-import type { Case, Environment } from '../lib/lifecycle-v9-model';
-function fixture(){let id=0;const c={state:'submitted',tasks:[{id:'task'}],items:[{id:'item'}],log:[]} as Case;const env={actor:{id:'author',name:'Actual HR'},now:'2026-10-30T00:00:00Z',nextId:()=>String(++id),eligibleUser:(id:string)=>['author','colleague'].includes(id)} as Environment;return {c,env};}
+import { fictionalV9Case,fictionalV9Task } from './fixtures/lifecycle-v9/case';
+import type { Environment } from '../lib/lifecycle-v9-model';
+function fixture(){let id=0;const c=fictionalV9Case({tasks:[fictionalV9Task('task')],items:[{id:'item',name:'Fictional item',kind:'device',sourceId:null,group:null,assignee:null,dueOn:'2026-11-30',status:'todo',reason:''}]});const env={actor:{id:'author',name:'Actual HR'},now:'2026-10-30T00:00:00Z',nextId:()=>String(++id),eligibleUser:(id:string)=>['author','colleague'].includes(id)} as Environment;return {c,env};}
 it('retains author, mentions and revision history when notes are edited or deleted',()=>{
  const {c,env}=fixture();changeV9Note(c,env,{type:'note',context:'task',body:'Original @Colleague',mentions:['colleague','colleague']});const note=c.notes![0];
  expect(note).toMatchObject({by:'author',name:'Actual HR',mentions:['colleague'],edited:false,deleted:false});

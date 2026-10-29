@@ -11,7 +11,10 @@ export const onboardingConfigSchema = z.object({
     routings: z.array(z.object({ id, name, rows: z.array(z.object({ id, rules, group: z.string().max(100) }).strict()).max(300) }).strict()).max(100),
     checklists: z.array(z.object({ id, name, owner: id, createdAt: z.string().datetime(), rules, tasks: z.array(onboardingTaskSchema).max(100) }).strict()).max(100),
     catalogue: z.array(z.object({ id, name, type: z.enum(['system', 'device']), active: z.boolean(), rules, workflow: id.nullable(), team: z.string().max(100), card: z.boolean() }).strict()).max(500),
-    access: z.object({ onboarding: z.array(id).max(1000), offboarding: z.array(id).max(1000) }).strict(),
+    access: z.object({ onboarding: z.array(id).max(1000), offboarding: z.array(id).max(1000),
+      joinerViewGroups:z.array(id).max(100).optional(),recordGroups:z.array(id).max(100).optional(),recordHR:z.boolean().optional(),
+      joinerSections:z.record(id,z.object({preset:z.enum(['full','coord','fulfil','approver','custom']),s:z.object({case:z.enum(['hidden','view']).optional(),hr:z.enum(['hidden','view']).optional(),notes:z.enum(['hidden','view']).optional(),checklist:z.enum(['hidden','team','all']).optional(),equip:z.enum(['hidden','view','act']).optional(),history:z.enum(['hidden','equip','full']).optional(),actions:z.enum(['none','allowed']).optional()}).strict().optional()}).strict()).refine(value=>Object.keys(value).length<=100).optional(),
+    }).strict(),
     countEquipment: z.boolean(), techGroup: z.string().max(100), exceptions: z.object({ groups: z.array(id).max(100), workflow: id.nullable(), always: z.boolean(), remindDays: z.number().int().min(0).max(365), confirmingGroup: z.string().max(100) }).strict(),
     recentActiveDays: z.number().int().min(1).max(365),
 }).strict();
