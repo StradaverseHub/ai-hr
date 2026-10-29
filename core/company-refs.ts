@@ -160,6 +160,7 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
 
   { table: 'reward_unit', column: 'company_id', disposition: 'payroll', note: 'A salary and bonus review with employee snapshots, funding and approval history. Preserve it even before posting.' },
   { table: 'reward_calendar', column: 'company_id', disposition: 'payroll', note: 'The reward approval deadlines set for a cycle in this company. They belong to the reward review history; preserve them with the reviews.' },
+  { table: 'reward_company_exclusion', column: 'company_id', disposition: 'other', note: 'Company-year participation decisions retain their exclusion and ending reasons as audit history, including after a company is brought back.' },
 
   // ── other links: any row refuses until the link is removed ───────────────────────────────────────────
   { table: 'company', column: 'parent_company_id', disposition: 'other', note: 'A sub-company. Re-parent or delete it first; deleting a parent must never orphan a subtree.' },
