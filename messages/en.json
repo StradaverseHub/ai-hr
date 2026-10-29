@@ -14960,6 +14960,9 @@
     "recordHistory": "Record history"
   },
   "payRule": {
+    "assistNotAuthorised": "Your access to pay-rule drafting could not be confirmed.",
+    "aiPreviewRequired": "Run an employee sample with the current rule, then confirm you reviewed it before saving. Changing the rule or employee requires a new preview.",
+    "aiPreviewReviewed": "I reviewed the current employee sample.",
     "sectionTitle": "How is this calculated?",
     "sectionHint": "Choose how the amount is measured. \"Fixed Value\" keeps today's behaviour.",
     "kindLabel": "Input Type",

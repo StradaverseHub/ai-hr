@@ -14960,6 +14960,9 @@
     "recordHistory": "Lịch sử hồ sơ"
   },
   "payRule": {
+    "assistNotAuthorised": "Không thể xác nhận quyền soạn quy tắc lương của bạn.",
+    "aiPreviewRequired": "Chạy mẫu nhân viên với quy tắc hiện tại rồi xác nhận đã xem trước khi lưu. Thay đổi quy tắc hoặc nhân viên cần xem trước lại.",
+    "aiPreviewReviewed": "Tôi đã xem mẫu nhân viên hiện tại.",
     "sectionTitle": "Tính như thế nào?",
     "sectionHint": "Chọn cách đo lường số tiền. \"Giá trị cố định\" giữ nguyên hoạt động hiện tại.",
     "kindLabel": "Loại nhập liệu",

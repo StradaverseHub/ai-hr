@@ -14960,6 +14960,9 @@
     "recordHistory": "记录历史"
   },
   "payRule": {
+    "assistNotAuthorised": "无法确认你起草薪资规则的权限。",
+    "aiPreviewRequired": "先用当前规则预览一名员工的样本，再确认已审阅后保存。更改规则或员工后须重新预览。",
+    "aiPreviewReviewed": "我已审阅当前员工样本。",
     "sectionTitle": "如何计算？",
     "sectionHint": "选择金额的计算方式。“固定数值”保持当前行为。",
     "kindLabel": "输入类型",

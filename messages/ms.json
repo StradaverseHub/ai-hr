@@ -14960,6 +14960,9 @@
     "recordHistory": "Sejarah rekod"
   },
   "payRule": {
+    "assistNotAuthorised": "Akses anda untuk mendraf peraturan gaji tidak dapat disahkan.",
+    "aiPreviewRequired": "Jalankan sampel pekerja dengan peraturan semasa, kemudian sahkan anda menyemaknya sebelum menyimpan. Perubahan peraturan atau pekerja memerlukan pratonton baharu.",
+    "aiPreviewReviewed": "Saya telah menyemak sampel pekerja semasa.",
     "sectionTitle": "Bagaimana ia dikira?",
     "sectionHint": "Pilih cara jumlah itu diukur. \"Nilai tetap\" mengekalkan tingkah laku semasa.",
     "kindLabel": "Jenis Input",

@@ -27,7 +27,7 @@
  * The Prorates checkbox lives HERE (not in the flags row) because proration interacts with per-day/per-hour
  * rules — keeping them together lets the live validator surface the conflict as the admin toggles either one.
  */
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useEffect, useId, useMemo, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Loader2, Plus, Sparkles, X } from 'lucide-react';
@@ -193,6 +193,10 @@ export function PayRuleEditor({
   catalogueOnly = false,
 }: Props) {
   const t = useTranslations('payRule');
+  const previewReviewId=useId();
+  const [aiDraftNeedsPreview,setAiDraftNeedsPreview]=useState(false);
+  const [lastPreviewIdentity,setLastPreviewIdentity]=useState<string|null>(null);
+  const [reviewedPreviewIdentity,setReviewedPreviewIdentity]=useState<string|null>(null);
   const tc = useTranslations('payComponents');
   const [kind, setKind] = useState<PayRuleKind>(initialRule?.kind ?? pendingInputKind ?? 'fixed');
   const [prorates, setProrates] = useState(initialProrates);
@@ -263,6 +267,7 @@ export function PayRuleEditor({
     }
   }, [kind, pct, pctBase, pctCode, rate, qty, value, cap, start, terms]);
 
+  const previewIdentity=JSON.stringify([code,componentKind,prorates,rule,previewEmp?.employmentId??null]);
   const validation = validatePayRule(rule, prorates);
   const hint = validation.ok
     ? { ok: true as const, text: t('valid') }
@@ -339,14 +344,19 @@ export function PayRuleEditor({
       }
       if (res.rule) {
         applyRule(res.rule);
+        setAiDraftNeedsPreview(true);
+        setLastPreviewIdentity(null);
+        setReviewedPreviewIdentity(null);
         setAiOpen(false);
-        toast.success(res.explanation ?? t('assistResultTitle'));
+        toast.success(t('assistResultTitle'));
       }
     });
   }
 
   function onPreview() {
     if (catalogueOnly || !previewEmp) return;
+    const identity=previewIdentity;
+    setReviewedPreviewIdentity(null);
     startPreview(async () => {
       const res = await previewPayRuleAction({
         code,
@@ -356,6 +366,7 @@ export function PayRuleEditor({
         employmentId: previewEmp.employmentId,
       });
       setPreview(res.ok ? res : { ok: false, message: res.message });
+      setLastPreviewIdentity(res.ok?identity:null);
     });
   }
 
@@ -367,7 +378,7 @@ export function PayRuleEditor({
       <div className="flex items-center justify-between gap-3">
         <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('sectionTitle')}</h4>
         {!catalogueOnly && aiEnabled && (
-          <Button type="button" variant="secondary" size="sm" onClick={() => setAiOpen(true)} className="shrink-0">
+          <Button type="button" variant="secondary" size="sm" onClick={() => setAiOpen(true)} disabled={previewEmployees.length===0} title={!previewEmployees.length?t('previewNone'):undefined} className="shrink-0">
             <Sparkles className="size-3.5" />
             {t('assistButton')}
           </Button>
@@ -537,10 +548,22 @@ export function PayRuleEditor({
         </div>
       )}
 
+      {aiDraftNeedsPreview && !catalogueOnly && <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+        <p id={previewReviewId} className="text-muted-foreground">{t('aiPreviewRequired')}</p>
+        <label className="mt-2 flex items-start gap-2">
+          <input type="checkbox" name="aiRulePreviewReviewed" required
+            checked={reviewedPreviewIdentity===previewIdentity}
+            aria-describedby={previewReviewId}
+            onChange={event=>setReviewedPreviewIdentity(event.target.checked&&lastPreviewIdentity===previewIdentity?previewIdentity:null)}
+            className="mt-1"/>
+          <span>{t('aiPreviewReviewed')}</span>
+        </label>
+      </div>}
+
       {/* ── Check against an employee ──────────────────────────────────────────────────────────────
           The server evaluates the CANDIDATE rule with the same function the payroll run uses, against this
           employee's real basic / hours / other pay items. Nothing is written. */}
-      {!catalogueOnly && kind !== 'fixed' && (
+      {!catalogueOnly && (kind !== 'fixed'||aiDraftNeedsPreview) && (
         <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
           <h5 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('previewTitle')}</h5>
           <p className="text-xs text-muted-foreground">{t('previewHint')}</p>
