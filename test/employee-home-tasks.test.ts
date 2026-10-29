@@ -63,6 +63,15 @@ describe('Home Waiting for You projects complete actual owner assignments',()=>{
   expect((await GET(new Request('http://localhost/api/home/tasks?employmentId='+subject.employmentId))).status).toBe(403);
   for(const query of ['companyId='+b.companyId,'personId='+subject.personId,'page=0','page=-1','page=1&page=2','employmentId=a&employmentId=b'])expect((await GET(new Request('http://localhost/api/home/tasks?'+query))).status).toBe(400);
  });
+ it('lists an assigned replacement-leave decision once instead of failing the whole list as a duplicate',async()=>{
+  const manager=await employee('Fictional replacement approver'),subject=await employee('Fictional replacement requester',manager.employmentId);
+  const [pending]=await owner.db.insert(s.replacementLeaveRequest).values({tenantId:b.tenantId,employmentId:subject.employmentId,unit:'day',totalDays:'1',reason:'Fictional private replacement reason',submittedOn:today()}).returning({id:s.replacementLeaveRequest.id});
+  CALLER=manager.ctx;
+  const value=await readEmployeeHomeTasks(manager.ctx,manager.employmentId);
+  expect(value.items.filter(row=>row.id===pending.id).map(row=>row.kind)).toEqual(['replacementLeave']);
+  const response=await GET(new Request('http://localhost/api/home/tasks?employmentId='+manager.employmentId));
+  expect(response.status).toBe(200);expect((await response.json()).items.filter((row:{id:string})=>row.id===pending.id)).toHaveLength(1);
+ });
  it('distinguishes standard feedback from OneHR feedback, current work windows and actual recipients',async()=>{
   await setModule(b.tenantId,'performance','active');const a=await entitledCtx(b);
   const manager=await employee('Fictional performance manager'),subject=await employee('Fictional feedback subject',manager.employmentId),peer=await employee('Fictional assigned peer',manager.employmentId);

@@ -1,4 +1,4 @@
-/** UNMOUNTED tenant-catalogue specialist. Human review/custody/POST must own the top-level Tx.
+/** Human-reviewed tenant-catalogue specialist. Human review/custody/POST must own the top-level Tx.
  * No model calculation, statutory classification guess, employee assignment or payroll effect. */
 import {z} from 'zod';
 import {sql} from 'drizzle-orm';

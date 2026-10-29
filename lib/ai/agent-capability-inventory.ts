@@ -1,5 +1,5 @@
 /** ADR-0151 §4.2 — every human entry point that can change data, classified for the orchestrator.
- * Planning and drift metadata only: nothing here grants, checks or executes anything. Each owning service
+ * The tier ceiling also constrains runtime preparation and confirmation. Each owning service
  * keeps its own authorization; the agent reaches an effect only through a registered module action.
  *
  * Keys are server-action files ("use server") mapped export by export, and route files (suffix `#route`)
@@ -18,7 +18,8 @@
  */
 import type {ModuleEffectActionId} from './module-agent-actions';
 
-export type AgentTier='automatic'|'confirm'|'approve'|'handoff';
+export {type AgentTier} from './agent-action-tiers';
+import type {AgentTier,AgentActionPolicy} from './agent-action-tiers';
 export const AGENT_HANDOFF_REASONS=['access_and_authentication','ai_governance','platform_operator','privacy_erasure','payroll_reversal','employment_exit_or_discipline'] as const;
 export const AGENT_INTERNAL_REASONS=['assistant_surface','session_and_presentation','other_client_same_service'] as const;
 export type AgentHandoffReason=(typeof AGENT_HANDOFF_REASONS)[number];
@@ -40,6 +41,26 @@ export const AGENT_ACTION_TIER_CEILING=Object.freeze({
  'attendance.overtime.request':'confirm','approvals.claim.decide':'approve','approvals.attendance.decide':'approve','approvals.toil.decide':'approve',
  'leave.adjustment.apply':'approve','employees.movement.transfer':'approve','toil.credit.grant':'approve',
 } as const satisfies Record<ModuleEffectActionId,AgentTier>);
+
+/** Category classification is independent of the execution tier. Sensitive entries cannot acquire
+ * Automatic authority even if a future edit accidentally changes their tier ceiling. */
+export const AGENT_ACTION_CATEGORY=Object.freeze({
+ 'leave.apply':'own_work','ess.profile.request':'own_work','attendance.correction.request':'own_work',
+ 'toil.replacement.request':'own_work','claims.draft.save':'claim_money','claims.submit':'claim_money',
+ 'performance.review.acknowledge':'own_work','performance.onehr.plan.acknowledge':'own_work',
+ 'notifications.email_preferences.save':'own_work','lifecycle.acknowledgement.submit':'own_work',
+ 'system_testing.execution.save':'own_work','knowledge_base.article.create':'own_work',
+ 'approvals.leave.decide':'approvals','org.reporting.change':'personnel','payroll.close':'payroll',
+ 'multi_cycle_payroll.create_run':'payroll','typed_pay_components.create':'pay','rewards.post':'pay',
+ 'country-my.statutory.update':'payroll','employees.import':'personnel','claims.cancel':'claim_money',
+ 'leave.cancel':'own_work','leave.edit':'own_work',
+ 'attendance.overtime.request':'pay','approvals.claim.decide':'approvals','approvals.attendance.decide':'approvals','approvals.toil.decide':'approvals',
+ 'leave.adjustment.apply':'approvals','employees.movement.transfer':'personnel','toil.credit.grant':'approvals',
+} as const);
+// A sensitive category paired with Automatic is a compile error, in addition to the runtime refusal.
+type CheckedPolicies={ [K in ModuleEffectActionId]: {category:(typeof AGENT_ACTION_CATEGORY)[K];tier:(typeof AGENT_ACTION_TIER_CEILING)[K]} };
+type ValidatePolicies<T extends Record<ModuleEffectActionId,AgentActionPolicy>>=T;
+export type RegisteredAgentActionPolicies=ValidatePolicies<CheckedPolicies>;
 
 export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<string,AgentCapabilityClass>>>>=Object.freeze({
  "app/lifecycle/v9/files/[caseId]/route.ts#route":{"POST":"handoff:employment_exit_or_discipline"},

@@ -1,4 +1,4 @@
-/** The only currently evaluable candidate kind. It reorders an already authorized read set.
+/** The routing candidate kind; read-plan prompt, canonical guidance and conversation candidates have separate harnesses. It reorders an already authorized read set.
  * It cannot nominate subjects, change fields, add work, call providers or own business effects.
  */
 import { createHash } from 'node:crypto';

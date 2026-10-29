@@ -1,5 +1,5 @@
-/** UNMOUNTED canonical Claims DRAFT source. No model tool, route or public UI binds this file.
- * Before exposure the parent must own a locked durable action row, encrypted human review custody,
+/** Human-reviewed canonical Claims DRAFT source. The module browser command and prepared-review custody bind this source; models cannot confirm it.
+ * The parent custody owner must retain a locked durable action row, encrypted human review custody,
  * expiry/erasure, actual human POST/CSRF, atomic completion+native refs and security/interleaving proof.
  * NEW native draft creation is NOT idempotent: repeat confirm without completed custody can create
  * another draft. Completed replay MUST call reconciliation, never the create/update owner again.

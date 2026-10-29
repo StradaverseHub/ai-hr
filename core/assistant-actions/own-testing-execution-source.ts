@@ -1,4 +1,4 @@
-/** UNMOUNTED human-observation adapter. Requires unallocated testing-execution-source.sql and shared
+/** Human-reviewed human-observation adapter. Uses journalled testing source (0630) and shared
  * USER-scoped custody; a tester need not have a person/employment. No model verdict or harness truth. */
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';

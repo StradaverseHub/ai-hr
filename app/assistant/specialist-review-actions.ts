@@ -4,7 +4,7 @@ import {revalidatePath} from 'next/cache';
 import {getBrowserCommandSession} from '@/lib/session';
 import {resolveOwnNotificationServerIdentity} from '@/core/assistant-actions/own-notification-preferences-source';
 import {isAgentModuleCode} from '@/lib/ai/module-agents';
-import {createCanonicalSpecialistCandidate,evaluateCanonicalSpecialistCandidate,promoteCanonicalSpecialistCandidate,rollbackRoutingAgent,runGovernedSpecialistJob} from '@/core/module-agent-releases';
+import {createCanonicalSpecialistCandidate,evaluateCanonicalSpecialistCandidate,promoteCanonicalSpecialistCandidate,rollbackAssistantPromotion,runGovernedSpecialistJob} from '@/core/module-agent-releases';
 
 // Specialist candidate review lives on AI management › Assistant; running a specialist job stays on the
 // employee Assistant page.
@@ -31,7 +31,7 @@ export async function promoteSpecialistCandidateAction(form:FormData){
 }
 export async function rollbackSpecialistCandidateAction(form:FormData){
  const promotionId=String(form.get('promotionId')??'');
- try{const ctx=await getBrowserCommandSession();await rollbackRoutingAgent(ctx,{promotionId,reason:'human'});}catch{fail();}finish();
+ try{const ctx=await getBrowserCommandSession();await rollbackAssistantPromotion(ctx,{promotionId,reason:'human'});}catch{fail();}finish();
 }
 export async function runSpecialistJobAction(form:FormData){
  const module=String(form.get('module')??''),nonce=String(form.get('commandNonce')??'');if(!isAgentModuleCode(module))return jobFail();

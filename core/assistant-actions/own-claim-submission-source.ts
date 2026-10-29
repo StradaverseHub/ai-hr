@@ -1,4 +1,4 @@
-/** UNMOUNTED Claims submission specialist source. Explicit existing draft only, never a new claim,
+/** Human-reviewed Claims submission specialist source. Explicit existing draft only, never a new claim,
  * upload, approval, reimbursement, payroll effect or model financial decision. Shared custody must
  * own human POST, locked review/completion and completed retries before browser/tool exposure. */
 import {z} from 'zod';

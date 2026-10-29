@@ -4,7 +4,8 @@ Use [Control Tower](/control-tower) to review operational readiness and exceptio
 
 The Overview shows readiness issues, the responsible party and the next action. **Check current records**
 refreshes the queue from the HR engine without sending reminders. The scheduled review also refreshes
-it and runs the existing readiness and claims agents when their tenant switches are enabled.
+it and runs readiness and claims passes when their tenant switches are enabled. Readiness can use fixed
+templates; scheduled model drafting additionally requires an admitted principal.
 
 A verified closure means the missing field is now present or no longer required. HR still validates
 the information itself. Ended employments are retired from the queue without being counted as fixes.

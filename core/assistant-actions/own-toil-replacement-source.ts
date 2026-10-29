@@ -1,4 +1,4 @@
-/** UNMOUNTED own TOIL request source. Both current four-day-type window rows and explicit legacy
+/** Human-reviewed own TOIL request source. Both current four-day-type window rows and explicit legacy
  * native day/hour declarations use the same canonical request owner. No banked credit is consumed,
  * no credit/cash granted, and human work declarations are never model or independent evidence. */
 import {and,eq,sql} from 'drizzle-orm';

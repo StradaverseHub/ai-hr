@@ -1,6 +1,7 @@
+import {assertHumanReviewedActionTier} from '../../lib/ai/agent-action-tier-guard';
 import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
-/** UNMOUNTED own Attendance correction custody; models never invent clocks/work or approve OT. */
+/** Human-reviewed own Attendance correction custody; models never invent clocks/work or approve OT. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';
 import {z} from 'zod';
@@ -40,7 +41,7 @@ async function subject(tx:Tx,id:string){const [row]=await tx.execute<{subject:un
 async function peek(tx:Tx,id:string){const [row]=await tx.execute<{peek:unknown}>(sql`select app.assistant_attendance_review_peek(${id}::uuid) as peek`);return z.object({review:Stored,pendingExpired:z.boolean()}).strict().parse(row?.peek);}
 function sameSnapshot(before:Stored,after:Stored){if(JSON.stringify(before)!==JSON.stringify(after))return fail();}
 
-export async function prepareAttendanceCorrectionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=AttendanceCorrectionReviewPrepare.safeParse(input);if(!parsed.success)return fail();const human=parsed.data.intent;try{return await withTenant(ctx,tx=>withOwnAttendanceCorrectionIntervalTx(tx,ctx,{employmentId:human.employmentId,correctionId:null},async(fresh,source)=>{
+export async function prepareAttendanceCorrectionReview(supplied:SessionContext,input:unknown){assertHumanReviewedActionTier(supplied,'attendance.correction.request','confirm');const ctx=capture(supplied),parsed=AttendanceCorrectionReviewPrepare.safeParse(input);if(!parsed.success)return fail();const human=parsed.data.intent;try{return await withTenant(ctx,tx=>withOwnAttendanceCorrectionIntervalTx(tx,ctx,{employmentId:human.employmentId,correctionId:null},async(fresh,source)=>{
  // The actual full native preparation owns conditional policy/day/Payroll locks before INSERT custody.
  const native=await prepareOwnAttendanceCorrectionTx(tx,fresh,human),body=Body.parse({reviewNonce:newPrivateReviewNonce(),intent:human,nativeReviewedDigest:native.reviewDigest}),binding=Binding.parse({tenantId:fresh.tenantId,userId:fresh.userId,personId:fresh.personId,employmentId:source.employmentId,companyId:source.companyId}),now=new Date(),m=Metadata.parse({actionId:randomUUID(),action,contractVersion:1,binding,intentDigest:hash(body.intent),reviewedDigest:reviewed(binding,body),state:'awaiting_confirmation',createdAt:now.toISOString(),expiresAt:new Date(now.getTime()+600000).toISOString()}),sealed=seal(m,body);
  const stored=await read(tx,sql`select app.assistant_attendance_review_prepare(${m.actionId}::uuid,${binding.personId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) as review`);bound(stored,fresh,m.actionId,source);unseal(stored);return pending(stored,native);
@@ -56,7 +57,7 @@ async function existing(supplied:SessionContext,id:string,expected:string|undefi
  const receipt=await confirmOwnAttendanceCorrectionTx(tx,fresh,body.intent,body.nativeReviewedDigest);await captureNativeOutcomeTargetsTx(tx,fresh,{action:action,sourceId:id,eventId:receipt.eventId,targets:[{kind:'employment',id:source.employmentId}]});
  const done=await read(tx,sql`select app.assistant_attendance_review_complete(${id}::uuid,${expected},${receipt.correctionId}::uuid,${receipt.eventId}::uuid) as review`);bound(done,fresh,id,source);if(done.requestId!==receipt.correctionId||done.eventId!==receipt.eventId)return fail();return completed(tx,fresh,done);
  });});}
-export async function confirmAttendanceCorrectionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=AttendanceCorrectionReviewConfirmation.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await existing(ctx,p.actionId,p.reviewedDigest,true);}catch{return fail();}}
+export async function confirmAttendanceCorrectionReview(supplied:SessionContext,input:unknown){assertHumanReviewedActionTier(supplied,'attendance.correction.request','confirm');const ctx=capture(supplied),parsed=AttendanceCorrectionReviewConfirmation.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await existing(ctx,p.actionId,p.reviewedDigest,true);}catch{return fail();}}
 export async function reopenAttendanceCorrectionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=z.guid().safeParse(input);if(!parsed.success)return fail();try{return await existing(ctx,parsed.data,undefined,false);}catch{return fail();}}
 /** Login-only metadata and retirement remain available without digest/content/source grants. */
 export async function discardAttendanceCorrectionReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=AttendanceCorrectionReviewRetirement.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_attendance_review_discard(${p.actionId}::uuid) as receipt`);return{kind:'retired' as const,receipt:AttendanceCorrectionRetiredReview.parse(row?.receipt)};});}catch{return fail();}}

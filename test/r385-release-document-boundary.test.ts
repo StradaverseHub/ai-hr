@@ -1,4 +1,4 @@
-import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,existsSync,rmSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,existsSync,rmSync,utimesSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,dirname} from 'node:path';
 import {execFileSync} from 'node:child_process';
@@ -66,5 +66,27 @@ it('the actual deployment excludes only root scratchpad while protecting existin
   expect(existsSync(join(destination,'app','obsolete.tsx'))).toBe(false);
   expect(readFileSync(join(destination,'app','scratchpad','example.txt'),'utf8')).toBe('synthetic nested app source');
   expect(existsSync(join(destination,'app','scratchpad','obsolete.txt'))).toBe(false);
+ }finally{rmSync(root,{recursive:true,force:true});}
+});
+it('arrival checksum stays empty after the server writes into its root and the local design cache changes',()=>{
+ const root=mkdtempSync(join(tmpdir(),'aihr-arrival-deploy-'));
+ const source=join(root,'source'),destination=join(root,'server');
+ const put=(base:string,name:string,value:string)=>{const path=join(base,name);mkdirSync(dirname(path),{recursive:true});writeFileSync(path,value);};
+ try{
+  put(source,'app/page.tsx','synthetic app source');
+  put(source,'.impeccable/design.json','synthetic tracked design record');
+  put(source,'.impeccable/hook.cache.json','synthetic local cache before transfer');
+  mkdirSync(destination,{recursive:true});
+  execFileSync('rsync',deploymentRsyncArgs(source,destination+'/'));
+  expect(readFileSync(join(destination,'.impeccable','design.json'),'utf8')).toBe('synthetic tracked design record');
+  expect(existsSync(join(destination,'.impeccable','hook.cache.json'))).toBe(false);
+  // The deploy writes into the server root after transfer, which moves the root's mtime.
+  utimesSync(destination,new Date(0),new Date(0));
+  put(source,'.impeccable/hook.cache.json','synthetic local cache rewritten during the release');
+  // The same dry run the release adapter uses to prove arrival.
+  const arrival=()=>execFileSync('rsync',['--dry-run','--checksum','--itemize-changes',...deploymentRsyncArgs(source,destination+'/')],{encoding:'utf8'});
+  expect(arrival()).toBe('');
+  put(source,'app/page.tsx','synthetic app source changed after transfer');
+  expect(arrival()).toMatch(/app\/page\.tsx/);
  }finally{rmSync(root,{recursive:true,force:true});}
 });

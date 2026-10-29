@@ -85,7 +85,9 @@ const SSH_OPTS = SSH.options;
  * existing server copies are protected from --delete; they are not deployment dependencies. */
 export function deploymentRsyncArgs(source: string, destination = `${TARGET}:${DIR}/`): string[] {
   return [
-    '-az', '--delete',
+    // Directory times are not content: the deploy writes into the server root after transfer, and the arrival
+    // checksum must not report that root as changed. --omit-dir-times leaves them out of transfer and comparison.
+    '-az', '--omit-dir-times', '--delete',
     '-e', operatorRsyncShell(SSH),
     '--exclude', 'node_modules', '--exclude', '.next', '--exclude', '.git', '--exclude', '.env*',
     '--exclude', '.turbo', '--exclude', 'coverage', '--exclude', '.claude', '--exclude', 'graphify-out',
@@ -99,6 +101,8 @@ export function deploymentRsyncArgs(source: string, destination = `${TARGET}:${D
     '--exclude', '/mobile/*.key', '--exclude', '/mobile/*.pem', '--exclude', '/mobile/*.p12',
     '--exclude', '/mobile/*.jks', '--exclude', '/mobile/*.keystore', '--exclude', '/mobile/*.mobileprovision',
     '--exclude', '/docs/HANDOFF-HISTORY.md', '--exclude', '/docs/adr/',
+    // A design tool's per-machine cache, rewritten while an operator session runs; never app source.
+    '--exclude', '/.impeccable/hook.cache.json',
     source.replace(/\/?$/, '/'), destination,
   ];
 }

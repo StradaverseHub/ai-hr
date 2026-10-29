@@ -1,4 +1,4 @@
-/** UNMOUNTED source adapter. Shared custody owns top-level commit, confirmation POST and retry ledger.
+/** Human-reviewed source adapter. Shared custody owns top-level commit, confirmation POST and retry ledger.
  * No model tools, provider requests, SMTP, arbitrary delivery or second action store live here. */
 import {createHash} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
