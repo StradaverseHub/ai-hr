@@ -4,8 +4,8 @@ import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 import {Children,isValidElement,type ReactNode} from 'react';
 import {UsersDirectory} from '../app/admin/users/users-directory';
-const m = vi.hoisted(() => ({ users: vi.fn(), candidates: vi.fn(), invitations: vi.fn(), enrollments: vi.fn(), group: vi.fn(), enabled: vi.fn(), manual: vi.fn() }));
-vi.mock('next-intl/server', () => ({ getTranslations: async (namespace?: string) => {
+const m = vi.hoisted(() => ({ users: vi.fn(), candidates: vi.fn(), invitations: vi.fn(), enrollments: vi.fn(), group: vi.fn(), enabled: vi.fn(), manual: vi.fn(), locale: vi.fn(async()=> 'en') }));
+vi.mock('next-intl/server', () => ({ getLocale:m.locale, getTranslations: async (namespace?: string) => {
   const t = (key: string) => `${namespace ? namespace + '.' : ''}${key}`.split('.').reduce((v: any, k) => v?.[k], en) ?? key;
   return Object.assign(t, { rich: t });
 } }));
@@ -26,7 +26,7 @@ const person = { id: 'person-a', name: 'Employee A', email: 'same@example.test',
 const show = async (params = {}) => render(<NextIntlClientProvider locale="en" messages={en}>{await UsersPage({ searchParams: Promise.resolve(params) })}</NextIntlClientProvider>);
 const directory = () => (document.querySelector('[data-tour="admin-users"] table') ?? document.querySelector('[data-tour="admin-users"]')) as HTMLElement;
 beforeEach(() => {
-  vi.clearAllMocks(); m.group.mockReturnValue(true); m.enabled.mockReturnValue(true);
+  vi.clearAllMocks();m.locale.mockResolvedValue('en'); m.group.mockReturnValue(true); m.enabled.mockReturnValue(true);
   m.users.mockResolvedValue({ users: [], hiddenCount: 0 }); m.candidates.mockResolvedValue([person]);
   m.invitations.mockResolvedValue([]); m.enrollments.mockResolvedValue([]);
 });
@@ -57,6 +57,10 @@ describe('employee activation actions and lifecycle display', () => {
     expect(document.querySelector<HTMLSelectElement>('select[name="role"]')?.value).toBe('employee');
     expect(document.querySelector<HTMLInputElement>('input[name="password"]')?.minLength).toBe(14);
     expect(document.querySelector<HTMLInputElement>('input[name="ownershipAttested"]')?.required).toBe(true);
+  });
+  it('defaults invitation language to the current locale and keeps all six explicit choices',async()=>{
+    m.locale.mockResolvedValue('ms');await show({activate:person.id});
+    const language=screen.getByRole<HTMLSelectElement>('combobox',{name:en.emailDesign.language});expect(language.name).toBe('emailLocale');expect(language.value).toBe('ms');expect(Array.from(language.options,option=>option.value)).toEqual(['en','ms','zh','vi','ta','th']);
   });
   it('does not trust a forged or stale activation target from the URL', async () => {
     await show({ activate: 'foreign-or-archived-person' });
