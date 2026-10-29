@@ -61,11 +61,11 @@ vi.mock('../app/payroll/transactions/individual/actions', () => ({
   fetchBatchImpactAction: () => Promise.resolve(null),
   fetchTxnDetailAction: () => Promise.resolve(null),
   previewTxnAmountAction: () => Promise.resolve({ ok: true, derived: false }),
-  previewTxnAmountsAction: (input: { quantities: string[] }) =>
+  previewTxnAmountsAction: (input: { entries: { txnDate: string; quantity: string }[] }) =>
     Promise.resolve({
       ok: true,
       derived: true,
-      amounts: input.quantities.map((q) => ({ quantity: q, amount: (100 * Number(q)).toFixed(2) })),
+      amounts: input.entries.map((e) => ({ ...e, amount: (100 * Number(e.quantity)).toFixed(2) })),
       code: 'OT1_5',
       inputUnit: 'hours',
       zeroDivisor: null,
