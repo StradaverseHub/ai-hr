@@ -43,7 +43,8 @@ export function movementHeaderIssue(header:string[],resolvers:PersonnelLabelReso
 /** Group sheet rows into one record per movement. File-level limits use the existing record bounds. */
 export function movementRowsToRecords(rows:MovementSheetRow[],types:MovementWorkbookType[],resolvers:PersonnelLabelResolver[]):{records:MovementImportRecord[];fileErrors:string[]}{
  const entered=rows.filter(row=>row.values.some(value=>(value??'').trim()));
- if(!entered.length)return{records:[],fileErrors:['no_data_rows']};
+ // d9e33556 — an unchanged download is readable but has nothing to check: say so, not a structure error.
+ if(!entered.length)return{records:[],fileErrors:['no_movement_entries']};
  if(entered.length>MOVEMENT_IMPORT_LIMITS.rows)return{records:[],fileErrors:['too_many_rows']};
  const typeLookup=personnelImportOptionLookup(types.map(type=>({value:type.code,label:type.label??type.code,aliases:resolvers.map(resolve=>resolve('people.detail.movement.eventType.'+type.behaviour,type.code))})));
  const records=new Map<string,MovementImportRecord>();
