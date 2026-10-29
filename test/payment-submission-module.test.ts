@@ -361,7 +361,7 @@ describe('20f6c6a8 — the registry itself', () => {
 
   it('offers salary and bank statutory formats with unconfirmed hash formats unavailable', () => {
     expect(formatsInGroup('salary').map(f => f.id)).toEqual(['my.ocbc.salary']);
-    expect(formatsInGroup('bankStatutory').map(f => [f.id, f.available])).toEqual([['my.ocbc.kwsp', true], ['my.ocbc.socso', true], ['my.ocbc.lhdn', false], ['my.ocbc.zakat', false]]);
+    expect(formatsInGroup('bankStatutory').map(f => [f.id, f.available])).toEqual([['my.ocbc.kwsp', true], ['my.ocbc.socso', true], ['my.ocbc.lhdn', true], ['my.ocbc.zakat', true]]);
   });
 
   it('every format states its PROVENANCE, and states it truthfully', () => {

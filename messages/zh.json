@@ -9125,7 +9125,6 @@
       "ocbcLhdnDesc": "通过 OCBC 支付每月税款扣除。",
       "ocbcZakat": "OCBC Zakat",
       "ocbcZakatDesc": "通过 OCBC 支付每月天课扣除。",
-      "ocbcHashPending": "等待 OCBC 确认必需的 Hash Total 计算方法，暂不可下载。",
       "bankSelectionIntro": "选择账户及付款资料，先预览再生成银行文件。您仍需自行上传至银行。",
       "bankAccount": "银行账户",
       "bankChooseAccount": "选择已保存的账户",
@@ -9183,7 +9182,8 @@
       "runTypeRegular": "常规",
       "runTypeOffCycle": "额外周期",
       "runTypeBonus": "奖金",
-      "runTypeAdjustment": "调整"
+      "runTypeAdjustment": "调整",
+      "ocbcBlankHashNotice": "初始格式：按要求将 Hash Total 字段保留在规定位置并留空。尚未验证银行是否接受。"
     },
     "payslipInformation": {
       "employee": "员工姓名",

@@ -9125,7 +9125,6 @@
       "ocbcLhdnDesc": "ภาษีหักรายเดือนผ่าน OCBC",
       "ocbcZakat": "OCBC Zakat",
       "ocbcZakatDesc": "ซะกาตหักรายเดือนผ่าน OCBC",
-      "ocbcHashPending": "รอ OCBC ยืนยันวิธีคำนวณ Hash Total ที่จำเป็น ยังดาวน์โหลดไม่ได้",
       "bankSelectionIntro": "เลือกบัญชีและรายละเอียดการจ่าย แล้วดูตัวอย่างก่อนสร้างไฟล์ธนาคาร คุณต้องอัปโหลดไฟล์ไปยังธนาคารเอง",
       "bankAccount": "บัญชีธนาคาร",
       "bankChooseAccount": "เลือกบัญชีที่บันทึกไว้",
@@ -9183,7 +9182,8 @@
       "runTypeRegular": "ปกติ",
       "runTypeOffCycle": "นอกรอบ",
       "runTypeBonus": "โบนัส",
-      "runTypeAdjustment": "ปรับปรุง"
+      "runTypeAdjustment": "ปรับปรุง",
+      "ocbcBlankHashNotice": "รูปแบบเบื้องต้น: เว้นช่อง Hash Total ว่างไว้ในตำแหน่งที่กำหนดตามคำขอ ยังไม่ได้ตรวจสอบการยอมรับจากธนาคาร"
     },
     "payslipInformation": {
       "employee": "ชื่อพนักงาน",

@@ -15,7 +15,8 @@ vi.mock('../app/payroll/payment-submission/registry', () => ({ submissionFormat:
   'my.ocbc.salary': { available: true, transport: 'bank-post', periodKind: 'month-cycle', testIndicator: false },
   'my.ocbc.kwsp': { available: true, transport: 'bank-post', periodKind: 'month', testIndicator: true },
   'my.ocbc.socso': { available: true, transport: 'bank-post', periodKind: 'month', testIndicator: true },
-  'my.ocbc.lhdn': { available: false },
+  'my.ocbc.lhdn': { available: true, transport: 'bank-post', periodKind: 'month', testIndicator: false },
+  'my.ocbc.zakat': { available: true, transport: 'bank-post', periodKind: 'month', testIndicator: false },
 } as Record<string, unknown>)[id] }));
 import { GET, POST } from '../app/payroll/payment-submission/bank-file/route';
 import { GET as governmentDownload } from '../app/payroll/payment-submission/download/route';
@@ -78,8 +79,9 @@ describe('OCBC bank file route', () => {
     expect((await get({ operation: 'preview', ...p, formatId: 'my.ocbc.socso', testFile: true })).status).toBe(200);
     expect(m.preview.mock.calls[0][1]).not.toHaveProperty('runSeq');
   });
-  it('rejects unconfirmed LHDN format and duplicate query fields', async () => {
-    expect((await get({ operation: 'preview', ...request, formatId: 'my.ocbc.lhdn' })).status).toBe(404);
+  it.each(['my.ocbc.lhdn', 'my.ocbc.zakat'])('accepts owner-approved basic %s layout and rejects duplicate fields', async (formatId) => {
+    const {runSeq: _run, ...wholeMonth} = request;
+    expect((await get({ operation: 'preview', ...wholeMonth, formatId, testFile: false })).status).toBe(200);
     expect((await GET(new Request(url + '?operation=options&companyId=a&companyId=b'))).status).toBe(400);
   });
   it('requires same-origin POST, bounded strict body and preview digest', async () => {

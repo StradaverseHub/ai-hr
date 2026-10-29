@@ -109,6 +109,7 @@ export function BankDownloadDialog(p: Props) {
       <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border bg-background p-6 shadow-xl">
         <Dialog.Title className="text-lg font-semibold">{p.formatLabel}</Dialog.Title>
         <Dialog.Description className="mt-1 text-sm text-muted-foreground">{t('bankSelectionIntro')}</Dialog.Description>
+        {(p.formatId === 'my.ocbc.lhdn' || p.formatId === 'my.ocbc.zakat') && <p className="mt-3 text-sm text-muted-foreground">{t('ocbcBlankHashNotice')}</p>}
         <fieldset disabled={busy} className="mt-4 grid grid-cols-2 gap-4 disabled:opacity-70">
           <div className="col-span-2"><Field label={t('company')}><select aria-label={t('company')} className={inputCls} value={companyId} onChange={(e) => change(() => setCompanyId(e.target.value))}>{p.companies.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</select></Field></div>
           <Field label={t('year')}><select aria-label={t('year')} className={inputCls} value={year} onChange={(e) => change(() => setYear(e.target.value))}>{p.years.map((y) => <option key={y}>{y}</option>)}</select></Field>

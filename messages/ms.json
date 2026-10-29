@@ -9125,7 +9125,6 @@
       "ocbcLhdnDesc": "Potongan cukai bulanan melalui OCBC.",
       "ocbcZakat": "OCBC Zakat",
       "ocbcZakatDesc": "Potongan zakat bulanan melalui OCBC.",
-      "ocbcHashPending": "Menunggu pengesahan OCBC tentang pengiraan Hash Total wajib. Muat turun belum tersedia.",
       "bankSelectionIntro": "Pilih akaun dan butiran pembayaran, kemudian pratonton sebelum menjana fail bank. Muat naik sendiri ke bank anda.",
       "bankAccount": "Akaun bank",
       "bankChooseAccount": "Pilih akaun tersimpan",
@@ -9183,7 +9182,8 @@
       "runTypeRegular": "Biasa",
       "runTypeOffCycle": "Luar kitaran",
       "runTypeBonus": "Bonus",
-      "runTypeAdjustment": "Pelarasan"
+      "runTypeAdjustment": "Pelarasan",
+      "ocbcBlankHashNotice": "Susun atur awal: medan Hash Total dibiarkan kosong pada kedudukan yang ditetapkan, seperti diminta. Penerimaan bank belum disahkan."
     },
     "payslipInformation": {
       "employee": "Nama Pekerja",

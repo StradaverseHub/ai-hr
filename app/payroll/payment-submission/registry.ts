@@ -45,8 +45,8 @@
  * beside the one that already files. Read `./pack-file`'s header for why the second read was the worse
  * of the two options: two producers of one government file is the r296 defect.
  *
- * OCBC salary requires one ready payroll run. Bank statutory formats cover the whole month; LHDN and
- * Zakat remain visible but unavailable until OCBC confirms their mandatory Hash Total algorithm.
+ * OCBC salary requires one ready payroll run. Bank statutory formats cover the whole month. The owner approved blank
+ * reserved Hash Total fields for the initial LHDN and Zakat layouts on 29 October 2026.
  */
 import { borangAUploadFilename, loadBorangAFile } from '../borang-a/shared';
 import { loadBorang8AFile } from '../borang-8a/shared';
@@ -199,8 +199,8 @@ export const SUBMISSION_FORMATS: readonly SubmissionFormat[] = [
   { id: 'my.ocbc.salary', authority: 'OCBC', group: 'salary', rank: 10, labelKey: 'ocbcSalary', descriptionKey: 'ocbcSalaryDesc', periodKind: 'month-cycle', verification: 'field-table-only', available: true, transport: 'bank-post', testIndicator: false },
   { id: 'my.ocbc.kwsp', authority: 'OCBC', group: 'bankStatutory', rank: 10, labelKey: 'ocbcKwsp', descriptionKey: 'ocbcKwspDesc', periodKind: 'month', verification: 'field-table-only', available: true, transport: 'bank-post', testIndicator: true },
   { id: 'my.ocbc.socso', authority: 'OCBC', group: 'bankStatutory', rank: 20, labelKey: 'ocbcSocso', descriptionKey: 'ocbcSocsoDesc', periodKind: 'month', verification: 'field-table-only', available: true, transport: 'bank-post', testIndicator: true },
-  { id: 'my.ocbc.lhdn', authority: 'OCBC', group: 'bankStatutory', rank: 30, labelKey: 'ocbcLhdn', descriptionKey: 'ocbcLhdnDesc', periodKind: 'month', verification: 'field-table-only', available: false, unavailableReasonKey: 'ocbcHashPending' },
-  { id: 'my.ocbc.zakat', authority: 'OCBC', group: 'bankStatutory', rank: 40, labelKey: 'ocbcZakat', descriptionKey: 'ocbcZakatDesc', periodKind: 'month', verification: 'field-table-only', available: false, unavailableReasonKey: 'ocbcHashPending' },
+  { id: 'my.ocbc.lhdn', authority: 'OCBC', group: 'bankStatutory', rank: 30, labelKey: 'ocbcLhdn', descriptionKey: 'ocbcLhdnDesc', periodKind: 'month', verification: 'field-table-only', available: true, transport: 'bank-post', testIndicator: false },
+  { id: 'my.ocbc.zakat', authority: 'OCBC', group: 'bankStatutory', rank: 40, labelKey: 'ocbcZakat', descriptionKey: 'ocbcZakatDesc', periodKind: 'month', verification: 'field-table-only', available: true, transport: 'bank-post', testIndicator: false },
   /**
    * LHDN e-Data PCB (CP39) — the monthly tax-deduction submission file.
    *

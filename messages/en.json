@@ -9125,7 +9125,6 @@
       "ocbcLhdnDesc": "Monthly tax deductions through OCBC.",
       "ocbcZakat": "OCBC Zakat",
       "ocbcZakatDesc": "Monthly zakat deductions through OCBC.",
-      "ocbcHashPending": "Awaiting OCBC confirmation of the mandatory Hash Total calculation. Download is unavailable.",
       "bankSelectionIntro": "Choose the account and payment details, then preview before generating the bank file. Upload the file to your bank yourself.",
       "bankAccount": "Bank account",
       "bankChooseAccount": "Choose a saved account",
@@ -9183,7 +9182,8 @@
       "runTypeRegular": "Regular",
       "runTypeOffCycle": "Off-cycle",
       "runTypeBonus": "Bonus",
-      "runTypeAdjustment": "Adjustment"
+      "runTypeAdjustment": "Adjustment",
+      "ocbcBlankHashNotice": "Initial layout: the Hash Total field is left blank in its reserved position, as requested. Bank acceptance has not been verified."
     },
     "payslipInformation": {
       "employee": "Employee Name",

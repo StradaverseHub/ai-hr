@@ -99,3 +99,10 @@ it.each([['en', en], ['ms', ms], ['zh', zh], ['ta', ta], ['th', th], ['vi', vi_]
   for (const key of ['ocbcFileSettings', 'ocbcFileSettingsHelp', 'ocbcContactName', 'ocbcContactPhone', 'ocbcStateCode', 'ocbcCheckId']) expect((messages.admin.organization as Record<string, string>)[key]).toBeTruthy();
   await screen.findByRole('option', { name: /Operations/ }); expect(onError).not.toHaveBeenCalled();
 });
+it.each(['my.ocbc.lhdn','my.ocbc.zakat'])('discloses owner-requested blank hash before %s preview', async formatId => {
+ render(<NextIntlClientProvider locale="en" messages={en}><BankDownloadDialog {...props} formatId={formatId} periodKind="month" testIndicator={false}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByRole('button',{name:words.download}));
+ await screen.findByRole('option',{name:/Operations/});
+ expect(screen.getByText(words.ocbcBlankHashNotice)).toBeVisible();
+ expect(screen.queryByLabelText(words.bankFileMode)).toBeNull();
+});

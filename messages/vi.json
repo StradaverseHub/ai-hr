@@ -9125,7 +9125,6 @@
       "ocbcLhdnDesc": "Các khoản khấu trừ thuế hàng tháng qua OCBC.",
       "ocbcZakat": "OCBC Zakat",
       "ocbcZakatDesc": "Các khoản khấu trừ zakat hàng tháng qua OCBC.",
-      "ocbcHashPending": "Đang chờ OCBC xác nhận cách tính Hash Total bắt buộc. Chưa thể tải xuống.",
       "bankSelectionIntro": "Chọn tài khoản và thông tin thanh toán, rồi xem trước trước khi tạo tệp ngân hàng. Bạn vẫn phải tự tải tệp lên ngân hàng.",
       "bankAccount": "Tài khoản ngân hàng",
       "bankChooseAccount": "Chọn tài khoản đã lưu",
@@ -9183,7 +9182,8 @@
       "runTypeRegular": "Thường kỳ",
       "runTypeOffCycle": "Ngoài chu kỳ",
       "runTypeBonus": "Thưởng",
-      "runTypeAdjustment": "Điều chỉnh"
+      "runTypeAdjustment": "Điều chỉnh",
+      "ocbcBlankHashNotice": "Bố cục ban đầu: để trống trường Hash Total tại đúng vị trí dành sẵn theo yêu cầu. Chưa xác minh việc ngân hàng chấp nhận."
     },
     "payslipInformation": {
       "employee": "Tên nhân viên",
