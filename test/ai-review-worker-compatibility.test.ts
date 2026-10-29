@@ -1,6 +1,6 @@
-/** Old immutable Bank worker vs the new AI-review schema/web contract. GHA disposable DB only.
+/** Immutable Bank worker Git source vs the new AI-review schema/web contract. GHA disposable DB only.
  * This supplies compatibility evidence for an owner decision, never permission to retain/update a live service. */
-import {randomUUID,createHash} from 'node:crypto';
+import {createHash} from 'node:crypto';
 import {execFileSync,spawnSync} from 'node:child_process';
 import {mkdtempSync,mkdirSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -13,15 +13,19 @@ import {parseCsvRecords} from '../lib/csv';
 import * as s from '../db/schema';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness';
 const WORKER_SOURCE='968354c00a71df7baccd499eb60757a3307ed61e';
+// Copied from the actual corrected V2 controller policy, not a fixture-only root expansion.
+// This source fixture never substitutes for that controller's authenticated extracted-packet boot proof.
+const PACKET_POLICY={controller:'567ec0908a24e21078e458ec1e93e696cafeb0a8',formatSha256:'07fa30e623f192ed8231ed42de4a606ed8251539db95389ec7ad6b50ff166369',
+ roots:['package.json','pnpm-lock.yaml','tsconfig.json','app','assets','components','content','core','data','db','deploy','i18n','lib','localization','messages','packs','public','scripts','types','node_modules']};
 const unchanged=['package.json','pnpm-lock.yaml','db/client.ts','scripts/bank-import-runner.ts','core/bank-import-worker.ts','core/bank-import-job.ts','core/import-sections.ts','core/import-history.ts','lib/bank-import-source.server.ts','lib/bank-import-job.ts'];
 beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
-it('runs exact 968 worker bytes against the AI schema with new-web admission, confirmation, progress, writes and restart-safe history',async()=>{
+it('runs immutable 968 worker Git source under the corrected V2 root policy against the AI schema and web contract',async()=>{
  expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...unchanged],{encoding:'utf8'}).trim()).toBe('');
  const directory=mkdtempSync(join(tmpdir(),'aihr-worker-compat-'));
  try{
   const available=new Set(execFileSync('git',['ls-tree','--name-only',WORKER_SOURCE],{encoding:'utf8'}).trim().split('\n'));
-  const roots=['package.json','pnpm-lock.yaml','tsconfig.json','app','components','content','core','data','db','deploy','lib','messages','packs','public','scripts','types'].filter(path=>available.has(path));
-  expect(roots).toEqual(expect.arrayContaining(['package.json','pnpm-lock.yaml','tsconfig.json','core','db','lib','scripts','packs']));
+  const roots=PACKET_POLICY.roots.filter(path=>available.has(path));
+  expect(roots).toEqual(expect.arrayContaining(['package.json','pnpm-lock.yaml','tsconfig.json','core','db','i18n','localization','lib','scripts','packs']));
   const archive=execFileSync('git',['archive',WORKER_SOURCE,...roots],{maxBuffer:128*1024**2});
   execFileSync('tar',['-xf','-','-C',directory],{input:archive,maxBuffer:1024**2});
   // Real isolated dependency files, preserving internal pnpm links. No external module symlink,
@@ -55,7 +59,8 @@ it('runs exact 968 worker bytes against the AI schema with new-web admission, co
   expect(await owner.db.select().from(s.importAttemptItem).where(eq(s.importAttemptItem.attemptId,done.attemptId!))).toEqual(history);
   const evidence=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
   if(evidence){mkdirSync(evidence,{recursive:true});writeFileSync(join(evidence,'worker-cross-version.json'),JSON.stringify({
-   kind:'CROSS_VERSION_FIXTURE_NOT_LIVE_ACCEPTANCE',workerSource:WORKER_SOURCE,webSource:process.env.AIHR_CI_HEAD,
+   kind:'GIT_SOURCE_CROSS_VERSION_FIXTURE_NOT_PACKET_OR_LIVE_ACCEPTANCE',workerSource:WORKER_SOURCE,webSource:process.env.AIHR_CI_HEAD,
+   correctedRootPolicy:PACKET_POLICY,actualPacketExecuted:false,authenticatedCorrectedPacketProofRequired:true,
    schemaEntries:schema.ledger,unchangedSourcePaths:unchanged,sourceArchiveSha256:createHash('sha256').update(archive).digest('hex'),
    newWebAdmission:true,humanCommandFixture:true,canonicalWrite:true,tenantDenial:true,newProcessReplay:true,historyItems:history.length,
    protectedServiceVerified:false,liveRestartVerified:false,deploymentAuthorized:false,
