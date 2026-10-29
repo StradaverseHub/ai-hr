@@ -94,8 +94,11 @@ it('upgrades the exact observed populated Board prefix without rewriting applied
    // Opposite explicit stored choices must survive the new default-OFF definitions unchanged.
    await storage.client`insert into tenant_setting(tenant_id,key,value,source,updated_by) values(${tenant},'performance.ai_pm_enabled',${JSON.stringify(i===0)}::jsonb,'customer',${user})`;
   }
-  const before=await retainedRows();expect(before.payslip).toHaveLength(2);expect(before.review).toHaveLength(4);expect(before.content).toHaveLength(2);
+  const before=await retainedRows();for(const table of tables)expect(before[table],table).toHaveLength(2);expect(before.review).toHaveLength(4);expect(before.content).toHaveLength(2);
   const definitions=await storage.client`select * from setting_definition order by key`;
+  const priorPerformance=definitions.filter(row=>PERFORMANCE.includes(String(row.key)));
+  expect(priorPerformance).toHaveLength(6);
+  for(const row of priorPerformance)expect(row).toMatchObject({default_value:true,default_on_install:true});
   const baseline=await ledger();
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   expect(await retainedRows()).toEqual(before);
