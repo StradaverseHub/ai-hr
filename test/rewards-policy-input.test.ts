@@ -36,4 +36,10 @@ describe('review and shared configuration form contract',()=>{
   expect(()=>rewardPolicyFromForm(f,p)).toThrow(RewardPolicyInputError);
  });
 
+ it('roundtrips legitimate branch segment commas and newlines through structured grid data',()=>{
+  const p=completePolicy(2026),f=fields(p),segment='Retail, West\nRegional';
+  f.set('bonusStructure','branch');f.set('policyGridData.branchFactors',JSON.stringify([[segment,'0','1','1.5','2','2.5']]));
+  expect(rewardPolicyFromForm(f,p).branchFactors).toEqual({[segment]:[0,10000,15000,20000,25000]});
+ });
+
 });

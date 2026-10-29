@@ -14,14 +14,14 @@ export function policyGridIssues(kind:RewardPolicyGridKind,rows:readonly (readon
  if(kind==='branchFactors'&&rows.length===0)issues.push({row:'',column:0,code:'missing'});
  for(const row of rows){
   const grade=(row[0]??'').trim();
-  if(!grade||kind!=='branchFactors'&&!REWARD_POLICY_GRADES.includes(grade as never)||['__proto__','constructor','prototype'].includes(grade))issues.push({row:grade,column:0,code:'grade'});
+  if(!grade||kind==='branchFactors'&&grade.length>80||kind!=='branchFactors'&&!REWARD_POLICY_GRADES.includes(grade as never)||['__proto__','constructor','prototype'].includes(grade))issues.push({row:grade,column:0,code:'grade'});
   if(seen.has(grade))issues.push({row:grade,column:0,code:'duplicate'});seen.add(grade);
   if(kind==='ranges'&&grade==='23'){
    if(row.slice(1).some(v=>v.trim()!==''))issues.push({row:grade,column:1,code:'grade'});
    continue;
   }
   const values=Array.from({length:width},(_,i)=>parsePolicyGridDecimal(row[i+1]??'',scale));
-  values.forEach((value,i)=>{if(value===null)issues.push({row:grade,column:i+1,code:(row[i+1]??'').trim()===''?'missing':'precision'});});
+  values.forEach((value,i)=>{if(value!==null&&value>(kind==='ranges'?100_000_000_000:kind==='bonusMatrix'?1000:100000))issues.push({row:grade,column:i+1,code:'number'});if(value===null)issues.push({row:grade,column:i+1,code:(row[i+1]??'').trim()===''?'missing':'precision'});});
   if(values.some(v=>v===null))continue;
   if(kind==='ranges'){
    if(!(values[0]!>0&&values[0]!<values[1]!&&values[1]!<values[2]!))for(let i=1;i<=width;i++)issues.push({row:grade,column:i,code:'order'});

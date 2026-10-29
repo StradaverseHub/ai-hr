@@ -21408,9 +21408,11 @@
       "er": "排除有 ER 个案的员工。",
       "senior": "Senior 计划（JG 21–23）：在评审中逐人选择，最终奖励单独处理。",
       "seniorLegacy": "Senior 计划成员按已保存的旧职级规则确定。",
-      "legacyDefaults": "未保存的资格字段使用现有政策默认值；请保存新配置版本以明确设置。",
+      "legacyDefaults": "此版本早于明确资格设置，仍适用原快照规则。保存新版本前请检查所示输入。",
       "unavailable": "资格详情暂不可用，请刷新配置后继续。",
-      "minimumRating": "奖金最低评级"
+      "minimumRating": "奖金最低评级",
+      "legacySnapshot": "旧规则：按已保存来源快照中的状态",
+      "legacyMinimum": "旧规则：未保存明确的奖金最低评级。"
     },
     "salaryExclusion": {
       "label": "加薪排除期 — 基本薪资变更期间",
@@ -29403,7 +29405,8 @@
       "bonusReference": "奖金月数参考",
       "bonusByGrade": "按职级和评级（{count, plural, other {# 个职级}}）",
       "exemption": "预算上限豁免",
-      "noExemption": "无（适用上限）"
+      "noExemption": "无（适用上限）",
+      "unitInputs": "各单位预算、倍数和豁免在各自评审中单独设置。"
     },
     "actions": {
       "editDeadlines": "编辑截止日期",

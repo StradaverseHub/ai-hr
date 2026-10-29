@@ -15,21 +15,29 @@ function lines(text: string, columns: number): string[][] {
     return cells;
   });
 }
-function matrix(text: string, columns: number, scale: number) {
-  const result: Record<string, number[]> = {};
-  for (const [key, ...values] of lines(text, columns)) {
-    if (Object.hasOwn(result, key) || ['__proto__', 'constructor', 'prototype'].includes(key)) throw new RewardPolicyInputError('Grade or segment names must be unique.');
-    result[key] = values.map(x => { const n = Number(x); if (!x || !Number.isFinite(n)) throw new RewardPolicyInputError('Enter a number in every matrix cell.'); return Math.round(n * scale); });
-  }
-  return result;
+function inputMatrixRows(f:FormData,kind:'ranges'|'bonusMatrix'|'branchFactors'):string[][]{
+ const raw=f.get(`policyGridData.${kind}`);
+ if(raw===null){try{return parsePolicyGridText(kind,str(f,kind));}catch{throw new RewardPolicyInputError('Invalid policy grid columns.');}}
+ if(typeof raw!=='string'||raw.length>200000)throw new RewardPolicyInputError('Invalid policy grid size.');
+ let rows:unknown;try{rows=JSON.parse(raw);}catch{throw new RewardPolicyInputError('Invalid policy grid data.');}
+ const width=kind==='ranges'?4:6;
+ if(!Array.isArray(rows)||rows.length>200||rows.some(row=>!Array.isArray(row)||row.length!==width||row.some(cell=>typeof cell!=='string'||cell.length>1000)))throw new RewardPolicyInputError('Invalid policy grid columns.');
+ return rows as string[][];
+}
+function matrix(rows:string[][],kind:'ranges'|'bonusMatrix'|'branchFactors'){
+ const result:Record<string,number[]>={},scale=kind==='ranges'?100:10000;
+ for(const [key,...values] of rows){
+  if(kind==='ranges'&&key==='23')continue;
+  if(Object.hasOwn(result,key)||['__proto__','constructor','prototype'].includes(key))throw new RewardPolicyInputError('Grade or segment names must be unique.');
+  result[key]=values.map(value=>{const n=Number(value);if(!value||!Number.isFinite(n))throw new RewardPolicyInputError('Enter a number in every matrix cell.');return Math.round(n*scale);});
+ }
+ return result;
 }
 export function rewardPolicyFromForm(f:FormData,p:RewardPolicy,options:{context?:'shared'|'unit'}={}):RewardPolicy{
-    {
-      for(const kind of ['ranges','bonusMatrix','branchFactors'] as const){
-        if(kind==='branchFactors'&&str(f,'bonusStructure')!=='branch')continue;
-        let rows:string[][];try{rows=parsePolicyGridText(kind,str(f,kind));}catch{throw new RewardPolicyInputError('Invalid policy grid columns.');}
-        if(policyGridIssues(kind,rows).length)throw new RewardPolicyInputError('Correct the highlighted policy grid cells.');
-      }
+    const gridRows=Object.fromEntries((['ranges','bonusMatrix','branchFactors'] as const).map(kind=>[kind,inputMatrixRows(f,kind)])) as Record<'ranges'|'bonusMatrix'|'branchFactors',string[][]>;
+    for(const kind of ['ranges','bonusMatrix','branchFactors'] as const){
+      if(kind==='branchFactors'&&str(f,'bonusStructure')!=='branch')continue;
+      if(policyGridIssues(kind,gridRows[kind]).length)throw new RewardPolicyInputError('Correct the highlighted policy grid cells.');
     }
     const meritMatrix = Object.fromEntries(talents.map(t => [t, [0, 1, 2].map(pos => Math.round(number(f, `merit.${t}.${pos}`) * 100))]));
     const shared=options.context==='shared';
@@ -38,8 +46,8 @@ export function rewardPolicyFromForm(f:FormData,p:RewardPolicy,options:{context?
     return policySchema.parse({ ...p,...eligibility, effectiveFrom: str(f, 'effectiveFrom'), joinedBefore: str(f, 'joinedBefore'), confirmedBy: str(f, 'confirmedBy'), blockedFrom: str(f, 'blockedFrom'), blockedTo: str(f, 'blockedTo'),
       patActual: shared?0:f.has('patActual')?scaled(f,'patActual'):p.patActual, patTarget:shared?100:f.has('patTarget')?scaled(f,'patTarget'):p.patTarget, targetMonthsBp:shared?0:f.has('targetMonths')?scaled(f,'targetMonths',10000):p.targetMonthsBp, multiplierBp:shared?null:f.has('multiplier')?scaled(f,'multiplier',10000):p.multiplierBp,
       standardPools: [0, 1, 2].map(i => Math.round(number(f, `standard.${i}`) * 100)), hPools: [0, 1, 2].map(i => Math.round(number(f, `h.${i}`) * 100)),
-      meritMatrix, ranges: matrix(str(f, 'ranges'), 4, 100), bonusMatrix: matrix(str(f, 'bonusMatrix'), 6, 10000), bonusStructure: str(f, 'bonusStructure'),
-      branchFactors: matrix(str(f, 'branchFactors'), 6, 10000), branchRatings,
+      meritMatrix, ranges:matrix(gridRows.ranges,'ranges'),bonusMatrix:matrix(gridRows.bonusMatrix,'bonusMatrix'), bonusStructure: str(f, 'bonusStructure'),
+      branchFactors:matrix(gridRows.branchFactors,'branchFactors'), branchRatings,
       seniorGrades: p.seniorGrades,
       lumpStepCents: scaled(f, 'lumpStep'), lumpShareBp: scaled(f, 'lumpShare'), lumpCapCents: scaled(f, 'lumpCap'), exemptReason: shared?'':f.has('exemptReason')?str(f,'exemptReason'):p.exemptReason,
     });

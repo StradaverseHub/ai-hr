@@ -21408,9 +21408,11 @@
       "er": "Loại nhân viên có vụ việc ER.",
       "senior": "Kế hoạch Senior (JG 21–23): chọn từng người trong kỳ xét; mức thưởng cuối được xử lý riêng.",
       "seniorLegacy": "Thành viên Senior theo quy tắc bậc cũ đã lưu.",
-      "legacyDefaults": "Trường điều kiện còn thiếu dùng mặc định hiện tại; lưu phiên bản cấu hình mới để xác định rõ.",
+      "legacyDefaults": "Phiên bản này có trước các thiết lập điều kiện rõ ràng. Quy tắc bản chụp cũ vẫn áp dụng; kiểm tra dữ liệu trước khi lưu phiên bản mới.",
       "unavailable": "Không có chi tiết điều kiện. Làm mới cấu hình trước khi tiếp tục.",
-      "minimumRating": "Xếp hạng thưởng tối thiểu"
+      "minimumRating": "Xếp hạng thưởng tối thiểu",
+      "legacySnapshot": "Quy tắc cũ: trạng thái tại bản chụp nguồn đã lưu",
+      "legacyMinimum": "Quy tắc cũ: chưa lưu mức xếp hạng thưởng tối thiểu."
     },
     "salaryExclusion": {
       "label": "Loại khỏi tăng lương – lương cơ bản thay đổi trong",
@@ -29403,7 +29405,8 @@
       "bonusReference": "Bảng tham chiếu số tháng thưởng",
       "bonusByGrade": "Theo bậc và xếp loại ({count, plural, other {# bậc}})",
       "exemption": "Miễn trừ trần ngân sách",
-      "noExemption": "Không (áp dụng trần)"
+      "noExemption": "Không (áp dụng trần)",
+      "unitInputs": "Ngân sách, hệ số và miễn trừ của đơn vị được đặt riêng trong từng kỳ xét."
     },
     "actions": {
       "editDeadlines": "Sửa hạn chót",

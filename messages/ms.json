@@ -21408,9 +21408,11 @@
       "er": "Kecualikan pekerja dengan kes ER.",
       "senior": "Pelan Senior (JG 21–23): dipilih dalam semakan; ganjaran akhir diurus berasingan.",
       "seniorLegacy": "Keahlian pelan Senior mengikut peraturan gred terdahulu yang disimpan.",
-      "legacyDefaults": "Medan kelayakan yang tiada menggunakan lalai polisi sedia ada; simpan versi baharu untuk menetapkannya.",
+      "legacyDefaults": "Versi ini mendahului tetapan kelayakan yang jelas. Peraturan petikan sedia ada kekal; semak input yang dipaparkan sebelum menyimpan versi baharu.",
       "unavailable": "Butiran kelayakan tidak tersedia. Muat semula konfigurasi sebelum meneruskan.",
-      "minimumRating": "Penarafan bonus minimum"
+      "minimumRating": "Penarafan bonus minimum",
+      "legacySnapshot": "Terdahulu: status pada petikan sumber tersimpan",
+      "legacyMinimum": "Terdahulu: tiada penarafan bonus minimum yang disimpan."
     },
     "salaryExclusion": {
       "label": "Pengecualian kenaikan gaji – gaji asas berubah antara",
@@ -29403,7 +29405,8 @@
       "bonusReference": "Rujukan bulan bonus",
       "bonusByGrade": "Mengikut gred dan penarafan ({count, plural, other {# gred}})",
       "exemption": "Pengecualian had bajet",
-      "noExemption": "Tiada (had dikenakan)"
+      "noExemption": "Tiada (had dikenakan)",
+      "unitInputs": "Belanjawan, pengganda dan pengecualian unit ditetapkan berasingan dalam setiap semakan."
     },
     "actions": {
       "editDeadlines": "Edit tarikh akhir",

@@ -2,6 +2,10 @@ import {describe,it,expect,vi} from 'vitest';
 import {fireEvent,render,screen,within,cleanup} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
+import {RewardPolicyYearContext} from '../app/rewards/policy-year-context';
+import {defaultPolicy} from '../packs/rewards/model';
+import {rewardEligibilitySummary} from '../packs/rewards/policy-eligibility';
+import {sharedRewardPolicyProjection} from '../packs/rewards/shared-policy-projection';
 import {PolicyMatrixGrid} from '../app/rewards/policy-matrix-grid';
 import {BranchPolicyFields} from '../app/rewards/branch-policy-fields';
 import {REWARD_POLICY_GRADES,policyGridIssues,parsePolicyGridDecimal,policyGridRows} from '../packs/rewards/policy-grid-validation';
@@ -46,4 +50,20 @@ describe('approved Rewards policy grids',()=>{
   fireEvent.change(screen.getByRole('combobox'),{target:{value:'standard'}});
   expect(document.querySelector<HTMLInputElement>('input[name="branchFactors"]:not(:disabled)')?.value).toContain('retail, 0, 1, 1.5, 2, 2.5');
  });
+ it('closes prior-year copy choices and previews when the configuration year changes',async()=>{
+  cleanup();const view=render(wrap(<RewardPolicyYearContext.Provider value={2026}><PolicyMatrixGrid kind="branchFactors" year={2026} matrix={{old:[0,10000,20000,30000,40000]}}/></RewardPolicyYearContext.Provider>));
+  fireEvent.click(screen.getByRole('button',{name:en.rewards.policyGrids.copy}));
+  fireEvent.click(await screen.findByRole('button',{name:'Previous policy · Version 2'}));
+  expect(screen.getByRole('button',{name:en.rewards.policyGrids.apply})).toBeVisible();
+  view.rerender(wrap(<RewardPolicyYearContext.Provider value={2027}><PolicyMatrixGrid kind="branchFactors" year={2026} matrix={{old:[0,10000,20000,30000,40000]}}/></RewardPolicyYearContext.Provider>));
+  expect(screen.queryByRole('button',{name:en.rewards.policyGrids.apply})).toBeNull();
+ });
+ it('does not invent missing legacy eligibility facts or expose shared historical unit figures',()=>{
+  const {activeAsOf:_active,minimumBonusRating:_minimum,...legacy}=defaultPolicy(2026) as ReturnType<typeof defaultPolicy>&{activeAsOf?:string;minimumBonusRating?:string};
+  expect(rewardEligibilitySummary(legacy)).toMatchObject({activeAsOf:null,minimumBonusRating:null,legacyDefaults:true});
+  const source={...defaultPolicy(2026),patActual:999999999,patTarget:888888888,exemptReason:'private PAT justification',branchRatings:{private:'OU' as const}},projection=sharedRewardPolicyProjection(source);
+  expect(JSON.stringify(projection)).not.toContain('999999999');expect(JSON.stringify(projection)).not.toContain('888888888');expect(JSON.stringify(projection)).not.toContain('private PAT');expect(projection.branchRatings).toEqual({});
+  expect(source.patActual).toBe(999999999);expect(source.exemptReason).toBe('private PAT justification');
+ });
+
 });

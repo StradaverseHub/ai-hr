@@ -15,6 +15,7 @@ vi.mock('../app/rewards/actions',()=>({createRewardAction:vi.fn()}));
 const id=(n:number)=>`10000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const companies=[{id:id(1),name:'Fictional Company A'},{id:id(2),name:'Fictional Company B'}];
 const units=[{id:id(3),companyId:id(1),name:'Unit A',global:false,archived:false},{id:id(4),companyId:id(2),name:'Unit B',global:false,archived:false},{id:id(5),companyId:id(1),name:'Shared global',global:true,archived:false}];
+const memberships=[{companyId:id(1),businessUnitId:id(3)},{companyId:id(2),businessUnitId:id(4)}];
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4));
 const wrap=(node:ReactNode)=><NextIntlClientProvider locale="en" messages={en}>{node}</NextIntlClientProvider>;
 afterEach(cleanup);
@@ -48,7 +49,7 @@ describe('shared configuration pair picker',()=>{
  it('keeps its own assignments editable and ignores stale year responses without clearing selected pairs',async()=>{
   let finishA!:(rows:[])=>void,finishB!:(rows:[])=>void;
   const load=vi.fn().mockImplementationOnce(()=>new Promise<[]>(resolve=>{finishA=resolve;})).mockImplementationOnce(()=>new Promise<[]>(resolve=>{finishB=resolve;}));
-  render(wrap(<SharedRewardEditor actorUserId={id(9)} groupId={id(6)} revision={1} name="Fictional" year={year} targets={[{companyId:id(1),businessUnitId:id(3)}]} companies={companies} units={units} initialTaken={[{companyId:id(1),businessUnitId:id(3),groupId:id(6),name:'This configuration'}]} loadTakenAction={load} policyFields={null} saveAction={vi.fn()}/>));
+  render(wrap(<SharedRewardEditor actorUserId={id(9)} groupId={id(6)} revision={1} name="Fictional" year={year} targets={[{companyId:id(1),businessUnitId:id(3)}]} companies={companies} units={units} memberships={memberships} initialTaken={[{companyId:id(1),businessUnitId:id(3),groupId:id(6),name:'This configuration'}]} loadTakenAction={load} policyFields={null} saveAction={vi.fn()}/>));
   expect(screen.getByRole<HTMLInputElement>('checkbox',{name:'Fictional Company A · Unit A'}).disabled).toBe(false);
   const input=screen.getByRole('spinbutton',{name:en.rewards.sharedPolicy.year});
   fireEvent.change(input,{target:{value:year+1}});fireEvent.change(input,{target:{value:year+2}});
@@ -59,7 +60,7 @@ describe('shared configuration pair picker',()=>{
   expect(load.mock.calls.map(args=>args[0])).toEqual([year+1,year+2]);
  });
  it('hides archived and excluded companies for new selection but retains saved unavailable coverage',()=>{
-  const props={actorUserId:id(9),groupId:null,revision:0,name:'Fictional',year,targets:[],companies:[{...companies[0],archived:true},{...companies[1],excludedYears:[year]}],units,policyFields:null,saveAction:vi.fn()};
+  const props={actorUserId:id(9),groupId:null,revision:0,name:'Fictional',year,targets:[],companies:[{...companies[0],archived:true},{...companies[1],excludedYears:[year]}],units,memberships,policyFields:null,saveAction:vi.fn()};
   const view=render(wrap(<SharedRewardEditor {...props}/>));
   expect(screen.queryByRole('checkbox',{name:/Fictional Company/})).toBeNull();
   view.rerender(wrap(<SharedRewardEditor {...props} groupId={id(6)} revision={1} targets={[{companyId:id(1),businessUnitId:id(3)}]}/>));
@@ -68,7 +69,7 @@ describe('shared configuration pair picker',()=>{
   expect(screen.getByRole('button',{name:en.rewards.sharedPolicy.removeUnavailable})).toBeTruthy();
  });
  it('invalidates confirmation on policy edits and clears unsaved drafts on an actor change',()=>{
-  const props={actorUserId:id(9),groupId:id(6),revision:1,name:'Saved group',year,targets:[{companyId:id(1),businessUnitId:id(3)}],companies,units,policyFields:<input aria-label="Fictional policy"/>,saveAction:vi.fn()};
+  const props={actorUserId:id(9),groupId:id(6),revision:1,name:'Saved group',year,targets:[{companyId:id(1),businessUnitId:id(3)}],companies,units,memberships,policyFields:<input aria-label="Fictional policy"/>,saveAction:vi.fn()};
   const view=render(wrap(<SharedRewardEditor {...props}/>));fireEvent.submit(document.querySelector('form')!);
   expect(screen.getByRole('button',{name:en.rewards.sharedPolicy.confirm})).toBeTruthy();
   fireEvent.change(screen.getByRole('textbox',{name:'Fictional policy'}),{target:{value:'Changed policy'}});
@@ -77,7 +78,7 @@ describe('shared configuration pair picker',()=>{
   view.rerender(wrap(<SharedRewardEditor {...props} actorUserId={id(10)}/>));expect(screen.queryByDisplayValue('Private unsaved name')).toBeNull();
  });
  it('preserves selected pairs while searching and requires explicit review before archiving all targets',()=>{
-  render(wrap(<SharedRewardEditor actorUserId={id(9)} groupId={id(6)} revision={1} name="Saved group" year={year} targets={[{companyId:id(1),businessUnitId:id(3)},{companyId:id(2),businessUnitId:id(4)}]} companies={companies} units={units} policyFields={<input aria-label="Fictional policy"/>} saveAction={vi.fn()}/>));
+  render(wrap(<SharedRewardEditor actorUserId={id(9)} groupId={id(6)} revision={1} name="Saved group" year={year} targets={[{companyId:id(1),businessUnitId:id(3)},{companyId:id(2),businessUnitId:id(4)}]} companies={companies} units={units} memberships={memberships} policyFields={<input aria-label="Fictional policy"/>} saveAction={vi.fn()}/>));
   fireEvent.change(screen.getByRole('searchbox'),{target:{value:'Unit A'}});
   expect(screen.queryByRole('checkbox',{name:'Fictional Company B · Unit B'})).toBeNull();
   expect(JSON.parse(document.querySelector<HTMLInputElement>('input[name="targets"]')!.value)).toHaveLength(2);
@@ -89,7 +90,7 @@ describe('shared configuration pair picker',()=>{
   fireEvent.submit(document.querySelector('form')!);expect(screen.getByRole('button',{name:en.rewards.sharedPolicy.archive})).toBeTruthy();
  });
  it('requires removal of an unavailable pair and discards the draft when a fresh revision arrives',()=>{
-  const props={actorUserId:id(9),groupId:id(6),revision:1,name:'Saved group',year,targets:[{companyId:id(1),businessUnitId:id(3)}],companies,units:units.map(u=>({...u,archived:u.id===id(3)})),policyFields:<input aria-label="Fictional policy"/>,saveAction:vi.fn()};
+  const props={actorUserId:id(9),groupId:id(6),revision:1,name:'Saved group',year,targets:[{companyId:id(1),businessUnitId:id(3)}],companies,units:units.map(u=>({...u,archived:u.id===id(3)})),memberships,policyFields:<input aria-label="Fictional policy"/>,saveAction:vi.fn()};
   const view=render(wrap(<SharedRewardEditor {...props}/>));
   expect(screen.getByRole<HTMLButtonElement>('button',{name:en.rewards.sharedPolicy.preview}).disabled).toBe(true);
   fireEvent.click(screen.getByRole('button',{name:en.rewards.sharedPolicy.removeUnavailable}));
@@ -99,7 +100,7 @@ describe('shared configuration pair picker',()=>{
  });
  it('recomputes the automatic shared version and BU choices when company or year changes',()=>{
   const shared=[{groupId:id(6),versionId:id(7),revision:2,name:'Fictional common policy',year,companyId:id(1),businessUnitId:id(3),policy:null}];
-  render(wrap(<RewardReviewCreateForm actorUserId={id(9)} today={today} companies={companies} units={units} cycles={[]} shared={shared}/>));
+  render(wrap(<RewardReviewCreateForm actorUserId={id(9)} today={today} companies={companies} units={units} memberships={memberships} cycles={[]} shared={shared}/>));
   expect(document.querySelector<HTMLInputElement>('input[name="sharedPolicyVersionId"]')!.value).toBe(id(7));
   fireEvent.change(screen.getByRole('combobox',{name:en.rewards.company}),{target:{value:id(2)}});
   expect(document.querySelector<HTMLInputElement>('input[name="sharedPolicyVersionId"]')!.value).toBe('');
@@ -108,7 +109,7 @@ describe('shared configuration pair picker',()=>{
  it('shows the selected saved version eligibility and refreshes it on unit changes without PAT',()=>{
   const makePolicy=(day:string,rating:'BE'|'ME')=>{const p=defaultPolicy(year);return {effectiveFrom:p.effectiveFrom,meritMatrix:p.meritMatrix,standardPools:p.standardPools,hPools:p.hPools,targetMonthsBp:p.targetMonthsBp,bonusMatrix:p.bonusMatrix,exemptReason:'',eligibility:{...rewardEligibilitySummary(p),activeAsOf:day,minimumBonusRating:rating,legacyDefaults:false}};};
   const shared=[{groupId:id(6),versionId:id(7),revision:2,name:'Policy A',year,companyId:id(1),businessUnitId:id(3),policy:makePolicy(`${year}-12-30`,'BE')},{groupId:id(8),versionId:id(10),revision:4,name:'Policy B',year,companyId:id(2),businessUnitId:id(4),policy:makePolicy(`${year}-11-30`,'ME')}];
-  render(wrap(<RewardReviewCreateForm actorUserId={id(9)} today={today} companies={companies} units={units} cycles={[]} shared={shared}/>));
+  render(wrap(<RewardReviewCreateForm actorUserId={id(9)} today={today} companies={companies} units={units} memberships={memberships} cycles={[]} shared={shared}/>));
   const summary=()=>screen.getByRole('region',{name:en.rewards.eligibilitySummary.title});
   expect(within(summary()).getByText(`${year}-12-30`)).toBeVisible();expect(summary().textContent).toContain('minimum rating BE');expect(summary().textContent).toContain('JG 21–23');
   fireEvent.change(screen.getByRole('combobox',{name:en.rewards.company}),{target:{value:id(2)}});

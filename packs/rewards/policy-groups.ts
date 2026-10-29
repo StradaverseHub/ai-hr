@@ -7,6 +7,7 @@ import {pgSqlState} from '../../lib/db-error';
 import {policySchema,type RewardPolicy} from './model';
 import {rewardEligibilitySummary,type RewardEligibilitySummary} from './policy-eligibility';
 import {assertRewardPolicyGrids} from './policy-grid-validation';
+import {sharedRewardPolicyProjection} from './shared-policy-projection';
 import {normalizedRewardTargets,parseRewardPolicyGroupVersion,rewardPgUuid,rewardPolicyGroupEditSchema,type RewardPolicyGroupVersion} from './policy-group-model';
 export class RewardPolicyGroupError extends Error{
  constructor(readonly code:'invalid'|'changed'|'scope'|'system'|'overlap'|'excluded',readonly conflicts:RewardPolicyTaken[]=[]){super(`Reward shared configuration: ${code}`);this.name='RewardPolicyGroupError';}
@@ -36,8 +37,7 @@ export function rewardPolicyTaken(ctx:SessionContext,companyIds:readonly string[
 export function saveRewardPolicyGroup(ctx:SessionContext,raw:unknown):Promise<RewardPolicyGroupVersion>{
  const parsed=rewardPolicyGroupEditSchema.parse(raw);
  try{assertRewardPolicyGrids(parsed.policy);}catch{throw new RewardPolicyGroupError('invalid');}
- const {unitGovernanceDigest:_unitDigest,...policy}=parsed.policy as RewardPolicy&{unitGovernanceDigest?:string};
- const p={...parsed,policy:policySchema.parse({...policy,patActual:0,patTarget:100,targetMonthsBp:0,multiplierBp:null,branchRatings:{},exemptReason:'',lumpUnitCents:null})},targets=normalizedRewardTargets(parsed.targets);
+ const p={...parsed,policy:policySchema.parse(sharedRewardPolicyProjection(parsed.policy))},targets=normalizedRewardTargets(parsed.targets);
  return withRewardsTenant(ctx,async tx=>{
   try{
    // Share the commit's lock so a racing save yields named conflicts, without weakening SQL's guard.
@@ -58,7 +58,7 @@ export function saveRewardPolicyGroup(ctx:SessionContext,raw:unknown):Promise<Re
 export function listRewardPolicyGroups(ctx:SessionContext){
  return withRewardsTenant(ctx,async tx=>{
   const rows=await tx.execute<{version:unknown}>(sql`select app.reward_policy_groups() as version`);
-  return rows.map(row=>parseRewardPolicyGroupVersion(row.version));
+  return rows.map(row=>{const version=parseRewardPolicyGroupVersion(row.version);return {...version,policy:sharedRewardPolicyProjection(version.policy)};});
  });
 }
 export function rewardPolicyGroupUsage(ctx:SessionContext,groupId:string){
@@ -68,8 +68,8 @@ export function rewardPolicyGroupUsage(ctx:SessionContext,groupId:string){
  });
 }
 /** The read-only settings a review creator sees (56595838): no salary ranges, profit figures or people. */
-export type RewardPolicySummary=Pick<RewardPolicy,'effectiveFrom'|'meritMatrix'|'standardPools'|'hPools'|'targetMonthsBp'|'bonusMatrix'|'exemptReason'>&{eligibility:RewardEligibilitySummary};
-const summary=(p:RewardPolicy):RewardPolicySummary=>({effectiveFrom:p.effectiveFrom,meritMatrix:p.meritMatrix,standardPools:p.standardPools,hPools:p.hPools,targetMonthsBp:p.targetMonthsBp,bonusMatrix:p.bonusMatrix,exemptReason:p.exemptReason,eligibility:rewardEligibilitySummary(p)});
+export type RewardPolicySummary=Pick<RewardPolicy,'effectiveFrom'|'meritMatrix'|'standardPools'|'hPools'|'bonusMatrix'>&{eligibility:RewardEligibilitySummary};
+const summary=(p:RewardPolicy):RewardPolicySummary=>({effectiveFrom:p.effectiveFrom,meritMatrix:p.meritMatrix,standardPools:p.standardPools,hPools:p.hPools,bonusMatrix:p.bonusMatrix,eligibility:rewardEligibilitySummary(p)});
 export type RewardSharedChoice={groupId:string;versionId:string;revision:number;name:string;year:number;companyId:string;businessUnitId:string;policy:RewardPolicySummary|null};
 export function rewardSharedPolicyChoices(ctx:SessionContext,companyIds:readonly string[]):Promise<RewardSharedChoice[]>{
  if(companyIds.length>500)throw new RewardPolicyGroupError('invalid');
@@ -97,7 +97,7 @@ export async function rewardPolicyForReviewTx(tx:Tx,versionId:string|undefined,c
   const [row]=await tx.execute<{binding:{groupId:string;versionId:string;revision:number;name:string;policy:unknown}|null}>(sql`select app.reward_policy_for_review(${wantedVersion}::uuid,${rewardPgUuid.parse(companyId)}::uuid,${rewardPgUuid.parse(businessUnitId)}::uuid,${year}) as binding`);
   if(row?.binding===null&&wantedVersion===null)return null;
   if(!row?.binding||row.binding.versionId!==wantedVersion)throw new RewardPolicyGroupError('changed');
-  return {...row.binding,groupId:rewardPgUuid.parse(row.binding.groupId),policy:policySchema.parse(row.binding.policy)};
+  return {...row.binding,groupId:rewardPgUuid.parse(row.binding.groupId),policy:sharedRewardPolicyProjection(policySchema.parse(row.binding.policy))};
  }catch(error){return refusal(error);}
 }
 

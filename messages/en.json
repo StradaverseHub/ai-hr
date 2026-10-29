@@ -21408,9 +21408,11 @@
       "er": "Exclude employees with an ER case.",
       "senior": "Senior plan (JG 21–23): handpicked in the review; final awards are handled separately.",
       "seniorLegacy": "Senior plan membership follows the saved legacy grade rule.",
-      "legacyDefaults": "Missing eligibility fields use the existing policy defaults; save a new configuration version to make them explicit.",
+      "legacyDefaults": "This version predates explicit eligibility settings. Its existing snapshot rules remain in force; review the displayed inputs before saving a new version.",
       "unavailable": "Eligibility details are unavailable. Refresh the configuration before continuing.",
-      "minimumRating": "Minimum bonus rating"
+      "minimumRating": "Minimum bonus rating",
+      "legacySnapshot": "Legacy: status at the saved source snapshot",
+      "legacyMinimum": "Legacy: no explicit minimum bonus rating is stored."
     },
     "salaryExclusion": {
       "label": "Salary increase exclusion – basic salary changed between",
@@ -29403,7 +29405,8 @@
       "bonusReference": "Bonus months reference",
       "bonusByGrade": "By grade and rating ({count, plural, one {# grade} other {# grades}})",
       "exemption": "Budget-cap exemption",
-      "noExemption": "None (caps apply)"
+      "noExemption": "None (caps apply)",
+      "unitInputs": "Unit budgets, multipliers and exemptions are set separately in each review."
     },
     "actions": {
       "editDeadlines": "Edit deadlines",

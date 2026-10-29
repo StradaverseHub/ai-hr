@@ -5,6 +5,7 @@ import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
 import {Button,Card,Field,inputCls} from '@/components/ui';
 import {rewardTargetKey,type RewardPolicyTarget} from '@/packs/rewards/policy-group-model';
+import {RewardPolicyYearContext} from '@/app/rewards/policy-year-context';
 import {RewardCompanyExclusionsPanel} from './exclusions';
 import type {RewardCompanyExclusion,RewardPolicyTaken} from '@/packs/rewards/service';
 export type SharedRewardSaveResult={ok:true;value:{groupId:string;revision:number}}|{ok:false;code:'invalid'|'changed'|'scope'|'system'|'overlap'|'excluded';conflicts?:RewardPolicyTaken[]};
@@ -18,7 +19,7 @@ type Props={actorUserId:string;groupId:string|null;revision:number;name:string;y
 export function SharedRewardEditor(props:Props){
  return <SharedRewardEditorDraft key={props.actorUserId+':'+(props.groupId??'new')+':'+props.revision+':'+JSON.stringify(props.companies.map(c=>c.id))+':'+JSON.stringify(props.units)+':'+props.year+':'+JSON.stringify(props.initialTaken)+':'+JSON.stringify(props.memberships)} {...props}/>;
 }
-function SharedRewardEditorDraft({groupId,revision,name:initialName,year:initialYear,targets:initialTargets,companies,units,memberships=units.filter(unit=>!unit.global).map(unit=>({companyId:unit.companyId,businessUnitId:unit.id})),initialTaken=[],loadTakenAction,canManageUnits=false,exclusions=[],exclusionAction,policyFields,saveAction}:Props){
+function SharedRewardEditorDraft({groupId,revision,name:initialName,year:initialYear,targets:initialTargets,companies,units,memberships=[],initialTaken=[],loadTakenAction,canManageUnits=false,exclusions=[],exclusionAction,policyFields,saveAction}:Props){
  const t=useTranslations('rewards.sharedPolicy'),router=useRouter(),saving=useRef(false);
  const [name,setName]=useState(initialName),[targets,setTargets]=useState(initialTargets);
  const [year,setYear]=useState(initialYear),[taken,setTaken]=useState(initialTaken),[loading,setLoading]=useState(false),[loadFailed,setLoadFailed]=useState(false),[conflicts,setConflicts]=useState<RewardPolicyTaken[]>([]),request=useRef(0);
@@ -96,7 +97,7 @@ function SharedRewardEditorDraft({groupId,revision,name:initialName,year:initial
     {groupId&&targets.length===0&&<p className="text-sm text-muted-foreground">{t('archiveHelp')}</p>}
 
    </Card>
-   <Card className="space-y-5 p-4 sm:p-6"><h2 className="font-semibold">{t('policy')}</h2>{policyFields}</Card>
+   <Card className="space-y-5 p-4 sm:p-6"><h2 className="font-semibold">{t('policy')}</h2><RewardPolicyYearContext.Provider value={year}>{policyFields}</RewardPolicyYearContext.Provider></Card>
    {reviewed&&<Card className="space-y-3 p-4 sm:p-6"><h2 className="font-semibold">{t('review')}</h2><p className="text-sm">{name} · {t('version',{version:revision+1})}</p><p className="text-sm text-muted-foreground">{t('futureOnly')}</p><ul className="list-inside list-disc text-sm">{targets.map(pair=><li key={rewardTargetKey(pair)}>{label(pair)}</li>)}</ul></Card>}
    <div className="flex flex-wrap gap-3"><Button type="submit" disabled={!complete||pending||saved}>{pending?t('saving'):reviewed?(targets.length?t('confirm'):t('archive')):t('preview')}</Button>{reviewed&&<Button type="button" variant="outline" onClick={()=>setReviewed(false)}>{t('back')}</Button>}</div>
   </fieldset>

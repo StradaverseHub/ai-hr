@@ -35,7 +35,7 @@ const rows = [
 ];
 beforeEach(() => {
   ports.list.mockResolvedValue(rows);
-  ports.choices.mockResolvedValue({ companies: [{ id: 'company', name: 'Sample Trading Sdn Bhd' }], units: [{ id: 'bu-1', companyId: 'company', name: 'Northern Sales', global: false }], users: [], cycles: [{ id: 'cycle-1', name: '2026 Annual Compensation Review', year }] });
+  ports.choices.mockResolvedValue({ companies: [{ id: 'company', name: 'Sample Trading Sdn Bhd' }], units: [{ id: 'bu-1', companyId: 'company', name: 'Northern Sales', global: false }], users: [], memberships:[{companyId:'company',businessUnitId:'bu-1'}],cycles: [{ id: 'cycle-1', name: '2026 Annual Compensation Review', year }] });
   ports.shared.mockResolvedValue([]);
 });
 afterEach(cleanup);
@@ -71,7 +71,7 @@ describe('Rewards configuration list (7a8102a7)', () => {
 });
 
 describe('Create unit review cycle name (7a8102a7)', () => {
-  const props = { actorUserId: 'actor', today, companies: [{ id: 'company', name: 'Company' }], units: [{ id: 'bu-1', companyId: 'company', name: 'Unit', global: false }], cycles: [{ id: 'cycle-1', name: 'Existing cycle', year }], shared: [] };
+  const props = { actorUserId: 'actor', today, companies: [{ id: 'company', name: 'Company' }], units: [{ id: 'bu-1', companyId: 'company', name: 'Unit', global: false }], memberships:[{companyId:'company',businessUnitId:'bu-1'}],cycles: [{ id: 'cycle-1', name: 'Existing cycle', year }], shared: [] };
   it('suggests the default name, follows the year until edited, and hides it for an existing cycle', () => {
     render(wrap(<RewardReviewCreateForm {...props} />));
     const name = () => screen.queryByRole<HTMLInputElement>('textbox', { name: 'Review cycle' });
@@ -132,7 +132,7 @@ describe('Row actions by stage (62e743ed)', () => {
 });
 
 describe('Shared configuration visibility (56595838)', () => {
-  const props = { actorUserId: 'actor', today, companies: [{ id: 'company', name: 'Company' }], units: [{ id: 'bu-1', companyId: 'company', name: 'Unit', global: false }], cycles: [], shared: [] };
+  const props = { actorUserId: 'actor', today, companies: [{ id: 'company', name: 'Company' }], units: [{ id: 'bu-1', companyId: 'company', name: 'Unit', global: false }], memberships:[{companyId:'company',businessUnitId:'bu-1'}],cycles: [], shared: [] };
   const policy = { effectiveFrom: `${year + 1}-01-01`, meritMatrix: { SSTAR: [1000, 800, 800], STAR: [800, 600, 600], SCORE: [600, 450, 300], IMPRO: [0, 0, 0], PIP: [0, 0, 0] }, standardPools: [500, 100, 100], hPools: [400, 100, 50], targetMonthsBp: 20000, bonusMatrix: { '12': [0, 1, 2, 3, 4], H: [0, 1, 2, 3, 4] }, exemptReason: '' };
   it('names the version and opens its settings read-only', () => {
     render(wrap(<RewardReviewCreateForm {...props} shared={[{ groupId: 'g', versionId: 'v', revision: 3, name: 'Group Standard 2026', year, companyId: 'company', businessUnitId: 'bu-1', policy: policy as any }]} />));
@@ -144,8 +144,8 @@ describe('Shared configuration visibility (56595838)', () => {
     expect(within(dialog).getByText('SSTAR')).toBeTruthy();
     expect(within(dialog).getByRole('row', { name: /Standard plan pools/ }).textContent).toContain('5% / 1% / 1%');
     expect(within(dialog).getByRole('row', { name: /JG H plan pools/ }).textContent).toContain('4% / 1% / 0.5%');
-    expect(within(dialog).getByRole('row', { name: /Target bonus months/ }).textContent).toContain('2.00');
-    expect(within(dialog).getByText('None (caps apply)')).toBeTruthy();
+    expect(within(dialog).queryByRole('row', { name: /Target bonus months/ })).toBeNull();
+    expect(within(dialog).getByText(en.rewardsConfig.summary.unitInputs)).toBeTruthy();
     expect(dialog.querySelectorAll('input,select,textarea')).toHaveLength(0);
   });
   it('says plainly when no shared configuration exists, links to create one and shows the standard settings', () => {
