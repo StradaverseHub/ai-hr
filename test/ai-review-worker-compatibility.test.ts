@@ -47,6 +47,8 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
   const admission=await createBankImportJob(ctx,{name:'fictional-compat.csv',bytes:bytes.length,hash:createHash('sha256').update(bytes).digest('hex')});
   await uploadBankImportChunk(ctx,admission.job.id,0,bytes);await bankImportCommand(ctx,admission.job.id,'validate');
   tick();expect((await getBankImportJob(ctx,admission.job.id)).job).toMatchObject({state:'validating',total:1,saved:0});
+  tick();expect((await getBankImportJob(ctx,admission.job.id)).job).toMatchObject({state:'validating',validated:1,valid:1,saved:0});
+  // A separate native tick observes that validation has drained before offering human confirmation.
   tick();expect((await getBankImportJob(ctx,admission.job.id)).job).toMatchObject({state:'ready',valid:1,saved:0});
   await expect(getBankImportJob(adminCtx(await seedBase()),admission.job.id)).rejects.toThrow('unavailable');
   await bankImportCommand(ctx,admission.job.id,'confirm');tick();tick();
