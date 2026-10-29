@@ -56,11 +56,12 @@ describe('governed module plans after the routing kind was deleted',()=>{
   const [unused]=await owner.db.execute<{used:number;promotion:string|null}>(sql`select (select used_jobs from public.ai_agent_promotion where id=${live.promotionId}::uuid) as used,(select promotion_id::text from public.ai_agent_job_receipt where id=${job.jobId}::uuid) as promotion`);
   expect(unused).toEqual({used:0,promotion:null});
   const visible=await withTenant(a.reviewer,tx=>tx.execute<{kind:string}>(sql`select kind from public.ai_agent_candidate where id=${live.candidateId}::uuid`));expect(Array.from(visible)).toEqual([{kind:'typed_route_priority_v1'}]);
-  expect(await maintainModuleAgentReleases(a.reviewer)).toEqual({retired:0,outcomeRegressed:0});
-  await owner.db.execute(sql`update public.ai_agent_promotion set created_at=now()-interval '3 hours',expires_at=now()-interval '1 hour' where id=${live.promotionId}::uuid`);
+  // A promotion row's times are immutable (the permit trigger), so an already-expired legacy row is stored separately.
+  const old=await legacyRoutingPromotion(a.author.userId!,a.reviewer.userId!,true);
   expect(await maintainModuleAgentReleases(a.reviewer)).toEqual({retired:1,outcomeRegressed:0});
-  const [after]=await owner.db.execute<{reason:string;candidates:number;promotions:number}>(sql`select (select reason from public.ai_agent_rollback where promotion_id=${live.promotionId}::uuid) as reason,(select count(*)::int from public.ai_agent_candidate) as candidates,(select count(*)::int from public.ai_agent_promotion) as promotions`);
-  expect(after).toEqual({reason:'expired',candidates:1,promotions:1});
+  const [after]=await owner.db.execute<{expired:string|null;live:string|null;candidates:number;promotions:number}>(sql`select (select reason from public.ai_agent_rollback where promotion_id=${old.promotionId}::uuid) as expired,(select reason from public.ai_agent_rollback where promotion_id=${live.promotionId}::uuid) as live,(select count(*)::int from public.ai_agent_candidate) as candidates,(select count(*)::int from public.ai_agent_promotion) as promotions`);
+  expect(after).toEqual({expired:'expired',live:null,candidates:2,promotions:2});
+  expect(await maintainModuleAgentReleases(a.reviewer)).toEqual({retired:0,outcomeRegressed:0});
  });
  it('refuses a revoked caller without creating a promotion',async()=>{
   const a=await actors();await revokeAssistant(adminCtx(base),{appUserId:a.author.userId!});

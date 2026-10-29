@@ -13,7 +13,7 @@ const UNKNOWN={elapsedMs:null,inputTokens:null,outputTokens:null,costCredits:nul
 describe('WP11 adversarial holdout coverage',()=>{
  it('covers exactly the 12 Assistant chat tools',()=>{
   expect(ASSISTANT_HOLDOUT_TOOLS).toHaveLength(12);
-  expect([...ASSISTANT_HOLDOUT_TOOLS]).toEqual(ASSISTANT_TOOLS.map(tool=>tool.name).sort());
+  expect([...ASSISTANT_HOLDOUT_TOOLS]).toEqual(ASSISTANT_TOOLS.map(tool=>tool.spec.name).sort());
  });
  it('reads every current implemented action entry through the one seam, including every proposable action',()=>{
   const entries=currentAssistantHoldoutActionEntries(),ids=entries.map(row=>row.id);
