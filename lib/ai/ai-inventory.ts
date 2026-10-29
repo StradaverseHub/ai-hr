@@ -94,8 +94,11 @@ export type AiAlert=Readonly<{kind:AiAlertKind;level:'warning'|'critical';count:
 export type AiAlertInput=Readonly<{
  runs24h:{admitted:number;failed:number};
  principalRefusals24h:number;
- /** Monthly tenant USD allocation: used = held + confirmed nano-USD; cap null = no allocation set. */
+ /** This Kuala Lumpur month's tenant USD allocation use (held + confirmed nano-USD) against the tenant monthly cap;
+  * null where the caller cannot read the private ledger (the app role cannot; scripts/ai-alerts.ts can). */
  spend:{usedNanos:bigint;capNanos:bigint|null}|null;
+ /** A reconciled charge exceeded its verified allocation (app.ai_spend_status `breached`): strict admissions pause. */
+ spendBreached?:boolean;
  /** Token/request allowances at or near their cap (AI management attention). */
  allowancesNear:number;allowancesAt:number;
  drift:readonly SwitchDrift[];
@@ -114,6 +117,7 @@ export function evaluateAiAlerts(i:AiAlertInput):AiAlert[]{
   if(cap<=BigInt(0)||used>=cap){spendLevel='critical';spendCount++;}
   else if(used*BigInt(100)>=cap*BigInt(Math.round(T.spendNear*100))){spendLevel='warning';spendCount++;}
  }
+ if(i.spendBreached){spendLevel='critical';spendCount++;}
  if(i.allowancesAt>0){spendLevel='critical';spendCount+=i.allowancesAt;}
  if(i.allowancesNear>0){spendLevel??='warning';spendCount+=i.allowancesNear;}
  if(spendLevel)out.push({kind:'spend_near_cap',level:spendLevel,count:spendCount,detail:null});

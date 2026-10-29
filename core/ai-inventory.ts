@@ -66,12 +66,12 @@ async function runAlertMetricsTx(tx:Tx){
 /** Alerts for the AI management banner (group administrators). Company administrators get none: the inputs are
  * tenant-wide run and spend facts they may not see. */
 export function aiAlertsFromView(view:ManagementView,metrics:{admitted:number;failed:number;principal:number}):AiAlert[]{
- const cap=view.spend?.budgets.find(b=>b.scopeKey==='tenant')?.monthlyNanos??null;
- const used=view.spend?BigInt(view.spend.heldNanos??'0')+BigInt(view.spend.confirmedNanos??'0'):BigInt(0);
  const meters=[...view.attention.companies,...view.attention.users];
  const levelOf=(u:(typeof meters)[number])=>u.daily.level==='at'||u.tokens.level==='at'?'at':u.daily.level??u.tokens.level;
  return evaluateAiAlerts({runs24h:{admitted:metrics.admitted,failed:metrics.failed},principalRefusals24h:metrics.principal,
-  spend:view.spend?{usedNanos:used,capNanos:cap===null?null:BigInt(cap)}:null,
+  // The app role cannot read this month's private USD ledger; the banner uses the breach flag and the token and
+  // request meters, and scripts/ai-alerts.ts (owner connection) adds the monthly USD comparison.
+  spend:null,spendBreached:view.spend?.breached===true,
   allowancesAt:meters.filter(u=>levelOf(u)==='at').length,allowancesNear:meters.filter(u=>levelOf(u)==='near').length,
   drift:switchDrift(view.features,view.agentSwitches)});
 }

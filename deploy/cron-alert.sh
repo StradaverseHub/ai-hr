@@ -37,6 +37,10 @@
 #
 #   usage: cron-alert.sh <job-name> <logfile> <command> [args...]
 #
+# AI alerts (WP12, review R20): scripts/ai-alerts.ts exits 3 when AI failure rate, scheduled-agent refusals,
+# spend near its cap or switch drift need a human, and 2 when a tenant could not be checked. Its header carries
+# the crontab line to install under this wrapper; the same checks show as a banner in AI management.
+#
 # ── THE THREE CHANNELS, AND WHY THREE ────────────────────────────────────────────────────────────
 #
 #   1. THE JOURNAL, at priority err. `logger -p user.err` writes a real priority-3 line, and priority 3
