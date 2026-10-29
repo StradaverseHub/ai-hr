@@ -26,7 +26,7 @@ it('requires a reason and an explicit before/after confirmation before saving th
  fireEvent.change(screen.getByLabelText('Correction reason'),{target:{value:preview.reason}});
  fireEvent.click(screen.getByRole('button',{name:'Review corrections'}));
  expect(await screen.findByText('2025-01-15')).toBeVisible();expect(screen.getByText('2025-01-01')).toBeVisible();expect(actions.save).not.toHaveBeenCalled();
- console.info('Manual review:',await page.screenshot({animations:'disabled',path:'../.vitest-attachments/information-only-manual-review.png'}));
+ console.info('Manual review:',await page.screenshot({path:'../.vitest-attachments/information-only-manual-review.png'}));
  fireEvent.click(screen.getByRole('button',{name:'Confirm information-only correction'}));
  await waitFor(()=>expect(actions.save).toHaveBeenCalledWith({employmentId:preview.employmentId,changes:{hiredOn:'2025-01-01'},reason:preview.reason,fingerprint:preview.fingerprint}));
  expect(await screen.findByText(en.people.informationCorrection.saved)).toBeVisible();
@@ -39,7 +39,7 @@ it('shows Excel row errors before confirmation and displays durable batch result
  fireEvent.change(screen.getByLabelText(en.people.informationCorrection.file),{target:{files:[file]}});
  fireEvent.submit(screen.getByRole('button',{name:'Validate file'}).closest('form')!);
  expect(await screen.findByText('Employee ID is unavailable.')).toBeVisible();expect(actions.confirm).not.toHaveBeenCalled();
- console.info('Excel review:',await page.screenshot({animations:'disabled',path:'../.vitest-attachments/information-only-excel-review.png'}));
+ console.info('Excel review:',await page.screenshot({path:'../.vitest-attachments/information-only-excel-review.png'}));
  fireEvent.click(screen.getByRole('button',{name:'Confirm 1 valid correction'}));
  expect(await screen.findByText('1 successful · 1 failed · 0 unchanged')).toBeVisible();expect(screen.getByRole('link',{name:'View import batch history'})).toHaveAttribute('href','/admin/personnel/import/history/attempt-fixture');
 });
@@ -49,6 +49,6 @@ describe('correction review layout in the six locales and three themes',()=>{
   render(<NextIntlClientProvider locale={locale} messages={messages}><main className="max-w-full bg-background p-4 text-foreground"><h1 className="mb-4 text-xl font-semibold">{messages.people.informationCorrection.title}</h1><InformationChangesTable preview={preview}/><p className="mt-4 text-sm">{messages.people.informationCorrection.protection}</p></main></NextIntlClientProvider>);
   expect(screen.getByText(messages.people.informationCorrection.fields.hiredOn)).toBeVisible();
   expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
-  if(locale==='en')console.info('Correction layout:',await page.screenshot({animations:'disabled',path:`../.vitest-attachments/information-correction-${theme}-${dark?'dark':'light'}.png`}));
+  if(locale==='en')console.info('Correction layout:',await page.screenshot({path:`../.vitest-attachments/information-correction-${theme}-${dark?'dark':'light'}.png`}));
  });
 });

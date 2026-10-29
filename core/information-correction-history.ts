@@ -1,6 +1,6 @@
 /** Historical display resolution: a stored null is meaningful and must not fall back to corrected master data. */
 import {sql,type SQL} from 'drizzle-orm';
-import {informationPayslipSnapshot,payslip,employment,domainEvent} from '../db/schema';
+import {informationPayslipSnapshot,payslip,payrollBatch,employment,domainEvent} from '../db/schema';
 export function frozenPayslipInformation(field:'grade'|'employmentType',fallback:SQL){
  return sql<string|null>`case when exists(select 1 from ${informationPayslipSnapshot} f where f.payslip_id=${payslip.id}) then (select ${field==='grade'?sql`f.grade`:sql`f.employment_type`} from ${informationPayslipSnapshot} f where f.payslip_id=${payslip.id}) else ${fallback}::text end`;
 }
@@ -11,10 +11,11 @@ export function employmentInformationAt<F extends 'hiredOn'|'joinDate'|'companyI
 
 import type {Tx} from '../db/client';
 import type {PayslipReviewRow} from './payroll-view';
+import type {EmploymentStatus} from './employment-status';
 type RunType=PayslipReviewRow['runType'];
 /** Only retained document fields can overlay a live transaction. Money and publication stay canonical. */
 const profileFields=['employeeName','employee','employeeCode','company','companyReg','currency','cycleName','informationFields','businessUnit','department','position','jobGrade','employmentType','division','branch','region','line','section','team','base','category','paymentMethod','bankName','bankAccountNo','icNumber','passportNumber','epfNumber','socsoNumber','taxNumber','employmentStatus'] as const;
-type RawDocumentRow=Omit<PayslipReviewRow,'bankAccountMasked'|'bankAccountFull'|'identityNumber'|'identityIsPassport'> & {bankAccountNo:string|null;icNumber:string|null;passportNumber:string|null;employmentStatus:string|null};
+type RawDocumentRow=Omit<PayslipReviewRow,'bankAccountMasked'|'bankAccountFull'|'identityNumber'|'identityIsPassport'> & {bankAccountNo:string|null;icNumber:string|null;passportNumber:string|null;employmentStatus:EmploymentStatus;batchStatus:typeof payrollBatch.$inferSelect.status};
 type HistoricalDocument={metadata:Record<string,unknown>;batch:Record<string,unknown>;payslip:Record<string,unknown>};
 export function overlayInformationDocument<T extends object>(row:T,document:HistoricalDocument|null):T{
  if(!document)return row;
