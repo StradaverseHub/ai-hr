@@ -25,10 +25,12 @@ export async function readModuleClaimCancellationResponse(response:Response,pack
 /** ADR-0151 §4.3 inline card: the incurred date the person named in chat. The claim is preselected only when
  * exactly one of the caller's own pending claims matches (or, with no date, only one is pending). */
 export type ClaimCancellationProposalPrefill=Readonly<{incurredOn?:string}>;
-export function ModuleClaimCancellationPanel({choices:raw,resumeActionId,prefill}:{choices:OwnClaimCancellationChoices;resumeActionId?:string;prefill?:ClaimCancellationProposalPrefill}){
+export function ModuleClaimCancellationPanel({choices:raw,resumeActionId,prefill,onSettled}:{choices:OwnClaimCancellationChoices;resumeActionId?:string;prefill?:ClaimCancellationProposalPrefill;onSettled?:(settled:boolean)=>void}){
  const parsed=OwnClaimCancellationChoices.safeParse(raw),choices=parsed.success?parsed.data:{kind:'unavailable' as const},t=useTranslations('assistant.workspace.claimActions'),f=useFormatter(),id=useId();
  const [proposal]=useState(()=>prefill&&choices.kind==='choices'?resolveProposalChoice(choices.claims,claimProposalMatches(prefill)):null);
  const [state,setState]=useState<State>(()=>resumeActionId?{kind:'uncertain',actionId:z.uuid().safeParse(resumeActionId).success?resumeActionId:null}:{kind:'selection'});
+ // An inline chat card (review R6) drops its suggestion chrome once the review is confirmed or retired.
+ useEffect(()=>{onSettled?.(state.kind==='completed'||state.kind==='retired');},[state.kind,onSettled]);
  const [claimId,setClaimId]=useState(proposal?.kind==='one'?proposal.row.claimId:''),[consent,setConsent]=useState(false),[confirm,setConfirm]=useState(false),[busy,setBusy]=useState<string|null>(null),[error,setError]=useState(''),[index,setIndex]=useState<Row[]|null>(null),[now,setNow]=useState(()=>Date.now());
  const flight=useRef(false),alive=useRef(true),sequence=useRef(0),abort=useRef<AbortController|null>(null),status=useRef<HTMLParagraphElement>(null);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;sequence.current++;abort.current?.abort();};},[]);

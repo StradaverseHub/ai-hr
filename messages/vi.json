@@ -19151,7 +19151,16 @@
         "openPage": "Mở trang thông thường",
         "resolutionOne": "Một mục hiện tại của bạn khớp với câu hỏi và đã được chọn. Hãy kiểm tra xem có đúng không.",
         "resolutionSeveral": "Có nhiều hơn một mục hiện tại của bạn có thể khớp. Hãy chọn mục bạn muốn.",
-        "resolutionNone": "Không có mục hiện tại nào của bạn khớp với yêu cầu. Hãy chọn một mục trong danh sách, hoặc mở trang thông thường."
+        "resolutionNone": "Không có mục hiện tại nào của bạn khớp với yêu cầu. Hãy chọn một mục trong danh sách, hoặc mở trang thông thường.",
+        "badgeReady": "Gợi ý",
+        "badgeStale": "Đã cũ",
+        "staleNote": "Gợi ý trước đây từ câu hỏi của bạn. Chưa có gì được chuẩn bị hay thay đổi.",
+        "staleBody": "Đã có thay đổi kể từ khi gợi ý này được đưa ra, chẳng hạn quyền truy cập của bạn hoặc một tính năng đã bị tắt, nên không thể dùng gợi ý này ở đây nữa. Hãy làm mới để xem bạn có thể làm gì lúc này.",
+        "refresh": "Làm mới",
+        "failureBody": "Hiện chưa tải được các mục hiện tại của bạn. Chưa có gì được chuẩn bị hay thay đổi. Hãy thử lại, hoặc mở trang thông thường.",
+        "retry": "Thử lại",
+        "badgeUnverified": "Chưa kiểm tra được",
+        "unverifiedBody": "Hiện chưa kiểm tra được gợi ý này còn dùng được cho bạn hay không. Chưa có gì được chuẩn bị hay thay đổi. Hãy thử lại sau giây lát, hoặc mở trang thông thường."
       },
       "conversationGovernance": {
         "title": "Cải tiến hội thoại chính",

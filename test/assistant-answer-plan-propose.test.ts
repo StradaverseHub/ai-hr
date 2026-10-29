@@ -9,6 +9,8 @@ import {ASSISTANT_CONVERSATION_SYSTEM} from '../lib/ai/assistant-conversation-sy
 import {ASSISTANT_CONVERSATION_HOLDOUTS} from '../lib/ai/assistant-conversation-holdouts';
 import {scoreAssistantConversationTrial} from '../lib/ai/assistant-conversation-candidate';
 import type {AgentModuleCode} from '../lib/ai/module-agents';
+import {assistantProposalCatalogue,assistantProposalCatalogueBlock,syntheticAssistantProposalCaller,CLOSED_PROPOSAL_CALLER} from '../lib/ai/assistant-action-catalogue';
+const reader=(readableModules:readonly AgentModuleCode[])=>({proposalCaller:syntheticAssistantProposalCaller(readableModules)});
 
 const all:readonly AgentModuleCode[]=['leave','claims','attendance','approvals'];
 const VALID={
@@ -35,7 +37,7 @@ describe('the propose answer-plan mode',()=>{
  });
  it('accepts every valid proposal through the same strict canonical parser and re-emits hints in canonical order',()=>{
   for(const [action,cases] of Object.entries(VALID))for(const hints of cases){
-   const result=adjudicateAssistantAnswerPlan(parseAssistantAnswerPlan(JSON.stringify(plan(action,hints))),[],{readableModules:all});
+   const result=adjudicateAssistantAnswerPlan(parseAssistantAnswerPlan(JSON.stringify(plan(action,hints))),[],reader(all));
    expect(result).toEqual(plan(action,hints));expect(Object.isFrozen(result)).toBe(true);if(result.mode==='propose')expect(Object.isFrozen(result.hints)).toBe(true);
   }
   const reordered=parseAssistantAnswerPlan('{"version":1,"mode":"propose","action":"leave.edit","hints":{"newEndDate":"2026-11-05","newStartDate":"2026-11-04"}}');
@@ -86,20 +88,27 @@ describe('the propose answer-plan mode',()=>{
    canonical.replace('"version":1','"version":1.0'),'```json\n'+canonical+'\n```',canonical+'{}','Sure! '+canonical,
   ])refused(text);
  });
- it('fails closed unless the current caller can read the proposed module',()=>{
+ it('fails closed unless the proposal is in the caller’s current registry-derived catalogue',()=>{
   const value=plan('approvals.claim.decide',{});
-  expect(adjudicateAssistantAnswerPlan(value,[],{readableModules:['approvals']})).toEqual(value);
-  for(const caller of[undefined,{},{readableModules:[]},{readableModules:['leave','claims','attendance'] as AgentModuleCode[]}])
+  expect(adjudicateAssistantAnswerPlan(value,[],reader(['approvals']))).toEqual(value);
+  for(const caller of[undefined,{},{proposalCaller:CLOSED_PROPOSAL_CALLER},reader([]),reader(['leave','claims','attendance']),
+   // The pre-R6 shape (module read set only) no longer offers anything: actor and pause facts are required.
+   {readableModules:['approvals']} as never,{proposalCaller:{readableModules:['approvals'],actors:[],pausedKeys:[]}} as const,
+   {proposalCaller:{readableModules:['approvals'],actors:['assigned_approver'],pausedKeys:['hr_assistant']}} as const])
    expect(()=>adjudicateAssistantAnswerPlan(value,[],caller)).toThrow('Assistant answer plan unavailable.');
   // Other modes are unaffected by the caller's module set.
   expect(adjudicateAssistantAnswerPlan({version:1,mode:'refuse',code:'human_review_required'},[])).toEqual({version:1,mode:'refuse',code:'human_review_required'});
   // A malformed current catalogue still refuses, whatever the plan.
   const bad=[{read:0,presentation:{module:'leave',cards:[],truncated:false},explanations:[]},{read:0,presentation:{module:'leave',cards:[],truncated:false},explanations:[]}] as AssistantAnswerRead[];
-  expect(()=>adjudicateAssistantAnswerPlan(plan('leave.cancel',{}),bad,{readableModules:all})).toThrow();
+  expect(()=>adjudicateAssistantAnswerPlan(plan('leave.cancel',{}),bad,reader(all))).toThrow();
  });
  it('teaches the closed shape as constants only, with no user, tenant, locale or clock bytes',()=>{
   expect(ASSISTANT_ANSWER_PROTOCOL).toContain('"mode":"propose"');expect(ASSISTANT_ANSWER_PROTOCOL).toContain(ASSISTANT_PROPOSAL_PROTOCOL);
-  for(const action of ASSISTANT_PROPOSABLE_ACTIONS){expect(ASSISTANT_PROPOSAL_PROTOCOL).toContain(action);for(const key of ASSISTANT_PROPOSAL_HINT_KEYS[action])expect(ASSISTANT_PROPOSAL_PROTOCOL).toContain(key);}
+  // R6: the constant protocol names no action; the per-caller catalogue block lists the offered ones.
+  for(const action of ASSISTANT_PROPOSABLE_ACTIONS)expect(ASSISTANT_PROPOSAL_PROTOCOL).not.toContain(action);
+  const block=assistantProposalCatalogueBlock(assistantProposalCatalogue(syntheticAssistantProposalCaller(all)));
+  for(const action of ASSISTANT_PROPOSABLE_ACTIONS){expect(block).toContain(action);for(const key of ASSISTANT_PROPOSAL_HINT_KEYS[action])expect(block).toContain(key);}
+  expect(block).not.toMatch(/\b20\d\d-\d\d-\d\d\b|[a-f0-9]{8}-[a-f0-9]{4}-/);
   expect(ASSISTANT_PROPOSAL_PROTOCOL).not.toMatch(/\b20\d\d-\d\d-\d\d\b|[a-f0-9]{8}-[a-f0-9]{4}-/);
   expect(ASSISTANT_CONVERSATION_SYSTEM).toContain(ASSISTANT_ANSWER_PROTOCOL);
   for(const forbidden of['reason','remark','note','description','decision'])expect(Object.values(ASSISTANT_PROPOSAL_HINT_KEYS).flat().join(',')).not.toContain(forbidden);

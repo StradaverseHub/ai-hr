@@ -8,6 +8,8 @@ import React from 'react';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 vi.mock('next-intl',()=>({useTranslations:()=>((key:string,values?:Record<string,string>)=>values?`${key}:${Object.values(values).join('|')}`:key),useFormatter:()=>({dateTime:(date:Date)=>date.toISOString().slice(0,10),number:(value:number)=>String(value)})}));
+const refresh=vi.hoisted(()=>vi.fn());
+vi.mock('next/navigation',()=>({useRouter:()=>({refresh})}));
 vi.mock('next/link',()=>({default:({children,...props}:React.AnchorHTMLAttributes<HTMLAnchorElement>)=><a {...props}>{children}</a>}));
 vi.mock('../components/ui',()=>({Button:({children,variant:_,...props}:React.ButtonHTMLAttributes<HTMLButtonElement>&{variant?:string})=><button {...props}>{children}</button>,inputCls:''}));
 import {ConversationActionProposal} from '../components/assistant/conversation-action-proposal';
@@ -104,6 +106,8 @@ describe('preparation and confirmation stay with the person',()=>{
   fireEvent.click(screen.getByRole('button',{name:'reopen'}));await screen.findByRole('heading',{name:'done'});
   expect(packets()[3]).toEqual({action:'attendance.overtime.request',operation:'reopen',actionId});
   expect(packets().filter(packet=>packet.operation==='confirm')).toHaveLength(1);expect(packets().filter(packet=>packet.operation==='prepare')).toHaveLength(1);
+  // Confirmed: no longer a suggestion, so the badge and the "nothing prepared" note are gone.
+  expect(document.querySelector('section[data-card-state]')?.getAttribute('data-card-state')).toBe('settled');expect(screen.queryByText('badgeReady')).toBeNull();
  });
  it('cancels a preselected own leave request only after the person consents and clicks',async()=>{
   fetcher.mockResolvedValueOnce(json({kind:'choices',requests:[leave(own1,'2026-11-03')],truncated:false})).mockRejectedValueOnce(Error('lost'));
@@ -113,9 +117,37 @@ describe('preparation and confirmation stay with the person',()=>{
   await waitFor(()=>expect(packets()).toHaveLength(2));
   expect(packets()[1]).toEqual({action:'leave.cancel',operation:'prepare',input:{action:'leave.cancel',contractVersion:1,employmentId,leaveRequestId:own1,cancel:true}});
  });
- it('shows the unavailable choices state with the page fallback when the guarded read refuses',async()=>{
-  fetcher.mockResolvedValueOnce(json({kind:'unavailable'}));
-  render(<ConversationActionProposal action="claims.cancel" hints={{}}/>);
-  await screen.findByText('cancelUnavailable');expect(screen.getByText('openPage').getAttribute('href')).toBe('/assistant/claims?flow=cancel');
+ it('shows the failure state with a plain reason, a safe retry and the page fallback when the guarded read refuses',async()=>{
+  fetcher.mockResolvedValueOnce(json({kind:'unavailable'})).mockResolvedValueOnce(json({kind:'choices',claims:[{employmentId,claimId:own1,claimTypeName:'Fictional taxi',incurredOn:'2026-10-02',amount:'12.50'}],truncated:false}));
+  const {container}=render(<ConversationActionProposal action="claims.cancel" hints={{}}/>);
+  await screen.findByText('failureBody');expect(screen.getByText('openPage').getAttribute('href')).toBe('/assistant/claims?flow=cancel');
+  expect(container.querySelector('[data-card-state="failure"]')).not.toBeNull();
+  // Retry repeats only the read: nothing is prepared, and the panel starts again with fresh choices.
+  fireEvent.click(screen.getByRole('button',{name:'retry'}));await screen.findByText('resolutionOne');
+  expect(packets()).toEqual([{action:'claims.cancel',operation:'choices'},{action:'claims.cancel',operation:'choices'}]);
+ });
+});
+
+describe('a stale proposal is refused with a refresh (review R6)',()=>{
+ it('reads nothing, offers no preparation, and refreshes the server-adjudicated conversation on request',()=>{
+  const {container}=render(<ConversationActionProposal action="leave.cancel" hints={{startDate:'2026-11-03'}} availability="stale"/>);
+  expect(container.querySelector('section')?.getAttribute('data-card-state')).toBe('stale');
+  expect(screen.getByText('badgeStale')).toBeTruthy();expect(screen.getByText('staleBody')).toBeTruthy();
+  expect(screen.queryByRole('button',{name:'prepare'})).toBeNull();expect(screen.queryByRole('combobox')).toBeNull();
+  expect(fetcher).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'refresh'}));expect(refresh).toHaveBeenCalledTimes(1);
+  expect(screen.getByText('openPage').getAttribute('href')).toBe('/assistant/leave?flow=change');
+ });
+ it('still refuses a malformed stale proposal outright',()=>{
+  refresh.mockClear();render(<ConversationActionProposal action="payroll.close" hints={{}} availability="stale"/>);expect(screen.getByText('unavailable')).toBeTruthy();expect(refresh).not.toHaveBeenCalled();cleanup();
+  render(<ConversationActionProposal action="leave.cancel" hints={{}} availability={'maybe' as never}/>);expect(screen.getByText('unavailable')).toBeTruthy();
+ });
+ it('an unverified proposal is neutral and retryable, never called out of date, and still offers no preparation',()=>{
+  refresh.mockClear();const {container}=render(<ConversationActionProposal action="claims.cancel" hints={{}} availability="unverified"/>);
+  expect(container.querySelector('section')?.getAttribute('data-card-state')).toBe('unverified');
+  expect(screen.getByText('badgeUnverified')).toBeTruthy();expect(screen.getByText('unverifiedBody')).toBeTruthy();
+  expect(screen.queryByText('badgeStale')).toBeNull();expect(screen.queryByText('staleBody')).toBeNull();
+  expect(screen.queryByRole('button',{name:'prepare'})).toBeNull();expect(fetcher).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'retry'}));expect(refresh).toHaveBeenCalledTimes(1);
  });
 });

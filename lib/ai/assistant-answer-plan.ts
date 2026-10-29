@@ -9,7 +9,7 @@ import {isAgentModuleCode} from './module-agents';
 import {moduleHumanActionHandoffs} from './module-human-handoffs';
 import {parseModuleAgentActionNomination,getModuleAgentAction} from './module-agent-actions';
 import {ASSISTANT_PROPOSAL_MODULE,ASSISTANT_PROPOSAL_PROTOCOL,captureAssistantProposalHints,isAssistantProposableAction,type AssistantProposableAction,type AssistantProposalHints} from './assistant-action-proposal-hints';
-import type {AgentModuleCode} from './module-agents';
+import {assistantProposalCatalogue,type AssistantProposalCaller} from './assistant-action-catalogue';
 import {SPECIALIST_FINDINGS,type SpecialistFinding} from './module-specialists';
 import {FOLLOWUP_CODES,type FollowupCode} from './module-specialist-followup';
 import {LEAVE_SUMMARY_EXPLAIN_KEYS,type LeaveSummaryExplainKey} from '../leave-summary-explain';
@@ -36,11 +36,13 @@ export type AssistantAnswerPlan=Readonly<{version:1;mode:'answer';blocks:readonl
  Readonly<{version:1;mode:'insufficient';code:'no_verified_facts'|'unsupported_explanation'}>|
  Readonly<{version:1;mode:'refuse';code:'unsupported_request'|'human_review_required'}>|
  /** ADR-0151 §4.3: a suggestion only. It names a declared, implemented, proposable action and typed
-  * selectors; it prepares nothing, carries no ID or human text, and is adjudicated against the modules
-  * the caller can currently read. The card resolves hints against the caller's own fresh choices. */
+  * selectors; it prepares nothing, carries no ID or human text, and is adjudicated against the caller's
+  * current registry-derived catalogue (assistant-action-catalogue.ts). The card resolves hints against the
+  * caller's own fresh choices. */
  Readonly<{version:1;mode:'propose';action:AssistantProposableAction;hints:AssistantProposalHints}>;
-/** Current caller facts the propose mode needs; built by the caller's own source owner, never posted. */
-export type AssistantAnswerAdjudication=Readonly<{readableModules?:readonly AgentModuleCode[]}>;
+/** Current caller facts the propose mode needs; built by the caller's own source owner, never posted.
+ * Absent facts offer nothing, so a proposal adjudicated without them fails closed. */
+export type AssistantAnswerAdjudication=Readonly<{proposalCaller?:AssistantProposalCaller}>;
 export type AssistantAnswerRead=Readonly<{read:number;presentation:JobPresentation;
  explanations:readonly Readonly<{card:number|null;code:AssistantExplanationCode}>[]}>;
 
@@ -180,8 +182,9 @@ function currentReads(input:readonly AssistantAnswerRead[]):readonly CurrentRead
  */
 export function adjudicateAssistantAnswerPlan(value:unknown,current:readonly AssistantAnswerRead[],caller:AssistantAnswerAdjudication={}):AssistantAnswerPlan{
  const plan=captureAssistantAnswerPlan(value),reads=currentReads(current),byRead=new Map(reads.map(read=>[read.read,read]));
- // A proposal fails closed like any other unsupported plan unless the current caller can read its module.
- if(plan.mode==='propose'){const readable=caller.readableModules;if(!Array.isArray(readable)||!readable.includes(ASSISTANT_PROPOSAL_MODULE[plan.action]))return fail();return plan;}
+ // A proposal fails closed like any other unsupported plan unless it is in the caller's CURRENT catalogue:
+ // caller authority ∩ registry ∩ tier ∩ switches and pauses. The catalogue has no model or record input.
+ if(plan.mode==='propose'){if(!assistantProposalCatalogue(caller.proposalCaller).includes(plan.action))return fail();return plan;}
  if(plan.mode==='answer')for(const block of plan.blocks){
   const read=byRead.get(block.read);if(!read)return fail();
   if(block.kind==='fact'){const card=read.cards[block.card];if(!card||!card.facts[block.fact]?.known)return fail();}

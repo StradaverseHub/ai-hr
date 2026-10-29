@@ -10,6 +10,7 @@ import {routingDigest} from '../lib/ai/module-agent-routing';
 import {ASSISTANT_CONVERSATION_HOLDOUTS} from '../lib/ai/assistant-conversation-holdouts';
 import {ASSISTANT_CONVERSATION_BASELINE,assistantConversationCandidateSystem,captureAssistantConversationCandidate,nextAssistantConversationArms,scoreAssistantConversationTrial,type ConversationArm,type ConversationToolObservation,type ConversationCaseResult} from '../lib/ai/assistant-conversation-candidate';
 import type {AssistantAnswerRead} from '../lib/ai/assistant-answer-plan';
+import {assistantProposalCatalogue,syntheticAssistantProposalCaller} from '../lib/ai/assistant-action-catalogue';
 // The actual product metadata is offered, but its executable tools are NEVER called here.
 // Each fixture's closed synthetic dispatch supplies only its permitted canonical source.
 const tools:AiToolSpec[]=ASSISTANT_TOOLS.map(tool=>({...tool.spec,inputSchema:structuredClone(tool.spec.inputSchema)}));
@@ -31,7 +32,7 @@ export async function executeAssistantConversationHoldout(configuration:unknown,
    const usage:{settled?:Parameters<NonNullable<AiAdmissionLifecycle['settled']>>[1]}={};
    try{
     const observed=withAiAdmissionLifecycle(cfg,'module_agent_evaluation',{async settled(_tx,event){usage.settled=event;}});calls++;
-    const response=await converse(observed,{system:buildAssistantConversationSystem(assistantConversationCandidateSystem(request.arm==='baseline'?ASSISTANT_CONVERSATION_BASELINE:candidate)),turns,tools,maxTokens:2048,timeoutMs:15000});
+    const response=await converse(observed,{system:buildAssistantConversationSystem(assistantConversationCandidateSystem(request.arm==='baseline'?ASSISTANT_CONVERSATION_BASELINE:candidate),assistantProposalCatalogue(syntheticAssistantProposalCaller(fixture.readableModules??[]))),turns,tools,maxTokens:2048,timeoutMs:15000});
     if(response.usageReported===false||!usage.settled?.succeeded||usage.settled.actualTokens===null)tokensKnown=false;inputTokens+=response.usage.inputTokens+response.usage.cachedInputTokens;outputTokens+=response.usage.outputTokens;
     const charge=usage.settled?.accounting.providerObservationStatus==='reported'?usage.settled.accounting.openrouterAccountCostCredits:null;
     if(charge===null||charge===undefined)costKnown=false;else costCredits+=charge;
