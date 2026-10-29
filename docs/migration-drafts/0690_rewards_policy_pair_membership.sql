@@ -9,7 +9,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   SELECT 1 FROM public.assignment a JOIN public.employment e ON e.id=a.employment_id AND e.tenant_id=a.tenant_id
   WHERE a.tenant_id=t AND a.business_unit_id=u.id AND coalesce(a.company_id,e.company_id)=x.id
    AND a.superseded_at IS NULL AND a.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (a.valid_to IS NULL OR a.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
-   AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+   AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND e.blacklisted_at IS NULL
+   AND (least(e.resignation_date,e.last_working_date,e.terminated_on) IS NULL OR least(e.resignation_date,e.last_working_date,e.terminated_on)>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
  ));
 $$;
 --> statement-breakpoint
