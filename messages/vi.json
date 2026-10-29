@@ -19177,7 +19177,10 @@
         "action_approvals_claim_chase": "Nhắc người duyệt về yêu cầu hoàn chi quá hạn",
         "action_approvals_attendance_chase": "Nhắc người duyệt về yêu cầu chấm công quá hạn",
         "action_approvals_toil_chase": "Nhắc người duyệt về yêu cầu nghỉ bù quá hạn",
-        "action_employees_review_overdue_remind": "Nhắc về đánh giá chưa quyết định sau ngày kết thúc"
+        "action_employees_review_overdue_remind": "Nhắc về đánh giá chưa quyết định sau ngày kết thúc",
+        "action_attendance_missing_clock_remind": "Nhắc nhân viên kiểm tra bản ghi chấm công vào còn thiếu",
+        "action_employees_passport_expiry_remind": "Nhắc về ngày hết hạn hộ chiếu đã ghi nhận",
+        "action_lifecycle_step_chase": "Nhắc người phụ trách về bước vòng đời nhân viên chưa hoàn tất"
       },
       "conversation": {
         "answerLabel": "Câu trả lời từ hồ sơ của bạn",
@@ -24563,7 +24566,10 @@
       "performance_assistant": "Trợ lý hội thoại hiệu suất",
       "feedback_planning": "Soạn kế hoạch cải tiến",
       "approval_chasers": "Nhắc phê duyệt quá hạn",
-      "review_chasers": "Nhắc đánh giá quá hạn"
+      "review_chasers": "Nhắc đánh giá quá hạn",
+      "clock_reminders": "Nhắc thiếu chấm công vào",
+      "document_reminders": "Nhắc hộ chiếu sắp hết hạn",
+      "lifecycle_chasers": "Nhắc bước vòng đời nhân viên"
     },
     "kinds": {
       "assistant": "Trợ lý",

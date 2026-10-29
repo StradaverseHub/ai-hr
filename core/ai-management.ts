@@ -92,7 +92,7 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       // A configured provider does not admit scheduled model spend. This is a runtime-status mirror,
       // never an allowance or a grant to the principal.
       const state = !enabled ? 'paused' : !moduleHeld ? 'module' : !effective ? 'restricted'
-        : f.kind === 'agent' ? f.id === 'readiness_reminders' || f.id === 'approval_chasers' || f.id === 'review_chasers' ? 'templates' : 'scheduled'
+        : f.kind === 'agent' ? f.id === 'readiness_reminders' || f.id === 'approval_chasers' || f.id === 'review_chasers' || f.id === 'clock_reminders' || f.id === 'document_reminders' || f.id === 'lifecycle_chasers' ? 'templates' : 'scheduled'
         : !selectedProvider ? 'provider' : 'ready';
       // WP12 (R20): whether an administrator actually set this switch (a stored setting or a `feature:` row), so drift
       // reports a switch someone turned on that does not take effect, never a default nobody chose.

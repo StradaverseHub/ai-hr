@@ -242,6 +242,9 @@ export const SETTING_CATALOG: SettingCatalogEntry[] = [
   // agent principal then runs under. Fixed templates only; no model and no spend.
   { key: 'notifications.approval_chasers_enabled', moduleCode: 'notifications', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Let the system remind approvers about claims, attendance corrections and replacement leave requests that have waited too long for a decision. Reminders only; nothing is approved or rejected.', sortOrder: 121 },
   { key: 'notifications.review_chasers_enabled', moduleCode: 'notifications', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Let the system remind the manager or HR when a probation, contract or internship review is still undecided after its end date. Reminders only; nothing is decided.', sortOrder: 122 },
+  { key: 'notifications.missing_clock_reminders_enabled', moduleCode: 'notifications', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Remind employees when no clock-in is recorded for the previous scheduled working day. This never attests work or changes Attendance.', sortOrder: 123 },
+  { key: 'notifications.passport_expiry_reminders_enabled', moduleCode: 'notifications', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Remind the employee and authorised HR about a recorded passport expiry within 30 calendar days. No file is read or changed.', sortOrder: 124 },
+  { key: 'notifications.lifecycle_step_chasers_enabled', moduleCode: 'notifications', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Remind current lifecycle staff about actionable incomplete steps after three working days without a workflow transition. No task is completed.', sortOrder: 125 },
   // ADR-0084 §2.6 — the hypothesis layer's switch, OFF for the same two reasons the nudge agent's is.
   // It spends the tenant's own provider budget (ADR-0023, BYOK) on a nightly schedule nobody triggered,
   // and it puts rows in their exceptions queue that a MODEL chose to put there. Both are opt-in. The
@@ -470,6 +473,9 @@ export const LEGACY_SETTING_ENV_GATES: Readonly<Record<string, string | null>> =
   // WP13 — new scheduled reminders, never a deployment flag; no backfill may switch them on.
   'notifications.approval_chasers_enabled': null,
   'notifications.review_chasers_enabled': null,
+  'notifications.missing_clock_reminders_enabled': null,
+  'notifications.passport_expiry_reminders_enabled': null,
+  'notifications.lifecycle_step_chasers_enabled': null,
   // `null` for the same reason as the row above: ADR-0084 §2.6 is NEW rather than migrated from a
   // deployment flag, so there is no legacy value to honour — and null keeps it out of
   // `legacyEnabledSettingsIn`, which is the correct outcome. A backfill must never switch on something

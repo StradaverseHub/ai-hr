@@ -19177,7 +19177,10 @@
         "action_approvals_claim_chase": "แจ้งเตือนผู้อนุมัติเรื่องคำขอเบิกที่เกินกำหนด",
         "action_approvals_attendance_chase": "แจ้งเตือนผู้อนุมัติเรื่องคำขอด้านการลงเวลาที่เกินกำหนด",
         "action_approvals_toil_chase": "แจ้งเตือนผู้อนุมัติเรื่องคำขอวันหยุดชดเชยที่เกินกำหนด",
-        "action_employees_review_overdue_remind": "แจ้งเตือนการประเมินที่ยังไม่ตัดสินหลังวันสิ้นสุด"
+        "action_employees_review_overdue_remind": "แจ้งเตือนการประเมินที่ยังไม่ตัดสินหลังวันสิ้นสุด",
+        "action_attendance_missing_clock_remind": "เตือนพนักงานตรวจสอบรายการลงเวลาเข้าที่ขาดหาย",
+        "action_employees_passport_expiry_remind": "เตือนวันหมดอายุหนังสือเดินทางที่บันทึกไว้",
+        "action_lifecycle_step_chase": "เตือนเจ้าหน้าที่เกี่ยวกับขั้นตอนวงจรพนักงานที่ยังไม่เสร็จ"
       },
       "conversation": {
         "answerLabel": "คำตอบจากข้อมูลของคุณ",
@@ -24563,7 +24566,10 @@
       "performance_assistant": "ผู้ช่วยสนทนาประสิทธิภาพ",
       "feedback_planning": "ร่างแผนปรับปรุง",
       "approval_chasers": "การแจ้งเตือนการอนุมัติที่เกินกำหนด",
-      "review_chasers": "การแจ้งเตือนการประเมินที่เกินกำหนด"
+      "review_chasers": "การแจ้งเตือนการประเมินที่เกินกำหนด",
+      "clock_reminders": "การเตือนรายการลงเวลาเข้าที่ขาดหาย",
+      "document_reminders": "การเตือนหนังสือเดินทางใกล้หมดอายุ",
+      "lifecycle_chasers": "การเตือนขั้นตอนวงจรพนักงาน"
     },
     "kinds": {
       "assistant": "ผู้ช่วย",

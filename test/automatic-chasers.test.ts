@@ -317,7 +317,7 @@ describe('WP13 Automatic-tier chasers under the agent principal', () => {
     await owner.db.update(schema.claimRequest).set({ status: 'approved' }).where(eq(schema.claimRequest.id, acted));
     const group = { ...adminCtx(base), grants: [{ role: 'hr_admin', companyId: null }] };
     const view = await assistantOutcomes(group, 30);
-    expect(view.automatic.map(a => a.action)).toEqual(['approvals.claim.chase', 'approvals.attendance.chase', 'approvals.toil.chase', 'employees.review_overdue.remind']);
+    expect(view.automatic.map(a => a.action)).toEqual(['approvals.claim.chase', 'approvals.attendance.chase', 'approvals.toil.chase', 'employees.review_overdue.remind', 'attendance.missing_clock.remind', 'employees.passport_expiry.remind', 'lifecycle.step.chase']);
     expect(view.automatic.find(a => a.action === 'approvals.claim.chase')).toMatchObject({ chased: 2, items: 2, acted: 1, waiting: 1 });
     expect(view.automatic.find(a => a.action === 'approvals.toil.chase')).toMatchObject({ chased: 1, items: 1, acted: 0, waiting: 1 });
     expect(view.automatic.find(a => a.action === 'approvals.attendance.chase')).toMatchObject({ chased: 0, firstChasedAt: null });

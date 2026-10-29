@@ -19177,7 +19177,10 @@
         "action_approvals_claim_chase": "Remind approver about an overdue claim",
         "action_approvals_attendance_chase": "Remind approver about an overdue attendance request",
         "action_approvals_toil_chase": "Remind approver about an overdue replacement leave request",
-        "action_employees_review_overdue_remind": "Remind about a review undecided after its end date"
+        "action_employees_review_overdue_remind": "Remind about a review undecided after its end date",
+        "action_attendance_missing_clock_remind": "Remind an employee about a missing clock-in record",
+        "action_employees_passport_expiry_remind": "Remind about a recorded passport expiry",
+        "action_lifecycle_step_chase": "Remind staff about an incomplete actionable lifecycle step"
       },
       "conversation": {
         "answerLabel": "Answer from your records",
@@ -24563,7 +24566,10 @@
       "performance_assistant": "Performance conversation assistant",
       "feedback_planning": "Improvement plan drafting",
       "approval_chasers": "Overdue approval reminders",
-      "review_chasers": "Overdue review reminders"
+      "review_chasers": "Overdue review reminders",
+      "clock_reminders": "Missing clock-in reminders",
+      "document_reminders": "Passport expiry reminders",
+      "lifecycle_chasers": "Lifecycle step reminders"
     },
     "kinds": {
       "assistant": "Assistant",

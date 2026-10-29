@@ -50,7 +50,7 @@ export const APPROVAL_CHASE_EVENT = 'automatic-chase.approval-raised';
 export const REVIEW_CHASE_EVENT = 'automatic-chase.review-raised';
 
 /** Every Automatic registry entry, in registry order. */
-export const AUTOMATIC_CHASE_ACTIONS = agentActionsByTier('automatic');
+export const AUTOMATIC_CHASE_ACTIONS = agentActionsByTier('automatic').filter(action=>action.automatic.specialist==='approval_chasers'||action.automatic.specialist==='review_chasers');
 export type AutomaticChaseAction = (typeof AUTOMATIC_CHASE_ACTIONS)[number];
 export type AutomaticChaseActionId = AutomaticChaseAction['id'];
 
@@ -60,7 +60,7 @@ export class AutomaticChaserRefusal extends Error {
 }
 
 /** Literal keys: test/module-catalog-drift.test.ts only sees literal setting keys. */
-const SWITCH_ON: Record<AgentAutomaticSpecialist, (ctx: SessionContext) => boolean> = {
+const SWITCH_ON: Record<'approval_chasers'|'review_chasers', (ctx: SessionContext) => boolean> = {
   approval_chasers: ctx => settingEnabled(ctx, 'notifications.approval_chasers_enabled'),
   review_chasers: ctx => settingEnabled(ctx, 'notifications.review_chasers_enabled'),
 };
@@ -81,6 +81,7 @@ export async function assertAutomaticChaserTx(tx: Tx, ctx: SessionContext, actio
   const entitlements = await resolveEntitlementsTx(tx, ctx.tenantId);
   const fresh: SessionContext = { ...ctx, entitlements, entitlementsExempt: undefined };
   const specialist = action.automatic.specialist;
+  if(specialist!=='approval_chasers'&&specialist!=='review_chasers')throw new AutomaticChaserRefusal('unknown_action');
   if (!SWITCH_ON[specialist](fresh) || !(await agentSpecialistCurrentTx(tx, fresh, specialist))) throw new AutomaticChaserRefusal('switched_off');
   try{await assertAgentActionUnpausedTx(tx,action.id);}catch(error){if(error instanceof AiAllowanceError&&error.reason==='paused')throw new AutomaticChaserRefusal('switched_off');throw error;}
   if (!isModuleEnabled(fresh, 'notifications')) throw new AutomaticChaserRefusal('module_off');
@@ -178,7 +179,7 @@ async function chaseOneTx(tx: Tx, ctx: SessionContext, actionId: AutomaticChaseA
 
 export type ChaserRunOptions = { today?: string; calendar: WorkingDayCalendar };
 
-async function runChasers(ctx: SessionContext, specialist: AgentAutomaticSpecialist, opts: ChaserRunOptions): Promise<ChaseRunResult> {
+async function runChasers(ctx: SessionContext, specialist: 'approval_chasers'|'review_chasers', opts: ChaserRunOptions): Promise<ChaseRunResult> {
   if (!isAgentContext(ctx)) throw new AutomaticChaserRefusal('not_agent');
   if (typeof opts?.calendar !== 'function') throw new Error('Automatic chasers need the working-day calendar.');
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(g => ({ ...g })) };
