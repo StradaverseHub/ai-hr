@@ -29,6 +29,10 @@ beforeEach(async()=>{
 const employee=(unit:string)=>hireEmployee(admin,{person:{fullName:'Membership fixture',primaryEmail:`${randomUUID()}@membership.test`},companyId:base.companyId,departmentId:base.deptA,businessUnitId:unit,employmentType:'full_time',hiredOn:`${year-2}-01-01`});
 const policy=()=>({...defaultPolicy(year),ranges:Object.fromEntries(REWARD_POLICY_GRADES.filter(grade=>grade!=='23').map(grade=>[grade,[10000,20000,30000] as [number,number,number]])),bonusMatrix:Object.fromEntries(REWARD_POLICY_GRADES.map(grade=>[grade,[0,10000,20000,30000,40000] as [number,number,number,number,number]]))});
 describe('approved Rewards company and BU membership',()=>{
+ it('accepts an empty company scope without broadening membership',async()=>{
+  await employee(globalUnit);
+  expect(await rewardPolicyMemberships(admin,[])).toEqual([]);
+ });
  it('does not pair a global or locally-created catalogue entry without an actual People assignment',async()=>{
   expect(await rewardPolicyMemberships(admin,[base.companyId,otherCompany])).toEqual([]);
   await expect(saveRewardPolicyGroup(admin,{groupId:null,expectedRevision:0,name:'Forged global pair',policy:policy(),targets:[{companyId:otherCompany,businessUnitId:globalUnit}]})).rejects.toMatchObject({code:'scope'});
@@ -50,7 +54,7 @@ describe('approved Rewards company and BU membership',()=>{
   const foreign=await seedBase();await setModule(foreign.tenantId,'rewards','active');const outsider=await entitledCtx(foreign);
   expect(await rewardPolicyMemberships(outsider,[base.companyId])).toEqual([]);
   for(const zone of ['Pacific/Kiritimati','Etc/GMT+12']){
-   const rows=await withTenant(admin,async tx=>{await tx.execute(sql`select set_config('TimeZone',${zone},true)`);return tx.execute<{company_id:string;business_unit_id:string}>(sql`select * from app.reward_policy_memberships(${[base.companyId]}::uuid[])`);});
+   const rows=await withTenant(admin,async tx=>{await tx.execute(sql`select set_config('TimeZone',${zone},true)`);return tx.execute<{company_id:string;business_unit_id:string}>(sql`select * from app.reward_policy_memberships(ARRAY[${base.companyId}::uuid]::uuid[])`);});
    expect(rows.map(row=>({companyId:row.company_id,businessUnitId:row.business_unit_id}))).toEqual([{companyId:base.companyId,businessUnitId:globalUnit}]);
   }
  });
