@@ -26444,6 +26444,26 @@
     }
   },
   "processAssessment": {
+    "buildList": {
+      "title": "开发优先级列表",
+      "subtitle": "根据已记录的流程工作量，审查下一批待开发能力。",
+      "proxy": "数量反映关联流程，而非此入口的使用量或节省的工作。共享入口采用工作量最大的已测流程，不重复累计人数。基线之外的入口保持未测量。此列表不授予权限。",
+      "export": "导出完整列表（JSON）",
+      "rank": "排名",
+      "entry": "入口",
+      "tier": "权限层级上限",
+      "process": "排名依据流程",
+      "staff": "员工操作 / 30 天",
+      "people": "涉及人数",
+      "measured": "流程基线",
+      "outside_baseline": "不在已测量基线内",
+      "module_off": "模块不可用",
+      "unlinked": "未关联员工操作",
+      "showing": "显示第 {from}–{to} 项，共 {total} 项",
+      "previous": "上一页",
+      "next": "下一页",
+      "none": "没有待开发入口。"
+    },
     "back": "控制中心",
     "title": "自动化机会",
     "description": "根据您的记录衡量 AI 代理可以从 HR 接手哪些处理工作。此页面不会更改数据，也不会调用 AI 模型。",
