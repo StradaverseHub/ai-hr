@@ -1,58 +1,97 @@
 'use client';
+import Link from 'next/link';
 import {useRef,useState,type ReactNode} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
 import {Button,Card,Field,inputCls} from '@/components/ui';
 import {rewardTargetKey,removeRewardTargetCompany,type RewardPolicyTarget} from '@/packs/rewards/policy-group-model';
-export type SharedRewardSaveResult={ok:true;value:{groupId:string;revision:number}}|{ok:false;code:'invalid'|'changed'|'scope'|'system'};
+import type {RewardPolicyTaken} from '@/packs/rewards/service';
+export type SharedRewardSaveResult={ok:true;value:{groupId:string;revision:number}}|{ok:false;code:'invalid'|'changed'|'scope'|'system'|'overlap';conflicts?:RewardPolicyTaken[]};
 type Props={actorUserId:string;groupId:string|null;revision:number;name:string;year:number;targets:RewardPolicyTarget[];
- companies:readonly {id:string;name:string}[];units:readonly {id:string;name:string;companyId:string;global:boolean;archived:boolean}[];
+ companies:readonly {id:string;name:string;groupId?:string|null;groupName?:string|null}[];units:readonly {id:string;name:string;companyId:string;global:boolean;archived:boolean}[];
+ initialTaken?:RewardPolicyTaken[];loadTakenAction?:(year:number)=>Promise<RewardPolicyTaken[]>;canManageUnits?:boolean;
  policyFields:ReactNode;saveAction:(form:FormData)=>Promise<SharedRewardSaveResult>};
 /** All permissions, compatible pairs and policy content are independently checked by the server owner. */
 export function SharedRewardEditor(props:Props){
- return <SharedRewardEditorDraft key={props.actorUserId+':'+(props.groupId??'new')+':'+props.revision+':'+JSON.stringify(props.companies.map(c=>c.id))+':'+JSON.stringify(props.units)} {...props}/>;
+ return <SharedRewardEditorDraft key={props.actorUserId+':'+(props.groupId??'new')+':'+props.revision+':'+JSON.stringify(props.companies.map(c=>c.id))+':'+JSON.stringify(props.units)+':'+props.year+':'+JSON.stringify(props.initialTaken)} {...props}/>;
 }
-function SharedRewardEditorDraft({groupId,revision,name:initialName,year,targets:initialTargets,companies,units,policyFields,saveAction}:Props){
+function SharedRewardEditorDraft({groupId,revision,name:initialName,year:initialYear,targets:initialTargets,companies,units,initialTaken=[],loadTakenAction,canManageUnits=false,policyFields,saveAction}:Props){
  const t=useTranslations('rewards.sharedPolicy'),router=useRouter(),saving=useRef(false);
- const [name,setName]=useState(initialName),[targets,setTargets]=useState(initialTargets),[selectedCompanies,setCompanies]=useState([...new Set(initialTargets.map(row=>row.companyId))]);
- const [query,setQuery]=useState(''),[reviewed,setReviewed]=useState(false),[pending,setPending]=useState(false),[saved,setSaved]=useState(false),[error,setError]=useState<null|'invalid'|'changed'|'scope'|'system'>(null);
- const validPair=(p:RewardPolicyTarget)=>companies.some(c=>c.id===p.companyId)&&units.some(u=>u.id===p.businessUnitId&&!u.archived&&(u.companyId===p.companyId||u.global));
- const complete=(targets.length>0||groupId!==null)&&targets.length<=500&&targets.every(validPair)&&selectedCompanies.every(id=>targets.some(row=>row.companyId===id));
+ const [name,setName]=useState(initialName),[targets,setTargets]=useState(initialTargets);
+ const [year,setYear]=useState(initialYear),[taken,setTaken]=useState(initialTaken),[loading,setLoading]=useState(false),[loadFailed,setLoadFailed]=useState(false),[conflicts,setConflicts]=useState<RewardPolicyTaken[]>([]),request=useRef(0);
+ const [query,setQuery]=useState(''),[reviewed,setReviewed]=useState(false),[pending,setPending]=useState(false),[saved,setSaved]=useState(false),[error,setError]=useState<null|'invalid'|'changed'|'scope'|'system'|'overlap'>(null);
+ const unavailable=(p:RewardPolicyTarget)=>taken.find(row=>row.groupId!==groupId&&rewardTargetKey(row)===rewardTargetKey(p));
+ const validPair=(p:RewardPolicyTarget)=>companies.some(c=>c.id===p.companyId)&&units.some(u=>u.id===p.businessUnitId&&!u.archived&&(u.companyId===p.companyId||u.global))&&!unavailable(p);
+ const complete=(targets.length>0||groupId!==null)&&targets.length<=500&&targets.every(validPair)&&!loading&&!loadFailed&&Number.isInteger(year)&&year>=2000&&year<=2200;
  const label=(p:RewardPolicyTarget)=>`${companies.find(c=>c.id===p.companyId)?.name??t('unavailable')} · ${units.find(u=>u.id===p.businessUnitId)?.name??t('unavailable')}`;
  const search=query.trim().toLocaleLowerCase();
- const visible=companies.filter(c=>c.name.toLocaleLowerCase().includes(search)||units.some(u=>(u.global||u.companyId===c.id)&&u.name.toLocaleLowerCase().includes(search)));
- const changed=()=>{setReviewed(false);setError(null);};
+ const groups=new Map<string,{name:string;companies:typeof companies[number][]}>();
+ for(const company of companies){
+  const key=company.groupId??'other',group=groups.get(key)??{name:company.groupName??t('otherCompanies'),companies:[]};
+  group.companies.push(company);groups.set(key,group);
+ }
+ const optionsFor=(companyId:string)=>units.filter(unit=>unit.companyId===companyId||unit.global);
+ const availablePairs=(companyId:string)=>optionsFor(companyId).filter(unit=>!unit.archived&&!unavailable({companyId,businessUnitId:unit.id})).map(unit=>({companyId,businessUnitId:unit.id}));
+ const has=(pair:RewardPolicyTarget)=>targets.some(row=>rewardTargetKey(row)===rewardTargetKey(pair));
+ const changed=()=>{setReviewed(false);setError(null);setConflicts([]);};
+ function select(pairs:RewardPolicyTarget[],checked:boolean){
+  changed();const keys=new Set(pairs.map(rewardTargetKey));
+  setTargets(rows=>checked?[...rows,...pairs.filter(pair=>!rows.some(row=>rewardTargetKey(row)===rewardTargetKey(pair)))]:rows.filter(row=>!keys.has(rewardTargetKey(row))));
+ }
+ async function refreshTaken(nextYear:number){
+  const token=++request.current;changed();setYear(nextYear);setLoadFailed(false);
+  if(!Number.isInteger(nextYear)||nextYear<2000||nextYear>2200){setLoading(false);return;}
+  if(!loadTakenAction)return;
+  setLoading(true);
+  try{const rows=await loadTakenAction(nextYear);if(token===request.current)setTaken(rows);}
+  catch{if(token===request.current)setLoadFailed(true);}
+  finally{if(token===request.current)setLoading(false);}
+ }
  async function save(form:FormData){
   if(saving.current||!reviewed||!complete)return;
   saving.current=true;setPending(true);setError(null);
   try{
    const result=await saveAction(form);
    if(result.ok){setSaved(true);router.push(`/admin/rewards/shared?group=${result.value.groupId}`);router.refresh();}
-   else{setReviewed(false);setError(result.code);}
+   else{setReviewed(false);setError(result.code);setConflicts(result.conflicts??[]);}
   }catch{setReviewed(false);setError('system');}
   finally{saving.current=false;setPending(false);}
  }
  return <form action={save} className="space-y-6" onChange={changed} onSubmit={event=>{if(!reviewed){event.preventDefault();if(complete)setReviewed(true);}}}>
   <input type="hidden" name="groupId" value={groupId??''}/><input type="hidden" name="revision" value={revision}/><input type="hidden" name="targets" value={JSON.stringify(targets)}/>
-  {error&&<div role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">{t(`errors.${error}`)}{error==='changed'&&<Button type="button" variant="outline" className="ml-3" onClick={()=>router.refresh()}>{t('reload')}</Button>}</div>}
+  {error&&<div role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">{t(`errors.${error}`)}{conflicts.length>0&&<ul>{conflicts.map(row=><li key={rewardTargetKey(row)}>{t('conflict',{unit:label(row),name:row.name,year})}</li>)}</ul>}{error==='changed'&&<Button type="button" variant="outline" className="ml-3" onClick={()=>router.refresh()}>{t('reload')}</Button>}</div>}
   {saved&&<p role="status" className="text-sm">{t('saved')}</p>}
   <fieldset disabled={pending||saved} className="space-y-6">
    <Card className="space-y-4 p-4 sm:p-6"><h2 className="font-semibold">{groupId?t('edit'):t('create')}</h2><p className="text-sm text-muted-foreground">{t('futureOnly')}</p><p className="text-sm text-muted-foreground">{t('ownershipHelp')}</p>
-    <div className="grid gap-4 sm:grid-cols-2"><Field label={t('name')}><input required maxLength={100} name="name" className={inputCls} value={name} onChange={event=>setName(event.target.value)}/></Field><Field label={t('year')}><input required name="year" type="number" min={2000} max={2200} defaultValue={year} className={inputCls}/></Field></div>
+    <div className="grid gap-4 sm:grid-cols-2"><Field label={t('name')}><input required maxLength={100} name="name" className={inputCls} value={name} onChange={event=>setName(event.target.value)}/></Field><Field label={t('year')}><input required name="year" type="number" min={2000} max={2200} value={year} onChange={event=>{void refreshTaken(Number(event.target.value));}} className={inputCls}/></Field></div>
     <Field label={t('search')}><input type="search" value={query} onChange={event=>setQuery(event.target.value)} className={inputCls}/></Field>
-    <div className="grid gap-3 lg:grid-cols-2">{visible.map(company=>{
-     const selected=selectedCompanies.includes(company.id),options=units.filter(unit=>(unit.companyId===company.id||unit.global)&&(!search||company.name.toLocaleLowerCase().includes(search)||unit.name.toLocaleLowerCase().includes(search)));
-     return <fieldset key={company.id} className="rounded-md border p-3"><legend className="px-1 text-sm font-medium"><label className="flex items-center gap-2"><input type="checkbox" checked={selected} onChange={event=>{changed();setCompanies(rows=>event.target.checked?[...rows,company.id]:rows.filter(id=>id!==company.id));if(!event.target.checked)setTargets(rows=>removeRewardTargetCompany(rows,company.id));}}/>{company.name}</label></legend>
-      {selected&&<div className="space-y-2">{options.map(unit=>{
-       const pair={companyId:company.id,businessUnitId:unit.id},key=rewardTargetKey(pair),checked=targets.some(row=>rewardTargetKey(row)===key);
-       return <label key={key} className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={checked} disabled={unit.archived&&!checked} onChange={event=>{changed();setTargets(rows=>event.target.checked?[...rows,pair]:rows.filter(row=>rewardTargetKey(row)!==key));}}/><span>{unit.name}{unit.global&&<span className="text-xs text-muted-foreground"> · {t('global')}</span>}{unit.archived&&<span className="text-xs text-muted-foreground"> · {t('archived')}</span>}</span></label>;
-      })}{!options.length&&<p className="text-sm text-muted-foreground">{t('noMatches')}</p>}</div>}
-     </fieldset>;
-    })}</div>
-    {!visible.length&&<p className="text-sm text-muted-foreground">{t('noMatches')}</p>}
-    {groupId&&targets.length===0&&selectedCompanies.length===0&&<p className="text-sm text-muted-foreground">{t('archiveHelp')}</p>}
-    {!complete&&selectedCompanies.length>0&&<p className="text-sm text-muted-foreground">{t('selectUnits')}</p>}
-    <ul className="space-y-1 text-sm">{targets.map(pair=><li key={rewardTargetKey(pair)}>{label(pair)}{!validPair(pair)&&<Button type="button" variant="outline" className="ml-2" onClick={()=>{changed();setTargets(rows=>rows.filter(row=>rewardTargetKey(row)!==rewardTargetKey(pair)));if(!companies.some(company=>company.id===pair.companyId)&&targets.filter(row=>row.companyId===pair.companyId).length===1)setCompanies(rows=>rows.filter(id=>id!==pair.companyId));}}>{t('removeUnavailable')}</Button>}</li>)}</ul>
+    <p role="status" className="text-sm font-medium">{t('selectedCount',{companies:new Set(targets.map(row=>row.companyId)).size,units:targets.length})}</p>
+    {loading&&<p role="status" className="text-sm text-muted-foreground">{t('loadingTaken')}</p>}
+    {loadFailed&&<div role="alert" className="text-sm text-destructive">{t('loadFailed')} <Button type="button" variant="outline" onClick={()=>{void refreshTaken(year);}}>{t('retry')}</Button></div>}
+    <fieldset disabled={loading||loadFailed} className="space-y-4">
+    {[...groups.entries()].map(([groupKey,group])=>{
+     const groupMatches=group.name.toLocaleLowerCase().includes(search);
+     const visible=group.companies.filter(c=>!search||groupMatches||c.name.toLocaleLowerCase().includes(search)||optionsFor(c.id).some(u=>u.name.toLocaleLowerCase().includes(search)));
+     if(!visible.length)return null;
+     const groupPairs=group.companies.flatMap(c=>availablePairs(c.id));
+     return <section key={groupKey} className="space-y-3 rounded-md border p-3 sm:p-4" aria-label={group.name}>
+      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold">{group.name}</h3><Button type="button" variant="outline" disabled={!groupPairs.length||groupPairs.every(has)} onClick={()=>select(groupPairs,true)}>{t('selectAll')}</Button></div>
+      <div className="grid gap-3 lg:grid-cols-2">{visible.map(company=>{
+       const allOptions=optionsFor(company.id),pairs=availablePairs(company.id),checked=pairs.length>0&&pairs.every(has),selected=targets.some(row=>row.companyId===company.id);
+       const options=allOptions.filter(u=>!search||groupMatches||company.name.toLocaleLowerCase().includes(search)||u.name.toLocaleLowerCase().includes(search));
+       return <fieldset key={company.id} className="min-w-0 rounded-md border p-3"><legend className="px-1 text-sm font-medium"><label className="flex items-center gap-2"><input type="checkbox" checked={checked} aria-checked={!checked&&selected?'mixed':checked} ref={node=>{if(node)node.indeterminate=!checked&&selected;}} disabled={!pairs.length&&!selected} onChange={event=>{changed();if(!event.target.checked)setTargets(rows=>removeRewardTargetCompany(rows,company.id));else select(pairs,true);}}/>{company.name}</label></legend>
+        <div className="space-y-2">{options.map(unit=>{
+         const pair={companyId:company.id,businessUnitId:unit.id},key=rewardTargetKey(pair),checked=has(pair),assignment=unavailable(pair);
+         return <label key={key} className={`flex items-start gap-2 text-sm ${assignment||unit.archived?'text-muted-foreground':''}`}><input type="checkbox" aria-label={[unit.name,unit.global?t('global'):null,unit.archived?t('archived'):null,assignment?t('assignedTo',{name:assignment.name}):null].filter(Boolean).join(' · ')} className="mt-1" checked={checked} disabled={(unit.archived||!!assignment)&&!checked} onChange={event=>select([pair],event.target.checked)}/><span>{unit.name}{unit.global&&<span className="text-xs text-muted-foreground"> · {t('global')}</span>}{unit.archived&&<span className="text-xs text-muted-foreground"> · {t('archived')}</span>}{assignment&&<span className="text-xs"> · {t('assignedTo',{name:assignment.name})}</span>}</span></label>;
+        })}{!allOptions.length&&<p className="text-sm text-muted-foreground">{t('noUnits')}{canManageUnits&&<> <Link href="/admin/personnel" className="text-primary hover:underline">{t('manageUnits')}</Link></>}</p>}{allOptions.length>0&&!options.length&&<p className="text-sm text-muted-foreground">{t('noMatches')}</p>}</div>
+       </fieldset>;
+      })}</div>
+     </section>;
+    })}
+    </fieldset>
+    {![...groups.values()].some(group=>group.name.toLocaleLowerCase().includes(search)||group.companies.some(c=>c.name.toLocaleLowerCase().includes(search)||optionsFor(c.id).some(u=>u.name.toLocaleLowerCase().includes(search))))&&<p className="text-sm text-muted-foreground">{t('noMatches')}</p>}
+    {groupId&&targets.length===0&&<p className="text-sm text-muted-foreground">{t('archiveHelp')}</p>}
+    <ul className="space-y-1 text-sm">{targets.map(pair=><li key={rewardTargetKey(pair)}>{label(pair)}{!validPair(pair)&&<Button type="button" variant="outline" className="ml-2" onClick={()=>{changed();setTargets(rows=>rows.filter(row=>rewardTargetKey(row)!==rewardTargetKey(pair)));}}>{t('removeUnavailable')}</Button>}</li>)}</ul>
    </Card>
    <Card className="space-y-5 p-4 sm:p-6"><h2 className="font-semibold">{t('policy')}</h2>{policyFields}</Card>
    {reviewed&&<Card className="space-y-3 p-4 sm:p-6"><h2 className="font-semibold">{t('review')}</h2><p className="text-sm">{name} · {t('version',{version:revision+1})}</p><p className="text-sm text-muted-foreground">{t('futureOnly')}</p><ul className="list-inside list-disc text-sm">{targets.map(pair=><li key={rewardTargetKey(pair)}>{label(pair)}</li>)}</ul></Card>}

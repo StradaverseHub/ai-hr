@@ -1,8 +1,9 @@
 'use server';
 import {revalidatePath} from 'next/cache';
 import {z,ZodError} from 'zod';
+import {adminCompanies} from '@/core/read';
 import {getSession} from '@/lib/session';
-import {listRewardPolicyGroups,saveRewardPolicyGroup,RewardPolicyGroupError,defaultPolicy} from '@/packs/rewards/service';
+import {rewardPolicyTaken,listRewardPolicyGroups,saveRewardPolicyGroup,RewardPolicyGroupError,defaultPolicy} from '@/packs/rewards/service';
 import {rewardPolicyFromForm,RewardPolicyInputError} from '@/app/rewards/policy-input';
 import type {SharedRewardSaveResult} from './editor';
 export async function saveSharedRewardPolicyAction(form:FormData):Promise<SharedRewardSaveResult>{
@@ -17,8 +18,16 @@ export async function saveSharedRewardPolicyAction(form:FormData):Promise<Shared
   const version=await saveRewardPolicyGroup(session,{groupId,expectedRevision,name:String(form.get('name')??''),policy,targets:JSON.parse(rawTargets)});
   revalidatePath('/admin/rewards','layout');return {ok:true,value:{groupId:version.groupId,revision:version.revision}};
  }catch(error){
-  if(error instanceof RewardPolicyGroupError)return {ok:false,code:error.code};
+  if(error instanceof RewardPolicyGroupError)return {ok:false,code:error.code,conflicts:error.conflicts};
   if(error instanceof ZodError||error instanceof SyntaxError||error instanceof RewardPolicyInputError)return {ok:false,code:'invalid'};
   console.error('Shared rewards configuration failed',{name:error instanceof Error?error.name:'Unknown'});return {ok:false,code:'system'};
  }
+}
+
+/** Fresh session and native company authority on every year change; no client-provided scope. */
+export async function loadSharedRewardTakenAction(year:number){
+ const session=await getSession();
+ const parsed=z.number().int().min(2000).max(2200).parse(year);
+ const companies=await adminCompanies(session);
+ return rewardPolicyTaken(session,companies.map(company=>company.id),parsed);
 }
