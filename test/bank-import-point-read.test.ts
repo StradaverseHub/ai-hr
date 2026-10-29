@@ -1,7 +1,6 @@
-/** Real RLS writes and native queue transactions; the policy is a CI-only, unallocated fixture. */
+/** Real RLS writes and native queue transactions against the normally migrated point-read policy. */
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {createHash,randomUUID} from 'node:crypto';
-import {readFileSync} from 'node:fs';
 import {eq,sql} from 'drizzle-orm';
 import {client,withTenant,type SessionContext,type Tx} from '../db/client';
 import * as schema from '../db/schema';
@@ -13,7 +12,6 @@ import {pgErrorChain,pgSqlState} from '../lib/db-error';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
 const HINT='app.bank_import_point_read';
-const fixture=readFileSync('test/fixtures/bank-import-point-read-profile.sql','utf8');
 const digest=(value:string)=>createHash('sha256').update(value).digest('hex');
 const policyRows=async()=>[...await owner.client`select policyname,permissive,roles,cmd,qual,with_check from pg_policies where schemaname='public' and tablename='employment' order by policyname`];
 const functionRow=async()=>[...await owner.client`select pg_get_functiondef(p.oid) as definition,p.proowner,p.proacl,p.proconfig from pg_proc p where p.oid='app.visible_employment_ids()'::regprocedure`];
@@ -45,14 +43,6 @@ async function sameBackendRestored(pid:number){
   }finally{await connection.unsafe('ROLLBACK');}
  });
  expect(found,'The exact native writer backend must be checked after its transaction').toBe(true);
-}
-async function candidate(){
- expect(digest(fixture)).toBe('42df3f7cd2dd81b90edce1643b87c1fa2ae42e0a2482b2a8761e5ebcdf006597');
- await owner.client.unsafe(fixture);
- const actual=await policyRows();
- expect(actual.map(row=>row.policyname)).toEqual(baseline.map(row=>row.policyname));
- for(const row of actual){const before=baseline.find(value=>value.policyname===row.policyname)!;expect(row.policyname==='employment_rls'?{...row,qual:before.qual}:row).toEqual({...before});}
- expect(await functionRow()).toEqual(definition);
 }
 async function nativeJob(value:string){
  const bytes=Buffer.from(`employee_code,tax_number\nPOINT001,${value}`);
@@ -86,12 +76,12 @@ async function watchNativeWriter(){
  CREATE TRIGGER ci_bank_point_read_watch BEFORE UPDATE ON employee_statutory_my FOR EACH ROW EXECUTE FUNCTION ci_bank_point_read.watch()`).simple();
 }
 
-describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('Bank point-read hint remains an optimization with current write permissions',()=>{
+describe('Bank point-read hint remains an optimization with current write permissions',()=>{
  beforeAll(migrateTestDb);
  beforeEach(async()=>{
   baseline=[];definition=[];poolTouched=false;
-  expect(process.env.GITHUB_ACTIONS,'Unallocated policy fixture is disposable CI only').toBe('true');
   await resetDb();b=await seedBase();ctx=adminCtx(b);baseline=await policyRows();definition=await functionRow();
+  expect(baseline.find(row=>row.policyname==='employment_rls')?.qual,'The ordinary migrator must install the real point-read policy').toContain(HINT);
   const records=parseCsvRecords('full_name,email,department,hired_on,ic_number,basic_salary,employee_code\nPoint Subject,point@example.test,Finance,2026-01-05,900101105555,5000,POINT001\nPoint Employee,point-employee@example.test,Finance,2026-01-05,900101105556,5000,POINT002').records;
   expect((await commitEmployeeImport(ctx,{companyId:b.companyId,records})).imported).toBe(2);
   [target]=await owner.db.select({id:schema.employment.id,personId:schema.employment.personId}).from(schema.employment).where(eq(schema.employment.employeeCode,'POINT001'));
@@ -101,8 +91,6 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('Bank point-read hint remai
   try{
    if(baseline.length){
     await owner.client.unsafe('DROP SCHEMA IF EXISTS ci_bank_point_read CASCADE');
-    const original=baseline.find(row=>row.policyname==='employment_rls')!;
-    await owner.client.unsafe(`ALTER POLICY employment_rls ON public.employment USING (${original.qual})`);
     expect(await policyRows()).toEqual(baseline);expect(await functionRow()).toEqual(definition);
    }
   }finally{if(poolTouched)await poolHint('');}
@@ -113,17 +101,15 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('Bank point-read hint remai
   const employeeId=await createAppUser(b.tenantId,own.personId,'employee');
   const employee:SessionContext={...ctx,userId:employeeId,personId:own.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
   const foreign=adminCtx(await seedBase());
-  const [partnerPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Point Partner'}).returning();
+  const [partnerPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Point Partner',primaryEmail:'point-partner@example.test'}).returning();
   const partnerId=await createAppUser(b.tenantId,partnerPerson.id,'employee');
   const [unrelated]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Unrelated Point Company'}).returning();
   await owner.db.update(schema.roleAssignment).set({role:'payroll_partner',companyId:unrelated.id}).where(eq(schema.roleAssignment.appUserId,partnerId));
   const partner:SessionContext={...ctx,userId:partnerId,personId:partnerPerson.id,roles:['payroll_partner'],grants:[{role:'payroll_partner',companyId:unrelated.id}]};
-  const [voidPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Voided Point Subject'}).returning();
+  const [voidPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Voided Point Subject',primaryEmail:'point-void@example.test'}).returning();
   let voidId='';
   await owner.client.begin(async tx=>{await tx`set local session_replication_role='replica'`;const [row]=await tx`insert into employment(tenant_id,person_id,company_id,hired_on,voided_at,voided_by,void_reason,voided_import_attempt_id) values(${b.tenantId}::uuid,${voidPerson.id}::uuid,${b.companyId}::uuid,'2026-01-05',now(),${b.adminUserId}::uuid,'Fictional point-read void',${randomUUID()}::uuid) returning id`;voidId=row.id;});
   const baselineRows=await owner.client`select to_jsonb(e) as value from employment e order by id`;
-  for(const variant of ['original','candidate']){
-   if(variant==='candidate')await candidate();
    for(const hint of [null,'off','on','garbage']){
     const scoped=<T>(actor:SessionContext,work:(tx:Tx)=>Promise<T>)=>withTenant(actor,async tx=>{if(hint!==null)await tx.execute(sql`select set_config(${HINT},${hint},true)`);return work(tx);});
     for(const actor of [employee,partner,foreign])expect(await scoped(actor,tx=>tx.update(schema.employment).set({employeeCode:'POINT-FORBIDDEN'}).where(eq(schema.employment.id,target.id)).returning({id:schema.employment.id}))).toEqual([]);
@@ -136,12 +122,11 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('Bank point-read hint remai
     expect(pgErrorChain(error).some(link=>link.message?.includes('row-level security policy')),'The refusal must come from RLS WITH CHECK itself').toBe(true);
     expect(await scoped(ctx,tx=>tx.update(schema.employment).set({employeeCode:'POINT001'}).where(eq(schema.employment.id,target.id)).returning({id:schema.employment.id}))).toEqual([{id:target.id}]);
    }
-  }
   expect(await owner.client`select to_jsonb(e) as value from employment e order by id`).toEqual(baselineRows);
  });
 
  it('runs the canonical native writer with the marker and restores the SAME backend after commit',async()=>{
-  await candidate();const id=await nativeJob('TPOINTCOMMIT');await watchNativeWriter();
+  const id=await nativeJob('TPOINTCOMMIT');await watchNativeWriter();
   await processBankImportJob(ctx,id);
   const {job}=await getBankImportJob(ctx,id);expect(job).toMatchObject({state:'completed',processed:1,saved:1,failed:0});
   const witnesses=await owner.client`select * from ci_bank_point_read.witness`;expect(witnesses.length).toBeGreaterThan(0);
@@ -151,7 +136,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('Bank point-read hint remai
  });
 
  it('rolls back the native mutation and restores the SAME backend before recording a failed row',async()=>{
-  await candidate();const id=await nativeJob('TPOINTFAIL');
+  const id=await nativeJob('TPOINTFAIL');
   const [before]=await owner.client`select to_jsonb(s) as value from employee_statutory_my s where person_id=${target.personId}::uuid`;
   await watchNativeWriter();await processBankImportJob(ctx,id);
   const {job}=await getBankImportJob(ctx,id);expect(job).toMatchObject({state:'completed',processed:1,saved:0,failed:1});

@@ -309,3 +309,12 @@ and no migration application or deployment is authorized. Refresh canonical refs
 live ordered ledger and all competing claims before integration. Preserve all applied SQL
 bytes and journal positions, include the reserved predecessors in their approved order, and
 reconcile any intervening append rather than skipping a predecessor or overwriting a position.
+
+The isolated Bank proof candidate registers the approved `0691_bank_import_point_read`
+at idx681 / when1793330000017 after the complete, unchanged 566-entry predecessor
+prefix through0690. Its final SQL SHA256 is
+`be6f8d38850fadd9151d58ea7476d8f60e09a0bf2b2b078e0196f4cb90c5bfe9`.
+The executable statement is byte-identical to the reviewed draft; only its explanatory
+header identifies the allocated migration. The candidate requires its own populated
+prefix upgrade, policy/catalogue checks and release gate. Source registration does not
+establish live migration application, worker activation or staging acceptance.
