@@ -4,6 +4,7 @@ import {z} from 'zod';
 import type {SessionContext} from '../../db/client';
 import {withRewardsTenant} from '../../core/module-gate';
 import {parseRewardPolicyGroupVersion,rewardPgUuid} from './policy-group-model';
+import {sharedRewardPolicyProjection} from './shared-policy-projection';
 export type RewardCompanyExclusion={id:string;companyId:string;company:string;year:number;reason:string;createdBy:string|null;createdAt:string;endedAt:string|null;endReason:string|null};
 export type RewardPolicyHistory={version:ReturnType<typeof parseRewardPolicyGroupVersion>;savedAt:string;savedBy:string|null;current:boolean;locked:boolean;usageCount:number};
 const yearSchema=z.number().int().min(2000).max(2200);
@@ -30,7 +31,7 @@ export function rewardPolicyHistory(ctx:SessionContext,groupId:string):Promise<R
  rewardPgUuid.parse(groupId);
  return withRewardsTenant(ctx,async tx=>{
   const rows=await tx.execute<{row:Omit<RewardPolicyHistory,'version'>&{version:unknown}}>(sql`select app.reward_policy_group_versions(${groupId}::uuid) as row`);
-  return rows.map(({row})=>({...row,version:parseRewardPolicyGroupVersion(row.version)}));
+  return rows.map(({row})=>{const version=parseRewardPolicyGroupVersion(row.version);return {...row,version:{...version,policy:sharedRewardPolicyProjection(version.policy)}};});
  });
 }
 export function rewardPolicyHiddenCount(ctx:SessionContext){

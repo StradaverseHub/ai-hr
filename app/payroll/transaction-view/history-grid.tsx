@@ -3,6 +3,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { SUBJECT_COLUMNS, filterGridRows, type GridRowGroup, type HistoryGridRow } from './history-pivot';
+import { historyGridDisplayGroup, historyGridDisplayRows, historyGridLabelKey } from './history-grid-presentation';
 // b240c0ff — imported payroll history reads "Monthly - By Import", never the stored "Adjustment".
 import { payrollRunLabel } from '@/core/payslip-cycle-label';
 
@@ -126,7 +127,7 @@ export function HistoryGrid({
   // this is off by default and the grid looks exactly as it does today until it is turned on.
   const [showSubject, setShowSubject] = useState(false);
 
-  const shown = useMemo(() => filterGridRows(rows, { hideZero, hideSystem }), [rows, hideZero, hideSystem]);
+  const shown = useMemo(() => historyGridDisplayRows(filterGridRows(rows, { hideZero, hideSystem })), [rows, hideZero, hideSystem]);
 
   const exportHref = `/payroll/transaction-view/grid-export?${new URLSearchParams({
     ...exportParams,
@@ -237,7 +238,7 @@ export function HistoryGrid({
           </thead>
           <tbody className="divide-y divide-border">
             {GROUPS.map(({ group, key }) => {
-              const groupRows = shown.filter((r) => r.group === group);
+              const groupRows = shown.filter((r) => historyGridDisplayGroup(r) === group);
               if (groupRows.length === 0) return null;
               return (
                 <Fragment key={group}>
@@ -257,7 +258,7 @@ export function HistoryGrid({
                     <tr
                       key={r.key}
                       className={`transition-colors hover:bg-muted/30 ${
-                        r.group === 'summary' ? 'font-semibold' : ''
+                        historyGridDisplayGroup(r) === 'summary' ? 'font-semibold' : ''
                       }`}
                     >
                       <td
@@ -268,7 +269,8 @@ export function HistoryGrid({
                       <td className={`${COL.name.th} ${COL.name.left} sticky z-10 truncate bg-card px-3 py-2`}>
                         {/* A synthetic row's caption is a dynamic key under this same namespace; an item row
                             carries the name the payslip stored. */}
-                        {r.labelKey ? r.name || t(`view.grid.row.${r.labelKey}`) : r.name}
+                        {r.labelKey ? (r.labelKey === 'overtime' && r.kind === 'synthetic' ? t('view.grid.row.totalOvertime') : r.name || t(`view.grid.row.${historyGridLabelKey(r)}`)) : r.name}
+                        {r.labelKey === 'overtime' && r.kind === 'synthetic' && <span className="block whitespace-normal text-xs font-normal text-muted-foreground">{t('view.grid.overtimeIncludedInGross')}</span>}
                       </td>
                       <td
                         className={`${COL.cycle.th} ${COL.cycle.left} sticky z-10 bg-card px-3 py-2 text-muted-foreground`}
@@ -316,7 +318,7 @@ export function HistoryGrid({
                           <td
                             key={m}
                             className={`px-3 py-2 text-right tabular-nums ${
-                              v === 0 || unrecorded ? 'text-muted-foreground/60' : GROUP_TINT[r.group]
+                              v === 0 || unrecorded ? 'text-muted-foreground/60' : GROUP_TINT[historyGridDisplayGroup(r)]
                             }`}
                           >
                             {/* efece4ce — an unregistered company levies nothing, and a bare 0.00 made that
@@ -326,7 +328,7 @@ export function HistoryGrid({
                         );
                       })}
                       <td
-                        className={`bg-muted/30 px-3 py-2 text-right font-medium tabular-nums ${GROUP_TINT[r.group]}`}
+                        className={`bg-muted/30 px-3 py-2 text-right font-medium tabular-nums ${GROUP_TINT[historyGridDisplayGroup(r)]}`}
                       >
                         {/* 0253dc7c — a total of nothing but unknowns is itself unknown. If SOME months
                             were recorded the total is their sum, which is what is visible on the row. */}

@@ -1,17 +1,19 @@
+import {establishRewardMembership,migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 import {previewRewardAccessChange,saveRewardAccessChange,setRewardMember} from './rewards-access-fixture';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext } from '../db/client';
 import * as s from '../db/schema';
 import { hireEmployee, setEmploymentBlacklist } from '../core/org';
-import { createRewardUnit, deleteRewardReview, getRewardConfiguration, getRewardUnit, listRewardUnits, rewardAccessAdministration, rewardDeletionEligibility, saveRewardEntry, saveRewardPolicy } from '../packs/rewards/service';
+import { createRewardUnit, deleteRewardReview, getRewardConfiguration, getRewardUnit, listRewardUnits, rewardAccessAdministration, rewardDeletionEligibility, saveRewardEntry, saveRewardPolicy, saveRewardUnitInputs, proposeRewardExemption } from '../packs/rewards/service';
 import { emptyFacts, emptyRecommendation, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
+beforeAll(migrateRewardMembershipFixture);
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
 describe('Rewards review maintenance and canonical scoped access', () => {
-    let b: Base, admin: SessionContext, id: string, bu: string, reviewer: SessionContext;
+    let b: Base, admin: SessionContext, id: string, bu: string, reviewer: SessionContext, scopeHire: Awaited<ReturnType<typeof establishRewardMembership>>;
     const revision = async () => (await getRewardConfiguration(admin, id)).unit.revision;
     async function user(role = 'employee') {
         const [p] = await owner.db.insert(s.person).values({ tenantId: b.tenantId, fullName: `Reviewer ${randomUUID()}`, primaryEmail: `${randomUUID()}@reward.test` }).returning();
@@ -33,6 +35,7 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         admin = await entitledCtx(b);
         const [u] = await owner.db.insert(s.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code: 'OPS', name: 'Legacy name', label: 'Operations' }).returning();
         bu = u.id;
+        scopeHire=await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:bu,departmentId:b.deptA,year});
         id = await createRewardUnit(admin, { name: 'Annual maintenance', year, companyId: b.companyId, businessUnitId: bu, snapshotDate: today });
         reviewer = await user();
     });
@@ -264,6 +267,9 @@ describe('Rewards review maintenance and canonical scoped access', () => {
     });
     it('removes only an unused draft, retains its cycle and immutable evidence, and permits repeat requests', async () => {
         const before = await getRewardConfiguration(admin, id), rev = before.unit.revision;
+        const privateBefore=await owner.db.select().from(s.rewardGovernance).where(eq(s.rewardGovernance.unitId,id));
+        const publicBefore=await owner.db.select().from(s.rewardGovernancePublic).where(eq(s.rewardGovernancePublic.unitId,id));
+        expect(privateBefore).toHaveLength(1);expect(publicBefore).toHaveLength(1);
         expect(await rewardDeletionEligibility(admin, id)).toBeNull();
         await expect(deleteRewardReview(admin, id, rev, 'wrong')).rejects.toThrow(/Confirm/);
         await deleteRewardReview(admin, id, rev, id);
@@ -274,12 +280,29 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         const [tombstone] = await owner.db.select().from(s.rewardUnit).where(eq(s.rewardUnit.id, id)).orderBy(asc(s.rewardUnit.id));
         expect(tombstone.deletedBy).toBe(admin.userId);
         expect(tombstone.deletedAt).toBeTruthy();
+        expect(await owner.db.select().from(s.rewardGovernance).where(eq(s.rewardGovernance.unitId,id))).toEqual(privateBefore);
+        expect(await owner.db.select().from(s.rewardGovernancePublic).where(eq(s.rewardGovernancePublic.unitId,id))).toEqual(publicBefore);
         expect((await owner.db.select().from(s.rewardCycle).where(eq(s.rewardCycle.id, before.unit.cycleId)))).toHaveLength(1);
         expect((await owner.db.select().from(s.rewardMember).where(eq(s.rewardMember.unitId, id)))).toHaveLength(1);
         expect((await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId, id), eq(s.domainEvent.eventType, 'reward-unit.deleted'))))).toHaveLength(1);
         expect(await deleteRewardReview(admin, id, rev, id)).toEqual({ alreadyDeleted: true });
         await expect(withTenant(admin, tx => tx.update(s.rewardUnit).set({ deletedAt: null, deletedBy: null }).where(eq(s.rewardUnit.id, id)))).rejects.toThrow();
         await expect(withTenant(admin, tx => tx.insert(s.rewardMember).values({ tenantId: b.tenantId, unitId: id, userId: reviewer.userId!, role: 'bu' }))).rejects.toThrow();
+    });
+    it.each(['inputs','proposal'] as const)('retains native governance %s and refuses treating the review as an unused scaffold',async kind=>{
+        expect(await rewardDeletionEligibility(admin,id)).toBeNull();
+        expect(await owner.db.select().from(s.rewardGovernanceHistory).where(eq(s.rewardGovernanceHistory.unitId,id))).toEqual([]);
+        if(kind==='inputs')await saveRewardUnitInputs(admin,id,await revision(),{forecastCents:null,actualCents:100,targetCents:100,targetMonthsBp:10000,multiplierBp:null,branchRatings:{}},'Fictional reviewed actual budget basis');
+        else await proposeRewardExemption(admin,id,await revision(),'Fictional budget exemption awaiting independent review');
+        const privateBefore=await owner.db.select().from(s.rewardGovernance).where(eq(s.rewardGovernance.unitId,id));
+        const publicBefore=await owner.db.select().from(s.rewardGovernancePublic).where(eq(s.rewardGovernancePublic.unitId,id));
+        const historyBefore=await owner.db.select().from(s.rewardGovernanceHistory).where(eq(s.rewardGovernanceHistory.unitId,id));
+        expect(historyBefore).toHaveLength(1);expect(await rewardDeletionEligibility(admin,id)).toBe('recommendations');
+        await expect(deleteRewardReview(admin,id,await revision(),id)).rejects.toThrow(/in use/);
+        expect(await owner.db.select().from(s.rewardGovernance).where(eq(s.rewardGovernance.unitId,id))).toEqual(privateBefore);
+        expect(await owner.db.select().from(s.rewardGovernancePublic).where(eq(s.rewardGovernancePublic.unitId,id))).toEqual(publicBefore);
+        expect(await owner.db.select().from(s.rewardGovernanceHistory).where(eq(s.rewardGovernanceHistory.unitId,id))).toEqual(historyBefore);
+        expect((await getRewardConfiguration(admin,id)).unit.deletedAt).toBeNull();
     });
     it('refuses moving retained membership out of a removed review through the actual app role', async () => {
         await setRewardMember(admin,id,await revision(),reviewer.userId!,'pbp');
@@ -294,12 +317,12 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         expect(retained).toEqual(before);
     });
     it('retains owned source snapshots on removal but refuses changed facts and recommendations', async () => {
-        const hire = await hireEmployee(admin, { person: { fullName: 'Snapshot employee', primaryEmail: 'snapshot@rewards.test' }, companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: `${year - 1}-01-01` });
-        await owner.db.update(s.assignment).set({ businessUnitId: bu }).where(eq(s.assignment.employmentId, hire.employmentId));
+        // The canonical People hire establishing the pair is also this review's real source employee.
         // A second review sees the real immutable source snapshot; no employee award has been entered.
         const create = async (name: string) => createRewardUnit(admin, { name, year, companyId: b.companyId, businessUnitId: bu, snapshotDate: today });
         const snapshotId = await create('Snapshot only');
-        expect((await getRewardUnit(admin, snapshotId)).rows).toHaveLength(1);
+        const snapshotRows=(await getRewardUnit(admin,snapshotId)).rows;
+        expect(snapshotRows).toHaveLength(1);expect(snapshotRows[0].source.employmentId).toBe(scopeHire.employmentId);
         await deleteRewardReview(admin, snapshotId, (await getRewardConfiguration(admin, snapshotId)).unit.revision, snapshotId);
         expect((await owner.db.select().from(s.rewardEntry).where(eq(s.rewardEntry.unitId, snapshotId)))).toHaveLength(1);
         const usedId = await create('Used facts');
@@ -323,6 +346,7 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         expect(await rewardDeletionEligibility(admin, id)).toBe('decisions');
         const before = await getRewardConfiguration(admin, id);
         const [u] = await owner.db.insert(s.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code: 'FIN', name: 'Finance' }).returning();
+        await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:u.id,departmentId:b.deptA,year});
         const other = await createRewardUnit(admin, { name: 'Same cycle', cycleId: before.unit.cycleId, year, companyId: b.companyId, businessUnitId: u.id, snapshotDate: today });
         await deleteRewardReview(admin, other, (await getRewardConfiguration(admin, other)).unit.revision, other);
         expect((await getRewardConfiguration(admin, id)).cycle?.name).toBe('Annual maintenance');

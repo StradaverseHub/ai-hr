@@ -16,9 +16,7 @@ export function RewardPolicySummaryDialog({title,policy}:{title:string;policy:Re
   [t('merit'),<ul key="m" className="space-y-0.5">{meritMatrixRows(policy.meritMatrix).map(([talent,values])=><li key={talent}><span className="font-medium">{talent}</span> {pools(values)}</li>)}</ul>],
   [t('standardPools'),pools(policy.standardPools)],
   [t('hPools'),pools(policy.hPools)],
-  [t('targetMonths'),new Intl.NumberFormat(locale,{minimumFractionDigits:2,maximumFractionDigits:2}).format(policy.targetMonthsBp/10000)],
   [t('bonusReference'),t('bonusByGrade',{count:Object.keys(policy.bonusMatrix).length})],
-  [t('exemption'),policy.exemptReason.trim()||t('noExemption')],
  ];
  return <Dialog.Root>
   <Dialog.Trigger asChild><Button type="button" variant="link" size="sm" className="h-auto p-0">{t('viewSettings')}</Button></Dialog.Trigger>
@@ -28,7 +26,7 @@ export function RewardPolicySummaryDialog({title,policy}:{title:string;policy:Re
     <div className="flex items-start justify-between gap-3"><Dialog.Title className="text-base font-semibold">{title} <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{t('readOnly')}</span></Dialog.Title>
      <Dialog.Close asChild><Button type="button" variant="ghost" size="sm" aria-label={t('close')}><X aria-hidden className="size-4"/></Button></Dialog.Close></div>
     <Dialog.Description className="mt-1 text-sm text-muted-foreground">{t('help')}</Dialog.Description>
-    <table className="mt-4 w-full text-sm"><thead className="text-left text-xs text-muted-foreground"><tr><th className="py-1 pr-3 font-medium">{t('setting')}</th><th className="py-1 font-medium">{t('value')}</th></tr></thead>
+    <p className="mt-3 text-sm text-muted-foreground">{t('unitInputs')}</p><table className="mt-4 w-full text-sm"><thead className="text-left text-xs text-muted-foreground"><tr><th className="py-1 pr-3 font-medium">{t('setting')}</th><th className="py-1 font-medium">{t('value')}</th></tr></thead>
      <tbody className="divide-y divide-border">{rows.map(([label,value])=><tr key={label} className="align-top"><th scope="row" className="py-2 pr-3 text-left font-normal">{label}</th><td className="py-2 tabular-nums">{value}</td></tr>)}</tbody></table>
    </Dialog.Content>
   </Dialog.Portal>
