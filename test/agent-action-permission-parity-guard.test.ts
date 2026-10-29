@@ -7,7 +7,7 @@ import {AGENT_ACTION_PARITY,ATTENDANCE_WORKFLOW_PARITY,PARITY_PENDING_CEILING,PA
 
 const registry=AGENT_ACTIONS.map(action=>({id:action.id,store:action.store}));
 const declarations:Readonly<Record<string,ParityDeclaration>>=AGENT_ACTION_PARITY;
-const probed:ParityDeclaration={kind:'probed',screen:{employee:'allow',manager:'deny',assigned_approver:'deny',company_hr:'deny',group_hr:'deny',payroll_partner:'deny',performance_comp_partner:'deny',performance_partner:'deny',another_company:'deny',another_tenant:'deny'}};
+const probed:ParityDeclaration={kind:'probed',screen:{employee:'allow',manager:'deny',assigned_approver:'deny',company_hr:'deny',group_hr:'deny',super_admin:'deny',payroll_partner:'deny',performance_comp_partner:'deny',performance_partner:'deny',another_company:'deny',another_tenant:'deny'}};
 
 describe('WP8 parity matrix coverage of the agent action registry',()=>{
  it('requires routed delegate confirmation parity after the delegated-approvals fix',()=>{
@@ -20,8 +20,8 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
   expect(Object.keys(AGENT_ACTION_PARITY).sort()).toEqual(registry.map(entry=>entry.id).sort());
  });
 
- it('names the ten matrix roles (the nine review roles, with performance partners split in two), with both performance partner roles',()=>{
-  expect([...PARITY_ROLES]).toEqual(['employee','manager','assigned_approver','company_hr','group_hr','payroll_partner','performance_comp_partner','performance_partner','another_company','another_tenant']);
+ it('names the actual native roles, including the tenant super administrator, with both performance partner roles',()=>{
+  expect([...PARITY_ROLES]).toEqual(['employee','manager','assigned_approver','company_hr','group_hr','super_admin','payroll_partner','performance_comp_partner','performance_partner','another_company','another_tenant']);
  });
 
  it('has a real adapter for every human review action, with no remaining pending ceiling',()=>{

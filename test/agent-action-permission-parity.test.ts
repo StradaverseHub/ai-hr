@@ -142,7 +142,7 @@ type Adapter={
  screen(tx:Tx,who:SessionContext,item:Item,actorEmploymentId:string|null,o:Options):Promise<unknown>;
 };
 
-const MODULES=['assistant','claims','attendance','toil','org','ess','knowledge_base','payroll','typed_pay_components','performance','multi_cycle_payroll','country-my','lifecycle','notifications','system_testing'];
+const MODULES=['assistant','claims','attendance','toil','payroll','typed_pay_components','performance','multi_cycle_payroll','country-my','lifecycle','notifications','system_testing'];
 const SUBJECT_NAME='Fictional Parity Subject';
 /** HR calendar days from the repository's HR date owner. */
 function calendarDate(offset:number){const value=new Date(todayInKualaLumpur()+'T12:00:00Z');value.setUTCDate(value.getUTCDate()+offset);return value.toISOString().slice(0,10);}
@@ -150,7 +150,7 @@ const hiredOn=()=>`${Number(todayInKualaLumpur().slice(0,4))-2}-01-01`;
 /** Taken after the modules are on: the fixture admin's synthetic entitlement snapshot is a point-in-time read. */
 const groupOf=(base:Base):SessionContext=>({...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]});
 const hire=(base:Base,name:string,companyId:string,departmentId:string):Promise<Person>=>hireEmployee(groupOf(base),{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId,departmentId,employmentType:'full_time',hiredOn:hiredOn()});
-async function sessionFor(base:Base,userId:string,personId:string,role:DbRole,companyId:string|null):Promise<SessionContext>{
+async function sessionFor(base:Base,userId:string,personId:string|null,role:DbRole,companyId:string|null):Promise<SessionContext>{
  const entitlements=await owner.db.transaction(tx=>resolveEntitlementsTx(tx,base.tenantId));
  return {tenantId:base.tenantId,userId,personId,roles:[role],grants:[{role,companyId}],entitlements};
 }
@@ -170,7 +170,7 @@ async function buildWorld():Promise<World>{
  const subject=await hire(b,SUBJECT_NAME,b.companyId,b.deptA);
  const at=(name:string)=>hire(b,name,b.companyId,b.deptB);
  const manager=await at('Fictional Parity Line Manager'),approver=await at('Fictional Parity Delegate'),approverReport=await at('Fictional Parity Delegate Report');
- const companyHr=await at('Fictional Parity Company HR'),groupHr=await at('Fictional Parity Group HR'),payroll=await at('Fictional Parity Payroll Partner');
+ const companyHr=await at('Fictional Parity Company HR'),groupHr=await at('Fictional Parity Group HR'),superAdmin=await at('Fictional Parity Tenant Administrator'),payroll=await at('Fictional Parity Payroll Partner');
  const perfComp=await at('Fictional Parity Performance Comp Partner'),perf=await at('Fictional Parity Performance Partner');
  const otherCompanyHr=await hire(b,'Fictional Parity Other-Company HR',other.id,otherDept.id);
  const managerLine=await setReportingLine(group,{subordinateEmploymentId:subject.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:hiredOn()});
@@ -181,10 +181,10 @@ async function buildWorld():Promise<World>{
  await setToilPolicy(group,{companyId:b.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true});
  const foreign=await seedBase();for(const code of MODULES)await setModule(foreign.tenantId,code,'active');
  const foreignHr=await hire(foreign,'Fictional Parity Foreign HR',foreign.companyId,foreign.deptB);
- const people:Record<ParityRole,Person>={employee:subject,manager,assigned_approver:approver,company_hr:companyHr,group_hr:groupHr,payroll_partner:payroll,
+ const people:Record<ParityRole,Person>={employee:subject,manager,assigned_approver:approver,company_hr:companyHr,group_hr:groupHr,super_admin:superAdmin,payroll_partner:payroll,
   performance_comp_partner:perfComp,performance_partner:perf,another_company:otherCompanyHr,another_tenant:foreignHr};
  const grantOf:Record<ParityRole,[Base,DbRole,string|null]>={employee:[b,'employee',null],manager:[b,'manager',null],assigned_approver:[b,'employee',null],
-  company_hr:[b,'hr_admin',b.companyId],group_hr:[b,'hr_admin',null],payroll_partner:[b,'payroll_partner',b.companyId],
+  company_hr:[b,'hr_admin',b.companyId],group_hr:[b,'hr_admin',null],super_admin:[b,'super_admin',null],payroll_partner:[b,'payroll_partner',b.companyId],
   performance_comp_partner:[b,'performance_comp_partner',b.companyId],performance_partner:[b,'performance_partner',b.companyId],
   another_company:[b,'hr_admin',other.id],another_tenant:[foreign,'hr_admin',null]};
  const sessions=new Map<ParityRole,Promise<SessionContext>>();
@@ -258,7 +258,7 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   store:{prepare:async(who,input)=>{await notificationIdentity(who);return prepareModuleActionReview(who,input,await resolveOwnNotificationServerIdentity());},confirm:async(who,p)=>{await notificationIdentity(who);return confirmModuleActionReview(who,{action:'notifications.email_preferences.save',contractVersion:1,...p},await resolveOwnNotificationServerIdentity());}},
   async create(_w,h){await saveNotificationEmailPolicy(groupOf(h.base),['leave','claims']);return itemOf(h,h.person.employmentId);},human:item=>({action:'notifications.email_preferences.save',contractVersion:1,intent:{version:1,employmentId:item.employmentId,enabledCategories:['leave'],locale:'en',consent:'selected_categories_only'}}),offered:async(who,item)=>listed(await readNotificationModuleActionChoices(who),'employments','employmentId',item.employmentId),screen:async(_tx,who,item)=>saveNotificationEmailPreferences(who,item.employmentId,['leave'],'en',await notificationIdentity(who))},
  'rewards.post':{family:'hr_on_employment',independentScreen:true,store:packetStore('rewards.post',prepareRewardsPostReview,confirmRewardsPostReview),
-  async create(w,h){const root=groupOf(h.base),year=Number(todayInKualaLumpur().slice(0,4)),[bu]=await owner.db.insert(schema.businessUnit).values({tenantId:h.base.tenantId,companyId:h.companyId,code:'FIC-BU',name:'Fictional Unit'}).returning(),[grade]=await owner.db.insert(schema.jobGrade).values({tenantId:h.base.tenantId,code:'12',name:'Fictional Grade12'}).returning();await owner.db.update(schema.assignment).set({businessUnitId:bu.id}).where(eq(schema.assignment.employmentId,h.person.employmentId));await owner.db.update(schema.employment).set({gradeId:grade.id,confirmationDate:hiredOn()}).where(eq(schema.employment.id,h.person.employmentId));const unitId=await rewards.createRewardUnit(root,{name:'Fictional approved Rewards',year,companyId:h.companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur()});const actors:Record<string,SessionContext>={gr:root,bu:await h.session()};for(const seat of ['bg','ctro','ec'] as const){const person=await hire(h.base,'Fictional '+seat+' reviewer',h.companyId,h.base.deptB);actors[seat]=(await w.login(h.base,person,'employee',null)).ctx;}for(const seat of ['bu','bg','ctro','ec'] as const)await setRewardMember(root,unitId,(await rewards.getRewardUnit(root,unitId)).unit.revision,actors[seat].userId!,seat);for(const role of ['company_hr','group_hr','payroll_partner'] as const)await setRewardMember(root,unitId,(await rewards.getRewardUnit(root,unitId)).unit.revision,(await w.as(role)).userId!,'payroll');let view=await rewards.getRewardUnit(root,unitId);await configureRewardFixture(root,unitId,view.unit.revision,{...view.unit.policy,effectiveFrom:todayInKualaLumpur(),patActual:100,patTarget:100,ranges:{'12':[300000,500000,700000]}});view=await rewards.getRewardUnit(root,unitId);await rewards.saveRewardEntry(root,unitId,view.unit.revision,view.rows[0].id,view.rows[0].recommendation,{...emptyRewardFacts(),reviewed:true,talent:'SCORE',performance:'ME'});await refreshRewardFixtureBudget(root,unitId);view=await rewards.getRewardUnit(root,unitId);await rewards.decideRewardUnit(actors.bu,unitId,view.unit.revision,'submit','Fictional human recommendation');for(const role of view.route.slice(1))await rewards.decideRewardUnit(actors[role],unitId,view.unit.revision,'approve','Fictional human recommendation');const {batchId}=await createBatch(root,{companyId:h.companyId,payPeriod:todayInKualaLumpur().slice(0,7),scope:{employmentIds:[h.person.employmentId]}});return itemOf(h,unitId,{batchId,revision:view.unit.revision});},human:item=>({action:'rewards.post',contractVersion:1,unitId:item.subjectId,revision:item.revision,batchId:item.batchId,confirmWholeApprovedUnit:true}),offered:async(who,item)=>listed(await readRewardsPostModuleActionChoices(who),'units','unitId',item.subjectId),screen:(_tx,who,item)=>rewards.postRewardUnit(who,item.subjectId,item.revision!,item.batchId)},
+  async create(w,h){const root=groupOf(h.base),year=Number(todayInKualaLumpur().slice(0,4)),[bu]=await owner.db.insert(schema.businessUnit).values({tenantId:h.base.tenantId,companyId:h.companyId,code:'FIC-BU',name:'Fictional Unit'}).returning(),[grade]=await owner.db.insert(schema.jobGrade).values({tenantId:h.base.tenantId,code:'12',name:'Fictional Grade12'}).returning();await owner.db.update(schema.assignment).set({businessUnitId:bu.id}).where(eq(schema.assignment.employmentId,h.person.employmentId));await owner.db.update(schema.employment).set({gradeId:grade.id,confirmationDate:hiredOn()}).where(eq(schema.employment.id,h.person.employmentId));const unitId=await rewards.createRewardUnit(root,{name:'Fictional approved Rewards',year,companyId:h.companyId,businessUnitId:bu.id,snapshotDate:todayInKualaLumpur()});const actors:Record<string,SessionContext>={gr:root,bu:await h.session()};for(const seat of ['bg','ctro','ec'] as const){const person=await hire(h.base,'Fictional '+seat+' reviewer',h.companyId,h.base.deptB);actors[seat]=(await w.login(h.base,person,'employee',null)).ctx;}for(const seat of ['bu','bg','ctro','ec'] as const)await setRewardMember(root,unitId,(await rewards.getRewardUnit(root,unitId)).unit.revision,actors[seat].userId!,seat);for(const role of ['company_hr','group_hr','super_admin','payroll_partner'] as const)await setRewardMember(root,unitId,(await rewards.getRewardUnit(root,unitId)).unit.revision,(await w.as(role)).userId!,'payroll');let view=await rewards.getRewardUnit(root,unitId);await configureRewardFixture(root,unitId,view.unit.revision,{...view.unit.policy,effectiveFrom:todayInKualaLumpur(),patActual:100,patTarget:100,ranges:{'12':[300000,500000,700000]}});view=await rewards.getRewardUnit(root,unitId);await rewards.saveRewardEntry(root,unitId,view.unit.revision,view.rows[0].id,view.rows[0].recommendation,{...emptyRewardFacts(),reviewed:true,talent:'SCORE',performance:'ME'});await refreshRewardFixtureBudget(root,unitId);view=await rewards.getRewardUnit(root,unitId);await rewards.decideRewardUnit(actors.bu,unitId,view.unit.revision,'submit','Fictional human recommendation');for(const role of view.route.slice(1))await rewards.decideRewardUnit(actors[role],unitId,view.unit.revision,'approve','Fictional human recommendation');const {batchId}=await createBatch(root,{companyId:h.companyId,payPeriod:todayInKualaLumpur().slice(0,7),scope:{employmentIds:[h.person.employmentId]}});return itemOf(h,unitId,{batchId,revision:view.unit.revision});},human:item=>({action:'rewards.post',contractVersion:1,unitId:item.subjectId,revision:item.revision,batchId:item.batchId,confirmWholeApprovedUnit:true}),offered:async(who,item)=>listed(await readRewardsPostModuleActionChoices(who),'units','unitId',item.subjectId),screen:(_tx,who,item)=>rewards.postRewardUnit(who,item.subjectId,item.revision!,item.batchId)},
  'leave.apply':{family:'own',screenAdmits:ownEmploymentScreen,
   store:{prepare:async(who,input)=>{const h=input as ReturnType<typeof leaveNomination>;const r=await withTenant(who,tx=>prepareOwnLeaveReviewTx(tx,who,h,{employmentId:h.employmentId,leaveTypeId:h.leaveTypeId},{reason:'Fictional parity leave reason',employeeRemark:''},'en'));if(r.kind!=='prepared')throw Error('No native leave candidate');return r;},confirm:(who,p)=>confirmOwnLeaveReview(who,{contractVersion:1,...p},'en')},
   async create(_w,h){await owner.db.insert(schema.leaveLedger).values({tenantId:h.base.tenantId,employmentId:h.person.employmentId,leaveTypeId:h.base.annualLeaveTypeId,entryType:'accrual',days:'10',effectiveOn:todayInKualaLumpur()});return itemOf(h,h.person.employmentId,{date:weekdays(1)[0]});},human:leaveNomination,
@@ -493,7 +493,7 @@ describe('ADR-0151 parity: permission removed between prepare and confirm',()=>{
 
 /** Positive controls: the cross-company and cross-tenant sessions are refused above only because of the
  * boundary. Here each acts on an item in its OWN company or tenant and must be able to prepare and confirm. */
-const CONTROLS:[ProbedActionId,'another_company'|'another_tenant'][]=(['approvals.claim.decide','leave.adjustment.apply','leave.cancel'] as const).flatMap(id=>(['another_company','another_tenant'] as const).map(role=>[id,role] as [ProbedActionId,'another_company'|'another_tenant']));
+const CONTROLS:[ProbedActionId,'another_company'|'another_tenant'][]=(['approvals.claim.decide','leave.adjustment.apply','leave.cancel','notifications.email_preferences.save'] as const).flatMap(id=>(['another_company','another_tenant'] as const).map(role=>[id,role] as [ProbedActionId,'another_company'|'another_tenant']));
 describe('ADR-0151 parity positive controls: the boundary sessions act inside their own company or tenant',()=>{
  it.each(CONTROLS)('%s as %s on its own side of the boundary',async(id,role)=>{
   const w=await buildWorld(),adapter=ADAPTERS[id],who=await w.as(role),notes:Record<string,string>={};
@@ -507,5 +507,29 @@ describe('ADR-0151 parity positive controls: the boundary sessions act inside th
   const confirm=review?await tryConfirm(adapter,who,review,notes,'confirm'):'deny';
   console.info(`[parity:control] ${id} ${role} ${JSON.stringify({screen,offer,prepare:review?'allow':'deny',confirm})} ${JSON.stringify(notes)}`);
   expect({screen,offer,prepare:review?'allow':'deny',confirm},JSON.stringify(notes)).toEqual({screen:'allow',offer:true,prepare:'allow',confirm:'allow'});
+ },180_000);
+});
+
+/** A standalone assigned tester is a USER, with no fabricated PERSON or EMPLOYMENT. The role matrix
+ * above additionally probes the employee-linked assigned tester against all other native actors. */
+describe('WP8 assigned tester without staff identity',()=>{
+ it('records the assigned login observation and refuses another login and another tenant',async()=>{
+  const w=await buildWorld(),adapter=ADAPTERS['system_testing.execution.save'],original=await adapter.create(w,w.home,DEFAULT_OPTIONS);
+  const [originalAssignment]=await owner.db.select().from(schema.testAssignment).where(eq(schema.testAssignment.id,original.assignmentId!));
+  const newTester=async(base:Base)=>{
+   const [user]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:'user_'+randomUUID(),personId:null}).returning({id:schema.appUser.id});
+   await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:user.id,role:'employee',companyId:null});await grantAssistant(groupOf(base),{appUserId:user.id});
+   return {...await sessionFor(base,user.id,null,'employee',null),personId:null};
+  };
+  const who=await newTester(w.b),other=await newTester(w.b),foreign=await newTester(w.foreign);
+  const assignment=await testing.assignTestingCase(w.group,{caseId:originalAssignment.caseId,testerUserId:who.userId!,expectedVersionId:original.versionId!,active:true,expectedRevision:null});
+  const execution=await testing.beginTestingExecution(who,{assignmentId:assignment.assignmentId,expectedVersionId:original.versionId!,newAttempt:false});
+  const item={...original,subjectId:execution.executionId,assignmentId:assignment.assignmentId,revision:execution.revision};
+  const observation=testingObservation(item),notes:Record<string,string>={};
+  expect(await screenOutcome(adapter,who,item,null,DEFAULT_OPTIONS,notes),JSON.stringify(notes)).toBe('allow');
+  expect(await adapter.offered(who,item)).toBe(true);const review=await tryPrepare(adapter,who,item,DEFAULT_OPTIONS,notes);expect(review,JSON.stringify(notes)).not.toBeNull();
+  expect(await tryConfirm(adapter,other,review!,notes,'other')).toBe('deny');expect(await tryConfirm(adapter,foreign,review!,notes,'foreign')).toBe('deny');
+  expect(await tryConfirm(adapter,who,review!,notes,'confirm'),JSON.stringify(notes)).toBe('allow');
+  const [run]=await owner.db.select().from(schema.testRun).where(eq(schema.testRun.executionId,item.subjectId));expect(run).toMatchObject({runByUserId:who.userId,actualResult:observation.actualResult,status:observation.status});
  },180_000);
 });
