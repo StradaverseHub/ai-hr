@@ -21,8 +21,13 @@ async function failure(fetcher:typeof fetch,input:unknown=config(),request:Conve
 afterEach(()=>{vi.restoreAllMocks();vi.useRealTimers();});
 describe('closed OpenRouter failure diagnostics',()=>{
  it.each([400,401,402,403,404,429,500,503])('reports HTTP %i without reading or logging its private error body or retrying',async status=>{
-  const spy=warning(),fetcher=vi.fn<typeof fetch>().mockResolvedValue(response({error:{message:privateBody,key:privateKey,prompt:privatePrompt}},status));
-  await failure(fetcher);expect(fetcher).toHaveBeenCalledTimes(1);expectDiagnostic(spy,'response',status);
+  const spy=warning(),upstream=response({error:{message:privateBody,key:privateKey,prompt:privatePrompt}},status);
+  const read=vi.spyOn(upstream.body!,'getReader'),fetcher=vi.fn<typeof fetch>().mockResolvedValue(upstream);
+  await failure(fetcher);expect(fetcher).toHaveBeenCalledTimes(1);expect(read).not.toHaveBeenCalled();expectDiagnostic(spy,'response',status);
+ });
+ it.each([0,99,600,Infinity,NaN,401.5,privateBody])('never records an invalid or private status value (%s)',async status=>{
+  const spy=warning(),upstream=response({error:privateBody,choices:[]});Object.defineProperty(upstream,'status',{value:status});
+  const fetcher=vi.fn<typeof fetch>().mockResolvedValue(upstream);await failure(fetcher);expectDiagnostic(spy,'completion',null);
  });
  it('separates network failure from an HTTP rejection without logging exception details',async()=>{
   const spy=warning(),fetcher=vi.fn<typeof fetch>().mockRejectedValue(new Error([privateKey,privatePrompt,privateBody].join(' ')));
