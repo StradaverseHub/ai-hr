@@ -1,21 +1,10 @@
-import {assertHumanReviewedActionTier} from '../../lib/ai/agent-action-tier-guard';
-/** ADR-0151 wave 1b: one custody implementation for every ASSIGNED decision kind of migration 0671 — the
- * caller decides someone else's request. Modelled on the leave-decision custody: the binding names the
- * decider's login/person AND the subject's employment, company and person; the native service decides
- * authority before preparation and again when it writes; SQL proves the decider is never the subject and
- * that the native row and event were committed in THIS transaction by THIS login for THIS subject. */
-import {createHash,randomUUID} from 'node:crypto';
-import {sql,type SQL} from 'drizzle-orm';
+/** Default installed generic protocol adapter. The shared custody engine owns crypto and lifecycle. */
+import {sql} from 'drizzle-orm';
 import {z} from 'zod';
-import {PrivateReviewNonce,newPrivateReviewNonce,privateReviewCommitment} from './private-review-commitment';
-import {withTenant,type SessionContext,type Tx} from '../../db/client';
-import {assertAiPrincipalTx} from '../ai-principal';
-import {masterKeyAvailable,newDek,newKid,sealUnderDek,unsealUnderDek,unwrapDek,wrapDek} from '../../lib/pii/vault';
+import type {SessionContext,Tx} from '../../db/client';
 import {OwnLeaveSealedReview} from './own-leave-content';
-import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
-import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 import type {NativeOutcomeAction} from '../../lib/ai/module-native-outcomes';
-
+import {createReviewCustody} from './generic-review-custody';
 export type AssignedSubject=Readonly<{subjectId:string;employmentId:string;companyId:string;subjectPersonId:string}>;
 type Schema<T>=z.ZodType<T>;
 /** What a kind must provide. Every callback runs inside the caller's top-level transaction; any throw must
@@ -30,8 +19,7 @@ export type GenericAssignedReviewSpec<Human extends {employmentId:string;subject
  reconcile(tx:Tx,fresh:SessionContext,reference:{subjectId:string;eventId:string;employmentId:string}):Promise<Receipt>;
  unavailable():never;
 }>;
-const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex'),digest=z.string().regex(/^[a-f0-9]{64}$/);
-const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
+const digest=z.string().regex(/^[a-f0-9]{64}$/);
 const Binding=z.object({tenantId:z.guid(),userId:z.guid(),personId:z.guid().nullable(),employmentId:z.guid(),companyId:z.guid(),subjectPersonId:z.guid()}).strict();
 const State=z.enum(['awaiting_confirmation','completed','discarded','expired','refused']);
 export function createGenericAssignedReviewStore<Human extends {employmentId:string;subjectId:string},Review,Receipt,Prepared,Completed,Retired,Index>(spec:GenericAssignedReviewSpec<Human,Review,Receipt,Prepared,Completed,Retired,Index>){
@@ -43,51 +31,25 @@ export function createGenericAssignedReviewStore<Human extends {employmentId:str
   &&(value.metadata.state==='completed')===(value.eventId!==null)
   &&(value.metadata.state==='awaiting_confirmation'||(value.sealed===null&&value.metadata.intentDigest===null&&value.metadata.reviewedDigest===null)));
  type Stored=z.infer<typeof Stored>;
- const Body=z.object({reviewNonce:PrivateReviewNonce,content:z.unknown(),nativeReviewedDigest:digest}).strict();
- type Body={reviewNonce:z.infer<typeof PrivateReviewNonce>;content:Human;nativeReviewedDigest:string};
- const identity=(m:Meta)=>{if(m.state!=='awaiting_confirmation'||!m.intentDigest||!m.reviewedDigest)return fail();return JSON.stringify([1,m.action,m.actionId,m.binding,m.intentDigest,m.reviewedDigest]);};
- const reviewed=(binding:z.infer<typeof Binding>,body:Body)=>privateReviewCommitment([1,action,binding],body);
- const checked=(m:Meta,value:unknown):Body=>{const raw=Body.parse(value),body={...raw,content:spec.human.parse(raw.content)} as Body;if(body.content.employmentId!==m.binding.employmentId||hash(body.content)!==m.intentDigest||reviewed(m.binding,body)!==m.reviewedDigest)return fail();return body;};
- function seal(m:Meta,body:Body){let dek:Buffer|undefined;try{if(!masterKeyAvailable())return fail();const id=identity(m),text=JSON.stringify(checked(m,body));if(Buffer.byteLength(text)>32768)return fail();dek=newDek();const kid=newKid();return OwnLeaveSealedReview.parse({formatVersion:1,kid,wrappedDek:wrapDek(dek,'assistant:module-action:key:'+id),ciphertext:sealUnderDek(dek,kid,text,'assistant:module-action:body:'+id)});}catch{return fail();}finally{dek?.fill(0);}}
- function unseal(stored:Stored){let dek:Buffer|undefined;try{if(!masterKeyAvailable())return fail();const id=identity(stored.metadata),sealed=OwnLeaveSealedReview.parse(stored.sealed);dek=unwrapDek(sealed.wrappedDek,'assistant:module-action:key:'+id);if(dek.length!==32)return fail();const text=unsealUnderDek(dek,sealed.ciphertext,'assistant:module-action:body:'+id);if(Buffer.byteLength(text)>32768)return fail();return checked(stored.metadata,JSON.parse(text));}catch{return fail();}finally{dek?.fill(0);}}
- const read=async(tx:Tx,query:SQL)=>{const [row]=await tx.execute<{review:unknown}>(query);return Stored.parse(row?.review);};
- const bound=(stored:Stored,ctx:SessionContext,id:string,subject:AssignedSubject)=>{const m=stored.metadata;if(m.actionId!==id||m.binding.tenantId!==ctx.tenantId||m.binding.userId!==ctx.userId||m.binding.personId!==(ctx.personId??null)||m.binding.employmentId!==subject.employmentId||m.binding.companyId!==subject.companyId||m.binding.subjectPersonId!==subject.subjectPersonId||m.binding.subjectPersonId===m.binding.personId||stored.subjectId!==subject.subjectId)return fail();};
- const pending=(stored:Stored,body:Body,current:{review:Review;reviewedDigest:string})=>{if(current.reviewedDigest!==body.nativeReviewedDigest||body.content.subjectId!==stored.subjectId)return fail();const m=stored.metadata;return{kind:'prepared' as const,review:spec.prepared.parse({action,contractVersion:1,actionId:m.actionId,reviewedDigest:m.reviewedDigest,createdAt:m.createdAt,expiresAt:m.expiresAt,content:body.content,review:current.review,consequence:spec.consequence})};};
- const retired=(stored:Stored)=>({kind:'retired' as const,receipt:spec.retired.parse({action,contractVersion:1,actionId:stored.metadata.actionId,state:stored.metadata.state})});
- const completed=async(tx:Tx,ctx:SessionContext,stored:Stored)=>{if(stored.metadata.state!=='completed'||!stored.eventId)return fail();const receipt=await spec.reconcile(tx,ctx,{subjectId:stored.subjectId,eventId:stored.eventId,employmentId:stored.metadata.binding.employmentId});return{kind:'completed' as const,receipt:spec.completed.parse({action,contractVersion:1,actionId:stored.metadata.actionId,state:'completed',receipt})};};
+
+ type Native={content:Human;reviewedDigest:string;review:Review};
  const nominate=async(tx:Tx,id:string)=>{const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_assigned_review_subject(${id}::uuid,${action}) as subject`);return z.object({subjectId:z.guid(),mode:z.enum(['pending','recorded'])}).strict().parse(row?.subject);};
- const readRow=(tx:Tx,id:string,discard=false)=>read(tx,discard?sql`select app.assistant_assigned_review_read(${id}::uuid,${action},true) as review`:sql`select app.assistant_assigned_review_read(${id}::uuid,${action}) as review`);
- return Object.freeze({
-  async prepare(supplied:SessionContext,input:unknown){assertHumanReviewedActionTier(supplied,action,'approve');const ctx=capture(supplied),parsed=spec.human.safeParse(input);if(!parsed.success)return fail();const human=parsed.data;try{return await withTenant(ctx,tx=>spec.withSubject(tx,ctx,human.subjectId,'pending',async(fresh,subject)=>{
-   if(subject.employmentId!==human.employmentId||subject.subjectId!==human.subjectId)return fail();
-   const native=await spec.prepare(tx,fresh,human),body:Body={reviewNonce:newPrivateReviewNonce(),content:human,nativeReviewedDigest:native.reviewedDigest};
-   const binding=Binding.parse({tenantId:fresh.tenantId,userId:fresh.userId,personId:fresh.personId??null,employmentId:subject.employmentId,companyId:subject.companyId,subjectPersonId:subject.subjectPersonId});
-   const now=new Date(),m=Metadata.parse({actionId:randomUUID(),action,contractVersion:1,binding,intentDigest:hash(body.content),reviewedDigest:reviewed(binding,body),state:'awaiting_confirmation',createdAt:now.toISOString(),expiresAt:new Date(now.getTime()+600000).toISOString()}),sealed=seal(m,body);
-   const stored=await read(tx,sql`select app.assistant_assigned_review_prepare(${action},${m.actionId}::uuid,${binding.personId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${binding.subjectPersonId}::uuid,${subject.subjectId}::uuid,${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) as review`);bound(stored,fresh,m.actionId,subject);return pending(stored,unseal(stored),native);
-  }));}catch{return fail();}},
-  async confirm(supplied:SessionContext,input:{actionId:string;reviewedDigest:string}){assertHumanReviewedActionTier(supplied,action,'approve');const ctx=capture(supplied),p={actionId:z.guid().parse(input.actionId),reviewedDigest:digest.parse(input.reviewedDigest)};try{return await withTenant(ctx,async tx=>{
-   const nominee=await nominate(tx,p.actionId);return spec.withSubject(tx,ctx,nominee.subjectId,nominee.mode,async(fresh,subject)=>{
-    const stored=await readRow(tx,p.actionId);bound(stored,fresh,p.actionId,subject);if(stored.metadata.state==='completed')return completed(tx,fresh,stored);if(stored.metadata.state!=='awaiting_confirmation')return retired(stored);if(stored.metadata.reviewedDigest!==p.reviewedDigest)return fail();
-    const body=unseal(stored);if(body.content.subjectId!==stored.subjectId)return fail();const native=await spec.confirm(tx,fresh,body.content,body.nativeReviewedDigest);
-    await captureNativeOutcomeTargetsTx(tx,fresh,{action,sourceId:p.actionId,eventId:native.eventId,targets:[{kind:'employment',id:subject.employmentId},{kind:'person',id:subject.subjectPersonId}]});
-    const done=await read(tx,sql`select app.assistant_assigned_review_complete(${p.actionId}::uuid,${action},${p.reviewedDigest},${native.eventId}::uuid) as review`);bound(done,fresh,p.actionId,subject);if(done.eventId!==native.eventId)return fail();return completed(tx,fresh,done);
-   });});}catch{return fail();}},
-  async reopen(supplied:SessionContext,value:unknown){const ctx=capture(supplied),parsed=z.guid().safeParse(value);if(!parsed.success)return fail();const id=parsed.data;try{return await withTenant(ctx,async tx=>{
-   const nominee=await nominate(tx,id);return spec.withSubject(tx,ctx,nominee.subjectId,nominee.mode,async(fresh,subject)=>{
-    const stored=await readRow(tx,id);bound(stored,fresh,id,subject);if(stored.metadata.state==='awaiting_confirmation'){const body=unseal(stored),native=await spec.prepare(tx,fresh,body.content);return pending(stored,body,native);}return stored.metadata.state==='completed'?completed(tx,fresh,stored):retired(stored);
-   });});}catch{return fail();}},
-  /** Login-only retirement: needs no review digest, grant, subject access or decryption. */
-  async discard(supplied:SessionContext,input:{actionId:string}){const ctx=capture(supplied),id=z.guid().safeParse(input?.actionId);if(!id.success)return fail();try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const stored=await readRow(tx,id.data,true);if(stored.metadata.actionId!==id.data||stored.metadata.binding.userId!==ctx.userId)return fail();return retired(stored);});}catch{return fail();}},
-  async list(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const rows=await tx.execute(sql`select action,1 as "contractVersion",action_id as "actionId",state,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt" from app.assistant_assigned_reviews_index(${action})`);return spec.index.parse({kind:spec.indexKind,reviews:Array.from(rows)});});}catch{return fail();}},
-  /** Completed-only evidence adapter for outcome linking. No pending decryption, preparation or confirmation. */
-  async readCompletedOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
-   const ctx=capture(supplied),id=z.guid().parse(value);await boundNativeOutcomeTransactionTx(tx);
-   const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${action},${id}::uuid) as completed`);
-   if(terminal?.completed!==true)return fail();
-   const nominee=await nominate(tx,id);return spec.withSubject(tx,ctx,nominee.subjectId,'recorded',async(fresh,subject)=>{const stored=await readRow(tx,id);bound(stored,fresh,id,subject);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.guid().parse(stored.eventId)};});
-  },
+ return createReviewCustody<Human,z.infer<typeof Binding>,Stored,AssignedSubject,Native,Awaited<ReturnType<typeof spec.confirm>>,Prepared,Completed,Retired,Index>({
+ action,tier:'approve',human:spec.human,metadata:Metadata,stored:Stored,confirmation:z.object({actionId:z.guid(),reviewedDigest:digest}),retirement:z.object({actionId:z.guid()}),retired:spec.retired,index:spec.index,indexKind:spec.indexKind,
+ async withInterval(tx,ctx,nomination,work){const ref=nomination.human?{subjectId:nomination.human.subjectId,mode:'pending' as const}:await nominate(tx,z.guid().parse(nomination.actionId));return spec.withSubject(tx,ctx,ref.subjectId,ref.mode,work);},
+ binding:(ctx,subject,human)=>{if(subject.employmentId!==human.employmentId||subject.subjectId!==human.subjectId)return fail();return Binding.parse({tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null,employmentId:subject.employmentId,companyId:subject.companyId,subjectPersonId:subject.subjectPersonId});},
+ assertSubjectBinding:(binding,subject)=>{if(binding.employmentId!==subject.employmentId||binding.companyId!==subject.companyId||binding.subjectPersonId!==subject.subjectPersonId||binding.subjectPersonId===binding.personId)return fail();},assertStoredSubject:(row,subject)=>{if(row.subjectId!==subject.subjectId)return fail();},
+ assertHumanBinding:(binding,human)=>{if(binding.employmentId!==human.employmentId)return fail();},
+ async prepareNative(tx,ctx,human){return{...await spec.prepare(tx,ctx,human),content:human};},
+ confirmNative:(tx,ctx,body,subject)=>{if(body.content.subjectId!==subject.subjectId)return fail();return spec.confirm(tx,ctx,body.content,body.nativeReviewedDigest);},
+ pending:(row,body,current)=>{if(body.content.subjectId!==row.subjectId)return fail();return spec.prepared.parse({action,contractVersion:1,actionId:row.metadata.actionId,reviewedDigest:row.metadata.reviewedDigest,createdAt:row.metadata.createdAt,expiresAt:row.metadata.expiresAt,content:body.content,review:current.review,consequence:spec.consequence});},
+ async completed(tx,ctx,row){if(!row.eventId)return fail();const receipt=await spec.reconcile(tx,ctx,{subjectId:row.subjectId,eventId:row.eventId,employmentId:row.metadata.binding.employmentId});return spec.completed.parse({action,contractVersion:1,actionId:row.metadata.actionId,state:'completed',receipt});},
+ event:row=>row.eventId,nativeEvent:native=>native.eventId,assertCompletion:(row,native)=>{if(row.eventId!==native.eventId)return fail();},targets:subject=>[{kind:'employment',id:subject.employmentId},{kind:'person',id:subject.subjectPersonId}],
+ async prepareRow(tx,m,sealed,subject){const b=m.binding,[row]=await tx.execute<{review:unknown}>(sql`select app.assistant_assigned_review_prepare(${action},${m.actionId}::uuid,${b.personId}::uuid,${b.employmentId}::uuid,${b.companyId}::uuid,${b.subjectPersonId}::uuid,${subject.subjectId}::uuid,${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) as review`);return row?.review;},
+ async readRow(tx,id){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_assigned_review_read(${id}::uuid,${action}) as review`);return row?.review;},
+ async completeRow(tx,id,expected,native){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_assigned_review_complete(${id}::uuid,${action},${expected},${native.eventId}::uuid) as review`);return row?.review;},
+ async discardRow(tx,id){const [raw]=await tx.execute<{review:unknown}>(sql`select app.assistant_assigned_review_read(${id}::uuid,${action},true) as review`),row=Stored.parse(raw?.review);if(row.metadata.actionId!==id)return fail();return spec.retired.parse({action,contractVersion:1,actionId:id,state:row.metadata.state});},
+ async indexRows(tx){return Array.from(await tx.execute(sql`select action,1 as "contractVersion",action_id as "actionId",state,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt" from app.assistant_assigned_reviews_index(${action})`));},unavailable:fail,
  });
 }
-
-/** Installed assigned protocols retain their exact source binding/self-decision rules and SQL verifier. */
 export {createReviewCustody as createGenericAssignedCompatibilityStore} from './generic-review-custody';
