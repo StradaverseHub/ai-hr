@@ -131,15 +131,34 @@ def write_new(path,data,mode):
     with os.fdopen(fd,'wb') as stream: stream.write(data);stream.flush();os.fsync(stream.fileno())
 
 def service_properties():
-    fields=['User','Group','WorkingDirectory','FragmentPath','DropInPaths','ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition','Environment','EnvironmentFiles','PassEnvironment','RootDirectory','RootImage','PAMName','MainPID','NRestarts','ActiveState','SubState']
+    fields=['User','Group','WorkingDirectory','FragmentPath','DropInPaths','ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition','Environment','EnvironmentFiles','PassEnvironment','RootDirectory','RootImage','PAMName','MainPID','NRestarts','ActiveState','SubState','UnitFileState']
     raw=command(['/usr/bin/systemctl','show','aihr-bank-import.service','--no-pager',*['--property='+key for key in fields]]).stdout
-    return dict(line.split('=',1) for line in raw.splitlines() if '=' in line)
+    properties=dict(line.split('=',1) for line in raw.splitlines() if '=' in line)
+    # systemctl omits empty command arrays even with --all on this installation. Prove their
+    # actual typed values; missing/unknown D-Bus properties are never treated as empty.
+    unit=json.loads(command(['/usr/bin/busctl','--json=short','call','org.freedesktop.systemd1','/org/freedesktop/systemd1','org.freedesktop.systemd1.Manager','LoadUnit','s','aihr-bank-import.service']).stdout)
+    check(unit.get('type')=='o' and isinstance(unit.get('data'),list) and len(unit['data'])==1 and re.fullmatch('/org/freedesktop/systemd1/unit/[A-Za-z0-9_]+',unit['data'][0]),'typed unit metadata unavailable')
+    properties['_commands']={key:json.loads(command(['/usr/bin/busctl','--json=short','get-property','org.freedesktop.systemd1',unit['data'][0],'org.freedesktop.systemd1.Service',key]).stdout) for key in ['ExecStart','ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition']}
+    return properties
+
+def validate_command_proofs(proofs):
+    hooks={'ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition'}
+    check(isinstance(proofs,dict) and set(proofs)==hooks|{'ExecStart'},'complete typed command proof required')
+    for key,value in proofs.items():
+        check(isinstance(value,dict) and set(value)=={'type','data'} and value['type']=='a(sasbttttuii)' and isinstance(value['data'],list),'unknown or malformed command property: '+key)
+        if key in hooks: check(value['data']==[],'nonempty command hook: '+key)
+        else:
+            rows=value['data'];check(len(rows)==1 and isinstance(rows[0],list) and len(rows[0])==10,'one typed worker command required')
+            row=rows[0];check(row[0]==str(NODE) and row[1]==[str(NODE),'--import','tsx','scripts/bank-import-runner.ts'] and row[2] is False and all(type(v) is int for v in row[3:]),'typed worker command differs')
 
 def validate_service(properties,release):
+    validate_command_proofs(properties.get('_commands'))
     for key,wanted in {'User':USER,'Group':USER,'WorkingDirectory':str(release),'FragmentPath':str(UNIT),'Environment':'NODE_ENV=production','EnvironmentFiles':str(ENV)+' (ignore_errors=no)'}.items():
         check(properties.get(key)==wanted,'actual worker service configuration differs: '+key)
-    for key in ['DropInPaths','ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition','PassEnvironment','RootDirectory','RootImage','PAMName']:
+    for key in ['DropInPaths','PassEnvironment','RootDirectory','RootImage','PAMName']:
         check(properties.get(key)=='','unreviewed service override: '+key)
+    for key in ['ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition']:
+        check(key not in properties or properties[key]=='','nonempty displayed command hook: '+key)
 
 def stop_owned_first_install():
     """Normal managed stop; independently disable even if the stop request fails or times out."""
