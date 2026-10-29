@@ -1,7 +1,6 @@
-import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {and,eq,sql} from 'drizzle-orm';
+import {and,eq} from 'drizzle-orm';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
@@ -14,7 +13,7 @@ import {toCsv} from '../lib/csv';
 
 describe('durable Individual Transaction import',()=>{
  let base:Base,employeeId:string,employeeCode:string,componentId:string,cycleId:string;
- beforeAll(async()=>{await migrateTestDb();const rows=await owner.db.execute(sql`select to_regclass('public.payroll_txn_import_attempt') as name`);if(!rows[0]?.name)await owner.db.execute(sql.raw(readFileSync('docs/migration-drafts/0688_payroll_txn_import_attempts.sql','utf8')));});
+ beforeAll(migrateTestDb);
  beforeEach(async()=>{
   await resetDb();base=await seedBase();const a=adminCtx(base);
   const e=await hireEmployee(a,{person:{fullName:'Import Example',primaryEmail:`import-${randomUUID()}@example.invalid`},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});employeeId=e.employmentId;

@@ -1,5 +1,4 @@
 /** Valid fictional policy/input setup through the same native doer/checker services as the product. */
-import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import type {SessionContext} from '../db/client';
@@ -11,7 +10,7 @@ import {setRewardMember} from './rewards-access-fixture';
 const checkers=new Map<string,SessionContext>();
 export async function ensureRewardGovernanceFixtureSchema(){
  const [ready]=await owner.db.execute<{ready:boolean}>(sql`select to_regclass('public.reward_governance') is not null as ready`);
- if(!ready.ready)await owner.client.unsafe(readFileSync('docs/migration-drafts/0689_rewards_unit_governance.sql','utf8'));
+ if(!ready.ready)throw new Error('Ordinary migrations did not install Rewards governance.');
 }
 export async function initializeRewardGovernanceFixture(ctx:SessionContext,unitId:string){
  await ensureRewardGovernanceFixtureSchema();

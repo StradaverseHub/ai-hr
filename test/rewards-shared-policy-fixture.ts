@@ -1,5 +1,4 @@
 import {randomUUID} from 'node:crypto';
-import {readFileSync} from 'node:fs';
 import {sql} from 'drizzle-orm';
 import type {SessionContext} from '../db/client';
 import * as schema from '../db/schema';
@@ -16,8 +15,8 @@ export async function establishRewardMembership(ctx:SessionContext,p:{tenantId:s
  const departmentId=p.departmentId??(await owner.db.insert(schema.department).values({tenantId:p.tenantId,companyId:p.companyId,name:`Rewards membership ${randomUUID()}`}).returning({id:schema.department.id}))[0].id;
  return hireEmployee(ctx,{person:{fullName:'Rewards scope fixture',primaryEmail:`${randomUUID()}@reward-scope.test`},companyId:p.companyId,businessUnitId:p.businessUnitId,departmentId,employmentType:'full_time',hiredOn:`${p.year-2}-01-01`});
 }
-/** Private worker DB only, until parent integrates the allocated successor journal. */
+/** The ordinary journal must install the allocated membership schema in every worker. */
 export async function migrateRewardMembershipFixture(){
  await migrateTestDb();const [state]=await owner.db.execute<{present:boolean}>(sql`select to_regprocedure('app.reward_policy_memberships(uuid[])') is not null as present`);
- if(!state.present){const draft=readFileSync(new URL('../docs/migration-drafts/0690_rewards_policy_pair_membership.sql',import.meta.url),'utf8');await owner.db.transaction(async tx=>{for(const statement of draft.split('--> statement-breakpoint').filter(statement=>statement.trim()))await tx.execute(sql.raw(statement));});}
+ if(!state.present)throw new Error('Ordinary migrations did not install Rewards membership.');
 }

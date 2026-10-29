@@ -31,7 +31,8 @@ schema prerequisite; the independent AI application delivery keeps its own owner
 | Approved Rewards configuration | 680 | 1793330000016 | 0690_rewards_policy_pair_membership | Enforce authoritative company/business-unit membership |
 
 The original 562-entry prefix is unchanged; this candidate has 566 entries. Board SQL remains
-unapplied and under review, with draft copies retained temporarily for the contributing fixtures.
+unapplied and under review. The journaled SQL is the sole executable source; obsolete draft copies
+and fixture-side schema installation have been removed.
 Freeze and record final SQL hashes after repairs, rehearse the ordinary populated upgrade, and
 recheck the actual installed prefix before application. No database or deployment acceptance is
 implied by this source allocation.

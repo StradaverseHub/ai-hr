@@ -1,4 +1,4 @@
--- Reserved 0689, idx679 / sequence1793330000015. Not journaled until the prerequisite prefix is frozen.
+-- Approved board successor: idx679 / sequence1793330000015 after the preserved 562-entry prefix and reserved AI0687.
 CREATE TABLE public.reward_governance (
  unit_id uuid PRIMARY KEY REFERENCES public.reward_unit(id),tenant_id uuid NOT NULL REFERENCES public.tenant(id),
  state jsonb NOT NULL,updated_at timestamptz NOT NULL DEFAULT now(),
