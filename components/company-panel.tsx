@@ -172,6 +172,7 @@ export type PanelBankProfile = {
   swiftCode: string | null;
   currency: string;
   isPrimary: boolean;
+  fileContactName?:string|null;fileContactPhone?:string|null;fileStateCode?:string|null;requirePayeeIdCheck?:boolean;
 };
 
 // R46 orgbank (84719377) — per-authority statutory payment configuration (company_statutory_authority).
@@ -250,12 +251,13 @@ function BankAccountForm({
   // Legacy-tolerant: a stored bank key no longer in the master is still offered so editing any OTHER field
   // cannot silently drop it (same posture as OptionSelect).
   const known = !p?.bank || MY_BANKS.some((b) => b.key === p.bank);
+  const [selectedBank,setSelectedBank] = useState(p?.bank??'');
   return (
     <form action={action} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
       <input type="hidden" name="companyId" value={companyId} />
       {p && <input type="hidden" name="id" value={p.id} />}
       <Field label={t('bankLabel')}>
-        <select name="bank" defaultValue={p?.bank ?? ''} required className={inputCls}>
+        <select name="bank" value={selectedBank} onChange={event=>setSelectedBank(event.target.value)} required className={inputCls}>
           <option value="" disabled>
             {t('bankSelect')}
           </option>
@@ -274,6 +276,11 @@ function BankAccountForm({
           </optgroup>
         </select>
       </Field>
+      {selectedBank==='ocbc_bank'&&<fieldset className="space-y-3 sm:col-span-2"><input type="hidden" name="bankFileSettingsPresent" value="1"/><legend className="font-medium">{t('ocbcFileSettings')}</legend><p className="text-xs text-muted-foreground">{t('ocbcFileSettingsHelp')}</p><div className="grid gap-3 sm:grid-cols-3">
+        <Field label={t('ocbcContactName')}><input name="fileContactName" defaultValue={p?.fileContactName??''} maxLength={40} className={inputCls}/></Field>
+        <Field label={t('ocbcContactPhone')}><input name="fileContactPhone" defaultValue={p?.fileContactPhone??''} inputMode="numeric" pattern="[0-9]{1,20}" maxLength={20} className={inputCls}/></Field>
+        <Field label={t('ocbcStateCode')}><input name="fileStateCode" defaultValue={p?.fileStateCode??''} inputMode="numeric" pattern="[0-9]{3}" maxLength={3} className={inputCls}/></Field>
+      </div><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="requirePayeeIdCheck" defaultChecked={p?.requirePayeeIdCheck??false}/>{t('ocbcCheckId')}</label></fieldset>}
       <Field label={t('bankAccountLabel')}>
         <input
           name="accountLabel"

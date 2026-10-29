@@ -11598,6 +11598,7 @@
       "addressSearchFailed": "地址搜索暂时不可用。请手动输入地址和坐标。",
       "addressSearchPicked": "地址、纬度和经度已填入。保存前请核对地图上的标记。",
       "mapHeading": "地图预览",
+      "mapRetry": "重试地图",
       "mapLoading": "正在加载地图…",
       "mapUnavailable": "地图无法加载。纬度、经度和半径仍可手动输入并保存。",
       "mapNoPoint": "输入纬度和经度后即可看到该点及其打卡半径。",

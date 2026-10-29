@@ -11598,6 +11598,7 @@
       "addressSearchFailed": "Carian alamat tidak tersedia buat masa ini. Taip alamat dan koordinat sendiri.",
       "addressSearchPicked": "Alamat, latitud dan longitud telah diisi. Semak penanda pada peta sebelum menyimpan.",
       "mapHeading": "Pratonton peta",
+      "mapRetry": "Cuba semula peta",
       "mapLoading": "Memuatkan peta…",
       "mapUnavailable": "Peta tidak dapat dimuatkan. Latitud, longitud dan radius masih boleh ditaip dan disimpan.",
       "mapNoPoint": "Masukkan latitud dan longitud untuk melihat titik dan radius daftar masuknya.",

@@ -220,6 +220,13 @@ export type ConfigSectionDescriptor = {
  * agency's own naming convention, produced by the pack's one definition of it, so two surfaces offering
  * one month's file cannot name it differently.
  */
+export type BankPaymentRequest = {companyId:string;bankProfileId:string;formatId:string;periodKey:string;paymentDate:string;runSeq?:number;testFile:boolean;reference:string};
+export type BankPaymentPreview = {digest:string;recordCount:number;totalCents:number;companyName:string;paymentDate:string;periodKey:string};
+export type BankPaymentFiles = {
+ preview:(ctx:SessionContext,p:BankPaymentRequest)=>Promise<BankPaymentPreview>;
+ download:(ctx:SessionContext,p:BankPaymentRequest & {expectedDigest:string;requestKey:string})=>Promise<{content:string;filename:string}>;
+};
+
 export type StatutoryPaymentFile =
   | { ok: true; filename: string; content: string; contentType: string }
   | { ok: false; reason: string };
@@ -745,6 +752,7 @@ export interface CountryPack {
    * catalog's `ReportDef.id` already is, and both sides of it are pinned by a test.
    */
   paymentFiles?: Record<string, StatutoryPaymentFileBuilder>;
+  bankPaymentFiles?: BankPaymentFiles;
 
   /**
    * 587ee719 (D4) — statutory forms this jurisdiction has that we have NOT built. Descriptor-only: the

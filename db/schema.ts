@@ -3717,6 +3717,10 @@ export const companyBankProfile = pgTable(
     currency: text('currency').notNull().default('MYR'),
     // At most one primary per company (partial unique index below). The default account a payment run
     // debits when nothing more specific is chosen.
+    fileContactName: text('file_contact_name'),
+    fileContactPhone: text('file_contact_phone'),
+    fileStateCode: text('file_state_code'),
+    requirePayeeIdCheck: boolean('require_payee_id_check').notNull().default(false),
     isPrimary: boolean('is_primary').notNull().default(false),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -3727,6 +3731,16 @@ export const companyBankProfile = pgTable(
     uniqueIndex('company_bank_profile_primary_uq').on(t.companyId).where(sql`is_primary`),
   ],
 );
+
+/** Generated bank upload artifacts. Never a paid/filed status; immutable, company-admin scoped. */
+export const bankPaymentExport = pgTable('bank_payment_export', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+  // Historical identity survives deletion of the bank's editable configuration.
+  bankProfileId:uuid('bank_profile_id').notNull(),actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),
+  requestKey:uuid('request_key').notNull(),valueDate:date('value_date').notNull(),tapeId:integer('tape_id').notNull(),
+  format:text('format').notNull(),sourceDigest:text('source_digest').notNull(),filename:text('filename').notNull(),
+  content:text('content').notNull(),recordCount:integer('record_count').notNull(),totalCents:bigint('total_cents',{mode:'number'}).notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('bank_payment_export_tape_uq').on(t.tenantId,t.valueDate,t.tapeId),uniqueIndex('bank_payment_export_request_uq').on(t.tenantId,t.actorUserId,t.requestKey),check('bank_payment_export_tape_range',sql`${t.tapeId} between 1 and 999`)]);
 
 // Per-authority statutory payment configuration (R46 orgbank 84719377). company_statutory_my is one flat
 // row per company holding the employer REFERENCE NUMBERS; it cannot hold per-authority payment routing.

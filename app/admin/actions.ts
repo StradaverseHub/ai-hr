@@ -526,6 +526,7 @@ export async function setCompanyBankProfileAction(formData: FormData) {
       branch: (formData.get('branch') as string) || null,
       swiftCode: (formData.get('swiftCode') as string) || null,
       currency: (formData.get('currency') as string) || null,
+      ...(formData.get('bankFileSettingsPresent')==='1'?{fileContactName:String(formData.get('fileContactName')??''),fileContactPhone:String(formData.get('fileContactPhone')??''),fileStateCode:String(formData.get('fileStateCode')??''),requirePayeeIdCheck:formData.get('requirePayeeIdCheck')==='on'}:{}),
       isPrimary: formData.get('isPrimary') === 'on' || formData.get('isPrimary') === 'true',
     });
   } catch (e) {

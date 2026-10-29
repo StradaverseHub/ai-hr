@@ -11598,6 +11598,7 @@
       "addressSearchFailed": "Hiện không thể tìm kiếm địa chỉ. Hãy tự nhập địa chỉ và tọa độ.",
       "addressSearchPicked": "Đã điền địa chỉ, vĩ độ và kinh độ. Hãy kiểm tra điểm đánh dấu trên bản đồ trước khi lưu.",
       "mapHeading": "Xem trước bản đồ",
+      "mapRetry": "Thử tải lại bản đồ",
       "mapLoading": "Đang tải bản đồ…",
       "mapUnavailable": "Không tải được bản đồ. Vĩ độ, kinh độ và bán kính vẫn có thể nhập và lưu.",
       "mapNoPoint": "Nhập vĩ độ và kinh độ để xem điểm và bán kính chấm công của nó.",

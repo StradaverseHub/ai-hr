@@ -11598,6 +11598,7 @@
       "addressSearchFailed": "Address search is unavailable right now. Type the address and coordinates by hand.",
       "addressSearchPicked": "Address, latitude and longitude filled in. Check the marker on the map before saving.",
       "mapHeading": "Map preview",
+      "mapRetry": "Retry map",
       "mapLoading": "Loading the map…",
       "mapUnavailable": "The map could not be loaded. Latitude, longitude and radius can still be typed in and saved.",
       "mapNoPoint": "Enter a latitude and longitude to see the point and its clocking radius.",
