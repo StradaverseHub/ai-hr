@@ -7,6 +7,22 @@ Use this guide to run payroll with the appropriate company access and enabled pa
 3. Open [Payroll transactions](/payroll/transactions) for fixed and individual items, adjustments, TP1, TP3 and zakat. Use the current import templates where offered. Use [Payroll history import](/payroll/history-import) for historical payroll; it is not the TP3 prior-employer form.
 4. Review attendance, leave, approved claims, loans and any other sources being consolidated. A source approval does not by itself prove it has reached the selected payroll batch.
 
+## Import individual transactions
+
+Open [Individual Transaction](/payroll/transactions/individual), then **Import Excel**.
+This imports current transactions; it does not replace historical payslips.
+
+1. Choose **One Total for the Month** or **Day by Day**, and download the matching template. Fill in its first worksheet; the other worksheets contain instructions and the current employee, pay item, pay cycle and input type references.
+2. The monthly template contains Employee ID, Employee Name (Optional), Month with Year, Pay Cycle, Pay Item, Effective Date, Input Type, Quantity, Amount and Remark, in that order. The daily template contains Employee ID, Employee Name (Optional), Month with Year, Pay Cycle, Pay Item, Effective Date, Quantity and Remarks.
+3. Keep Month with Year separate from Effective Date: one selects the payroll period and the other records when the transaction took effect. Use the employee ID and a configured pay cycle from the references. A name that does not match the employee ID produces a warning.
+4. For daily input, enter each date on its own row. Equal quantities on different dates remain separate transactions. Daily input requires a pay item that calculates its amount from quantity; use monthly input for items requiring a manually entered amount.
+5. Upload the completed `.xlsx` file and select **Validate file**. Review the amounts, warnings and Excel row errors before confirming. Invalid rows do not create transactions. Each file supports up to 2,000 transaction rows; split larger imports into separate batches.
+6. Confirm the valid rows, then review the imported and unsuccessful counts. Use the downloadable errors to correct refused rows. Payroll controls and calculation rules are the same as for manual entry.
+
+Open **Import log** to find a batch by its reference, file, user and time. **View Details** retains the original row outcomes and later actions. New batches are tracked from this feature onward; earlier imports are not assigned to batches by guessing.
+
+To undo an eligible batch, select **Revert Import** and check the batch named in the confirmation. The action reverses only transactions created by that batch. If an affected transaction has changed or payroll controls prohibit reversal, the whole reversal is refused. Where processed payroll may be changed, acknowledge the recalculation warning and reprocess the affected payroll before relying on its results. Manual transactions and other batches are unaffected, and the import log remains available after reversal.
+
 ## Create, process and review
 
 1. Open [Payroll](/payroll), start the process, and choose the company, period, cycle and payment date.
@@ -15,6 +31,10 @@ Use this guide to run payroll with the appropriate company access and enabled pa
 4. Process payroll. Review individual results, gross-to-net totals and warnings. Use [PCB detail](/payroll/pcb-detail), [Statutory detail](/payroll/statutory-detail), [Transaction view](/payroll/transaction-view) and the run's employee detail to investigate differences.
 5. Correct issues using the supported draft, reset or reprocess action for the run's current state. Review its scope and consequences before confirming. A closed run must not be silently edited.
 6. Close the reviewed run when your payroll process permits it. Then complete the payment and statutory submission workflow.
+
+In Transaction View's **Transaction Detail**, **Total Overtime** appears in **Summary**. It is already included in gross pay. Individual overtime rate lines remain in the detail area; do not add the summary total to those lines as another payment. The displayed-grid export follows the same placement and retains the same amounts.
+
+Personnel Management's **Bank & Statutory → EPF Contribution** preserves the percentage shown after save and reopen, including decimal rates such as 14.5. The selected EPF category continues to determine which fields are editable and which validation and contribution rules apply.
 
 ## Corrections and special cases
 

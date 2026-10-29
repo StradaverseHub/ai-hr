@@ -18,7 +18,7 @@ export function SeniorMembership({ value }: { value: Value }) {
   const rows = value.rows.filter(row => `${row.name} ${row.employeeCode}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const changed = preview?.rows.filter(row => row.member !== row.nextMember) ?? [];
   const clearPreview = () => { setPreview(null); setError(''); setSaved(false); };
-  return <section className="space-y-4 rounded-lg border border-border p-5" aria-label={t('seniorMembershipTitle')}>
+  return <section id="senior-membership" className="space-y-4 rounded-lg border border-border p-5" aria-label={t('seniorMembershipTitle')}>
     <h2 className="font-semibold">{t('seniorMembershipTitle')}</h2>
     <p className="max-w-3xl text-sm text-muted-foreground">{t('seniorMembershipHelp')}</p>
     {legacy && <div className="space-y-3 rounded-md border border-amber-500/30 p-3 text-sm">
@@ -31,11 +31,11 @@ export function SeniorMembership({ value }: { value: Value }) {
       <div className="max-h-80 overflow-auto rounded-md border border-border">
         {rows.length === 0 && <p className="p-4 text-sm text-muted-foreground">{t('noSeniorMembershipMatches')}</p>}
         {rows.map(row => <label key={row.employmentId} className="flex cursor-pointer items-center gap-3 border-b border-border p-3 text-sm last:border-0">
-          <input type="checkbox" checked={selected.has(row.employmentId)} onChange={event => {
+          <input type="checkbox" disabled={!row.eligible&&!selected.has(row.employmentId)} checked={selected.has(row.employmentId)} onChange={event => {
             const checked = event.target.checked;
             setSelected(old => { const next = new Set(old); if (checked) next.add(row.employmentId); else next.delete(row.employmentId); return next; }); clearPreview();
           }} />
-          <span className="min-w-0 flex-1"><span className="font-medium">{row.name}</span><span className="ml-2 text-muted-foreground">{row.employeeCode}</span></span>
+          <span className="min-w-0 flex-1"><span className="font-medium">{row.name}</span><span className="ml-2 text-muted-foreground">{row.employeeCode} · JG {row.grade}</span></span>
           <span className="text-muted-foreground">{t(selected.has(row.employmentId) ? 'seniorPlanMember' : 'standardPlanMember')}</span>
         </label>)}
       </div>
@@ -49,7 +49,7 @@ export function SeniorMembership({ value }: { value: Value }) {
     {preview && <div className="space-y-3 rounded-md border border-border p-4">
       <h3 className="font-medium">{t('previewSeniorMembership')}</h3>
       {changed.length === 0 ? <p className="text-sm text-muted-foreground">{t('noSeniorMembershipChanges')}</p> : <ul className="divide-y divide-border">{changed.map(row => <li key={row.employmentId} className="py-2 text-sm">
-        <span className="font-medium">{row.name} · {row.employeeCode}</span><span className="ml-2">{t(row.member ? 'seniorPlanMember' : 'standardPlanMember')} → {t(row.nextMember ? 'seniorPlanMember' : 'standardPlanMember')}</span>
+        <span className="font-medium">{row.name} · {row.employeeCode} · JG {row.grade}</span><span className="ml-2">{t(row.member ? 'seniorPlanMember' : 'standardPlanMember')} → {t(row.nextMember ? 'seniorPlanMember' : 'standardPlanMember')}</span>
       </li>)}</ul>}
       {preview.convertingLegacy && <p className="text-sm text-muted-foreground">{t('seniorLegacyHelp')}</p>}
       <Button type="button" disabled={busy || !value.canEdit} onClick={() => start(async () => {

@@ -80,6 +80,9 @@ import {
   setEmploymentPayComponent,
   type FixedTransactionCycle,
   payRuleInputUnit,
+  payRuleAllowsDayByDay,
+  payRuleDerivesAmount,
+  isTxnUnit,
   PayRuleEvalError,
   type PayRule,
   AmountNotPositiveError,
@@ -339,6 +342,8 @@ type ResolvedIndividual = {
   targetCycle: FixedTransactionCycle;
   /** `payroll_individual_txn.source_ref` — this row's identity as a line OF THIS FILE. See `fileRowRef`. */
   sourceRef: string;
+  intendedCycleId?: string | null;
+  method?: string;
 };
 
 /** The rows already in the ledger for the employments a file names, read ONCE for the whole file. The
@@ -353,6 +358,8 @@ type LedgerRow = {
   amount: string;
   source: string | null;
   sourceRef: string | null;
+  quantity: string | null;
+  unit: string | null;
 };
 async function loadLedgerRows(ctx: SessionContext, employmentIds: string[]): Promise<LedgerRow[]> {
   if (employmentIds.length === 0) return [];
@@ -368,6 +375,8 @@ async function loadLedgerRows(ctx: SessionContext, employmentIds: string[]): Pro
         amount: payrollIndividualTxn.amount,
         source: payrollIndividualTxn.source,
         sourceRef: payrollIndividualTxn.sourceRef,
+        quantity: payrollIndividualTxn.quantity,
+        unit: payrollIndividualTxn.unit,
       })
       .from(payrollIndividualTxn)
       .where(
@@ -708,6 +717,8 @@ async function analyzeIndividual(
   };
   const stage: Stage[] = [];
   const digest = fileDigest(records);
+  const cycles = records.some(r=>r.__method) ? await withTenant(ctx,tx=>tx.select({id:payrollCycle.id,companyId:payrollCycle.companyId,code:payrollCycle.code,name:payrollCycle.name,runType:payrollCycle.runType}).from(payrollCycle).where(and(inArray(payrollCycle.companyId,[...new Set([...cat.employeeByCode.values()].filter((e):e is ResolvedEmployee=>e!=='ambiguous').map(e=>e.companyId))]),isNull(payrollCycle.archivedAt)))) : [];
+
 
   for (const [i, rec] of records.entries()) {
     const rowNum = i + 2;
@@ -749,8 +760,8 @@ async function analyzeIndividual(
     }
     // This file format has no separate processing-month column, so its existing default remains
     // the work date's month. Explicit period-keyed entry keeps its independently selected period.
-    const payPeriod = txnDate.slice(0, 7);
-    if (!isPayPeriod(payPeriod)) {
+    const payPeriod = rec.__method ? rec.__pay_period : txnDate.slice(0, 7);
+    if (!isPayPeriod(payPeriod) || !/^(?:0[1-9]|1[0-2])$/.test(payPeriod.slice(5))) {
       push(fail(base, 'txnDateInvalid', { value: txnDate }));
       continue;
     }
@@ -767,14 +778,24 @@ async function analyzeIndividual(
 
     // WHICH BOX THE OPERATOR HAS TO FILL IS THE PAY ITEM'S DECISION, not the template's. `payRuleInputUnit`
     // is the same resolver the entry form asks, so a file and the form cannot disagree about it.
-    const inputUnit = payRuleInputUnit(comp.rule);
+    const ruleInputUnit = payRuleInputUnit(comp.rule);
+    let inputUnit:string|null = ruleInputUnit;
+    if(rec.__method==='daily'&&(!payRuleAllowsDayByDay(comp.rule)||!payRuleDerivesAmount(comp.rule)||inputUnit==null)){
+      push(fail(base,'dailyItemUnsupported'));continue;
+    }
+    const typedUnit=(rec.__input_unit??'').trim().toLowerCase();
+    if(rec.__method==='monthly'&&typedUnit){
+      if(!isTxnUnit(typedUnit)||inputUnit!=null&&typedUnit!==inputUnit){push(fail(base,'inputTypeInvalid'));continue;}
+      inputUnit=typedUnit;
+    }
+
     const quantityRaw = (rec.quantity ?? '').trim();
     const quantity = quantityRaw === '' ? null : parseAmountCell(quantityRaw);
     if (quantityRaw !== '' && quantity == null) {
       push(fail(base, 'quantityInvalid', { value: quantityRaw }));
       continue;
     }
-    if (inputUnit != null && !(Number(quantity) > 0)) {
+    if (ruleInputUnit != null && !(Number(quantity) > 0)) {
       push(fail(base, inputUnit === 'hours' ? 'quantityRequiredHours' : 'quantityRequiredDays'));
       continue;
     }
@@ -818,7 +839,14 @@ async function analyzeIndividual(
       push(fail(base, 'cycleUnknown', { value: rec.payroll_cycle ?? '' }));
       continue;
     }
-    const targetCycle = (cycleRaw === '' ? 'regular' : cycleRaw) as FixedTransactionCycle;
+    let targetCycle = (cycleRaw === '' ? 'regular' : cycleRaw) as FixedTransactionCycle;
+    let intendedCycleId: string | null = null;
+    if(rec.__method){
+      const named=(rec.__configured_cycle??'').trim().toLowerCase();
+      const matching=cycles.filter(c=>c.companyId===emp.companyId&&(!named||[c.code,c.name,c.id].some(v=>v?.toLowerCase()===named)));
+      if(matching.length!==1){push(fail(base,matching.length?'cycleAmbiguous':'cycleUnknown',{value:rec.__configured_cycle??''}));continue;}
+      intendedCycleId=matching[0].id;targetCycle=matching[0].runType as FixedTransactionCycle;
+    }
 
     stage.push({
       rowNum,
@@ -840,6 +868,7 @@ async function analyzeIndividual(
         notes: (rec.notes ?? '').trim() || comp.name,
         targetCycle,
         sourceRef: fileRowRef(digest, rowNum),
+        intendedCycleId, method:rec.__method,
       },
     });
   }
@@ -855,6 +884,8 @@ async function analyzeIndividual(
   const ledger = await loadLedgerRows(ctx, [...new Set(staged.map((s) => s.r!.employmentId))]);
 
   const onFileKeys = new Set(ledger.map((l) => dupKey({ ...l, amount: Number(l.amount).toFixed(2) })));
+  const dailyKey = (r:{txnDate:string;quantity:string|number|null;unit:string|null}, key:string) => [key,r.txnDate,r.quantity==null?'':Number(r.quantity).toFixed(2),r.unit??''].join('|');
+  const onFileDailyKeys=new Set(ledger.map(l=>dailyKey(l,dupKey({...l,amount:Number(l.amount).toFixed(2)}))));
   // (employment, date, component, source_ref) — the exact key of `payroll_individual_txn_source_ref_uq`.
   // Checking it here rather than letting the index raise 23505 is what keeps the preview honest.
   const onFileRefs = new Set(
@@ -871,11 +902,12 @@ async function analyzeIndividual(
     }
     const r = s.r!;
     // The run of the resolved cycle, if it is writable and covers this employee — see `batchScopeIncludes`.
-    const target = allBatches.find(
+    const targets = allBatches.filter(
       (b) =>
         b.companyId === r.companyId &&
         b.payPeriod === r.payPeriod &&
         b.runType === r.targetCycle &&
+        (!r.intendedCycleId || b.payrollCycleId === r.intendedCycleId || b.payrollCycleId == null && cycles.filter(c=>c.companyId===r.companyId&&c.runType===r.targetCycle).length===1) &&
         (b.status === 'draft' || b.status === 'processed') &&
         // Read defensively, exactly as app/payroll/transactions/individual/page.tsx does: `listBatches`
         // does not project `scope` today, so this reads undefined and every run is treated as
@@ -885,16 +917,19 @@ async function analyzeIndividual(
         // narrowing correctly with no further change.
         batchScopeIncludes((b as { scope?: BatchScopeShape }).scope ?? null, r),
     );
+    if(r.method&&targets.length>1){rows.push(fail(s.base,'runAmbiguous'));continue;}
+    const target=targets[0];
+    if(r.method&&!target&&allBatches.some(b=>b.companyId===r.companyId&&b.payPeriod===r.payPeriod&&b.runType===r.targetCycle&&(!b.payrollCycleId||b.payrollCycleId===r.intendedCycleId)&&b.status==='closed')){rows.push(fail(s.base,'runNotWritable'));continue;}
     // A NAMED CYCLE WITH NO RUN IS A REFUSAL, NOT A FALLBACK. Falling back to period-keyed would rebuild
     // the exact defect this item is about: a row that names no cycle is collected by the month's REGULAR
     // run at attach-on-generate (core/payroll.ts), so a row saying "bonus" would be paid by the salary run
     // — which is what January did. c11e81aa lets a non-regular run collect rows naming ITS OWN cycle, which
     // does not soften this: with no such run there is nothing to collect the row at all.
-    if (!target && s.cycleStated && r.targetCycle !== 'regular') {
+    if (!r.method && !target && s.cycleStated && r.targetCycle !== 'regular') {
       rows.push(fail(s.base, 'runMissingForCycle', { cycle: r.targetCycle, period: r.payPeriod }));
       continue;
     }
-    const key = dupKey({
+    const baseKey = dupKey({
       batchId: target?.id ?? null,
       companyId: r.companyId,
       payPeriod: r.payPeriod,
@@ -902,7 +937,8 @@ async function analyzeIndividual(
       componentId: r.componentId,
       amount: r.amount.toFixed(2),
     });
-    if (onFileKeys.has(key)) {
+    const key=r.method==='daily'?dailyKey(r,baseKey):baseKey;
+    if ((r.method==='daily'?onFileDailyKeys:onFileKeys).has(key)) {
       rows.push(fail(s.base, 'duplicateInRun', { code: s.base.payItemCode, amount: r.amount.toFixed(2) }));
       continue;
     }
@@ -920,6 +956,9 @@ async function analyzeIndividual(
 
     // ── WARNINGS. These do NOT stop the write; they break the SILENCE that let January happen twice. ──
     const warnings: { reason: string; detail?: Record<string, string | number> }[] = [];
+    const enteredName=records[s.rowNum-2]?.employee_name;
+    const canonicalEmployee=cat.employeeByCode.get(s.base.employeeId.trim().toUpperCase());
+    if(r.method&&enteredName&&canonicalEmployee&&canonicalEmployee!=='ambiguous'&&enteredName.trim().toLocaleLowerCase()!==canonicalEmployee.name.trim().toLocaleLowerCase())warnings.push({reason:'employeeNameMismatch'});
     // The run has already produced payslips. Refusing here was considered and rejected: 5c65367d's
     // approved behaviour is that an imported row lands exactly as a typed one does and marks the run for
     // recalculation (the service's own `markBatchNeedsRecalc`), and test/payroll-txn-import.test.ts pins

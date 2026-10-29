@@ -1,3 +1,4 @@
+import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, desc, eq } from 'drizzle-orm';
@@ -40,9 +41,10 @@ describe('Rewards board items 8ad87ae8, 4e3e1af7, c28db2f0', () => {
     bu = { ...admin, userId, personId: p.id, roles: ['employee'], grants: undefined };
     await setRewardMember(admin, unitId, (await view()).unit.revision, userId, 'bu');
     const v = await view();
-    await saveRewardPolicy(admin, unitId, v.unit.revision, { ...v.unit.policy, effectiveFrom: today, patActual: 100, patTarget: 100, ranges: { '12': [300000, 500000, 700000] } });
+    await configureRewardFixture(admin, unitId, v.unit.revision, { ...v.unit.policy, effectiveFrom: today, patActual: 100, patTarget: 100, ranges: { '12': [300000, 500000, 700000] } });
     const v2 = await view();
     await saveRewardEntry(admin, unitId, v2.unit.revision, v2.rows[0].id, v2.rows[0].recommendation, { ...emptyFacts(), reviewed: true, talent: 'SCORE', performance: 'ME' });
+    await refreshRewardFixtureBudget(admin,unitId);
   });
   afterAll(closeAll);
 
@@ -70,7 +72,7 @@ describe('Rewards board items 8ad87ae8, 4e3e1af7, c28db2f0', () => {
       expect(kept.rows[0].payWindowKept).toBe(true);
       expect(kept.payWindow.standard).toEqual({ count: 0, payrollCents: 0 });
       expect((await lastEvent('reward-unit.pay-window-updated'))?.payload).toMatchObject({ entryId, before: false, after: true, reason: 'Payroll correction entered twice' });
-      await saveRewardPolicy(admin, unitId, kept.unit.revision, { ...kept.unit.policy, patActual: 110 });
+      await changeRewardFixtureInputs(admin,unitId,{patActual:110});
       expect((await view()).unit.policy.payWindowKeep).toEqual({ [employmentId]: 'Payroll correction entered twice' });
       const again = await view();
       await setRewardPayWindowKeep(admin, unitId, again.unit.revision, entryId, false, 'Correction confirmed as a real raise');

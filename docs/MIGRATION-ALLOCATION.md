@@ -7,6 +7,48 @@ owning release gate.
 
 ## Owner-approved combined board allocation — 29 October 2026
 
+### Successor work in progress after the installed expanded release
+
+The approved-board implementation session read staging at source/build
+968354c00a71df7baccd499eb60757a3307ed61e with 562 applied rows and maximum sequence
+1793330000012. Reachable AI commit dcea0fa560092c0940cf7872d5b4685093abac35 already
+reserves 0687_assistant_question_budget at index677/sequence1793330000013. Preserve
+that competing claim; it is not part of this session's current main/alpha baseline.
+
+The first combined development run exposed that the typed payroll provenance column needs the
+complete executable schema in every worker, rather than a draft applied only by selected tests.
+A fresh ref/worktree-claim check found only the two identical AI 0687 claims, and staging remained
+at 562 rows / sequence1793330000012. The candidate therefore carries that exact reserved predecessor
+from dcea0fa56 (SQL SHA256 ade48bffee0a5d6ebf72cdd61de36323f3650b81c805cd186701c5d8105e86c4)
+and its matching schema declaration, then appends the board successors below. This includes the
+schema prerequisite; the independent AI application delivery keeps its own owner and evidence.
+
+| Owner | Index | Sequence | Filename | Purpose |
+| --- | ---: | ---: | --- | --- |
+| Existing AI prerequisite | 677 | 1793330000013 | 0687_assistant_question_budget | Preserve the already claimed predecessor unchanged |
+| Approved transaction import | 678 | 1793330000014 | 0688_payroll_txn_import_attempts | Durable import outcomes, transaction ownership and safe batch revert |
+| Approved Rewards domain | 679 | 1793330000015 | 0689_rewards_unit_governance | Private unit inputs, independent confirmation and Senior plan decisions |
+| Approved Rewards configuration | 680 | 1793330000016 | 0690_rewards_policy_pair_membership | Enforce authoritative company/business-unit membership |
+
+The original 562-entry prefix is unchanged; this candidate has 566 entries. Board SQL remains
+unapplied and under review. The journaled SQL is the sole executable source; obsolete draft copies
+and fixture-side schema installation have been removed.
+Freeze and record final SQL hashes after repairs, rehearse the ordinary populated upgrade, and
+recheck the actual installed prefix before application. No database or deployment acceptance is
+implied by this source allocation.
+
+Final source SQL hashes for the review candidate (not an application receipt):
+
+| Migration | SHA256 |
+| --- | --- |
+| 0687_assistant_question_budget | ade48bffee0a5d6ebf72cdd61de36323f3650b81c805cd186701c5d8105e86c4 |
+| 0688_payroll_txn_import_attempts | d8cd57bbd6e0f73deab48353a527782750a5e5f040e945bb4020eace58b8348c |
+| 0689_rewards_unit_governance | b9ee4db5644da405b58f83303d8096c9a186b4808b5e943859759785536c68c3 |
+| 0690_rewards_policy_pair_membership | 9489f45cbf7ade53d2729d577d8da9045966f02954126fb72e14bc3fc7d4fd44 |
+
+Refresh canonical refs, competing reservations and the actual ledger before journal append.
+Do not skip the occupied 0687 predecessor, rewrite applied SQL or infer deployment authority.
+
 The owner subsequently expanded the same release to include Assistant file import and durable Bank & Statutory import. Both source owners agreed, and the owner explicitly approved this revised order while the central coordinator remained unavailable:
 
 | Index | Sequence | Migration | Exact SQL SHA256 |

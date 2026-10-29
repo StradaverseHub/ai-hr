@@ -4,12 +4,12 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 
-const ports = vi.hoisted(() => ({ scopedAdmin: vi.fn(), scopedSession: vi.fn(), requireModule: vi.fn(), list: vi.fn(), reviewStatus: vi.fn(), choices: vi.fn(), configuration: vi.fn(), shared: vi.fn() }));
+const ports = vi.hoisted(() => ({ scopedAdmin: vi.fn(), scopedSession: vi.fn(), requireModule: vi.fn(), list: vi.fn(), reviewStatus: vi.fn(), choices: vi.fn(), configuration: vi.fn(), shared: vi.fn(), memberships: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getLocale: async () => 'en', getTranslations: async (namespace: keyof typeof en = 'rewards') => (key: string) => key.split('.').reduce((v: any, k) => v[k], en[namespace]) }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: ports.scopedAdmin, scopedSession: ports.scopedSession }));
 vi.mock('../lib/authz', () => ({ requireModule: ports.requireModule }));
-vi.mock('../packs/rewards/service', () => ({ listRewardUnits: ports.list, listRewardReviewStatus: ports.reviewStatus, rewardCoverageForUnits: async () => [], rewardSetupChoices: ports.choices, getRewardConfiguration: ports.configuration, getRewardSeniorMembership: vi.fn(), rewardSharedPolicyChoices: ports.shared, getRewardCalendar: async () => ({ revision: 1, canEdit: true, values: { due: { bu: '2026-12-11' }, caseDue: null, offcycleDays: {} } }), rewardCalendarStages: ['bu'], rewardOffcycleSlaStages: ['bg'] }));
+vi.mock('../packs/rewards/service', () => ({ listRewardUnits: ports.list, listRewardReviewStatus: ports.reviewStatus, rewardCoverageForUnits: async () => [], rewardSetupChoices: ports.choices, getRewardConfiguration: ports.configuration, getRewardSeniorMembership: vi.fn(), rewardSharedPolicyChoices: ports.shared, rewardPolicyMemberships: ports.memberships, getRewardCalendar: async () => ({ revision: 1, canEdit: true, values: { due: { bu: '2026-12-11' }, caseDue: null, offcycleDays: {} } }), rewardCalendarStages: ['bu'], rewardOffcycleSlaStages: ['bg'] }));
 vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), memberAction: vi.fn(), policyAction: vi.fn(), deleteRewardAction: vi.fn(), calendarAction: vi.fn() }));
 vi.mock('../app/admin/rewards/actions', () => ({ cancelRewardAction: vi.fn() }));
 import AdminPage from '../app/admin/rewards/page';
@@ -37,6 +37,7 @@ beforeEach(() => {
   ports.list.mockResolvedValue([{ id: 'review', cycle: 'Annual review', kind: 'annual', year: 2026, company: 'Company', unit: 'Headquarters', status: 'draft',revision:1,canConfigure:true,deletionReason:null }]);
   ports.reviewStatus.mockResolvedValue({ rows: [{ id: 'review', cycleId: 'cycle', cycle: 'Annual review', kind: 'annual', year: 2026, companyId: 'company', company: 'Company', businessUnitId: 'bu', unit: 'Headquarters', status: 'draft', returnedTo: null, roles: ['bu'], seat: 'bu', holders: ['Fictional Reviewer'], due: null, daysUntilDue: null, waiting: true, salary: { poolShareBp: 700 }, bonus: { budgetShareBp: 1000 }, blocking: 0, exceptions: 0, laterSeats: [] }], emptyReason: null, year: 2026 });
   ports.shared.mockResolvedValue([]);
+  ports.memberships.mockResolvedValue([{ companyId: 'company', businessUnitId: 'bu' }]);
 });
 afterEach(cleanup);
 
@@ -53,6 +54,7 @@ describe('Rewards administration and review destinations', () => {
     expect(ports.requireModule).toHaveBeenCalledWith('rewards');
     expect(ports.list).toHaveBeenCalledWith(session, ['company']);
     expect(ports.shared).toHaveBeenCalledWith(session, ['company']);
+    expect(ports.memberships).toHaveBeenCalledWith(session, ['company']);
   });
   it('keeps review links in Manage and directs setup to Administration', async () => {
     show(await ReviewsPage({ searchParams: Promise.resolve({}) }));

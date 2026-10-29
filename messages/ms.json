@@ -7375,7 +7375,8 @@
             "employerBorne": "Ditanggung majikan",
             "gross": "Gaji kasar",
             "totalDeductions": "Jumlah potongan",
-            "net": "Gaji bersih"
+            "net": "Gaji bersih",
+            "totalOvertime": "Jumlah kerja lebih masa"
           },
           "subject": {
             "epf": "EPF",
@@ -7385,7 +7386,8 @@
             "tax": "Cukai",
             "yes": "Y",
             "no": "N"
-          }
+          },
+          "overtimeIncludedInGross": "Sudah termasuk dalam gaji kasar"
         },
         "panel": {
           "heading": "Pilih pekerja",
@@ -7464,6 +7466,18 @@
         "title": "Tetapan Maklumat Slip Gaji",
         "desc": "Pilih maklumat pekerjaan untuk slip gaji syarikat ini.",
         "cta": "Muat"
+      },
+      "corrections": {
+        "title": "Kawalan pembetulan gaji",
+        "label": "Benarkan tetapan semula gaji dan pembuangan gaji pekerja",
+        "description": "Paparkan Tetapkan semula gaji dan Buang Gaji Pekerja pada larian yang telah dikira tetapi belum diterbitkan. Mematikannya turut menyekat tindakan tersebut. Kebenaran dan semakan gaji sedia ada masih terpakai.",
+        "scope": "Terpakai kepada semua syarikat dalam penyewa ini. Menyimpan tetapan ini tidak mengubah hasil gaji.",
+        "readOnly": "Hanya pentadbir kumpulan boleh mengubah tetapan ini.",
+        "save": "Simpan tetapan pembetulan",
+        "saving": "Menyimpan…",
+        "saved": "Tetapan pembetulan gaji disimpan.",
+        "invalid": "Pilih nilai hidup atau mati yang sah.",
+        "failed": "Tetapan tidak dapat disimpan. Cuba lagi."
       }
     },
     "historyImport": {
@@ -8201,7 +8215,8 @@
       "fileError": {
         "emptyFile": "Fail itu tiada baris data.",
         "tooManyRows": "Fail itu melebihi 2,000 baris. Pecahkan dan import secara berperingkat.",
-        "missingColumns": "Fail itu kekurangan lajur wajib. Muat turun templat dan kekalkan tajuknya."
+        "missingColumns": "Fail itu kekurangan lajur wajib. Muat turun templat dan kekalkan tajuknya.",
+        "individualImportMoved": "Muat semula halaman ini dan gunakan import Transaksi Individu terkini yang merekodkan setiap kelompok dan hasil baris. Borang lama ini tidak mengimport sebarang transaksi."
       },
       "reason": {
         "employeeUnknown": "ID Pekerja {value} tidak wujud",
@@ -8236,11 +8251,17 @@
         "duplicateInRun": "Larian gaji ini sudah mempunyai {code} {amount} untuk pekerja ini — ia sudah ada di sana",
         "duplicateInFile": "Baris {row} fail ini sudah mempunyai {code} untuk pekerja ini pada jumlah yang sama",
         "duplicateImported": "Baris fail ini telah pun diimport",
-        "runMissingForCycle": "Tiada larian gaji {cycle} yang terbuka bagi {period} — cipta dahulu, kemudian import"
+        "runMissingForCycle": "Tiada larian gaji {cycle} yang terbuka bagi {period} — cipta dahulu, kemudian import",
+        "dailyItemUnsupported": "Item gaji ini tidak menyokong input harian yang dikira daripada kuantiti.",
+        "inputTypeInvalid": "Input Type mesti sepadan dengan unit manual yang disokong dan peraturan item gaji.",
+        "cycleAmbiguous": "Kitaran gaji tiada atau tidak jelas. Pilih kod atau nama tepat kitaran syarikat pekerja.",
+        "runAmbiguous": "Lebih daripada satu proses gaji boleh ditulis sepadan dengan kitaran dan bulan ini. Selesaikan pertindihan dahulu.",
+        "previewChanged": "Item gaji atau amaun dikira berubah selepas pratonton. Sahkan import baharu sebelum meneruskan."
       },
       "warning": {
         "runAlreadyProcessed": "Larian gaji {period} telah pun menghasilkan slip gaji. Baris ini akan ditambah dan larian ditanda untuk diproses semula — ia belum dibayar sehingga anda memprosesnya semula.",
-        "bonusRunExists": "Bulan ini mempunyai larian bonus, dan {code} sedang menuju larian gaji biasa. Isi “bonus” dalam lajur Kitaran Gaji untuk menghantarnya ke larian bonus."
+        "bonusRunExists": "Bulan ini mempunyai larian bonus, dan {code} sedang menuju larian gaji biasa. Isi “bonus” dalam lajur Kitaran Gaji untuk menghantarnya ke larian bonus.",
+        "employeeNameMismatch": "Nama pekerja tidak sepadan dengan Employee ID. Employee ID akan digunakan."
       }
     },
     "borang8a": {
@@ -9435,6 +9456,79 @@
       "acknowledge": "Saya faham. Gantikan rekod yang ditanda dengan nilai fail saya. Nilai asal kekal dalam sejarah audit dan tulis ganti boleh dibatalkan daripada Log File.",
       "confirmOverwrite": "Sahkan tulis ganti dan import",
       "importNewOnly": "Import rekod baharu sahaja"
+    },
+    "individualImport": {
+      "open": "Import Excel",
+      "log": "Log import",
+      "logHint": "Semak import transaksi individu dan hasil asal setiap baris.",
+      "back": "Transaksi Individu",
+      "close": "Tutup",
+      "workflow": "Muat turun templat yang sepadan, sahkan fail, semak baris dan sahkan transaksi yang sah.",
+      "choose": "1. Pilih kaedah input dan fail",
+      "method": "Kaedah input",
+      "monthly": "Satu Jumlah untuk Sebulan",
+      "daily": "Hari demi Hari",
+      "monthlyTemplate": "Muat turun templat bulanan",
+      "dailyTemplate": "Muat turun templat harian",
+      "dailyHint": "Import harian memerlukan item gaji yang menyokong input harian dan mengira amaun berdasarkan kuantiti.",
+      "file": "Fail",
+      "working": "Sedang diproses…",
+      "validate": "Sahkan fail",
+      "preview": "2. Pratonton dan sahkan",
+      "results": "Hasil import",
+      "details": "Lihat Butiran",
+      "previewCounts": "{total} baris · {valid} sah · {invalid} tidak sah",
+      "resultCounts": "{written} diimport · {failed} gagal · {invalid} tidak diimport",
+      "row": "Baris Excel",
+      "employee": "Pekerja",
+      "payItem": "Item gaji",
+      "effectiveDate": "Tarikh berkuat kuasa",
+      "amount": "Amaun",
+      "outcome": "Hasil",
+      "confirmHint": "Baris sah akan diimport. Baris tidak sah tidak akan mewujudkan transaksi. Semak amaran sebelum mengesahkan.",
+      "confirm": "Sahkan import",
+      "reference": "Rujukan kelompok",
+      "time": "Tarikh dan masa",
+      "user": "Rujukan pengguna",
+      "validated": "Disahkan",
+      "completed": "Selesai",
+      "reverted": "Dibatalkan",
+      "empty": "Tiada import dalam skop syarikat yang dipilih.",
+      "revert": "Batalkan Import",
+      "revertWarning": "Batalkan kelompok {id} ({file})? Hanya {count} transaksi yang diimport olehnya akan diterbalikkan. Log import asal dikekalkan.",
+      "revertControls": "Pembatalan ditolak jika rekod berubah atau kawalan gaji semasa melarangnya. Input manual dan import lain tidak terjejas.",
+      "revertConfirm": "Saya mengesahkan pembatalan kelompok import yang dinyatakan.",
+      "processedConfirm": "Jika kawalan gaji membenarkan perubahan rekod yang telah diproses, saya akui pengiraan semula gaji diperlukan.",
+      "revertedAt": "Dibatalkan pada",
+      "month": "Bulan gaji",
+      "cycle": "Kitaran gaji",
+      "quantity": "Kuantiti",
+      "remark": "Catatan",
+      "imported": "Diimport",
+      "invalid": "Tidak sah",
+      "failed": "Operasi tidak dapat diselesaikan. Sila cuba lagi.",
+      "revertFailed": "Kelompok tidak dapat dibatalkan. Semak rekod yang berubah atau proses gaji yang ditutup.",
+      "importAccessDenied": "Import ini tidak tersedia dalam skop syarikat semasa anda.",
+      "operationChanged": "Muat naik berubah. Pilih fail semula dan sahkan sebagai import baharu.",
+      "templateMismatch": "Tajuk lajur tidak sepadan dengan kaedah input. Gunakan templat yang sepadan tanpa mengubah tajuk.",
+      "fileTooLarge": "Fail terlalu besar. Pecahkannya kepada muat naik yang lebih kecil.",
+      "emptyFile": "Lembaran data tidak mengandungi baris.",
+      "tooManyRows": "Gunakan tidak lebih daripada 2,000 baris setiap fail.",
+      "invalidFormat": "Pilih fail Excel .xlsx.",
+      "revertUnavailable": "Kelompok ini tiada rekod import lengkap untuk dibatalkan.",
+      "importRowsChanged": "Rekod import telah berubah atau dibuang. Tiada rekod diterbalikkan.",
+      "confirmProcessedRevert": "Sahkan bahawa gaji yang diproses memerlukan pengiraan semula sebelum membatalkan kelompok ini.",
+      "instructions": "Isi lembaran pertama sahaja tanpa menukar tajuk lajur. Month with Year menggunakan YYYY-MM dan Effective Date menggunakan YYYY-MM-DD; bulan gaji berasingan daripada tarikh berkuat kuasa. Gunakan kod pekerja dan item gaji daripada lembaran rujukan. Pay Cycle menerima kod atau nama tepat kitaran aktif bagi syarikat pekerja; kosong hanya jika tepat satu kitaran tersedia. Nama pekerja adalah pilihan. Input Type bulanan menerima amount, qty, hours, days atau units mengikut peraturan item gaji. Amaun berformula dikira sistem. Setiap baris harian kekal berasingan dan mesti menggunakan peraturan harian berasaskan kuantiti. Kawalan pendua dan gaji sedia ada terpakai.",
+      "downloadErrors": "Muat turun ralat baris",
+      "older": "Import terdahulu",
+      "audit": "Sejarah import dan pembatalan",
+      "event": {
+        "validated": "Disahkan",
+        "confirmed": "Import disahkan",
+        "reverted": "Import dibatalkan",
+        "revert-refused": "Pembatalan ditolak"
+      },
+      "inputType": "Jenis input"
     }
   },
   "admin": {
@@ -20865,8 +20959,8 @@
     "effectiveFrom": "Salary effective date",
     "joinedBefore": "Joined before",
     "confirmedBy": "Confirmed by",
-    "blockedFrom": "Pay-change exclusion starts",
-    "blockedTo": "Pay-change exclusion ends",
+    "blockedFrom": "Tarikh mula pengecualian",
+    "blockedTo": "Tarikh akhir pengecualian",
     "seniorGrades": "Senior-plan grades (comma separated)",
     "rangesHelp": "Salary ranges: grade, minimum RM, midpoint RM, maximum RM (one grade per line)",
     "patActual": "Actual PAT (RM)",
@@ -21048,7 +21142,10 @@
       "retry": "Cuba lagi",
       "conflict": "{unit} sudah dalam {name} bagi {year}.",
       "excludedCompany": "Dikecualikan bagi",
-      "companyArchived": "Diarkibkan"
+      "companyArchived": "Diarkibkan",
+      "selectedSummary": "Syarikat dan unit perniagaan dipilih",
+      "membershipChanged": "Keahlian organisasi berubah; semak pilihan ini.",
+      "noMembership": "Tiada penetapan unit perniagaan semasa dalam Pengurusan Kakitangan."
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",
@@ -21374,7 +21471,129 @@
         "lumpReason": "Budget-cap exemption reason (blank = caps apply)",
         "payWindowKeep": "Eligibility and effective dates"
       }
-    }
+    },
+    "governance": {
+      "title": "Input bajet unit",
+      "unavailable": "Kawalan input unit tersedia selepas kemas kini pangkalan data yang diperlukan.",
+      "status": {
+        "legacy": "Asas bajet terdahulu disimpan — tidak berubah secara automatik",
+        "not-set": "Belum ditetapkan",
+        "provisional": "Sementara (9+3)",
+        "final": "Muktamad (Sebenar)"
+      },
+      "standardPool": "Kumpulan bonus Standard",
+      "hPool": "Kumpulan bonus JG H",
+      "oldNewDifference": "Kumpulan lama {old} → kumpulan baharu {next}; perbezaan {difference}",
+      "forecast": "Ramalan PAT 9+3 (MYR)",
+      "actual": "PAT sebenar (MYR)",
+      "target": "Sasaran PAT (MYR)",
+      "targetMonths": "Bulan bonus sasaran",
+      "multiplier": "Gantian pengganda unit",
+      "branchRatings": "Penarafan cawangan PPCH",
+      "chooseRating": "Pilih penarafan",
+      "changeReason": "Sebab perubahan ini",
+      "saveInputs": "Simpan input unit",
+      "patHelp": "Gunakan PAT sebenar apabila tersedia. Sebelum itu ramalan memberikan kumpulan sementara. Sifar atau nilai sementara menunjukkan Belum ditetapkan.",
+      "adoptLegacy": "Semak asas yang disimpan sebelum menggunakan input unit. Simpan untuk menggunakan angka ini secara jelas bagi semakan ini sahaja.",
+      "exemption": "Pengecualian had bajet",
+      "confirmed": "Disahkan dan dikunci",
+      "awaitingCheck": "Menunggu semakan bebas",
+      "independentConfirm": "Saya telah menyemak bukti — sahkan",
+      "proposeExemption": "Hantar pengecualian untuk kelulusan kedua",
+      "seniorTitle": "Pelan Senior — keputusan luar sistem",
+      "seniorHelp": "Ahli JG 21–23 yang dipilih berada di luar semua kumpulan standard dan token sekali gus. Pengguna Group Rewards kedua menyemak pemilihan serta amaun muktamad.",
+      "seniorTotals": "Pelan Senior (di luar kumpulan bajet): {count} orang, kenaikan {increment}, bonus {bonus}",
+      "selection": "Pengesahan keahlian Senior",
+      "noSenior": "Tiada ahli pelan Senior dipilih.",
+      "awaitingOffline": "Menunggu keputusan luar sistem",
+      "newBasic": "Gaji pokok baharu (MYR)",
+      "bonus": "Amaun bonus (MYR)",
+      "currentBasic": "Gaji pokok semasa",
+      "chooseAmountInput": "Masukkan peratus kenaikan atau gaji pokok baharu, bukan kedua-duanya.",
+      "increment": "Kenaikan %",
+      "reference": "Rujukan kelulusan luar sistem",
+      "approvalDate": "Tarikh kelulusan",
+      "evidence": "Bukti sokongan (PDF, PNG atau JPEG; sehingga 10 MB setiap fail)",
+      "proposeAward": "Hantar amaun untuk kelulusan kedua",
+      "history": "Sejarah keputusan unit",
+      "auditValues": "Semak nilai sebelum dan selepas",
+      "seniorTag": "Pelan Senior",
+      "handledSeparately": "Pelan Senior — dikendalikan berasingan",
+      "before": "Sebelum",
+      "after": "Selepas",
+      "errors": {
+        "invalid": "Semak nilai dan ketepatan yang disokong, kemudian cuba lagi.",
+        "independent": "Pengguna Group Rewards yang lain mesti menyemak dan mengesahkan keputusan ini.",
+        "stale": "Semakan atau rekod pekerja ini telah berubah. Muat semula, semak nilai semasa dan hantar lagi.",
+        "salary": "Gaji pokok baharu tidak boleh kurang daripada gaji pokok semasa.",
+        "evidence": "Gunakan bukti PDF, PNG atau JPEG, maksimum 10 MB setiap fail dan 10 MB keseluruhan.",
+        "authority": "Peranan semasa anda tidak membenarkan operasi atau rekod ini.",
+        "budget": "Semak PAT, status kumpulan, penarafan cawangan dan keperluan pengganda sebelum meneruskan.",
+        "decision": "Lengkapkan keahlian Senior atau keputusan luar sistem yang diperlukan dan dapatkan pengesahan bebas.",
+        "locked": "Kembalikan semakan kepada draf sebelum mengubah input yang dikunci."
+      },
+      "handpick": "Pilih ahli pelan Senior",
+      "reviewer": "Penyemak Group Rewards",
+      "events": {
+        "inputs": "Input unit dikemas kini",
+        "selectionProposed": "Pemilihan Senior dicadangkan",
+        "selectionConfirmed": "Pemilihan Senior disahkan",
+        "exemptionProposed": "Pengecualian dicadangkan",
+        "exemptionConfirmed": "Pengecualian disahkan",
+        "awardProposed": "Amaun Senior dicadangkan",
+        "awardConfirmed": "Amaun Senior disahkan"
+      }
+    },
+    "policyGrids": {
+      "ranges": "Julat gaji (MYR)",
+      "bonusMatrix": "Bulan bonus mengikut gred",
+      "branchFactors": "Faktor cawangan",
+      "import": "Import daripada Excel",
+      "copy": "Salin konfigurasi tahun lepas",
+      "columns": "Lajur Excel: {columns}",
+      "fileError": "Gunakan fail .xlsx sehingga 2 MB dengan lajur mengikut urutan.",
+      "choosePrevious": "Pilih konfigurasi tahun {year}",
+      "version": "Versi {version}",
+      "noPrevious": "Tiada konfigurasi tahun lepas yang dibenarkan.",
+      "cancel": "Batal",
+      "preview": "Pratonton nilai cadangan",
+      "proposalInvalid": "Betulkan sel tidak sah selepas digunakan; simpan masih disekat.",
+      "proposalHelp": "Semak nilai sebelum digunakan pada draf.",
+      "apply": "Gunakan pada draf",
+      "grade": "Gred",
+      "segment": "Segmen",
+      "minimum": "Minimum",
+      "midpoint": "Titik tengah",
+      "maximum": "Maksimum",
+      "noRange": "Tiada julat",
+      "invalidCell": "Masukkan nilai sah: gred lengkap, urutan menaik, UA = 0 dan ketepatan perpuluhan yang dibenarkan.",
+      "remove": "Buang",
+      "addSegment": "Tambah segmen"
+    },
+    "eligibilitySummary": {
+      "title": "Kelayakan dinilai berdasarkan",
+      "activeAsOf": "Aktif pada",
+      "joinedBefore": "Menyertai sebelum",
+      "confirmedBy": "Disahkan sebelum",
+      "effectiveFrom": "Gaji berkuat kuasa dari",
+      "salaryWindow": "Pengecualian kenaikan gaji: gaji asas berubah {from}–{to}. Bonus tertakluk kepada peraturan kelayakannya sendiri.",
+      "bonus": "Bonus: penarafan minimum {rating}.",
+      "notice": "Kecualikan pekerja dalam tempoh notis.",
+      "er": "Kecualikan pekerja dengan kes ER.",
+      "senior": "Pelan Senior (JG 21–23): dipilih dalam semakan; ganjaran akhir diurus berasingan.",
+      "seniorLegacy": "Keahlian pelan Senior mengikut peraturan gred terdahulu yang disimpan.",
+      "legacyDefaults": "Versi ini mendahului tetapan kelayakan yang jelas. Peraturan petikan sedia ada kekal; semak input yang dipaparkan sebelum menyimpan versi baharu.",
+      "unavailable": "Butiran kelayakan tidak tersedia. Muat semula konfigurasi sebelum meneruskan.",
+      "minimumRating": "Penarafan bonus minimum",
+      "legacySnapshot": "Terdahulu: status pada petikan sumber tersimpan",
+      "legacyMinimum": "Terdahulu: tiada penarafan bonus minimum yang disimpan."
+    },
+    "salaryExclusion": {
+      "label": "Pengecualian kenaikan gaji – gaji asas berubah antara",
+      "help": "Dikecualikan daripada kenaikan gaji dan asas kumpulan kenaikan gaji. Masih layak menerima bonus berdasarkan gaji asas terlaras dan dikira dalam kumpulan bonus. Pertukaran setara tanpa perubahan gaji asas tidak dikecualikan."
+    },
+    "unitInputsHelp": "Belanjawan unit, PAT, pengganda, penarafan cawangan dan pengecualian diurus berasingan dalam semakan.",
+    "unitInputsLink": "Buka input unit"
   },
   "identityEmail": {
     "title": "Penghantaran e-mel",
@@ -29384,7 +29603,8 @@
       "bonusReference": "Rujukan bulan bonus",
       "bonusByGrade": "Mengikut gred dan penarafan ({count, plural, other {# gred}})",
       "exemption": "Pengecualian had bajet",
-      "noExemption": "Tiada (had dikenakan)"
+      "noExemption": "Tiada (had dikenakan)",
+      "unitInputs": "Belanjawan, pengganda dan pengecualian unit ditetapkan berasingan dalam setiap semakan."
     },
     "actions": {
       "editDeadlines": "Edit tarikh akhir",

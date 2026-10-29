@@ -76,3 +76,7 @@ export {listCp38} from '../../core/cp38';
 // Shared personal/admin document vocabulary; these owners derive only saved snapshots.
 export { selectPayslipInformation, payslipInformationData } from '../../core/payslip-information';
 export { payslipSegmentOf } from '../../core/payslip-segment';
+export * from '../../core/individual-txn-import';
+
+export {lockNativePayrollPeriodsTx} from '../../core/payroll-period-lock';
+export {rewardPayrollProvenance} from './reward-provenance';
