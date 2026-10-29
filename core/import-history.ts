@@ -67,6 +67,13 @@ export async function lockImportAttemptTx(tx:Tx,ctx:SessionContext,attemptId:str
  const[row]=await tx.select().from(attempt).where(eq(attempt.id,attemptId)).for('update');
  if(!row||row.kind!==kind)fail('Import attempt unavailable.');return row;
 }
+/** Same principal/RLS checks and writer lock, without reloading the upload for every Bank row. */
+export async function lockImportAttemptHeaderTx(tx:Tx,ctx:SessionContext,attemptId:string,kind:ImportKind):Promise<Pick<ImportAttemptRow,'id'|'kind'>>{
+ if(!uuid.test(attemptId))fail('Import attempt unavailable.');
+ await principalTx(tx,ctx);
+ const[row]=await tx.select({id:attempt.id,kind:attempt.kind}).from(attempt).where(eq(attempt.id,attemptId)).for('update');
+ if(!row||row.kind!==kind)fail('Import attempt unavailable.');return row;
+}
 export function importAttemptEventsTx(tx:Tx,attemptId:string){return tx.select().from(historyEvent).where(eq(historyEvent.attemptId,attemptId)).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id));}
 export function importAttemptItemsTx(tx:Tx,attemptId:string){return tx.select().from(item).where(eq(item.attemptId,attemptId)).orderBy(asc(item.ordinal),asc(item.itemKey));}
 export type ImportAttemptItemRow=typeof item.$inferSelect;

@@ -66,7 +66,7 @@ describe('bounded Bank import attempt locks',()=>{
  it('retains the same principal, kind and tenant access checks',async()=>{
   const id=await attempt(),other=adminCtx(await seedBase());
   await expect(withTenant(other,tx=>headerLock(tx,other,id,'bank_statutory'))).rejects.toThrow('unavailable');
-  await expect(withTenant(ctx,tx=>headerLock(tx,ctx,id,'cost_allocation'))).rejects.toThrow('unavailable');
+  await expect(withTenant(ctx,tx=>headerLock(tx,ctx,id,'cost_allocations'))).rejects.toThrow('unavailable');
   await expect(withTenant(ctx,tx=>headerLock(tx,ctx,'invalid','bank_statutory'))).rejects.toThrow('unavailable');
   await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,ctx.userId!));
   await expect(withTenant(ctx,tx=>headerLock(tx,ctx,id,'bank_statutory'))).rejects.toThrow('Access changed');
@@ -78,7 +78,7 @@ describe('bounded Bank import attempt locks',()=>{
   void first.catch(()=>signal());
   try{
    await acquired;
-   await expect(withTenant(ctx,async tx=>{await tx.execute(sql`set local lock_timeout='150ms'`);return headerLock(tx,ctx,id,'bank_statutory');})).rejects.toThrow(/lock timeout/);
+   await expect(withTenant(ctx,async tx=>{await tx.execute(sql`set local lock_timeout='150ms'`);return headerLock(tx,ctx,id,'bank_statutory');})).rejects.toMatchObject({cause:{code:'55P03'}});
   }finally{release();await first;}
  });
 });

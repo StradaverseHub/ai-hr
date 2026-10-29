@@ -22,7 +22,7 @@ import { setPersonComplianceFields } from './workforce-commands';
 import {applyBankStatutoryPatchTx,bankStatutoryDiff,bankStatutoryRefusal,buildBankStatutoryPatch,readBankStatutoryStateTx,readTaxResidencyTx} from './bank-statutory-import';
 import {bankStatutoryStateFrom,MERGED_STATUTORY_COLUMNS,type BankStatutoryItemState,type BankStatutoryState} from '../lib/bank-statutory-import';
 import {BANK_STATUTORY_LEGACY_COLUMNS} from '../lib/import-sections';
-import {lockImportAttemptTx,recordImportEventTx,recordImportItemTx} from './import-history';
+import {lockImportAttemptTx,lockImportAttemptHeaderTx,recordImportEventTx,recordImportItemTx} from './import-history';
 /**
  * Item 2983802f — THE PER-SECTION IMPORTER: update people who already exist, one subject area at a time.
  *
@@ -961,7 +961,7 @@ export async function commitSectionImport(
       const wrote=await withTenant(ctx,async tx=>{
       await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
       // Writer locks first, then the attempt row: the same order as a revert, so the two cannot deadlock.
-      if(p.history)await lockImportAttemptTx(tx,ctx,p.history.attemptId,'bank_statutory');
+      if(p.history)await lockImportAttemptHeaderTx(tx,ctx,p.history.attemptId,'bank_statutory');
       const current=await analyze(ctx,p.section as ImportSection,p.records,tx,nominatedRow.result.rowNum);
       const fresh=current.resolved[nominatedRow.result.rowNum-1];
       if(current.preview.fileErrors.length||!fresh?.subject||fresh.subject.employmentId!==nominatedRow.subject!.employmentId||fresh.subject.personId!==nominatedRow.subject!.personId||fresh.subject.companyId!==nominatedRow.subject!.companyId||fresh.subject.employeeCode!==nominatedRow.subject!.employeeCode||fresh.subject.pack!==nominatedRow.subject!.pack)throw new Error('Section import inputs changed; preview the original file again.');
@@ -1113,7 +1113,7 @@ export async function analyzeBankImportBatch(ctx:SessionContext,records:ImportRe
 export async function applyBankImportRowTx(tx:Tx,ctx:SessionContext,input:{record:ImportRecord;binding:string;employmentId:string;companyId:string;attemptId:string;ordinal:number}){
  await tx.execute(sql`select app.access_workforce_write_lock()`);
  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
- await lockImportAttemptTx(tx,ctx,input.attemptId,'bank_statutory');
+ await lockImportAttemptHeaderTx(tx,ctx,input.attemptId,'bank_statutory');
  const current=await analyze(ctx,'bank_statutory',[input.record],tx);
  const row=current.resolved[0],subject=row?.subject;
  if(current.preview.fileErrors.length||!subject||subject.employmentId!==input.employmentId||subject.companyId!==input.companyId||row.result.errors.length)throw new Error('Personnel changed or access was removed. Validate this row again.');
