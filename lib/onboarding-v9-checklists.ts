@@ -1,6 +1,7 @@
+import type { CaseField } from './lifecycle-v9-case-form';
 import type { Checklist as V9Checklist } from './lifecycle-v9-model';
 import type { Checklist } from './onboarding-model';
-export type V9ChecklistProjection = { revision: number; owner: string | null; at: string; checklists: (V9Checklist & { ownerUserId?: string })[] };
+export type V9ChecklistProjection = { revision: number; caseFields?: CaseField[]; owner: string | null; at: string; checklists: (V9Checklist & { ownerUserId?: string })[] };
 /** Definitions have one owner. Native onboarding retains identity, instantiated tasks and history. */
 export function onboardingV9Checklists(projection: V9ChecklistProjection): Checklist[] {
   return projection.checklists.map(checklist => {

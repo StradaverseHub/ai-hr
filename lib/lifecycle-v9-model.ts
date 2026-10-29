@@ -1,3 +1,4 @@
+import { resolveV9CaseFields, missingV9CaseFields, offCaseFormValues, type CaseField } from './lifecycle-v9-case-form';
 import { v9LiteralAddress } from './lifecycle-v9-recipient';
 import { v9EmploymentRule } from './lifecycle-v9-employment';
 import type { EmploymentConfirmationDates } from './employment-confirmation';
@@ -135,12 +136,15 @@ export type Case = {
   submittedAt: string | null; closedAt: string | null; closedBy: Actor | null; closeReason: string;
   cancelReason: string; revokeDate: string; finalFigures: FinalFigures | null;
   review: { firstAt: string; open: number; overdue: number; notReturned: number; detail: string } | null;
+  caseValues?: Record<string,string>;
+  revokeMode?: 'lastday' | 'date';
   emailEdits?: Record<string, { subject: string; body: string }>;
   settlementOptions?: Pick<SettlementInput, 'override' | 'keepSourceDate' | 'offsetLeave' | 'reduceEncashment'>;
 };
 export type Config = {
   version: 9; revision: number; checklists: Checklist[]; templates: Template[];
   groupsRevision?: number;
+  caseForms?: Partial<Record<Module, CaseField[]>>;
   emails: EmailTemplate[]; workflows: Workflow[]; groups: Group[]; peopleOpsGroup: string | null;
   bpRules: { rules: Pick<Rules, 'businessGroup' | 'company' | 'department'>; userId: string }[];
   settlementPolicy?: SettlementPolicy;
@@ -218,6 +222,7 @@ export function submit(c: Case, config: Config, env: Environment): void {
   const anchor = c.module === 'onb' ? c.facts.joinDate : c.facts.lastDay;
   if (!validDate(anchor) || !c.facts.name || !c.facts.employeeNo || !c.facts.employmentId || !c.facts.company) throw new V9Error('Complete the employee, employee ID, company and anchor date before submitting.');
   if (c.module === 'off' && !(['Resignation', 'Termination', 'Contract end', 'Retirement', 'Non-confirmation'] as string[]).includes(c.facts.caseType)) throw new V9Error('Choose the offboarding case type.');
+  if (c.module === 'off') { const missing = missingV9CaseFields(resolveV9CaseFields('off',config.caseForms?.off), c.facts, offCaseFormValues(c), true); if (missing.length) throw new V9Error('Complete: '+missing.map(field=>field.label).join(', ')); }
   const selected = matchChecklist(config, c), extra: Record<string, number> = {};
   c.checklistId = selected.checklist?.id ?? null; c.checklistName = selected.checklist?.name ?? 'No checklist';
   c.tasks = (selected.checklist?.tasks ?? []).map(def => {
@@ -278,6 +283,13 @@ export function validateFieldValue(field: Field, value: string): void {
   }
 }
 export function documentFinal(d: Document): boolean { return ['completed', 'signed', 'acknowledged'].includes(d.status) || d.templateType === 'Attachment' && ['sent', 'opened'].includes(d.status); }
+/** Unused case-form answers never travel with a released document's merge snapshot. */
+export function documentMergeValues(document: Pick<Document,'blocks'|'fields'> & { edits?: Document['edits'] }, values: Record<string,string>): Record<string,string> {
+  const content=document.blocks.flatMap(block=>[document.edits?.[block.id]??block.text,block.rows??'',block.label??'']).join('\n');
+  const used=new Set([...content.matchAll(/\{(case\.[A-Za-z0-9_.-]+)\}/g)].map(match=>match[1]));
+  for(const field of document.fields)if(field.pmKey?.startsWith('case.'))used.add(field.pmKey);
+  return Object.fromEntries(Object.entries(values).filter(([key])=>!key.startsWith('case.')||used.has(key)));
+}
 export function generate(c: Case, config: Config, templateId: string, env: Environment): Document {
   const existing = activeDocument(c, templateId); if (existing) return existing;
   const template = config.templates.find(t => t.id === templateId && t.module === c.module);
@@ -287,7 +299,7 @@ export function generate(c: Case, config: Config, templateId: string, env: Envir
   const version = currentVersion(template); if (!version) throw new V9Error('Publish the document template before using it.');
   const values: Record<string, string> = {};
   for (const field of version.fields) if (field.pmKey) values[field.id] = env.mergeValues[field.pmKey] ?? '';
-  const doc: Document = { id: env.nextId(), templateId, version: version.version, name: template.name, status: 'draft', blocks: structuredClone(version.blocks), fields: structuredClone(version.fields), values, edits: {}, hrSignature: null, employeeSignature: null, createdAt: env.now, sentAt: null, mergeValues: { ...env.mergeValues }, templateType: template.type, hrStep: template.hrStep, employeeAck: template.employeeAck, signatoryUserId: env.signatoryUserId ?? null };
+  const doc: Document = { id: env.nextId(), templateId, version: version.version, name: template.name, status: 'draft', blocks: structuredClone(version.blocks), fields: structuredClone(version.fields), values, edits: {}, hrSignature: null, employeeSignature: null, createdAt: env.now, sentAt: null, mergeValues: documentMergeValues(version,env.mergeValues), templateType: template.type, hrStep: template.hrStep, employeeAck: template.employeeAck, signatoryUserId: env.signatoryUserId ?? null };
   c.documents.push(doc); appendLog(c, env, 'document.generated', `${doc.name} version ${doc.version}`); return doc;
 }
 function linkedTasks(c: Case, doc: Document, action: TaskDefinition['documentAction']): void {
@@ -343,7 +355,7 @@ export function signDocument(c: Case, config: Config, id: string, role: 'employe
     }
     doc.employeeSignature = { ...signature, at: env.now, by: { ...env.actor } };
     doc.status = hrStep === 'after' ? 'countersign' : employeeAck ? 'acknowledged' : 'signed';
-    for (const field of doc.fields) if (field.pmKey && field.owner === 'employee' && (!field.when || doc.values[field.when.field] === field.when.value) && (doc.values[field.id] ?? '') !== (doc.mergeValues?.[field.pmKey] ?? '') && !c.pmChanges.some(p => p.documentId === id && p.field === field.pmKey)) c.pmChanges.push({ id: env.nextId(), documentId: id, field: field.pmKey, before: doc.mergeValues?.[field.pmKey] ?? '', after: doc.values[field.id] ?? '', sourceRevision: c.sourceRevision, status: 'proposed' });
+    for (const field of doc.fields) if (field.pmKey && !field.pmKey.startsWith('case.') && field.owner === 'employee' && (!field.when || doc.values[field.when.field] === field.when.value) && (doc.values[field.id] ?? '') !== (doc.mergeValues?.[field.pmKey] ?? '') && !c.pmChanges.some(p => p.documentId === id && p.field === field.pmKey)) c.pmChanges.push({ id: env.nextId(), documentId: id, field: field.pmKey, before: doc.mergeValues?.[field.pmKey] ?? '', after: doc.values[field.id] ?? '', sourceRevision: c.sourceRevision, status: 'proposed' });
   } else {
     if (!doc.signatoryUserId || doc.signatoryUserId !== env.actor.id) throw new V9Error('Only the designated company HR signatory can sign this document.', 'forbidden');
     if (hrStep === 'before' && doc.status !== 'draft' || hrStep === 'after' && doc.status !== 'countersign' || hrStep === 'none') throw new V9Error('This document does not need an HR signature at this stage.', 'conflict');
@@ -477,7 +489,7 @@ export function previewEmail(c: Case, config: Config, emailId: string, env: Envi
 }
 function emailSensitiveKeys(config: Config): Set<string> {
   const identityKeys = ['icNo', 'passportNo', 'taxNo', 'epfNo', 'bankAcc', 'bankAccount', 'bankAccountNo', 'spIc', 'spTax'];
-  return new Set([...identityKeys.flatMap(key => [key, `employee.${key}`]), ...config.templates.flatMap(t => t.versions.flatMap(v => v.fields.filter(f => f.sensitive).flatMap(f => [f.id, ...(f.pmKey ? [f.pmKey, `employee.${f.pmKey}`] : [])])))]);
+  return new Set([...identityKeys.flatMap(key => [key, `employee.${key}`, `case.${key}`]), ...(['onb','off'] as const).flatMap(module => resolveV9CaseFields(module,config.caseForms?.[module]).filter(field=>field.hrOnly).map(field=>`case.${field.key}`)), ...config.templates.flatMap(t => t.versions.flatMap(v => v.fields.filter(f => f.sensitive).flatMap(f => [f.id, ...(f.pmKey ? [f.pmKey, `employee.${f.pmKey}`] : [])])))]);
 }
 
 function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 'notify' }>, key: string, workflowId: string | null, env: Environment, test = false): string | null {

@@ -1,3 +1,4 @@
+import { resolveV9CaseFields, missingV9CaseFields, validateV9CaseValue, type CaseField } from './lifecycle-v9-case-form';
 import { v9EmploymentRule } from './lifecycle-v9-employment';
 import type { EmploymentConfirmationDates } from './employment-confirmation';
 /**
@@ -104,6 +105,7 @@ export type Config = {
     };
     recentActiveDays: number;
     v9ChecklistRevision?: number;
+    v9CaseFields?: CaseField[];
 };
 export type Actor = {
     id: Id;
@@ -223,6 +225,9 @@ export type Case = {
     deviceType: string;
     floor: string;
     notes: string;
+    /** Ephemeral HR-private values; the storage service strips these from public case rows. */
+    caseValues?: Record<string,string>;
+    caseContactEmail?: string;
     equipmentOverrides?: Record<string, { group?: string; method?: 'rr' | 'manual'; due?: number }>;
     selected: Id[];
     extras: Extra[];
@@ -528,7 +533,12 @@ export function addItem(config: Config, c: Case, r: Requisition, cat: Catalogue,
 }
 const REQUIRED_FIELD_LABELS: Record<string, string> = { fullName: 'Full name', joinDate: 'Join date', title: 'Job title', department: 'Department', company: 'Company', supervisor: 'Supervisor', hiring: 'New hire or replacement', replacedEmployee: 'Employee being replaced' };
 /** Shared required-field projection for validation and the onboarding preparation UI. */
-export function missingCaseFields(c: Case): string[] {
+export function nativeCaseFormValues(c: Case): Record<string,string> {
+    const f = effectiveFacts(c);
+    return { ...c.caseValues, name: f.fullName, empNo: f.employeeId, joinInput: f.joinDate, position: f.title, dept: f.department, company: f.company, group: f.businessGroup, supervisor: f.supervisor, ta: f.gbsTa, hireType: c.hiring, replacing: c.replacedEmployee, email: c.caseContactEmail ?? f.email, floor: c.floor, costCentre: f.costCentre, icNo: f.ic, passportNo: f.passport, notes: c.notes };
+}
+export function missingCaseFields(c: Case, config?: Config, hr = true): string[] {
+    if (config?.v9CaseFields) return missingV9CaseFields(resolveV9CaseFields('onb', config.v9CaseFields), effectiveFacts(c), nativeCaseFormValues(c), hr).map(field => field.key);
     const f = effectiveFacts(c), missing = ['fullName', 'joinDate', 'title', 'department', 'company', 'supervisor'].filter(k => !f[k as keyof Facts]?.trim());
     if (!c.hiring)
         missing.push('hiring');
@@ -536,13 +546,13 @@ export function missingCaseFields(c: Case): string[] {
         missing.push('replacedEmployee');
     return missing;
 }
-export function validateCase(config: Config, c: Case) {
+export function validateCase(config: Config, c: Case, hr = true) {
     if (c.checklistOverride && c.checklistOverride !== 'none' && !config.checklists.some(cl => cl.id === c.checklistOverride) && !(c.personnelStatus === 'Active' && c.confirmedChecklist?.id === c.checklistOverride))
         fail('The selected checklist is unavailable. Choose another checklist or No checklist.', 'invalid', ['checklistOverride']);
-    const f = effectiveFacts(c), missing = missingCaseFields(c);
+    const f = effectiveFacts(c), missing = missingCaseFields(c, config, hr);
     validateEquipmentOverrides(config, c);
     if (missing.length)
-        fail('Complete: ' + missing.map(key => REQUIRED_FIELD_LABELS[key] ?? key).join(', '), 'required', missing);
+        fail('Complete: ' + missing.map(key => config.v9CaseFields?.find(field => field.key === key)?.label || REQUIRED_FIELD_LABELS[key] || key).join(', '), 'required', missing);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(f.joinDate) || Number.isNaN(Date.parse(f.joinDate)) || new Date(f.joinDate).toISOString().slice(0, 10) !== f.joinDate)
         fail('Enter a valid join date.', 'invalid', ['joinDate']);
     if (f.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email))
@@ -569,7 +579,7 @@ export function submitCase(config: Config, c: Case, a: Actor, env: Environment) 
         fail('Reopen the case before submitting.');
     if (c.state === 'submitted' && !c.reconcileNeeded)
         return;
-    validateCase(config, c);
+    validateCase(config, c, a.hr);
     const chosen = matchChecklist(config, c).checklist;
     if (c.state === 'pending' && !chosen)
         fail('Choose an onboarding checklist before submitting.', 'required', ['checklistOverride']);
@@ -675,15 +685,30 @@ export function reconcileItems(config: Config, c: Case, a: Actor, env: Environme
         r.noteVersion++;
     }
 }
-export type CasePatch = Partial<Pick<Case, 'hiring' | 'replacedEmployee' | 'deviceType' | 'floor' | 'notes' | 'selected' | 'extras' | 'checklistOverride' | 'equipmentOverrides'>> & {
+export type CasePatch = Partial<Pick<Case, 'hiring' | 'replacedEmployee' | 'deviceType' | 'floor' | 'notes' | 'selected' | 'extras' | 'checklistOverride' | 'equipmentOverrides' | 'caseValues' | 'caseContactEmail'>> & {
     local?: Partial<Facts>;
 };
 export function saveCase(config: Config, c: Case, patch: CasePatch, a: Actor, env: Environment) {
     moduleActor(a);
     if (c.state === 'cancelled')
         fail('Reopen the case to edit it.');
+    if (patch.caseValues !== undefined || patch.caseContactEmail !== undefined) {
+        if (!config.v9CaseFields) fail('Configure the V9 case form before editing its values.');
+        const fields = resolveV9CaseFields('onb', config.v9CaseFields);
+        for (const [key,value] of Object.entries(patch.caseValues ?? {})) {
+            const field = fields.find(field => field.key === key && field.custom);
+            if (!field) fail('Choose an existing custom case field.');
+            if (field.hrOnly && !a.hr) fail('Company HR access is required for this case field.', 'forbidden');
+            try { validateV9CaseValue(field, value); } catch (error) { fail(error instanceof Error ? error.message : 'Review the case field.'); }
+        }
+        if (patch.caseContactEmail !== undefined && fields.find(field=>field.key==='email')?.hrOnly && !a.hr) fail('Company HR access is required for this case field.', 'forbidden');
+        if (patch.caseContactEmail !== undefined && patch.caseContactEmail && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(patch.caseContactEmail)) fail('Enter a valid new hire email.');
+        if (patch.caseValues !== undefined) c.caseValues = { ...c.caseValues, ...structuredClone(patch.caseValues) };
+        if (patch.caseContactEmail !== undefined) c.caseContactEmail = patch.caseContactEmail;
+    }
     const priorChecklist = JSON.stringify(matchChecklist(config, c).checklist);
     for (const [key, value] of Object.entries(patch.local ?? {})) {
+        if (config.v9CaseFields && value !== effectiveFacts(c)[key as keyof Facts]) fail('This field comes from Personnel Management. Edit it there.');
         if (c.source[key as keyof Facts] !== undefined && value !== c.source[key as keyof Facts])
             fail('This field comes from Personnel Management. Edit it there.');
         if (['costCentre', 'ic', 'passport'].includes(key) && !a.hr)
@@ -697,7 +722,7 @@ export function saveCase(config: Config, c: Case, patch: CasePatch, a: Actor, en
     if (c.state === 'submitted') {
         if (priorChecklist !== JSON.stringify(matchChecklist(config, c).checklist))
             c.reconcileNeeded = true;
-        validateCase(config, c);
+        validateCase(config, c, a.hr);
         reconcileItems(config, c, a, env);
     }
     log(c, a, env, 'case.saved');

@@ -384,7 +384,7 @@ GRANT EXECUTE ON FUNCTION app.onboarding_v9_group_references() TO ai_hr_app;
 -- Only shared checklist definitions cross this projection; document bodies and case data stay private.
 CREATE OR REPLACE FUNCTION app.onboarding_v9_checklists() RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
- SELECT jsonb_build_object('revision',c.revision,'at',to_char(coalesce((SELECT min(r.created_at) FROM lc_v9_config_revision r WHERE r.tenant_id=c.tenant_id),c.updated_at) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'owner',(
+ SELECT jsonb_build_object('revision',c.revision,'caseFields',c.data->'caseForms'->'onb','at',to_char(coalesce((SELECT min(r.created_at) FROM lc_v9_config_revision r WHERE r.tenant_id=c.tenant_id),c.updated_at) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'owner',(
    SELECT r.actor_user_id FROM lc_v9_config_revision r WHERE r.tenant_id=c.tenant_id AND r.actor_user_id IS NOT NULL ORDER BY r.revision LIMIT 1
  ),'checklists',coalesce((SELECT jsonb_agg(x ORDER BY ord) FROM jsonb_array_elements(c.data->'checklists') WITH ORDINALITY AS d(x,ord) WHERE x->>'module'='onb'),'[]'::jsonb))
  FROM lc_v9_config c WHERE c.tenant_id=app.current_tenant_id() AND (
@@ -393,6 +393,49 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
 $$;
 REVOKE ALL ON FUNCTION app.onboarding_v9_checklists() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onboarding_v9_checklists() TO ai_hr_app;
+
+-- Module editors may use ordinary case fields without gaining HR-private source or answer access.
+CREATE OR REPLACE FUNCTION app.onboarding_v9_case_values(p_case uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE c lc_onboarding_case%ROWTYPE; p jsonb; cfg jsonb; result jsonb; hr boolean;
+BEGIN
+ IF app.current_user_id() IS NULL OR app.login_blocked(app.current_user_id()) OR NOT app.onboarding_page_access() THEN RETURN NULL; END IF;
+ SELECT * INTO c FROM lc_onboarding_case WHERE id=p_case AND tenant_id=app.current_tenant_id(); IF NOT FOUND THEN RETURN NULL; END IF;
+ SELECT data INTO p FROM lc_onboarding_private WHERE case_id=c.id AND tenant_id=c.tenant_id;
+ SELECT data INTO cfg FROM lc_v9_config WHERE tenant_id=c.tenant_id;
+ hr:=app.is_admin_for(c.company_id);
+ SELECT jsonb_build_object('caseValues',coalesce(jsonb_object_agg(a.key,a.value) FILTER(WHERE hr OR EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(cfg->'caseForms'->'onb','[]'::jsonb)) f WHERE f->>'key'=a.key AND coalesce((f->>'hrOnly')::boolean,false)=false)),'{}'::jsonb)) INTO result FROM jsonb_each(coalesce(p->'caseValues','{}'::jsonb)) a;
+ IF p ? 'caseContactEmail' AND (hr OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(cfg->'caseForms'->'onb','[]'::jsonb)) f WHERE f->>'key'='email' AND f->>'hrOnly'='true')) THEN result:=result||jsonb_build_object('caseContactEmail',p->'caseContactEmail'); END IF;
+ RETURN result;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_v9_case_values(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_v9_case_values(uuid) TO ai_hr_app;
+
+CREATE OR REPLACE FUNCTION app.onboarding_v9_save_case_values(p_case uuid,p_revision integer,p_patch jsonb) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE c lc_onboarding_case%ROWTYPE; prior jsonb; cfg jsonb; answers jsonb;
+BEGIN
+ IF app.current_user_id() IS NULL OR app.login_blocked(app.current_user_id()) OR NOT app.onboarding_page_access() THEN RAISE EXCEPTION 'Onboarding access is required'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
+ PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':onboarding',0));
+ SELECT * INTO c FROM lc_onboarding_case WHERE id=p_case AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF NOT FOUND OR c.revision<>p_revision OR c.data->>'state' NOT IN ('pending','submitted') OR NOT EXISTS(SELECT 1 FROM lc_onboarding_case written WHERE written.id=c.id AND written.xmin::text::bigint=(txid_current()%4294967296)) THEN RAISE EXCEPTION 'This case changed'; END IF;
+ IF jsonb_typeof(p_patch) IS DISTINCT FROM 'object' OR EXISTS(SELECT 1 FROM jsonb_object_keys(p_patch) k WHERE k NOT IN ('caseValues','caseContactEmail')) THEN RAISE EXCEPTION 'Invalid case field patch'; END IF;
+ SELECT data INTO cfg FROM lc_v9_config WHERE tenant_id=c.tenant_id;
+ answers:=coalesce(p_patch->'caseValues','{}'::jsonb);
+ IF jsonb_typeof(answers) IS DISTINCT FROM 'object' OR (SELECT count(*) FROM jsonb_each(answers))>100 OR EXISTS(SELECT 1 FROM jsonb_each(answers) a WHERE jsonb_typeof(a.value)<>'string' OR length(a.value#>>'{}')>10000 OR a.key IN ('name','empNo','joinInput','position','dept','company','group','supervisor','ta','hireType','replacing','email','floor','costCentre','icNo','passportNo','notes','__proto__','constructor','prototype') OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(cfg->'caseForms'->'onb','[]'::jsonb)) f WHERE f->>'key'=a.key AND coalesce((f->>'hrOnly')::boolean,false)=false)) THEN RAISE EXCEPTION 'This case field requires HR access or is unavailable'; END IF;
+ IF p_patch ? 'caseContactEmail' AND (jsonb_typeof(p_patch->'caseContactEmail')<>'string' OR length(p_patch->>'caseContactEmail')>254 OR (p_patch->>'caseContactEmail')<>'' AND (p_patch->>'caseContactEmail') !~ '^[^[:space:]<>@]+@[^[:space:]<>@]+\.[^[:space:]<>@]+$' OR EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(cfg->'caseForms'->'onb','[]'::jsonb)) f WHERE f->>'key'='email' AND f->>'hrOnly'='true')) THEN RAISE EXCEPTION 'This case contact is unavailable'; END IF;
+ SELECT data INTO prior FROM lc_onboarding_private WHERE case_id=c.id AND tenant_id=c.tenant_id FOR UPDATE;
+ IF prior IS NOT NULL THEN INSERT INTO lc_onboarding_private_revision(case_id,revision,tenant_id,company_id,data) VALUES(c.id,c.revision-1,c.tenant_id,c.company_id,prior) ON CONFLICT DO NOTHING; END IF;
+ prior:=coalesce(prior,jsonb_build_object('source','{}'::jsonb,'local','{}'::jsonb));
+ prior:=jsonb_set(prior,'{caseValues}',coalesce(prior->'caseValues','{}'::jsonb)||answers,true);
+ IF p_patch ? 'caseContactEmail' THEN prior:=jsonb_set(prior,'{caseContactEmail}',p_patch->'caseContactEmail',true); END IF;
+ INSERT INTO lc_onboarding_private(case_id,tenant_id,company_id,data) VALUES(c.id,c.tenant_id,c.company_id,prior) ON CONFLICT(case_id) DO UPDATE SET data=EXCLUDED.data;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_v9_save_case_values(uuid,integer,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_v9_save_case_values(uuid,integer,jsonb) TO ai_hr_app;
 
 -- A linked employee sees released native documents and their own tasks, never HR-private proposals or drafts.
 CREATE OR REPLACE FUNCTION app.onboarding_v9_work() RETURNS SETOF jsonb

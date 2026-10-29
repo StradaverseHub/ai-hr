@@ -22,7 +22,7 @@ BEGIN
    INTO state,parent_state,subject FROM lc_v9_case c
    WHERE c.id=job.case_id AND c.tenant_id=job.tenant_id AND c.company_id=job.company_id;
  ELSE
-  SELECT p.data->'lifecycleV9',c.data->>'state',p.data->'lifecycleV9Subject',CASE WHEN c.data->'source' ? 'email' THEN c.data->'source'->>'email' ELSE c.data->'local'->>'email' END
+  SELECT p.data->'lifecycleV9',c.data->>'state',p.data->'lifecycleV9Subject',CASE WHEN p.data ? 'caseContactEmail' THEN p.data->>'caseContactEmail' WHEN c.data->'source' ? 'email' THEN c.data->'source'->>'email' ELSE c.data->'local'->>'email' END
    INTO state,parent_state,subject,contact_email FROM lc_onboarding_case c JOIN lc_onboarding_private p ON p.case_id=c.id AND p.tenant_id=c.tenant_id
    WHERE c.id=job.onboarding_case_id AND c.tenant_id=job.tenant_id AND c.company_id=job.company_id
     AND (p.data->'lifecycleV9Subject'->>'personId') IS NOT DISTINCT FROM c.data->>'personId'

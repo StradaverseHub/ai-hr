@@ -1,3 +1,4 @@
+import { defaultV9CaseFields } from '../../../lib/lifecycle-v9-case-form';
 import { documentFinal } from '../../../lib/lifecycle-v9-model';
 import type { NativeDocumentState } from '../../../lib/lifecycle-v9-native';
 import { onboardingV9Checklists, type V9ChecklistProjection } from '../../../lib/onboarding-v9-checklists';
@@ -34,7 +35,7 @@ async function configTx(tx: Tx, ctx: SessionContext): Promise<{
     const [extension] = await tx.execute<{ available: boolean }>(sql`select to_regprocedure('app.onboarding_v9_checklists()') is not null as available`);
     if (extension?.available) {
         const [row] = await tx.execute<{ data: M.Config; revision: number; projection: V9ChecklistProjection | null }>(sql`select data,revision,app.onboarding_v9_checklists() as projection from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
-        if (row?.projection) return { config: { ...row.data, checklists: onboardingV9Checklists(row.projection), v9ChecklistRevision: row.projection.revision }, revision: row.revision };
+        if (row?.projection) return { config: { ...row.data, checklists: onboardingV9Checklists(row.projection), v9ChecklistRevision: row.projection.revision, v9CaseFields: row.projection.caseFields ?? defaultV9CaseFields('onb') }, revision: row.revision };
         return { config: row?.data ?? M.defaultConfig(''), revision: row?.revision ?? 0 };
     }
     const [row] = await tx.select().from(configs).where(eq(configs.tenantId, ctx.tenantId));
@@ -94,6 +95,8 @@ function stripPrivate(c: M.Case) {
     const value = structuredClone(c), data: {
         source: Partial<M.Facts>;
         local: Partial<M.Facts>;
+        caseValues?: Record<string,string>;
+        caseContactEmail?: string;
     } = { source: {}, local: {} };
     for (const k of privateKeys) {
         if (value.source[k] !== undefined)
@@ -103,6 +106,9 @@ function stripPrivate(c: M.Case) {
         delete value.source[k];
         delete value.local[k];
     }
+    if (value.caseValues !== undefined) data.caseValues = value.caseValues;
+    if (value.caseContactEmail !== undefined) data.caseContactEmail = value.caseContactEmail;
+    delete value.caseValues; delete value.caseContactEmail;
     return { value, data };
 }
 async function storeTx(tx: Tx, ctx: SessionContext, row: Row, c: M.Case, hr: boolean) {
@@ -207,7 +213,12 @@ async function loadTx(tx: Tx, ctx: SessionContext, id: string, lock = false) {
         if (s) {
             Object.assign(c.source, s.data.source);
             Object.assign(c.local, s.data.local);
+            c.caseValues = s.data.caseValues; c.caseContactEmail = s.data.caseContactEmail;
         }
+    }
+    if (!actor.hr && actor.module && config.v9CaseFields) {
+        const [form] = await tx.execute<{ values: {caseValues?:Record<string,string>;caseContactEmail?:string} | null }>(sql`select app.onboarding_v9_case_values(${id}::uuid) as values`);
+        c.caseValues = form?.values?.caseValues; c.caseContactEmail = form?.values?.caseContactEmail;
     }
     return { row, config, actor, c };
 }
@@ -245,6 +256,7 @@ export async function onboardingDetail(ctx: SessionContext, id: string, mode: 'c
             visible.source = { fullName: f.fullName, joinDate: f.joinDate, businessGroup: f.businessGroup, company: f.company, title: f.title };
             visible.tasks = visible.tasks.filter(t => t.assignee === actor.id || thread.some(n => n.data.context === t.id && n.data.mentions.includes(actor.id)));
         }
+        if (mode !== 'case') { delete visible.caseValues; delete visible.caseContactEmail; }
         if (mode === 'requisition' && !actor.module && selectedReq) {
             visible = structuredClone(c);
             visible.tasks = [];
@@ -506,6 +518,10 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
         if (command.type === 'submit' || command.type === 'saveSubmit')
             await assignRoleTasksTx(tx, c);
         await storeTx(tx, ctx, row, c, actor.hr);
+        if (!actor.hr && (command.type === 'save' || command.type === 'saveSubmit') && (command.patch.caseValues !== undefined || command.patch.caseContactEmail !== undefined)) {
+            const patch = { ...(command.patch.caseValues !== undefined ? {caseValues:command.patch.caseValues} : {}), ...(command.patch.caseContactEmail !== undefined ? {caseContactEmail:command.patch.caseContactEmail} : {}) };
+            await tx.execute(sql`select app.onboarding_v9_save_case_values(${c.id}::uuid,${row.revision + 1},${JSON.stringify(patch)}::jsonb)`);
+        }
         await auditTx(tx, ctx, c, command.type);
         if (config.v9ChecklistRevision && actor.hr) {
             const { v9NativeTransitionTx } = await import('../v9/service');
@@ -630,6 +646,7 @@ async function saveConfig(ctx: SessionContext, revision: number, input: M.Config
         if (old.v9ChecklistRevision && !isDeepStrictEqual(old.checklists, next.checklists))
             M.fail('Manage these checklists in the V9 workspace.');
         if (old.v9ChecklistRevision) next.v9ChecklistRevision = old.v9ChecklistRevision;
+        if (!isDeepStrictEqual(old.v9CaseFields, next.v9CaseFields)) M.fail('Manage the case form in the V9 workspace.');
         jsonSize(next);
         if (JSON.stringify(old.access) !== JSON.stringify(next.access) && !actor.master)
             M.fail('Only the Master Admin changes module access.', 'forbidden');
@@ -773,7 +790,7 @@ async function saveConfig(ctx: SessionContext, revision: number, input: M.Config
             M.fail('Initialise onboarding first.');
         const [stored] = await tx.select().from(configs).where(eq(configs.tenantId, ctx.tenantId));
         const persisted = old.v9ChecklistRevision ? { ...next, checklists: stored.data.checklists } : next;
-        delete persisted.v9ChecklistRevision;
+        delete persisted.v9ChecklistRevision; delete persisted.v9CaseFields;
         const saved = await tx.update(configs).set({ data: persisted, revision: current + 1, updatedAt: new Date() }).where(and(eq(configs.tenantId, ctx.tenantId), eq(configs.revision, current))).returning();
         if (!saved.length)
             M.fail('Settings changed. Reload before saving.', 'conflict');
@@ -1247,7 +1264,7 @@ export async function onboardingV9ReadTx(ctx: SessionContext, tx: Tx, id: string
         if (!row) M.fail('Onboarding case not found.', 'not_found');
         const { config } = await configTx(tx, ctx), c = structuredClone(row.data);
         const [privateRow] = await tx.select().from(secrets).where(eq(secrets.caseId, id));
-        if (privateRow) { Object.assign(c.source, privateRow.data.source); Object.assign(c.local, privateRow.data.local); }
+        if (privateRow) { Object.assign(c.source, privateRow.data.source); Object.assign(c.local, privateRow.data.local); c.caseValues = privateRow.data.caseValues; c.caseContactEmail = privateRow.data.caseContactEmail; }
         result = { row, config, c, actor: { id: 'system', name: 'System', module: true, hr: true, master: true } };
     }
     if (!result.actor.module || !result.actor.hr) M.fail('Onboarding and company HR access are required.', 'forbidden');

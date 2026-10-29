@@ -85,7 +85,7 @@ it('uses native checklist and claimed-equipment load for offboarding, without co
   const onboardingDefinitions = (await v9Workspace(admin)).config!;
   onboardingDefinitions.checklists = [...onboardingDefinitions.checklists.filter(checklist => checklist.module === 'off'), { id: 'workload-checklist', name: 'Workload fixture', module: 'onb', rules: {}, tasks: [{ id: 'prepare', name: 'Prepare workspace', by: 'group', group: group.id, mode: 'rr', opens: null, due: 1, required: false, documentTemplate: null, documentAction: 'completed' }] }];
   await v9SaveConfig(admin, onboardingDefinitions.revision, onboardingDefinitions);
-  await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Fictional workload joiner', primaryEmail: 'workload@test.invalid' }, employment: { companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId, hiredOn: todayInKualaLumpur() } }, currentStep: 1 });
+  await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Fictional workload joiner', primaryEmail: 'workload@test.invalid' }, employment: { companyId: base.companyId, reportingManagerEmploymentId: employmentId, departmentId: base.deptA, positionId: base.positionId, hiredOn: todayInKualaLumpur() } }, currentStep: 1 });
   let [joiner] = await onboardingList(admin);
   await onboardingCommand(admin, joiner.case.id, joiner.revision, { type: 'save', patch: { hiring: 'new_hire', local: { supervisor: employmentId }, selected: ['workload-laptop'], equipmentOverrides: { 'workload-laptop': { method: 'manual' } } } });
   [joiner] = await onboardingList(admin);
@@ -250,6 +250,52 @@ it('freezes company letterhead defaults and later presentation edits with each g
   await expect(v9SaveConfig(admin, invalid.revision, invalid)).rejects.toThrow();
 });
 
+it('keeps Native case-form answers private and enforces matching required fields on submission', async () => {
+  const { defaultV9CaseFields }=await import('../lib/lifecycle-v9-case-form');
+  const config=(await v9Workspace(admin)).config!;
+  config.caseForms={onb:[...defaultV9CaseFields('onb'),{key:'privateDetail',label:'Private replacement detail',type:'long',show:true,required:true,hrOnly:true,rules:{company:[base.companyId]},options:[],help:'',when:{field:'hireType',value:'replacement'}},{key:'sharedDetail',label:'Shared case detail',type:'text',show:true,required:false,hrOnly:false,rules:{},options:[],help:''}]};
+  config.emails.push({id:'private-case-email',name:'Private case merge hold',module:'onb',active:true,sender:'onboarding',subject:'Private case check',body:'{case.privateDetail}',cc:[],links:[],attachments:[],slots:[]});
+  await v9SaveConfig(admin,config.revision,config);
+  const draft=await saveEmployeeDraft(admin,{currentStep:1,data:{profile:{fullName:'Fictional private case form',primaryEmail:'form-source@test.invalid'},employment:{companyId:base.companyId,departmentId:base.deptA,positionId:base.positionId,hiredOn:addDays(todayInKualaLumpur(),5),reportingManagerEmploymentId:employmentId}}});
+  const row=(await onboardingList(admin)).find(row=>row.case.sourceDraftId===draft.id)!;
+  await expect(onboardingCommand(admin,row.case.id,row.revision,{type:'save',patch:{local:{employeeId:'FORGED-PM-ID'}}})).rejects.toThrow('Personnel Management');
+  await expect(onboardingCommand(admin,row.case.id,row.revision,{type:'saveSubmit',patch:{hiring:'replacement',replacedEmployee:'Fictional departing employee'}})).rejects.toThrow('Private replacement detail');
+  expect((await onboardingList(admin)).find(candidate=>candidate.case.id===row.case.id)!.revision).toBe(row.revision);
+  await onboardingCommand(admin,row.case.id,row.revision,{type:'saveSubmit',patch:{hiring:'replacement',replacedEmployee:'Fictional departing employee',caseValues:{privateDetail:'Private HR replacement answer',sharedDetail:'Ordinary source answer'},caseContactEmail:'form-contact@test.invalid'}});
+  const [stored]=await owner.client`select data from lc_onboarding_case where id=${row.case.id}::uuid`;
+  expect(JSON.stringify(stored.data)).not.toContain('Private HR replacement answer');expect(stored.data.caseContactEmail).toBeUndefined();
+  const [secret]=await owner.client`select data from lc_onboarding_private where case_id=${row.case.id}::uuid`;
+  expect(secret.data).toMatchObject({caseValues:{privateDetail:'Private HR replacement answer'},caseContactEmail:'form-contact@test.invalid'});
+  const native=await onboardingContext(admin);native.config.access.onboarding.push(other.userId!);await onboardingSaveConfig(admin,native.revision,native.config);
+  const {onboardingDetail}=await import('../packs/lifecycle/service');
+  const outsider=await onboardingDetail(other,row.case.id);expect(outsider.case.caseValues).toEqual({sharedDetail:'Ordinary source answer'});expect(outsider.case.caseContactEmail).toBe('form-contact@test.invalid');
+  await expect(onboardingCommand(other,row.case.id,outsider.revision,{type:'save',patch:{caseValues:{privateDetail:'Unauthorized'}}})).rejects.toThrow('HR access');
+  await expect(withTenant(other,tx=>tx.execute(sql`select app.onboarding_v9_save_case_values(${row.case.id}::uuid,${outsider.revision},'{"caseValues":{"sharedDetail":"Unpaired bypass"}}'::jsonb)`))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringContaining('case changed')})});
+  await expect(withTenant(other,async tx=>{await tx.execute(sql`update lc_onboarding_case set revision=revision+1 where id=${row.case.id}::uuid`);await tx.execute(sql`select app.onboarding_v9_save_case_values(${row.case.id}::uuid,${outsider.revision+1},'{"caseValues":{"privateDetail":"SQL bypass"}}'::jsonb)`);})).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringContaining('requires HR access')})});
+  await onboardingCommand(other,row.case.id,outsider.revision,{type:'save',patch:{caseValues:{sharedDetail:'Ordinary module edit'}}});
+  const detail=await onboardingDetail(admin,row.case.id);expect(detail.case.caseValues).toEqual({privateDetail:'Private HR replacement answer',sharedDetail:'Ordinary module edit'});
+  await v9Command(admin,row.case.id,detail.revision,{type:'generate',template:'tdev'});
+  const document=(await v9CaseDetail(admin,row.case.id)).case.documents[0];expect(document.mergeValues?.['case.privateDetail']).toBeUndefined();
+  const preview=await v9PreviewEmail(admin,row.case.id,'private-case-email');expect(preview.canSend).toBe(false);expect(preview.holds).toContain('Remove sensitive fields from the email text.');const latest=(await v9CaseDetail(admin,row.case.id)).case;await expect(v9Command(admin,row.case.id,latest.revision,{type:'emailSend',emailId:'private-case-email'})).rejects.toThrow('Sensitive');
+  const [persisted]=await owner.client`select data from lc_onboarding_config where tenant_id=${base.tenantId}::uuid`;expect(persisted.data.v9CaseFields).toBeUndefined();
+});
+
+it('submits offboarding with validated saved form answers and fresh workflow merge facts', async () => {
+  const { defaultV9CaseFields }=await import('../lib/lifecycle-v9-case-form');
+  const config=(await v9Workspace(admin)).config!;
+  config.caseForms={off:[...defaultV9CaseFields('off'),{key:'decisionDetail',label:'Decision detail',type:'text',show:true,required:true,hrOnly:false,rules:{},options:[],help:'',when:{field:'type',value:'Termination'}}]};
+  config.workflows=[{id:'case-form-trigger',name:'Fictional form trigger',module:'off',status:'published',trigger:{event:'submitted',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'notify',type:'notify',subject:'Case form',body:'{leaver.type}: {case.decisionDetail}',to:['address:review@fictional.invalid'],cc:[]}],description:''}];
+  await v9SaveConfig(admin,config.revision,config);
+  const id=await v9CreateOffboarding(admin,{employmentId,type:'Resignation',noticeDate:'2026-10-01',lastDay:'2026-11-01'});
+  await expect(v9Command(admin,id,1,{type:'caseFormSave',values:{type:'Termination'},reason:'',submit:true})).rejects.toThrow('Decision detail');
+  await expect(v9Command(admin,id,1,{type:'caseFormSave',values:{empNo:'FORGED'},reason:'',submit:false})).rejects.toThrow('Personnel fields are locked');
+  await v9Command(admin,id,1,{type:'caseFormSave',values:{type:'Termination',notice:'2026-10-02',decisionDetail:'Reviewed explanation',revokeMode:'date',revokeDate:'2026-10-31',pbp:employee.userId!},reason:'',submit:true});
+  const c=(await v9CaseDetail(admin,id)).case;
+  expect(c).toMatchObject({state:'submitted',caseValues:{decisionDetail:'Reviewed explanation'},revokeMode:'date',revokeDate:'2026-10-31',facts:{caseType:'Termination',noticeDate:'2026-10-02',pbpUserId:employee.userId}});
+  expect(c.mails[0].body).toBe('Termination: Reviewed explanation');
+  await expect(v9Command(admin,id,c.revision,{type:'caseFormSave',values:{notice:'2026-10-03'},reason:'',submit:false})).rejects.toThrow('Record a reason');
+});
+
 it('previews an HR-held acceptance message without changing its case and refuses unrelated users', async () => {
   const c = await prepared(), before = structuredClone(c);
   const preview = await v9PreviewEmail(admin, c.id, 'e3');
@@ -266,7 +312,7 @@ it('projects V9 checklist definitions into native cases and preserves their task
   expect(native.config.checklists.find(checklist => checklist.id === 'c1')!.tasks.find(task => task.documentTemplate === 'tdev')).toMatchObject({ by: 'joiner', documentAction: 'signed', gate: false });
   const attempted = structuredClone(native.config); attempted.checklists[0].name = 'Bypass shared owner';
   await expect(onboardingSaveConfig(admin, native.revision, attempted)).rejects.toThrow('V9 workspace');
-  await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Fictional V9 shared checklist', primaryEmail: 'v9-shared-native@test.invalid' }, employment: { companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId, hiredOn: todayInKualaLumpur() } }, currentStep: 1 });
+  await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Fictional V9 shared checklist', primaryEmail: 'v9-shared-native@test.invalid' }, employment: { companyId: base.companyId, reportingManagerEmploymentId: employmentId, departmentId: base.deptA, positionId: base.positionId, hiredOn: todayInKualaLumpur() } }, currentStep: 1 });
   let [joiner] = await onboardingList(admin);
   await onboardingCommand(admin, joiner.case.id, joiner.revision, { type: 'saveSubmit', patch: { hiring: 'new_hire', local: { supervisor: employmentId }, selected: [] } });
   [joiner] = await onboardingList(admin);
@@ -293,7 +339,7 @@ it('projects V9 checklist definitions into native cases and preserves their task
 });
 
 it('keeps native onboarding document state private and preserves it through later native edits', async () => {
-  const draft = await saveEmployeeDraft(admin, { currentStep: 1, data: { profile: { fullName: 'Fictional private document joiner', primaryEmail: 'private-doc@test.invalid' }, employment: { companyId: base.companyId, positionId: base.positionId, hiredOn: addDays(todayInKualaLumpur(), 7), departmentId: base.deptA, employmentType: 'full_time' } } });
+  const draft = await saveEmployeeDraft(admin, { currentStep: 1, data: { profile: { fullName: 'Fictional private document joiner', primaryEmail: 'private-doc@test.invalid' }, employment: { companyId: base.companyId, reportingManagerEmploymentId: employmentId, positionId: base.positionId, hiredOn: addDays(todayInKualaLumpur(), 7), departmentId: base.deptA, employmentType: 'full_time' } } });
   const row = (await onboardingList(admin)).find(row => row.case.sourceDraftId === draft.id)!;
   await onboardingCommand(admin, row.case.id, row.revision, { type: 'saveSubmit', patch: { hiring: 'new_hire', local: { supervisor: employmentId } } });
   const before = await v9CaseDetail(admin, row.case.id);
@@ -334,7 +380,7 @@ it('lets only the linked activated joiner complete a released native document an
   config.workflows = [{ id: 'native-self-release', name: 'Release native self form', module: 'onb', status: 'published', trigger: { event: 'beforeJoin', days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [], steps: [{ id: 'release', type: 'doc', template: 'native-self-form', release: true }, { id: 'wait', type: 'waitSign', template: 'native-self-form', by: 'employee' }, { id: 'notify', type: 'notify', subject: 'Native form completed', body: '{employee.name} completed the form.', to: 'supervisor', cc: [] }], description: '' }];
   for (const event of ['taskDone','docSigned'] as const) config.workflows.push({ id: 'native-' + event, name: 'Native ' + event, module: 'onb', status: 'published', trigger: { event, days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [], steps: [{ id: 'notice', type: 'notify', to: 'employee', cc: [], subject: 'Native recorded ' + event, body: '' }], description: '' });
   await v9SaveConfig(admin, config.revision, config);
-  const draft = await saveEmployeeDraft(admin, { currentStep: 5, data: { profile: { fullName: 'Fictional activated V9 joiner', employeeCode: 'V9-NATIVE-SELF', primaryEmail: 'native-self@test.invalid' }, employment: { companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000' } } });
+  const draft = await saveEmployeeDraft(admin, { currentStep: 5, data: { profile: { fullName: 'Fictional activated V9 joiner', employeeCode: 'V9-NATIVE-SELF', primaryEmail: 'native-self@test.invalid' }, employment: { companyId: base.companyId, reportingManagerEmploymentId: employmentId, departmentId: base.deptA, positionId: base.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000' } } });
   const active = await completeEmployeeDraft(admin, draft.id);
   const [subject] = await owner.db.execute<{ person_id: string }>(sql`select person_id from employment where id=${active.employmentId}::uuid`);
   const userId = await createAppUser(base.tenantId, subject.person_id, 'employee');
@@ -401,7 +447,7 @@ it('lets only the linked activated joiner complete a released native document an
 
 it('does not enroll historical native cases in V9 automation until HR adopts their definitions', async () => {
   await owner.db.execute(sql`delete from lc_v9_config where tenant_id=${base.tenantId}::uuid`);
-  await saveEmployeeDraft(admin, { currentStep: 1, data: { profile: { fullName: 'Fictional historical native joiner', primaryEmail: 'legacy-native@test.invalid' }, employment: { companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId, hiredOn: todayInKualaLumpur() } } });
+  await saveEmployeeDraft(admin, { currentStep: 1, data: { profile: { fullName: 'Fictional historical native joiner', primaryEmail: 'legacy-native@test.invalid' }, employment: { companyId: base.companyId, reportingManagerEmploymentId: employmentId, departmentId: base.deptA, positionId: base.positionId, hiredOn: todayInKualaLumpur() } } });
   const [pending] = await onboardingList(admin);
   await onboardingCommand(admin, pending.case.id, pending.revision, { type: 'saveSubmit', patch: { hiring: 'new_hire', local: { supervisor: employmentId } } });
   expect((await onboardingList(admin))[0].case.v9DefinitionRevision).toBeUndefined();
@@ -420,7 +466,7 @@ it('stores native attachments against their real parent, resumes file waits and 
   config.templates.push({ id: 'native-proof-attachment', name: 'Fictional proof summary', module: 'onb', type: 'Attachment', rules: {}, hrStep: 'none', employeeAck: false, retired: false, versions: [{ version: 1, state: 'published', at: '', by: '', blocks: [{ id: 'body', type: 'text', text: 'Evidence received for {employee.name}', section: '' }], fields: [] }] });
   config.workflows = [{ id: 'native-proof-wait', name: 'Wait for native proof', module: 'onb', status: 'published', trigger: { event: 'submitted', days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [], steps: [{ id: 'wait', type: 'waitFile', slot: 'native-proof', label: 'Fictional evidence' }, { id: 'document', type: 'doc', template: 'native-proof-attachment', release: false }], description: '' }];
   await v9SaveConfig(admin, config.revision, config);
-  await saveEmployeeDraft(admin, { currentStep: 1, data: { profile: { fullName: 'Fictional native files', primaryEmail: 'native-files@test.invalid' }, employment: { companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId, hiredOn: todayInKualaLumpur() } } });
+  await saveEmployeeDraft(admin, { currentStep: 1, data: { profile: { fullName: 'Fictional native files', primaryEmail: 'native-files@test.invalid' }, employment: { companyId: base.companyId, reportingManagerEmploymentId: employmentId, departmentId: base.deptA, positionId: base.positionId, hiredOn: todayInKualaLumpur() } } });
   const [pending] = await onboardingList(admin);
   await onboardingCommand(admin, pending.case.id, pending.revision, { type: 'saveSubmit', patch: { hiring: 'new_hire', local: { supervisor: employmentId } } });
   const before = (await v9CaseDetail(admin, pending.case.id)).case; expect(before.runs[0].status).toBe('waiting');
@@ -551,7 +597,7 @@ it('authorizes a real prehire contact without an app account and refuses an addr
   config.workflows = []; config.checklists = [{ id: 'contact-onb', name: 'Contact fixture', module: 'onb', rules: {}, tasks: [] }];
   config.emails = [{ id: 'contact-welcome', name: 'Fictional contact welcome', module: 'onb', active: true, sender: 'onboarding', subject: 'Welcome {employee.name}', body: 'Before your first day.', cc: [], links: [], attachments: [], slots: [] }];
   await v9SaveConfig(admin, config.revision, config);
-  await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Fictional prehire contact', primaryEmail: 'prehire-contact@fictional.invalid' }, employment: { companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId, hiredOn: addDays(todayInKualaLumpur(), 10) } }, currentStep: 1 });
+  await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Fictional prehire contact', primaryEmail: 'prehire-contact@fictional.invalid' }, employment: { companyId: base.companyId, reportingManagerEmploymentId: employmentId, departmentId: base.deptA, positionId: base.positionId, hiredOn: addDays(todayInKualaLumpur(), 10) } }, currentStep: 1 });
   let [native] = await onboardingList(admin);
   await onboardingCommand(admin, native.case.id, native.revision, { type: 'save', patch: { hiring: 'new_hire', local: { supervisor: employmentId } } });
   [native] = await onboardingList(admin); await onboardingCommand(admin, native.case.id, native.revision, { type: 'submit' });
@@ -891,7 +937,7 @@ it('snapshots handed Native items by employment and records recovery on their or
   const config = (await v9Workspace(admin)).config!;
   for (const workflow of config.workflows) workflow.status = 'draft';
   await v9SaveConfig(admin, config.revision, config);
-  const draft = await saveEmployeeDraft(admin, { currentStep: 5, data: { profile: { fullName: 'Fictional holding subject', employeeCode: 'V9-HOLDING', primaryEmail: 'holding@test.invalid' }, employment: { companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000' } } });
+  const draft = await saveEmployeeDraft(admin, { currentStep: 5, data: { profile: { fullName: 'Fictional holding subject', employeeCode: 'V9-HOLDING', primaryEmail: 'holding@test.invalid' }, employment: { companyId: base.companyId, reportingManagerEmploymentId: employmentId, departmentId: base.deptA, positionId: base.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000' } } });
   const active = await completeEmployeeDraft(admin, draft.id);
   let joiner = (await onboardingList(admin)).find(row => row.case.sourceDraftId === draft.id)!;
   await onboardingCommand(admin, joiner.case.id, joiner.revision, { type: 'saveSubmit', patch: { hiring: 'new_hire', local: { supervisor: employmentId }, selected: native.catalogue.map(item => item.id) } });
@@ -935,7 +981,7 @@ it('applies live equipment bulk changes atomically and keeps completed items and
   config.catalogue = ['bulk-one','bulk-two'].map(id => ({ id, name: 'Fictional ' + id, type: 'system', active: true, rules: {}, workflow: null, team, card: false }));
   await onboardingSaveConfig(admin, context.revision, config);
   const shared = (await v9Workspace(admin)).config!; for (const workflow of shared.workflows) workflow.status = 'draft'; await v9SaveConfig(admin, shared.revision, shared);
-  const draft = await saveEmployeeDraft(admin, { currentStep: 1, data: { profile: { fullName: 'Fictional bulk joiner' }, employment: { companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId, hiredOn: addDays(todayInKualaLumpur(), 5) } } });
+  const draft = await saveEmployeeDraft(admin, { currentStep: 1, data: { profile: { fullName: 'Fictional bulk joiner' }, employment: { companyId: base.companyId, reportingManagerEmploymentId: employmentId, departmentId: base.deptA, positionId: base.positionId, hiredOn: addDays(todayInKualaLumpur(), 5) } } });
   let row = (await onboardingList(admin)).find(row => row.case.sourceDraftId === draft.id)!;
   await onboardingCommand(admin, row.case.id, row.revision, { type: 'saveSubmit', patch: { hiring: 'new_hire', local: { supervisor: employmentId }, selected: config.catalogue.map(item => item.id) } });
   row = (await onboardingList(admin)).find(candidate => candidate.case.id === row.case.id)!;

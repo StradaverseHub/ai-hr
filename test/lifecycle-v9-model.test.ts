@@ -492,3 +492,16 @@ it('resolves selected literal To and CC destinations without inferring user iden
   c.mails[0].status = 'failed'; c.mails[0].failure = 'smtpTemporary';
   expect(M.retryEmail(c, config, before.id, 'Definite rejection reviewed', environment)).toMatchObject({ to: before.to, cc: before.cc, retryOf: before.id });
 });
+it('excludes unused case-form answers from document merge snapshots', () => {
+  const {c,config,environment}=fixture();config.templates=[template()];
+  environment.mergeValues['case.privateNote']='Private HR note';environment.mergeValues['case.publishedAnswer']='Approved document answer';
+  config.templates[0].versions[0].blocks=[{id:'intro',type:'text',text:'Answer: {case.publishedAnswer}',section:''}];
+  const document=M.generate(c,config,'exit',environment);
+  expect(document.mergeValues?.['case.privateNote']).toBeUndefined();expect(document.mergeValues?.['case.publishedAnswer']).toBe('Approved document answer');
+});
+it('keeps a document answer mapped from a case merge out of Personnel proposals',()=>{
+  const{c,config,environment}=fixture();const definition=template();definition.versions[0].fields[0].pmKey='case.review';config.templates=[definition];environment.mergeValues['case.review']='Original case answer';
+  const document=M.generate(c,config,'exit',environment);M.releaseDocument(c,document.id,environment);M.saveDocument(c,document.id,{answer:'Document answer'},'employee',environment);
+  M.signDocument(c,config,document.id,'employee',{by:environment.actor,at:environment.now,method:'typed',value:'Fictional employee',consent:true},environment);
+  expect(c.pmChanges).toEqual([]);expect(document.values.answer).toBe('Document answer');expect(document.mergeValues?.['case.review']).toBe('Original case answer');
+});

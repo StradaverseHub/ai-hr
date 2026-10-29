@@ -11184,7 +11184,7 @@ export const lcOnboardingCase = pgTable('lc_onboarding_case', {
 },t=>[uniqueIndex('lc_onboarding_case_source_uq').on(t.tenantId,t.sourceDraftId)]);
 export const lcOnboardingPrivate = pgTable('lc_onboarding_private', {
   caseId:uuid('case_id').primaryKey().references(()=>lcOnboardingCase.id),tenantId:tenantId(),
-  companyId:uuid('company_id').notNull().references(()=>company.id),data:jsonb('data').$type<{source:Partial<import('../lib/onboarding-model').Facts>;local:Partial<import('../lib/onboarding-model').Facts>}>().notNull(),
+  companyId:uuid('company_id').notNull().references(()=>company.id),data:jsonb('data').$type<{source:Partial<import('../lib/onboarding-model').Facts>;local:Partial<import('../lib/onboarding-model').Facts>;caseValues?:Record<string,string>;caseContactEmail?:string}>().notNull(),
 });
 export const lcOnboardingNote = pgTable('lc_onboarding_note', {
   id:id(),tenantId:tenantId(),caseId:uuid('case_id').notNull().references(()=>lcOnboardingCase.id),

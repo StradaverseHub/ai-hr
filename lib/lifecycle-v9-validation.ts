@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { v9CaseFieldSchema, validateV9CaseFields } from './lifecycle-v9-case-form';
 import { v9LiteralAddress } from './lifecycle-v9-recipient';
 import { V9Error, workflowProblems, currentVersion, type Config, type TemplateUsage } from './lifecycle-v9-model';
 const id = z.string().min(1).max(120), text = z.string().max(20000), day = z.number().int().min(-3660).max(3660);
@@ -18,6 +19,7 @@ const step = z.discriminatedUnion('type', [
   z.object({ id, type: z.literal('notify'), subject: z.string().max(1000), body: text, to: z.union([role, z.array(role).max(8)]), cc: z.array(role).max(8) }).strict(),
 ]);
 export const v9ConfigSchema = z.object({
+  caseForms: z.object({ onb: z.array(v9CaseFieldSchema).max(100).optional(), off: z.array(v9CaseFieldSchema).max(100).optional() }).strict().optional(),
   version: z.literal(9), revision: z.number().int().positive(), groupsRevision: z.number().int().nonnegative().optional(),
   checklists: z.array(z.object({ id, name: z.string().min(1).max(200), module: moduleSchema, ownerUserId: z.string().uuid().optional(), createdAt: z.string().datetime().optional(), rules, tasks: z.array(task).max(300) }).strict()).max(200),
   templates: z.array(z.object({ id, name: z.string().min(1).max(200), module: moduleSchema, type: z.enum(['Form', 'Letter', 'Acknowledgement', 'Attachment']), rules, hrStep: z.enum(['none', 'before', 'after']), employeeAck: z.boolean(), retired: z.boolean(), currentVersion: z.number().int().positive().optional(), note: text.optional(), versions: z.array(z.object({ version: z.number().int().positive(), state: z.enum(['draft', 'published']), at: z.string().max(100), by: z.string().max(200), blocks: z.array(block).max(500), fields: z.array(field).max(500) }).strict()).max(100) }).strict()).max(200),
@@ -30,6 +32,7 @@ export const v9ConfigSchema = z.object({
 }).strict();
 export function parseV9Config(value: unknown, previous?: Config) {
   const config = v9ConfigSchema.parse(value);
+  for (const module of ['onb','off'] as const) if (config.caseForms?.[module]) { try { validateV9CaseFields(module, config.caseForms[module]!); } catch (error) { throw new V9Error(error instanceof Error ? error.message : 'Review the case form fields.'); } }
   const unique = (values: string[], what: string) => { if (new Set(values).size !== values.length) throw new V9Error(`Duplicate ${what} identifiers.`); };
   unique(config.groups.map(g => g.id), 'group'); unique(config.checklists.map(g => g.id), 'checklist'); unique(config.templates.map(g => g.id), 'template'); unique(config.emails.map(g => g.id), 'email'); unique(config.workflows.map(g => g.id), 'workflow');
   const templates = new Set(config.templates.map(t => t.id)), emails = new Set(config.emails.map(e => e.id)), groups = new Set(config.groups.map(g => g.id));
