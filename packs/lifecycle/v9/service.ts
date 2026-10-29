@@ -16,7 +16,7 @@ import { v9Defaults } from '../../../lib/lifecycle-v9-defaults';
 import { parseV9Config, validateV9ConfigChange, v9Equal } from '../../../lib/lifecycle-v9-validation';
 import { readSettlementTx, type SettlementView } from './settlement';
 import { readV9PersonnelTx, pushV9PersonnelTx, lockV9PersonnelWritesTx, v9PersonnelWritableKeys } from '../../../core/lifecycle-v9-personnel';
-import { onboardingCommand, onboardingV9ReadTx, onboardingV9StoreTx, onboardingSetupTx, onboardingSaveGroupsTx, onboardingV9DefinitionsChangedTx, onboardingAssignmentLoadsTx, onboardingUnavailableTx } from '../onboarding/service';
+import { onboardingFulfilmentGroupTx, onboardingHoldingsTx, onboardingRecoverHoldingTx, onboardingCommand, onboardingV9ReadTx, onboardingV9StoreTx, onboardingSetupTx, onboardingSaveGroupsTx, onboardingV9DefinitionsChangedTx, onboardingAssignmentLoadsTx, onboardingUnavailableTx } from '../onboarding/service';
 import { issuedToTx, returnAssetTx } from '../../../core/lifecycle-assets';
 import { lifecycleV9EmailIpc } from '../../../lib/lifecycle-v9-email-ipc';
 import type { LifecycleV9DeliveryRequest, LifecycleV9DeliveryResult } from '../../../lib/lifecycle-v9-delivery-model';
@@ -313,7 +313,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     if (command.type === 'submit') {
       M.submit(c, config, env);
       if (c.module === 'off') {
-        const group = config.groups.find(g => g.id === 'g-tech' || g.name === 'Group Tech'), extra: Record<string, number> = {};
+        const fulfillingGroup = await onboardingFulfilmentGroupTx(ctx, tx), group = config.groups.find(g => g.id === fulfillingGroup), extra: Record<string, number> = {};
         for (const task of c.tasks) if (task.assignee) extra[task.assignee] = (extra[task.assignee] ?? 0) + 1;
         const assets = await issuedToTx(tx, c.facts.employeeNo, c.facts.company);
         c.items = assets.map(asset => {
@@ -321,7 +321,14 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
           if (assigned.userId) extra[assigned.userId] = (extra[assigned.userId] ?? 0) + 1;
           return { id: randomUUID(), name: `${asset.code} · ${asset.model ?? asset.assetType}`, kind: 'device' as const, sourceId: asset.id, group: group?.id ?? null, assignee: assigned.userId, dueOn: c.revokeDate, status: 'todo' as const, reason: '' };
         });
-        M.appendLog(c, env, 'returns.created', `${c.items.length} return items loaded from the asset register.`);
+        const holdings = await onboardingHoldingsTx(ctx, tx, c.facts.employmentId!, c.facts.company);
+        for (const holding of holdings) {
+          const groupId = config.groups.some(group => group.id === holding.group) ? holding.group : null;
+          const assigned = M.assign(config, groupId, c.revokeDate, env, extra, 'memberOrder');
+          if (assigned.userId) extra[assigned.userId] = (extra[assigned.userId] ?? 0) + 1;
+          c.items.push({ id: randomUUID(), name: holding.name, kind: holding.kind, sourceId: null, nativeSource: { caseId: holding.caseId, requestId: holding.requestId, requestNumber: holding.requestNumber, itemId: holding.itemId }, group: groupId, assignee: assigned.userId, dueOn: c.revokeDate, status: 'todo', reason: '' });
+        }
+        M.appendLog(c, env, 'returns.created', `${assets.length} issued inventory assets and ${holdings.length} handed onboarding items loaded from their original records.`);
       }
       for (const w of config.workflows) { M.runWorkflow(c, config, w, env, 'submitted'); M.runWorkflow(c, config, w, env, 'date'); }
     }
@@ -397,7 +404,8 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
         if (!asset) throw new M.V9Error('The asset register changed. Review who holds this device before marking it returned.', 'conflict');
         await returnAssetTx(tx, ctx, asset.code, { requisitionNumber: c.number });
       }
-      if (item.sourceId && item.status === 'done' && command.status !== 'done') throw new M.V9Error('This return is already recorded in the asset register. Use the asset register to correct it before reopening the item.');
+      if (item.nativeSource && command.status === 'done' && item.status !== 'done') await onboardingRecoverHoldingTx(ctx, tx, c.facts.employmentId!, c.facts.company, item.nativeSource, c.id, command.reason);
+      if ((item.sourceId || item.nativeSource) && item.status === 'done' && command.status !== 'done') throw new M.V9Error('This recovery is already recorded on its issuing record. Correct that record before reopening the item.');
       item.status = command.status; item.reason = command.reason.trim(); M.appendLog(c, env, 'item.updated', `${item.name}: ${item.status}`);
     }
     for (const w of config.workflows) if (c.runs.some(r => r.workflowId === w.id && r.status === 'waiting')) M.runWorkflow(c, config, w, env, 'resume');

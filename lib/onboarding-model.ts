@@ -179,6 +179,7 @@ export type Item = {
     removed: boolean;
     retiredFlag: boolean;
     revokeNeeded: boolean;
+    recovery?: { offboardingCaseId: string; outcome: 'returned' | 'revoked'; at: string; by: string; reason: string };
 };
 export type Requisition = {
     id: Id;

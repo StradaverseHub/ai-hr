@@ -42,6 +42,9 @@ it('combines Mine, My teams and Done and sends status to the correct owner and r
   fireEvent.change(screen.getByRole('combobox', { name: 'Status for Offboarding owned work · Offboarding person' }), { target: { value: 'done' } });
   await waitFor(() => expect(mocks.off).toHaveBeenCalledWith('same-case-id', 29, { type: 'task', id: 'same-task-id', status: 'done', reason: '' }));
   fireEvent.click(screen.getByRole('tab', { name: /My teams/ })); expect(screen.getByText('Native team work')).toBeVisible();
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Assignee for Native team work · Native person' })).toBeEnabled());
+  fireEvent.change(screen.getByRole('combobox', { name: 'Assignee for Native team work · Native person' }), { target: { value: 'hr' } });
+  await waitFor(() => expect(mocks.native).toHaveBeenCalledWith('same-case-id', 17, { type: 'assignTask', taskId: 'team-work', user: 'hr', roundRobin: false }));
   fireEvent.click(screen.getByRole('tab', { name: /Done/ })); expect(screen.getByText('Native completed work')).toBeVisible(); expect(screen.queryByText('Native owned work')).not.toBeInTheDocument();
 });
 it('keeps a rejected save visible and applies company filtering to both owners', async () => {

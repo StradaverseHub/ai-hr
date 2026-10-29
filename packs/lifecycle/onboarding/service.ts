@@ -1256,3 +1256,41 @@ export async function onboardingV9StoreTx(ctx: SessionContext, tx: Tx, id: strin
     await tx.execute(sql`update lc_onboarding_private set data=data||jsonb_build_object('lifecycleV9',${JSON.stringify(state)}::jsonb,'lifecycleV9Subject',${JSON.stringify({ personId: c.personId, employmentId: c.employmentId })}::jsonb) where case_id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
     await auditTx(tx, ctx, c, 'document.' + action);
 }
+
+
+/** Shared fulfilling team identity; consumers must not identify the team by its display name. */
+export async function onboardingFulfilmentGroupTx(ctx: SessionContext, tx: Tx): Promise<string> {
+    return (await configTx(tx, ctx)).config.techGroup;
+}
+export type OnboardingHolding = { caseId: string; requestId: string; requestNumber: string; itemId: string; name: string; kind: 'system' | 'device'; group: string };
+async function holdingAuthorityTx(ctx: SessionContext, tx: Tx, companyId: string) {
+    const [permission] = await tx.execute<{ ok: boolean }>(sql`select app.current_user_id() is not null and not app.login_blocked(app.current_user_id()) and app.is_admin_for(${companyId}::uuid) as ok`);
+    if (!permission?.ok || !ctx.userId) M.fail('Company HR access is required to review issued onboarding items.', 'forbidden');
+}
+/** Issuance stays on the original handed requisition; names are never used to link a person or item. */
+export async function onboardingHoldingsTx(ctx: SessionContext, tx: Tx, employmentId: string, companyId: string): Promise<OnboardingHolding[]> {
+    await holdingAuthorityTx(ctx, tx, companyId);
+    const source = await tx.select().from(cases).where(and(eq(cases.tenantId, ctx.tenantId), eq(cases.companyId, companyId), eq(cases.employmentId, employmentId))).orderBy(asc(cases.id));
+    return source.flatMap(row => row.data.requisitions.flatMap(request => request.items.filter(item => !item.recovery && (item.state === 'handed' && !!request.handedAt || item.revokeNeeded)).map(item => ({ caseId: row.id, requestId: request.id, requestNumber: request.number, itemId: item.id, name: item.name, kind: item.type, group: item.team }))));
+}
+/** Records HR's confirmed recovery on the issuing owner, in the same transaction as offboarding. */
+export async function onboardingRecoverHoldingTx(ctx: SessionContext, tx: Tx, employmentId: string, companyId: string, source: Pick<OnboardingHolding, 'caseId' | 'requestId' | 'itemId'>, offboardingCaseId: string, reason: string) {
+    await holdingAuthorityTx(ctx, tx, companyId);
+    const [exit] = await tx.execute<{ ok: boolean }>(sql`select exists(select 1 from lc_v9_case c cross join lateral jsonb_array_elements(c.data->'items') i where c.id=${offboardingCaseId}::uuid and c.tenant_id=${ctx.tenantId}::uuid and c.company_id=${companyId}::uuid and c.employment_id=${employmentId}::uuid and c.module='off' and c.data->>'state'='submitted' and i->'nativeSource'->>'caseId'=${source.caseId} and i->'nativeSource'->>'requestId'=${source.requestId} and i->'nativeSource'->>'itemId'=${source.itemId}) as ok`);
+    if (!exit?.ok) M.fail('The open offboarding case does not contain this issued item.', 'conflict');
+    await lockOnboardingTx(tx, ctx.tenantId);
+    const [row] = await tx.select().from(cases).where(and(eq(cases.id, source.caseId), eq(cases.tenantId, ctx.tenantId), eq(cases.companyId, companyId), eq(cases.employmentId, employmentId))).for('update');
+    if (!row) M.fail('The issuing onboarding record is no longer linked to this employment.', 'conflict');
+    const c = structuredClone(row.data), request = c.requisitions.find(request => request.id === source.requestId), item = request?.items.find(item => item.id === source.itemId);
+    if (!request || !item || !(item.state === 'handed' && request.handedAt || item.revokeNeeded)) M.fail('The original item is no longer recorded as issued. Review the holding before closing it.', 'conflict');
+    if (item.recovery) {
+        if (item.recovery.offboardingCaseId === offboardingCaseId) return;
+        M.fail('Another case has already recorded this item recovery.', 'conflict');
+    }
+    const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config, companyId), now = new Date().toISOString();
+    item.recovery = { offboardingCaseId, outcome: item.type === 'system' ? 'revoked' : 'returned', at: now, by: actor.id, reason: reason.trim() };
+    item.revokeNeeded = false;
+    M.log(c, actor, { now, id: randomUUID } as M.Environment, 'holding.' + item.recovery.outcome, `${item.name} · confirmed by HR on offboarding case ${offboardingCaseId}${reason.trim() ? ' · ' + reason.trim() : ''}`);
+    await storeTx(tx, ctx, row, c, false);
+    await auditTx(tx, ctx, c, 'holding_' + item.recovery.outcome);
+}
