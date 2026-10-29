@@ -1,4 +1,4 @@
-import { adjudicateAiPayRule } from '../lib/ai/pay-rule-proposal';
+import { adjudicateAiPayRule } from '../packs/payroll/ai-rule-proposal';
 /**
  * AI-assisted pay-rule drafting (Payroll Setup — configurable pay-rule engine). DRAFT-ONLY, one-shot.
  *
