@@ -15,6 +15,7 @@ vi.mock('next-intl/server',()=>({
 }));
 vi.mock('../lib/authz',()=>({requireAdmin:async()=>({tenantId:'fixture-tenant',userId:'fixture-user',roles:['group_admin'],grants:[]}),isGroupAdmin:()=>data.groupAdmin,isAdmin:()=>true}));
 vi.mock('../core/entitlements',()=>({isModuleEnabledOrFalse:(_ctx:unknown,code:string)=>['employees','leave','payroll'].includes(code)}));
+vi.mock('../core/ai-inventory',()=>({aiInventoryView:async()=>({scope:'registry',rows:[]}),aiManagementAlerts:async()=>[],aiRunHistory:async()=>({range:{from:'2026-10-01',to:'2026-10-30',page:1},hasMore:false,rows:[]})}));
 vi.mock('../core/ai-management',()=>({AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementView:async()=>data.view,bulkAssistantDepartments:async()=>[{id:'44444444-4444-4444-8444-444444444444',label:'Fictional Finance · Fictional Zero Cap Sdn Bhd'}],previewBulkAssistantAccess:async()=>({matched:3,changing:2})}));
 vi.mock('../core/hr-orchestrator',()=>({orchestrationQueue:async()=>({})}));
 vi.mock('../app/control-tower/work-queue',()=>({OrchestrationWorkQueue:()=>null}));

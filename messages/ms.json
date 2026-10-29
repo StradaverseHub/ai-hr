@@ -489,7 +489,8 @@
     "aiManagementOrchestrator": "Baris kerja HR",
     "aiManagementRuns": "Panggilan model terkini",
     "moduleELetter": "E-Surat",
-    "emailTemplates": "Templat e-mel"
+    "emailTemplates": "Templat e-mel",
+    "aiManagementInventory": "Inventori AI"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -24667,7 +24668,134 @@
     "agentUnknownAdmin": "seorang bekas pentadbir",
     "agentUnattributed": "Dihidupkan tanpa pentadbir yang dinamakan, jadi akaun ejen HR tidak menjalankannya. Jedakan dan dayakan semula untuk menjalankannya atas nama anda.",
     "staleOverrideOn": "Suis lama yang disimpan untuk ciri ini diabaikan. Ciri ini hanya mengikut tetapannya.",
-    "staleOverrideOff": "Jeda lama yang disimpan untuk ciri ini diabaikan. Ciri ini hanya mengikut tetapannya."
+    "staleOverrideOff": "Jeda lama yang disimpan untuk ciri ini diabaikan. Ciri ini hanya mengikut tetapannya.",
+    "inv": {
+      "title": "Inventori AI",
+      "intro": "Setiap komponen AI dalam satu senarai: sembang Pembantu, pengikatan bacaannya, pakar berjadual, setiap tindakan Pembantu dengan peringkatnya, kerja berjadual, ciri AI terbina dalam, langkah baris kerja HR malam dan gelung penambahbaikan operator. Setiap baris menunjukkan suis yang mengawalnya, apa yang menghentikannya dan apa yang dilakukannya dalam 30 hari lalu.",
+      "registryNotice": "Anda melihat paparan daftar dan peringkat baca sahaja untuk syarikat anda. Suis, elaun, larian, kos dan sejarah audit hanya dipaparkan kepada pentadbir kumpulan.",
+      "costHelp": "Penggunaan dan kos meliputi 30 hari lalu. Kos ialah bilangan token dan kredit pembekal yang dilaporkan bagi setiap panggilan; angka dolar AS tidak disahkan di sini. Penggunaan model oleh tindakan Pembantu dan pengikatan bacaan dikira di bawah sembang Pembantu.",
+      "never": "Tidak pernah",
+      "readOnly": "Baca sahaja",
+      "actionPaused": "Dijeda",
+      "actionActive": "Berjalan",
+      "pauseAction": "Jeda tindakan ini",
+      "resumeAction": "Sambung tindakan ini",
+      "outOfBand": "Di luar sistem",
+      "outOfBandHelp": "Alat operator di luar produk. Disenaraikan untuk kelengkapan; diurus oleh platform, bukan dari halaman ini.",
+      "on": "hidup",
+      "off": "mati",
+      "allowanceDefault": "Lalai setiap log masuk: {daily} permintaan sehari · {tokens} token sebulan",
+      "allowanceNone": "Tiada had lalai",
+      "countedUnderChat": "Penggunaan model dikira di bawah sembang Pembantu",
+      "use30": "{runs} panggilan · {tokens} token · {failed} gagal · {blocked} disekat",
+      "credits": "Kredit pembekal yang dilaporkan: {credits}",
+      "creditsUnknown": "Kredit pembekal tidak dilaporkan",
+      "outcomes": "{prepared} disediakan · {completed} selesai · {refused} ditolak · {discarded} dibuang · {expired} tamat tempoh",
+      "rates": "{completed} selesai · {refused} ditolak",
+      "audit": "{count} perubahan · terakhir {date}",
+      "auditNone": "Tiada perubahan dalam 30 hari",
+      "jobs": {
+        "review-sweep": "Larian malam baris kerja HR",
+        "ai-retention": "Penyimpanan sejarah larian AI",
+        "ai-alerts": "Semakan amaran AI"
+      },
+      "steps": {
+        "observe": "Semak rekod pekerja",
+        "readiness": "Hantar peringatan rekod",
+        "claims": "Tanya tentang tuntutan yang tidak jelas"
+      },
+      "improve": "Gelung penambahbaikan operator (perancangan maklum balas)",
+      "tiers": {
+        "automatic": "Automatik",
+        "confirm": "Sahkan",
+        "approve": "Luluskan",
+        "handoff": "Serahan"
+      },
+      "switchKinds": {
+        "setting": "Tetapan",
+        "policy": "Suis AI",
+        "platform": "Platform",
+        "module": "Modul",
+        "none": "Tiada"
+      },
+      "kinds": {
+        "chat": "Sembang Pembantu",
+        "read_binding": "Pengikatan bacaan",
+        "specialist": "Pakar berjadual",
+        "action": "Tindakan Pembantu",
+        "scheduled_job": "Kerja berjadual",
+        "embedded_feature": "Ciri AI terbina dalam",
+        "orchestrator_step": "Langkah baris kerja HR",
+        "operator_loop": "Gelung operator (di luar sistem)"
+      },
+      "cols": {
+        "component": "Komponen",
+        "tier": "Peringkat",
+        "switch": "Suis",
+        "pauseKey": "Kunci jeda",
+        "allowance": "Elaun",
+        "lastRun": "Larian terakhir",
+        "use30": "Penggunaan dan kos 30 hari",
+        "outcomes": "Hasil (30 hari)",
+        "audit": "Peristiwa audit"
+      },
+      "register": {
+        "title": "Daftar data pembekal",
+        "intro": "Bagi setiap ciri AI: jenis data yang keluar dari syarikat anda kepada pembekal AI, dan apa yang disembunyikan terlebih dahulu. Baca ini sebelum memilih atau menukar pembekal.",
+        "namesNote": "Penyembunyian membuang alamat e-mel, nombor kad pengenalan Malaysia dan nombor telefon. Ia tidak pernah membuang nama.",
+        "principalNothing": "Larian berjadual tidak menghantar apa-apa kepada pembekal (templat sahaja).",
+        "imagesYes": "Imej dihantar",
+        "imagesNo": "Tiada imej",
+        "cols": {
+          "feature": "Ciri",
+          "fields": "Data dihantar",
+          "redaction": "Penyembunyian",
+          "images": "Imej"
+        },
+        "fields": {
+          "question_text": "Soalan atau arahan yang ditaip",
+          "scoped_hr_records": "Rekod HR yang boleh dibaca pengguna (cuti, profil, ringkasan gaji, tuntutan)",
+          "pasted_import_source": "Data import yang ditampal",
+          "admin_prompt": "Arahan yang ditulis pentadbir",
+          "synthetic_only": "Data ujian rekaan sahaja",
+          "column_headings": "Tajuk lajur fail yang dimuat naik",
+          "gap_codes": "Kod medan yang hilang sahaja",
+          "claim_details": "Jenis tuntutan, item, amaun, tarikh dan keterangan",
+          "payroll_ratios": "Nisbah gaji tanpa nama",
+          "payroll_figures": "Angka gaji tanpa nama",
+          "rule_description": "Keterangan peraturan gaji",
+          "field_catalogue": "Senarai medan",
+          "performance_text": "Ulasan prestasi, matlamat dan teks maklum balas",
+          "first_name": "Nama pertama",
+          "full_names": "Nama penuh",
+          "approver_names": "Nama pelulus dan penulis",
+          "attachment_text": "Teks yang dibaca daripada lampiran",
+          "image_attachments": "Lampiran imej",
+          "product_feedback_text": "Teks maklum balas produk"
+        },
+        "redaction": {
+          "pii_masked": "Disembunyikan",
+          "partial": "Sebahagian disembunyikan",
+          "none": "Tidak disembunyikan",
+          "not_needed": "Tidak perlu"
+        }
+      },
+      "alerts": {
+        "title": "AI memerlukan perhatian",
+        "help": "Semakan yang sama dijalankan pada pelayan melalui laluan amaran kerja berjadual, supaya ia sampai kepada operator walaupun tiada sesiapa membuka halaman ini.",
+        "failure_rate": "{count} panggilan AI gagal dalam 24 jam lalu ({detail} daripada panggilan).",
+        "principal_refusals": "{count} permintaan AI oleh ejen berjadual ditolak dalam 24 jam lalu. Kerja berjadual sepatutnya tidak menghantar apa-apa kepada model.",
+        "spend_near_cap": "{count} had perbelanjaan atau penggunaan telah atau hampir mencapai hadnya.",
+        "switch_drift": "{count} suis AI dihidupkan tetapi tidak berkuat kuasa ({detail})."
+      },
+      "rangeFrom": "Dari",
+      "rangeTo": "Hingga",
+      "rangeShown": "Memaparkan {from} hingga {to} · halaman {page}, {size} panggilan setiap halaman",
+      "paging": "Halaman sejarah larian",
+      "previous": "Sebelumnya",
+      "next": "Seterusnya",
+      "pageOf": "Halaman {page}"
+    }
   },
   "accountEmail": {
     "title": "Penghantaran e-mel akaun",

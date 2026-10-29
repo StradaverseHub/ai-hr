@@ -20,6 +20,7 @@ vi.mock('../app/delegations/actions',()=>({loadDelegationContextAction:vi.fn()})
 vi.mock('../components/delegation-manager',()=>({DelegationManager:()=>null}));
 vi.mock('../lib/authz',()=>({isGroupAdmin:()=>true,isAdmin:()=>true}));
 vi.mock('../core/entitlements',()=>({isModuleEnabledOrFalse:()=>true,isModuleEnabled:()=>true}));
+vi.mock('../core/ai-inventory',()=>({aiInventoryView:async()=>({scope:'registry',rows:[]}),aiManagementAlerts:async()=>[],aiRunHistory:async()=>({range:{from:'2026-10-01',to:'2026-10-30',page:1},hasMore:false,rows:[]})}));
 vi.mock('../core/ai-management',()=>({AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementView:async()=>({provider:null,mayWriteUsers:true,features:[],usage:[],policies:[],userDefault:null,companies:[],companyUsage:[],users:[],moreUsers:false,groups:[],attention:{companies:[],users:[],blocked:[]},runs:[],runFilter:{},legacyBudget:null,spend:null}),bulkAssistantDepartments:async()=>[],previewBulkAssistantAccess:async()=>({matched:0,changing:0})}));
 vi.mock('../core/hr-orchestrator',()=>({orchestrationQueue:async()=>({})}));
 vi.mock('../app/control-tower/work-queue',()=>({OrchestrationWorkQueue:()=>null}));
