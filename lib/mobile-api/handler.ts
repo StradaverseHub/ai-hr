@@ -15,6 +15,7 @@
 import type { z } from 'zod';
 import type { SessionContext } from '@/db/client';
 import { AuthRequiredError } from '@/lib/auth-errors';
+import { EntitlementsResolutionFailedError } from '@/core/entitlements';
 import { getMobileSession } from '@/lib/session';
 import {randomUUID} from 'node:crypto';
 import type { ErrorResponse } from './contract';
@@ -112,6 +113,8 @@ async function admitMobile(req: Request, resolve: MobileSessionResolver, budget:
 function handlerFailure(e: unknown): Response {
   if (e instanceof RequestBudgetExceeded) throw e;
   if (e instanceof MobileServiceUnavailable) return mobileError(503,'unavailable');
+  // The tenant's entitlements could not be read (an infrastructure fault): "retry", never "this module is off".
+  if (e instanceof EntitlementsResolutionFailedError) return mobileError(503,'unavailable');
   if (e instanceof MobileBadRequest || e instanceof PageRequestRefused) return mobileError(400, 'bad_request');
   if (e instanceof AuthRequiredError) return mobileError(401, 'auth_required');
   return privateFailure(500,'internal','handler');

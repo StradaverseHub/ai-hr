@@ -77,7 +77,8 @@ export async function markNotificationsReadV2(ctx: SessionContext, command: Noti
 export async function homeSummaryV2(ctx: SessionContext): Promise<HomeSummaryV2> {
   const [tasks, inbox] = await Promise.allSettled([
     pendingTaskCountV2(ctx),
-    enabled(ctx) ? unreadNotificationCount(ctx).then((n) => ({ enabled: true, unreadCount: n })) : Promise.resolve({ enabled: false, unreadCount: 0 }),
+    // The module check runs inside the settled part, so an entitlements outage marks only the inbox `unavailable`.
+    Promise.resolve().then(() => (enabled(ctx) ? unreadNotificationCount(ctx).then((n) => ({ enabled: true, unreadCount: n })) : { enabled: false, unreadCount: 0 })),
   ]);
   // A signed-out caller is 401 for the whole summary, never a per-part "could not check".
   for (const part of [tasks, inbox]) if (part.status === 'rejected' && part.reason instanceof AuthRequiredError) throw part.reason;

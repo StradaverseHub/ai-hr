@@ -222,16 +222,21 @@ describe('the payslip index', () => {
     expect((await share(hr, { requestId: randomUUID(), shareId: randomUUID(), document: { kind: 'payslip', id: theirs.id }, stage: 'confirmed' })).body).toEqual(NOT_FOUND);
   });
 
-  it('reads nothing when the Payroll module is off', async () => {
+  // Re-pinned 29 October 2026 (integration with alpha): a Mobile service reads modules strictly (test/module-catalog-drift),
+  // so an unreadable entitlements snapshot is an availability fault — 503 `unavailable` ("retry") — never a plan answer
+  // ("Payroll is off", which would tell an employee they have no payslips during an incident). Nothing is read either way.
+  it('an unreadable entitlements snapshot is unavailable, never Payroll off, and reads nothing', async () => {
     const employee = await hire('Jamal Employee');
     const slip = await slipOf(await run(P1), employee.employmentId);
     const off: SessionContext = { ...employee.ctx, entitlements: undefined, entitlementsError: 'test: no snapshot' };
-    expect((await listed(off)).body).toEqual({ enabled: false, items: [], nextCursor: null });
-    expect((await detail(off, slip.id)).body).toEqual(NOT_FOUND);
-    expect((await file(off, slip.id)).body).toEqual(NOT_FOUND);
+    const UNAVAILABLE = { status: 503, body: { error: 'unavailable' } };
+    expect(await listed(off)).toMatchObject(UNAVAILABLE);
+    expect(await detail(off, slip.id)).toMatchObject(UNAVAILABLE);
+    expect(await file(off, slip.id)).toMatchObject(UNAVAILABLE);
     as(off);
-    expect((await get(eaList.GET, '/ea')).body).toEqual({ enabled: false, items: [] });
-    expect((await share(off, { requestId: randomUUID(), shareId: randomUUID(), document: { kind: 'payslip', id: slip.id }, stage: 'confirmed' })).body).toEqual(NOT_FOUND);
+    expect(await get(eaList.GET, '/ea')).toMatchObject(UNAVAILABLE);
+    expect(await share(off, { requestId: randomUUID(), shareId: randomUUID(), document: { kind: 'payslip', id: slip.id }, stage: 'confirmed' })).toMatchObject(UNAVAILABLE);
+    expect(await shareEvents()).toEqual([]);
   });
 });
 

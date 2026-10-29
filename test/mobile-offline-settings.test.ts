@@ -54,8 +54,9 @@ describe('on a database without draft 0647',()=>{
   await expect(setOfflineClockingPolicy(adminCtx(base),{companyId:base.companyId,enabled:true,maxProvenWindowSeconds:900})).rejects.toMatchObject({name:'OfflineClockingSettingsError',reason:'unavailable'});
   expect(await row(base.companyId)).toEqual(before);expect(await audit(base.companyId)).toEqual([]);
   expect(await readOfflineClockingSettings(adminCtx(base),base.companyId)).toEqual({columns:false,canEdit:true,policy:{enabled:false,maxProvenWindowSeconds:900}});
-  expect(await countOfflineClaimsAwaitingReview(adminCtx(base),[base.companyId])).toBeNull();
-  expect(await countOpenOfflineContexts(adminCtx(base),base.companyId)).toBeNull();
+  // Only the two settings columns are removed here; 0647's claim and context tables stay, empty, so the counts are zero.
+  expect(await countOfflineClaimsAwaitingReview(adminCtx(base),[base.companyId])).toBe(0);
+  expect(await countOpenOfflineContexts(adminCtx(base),base.companyId)).toBe(0);
  });
 });
 
