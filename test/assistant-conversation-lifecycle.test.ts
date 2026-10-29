@@ -30,7 +30,7 @@ async function transport(ctx:SessionContext,baselineWrong=false){await installSy
  const first=args.turns[0];if(first.role!=='user')throw Error('Expected fixed synthetic human turn');const input=JSON.parse(first.content),fixture=ASSISTANT_CONVERSATION_HOLDOUTS.find(row=>row.locale===input.locale&&row.question===input.question);if(!fixture)throw Error('Unexpected non-synthetic question');
  const completed=args.turns.flatMap(turn=>turn.role==='tool'?turn.results.filter(row=>!row.isError):[]).length,expected=fixture.expectedTools[completed];
  if(expected)return{text:'',stop:'tool_use',toolCalls:[{id:'fixture-call-'+completed,name:expected.name,input:expected.input}],usage:{inputTokens:1,outputTokens:1,cachedInputTokens:0},usageReported:true};
- const wrong=baselineWrong&&fixture.id==='en:domain:employees'&&args.system[args.system.length-1]===assistantConversationCandidateSystem(ASSISTANT_CONVERSATION_BASELINE);
+ const wrong=baselineWrong&&fixture.id==='en:domain:employees'&&args.system.includes(assistantConversationCandidateSystem(ASSISTANT_CONVERSATION_BASELINE));
  return{text:JSON.stringify(wrong?{version:1,mode:'insufficient',code:'unsupported_explanation'}:fixture.expected),stop:'end',toolCalls:[],usage:{inputTokens:1,outputTokens:1,cachedInputTokens:0},usageReported:true};
  });}
 async function prepare(ctx:SessionContext){return withTenant(ctx,async tx=>{const cfg=await resolveActiveAiConfig(tx,ctx,'hr_assistant');if(!cfg)throw Error('Missing fictional configured provider');return prepareAssistantConversationStrategyTx(tx,ctx,await bindAiSpendTaskTx(tx,ctx,cfg,{kind:'assistant_question'}),'fictional human question');});}

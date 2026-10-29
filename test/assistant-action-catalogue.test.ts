@@ -37,7 +37,7 @@ describe('the catalogue is derived from the registry',()=>{
  });
  it('never offers an Automatic, Handoff or human-workflow-only entry, whatever the caller holds',()=>{
   const offered=new Set(assistantProposalCatalogue(everyone));
-  for(const action of AGENT_ACTIONS)if(action.policy.tier==='automatic'||action.policy.tier==='handoff'||action.store==='human_workflow_only')expect(offered.has(action.id as never),action.id).toBe(false);
+  for(const action of AGENT_ACTIONS){const tier:string=action.policy.tier;if(tier==='automatic'||tier==='handoff'||action.store==='human_workflow_only')expect(offered.has(action.id as never),action.id).toBe(false);}
   expect(offered.has('employees.import' as never)).toBe(false);expect(offered.has('payroll.close' as never)).toBe(false);
  });
 });
