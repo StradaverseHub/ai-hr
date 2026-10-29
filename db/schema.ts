@@ -3364,7 +3364,9 @@ export const compensation = pgTable(
 // is NOT auto-applied"): those legacy figures are RATES, yet the rate election cannot carry them either
 // because voluntary_excess is max(elected, statutory) and can only raise. A typed amount is the only
 // affordance there is. See docs/adr/0087-epf-manual-amount-categories.md.
-export const epfModeEnum = pgEnum('epf_mode', ['auto', 'voluntary_excess', 'exempt', 'manual_amount', 'manual_percentage']);
+// topup_percentage (b6dbadc5, migration 0697) — Top-up (existing percentage election) as an ADDITIVE top-up:
+// the rates are per-side increments added to the statutory rate. voluntary_excess keeps its total-rate meaning.
+export const epfModeEnum = pgEnum('epf_mode', ['auto', 'voluntary_excess', 'exempt', 'manual_amount', 'manual_percentage', 'topup_percentage']);
 
 // ───────────── Employee statutory profile — Malaysia pack (per-person) ─────────────
 // Pack-owned (localization/my). Statutory identity is per Person, not per Employment.
@@ -3588,6 +3590,8 @@ export const employeeStatutoryMy = pgTable(
   (t) => [
     uniqueIndex('employee_statutory_my_person_uq').on(t.personId),
     check('employee_statutory_my_manual_percentage_rates', sql`${t.epfMode}::text <> 'manual_percentage' OR (${t.epfEmployeeRate} IS NOT NULL AND ${t.epfEmployerRate} IS NOT NULL AND ${t.epfEmployeeRate} BETWEEN 0.01 AND 1 AND ${t.epfEmployerRate} BETWEEN 0.01 AND 1)`),
+    // b6dbadc5 (migration 0697) — top-up increments are 0..1 per side (null = nothing added) and carry no amounts.
+    check('employee_statutory_my_topup_percentage_rates', sql`${t.epfMode}::text <> 'topup_percentage' OR ((${t.epfEmployeeRate} IS NULL OR ${t.epfEmployeeRate} BETWEEN 0 AND 1) AND (${t.epfEmployerRate} IS NULL OR ${t.epfEmployerRate} BETWEEN 0 AND 1) AND ${t.epfEmployeeAmount} IS NULL AND ${t.epfEmployerAmount} IS NULL)`),
     check('employee_statutory_my_tax_applicability_epoch_check', sql`${t.taxApplicabilityEpoch} >= 0`),
     check('employee_statutory_my_tax_circumstance_check', sql`${t.taxCircumstance} IS NULL OR ${t.taxCircumstance} = 'none' OR (${t.taxCircumstance} = 'single' AND ${t.taxCategory} = 1) OR (${t.taxCircumstance} = 'spouse_not_working' AND ${t.taxCategory} = 2) OR (${t.taxCircumstance} IN ('spouse_working', 'widow_divorced') AND ${t.taxCategory} = 3)`),
     // Item e3ce0d4d — PARTIAL: real ICs stay unique per tenant, but multiple non-Malaysian rows carrying a

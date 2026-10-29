@@ -10,7 +10,7 @@ import {expect,it} from 'vitest';
 import {createDb} from '../db/client';
 it('preserves populated closed payroll and the complete applied prefix through the ordinary correction upgrade',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8'));
- const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0698_information_only_corrections');expect(boundary).toBe(566);
+ const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0698_information_only_corrections');expect(boundary).toBe(567);
  const directory=mkdtempSync(join(tmpdir(),'information-correction-upgrade-')),name='ai_hr_info_upgrade_'+randomUUID().replaceAll('-','');
  const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!),appUrl=new URL(process.env.TEST_DATABASE_URL!);
  expect(['127.0.0.1','localhost']).toContain(ownerUrl.hostname);expect(['127.0.0.1','localhost']).toContain(appUrl.hostname);expect(appUrl.username).toBe('ai_hr_app');

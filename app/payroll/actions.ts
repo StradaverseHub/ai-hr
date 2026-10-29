@@ -9,7 +9,10 @@ import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import {
   BatchHasBlockingAnomaliesError,
+  BatchHasFailedReprocessError,
+  BatchHasPendingEmployeesError,
   BatchNeedsRecalculationError,
+  BatchReprocessInProgressError,
   BatchNotCloseableError,
   BatchSwingTooLargeError,
   BatchNotDraftError,
@@ -35,6 +38,7 @@ import {
   removeEmployeePayroll,
   reprocessSelectedEmployees,
   PayrollReprocessStoppedError,
+  ReprocessRunBlockedError,
   resetProcessedBatch,
   setPayrollInput,
   unlockClosedBatch,
@@ -64,6 +68,7 @@ import { transferAllowancesToBatch } from '@/core/attendance-allowance';
 // lib/return-to.ts.
 import {
   adjustmentReturnTo,
+  payrollListAfterClose,
   payrollListAfterReset,
   payrollListReturnTo,
   withPayrollFrom,
@@ -537,7 +542,10 @@ export async function reprocessSelectedAction(formData: FormData) {
             // employee short on a counterpart run that is already closed and can no longer take the days.
             e instanceof PayrollCounterpartClosedError
             ? t('generateBlockedByCounterpartClosed', { n: e.employmentIds.length })
-            : (await payrollNonCashErrorMessage(e)) ?? await payrollTaxSchemeErrorMessage(e);
+            // 3244584c — a closed period refused before any job existed: name it, not the generic error.
+            : e instanceof ReprocessRunBlockedError && e.code === 'PERIOD_CLOSED'
+              ? t('reprocessStopped_PERIOD_CLOSED')
+              : (await payrollNonCashErrorMessage(e)) ?? await payrollTaxSchemeErrorMessage(e);
     redirect(withQueryParam(back, 'error', msg));
   }
   revalidatePath('/payroll');
@@ -669,8 +677,21 @@ export async function closeAction(formData: FormData) {
   // then went to a bare `/payroll` — September. The Back LINKS were carrying the selection all along;
   // this button was throwing it away, which is why the item read as "already works" and was not.
   const home = withPayrollFrom(`/payroll/${batchId}`, formData.get('from'));
+  // cdb1c6ca — WHICH SURFACE PRESSED IT: the run screen's own Close batch button (no flag — unchanged) or
+  // the dedicated Close Batch screen the Payroll Process list's row menu opens. A FLAG, never a posted
+  // destination, exactly as resetAction's: the screen's success lands on the LIST (where the row now
+  // reads Closed) and its refusal comes back to the screen it was pressed on.
+  const onCloseScreen = formData.get('surface') === 'close-screen';
+  const listAfterClose = payrollListAfterClose(formData.get('from'));
   const t = await getTranslations('payroll.batch');
   const ta = await getTranslations('anomaly');
+  // cdb1c6ca — the three outstanding-work refusals name WHO, by employee code and name. Capped so the
+  // message rides a redirect Location header safely; the rest are counted, never dropped silently.
+  const named = (list: { employeeCode: string | null; name: string }[]) => {
+    const shown = list.slice(0, CLOSE_NAMES_SHOWN).map((e) => (e.employeeCode ? `${e.employeeCode} ${e.name}` : e.name));
+    const more = list.length - shown.length;
+    return shown.join(', ') + (more > 0 ? t('closeBlockedAndMore', { n: more }) : '');
+  };
   try {
     await closeBatch(s, { batchId });
   } catch (e) {
@@ -697,13 +718,32 @@ export async function closeAction(formData: FormData) {
               ? ta('closeBlockedBySwing', { movement: e.movementPct, threshold: e.thresholdPct })
               : e instanceof PayrollPermissionDeniedError
                 ? t('closePermissionDenied')
-                : publicErrorMessage(e);
+                : // cdb1c6ca — the three outstanding-work gates.
+                  e instanceof BatchReprocessInProgressError
+                  ? t('closeBlockedReprocessRunning')
+                  : e instanceof BatchHasPendingEmployeesError
+                    ? t('closeBlockedPending', { n: e.employees.length, names: named(e.employees) })
+                    : e instanceof BatchHasFailedReprocessError
+                      ? t('closeBlockedReprocessFailed', { n: e.employees.length, names: named(e.employees) })
+                      : publicErrorMessage(e);
+    if (onCloseScreen) {
+      const q = new URLSearchParams({ error: msg });
+      const refusalFrom = payrollListReturnTo(formData.get('from'));
+      if (refusalFrom !== '/payroll') q.set('from', refusalFrom);
+      redirect(`/payroll/${batchId}/close?${q.toString()}`);
+    }
     redirect(withQueryParam(home, 'error', msg));
   }
   revalidatePath(`/payroll/${batchId}`);
   revalidatePath('/payroll');
+  // cdb1c6ca — from the Close Batch screen, back to the list as it was left, minus a status filter that
+  // would hide the run that now reads Closed (`payrollListAfterClose`).
+  if (onCloseScreen) redirect(withQueryParam(listAfterClose, 'toast', t('closeDone')));
   redirect(withQueryParam(home, 'toast', t('closeDone')));
 }
+
+/** cdb1c6ca — how many employees a close refusal names before it says "and N more". */
+const CLOSE_NAMES_SHOWN = 10;
 
 /**
  * ADR-0076 — run the anomaly checks over a batch.

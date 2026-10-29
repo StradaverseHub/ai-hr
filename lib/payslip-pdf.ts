@@ -1,4 +1,4 @@
-import { isRecordedEmployerContribution, payslipConfiguredContributions } from '../core/payslip-configured-contributions';
+import { isNonPayableRecordLine, payslipConfiguredContributions } from '../core/payslip-configured-contributions';
 // ADR-0036 (#22) — render a payslip as a PDF with pdf-lib (pure JS, no WASM/native, so no Next bundler
 // friction). A pure function over the payslipDetail / payslipForReview read + localized labels, so it is
 // unit-testable and reused identically by every surface that links a PDF route.
@@ -520,7 +520,8 @@ type StoredRecordLine = { code?: string | null; name?: string | null; amount?: u
 function nonPayableLinesOf(raw: unknown): PayslipEarningLine[] {
   if (!Array.isArray(raw)) return [];
   return (raw as StoredRecordLine[])
-    .filter((l) => l?.nonPayable === true && !isRecordedEmployerContribution(l))
+    // 5a5309d5 — the filter now has one owner, shared with Transaction View → History.
+    .filter((l) => isNonPayableRecordLine(l))
     .map((l) => ({ code: l.code ?? null, name: l.name ?? '', amount: round2(n(l.amount)) }));
 }
 
