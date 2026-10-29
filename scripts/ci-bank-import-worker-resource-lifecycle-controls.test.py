@@ -114,7 +114,7 @@ class ResourceLifecycle(unittest.TestCase):
             def command(argv,**kwargs):
                 commands.append(argv)
                 self.assertEqual(snapshots[-1]['resources'][0]['state'],'create-pending')
-                if argv[0]=='/usr/sbin/groupadd': return SimpleNamespace(returncode=0)
+                if argv[0]=='/usr/sbin/groupadd': return SimpleNamespace(returncode=0,stderr='')
                 self.assertIn('--system',argv);self.assertIn('--no-create-home',argv);self.assertIn('--no-log-init',argv)
                 self.assertNotIn('--key',argv);self.assertNotIn('CREATE_MAIL_SPOOL=no',argv)
                 raise RuntimeError('interrupted user allocation')
