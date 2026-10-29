@@ -928,7 +928,7 @@ it('uses approved categories from real Personnel confirmation dates in both matc
 
 it('snapshots handed Native items by employment and records recovery on their original owner atomically', async () => {
   const context = await onboardingContext(admin), native = structuredClone(context.config);
-  native.groups.find(group => group.id === native.techGroup)!.members = [admin.userId!, employee.userId!];
+  native.groups.find(group => group.id === native.techGroup)!.members = [admin.userId!];
   native.catalogue = [
     { id: 'native-held-system', name: 'Fictional handed account', type: 'system', active: true, rules: {}, workflow: null, team: native.techGroup, card: false },
     { id: 'native-held-device', name: 'Fictional handed device', type: 'device', active: true, rules: {}, workflow: null, team: native.techGroup, card: false },
@@ -947,6 +947,8 @@ it('snapshots handed Native items by employment and records recovery on their or
   }
   joiner = (await onboardingList(admin)).find(row => row.case.sourceDraftId === draft.id)!;
   await onboardingCommand(admin, joiner.case.id, joiner.revision, { type: 'handover' });
+  const providing=await onboardingContext(admin);providing.config.groups.find(group=>group.id===providing.config.techGroup)!.members=[admin.userId!,employee.userId!];
+  await onboardingSaveConfig(admin,providing.revision,providing.config);
   const holdings = await withTenant(admin, tx => onboardingHoldingsTx(admin, tx, active.employmentId, base.companyId));
   expect(holdings.map(item => item.name).sort()).toEqual(['Fictional handed account', 'Fictional handed device']);
   expect(await withTenant(admin, tx => onboardingHoldingsTx(admin, tx, employmentId, base.companyId))).toEqual([]);
@@ -1025,4 +1027,30 @@ it('applies live equipment bulk changes atomically and keeps completed items and
   const snapshot = JSON.stringify(row.case);
   await expect(onboardingCommand(admin, row.case.id, row.revision, { type: 'equipmentBulk', ids: [pending.id,randomUUID()], group: team })).rejects.toThrow('no longer available');
   expect(JSON.stringify((await onboardingList(admin)).find(candidate => candidate.case.id === row.case.id)!.case)).toBe(snapshot);
+});
+
+it('limits unsigned signer choices to fresh company HR and lets an authorized HR reviewer countersign',async()=>{
+  let c=await prepared();const alternateId=await createAppUser(base.tenantId,other.personId!,'hr_admin'),alternate:SessionContext={...admin,userId:alternateId,personId:other.personId,roles:['hr_admin'],grants:undefined};
+  let config=(await v9Workspace(admin)).config!;config.companies=[{companyId:base.companyId,signatoryUserId:admin.userId!,signatoryTitle:'Default title',allowedSignatoryUserIds:[admin.userId!,alternateId]}];config.signatoryTitles={[alternateId]:'Alternate printed title'};
+  config.templates.push({id:'signer-letter',name:'Fictional signer letter',module:'off',type:'Letter',rules:{},hrStep:'before',employeeAck:true,retired:false,versions:[{version:1,state:'published',at:'',by:'',blocks:[{id:'signature-name',type:'text',text:'{signatory.name} · {signatory.title}',section:''}],fields:[{id:'printed-signer',label:'Printed signer',type:'text',owner:'pmLocked',pmKey:'signatory.name',required:false,sensitive:false,options:[],section:'main',when:null},{id:'printed-title',label:'Printed title',type:'text',owner:'pmLocked',pmKey:'signatory.title',required:false,sensitive:false,options:[],section:'main',when:null}]}]});
+  const bad=structuredClone(config);bad.companies![0].allowedSignatoryUserIds!.push(employee.userId!);await expect(v9SaveConfig(admin,bad.revision,bad)).rejects.toThrow('company HR');
+  await v9SaveConfig(admin,config.revision,config);
+  const workspace=await v9Workspace(admin);expect(workspace.options.signatoryCandidates![base.companyId]).toContain(alternateId);expect(workspace.options.signatoryCandidates![base.companyId]).not.toContain(employee.userId);
+  await v9Command(admin,c.id,c.revision,{type:'generate',template:'signer-letter'});c=(await v9CaseDetail(admin,c.id)).case;const doc=c.documents.find(doc=>doc.templateId==='signer-letter')!;
+  await expect(v9Command(employee,c.id,c.revision,{type:'documentSignatory',id:doc.id,userId:employee.userId!})).rejects.toThrow();
+  await expect(v9Command(admin,c.id,c.revision,{type:'documentSignatory',id:doc.id,userId:employee.userId!})).rejects.toThrow('permitted');
+  await v9Command(admin,c.id,c.revision,{type:'documentSignatory',id:doc.id,userId:alternateId});c=(await v9CaseDetail(admin,c.id)).case;
+  expect(c.documents.find(doc=>doc.templateId==='signer-letter')).toMatchObject({signatoryUserId:alternateId,mergeValues:{'signatory.title':'Alternate printed title'},values:{'printed-signer':'Unrelated employee','printed-title':'Alternate printed title'}});
+  await v9Command(admin,c.id,c.revision,{type:'documentRefresh',id:doc.id});c=(await v9CaseDetail(admin,c.id)).case;expect(c.documents.find(d=>d.id===doc.id)?.signatoryUserId).toBe(alternateId);
+  await expect(v9Command(admin,c.id,c.revision,{type:'documentSign',id:doc.id,signature:{method:'typed',value:'Wrong designated signer',consent:true}})).rejects.toThrow('designated');
+  await v9Command(alternate,c.id,c.revision,{type:'documentSign',id:doc.id,signature:{method:'typed',value:'Alternate HR',consent:true}});c=(await v9CaseDetail(admin,c.id)).case;
+  await expect(v9Command(admin,c.id,c.revision,{type:'documentSignatory',id:doc.id,userId:admin.userId!})).rejects.toThrow('unsigned');
+  config=(await v9Workspace(admin)).config!;expect(config.companies![0].signatoryUserId).toBe(admin.userId);
+  config.companies![0].signatoryUserId=alternateId;config.templates.push({...structuredClone(config.templates.find(template=>template.id==='signer-letter')!),id:'counter-letter',hrStep:'after'});
+  config.workflows.push({id:'counter-release',name:'Fictional counter release',module:'off',status:'published',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'release',type:'doc',template:'counter-letter',release:true}],description:''});
+  await v9SaveConfig(admin,config.revision,config);await v9Command(admin,c.id,c.revision,{type:'startWorkflow',workflowId:'counter-release'});c=(await v9CaseDetail(admin,c.id)).case;const counter=c.documents.find(doc=>doc.templateId==='counter-letter')!;expect(counter.signatoryUserId).toBe(alternateId);
+  await v9OwnDocument(employee,{caseId:c.id,revision:c.revision,documentId:counter.id,values:{},signature:{method:'typed',value:'Employee acknowledgement',consent:true}});c=(await v9CaseDetail(admin,c.id)).case;expect(c.documents.find(doc=>doc.id===counter.id)?.status).toBe('countersign');
+  await expect(v9Command(other,c.id,c.revision,{type:'documentSign',id:counter.id,signature:{method:'typed',value:'Unrelated',consent:true}})).rejects.toThrow();
+  await v9Command(admin,c.id,c.revision,{type:'documentSign',id:counter.id,signature:{method:'typed',value:'Authorized HR counter reviewer',consent:true}});c=(await v9CaseDetail(admin,c.id)).case;
+  expect(c.documents.find(doc=>doc.id===counter.id)).toMatchObject({status:'signed',hrSignature:{by:{id:admin.userId}}});
 });

@@ -15,5 +15,5 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   if (!detail.actor.hr || !detail.config.v9ChecklistRevision) notFound();
   const [workspace, options, documents] = await Promise.all([readV9Workspace(session), onboardingOptions(session), v9CaseDetail(session, id)]);
   if (!documents.native) notFound();
-  return <V9Workspace {...workspace} nativeCase={{ name: effectiveFacts(detail.case).fullName, content: <><OnboardingCaseView key={detail.revision} detail={detail} options={options} registerHref="/lifecycle/v9"/><NativeCaseDocuments key={id} initial={documents.case} writableKeys={documents.personnelWritableKeys} config={documents.native.config} actor={documents.native.actor}/></> }}/>;
+  return <V9Workspace {...workspace} nativeCase={{ name: effectiveFacts(detail.case).fullName, content: <><OnboardingCaseView key={detail.revision} detail={detail} options={options} registerHref="/lifecycle/v9"/><NativeCaseDocuments key={id} initial={documents.case} writableKeys={documents.personnelWritableKeys} config={documents.native.config} actor={documents.native.actor} users={detail.directory}/></> }}/>;
 }

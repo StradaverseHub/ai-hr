@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { CaseDocument } from '../app/lifecycle/v9/case-document';
+import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import type { Document } from '../lib/lifecycle-v9-model';
 
 const actor = { id: 'actual-hr', name: 'HR Reviewer' };
@@ -13,15 +14,14 @@ it('saves only HR fields and holds signing while edits are unsaved', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Save HR fields' }));
   expect(command).toHaveBeenCalledWith({ type: 'documentSave', id: doc.id, values: { note: 'Reviewed answer' } });
 });
-it('offers countersigning only to the frozen company signatory and keeps signed answers read-only', () => {
+it('offers countersigning to an authorized HR reviewer and keeps employee answers read-only', () => {
   const doc = document(); doc.status = 'countersign'; doc.hrStep = 'after'; doc.employeeSignature = { by: { id: 'employee', name: 'Employee' }, at: '2026-10-29T00:00:00Z', method: 'typed', value: 'Employee', consent: true };
   const command = vi.fn(), view = render(<CaseDocument c={{ state: 'submitted' }} document={doc} actor={{ id: 'other', name: 'Other HR' }} busy={false} command={command}/>);
-  expect(screen.queryByRole('button', { name: 'Sign and submit' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Sign and submit' })).toBeVisible();
   expect(screen.getByLabelText('HR note *')).toBeDisabled();
-  view.rerender(<CaseDocument c={{ state: 'submitted' }} document={doc} actor={actor} busy={false} command={command}/>);
   fireEvent.click(screen.getByRole('checkbox'));
   fireEvent.click(screen.getByRole('button', { name: 'Sign and submit' }));
-  expect(command).toHaveBeenCalledWith({ type: 'documentSign', id: doc.id, signature: { method: 'typed', value: actor.name, consent: true } });
+  expect(command).toHaveBeenCalledWith({ type: 'documentSign', id: doc.id, signature: { method: 'typed', value: 'Other HR', consent: true } });
   view.rerender(<CaseDocument c={{ state: 'cancelled' }} document={doc} actor={actor} busy={false} command={command}/>);
   expect(screen.queryByRole('button', { name: 'Sign and submit' })).not.toBeInTheDocument();
 });
@@ -31,4 +31,11 @@ it('offers per-person wording only while the instance is an unsigned unreserved 
   expect(screen.getByRole('button',{name:'Edit for this person'})).toBeEnabled();
   doc.status='sent';view.rerender(<CaseDocument c={{state:'submitted'}} document={doc} actor={actor} busy={false} command={command}/>);expect(screen.queryByRole('button',{name:'Edit for this person'})).not.toBeInTheDocument();
   doc.status='draft';view.rerender(<CaseDocument c={{state:'submitted',mails:[{id:'mail',key:'mail',workflowId:null,templateId:null,to:['employee'],cc:[],subject:'Fictional',body:'',documentIds:[doc.id],fileIds:[],status:'uncertain',test:false,at:'',deliveredAt:null,failure:null}]}} document={doc} actor={actor} busy={false} command={command}/>);expect(screen.queryByRole('button',{name:'Edit for this person'})).not.toBeInTheDocument();
+});
+
+it('offers the company permitted list for an unsigned instance without changing the default',()=>{
+  const config=v9Defaults(),doc=document(),command=vi.fn();config.companies=[{companyId:'company',signatoryUserId:actor.id,signatoryTitle:'HR',allowedSignatoryUserIds:[actor.id,'alternate']}];
+  const view=render(<CaseDocument c={{state:'submitted',facts:{company:'company'} as never}} document={doc} config={config} users={[actor,{id:'alternate',name:'Alternate HR'},{id:'outside',name:'Other company HR'}]} actor={actor} busy={false} command={command}/>);
+  expect(screen.queryByRole('option',{name:'Other company HR'})).not.toBeInTheDocument();fireEvent.change(screen.getByRole('combobox',{name:'HR signatory for this document'}),{target:{value:'alternate'}});expect(command).toHaveBeenCalledExactlyOnceWith({type:'documentSignatory',id:doc.id,userId:'alternate'});expect(config.companies[0].signatoryUserId).toBe(actor.id);
+  view.rerender(<CaseDocument c={{state:'submitted'}} document={{...doc,status:'hrsigned'}} config={config} actor={actor} busy={false} command={command}/>);expect(screen.queryByRole('combobox',{name:'HR signatory for this document'})).not.toBeInTheDocument();
 });

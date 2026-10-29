@@ -149,7 +149,8 @@ export type Config = {
   emails: EmailTemplate[]; workflows: Workflow[]; groups: Group[]; peopleOpsGroup: string | null;
   bpRules: { rules: Pick<Rules, 'businessGroup' | 'company' | 'department'>; userId: string }[];
   settlementPolicy?: SettlementPolicy;
-  companies?: { companyId: string; signatoryUserId: string | null; signatoryTitle: string; letterhead?: { registrationNo?: string; address?: string; color?: string } }[];
+  signatoryTitles?: Record<string,string>;
+  companies?: { companyId: string; signatoryUserId: string | null; signatoryTitle: string; allowedSignatoryUserIds?: string[]; letterhead?: { registrationNo?: string; address?: string; color?: string } }[];
 };
 export type Environment = {
   today: string; now: string; actor: Actor; nextId: () => string;
@@ -358,7 +359,7 @@ export function signDocument(c: Case, config: Config, id: string, role: 'employe
     doc.status = hrStep === 'after' ? 'countersign' : employeeAck ? 'acknowledged' : 'signed';
     for (const field of doc.fields) if (field.pmKey && !field.pmKey.startsWith('case.') && field.owner === 'employee' && (!field.when || doc.values[field.when.field] === field.when.value) && (doc.values[field.id] ?? '') !== (doc.mergeValues?.[field.pmKey] ?? '') && !c.pmChanges.some(p => p.documentId === id && p.field === field.pmKey)) c.pmChanges.push({ id: env.nextId(), documentId: id, field: field.pmKey, before: doc.mergeValues?.[field.pmKey] ?? '', after: doc.values[field.id] ?? '', sourceRevision: c.sourceRevision, status: 'proposed' });
   } else {
-    if (!doc.signatoryUserId || doc.signatoryUserId !== env.actor.id) throw new V9Error('Only the designated company HR signatory can sign this document.', 'forbidden');
+    if (hrStep !== 'after' && (!doc.signatoryUserId || doc.signatoryUserId !== env.actor.id)) throw new V9Error('Only the designated company HR signatory can sign this document.', 'forbidden');
     if (hrStep === 'before' && doc.status !== 'draft' || hrStep === 'after' && doc.status !== 'countersign' || hrStep === 'none') throw new V9Error('This document does not need an HR signature at this stage.', 'conflict');
     for (const field of doc.fields) if (field.owner !== 'employee' && (!field.when || doc.values[field.when.field] === field.when.value)) {
       const value = doc.values[field.id] ?? '';

@@ -1,3 +1,4 @@
+import { v9CompanySigners, v9SignatoryTitle } from '../../../lib/lifecycle-v9-signatories';
 import { resolveV9CaseFields, validateV9CaseValue, offCaseFormValues } from '../../../lib/lifecycle-v9-case-form';
 import 'server-only';
 import { randomUUID, createHash } from 'node:crypto';
@@ -25,7 +26,7 @@ import { resolveDocumentUpload } from '../../../core/employee-documents';
 
 type Row = { id: string; revision: number; company_id: string; data: M.Case; native?: true };
 export type DirectoryUser = { id: string; name: string };
-export type Options = { users: DirectoryUser[]; companies: { id: string; name: string; registrationNo?: string; address?: string }[]; employees: { id: string; name: string; employeeNo: string; companyId: string }[]; labels?: Partial<Record<M.RuleField, Record<string, string>>>; leaveTypes?: { id: string; name: string }[] };
+export type Options = { users: DirectoryUser[]; companies: { id: string; name: string; registrationNo?: string; address?: string }[]; employees: { id: string; name: string; employeeNo: string; companyId: string }[]; signatoryCandidates?: Record<string,string[]>; labels?: Partial<Record<M.RuleField, Record<string, string>>>; leaveTypes?: { id: string; name: string }[] };
 export type Workspace = { config: M.Config | null; cases: M.Case[]; options: Options; canConfigure: boolean; actor: M.Actor; personnelWritableKeys: string[]; templateUsage?: M.TemplateUsage[]; definitionUsage?: M.DefinitionUsage[] };
 export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'state' | 'facts' | 'tasks' | 'items' | 'documents'> & { own: boolean };
 export type CaseDetail = { case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
@@ -34,6 +35,10 @@ function identifier(value: string): string { if (!uuid.test(value)) throw new M.
 async function admin(tx: Tx, companyId?: string): Promise<void> {
   const [result] = await tx.execute<{ ok: boolean }>(companyId ? sql`select app.is_admin_for(${companyId}::uuid) as ok` : sql`select app.is_group_admin() as ok`);
   if (!result?.ok) throw new M.V9Error('You do not have permission to change this lifecycle record.', 'forbidden');
+}
+async function companySignersTx(tx:Tx,tenantId:string,companyId:string):Promise<string[]> {
+  const users=await tx.execute<{id:string}>(sql`select u.id from app_user u where u.tenant_id=${tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and exists(select 1 from role_assignment r where r.tenant_id=u.tenant_id and r.app_user_id=u.id and r.role in ('super_admin','hr_admin') and (r.company_id is null or r.company_id=${companyId}::uuid)) order by u.id`);
+  return users.map(user=>user.id);
 }
 async function actor(tx: Tx, ctx: SessionContext): Promise<M.Actor> {
   if (!ctx.userId) { const [owner] = await tx.execute<{ ok: boolean }>(sql`select current_user='ai_hr_owner' OR EXISTS(select 1 from pg_roles where rolname=current_user and rolsuper) as ok`); if (owner?.ok) return { id: 'system', name: 'System' }; throw new M.V9Error('Sign in to continue.', 'forbidden'); }
@@ -98,7 +103,7 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   };
   const signatory = config.companies?.find(co => co.companyId === c.facts.company);
   values['signatory.name'] = users.find(u => u.id === signatory?.signatoryUserId)?.name ?? '';
-  values['signatory.title'] = signatory?.signatoryTitle ?? '';
+  values['signatory.title'] = v9SignatoryTitle(config,signatory?.signatoryUserId,c.facts.company);
   values['company.regNo'] = signatory?.letterhead?.registrationNo ?? company[0]?.registrationNo ?? '';
   values['company.address'] = signatory?.letterhead?.address ?? company[0]?.address ?? '';
   values['company.color'] = signatory?.letterhead?.color ?? '#4F46E5';
@@ -139,6 +144,7 @@ export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {
     const companies = await tx.execute<{ id: string; name: string; registrationNo: string; address: string }>(sql`select id,legal_name as name,coalesce(registration_no,'') as "registrationNo",concat_ws(', ',nullif(trim(address_line1),''),nullif(trim(address_line2),''),nullif(trim(address_line3),''),nullif(trim(postcode),''),nullif(trim(city),''),nullif(trim(state),''),nullif(trim(address_country),'')) as address from company where tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(id) order by legal_name,id`);
     if (!permission?.ok && !companies.length) throw new M.V9Error('HR administration access is required. Open your assigned lifecycle tasks instead.', 'forbidden');
     const users = await tx.execute<DirectoryUser>(sql`select u.id,coalesce(p.full_name,'User') as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) order by name,u.id`);
+    const signatoryCandidates=Object.fromEntries(await Promise.all(companies.map(async company=>[company.id,await companySignersTx(tx,ctx.tenantId,company.id)] as const)));
     const employees = await tx.execute<{ id: string; name: string; employeeNo: string; companyId: string }>(sql`select e.id,p.full_name as name,e.employee_code as "employeeNo",e.company_id as "companyId" from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(e.company_id) order by p.full_name,e.id`);
     const rows = config ? await tx.execute<{ data: M.Case }>(sql`select data from lc_v9_case where tenant_id=${ctx.tenantId}::uuid order by created_at desc,id desc`) : [];
     const masters = await tx.execute<{ kind: M.RuleField; id: string; name: string }>(sql`select 'businessGroup' as kind,id,name from business_unit where tenant_id=${ctx.tenantId}::uuid union all select 'department',id,name from department where tenant_id=${ctx.tenantId}::uuid union all select 'grade',id,name from job_grade where tenant_id=${ctx.tenantId}::uuid union all select 'title',id,title from position where tenant_id=${ctx.tenantId}::uuid`);
@@ -147,7 +153,7 @@ export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {
     const leaveTypes = await tx.execute<{ id: string; name: string }>(sql`select id,name from leave_type where tenant_id=${ctx.tenantId}::uuid and archived_at is null order by name,id`);
     const usage = config && permission?.ok ? await tx.execute<M.TemplateUsage>(sql`select template_id as "templateId",version,documents from app.lc_v9_document_usage()`) : [];
     const definitionUsage = config && permission?.ok ? await tx.execute<M.DefinitionUsage>(sql`select kind,definition_id as "definitionId",messages,runs from app.lc_v9_definition_usage()`) : [];
-    return { definitionUsage: [...definitionUsage], templateUsage: [...usage], config, cases: rows.map(r => r.data), options: { companies: [...companies], users: [...users], employees: [...employees], labels, leaveTypes: [...leaveTypes] }, canConfigure: !!permission?.ok, actor: who, personnelWritableKeys: v9PersonnelWritableKeys };
+    return { definitionUsage: [...definitionUsage], templateUsage: [...usage], config, cases: rows.map(r => r.data), options: { signatoryCandidates, companies: [...companies], users: [...users], employees: [...employees], labels, leaveTypes: [...leaveTypes] }, canConfigure: !!permission?.ok, actor: who, personnelWritableKeys: v9PersonnelWritableKeys };
   });
 }
 export async function v9Setup(ctx: SessionContext): Promise<void> {
@@ -209,6 +215,12 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
     if (config.bpRules.some(r => !users.some(u => u.id === r.userId)) || config.companies?.some(c => c.signatoryUserId && !users.some(u => u.id === c.signatoryUserId))) throw new M.V9Error('Choose an available user for the PBP and company signatory.');
     const companies = await tx.execute<{ id: string }>(sql`select id from company where tenant_id=${ctx.tenantId}::uuid`);
     if (config.companies?.some(c => !companies.some(co => co.id === c.companyId))) throw new M.V9Error('Choose an available company.');
+    for(const company of config.companies??[]) {
+      const allowed=v9CompanySigners(config,company.companyId),eligible=await companySignersTx(tx,ctx.tenantId,company.companyId);
+      if(company.signatoryUserId&&!allowed.includes(company.signatoryUserId))throw new M.V9Error('The default signatory must remain on the company’s permitted list.');
+      if(allowed.some(id=>!eligible.includes(id)))throw new M.V9Error('Choose available company HR accounts for permitted signers.');
+    }
+    if(Object.keys(config.signatoryTitles??{}).some(id=>!users.some(user=>user.id===id)))throw new M.V9Error('A signatory title refers to an unavailable account.');
     const removed = previous.workflows.filter(workflow => !config.workflows.some(next => next.id === workflow.id)).map(workflow => workflow.id);
     if (removed.length) {
       const history = await tx.execute<{ id: string }>(sql`with records as (
@@ -277,6 +289,7 @@ export type Command =
   | { type: 'emailEdit'; emailId: string; subject: string; body: string }
   | { type: 'documentTextEdit'; id: string; edits: Record<string, string> }
   | { type: 'documentSave'; id: string; values: Record<string, string> }
+  | { type: 'documentSignatory'; id:string; userId:string }
   | { type: 'documentSign'; id: string; signature: Pick<M.Signature, 'method' | 'value' | 'consent'> }
   | { type: 'documentRefresh'; id: string }
   | { type: 'clear'; sourceRevision: string; reason: string }
@@ -304,6 +317,7 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('emailEdit'), emailId: commandId, subject: z.string().min(1).max(1000), body: z.string().max(20000) }).strict(),
   z.object({ type: z.literal('documentTextEdit'), id: commandId, edits: z.record(commandId, z.string().max(20000)).refine(value => Object.keys(value).length <= 500) }).strict(),
   z.object({ type: z.literal('documentSave'), id: commandId, values: z.record(commandId, z.string().max(20000)) }).strict(),
+  z.object({type:z.literal('documentSignatory'),id:commandId,userId:z.string().uuid()}).strict(),
   z.object({ type: z.literal('documentSign'), id: commandId, signature: z.object({ method: z.enum(['typed', 'drawn']), value: z.string().min(1).max(500000), consent: z.literal(true) }).strict() }).strict(),
   z.object({ type: z.literal('documentRefresh'), id: commandId }).strict(),
   z.object({ type: z.literal('clear'), sourceRevision: z.string().regex(/^[a-f0-9]{64}$/), reason: reasonText }).strict(),
@@ -321,7 +335,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     const row = await load(tx, ctx, id); if (row.revision !== revision) throw new M.V9Error('This case changed. Refresh before trying again.', 'conflict');
     const config = await configTx(tx, ctx); if (!config) throw new M.V9Error('V9 configuration is unavailable.');
     const c = structuredClone(row.data); let env = await environment(tx, ctx, c, config);
-    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'documentTextEdit', 'documentSave', 'documentSign', 'documentRefresh', 'runWorkflows', 'retryWorkflow', 'startWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
+    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'documentTextEdit', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'runWorkflows', 'retryWorkflow', 'startWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
     if (row.native && ['pmPush', 'pmPushSelected'].includes(command.type) && !c.facts.employmentId) throw new M.V9Error('Activate this Personnel draft before applying its proposed changes.');
     if (command.type === 'caseFormSave') {
       if (c.module !== 'off' || !['pending','submitted'].includes(c.state)) throw new M.V9Error('Reopen this case before editing its fields.');
@@ -394,11 +408,22 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     else if (command.type === 'emailEdit') { if (!config.emails.some(e => e.id === command.emailId && e.module === c.module) || command.body.length > 20000 || command.subject.length > 1000) throw new M.V9Error('Choose an available email and keep its content within the allowed length.'); c.emailEdits = { ...c.emailEdits, [command.emailId]: { subject: command.subject, body: command.body } }; M.appendLog(c, env, 'email.edited', 'Email text changed for this person only.'); }
     else if (command.type === 'documentTextEdit') M.editDocumentText(c, config, command.id, command.edits, env);
     else if (command.type === 'documentSave') M.saveDocument(c, command.id, command.values, 'hr', env);
+    else if(command.type==='documentSignatory') {
+      const document=c.documents.find(document=>document.id===command.id),template=config.templates.find(template=>template.id===document?.templateId);
+      if(c.state!=='submitted'||!document||document.status!=='draft'||document.hrSignature||document.employeeSignature||(document.hrStep??template?.hrStep)!=='before'||M.documentDeliveryReserved(c,document.id))throw new M.V9Error('Only an unsigned document awaiting HR signature can change signatory.');
+      const eligible=await companySignersTx(tx,ctx.tenantId,c.facts.company);
+      if(!v9CompanySigners(config,c.facts.company).includes(command.userId)||!eligible.includes(command.userId))throw new M.V9Error('Choose a permitted company HR signatory.');
+      document.signatoryUserId=command.userId;document.mergeValues??={};document.mergeValues['signatory.name']=env.userName(command.userId);document.mergeValues['signatory.title']=v9SignatoryTitle(config,command.userId,c.facts.company);
+      for(const field of document.fields)if(field.owner==='pmLocked'&&['signatory.name','signatory.title'].includes(field.pmKey??''))document.values[field.id]=document.mergeValues[field.pmKey!]??'';
+      M.appendLog(c,env,'document.signatoryChanged',`${document.name} · ${env.userName(command.userId)}`);
+    }
     else if (command.type === 'documentSign') {
+      const document=c.documents.find(document=>document.id===command.id),template=config.templates.find(template=>template.id===document?.templateId);
+      if((document?.hrStep??template?.hrStep)==='before'&&(!v9CompanySigners(config,c.facts.company).includes(env.actor.id)||!(await companySignersTx(tx,ctx.tenantId,c.facts.company)).includes(env.actor.id)))throw new M.V9Error('This account is no longer a permitted company HR signatory.');
       M.signDocument(c, config, command.id, 'hr', { ...command.signature, by: env.actor, at: env.now }, env);
       if(c.documents.find(document=>document.id===command.id)?.status==='hrsigned')for(const workflow of config.workflows)M.runWorkflow(c,config,workflow,env,'hrSigned');
     }
-    else if (command.type === 'documentRefresh') { const document = c.documents.find(d => d.id === command.id); if (!document || document.status !== 'draft' || M.documentDeliveryReserved(c, command.id)) throw new M.V9Error('Only an unsigned draft not reserved for email delivery can refresh its source values.'); document.mergeValues = M.documentMergeValues(document,env.mergeValues); document.signatoryUserId = env.signatoryUserId ?? null; for (const field of document.fields) if (field.owner === 'pmLocked' && field.pmKey) document.values[field.id] = env.mergeValues[field.pmKey] ?? ''; M.appendLog(c, env, 'document.refreshed', document.name); }
+    else if (command.type === 'documentRefresh') { const document = c.documents.find(d => d.id === command.id); if (!document || document.status !== 'draft' || M.documentDeliveryReserved(c, command.id)) throw new M.V9Error('Only an unsigned draft not reserved for email delivery can refresh its source values.'); document.signatoryUserId ??= env.signatoryUserId ?? null; document.mergeValues = M.documentMergeValues(document,{...env.mergeValues,'signatory.name':document.signatoryUserId?env.userName(document.signatoryUserId):'','signatory.title':v9SignatoryTitle(config,document.signatoryUserId,c.facts.company)}); for (const field of document.fields) if (field.owner === 'pmLocked' && field.pmKey) document.values[field.id] = document.mergeValues[field.pmKey] ?? ''; M.appendLog(c, env, 'document.refreshed', document.name); }
     else if (command.type === 'settlementOptions') { if (!['pending', 'submitted'].includes(c.state)) throw new M.V9Error('Reopen this case before changing its figures.'); c.settlementOptions = command.options; M.appendLog(c, env, 'settlement.adjusted', command.reason); }
     else if (command.type === 'clear') {
       const calculation = await readSettlementTx(tx, ctx, c, config);
