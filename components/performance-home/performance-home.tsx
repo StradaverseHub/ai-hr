@@ -60,7 +60,7 @@ export async function PerformanceHomeView({ block }: { block: PerformanceHomeBlo
     : next.kind === 'feedback360' ? t('next.feedback360Line') : next.total > 0 ? t(`next.${next.kind}Line`, { done: next.done, total: next.total }) : null;
   const rows: { key: string; label: string; value: string; strong: boolean; note?: string }[] = [];
   const perf = standing.performance;
-  // DQ-1: a line-manager-approved band appears only when home-cards.ts WHERE_YOU_STAND_RULE is flipped; it is never bold.
+  // DQ-1 (APR-028): the line-manager-approved band shows before release, as the source does; it is never bold.
   if (perf) rows.push('band' in perf
     ? { key: 'performance', label: t('standing.performance'), value: perf.band, strong: perf.state === 'released', note: perf.state === 'lineManagerApproved' ? tArea('homeHelp.stand.lineManagerApproved') : undefined }
     : { key: 'performance', label: t('standing.performance'), value: t(`standing.${perf.state}`), strong: false });

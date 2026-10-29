@@ -30,6 +30,7 @@ export * from '../../core/attendance-explain';
 export * from '../../core/attendance-clock';
 
 export * from '../../core/attendance-clock-read';
+export * from '../../core/mobile-clock-attempt';
 export {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from '../../core/attendance-clock-subject';
 
 // r424 (50ed39e1) — File Structure Mapping, Import Clocking Data and Import Logs.
@@ -100,3 +101,10 @@ export {retainedAttestedPolicyCancellationTx} from './policy-attested-work-sourc
 export * from '../../core/attendance-allowance-selection';
 
 export {retainedAttendancePolicyPlanCancellationTx,attendancePolicyCompleteApprovedPlanSetTx,attendancePolicyPlanProtectionDatesTx} from './policy-plan-submission';
+
+// Deterministic offline-claim adjudicator and the per-company offline settings read (draft 0647). Unmounted.
+export {createOfflineAdjudicator,readOfflineClockingPolicyTx,offlineEffectiveInstant,OfflineAdjudicationError,OFFLINE_PROVEN_WINDOW_SECONDS,type OfflineAdjudication,type OfflineClockingPolicy,type OfflineEffectiveInstant} from './mobile-offline-adjudicator';
+// The production offline clock snapshot: the one port context issuance and the adjudicator both take. Unmounted.
+export {readOfflineClockSnapshotTx,offlineClockSnapshotPort,offlineClockPolicyRevision,type OfflineClockSnapshotDeployment} from './mobile-offline-snapshot';
+// The per-company offline clocking settings write and the review count (draft 0647). No server-only import below.
+export {setOfflineClockingPolicy,readOfflineClockingSettings,readOfflineClockingSettingsTx,offlineClockingColumnsPresentTx,countOfflineClaimsAwaitingReview,countOfflineClaimsAwaitingReviewTx,countOpenOfflineContexts,countOpenOfflineContextsTx,OfflineClockingSettingsError,type OfflineClockingSettingsRefusal,type OfflineClockingSettingsView,type OfflineClockingPolicyInput} from './mobile-offline-settings';

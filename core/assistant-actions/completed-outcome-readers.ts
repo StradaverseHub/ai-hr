@@ -19,6 +19,7 @@ import {readCompletedClaimCancellationOutcomeTx} from './claim-cancellation-revi
 import {leaveCancellationReviews,leaveEditReviews} from './leave-change-review-store';
 import {overtimeRequestReviews} from './overtime-request-review-store';
 import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews} from './assigned-decision-review-store';
+import {leaveAdjustmentReviews,movementTransferReviews,leaveCreditReviews} from './hr-prepared-review-store';
 import {readCompletedMultiCycleRunOutcomeTx} from './multi-cycle-run-review-store';
 import {readCompletedPayComponentOutcomeTx} from './pay-component-review-store';
 import {readCompletedPayrollCloseOutcomeTx} from './payroll-close-review-store';
@@ -52,6 +53,9 @@ export async function readCompletedNativeOutcomeTx(tx:Tx,supplied:SessionContext
   case 'approvals.claim.decide':result=await claimDecisionReviews.readCompletedOutcomeTx(tx,ctx,id);break;
   case 'approvals.attendance.decide':result=await attendanceDecisionReviews.readCompletedOutcomeTx(tx,ctx,id);break;
   case 'approvals.toil.decide':result=await toilDecisionReviews.readCompletedOutcomeTx(tx,ctx,id);break;
+  case 'leave.adjustment.apply':result=await leaveAdjustmentReviews.readCompletedOutcomeTx(tx,ctx,id);break;
+  case 'employees.movement.transfer':result=await movementTransferReviews.readCompletedOutcomeTx(tx,ctx,id);break;
+  case 'toil.credit.grant':result=await leaveCreditReviews.readCompletedOutcomeTx(tx,ctx,id);break;
   case 'performance.review.acknowledge':result=await readCompletedStandardReviewOutcomeTx(tx,ctx,id);break;
   case 'performance.onehr.plan.acknowledge':result=await readCompletedOnehrPlanOutcomeTx(tx,ctx,id);break;
   case 'system_testing.execution.save':result=await readCompletedTestingOutcomeTx(tx,ctx,id);break;

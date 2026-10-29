@@ -5,6 +5,13 @@
 !/mobile
 !/lib
 /lib/*
+!/lib/bounded-body.ts
+!/lib/clock-attempt.ts
+!/lib/mobile-clock-integrity.ts
+!/lib/mobile-key-enrollment.ts
+!/lib/mobile-android-key-policy.ts
+!/lib/mobile-android-enrollment.ts
+!/lib/mobile-integrity-contract.ts
 !/lib/mobile-connection.ts
 !/lib/mobile-workplace-setup.ts
 !/lib/mobile-design.ts
@@ -19,6 +26,9 @@
 **/dist
 /mobile/android
 /mobile/ios
+/mobile/modules/**/android/build
+/mobile/modules/**/android/.gradle
+/mobile/modules/**/ios/build
 **/.env*
 **/*.pem
 **/*.key

@@ -32,6 +32,7 @@ import {
   payslipForReview,
 } from '../core/payroll-view';
 import { listBatches } from '../core/payroll';
+import { applyFilters } from '../app/payroll/dashboard-logic';
 import { payrollRunLabel, payslipCycleLabel } from '../core/payslip-cycle-label';
 import { deriveHistoryBreakdown } from '../app/payroll/transaction-view/history-breakdown';
 import { pivotHistoryGrid } from '../app/payroll/transaction-view/history-pivot';
@@ -175,6 +176,13 @@ describe('b240c0ff — imported payroll history keeps its lines and its Pay Cycl
     // The payroll list / process wizard / batch pages read listBatches.
     const batches = await listBatches(ctx, [b.companyId]);
     expect(batches.map((x) => payrollRunLabel(x, 'Adjustment'))).toEqual(['Monthly - By Import']);
+    // The payroll list's Payroll Cycle filter: under its imported cycle's run type (Monthly ⇒ regular),
+    // never under "Adjustment", while the stored run type stays 'adjustment'.
+    const listFilter = (cycles: string[]) => applyFilters(batches, { periods: [period], companyIds: [], cycles, statuses: [] });
+    expect(batches.map((x) => [x.runType, x.filterRunType])).toEqual([['adjustment', 'regular']]);
+    expect(listFilter(['regular'])).toHaveLength(1);
+    expect(listFilter(['adjustment'])).toHaveLength(0);
+    expect(listFilter([])).toHaveLength(1);
   });
 
   it('UPL and a second deduction are listed separately under Other deductions, with totals unchanged', async () => {

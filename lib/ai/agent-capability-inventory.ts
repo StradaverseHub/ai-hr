@@ -38,6 +38,7 @@ export const AGENT_ACTION_TIER_CEILING=Object.freeze({
  'multi_cycle_payroll.create_run':'approve','typed_pay_components.create':'approve','rewards.post':'approve',
  'country-my.statutory.update':'approve','employees.import':'handoff','claims.cancel':'confirm','leave.cancel':'confirm','leave.edit':'confirm',
  'attendance.overtime.request':'confirm','approvals.claim.decide':'approve','approvals.attendance.decide':'approve','approvals.toil.decide':'approve',
+ 'leave.adjustment.apply':'approve','employees.movement.transfer':'approve','toil.credit.grant':'approve',
 } as const satisfies Record<ModuleEffectActionId,AgentTier>);
 
 export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<string,AgentCapabilityClass>>>>=Object.freeze({
@@ -45,6 +46,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/ai/actions.ts":{"disableAiAction":"handoff:ai_governance","evaluateProviderCandidateAction":"handoff:ai_governance","removeAiProviderConfigAction":"handoff:ai_governance","saveAiProviderConfigAction":"handoff:ai_governance","setActiveProviderAction":"handoff:ai_governance","testConnectionAction":"handoff:ai_governance"},
  "app/admin/attendance-allowance/actions.ts":{"archiveAllowancePolicyAction":"backlog:confirm","previewAllowanceEmployeeSelection":"backlog:automatic","saveAllowancePolicyFormAction":"backlog:confirm","searchAllowanceEmployeeValues":"backlog:automatic","searchAllowanceEmployees":"backlog:automatic","setAllowanceStatusAction":"backlog:confirm","transferAllowanceAction":"backlog:confirm"},
  "app/admin/attendance-policy/device-actions.ts":{"revokeDeviceAction":"backlog:confirm"},
+ "app/admin/attendance-policy/offline-clocking-actions.ts":{"saveOfflineClockingAction":"backlog:confirm"},
  "app/admin/attendance-policy/rule-actions.ts":{"copyAttendanceRuleAction":"backlog:confirm","createAttendanceRuleAction":"backlog:confirm","deleteAttendanceRuleAction":"backlog:confirm","saveScheduleGroupGeneralAction":"backlog:confirm","setAttendanceRuleStatusAction":"backlog:confirm","updateAttendanceRuleAction":"backlog:confirm"},
  "app/admin/attendance/approval-workflow/actions.ts":{"previewAttendanceWorkflowAction":"backlog:automatic","restoreAttendanceWorkflowAction":"backlog:confirm","retireAttendanceWorkflowAction":"backlog:confirm","saveAttendanceWorkflowAction":"backlog:confirm","setAttendanceWorkflowEnabledAction":"backlog:confirm"},
  "app/admin/attendance/file-mappings/actions.ts":{"deleteClockingMappingAction":"backlog:confirm","duplicateClockingMappingAction":"backlog:confirm","saveClockingMappingAction":"backlog:confirm","setClockingMappingActiveAction":"backlog:confirm"},
@@ -65,8 +67,8 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/leave-config/bf-import/actions.ts":{"commitLeaveBfImportAction":"backlog:approve","reverseLeaveBfImportAction":"backlog:approve","validateLeaveBfImportAction":"backlog:automatic"},
  "app/admin/leave-config/earned-accrual/actions.ts":{"previewEarnedAccrualWithReasonAction":"backlog:automatic"},
  "app/admin/leave-config/history-import/actions.ts":{"commitLeaveHistoryImportAction":"backlog:approve","validateLeaveHistoryImportAction":"backlog:automatic"},
- "app/admin/leave-config/leave-credit/actions.ts":{"grantLeaveCreditRowsAction":"backlog:approve","leaveCreditGrantClaimReviewAction":"backlog:approve","leaveCreditGrantContextAction":"backlog:approve","leaveCreditGrantDayFactsAction":"backlog:approve","reverseLeaveCreditAction":"backlog:approve"},
- "app/admin/leave/adjustments/actions.ts":{"applyLeaveAdjustmentAction":"backlog:approve","previewLeaveAdjustmentAction":"backlog:automatic","reverseLeaveAdjustmentAction":"backlog:approve"},
+ "app/admin/leave-config/leave-credit/actions.ts":{"grantLeaveCreditRowsAction":"registered:toil.credit.grant","leaveCreditGrantClaimReviewAction":"backlog:approve","leaveCreditGrantContextAction":"backlog:approve","leaveCreditGrantDayFactsAction":"backlog:approve","reverseLeaveCreditAction":"backlog:approve"},
+ "app/admin/leave/adjustments/actions.ts":{"applyLeaveAdjustmentAction":"registered:leave.adjustment.apply","previewLeaveAdjustmentAction":"backlog:automatic","reverseLeaveAdjustmentAction":"backlog:approve"},
  "app/admin/leave/entitlements/templates/actions.ts":{"countEligibilityTargetsAction":"backlog:automatic","createEligibilityRuleAction":"backlog:approve","createEntitlementTemplateAction":"backlog:approve","deleteEligibilityRuleAction":"backlog:approve","deleteEntitlementTemplateAction":"backlog:approve","retireEligibilityRuleAction":"backlog:approve","retireEntitlementTemplateAction":"backlog:approve","setLeaveTypeDefaultTemplateAction":"backlog:approve","updateEligibilityRuleAction":"backlog:approve","updateEntitlementTemplateAction":"backlog:approve"},
  "app/admin/leave/generate/actions.ts":{"previewLeaveGenerationAction":"backlog:automatic"},
  "app/admin/leave/import/actions.ts":{"commitLeaveImportAction":"backlog:approve","validateLeaveImportAction":"backlog:automatic"},
@@ -81,7 +83,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/payroll-cycle/actions.ts":{"copyCycleAction":"backlog:confirm","deleteCycleAction":"backlog:confirm","seedCatalogAction":"backlog:confirm","setActiveAction":"backlog:confirm","upsertCycleAction":"backlog:confirm"},
  "app/admin/payroll-permissions/actions.ts":{"deletePayrollPermissionAction":"handoff:access_and_authentication","setPayrollPermissionAction":"handoff:access_and_authentication"},
  "app/admin/payroll-policy/actions.ts":{"assignPolicyAction":"backlog:confirm","copyPolicyAction":"backlog:confirm","createPolicyAction":"backlog:confirm","deletePolicyAction":"backlog:confirm","setStatusAction":"backlog:confirm","updatePolicyAction":"backlog:confirm"},
- "app/admin/personnel/[employmentId]/actions.ts":{"addDelegationAction":"backlog:approve","changeEmploymentCompanyAction":"backlog:approve","correctHireDetailsAction":"backlog:approve","createMovementEventAction":"backlog:approve","deleteEmployeeDocumentAction":"backlog:approve","editCompensationAction":"backlog:approve","editMovementEventAction":"backlog:approve","endDelegationAction":"backlog:approve","removePersonPhotoAction":"backlog:approve","replaceEmployeeDocumentAction":"backlog:approve","reverseMovementEventAction":"backlog:approve","saveAttendanceTabAction":"backlog:approve","saveBankStatutoryTabAction":"backlog:approve","saveCardIdFieldAction":"backlog:approve","saveJobTabAction":"backlog:approve","savePayrollTabAction":"backlog:approve","saveProfileTabAction":"backlog:approve","setBankAction":"backlog:approve","setClockingControlAction":"backlog:approve","setCompensationAction":"backlog:approve","setComplianceFieldsAction":"backlog:approve","setContactAddressAction":"backlog:approve","setDefaultShiftAction":"backlog:approve","setDirectSuperiorAction":"registered:org.reporting.change","setEmploymentBlacklistAction":"handoff:employment_exit_or_discipline","setEmploymentComponentAction":"backlog:approve","setEmploymentHolidayCalendarAction":"backlog:approve","setEmploymentInfoAction":"backlog:approve","setEmploymentScheduleGroupAction":"backlog:approve","setIcAction":"backlog:approve","setLocationAction":"backlog:approve","setOthersStatutoryAction":"backlog:approve","setPassportAction":"backlog:approve","setPaymentMethodAction":"backlog:approve","setPersonAction":"backlog:approve","setPersonPhotoAction":"backlog:approve","setStatutoryAction":"registered:country-my.statutory.update","setTaxAction":"backlog:approve","setTp3Action":"backlog:approve","supersedeCompensationAction":"backlog:approve","updateEmployeeDocumentMetaAction":"backlog:approve","uploadEmployeeDocumentAction":"backlog:approve"},
+ "app/admin/personnel/[employmentId]/actions.ts":{"addDelegationAction":"backlog:approve","changeEmploymentCompanyAction":"backlog:approve","correctHireDetailsAction":"backlog:approve","createMovementEventAction":"registered:employees.movement.transfer","deleteEmployeeDocumentAction":"backlog:approve","editCompensationAction":"backlog:approve","editMovementEventAction":"backlog:approve","endDelegationAction":"backlog:approve","removePersonPhotoAction":"backlog:approve","replaceEmployeeDocumentAction":"backlog:approve","reverseMovementEventAction":"backlog:approve","saveAttendanceTabAction":"backlog:approve","saveBankStatutoryTabAction":"backlog:approve","saveCardIdFieldAction":"backlog:approve","saveJobTabAction":"backlog:approve","savePayrollTabAction":"backlog:approve","saveProfileTabAction":"backlog:approve","setBankAction":"backlog:approve","setClockingControlAction":"backlog:approve","setCompensationAction":"backlog:approve","setComplianceFieldsAction":"backlog:approve","setContactAddressAction":"backlog:approve","setDefaultShiftAction":"backlog:approve","setDirectSuperiorAction":"registered:org.reporting.change","setEmploymentBlacklistAction":"handoff:employment_exit_or_discipline","setEmploymentComponentAction":"backlog:approve","setEmploymentHolidayCalendarAction":"backlog:approve","setEmploymentInfoAction":"backlog:approve","setEmploymentScheduleGroupAction":"backlog:approve","setIcAction":"backlog:approve","setLocationAction":"backlog:approve","setOthersStatutoryAction":"backlog:approve","setPassportAction":"backlog:approve","setPaymentMethodAction":"backlog:approve","setPersonAction":"backlog:approve","setPersonPhotoAction":"backlog:approve","setStatutoryAction":"registered:country-my.statutory.update","setTaxAction":"backlog:approve","setTp3Action":"backlog:approve","supersedeCompensationAction":"backlog:approve","updateEmployeeDocumentMetaAction":"backlog:approve","uploadEmployeeDocumentAction":"backlog:approve"},
  "app/admin/personnel/[employmentId]/cost-allocation-actions.ts":{"previewCostAllocationsAction":"backlog:automatic","readCostAllocationsAction":"backlog:automatic","saveCostAllocationsAction":"backlog:approve"},
  "app/admin/personnel/[employmentId]/cp38-actions.ts":{"addCp38Action":"backlog:approve","editCp38Action":"backlog:approve","terminateCp38Action":"backlog:approve"},
  "app/admin/personnel/[employmentId]/dependent-actions.ts":{"addDependentAction":"backlog:approve","archiveDependentAction":"backlog:approve","editDependentAction":"backlog:approve"},
@@ -135,10 +137,47 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/api/attendance/clock/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/home/greetings/route.ts#route":{"POST":"internal:session_and_presentation"},
  "app/api/home/interactions/route.ts#route":{"POST":"internal:session_and_presentation"},
+ "app/api/mobile/v1/clock-attempts/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/mobile/v1/clock-device/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v1/clock-location/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/mobile/v1/clock/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v1/integrity/enrollment/begin/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v1/integrity/enrollment/complete/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v1/integrity/key-receipt/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v1/integrity/revoke/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/mobile/v1/leave-preview/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/mobile/v1/leave-requests/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v1/submission-abandon/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/attendance/applications/[id]/withdraw/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/attendance/corrections/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/attendance/replacement-leave/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/claims/[id]/cancel/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/claims/[id]/delete/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/claims/drafts/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/claims/drafts/submit/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/claims/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/documents/share-events/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/integrity/android/clock/begin/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/integrity/android/clock/complete/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/integrity/android/enrollment/begin/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/integrity/android/enrollment/complete/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/integrity/android/offline/claim/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/integrity/android/offline/context/close/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/integrity/android/offline/context/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/integrity/ios/clock/begin/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/integrity/ios/clock/complete/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/integrity/ios/offline/claim/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/integrity/ios/offline/context/close/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/integrity/ios/offline/context/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/integrity/key-receipt/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/integrity/revoke/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/leave/requests/[id]/cancellation/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/leave/requests/[id]/withdraw/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/notifications/read/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/profile/changes/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/push/enrollment/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/push/revoke/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/tasks/[kind]/[id]/decision/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/approvals/actions.ts":{"approveClaimAction":"registered:approvals.claim.decide","approveCorrectionAction":"registered:approvals.attendance.decide","approveLeaveAction":"registered:approvals.leave.decide","approveProfileChangeAction":"backlog:approve","bulkDecideAction":"backlog:approve","decideLeaveCancellationAction":"backlog:approve","decideLeaveDateAction":"backlog:approve","decideLeaveDatesAction":"backlog:approve","decideResignationAction":"handoff:employment_exit_or_discipline","decideReviewAction":"backlog:approve","submitManagerEvaluationAction":"backlog:approve"},
  "app/assistant/actions.ts":{"askAssistantAction":"internal:assistant_surface"},
  "app/assistant/agent-review-actions.ts":{"createAgentCandidateAction":"internal:assistant_surface","createConversationCandidateAction":"internal:assistant_surface","eraseConversationMetadataAction":"internal:assistant_surface","evaluateAgentCandidateAction":"internal:assistant_surface","evaluateConversationCandidateAction":"internal:assistant_surface","promoteAgentCandidateAction":"internal:assistant_surface","promoteConversationCandidateAction":"internal:assistant_surface","rollbackAgentCandidateAction":"internal:assistant_surface","tryAgentCandidateAction":"internal:assistant_surface"},
@@ -153,6 +192,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/assistant/specialist-review-actions.ts":{"createSpecialistCandidateAction":"internal:assistant_surface","evaluateSpecialistCandidateAction":"internal:assistant_surface","promoteSpecialistCandidateAction":"internal:assistant_surface","rollbackSpecialistCandidateAction":"internal:assistant_surface","runSpecialistJobAction":"internal:assistant_surface"},
  "app/attendance/actions.ts":{"decideCorrectionAction":"registered:approvals.attendance.decide"},
  "app/attendance/application-history/actions.ts":{"attendanceHistoryAction":"backlog:confirm","attendanceHistoryBulkAction":"backlog:confirm"},
+ "app/attendance/application-history/offline-actions.ts":{"resolveOfflineClaimAction":"backlog:approve"},
  "app/attendance/clock/actions.ts":{"clockInAction":"backlog:confirm","clockOutAction":"backlog:confirm","requestClockRemovalAction":"backlog:confirm"},
  "app/attendance/import/actions.ts":{"commitClockingImportAction":"backlog:confirm","validateClockingImportAction":"backlog:automatic"},
  "app/attendance/individual/[date]/actions.ts":{"adminCorrectAttendanceDayAction":"backlog:confirm","rejectAttendanceDayApplicationAction":"backlog:approve","saveAttendanceClockDataAction":"backlog:confirm","saveAttendanceDayChangesAction":"backlog:confirm","submitUnclockedAttendanceWorkAction":"backlog:confirm"},
@@ -237,9 +277,25 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/ui-theme-actions.ts":{"setUiTheme":"internal:session_and_presentation"},
 });
 
+/** ADR-0151 §4.5 — what the named agent principal runs unattended: Automatic-tier specialists only, each
+ * behind its existing tenant switch and attributed to the administrator who switched it on. These are not
+ * human entry points, so they are listed here rather than in the inventory above. Adding one is a reviewed
+ * change to this list (core/agent-principal.ts derives its switches from it) and to migration 0672's policies. */
+export const AGENT_PRINCIPAL_SPECIALISTS=Object.freeze({
+ readiness_reminders:{tier:'automatic',setting:'notifications.readiness_nudge_enabled',service:'core/readiness-nudge.ts#sweepReadinessNudges',effect:'reminder to the employee or HR about a missing record field'},
+ claims_triage:{tier:'automatic',setting:'claims.input_triage_enabled',service:'core/input-triage.ts#triagePendingClaims',effect:'question to the claimant; not admitted to a model under the principal'},
+} as const satisfies Record<'readiness_reminders'|'claims_triage',{tier:'automatic';setting:string;service:string;effect:string}>);
+
 /** Counts by class, for a Control Tower coverage view and for measuring how the backlog moves. */
 export function agentCapabilityCoverage(){
  const counts:Record<string,number>={};
  for(const entries of Object.values(AGENT_CAPABILITY_INVENTORY))for(const value of Object.values(entries)){const kind=value.split(':')[0];counts[kind]=(counts[kind]??0)+1;}
+ return Object.freeze(counts);
+}
+
+/** Backlog entry points by the highest tier each may ever get, so the coverage view shows which part shrinks. */
+export function agentBacklogByTier(){
+ const counts:Record<Exclude<AgentTier,'handoff'>,number>={automatic:0,confirm:0,approve:0};
+ for(const entries of Object.values(AGENT_CAPABILITY_INVENTORY))for(const value of Object.values(entries)){const [kind,tier]=value.split(':');if(kind==='backlog')counts[tier as Exclude<AgentTier,'handoff'>]++;}
  return Object.freeze(counts);
 }

@@ -33,7 +33,7 @@ const ZERO='11111111-1111-4111-8111-111111111111',CAPPED='33333333-3333-4333-833
 const use=(daily:number|null,maxConcurrent:number|null=null)=>({daily:{used:0,limit:daily,level:daily===0?'at':null},tokens:{used:0,limit:null,level:null},recorded:0,held:0,enabled:true,maxConcurrent,blocked:0,failed:0});
 function view(spend:{heldNanos:string;confirmedNanos:string|null}){
   const zero={id:ZERO,label:'Fictional Zero Cap Sdn Bhd',...use(0)},capped={id:CAPPED,label:'Fictional Capped Sdn Bhd',...use(5)};
-  return {provider:null,mayWriteUsers:true,features:[],usage:[],policies:[],userDefault:null,companies:[zero,capped],companyUsage:[],users:[],moreUsers:false,groups:[],
+  return {provider:null,mayWriteUsers:true,features:[],agentSwitches:{},usage:[],policies:[],userDefault:null,companies:[zero,capped],companyUsage:[],users:[],moreUsers:false,groups:[],
     attention:{companies:[zero],users:[],blocked:[]},runs:[],runFilter:{},legacyBudget:null,
     spend:{currency:'USD',unit:'nano_usd',semantics:'application_inference_allocation',certifiedLiveRoutes:0,reviewedCarrierRecords:0,liveCapability:'not_verified_here',
       budgets:[{scopeKey:'tenant',monthlyNanos:null,rootNanos:null}],unpricedUnknownRuns:0,breached:false,...spend}};
@@ -131,6 +131,22 @@ describe('AI management sub-menu',()=>{
     expect(map.textContent).toContain('3 of 20 specialists available');
     expect(map.textContent).toContain('1 of 2 ready');expect(map.textContent).toContain('0 of 1 ready');
     expect(within(map as HTMLElement).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/control-tower/agents/provider','/control-tower/agents/assistant','/control-tower/agents/features#ai-features','/control-tower/agents/features#ai-features','/control-tower/agents/allowances']);
+  });
+  it('names the administrator an agent runs under, and says when an agent is on without one (ADR-0151 §4.5)',async()=>{
+    data.view={...view({heldNanos:'0',confirmedNanos:null}),features:[
+      {id:'readiness_reminders',kind:'agent',state:'ready',enabled:true,mayWrite:true},
+      {id:'claims_triage',kind:'agent',state:'ready',enabled:true,mayWrite:true},
+      {id:'payroll_hypotheses',kind:'agent',state:'paused',enabled:false,mayWrite:true}],
+      agentSwitches:{readiness_reminders:{state:'attributed',by:'Fictional Group Admin',at:new Date('2026-10-29T02:00:00Z')},claims_triage:{state:'unattributed'}}};
+    const page=await AiManagementScreen({session:session as never,section:'features',searchParams:Promise.resolve({})});
+    render(<NextIntlClientProvider locale="en" messages={en}>{page}</NextIntlClientProvider>);
+    try{
+      const row=(id:string)=>document.querySelector(`#ai-feature-${id}`)!.textContent!;
+      expect(row('readiness_reminders')).toContain('Runs as the HR agent account, switched on by Fictional Group Admin on Oct 29, 2026.');
+      expect(row('claims_triage')).toContain(en.aiManagement.agentUnattributed);
+      // Payroll hypotheses is not run by the principal: no attribution line either way.
+      expect(row('payroll_hypotheses')).not.toContain('HR agent account');
+    }finally{cleanup();}
   });
   it('names the group allowance a login follows, and reviews a bulk change with its count before anything is written',async()=>{
   data.view={...view({heldNanos:'0',confirmedNanos:null}),users:[{id:'55555555-5555-4555-8555-555555555555',label:'Fictional Grouped Person',source:'group',group:{kind:'group_department',count:1,scopeKey:'group_department:44444444-4444-4444-8444-444444444444'},...use(10),assistantGranted:false}],

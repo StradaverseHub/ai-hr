@@ -7,15 +7,22 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mobileDesignTemplate } from '../lib/mobile-design';
 import { MOBILE_DESTINATIONS, newMobileBlock } from '../lib/mobile-composition';
+import * as v2tasks from '../lib/mobile-api/v2/tasks';
+import { UnavailableError } from '../mobile/lib/errors';
+
+const taskRow = (kind: string, name: string) => ({ id: `${kind}-one`, kind, subject: { name, code: null }, createdAt: '2026-10-28T01:00:00.000Z', nativeDecision: kind === 'leave', webPath: kind === 'leave' ? null : '/approvals' });
+type TasksRead = { loading: boolean; error: Error | null; data: { items: ReturnType<typeof taskRow>[]; nextCursor: string | null } | null };
 function fixture() {
-  const design = mobileDesignTemplate('editorial'), calls: string[] = [], push = vi.fn();
+  const design = mobileDesignTemplate('editorial'), calls: string[] = [], push = vi.fn(), v2params: unknown[] = [], v2schemas: unknown[] = [];
+  const tasks: TasksRead = { loading: false, error: null, data: { items: [taskRow('leave', 'Scoped colleague')], nextCursor: null } };
   design.composition.pages = [{ id: 'home', title: 'Our space', blocks: [newMobileBlock('text', 'intro'), { ...newMobileBlock('action', 'open'), target: 'benefits', title: 'Explore benefits' }] }, { id: 'benefits', title: 'Benefits', blocks: [newMobileBlock('leave', 'balances')] }];
   design.composition.pages[0].blocks[0].body = 'A place for our people.';
   const View = ({ children }: React.PropsWithChildren) => <div>{children}</div>, Text = ({ children }: React.PropsWithChildren) => <span>{children}</span>;
   const ports: Record<string, unknown> = {
     'react': React, 'react/jsx-runtime': jsx, 'react-native': { View }, 'expo-router': { router: { push, replace: push } },
     '../../lib/mobile-composition': { MOBILE_DESTINATIONS },
-    './api': { useApi: (path: string) => { calls.push(path); return { loading: false, error: null, reload() {}, data: path === 'tasks' ? { total: 1, items: [{ id: 'one', kind: 'leave', subject: 'Scoped colleague' }] } : { cards: Array.from({ length: 6 }, (_, i) => ({ leaveTypeId: i, leaveType: `Leave ${i}`, isCurrentCycle: true, canApplyFor: i })) } }; } },
+    '../../lib/mobile-api/v2/tasks': v2tasks,
+    './api': { useApiV2: (path: string, schema: unknown, params: unknown) => { calls.push(path); v2params.push(params); v2schemas.push(schema); return { ...tasks, reload() {} }; }, useApi: (path: string) => { calls.push(path); return { loading: false, error: null, reload() {}, data: path === 'tasks' ? { total: 1, items: [{ id: 'one', kind: 'leave', subject: 'Scoped colleague' }] } : { cards: Array.from({ length: 6 }, (_, i) => ({ leaveTypeId: i, leaveType: `Leave ${i}`, isCurrentCycle: true, canApplyFor: i })) } }; } },
     './clock-panel': { ClockPanel: () => <p>Attendance</p> }, './team-panel': { TeamPanel: () => <p>Team</p> },
     './design': { DesignText: Text, TenantSurface: View, useTenantDesign: () => ({ design, palette: design.composition.themes.light }) },
     './session': { useSession: () => ({ employmentId: 'current', signOut() {} }) }, './i18n': { t: (key: string) => key },
@@ -23,7 +30,7 @@ function fixture() {
   };
   const module = { exports: {} as { ComposedPage: React.ComponentType<{ design: typeof design; id?: string }> } };
   runInNewContext(transpileModule(readFileSync('mobile/lib/composed-page.tsx', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX } }).outputText, { exports: module.exports, module, require(id: string) { if (!(id in ports)) throw new Error('Missing composition port ' + id); return ports[id]; } });
-  return { ...module.exports, design, calls, push };
+  return { ...module.exports, design, calls, push, tasks, v2params, v2schemas };
 }
 afterEach(cleanup);
 it('renders custom composition and internal navigation without loading unrelated HR data', () => {
@@ -37,8 +44,43 @@ it('binds a custom screen to the existing leave endpoint and keeps every leave t
   expect(f.calls).toEqual(['leave']); expect(screen.getAllByText(/^Leave \d:/)).toHaveLength(6);
 });
 
-it('reads the actual task inbox rather than treating unread notifications as tasks', () => {
+it('reads the canonical v2 task list rather than treating unread notifications as tasks, and links to approvals', () => {
   const f = fixture(); f.design.composition.pages[0].blocks = [newMobileBlock('tasks', 'pending')];
   render(<f.ComposedPage design={f.design} />);
-  expect(f.calls).toEqual(['tasks']); expect(screen.getByText('task_leave: Scoped colleague')).toBeTruthy();
+  // M14: the v2 list (every kind the approvals screen shows), never v1 `tasks`, which omits replacement leave and notice acknowledgements.
+  expect(f.calls).toEqual(['v2/tasks']); expect(f.v2schemas).toEqual([v2tasks.TasksPageV2]);
+  expect(f.v2params[0]).toEqual({ limit: expect.stringMatching(/^(4|20)$/) });
+  expect(screen.getByText('task_leave: Scoped colleague')).toBeTruthy();
+  expect(screen.queryByText('nothingNeedsYou')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'openApprovals' }));
+  expect(f.push).toHaveBeenCalledWith('/approvals');
+});
+
+it('shows kinds v1 omits, so waiting replacement leave or a notice acknowledgement is never "nothing needs you"', () => {
+  const f = fixture(); f.design.composition.pages[0].blocks = [newMobileBlock('tasks', 'pending')];
+  f.tasks.data = { items: [taskRow('replacementLeave', 'Replacement colleague'), taskRow('noticeAcknowledgement', '')], nextCursor: null };
+  render(<f.ComposedPage design={f.design} />);
+  expect(screen.getByText('task_replacementLeave: Replacement colleague')).toBeTruthy();
+  expect(screen.getByText('task_noticeAcknowledgement: —')).toBeTruthy();
+  expect(screen.queryByText('nothingNeedsYou')).toBeNull();
+  expect(screen.getByRole('button', { name: 'openApprovals' })).toBeTruthy();
+});
+
+it('says "nothing needs you" only for a settled, successful, empty list — never while loading, failed or stale', () => {
+  const cases: [TasksRead, boolean][] = [
+    [{ loading: true, error: null, data: null }, false],
+    [{ loading: false, error: new UnavailableError(), data: null }, false],
+    // An outage keeps the last rows on screen (stale); even an empty stale answer is not "all clear".
+    [{ loading: false, error: new UnavailableError(), data: { items: [], nextCursor: null } }, false],
+    [{ loading: true, error: null, data: { items: [], nextCursor: null } }, false],
+    [{ loading: false, error: null, data: { items: [], nextCursor: null } }, true],
+  ];
+  for (const [read, clear] of cases) {
+    const f = fixture(); f.design.composition.pages[0].blocks = [newMobileBlock('tasks', 'pending')];
+    Object.assign(f.tasks, read);
+    const { unmount } = render(<f.ComposedPage design={f.design} />);
+    expect(screen.queryByText('nothingNeedsYou') !== null, JSON.stringify({ loading: read.loading, error: !!read.error, data: !!read.data })).toBe(clear);
+    expect(screen.queryByRole('button', { name: 'openApprovals' })).toBeNull();
+    unmount();
+  }
 });

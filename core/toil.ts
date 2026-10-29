@@ -2554,8 +2554,18 @@ export async function leaveCreditGrantContext(
   p: { employmentId: string; today?: string },
 ): Promise<LeaveCreditGrantContext> {
   if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError('Only an HR administrator may add a Leave Credit.');
+  return withTenant(ctx, (tx) => leaveCreditGrantContextTx(tx, ctx, p));
+}
+
+/** The same context in a caller-owned transaction, with the same administrator check. */
+export async function leaveCreditGrantContextTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { employmentId: string; today?: string },
+): Promise<LeaveCreditGrantContext> {
+  if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError('Only an HR administrator may add a Leave Credit.');
   const today = p.today ?? todayInKualaLumpur();
-  return withTenant(ctx, async (tx) => {
+  {
     await assertAdminForEmploymentTx(tx, p.employmentId, 'add a Leave Credit');
     const [emp] = await tx
       .select({ companyId: employment.companyId, country: company.country, personId: employment.personId })
@@ -2579,7 +2589,7 @@ export async function leaveCreditGrantContext(
       allowFirstSchedule: row?.allowFirstScheduleEligible === true,
       ownRecord: ctx.personId != null && emp.personId != null && ctx.personId === emp.personId,
     };
-  });
+  }
 }
 
 /** Canonical duration-only review; no ledger, request, pricing or source mutation. */
@@ -2651,7 +2661,18 @@ export async function leaveCreditGrantDayFacts(
 ): Promise<LeaveCreditGrantDayFacts> {
   if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError('Only an HR administrator may add a Leave Credit.');
   if (!ISO_DATE.test(p.workedDate)) throw new LeaveCreditError('Enter a valid date worked.');
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx, (tx) => leaveCreditGrantDayFactsTx(tx, ctx, p));
+}
+
+/** The same facts in a caller-owned transaction, with the same administrator check. */
+export async function leaveCreditGrantDayFactsTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { employmentId: string; workedDate: string },
+): Promise<LeaveCreditGrantDayFacts> {
+  if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError('Only an HR administrator may add a Leave Credit.');
+  if (!ISO_DATE.test(p.workedDate)) throw new LeaveCreditError('Enter a valid date worked.');
+  {
     await assertAdminForEmploymentTx(tx, p.employmentId, 'add a Leave Credit');
 
     const dated=await provenDatedToilQualificationTx(tx,ctx,{employmentId:p.employmentId,date:p.workedDate,mixedOnly:true});
@@ -2676,7 +2697,7 @@ export async function leaveCreditGrantDayFacts(
       overtimeMinutes: dated?.minutes??(formula.kind==='formula'?formula.minutes:await overtimeMinutesOnTx(tx, p.employmentId, p.workedDate)),
       alreadyCredited: dupe != null,
     };
-  });
+  }
 }
 
 export type GrantLeaveCreditRowsResult = {
@@ -2751,6 +2772,16 @@ export async function grantLeaveCreditRows(
     approvedOn?: Date;
   },
 ): Promise<GrantLeaveCreditRowsResult> {
+  return withTenant(ctx, (tx) => grantLeaveCreditRowsTx(tx, ctx, p));
+}
+
+/** The same grant in a caller-owned transaction (ADR-0151: an HR-prepared Leave Credit commits its review
+ *  receipt with the credit). Identical refusals, locks, derivation and effects. */
+export async function grantLeaveCreditRowsTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: Parameters<typeof grantLeaveCreditRows>[1],
+): Promise<GrantLeaveCreditRowsResult> {
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (!isAdminCtx(ctx)) throw new ToilSweepForbiddenError('Only an HR administrator may add a Leave Credit.');
@@ -2773,7 +2804,7 @@ export async function grantLeaveCreditRows(
   if (repeated.length > 0) throw new LeaveCreditError(`Each date can be entered only once: ${repeated.join(', ')}.`);
   const approvedOn = p.approvedOn ?? new Date();
 
-  return withTenant(ctx, async (tx) => {
+  {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await assertAdminForEmploymentTx(tx, p.employmentId, 'add a Leave Credit');
     // This command can create the replacement catalogue type as well as bank credit.
@@ -2928,7 +2959,7 @@ export async function grantLeaveCreditRows(
       overtimeDates,
       expiresOn,
     };
-  });
+  }
 }
 
 export type ReverseLeaveCreditResult = {

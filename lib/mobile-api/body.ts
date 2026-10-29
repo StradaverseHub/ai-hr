@@ -1,11 +1,11 @@
 /** Stream bounds apply before parsing; a forged Content-Length cannot allocate an unbounded upload. */
 import { MobileBadRequest } from './handler';
+import { readBoundedBody } from '../bounded-body';
 export async function mobileBody(req: Request, limit: number): Promise<Response> {
-  const reader=req.body?.getReader();
-  if(!reader) throw new MobileBadRequest('Body required');
-  const chunks:Uint8Array[]=[]; let size=0;
-  for(;;){const next=await reader.read();if(next.done)break;size+=next.value.byteLength;if(size>limit){await reader.cancel();throw new MobileBadRequest('Body too large');}chunks.push(next.value);}
-  return new Response(Buffer.concat(chunks.map(c=>Buffer.from(c))),{headers:{'content-type':req.headers.get('content-type')??''}});
+  try {
+    const bytes = await readBoundedBody(req, limit, 30_000, req.signal);
+    return new Response(Buffer.from(bytes),{headers:{'content-type':req.headers.get('content-type')??''}});
+  } catch { throw new MobileBadRequest('Invalid body'); }
 }
 export async function mobileForm(req:Request,keys:readonly string[],limit:number):Promise<FormData>{
   if(!req.headers.get('content-type')?.startsWith('multipart/form-data')) throw new MobileBadRequest('Multipart required');

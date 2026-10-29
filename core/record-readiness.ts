@@ -188,7 +188,32 @@ export async function readinessSnapshot(tx: Tx, peopleLimit = PEOPLE_PER_GAP, ad
         scope?.employmentIds ? inArray(schema.employment.id, [...scope.employmentIds]) : undefined,
         scope?.personId ? eq(schema.employment.personId, scope.personId) : undefined,
         adminOnly ? sql`app.can_admin_employment(${schema.employment.id})` : undefined));
+    return summarizeReadiness(rows, peopleLimit);
+}
 
+/**
+ * ADR-0151 §4.5 — the same engine read for the agent principal, which holds no administrator grant and may
+ * not read statutory numbers, bank accounts or pay. `app.agent_readiness_presence` (0672) returns only
+ * whether each field is present; a present field becomes a non-blank marker so `gapsForRecord` stays the
+ * one definition of what is missing.
+ */
+export async function agentReadinessSnapshot(tx: Tx, peopleLimit = PEOPLE_PER_GAP, employmentIds?: readonly string[]) {
+  const presence = await tx.execute<{ employment_id: string; full_name: string; employee_code: string | null; company: string;
+    payment_method: string | null; has_ic: boolean; has_passport: boolean; has_tax: boolean; has_epf: boolean; has_socso: boolean;
+    has_bank: boolean; has_compensation: boolean }>(
+    sql`select * from app.agent_readiness_presence(${employmentIds ? sql`array[${sql.join(employmentIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]` : sql`null::uuid[]`})`);
+  const mark = (present: boolean) => (present ? 'present' : null);
+  const rows = Array.from(presence).map(r => ({
+    employmentId: r.employment_id, name: r.full_name, employeeCode: r.employee_code, company: r.company,
+    paymentMethod: r.payment_method,
+    ic: mark(r.has_ic), passport: mark(r.has_passport), taxNumber: mark(r.has_tax), epfNumber: mark(r.has_epf),
+    socsoNumber: mark(r.has_socso), bankAccountNo: mark(r.has_bank), hasComp: r.has_compensation,
+  }));
+  return summarizeReadiness(rows, peopleLimit);
+}
+
+function summarizeReadiness(rows: (ReadinessInput & { employmentId: string; name: string; employeeCode: string | null; company: string })[],
+  peopleLimit: number) {
     const buckets = new Map<ReadinessGapId, ReadinessPerson[]>();
     const add = (id: ReadinessGapId, p: ReadinessPerson) => {
       const list = buckets.get(id) ?? [];

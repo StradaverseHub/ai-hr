@@ -144,6 +144,15 @@ export async function WorkScheduleForm({
           <p className="mt-1.5 text-xs text-muted-foreground">{t('requireDeviceHint')}</p>
         </fieldset>
 
+        <fieldset>
+          <legend className="mb-1.5 text-sm font-medium text-foreground">{t('geofenceAccuracyLegend')}</legend>
+          <Field label={t('geofenceMaximumAccuracy')}>
+            <input type="number" name="geofenceMaximumAccuracyM" min="1" max="2147483647" step="1"
+              defaultValue={policy.geofenceMaximumAccuracyM??''} className={inputCls}/>
+          </Field>
+          <p className="mt-1.5 text-xs text-muted-foreground">{t('geofenceAccuracyHint')}</p>
+        </fieldset>
+
         <div className="flex items-center gap-3">
           <button className={btnPrimary}>{t('save')}</button>
           <span className="text-xs text-muted-foreground">{t('lateHint')}</span>

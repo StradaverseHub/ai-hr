@@ -3,12 +3,15 @@ import { runInNewContext } from 'node:vm';
 import { ModuleKind, transpileModule } from 'typescript';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SessionChangedError } from '../mobile/lib/errors';
+import {readBoundedBody} from '../lib/bounded-body';
 function fixture() {
   let owner = 1, unavailable = false;
   const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ step: 'mfa', challenge: 'c'.repeat(43) }));
   const output = { exports: {} as { internalAuthRequest: (op: string, values: Record<string,string>, owner: number, fetcher: typeof fetch) => Promise<unknown> } };
   runInNewContext(transpileModule(readFileSync('mobile/lib/internal-auth.ts','utf8'),{compilerOptions:{module:ModuleKind.CommonJS}}).outputText,
-    {exports:output.exports,module:output,AbortController,setTimeout,clearTimeout,require(name:string){
+    {exports:output.exports,module:output,AbortController,TextDecoder,setTimeout,clearTimeout,require(name:string){
+      if(name==='expo/fetch')return {fetch:fetcher};
+      if(name==='../../lib/bounded-body')return {readBoundedBody};
       if(name==='./config')return {config:{apiUrl:'https://hr.private.test',authProvider:'internal'},configProblem:()=>unavailable?'Unverified server':null};
       if(name==='./auth')return {assertAuthGeneration:(current:number)=>{if(current!==owner)throw new SessionChangedError();}};
       throw new Error(name);
@@ -37,6 +40,12 @@ describe('native embedded credential transport',()=>{
     const f=fixture(),cancel=vi.fn();
     f.fetcher.mockResolvedValueOnce(new Response(new ReadableStream({start(controller){controller.enqueue(new Uint8Array(40_000));},cancel})));
     await expect(f.send()).rejects.toMatchObject({code:'unavailable'});expect(cancel).toHaveBeenCalledOnce();
+  });
+  it('cancels a stalled response body even if its reader ignores the fetch abort signal',async()=>{
+    vi.useFakeTimers();const f=fixture(),cancel=vi.fn();
+    f.fetcher.mockResolvedValueOnce(new Response(new ReadableStream({start(){},cancel})));
+    const pending=f.send();const assertion=expect(pending).rejects.toMatchObject({code:'unavailable'});
+    await vi.advanceTimersByTimeAsync(20001);await assertion;expect(cancel).toHaveBeenCalledOnce();
   });
   it('refuses external QR URLs, malformed handles and invalid expiry hints',async()=>{
     for(const reply of [{step:'enroll',challenge:'c'.repeat(43),secret:'A'.repeat(32),qr:'https://attacker.test/track'},

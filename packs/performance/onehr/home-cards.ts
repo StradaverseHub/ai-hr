@@ -38,7 +38,7 @@ export type HomeNextStep =
 export type HomeTeamChip = { kind: PackTaskKind; count: number };
 export type HomeTeam = { total: number; chips: HomeTeamChip[]; href: string };
 /**
- * "Where you stand". Under the default rule (WHERE_YOU_STAND_RULE = 'releasedOnly') `band` exists ONLY on a released
+ * "Where you stand". Under the released-only rule `band` exists ONLY on a released
  * performance row: the key set is the guarantee. The 'lineManagerApproved' row is produced only when the DQ-1 switch
  * below is flipped; it carries the line manager's approved band, never a score.
  */
@@ -67,7 +67,7 @@ export type PerformanceHomeBlock = {
  * Neither rule ever shows a score, and neither shows a band the line manager has not approved.
  */
 export type WhereYouStandRule = 'releasedOnly' | 'lineManagerApproved';
-export const WHERE_YOU_STAND_RULE: WhereYouStandRule = 'releasedOnly';
+export const WHERE_YOU_STAND_RULE: WhereYouStandRule = 'lineManagerApproved'; // APR-028 (DQ-1): follow the source
 
 /** The Performance row under a rule. `released` is the band the own-person projection returns (null until release). */
 export function standingPerformance(rule: WhereYouStandRule, facts: { released: PMBand | null; managerPerformance: string | null }): NonNullable<HomeStanding['performance']> {

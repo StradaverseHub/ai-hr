@@ -6,6 +6,7 @@ type Ports = {
   read: () => Promise<string | null>;
   write: (value: string) => Promise<void>;
   remove: () => Promise<void>;
+  resetPrivateData?: () => Promise<void>;
 };
 
 /** Clear surviving Keychain entries BEFORE creating the first-install marker. Failures retry. */
@@ -15,7 +16,9 @@ export function createInstallationStore(ports: Ports) {
     if (!initialization) {
       initialization = (async () => {
         if (ports.markerExists() && !ports.logoutPending?.()) return;
+        const firstInstallation=!ports.markerExists();
         await ports.remove();
+        if(firstInstallation)await ports.resetPrivateData?.();
         ports.createMarker();
       })().catch((error: unknown) => { initialization = null; throw error; });
     }

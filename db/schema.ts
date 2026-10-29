@@ -603,6 +603,83 @@ export const appUser = pgTable(
   (t) => [index('app_user_tenant_idx').on(t.tenantId)],
 );
 
+// Installation identity is read only through a private function; it grants no tenant authority.
+export const mobileIntegrityInstallation=pgTable('mobile_integrity_installation',{
+ singleton:boolean('singleton').primaryKey().default(true),installationId:uuid('installation_id').notNull().defaultRandom(),
+},t=>[uniqueIndex('mobile_integrity_installation_id_uq').on(t.installationId)]);
+export const mobileIntegrityChallenge=pgTable('mobile_integrity_challenge',{
+ id:id(),tenantId:tenantId(),actorId:uuid('actor_id').notNull().references(()=>appUser.id),
+ employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+ installationId:uuid('installation_id').notNull().references(()=>mobileIntegrityInstallation.installationId),
+ appInstallationId:uuid('app_installation_id').notNull(),requestId:uuid('request_id').notNull(),
+ purpose:text('purpose').notNull().$type<'device.enrollment'|'clock.online'>(),bindingHash:text('binding_hash').notNull(),nonce:text('nonce').notNull(),
+ issuedAt:timestamp('issued_at',{withTimezone:true}).notNull(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
+ consumedAt:timestamp('consumed_at',{withTimezone:true}),
+},t=>[uniqueIndex('mobile_integrity_challenge_intent_uq').on(t.tenantId,t.actorId,t.requestId),
+ uniqueIndex('mobile_integrity_challenge_nonce_uq').on(t.nonce),
+ index('mobile_integrity_challenge_pending_idx').on(t.tenantId,t.actorId,t.expiresAt).where(sql`${t.consumedAt} IS NULL`)]);
+
+export const mobileIntegrityKey=pgTable('mobile_integrity_key',{
+ id:id(),tenantId:tenantId(),actorId:uuid('actor_id').notNull().references(()=>appUser.id),
+ appInstallationId:uuid('app_installation_id').notNull(),installationId:uuid('installation_id').notNull().references(()=>mobileIntegrityInstallation.installationId),
+ originChallengeId:uuid('origin_challenge_id').notNull().references(()=>mobileIntegrityChallenge.id),
+ enrolledForEmploymentId:uuid('enrolled_for_employment_id').notNull().references(()=>employment.id),
+ platform:text('platform').notNull().$type<'ios'|'android'>(),appId:text('app_id').notNull(),environment:text('environment').$type<'production'|'development'>(),
+ vendorKeyId:text('vendor_key_id').notNull(),fingerprint:text('fingerprint').notNull(),publicKeySpki:bytea('public_key_spki').notNull(),
+ proofDigest:text('proof_digest').notNull(),proofKind:text('proof_kind').notNull().$type<'apple_key_proof'|'apple_app_metadata'|'google_key_generation_proof'>(),
+ metadata:jsonb('metadata').$type<{validationCategory:number;bundleVersion:string}|{androidKeyGeneration:Record<string,unknown>}|null>(),receiptCiphertext:text('receipt_ciphertext').notNull(),
+ assertionCounter:bigint('assertion_counter',{mode:'number'}).notNull().default(0),createdAt:createdAt(),revokedAt:timestamp('revoked_at',{withTimezone:true}),
+},t=>[uniqueIndex('mobile_integrity_key_fingerprint_uq').on(t.fingerprint),uniqueIndex('mobile_integrity_key_origin_uq').on(t.originChallengeId),
+ uniqueIndex('mobile_integrity_key_active_install_uq').on(t.tenantId,t.actorId,t.appInstallationId,t.platform).where(sql`${t.revokedAt} IS NULL`)]);
+
+// Reserved 0647 draft: unactivated offline evidence/stream owners, separate from canonical punches.
+export const mobileOfflineContext=pgTable('mobile_offline_context',{
+ id:id(),tenantId:tenantId(),actorId:uuid('actor_id').notNull().references(()=>appUser.id),
+ employmentId:uuid('employment_id').notNull().references(()=>employment.id),companyId:uuid('company_id').notNull().references(()=>company.id),
+ deviceKeyId:uuid('device_key_id').notNull().references(()=>mobileIntegrityKey.id),installationId:uuid('installation_id').notNull().references(()=>mobileIntegrityInstallation.installationId),
+ appInstallationId:uuid('app_installation_id').notNull(),requestId:uuid('request_id').notNull(),requestNonce:text('request_nonce').notNull(),
+ // D16 (keyless): the exact canonical context JSON as handed out, plaintext; context_digest is what claims commit to.
+ contextDigest:text('context_digest').notNull(),policyRevision:text('policy_revision').notNull(),contextJson:text('context_json').notNull(),
+ issuedAt:timestamp('issued_at',{withTimezone:true}).notNull(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
+ permitCount:integer('permit_count').notNull(),nextSequence:integer('next_sequence').notNull().default(1),previousDigest:text('previous_digest'),
+ closedAt:timestamp('closed_at',{withTimezone:true}),closeReason:text('close_reason').$type<'exhausted'|'retired'|'revoked'>(),closeRequestId:uuid('close_request_id'),
+},t=>[uniqueIndex('mobile_offline_context_request_uq').on(t.tenantId,t.actorId,t.requestId),uniqueIndex('mobile_offline_context_nonce_uq').on(t.requestNonce),
+ uniqueIndex('mobile_offline_context_key_lease_uq').on(t.deviceKeyId).where(sql`${t.closedAt} IS NULL`)]);
+export const mobileOfflinePermit=pgTable('mobile_offline_permit',{
+ id:id(),tenantId:tenantId(),actorId:uuid('actor_id').notNull().references(()=>appUser.id),contextId:uuid('context_id').notNull().references(()=>mobileOfflineContext.id),
+ ordinal:integer('ordinal').notNull(),nonce:text('nonce').notNull(),
+},t=>[uniqueIndex('mobile_offline_permit_ordinal_uq').on(t.contextId,t.ordinal),uniqueIndex('mobile_offline_permit_nonce_uq').on(t.nonce)]);
+export const mobileOfflineClaim=pgTable('mobile_offline_claim',{
+ id:id(),tenantId:tenantId(),actorId:uuid('actor_id').notNull().references(()=>appUser.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+ deviceKeyId:uuid('device_key_id').notNull().references(()=>mobileIntegrityKey.id),contextId:uuid('context_id').notNull().references(()=>mobileOfflineContext.id),
+ permitId:uuid('permit_id').notNull().references(()=>mobileOfflinePermit.id),sequence:integer('sequence').notNull(),requestId:uuid('request_id').notNull(),
+ claimDigest:text('claim_digest').notNull(),previousDigest:text('previous_digest'),proofDigest:text('proof_digest').notNull(),
+ assertionCounter:bigint('assertion_counter',{mode:'number'}),claimCiphertext:text('claim_ciphertext').notNull(),
+ photoDigest:text('photo_digest'),photoRetainedUntil:timestamp('photo_retained_until',{withTimezone:true}),
+ claimedAt:timestamp('claimed_at',{withTimezone:true}).notNull(),sampledAt:timestamp('sampled_at',{withTimezone:true}).notNull(),receivedAt:timestamp('received_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
+ effectiveMinimum:timestamp('effective_minimum',{withTimezone:true}),effectiveMaximum:timestamp('effective_maximum',{withTimezone:true}),effectiveAt:timestamp('effective_at',{withTimezone:true}),
+ outcome:text('outcome').notNull().$type<'accepted'|'needs_review'|'refused'>(),reason:text('reason').notNull(),captureId:uuid('capture_id').references(():AnyPgColumn=>attendanceClockCapture.id),
+},t=>[uniqueIndex('mobile_offline_claim_request_uq').on(t.tenantId,t.actorId,t.requestId),uniqueIndex('mobile_offline_claim_permit_uq').on(t.permitId),
+ uniqueIndex('mobile_offline_claim_sequence_uq').on(t.contextId,t.sequence),uniqueIndex('mobile_offline_claim_capture_uq').on(t.captureId),
+ uniqueIndex('mobile_offline_claim_counter_uq').on(t.deviceKeyId,t.assertionCounter).where(sql`${t.assertionCounter} IS NOT NULL`),index('mobile_offline_claim_subject_idx').on(t.tenantId,t.employmentId,t.receivedAt)]);
+
+export const mobileOfflinePhoto=pgTable('mobile_offline_photo',{
+ claimId:uuid('claim_id').primaryKey().references(()=>mobileOfflineClaim.id),tenantId:tenantId(),actorId:uuid('actor_id').notNull(),employmentId:uuid('employment_id').notNull(),
+ photoDigest:text('photo_digest').notNull(),retainedUntil:timestamp('retained_until',{withTimezone:true}).notNull(),byteLength:integer('byte_length').notNull(),mimeType:text('mime_type').notNull().$type<'image/jpeg'|'image/png'>(),
+ photoCiphertext:text('photo_ciphertext').notNull(),createdAt:timestamp('created_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
+},t=>[index('mobile_offline_photo_expiry_idx').on(t.tenantId,t.retainedUntil)]);
+// Reserved 0647 draft: one immutable human resolution per held claim; an accept links the HR punch correction that
+// records it and holds the accepted instant. Its state and punch are the correction's, derived by
+// app.mobile_offline_claim_resolution_state (owner decision D-A, 2026-10-28), never stored here.
+export const mobileOfflineClaimResolution=pgTable('mobile_offline_claim_resolution',{
+ claimId:uuid('claim_id').primaryKey().references(()=>mobileOfflineClaim.id),tenantId:tenantId(),actorId:uuid('actor_id').notNull(),employmentId:uuid('employment_id').notNull(),
+ decision:text('decision').notNull().$type<'accepted'|'rejected'>(),effectiveAt:timestamp('effective_at',{withTimezone:true}),
+ correctionId:uuid('correction_id').references(():AnyPgColumn=>attendanceCorrection.id),
+ dayRevision:text('day_revision'),reason:text('reason').notNull(),inputDigest:text('input_digest').notNull(),
+ resolvedBy:uuid('resolved_by').notNull().references(()=>appUser.id),resolvedAt:timestamp('resolved_at',{withTimezone:true}).notNull().default(sql`clock_timestamp()`),
+},t=>[uniqueIndex('mobile_offline_claim_resolution_correction_uq').on(t.correctionId),
+ index('mobile_offline_claim_resolution_subject_idx').on(t.tenantId,t.employmentId,t.resolvedAt)]);
+
 // Deployment identities are private to SECURITY DEFINER functions; they do not duplicate HR membership.
 export const appExternalIdentity = pgTable('app_external_identity', {
   issuer: text('issuer').notNull(), subject: text('subject').notNull(),
@@ -3900,7 +3977,8 @@ export const geofenceStatusEnum = pgEnum('geofence_status', ['pass', 'not_enforc
 // the `attendance.amended` event's top-level `before` block (core/attendance.ts AMENDED_FIGURE_COLUMNS),
 // so the Audit Trail shows the loss as "old → new" rather than leaving it invisible. Still no column and
 // still no snapshot table: see the ADR-0069 note on attendance_correction below.
-export const clockMethodEnum = pgEnum('clock_method', ['web', 'import', 'admin']);
+// 'mobile_offline' (draft 0647, ADR-0088): an accepted offline claim's punch, written only by core/attendance-clock.ts.
+export const clockMethodEnum = pgEnum('clock_method', ['web', 'import', 'admin', 'mobile_offline']);
 
 // Absence classification (Wave 4A) — set when a day is explicitly recorded/corrected as absent, so the
 // absenteeism analytics can categorise unplanned absence (planned absence is already typed via leave).
@@ -4056,6 +4134,9 @@ export const attendanceClockCapture = pgTable('attendance_clock_capture', {
   geofencingRequired: boolean('geofencing_required'),
   commandDigest: text('command_digest').notNull(), photoDigest: text('photo_digest'),
   photoPurgedAt: timestamp('photo_purged_at', { withTimezone: true }), photoPurgeEventId: uuid('photo_purge_event_id').references(() => domainEvent.id),
+  // effective_at (timestamptz, NULL = online) exists only where unjournaled draft 0647 is installed. It is declared
+  // here when 0647 is journaled: until then every select()/returning() of this table would name a missing column
+  // on the live schema. Its one writer and readers name it explicitly (attendanceClockCaptureEffectiveAt, core/attendance-clock.ts).
 }, (t) => [uniqueIndex('attendance_clock_capture_request_uq').on(t.tenantId, t.employmentId, t.requestId),
   index('attendance_clock_capture_day_idx').on(t.employmentId, t.attendanceDate, t.serverRecordedAt),
   check('attendance_clock_capture_location_together', sql`num_nonnulls(${t.lat}, ${t.lng}, ${t.accuracyM}) IN (0, 3) AND (${t.lat} IS NOT NULL OR (${t.clockingLocationId} IS NULL AND ${t.deviceId} IS NULL))`),
@@ -4257,6 +4338,9 @@ export const attendancePolicy = pgTable(
     // (employee_device) — enforced server-side in core/attendance-device.ts enforceDeviceGateTx. Default
     // FALSE so shipping the feature locks nobody out; terminal imports are exempt (documented bypass).
     requireRegisteredDevice: boolean('require_registered_device').notNull().default(false),
+    // Optional company restriction in addition to distance + reported uncertainty <= site radius.
+    // No universal threshold is inferred for existing companies.
+    geofenceMaximumAccuracyM: integer('geofence_maximum_accuracy_m'),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('attendance_policy_company_uq').on(t.companyId)],
@@ -5508,6 +5592,36 @@ export const notificationDelivery = pgTable(
       .where(sql`channel='email' AND source_event_id IS NOT NULL AND recipient_user_id IS NOT NULL`),
   ],
 );
+
+// Reserved 0673 draft (M10, D6): one native push token bound to (tenant, user, installation); revoked, never rewritten.
+// RLS own-row for ai_hr_app; the delivery sweep reads as the owning migration role (the migration says why).
+export const mobilePushRegistration = pgTable('mobile_push_registration', {
+  id: id(), tenantId: tenantId(), userId: uuid('user_id').notNull().references(() => appUser.id),
+  installationId: uuid('installation_id').notNull(),
+  platform: text('platform').notNull().$type<'ios' | 'android'>(), provider: text('provider').notNull().$type<'apns' | 'fcm'>(),
+  token: text('token').notNull(), locale: text('locale').notNull().$type<'en' | 'ms'>(),
+  appVersion: text('app_version'), appBuild: text('app_build'),
+  createdAt: createdAt(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  revokeReason: text('revoke_reason').$type<'logout' | 'turned_off' | 'company_switch' | 'permission_denied' | 'replaced' | 'rebound' | 'invalid_token'>(),
+}, (t) => [
+  uniqueIndex('mobile_push_registration_installation_uq').on(t.tenantId, t.installationId).where(sql`${t.revokedAt} IS NULL`),
+  uniqueIndex('mobile_push_registration_token_uq').on(t.provider, t.token).where(sql`${t.revokedAt} IS NULL`),
+  index('mobile_push_registration_user_idx').on(t.tenantId, t.userId).where(sql`${t.revokedAt} IS NULL`),
+]);
+// Reserved 0673 draft: at most one push per (notification, registration). Outcome and provider code only, no content.
+export const mobilePushDelivery = pgTable('mobile_push_delivery', {
+  id: id(), tenantId: tenantId(),
+  notificationId: uuid('notification_id').notNull().references((): AnyPgColumn => notification.id, { onDelete: 'cascade' }),
+  registrationId: uuid('registration_id').notNull().references(() => mobilePushRegistration.id),
+  outcome: text('outcome').notNull().default('pending').$type<'pending' | 'sent' | 'invalid_token' | 'failed' | 'skipped'>(),
+  providerStatus: integer('provider_status'), providerReason: text('provider_reason'),
+  claimedAt: timestamp('claimed_at', { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+}, (t) => [
+  uniqueIndex('mobile_push_delivery_once_uq').on(t.notificationId, t.registrationId),
+  index('mobile_push_delivery_registration_idx').on(t.registrationId),
+]);
 
 // Tenant-wide category permission is independent of a recipient's explicit preference.
 export const notificationEmailPolicy = pgTable('notification_email_policy', {
@@ -11248,3 +11362,8 @@ export const letterCounter=pgTable('letter_counter',{
 export const letterVerificationRate=pgTable('letter_verification_rate',{
  scope:text('scope').notNull(),bucket:bigint('bucket',{mode:'number'}).notNull(),hits:integer('hits').notNull(),
 },t=>[primaryKey({columns:[t.scope,t.bucket]})]);
+// ADR-0151 §4.5 (0672) — one named agent principal per tenant. Not a login: no app_user, role or credential.
+const agentPrincipalPrivate=pgSchema('app');
+export const aiAgentPrincipal=agentPrincipalPrivate.table('ai_agent_principal',{
+ id:id(),tenantId:uuid('tenant_id').notNull().unique().references(()=>tenant.id),createdAt:createdAt(),
+});

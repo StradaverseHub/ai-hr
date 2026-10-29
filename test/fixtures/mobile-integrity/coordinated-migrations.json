@@ -1,0 +1,174 @@
+{
+  "sourceManifestSHA256": "703407b13d5170c9aafdd16b97528ec3dd32389caa85a71a44b65fa4c17523f0",
+  "canonicalPrefixCommit": "9541b1686d7941f89e564723271e48bf85a21a89",
+  "prefixEntries": 501,
+  "prefixEntriesSHA256": "a17e74b44ce9ccc513a0efdabb03ef50a18e7bd27dd264eb75de8daf81b79610",
+  "rows": [
+    {
+      "owner": "Board item",
+      "idx": 616,
+      "version": "7",
+      "when": 1793025815552,
+      "tag": "0602_payroll_history_revisions",
+      "breakpoints": true,
+      "sourceSHA256": "5e6db0d856e4a5c56c9f4a4677f55f05cd08a8faae201b96ed4b68d6f389c25a"
+    },
+    {
+      "owner": "Board item",
+      "idx": 617,
+      "version": "7",
+      "when": 1793025815553,
+      "tag": "0603_letter_lifecycle",
+      "breakpoints": true,
+      "sourceSHA256": "b6b31215e5a1ecef1693b2a1022fdb4129efbfadfb629f67df909e5dc08a7e07"
+    },
+    {
+      "owner": "AI dev 2",
+      "idx": 618,
+      "version": "7",
+      "when": 1793025815554,
+      "tag": "0621_ai_action_controls",
+      "breakpoints": true,
+      "sourceSHA256": "4dbb6f3560852f0bc34b0461aebe942d275fc8ff597b1511ec775696f0a1d68b"
+    },
+    {
+      "owner": "AI dev 2",
+      "idx": 619,
+      "version": "7",
+      "when": 1793025815555,
+      "tag": "0629_lifecycle_acknowledgement_source",
+      "breakpoints": true,
+      "sourceSHA256": "d889d1d5096da380a984575d0bd3ddf2b15b1465b7d16e28911e181aa1c9b118"
+    },
+    {
+      "owner": "AI dev 2",
+      "idx": 620,
+      "version": "7",
+      "when": 1793025815556,
+      "tag": "0630_testing_execution_source",
+      "breakpoints": true,
+      "sourceSHA256": "81666d6211c557dbd0353f6afe17233243f14790ca1306dc1ce457a4bd60b9cc"
+    },
+    {
+      "owner": "AI dev 2",
+      "idx": 621,
+      "version": "7",
+      "when": 1793025815557,
+      "tag": "0631_payroll_close_source",
+      "breakpoints": true,
+      "sourceSHA256": "0cce2fdd12e1906cd39b790b77a9510b840941b9af52f129203781b96fc33d89"
+    },
+    {
+      "owner": "AI dev 2",
+      "idx": 622,
+      "version": "7",
+      "when": 1793025815558,
+      "tag": "0632_statutory_source_ownership",
+      "breakpoints": true,
+      "sourceSHA256": "a1c6a28deca7f1c443132db105f30394cda59df52c65e622d7186ad8ec8f92ef"
+    },
+    {
+      "owner": "AI dev 2",
+      "idx": 623,
+      "version": "7",
+      "when": 1793025815559,
+      "tag": "0622_own_leave_review_store",
+      "breakpoints": true,
+      "sourceSHA256": "dd46faf30d4f587a1a1fab8e7a6cc705faf1258ab00e0d5205bbc2513aac1985"
+    },
+    {
+      "owner": "AI dev 2",
+      "idx": 624,
+      "version": "7",
+      "when": 1793025815560,
+      "tag": "0623_openrouter_provider_options",
+      "breakpoints": true,
+      "sourceSHA256": "0f78416bd82c8e7328732b4234fe071ba15248f387ab9aa8ef911ee1822cd319"
+    },
+    {
+      "owner": "AI dev 2",
+      "idx": 625,
+      "version": "7",
+      "when": 1793025815561,
+      "tag": "0624_assistant_disclosure",
+      "breakpoints": true,
+      "sourceSHA256": "219891ab9c3515e466fcc0b6d37a0bc4bc0f73af61dd92772a400521ec2db801"
+    },
+    {
+      "owner": "AI dev 2",
+      "idx": 626,
+      "version": "7",
+      "when": 1793025815562,
+      "tag": "0625_provider_readiness",
+      "breakpoints": true,
+      "sourceSHA256": "8634525e4ac5a6810435518b54b92f5f478f75c9004413180fdeabbf46bc15f1"
+    },
+    {
+      "owner": "AI dev 2",
+      "idx": 627,
+      "version": "7",
+      "when": 1793025815563,
+      "tag": "0626_module_agent_feedback",
+      "breakpoints": true,
+      "sourceSHA256": "c7b8677ea5fc512650fa59a73ae84fbd0961288b63196ec2e4c66558ab6c2ec8"
+    },
+    {
+      "owner": "AI dev 2",
+      "idx": 628,
+      "version": "7",
+      "when": 1793025815564,
+      "tag": "0627_module_agent_improvement",
+      "breakpoints": true,
+      "sourceSHA256": "2c4f8a72a2c8bc745faffb004962040fd0a2d90db7098173db59103ad9b4bcb1"
+    },
+    {
+      "owner": "AI dev 2",
+      "idx": 629,
+      "version": "7",
+      "when": 1793025815565,
+      "tag": "0628_employee_import_ai_evaluation",
+      "breakpoints": true,
+      "sourceSHA256": "089b08e05f11291ba9289e19ce7db6a87a94353fcf276bee15e89c03200e0e56"
+    },
+    {
+      "owner": "Mobile",
+      "idx": 630,
+      "version": "7",
+      "when": 1793039596595,
+      "tag": "0613_request_abuse_budgets",
+      "originalTag": "0613_request_abuse_budgets",
+      "breakpoints": true,
+      "sourceSHA256": "11a70f86bd67b4bf4eced617de8d7b96526a04f991add7b1d8c9efade8be3e60"
+    },
+    {
+      "owner": "Mobile",
+      "idx": 631,
+      "version": "7",
+      "when": 1793047796775,
+      "tag": "0633_geofence_reported_uncertainty",
+      "originalTag": "0621_geofence_reported_uncertainty",
+      "breakpoints": true,
+      "sourceSHA256": "844a51b7acae6c5208c02d5e9db6077ec5fea560c04c809f81cf9e3f4412380d"
+    },
+    {
+      "owner": "Mobile",
+      "idx": 632,
+      "version": "7",
+      "when": 1793054626620,
+      "tag": "0634_mobile_integrity_challenges",
+      "originalTag": "0622_mobile_integrity_challenges",
+      "breakpoints": true,
+      "sourceSHA256": "c8a72f0d3f2b1cd86e90613581eb3428997951ff23e664d2f146638c1672e697"
+    },
+    {
+      "owner": "Mobile",
+      "idx": 633,
+      "version": "7",
+      "when": 1793055753390,
+      "tag": "0635_mobile_integrity_keys",
+      "originalTag": "0623_mobile_integrity_keys",
+      "breakpoints": true,
+      "sourceSHA256": "60128ba64bd368a532b5cff0593727c0301a4ef2d41043344f82c5ada7b46e7c"
+    }
+  ]
+}

@@ -264,6 +264,41 @@ A reboot spanning a trigger means cron skips that run — it does not catch up. 
 jobs that is worth guarding with systemd timers (`OnCalendar` + `Persistent=true`) instead, which needs
 root and additional `aihr-sudoers` entries for `daemon-reload` and `enable`.
 
+### Mobile push sweep (M10, D6) — NOT installed; an owner activation step
+
+`scripts/mobile-push-sweep.ts` turns unread in-app notifications into ONE generic push per installation, sent direct
+to APNs (iOS) and FCM (Android): title "AI HR", a fixed "you have a new update" body in the installation's language
+(en/ms) and the notification id — never its text. It needs the reserved 0673 draft tables, so **it cannot run on a
+server until 0673 is journaled and applied**; until then it is not in any crontab and nothing schedules it. It reads
+notifications that the workflow-notification sweep has already projected; it projects none itself.
+
+Keys live in `.env.production` (server-only; never `EXPO_PUBLIC_`). A provider whose variables are absent or
+unusable is simply off: the sweep logs `{"push":"disabled"}` and exits 0. Names (see also `.env.example`):
+
+| Variable | What the operator provides |
+| --- | --- |
+| `AIHR_PUSH_APNS_KEY_ID` | Key ID of an APNs authentication key (.p8) created in the Apple Developer account |
+| `AIHR_PUSH_APNS_TEAM_ID` | the Apple Developer Team ID |
+| `AIHR_PUSH_APNS_PRIVATE_KEY` | the .p8 PEM; literal `\n` separators are read as newlines |
+| `AIHR_PUSH_APNS_BUNDLE_ID` | the iOS bundle id (`ai.stradaverse.aihr.test` in `mobile/app.json` today) |
+| `AIHR_PUSH_APNS_ENVIRONMENT` | `production` (default) or `development`; must match the installed builds, or APNs answers `BadDeviceToken` and the sweep REVOKES those registrations |
+| `AIHR_PUSH_APNS_TOKEN_CACHE` | optional private file path (0600) so successive runs reuse the APNs provider token (Apple: refresh no more than every 20 minutes) |
+| `AIHR_PUSH_FCM_PROJECT_ID` | the Firebase project id the Android app is registered in |
+| `AIHR_PUSH_FCM_SERVICE_ACCOUNT` | that project's service-account JSON on one line, with permission to send FCM messages |
+
+The Android build additionally needs that Firebase project's `google-services.json` referenced by
+`expo.android.googleServicesFile` in `mobile/app.json` (not committed; a native rebuild), and the iOS build needs the
+Push Notifications capability on its App ID (the expo-notifications config plugin writes the entitlement).
+
+When the owner activates it, the line has the same form as the other wrapped jobs (every minute, under `flock`):
+
+```cron
+* * * * * cd /opt/ai-hr && flock -n /tmp/aihr-mobile-push.lock deploy/cron-alert.sh mobile-push /home/ubuntu/aihr-cron-logs/mobile-push.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/mobile-push-sweep.ts
+```
+
+Each push is claimed before it is sent and never retried, so a crash or a provider error loses that one doorbell, not
+the notification (it stays in the inbox). Logs carry counts only — no token, key, notification text or provider body.
+
 ### The provisioning runner (REQUIRED if you use the operator console)
 
 `scripts/provision-runner.ts` is the out-of-band half of the `/operator` console (ADR-0079). Without it,

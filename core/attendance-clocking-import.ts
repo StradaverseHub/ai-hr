@@ -414,6 +414,14 @@ type EmpRow = {
   end: string | null;
 };
 
+/** "Employed on the date", the clocking import's rule, shared with the offline claim adjudicator: from the start,
+ *  coalesce(join_date, hired_on), through terminated_on inclusive (open while NULL). Dates are ISO text. */
+export const clockingEmploymentSpan = {
+  start: sql<string>`coalesce(${employment.joinDate}, ${employment.hiredOn})::text`,
+  end: sql<string | null>`${employment.terminatedOn}::text`,
+};
+export const employedOnDate = (e: { start: string; end: string | null }, date: string) => e.start <= date && (e.end == null || date <= e.end);
+
 type Decided = {
   read: ReadLine;
   result: ClockingImportLineResult;
@@ -484,8 +492,7 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string, lockTenantI
         code: employment.employeeCode,
         cardId: employment.cardId,
         ic: employeeStatutoryMy.icNumber,
-        start: sql<string>`coalesce(${employment.joinDate}, ${employment.hiredOn})::text`,
-        end: sql<string | null>`${employment.terminatedOn}::text`,
+        ...clockingEmploymentSpan,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
@@ -506,7 +513,7 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string, lockTenantI
   const byCard = index((e) => (e.cardId ? e.cardId.trim().toLowerCase() : null));
   const byCode = index((e) => (e.code ? e.code.trim().toLowerCase() : null));
   const byIc = index((e) => (e.ic ? onlyDigits(e.ic) || null : null));
-  const employedOn = (e: EmpRow, date: string) => e.start <= date && (e.end == null || date <= e.end);
+  const employedOn = employedOnDate;
   // A line that could not be READ (bad date, time, code, short line) is still about someone: name the
   // employee in the log when the card answers to exactly one employment the importer may see (plan item 21,
   // "employee where known"). Display only — such a line is never imported, and an unknown or ambiguous card
@@ -573,7 +580,7 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string, lockTenantI
   const sortedDays = matched.map((d) => d.day!).sort();
   const from = sortedDays[0];
   const to = sortedDays[sortedDays.length - 1];
-  type Existing = { time: string; direction: 'in' | 'out'; method: 'web' | 'import' | 'admin' };
+  type Existing = { time: string; direction: 'in' | 'out'; method: 'web' | 'import' | 'admin' | 'mobile_offline' };
   const existingBy = new Map<string, Existing[]>();
   const correctedDays = new Set<string>();
   for (const ids of chunks(empIds)) {
@@ -667,7 +674,8 @@ async function decideLines(tx: Tx, def: AnyMappingDef, text: string, lockTenantI
     }
     const existing = existingBy.get(k) ?? [];
     const coded = ds[0].read.direction != null || ds[0].read.code != null;
-    if (!coded && existing.some((e) => e.method === 'web')) {
+    // An offline-clocked day is an employee-clocked day (owner decision 2026-10-28): mobile_offline counts as web.
+    if (!coded && existing.some((e) => e.method === 'web' || e.method === 'mobile_offline')) {
       for (const d of ds) d.result = 'uncoded_on_clocked_day';
       continue;
     }

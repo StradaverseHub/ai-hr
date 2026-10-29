@@ -165,6 +165,19 @@ confirmed, discarded, refused, failed, expired and later reversed — derived fr
 existing RLS, shown beside the ADR-0131 process assessment in the Control Tower so each process has a
 before/after. No names, amounts or reasons leave their owners.
 
+*Implemented 29 Oct 2026 (`core/assistant-outcomes.ts`, migration 0674).* One read-only definer,
+`app.assistant_action_outcome_summary`, returns counts per kind and state, plus the all-time first use. A row
+counts only for an administrator of its company; a row without a company counts only for a group
+administrator. Counts per kind cover prepared, confirmed, discarded, expired (including unswept past-expiry
+pending), refused and waiting. "Later undone" is counted only where a canonical row or event proves it: a
+submitted leave, claim, attendance correction or profile change later rejected or cancelled, or an edited
+leave edited again or withdrawn. It is null for every other kind. Offered, edited before confirmation and
+failed have no recording source: digests are cleared at the end of review and a failed confirmation rolls
+back. They are shown as unmeasured, not zero. Native outcome associations are own-user consent records and
+are not aggregated. Each process's before/after compares staff actions per 30 days, using the ADR-0131
+counting rules, over two equal periods either side of the first Assistant use in scope. It is labelled
+non-causal. The coverage panel reads `agentCapabilityCoverage()` and `agentBacklogByTier()`.
+
 **d. Behaviour changes only through the existing promotion harness.** Prompt, routing, tool-description and
 argument-extraction changes are candidates evaluated on held-out suites (the existing holdout files plus the
 new entries' cases) by at least two independent evaluators with zero security and quality failures, promoted by
@@ -285,3 +298,135 @@ Still open, outside wave 1:
 3. Provider data handling: wave 1 uses the tenant's existing configured provider under the existing Assistant
    grant, allowances and pause; it sends no prepared-action content to any new provider. Any provider change
    remains a separate decision (ADR-0131 amendment of 2026-10-25).
+
+## Amendment, 2026-10-29: the named agent principal (§4.5)
+
+Status: implementation decision for §4.5 under the owner's 2026-10-29 instruction to build the agent account
+and the first HR-admin actions. Verified in source at main `82f7c6570`. Accepted here is not merged, tested or
+installed.
+
+### Facts that shaped it
+
+| Fact | Where |
+| --- | --- |
+| The nightly pass's only authority is the session setting `app.grants=[{hr_admin, null}]`; nothing checks it against a login or role row. Every row it reads it reads through the `is_admin*` branches. | `scripts/review-sweep.ts`, `db/client.ts`, migration 0016 |
+| No model call is ever admitted for it: provider, spend and claims-source admission all require a current login (`assertAiPrincipalTx`). Readiness reminders always use the fixed templates, and claims triage always reports "no AI provider". | `core/ai-principal.ts`, `core/readiness-nudge.ts`, `core/input-triage.ts` |
+| Pending profile corrections are invisible to it (the restrictive `access_profile_review_read` needs a login), so a person who already submitted a correction can still be chased. | migration 0579, `core/readiness-actions.ts` |
+| Its events are `actor_type='agent'` with no `actor_id`, and its proposals carry no decider. Process assessment counts `agent` and `system` actions as automated. | `core/hr-orchestrator.ts`, `core/process-assessment.ts` |
+
+### Decision
+
+1. **Identity.** `app.ai_agent_principal` holds one row per tenant (an id and a creation time). It is not an
+   `app_user`, has no `role_assignment` and no credentials, so no login path can resolve to it. A session
+   context carries it as `agent: { principalId, enablements }`. `withTenant` sets the principal in its own
+   transaction-local setting and refuses an agent context that also carries a login or any grant.
+2. **Authority.** An agent context holds **no grants**: `is_admin()`, `is_admin_for()` and every login branch
+   are false. `app.current_agent_principal()` (SECURITY DEFINER) returns the principal only when that setting
+   names this tenant's row, there is no login and there are no grants. Additive policies for that predicate give
+   exactly what the two specialists use:
+   - `hr_orchestration_case`: read, open and update cases;
+   - `employment`: read (company, person, payment method, termination), used to find recipients and leavers;
+   - `agent_proposal`: read, record and settle `readiness_fix` proposals only;
+   - `domain_event`: read `readiness.nudge-raised` only (for de-duplication).
+
+   Statutory numbers, bank accounts, compensation and pending correction values are **not** readable. Two
+   presence-only functions return, per active employment, whether each readiness field is present, and per
+   pending correction, the names of the fields it touches. They never return values.
+3. **Every effect is attributable.** A restrictive insert policy on `domain_event` binds any agent-context
+   event to:
+   - `actor_type='agent'`;
+   - `actor_id` = the principal;
+   - a closed list of orchestrator and nudge event types;
+   - a payload `agent` stamp naming the principal and, for each switch it relies on, the administrator and
+     the `tenant-setting.changed` event that switched it on.
+
+   A restrictive insert policy on `agent_proposal` limits an agent context to `readiness_fix`.
+4. **Enablement reuses the existing switches.** `notifications.readiness_nudge_enabled` and
+   `claims.input_triage_enabled` stay the switches. A group administrator changes them in AI management
+   (`setAiFeature` → `setTenantSetting`, ADR-0116), and every customer write goes through `setTenantSetting`. The administrator who switched an agent on is the actor of
+   the latest `tenant-setting.changed` event for that key, when its value is `true`. A switch that is on without
+   such an event (set by the platform or before events existed) is **unattributed**: that agent does not run,
+   the nightly log says so, and AI management shows "an administrator must switch this on again". The nightly
+   pass runs only when at least one specialist is on and attributed. Pausing is switching off; the principal has
+   no switch of its own.
+5. **No model calls under the principal (unchanged behaviour, now explicit).** Readiness reminders keep their
+   fixed templates, and claims triage under the principal stops before reading claims. Admitting the principal to
+   model spend needs its own allowance subject in ADR-0116 admission and the provider data-handling decision in
+   §8.3. It is a separate, reviewed change.
+6. **Scope.** Only the orchestrator pass (`runHrOrchestrator`) moves to the principal. The deterministic engine
+   jobs in the same script remain system jobs with their existing context: review opening and reminders, leave
+   escalation, future-dated movements and notification dispatch. They are not agents.
+
+### Consequences
+
+- Correction: the agent now sees which gaps already have a pending correction and stops chasing those people.
+  The values in those corrections stay unreadable to it.
+- Tenants with no attributed agent no longer get a nightly readiness observation. An HR administrator's refresh
+  in the Control Tower still runs it under their own login.
+- Event readers that join `actor_id` to `app_user` find no user for agent events, as before (they were `NULL`).
+- Rejected alternatives:
+  - a real `app_user` for the agent: it could be granted roles, sign-in could resolve it, and it would pass the
+    login-only AI admission by construction;
+  - keeping `hr_admin` and filtering in code: authority would be unenforced at the database.
+
+## Amendment, 2026-10-29: first HR-administrator actions (§5 "later waves")
+
+Status: implementation decision under the owner's 2026-10-29 instruction. The actions reuse the wave 1b
+"assigned" binding (migration 0671, `createGenericAssignedReviewStore`); they add no parallel custody.
+Accepted here is not merged, tested or installed.
+
+### Choice
+
+No installation measures how often these happen yet: staging holds demo data and the process assessment has
+no production window. The choice therefore rests on the code paths. Each entry is a single-employee HR
+correction that recurs every month for every company, is keyed by hand on a dedicated screen today, and has
+a native service that already checks the HR administrator's authority over that employee's company:
+
+1. `leave.adjustment.apply`: add or deduct leave days for one employee and one leave type, with an effective
+   date and a reason (`applyLeaveAdjustmentBatch`, individual mode, one employment).
+2. `toil.credit.grant`: grant Leave Credit for one date one employee worked
+   (`grantLeaveCreditRows`, `hr_manual_grant`). HR enters the date, the hours worked, the reason and the
+   First Schedule consent. The engine names the day type from the roster, computes the credit, expiry and
+   First Schedule floor, refuses a date already credited, and shows the overtime the credit would stop
+   paying.
+3. `employees.movement.transfer`: an assignment-only Transfer or Organisation Assignment Change with an
+   effective date (`createMovementEventTx`). Department, position, business unit and location only; no grade,
+   pay, company or end of employment. A future date is recorded as a pending movement, exactly as on the
+   screen.
+
+Not taken:
+- Onboarding cases, because the onboarding module is mid-way through its v3.1 replacement and its legacy
+  case service is being retired.
+- Employment exit, discipline, access, erasure and payroll reversal, which remain permanent handoffs
+  (§4.4).
+
+### Binding and authority
+
+- The caller is the HR administrator; the subject is another person's employment. The binding names:
+  - the administrator's login and person;
+  - the subject's employment, company and person.
+- The stored subject is the employment (`receipt_subject_kind='employment'`).
+- Refused before anything else: a subject whose person is the caller's own, for every role.
+- Authority is the native service's. Preparation runs the same check the screen's write runs:
+  - leave adjustment: the employment visible and administered under `can_admin_employment`;
+  - Leave Credit: `assertAdminForEmploymentTx`;
+  - movement: `assertWorkforceEmploymentTx(...,'maintain')`.
+
+  The service checks again when it writes.
+- The model never supplies the days, the reason, the dates worked or the destination. Those are HR's own
+  inputs on the review card; the agent only opens the card for an employee HR chose.
+
+### Proof
+
+Completion is accepted only if the native effect was committed in this transaction, by this login, for
+this employment. The completion verifier proves, per kind:
+
+- leave adjustment: a batch of this login, a ledger row for this employment and leave type, and the
+  `leave.adjustment.applied` event on that batch;
+- Leave Credit: an `hr_manual_grant` accrual for this employment and its `toil.accrued` event;
+- movement: the movement's own event for this employment, either applied or scheduled.
+
+A prior-transaction event is refused as proof.
+
+Tier ceiling: Approve. These are HR decisions about someone else's record, and HR is the person who
+confirms.
