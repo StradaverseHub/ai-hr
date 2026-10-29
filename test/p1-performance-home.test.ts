@@ -52,9 +52,9 @@ const bu: RunningLeaderStatus = { seat: 'bu', mode: 'running', cycleId: CYCLE, m
 const ledRecord: RecordLeaderStatus = { seat: 'bg', mode: 'record', cycleId: CYCLE, midYear: false, gated: false, people: 40 };
 
 describe('DQ-1: one switch for the Performance row of Where you stand', () => {
-  it('defaults to released results only', () => {
-    expect(WHERE_YOU_STAND_RULE).toBe('releasedOnly');
-    expect(perf.WHERE_YOU_STAND_RULE).toBe('releasedOnly');
+  it('follows the source (APR-028): the line manager\'s approved band shows before release', () => {
+    expect(WHERE_YOU_STAND_RULE).toBe('lineManagerApproved');
+    expect(perf.WHERE_YOU_STAND_RULE).toBe('lineManagerApproved');
   });
 
   it('released-only: before release a word, never the line manager\'s band; after release the band', () => {
@@ -81,13 +81,13 @@ describe('DQ-1: one switch for the Performance row of Where you stand', () => {
       own: { reviewId: randomUUID(), cycleId: CYCLE, cycleName: 'Fictional', periodEnd: `${todayInKualaLumpur().slice(0, 4)}-12-31` },
       review, tasks: [], feedbackOpen: [], feedbackSubmitted: 0, team: [], sessions: [], inCycle: new Set<string>(), now: new Date(),
     };
+    const releasedOnly = deriveHomeBlock({ ...input, standingRule: 'releasedOnly' });
+    expect(releasedOnly.standing.performance).toEqual({ state: 'notReleased' });
+    expect(keysOf(releasedOnly).has('band')).toBe(false);
+    expect(JSON.stringify(releasedOnly)).not.toContain('"AE"');
     const byDefault = deriveHomeBlock(input);
-    expect(byDefault.standing.performance).toEqual({ state: 'notReleased' });
-    expect(keysOf(byDefault).has('band')).toBe(false);
-    expect(JSON.stringify(byDefault)).not.toContain('"AE"');
-    const flipped = deriveHomeBlock({ ...input, standingRule: 'lineManagerApproved' });
-    expect(flipped.standing.performance).toEqual({ state: 'lineManagerApproved', band: 'AE' });
-    for (const blk of [byDefault, flipped]) expect([...keysOf(blk)].filter((k) => /score/i.test(k))).toEqual([]);
+    expect(byDefault.standing.performance).toEqual({ state: 'lineManagerApproved', band: 'AE' });
+    for (const blk of [releasedOnly, byDefault]) expect([...keysOf(blk)].filter((k) => /score/i.test(k))).toEqual([]);
   });
 });
 
