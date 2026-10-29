@@ -574,3 +574,7 @@ Typed pay-component catalogue creation uses the generic own compatibility lifecy
 ### WP9 — additional payroll draft compatibility (30 October 2026)
 
 Multi-cycle draft creation uses the generic own compatibility lifecycle with its exact installed company/month/cycle/run-type binding, 45KB sealed-body cap and source-owned erasure targets. Its explicit peek protocol keeps current actor and canonical source interval before encrypted nomination, full native preflight before custody NOWAIT, and an exact snapshot reread before execution. Completed rows reconcile without preparing or creating another run. Sensitive Approve-tier authority stays explicit; no payroll processing, closing, payslip or payment is performed. No migration or ciphertext rewrite is required.
+
+### WP9 — statutory profile compatibility (30 October 2026)
+
+The Personnel EPF/SOCSO review uses the generic assigned compatibility lifecycle, retaining the actual actor/target/person/statutory/company/country binding and installed encrypted row format. Workforce write admission, granular native field/company authority, native PERSON/statutory tuple ownership, pending preflight before custody NOWAIT, exact snapshot reread and complete erasure targets remain source-owned. The country pack remains the sole statutory writer; no Identity/Tax/Bank/TP3/Zakat or payroll calculation authority is added. Existing uppercase action-ID reopening remains supported through a protocol-local normalization option. No migration is required.
