@@ -79,9 +79,14 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
     const usable = resolved !== null;
     const selectedProvider = !usable ? null : provider ? activeProvider ? {provider:activeProvider.provider,model:activeProvider.model} : provider.envFallback : resolved;
     // Only provider/model metadata crosses to the view, after checking that its key can be resolved.
+    // One switch owner per feature (0692): a setting-backed feature follows its setting alone; a settingless one
+    // its `feature:` policy row. A feature row left over for a setting-backed feature cannot be written any more
+    // and is ignored by admission, so it is reported as a stale override instead of acting as a hidden switch.
     const features = AI_FEATURES.map(f => {
       const setting = f.setting ? SETTING_CATALOG.find(s => s.key === f.setting) : undefined;
-      const enabled = setting ? (fresh.entitlements.settings[f.setting!] ?? setting.defaultValue) === true : policies.find(p => p.scopeKey === `feature:${f.id}`)?.enabled !== false;
+      const featureRow = policies.find(p => p.scopeKey === `feature:${f.id}` && p.kind === 'feature');
+      const staleOverride = setting && featureRow ? {enabled:featureRow.enabled,updatedAt:featureRow.updatedAt} : null;
+      const enabled = setting ? (fresh.entitlements.settings[f.setting!] ?? setting.defaultValue) === true : featureRow?.enabled !== false;
       const effective = enabled && (!setting || getSetting(fresh,f.setting!) === true);
       const moduleHeld = f.module == null || isModuleEnabled(fresh, f.module);
       // A configured provider does not admit scheduled model spend. This is a runtime-status mirror,
@@ -89,7 +94,10 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       const state = !enabled ? 'paused' : !moduleHeld ? 'module' : !effective ? 'restricted'
         : f.kind === 'agent' ? f.id === 'readiness_reminders' ? 'templates' : 'scheduled'
         : !selectedProvider ? 'provider' : 'ready';
-      return {...f,enabled,state,mayWrite:isGroupAdmin(ctx)&&f.kind!=='platform'};
+      // WP12 (R20): whether an administrator actually set this switch (a stored setting or a `feature:` row), so drift
+      // reports a switch someone turned on that does not take effect, never a default nobody chose.
+      const configured = setting ? fresh.entitlements.settings[f.setting!] !== undefined : featureRow !== undefined;
+      return {...f,enabled,state,staleOverride,configured,mayWrite:isGroupAdmin(ctx)&&f.kind!=='platform'};
     });
     // ADR-0151 §4.5 — the switch-on each agent specialist runs under, and who made it. An agent that is on
     // without a named administrator does not run until somebody switches it off and on again.
@@ -192,7 +200,9 @@ export async function setAiFeature(ctx: SessionContext, feature: AiFeatureId, en
   if (!isAiFeature(feature) || typeof enabled !== 'boolean') throw new AiControlError('Unknown AI feature.');
   const entry = AI_FEATURES.find(f=>f.id===feature)!;
   if(entry.kind==='platform') throw new AiControlError('This feature is managed by the platform.');
-  // Existing switches remain authoritative, including the deterministic reminder fallback.
+  // One switch owner per feature (0692): a setting-backed feature is switched through its setting and never gains
+  // a `feature:` policy row (app.ai_control_policy_guard refuses one by name). Only settingless features reach the
+  // policy write below. Existing switches remain authoritative, including the deterministic reminder fallback.
   if(entry.setting) return withTenant(ctx, async tx => {
     await currentControlAdminTx(tx, ctx, true);
     await setTenantSetting(ctx, { key: entry.setting!, value: enabled }, tx);

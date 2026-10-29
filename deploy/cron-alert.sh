@@ -37,6 +37,9 @@
 #
 #   usage: cron-alert.sh <job-name> <logfile> <command> [args...]
 #
+# AI alerts (WP12, review R20): scripts/ai-alerts.ts exits 3 when an AI alert needs a human and 2 when a tenant
+# could not be checked. deploy/DEPLOY.md carries its crontab and staleness lines (documented, not installed).
+#
 # ── THE THREE CHANNELS, AND WHY THREE ────────────────────────────────────────────────────────────
 #
 #   1. THE JOURNAL, at priority err. `logger -p user.err` writes a real priority-3 line, and priority 3

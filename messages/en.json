@@ -489,7 +489,8 @@
     "aiManagementOrchestrator": "HR work queue",
     "aiManagementRuns": "Recent model calls",
     "moduleELetter": "E-Letter",
-    "emailTemplates": "Email templates"
+    "emailTemplates": "Email templates",
+    "aiManagementInventory": "AI inventory"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -16425,6 +16426,10 @@
       "reports-employee-master-deliver": {
         "name": "Employee Master report delivery",
         "description": "Checks due weekly and monthly reports, applies current recipient consent and access, and records delivery outcomes."
+      },
+      "ai-alerts": {
+        "name": "AI alert check",
+        "description": "Checks every hour for failing AI calls, refusals under the scheduled agent, AI spending near its monthly cap and AI switches that are overridden, and raises an alert for operators."
       }
     }
   },
@@ -24665,7 +24670,138 @@
     "groupsPrecedence": "Which allowance applies to a login: its individual allowance; otherwise its department’s, then its company’s, then its role’s (when several match at the same level, the strictest limit applies); otherwise the default below.",
     "agentRunsAs": "Runs as the HR agent account, switched on by {by} on {date}.",
     "agentUnknownAdmin": "a former administrator",
-    "agentUnattributed": "Switched on without a named administrator, so the HR agent account does not run it. Pause it and enable it again to run it under your name."
+    "agentUnattributed": "Switched on without a named administrator, so the HR agent account does not run it. Pause it and enable it again to run it under your name.",
+    "staleOverrideOn": "An older switch stored for this feature is ignored. It follows its setting only.",
+    "staleOverrideOff": "An older pause stored for this feature is ignored. It follows its setting only.",
+    "inv": {
+      "title": "AI inventory",
+      "intro": "Every AI component in one list: the Assistant chat, its read bindings, scheduled specialists, each Assistant action with its tier, scheduled jobs, built-in AI features, the nightly HR work queue steps and the operator improvement loop. Each row shows what switches it, what stops it and what it did in the last 30 days.",
+      "registryNotice": "You see the read-only registry and tier view for your companies. Switches, allowances, runs, cost and audit history are shown to group administrators only.",
+      "costHelp": "Use and cost cover the last 30 days. Cost is the token count and the provider credits reported with each call; a US dollar figure is not certified here. Model use by Assistant actions and read bindings is counted under the Assistant chat.",
+      "never": "Never",
+      "readOnly": "Read only",
+      "actionPaused": "Paused",
+      "actionActive": "Running",
+      "pauseAction": "Pause this action",
+      "resumeAction": "Resume this action",
+      "outOfBand": "Out of band",
+      "outOfBandHelp": "Operator tooling outside the product. Listed for completeness; managed by the platform, not from this page.",
+      "on": "on",
+      "off": "off",
+      "allowanceDefault": "Per login by default: {daily} requests a day · {tokens} tokens a month",
+      "allowanceNone": "No default cap",
+      "countedUnderChat": "Model use counted under the Assistant chat",
+      "use30": "{runs} calls · {tokens} tokens · {failed} failed · {blocked} blocked",
+      "credits": "Reported provider credits: {credits}",
+      "creditsUnknown": "Provider credits not reported",
+      "outcomes": "{prepared} prepared · {completed} completed · {refused} refused · {discarded} discarded · {expired} expired",
+      "rates": "{completed} completed · {refused} refused",
+      "audit": "{count} changes · last {date}",
+      "auditNone": "No changes in 30 days",
+      "jobs": {
+        "review-sweep": "Nightly HR work queue pass",
+        "ai-retention": "AI run history retention",
+        "ai-alerts": "AI alert check"
+      },
+      "steps": {
+        "observe": "Check employee records",
+        "readiness": "Send record reminders",
+        "claims": "Ask about unclear claims"
+      },
+      "improve": "Operator improvement loop (feedback planning)",
+      "tiers": {
+        "automatic": "Automatic",
+        "confirm": "Confirm",
+        "approve": "Approve",
+        "handoff": "Handoff"
+      },
+      "switchKinds": {
+        "setting": "Setting",
+        "policy": "AI switch",
+        "platform": "Platform",
+        "module": "Module",
+        "none": "None"
+      },
+      "kinds": {
+        "chat": "Assistant chat",
+        "read_binding": "Read bindings",
+        "specialist": "Scheduled specialists",
+        "action": "Assistant actions",
+        "scheduled_job": "Scheduled jobs",
+        "embedded_feature": "Built-in AI features",
+        "orchestrator_step": "HR work queue steps",
+        "operator_loop": "Operator loop (out of band)"
+      },
+      "cols": {
+        "component": "Component",
+        "tier": "Tier",
+        "switch": "Switch",
+        "pauseKey": "Pause key",
+        "allowance": "Allowance",
+        "lastRun": "Last run",
+        "use30": "30-day use and cost",
+        "outcomes": "Outcomes (30 days)",
+        "audit": "Audit events"
+      },
+      "register": {
+        "title": "Provider data register",
+        "intro": "For each AI feature: which kinds of data leave your company for the AI provider, and what is masked first. Read this before choosing or changing the provider.",
+        "namesNote": "Masking removes email addresses, Malaysian IC numbers and phone numbers. It never removes names.",
+        "principalNothing": "Scheduled runs send nothing to the provider (template only).",
+        "imagesYes": "Images sent",
+        "imagesNo": "No images",
+        "cols": {
+          "feature": "Feature",
+          "fields": "Data sent",
+          "redaction": "Masking",
+          "images": "Images"
+        },
+        "fields": {
+          "question_text": "Typed question or instruction",
+          "scoped_hr_records": "HR records the user may read (leave, profile, pay summary, claims)",
+          "pasted_import_source": "Pasted import data",
+          "admin_prompt": "Administrator-written instructions",
+          "synthetic_only": "Fictional test data only",
+          "column_headings": "Column headings of an uploaded file",
+          "gap_codes": "Missing-field codes only",
+          "claim_details": "Claim type, item, amount, dates and description",
+          "payroll_ratios": "Anonymous payroll ratios",
+          "payroll_figures": "Payroll figures without names",
+          "rule_description": "Pay rule description",
+          "field_catalogue": "Field list",
+          "performance_text": "Performance remarks, goals and feedback text",
+          "first_name": "First name",
+          "full_names": "Full names",
+          "approver_names": "Approver and author names",
+          "attachment_text": "Text read from attachments",
+          "image_attachments": "Image attachments",
+          "product_feedback_text": "Product feedback text"
+        },
+        "redaction": {
+          "pii_masked": "Masked",
+          "partial": "Partly masked",
+          "none": "Not masked",
+          "not_needed": "Not needed"
+        }
+      },
+      "alerts": {
+        "title": "AI needs attention",
+        "help": "The hourly server check covers AI failure rate, refusals under the scheduled agent, spending this month against the tenant spending cap, and AI switch overrides that disagree with the real switch, and it alerts operators. Allowance limits, and switches held off by a module or the platform, are checked only on this page.",
+        "failure_rate": "{count} AI calls failed in the last 24 hours ({detail} of calls).",
+        "principal_refusals": "{count} AI requests by the scheduled agent were refused in the last 24 hours. Scheduled work should send nothing to a model.",
+        "spend_near_cap": "{count} spending or usage caps are at or near their limit.",
+        "switch_drift": "{count} AI switches are set on but do not take effect ({detail}).",
+        "unavailable": "AI alerts could not be checked just now. This is not an all-clear: refresh the page, or ask an operator to read the server alert log."
+      },
+      "rangeFrom": "From",
+      "rangeTo": "To",
+      "rangeShown": "Showing {from} to {to} · page {page}, {size} calls per page",
+      "paging": "Run history pages",
+      "previous": "Previous",
+      "next": "Next",
+      "pageOf": "Page {page}",
+      "pausedTitle": "Paused actions"
+    }
   },
   "accountEmail": {
     "title": "Account email deliveries",

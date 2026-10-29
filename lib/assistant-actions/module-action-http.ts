@@ -589,7 +589,11 @@ async function packet(request:Request):Promise<SharedBrowserPacket>{
 }
 /** Trusted server construction only. Undefined/invalid configured origins refuse; request Host,
  * Forwarded and URL never become an origin allow-list. No same-URL fallback or bearer caller. */
-export function createModuleActionBrowserHandler<Session>(owners:ModuleActionBrowserOwners<Session>,policy:Readonly<{publicOrigin:string|undefined}>){
+/** WP12 (R8): the root (no `action`) packet serves the notification e-mail preference action. */
+const ROOT_MODULE_ACTION='notifications.email_preferences.save';
+/** `scope` (server-supplied) runs each authenticated command as its registry action, so the action's own pause key
+ * is enforced inside the owning transaction (core/agent-action-pause-scope.ts). */
+export function createModuleActionBrowserHandler<Session>(owners:ModuleActionBrowserOwners<Session>,policy:Readonly<{publicOrigin:string|undefined;scope?:(actionId:string,work:()=>Promise<Response>)=>Promise<Response>}>){
  const configured=policy.publicOrigin;
  return async(request:Request):Promise<Response>=>{
   if(request.method!=='POST')return unavailable(405);
@@ -599,6 +603,8 @@ export function createModuleActionBrowserHandler<Session>(owners:ModuleActionBro
   let input:SharedBrowserPacket;try{input=await packet(request);}catch{return unavailable(400);}
   let session:Session;try{session=await owners.authenticate();}catch{return unavailable(401);}
   if(request.signal.aborted)return unavailable(408);
+  const scopedAction='action' in input&&typeof input.action==='string'?input.action:ROOT_MODULE_ACTION;
+  const dispatch=async():Promise<Response>=>{
   try{if('action' in input&&input.action===MULTI_CYCLE_RUN_ACTION){const owner=owners.multiCycleRun;if(!owner)return unavailable(503);const result=input.operation==='catalogue'?await owner.catalogue(session,input.selection):input.operation==='scope_search'?await owner.scopeSearch(session,input.selection):input.operation==='list'?await owner.list(session):input.operation==='prepare'?await owner.prepare(session,input.input):input.operation==='reopen'?await owner.reopen(session,input.actionId):input.operation==='confirm'?await owner.confirm(session,input.confirmation):await owner.discard(session,input.confirmation);const checked=parseMultiCycleRunModuleActionBrowserResult(input,result);if(new TextEncoder().encode(JSON.stringify(checked)).byteLength>MULTI_CYCLE_RUN_RESPONSE_BYTES)return unavailable(503);return Response.json(checked,{status:200,headers:responseHeaders});}
    if('action' in input&&input.action===PAYROLL_CLOSE_ACTION){const owner=owners.payrollClose;if(!owner)return unavailable(503);const result=input.operation==='list'?await owner.list(session):input.operation==='prepare'?await owner.prepare(session,input.input):input.operation==='reopen'?await owner.reopen(session,input.actionId):input.operation==='confirm'?await owner.confirm(session,input.confirmation):await owner.discard(session,input.confirmation);const checked=parsePayrollCloseModuleActionBrowserResult(input,result);if(new TextEncoder().encode(JSON.stringify(checked)).byteLength>20480)return unavailable(503);return Response.json(checked,{status:200,headers:responseHeaders});}
    if('action' in input&&input.action===COUNTRY_STATUTORY_ACTION){const owner=owners.countryStatutory;if(!owner)return unavailable(503);const result=input.operation==='read_editable'?await owner.readEditable(session,input.employmentId):input.operation==='list'?await owner.list(session):input.operation==='prepare'?await owner.prepare(session,input.input):input.operation==='reopen'?await owner.reopen(session,input.actionId):input.operation==='confirm'?await owner.confirm(session,input.confirmation):await owner.discard(session,input.confirmation);const checked=parseCountryStatutoryModuleActionBrowserResult(input,result);if(new TextEncoder().encode(JSON.stringify(checked)).byteLength>COUNTRY_STATUTORY_ACTION_RESPONSE_BYTES)return unavailable(503);return Response.json(checked,{status:200,headers:responseHeaders});}
@@ -622,5 +628,8 @@ export function createModuleActionBrowserHandler<Session>(owners:ModuleActionBro
    const result=input.operation==='list'?await owners.list(session):input.operation==='prepare'?await owners.prepare(session,input.input):input.operation==='reopen'?await owners.reopen(session,input.actionId):input.operation==='confirm'?await owners.confirm(session,input.confirmation):await owners.discard(session,input.confirmation);
    return Response.json(parseModuleActionBrowserResult(input.operation,result),{status:200,headers:responseHeaders});
   }catch{return unavailable(503);}
+  };
+  if(!policy.scope)return dispatch();
+  try{return await policy.scope(scopedAction,dispatch);}catch{return unavailable(503);}
  };
 }

@@ -489,7 +489,8 @@
     "aiManagementOrchestrator": "Hàng đợi công việc HR",
     "aiManagementRuns": "Lượt gọi mô hình gần đây",
     "moduleELetter": "Thư điện tử",
-    "emailTemplates": "Mẫu email"
+    "emailTemplates": "Mẫu email",
+    "aiManagementInventory": "Danh mục AI"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -16425,6 +16426,10 @@
       "reports-employee-master-deliver": {
         "name": "Gửi báo cáo Hồ sơ nhân viên",
         "description": "Kiểm tra báo cáo tuần và tháng đến hạn, áp dụng sự đồng ý và quyền truy cập hiện tại của người nhận, rồi ghi nhận kết quả gửi."
+      },
+      "ai-alerts": {
+        "name": "Kiểm tra cảnh báo AI",
+        "description": "Mỗi giờ kiểm tra các lượt gọi AI thất bại, các yêu cầu bị từ chối của tác tử theo lịch, chi tiêu AI sắp chạm hạn mức tháng và các công tắc AI bị ghi đè, rồi gửi cảnh báo cho nhà vận hành."
       }
     }
   },
@@ -24665,7 +24670,138 @@
     "groupsPrecedence": "Hạn mức áp dụng cho một tài khoản: hạn mức riêng; nếu không có thì của phòng ban, rồi công ty, rồi vai trò (nếu nhiều nhóm cùng cấp khớp, áp dụng giới hạn chặt nhất); nếu không có thì dùng mặc định bên dưới.",
     "agentRunsAs": "Chạy dưới tài khoản tác tử HR, do {by} bật vào {date}.",
     "agentUnknownAdmin": "một quản trị viên trước đây",
-    "agentUnattributed": "Đã bật mà không có quản trị viên được nêu tên, nên tài khoản tác tử HR không chạy. Hãy tạm dừng rồi bật lại để chạy dưới tên của bạn."
+    "agentUnattributed": "Đã bật mà không có quản trị viên được nêu tên, nên tài khoản tác tử HR không chạy. Hãy tạm dừng rồi bật lại để chạy dưới tên của bạn.",
+    "staleOverrideOn": "Công tắc cũ đã lưu cho tính năng này bị bỏ qua. Tính năng chỉ tuân theo cài đặt của nó.",
+    "staleOverrideOff": "Lệnh tạm dừng cũ đã lưu cho tính năng này bị bỏ qua. Tính năng chỉ tuân theo cài đặt của nó.",
+    "inv": {
+      "title": "Danh mục AI",
+      "intro": "Mọi thành phần AI trong một danh sách: trò chuyện Trợ lý, các liên kết đọc, chuyên viên theo lịch, mỗi thao tác của Trợ lý cùng cấp độ, công việc theo lịch, tính năng AI tích hợp, các bước hàng đợi công việc HR ban đêm và vòng cải tiến của nhà vận hành. Mỗi dòng cho biết công tắc điều khiển, cách tạm dừng và hoạt động trong 30 ngày qua.",
+      "registryNotice": "Bạn đang xem danh mục và cấp độ ở chế độ chỉ đọc cho các công ty của mình. Công tắc, hạn mức, lượt chạy, chi phí và lịch sử kiểm toán chỉ hiển thị cho quản trị viên tập đoàn.",
+      "costHelp": "Mức sử dụng và chi phí tính cho 30 ngày qua. Chi phí là số token và tín dụng nhà cung cấp được báo cáo cho mỗi lượt gọi; số tiền đô la Mỹ không được xác nhận tại đây. Việc dùng mô hình của thao tác Trợ lý và liên kết đọc được tính vào trò chuyện Trợ lý.",
+      "never": "Chưa bao giờ",
+      "readOnly": "Chỉ đọc",
+      "actionPaused": "Đã tạm dừng",
+      "actionActive": "Đang chạy",
+      "pauseAction": "Tạm dừng thao tác này",
+      "resumeAction": "Tiếp tục thao tác này",
+      "outOfBand": "Ngoài hệ thống",
+      "outOfBandHelp": "Công cụ vận hành bên ngoài sản phẩm. Được liệt kê cho đầy đủ; do nền tảng quản lý, không thao tác từ trang này.",
+      "on": "bật",
+      "off": "tắt",
+      "allowanceDefault": "Mặc định mỗi tài khoản: {daily} yêu cầu mỗi ngày · {tokens} token mỗi tháng",
+      "allowanceNone": "Không có giới hạn mặc định",
+      "countedUnderChat": "Việc dùng mô hình được tính vào trò chuyện Trợ lý",
+      "use30": "{runs} lượt gọi · {tokens} token · {failed} thất bại · {blocked} bị chặn",
+      "credits": "Tín dụng nhà cung cấp được báo cáo: {credits}",
+      "creditsUnknown": "Nhà cung cấp không báo cáo tín dụng",
+      "outcomes": "{prepared} đã chuẩn bị · {completed} hoàn tất · {refused} bị từ chối · {discarded} đã bỏ · {expired} hết hạn",
+      "rates": "{completed} hoàn tất · {refused} bị từ chối",
+      "audit": "{count} thay đổi · gần nhất {date}",
+      "auditNone": "Không có thay đổi trong 30 ngày",
+      "jobs": {
+        "review-sweep": "Lượt chạy hàng đợi công việc HR ban đêm",
+        "ai-retention": "Lưu giữ lịch sử chạy AI",
+        "ai-alerts": "Kiểm tra cảnh báo AI"
+      },
+      "steps": {
+        "observe": "Kiểm tra hồ sơ nhân viên",
+        "readiness": "Gửi nhắc nhở hồ sơ",
+        "claims": "Hỏi về khoản chi chưa rõ"
+      },
+      "improve": "Vòng cải tiến của nhà vận hành (lập kế hoạch phản hồi)",
+      "tiers": {
+        "automatic": "Tự động",
+        "confirm": "Xác nhận",
+        "approve": "Phê duyệt",
+        "handoff": "Chuyển giao"
+      },
+      "switchKinds": {
+        "setting": "Cài đặt",
+        "policy": "Công tắc AI",
+        "platform": "Nền tảng",
+        "module": "Phân hệ",
+        "none": "Không có"
+      },
+      "kinds": {
+        "chat": "Trò chuyện Trợ lý",
+        "read_binding": "Liên kết đọc",
+        "specialist": "Chuyên viên theo lịch",
+        "action": "Thao tác của Trợ lý",
+        "scheduled_job": "Công việc theo lịch",
+        "embedded_feature": "Tính năng AI tích hợp",
+        "orchestrator_step": "Các bước hàng đợi công việc HR",
+        "operator_loop": "Vòng vận hành (ngoài hệ thống)"
+      },
+      "cols": {
+        "component": "Thành phần",
+        "tier": "Cấp độ",
+        "switch": "Công tắc",
+        "pauseKey": "Khóa tạm dừng",
+        "allowance": "Hạn mức",
+        "lastRun": "Lần chạy gần nhất",
+        "use30": "Sử dụng và chi phí 30 ngày",
+        "outcomes": "Kết quả (30 ngày)",
+        "audit": "Sự kiện kiểm toán"
+      },
+      "register": {
+        "title": "Sổ đăng ký dữ liệu gửi nhà cung cấp",
+        "intro": "Với mỗi tính năng AI: loại dữ liệu nào rời công ty của bạn đến nhà cung cấp AI và phần nào được che trước. Hãy đọc trước khi chọn hoặc đổi nhà cung cấp.",
+        "namesNote": "Việc che sẽ xóa địa chỉ email, số CMND Malaysia và số điện thoại. Không bao giờ xóa tên.",
+        "principalNothing": "Các lượt chạy theo lịch không gửi gì đến nhà cung cấp (chỉ dùng mẫu).",
+        "imagesYes": "Có gửi hình ảnh",
+        "imagesNo": "Không có hình ảnh",
+        "cols": {
+          "feature": "Tính năng",
+          "fields": "Dữ liệu gửi đi",
+          "redaction": "Che dữ liệu",
+          "images": "Hình ảnh"
+        },
+        "fields": {
+          "question_text": "Câu hỏi hoặc chỉ dẫn được nhập",
+          "scoped_hr_records": "Hồ sơ HR người dùng được phép đọc (nghỉ phép, hồ sơ, tóm tắt lương, khoản chi)",
+          "pasted_import_source": "Dữ liệu nhập được dán",
+          "admin_prompt": "Chỉ dẫn do quản trị viên viết",
+          "synthetic_only": "Chỉ dữ liệu thử nghiệm hư cấu",
+          "column_headings": "Tiêu đề cột của tệp tải lên",
+          "gap_codes": "Chỉ mã trường còn thiếu",
+          "claim_details": "Loại khoản chi, mục, số tiền, ngày và mô tả",
+          "payroll_ratios": "Tỷ lệ lương ẩn danh",
+          "payroll_figures": "Số liệu lương không có tên",
+          "rule_description": "Mô tả quy tắc lương",
+          "field_catalogue": "Danh sách trường",
+          "performance_text": "Nhận xét hiệu suất, mục tiêu và văn bản phản hồi",
+          "first_name": "Tên",
+          "full_names": "Họ tên đầy đủ",
+          "approver_names": "Tên người phê duyệt và người viết",
+          "attachment_text": "Văn bản đọc từ tệp đính kèm",
+          "image_attachments": "Hình ảnh đính kèm",
+          "product_feedback_text": "Văn bản phản hồi sản phẩm"
+        },
+        "redaction": {
+          "pii_masked": "Đã che",
+          "partial": "Che một phần",
+          "none": "Không che",
+          "not_needed": "Không cần"
+        }
+      },
+      "alerts": {
+        "title": "AI cần được chú ý",
+        "help": "Kiểm tra máy chủ hằng giờ bao gồm tỷ lệ lỗi AI, các yêu cầu bị từ chối của tác tử theo lịch, chi tiêu tháng này so với hạn mức chi tiêu của khách thuê, và các ghi đè công tắc AI khác với công tắc thực, rồi cảnh báo nhà vận hành. Hạn mức sử dụng và các công tắc bị phân hệ hoặc nền tảng giữ tắt chỉ được kiểm tra trên trang này.",
+        "failure_rate": "{count} lượt gọi AI thất bại trong 24 giờ qua ({detail} số lượt gọi).",
+        "principal_refusals": "{count} yêu cầu AI của tác tử theo lịch bị từ chối trong 24 giờ qua. Công việc theo lịch không được gửi gì đến mô hình.",
+        "spend_near_cap": "{count} giới hạn chi tiêu hoặc sử dụng đã đạt hoặc sắp đạt mức trần.",
+        "switch_drift": "{count} công tắc AI được bật nhưng không có hiệu lực ({detail}).",
+        "unavailable": "Hiện không thể kiểm tra cảnh báo AI. Điều này không có nghĩa là mọi thứ ổn: hãy tải lại trang hoặc nhờ nhà vận hành xem nhật ký cảnh báo của máy chủ."
+      },
+      "rangeFrom": "Từ",
+      "rangeTo": "Đến",
+      "rangeShown": "Hiển thị {from} đến {to} · trang {page}, {size} lượt gọi mỗi trang",
+      "paging": "Các trang lịch sử chạy",
+      "previous": "Trước",
+      "next": "Tiếp",
+      "pageOf": "Trang {page}",
+      "pausedTitle": "Thao tác đã tạm dừng"
+    }
   },
   "accountEmail": {
     "title": "Lịch sử gửi email tài khoản",

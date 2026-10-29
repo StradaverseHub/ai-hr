@@ -412,7 +412,15 @@ AIHR_ALERT_COMMAND=curl -sS -X POST -d @- https://your-webhook.example/aihr
 0 3 1 4 * cd /opt/ai-hr && deploy/cron-alert.sh expire-carry /home/ubuntu/aihr-cron-logs/expire-carry.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/expire-carry.ts
 * * * * * cd /opt/ai-hr && deploy/cron-alert.sh provision /home/ubuntu/aihr-cron-logs/provision.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/provision-runner.ts
 30 3 * * * cd /opt/ai-hr && deploy/cron-alert.sh entitlement-alarm /home/ubuntu/aihr-cron-logs/entitlement-alarm.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/entitlement-alarm.ts
+15 * * * * cd /opt/ai-hr && deploy/cron-alert.sh ai-alerts /home/ubuntu/aihr-cron-logs/ai-alerts.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/ai-alerts.ts
 ```
+
+The `ai-alerts` line (WP12, review R20) is **documented here, not installed**; the release owner adds it. It is a
+DETECTOR in the same shape as `entitlement-alarm` (READ ONLY tenant transactions, exit `0` clean, `3` alert, `2` a
+tenant could not be checked) and writes a `job_run` row (`ai.alerts`) each run. It covers AI failure rate over 24
+hours, refusals under the scheduled agent principal, this month's USD allocation against the tenant cap (and a
+breach), and stale AI switch overrides that disagree with the real switch. Allowance meters and module- or
+platform-held switches are shown only on the AI management banner (they need a signed-in session's entitlements).
 
 The last line is **readiness 2.1 (r296) and it is a DETECTOR, not a sweep** — it changes nothing, and
 every transaction it opens is `SET TRANSACTION READ ONLY`, so the server refuses a write from it. It is
@@ -453,7 +461,12 @@ class. Schedule the check separately, against whatever interval each job should 
 ```cron
 7 * * * * find /home/ubuntu/aihr-cron-logs/heartbeat -name provision -mmin +10 -exec sh -c 'echo "AI HR: provision runner has not succeeded in 10 minutes" | logger -t aihr-cron -p user.err' \;
 17 6 * * * find /home/ubuntu/aihr-cron-logs/heartbeat -name entitlement-alarm -mmin +2880 -exec sh -c 'echo "AI HR: the entitlement alarm has not completed cleanly in 48 hours" | logger -t aihr-cron -p user.err' \;
+27 7 * * * find /home/ubuntu/aihr-cron-logs/heartbeat -name ai-alerts -mmin +2880 -exec sh -c 'echo "AI HR: the AI alert check has not completed cleanly in 48 hours" | logger -t aihr-cron -p user.err' \;
 ```
+
+`heartbeat/ai-alerts` also means "last CHECKED AND CLEAN": a standing AI alert keeps it stale while the hourly
+alert itself is the louder signal, so its window is 48 hours like `entitlement-alarm`'s. Whether it RAN is its
+`ai.alerts` row on `/admin/scheduled-actions`.
 
 The entitlement-alarm window is **48 hours, not 25**, precisely because its heartbeat means "checked and
 clean": a single night's standing alarm must not also page somebody about staleness. Two consecutive

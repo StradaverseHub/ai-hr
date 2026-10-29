@@ -31,7 +31,7 @@
  *   review                the Assistant review page and whether module reads offer it as a human handoff
  *   store                 custody family: dedicated | generic_own | generic_assigned | module_action | own_leave
  *   browserOwner          key of ModuleActionBrowserOwners ('root' = notifications, 'ownLeave' = own-leave handler)
- *   pauseKey              AI pause switch that stops the agent's part ('hr_assistant' today; WP12 adds per-action keys)
+ *   pauseKey              module AI pause that stops the agent's part; agentActionPauseKey() adds `hr_assistant:<id>`
  */
 import type {AgentModuleCode} from './module-agents';
 import {NEVER_AUTOMATIC_CATEGORIES,AUTOMATIC_CATEGORIES,type AgentTier,type AgentActionPolicy} from './agent-action-tiers';
@@ -45,8 +45,10 @@ export type AgentActionSubject='own_employment'|'own_user'|'assigned_request'|'o
 export type AgentActionStoreFamily='dedicated'|'generic_own'|'generic_assigned'|'module_action'|'own_leave'|'human_workflow_only';
 export type AgentActionHandoff='review_page'|'native_workflow'|'none';
 export type AgentActionIdempotencyKey='review_action_id'|'import_attempt_version';
-/** One AI pause switch today. WP12 widens this union with a per-action key under hr_assistant. */
+/** The module pause an entry sits under. WP12: every entry ALSO has its own key `hr_assistant:<id>` under it
+ * (agentActionPauseKey; migration 0696); pausing the module stops all of them. */
 export type AgentActionPauseKey='hr_assistant';
+export type AgentActionOwnPauseKey=`${AgentActionPauseKey}:${string}`;
 type Anchor=`${string}#${string}`;
 export type AgentActionReversal=
  | Readonly<{kind:'action';by:string}>          // another registry action withdraws it
@@ -360,6 +362,8 @@ export type AgentActionRoute=AgentAction['review']['route'];
 const BY_ID:ReadonlyMap<string,AgentAction>=new Map<string,AgentAction>(AGENT_ACTIONS.map(action=>[action.id,action]));
 if(BY_ID.size!==AGENT_ACTIONS.length)throw Error('Agent action registry has a duplicate id.');
 export const AGENT_ACTION_IDS:readonly AgentActionId[]=Object.freeze(AGENT_ACTIONS.map(action=>action.id));
+/** WP12 (R8): the per-action pause key, under the entry's module pause. Derived, so a new entry needs no extra field. */
+export function agentActionPauseKey(action:Pick<AgentActionDefinition,'id'|'pauseKey'>):AgentActionOwnPauseKey{return `${action.pauseKey}:${action.id}`;}
 export function isAgentActionId(value:unknown):value is AgentActionId{return typeof value==='string'&&BY_ID.has(value);}
 /** Runtime strings fail closed: unknown, inherited or future ids return null. */
 export function agentActionById(id:unknown):AgentAction|null{return typeof id==='string'?BY_ID.get(id)??null:null;}
