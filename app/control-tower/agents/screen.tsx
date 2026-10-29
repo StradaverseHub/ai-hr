@@ -41,7 +41,8 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   const inventory = section==='inventory' ? await aiInventoryView(s, view) : null;
   // Awaited here (not rendered as an async child) so the section renders wherever the screen does.
   const inventorySection = inventory ? await AiInventorySection({inventory,mayPause:isGroupAdmin(s)}) : null;
-  const alerts = await aiManagementAlerts(s, view).catch(()=>[]);
+  const alertBanner = await aiManagementAlerts(s, view);
+  const alerts = alertBanner.status==='ok' ? alertBanner.alerts : [];
   const history = section==='runs' && isGroupAdmin(s) ? await aiRunHistory(s,{from:sp.from,to:sp.to,page:sp.page},runFilter) : null;
   const runsHref = (page:number) => { const p=new URLSearchParams(); if(history){p.set('from',history.range.from);p.set('to',history.range.to);} if(runFilter.state)p.set('runs',runFilter.state); if(runFilter.feature)p.set('feature',runFilter.feature); if(page>1)p.set('page',String(page)); return `${aiManagementHref('runs')}?${p.toString()}#ai-runs`; };
   // Closed save outcomes only: a query string can never put its own words on this screen.
@@ -150,6 +151,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
       <ul className="mt-2 list-disc space-y-1 pl-5">{alerts.map(a=><li key={a.kind}><span className={a.level==='critical'?'font-semibold text-red-700 dark:text-red-300':''}>{t(`inv.alerts.${a.kind}`,{count:a.count,detail:a.detail??''})}</span></li>)}</ul>
       <p className="mt-2 text-xs text-muted-foreground">{t('inv.alerts.help')}</p>
     </section>}
+    {alertBanner.status==='unavailable'&&<p role="status" className="rounded-xl border border-border p-4 text-sm text-muted-foreground">{t('inv.alerts.unavailable')}</p>}
     {section==='inventory'&&inventorySection}
     {section==='overview'&&<Card id="ai-map" className="scroll-mt-4 p-5">
       <SectionHeader title={t('mapTitle')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('mapIntro')}</p>

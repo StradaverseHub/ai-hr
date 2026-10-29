@@ -6,9 +6,10 @@
 -- 0693) for the tenant while the Assistant keeps running. A pause stops only the agent's part (prepare, reopen,
 -- confirm, choices through the Assistant review routes); the native human page is unaffected.
 --
--- Writes go only through app.ai_agent_action_pause_set (group administrator, fresh tenant/actor checks, under the
--- same ai-control advisory lock the policy writers and the pause check use). The application role can read its own
--- tenant's rows (AI management shows them) and cannot write the table directly. The enforcement read,
+-- Writes go only through app.ai_agent_action_pause_set (group administrator with a current principal snapshot, fresh
+-- tenant/actor checks, under the same ai-control advisory lock the policy writers and the pause check use). A group
+-- administrator can read the full rows; every other session of the tenant sees only (action_id, paused) through
+-- app.ai_agent_action_pauses(). Nobody writes the table directly. The enforcement read,
 -- app.ai_agent_action_unpaused, takes the same lock, so a confirm in flight and a pause serialize.
 -- No HR, person or pay data is stored here: the tenant, the action kind, the flag and who changed it.
 CREATE TABLE app.ai_agent_action_pause(
@@ -26,16 +27,28 @@ REVOKE ALL ON app.ai_agent_action_pause FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 GRANT SELECT ON app.ai_agent_action_pause TO ai_hr_app;
 --> statement-breakpoint
--- Tenant configuration, not personal data: any session of the tenant may see which actions are paused (the Assistant
--- explains a paused action to its user). Other tenants' rows are invisible.
-CREATE POLICY ai_agent_action_pause_read ON app.ai_agent_action_pause FOR SELECT TO ai_hr_app USING(tenant_id=app.current_tenant_id());
+-- Full rows (who changed it, when) only for a group administrator of the same tenant; other tenants' rows are invisible.
+CREATE POLICY ai_agent_action_pause_read ON app.ai_agent_action_pause FOR SELECT TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND app.is_group_admin());
+--> statement-breakpoint
+-- The narrow view for every other session of the tenant (company HR's registry view, the Assistant): which actions are
+-- paused, nothing about who or when.
+CREATE FUNCTION app.ai_agent_action_pauses()
+ RETURNS TABLE(action_id text,paused boolean) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT p.action_id,p.paused FROM app.ai_agent_action_pause p WHERE app.current_tenant_id() IS NOT NULL AND p.tenant_id=app.current_tenant_id() ORDER BY p.action_id
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.ai_agent_action_pauses() FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.ai_agent_action_pauses() TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.ai_agent_action_pause_set(wanted_action text,wanted_paused boolean)
  RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE tid uuid:=app.current_tenant_id();uid uuid:=app.current_user_id();
 BEGIN
  IF tid IS NULL OR uid IS NULL OR wanted_action IS NULL OR wanted_paused IS NULL THEN RAISE EXCEPTION 'AI action pause unavailable';END IF;
- IF NOT app.is_group_admin() THEN RAISE EXCEPTION 'Only a group administrator may pause an agent action';END IF;
+ -- As 0674: the claimed session must match the principal's current grants (a stale or forged claim is refused).
+ IF app.principal_snapshot_current() IS NOT TRUE THEN RAISE EXCEPTION 'Current principal could not be confirmed' USING ERRCODE='42501';END IF;
+ IF app.is_group_admin() IS NOT TRUE THEN RAISE EXCEPTION 'Only a group administrator may pause an agent action';END IF;
  IF NOT EXISTS(SELECT 1 FROM tenant WHERE id=tid AND status IN ('active','trial')) THEN RAISE EXCEPTION 'AI unavailable';END IF;
  IF NOT EXISTS(SELECT 1 FROM app_user WHERE id=uid AND tenant_id=tid) THEN RAISE EXCEPTION 'Unknown actor';END IF;
  IF NOT EXISTS(SELECT 1 FROM app.assistant_action_kind k WHERE k.id=wanted_action) THEN RAISE EXCEPTION 'Unknown agent action';END IF;

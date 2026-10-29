@@ -34,9 +34,11 @@ export async function assertAiActionUnpausedTx(tx:Tx,ctx:SessionContext,feature:
  const [control]=await tx.execute<{unpaused:boolean}>(sql`select app.ai_action_unpaused(${feature},${forcedPause}) as unpaused`);
  if(control?.unpaused===false)throw new AiAllowanceError('paused');
  if(control?.unpaused!==true)throw new AiGatewayError('AI action controls could not be confirmed.');
- // WP12 (R8): inside an Assistant review command, that action's own pause key under hr_assistant (0696).
- const action=feature==='hr_assistant'?currentAgentActionScope():undefined;
- if(action)await assertAgentActionUnpausedTx(tx,action);
+ // WP12 (R8): inside an Assistant review-route command, that action's own pause key under hr_assistant (0696).
+ // A review-route command whose action could not be named fails closed.
+ const route=currentAgentActionScope();
+ if(route&&route.action===null)throw new AiAllowanceError('paused');
+ if(route?.action&&feature==='hr_assistant')await assertAgentActionUnpausedTx(tx,route.action);
 }
 
 /** One registry action's own pause (`hr_assistant:<actionId>`). Call only after the hr_assistant module check,

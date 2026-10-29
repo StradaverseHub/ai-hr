@@ -145,8 +145,8 @@ type ModuleActionBrowserSession=Awaited<ReturnType<typeof authenticateOwnLeaveBr
 /** Resolve verified identity outside EACH effect/reopen transaction, never from a packet, cached
  * tenant config or encrypted body. Listing/retirement requires no provider-identity admission. */
 /** WP12 (R8): each registry action's own pause key, applied inside its owning transaction. A packet that names no
- * registry action runs unscoped and is refused by the handler's own packet rules as before. */
-const moduleActionPauseScope=(actionId:string,work:()=>Promise<Response>)=>isAgentActionId(actionId)?withAgentActionPauseScope(actionId,work):work();
+ * registry action still runs in a review-route scope, so any pause check it reaches refuses (fail closed). */
+const moduleActionPauseScope=(actionId:string,work:()=>Promise<Response>)=>withAgentActionPauseScope(isAgentActionId(actionId)?actionId:null,work);
 export async function handleConfiguredModuleActionBrowserCommand(request:Request):Promise<Response>{
  let publicOrigin:string|undefined;try{publicOrigin=appOrigin();}catch{publicOrigin=undefined;}
  return createModuleActionBrowserHandler<ModuleActionBrowserSession>({authenticate:authenticateOwnLeaveBrowserSession,

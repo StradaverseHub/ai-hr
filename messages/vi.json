@@ -16426,6 +16426,10 @@
       "reports-employee-master-deliver": {
         "name": "Gửi báo cáo Hồ sơ nhân viên",
         "description": "Kiểm tra báo cáo tuần và tháng đến hạn, áp dụng sự đồng ý và quyền truy cập hiện tại của người nhận, rồi ghi nhận kết quả gửi."
+      },
+      "ai-alerts": {
+        "name": "Kiểm tra cảnh báo AI",
+        "description": "Mỗi giờ kiểm tra các lượt gọi AI thất bại, các yêu cầu bị từ chối của tác tử theo lịch, chi tiêu AI sắp chạm hạn mức tháng và các công tắc AI bị ghi đè, rồi gửi cảnh báo cho nhà vận hành."
       }
     }
   },

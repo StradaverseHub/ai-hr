@@ -16426,6 +16426,10 @@
       "reports-employee-master-deliver": {
         "name": "Penghantaran laporan Induk Pekerja",
         "description": "Menyemak laporan mingguan dan bulanan yang tiba masanya, menggunakan persetujuan serta akses semasa penerima, dan merekodkan hasil penghantaran."
+      },
+      "ai-alerts": {
+        "name": "Semakan amaran AI",
+        "description": "Menyemak setiap jam panggilan AI yang gagal, penolakan di bawah ejen berjadual, perbelanjaan AI yang hampir mencapai had bulanan dan suis AI yang diatasi, lalu menghantar amaran kepada operator."
       }
     }
   },

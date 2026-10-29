@@ -16426,6 +16426,10 @@
       "reports-employee-master-deliver": {
         "name": "Employee Master report delivery",
         "description": "Checks due weekly and monthly reports, applies current recipient consent and access, and records delivery outcomes."
+      },
+      "ai-alerts": {
+        "name": "AI alert check",
+        "description": "Checks every hour for failing AI calls, refusals under the scheduled agent, AI spending near its monthly cap and AI switches that are overridden, and raises an alert for operators."
       }
     }
   },

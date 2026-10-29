@@ -51,11 +51,11 @@ export const ORCHESTRATOR_STEPS=Object.freeze([
 
 /** Scheduled work that touches AI. review.sweep runs the nightly orchestrator pass under the agent principal
  * (scripts/review-sweep.ts); ai-retention purges AI run history (scripts/ai-retention-runner.ts, systemd timer,
- * no job_run row); ai-alerts is this package's alert sweep (scripts/ai-alerts.ts, run under deploy/cron-alert.sh). */
+ * no job_run row); ai.alerts is this package's alert check (scripts/ai-alerts.ts, run under deploy/cron-alert.sh). */
 export const AI_SCHEDULED_JOBS=Object.freeze([
  {id:'review.sweep',jobKey:'review.sweep',featureId:null},
  {id:'ai-retention',jobKey:null,featureId:null},
- {id:'ai-alerts',jobKey:null,featureId:null},
+ {id:'ai-alerts',jobKey:'ai.alerts',featureId:null},
 ] as const);
 
 export function aiInventoryComponents():readonly AiInventoryComponent[]{
@@ -135,10 +135,17 @@ export type SwitchDriftFeature=Readonly<{id:string;enabled:boolean;state:string;
 /** Configured-vs-effective: a switch an administrator set ON that does not take effect, or a stored override the
  * gateway ignores (0692) that disagrees with the real switch, or an agent specialist switched on with no named
  * administrator (ADR-0151 §4.5: it does not run). `state` is aiManagementView's computed state. */
+/** THE stale-override rule, shared by the banner (switchDrift) and the cron sweep (core/ai-alert-sweep.ts): a `feature:`
+ * policy row left for a setting-backed feature (ignored by admission since 0692) is drift when it disagrees with the
+ * feature's real switch, i.e. its setting as resolved with the entitlement snapshot's provenance rule. */
+export const staleOverrideDisagrees=(overrideEnabled:boolean,switchOn:boolean)=>overrideEnabled!==switchOn;
+/** Which drift reasons each surface can evaluate. The sweep has no session entitlement resolution, so it evaluates the
+ * stale-override rule only; the banner evaluates all four. Both use the same rule functions. */
+export const SWEEP_DRIFT_REASONS=['stale_override'] as const satisfies readonly SwitchDriftReason[];
 export function switchDrift(features:readonly SwitchDriftFeature[],agentSwitches:Readonly<Record<string,{state:string}|undefined>>={}):SwitchDrift[]{
  const out:SwitchDrift[]=[];
  for(const f of features){
-  if(f.staleOverride&&f.staleOverride.enabled!==f.enabled)out.push({featureId:f.id,reason:'stale_override'});
+  if(f.staleOverride&&staleOverrideDisagrees(f.staleOverride.enabled,f.enabled))out.push({featureId:f.id,reason:'stale_override'});
   if(f.configured!==false&&f.enabled&&f.state==='module')out.push({featureId:f.id,reason:'module_off'});
   if(f.configured!==false&&f.enabled&&f.state==='restricted')out.push({featureId:f.id,reason:'platform_restricted'});
   if(agentSwitches[f.id]?.state==='unattributed')out.push({featureId:f.id,reason:'unattributed_agent'});

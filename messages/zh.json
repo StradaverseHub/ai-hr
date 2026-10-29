@@ -16426,6 +16426,10 @@
       "reports-employee-master-deliver": {
         "name": "员工主档报表发送",
         "description": "检查到期的每周及每月报表，核验收件人当前同意和权限，并记录发送结果。"
+      },
+      "ai-alerts": {
+        "name": "AI 警报检查",
+        "description": "每小时检查失败的 AI 调用、定时代理被拒绝的请求、接近月度上限的 AI 支出以及被覆盖的 AI 开关，并向运维人员发出警报。"
       }
     }
   },

@@ -1,14 +1,20 @@
 /** WP12 — the one AI inventory (R8), its alerts (R20) and the provider data register (R21) for AI management.
  *
  * ACCESS (ADR-0151 §4.7; permissions listed in lib/permissions.ts for /control-tower/agents/inventory):
- *   - group administrator (session grant AND fresh app.is_group_admin()): the full inventory — switches, allowances,
+ *   - group administrator: the full inventory — switches, allowances,
  *     pause keys and pause state, last run, 30-day use and reported cost, outcome rates, ai-control audit events,
  *     alerts, run history and the data register; and may pause/resume one agent action;
  *   - company HR administrator: the read-only registry/tier view (kind, module, tier, category, pause key and
  *     whether it is paused) — no runs, cost, people, provider or audit facts;
  *   - anyone else: refused.
+ * "Group administrator" means all three, checked in the reading transaction: the session claims a group-wide grant
+ * (isGroupAdmin); assertAiPrincipalTx proves that claim is CURRENT (the login is active and the claimed grants match
+ * the principal's stored grants, app.principal_snapshot_current) — that is where freshness comes from; and
+ * app.is_group_admin() agrees for this transaction's claim. A stale claim fails assertAiPrincipalTx and is refused.
+ * The 30-day figures use the run history's Kuala Lumpur calendar window (the last 30 KL days, today inclusive).
  * Tenant isolation is the database's: every read runs in withTenant under RLS (ai_model_run, domain_event and job_run
- * read policies are group-administrator-only; app.ai_agent_action_pause is tenant-scoped; the outcome summary is a
+ * read policies are group-administrator-only; app.ai_agent_action_pause rows are group-administrator-only and other
+ * sessions see (action_id, paused) through app.ai_agent_action_pauses(); the outcome summary is a
  * definer that counts only the caller's scope). Nothing here calls a model or writes HR data.
  */
 import {sql} from 'drizzle-orm';
@@ -25,15 +31,20 @@ import {AiControlError,type aiManagementView,type AiRunFilter} from './ai-manage
 
 type ManagementView=Awaited<ReturnType<typeof aiManagementView>>;
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
-async function freshGroupAdminTx(tx:Tx,ctx:SessionContext){
+/** Call only AFTER assertAiPrincipalTx in the same transaction (which is what makes the claim current). */
+async function groupAdminClaimTx(tx:Tx,ctx:SessionContext){
  if(!isGroupAdmin(ctx))return false;
  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`);
  return row?.allowed===true;
 }
-async function pausesTx(tx:Tx){
- const rows=await tx.execute<{action_id:string;paused:boolean;updated_at:string|Date}>(sql`select action_id,paused,updated_at from app.ai_agent_action_pause order by action_id`);
- return new Map(Array.from(rows).map(r=>[r.action_id,{paused:r.paused===true,updatedAt:new Date(r.updated_at)}]));
+/** Group administrators read the full rows; everyone else only (action_id, paused) through the narrow definer. */
+async function pausesTx(tx:Tx,group:boolean){
+ const rows=group?await tx.execute<{action_id:string;paused:boolean}>(sql`select action_id,paused from app.ai_agent_action_pause order by action_id`)
+  :await tx.execute<{action_id:string;paused:boolean}>(sql`select action_id,paused from app.ai_agent_action_pauses()`);
+ return new Map(Array.from(rows).map(r=>[r.action_id,{paused:r.paused===true}]));
 }
+/** The run history's default window: the last 30 Kuala Lumpur calendar days, today inclusive. */
+const window30=()=>aiRunRangeBounds(parseAiRunRange({},todayInKualaLumpur())).fromTs;
 
 export type AiInventoryRuntime=Readonly<{
  switch:Readonly<{kind:'setting'|'policy'|'platform'|'module'|'none';on:boolean|null;state:string|null}>;
@@ -82,27 +93,27 @@ export async function aiInventoryView(supplied:SessionContext,view:ManagementVie
  const components=aiInventoryComponents();
  return withTenant(ctx,async tx=>{
   await assertAiPrincipalTx(tx,ctx);
-  const pauses=await pausesTx(tx);
+  const group=await groupAdminClaimTx(tx,ctx),pauses=await pausesTx(tx,group),from=window30();
   const paused=(c:AiInventoryComponent)=>c.kind==='action'?pauses.get(c.id)?.paused===true:null;
-  if(!await freshGroupAdminTx(tx,ctx))return {scope:'registry',rows:components.map(c=>({...registryRow(c),actionPaused:paused(c)}))};
+  if(!group)return {scope:'registry',rows:components.map(c=>({...registryRow(c),actionPaused:paused(c)}))};
   const use=new Map(Array.from(await tx.execute<FeatureUse>(sql`select feature_id,
     count(*) filter(where state<>'blocked') as runs,count(*) filter(where state='failed') as failed,count(*) filter(where state='blocked') as blocked,
-    coalesce(sum(coalesce(actual_tokens,reserved_tokens)) filter(where state<>'blocked'),0) as tokens,
+    coalesce(sum(actual_tokens),0) as tokens,
     sum(openrouter_account_cost_credits)::text as credits,max(started_at) as last_run
-   from ai_model_run where operation<>'probe' and started_at>=now()-interval '30 days' group by feature_id`)).map(r=>[r.feature_id,r]));
+   from ai_model_run where operation<>'probe' and started_at>=${from}::timestamptz group by feature_id`)).map(r=>[r.feature_id,r]));
   const lastEver=new Map(Array.from(await tx.execute<{feature_id:string;last_run:string|Date}>(sql`select feature_id,max(started_at) as last_run from ai_model_run where operation<>'probe' group by feature_id`)).map(r=>[r.feature_id,new Date(r.last_run)]));
-  const outcomes=new Map(Array.from(await tx.execute<Outcome>(sql`select * from app.assistant_action_outcome_summary((now()-interval '30 days')::timestamptz)`)).map(r=>[r.action_kind,r]));
+  const outcomes=new Map(Array.from(await tx.execute<Outcome>(sql`select * from app.assistant_action_outcome_summary(${from}::timestamptz)`)).map(r=>[r.action_kind,r]));
   // ai-control.* events keyed by what they changed, plus the tenant-setting changes that ARE the switch of a
   // setting-backed feature (one switch owner, 0692).
   const settingKeys=AI_FEATURES.flatMap(f=>f.setting?[f.setting]:[]);
   const audit=new Map(Array.from(await tx.execute<AuditRow>(sql`select key,count(*) as count,max(occurred_at) as latest from (
     select coalesce(payload->>'feature',payload->>'actionId','tenant') as key,occurred_at from domain_event
-     where aggregate_type='ai-control' and event_type like 'ai-control.%' and occurred_at>=now()-interval '30 days'
+     where aggregate_type='ai-control' and event_type like 'ai-control.%' and occurred_at>=${from}::timestamptz
     union all
     select 'setting:'||(payload->>'key'),occurred_at from domain_event
-     where event_type='tenant-setting.changed' and payload->>'key' in (${sql.join(settingKeys.map(k=>sql`${k}`),sql`,`)}) and occurred_at>=now()-interval '30 days'
+     where event_type='tenant-setting.changed' and payload->>'key' in (${sql.join(settingKeys.map(k=>sql`${k}`),sql`,`)}) and occurred_at>=${from}::timestamptz
    ) e group by key`)).map(r=>[r.key,{count:Number(r.count),latestAt:r.latest?new Date(r.latest):null}]));
-  const [job]=await tx.execute<{ran_at:string|Date}>(sql`select max(ran_at) as ran_at from job_run where job_key='review.sweep'`);
+  const jobs=new Map(Array.from(await tx.execute<{job_key:string;ran_at:string|Date}>(sql`select job_key,max(ran_at) as ran_at from job_run where job_key in ('review.sweep','ai.alerts') group by job_key`)).map(r=>[r.job_key,new Date(r.ran_at)]));
   const [pass]=await tx.execute<{at:string|Date|null}>(sql`select max(occurred_at) as at from domain_event where aggregate_type='hr_orchestrator' and event_type='orchestrator.pass-finished'`);
   const metrics=await runAlertMetricsTx(tx);
   const feature=(id:string|null)=>id?view.features.find(f=>f.id===id)??null:null;
@@ -114,7 +125,7 @@ export async function aiInventoryView(supplied:SessionContext,view:ManagementVie
    const auditKey=c.kind==='action'?c.id:defn?.setting?`setting:${defn.setting}`:c.featureId??'';
    const auditOwn=audit.get(auditKey),auditFeature=c.kind!=='action'&&defn&&!defn.setting?audit.get(defn.id):undefined;
    const shownUse=c.kind==='action'||c.kind==='read_binding'?null:u?{runs:Number(u.runs),failed:Number(u.failed),blocked:Number(u.blocked),tokens:Number(u.tokens),reportedCredits:u.credits==null?null:Number(u.credits)}:c.featureId?{runs:0,failed:0,blocked:0,tokens:0,reportedCredits:null}:null;
-   const lastRun=c.kind==='scheduled_job'&&c.jobKey?(job?.ran_at?new Date(job.ran_at):null):c.kind==='orchestrator_step'?(pass?.at?new Date(pass.at):null):c.kind==='action'||!c.featureId?null:lastEver.get(c.featureId)??null;
+   const lastRun=c.kind==='scheduled_job'&&c.jobKey?(jobs.get(c.jobKey)??null):c.kind==='orchestrator_step'?(pass?.at?new Date(pass.at):null):c.kind==='action'||!c.featureId?null:lastEver.get(c.featureId)??null;
    return {...c,runtime:{
     switch:{kind:switchKind,on:f?f.enabled:null,state:f?f.state:null},
     actionPaused:paused(c),
@@ -129,15 +140,22 @@ export async function aiInventoryView(supplied:SessionContext,view:ManagementVie
  });
 }
 
-/** Alerts only, for the banner on every AI management page. Group administrators; others get none. */
-export async function aiManagementAlerts(supplied:SessionContext,view:ManagementView):Promise<AiAlert[]>{
+export type AiAlertBanner=Readonly<{status:'not_shown'}|{status:'ok';alerts:readonly AiAlert[]}|{status:'unavailable'}>;
+/** Alerts for the banner on every AI management page. Group administrators only. A failed check is logged with its
+ * error class only (never its message, SQL or values) and shown as "could not be checked", never as "all clear". */
+export async function aiManagementAlerts(supplied:SessionContext,view:ManagementView):Promise<AiAlertBanner>{
  const ctx=capture(supplied);
- if(!isGroupAdmin(ctx))return [];
- return withTenant(ctx,async tx=>{
-  await assertAiPrincipalTx(tx,ctx);
-  if(!await freshGroupAdminTx(tx,ctx))return [];
-  return aiAlertsFromView(view,await runAlertMetricsTx(tx));
- });
+ if(!isGroupAdmin(ctx))return {status:'not_shown'};
+ try{
+  return await withTenant(ctx,async tx=>{
+   await assertAiPrincipalTx(tx,ctx);
+   if(!await groupAdminClaimTx(tx,ctx))return {status:'not_shown'} as const;
+   return {status:'ok',alerts:aiAlertsFromView(view,await runAlertMetricsTx(tx))} as const;
+  });
+ }catch(error){
+  console.error(`ai-alerts: banner check unavailable (${error instanceof Error?error.name:'unknown'})`);
+  return {status:'unavailable'};
+ }
 }
 
 /** Group administrators pause or resume ONE agent action under hr_assistant. The SQL writer re-checks the group
@@ -149,7 +167,7 @@ export async function setAgentActionPause(supplied:SessionContext,actionId:unkno
  if(!action||typeof paused!=='boolean')throw new AiControlError('Unknown agent action.');
  await withTenant(ctx,async tx=>{
   await assertAiPrincipalTx(tx,ctx);
-  if(!await freshGroupAdminTx(tx,ctx))throw new AiControlError('Current AI administration access could not be confirmed.');
+  if(!await groupAdminClaimTx(tx,ctx))throw new AiControlError('Current AI administration access could not be confirmed.');
   await tx.execute(sql`select app.ai_agent_action_pause_set(${action.id},${paused})`);
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'ai-control',aggregateId:ctx.tenantId,eventType:'ai-control.action-pause-changed',actor:actorOf(ctx),
    payload:{actionId:action.id,pauseKey:agentActionPauseKey(action),paused}});
@@ -168,7 +186,7 @@ export async function aiRunHistory(supplied:SessionContext,input:{from?:unknown;
  const {fromTs,toTs}=aiRunRangeBounds(range);
  return withTenant(ctx,async tx=>{
   await assertAiPrincipalTx(tx,ctx);
-  if(!await freshGroupAdminTx(tx,ctx))throw new AiControlError('Current AI administration access could not be confirmed.');
+  if(!await groupAdminClaimTx(tx,ctx))throw new AiControlError('Current AI administration access could not be confirmed.');
   const rows=Array.from(await tx.execute<{id:string;actor:string|null;feature:string;operation:string;provider:string;model:string;state:string;reason:string|null;
    actual:string|null;reserved:string;started_at:string|Date;credits:string|null;round_trip:number|null;observation:string|null}>(sql`
    select r.id,coalesce(p.full_name,u.workos_user_id) as actor,r.feature_id as feature,r.operation,r.provider,r.model,r.state,r.reason,
