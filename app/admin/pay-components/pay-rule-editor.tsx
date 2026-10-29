@@ -27,7 +27,7 @@
  * The Prorates checkbox lives HERE (not in the flags row) because proration interacts with per-day/per-hour
  * rules — keeping them together lets the live validator surface the conflict as the admin toggles either one.
  */
-import { useEffect, useId, useMemo, useState, useTransition } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Loader2, Plus, Sparkles, X } from 'lucide-react';
@@ -194,6 +194,24 @@ export function PayRuleEditor({
 }: Props) {
   const t = useTranslations('payRule');
   const previewReviewId=useId();
+  const rootRef=useRef<HTMLDivElement>(null);
+  const [formIdentity,setFormIdentity]=useState({code,kind:componentKind});
+  // The parent is a server-rendered form: code/category can change outside this client island.
+  // Observe those actual named fields so the sample and its acknowledgement describe the saved input.
+  useEffect(()=>{
+    const form=rootRef.current?.closest('form');
+    if(!form)return;
+    const update=()=>setFormIdentity({
+      code:form.querySelector<HTMLInputElement>('input[name="code"]')?.value.trim().toUpperCase()??code,
+      kind:form.querySelector<HTMLSelectElement>('select[name="kind"]')?.value??componentKind,
+    });
+    const change=(event:Event)=>{
+      const field=event.target as HTMLInputElement|HTMLSelectElement|null;
+      if(field?.name==='code'||field?.name==='kind')update();
+    };
+    update();form.addEventListener('input',change);form.addEventListener('change',change);
+    return()=>{form.removeEventListener('input',change);form.removeEventListener('change',change);};
+  },[code,componentKind]);
   const [aiDraftNeedsPreview,setAiDraftNeedsPreview]=useState(false);
   const [lastPreviewIdentity,setLastPreviewIdentity]=useState<string|null>(null);
   const [reviewedPreviewIdentity,setReviewedPreviewIdentity]=useState<string|null>(null);
@@ -267,7 +285,7 @@ export function PayRuleEditor({
     }
   }, [kind, pct, pctBase, pctCode, rate, qty, value, cap, start, terms]);
 
-  const previewIdentity=JSON.stringify([code,componentKind,prorates,rule,previewEmp?.employmentId??null]);
+  const previewIdentity=JSON.stringify([formIdentity.code,formIdentity.kind,prorates,rule,previewEmp?.employmentId??null]);
   const validation = validatePayRule(rule, prorates);
   const hint = validation.ok
     ? { ok: true as const, text: t('valid') }
@@ -337,7 +355,7 @@ export function PayRuleEditor({
   function onAssist() {
     if (catalogueOnly) return;
     startTransition(async () => {
-      const res = await draftPayRuleAction({ description, componentCode: code || null, componentProrates: prorates });
+      const res = await draftPayRuleAction({ description, componentCode: formIdentity.code || null, componentProrates: prorates });
       if (res.error) {
         toast.error(res.error);
         return;
@@ -359,8 +377,8 @@ export function PayRuleEditor({
     setReviewedPreviewIdentity(null);
     startPreview(async () => {
       const res = await previewPayRuleAction({
-        code,
-        kind: componentKind,
+        code:formIdentity.code,
+        kind:formIdentity.kind,
         prorates,
         rule,
         employmentId: previewEmp.employmentId,
@@ -371,7 +389,7 @@ export function PayRuleEditor({
   }
 
   return (
-    <div className="space-y-3 rounded-xl border border-border bg-muted/30 p-3 sm:col-span-3">
+    <div ref={rootRef} className="space-y-3 rounded-xl border border-border bg-muted/30 p-3 sm:col-span-3">
       {/* Serialised rule for the server action. Empty when fixed ⇒ null rule (legacy behaviour). */}
       <input type="hidden" name="rule" value={rule ? JSON.stringify(rule) : ''} />
 

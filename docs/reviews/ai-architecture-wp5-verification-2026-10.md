@@ -11,7 +11,7 @@ WP1 and WP3 remain separate PRs. AI-assisted file import belongs to the AI Impor
 | Manager draft treats record text as instructions and accepts new prose | `core/performance.ts` already rechecks current source and authority at admission and audit; output still accepted arbitrary text | Untrusted JSON data plus bounded source-passage indices; deterministic reconstruction, strict output validation; retain current-source checks |
 | Claims triage can send a model-authored question | `core/input-triage.ts` already has closed rule predicates and fresh source admission | Untrusted claim JSON; model chooses only verdict/rule, code supplies one fixed question; reject extra prose/fields |
 | Pay parameters need bounds | Canonical `core/pay-rule.ts` already enforces finite nonnegative money/rate values ≤100,000,000, percent ≤1,000 and quantity ≤1,000,000 | Reuse those bounds; restrict AI proposals to the advertised six-kind subset and exact keys; refuse formula/component dependencies |
-| Pay preview optional; unauthorized mislabeled | The editor could accept a draft without running its employee sample; service mapped authority refusal to invalid output | Preview + human acknowledgement tied to current rule/sample identity; clear it on edits; distinguish forbidden; use localized generic notification rather than model prose |
+| Pay preview optional; unauthorized mislabeled | The editor could accept a draft without running its employee sample; service mapped authority refusal to invalid output | Preview + human acknowledgement tied to current rule/sample and live parent form code/category; clear it on edits; distinguish forbidden; use localized generic notification rather than model prose |
 | Report designer relies on route authority | Core designer lacked a fresh principal/admin/module check and an admission callback | Check actual principal and module at preparation, actual provider admission and audit; retain selected dataset/schema-only prompt |
 | Legacy Assistant quota races and resets in UTC | `core/assistant.ts` counts completed exchanges before network; cached monthly totals exclude concurrent pending requests | Native question reservation, model-run actual/held exposure at each atomic admission, Malaysia clock and durable completion metadata. Coordinated SQL and real DB evidence still pending |
 
@@ -30,8 +30,14 @@ GitHub Actions only; no local test/compiler/build/database slots.
   properties during HTML serialization. Layout evidence only; corrected form-state captures are pending. These are rendered fixture
   components, not an authenticated installation journey.
 - Native question binding/control-flow checks and whole compiler dispatched at
-  `2bc348e20965894b9ea172294c0db06dfa104dfe`; results pending.
+  `2bc348e20965894b9ea172294c0db06dfa104dfe`: passed 17 assertions and whole compiler.
   Mistyped expected-SHA dispatch `40841164993` is retained as a refusal, not test evidence.
+- `40841842377` refused because the queued development branch moved before resolution; no tests ran.
+  Later development checks use an immutable checkpoint branch.
+- `40842472332` at `720ead74655449eb7a42d467f2de5c21ec962dd2`: all 53 selected assertions passed,
+  including corrected six-locale form-state captures. English desktop visually reviewed. Whole compiler
+  failed on three optional-adapter narrowing errors in the new database fixture; corrected afterward.
+  Parent form code/category binding was subsequently strengthened after source review; new checks pending.
 - `test/assistant-question-budget.test.ts` is authored but **unrun** until the coordinated migration
   is allocated and integrated. Its planned cases include concurrent daily admission, monthly held
   estimates, unknown failed usage, legacy retired transcripts, source-owned clock and private scopes.
@@ -39,8 +45,9 @@ GitHub Actions only; no local test/compiler/build/database slots.
 ## Remaining evidence and limits
 
 No full WP5 gate receipt, merge, migration or staging deployment exists yet. The quota migration
-allocation/journal append is held behind Board's verified predecessor release and Bank's agreed
-relative successor proposal. No applied SQL is edited.
+allocation/journal append is held behind Board's approved combined Board/Bank/AI Import release. The owner conditionally approved
+`0687_assistant_question_budget` at idx677/when1793330000013 only after independently verifying
+that release's 562-entry live ledger and checking fresh refs/claims. This allocation is not yet claimed. No applied SQL is edited.
 
 After SQL integration: execute real app-role admission/erasure/concurrency cases, populated-baseline
 migration rehearsal, focused affected suites and the full frozen-candidate GitHub Actions gate.

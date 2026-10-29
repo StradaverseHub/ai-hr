@@ -28,13 +28,14 @@ async function budget(daily:number,monthly=1_000_000){
  await owner.db.insert(s.assistantBudget).values({tenantId:base.tenantId,monthlyTokenCeiling:monthly,perUserDailyQuestions:daily,effectiveFrom:todayInKualaLumpur()})
   .onConflictDoUpdate({target:[s.assistantBudget.tenantId,s.assistantBudget.effectiveFrom],targetWhere:sql`archived_at is null`,set:{monthlyTokenCeiling:monthly,perUserDailyQuestions:daily}});
 }
+const transport=()=>{const converse=openaiAdapter.converse;if(!converse)throw Error('Missing fictional conversation adapter');return vi.mocked(converse);};
 const ask=()=>askAssistant(ctx,{question:'Fictional question with no HR facts'});
 const quotaRows=()=>owner.db.execute<{root_id:string;period:string;question_day:string;exchange_id:string|null;accounted_tokens:string}>(sql`select root_id,period,question_day::text,exchange_id,accounted_tokens::text from app.assistant_question_budget where tenant_id=${base.tenantId}::uuid order by reserved_at,root_id`);
 function deferred<T=void>(){let resolve!:(value:T|PromiseLike<T>)=>void;const promise=new Promise<T>(r=>{resolve=r;});return {promise,resolve};}
 describe('atomic Malaysia-day Assistant question quota',()=>{
  it('counts an in-flight question before transport finishes, so a concurrent same-user question cannot cross the daily ceiling',async()=>{
   await budget(1);const entered=deferred(),release=deferred();
-  vi.mocked(openaiAdapter.converse).mockImplementationOnce(async()=>{entered.resolve();await release.promise;return end;});
+  transport().mockImplementationOnce(async()=>{entered.resolve();await release.promise;return end;});
   const first=ask();try{
    await entered.promise;
    await expect(ask()).rejects.toMatchObject({code:'budget_daily'});
@@ -46,7 +47,7 @@ describe('atomic Malaysia-day Assistant question quota',()=>{
  });
  it('counts existing model-run token holds even in unpriced mode before admitting another question',async()=>{
   await budget(10);const entered=deferred(),release=deferred();
-  vi.mocked(openaiAdapter.converse).mockImplementationOnce(async()=>{entered.resolve();await release.promise;return end;});
+  transport().mockImplementationOnce(async()=>{entered.resolve();await release.promise;return end;});
   const first=ask();try{
    await entered.promise;
    const [run]=await owner.db.select().from(s.aiModelRun).where(eq(s.aiModelRun.tenantId,base.tenantId));
@@ -62,7 +63,7 @@ describe('atomic Malaysia-day Assistant question quota',()=>{
   expect((await quotaRows()).map(row=>row.accounted_tokens)).toEqual(['12','12']);
  });
  it('retains unknown failed-call exposure after metadata-only exchange accounting instead of treating zero reported tokens as free',async()=>{
-  await budget(10);vi.mocked(openaiAdapter.converse).mockRejectedValueOnce(Error('Fictional unknown provider outcome'));
+  await budget(10);transport().mockRejectedValueOnce(Error('Fictional unknown provider outcome'));
   await expect(ask()).rejects.toMatchObject({code:'provider_error'});
   const [run]=await owner.db.select().from(s.aiModelRun).where(eq(s.aiModelRun.tenantId,base.tenantId));
   expect(run.actualTokens).toBeNull();expect(Number(run.reservedTokens)).toBeGreaterThan(0);

@@ -46,7 +46,7 @@ export async function bindAssistantQuestionBudgetTx(tx:Tx,ctx:SessionContext,con
   if(result?.blocked_reason==='budget_monthly')throw new AssistantQuestionBudgetError('budget_monthly');
   if(result?.allowed!==true||result.blocked_reason!==null)throw new AiGatewayError('The Assistant question budget could not be confirmed.');
  });
- configurations.set(bounded,{period:reserved.period,reservation:token});
+ configurations.set(bounded,Object.freeze({period:reserved.period,reservation:token}));
  return {configuration:bounded,period:reserved.period,reservation:token};
 }
 /** Same transaction as the canonical exchange and assistant_usage update. Unknown run usage remains held. */
