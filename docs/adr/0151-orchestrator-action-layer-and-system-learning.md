@@ -659,3 +659,30 @@ Lifecycle steps have no native due-date field. The reminder observes an actionab
 Default bounds: missing-clock one reminder/date; passport 7-day cooldown and four reminders/expiry; lifecycle 7-day cooldown and three reminders/current step stage; each action has a cap of 100 per run. Outcome counts observe whether the source still waits at the recorded stage, without claiming a reminder caused an employee action. Migration 0700 and its timestamp are provisional until integration freeze above the current live ledger.
 
 Lifecycle reminder outcomes reuse that same canonical rule/phase owner in the outcome service. The scoped SQL summary returns null for lifecycle waiting/acted rather than guessing; a separate read-only definer returns only chased case/stage references, and the service compares them with current actionable stages. A changed stage, inapplicable/locked step or closed case is no longer waiting, without claiming a person completed it. Pending/approved clock corrections likewise stop the record-gap waiting count without attesting work.
+### WP9 notification preferences custody
+
+Notification preferences use generic OWN compatibility custody with the exact nonce/intent/cached-review wire and original capability supplied by the authenticated server owner. Current principal, module, own subject and configuration locks precede saved-card disclosure; native confirmation revalidates the original source digest. Cached reopen semantics and provider-free retirement remain unchanged.
+
+### WP9 profile request custody
+
+Profile change requests use generic OWN compatibility custody, retaining the original content wire, Workforce/own-employee interval, native request/event proof and source-drift refusal. The effect remains submission for HR review; it never applies or approves the proposal automatically.
+
+### WP9 claim draft custody
+
+Claim draft saving uses generic OWN compatibility custody while retaining the exact sealed provisional amount/quantity/taxable fields, original human content and native source fingerprint. Canonical Claims remains the sole money/rule owner; confirmation only saves a draft, never submits or reimburses. Existing rows and native provenance remain unchanged.
+
+### WP9 closed Performance acknowledgement custody
+
+Standard-cycle and OneHR plan acknowledgements share one closed OWN custody adapter, retaining the original discriminated engine/intent/cached-review wire, original private digest, employee binding and native acknowledgement event proof. Reopen compares the exact original canonical review including its original nonce. This does not edit ratings, goals, career facts or promotion decisions.
+
+### WP9 USER-scoped testing observation custody
+
+Testing observations use generic OWN compatibility custody while retaining nullable PERSON/EMPLOYMENT/company identity, exact original intent/cached-review wire, 600000-byte body and 819200-byte cipher limits, real assignment interval and native run/event proof. No staff identity is fabricated; a recorded observation is never relabeled independent verification.
+
+### WP9 claim submission custody
+
+Existing human draft submission uses generic OWN compatibility custody, keeping the original nonce/content/cached-review/native-digest wire, actual native claim interval, selected receipt set, request/event provenance and submission-only outcome. All seven module protocols now delegate encryption and lifecycle to the shared custody engine. Legacy own-leave remains a distinct pending protocol until its final compatibility increment.
+
+### WP9 final own-leave protocol boundary
+
+The original own-leave Tx APIs and candidate/refusal union remain explicit native protocol adapters. Their non-nonce protected wire, native candidate integrity recipe, purpose/AAD ordering, balance visibility and SQL repository are unchanged. Both own-leave and all generic families now use one review-envelope codec and one held-row transaction state owner for completed replay, retirement and pending confirmation digest admission. Native candidate creation/projection and exact SQL completion proof stay with their canonical source adapters; no original ciphertext is rewritten or reinterpreted.
