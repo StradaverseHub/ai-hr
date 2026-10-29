@@ -11,7 +11,7 @@ type Props = {
   cases: M.Case[]; users: { id: string; name: string }[];
   actor: M.Actor; labels: Partial<Record<M.RuleField, Record<string, string>>>;
 };
-const roles: [M.Role, string][] = [['employee', 'Employee'], ['supervisor', 'Line manager'], ['pbp', 'PBP'], ['ta', 'TA'], ['peopleOps', 'GBS People Ops'], ['taskOwners', 'Task owners']];
+const roles: [M.Role, string][] = [['employee', 'Employee'], ['supervisor', 'Line manager'], ['pbp', 'PBP'], ['ta', 'TA'], ['peopleOps', 'GBS People Ops'], ['taskOwners', 'Task owners'], ['hrSignatory', 'HR signatory'], ['starter', 'Whoever started it']];
 const fieldLabels: Record<M.RuleField | 'joinWithin', string> = { businessGroup: 'Business group', company: 'Company', department: 'Department', grade: 'Grade', employmentType: 'Employment type', title: 'Position', caseType: 'Case type', joinWithin: 'Days until the join date' };
 const stepLabels: Record<M.Step['type'], string> = { doc: 'Generate a document', waitSign: 'Wait for a signature', waitFile: 'Wait for a file', email: 'Send an email', notify: 'Notify someone' };
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="v9-field"><span>{label}</span>{children}</label>; }

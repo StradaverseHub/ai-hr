@@ -61,3 +61,10 @@ it('offers the source signature/manual/post-exit events with date controls only 
   fireEvent.change(trigger,{target:{value:'afterLWD'}});expect(within(drawer).getByLabelText('Days')).toBeVisible();expect(within(drawer).queryByLabelText('Repeat every morning until the anchor date')).not.toBeInTheDocument();
   const config:Config=JSON.parse(screen.getByTestId('definition').textContent!);expect(config.workflows.at(-1)?.trigger).toMatchObject({event:'afterLWD',repeat:false});expect(()=>parseV9Config(config)).not.toThrow();
 });
+
+it('offers actual signatory and starter roles in To and CC selections',()=>{
+ render(<Harness/>);fireEvent.click(screen.getByRole('button',{name:'New workflow'}));fireEvent.click(screen.getByRole('button',{name:'For Offboarding'}));const drawer=screen.getByRole('dialog',{name:'Edit workflow'});
+ fireEvent.click(within(drawer).getByRole('button',{name:'Add a step'}));fireEvent.click(within(drawer).getByRole('button',{name:'Notify someone'}));fireEvent.click(within(drawer).getByRole('button',{name:'To for step 1'}));fireEvent.click(within(within(drawer).getByRole('group',{name:'To for step 1'})).getByRole('checkbox',{name:'Whoever started it'}));
+ fireEvent.click(within(drawer).getByRole('button',{name:'CC for step 1'}));fireEvent.click(within(within(drawer).getByRole('group',{name:'CC for step 1'})).getByRole('checkbox',{name:'HR signatory'}));
+ const config:Config=JSON.parse(screen.getByTestId('definition').textContent!);expect(config.workflows.at(-1)?.steps[0]).toMatchObject({to:['starter'],cc:['hrSignatory']});expect(()=>parseV9Config(config)).not.toThrow();
+});

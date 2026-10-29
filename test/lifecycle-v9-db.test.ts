@@ -238,7 +238,7 @@ it('keeps native onboarding document state private and preserves it through late
   const row = (await onboardingList(admin)).find(row => row.case.sourceDraftId === draft.id)!;
   await onboardingCommand(admin, row.case.id, row.revision, { type: 'saveSubmit', patch: { hiring: 'new_hire', local: { supervisor: employmentId } } });
   const before = await v9CaseDetail(admin, row.case.id);
-  expect(before.case.id).toBe(row.case.id); expect(before.case.facts.employmentId).toBe('');
+  expect(before.case.id).toBe(row.case.id); expect(before.case.facts.employmentId).toBe(''); expect(before.case.facts.starterUserId).toBe(admin.userId);
   const config = (await v9Workspace(admin)).config!;
   const template = { ...structuredClone(config.templates.find(template => template.module === 'onb' && template.type === 'Form')!), id: 'native-private-fixture', name: 'Private native fixture', retired: false, rules: {} };
   config.templates.push(template);
@@ -648,13 +648,13 @@ it('fires the HR-signature workflow from an actual sign command and starts a man
   const before=await prepared(),config=(await v9Workspace(admin)).config!;
   config.companies=[{companyId:base.companyId,signatoryUserId:admin.userId!,signatoryTitle:'Fictional HR'}];
   config.templates.push({id:'event-letter',name:'Fictional event letter',module:'off',type:'Letter',rules:{},hrStep:'before',employeeAck:true,retired:false,versions:[{version:1,state:'published',at:'',by:'',blocks:[{id:'body',type:'text',text:'Fictional letter',section:''}],fields:[]}]});
-  for(const event of ['hrSigned','manual'] as const)config.workflows.push({id:'event-'+event,name:'Fictional '+event,module:'off',status:'published',trigger:{event,days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'notify',type:'notify',to:'employee',cc:[],subject:'Fictional '+event,body:'Fictional event'}],description:''});
+  for(const event of ['hrSigned','manual'] as const)config.workflows.push({id:'event-'+event,name:'Fictional '+event,module:'off',status:'published',trigger:{event,days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'notify',type:'notify',to:event==='manual'?'starter':'employee',cc:event==='manual'?['hrSignatory']:[],subject:'Fictional '+event,body:'Fictional event'}],description:''});
   await v9SaveConfig(admin,config.revision,config);await v9Command(admin,before.id,before.revision,{type:'generate',template:'event-letter'});
   let c=(await v9CaseDetail(admin,before.id)).case;expect(c.mails).toEqual([]);const doc=c.documents.find(document=>document.templateId==='event-letter')!;
   await v9Command(admin,c.id,c.revision,{type:'documentSign',id:doc.id,signature:{method:'typed',value:'Fictional HR',consent:true}});c=(await v9CaseDetail(admin,c.id)).case;
   expect(c.documents.find(document=>document.id===doc.id)?.status).toBe('hrsigned');expect(c.mails.map(mail=>mail.workflowId)).toEqual(['event-hrSigned']);expect(c.runs.find(run=>run.workflowId==='event-hrSigned')?.status).toBe('waiting');
   await expect(v9Command(employee,c.id,c.revision,{type:'startWorkflow',workflowId:'event-manual'})).rejects.toThrow();
-  await v9Command(admin,c.id,c.revision,{type:'startWorkflow',workflowId:'event-manual'});c=(await v9CaseDetail(admin,c.id)).case;expect(c.mails.map(mail=>mail.workflowId)).toEqual(['event-hrSigned','event-manual']);
+  await v9Command(admin,c.id,c.revision,{type:'startWorkflow',workflowId:'event-manual'});c=(await v9CaseDetail(admin,c.id)).case;expect(c.mails.map(mail=>mail.workflowId)).toEqual(['event-hrSigned','event-manual']);expect(c.facts.starterUserId).toBe(admin.userId);expect(c.mails.find(mail=>mail.workflowId==='event-manual')).toMatchObject({to:[admin.userId],cc:[]});
   await v9Command(admin,c.id,c.revision,{type:'startWorkflow',workflowId:'event-manual'});c=(await v9CaseDetail(admin,c.id)).case;expect(c.mails).toHaveLength(2);
   const next=(await v9Workspace(admin)).config!;next.workflows.find(workflow=>workflow.id==='event-manual')!.status='draft';await v9SaveConfig(admin,next.revision,next);
   await expect(v9Command(admin,c.id,c.revision,{type:'startWorkflow',workflowId:'event-manual'})).rejects.toThrow('live workflow');

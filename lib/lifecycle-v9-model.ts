@@ -12,7 +12,7 @@ export type Rules = Partial<Record<RuleField, string[]>>;
 export type Facts = Record<RuleField, string> & {
   name: string; employeeNo: string; employmentId: string; personId: string;
   joinDate: string; lastDay: string; noticeDate: string;
-  employeeUserId: string | null; supervisorUserId: string | null; pbpUserId: string | null; taUserId: string | null;
+  employeeUserId: string | null; supervisorUserId: string | null; pbpUserId: string | null; taUserId: string | null; starterUserId?: string | null;
 };
 export type Actor = { id: string; name: string };
 export type Log = { id: string; at: string; actor: Actor; action: string; detail: string; userId?: string; groupId?: string };
@@ -56,7 +56,7 @@ export type Document = {
   mergeValues?: Record<string, string>;
   hrStep?: Template['hrStep']; employeeAck?: boolean; signatoryUserId?: string | null; templateType?: Template['type'];
 };
-export type Role = 'employee' | 'supervisor' | 'pbp' | 'ta' | 'peopleOps' | 'taskOwners';
+export type Role = 'employee' | 'supervisor' | 'pbp' | 'ta' | 'peopleOps' | 'taskOwners' | 'hrSignatory' | 'starter';
 export type EmailAsset = { id: string; kind: 'file' | 'image'; name: string; mimeType: string; size: number; contentHash: string; at: string; by: string };
 export type DefinitionUsage = { kind: 'document' | 'email'; definitionId: string; messages: number; runs: number };
 export type TemplateUsage = { templateId: string; version: number; documents: number };
@@ -225,6 +225,7 @@ export function submit(c: Case, config: Config, env: Environment): void {
     if (owner.userId) extra[owner.userId] = (extra[owner.userId] ?? 0) + 1;
     return { ...structuredClone(def), dueOn, opensOn, assignee: owner.userId, assignmentFailure: owner.reason, status: 'todo' as const, reason: '' };
   });
+  c.facts.starterUserId = env.actor.id;
   c.state = 'submitted'; c.submittedAt = env.now;
   appendLog(c, env, 'case.submitted', `Checklist confirmed: ${c.checklistName}.${selected.tie ? ' Equally specific matches; first display order selected.' : ''}`);
   for (const task of c.tasks) appendLog(c, env, 'task.assigned', `${task.name}: ${task.assignee ? env.userName(task.assignee) : task.assignmentFailure}`, task.assignee && task.group ? { userId: task.assignee, groupId: task.group } : undefined);
@@ -354,7 +355,7 @@ export function signDocument(c: Case, config: Config, id: string, role: 'employe
 function recipients(c: Case, config: Config, role: Role): string[] {
   if (role === 'peopleOps') return config.groups.find(g => g.id === config.peopleOpsGroup)?.members ?? [];
   if (role === 'taskOwners') return [...new Set(pendingPre(c).map(t => t.assignee).filter((id): id is string => !!id))];
-  const id = role === 'employee' ? c.facts.employeeUserId : role === 'supervisor' ? c.facts.supervisorUserId : role === 'pbp' ? resolvePbp(config, c.facts) : role === 'ta' ? c.facts.taUserId : null;
+  const id = role === 'employee' ? c.facts.employeeUserId : role === 'supervisor' ? c.facts.supervisorUserId : role === 'pbp' ? resolvePbp(config, c.facts) : role === 'ta' ? c.facts.taUserId : role === 'hrSignatory' ? config.companies?.find(company => company.companyId === c.facts.company)?.signatoryUserId : role === 'starter' ? c.facts.starterUserId ?? c.log.find(log => log.action === 'case.submitted')?.actor.id : null;
   return id ? [id] : [];
 }
 export function workflowMatches(c: Case, workflow: Workflow, today: string): boolean {
