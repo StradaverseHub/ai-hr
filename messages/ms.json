@@ -20859,8 +20859,8 @@
     "effectiveFrom": "Salary effective date",
     "joinedBefore": "Joined before",
     "confirmedBy": "Confirmed by",
-    "blockedFrom": "Pay-change exclusion starts",
-    "blockedTo": "Pay-change exclusion ends",
+    "blockedFrom": "Tarikh mula pengecualian",
+    "blockedTo": "Tarikh akhir pengecualian",
     "seniorGrades": "Senior-plan grades (comma separated)",
     "rangesHelp": "Salary ranges: grade, minimum RM, midpoint RM, maximum RM (one grade per line)",
     "patActual": "Actual PAT (RM)",
@@ -21042,7 +21042,10 @@
       "retry": "Cuba lagi",
       "conflict": "{unit} sudah dalam {name} bagi {year}.",
       "excludedCompany": "Dikecualikan bagi",
-      "companyArchived": "Diarkibkan"
+      "companyArchived": "Diarkibkan",
+      "selectedSummary": "Syarikat dan unit perniagaan dipilih",
+      "membershipChanged": "Keahlian organisasi berubah; semak pilihan ini.",
+      "noMembership": "Tiada penetapan unit perniagaan semasa dalam Pengurusan Kakitangan."
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",
@@ -21416,6 +21419,54 @@
       "auditValues": "Semak nilai sebelum dan selepas",
       "seniorTag": "Pelan Senior",
       "handledSeparately": "Pelan Senior — dikendalikan berasingan"
+    },
+    "policyGrids": {
+      "ranges": "Julat gaji (MYR)",
+      "bonusMatrix": "Bulan bonus mengikut gred",
+      "branchFactors": "Faktor cawangan",
+      "import": "Import daripada Excel",
+      "copy": "Salin konfigurasi tahun lepas",
+      "columns": "Lajur Excel: {columns}",
+      "fileError": "Gunakan fail .xlsx sehingga 2 MB dengan lajur mengikut urutan.",
+      "choosePrevious": "Pilih konfigurasi tahun {year}",
+      "version": "Versi {version}",
+      "noPrevious": "Tiada konfigurasi tahun lepas yang dibenarkan.",
+      "cancel": "Batal",
+      "preview": "Pratonton nilai cadangan",
+      "proposalInvalid": "Betulkan sel tidak sah selepas digunakan; simpan masih disekat.",
+      "proposalHelp": "Semak nilai sebelum digunakan pada draf.",
+      "apply": "Gunakan pada draf",
+      "grade": "Gred",
+      "segment": "Segmen",
+      "minimum": "Minimum",
+      "midpoint": "Titik tengah",
+      "maximum": "Maksimum",
+      "noRange": "Tiada julat",
+      "invalidCell": "Masukkan nilai sah: gred lengkap, urutan menaik, UA = 0 dan ketepatan perpuluhan yang dibenarkan.",
+      "remove": "Buang",
+      "addSegment": "Tambah segmen"
+    },
+    "eligibilitySummary": {
+      "title": "Kelayakan dinilai berdasarkan",
+      "activeAsOf": "Aktif pada",
+      "joinedBefore": "Menyertai sebelum",
+      "confirmedBy": "Disahkan sebelum",
+      "effectiveFrom": "Gaji berkuat kuasa dari",
+      "salaryWindow": "Pengecualian kenaikan gaji: gaji asas berubah {from}–{to}. Bonus tertakluk kepada peraturan kelayakannya sendiri.",
+      "bonus": "Bonus: penarafan minimum {rating}.",
+      "notice": "Kecualikan pekerja dalam tempoh notis.",
+      "er": "Kecualikan pekerja dengan kes ER.",
+      "senior": "Pelan Senior (JG 21–23): dipilih dalam semakan; ganjaran akhir diurus berasingan.",
+      "seniorLegacy": "Keahlian pelan Senior mengikut peraturan gred terdahulu yang disimpan.",
+      "legacyDefaults": "Versi ini mendahului tetapan kelayakan yang jelas. Peraturan petikan sedia ada kekal; semak input yang dipaparkan sebelum menyimpan versi baharu.",
+      "unavailable": "Butiran kelayakan tidak tersedia. Muat semula konfigurasi sebelum meneruskan.",
+      "minimumRating": "Penarafan bonus minimum",
+      "legacySnapshot": "Terdahulu: status pada petikan sumber tersimpan",
+      "legacyMinimum": "Terdahulu: tiada penarafan bonus minimum yang disimpan."
+    },
+    "salaryExclusion": {
+      "label": "Pengecualian kenaikan gaji – gaji asas berubah antara",
+      "help": "Dikecualikan daripada kenaikan gaji dan asas kumpulan kenaikan gaji. Masih layak menerima bonus berdasarkan gaji asas terlaras dan dikira dalam kumpulan bonus. Pertukaran setara tanpa perubahan gaji asas tidak dikecualikan."
     }
   },
   "identityEmail": {
@@ -29404,7 +29455,8 @@
       "bonusReference": "Rujukan bulan bonus",
       "bonusByGrade": "Mengikut gred dan penarafan ({count, plural, other {# gred}})",
       "exemption": "Pengecualian had bajet",
-      "noExemption": "Tiada (had dikenakan)"
+      "noExemption": "Tiada (had dikenakan)",
+      "unitInputs": "Belanjawan, pengganda dan pengecualian unit ditetapkan berasingan dalam setiap semakan."
     },
     "actions": {
       "editDeadlines": "Edit tarikh akhir",

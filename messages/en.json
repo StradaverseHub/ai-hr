@@ -20859,8 +20859,8 @@
     "effectiveFrom": "Salary effective date",
     "joinedBefore": "Joined before",
     "confirmedBy": "Confirmed by",
-    "blockedFrom": "Pay-change exclusion starts",
-    "blockedTo": "Pay-change exclusion ends",
+    "blockedFrom": "Exclusion start date",
+    "blockedTo": "Exclusion end date",
     "seniorGrades": "Senior-plan grades (comma separated)",
     "rangesHelp": "Salary ranges: grade, minimum RM, midpoint RM, maximum RM (one grade per line)",
     "patActual": "Actual PAT (RM)",
@@ -21042,7 +21042,10 @@
       "retry": "Try again",
       "conflict": "{unit} is already in {name} for {year}.",
       "excludedCompany": "Excluded for",
-      "companyArchived": "Archived"
+      "companyArchived": "Archived",
+      "selectedSummary": "Selected companies and business units",
+      "membershipChanged": "Organisation membership changed; review this selection.",
+      "noMembership": "No current business unit assignment in People Management."
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",
@@ -21416,6 +21419,54 @@
       "auditValues": "Inspect before and after values",
       "seniorTag": "Senior plan",
       "handledSeparately": "Senior plan — handled separately"
+    },
+    "policyGrids": {
+      "ranges": "Salary ranges (MYR)",
+      "bonusMatrix": "Bonus months by grade",
+      "branchFactors": "Branch factors",
+      "import": "Import from Excel",
+      "copy": "Copy from last year’s configuration",
+      "columns": "Excel columns: {columns}",
+      "fileError": "Use an .xlsx file up to 2 MB with the listed columns in order.",
+      "choosePrevious": "Choose a configuration from {year}",
+      "version": "Version {version}",
+      "noPrevious": "No authorised configuration is available for the previous year.",
+      "cancel": "Cancel",
+      "preview": "Preview proposed values",
+      "proposalInvalid": "Correct invalid cells after applying; saving stays blocked.",
+      "proposalHelp": "Review these values before applying them to the draft.",
+      "apply": "Apply to draft",
+      "grade": "Grade",
+      "segment": "Segment",
+      "minimum": "Minimum",
+      "midpoint": "Midpoint",
+      "maximum": "Maximum",
+      "noRange": "No range",
+      "invalidCell": "Enter valid values: complete grades, strict order, UA = 0 and permitted decimal precision.",
+      "remove": "Remove",
+      "addSegment": "Add segment"
+    },
+    "eligibilitySummary": {
+      "title": "Eligibility is judged against",
+      "activeAsOf": "Active as of",
+      "joinedBefore": "Joined before",
+      "confirmedBy": "Confirmed by",
+      "effectiveFrom": "Salary effective from",
+      "salaryWindow": "Salary increase exclusion: basic salary changed {from}–{to}. Bonus remains subject to its own eligibility rules.",
+      "bonus": "Bonus: minimum rating {rating}.",
+      "notice": "Exclude employees serving notice.",
+      "er": "Exclude employees with an ER case.",
+      "senior": "Senior plan (JG 21–23): handpicked in the review; final awards are handled separately.",
+      "seniorLegacy": "Senior plan membership follows the saved legacy grade rule.",
+      "legacyDefaults": "This version predates explicit eligibility settings. Its existing snapshot rules remain in force; review the displayed inputs before saving a new version.",
+      "unavailable": "Eligibility details are unavailable. Refresh the configuration before continuing.",
+      "minimumRating": "Minimum bonus rating",
+      "legacySnapshot": "Legacy: status at the saved source snapshot",
+      "legacyMinimum": "Legacy: no explicit minimum bonus rating is stored."
+    },
+    "salaryExclusion": {
+      "label": "Salary increase exclusion – basic salary changed between",
+      "help": "Excluded from the salary increase and from the salary increase pool base. Still eligible for bonus, calculated on the adjusted basic salary, and counted in the bonus pool. Lateral transfers with no change to basic salary are not excluded."
     }
   },
   "identityEmail": {
@@ -29404,7 +29455,8 @@
       "bonusReference": "Bonus months reference",
       "bonusByGrade": "By grade and rating ({count, plural, one {# grade} other {# grades}})",
       "exemption": "Budget-cap exemption",
-      "noExemption": "None (caps apply)"
+      "noExemption": "None (caps apply)",
+      "unitInputs": "Unit budgets, multipliers and exemptions are set separately in each review."
     },
     "actions": {
       "editDeadlines": "Edit deadlines",
