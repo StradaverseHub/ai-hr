@@ -1,6 +1,9 @@
 /** Authored UNRUN. Actual DB/role/rollback/interleaving cases require coordinated unapplied SQL.
  * Server identity is mocked; no provider network, mail delivery or production fixture is used. */
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
+import * as dbClient from '../db/client';
+import * as vault from '../lib/pii/vault';
+import {newPrivateReviewNonce,privateReviewCommitment} from '../core/assistant-actions/private-review-commitment';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 const provider=vi.hoisted(()=>({current:vi.fn()}));vi.mock('../lib/identity/provider',()=>({currentProviderSession:provider.current}));
@@ -56,4 +59,16 @@ describe('closed module actions share existing review custody',()=>{
  });
  it('shares admission limits, actual expiry cleanup and canonical audited privacy erasure across action kinds',async()=>{const a=await fixture(),rows=[];for(let n=0;n<5;n++)rows.push(await prepare(a));await expect(prepare(a)).rejects.toThrow();const id=rows[0].actionId;await owner.db.execute(sql`update app.assistant_own_leave_review set created_at=clock_timestamp()-interval '12 minutes',expires_at=clock_timestamp()-interval '1 minute' where id=${id}::uuid`);await withTenant(a.ctx,tx=>tx.execute(sql`select app.assistant_own_leave_reviews_expire_own(100)`));expect(await custody(id)).toMatchObject({state:'expired',intent:null,reviewed:null,bodies:0});await erasePersonPii(adminCtx(base),{subjectEmploymentId:a.intent.employmentId,scope:'contact',requestRef:'FICTIONAL-SHARED-ERASURE',reason:'Fictional shared review erasure'});for(const r of rows)expect((await custody(r.actionId)).bodies).toBe(0);const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.tenantId,base.tenantId),eq(schema.domainEvent.eventType,'pii.erased')));expect(events).toHaveLength(1);expect((events[0].payload as {erasedFields:string[]}).erasedFields).toContain('assistantPreparedReviews');
  });
+});
+
+async function retainedNotificationReview(a:Awaited<ReturnType<typeof fixture>>){provider.current.mockResolvedValue(a.identity);const cap=await resolveOwnNotificationServerIdentity();return withTenant(a.ctx,async tx=>{
+ await lockLeaveDependenciesTx(tx,a.ctx.tenantId,[a.intent.employmentId]);const review=await prepareOwnNotificationPreferencesTx(tx,a.ctx,a.intent,cap),body={reviewNonce:newPrivateReviewNonce(),intent:a.intent,review};
+ const binding={tenantId:a.ctx.tenantId,userId:a.ctx.userId!,personId:a.ctx.personId!,employmentId:a.intent.employmentId,companyId:base.companyId},actionId=randomUUID(),action=MODULE_NOTIFICATION_ACTION;
+ const intentDigest=createHash('sha256').update(JSON.stringify(body.intent)).digest('hex'),reviewedDigest=privateReviewCommitment([1,action,binding],body),identity=JSON.stringify([1,action,actionId,binding,intentDigest,reviewedDigest]),dek=vault.newDek();
+ try{const kid=vault.newKid();await tx.execute(sql`select app.assistant_module_action_review_prepare(${action},${actionId}::uuid,${binding.personId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${intentDigest},${reviewedDigest},${kid},${vault.wrapDek(dek,'assistant:module-action:key:'+identity)},${vault.sealUnderDek(dek,kid,JSON.stringify(body),'assistant:module-action:body:'+identity)})`);return{actionId,reviewedDigest,action,contractVersion:1 as const};}finally{dek.fill(0);}
+ });}
+describe('WP9 retained notification preferences custody',()=>{
+ it('opens and completes the original cached-review writer format once',async()=>{const a=await fixture(),old=await retainedNotificationReview(a);expect((await reopen(a,old.actionId)).kind).toBe('prepared');const cap=await resolveOwnNotificationServerIdentity();await expect(confirmModuleActionReview(a.ctx,{...old,reviewedDigest:'0'.repeat(64)},cap)).rejects.toThrow();const done=await confirmModuleActionReview(a.ctx,old,cap);expect(done.kind).toBe('completed');const after=await state();expect(await confirmModuleActionReview(a.ctx,old,cap)).toEqual(done);expect(await reopen(a,old.actionId)).toEqual(done);expect(await state()).toEqual(after);});
+ it('retires an old row after grant removal without decrypting',async()=>{const a=await fixture(),old=await retainedNotificationReview(a);await revokeAssistant(adminCtx(base),{appUserId:a.ctx.userId!});const before=await state(),unwrap=vi.spyOn(vault,'unwrapDek');try{expect((await discardModuleActionReview(a.ctx,{action:MODULE_NOTIFICATION_ACTION,contractVersion:1,actionId:old.actionId})).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect(await state()).toEqual(before);}finally{unwrap.mockRestore();}});
+ it('reconciles a committed consent effect after actual transaction reply loss',async()=>{const a=await fixture(),r=await prepare(a),real=dbClient.withTenant;const lost:typeof withTenant=async(who,work,options)=>{await real(who,work,options);throw Error('Fictional lost reply after commit');};const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(lost);try{await expect(confirm(a,r)).rejects.toThrow();}finally{spy.mockRestore();}const after=await state(),done=await reopen(a,r.actionId);expect(done.kind).toBe('completed');expect(await confirm(a,r)).toEqual(done);expect(await state()).toEqual(after);});
 });

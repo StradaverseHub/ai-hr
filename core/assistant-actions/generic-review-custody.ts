@@ -34,6 +34,8 @@ export type ReviewCustodySpec<H,B extends ReviewActorBinding,R extends ReviewRow
  assertHumanBinding(binding:B,human:H):void;
  prepareNative(tx:Tx,ctx:SessionContext,human:H,source:S):Promise<P>;
  confirmNative(tx:Tx,ctx:SessionContext,body:ReviewBody<H>,source:S,current?:P):Promise<N>;
+ /** Legacy cached-card protocols may reopen their original card after current source ownership; effects still revalidate natively. */
+ reopenNative?(tx:Tx,ctx:SessionContext,body:ReviewBody<H>,source:S):Promise<P>;
  pending(row:R,body:ReviewBody<H>,current:P):Prepared;
  completed(tx:Tx,ctx:SessionContext,row:R,source:S):Promise<Completed>;
  event(row:R):string|null;nativeEvent(native:N):string;assertCompletion(row:R,native:N):void;
@@ -84,7 +86,7 @@ export function createReviewCustody<H,B extends ReviewActorBinding,R extends Rev
    const done=spec.stored.parse(await spec.completeRow(tx,p.actionId,p.reviewedDigest,native));bound(done,fresh,p.actionId,source,'completed');spec.assertCompletion(done,native);return completed(tx,fresh,done,source);
   }));}catch{return fail();}},
   async reopen(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=z.guid().safeParse(input);if(!parsed.success)return fail();const id=spec.normalizeActionId?.(parsed.data)??parsed.data;try{return await withTenant(ctx,tx=>spec.withInterval(tx,ctx,{actionId:id},async(fresh,source)=>{
-   const held=await snapshot(tx,fresh,id,source),stored=held.row;bound(stored,fresh,id,source);if(stored.metadata.state==='awaiting_confirmation'){const body=held.body??unseal(stored);return pending(stored,body,held.current??await spec.prepareNative(tx,fresh,body.content,source));}return stored.metadata.state==='completed'?completed(tx,fresh,stored,source):retired(stored);
+   const held=await snapshot(tx,fresh,id,source),stored=held.row;bound(stored,fresh,id,source);if(stored.metadata.state==='awaiting_confirmation'){const body=held.body??unseal(stored);return pending(stored,body,held.current??(spec.reopenNative?await spec.reopenNative(tx,fresh,body,source):await spec.prepareNative(tx,fresh,body.content,source)));}return stored.metadata.state==='completed'?completed(tx,fresh,stored,source):retired(stored);
   }));}catch{return fail();}},
   async discard(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=spec.retirement.safeParse(input);if(!parsed.success)return fail();try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);return{kind:'retired' as const,receipt:spec.retired.parse(await spec.discardRow(tx,parsed.data.actionId))};});}catch{return fail();}},
   async list(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);return spec.index.parse({kind:spec.indexKind,reviews:await spec.indexRows(tx)});});}catch{return fail();}},

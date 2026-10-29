@@ -323,7 +323,7 @@ export const AGENT_ACTIONS=Object.freeze([
   permission:{actor:'self',guard:'core/assistant-actions/own-notification-preferences-source.ts#prepareOwnNotificationPreferencesTx'},subject:'own_employment',blastRadius:{max:1,unit:'employment_preference_set'},
   idempotencyKey:'review_action_id',policy:{tier:'confirm',category:'own_work'},reversal:{kind:'repeat'},evaluationCases:[],
   screen:{native:'app/me/notifications/page.tsx',entryPoints:['app/me/notifications/actions.ts#saveMyWorkflowEmailPreferences']},review:{route:'/assistant/notifications',handoff:'review_page'},
-  store:'module_action',browserOwner:'root',pauseKey:'hr_assistant'}),
+  store:'generic_own',browserOwner:'root',pauseKey:'hr_assistant'}),
  /** System Testing saves only the human's real versioned execution observations. */
  defineAgentAction({id:'system_testing.execution.save',module:'system_testing',owner:'system_testing',service:'core/system-testing-workspace.ts#saveTestingExecution',contractVersion:1,observations:'human_actual_only',
   prepare:{status:'implemented',adapter:'module_testing_execution_review_v1',inputSchema:'TestingModuleActionPrepare',outputSchema:'TestingModuleActionPreparedReview'},

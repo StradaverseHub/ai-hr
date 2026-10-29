@@ -606,3 +606,7 @@ Rewards post uses generic ASSIGNED compatibility custody with its original actor
 ### WP9 default family foundation
 
 The default 0670 OWN and 0671 ASSIGNED factories are protocol adapters to the shared custody engine, rather than separate sealing/lifecycle implementations. Their public APIs, strict binding/row validation, self-decision refusal, SQL verifiers and optional OwnReviewPersistence/nativeRequestId compatibility are retained. The seven legacy module variants and own-leave remain separate pending their explicit protocol adapters; this foundation does not claim those have already collapsed.
+
+### WP9 notification preferences custody
+
+Notification preferences use generic OWN compatibility custody with the exact nonce/intent/cached-review wire and original capability supplied by the authenticated server owner. Current principal, module, own subject and configuration locks precede saved-card disclosure; native confirmation revalidates the original source digest. Cached reopen semantics and provider-free retirement remain unchanged.
