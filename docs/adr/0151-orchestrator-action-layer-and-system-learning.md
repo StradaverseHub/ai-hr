@@ -639,3 +639,10 @@ Rewards post uses generic ASSIGNED compatibility custody with its original actor
 ### WP9 default family foundation
 
 The default 0670 OWN and 0671 ASSIGNED factories are protocol adapters to the shared custody engine, rather than separate sealing/lifecycle implementations. Their public APIs, strict binding/row validation, self-decision refusal, SQL verifiers and optional OwnReviewPersistence/nativeRequestId compatibility are retained. The seven legacy module variants and own-leave remain separate pending their explicit protocol adapters; this foundation does not claim those have already collapsed.
+
+
+### Composition controls and provider review
+
+Per-action pauses apply inside the shared human source guard, including direct trusted source invocation without browser request scope, and inside deterministic Automatic source guards. The Automatic inventory associates its switch with its registered specialist rather than Chat and omits human prepared/completed outcome counters; the native reminder outcome owner supplies reminder evidence. Per-action pause keys remain the stable `hr_assistant:<actionId>` namespace independently of the specialist switch.
+
+The owner chose to preserve current provider behavior while requiring specialist review of existing unmasked personal-data prompts. The data register remains a disclosure record, not a claim that masking is enforced. Template-only reminders send no provider fields; no model admission is granted by their switch mapping.

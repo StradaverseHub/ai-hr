@@ -131,7 +131,7 @@ export async function aiInventoryView(supplied:SessionContext,view:ManagementVie
     actionPaused:paused(c),
     allowance:c.featureId&&c.kind!=='action'&&switchKind!=='platform'?allowance:null,
     lastRun,use30:shownUse,
-    outcomes:c.kind==='action'?{prepared:o?.prepared??0,completed:o?.completed??0,refused:o?.refused??0,discarded:o?.discarded??0,expired:o?.expired??0,reversed:o?o.reversed:null}:null,
+    outcomes:c.kind==='action'&&c.tier!=='automatic'?{prepared:o?.prepared??0,completed:o?.completed??0,refused:o?.refused??0,discarded:o?.discarded??0,expired:o?.expired??0,reversed:o?o.reversed:null}:null,
     audit:auditOwn??auditFeature??{count:0,latestAt:null},
    }};
   });

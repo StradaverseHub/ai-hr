@@ -7,6 +7,7 @@ import {assertAiPrincipalTx} from '../ai-principal';
 import {assertMayUseAssistant} from '../assistant-grant';
 import {resolveEntitlementsTx,assertModuleEnabled} from '../entitlements';
 import {assertAiActionUnpausedTx} from '../ai-governance';
+import {assertAgentActionUnpausedTx} from '../agent-action-pause';
 export async function withAgentActionGuard(tx:Tx,supplied:SessionContext,actionId:AgentActionId,tier:'confirm'|'approve'='confirm'):Promise<SessionContext>{
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
  const action=getAgentAction(actionId);
@@ -14,6 +15,6 @@ export async function withAgentActionGuard(tx:Tx,supplied:SessionContext,actionI
  assertHumanReviewedActionTier(ctx,actionId,tier);
  await assertAiPrincipalTx(tx,ctx);
  const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};
- await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,action.module);await assertAiActionUnpausedTx(tx,fresh,action.pauseKey);
+ await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,action.module);await assertAiActionUnpausedTx(tx,fresh,action.pauseKey);await assertAgentActionUnpausedTx(tx,action.id);
  return fresh;
 }

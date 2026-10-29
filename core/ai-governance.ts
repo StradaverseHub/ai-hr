@@ -1,3 +1,5 @@
+import {assertAgentActionUnpausedTx} from './agent-action-pause';
+export {assertAgentActionUnpausedTx} from './agent-action-pause';
 import {createAiRunAccounting,type AiRunAccounting} from '../lib/ai/run-accounting';
 import { sql } from 'drizzle-orm';
 import { withTenant,type SessionContext,type Tx } from '../db/client';
@@ -41,14 +43,6 @@ export async function assertAiActionUnpausedTx(tx:Tx,ctx:SessionContext,feature:
  const route=currentAgentActionScope();
  if(route&&route.action===null)throw new AiAllowanceError('paused');
  if(route?.action&&feature==='hr_assistant')await assertAgentActionUnpausedTx(tx,route.action);
-}
-
-/** One registry action's own pause (`hr_assistant:<actionId>`). Call only after the hr_assistant module check,
- * in the effect's transaction; it takes the same ai-control lock. Grants nothing. */
-export async function assertAgentActionUnpausedTx(tx:Tx,actionId:string):Promise<void>{
- const [row]=await tx.execute<{unpaused:boolean}>(sql`select app.ai_agent_action_unpaused(${actionId}) as unpaused`);
- if(row?.unpaused===false)throw new AiAllowanceError('paused');
- if(row?.unpaused!==true)throw new AiGatewayError('AI action controls could not be confirmed.');
 }
 
 /** Trusted command checks are additional refusal conditions, never model-supplied capabilities.

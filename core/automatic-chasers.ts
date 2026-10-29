@@ -1,3 +1,5 @@
+import {assertAgentActionUnpausedTx} from './agent-action-pause';
+import {AiAllowanceError} from '../lib/ai/types';
 /**
  * WP13 (architecture review R18; ADR-0151 §4.4-4.5; owner decisions 1-2, 29 Oct 2026) — the first Automatic-tier
  * entries: deterministic reminders run nightly by the tenant's named agent principal.
@@ -80,6 +82,7 @@ export async function assertAutomaticChaserTx(tx: Tx, ctx: SessionContext, actio
   const fresh: SessionContext = { ...ctx, entitlements, entitlementsExempt: undefined };
   const specialist = action.automatic.specialist;
   if (!SWITCH_ON[specialist](fresh) || !(await agentSpecialistCurrentTx(tx, fresh, specialist))) throw new AutomaticChaserRefusal('switched_off');
+  try{await assertAgentActionUnpausedTx(tx,action.id);}catch(error){if(error instanceof AiAllowanceError&&error.reason==='paused')throw new AutomaticChaserRefusal('switched_off');throw error;}
   if (!isModuleEnabled(fresh, 'notifications')) throw new AutomaticChaserRefusal('module_off');
   return { action, fresh };
 }

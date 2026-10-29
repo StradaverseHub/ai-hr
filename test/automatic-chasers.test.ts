@@ -33,6 +33,7 @@ import { agentContext, agentStamp, agentSwitchStatesTx, attributedEnablements, e
 import { AutomaticChaserRefusal, APPROVAL_CHASE_EVENT, REVIEW_CHASE_EVENT, engineWorkingDayCalendar, runApprovalChasers } from '../core/automatic-chasers';
 import { checkIn, checkOut, decideAttendanceCorrection, requestAttendanceCorrection } from '../core/attendance';
 import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled } from '../core/attendance-workflow';
+import {setAgentActionPause} from '../core/ai-inventory';
 import { assertAiActionUnpausedTx } from '../core/ai-governance';
 import { runAutomaticChasers } from '../core/hr-orchestrator';
 import { dispatchNotifications } from '../core/notifications';
@@ -411,6 +412,18 @@ describe('WP13 Automatic-tier chasers under the agent principal', () => {
     expect(result.failed).toBe(true);
     expect(result.approvals).toEqual({ status: 'failed', error: { name: 'TypeError', message: 'fictional calendar outage' } });
     expect(result.reviews).toMatchObject({ status: 'succeeded', value: { disabled: 'off' } });
+  });
+
+  it('honours its own action pause for direct scheduled invocation without a browser scope',async()=>{
+    const {E}=await fixture();await claim(base,E.employmentId,daysAgo(10));await switchEvent(base,APPROVALS,true);
+    const current=await agent();await setAgentActionPause(adminCtx(base),'approvals.claim.chase',true);
+    await runApprovalChasers(current,{calendar:calendar()});
+    const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.tenantId,base.tenantId),eq(schema.domainEvent.eventType,APPROVAL_CHASE_EVENT)));
+    expect(events).toEqual([]);expect(model.calls).toBe(0);
+    await setAgentActionPause(adminCtx(base),'approvals.claim.chase',false);
+    await runApprovalChasers(current,{calendar:calendar()});
+    const after=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.tenantId,base.tenantId),eq(schema.domainEvent.eventType,APPROVAL_CHASE_EVENT)));
+    expect(after).toHaveLength(1);
   });
 
   it('is template-only: no model, provider, spend or admission path, and admission refuses the chasers', async () => {
