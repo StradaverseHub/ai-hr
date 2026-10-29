@@ -6122,7 +6122,7 @@ export async function lockReviewedLeaveDecisionSourceTx(tx: Tx, supplied: Sessio
  await tx.select({ id: leaveApprovalStep.id }).from(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId, req.id)).orderBy(asc(leaveApprovalStep.stepIndex), asc(leaveApprovalStep.id)).for('update', { noWait: true });
  const after = await nominate();
  if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error('Leave decision source changed');
- const [subject]=await tx.select({personId:employment.personId,companyId:employment.companyId}).from(employment).where(and(eq(employment.id,req.employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);
+ const [subject]=await tx.execute<{personId:string;companyId:string}>(sql`select person_id as "personId",company_id as "companyId" from app.delegated_approval_subject(${req.employmentId}::uuid,'leave','leave.application')`);
  if(!subject)throw new Error('Leave decision subject unavailable');
  return {ctx,req,steps:after.steps,subject};
 }
