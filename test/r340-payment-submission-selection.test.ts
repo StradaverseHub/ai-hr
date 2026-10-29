@@ -123,12 +123,9 @@ describe('e78fd03d (A) — the Year / Payroll month / SHOW area is gone from the
    * which file a return rather than pay anybody. Asserted as an exact set, so a fourth format inheriting
    * it by accident fails here rather than quietly growing a control.
    */
-  it('the salary shelf is still empty, and no format declares the money-moving single-cycle kind', () => {
-    expect(formatsInGroup('salary'), 'a cycle picker with no file behind it is what this plan declined').toEqual([]);
-    expect(
-      SUBMISSION_FORMATS.filter((f) => f.periodKind === 'month-cycle').map((f) => f.id),
-      'a format declaring the mandatory single-cycle kind needs a salary payment file behind it first',
-    ).toEqual([]);
+  it('salary now has a bank writer and alone requires one money-moving cycle', () => {
+    expect(formatsInGroup('salary').map(f => f.id)).toEqual(['my.ocbc.salary']);
+    expect(SUBMISSION_FORMATS.filter(f => f.periodKind === 'month-cycle').map(f => f.id)).toEqual(['my.ocbc.salary']);
   });
 
   it('the three GOVERNMENT statutory formats declare the multi-run kind, and nothing else does', () => {

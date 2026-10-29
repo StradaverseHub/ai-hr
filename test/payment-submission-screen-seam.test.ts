@@ -106,6 +106,16 @@ beforeEach(() => {
 });
 
 describe('20f6c6a8 (b) — the registry drives the screen', () => {
+  it('hands bank formats to the bank preview/download dialog through registry declarations', async () => {
+    const common = fmt({ id: 'test.bank', group: 'salary', rank: 1 });
+    formats = [{ ...common, available: true, transport: 'bank-post', testIndicator: false, periodKind: 'month-cycle' }];
+    const tree = await render();
+    expect(propValues(tree, 'endpoint')).toEqual(['/payroll/payment-submission/bank-file']);
+    expect(propValues(tree, 'formatId')).toEqual(['test.bank']);
+    expect(propValues(tree, 'periodKind')).toEqual(['month-cycle']);
+    expect(propValues(tree, 'action')).toEqual([]);
+  });
+
   it('renders exactly the formats the registry declares, and one card each', async () => {
     const shown = propValues(await render(), 'data-format');
     expect(shown).toEqual(['test.alpha', 'test.beta']);
