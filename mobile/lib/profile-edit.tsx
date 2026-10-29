@@ -22,8 +22,8 @@ import { assertAuthGeneration, authGeneration } from './auth';
 import { RequestRejectedError, SignInRequiredError } from './errors';
 import { t } from './i18n';
 import { useSession } from './session';
-import { Button, Card, LoadState, Muted, Row, Screen, Title } from './ui';
-import { PROFILE_CHANGES_PATH, profileRefusalText, profileValueText, useProfileWorkspace } from './profile';
+import { Button, Card, LoadState, Muted, Row, Screen, SectionLabel, Title } from './ui';
+import { PROFILE_CHANGES_PATH, profileFieldGroups, profileFieldLabel, profileRefusalText, profileValueText, useProfileWorkspace } from './profile';
 import { ProfileChangeResult, type ProfileChangeCommand, type ProfileFieldV2 } from '../../lib/mobile-api/v2/profile';
 
 type Draft = Record<string, { value: string | null; before: string }>;
@@ -54,7 +54,7 @@ function DateField({ label, value, disabled, onChange }: { label: string; value:
 }
 
 /** One of the server's options; a long list can be narrowed by typing. */
-function ChoiceField({ field, value, disabled, onChange }: { field: ProfileFieldV2; value: string | null; disabled: boolean; onChange: (value: string) => void }) {
+function ChoiceField({ field, label, value, disabled, onChange }: { field: ProfileFieldV2; label: string; value: string | null; disabled: boolean; onChange: (value: string) => void }) {
   const { palette, design } = useTenantDesign();
   const [open, setOpen] = useState(false), [query, setQuery] = useState('');
   const options = field.options ?? [];
@@ -63,7 +63,7 @@ function ChoiceField({ field, value, disabled, onChange }: { field: ProfileField
   const shown = (q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options).slice(0, 100);
   const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 12 : 4;
   return <View style={{ gap: 6 }}>
-    <Button title={current} accessibilityLabel={`${field.label}: ${current}`} kind="quiet" disabled={disabled} onPress={() => setOpen(!open)} />
+    <Button title={current} accessibilityLabel={`${label}: ${current}`} kind="quiet" disabled={disabled} onPress={() => setOpen(!open)} />
     {open && !disabled && <View style={{ gap: 4 }}>
       {options.length > 12 && <TextInput accessibilityLabel={t('profileSearch')} placeholder={t('profileSearch')} value={query} onChangeText={setQuery} autoCorrect={false}
         placeholderTextColor={palette.muted} style={{ color: palette.text, minHeight: 48, borderWidth: 1, borderColor: palette.border, borderRadius: radius, padding: 12, fontSize: 16 }} />}
@@ -76,7 +76,8 @@ function ChoiceField({ field, value, disabled, onChange }: { field: ProfileField
   </View>;
 }
 
-function FieldEditor({ field, draft, disabled, onEdit, onUndo }: { field: ProfileFieldV2; draft: Draft[string] | undefined; disabled: boolean; onEdit: (value: string | null) => void; onUndo: () => void }) {
+/** `label` is the field's label as read out of its group (profileFieldLabel): what assistive technology announces. */
+function FieldEditor({ field, label, draft, disabled, onEdit, onUndo }: { field: ProfileFieldV2; label: string; draft: Draft[string] | undefined; disabled: boolean; onEdit: (value: string | null) => void; onUndo: () => void }) {
   const { palette, design } = useTenantDesign();
   const value = draft ? draft.value : field.value;
   const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 12 : 4;
@@ -86,17 +87,17 @@ function FieldEditor({ field, draft, disabled, onEdit, onUndo }: { field: Profil
   </View>;
   return <View style={{ gap: 6 }}>
     <Text style={{ color: palette.muted, fontSize: 14 }}>{field.label}</Text>
-    {field.kind === 'date' ? <DateField label={field.label} value={value} disabled={disabled} onChange={onEdit} />
-      : field.kind === 'choice' ? <ChoiceField field={field} value={value} disabled={disabled} onChange={onEdit} />
-        : <TextInput accessibilityLabel={field.label} editable={!disabled} value={value ?? ''} maxLength={4000} autoCorrect={false}
+    {field.kind === 'date' ? <DateField label={label} value={value} disabled={disabled} onChange={onEdit} />
+      : field.kind === 'choice' ? <ChoiceField field={field} label={label} value={value} disabled={disabled} onChange={onEdit} />
+        : <TextInput accessibilityLabel={label} editable={!disabled} value={value ?? ''} maxLength={4000} autoCorrect={false}
           autoCapitalize={field.kind === 'email' ? 'none' : 'words'} keyboardType={field.kind === 'email' ? 'email-address' : field.kind === 'phone' ? 'phone-pad' : 'default'}
           onChangeText={(text) => onEdit(text === '' ? null : text)}
           style={{ color: palette.text, minHeight: 48, borderWidth: 1, borderColor: palette.border, borderRadius: radius, padding: 12, fontSize: 16 }} />}
     <Muted>{t(field.applies === 'immediately' ? 'profileAppliesNow' : 'profileAppliesApproval')}</Muted>
     {field.pending && <Text style={{ color: palette.accent, fontSize: 14 }}>{t('profilePendingNote')}</Text>}
     <View style={{ flexDirection: 'row', gap: 8 }}>
-      {!field.required && value !== null && <Button title={t('profileClear')} accessibilityLabel={`${t('profileClear')}: ${field.label}`} kind="quiet" disabled={disabled} onPress={() => onEdit(null)} />}
-      {draft && <Button title={t('profileUndo')} accessibilityLabel={`${t('profileUndo')}: ${field.label}`} kind="quiet" disabled={disabled} onPress={onUndo} />}
+      {!field.required && value !== null && <Button title={t('profileClear')} accessibilityLabel={`${t('profileClear')}: ${label}`} kind="quiet" disabled={disabled} onPress={() => onEdit(null)} />}
+      {draft && <Button title={t('profileUndo')} accessibilityLabel={`${t('profileUndo')}: ${label}`} kind="quiet" disabled={disabled} onPress={onUndo} />}
     </View>
   </View>;
 }
@@ -126,7 +127,7 @@ export function ProfileEditScreen() {
     });
   }
   const undo = (field: ProfileFieldV2) => setDraft((prev) => { const next = { ...prev }; delete next[field.fieldId]; return next; });
-  const labelOf = (id: string) => workspace?.fields.find((f) => f.fieldId === id)?.label ?? id;
+  const labelOf = (id: string) => { const f = workspace?.fields.find((x) => x.fieldId === id); return f && workspace ? profileFieldLabel(f, workspace.fields) : id; };
 
   async function send(body: ProfileChangeCommand, target: string) {
     if (flight.current) return;
@@ -162,7 +163,7 @@ export function ProfileEditScreen() {
     if (!changed.length) { setNotice(t('profileNoChanges')); return; }
     const body: ProfileChangeCommand = { requestId: randomUUID(), changes: changed.map((f) => ({ fieldId: f.fieldId, before: draft[f.fieldId].before, value: draft[f.fieldId].value })) };
     const lines = changed.map((f) => t('profileConfirmLine', {
-      label: f.label, from: profileValueText(f, f.value), to: profileValueText(f, draft[f.fieldId].value),
+      label: profileFieldLabel(f, workspace.fields), from: profileValueText(f, f.value), to: profileValueText(f, draft[f.fieldId].value),
       when: t(f.applies === 'immediately' ? 'profileAppliesNow' : 'profileAppliesApproval'),
     })).join('\n');
     const target = workspace.employmentId;
@@ -181,7 +182,10 @@ export function ProfileEditScreen() {
     {workspace && <>
       <Muted>{t('profileEditHint')}</Muted>
       {!online && <Muted>{t('profileNeedsConnection')}</Muted>}
-      <Card>{workspace.fields.map((f) => <FieldEditor key={f.fieldId} field={f} draft={draft[f.fieldId]} disabled={!online || !!command} onEdit={(v) => edit(f, v)} onUndo={() => undo(f)} />)}</Card>
+      {profileFieldGroups(workspace.fields).map((group) => <View key={group.key} style={{ gap: 8 }}>
+        <SectionLabel>{group.title}</SectionLabel>
+        <Card>{group.fields.map((f) => <FieldEditor key={f.fieldId} field={f} label={profileFieldLabel(f, workspace.fields)} draft={draft[f.fieldId]} disabled={!online || !!command} onEdit={(v) => edit(f, v)} onUndo={() => undo(f)} />)}</Card>
+      </View>)}
       {command?.phase === 'uncertain' && <Card>
         <Text accessibilityRole="alert" style={{ color: palette.text, lineHeight: 23 }}>{t('profileUncertain')}</Text>
         <Button title={t('profileRetry')} onPress={() => void send(command.body, command.employmentId)} />
