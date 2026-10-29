@@ -1,7 +1,12 @@
 name: bank-import-worker-package
-run-name: Archived worker runtime gate · controller ${{ github.sha }} · source 968354c
+run-name: Archived worker runtime gate · controller ${{ github.sha }} · source ${{ inputs.source_sha }}
 on:
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact frozen application source (40 lowercase hexadecimal characters)
+        required: true
+        type: string
 permissions:
   contents: read
   actions: read
@@ -15,7 +20,7 @@ jobs:
     timeout-minutes: 45
     env:
       TZ: Asia/Kuala_Lumpur
-      SOURCE_SHA: 968354c00a71df7baccd499eb60757a3307ed61e
+      SOURCE_SHA: ${{ inputs.source_sha }}
       DATABASE_URL: postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test
       MIGRATION_DATABASE_URL: postgres://ai_hr_owner@127.0.0.1:5433/ai_hr_test
       TEST_DATABASE_URL: postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test
@@ -30,10 +35,15 @@ jobs:
           ref: ${{ github.sha }}
           path: controller
           persist-credentials: false
-      - name: Checkout exact installed production source
+      - name: Reject missing or mutable application source pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
+      - name: Checkout exact frozen application source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: 968354c00a71df7baccd499eb60757a3307ed61e
+          ref: ${{ inputs.source_sha }}
           path: source
           persist-credentials: false
       - uses: ./controller/.github/actions/setup-alpha
@@ -43,8 +53,10 @@ jobs:
           mobile: 'false'
       - name: Verify bounded worker package controls
         working-directory: controller
-        run: node --test scripts/bank-import-worker-package.test.mjs
-      - name: Produce v2 worker bytes from clean frozen production source
+        run: |
+          node --test scripts/bank-import-worker-package.test.mjs
+          python3 -I -B scripts/ci-bank-import-worker-producer-controls.test.py
+      - name: Produce v2 worker bytes from clean frozen application source
         run: node controller/scripts/bank-import-worker-package.mjs "$GITHUB_WORKSPACE/source" "$RUNNER_TEMP/worker-package" "$SOURCE_SHA"
       - name: Prepare owned disposable PostgreSQL and distinct physical owner
         shell: bash
@@ -55,7 +67,7 @@ jobs:
             psql -U postgres -p 5433 -X -v ON_ERROR_STOP=1 \
             -c 'CREATE ROLE ai_hr_owner LOGIN SUPERUSER;' \
             -c 'ALTER DATABASE ai_hr_test OWNER TO ai_hr_owner;'
-      - name: Apply exact production ordinary journal and catalogs
+      - name: Apply exact frozen ordinary journal and catalogs
         working-directory: source
         shell: bash
         run: |
@@ -69,7 +81,7 @@ jobs:
           sudo --preserve-env=GITHUB_ACTIONS,CI,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT \
             python3 -I -B controller/scripts/ci-bank-import-worker-archive-runtime-smoke.py \
             --controller "$GITHUB_WORKSPACE/controller" --source "$GITHUB_WORKSPACE/source" \
-            --package-dir "$RUNNER_TEMP/worker-package" --node "$(command -v node)"
+            --source-sha "$SOURCE_SHA" --package-dir "$RUNNER_TEMP/worker-package" --node "$(command -v node)"
       - name: Upload closed authenticated bytes and actual runtime proof
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

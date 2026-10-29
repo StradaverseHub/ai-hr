@@ -6,12 +6,12 @@ import json
 import os
 from pathlib import Path
 import pwd
+import re
 import shutil
 import stat
 import subprocess
 import tempfile
 
-SOURCE='968354c00a71df7baccd499eb60757a3307ed61e'
 APP='postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test'
 OWNER='postgres://ai_hr_owner@127.0.0.1:5433/ai_hr_test'
 USER='aihr-worker-archive-ci'
@@ -25,6 +25,30 @@ def file_hash(path):
     with path.open('rb') as stream:
         for data in iter(lambda:stream.read(1024**2),b''): h.update(data)
     return h.hexdigest()
+def source_pin(value):
+    require(isinstance(value,str) and re.fullmatch('[a-f0-9]{40}',value),'required explicit immutable application source pin')
+    return value
+
+def ordinary_source_ledger(source):
+    raw=(source/'db/migrations/meta/_journal.json').read_bytes()
+    journal=json.loads(raw);entries=journal['entries']
+    require(isinstance(entries,list) and len(entries)>0,'nonempty ordinary source journal required')
+    tags=set();indices=set();expected=[]
+    for row in entries:
+        tag=row.get('tag');when=row.get('when');idx=row.get('idx')
+        require(isinstance(tag,str) and re.fullmatch('[A-Za-z0-9_-]+',tag) and tag not in tags,'unique safe ordinary source SQL tag required')
+        require(type(when) is int and 0<when<=9007199254740991 and type(idx) is int and idx>=0 and idx not in indices,'ordinary journal index/timestamp required')
+        tags.add(tag);indices.add(idx)
+        path=source/'db/migrations'/f'{tag}.sql'
+        require(path.is_file() and not path.is_symlink(),'ordinary source SQL must be a regular file')
+        expected.append({'created_at':str(when),'hash':file_hash(path)})
+    # Ordinary journal array order is authoritative, including historical allocations.
+    semantic=json.dumps(expected,sort_keys=True,separators=(',',':')).encode()
+    return {'kind':'FRESH_ORDINARY_SOURCE_JOURNAL_NOT_STAGING_LEDGER','rows':len(expected),'sha256':digest(semantic),'journalSha256':digest(raw)}
+
+def compare_ordinary_ledger(actual,expected):
+    require(actual==expected,'fresh ordinary migration ledger differs from independently derived frozen source')
+
 def command(argv,*,cwd='/',env=None,timeout=60):
     result=subprocess.run(argv,cwd=cwd,env=env or {'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'},text=True,capture_output=True,timeout=timeout)
     # This gate admits only the fixed disposable trust-auth DB and fictional fixture, never live credentials/data.
@@ -34,7 +58,9 @@ def command(argv,*,cwd='/',env=None,timeout=60):
 def main():
     parser=argparse.ArgumentParser()
     for name in ('controller','source','package-dir','node'): parser.add_argument('--'+name,required=True)
+    parser.add_argument('--source-sha',required=True)
     args=parser.parse_args()
+    SOURCE=source_pin(args.source_sha)
     require(os.geteuid()==0 and os.environ.get('GITHUB_ACTIONS')=='true' and os.environ.get('CI')=='true' and os.uname().sysname=='Linux','root orchestration on disposable GitHub Linux runner only')
     run_id=os.environ.get('GITHUB_RUN_ID','');attempt=os.environ.get('GITHUB_RUN_ATTEMPT','')
     require(run_id.isdigit() and attempt=='1','original first GHA attempt only')
@@ -42,10 +68,11 @@ def main():
     require(controller!=source and not controller.is_relative_to(source) and not source.is_relative_to(controller),'sibling controller and production checkouts required')
     def git(root,*argv): return command(['/usr/bin/git','-c','safe.directory='+str(root),'-C',str(root),*argv]).stdout.strip()
     controller_sha=git(controller,'rev-parse','HEAD')
-    require(controller_sha==os.environ.get('GITHUB_SHA') and git(source,'rev-parse','HEAD')==SOURCE,'exact controller API head and fixed production source required')
+    require(controller_sha==os.environ.get('GITHUB_SHA') and git(source,'rev-parse','HEAD')==SOURCE,'exact controller API head and explicitly pinned application source required')
     def frozen():
         require(git(controller,'rev-parse','HEAD')==controller_sha and git(source,'rev-parse','HEAD')==SOURCE and not git(controller,'status','--porcelain','--untracked-files=all') and not git(source,'status','--porcelain','--untracked-files=all'),'both clean frozen checkouts required')
     frozen()
+    expected_ledger=ordinary_source_ledger(source)
     fmt_path=controller/'deploy/systemd/bank_import_worker_format.py'
     spec=importlib.util.spec_from_file_location('reviewed_worker_format',fmt_path)
     fmt=importlib.util.module_from_spec(spec);spec.loader.exec_module(fmt)
@@ -66,6 +93,16 @@ def main():
     require(manifest['format']==2 and manifest['controllerSource']==controller_sha,'actual extracted v2 source/controller binding required')
     fmt.require_activation_manifest(manifest,controller_sha)
     entries={r['path']:r for r in manifest['entries']}
+    # Independently witness every extracted source/dependency byte against the actual frozen build input.
+    def verify_source_bytes():
+        for name,row in entries.items():
+            original=source/name
+            if row['type']=='file':
+                require(original.is_file() and not original.is_symlink() and original.stat().st_size==row['size'] and file_hash(original)==row['sha256'],'archive file differs from source/dependency input: '+name)
+            elif row['type']=='symlink':
+                require(original.is_symlink() and os.readlink(original)==row['target'],'archive link differs from source/dependency input: '+name)
+            else: require(original.is_dir() and not original.is_symlink(),'archive directory differs from source/dependency input: '+name)
+    verify_source_bytes()
     for required in ('localization/registry.ts','i18n/config.ts','scripts/bank-import-runner.ts'):
         require(entries.get(required,{}).get('type')=='file','runtime module closure input absent: '+required)
     for path in runtime.rglob('*'):
@@ -90,7 +127,7 @@ def main():
     runner=pwd.getpwuid(runner_uid)
     require(runner.pw_uid!=identity.pw_uid,'fixture runner and actual worker must be separate identities')
     fixture_work=area/'controller-fixture-private';fixture_work.mkdir(mode=0o700);os.chown(fixture_work,runner.pw_uid,runner.pw_gid)
-    fixture_env={**env,'HOME':str(fixture_work),'TMPDIR':str(fixture_work)}
+    fixture_env={**env,'HOME':str(fixture_work),'TMPDIR':str(fixture_work),'AIHR_ARCHIVE_SOURCE_SHA':SOURCE}
     state=fixture_work/'fixture.json';fixture=controller/'scripts/ci-bank-import-worker-archive-runtime-smoke.ts'
     loader=source/'node_modules/tsx/dist/loader.mjs'
     def as_fixture(argv,timeout=60):
@@ -119,6 +156,7 @@ def main():
     # Bootstrap owner was privileged for canonical migrations/fixtures only; actual worker has physical ownership, no bypass/superuser.
     command(['/usr/bin/psql','postgres://postgres@127.0.0.1:5433/ai_hr_test','-X','-v','ON_ERROR_STOP=1','-c','ALTER ROLE ai_hr_owner NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;'])
     before=fixture_phase('snapshot');require(before['queueRows']==0,'empty queue required before actual archive startup')
+    compare_ordinary_ledger(before['migrationLedger'],expected_ledger)
     child_results=[]
     def worker_once():
         verify_tree()
@@ -132,9 +170,11 @@ def main():
     preview=fixture_phase('preview')
     for _ in range(2): worker_once()
     completed=fixture_phase('assert-completed')
-    verify_tree();frozen()
+    require(len(child_results)==6,'exactly six successful actual archived CLI invocations required')
+    verify_tree();verify_source_bytes();frozen()
+    compare_ordinary_ledger(fixture_phase('snapshot')['migrationLedger'],expected_ledger)
     require(file_hash(archive)==archive_sha and provenance_bytes==(package/'worker-provenance.json').read_bytes() and fmt.canonical(manifest)==(package/'worker-manifest.json').read_bytes(),'package changed during runtime gate')
-    proof={'format':1,'kind':'CI_EXTRACTED_WORKER_RUNTIME_NOT_RELEASE','source':SOURCE,'controllerSource':controller_sha,'producerSha256':provenance['producerSha256'],'formatSha256':provenance['formatSha256'],'archiveSha256':archive_sha,'manifestSha256':provenance['manifestSha256'],'packageSha256':provenance['packageSha256'],'lockSha256':provenance['lockSha256'],'runtime':provenance['runtime'],'runId':int(run_id),'runAttempt':int(attempt),'rootOwnedReadOnly':True,'extractedOutsideCheckout':not runtime.is_relative_to(source) and not runtime.is_relative_to(controller),'modulePathsClean':True,'roleProof':before['roleProof'],'migrationLedger':{'rows':before['ledgerRows'],'sha256':before['ledgerSha256']},'emptyQueue':{'before':before['queueRows'],'after':after['queueRows'],'publicTables':len(before['publicTables']),'contentSha256':digest(fmt.canonical(before['publicTables'])),'noHrMutation':True,'exitCode':empty_result.returncode,'stdoutSha256':digest(empty_result.stdout.encode()),'stderrSha256':digest(empty_result.stderr.encode())},'nativeFixture':{'syntheticOnly':True,'previewValid':preview['valid'],'previewInvalid':preview['invalid'],'previewHrUnchanged':preview['hrUnchanged'],'saved':completed['saved'],'failed':completed['failed'],'total':completed['total'],'processed':completed['processed'],'auditItems':completed['nativeAuditItems'],'sourceChunksReleased':completed['sourceChunksReleased'],'cliInvocations':5},'cli':{'invocations':len(child_results),'exitCodes':[r.returncode for r in child_results],'noUnexpectedStderr':all(r.stderr=='' for r in child_results)},'extractedPostRunVerified':True,'releaseAuthorized':False}
+    proof={'format':1,'kind':'CI_EXTRACTED_WORKER_RUNTIME_NOT_RELEASE','source':SOURCE,'controllerSource':controller_sha,'producerSha256':provenance['producerSha256'],'formatSha256':provenance['formatSha256'],'archiveSha256':archive_sha,'manifestSha256':provenance['manifestSha256'],'packageSha256':provenance['packageSha256'],'lockSha256':provenance['lockSha256'],'runtime':provenance['runtime'],'runId':int(run_id),'runAttempt':int(attempt),'rootOwnedReadOnly':True,'extractedOutsideCheckout':not runtime.is_relative_to(source) and not runtime.is_relative_to(controller),'modulePathsClean':True,'roleProof':before['roleProof'],'migrationLedger':expected_ledger,'emptyQueue':{'before':before['queueRows'],'after':after['queueRows'],'publicTables':len(before['publicTables']),'contentSha256':digest(fmt.canonical(before['publicTables'])),'noHrMutation':True,'exitCode':empty_result.returncode,'stdoutSha256':digest(empty_result.stdout.encode()),'stderrSha256':digest(empty_result.stderr.encode())},'nativeFixture':{'syntheticOnly':True,'previewValid':preview['valid'],'previewInvalid':preview['invalid'],'previewHrUnchanged':preview['hrUnchanged'],'saved':completed['saved'],'failed':completed['failed'],'total':completed['total'],'processed':completed['processed'],'auditItems':completed['nativeAuditItems'],'sourceChunksReleased':completed['sourceChunksReleased'],'nativeAuditOrdinals':completed['nativeAuditOrdinals'],'nativeCheckpoint':completed['nativeCheckpoint'],'cliInvocations':5},'cli':{'invocations':len(child_results),'exitCodes':[r.returncode for r in child_results],'noUnexpectedStderr':all(r.stderr=='' for r in child_results)},'sourceDependencyBytesVerified':True,'extractedPostRunVerified':True,'releaseAuthorized':False}
     output=package/'worker-runtime-proof.json'
     proof['provenanceSha256']=digest(provenance_bytes)
     with output.open('xb') as stream:stream.write(fmt.canonical(proof))

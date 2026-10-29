@@ -5,10 +5,15 @@ import {createHash} from 'node:crypto';
 import {join,resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {createRequire} from 'node:module';
+import {execFileSync} from 'node:child_process';
 async function main(){
 const [phase,packetArg,sourceArg,statePath]=process.argv.slice(2);
 assert(process.env.GITHUB_ACTIONS==='true'&&process.env.CI==='true'&&process.platform==='linux','Disposable GHA only');
 const packet=resolve(packetArg),source=resolve(sourceArg);
+const sourcePin=process.env.AIHR_ARCHIVE_SOURCE_SHA;
+assert(/^[a-f0-9]{40}$/.test(sourcePin??''),'Required explicit immutable application source pin');
+assert.equal(execFileSync('/usr/bin/git',['-C',source,'rev-parse','HEAD'],{encoding:'utf8'}).trim(),sourcePin);
+assert.equal(execFileSync('/usr/bin/git',['-C',source,'status','--porcelain','--untracked-files=all'],{encoding:'utf8'}),'','Clean frozen source required');
 assert(!packet.startsWith(source+'/')&&!source.startsWith(packet+'/'),'Actual extracted packet must be separate');
 const load=async(path:string)=>{const m=await import(pathToFileURL(path).href);return {...(m.default??{}),...m};};
 const requirePacket=createRequire(join(packet,'package.json'));
@@ -32,7 +37,7 @@ try {
   const facts:Record<string,unknown>={};
   for(const table of ['person','employment','assignment','compensation'])facts[table]=await owner.unsafe(`select to_jsonb(t) as row from public."${table}" t order by to_jsonb(t)::text`);
   const statutory=await owner`select to_jsonb(s) as row from employee_statutory_my s order by person_id`;
-  save({ctx,personId:employee.person_id,originalTax:employee.tax_number,facts,statutory});
+  save({ctx,personId:employee.person_id,employmentId:employee.id,originalTax:employee.tax_number,facts,statutory});
   console.log(JSON.stringify({fixture:'canonical-seedBase-and-employee-import',syntheticOnly:true,employees:1}));
  }else if(phase==='snapshot'){
   const roleProof=await owner`select r.rolname,r.rolsuper,r.rolbypassrls,c.relowner=r.oid as queue_owner from pg_roles r cross join pg_class c where r.rolname in ('ai_hr_app','ai_hr_owner') and c.oid='public.bank_import_job'::regclass order by r.rolname`;
@@ -40,13 +45,15 @@ try {
   assert.deepEqual(roleProof.map((r:any)=>[r.rolname,r.rolsuper,r.rolbypassrls,r.queue_owner]),[['ai_hr_app',false,false,false],['ai_hr_owner',false,false,true]]);
   // Drizzle inserts in journal-array order. Qualify the numeric input: ORDER BY id would bind id::text's output alias.
   const ledger=await owner`select m.id::text as migration_id,m.hash,m.created_at::text as created_at from drizzle.__drizzle_migrations m order by m.id`;
-  assert.equal(ledger.length,562,'Exact production-source562 ordinary migration ledger required');
   let priorId=0n;
   for(const row of ledger){assert(/^[1-9][0-9]*$/.test(row.migration_id)&&BigInt(row.migration_id)>priorId,'Actual ledger IDs must be positive and numerically increasing');priorId=BigInt(row.migration_id);}
   // This is a FRESH ordinary-journal DB: hash exact current SQL bytes, never staging's two historical identities.
-  const journal=JSON.parse(readFileSync(join(source,'db/migrations/meta/_journal.json'),'utf8'));
-  assert.equal(journal.entries.length,562);
-  const expected=journal.entries.map((row:any)=>{assert(/^[A-Za-z0-9_-]+$/.test(row.tag)&&Number.isSafeInteger(row.when));return {hash:createHash('sha256').update(readFileSync(join(source,'db/migrations',row.tag+'.sql'))).digest('hex'),created_at:String(row.when)};});
+  const journalBytes=readFileSync(join(source,'db/migrations/meta/_journal.json'));
+  const journal=JSON.parse(journalBytes.toString('utf8'));
+  assert(Array.isArray(journal.entries)&&journal.entries.length>0,'Nonempty ordinary source journal required');
+  const tags=new Set(),indices=new Set();
+  const expected=journal.entries.map((row:any)=>{assert(/^[A-Za-z0-9_-]+$/.test(row.tag)&&Number.isSafeInteger(row.when)&&row.when>0&&Number.isSafeInteger(row.idx)&&row.idx>=0&&!tags.has(row.tag)&&!indices.has(row.idx));tags.add(row.tag);indices.add(row.idx);return {hash:createHash('sha256').update(readFileSync(join(source,'db/migrations',row.tag+'.sql'))).digest('hex'),created_at:String(row.when)};});
+  assert.equal(ledger.length,expected.length,'Complete fresh ordinary source migration ledger required');
   const semantic=ledger.map(({hash,created_at}:any)=>({hash,created_at}));
   assert.deepEqual(semantic,expected.map(({hash,created_at}:any)=>({hash,created_at})),'Exact ordered source SQL hashes/timestamps differ');
   // Stable JSON keys in alphabetical order, UTF-8, no whitespace or trailing newline; no IDs/timestamps from this gate.
@@ -60,7 +67,7 @@ try {
    for(const {tablename}of tables){assert(/^[a-z_][a-z0-9_]*$/.test(tablename));const [r]=await tx.unsafe(`select count(*)::int as rows,md5(coalesce(string_agg(to_jsonb(t)::text,E'\\n' order by to_jsonb(t)::text),'')) as hash from public."${tablename}" t`);content.push({table:tablename,...r});}
   });}finally{await witness.end({timeout:5});}
   const [queue]=await owner`select count(*)::int as rows from bank_import_job`;
-  console.log(JSON.stringify({roleProof,ledgerRows:ledger.length,ledgerSha256:createHash('sha256').update(semanticBytes).digest('hex'),queueRows:queue.rows,publicTables:content}));
+  console.log(JSON.stringify({roleProof,migrationLedger:{kind:'FRESH_ORDINARY_SOURCE_JOURNAL_NOT_STAGING_LEDGER',rows:ledger.length,sha256:createHash('sha256').update(semanticBytes).digest('hex'),journalSha256:createHash('sha256').update(journalBytes).digest('hex')},queueRows:queue.rows,publicTables:content}));
  }else {
   const state=JSON.parse(readFileSync(statePath,'utf8'));
   app=(await load(join(packet,'db/client.ts'))).client;
@@ -82,12 +89,16 @@ try {
     assert.equal(subject.tax_number,'TARCHIVE');assert(job.attemptId);
     const [audit]=await owner`select count(*)::int as rows from import_attempt_item where attempt_id=${job.attemptId}::uuid`;
     assert.equal(audit.rows,1,'Exactly one native canonical HR-save audit item required');
+    const auditOrdinals=await owner`select ordinal,status,employment_id from import_attempt_item where attempt_id=${job.attemptId}::uuid order by ordinal`;
+    assert.equal(auditOrdinals.length,1);assert.equal(auditOrdinals[0].ordinal,1);assert.equal(auditOrdinals[0].status,'applied');assert.equal(auditOrdinals[0].employment_id,state.employmentId);
+    const checkpoints=await owner`select ordinal,state from bank_import_row where job_id=${state.jobId}::uuid order by ordinal`;
+    assert.deepEqual(checkpoints.map((row:any)=>({ordinal:row.ordinal,state:row.state})),[{ordinal:1,state:'applied'},{ordinal:2,state:'invalid'}],'Native row checkpoint must match actual audit and invalid row');
     const [chunks]=await owner`select count(*)::int as rows from bank_import_chunk where job_id=${state.jobId}::uuid`;assert.equal(chunks.rows,0);
     for(const table of ['person','employment','assignment','compensation'])assert.deepEqual(JSON.parse(JSON.stringify(await owner.unsafe(`select to_jsonb(t) as row from public."${table}" t order by to_jsonb(t)::text`))),state.facts[table],'Unrelated HR facts changed: '+table);
     const statutory=await owner`select to_jsonb(s) as row from employee_statutory_my s order by person_id`;
     const normalized=(rows:any[])=>rows.map(({row})=>{const copy={...row};delete copy.updated_at;if(copy.person_id===state.personId)copy.tax_number='EXPECTED-TARGET';return copy;});
     assert.deepEqual(normalized(statutory),normalized(state.statutory),'Unexpected statutory subject/field changed');
-    console.log(JSON.stringify({completed:true,total:2,processed:2,saved:1,invalid:1,failed:0,nativeAuditItems:1,sourceChunksReleased:true}));
+    console.log(JSON.stringify({completed:true,total:2,processed:2,saved:1,invalid:1,failed:0,nativeAuditItems:1,nativeAuditOrdinals:[1],nativeCheckpoint:checkpoints.map((row:any)=>({ordinal:row.ordinal,state:row.state})),sourceChunksReleased:true}));
    }else throw Error('Unknown CI fixture phase');
   }
  }
