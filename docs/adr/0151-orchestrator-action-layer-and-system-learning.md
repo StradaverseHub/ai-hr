@@ -602,3 +602,7 @@ Payroll close uses generic OWN compatibility custody while the payroll pack reta
 ### WP9 Rewards post custody
 
 Rewards post uses generic ASSIGNED compatibility custody with its original actor/company/unit binding, sealed content, posted revision/batch/event proof and full native preflight before custody NOWAIT. Rewards retains funding, cohort, compensation and payroll authority; shared guard requires human Approve. Existing SQL and ciphertext are unchanged.
+
+### WP9 default family foundation
+
+The default 0670 OWN and 0671 ASSIGNED factories are protocol adapters to the shared custody engine, rather than separate sealing/lifecycle implementations. Their public APIs, strict binding/row validation, self-decision refusal, SQL verifiers and optional OwnReviewPersistence/nativeRequestId compatibility are retained. The seven legacy module variants and own-leave remain separate pending their explicit protocol adapters; this foundation does not claim those have already collapsed.
