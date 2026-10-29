@@ -1,6 +1,5 @@
 import {ensureAgentPrincipal,agentContext} from '../core/agent-principal';
 import {resolveEntitlementsTx} from '../core/entitlements';
-import {readFileSync} from 'node:fs';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
@@ -48,6 +47,16 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
  afterAll(closeAll);
  const inputs={forecastCents:900000,actualCents:null,targetCents:1000000,targetMonthsBp:20000,multiplierBp:10000,branchRatings:{}};
  async function saveInputs(){await saveRewardUnitInputs(gr,unitId,(await view()).unit.revision,inputs,'Reviewed the current unit PAT evidence');}
+ it('preserves an existing RM1 target and explicit zero Actual for the authorized legacy edit projection',async()=>{
+  const before=await view();
+  const legacy={...before.unit.policy,patActual:200,patTarget:100};
+  await owner.db.update(schema.rewardUnit).set({policy:legacy}).where(eq(schema.rewardUnit.id,unitId));
+  expect((await getRewardUnitGovernance(gr,unitId)).legacyInputs).toMatchObject({actualCents:200,targetCents:100});
+  await owner.db.update(schema.rewardUnit).set({policy:{...legacy,patActual:0}}).where(eq(schema.rewardUnit.id,unitId));
+  expect((await getRewardUnitGovernance(gr,unitId)).legacyInputs).toMatchObject({actualCents:0,targetCents:100});
+  const [stored]=await owner.db.select().from(schema.rewardUnit).where(eq(schema.rewardUnit.id,unitId));
+  expect(stored.policy.patTarget).toBe(100);expect(stored.policy.patActual).toBe(0);
+ });
  it('keeps raw PAT under GR SQL custody and gives approvers only exact pool snapshots',async()=>{
   await saveInputs();
   const grState=await getRewardUnitGovernance(gr,unitId);expect(grState.inputs?.forecastCents).toBe(900000);
