@@ -598,3 +598,7 @@ The Leave decision adapter uses generic ASSIGNED compatibility custody. Its orig
 ### WP9 Payroll close custody
 
 Payroll close uses generic OWN compatibility custody while the payroll pack retains Access/period/OT/batch locks, preflight-before-custody ordering, completion provenance, configured payslip release semantics and exact post-close privacy targets. Original SQL and sealed wire stay unchanged; explicit human Approve is required.
+
+### WP9 Rewards post custody
+
+Rewards post uses generic ASSIGNED compatibility custody with its original actor/company/unit binding, sealed content, posted revision/batch/event proof and full native preflight before custody NOWAIT. Rewards retains funding, cohort, compensation and payroll authority; shared guard requires human Approve. Existing SQL and ciphertext are unchanged.

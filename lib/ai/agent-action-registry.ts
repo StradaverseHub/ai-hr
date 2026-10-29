@@ -270,7 +270,7 @@ export const AGENT_ACTIONS=Object.freeze([
   permission:{actor:'rewards_admin',guard:'core/assistant-actions/reviewed-rewards-post-source.ts#assertReviewedRewardsPostActorTx'},subject:'company',blastRadius:{max:1,unit:'approved_reward_unit_all_entries'},
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'pay'},reversal:{kind:'unknown'},evaluationCases:[],
   screen:{native:'app/rewards/[unitId]/page.tsx',entryPoints:['app/rewards/actions.ts#postAction']},review:{route:'/assistant/rewards',handoff:'review_page'},
-  store:'dedicated',browserOwner:'rewardsPost',pauseKey:'hr_assistant'}),
+  store:'generic_assigned',browserOwner:'rewardsPost',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'lifecycle.acknowledgement.submit',module:'lifecycle',owner:'lifecycle',service:'core/lifecycle-self.ts#submitMyAcknowledgement',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_lifecycle_ack_review_v1',inputSchema:'LifecycleAckReviewPrepare',outputSchema:'LifecycleAckPreparedReview'},
   confirm:{status:'implemented',adapter:'module_lifecycle_ack_review_v1',inputSchema:'LifecycleAckReviewConfirmation',outputSchema:'LifecycleAckCompletedReview'},
