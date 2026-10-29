@@ -3,6 +3,7 @@ No entry point here. Human bootstrap must hash-pin the generated helper before P
 Only a first staging installation is supported; existing identities, units and environments refuse.
 """
 import argparse
+from contextlib import contextmanager
 import fcntl
 import hashlib
 import json
@@ -10,6 +11,7 @@ import os
 from pathlib import Path
 import pwd
 import re
+import signal
 import stat
 import subprocess
 import tempfile
@@ -25,6 +27,23 @@ USER='aihr-import'
 LOCK_DIRECTORY=Path('/run/aihr-bank-import')
 BASE_ENV={'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','LANG':'C.UTF-8'}
 ENV_KEYS={'DATABASE_URL','MIGRATION_DATABASE_URL','AUDIT_HASH_CHAIN_ENABLED','NODE_EXTRA_CA_CERTS','PGSSLMODE','PGSSLROOTCERT','PGSSLCERT','PGSSLKEY'}
+
+class ActivationInterrupted(Exception): pass
+
+@contextmanager
+def activation_guard(cleanup):
+    signals=(signal.SIGHUP,signal.SIGTERM,signal.SIGINT)
+    previous={item:signal.getsignal(item) for item in signals}
+    def interrupted(signum,frame): raise ActivationInterrupted('activation interrupted by '+signal.Signals(signum).name)
+    for item in signals: signal.signal(item,interrupted)
+    try: yield
+    except BaseException:
+        # A second terminal/session signal must not interrupt the managed transaction drain.
+        for item in signals: signal.signal(item,signal.SIG_IGN)
+        cleanup()
+        raise
+    finally:
+        for item,handler in previous.items(): signal.signal(item,handler)
 
 def check(ok,message):
     if not ok: raise ValueError('Worker installation refused: '+message)
@@ -239,36 +258,33 @@ def install(argv,fmt):
     root_protected(ENV.parent);root_protected(UNIT.parent)
     unit=service_unit(args.source).encode();unit_written=False;started=False
     try:
-        command(['/usr/sbin/useradd','--system','--user-group','--no-create-home','--home-dir','/nonexistent','--shell','/usr/sbin/nologin',USER])
-        identity=pwd.getpwnam(USER);check(identity.pw_uid>0 and identity.pw_gid>0,'non-root dedicated identity required')
-        for key in ('NODE_EXTRA_CA_CERTS','PGSSLROOTCERT','PGSSLCERT','PGSSLKEY'):
-            values={environment.get(key),app.get(key),owner.get(key)}-{None,''}
-            for value in values: command(['/usr/sbin/runuser','--user',USER,'--','/usr/bin/test','-r',value])
-        check(deployment_state(args.source,args.build_id)==state,'web deployment changed during preparation')
-        write_new(ENV,(''.join(key+'='+json.dumps(environment[key],ensure_ascii=False)+'\n' for key in sorted(environment))).encode(),0o600)
-        write_new(UNIT,unit,0o644);unit_written=True
-        command(['/usr/bin/systemctl','daemon-reload']);validate_service(service_properties(),release)
-        command(['/usr/bin/systemctl','start','aihr-bank-import.service']);started=True
-        expected_pid=None
-        for attempt in range(3):
-            time.sleep(4);properties=service_properties();validate_service(properties,release)
-            check(properties['ActiveState']=='active' and properties['SubState']=='running' and properties['NRestarts']=='0','worker must remain running without restarts')
-            pid=int(properties['MainPID']);check(pid>0 and (expected_pid is None or expected_pid==pid),'worker PID changed');expected_pid=pid
-            process=Path('/proc')/str(pid)
-            check(process.stat().st_uid==identity.pw_uid and (process/'cwd').resolve()==release,'live worker user/directory differ')
-            check(read_bounded(process/'cmdline',65536).split(b'\0')[:-1]==[str(NODE).encode(),b'--import',b'tsx',b'scripts/bank-import-runner.ts'],'live worker command differs')
-            # procfs has st_size=0, but read_bounded still enforces the actual read ceiling.
-            actual=dict(item.split(b'=',1) for item in read_bounded(process/'environ',1024**2).split(b'\0') if b'=' in item)
-            check(all(actual.get(k.encode())==v.encode() for k,v in environment.items()),'live selected worker environment differs')
-            check(not any(k.encode() in actual for k in ('NODE_OPTIONS','NODE_PATH','LD_PRELOAD','LD_LIBRARY_PATH','PYTHONPATH')),'unexpected worker loader environment')
-        check(deployment_state(args.source,args.build_id)==state,'web deployment changed before worker acceptance')
-        check(hashlib.sha256(read_bounded(ENV,1024**2)).hexdigest()==hashlib.sha256((''.join(key+'='+json.dumps(environment[key],ensure_ascii=False)+'\n' for key in sorted(environment))).encode()).hexdigest(),'protected worker environment changed')
-        command(['/usr/bin/systemctl','enable','aihr-bank-import.service'])
-        record={'source':args.source,'webBuildId':args.build_id,'archiveSha256':args.archive_sha256,'manifestSha256':fmt.digest(fmt.canonical(manifest)),'selectedEnvironmentSha256':hashlib.sha256(read_bounded(ENV,1024**2)).hexdigest(),'unitSha256':hashlib.sha256(unit).hexdigest(),'workerPid':expected_pid,'serviceStable':True,'journeyVerified':False}
-        write_new(release/'worker-install-v2.json',(json.dumps(record,sort_keys=True)+'\n').encode(),0o444)
-        print(json.dumps(record))
-    except Exception:
-        if unit_written:
-            stop_owned_first_install()
-        raise
+        with activation_guard(lambda: stop_owned_first_install() if unit_written else None):
+            command(['/usr/sbin/useradd','--system','--user-group','--no-create-home','--home-dir','/nonexistent','--shell','/usr/sbin/nologin',USER])
+            identity=pwd.getpwnam(USER);check(identity.pw_uid>0 and identity.pw_gid>0,'non-root dedicated identity required')
+            for key in ('NODE_EXTRA_CA_CERTS','PGSSLROOTCERT','PGSSLCERT','PGSSLKEY'):
+                values={environment.get(key),app.get(key),owner.get(key)}-{None,''}
+                for value in values: command(['/usr/sbin/runuser','--user',USER,'--','/usr/bin/test','-r',value])
+            check(deployment_state(args.source,args.build_id)==state,'web deployment changed during preparation')
+            write_new(ENV,(''.join(key+'='+json.dumps(environment[key],ensure_ascii=False)+'\n' for key in sorted(environment))).encode(),0o600)
+            write_new(UNIT,unit,0o644);unit_written=True
+            command(['/usr/bin/systemctl','daemon-reload']);validate_service(service_properties(),release)
+            command(['/usr/bin/systemctl','start','aihr-bank-import.service']);started=True
+            expected_pid=None
+            for attempt in range(3):
+                time.sleep(4);properties=service_properties();validate_service(properties,release)
+                check(properties['ActiveState']=='active' and properties['SubState']=='running' and properties['NRestarts']=='0','worker must remain running without restarts')
+                pid=int(properties['MainPID']);check(pid>0 and (expected_pid is None or expected_pid==pid),'worker PID changed');expected_pid=pid
+                process=Path('/proc')/str(pid)
+                check(process.stat().st_uid==identity.pw_uid and (process/'cwd').resolve()==release,'live worker user/directory differ')
+                check(read_bounded(process/'cmdline',65536).split(b'\0')[:-1]==[str(NODE).encode(),b'--import',b'tsx',b'scripts/bank-import-runner.ts'],'live worker command differs')
+                # procfs has st_size=0, but read_bounded still enforces the actual read ceiling.
+                actual=dict(item.split(b'=',1) for item in read_bounded(process/'environ',1024**2).split(b'\0') if b'=' in item)
+                check(all(actual.get(k.encode())==v.encode() for k,v in environment.items()),'live selected worker environment differs')
+                check(not any(k.encode() in actual for k in ('NODE_OPTIONS','NODE_PATH','LD_PRELOAD','LD_LIBRARY_PATH','PYTHONPATH')),'unexpected worker loader environment')
+            check(deployment_state(args.source,args.build_id)==state,'web deployment changed before worker acceptance')
+            check(hashlib.sha256(read_bounded(ENV,1024**2)).hexdigest()==hashlib.sha256((''.join(key+'='+json.dumps(environment[key],ensure_ascii=False)+'\n' for key in sorted(environment))).encode()).hexdigest(),'protected worker environment changed')
+            command(['/usr/bin/systemctl','enable','aihr-bank-import.service'])
+            record={'source':args.source,'webBuildId':args.build_id,'archiveSha256':args.archive_sha256,'manifestSha256':fmt.digest(fmt.canonical(manifest)),'selectedEnvironmentSha256':hashlib.sha256(read_bounded(ENV,1024**2)).hexdigest(),'unitSha256':hashlib.sha256(unit).hexdigest(),'workerPid':expected_pid,'serviceStable':True,'journeyVerified':False}
+            write_new(release/'worker-install-v2.json',(json.dumps(record,sort_keys=True)+'\n').encode(),0o444)
+            print(json.dumps(record))
     finally: os.close(lock_fd)

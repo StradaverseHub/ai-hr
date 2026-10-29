@@ -5,6 +5,7 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+import signal
 from unittest.mock import patch
 from types import SimpleNamespace
 
@@ -88,5 +89,16 @@ class WorkerInstallerTests(unittest.TestCase):
             with patch.object(install,'LOCK_DIRECTORY',directory),patch.object(install,'root_protected',side_effect=lambda path:checked.append(Path(path))):
                 self.assertEqual(install.install_lock_directory(),directory)
             self.assertTrue(directory.is_dir());self.assertEqual(checked,[Path(tmp),directory])
+    def test_real_interruption_runs_cleanup_and_ignores_repeated_termination_during_cleanup(self):
+        watched=(signal.SIGHUP,signal.SIGTERM,signal.SIGINT);previous={item:signal.getsignal(item) for item in watched};events=[]
+        def cleanup():
+            events.append('cleanup-start');signal.raise_signal(signal.SIGTERM);events.append('cleanup-finished')
+        with self.assertRaisesRegex(install.ActivationInterrupted,'SIGHUP'):
+            with install.activation_guard(cleanup): signal.raise_signal(signal.SIGHUP)
+        self.assertEqual(events,['cleanup-start','cleanup-finished'])
+        with self.assertRaises(KeyboardInterrupt):
+            with install.activation_guard(cleanup): raise KeyboardInterrupt()
+        self.assertEqual(events,['cleanup-start','cleanup-finished']*2)
+        self.assertEqual({item:signal.getsignal(item) for item in watched},previous)
 
 unittest.main()

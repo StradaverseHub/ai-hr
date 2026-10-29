@@ -50,5 +50,19 @@ class RecoveryTests(unittest.TestCase):
             with self.assertRaises(ValueError): recovery.never_started({**properties,key:value},self.ops)
         commands['ExecStart']['data'][0][3]=1
         with self.assertRaisesRegex(ValueError,'already executed'): recovery.never_started(properties,self.ops)
+    def identities(self):
+        identity=SimpleNamespace(pw_name='aihr-import',pw_uid=900,pw_gid=900)
+        groups=[SimpleNamespace(gr_name='aihr-import',gr_gid=900,gr_mem=[])]
+        return identity,[identity],groups,SimpleNamespace(USER='aihr-import',check=install.check)
+    def test_duplicate_uid_or_other_primary_gid_owner_refuses(self):
+        identity,people,groups,ops=self.identities();recovery.validate_identity(identity,people,groups,ops)
+        with self.assertRaisesRegex(ValueError,'UID is not unique'):
+            recovery.validate_identity(identity,people+[SimpleNamespace(pw_name='alias',pw_uid=900,pw_gid=901)],groups,ops)
+        with self.assertRaisesRegex(ValueError,'another primary owner'):
+            recovery.validate_identity(identity,people+[SimpleNamespace(pw_name='other',pw_uid=901,pw_gid=900)],groups,ops)
+    def test_foreign_group_members_aliases_and_worker_supplementary_group_refuse(self):
+        identity,people,groups,ops=self.identities()
+        for bad in [[SimpleNamespace(gr_name='aihr-import',gr_gid=900,gr_mem=['other'])],groups+[SimpleNamespace(gr_name='alias',gr_gid=900,gr_mem=[])],groups+[SimpleNamespace(gr_name='admin',gr_gid=901,gr_mem=['aihr-import'])]]:
+            with self.assertRaises(ValueError): recovery.validate_identity(identity,people,bad,ops)
 
 unittest.main()

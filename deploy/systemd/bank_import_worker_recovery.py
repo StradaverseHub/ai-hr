@@ -37,6 +37,13 @@ def never_started(properties,ops):
     ops.validate_command_proofs(properties.get('_commands'))
     ops.check(all(value==0 for value in properties['_commands']['ExecStart']['data'][0][3:]),'worker has already executed; separate recovery review required')
 
+def validate_identity(identity,people,groups,ops):
+    ops.check(sorted(p.pw_name for p in people if p.pw_uid==identity.pw_uid)==[ops.USER],'worker UID is not unique')
+    ops.check(sorted(p.pw_name for p in people if p.pw_gid==identity.pw_gid)==[ops.USER],'private worker GID has another primary owner')
+    private=[g for g in groups if g.gr_gid==identity.pw_gid]
+    ops.check(len(private)==1 and private[0].gr_name==ops.USER and set(private[0].gr_mem)<={ops.USER},'private worker group has aliases or other members')
+    ops.check(all(g.gr_gid==identity.pw_gid for g in groups if ops.USER in g.gr_mem),'worker has unexpected supplementary group membership')
+
 def recover(argv,fmt,ops):
     parser=argparse.ArgumentParser()
     for name in ('archive','archive-sha256','source','build-id','lock-sha256','package-sha256','env-sha256'): parser.add_argument('--'+name,required=True)
@@ -58,6 +65,7 @@ def recover(argv,fmt,ops):
         for record in ('worker-install-v2.json','worker-install-v2-recovery.json'): ops.check(not (release/record).exists(),'completed installation already recorded')
         identity=pwd.getpwnam(ops.USER)
         ops.check(identity.pw_uid>0 and identity.pw_gid>0 and identity.pw_shell=='/usr/sbin/nologin' and identity.pw_dir=='/nonexistent' and grp.getgrgid(identity.pw_gid).gr_name==ops.USER,'dedicated identity differs')
+        validate_identity(identity,pwd.getpwall(),grp.getgrall(),ops)
         ops.check(set(os.getgrouplist(ops.USER,identity.pw_gid))=={identity.pw_gid},'unexpected supplementary worker groups')
         password=ops.command(['/usr/bin/passwd','--status',ops.USER]).stdout.split();ops.check(len(password)>=2 and password[0]==ops.USER and password[1]=='L','dedicated account is not locked')
         processes=ops.command(['/usr/bin/ps','-u',ops.USER,'-o','pid='],allow_failure=True)
@@ -89,7 +97,7 @@ def recover(argv,fmt,ops):
         ops.check(ops.deployment_state(args.source,args.build_id)==state,'web release changed during continuation checks')
         ops.validate_service(ops.service_properties(),release);never_started(ops.service_properties(),ops)
         activated=False
-        try:
+        with ops.activation_guard(lambda: ops.stop_owned_first_install() if activated else None):
             activated=True;ops.command(['/usr/bin/systemctl','start','aihr-bank-import.service']);pid=None
             for attempt in range(3):
                 time.sleep(4);properties=ops.service_properties();ops.validate_service(properties,release)
@@ -104,7 +112,4 @@ def recover(argv,fmt,ops):
             ops.command(['/usr/bin/systemctl','enable','aihr-bank-import.service'])
             record={'kind':'EXACT_INSTALL_CONTINUATION','source':args.source,'webBuildId':args.build_id,'archiveSha256':args.archive_sha256,'manifestSha256':fmt.digest(fmt.canonical(manifest)),'selectedEnvironmentSha256':hashlib.sha256(expected_env).hexdigest(),'unitSha256':hashlib.sha256(unit).hexdigest(),'workerPid':pid,'serviceStable':True,'journeyVerified':False}
             ops.write_new(release/'worker-install-v2-recovery.json',(json.dumps(record,sort_keys=True)+'\n').encode(),0o444);print(json.dumps(record))
-        except Exception:
-            if activated: ops.stop_owned_first_install()
-            raise
     finally: os.close(lock_fd)
