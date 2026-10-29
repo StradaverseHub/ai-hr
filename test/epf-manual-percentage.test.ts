@@ -5,6 +5,7 @@ import {setCompensation} from '../core/comp';
 import {createBatch,generatePayslips} from '../core/payroll';
 import {getStatutoryProfileMY,setStatutoryProfileMY,InvalidEpfElectionError} from '../localization/my/statutory';
 import {mapEpfUiMode} from '../lib/epf-mode-map';
+import {clientPackFor} from '../localization/registry.client';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {payslip} from '../db/schema';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -27,6 +28,27 @@ describe('5e204d56 manual percentage persistence and payroll',()=>{
   const rows=await owner.db.select().from(payslip).where(eq(payslip.batchId,batchId)).orderBy(payslip.id);
   expect(rows).toHaveLength(1);
   expect(rows[0].statutory).toMatchObject({epfMode:'manual_percentage',epfEmployee:330,epfEmployer:390});
+ });
+ it.each(['14','11','14.5','14.01'])('d670e4d6 keeps %s stable through persisted percentage save/reopen cycles',async value=>{
+  const a=adminCtx(base),employee=await hire(),display=clientPackFor('MY')!.payroll.epfRateToPercent!;
+  let employeeInput=value,employerInput=value;
+  for(let round=0;round<3;round++){
+   await setStatutoryProfileMY(a,{personId:employee.personId,icNumber:'900101011234',...mapEpfUiMode('manual_percentage',employeeInput,employerInput)});
+   const saved=await getStatutoryProfileMY(a,employee.personId);
+   expect(saved).toMatchObject({epfMode:'manual_percentage',epfEmployeeRate:(Number(value)/100).toFixed(4),epfEmployerRate:(Number(value)/100).toFixed(4)});
+   employeeInput=String(display(saved!.epfEmployeeRate));employerInput=String(display(saved!.epfEmployerRate));
+   expect(employeeInput).toBe(value);expect(employerInput).toBe(value);
+  }
+ });
+ it('d670e4d6 preserves persisted Semi-Auto employee decimals without adding an employer election',async()=>{
+  const a=adminCtx(base),employee=await hire(),display=clientPackFor('MY')!.payroll.epfRateToPercent!;
+  let value='14.01';
+  for(let round=0;round<3;round++){
+   await setStatutoryProfileMY(a,{personId:employee.personId,icNumber:'900101011234',...mapEpfUiMode('semi_auto',value,null)});
+   const saved=await getStatutoryProfileMY(a,employee.personId);
+   expect(saved).toMatchObject({epfMode:'voluntary_excess',epfEmployeeRate:'0.1401',epfEmployerRate:null});
+   value=String(display(saved!.epfEmployeeRate));expect(value).toBe('14.01');
+  }
  });
  it('rejects missing or invalid rates without changing the existing election',async()=>{
   const a=adminCtx(base),employee=await hire();

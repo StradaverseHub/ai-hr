@@ -405,9 +405,8 @@ function settingKilled(key: string): boolean {
  * So the fold now DROPS a `source='customer'` row on a `platform`-scoped key, and the key falls back to
  * the catalog default (or to a platform-written row, which is not dropped). That is defence in depth,
  * not a replacement: the write policy remains the control, and this is the read-side check that makes
- * a policy regression visible instead of silently effective. `payroll.reset_enabled`,
- * `payroll.unlock_enabled` and `audit.hash_chain_enabled` are the keys it protects — reopening a
- * finalised payroll run and the tamper-evidence itself.
+ * a policy regression visible instead of silently effective. It protects `payroll.unlock_enabled`
+ * and `audit.hash_chain_enabled`: reopening closed payroll and the tamper-evidence itself.
  *
  * `setting_definition` is readable by `ai_hr_app` under `setting_definition_read USING (true)` (0313),
  * and `tenant_setting.key` is a FK onto it, so the INNER join can never drop a legitimate row.

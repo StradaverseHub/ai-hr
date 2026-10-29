@@ -25,7 +25,7 @@ describe('unregistered OpenRouter request boundary', () => {
     if (assistant.role !== 'assistant') throw new Error('Fictional assistant fixture missing');
     assistant.providerState = { provider: 'anthropic', blocks: ['fictional-opaque-state'] };
     const c = config(), body = JSON.parse(buildOpenRouterRequest({ model: c.model, routing: c.routing }, input));
-    expect(body).toMatchObject({ stream: false, max_completion_tokens: 2048, parallel_tool_calls: false,
+    expect(body).toMatchObject({ stream: false, max_completion_tokens: 2048,
       provider: { only: ['openai'], order: ['openai'], allow_fallbacks: false,
         require_parameters: true, data_collection: 'deny', zdr: true } });
     expect(body.messages[2].tool_calls[0].function.arguments).toBe('{}');
@@ -34,7 +34,7 @@ describe('unregistered OpenRouter request boundary', () => {
     expect(body.plugins).toContainEqual({id:'fusion',enabled:false});
     expect(body.plugins.every((plugin:{enabled:boolean})=>plugin.enabled===false)).toBe(true);
     expect(body.plugins.some((plugin:{id:string})=>['alignment','armor','moderation'].includes(plugin.id))).toBe(false);
-    for (const key of ['apiKey', 'user', 'session_id', 'cacheKey', 'providerState', 'max_tokens']) expect(body).not.toHaveProperty(key);
+    for (const key of ['apiKey', 'user', 'session_id', 'cacheKey', 'providerState', 'max_tokens', 'parallel_tool_calls']) expect(body).not.toHaveProperty(key);
     expect(JSON.stringify(body)).not.toContain('fictional-opaque-state');
     expect(JSON.stringify(body)).not.toContain('fictional-cache-identity');
   });

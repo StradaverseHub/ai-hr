@@ -7375,7 +7375,8 @@
             "employerBorne": "由雇主承担",
             "gross": "应发工资",
             "totalDeductions": "扣除合计",
-            "net": "实发工资"
+            "net": "实发工资",
+            "totalOvertime": "加班费合计"
           },
           "subject": {
             "epf": "EPF",
@@ -7385,7 +7386,8 @@
             "tax": "所得税",
             "yes": "Y",
             "no": "N"
-          }
+          },
+          "overtimeIncludedInGross": "已计入应发工资"
         },
         "panel": {
           "heading": "选择员工",
@@ -7464,6 +7466,18 @@
         "title": "工资单信息设置",
         "desc": "选择此公司工资单显示的任职信息。",
         "cta": "加载"
+      },
+      "corrections": {
+        "title": "薪资更正控制",
+        "label": "允许重置薪资和移除员工薪资",
+        "description": "在已计算但尚未发布的批次中显示“重置薪资”和“移除员工薪资”。关闭此设置也会阻止这些操作。现有的薪资权限和检查仍然适用。",
+        "scope": "适用于此租户的所有公司。保存此设置不会更改任何薪资结果。",
+        "readOnly": "只有集团管理员可以更改此设置。",
+        "save": "保存更正设置",
+        "saving": "正在保存…",
+        "saved": "薪资更正设置已保存。",
+        "invalid": "请选择有效的开启或关闭值。",
+        "failed": "无法保存设置。请重试。"
       }
     },
     "historyImport": {
@@ -8201,7 +8215,8 @@
       "fileError": {
         "emptyFile": "该文件没有数据行。",
         "tooManyRows": "该文件超过 2,000 行。请拆分后分批导入。",
-        "missingColumns": "该文件缺少必填列。请下载模板并保持其标题不变。"
+        "missingColumns": "该文件缺少必填列。请下载模板并保持其标题不变。",
+        "individualImportMoved": "请重新加载页面并使用当前的个人交易导入功能，以记录每个批次及各行结果。此旧表单未导入任何交易。"
       },
       "reason": {
         "employeeUnknown": "员工编号 {value} 不存在",
@@ -8236,11 +8251,17 @@
         "duplicateInRun": "该薪资批次中该员工已有 {code} {amount}",
         "duplicateInFile": "本文件第 {row} 行已有该员工同一金额的 {code}",
         "duplicateImported": "本文件的这一行已经导入过了",
-        "runMissingForCycle": "{period} 没有处于开启状态的{cycle}薪资批次 — 请先创建再导入"
+        "runMissingForCycle": "{period} 没有处于开启状态的{cycle}薪资批次 — 请先创建再导入",
+        "dailyItemUnsupported": "此薪资项目不支持根据数量计算金额的逐日输入。",
+        "inputTypeInvalid": "输入类型必须是受支持的手工输入单位，并符合薪资项目规则。",
+        "cycleAmbiguous": "员工公司的薪资周期缺失或不明确。请选择准确的周期代码或名称。",
+        "runAmbiguous": "该周期和月份存在多个可修改的薪资批次，请先解决歧义。",
+        "previewChanged": "预览后薪资项目或计算金额已变更。请重新验证新导入后再确认。"
       },
       "warning": {
         "runAlreadyProcessed": "{period} 的薪资批次已经生成过工资单。此行会被加入，批次将标记为需重新处理 — 在你重新处理之前它不会被发放。",
-        "bonusRunExists": "本月存在奖金批次，而 {code} 正被送往工资批次。在“发薪周期”列填写 “bonus” 可将其送往奖金批次。"
+        "bonusRunExists": "本月存在奖金批次，而 {code} 正被送往工资批次。在“发薪周期”列填写 “bonus” 可将其送往奖金批次。",
+        "employeeNameMismatch": "所填员工姓名与员工编号不符，将以员工编号为准。"
       }
     },
     "borang8a": {
@@ -9435,6 +9456,79 @@
       "acknowledge": "我已了解。用我的文件数值替换已勾选的记录。原始数值保留在审计历史中，可从 Log File 撤销覆盖。",
       "confirmOverwrite": "确认覆盖并导入",
       "importNewOnly": "仅导入新记录"
+    },
+    "individualImport": {
+      "open": "导入 Excel",
+      "log": "导入日志",
+      "logHint": "查看个人交易导入批次及各行的原始处理结果。",
+      "back": "个人交易",
+      "close": "关闭",
+      "workflow": "下载对应模板，验证文件，检查各行，然后确认有效交易。",
+      "choose": "1. 选择输入方式和文件",
+      "method": "输入方式",
+      "monthly": "每月总额",
+      "daily": "逐日输入",
+      "monthlyTemplate": "下载月度模板",
+      "dailyTemplate": "下载逐日模板",
+      "dailyHint": "逐日导入仅适用于支持逐日输入且根据数量计算金额的薪资项目。",
+      "file": "文件",
+      "working": "处理中…",
+      "validate": "验证文件",
+      "preview": "2. 预览并确认",
+      "results": "导入结果",
+      "details": "查看详情",
+      "previewCounts": "共 {total} 行 · {valid} 行有效 · {invalid} 行无效",
+      "resultCounts": "已导入 {written} 行 · 失败 {failed} 行 · 未导入 {invalid} 行",
+      "row": "Excel 行号",
+      "employee": "员工",
+      "payItem": "薪资项目",
+      "effectiveDate": "生效日期",
+      "amount": "金额",
+      "outcome": "结果",
+      "confirmHint": "仅导入有效行；无效行不会创建交易。请先检查所有警告。",
+      "confirm": "确认导入",
+      "reference": "批次编号",
+      "time": "日期和时间",
+      "user": "用户编号",
+      "validated": "已验证",
+      "completed": "已完成",
+      "reverted": "已撤销",
+      "empty": "所选公司范围内没有导入记录。",
+      "revert": "撤销导入",
+      "revertWarning": "撤销批次 {id}（{file}）？仅撤销该批次创建的 {count} 条交易，保留原始导入日志。",
+      "revertControls": "若记录已变更或当前薪资控制不允许撤销，将拒绝整个操作。手工录入和其他导入不受影响。",
+      "revertConfirm": "我确认撤销所列导入批次。",
+      "processedConfirm": "若现有薪资控制允许修改已处理交易，我确认需要重新计算薪资。",
+      "revertedAt": "撤销时间",
+      "month": "薪资月份",
+      "cycle": "薪资周期",
+      "quantity": "数量",
+      "remark": "备注",
+      "imported": "已导入",
+      "invalid": "无效",
+      "failed": "操作未完成，请重试。",
+      "revertFailed": "无法撤销该批次。请检查记录是否变更或薪资批次是否已关闭。",
+      "importAccessDenied": "当前公司权限范围内无法访问此导入。",
+      "operationChanged": "上传内容已变更，请重新选择文件并作为新导入进行验证。",
+      "templateMismatch": "列标题与所选输入方式不符。请使用对应模板，且不要修改标题。",
+      "fileTooLarge": "文件过大，请拆分为较小的文件。",
+      "emptyFile": "数据工作表中没有数据行。",
+      "tooManyRows": "每个文件最多可包含 2,000 行。",
+      "invalidFormat": "请选择 Excel .xlsx 文件。",
+      "revertUnavailable": "此批次没有可撤销的已完成导入记录。",
+      "importRowsChanged": "导入记录已变更或删除，未撤销任何记录。",
+      "confirmProcessedRevert": "请先确认撤销后需要重新计算已处理薪资。",
+      "instructions": "只填写第一个工作表，不要修改列标题。Month with Year 使用 YYYY-MM，Effective Date 使用 YYYY-MM-DD；薪资月份与生效日期独立。Employee ID 和 Pay Item 使用参考表中的代码。Pay Cycle 使用员工所属公司的有效周期代码或完整名称；仅在恰好存在一个有效周期时可留空。员工姓名可选。月度 Input Type 使用 amount、qty、hours、days 或 units，并须符合薪资项目规则。公式金额由系统计算。逐日项目必须按数量计算，每个生效日期保留为独立交易。现有重复检查及薪资控制继续适用。",
+      "downloadErrors": "下载行错误",
+      "older": "更早的导入",
+      "audit": "导入及撤销历史",
+      "event": {
+        "validated": "已验证",
+        "confirmed": "已确认导入",
+        "reverted": "已撤销导入",
+        "revert-refused": "撤销被拒绝"
+      },
+      "inputType": "输入类型"
     }
   },
   "admin": {
@@ -20906,8 +21000,8 @@
     "effectiveFrom": "Salary effective date",
     "joinedBefore": "Joined before",
     "confirmedBy": "Confirmed by",
-    "blockedFrom": "Pay-change exclusion starts",
-    "blockedTo": "Pay-change exclusion ends",
+    "blockedFrom": "排除开始日期",
+    "blockedTo": "排除结束日期",
     "seniorGrades": "Senior-plan grades (comma separated)",
     "rangesHelp": "Salary ranges: grade, minimum RM, midpoint RM, maximum RM (one grade per line)",
     "patActual": "Actual PAT (RM)",
@@ -21089,7 +21183,10 @@
       "retry": "重试",
       "conflict": "{unit} 在 {year} 年已纳入 {name}。",
       "excludedCompany": "年已排除公司",
-      "companyArchived": "已归档"
+      "companyArchived": "已归档",
+      "selectedSummary": "已选公司及业务单位",
+      "membershipChanged": "组织归属已变更，请检查此选择。",
+      "noMembership": "人员管理中没有当前业务单位归属。"
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",
@@ -21415,7 +21512,129 @@
         "lumpReason": "Budget-cap exemption reason (blank = caps apply)",
         "payWindowKeep": "Eligibility and effective dates"
       }
-    }
+    },
+    "governance": {
+      "title": "单位预算输入",
+      "unavailable": "完成所需数据库更新后即可使用单位输入控件。",
+      "status": {
+        "legacy": "保留原有预算基础，不会自动变更",
+        "not-set": "未设置",
+        "provisional": "暂定（9+3）",
+        "final": "最终（实际）"
+      },
+      "standardPool": "标准奖金预算池",
+      "hPool": "JG H 奖金预算池",
+      "oldNewDifference": "原预算池 {old} → 新预算池 {next}；差额 {difference}",
+      "forecast": "9+3 税后利润预测（MYR）",
+      "actual": "实际税后利润（MYR）",
+      "target": "目标税后利润（MYR）",
+      "targetMonths": "目标奖金月数",
+      "multiplier": "单位倍数调整",
+      "branchRatings": "PPCH 分行评级",
+      "chooseRating": "选择评级",
+      "changeReason": "本次变更原因",
+      "saveInputs": "保存单位输入",
+      "patHelp": "实际税后利润可用时使用实际值；此前使用预测值计算暂定预算池。零或占位值显示为未设置。",
+      "adoptLegacy": "采用单位输入前，请先核对已保存的预算基础。保存将明确仅对本次评审采用这些数据。",
+      "exemption": "预算上限豁免",
+      "confirmed": "已确认并锁定",
+      "awaitingCheck": "等待独立复核",
+      "independentConfirm": "我已核对凭证，确认",
+      "proposeExemption": "提交豁免以供第二人审批",
+      "seniorTitle": "高管计划：线下决策",
+      "seniorHelp": "选定的 JG 21–23 成员不计入任何标准预算池或一次性补贴。另一位集团薪酬人员须复核成员选择与最终金额。",
+      "seniorTotals": "高管计划（预算池外）：{count} 人，加薪 {increment}，奖金 {bonus}",
+      "selection": "高管成员确认",
+      "noSenior": "尚未选择高管计划成员。",
+      "awaitingOffline": "等待线下决策",
+      "newBasic": "新基本工资（MYR）",
+      "bonus": "奖金金额（MYR）",
+      "currentBasic": "当前基本工资",
+      "chooseAmountInput": "请输入加薪百分比或新基本工资，不可同时填写。",
+      "increment": "加薪百分比",
+      "reference": "线下审批编号",
+      "approvalDate": "审批日期",
+      "evidence": "支持凭证（PDF、PNG 或 JPEG；每份不超过 10 MB）",
+      "proposeAward": "提交金额以供第二人审批",
+      "history": "单位决策记录",
+      "auditValues": "查看变更前后数值",
+      "seniorTag": "高管计划",
+      "handledSeparately": "高管计划：单独处理",
+      "before": "变更前",
+      "after": "变更后",
+      "errors": {
+        "invalid": "请核对输入值及支持的小数精度后重试。",
+        "independent": "必须由另一位集团薪酬用户独立核对并确认此决定。",
+        "stale": "评审或员工记录已变更。请重新加载、核对当前数值后再次提交。",
+        "salary": "新基本工资不得低于当前基本工资。",
+        "evidence": "请使用 PDF、PNG 或 JPEG 凭证，每份及总计均不得超过 10 MB。",
+        "authority": "您当前的角色无权执行此操作或查看此记录。",
+        "budget": "继续前请核对税后利润、预算池状态、分行评级及倍数要求。",
+        "decision": "请完成所需的高管成员选择或线下决策，并取得独立确认。",
+        "locked": "请先将评审退回草稿，再修改已锁定的输入。"
+      },
+      "handpick": "选择高管计划成员",
+      "reviewer": "集团薪酬复核人",
+      "events": {
+        "inputs": "单位输入已更新",
+        "selectionProposed": "已提交高管成员选择",
+        "selectionConfirmed": "高管成员选择已确认",
+        "exemptionProposed": "已提交豁免申请",
+        "exemptionConfirmed": "豁免已确认",
+        "awardProposed": "已提交高管金额",
+        "awardConfirmed": "高管金额已确认"
+      }
+    },
+    "policyGrids": {
+      "ranges": "薪资范围（MYR）",
+      "bonusMatrix": "各职级奖金月数",
+      "branchFactors": "分支系数",
+      "import": "从 Excel 导入",
+      "copy": "复制上一年的配置",
+      "columns": "Excel 列：{columns}",
+      "fileError": "请使用不超过 2 MB 的 .xlsx 文件，并按列顺序填写。",
+      "choosePrevious": "选择 {year} 年的配置",
+      "version": "版本 {version}",
+      "noPrevious": "没有可访问的上一年配置。",
+      "cancel": "取消",
+      "preview": "预览拟用数值",
+      "proposalInvalid": "应用后请修正无效单元格；修正前无法保存。",
+      "proposalHelp": "应用到草稿前请检查这些数值。",
+      "apply": "应用到草稿",
+      "grade": "职级",
+      "segment": "业务分段",
+      "minimum": "最低值",
+      "midpoint": "中点值",
+      "maximum": "最高值",
+      "noRange": "无范围",
+      "invalidCell": "请填写有效数值：完整职级、严格递增、UA = 0，并符合小数精度要求。",
+      "remove": "移除",
+      "addSegment": "添加分段"
+    },
+    "eligibilitySummary": {
+      "title": "资格评估依据",
+      "activeAsOf": "在此日期仍在职",
+      "joinedBefore": "入职早于",
+      "confirmedBy": "确认日期不晚于",
+      "effectiveFrom": "薪资生效日期",
+      "salaryWindow": "加薪排除期：基本薪资在 {from}–{to} 之间发生变更。奖金仍按其独立资格规则处理。",
+      "bonus": "奖金最低评级：{rating}。",
+      "notice": "排除通知期内员工。",
+      "er": "排除有 ER 个案的员工。",
+      "senior": "Senior 计划（JG 21–23）：在评审中逐人选择，最终奖励单独处理。",
+      "seniorLegacy": "Senior 计划成员按已保存的旧职级规则确定。",
+      "legacyDefaults": "此版本早于明确资格设置，仍适用原快照规则。保存新版本前请检查所示输入。",
+      "unavailable": "资格详情暂不可用，请刷新配置后继续。",
+      "minimumRating": "奖金最低评级",
+      "legacySnapshot": "旧规则：按已保存来源快照中的状态",
+      "legacyMinimum": "旧规则：未保存明确的奖金最低评级。"
+    },
+    "salaryExclusion": {
+      "label": "加薪排除期 — 基本薪资变更期间",
+      "help": "不计入加薪及加薪预算基数。仍可获得按调整后基本薪资计算的奖金，并计入奖金预算。基本薪资未变的平级调动不予排除。"
+    },
+    "unitInputsHelp": "单位预算、PAT、倍数、分支评级及豁免在评审中单独维护。",
+    "unitInputsLink": "打开单位输入"
   },
   "identityEmail": {
     "title": "邮件发送",
@@ -29427,7 +29646,8 @@
       "bonusReference": "奖金月数参考",
       "bonusByGrade": "按职级和评级（{count, plural, other {# 个职级}}）",
       "exemption": "预算上限豁免",
-      "noExemption": "无（适用上限）"
+      "noExemption": "无（适用上限）",
+      "unitInputs": "各单位预算、倍数和豁免在各自评审中单独设置。"
     },
     "actions": {
       "editDeadlines": "编辑截止日期",

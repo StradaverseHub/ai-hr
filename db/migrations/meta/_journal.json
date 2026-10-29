@@ -3944,6 +3944,27 @@
       "breakpoints": true
     },
     {
+      "idx": 678,
+      "version": "7",
+      "when": 1793330000014,
+      "tag": "0688_payroll_txn_import_attempts",
+      "breakpoints": true
+    },
+    {
+      "idx": 679,
+      "version": "7",
+      "when": 1793330000015,
+      "tag": "0689_rewards_unit_governance",
+      "breakpoints": true
+    },
+    {
+      "idx": 680,
+      "version": "7",
+      "when": 1793330000016,
+      "tag": "0690_rewards_policy_pair_membership",
+      "breakpoints": true
+    },
+    {
       "idx": 684,
       "version": "7",
       "when": 1793330000020,

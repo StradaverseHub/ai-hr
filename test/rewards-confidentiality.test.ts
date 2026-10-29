@@ -1,3 +1,4 @@
+import {initializeRewardGovernanceFixture} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
@@ -48,6 +49,7 @@ describe('Rewards derived confidentiality', () => {
       const [p] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: `${role} reviewer`, primaryEmail: `${role}@confidential.test` }).returning();
       await seat(role, p.id, role);
     }
+    await initializeRewardGovernanceFixture(admin,unitId);
     for (const r of (await view()).rows) await saveRewardEntry(admin, unitId, (await view()).unit.revision, r.id, r.recommendation, { ...r.facts, reviewed: true, talent: 'SCORE', performance: 'ME' });
   });
   afterAll(closeAll);

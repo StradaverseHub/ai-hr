@@ -7375,7 +7375,8 @@
             "employerBorne": "Borne by employer",
             "gross": "Gross pay",
             "totalDeductions": "Total deductions",
-            "net": "Net pay"
+            "net": "Net pay",
+            "totalOvertime": "Total Overtime"
           },
           "subject": {
             "epf": "EPF",
@@ -7385,7 +7386,8 @@
             "tax": "Tax",
             "yes": "Y",
             "no": "N"
-          }
+          },
+          "overtimeIncludedInGross": "Already included in gross pay"
         },
         "panel": {
           "heading": "Select an employee",
@@ -7464,6 +7466,18 @@
         "title": "Payslip Information Setup",
         "desc": "Choose which employment fields appear on this company’s payslips.",
         "cta": "Load"
+      },
+      "corrections": {
+        "title": "Payroll correction controls",
+        "label": "Allow payroll reset and employee removal",
+        "description": "Show Reset payroll and Remove Employee Payroll on calculated, unpublished runs. Turning this off also blocks those actions. Existing payroll permissions and checks still apply.",
+        "scope": "Applies to all companies in this tenant. Saving this setting does not change any payroll results.",
+        "readOnly": "Only group admins can change this setting.",
+        "save": "Save correction setting",
+        "saving": "Saving…",
+        "saved": "Payroll correction setting saved.",
+        "invalid": "Choose a valid on or off value.",
+        "failed": "Could not save the setting. Try again."
       }
     },
     "historyImport": {
@@ -8201,7 +8215,8 @@
       "fileError": {
         "emptyFile": "That file has no data rows.",
         "tooManyRows": "That file has more than 2,000 rows. Split it and import in parts.",
-        "missingColumns": "That file is missing required columns. Download the template and use its headings unchanged."
+        "missingColumns": "That file is missing required columns. Download the template and use its headings unchanged.",
+        "individualImportMoved": "Reload this page and use the current Individual Transaction import. It records each import batch and its row results. No transactions were imported by this older form."
       },
       "reason": {
         "employeeUnknown": "Employee ID {value} does not exist",
@@ -8236,11 +8251,17 @@
         "duplicateInRun": "The pay run already has {code} {amount} for this employee — it is already there",
         "duplicateInFile": "Row {row} of this file already has {code} for this employee at the same amount",
         "duplicateImported": "This row of this file has already been imported",
-        "runMissingForCycle": "There is no open {cycle} pay run for {period} — create it first, then import"
+        "runMissingForCycle": "There is no open {cycle} pay run for {period} — create it first, then import",
+        "dailyItemUnsupported": "This pay item does not support a quantity-calculated daily entry.",
+        "inputTypeInvalid": "Input Type must match a supported manual-entry unit and the pay item rule.",
+        "cycleAmbiguous": "Pay Cycle is missing or ambiguous for this employee company. Choose its exact configured cycle code or name.",
+        "runAmbiguous": "More than one writable run matches this cycle and month. Resolve the run ambiguity before importing.",
+        "previewChanged": "The pay item or calculated amount changed after preview. Validate a new import before confirming."
       },
       "warning": {
         "runAlreadyProcessed": "The {period} pay run has already produced payslips. This row will be added and the run marked for reprocessing — it is not paid until you reprocess it.",
-        "bonusRunExists": "This month has a bonus run, and {code} is going to the salary run. Put “bonus” in the Payroll Cycle column to send it to the bonus run instead."
+        "bonusRunExists": "This month has a bonus run, and {code} is going to the salary run. Put “bonus” in the Payroll Cycle column to send it to the bonus run instead.",
+        "employeeNameMismatch": "The supplied Employee Name differs from the employee identified by Employee ID. Employee ID will be used."
       }
     },
     "borang8a": {
@@ -9435,6 +9456,79 @@
       "acknowledge": "I understand. Replace the ticked records with my file's values. The original values stay in the audit history and the overwrite can be undone from Log File.",
       "confirmOverwrite": "Confirm overwrite and import",
       "importNewOnly": "Import new records only"
+    },
+    "individualImport": {
+      "open": "Import Excel",
+      "log": "Import log",
+      "logHint": "Review individual transaction imports and their original row results.",
+      "back": "Individual Transaction",
+      "close": "Close",
+      "workflow": "Download the matching template, validate the file, review the rows and confirm the valid transactions.",
+      "choose": "1. Choose input method and file",
+      "method": "Input method",
+      "monthly": "One Total for the Month",
+      "daily": "Day by Day",
+      "monthlyTemplate": "Download monthly template",
+      "dailyTemplate": "Download day-by-day template",
+      "dailyHint": "Daily imports require a pay item that supports daily entry and calculates its amount from quantity.",
+      "file": "File",
+      "working": "Working…",
+      "validate": "Validate file",
+      "preview": "2. Preview and confirm",
+      "results": "Import results",
+      "details": "View Details",
+      "previewCounts": "{total} rows · {valid} valid · {invalid} invalid",
+      "resultCounts": "{written} imported · {failed} failed · {invalid} not imported",
+      "row": "Excel row",
+      "employee": "Employee",
+      "payItem": "Pay item",
+      "effectiveDate": "Effective date",
+      "amount": "Amount",
+      "outcome": "Outcome",
+      "confirmHint": "Valid rows will be imported. Invalid rows will not create transactions. Review any warnings before confirming.",
+      "confirm": "Confirm import",
+      "reference": "Batch reference",
+      "time": "Date and time",
+      "user": "User reference",
+      "validated": "Validated",
+      "completed": "Completed",
+      "reverted": "Reverted",
+      "empty": "No imports in the selected company scope.",
+      "revert": "Revert Import",
+      "revertWarning": "Revert batch {id} ({file})? Only its {count} imported transactions will be reversed. The original import log will remain.",
+      "revertControls": "Reversal is refused if any imported record changed or current payroll controls prohibit it. Manual entries and other imports are unaffected.",
+      "revertConfirm": "I confirm reversal of the identified import batch.",
+      "processedConfirm": "If existing payroll controls allow changes to processed entries, I acknowledge that payroll recalculation will be required.",
+      "revertedAt": "Reverted at",
+      "month": "Payroll month",
+      "cycle": "Pay cycle",
+      "quantity": "Quantity",
+      "remark": "Remark",
+      "imported": "Imported",
+      "invalid": "Invalid",
+      "failed": "The operation could not be completed. Please try again.",
+      "revertFailed": "The batch could not be reversed. Check for changed records or closed payroll runs.",
+      "importAccessDenied": "This import is not available in your current company scope.",
+      "operationChanged": "The upload changed. Select the file again and validate it as a new import.",
+      "templateMismatch": "The column headings do not match the selected input method. Use its matching template without changing the headings.",
+      "fileTooLarge": "The file is too large. Split it into smaller uploads.",
+      "emptyFile": "The data worksheet contains no rows.",
+      "tooManyRows": "Use no more than 2,000 rows per file.",
+      "invalidFormat": "Choose an Excel .xlsx file.",
+      "revertUnavailable": "This batch has no completed imported records to reverse.",
+      "importRowsChanged": "An imported record changed or was removed. Nothing was reversed.",
+      "confirmProcessedRevert": "Confirm that processed payroll will need recalculation before reversing this batch.",
+      "instructions": "Fill in the first worksheet only. Keep the column headings unchanged. Month with Year uses YYYY-MM; Effective Date uses YYYY-MM-DD and is independent of the processing month. Employee ID and Pay Item use the codes in the reference sheets. Pay Cycle accepts an active configured cycle code or exact name from the employee company; leave blank only when there is exactly one valid cycle. Employee Name is optional. Monthly Input Type accepts amount, qty, hours, days or units and must match the pay item rule. Formula-owned amounts are calculated by the system. Daily rows require a quantity-based daily rule; each effective date remains a separate transaction. Existing duplicate and payroll controls apply.",
+      "downloadErrors": "Download row errors",
+      "older": "Older imports",
+      "audit": "Import and reversal history",
+      "event": {
+        "validated": "Validated",
+        "confirmed": "Import confirmed",
+        "reverted": "Import reverted",
+        "revert-refused": "Reversal refused"
+      },
+      "inputType": "Input type"
     }
   },
   "admin": {
@@ -20906,8 +21000,8 @@
     "effectiveFrom": "Salary effective date",
     "joinedBefore": "Joined before",
     "confirmedBy": "Confirmed by",
-    "blockedFrom": "Pay-change exclusion starts",
-    "blockedTo": "Pay-change exclusion ends",
+    "blockedFrom": "Exclusion start date",
+    "blockedTo": "Exclusion end date",
     "seniorGrades": "Senior-plan grades (comma separated)",
     "rangesHelp": "Salary ranges: grade, minimum RM, midpoint RM, maximum RM (one grade per line)",
     "patActual": "Actual PAT (RM)",
@@ -21089,7 +21183,10 @@
       "retry": "Try again",
       "conflict": "{unit} is already in {name} for {year}.",
       "excludedCompany": "Excluded for",
-      "companyArchived": "Archived"
+      "companyArchived": "Archived",
+      "selectedSummary": "Selected companies and business units",
+      "membershipChanged": "Organisation membership changed; review this selection.",
+      "noMembership": "No current business unit assignment in People Management."
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",
@@ -21415,7 +21512,129 @@
         "lumpReason": "Budget-cap exemption reason (blank = caps apply)",
         "payWindowKeep": "Eligibility and effective dates"
       }
-    }
+    },
+    "governance": {
+      "title": "Unit budget inputs",
+      "unavailable": "Unit input controls will be available after the required database update.",
+      "status": {
+        "legacy": "Saved legacy budget basis — not automatically changed",
+        "not-set": "Not set",
+        "provisional": "Provisional (9+3)",
+        "final": "Final (Actual)"
+      },
+      "standardPool": "Standard bonus pool",
+      "hPool": "JG H bonus pool",
+      "oldNewDifference": "Old pool {old} → new pool {next}; difference {difference}",
+      "forecast": "PAT forecast 9+3 (MYR)",
+      "actual": "Actual PAT (MYR)",
+      "target": "Target PAT (MYR)",
+      "targetMonths": "Target bonus months",
+      "multiplier": "Unit multiplier override",
+      "branchRatings": "PPCH branch ratings",
+      "chooseRating": "Choose a rating",
+      "changeReason": "Reason for this change",
+      "saveInputs": "Save unit inputs",
+      "patHelp": "Use actual PAT when available. Until then the forecast gives a provisional pool. Zero or placeholder inputs show Not set.",
+      "adoptLegacy": "Review the saved basis before adopting unit inputs. Saving explicitly adopts these figures for this review only.",
+      "exemption": "Budget-cap exemption",
+      "confirmed": "Confirmed and locked",
+      "awaitingCheck": "Awaiting independent check",
+      "independentConfirm": "I checked the evidence — confirm",
+      "proposeExemption": "Submit exemption for second approval",
+      "seniorTitle": "Senior plan — offline decisions",
+      "seniorHelp": "Selected JG 21–23 members remain outside all standard pools and lump-sum tokens. A second Group Rewards user checks both selection and final amounts.",
+      "seniorTotals": "Senior plan (outside budget pools): {count} people, {increment} increment, {bonus} bonus",
+      "selection": "Senior membership confirmation",
+      "noSenior": "No Senior plan members selected.",
+      "awaitingOffline": "Awaiting offline decision",
+      "newBasic": "New basic salary (MYR)",
+      "bonus": "Bonus amount (MYR)",
+      "currentBasic": "Current basic salary",
+      "chooseAmountInput": "Enter either increment percentage or new basic salary, not both.",
+      "increment": "Increment %",
+      "reference": "Offline approval reference",
+      "approvalDate": "Approval date",
+      "evidence": "Supporting evidence (PDF, PNG or JPEG; up to 10 MB each)",
+      "proposeAward": "Submit amounts for second approval",
+      "history": "Unit decision history",
+      "auditValues": "Inspect before and after values",
+      "seniorTag": "Senior plan",
+      "handledSeparately": "Senior plan — handled separately",
+      "before": "Before",
+      "after": "After",
+      "errors": {
+        "invalid": "Check the entered values and supported precision, then try again.",
+        "independent": "A different Group Rewards user must check and confirm this decision.",
+        "stale": "This review or employee record changed. Reload, review the current values and submit again.",
+        "salary": "The new basic salary must not be lower than the current basic salary.",
+        "evidence": "Use supported PDF, PNG or JPEG evidence, at most 10 MB per file and 10 MB in total.",
+        "authority": "Your current role does not allow this operation or record.",
+        "budget": "Review the PAT, pool status, branch ratings and multiplier requirements before continuing.",
+        "decision": "Complete the required Senior membership or offline decision and obtain independent confirmation.",
+        "locked": "Return the review to draft before changing its locked inputs."
+      },
+      "handpick": "Handpick Senior plan members",
+      "reviewer": "Group Rewards reviewer",
+      "events": {
+        "inputs": "Unit inputs updated",
+        "selectionProposed": "Senior selection proposed",
+        "selectionConfirmed": "Senior selection confirmed",
+        "exemptionProposed": "Exemption proposed",
+        "exemptionConfirmed": "Exemption confirmed",
+        "awardProposed": "Senior amounts proposed",
+        "awardConfirmed": "Senior amounts confirmed"
+      }
+    },
+    "policyGrids": {
+      "ranges": "Salary ranges (MYR)",
+      "bonusMatrix": "Bonus months by grade",
+      "branchFactors": "Branch factors",
+      "import": "Import from Excel",
+      "copy": "Copy from last year’s configuration",
+      "columns": "Excel columns: {columns}",
+      "fileError": "Use an .xlsx file up to 2 MB with the listed columns in order.",
+      "choosePrevious": "Choose a configuration from {year}",
+      "version": "Version {version}",
+      "noPrevious": "No authorised configuration is available for the previous year.",
+      "cancel": "Cancel",
+      "preview": "Preview proposed values",
+      "proposalInvalid": "Correct invalid cells after applying; saving stays blocked.",
+      "proposalHelp": "Review these values before applying them to the draft.",
+      "apply": "Apply to draft",
+      "grade": "Grade",
+      "segment": "Segment",
+      "minimum": "Minimum",
+      "midpoint": "Midpoint",
+      "maximum": "Maximum",
+      "noRange": "No range",
+      "invalidCell": "Enter valid values: complete grades, strict order, UA = 0 and permitted decimal precision.",
+      "remove": "Remove",
+      "addSegment": "Add segment"
+    },
+    "eligibilitySummary": {
+      "title": "Eligibility is judged against",
+      "activeAsOf": "Active as of",
+      "joinedBefore": "Joined before",
+      "confirmedBy": "Confirmed by",
+      "effectiveFrom": "Salary effective from",
+      "salaryWindow": "Salary increase exclusion: basic salary changed {from}–{to}. Bonus remains subject to its own eligibility rules.",
+      "bonus": "Bonus: minimum rating {rating}.",
+      "notice": "Exclude employees serving notice.",
+      "er": "Exclude employees with an ER case.",
+      "senior": "Senior plan (JG 21–23): handpicked in the review; final awards are handled separately.",
+      "seniorLegacy": "Senior plan membership follows the saved legacy grade rule.",
+      "legacyDefaults": "This version predates explicit eligibility settings. Its existing snapshot rules remain in force; review the displayed inputs before saving a new version.",
+      "unavailable": "Eligibility details are unavailable. Refresh the configuration before continuing.",
+      "minimumRating": "Minimum bonus rating",
+      "legacySnapshot": "Legacy: status at the saved source snapshot",
+      "legacyMinimum": "Legacy: no explicit minimum bonus rating is stored."
+    },
+    "salaryExclusion": {
+      "label": "Salary increase exclusion – basic salary changed between",
+      "help": "Excluded from the salary increase and from the salary increase pool base. Still eligible for bonus, calculated on the adjusted basic salary, and counted in the bonus pool. Lateral transfers with no change to basic salary are not excluded."
+    },
+    "unitInputsHelp": "Unit budgets, PAT, multipliers, branch ratings and exemptions are maintained separately in the review.",
+    "unitInputsLink": "Open unit inputs"
   },
   "identityEmail": {
     "title": "Email delivery",
@@ -29427,7 +29646,8 @@
       "bonusReference": "Bonus months reference",
       "bonusByGrade": "By grade and rating ({count, plural, one {# grade} other {# grades}})",
       "exemption": "Budget-cap exemption",
-      "noExemption": "None (caps apply)"
+      "noExemption": "None (caps apply)",
+      "unitInputs": "Unit budgets, multipliers and exemptions are set separately in each review."
     },
     "actions": {
       "editDeadlines": "Edit deadlines",

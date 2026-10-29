@@ -1,3 +1,4 @@
+import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq, isNull } from 'drizzle-orm';
@@ -41,12 +42,14 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     actors.gr = admin; actors.payroll = admin;
     await setRewardMember(admin, unitId, (await view()).unit.revision, admin.userId!, 'payroll');
     const v = await view();
-    await saveRewardPolicy(admin, unitId, v.unit.revision, { ...v.unit.policy, effectiveFrom: today, patActual: 100, patTarget: 100, ranges: { '12': [300000, 500000, 700000] } });
+    await configureRewardFixture(admin, unitId, v.unit.revision, { ...v.unit.policy, effectiveFrom: today, patActual: 100, patTarget: 100, targetMonthsBp: 20000, ranges: { '12': [300000, 500000, 700000] } });
     const v2 = await view();
     await saveRewardEntry(admin, unitId, v2.unit.revision, v2.rows[0].id, v2.rows[0].recommendation, { ...emptyFacts(), reviewed: true, talent: 'SCORE', performance: 'ME' });
+    await refreshRewardFixtureBudget(admin,unitId);
   });
   afterAll(closeAll);
   async function approve() {
+    await refreshRewardFixtureBudget(admin,unitId);
     const rev = (await view()).unit.revision;
     expect(await decideRewardUnit(actors.bu!, unitId, rev, 'submit', 'Reviewed recommendations')).toBe('bg');
     for (const role of ['bg', 'gr', 'ctro', 'ec'] as const) await decideRewardUnit(actors[role]!, unitId, rev, 'approve', 'Reviewed recommendations');
@@ -69,6 +72,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     expect((await pendingRewardReviews(actors.bg!, [b.companyId])).find(row => row.id === unitId)?.name).toBe(expected);
   });
   it('previews and saves named membership without exposing pay or changing recommendations', async () => {
+    const original=await view();await owner.db.update(schema.rewardEntry).set({source:{...original.rows[0].source,grade:'21'}}).where(eq(schema.rewardEntry.id,original.rows[0].id));
     const before = await view();
     const selection = { employmentIds: [employmentId], adoptLegacy: false };
     const preview = await previewRewardSeniorMembership(admin, unitId, before.unit.revision, selection);
@@ -80,7 +84,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     expect(reopened.rows).toMatchObject([{ employmentId, member: true }]);
     const after = await view();
     expect(after.rows[0].bonusEligible).toBe(false);
-    expect(after.rows[0].incrementEligible).toBe(before.rows[0].incrementEligible);
+    expect(before.rows[0].incrementEligible).toBe(true);expect(after.rows[0].incrementEligible).toBe(false);
     expect(after.rows[0].recommendation).toEqual(before.rows[0].recommendation);
     expect(after.rows[0].source).toEqual(before.rows[0].source);
     expect(after.rows[0].facts.reviewed).toBe(false);
@@ -90,6 +94,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     expect((await getRewardSeniorMembership(admin, unitId)).rows[0].member).toBe(false);
   });
   it('refuses duplicate, unavailable, stale and altered-preview selections with no writes', async () => {
+    const original=await view();await owner.db.update(schema.rewardEntry).set({source:{...original.rows[0].source,grade:'21'}}).where(eq(schema.rewardEntry.id,original.rows[0].id));
     const before = await view(), rev = before.unit.revision;
     await expect(previewRewardSeniorMembership(admin, unitId, rev, { employmentIds: [employmentId, employmentId], adoptLegacy: false })).rejects.toThrow(/once/);
     await expect(previewRewardSeniorMembership(admin, unitId, rev, { employmentIds: ['00000000-0000-4000-8000-000000000099'], adoptLegacy: false })).rejects.toThrow(/visible review roster/);
@@ -123,6 +128,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     expect(after.rows[0].facts.reviewed).toBe(entry.facts.reviewed);
   });
   it('refuses BU-only and revoked Group Rewards membership even when a preview was obtained earlier', async () => {
+    const original=await view();await owner.db.update(schema.rewardEntry).set({source:{...original.rows[0].source,grade:'21'}}).where(eq(schema.rewardEntry.id,original.rows[0].id));
     const v = await view();
     await expect(getRewardSeniorMembership(actors.bu!, unitId)).rejects.toThrow(/Group Rewards/);
     await expect(previewRewardSeniorMembership(actors.bu!, unitId, v.unit.revision, { employmentIds: [], adoptLegacy: false })).rejects.toThrow(/Group Rewards/);
