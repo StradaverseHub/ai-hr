@@ -74,7 +74,7 @@ export const AGENT_ACTION_PARITY={
  'knowledge_base.article.create':pending(NO_ADAPTER+' Dedicated store.'),
  'payroll.close':pending(NO_ADAPTER+' Dedicated store; needs a processed payroll batch fixture.'),
  'attendance.correction.request':pending(NO_ADAPTER+' Dedicated store.'),
- 'attendance.overtime.request':pending(NO_ADAPTER+' Generic own store.'),
+ 'attendance.overtime.request':{kind:'probed',screen:OWN_REQUEST},
  'claims.draft.save':pending(NO_ADAPTER+' Module-action store.'),
  'claims.submit':pending(NO_ADAPTER+' Module-action store.'),
  'claims.cancel':{kind:'probed',screen:OWN_REQUEST},
@@ -97,7 +97,7 @@ export const AGENT_ACTION_PARITY={
  * shrink: an entry leaves it when its adapter lands, and no other id may ever be `pending`. */
 export const PARITY_PENDING_CEILING:ReadonlySet<string>=new Set([
  'org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide',
- 'knowledge_base.article.create','payroll.close','attendance.correction.request','attendance.overtime.request',
+ 'knowledge_base.article.create','payroll.close','attendance.correction.request',
  'claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge',
  'rewards.post','lifecycle.acknowledgement.submit','toil.replacement.request','multi_cycle_payroll.create_run',
  'typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save',

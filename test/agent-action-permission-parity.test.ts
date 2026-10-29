@@ -27,7 +27,10 @@ import {isAdmin} from '../lib/authz-model';
 import {createClaimType,setClaimPolicy,submitClaim,decideClaimTx,cancelClaimTx} from '../packs/claims/service';
 import {prepareClaimCancellationReview,confirmClaimCancellationReview,readClaimCancellationChoices} from '../core/assistant-actions/claim-cancellation-review-store';
 import {OWN_CLAIM_CANCELLATION_ACTION} from '../lib/assistant-actions/own-claim-cancellation-contract';
-import {requestAttendanceCorrection,decideAttendanceCorrection} from '../packs/attendance/service';
+import {requestAttendanceCorrection,requestAttendanceCorrectionTx,decideAttendanceCorrection} from '../packs/attendance/service';
+import {overtimeRequestReviews,readOvertimeRequestChoices} from '../core/assistant-actions/overtime-request-review-store';
+import {OWN_OVERTIME_REQUEST_ACTION} from '../lib/assistant-actions/own-overtime-request-contract';
+import {myEmployment} from '../core/read';
 import {setToilPolicy,submitReplacementLeaveRequest,decideReplacementLeaveRequestTx,applyLeaveAdjustmentBatchTx,grantLeaveCreditRowsTx,requestLeave,cancelOwnLeaveTx,editLeaveRequestTx} from '../packs/leave/service';
 import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews,readClaimDecisionChoices,readAttendanceDecisionChoices,readToilDecisionChoices} from '../core/assistant-actions/assigned-decision-review-store';
 import {leaveCancellationReviews,leaveEditReviews,readLeaveChangeChoices} from '../core/assistant-actions/leave-change-review-store';
@@ -58,7 +61,7 @@ type World={
 type Adapter={
  store:Store;
  /** The page/route admission the screen's server action calls before its service (e.g. requireAdmin → isAdmin). */
- screenAdmits?:(who:SessionContext)=>boolean;
+ screenAdmits?:(who:SessionContext,w:World,item:Item)=>boolean|Promise<boolean>;
  /** The item one confirmation targets, belonging to the subject employee. */
  create(w:World):Promise<Item>;
  human(w:World,item:Item):Record<string,unknown>;
@@ -113,8 +116,10 @@ async function buildWorld():Promise<World>{
  return {b,foreign,companyB:other.id,subject,people,group,as};
 }
 
-type Choices={kind:string;items?:{subjectId:string}[];employees?:{employmentId:string}[];requests?:{leaveRequestId:string}[];claims?:{claimId:string}[]};
-const lists=(found:unknown,item:Item)=>{const c=found as Choices;return c?.kind==='choices'&&(!!c.items?.some(row=>row.subjectId===item.subjectId)||!!c.employees?.some(row=>row.employmentId===item.employmentId)||!!c.requests?.some(row=>row.leaveRequestId===item.subjectId)||!!c.claims?.some(row=>row.claimId===item.subjectId));};
+type Choices={kind:string;items?:{subjectId:string}[];employees?:{employmentId:string}[];requests?:{leaveRequestId:string}[];employments?:{employmentId:string}[];claims?:{claimId:string}[]};
+const lists=(found:unknown,item:Item)=>{const c=found as Choices;return c?.kind==='choices'&&(!!c.items?.some(row=>row.subjectId===item.subjectId)||!!c.employees?.some(row=>row.employmentId===item.employmentId)||!!c.requests?.some(row=>row.leaveRequestId===item.subjectId)||!!c.claims?.some(row=>row.claimId===item.subjectId)||!!c.employments?.some(row=>row.employmentId===item.employmentId));};
+/** /me screens (resolveMe) act only on the caller's own employment, resolved by core/read myEmployment. */
+const ownEmploymentScreen=async(who:SessionContext,_w:World,item:Item)=>(await myEmployment(who))?.employmentId===item.employmentId;
 /** One pending claim the subject submitted on their own claims screen path. */
 async function pendingClaim(w:World):Promise<Item>{
  w.claimTypeId??=(await createClaimType(w.group,{code:'FIC-PARITY',name:'Fictional parity travel',defaultTaxable:false,requiresReceipt:false})).id;
@@ -170,6 +175,12 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:(_w,item)=>({action:OWN_CLAIM_CANCELLATION_ACTION,contractVersion:1,employmentId:item.employmentId,claimId:item.subjectId,cancel:true}),
   offered:async(who,_w,item)=>lists(await readClaimCancellationChoices(who),item),
   screen:(tx,who,_w,item)=>cancelClaimTx(tx,who,item.subjectId)},
+ // /me overtime screen: myRequestOvertime resolves the caller's own employment, then requestAttendanceCorrection.
+ 'attendance.overtime.request':{store:overtimeRequestReviews,screenAdmits:ownEmploymentScreen,
+  create:async w=>({...employmentItem(w),date:calendarDate(7)}),
+  human:(_w,item)=>({action:OWN_OVERTIME_REQUEST_ACTION,contractVersion:1,employmentId:item.employmentId,date:item.date,plannedStartTime:'18:00',plannedEndTime:'20:00',reason:'Fictional release preparation',remark:'Fictional optional note'}),
+  offered:async(who,_w,item)=>lists(await readOvertimeRequestChoices(who),item),
+  screen:(tx,who,_w,item)=>requestAttendanceCorrectionTx(tx,who,{employmentId:item.employmentId,date:item.date!,requestedOtMinutes:120,reason:'Fictional release preparation',remark:'Fictional optional note',plannedStartTime:'18:00',plannedEndTime:'20:00'})},
  // HR screens: the server actions call requireAdmin() (isAdmin) before the service.
  'leave.adjustment.apply':{store:leaveAdjustmentReviews,screenAdmits:isAdmin,
   create:async w=>employmentItem(w),
@@ -198,7 +209,7 @@ async function observe(id:ProbedActionId,role:ParityRole):Promise<{observed:Obse
  const actorEmploymentId=w.people[role].employmentId;
  // SCREEN: admission, then the owning service, always rolled back.
  let screen:ParityOutcome='deny';
- if(adapter.screenAdmits&&!adapter.screenAdmits(who))notes.screen='refused by the screen admission';
+ if(adapter.screenAdmits&&!(await adapter.screenAdmits(who,w,item)))notes.screen='refused by the screen admission';
  else{try{await withTenant(who,async tx=>{await adapter.screen(tx,who,w,item,actorEmploymentId);throw new Rollback();});}catch(error){if(error instanceof Rollback)screen='allow';else notes.screen=why(error);}}
  // AGENT offer.
  let offer:ParityOutcome='deny';
