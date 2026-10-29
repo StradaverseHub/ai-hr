@@ -1,3 +1,5 @@
+import {sql} from 'drizzle-orm';
+import {employmentInformationAt} from '../../core/information-correction-history';
 /**
  * 8ca344bf — BORANG 8A (PERKESO monthly contribution schedule): the READ.
  *
@@ -274,8 +276,8 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
         passportNumber: employeeStatutoryMy.passportNumber,
         epfCitizenship: employeeStatutoryMy.epfCitizenship,
         nationality: person.nationality,
-        joinDate: employment.joinDate,
-        hiredOn: employment.hiredOn,
+        joinDate: employmentInformationAt('joinDate',sql`${payrollBatch.payPeriod} || '-01'`,sql`${employment.joinDate}`),
+        hiredOn: employmentInformationAt('hiredOn',sql`${payrollBatch.payPeriod} || '-01'`,sql`${employment.hiredOn}`),
         terminatedOn: employment.terminatedOn,
         // r408 — column (2)'s M: a termination of type 'death' inside the month.
         terminationType: employment.terminationType,

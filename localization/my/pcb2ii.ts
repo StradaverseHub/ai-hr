@@ -1,3 +1,4 @@
+import {employmentInformationAt} from '../../core/information-correction-history';
 /**
  * 72b100cd — the READ behind PCB 2(II): one employee, one year, twelve months of tax deducted and paid.
  *
@@ -95,14 +96,14 @@ export async function pcb2iiStatement(
         passport: employeeStatutoryMy.passportNumber,
         taxNo: employeeStatutoryMy.taxNumber,
         staffNo: employment.employeeCode,
-        companyId: employment.companyId,
+        companyId: employmentInformationAt('companyId',sql`${p.year+'-12-31'}`,sql`${employment.companyId}`),
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       // The employment's OWN company, joined but no longer SELECTED (r328). It stays because it is part of
       // this read's visibility: an employment whose company the caller cannot see has never resolved here,
       // and dropping the join would quietly widen that. The employer BLOCK is read separately, below.
-      .innerJoin(company, eq(company.id, employment.companyId))
+      .innerJoin(company, eq(company.id,sql`${employmentInformationAt('companyId',sql`${p.year+'-12-31'}`,sql`${employment.companyId}`)}::uuid`))
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
       .where(eq(employment.id, p.employmentId))
       .limit(1);

@@ -1,3 +1,4 @@
+import {employmentInformationAt} from '../../core/information-correction-history';
 import {readSavedTaxCircumstance} from './tax-circumstance';
 import {explainPcb} from '../../core/pcb-explain';
 /**
@@ -1039,8 +1040,8 @@ async function formECounts(
       .select({
         employmentId: payslip.employmentId,
         payPeriod: payrollBatch.payPeriod,
-        joinDate: employment.joinDate,
-        hiredOn: employment.hiredOn,
+        joinDate: employmentInformationAt('joinDate',sql`${yEnd}`,sql`${employment.joinDate}`),
+        hiredOn: employmentInformationAt('hiredOn',sql`${yEnd}`,sql`${employment.hiredOn}`),
         terminatedOn: employment.terminatedOn,
       })
       .from(payslip)
@@ -1067,9 +1068,9 @@ async function formECounts(
     // A company that has not run payroll for someone yet still employs them. `lastPeriod: null` marks the
     // ones with no payslip this year, so the year-end test falls back to the dated columns for them.
     const here = await tx
-      .select({ id: employment.id, joinDate: employment.joinDate, hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn })
+      .select({ id: employment.id, joinDate: employmentInformationAt('joinDate',sql`${yEnd}`,sql`${employment.joinDate}`), hiredOn: employmentInformationAt('hiredOn',sql`${yEnd}`,sql`${employment.hiredOn}`), terminatedOn: employment.terminatedOn })
       .from(employment)
-      .where(eq(employment.companyId, companyId));
+      .where(eq(employmentInformationAt('companyId',sql`${yEnd}`,sql`${employment.companyId}`),companyId));
     for (const e of here) {
       if (pop.has(e.id)) continue;
       if (e.hiredOn > yEnd) continue;
@@ -1759,9 +1760,9 @@ export async function eaStatement(
          */
         childReliefMode: employeeStatutoryMy.childReliefMode,
         childReliefTable: employeeStatutoryMy.childReliefTable,
-        hiredOn: employment.hiredOn,
+        hiredOn: employmentInformationAt('hiredOn',sql`${p.year+'-12-31'}`,sql`${employment.hiredOn}`),
         terminatedOn: employment.terminatedOn,
-        companyId: employment.companyId,
+        companyId: employmentInformationAt('companyId',sql`${p.year+'-12-31'}`,sql`${employment.companyId}`),
         companyName: company.legalName,
         // 6036dab7 — Part A's two remaining particulars. `employeeCode` and `passportNumber` are on tables
         // this SELECT already reads. The job title needs a dated lookup and is read separately below.
@@ -1770,7 +1771,7 @@ export async function eaStatement(
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
-      .innerJoin(company, eq(company.id, employment.companyId))
+      .innerJoin(company, eq(company.id,sql`${employmentInformationAt('companyId',sql`${p.year+'-12-31'}`,sql`${employment.companyId}`)}::uuid`))
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
       .where(eq(employment.id, p.employmentId))
       .limit(1);

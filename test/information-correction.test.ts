@@ -1,0 +1,118 @@
+import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
+import {randomUUID} from 'node:crypto';
+import {and,eq,sql} from 'drizzle-orm';
+import * as XLSX from 'xlsx';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {hireEmployee,setEmploymentGrade} from '../core/org';
+import {assignLabelToCompanies} from '../core/system-labels';
+import {createMovementEvent,movementHistory,reverseMovementEvent} from '../core/movement';
+import {withTenant} from '../db/client';
+import * as schema from '../db/schema';
+import {previewInformationCorrection,correctInformation,informationCorrectionHistory,informationCorrectionOptions} from '../core/information-correction';
+import {previewInformationUpload,confirmInformationUpload} from '../core/information-correction-import';
+import {eaStatement} from '../localization/my/reports';
+import {payslipForReview,listPayrollRegisterAcross} from '../core/payroll-view';
+import {INFORMATION_HEADERS,type InformationChanges} from '../lib/information-correction';
+import {parseInformationWorkbook,informationWorkbook} from '../lib/information-correction-workbook';
+import {todayInKualaLumpur} from '../lib/hr-date';
+let b:Base;
+beforeAll(()=>migrateTestDb());beforeEach(async()=>{await resetDb();b=await seedBase();await owner.db.update(schema.company).set({companyLabel:'DEMO'}).where(eq(schema.company.id,b.companyId));});afterAll(()=>closeAll());
+const ctx=()=>adminCtx(b);
+async function fixture(code='EMP-001'){
+ const hired=await hireEmployee(ctx(),{person:{fullName:'Aisha Fixture',primaryEmail:randomUUID()+'@example.test'},companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:'2025-01-15'});
+ await owner.db.update(schema.employment).set({employeeCode:code}).where(eq(schema.employment.id,hired.employmentId));return hired.employmentId;
+}
+async function closedSlip(employmentId:string){
+ const [period]=await owner.db.insert(schema.payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period:'2025-01',status:'closed'}).returning();
+ const [batch]=await owner.db.insert(schema.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:period.id,payPeriod:'2025-01',batchDate:'2025-01-25',status:'closed',releasedAt:new Date('2025-01-25T00:00:00Z')}).returning();
+ const [slip]=await owner.db.insert(schema.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId,basicSalary:'3000.00',grossPay:'3000.00',statutory:{epfEmployee:330,epfEmployer:390,pcb:10},totalDeductions:'340.00',netPay:'2660.00',employerCost:'3390.00'}).returning();return {batch,slip};
+}
+async function apply(id:string,changes:InformationChanges,reason='Correct signed employment record'){
+ const p=await previewInformationCorrection(ctx(),{employmentId:id,changes,reason});return correctInformation(ctx(),{employmentId:id,changes,reason,fingerprint:p.fingerprint,method:'manual'});
+}
+function workbook(rows:unknown[][]){const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([[...INFORMATION_HEADERS],...rows]),'Corrections');return XLSX.write(book,{type:'buffer',bookType:'xlsx'}) as Buffer;}
+describe('8550b282 information-only corrections',()=>{
+ it('corrects dates, grade and type after closure while preserving payroll and report rendering',async()=>{
+  const id=await fixture(),{slip,batch}=await closedSlip(id);
+  const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'G03',name:'Senior'}).returning();
+  const eaBefore=await eaStatement(ctx(),{employmentId:id,companyId:b.companyId,year:'2025'});
+  expect(eaBefore).toBeTruthy();
+  const before=await payslipForReview(ctx(),{companyIds:[b.companyId],payslipId:slip.id});
+  expect(before).toBeTruthy();expect(before!.employmentType).toBe('full_time');
+  const ledgersBefore=await owner.db.select().from(schema.leaveLedger);
+  await apply(id,{hiredOn:'2025-01-01',joinDate:'2025-01-03',gradeId:grade.id,employmentType:'part_time'});
+  expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0]).toMatchObject({hiredOn:'2025-01-01',joinDate:'2025-01-03',gradeId:grade.id});
+  expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,slip.id)))[0]).toEqual(slip);
+  expect((await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batch.id)))[0]).toEqual(batch);
+  expect(await owner.db.select().from(schema.leaveLedger)).toEqual(ledgersBefore);
+  const after=await payslipForReview(ctx(),{companyIds:[b.companyId],payslipId:slip.id});expect(after).toEqual(before);
+  expect(await eaStatement(ctx(),{employmentId:id,companyId:b.companyId,year:'2025'})).toEqual(eaBefore);
+  const register=await listPayrollRegisterAcross(ctx(),{companyIds:[b.companyId],year:2025});expect(register.length).toBe(1);expect(register[0]).toMatchObject({jobGrade:null,employmentType:'full_time',net:'2660.00'});
+  const versions=await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId,id));expect(versions).toHaveLength(2);expect(versions.find(a=>a.validTo===null)).toMatchObject({validFrom:todayInKualaLumpur(),employmentType:'part_time'});
+  const history=await informationCorrectionHistory(ctx(),id);expect(history).toHaveLength(1);expect(history[0].actorId).toBe(ctx().userId);expect(history[0].payload).toMatchObject({method:'manual',reason:'Correct signed employment record',before:{hiredOn:'2025-01-15'},after:{hiredOn:'2025-01-01'}});
+ });
+ it('preserves the first snapshot through repeated corrections and refuses stale reviews',async()=>{
+  const id=await fixture(),{slip}=await closedSlip(id);const review=await previewInformationCorrection(ctx(),{employmentId:id,changes:{hiredOn:'2025-01-01'},reason:'Correct offer date'});
+  await apply(id,{hiredOn:'2025-01-02'});
+  await expect(correctInformation(ctx(),{employmentId:id,changes:{hiredOn:'2025-01-01'},reason:'Correct offer date',fingerprint:review.fingerprint,method:'manual'})).rejects.toThrow('changed after your review');
+  await apply(id,{hiredOn:'2025-01-03'});expect((await owner.db.select().from(schema.informationPayslipSnapshot).where(eq(schema.informationPayslipSnapshot.payslipId,slip.id)))[0].hiredOn).toBe('2025-01-15');
+ });
+ it('validates reasons, calendar dates and contract prerequisites without partial writes',async()=>{
+  const id=await fixture();
+  await expect(apply(id,{hiredOn:'2025-02-30'})).rejects.toThrow('valid date');
+  await expect(apply(id,{hiredOn:'2025-01-01'},' ')).rejects.toThrow('correction reason');
+  await expect(apply(id,{employmentType:'contract',hiredOn:'2025-01-01'})).rejects.toThrow('contract start and end');
+  expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0].hiredOn).toBe('2025-01-15');expect(await informationCorrectionHistory(ctx(),id)).toHaveLength(0);
+ });
+ it('stops when historical original metadata cannot be verified after a later change',async()=>{
+  const id=await fixture();await closedSlip(id);
+  const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'G02',name:'Changed later'}).returning();
+  await setEmploymentGrade(ctx(),{employmentId:id,gradeId:grade.id});
+  await expect(apply(id,{hiredOn:'2025-01-01'})).rejects.toThrow('Original historical information cannot be verified');
+  expect(await owner.db.select().from(schema.informationPayslipSnapshot)).toHaveLength(0);
+ });
+ it('corrects a compatible company without moving prior payroll or its dated assignment',async()=>{
+  const id=await fixture(),{slip,batch}=await closedSlip(id);
+  const [destination]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Destination',companyLabel:'DEST'}).returning();
+  await assignLabelToCompanies(ctx(),{kind:'department',labelId:b.deptA,companyIds:[b.companyId,destination.id]});
+  await assignLabelToCompanies(ctx(),{kind:'position',labelId:b.positionId,companyIds:[b.companyId,destination.id]});
+  await apply(id,{companyId:destination.id});
+  expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0].companyId).toBe(destination.id);
+  const versions=await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId,id));
+  expect(versions.find(v=>v.validTo!==null)?.companyId).toBe(b.companyId);expect(versions.find(v=>v.validTo===null)?.companyId).toBe(destination.id);
+  expect((await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batch.id)))[0]).toEqual(batch);expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,slip.id)))[0]).toEqual(slip);
+ });
+ it('does not write an audit correction for unchanged information',async()=>{const id=await fixture();expect((await apply(id,{})).changed).toBe(false);expect(await informationCorrectionHistory(ctx(),id)).toHaveLength(0);});
+ it('refuses a normal employee and another tenant',async()=>{
+  const id=await fixture();await expect(previewInformationCorrection({...ctx(),roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]},{employmentId:id,changes:{},reason:'Inspect information'})).rejects.toThrow();
+  await expect(previewInformationCorrection({...ctx(),tenantId:randomUUID()},{employmentId:id,changes:{},reason:'Inspect information'})).rejects.toThrow();
+ });
+ it('requires compatible destination organisation dimensions for Company',async()=>{
+  const id=await fixture();const [co]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Destination',companyLabel:'DEST'}).returning();
+  await expect(apply(id,{companyId:co.id})).rejects.toThrow();expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0].companyId).toBe(b.companyId);
+ });
+ it('saves valid Excel rows, retains errors and unchanged rows, and retries only once',async()=>{
+  const id=await fixture();await fixture('EMP-002');
+  const file=workbook([['DEMO','EMP-001','','','2025-01-01','','','','Correct signed record'],['DEMO','EMP-002','','','','','UNKNOWN','','Correct grade'],['DEMO','MISSING','','','','','','','Unknown employee']]);
+  const preview=await previewInformationUpload(ctx(),{name:'corrections.xlsx',content:file,operationKey:randomUUID()});expect(preview.plan.counts).toEqual({total:3,valid:1,invalid:2});
+  const result=await confirmInformationUpload(ctx(),{attemptId:preview.attemptId,previewHash:preview.plan.previewHash});expect(result).toMatchObject({succeeded:1,failed:2,unchanged:0});
+  expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0]).toMatchObject({hiredOn:'2025-01-01',gradeId:null});
+  const again=await confirmInformationUpload(ctx(),{attemptId:preview.attemptId,previewHash:preview.plan.previewHash});expect(again).toEqual(result);expect(await informationCorrectionHistory(ctx(),id)).toHaveLength(1);
+  const [history]=await informationCorrectionHistory(ctx(),id);expect(history.payload).toMatchObject({method:'excel',batchId:preview.attemptId,filename:'corrections.xlsx'});
+ });
+ it('refuses duplicate target rows, invalid reasons and formula cells at preview',async()=>{
+  await fixture();const content=workbook([['DEMO','EMP-001','','','2025-01-01','','','','Correct record'],['DEMO','EMP-001','','','2025-01-02','','','','']]);
+  const p=await previewInformationUpload(ctx(),{name:'duplicates.xlsx',content,operationKey:randomUUID()});expect(p.plan.counts.valid).toBe(0);expect(p.plan.rows.every(r=>r.errors.length>0)).toBe(true);
+  const book=XLSX.read(content,{type:'buffer'});book.Sheets.Corrections.E2={t:'n',f:'1+1',v:2};const rows=parseInformationWorkbook(XLSX.write(book,{type:'buffer',bookType:'xlsx'}));expect(rows[0].errors.join(' ')).toContain('formulas');
+ });
+ it('produces a usable blank template with live reference sheets',async()=>{
+  const file=informationWorkbook(await informationCorrectionOptions(ctx()));const book=XLSX.read(file,{type:'array'});expect(book.SheetNames).toEqual(['Corrections','Instructions','Companies','Job Grades','Employment Types']);expect(book.Sheets.Companies.A2.v).toBe('DEMO');expect(book.Sheets.Corrections.I1.v).toBe('Correction Reason');
+ });
+ it('preserves leading zeros and accepts actual Excel dates; blank cells stay absent',()=>{
+  const rows=parseInformationWorkbook(workbook([['DEMO','00001','','',45658,'','','','Correct record']]));expect(rows[0].employeeCode).toBe('00001');expect(rows[0].values['Group Join Date']).toBe('2025-01-01');expect(rows[0].values['Job Grade']).toBeUndefined();
+ });
+ it('does not grant ordinary roles update or delete on retained snapshots',async()=>{
+  const id=await fixture();await closedSlip(id);await apply(id,{hiredOn:'2025-01-01'});
+  await expect(withTenant(ctx(),tx=>tx.execute(sql`delete from information_payslip_snapshot`))).rejects.toThrow();
+ });
+});

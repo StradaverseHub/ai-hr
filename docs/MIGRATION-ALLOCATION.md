@@ -274,3 +274,14 @@ competing0687 or when>=1793330000013. Board and the migration coordinator were n
 The existing562-entry journal prefix and all applied SQL bytes are preserved. The appended SQL SHA256
 is `ade48bffee0a5d6ebf72cdd61de36323f3650b81c805cd186701c5d8105e86c4`. This reserves source only; it authorizes no staging migration
 without the exact-candidate gate, populated upgrade proof, restore readiness and exclusive handoff.
+
+## Information-only correction development candidate — 30 October 2026
+
+Feedback 8550b282 owns source filename 0698_information_only_corrections. Fresh main/alpha a3eb1eb0f
+and staging retain the 566-row prefix through 0690 / 1793330000016. Reachable sources already claim
+0691 (Bank), 0692–0697 (AI) and other 0696/0697 candidates; those claims remain untouched.
+This isolated development journal uses idx681 / sequence1793330000030 solely to build and test the
+candidate against the current canonical prefix. It is NOT an installation allocation. Before branch
+integration or installation, obtain the coordinated source freeze, include every required allocated
+predecessor in its real order and reassign this unapplied journal entry. Never deploy this isolated
+journal beyond reserved predecessors. No applied SQL byte or canonical journal entry is changed.

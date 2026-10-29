@@ -50,6 +50,7 @@ export async function ImportAttemptEvents({item}:{item:ImportAttemptDetail}){
   <p className="text-xs text-muted-foreground" title={event.actorId}>{event.actorName??t('unknownUser')}</p>
   {event.reason&&<p>{t('eventReason',{reason:event.reason})}</p>}
   {typeof event.detail.message==='string'&&<p className="text-destructive">{event.detail.message}</p>}
+  {item.kind==='information_correction'&&Array.isArray(event.detail.rows)&&<ul className="space-y-1">{(event.detail.rows as {row:number;status:string;errors:string[]}[]).map(row=><li key={row.row}>{row.row} · {row.status} {row.errors.join(' ')}</li>)}</ul>}
  </li>)}</ol></section>;
 }
 type AllocationState={operation?:string;effectiveDate?:string;rows?:{code:string;label:string;hundredths:number}[]};
@@ -68,6 +69,9 @@ async function ItemValue({kind,value}:{kind:ImportKind;value:unknown}){
   const root=await getTranslations();const fields=Object.entries((value as {fields?:Record<string,string>}).fields??{});
   const resolve=(key:string,fallback:string)=>root.has(key)?root(key):fallback;
   return <dl className="space-y-1">{fields.map(([column,v])=><div key={column}><dt className="inline text-muted-foreground">{personnelColumnLabel(column,'employee',resolve)}: </dt><dd className="inline break-all">{v===''?t('bankStatutory.blank'):v}</dd></div>)}</dl>;
+ }
+ if(kind==='information_correction'){
+  const root=await getTranslations('people.informationCorrection');const state=value as {values?:Record<string,string|null>;reason?:string};return <div className="space-y-1 text-sm">{Object.entries(state.values??{}).map(([field,v])=><p key={field}>{root(`fields.${field}`)}: {v??'—'}</p>)}<p>{root('reason')}: {state.reason}</p></div>;
  }
  if(kind==='movement'){
   // ac6645ec — one movement: its event type and date, then each changed field's value on this side.

@@ -373,6 +373,7 @@ const MOVEMENT_EVENT_TYPES = [
   // it decorates the Hired row with its trace, and Roll Back reads its row replacements so a later
   // movement's rollback acts on the corrected row rather than on the superseded original.
   HIRE_CORRECTED_EVENT,
+  'employment.information.corrected',
 ];
 
 /* 30325fc1 — EXTENDED_PROBATION_FIELDS / RESIGNATION_FIELDS were DELETED here. They were the field groups
@@ -994,12 +995,13 @@ export async function movementReportFactsTx(tx: Tx, tenantId: string, employment
       const group = eventsByGroup.get(key) ?? []; group.push(event); eventsByGroup.set(key, group);
     }
     const groupOf=(row:ProjectedRow)=>eventsByGroup.get(row.groupId??row.id)??[];
-    const gradeEvents=projected.events.filter(event=>event.eventType==='employment.grade.changed');
+    const informationCorrections=projected.events.filter(event=>event.eventType==='employment.information.corrected');
+    const gradeEvents=projected.events.filter(event=>event.eventType==='employment.grade.changed'||event.eventType==='employment.information.corrected').map(event=>event.eventType==='employment.information.corrected'?{...event,payload:{before:(event.payload as {before:{gradeId:string|null}}).before.gradeId,after:(event.payload as {after:{gradeId:string|null}}).after.gradeId}}:event);
     const gradeRows=projected.rows.filter(row=>groupOf(row).some(event=>event.eventType==='employment.grade.changed'));
     // Unattributed legacy writes and compensating grade legs have no independently recorded effective
     // date. Do not substitute today's grade for an unprovable historical context.
     const attributedGrades=new Set(gradeRows.flatMap(row=>groupOf(row).map(event=>event.id)));
-    const gradeKnown=gradeEvents.every(event=>attributedGrades.has(event.id));
+    const gradeKnown=gradeEvents.every(event=>event.eventType==='employment.information.corrected'||attributedGrades.has(event.id));
     const gradeBaseline=gradeEvents.length?((gradeEvents[0].payload??{}) as {before?:string|null}).before??null:emp.gradeId;
     const hireCorrections=projected.events.filter(event=>event.eventType===HIRE_CORRECTED_EVENT).map(event=>event.payload);
     const salaryChanged=(row:ProjectedRow)=>groupOf(row).some(event=>{
@@ -1012,9 +1014,9 @@ export async function movementReportFactsTx(tx: Tx, tenantId: string, employment
     facts.push({employmentId: emp.id, hireDate:emp.hiredOn,
       placements:[...new Set(asOfDates)].map(date=>{
         let gradeId=gradeBaseline;
-        for(const row of gradeRows){if(projected.statusOf(row)!=='applied'||row.effectiveDate>date)continue;
-          for(const event of groupOf(row))if(event.eventType==='employment.grade.changed')gradeId=((event.payload??{}) as {after?:string|null}).after??null;
-        }
+        const datedGrades=gradeRows.filter(row=>projected.statusOf(row)==='applied').flatMap(row=>groupOf(row).filter(event=>event.eventType==='employment.grade.changed').map(event=>({date:row.effectiveDate,sequence:event.sequence,gradeId:((event.payload??{}) as {after?:string|null}).after??null})));
+        for(const event of informationCorrections){const payload=event.payload as {effectiveOn:string;after:{gradeId:string|null}};datedGrades.push({date:payload.effectiveOn,sequence:event.sequence,gradeId:payload.after.gradeId});}
+        for(const revision of datedGrades.sort((a,b)=>a.date.localeCompare(b.date)||a.sequence-b.sequence))if(revision.date<=date)gradeId=revision.gradeId;
         return {date,gradeId:gradeKnown?gradeId:null,gradeKnown};
       }),rows: projected.rows.map(row => ({
       id: row.id, kind: row.kind, behaviourKind: projected.resolvedTypes.get(row.kind)?.behaviourKind ?? row.kind,
@@ -1205,6 +1207,7 @@ function flatValueAtSequence(
  * to the old behaviour for every existing record.
  */
 const isCompanyReplayEvent = (e: RawEvent): boolean =>
+  e.eventType === 'employment.information.corrected' ||
   e.eventType === 'employment.company.transferred' ||
   e.eventType === 'employment.company.transfer.reverted';
 
@@ -1649,7 +1652,7 @@ export async function movementDetailTx(tx: Tx,
     const { emp, events, rows, statusOf } = await projectRows(tx, ctx.tenantId, employmentId);
     const row = rows.find((r) => r.id === movementId);
     if (!row) return null;
-    const gradeEvents = events.filter((e) => e.eventType === 'employment.grade.changed');
+    const gradeEvents = events.filter((e) => e.eventType === 'employment.grade.changed'||e.eventType==='employment.information.corrected').map(e=>e.eventType==='employment.information.corrected'?{...e,payload:{before:(e.payload as {before: {gradeId:string|null}}).before.gradeId,after:(e.payload as {after: {gradeId:string|null}}).after.gradeId}}:e);
     // b7b22514 — the company moves this employment recorded (and any that were rolled back), for the
     // as-of replay in snapshotAt.
     const companyEvents = events.filter(isCompanyReplayEvent);
@@ -3496,6 +3499,17 @@ async function reversalGuardTx(tx: Tx, ctx: SessionContext, employmentId: string
     throw new MovementNotCorrectableError(
       'This event type cannot be rolled back from Employment History — use the screen that records it.',
     );
+  }
+  // Information-only corrections are independent audited decisions. An earlier rollback must not undo them.
+  const protectedFields=new Set<string>();
+  for(const event of group){
+    if(event.eventType==='employment.grade.changed')protectedFields.add('gradeId');
+    if(event.eventType==='employment.company.transferred'){protectedFields.add('companyId');protectedFields.add('joinDate');}
+    if(event.eventType==='assignment.transferred'){protectedFields.add('employmentType');protectedFields.add('companyId');}
+    if(event.eventType==='employment.info.updated')for(const field of ((event.payload??{}) as {fields?:string[]}).fields??[])protectedFields.add(field);
+  }
+  if(events.some(event=>event.eventType==='employment.information.corrected'&&event.sequence>row.sequence&&(((event.payload??{}) as {fields?:string[]}).fields??[]).some(field=>protectedFields.has(field)))){
+    throw new MovementNotCorrectableError('A later information-only correction protects these details. Review the correction history before changing this movement.');
   }
   const exitDates=row.kind==='resignation'?resignationFinancialDates(group):[];
   if (c.stateChanging&&(row.kind!=='resignation'||exitDates.length>0)) {

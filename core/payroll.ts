@@ -1,3 +1,4 @@
+import {frozenPayslipInformation} from './information-correction-history';
 import {readReviewedPayrollRunScopeLabelsTx} from './payroll-run-selection';
 import {visibleLabelIdsCondition} from './system-labels';
 import {isDeepStrictEqual} from 'node:util';
@@ -11079,8 +11080,8 @@ export function payslipDetail(ctx: SessionContext, payslipId: string, ownOnly = 
         category: employment.employmentCategory,
         department: department.name,
         position: position.title,
-        jobGrade: jobGrade.name,
-        employmentType: assignment.employmentType,
+        jobGrade: frozenPayslipInformation('grade',sql`${jobGrade.name}`),
+        employmentType: frozenPayslipInformation('employmentType',sql`${assignment.employmentType}`),
         paymentMethod: employment.paymentMethod,
         bankName: employeeStatutoryMy.bankName,
         bankAccountNo: employeeStatutoryMy.bankAccountNo,

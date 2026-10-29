@@ -1,3 +1,5 @@
+import {sql} from 'drizzle-orm';
+import {employmentInformationAt} from '../../core/information-correction-history';
 /**
  * e0cd4583 — CP39 PRINTED FORM: the READ.
  *
@@ -203,7 +205,7 @@ export function cp39FormExtras(
         .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, person.id))
         // The signatory's CURRENT assignment (valid_to null) is where their Jawatan comes from. LEFT
         // joined throughout: a signatory who is not an employee of this company still prints their name.
-        .leftJoin(employment, and(eq(employment.personId, person.id), eq(employment.companyId, p.companyId)))
+        .leftJoin(employment, and(eq(employment.personId, person.id), eq(employmentInformationAt('companyId',sql`${p.periodKey+'-01'}`,sql`${employment.companyId}`),p.companyId)))
         .leftJoin(assignment, and(eq(assignment.employmentId, employment.id), isNull(assignment.validTo)))
         .leftJoin(position, eq(position.id, assignment.positionId))
         .where(eq(person.id, auth.signatoryPersonId))

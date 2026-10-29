@@ -1,0 +1,43 @@
+VERDICT: Partly there already · SIZE: Large
+
+THE SITUATION TODAY
+
+The five requested fields follow different correction rules, and the current hire-correction save can recalculate leave. They need a separate information-only mode to protect completed work.
+
+WHAT WE'LL CHANGE
+
+- Add Information-Only Correction under Correct Hire Details for Company, Group Join Date, Join Date, Job Grade and Employment Type. Require authorised HR access, a reason and review of existing/proposed values.
+- Preserve completed payroll, released payslips, finalized reports, statutory contributions, historical leave, attendance and overtime. Never reopen payroll, recalculate historical transactions or overwrite finalized documents.
+- Add the same option under Import Employees, with an Excel template and code reference sheets. Include Company Code, Employee ID, optional Employee Name, correction fields and Correction Reason. Company Code checks the existing company; optional New Company Code supplies a corrected company. Blank correction cells mean unchanged.
+- Validate every row and show changes and errors before confirmation. Apply only confirmed valid rows. A failed row changes nothing for that employee. Show successful, failed, skipped and unchanged results.
+- Keep individual correction history and batch details: previous/new values, reason, user, time, method, batch number and filename. Ordinary users cannot change or delete this history.
+
+WHAT YOU'LL GET
+
+HR can correct records individually or in bulk after payroll closure while retaining the facts and amounts used for completed work.
+
+GOOD TO KNOW
+
+- Warn about future payroll, statutory and policy effects. Genuine transfers and operational changes still use their normal workflows.
+- Protect historical outputs that currently read employee details before enabling corrections. If original information cannot be established reliably, stop the affected correction and explain why.
+- Attached screens are proposed sketches with fictional examples. This function has not been built.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Source reviewed: origin/main and origin/alpha at a3eb1eb0f, fetched 30 October 2026. Live staging item 8550b282-6eee-4012-b822-b9004cd95569 is open, revision 0, without a plan, attachments or block trail. Source findings are not a claim about the installed build.
+
+Existing owners: core/hire-correction.ts explicitly excludes the five fields and supersedes inherited assignment versions for its six existing fields. app/admin/personnel/[employmentId]/actions.ts correctHireDetailsAction calls recomputeEntitlement after saving. core/org.ts owns employment dates and company operations, with payslip-period and closed-payroll guards. Employment type belongs to assignment, not employment. Review grade replay, movement rollback/projections, personnel field registry, current company/date writers and the pack rules before implementing. Do not add an unsafe flag to bypass their guards or call the existing recalculating action.
+
+First map actors, scopes, canonical employment/assignment/grade owners, all writers and readers, and finalized versus open processing. Reuse canonical field validation and explicit authorised services. Add a dedicated information-correction command shared by manual and Excel entry, limited to these five fields. Authorise source and destination company and each touched scope server-side. Keep person, employment and employee identifiers stable; never match by employee name. Preserve dated original facts and intentional later movements; record the corrected current facts and their future applicability explicitly, without rewriting the transaction-time truth. Do not create a second unaudited master store. Document the temporal owner decision in an ADR before implementation.
+
+Historical protection precedes enabling any writer. Inventory core/payroll.ts readers, payroll/statutory/EA reports, payslip view/PDF routes, core/payslip-information.ts and reporting/custom-report readers. Use finalized transaction snapshots and retained artifacts. Where needed append an immutable historical display snapshot from verifiable original evidence, with provenance, before correction; never overwrite finalized payroll rows or regenerate prior files. Reconcile snapshot coverage for existing records using a separate rehearsed data script. Refuse corrections when required original facts cannot be established. Do not invoke recomputeEntitlement, payroll recalculation, leave reprojection, attendance/OT recomputation, document generation or movement operational side effects. Do not let later scheduled consumers retroactively reinterpret corrected master facts for completed periods. Validate current contract/probation and organisation dependencies; inconsistent records require the normal workflow rather than silent cascading repairs.
+
+Extend app/admin/personnel/[employmentId]/hire-correction-form.tsx and actions with an explicit mode, five-field form, mandatory reason, original/proposed review, future-effects warning and stale-preview protection. Existing correction semantics remain intact. Extend core/movement.ts history projection and lib/personnel-field-registry.ts through their current owners. Add all six locales and scoped history reads.
+
+Extend app/admin/personnel/import/import-workbench.tsx and existing template/history infrastructure with a dedicated choice. Company Code is the expected existing company; New Company Code is the optional destination. Employee ID resolves uniquely within authorised company/tenant and must remain unambiguous across transfers and rehires. Reject duplicate targets, formula/error cells, invalid or ambiguous dates and inactive/unusable codes; preserve literal identifiers and validate actual Excel date values. Reference sheets must use authorised live codes and documented date format. Employee Name is reference-only. All optional blanks are unchanged; no implicit clearing. Preview all rows and per-field diffs before an explicit apply-valid-rows confirmation. Recheck permission, employment version and catalogs at commit. One transaction per employee covers all five fields plus audit; row errors roll back the entire employee. Persist batch/row outcomes and source filename with restricted access, retention and safe retries so interruption or duplicate submission cannot repeat a correction. No-op rows are skipped and counted separately.
+
+Append any migrations with allocated journal timestamps, RLS and grants. Use append-only audit events with actor, before/after, reason, method and batch linkage; ordinary roles receive no update/delete capability. Batch details and downloads must preserve tenant and source/destination company privacy after a company correction.
+
+Acceptance: fixtures with processed and closed payroll, released payslips and finalized reports must accept valid five-field corrections without reopening. Compare original persisted transaction rows, money, statutory/leave/attendance/OT ledgers, released PDF contents and historical report display before/after, including company and grade/type metadata. Prove future reads use corrected facts while completed-period reads retain original facts. Exercise employee and company isolation, stale previews, date/contract violations, rollback/projection safety, missing historical evidence, duplicate IDs, blank cells, multi-company Excel rows, partial row failure, interrupted retries, immutable audit and authorised history views. Render manual confirmation and Excel preview/results in all supported themes/locales. Run focused behavior checks, migration rehearsal and impact-classified gates under resource admission before release. Approved planning, tested implementation, staging deployment and owner acceptance remain separate steps; production needs a subsequent explicit request.

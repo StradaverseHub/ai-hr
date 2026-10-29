@@ -1,3 +1,5 @@
+import {sql} from 'drizzle-orm';
+import {employmentInformationAt} from '../../core/information-correction-history';
 /**
  * 9c8dad7a / 3aae0789 — BORANG A (KWSP monthly contribution form): the READ.
  *
@@ -219,7 +221,7 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
         // joined throughout: a signatory who is not an employee of this company still prints their name.
         .leftJoin(
           employment,
-          and(eq(employment.personId, person.id), eq(employment.companyId, params.companyId)),
+          and(eq(employment.personId, person.id), eq(employmentInformationAt('companyId',sql`${params.periodKey+'-01'}`,sql`${employment.companyId}`),params.companyId)),
         )
         .leftJoin(
           assignment,

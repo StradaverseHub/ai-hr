@@ -81,16 +81,16 @@ export function personnelOwnedChoices<T>(id:string,owner:string,choices:readonly
 }
 
 /** A dedicated workflow may submit the same fact under its own explicitly declared action name. */
-export function personnelWorkflowControl(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd',mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
+export function personnelWorkflowControl(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd'|'informationCorrection',mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
   const name=personnelFormField(id).form!.workflowNames?.[workflow];
   if(!name)throw new Error(`Personnel workflow binding is missing: ${workflow}:${id}`);
   return {...personnelControl(id,mode,context),name};
 }
-export function personnelWorkflowInput(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd',mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
+export function personnelWorkflowInput(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd'|'informationCorrection',mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
   return {...personnelInput(id,mode,context),...personnelWorkflowControl(id,workflow,mode,context)};
 }
 
-export function personnelWorkflowCarry(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd') {
+export function personnelWorkflowCarry(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd'|'informationCorrection') {
   return {...personnelWorkflowControl(id,workflow),type:'hidden',required:false};
 }
 

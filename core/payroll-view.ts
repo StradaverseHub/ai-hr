@@ -1,3 +1,4 @@
+import {frozenPayslipInformation} from './information-correction-history';
 import {payrollComparisonAvailability} from '../lib/payroll-comparison-result';
 import {recordedPayrollComparisonAmount, recordedPayrollComparisonCurrency, recordedPayrollProrationCoverage} from '../lib/payroll-comparison-source';
 import {payPeriodBounds, payslipCoverage} from './payslip-segment';
@@ -1294,11 +1295,11 @@ export function listPayrollRegisterAcross(
         currency: company.currency,
         department: department.name,
         position: position.title,
-        jobGrade: jobGrade.name,
+        jobGrade: frozenPayslipInformation('grade',sql`${jobGrade.name}`),
         // 9cbf5e0d — the DERIVED Employee Status, so the Payroll Register agrees with Personnel instead of
         // printing the retired stored enum (On Leave / Offboarding / Terminated).
         employmentStatus: employmentStatusSql(),
-        employmentType: assignment.employmentType,
+        employmentType: frozenPayslipInformation('employmentType',sql`${assignment.employmentType}`),
         payPeriod: payrollBatch.payPeriod,
         payrollCycle: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
@@ -1560,8 +1561,8 @@ export function payslipForReview(
         category: employment.employmentCategory,
         department: department.name,
         position: position.title,
-        jobGrade: jobGrade.name,
-        employmentType: assignment.employmentType,
+        jobGrade: frozenPayslipInformation('grade',sql`${jobGrade.name}`),
+        employmentType: frozenPayslipInformation('employmentType',sql`${assignment.employmentType}`),
         paymentMethod: employment.paymentMethod,
         bankName: employeeStatutoryMy.bankName,
         bankAccountNo: employeeStatutoryMy.bankAccountNo,
