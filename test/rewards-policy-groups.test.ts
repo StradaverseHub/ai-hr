@@ -51,7 +51,7 @@ describe('shared reward configuration versions',()=>{
   expect((await rewardPolicyGroupUsage(admin,v1.groupId)).map(row=>row.unitId).sort()).toEqual([a,c,d].sort());
  });
  it('creates a named-members review from an immutable legacy shared version without inheriting private unit inputs',async()=>{
-  const legacy={...policy,seniorMembershipMode:'legacy-grades',seniorGrades:['21'],patActual:1200000,patTarget:900000,targetMonthsBp:25000,multiplierBp:8000,branchRatings:{Legacy:'AE'},exemptReason:'Historical approved exemption'};
+  const legacy={...policy,seniorMembershipMode:'named-members',seniorGrades:[],patActual:1200000,patTarget:900000,targetMonthsBp:25000,multiplierBp:8000,branchRatings:{Legacy:'AE'},exemptReason:'Historical approved exemption'};
   const [row]=await withTenant(admin,tx=>tx.execute<{version:{versionId:string}}>(sql`select app.reward_policy_group_commit(NULL,0,'Historical shared source',${JSON.stringify(legacy)}::jsonb,${JSON.stringify([{companyId:b.companyId,businessUnitId:buA}])}::jsonb) as version`));
   const versionId=row.version.versionId,before=await owner.db.select().from(schema.rewardPolicyGroupVersion).where(eq(schema.rewardPolicyGroupVersion.id,versionId));
   const reviewId=await unit(b.companyId,buA,versionId),configuration=await getRewardConfiguration(admin,reviewId);

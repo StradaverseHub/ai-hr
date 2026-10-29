@@ -38,7 +38,7 @@ it('upgrades populated payroll and Rewards from 562 to 566 receipts without rewr
  ownerUrl.pathname='/postgres';const admin=postgres(ownerUrl.toString(),{max:1,onnotice:()=>{}});let created=false;
  ownerUrl.pathname='/'+name;const storage=createDb(ownerUrl.toString(),{max:1});
  const fixtures=[identities(),identities()];
- async function actor(tx:Pick<typeof storage.client,'unsafe'>,f:ReturnType<typeof identities>,user=f.hrUser,role='hr_admin',runtime=false){
+ async function actor(tx:Pick<typeof storage.client,'unsafe'>,f:ReturnType<typeof identities>,user:string=f.hrUser,role='hr_admin',runtime=false){
   await tx.unsafe("select set_config('app.tenant_id',$1,true),set_config('app.user_id',$2,true),set_config('app.roles',$3,true),set_config('app.grants',$4,true),set_config('app.agent_principal_id','',true)",[f.tenant,user,role,JSON.stringify([{role,companyId:null}])]);
   if(runtime)await tx.unsafe('SET LOCAL ROLE ai_hr_app');
  }
