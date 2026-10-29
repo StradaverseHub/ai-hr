@@ -6513,7 +6513,7 @@
         "reason": {
           "NO_TRANSACTION_FOR_CYCLE": "Tiada catatan transaksi untuk kitaran gaji ini",
           "NO_ADDITIONAL_PAY_THIS_RUN": "Tiada apa-apa untuk jenis proses ini — gaji bulanan tetap mereka dibayar oleh proses gaji biasa",
-          "NOTHING_PAYABLE_THIS_PERIOD": "Tiada gaji asas dan tiada apa-apa untuk dibayar tempoh ini — tiada bayaran dibuat, jadi tiada apa-apa dilaporkan",
+          "NOTHING_PAYABLE_THIS_PERIOD": "Tiada gaji asas bulanan dan tiada apa-apa untuk dibayar bulan ini.",
           "DEDUCTION_ONLY_THIS_PERIOD": "Hanya potongan yang menunggu dan tiada gaji untuk menolaknya — menolak daripada sifar akan menghutangi pekerja"
         }
       },
@@ -6661,6 +6661,9 @@
       "preChecksNothingPayableNoRemark": "Tiada sebab direkodkan pada rekod gaji.",
       "reprocessGapNothingPayable": "tiada gaji asas bulanan",
       "reprocessReasonNothingPayable": "Sengaja dikecualikan daripada proses ini — tiada gaji asas bulanan dan tiada apa-apa untuk dibayar bulan ini. Tandakan mereka hanya jika sesuatu telah dimasukkan untuk mereka selepas itu.",
+      "reprocessGroupSkippedTitle": "Dilangkau — {n} pekerja tanpa apa-apa untuk diproses bulan ini",
+      "reprocessGroupSkippedNote": "Tidak ditandakan dan tidak dikira sebagai belum selesai: gaji mereka telah pun dinilai dan tiada apa-apa untuk dibayar. Jika sesuatu dimasukkan untuk mereka bulan ini, mereka kembali ke Baharu / Belum Selesai, dan anda masih boleh menandakan mereka secara manual.",
+      "reprocessStatusSkipped": "Dilangkau",
       "preChecksBadgeLegend": "Apa-apa yang bertanda “Menghalang pemprosesan” mesti dibetulkan sebelum proses ini. Apa-apa yang bertanda “Amaran” masih boleh diproses selepas anda mengesahkannya. Apa-apa yang bertanda “Akan dikecualikan” tidak memerlukan apa-apa daripada anda.",
       "reprocessOutcomeStatus": {
         "reprocessed": "Diproses semula",
@@ -6678,7 +6681,7 @@
       "reprocessReviewPcbConfiguration": "Semak konfigurasi PCB",
       "reprocessOutcomeRecordedAt": "Direkodkan pada {at}",
       "reprocessOutcomeTitle": "Hasil pekerja yang dipilih",
-      "reprocessOutcomeSummary": "Dipilih: {selected} · Diproses semula: {succeeded} · Dilangkau: {skipped} · Konfigurasi tidak lengkap: {failed}",
+      "reprocessOutcomeSummary": "Dipilih: {selected} · Diproses semula: {succeeded} · Dilangkau: {skipped} (selesai — tiada apa-apa untuk dibayar) · Konfigurasi tidak lengkap: {failed}",
       "reprocessStoppedPartial": "Pemprosesan terhenti sebelum semua pekerja yang dipilih selesai. Hasil yang disimpan masih sah. Semak hasil tersebut sebelum mencuba lagi.",
       "reprocessOutcomeStatusHeading": "Status pemprosesan",
       "reprocessOutcomeCategoryHeading": "Kategori cukai",
@@ -7669,7 +7672,7 @@
       "skipReason": {
         "NO_TRANSACTION_FOR_CYCLE": "Tiada catatan transaksi untuk kitaran gaji ini",
         "NO_ADDITIONAL_PAY_THIS_RUN": "Tiada apa-apa untuk jenis proses ini — gaji bulanan tetap mereka dibayar oleh proses gaji biasa",
-        "NOTHING_PAYABLE_THIS_PERIOD": "Tiada gaji asas dan tiada apa-apa untuk dibayar tempoh ini — tiada bayaran dibuat, jadi tiada apa-apa dilaporkan",
+        "NOTHING_PAYABLE_THIS_PERIOD": "Tiada gaji asas bulanan dan tiada apa-apa untuk dibayar bulan ini.",
         "DEDUCTION_ONLY_THIS_PERIOD": "Hanya potongan yang menunggu dan tiada gaji untuk menolaknya — menolak daripada sifar akan menghutangi pekerja"
       },
       "overall": {

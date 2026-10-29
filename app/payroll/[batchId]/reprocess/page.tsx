@@ -4,8 +4,8 @@ import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail, decodeReprocessEmployeeOutcomes, getReprocessJob, listBatches, listPayslipLessEligible, reprocessEligibility } from '@/core/payroll';
-import { listRecomputeDisclosure } from '@/core/payroll-view';
+import { batchDetail, decodeReprocessEmployeeOutcomes, getReprocessJob, listBatches, reprocessEligibility } from '@/core/payroll';
+import { listPayslipLessEligibleWithSkip, listRecomputeDisclosure } from '@/core/payroll-view';
 import { STATUTORY_BASE_KEYS, type StatutoryBaseKey, type StatutoryLineKey } from '@/core/payslip-recompute';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { Card, EmployeeCode, EmployeeName, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
@@ -208,7 +208,10 @@ export default async function ReprocessPage({
   // month's processing and its record and re-runs the whole company. The read resolves the SAME period
   // window the engine computes and calls the same readiness checks, so what is listed here is what
   // pressing the button will actually do. Plain serialisable data — no closures cross to the client.
-  const newCandidates: ReprocessAddCandidate[] = (await listPayslipLessEligible(s, { batchId })).map((r) => ({
+  // c3258a72 — `skip` is the run's own decision that there is nothing to pay them (no monthly basic and no
+  // positive money on any door), narrowed exactly as the run page narrows its notice; the form puts those
+  // rows in their own Skipped group instead of New / Pending.
+  const newCandidates: ReprocessAddCandidate[] = (await listPayslipLessEligibleWithSkip(s, { batchId })).map((r) => ({
     employmentId: r.employmentId,
     employeeCode: r.employeeCode,
     name: r.name,
@@ -216,6 +219,7 @@ export default async function ReprocessPage({
     outsideScope: r.outsideScope,
     blockers: r.blockers,
     warnings: r.warnings,
+    skip: r.skip,
   }));
 
   // 97a9b0ab — every recomputation this run has had, each diffed against the calculation it replaced
