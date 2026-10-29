@@ -46,6 +46,8 @@ const WRITE_TABLES = [...new Set(POLICIES.filter((p) => ['ALL', 'INSERT', 'UPDAT
 // Existing UUID-rotated parents may already have their unique child slot occupied. Give the
 // additional child subjects explicit empty parents, preserving every original positive/negative case.
 const FRESH_SUBJECTS=['freshChildA','freshChildB','freshChildA1'] as const;
+const ORIGINAL_FRESH_SUBJECTS=new Set(['freshA','freshB','freshA1']);
+const DIRECT_PARENT_TABLES=new Set(['attendance','employment_review','performance_review']);
 const POSITIVE_CHILD_TABLES=new Set(['attendance_punch','leave_cancellation_step','leave_request_date',
   'replacement_leave_request_date','employment_review_reminder','loan_repayment','payroll_batch','review_goal']);
 const POSITIVE_PARENT_TABLES=['attendance','leave_request','leave_cancellation_request',
@@ -249,7 +251,8 @@ export const compareGenericWriteContext = async (i: number) => {
         expect(after[k], `${ctx.name}: ${labels[k]}`).toBe(before[k]);
         if(ctx.name==='hr_admin group-wide'){
           const match=/^insert (\w+) for (\w+)$/.exec(labels[k]);
-          if(match&&POSITIVE_CHILD_TABLES.has(match[1])&&FRESH_SUBJECTS.includes(match[2] as typeof FRESH_SUBJECTS[number])){
+          if(match&&((POSITIVE_CHILD_TABLES.has(match[1])&&FRESH_SUBJECTS.includes(match[2] as typeof FRESH_SUBJECTS[number]))
+            ||(DIRECT_PARENT_TABLES.has(match[1])&&ORIGINAL_FRESH_SUBJECTS.has(match[2])))){
             expect(before[k],`constraint-valid positive control: ${labels[k]}`).toMatch(/^ok:/);
             expect(after[k],`current-policy positive control: ${labels[k]}`).toMatch(/^ok:/);
           }
