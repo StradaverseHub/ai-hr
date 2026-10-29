@@ -4,8 +4,8 @@
  * For every probed registry entry and every matrix role, in a fresh fictional world (tenant with two
  * companies, plus a foreign tenant), this runs:
  *   - SCREEN: the owning screen's own admission (the page/route guard the server action calls, when it has
- *     one) and then the owning service itself under the role's own session, inside a transaction that is
- *     always rolled back. No second permission model: the outcome is whatever the native code decides.
+ *     one) and then the owning service itself under the role's own session. Supplied-Tx APIs roll back;
+ *     transaction-owning APIs use an equivalent separate fictional world. Native code decides the result.
  *   - AGENT offer: the Assistant's choices read for that action lists this specific item.
  *   - AGENT prepare: the registry entry's store prepares a review of the same item.
  *   - AGENT confirm: the role confirms ITS OWN review (which runs the native service again); 'deny' when it
@@ -440,7 +440,7 @@ describe.each([...PROBED_ACTION_IDS])('ADR-0151 parity: %s',id=>{
  it.each([...PARITY_ROLES])('%s gets the screen\'s allow/deny on offer, prepare and own confirm, and no cross-user confirm',async role=>{
   const declared=AGENT_ACTION_PARITY[id],{observed,notes}=await observe(id,role);
   console.info(`[parity] ${id} ${role} ${JSON.stringify(observed)} ${JSON.stringify(notes)}`);
-  const phaseNarrowing=Object.fromEntries(PARITY_PHASES.filter(phase=>expectedAgentOutcome(declared,role)==='deny'&&declared.screen[role]==='allow').map(phase=>[phase,'Declared phase-specific narrower finding']));
+  const phaseNarrowing=Object.fromEntries(PARITY_PHASES.filter(phase=>expectedAgentOutcome(declared,role)==='deny'&&declared.screen[role]==='allow').map(phase=>[phase,'Declared narrower finding']));
   const context=assertInvariants(id,role,observed,notes,phaseNarrowing,'scope' in declared?declared.scope:undefined);
   if('page' in declared)expect(observed.page,`${context} — native page discoverability differs`).toBe(declared.page[role]);
   // The owning screen behaves as declared (independent expected value).
@@ -454,7 +454,7 @@ describe.each(DECISIONS)('ADR-0151 parity, rejected decision: %s',id=>{
  it.each([...PARITY_ROLES])('%s gets the screen\'s allow/deny when rejecting',async role=>{
   const {observed,notes}=await observe(id,role,{decision:'rejected',workflow:false});
   console.info(`[parity:rejected] ${id} ${role} ${JSON.stringify(observed)} ${JSON.stringify(notes)}`);
-  const declared=AGENT_ACTION_PARITY[id];assertInvariants(id,role,observed,notes,Object.fromEntries(PARITY_PHASES.filter(phase=>expectedAgentOutcome(declared,role)==='deny'&&declared.screen[role]==='allow').map(phase=>[phase,'Declared phase-specific narrower finding'])));
+  const declared=AGENT_ACTION_PARITY[id];assertInvariants(id,role,observed,notes,Object.fromEntries(PARITY_PHASES.filter(phase=>expectedAgentOutcome(declared,role)==='deny'&&declared.screen[role]==='allow').map(phase=>[phase,'Declared narrower finding'])));
  },180_000);
 });
 

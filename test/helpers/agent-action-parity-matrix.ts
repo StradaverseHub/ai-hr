@@ -7,7 +7,8 @@
  *   1. the observed screen outcome equals the value declared here (an independent expected value);
  *   2. every agent phase equals the screen outcome, except where a role is listed in `narrowed` (the agent
  *      refuses something the screen allows, with the reason). The agent may be NARROWER, never wider;
- *   3. another company and another tenant are refused by the screen and by every agent phase.
+ *   3. foreign target requests are refused by every agent phase. A broader legacy native action needs an
+ *      explicit narrower finding; caller-tenant catalogue creation states its separate owner boundary.
  *
  * Coverage rule (test/agent-action-permission-parity-guard.test.ts): every registry entry has a declaration
  * here, and `satisfies Record<AgentActionId,…>` makes a missing one a compile error as well. A new entry must
@@ -35,7 +36,8 @@ export type ParityRole=(typeof PARITY_ROLES)[number];
 export const PARITY_PHASES=['offer','prepare','confirm'] as const;
 export type ParityPhase=(typeof PARITY_PHASES)[number];
 export type ParityOutcome='allow'|'deny';
-/** Roles that must always be refused, by the screen and by every agent phase, for every entry. */
+/** Foreign target actors must be refused by the agent; native exceptions require an explicit narrower
+ * finding, and caller-owned catalogue creation declares its separate scope. */
 export const ALWAYS_REFUSED:readonly ParityRole[]=['another_company','another_tenant'];
 
 export type ParityDeclaration=
