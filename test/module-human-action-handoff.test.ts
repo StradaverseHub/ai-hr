@@ -54,13 +54,13 @@ it('hands TOIL to human worked-date review without generating work, consent, cre
  for(const extra of [{rows:[]},{workedDate:'2026-01-01'},{firstScheduleConsent:true},{creditId:'invented'},{approved:true},{route:'/assistant/toil?employmentId=other'}])expect(()=>checkedModuleHumanHandoffs('toil',actions.map(row=>({...row,...extra})))).toThrow();
 });
 
-it('hands assigned Leave decisions to human selection without model task, decision or confirmation',()=>{
- const rows=moduleHumanActionHandoffs('approvals');expect(rows).toEqual([{module:'approvals',action:'approvals.leave.decide',route:'/assistant/approvals',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
+it('hands assigned Leave, claim, attendance and replacement-leave decisions to human selection without model task, decision or confirmation',()=>{
+ const rows=moduleHumanActionHandoffs('approvals');expect(rows).toEqual([{module:'approvals',action:'approvals.leave.decide',route:'/assistant/approvals',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'approvals',action:'approvals.claim.decide',route:'/assistant/approvals',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'approvals',action:'approvals.attendance.decide',route:'/assistant/approvals',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'approvals',action:'approvals.toil.decide',route:'/assistant/approvals',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
  for(const extra of [{leaveRequestId:'other'},{currentStepId:'other'},{decision:'approved'},{rejectReason:'model reason'},{confirmAssignedDecision:true},{route:'/assistant/approvals?task=other'}])expect(()=>checkedModuleHumanHandoffs('approvals',rows.map(row=>({...row,...extra})))).toThrow();
 });
 
 it('offers only the fixed own Attendance human page without carrying source baselines or work claims',()=>{
- const rows=moduleHumanActionHandoffs('attendance');expect(rows).toEqual([{module:'attendance',action:'attendance.correction.request',route:'/assistant/attendance',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
+ const rows=moduleHumanActionHandoffs('attendance');expect(rows).toEqual([{module:'attendance',action:'attendance.correction.request',route:'/assistant/attendance',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'attendance',action:'attendance.overtime.request',route:'/assistant/attendance',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
  for(const extra of [{employmentId:'other'},{baseline:'private'},{clockChanges:{}},{requestedOtMinutes:60},{approved:true},{route:'/assistant/attendance?employee=other'}])expect(()=>checkedModuleHumanHandoffs('attendance',rows.map(row=>({...row,...extra})))).toThrow();
 });
 

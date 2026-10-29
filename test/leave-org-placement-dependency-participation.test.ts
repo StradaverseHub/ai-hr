@@ -16,6 +16,13 @@ beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase()
 const group=():SessionContext=>({...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]});
 const hire=(name:string)=>hireEmployee(group(),{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
 const state=async()=>({employment:await owner.db.select().from(schema.employment).where(eq(schema.employment.tenantId,b.tenantId)).orderBy(schema.employment.id),assignments:await owner.db.select().from(schema.assignment).where(eq(schema.assignment.tenantId,b.tenantId)).orderBy(schema.assignment.id),lines:await owner.db.select().from(schema.reportingLine).where(eq(schema.reportingLine.tenantId,b.tenantId)).orderBy(schema.reportingLine.id),scopes:await owner.db.select().from(schema.reportingLineScope).where(eq(schema.reportingLineScope.tenantId,b.tenantId)).orderBy(schema.reportingLineScope.id),ledger:await owner.db.select().from(schema.leaveLedger).where(eq(schema.leaveLedger.tenantId,b.tenantId)).orderBy(schema.leaveLedger.id),events:await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId,b.tenantId)).orderBy(schema.domainEvent.id)});
+// ADR-0155 §5: a refused or rolled-back full import still appends its own import-attempt audit events
+// (previewed, then failed) outside the rolled-back write. Those are the history record of the refusal,
+// not an employee graph/ledger/event effect, so they are asserted separately and exactly.
+type State=Awaited<ReturnType<typeof state>>;
+const isAttemptEvent=(e:State['events'][number])=>e.aggregateType==='import-attempt';
+const withoutAttemptEvents=(s:State)=>({...s,events:s.events.filter(e=>!isAttemptEvent(e))});
+const newAttemptEvents=(before:State,after:State)=>after.events.filter(e=>isAttemptEvent(e)&&!before.events.some(o=>o.id===e.id)).map(e=>e.eventType).sort();
 async function heldEmployee(id:string){let ready!:()=>void,failed!:(error:unknown)=>void,release!:()=>void;const started=new Promise<void>((yes,no)=>{ready=yes;failed=no;}),finish=new Promise<void>(yes=>{release=yes;});const watchdog=setTimeout(()=>{failed(Error('owned placement handshake timed out'));release();},10000);const holder=withTenant(group(),async tx=>{await lockLeaveDependenciesTx(tx,b.tenantId,[id]);ready();await finish;});void holder.catch(failed);await started;return{async close(){release();clearTimeout(watchdog);await holder;}};}
 async function destination(){const [co]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional Destination',country:'MY',currency:'MYR'}).returning();const [dept]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:co.id,name:'DEST',label:'Fictional Destination Department'}).returning();return{companyId:co.id,departmentId:dept.id};}
 describe('structural placement writers own configuration before planning',()=>{
@@ -61,7 +68,7 @@ const importRow=()=>({full_name:'Fictional Import Placement',email:randomUUID()+
 describe('whole employee import owns its earlier actual source interval',()=>{
  it('refuses a held participant without any employee graph/ledger/event effect, then imports after release',async()=>{
   const existing=await hire('Fictional Import Interval'),row=importRow(),before=await state(),holder=await heldEmployee(existing.employmentId);
-  try{const result=await commitEmployeeImport(group(),{companyId:b.companyId,records:[row]});expect(result.imported).toBe(0);expect(result.fileErrors?.some(message=>message.includes('rolled back'))).toBe(true);expect(await state()).toEqual(before);expect(await owner.db.select().from(schema.person).where(eq(schema.person.primaryEmail,row.email))).toEqual([]);}
+  try{const result=await commitEmployeeImport(group(),{companyId:b.companyId,records:[row]});expect(result.imported).toBe(0);expect(result.fileErrors?.some(message=>message.includes('rolled back'))).toBe(true);const after=await state();expect(withoutAttemptEvents(after)).toEqual(withoutAttemptEvents(before));expect(newAttemptEvents(before,after)).toEqual(['import-attempt.failed','import-attempt.previewed']);expect(await owner.db.select().from(schema.person).where(eq(schema.person.primaryEmail,row.email))).toEqual([]);}
   finally{await holder.close();}
   const result=await commitEmployeeImport(group(),{companyId:b.companyId,records:[row]});expect(result.imported).toBe(1);expect(result.failed).toEqual([]);
  });
@@ -73,7 +80,7 @@ describe('whole employee import owns its earlier actual source interval',()=>{
    if(fn.toString().includes('Employee import inputs changed')){intercepted++;await owner.db.update(schema.department).set({label:'Fictional changed catalogue label'}).where(eq(schema.department.id,b.deptA));}
    return actual(ctx,fn);
   });
-  try{const result=await commitEmployeeImport(group(),{companyId:b.companyId,records:[row]});expect(intercepted).toBe(1);expect(result.imported).toBe(0);expect(result.fileErrors?.some(message=>message.includes('Employee import inputs changed'))).toBe(true);expect(await state()).toEqual(before);expect(await owner.db.select().from(schema.person).where(eq(schema.person.primaryEmail,row.email))).toEqual([]);}
+  try{const result=await commitEmployeeImport(group(),{companyId:b.companyId,records:[row]});expect(intercepted).toBe(1);expect(result.imported).toBe(0);expect(result.fileErrors?.some(message=>message.includes('Employee import inputs changed'))).toBe(true);const after=await state();expect(withoutAttemptEvents(after)).toEqual(withoutAttemptEvents(before));expect(newAttemptEvents(before,after)).toEqual(['import-attempt.failed','import-attempt.previewed']);expect(await owner.db.select().from(schema.person).where(eq(schema.person.primaryEmail,row.email))).toEqual([]);}
   finally{boundary.mockRestore();}
   const retried=await commitEmployeeImport(group(),{companyId:b.companyId,records:[row]});expect(retried.imported).toBe(1);
  });

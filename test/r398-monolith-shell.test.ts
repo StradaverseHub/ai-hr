@@ -56,7 +56,9 @@ const HR_BRAND_BADGE = 'grid size-10 shrink-0 place-items-center rounded-2xl bg-
 
 describe('Monolith shell wiring', () => {
   it('the monolith: variant keys on <html data-ui-theme="monolith">, like the tokens', () => {
-    expect(CSS).toContain("@custom-variant monolith (&:where([data-ui-theme='monolith'] *));");
+    // D-P1-32 D3: updated, not replaced — the variant still keys on the same attribute, and an area theme
+    // (<div data-area-theme>, app/performance/area-theme.css) is excluded at zero specificity.
+    expect(CSS).toContain("@custom-variant monolith (&:where([data-ui-theme='monolith'] *):not(:where([data-area-theme], [data-area-theme] *)));");
     expect(CSS).toContain(":root[data-ui-theme='monolith'] {");
   });
 
@@ -83,7 +85,8 @@ describe('Monolith shell wiring', () => {
 
   it('the Monolith rail opens no flyout panel and offers no collapse (README §3: always open on desktop)', () => {
     expect(SIDEBAR).toContain('const openNode = openKey && !monolith');
-    expect(SIDEBAR).toContain('const collapsed = monolith ? false : collapsedPref;');
+    // Monolith never collapses; Classic follows the preference, except in the D-P1-28 phone drawer (labels shown).
+    expect(SIDEBAR).toContain('const collapsed = monolith ? false : collapsedPref && !(mobileNavigationOpen && !atelier);');
   });
 });
 

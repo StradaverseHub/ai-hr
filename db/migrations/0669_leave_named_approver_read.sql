@@ -50,9 +50,9 @@
 -- request all return the empty set / no rows, never an error, so neither function can probe which ids exist.
 --
 -- ⚠️ NUMBERING. Filename 0669 reserved in the claude/migration-inventory-20261027 registry (ebe6304ae). It journals
--- AFTER 0670_ai_orchestrator_wave1_receipts (idx 654, when 1793190000000, applied first on staging): idx 655, when
--- re-timed to 1793200000000 (registry 00b903bef). The filename sorts below 0670, but the migrator orders by journal
--- idx/when, never by filename. If a later `when` is applied first, re-time this (unapplied) entry again.
+-- AFTER 0670, 0675, 0676 and 0671 (staging watermark 1793275000000 at idx 657): idx 658, when re-timed to
+-- 1793276000000. The filename sorts below them, but the migrator orders by journal idx/when, never by filename.
+-- If a later `when` is applied first, re-time this (unapplied) entry again.
 --
 -- Rollback:
 --   DROP POLICY leave_request_named_approver_read ON public.leave_request;

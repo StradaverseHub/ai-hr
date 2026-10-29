@@ -7,11 +7,13 @@
 /* r398 — the Monolith SHELL (docs/design/monolith/README.md §3). `monolith:` styles an element only while
    <html data-ui-theme="monolith">, so one component's markup can carry both looks and Classic's computed
    styles are untouched: a `monolith:` utility does not match in Classic at all. Same shape as `dark:` above
-   (:where keeps the specificity of the bare utility, so variant order decides, exactly as for dark:). */
-@custom-variant monolith (&:where([data-ui-theme='monolith'] *));
+   (:where keeps the specificity of the bare utility, so variant order decides, exactly as for dark:).
+   D-P1-32 D3 — neither variant matches inside an area theme (<div data-area-theme>, app/performance/area-theme.css):
+   that area looks the same in every theme. `:not(:where(...))` adds zero specificity. */
+@custom-variant monolith (&:where([data-ui-theme='monolith'] *):not(:where([data-area-theme], [data-area-theme] *)));
 
 /* Atelier (app/atelier.css) — the same mechanism, for the few shell utilities a CSS file cannot reach. */
-@custom-variant atelier (&:where([data-ui-theme='atelier'] *));
+@custom-variant atelier (&:where([data-ui-theme='atelier'] *):not(:where([data-area-theme], [data-area-theme] *)));
 
 :root {
   /* Floating-shell surfaces: canvas frame the app floats on → content area

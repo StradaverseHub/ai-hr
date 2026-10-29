@@ -4,12 +4,14 @@ import { Card, PageHeader } from '@/components/ui';
 import { calibrationListTierOrder, type CalibrationListSession } from '@/packs/performance/onehr/calibration-list-model';
 
 /**
- * WP-B1 — the Calibration destination. Read-only: the one control per row is the link into the session,
- * where the existing calibration screen owns every decision. Groups follow calibrationListTierOrder; inside a
+ * WP-B1 — the Calibration destination. Read-only: the controls per row are the link into the session,
+ * where the existing calibration screen owns every decision, and (PT-TB) for a session whose Talent Box the viewer
+ * holds, a link to its standalone board (`boards`, by session id). Groups follow calibrationListTierOrder; inside a
  * group the service has already placed open windows first.
  */
-export function CalibrationList({ sessions }: { sessions: CalibrationListSession[] }) {
+export function CalibrationList({ sessions, boards = {} }: { sessions: CalibrationListSession[]; boards?: Readonly<Record<string, string>> }) {
   const t = useTranslations('onehr.calibrationList');
+  const tArea = useTranslations('performanceArea');
   const groups = calibrationListTierOrder.map((tier) => ({ tier, rows: sessions.filter((s) => s.tier === tier) })).filter((g) => g.rows.length > 0);
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -28,7 +30,10 @@ export function CalibrationList({ sessions }: { sessions: CalibrationListSession
                 <tbody className="divide-y divide-border">
                   {rows.map((s) => (
                     <tr key={s.id}>
-                      <td className="p-3"><Link className="text-primary underline" href={s.href}>{s.name}</Link></td>
+                      <td className="p-3">
+                        <Link className="text-primary underline" href={s.href}>{s.name}</Link>
+                        {boards[s.id] ? <Link className="mt-1 block text-xs text-primary underline" href={boards[s.id]} data-talent-box-link={s.id}>{tArea('tabs.cal.talentBox')}</Link> : null}
+                      </td>
                       <td className="p-3">{s.cycleName}</td>
                       <td className="p-3">{s.companyName ?? t('groupWide')}</td>
                       <td className="p-3">

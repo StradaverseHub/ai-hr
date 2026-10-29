@@ -151,6 +151,21 @@ it('connects assigned Leave decisions without granting models decision inputs or
  expect(()=>parseModuleAgentActionNomination({module:'approvals',action:'approvals.leave.decide',phase:'confirm'})).toThrow();
 });
 
+it('connects ADR-0151 wave 1b overtime requests and assigned decisions as human-selected, model-uncallable reviews',()=>{
+ expect(MODULE_AGENT_ACTIONS.approvals.actions.map(row=>row.id)).toEqual(['approvals.leave.decide','approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide']);
+ expect(MODULE_AGENT_ACTIONS.attendance.actions.map(row=>row.id)).toEqual(['attendance.correction.request','attendance.overtime.request']);
+ const rows=[['attendance','attendance.overtime.request','module_overtime_request_review_v1','attendance','submitted_not_approved'],['approvals','approvals.claim.decide','module_claim_decision_review_v1','claims','canonical_receipt_required'],
+  ['approvals','approvals.attendance.decide','module_attendance_decision_review_v1','attendance','canonical_receipt_required'],['approvals','approvals.toil.decide','module_toil_decision_review_v1','leave','canonical_receipt_required']] as const;
+ for(const [module,action,adapter,owner,outcome] of rows){
+  expect(getModuleAgentAction(module,action)).toMatchObject({owner,outcome,prepare:{status:'implemented',adapter},confirm:{status:'implemented',adapter}});
+  expect(parseModuleAgentActionNomination({module,action,phase:'prepare'})).toEqual({kind:'prepare',module,action,adapter,requiresHumanSelection:true,effect:'none'});
+  for(const extra of [{subjectId:'other'},{employmentId:'other'},{decision:'approved'},{note:'model words'},{reviewedDigest:'a'.repeat(64)},{plannedStartTime:'18:00'}])expect(()=>parseModuleAgentActionNomination({module,action,phase:'prepare',...extra})).toThrow();
+  expect(()=>parseModuleAgentActionNomination({module,action,phase:'confirm'})).toThrow();
+ }
+ // An action is only nominated under its own module.
+ expect(()=>parseModuleAgentActionNomination({module:'claims',action:'approvals.claim.decide',phase:'prepare'})).toThrow();
+});
+
 it('connects human Attendance review without accepting model clocks, work evidence or approvals',()=>{
  expect(getModuleAgentAction('attendance','attendance.correction.request')).toMatchObject({owner:'attendance',outcome:'submitted_not_approved',prepare:{status:'implemented',adapter:'module_attendance_review_v1'},confirm:{status:'implemented',inputSchema:'AttendanceCorrectionReviewConfirmation'}});
  expect(parseModuleAgentActionNomination({module:'attendance',action:'attendance.correction.request',phase:'prepare'})).toEqual({kind:'prepare',module:'attendance',action:'attendance.correction.request',adapter:'module_attendance_review_v1',requiresHumanSelection:true,effect:'none'});

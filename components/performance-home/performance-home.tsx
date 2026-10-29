@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Status, type StatusTone } from '@/components/monolith';
 import { MONO_LABEL } from '@/components/monolith/classes';
 import { cn } from '@/lib/utils';
-import { getPerformanceHomeBlock, type HomeStepState, type PerformanceHomeBlock } from '@/packs/performance/service';
+import { getPerformanceHomeBlock, hasAssignedPerformanceWork, type HomeStepState, type PerformanceHomeBlock } from '@/packs/performance/service';
 
 /**
  * WP-A2 (APR-015) — the Performance block on Home, for employees and line managers.
@@ -26,8 +26,30 @@ const DOT: Record<StatusTone, string> = {
   mid: 'border border-muted-foreground/60 bg-transparent monolith:border-mid',
 };
 
+/**
+ * D-P1-32 PT-X3: the "Your review" card, the AI-HR home's door to the Performance & Talent home
+ * (/performance/home). Drawn at the top of the block, so every Home branch (personal landing, Classic,
+ * Monolith, Atelier) shows it wherever the block is mounted.
+ */
+export async function PerformanceReviewCard() {
+  const [t, tNav] = await Promise.all([getTranslations('performanceArea'), getTranslations('nav')]);
+  return (
+    <Card data-performance-review-card className="flex min-w-0 flex-wrap items-center justify-between gap-3 p-4 sm:p-5">
+      <div className="min-w-0 space-y-1">
+        <h3 className="font-semibold">{t('homeCard.title')}</h3>
+        <p className="text-sm text-muted-foreground">{t('homeHelp.homeCard.line')}</p>
+      </div>
+      <Link href="/performance/home" className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline-offset-4 hover:underline">
+        {/* The one label key for the area (nav.performanceTalent, D-P1-32 PT-X5). */}
+        {tNav('performanceTalent')} <span aria-hidden="true" className="ml-1">→</span>
+      </Link>
+    </Card>
+  );
+}
+
 export async function PerformanceHomeView({ block }: { block: PerformanceHomeBlock }) {
   const t = await getTranslations('performanceHome');
+  const tArea = await getTranslations('performanceArea');
   const tTask = await getTranslations('employeeHome.taskNames');
   const format = await getFormatter();
   const day = (iso: string) => format.dateTime(new Date(`${iso}T00:00:00Z`), { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
@@ -36,8 +58,12 @@ export async function PerformanceHomeView({ block }: { block: PerformanceHomeBlo
   const nextTitle = next.kind === 'none' ? t('next.none') : next.kind === 'feedback360' ? t('next.feedback360Title', { count: next.colleagues }) : t(`next.${next.kind}Title`);
   const nextLine = next.kind === 'none' ? (next.nextDate ? t(next.nextDate.kind === 'opens' ? 'next.opens' : 'next.closesOn', { date: day(next.nextDate.on) }) : null)
     : next.kind === 'feedback360' ? t('next.feedback360Line') : next.total > 0 ? t(`next.${next.kind}Line`, { done: next.done, total: next.total }) : null;
-  const rows: { key: string; label: string; value: string; strong: boolean }[] = [];
-  if (standing.performance) rows.push({ key: 'performance', label: t('standing.performance'), value: standing.performance.state === 'released' ? standing.performance.band : t(`standing.${standing.performance.state}`), strong: standing.performance.state === 'released' });
+  const rows: { key: string; label: string; value: string; strong: boolean; note?: string }[] = [];
+  const perf = standing.performance;
+  // DQ-1: a line-manager-approved band appears only when home-cards.ts WHERE_YOU_STAND_RULE is flipped; it is never bold.
+  if (perf) rows.push('band' in perf
+    ? { key: 'performance', label: t('standing.performance'), value: perf.band, strong: perf.state === 'released', note: perf.state === 'lineManagerApproved' ? tArea('homeHelp.stand.lineManagerApproved') : undefined }
+    : { key: 'performance', label: t('standing.performance'), value: t(`standing.${perf.state}`), strong: false });
   if (standing.competency) rows.push({ key: 'competency', label: t('standing.competency'), value: t(`standing.${standing.competency}`), strong: standing.competency === 'reviewed' });
   rows.push({ key: 'feedback360', label: t('standing.feedback360'), value: t(standing.feedback360 === 'released' ? 'standing.reportReleased' : 'standing.notReleased'), strong: standing.feedback360 === 'released' });
   rows.push({ key: 'careerTarget', label: t('standing.careerTarget'), value: standing.careerTarget.state === 'set' ? standing.careerTarget.title : t('standing.notSet'), strong: standing.careerTarget.state === 'set' });
@@ -45,6 +71,7 @@ export async function PerformanceHomeView({ block }: { block: PerformanceHomeBlo
   return (
     <section aria-labelledby="performance-home-title" data-performance-home className="min-w-0 space-y-4">
       <h2 id="performance-home-title" className="sr-only">{t('title')}</h2>
+      {await PerformanceReviewCard()}
       <Card data-performance-strip className="min-w-0 p-4 sm:p-5">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <p className="min-w-0">
@@ -106,9 +133,12 @@ export async function PerformanceHomeView({ block }: { block: PerformanceHomeBlo
           </div>
           <dl className="mt-2 divide-y divide-border monolith:divide-hairline">
             {rows.map((row) => (
-              <div key={row.key} data-standing={row.key} className="flex items-baseline justify-between gap-3 py-2.5 text-sm">
+              <div key={row.key} data-standing={row.key} title={row.note} className="flex items-baseline justify-between gap-3 py-2.5 text-sm">
                 <dt className="text-muted-foreground">{row.label}</dt>
-                <dd className={cn('text-right', row.strong ? 'font-semibold' : 'text-muted-foreground')}>{row.value}</dd>
+                <dd className={cn('text-right', row.strong ? 'font-semibold' : 'text-muted-foreground')}>
+                  {row.value}
+                  {row.note && <span className="block text-xs font-normal text-muted-foreground">{row.note}</span>}
+                </dd>
               </div>
             ))}
           </dl>
@@ -128,5 +158,18 @@ export async function PerformanceHomeSlot({ session, scopeIds }: { session: Sess
     console.error('[performance-home] block unavailable', error);
     return null;
   });
-  return block ? <PerformanceHomeView block={block} /> : null;
+  if (block) return <PerformanceHomeView block={block} />;
+  // PT-X3: no own review open, but performance work is assigned (the bell's own projection): the door alone.
+  const assigned = await (async () => hasAssignedPerformanceWork(session, scopeIds))().catch((error: unknown) => {
+    console.error('[performance-home] assigned work unavailable', error);
+    return false;
+  });
+  if (!assigned) return null;
+  const t = await getTranslations('performanceHome');
+  return (
+    <section aria-labelledby="performance-home-title" data-performance-home className="min-w-0 space-y-4">
+      <h2 id="performance-home-title" className="sr-only">{t('title')}</h2>
+      {await PerformanceReviewCard()}
+    </section>
+  );
 }
