@@ -1,3 +1,4 @@
+import {rewardEligibilitySummary} from '../packs/rewards/policy-eligibility';
 import {completeSharedRewardPolicy,establishRewardMembership,migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 /** Real owners/RLS/rollback cases, prepared but not run until the complete resource handover. */
 import {randomUUID} from 'node:crypto';
@@ -154,9 +155,9 @@ describe('shared reward configuration versions',()=>{
  it('56595838: offers the version contents read-only and shows the origin and a later review edit in the list',async()=>{
   const v=await createGroup();
   const [choice]=await rewardSharedPolicyChoices(admin,[b.companyId]);
-  expect(choice).toMatchObject({versionId:v.versionId,policy:{effectiveFrom:policy.effectiveFrom,standardPools:policy.standardPools,hPools:policy.hPools,targetMonthsBp:policy.targetMonthsBp,exemptReason:''}});
+  expect(choice).toMatchObject({versionId:v.versionId,policy:{effectiveFrom:policy.effectiveFrom,standardPools:policy.standardPools,hPools:policy.hPools,eligibility:rewardEligibilitySummary(policy)}});
   // Summary only: no salary ranges or profit figures reach the create form.
-  expect(Object.keys(choice.policy!).sort()).toEqual(['bonusMatrix','effectiveFrom','exemptReason','hPools','meritMatrix','standardPools','targetMonthsBp']);
+  expect(Object.keys(choice.policy!).sort()).toEqual(['bonusMatrix','effectiveFrom','eligibility','hPools','meritMatrix','standardPools']);
   const id=await unit(b.companyId,buA,v.versionId);
   const origin=async()=>(await listRewardUnits(admin,[b.companyId])).find(r=>r.id===id)!.policyOrigin;
   expect(await origin()).toMatchObject({versionId:v.versionId,revision:1,name:v.name,changed:false});
