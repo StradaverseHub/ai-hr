@@ -49,10 +49,10 @@ it('distinguishes a retained case fact from Personnel truth while keeping it loc
 });
 it('updates the compact row controls through the shared definition owner',()=>{
   render(<Editor/>);
-  expect(screen.getByRole('checkbox',{name:'Show Full name',exact:true})).toBeDisabled();
-  fireEvent.click(screen.getByRole('checkbox',{name:'HR only Employee no.',exact:true}));
-  fireEvent.click(screen.getByRole('checkbox',{name:'Required Floor / building',exact:true}));
-  fireEvent.click(screen.getByRole('button',{name:'Move Floor / building up',exact:true}));
+  expect(screen.getByRole('checkbox',{name:'Show Full name'})).toBeDisabled();
+  fireEvent.click(screen.getByRole('checkbox',{name:'HR only Employee no.'}));
+  fireEvent.click(screen.getByRole('checkbox',{name:'Required Floor / building'}));
+  fireEvent.click(screen.getByRole('button',{name:'Move Floor / building up'}));
   const config=parseV9Config(JSON.parse(screen.getByTestId('definition').textContent!));
   expect(config.caseForms!.onb!.find(field=>field.key==='empNo')).toMatchObject({hrOnly:true});
   expect(config.caseForms!.onb!.find(field=>field.key==='floor')).toMatchObject({required:true});
