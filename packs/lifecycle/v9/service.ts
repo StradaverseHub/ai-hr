@@ -264,7 +264,7 @@ export type Command =
   | { type: 'settlementOptions'; options: NonNullable<M.Case['settlementOptions']>; reason: string }
   | { type: 'cancel' | 'reopen'; reason: string }
   | { type: 'runWorkflows' }
-  | { type: 'retryWorkflow'; workflowId: string }
+  | { type: 'retryWorkflow' | 'startWorkflow'; workflowId: string }
   | { type: 'override'; checklist: string }
   | { type: 'assign'; id: string; userId: string }
   | { type: 'item'; id: string; status: M.Item['status']; reason: string };
@@ -275,6 +275,7 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('pmKeep'), ids: z.array(commandId).min(1).max(500) }).strict(),
   z.object({ type: z.literal('submit') }).strict(), z.object({ type: z.literal('runWorkflows') }).strict(),
   z.object({ type: z.literal('retryWorkflow'), workflowId: commandId }).strict(),
+  z.object({ type: z.literal('startWorkflow'), workflowId: commandId }).strict(),
   z.object({ type: z.literal('task'), id: commandId, status: z.enum(['todo', 'progress', 'done', 'notNeeded']), reason: reasonText }).strict(),
   z.object({ type: z.literal('generate'), template: commandId }).strict(),
   z.object({ type: z.literal('emailSend'), emailId: commandId }).strict(), z.object({ type: z.literal('emailTest'), emailId: commandId }).strict(),
@@ -298,7 +299,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     const row = await load(tx, ctx, id); if (row.revision !== revision) throw new M.V9Error('This case changed. Refresh before trying again.', 'conflict');
     const config = await configTx(tx, ctx); if (!config) throw new M.V9Error('V9 configuration is unavailable.');
     const c = structuredClone(row.data), env = await environment(tx, ctx, c, config);
-    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'documentTextEdit', 'documentSave', 'documentSign', 'documentRefresh', 'runWorkflows', 'retryWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
+    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'documentTextEdit', 'documentSave', 'documentSign', 'documentRefresh', 'runWorkflows', 'retryWorkflow', 'startWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
     if (row.native && ['pmPush', 'pmPushSelected'].includes(command.type) && !c.facts.employmentId) throw new M.V9Error('Activate this Personnel draft before applying its proposed changes.');
     if (command.type === 'submit') {
       M.submit(c, config, env);
@@ -338,7 +339,10 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     else if (command.type === 'emailEdit') { if (!config.emails.some(e => e.id === command.emailId && e.module === c.module) || command.body.length > 20000 || command.subject.length > 1000) throw new M.V9Error('Choose an available email and keep its content within the allowed length.'); c.emailEdits = { ...c.emailEdits, [command.emailId]: { subject: command.subject, body: command.body } }; M.appendLog(c, env, 'email.edited', 'Email text changed for this person only.'); }
     else if (command.type === 'documentTextEdit') M.editDocumentText(c, config, command.id, command.edits, env);
     else if (command.type === 'documentSave') M.saveDocument(c, command.id, command.values, 'hr', env);
-    else if (command.type === 'documentSign') M.signDocument(c, config, command.id, 'hr', { ...command.signature, by: env.actor, at: env.now }, env);
+    else if (command.type === 'documentSign') {
+      M.signDocument(c, config, command.id, 'hr', { ...command.signature, by: env.actor, at: env.now }, env);
+      if(c.documents.find(document=>document.id===command.id)?.status==='hrsigned')for(const workflow of config.workflows)M.runWorkflow(c,config,workflow,env,'hrSigned');
+    }
     else if (command.type === 'documentRefresh') { const document = c.documents.find(d => d.id === command.id); if (!document || document.status !== 'draft' || M.documentDeliveryReserved(c, command.id)) throw new M.V9Error('Only an unsigned draft not reserved for email delivery can refresh its source values.'); document.mergeValues = { ...env.mergeValues }; document.signatoryUserId = env.signatoryUserId ?? null; for (const field of document.fields) if (field.owner === 'pmLocked' && field.pmKey) document.values[field.id] = env.mergeValues[field.pmKey] ?? ''; M.appendLog(c, env, 'document.refreshed', document.name); }
     else if (command.type === 'settlementOptions') { if (!['pending', 'submitted'].includes(c.state)) throw new M.V9Error('Reopen this case before changing its figures.'); c.settlementOptions = command.options; M.appendLog(c, env, 'settlement.adjusted', command.reason); }
     else if (command.type === 'clear') {
@@ -354,6 +358,14 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       const calculation = c.module === 'off' ? await readSettlementTx(tx, ctx, c, config) : null;
       const figures = calculation?.ready && calculation.lastDay === c.facts.lastDay ? { sourceRevision: calculation.sourceRevision, lastDay: calculation.lastDay, leaveDays: String(calculation.encashDays), amount: calculation.amount!.toFixed(2), currency: calculation.currency, payDate: calculation.payDate, lockedAt: env.now, payrollReference: randomUUID() } : null;
       M.lastDayCheck(c, config, env, figures);
+    }
+    else if (command.type === 'startWorkflow') {
+      const workflow=config.workflows.find(workflow=>workflow.id===command.workflowId&&workflow.module===c.module);
+      if(!workflow||workflow.status!=='published'||c.state!=='submitted')throw new M.V9Error('Choose a live workflow on an open case.');
+      if(!M.workflowMatches(c,workflow,env.today))throw new M.V9Error('This case does not match the workflow conditions.');
+      if(c.runs.some(run=>run.workflowId===workflow.id&&['waiting','failed'].includes(run.status)))M.runWorkflow(c,config,workflow,env,'resume');
+      else M.runWorkflow(c,config,workflow,env,'manual',{startNow:true});
+      M.appendLog(c,env,'workflow.startedByHand',workflow.name);
     }
     else if (command.type === 'retryWorkflow') { const workflow = config.workflows.find(w => w.id === command.workflowId); if (!workflow) throw new M.V9Error('Workflow not found.'); M.runWorkflow(c, config, workflow, env, 'resume'); }
     else if (command.type === 'override') { if (c.state !== 'pending') throw new M.V9Error('The submitted checklist is frozen.'); c.override = command.checklist; M.matchChecklist(config, c); M.appendLog(c, env, 'checklist.overridden', command.checklist); }

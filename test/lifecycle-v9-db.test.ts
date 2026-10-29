@@ -261,6 +261,10 @@ it('keeps native onboarding document state private and preserves it through late
   const edited=(await v9CaseDetail(admin,row.case.id)).case;
   expect(edited.documents[0].edits).toEqual({[block.id]:'Fictional Native instance title'});
   expect((await v9Workspace(admin)).config!.templates.find(candidate=>candidate.id===template.id)!.versions[0].blocks.find(candidate=>candidate.id===block.id)!.text).toBe(block.text);
+  const workflowConfig=(await v9Workspace(admin)).config!;workflowConfig.workflows.push({id:'native-manual',name:'Fictional Native manual workflow',module:'onb',status:'published',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'notify',type:'notify',to:'employee',cc:[],subject:'Fictional Native follow-up',body:'Fictional'}],description:''});
+  await v9SaveConfig(admin,workflowConfig.revision,workflowConfig);await v9Command(admin,row.case.id,edited.revision,{type:'startWorkflow',workflowId:'native-manual'});
+  const started=(await v9CaseDetail(admin,row.case.id)).case;expect(started.mails).toHaveLength(edited.mails.length+1);expect(started.mails.find(mail=>mail.workflowId==='native-manual')?.delivery?.contact).toMatchObject({kind:'onboardingContact',email:'private-doc@test.invalid'});expect(started.runs.find(run=>run.workflowId==='native-manual')?.status).toBe('waiting');
+
 
 });
 
@@ -639,4 +643,19 @@ it('saves per-person text through the case owner, retains it in PDF content and 
   await expect(v9Command(employee,c.id,after.revision,{type:'documentTextEdit',id:doc.id,edits:{body:'Unauthorized'}})).rejects.toThrow();
   await expect(v9Command(admin,c.id,c.revision,{type:'documentTextEdit',id:doc.id,edits:{body:'Stale'}})).rejects.toThrow('changed');
   await v9Command(admin,c.id,after.revision,{type:'documentTextEdit',id:doc.id,edits:{}});expect((await v9CaseDetail(admin,c.id)).case.documents.find(document=>document.id===doc.id)!.edits).toEqual({});
+});
+it('fires the HR-signature workflow from an actual sign command and starts a manual workflow only through HR scope',async()=>{
+  const before=await prepared(),config=(await v9Workspace(admin)).config!;
+  config.companies=[{companyId:base.companyId,signatoryUserId:admin.userId!,signatoryTitle:'Fictional HR'}];
+  config.templates.push({id:'event-letter',name:'Fictional event letter',module:'off',type:'Letter',rules:{},hrStep:'before',employeeAck:true,retired:false,versions:[{version:1,state:'published',at:'',by:'',blocks:[{id:'body',type:'text',text:'Fictional letter',section:''}],fields:[]}]});
+  for(const event of ['hrSigned','manual'] as const)config.workflows.push({id:'event-'+event,name:'Fictional '+event,module:'off',status:'published',trigger:{event,days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'notify',type:'notify',to:'employee',cc:[],subject:'Fictional '+event,body:'Fictional event'}],description:''});
+  await v9SaveConfig(admin,config.revision,config);await v9Command(admin,before.id,before.revision,{type:'generate',template:'event-letter'});
+  let c=(await v9CaseDetail(admin,before.id)).case;expect(c.mails).toEqual([]);const doc=c.documents.find(document=>document.templateId==='event-letter')!;
+  await v9Command(admin,c.id,c.revision,{type:'documentSign',id:doc.id,signature:{method:'typed',value:'Fictional HR',consent:true}});c=(await v9CaseDetail(admin,c.id)).case;
+  expect(c.documents.find(document=>document.id===doc.id)?.status).toBe('hrsigned');expect(c.mails.map(mail=>mail.workflowId)).toEqual(['event-hrSigned']);expect(c.runs.find(run=>run.workflowId==='event-hrSigned')?.status).toBe('waiting');
+  await expect(v9Command(employee,c.id,c.revision,{type:'startWorkflow',workflowId:'event-manual'})).rejects.toThrow();
+  await v9Command(admin,c.id,c.revision,{type:'startWorkflow',workflowId:'event-manual'});c=(await v9CaseDetail(admin,c.id)).case;expect(c.mails.map(mail=>mail.workflowId)).toEqual(['event-hrSigned','event-manual']);
+  await v9Command(admin,c.id,c.revision,{type:'startWorkflow',workflowId:'event-manual'});c=(await v9CaseDetail(admin,c.id)).case;expect(c.mails).toHaveLength(2);
+  const next=(await v9Workspace(admin)).config!;next.workflows.find(workflow=>workflow.id==='event-manual')!.status='draft';await v9SaveConfig(admin,next.revision,next);
+  await expect(v9Command(admin,c.id,c.revision,{type:'startWorkflow',workflowId:'event-manual'})).rejects.toThrow('live workflow');
 });

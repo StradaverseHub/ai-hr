@@ -66,7 +66,7 @@ export type EmailTemplate = {
   slots: { id: string; label: string; required: boolean }[]; files?: EmailAsset[]; images?: EmailAsset[];
 };
 export type Trigger = {
-  event: 'submitted' | 'beforeJoin' | 'afterJoin' | 'beforeLWD'; days: number;
+  event: 'submitted' | 'hrSigned' | 'manual' | 'beforeJoin' | 'afterJoin' | 'beforeLWD' | 'afterLWD'; days: number;
   workdays: boolean; repeat: boolean; skipIf: '' | 'noPre' | 'allDocsDone' | `task:${string}`;
 };
 export type Step =
@@ -100,6 +100,16 @@ export function workflowProblems(workflow: Workflow, config: Pick<Config, 'templ
   }
   for (const [i, condition] of workflow.conditions.entries()) if (!condition.value.trim() || condition.field === 'joinWithin' && !/^\d+$/.test(condition.value)) problems.push(`Condition ${i + 1}: choose a valid value.`);
   return problems;
+}
+export function dateTrigger(event: Trigger['event']): boolean { return ['beforeJoin','afterJoin','beforeLWD','afterLWD'].includes(event); }
+export function afterTrigger(event: Trigger['event']): boolean { return event === 'afterJoin' || event === 'afterLWD'; }
+export function workflowEvents(module: Module): { id: Trigger['event']; label: string }[] {
+  return [{id:'submitted',label:module === 'onb' ? 'Onboarding case is submitted' : 'Offboarding case is submitted'}, {id:'hrSigned',label:'HR signs a document'}, ...(module === 'onb' ? [{id:'beforeJoin',label:'Days before the join date'}, {id:'afterJoin',label:'Days after the join date'}] : [{id:'beforeLWD',label:'Days before the last working day'}, {id:'afterLWD',label:'Days after the last working day'}]), {id:'manual',label:'Started by hand'}] as { id: Trigger['event']; label: string }[];
+}
+export function workflowWhen(workflow: Workflow): string {
+  const trigger=workflow.trigger;
+  if (!dateTrigger(trigger.event)) return workflowEvents(workflow.module).find(event=>event.id===trigger.event)?.label ?? 'Unknown trigger';
+  return `${trigger.days}${trigger.workdays ? ' working' : ''} day${trigger.days === 1 ? '' : 's'} ${afterTrigger(trigger.event) ? 'after' : 'before'} the ${workflow.module === 'onb' ? 'join date' : 'last working day'}${trigger.repeat && !afterTrigger(trigger.event) ? ', every morning until then' : ''}`;
 }
 export type Run = { id: string; workflowId: string; revision: number; date: string; status: 'running' | 'waiting' | 'done' | 'skipped' | 'failed'; cursor: number; reason: string; at: string; definition?: Workflow; actor?: Actor };
 export type Mail = {
@@ -499,21 +509,21 @@ export function planWorkflow(c: Case, config: Config, workflow: Workflow, env: P
   }
   return { matches, lines };
 }
-export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: Environment, event: 'submitted' | 'date' | 'resume'): Run | null {
+export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: Environment, event: 'submitted' | 'date' | 'resume' | 'hrSigned' | 'manual', options: { startNow?: boolean } = {}): Run | null {
   if (c.state !== 'submitted' || workflow.status !== 'published') return null;
   const unfinished = c.runs.find(r => r.workflowId === workflow.id && (r.status === 'waiting' || r.status === 'failed'));
   if (unfinished?.definition) workflow = unfinished.definition;
   if (c.state !== 'submitted' || workflow.status !== 'published' || !workflowMatches(c, workflow, env.today)) return null;
-  const trigger = workflow.trigger, anchor = trigger.event === 'beforeLWD' ? c.facts.lastDay : c.facts.joinDate;
-  if (event === 'submitted' && trigger.event !== 'submitted' || event === 'date' && trigger.event === 'submitted') return null;
+  const trigger = workflow.trigger, anchor = ['beforeLWD','afterLWD'].includes(trigger.event) ? c.facts.lastDay : c.facts.joinDate;
+  if (event !== 'resume' && !options.startNow && (event === 'date' ? !dateTrigger(trigger.event) : trigger.event !== event)) return null;
   const waiting = event === 'resume' ? unfinished : null;
   if (event === 'resume' && !waiting) return null;
-  if (trigger.event !== 'submitted' && !waiting) {
+  if (dateTrigger(trigger.event) && !waiting && !options.startNow) {
     if (!validDate(anchor)) return null;
-    const due = addDays(anchor, trigger.event === 'afterJoin' ? trigger.days : -trigger.days, trigger.workdays);
-    if (env.today < due || trigger.event !== 'afterJoin' && env.today > anchor) return null;
+    const due = addDays(anchor, afterTrigger(trigger.event) ? trigger.days : -trigger.days, trigger.workdays);
+    if (env.today < due || !afterTrigger(trigger.event) && env.today > anchor) return null;
   }
-  const repeat = trigger.repeat && trigger.event !== 'submitted' && trigger.event !== 'afterJoin';
+  const repeat = trigger.repeat && dateTrigger(trigger.event) && !afterTrigger(trigger.event);
   const runKey = waiting?.id ?? `${workflow.id}:${repeat ? env.today : 'once'}`;
   let run = c.runs.find(r => r.id === runKey);
   if (run?.status === 'done') return run;
@@ -551,10 +561,11 @@ export function markDelivered(c: Case, id: string, env: Environment, unchangedDo
   }
   appendLog(c, env, 'email.sent', mail.subject);
 }
+export function unresolvedWorkflowDeliveries(c: Pick<Case, 'mails'>): Mail[] { return c.mails.filter(mail => !mail.test && mail.workflowId !== null && ['pending','sending','uncertain','failed'].includes(mail.status)); }
 export function close(c: Case, figures: FinalFigures, reason: string, env: Environment, automatic = false): void {
   if (c.module !== 'off' || c.state !== 'submitted') throw new V9Error('Only an open offboarding case can be cleared.', 'conflict');
   const state = work(c);
-  if ((state.open.length || state.notReturned.length) && (automatic || !reason.trim())) throw new V9Error('Record an exception reason for outstanding work or unreturned items.');
+  if ((state.open.length || state.notReturned.length || unresolvedWorkflowDeliveries(c).length) && (automatic || !reason.trim())) throw new V9Error('Record an exception reason for outstanding work, unreturned items or unresolved workflow delivery.');
   if (!figures.sourceRevision || figures.lastDay !== c.facts.lastDay || !figures.payrollReference) throw new V9Error('Refresh and confirm the final figures in Payroll before clearance.');
   c.finalFigures = { ...figures, lockedAt: env.now }; c.state = 'cleared'; c.closedAt = env.now;
   c.closedBy = automatic ? { id: 'system', name: 'System (auto-close)' } : { ...env.actor };
@@ -565,8 +576,9 @@ export function close(c: Case, figures: FinalFigures, reason: string, env: Envir
 export function lastDayCheck(c: Case, config: Config, env: Environment, figures: FinalFigures | null): 'closed' | 'flagged' | 'unchanged' {
   if (c.module !== 'off' || c.state !== 'submitted' || !validDate(c.facts.lastDay) || env.today < c.facts.lastDay) return 'unchanged';
   const state = work(c);
-  if (!state.open.length && !state.notReturned.length && figures) { close(c, figures, '', env, true); return 'closed'; }
-  const detail = [state.open.length ? `${state.open.length} still open: ${state.open.map(t => `${t.name} (due ${t.dueOn})`).join('; ')}` : '', state.notReturned.length ? `${state.notReturned.length} items marked not returned need HR sign-off.` : '', !figures ? 'Final figures require confirmation in Payroll.' : ''].filter(Boolean).join('\n');
+  const deliveries = unresolvedWorkflowDeliveries(c);
+  if (!state.open.length && !state.notReturned.length && !deliveries.length && figures) { close(c, figures, '', env, true); return 'closed'; }
+  const detail = [state.open.length ? `${state.open.length} still open: ${state.open.map(t => `${t.name} (due ${t.dueOn})`).join('; ')}` : '', state.notReturned.length ? `${state.notReturned.length} items marked not returned need HR sign-off.` : '', deliveries.length ? `${deliveries.length} workflow email deliveries require confirmation or review.` : '', !figures ? 'Final figures require confirmation in Payroll.' : ''].filter(Boolean).join('\n');
   const first = !c.review;
   c.review = { firstAt: c.review?.firstAt ?? env.now, open: state.open.length, overdue: state.open.filter(t => t.dueOn <= env.today).length, notReturned: state.notReturned.length, detail };
   if (!first) return 'unchanged';

@@ -53,3 +53,11 @@ it('keeps configuration controls read-only for a viewer', () => {
   expect(within(drawer).getByRole('button', { name: 'Add a step' })).toBeDisabled();
   expect(within(drawer).getByRole('button', { name: 'Add condition' })).toBeDisabled();
 });
+it('offers the source signature/manual/post-exit events with date controls only for date triggers',()=>{
+  render(<Harness/>);fireEvent.click(screen.getByRole('button',{name:'New workflow'}));fireEvent.click(screen.getByRole('button',{name:'For Offboarding'}));
+  const drawer=screen.getByRole('dialog',{name:'Edit workflow'}),trigger=within(drawer).getByLabelText('What starts it');
+  fireEvent.change(trigger,{target:{value:'hrSigned'}});expect(within(drawer).queryByLabelText('Days')).not.toBeInTheDocument();
+  fireEvent.change(trigger,{target:{value:'manual'}});expect(within(drawer).queryByLabelText('Days')).not.toBeInTheDocument();
+  fireEvent.change(trigger,{target:{value:'afterLWD'}});expect(within(drawer).getByLabelText('Days')).toBeVisible();expect(within(drawer).queryByLabelText('Repeat every morning until the anchor date')).not.toBeInTheDocument();
+  const config:Config=JSON.parse(screen.getByTestId('definition').textContent!);expect(config.workflows.at(-1)?.trigger).toMatchObject({event:'afterLWD',repeat:false});expect(()=>parseV9Config(config)).not.toThrow();
+});

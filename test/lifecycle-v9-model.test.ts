@@ -378,3 +378,24 @@ it('saves per-person wording only on unsigned unreserved drafts and resets witho
   c.mails.push({id:'reserved',key:'reserved',workflowId:null,templateId:null,to:['employee'],cc:[],subject:'Fictional',body:'',documentIds:[doc.id],fileIds:[],status:'uncertain',test:false,at:environment.now,deliveredAt:null,failure:null});expect(()=>M.editDocumentText(c,config,doc.id,{body:'Changed'},environment)).toThrow('reserved');c.mails=[];
   definition.type='Attachment';delete doc.templateType;expect(()=>M.editDocumentText(c,config,doc.id,{body:'Changed'},environment)).toThrow('read-only');
 });
+it('fires HR-signature and manual workflows only from their own event and deduplicates them',()=>{
+  for(const event of ['hrSigned','manual'] as const){
+    const {c,config,environment}=fixture(),definition=workflow({id:event,trigger:{event,days:0,workdays:false,repeat:false,skipIf:''},steps:[{id:'notify',type:'notify',to:'employee',cc:[],subject:'Fictional event',body:'Body'}]});
+    expect(M.runWorkflow(c,config,definition,environment,'submitted')).toBeNull();expect(M.runWorkflow(c,config,definition,environment,'date')).toBeNull();expect(c.mails).toEqual([]);
+    expect(M.runWorkflow(c,config,definition,environment,event)?.status).toBe('done');M.runWorkflow(c,config,definition,environment,event);expect(c.mails).toHaveLength(1);
+  }
+});
+it('runs after the actual last working day and lets HR explicitly start early without bypassing case or matching guards',()=>{
+  const {c,config,environment}=fixture(),definition=workflow({trigger:{event:'afterLWD',days:1,workdays:true,repeat:false,skipIf:''},steps:[{id:'notify',type:'notify',to:'employee',cc:[],subject:'Fictional follow-up',body:'Body'}]});
+  environment.today='2026-11-01';expect(M.runWorkflow(c,config,definition,environment,'date')).toBeNull();environment.today='2026-11-02';expect(M.runWorkflow(c,config,definition,environment,'date')?.status).toBe('done');M.runWorkflow(c,config,definition,environment,'date');expect(c.mails).toHaveLength(1);
+  const fresh=fixture(),early=workflow({trigger:{event:'beforeLWD',days:0,workdays:false,repeat:false,skipIf:''},steps:definition.steps});fresh.environment.today='2026-10-01';expect(M.runWorkflow(fresh.c,fresh.config,early,fresh.environment,'date')).toBeNull();
+  early.conditions=[{field:'caseType',op:'is',value:'Retirement'}];expect(M.runWorkflow(fresh.c,fresh.config,early,fresh.environment,'manual',{startNow:true})).toBeNull();early.conditions=[];fresh.c.state='pending';expect(M.runWorkflow(fresh.c,fresh.config,early,fresh.environment,'manual',{startNow:true})).toBeNull();fresh.c.state='submitted';
+  expect(M.runWorkflow(fresh.c,fresh.config,early,fresh.environment,'manual',{startNow:true})?.status).toBe('done');expect(fresh.c.mails).toHaveLength(1);
+});
+it('does not auto-close ahead of an unresolved workflow delivery and preserves an explicit human clearance decision',()=>{
+ const {c,config,environment,figures}=fixture();environment.requireDeliveryAck=true;
+ const definition=workflow({trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},steps:[{id:'notify',type:'notify',to:'employee',cc:[],subject:'Fictional follow-up',body:'Body'}]});
+ M.runWorkflow(c,config,definition,environment,'manual');expect(c.mails[0].status).toBe('pending');expect(M.lastDayCheck(c,config,environment,figures)).toBe('flagged');expect(c.state).toBe('submitted');expect(c.review?.detail).toContain('deliveries require confirmation');expect(c.mails[0].status).toBe('pending');
+ expect(()=>M.close(c,figures,'',environment)).toThrow('exception reason');M.markDelivered(c,c.mails[0].id,environment);expect(M.lastDayCheck(c,config,environment,figures)).toBe('closed');
+ const manual=fixture();manual.c.mails=[{id:'held',key:'held',workflowId:'workflow',templateId:null,to:['employee'],cc:[],subject:'Fictional',body:'',documentIds:[],fileIds:[],status:'uncertain',test:false,at:'',deliveredAt:null,failure:'uncertain'}];M.close(manual.c,manual.figures,'Delivery reviewed; case clearance authorized.',manual.environment);expect(manual.c.state).toBe('cleared');expect(manual.c.mails[0].status).toBe('uncertain');expect(manual.c.closeReason).toContain('Delivery reviewed');
+});
