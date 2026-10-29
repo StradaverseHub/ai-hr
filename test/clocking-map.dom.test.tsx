@@ -35,6 +35,8 @@ import { CLOCKING_FIELDS } from '../app/admin/work-locations/clocking/form-field
 type FakeState = {
   mapOptions: Record<string, unknown> | null;
   tileUrls: string[];
+  tileOptions: Record<string, unknown> | null;
+  tileEvents: Record<string, () => void>;
   marker: { latLng: [number, number] | null; onMap: boolean } | null;
   circle: { latLng: [number, number] | null; radius: number; onMap: boolean } | null;
   views: [number, number][];
@@ -49,6 +51,8 @@ vi.mock('leaflet', () => {
   const state: FakeState = {
     mapOptions: null,
     tileUrls: [],
+    tileOptions: null,
+    tileEvents: {},
     marker: null,
     circle: null,
     views: [],
@@ -58,7 +62,6 @@ vi.mock('leaflet', () => {
     removed: 0,
   };
   let onMap = new Set<object>();
-  let tileEvents: Record<string, () => void> = {};
 
   const mapApi = {
     hasLayer: (l: object) => onMap.has(l),
@@ -85,12 +88,13 @@ vi.mock('leaflet', () => {
       state.mapOptions = options;
       return mapApi;
     },
-    tileLayer(url: string) {
+    tileLayer(url: string, options: Record<string, unknown>) {
       state.tileUrls.push(url);
+      state.tileOptions = options;
       const layer = {
-        on(event: string, listener: () => void) { tileEvents[event] = listener; return layer; },
-        off(event: string) { delete tileEvents[event]; return layer; },
-        addTo() { queueMicrotask(() => tileEvents.tileload?.()); return layer; },
+        on(event: string, listener: () => void) { state.tileEvents[event] = listener; return layer; },
+        off(event: string) { delete state.tileEvents[event]; return layer; },
+        addTo() { queueMicrotask(() => state.tileEvents.tileload?.()); return layer; },
         setUrl(next: string) {
           state.tileUrls.push(next);
           return layer;
@@ -152,12 +156,14 @@ vi.mock('leaflet', () => {
   return {
     default: leaflet,
     __state: state,
-    __tileEvent(event: string) { tileEvents[event]?.(); },
+    __tileEvent(event: string) { state.tileEvents[event]?.(); },
     __reset() {
       onMap = new Set<object>();
       Object.assign(state, {
         mapOptions: null,
         tileUrls: [],
+        tileOptions: null,
+        tileEvents: {},
         marker: null,
         circle: null,
         views: [],
@@ -254,6 +260,29 @@ afterEach(() => {
 });
 
 describe('fa2db8cb rev 2 — the map: a marker, the radius as a circle, and a Satellite control that tells the truth', () => {
+  it('sends an origin-only referrer on tiles even when the document policy is same-origin', async () => {
+    render(<Harness provider={OSM_PROVIDER} />);
+    await mapReady();
+    expect(fake.__state.tileOptions?.referrerPolicy).toBe('strict-origin-when-cross-origin');
+  });
+
+  it('reports tile failures without changing form values and recovers on the next load', async () => {
+    render(<Harness provider={OSM_PROVIDER} />);
+    await mapReady();
+    typeInto(boxes().lat, PENANG.lat);
+    typeInto(boxes().lng, PENANG.lng);
+    typeInto(boxes().radiusM, '150');
+    act(() => fake.__state.tileEvents.tileerror?.());
+    expect(screen.getByText(/The map could not be loaded/)).toBeInTheDocument();
+    expect(boxes().lat.value).toBe(PENANG.lat);
+    expect(boxes().radiusM.value).toBe('150');
+    act(() => fake.__state.tileEvents.loading?.());
+    expect(screen.queryByText(/The map could not be loaded/)).toBeNull();
+    act(() => fake.__tileEvent('tileload'));
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it('with NO key the Satellite control renders, is DISABLED, and says why — the map still draws', async () => {
     render(<Harness provider={OSM_PROVIDER} />);
     await mapReady();
@@ -396,6 +425,7 @@ describe('fa2db8cb rev 2 — the address search: on submit only, and it fills in
 
     const result = await screen.findByRole('button', { name: /Menara KL, Jalan Punchak/ });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ referrerPolicy: 'strict-origin-when-cross-origin', credentials: 'omit' });
     expect(String(fetchMock.mock.calls[0][0]), 'the query is encoded, once').toContain('q=Menara%20KL');
     expect(onSubmit, 'Search is not a submit button').not.toHaveBeenCalled();
 
