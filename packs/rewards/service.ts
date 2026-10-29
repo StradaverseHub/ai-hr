@@ -1040,6 +1040,11 @@ async function prepareRewardPostTx(tx:Tx,ctx:SessionContext,unitId:string,revisi
 async function currentRewardPostEmployeeTx(tx:Tx,unit:typeof rewardUnit.$inferSelect,e:Awaited<ReturnType<typeof calculateUnit>>['rows'][number],reviewed=false){
       const [emp] = await tx.select().from(employment).where(eq(employment.id, e.source.employmentId)).for('update',reviewed?{noWait:true}:undefined);
       if (!emp || emp.companyId !== unit.companyId || emp.terminatedOn || emp.gradeId !== e.source.gradeId) throw new RewardError('An employee changed company, grade or employment status. Return and refresh the review.');
+      if(isSeniorPlanMember(unit.policy,e.facts,e.source.grade)){
+        const [grade]=await tx.select({code:jobGrade.code}).from(jobGrade).where(eq(jobGrade.id,emp.gradeId!));
+        const currentGrade=(grade?.code??'').replace(/^JG\s*/i,'').trim();
+        if(currentGrade!==e.source.grade||!seniorGrade(currentGrade))throw new RewardError('The Senior employee grade changed after the snapshot. Return and refresh the review.');
+      }
       const [cur] = await tx.select().from(compensation).where(and(eq(compensation.employmentId, emp.id), isNull(compensation.validTo), isNull(compensation.supersededAt))).for('update',reviewed?{noWait:true}:undefined);
       if (!cur || cur.id !== e.source.compensationId || moneyToCents(cur.basicSalary) !== e.source.basicCents || cur.currency !== e.source.currency || cur.payMode !== e.source.payMode) throw new RewardError('Salary data changed after the snapshot. Return and refresh the review.');
       return {emp,cur};

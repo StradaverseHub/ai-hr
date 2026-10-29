@@ -274,7 +274,7 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
   },
   'reward-unit.final-pool-changed': {
     kind:'rewards.final-pool-changed',category:'rewards',
-    render:(_payload,event)=>({severity:'action',title:'Final Rewards pool changed',body:'Group Rewards updated the final bonus pool. Review the resulting pool and budget checks before approving.',linkPath:`/rewards/${event.aggregateId}#unit-governance`}),
+    render:(_payload,event)=>({severity:'action',title:'Rewards pool updated',body:'Group Rewards changed the bonus pool or its status. Review the current pool and budget checks before approving.',linkPath:`/rewards/${event.aggregateId}#unit-governance`}),
     recipients:async(tx,event)=>[...new Set((await Promise.all(['bu','bg','gr','ctro','ec'].map(stage=>rewardNotificationRecipients(tx,event.aggregateId,stage)))).flat())],
   },
   'reward-unit.approved': {

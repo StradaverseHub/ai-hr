@@ -1,11 +1,13 @@
 import {ensureAgentPrincipal,agentContext} from '../core/agent-principal';
 import {resolveEntitlementsTx} from '../core/entitlements';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {eq,sql} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
+import {updateJobGrade} from '../core/admin';
+import {dispatchNotificationsFromSweep} from '../core/notifications';
 import {getRewardUnit,createRewardUnit,getRewardUnitGovernance,saveRewardUnitInputs,confirmRewardGovernance,proposeRewardExemption,previewRewardSeniorMembership,saveRewardSeniorMembership,saveRewardSeniorAward,saveRewardEntry,postRewardUnit,decideRewardUnit} from '../packs/rewards/service';
 import {configureRewardFixture,refreshRewardFixtureBudget,ensureRewardGovernanceFixtureSchema} from './rewards-governance-fixture';
 import {createBatch,setPayrollInput,rewardPayrollProvenance} from '../packs/payroll/service';
@@ -82,6 +84,8 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   await expect(getRewardUnit(bu,unitId)).rejects.toThrow(/independent/);
   await expect(confirmRewardGovernance(gr,unitId,(await view()).unit.revision,'selection')).rejects.toThrow(/different/);
   await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'selection');
+  expect((await getRewardUnitGovernance(ctro,unitId)).senior).toEqual([]);
+  const verified=await view();await saveRewardEntry(gr,unitId,verified.unit.revision,entryId,verified.rows[0].recommendation,{...verified.rows[0].facts,reviewed:true});
   await saveRewardSeniorAward(gr,unitId,(await view()).unit.revision,{entryId,newBasicCents:550000,incrementBp:null,bonusCents:123400,approvalReference:'OFFLINE-1',approvalDate:today,reason:'Signed offline approval recorded',evidence:[]});
   await expect(confirmRewardGovernance(gr,unitId,(await view()).unit.revision,'award',entryId)).rejects.toThrow(/different/);
   await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'award',entryId);
@@ -89,6 +93,33 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   const restricted=await getRewardUnitGovernance(bu,unitId);expect(restricted.senior[0].award).toBeNull();expect(restricted.totals).toBeNull();
   const privateRows=await withTenant(payroll,tx=>tx.select().from(schema.rewardSeniorAward).where(eq(schema.rewardSeniorAward.unitId,unitId)));expect(privateRows).toEqual([]);
   await expect(withTenant(payroll,tx=>tx.execute(sql`select app.reward_senior_awards_for_post(${unitId}::uuid)`))).rejects.toThrow(/posting authority/);
+ });
+ it('refuses Senior confirmation after the live grade code changes under the same grade UUID',async()=>{
+  const v=await view(),selection={employmentIds:[employeeId],adoptLegacy:false},preview=await previewRewardSeniorMembership(gr,unitId,v.unit.revision,selection);
+  await saveRewardSeniorMembership(gr,unitId,v.unit.revision,selection,preview.digest);await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'selection');
+  await saveRewardSeniorAward(gr,unitId,(await view()).unit.revision,{entryId,newBasicCents:550000,incrementBp:null,bonusCents:123400,approvalReference:'SIGNED-BEFORE-GRADE-EDIT',approvalDate:today,reason:'Checked signed offline approval retained',evidence:[]});
+  const gradeId=(await view()).rows[0].source.gradeId!;
+  await updateJobGrade(gr,{id:gradeId,name:'Changed fictional grade',code:'JG12'});
+  await expect(confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'award',entryId)).rejects.toThrow(/changed after the snapshot/);
+  expect((await getRewardUnitGovernance(gr,unitId)).senior[0].award?.confirmedBy).toBeNull();
+ });
+ it('dispatches a private status-neutral notice when a final pool is downgraded to Not set',async()=>{
+  await setModule(b.tenantId,'notifications','active');
+  const recipient=await hireEmployee(gr,{person:{fullName:'Fictional pool notice reviewer',primaryEmail:'pool-notice@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:`${year-2}-01-01`});
+  const userId=await createAppUser(b.tenantId,recipient.personId,'employee');await setRewardMember(gr,unitId,(await view()).unit.revision,userId,'bg');
+  await saveRewardUnitInputs(gr,unitId,(await view()).unit.revision,{...inputs,actualCents:1000000},'Reviewed final fictional PAT evidence');
+  const enabled=await entitledCtx(b),system:SessionContext={tenantId:b.tenantId,roles:['hr_admin'],entitlements:enabled.entitlements};
+  await dispatchNotificationsFromSweep(system,owner);
+  await saveRewardUnitInputs(gr,unitId,(await view()).unit.revision,{...inputs,actualCents:0},'Final Actual invalidated by current evidence');
+  expect((await getRewardUnitGovernance(gr,unitId)).poolStatus).toBe('not-set');
+  const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,unitId),eq(schema.domainEvent.eventType,'reward-unit.final-pool-changed')));
+  const revision=(await view()).unit.revision;const event=events.find(row=>(row.payload as {revision:number}).revision===revision)!;
+  await dispatchNotificationsFromSweep(system,owner);
+  const notices=await owner.db.select().from(schema.notification).where(and(eq(schema.notification.sourceEventId,event.id),eq(schema.notification.recipientEmploymentId,recipient.employmentId)));
+  expect(notices).toHaveLength(1);expect(notices[0]).toMatchObject({kind:'rewards.final-pool-changed',title:'Rewards pool updated',linkPath:`/rewards/${unitId}#unit-governance`});
+  expect(notices[0].body).toContain('pool or its status');expect(notices[0].body).not.toMatch(/final|900000|1000000/i);
+  expect(Object.keys(event.payload as object)).toEqual(['revision']);
+  expect((await dispatchNotificationsFromSweep(system,owner)).created).toBe(0);
  });
  it('invalidates public budget evidence after eligibility changes rather than exposing PAT or silently using a stale pool',async()=>{
   await saveInputs();const v=await view();await saveRewardEntry(gr,unitId,v.unit.revision,entryId,v.rows[0].recommendation,{...v.rows[0].facts,performance:'OU'});
@@ -129,7 +160,11 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
    const userId=await createAppUser(b.tenantId,person.id,'employee'),actor={...gr,userId,personId:person.id,roles:['employee'],grants:undefined};
    await setRewardMember(gr,unitId,(await view()).unit.revision,userId,role);actors[role]=actor;
   }
-  await setRewardMember(gr,unitId,(await view()).unit.revision,gr.userId!,'payroll');
+  const [postingPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional Payroll administrator without GR',primaryEmail:'payroll-admin@fixture.test'}).returning();
+  const postingUser=await createAppUser(b.tenantId,postingPerson.id,'hr_admin');
+  const postingActor:SessionContext={...gr,userId:postingUser,personId:postingPerson.id,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
+  await setRewardMember(gr,unitId,(await view()).unit.revision,postingUser,'payroll');
+  expect((await getRewardUnit(postingActor,unitId)).roles).toEqual(['payroll']);
   let v=await view();await configureRewardFixture(gr,unitId,v.unit.revision,{...v.unit.policy,effectiveFrom:today,patActual:1000000,patTarget:1000000});
   v=await view();const selection={employmentIds:[employeeId],adoptLegacy:false},preview=await previewRewardSeniorMembership(gr,unitId,v.unit.revision,selection);
   await saveRewardSeniorMembership(gr,unitId,v.unit.revision,selection,preview.digest);await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'selection');
@@ -138,21 +173,29 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'award',entryId);
   const revision=(await view()).unit.revision;await decideRewardUnit(bu,unitId,revision,'submit','Reviewed the checked Senior decision');
   for(const role of ['bg','gr','ctro','ec'])await decideRewardUnit(actors[role],unitId,revision,'approve','Reviewed and accepted the decision');
-  const [bounded]=await withTenant(gr,tx=>tx.execute<{awards:Record<string,unknown>}>(sql`select app.reward_senior_awards_for_post(${unitId}::uuid) as awards`));
+  const direct=await withTenant(postingActor,tx=>tx.select().from(schema.rewardSeniorAward).where(eq(schema.rewardSeniorAward.unitId,unitId)));expect(direct).toEqual([]);
+  const [bounded]=await withTenant(postingActor,tx=>tx.execute<{awards:Record<string,unknown>}>(sql`select app.reward_senior_awards_for_post(${unitId}::uuid) as awards`));
   expect(bounded.awards[entryId]).toMatchObject({newBasicCents:550000,bonusCents:123400});expect(JSON.stringify(bounded)).not.toMatch(/PAT|evidence|SIGNED-OFFLINE|approvalReference/);
   await setModule(b.tenantId,'payroll','active');const {batchId}=await createBatch(gr,{companyId:b.companyId,payPeriod:today.slice(0,7)});
   await setPayrollInput(gr,{batchId,employmentId:employeeId,overtimeAmount:123,bonusAmount:55,tp1Deduction:44,zakat:9});
-  await expect(postRewardUnit(gr,unitId,revision,batchId)).resolves.toMatchObject({alreadyPosted:false});
-  await expect(postRewardUnit(gr,unitId,revision,batchId)).resolves.toMatchObject({alreadyPosted:true});
+  const gradeId=(await view()).rows[0].source.gradeId!;
+  await updateJobGrade(gr,{id:gradeId,name:'Changed fictional grade',code:'JG12'});
+  await expect(postRewardUnit(postingActor,unitId,revision,batchId)).rejects.toThrow(/grade changed/);
+  const [unchanged]=await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId,batchId));expect(unchanged.bonusAmount).toBe('55.00');expect(unchanged.rewardProvenance).toEqual([]);
+  const compensationBeforeRetry=await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId,employeeId));expect(compensationBeforeRetry.filter(row=>row.validTo===null&&row.supersededAt===null).map(row=>row.basicSalary)).toEqual(['5000.00']);
+  expect((await view()).unit.status).toBe('approved');
+  await updateJobGrade(gr,{id:gradeId,name:'Restored fictional grade',code:'JG21'});
+  await expect(postRewardUnit(postingActor,unitId,revision,batchId)).resolves.toMatchObject({alreadyPosted:false});
+  await expect(postRewardUnit(postingActor,unitId,revision,batchId)).resolves.toMatchObject({alreadyPosted:true});
   const [input]=await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId,batchId));
   expect(input).toMatchObject({overtimeAmount:'123.00',bonusAmount:'1289.00',tp1Deduction:'44.00',zakat:'9.00'});
   expect(input.rewardProvenance).toEqual([{unitId,entryId,revision,plan:'Senior plan',confirmedBy:checker.userId,confirmedAt:expect.any(String),historicalOnly:true}]);
-  const [{sources}]=await rewardPayrollProvenance(gr,batchId);expect(sources).toEqual(input.rewardProvenance);
+  const [{sources}]=await rewardPayrollProvenance(postingActor,batchId);expect(sources).toEqual(input.rewardProvenance);
   const compensations=await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId,employeeId));expect(compensations.filter(row=>row.basicSalary==='5500.00')).toHaveLength(1);
   // A subsequent manual change does not convert a historical source reference into a claim that the
   // current bonus still equals the checked award.
   await setPayrollInput(gr,{batchId,employmentId:employeeId,overtimeAmount:123,bonusAmount:2000,tp1Deduction:44,zakat:9});
-  expect((await rewardPayrollProvenance(gr,batchId))[0].sources[0].historicalOnly).toBe(true);
+  expect((await rewardPayrollProvenance(postingActor,batchId))[0].sources[0].historicalOnly).toBe(true);
  });
 
 });
