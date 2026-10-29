@@ -96,14 +96,17 @@ async function summariesFor(ctx: SessionContext, rows: readonly Pending[], local
   const ids = (kind: NativeTaskKind) => new Set(rows.filter((r) => r.kind === kind).map((r) => r.id));
   const leaveIds = ids('leave'), cancelIds = ids('leaveCancellation'), attendanceIds = ids('attendance'), claimIds = ids('claim');
   const modules = modulesOf(ctx);
+  // A summary is a convenience on a row the inbox already lists: a reader that fails leaves its rows without one
+  // (the row and its detail still open), it never turns the whole list into an error or an empty "nothing needs you".
+  const orNone = <T,>(read: () => Promise<T[]>): Promise<T[]> => read().catch(() => []);
   const [leaves, cancels, corrections, pendingClaims] = await Promise.all([
-    leaveIds.size ? listLeaveRequests(ctx, undefined, 200, { status: 'pending' }) : Promise.resolve([]),
-    cancelIds.size ? listPendingLeaveCancellations(ctx, undefined, locale) : Promise.resolve([]),
-    attendanceIds.size && modules.attendance ? listAttendanceCorrections(ctx, { status: 'pending' }) : Promise.resolve([]),
-    claimIds.size && modules.claims ? claims.listPendingClaims(ctx) : Promise.resolve([]),
+    leaveIds.size ? orNone(() => listLeaveRequests(ctx, undefined, 200, { status: 'pending' })) : Promise.resolve([]),
+    cancelIds.size ? orNone(() => listPendingLeaveCancellations(ctx, undefined, locale)) : Promise.resolve([]),
+    attendanceIds.size && modules.attendance ? orNone(() => listAttendanceCorrections(ctx, { status: 'pending' })) : Promise.resolve([]),
+    claimIds.size && modules.claims ? orNone(() => claims.listPendingClaims(ctx)) : Promise.resolve([]),
   ]);
   const shownClaims = pendingClaims.filter((c) => claimIds.has(c.id));
-  const currencies = await currenciesOfClaims(ctx, shownClaims.map((c) => c.id));
+  const currencies = await currenciesOfClaims(ctx, shownClaims.map((c) => c.id)).catch(() => new Map<string, string | null>());
   const out = new Map<string, TaskSummaryV2>();
   for (const r of leaves) if (leaveIds.has(r.id)) out.set(`leave:${r.id}`, summaryOf({ label: label(r.leaveType), from: r.startDate, to: r.endDate, days: num(r.days) }));
   for (const c of cancels) if (cancelIds.has(c.id)) out.set(`leaveCancellation:${c.id}`, summaryOf({ label: label(c.leaveType), from: c.originalStart, to: c.originalEnd, days: num(c.requestedDays) }));
