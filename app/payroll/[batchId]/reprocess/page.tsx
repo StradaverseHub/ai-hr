@@ -272,11 +272,11 @@ export default async function ReprocessPage({
       {/* THE RESULT, when there is one. It is rendered ABOVE the selection because after a submit this
           is what the operator came back for; the selection stays below so a second correction does not
           need a second navigation. */}
-      {thisJob?.status === 'failed' && <ErrorBanner message={t(reprocessStoppedMessageKey(thisJob.error))} />}
+      {thisJob?.status === 'failed' && <ErrorBanner message={t(reprocessStoppedMessageKey(thisJob.stopCode))} />}
       {thisJob && outcomes !== null && (outcomes.length > 0 || thisJob.status === 'completed') && (
         <ReprocessOutcomePanel outcomes={outcomes} history={disclosure} slips={slips} run={batch}
           currency={currency} batchId={batchId} from={listFrom} jobId={thisJob.id}
-          selected={thisJob.employmentIds.length} stopped={thisJob.status === 'failed'} stoppedCode={thisJob.error} />
+          selected={thisJob.employmentIds.length} stopped={thisJob.status === 'failed'} stoppedCode={thisJob.stopCode} />
       )}
       {thisJob?.status === 'completed' && outcomes === null && (
         <Card className="px-4 py-3 text-sm">

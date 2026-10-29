@@ -20,7 +20,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee, setEmploymentInfo, terminateEmployment } from '../core/org';
-import { setCompensation } from '../core/comp';
+import { setCompensation, supersedeCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import {
   createBatch,
@@ -200,7 +200,10 @@ describe('3244584c reprocess eligibility after employee changes', () => {
     const a = await hire('Salary Change');
     await hire('Bystander');
     const batchId = await processed();
-    await setCompensation(ctx, { employmentId: a.employmentId, basicSalary: 3500, effectiveFrom: '2026-11-01' });
+    const nov = await setCompensation(ctx, { employmentId: a.employmentId, basicSalary: 3500, effectiveFrom: '2026-11-01' });
+    expect((await batchRow(batchId)).needsRecalcAt).toBeNull();
+    // Withdrawing that November record hands November back to the old salary: still nothing in October.
+    await supersedeCompensation(ctx, { compensationId: nov.compensationId, employmentId: a.employmentId });
     expect((await batchRow(batchId)).needsRecalcAt).toBeNull();
     await setEmploymentInfo(ctx, { employmentId: a.employmentId, probationMonths: 3 });
     expect((await batchRow(batchId)).needsRecalcAt).toBeNull();

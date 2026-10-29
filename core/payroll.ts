@@ -9450,12 +9450,16 @@ export async function reprocessSelectedEmployees(
         // 3244584c — the SAME window the kernel's earnings read applies (hiredOn ≤ end, terminatedOn null or
         // ≥ start, with the company during the period), asked first so the answer is an outcome by name.
         // A mid-period leaver or joiner is IN the month and is recalculated (prorated) as before.
+        // Only for somebody whose result IS on the run: that is the stale payslip to deal with. An employee
+        // with no payslip here is an addition, and an addition outside the month keeps its fbcf706d refusal.
+        const [onThisRun] = await tx.select({id:payslip.id}).from(payslip)
+          .where(and(eq(payslip.batchId,p.batchId),eq(payslip.employmentId,employmentId))).limit(1);
         let exclusion: ReprocessEmploymentNotInPeriodError | null = null;
-        if (identity.terminatedOn && identity.terminatedOn < periodStart) {
+        if (onThisRun && identity.terminatedOn && identity.terminatedOn < periodStart) {
           exclusion = new ReprocessEmploymentNotInPeriodError('RESIGNED_BEFORE_PERIOD', identity.terminatedOn);
-        } else if (identity.hiredOn > periodEnd) {
+        } else if (onThisRun && identity.hiredOn > periodEnd) {
           exclusion = new ReprocessEmploymentNotInPeriodError('JOINED_AFTER_PERIOD', identity.hiredOn);
-        } else if (!identity.withCompany) {
+        } else if (onThisRun && !identity.withCompany) {
           // valid_to is EXCLUSIVE: the first day the employee was no longer with this company.
           const [left] = await tx.select({validTo:assignment.validTo}).from(assignment)
             .where(and(eq(assignment.employmentId,employmentId),isNull(assignment.supersededAt),
@@ -9672,8 +9676,11 @@ export async function getReprocessJob(ctx: SessionContext, jobId: string) {
       .where(and(eq(payrollReprocessJob.id, jobId),sql`app.can_admin_payroll_for(${payrollBatch.companyId})`))
       .limit(1);
     if (!job || !(await resolvePayrollPermission(tx,ctx,'payroll.reprocess.selective',job.companyId))) return null;
-    const {companyId,...readableJob} = job;
-    return readableJob;
+    const {companyId,error,...readableJob} = job;
+    // 3244584c — the run-level stop reason as a KNOWN code only (null otherwise). The raw column is never
+    // handed to a screen: an unrecognised value is "unexpected", which keeps the generic message.
+    const stopCode = (REPROCESS_RUN_ERROR_CODES as readonly string[]).includes(error ?? '') ? error as ReprocessRunErrorCode : null;
+    return {...readableJob,error,stopCode};
   });
 }
 
