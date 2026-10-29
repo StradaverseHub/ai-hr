@@ -1,3 +1,4 @@
+import {prepareReviewedLeaveDecisionTx,decideReviewedLeaveTx} from '../packs/leave/service';
 /** Authored UNRUN: requires coordinated shared review/AI-control SQL; no inline migration or guard bypass. */
 import {createHash,randomUUID} from 'node:crypto';
 import * as dbClient from '../db/client';
@@ -77,14 +78,22 @@ describe('same physical non-own assigned Leave decision custody',()=>{
   const userId=await createAppUser(b.tenantId,stand.personId,'manager');await grantAssistant(group(),{appUserId:userId});const who:SessionContext={...await entitledCtx(b,['manager']),userId,personId:stand.personId,grants:[{role:'manager',companyId:null}]};
   await owner.db.delete(s.leaveApprovalStep).where(eq(s.leaveApprovalStep.leaveRequestId,human.leaveRequestId));
   const [step]=await owner.db.insert(s.leaveApprovalStep).values({tenantId:b.tenantId,leaveRequestId:human.leaveRequestId,subjectEmploymentId:subject.employmentId,stepIndex:0,approverKind:'direct_manager'}).returning();
+  await owner.db.insert(s.leaveApprovalStep).values({tenantId:b.tenantId,leaveRequestId:human.leaveRequestId,subjectEmploymentId:subject.employmentId,stepIndex:1,approverKind:'hr_admin'});
   const noInheritance=()=>withTenant(who,async tx=>{expect(await tx.select().from(s.employment).where(eq(s.employment.id,subject.employmentId))).toEqual([]);expect(await tx.select().from(s.leaveLedger).where(eq(s.leaveLedger.employmentId,subject.employmentId))).toEqual([]);});
   await noInheritance();const r=await prepare({...human,currentStepId:step.id,decision,rejectReason:decision==='rejected'?'My delegated rejection reason':null},who);
+  const selected={leaveRequestId:r.content.leaveRequestId,currentStepId:r.content.currentStepId,decision:r.content.decision,rejectReason:r.content.rejectReason};
+  await expect(withTenant(who,async tx=>{const native=await prepareReviewedLeaveDecisionTx(tx,who,selected);await decideReviewedLeaveTx(tx,who,selected,native.reviewedDigest);throw Error('Fictional native branch rollback');})).rejects.toThrow('Fictional native branch rollback');
   expect((await confirm(r,who)).kind).toBe('completed');expect((await reopenLeaveDecisionReview(who,r.actionId)).kind).toBe('completed');expect((await confirm(r,who)).kind).toBe('completed');
-  const events=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,human.leaveRequestId),eq(s.domainEvent.eventType,'leave-request.'+decision)));expect(events).toEqual([expect.objectContaining({actorId:userId,subjectEmploymentId:subject.employmentId})]);
+  const events=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,human.leaveRequestId),eq(s.domainEvent.eventType,decision==='approved'?'leave-request.step.approved':'leave-request.rejected')));expect(events).toEqual([expect.objectContaining({actorId:userId,subjectEmploymentId:subject.employmentId})]);
   expect(await withTenant(who,tx=>tx.select({id:s.domainEvent.id}).from(s.domainEvent).where(eq(s.domainEvent.id,events[0].id)))).toEqual([{id:events[0].id}]);
   const otherLogin=await createAppUser(b.tenantId,stand.personId,'manager'),other={...who,userId:otherLogin};
   expect(await withTenant(other,tx=>tx.select({id:s.domainEvent.id}).from(s.domainEvent).where(eq(s.domainEvent.id,events[0].id)))).toEqual([]);
   await noInheritance();
+  if(decision==='approved'){
+   const own=await reopenLeaveDecisionReview(who,r.actionId);if(own.kind!=='completed')throw Error('Expected original delegate step receipt');expect(own.receipt.receipt.currentStatus).toBe('pending');
+   await decideLeave(ctx,{leaveRequestId:human.leaveRequestId,decision:'approved'});
+   const afterHr=await reopenLeaveDecisionReview(who,r.actionId);if(afterHr.kind!=='completed')throw Error('Expected original delegate step receipt after HR');expect(afterHr.receipt.receipt.decisionEventId).toBe(own.receipt.receipt.decisionEventId);expect(afterHr.receipt.receipt.currentStatus).toBe('approved');await noInheritance();
+  }
  });
 
 });
