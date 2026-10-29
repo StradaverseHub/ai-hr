@@ -6,6 +6,8 @@ Use [Organization](/admin/organization) and [Personnel](/admin/personnel) to mai
 2. Configure [Hiring defaults](/admin/settings/hiring-defaults) and [Employee numbering](/admin/settings/employee-id) if needed.
 3. Create the employee or open [Personnel import](/admin/personnel/import). Use the current template, preview the mapping and errors, and commit only after reviewing the selected company and records.
 4. Open the employee's profile and review personal details, employment, assignment, compensation, bank details and statutory information. Complete the hire workflow; an unfinished hire draft is not an active employment.
+
+For **Bank & Statutory**, upload the current CSV or Excel template and follow its background progress. This section accepts up to 250,000 rows and 128 MiB; other import sections retain their own limits. You can refresh and return to the same import while it validates. The same file cannot start another active import in the tenant. Review the validation results and affected employees before confirming any saves. Processing may retain rows already saved if later rows fail; review Import History and resolve the reported rows before retrying. A stopped or unavailable worker requires administrator attention, rather than repeated uploads.
 5. Record reporting lines so the intended supervisor can see their team and receive the workflows that use that relationship.
 
 ## Changes over time

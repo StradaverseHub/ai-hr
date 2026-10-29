@@ -30,6 +30,8 @@ existing quality and coverage metrics. The employee links open the authoritative
 
 [Assistant](/assistant) answers with the data and tools allowed to the signed-in user. Use specific company, employee and period context. Check cited records and proposed actions. The model does not become the authoritative payroll calculator or gain another person's access because a prompt asks for it.
 
+You can attach a supported spreadsheet or CSV to ask for import mapping help when that capability is available to your role. Review the proposed destination and column mapping, then open the relevant native import screen to validate its preview. An Assistant suggestion or file attachment does not save HR records: the native import screen retains its own permissions, validation and confirmation. Keep private workbooks out of public feedback and provide only the data needed for the selected task. If provider setup is unavailable, a Group HR administrator can review its configuration and evaluation status under AI configuration; a saved provider is not proof of a successful evaluation.
+
 ## Reports and operations
 
 Use [Reports](/reports) and [Analytics](/analytics) for authorized summaries. Confirm filters and totals before sharing an export. [Scheduled actions](/admin/scheduled-actions) shows the operational actions available to the relevant administrator; a configured item is not proof that its last execution succeeded.

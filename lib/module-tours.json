@@ -233,7 +233,7 @@
         "placement": "center",
         "text": {
           "title": "Manage people and their profile rules",
-          "body": "Open an employee to review personal and statutory details. Manual EPF percentages require both rates. Profile field permissions and HR rules control who may change each field and whether a different person must approve it.",
+          "body": "Open an employee to review personal and statutory details. Manual EPF percentages require both rates. Profile field permissions and HR rules control changes and independent approval. Bank & Statutory imports validate in the background; review progress and results before confirming saves, and return to the existing import instead of uploading it again.",
           "lang": "en"
         }
       },
@@ -919,7 +919,7 @@
         "placement": "bottom",
         "text": {
           "title": "Use the assistant with context",
-          "body": "Ask about a specific company, employee or period. Review cited records and proposals; AI inherits your access and does not replace payroll calculations or human decisions.",
+          "body": "Ask about a specific company, employee or period. For supported import files, review the suggested destination and mapping, then validate and confirm in the native import screen. AI inherits your access and does not replace payroll calculations or human decisions.",
           "lang": "en"
         },
         "roles": [

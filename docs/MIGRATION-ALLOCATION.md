@@ -7,6 +7,17 @@ owning release gate.
 
 ## Owner-approved combined board allocation — 29 October 2026
 
+The owner subsequently expanded the same release to include Assistant file import and durable Bank & Statutory import. Both source owners agreed, and the owner explicitly approved this revised order while the central coordinator remained unavailable:
+
+| Index | Sequence | Migration | Exact SQL SHA256 |
+| ---: | ---: | --- | --- |
+| 675 | 1793330000011 | 0685_bank_import_jobs | 62ee5d8d7dedf892be25463edd4f47a6e729c03cc68c7024cdde4956c2d86021 |
+| 676 | 1793330000012 | 0686_ai_provider_custody_owner_rls | 571fe5c0865f1419cf500d3ce90f82fea8b80145dec8a48e0c75a0aa3d31555d |
+
+These entries follow the unchanged 560-entry board source prefix below. Actual staging remains `fa487eddc07f20907bf6a341e9f442b1363c9215`, with 554 applied rows through 0678 / sequence1793330000004. The expanded candidate must preserve that entire applied journal and every applied SQL byte, rehearse the populated upgrade, and verify all 562 ordered rows after one installation. No artificial intermediate 560-row installation is required. The old unapplied Bank 0678 draft was renamed without changing its SQL bytes and its obsolete journal position was removed before integration.
+
+AI Enhancement relinquished its unwritten 0686 reservation. Its question-budget work is outside this release; any later 0687 / index677 / sequence1793330000013 allocation remains conditional on the expanded release's actual 562-row handoff and a fresh competing-claim check. It must not be inserted implicitly into this release. The provider correction preserves FORCE RLS and existing direct-table revocations; it adds only tenant- and fresh-human-bound access for the physical custody-table owner.
+
 The owner explicitly approved combining both board batches into one ten-item staging release,
 and approved the exact successor allocations below after both source owners agreed. The central
 register was freshly fetched at `439587ea07912ef2254bf9774b16b792d643b300`; no later claim

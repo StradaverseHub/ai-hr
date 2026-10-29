@@ -3921,6 +3921,20 @@
       "when": 1793330000010,
       "tag": "0684_ocbc_bank_payment_exports",
       "breakpoints": true
+    },
+    {
+      "idx": 675,
+      "version": "7",
+      "when": 1793330000011,
+      "tag": "0685_bank_import_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 676,
+      "version": "7",
+      "when": 1793330000012,
+      "tag": "0686_ai_provider_custody_owner_rls",
+      "breakpoints": true
     }
   ]
 }
