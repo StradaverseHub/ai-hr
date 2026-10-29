@@ -101,7 +101,7 @@ function fixture(o: { permission?: 'granted' | 'denied' | 'undetermined'; grant?
   });
   const View = ({ children }: { children?: React.ReactNode }) => <div>{children}</div>;
   const Text = ({ children }: { children?: React.ReactNode }) => <span>{children}</span>;
-  const ui = {
+  const ui = {InfoNote:({short,detail}:any)=><span><span>{short}</span><span>{detail}</span></span>,HeaderBack:()=><button aria-label="back">‹</button>,ListRow:({label,value,onPress}:any)=><button aria-label={value?`${label}, ${value}`:label} onClick={onPress}>{label}{value?`: ${value}`:''}</button>,
     Button: (p: { title: string; onPress: () => void; disabled?: boolean }) => <button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,
     Card: View, Muted: Text, SectionLabel: Text,
   };

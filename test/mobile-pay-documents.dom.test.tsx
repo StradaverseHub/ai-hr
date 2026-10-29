@@ -98,7 +98,7 @@ function fixture() {
       <div>{p.refreshControl}{p.ListHeaderComponent}{p.data.length ? p.data.map((i) => <div key={p.keyExtractor(i)}>{p.renderItem({ item: i })}</div>) : p.ListEmptyComponent}{p.ListFooterComponent}</div>,
   };
   const fmtMoney = (v: string) => { const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(v); if (!m) return v; return `${m[1]}${m[2].replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${((m[3] ?? '') + '00').slice(0, 2)}`; };
-  const ui = {
+  const ui = {InfoNote:({short,detail}:any)=><span><span>{short}</span><span>{detail}</span></span>,HeaderBack:()=><button aria-label="back">‹</button>,ListRow:({label,value,onPress}:any)=><button aria-label={value?`${label}, ${value}`:label} onClick={onPress}>{label}{value?`: ${value}`:''}</button>,
     Button: (p: { disabled?: boolean; onPress: () => void; title: string; accessibilityLabel?: string }) => <button disabled={p.disabled} aria-label={p.accessibilityLabel} onClick={p.onPress}>{p.title}</button>,
     Card: View, Muted: Text, Title: Text, Row: ({ label, value }: { label: string; value: string }) => <p>{label}: {value}</p>,
     Screen: ({ children, onRefresh }: { children?: React.ReactNode; onRefresh?: () => void }) => <div><button onClick={onRefresh}>refresh</button>{children}</div>,
