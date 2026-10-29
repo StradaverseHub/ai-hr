@@ -1,7 +1,7 @@
 /** Server-only private intent codec. State/key custody belongs to the review store, not this codec.
  * Reuses the existing envelope primitives; it never grants authority, logs input or calls a model. */
 import { z } from 'zod';
-import { masterKeyAvailable, newDek, newKid, sealUnderDek, unsealUnderDek, unwrapDek, wrapDek } from '../../lib/pii/vault';
+import {createReviewEnvelope} from './review-envelope';
 import { OwnLeavePreparedMetadata } from './own-leave-review';
 import { OwnLeaveReviewCandidate, ownLeaveReviewedDigest } from './own-leave-review-digest';
 
@@ -47,38 +47,13 @@ function checkedContent(value: unknown, metadataValue: unknown): OwnLeaveProtect
   return content;
 }
 
-/** Generate one random action DEK. Its wrapped form lives only with the short-lived private row.
- * The SQL erasure/discard/expiry owners must remove both body and wrapped key; a hash is not erasure. */
-export function sealOwnLeaveReview(metadataValue: unknown, contentValue: unknown): OwnLeaveSealedReview {
-  let dek: Buffer | undefined;
-  try {
-    if (!masterKeyAvailable()) throw new OwnLeaveContentUnavailable();
-    const binding = contentBinding(metadataValue);
-    const content = checkedContent(contentValue, binding.m);
-    const plaintext = JSON.stringify(content);
-    if (Buffer.byteLength(plaintext, 'utf8') > MAX_CONTENT_BYTES) throw new OwnLeaveContentUnavailable();
-    dek = newDek();
-    const kid = newKid();
-    return OwnLeaveSealedReview.parse({ formatVersion: 1, kid,
-      wrappedDek: wrapDek(dek, binding.wrapAad),
-      ciphertext: sealUnderDek(dek, kid, plaintext, binding.bodyAad) });
-  } catch { throw new OwnLeaveContentUnavailable(); }
-  finally { dek?.fill(0); }
-}
-
-/** Call only after a fresh authorized store read. Parsing/decrypting is not permission to execute.
- * All malformed, transplanted, retired or corrupt content has one bounded, non-content error. */
-export function unsealOwnLeaveReview(metadataValue: unknown, sealedValue: unknown): OwnLeaveProtectedReview {
-  let dek: Buffer | undefined;
-  try {
-    if (!masterKeyAvailable()) throw new OwnLeaveContentUnavailable();
-    const binding = contentBinding(metadataValue);
-    const sealed = OwnLeaveSealedReview.parse(sealedValue);
-    dek = unwrapDek(sealed.wrappedDek, binding.wrapAad);
-    if (dek.length !== 32) throw new OwnLeaveContentUnavailable();
-    const plaintext = unsealUnderDek(dek, sealed.ciphertext, binding.bodyAad);
-    if (Buffer.byteLength(plaintext, 'utf8') > MAX_CONTENT_BYTES) throw new OwnLeaveContentUnavailable();
-    return checkedContent(JSON.parse(plaintext), binding.m);
-  } catch { throw new OwnLeaveContentUnavailable(); }
-  finally { dek?.fill(0); }
-}
+/** Same installed own-leave wire and purposes, using the common envelope owner. */
+const envelope=createReviewEnvelope<unknown,OwnLeaveProtectedReview,OwnLeaveSealedReview>({
+ sealed:OwnLeaveSealedReview,maxBytes:MAX_CONTENT_BYTES,
+ identity:metadata=>{const identity=contentBinding(metadata);return{wrapAad:identity.wrapAad,bodyAad:identity.bodyAad};},
+ checked:(metadata,value)=>checkedContent(value,metadata),wire:body=>body,
+ unavailable:():never=>{throw new OwnLeaveContentUnavailable();},
+});
+export function sealOwnLeaveReview(metadataValue:unknown,contentValue:unknown):OwnLeaveSealedReview{return envelope.seal(metadataValue,contentValue);}
+/** Call only after current native source authority. Decryption grants no permission. */
+export function unsealOwnLeaveReview(metadataValue:unknown,sealedValue:unknown):OwnLeaveProtectedReview{return envelope.unseal(metadataValue,sealedValue);}

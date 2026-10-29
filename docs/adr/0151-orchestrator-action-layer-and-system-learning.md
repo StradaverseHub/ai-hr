@@ -630,3 +630,7 @@ Testing observations use generic OWN compatibility custody while retaining nulla
 ### WP9 claim submission custody
 
 Existing human draft submission uses generic OWN compatibility custody, keeping the original nonce/content/cached-review/native-digest wire, actual native claim interval, selected receipt set, request/event provenance and submission-only outcome. All seven module protocols now delegate encryption and lifecycle to the shared custody engine. Legacy own-leave remains a distinct pending protocol until its final compatibility increment.
+
+### WP9 final own-leave protocol boundary
+
+The original own-leave Tx APIs and candidate/refusal union remain explicit native protocol adapters. Their non-nonce protected wire, native candidate integrity recipe, purpose/AAD ordering, balance visibility and SQL repository are unchanged. Both own-leave and all generic families now use one review-envelope codec and one held-row transaction state owner for completed replay, retirement and pending confirmation digest admission. Native candidate creation/projection and exact SQL completion proof stay with their canonical source adapters; no original ciphertext is rewritten or reinterpreted.
