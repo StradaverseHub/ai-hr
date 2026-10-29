@@ -274,3 +274,47 @@ competing0687 or when>=1793330000013. Board and the migration coordinator were n
 The existing562-entry journal prefix and all applied SQL bytes are preserved. The appended SQL SHA256
 is `ade48bffee0a5d6ebf72cdd61de36323f3650b81c805cd186701c5d8105e86c4`. This reserves source only; it authorizes no staging migration
 without the exact-candidate gate, populated upgrade proof, restore readiness and exclusive handoff.
+
+## Owner-approved Bank point-read reservation — 29 October 2026
+
+The human owner directly approved `0691_bank_import_point_read`, **idx681 /
+when1793330000017**, after the existing AI0687 and reserved Board0688–0690 predecessors.
+The release coordinator relayed that exact approval while the central allocation coordinator
+remained unresponsive. The freshly fetched published central register remains
+`439587ea07912ef2254bf9774b16b792d643b300`; it lags these later owner source allocations.
+This explicit owner-approved reservation does not surrender or overwrite those predecessors.
+
+Fresh main and alpha both resolve to `7d397734dec939e21abb089ec4346dc4a61b4fdc`.
+Their executable journal contains 563 entries through `0687_assistant_question_budget`,
+idx677 / when1793330000013. The separately frozen and freshly fetched Board controller
+`5e4d6cfbb01ac5cd85104a3f302745b012043f03` contains 566 entries, including the first
+three reservations below. The new Bank reservation follows them:
+
+| Owner | Index | Sequence | Reserved migration |
+| --- | ---: | ---: | --- |
+| Approved transaction import | 678 | 1793330000014 | 0688_payroll_txn_import_attempts |
+| Approved Rewards domain | 679 | 1793330000015 | 0689_rewards_unit_governance |
+| Approved Rewards configuration | 680 | 1793330000016 | 0690_rewards_policy_pair_membership |
+| Bank import policy | 681 | 1793330000017 | 0691_bank_import_point_read |
+
+The reviewed private Bank SQL draft has SHA256
+`42df3f7cd2dd81b90edce1643b87c1fa2ae42e0a2482b2a8761e5ebcdf006597`.
+This is explicitly a **DRAFT identity, not the final migration hash**. The final public SQL
+and its exact hash must be reviewed before executable journal integration. The current claim
+inventory found no reachable 0691-or-later SQL; unpublished claims remain subject to coordinator
+reconciliation. Every new sequence above satisfies the owner's strict floor 1793330000000.
+
+This append records the reservation only: no SQL, journal entry or prior content is changed,
+and no migration application or deployment is authorized. Refresh canonical refs, the actual
+live ordered ledger and all competing claims before integration. Preserve all applied SQL
+bytes and journal positions, include the reserved predecessors in their approved order, and
+reconcile any intervening append rather than skipping a predecessor or overwriting a position.
+
+The isolated Bank proof candidate registers the approved `0691_bank_import_point_read`
+at idx681 / when1793330000017 after the complete, unchanged 566-entry predecessor
+prefix through0690. Its final SQL SHA256 is
+`be6f8d38850fadd9151d58ea7476d8f60e09a0bf2b2b078e0196f4cb90c5bfe9`.
+The executable statement is byte-identical to the reviewed draft; only its explanatory
+header identifies the allocated migration. The candidate requires its own populated
+prefix upgrade, policy/catalogue checks and release gate. Source registration does not
+establish live migration application, worker activation or staging acceptance.
