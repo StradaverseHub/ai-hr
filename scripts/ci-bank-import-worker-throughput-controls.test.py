@@ -33,6 +33,26 @@ def lifecycle_fixture():
             yield registry,snapshots,parent
 
 class ConsumerRefusals(unittest.TestCase):
+    def test_gate_source_is_warning_free_and_git_failure_retains_bounded_evidence(self):
+        # Future GHA only: compile bytes under a warning-as-error filter without
+        # executing the module or writing pyc. The gate copies these exact bytes.
+        with warnings.catch_warnings():
+            warnings.simplefilter('error',SyntaxWarning)
+            compile((HERE/'bank_import_worker_throughput_proof.py').read_bytes(),'gate-warning-control.py','exec',dont_inherit=True)
+        result=SimpleNamespace(returncode=0,stdout='a'*40+'\n',stderr='')
+        self.assertEqual(p.frozen_git_result(result,'rev-parse'),'a'*40)
+        for code,stderr in [(128,'fictional fatal\n'),(0,'fictional warning\n'),(-9,''),(1,'x'*8192+'UNPRINTED_TAIL')]:
+            with self.subTest(code=code,bytes=len(stderr)):
+                with self.assertRaises(ValueError) as failure:
+                    p.frozen_git_result(SimpleNamespace(returncode=code,stdout='PRIVATE_STDOUT_MUST_NOT_APPEAR',stderr=stderr),'status')
+                message=str(failure.exception);detail=json.loads(message.split('frozen checkout Git check failed: ',1)[1])
+                self.assertEqual(detail['operation'],'status');self.assertEqual(detail['exitCode'],code)
+                self.assertEqual(detail['stderrBytes'],len(stderr.encode()));self.assertEqual(detail['stderrSha256'],p.digest(stderr.encode()))
+                self.assertEqual(detail['stderrFirst4096Bytes'],stderr[:4096])
+                self.assertNotIn('PRIVATE_STDOUT_MUST_NOT_APPEAR',message);self.assertNotIn('UNPRINTED_TAIL',message)
+                self.assertEqual(set(detail),{'operation','exitCode','stderrBytes','stderrSha256','stderrFirst4096Bytes'})
+        with self.assertRaises(ValueError): p.frozen_git_result(result,'arbitrary-operation')
+
     def test_mock_download_is_private_exclusive_and_bounded_under_permissive_umask(self):
         payload=b'fictional authenticated artifact bytes\n'
         class MockOpener:

@@ -130,6 +130,14 @@ def authenticated_inputs():
 def load_module(name,path):
     spec=importlib.util.spec_from_file_location(name,path);loaded=importlib.util.module_from_spec(spec);spec.loader.exec_module(loaded);return loaded
 
+def frozen_git_result(result,operation):
+    check(operation in ['rev-parse','status'],'fixed frozen Git operation required')
+    if result.returncode!=0 or result.stderr!='':
+        raw=result.stderr.encode('utf8',errors='replace')
+        detail={'operation':operation,'exitCode':result.returncode,'stderrBytes':len(raw),'stderrSha256':digest(raw),'stderrFirst4096Bytes':raw[:4096].decode('utf8',errors='replace')}
+        check(False,'frozen checkout Git check failed: '+json.dumps(detail,sort_keys=True,ensure_ascii=True))
+    return result.stdout.strip()
+
 def verify_packet(source,producer):
     inputs=authenticated_inputs();pins=inputs['producer'];package=root_directory()/'accepted';source=Path(source).resolve(strict=True);producer=Path(producer).resolve(strict=True)
     controller=Path(__file__).resolve().parent.parent
@@ -138,7 +146,7 @@ def verify_packet(source,producer):
     for checkout,wanted in [(controller,os.environ['GITHUB_SHA']),(source,pins['source']),(producer,pins['producer'])]:
         def git(*words):
             result=registry.run(['/usr/bin/git','-c','safe.directory='+str(checkout),'-C',str(checkout),*words],env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'},timeout=60)
-            check(result.returncode==0 and result.stderr=='','frozen checkout Git check failed');return result.stdout.strip()
+            return frozen_git_result(result,words[0])
         check(git('rev-parse','HEAD')==wanted and not git('status','--porcelain','--untracked-files=all'),'clean pinned checkout required')
     fmt=load_module('authenticated_throughput_format',producer/'deploy/systemd/bank_import_worker_format.py')
     provenance_raw=(package/'worker-provenance.json').read_bytes();provenance=json.loads(provenance_raw)
@@ -237,7 +245,7 @@ def auxiliary_contracts(root,manifest):
         if row['type']!='file' or not row['path'].endswith('/@esbuild/linux-x64/bin/esbuild'): continue
         executable=root/row['path'];package=executable.parent.parent/'package.json'
         info=json.loads(package.read_bytes());version=info.get('version')
-        check(info.get('name')=='@esbuild/linux-x64' and isinstance(version,str) and re.fullmatch('[0-9]+\.[0-9]+\.[0-9]+',version),'manifest esbuild package identity required')
+        check(info.get('name')=='@esbuild/linux-x64' and isinstance(version,str) and re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+',version),'manifest esbuild package identity required')
         check(file_hash(executable)==row['sha256'],'manifest esbuild executable bytes differ')
         result.append({'exe':str(executable.resolve(strict=True)),'sha256':row['sha256'],'argv':[str(executable),'--service='+version,'--ping']})
     check(0<len(result)<=16,'bounded manifest esbuild auxiliary closure required')
