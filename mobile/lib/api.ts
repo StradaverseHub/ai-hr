@@ -25,7 +25,7 @@ import {
 } from '../../lib/mobile-api/contract';
 import { assertAuthGeneration, authGeneration, getAccessToken, refresh } from './auth';
 import { apiOriginProblem, config, configProblem,identityNamespace } from './config';
-import { SignInRequiredError, UnavailableError, RequestRejectedError,SessionChangedError,NetworkUnavailableError } from './errors';
+import { SignInRequiredError, UnavailableError, RequestRejectedError,SessionChangedError,NetworkUnavailableError,ThrottledError } from './errors';
 import {createReadCoordinator,retryAfterSeconds} from './read-coordinator';
 import { appLocale } from './i18n';
 import { MobileRefusal, pageOf, type Page } from '../../lib/mobile-api/v2/common';
@@ -188,15 +188,25 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
     assertCurrent();
     if (signal?.aborted) throw new UnavailableError();
     if (res.status === 401) throw new SignInRequiredError();
-    if (res.status === 429) throw new UnavailableError(undefined,res.retryAfter);
+    if (res.status === 429) throw new ThrottledError(res.retryAfter);
     if (res.status >= 500) throw new UnavailableError(undefined,res.retryAfter,res.supportId);
     if (res.status < 200 || res.status >= 300) throw new RequestRejectedError(res.status);
     return res.data as T;
   }catch(error){assertCurrent();throw error;}
 }
 
+/**
+ * Reads in flight are capped at READ_CONCURRENCY. The server admits 12 concurrent requests per user and refuses the rest
+ * with 429 (lib/mobile-api/handler.ts admitActor); Home mounts more cards than that at once. Six leaves room for the
+ * commands and downloads that do not pass through here. A 429 whose Retry-After is at most 2 s (the in-flight admission
+ * sends 1) is retried once, with jitter; a longer or unstated wait (the per-minute budget) is shown as it is.
+ */
+export const READ_CONCURRENCY=6;
+const SHORT_THROTTLE_SECONDS=2;
 const reads=createReadCoordinator({unavailable:seconds=>new UnavailableError(undefined,seconds),obsolete:()=>new SessionChangedError(),
-  backoff:error=>error instanceof UnavailableError?error.retryAfter:undefined});
+  backoff:error=>error instanceof UnavailableError?error.retryAfter:undefined,
+  retry:error=>error instanceof ThrottledError&&error.retryAfter!==undefined&&error.retryAfter<=SHORT_THROTTLE_SECONDS?error.retryAfter*1000+Math.floor(Math.random()*250):undefined},
+  64,READ_CONCURRENCY);
 const canonicalParams=(params:Record<string,string|undefined>)=>Object.fromEntries(Object.entries(params).filter((pair):pair is [string,string]=>pair[1]!==undefined).sort(([a],[b])=>a.localeCompare(b)));
 export async function apiGet<P extends keyof Endpoints>(path:P,params:Record<string,string|undefined>={},signal?:AbortSignal):Promise<Endpoints[P]>{
   const owner=authGeneration(),namespace=identityNamespace(),origin=config.apiUrl,locale=appLocale(),snapshot=canonicalParams(params);

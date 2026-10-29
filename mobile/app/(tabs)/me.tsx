@@ -57,11 +57,14 @@ export default function Me() {
 
       <SectionLabel>{t('payslips')}</SectionLabel>
       <Button title={t('payOpen')} onPress={() => router.push('/pay')} />
+      <SectionLabel>{t('meSectionClaims')}</SectionLabel>
       <Button title={t('claimsOpen')} onPress={() => router.push('/claims')} />
+      <SectionLabel>{t('meSectionRecords')}</SectionLabel>
       <Button title={t('attOpen')} onPress={() => router.push('/attendance')} kind="quiet" />
       <Button title={t('profileOpen')} onPress={() => router.push('/profile')} kind="quiet" />
       <ShiftReminderSetting />
 
+      <SectionLabel>{t('meSectionDevice')}</SectionLabel>
       <Button title={t('integrityKeysTitle')} onPress={()=>router.push('/integrity-keys')} kind="quiet"/>
       <Button title={t('pendingTitle')} onPress={()=>router.push('/pending-submissions')} kind="quiet"/>
       {queued > 0 && <Muted>{t(queued === 1 ? 'offlineSignOutNoteOne' : 'offlineSignOutNote', { n: queued })}</Muted>}
