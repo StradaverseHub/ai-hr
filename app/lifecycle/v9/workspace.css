@@ -38,3 +38,5 @@
 .v9-template-list{border:0;border-radius:14px;padding:16px 20px;gap:10px}.v9-template-list h2{font-size:16px;font-weight:600;margin:0}.v9-template-list header p{font-size:13px;color:#474b5c;margin:0}
 
 .v9-prewrap{white-space:pre-wrap;overflow-wrap:anywhere}
+
+.v9-workspace [role="tablist"] [role="tab"]{border-radius:999px;min-height:40px;padding:0 16px}

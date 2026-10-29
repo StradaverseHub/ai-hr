@@ -821,7 +821,7 @@ it('snapshots handed Native items by employment and records recovery on their or
     await v9Command(admin, id, 1, { type: 'submit' }); return (await v9CaseDetail(admin, id)).case;
   }
   const first = await exit();
-  await expect(exit()).rejects.toMatchObject({ cause: { code: '23505', constraint_name: 'lc_v9_case_open_employment' } });
+  await expect(exit()).rejects.toThrow('already has an open offboarding case');
   expect(first.items).toHaveLength(2);
   for (const item of first.items) {
     expect(item.sourceId).toBeNull(); expect(item.nativeSource).toMatchObject({ caseId: joiner.case.id, requestId: currentReq(joiner.case)!.id });

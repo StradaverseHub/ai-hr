@@ -31,7 +31,7 @@ it('keeps settings on their canonical owner and retains unsaved catalogue edits 
   fireEvent.click(screen.getByRole('tab', { name: 'Onboarding' }));
   expect(screen.getByRole('textbox', { name: 'Item name' })).toHaveValue('Fictional renamed system');
   expect(mocks.save).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Save configuration' }));
+  expect(screen.queryByRole('button', { name: 'Save configuration' })).not.toBeInTheDocument();
   await waitFor(() => expect(mocks.save).toHaveBeenCalledWith(7, expect.objectContaining({ catalogue: [expect.objectContaining({ id: 'existing-system', name: 'Fictional renamed system' })] }), {}, false));
   expect(await screen.findByText('Changes saved')).toBeVisible();
 });
