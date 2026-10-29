@@ -14,15 +14,37 @@ import stat
 import tempfile
 import time
 
-KNOWN_SOURCE='968354c00a71df7baccd499eb60757a3307ed61e'
+KNOWN_OLD_SOURCE='968354c00a71df7baccd499eb60757a3307ed61e'
 KNOWN_OLD_ARCHIVE='e078748fa2857a8833ae5c035c9e6bab846d99151e6097aecf9686e686936c36'
+KNOWN_OLD_PACKAGE='dc47148879a85197128657908246ea3886619967fcc4824496b1fecdc2a3ae57'
+KNOWN_OLD_LOCK='4f124fa09e86cf46ed4d6052fd3291758418985ee412cfa73bfaf7b726eab24d'
+NEW_LEDGER_ROWS=562
+
+def validate_new_target(source,archive,controller,ops):
+    ops.check(isinstance(source,str) and re.fullmatch('[a-f0-9]{40}',source) and source!=KNOWN_OLD_SOURCE,'distinct approved new source required')
+    ops.check(isinstance(archive,str) and re.fullmatch('[a-f0-9]{64}',archive) and archive!=KNOWN_OLD_ARCHIVE,'distinct full new archive digest required')
+    ops.check(isinstance(controller,str) and re.fullmatch('[a-f0-9]{40}',controller),'reviewed controller source required')
+
+def inspect_original_archive(archive,fmt,ops):
+    # The installed v1 evidence has its own immutable dependency identities.
+    original=fmt.inspect_archive(archive,KNOWN_OLD_SOURCE,KNOWN_OLD_LOCK,KNOWN_OLD_PACKAGE)
+    ops.check(original['format']==1,'original v1 byte evidence required')
+    return original
 
 def variant_unit(source,archive,ops):
-    ops.check(source==KNOWN_SOURCE and re.fullmatch('[a-f0-9]{64}',archive or ''),'known source and full variant digest required')
-    original=ops.service_unit(source).encode();before=('WorkingDirectory='+str(ops.ROOT/'releases'/source)+'\n').encode()
+    ops.check(isinstance(source,str) and re.fullmatch('[a-f0-9]{40}',source) and source!=KNOWN_OLD_SOURCE and isinstance(archive,str) and re.fullmatch('[a-f0-9]{64}',archive) and archive!=KNOWN_OLD_ARCHIVE,'distinct new source and full variant digest required')
+    original=ops.service_unit(KNOWN_OLD_SOURCE).encode();before=('WorkingDirectory='+str(ops.ROOT/'releases'/KNOWN_OLD_SOURCE)+'\n').encode()
     after=('WorkingDirectory='+str(ops.ROOT/'releases'/(source+'-'+archive))+'\n').encode()
     ops.check(original.count(before)==1,'fixed unit working directory is ambiguous')
     return original.replace(before,after)
+
+def validate_live_ledger(rows,expected,ops):
+    ops.check(isinstance(rows,list) and len(rows)==NEW_LEDGER_ROWS and all(isinstance(row,dict) and set(row)=={'id','created_at','hash'} and type(row['id']) is int and row['id']>0 and isinstance(row['created_at'],str) and re.fullmatch('[0-9]+',row['created_at']) and isinstance(row['hash'],str) and re.fullmatch('[a-f0-9]{64}',row['hash']) for row in rows),'live complete migration ledger count/shape differs')
+    ops.check([row['id'] for row in rows]==sorted(set(row['id'] for row in rows)),'live migration ledger order differs')
+    projection=[{'created_at':row['created_at'],'hash':row['hash']} for row in rows]
+    ledger_hash=hashlib.sha256(json.dumps(projection,sort_keys=True,separators=(',',':'),ensure_ascii=True).encode()).hexdigest()
+    ops.check(ledger_hash==expected,'live ordered migration ledger differs from independently approved staging identities')
+
 
 def atomic_unit_replace(path,expected,replacement,ops):
     ops.root_protected(path,regular=True);ops.root_protected(path.parent)
@@ -57,6 +79,8 @@ def verify_inactive_before_ownership(old_unit,old_release,ops):
     ops.check(processes.returncode in (0,1) and not processes.stdout.strip(),'worker identity acquired running processes during preflight')
 
 def validate_runtime_witness(proof,source,controller,archive,archive_bytes,manifest,ledger,run_id,fmt,ops):
+    validate_new_target(source,archive,controller,ops)
+    ops.check(manifest.get('source')==source and manifest.get('controllerSource')==controller,'new manifest source/controller differs')
     fields={'format','kind','source','controllerSource','producerSha256','formatSha256','archiveSha256','manifestSha256','provenanceSha256','packageSha256','lockSha256','runtime','runId','runAttempt','rootOwnedReadOnly','extractedOutsideCheckout','modulePathsClean','roleProof','migrationLedger','emptyQueue','nativeFixture','cli','extractedPostRunVerified','releaseAuthorized'}
     ops.check(isinstance(proof,dict) and set(proof)==fields,'closed authenticated runtime proof required')
     manifest_hash=fmt.digest(fmt.canonical(manifest))
@@ -70,7 +94,7 @@ def validate_runtime_witness(proof,source,controller,archive,archive_bytes,manif
     ops.check(all(exact(proof.get(key),value) for key,value in expected.items()),'runtime provenance/privilege binding differs')
     roles=[{'rolname':'ai_hr_app','rolsuper':False,'rolbypassrls':False,'queue_owner':False},{'rolname':'ai_hr_owner','rolsuper':False,'rolbypassrls':False,'queue_owner':True}]
     ops.check(isinstance(proof['roleProof'],list) and all(isinstance(row,dict) and isinstance(row.get('rolname'),str) for row in proof['roleProof']) and exact(sorted(proof['roleProof'],key=lambda row:row['rolname']),roles),'runtime database roles differ')
-    ops.check(exact(proof['migrationLedger'],{'rows':562,'sha256':ledger}),'runtime migration ledger differs')
+    ops.check(exact(proof['migrationLedger'],{'rows':NEW_LEDGER_ROWS,'sha256':ledger}),'runtime migration ledger differs')
     empty=proof['emptyQueue'];empty_fields={'before','after','publicTables','contentSha256','noHrMutation','exitCode','stdoutSha256','stderrSha256'}
     ops.check(isinstance(empty,dict) and set(empty)==empty_fields and type(empty['publicTables']) is int and 0<empty['publicTables']<=2000 and isinstance(empty['contentSha256'],str) and re.fullmatch('[a-f0-9]{64}',empty['contentSha256']),'complete empty-queue content witness required')
     empty_expected={'before':0,'after':0,'noHrMutation':True,'exitCode':0,'stdoutSha256':fmt.digest(b''),'stderrSha256':fmt.digest(b'')}
@@ -82,7 +106,8 @@ def replace_never_started(argv,fmt,ops):
     parser=argparse.ArgumentParser()
     for name in ['old-archive','old-archive-sha256','archive','archive-sha256','source','controller-source','build-id','lock-sha256','package-sha256','env-sha256','runtime-proof','runtime-proof-sha256','runtime-ledger-sha256','staging-ledger-sha256','runtime-run-id']: parser.add_argument('--'+name,required=True)
     args=parser.parse_args(argv);ops.check(os.geteuid()==0,'reviewed detached administrator activation required')
-    ops.check(args.source==KNOWN_SOURCE and args.old_archive_sha256==KNOWN_OLD_ARCHIVE and re.fullmatch('[a-f0-9]{40}',args.controller_source or ''),'this continuation is only for the known never-started installation')
+    ops.check(args.old_archive_sha256==KNOWN_OLD_ARCHIVE,'this continuation is only for the known never-started installation')
+    validate_new_target(args.source,args.archive_sha256,args.controller_source,ops)
     for value in [args.archive_sha256,args.lock_sha256,args.package_sha256,args.env_sha256,args.runtime_proof_sha256,args.runtime_ledger_sha256,args.staging_ledger_sha256]: ops.check(re.fullmatch('[a-f0-9]{64}',value or ''),'independently authenticated digest required')
     ops.check(re.fullmatch('[1-9][0-9]{0,19}',args.runtime_run_id or ''),'authenticated original runtime run required')
     ops.check(args.archive_sha256!=KNOWN_OLD_ARCHIVE and re.fullmatch('[A-Za-z0-9_-]{1,160}',args.build_id or ''),'corrected distinct packet/build identity required')
@@ -92,9 +117,9 @@ def replace_never_started(argv,fmt,ops):
     try:
         fcntl.flock(lock_fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
         state=ops.deployment_state(args.source,args.build_id);ops.command(['/usr/bin/systemctl','is-active','--quiet','aihr'])
-        old_release=ops.ROOT/'releases'/args.source;new_release=ops.ROOT/'releases'/(args.source+'-'+args.archive_sha256)
+        old_release=ops.ROOT/'releases'/KNOWN_OLD_SOURCE;new_release=ops.ROOT/'releases'/(args.source+'-'+args.archive_sha256)
         for path in [ops.ROOT,ops.ROOT/'releases']: ops.root_protected(path)
-        old_unit=ops.service_unit(args.source).encode();new_unit=variant_unit(args.source,args.archive_sha256,ops)
+        old_unit=ops.service_unit(KNOWN_OLD_SOURCE).encode();new_unit=variant_unit(args.source,args.archive_sha256,ops)
         ops.root_protected(ops.UNIT,regular=True);ops.check(ops.read_bounded(ops.UNIT,65536)==old_unit,'exact original unit required')
         for record in ['worker-install-v2.json','worker-install-v2-recovery.json']: ops.check(not (old_release/record).exists(),'installation has already completed')
         identity=pwd.getpwnam(ops.USER)
@@ -106,7 +131,7 @@ def replace_never_started(argv,fmt,ops):
         private=Path(tempfile.mkdtemp(prefix='corrected-variant-',dir=ops.ROOT));os.chmod(private,0o700)
         old_archive=private/'original-authenticated.zip';new_archive=private/'corrected-authenticated.zip'
         ops.snapshot_archive(args.old_archive,old_archive,args.old_archive_sha256,fmt.MAX_ARCHIVE);ops.snapshot_archive(args.archive,new_archive,args.archive_sha256,fmt.MAX_ARCHIVE)
-        original=fmt.inspect_archive(old_archive,args.source,args.lock_sha256,args.package_sha256);ops.check(original['format']==1,'original v1 byte evidence required')
+        original=inspect_original_archive(old_archive,fmt,ops)
         ops.verify_existing_tree(old_release,original,fmt,ops)
         corrected=fmt.inspect_archive(new_archive,args.source,args.lock_sha256,args.package_sha256);fmt.require_activation_manifest(corrected,args.controller_source)
         raw_proof=ops.read_bounded(Path(args.runtime_proof),1024**2);ops.check(hashlib.sha256(raw_proof).hexdigest()==args.runtime_proof_sha256,'authenticated runtime proof differs')
@@ -137,10 +162,7 @@ def replace_never_started(argv,fmt,ops):
             if is_owner:
                 ledger_sql="SELECT coalesce(json_agg(x ORDER BY x.id),'[]'::json)::text FROM (SELECT id,created_at::text AS created_at,CASE WHEN hash~'^[a-f0-9]{64}$' THEN hash ELSE 'INVALID' END AS hash FROM drizzle.__drizzle_migrations ORDER BY id LIMIT 563) x;"
                 rows=json.loads(ops.command(['/usr/bin/psql','-X','-q','-A','-t','--no-password','-v','ON_ERROR_STOP=1'],input=ledger_sql,env=settings).stdout)
-                ops.check(isinstance(rows,list) and len(rows)==562 and all(set(row)=={'id','created_at','hash'} for row in rows),'live complete migration ledger count/shape differs')
-                projection=[{'created_at':row['created_at'],'hash':row['hash']} for row in rows]
-                ledger_hash=hashlib.sha256(json.dumps(projection,sort_keys=True,separators=(',',':'),ensure_ascii=True).encode()).hexdigest()
-                ops.check(ledger_hash==args.staging_ledger_sha256,'live ordered migration ledger differs from independently approved staging identities')
+                validate_live_ledger(rows,args.staging_ledger_sha256,ops)
         if environment.get('NODE_EXTRA_CA_CERTS'): ops.root_protected(environment['NODE_EXTRA_CA_CERTS'],regular=True);ops.command(['/usr/sbin/runuser','--user',ops.USER,'--','/usr/bin/test','-r',environment['NODE_EXTRA_CA_CERTS']])
         ops.check(ops.deployment_state(args.source,args.build_id)==state,'web deployment changed during checks')
         ops.write_new(private/'old-unit',old_unit,0o600);ops.write_new(private/'new-unit',new_unit,0o600)
@@ -148,6 +170,7 @@ def replace_never_started(argv,fmt,ops):
         ops.check(fresh_identity==identity,'worker identity changed during preflight')
         ops.validate_identity(fresh_identity,pwd.getpwall(),grp.getgrall(),ops)
         ops.check(set(os.getgrouplist(ops.USER,fresh_identity.pw_gid))=={fresh_identity.pw_gid},'worker groups changed during preflight')
+        fresh_status=ops.command(['/usr/bin/passwd','--status',ops.USER]).stdout.split();ops.check(len(fresh_status)>=2 and fresh_status[1]=='L','worker account lock changed during preflight')
         verify_inactive_before_ownership(old_unit,old_release,ops)
         with ops.activation_guard(lambda:restore_unit_after_failure(old_unit,new_unit,ops)):
             atomic_unit_replace(ops.UNIT,old_unit,new_unit,ops);ops.command(['/usr/bin/systemctl','daemon-reload'])
@@ -163,6 +186,6 @@ def replace_never_started(argv,fmt,ops):
                 ops.check(all(actual.get(k.encode())==v.encode() for k,v in environment.items()) and not any(k.encode() in actual for k in ['NODE_OPTIONS','NODE_PATH','LD_PRELOAD','LD_LIBRARY_PATH','PYTHONPATH']),'actual selected environment differs')
             ops.check(ops.deployment_state(args.source,args.build_id)==state and ops.read_bounded(ops.ENV,1024**2)==expected_env and ops.read_bounded(ops.UNIT,65536)==new_unit,'authority changed during activation')
             ops.command(['/usr/bin/systemctl','enable','aihr-bank-import.service'])
-            record={'kind':'CORRECTED_NEVER_STARTED_VARIANT','source':args.source,'controllerSource':args.controller_source,'webBuildId':args.build_id,'oldArchiveSha256':args.old_archive_sha256,'newArchiveSha256':args.archive_sha256,'runtimeProofSha256':args.runtime_proof_sha256,'runtimeLedgerSha256':args.runtime_ledger_sha256,'stagingLedgerSha256':args.staging_ledger_sha256,'oldRelease':str(old_release),'newRelease':str(new_release),'unitSha256':hashlib.sha256(new_unit).hexdigest(),'workerPid':pid,'serviceStable':True,'journeyVerified':False}
+            record={'kind':'CORRECTED_NEVER_STARTED_VARIANT','oldSource':KNOWN_OLD_SOURCE,'source':args.source,'newSource':args.source,'oldPackageSha256':KNOWN_OLD_PACKAGE,'newPackageSha256':args.package_sha256,'oldLockSha256':KNOWN_OLD_LOCK,'newLockSha256':args.lock_sha256,'controllerSource':args.controller_source,'webBuildId':args.build_id,'oldArchiveSha256':args.old_archive_sha256,'newArchiveSha256':args.archive_sha256,'runtimeProofSha256':args.runtime_proof_sha256,'runtimeLedgerSha256':args.runtime_ledger_sha256,'stagingLedgerSha256':args.staging_ledger_sha256,'oldRelease':str(old_release),'newRelease':str(new_release),'unitSha256':hashlib.sha256(new_unit).hexdigest(),'workerPid':pid,'serviceStable':True,'journeyVerified':False}
             ops.write_new(private/'activation-result.json',(json.dumps(record,sort_keys=True)+'\n').encode(),0o444);print(json.dumps(record))
     finally: os.close(lock_fd)
