@@ -11476,10 +11476,13 @@ export const aiAgentPrincipal=agentPrincipalPrivate.table('ai_agent_principal',{
  id:id(),tenantId:uuid('tenant_id').notNull().unique().references(()=>tenant.id),createdAt:createdAt(),
 });
 
+/** Canonical row meaning approved by the import preview; codes and names are only lookup inputs. */
+export type PayrollTxnImportBinding={employmentId:string;companyId:string;departmentId:string|null;componentId:string;intendedCycleId:string|null;targetBatchId:string|null;targetCycle:string;payPeriod:string;txnDate:string;kind:string;quantity:number|null;unit:string|null;sourceRef:string;notes:string|null};
 /** Individual transaction import attempts retain original row outcomes after reversal. */
 export const payrollTxnImportAttempt=pgTable('payroll_txn_import_attempt',{
  id:id(),tenantId:tenantId(),operationId:uuid('operation_id').notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),
  companyIds:jsonb('company_ids').$type<string[]>().notNull(),sourceName:text('source_name').notNull(),sourceHash:text('source_hash').notNull(),method:text('method').$type<'monthly'|'daily'>().notNull(),
+ bindings:jsonb('bindings').$type<Record<string,PayrollTxnImportBinding>>().notNull().default({}),
  records:jsonb('records').$type<Record<string,string>[]>().notNull(),preview:jsonb('preview').$type<import('../lib/payroll-txn-import-schema').TxnImportPreview>().notNull(),
  outcomes:jsonb('outcomes').$type<import('../lib/individual-txn-import-model').IndividualImportOutcome[]>().notNull().default([]),
  state:text('state').$type<'validated'|'completed'|'reverted'>().notNull().default('validated'),written:integer('written').notNull().default(0),recalcBatchIds:jsonb('recalc_batch_ids').$type<string[]>().notNull().default([]),
