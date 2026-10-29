@@ -320,7 +320,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome}:{refreshTo
     if(draft.phase==='review'){
       quick.current=false;
       // A phone that must be registered first is a decision for the Clock tab, never skipped.
-      if(current?.deviceRequired&&!draft.deviceToken&&draft.clockProtocol!=='signed')return;
+      if(current?.deviceRequired&&!draft.deviceToken&&draft.clockProtocol!=='signed'){putClock({...draft,message:t('registrationNotice')},draft.requestId);return;}
       void submit();
     }else if(draft.phase!=='preparing')quick.current=false;
   },[variant,draft?.phase,draft?.requestId]);
