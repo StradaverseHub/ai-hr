@@ -324,7 +324,9 @@ application directory, mode 0600, whose public key is already in `connections/tr
 The customer's administrators find the link, QR code, organization code, expiry and install steps under
 System Configuration › **Mobile app**. The page re-verifies the stored setup first — signature against the
 app's anchors, this server, this organization, not expired — and otherwise asks them to contact their
-provider. The operator console does not show or reissue setups yet (that needs a migration; see the ADR).
+provider. In the operator console each customer page shows the setup status, and offers **Issue / Reissue**
+(signing installations) and **Import signed setup** (upload a `company.aihr.json`); both record a request that
+the provisioning runner carries out within about a minute.
 
 **Customer-run on-premise servers never hold the signing key.** Stradaverse signs their setup offline and
 the installation administrator imports it on that server:

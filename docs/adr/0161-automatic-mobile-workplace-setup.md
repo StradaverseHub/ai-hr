@@ -7,7 +7,9 @@
 - **Related:** ADR-0117 (embedded HR sign-in), ADR-0140 (operator customer workspace), ADR-0077 (entitlements and
   `tenant_setting`), ADR-0006 (domain events). Owner request: "when we set up the customer in the operator, it
   automatically runs [the signing] and saves it in the system."
-- **Migration:** none. The setting definition is catalogue data seeded by `scripts/seed-catalogs.ts`.
+- **Migration:** the setting definition is catalogue data seeded by `scripts/seed-catalogs.ts` (no migration). The
+  operator console's intents and status read are `db/migrations/0000_mobile_workplace_setup_issuance.sql` — a
+  placeholder number, unjournaled until the migration allocator assigns one (§2.8).
 
 ## 1. Context
 
@@ -62,15 +64,25 @@ customer**: one installation origin, one organization code, one display name, on
    role does not imply customer administration (ADR-0140).
 7. **Audit.** `mobile.workplace-setup.issued`, `.reissued`, `.imported` and `.issue-failed` (once per distinct
    reason) are appended to the customer's domain events with the key id, expiry, method and trigger — never the
-   signed payload.
+   signed payload. An operator intent adds `.requested` with the operator as actor, and the resulting event
+   carries `requestId` and `requestedBy`.
+8. **Operator console (owner approval, 29 October 2026).** The customer page shows the setup status — issued /
+   imported / not set up / not usable with the reason, expiry, key id, server, organization code, last failed
+   attempt — and the link and QR only for a setup that re-verifies for this server and customer (the operator
+   already sees each of those facts; the setup holds nothing else). Status is read through the gated definer
+   `app.operator_mobile_setup`, in the shape of `app.operator_customer_data`. **Issue / Reissue** and **Import
+   signed setup** record an intent through the definer `app.operator_request_mobile_setup` into
+   `mobile_setup_request` (`module_change_request` shape: SELECT-only to the application role under tenant RLS,
+   one open intent per customer by a partial unique index, the operator re-checked in the database, a
+   `.requested` event). The provisioning runner executes one intent per tick with the code in §2.2 and §2.3; an
+   explicit reissue signs even when the current setup is still valid. The web tier never loads the key: it
+   reads only whether the key PATH variable is set, to explain that Issue is unavailable, and the runner refuses
+   an issue intent with `key_not_configured` when it holds no key. An upload is verified in the web tier for an
+   immediate answer and again by the runner before anything is stored.
 
 ## 3. Not decided here / deferred
 
-- **Operator console status, "Issue / reissue" and upload.** The web tier cannot read or write another tenant's
-  `tenant_setting` (tenant RLS, and 0313 forbids platform writes by the application role). These need a
-  gated `SECURITY DEFINER` read in the shape of `app.operator_customer_data` and either a definer write or a
-  runner-consumed intent, i.e. a migration. Until then the runner pass is the reissue mechanism on signing
-  installations and the import command is the on-premise path.
+- The migration number, journal position and its rehearsal belong to the integrator (§2.8).
 - Revocation remains bounded lifetimes plus anchor removal in a new app release (mobile/README.md).
 - KMS/HSM custody; production signing anchors distinct from the current test anchor.
 

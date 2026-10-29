@@ -332,7 +332,9 @@ retries setups once per tick, only when its environment (`.env.production`) name
 Never put the key itself, or a copy of it, in `.env.production`, the repository or a backup that leaves the
 host. A customer-run on-premise server must not be given this key: it imports a setup Stradaverse signed, with
 `scripts/mobile-setup-import.ts` (see mobile/README.md). The setting definition arrives through
-`scripts/seed-catalogs.ts`, which `deploy.sh` already runs. The log records tenant ids and reason codes only,
+`scripts/seed-catalogs.ts`, which `deploy.sh` already runs. The operator console's Issue / Reissue and Import
+requests are executed by this same runner tick (one per minute); a request to issue on an installation without
+the key is refused with `key_not_configured`. The log records tenant and request ids and reason codes only,
 never the key, its path or a signed setup.
 
 Verify:
