@@ -13,7 +13,7 @@
  *   2. the policies 0515 rewrote are exactly the fixture's 57 (test/fixtures/r395-policy-quals.json,
  *      generated from pg_policies before and after 0515), each with the fixture's post-0515 USING text and
  *      its WITH CHECK text UNCHANGED from before 0515, except the explicitly pinned 0540 assessment-file, 0560 own-Profile and 0561 user-only Feedback extensions,
- *      and the 0676 import-void narrowing (ADR-0157) of employment_rls/person_rls USING.
+ *      the 0676 import-void narrowing (ADR-0157), and the 0691 authorized Bank point-read arm.
  *   3. the migration file's ALTER POLICY statements name exactly those 57 and set no WITH CHECK.
  *   4. the set form really is planned as an InitPlan (the `(SELECT …)` wrapper is load-bearing).
  */
@@ -38,6 +38,25 @@ const assessmentAttachment = {
 // visibility: the live USING must be exactly `(voided_at IS NULL) AND (<0515 USING>)`, WITH CHECK unchanged.
 const importVoidNarrowed = new Set(['employment.employment_rls', 'person.person_rls']);
 const voidNarrowedQual = (qual: string) => `((voided_at IS NULL) AND ${qual})`;
+
+// Pin the reviewed 0691 arm independently of the migration bytes. PostgreSQL normalizes
+// the complete expected expression; the temporary policy edit always rolls back.
+async function bankPointReadQual(original: string): Promise<string> {
+ const expected=`voided_at IS NULL AND tenant_id=app.current_tenant_id() AND CASE
+  WHEN (SELECT current_setting('app.bank_import_point_read',true))='on'
+  THEN CASE WHEN app.is_admin_for(company_id) THEN true ELSE ${original} END
+  ELSE ${original} END`;
+ const rollback=new Error('Bank policy normalization rollback');let normalized='';
+ try {
+  await owner.client.begin(async tx=>{
+   await tx.unsafe(`ALTER POLICY employment_rls ON public.employment USING (${expected})`);
+   const [row]=await tx.unsafe("select qual from pg_policies where schemaname='public' and tablename='employment' and policyname='employment_rls'");
+   expect(row).toBeTruthy();normalized=String(row.qual);throw rollback;
+  });
+ } catch(error) {if(error!==rollback)throw error;}
+ expect(normalized).not.toBe('');return normalized;
+}
+
 
 afterAll(async () => {
   await closeAll();
@@ -66,6 +85,9 @@ describe('r395 — per-row visibility functions are gone from every policy USING
     const live = new Map(
       (await q(`select tablename, policyname, qual, with_check, cmd, roles, permissive from pg_policies where schemaname='public'`)).map((r) => [key(r.tablename as string, r.policyname as string), r]),
     );
+    const employmentFixture=FIXTURE.policies.find(p=>key(p.table,p.policy)==='employment.employment_rls');
+    expect(employmentFixture).toBeTruthy();
+    const bankEmploymentQual=await bankPointReadQual(voidNarrowedQual(employmentFixture!.newQual));
     const reconciledFeedbackKeys = new Set<string>();
     for (const p of FIXTURE.policies) {
       // These historical invariants still apply to all 57 fixture entries, including the five 0560/0561 cases.
@@ -83,7 +105,7 @@ describe('r395 — per-row visibility functions are gone from every policy USING
         const r = live.get(historicalKey);
         expect(r, `${historicalKey} exists`).toBeTruthy();
         const attachment=p.table==='performance_attachment'&&p.policy==='performance_attachment_rls';
-        const expectedQual=attachment?assessmentAttachment.qual:importVoidNarrowed.has(historicalKey)?voidNarrowedQual(p.newQual):p.newQual;
+        const expectedQual=attachment?assessmentAttachment.qual:historicalKey==='employment.employment_rls'?bankEmploymentQual:importVoidNarrowed.has(historicalKey)?voidNarrowedQual(p.newQual):p.newQual;
         expect(r!.qual, `${historicalKey} USING`).toBe(expectedQual);
         expect(r!.with_check ?? null, `${historicalKey} WITH CHECK`).toBe(attachment?assessmentAttachment.withCheck:p.withCheck);
       }

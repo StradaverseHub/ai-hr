@@ -15,8 +15,11 @@ type Journal={entries:{idx:number;when:number;tag:string}[];[key:string]:unknown
 function identities(){return Object.fromEntries(['tenant','company','catalogueCompany','department','validBu','legacyBu','employeePerson','employeeUser','employment','hrUser','readerUser','cycle','unit','member','entry','decision','period','batch','input','txn','slip'].map(key=>[key,randomUUID()]));}
 
 it.each([562,563])('upgrades populated payroll and Rewards from %i to 566 receipts without rewriting money or historical scope',async(start)=>{
- const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as Journal;
- const manifest=readMigrationFiles({migrationsFolder:'db/migrations'});
+ // Rehearse this historical release's exact boundary, independently of later migrations.
+ const sourceJournal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as Journal;
+ const journal={...sourceJournal,entries:sourceJournal.entries.slice(0,566)};
+ const manifest=readMigrationFiles({migrationsFolder:'db/migrations'}).slice(0,566);
+ expect(journal.entries[565]).toMatchObject({idx:680,when:1793330000016,tag:'0690_rewards_policy_pair_membership'});
  expect(journal.entries).toHaveLength(566);
  expect(journal.entries[start-1].tag).toBe(start===562?'0686_ai_provider_custody_owner_rls':'0687_assistant_question_budget');
  expect(journal.entries.slice(start).map(({idx,when,tag})=>({idx,when,tag}))).toEqual([
@@ -94,7 +97,9 @@ it.each([562,563])('upgrades populated payroll and Rewards from %i to 566 receip
   const before=await historicalRows();
   for(const table of ['reward_unit','reward_entry','reward_decision','payroll_input','payroll_individual_txn','payslip'])expect(before[table]).toHaveLength(2);
   expect(before.reward_policy_group_target).toHaveLength(4);
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  for(const entry of journal.entries)copyFileSync('db/migrations/'+entry.tag+'.sql',join(directory,entry.tag+'.sql'));
+  writeFileSync(join(directory,'meta/_journal.json'),JSON.stringify(journal));
+  await migrate(storage.db,{migrationsFolder:directory});
   expect(await historicalRows()).toEqual(before);
   const upgraded=await ledger();expect(upgraded).toHaveLength(566);expect(upgraded.slice(0,start)).toEqual(baseline);
   expect(upgraded.map(row=>({hash:row.hash,when:Number(row.created_at)}))).toEqual(orderedManifest.map(m=>({hash:m.hash,when:m.folderMillis})));
@@ -141,7 +146,7 @@ it.each([562,563])('upgrades populated payroll and Rewards from %i to 566 receip
    await expect(storage.client`update payroll_input set reward_provenance='{}'::jsonb where id=${f.input}`).rejects.toMatchObject({code:'23514'});
   }
   expect(await historicalRows()).toEqual(before);
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  await migrate(storage.db,{migrationsFolder:directory});
   expect(await ledger()).toEqual(upgraded);expect(await historicalRows()).toEqual(before);
  }finally{
   await storage.client.end();if(created)await admin.unsafe(`DROP DATABASE "${name}" WITH (FORCE)`);await admin.end();rmSync(directory,{recursive:true,force:true});
