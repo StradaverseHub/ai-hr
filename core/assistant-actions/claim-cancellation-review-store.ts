@@ -1,3 +1,4 @@
+import {assertHumanReviewedActionTier} from '../../lib/ai/agent-action-tier-guard';
 /** ADR-0151 wave 1: own claim cancellation in the ONE prepared-action store, through the generic review
  * functions of migration 0670. Same custody as every other own review: sealed human content, digest-bound
  * human confirmation, the effect and its receipt in one transaction, completed retries never repeat. */
@@ -37,13 +38,13 @@ async function completed(tx:Tx,ctx:SessionContext,stored:Stored){if(stored.metad
 async function subject(tx:Tx,id:string){const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_generic_review_subject(${id}::uuid,${action}) as subject`);return z.object({employmentId:z.guid(),subjectId:z.guid()}).strict().parse(row?.subject);}
 
 export async function readClaimCancellationChoices(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,tx=>readOwnClaimCancellationChoicesTx(tx,ctx));}catch{return{kind:'unavailable' as const};}}
-export async function prepareClaimCancellationReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=ClaimCancellationReviewPrepare.safeParse(input);if(!parsed.success)return fail();const human=parsed.data;try{return await withTenant(ctx,tx=>withOwnClaimCancellationSubjectTx(tx,ctx,human.claimId,async(fresh,own)=>{
+export async function prepareClaimCancellationReview(supplied:SessionContext,input:unknown){assertHumanReviewedActionTier(supplied,'claims.cancel','confirm');const ctx=capture(supplied),parsed=ClaimCancellationReviewPrepare.safeParse(input);if(!parsed.success)return fail();const human=parsed.data;try{return await withTenant(ctx,tx=>withOwnClaimCancellationSubjectTx(tx,ctx,human.claimId,async(fresh,own)=>{
  if(own.employmentId!==human.employmentId)return fail();
  const native=await prepareOwnClaimCancellationSourceTx(tx,fresh,human),body=Body.parse({reviewNonce:newPrivateReviewNonce(),content:native.content,nativeReviewedDigest:native.reviewedDigest}),binding=Binding.parse({tenantId:fresh.tenantId,userId:fresh.userId,personId:fresh.personId,employmentId:own.employmentId,companyId:own.companyId});
  const now=new Date(),m=Metadata.parse({actionId:randomUUID(),action,contractVersion:1,binding,intentDigest:hash(body.content),reviewedDigest:reviewed(binding,body),state:'awaiting_confirmation',createdAt:now.toISOString(),expiresAt:new Date(now.getTime()+600000).toISOString()}),sealed=seal(m,body);
  const stored=await read(tx,sql`select app.assistant_generic_review_prepare(${action},${m.actionId}::uuid,${binding.personId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${own.claimId}::uuid,${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) as review`);bound(stored,fresh,m.actionId,own);return pending(stored,unseal(stored),native);
  }));}catch{return fail();}}
-export async function confirmClaimCancellationReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=ClaimCancellationReviewConfirmation.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{
+export async function confirmClaimCancellationReview(supplied:SessionContext,input:unknown){assertHumanReviewedActionTier(supplied,'claims.cancel','confirm');const ctx=capture(supplied),parsed=ClaimCancellationReviewConfirmation.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{
  const nominee=await subject(tx,p.actionId);return withOwnClaimCancellationSubjectTx(tx,ctx,nominee.subjectId,async(fresh,own)=>{
  const stored=await read(tx,sql`select app.assistant_generic_review_read(${p.actionId}::uuid,${action}) as review`);bound(stored,fresh,p.actionId,own);if(stored.metadata.state==='completed')return completed(tx,fresh,stored);if(stored.metadata.state!=='awaiting_confirmation')return retired(stored);if(stored.metadata.reviewedDigest!==p.reviewedDigest)return fail();
  const body=unseal(stored),native=await confirmOwnClaimCancellationSourceTx(tx,fresh,body.content,body.nativeReviewedDigest);
