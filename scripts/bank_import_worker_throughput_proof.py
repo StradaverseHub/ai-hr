@@ -284,13 +284,16 @@ def download_artifact(artifact_id,path,expected_size):
             endpoint=urllib.parse.urljoin(endpoint,error.headers.get('Location',''));url=urllib.parse.urlsplit(endpoint)
             check(url.scheme=='https' and url.port in (None,443) and not url.username and not url.password and (url.hostname or '').endswith(('.blob.core.windows.net','.actions.githubusercontent.com')),'artifact redirect host refused')
             headers={};continue  # Never forward the repository token to a CDN.
-        with response,Path(path).open('xb') as output:
-            count=0
-            while True:
-                check(time.monotonic()<deadline,'artifact transfer deadline exceeded');block=response.read(1024**2)
-                if not block: break
-                count+=len(block);check(count<=MAX_OUTER and count<=expected_size,'artifact transfer exceeded authenticated size');output.write(block)
-            output.flush();os.fsync(output.fileno())
+        with response:
+            fd=os.open(path,os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o600)
+            output=os.fdopen(fd,'wb')
+            with output:
+                count=0
+                while True:
+                    check(time.monotonic()<deadline,'artifact transfer deadline exceeded');block=response.read(1024**2)
+                    if not block: break
+                    count+=len(block);check(count<=MAX_OUTER and count<=expected_size,'artifact transfer exceeded authenticated size');output.write(block)
+                output.flush();os.fsync(output.fileno())
         check(count==expected_size,'artifact transfer length differs');return
     check(False,'artifact redirect limit exceeded')
 

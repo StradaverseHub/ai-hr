@@ -4,9 +4,11 @@ No application import, native process, database, network or release authority.
 import copy
 from contextlib import contextmanager
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
+import stat
 from types import SimpleNamespace
 import tempfile
 import unittest
@@ -31,6 +33,34 @@ def lifecycle_fixture():
             yield registry,snapshots,parent
 
 class ConsumerRefusals(unittest.TestCase):
+    def test_mock_download_is_private_exclusive_and_bounded_under_permissive_umask(self):
+        payload=b'fictional authenticated artifact bytes\n'
+        class MockOpener:
+            def open(inner,request,timeout):
+                self.assertEqual(request.full_url,f'https://api.github.com/repos/{p.REPO}/actions/artifacts/303/zip')
+                self.assertEqual(request.get_header('Authorization'),'Bearer fictional-token')
+                self.assertEqual(timeout,60)
+                return io.BytesIO(payload)
+        with tempfile.TemporaryDirectory(prefix='throughput-download-controls-') as temporary:
+            root=Path(temporary);archive=root/'artifact.zip';previous=os.umask(0)
+            try:
+                with patch.dict(os.environ,{'GH_TOKEN':'fictional-token'}),patch.object(p.urllib.request,'build_opener',return_value=MockOpener()):
+                    p.download_artifact(303,archive,len(payload))
+                    info=archive.lstat()
+                    self.assertEqual(stat.S_IMODE(info.st_mode),0o600)
+                    self.assertEqual(info.st_uid,os.geteuid());self.assertEqual(info.st_gid,os.getegid());self.assertEqual(info.st_nlink,1)
+                    self.assertTrue(stat.S_ISREG(info.st_mode));self.assertFalse(archive.is_symlink())
+                    self.assertEqual(p.file_hash(archive),p.digest(payload));self.assertEqual(archive.read_bytes(),payload)
+                    with self.assertRaises(FileExistsError): p.download_artifact(303,archive,len(payload))
+                    self.assertEqual(archive.read_bytes(),payload)
+                    victim=root/'victim';victim.write_bytes(b'unchanged');link=root/'link';link.symlink_to(victim)
+                    with self.assertRaises(OSError): p.download_artifact(303,link,len(payload))
+                    self.assertEqual(victim.read_bytes(),b'unchanged')
+                    with self.assertRaises(ValueError): p.download_artifact(303,root/'oversize.zip',len(payload)-1)
+                    with self.assertRaises(ValueError): p.download_artifact(303,root/'short.zip',len(payload)+1)
+                    with patch.object(p,'MAX_OUTER',len(payload)-1),self.assertRaises(ValueError): p.download_artifact(303,root/'outer-limit.zip',len(payload))
+            finally: os.umask(previous)
+
     def test_launch_and_creation_window_failure_keep_durable_empty_ownership(self):
         with lifecycle_fixture() as (registry,snapshots,parent):
             # Popen cannot launch anything; the exact created inode was saved first.

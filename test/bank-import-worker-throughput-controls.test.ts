@@ -36,11 +36,11 @@ function controls(){
 describe.skipIf(!githubLinux)('Bank worker throughput consumer refusal controls on disposable GitHub Linux',()=>{
  let executed=false;
  beforeAll(()=>{expect(githubLinux,'Actual GitHub Linux CI is required').toBe(true);});
- afterAll(()=>{expect(executed,'The real eleven-group child report must be checked').toBe(true);});
- it('executes all eleven pure refusal, lifecycle interruption and log-retention groups without skips',()=>{
+ afterAll(()=>{expect(executed,'The real twelve-group child report must be checked').toBe(true);});
+ it('executes all twelve pure refusal, lifecycle, private-download and log-retention groups without skips',()=>{
   const result=controls();
   expect(result.exitCode).toBe(0);expect(result.stdout).toBe('');expect(result.truncated).toBe(false);
-  expect(result.text).toMatch(/^Ran 11 tests in [0-9.]+s\s*$/m);
+  expect(result.text).toMatch(/^Ran 12 tests in [0-9.]+s\s*$/m);
   expect(result.text).toMatch(/^OK\s*$/m);
   expect(result.text).not.toMatch(/\b(?:skipped|FAILED|ERROR|FAIL)\b/i);
   executed=true;

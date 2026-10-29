@@ -95,14 +95,14 @@ jobs:
           node: '22.23.3'
           path: source
           mobile: 'false'
-      - name: Exercise all eleven bounded consumer refusal and lifecycle control groups
+      - name: Exercise all twelve bounded consumer refusal and lifecycle control groups
         working-directory: controller
         shell: bash
         run: |
           set -euo pipefail
           python3 -I -B scripts/ci-bank-import-worker-throughput-controls.test.py \
             2>&1 | tee "$RUNNER_TEMP/bank-throughput-evidence/consumer-controls.log"
-          grep -Eq '^Ran 11 tests in [0-9.]+s$' "$RUNNER_TEMP/bank-throughput-evidence/consumer-controls.log"
+          grep -Eq '^Ran 12 tests in [0-9.]+s$' "$RUNNER_TEMP/bank-throughput-evidence/consumer-controls.log"
           grep -Eq '^OK$' "$RUNNER_TEMP/bank-throughput-evidence/consumer-controls.log"
           ! grep -Eiq 'skipped|FAILED|ERROR|FAIL' "$RUNNER_TEMP/bank-throughput-evidence/consumer-controls.log"
       - name: Independently verify actual packet bytes against clean pinned source and dependencies
