@@ -23,7 +23,7 @@ function EpfFixture(){
   <EpfElection mode={saved.epfMode} employeeRate={displayRate(saved.epfEmployeeRate)} employerRate={displayRate(saved.epfEmployerRate)} employeeAmount={null} employerAmount={null} manualReason={null}/><button type="submit">Save and reopen fixture</button>
  </form><output aria-label="Persisted fixture rates">{revision} · {saved.epfEmployeeRate} · {saved.epfEmployerRate}</output></>;
 }
-function slip(amount:string,month:string,companyId='company-a',company='Fictional company A',runType='regular'):ProcessedPayslipViewRow{
+function slip(amount:string,month:string,companyId='company-a',company='Fictional company A',runType:ProcessedPayslipViewRow['runType']='regular'):ProcessedPayslipViewRow{
  return {id:`${companyId}-${month}`,employmentId:'fixture-employee',employeeName:'Fictional employee',employeeCode:'E001',companyId,company,payPeriod:`2026-${month}`,runType,runSeq:1,batchStatus:'processed',releasedAt:null,version:1,basic:'3000.00',allowance:'0.00',overtime:amount,bonus:'0.00',gross:String(3000+Number(amount)),statutory:{epfEmployee:330,componentLines:[{code:'OT1_5',name:'Overtime 1.5',amount:Number(amount),buckets:[{bucket:'ot',amount:Number(amount)}]}]},otherDeductions:'0.00',totalDeductions:'330.00',net:String(2670+Number(amount))};
 }
 async function capture(name:string,element:Element){
