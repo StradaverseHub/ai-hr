@@ -614,3 +614,7 @@ Notification preferences use generic OWN compatibility custody with the exact no
 ### WP9 profile request custody
 
 Profile change requests use generic OWN compatibility custody, retaining the original content wire, Workforce/own-employee interval, native request/event proof and source-drift refusal. The effect remains submission for HR review; it never applies or approves the proposal automatically.
+
+### WP9 claim draft custody
+
+Claim draft saving uses generic OWN compatibility custody while retaining the exact sealed provisional amount/quantity/taxable fields, original human content and native source fingerprint. Canonical Claims remains the sole money/rule owner; confirmation only saves a draft, never submits or reimburses. Existing rows and native provenance remain unchanged.

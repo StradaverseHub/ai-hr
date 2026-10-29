@@ -229,7 +229,7 @@ export const AGENT_ACTIONS=Object.freeze([
   permission:{actor:'self',guard:'core/assistant-actions/own-claim-source.ts#prepareOwnClaimDraftSourceTx'},subject:'own_employment',blastRadius:{max:1,unit:'claim_draft'},
   idempotencyKey:'review_action_id',policy:{tier:'confirm',category:'claim_money'},reversal:{kind:'entry_point',by:'app/claims/actions.ts#deleteDraftAction'},evaluationCases:[],
   screen:{native:'app/claims/page.tsx',entryPoints:[]},review:{route:'/assistant/claims',handoff:'review_page'},
-  store:'module_action',browserOwner:'claims',pauseKey:'hr_assistant'}),
+  store:'generic_own',browserOwner:'claims',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'claims.submit',module:'claims',owner:'claims',service:'packs/claims/service.ts#submitDraftClaims',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_claim_submission_review_v1',inputSchema:'ClaimSubmissionModuleActionPrepare',outputSchema:'ClaimSubmissionModuleActionPreparedReview'},
   confirm:{status:'implemented',adapter:'module_claim_submission_review_v1',inputSchema:'ClaimSubmissionModuleActionConfirmation',outputSchema:'ClaimSubmissionModuleActionCompletedReceipt'},
