@@ -127,3 +127,19 @@ At source freeze, reconcile all pending owners and assign executable journal ind
 Reserved `0681_rewards_approval_participation.sql` for `codex/rewards-access-approval-20261029` (51f45fb0/fa2af559): combined approval/dates/proxy/leavers draft. No 0681 filename was found in the checked canonical tree or locally reachable migration filename history. idx/when remain null. This replaces the conflicting 0678 proposal.
 
 The requesting coordinator reports canonical main/alpha `1fd2076e1` ending at idx654/when1793190000000 and a read-only staging observation of540 rows with that watermark. These reported maxima do not settle pending claims: this register already records named-approver0669 at idx655/when1793200000000. Therefore the proposed655–657 /1793190000001–3 set is **not allocated** here. Reconcile0669 and the pending AI probe/source freezes with their owners before assigning an executable union. No approval or runtime operation is required for these filename reservations; executable scheduling remains an external coordination dependency.
+
+## 29 October 2026 — definitive Board source allocation after owner handoff
+
+Supersedes the earlier scheduling holds/proposals above. Freshly fetched main and alpha both equal `46049dead200d6f436d10f5984c06634502a6286`; their executable journal ends at idx667 / when1793330000000 (`0674_assistant_outcome_measurement`). Board Items relays the human's next-slot handoff and strict floor above1793330000000, and reports actual healthy staging at this same source with553 applied rows verified against the full baseline. The staging observation is reported by the operator, not independently queried by this register update.
+
+| idx | when | Allocated filename |
+| ---: | ---: | --- |
+| 668 | 1793330000001 | `0679_email_templates_r2.sql` |
+| 669 | 1793330000002 | `0680_rewards_exclusions_history.sql` |
+| 670 | 1793330000003 | `0681_rewards_approval_participation.sql` |
+
+Exact draft source is PR48 `47fb30f064df45807aaa0ab99994ed9da685266d`; its journal still exactly matches canonical. Draft paths and SHA256 are recorded per reservation in the JSON inventory. These independent drafts need the canonical prefix, not pending named-approver0669 or probe0678. Canonical now contains the import, wave1b, Mobile, principal, HR-prepared-action and outcome-measurement predecessors through667. Mobile and WP4 yielded their earlier source positions; the human's newer next-slot handoff supersedes historical queue snapshots.
+
+Named-approver0669's old idx655/when1793200000000 and probe0678's provisional idx655/when1793300000000 are invalid. Both retain their filenames but **have no current executable allocation**; reissue above fresh canonical/live/all allocated predecessors at their later integration. Do not carry their stale branch journals into this candidate.
+
+This is source-only allocation, not acceptance, merge, migration application or deployment authority. Recheck canonical, actual staging ledger and competing freezes immediately before journal commit and integration. If source or watermark advances, reconcile rather than overwrite occupied positions or append below a watermark. Preserve the exact applied journal prefix and all SQL bytes; run authorized Actions verification on the resulting exact candidate.

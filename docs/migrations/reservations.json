@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "reconciledOn": "2026-10-28",
+  "reconciledOn": "2026-10-29",
   "repository": "StradaverseHub/ai-hr",
   "purpose": "Central filename reservations; not an executable journal or deployment authorization",
   "observedAppliedBoundary": {
@@ -321,16 +321,17 @@
     {
       "tag": "0669_leave_named_approver_read",
       "owner": "Named leave approver visibility (session local_333024cb child, branch claude/practical-panini-1bf6ec)",
-      "status": "reserved",
-      "idx": 655,
-      "when": 1793200000000,
+      "status": "requires_reallocation",
+      "idx": null,
+      "when": null,
       "allocatedBy": "Owner decision 28 October 2026 relayed by the AI GAPS session (named approvers must see the requests they are asked to approve)",
       "scope": "SELECT-only RLS arm on leave_request / leave_approval_step / leave_request_date / leave_request_attachment for the named (specific_employee) approver of a step, plus a definer function returning the employee display name for those requests only",
       "notes": [
         "when 1793180000000 sits above every recorded hold (REA 0663-0667 up to 1793170000005). If any later when is applied first, re-time above the live watermark before journaling (it is unapplied, so re-timing is safe).",
         "28 October 2026 (later): staging has 0658 at idx 648 (alpha/main 4bf7c7eb3). REA P1 wave 3 has the next window and takes idx 649-653. 0669 journals AFTER them: branch claude/practical-panini-1bf6ec carries a provisional idx 649 and will merge alpha and re-index (expected idx 654) once P1 wave 3 lands. Its when 1793180000000 already sits above P1's 1793170000000-005.",
         "29 October 2026: yields idx 654 to 0670 (AI DEV, PR #31, next staging window). Re-timed when 1793180000000 -> 1793200000000 so it sits above 0670's 1793190000000 (unapplied; SQL bytes unchanged). Journals after 0670, expected idx 655. If PR #31 slips, 0669 may take 654 with the same when.",
-        "29 October 2026: 0670 applied on staging at idx 654 (alpha/main 82f7c6570). Branch claude/practical-panini-1bf6ec merged alpha and journals 0669 at idx 655, when 1793200000000 (19a4a1024). Not applied anywhere yet."
+        "29 October 2026: 0670 applied on staging at idx 654 (alpha/main 82f7c6570). Branch claude/practical-panini-1bf6ec merged alpha and journals 0669 at idx 655, when 1793200000000 (19a4a1024). Not applied anywhere yet.",
+        "29 October 2026: previous idx655/when1793200000000 is superseded by canonical46049dead through idx667/1793330000000. Owner gives next source slots668-670 to Board Items.0669 is not a prerequisite of those independent drafts; merge fresh canonical and obtain new metadata after all allocated predecessors before integration. Preserve SQL bytes."
       ]
     },
     {
@@ -348,40 +349,64 @@
     {
       "tag": "0679_email_templates_r2",
       "owner": "Email designer (16f192c5)",
-      "status": "reserved_filename_only",
-      "idx": null,
-      "when": null,
+      "status": "allocated_source_only",
+      "idx": 668,
+      "when": 1793330000001,
       "branch": "codex/email-designer-16f192c5",
       "notes": [
         "29 October 2026: owner-authorized coordination via Open board items. AI DEV proposed this filename; Open board items 2 reports its unpublished holds are only 0675_import_attempt_history and 0676_employment_import_void, with no collision.",
         "No matching filename found in fetched canonical main/alpha at 1fd2076e124660915ee12f7f72644cef9ee39816 or locally reachable migration filename history. This does not prove absence of other unpublished claims.",
-        "Assign idx/when at canonical source freeze above both canonical and actual staging maxima, preserving dependency order and every applied SQL byte. No SQL, journal, database or deployment change authorized."
-      ]
+        "Assign idx/when at canonical source freeze above both canonical and actual staging maxima, preserving dependency order and every applied SQL byte. No SQL, journal, database or deployment change authorized.",
+        "29 October 2026: owner next-slot handoff relayed by Board Items; canonical main/alpha46049dead verified through idx667/when1793330000000. Board reports actual staging same source,553 exact ledger rows. Allocation is for exact SQL bytes only; recheck canonical, actual ledger and competing freezes immediately before journal commit/integration. If any predecessor changes, stop and reconcile; never overwrite occupied indices. No merge or deployment authorization follows."
+      ],
+      "sha256": "b259d07e4964830eb6781a5efdeaf0c64bc5278a6efefb7883fd8e93bc38ddfe",
+      "sourceRef": "47fb30f064df45807aaa0ab99994ed9da685266d",
+      "sourcePath": "docs/drafts/email-designer.sql"
     },
     {
       "tag": "0680_rewards_exclusions_history",
       "owner": "Rewards shared governance (c087a302/df0eb31a)",
-      "status": "reserved_filename_only",
-      "idx": null,
-      "when": null,
+      "status": "allocated_source_only",
+      "idx": 669,
+      "when": 1793330000002,
       "branch": "codex/rewards-shared-governance-20261029",
       "notes": [
         "29 October 2026: owner-authorized coordination via Open board items. AI DEV proposed this filename; Open board items 2 reports its unpublished holds are only 0675_import_attempt_history and 0676_employment_import_void, with no collision.",
         "No matching filename found in fetched canonical main/alpha at 1fd2076e124660915ee12f7f72644cef9ee39816 or locally reachable migration filename history. This does not prove absence of other unpublished claims.",
-        "Assign idx/when at canonical source freeze above both canonical and actual staging maxima, preserving dependency order and every applied SQL byte. No SQL, journal, database or deployment change authorized."
-      ]
+        "Assign idx/when at canonical source freeze above both canonical and actual staging maxima, preserving dependency order and every applied SQL byte. No SQL, journal, database or deployment change authorized.",
+        "29 October 2026: owner next-slot handoff relayed by Board Items; canonical main/alpha46049dead verified through idx667/when1793330000000. Board reports actual staging same source,553 exact ledger rows. Allocation is for exact SQL bytes only; recheck canonical, actual ledger and competing freezes immediately before journal commit/integration. If any predecessor changes, stop and reconcile; never overwrite occupied indices. No merge or deployment authorization follows."
+      ],
+      "sha256": "8497edb87cbc4d4929700f3a8ba8abe3519cd2ce13c50f5f16a522a56093c344",
+      "sourceRef": "47fb30f064df45807aaa0ab99994ed9da685266d",
+      "sourcePath": "docs/migration-drafts/rewards_shared_governance.sql"
     },
     {
       "tag": "0681_rewards_approval_participation",
       "owner": "Rewards access/approval (51f45fb0/fa2af559)",
-      "status": "reserved_filename_only",
-      "idx": null,
-      "when": null,
+      "status": "allocated_source_only",
+      "idx": 670,
+      "when": 1793330000003,
       "branch": "codex/rewards-access-approval-20261029",
       "scope": "Combined Rewards approval, dates, proxy and leavers draft",
       "notes": [
         "29 October 2026: replaces proposed 0678, which conflicts with pending 0678_ai_connection_probe_ledger source (reachable commit 49a3f0d7e8bbe752b44c8123033e8b8f0e5721ae). No 0681 found in checked canonical tree or locally reachable migration filename history.",
-        "Executable idx/when remain unassigned. Proposed idx655-657 cannot be granted without reconciling the existing named-approver 0669 idx655 claim and other pending freezes. Recheck all owners and canonical/staging maxima at freeze. No deployment authorized."
+        "Executable idx/when remain unassigned. Proposed idx655-657 cannot be granted without reconciling the existing named-approver 0669 idx655 claim and other pending freezes. Recheck all owners and canonical/staging maxima at freeze. No deployment authorized.",
+        "29 October 2026: owner next-slot handoff relayed by Board Items; canonical main/alpha46049dead verified through idx667/when1793330000000. Board reports actual staging same source,553 exact ledger rows. Allocation is for exact SQL bytes only; recheck canonical, actual ledger and competing freezes immediately before journal commit/integration. If any predecessor changes, stop and reconcile; never overwrite occupied indices. No merge or deployment authorization follows."
+      ],
+      "sha256": "2600e08cde3498f3ce5f2c1fbd4fb1418ab22b7e87db3852768a1b932baa9cdc",
+      "sourceRef": "47fb30f064df45807aaa0ab99994ed9da685266d",
+      "sourcePath": "docs/migration-drafts/rewards_access_controls.sql"
+    },
+    {
+      "tag": "0678_ai_connection_probe_ledger",
+      "owner": "AI Enhancement WP4 (PR45)",
+      "status": "reserved_filename_only",
+      "idx": null,
+      "when": null,
+      "sourceRef": "7bcbe939c4423884d9209a4c098128754835d2b7",
+      "sha256": "e96851f0b09ba117f9cec03852b9c270da456c36b69a5199a588f483e1a9772a",
+      "notes": [
+        "Owner-authorized WP4 reply yields provisional idx655/when1793300000000. Filename retained; final metadata unallocated, no active freeze. Reissue above fresh canonical/live and all allocated predecessors, now including Board668-670. No apply/merge/deploy authorization."
       ]
     }
   ],
