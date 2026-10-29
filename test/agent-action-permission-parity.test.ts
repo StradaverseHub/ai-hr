@@ -324,13 +324,13 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:OWN_LEAVE_EDIT_ACTION,contractVersion:1,employmentId:item.employmentId,leaveRequestId:item.subjectId,startDate:item.dates![1],endDate:item.dates![2]}),
   offered:async(who,item)=>listed(await readLeaveChangeChoices(who),'requests','leaveRequestId',item.subjectId),
   screen:(tx,who,item)=>editLeaveRequestTx(tx,who,{leaveRequestId:item.subjectId,leaveTypeId:item.leaveTypeId,startDate:item.dates![1],endDate:item.dates![2],durationType:'full_day',today:todayInKualaLumpur()})},
- // Claims page: cancelClaimAction calls cancelClaim(session, id, employmentId-if-posted) with no page admission.
- 'claims.cancel':{family:'own',
+ // Claims page: cancelClaimAction always resolves the caller's own employment before cancellation.
+ 'claims.cancel':{family:'own',screenAdmits:ownEmploymentScreen,
   store:{prepare:prepareClaimCancellationReview,confirm:(who,r)=>confirmClaimCancellationReview(who,{action:OWN_CLAIM_CANCELLATION_ACTION,contractVersion:1,...r})},
   create:pendingClaim,
   human:item=>({action:OWN_CLAIM_CANCELLATION_ACTION,contractVersion:1,employmentId:item.employmentId,claimId:item.subjectId,cancel:true}),
   offered:async(who,item)=>listed(await readClaimCancellationChoices(who),'claims','claimId',item.subjectId),
-  screen:(tx,who,item)=>cancelClaimTx(tx,who,item.subjectId)},
+  screen:(tx,who,item)=>cancelClaimTx(tx,who,item.subjectId,item.employmentId)},
  // /me overtime screen: myRequestOvertime resolves the caller's own employment, then requestAttendanceCorrection.
  'toil.replacement.request':{family:'own',screenAdmits:ownEmploymentScreen,
   store:{prepare:toilRequestReviews.prepare,confirm:toilRequestReviews.confirm},
@@ -400,7 +400,12 @@ async function observe(id:ProbedActionId,role:ParityRole,o:Options=DEFAULT_OPTIO
  else throw Error(`${id}: no permitted reference actor for custody refusal`);
  const theirs=await tryPrepare(adapter,referenceActor,item,o,notes,'reference');
  if(!theirs)throw Error(`${id}: reference preparation failed, so cross-user confirmation proves nothing: ${notes.reference}`);
+ const custody=()=>owner.db.execute(sql`select r.state,r.intent_digest,r.reviewed_digest,(select count(*)::int from app.assistant_own_leave_review_content c where c.action_id=r.id) as bodies from app.assistant_own_leave_review r where r.id=${theirs.actionId}::uuid`);
+ const effects=()=>owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).orderBy(schema.domainEvent.id);
+ const held=await custody(),beforeEffects=await effects();expect(held).toHaveLength(1);
  const crossUserConfirm=await tryConfirm(adapter,who,theirs,notes,'crossUserConfirm');
+ expect(await custody(),`${id}: foreign confirmation changed the owner's custody`).toEqual(held);
+ expect(await effects(),`${id}: foreign confirmation wrote a native event`).toEqual(beforeEffects);
  const confirm:ParityOutcome=own?await tryConfirm(adapter,who,own,notes,'confirm'):'deny';
  return {observed:{screen,offer,prepare,confirm,crossUserConfirm},notes};
 }

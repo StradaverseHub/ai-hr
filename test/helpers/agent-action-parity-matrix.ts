@@ -82,15 +82,8 @@ export const AGENT_ACTION_PARITY={
  'attendance.overtime.request':{kind:'probed',screen:OWN_REQUEST},
  'claims.draft.save':{kind:'probed',screen:OWN_REQUEST},
  'claims.submit':{kind:'probed',screen:OWN_REQUEST},
- /** Observed on CI (run 40921791116): there is NO native HR screen for cancelling another person's claim —
-  * /claims lists only the caller's own claims. HR "allow" exists only because cancelClaimAction accepts any
-  * claim id when no employmentId is posted (app/claims/actions.ts :129-136) and cancelClaimTx then admits any
-  * hr_admin/super_admin by role (core/claims.ts :2684-2695). Whether that unposted path should exist is a
-  * product question. The Assistant's claims.cancel is the claimant's own action, so it is narrower. */
- 'claims.cancel':{kind:'probed',screen:{...OWN_REQUEST,company_hr:A,group_hr:A,super_admin:A},narrowed:{
-  company_hr:'No native HR claim-cancel screen exists; HR is admitted only via cancelClaimAction with no employmentId posted (product question). The Assistant action is the claimant\'s own.',
-  super_admin:'No native HR claim-cancel screen exists; native admin cancellation accepts this actor, while the Assistant remains own-subject only.',
-  group_hr:'No native HR claim-cancel screen exists; HR is admitted only via cancelClaimAction with no employmentId posted (product question). The Assistant action is the claimant\'s own.'}},
+ /** Owner decision 30 Oct: the web cancellation action resolves the claimant's own employment. */
+ 'claims.cancel':{kind:'probed',screen:OWN_REQUEST},
  'performance.review.acknowledge':{kind:'probed',screen:OWN_REQUEST},
  'performance.onehr.plan.acknowledge':{kind:'probed',screen:OWN_REQUEST},
  'rewards.post':{kind:'probed',screen:HR_ON_EMPLOYMENT},
