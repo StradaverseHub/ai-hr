@@ -153,8 +153,10 @@ describe('the agent action registry',()=>{
    for(const action of row.actions){const entry=getAgentAction(action.id);
     expect(action).toMatchObject({owner:entry.owner,publicBoundary:entry.service,contractVersion:entry.contractVersion,prepare:entry.prepare,confirm:entry.confirm,outcome:entry.outcome});}
   }
-  expect(Object.keys(NATIVE_OUTCOME_ACTIONS)).toEqual(AGENT_ACTION_IDS);
-  for(const action of AGENT_ACTIONS)expect(NATIVE_OUTCOME_ACTIONS[action.id]).toEqual({module:action.module,semantics:action.semantics});
+  const nativeEffects=AGENT_ACTIONS.filter(action=>action.outcome!=='notification_only');
+  expect(Object.keys(NATIVE_OUTCOME_ACTIONS)).toEqual(nativeEffects.map(action=>action.id));
+  for(const action of AGENT_ACTIONS.filter(action=>action.outcome==='notification_only'))expect(Object.hasOwn(NATIVE_OUTCOME_ACTIONS,action.id)).toBe(false);
+  for(const action of nativeEffects)expect(NATIVE_OUTCOME_ACTIONS[action.id]).toEqual({module:action.module,semantics:action.semantics});
   expect(NATIVE_REVIEW_ACTIONS).toEqual(AGENT_ACTIONS.filter(action=>action.store!=='human_workflow_only').map(action=>action.id));
   for(const action of AGENT_ACTIONS){
    const nominate=(phase:string,module:string=action.module)=>()=>parseModuleAgentActionNomination({module,action:action.id,phase});
