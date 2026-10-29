@@ -22,7 +22,12 @@
  * on, and still the same switch-on the run started with (re-read in every effect transaction; switching off, or
  * off-and-on, or SETTING_KILL stops the run). The notifications module must be held, or nothing could be told.
  *
- * BOUNDS (owned by the registry entry's `automatic` block): overdue threshold in HR-local days, a cooldown per
+ * CLOCK. Overdue means `overdueAfterDays` WORKING days elapsed since the wait began, on the requester's roster
+ * minus their public holidays: the leave escalation's own owners (elapsedWorkingDaysTx). The principal may not read
+ * rosters, so the nightly sweep supplies that count from its system engine context, which already computes the
+ * leave escalation (engineWorkingDayCalendar); it returns a number per employment and date, nothing else.
+ *
+ * BOUNDS (owned by the registry entry's `automatic` block): overdue threshold in working days, a cooldown per
  * (item, stage), a lifetime cap per (item, stage) and a cap per run. The domain_event log is the ledger, as for
  * the leave escalation: an advisory lock per (entry, item) plus a re-read of earlier receipts makes a re-run or a
  * concurrent run idempotent.
@@ -33,7 +38,7 @@ import { appendEvent } from '../db/events';
 import * as schema from '../db/schema';
 import { isModuleEnabled, resolveEntitlementsTx, settingEnabled } from './entitlements';
 import { agentActor, agentHolds, agentSpecialistCurrentTx, agentStamp, isAgentContext } from './agent-principal';
-import { addDaysIso, localDate } from './leave-escalation';
+import { addDaysIso, elapsedWorkingDaysTx, localDate } from './leave-escalation';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { agentActionsByTier, type AgentAutomaticSource, type AgentAutomaticSpecialist } from '../lib/ai/agent-action-registry';
 import { assertAgentActionTier } from '../lib/ai/agent-action-tier-guard';
@@ -107,13 +112,25 @@ export async function overdueChaseItemsTx(tx: Tx, source: AgentAutomaticSource, 
     .filter(r => r.waitingOn <= dueOn);
 }
 
-/** Whole calendar days from `from` to `to` (both ISO dates). */
-export function daysBetween(from: string, to: string): number {
-  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
-}
-
 export type ChaseOutcome = 'sent' | 'cooled' | 'exhausted' | 'changed';
-export type ChaseCounts = Record<ChaseOutcome, number> & { cappedOut: boolean };
+/** `noWorkingDays`: the requester's roster has no working dates, so nothing can ever be overdue (the escalation's
+ *  empty-roster skip); counted, never chased. */
+export type ChaseCounts = Record<ChaseOutcome, number> & { noWorkingDays: number; cappedOut: boolean };
+
+/** Elapsed working days in (fromDate, today] for one employment, or null when its roster has no working dates. */
+export type WorkingDayCalendar = (employmentId: string, fromDate: string, today: string) => Promise<number | null>;
+
+/** The calendar read from a system engine context (never the principal), with one read per (employment, dates). */
+export function engineWorkingDayCalendar(readCtx: SessionContext): WorkingDayCalendar {
+  if (isAgentContext(readCtx)) throw new Error('The working-day calendar is read by the engine context, not the agent principal.');
+  const cache = new Map<string, Promise<number | null>>();
+  return (employmentId, fromDate, today) => {
+    const key = `${employmentId}:${fromDate}:${today}`;
+    let hit = cache.get(key);
+    if (!hit) { hit = withTenant(readCtx, tx => elapsedWorkingDaysTx(tx, employmentId, fromDate, today), { readOnlySnapshot: true }); cache.set(key, hit); }
+    return hit;
+  };
+}
 export type ChaseRunResult = {
   specialist: AgentAutomaticSpecialist;
   /** Why nothing ran: the switch is off or not attributed, or the notifications module is not held. */
@@ -128,14 +145,15 @@ export type ChaseRunResult = {
  * Chase one item inside its own transaction. Re-checks authority, the item and earlier receipts under a lock;
  * the event is the receipt. Returns 'stopped' (as a thrown refusal) when the switch changed.
  */
-async function chaseOneTx(tx: Tx, ctx: SessionContext, actionId: AutomaticChaseActionId, item: ChaseItem, today: string): Promise<ChaseOutcome> {
+async function chaseOneTx(tx: Tx, ctx: SessionContext, actionId: AutomaticChaseActionId, item: ChaseItem, today: string, workingDays: number): Promise<ChaseOutcome> {
   await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${ctx.tenantId}), hashtext(${actionId + ':' + item.itemId}))`);
   const { action, fresh } = await assertAutomaticChaserTx(tx, ctx, actionId);
   const p = action.automatic;
   const dueOn = addDaysIso(today, -p.overdueAfterDays);
   const [now] = await overdueChaseItemsTx(tx, p.source, dueOn, [item.itemId], 1);
   // Decided, withdrawn, moved to another stage or no longer overdue since the candidate read: nothing to chase.
-  if (!now || now.stage !== item.stage || now.subjectEmploymentId !== item.subjectEmploymentId) return 'changed';
+  // The working-day count was taken for this wait; a restarted clock (a new decision) is a different wait.
+  if (!now || now.stage !== item.stage || now.subjectEmploymentId !== item.subjectEmploymentId || now.waitingOn !== item.waitingOn) return 'changed';
   const prior = await tx.select({ at: schema.domainEvent.occurredAt }).from(schema.domainEvent)
     .where(and(eq(schema.domainEvent.tenantId, ctx.tenantId), eq(schema.domainEvent.eventType, eventFor(p.source)),
       eq(schema.domainEvent.aggregateType, CHASE_AGGREGATE), eq(schema.domainEvent.aggregateId, item.itemId),
@@ -149,14 +167,17 @@ async function chaseOneTx(tx: Tx, ctx: SessionContext, actionId: AutomaticChaseA
     actor: agentActor(fresh), subjectEmploymentId: now.subjectEmploymentId,
     // Ids, stage and dates only; the notification registry renders a fixed template from these.
     payload: { action: action.id, source: p.source, stage: now.stage, companyId: now.companyId, waitingOn: now.waitingOn,
-      daysWaiting: daysBetween(now.waitingOn, today), chaseNumber: prior.length + 1,
+      workingDaysWaiting: workingDays, chaseNumber: prior.length + 1,
       ...(now.reviewType ? { reviewType: now.reviewType } : {}), ...agentStamp(fresh, [p.specialist]) },
   });
   return 'sent';
 }
 
-async function runChasers(ctx: SessionContext, specialist: AgentAutomaticSpecialist, opts: { today?: string }): Promise<ChaseRunResult> {
+export type ChaserRunOptions = { today?: string; calendar: WorkingDayCalendar };
+
+async function runChasers(ctx: SessionContext, specialist: AgentAutomaticSpecialist, opts: ChaserRunOptions): Promise<ChaseRunResult> {
   if (!isAgentContext(ctx)) throw new AutomaticChaserRefusal('not_agent');
+  if (typeof opts?.calendar !== 'function') throw new Error('Automatic chasers need the working-day calendar.');
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(g => ({ ...g })) };
   const today = opts.today ?? todayInKualaLumpur();
   const result: ChaseRunResult = { specialist, disabled: false, stopped: false, byAction: {}, sent: 0 };
@@ -164,13 +185,17 @@ async function runChasers(ctx: SessionContext, specialist: AgentAutomaticSpecial
   if (!isModuleEnabled(ctx, 'notifications')) return { ...result, disabled: 'module_off' };
   for (const action of AUTOMATIC_CHASE_ACTIONS.filter(a => a.automatic.specialist === specialist)) {
     const p = action.automatic;
-    const counts: ChaseCounts = { sent: 0, cooled: 0, exhausted: 0, changed: 0, cappedOut: false };
+    const counts: ChaseCounts = { sent: 0, cooled: 0, exhausted: 0, changed: 0, noWorkingDays: 0, cappedOut: false };
     result.byAction[action.id] = counts;
     const candidates = await withTenant(ctx, tx => overdueChaseItemsTx(tx, p.source, addDaysIso(today, -p.overdueAfterDays)));
     for (const item of candidates) {
       if (counts.sent >= p.maxPerRun) { counts.cappedOut = true; break; }
+      // Calendar days are only the SQL pre-filter; the working-day clock decides.
+      const workingDays = await opts.calendar(item.subjectEmploymentId, item.waitingOn, today);
+      if (workingDays == null) { counts.noWorkingDays++; continue; }
+      if (workingDays < p.overdueAfterDays) continue;
       let outcome: ChaseOutcome;
-      try { outcome = await withTenant(ctx, tx => chaseOneTx(tx, ctx, action.id, item, today)); }
+      try { outcome = await withTenant(ctx, tx => chaseOneTx(tx, ctx, action.id, item, today, workingDays)); }
       catch (e) {
         if (e instanceof AutomaticChaserRefusal) { result.stopped = true; return result; }
         throw e;
@@ -183,11 +208,11 @@ async function runChasers(ctx: SessionContext, specialist: AgentAutomaticSpecial
 }
 
 /** Nightly: remind current approvers of overdue claims, attendance corrections and replacement leave requests. */
-export async function runApprovalChasers(ctx: SessionContext, opts: { today?: string } = {}): Promise<ChaseRunResult> {
+export async function runApprovalChasers(ctx: SessionContext, opts: ChaserRunOptions): Promise<ChaseRunResult> {
   return runChasers(ctx, 'approval_chasers', opts);
 }
 
 /** Nightly: remind the manager or HR about probation, contract and internship reviews undecided after their end date. */
-export async function runReviewChasers(ctx: SessionContext, opts: { today?: string } = {}): Promise<ChaseRunResult> {
+export async function runReviewChasers(ctx: SessionContext, opts: ChaserRunOptions): Promise<ChaseRunResult> {
   return runChasers(ctx, 'review_chasers', opts);
 }

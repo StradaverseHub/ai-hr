@@ -36,6 +36,7 @@ import { sweepDueReviews, sweepReviewReminders } from '../core/employment-review
 import { sweepLeaveApprovalEscalations } from '../core/leave-escalation';
 import { sweepDueMovements } from '../core/movement-apply';
 import { runAutomaticChasers, runHrOrchestrator } from '../core/hr-orchestrator';
+import { engineWorkingDayCalendar } from '../core/automatic-chasers';
 import { agentContext, agentSwitchStatesTx, attributedEnablements, ensureAgentPrincipal } from '../core/agent-principal';
 import { drainNotificationProjection } from '../core/orchestrator-harness';
 import { dispatchNotificationsFromSweep } from '../core/notifications';
@@ -137,13 +138,13 @@ async function main() {
       const orchestration = orchestratorEnablements.length > 0
         ? await runHrOrchestrator(agentContext(t.id, principalId, entitlements, orchestratorEnablements)) : null;
       const chasers = chaserEnablements.length > 0
-        ? await runAutomaticChasers(agentContext(t.id, principalId, entitlements, chaserEnablements), { today }) : null;
+        ? await runAutomaticChasers(agentContext(t.id, principalId, entitlements, chaserEnablements), { today, calendar: engineWorkingDayCalendar(ctx) }) : null;
       const approvalRun = chasers?.approvals, reviewRun = chasers?.reviews;
       const chaseSent = (approvalRun?.status === 'succeeded' ? approvalRun.value.sent : 0)
         + (reviewRun?.status === 'succeeded' ? reviewRun.value.sent : 0);
       if (chasers) chaserTenants++;
       totalChases += chaseSent;
-      if (chasers?.failed) console.error('  Automatic chasers require attention: a chaser failed.');
+      for (const run of [approvalRun, reviewRun]) if (run?.status === 'failed') console.error(`  Automatic chaser failed: ${run.error.name}: ${run.error.message}`);
       for (const run of [approvalRun, reviewRun]) {
         if (run?.status !== 'succeeded') continue;
         const capped = Object.entries(run.value.byAction).filter(([, c]) => c?.cappedOut).map(([id]) => id);

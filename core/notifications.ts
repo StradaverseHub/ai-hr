@@ -160,6 +160,9 @@ export async function approverEmploymentsForKind(
       return [...new Set(rows.map((r) => r.id))].filter((id) => id !== subjectEmploymentId);
     }
     case 'direct_manager': {
+      // WP13: a superseded (corrected or replaced) line is not current authority. assertCanDecide
+      // (core/approvals.ts) refuses its manager, and so does a leave direct_manager step, which decides through
+      // assertCanDecide; chasing that person would ask someone who cannot act.
       const rows = await tx
         .select({ id: reportingLine.managerEmploymentId })
         .from(reportingLine)
@@ -169,6 +172,7 @@ export async function approverEmploymentsForKind(
             eq(reportingLine.lineType, 'administrative'),
             lte(reportingLine.validFrom, sql`current_date`),
             or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
+            isNull(reportingLine.supersededAt),
           ),
         );
       return [...new Set(rows.map((r) => r.id))];
@@ -229,18 +233,23 @@ export async function currentApproverEmploymentsTx(tx: Tx, source: string, itemI
     // Loaded on use: the attendance workflow owner is large and this registry is imported widely.
     const { attendanceWorkflowForTx } = await import('./attendance-workflow');
     const flow = await attendanceWorkflowForTx(tx, itemId);
-    if (!flow) {
-      if (stage !== '0') return null;
-      out = await approverEmploymentsForKind(tx, subjectEmploymentId, 'direct_manager');
+    // The chased stage key: level and participant decisions recorded at it (0697 agent_overdue_approvals).
+    const key = flow ? `${flow.currentStage}.${flow.participantDecisions.filter((d) => d.stageIndex === flow.currentStage).length}` : '0.0';
+    if (key !== stage) return null;
+    const approver = async (a: { kind: string; employmentId?: string | null }) => {
+      if (a.kind === 'hr_admin') out.push(...(await hrAdminsForCompany(tx, subjectEmploymentId)));
+      else if (a.employmentId) out.push(a.employmentId);
+      else if (a.kind === 'direct_manager') out.push(...(await approverEmploymentsForKind(tx, subjectEmploymentId, 'direct_manager')));
+    };
+    if (!flow) out = await approverEmploymentsForKind(tx, subjectEmploymentId, 'direct_manager');
+    else if (flow.routingVersion === 3 || flow.routingVersion === 4) {
+      // Participant routes: only who can act NOW, by the workflow's own outstanding rule (a sequential level
+      // has exactly one; 0697 app.attendance_chase_outstanding over 0592's attendance_workflow_v3_outstanding).
+      const rows = await tx.execute<{ participant_kind: string; participant_employment_id: string | null }>(
+        sql`select participant_kind, participant_employment_id from app.attendance_chase_outstanding(${itemId}::uuid)`);
+      for (const r of Array.from(rows)) await approver({ kind: r.participant_kind, employmentId: r.participant_employment_id });
     } else {
-      if (String(flow.currentStage) !== stage) return null;
-      const decided = new Set(flow.participantDecisions.filter((d) => d.stageIndex === flow.currentStage).map((d) => d.participantSlot));
-      for (const a of flow.effectiveStages[flow.currentStage]?.approvers ?? []) {
-        if (a.slot && decided.has(a.slot)) continue;
-        if (a.kind === 'hr_admin') out.push(...(await hrAdminsForCompany(tx, subjectEmploymentId)));
-        else if (a.employmentId) out.push(a.employmentId);
-        else if (a.kind === 'direct_manager') out.push(...(await approverEmploymentsForKind(tx, subjectEmploymentId, 'direct_manager')));
-      }
+      for (const a of flow.effectiveStages[flow.currentStage]?.approvers ?? []) await approver(a);
     }
   } else return null;
   // Never the requester; an item with nobody to decide it falls back to HR, so a chase never silently vanishes.
@@ -254,11 +263,11 @@ function approvalChaseSpec(source: string, kind: string, category: NotificationE
     kind,
     category,
     render: (p) => {
-      const days = typeof p?.daysWaiting === 'number' && Number.isSafeInteger(p.daysWaiting) ? p.daysWaiting : null;
+      const days = typeof p?.workingDaysWaiting === 'number' && Number.isSafeInteger(p.workingDaysWaiting) ? p.workingDaysWaiting : null;
       return {
         severity: 'action',
         title,
-        body: days == null ? `${what} is waiting for your decision.` : `${what} has been waiting for your decision for ${days} day(s).`,
+        body: days == null ? `${what} is waiting for your decision.` : `${what} has been waiting for your decision for ${days} working day(s).`,
         linkPath: '/approvals',
       };
     },

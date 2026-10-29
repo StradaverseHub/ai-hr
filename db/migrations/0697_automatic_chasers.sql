@@ -5,6 +5,7 @@
 --   (b) review chasers: a probation, contract or internship review still undecided after its end date is
 --       chased to the stage owner (the manager, or HR). The reminders BEFORE the end date stay the existing
 --       engine job (core/employment-review.ts sweepReviewReminders) and are not duplicated here.
+-- The chasers make no model call, so they never enter AI admission: app._ai_control_context is not touched here.
 -- A chaser only appends a stamped reminder event; the notification registry turns it into a bell entry after
 -- re-checking that the item is still waiting. Nothing here approves, rejects, submits or changes any HR record.
 -- Claimed as 0697 / when 1793330000023 / final idx 687 for the AI architecture programme (29 Oct 2026).
@@ -16,37 +17,7 @@ INSERT INTO app.assistant_action_kind(id,module,tier_ceiling,category,review_kin
 ('approvals.toil.chase','approvals','automatic','chaser',NULL),
 ('employees.review_overdue.remind','employees','automatic','reminder',NULL);
 --> statement-breakpoint
--- 2. The two new switches are AI management agents, like readiness reminders: AI management writes their
--- tenant setting and the control context re-reads it. Same function as 0621 with two features added.
-CREATE OR REPLACE FUNCTION app._ai_control_context(wanted_feature text,forced_pause boolean)
- RETURNS TABLE(company_ids uuid[],feature_paused boolean) LANGUAGE plpgsql SECURITY DEFINER
- SET search_path=public,pg_temp AS $$
-DECLARE switch_key text;switch_on jsonb;tid uuid:=app.current_tenant_id();uid uuid:=app.current_user_id();
-BEGIN
- IF tid IS NULL OR wanted_feature IS NULL OR wanted_feature NOT IN ('hr_assistant','provider_evaluation','module_agent_evaluation','personnel_import_mapping','module_agent_planning','readiness_reminders','claims_triage','approval_chasers','review_chasers','payroll_hypotheses','payroll_explanation','pay_rule_draft','report_insight','performance_360','performance_tc','performance_pm','performance_review','performance_idp','performance_calib','performance_assistant','feedback_planning') THEN RAISE EXCEPTION 'Invalid AI feature';END IF;
- IF NOT EXISTS(SELECT 1 FROM tenant WHERE id=tid AND status IN ('active','trial')) THEN RAISE EXCEPTION 'AI unavailable';END IF;
- IF uid IS NOT NULL AND NOT EXISTS(SELECT 1 FROM app_user WHERE id=uid AND tenant_id=tid) THEN RAISE EXCEPTION 'Unknown actor';END IF;
- PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(tid::text));
- feature_paused:=coalesce(forced_pause,false);
- SELECT coalesce(array_agg(c.id ORDER BY c.id),'{}') INTO company_ids FROM company c WHERE c.tenant_id=tid AND(app.is_admin_for(c.id) OR EXISTS(SELECT 1 FROM employment e WHERE e.tenant_id=tid AND e.company_id=c.id AND app.can_see_employment(e.id)));
- IF EXISTS(SELECT 1 FROM ai_control_policy p WHERE p.tenant_id=tid AND p.kind='feature' AND p.feature_id=wanted_feature AND NOT p.enabled) THEN feature_paused:=true;END IF;
- -- Re-read canonical switches at admission; a page/session snapshot can predate a pause.
- switch_key:=CASE wanted_feature WHEN 'readiness_reminders' THEN 'notifications.readiness_nudge_enabled'
- WHEN 'claims_triage' THEN 'claims.input_triage_enabled' WHEN 'payroll_hypotheses' THEN 'payroll.anomaly_hypotheses_enabled'
- WHEN 'approval_chasers' THEN 'notifications.approval_chasers_enabled' WHEN 'review_chasers' THEN 'notifications.review_chasers_enabled'
- WHEN 'performance_360' THEN 'performance.ai_360_enabled' WHEN 'performance_tc' THEN 'performance.ai_tc_enabled'
- WHEN 'performance_pm' THEN 'performance.ai_pm_enabled' WHEN 'performance_review' THEN 'performance.ai_review_enabled'
- WHEN 'performance_idp' THEN 'performance.ai_idp_enabled' WHEN 'performance_calib' THEN 'performance.ai_calib_enabled' END;
- IF switch_key IS NOT NULL THEN
-  SELECT coalesce(nullif(t.value,'null'::jsonb),d.default_value) INTO switch_on FROM setting_definition d LEFT JOIN tenant_setting t ON t.key=d.key AND t.tenant_id=tid WHERE d.key=switch_key;
-  IF switch_on IS DISTINCT FROM 'true'::jsonb THEN feature_paused:=true;END IF;
- END IF;
- RETURN NEXT;
-END $$;
---> statement-breakpoint
-REVOKE ALL ON FUNCTION app._ai_control_context(text,boolean) FROM PUBLIC,ai_hr_app;
---> statement-breakpoint
--- 3. The principal may read its own chase receipts (cooldown and per-item cap) and who switched each of its
+-- 2. The principal may read its own chase receipts (cooldown and per-item cap) and who switched each of its
 -- four specialists on or off. Replaces 0672's policy with the same rule plus the new types and keys.
 DROP POLICY domain_event_agent_read ON public.domain_event;
 --> statement-breakpoint
@@ -58,7 +29,7 @@ CREATE POLICY domain_event_agent_read ON public.domain_event FOR SELECT TO ai_hr
    AND payload->>'key' IN ('notifications.readiness_nudge_enabled','claims.input_triage_enabled',
     'notifications.approval_chasers_enabled','notifications.review_chasers_enabled'))));
 --> statement-breakpoint
--- 4. Every agent effect stays attributable. Replaces 0672's restrictive check with the same rule plus the two
+-- 3. Every agent effect stays attributable. Replaces 0672's restrictive check with the same rule plus the two
 -- chase event types and the two specialists. A chase must name the specialist it runs under.
 DROP POLICY domain_event_agent_stamp ON public.domain_event;
 --> statement-breakpoint
@@ -83,7 +54,7 @@ CREATE POLICY domain_event_agent_stamp ON public.domain_event AS RESTRICTIVE FOR
    WHERE jsonb_typeof(x)<>'object' OR x->>'feature' NOT IN ('readiness_reminders','claims_triage','approval_chasers','review_chasers')
     OR coalesce(x->>'userId','') !~ '^[0-9a-f-]{36}$' OR coalesce(x->>'eventId','') !~ '^[0-9a-f-]{36}$')));
 --> statement-breakpoint
--- 5. Overdue-approval source for the principal: ids, the subject's employment and company, the current
+-- 4. Overdue-approval source for the principal: ids, the subject's employment and company, the current
 -- stage and when the item reached that stage. Never an amount, reason, description, name or decision note.
 -- The clock is the latest of submission and any earlier stage or participant decision (the request reached
 -- this approver then), mirroring the leave escalation's clock.
@@ -106,7 +77,11 @@ BEGIN
   WHERE q.i5<p_waiting_before ORDER BY q.i5,q.i1 LIMIT p_limit;
  ELSIF p_kind='attendance_correction' THEN
   RETURN QUERY SELECT q.i1,q.i2,q.i3,q.i4,q.i5 FROM (
-   SELECT a.id AS i1,a.employment_id AS i2,e.company_id AS i3,coalesce(r.current_stage,0)::text AS i4,
+   -- Stage = level and the number of participant decisions already recorded at it, so the next participant of a
+   -- sequential level is a new stage with its own cooldown and cap.
+   SELECT a.id AS i1,a.employment_id AS i2,e.company_id AS i3,
+    coalesce(r.current_stage,0)::text||'.'||(SELECT count(*) FROM public.attendance_workflow_participant_decision z
+     WHERE z.request_id=r.id AND z.tenant_id=t AND z.stage_index=r.current_stage)::text AS i4,
     greatest(a.created_at,
      (SELECT max(x.decided_at) FROM public.attendance_workflow_decision x WHERE x.request_id=r.id AND x.tenant_id=t),
      (SELECT max(y.decided_at) FROM public.attendance_workflow_participant_decision y WHERE y.request_id=r.id AND y.tenant_id=t)) AS i5
@@ -127,7 +102,7 @@ REVOKE ALL ON FUNCTION app.agent_overdue_approvals(text,timestamptz,uuid[],integ
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.agent_overdue_approvals(text,timestamptz,uuid[],integer) TO ai_hr_app;
 --> statement-breakpoint
--- 6. Overdue-review source for the principal: open reviews whose end date is on or before the given date, for
+-- 5. Overdue-review source for the principal: open reviews whose end date is on or before the given date, for
 -- employments that have not ended and have no pending resignation (the exclusions sweepDueReviews uses).
 -- Ids, type, stage and end date only; never the evaluation, recommendation or decision.
 CREATE FUNCTION app.agent_overdue_employment_reviews(p_end_on_or_before date,p_review_ids uuid[] DEFAULT NULL,p_limit integer DEFAULT 500)
@@ -150,6 +125,31 @@ END $$;
 REVOKE ALL ON FUNCTION app.agent_overdue_employment_reviews(date,uuid[],integer) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.agent_overdue_employment_reviews(date,uuid[],integer) TO ai_hr_app;
+--> statement-breakpoint
+-- 6. Who can act NOW on a participant-routed (v3/v4) attendance request, for the chase notification. Reuses the
+-- workflow's own outstanding rule (app.attendance_workflow_v3_outstanding, 0592): in a sequential level only the
+-- next undecided participant; in any-one or all-required levels every undecided participant. Slots, kinds and
+-- employment ids only, for an administrator of the request's company (the nightly projection's scope).
+CREATE FUNCTION app.attendance_chase_outstanding(p_correction uuid)
+ RETURNS TABLE(participant_slot text,participant_kind text,participant_employment_id uuid)
+ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+#variable_conflict use_column
+DECLARE w public.attendance_workflow_request; a jsonb;
+BEGIN
+ SELECT r.* INTO w FROM public.attendance_workflow_request r
+ WHERE r.correction_id=p_correction AND r.tenant_id=app.current_tenant_id() AND r.routing_version IN (3,4);
+ IF NOT FOUND OR w.current_stage>=jsonb_array_length(w.stages) OR app.is_admin_for(w.company_id) IS NOT TRUE THEN RETURN; END IF;
+ FOR a IN SELECT value FROM jsonb_array_elements(app.attendance_workflow_v3_effective(w.id,w.current_stage)) LOOP
+  IF app.attendance_workflow_v3_outstanding(w.id,w.current_stage,a->>'slot') THEN
+   RETURN QUERY SELECT a->>'slot',a->>'kind',
+    CASE WHEN coalesce(a->>'employmentId','') ~* '^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$' THEN (a->>'employmentId')::uuid END;
+  END IF;
+ END LOOP;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.attendance_chase_outstanding(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.attendance_chase_outstanding(uuid) TO ai_hr_app;
 --> statement-breakpoint
 -- 7. Outcome measurement (ADR-0151 §4.6c, beside 0674): counts per chaser kind for the caller's administered
 -- companies. "acted" means the chased item is no longer waiting at the chased stage now; it is an observation,
@@ -179,7 +179,8 @@ BEGIN
     WHEN 'approvals.toil.chase' THEN EXISTS(SELECT 1 FROM public.replacement_leave_request q WHERE q.id=s.item AND q.tenant_id=t AND q.status='pending')
     WHEN 'approvals.attendance.chase' THEN EXISTS(SELECT 1 FROM public.attendance_correction q
      LEFT JOIN public.attendance_workflow_request r ON r.correction_id=q.id AND r.tenant_id=t
-     WHERE q.id=s.item AND q.tenant_id=t AND q.status='pending' AND coalesce(r.current_stage,0)::text=s.stage)
+     WHERE q.id=s.item AND q.tenant_id=t AND q.status='pending' AND coalesce(r.current_stage,0)::text||'.'||(SELECT count(*)
+      FROM public.attendance_workflow_participant_decision z WHERE z.request_id=r.id AND z.tenant_id=t AND z.stage_index=r.current_stage)::text=s.stage)
     WHEN 'employees.review_overdue.remind' THEN EXISTS(SELECT 1 FROM public.employment_review q WHERE q.id=s.item AND q.tenant_id=t AND q.status::text=s.stage)
     ELSE true END AS still
   FROM (SELECT DISTINCT k,item,stage FROM scoped WHERE seen_at>=p_from AND seen_at<=at_time) s),

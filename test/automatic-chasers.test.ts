@@ -30,7 +30,10 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { resolveEntitlementsTx } from '../core/entitlements';
 import { agentContext, agentStamp, agentSwitchStatesTx, attributedEnablements, ensureAgentPrincipal } from '../core/agent-principal';
-import { AutomaticChaserRefusal, APPROVAL_CHASE_EVENT, REVIEW_CHASE_EVENT, runApprovalChasers, runReviewChasers } from '../core/automatic-chasers';
+import { AutomaticChaserRefusal, APPROVAL_CHASE_EVENT, REVIEW_CHASE_EVENT, engineWorkingDayCalendar, runApprovalChasers } from '../core/automatic-chasers';
+import { checkIn, checkOut, decideAttendanceCorrection, requestAttendanceCorrection } from '../core/attendance';
+import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled } from '../core/attendance-workflow';
+import { assertAiActionUnpausedTx } from '../core/ai-governance';
 import { runAutomaticChasers } from '../core/hr-orchestrator';
 import { dispatchNotifications } from '../core/notifications';
 import { assistantOutcomes } from '../core/assistant-outcomes';
@@ -72,6 +75,8 @@ describe('WP13 Automatic-tier chasers under the agent principal', () => {
       eventType: 'tenant-setting.changed', actorType: userId ? 'user' : 'system', actorId: userId, payload: { key, value } });
     await setSetting(b.tenantId, key, value);
   }
+  /** The working-day clock, read by an engine (non-agent) context as the nightly sweep does. */
+  const calendar = (b: Base = base) => engineWorkingDayCalendar(adminCtx(b));
   async function agent(b: Base = base): Promise<SessionContext> {
     const principalId = await ensureAgentPrincipal(owner.db, b.tenantId);
     const entitlements = await owner.db.transaction(tx => resolveEntitlementsTx(tx, b.tenantId));
@@ -125,7 +130,7 @@ describe('WP13 Automatic-tier chasers under the agent principal', () => {
     const att = await correction(base, E.employmentId, daysAgo(10));
     const toil = await replacement(base, E.employmentId, daysAgo(10));
     await switchEvent(base, APPROVALS, true);
-    const result = await runApprovalChasers(await agent());
+    const result = await runApprovalChasers(await agent(), { calendar: calendar() });
     expect(result).toMatchObject({ disabled: false, stopped: false, sent: 4 });
     expect(result.byAction['approvals.claim.chase']).toMatchObject({ sent: 2, cooled: 0, exhausted: 0, changed: 0, cappedOut: false });
     const events = await chaseEvents();
@@ -146,7 +151,7 @@ describe('WP13 Automatic-tier chasers under the agent principal', () => {
     expect(sent.map(n => n.recipientEmploymentId)).toEqual([M.employmentId, M.employmentId, M.employmentId]);
     expect(sent.map(n => n.kind).sort()).toEqual(['attendance.approval-overdue', 'claim.approval-overdue', 'toil.approval-overdue']);
     expect(sent.some(n => n.recipientEmploymentId === E.employmentId || n.recipientEmploymentId === H.employmentId)).toBe(false);
-    for (const n of sent) { expect(n.body).toMatch(/waiting for your decision for \d+ day/); expect(n.body).not.toMatch(/312|Fictional/); expect(n.linkPath).toBe('/approvals'); }
+    for (const n of sent) { expect(n.body).toMatch(/waiting for your decision for \d+ working day/); expect(n.body).not.toMatch(/312|Fictional/); expect(n.linkPath).toBe('/approvals'); }
     expect(model.calls).toBe(0);
   });
 
@@ -169,7 +174,7 @@ describe('WP13 Automatic-tier chasers under the agent principal', () => {
     await switchEvent(other, APPROVALS, true);
 
     const ctx = await agent();
-    expect((await runApprovalChasers(ctx)).sent).toBe(2);
+    expect((await runApprovalChasers(ctx, { calendar: calendar() })).sent).toBe(2);
     expect((await chaseEvents()).map(e => e.aggregateId).sort()).toEqual([claimA, claimB].sort());
     expect(await chaseEvents(other)).toEqual([]);
     // The source definer never returns another tenant's item, even when asked for it by id.
@@ -189,7 +194,7 @@ describe('WP13 Automatic-tier chasers under the agent principal', () => {
     expect(toA.map(n => n.recipientEmploymentId)).toEqual([H.employmentId]);
     expect(toB.map(n => n.recipientEmploymentId)).toEqual([HB.employmentId]);
     // The other tenant's principal sees and chases only its own.
-    expect((await runApprovalChasers(await agent(other))).sent).toBe(1);
+    expect((await runApprovalChasers(await agent(other), { calendar: calendar(other) })).sent).toBe(1);
     expect((await chaseEvents(other)).map(e => e.aggregateId)).toEqual([foreignClaim]);
   });
 
@@ -199,23 +204,23 @@ describe('WP13 Automatic-tier chasers under the agent principal', () => {
     await switchEvent(base, APPROVALS, true);
     const ctx = await agent();
     const today = todayInKualaLumpur();
-    const runs = await Promise.all([runApprovalChasers(ctx, { today }), runApprovalChasers(ctx, { today })]);
+    const runs = await Promise.all([runApprovalChasers(ctx, { today, calendar: calendar() }), runApprovalChasers(ctx, { today, calendar: calendar() })]);
     expect(runs.reduce((n, r) => n + r.sent, 0)).toBe(1);
-    expect((await runApprovalChasers(ctx, { today })).byAction['approvals.claim.chase']).toMatchObject({ sent: 0, cooled: 1 });
-    expect((await runApprovalChasers(ctx, { today: addDaysIso(today, 6) })).byAction['approvals.claim.chase']).toMatchObject({ sent: 0, cooled: 1 });
+    expect((await runApprovalChasers(ctx, { today, calendar: calendar() })).byAction['approvals.claim.chase']).toMatchObject({ sent: 0, cooled: 1 });
+    expect((await runApprovalChasers(ctx, { today: addDaysIso(today, 6), calendar: calendar() })).byAction['approvals.claim.chase']).toMatchObject({ sent: 0, cooled: 1 });
     // The receipts are dated today, so a later run date stands in for the cooldown passing.
-    expect((await runApprovalChasers(ctx, { today: addDaysIso(today, 7) })).byAction['approvals.claim.chase']).toMatchObject({ sent: 1 });
+    expect((await runApprovalChasers(ctx, { today: addDaysIso(today, 7), calendar: calendar() })).byAction['approvals.claim.chase']).toMatchObject({ sent: 1 });
     // Third and last reminder: age the receipts past the cooldown, then the per-item cap holds.
     await owner.db.execute(sql`update domain_event set occurred_at = occurred_at - interval '30 days' where aggregate_id = ${overdue}::uuid and event_type = ${APPROVAL_CHASE_EVENT}`);
-    expect((await runApprovalChasers(ctx, { today })).byAction['approvals.claim.chase']).toMatchObject({ sent: 1 });
+    expect((await runApprovalChasers(ctx, { today, calendar: calendar() })).byAction['approvals.claim.chase']).toMatchObject({ sent: 1 });
     await owner.db.execute(sql`update domain_event set occurred_at = occurred_at - interval '30 days' where aggregate_id = ${overdue}::uuid and event_type = ${APPROVAL_CHASE_EVENT}`);
-    expect((await runApprovalChasers(ctx, { today })).byAction['approvals.claim.chase']).toMatchObject({ sent: 0, exhausted: 1 });
+    expect((await runApprovalChasers(ctx, { today, calendar: calendar() })).byAction['approvals.claim.chase']).toMatchObject({ sent: 0, exhausted: 1 });
     expect((await chaseEvents()).map(e => (e.payload as { chaseNumber: number }).chaseNumber)).toEqual([1, 2, 3]);
     // Per-run cap: 100 reminders, then it stops and says so.
     const [type] = await owner.db.insert(schema.claimType).values({ tenantId: base.tenantId, code: 'BULK', name: 'Fictional bulk' }).returning();
     await owner.db.insert(schema.claimRequest).values(Array.from({ length: 101 }, () => ({ tenantId: base.tenantId, employmentId: E.employmentId,
-      claimTypeId: type.id, amount: '1.00', incurredOn: '2026-01-05', status: 'pending' as const, createdAt: daysAgo(5) })));
-    const capped = (await runApprovalChasers(ctx, { today })).byAction['approvals.claim.chase'];
+      claimTypeId: type.id, amount: '1.00', incurredOn: '2026-01-05', status: 'pending' as const, createdAt: daysAgo(7) })));
+    const capped = (await runApprovalChasers(ctx, { today, calendar: calendar() })).byAction['approvals.claim.chase'];
     expect(capped).toMatchObject({ sent: 100, cappedOut: true });
     expect(model.calls).toBe(0);
   }, 120_000);
@@ -223,25 +228,25 @@ describe('WP13 Automatic-tier chasers under the agent principal', () => {
   it('refuses outside the principal and stops when the switch is off, unattributed, killed, re-switched or the module is gone', async () => {
     const { E } = await fixture();
     await claim(base, E.employmentId, daysAgo(10));
-    await expect(runApprovalChasers(adminCtx(base))).rejects.toBeInstanceOf(AutomaticChaserRefusal);
-    await expect(runAutomaticChasers(adminCtx(base))).rejects.toBeInstanceOf(AutomaticChaserRefusal);
+    await expect(runApprovalChasers(adminCtx(base), { calendar: calendar() })).rejects.toBeInstanceOf(AutomaticChaserRefusal);
+    await expect(runAutomaticChasers(adminCtx(base), { calendar: calendar() })).rejects.toBeInstanceOf(AutomaticChaserRefusal);
     // Off (the default).
-    expect(await runApprovalChasers(await agent())).toMatchObject({ disabled: 'off', sent: 0 });
+    expect(await runApprovalChasers(await agent(), { calendar: calendar() })).toMatchObject({ disabled: 'off', sent: 0 });
     // On without a named administrator: not run.
     await switchEvent(base, APPROVALS, true, null);
-    expect(await runApprovalChasers(await agent())).toMatchObject({ disabled: 'off', sent: 0 });
+    expect(await runApprovalChasers(await agent(), { calendar: calendar() })).toMatchObject({ disabled: 'off', sent: 0 });
     // Operator kill lever.
     await switchEvent(base, APPROVALS, true);
     vi.stubEnv('SETTING_KILL', APPROVALS);
-    try { expect(await runApprovalChasers(await agent())).toMatchObject({ disabled: 'off', sent: 0 }); } finally { vi.unstubAllEnvs(); }
+    try { expect(await runApprovalChasers(await agent(), { calendar: calendar() })).toMatchObject({ disabled: 'off', sent: 0 }); } finally { vi.unstubAllEnvs(); }
     // Switched off, or off and on again, after the run started: the effect transaction refuses and the run stops.
     const stale = await agent();
     await switchEvent(base, APPROVALS, false);
     await switchEvent(base, APPROVALS, true);
-    expect(await runApprovalChasers(stale)).toMatchObject({ stopped: true, sent: 0 });
+    expect(await runApprovalChasers(stale, { calendar: calendar() })).toMatchObject({ stopped: true, sent: 0 });
     // Without the notifications module there is nobody to tell.
     await setModule(base.tenantId, 'notifications', 'disabled');
-    expect(await runApprovalChasers(await agent())).toMatchObject({ disabled: 'module_off', sent: 0 });
+    expect(await runApprovalChasers(await agent(), { calendar: calendar() })).toMatchObject({ disabled: 'module_off', sent: 0 });
     expect(await chaseEvents()).toEqual([]);
     // The database refuses a chase event that does not name the chaser switch it relies on.
     await setModule(base.tenantId, 'notifications', 'active');
@@ -268,7 +273,7 @@ describe('WP13 Automatic-tier chasers under the agent principal', () => {
     await owner.db.update(schema.employment).set({ terminatedOn: addDaysIso(today, -1) }).where(eq(schema.employment.id, leaver.employmentId));
     await switchEvent(base, REVIEWS, true);
     // The approval switch is off: only the review specialist runs.
-    const both = await runAutomaticChasers(await agent());
+    const both = await runAutomaticChasers(await agent(), { calendar: calendar() });
     expect(both.approvals).toMatchObject({ status: 'succeeded', value: { disabled: 'off' } });
     expect(both.reviews).toMatchObject({ status: 'succeeded', value: { sent: 2 } });
     const events = await chaseEvents();
@@ -288,7 +293,7 @@ describe('WP13 Automatic-tier chasers under the agent principal', () => {
     await claim(base, E.employmentId, daysAgo(10));
     await replacement(base, E.employmentId, daysAgo(10));
     await switchEvent(base, APPROVALS, true);
-    await runApprovalChasers(await agent());
+    await runApprovalChasers(await agent(), { calendar: calendar() });
     await owner.db.update(schema.claimRequest).set({ status: 'approved' }).where(eq(schema.claimRequest.id, acted));
     const group = { ...adminCtx(base), grants: [{ role: 'hr_admin', companyId: null }] };
     const view = await assistantOutcomes(group, 30);
@@ -302,8 +307,99 @@ describe('WP13 Automatic-tier chasers under the agent principal', () => {
     expect(scoped.automatic.every(a => a.chased === 0)).toBe(true);
   });
 
-  it('is template-only: the executor imports no model, provider or spend path', () => {
+  it('counts working days on the requester roster: a Friday-evening submission is not chased at the Monday sweep', async () => {
+    const { E } = await fixture();
+    // Friday 2 Oct 2026, 19:00 in Kuala Lumpur.
+    const friday = await claim(base, E.employmentId, new Date('2026-10-02T19:00:00+08:00'));
+    await switchEvent(base, APPROVALS, true);
+    const ctx = await agent();
+    // Three calendar days but one working day (Mon): not overdue, although a calendar clock would chase it.
+    expect((await runApprovalChasers(ctx, { today: '2026-10-05', calendar: calendar() })).sent).toBe(0);
+    expect((await runApprovalChasers(ctx, { today: '2026-10-06', calendar: calendar() })).sent).toBe(0);
+    // Mon, Tue, Wed: three working days.
+    expect((await runApprovalChasers(ctx, { today: '2026-10-07', calendar: calendar() })).sent).toBe(1);
+    const [event] = await chaseEvents();
+    expect(event.aggregateId).toBe(friday);
+    expect(event.payload).toMatchObject({ waitingOn: '2026-10-02', workingDaysWaiting: 3 });
+  });
+
+  it('does not count a public holiday', async () => {
+    const { E } = await fixture();
+    await owner.db.insert(schema.holiday).values({ tenantId: base.tenantId, country: 'MY', state: null, holidayDate: '2026-10-06', name: 'Fictional holiday' });
+    await claim(base, E.employmentId, new Date('2026-10-02T19:00:00+08:00'));
+    await switchEvent(base, APPROVALS, true);
+    const ctx = await agent();
+    // (Fri, Wed] = Mon + Wed: Tuesday is a holiday, so two working days.
+    expect((await runApprovalChasers(ctx, { today: '2026-10-07', calendar: calendar() })).sent).toBe(0);
+    expect((await runApprovalChasers(ctx, { today: '2026-10-08', calendar: calendar() })).sent).toBe(1);
+    expect((await chaseEvents())[0].payload).toMatchObject({ workingDaysWaiting: 3 });
+  });
+
+  it('chases only the participant who can act now in a sequential attendance level', async () => {
+    await setModule(base.tenantId, 'notifications', 'active');
+    const root = adminCtx(base);
+    const actor = async (name: string) => {
+      const hired = await hire(base);
+      const userId = await createAppUser(base.tenantId, hired.personId, 'employee');
+      const ctx: SessionContext = { ...adminCtx(base), userId, personId: hired.personId, roles: ['employee'], grants: [{ role: 'employee', companyId: base.companyId }] };
+      return { ...hired, userId, ctx, name };
+    };
+    const worker = await actor('worker'), first = await actor('first'), second = await actor('second');
+    const date = todayInKualaLumpur();
+    await checkIn(root, { employmentId: worker.employmentId, date, time: '08:00', manual: true });
+    await checkOut(root, { employmentId: worker.employmentId, date, time: '17:00', manual: true });
+    await saveAttendanceWorkflow(root, { companyId: base.companyId, routingVersion: 3, code: 'WP13_SEQUENTIAL', name: 'Fictional sequential route', applicationType: 'irregularity', priority: 100,
+      criteria: { employeeIds: [worker.employmentId] }, active: true,
+      stages: [{ name: 'Review', mode: 'sequential', source: { kind: 'specific_employee', employmentIds: [first.employmentId, second.employmentId] }, hrAlternative: false }] });
+    await setAttendanceWorkflowEnabled(root, base.companyId, 'irregularity', true);
+    const { correctionId } = await requestAttendanceCorrection(worker.ctx, { employmentId: worker.employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: 'Fictional recorded evidence' });
+    await switchEvent(base, APPROVALS, true);
+    const later = addDaysIso(todayInKualaLumpur(), 10);
+    expect((await runApprovalChasers(await agent(), { today: later, calendar: calendar() })).byAction['approvals.attendance.chase']).toMatchObject({ sent: 1 });
+    await dispatchNotifications(adminCtx(base));
+    let events = await chaseEvents();
+    expect(events.map(e => [e.aggregateId, (e.payload as { stage: string }).stage])).toEqual([[correctionId, '0.0']]);
+    expect((await notificationsFor([events[0].id])).map(n => n.recipientEmploymentId)).toEqual([first.employmentId]);
+    // The first participant decides; the level stays open and only the second can act now.
+    await decideAttendanceCorrection(first.ctx, { correctionId, decision: 'approved', expectedStageIndex: 0, expectedParticipantSlot: '0:0' });
+    expect((await runApprovalChasers(await agent(), { today: later, calendar: calendar() })).byAction['approvals.attendance.chase']).toMatchObject({ sent: 1 });
+    await dispatchNotifications(adminCtx(base));
+    events = await chaseEvents();
+    expect((events[1].payload as { stage: string }).stage).toBe('0.1');
+    expect((await notificationsFor([events[1].id])).map(n => n.recipientEmploymentId)).toEqual([second.employmentId]);
+    // The first reminder is not re-sent to the second participant: it was for a stage that has moved on.
+    expect((await notificationsFor([events[0].id])).map(n => n.recipientEmploymentId)).toEqual([first.employmentId]);
+  });
+
+  it('never chases the manager of a superseded reporting line', async () => {
+    const { E, M } = await fixture();
+    const former = await hire(base);
+    await owner.db.insert(schema.reportingLine).values({ tenantId: base.tenantId, subordinateEmploymentId: E.employmentId, managerEmploymentId: former.employmentId,
+      lineType: 'administrative', validFrom: '2020-01-01', supersededAt: new Date() } as never);
+    await claim(base, E.employmentId, daysAgo(10));
+    await switchEvent(base, APPROVALS, true);
+    expect((await runApprovalChasers(await agent(), { calendar: calendar() })).sent).toBe(1);
+    await dispatchNotifications(adminCtx(base));
+    expect((await notificationsFor((await chaseEvents()).map(e => e.id))).map(n => n.recipientEmploymentId)).toEqual([M.employmentId]);
+  });
+
+  it('records the failure cause by error class and message only', async () => {
+    const { E } = await fixture();
+    await claim(base, E.employmentId, daysAgo(10));
+    await switchEvent(base, APPROVALS, true);
+    const failing = async () => { throw new TypeError('fictional calendar outage'); };
+    const result = await runAutomaticChasers(await agent(), { calendar: failing });
+    expect(result.failed).toBe(true);
+    expect(result.approvals).toEqual({ status: 'failed', error: { name: 'TypeError', message: 'fictional calendar outage' } });
+    expect(result.reviews).toMatchObject({ status: 'succeeded', value: { disabled: 'off' } });
+  });
+
+  it('is template-only: no model, provider, spend or admission path, and admission refuses the chasers', async () => {
     const source = readFileSync(path.join(__dirname, '..', 'core', 'automatic-chasers.ts'), 'utf8');
-    expect(source).not.toMatch(/from '\.\.\/lib\/ai'|lib\/ai\/providers|generateDraft|converse\(|resolveActiveAiConfig|bindAiSpendTask|ai_admit/);
+    expect(source).not.toMatch(/from '\.\.\/lib\/ai'|lib\/ai\/providers|generateDraft|converse\(|resolveActiveAiConfig|bindAiSpendTask|ai_admit|ai_action_unpaused|assertAiActionUnpausedTx|_ai_control_context|governedAiConfig|ai-governance/);
+    const migration = readFileSync(path.join(__dirname, '..', 'db', 'migrations', '0697_automatic_chasers.sql'), 'utf8');
+    expect(migration).not.toMatch(/FUNCTION app\._ai_control_context|ai_admit/);
+    for (const feature of ['approval_chasers', 'review_chasers'] as const)
+      await expect(withTenant(adminCtx(base), tx => assertAiActionUnpausedTx(tx, adminCtx(base), feature))).rejects.toThrow('no model call');
   });
 });

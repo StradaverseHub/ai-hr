@@ -12,7 +12,7 @@ import type { ReadinessAction } from '../lib/readiness-correction-actions';
 import { triagePendingClaims } from './input-triage';
 import { digestOf } from './agent-proposal';
 import { HR_HARNESS_VERSION, readinessTransition, runOrchestrationPass, summarizeOrchestrationPass } from './orchestrator-harness';
-import { AutomaticChaserRefusal, runApprovalChasers, runReviewChasers } from './automatic-chasers';
+import { AutomaticChaserRefusal, runApprovalChasers, runReviewChasers, type ChaserRunOptions } from './automatic-chasers';
 
 /** Run state is administrative. Employee self-service continues through its existing services.
  *  The tenant's agent principal may run the pass (ADR-0151 §4.5) but never reads the admin queue. */
@@ -150,10 +150,15 @@ export async function runHrOrchestrator(ctx: SessionContext) {
  * trace. Only the tenant's agent principal runs them, and each runs only behind its own attributed switch.
  * A failure in one does not suppress the other; neither retries an effect.
  */
-export async function runAutomaticChasers(ctx: SessionContext, opts: { today?: string } = {}) {
+export async function runAutomaticChasers(ctx: SessionContext, opts: ChaserRunOptions) {
   if (!isAgentContext(ctx)) throw new AutomaticChaserRefusal('not_agent');
+  // The cause is the error class and message only (bounded); sources never put names or HR values in them.
   const attempt = async <T>(run: () => Promise<T>) => {
-    try { return { status: 'succeeded' as const, value: await run() }; } catch { return { status: 'failed' as const }; }
+    try { return { status: 'succeeded' as const, value: await run() }; }
+    catch (e) {
+      const error = e instanceof Error ? { name: e.constructor.name || e.name, message: e.message.slice(0, 200) } : { name: typeof e, message: '' };
+      return { status: 'failed' as const, error };
+    }
   };
   const approvals = await attempt(() => runApprovalChasers(ctx, opts));
   const reviews = await attempt(() => runReviewChasers(ctx, opts));

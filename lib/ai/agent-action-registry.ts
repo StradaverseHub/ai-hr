@@ -58,9 +58,11 @@ export type AgentActionReversal=
  | Readonly<{kind:'unknown'}>;                   // no reversal path found in source
 export type AgentActionEvaluationCase=Readonly<{suite:'assistant_conversation';case:string}>;
 /** WP13 (R18). The scheduled specialist (an AI management switch run by the tenant's agent principal), the native
- * source it reads, and the bounds the executor enforces: chase an item once it has waited `overdueAfterDays` HR-local
+ * source it reads, and the bounds the executor enforces: chase an item once it has waited `overdueAfterDays` working
  * days at its current stage, not again within `cooldownDays`, at most `maxPerItem` times per stage, and at most
- * `maxPerRun` reminders per tenant per run. Reminders only: never a decision, submission or record change. */
+ * `maxPerRun` reminders per tenant per run. `overdueAfterDays` counts WORKING days on the requester's roster minus
+ * public holidays (the leave escalation's clock). These are registry defaults; per-company values are a follow-up.
+ * Reminders only: never a decision, submission or record change. */
 export type AgentAutomaticSpecialist='approval_chasers'|'review_chasers';
 export type AgentAutomaticSource='claim'|'attendance_correction'|'replacement_leave'|'employment_review';
 export type AgentAutomaticPolicy=Readonly<{specialist:AgentAutomaticSpecialist;source:AgentAutomaticSource;overdueAfterDays:number;cooldownDays:number;maxPerItem:number;maxPerRun:number}>;
