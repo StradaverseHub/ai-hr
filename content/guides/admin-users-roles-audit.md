@@ -7,7 +7,7 @@ Group administrators see eligible staff under **Pending activation**. Each perso
 1. Select the intended person and review their profile email.
 2. Choose the invitation workflow or the manual username/temporary-password workflow if available on this installation.
 3. Review the role and company scope. Employee access is the default; elevated access must be deliberate.
-4. For invitations, check delivery readiness and use the existing pending invitation state before sending another.
+4. For invitations, choose the email language, check delivery readiness and use the existing pending invitation state before sending another. An invitation retry retains its chosen language.
 5. For manual creation, verify the person's identity and email ownership, supply a compliant temporary password and confirm private delivery. The employee must change it at first login. Do not put credentials in notes, feedback or knowledge-base articles.
 6. If setup remains pending, use its resume action. Do not create a second person/account to work around a partial setup.
 
