@@ -272,6 +272,11 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     render: (p, ev) => renderRewardRouted(p, ev),
     recipients: (tx, ev, payload) => rewardNotificationRecipients(tx, ev.aggregateId, payload?.to),
   },
+  'reward-unit.final-pool-changed': {
+    kind:'rewards.final-pool-changed',category:'rewards',
+    render:(_payload,event)=>({severity:'action',title:'Final Rewards pool changed',body:'Group Rewards updated the final bonus pool. Review the resulting pool and budget checks before approving.',linkPath:`/rewards/${event.aggregateId}#unit-governance`}),
+    recipients:async(tx,event)=>[...new Set((await Promise.all(['bu','bg','gr','ctro','ec'].map(stage=>rewardNotificationRecipients(tx,event.aggregateId,stage)))).flat())],
+  },
   'reward-unit.approved': {
     kind: 'rewards.approved', category: 'rewards',
     render: (_p, ev) => ({ severity: 'action', title: 'Rewards ready for payroll', body: 'The review is approved and ready for the payroll handoff.', linkPath: `/rewards/${ev.aggregateId}?view=approvals` }),

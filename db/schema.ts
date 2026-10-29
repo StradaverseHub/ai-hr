@@ -10420,6 +10420,26 @@ export const rewardUnit = pgTable('reward_unit', {
   postedAt: timestamp('posted_at', { withTimezone: true }), createdAt: createdAt(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
+/** Private unit-level inputs and independent Senior decisions; public projections are service-owned. */
+export const rewardGovernance = pgTable('reward_governance', {
+  unitId: uuid('unit_id').primaryKey().references(()=>rewardUnit.id), tenantId:tenantId(),
+  state:jsonb('state').$type<import('../packs/rewards/governance-model').RewardGovernance>().notNull(),
+  updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+});
+export const rewardGovernancePublic=pgTable('reward_governance_public',{
+ unitId:uuid('unit_id').primaryKey().references(()=>rewardUnit.id),tenantId:tenantId(),snapshot:jsonb('snapshot').$type<import('../packs/rewards/governance-model').RewardPublicGovernance>().notNull(),
+});
+export const rewardSeniorAward=pgTable('reward_senior_award',{
+ tenantId:tenantId(),unitId:uuid('unit_id').notNull().references(()=>rewardUnit.id),entryId:uuid('entry_id').primaryKey(),award:jsonb('award').$type<import('../packs/rewards/governance-model').SeniorAward>().notNull(),
+});
+export const rewardGovernanceHistory = pgTable('reward_governance_history', {
+ id:id(),tenantId:tenantId(),unitId:uuid('unit_id').notNull().references(()=>rewardUnit.id), actorId:uuid('actor_id').notNull().references(()=>appUser.id),
+ kind:text('kind').notNull(),reason:text('reason').notNull(),before:jsonb('before_state'),after:jsonb('after_state').notNull(),createdAt:createdAt(),
+});
+export const rewardSeniorEvidence=pgTable('reward_senior_evidence',{
+ id:id(),tenantId:tenantId(),unitId:uuid('unit_id').notNull().references(()=>rewardUnit.id),entryId:uuid('entry_id').notNull(),
+ uploadedBy:uuid('uploaded_by').notNull().references(()=>appUser.id),name:text('name').notNull(),mime:text('mime').notNull(),content:text('content').notNull(),createdAt:createdAt(),
+});
 export const rewardMember = pgTable('reward_member', {
   id: id(), tenantId: tenantId(), unitId: uuid('unit_id').notNull().references(() => rewardUnit.id),
   userId: uuid('user_id').notNull().references(() => appUser.id),
