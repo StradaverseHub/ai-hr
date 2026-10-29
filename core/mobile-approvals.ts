@@ -46,7 +46,7 @@ import { leaveRequestDateBreakdown, listLeaveRequests, listPendingLeaveCancellat
 import { MobileCommandOwnerRequired, withMobileCommandReceipt } from './mobile-command-receipt';
 import * as leave from '../packs/leave/service';
 import * as claims from '../packs/claims/service';
-import { claimAnswers, currencyOfClaim, decimalText, receiptFile } from './mobile-claims';
+import { claimAnswers, currenciesOfClaims, currencyOfClaim, decimalText, receiptFile } from './mobile-claims';
 import { moneyText } from '../lib/mobile-api/money-text';
 import { dayTypesForPairs, decideAttendanceCorrection, listAttendanceCorrections, MissingAttendanceRejectReasonError } from '../packs/attendance/service';
 import { LeavePayrollBusyError, LeavePayrollClosedError } from '../packs/payroll/service';
@@ -62,7 +62,7 @@ import { encodeCursor } from '../lib/mobile-api/v2/common';
 import {
   isNativeTaskKind, TASKS_CURSOR, TaskDecisionResult,
   type NativeTaskKind, type TaskAdmissionRefusal, type TaskDecisionCommand, type TaskDecisionRefusal, type TaskDecisionRefusalCode,
-  type TaskDetailResult, type TaskDocumentRefusal, type TaskKind, type TasksPageV2, type TeamCoverV2,
+  type TaskDetailResult, type TaskDocumentRefusal, type TaskKind, type TaskSummaryV2, type TasksPageV2, type TeamCoverV2,
 } from '../lib/mobile-api/v2/tasks';
 
 type AdmissionCode = TaskAdmissionRefusal['code'];
@@ -84,16 +84,49 @@ type Pending = Awaited<ReturnType<typeof listPendingTasks>>[number];
 const order = (a: { createdAt: string; kind: string; id: string }, b: { createdAt: string; kind: string; id: string }) =>
   a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id);
 
+const summaryOf = (over: Partial<TaskSummaryV2>): TaskSummaryV2 => ({ label: null, from: null, to: null, days: null, amount: null, currency: null, ...over });
+const label = (v: string | null | undefined) => (v ? v.slice(0, 300) : null);
+
+/**
+ * Each native row's summary, from the readers app/approvals/page.tsx lists those rows with (same session, same RLS,
+ * same pending filter), and only the columns that page prints. One read per kind present on the page; a row the
+ * reader does not return for this caller gets no summary, so the list never says more than the web page would.
+ */
+async function summariesFor(ctx: SessionContext, rows: readonly Pending[], locale: string): Promise<Map<string, TaskSummaryV2>> {
+  const ids = (kind: NativeTaskKind) => new Set(rows.filter((r) => r.kind === kind).map((r) => r.id));
+  const leaveIds = ids('leave'), cancelIds = ids('leaveCancellation'), attendanceIds = ids('attendance'), claimIds = ids('claim');
+  const modules = modulesOf(ctx);
+  const [leaves, cancels, corrections, pendingClaims] = await Promise.all([
+    leaveIds.size ? listLeaveRequests(ctx, undefined, 200, { status: 'pending' }) : Promise.resolve([]),
+    cancelIds.size ? listPendingLeaveCancellations(ctx, undefined, locale) : Promise.resolve([]),
+    attendanceIds.size && modules.attendance ? listAttendanceCorrections(ctx, { status: 'pending' }) : Promise.resolve([]),
+    claimIds.size && modules.claims ? claims.listPendingClaims(ctx) : Promise.resolve([]),
+  ]);
+  const shownClaims = pendingClaims.filter((c) => claimIds.has(c.id));
+  const currencies = await currenciesOfClaims(ctx, shownClaims.map((c) => c.id));
+  const out = new Map<string, TaskSummaryV2>();
+  for (const r of leaves) if (leaveIds.has(r.id)) out.set(`leave:${r.id}`, summaryOf({ label: label(r.leaveType), from: r.startDate, to: r.endDate, days: num(r.days) }));
+  for (const c of cancels) if (cancelIds.has(c.id)) out.set(`leaveCancellation:${c.id}`, summaryOf({ label: label(c.leaveType), from: c.originalStart, to: c.originalEnd, days: num(c.requestedDays) }));
+  for (const a of corrections) if (attendanceIds.has(a.id)) out.set(`attendance:${a.id}`, summaryOf({ from: a.attendanceDate, to: a.attendanceDate }));
+  for (const c of shownClaims) {
+    const amount = moneyText(c.amount);
+    out.set(`claim:${c.id}`, summaryOf({ label: label(c.typeName), from: c.incurredOn, to: c.incurredOn, amount, currency: amount === null ? null : currencies.get(c.id) ?? null }));
+  }
+  return out;
+}
+
 /** Every pending task for the caller (replacement leave and notice acknowledgements included), one page. */
-export async function tasksPageV2(ctx: SessionContext, q: { limit: number; cursor: readonly [string, TaskKind, string] | null }): Promise<TasksPageV2> {
+export async function tasksPageV2(ctx: SessionContext, q: { limit: number; cursor: readonly [string, TaskKind, string] | null }, locale = 'en'): Promise<TasksPageV2> {
   const all = await listPendingTasks(ctx, undefined, modulesOf(ctx));
   const at = q.cursor ? { createdAt: q.cursor[0], kind: q.cursor[1], id: q.cursor[2] } : null;
   const after = (at ? all.filter((t) => order(t, at) > 0) : all).slice(0, q.limit + 1);
   const rows = after.slice(0, q.limit), last = rows[rows.length - 1];
+  const summaries = await summariesFor(ctx, rows, locale);
   return {
     items: rows.map((t: Pending) => {
       const native = isNativeTaskKind(t.kind);
-      return { id: t.id, kind: t.kind, subject: { name: t.subjectName, code: null }, createdAt: t.createdAt, nativeDecision: native, webPath: native ? null : t.linkPath };
+      return { id: t.id, kind: t.kind, subject: { name: t.subjectName, code: null }, createdAt: t.createdAt, nativeDecision: native, webPath: native ? null : t.linkPath,
+        summary: native ? summaries.get(`${t.kind}:${t.id}`) ?? null : null };
     }),
     nextCursor: after.length > q.limit && last ? encodeCursor(TASKS_CURSOR, [last.createdAt, last.kind, last.id]) : null,
   };
@@ -171,6 +204,13 @@ async function teamCover(ctx: SessionContext, subjectEmploymentId: string, from:
 }
 
 /** One admitted task with the facts the web inbox shows for it, and what the decision must echo back. */
+type Correction = Awaited<ReturnType<typeof listAttendanceCorrections>>[number];
+function originalOf(snapshot: Correction['originalClockSnapshot']): { state: 'recorded' | 'no_record' | 'not_captured'; checkIn: string | null; checkOut: string | null } {
+  if (snapshot == null) return { state: 'not_captured', checkIn: null, checkOut: null };
+  if (snapshot.attendanceId == null) return { state: 'no_record', checkIn: null, checkOut: null };
+  return { state: 'recorded', checkIn: hhmm(snapshot.originalCheckIn), checkOut: hhmm(snapshot.originalCheckOut) };
+}
+
 export async function taskDetailV2(ctx: SessionContext, kind: NativeTaskKind, id: string, locale: string): Promise<TaskDetailResult> {
   const refusal = await admission(ctx, kind, id);
   if (refusal) return refused(refusal);
@@ -233,6 +273,9 @@ export async function taskDetailV2(ctx: SessionContext, kind: NativeTaskKind, id
     plannedStart: hhmm(a.plannedStartTime), plannedEnd: hhmm(a.plannedEndTime), requestedOtMinutes: a.requestedOtMinutes ?? null, dayType,
     employeeReason: a.reason ?? null, hasAttachment: !!a.hasAttachment,
     expected: { stageIndex: a.workflow?.currentStage ?? null, participantSlot: a.workflow?.currentParticipantSlot ?? null },
+    // The web approver's "Original clock times", under the same condition the web prints it (app/approvals/page.tsx).
+    original: a.proposedCheckIn || a.clockChanges ? originalOf(a.originalClockSnapshot) : null,
+    proposedPunches: a.clockChanges ? a.clockChanges.entries.slice(0, 100).flatMap((e) => { const at = hhmm(e.punchAt); return at ? [{ at, direction: e.direction }] : []; }) : null,
   } };
 }
 
