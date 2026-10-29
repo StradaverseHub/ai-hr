@@ -95,7 +95,8 @@ describe('Live Monolith in a real browser', () => {
     expect(ui.getByText(/Unread/)).toBeTruthy();
     fireEvent.click(ui.getByRole('button', { name: 'Requests' }));
     expect(ui.getByText(/Partially approved/)).toBeTruthy();
-    expect(ui.getByText(/(?:MYR|RM).*28/)).toBeTruthy();
+    // Expense claims left the app (declutter round), so the preview of it shows none even when the read has some.
+    expect(ui.queryByText('Synthetic claim')).toBeNull(); expect(ui.queryByText(/(?:MYR|RM).*28/)).toBeNull();
   });
   it('renders the disabled/unavailable/no-employment states without invented personal records', () => {
     const d = data(); d.employment = null; d.person = { name: null, employeeCode: null };

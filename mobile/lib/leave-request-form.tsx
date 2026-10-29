@@ -16,6 +16,7 @@ import {SubmissionJournalFull} from './submission-journal';
 import { t,type MessageKey } from './i18n';
 import { useJourneyDrafts,removeLocalFile,type LeaveDraft,type LocalAttachment } from './journey-drafts';
 import { useSession } from './session';
+import { cardFigure } from './home-cards';
 import { Button,Card,Muted,Row,Screen,Title,fmtDays } from './ui';
 const durationLabels:Record<LeaveCommand['durationType'],MessageKey>={full_day:'fullDay',half_day_am:'halfAM',half_day_pm:'halfPM',hourly:'hourly'};
 const pad=(n:number)=>String(n).padStart(2,'0');
@@ -46,8 +47,6 @@ export function PickerField({label,mode,value,today,disabled,onChange}:{label:st
   </View>;
 }
 type LeaveCard=LeaveResponse['cards'][number];
-/** The figure a balance card shows (the web card front's rule) — read from the server, never derived. */
-const cardFigure=(c:LeaveCard)=>c.takenOnly?c.taken:c.isCurrentCycle?c.canApplyFor:c.balance;
 /** What the request's day count depends on. The reason, remark and document never change it, so they never re-preview. */
 const previewKey=(c:LeaveCommand)=>JSON.stringify([c.leaveTypeId,c.startDate,c.endDate,c.durationType,c.fromTime??null,c.toTime??null]);
 const isDate=(v:string)=>/^\d{4}-\d{2}-\d{2}$/.test(v);
