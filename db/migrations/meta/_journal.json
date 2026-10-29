@@ -3872,6 +3872,34 @@
       "when": 1793330000000,
       "tag": "0674_assistant_outcome_measurement",
       "breakpoints": true
+    },
+    {
+      "idx": 668,
+      "version": "7",
+      "when": 1793330000004,
+      "tag": "0678_ai_connection_probe_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 669,
+      "version": "7",
+      "when": 1793330000005,
+      "tag": "0679_email_templates_r2",
+      "breakpoints": true
+    },
+    {
+      "idx": 670,
+      "version": "7",
+      "when": 1793330000006,
+      "tag": "0680_rewards_exclusions_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 671,
+      "version": "7",
+      "when": 1793330000007,
+      "tag": "0681_rewards_approval_participation",
+      "breakpoints": true
     }
   ]
 }

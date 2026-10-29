@@ -98,3 +98,38 @@ Routine coordinator: CI/efficiency `01a16cee-9004-72c2-aaf0-932d4d0a1582`; AI de
 `01a16f03-759a-7630-ab49-3fe0c7d69699`. Allocation decisions remain in that coordinating chat. Before
 any future journal append, obtain the final coordinated index/timestamp set from the actual source
 freeze and preserve the exact applied prefix. No human migration or deployed record is changed here.
+
+
+## Board approved items — isolated CI prerequisites, 29 October 2026
+
+The owner's current handoff requires all new migration sequences above `1793330000000`.
+Canonical main, alpha and verified staging were `46049dead200d6f436d10f5984c06634502a6286`,
+with all 553 applied entries matching the exact source prefix. Shared register commit
+`439587ea0` on `claude/migration-inventory-20261027` supersedes the still-unapplied allocations
+in `3060942cb` and `8167a9d85` after both source owners agreed the probe release should precede
+the database-dependent Board release.
+
+| Index | Sequence | Migration | Exact SQL SHA256 |
+| ---: | ---: | --- | --- |
+| 668 | 1793330000004 | 0678_ai_connection_probe_ledger | e96851f0b09ba117f9cec03852b9c270da456c36b69a5199a588f483e1a9772a |
+| 669 | 1793330000005 | 0679_email_templates_r2 | b259d07e4964830eb6781a5efdeaf0c64bc5278a6efefb7883fd8e93bc38ddfe |
+| 670 | 1793330000006 | 0680_rewards_exclusions_history | 8497edb87cbc4d4929700f3a8ba8abe3519cd2ce13c50f5f16a522a56093c344 |
+| 671 | 1793330000007 | 0681_rewards_approval_participation | 2600e08cde3498f3ce5f2c1fbd4fb1418ab22b7e87db3852768a1b932baa9cdc |
+
+The probe owner expressly permits only its exact public SQL from
+`7bcbe939c4423884d9209a4c098128754835d2b7:db/migrations/0678_ai_connection_probe_ledger.sql`
+as an isolated disposable-CI journal prerequisite. This does not integrate its unmerged application
+changes or grant this task authority to apply or deploy its migration. Its owner releases that
+source separately after the UI handoff. The final Board whole-gate candidate must merge the actual
+canonical/applied handoff and verify the real source again; earlier targeted evidence remains
+attributed to its own exact CI source.
+
+All four SQL bodies preserve their frozen hashes. Original draft comments are historical
+provenance; journal metadata owns execution order. No applied SQL or journal prefix is changed.
+Temporary duplicate Board draft installers are removed, and their original native assertions stay
+in the ordinary suites. Unique legacy-email conversion assertions use an ordinary Drizzle prefix,
+fictional populated baseline and full-journal upgrade.
+
+This records isolated source/CI preparation only. No migration application, staging acceptance or
+production deployment is claimed. Recheck canonical, the actual ledger and competing allocations
+before final integration. The unmerged named-approver 0669 retains no stale executable position.
