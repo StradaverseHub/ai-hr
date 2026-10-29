@@ -78,7 +78,11 @@ describe('same physical non-own assigned Leave decision custody',()=>{
   const noInheritance=()=>withTenant(who,async tx=>{expect(await tx.select().from(s.employment).where(eq(s.employment.id,subject.employmentId))).toEqual([]);expect(await tx.select().from(s.leaveLedger).where(eq(s.leaveLedger.employmentId,subject.employmentId))).toEqual([]);});
   await noInheritance();const r=await prepare({...human,currentStepId:step.id,decision,rejectReason:decision==='rejected'?'My delegated rejection reason':null},who);
   expect((await confirm(r,who)).kind).toBe('completed');expect((await reopenLeaveDecisionReview(who,r.actionId)).kind).toBe('completed');expect((await confirm(r,who)).kind).toBe('completed');
-  const events=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,human.leaveRequestId),eq(s.domainEvent.eventType,'leave-request.'+decision)));expect(events).toEqual([expect.objectContaining({actorId:userId,subjectEmploymentId:subject.employmentId})]);await noInheritance();
+  const events=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,human.leaveRequestId),eq(s.domainEvent.eventType,'leave-request.'+decision)));expect(events).toEqual([expect.objectContaining({actorId:userId,subjectEmploymentId:subject.employmentId})]);
+  expect(await withTenant(who,tx=>tx.select({id:s.domainEvent.id}).from(s.domainEvent).where(eq(s.domainEvent.id,events[0].id)))).toEqual([{id:events[0].id}]);
+  const otherLogin=await createAppUser(b.tenantId,stand.personId,'manager'),other={...who,userId:otherLogin};
+  expect(await withTenant(other,tx=>tx.select({id:s.domainEvent.id}).from(s.domainEvent).where(eq(s.domainEvent.id,events[0].id)))).toEqual([]);
+  await noInheritance();
  });
 
 });
