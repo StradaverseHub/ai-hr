@@ -1,13 +1,14 @@
 import { useTenantDesign } from '../../lib/design';
 /**
- * Me — who I am, which employment I am acting as (the picker, when there is more than one), the way to my
- * payslips and EA forms, and sign out.
+ * Me — who I am, which employment I am acting as (the picker, when there is more than one), then plain rows: payslips
+ * and EA forms, my attendance, my profile, my leave history; and "This phone": shift reminders, notifications, device
+ * registration, saved submissions and sign out.
  *
  * M09 — the v1 totals widget is gone from this screen: payslips open on their own screen (app/pay, v2), every
  * employment, natively. GET /api/mobile/v1/payslips stays for installed clients; this build no longer reads it.
  */
 import { useEffect, useRef } from 'react';
-import { Pressable } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { router } from 'expo-router';
 import { companyCopy, useCompanyConnection } from '../../lib/company-connection';
 import { DesignText as Text } from '../../lib/design';
@@ -15,8 +16,8 @@ import { useApi } from '../../lib/api';
 import { t } from '../../lib/i18n';
 import { useSession } from '../../lib/session';
 import { useQueuedOfflinePunches } from '../../lib/offline-clock';
-import { ShiftReminderSetting } from '../../lib/push';
-import { Button, Card, LoadState, Muted, Screen, SectionLabel, Title } from '../../lib/ui';
+import { PushPrompt, ShiftReminderSetting } from '../../lib/push';
+import { Card, ListRow, LoadState, Muted, Screen, SectionLabel, Title } from '../../lib/ui';
 
 export default function Me() {
   const company=useCompanyConnection();
@@ -55,21 +56,24 @@ export default function Me() {
         </Pressable>
       ))}
 
-      <SectionLabel>{t('payslips')}</SectionLabel>
-      <Button title={t('payOpen')} onPress={() => router.push('/pay')} />
-      <SectionLabel>{t('meSectionClaims')}</SectionLabel>
-      <Button title={t('claimsOpen')} onPress={() => router.push('/claims')} />
-      <SectionLabel>{t('meSectionRecords')}</SectionLabel>
-      <Button title={t('attOpen')} onPress={() => router.push('/attendance')} kind="quiet" />
-      <Button title={t('profileOpen')} onPress={() => router.push('/profile')} kind="quiet" />
-      <ShiftReminderSetting />
+      {/* Plain rows: my records first, then what belongs to this phone. Expense claims are web-only now. */}
+      <View>
+        <ListRow label={t('payOpen')} onPress={() => router.push('/pay')} />
+        <ListRow label={t('attOpen')} onPress={() => router.push('/attendance')} />
+        <ListRow label={t('profileOpen')} onPress={() => router.push('/profile')} />
+        <ListRow label={t('meLeaveHistory')} onPress={() => router.push('/leave/history')} />
+      </View>
 
       <SectionLabel>{t('meSectionDevice')}</SectionLabel>
-      <Button title={t('integrityKeysTitle')} onPress={()=>router.push('/integrity-keys')} kind="quiet"/>
-      <Button title={t('pendingTitle')} onPress={()=>router.push('/pending-submissions')} kind="quiet"/>
+      <ShiftReminderSetting />
+      <PushPrompt />
+      <View>
+        <ListRow label={t('integrityKeysTitle')} onPress={() => router.push('/integrity-keys')} />
+        <ListRow label={t('pendingTitle')} onPress={() => router.push('/pending-submissions')} />
+        {company && <ListRow label={companyCopy().change} onPress={() => router.push({ pathname: '/pending-submissions', params: { intent: 'company' } })} />}
+        <ListRow label={t('signOut')} onPress={() => router.push({ pathname: '/pending-submissions', params: { intent: 'logout' } })} />
+      </View>
       {queued > 0 && <Muted>{t(queued === 1 ? 'offlineSignOutNoteOne' : 'offlineSignOutNote', { n: queued })}</Muted>}
-      <Button title={t('signOut')} onPress={() => router.push({pathname:'/pending-submissions',params:{intent:'logout'}})} kind="quiet" />
-      {company&&<Button title={companyCopy().change} onPress={()=>router.push({pathname:'/pending-submissions',params:{intent:'company'}})} kind="quiet"/>}
     </Screen>
   );
 }

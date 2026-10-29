@@ -21,7 +21,7 @@ import { RequestRejectedError, SignInRequiredError } from './errors';
 import { appLocale, t, type MessageKey } from './i18n';
 import { PagedList, usePagedResource } from './paged-list';
 import { useSession } from './session';
-import { Button, Card, LoadState, Muted, Row, Screen, Title, fmtDays } from './ui';
+import { Button, Card, fmtDays, HeaderBack, LoadState, Muted, Row, Screen, Title } from './ui';
 import {
   LeaveCancellationResult, LeaveRequestDetailResult, LeaveRequestSummaryV2, LeaveWithdrawResult,
   type LeaveCommandRefusal, type LeaveCommandRefusalCode, type LeaveDisplayStatus, type LeaveRequestDetailV2,
@@ -90,7 +90,7 @@ export function LeaveHistoryScreen() {
   return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={['top']}>
     <PagedList list={list} keyOf={keyOf} emptyText={t('noRequests')} contentContainerStyle={{ padding: 20, gap: 8 }}
       header={<View style={{ gap: 12 }}>
-        <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
+        <HeaderBack />
         <Title>{t('leaveRequestsTitle')}</Title>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {FILTERS.map((f) => <Button key={f ?? 'all'} title={t(FILTER_LABEL[f ?? 'all'])} kind={f === status ? 'primary' : 'quiet'} onPress={() => setStatus(f)} />)}
@@ -193,8 +193,7 @@ export function LeaveDetailScreen({ id }: { id: string }) {
   const toggle = (date: string) => setPicking((p) => p && ({ ...p, dates: p.dates.includes(date) ? p.dates.filter((d) => d !== date) : [...p.dates, date] }));
   const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 12 : 4;
 
-  return <Screen onRefresh={detail.reload}>
-    <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
+  return <Screen back onRefresh={detail.reload}>
     <LoadState loading={detail.loading} hasData={detail.data != null} error={detail.error} onRetry={detail.reload} />
     {detail.data?.outcome === 'refused' && <Muted>{t('leaveDetailMissing')}</Muted>}
     {request && <>

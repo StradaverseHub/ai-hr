@@ -20,7 +20,7 @@ import { RequestRejectedError, SignInRequiredError } from './errors';
 import { appLocale, t, type MessageKey } from './i18n';
 import { PagedList, usePagedResource } from './paged-list';
 import { useSession } from './session';
-import { Button, Card, LoadState, Muted, Row, Screen, Title } from './ui';
+import { Button, Card, HeaderBack, LoadState, Muted, Row, Screen, Title } from './ui';
 import { APPLICATION_STATUS, applicationKindText, askedText, attendanceApplicationPath, fmtCalendarDate, fmtInstant } from './attendance-format';
 import { ApplicationRow, TimeZoneNote } from './attendance-records';
 import {
@@ -55,7 +55,7 @@ export function AttendanceApplicationsScreen() {
   return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={['top']}>
     <PagedList list={list} keyOf={keyOf} emptyText={t('attNoApplications')} contentContainerStyle={{ padding: 20, gap: 8 }}
       header={<View style={{ gap: 12 }}>
-        <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
+        <HeaderBack />
         <Title>{t('attApplicationsTitle')}</Title>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {FILTERS.map((f) => {
@@ -128,8 +128,7 @@ export function AttendanceApplicationScreen({ id }: { id: string }) {
     ]);
   }
 
-  return <Screen onRefresh={detail.reload}>
-    <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
+  return <Screen back onRefresh={detail.reload}>
     <LoadState loading={!!path && detail.loading} hasData={detail.data != null} error={path ? detail.error : null} onRetry={detail.reload} />
     {(!path || detail.data?.outcome === 'refused') && <Muted>{t(detail.data?.outcome === 'refused' && detail.data.code === 'module_off' ? 'attModuleOff' : 'attNotFound')}</Muted>}
     {found && a && <>

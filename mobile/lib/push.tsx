@@ -29,7 +29,7 @@ import {
 import { useSession } from './session';
 import { onShiftReminderRefresh } from './shift-reminder-signal';
 import { isShiftReminder } from './shift-reminders';
-import { Button, Card, Muted, SectionLabel } from './ui';
+import { Button, Card, InfoNote, Muted } from './ui';
 import { NotificationReadResult } from '../../lib/mobile-api/v2/notifications';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -122,12 +122,14 @@ export function PushSessionWatcher() {
 }
 
 /** The Inbox's contextual push control. Absent when push does not apply; the inbox itself never depends on it. */
-export function PushPrompt() {
+export function PushPrompt({ compact = false }: { compact?: boolean } = {}) {
   const { employmentId } = useSession();
   const view = usePushView();
   const [busy, setBusy] = useState(false);
   const run = (work: () => Promise<unknown>) => { if (busy) return; setBusy(true); void work().catch(() => undefined).finally(() => setBusy(false)); };
   if (view === 'checking' || view === 'module_off' || view === 'unsupported') return null;
+  // The Inbox's contextual nudge: only the one action, only while notifications are off. Me holds the full control.
+  if (compact) return view === 'off' ? <Button title={t('pushTurnOn')} kind="quiet" disabled={busy} onPress={() => run(() => turnOnNotifications(employmentId))} /> : null;
   const body = view === 'on' ? 'pushOnBody' : view === 'server_off' ? 'pushServerOffBody' : view === 'denied' ? 'pushDeniedBody' : view === 'unavailable' ? 'pushUnavailableBody' : 'pushOffBody';
   return <Card>
     <Muted>{t(body)}</Muted>
@@ -160,13 +162,12 @@ export function ShiftReminderSetting() {
   const note = !on ? 'reminderOffNote' : view === 'needs_permission' ? 'reminderNeedsPermission' : view === 'denied' ? 'reminderDenied'
     : view === 'not_offered' ? 'reminderNotOffered' : view === 'unavailable' ? 'reminderUnavailable' : null;
   return <>
-    <SectionLabel>{t('reminderSection')}</SectionLabel>
     <Card>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <Text style={{ color: palette.text, fontSize: 16, flex: 1 }}>{t('reminderToggle')}</Text>
         <Switch accessibilityLabel={t('reminderToggle')} value={on && !blocked} disabled={prefs == null || busy} onValueChange={change} />
       </View>
-      <Muted>{t('reminderExplain')}</Muted>
+      <InfoNote short={t('reminderExplainShort')} detail={t('reminderExplain')} />
       {note ? <Muted>{t(note)}</Muted> : null}
       {on && view === 'needs_permission' ? <Button title={t('reminderAllow')} disabled={busy} onPress={allow} /> : null}
       {on && view === 'denied' ? <Button title={t('pushOpenSettings')} kind="quiet" onPress={openNotificationSettings} /> : null}

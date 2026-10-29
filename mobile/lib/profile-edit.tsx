@@ -173,8 +173,7 @@ export function ProfileEditScreen() {
     ]);
   }
 
-  return <Screen>
-    <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
+  return <Screen back>
     <Title>{t('profileEditTitle')}</Title>
     <LoadState loading={profile.loading} hasData={profile.data != null} error={profile.error} onRetry={profile.reload} />
     {profile.data?.outcome === 'refused' && <Muted>{t(profile.data.code === 'unavailable' ? 'profileUnavailable' : 'profileNotFound')}</Muted>}

@@ -28,7 +28,7 @@ import { appLocale, t, type MessageKey } from './i18n';
 import { fmtInstant } from './attendance-format';
 import { PagedList, usePagedList, type PageLoader, type PagedListState } from './paged-list';
 import { useSession } from './session';
-import { Button, Card, LoadState, Muted, Row, Title } from './ui';
+import { Button, Card, ListRow, LoadState, Muted, Title } from './ui';
 import {
   HomeSummaryV2, NotificationReadResult, NotificationsPageV2,
   type NotificationDestination, type NotificationItemV2, type NotificationScreen,
@@ -183,7 +183,10 @@ export function homeNeedsView(read: Pick<Read<HomeSummaryV2>, 'data' | 'error' |
   return { tasks, inbox, allClear: !read.loading && !read.error && tasks === 0 && (inbox === 'off' || inbox === 0) };
 }
 
-/** Home's "Needs you" card: the approvals count (linking to /approvals), the unread count, or an honest state. */
+/**
+ * Home's "Needs you" card: two tappable rows — the approvals count (opens Approvals) and the unread count (opens the
+ * Inbox) — or an honest state. A row shows only for a count that was read and is above zero.
+ */
 export function HomeNeeds({ refreshToken = 0 }: { refreshToken?: number }) {
   const { signOut } = useSession();
   const summary = useHomeSummary(signOut, refreshToken);
@@ -191,10 +194,11 @@ export function HomeNeeds({ refreshToken = 0 }: { refreshToken?: number }) {
   const failed = v.tasks === 'failed' || v.inbox === 'failed';
   return <Card>
     <LoadState loading={summary.loading} hasData={summary.data != null} error={null} onRetry={summary.reload} />
-    {typeof v.tasks === 'number' && v.tasks > 0 ? <Row label={t('approvalsTitle')} value={t('homeTasksCount', { n: v.tasks })} strong /> : null}
-    {typeof v.inbox === 'number' && v.inbox > 0 ? <Row label={t('tabInbox')} value={t('unreadCount', { n: v.inbox })} strong /> : null}
+    {typeof v.tasks === 'number' && v.tasks > 0 ? <ListRow label={t('approvalsTitle')} value={t('homeTasksCount', { n: v.tasks })} onPress={() => router.push('/approvals')} /> : null}
+    {typeof v.inbox === 'number' && v.inbox > 0 ? <ListRow label={t('tabInbox')} value={t('unreadCount', { n: v.inbox })} onPress={() => router.navigate('/inbox')} /> : null}
     {failed && !summary.loading ? <Button title={t('homeCheckFailed')} kind="quiet" onPress={summary.reload} /> : null}
     {v.allClear ? <Muted>{t('nothingNeedsYou')}</Muted> : null}
-    {v.tasks === 'failed' || (typeof v.tasks === 'number' && v.tasks > 0) ? <Button title={t('openApprovals')} kind="quiet" onPress={() => router.push('/approvals')} /> : null}
+    {/* The count could not be read: the way to the list itself stays. */}
+    {v.tasks === 'failed' ? <ListRow label={t('openApprovals')} onPress={() => router.push('/approvals')} /> : null}
   </Card>;
 }

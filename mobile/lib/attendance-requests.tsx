@@ -96,8 +96,7 @@ export function AttendanceCorrectionScreen({ date }: { date: string }) {
     ]);
   }
 
-  return <Screen onRefresh={day.reload}>
-    <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
+  return <Screen back onRefresh={day.reload}>
     <Title>{t('attCorrectionTitle', { date: valid ? fmtCalendarDate(date) : date })}</Title>
     <LoadState loading={day.loading} hasData={day.data != null} error={day.error} onRetry={day.reload} />
     {day.data?.outcome === 'refused' && <Muted>{t(day.data.code === 'module_off' ? 'attModuleOff' : 'attNotFound')}</Muted>}
@@ -254,8 +253,7 @@ export function ReplacementLeaveScreen() {
   const [date, setDate] = useState<string | undefined>(undefined);
   const [sent, setSent] = useState<string | null>(null);
   const o = offer.data;
-  return <Screen onRefresh={offer.reload}>
-    <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
+  return <Screen back onRefresh={offer.reload}>
     <Title>{t('attRlTitle')}</Title>
     <LoadState loading={offer.loading} hasData={o != null} error={offer.error} onRetry={offer.reload} />
     {o && !o.allowed && <Muted>{t(UNAVAILABLE[o.reason ?? 'not_eligible'])}</Muted>}

@@ -99,8 +99,7 @@ export function ProfileScreen() {
   const { palette } = useTenantDesign();
   const profile = useProfileWorkspace();
   const workspace = profile.data?.outcome === 'found' ? profile.data.workspace : null;
-  return <Screen refreshing={profile.loading && profile.data != null} onRefresh={profile.reload}>
-    <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
+  return <Screen back refreshing={profile.loading && profile.data != null} onRefresh={profile.reload}>
     <Title>{t('profileTitle')}</Title>
     <LoadState loading={profile.loading} hasData={profile.data != null} error={profile.error} onRetry={profile.reload} />
     {profile.data?.outcome === 'refused' && <Muted>{t(profile.data.code === 'unavailable' ? 'profileUnavailable' : 'profileNotFound')}</Muted>}
@@ -139,8 +138,7 @@ export function ProfileRequestsScreen() {
   const { signOut, employmentId } = useSession();
   const list = useApiV2(PROFILE_REQUESTS_PATH, ProfileRequestsResult, { employmentId: employmentId ?? undefined }, signOut);
   const requests = list.data?.outcome === 'found' ? list.data.requests : null;
-  return <Screen refreshing={list.loading && list.data != null} onRefresh={list.reload}>
-    <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
+  return <Screen back refreshing={list.loading && list.data != null} onRefresh={list.reload}>
     <Title>{t('profileRequestsTitle')}</Title>
     <LoadState loading={list.loading} hasData={list.data != null} error={list.error} onRetry={list.reload} />
     {list.data?.outcome === 'refused' && <Muted>{t(list.data.code === 'unavailable' ? 'profileUnavailable' : 'profileNotFound')}</Muted>}
