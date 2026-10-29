@@ -2,6 +2,7 @@
 No installation, staging-ledger or release authority. Never import a legacy installer validator.
 """
 import argparse
+import ctypes
 import hashlib
 import importlib.util
 import json
@@ -206,6 +207,48 @@ def fsync_directory(path):
     try: os.fsync(fd)
     finally: os.close(fd)
 
+def rename_no_replace(source,destination):
+    # Linux/glibc only. No check-then-rename or overwrite-capable fallback.
+    check(os.uname().sysname=='Linux','atomic Linux renameat2 required')
+    check(Path(source).is_absolute() and Path(destination).is_absolute(),'absolute fixed dependency rename paths required')
+    libc=ctypes.CDLL(None,use_errno=True)
+    try: rename=libc.renameat2
+    except AttributeError: check(False,'libc renameat2 unavailable; replacement refused')
+    rename.argtypes=[ctypes.c_int,ctypes.c_char_p,ctypes.c_int,ctypes.c_char_p,ctypes.c_uint];rename.restype=ctypes.c_int
+    result=rename(-100,os.fsencode(source),-100,os.fsencode(destination),1)  # AT_FDCWD, RENAME_NOREPLACE
+    if result!=0:
+        error=ctypes.get_errno();raise OSError(error,'atomic dependency renameat2(RENAME_NOREPLACE) refused')
+
+def parse_mountinfo(raw):
+    check(isinstance(raw,bytes) and 0<len(raw)<=4*1024**2 and raw.endswith(b'\n') and b'\0' not in raw,'bounded complete mountinfo required')
+    lines=raw.splitlines();check(0<len(lines)<=65536,'bounded mountinfo line count required')
+    escapes={b'040':32,b'011':9,b'012':10,b'134':92};points=[]
+    def decode(field):
+        out=bytearray();index=0
+        while index<len(field):
+            if field[index]==92:
+                token=field[index+1:index+4];check(token in escapes,'unknown/truncated mountinfo escape; cleanup refused');out.append(escapes[token]);index+=4
+            else: out.append(field[index]);index+=1
+        return os.fsdecode(bytes(out))
+    for line in lines:
+        words=line.split(b' ');check(all(words) and words.count(b'-')==1,'malformed mountinfo fields; cleanup refused');separator=words.index(b'-')
+        check(separator>=6 and len(words)==separator+4 and words[0].isdigit() and words[1].isdigit() and re.fullmatch(rb'[0-9]+:[0-9]+',words[2]),'malformed mountinfo identity; cleanup refused')
+        root,point=decode(words[3]),decode(words[4])
+        check(root.startswith('/') and point.startswith('/') and os.path.normpath(root)==root and os.path.normpath(point)==point,'noncanonical mountinfo paths; cleanup refused')
+        points.append(Path(point))
+    return points
+
+def mountinfo_points():
+    try:
+        with Path('/proc/self/mountinfo').open('rb') as incoming: raw=incoming.read(4*1024**2+1)
+        return parse_mountinfo(raw)
+    except OSError: check(False,'mountinfo unavailable; dependency cleanup refused')
+
+def reject_mounted_tree(path):
+    path=Path(path);check(path.is_absolute() and path.resolve(strict=True)==path,'literal dependency cleanup tree required')
+    points=mountinfo_points()
+    check(not any(point==path or point.is_relative_to(path) for point in points),'mountpoint at/inside dependency tree; retained for runner disposal')
+
 def cleanup_dependency_staging(root):
     root=Path(root);journal=root/'dependency-provision.json'
     if not journal.exists(): return
@@ -218,6 +261,7 @@ def cleanup_dependency_staging(root):
             info=path.lstat()
             check(stat.S_ISDIR(info.st_mode) and not path.is_symlink(),'real dependency staging directory required')
             if name=='dependency-stage': protected(path,True)
+            reject_mounted_tree(path)  # Includes same-device binds, before any tree traversal.
         except FileNotFoundError:
             not_created=value['state']=='stage-create-pending' and name=='dependency-stage' and value[key] is None or name=='dependency-quarantine' and value['state'] in ['stage-create-pending','extracting','quarantine-pending']
             check(state in ['remove-pending','removed'] or state=='pending' and not_created,'uncertain missing dependency staging');value['cleanup'][name]='removed';atomic_root(journal,value);continue
@@ -231,7 +275,7 @@ def cleanup_dependency_staging(root):
             for child in dirs:
                 item=Path(base)/child
                 if not item.is_symlink(): check(item.stat().st_dev==info.st_dev,'foreign mount in dependency staging; removal refused')
-        value['cleanup'][name]='remove-pending';atomic_root(journal,value);shutil.rmtree(path)
+        value['cleanup'][name]='remove-pending';atomic_root(journal,value);reject_mounted_tree(path);shutil.rmtree(path)
         value['cleanup'][name]='removed';atomic_root(journal,value)
 
 def provision_dependencies(source,manifest,archive,fmt,registry,wanted):
@@ -259,8 +303,8 @@ def provision_dependencies(source,manifest,archive,fmt,registry,wanted):
     value['newIdentity']=dependency_identity(stage/'node_modules')
     check(target.lstat().st_dev==old.st_dev and target.lstat().st_ino==old.st_ino,'fresh dependency inode changed before atomic replacement')
     pinned_source_objects(source,wanted,registry)
-    value['state']='quarantine-pending';atomic_root(journal,value);os.rename(target,quarantine);fsync_directory(source);fsync_directory(root)
-    value['state']='install-pending';atomic_root(journal,value);os.rename(stage/'node_modules',target);fsync_directory(source);fsync_directory(stage)
+    value['state']='quarantine-pending';atomic_root(journal,value);rename_no_replace(target,quarantine);fsync_directory(source);fsync_directory(root)
+    value['state']='install-pending';atomic_root(journal,value);rename_no_replace(stage/'node_modules',target);fsync_directory(source);fsync_directory(stage)
     value['state']='installed';atomic_root(journal,value)
     check(dependency_identity(target)==value['newIdentity'],'authoritative installed dependency inode differs')
     closed_dependencies(source,manifest);pinned_source_objects(source,wanted,registry);cleanup_dependency_staging(root)

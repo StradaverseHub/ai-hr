@@ -115,17 +115,33 @@ class DependencyProvisioning(unittest.TestCase):
 
     def test_interrupted_fixed_swap_has_exact_cleanup_and_cannot_restart_provision(self):
         with fixture() as f:
-            rename=p.os.rename
+            rename=p.rename_no_replace
             def interrupted(source,target):
                 if Path(source)==f.root/'dependency-stage/node_modules': raise OSError('injected pre-install interruption')
                 return rename(source,target)
-            with patch.object(p.os,'rename',side_effect=interrupted),self.assertRaises(OSError): provision(f)
+            with patch.object(p,'rename_no_replace',side_effect=interrupted),self.assertRaises(OSError): provision(f)
             value=json.loads((f.root/'dependency-provision.json').read_bytes());self.assertEqual(value['state'],'install-pending')
             self.assertFalse((f.source/'node_modules').exists());self.assertTrue((f.root/'dependency-quarantine').exists())
             p.cleanup_dependency_staging(f.root)
             self.assertFalse((f.root/'dependency-stage').exists());self.assertFalse((f.root/'dependency-quarantine').exists())
             with self.assertRaises(ValueError): provision(f)
             for name,raw in f.tracked.items(): self.assertEqual((f.source/name).read_bytes(),raw)
+        for collision in ['dependency-quarantine','node_modules']:
+            with fixture() as f:
+                rename=p.rename_no_replace;foreign=[]
+                def collide(source,target):
+                    target=Path(target)
+                    if target.name==collision:
+                        target.mkdir();foreign.append((target,target.stat().st_ino))
+                    return rename(source,target)
+                with patch.object(p,'rename_no_replace',side_effect=collide),self.assertRaises(OSError): provision(f)
+                path,inode=foreign[0];self.assertEqual(path.stat().st_ino,inode);self.assertEqual(list(path.iterdir()),[])
+                self.assertTrue((f.root/'dependency-stage/node_modules').is_dir())
+                if collision=='dependency-quarantine': self.assertTrue((f.source/'node_modules/.modules.yaml').exists())
+        with fixture() as f:
+            with patch.object(p.ctypes,'CDLL',return_value=SimpleNamespace()),patch.object(p.os,'rename') as fallback,self.assertRaises(ValueError):
+                p.rename_no_replace(f.source/'node_modules',f.root/'dependency-quarantine')
+            fallback.assert_not_called();self.assertTrue((f.source/'node_modules/.modules.yaml').exists())
 
     def test_interrupted_staging_removal_recovers_but_changed_inode_is_retained(self):
         with fixture() as f:
@@ -140,10 +156,25 @@ class DependencyProvisioning(unittest.TestCase):
             p.cleanup_dependency_staging(f.root);provision(f)
             self.assertEqual((f.source/'node_modules/.modules.yaml').read_bytes(),f.files['node_modules/.modules.yaml'])
         with fixture() as f:
-            with patch.object(p.os,'rename',side_effect=OSError('injected before quarantine')),self.assertRaises(OSError): provision(f)
+            with patch.object(p,'rename_no_replace',side_effect=OSError('injected before quarantine')),self.assertRaises(OSError): provision(f)
             value=json.loads((f.root/'dependency-provision.json').read_bytes());value['stageIdentity']['ino']+=1;p.atomic_root(f.root/'dependency-provision.json',value)
             with self.assertRaises(ValueError): p.cleanup_dependency_staging(f.root)
             self.assertTrue((f.root/'dependency-stage').exists())
+        # Same major/minor device in mountinfo models a bind that st_dev cannot detect.
+        for descendant in [False,True]:
+            with fixture() as f:
+                with patch.object(p,'rename_no_replace',side_effect=OSError('injected before quarantine')),self.assertRaises(OSError): provision(f)
+                stage=f.root/'dependency-stage';mount=stage/'bind space\\name' if descendant else stage
+                escaped=str(mount).replace('\\','\\134').replace(' ','\\040')
+                raw=('1 0 0:99 / / rw - tmpfs tmpfs rw\n2 1 0:99 / '+escaped+' rw - tmpfs tmpfs rw\n').encode()
+                self.assertIn(mount,p.parse_mountinfo(raw))
+                with patch.object(p,'mountinfo_points',side_effect=lambda:p.parse_mountinfo(raw)),patch.object(p.os,'walk') as walk,self.assertRaises(ValueError): p.cleanup_dependency_staging(f.root)
+                walk.assert_not_called();self.assertTrue(stage.is_dir())
+        for malformed in [b'',b'1 0 0:99 / / rw - tmpfs tmpfs rw',b'1 0 0:99 / /bad\\999 rw - tmpfs tmpfs rw\n',b'bad mountinfo\n']:
+            with self.assertRaises(ValueError): p.parse_mountinfo(malformed)
+        encoded=b'1 0 0:99 / /space\\040tab\\011line\\012slash\\134 rw - tmpfs tmpfs rw\n'
+        self.assertEqual(p.parse_mountinfo(encoded),[Path('/space tab\tline\nslash\\')])
+        with patch.object(Path,'open',side_effect=OSError('unreadable mountinfo')),self.assertRaises(ValueError): p.mountinfo_points()
 
 if __name__=='__main__':
     if not(os.environ.get('GITHUB_ACTIONS')=='true' and os.environ.get('CI')=='true' and os.uname().sysname=='Linux'):
