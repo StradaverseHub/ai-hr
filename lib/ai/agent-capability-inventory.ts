@@ -323,9 +323,19 @@ export function agentCapabilityCoverage(){
  return Object.freeze(counts);
 }
 
+/** Deterministic entry list from the existing closed inventory, also used by the count view. */
+export function agentBacklogEntries() {
+ const rows: {source:string;entry:string;tier:Exclude<AgentTier,'handoff'>}[]=[];
+ for(const [source,entries] of Object.entries(AGENT_CAPABILITY_INVENTORY))for(const [entry,value] of Object.entries(entries)){
+  const [kind,tier]=value.split(':');
+  if(kind==='backlog')rows.push({source,entry,tier:tier as Exclude<AgentTier,'handoff'>});
+ }
+ return rows.sort((a,b)=>a.source.localeCompare(b.source,'en')||a.entry.localeCompare(b.entry,'en'));
+}
+
 /** Backlog entry points by the highest tier each may ever get, so the coverage view shows which part shrinks. */
 export function agentBacklogByTier(){
  const counts:Record<Exclude<AgentTier,'handoff'>,number>={automatic:0,confirm:0,approve:0};
- for(const entries of Object.values(AGENT_CAPABILITY_INVENTORY))for(const value of Object.values(entries)){const [kind,tier]=value.split(':');if(kind==='backlog')counts[tier as Exclude<AgentTier,'handoff'>]++;}
+ for(const row of agentBacklogEntries())counts[row.tier]++;
  return Object.freeze(counts);
 }

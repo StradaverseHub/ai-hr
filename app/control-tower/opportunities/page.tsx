@@ -1,3 +1,6 @@
+import { isGroupAdmin } from '@/lib/authz-model';
+import { agentBuildList } from '@/core/agent-build-list';
+import { RankedBuildList } from './build-list';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { ASSESSMENT_WINDOWS, MIN_COMPLETED, AGED_OPEN_DAYS, assessProcesses, estimateLoad, parseBoundedInt, parseWindow,
@@ -19,7 +22,7 @@ const ROLE_TONE: Record<AgentRole, string> = {
   off: 'border-border bg-muted text-muted-foreground',
 };
 
-export default async function OpportunitiesPage({ searchParams }: { searchParams: Promise<{ days?: string; minutes?: string; fteHours?: string }> }) {
+export default async function OpportunitiesPage({ searchParams }: { searchParams: Promise<{ days?: string; minutes?: string; fteHours?: string; backlogPage?: string }> }) {
   const s = await requireAdmin();
   const sp = await searchParams;
   const t = await getTranslations('processAssessment');
@@ -29,7 +32,8 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   const window = parseWindow(sp.days);
   const minutes = parseBoundedInt(sp.minutes, 1, 480);
   const fteHours = parseBoundedInt(sp.fteHours, 1, 400);
-  const view = await assessProcesses(s, window);
+  const buildList = isGroupAdmin(s) ? await agentBuildList(s, window) : null;
+  const view = buildList?.assessment ?? await assessProcesses(s, window);
   // ADR-0151 §4.6c, beside the baseline. Counts only, scoped by the same administrator scope.
   const outcomes = await assistantOutcomes(s, window);
   const comparison = new Map(outcomes.processes.map(c => [c.id, c]));
@@ -180,6 +184,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
       </dl>
       <p className="mt-3 max-w-4xl text-xs text-muted-foreground">{o('coverageHelp')}</p>
     </Card>
+    {buildList && await RankedBuildList({view:buildList,page:parseBoundedInt(sp.backlogPage,1,10000)??1})}
     <Card className="p-5">
       <SectionHeader title={t('limitsTitle')} />
       <ul className="mt-2 max-w-4xl list-disc space-y-1 pl-5 text-sm text-muted-foreground">

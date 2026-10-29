@@ -50,6 +50,7 @@ describe('ADR-0084 item 5 — agreement measurement', () => {
     expect(v.proposals).toBe(0);
     // The seeded tenant has no AI provider row and no agent setting, which is production's state too.
     expect(v.blockedBy).toContain('no_provider');
+    expect(v.blockedBy).toContain('scheduled_models_not_admitted');
     expect(v.blockedBy).toContain('no_agent_on');
     expect(v.blockedBy).toContain('nothing_proposed');
     // Causal order: a tenant with no provider also has no proposals, and telling them "nothing proposed"

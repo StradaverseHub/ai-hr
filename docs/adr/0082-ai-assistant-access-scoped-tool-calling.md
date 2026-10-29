@@ -608,3 +608,19 @@ Source rechecked at matching main/alpha `b5758c54c`. Earlier design text is hist
 See [AI threat model](../architecture/ai-threat-model.md) for leakage/injection, provider handling and
 retention limits. No training or fine-tuning on tenant data; every consequential effect still needs a
 person's confirmation through the owning service. No deployment is implied by this amendment.
+
+## October 2026 review amendment — atomic question quota (WP5)
+
+The prepared WP5 change binds the additional Assistant question quota to the existing native human
+question root before network work. Quota metadata survives content retirement without copying raw
+chat. Every provider admission compares remaining monthly capacity with existing actual/held model
+usage under the same tenant control lock. The final exchange and period aggregate reconcile the
+metadata together, including accounting-only completion after erasure or access withdrawal.
+
+New questions use the HR Malaysia day and start-month boundaries. Prior aggregate usage remains in
+its recorded month; it cannot be honestly rebucketed without per-question evidence. Unknown provider
+usage retains its estimate. A reservation grants no tool, field, action or confirmation authority.
+
+This amendment specifies the prepared source behavior. Coordinated migration, populated-upgrade
+rehearsal and installation acceptance remain explicit evidence in the
+[WP5 verification record](../reviews/ai-architecture-wp5-verification-2026-10.md).

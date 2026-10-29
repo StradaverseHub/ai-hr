@@ -44,6 +44,9 @@ vi.mock('../lib/ai',()=>({converse:h.converse}));
 vi.mock('../core/assistant-grant',()=>({assertMayUseAssistant:async()=>undefined}));
 vi.mock('../core/ai-config',()=>({resolveActiveAiConfig:async()=>({provider:'anthropic',model:'fixture-model'})}));
 vi.mock('../core/ai-spend-task',()=>({bindAiSpendTaskTx:async(_tx:unknown,_ctx:unknown,configuration:unknown)=>configuration}));
+// Quota metadata is outside this HR-effect injection fixture; real reservation tests own its writes.
+vi.mock('../core/assistant-question-budget',()=>({AssistantQuestionBudgetError:class extends Error{},
+ assistantQuestionBudgetBinding:()=>({period:'2026-10',reservation:{}}),completeAssistantQuestionBudgetTx:async()=>undefined}));
 vi.mock('../core/module-agent-releases',()=>({prepareAssistantConversationStrategyTx:async(_tx:unknown,_ctx:unknown,configuration:unknown)=>({configuration,system:'fixture-strategy',capability:{}}),
  completeAssistantConversationStrategyTx:async()=>({mode:'baseline'}),retireAssistantConversationStrategyCapability:()=>undefined,withGovernedSpecialistReadBatch:async()=>{throw Error('no specialist reads in this fixture');}}));
 vi.mock('../core/assistant-provider-input',()=>({prepareAssistantConversation:(_ctx:unknown,configuration:unknown,args:unknown)=>({configuration,args})}));

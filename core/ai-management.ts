@@ -2,6 +2,7 @@ import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { aiControlPolicy, aiModelRun, appUser, assistantGrant, company, person, assistantBudget } from '../db/schema';
+import {todayInKualaLumpur} from '../lib/hr-date';
 import { isAdmin, isGroupAdmin } from '../lib/authz-model';
 import { AI_FEATURES, isAiFeature, type AiFeatureId } from '../lib/ai/features';
 import { resolveEntitlementsTx, isModuleEnabled, getSetting } from './entitlements';
@@ -83,7 +84,11 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       const enabled = setting ? (fresh.entitlements.settings[f.setting!] ?? setting.defaultValue) === true : policies.find(p => p.scopeKey === `feature:${f.id}`)?.enabled !== false;
       const effective = enabled && (!setting || getSetting(fresh,f.setting!) === true);
       const moduleHeld = f.module == null || isModuleEnabled(fresh, f.module);
-      const state = !enabled ? 'paused' : !moduleHeld ? 'module' : !effective ? 'restricted' : !selectedProvider && f.id !== 'readiness_reminders' ? 'provider' : 'ready';
+      // A configured provider does not admit scheduled model spend. This is a runtime-status mirror,
+      // never an allowance or a grant to the principal.
+      const state = !enabled ? 'paused' : !moduleHeld ? 'module' : !effective ? 'restricted'
+        : f.kind === 'agent' ? f.id === 'readiness_reminders' ? 'templates' : 'scheduled'
+        : !selectedProvider ? 'provider' : 'ready';
       return {...f,enabled,state,mayWrite:isGroupAdmin(ctx)&&f.kind!=='platform'};
     });
     // ADR-0151 §4.5 — the switch-on each agent specialist runs under, and who made it. An agent that is on
@@ -168,7 +173,7 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       .from(aiModelRun).leftJoin(appUser,eq(aiModelRun.userId,appUser.id)).leftJoin(person,eq(appUser.personId,person.id))
       .where(and(runFilter.state?eq(aiModelRun.state,runFilter.state):undefined,runFilter.feature?eq(aiModelRun.featureId,runFilter.feature):undefined))
       .orderBy(desc(aiModelRun.startedAt),desc(aiModelRun.id)).limit(50) : [];
-    const legacyBudgets = isGroupAdmin(ctx) ? await tx.select({monthly:assistantBudget.monthlyTokenCeiling,daily:assistantBudget.perUserDailyQuestions,effectiveFrom:assistantBudget.effectiveFrom}).from(assistantBudget).where(and(eq(assistantBudget.tenantId,ctx.tenantId),sql`${assistantBudget.archivedAt} is null`,sql`${assistantBudget.effectiveFrom} <= (now() at time zone 'UTC')::date`)).orderBy(desc(assistantBudget.effectiveFrom),desc(assistantBudget.id)).limit(1) : [];
+    const legacyBudgets = isGroupAdmin(ctx) ? await tx.select({monthly:assistantBudget.monthlyTokenCeiling,daily:assistantBudget.perUserDailyQuestions,effectiveFrom:assistantBudget.effectiveFrom}).from(assistantBudget).where(and(eq(assistantBudget.tenantId,ctx.tenantId),sql`${assistantBudget.archivedAt} is null`,sql`${assistantBudget.effectiveFrom} <= ${todayInKualaLumpur()}::date`)).orderBy(desc(assistantBudget.effectiveFrom),desc(assistantBudget.id)).limit(1) : [];
     // Company administrators see only their own companies' aggregates here: no login identities.
     const attention = {
       companies: companies.filter(pressing),

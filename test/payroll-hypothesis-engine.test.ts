@@ -312,6 +312,7 @@ describe('candidate selection is deterministic and needs no model', () => {
     const run = await proposeHypotheses(a, { batchId });
     expect(run.candidates, 'exactly the one who did not move').toBe(1);
     expect(run.notConfigured).toBe(true);
+    expect(run.modelBlockReason).toBe('no_provider');
     expect(run.raised).toBe(0);
     // ⚠️ A TENANT WITH NO PROVIDER PROPOSED NOTHING, so nothing is recorded. Counting this as a model
     // failure would drag the adjudication-pass rate down while measuring the absence of a subscription.

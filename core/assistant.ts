@@ -11,7 +11,7 @@
  *
  * THE FIVE THINGS THAT ARE EASY TO GET WRONG HERE, EACH LEARNED FROM THE ADR OR FROM r223:
  *
- *  1. THE BUDGET IS CHECKED BEFORE SPENDING AND AGAIN BETWEEN TURNS. A per-call timeout does not bound a
+ *  1. THE BUDGET IS RESERVED BEFORE SPENDING AND AT EVERY PROVIDER ADMISSION. A per-call timeout does not bound a
  *     loop and neither does a single up-front check: eight turns of a runaway question would overshoot a
  *     monthly ceiling by the size of its own loop. §2.6.
  *  2. EVERY TOOL CALL RETURNS A RESULT. A dropped result is not a smaller answer, it is a malformed
@@ -41,14 +41,15 @@ import { parseAssistantAnswerPlan, adjudicateAssistantAnswerPlan, type Assistant
 import { assistantToolAnswerExplanations } from '../lib/ai/assistant-tool-answer-evidence';
 import { assistantAnswerExplanationAvailability } from '../lib/ai/assistant-answer-explanations';
 import { isGroundedToolName, presentGroundedToolOutcome } from '../lib/ai/grounded-tool-presentation';
-import { and, count, eq, gte, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { captureAgentReadBatch, serializeAgentReadResult } from '../lib/ai/agent-read-batch';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { assistantBudget, assistantExchange, assistantUsage } from '../db/schema';
+import { assistantExchange, assistantUsage } from '../db/schema';
 import { converse } from '../lib/ai';
 import { AiAllowanceError, type AiStop, type AiToolCall, type AiToolResult, type AiTurn, type AiUsage } from '../lib/ai/types';
 import { resolveActiveAiConfig } from './ai-config';
 import {bindAiSpendTaskTx} from './ai-spend-task';
+import {assistantQuestionBudgetBinding,AssistantQuestionBudgetError,completeAssistantQuestionBudgetTx,type AssistantQuestionBudget} from './assistant-question-budget';
 import { assertMayUseAssistant } from './assistant-grant';
 import { withAssistantRead,type AssistantReadSession } from './assistant-read-session';
 import {withGovernedSpecialistReadBatch} from './module-agent-releases';
@@ -129,10 +130,6 @@ const CACHE_KEY = 'assistant-v2';
 /** Every registered name — consulted ONLY to label an audit refusal, never to resolve a call. */
 const ASSISTANT_TOOL_NAMES: ReadonlySet<string> = new Set(ASSISTANT_TOOLS.map((t) => t.spec.name));
 
-/** 'YYYY-MM' for the usage period, from a Date the CALLER supplies — never `new Date()` inside a
- *  function the tests need to pin. */
-const periodOf = (now: Date) => now.toISOString().slice(0, 7);
-
 /**
  * How much a tool returned, for the audit row. The first array-valued property is the payload on every
  * tool in the registry (`{ ok: true, balances: [...] }`), so its length is the honest count; a scalar
@@ -144,47 +141,11 @@ function rowCountOf(outcome: ToolOutcome): number | null {
   return null;
 }
 
-/** The live budget for the tenant, or null when none is configured. */
-async function activeBudget(tx: Tx, ctx: SessionContext, today: string) {
-  const [row] = await tx
-    .select({
-      monthlyTokenCeiling: assistantBudget.monthlyTokenCeiling,
-      perUserDailyQuestions: assistantBudget.perUserDailyQuestions,
-    })
-    .from(assistantBudget)
-    .where(
-      and(
-        eq(assistantBudget.tenantId, ctx.tenantId),
-        sql`${assistantBudget.archivedAt} IS NULL`,
-        sql`${assistantBudget.effectiveFrom} <= ${today}`,
-      ),
-    )
-    .orderBy(sql`${assistantBudget.effectiveFrom} DESC`)
-    .limit(1);
-  return row ?? null;
-}
-
-/** Tokens already spent this period. Cached reads count: they are cheaper, not free. */
-async function spentThisPeriod(tx: Tx, ctx: SessionContext, period: string): Promise<number> {
-  const [row] = await tx
-    .select({
-      input: assistantUsage.inputTokens,
-      output: assistantUsage.outputTokens,
-      cached: assistantUsage.cachedInputTokens,
-    })
-    .from(assistantUsage)
-    .where(and(eq(assistantUsage.tenantId, ctx.tenantId), eq(assistantUsage.period, period)))
-    .limit(1);
-  return row ? Number(row.input) + Number(row.output) + Number(row.cached) : 0;
-}
-
-const tokensIn = (u: AiUsage) => u.inputTokens + u.outputTokens + u.cachedInputTokens;
-
 /**
  * Ask the assistant one question and return its recorded exchange metadata.
  *
- * `now` is injected rather than read from the clock so the daily cap and the usage period are testable
- * without freezing time globally — the same reason core/payroll takes its dates.
+ * `now` controls the bounded exchange deadline. Quota days and periods come from the database's
+ * Malaysia business clock at the native question reservation, never from caller-supplied dates.
  */
 export async function askAssistant(
   ctx: SessionContext,
@@ -216,48 +177,28 @@ export async function askAssistant(
   const question = humanQuestion;
 
   const now = p.now ?? new Date();
-  const period = periodOf(now);
-  const today = now.toISOString().slice(0, 10);
   const deadline = now.getTime() + EXCHANGE_DEADLINE_MS;
 
-  const { cfg, budget, spentBefore, conversationStrategy } = await withTenant(ctx, async (tx) => {
-    const budget = await activeBudget(tx, ctx, today);
-
-    // §2.6 — REFUSE BEFORE SPENDING, NOT AFTER. Both caps are checked here, in this order: the daily cap
-    // is per user and cheap to count, the monthly ceiling is per tenant.
-    if (budget) {
-      const [asked] = await tx
-        .select({ n: count() })
-        .from(assistantExchange)
-        .where(
-          and(
-            eq(assistantExchange.tenantId, ctx.tenantId),
-            eq(assistantExchange.appUserId, appUserId),
-            gte(assistantExchange.askedAt, new Date(`${today}T00:00:00.000Z`)),
-          ),
-        );
-      if (Number(asked?.n ?? 0) >= budget.perUserDailyQuestions) throw new AssistantError('budget_daily');
-      if ((await spentThisPeriod(tx, ctx, period)) >= Number(budget.monthlyTokenCeiling)) {
-        throw new AssistantError('budget_monthly');
-      }
-    }
-
+  const { cfg, period, reservation, conversationStrategy } = await withTenant(ctx, async (tx) => {
     const cfg = await resolveActiveAiConfig(tx, ctx, 'hr_assistant');
     if (!cfg) throw new AssistantError('not_configured');
     // Persist a new human-question intent BEFORE provider work. Its root is held in the issued
     // configuration through every converse/tool step; no late completed exchange ID or prompt hash.
     const rooted=await bindAiSpendTaskTx(tx,ctx,cfg,{kind:'assistant_question'});
+    const budget=assistantQuestionBudgetBinding(ctx,rooted);
     // A continuation's original question is transient provider context read in its own earlier
     // transaction. The strategy owner rechecks that own source exchange in this marker transaction and
     // before every provider round trip, so history erased or retired since that read never reaches one.
     const conversationStrategy=await prepareAssistantConversationStrategyTx(tx,ctx,rooted,question,
       clarification?carrier=>assertOwnAssistantClarificationCurrentTx(carrier,ctx,clarification):undefined);
-    return { cfg:conversationStrategy.configuration, conversationStrategy, budget, spentBefore: budget ? await spentThisPeriod(tx, ctx, period) : 0 };
+    return { cfg:conversationStrategy.configuration, conversationStrategy, ...budget };
+  }).catch(error=>{
+    if(error instanceof AssistantQuestionBudgetError)throw new AssistantError(error.budgetCode);
+    throw error;
   });
 
   // Token, request, concurrency and time controls remain mandatory at provider admission.
   // Any configured USD cap additionally requires verified monetary allocation; no cap promises no USD ceiling.
-  const ceiling = budget ? Number(budget.monthlyTokenCeiling) : null;
 
   // ONE list, computed once: what the model is offered and what dispatch may run are the same array, so
   // a tool outside the tenant's modules cannot be reached by the model simply naming it.
@@ -286,8 +227,7 @@ export async function askAssistant(
 
   try {
     for (let i = 0; i < MAX_TURNS; i++) {
-      // Re-checked BETWEEN turns, which is the half a single up-front check misses.
-      if (ceiling != null && spentBefore + tokensIn(spend) >= ceiling) throw new AssistantError('budget_monthly');
+      // The quota admission callback rechecks actual + held token exposure atomically at every turn.
       if (Date.now() >= deadline) {
         stop = 'other';
         failure = 'deadline';
@@ -362,23 +302,28 @@ export async function askAssistant(
       if (i === MAX_TURNS - 1) hitTurnCap = true;
     }
   } catch (e) {
+    if (e instanceof AssistantQuestionBudgetError) {
+      await persist(ctx, { reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error:e.budgetCode });
+      throw new AssistantError(e.budgetCode);
+    }
     if (e instanceof AiAllowanceError) {
-      await persist(ctx, { strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: 'ai_control' });
+      await persist(ctx, { reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: 'ai_control' });
       throw new AssistantError('ai_control');
     }
     if (e instanceof AssistantError) {
       // A budget refusal mid-loop still records what was spent getting there.
       failure = e.code;
-      await persist(ctx, { strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: e.code });
+      await persist(ctx, { reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: e.code });
       throw e;
     }
     failure = 'provider_error';
-    await persist(ctx, { strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: failure });
+    await persist(ctx, { reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: failure });
     throw new AssistantError('provider_error');
   }
 
   // From here the question is ADMITTED: it counts against the allowance exactly once whatever happens.
   const recorded = await persist(ctx, {
+    reservation,
     strategy:conversationStrategy.capability,
     continuesExchangeId,
     appUserId,
@@ -437,6 +382,7 @@ async function runTools(
 }
 
 type PersistInput = {
+  reservation:AssistantQuestionBudget;
   strategy:AssistantConversationStrategyCapability;
   appUserId: string;
   question: string;
@@ -521,6 +467,7 @@ async function persistWithContent(ctx: SessionContext, id: string, p: PersistInp
       .returning({ id: assistantExchange.id });
     await completeAssistantConversationStrategyTx(tx,ctx,p.strategy,row!.id);
     await addUsageTx(tx, ctx, p);
+    await completeAssistantQuestionBudgetTx(tx,ctx,p.reservation,id);
   });
 }
 
@@ -554,6 +501,7 @@ async function persistAccountingOnly(ctx: SessionContext, id: string, p: Persist
       .returning({ id: assistantExchange.id });
     if (!row) return false;
     await addUsageTx(tx, ctx, p);
+    await completeAssistantQuestionBudgetTx(tx,ctx,p.reservation,id);
     return true;
   });
 }

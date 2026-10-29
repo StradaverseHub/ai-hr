@@ -116,6 +116,7 @@ describe('which claims are looked at at all', () => {
     const run = await triagePendingClaims(a);
     expect(run.candidates).toBe(1);
     expect(run.notConfigured).toBe(true);
+    expect(run.modelBlockReason).toBe('no_provider');
     expect(run.asked).toBe(0);
     // ⚠️ A TENANT WITH NO PROVIDER PROPOSED NOTHING. Recording a row here would put the absence of a
     // subscription into the adjudication-pass rate, which measures the model.
