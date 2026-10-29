@@ -45,11 +45,20 @@ export type ParityDeclaration=
  | Readonly<{kind:'pending';reason:string}>;
 
 const D='deny',A='allow';
-/** Decision on another person's pending request: the native assertCanDecide family (self-ban, admin role,
- * current administrative manager), under RLS. Observed on CI (run 40919722456): the manager's active
- * whole-scope delegate is REFUSED by the native claim, attendance and replacement-leave services, because the
- * request row is not visible to them under RLS ("not found"); test/approval-history.test.ts already records
- * that delegation is non-functional for those modules today. The agent matches the screen. */
+/** Decision on another person's pending request (approved, no attendance workflow): the native assertCanDecide
+ * family (self-ban, admin role, current administrative manager), under RLS.
+ * The manager's active whole-scope delegate is REFUSED by every native decision service here, for different
+ * reasons per module (observed on CI, run 40919722456; the agent refuses identically). The owner has decided
+ * delegates SHOULD be able to decide these; a separate product fix package owns that. Recorded, not fixed:
+ *   - claims: claim_request_rls has no delegation branch (db/migrations/0515 :403-404), so the claim is
+ *     invisible to the delegate ("Claim not found"). A real gap.
+ *   - replacement leave (TOIL): the delegate passes the request read and assertCanDecide, then approval fails
+ *     with ToilNotEligibleError "No employment on record" because the subject's employment row is hidden from
+ *     the delegate (core/toil.ts ~1458). The rejected-decision probe below records whether rejection differs.
+ *   - attendance: the delegate policies (0533 :181, 0570 :641, 0592 :386-398) admit only workflow-routed
+ *     requests (routing version 1/2 with a direct_manager stage). With no workflow configured the request is
+ *     invisible ("correction request not found"). The routed-workflow probe below records the delegate
+ *     under a one-level direct-manager workflow. */
 const ASSIGNED_DECISION={employee:D,manager:A,assigned_approver:D,company_hr:A,group_hr:A,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
 /** HR screen behind requireAdmin (isAdmin) whose service writes an administered employment under RLS. */
 const HR_ON_EMPLOYMENT={employee:D,manager:D,assigned_approver:D,company_hr:A,group_hr:A,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
@@ -77,12 +86,14 @@ export const AGENT_ACTION_PARITY={
  'attendance.overtime.request':{kind:'probed',screen:OWN_REQUEST},
  'claims.draft.save':pending(NO_ADAPTER+' Module-action store.'),
  'claims.submit':pending(NO_ADAPTER+' Module-action store.'),
- /** Observed on CI (run 40921791116): the native cancelClaim lets an administrator of the claimant's company
-  * cancel the claim ("Only the claimant or an admin can cancel this claim"); the Assistant action is the
-  * claimant's own cancellation only, so it is deliberately narrower for HR. */
+ /** Observed on CI (run 40921791116): there is NO native HR screen for cancelling another person's claim —
+  * /claims lists only the caller's own claims. HR "allow" exists only because cancelClaimAction accepts any
+  * claim id when no employmentId is posted (app/claims/actions.ts :129-136) and cancelClaimTx then admits any
+  * hr_admin/super_admin by role (core/claims.ts :2684-2695). Whether that unposted path should exist is a
+  * product question. The Assistant's claims.cancel is the claimant's own action, so it is narrower. */
  'claims.cancel':{kind:'probed',screen:{...OWN_REQUEST,company_hr:A,group_hr:A},narrowed:{
-  company_hr:'claims.cancel is the claimant\'s own Assistant action (subject own_employment); HR cancels another person\'s claim on the native claims screen only.',
-  group_hr:'claims.cancel is the claimant\'s own Assistant action (subject own_employment); HR cancels another person\'s claim on the native claims screen only.'}},
+  company_hr:'No native HR claim-cancel screen exists; HR is admitted only via cancelClaimAction with no employmentId posted (product question). The Assistant action is the claimant\'s own.',
+  group_hr:'No native HR claim-cancel screen exists; HR is admitted only via cancelClaimAction with no employmentId posted (product question). The Assistant action is the claimant\'s own.'}},
  'performance.review.acknowledge':pending(NO_ADAPTER+' Module-action store; needs a released review fixture.'),
  'performance.onehr.plan.acknowledge':pending(NO_ADAPTER+' Module-action store; needs a OneHR plan fixture.'),
  'rewards.post':pending(NO_ADAPTER+' Dedicated store; needs an approved reward unit and open batch.'),
@@ -98,6 +109,15 @@ export const AGENT_ACTION_PARITY={
  'toil.credit.grant':{kind:'probed',screen:HR_ON_EMPLOYMENT},
 } as const satisfies Record<AgentActionId,ParityDeclaration>;
 
+/** FROZEN: the 23 entries that were pending when the harness landed (WP8, 29 Oct 2026). Never edit this list;
+ * PARITY_PENDING_CEILING must stay a subset of it, so a pending entry can be removed but never swapped. */
+export const PARITY_PENDING_ORIGINAL:readonly string[]=Object.freeze([
+ 'org.reporting.change','leave.apply','leave.cancel','leave.edit','ess.profile.request','approvals.leave.decide',
+ 'knowledge_base.article.create','payroll.close','attendance.correction.request','attendance.overtime.request',
+ 'claims.draft.save','claims.submit','claims.cancel','performance.review.acknowledge','performance.onehr.plan.acknowledge',
+ 'rewards.post','lifecycle.acknowledgement.submit','toil.replacement.request','multi_cycle_payroll.create_run',
+ 'typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save',
+]);
 /** The entries that existed before this harness and had no adapter when it landed. This list may only
  * shrink: an entry leaves it when its adapter lands, and no other id may ever be `pending`. */
 export const PARITY_PENDING_CEILING:ReadonlySet<string>=new Set([
@@ -111,8 +131,10 @@ export const PARITY_PENDING_CEILING:ReadonlySet<string>=new Set([
 export type ParityRegistryEntry={id:string;store:string};
 /** Every way the declarations can fail to cover the registry. Pure, so the guard test can feed it a
  * registry with an extra entry and prove the refusal. Empty array = covered. */
-export function parityCoverageProblems(registry:readonly ParityRegistryEntry[],declarations:Readonly<Record<string,ParityDeclaration>>,ceiling:ReadonlySet<string>=PARITY_PENDING_CEILING):string[]{
+export function parityCoverageProblems(registry:readonly ParityRegistryEntry[],declarations:Readonly<Record<string,ParityDeclaration>>,ceiling:ReadonlySet<string>=PARITY_PENDING_CEILING,original:readonly string[]=PARITY_PENDING_ORIGINAL):string[]{
  const problems:string[]=[],ids=new Set(registry.map(entry=>entry.id));
+ for(const id of ceiling)if(!original.includes(id))problems.push(`${id}: not in the frozen PARITY_PENDING_ORIGINAL; the pending ceiling can only lose entries, never gain or swap them`);
+ if(ceiling.size>original.length)problems.push(`pending ceiling has ${ceiling.size} entries, more than the frozen ${original.length}`);
  for(const id of Object.keys(declarations))if(!ids.has(id))problems.push(`${id}: declared but not in the registry`);
  for(const id of ceiling)if(declarations[id]&&declarations[id].kind!=='pending')problems.push(`${id}: has a probed declaration, so remove it from PARITY_PENDING_CEILING (the list only shrinks)`);
  for(const entry of registry){

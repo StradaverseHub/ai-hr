@@ -3,7 +3,7 @@
  * test/agent-action-permission-parity.test.ts. */
 import {describe,expect,it} from 'vitest';
 import {AGENT_ACTIONS} from '../lib/ai/agent-action-registry';
-import {AGENT_ACTION_PARITY,PARITY_PENDING_CEILING,PARITY_ROLES,PROBED_ACTION_IDS,parityCoverageProblems,type ParityDeclaration} from './helpers/agent-action-parity-matrix';
+import {AGENT_ACTION_PARITY,PARITY_PENDING_CEILING,PARITY_PENDING_ORIGINAL,PARITY_ROLES,PROBED_ACTION_IDS,parityCoverageProblems,type ParityDeclaration} from './helpers/agent-action-parity-matrix';
 
 const registry=AGENT_ACTIONS.map(action=>({id:action.id,store:action.store}));
 const declarations:Readonly<Record<string,ParityDeclaration>>=AGENT_ACTION_PARITY;
@@ -15,7 +15,7 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
   expect(Object.keys(AGENT_ACTION_PARITY).sort()).toEqual(registry.map(entry=>entry.id).sort());
  });
 
- it('names the nine review roles, with both performance partner roles',()=>{
+ it('names the ten matrix roles (the nine review roles, with performance partners split in two), with both performance partner roles',()=>{
   expect([...PARITY_ROLES]).toEqual(['employee','manager','assigned_approver','company_hr','group_hr','payroll_partner','performance_comp_partner','performance_partner','another_company','another_tenant']);
  });
 
@@ -51,6 +51,22 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
   expect(check({kind:'probed',screen,narrowed:{employee:'agent refuses'}})).toEqual(['fictional.new_action: no role is allowed by both the screen and the agent, so the matrix proves nothing']);
   expect(check({kind:'probed',screen:{...screen,employee:'deny'}})).toEqual(['fictional.new_action: no role is allowed by both the screen and the agent, so the matrix proves nothing']);
   expect(check({kind:'human_workflow_only',reason:'hand-off'})).toEqual(['fictional.new_action: human_workflow_only declaration must match the registry store (generic_own)']);
+ });
+
+ it('pins the frozen original pending set, and the ceiling is a subset no larger than it',()=>{
+  expect(PARITY_PENDING_ORIGINAL).toHaveLength(23);
+  expect(new Set(PARITY_PENDING_ORIGINAL).size).toBe(23);
+  for(const id of PARITY_PENDING_CEILING)expect(PARITY_PENDING_ORIGINAL,id).toContain(id);
+  expect(PARITY_PENDING_CEILING.size).toBeLessThanOrEqual(PARITY_PENDING_ORIGINAL.length);
+  for(const id of PARITY_PENDING_ORIGINAL)expect(registry.map(entry=>entry.id),id).toContain(id);
+ });
+
+ it('refuses swapping an entry onto the ceiling, even when it predates the harness',()=>{
+  const swapped=new Set([...PARITY_PENDING_CEILING].filter(id=>id!=='leave.apply'));swapped.add('approvals.claim.decide');
+  const problems=parityCoverageProblems(registry,{...declarations,'leave.apply':probed,'approvals.claim.decide':{kind:'pending',reason:'swap'}},swapped);
+  expect(problems).toContain('approvals.claim.decide: not in the frozen PARITY_PENDING_ORIGINAL; the pending ceiling can only lose entries, never gain or swap them');
+  const grown=new Set([...PARITY_PENDING_ORIGINAL,'fictional.extra']);
+  expect(parityCoverageProblems(registry,declarations,grown,PARITY_PENDING_ORIGINAL)).toEqual(expect.arrayContaining(['pending ceiling has 24 entries, more than the frozen 23']));
  });
 
  it('keeps the pending list a shrinking ratchet of pre-existing entries',()=>{
