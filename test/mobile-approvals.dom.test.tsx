@@ -270,7 +270,12 @@ describe('approval detail', () => {
  * a template ("{days} days") and a value that already carries its unit ("5 days"), which a key-echoing `t` cannot see.
  */
 function realCopy(language: 'en' | 'ms') {
-  const i18n = load('mobile/lib/i18n.ts', { 'expo-localization': { getLocales: () => [{ languageCode: language }] } });
+  const i18n = load('mobile/lib/i18n.ts', {
+    'expo-localization': { getLocales: () => [{ languageCode: language }] },
+    // No language chosen in Settings: the phone's language decides, as before. The four other catalogues are not read here.
+    './preferences': { APP_LOCALES: ['en', 'ms', 'zh', 'ta', 'th', 'vi'], displayPrefs: () => ({ appearance: 'auto', language: 'auto' }) },
+    './locales/zh': { default: {} }, './locales/ta': { default: {} }, './locales/th': { default: {} }, './locales/vi': { default: {} },
+  });
   const t = i18n.t as (k: string, v?: Record<string, unknown>) => string;
   const fmtDays = (n: number | null) => (n == null ? '—' : t(n === 1 ? 'day' : 'days', { n: String(Math.round(n * 100) / 100) }));
   return { t, fmtDays };
