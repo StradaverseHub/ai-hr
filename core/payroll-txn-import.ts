@@ -907,7 +907,7 @@ async function analyzeIndividual(
         b.companyId === r.companyId &&
         b.payPeriod === r.payPeriod &&
         b.runType === r.targetCycle &&
-        (!r.intendedCycleId || b.payrollCycleId === r.intendedCycleId) &&
+        (!r.intendedCycleId || b.payrollCycleId === r.intendedCycleId || b.payrollCycleId == null && cycles.filter(c=>c.companyId===r.companyId&&c.runType===r.targetCycle).length===1) &&
         (b.status === 'draft' || b.status === 'processed') &&
         // Read defensively, exactly as app/payroll/transactions/individual/page.tsx does: `listBatches`
         // does not project `scope` today, so this reads undefined and every run is treated as
@@ -919,6 +919,7 @@ async function analyzeIndividual(
     );
     if(r.method&&targets.length>1){rows.push(fail(s.base,'runAmbiguous'));continue;}
     const target=targets[0];
+    if(r.method&&!target&&allBatches.some(b=>b.companyId===r.companyId&&b.payPeriod===r.payPeriod&&b.runType===r.targetCycle&&(!b.payrollCycleId||b.payrollCycleId===r.intendedCycleId)&&b.status==='closed')){rows.push(fail(s.base,'runNotWritable'));continue;}
     // A NAMED CYCLE WITH NO RUN IS A REFUSAL, NOT A FALLBACK. Falling back to period-keyed would rebuild
     // the exact defect this item is about: a row that names no cycle is collected by the month's REGULAR
     // run at attach-on-generate (core/payroll.ts), so a row saying "bonus" would be paid by the salary run
