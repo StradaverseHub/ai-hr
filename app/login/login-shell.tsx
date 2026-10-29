@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { Pause, Play } from 'lucide-react';
 import type { LoginPresentation } from '@/lib/login-presentation';
+import { LoginTour } from './login-tour';
 
 export function LoginShell({ children, presentation }: { children: ReactNode; presentation?: LoginPresentation }) {
   const t = useTranslations('loginPresentation');
@@ -40,9 +41,7 @@ export function LoginShell({ children, presentation }: { children: ReactNode; pr
             <img referrerPolicy="no-referrer" src={presentation.mediaUrl} alt={presentation.alt || t('mediaAlt')} onError={() => setMediaFailed(true)}/>
             {presentation.mediaType === 'gif' && <button type="button" className="login-media-toggle" onClick={() => setShowAnimation(false)}><Pause size={16}/>{t('pauseMedia')}</button>}
           </>}
-        </div> : <div className="login-welcome-topics" aria-label={t('topicsLabel')}>
-          <span>{t('people')}</span><span>{t('work')}</span><span>{t('growth')}</span>
-        </div>}
+        </div> : <LoginTour/>}
       </div>
       <p className="login-welcome-foot">{t('footer')}</p>
     </aside>
