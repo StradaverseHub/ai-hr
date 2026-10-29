@@ -27,7 +27,7 @@ import { resolveDocumentUpload } from '../../../core/employee-documents';
 
 type Row = { id: string; revision: number; company_id: string; data: M.Case; native?: true };
 export type DirectoryUser = { id: string; name: string };
-export type Options = { users: DirectoryUser[]; companies: { id: string; name: string; registrationNo?: string; address?: string }[]; employees: { id: string; name: string; employeeNo: string; companyId: string }[]; signatoryCandidates?: Record<string,string[]>; labels?: Partial<Record<M.RuleField, Record<string, string>>>; leaveTypes?: { id: string; name: string }[] };
+export type Options = { users: DirectoryUser[]; companies: { id: string; name: string; registrationNo?: string; address?: string }[]; employees: { id: string; name: string; employeeNo: string; companyId: string }[]; signatoryCandidates?: Record<string,string[]>; signatoryCandidatesByModule?:Record<M.Module,Record<string,string[]>>; labels?: Partial<Record<M.RuleField, Record<string, string>>>; leaveTypes?: { id: string; name: string }[] };
 export type Workspace = { permissions?:{onboarding:boolean;offboarding:boolean;administration:boolean}; config: M.Config | null; cases: M.Case[]; options: Options; canConfigure: boolean; actor: M.Actor; personnelWritableKeys: string[]; templateUsage?: M.TemplateUsage[]; definitionUsage?: M.DefinitionUsage[] };
 export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'state' | 'facts' | 'tasks' | 'items' | 'documents'> & { own: boolean; equipment?: { id: string; name: string; kind: 'device'|'system'; state: string; approval: string; handedAt: string|null; receipt: {status:'received'|'problem';at:string;by:string;note:string}|null }[] };
 export type PendingReturns = { held:{id:string;name:string;kind:'system'|'device';group:string|null;source:'asset'|'onboarding';catalogueId?:string;requestNumber?:string}[]; catalogue:{id:string;name:string;kind:'system'|'device';group:string;active:boolean}[]; selected:string[] };
@@ -38,8 +38,8 @@ async function admin(tx: Tx, companyId?: string): Promise<void> {
   const [result] = await tx.execute<{ ok: boolean }>(companyId ? sql`select app.is_admin_for(${companyId}::uuid) as ok` : sql`select app.is_group_admin() as ok`);
   if (!result?.ok) throw new M.V9Error('You do not have permission to change this lifecycle record.', 'forbidden');
 }
-async function companySignersTx(tx:Tx,tenantId:string,companyId:string):Promise<string[]> {
-  const users=await tx.execute<{id:string}>(sql`select u.id from app_user u where u.tenant_id=${tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and exists(select 1 from lc_onboarding_config cfg where cfg.tenant_id=u.tenant_id and cfg.data->'access'->'offboarding' ? u.id::text) and exists(select 1 from role_assignment r where r.tenant_id=u.tenant_id and r.app_user_id=u.id and r.role in ('super_admin','hr_admin') and (r.company_id is null or r.company_id=${companyId}::uuid)) order by u.id`);
+async function companySignersTx(tx:Tx,tenantId:string,companyId:string,module?:M.Module):Promise<string[]> {
+  const users=await tx.execute<{id:string}>(sql`select u.id from app_user u where u.tenant_id=${tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and exists(select 1 from lc_onboarding_config cfg where cfg.tenant_id=u.tenant_id and ((${module??null}::text is null and (cfg.data->'access'->'offboarding' ? u.id::text or cfg.data->'access'->'onboarding' ? u.id::text)) or (${module??null}::text='off' and cfg.data->'access'->'offboarding' ? u.id::text) or (${module??null}::text='onb' and cfg.data->'access'->'onboarding' ? u.id::text))) and exists(select 1 from role_assignment r where r.tenant_id=u.tenant_id and r.app_user_id=u.id and r.role in ('super_admin','hr_admin') and (r.company_id is null or r.company_id=${companyId}::uuid)) order by u.id`);
   return users.map(user=>user.id);
 }
 async function actor(tx: Tx, ctx: SessionContext): Promise<M.Actor> {
@@ -143,6 +143,25 @@ export async function v9PreviewEmail(ctx: SessionContext, caseId: string, emailI
   });
 }
 
+export type UpdatedEmailPreview={sourceRevision:string;subject:string;body:string;to:string[];cc:string[];documents:{name:string;version:number}[];files:string[]};
+function updatedEmailRevision(c:M.Case,config:M.Config,env:M.Environment,plan:ReturnType<typeof M.updatedDeliveryPlan>):string {
+  const documentRef=(id:string)=>{const document=plan.case.documents.find(candidate=>candidate.id===id);return document?{templateId:document.templateId,version:document.version}:null;};
+  return createHash('sha256').update(JSON.stringify({caseId:c.id,revision:c.revision,configRevision:config.revision,source:env.mergeValues,contact:env.onboardingContact??null,mail:{templateId:plan.mail.templateId,to:plan.mail.to,cc:plan.mail.cc,subject:plan.mail.subject,body:plan.mail.body,documents:plan.mail.documentIds.map(documentRef),files:plan.mail.fileIds,delivery:{...plan.mail.delivery,linkDocumentIds:plan.mail.delivery?.linkDocumentIds.map(documentRef),pdfDocumentIds:plan.mail.delivery?.pdfDocumentIds.map(documentRef)}}})).digest('hex');
+}
+async function updatedEmailAllowed(tx:Tx,id:string,mailId:string):Promise<void> {
+  const [result]=await tx.execute<{ok:boolean}>(sql`select app.lc_v9_email_replaceable(${id}::uuid,${mailId}) as ok`);
+  if(!result?.ok)throw new M.V9Error('This delivery receipt does not allow an updated copy. Review the recorded outcome.','conflict');
+}
+export async function v9PreviewUpdatedEmail(ctx:SessionContext,id:string,mailId:string):Promise<UpdatedEmailPreview> {
+  mailId=commandId.parse(mailId);
+  return withLifecycleTenant(ctx,async tx=>{
+    const row=await load(tx,ctx,id),config=await configTx(tx,ctx);if(!config)throw new M.V9Error('V9 configuration is unavailable.');
+    await updatedEmailAllowed(tx,id,mailId);const env=await environment(tx,ctx,row.data,config);let sequence=0;
+    const plan=M.updatedDeliveryPlan(row.data,config,mailId,{...env,nextId:()=>`preview-${++sequence}`});
+    return {sourceRevision:updatedEmailRevision(row.data,config,env,plan),subject:plan.mail.subject,body:plan.mail.body,to:plan.mail.delivery!.toNames,cc:plan.mail.delivery!.ccNames,documents:plan.mail.documentIds.map(id=>plan.case.documents.find(document=>document.id===id)!).map(document=>({name:document.name,version:document.version})),files:[...plan.mail.fileIds.map(id=>plan.case.files.find(file=>file.id===id)!.name),...(plan.mail.delivery?.assets??[]).map(asset=>asset.name)]};
+  });
+}
+
 export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {
   return withLifecycleTenant(ctx, async tx => {
     const who = await actor(tx, ctx); let config = await configTx(tx, ctx);
@@ -152,6 +171,7 @@ export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {
     if (!permission?.ok && !permission?.offboarding && !permission?.onboarding) throw new M.V9Error('Onboarding or Offboarding module access is required. Open your assigned lifecycle tasks instead.', 'forbidden');
     const users = await tx.execute<DirectoryUser>(sql`select u.id,coalesce(p.full_name,'User') as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) order by name,u.id`);
     const signatoryCandidates=Object.fromEntries(await Promise.all(companies.map(async company=>[company.id,await companySignersTx(tx,ctx.tenantId,company.id)] as const)));
+    const signatoryCandidatesByModule={onb:Object.fromEntries(await Promise.all(companies.map(async company=>[company.id,await companySignersTx(tx,ctx.tenantId,company.id,'onb')] as const))),off:Object.fromEntries(await Promise.all(companies.map(async company=>[company.id,await companySignersTx(tx,ctx.tenantId,company.id,'off')] as const)))};
     const employees = await tx.execute<{ id: string; name: string; employeeNo: string; companyId: string }>(sql`select e.id,p.full_name as name,e.employee_code as "employeeNo",e.company_id as "companyId" from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(e.company_id) order by p.full_name,e.id`);
     const rows = config ? await tx.execute<{ data: M.Case }>(sql`select data from lc_v9_case where tenant_id=${ctx.tenantId}::uuid order by created_at desc,id desc`) : [];
     const masters = await tx.execute<{ kind: M.RuleField; id: string; name: string }>(sql`select 'businessGroup' as kind,id,name from business_unit where tenant_id=${ctx.tenantId}::uuid union all select 'department',id,name from department where tenant_id=${ctx.tenantId}::uuid union all select 'grade',id,name from job_grade where tenant_id=${ctx.tenantId}::uuid union all select 'title',id,title from position where tenant_id=${ctx.tenantId}::uuid`);
@@ -160,7 +180,7 @@ export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {
     const leaveTypes = await tx.execute<{ id: string; name: string }>(sql`select id,name from leave_type where tenant_id=${ctx.tenantId}::uuid and archived_at is null order by name,id`);
     const usage = config && permission?.ok ? await tx.execute<M.TemplateUsage>(sql`select template_id as "templateId",version,documents from app.lc_v9_document_usage()`) : [];
     const definitionUsage = config && permission?.ok ? await tx.execute<M.DefinitionUsage>(sql`select kind,definition_id as "definitionId",messages,runs from app.lc_v9_definition_usage()`) : [];
-    return { permissions:{onboarding:!!permission?.onboarding,offboarding:!!permission?.offboarding,administration:!!permission?.ok||!!permission?.administration}, definitionUsage: [...definitionUsage], templateUsage: [...usage], config, cases: rows.map(r => r.data), options: { signatoryCandidates, companies: [...companies], users: [...users], employees: [...employees], labels, leaveTypes: [...leaveTypes] }, canConfigure: !!permission?.ok, actor: who, personnelWritableKeys: v9PersonnelWritableKeys };
+    return { permissions:{onboarding:!!permission?.onboarding,offboarding:!!permission?.offboarding,administration:!!permission?.ok||!!permission?.administration}, definitionUsage: [...definitionUsage], templateUsage: [...usage], config, cases: rows.map(r => r.data), options: { signatoryCandidates, signatoryCandidatesByModule, companies: [...companies], users: [...users], employees: [...employees], labels, leaveTypes: [...leaveTypes] }, canConfigure: !!permission?.ok, actor: who, personnelWritableKeys: v9PersonnelWritableKeys };
   });
 }
 export async function v9Setup(ctx: SessionContext): Promise<void> {
@@ -304,6 +324,7 @@ export type Command = CaseNoteCommand
   | { type: 'settlementOptions'; options: NonNullable<M.Case['settlementOptions']>; reason: string }
   | { type: 'cancel' | 'reopen'; reason: string }
   | { type: 'emailRetry'; id: string; reason: string }
+  | {type:'emailReplace';id:string;reason:string;sourceRevision:string}
   | { type: 'runWorkflows' }
   | { type: 'retryWorkflow' | 'startWorkflow'; workflowId: string }
   | { type: 'override'; checklist: string }
@@ -324,6 +345,7 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('task'), id: commandId, status: z.enum(['todo', 'progress', 'done', 'notNeeded']), reason: reasonText }).strict(),
   z.object({ type: z.literal('generate'), template: commandId }).strict(),
   z.object({ type: z.literal('emailSend'), emailId: commandId }).strict(), z.object({ type: z.literal('emailTest'), emailId: commandId }).strict(),
+  z.object({type:z.literal('emailReplace'),id:commandId,reason:reasonText.min(1),sourceRevision:z.string().regex(/^[a-f0-9]{64}$/)}).strict(),
   z.object({ type: z.literal('emailRetry'), id: commandId, reason: reasonText }).strict(),
   z.object({ type: z.literal('emailEdit'), emailId: commandId, subject: z.string().min(1).max(1000), body: z.string().max(20000) }).strict(),
   z.object({ type: z.literal('documentTextEdit'), id: commandId, edits: z.record(commandId, z.string().max(20000)).refine(value => Object.keys(value).length <= 500) }).strict(),
@@ -346,7 +368,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     const row = await load(tx, ctx, id); if (row.revision !== revision) throw new M.V9Error('This case changed. Refresh before trying again.', 'conflict');
     const config = await configTx(tx, ctx); if (!config) throw new M.V9Error('V9 configuration is unavailable.');
     const c = structuredClone(row.data); let env = await environment(tx, ctx, c, config);
-    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'documentTextEdit', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'runWorkflows', 'retryWorkflow', 'startWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
+    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'emailReplace', 'documentTextEdit', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'runWorkflows', 'retryWorkflow', 'startWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
     if (row.native && ['pmPush', 'pmPushSelected'].includes(command.type) && !c.facts.employmentId) throw new M.V9Error('Activate this Personnel draft before applying its proposed changes.');
     if(command.type==='note')changeV9Note(c,env,command);
     if(command.type==='returnSelections'){
@@ -432,13 +454,20 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       if (!receipt?.allowed) throw new M.V9Error('The recorded delivery or saved copy does not allow a retry. Review the delivery before sending another copy.', 'conflict');
       M.retryEmail(c, config, command.id, command.reason, env);
     }
+    else if(command.type==='emailReplace'){
+      if(!command.reason.trim())throw new M.V9Error('Record why this updated copy is needed.');
+      await updatedEmailAllowed(tx,c.id,command.id);const plan=M.updatedDeliveryPlan(c,config,command.id,env);
+      if(updatedEmailRevision(c,config,env,plan)!==command.sourceRevision)throw new M.V9Error('The copy or its sources changed. Review the updated preview again.','conflict');
+      plan.mail.retryReason=command.reason.trim();c.documents=plan.case.documents;c.mails=plan.case.mails;c.log=plan.case.log;
+      M.appendLog(c,env,'email.updatedCopyQueued',command.reason.trim());
+    }
     else if (command.type === 'emailEdit') { if (!config.emails.some(e => e.id === command.emailId && e.module === c.module) || command.body.length > 20000 || command.subject.length > 1000) throw new M.V9Error('Choose an available email and keep its content within the allowed length.'); c.emailEdits = { ...c.emailEdits, [command.emailId]: { subject: command.subject, body: command.body } }; M.appendLog(c, env, 'email.edited', 'Email text changed for this person only.'); }
     else if (command.type === 'documentTextEdit') M.editDocumentText(c, config, command.id, command.edits, env);
     else if (command.type === 'documentSave') M.saveDocument(c, command.id, command.values, 'hr', env);
     else if(command.type==='documentSignatory') {
       const document=c.documents.find(document=>document.id===command.id),template=config.templates.find(template=>template.id===document?.templateId);
       if(c.state!=='submitted'||!document||document.status!=='draft'||document.hrSignature||document.employeeSignature||(document.hrStep??template?.hrStep)!=='before'||M.documentDeliveryReserved(c,document.id))throw new M.V9Error('Only an unsigned document awaiting HR signature can change signatory.');
-      const eligible=await companySignersTx(tx,ctx.tenantId,c.facts.company);
+      const eligible=await companySignersTx(tx,ctx.tenantId,c.facts.company,c.module);
       if(!v9CompanySigners(config,c.facts.company).includes(command.userId)||!eligible.includes(command.userId))throw new M.V9Error('Choose a permitted company HR signatory.');
       document.signatoryUserId=command.userId;document.mergeValues??={};document.mergeValues['signatory.name']=env.userName(command.userId);document.mergeValues['signatory.title']=v9SignatoryTitle(config,command.userId,c.facts.company);
       for(const field of document.fields)if(field.owner==='pmLocked'&&['signatory.name','signatory.title'].includes(field.pmKey??''))document.values[field.id]=document.mergeValues[field.pmKey!]??'';
@@ -446,7 +475,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     }
     else if (command.type === 'documentSign') {
       const document=c.documents.find(document=>document.id===command.id),template=config.templates.find(template=>template.id===document?.templateId);
-      if((document?.hrStep??template?.hrStep)==='before'&&(!v9CompanySigners(config,c.facts.company).includes(env.actor.id)||!(await companySignersTx(tx,ctx.tenantId,c.facts.company)).includes(env.actor.id)))throw new M.V9Error('This account is no longer a permitted company HR signatory.');
+      if((document?.hrStep??template?.hrStep)==='before'&&(!v9CompanySigners(config,c.facts.company).includes(env.actor.id)||!(await companySignersTx(tx,ctx.tenantId,c.facts.company,c.module)).includes(env.actor.id)))throw new M.V9Error('This account is no longer a permitted company HR signatory.');
       M.signDocument(c, config, command.id, 'hr', { ...command.signature, by: env.actor, at: env.now }, env);
       if(c.documents.find(document=>document.id===command.id)?.status==='hrsigned')for(const workflow of config.workflows)M.runWorkflow(c,config,workflow,env,'hrSigned');
     }

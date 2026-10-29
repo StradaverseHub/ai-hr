@@ -32,3 +32,5 @@ export const v9DownloadEmailAsset: Service['v9DownloadEmailAsset'] = async (...a
 export const v9ReportOwnReturn: Service['v9ReportOwnReturn'] = async (...args) => (await load()).v9ReportOwnReturn(...args);
 
 export const v9OwnEquipmentReceipt: Service['v9OwnEquipmentReceipt'] = async (...args) => (await load()).v9OwnEquipmentReceipt(...args);
+
+export const v9PreviewUpdatedEmail: Service['v9PreviewUpdatedEmail'] = async (...args) => (await load()).v9PreviewUpdatedEmail(...args);

@@ -8,7 +8,7 @@ import { saveEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { addDays } from '../lib/lifecycle-v9-model';
 import { currentReq } from '../lib/onboarding-model';
-import { v9UploadEmailAsset, v9DownloadEmailAsset, v9Setup, v9Sweep, v9DeliverEmails, v9DownloadDocument, v9CaseDetail, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnDocument, v9ReportOwnReturn, v9OwnEquipmentReceipt, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx, onboardingHoldingsTx } from '../packs/lifecycle/service';
+import { v9UploadEmailAsset, v9DownloadEmailAsset, v9Setup, v9Sweep, v9DeliverEmails, v9DownloadDocument, v9CaseDetail, v9PreviewUpdatedEmail, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnDocument, v9ReportOwnReturn, v9OwnEquipmentReceipt, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx, onboardingHoldingsTx } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 
 let base: Base, admin: SessionContext, employee: SessionContext, other: SessionContext, employmentId: string;
@@ -907,6 +907,14 @@ it('refuses a retry when a private per-person attachment has been replaced after
   const changed = (await v9CaseDetail(admin, c.id)).case;
   await expect(v9Command(admin, c.id, changed.revision, { type: 'emailRetry', id: mail.id, reason: 'Changed file is a different saved copy' })).rejects.toThrow('does not allow a retry');
   expect((await v9CaseDetail(admin, c.id)).case.mails.filter(attempt => attempt.retryOf === mail.id)).toEqual([]);
+  const [originalReceipt]=await owner.db.execute<{payload:{files:{name:string}[]};started_at:string}>(sql`select payload,started_at from lc_v9_email_delivery where case_id=${c.id}::uuid and mail_id=${mail.id}`);
+  expect(originalReceipt.payload.files.map(file=>file.name)).toEqual(['fictional-original.txt']);
+  const updated=await v9PreviewUpdatedEmail(admin,c.id,mail.id);expect(updated.files).toEqual(['fictional-replacement.txt']);
+  await v9Command(admin,c.id,changed.revision,{type:'emailReplace',id:mail.id,reason:'Fictional replacement file reviewed.',sourceRevision:updated.sourceRevision});
+  const result=(await v9CaseDetail(admin,c.id)).case,replacement=result.mails.find(attempt=>attempt.retryOf===mail.id)!;
+  const [nextReceipt]=await owner.db.execute<{payload:{files:{name:string}[]};status:string;started_at:string|null}>(sql`select payload,status,started_at from lc_v9_email_delivery where case_id=${c.id}::uuid and mail_id=${replacement.id}`);
+  expect(nextReceipt).toMatchObject({status:'queued',started_at:null});expect(nextReceipt.payload.files.map(file=>file.name)).toEqual(['fictional-replacement.txt']);
+  const [preserved]=await owner.db.execute(sql`select payload,started_at from lc_v9_email_delivery where case_id=${c.id}::uuid and mail_id=${mail.id}`);expect(preserved).toEqual(originalReceipt);
 });
 
 it('uses approved categories from real Personnel confirmation dates in both matching and source-event capture', async () => {
@@ -1166,4 +1174,45 @@ it('separates module membership, company HR scope and the minimal onboarding she
   native=await onboardingContext(admin);native.config.access.offboarding=native.config.access.offboarding.filter(id=>id!==admin.userId);await onboardingSaveConfig(admin,native.revision,native.config);
   expect((await v9Workspace(admin)).permissions).toMatchObject({onboarding:true,offboarding:false,administration:true});
   await expect(v9CaseDetail(admin,c.id)).rejects.toThrow();
+});
+
+
+it('requires a definite receipt and current reviewed sources for a changed-copy replacement',async()=>{
+ let c=await prepared();let config=(await v9Workspace(admin)).config!;
+ config.emails.push({id:'updated-copy',name:'Fictional updated copy',module:'off',active:true,sender:'hr',subject:'Original saved subject',body:'Original saved body',cc:[],links:[],attachments:[],slots:[]});await v9SaveConfig(admin,config.revision,config);
+ await v9Command(admin,c.id,c.revision,{type:'emailSend',emailId:'updated-copy'});c=(await v9CaseDetail(admin,c.id)).case;const original=c.mails.find(mail=>mail.templateId==='updated-copy')!;
+ await expect(v9PreviewUpdatedEmail(admin,c.id,original.id)).rejects.toThrow('does not allow');
+ await owner.db.execute(sql`update lc_v9_email_delivery set status='uncertain',started_at=now(),completed_at=now(),error_code='uncertain' where tenant_id=${base.tenantId}::uuid and case_id=${c.id}::uuid and mail_id=${original.id}`);
+ const system={...admin,userId:undefined,personId:null};let transportCalls=0;await v9DeliverEmails(system,owner,async()=>{transportCalls++;throw Error('Unexpected transport for an uncertain receipt');});expect(transportCalls).toBe(0);
+ await expect(v9PreviewUpdatedEmail(admin,c.id,original.id)).rejects.toThrow('does not allow');
+ await owner.db.execute(sql`update lc_v9_email_delivery set status='failed',error_code='smtpRejected',projected_at=null where tenant_id=${base.tenantId}::uuid and case_id=${c.id}::uuid and mail_id=${original.id}`);
+ await v9DeliverEmails(system,owner,async()=>{transportCalls++;throw Error('Unexpected transport for a completed failure');});expect(transportCalls).toBe(0);
+ c=(await v9CaseDetail(admin,c.id)).case;expect(c.mails.find(mail=>mail.id===original.id)?.status).toBe('failed');const [receipt]=await owner.db.execute<{payload:unknown;started_at:string}>(sql`select payload,started_at from lc_v9_email_delivery where case_id=${c.id}::uuid and mail_id=${original.id}`);
+ await v9Command(admin,c.id,c.revision,{type:'emailEdit',emailId:'updated-copy',subject:'Reviewed new subject',body:'Reviewed new body'});c=(await v9CaseDetail(admin,c.id)).case;
+ const first=await v9PreviewUpdatedEmail(admin,c.id,original.id);expect(first).toMatchObject({subject:'Reviewed new subject',body:'Reviewed new body',to:['V9 subject']});await expect(v9PreviewUpdatedEmail(other,c.id,original.id)).rejects.toThrow();
+ await v9Command(admin,c.id,c.revision,{type:'emailEdit',emailId:'updated-copy',subject:'Final reviewed subject',body:'Final reviewed body'});c=(await v9CaseDetail(admin,c.id)).case;
+ await expect(v9Command(admin,c.id,c.revision,{type:'emailReplace',id:original.id,reason:'Stale review',sourceRevision:first.sourceRevision})).rejects.toThrow('changed');
+ const preview=await v9PreviewUpdatedEmail(admin,c.id,original.id);
+ await v9Command(admin,c.id,c.revision,{type:'emailReplace',id:original.id,reason:'Fictional replacement after a recorded rejection.',sourceRevision:preview.sourceRevision});c=(await v9CaseDetail(admin,c.id)).case;
+ expect(c.mails.find(mail=>mail.retryOf===original.id)).toMatchObject({subject:'Final reviewed subject',body:'Final reviewed body',status:'pending',retryMode:'updated',retryReason:'Fictional replacement after a recorded rejection.'});expect(c.mails.find(mail=>mail.id===original.id)).toMatchObject({subject:'Original saved subject',body:'Original saved body',status:'failed'});
+ const [retained]=await owner.db.execute<{payload:unknown;started_at:string;status:string}>(sql`select payload,started_at,status from lc_v9_email_delivery where case_id=${c.id}::uuid and mail_id=${original.id}`);expect(retained).toEqual({...receipt,status:'failed'});
+ await expect(v9PreviewUpdatedEmail(admin,c.id,original.id)).rejects.toThrow('does not allow');
+});
+
+it('allows an onboarding-only company HR signer without granting offboarding case access',async()=>{
+  let exit=await prepared();const signerId=await createAppUser(base.tenantId,other.personId!,'hr_admin');
+  await owner.client`update role_assignment set company_id=${base.companyId} where tenant_id=${base.tenantId} and app_user_id=${signerId} and role='hr_admin'`;
+  const signer:SessionContext={...admin,userId:signerId,personId:other.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:base.companyId}]};
+  const native=await onboardingContext(admin);native.config.access.onboarding.push(signerId);await onboardingSaveConfig(admin,native.revision,native.config);
+  const config=(await v9Workspace(admin)).config!;config.companies=[{companyId:base.companyId,signatoryUserId:signerId,signatoryTitle:'Fictional onboarding HR',allowedSignatoryUserIds:[admin.userId!,signerId]}];
+  for(const module of ['onb','off'] as const)config.templates.push({id:'module-letter-'+module,name:'Fictional module letter '+module,module,type:'Letter',rules:{},hrStep:'before',employeeAck:false,retired:false,versions:[{version:1,state:'published',at:'',by:'',fields:[],blocks:[{id:'body',type:'text',text:'Fictional module review',section:''}]}]});
+  await v9SaveConfig(admin,config.revision,config);const options=(await v9Workspace(admin)).options;
+  expect(options.signatoryCandidates![base.companyId]).toContain(signerId);expect(options.signatoryCandidatesByModule!.onb[base.companyId]).toContain(signerId);expect(options.signatoryCandidatesByModule!.off[base.companyId]).not.toContain(signerId);
+  await expect(v9CaseDetail(signer,exit.id)).rejects.toThrow();
+  await v9Command(admin,exit.id,exit.revision,{type:'generate',template:'module-letter-off'});exit=(await v9CaseDetail(admin,exit.id)).case;
+  await expect(v9Command(admin,exit.id,exit.revision,{type:'documentSignatory',id:exit.documents.find(document=>document.templateId==='module-letter-off')!.id,userId:signerId})).rejects.toThrow('permitted');
+  const draft=await saveEmployeeDraft(admin,{currentStep:5,data:{profile:{fullName:'Fictional module signer subject',employeeCode:'V9-MODULE-SIGNER',primaryEmail:'fictional-module-signer@example.test'},employment:{companyId:base.companyId,reportingManagerEmploymentId:employmentId,departmentId:base.deptA,positionId:base.positionId,employmentType:'full_time',hiredOn:todayInKualaLumpur()},payroll:{basicSalary:'5000'}}});await completeEmployeeDraft(admin,draft.id);
+  let row=(await onboardingList(admin)).find(row=>row.case.sourceDraftId===draft.id)!;await onboardingCommand(admin,row.case.id,row.revision,{type:'saveSubmit',patch:{hiring:'new_hire',local:{supervisor:employmentId}}});row=(await onboardingList(admin)).find(candidate=>candidate.case.id===row.case.id)!;
+  await v9Command(signer,row.case.id,row.revision,{type:'generate',template:'module-letter-onb'});let detail=await v9CaseDetail(signer,row.case.id);const document=detail.case.documents.find(document=>document.templateId==='module-letter-onb')!;expect(document.signatoryUserId).toBe(signerId);
+  await v9Command(signer,row.case.id,detail.case.revision,{type:'documentSign',id:document.id,signature:{method:'typed',value:'Fictional onboarding HR',consent:true}});detail=await v9CaseDetail(signer,row.case.id);expect(detail.case.documents.find(candidate=>candidate.id===document.id)?.hrSignature).toMatchObject({by:{id:signerId},printedTitle:'Fictional onboarding HR'});
 });

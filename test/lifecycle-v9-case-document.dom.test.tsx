@@ -46,3 +46,9 @@ it('shows signing rejection inside the open document and retains the signature i
   fireEvent.change(screen.getByRole('textbox',{name:'Type your full name'}),{target:{value:'Fictional reviewer'}});fireEvent.click(screen.getByRole('checkbox'));fireEvent.click(screen.getByRole('button',{name:'Sign and submit'}));
   expect(await screen.findByRole('alert')).toHaveTextContent('Complete missing Personnel and Leave details.');expect(screen.getByRole('alert')).toHaveFocus();expect(screen.getByRole('textbox',{name:'Type your full name'})).toHaveValue('Fictional reviewer');expect(doc.hrSignature).toBeNull();
 });
+
+it('limits the shared permitted signer list to the actual module candidates',()=>{
+ const config=v9Defaults(),doc=document();config.companies=[{companyId:'company',signatoryUserId:actor.id,signatoryTitle:'HR',allowedSignatoryUserIds:[actor.id,'other-module']}];
+ render(<CaseDocument c={{state:'submitted',facts:{company:'company'} as never}} document={doc} config={config} eligibleSignatoryIds={[actor.id]} users={[actor,{id:'other-module',name:'Other module HR'}]} actor={actor} busy={false} command={vi.fn()}/>);
+ expect(screen.queryByRole('option',{name:'Other module HR'})).not.toBeInTheDocument();expect(screen.getByRole('option',{name:'HR Reviewer (company default)'})).toBeInTheDocument();
+});

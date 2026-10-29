@@ -14,7 +14,7 @@ import type { LifecycleV9DeliveryRequest, LifecycleV9DeliveryResult } from '../l
 import { hireEmployee } from '../core/org';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { addDays } from '../lib/lifecycle-v9-model';
-import { v9Setup, v9Workspace, v9SaveConfig, v9UploadEmailAsset, v9CreateOffboarding, v9Command, v9CaseDetail, v9DeliverEmails, v9Sweep } from '../packs/lifecycle/service';
+import { v9Setup, v9Workspace, v9SaveConfig, v9UploadEmailAsset, v9CreateOffboarding, v9Command, v9CaseDetail, v9DeliverEmails, v9Sweep, v9PreviewUpdatedEmail } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner } from './harness';
 import { installLifecycleV9Drafts } from './fixtures/lifecycle-v9/drafts';
 import { startReportSmtpSink } from './fixtures/managed-report-delivery/smtp-sink';
@@ -118,6 +118,25 @@ it('sends the immutable files/CID once through verified credentials and holds an
     const literalParts=fixtureMailAttachments(sink.messages[4].raw);expect(literalParts.find(part=>part.mime==='text/plain')?.bytes).toEqual(fileBytes);expect(literalParts.find(part=>part.mime==='image/png')?.bytes).toEqual(imageBytes);
     const [literalReceipt]=await owner.client`select recipient_proof from lc_v9_email_delivery where case_id=${id}::uuid and payload->'mail'->>'workflowId'='literal-wire'`;
     expect(literalReceipt.recipient_proof.bindings).toHaveLength(1);expect(literalReceipt.recipient_proof.literals).toEqual([{key:'address:team@report-acceptance.invalid',email:'team@report-acceptance.invalid',position:1},{key:'address:archive@report-acceptance.invalid',email:'archive@report-acceptance.invalid',position:3}]);
+
+
+    // An explicit updated-copy review sends new bytes while keeping the rejected receipt immutable.
+    const updatedConfig=(await v9Workspace(admin)).config!;
+    updatedConfig.workflows.push({...structuredClone(updatedConfig.workflows[0]),id:'updated-wire',name:'Fictional updated-copy wire',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''}});
+    await v9SaveConfig(admin,updatedConfig.revision,updatedConfig);
+    c=(await v9CaseDetail(admin,id)).case;await v9Command(admin,id,c.revision,{type:'startWorkflow',workflowId:'updated-wire'});
+    sink.setRecipientCount(1);sink.setMode('temporary');expect((await v9DeliverEmails(system,owner,privateSender)).attempted).toBe(1);
+    c=(await v9CaseDetail(admin,id)).case;const rejectedCopy=c.mails.find(mail=>mail.workflowId==='updated-wire')!;expect(rejectedCopy.status).toBe('failed');
+    const [beforeUpdated]=await owner.client`select status,started_at,payload from lc_v9_email_delivery where case_id=${id}::uuid and mail_id=${rejectedCopy.id}`;
+    const currentConfig=(await v9Workspace(admin)).config!;currentConfig.emails[0].subject='Fictional reviewed updated subject';currentConfig.emails[0].body='Fictional reviewed updated body';await v9SaveConfig(admin,currentConfig.revision,currentConfig);
+    const review=await v9PreviewUpdatedEmail(admin,id,rejectedCopy.id);expect(review).toMatchObject({subject:'Fictional reviewed updated subject',body:'Fictional reviewed updated body'});
+    await v9Command(admin,id,c.revision,{type:'emailReplace',id:rejectedCopy.id,sourceRevision:review.sourceRevision,reason:'Controlled rejected delivery; current copy reviewed.'});
+    sink.setMode('accept');expect(await v9DeliverEmails(system,owner,privateSender)).toEqual({attempted:1,sent:1,held:0,failed:0});expect(sink.messages).toHaveLength(7);
+    const updatedRaw=Buffer.from(sink.messages[6].raw).toString('utf8');expect(updatedRaw).toContain('Subject: Fictional reviewed updated subject');expect(updatedRaw).toContain('Fictional reviewed updated body');
+    const updatedParts=fixtureMailAttachments(sink.messages[6].raw);expect(updatedParts.find(part=>part.mime==='text/plain')?.bytes).toEqual(fileBytes);
+    await v9Sweep(system,owner);c=(await v9CaseDetail(admin,id)).case;expect(c.runs.find(run=>run.workflowId==='updated-wire')?.status).toBe('done');
+    expect(c.mails.find(mail=>mail.retryOf===rejectedCopy.id)).toMatchObject({status:'sent',retryMode:'updated',subject:review.subject,body:review.body});expect(c.mails.find(mail=>mail.id===rejectedCopy.id)).toMatchObject({status:'failed',subject:rejectedCopy.subject,body:rejectedCopy.body});
+    const [afterUpdated]=await owner.client`select status,started_at,payload from lc_v9_email_delivery where case_id=${id}::uuid and mail_id=${rejectedCopy.id}`;expect(afterUpdated).toEqual(beforeUpdated);
 
   }finally{await sink.close();}
 },90000);

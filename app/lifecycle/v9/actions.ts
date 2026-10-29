@@ -1,7 +1,7 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { requireModule } from '@/lib/authz';
-import { v9CaseDetail, v9PreviewEmail, v9Command, v9CreateOffboarding, v9SaveConfig, v9Setup } from '@/packs/lifecycle/service';
+import { v9CaseDetail, v9PreviewEmail, v9PreviewUpdatedEmail, v9Command, v9CreateOffboarding, v9SaveConfig, v9Setup } from '@/packs/lifecycle/service';
 import type { LifecycleV9Command as Command } from '@/packs/lifecycle/service';
 import type { ExitType } from '@/lib/lifecycle-v9-model';
 async function execute<T>(work: () => Promise<T>) {
@@ -20,4 +20,9 @@ export async function readV9Case(id: string) {
 export async function readV9Email(caseId: string, emailId: string) {
   try { return { ok: true as const, preview: await v9PreviewEmail(await requireModule('lifecycle'), caseId, emailId) }; }
   catch { return { ok: false as const, error: 'The email preview could not be loaded. Refresh and try again.' }; }
+}
+
+export async function readV9UpdatedEmail(caseId:string,mailId:string) {
+  try {return {ok:true as const,preview:await v9PreviewUpdatedEmail(await requireModule('lifecycle'),caseId,mailId)};}
+  catch(error){return {ok:false as const,error:error instanceof Error&&error.name==='V9Error'?error.message:'The updated copy could not be prepared. Refresh and try again.'};}
 }

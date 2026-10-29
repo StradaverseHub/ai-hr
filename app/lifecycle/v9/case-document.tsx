@@ -8,9 +8,9 @@ import { SignatureInput } from '@/components/lifecycle-v9/signature-input';
 import { documentDeliveryReserved, documentFinal, type Actor, type Case, type Document, type Template } from '@/lib/lifecycle-v9-model';
 import type { LifecycleV9Command } from '@/packs/lifecycle/service';
 
-export function CaseDocument({ c, document, template, actor, busy, command, config, users = [] }: {
+export function CaseDocument({ c, document, template, actor, busy, command, config, users = [], eligibleSignatoryIds }: {
   c: Pick<Case, 'state'> & Partial<Pick<Case, 'id' | 'mails' | 'facts'>>; document: Document; template?: Template; actor: Actor; busy: boolean;
-  config?: Config; users?:{id:string;name:string}[];
+  eligibleSignatoryIds?:string[]; config?: Config; users?:{id:string;name:string}[];
   command: (command: LifecycleV9Command) => void | Promise<{ ok: boolean; error?: string }>;
 }) {
   const [values, setValues] = useState({ ...document.values }), [editingText,setEditingText] = useState(false), [error,setError]=useState('');
@@ -24,7 +24,8 @@ export function CaseDocument({ c, document, template, actor, busy, command, conf
   const dirty = fields.some(field => (values[field.id] ?? '') !== (document.values[field.id] ?? ''));
   const hrStep = document.hrStep ?? template?.hrStep;
   const needsSignature = editable && (document.templateType ?? template?.type) !== 'Attachment' && (hrStep === 'before' && document.status === 'draft' || hrStep === 'after' && document.status === 'countersign');
-  const signatory = hrStep === 'after' || document.signatoryUserId === actor.id, allowed=config&&c.facts?v9CompanySigners(config,c.facts.company):[];
+  const allowed=(config&&c.facts?v9CompanySigners(config,c.facts.company):[]).filter(id=>eligibleSignatoryIds===undefined||eligibleSignatoryIds.includes(id));
+  const signatory = hrStep === 'after' || document.signatoryUserId === actor.id && (!config||allowed.includes(actor.id));
   return <div className="v9-stack">{reserved && <p className="v9-notice">This document is frozen for email delivery.</p>}{c.id && <a className="v9-button" href={`/lifecycle/v9/documents/${encodeURIComponent(c.id)}/${encodeURIComponent(document.id)}`}>Download PDF</a>}<DocumentBody document={document} values={values} editableBy="hr" disabled={busy || !canEditFields} change={(id, value) => setValues(previous => ({ ...previous, [id]: value }))}/>{error&&<p ref={errorRef} tabIndex={-1} role="alert" className="v9-notice v9-error">{error}</p>}
     {canEditFields && (document.templateType ?? template?.type) !== 'Attachment' && document.blocks.some(block => ['heading','subheading','text'].includes(block.type)) && <button type="button" className="v9-button" disabled={busy || dirty} onClick={() => setEditingText(true)}>Edit for this person</button>}
     {editingText && canEditFields && <DocumentTextEditor document={document} person={c.facts?.name ?? 'this person'} busy={busy} command={execute} close={() => setEditingText(false)}/>}

@@ -124,7 +124,7 @@ export type Mail = {
   id: string; key: string; workflowId: string | null; templateId: string | null;
   to: string[]; cc: string[]; subject: string; body: string; documentIds: string[];
   fileIds: string[]; status: 'pending' | 'sending' | 'sent' | 'failed' | 'uncertain' | 'cancelled'; test: boolean;
-  at: string; deliveredAt: string | null; failure: string | null; retryOf?: string; retryReason?: string;
+  at: string; deliveredAt: string | null; failure: string | null; retryOf?: string; retryReason?: string; retryMode?: 'same'|'updated';
   /** Frozen transport choices; older history without this must not be silently reinterpreted. */
   delivery?: { version: 1; queuedBy: Actor; sender: 'onboarding' | 'hr' | 'noreply'; linkDocumentIds: string[]; pdfDocumentIds: string[]; toNames: string[]; ccNames: string[]; assets?: EmailAsset[]; contact?: { kind: 'onboardingContact'; caseId: string; email: string; sourceRevision: string } };
 };
@@ -406,9 +406,28 @@ export function retryEmail(c: Case, config: Config, id: string, reason: string, 
   const accountRecipients = original.delivery.contact ? original.cc : [...original.to, ...original.cc];
   if (accountRecipients.some(userId => !eligibleRecipient(userId, env))) throw new V9Error('Review the unavailable recipients before retrying.');
   const next = structuredClone(original); next.id = env.nextId(); next.key = `retry:${original.id}:${next.id}`;
-  next.retryOf = original.id; next.retryReason = reason.trim(); next.status = 'pending'; next.at = env.now; next.deliveredAt = null; next.failure = null;
+  next.retryOf = original.id; next.retryMode='same'; next.retryReason = reason.trim(); next.status = 'pending'; next.at = env.now; next.deliveredAt = null; next.failure = null;
   next.delivery!.queuedBy = { ...env.actor }; c.mails.push(next);
   appendLog(c, env, 'email.retryQueued', reason.trim()); return next;
+}
+/** Build a fresh, reviewable template copy without changing the case or its old delivery intent. */
+export function updatedDeliveryPlan(c:Case,config:Config,id:string,env:Environment):{case:Case;mail:Mail} {
+  const original=c.mails.find(mail=>mail.id===id);
+  if(c.state!=='submitted'||!original||!['failed','cancelled'].includes(original.status)||!original.templateId||!original.delivery||original.test||c.mails.some(mail=>mail.retryOf===id))throw new V9Error('This delivery cannot be replaced. Review its receipt.','conflict');
+  if(!config.emails.some(email=>email.id===original.templateId&&email.module===c.module&&email.active))throw new V9Error('Turn on the email before preparing an updated copy.');
+  let step:Extract<Step,{type:'email'}>={id:'manual',type:'email',template:original.templateId,to:'employee',cc:[]};
+  if(original.workflowId){
+    if(!config.workflows.some(workflow=>workflow.id===original.workflowId&&workflow.status==='published'))throw new V9Error('Turn on the source workflow before preparing an updated copy.');
+    const candidates=c.runs.filter(run=>run.workflowId===original.workflowId).flatMap(run=>(run.definition?.steps??[]).filter((candidate):candidate is Extract<Step,{type:'email'}>=>candidate.type==='email'&&candidate.template===original.templateId&&original.key.startsWith(`${run.id}:${candidate.id}:`)));
+    if(candidates.length!==1)throw new V9Error('Review the original workflow step before preparing another copy.');
+    step=candidates[0];
+    if((Array.isArray(step.to)?step.to:[step.to]).includes('taskOwners'))throw new V9Error('Review owner-specific messages in their source workflow.');
+  }
+  const next=structuredClone(c),before=next.mails.length;
+  enqueue(next,config,step,`updated:${original.id}:${env.nextId()}`,original.workflowId,env);
+  if(next.mails.length!==before+1)throw new V9Error('Review the recipient before preparing another copy.');
+  const mail=next.mails.at(-1)!;mail.retryOf=original.id;mail.retryMode='updated';
+  return {case:next,mail};
 }
 function acceptanceDeliveryHold(c: Case, emailId: string): string | null {
   if (c.module !== 'off' || emailId !== 'e3') return null;
