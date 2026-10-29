@@ -260,7 +260,7 @@ describe('ADR-0151 §4.5 — named agent principal', () => {
       visual.locale = locale;
       for (const [role, view] of [['group', group], ['company', company]] as const) {
         const element = await OrchestrationWorkQueue({ view, canViewRuns: role === 'group' });
-        const html = renderToStaticMarkup(createElement(NextIntlClientProvider, { locale, messages: copies[locale] }, element));
+        const html = renderToStaticMarkup(createElement(NextIntlClientProvider, { locale, messages: copies[locale], children: element }));
         expect(html).not.toContain(copies[locale].controlTower.orchestrator.unobserved);
         if (role === 'company') expect(html).not.toContain('Foreign Company Fixture');
         await captureAiReviewScreenshots(html.replace('<details class=', '<details open class='), locale,
