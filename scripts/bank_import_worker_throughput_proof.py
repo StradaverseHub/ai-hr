@@ -34,6 +34,16 @@ MAX_OUTER=600*1024**2
 MEMBERS={'worker-package.zip':512*1024**2,'worker-manifest.json':32*1024**2,'worker-provenance.json':1024**2,'worker-runtime-proof.json':1024**2}
 WORKER_LOG_NAMES=['latch-holder.stderr',*[f'worker-{i}.{kind}' for i in range(5) for kind in ['stdout','stderr']]]
 
+def proof_mode(value=None):
+    value=os.environ.get('THROUGHPUT_PROOF_MODE','full-100001') if value is None else value
+    check(value in ['full-100001','preflight-401'],'unknown proof mode refused')
+    return value
+
+def job_seconds(): return 1200 if proof_mode()=='preflight-401' else MAX_SECONDS
+def minimum_seconds(): return 60 if proof_mode()=='preflight-401' else 900
+def worker_log_names():
+    return WORKER_LOG_NAMES if proof_mode()=='full-100001' else ['latch-holder.stderr',*[f'worker-{i}.{kind}' for i in range(16) for kind in ['stdout','stderr']]]
+
 def check(ok,message):
     if not ok: raise ValueError('CI throughput proof refused: '+message)
 
@@ -113,7 +123,8 @@ def authenticated_inputs():
     root=root_directory();protected(root,True);path=root/'authenticated.json';protected(path)
     check(path.stat().st_size<=4*1024**2,'bounded authenticated metadata required')
     raw=path.read_bytes();value=json.loads(raw)
-    check(raw==canonical(value) and set(value)=={'format','kind','repositoryId','consumerController','consumerRun','producer','members','producerRun','producerJob','artifact','consumerJobStartedAt'},'closed canonical authenticated metadata required')
+    check(raw==canonical(value) and set(value)=={'format','kind','repositoryId','consumerController','consumerRun','producer','members','producerRun','producerJob','artifact','consumerJobStartedAt','mode'},'closed canonical authenticated metadata required')
+    check(proof_mode(value['mode'])==proof_mode(),'authenticated packet proof mode differs from current workflow')
     check(exact(value['format'],1) and value['kind']=='AUTHENTICATED_API_INPUT_NOT_RELEASE' and exact(value['repositoryId'],REPOSITORY_ID) and value['consumerController']==os.environ['GITHUB_SHA'] and exact(value['consumerRun'],number(os.environ['GITHUB_RUN_ID'])),'authenticated metadata belongs to another controller/run')
     pins=value['producer'];check(set(pins)=={'producer','source','run','job','artifact','digest'},'closed accepted identity pins required')
     sha(pins['producer']);source_pin(pins['source'])
@@ -200,8 +211,8 @@ def parse_time(value):
 
 def remaining_job_seconds(started_at,now,first_step):
     started=parse_time(started_at);check(started<=first_step+5 and first_step<=now+5 and now>=started,'trusted job start/runner clock differs')
-    remaining=math.floor(MAX_SECONDS-(now-started)-RESERVE_SECONDS)
-    check(900<=remaining<=MAX_SECONDS-RESERVE_SECONDS,'whole-job preflight plus cleanup/evidence reserve exhausts proof budget')
+    remaining=math.floor(job_seconds()-(now-started)-RESERVE_SECONDS)
+    check(minimum_seconds()<=remaining<=job_seconds()-RESERVE_SECONDS,'whole-job preflight plus cleanup/evidence reserve exhausts proof budget')
     return remaining
 
 def invocation():
@@ -265,6 +276,25 @@ def atomic_root(path,value):
 def protected(path,directory=False):
     path=Path(path);info=path.lstat();check(not path.is_symlink() and info.st_uid==0 and not info.st_mode&0o022 and (stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode) and info.st_nlink==1),'root-protected regular ownership required');return info
 
+def evidence_bytes(path,raw,*,refresh=False,mode=0o400):
+    """Atomic root-owned evidence; retries accept exact bytes, never partial output."""
+    path=Path(path);check(len(raw)<=1024**2,'bounded evidence bytes required')
+    if os.path.lexists(path):
+        check(protected(path).st_size<=1024**2,'existing evidence exceeds bound')
+        if path.read_bytes()==raw: return
+        check(refresh,'existing bounded evidence bytes differ')
+    temporary=path.with_name('.evidence-pending-'+str(os.getpid())+'-'+str(time.monotonic_ns()))
+    fd=os.open(temporary,os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,mode)
+    try:
+        with os.fdopen(fd,'wb') as stream: stream.write(raw);stream.flush();os.fsync(stream.fileno())
+        if refresh: os.replace(temporary,path)
+        else: os.link(temporary,path);temporary.unlink()
+        directory=os.open(path.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        try: os.fsync(directory)
+        finally: os.close(directory)
+    finally:
+        if temporary.exists(): temporary.unlink()
+
 def extract_packet(archive,destination,wanted):
     check(file_hash(archive)==wanted,'API artifact ZIP digest differs')
     destination=Path(destination);destination.mkdir(mode=0o700)
@@ -325,13 +355,37 @@ class Registry:
         check(set(self.data['namespace'])=={'dev','ino','state'} and self.data['namespace']['state'] in ['present','remove-pending','removed'],'closed cgroup namespace lifecycle required')
         self.gate=self.root/'gate.py';protected(self.gate);check(file_hash(self.gate)==file_hash(__file__),'registry gate bytes differ from current controller')
     def save(self): atomic_root(self.path,self.data)
+    def prepare_area(self):
+        check(not any(r['type']=='area' for r in self.data['resources']),'one exact runtime area allocation required')
+        path=Path('/opt')/('aihr-large-throughput-ci-'+os.environ['GITHUB_RUN_ID']+'_1')
+        check(not os.path.lexists(path),'runtime allocation path already exists; refusing adoption')
+        resource={'type':'area','path':str(path),'dev':None,'ino':None,'state':'create-pending'}
+        self.data['resources'].append(resource);self.save()
+        path.mkdir(mode=0o755)
+        info=protected(path,True);resource.update(dev=info.st_dev,ino=info.st_ino,state='present');self.save()
+        return path
+    def prepare_user(self):
+        name='aihr-import-throughput-ci'
+        check(not any(r['type']=='user' for r in self.data['resources']),'one exact worker allocation required')
+        check(not any(u.pw_name==name for u in pwd.getpwall()) and not any(g.gr_name==name for g in grp.getgrall()),'worker account/group already exists; refusing adoption')
+        used={u.pw_uid for u in pwd.getpwall()}|{u.pw_gid for u in pwd.getpwall()}|{g.gr_gid for g in grp.getgrall()}
+        candidates=[i for i in range(60000,65000) if i not in used];check(candidates,'no free bounded worker UID/GID')
+        identity=candidates[0];marker='aihr-ci-'+os.environ['GITHUB_RUN_ID']+'-'+os.environ['GITHUB_SHA']
+        resource={'type':'user','name':name,'uid':identity,'gid':identity,'home':'/nonexistent','shell':'/usr/sbin/nologin','gecos':marker,'state':'create-pending'}
+        self.data['resources'].append(resource);self.save()
+        for argv in [['/usr/sbin/groupadd','--gid',str(identity),name],['/usr/sbin/useradd','--system','--no-log-init','--no-create-home','--key','CREATE_MAIL_SPOOL=no','--uid',str(identity),'--gid',str(identity),'--home-dir','/nonexistent','--shell','/usr/sbin/nologin','--comment',marker,name]]:
+            result=self.run(argv,env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'},timeout=20)
+            check(result.returncode==0,'exact worker allocation failed; stderr='+result.stderr[-12000:])
+        user=pwd.getpwnam(name)
+        check((user.pw_uid,user.pw_gid,user.pw_dir,user.pw_shell,user.pw_gecos)==(identity,identity,resource['home'],resource['shell'],marker),'allocated worker identity differs')
+        resource['state']='present';self.save();return user
     def register_area(self,path):
         path=Path(path);info=protected(path,True)
         check(path.parent==Path('/opt') and re.fullmatch('aihr-large-throughput-ci-[A-Za-z0-9_]+',path.name) and not any(r['type']=='area' for r in self.data['resources']),'one exact newly owned runtime area required')
-        self.data['resources'].append({'type':'area','path':str(path),'dev':info.st_dev,'ino':info.st_ino});self.save()
+        self.data['resources'].append({'type':'area','path':str(path),'dev':info.st_dev,'ino':info.st_ino,'state':'present'});self.save()
     def register_user(self,user):
         check(user.pw_name=='aihr-import-throughput-ci' and user.pw_uid>0 and user.pw_gid>0 and user.pw_dir=='/nonexistent' and user.pw_shell=='/usr/sbin/nologin' and not any(r['type']=='user' for r in self.data['resources']),'one dedicated native worker user required')
-        self.data['resources'].append({'type':'user','name':user.pw_name,'uid':user.pw_uid,'gid':user.pw_gid,'home':user.pw_dir,'shell':user.pw_shell});self.save()
+        self.data['resources'].append({'type':'user','name':user.pw_name,'uid':user.pw_uid,'gid':user.pw_gid,'home':user.pw_dir,'shell':user.pw_shell,'gecos':user.pw_gecos,'state':'present'});self.save()
     def register_receipt(self,path,info):
         check(not any(r['type']=='receipt' for r in self.data['resources']),'one exact receipt publication required')
         self.data['resources'].append({'type':'receipt','path':str(path),'dev':info.st_dev,'ino':info.st_ino});self.save()
@@ -346,20 +400,38 @@ class Registry:
     def cleanup_resources(self):
         for resource in self.data['resources']:
             if resource['type']=='area':
-                path=Path(resource['path']);info=protected(path,True)
-                check((info.st_dev,info.st_ino)==(resource['dev'],resource['ino']),'runtime area identity changed; refusing recursive removal')
+                path=Path(resource['path']);state=resource['state']
+                check(path.parent==Path('/opt') and re.fullmatch('aihr-large-throughput-ci-[A-Za-z0-9_]+',path.name) and state in ['create-pending','present','remove-pending','removed'],'invalid owned runtime lifecycle')
+                try: info=protected(path,True)
+                except FileNotFoundError:
+                    check(state in ['create-pending','remove-pending','removed'],'unexplained missing runtime area')
+                    resource['state']='removed';self.save();continue
+                if resource['ino'] is None:
+                    check(state=='create-pending' and not any(path.iterdir()),'unidentified nonempty runtime area; no removal authorized')
+                    resource.update(dev=info.st_dev,ino=info.st_ino);self.save()
+                check((info.st_dev,info.st_ino)==(resource['dev'],resource['ino']) and state!='removed','runtime area identity changed; refusing recursive removal')
                 # Keep bounded original stdout/stderr failure evidence before removal.
-                for name in WORKER_LOG_NAMES:
+                for name in worker_log_names():
                     log=path/name
                     if not log.exists(): continue
                     protected(log)
                     with log.open('rb') as incoming: raw=incoming.read(64*1024)
-                    fd=os.open(self.root/('cleanup-'+name),os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o400)
-                    with os.fdopen(fd,'wb') as out: out.write(raw);out.flush();os.fsync(out.fileno())
+                    evidence_bytes(self.root/('cleanup-'+name),raw)
+                resource['state']='remove-pending';self.save()
                 check(shutil.rmtree.avoids_symlink_attacks,'fd-safe recursive owned-area removal required');shutil.rmtree(path)
+                resource['state']='removed';self.save()
             elif resource['type']=='user':
-                user=pwd.getpwnam(resource['name']);group=grp.getgrgid(resource['gid'])
-                check((user.pw_uid,user.pw_gid,user.pw_dir,user.pw_shell)==(resource['uid'],resource['gid'],resource['home'],resource['shell']) and group.gr_name==resource['name'] and not group.gr_mem,'native user/group identity changed; removal refused')
+                state=resource['state'];check(state in ['create-pending','present','remove-pending','removed'],'invalid worker lifecycle')
+                try: user=pwd.getpwnam(resource['name'])
+                except KeyError: user=None
+                try: group=grp.getgrgid(resource['gid'])
+                except KeyError: group=None
+                check(not any(u.pw_uid==resource['uid'] and u.pw_name!=resource['name'] for u in pwd.getpwall()),'worker UID reused by foreign account; removal refused')
+                check(not any(g.gr_name==resource['name'] and g.gr_gid!=resource['gid'] for g in grp.getgrall()),'worker group name reused; removal refused')
+                if user is None: check(state in ['create-pending','remove-pending','removed'],'unexplained missing worker account')
+                else:
+                    check(state!='removed' and (user.pw_uid,user.pw_gid,user.pw_dir,user.pw_shell,user.pw_gecos)==(resource['uid'],resource['gid'],resource['home'],resource['shell'],resource['gecos']),'native user identity/ownership marker changed; removal refused')
+                if group is not None: check(state!='removed' and group.gr_name==resource['name'] and not group.gr_mem,'native group identity changed; removal refused')
                 check(not any(p.pw_gid==resource['gid'] and p.pw_uid!=resource['uid'] for p in pwd.getpwall()),'worker group has a foreign primary user')
                 for entry in Path('/proc').iterdir():
                     if not entry.name.isdecimal(): continue
@@ -367,13 +439,17 @@ class Registry:
                     except (FileNotFoundError,ProcessLookupError): continue
                     uids=[line.split(':',1)[1].split() for line in status if line.startswith('Uid:')]
                     check(len(uids)==1 and str(resource['uid']) not in uids[0],'remaining native UID process; no foreign signal or user removal')
-                result=subprocess.run(['/usr/sbin/userdel',resource['name']],env={'PATH':'/usr/bin:/bin'},capture_output=True,timeout=10)
-                check(result.returncode==0,'owned worker user removal failed')
+                resource['state']='remove-pending';self.save()
+                if user is not None:
+                    result=subprocess.run(['/usr/sbin/userdel',resource['name']],env={'PATH':'/usr/bin:/bin'},capture_output=True,timeout=10)
+                    check(result.returncode==0,'owned worker user removal failed')
                 try: group=grp.getgrgid(resource['gid'])
-                except KeyError: continue
-                check(group.gr_name==resource['name'] and not group.gr_mem,'worker group changed after user removal')
-                result=subprocess.run(['/usr/sbin/groupdel',resource['name']],env={'PATH':'/usr/bin:/bin'},capture_output=True,timeout=10)
-                check(result.returncode==0,'owned worker group removal failed')
+                except KeyError: group=None
+                if group is not None:
+                    check(group.gr_name==resource['name'] and not group.gr_mem,'worker group changed after user removal')
+                    result=subprocess.run(['/usr/sbin/groupdel',resource['name']],env={'PATH':'/usr/bin:/bin'},capture_output=True,timeout=10)
+                    check(result.returncode==0,'owned worker group removal failed')
+                resource['state']='removed';self.save()
     def owned(self,record):
         actual=proc_snapshot(record['pid']);check(actual['start']==record['start'],'refusing reused PID')
         choices=[record['gate'],record['exec']]
@@ -559,14 +635,50 @@ def gate_main(words):
     if release!=b'X': os._exit(125)
     os.execve(c['argv'][0],c['argv'],c['env'])
 
+def initialization_path(): return root_directory().with_name(root_directory().name+'-init.json')
+
+def initialization_intent():
+    path=initialization_path();check(protected(path).st_size<=65536,'bounded initialization intent required');raw=path.read_bytes();data=json.loads(raw)
+    check(raw==canonical(data),'canonical initialization intent required')
+    check(set(data)=={'runId','controller','state','rootIdentity','namespaceIdentity'} and data['runId']==number(os.environ['GITHUB_RUN_ID']) and data['controller']==os.environ['GITHUB_SHA'] and data['state'] in ['preparing','ready','aborted'],'exact initialization intent required')
+    return data
+
+def recover_initialization():
+    """No child/allocation is authorized until the complete gate/registry is ready."""
+    path=initialization_path();root=root_directory()
+    if not os.path.lexists(path):
+        check(not os.path.lexists(root) and not os.path.lexists(cgroup_root()),'namespace exists without owned initialization intent; manual inspection required')
+        return True
+    data=initialization_intent()
+    if os.path.lexists(root):
+        info=protected(root,True);actual={'dev':info.st_dev,'ino':info.st_ino}
+        if data['rootIdentity'] is None:
+            check(data['state']=='preparing' and not any(root.iterdir()),'unidentified nonempty initialization root; manual inspection required')
+            data['rootIdentity']=actual;atomic_root(path,data)
+        check(data['rootIdentity']==actual,'initialization root inode changed')
+    else: check(data['rootIdentity'] is None and data['state']!='ready','owned initialization root unexpectedly missing')
+    if data['state']=='ready': return False
+    group=cgroup_root()
+    if os.path.lexists(group):
+        info=protected(group,True);actual={'dev':info.st_dev,'ino':info.st_ino}
+        check(data['namespaceIdentity'] in (None,actual) and not cgroup_members(group) and not any(p.is_dir() for p in group.iterdir()),'uncertain/populated initialization cgroup; manual inspection required')
+        # Retain exact identity before removal. Initialization has never released a gate.
+        data['namespaceIdentity']=actual;atomic_root(path,data);group.rmdir()
+    data['state']='aborted';atomic_root(path,data);return True
+
 def initialize():
-    check(os.geteuid()==0,'root accepted-input namespace required');root=root_directory();root.mkdir(mode=0o700)
+    check(os.geteuid()==0,'root accepted-input namespace required');root=root_directory()
+    check(not os.path.lexists(root) and not os.path.lexists(cgroup_root()) and not os.path.lexists(initialization_path()),'initialization namespace already exists; refusing adoption')
+    data={'runId':number(os.environ['GITHUB_RUN_ID']),'controller':os.environ['GITHUB_SHA'],'state':'preparing','rootIdentity':None,'namespaceIdentity':None}
+    atomic_root(initialization_path(),data)  # BEFORE either namespace allocation.
+    root.mkdir(mode=0o700);info=protected(root,True);data['rootIdentity']={'dev':info.st_dev,'ino':info.st_ino};atomic_root(initialization_path(),data)
     check(Path('/sys/fs/cgroup/cgroup.controllers').is_file(),'cgroup v2 required; no weaker descendant cleanup fallback')
-    cgroup_root().mkdir(mode=0o755);protected(cgroup_root(),True)
-    info=protected(cgroup_root(),True)
+    cgroup_root().mkdir(mode=0o755);info=protected(cgroup_root(),True)
+    data['namespaceIdentity']={'dev':info.st_dev,'ino':info.st_ino};atomic_root(initialization_path(),data)
     atomic_root(root/'registry.json',{'format':1,'runId':number(os.environ['GITHUB_RUN_ID']),'controller':os.environ['GITHUB_SHA'],'children':[],'forcedCleanup':False,'createdChildren':0,'finishedChildren':0,'resources':[],'namespace':{'dev':info.st_dev,'ino':info.st_ino,'state':'present'}})
     fd=os.open(root/'gate.py',os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o400)
     with os.fdopen(fd,'wb') as out: out.write(Path(__file__).read_bytes());out.flush();os.fsync(out.fileno())
+    data['state']='ready';atomic_root(initialization_path(),data)
     return root
 
 def export_cleanup_evidence(root,destination):
@@ -575,12 +687,11 @@ def export_cleanup_evidence(root,destination):
     for name in ['registry.json','budget.json',*[p.name for p in root.glob('cleanup-*')]]:
         path=root/name
         if not path.exists(): continue
-        check(name in ['registry.json','budget.json',*['cleanup-'+value for value in WORKER_LOG_NAMES]],'closed cleanup evidence names required')
+        check(name in ['registry.json','budget.json',*['cleanup-'+value for value in worker_log_names()]],'closed cleanup evidence names required')
         protected(path)
         with path.open('rb') as incoming: raw=incoming.read(1024**2+1)
         check(len(raw)<=1024**2,'bounded cleanup evidence required')
-        fd=os.open(destination/('owned-'+name),os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o644)
-        with os.fdopen(fd,'wb') as outgoing: outgoing.write(raw);outgoing.flush();os.fsync(outgoing.fileno())
+        evidence_bytes(destination/('owned-'+name),raw,refresh=True,mode=0o644)
 
 def cli():
     if len(sys.argv)>1 and sys.argv[1]=='gate': gate_main(sys.argv[2:]);return
@@ -591,15 +702,16 @@ def cli():
     for name in ['source','producer-controller','node']: prepare.add_argument('--'+name,required=True)
     measure=sub.add_parser('measure')
     for name in ['controller','source','producer-controller','node','report']: measure.add_argument('--'+name,required=True)
+    measure.add_argument('--mode',dest='proof_mode',choices=['full-100001','preflight-401'],default='full-100001')
     sub.add_parser('budget')
     cleanup=sub.add_parser('cleanup');cleanup.add_argument('--measurement-result',required=True,choices=['success','failure','cancelled','skipped','']);cleanup.add_argument('--evidence-dir',required=True)
     args=parser.parse_args();invocation()
     if args.mode=='budget':
-        job,seconds=current_job();print(json.dumps({'jobId':job['id'],'startedAt':job['started_at'],'maxSeconds':seconds,'wholeJobSeconds':MAX_SECONDS,'cleanupEvidenceReserveSeconds':RESERVE_SECONDS}));return
+        job,seconds=current_job();print(json.dumps({'jobId':job['id'],'startedAt':job['started_at'],'maxSeconds':seconds,'wholeJobSeconds':job_seconds(),'cleanupEvidenceReserveSeconds':RESERVE_SECONDS,'mode':proof_mode()}));return
     if args.mode=='cleanup':
         root=root_directory();registry=None;failure=None
         try:
-            if root.exists(): registry=Registry(root);registry.cleanup()
+            if not recover_initialization(): registry=Registry(root);registry.cleanup()
         except BaseException as error: failure=error
         if registry is not None and (failure is not None or args.measurement_result!='success'):
             try: registry.invalidate_receipt()
@@ -607,7 +719,13 @@ def cli():
                 print('Exact receipt invalidation also failed: '+str(error),file=sys.stderr)
                 if failure is None: failure=error
         if root.exists():
-            try: export_cleanup_evidence(root,Path(args.evidence_dir).absolute())
+            try:
+                destination=Path(args.evidence_dir).absolute()
+                export_cleanup_evidence(root,destination)
+                intent=initialization_path()
+                if os.path.lexists(intent):
+                    initialization_intent()
+                    evidence_bytes(destination/'owned-initialization.json',intent.read_bytes(),refresh=True,mode=0o644)
             except BaseException as error:
                 print('Bounded cleanup evidence export also failed: '+str(error),file=sys.stderr)
                 if failure is None: failure=error
@@ -635,15 +753,17 @@ def cli():
             registry.assert_empty();verify_source_bytes(source,manifest)
             print(json.dumps({'normalDrizzleMigrationAndCatalogBootstrap':True,'migrationLedger':ledger,'releaseAuthorized':False}));return
         check(Path(args.controller).resolve()==Path(__file__).resolve().parent.parent,'measure must use this exact consumer controller')
+        check(proof_mode(args.proof_mode)==proof_mode(),'CLI and authenticated workflow proof modes differ')
         job,seconds=current_job()
         # This is computed after ALL checkout/setup/download/verification/migration
         # work. The proof supervisor begins at its own module entry, with only the
         # remaining whole-job budget and a separate five-minute evidence reserve.
         argv=[sys.executable,'-I','-B',str(Path(args.controller).resolve()/'scripts/ci-bank-import-large-throughput.py'),'--controller',args.controller,'--producer-controller',args.producer_controller,'--application-source',inputs['producer']['source'],'--source',args.source,'--package-dir',str(root_directory()/'accepted'),'--node',args.node,'--accepted-controller',inputs['producer']['producer'],'--accepted-run-id',str(inputs['producer']['run']),'--report',args.report,'--max-seconds',str(seconds)]
+        argv+=['--mode',args.proof_mode]
         for name,key in [('archive-sha256','worker-package.zip'),('manifest-sha256','worker-manifest.json'),('provenance-sha256','worker-provenance.json'),('runtime-proof-sha256','worker-runtime-proof.json')]: argv+=['--'+name,inputs['members'][key]]
-        atomic_root(root_directory()/'budget.json',{'consumerJobId':job['id'],'jobStartedAt':job['started_at'],'proofBudgetSeconds':seconds,'calculatedAtEpoch':time.time(),'wholeJobSeconds':MAX_SECONDS,'evidenceCleanupReserveSeconds':RESERVE_SECONDS})
+        atomic_root(root_directory()/'budget.json',{'consumerJobId':job['id'],'jobStartedAt':job['started_at'],'proofBudgetSeconds':seconds,'calculatedAtEpoch':time.time(),'wholeJobSeconds':job_seconds(),'evidenceCleanupReserveSeconds':RESERVE_SECONDS,'mode':args.proof_mode})
         seconds=remaining_job_seconds(job['started_at'],time.time(),float(os.environ['THROUGHPUT_FIRST_STEP_EPOCH']))-10
-        check(seconds>=900,'post-fsync handoff exhausts remaining proof budget');argv[argv.index('--max-seconds')+1]=str(seconds)
+        check(seconds>=minimum_seconds(),'post-fsync handoff exhausts remaining proof budget');argv[argv.index('--max-seconds')+1]=str(seconds)
         # Never persist or expose the read-only API token to the native controller.
         env={k:v for k,v in os.environ.items() if k not in ['GH_TOKEN','GITHUB_TOKEN']}
         os.execve(sys.executable,argv,env)
@@ -652,7 +772,7 @@ def cli():
     current,seconds=current_job();run=api(f'/repos/{REPO}/actions/runs/{pins["run"]}');listing=api(f'/repos/{REPO}/actions/runs/{pins["run"]}/attempts/1/jobs?per_page=100');check(listing.get('total_count')==len(listing.get('jobs',[])),'truncated producer jobs refused')
     artifact=api(f'/repos/{REPO}/actions/artifacts/{pins["artifact"]}');check_metadata(run,listing.get('jobs',[]),artifact,pins)
     root=initialize();archive=root/'api-artifact.zip';download_artifact(pins['artifact'],archive,artifact['size_in_bytes']);members=extract_packet(archive,root/'accepted',pins['digest'])
-    atomic_root(root/'authenticated.json',{'format':1,'kind':'AUTHENTICATED_API_INPUT_NOT_RELEASE','repositoryId':REPOSITORY_ID,'consumerController':os.environ['GITHUB_SHA'],'consumerRun':number(os.environ['GITHUB_RUN_ID']),'producer':pins,'members':members,'producerRun':run,'producerJob':listing['jobs'][0],'artifact':artifact,'consumerJobStartedAt':current['started_at']})
+    atomic_root(root/'authenticated.json',{'format':1,'kind':'AUTHENTICATED_API_INPUT_NOT_RELEASE','repositoryId':REPOSITORY_ID,'consumerController':os.environ['GITHUB_SHA'],'consumerRun':number(os.environ['GITHUB_RUN_ID']),'producer':pins,'members':members,'producerRun':run,'producerJob':listing['jobs'][0],'artifact':artifact,'consumerJobStartedAt':current['started_at'],'mode':proof_mode()})
     print(json.dumps({'authenticated':True,'source':pins['source'],'producerController':pins['producer'],'acceptedRun':pins['run'],'acceptedArtifact':pins['artifact'],'maxSecondsAfterPreflight':seconds,'releaseAuthorized':False}))
 
 if __name__=='__main__': cli()
