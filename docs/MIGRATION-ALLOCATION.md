@@ -109,3 +109,18 @@ unmerged `when` is 1793280000000 (agent principal). This branch appends index 65
 `when` **1793300000000**, above all those observations. Reconcile append indices/order against any
 intervening merged migrations before integration; never deploy a higher watermark while omitting
 allocated predecessors. This reservation authorizes no migration application or deployment.
+
+## WP4 probe ledger integration allocation — 29 October 2026
+
+The coordinated source register at `439587ea07912ef2254bf9774b16b792d643b300` supersedes
+the provisional WP4 journal position above. `0678_ai_connection_probe_ledger` appends at
+**idx668 / when1793330000004**, followed by the reserved Board entries0679–0681 at
+idx669–671 / when1793330000005–7. The old WP4 idx655/when1793300000000 and later
+idx671 proposal are superseded; they are not additional migrations.
+
+Fresh canonical main/alpha at `2c15395691c584b6c82904bb15c732e3686b984b` retain the
+553-entry prefix through idx667/when1793330000000. The full ordered live prefix was
+independently checked before this append. Every existing journal entry and applied SQL byte
+is preserved. The0678 SQL SHA256 remains
+`e96851f0b09ba117f9cec03852b9c270da456c36b69a5199a588f483e1a9772a`.
+This source allocation does not itself establish migration application or release acceptance.

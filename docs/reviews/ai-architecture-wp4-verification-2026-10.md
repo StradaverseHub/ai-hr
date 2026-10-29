@@ -10,3 +10,7 @@ Rechecked on matching fetched main/alpha `b5758c54c431765461d84235ad19c72ad71cf5
 - Already fixed at this base: none of R9.
 
 Focused runtime and exact-candidate gate results are recorded on the PR once executed. New tests: `ai-gateway-fail-closed.test.ts`, `ai-connection-probe-db.test.ts`; expanded `ai-management-contract.test.ts`. No real provider/network calls, staging migration or deployment. No layout changes; six locales gain an operational probe label. Next package: WP15 (R12–R14).
+
+## Combined release re-verification
+
+The release integration preserves the exact0678 SQL bytes and appends only its newly coordinated journal entry after the current canonical prefix. Gateway refusal, runtime-issued connection-only capability, metadata-only accounting and lib/scripts caller-drift closure were rechecked in current source. The populated-baseline rehearsal must pass on the final combined candidate; original PR evidence is not relabelled.

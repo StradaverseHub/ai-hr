@@ -10,3 +10,7 @@ Rechecked against integration base `b5758c54c431765461d84235ad19c72ad71cf578`, a
 - Remaining: a future Automatic executor must call the exported runtime guard. No such executor is introduced. Generic per-entry role-matrix work remains WP8 and is outside this run.
 
 Exact-candidate gate evidence is recorded in the PR after freezing the commit. No UI changes, screenshots or live provider checks apply. Staging installation/acceptance and deployments are not performed. No migration is required. Next package: WP4 (R9).
+
+## Combined release re-verification
+
+The release integration rechecked the merged principal, own/assigned and HR-prepared action families. Seven added IDs are category-classified; generic assigned prepare/confirm paths call the same human-reviewed tier guard before IO. No scheduled actor gains model spend or authority. Original package findings and receipts above retain their original base; combined verification is recorded separately on the release PR.

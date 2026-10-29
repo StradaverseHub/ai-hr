@@ -15,3 +15,7 @@ Already fixed at this base: claim cancellation's header already named generic SQ
 Remaining outside scope: retention installation/service/backlog acceptance by release owner; WP1 scheduled-status behavior; WP5 prompt/budget hardening; WP7 registry unification; WP8 generic parity; WP11 learning; WP12 complete inventory/provider data register. None is claimed implemented. No permission, switch default, automatic authority, provider or HR effect is changed.
 
 Focused checks, six-locale rendered desktop/mobile evidence and exact-candidate gate results belong to the PR evidence after source freeze; authored translations are not claimed independently language-reviewed. The bundled guide source is updated; no old translation hash is stamped and no tenant KB refresh/deployment is performed. No migration. Next package: none in the authorized scope; other work packages remain held.
+
+## Combined release re-verification
+
+The release integration rechecked merged principal/outcome/HR work and preserved the newer canonical UI and clocking fixes. The current count is30 declared action IDs, including one import Handoff, and29 prepared human-review paths. Historical base observations above are superseded by the ADR/threat-model integration amendments where stated. Six-locale component captures remain fictional fixtures; retention provisioning and authenticated installation acceptance remain separate operational evidence.
