@@ -8,7 +8,12 @@
         "route": "/me",
         "titleKey": "tour.me.intro.title",
         "bodyKey": "tour.me.intro.body",
-        "placement": "center"
+        "placement": "center",
+        "text": {
+          "title": "Review your profile changes",
+          "body": "Edit the fields your company permits and attach supporting documents where requested. The result distinguishes saved changes from changes waiting for approval; a request does not grant permission to approve your own change.",
+          "lang": "en"
+        }
       },
       {
         "id": "contact",
@@ -16,12 +21,7 @@
         "route": "/me",
         "titleKey": "tour.me.contact.title",
         "bodyKey": "tour.me.contact.body",
-        "placement": "right",
-        "text": {
-          "title": "Review your profile changes",
-          "body": "Edit the fields your company permits and attach supporting documents where requested. The result distinguishes saved changes from changes waiting for approval; a request does not grant permission to approve your own change.",
-          "lang": "en"
-        }
+        "placement": "right"
       },
       {
         "id": "bank",
