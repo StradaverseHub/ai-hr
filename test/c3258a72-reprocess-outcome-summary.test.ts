@@ -70,8 +70,8 @@ describe('c3258a72 · the outcome summary labels Skipped as completed', () => {
   });
 
   it('en: Skipped is labelled a completed outcome, distinct from Reprocessed and Configuration incomplete', async () => {
-    const en = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../messages/en.json'), 'utf8')).payroll.batch;
-    const s = createTranslator({ locale: 'en', namespace: 'payroll.batch', messages: { payroll: { batch: en } } as never })(
+    const messages = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../messages/en.json'), 'utf8'));
+    const s = createTranslator({ locale: 'en', namespace: 'payroll.batch', messages })(
       'reprocessOutcomeSummary' as never, { selected: 4, succeeded: 1, skipped: 2, failed: 1 } as never,
     ) as string;
     expect(s).toContain('Reprocessed: 1');
