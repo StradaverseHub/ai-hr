@@ -66,7 +66,7 @@ export function aiInventoryComponents():readonly AiInventoryComponent[]{
   const principal=(AGENT_PRINCIPAL_SPECIALISTS as Record<string,{tier:AgentTier}>)[f.id];
   rows.push(row({kind:'specialist',id:f.id,featureId:f.id,module:f.module,tier:principal?.tier??null,pauseKey:f.id}));
  }
- for(const a of AGENT_ACTIONS)rows.push(row({kind:'action',id:a.id,featureId:a.policy.tier==='automatic'?a.automatic.specialist:'hr_assistant',module:a.module,tier:a.policy.tier,category:a.policy.category,pauseKey:agentActionPauseKey(a)}));
+ for(const a of AGENT_ACTIONS)rows.push(row({kind:'action',id:a.id,featureId:'automatic' in a?a.automatic.specialist:'hr_assistant',module:a.module,tier:a.policy.tier,category:a.policy.category,pauseKey:agentActionPauseKey(a)}));
  for(const j of AI_SCHEDULED_JOBS)rows.push(row({kind:'scheduled_job',id:j.id,featureId:j.featureId,module:null,pauseKey:null,jobKey:j.jobKey}));
  for(const f of AI_FEATURES.filter(f=>(f.kind==='feature'||f.kind==='assistant')&&f.id!=='hr_assistant'))rows.push(row({kind:'embedded_feature',id:f.id,featureId:f.id,module:f.module,pauseKey:f.id}));
  for(const s of ORCHESTRATOR_STEPS)rows.push(row({kind:'orchestrator_step',id:s.id,featureId:s.featureId,module:s.featureId?featureOf(s.featureId).module:null,pauseKey:s.featureId}));

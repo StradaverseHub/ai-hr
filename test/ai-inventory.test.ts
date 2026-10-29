@@ -44,8 +44,8 @@ describe('one AI inventory (R8)', () => {
       const row = rows.find(r => r.key === `action:${a.id}`)!;
       expect(row.tier).toBe(a.policy.tier); expect(row.category).toBe(a.policy.category);
       expect(row.pauseKey).toBe(`hr_assistant:${a.id}`); expect(agentActionPauseKey(a)).toBe(row.pauseKey);
-      expect(a.pauseKey).toBe(a.policy.tier==='automatic'?a.automatic.specialist:'hr_assistant');
-      expect(row.featureId).toBe(a.policy.tier==='automatic'?a.automatic.specialist:'hr_assistant');
+      expect(a.pauseKey).toBe('automatic' in a?a.automatic.specialist:'hr_assistant');
+      expect(row.featureId).toBe('automatic' in a?a.automatic.specialist:'hr_assistant');
     }
   });
 
