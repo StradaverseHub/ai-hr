@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {buildOcbcFile,ocbcRouting,type OcbcInput} from '../localization/my/ocbc-file';
+import {buildOcbcFile,ocbcLhdnTaxIdentity,ocbcRouting,type OcbcInput} from '../localization/my/ocbc-file';
 const salary=():OcbcInput=>({format:'salary',payer:{name:'FICTIONAL COMPANY',corporateId:'A999999',account:'1234567890',branch:'701',settings:{contactName:'FICTIONAL CONTACT',contactPhone:'0312345678',stateCode:'014',requireIdCheck:true}},paymentDate:'2026-10-29',periodKey:'2026-10',tapeId:7,testFile:false,reference:'PAYROLL',rows:[{key:'TEST-ONLY',name:'FICTIONAL PERSON',bank:'Maybank',account:'123456789012',identity:'100000000001',amountCents:123456}]});
 const lines=(input:OcbcInput)=>buildOcbcFile(input).content.split('\r\n').filter(Boolean);
 describe('OCBC supplied bank layouts',()=>{
@@ -31,6 +31,10 @@ describe('OCBC supplied bank layouts',()=>{
  it('writes SOCSO 8A with optional hash blank and the saved combined amount',()=>{
   const p=salary();p.format='socso';p.testFile=true;p.payer.employerReference='SOCSO-TEST';const [h,d,t]=lines(p);
   expect(h.slice(109,137)).toBe('102026014YPAYROLL         8A');expect(h.slice(157,169)).toBe('SOCSO-TEST  ');expect(d.slice(101,115)).toBe('00000000123456');expect(t.slice(0,21)).toBe('990000100000000123456');expect(t.slice(21,41)).toBe(' '.repeat(20));
+ });
+ it('projects the approved saved TIN suffix without changing or truncating the personnel Tax Number',()=>{
+  const saved='IG10234567091';expect(ocbcLhdnTaxIdentity(saved)).toEqual({taxNumber:'1023456709',wifeCode:'1'});expect(saved).toBe('IG10234567091');expect(ocbcLhdnTaxIdentity('SG10234567090')).toEqual({taxNumber:'1023456709',wifeCode:'0'});
+  for(const value of ['IG10234567092','','IG102345670901'])expect(()=>ocbcLhdnTaxIdentity(value)).toThrow();
  });
  it('writes LHDN PCB/CP38 counts and totals with exactly20 reserved blank hash bytes',()=>{
   const p=salary();p.format='lhdn';p.payer.employerReference='123456';p.rows[0]={...p.rows[0],taxNumber:'9876543210',wifeCode:'0',pcbCents:1234,cp38Cents:567};p.rows.push({...p.rows[0],key:'CP38 ONLY',pcbCents:0,cp38Cents:100});

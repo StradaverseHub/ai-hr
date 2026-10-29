@@ -7,7 +7,7 @@ import {withPayrollHistoryTenant} from '../../packs/payroll/history';
 import {appendEvent,actorOf} from '../../db/events';
 import {company,companyBankProfile,companyStatutoryMy,companyStatutoryAuthority,employeeStatutoryMy,employment,payrollBatch,payslip,person,bankPaymentExport} from '../../db/schema';
 import {BankPaymentFileError,type BankPaymentFiles,type BankPaymentRequest} from '../country-pack';
-import {buildOcbcFile,OcbcFileError,type OcbcInput,type OcbcRow} from './ocbc-file';
+import {buildOcbcFile,ocbcLhdnTaxIdentity,OcbcFileError,type OcbcInput,type OcbcRow} from './ocbc-file';
 import {monthWagesFrom,monthWageFor} from './statutory-month-wage';
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const requestFingerprint=(p:BankPaymentRequest)=>hash({companyId:p.companyId,bankProfileId:p.bankProfileId,formatId:p.formatId,periodKey:p.periodKey,paymentDate:p.paymentDate,runSeq:p.runSeq??null,testFile:p.testFile,reference:p.reference});
@@ -56,8 +56,8 @@ async function source(tx:Tx,ctx:SessionContext,p:BankPaymentRequest){
    const prior=grouped.get(r.employmentId);grouped.set(r.employmentId,{key,name:r.name,identity:r.ic?.trim().replace(/[-\s]/g,'')||r.socsoNumber?.trim()||'',amountCents:(prior?.amountCents??0)+amount});
   }else if(format==='lhdn'){
    const pcb=cents(st?.pcb??0,key+' PCB'),cp38=cents(st?.cp38??0,key+' CP38');if(!pcb&&!cp38)continue;
-   // The present personnel contract has no Wife Code. Do not invent it from tax category or TIN.
-   throw new OcbcFileError(`${key}: enter an explicit OCBC LHDN Wife Code (0–9). The current employee profile has no field for it.`);
+   let taxIdentity;try{taxIdentity=ocbcLhdnTaxIdentity(r.taxNumber);}catch(error){if(error instanceof OcbcFileError)throw new OcbcFileError(`${key}: ${error.message}`);throw error;}
+   const prior=grouped.get(r.employmentId);grouped.set(r.employmentId,{key,name:r.name,employeeCode:r.code??'',...taxIdentity,identity:r.ic?.trim().replace(/[-\s]/g,'')||'',oldIdentity:r.oldIc??'',passport:r.passport??'',countryCode:r.countryCode??'',pcbCents:(prior?.pcbCents??0)+pcb,cp38Cents:(prior?.cp38Cents??0)+cp38,amountCents:0});
   }else if(format==='zakat'){
    const amount=cents(st?.zakat??0,key+' salary-deducted Zakat');if(!amount)continue;const prior=grouped.get(r.employmentId);
    grouped.set(r.employmentId,{key,name:r.name,identity:r.ic?.trim().replace(/[-\s]/g,'')||'',oldIdentity:r.oldIc??'',passport:r.passport??'',paymentType:'PENDAPATAN',amountCents:(prior?.amountCents??0)+amount});

@@ -9,7 +9,7 @@ import {createBatch,generatePayslips} from '../packs/payroll/service';
 import {upsertCompanyBankProfile} from '../core/bank-profile';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {ocbcBankPaymentFiles} from '../localization/my/ocbc-payment';
-import {appUser,bankPaymentExport,companyBankProfile,companyStatutoryAuthority,companyStatutoryMy,payrollBatch,payslip} from '../db/schema';
+import {appUser,bankPaymentExport,companyBankProfile,companyStatutoryAuthority,companyStatutoryMy,employeeStatutoryMy,payrollBatch,payslip} from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {BankPaymentRequest} from '../localization/country-pack';
 describe('OCBC immutable generated bank artifacts',()=>{
@@ -47,7 +47,7 @@ describe('OCBC immutable generated bank artifacts',()=>{
   await expect(ocbcBankPaymentFiles.preview({...ctx,tenantId:randomUUID()},request)).rejects.toThrow();
   await owner.db.update(payrollBatch).set({needsRecalcAt:new Date()}).where(eq(payrollBatch.id,batchId));await expect(ocbcBankPaymentFiles.preview(ctx,request)).rejects.toThrow(/Recalculate/);
  });
- it('does not guess a mandatory LHDN Wife Code from the tax number',async()=>{const {ctx,request,batchId}=await fixture();await owner.db.update(payslip).set({statutory:{pcb:10,cp38:5}}).where(eq(payslip.batchId,batchId));const {runSeq:_run,...monthly}=request;await expect(ocbcBankPaymentFiles.preview(ctx,{...monthly,formatId:'my.ocbc.lhdn'})).rejects.toThrow(/Wife Code/);});
+ it('rejects an unapproved Tax Number suffix rather than guessing the Wife Code',async()=>{const {ctx,request,batchId,employee}=await fixture();await owner.db.update(payslip).set({statutory:{pcb:10,cp38:5}}).where(eq(payslip.batchId,batchId));await owner.db.update(employeeStatutoryMy).set({taxNumber:'IG10234567092'}).where(eq(employeeStatutoryMy.personId,employee.personId));const {runSeq:_run,...monthly}=request;await expect(ocbcBankPaymentFiles.preview(ctx,{...monthly,formatId:'my.ocbc.lhdn'})).rejects.toThrow(/Tax Number must end in 0 or 1/);});
  it('reserves unique tenant/date tapes for concurrent different administrators',async()=>{
   const {ctx,request}=await fixture();const [other]=await owner.db.insert(appUser).values({tenantId:b.tenantId,workosUserId:randomUUID()}).returning({id:appUser.id});
   const second={...ctx,userId:other.id},preview=await ocbcBankPaymentFiles.preview(ctx,request),requestKey=randomUUID();
@@ -103,6 +103,11 @@ describe('OCBC immutable generated bank artifacts',()=>{
   const {ctx,request}=await fixture(),preview=await ocbcBankPaymentFiles.preview(ctx,request),p={...request,expectedDigest:preview.digest,requestKey:randomUUID()},file=await ocbcBankPaymentFiles.download(ctx,p);
   for(const changed of [{reference:'CHANGED'},{formatId:'my.ocbc.socso'},{periodKey:'2026-01'},{runSeq:2}])await expect(ocbcBankPaymentFiles.download(ctx,{...p,...changed})).rejects.toMatchObject({status:409});
   await owner.db.update(companyBankProfile).set({debitAccountNo:'9999999999'}).where(eq(companyBankProfile.id,request.bankProfileId));expect(await ocbcBankPaymentFiles.download(ctx,p)).toEqual(file);expect(await owner.db.select().from(bankPaymentExport)).toHaveLength(1);
+ });
+
+ it('exports approved saved TIN suffix as Wife Code and preserves the full Tax Number',async()=>{
+  const {ctx,request,batchId,employee}=await fixture();await owner.db.update(employeeStatutoryMy).set({taxNumber:'IG10234567091'}).where(eq(employeeStatutoryMy.personId,employee.personId));await owner.db.update(payslip).set({statutory:{pcb:10,cp38:5,zakat:999}}).where(eq(payslip.batchId,batchId));await owner.db.insert(companyStatutoryMy).values({tenantId:b.tenantId,companyId:b.companyId,lhdnEmployerNo:'E 908915-10'}).onConflictDoUpdate({target:companyStatutoryMy.companyId,set:{lhdnEmployerNo:'E 908915-10'}});
+  const {runSeq:_run,...monthly}=request,p={...monthly,formatId:'my.ocbc.lhdn'},preview=await ocbcBankPaymentFiles.preview(ctx,p);expect(preview.totalCents).toBe(1500);const file=await ocbcBankPaymentFiles.download(ctx,{...p,expectedDigest:preview.digest,requestKey:randomUUID()}),lines=file.content.split('\r\n');expect(lines[1].slice(2,13)).toBe('10234567091');expect(lines[1].slice(119,135)).toBe('0000100000000500');expect(lines[2].slice(32,52)).toBe(' '.repeat(20));const [saved]=await owner.db.select({taxNumber:employeeStatutoryMy.taxNumber}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,employee.personId));expect(saved.taxNumber).toBe('IG10234567091');
  });
 
 });

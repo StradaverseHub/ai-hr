@@ -22,6 +22,14 @@ const routes:Record<string,{id:string;lengths:number[]}>= {
  icbc:{id:'100002597',lengths:[13,17]},deutsche_bank:{id:'100002199',lengths:Array.from({length:8},(_,i)=>i+10)},jp_morgan:{id:'100002157',lengths:Array.from({length:8},(_,i)=>i+10)},
  kuwait_finance_house:{id:'100003460',lengths:[12]},mizuho:{id:'100002610',lengths:[10]},mufg:{id:'100002102',lengths:[6]},sumitomo_mitsui:{id:'100002623',lengths:[8]},bnp_paribas:{id:'100002636',lengths:Array.from({length:11},(_,i)=>i+6)},bank_of_america:{id:'100002076',lengths:Array.from({length:13},(_,i)=>i+5)},
 };
+/** Board-approved projection: final saved TIN digit 0/1 is Wife Code; preceding digits are the
+ * bank's numeric employee reference. The personnel Tax Number itself is never rewritten. */
+export function ocbcLhdnTaxIdentity(savedTaxNumber:string|null|undefined):{taxNumber:string;wifeCode:string}{
+ const digits=(savedTaxNumber??'').replace(/\D/g,'');
+ if(!/[01]$/.test(digits))throw new OcbcFileError('Personnel → Income Tax (PCB) → Tax Number must end in 0 or 1 for the OCBC LHDN Wife Code.');
+ const taxNumber=digits.slice(0,-1);if(!/^\d{1,10}$/.test(taxNumber))throw new OcbcFileError('Tax Number must contain 1–10 reference digits before its final Wife Code digit; the bank file cannot truncate it.');
+ return {taxNumber,wifeCode:digits.slice(-1)};
+}
 export function ocbcRouting(bank:string,account:string):{routingId:string;account:string}{
  const found=myBankByKey(bank)??MY_BANKS.find(value=>value.code===tryBnmCodeForBankName(bank));
  const rule=found&&routes[found.key];
