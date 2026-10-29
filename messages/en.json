@@ -7375,7 +7375,8 @@
             "employerBorne": "Borne by employer",
             "gross": "Gross pay",
             "totalDeductions": "Total deductions",
-            "net": "Net pay"
+            "net": "Net pay",
+            "totalOvertime": "Total Overtime"
           },
           "subject": {
             "epf": "EPF",
@@ -7385,7 +7386,8 @@
             "tax": "Tax",
             "yes": "Y",
             "no": "N"
-          }
+          },
+          "overtimeIncludedInGross": "Already included in gross pay"
         },
         "panel": {
           "heading": "Select an employee",

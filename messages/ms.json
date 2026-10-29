@@ -7375,7 +7375,8 @@
             "employerBorne": "Ditanggung majikan",
             "gross": "Gaji kasar",
             "totalDeductions": "Jumlah potongan",
-            "net": "Gaji bersih"
+            "net": "Gaji bersih",
+            "totalOvertime": "Jumlah kerja lebih masa"
           },
           "subject": {
             "epf": "EPF",
@@ -7385,7 +7386,8 @@
             "tax": "Cukai",
             "yes": "Y",
             "no": "N"
-          }
+          },
+          "overtimeIncludedInGross": "Sudah termasuk dalam gaji kasar"
         },
         "panel": {
           "heading": "Pilih pekerja",

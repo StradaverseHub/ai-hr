@@ -7375,7 +7375,8 @@
             "employerBorne": "นายจ้างรับภาระ",
             "gross": "รายได้รวม",
             "totalDeductions": "รวมรายการหัก",
-            "net": "รายได้สุทธิ"
+            "net": "รายได้สุทธิ",
+            "totalOvertime": "ค่าล่วงเวลารวม"
           },
           "subject": {
             "epf": "EPF",
@@ -7385,7 +7386,8 @@
             "tax": "ภาษี",
             "yes": "Y",
             "no": "N"
-          }
+          },
+          "overtimeIncludedInGross": "รวมอยู่ในรายได้รวมแล้ว"
         },
         "panel": {
           "heading": "เลือกพนักงาน",

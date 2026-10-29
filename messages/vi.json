@@ -7375,7 +7375,8 @@
             "employerBorne": "Do người sử dụng lao động chịu",
             "gross": "Lương gộp",
             "totalDeductions": "Tổng khấu trừ",
-            "net": "Lương thực lãnh"
+            "net": "Lương thực lãnh",
+            "totalOvertime": "Tổng tiền tăng ca"
           },
           "subject": {
             "epf": "EPF",
@@ -7385,7 +7386,8 @@
             "tax": "Thuế",
             "yes": "Y",
             "no": "N"
-          }
+          },
+          "overtimeIncludedInGross": "Đã bao gồm trong tổng lương"
         },
         "panel": {
           "heading": "Chọn nhân viên",

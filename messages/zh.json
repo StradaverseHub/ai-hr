@@ -7375,7 +7375,8 @@
             "employerBorne": "由雇主承担",
             "gross": "应发工资",
             "totalDeductions": "扣除合计",
-            "net": "实发工资"
+            "net": "实发工资",
+            "totalOvertime": "加班费合计"
           },
           "subject": {
             "epf": "EPF",
@@ -7385,7 +7386,8 @@
             "tax": "所得税",
             "yes": "Y",
             "no": "N"
-          }
+          },
+          "overtimeIncludedInGross": "已计入应发工资"
         },
         "panel": {
           "heading": "选择员工",
