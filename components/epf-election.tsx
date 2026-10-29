@@ -1,52 +1,23 @@
 'use client';
 
-import { useState, type ChangeEvent } from 'react';
+import { useState, useRef, type ChangeEvent, type InvalidEvent, type FormEvent } from 'react';
 import { useTranslations } from 'next-intl';
 import { PersonnelField } from '@/components/personnel-field';
 import { personnelInput, personnelControl, personnelFormChoices } from '@/lib/personnel-form-contract';
 import {epfUiModeFrom as uiModeFrom} from '@/lib/epf-mode-map';
+import { clientPackFor } from '@/localization/registry.client';
 import { EPF_UI_MODE_OPTIONS } from '@/lib/epf-mode-map';
 
 // Inlined from components/ui (server module) so this stays a clean client island.
 const inputCls =
   'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
 
-/**
- * EPF election (ADR-0035 §4, ADR-0046 #2, ADR-0087) — "EPF Category" on screen. The consultant's named
- * categories are surfaced as UI options, each mapped at the server boundary onto a lawful `epf_mode`:
- *   • Auto                                    → auto             (statutory Third Schedule banding; no rates)
- *   • Manual (By Percentage)                  → voluntary_excess  (employee% + employer% elected, each ≥ statutory)
- *   • Semi-Auto                               → voluntary_excess  (employee% elected; employer stays statutory — null)
- *   • Manual (Employee by Amount)             → manual_amount     (employee RM typed; employer computed)
- *   • Manual (Employer by Amount)             → manual_amount     (employer RM typed; employee computed)
- *   • Manual (Employee and Employer by Amount)→ manual_amount     (both RM typed)
- *   • No Contribution                         → exempt            (zeroes both sides; exempt employees only)
- * The rate inputs show only for the percentage paths and the amount inputs only for the fixed-amount ones;
- * the server (actions.ts → `mapEpfUiMode`) maps the UI value down to the enum and NULLS whatever the chosen
- * category does not use, because the form is a full-row overwrite with every input mounted.
- *
- * ⚠️ THE OLD CLAIM THIS FILE CARRIED, RETIRED RATHER THAN DELETED (item 70b14723). Three sentences here said
- * the fixed-amount election did not exist:
- *
- *     "• Manual (By Fixed Amount) → DEFERRED (no KWSP fixed-amount election; ADR-0046 §'deferred')"
- *     "KWSP has no below-statutory or fixed-amount election."
- *     "manual_fixed (deferred per ADR-0046 — no KWSP fixed-amount election)"
- *
- * The first half of the last sentence still stands: KWSP recognises no below-statutory election, and
- * `voluntary_excess` still cannot go below the Third Schedule. The FIXED-AMOUNT half does not — it described
- * what KWSP's forms offer and was read as a statement about what a lawful contribution can be. The reversal
- * and its evidence are in docs/adr/0087-epf-manual-amount-categories.md; the short version is a member
- * grandfathered on the pre-1998 rates, whose lawful contribution is below today's schedule and which nothing
- * in this system can compute. A fixed amount CAN therefore go below the schedule, deliberately, and it is
- * the only EPF category that can.
- *
- * THREE CATEGORIES, ONE ENUM LABEL, DERIVED ON RENDER. `uiModeFrom` below reads the stored amounts back into
- * the right category name — the same way it already reads a `voluntary_excess` row with a null employer rate
- * back as Semi-Auto. Nothing stores the category, so no row can carry one that disagrees with its figures.
- */
+/** Existing elections retain their stored calculation mode. Manual percentage is explicit,
+ * requires both rates and does not inherit the legacy top-up floor. */
 type UiMode =
   | 'auto'
   | 'manual_percentage'
+  | 'voluntary_percentage'
   | 'semi_auto'
   | 'manual_fixed'
   | 'manual_employee_amount'
@@ -111,6 +82,7 @@ export function EpfElection({
   const [m, setM] = useState<UiMode>(uiModeFrom(mode, employeeRate, employerRate, employeeAmount, employerAmount));
   return (
     <EpfElectionBody
+      legacyPercentage={mode === 'voluntary_excess' && employerRate != null}
       m={m}
       onMode={setM}
       bind={(field) => {
@@ -183,6 +155,7 @@ function EpfElectionBody({
   onMode,
   bind,
   formMode,
+  legacyPercentage = false,
 }: {
   m: UiMode;
   onMode: (m: UiMode) => void;
@@ -190,10 +163,25 @@ function EpfElectionBody({
     value: { defaultValue?: string | number; value?: string; onChange?: (e: ChangeEvent<HTMLInputElement>) => void };
   };
   formMode:'edit'|'draft';
+  legacyPercentage?:boolean;
 }) {
   const t = useTranslations('people.detail');
-  const showEmployeeRate = m === 'manual_percentage' || m === 'semi_auto';
-  const showEmployerRate = m === 'manual_percentage';
+  const showEmployeeRate = m === 'manual_percentage' || m === 'voluntary_percentage' || m === 'semi_auto';
+  const showEmployerRate = m === 'manual_percentage' || m === 'voluntary_percentage';
+  const manualPercentage = m === 'manual_percentage';
+  const employeeRef = useRef<HTMLInputElement>(null), employerRef = useRef<HTMLInputElement>(null);
+  const bounds = clientPackFor('MY')?.statutory.epfRateInputBounds;
+  const [errors, setErrors] = useState<Partial<Record<'employee' | 'employer', string>>>({});
+  const invalidRate = (side: 'employee' | 'employer') => (event: InvalidEvent<HTMLInputElement>) => {
+    if (!manualPercentage) return;
+    const message = t(event.currentTarget.validity.valueMissing ? (side === 'employee' ? 'epfManualEmployeeRateRequired' : 'epfManualEmployerRateRequired') : 'epfManualRateRange');
+    event.currentTarget.setCustomValidity(message);
+    setErrors(previous => ({...previous, [side]:message}));
+  };
+  const clearRate = (side: 'employee' | 'employer') => (event: FormEvent<HTMLInputElement>) => {
+    event.currentTarget.setCustomValidity('');
+    setErrors(previous => ({...previous, [side]:undefined}));
+  };
   const amounts = isAmountMode(m) ? AMOUNT_MODES[m] : null;
   const er = bind('epfEmployeeRate');
   const rr = bind('epfEmployerRate');
@@ -203,29 +191,35 @@ function EpfElectionBody({
   return (
     <>
       <PersonnelField fieldId="bank_statutory.epf_contribution.epfuimode" mode={formMode}>
-        <select {...personnelControl('bank_statutory.epf_contribution.epfuimode',formMode)} value={m} onChange={(e) => onMode(e.target.value as UiMode)} className={inputCls}>
+        <select {...personnelControl('bank_statutory.epf_contribution.epfuimode',formMode)} value={m} onChange={(e) => { employeeRef.current?.setCustomValidity(''); employerRef.current?.setCustomValidity(''); setErrors({}); onMode(e.target.value as UiMode); }} className={inputCls}>
           {personnelFormChoices('bank_statutory.epf_contribution.epfuimode').map(choice=><option key={choice.value} value={choice.value}>{t(choice.labelKey.slice(14))}</option>)}
         </select>
       </PersonnelField>
       {(showEmployeeRate || showEmployerRate) && (
         <div className="grid grid-cols-2 gap-3 sm:col-span-2">
           {showEmployeeRate && (
-            <PersonnelField fieldId="bank_statutory.epf_contribution.epfemployeerate" mode={formMode}>
-              <input {...personnelInput('bank_statutory.epf_contribution.epfemployeerate',formMode)} {...er.value} placeholder="11" className={inputCls} />
+            <PersonnelField fieldId="bank_statutory.epf_contribution.epfemployeerate" mode={formMode} context={{epfManualPercentage:manualPercentage}}>
+              <input {...personnelInput('bank_statutory.epf_contribution.epfemployeerate',formMode)} {...er.value} ref={employeeRef} {...bounds?.(m, 'employee')} required={formMode !== 'draft' && manualPercentage} aria-invalid={!!errors.employee} onInvalid={invalidRate('employee')} onInput={clearRate('employee')} placeholder="11" className={inputCls} />
+              {errors.employee && <span role="alert" className="text-xs text-destructive">{errors.employee}</span>}
             </PersonnelField>
           )}
           {showEmployerRate && (
-            <PersonnelField fieldId="bank_statutory.epf_contribution.epfemployerrate" mode={formMode}>
-              <input {...personnelInput('bank_statutory.epf_contribution.epfemployerrate',formMode)} {...rr.value} placeholder="13" className={inputCls} />
+            <PersonnelField fieldId="bank_statutory.epf_contribution.epfemployerrate" mode={formMode} context={{epfManualPercentage:manualPercentage}}>
+              <input {...personnelInput('bank_statutory.epf_contribution.epfemployerrate',formMode)} {...rr.value} ref={employerRef} {...bounds?.(m, 'employer')} required={formMode !== 'draft' && manualPercentage} aria-invalid={!!errors.employer} onInvalid={invalidRate('employer')} onInput={clearRate('employer')} placeholder="13" className={inputCls} />
+              {errors.employer && <span role="alert" className="text-xs text-destructive">{errors.employer}</span>}
             </PersonnelField>
           )}
           {m === 'semi_auto' ? (
             <p className="text-xs text-muted-foreground sm:col-span-2">{t('epfSemiAutoHint')}</p>
           ) : (
-            <p className="text-xs text-muted-foreground sm:col-span-2">{t('epfVoluntaryHint')}</p>
+            <p className="text-xs text-muted-foreground sm:col-span-2">{t(manualPercentage ? 'epfManualPercentageHint' : 'epfVoluntaryHint')}</p>
           )}
         </div>
       )}
+      {manualPercentage && legacyPercentage && <div className="space-y-2 rounded-md border border-border p-3 text-sm sm:col-span-2">
+        <p>{t('epfManualAdoptionPreview')}</p>
+        <label className="flex items-start gap-2"><input type="checkbox" name="epfManualPercentageAdoptionConfirmed" required className="mt-1" />{t('epfManualAdoptionConfirm')}</label>
+      </div>}
       {/* ── ITEM 70b14723 — THE RINGGIT BOXES, AND ONLY THE ONES THE CATEGORY NAMES ──────────────────────
           Conditional exactly as the rate boxes are, for the same reason: this form is a FULL-ROW OVERWRITE
           with everything mounted, so what is not rendered is not posted and `mapEpfUiMode` nulls the rest.

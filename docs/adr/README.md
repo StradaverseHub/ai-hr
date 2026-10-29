@@ -163,3 +163,5 @@ Read only records relevant to the task. A newer decision supersedes an older one
 - [ADR-0155 — Shared personnel import history and all-or-nothing revert](0155-shared-import-history-and-revert.md)
 - [ADR-0156 — Single-sheet Movement import, per-row company and whole-import revert](0156-single-sheet-movement-import.md)
 - [ADR-0157 — Voiding employments created in error by an import](0157-employment-import-void.md)
+
+- [ADR-0158 — Explicit manual EPF percentage elections](0158-explicit-manual-epf-percentage.md)

@@ -1,3 +1,4 @@
+import { manualEpfPercentageRates } from './epf-election';
 import {type SavedTaxCircumstance,readSavedTaxCircumstance} from './tax-circumstance';
 import { readPcbNonCash, type NonCashAmounts } from '../noncash-benefits';
 /**
@@ -119,7 +120,9 @@ export type TaxProfile = {
  * produces 5.5% and no election expresses it. So this mode does NOT floor at statutory; it is the one EPF
  * mode that can go down, and it is the only affordance the system has for that member.
  */
-export type EpfMode = 'auto' | 'voluntary_excess' | 'exempt' | 'manual_amount';
+/** 5e204d56: manual_percentage is an explicit operator election, 1–100% on both sides,
+ * independent of schedule floors and age/citizenship branches. Legacy modes retain their behavior. */
+export type EpfMode = 'auto' | 'voluntary_excess' | 'exempt' | 'manual_amount' | 'manual_percentage';
 export type EpfElection = {
   mode: EpfMode;
   employeeRate?: number | null;
@@ -183,6 +186,7 @@ export function resolveEpfRates(
   const statutoryEmployer = wage <= cfg.employerThreshold ? cfg.employerRateLow : cfg.employerRateHigh;
   const mode = election?.mode ?? 'auto';
   if (mode === 'exempt') return { employeeRate: 0, employerRate: 0 };
+  if (mode === 'manual_percentage') return manualEpfPercentageRates(election?.employeeRate, election?.employerRate);
   const elect = (elected: number | null | undefined, floor: number) =>
     mode === 'voluntary_excess' && elected != null ? Math.max(elected, floor) : floor;
   return {
@@ -233,6 +237,13 @@ export function epf(
   // from `round2` in the last bits and none that crossed a band edge — so this is a guard against a
   // narrow case, not a demonstrated bug, and it costs one multiplication.)
   const base = round2(Math.max(0, wage) + Math.max(0, additional));
+  if (election?.mode === 'manual_percentage') {
+    const rates = manualEpfPercentageRates(election.employeeRate, election.employerRate);
+    const cents = Math.round(base * 100);
+    if (!Number.isSafeInteger(cents)) throw new Error('EPF manual percentage wage exceeds supported precision.');
+    const contribution = (rate: number) => Number((BigInt(cents) * BigInt(Math.round(rate * 10000)) + BigInt(999999)) / BigInt(1000000));
+    return { employee: contribution(rates.employeeRate), employer: contribution(rates.employerRate) };
+  }
   const statEmployerRate = base <= cfg.employerThreshold ? cfg.employerRateLow : cfg.employerRateHigh;
 
   // Statutory floor: exact Third Schedule band (incl. the NIL first band), or the percentage rounded
@@ -289,6 +300,11 @@ export function epfContribution(
   election?: EpfElection,
   sel?: { age?: number | null; citizenship?: EpfCitizenship },
 ): { employee: number; employer: number; employeeOnBonus: number } {
+  if (election?.mode === 'manual_percentage') {
+    const total = epf(wage, additional, cfg, election);
+    const normal = epf(wage, 0, cfg, election);
+    return {...total, employeeOnBonus: Math.max(0, total.employee - normal.employee)};
+  }
   const byRule = epfContributionByRule(wage, additional, cfg, election, sel);
   // ── Item 70b14723 — THE TYPED AMOUNT, APPLIED ACROSS EVERY RULE BRANCH ──────────────────────────────
   // `epf()` already substitutes for the Part A path (citizen/PR under 60), which is why the Kₜ difference

@@ -157,6 +157,7 @@ describe('§1 the three Active sections and Others Statutory, in all six locales
       expect(optionTexts(cat), `${loc} EPF categories`).toEqual([
         d.epfModeAuto,
         d.epfModeManualPercentage,
+        d.epfModeVoluntaryPercentage,
         d.epfModeSemiAuto,
         d.epfModeManualEmployeeAmount,
         d.epfModeManualEmployerAmount,
@@ -209,6 +210,7 @@ describe('§2 the EPF boxes appear per category, post nothing, and keep the stri
   const EXPECT: Record<string, (keyof typeof BOXES)[]> = {
     auto: [],
     manual_percentage: ['epfEmployeeRate', 'epfEmployerRate'],
+    voluntary_percentage: ['epfEmployeeRate', 'epfEmployerRate'],
     semi_auto: ['epfEmployeeRate'],
     manual_employee_amount: ['epfEmployeeAmount', 'epfManualReason'],
     manual_employer_amount: ['epfEmployerAmount', 'epfManualReason'],
@@ -221,7 +223,7 @@ describe('§2 the EPF boxes appear per category, post nothing, and keep the stri
     const epf = () => within(section('epf')!);
     for (const [cat, boxes] of Object.entries(EXPECT)) {
       await userEvent.selectOptions(epf().getByLabelText(d.epfMode), cat);
-      const shown = (Object.keys(BOXES) as (keyof typeof BOXES)[]).filter((k) => epf().queryByLabelText(BOXES[k]) !== null);
+      const shown = (Object.keys(BOXES) as (keyof typeof BOXES)[]).filter((k) => epf().queryByLabelText(personnelCaption(BOXES[k])) !== null);
       expect(shown, `${cat}: boxes shown`).toEqual(boxes);
       for (const el of section('epf')!.querySelectorAll('input, select')) expect(el.getAttribute('name'), `${cat}: no name`).toBeNull();
     }
@@ -231,14 +233,14 @@ describe('§2 the EPF boxes appear per category, post nothing, and keep the stri
     wrap(draftOf());
     const epf = () => within(section('epf')!);
     await userEvent.selectOptions(epf().getByLabelText(d.epfMode), 'manual_percentage');
-    await userEvent.type(epf().getByLabelText(d.epfEmployeeRate), '14.5');
-    await userEvent.type(epf().getByLabelText(d.epfEmployerRate), '16');
+    await userEvent.type(epf().getByLabelText(personnelCaption(d.epfEmployeeRate)), '14.5');
+    await userEvent.type(epf().getByLabelText(personnelCaption(d.epfEmployerRate)), '16');
     await save();
     let s = savedData().statutory!;
     expect(s.epfMode, 'data.statutory.epfMode').toBe('manual_percentage');
     expect(s.epfEmployeeRate, 'data.statutory.epfEmployeeRate — percent as typed').toBe('14.5');
     expect(s.epfEmployerRate, 'data.statutory.epfEmployerRate').toBe('16');
-    const employerRate = epf().getByLabelText(d.epfEmployerRate) as HTMLInputElement;
+    const employerRate = epf().getByLabelText(personnelCaption(d.epfEmployerRate)) as HTMLInputElement;
     expect(employerRate.type).toBe('number');
     expect(employerRate.readOnly).toBe(false);
     expect(employerRate).toBeEnabled();
@@ -274,13 +276,13 @@ describe('§3 what Activate would refuse is named on the still-needed list and h
   const f = en.people.wizard.fields;
 
   it('a below-floor rate names the Employee rate box; fixing it releases Activate', async () => {
-    wrap(draftOf({ epfMode: 'manual_percentage' }));
-    expect(activate().disabled, 'blank rates are lawful (statutory)').toBe(false);
-    await userEvent.type(within(section('epf')!).getByLabelText(d.epfEmployeeRate), '10');
+    wrap(draftOf({ epfMode: 'voluntary_percentage' }));
+    expect(activate().disabled, 'legacy blank rates retain the statutory rule').toBe(false);
+    await userEvent.type(within(section('epf')!).getByLabelText(personnelCaption(d.epfEmployeeRate)), '10');
     expect(bankStatutoryNeeds(en)?.textContent ?? '', 'still needed').toContain(f.epfEmployeeRate);
     expect(activate().disabled, 'Activate held back').toBe(true);
-    await userEvent.clear(within(section('epf')!).getByLabelText(d.epfEmployeeRate));
-    await userEvent.type(within(section('epf')!).getByLabelText(d.epfEmployeeRate), '12');
+    await userEvent.clear(within(section('epf')!).getByLabelText(personnelCaption(d.epfEmployeeRate)));
+    await userEvent.type(within(section('epf')!).getByLabelText(personnelCaption(d.epfEmployeeRate)), '12');
     expect(bankStatutoryNeeds(en), 'nothing owed').toBeNull();
     expect(activate().disabled).toBe(false);
   });
@@ -336,6 +338,7 @@ function BeforeField({ label, children }: { label: string; children: ReactNode }
 type BeforeUiMode =
   | 'auto'
   | 'manual_percentage'
+  | 'voluntary_percentage'
   | 'semi_auto'
   | 'manual_fixed'
   | 'manual_employee_amount'
@@ -357,7 +360,7 @@ function beforeUiModeFrom(
 ): BeforeUiMode {
   if (mode === 'exempt') return 'none';
   if (mode === 'voluntary_excess') {
-    return employeeRate != null && employerRate == null ? 'semi_auto' : 'manual_percentage';
+    return employeeRate != null && employerRate == null ? 'semi_auto' : 'voluntary_percentage';
   }
   if (mode === 'manual_amount') {
     if (employeeAmount != null && employerAmount != null) return 'manual_both_amount';
@@ -377,8 +380,8 @@ type EpfProps = {
 function BeforeEpfElection({ mode, employeeRate, employerRate, employeeAmount, employerAmount, manualReason }: EpfProps) {
   const t = useTranslations('people.detail');
   const [m, setM] = useState<BeforeUiMode>(beforeUiModeFrom(mode, employeeRate, employerRate, employeeAmount, employerAmount));
-  const showEmployeeRate = m === 'manual_percentage' || m === 'semi_auto';
-  const showEmployerRate = m === 'manual_percentage';
+  const showEmployeeRate = m === 'manual_percentage' || m === 'voluntary_percentage' || m === 'semi_auto';
+  const showEmployerRate = m === 'manual_percentage' || m === 'voluntary_percentage';
   const amounts = beforeIsAmountMode(m) ? BEFORE_AMOUNT_MODES[m] : null;
   return (
     <>
@@ -386,6 +389,7 @@ function BeforeEpfElection({ mode, employeeRate, employerRate, employeeAmount, e
         <select name="epfMode" value={m} onChange={(e) => setM(e.target.value as BeforeUiMode)} className={beforeInputCls}>
           <option value="auto">{t('epfModeAuto')}</option>
           <option value="manual_percentage">{t('epfModeManualPercentage')}</option>
+          <option value="voluntary_percentage">{t('epfModeVoluntaryPercentage')}</option>
           <option value="semi_auto">{t('epfModeSemiAuto')}</option>
           <option value="manual_employee_amount">{t('epfModeManualEmployeeAmount')}</option>
           <option value="manual_employer_amount">{t('epfModeManualEmployerAmount')}</option>
@@ -397,12 +401,12 @@ function BeforeEpfElection({ mode, employeeRate, employerRate, employeeAmount, e
         <div className="grid grid-cols-2 gap-3 sm:col-span-2">
           {showEmployeeRate && (
             <BeforeField label={t('epfEmployeeRate')}>
-              <input name="epfEmployeeRate" type="number" min="11" max="100" step="0.01" defaultValue={employeeRate ?? ''} placeholder="11" className={beforeInputCls} />
+              <input name="epfEmployeeRate" aria-invalid="false" type="number" min="11" max="100" step="0.01" defaultValue={employeeRate ?? ''} placeholder="11" className={beforeInputCls} />
             </BeforeField>
           )}
           {showEmployerRate && (
             <BeforeField label={t('epfEmployerRate')}>
-              <input name="epfEmployerRate" type="number" min="12" max="100" step="0.01" defaultValue={employerRate ?? ''} placeholder="13" className={beforeInputCls} />
+              <input name="epfEmployerRate" aria-invalid="false" type="number" min="12" max="100" step="0.01" defaultValue={employerRate ?? ''} placeholder="13" className={beforeInputCls} />
             </BeforeField>
           )}
           {m === 'semi_auto' ? (

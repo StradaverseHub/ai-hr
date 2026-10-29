@@ -104,7 +104,7 @@ describe('Personnel shared form contract',()=>{
   });
   it('separates offered EPF election categories from the persisted lawful enum',()=>{
     const election='bank_statutory.epf_contribution.epfuimode';
-    expect(personnelFormChoices(election).map(choice=>choice.value)).toEqual(['auto','manual_percentage','semi_auto','manual_employee_amount','manual_employer_amount','manual_both_amount','none']);
+    expect(personnelFormChoices(election).map(choice=>choice.value)).toEqual(['auto','manual_percentage','voluntary_percentage','semi_auto','manual_employee_amount','manual_employer_amount','manual_both_amount','none']);
     expect(personnelFormName(election)).toBe('epfMode');
     expect(()=>personnelInput('bank_statutory.epf_contribution.epfmode')).toThrow(/specialized/);
     expect(personnelInput('bank_statutory.epf_contribution.epfemployeeamount','draft').required).toBe(false);

@@ -1,38 +1,5 @@
-/**
- * EPF UI-category → lawful-enum mapping (ADR-0046 #2; extended by item 70b14723 / ADR-0087).
- *
- * The statutory card surfaces NAMED CATEGORIES; the `epf_mode` enum has four lawful shapes
- * (`auto | voluntary_excess | exempt | manual_amount`). This maps the UI selection down to the enum value
- * plus the figures to persist, at the server boundary — the client never decides the persisted enum. Rates
- * arrive as percentages (e.g. 11) and are converted to decimals (0.11); amounts arrive as ringgit and stay
- * ringgit. A null rate or a null amount keeps that side statutory.
- *
- * ⚠️ THE OLD CLAIM, RETIRED RATHER THAN DELETED (70b14723). This file used to say:
- *
- *     "Manual (by fixed amount) is DEFERRED (no KWSP fixed-amount election); the UI option is disabled and
- *      any stray submission is coerced defensively to `auto`."
- *
- * That was true of what KWSP's FORMS offer and was read as a statement about what a lawful contribution can
- * be, which it is not. The reversal, its evidence and the two objections it answers are in
- * docs/adr/0087-epf-manual-amount-categories.md; the short version is a member grandfathered on the
- * pre-1998 rates, whose lawful contribution is BELOW today's schedule and which nothing in this system can
- * compute. The deferral was made twice (ADR-0035 §4, ADR-0046) and the option was removed from the dropdown
- * under feedback 127dffba; this ticket was the third time it was asked for.
- *
- * ⚠️ THREE UI CATEGORIES, ONE ENUM LABEL. Manual (Employee by Amount), Manual (Employer by Amount) and
- * Manual (Employee and Employer by Amount) are exactly the three combinations of (employee amount set,
- * employer amount set) and are DERIVED when the screen renders — the same rule that makes a
- * `voluntary_excess` row with a null employer RATE "Semi-Auto" without storing the word. So no row can carry
- * a category that disagrees with its own figures, and `uiModeFrom` in components/epf-election.tsx is the one
- * place the derivation happens.
- *
- * WHY THE FUNCTION NULLS WHAT THE CATEGORY DOES NOT USE. `setStatutoryProfileMY` is a FULL-ROW OVERWRITE and
- * the statutory form mounts EVERY input on every save, so a field the chosen category does not use arrives
- * populated with whatever the previous category left in the box. Nulling here is what makes switching
- * category actually clear the old figures instead of leaving a stale amount for a future payroll run to
- * apply. `resolveEpfElection` (localization/my/epf-election.ts, called by `setStatutoryProfileMY`) then re-asserts the same nulling server-side
- * and is the only place that VALIDATES.
- */
+/** EPF presentation categories map to explicit calculation modes. Manual percentage is distinct
+ * from legacy top-up elections: reopening and saving an existing top-up never converts it. */
 // Rung 5b (ADR-0080 D1/D6): the lawful-enum vocabulary arrives via the contract, not the MY pack.
 import type { EpfMode } from '../localization/country-pack';
 
@@ -44,6 +11,7 @@ import type { EpfMode } from '../localization/country-pack';
 export type EpfUiMode =
   | 'auto'
   | 'manual_percentage'
+  | 'voluntary_percentage'
   | 'semi_auto'
   | 'manual_fixed'
   | 'manual_employee_amount'
@@ -55,6 +23,7 @@ export type EpfUiMode =
 export const EPF_UI_MODE_OPTIONS = [
   {value:'auto',labelKey:'people.detail.epfModeAuto'},
   {value:'manual_percentage',labelKey:'people.detail.epfModeManualPercentage'},
+  {value:'voluntary_percentage',labelKey:'people.detail.epfModeVoluntaryPercentage'},
   {value:'semi_auto',labelKey:'people.detail.epfModeSemiAuto'},
   {value:'manual_employee_amount',labelKey:'people.detail.epfModeManualEmployeeAmount'},
   {value:'manual_employer_amount',labelKey:'people.detail.epfModeManualEmployerAmount'},
@@ -94,9 +63,8 @@ export function epfUiModeNeedsAmount(uiMode: string | null | undefined): boolean
 
 /** Convert a percentage form value (string|null) to a decimal rate, or null when absent/blank. */
 function pct(v: string | number | null | undefined): number | null {
-  if (v == null || v === '') return null;
-  const n = Number(v);
-  return Number.isNaN(n) ? null : n / 100;
+  if (v == null || String(v).trim() === '') return null;
+  return Number(v) / 100;
 }
 
 /**
@@ -130,6 +98,8 @@ export function mapEpfUiMode(
   const NO_RATE = { epfEmployeeRate: null, epfEmployerRate: null } as const;
   switch (uiMode) {
     case 'manual_percentage':
+      return { epfMode: 'manual_percentage', epfEmployeeRate: pct(rawEmployeeRate), epfEmployerRate: pct(rawEmployerRate), ...NO_AMOUNT };
+    case 'voluntary_percentage':
       return { epfMode: 'voluntary_excess', epfEmployeeRate: pct(rawEmployeeRate), epfEmployerRate: pct(rawEmployerRate), ...NO_AMOUNT };
     case 'semi_auto':
       // Employee side elected; employer side forced statutory (null) — that's "semi-auto".
@@ -164,9 +134,10 @@ export function epfUiModeFrom(
   employerAmount: number | null,
 ): EpfUiMode {
   if (mode === 'exempt') return 'none';
+  if (mode === 'manual_percentage') return 'manual_percentage';
   if (mode === 'voluntary_excess') {
     // Semi-Auto = employee side elected, employer side left statutory (null).
-    return employeeRate != null && employerRate == null ? 'semi_auto' : 'manual_percentage';
+    return employeeRate != null && employerRate == null ? 'semi_auto' : 'voluntary_percentage';
   }
   if (mode === 'manual_amount') {
     if (employeeAmount != null && employerAmount != null) return 'manual_both_amount';

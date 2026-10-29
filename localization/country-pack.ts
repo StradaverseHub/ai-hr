@@ -301,6 +301,7 @@ export interface CountryPackClient {
      * pack's OWN rule (MY: `resolveEpfElection`, reached through `mapEpfUiMode`), never a copy of it.
      * Optional: a jurisdiction with no elective contribution has nothing to refuse.
      */
+    epfRateInputBounds?: (uiMode: string, side: 'employee' | 'employer') => { min: number; max: number };
     epfElectionGap?: (
       uiMode: string | null | undefined,
       employeeRate: string | null | undefined,
