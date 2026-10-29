@@ -32,6 +32,8 @@
  *   store                 custody family: dedicated | generic_own | generic_assigned | module_action | own_leave
  *   browserOwner          key of ModuleActionBrowserOwners ('root' = notifications, 'ownLeave' = own-leave handler)
  *   pauseKey              AI pause switch that stops the agent's part ('hr_assistant' today; WP12 adds per-action keys)
+ *   automatic             WP13: Automatic tier only. The scheduled specialist switch it runs under, its source, and the
+ *                         overdue threshold, cooldown and caps the executor (core/automatic-chasers.ts) reads from here
  */
 import type {AgentModuleCode} from './module-agents';
 import {NEVER_AUTOMATIC_CATEGORIES,AUTOMATIC_CATEGORIES,type AgentTier,type AgentActionPolicy} from './agent-action-tiers';
@@ -40,11 +42,11 @@ import {OWN_LEAVE_CONTRACT_VERSION} from '../assistant-actions/own-leave-contrac
 export type AgentActionOwner='personnel'|'organization'|'leave'|'profile'|'knowledge_base'|'payroll'|'attendance'|'claims'|'performance'|'rewards'|'lifecycle'|'country_pack_my'|'notifications'|'system_testing';
 export type AgentActionPhaseStatus='implemented'|'human_workflow_only'|'pending_adapter';
 export type AgentActionPhase=Readonly<{status:AgentActionPhaseStatus;adapter:string|null;inputSchema:string|null;outputSchema:string|null}>;
-export type AgentActionActor='self'|'assigned_approver'|'hr_admin'|'tenant_admin'|'payroll_admin'|'rewards_admin'|'assigned_tester';
+export type AgentActionActor='self'|'assigned_approver'|'hr_admin'|'tenant_admin'|'payroll_admin'|'rewards_admin'|'assigned_tester'|'agent_principal';
 export type AgentActionSubject='own_employment'|'own_user'|'assigned_request'|'other_employment'|'company'|'tenant';
 export type AgentActionStoreFamily='dedicated'|'generic_own'|'generic_assigned'|'module_action'|'own_leave'|'human_workflow_only';
 export type AgentActionHandoff='review_page'|'native_workflow'|'none';
-export type AgentActionIdempotencyKey='review_action_id'|'import_attempt_version';
+export type AgentActionIdempotencyKey='review_action_id'|'import_attempt_version'|'chase_item_stage_cooldown';
 /** One AI pause switch today. WP12 widens this union with a per-action key under hr_assistant. */
 export type AgentActionPauseKey='hr_assistant';
 type Anchor=`${string}#${string}`;
@@ -55,19 +57,28 @@ export type AgentActionReversal=
  | Readonly<{kind:'final'}>                      // the decision, acknowledgement or withdrawal stands
  | Readonly<{kind:'unknown'}>;                   // no reversal path found in source
 export type AgentActionEvaluationCase=Readonly<{suite:'assistant_conversation';case:string}>;
+/** WP13 (R18). The scheduled specialist (an AI management switch run by the tenant's agent principal), the native
+ * source it reads, and the bounds the executor enforces: chase an item once it has waited `overdueAfterDays` working
+ * days at its current stage, not again within `cooldownDays`, at most `maxPerItem` times per stage, and at most
+ * `maxPerRun` reminders per tenant per run. `overdueAfterDays` counts WORKING days on the requester's roster minus
+ * public holidays (the leave escalation's clock). These are registry defaults; per-company values are a follow-up.
+ * Reminders only: never a decision, submission or record change. */
+export type AgentAutomaticSpecialist='approval_chasers'|'review_chasers';
+export type AgentAutomaticSource='claim'|'attendance_correction'|'replacement_leave'|'employment_review';
+export type AgentAutomaticPolicy=Readonly<{specialist:AgentAutomaticSpecialist;source:AgentAutomaticSource;overdueAfterDays:number;cooldownDays:number;maxPerItem:number;maxPerRun:number}>;
 
 /** The policy field reuses WP2's AgentActionPolicy union, so `{category:'pay',tier:'automatic'}` (or any
  * never-Automatic category paired with Automatic) is a compile error in the entry itself. */
 export type AgentActionDefinition=Readonly<{
  id:string;module:AgentModuleCode;owner:AgentActionOwner;service:Anchor;serviceMember?:'statutory.set';observations?:'human_actual_only';
  contractVersion:number;prepare:AgentActionPhase;confirm:AgentActionPhase;
- outcome:'canonical_receipt_required'|'submitted_not_approved';semantics:string;
+ outcome:'canonical_receipt_required'|'submitted_not_approved'|'notification_only';semantics:string;
  humanInputs:readonly string[]|'native_page_only';
  permission:Readonly<{actor:AgentActionActor;guard:Anchor}>;subject:AgentActionSubject;
  blastRadius:Readonly<{max:number;unit:string}>;idempotencyKey:AgentActionIdempotencyKey;
  policy:AgentActionPolicy;reversal:AgentActionReversal;evaluationCases:readonly AgentActionEvaluationCase[];
  screen:Readonly<{native:string;entryPoints:readonly Anchor[]}>;review:Readonly<{route:string;handoff:AgentActionHandoff}>;
- store:AgentActionStoreFamily;browserOwner:string|null;pauseKey:AgentActionPauseKey;
+ store:AgentActionStoreFamily;browserOwner:string|null;pauseKey:AgentActionPauseKey;automatic?:AgentAutomaticPolicy;
 }>;
 
 function freezeDeep<T>(value:T):T{if(value&&typeof value==='object'&&!Object.isFrozen(value)){for(const inner of Object.values(value))freezeDeep(inner);Object.freeze(value);}return value;}
@@ -81,6 +92,13 @@ export function defineAgentAction<const T extends AgentActionDefinition>(definit
  if(d.prepare.status==='implemented'&&(!d.prepare.adapter||d.prepare.adapter!==d.confirm.adapter))fail('implemented phases need one adapter');
  if((d.store==='human_workflow_only')!==(d.browserOwner===null))fail('browser owner');
  if(d.reversal.kind==='action'&&d.reversal.by===d.id)fail('reversal');
+ // WP13: an Automatic entry is a reminder run by the agent principal. No model nominates or prepares it, it has no
+ // review row and its only outcome is a notification; its bounds are positive integers.
+ if((d.policy.tier==='automatic')!==(d.automatic!==undefined))fail('automatic policy');
+ if(d.automatic){const a=d.automatic;
+  if(d.store!=='human_workflow_only'||d.permission.actor!=='agent_principal'||d.outcome!=='notification_only'||d.idempotencyKey!=='chase_item_stage_cooldown')fail('automatic shape');
+  if(![a.overdueAfterDays,a.cooldownDays,a.maxPerItem,a.maxPerRun].every(n=>Number.isSafeInteger(n)&&n>=1&&n<=1000))fail('automatic bounds');}
+ else if(d.permission.actor==='agent_principal'||d.outcome==='notification_only')fail('automatic shape');
  return freezeDeep(definition);
 }
 
@@ -343,6 +361,39 @@ export const AGENT_ACTIONS=Object.freeze([
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'approvals'},reversal:{kind:'entry_point',by:'app/admin/leave-config/leave-credit/actions.ts#reverseLeaveCreditAction'},evaluationCases:[],
   screen:{native:'app/admin/leave-config/leave-credit/page.tsx',entryPoints:['app/admin/leave-config/leave-credit/actions.ts#grantLeaveCreditRowsAction']},review:{route:'/assistant/hr?flow=credit',handoff:'none'},
   store:'generic_assigned',browserOwner:'leaveCredit',pauseKey:'hr_assistant'}),
+ /** WP13 (R18; ADR-0151 §4.4-4.5, owner decisions 1-2 of 29 Oct 2026): the first Automatic entries. The tenant's agent
+  * principal runs them nightly behind an administrator's attributed switch-on, from templates only (no model, no
+  * spend). Each appends one stamped reminder event; the notification registry re-checks that the item still waits
+  * and notifies its current approver. They never approve, reject, submit or change a record. The effective pause is
+  * the specialist switch in AI management (plus SETTING_KILL); pauseKey stays the one legal value until WP12. */
+ defineAgentAction({id:'approvals.claim.chase',module:'approvals',owner:'claims',service:'core/automatic-chasers.ts#runApprovalChasers',contractVersion:1,
+  prepare:{status:'human_workflow_only',adapter:null,inputSchema:null,outputSchema:null},confirm:{status:'human_workflow_only',adapter:null,inputSchema:null,outputSchema:null},
+  outcome:'notification_only',semantics:'approver_reminded_claim_decision_unchanged',humanInputs:'native_page_only',
+  permission:{actor:'agent_principal',guard:'core/automatic-chasers.ts#assertAutomaticChaserTx'},subject:'assigned_request',blastRadius:{max:1,unit:'reminder_event_per_claim_stage'},
+  idempotencyKey:'chase_item_stage_cooldown',policy:{tier:'automatic',category:'chaser'},reversal:{kind:'final'},evaluationCases:[],
+  screen:{native:'app/approvals/page.tsx',entryPoints:[]},review:{route:'/approvals',handoff:'none'},
+  store:'human_workflow_only',browserOwner:null,pauseKey:'hr_assistant',automatic:{specialist:'approval_chasers',source:'claim',overdueAfterDays:3,cooldownDays:7,maxPerItem:3,maxPerRun:100}}),
+ defineAgentAction({id:'approvals.attendance.chase',module:'approvals',owner:'attendance',service:'core/automatic-chasers.ts#runApprovalChasers',contractVersion:1,
+  prepare:{status:'human_workflow_only',adapter:null,inputSchema:null,outputSchema:null},confirm:{status:'human_workflow_only',adapter:null,inputSchema:null,outputSchema:null},
+  outcome:'notification_only',semantics:'approver_reminded_attendance_decision_unchanged',humanInputs:'native_page_only',
+  permission:{actor:'agent_principal',guard:'core/automatic-chasers.ts#assertAutomaticChaserTx'},subject:'assigned_request',blastRadius:{max:1,unit:'reminder_event_per_correction_stage'},
+  idempotencyKey:'chase_item_stage_cooldown',policy:{tier:'automatic',category:'chaser'},reversal:{kind:'final'},evaluationCases:[],
+  screen:{native:'app/approvals/page.tsx',entryPoints:[]},review:{route:'/approvals',handoff:'none'},
+  store:'human_workflow_only',browserOwner:null,pauseKey:'hr_assistant',automatic:{specialist:'approval_chasers',source:'attendance_correction',overdueAfterDays:3,cooldownDays:7,maxPerItem:3,maxPerRun:100}}),
+ defineAgentAction({id:'approvals.toil.chase',module:'approvals',owner:'leave',service:'core/automatic-chasers.ts#runApprovalChasers',contractVersion:1,
+  prepare:{status:'human_workflow_only',adapter:null,inputSchema:null,outputSchema:null},confirm:{status:'human_workflow_only',adapter:null,inputSchema:null,outputSchema:null},
+  outcome:'notification_only',semantics:'approver_reminded_replacement_decision_unchanged',humanInputs:'native_page_only',
+  permission:{actor:'agent_principal',guard:'core/automatic-chasers.ts#assertAutomaticChaserTx'},subject:'assigned_request',blastRadius:{max:1,unit:'reminder_event_per_replacement_request'},
+  idempotencyKey:'chase_item_stage_cooldown',policy:{tier:'automatic',category:'chaser'},reversal:{kind:'final'},evaluationCases:[],
+  screen:{native:'app/approvals/page.tsx',entryPoints:[]},review:{route:'/approvals',handoff:'none'},
+  store:'human_workflow_only',browserOwner:null,pauseKey:'hr_assistant',automatic:{specialist:'approval_chasers',source:'replacement_leave',overdueAfterDays:3,cooldownDays:7,maxPerItem:3,maxPerRun:100}}),
+ defineAgentAction({id:'employees.review_overdue.remind',module:'employees',owner:'personnel',service:'core/automatic-chasers.ts#runReviewChasers',contractVersion:1,
+  prepare:{status:'human_workflow_only',adapter:null,inputSchema:null,outputSchema:null},confirm:{status:'human_workflow_only',adapter:null,inputSchema:null,outputSchema:null},
+  outcome:'notification_only',semantics:'review_owner_reminded_decision_unchanged',humanInputs:'native_page_only',
+  permission:{actor:'agent_principal',guard:'core/automatic-chasers.ts#assertAutomaticChaserTx'},subject:'other_employment',blastRadius:{max:1,unit:'reminder_event_per_review_stage'},
+  idempotencyKey:'chase_item_stage_cooldown',policy:{tier:'automatic',category:'reminder'},reversal:{kind:'final'},evaluationCases:[],
+  screen:{native:'app/approvals/page.tsx',entryPoints:[]},review:{route:'/approvals',handoff:'none'},
+  store:'human_workflow_only',browserOwner:null,pauseKey:'hr_assistant',automatic:{specialist:'review_chasers',source:'employment_review',overdueAfterDays:1,cooldownDays:7,maxPerItem:4,maxPerRun:100}}),
 ] as const);
 
 export type AgentAction=(typeof AGENT_ACTIONS)[number];

@@ -3970,6 +3970,13 @@
       "when": 1793330000019,
       "tag": "0693_assistant_action_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 687,
+      "version": "7",
+      "when": 1793330000023,
+      "tag": "0697_automatic_chasers",
+      "breakpoints": true
     }
   ]
 }

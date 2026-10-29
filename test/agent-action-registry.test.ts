@@ -11,7 +11,7 @@ import {
 } from '../lib/ai/agent-action-registry';
 import {AUTOMATIC_CATEGORIES,NEVER_AUTOMATIC_CATEGORIES,type NeverAutomaticCategory} from '../lib/ai/agent-action-tiers';
 import {assertAgentActionTier} from '../lib/ai/agent-action-tier-guard';
-import {AGENT_ACTION_CATEGORY,AGENT_ACTION_TIER_CEILING,AGENT_CAPABILITY_INVENTORY} from '../lib/ai/agent-capability-inventory';
+import {AGENT_ACTION_CATEGORY,AGENT_ACTION_TIER_CEILING,AGENT_CAPABILITY_INVENTORY,AGENT_PRINCIPAL_SPECIALISTS} from '../lib/ai/agent-capability-inventory';
 import {MODULE_AGENT_ACTIONS,parseModuleAgentActionNomination} from '../lib/ai/module-agent-actions';
 import {NATIVE_OUTCOME_ACTIONS,NATIVE_REVIEW_ACTIONS} from '../lib/ai/module-native-outcomes';
 import {moduleHumanActionHandoffs} from '../lib/ai/module-human-handoffs';
@@ -77,10 +77,9 @@ describe('the agent action registry',()=>{
   expectTypeOf<Extract<AgentAction,{readonly policy:{readonly tier:'automatic';readonly category:NeverAutomaticCategory}}>>().toBeNever();
   for(const action of AGENT_ACTIONS){
    if((NEVER_AUTOMATIC_CATEGORIES as readonly string[]).includes(action.policy.category))expect(action.policy.tier,action.id).not.toBe('automatic');
-   // Widened on purpose: no entry is Automatic yet (WP13 adds them), so the narrow type has no 'automatic'.
    const policy=action.policy as AgentActionDefinition['policy'];
-   if(policy.tier==='automatic')expect(AUTOMATIC_CATEGORIES as readonly string[]).toContain(policy.category);
-   expect(()=>assertAgentActionTier(action.id,'automatic'),action.id).toThrow();
+   if(policy.tier==='automatic'){expect(AUTOMATIC_CATEGORIES as readonly string[]).toContain(policy.category);expect(()=>assertAgentActionTier(action.id,'automatic'),action.id).not.toThrow();}
+   else expect(()=>assertAgentActionTier(action.id,'automatic'),action.id).toThrow();
   }
   const base=AGENT_ACTIONS.find(action=>action.id==='payroll.close')!;
   for(const category of NEVER_AUTOMATIC_CATEGORIES)
@@ -143,10 +142,11 @@ describe('the agent action registry',()=>{
  });
 
  it('derives the module declarations, nomination parser, native outcomes and handoff routes from the registry',()=>{
+  // WP13: Automatic reminders are run by the agent principal, never nominated in chat, so they stay out of the module contract.
   const declared=Object.values(MODULE_AGENT_ACTIONS).flatMap(module=>module.actions.map(action=>action.id));
-  expect([...declared].sort()).toEqual([...AGENT_ACTION_IDS].sort());
+  expect([...declared].sort()).toEqual(AGENT_ACTIONS.filter(action=>action.policy.tier!=='automatic').map(action=>action.id).sort());
   for(const [module,row] of Object.entries(MODULE_AGENT_ACTIONS)){
-   const entries=agentActionsByModule(module as AgentAction['module']);
+   const entries=agentActionsByModule(module as AgentAction['module']).filter(action=>action.policy.tier!=='automatic');
    expect(row.actions.map(action=>action.id).sort()).toEqual(entries.map(action=>action.id).sort());
    // Exactly one action is the module's own public boundary, and it leads (it sets the module phases).
    if(entries.length){expect(entries.filter(action=>action.service===row.publicBoundary).map(action=>action.id),module).toEqual([row.actions[0]!.id]);}
@@ -193,6 +193,42 @@ describe('the agent action registry',()=>{
   for(const row of ASSISTANT_CONVERSATION_HOLDOUTS){const proposal=(row.source as {proposal?:unknown}).proposal;if(typeof proposal!=='string')continue;
    expect(getAgentAction(proposal as AgentAction['id']).evaluationCases.map(evaluation=>evaluation.case),row.id).toContain(row.id.slice(row.id.indexOf(':')+1));}
   for(const action of ASSISTANT_PROPOSABLE_ACTIONS)expect(ASSISTANT_PROPOSAL_MODULE[action]).toBe(getAgentAction(action).module);
+ });
+});
+
+describe('WP13 Automatic-tier entries (R18)',()=>{
+ const automatic=agentActionsByTier('automatic');
+ it('are exactly the owner-ordered reminders, each bounded and run by the agent principal only',()=>{
+  expect(automatic.map(action=>action.id)).toEqual(['approvals.claim.chase','approvals.attendance.chase','approvals.toil.chase','employees.review_overdue.remind']);
+  for(const action of automatic){
+   expect(['chaser','reminder']).toContain(action.policy.category);
+   expect(action).toMatchObject({store:'human_workflow_only',browserOwner:null,humanInputs:'native_page_only',outcome:'notification_only',
+    idempotencyKey:'chase_item_stage_cooldown',permission:{actor:'agent_principal',guard:'core/automatic-chasers.ts#assertAutomaticChaserTx'},
+    prepare:{status:'human_workflow_only'},confirm:{status:'human_workflow_only'},review:{handoff:'none'},screen:{entryPoints:[]}});
+   expect(Object.keys(AGENT_PRINCIPAL_SPECIALISTS)).toContain(action.automatic.specialist);
+   expect(AGENT_PRINCIPAL_SPECIALISTS[action.automatic.specialist].service).toBe(action.service);
+   for(const bound of [action.automatic.overdueAfterDays,action.automatic.cooldownDays,action.automatic.maxPerItem,action.automatic.maxPerRun])
+    expect(Number.isSafeInteger(bound)&&bound>=1).toBe(true);
+   // A model can never nominate, prepare or confirm one.
+   for(const phase of ['prepare','confirm','explain'])expect(()=>parseModuleAgentActionNomination({module:action.module,action:action.id,phase})).toThrow();
+   expect(moduleHumanActionHandoffs(action.module).some(row=>(row.action as string)===action.id)).toBe(false);
+  }
+  expect(automatic.filter(action=>action.automatic.specialist==='approval_chasers').map(action=>action.automatic.source).sort()).toEqual(['attendance_correction','claim','replacement_leave']);
+ });
+
+ it('refuses a malformed Automatic entry at definition',()=>{
+  const base=AGENT_ACTIONS.find(action=>action.id==='approvals.claim.chase')! as unknown as AgentActionDefinition;
+  const bad=(patch:Record<string,unknown>)=>()=>defineAgentAction({...base,id:'approvals.fabricated.chase',...patch} as unknown as AgentActionDefinition);
+  expect(bad({})).not.toThrow();
+  expect(bad({automatic:undefined})).toThrow('malformed');
+  expect(bad({policy:{tier:'automatic',category:'approvals'}})).toThrow('malformed');
+  expect(bad({permission:{actor:'assigned_approver',guard:base.permission.guard}})).toThrow('malformed');
+  expect(bad({outcome:'canonical_receipt_required'})).toThrow('malformed');
+  expect(bad({automatic:{...base.automatic!,maxPerRun:0}})).toThrow('malformed');
+  expect(bad({automatic:{...base.automatic!,cooldownDays:1.5}})).toThrow('malformed');
+  const confirm=AGENT_ACTIONS.find(action=>action.id==='leave.cancel')! as unknown as AgentActionDefinition;
+  expect(()=>defineAgentAction({...confirm,id:'leave.fabricated',automatic:base.automatic} as unknown as AgentActionDefinition)).toThrow('malformed');
+  expect(()=>defineAgentAction({...confirm,id:'leave.fabricated',permission:{actor:'agent_principal',guard:confirm.permission.guard}} as unknown as AgentActionDefinition)).toThrow('malformed');
  });
 });
 

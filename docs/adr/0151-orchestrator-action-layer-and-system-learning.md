@@ -510,3 +510,33 @@ and the closed `action_kind`/`action` CHECK lists are dropped. Adding an action 
 one `INSERT` row in a new migration; its owning service, store adapter and per-kind SQL column rule and
 verifier remain the action's own behaviour (WP9 collapses the stores). A parity test holds registry = seeded
 rows = capability inventory = tier-ceiling map. This amendment proves no gate result or installation.
+
+### WP13 first Automatic-tier entries (§4.4–4.5, R18) — 30 October 2026
+
+Owner decisions of 29 October 2026 set the order (approval chasers, then probation and contract-end reminders,
+then missing clock-in, expiring documents and lifecycle steps) and give the agent principal no model spend.
+Four registry entries now carry tier `automatic`: `approvals.claim.chase`, `approvals.attendance.chase` and
+`approvals.toil.chase` (category `chaser`, specialist `approval_chasers`) and `employees.review_overdue.remind`
+(category `reminder`, specialist `review_chasers`). Each declares an `automatic` block (overdue threshold in
+working days on the requester's roster minus holidays, the leave escalation's clock; registry defaults,
+per-company values a follow-up; cooldown per item and stage, lifetime cap per item and stage, cap per run) that
+`core/automatic-chasers.ts` enforces. They have no review store row, are never nominated, prepared or
+confirmed by a model, and stay out of the chat module contract, so existing specialist digests do not change.
+
+The tenant's agent principal runs them nightly in `scripts/review-sweep.ts`, each only behind its own AI
+management switch (`notifications.approval_chasers_enabled`, `notifications.review_chasers_enabled`, default
+off) attributed to the administrator who switched it on, re-checked in every effect transaction. A run appends
+one stamped `automatic-chase.*` event per item; nothing is approved, rejected, submitted or changed. The
+notification registry re-checks that the item still waits at the chased stage and tells its current approver
+(claims and replacement leave: the administrative manager on a current, non-superseded line, else company HR;
+participant-routed attendance: only the participants the workflow's outstanding rule says can act now, so one in
+a sequential level; reviews: the manager at the manager stage, else company HR). Delegates are
+not chased, as for the leave escalation. Reminders before a review's end date stay the existing engine job.
+
+The two switches are template-only AI management agents: they never enter model admission, and the AI control
+context is unchanged. Migration 0697 adds the reference rows, the principal's read and stamp policies for the new
+event types, two id-and-date-only source definers, an outstanding-participant reader for attendance and an
+administrator-scoped outcome summary shown beside Assistant outcomes. Missing clock-in nudges, expiring documents and lifecycle step
+chasing are not yet built. The effective pause for these entries is their specialist switch (and
+`SETTING_KILL`); their `pauseKey` stays `hr_assistant` until WP12 widens it. This amendment proves no gate
+result or installation.

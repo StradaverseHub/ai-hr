@@ -6,7 +6,7 @@ import {describe,expect,it} from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {AGENT_PRINCIPAL_SPECIALISTS,AGENT_CAPABILITY_INVENTORY,AGENT_ACTION_TIER_CEILING,AGENT_HANDOFF_REASONS,AGENT_INTERNAL_REASONS,agentCapabilityCoverage} from '../lib/ai/agent-capability-inventory';
+import {AGENT_PRINCIPAL_SPECIALISTS,AGENT_CAPABILITY_INVENTORY,AGENT_ACTION_TIER_CEILING,AGENT_ACTION_CATEGORY,AGENT_HANDOFF_REASONS,AGENT_INTERNAL_REASONS,agentCapabilityCoverage} from '../lib/ai/agent-capability-inventory';
 import {NATIVE_OUTCOME_ACTIONS} from '../lib/ai/module-native-outcomes';
 
 const ROOT=path.resolve(__dirname,'..');
@@ -73,8 +73,10 @@ describe('ADR-0151 agent capability inventory',()=>{
    if(!READ_VERB.test(name)||/Check(In|Out)/.test(name)||/revalidate(Path|Tag)\(/.test(body(file,name)))refused.push(`${file} › ${name}`);
   }
   expect(refused).toEqual([]);
-  // Registered effects are never Automatic today (§4.4).
-  expect(Object.values(AGENT_ACTION_TIER_CEILING)).not.toContain('automatic');
+  // Registered effects are never Automatic (§4.4), except the WP13 reminders and chasers, which change no record.
+  const automatic=Object.entries(AGENT_ACTION_TIER_CEILING).filter(([,tier])=>tier==='automatic').map(([id])=>id);
+  expect(automatic.sort()).toEqual(['approvals.attendance.chase','approvals.claim.chase','approvals.toil.chase','employees.review_overdue.remind']);
+  for(const id of automatic)expect(['chaser','reminder']).toContain(AGENT_ACTION_CATEGORY[id as keyof typeof AGENT_ACTION_CATEGORY]);
  });
 
  it('keeps the never-automatic categories as handoffs',()=>{
@@ -97,8 +99,9 @@ describe('ADR-0151 agent capability inventory',()=>{
 
  it('lets the agent principal run only Automatic specialists that exist and match its switches (ADR-0151 §4.5)',()=>{
   // The same switches migration 0672 names in its attribution read and its event stamp check.
-  const migration=fs.readFileSync(path.join(process.cwd(),'db/migrations/0672_ai_agent_principal.sql'),'utf8');
-  expect(Object.keys(AGENT_PRINCIPAL_SPECIALISTS).sort()).toEqual(['claims_triage','readiness_reminders']);
+  // WP13 (0697) replaced both policies with the same rule plus the two reminder specialists.
+  const migration=['0672_ai_agent_principal','0697_automatic_chasers'].map(tag=>fs.readFileSync(path.join(process.cwd(),`db/migrations/${tag}.sql`),'utf8')).join('\n');
+  expect(Object.keys(AGENT_PRINCIPAL_SPECIALISTS).sort()).toEqual(['approval_chasers','claims_triage','readiness_reminders','review_chasers']);
   for(const entry of Object.values(AGENT_PRINCIPAL_SPECIALISTS))expect(migration).toContain(`'${entry.setting}'`);
   for(const [feature,entry] of Object.entries(AGENT_PRINCIPAL_SPECIALISTS)){
    expect(entry.tier,feature).toBe('automatic');

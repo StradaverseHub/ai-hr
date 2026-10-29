@@ -2,7 +2,7 @@ import {createAiRunAccounting,type AiRunAccounting} from '../lib/ai/run-accounti
 import { sql } from 'drizzle-orm';
 import { withTenant,type SessionContext,type Tx } from '../db/client';
 import { AiGatewayError,AiAllowanceError,type AiUsage,type AiRunObservation,type ResolvedAiConfig } from '../lib/ai/types';
-import { AI_FEATURES,isAiFeature,type AiFeatureId } from '../lib/ai/features';
+import { AI_FEATURES,isAiFeature,isTemplateOnlyAiFeature,type AiFeatureId } from '../lib/ai/features';
 
 import { resolveEntitlementsTx, getSetting } from './entitlements';
 import { assertAiProviderSnapshot, assertAiProviderSnapshotFeature, assertCurrentAiProviderSnapshotTx, type AiProviderSnapshot } from './ai-provider-snapshot';
@@ -29,6 +29,8 @@ async function forcedPauseTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promi
  */
 export async function assertAiActionUnpausedTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promise<void>{
  if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
+ // WP13: template-only scheduled agents have no model admission at all.
+ if(isTemplateOnlyAiFeature(feature))throw new AiGatewayError('This feature makes no model call.');
  const forcedPause=await forcedPauseTx(tx,ctx,feature);
  const [control]=await tx.execute<{unpaused:boolean}>(sql`select app.ai_action_unpaused(${feature},${forcedPause}) as unpaused`);
  if(control?.unpaused===false)throw new AiAllowanceError('paused');
@@ -52,6 +54,7 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
  assertAiProviderSnapshotFeature(snapshot,feature);
  const cfg=snapshot.configuration;
  if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
+ if(isTemplateOnlyAiFeature(feature))throw new AiGatewayError('This feature makes no model call.');
  const resolved=Object.freeze({...cfg,governance:Object.freeze({async run<T>(request:AiAdmission,call:(record:(usage:AiUsage)=>void,observe?:(observation:AiRunObservation)=>void)=>Promise<T>,outgoing:ResolvedAiConfig=cfg):Promise<T>{
   const capturedRequest=Object.freeze({operation:request.operation,reservedTokens:request.reservedTokens,
    ...(request.inputDigest===undefined?{}:{inputDigest:request.inputDigest})});

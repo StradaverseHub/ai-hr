@@ -19114,7 +19114,11 @@
         "action_claims_cancel": "Pending claim cancelled; nothing paid",
         "action_leave_adjustment_apply": "HR leave adjustment recorded; balance changes from its effective date",
         "action_employees_movement_transfer": "HR assignment movement recorded; applied now or pending until its date",
-        "action_toil_credit_grant": "HR Leave Credit banked; overtime on that date is no longer paid"
+        "action_toil_credit_grant": "HR Leave Credit banked; overtime on that date is no longer paid",
+        "action_approvals_claim_chase": "Remind approver about an overdue claim",
+        "action_approvals_attendance_chase": "Remind approver about an overdue attendance request",
+        "action_approvals_toil_chase": "Remind approver about an overdue replacement leave request",
+        "action_employees_review_overdue_remind": "Remind about a review undecided after its end date"
       },
       "conversation": {
         "answerLabel": "Answer from your records",
@@ -24489,7 +24493,9 @@
       "performance_idp": "Development and career plans",
       "performance_calib": "Calibration assistance",
       "performance_assistant": "Performance conversation assistant",
-      "feedback_planning": "Improvement plan drafting"
+      "feedback_planning": "Improvement plan drafting",
+      "approval_chasers": "Overdue approval reminders",
+      "review_chasers": "Overdue review reminders"
     },
     "kinds": {
       "assistant": "Assistant",
@@ -26805,7 +26811,15 @@
       "coverageHandoff": "Stays on its own screen",
       "coverageInternal": "Not a user task",
       "coverageHelp": "The not-yet counts shrink as actions become available to the Assistant. Actions that stay on their own screen do so by policy, for example access, AI settings and payroll reversals.",
-      "version": "outcome rules {version}"
+      "version": "outcome rules {version}",
+      "automaticTitle": "What happened after scheduled reminders",
+      "automaticSubtitle": "Reminders the scheduled agent sent since {from}, and whether each chased item has moved on since. Counts only.",
+      "colReminders": "Reminders sent",
+      "colItems": "Items chased",
+      "colActed": "Acted on since",
+      "colStillWaiting": "Still waiting",
+      "automaticNone": "No scheduled reminders were sent in this period for the companies you administer.",
+      "automaticLimit": "Acted on since means the item is no longer waiting at the stage it was chased at. It does not prove the reminder caused it. Reminders use fixed templates; no AI model is used."
     }
   },
   "cardImport": {
