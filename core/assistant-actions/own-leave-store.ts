@@ -1,3 +1,4 @@
+import {settleReviewCustodyTx} from './review-lifecycle';
 import {assertHumanReviewedActionTier} from '../../lib/ai/agent-action-tier-guard';
 import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
@@ -141,15 +142,14 @@ export async function reopenOwnLeaveReviewTx(tx: Tx, supplied: SessionContext, a
   if (stored.metadata.actionId !== actionId.data
     || stored.metadata.binding.tenantId !== actor.tenantId || stored.metadata.binding.userId !== actor.userId
     || stored.metadata.binding.personId !== actor.personId || stored.metadata.binding.employmentId!==subject.data) throw new OwnLeaveContentUnavailable();
-  if(stored.metadata.state==='awaiting_confirmation'){
+  return settleReviewCustodyTx(stored,{kind:'reopen'},{completed:row=>completed(tx,actor,row),retired,pending:async()=>{
     const saved=unsealOwnLeaveReview(stored.metadata,stored.sealed),intent=saved.review.nomination;
     // Saved visibility is not a permission. Rebuild the exact canonical permitted projection under
     // the same current authority/config/subject interval BEFORE returning any saved values.
     const fresh=await readOwnLeaveCandidateTx(tx,actor,intent,{employmentId:subject.data,leaveTypeId:intent.leaveTypeId},saved.review.humanText,locale);
     if(fresh.kind!=='candidate'||ownLeaveReviewedDigest(fresh.candidate)!==stored.metadata.reviewedDigest||fresh.candidate.intentDigest!==stored.metadata.intentDigest||fresh.privateAvailableBalance!==saved.availableBalance)throw new OwnLeaveContentUnavailable();
     return publicReview(stored);
-  }
-  return stored.metadata.state === 'completed' ? completed(tx, actor, stored) : retired(stored);
+  },unavailable:():never=>{throw new OwnLeaveContentUnavailable();}});
 }
 
 /** Privacy-only retirement for the SAME login, tenant AND person (ADR-0131), still available after
@@ -240,9 +240,8 @@ export async function confirmOwnLeaveReview(supplied: SessionContext, confirmati
         || m.binding.tenantId !== actor.tenantId || m.binding.userId !== actor.userId
         || m.binding.personId !== actor.personId || m.binding.employmentId !== subject.data)
         throw new OwnLeaveContentUnavailable();
-      if (m.state === 'completed') return completed(tx, actor, stored);
-      if (m.state !== 'awaiting_confirmation') return retired(stored);
-      if (m.reviewedDigest !== confirmation.reviewedDigest || m.intentDigest === null) throw new OwnLeaveContentUnavailable();
+      return settleReviewCustodyTx(stored,{kind:'confirm',expectedDigest:confirmation.reviewedDigest},{completed:row=>completed(tx,actor,row),retired,pending:async()=>{
+      if(m.intentDigest===null)throw new OwnLeaveContentUnavailable();
       const saved = unsealOwnLeaveReview(m, stored.sealed), intent = saved.review.nomination;
       const fresh = await readOwnLeaveCandidateTx(tx, actor, intent,
         { employmentId: m.binding.employmentId, leaveTypeId: intent.leaveTypeId }, saved.review.humanText, locale);
@@ -265,6 +264,7 @@ export async function confirmOwnLeaveReview(supplied: SessionContext, confirmati
         || recorded.receipt.leaveRequestId !== written.leaveRequestId
         || recorded.receipt.submissionEventId !== written.submittedEventId) throw new OwnLeaveContentUnavailable();
       return completed(tx, actor, recorded);
+      },unavailable:():never=>{throw new OwnLeaveContentUnavailable();}});
     });
   } catch {
     // Source/Drizzle errors can retain private text or encrypted parameters. Bound every outward

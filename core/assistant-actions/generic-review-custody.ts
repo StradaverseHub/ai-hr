@@ -11,7 +11,8 @@ import {assertAiPrincipalTx} from '../ai-principal';
 import {captureNativeOutcomeTargetsTx,type NativeOutcomePrivacyTarget} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
 import {PrivateReviewNonce,newPrivateReviewNonce,privateReviewCommitment} from './private-review-commitment';
-import {masterKeyAvailable,newDek,newKid,sealUnderDek,unsealUnderDek,unwrapDek,wrapDek} from '../../lib/pii/vault';
+import {createReviewEnvelope} from './review-envelope';
+import {settleReviewCustodyTx} from './review-lifecycle';
 import {OwnLeaveSealedReview} from './own-leave-content';
 export type ReviewState='awaiting_confirmation'|'completed'|'discarded'|'expired'|'refused';
 export type ReviewActorBinding={tenantId:string;userId:string;personId:string|null};
@@ -57,8 +58,9 @@ export function createReviewCustody<H,B extends ReviewActorBinding,R extends Rev
  const commitment=(metadata:R['metadata'],body:ReviewBody<H>)=>spec.crypto?spec.crypto.commitment(metadata,wire(body)):privateReviewCommitment([1,spec.action,metadata.binding],wire(body));
  const checked=(m:R['metadata'],value:unknown)=>{const raw=spec.body?spec.body.read(value):Body.parse(value),body:ReviewBody<H>=spec.body?raw:{reviewNonce:raw.reviewNonce,content:spec.human.parse(raw.content),nativeReviewedDigest:raw.nativeReviewedDigest};spec.assertHumanBinding(m.binding,body.content);spec.assertBodyBinding?.(m.binding,body);if(hash(body.content)!==m.intentDigest||commitment(m,body)!==m.reviewedDigest)return fail();return body;};
  const bound=(row:R,ctx:SessionContext,id:string,source:S,phase:'read'|'prepared'|'completed'='read')=>{const m=row.metadata;if(m.action!==spec.action||m.actionId!==id||m.binding.tenantId!==ctx.tenantId||m.binding.userId!==ctx.userId||m.binding.personId!==(ctx.personId??null))return fail();spec.assertSubjectBinding(m.binding,source);spec.assertStoredSubject?.(row,source,phase);};
- function seal(m:R['metadata'],body:ReviewBody<H>){let dek:Buffer|undefined;try{if(!masterKeyAvailable())return fail();const id=identity(m),text=JSON.stringify(wire(checked(m,wire(body))));if(Buffer.byteLength(text)>maxBodyBytes)return fail();dek=newDek();const kid=newKid();return Sealed.parse({formatVersion:1,kid,wrappedDek:wrapDek(dek,(spec.crypto?.keyPurpose??'assistant:module-action:key:')+id),ciphertext:sealUnderDek(dek,kid,text,(spec.crypto?.bodyPurpose??'assistant:module-action:body:')+id)});}finally{dek?.fill(0);}}
- function unseal(row:R){let dek:Buffer|undefined;try{if(!masterKeyAvailable())return fail();const id=identity(row.metadata),sealed=Sealed.parse(row.sealed);dek=unwrapDek(sealed.wrappedDek,(spec.crypto?.keyPurpose??'assistant:module-action:key:')+id);if(dek.length!==32)return fail();const text=unsealUnderDek(dek,sealed.ciphertext,(spec.crypto?.bodyPurpose??'assistant:module-action:body:')+id);if(Buffer.byteLength(text)>maxBodyBytes)return fail();return checked(row.metadata,JSON.parse(text));}finally{dek?.fill(0);}}
+ const envelope=createReviewEnvelope<R['metadata'],ReviewBody<H>,z.infer<typeof OwnLeaveSealedReview>>({sealed:Sealed,maxBytes:maxBodyBytes,identity:m=>{const id=identity(m);return{wrapAad:(spec.crypto?.keyPurpose??'assistant:module-action:key:')+id,bodyAad:(spec.crypto?.bodyPurpose??'assistant:module-action:body:')+id};},checked,wire,unavailable:fail});
+ const seal=(m:R['metadata'],body:ReviewBody<H>)=>envelope.seal(m,wire(body));
+ const unseal=(row:R)=>envelope.unseal(row.metadata,row.sealed);
  const read=async(tx:Tx,id:string)=>spec.stored.parse(await spec.readRow(tx,id));
  // Optional installed-protocol path: own encrypted peek is nomination only. Native preflight must
  // precede the custody NOWAIT read, then the exact row/body/state must still equal the nomination.
@@ -82,12 +84,14 @@ export function createReviewCustody<H,B extends ReviewActorBinding,R extends Rev
    const stored=spec.stored.parse(await spec.prepareRow(tx,m,seal(m,body),source,human,native));bound(stored,fresh,m.actionId,source,'prepared');return pending(stored,unseal(stored),native);
   }));}catch{return fail();}},
   async confirm(supplied:SessionContext,input:unknown){assertHumanReviewedActionTier(supplied,spec.action,spec.tier);const ctx=capture(supplied),parsed=spec.confirmation.safeParse(input);if(!parsed.success)return fail();const p={...parsed.data,actionId:spec.normalizeActionId?.(parsed.data.actionId)??parsed.data.actionId};try{return await withTenant(ctx,tx=>spec.withInterval(tx,ctx,{actionId:p.actionId},async(fresh,source)=>{
-   const held=await snapshot(tx,fresh,p.actionId,source,p.reviewedDigest),stored=held.row;bound(stored,fresh,p.actionId,source);if(stored.metadata.state==='completed')return completed(tx,fresh,stored,source);if(stored.metadata.state!=='awaiting_confirmation')return retired(stored);if(stored.metadata.reviewedDigest!==p.reviewedDigest)return fail();
+   const held=await snapshot(tx,fresh,p.actionId,source,p.reviewedDigest),stored=held.row;bound(stored,fresh,p.actionId,source);
+   return settleReviewCustodyTx(stored,{kind:'confirm',expectedDigest:p.reviewedDigest},{completed:row=>completed(tx,fresh,row,source),retired,pending:async()=>{
    const body=held.body??unseal(stored),native=await spec.confirmNative(tx,fresh,body,source,held.current);await captureNativeOutcomeTargetsTx(tx,fresh,{action:spec.action,sourceId:p.actionId,eventId:spec.nativeEvent(native),targets:spec.targets(source,native,held.current,body)});
    const done=spec.stored.parse(await spec.completeRow(tx,p.actionId,p.reviewedDigest,native));bound(done,fresh,p.actionId,source,'completed');spec.assertCompletion(done,native);return completed(tx,fresh,done,source);
+   },unavailable:fail});
   }));}catch{return fail();}},
   async reopen(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=z.guid().safeParse(input);if(!parsed.success)return fail();const id=spec.normalizeActionId?.(parsed.data)??parsed.data;try{return await withTenant(ctx,tx=>spec.withInterval(tx,ctx,{actionId:id},async(fresh,source)=>{
-   const held=await snapshot(tx,fresh,id,source),stored=held.row;bound(stored,fresh,id,source);if(stored.metadata.state==='awaiting_confirmation'){const body=held.body??unseal(stored);return pending(stored,body,held.current??(spec.reopenNative?await spec.reopenNative(tx,fresh,body,source):await spec.prepareNative(tx,fresh,body.content,source)));}return stored.metadata.state==='completed'?completed(tx,fresh,stored,source):retired(stored);
+   const held=await snapshot(tx,fresh,id,source),stored=held.row;bound(stored,fresh,id,source);return settleReviewCustodyTx(stored,{kind:'reopen'},{completed:row=>completed(tx,fresh,row,source),retired,pending:async()=>{const body=held.body??unseal(stored);return pending(stored,body,held.current??(spec.reopenNative?await spec.reopenNative(tx,fresh,body,source):await spec.prepareNative(tx,fresh,body.content,source)));},unavailable:fail});
   }));}catch{return fail();}},
   async discard(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=spec.retirement.safeParse(input);if(!parsed.success)return fail();try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);return{kind:'retired' as const,receipt:spec.retired.parse(await spec.discardRow(tx,parsed.data.actionId))};});}catch{return fail();}},
   async list(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);return spec.index.parse({kind:spec.indexKind,reviews:await spec.indexRows(tx)});});}catch{return fail();}},
