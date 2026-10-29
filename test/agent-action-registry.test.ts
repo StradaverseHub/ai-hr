@@ -211,7 +211,7 @@ describe('WP13 Automatic-tier entries (R18)',()=>{
     expect(Number.isSafeInteger(bound)&&bound>=1).toBe(true);
    // A model can never nominate, prepare or confirm one.
    for(const phase of ['prepare','confirm','explain'])expect(()=>parseModuleAgentActionNomination({module:action.module,action:action.id,phase})).toThrow();
-   expect(moduleHumanActionHandoffs(action.module).some(row=>row.action===action.id)).toBe(false);
+   expect(moduleHumanActionHandoffs(action.module).some(row=>(row.action as string)===action.id)).toBe(false);
   }
   expect(automatic.filter(action=>action.automatic.specialist==='approval_chasers').map(action=>action.automatic.source).sort()).toEqual(['attendance_correction','claim','replacement_leave']);
  });
