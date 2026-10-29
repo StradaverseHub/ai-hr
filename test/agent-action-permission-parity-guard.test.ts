@@ -19,8 +19,8 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
   expect([...PARITY_ROLES]).toEqual(['employee','manager','assigned_approver','company_hr','group_hr','payroll_partner','performance_comp_partner','performance_partner','another_company','another_tenant']);
  });
 
- it('probes at least the wave 1b generic assigned family, and every probed entry has an agent store',()=>{
-  expect([...PROBED_ACTION_IDS].sort()).toEqual(['approvals.attendance.decide','approvals.claim.decide','approvals.toil.decide','employees.movement.transfer','leave.adjustment.apply','toil.credit.grant']);
+ it('probes the wave 1 and 1b generic families, and every probed entry has an agent store',()=>{
+  expect([...PROBED_ACTION_IDS].sort()).toEqual(['approvals.attendance.decide','approvals.claim.decide','approvals.toil.decide','employees.movement.transfer','leave.adjustment.apply','leave.cancel','leave.edit','toil.credit.grant']);
   for(const id of PROBED_ACTION_IDS)expect(AGENT_ACTIONS.find(action=>action.id===id)?.store,id).not.toBe('human_workflow_only');
  });
 
@@ -57,8 +57,8 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
   const pending=Object.entries(AGENT_ACTION_PARITY).filter(([,d])=>d.kind==='pending').map(([id])=>id).sort();
   // Exactly the ceiling: an adapter landing must remove its id here (the guard reports a stale ceiling entry).
   expect(pending).toEqual([...PARITY_PENDING_CEILING].sort());
-  expect(PARITY_PENDING_CEILING.size).toBeLessThanOrEqual(23);
-  const stale=parityCoverageProblems(registry,{...declarations,'leave.cancel':probed});
-  expect(stale).toEqual(['leave.cancel: has a probed declaration, so remove it from PARITY_PENDING_CEILING (the list only shrinks)']);
+  expect(PARITY_PENDING_CEILING.size).toBeLessThanOrEqual(21);
+  const stale=parityCoverageProblems(registry,{...declarations,'leave.apply':probed});
+  expect(stale).toEqual(['leave.apply: has a probed declaration, so remove it from PARITY_PENDING_CEILING (the list only shrinks)']);
  });
 });

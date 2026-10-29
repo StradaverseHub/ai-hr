@@ -26,10 +26,12 @@ import {createMovementEventTx} from '../core/movement';
 import {isAdmin} from '../lib/authz-model';
 import {createClaimType,setClaimPolicy,submitClaim,decideClaimTx} from '../packs/claims/service';
 import {requestAttendanceCorrection,decideAttendanceCorrection} from '../packs/attendance/service';
-import {setToilPolicy,submitReplacementLeaveRequest,decideReplacementLeaveRequestTx,applyLeaveAdjustmentBatchTx,grantLeaveCreditRowsTx} from '../packs/leave/service';
+import {setToilPolicy,submitReplacementLeaveRequest,decideReplacementLeaveRequestTx,applyLeaveAdjustmentBatchTx,grantLeaveCreditRowsTx,requestLeave,cancelOwnLeaveTx,editLeaveRequestTx} from '../packs/leave/service';
 import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews,readClaimDecisionChoices,readAttendanceDecisionChoices,readToilDecisionChoices} from '../core/assistant-actions/assigned-decision-review-store';
+import {leaveCancellationReviews,leaveEditReviews,readLeaveChangeChoices} from '../core/assistant-actions/leave-change-review-store';
 import {leaveAdjustmentReviews,movementTransferReviews,leaveCreditReviews,readLeaveAdjustmentChoices,readMovementTransferChoices,readLeaveCreditChoices} from '../core/assistant-actions/hr-prepared-review-store';
 import {ASSIGNED_CLAIM_DECISION_ACTION,ASSIGNED_ATTENDANCE_DECISION_ACTION,ASSIGNED_TOIL_DECISION_ACTION} from '../lib/assistant-actions/assigned-decision-contract';
+import {OWN_LEAVE_CANCELLATION_ACTION,OWN_LEAVE_EDIT_ACTION} from '../lib/assistant-actions/own-leave-change-contract';
 import {HR_LEAVE_ADJUSTMENT_ACTION,HR_MOVEMENT_TRANSFER_ACTION,HR_LEAVE_CREDIT_ACTION} from '../lib/assistant-actions/hr-prepared-contract';
 import {AGENT_ACTIONS} from '../lib/ai/agent-action-registry';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -38,7 +40,7 @@ import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setMo
 
 type Person={employmentId:string;personId:string};
 type DbRole=(typeof schema.roleEnum.enumValues)[number];
-type Item={subjectId:string;employmentId:string;date?:string};
+type Item={subjectId:string;employmentId:string;date?:string;dates?:string[]};
 type Review={actionId:string;reviewedDigest:string};
 /** The store surface the harness uses; each concrete store is structurally assignable to it. */
 type Store={
@@ -107,8 +109,16 @@ async function buildWorld():Promise<World>{
  return {b,foreign,companyB:other.id,subject,people,group,as};
 }
 
-type Choices={kind:string;items?:{subjectId:string}[];employees?:{employmentId:string}[]};
-const lists=(found:unknown,item:Item)=>{const c=found as Choices;return c?.kind==='choices'&&(!!c.items?.some(row=>row.subjectId===item.subjectId)||!!c.employees?.some(row=>row.employmentId===item.employmentId));};
+type Choices={kind:string;items?:{subjectId:string}[];employees?:{employmentId:string}[];requests?:{leaveRequestId:string}[]};
+const lists=(found:unknown,item:Item)=>{const c=found as Choices;return c?.kind==='choices'&&(!!c.items?.some(row=>row.subjectId===item.subjectId)||!!c.employees?.some(row=>row.employmentId===item.employmentId)||!!c.requests?.some(row=>row.leaveRequestId===item.subjectId));};
+/** The next n weekdays after today (HR date owner). */
+function weekdays(n:number){const out:string[]=[],next=new Date(todayInKualaLumpur()+'T00:00:00Z');while(out.length<n){next.setUTCDate(next.getUTCDate()+1);if(![0,6].includes(next.getUTCDay()))out.push(next.toISOString().slice(0,10));}return out;}
+/** One plain pending full-day leave request of the subject's, applied on their own leave screen path. */
+async function pendingLeave(w:World):Promise<Item>{
+ await owner.db.insert(schema.leaveLedger).values({tenantId:w.b.tenantId,employmentId:w.subject.employmentId,leaveTypeId:w.b.annualLeaveTypeId,entryType:'accrual',days:'10',effectiveOn:todayInKualaLumpur()});
+ const dates=weekdays(4),done=await requestLeave(await w.as('employee'),{employmentId:w.subject.employmentId,leaveTypeId:w.b.annualLeaveTypeId,startDate:dates[0],endDate:dates[0],durationType:'full_day',reason:'Fictional family visit'});
+ return {subjectId:done.leaveRequestId,employmentId:w.subject.employmentId,dates};
+}
 const employmentItem=(w:World):Item=>({subjectId:w.subject.employmentId,employmentId:w.subject.employmentId});
 
 const ADAPTERS:Record<ProbedActionId,Adapter>={
@@ -135,6 +145,17 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:(_w,item)=>({action:ASSIGNED_TOIL_DECISION_ACTION,contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,decision:'approved',note:'Fictional approver note'}),
   offered:async(who,_w,item)=>lists(await readToilDecisionChoices(who),item),
   screen:(tx,who,_w,item)=>decideReplacementLeaveRequestTx(tx,who,{requestId:item.subjectId,decision:'approved'})},
+ // Own leave screen: cancelOwnLeaveAction / editLeaveAction call the service with the session (no page admission).
+ 'leave.cancel':{store:leaveCancellationReviews,
+  create:pendingLeave,
+  human:(_w,item)=>({action:OWN_LEAVE_CANCELLATION_ACTION,contractVersion:1,employmentId:item.employmentId,leaveRequestId:item.subjectId,cancel:true}),
+  offered:async(who,_w,item)=>lists(await readLeaveChangeChoices(who),item),
+  screen:(tx,who,_w,item)=>cancelOwnLeaveTx(tx,who,{leaveRequestId:item.subjectId})},
+ 'leave.edit':{store:leaveEditReviews,
+  create:pendingLeave,
+  human:(_w,item)=>({action:OWN_LEAVE_EDIT_ACTION,contractVersion:1,employmentId:item.employmentId,leaveRequestId:item.subjectId,startDate:item.dates![1],endDate:item.dates![2]}),
+  offered:async(who,_w,item)=>lists(await readLeaveChangeChoices(who),item),
+  screen:(tx,who,w,item)=>editLeaveRequestTx(tx,who,{leaveRequestId:item.subjectId,leaveTypeId:w.b.annualLeaveTypeId,startDate:item.dates![1],endDate:item.dates![2],durationType:'full_day',today:todayInKualaLumpur()})},
  // HR screens: the server actions call requireAdmin() (isAdmin) before the service.
  'leave.adjustment.apply':{store:leaveAdjustmentReviews,screenAdmits:isAdmin,
   create:async w=>employmentItem(w),

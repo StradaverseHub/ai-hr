@@ -51,6 +51,9 @@ const ASSIGNED_DECISION={employee:D,manager:A,assigned_approver:A,company_hr:A,g
 /** HR screen behind requireAdmin (isAdmin) whose service writes an administered employment under RLS. */
 const HR_ON_EMPLOYMENT={employee:D,manager:D,assigned_approver:D,company_hr:A,group_hr:A,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
 
+/** The subject's own pending request on their own screen: the native creator-only rule. */
+const OWN_REQUEST={employee:A,manager:D,assigned_approver:D,company_hr:D,group_hr:D,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D} as const;
+
 const pending=(reason:string)=>({kind:'pending',reason}) as const;
 const NO_ADAPTER='No parity adapter yet: per-entry subject fixture and screen probe still to be written (WP8 follow-up).';
 
@@ -58,8 +61,8 @@ export const AGENT_ACTION_PARITY={
  'employees.import':{kind:'human_workflow_only',reason:'No agent prepare or confirm: the Assistant only hands off to the native import page, which keeps its own admission.'},
  'org.reporting.change':pending(NO_ADAPTER+' Dedicated store (WP9 collapses it).'),
  'leave.apply':pending(NO_ADAPTER+' Own-leave store.'),
- 'leave.cancel':pending(NO_ADAPTER+' Generic own store.'),
- 'leave.edit':pending(NO_ADAPTER+' Generic own store.'),
+ 'leave.cancel':{kind:'probed',screen:OWN_REQUEST},
+ 'leave.edit':{kind:'probed',screen:OWN_REQUEST},
  'ess.profile.request':pending(NO_ADAPTER+' Module-action store.'),
  'approvals.leave.decide':pending(NO_ADAPTER+' Dedicated leave-decision store (multi-step leave approval routing).'),
  'approvals.claim.decide':{kind:'probed',screen:ASSIGNED_DECISION},
@@ -90,7 +93,7 @@ export const AGENT_ACTION_PARITY={
 /** The entries that existed before this harness and had no adapter when it landed. This list may only
  * shrink: an entry leaves it when its adapter lands, and no other id may ever be `pending`. */
 export const PARITY_PENDING_CEILING:ReadonlySet<string>=new Set([
- 'org.reporting.change','leave.apply','leave.cancel','leave.edit','ess.profile.request','approvals.leave.decide',
+ 'org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide',
  'knowledge_base.article.create','payroll.close','attendance.correction.request','attendance.overtime.request',
  'claims.draft.save','claims.submit','claims.cancel','performance.review.acknowledge','performance.onehr.plan.acknowledge',
  'rewards.post','lifecycle.acknowledgement.submit','toil.replacement.request','multi_cycle_payroll.create_run',
