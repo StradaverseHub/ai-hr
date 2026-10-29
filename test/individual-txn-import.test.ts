@@ -84,6 +84,7 @@ describe('durable Individual Transaction import',()=>{
   const next=await validate('monthly',[monthly('500','2026-08-02')]),created=await confirm(next.id);expect(created.written).toBe(1);
   await owner.db.update(schema.payrollBatch).set({status:'closed'}).where(eq(schema.payrollBatch.id,batchId));
   await expect(revertIndividualImport(a,{id:next.id,scopeIds:[base.companyId],confirmProcessed:true})).rejects.toThrow();expect(await owner.db.select().from(schema.payrollIndividualTxn)).toHaveLength(1);expect((await readIndividualImport(a,next.id,[base.companyId])).state).toBe('completed');
+  const locked=await validate('monthly',[monthly('700','2026-08-04')]);expect(locked.preview.valid).toBe(0);expect(locked.preview.rows[0].reason).toBe('runNotWritable');
  });
  it('retains failed validation attempts and refuses method-mismatched headings before any writes',async()=>{
   const input=await validateIndividualImport(adminCtx(base),{operationId:randomUUID(),sourceName:'wrong.xlsx',csv:csv('monthly',[monthly()]),method:'daily',scopeIds:[base.companyId]});
