@@ -14,12 +14,13 @@ const load=async(path:string)=>{const m=await import(pathToFileURL(path).href);r
 const requirePacket=createRequire(join(packet,'package.json'));
 const postgres=requirePacket('postgres');
 const owner=postgres(process.env.MIGRATION_DATABASE_URL!,{max:1,onnotice:()=>{}});
-let app:any;
+let app:any,sourceHarness:any;
 const save=(data:unknown)=>writeFileSync(statePath,JSON.stringify(data)+'\n',{mode:0o600});
 try {
  if(phase==='setup'){
+  app=(await load(join(packet,'db/client.ts'))).client;
   // Reuse the actual canonical minimal fixture, never production seed/demo data.
-  const h=await load(join(source,'test/harness.ts'));
+  const h=sourceHarness=await load(join(source,'test/harness.ts'));
   const b=await h.seedBase(),ctx=h.adminCtx(b);
   const importer=await load(join(packet,'core/import.ts'));
   const csv=await load(join(packet,'lib/csv.ts'));
@@ -32,7 +33,7 @@ try {
   for(const table of ['person','employment','assignment','compensation'])facts[table]=await owner.unsafe(`select to_jsonb(t) as row from public."${table}" t order by to_jsonb(t)::text`);
   const statutory=await owner`select to_jsonb(s) as row from employee_statutory_my s order by person_id`;
   save({ctx,personId:employee.person_id,originalTax:employee.tax_number,facts,statutory});
-  await h.closeAll();console.log(JSON.stringify({fixture:'canonical-seedBase-and-employee-import',syntheticOnly:true,employees:1}));
+  console.log(JSON.stringify({fixture:'canonical-seedBase-and-employee-import',syntheticOnly:true,employees:1}));
  }else if(phase==='snapshot'){
   const roleProof=await owner`select r.rolname,r.rolsuper,r.rolbypassrls,c.relowner=r.oid as queue_owner from pg_roles r cross join pg_class c where r.rolname in ('ai_hr_app','ai_hr_owner') and c.oid='public.bank_import_job'::regclass order by r.rolname`;
   assert.equal(roleProof.length,2);
@@ -59,8 +60,8 @@ try {
   console.log(JSON.stringify({roleProof,ledgerRows:ledger.length,ledgerSha256:createHash('sha256').update(semanticBytes).digest('hex'),queueRows:queue.rows,publicTables:content}));
  }else {
   const state=JSON.parse(readFileSync(statePath,'utf8'));
-  const jobApi=await load(join(packet,'core/bank-import-job.ts'));
   app=(await load(join(packet,'db/client.ts'))).client;
+  const jobApi=await load(join(packet,'core/bank-import-job.ts'));
   if(phase==='admit'){
    const bytes=Buffer.from('employee_code,tax_number\nARCHIVE001,TARCHIVE\nMISSING-CI-SUBJECT,TINVALID');
    const admitted=await jobApi.createBankImportJob(state.ctx,{name:'fictional-archive.csv',bytes:bytes.length,hash:createHash('sha256').update(bytes).digest('hex')});
@@ -87,6 +88,11 @@ try {
    }else throw Error('Unknown CI fixture phase');
   }
  }
-}finally{if(app)await app.end({timeout:5});await owner.end({timeout:5});}
+}finally{
+ const closers=[owner.end({timeout:5}),...(app?[app.end({timeout:5})]:[]),...(sourceHarness?[sourceHarness.closeAll()]:[])];
+ const closed=await Promise.allSettled(closers);
+ const failed=closed.find(result=>result.status==='rejected');
+ if(failed?.status==='rejected')throw failed.reason;
+}
 }
 main().catch(error=>{console.error('CI-only fictional archived worker fixture failed:',error);process.exitCode=1;});
