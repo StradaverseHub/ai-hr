@@ -3974,7 +3974,14 @@
     {
       "idx": 682,
       "version": "7",
-      "when": 1793330000024,
+      "when": 1793330000030,
+      "tag": "0698_information_only_corrections",
+      "breakpoints": true
+    },
+    {
+      "idx": 683,
+      "version": "7",
+      "when": 1793330000031,
       "tag": "0696_feedback_menu_operator_switch",
       "breakpoints": true
     }

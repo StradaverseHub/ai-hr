@@ -1,3 +1,4 @@
+import {employmentInformationAt,informationReportRelation} from '../../core/information-correction-history';
 import {readSavedTaxCircumstance} from './tax-circumstance';
 import {explainPcb} from '../../core/pcb-explain';
 /**
@@ -561,10 +562,10 @@ async function loadBatchRows(
         gross: payslip.grossPay,
         statutory: payslip.statutory,
       })
-      .from(payslip)
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
-      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .from(informationReportRelation('payslip',params.companyId,params.periodKey))
+      .innerJoin(informationReportRelation('employment',params.companyId,params.periodKey), eq(employment.id, payslip.employmentId))
+      .innerJoin(informationReportRelation('person',params.companyId,params.periodKey), eq(person.id, employment.personId))
+      .leftJoin(informationReportRelation('employee_statutory_my',params.companyId,params.periodKey), eq(employeeStatutoryMy.personId, employment.personId))
       .where(inArray(payslip.batchId, batchIds))
       .orderBy(person.fullName);
     // One row per employee: sum gross + every statutory delta across the period's runs.
@@ -947,11 +948,11 @@ async function loadYearRows(
         gross: payslip.grossPay,
         statutory: payslip.statutory,
       })
-      .from(payslip)
+      .from(informationReportRelation('payslip',companyId,year))
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
-      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .innerJoin(informationReportRelation('employment',companyId,year), eq(employment.id, payslip.employmentId))
+      .innerJoin(informationReportRelation('person',companyId,year), eq(person.id, employment.personId))
+      .leftJoin(informationReportRelation('employee_statutory_my',companyId,year), eq(employeeStatutoryMy.personId, employment.personId))
       .where(and(eq(payrollBatch.companyId, companyId), like(payrollBatch.payPeriod, `${year}-%`)));
 
     const byEmp = new Map<string, YearRow>();
@@ -1039,13 +1040,13 @@ async function formECounts(
       .select({
         employmentId: payslip.employmentId,
         payPeriod: payrollBatch.payPeriod,
-        joinDate: employment.joinDate,
-        hiredOn: employment.hiredOn,
+        joinDate: employmentInformationAt('joinDate',sql`${yEnd}`,sql`${employment.joinDate}`),
+        hiredOn: employmentInformationAt('hiredOn',sql`${yEnd}`,sql`${employment.hiredOn}`),
         terminatedOn: employment.terminatedOn,
       })
-      .from(payslip)
+      .from(informationReportRelation('payslip',companyId,year))
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(informationReportRelation('employment',companyId,year), eq(employment.id, payslip.employmentId))
       .where(and(eq(payrollBatch.companyId, companyId), like(payrollBatch.payPeriod, `${year}-%`)));
 
     type Member = { joinDate: string | null; hiredOn: string; terminatedOn: string | null; lastPeriod: string | null };
@@ -1067,9 +1068,9 @@ async function formECounts(
     // A company that has not run payroll for someone yet still employs them. `lastPeriod: null` marks the
     // ones with no payslip this year, so the year-end test falls back to the dated columns for them.
     const here = await tx
-      .select({ id: employment.id, joinDate: employment.joinDate, hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn })
-      .from(employment)
-      .where(eq(employment.companyId, companyId));
+      .select({ id: employment.id, joinDate: employmentInformationAt('joinDate',sql`${yEnd}`,sql`${employment.joinDate}`), hiredOn: employmentInformationAt('hiredOn',sql`${yEnd}`,sql`${employment.hiredOn}`), terminatedOn: employment.terminatedOn })
+      .from(informationReportRelation('employment',companyId,year))
+      .where(eq(employmentInformationAt('companyId',sql`${yEnd}`,sql`${employment.companyId}`),companyId));
     for (const e of here) {
       if (pop.has(e.id)) continue;
       if (e.hiredOn > yEnd) continue;
@@ -1592,7 +1593,7 @@ export async function eaCompaniesInYear(
   return withTenant(ctx, async (tx) => {
     const paid = await tx
       .selectDistinct({ companyId: payrollBatch.companyId, name: company.legalName, first: payrollBatch.payPeriod })
-      .from(payslip)
+      .from(informationReportRelation('payslip',undefined,p.year))
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .where(and(eq(payslip.employmentId, p.employmentId), like(payrollBatch.payPeriod, `${p.year}-%`)));
@@ -1759,19 +1760,19 @@ export async function eaStatement(
          */
         childReliefMode: employeeStatutoryMy.childReliefMode,
         childReliefTable: employeeStatutoryMy.childReliefTable,
-        hiredOn: employment.hiredOn,
+        hiredOn: employmentInformationAt('hiredOn',sql`${p.year+'-12-31'}`,sql`${employment.hiredOn}`),
         terminatedOn: employment.terminatedOn,
-        companyId: employment.companyId,
+        companyId: employmentInformationAt('companyId',sql`${p.year+'-12-31'}`,sql`${employment.companyId}`),
         companyName: company.legalName,
         // 6036dab7 — Part A's two remaining particulars. `employeeCode` and `passportNumber` are on tables
         // this SELECT already reads. The job title needs a dated lookup and is read separately below.
         employeeNo: employment.employeeCode,
         passport: employeeStatutoryMy.passportNumber,
       })
-      .from(employment)
-      .innerJoin(person, eq(person.id, employment.personId))
-      .innerJoin(company, eq(company.id, employment.companyId))
-      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .from(informationReportRelation('employment',p.companyId,p.year))
+      .innerJoin(informationReportRelation('person',p.companyId,p.year), eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id,sql`${employmentInformationAt('companyId',sql`${p.year+'-12-31'}`,sql`${employment.companyId}`)}::uuid`))
+      .leftJoin(informationReportRelation('employee_statutory_my',p.companyId,p.year), eq(employeeStatutoryMy.personId, employment.personId))
       .where(eq(employment.id, p.employmentId))
       .limit(1);
     if (!info) return null;
@@ -1847,7 +1848,7 @@ export async function eaStatement(
     const titleAsOf = info.terminatedOn && info.terminatedOn < yearEnd ? info.terminatedOn : yearEnd;
     const [asg] = await tx
       .select({ jobTitle: position.title })
-      .from(assignment)
+      .from(informationReportRelation('assignment',p.companyId,p.year))
       .leftJoin(position, eq(position.id, assignment.positionId))
       .where(
         and(
@@ -1916,7 +1917,7 @@ export async function eaStatement(
         gross: payslip.grossPay,
         statutory: payslip.statutory,
       })
-      .from(payslip)
+      .from(informationReportRelation('payslip',p.companyId,p.year))
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
       .where(
         and(
@@ -2066,7 +2067,7 @@ export async function eaStatement(
     const { TP1_COUNTABLE_COLUMNS, tp1CountForYear } = await import('../../packs/payroll/service');
     const tp1Rows = await tx
       .select({ personId: tp1Relief.personId, ...TP1_COUNTABLE_COLUMNS })
-      .from(tp1Relief)
+      .from(informationReportRelation('tp1_relief',p.companyId,p.year))
       .where(
         and(
           eq(tp1Relief.personId, info.personId),
@@ -2219,7 +2220,7 @@ export async function eaStatement(
     const ovRows = overridesApply
       ? await tx
           .select({ field: eaOverride.field, amount: eaOverride.amount, reason: eaOverride.reason })
-          .from(eaOverride)
+          .from(informationReportRelation('ea_override',p.companyId,p.year))
           .where(and(eq(eaOverride.employmentId, p.employmentId), eq(eaOverride.year, p.year)))
       : [];
     const merged: Record<EaField, number> = { ...derived };

@@ -8,9 +8,10 @@ const ADAPTERS=new Set(['personnelInput','personnelControl','personnelFormName',
 /** Inspect real JSX, including controlled draft controls. A registry count is never evidence of rendering. */
 export function auditPersonnelFormSource(file:string,text:string,fields:readonly PersonnelFieldDescriptor[],options:{exemptions?:readonly PersonnelSourceExemption[];dynamicBindings?:Record<string,readonly string[]>;resolveImportSource?:(from:string,specifier:string)=>string|undefined}={}) {
   const source=ts.createSourceFile(file,text,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
-  // Resolve the renderer's actual named import and exported literal map. Never exempt a binding
+  // Resolve the renderer's actual named import and exported literal map/key array. Never exempt a binding
   // or maintain a second descriptor map; unknown modules/keys/nonliteral entries remain unresolved.
   const importedMaps=new Map<string,Readonly<Record<string,string>>>();
+  const importedArrays=new Map<string,readonly string[]>();
   for(const node of source.statements)if(ts.isImportDeclaration(node)&&ts.isStringLiteral(node.moduleSpecifier)){
     const imports=node.importClause?.namedBindings;if(!imports||!ts.isNamedImports(imports))continue;
     const moduleText=options.resolveImportSource?.(file,node.moduleSpecifier.text);if(moduleText===undefined)continue;
@@ -20,6 +21,9 @@ export function auditPersonnelFormSource(file:string,text:string,fields:readonly
       for(const statement of imported.statements)if(ts.isVariableStatement(statement)&&statement.modifiers?.some(m=>m.kind===ts.SyntaxKind.ExportKeyword))for(const declaration of statement.declarationList.declarations){
         if(!ts.isIdentifier(declaration.name)||declaration.name.text!==exported||!declaration.initializer)continue;
         let value=declaration.initializer;while(ts.isAsExpression(value)||ts.isParenthesizedExpression(value)||ts.isSatisfiesExpression(value))value=value.expression;
+        if(ts.isArrayLiteralExpression(value)&&value.elements.length&&value.elements.every(ts.isStringLiteralLike)){
+          importedArrays.set(binding.name.text,value.elements.map(element=>(element as ts.StringLiteralLike).text));continue;
+        }
         if(!ts.isObjectLiteralExpression(value))continue;
         const map:Record<string,string>={};let literal=true;
         for(const prop of value.properties){
@@ -63,6 +67,11 @@ export function auditPersonnelFormSource(file:string,text:string,fields:readonly
     }
     if(ts.isIdentifier(expression)){
       const fn=enclosingFunction(expression);
+      // A map callback may use only the finite literal keys actually supplied by its source array.
+      if(ts.isFunctionLike(fn)&&ts.isCallExpression(fn.parent)&&fn.parent.arguments[0]===fn&&ts.isPropertyAccessExpression(fn.parent.expression)&&fn.parent.expression.name.text==='map'&&fn.parameters[0]&&ts.isIdentifier(fn.parameters[0].name)&&fn.parameters[0].name.text===expression.text){
+        return ids(fn.parent.expression.expression,seen,argumentsByParameter);
+      }
+
       if(ts.isFunctionLike(fn)){const parameter=fn.parameters.find(p=>ts.isIdentifier(p.name)&&p.name.text===expression.text);if(parameter&&argumentsByParameter.has(parameter))return argumentsByParameter.get(parameter)!;}
       if(ts.isFunctionLike(fn)){const index=fn.parameters.findIndex(p=>ts.isIdentifier(p.name)&&p.name.text===expression.text);if(index>=0&&ts.isVariableDeclaration(fn.parent)&&ts.isIdentifier(fn.parent.name)){const values:ts.Expression[]=[],ownerName=fn.parent.name.text;visitChildren(source,node=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&node.expression.text===ownerName&&node.arguments[index])values.push(node.arguments[index]);});return values.flatMap(value=>ids(value,seen,argumentsByParameter));}}
       const d=declaration(expression.text,expression);if(d?.initializer){
@@ -73,6 +82,8 @@ export function auditPersonnelFormSource(file:string,text:string,fields:readonly
         }
         return ids(d.initializer,seen,argumentsByParameter);
       }
+      const shadowed=scopes(expression).some(scope=>ts.isFunctionLike(scope)&&scope.parameters.some(parameter=>ts.isIdentifier(parameter.name)&&parameter.name.text===expression.text));
+      if(!d&&!shadowed)return importedArrays.get(expression.text)??[];
     }
     if(ts.isElementAccessExpression(expression)||ts.isPropertyAccessExpression(expression)){
       if(ts.isIdentifier(expression.expression)&&!declaration(expression.expression.text,expression)){

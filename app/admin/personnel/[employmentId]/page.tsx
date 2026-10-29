@@ -1,3 +1,4 @@
+import {HireCorrectionModes} from '../information-correction-form';
 import { getEmploymentCostAllocations } from '@/core/employment-cost-allocations';
 import { CostCenterAllocations } from '@/components/personnel/cost-center-allocations';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
@@ -3686,13 +3687,13 @@ export default async function EmployeePage({
           return (
             <Card id="section-hire-correction" className="overflow-hidden">
               <SectionHeader title={t('movement.hireCorrection.title')} />
-              <HireCorrectionForm
+              <HireCorrectionModes employmentId={employmentId}><HireCorrectionForm
                 employmentId={employmentId}
                 heading={`${movementKindLabel('hired')} · ${formatDmy(hireCorrection.hiredOn)}`}
                 fields={fields}
                 readOnly={readOnly}
                 cancelHref={`/admin/personnel/${employmentId}?tab=careerMovement`}
-              />
+              /></HireCorrectionModes>
             </Card>
           );
         })()
