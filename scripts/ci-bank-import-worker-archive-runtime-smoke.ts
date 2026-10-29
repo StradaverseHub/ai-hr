@@ -45,7 +45,7 @@ try {
   assert.deepEqual(roleProof.map((r:any)=>[r.rolname,r.rolsuper,r.rolbypassrls,r.queue_owner]),[['ai_hr_app',false,false,false],['ai_hr_owner',false,false,true]]);
   // Drizzle inserts in journal-array order. Qualify the numeric input: ORDER BY id would bind id::text's output alias.
   const ledger=await owner`select m.id::text as migration_id,m.hash,m.created_at::text as created_at from drizzle.__drizzle_migrations m order by m.id`;
-  let priorId=0n;
+  let priorId=BigInt(0);
   for(const row of ledger){assert(/^[1-9][0-9]*$/.test(row.migration_id)&&BigInt(row.migration_id)>priorId,'Actual ledger IDs must be positive and numerically increasing');priorId=BigInt(row.migration_id);}
   // This is a FRESH ordinary-journal DB: hash exact current SQL bytes, never staging's two historical identities.
   const journalBytes=readFileSync(join(source,'db/migrations/meta/_journal.json'));
@@ -58,7 +58,7 @@ try {
   assert.deepEqual(semantic,expected.map(({hash,created_at}:any)=>({hash,created_at})),'Exact ordered source SQL hashes/timestamps differ');
   // Stable JSON keys in alphabetical order, UTF-8, no whitespace or trailing newline; no IDs/timestamps from this gate.
   const semanticBytes='['+semantic.map((r:any)=>'{"created_at":'+JSON.stringify(r.created_at)+',"hash":'+JSON.stringify(r.hash)+'}').join(',')+']';
-  const content=[];
+  const content:{table:string;rows:number;hash:string}[]=[];
   // Independent read-only witness sees FORCE-RLS tables too. This credential never reaches the worker CLI.
   const witness=postgres('postgres://postgres@127.0.0.1:5433/ai_hr_test',{max:1,onnotice:()=>{}});
   try{await witness.begin(async(tx:any)=>{
