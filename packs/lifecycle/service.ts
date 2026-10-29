@@ -15,3 +15,5 @@ export * from '../../core/lifecycle-rules';
 export * from '../../core/lifecycle-defaults';
 
 export * from './onboarding/service';
+export * from './v9/entrypoints';
+export type { Workspace as LifecycleV9Workspace, Command as LifecycleV9Command, OwnCase as LifecycleV9OwnCase, CaseDetail as LifecycleV9CaseDetail } from './v9/service';

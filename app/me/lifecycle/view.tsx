@@ -1,0 +1,26 @@
+'use client';
+import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
+import type { LifecycleV9OwnCase } from '@/packs/lifecycle/service';
+import type { Document, Signature } from '@/lib/lifecycle-v9-model';
+import { DocumentBody } from '@/components/lifecycle-v9/document-body';
+import { SignatureInput } from '@/components/lifecycle-v9/signature-input';
+import { saveOwnLifecycleDocument, updateOwnLifecycleTask } from './actions';
+
+const displayDate = (value: string) => /^\d{4}-\d{2}-\d{2}/.test(value) ? `${value.slice(8, 10)}/${value.slice(5, 7)}/${value.slice(0, 4)}` : value;
+export function EmployeeLifecycle({ cases }: { cases: LifecycleV9OwnCase[] }) {
+  const router = useRouter(), [busy, start] = useTransition(), [selected, setSelected] = useState<{ caseId: string; documentId: string } | null>(null), [values, setValues] = useState<Record<string, string>>({}), [error, setError] = useState(''), [notice, setNotice] = useState('');
+  const c = cases.find(c => c.id === selected?.caseId), doc = c?.documents.find(d => d.id === selected?.documentId);
+  function open(c: LifecycleV9OwnCase, doc: Document) { setSelected({ caseId: c.id, documentId: doc.id }); setValues({ ...doc.values }); setError(''); setNotice(''); }
+  function save(signature?: Pick<Signature, 'method' | 'value' | 'consent'>) { if (!c || !doc) return; const allowed: Record<string, string> = {}; for (const f of doc.fields) if (f.owner === 'employee' && values[f.id] !== undefined) allowed[f.id] = values[f.id]; start(async () => { const result = await saveOwnLifecycleDocument({ caseId: c.id, revision: c.revision, documentId: doc.id, values: allowed, ...(signature ? { signature } : {}) }); if (!result.ok) setError(result.error); else { setNotice(signature ? 'Document submitted. Your linked task has been updated.' : 'Your progress is saved.'); if (signature) setSelected(null); router.refresh(); } }); }
+  return <div className="v9-workspace"><div className="v9-content"><header className="v9-heading"><div><h1>{doc?.name ?? 'My onboarding & offboarding'}</h1><p>{doc ? c?.facts.name : 'Your tasks, documents and files from HR.'}</p></div>{doc && <button type="button" className="v9-button" onClick={() => setSelected(null)}>Back to my tasks</button>}</header>
+    {error && <p className="v9-notice v9-error" role="alert">{error}</p>}{notice && <p className="v9-notice" role="status">{notice}</p>}
+    {doc ? <div className="v9-stack"><DocumentBody document={doc} values={values} editableBy="employee" disabled={busy || !['sent', 'opened'].includes(doc.status)} change={(id, value) => setValues(v => ({ ...v, [id]: value }))}/>{['sent', 'opened'].includes(doc.status) && <><button type="button" className="v9-button" disabled={busy} onClick={() => save()}>Save progress</button><SignatureInput busy={busy} submit={save}/></>}</div> : <>
+    {!cases.length && <section className="v9-panel"><h2>You’re all caught up.</h2><p className="v9-muted">No onboarding or offboarding tasks are assigned to your account.</p></section>}
+    {cases.map(c => <section key={c.id} className="v9-panel v9-stack"><header className="v9-heading"><h2>{c.module === 'off' ? 'My offboarding' : 'My onboarding'}</h2><span className="v9-badge">{c.number}</span></header><p className="v9-muted">{c.module === 'off' ? 'Last working day: ' + displayDate(c.facts.lastDay) : 'Join date: ' + displayDate(c.facts.joinDate)}</p>{(c.module === 'onb' ? ['Before your first day', 'Your first day', 'After you join'] : ['Your tasks']).map((stage, index) => {
+      const tasks = c.tasks.filter(t => c.module === 'off' || (index === 0 ? t.due < 0 : index === 1 ? t.due === 1 : t.due > 1));
+      return tasks.length ? <div key={stage}><h3>{stage}</h3><ul className="v9-list">{tasks.map(t => { const linked = c.documents.find(d => d.templateId === t.documentTemplate); return <li key={t.id}><div className="v9-heading"><div><strong>{t.name}</strong><div className="v9-muted">Due {displayDate(t.dueOn)} · {t.status === 'done' ? 'Done' : t.status === 'progress' ? 'In progress' : 'To do'}</div></div>{!t.documentTemplate && c.state === 'submitted' && <select aria-label={`Status for ${t.name}`} disabled={busy} value={t.status} onChange={e => { const status = e.target.value as 'todo' | 'progress' | 'done'; start(async () => { const result = await updateOwnLifecycleTask({ caseId: c.id, revision: c.revision, taskId: t.id, status, reason: '' }); if (result.ok) { setNotice('Task updated.'); router.refresh(); } else setError(result.error); }); }}><option value="todo">To do</option><option value="progress">In progress</option><option value="done">Done</option>{t.status === 'notNeeded' && <option value="notNeeded" disabled>Not needed</option>}</select>}{linked && <button type="button" className="v9-button" onClick={() => open(c, linked)}>{['signed', 'acknowledged', 'completed'].includes(linked.status) ? 'View document' : 'Open form'}</button>}</div></li>; })}</ul></div> : null;
+    })}<h3>Documents from HR</h3><ul className="v9-list">{c.documents.map(d => <li key={d.id}><div className="v9-heading"><button type="button" className="v9-link" onClick={() => open(c, d)}>{d.name}</button><span className="v9-badge">{d.status}</span></div></li>)}</ul></section>)}
+    </>}
+  </div></div>;
+}

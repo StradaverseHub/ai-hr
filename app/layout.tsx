@@ -151,6 +151,16 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       </body>
     </html>;
   }
+  // V9 supplies the pinned HTML's complete navigation and header composition.
+  if (pathname === '/lifecycle/v9') {
+    return <html lang={locale} data-ui-theme="classic" className={`${fontVariables} h-full antialiased`} suppressHydrationWarning>
+      <body className="min-h-dvh font-sans" style={{ background: '#e8ebf2' }}>
+        <NextIntlClientProvider><Providers forcedTheme="light" lifecycleV9><UiThemeProvider theme="classic">
+          {children}<Toaster/>
+        </UiThemeProvider></Providers></NextIntlClientProvider>
+      </body>
+    </html>;
+  }
   const principals = await listPrincipals();
   // Dev identity switcher: developers, plus the gated consultant demo (ALLOW_DEMO_SESSION; see lib/demo-mode).
   const showDevSwitcher = demoSwitcherEnabled();

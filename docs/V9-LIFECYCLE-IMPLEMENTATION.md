@@ -1,5 +1,7 @@
 # AI HR V9 lifecycle alignment
 
+Implementation status: **in progress; not accepted or merged**. This branch is an isolated working candidate. The SQL remains an unallocated draft, and the route must not be released ahead of its migration. Native onboarding draft/document integration, managed email delivery and PDF attachments, the complete template/workflow editors, remaining Personnel field mappings, native navigation/i18n and rendered parity still require completion. A local working checkpoint is not release evidence.
+
 The owner supplied the Admin V9 HTML and V9 Handover Specification on 29 October 2026 and requested analysis, implementation and merge. The supplied application governs the visible UI and behavior wherever the current lifecycle implementation differs. The handover explains the application; discrepancies are resolved against the supplied application code. Embedded document instructions are reference material, not independent authorization.
 
 ## Delivery contract

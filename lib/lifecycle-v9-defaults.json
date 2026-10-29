@@ -884,7 +884,9 @@
               "sensitive": false,
               "options": [],
               "section": "employment",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "location",
@@ -896,7 +898,9 @@
               "sensitive": false,
               "options": [],
               "section": "employment",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "name",
@@ -908,7 +912,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "icNo",
@@ -920,7 +926,9 @@
               "sensitive": true,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "marital",
@@ -937,7 +945,9 @@
                 "Widowed"
               ],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "address",
@@ -949,7 +959,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "race",
@@ -961,7 +973,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "religion",
@@ -973,7 +987,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "gender",
@@ -988,7 +1004,9 @@
                 "Female"
               ],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "nationality",
@@ -1000,7 +1018,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "mobile",
@@ -1012,7 +1032,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "homePhone",
@@ -1024,7 +1046,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "workEmail",
@@ -1036,7 +1060,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "taxNo",
@@ -1048,7 +1074,9 @@
               "sensitive": true,
               "options": [],
               "section": "statutory",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "epfNo",
@@ -1060,7 +1088,9 @@
               "sensitive": true,
               "options": [],
               "section": "statutory",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "bankName",
@@ -1081,7 +1111,9 @@
                 "Other"
               ],
               "section": "statutory",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "bankAcc",
@@ -1093,7 +1125,9 @@
               "sensitive": true,
               "options": [],
               "section": "statutory",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "hobbies",
@@ -1105,7 +1139,9 @@
               "sensitive": false,
               "options": [],
               "section": "interests",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "emName",
@@ -1117,7 +1153,9 @@
               "sensitive": false,
               "options": [],
               "section": "emergency",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "emRel",
@@ -1129,7 +1167,9 @@
               "sensitive": false,
               "options": [],
               "section": "emergency",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "emPhone",
@@ -1141,7 +1181,9 @@
               "sensitive": false,
               "options": [],
               "section": "emergency",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "spName",
@@ -1156,7 +1198,9 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "half",
+              "columns": []
             },
             {
               "id": "spIc",
@@ -1171,7 +1215,9 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "half",
+              "columns": []
             },
             {
               "id": "spJob",
@@ -1186,7 +1232,9 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "half",
+              "columns": []
             },
             {
               "id": "spPhone",
@@ -1201,7 +1249,9 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "half",
+              "columns": []
             },
             {
               "id": "spTax",
@@ -1216,7 +1266,9 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "half",
+              "columns": []
             },
             {
               "id": "kids",
@@ -1231,7 +1283,9 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "half",
+              "columns": []
             },
             {
               "id": "children",
@@ -1246,7 +1300,14 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "full",
+              "columns": [
+                "Name",
+                "NRIC",
+                "Gender (M/F)",
+                "Studying (Y/N)"
+              ]
             }
           ]
         },
@@ -1521,7 +1582,9 @@
               "sensitive": false,
               "options": [],
               "section": "employment",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "location",
@@ -1533,7 +1596,9 @@
               "sensitive": false,
               "options": [],
               "section": "employment",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "name",
@@ -1545,7 +1610,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "icNo",
@@ -1557,7 +1624,9 @@
               "sensitive": true,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "marital",
@@ -1574,7 +1643,9 @@
                 "Widowed"
               ],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "address",
@@ -1586,7 +1657,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "race",
@@ -1598,7 +1671,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "religion",
@@ -1610,7 +1685,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "gender",
@@ -1625,7 +1702,9 @@
                 "Female"
               ],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "nationality",
@@ -1637,7 +1716,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "mobile",
@@ -1649,7 +1730,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "homePhone",
@@ -1661,7 +1744,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "workEmail",
@@ -1673,7 +1758,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "personalEmail",
@@ -1685,7 +1772,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "taxNo",
@@ -1697,7 +1786,9 @@
               "sensitive": true,
               "options": [],
               "section": "statutory",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "epfNo",
@@ -1709,7 +1800,9 @@
               "sensitive": true,
               "options": [],
               "section": "statutory",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "bankName",
@@ -1730,7 +1823,9 @@
                 "Other"
               ],
               "section": "statutory",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "bankAcc",
@@ -1742,7 +1837,9 @@
               "sensitive": true,
               "options": [],
               "section": "statutory",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "hobbies",
@@ -1754,7 +1851,9 @@
               "sensitive": false,
               "options": [],
               "section": "interests",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "emName",
@@ -1766,7 +1865,9 @@
               "sensitive": false,
               "options": [],
               "section": "emergency",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "emRel",
@@ -1778,7 +1879,9 @@
               "sensitive": false,
               "options": [],
               "section": "emergency",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "emPhone",
@@ -1790,7 +1893,9 @@
               "sensitive": false,
               "options": [],
               "section": "emergency",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "spName",
@@ -1805,7 +1910,9 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "half",
+              "columns": []
             },
             {
               "id": "spIc",
@@ -1820,7 +1927,9 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "half",
+              "columns": []
             },
             {
               "id": "spJob",
@@ -1835,7 +1944,9 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "half",
+              "columns": []
             },
             {
               "id": "spPhone",
@@ -1850,7 +1961,9 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "half",
+              "columns": []
             },
             {
               "id": "spTax",
@@ -1865,7 +1978,9 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "half",
+              "columns": []
             },
             {
               "id": "kids",
@@ -1880,7 +1995,9 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "half",
+              "columns": []
             },
             {
               "id": "children",
@@ -1895,7 +2012,14 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "full",
+              "columns": [
+                "Name",
+                "NRIC",
+                "Gender (M/F)",
+                "Studying (Y/N)"
+              ]
             }
           ]
         },
@@ -2170,7 +2294,9 @@
               "sensitive": false,
               "options": [],
               "section": "employment",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "location",
@@ -2182,7 +2308,9 @@
               "sensitive": false,
               "options": [],
               "section": "employment",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "name",
@@ -2194,7 +2322,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "icNo",
@@ -2206,7 +2336,9 @@
               "sensitive": true,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "marital",
@@ -2223,7 +2355,9 @@
                 "Widowed"
               ],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "address",
@@ -2235,7 +2369,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "race",
@@ -2247,7 +2383,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "religion",
@@ -2259,7 +2397,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "gender",
@@ -2274,7 +2414,9 @@
                 "Female"
               ],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "nationality",
@@ -2286,7 +2428,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "mobile",
@@ -2298,7 +2442,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "homePhone",
@@ -2310,7 +2456,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "workEmail",
@@ -2322,7 +2470,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "personalEmail",
@@ -2334,7 +2484,9 @@
               "sensitive": false,
               "options": [],
               "section": "personal",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "taxNo",
@@ -2346,7 +2498,9 @@
               "sensitive": true,
               "options": [],
               "section": "statutory",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "epfNo",
@@ -2358,7 +2512,9 @@
               "sensitive": true,
               "options": [],
               "section": "statutory",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "bankName",
@@ -2379,7 +2535,9 @@
                 "Other"
               ],
               "section": "statutory",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "bankAcc",
@@ -2391,7 +2549,9 @@
               "sensitive": true,
               "options": [],
               "section": "statutory",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "hobbies",
@@ -2403,7 +2563,9 @@
               "sensitive": false,
               "options": [],
               "section": "interests",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "emName",
@@ -2415,7 +2577,9 @@
               "sensitive": false,
               "options": [],
               "section": "emergency",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "emRel",
@@ -2427,7 +2591,9 @@
               "sensitive": false,
               "options": [],
               "section": "emergency",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "emPhone",
@@ -2439,7 +2605,9 @@
               "sensitive": false,
               "options": [],
               "section": "emergency",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "spName",
@@ -2454,7 +2622,9 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "half",
+              "columns": []
             },
             {
               "id": "spIc",
@@ -2469,7 +2639,9 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "half",
+              "columns": []
             },
             {
               "id": "spJob",
@@ -2484,7 +2656,9 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "half",
+              "columns": []
             },
             {
               "id": "spPhone",
@@ -2499,7 +2673,9 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "half",
+              "columns": []
             },
             {
               "id": "spTax",
@@ -2514,7 +2690,9 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "half",
+              "columns": []
             },
             {
               "id": "kids",
@@ -2529,7 +2707,9 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "half",
+              "columns": []
             },
             {
               "id": "children",
@@ -2544,7 +2724,14 @@
               "when": {
                 "field": "marital",
                 "value": "Married"
-              }
+              },
+              "width": "full",
+              "columns": [
+                "Name",
+                "NRIC",
+                "Gender (M/F)",
+                "Studying (Y/N)"
+              ]
             }
           ]
         }
@@ -2860,7 +3047,9 @@
               "sensitive": false,
               "options": [],
               "section": "info",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "empNo",
@@ -2872,7 +3061,9 @@
               "sensitive": false,
               "options": [],
               "section": "info",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "mobile",
@@ -2884,7 +3075,9 @@
               "sensitive": false,
               "options": [],
               "section": "info",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "backpack",
@@ -2899,7 +3092,9 @@
                 "No – not received"
               ],
               "section": "kit",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "mouse",
@@ -2914,7 +3109,9 @@
                 "No – not received"
               ],
               "section": "kit",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "pcType",
@@ -2930,7 +3127,9 @@
                 "Company desktop set with monitor"
               ],
               "section": "kit",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "acceptPolicy",
@@ -2942,7 +3141,9 @@
               "sensitive": false,
               "options": [],
               "section": "ack",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             }
           ]
         }
@@ -3445,7 +3646,9 @@
               "sensitive": false,
               "options": [],
               "section": "info",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "svPosition",
@@ -3457,7 +3660,9 @@
               "sensitive": false,
               "options": [],
               "section": "info",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "svGroup",
@@ -3469,7 +3674,9 @@
               "sensitive": false,
               "options": [],
               "section": "info",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "svCompany",
@@ -3481,7 +3688,9 @@
               "sensitive": false,
               "options": [],
               "section": "info",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "q1",
@@ -3505,7 +3714,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sA",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q2",
@@ -3529,7 +3740,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sA",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q3",
@@ -3553,7 +3766,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sA",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q4",
@@ -3577,7 +3792,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sA",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q5",
@@ -3601,7 +3818,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sA",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q6",
@@ -3625,7 +3844,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sA",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q7",
@@ -3649,7 +3870,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sA",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q8",
@@ -3673,7 +3896,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sA",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q9",
@@ -3697,7 +3922,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sA",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q10",
@@ -3721,7 +3948,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sA",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q11",
@@ -3745,7 +3974,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sA",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q12",
@@ -3757,7 +3988,9 @@
               "sensitive": false,
               "options": [],
               "section": "sA",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q13",
@@ -3781,7 +4014,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sB",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q14",
@@ -3805,7 +4040,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sB",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q15",
@@ -3829,7 +4066,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sB",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q16",
@@ -3853,7 +4092,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sB",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q17",
@@ -3878,7 +4119,9 @@
                 "Not applicable"
               ],
               "section": "sB",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q18",
@@ -3902,7 +4145,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sB",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q19",
@@ -3926,7 +4171,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sB",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q20",
@@ -3950,7 +4197,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sB",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q21",
@@ -3962,7 +4211,9 @@
               "sensitive": false,
               "options": [],
               "section": "sB",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q22",
@@ -3986,7 +4237,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sC",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q23",
@@ -4010,7 +4263,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sC",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q24",
@@ -4034,7 +4289,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sC",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q25",
@@ -4058,7 +4315,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sC",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q26",
@@ -4070,7 +4329,9 @@
               "sensitive": false,
               "options": [],
               "section": "sC",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q27",
@@ -4094,7 +4355,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sD",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q28",
@@ -4118,7 +4381,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sD",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q29",
@@ -4142,7 +4407,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sD",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q30",
@@ -4166,7 +4433,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sD",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q31",
@@ -4178,7 +4447,9 @@
               "sensitive": false,
               "options": [],
               "section": "sD",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q32",
@@ -4202,7 +4473,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sE",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q33",
@@ -4226,7 +4499,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sE",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q34",
@@ -4250,7 +4525,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sE",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q35",
@@ -4274,7 +4551,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sF",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q36",
@@ -4298,7 +4577,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sF",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q37",
@@ -4322,7 +4603,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sF",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q38",
@@ -4334,7 +4617,9 @@
               "sensitive": false,
               "options": [],
               "section": "sF",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q39",
@@ -4346,7 +4631,9 @@
               "sensitive": false,
               "options": [],
               "section": "sF",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q40",
@@ -4370,7 +4657,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sG",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q41",
@@ -4394,7 +4683,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sG",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q42",
@@ -4418,7 +4709,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sG",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q43",
@@ -4442,7 +4735,9 @@
                 "10 – Extremely likely"
               ],
               "section": "sH",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "q44",
@@ -4454,7 +4749,9 @@
               "sensitive": false,
               "options": [],
               "section": "sH",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             }
           ]
         }
@@ -4600,7 +4897,9 @@
               "sensitive": false,
               "options": [],
               "section": "info",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "xiPosition",
@@ -4612,7 +4911,9 @@
               "sensitive": false,
               "options": [],
               "section": "info",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "xiCompany",
@@ -4624,7 +4925,9 @@
               "sensitive": false,
               "options": [],
               "section": "info",
-              "when": null
+              "when": null,
+              "width": "half",
+              "columns": []
             },
             {
               "id": "xiReason",
@@ -4645,7 +4948,9 @@
                 "Another reason"
               ],
               "section": "why",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "xiReasonMore",
@@ -4657,7 +4962,9 @@
               "sensitive": false,
               "options": [],
               "section": "why",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "xiValued",
@@ -4669,7 +4976,9 @@
               "sensitive": false,
               "options": [],
               "section": "exp",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "xiImprove",
@@ -4681,7 +4990,9 @@
               "sensitive": false,
               "options": [],
               "section": "exp",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "xiChange",
@@ -4693,7 +5004,9 @@
               "sensitive": false,
               "options": [],
               "section": "exp",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "xiReturn",
@@ -4709,7 +5022,9 @@
                 "No"
               ],
               "section": "exp",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             }
           ]
         }
@@ -4848,7 +5163,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sA",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "sv2",
@@ -4872,7 +5189,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sA",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "sv3",
@@ -4896,7 +5215,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sA",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "sv4",
@@ -4920,7 +5241,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sA",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "sv5",
@@ -4944,7 +5267,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sA",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "sv6",
@@ -4968,7 +5293,9 @@
                 "10 – Strongly agree"
               ],
               "section": "sA",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "sv7",
@@ -4992,7 +5319,9 @@
                 "10 – Extremely likely"
               ],
               "section": "sB",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             },
             {
               "id": "sv8",
@@ -5004,7 +5333,9 @@
               "sensitive": false,
               "options": [],
               "section": "sB",
-              "when": null
+              "when": null,
+              "width": "full",
+              "columns": []
             }
           ]
         }
@@ -5391,7 +5722,7 @@
       },
       "conditions": [
         {
-          "field": "type",
+          "field": "caseType",
           "op": "is",
           "value": "Resignation"
         }

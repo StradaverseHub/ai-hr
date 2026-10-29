@@ -64,6 +64,19 @@ describe('V9 workflows and delivery', () => {
     expect(c.mails).toHaveLength(1); c.files.push({ id: 'file', slot: 'contract', name: 'contract.pdf', storageId: 'storage' });
     expect(M.runWorkflow(c, config, w, environment, 'resume')?.status).toBe('done'); expect(c.mails).toHaveLength(2);
   });
+  it('resumes a waiting execution after its scheduling window has passed', () => {
+    const { c, config, environment } = fixture();
+    const w = workflow({ trigger: { event: 'beforeLWD', days: 1, workdays: false, repeat: false, skipIf: '' }, steps: [{ id: 'file', type: 'waitFile', slot: 'exit', label: 'exit file' }, { id: 'email', type: 'notify', to: 'employee', cc: [], subject: 'Ready', body: 'Your document is ready.' }] });
+    expect(M.runWorkflow(c, config, w, environment, 'date')?.status).toBe('waiting');
+    environment.today = '2026-11-02'; c.files.push({ id: 'file', slot: 'exit', name: 'exit.pdf', storageId: 'file' });
+    expect(M.runWorkflow(c, config, w, environment, 'resume')?.status).toBe('done'); expect(c.mails).toHaveLength(1);
+  });
+  it('keeps test sends on the actor account with no real CC and no generated employee documents', () => {
+    const { c, config, environment } = fixture(); config.templates = [template()];
+    config.emails = [{ id: 'test', name: 'Test', module: 'off', active: false, sender: 'hr', subject: 'Test {unknown.value}', body: 'Preview', cc: ['supervisor', 'peopleOps'], links: ['exit'], attachments: [], slots: [] }];
+    M.queueEmail(c, config, 'test', environment, true);
+    expect(c.documents).toHaveLength(0); expect(c.mails[0]).toMatchObject({ to: ['hr'], cc: [], test: true, status: 'pending' });
+  });
   it('blocks unresolved tokens and missing recipients instead of claiming an email was sent', () => {
     const { c, config, environment } = fixture(); const w = workflow({ trigger: { event: 'submitted', days: 0, repeat: false, workdays: false, skipIf: '' }, steps: [{ id: 'message', type: 'notify', subject: '{missing.value}', body: 'Body', to: 'employee', cc: [] }] });
     expect(M.runWorkflow(c, config, w, environment, 'submitted')?.status).toBe('failed'); expect(c.mails).toHaveLength(0);
@@ -80,6 +93,20 @@ describe('V9 workflows and delivery', () => {
   });
 });
 describe('V9 employee documents and clearance', () => {
+  it('prefills editable Personnel fields and preserves their original value for conflict review', () => {
+    const { c, config, environment } = fixture(); config.templates = [template()]; environment.mergeValues.mobile = 'Original number';
+    const doc = M.generate(c, config, 'exit', environment); doc.status = 'sent'; expect(doc.values.answer).toBe('Original number');
+    environment.mergeValues.mobile = 'Changed in Personnel after generation';
+    M.saveDocument(c, doc.id, { answer: 'Employee proposal' }, 'employee', environment);
+    M.signDocument(c, config, doc.id, 'employee', { by: environment.actor, at: environment.now, method: 'typed', value: 'Name', consent: true }, environment);
+    expect(c.pmChanges[0]).toMatchObject({ before: 'Original number', after: 'Employee proposal' });
+  });
+  it('does not accept an unchecked required checkbox as consent', () => {
+    const { c, config, environment } = fixture(), t = template(); t.versions[0].fields[0].type = 'checkbox'; t.versions[0].fields[0].pmKey = null; config.templates = [t];
+    const doc = M.generate(c, config, 'exit', environment); doc.status = 'sent';
+    M.saveDocument(c, doc.id, { answer: 'false' }, 'employee', environment);
+    expect(() => M.signDocument(c, config, doc.id, 'employee', { by: environment.actor, at: environment.now, method: 'typed', value: 'Name', consent: true }, environment)).toThrow('Your answer');
+  });
   it('enforces required values and links signed forms to tasks and reviewable Personnel changes', () => {
     const { c, config, environment } = fixture(); config.templates = [template()]; c.tasks = [{ ...task('survey'), documentTemplate: 'exit' }];
     const doc = M.generate(c, config, 'exit', environment); doc.status = 'sent';

@@ -137,7 +137,11 @@ export async function onboardingContext(ctx: SessionContext) {
     });
 }
 export async function onboardingSetup(ctx: SessionContext) {
-    return withTenant(ctx, async (tx) => {
+    return withTenant(ctx, tx => onboardingSetupTx(ctx, tx));
+}
+/** Composition seam: caller holds the Lifecycle tenant transaction. */
+export async function onboardingSetupTx(ctx: SessionContext, tx: Tx) {
+    await lockOnboardingTx(tx, ctx.tenantId);
         const { config, revision } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config);
         if (!actor.master)
             M.fail('Only the Master Admin can initialise onboarding.', 'forbidden');
@@ -150,7 +154,6 @@ export async function onboardingSetup(ctx: SessionContext) {
         const drafts = await tx.select({ id: employeeDraft.id }).from(employeeDraft).orderBy(asc(employeeDraft.createdAt), asc(employeeDraft.id));
         for (const d of drafts)
             await onboardingSyncDraftTx(ctx, tx, d.id, 'save');
-    });
 }
 export async function onboardingOptions(ctx: SessionContext) {
     return withTenant(ctx, async (tx) => {
@@ -583,8 +586,8 @@ export async function onboardingSaveChecklistTasks(ctx: SessionContext, revision
 async function saveConfig(ctx: SessionContext, revision: number, input: M.Config | null, replacements: Record<string, string>, flagRetired: boolean, taskEdit?: {
     checklistId: string;
     tasks: M.TaskDef[];
-}) {
-    return withTenant(ctx, async (tx) => {
+}, outerTx?: Tx) {
+    const save = async (tx: Tx) => {
         await lockOnboardingTx(tx, ctx.tenantId);
         const { config: old, revision: current } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, old);
         if (!actor.module && !actor.master)
@@ -739,7 +742,8 @@ async function saveConfig(ctx: SessionContext, revision: number, input: M.Config
         await tx.execute(sql `insert into lc_onboarding_config_history(tenant_id,revision,data,actor_user_id) values(${ctx.tenantId}::uuid,${current + 1},${JSON.stringify(next)}::jsonb,${actor.id}::uuid)`);
         await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'onboarding-config', aggregateId: ctx.tenantId, eventType: 'onboarding.config.updated', actor: actorOf(ctx), payload: { revision: current + 1 } });
         return { revision: current + 1 };
-    });
+    };
+    return outerTx ? save(outerTx) : withTenant(ctx, save);
 }
 export async function onboardingNote(ctx: SessionContext, caseId: string, input: {
     id?: string;
@@ -1156,4 +1160,12 @@ export async function onboardingUnreadNoticeCount(ctx: SessionContext): Promise<
     return withTenant(ctx, async (tx) => Number(rows<{
         count: string;
     }>(await tx.execute(sql `select count(*)::text as count from lc_onboarding_notice where tenant_id=app.current_tenant_id() and user_id=app.current_user_id() and read_at is null and kind<>'digest'`))[0]?.count ?? 0));
+}
+
+/** Shared assignment groups remain owned by the existing onboarding configuration service. */
+export async function onboardingSaveGroupsTx(ctx: SessionContext, tx: Tx, expected: number, groups: M.Group[]) {
+    const { config, revision } = await configTx(tx, ctx);
+    if (revision !== expected) M.fail('Assignment groups changed. Refresh before saving.', 'conflict');
+    if (config.groups.some(g => !groups.some(next => next.id === g.id))) M.fail('Use the assignment group replacement flow before deleting a shared group.');
+    return saveConfig(ctx, revision, { ...config, groups }, {}, false, undefined, tx);
 }

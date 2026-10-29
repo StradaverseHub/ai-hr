@@ -1,4 +1,6 @@
 /** V9 lifecycle rules. Services supply authorized identity, Personnel facts and final-pay snapshots. */
+import { isCalendarDate } from './calendar-date';
+import type { SettlementPolicy, SettlementInput } from './lifecycle-v9-calculator';
 export type Module = 'onb' | 'off';
 export type ExitType = 'Resignation' | 'Termination' | 'Contract end' | 'Retirement' | 'Non-confirmation';
 export type CaseState = 'pending' | 'submitted' | 'cleared' | 'cancelled';
@@ -10,7 +12,7 @@ export type Facts = Record<RuleField, string> & {
   employeeUserId: string | null; supervisorUserId: string | null; pbpUserId: string | null; taUserId: string | null;
 };
 export type Actor = { id: string; name: string };
-export type Log = { id: string; at: string; actor: Actor; action: string; detail: string };
+export type Log = { id: string; at: string; actor: Actor; action: string; detail: string; userId?: string; groupId?: string };
 export type Group = { id: string; name: string; members: string[]; limit: number };
 export type TaskDefinition = {
   id: string; name: string; by: 'group' | 'manager' | 'employee'; group: string | null;
@@ -31,6 +33,7 @@ export type Field = {
   id: string; label: string; type: 'text' | 'textarea' | 'select' | 'date' | 'checkbox' | 'phone' | 'email' | 'number' | 'table';
   owner: 'employee' | 'hr' | 'pmLocked'; pmKey: string | null; required: boolean;
   sensitive: boolean; options: string[]; section: string;
+  width?: 'half' | 'full'; columns?: string[];
   when: { field: string; value: string } | null;
 };
 export type Block = { id: string; type: 'letterhead' | 'heading' | 'subheading' | 'text' | 'fields' | 'field' | 'table' | 'signature'; text: string; section: string; fieldId?: string; columns?: string; rows?: string; role?: string; label?: string };
@@ -46,6 +49,8 @@ export type Document = {
   status: 'draft' | 'sent' | 'opened' | 'completed' | 'hrsigned' | 'countersign' | 'signed' | 'acknowledged' | 'superseded' | 'withdrawn';
   blocks: Block[]; fields: Field[]; values: Record<string, string>; edits: Record<string, string>;
   hrSignature: Signature | null; employeeSignature: Signature | null; createdAt: string; sentAt: string | null;
+  mergeValues?: Record<string, string>;
+  hrStep?: Template['hrStep']; employeeAck?: boolean; signatoryUserId?: string | null;
 };
 export type Role = 'employee' | 'supervisor' | 'pbp' | 'ta' | 'peopleOps' | 'taskOwners';
 export type EmailTemplate = {
@@ -68,7 +73,7 @@ export type Workflow = {
   conditions: { field: RuleField | 'joinWithin'; op: 'is' | 'isNot' | 'lt' | 'gte'; value: string }[];
   steps: Step[]; description: string;
 };
-export type Run = { id: string; workflowId: string; revision: number; date: string; status: 'running' | 'waiting' | 'done' | 'skipped' | 'failed'; cursor: number; reason: string; at: string };
+export type Run = { id: string; workflowId: string; revision: number; date: string; status: 'running' | 'waiting' | 'done' | 'skipped' | 'failed'; cursor: number; reason: string; at: string; definition?: Workflow };
 export type Mail = {
   id: string; key: string; workflowId: string | null; templateId: string | null;
   to: string[]; cc: string[]; subject: string; body: string; documentIds: string[];
@@ -81,16 +86,21 @@ export type Case = {
   version: 9; id: string; number: string; module: Module; revision: number; state: CaseState;
   facts: Facts; checklistId: string | null; checklistName: string; override: 'automatic' | 'none' | string;
   tasks: Task[]; items: Item[]; documents: Document[]; runs: Run[]; mails: Mail[];
-  files: { id: string; slot: string; name: string; storageId: string }[];
+  files: { id: string; slot: string; name: string; storageId: string; contentHash?: string }[];
   pmChanges: PMChange[]; log: Log[]; sourceRevision: string;
   submittedAt: string | null; closedAt: string | null; closedBy: Actor | null; closeReason: string;
   cancelReason: string; revokeDate: string; finalFigures: FinalFigures | null;
   review: { firstAt: string; open: number; overdue: number; notReturned: number; detail: string } | null;
+  emailEdits?: Record<string, { subject: string; body: string }>;
+  settlementOptions?: Pick<SettlementInput, 'override' | 'keepSourceDate' | 'offsetLeave' | 'reduceEncashment'>;
 };
 export type Config = {
   version: 9; revision: number; checklists: Checklist[]; templates: Template[];
+  groupsRevision?: number;
   emails: EmailTemplate[]; workflows: Workflow[]; groups: Group[]; peopleOpsGroup: string | null;
   bpRules: { rules: Pick<Rules, 'businessGroup' | 'company' | 'department'>; userId: string }[];
+  settlementPolicy?: SettlementPolicy;
+  companies?: { companyId: string; signatoryUserId: string | null; signatoryTitle: string }[];
 };
 export type Environment = {
   today: string; now: string; actor: Actor; nextId: () => string;
@@ -101,6 +111,7 @@ export type Environment = {
   eligibleUser: (userId: string) => boolean;
   userName: (userId: string) => string;
   mergeValues: Record<string, string>;
+  signatoryUserId?: string | null;
 };
 
 export class V9Error extends Error {
@@ -108,16 +119,16 @@ export class V9Error extends Error {
 }
 const DAY = 86400000;
 export function validDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const d = new Date(`${value}T00:00:00Z`);
-  return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === value;
+  return isCalendarDate(value);
 }
 export function addDays(value: string, days: number, workdays = false): string {
   if (!validDate(value) || !Number.isInteger(days) || Math.abs(days) > 3660) throw new V9Error('A valid date and day offset are required.');
   let time = Date.parse(`${value}T00:00:00Z`);
   if (!workdays) time += days * DAY;
   else { let left = Math.abs(days); while (left) { time += Math.sign(days) * DAY; const day = new Date(time).getUTCDay(); if (day !== 0 && day !== 6) left--; } }
-  return new Date(time).toISOString().slice(0, 10);
+  const result = new Date(time).toISOString().slice(0, 10);
+  if (!validDate(result)) throw new V9Error('The resulting date is outside the supported calendar.');
+  return result;
 }
 export function taskDate(module: Module, anchor: string, day: number): string {
   if (module === 'onb' && day === 0) throw new V9Error('Day 1 is the join date. Use negative days before joining.');
@@ -151,13 +162,13 @@ export function assign(config: Config, groupId: string | null, due: string, env:
     .sort((a, b) => a.load - b.load || env.lastAssigned(a.id, group.id) - env.lastAssigned(b.id, group.id) || members.indexOf(a.id) - members.indexOf(b.id));
   return ranked.length ? { userId: ranked[0].id, reason: null } : { userId: null, reason: `Everyone available in ${group.name} is at their limit of ${group.limit} open tasks.` };
 }
-export function appendLog(c: Case, env: Environment, action: string, detail: string): void {
-  c.log.push({ id: env.nextId(), at: env.now, actor: { ...env.actor }, action, detail });
+export function appendLog(c: Case, env: Environment, action: string, detail: string, assignment?: { userId: string; groupId: string }): void {
+  c.log.push({ id: env.nextId(), at: env.now, actor: { ...env.actor }, action, detail, ...assignment });
 }
 export function submit(c: Case, config: Config, env: Environment): void {
   if (c.state !== 'pending') throw new V9Error('Only a pending case can be submitted.', 'conflict');
   const anchor = c.module === 'onb' ? c.facts.joinDate : c.facts.lastDay;
-  if (!validDate(anchor) || !c.facts.name || !c.facts.employmentId || !c.facts.company) throw new V9Error('Complete the employee, company and anchor date before submitting.');
+  if (!validDate(anchor) || !c.facts.name || !c.facts.employeeNo || !c.facts.employmentId || !c.facts.company) throw new V9Error('Complete the employee, employee ID, company and anchor date before submitting.');
   if (c.module === 'off' && !(['Resignation', 'Termination', 'Contract end', 'Retirement', 'Non-confirmation'] as string[]).includes(c.facts.caseType)) throw new V9Error('Choose the offboarding case type.');
   const selected = matchChecklist(config, c), extra: Record<string, number> = {};
   c.checklistId = selected.checklist?.id ?? null; c.checklistName = selected.checklist?.name ?? 'No checklist';
@@ -172,7 +183,7 @@ export function submit(c: Case, config: Config, env: Environment): void {
   });
   c.state = 'submitted'; c.submittedAt = env.now;
   appendLog(c, env, 'case.submitted', `Checklist confirmed: ${c.checklistName}.${selected.tie ? ' Equally specific matches; first display order selected.' : ''}`);
-  for (const task of c.tasks) appendLog(c, env, 'task.assigned', `${task.name}: ${task.assignee ? env.userName(task.assignee) : task.assignmentFailure}`);
+  for (const task of c.tasks) appendLog(c, env, 'task.assigned', `${task.name}: ${task.assignee ? env.userName(task.assignee) : task.assignmentFailure}`, task.assignee && task.group ? { userId: task.assignee, groupId: task.group } : undefined);
 }
 export function isResolved(status: Task['status'] | Item['status']): boolean { return status === 'done' || status === 'notNeeded'; }
 export function work(c: Case) {
@@ -183,6 +194,7 @@ export function work(c: Case) {
     open: [...tasks, ...items].filter(t => !isResolved(t.status) && t.status !== 'notReturned'), notReturned: items.filter(i => i.status === 'notReturned') };
 }
 export function completeTask(c: Case, id: string, status: Task['status'], reason: string, env: Environment): void {
+  if (!['todo', 'progress', 'done', 'notNeeded'].includes(status)) throw new V9Error('Choose a valid task status.');
   if (c.state !== 'submitted') throw new V9Error('This case is not open.', 'conflict');
   const task = c.tasks.find(t => t.id === id); if (!task) throw new V9Error('Task not found.', 'not_found');
   if (task.opensOn && task.opensOn > env.today && status !== 'notNeeded') throw new V9Error(`This task opens on ${task.opensOn}.`);
@@ -201,6 +213,18 @@ export function merge(text: string, values: Record<string, string>, sensitive: R
 }
 export function currentVersion(template: Template): TemplateVersion | null { return template.versions.filter(v => v.state === 'published').sort((a, b) => b.version - a.version)[0] ?? null; }
 export function activeDocument(c: Case, templateId: string): Document | null { return c.documents.filter(d => d.templateId === templateId && d.status !== 'superseded' && d.status !== 'withdrawn').at(-1) ?? null; }
+export function validateFieldValue(field: Field, value: string): void {
+  if (value.length > 20000) throw new V9Error('A field exceeds the allowed length.');
+  if (field.type === 'select' && value && !field.options.includes(value)) throw new V9Error(`Choose a valid option for ${field.label}.`);
+  if (field.type === 'date' && value && !validDate(value)) throw new V9Error(`Enter a valid date for ${field.label}.`);
+  if (field.type === 'checkbox' && value && !['true', 'false'].includes(value)) throw new V9Error(`Choose a valid value for ${field.label}.`);
+  if (field.type === 'number' && value && !Number.isFinite(Number(value))) throw new V9Error(`Enter a valid number for ${field.label}.`);
+  if (field.type === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) throw new V9Error(`Enter a valid email for ${field.label}.`);
+  if (field.type === 'table' && value) {
+    let rows: unknown; try { rows = JSON.parse(value); } catch { throw new V9Error(`Enter valid rows for ${field.label}.`); }
+    if (!Array.isArray(rows) || rows.length > 50 || !rows.every(row => Array.isArray(row) && row.length === (field.columns?.length ?? 0) && row.every(cell => typeof cell === 'string' && cell.length <= 1000))) throw new V9Error(`Enter valid rows for ${field.label}.`);
+  }
+}
 export function documentFinal(d: Document): boolean { return ['completed', 'signed', 'acknowledged'].includes(d.status); }
 export function generate(c: Case, config: Config, templateId: string, env: Environment): Document {
   const existing = activeDocument(c, templateId); if (existing) return existing;
@@ -208,8 +232,8 @@ export function generate(c: Case, config: Config, templateId: string, env: Envir
   if (!template || !matches(template.rules, c.facts)) throw new V9Error('No matching document template is available.');
   const version = currentVersion(template); if (!version) throw new V9Error('Publish the document template before using it.');
   const values: Record<string, string> = {};
-  for (const field of version.fields) if (field.owner === 'pmLocked' && field.pmKey) values[field.id] = env.mergeValues[field.pmKey] ?? '';
-  const doc: Document = { id: env.nextId(), templateId, version: version.version, name: template.name, status: 'draft', blocks: structuredClone(version.blocks), fields: structuredClone(version.fields), values, edits: {}, hrSignature: null, employeeSignature: null, createdAt: env.now, sentAt: null };
+  for (const field of version.fields) if (field.pmKey) values[field.id] = env.mergeValues[field.pmKey] ?? '';
+  const doc: Document = { id: env.nextId(), templateId, version: version.version, name: template.name, status: 'draft', blocks: structuredClone(version.blocks), fields: structuredClone(version.fields), values, edits: {}, hrSignature: null, employeeSignature: null, createdAt: env.now, sentAt: null, mergeValues: { ...env.mergeValues }, hrStep: template.hrStep, employeeAck: template.employeeAck, signatoryUserId: env.signatoryUserId ?? null };
   c.documents.push(doc); appendLog(c, env, 'document.generated', `${doc.name} version ${doc.version}`); return doc;
 }
 function linkedTasks(c: Case, doc: Document, action: TaskDefinition['documentAction']): void {
@@ -221,9 +245,7 @@ export function saveDocument(c: Case, id: string, values: Record<string, string>
   if (owner === 'employee' && !['sent', 'opened'].includes(doc.status)) throw new V9Error('This document has not been released to you.');
   for (const [key, value] of Object.entries(values)) {
     const field = doc.fields.find(f => f.id === key); if (!field || field.owner !== owner) throw new V9Error('This field cannot be changed.', 'forbidden');
-    if (value.length > 20000) throw new V9Error('A field exceeds the allowed length.');
-    if (field.type === 'select' && value && !field.options.includes(value)) throw new V9Error(`Choose a valid option for ${field.label}.`);
-    if (field.type === 'date' && value && !validDate(value)) throw new V9Error(`Enter a valid date for ${field.label}.`);
+    validateFieldValue(field, value);
     doc.values[key] = value;
   }
   appendLog(c, env, 'document.saved', doc.name);
@@ -231,17 +253,24 @@ export function saveDocument(c: Case, id: string, values: Record<string, string>
 export function signDocument(c: Case, config: Config, id: string, role: 'employee' | 'hr', signature: Signature, env: Environment): void {
   const doc = c.documents.find(d => d.id === id), template = doc && config.templates.find(t => t.id === doc.templateId);
   if (!doc || !template) throw new V9Error('Document not found.', 'not_found');
+  const hrStep = doc.hrStep ?? template.hrStep, employeeAck = doc.employeeAck ?? template.employeeAck;
   if (c.state !== 'submitted' || ['superseded', 'withdrawn'].includes(doc.status)) throw new V9Error('This document is no longer open.', 'conflict');
   if (!signature.consent || !signature.value.trim() || signature.by.id !== env.actor.id) throw new V9Error('Confirm consent and provide your own signature.');
+  const missing = doc.blocks.filter(b => ['heading', 'subheading', 'text'].includes(b.type)).flatMap(b => merge(doc.edits[b.id] ?? b.text, { ...doc.mergeValues, ...doc.values }).missing);
+  if (missing.length) throw new V9Error(`Complete missing document fields: ${[...new Set(missing)].join(', ')}.`);
   if (role === 'employee') {
     if (!['sent', 'opened'].includes(doc.status)) throw new V9Error('This document is not ready for employee completion.', 'conflict');
-    for (const field of doc.fields) if (field.required && (!field.when || doc.values[field.when.field] === field.when.value) && !doc.values[field.id]?.trim()) throw new V9Error(`Complete ${field.label} before signing.`);
+    for (const field of doc.fields) if (!field.when || doc.values[field.when.field] === field.when.value) {
+      validateFieldValue(field, doc.values[field.id] ?? '');
+      if (field.required && (!doc.values[field.id]?.trim() || field.type === 'checkbox' && doc.values[field.id] !== 'true' || field.type === 'table' && doc.values[field.id] === '[]')) throw new V9Error(`Complete ${field.label} before signing.`);
+    }
     doc.employeeSignature = { ...signature, at: env.now, by: { ...env.actor } };
-    doc.status = template.hrStep === 'after' ? 'countersign' : template.employeeAck ? 'acknowledged' : 'signed';
-    for (const field of doc.fields) if (field.pmKey && field.owner === 'employee' && doc.values[field.id] !== env.mergeValues[field.pmKey] && !c.pmChanges.some(p => p.documentId === id && p.field === field.pmKey)) c.pmChanges.push({ id: env.nextId(), documentId: id, field: field.pmKey, before: env.mergeValues[field.pmKey] ?? '', after: doc.values[field.id] ?? '', sourceRevision: c.sourceRevision, status: 'proposed' });
+    doc.status = hrStep === 'after' ? 'countersign' : employeeAck ? 'acknowledged' : 'signed';
+    for (const field of doc.fields) if (field.pmKey && field.owner === 'employee' && (!field.when || doc.values[field.when.field] === field.when.value) && (doc.values[field.id] ?? '') !== (doc.mergeValues?.[field.pmKey] ?? '') && !c.pmChanges.some(p => p.documentId === id && p.field === field.pmKey)) c.pmChanges.push({ id: env.nextId(), documentId: id, field: field.pmKey, before: doc.mergeValues?.[field.pmKey] ?? '', after: doc.values[field.id] ?? '', sourceRevision: c.sourceRevision, status: 'proposed' });
   } else {
-    if (template.hrStep === 'before' && doc.status !== 'draft' || template.hrStep === 'after' && doc.status !== 'countersign' || template.hrStep === 'none') throw new V9Error('This document does not need an HR signature at this stage.', 'conflict');
-    doc.hrSignature = { ...signature, at: env.now, by: { ...env.actor } }; doc.status = template.hrStep === 'before' ? 'hrsigned' : 'signed';
+    if (!doc.signatoryUserId || doc.signatoryUserId !== env.actor.id) throw new V9Error('Only the designated company HR signatory can sign this document.', 'forbidden');
+    if (hrStep === 'before' && doc.status !== 'draft' || hrStep === 'after' && doc.status !== 'countersign' || hrStep === 'none') throw new V9Error('This document does not need an HR signature at this stage.', 'conflict');
+    doc.hrSignature = { ...signature, at: env.now, by: { ...env.actor } }; doc.status = hrStep === 'before' ? 'hrsigned' : 'signed';
   }
   if (documentFinal(doc)) linkedTasks(c, doc, 'signed'); appendLog(c, env, 'document.signed', `${doc.name} · ${role}`);
 }
@@ -266,25 +295,28 @@ function skipReason(c: Case, workflow: Workflow): string {
 }
 function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 'notify' }>, key: string, workflowId: string | null, env: Environment, test = false): string | null {
   if (c.mails.some(m => m.key === key)) return null;
-  const email = step.type === 'email' ? config.emails.find(e => e.id === step.template && e.active && e.module === c.module) : null;
+  const email = step.type === 'email' ? config.emails.find(e => e.id === step.template && (e.active || test) && e.module === c.module) : null;
   if (step.type === 'email' && !email) throw new V9Error('The email template is inactive or unavailable.');
   const slots = email?.slots.filter(s => s.required && !c.files.some(f => f.slot === `${email.id}:${s.id}`)) ?? [];
   if (slots.length && !test) return `Upload ${slots.map(s => s.label).join(', ')}.`;
   const targets = step.to === 'taskOwners' ? [...new Set(pendingPre(c).map(t => t.assignee).filter((id): id is string => !!id))] : recipients(c, config, step.to);
   if (!targets.length && !test) throw new V9Error('No recipient is linked. Resolve the recipient before continuing.');
   const to = test ? [env.actor.id] : targets;
-  const sensitive = new Set(['employee.icNo', 'employee.passportNo', 'employee.taxNo', 'employee.epfNo', 'employee.bankAccount', ...config.templates.flatMap(t => t.versions.flatMap(v => v.fields.filter(f => f.sensitive).flatMap(f => [f.id, ...(f.pmKey ? [f.pmKey, `employee.${f.pmKey}`] : [])])))]);
+  const identityKeys = ['icNo', 'passportNo', 'taxNo', 'epfNo', 'bankAcc', 'bankAccount', 'bankAccountNo', 'spIc', 'spTax'];
+  const sensitive = new Set([...identityKeys.flatMap(key => [key, `employee.${key}`]), ...config.templates.flatMap(t => t.versions.flatMap(v => v.fields.filter(f => f.sensitive).flatMap(f => [f.id, ...(f.pmKey ? [f.pmKey, `employee.${f.pmKey}`] : [])])))]);
   for (const target of to) {
     const itemKey = `${key}:${target}`; if (c.mails.some(m => m.key === itemKey)) continue;
     if (!env.eligibleUser(target)) throw new V9Error('The recipient is no longer eligible for delivery.');
     const tasks = pendingPre(c).filter(t => t.assignee === target);
     const values = { ...env.mergeValues, 'owner.name': env.userName(target), 'pending.tasks': (step.to === 'taskOwners' ? tasks : pendingPre(c)).map(t => `${t.name} (due ${t.dueOn})`).join('\n') };
-    const subject = merge(email?.subject ?? (step.type === 'notify' ? step.subject : ''), values, sensitive), body = merge(email?.body ?? (step.type === 'notify' ? step.body : ''), values, sensitive);
+    const edits = email ? c.emailEdits?.[email.id] : null;
+    const subject = merge(edits?.subject ?? email?.subject ?? (step.type === 'notify' ? step.subject : ''), values, sensitive), body = merge(edits?.body ?? email?.body ?? (step.type === 'notify' ? step.body : ''), values, sensitive);
     if (!test && (subject.missing.length || body.missing.length)) throw new V9Error(`Complete missing merge fields: ${[...new Set([...subject.missing, ...body.missing])].join(', ')}.`);
-    const docs = [...new Set([...(email?.links ?? []), ...(email?.attachments ?? [])])].map(id => {
-      const d = activeDocument(c, id) ?? generate(c, config, id, env), template = config.templates.find(t => t.id === id);
-      if (template?.hrStep === 'before' && d.status === 'draft' && !test) throw new V9Error('HR must sign the letter before it can be sent.');
-      return d;
+    const docs = [...new Set([...(email?.links ?? []), ...(email?.attachments ?? [])])].flatMap(id => {
+      const d = activeDocument(c, id) ?? (test ? null : generate(c, config, id, env)), template = config.templates.find(t => t.id === id);
+      if (!d) return [];
+      if ((d.hrStep ?? template?.hrStep) === 'before' && d.status === 'draft' && !test) throw new V9Error('HR must sign the letter before it can be sent.');
+      return [d];
     });
     const cc = test ? [] : [...new Set([...step.cc, ...(email?.cc ?? [])].flatMap(role => recipients(c, config, role)))].filter(id => id !== target && env.eligibleUser(id));
     c.mails.push({ id: env.nextId(), key: itemKey, workflowId, templateId: email?.id ?? null, to: [target], cc, subject: subject.text, body: body.text, documentIds: docs.map(d => d.id), fileIds: c.files.filter(f => email?.slots.some(s => f.slot === `${email.id}:${s.id}`)).map(f => f.id), status: 'pending', test, at: env.now, deliveredAt: null, failure: null });
@@ -292,28 +324,44 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
   }
   return null;
 }
+export function queueEmail(c: Case, config: Config, emailId: string, env: Environment, test = false): void {
+  if (c.state !== 'submitted') throw new V9Error('Only an open case can send email.', 'conflict');
+  const email = config.emails.find(e => e.id === emailId && e.module === c.module);
+  if (!email) throw new V9Error('Email template not found.', 'not_found');
+  const acceptance = c.module === 'off' && emailId === 'e3';
+  const doc = acceptance ? activeDocument(c, 't4') : null;
+  if (acceptance && !test && (!doc || !doc.hrSignature)) throw new V9Error('HR must review and sign the acceptance letter before sending.');
+  const key = test ? `test:${env.nextId()}` : acceptance ? `acceptance:${doc!.id}` : `manual:${env.nextId()}`;
+  const held = enqueue(c, config, { id: key, type: 'email', template: emailId, to: 'employee', cc: [] }, key, null, env, test);
+  if (held) throw new V9Error(held);
+}
 export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: Environment, event: 'submitted' | 'date' | 'resume'): Run | null {
+  const unfinished = c.runs.find(r => r.workflowId === workflow.id && (r.status === 'waiting' || r.status === 'failed'));
+  if (unfinished?.definition) workflow = unfinished.definition;
   if (c.state !== 'submitted' || workflow.status !== 'published' || !workflowMatches(c, workflow, env.today)) return null;
   const trigger = workflow.trigger, anchor = trigger.event === 'beforeLWD' ? c.facts.lastDay : c.facts.joinDate;
   if (event === 'submitted' && trigger.event !== 'submitted' || event === 'date' && trigger.event === 'submitted') return null;
-  if (trigger.event !== 'submitted') {
+  const waiting = event === 'resume' ? unfinished : null;
+  if (event === 'resume' && !waiting) return null;
+  if (trigger.event !== 'submitted' && !waiting) {
     if (!validDate(anchor)) return null;
     const due = addDays(anchor, trigger.event === 'afterJoin' ? trigger.days : -trigger.days, trigger.workdays);
     if (env.today < due || trigger.event !== 'afterJoin' && env.today > anchor) return null;
   }
   const repeat = trigger.repeat && trigger.event !== 'submitted' && trigger.event !== 'afterJoin';
-  const runKey = `${workflow.id}:${repeat ? env.today : 'once'}`;
+  const runKey = waiting?.id ?? `${workflow.id}:${repeat ? env.today : 'once'}`;
   let run = c.runs.find(r => r.id === runKey);
-  if (run && ['done', 'skipped'].includes(run.status)) return run;
-  if (!run) { run = { id: runKey, workflowId: workflow.id, revision: config.revision, date: env.today, status: 'running', cursor: 0, reason: '', at: env.now }; c.runs.push(run); }
-  const skip = skipReason(c, workflow); if (skip) { run.status = 'skipped'; run.reason = skip; appendLog(c, env, 'workflow.skipped', `${workflow.name}: ${skip}`); return run; }
+  if (run?.status === 'done') return run;
+  if (!run) { run = { id: runKey, workflowId: workflow.id, revision: config.revision, date: env.today, status: 'running', cursor: 0, reason: '', at: env.now, definition: structuredClone(workflow) }; c.runs.push(run); }
+  const skip = skipReason(c, workflow); if (skip) { if (run.status !== 'skipped' || run.reason !== skip) appendLog(c, env, 'workflow.skipped', `${workflow.name}: ${skip}`); run.status = 'skipped'; run.reason = skip; return run; }
+  run.status = 'running';
   try {
     while (run.cursor < workflow.steps.length) {
       const step = workflow.steps[run.cursor]; let waiting = '';
       if (step.type === 'doc') {
         const doc = generate(c, config, step.template, env), template = config.templates.find(t => t.id === step.template);
         if (step.release && ['draft', 'hrsigned'].includes(doc.status)) {
-          if (template?.hrStep === 'before' && !doc.hrSignature) waiting = 'HR must sign before release.';
+          if ((doc.hrStep ?? template?.hrStep) === 'before' && !doc.hrSignature) waiting = 'HR must sign before release.';
           else { doc.status = 'sent'; doc.sentAt = env.now; linkedTasks(c, doc, 'sent'); appendLog(c, env, 'document.released', doc.name); }
         }
       } else if (step.type === 'waitSign') { const d = activeDocument(c, step.template); if (!(step.by === 'hr' ? d?.hrSignature : d && documentFinal(d))) waiting = `Waiting for ${step.by === 'hr' ? 'HR' : 'the employee'} to sign.`; }
