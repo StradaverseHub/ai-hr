@@ -54,6 +54,8 @@ export const AGENT_ACTION_CATEGORY=Object.freeze({
  'multi_cycle_payroll.create_run':'payroll','typed_pay_components.create':'pay','rewards.post':'pay',
  'country-my.statutory.update':'payroll','employees.import':'personnel','claims.cancel':'claim_money',
  'leave.cancel':'own_work','leave.edit':'own_work',
+ 'attendance.overtime.request':'pay','approvals.claim.decide':'approvals','approvals.attendance.decide':'approvals','approvals.toil.decide':'approvals',
+ 'leave.adjustment.apply':'approvals','employees.movement.transfer':'personnel','toil.credit.grant':'approvals',
 } as const);
 // A sensitive category paired with Automatic is a compile error, in addition to the runtime refusal.
 type CheckedPolicies={ [K in ModuleEffectActionId]: {category:(typeof AGENT_ACTION_CATEGORY)[K];tier:(typeof AGENT_ACTION_TIER_CEILING)[K]} };

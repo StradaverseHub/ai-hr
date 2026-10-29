@@ -467,3 +467,16 @@ The 29 October read-only staging check found the retention timer absent. Install
 work under [deployment instructions](../../deploy/DEPLOY.md). See the [AI threat model](../architecture/ai-threat-model.md).
 WP2 and WP4 are separate review candidates; their gate and installation status must be read from their
 exact PR evidence, not inferred from these amendments. No deployment was performed.
+
+### Release integration update — 29 October 2026
+
+The combined WP2/WP4/WP15 release candidate starts from canonical `46049dead`, which already contains
+wave 1b, the named principal, three HR-prepared actions and outcome measurement. There are now **30**
+declared action IDs, including the import Handoff, and **29** prepared human-review paths. The runtime
+tier categories and generic assigned-review guard cover those merged additions as well. Earlier base
+observations above retain their original meaning; they do not describe missing merged functionality.
+
+The orchestrator now uses the named tenant principal with attributed switch enabling. It still receives
+no model-spend authority. Outcome measurement is merged; its comparisons remain non-causal. Other
+architecture packages, including scheduled-status behavior and generic parity, are not implemented by
+this integration. Final gate and staging arrival are separate evidence, recorded on the release PR.

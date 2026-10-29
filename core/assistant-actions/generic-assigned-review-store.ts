@@ -1,3 +1,4 @@
+import {assertHumanReviewedActionTier} from '../../lib/ai/agent-action-tier-guard';
 /** ADR-0151 wave 1b: one custody implementation for every ASSIGNED decision kind of migration 0671 — the
  * caller decides someone else's request. Modelled on the leave-decision custody: the binding names the
  * decider's login/person AND the subject's employment, company and person; the native service decides
@@ -57,14 +58,14 @@ export function createGenericAssignedReviewStore<Human extends {employmentId:str
  const nominate=async(tx:Tx,id:string)=>{const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_assigned_review_subject(${id}::uuid,${action}) as subject`);return z.object({subjectId:z.guid(),mode:z.enum(['pending','recorded'])}).strict().parse(row?.subject);};
  const readRow=(tx:Tx,id:string,discard=false)=>read(tx,discard?sql`select app.assistant_assigned_review_read(${id}::uuid,${action},true) as review`:sql`select app.assistant_assigned_review_read(${id}::uuid,${action}) as review`);
  return Object.freeze({
-  async prepare(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=spec.human.safeParse(input);if(!parsed.success)return fail();const human=parsed.data;try{return await withTenant(ctx,tx=>spec.withSubject(tx,ctx,human.subjectId,'pending',async(fresh,subject)=>{
+  async prepare(supplied:SessionContext,input:unknown){assertHumanReviewedActionTier(supplied,action,'approve');const ctx=capture(supplied),parsed=spec.human.safeParse(input);if(!parsed.success)return fail();const human=parsed.data;try{return await withTenant(ctx,tx=>spec.withSubject(tx,ctx,human.subjectId,'pending',async(fresh,subject)=>{
    if(subject.employmentId!==human.employmentId||subject.subjectId!==human.subjectId)return fail();
    const native=await spec.prepare(tx,fresh,human),body:Body={reviewNonce:newPrivateReviewNonce(),content:human,nativeReviewedDigest:native.reviewedDigest};
    const binding=Binding.parse({tenantId:fresh.tenantId,userId:fresh.userId,personId:fresh.personId??null,employmentId:subject.employmentId,companyId:subject.companyId,subjectPersonId:subject.subjectPersonId});
    const now=new Date(),m=Metadata.parse({actionId:randomUUID(),action,contractVersion:1,binding,intentDigest:hash(body.content),reviewedDigest:reviewed(binding,body),state:'awaiting_confirmation',createdAt:now.toISOString(),expiresAt:new Date(now.getTime()+600000).toISOString()}),sealed=seal(m,body);
    const stored=await read(tx,sql`select app.assistant_assigned_review_prepare(${action},${m.actionId}::uuid,${binding.personId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${binding.subjectPersonId}::uuid,${subject.subjectId}::uuid,${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) as review`);bound(stored,fresh,m.actionId,subject);return pending(stored,unseal(stored),native);
   }));}catch{return fail();}},
-  async confirm(supplied:SessionContext,input:{actionId:string;reviewedDigest:string}){const ctx=capture(supplied),p={actionId:z.guid().parse(input.actionId),reviewedDigest:digest.parse(input.reviewedDigest)};try{return await withTenant(ctx,async tx=>{
+  async confirm(supplied:SessionContext,input:{actionId:string;reviewedDigest:string}){assertHumanReviewedActionTier(supplied,action,'approve');const ctx=capture(supplied),p={actionId:z.guid().parse(input.actionId),reviewedDigest:digest.parse(input.reviewedDigest)};try{return await withTenant(ctx,async tx=>{
    const nominee=await nominate(tx,p.actionId);return spec.withSubject(tx,ctx,nominee.subjectId,nominee.mode,async(fresh,subject)=>{
     const stored=await readRow(tx,p.actionId);bound(stored,fresh,p.actionId,subject);if(stored.metadata.state==='completed')return completed(tx,fresh,stored);if(stored.metadata.state!=='awaiting_confirmation')return retired(stored);if(stored.metadata.reviewedDigest!==p.reviewedDigest)return fail();
     const body=unseal(stored);if(body.content.subjectId!==stored.subjectId)return fail();const native=await spec.confirm(tx,fresh,body.content,body.nativeReviewedDigest);

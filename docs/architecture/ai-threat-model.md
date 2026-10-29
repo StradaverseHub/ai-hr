@@ -52,3 +52,12 @@ failed/missing service passes or an aging cleanup backlog require operator actio
 [AI-RETENTION.md](../../deploy/systemd/AI-RETENTION.md). Provider/model changes and new automatic authority
 require their own reviewed acceptance. This threat model authorizes no deployment, switch change,
 principal enablement, data transfer to a new provider or relaxation of HR approval rules.
+
+## Release integration update — 29 October 2026
+
+Canonical `46049dead` includes the named tenant principal, HR-prepared actions and outcome measurement.
+The named principal remains a non-login actor without model-spend admission; only attributed configured
+specialists run under it. The candidate now enforces gateway admission and runtime tier ceilings,
+including the merged own/assigned action families. Earlier source-base residuals above are historical
+observations; scheduled status, generic parity and the remaining learning/inventory packages remain
+separate work. Retention installation and actual service behavior still require independent verification.

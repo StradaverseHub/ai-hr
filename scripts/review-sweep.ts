@@ -77,7 +77,7 @@ async function main() {
   for (const t of tenants) {
     try {
       // Legacy no-login context: actorOf stamps system; the orchestrator stamps agent explicitly.
-      // Named tenant-principal integration is separate work; this context is not admitted to model spend.
+      // Engine jobs retain this system context. The orchestrator uses the named tenant principal resolved below, without model spend.
       //
       // A REAL snapshot, not `entitlementsExempt: 'sweeps'`, because this sweep calls
       // `dispatchNotifications`, which is gated on the BILLABLE `notifications` module. The exempt

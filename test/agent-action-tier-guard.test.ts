@@ -41,11 +41,24 @@ const db=vi.hoisted(()=>({withTenant:vi.fn()}));
 vi.mock('../db/client',()=>db);
 import {createGenericOwnReviewStore,type GenericOwnReviewSpec} from '../core/assistant-actions/generic-own-review-store';
 import type {SessionContext} from '../db/client';
+import {createGenericAssignedReviewStore,type GenericAssignedReviewSpec} from '../core/assistant-actions/generic-assigned-review-store';
 
 describe('prepare and confirm service boundary refusal',()=>{
  it('checks the ceiling on both commands before any subject read, transaction or effect',async()=>{
   const spec={action:'payroll.close'} as GenericOwnReviewSpec<{employmentId:string},unknown,unknown,unknown,unknown,unknown,unknown>;
   const store=createGenericOwnReviewStore(spec),ctx={tenantId:'tenant',userId:'human'} as SessionContext;
+  await expect(store.prepare(ctx,{})).rejects.toThrow('tier unavailable');
+  await expect(store.confirm(ctx,{actionId:'unused',reviewedDigest:'unused'})).rejects.toThrow('tier unavailable');
+  expect(db.withTenant).not.toHaveBeenCalled();
+ });
+});
+
+// Current canonical includes assigned approver decisions and HR-admin prepared actions.
+describe('merged assigned-review tier boundaries',()=>{
+ it.each(['employees.import','approvals.claim.decide','leave.adjustment.apply'])('refuses %s before assigned source or transaction access',async action=>{
+  const spec={action} as unknown as GenericAssignedReviewSpec<{employmentId:string;subjectId:string},unknown,unknown,unknown,unknown,unknown,unknown>;
+  const store=createGenericAssignedReviewStore(spec);
+  const ctx={tenantId:'tenant',...(action==='employees.import'?{userId:'human'}:{})} as SessionContext;
   await expect(store.prepare(ctx,{})).rejects.toThrow('tier unavailable');
   await expect(store.confirm(ctx,{actionId:'unused',reviewedDigest:'unused'})).rejects.toThrow('tier unavailable');
   expect(db.withTenant).not.toHaveBeenCalled();
