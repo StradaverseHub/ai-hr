@@ -19155,7 +19155,7 @@
         "badgeReady": "Gợi ý",
         "badgeStale": "Đã cũ",
         "staleNote": "Gợi ý trước đây từ câu hỏi của bạn. Chưa có gì được chuẩn bị hay thay đổi.",
-        "staleBody": "Đã có thay đổi kể từ khi gợi ý này được đưa ra, chẳng hạn quyền truy cập của bạn hoặc Trợ lý bị tạm dừng, nên không thể dùng gợi ý này ở đây nữa. Hãy làm mới để xem bạn có thể làm gì lúc này.",
+        "staleBody": "Đã có thay đổi kể từ khi gợi ý này được đưa ra, chẳng hạn quyền truy cập của bạn hoặc một tính năng đã bị tắt, nên không thể dùng gợi ý này ở đây nữa. Hãy làm mới để xem bạn có thể làm gì lúc này.",
         "refresh": "Làm mới",
         "failureBody": "Hiện chưa tải được các mục hiện tại của bạn. Chưa có gì được chuẩn bị hay thay đổi. Hãy thử lại, hoặc mở trang thông thường.",
         "retry": "Thử lại",

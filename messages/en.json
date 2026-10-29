@@ -19155,7 +19155,7 @@
         "badgeReady": "Suggestion",
         "badgeStale": "Out of date",
         "staleNote": "Suggested earlier from your question. Nothing was prepared or changed.",
-        "staleBody": "Something changed since this was suggested, such as your access or an Assistant pause, so it can no longer be used here. Refresh to check what you can do now.",
+        "staleBody": "Something changed since this was suggested, such as your access or a feature being switched off, so it can no longer be used here. Refresh to check what you can do now.",
         "refresh": "Refresh",
         "failureBody": "Your current items could not be loaded just now. Nothing was prepared or changed. Try again, or open the usual page.",
         "retry": "Try again",
