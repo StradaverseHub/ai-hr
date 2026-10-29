@@ -15,6 +15,9 @@ import {validateInstallGrant,installJson,installHash} from './ci-install-grant.m
 import {inspectCiBuildPacket} from './build-artifact.mjs';
 import {assertBuildRuntime,assertBuildDotenvCompileKeys} from './build-production.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
+// Hashing or unpacking the ~850 MB build bundle on the 4 GB staging host exceeded 120 s under host load (wave 1b,
+// 29 Oct 2026). Each call stays well inside release.ts's 60-minute deploy deadline, even across the three verifications.
+export const BUNDLE_PYTHON_TIMEOUT_MS=600000;
 const id=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(value);
 const identity=st=>({device:st.dev,inode:st.ino});
 function privateDirectory(path,create=false){
@@ -115,7 +118,7 @@ function compiledContract(next,testing,prepared){
  assert(config.config.typescript.ignoreBuildErrors!==true&&config.config.experimental.useTypeScriptCli===true&&config.config.typescript.tsconfigPath==='tsconfig.build.json','CI application compiler contract differs');
 }
 function verifyDirectory(source,p,{active=false,records=p.packet}={}){
- const output=execFileSync('python3',[join(ROOT,'.github/ci/build-bundle.py'),active?'verify-active-directory':'verify-directory',active?join(source,'.next'):p.next,join(records,'bytes/build-bundle-files.json'),source,p.grant.build.buildSourcePath],{stdio:active?'pipe':'inherit',encoding:active?'utf8':undefined,timeout:120000,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
+ const output=execFileSync('python3',[join(ROOT,'.github/ci/build-bundle.py'),active?'verify-active-directory':'verify-directory',active?join(source,'.next'):p.next,join(records,'bytes/build-bundle-files.json'),source,p.grant.build.buildSourcePath],{stdio:active?'pipe':'inherit',encoding:active?'utf8':undefined,timeout:BUNDLE_PYTHON_TIMEOUT_MS,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
  return active?JSON.parse(output):undefined;
 }
 async function nativeContract(source,p){
@@ -153,7 +156,7 @@ export async function stageCiBuild(sourceRef,installId,buildRecordId){
  const bound=await sourceContract(source,p);
  const manifest=JSON.parse(regular(join(p.packet,'bytes/build-bundle-files.json'),16*1024**2)),space=statfsSync(p.directory);
  assert(Number.isSafeInteger(manifest.unpackedBytes)&&manifest.unpackedBytes>0&&manifest.unpackedBytes<=2*1024**3&&space.bavail*space.bsize>=manifest.unpackedBytes+2*1024**3,'Insufficient actual same-filesystem staging headroom');
- execFileSync('python3',[join(ROOT,'.github/ci/build-bundle.py'),'unpack-with-origin',join(p.packet,'bytes/build-bundle.tar.gz'),join(p.packet,'bytes/build-bundle-files.json'),p.next,source,g.build.buildSourcePath],{stdio:'inherit',timeout:120000,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
+ execFileSync('python3',[join(ROOT,'.github/ci/build-bundle.py'),'unpack-with-origin',join(p.packet,'bytes/build-bundle.tar.gz'),join(p.packet,'bytes/build-bundle-files.json'),p.next,source,g.build.buildSourcePath],{stdio:'inherit',timeout:BUNDLE_PYTHON_TIMEOUT_MS,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
  assert(buildId(p.next)===g.build.nextBuildId,'Unpacked Next build identity differs');
  compiledContract(p.next,bound.testing,bound.prepared);
  const native=await nativeContract(source,p);

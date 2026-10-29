@@ -14,6 +14,7 @@ export const GET = mobileRoute(MeResponse, async (s) => {
   const [primary, name, employments] = await Promise.all([myEmployment(s), myPersonName(s), myEmployments(s)]);
   return {
     apiVersion: MOBILE_API_VERSION,
+    actorId: s.userId,
     person: { name: name ?? primary?.name ?? null, email: primary?.email ?? null },
     employments: employments.map((e) => ({
       employmentId: e.employmentId,

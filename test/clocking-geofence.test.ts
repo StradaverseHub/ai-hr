@@ -67,7 +67,11 @@ import {
   requestAttendanceCorrection,
   GeolocationRequiredError,
   OutsideGeofenceError,
+  GeofenceQualityError,setAttendancePolicy,listAttendancePolicies,
 } from '../core/attendance';
+import {previewOwnClockLocation} from '../core/attendance-clock-read';
+import {captureEmployeeClock} from '../core/attendance-clock';
+import {clockCommandContext} from '../lib/clock-command-context';
 import { withTenant, type SessionContext } from '../db/client';
 import { commitClockingImport, createClockingMapping } from '../core/attendance-clocking-import';
 import { importPunchCsv } from './helpers/punch-import';
@@ -172,7 +176,7 @@ async function attendanceRow(employmentId: string, date: string) {
 }
 
 // Kuala Lumpur-ish coordinates for the "site" and a couple of test offsets.
-const HQ = { lat: 3.139, lng: 101.6869 };
+const HQ = { lat: 3.139, lng: 101.6869,accuracy:0 };
 
 beforeAll(async () => {
   await migrateTestDb();
@@ -540,6 +544,39 @@ describe('r423 — companies, state and status on a clocking location', () => {
 });
 
 describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
+  it('contains reported uncertainty and never treats missing or negative accuracy as zero',async()=>{
+    const a=adminCtx(b),{id:site}=await mkSite(a,{name:'Uncertainty',lat:HQ.lat,lng:HQ.lng});
+    const e=await hire(a,b.companyId,b.deptA);await assign(a,e.employmentId,[site]);
+    const command={employmentId:e.employmentId,date:'2026-07-06',time:'09:00'};
+    for(const accuracy of [undefined,-1,NaN])await expect(checkIn(a,{...command,geo:{...HQ,accuracy}})).rejects.toBeInstanceOf(GeofenceQualityError);
+    await expect(checkIn(a,{...command,geo:{...HQ,accuracy:301}})).rejects.toBeInstanceOf(OutsideGeofenceError);
+    expect(await attendanceRow(e.employmentId,command.date)).toBeUndefined();
+    await checkIn(a,{...command,geo:{...HQ,accuracy:300}});
+    expect((await attendanceRow(e.employmentId,command.date)).checkInGeofenceStatus).toBe('pass');
+  });
+  it('preserves an explicit company uncertainty cap across older settings writers and allows explicit clearing',async()=>{
+    const a=adminCtx(b),{id:site}=await mkSite(a,{name:'Company cap',lat:HQ.lat,lng:HQ.lng});
+    const e=await hire(a,b.companyId,b.deptA);await assign(a,e.employmentId,[site]);
+    const policy={companyId:b.companyId,workStart:'09:00',workEnd:'18:00',breakMinutes:60,lateAfter:'09:15',halfDayBefore:'13:00',workingDays:[1,2,3,4,5]};
+    await setAttendancePolicy(a,{...policy,geofenceMaximumAccuracyM:10});await setAttendancePolicy(a,policy);
+    expect((await listAttendancePolicies(a,[b.companyId]))[0].geofenceMaximumAccuracyM).toBe(10);
+    await expect(checkIn(a,{employmentId:e.employmentId,date:'2026-07-06',time:'09:00',geo:{...HQ,accuracy:11}})).rejects.toMatchObject({assessment:{outcome:'poor_accuracy',maximumAccuracyM:10}});
+    for(const value of [0,-1,1.5,NaN,Infinity])await expect(setAttendancePolicy(a,{...policy,geofenceMaximumAccuracyM:value})).rejects.toThrow('positive whole number');
+    await setAttendancePolicy(a,{...policy,geofenceMaximumAccuracyM:null});
+    expect((await listAttendancePolicies(a,[b.companyId]))[0].geofenceMaximumAccuracyM).toBeNull();
+    await checkIn(a,{employmentId:e.employmentId,date:'2026-07-06',time:'09:00',geo:{...HQ,accuracy:11}});
+  });
+  it('preview and employee capture share containment and re-read a changed policy before recording',async()=>{
+    const a=adminCtx(b),{id:site}=await mkSite(a,{name:'Shared preview',lat:HQ.lat,lng:HQ.lng});
+    const e=await hire(a,b.companyId,b.deptA);await assign(a,e.employmentId,[site]);
+    const own={...await employeeCtxFor(e.personId),entitlements:a.entitlements},point={...HQ,accuracy:10,sampledAt:Date.now()};
+    expect(await previewOwnClockLocation(own,e.employmentId,point)).toMatchObject({outcome:'pass',siteId:site,accuracyM:10});
+    expect(await previewOwnClockLocation(own,e.employmentId,{...point,accuracy:301})).toMatchObject({outcome:'outside_site',siteId:site});
+    expect(await previewOwnClockLocation(own,e.employmentId,{...point,sampledAt:Date.now()+180000})).toMatchObject({outcome:'future_fix'});
+    await setAttendancePolicy(a,{companyId:b.companyId,workStart:'09:00',workEnd:'18:00',breakMinutes:60,lateAfter:'09:15',halfDayBefore:'13:00',workingDays:[1,2,3,4,5],geofenceMaximumAccuracyM:5});
+    await expect(captureEmployeeClock(own,{action:'in',requestId:randomUUID(),lat:HQ.lat,lng:HQ.lng,accuracy:10,employmentId:e.employmentId,clockContext:clockCommandContext(own.tenantId,own.userId,e.employmentId)})).rejects.toMatchObject({assessment:{outcome:'poor_accuracy'}});
+    expect(await owner.db.select().from(schema.attendanceClockCapture).where(eq(schema.attendanceClockCapture.employmentId,e.employmentId))).toHaveLength(0);
+  });
   it('inside radius: row stamped per-punch (coords, matched id, distance, radius, pass, web)', async () => {
     const a = adminCtx(b);
     const { id: site } = await mkSite(a, { name: 'InRadius', lat: HQ.lat, lng: HQ.lng });
@@ -570,7 +607,7 @@ describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
     await assign(a, e.employmentId, [site]);
 
     // ~1.1 degrees away ≈ 100+ km — well outside any sane radius.
-    const farAway = { lat: HQ.lat + 1, lng: HQ.lng + 1 };
+    const farAway = { lat: HQ.lat + 1, lng: HQ.lng + 1,accuracy:0 };
     await expect(
       checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', geo: farAway }),
     ).rejects.toBeInstanceOf(OutsideGeofenceError);
@@ -604,7 +641,7 @@ describe('checkIn/checkOut geofence enforcement (ADR-0070)', () => {
     await assign(a, e.employmentId, [site1, site2]);
 
     // At site2's coordinates — far from site1, but a hit on site2.
-    await checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', geo: { lat: HQ.lat + 1, lng: HQ.lng + 1 } });
+    await checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', geo: { lat: HQ.lat + 1, lng: HQ.lng + 1,accuracy:0 } });
     const row = await attendanceRow(e.employmentId, '2026-07-06');
     expect(row.checkInClockingLocationId).toBe(site2);
     expect(row.checkInGeofenceStatus).toBe('pass');
@@ -790,7 +827,7 @@ describe('import + correction geo-nulling (ADR-0070)', () => {
     // Check in fine (at the office)...
     await checkIn(a, { employmentId: e.employmentId, date: '2026-07-06', time: '09:00', geo: HQ });
     // ...then try to check out from far away (e.g. an offsite meeting) — blocked.
-    const farAway = { lat: HQ.lat + 1, lng: HQ.lng + 1 };
+    const farAway = { lat: HQ.lat + 1, lng: HQ.lng + 1,accuracy:0 };
     await expect(
       checkOut(a, { employmentId: e.employmentId, date: '2026-07-06', time: '18:00', geo: farAway }),
     ).rejects.toBeInstanceOf(OutsideGeofenceError);
@@ -987,7 +1024,7 @@ describe('RLS (ADR-0070 tenant-catalog pattern)', () => {
 describe('1fff489c — per-site radius', () => {
   /** ~111.19 km per degree of latitude at the equator on the R=6371 km sphere haversineMetres uses. */
   const METRES_PER_DEG_LAT = 111_194.9;
-  const north = (metres: number) => ({ lat: HQ.lat + metres / METRES_PER_DEG_LAT, lng: HQ.lng });
+  const north = (metres: number) => ({ lat: HQ.lat + metres / METRES_PER_DEG_LAT, lng: HQ.lng,accuracy:0 });
 
   it('a single site is judged against ITS OWN radius when the employee has no override', async () => {
     const a = adminCtx(b);

@@ -848,9 +848,13 @@ async function writePreparedReplacementLeaveRequestTx(tx:Tx,prepared:Awaited<Ret
  return {requestId:header.id,totalDays,totalHours,submittedEventId};
 }
 /** Same ordinary pending header/lines/event and public return shape; no grant on submission. */
-export async function submitReplacementLeaveRequest(ctx:SessionContext,p:SubmitReplacementRequestInput):Promise<SubmitReplacementRequestResult>{
+/** `existingTx` — D13 (mobile M12): the caller's transaction (the mobile command receipt's), so the receipt and
+ *  the request commit or roll back together. Omitted: its own transaction, as before. Same preparation, same
+ *  dependency locks, same write on both paths. */
+export async function submitReplacementLeaveRequest(ctx:SessionContext,p:SubmitReplacementRequestInput,existingTx?:Tx):Promise<SubmitReplacementRequestResult>{
  const captured={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))},input={...p,lines:p.lines.map(line=>({...line}))};
- return withTenant(captured,async tx=>{const result=await writePreparedReplacementLeaveRequestTx(tx,await prepareReplacementLeaveRequestTx(tx,captured,input));return {requestId:result.requestId,totalDays:result.totalDays,totalHours:result.totalHours};});
+ const run=async(tx:Tx):Promise<SubmitReplacementRequestResult>=>{const result=await writePreparedReplacementLeaveRequestTx(tx,await prepareReplacementLeaveRequestTx(tx,captured,input));return {requestId:result.requestId,totalDays:result.totalDays,totalHours:result.totalHours};};
+ return existingTx?run(existingTx):withTenant(captured,run);
 }
 /** Private reviewed source preparation; raw preparations never become an exported effect API. */
 async function reviewedReplacementPreparationTx(tx:Tx,ctx:SessionContext,input:SubmitReplacementRequestInput){

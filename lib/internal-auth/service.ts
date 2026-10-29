@@ -60,10 +60,12 @@ async function makeSession(tx: AuthSql, c: Credential, native: boolean, recovery
 function reply(raw: string, c: Credential, challenge: Challenge): AuthReply {
   return { step: challenge.phase, challenge: raw, ...(challenge.phase === 'enroll' ? { secret: challenge.secret, account: `${c.organization}:${c.username}` } : {}) };
 }
-export async function startLogin(input: { organization: string; username: string; password: string; native: boolean }): Promise<AuthReply> {
+export async function startLogin(input: { organization: string; username: string; password: string; native: boolean; sourceBudgeted?: boolean }): Promise<AuthReply> {
   const org = canonicalOrg(input.organization), username = canonicalUsername(input.username);
   if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(org) || !/^[a-z0-9][a-z0-9._@+-]{2,63}$/.test(username)) throw new InternalAuthError('invalidLogin');
-  await takeRate('login-global', 120, 60_000);
+  // Retain the legacy safety ceiling until a reviewed ingress supplies source admission.
+  // The HTTP caller sets this only after its server-owned source budget succeeds.
+  if (!input.sourceBudgeted) await takeRate('login-global', 120, 60_000);
   await takeRate(`login:${org}:${username}`, 10);
   const c = await credentialByLogin(org, username);
   const matched = await passwordMatches(input.password, c?.password || DUMMY_PASSWORD_HASH);

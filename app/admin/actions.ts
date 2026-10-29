@@ -2539,6 +2539,7 @@ export async function setAttendancePolicyAction(fd: FormData) {
       otApprovalCalculation,
       // Feedback 5249d43f: registered-device enforcement checkbox (absent when unchecked ⇒ false).
       requireRegisteredDevice: fd.get('requireRegisteredDevice') != null,
+      geofenceMaximumAccuracyM:!fd.has('geofenceMaximumAccuracyM')?undefined:String(fd.get('geofenceMaximumAccuracyM')??'').trim()===''?null:Number(fd.get('geofenceMaximumAccuracyM')),
     });
   } catch (e) {
     fail(backTo, e);

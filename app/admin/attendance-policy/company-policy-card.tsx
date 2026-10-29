@@ -187,6 +187,7 @@ export async function CompanyPolicyViewPanel({
     [t('colRestDays'), days(rest)],
     [tp('otApprovalCalcLabel'), tp(OT_APPROVAL_KEY[policy.otApprovalCalculation])],
     [tp('requireDeviceLegend'), policy.requireRegisteredDevice ? t('deviceRequired') : t('deviceNotRequired')],
+    [tp('geofenceMaximumAccuracy'),policy.geofenceMaximumAccuracyM==null?tp('geofenceNoAdditionalCap'):`${policy.geofenceMaximumAccuracyM} m`],
   ];
   return (
     <Card className="overflow-hidden">

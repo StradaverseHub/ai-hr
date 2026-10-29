@@ -162,7 +162,9 @@ export function listRegisteredDevices(
   });
 }
 
-async function requireRegisteredDeviceTx(tx: Tx, employmentId: string): Promise<boolean> {
+/** Whether the employment's company policy requires a registered device, in the caller's transaction. Read-only;
+ *  the offline adjudicator (packs/attendance/mobile-offline-adjudicator.ts) reads it before deciding a claim. */
+export async function requireRegisteredDeviceTx(tx: Tx, employmentId: string): Promise<boolean> {
   const [row] = await tx
     .select({ required: attendancePolicy.requireRegisteredDevice })
     .from(employment)

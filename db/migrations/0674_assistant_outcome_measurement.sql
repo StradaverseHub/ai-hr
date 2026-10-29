@@ -1,5 +1,5 @@
 -- ADR-0151 §4.6c: outcome measurement per Assistant action kind. Claimed as 0674 with the active sessions on 29 Oct
--- 2026; journaled at when 1793276000000, after wave 1b's 0671 on alpha.
+-- 2026; journaled at when 1793310000000, after Mobile's 0673 on alpha.
 --
 -- The prepared-action store is closed to ai_hr_app (0622 revokes it; 0657 admits only non-app definers that
 -- are administrators of the row's company). This adds ONE read-only definer that returns counts, never rows:

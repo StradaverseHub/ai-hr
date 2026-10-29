@@ -32,7 +32,7 @@ beforeEach(async () => {
   vi.stubEnv('AUTH_DEFAULT_ORGANIZATION', 'alpha');
   await bootstrapInternalOwner(owner.client, { appUserId: base.adminUserId, organization: 'alpha', username: 'owner', email: 'owner@example.test', password: temp, installationOperator: true });
 });
-afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); }); afterAll(closeAll);
+afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); }); afterAll(closeAll);
 function challenge(value: AuthReply) { if (!('challenge' in value)) throw new Error('Expected challenge'); return value.challenge; }
 function completed(value: AuthReply) { if (value.step !== 'complete') throw new Error('Expected full session'); return value; }
 async function enroll(native = false) {
@@ -60,7 +60,17 @@ describe('first-party authentication with real private storage and existing HR b
     await expect(client`select * from app_internal_auth_record`).rejects.toThrow(/permission denied/);
     expect(externalHttp).not.toHaveBeenCalled();
   });
-  it('blocks wrong passwords, unknown users, partial and forged handles and cross-carrier challenge completion', async () => {
+  it('retains account guessing limits while verified-source traffic is independent of a spent global ceiling',async()=>{
+    const clock=vi.spyOn(Date,'now').mockReturnValue(Date.now());
+    const now=Date.now(),window=60_000,start=Math.floor(now/window)*window;
+    await writeRecord(client,`rate:${digest(`login-global:${start}`)}`,{count:120},null,start+2*window);
+    await expect(startLogin({organization:'alpha',username:'owner',password:temp,native:true})).rejects.toMatchObject({code:'rateLimited'});
+    const input={organization:'alpha',username:'owner',password:temp,native:true,sourceBudgeted:true};
+    await expect(startLogin(input)).resolves.toMatchObject({step:'password'});
+    for(let n=1;n<10;n++)await expect(startLogin({...input,password:'invalid phrase'})).rejects.toMatchObject({code:'invalidLogin'});
+    await expect(startLogin(input)).rejects.toMatchObject({code:'rateLimited'});clock.mockRestore();
+  });
+  it('blocks wrong passwords, unknown users, partial and forged handles and cross-carrier challenge completion' , async () => {
     for (const username of ['owner', 'missing']) await expect(startLogin({ organization: 'alpha', username, password: 'Wrong private passphrase 999!', native: false })).rejects.toMatchObject({ code: 'invalidLogin' });
     const login = await startLogin({ organization: 'alpha', username: 'owner', password: temp, native: false });
     expect(await readSession(challenge(login))).toBeNull(); expect(await readSession('A'.repeat(43))).toBeNull();

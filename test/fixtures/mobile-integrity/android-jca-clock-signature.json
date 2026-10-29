@@ -1,0 +1,50 @@
+{
+  "provenance": {
+    "implementation": "OpenJDK JCA secp256r1 SHA256withECDSA; synthetic compatibility vector, not Android Keystore or attestation",
+    "generatorSha256": "5fb09947668edf83f9be5749e930d876d535da8618456ed2927fc56688843de1",
+    "privateKeyPersisted": false
+  },
+  "clientData": {
+    "version": 1,
+    "purpose": "attendance.clock.online",
+    "scope": {
+      "apiOrigin": "https://hr.example.com",
+      "installationId": "00000001-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "tenantId": "00000002-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "actorId": "00000003-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "employmentId": "00000004-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "deviceKeyId": "00000005-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    },
+    "challenge": {
+      "id": "00000006-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "nonce": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "expiresAt": 1800000060000
+    },
+    "command": {
+      "requestId": "00000007-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "action": "in",
+      "lat": 3,
+      "lng": 101,
+      "accuracy": 5,
+      "sampledAt": 1800000000000,
+      "photo": {
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "byteLength": 100,
+        "mimeType": "image/jpeg"
+      }
+    },
+    "evidence": {
+      "platform": "android",
+      "appId": "ai.stradaverse.aihr.test",
+      "appVersion": "1.0",
+      "buildVersion": "4",
+      "provider": "fused",
+      "mock": null,
+      "simulated": null,
+      "accessory": null
+    }
+  },
+  "canonicalUtf8": "[\"aihr.mobile.integrity\",1,\"attendance.clock.online\",[\"https://hr.example.com\",\"00000001-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"00000002-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"00000003-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"00000004-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"00000005-aaaa-4aaa-8aaa-aaaaaaaaaaaa\"],[\"00000006-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",1800000060000],[\"00000007-aaaa-4aaa-8aaa-aaaaaaaaaaaa\",\"in\",3,101,5,1800000000000,[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",100,\"image/jpeg\"]],[\"android\",\"ai.stradaverse.aihr.test\",\"1.0\",\"4\",\"fused\",null,null,null]]",
+  "publicKeySpki": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9Z8U6fezwpWH5/qdpM85AibYevEGuoCizuViV8mrmKDZmLgFLLMpn0SHD1yQV73+NzWvtCfTC14ak1gS3gceCg==",
+  "signature": "MEUCIGMiEH9cwpDF8Ja/PjqVcD11OxbguPGWKSAeb9At7lkUAiEA7nAtq4UtHGlpD7X8rBicxH8ej7MRM7l0H+BV3oxcbqc="
+}

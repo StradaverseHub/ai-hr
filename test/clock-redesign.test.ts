@@ -297,7 +297,8 @@ describe('i18n keys (attendance.clock)', () => {
 
 let b: Base;
 const uniqEmail = () => `clockui_${randomUUID().slice(0, 8)}@t.local`;
-const HQ = { lat: 3.139, lng: 101.6869 };
+// ADR-0144: an enforced punch must report its uncertainty (distance + accuracy <= radius); 0 m, as clocking-geofence uses.
+const HQ = { lat: 3.139, lng: 101.6869, accuracy: 0 };
 const MON = '2026-07-06';
 
 beforeAll(async () => {

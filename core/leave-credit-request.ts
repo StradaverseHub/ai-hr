@@ -247,7 +247,12 @@ async function prepareLeaveCreditInput(ctx:SessionContext,p:SubmitLeaveCreditInp
 export async function prepareLeaveCreditRequestTx(tx:Tx,ctx:SessionContext,input:SubmitLeaveCreditInput){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};const p={...input,rows:input.rows.map(row=>({...row}))};return prepareLeaveCreditInput(ctx,p,()=>leaveCreditRosterKindsTx(tx,p.employmentId,p.rows.map(row=>row.workedDate),ctx));
 }
-/** Ordinary UI retains its historical read transaction followed by the canonical write transaction. */
-export async function submitLeaveCreditRequest(ctx:SessionContext,input:SubmitLeaveCreditInput):Promise<SubmitReplacementRequestResult>{
- ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};const p={...input,rows:input.rows.map(row=>({...row}))};return submitReplacementLeaveRequest(ctx,await prepareLeaveCreditInput(ctx,p,()=>leaveCreditRosterKinds(ctx,p.employmentId,p.rows.map(row=>row.workedDate))));
+/** Ordinary UI retains its historical read transaction followed by the canonical write transaction.
+ *  `existingTx` — D13 (mobile M12): the caller's transaction (the mobile command receipt's), used for BOTH the
+ *  roster adjudication and the write, so the receipt and the request commit together. Omitted: two
+ *  transactions, as before. */
+export async function submitLeaveCreditRequest(ctx:SessionContext,input:SubmitLeaveCreditInput,existingTx?:Tx):Promise<SubmitReplacementRequestResult>{
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};const p={...input,rows:input.rows.map(row=>({...row}))};
+ const prepared=existingTx?await prepareLeaveCreditRequestTx(existingTx,ctx,p):await prepareLeaveCreditInput(ctx,p,()=>leaveCreditRosterKinds(ctx,p.employmentId,p.rows.map(row=>row.workedDate)));
+ return submitReplacementLeaveRequest(ctx,prepared,existingTx);
 }

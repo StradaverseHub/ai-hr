@@ -28,6 +28,18 @@ on:
         description: Whole-repository compiler check in a separate standard runner
         default: false
         type: boolean
+      run_native_typecheck:
+        description: Native app compiler with its strict Expo project and locked SDK dependencies
+        default: false
+        type: boolean
+      run_native_swift_models:
+        description: Swift proof-recovery host models on a standard GitHub macOS runner; no app or vendor call
+        default: false
+        type: boolean
+      run_native_bundle:
+        description: Production Metro and Hermes bundles for iPhone and Android
+        default: false
+        type: boolean
       run_build:
         description: Linux Node 20 production build in a separate standard runner
         default: false
@@ -170,3 +182,78 @@ jobs:
       - run: pnpm build
         env:
           NODE_OPTIONS: --max-old-space-size=6144
+
+  native-typecheck:
+    if: ${{ inputs.run_native_typecheck }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          persist-credentials: false
+      - uses: ./automation/.github/actions/setup-alpha
+      - name: Compile the whole native app with its strict Expo configuration
+        run: npm --prefix mobile run typecheck
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+
+
+  native-bundle:
+    if: ${{ inputs.run_native_bundle }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          persist-credentials: false
+      - uses: ./automation/.github/actions/setup-alpha
+      - name: Export production iPhone and Android bundles with the locked Expo CLI
+        working-directory: source/mobile
+        run: npm exec --offline -- expo export --platform ios --platform android --max-workers 2 --output-dir "$RUNNER_TEMP/mobile-native-bundles"
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          EXPO_OFFLINE: '1'
+          EXPO_NO_TELEMETRY: '1'
+
+  native-swift-models:
+    if: ${{ inputs.run_native_swift_models }}
+    needs: resolve
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          persist-credentials: false
+      - name: Compile and exercise native proof handoff models
+        run: bash automation/.github/ci/native-proof-models.sh "$GITHUB_WORKSPACE/source"

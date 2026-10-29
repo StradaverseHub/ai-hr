@@ -38,10 +38,14 @@ export function AttendanceClockData({ data, employmentId, date, action }: {
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
-  const rowSource = (row: Data['rows'][number]) => t(row.method === 'admin' ? 'admin' : row.method === 'import' ? 'import' : row.captureId ? 'web' : 'legacy');
-  const source = (entry: Entry) => {
+  const rowSource = (row: Data['rows'][number]) => t(row.method === 'admin' ? 'admin' : row.method === 'import' ? 'import' : row.method === 'mobile_offline' ? 'offline' : row.captureId ? 'web' : 'legacy');
+  const unchangedRow = (entry: Entry) => {
     const row = data.rows.find(r => r.id === entry.id);
-    return !row || row.punchAt !== entry.punchAt || row.direction !== entry.direction ? t('admin') : rowSource(row);
+    return !row || row.punchAt !== entry.punchAt || row.direction !== entry.direction ? undefined : row;
+  };
+  const source = (entry: Entry) => {
+    const row = unchangedRow(entry);
+    return row ? rowSource(row) : t('admin');
   };
   const cancel = () => {
     if (dirty && !window.confirm(t('discard'))) return;
@@ -63,6 +67,10 @@ export function AttendanceClockData({ data, employmentId, date, action }: {
   const timestamp = (iso: string) => new Intl.DateTimeFormat(locale, {
     dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur',
   }).format(new Date(iso));
+  // An offline clocking's time is when it happened; the server received it later.
+  const received = (row?: Data['rows'][number]) => row?.method === 'mobile_offline' && row.receivedAt
+    ? <p className="mt-1 max-w-sm text-xs text-muted-foreground">{t('received', { datetime: timestamp(row.receivedAt) })}</p>
+    : null;
 
   return (
     <Card className="overflow-hidden" data-clock-data-editor>
@@ -103,7 +111,7 @@ export function AttendanceClockData({ data, employmentId, date, action }: {
                     <option value="in">{t('in')}</option><option value="out">{t('out')}</option>
                   </select>
                 ) : t(entry.direction)}</td>
-                <td className="p-3">{source(entry)}</td>
+                <td className="p-3">{source(entry)}{received(unchangedRow(entry))}</td>
                 <td className="p-3">{t(editing ? 'proposed' : 'used')}</td>
                 {editing && <td className="p-3"><Button type="button" variant="outline"
                   onClick={() => setEntries(old => old.filter((_, n) => n !== i))}>{t('remove')}</Button></td>}
@@ -142,7 +150,7 @@ export function AttendanceClockData({ data, employmentId, date, action }: {
             <tbody className={tbodyCls}>{data.rows.map(row => <tr key={row.id}>
               <td className="p-3 tabular-nums">{row.punchAt}</td>
               <td className="p-3">{t(row.direction)}</td>
-              <td className="p-3">{rowSource(row)}</td>
+              <td className="p-3">{rowSource(row)}{received(row)}</td>
               <td className="p-3">
                 {row.captureId && row.photoAvailable && <a className="text-primary underline"
                   href={'/api/attendance/photo/' + row.captureId} target="_blank" rel="noreferrer">{t('photo')}</a>}

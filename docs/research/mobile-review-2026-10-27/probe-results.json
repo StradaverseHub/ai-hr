@@ -1,0 +1,31 @@
+{
+  "baseline": "67be2710c35035af433bdb2fcdfb2cb30277ceda",
+  "observations": [
+    {
+      "probe": "foreground capture accepts a 5 km accuracy estimate",
+      "result": "confirmed"
+    },
+    {
+      "probe": "foreground capture accepts future timestamp by ten minutes (server separately rejects outside two-minute window)",
+      "result": "confirmed"
+    },
+    {
+      "probe": "reported Android mock flag is rejected locally",
+      "result": "confirmed"
+    },
+    {
+      "probe": "actual geofence resolver accepts site-centre coordinate despite 5 km uncertainty around a 50 m fence",
+      "result": "confirmed",
+      "coverage": "function extracted unchanged; query rows injected, no database"
+    },
+    {
+      "probe": "API deadline is cleared before JSON body resolves; successful payload is returned without runtime contract validation",
+      "result": "confirmed"
+    },
+    {
+      "probe": "same-account refresh discards previously loaded data and leaves only error after 503",
+      "result": "confirmed",
+      "coverage": "shipped hook executed with deterministic hook-state ports"
+    }
+  ]
+}
