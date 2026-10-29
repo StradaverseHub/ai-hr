@@ -7,7 +7,7 @@ import { saveEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { addDays } from '../lib/lifecycle-v9-model';
 import { currentReq } from '../lib/onboarding-model';
-import { v9Setup, v9CaseDetail, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnDocument, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx } from '../packs/lifecycle/service';
+import { v9Setup, v9Sweep, v9CaseDetail, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnDocument, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 
 let base: Base, admin: SessionContext, employee: SessionContext, other: SessionContext, employmentId: string;
@@ -258,7 +258,7 @@ it('lets only the linked activated joiner complete a released native document an
   const config = (await v9Workspace(admin)).config!;
   config.templates.push({ id: 'native-self-form', name: 'Fictional native self form', module: 'onb', type: 'Form', rules: {}, hrStep: 'none', employeeAck: false, retired: false, versions: [{ version: 1, state: 'published', at: '', by: '', blocks: [{ id: 'body', type: 'text', text: 'Hello {employee.name}', section: '' }], fields: [{ id: 'contact', label: 'Contact', type: 'phone', owner: 'employee', pmKey: 'mobile', required: true, sensitive: false, options: [], section: 'main', when: null }] }] });
   config.checklists = [...config.checklists.filter(checklist => checklist.module === 'off'), { id: 'native-self-checklist', name: 'Native self fixture', module: 'onb', rules: {}, tasks: [{ id: 'native-self-task', name: 'Complete native form', by: 'employee', group: null, mode: 'manual', opens: 1, due: 1, required: true, documentTemplate: 'native-self-form', documentAction: 'signed' }] }];
-  config.workflows = [{ id: 'native-self-release', name: 'Release native self form', module: 'onb', status: 'published', trigger: { event: 'beforeJoin', days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [], steps: [{ id: 'release', type: 'doc', template: 'native-self-form', release: true }], description: '' }];
+  config.workflows = [{ id: 'native-self-release', name: 'Release native self form', module: 'onb', status: 'published', trigger: { event: 'beforeJoin', days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [], steps: [{ id: 'release', type: 'doc', template: 'native-self-form', release: true }, { id: 'wait', type: 'waitSign', template: 'native-self-form', by: 'employee' }, { id: 'notify', type: 'notify', subject: 'Native form completed', body: '{employee.name} completed the form.', to: 'supervisor', cc: [] }], description: '' }];
   await v9SaveConfig(admin, config.revision, config);
   const draft = await saveEmployeeDraft(admin, { currentStep: 5, data: { profile: { fullName: 'Fictional activated V9 joiner', employeeCode: 'V9-NATIVE-SELF', primaryEmail: 'native-self@test.invalid' }, employment: { companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000' } } });
   const active = await completeEmployeeDraft(admin, draft.id);
@@ -269,7 +269,7 @@ it('lets only the linked activated joiner complete a released native document an
   await onboardingCommand(admin, native.case.id, native.revision, { type: 'saveSubmit', patch: { hiring: 'new_hire', local: { supervisor: employmentId } } });
   const submitted = await v9CaseDetail(admin, native.case.id);
   expect(submitted.case.tasks[0].assignee).toBe(userId);
-  expect((await v9OwnWork(joiner)).find(c => c.id === native.case.id)).toBeUndefined();
+  expect((await v9OwnWork(joiner)).find(c => c.id === native.case.id)?.documents).toHaveLength(1);
   await v9Command(admin, native.case.id, submitted.case.revision, { type: 'runWorkflows' });
   const own = (await v9OwnWork(joiner)).find(c => c.id === native.case.id)!;
   expect(own.documents).toHaveLength(1); expect(own.documents[0].status).toBe('sent');
@@ -281,7 +281,14 @@ it('lets only the linked activated joiner complete a released native document an
   const done = (await onboardingList(admin)).find(row => row.case.id === own.id)!;
   expect(done.case.tasks[0]).toMatchObject({ status: 'done', completedBy: userId });
   expect(done.case.history.at(-1)).toMatchObject({ action: 'document.signed', by: userId });
+  const system = { ...admin, userId: undefined, personId: null };
+  const sweepAt = new Date(todayInKualaLumpur() + 'T15:59:00Z');
+  await expect(v9Sweep(system, { withTenant }, sweepAt)).rejects.toThrow('storage owner');
+  expect(await v9Sweep(system, owner, sweepAt)).toEqual({ processed: 1, failed: 0 });
+  expect(await v9Sweep(system, owner, sweepAt)).toEqual({ processed: 0, failed: 0 });
   const detail = await v9CaseDetail(admin, own.id);
+  expect(detail.case.runs).toHaveLength(1); expect(detail.case.runs[0].status).toBe('done');
+  expect(detail.case.mails).toHaveLength(1); expect(detail.case.mails[0]).toMatchObject({ subject: 'Native form completed', status: 'pending', to: [employee.userId] });
   expect(detail.case.documents[0].employeeSignature?.by.id).toBe(userId);
   expect(detail.case.pmChanges).toHaveLength(1);
   await v9Command(admin, own.id, detail.case.revision, { type: 'pmPushSelected', ids: [detail.case.pmChanges[0].id] });
@@ -296,4 +303,20 @@ it('lets only the linked activated joiner complete a released native document an
   expect((await v9OwnWork(other)).some(c => c.id === own.id)).toBe(false);
   await expect(v9OwnDocument(other, { ...input, revision: done.revision })).rejects.toMatchObject({ cause: { message: expect.stringContaining('not available') } });
   await expect(v9CaseDetail(admin, own.id)).rejects.toThrow('private document subject');
+});
+
+it('does not enroll historical native cases in V9 automation until HR adopts their definitions', async () => {
+  await owner.db.execute(sql`delete from lc_v9_config where tenant_id=${base.tenantId}::uuid`);
+  await saveEmployeeDraft(admin, { currentStep: 1, data: { profile: { fullName: 'Fictional historical native joiner', primaryEmail: 'legacy-native@test.invalid' }, employment: { companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId, hiredOn: todayInKualaLumpur() } } });
+  const [pending] = await onboardingList(admin);
+  await onboardingCommand(admin, pending.case.id, pending.revision, { type: 'saveSubmit', patch: { hiring: 'new_hire', local: { supervisor: employmentId } } });
+  expect((await onboardingList(admin))[0].case.v9DefinitionRevision).toBeUndefined();
+  await v9Setup(admin);
+  const [before] = await onboardingList(admin);
+  expect(before.case.reconcileNeeded).toBe(true);
+  const system = { ...admin, userId: undefined, personId: null };
+  expect(await v9Sweep(system, owner, new Date(todayInKualaLumpur() + 'T15:59:00Z'))).toEqual({ processed: 0, failed: 0 });
+  expect((await onboardingList(admin))[0].revision).toBe(before.revision);
+  const [privateRow] = await owner.db.execute<{ data: Record<string, unknown> }>(sql`select data from lc_onboarding_private where case_id=${before.case.id}::uuid`);
+  expect(privateRow.data).not.toHaveProperty('lifecycleV9');
 });

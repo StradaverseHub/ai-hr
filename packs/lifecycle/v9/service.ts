@@ -352,14 +352,33 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     await store(tx, ctx, row, c, command.type);
   });
 }
-/** Called only by the existing privileged maintenance connection, after 08:00 Malaysia time. */
+/** Native submission and the privileged minute worker use the same idempotent workflow transition. */
+export async function v9NativeTransitionTx(ctx: SessionContext, tx: Tx, id: string, now = new Date(), dates = true): Promise<{ revision: number; changed: boolean }> {
+  const native = await onboardingV9ReadTx(ctx, tx, id), config = await configTx(tx, ctx);
+  if (!config || !native.c.v9DefinitionRevision && !native.documentState || native.c.state === 'pending') return { revision: native.row.revision, changed: false };
+  const c = projectNativeCase(native.c, native.row.revision, native.documentState, native.employeeUserId, native.supervisorUserId);
+  const env = await environment(tx, ctx, c, config); env.today = todayInKualaLumpur(now); env.now = now.toISOString();
+  env.mergeValues.today = env.mergeValues['today.date'] = env.today.slice(8) + '/' + env.today.slice(5, 7) + '/' + env.today.slice(0, 4);
+  if (c.state === 'submitted') for (const workflow of config.workflows) {
+    M.runWorkflow(c, config, workflow, env, 'submitted');
+    if (c.runs.some(run => run.workflowId === workflow.id && run.status === 'waiting')) M.runWorkflow(c, config, workflow, env, 'resume');
+    if (dates) M.runWorkflow(c, config, workflow, env, 'date');
+  }
+  else for (const mail of c.mails) if (mail.status === 'pending') mail.status = 'cancelled';
+  const state = nativeDocumentState(c);
+  if (v9Equal(state, native.documentState)) return { revision: native.row.revision, changed: false };
+  await onboardingV9StoreTx(ctx, tx, id, native.row.revision, state, c.tasks.filter(task => task.status === 'done' && task.documentTemplate).map(task => task.id), 'workflow');
+  return { revision: native.row.revision + 1, changed: true };
+}
+/** Existing privileged maintenance connection; daily dates run after 08:00 Malaysia time. */
 export async function v9Sweep(ctx: SessionContext, connection: NotificationSweepConnection, now = new Date()) {
   assertModuleEnabled(ctx, 'lifecycle');
-  if (ctx.userId || timeInKualaLumpur(now) < '08:00') return { processed: 0, failed: 0 };
+  if (ctx.userId) return { processed: 0, failed: 0 };
+  const dates = timeInKualaLumpur(now) >= '08:00';
   const ids = await connection.withTenant(ctx, async tx => {
     const [permission] = await tx.execute<{ ok: boolean }>(sql`select current_user='ai_hr_owner' OR EXISTS(select 1 from pg_roles where rolname=current_user and rolsuper) as ok`);
     if (!permission?.ok) throw new M.V9Error('Lifecycle scheduling requires the storage owner.', 'forbidden');
-    return tx.execute<{ id: string }>(sql`select id from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and data->>'state'='submitted' order by updated_at,id`);
+    return dates ? tx.execute<{ id: string }>(sql`select id from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and data->>'state'='submitted' order by updated_at,id`) : [];
   });
   const output = { processed: 0, failed: 0 };
   for (const { id } of ids) try {
@@ -377,6 +396,11 @@ export async function v9Sweep(ctx: SessionContext, connection: NotificationSweep
       await store(tx, ctx, row, c, 'scheduled'); return true;
     });
     if (changed) output.processed++;
+  } catch { output.failed++; }
+  const nativeIds = await connection.withTenant(ctx, tx => tx.execute<{ id: string }>(sql`select c.id from lc_onboarding_case c where c.tenant_id=${ctx.tenantId}::uuid and c.data->>'state'='submitted' and (c.data ? 'v9DefinitionRevision' or exists(select 1 from lc_onboarding_private p where p.case_id=c.id and p.tenant_id=c.tenant_id and p.data ? 'lifecycleV9')) order by c.created_at,c.id`));
+  for (const { id } of nativeIds) try {
+    const changed = await connection.withTenant(ctx, async tx => { await lockTx(tx, ctx); return v9NativeTransitionTx(ctx, tx, id, now, dates); });
+    if (changed.changed) output.processed++;
   } catch { output.failed++; }
   return output;
 }

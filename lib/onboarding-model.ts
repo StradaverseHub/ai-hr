@@ -202,6 +202,7 @@ export type Case = {
     employmentId: Id | null;
     personId: Id | null;
     personnelStatus: 'Draft' | 'Active';
+    v9DefinitionRevision?: number;
     syncedAt: string;
     source: Partial<Facts>;
     sourceVersion: string;
@@ -523,6 +524,7 @@ export function submitCase(config: Config, c: Case, a: Actor, env: Environment) 
                 if (task.by === 'group' && task.method === 'rr' && !task.assignee && task.status !== 'done')
                     assignTask(config, c, task, a, env);
             c.confirmedChecklist = chosen ? structuredClone(chosen) : null;
+            if (config.v9ChecklistRevision) c.v9DefinitionRevision = config.v9ChecklistRevision;
             c.reconcileNeeded = false;
             log(c, a, env, 'case.reconfirmed');
         }
@@ -533,6 +535,7 @@ export function submitCase(config: Config, c: Case, a: Actor, env: Environment) 
     c.tasks = (chosen?.tasks ?? []).map(t => instantiate(t, chosen!, c));
     c.confirmedChecklist = chosen ? structuredClone(chosen) : null;
     c.state = 'submitted';
+    if (config.v9ChecklistRevision) c.v9DefinitionRevision = config.v9ChecklistRevision;
     c.submittedAt = env.now;
     c.submittedBy = a.id;
     c.reconcileNeeded = false;

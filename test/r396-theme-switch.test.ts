@@ -14,7 +14,6 @@
  *      the font mapping, the @theme additions and the scoped .mono/.num classes are present.
  * The six-locale render of the control lives in test/r396-theme-switch.dom.test.tsx (jsdom project).
  */
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -215,7 +214,8 @@ describe('D. app/globals.css — Monolith scoped, Classic untouched', () => {
   });
 
   it("Classic's :root and .dark blocks are byte-identical to main's", () => {
-    const mainCss = execFileSync('git', ['show', 'main:app/globals.css'], { cwd: ROOT, encoding: 'utf8' });
+    // Frozen reviewed baseline works in detached and shallow CI checkouts too.
+    const mainCss = JSON.parse(read('test/fixtures/ui-theme-classic-baseline.json')).css as string;
     for (const sel of [':root', '.dark']) {
       const before = block(mainCss, sel);
       expect(before.length, sel).toBeGreaterThan(500);

@@ -497,6 +497,10 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
             await assignRoleTasksTx(tx, c);
         await storeTx(tx, ctx, row, c, actor.hr);
         await auditTx(tx, ctx, c, command.type);
+        if (config.v9ChecklistRevision && actor.hr) {
+            const { v9NativeTransitionTx } = await import('../v9/service');
+            return { revision: (await v9NativeTransitionTx(ctx, tx, c.id)).revision };
+        }
         return { revision: revision + 1 };
     });
 }
@@ -1216,7 +1220,18 @@ export async function onboardingV9DefinitionsChangedTx(ctx: SessionContext, tx: 
 
 /** Private V9 document state follows the native case and its revision/history. */
 export async function onboardingV9ReadTx(ctx: SessionContext, tx: Tx, id: string) {
-    const result = await loadTx(tx, ctx, id, true);
+    let result: Awaited<ReturnType<typeof loadTx>>;
+    if (ctx.userId) result = await loadTx(tx, ctx, id, true);
+    else {
+        const [permission] = await tx.execute<{ ok: boolean }>(sql`select current_user='ai_hr_owner' OR EXISTS(select 1 from pg_roles where rolname=current_user and rolsuper) as ok`);
+        if (!permission?.ok) M.fail('The storage owner is required for scheduled onboarding documents.', 'forbidden');
+        const [row] = await tx.select().from(cases).where(and(eq(cases.id, id), eq(cases.tenantId, ctx.tenantId))).for('update');
+        if (!row) M.fail('Onboarding case not found.', 'not_found');
+        const { config } = await configTx(tx, ctx), c = structuredClone(row.data);
+        const [privateRow] = await tx.select().from(secrets).where(eq(secrets.caseId, id));
+        if (privateRow) { Object.assign(c.source, privateRow.data.source); Object.assign(c.local, privateRow.data.local); }
+        result = { row, config, c, actor: { id: 'system', name: 'System', module: true, hr: true, master: true } };
+    }
     if (!result.actor.module || !result.actor.hr) M.fail('Onboarding and company HR access are required.', 'forbidden');
     const [privateRow] = await tx.execute<{ state: NativeDocumentState | null; subject: { employmentId: string | null; personId: string | null } | null }>(sql`select data->'lifecycleV9' as state,data->'lifecycleV9Subject' as subject from lc_onboarding_private where case_id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
     if (privateRow?.subject?.employmentId && (privateRow.subject.employmentId !== result.c.employmentId || privateRow.subject.personId !== result.c.personId)) M.fail('The private document subject no longer matches this case. Review its Personnel link.', 'conflict');
