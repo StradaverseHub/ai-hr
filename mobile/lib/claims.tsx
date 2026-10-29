@@ -14,7 +14,7 @@ import { Alert, Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
-import { DesignText as Text, useTenantDesign } from './design';
+import { DesignText as Text, TenantBrand, useTenantDesign } from './design';
 import { apiDownload, apiGetV2, apiPostV2, useApiV2, v2Download, v2Page } from './api';
 import { assertAuthGeneration, authGeneration } from './auth';
 import { config, identityNamespace } from './config';
@@ -99,6 +99,7 @@ export function ClaimsScreen() {
   return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={['top']}>
     <PagedList list={list} keyOf={keyOf} emptyText={t('claimsEmpty')} contentContainerStyle={{ padding: 20, gap: 8 }}
       header={<View style={{ gap: 12 }}>
+        <TenantBrand />
         <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
         <Title>{t('claimsTitle')}</Title>
         {o && !o.enabled && <Muted>{t('claimsOff')}</Muted>}
