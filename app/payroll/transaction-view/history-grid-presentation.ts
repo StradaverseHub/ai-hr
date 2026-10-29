@@ -6,7 +6,7 @@ export function historyGridDisplayGroup(row: HistoryGridRow): GridRowGroup {
 }
 
 export function historyGridLabelKey(row: HistoryGridRow): string | undefined {
-  return row.kind === 'synthetic' && row.labelKey === 'overtime' ? 'totalOvertime' : row.labelKey;
+  return row.kind === 'synthetic' && row.labelKey === 'overtime' ? 'totalOvertime' : row.labelKey ?? undefined;
 }
 
 const order: Record<GridRowGroup, number> = {
