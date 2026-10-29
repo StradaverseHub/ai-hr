@@ -25665,7 +25665,9 @@
     "explicitlyExcluded": "Explicitly excluded",
     "notIncluded": "Not included",
     "transferCriteriaHelp": "Employee selections are also limited by the criteria below. Preview confirms the final coverage.",
-    "primaryApprovalRequiresEditable": "For approval requests, choose Editable. View Only blocks primary-contact edits when Approval Required is on."
+    "primaryApprovalRequiresEditable": "For approval requests, choose Editable. View Only blocks primary-contact edits when Approval Required is on.",
+    "permissionMatrixRegion": "My Profile field permissions table",
+    "permissionMatrixScrollHelp": "Scroll horizontally to reach Approval Required and Attachment requirement. Keyboard: focus the table, then use the Left and Right Arrow keys."
   },
   "labelsImportWizard": {
     "title": "Import organisation labels",

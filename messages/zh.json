@@ -25665,7 +25665,9 @@
     "explicitlyExcluded": "已明确排除",
     "notIncluded": "未包含",
     "transferCriteriaHelp": "员工选择也受下方条件限制。预览可确认最终覆盖范围。",
-    "primaryApprovalRequiresEditable": "如需提交审批申请，请选择“可编辑”。启用“需要审批”后，“仅查看”将禁止编辑主要紧急联系人。"
+    "primaryApprovalRequiresEditable": "如需提交审批申请，请选择“可编辑”。启用“需要审批”后，“仅查看”将禁止编辑主要紧急联系人。",
+    "permissionMatrixRegion": "我的个人资料字段权限表",
+    "permissionMatrixScrollHelp": "横向滚动可查看“需要审批”和“附件要求”。使用键盘时，先将焦点移至表格，再按左、右方向键。"
   },
   "labelsImportWizard": {
     "title": "导入组织标签",

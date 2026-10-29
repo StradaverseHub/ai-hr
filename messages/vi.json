@@ -25665,7 +25665,9 @@
     "explicitlyExcluded": "Đã loại trừ rõ ràng",
     "notIncluded": "Chưa bao gồm",
     "transferCriteriaHelp": "Lựa chọn nhân viên còn bị giới hạn bởi tiêu chí bên dưới. Xem trước để xác nhận phạm vi cuối cùng.",
-    "primaryApprovalRequiresEditable": "Để gửi yêu cầu phê duyệt, hãy chọn Có thể chỉnh sửa. Chỉ xem chặn chỉnh sửa liên hệ chính khi bật Yêu cầu phê duyệt."
+    "primaryApprovalRequiresEditable": "Để gửi yêu cầu phê duyệt, hãy chọn Có thể chỉnh sửa. Chỉ xem chặn chỉnh sửa liên hệ chính khi bật Yêu cầu phê duyệt.",
+    "permissionMatrixRegion": "Bảng quyền các trường Hồ sơ của tôi",
+    "permissionMatrixScrollHelp": "Cuộn ngang để đến Yêu cầu phê duyệt và Yêu cầu tệp đính kèm. Với bàn phím: đặt tiêu điểm vào bảng, rồi dùng phím mũi tên Trái và Phải."
   },
   "labelsImportWizard": {
     "title": "Nhập nhãn tổ chức",

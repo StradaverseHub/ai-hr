@@ -25665,7 +25665,9 @@
     "explicitlyExcluded": "Dikecualikan secara nyata",
     "notIncluded": "Tidak disertakan",
     "transferCriteriaHelp": "Pilihan pekerja turut dihadkan oleh kriteria di bawah. Pratonton mengesahkan liputan akhir.",
-    "primaryApprovalRequiresEditable": "Untuk permintaan kelulusan, pilih Boleh Diedit. Lihat Sahaja menyekat suntingan hubungan utama apabila Kelulusan Diperlukan dihidupkan."
+    "primaryApprovalRequiresEditable": "Untuk permintaan kelulusan, pilih Boleh Diedit. Lihat Sahaja menyekat suntingan hubungan utama apabila Kelulusan Diperlukan dihidupkan.",
+    "permissionMatrixRegion": "Jadual kebenaran medan Profil Saya",
+    "permissionMatrixScrollHelp": "Tatal secara mendatar untuk mencapai Kelulusan Diperlukan dan Keperluan Lampiran. Papan kekunci: fokus pada jadual, kemudian gunakan kekunci anak panah Kiri dan Kanan."
   },
   "labelsImportWizard": {
     "title": "Import label organisasi",
