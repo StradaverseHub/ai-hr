@@ -26165,6 +26165,26 @@
     }
   },
   "processAssessment": {
+    "buildList": {
+      "title": "Danh sách phát triển theo thứ tự",
+      "subtitle": "Xem xét các năng lực tiếp theo dựa trên khối lượng quy trình đã ghi nhận.",
+      "proxy": "Số liệu thuộc quy trình liên quan, không phải mức sử dụng hay công việc tiết kiệm của mục này. Mục dùng chung lấy quy trình đo được bận nhất, không cộng trùng người. Mục ngoài đường cơ sở vẫn chưa đo. Danh sách không cấp quyền.",
+      "export": "Xuất toàn bộ danh sách (JSON)",
+      "rank": "Hạng",
+      "entry": "Điểm vào",
+      "tier": "Trần cấp độ",
+      "process": "Quy trình xếp hạng",
+      "staff": "Thao tác nhân sự / 30 ngày",
+      "people": "Số người liên quan",
+      "measured": "Đường cơ sở quy trình",
+      "outside_baseline": "Ngoài đường cơ sở đã đo",
+      "module_off": "Mô-đun không khả dụng",
+      "unlinked": "Thao tác nhân sự chưa liên kết",
+      "showing": "Hiển thị {from}–{to} trong {total} mục",
+      "previous": "Trước",
+      "next": "Tiếp",
+      "none": "Không có mục chờ phát triển."
+    },
     "back": "Trung tâm điều hành",
     "title": "Cơ hội tự động hóa",
     "description": "Những phần việc xử lý mà một tác tử AI có thể nhận thay cho HR, được đo từ hồ sơ của bạn. Trang này không thay đổi dữ liệu và không gọi mô hình AI.",

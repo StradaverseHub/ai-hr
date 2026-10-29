@@ -26165,6 +26165,26 @@
     }
   },
   "processAssessment": {
+    "buildList": {
+      "title": "Ranked build list",
+      "subtitle": "Review the next capabilities to build using recorded process workload.",
+      "proxy": "Counts describe the linked process, not this entry’s usage or work avoided. Shared entries use the busiest measured process without adding people twice. Entries outside the baseline stay unmeasured. This list grants no authority.",
+      "export": "Export complete list (JSON)",
+      "rank": "Rank",
+      "entry": "Entry point",
+      "tier": "Tier ceiling",
+      "process": "Ranking process",
+      "staff": "Staff actions / 30 days",
+      "people": "People affected",
+      "measured": "Process baseline",
+      "outside_baseline": "Outside measured baseline",
+      "module_off": "Module unavailable",
+      "unlinked": "Staff actions unlinked",
+      "showing": "Showing {from}–{to} of {total} entries",
+      "previous": "Previous",
+      "next": "Next",
+      "none": "No backlog entries."
+    },
     "back": "Control Tower",
     "title": "Automation opportunities",
     "description": "Where an AI agent could take handling work off HR, measured from your records. Nothing on this page changes data or calls an AI model.",

@@ -3090,3 +3090,18 @@ is audit-only, so switching language re-renders past answers.
 The owner lifted the Phase 2 hold for design only. [ADR-0151](0151-orchestrator-action-layer-and-system-learning.md)
 proposes the registry, user-parity rule, inline confirmation, agent principal and system-learning loop. Until the
 owner accepts it, implementation of Phases 2–4 remains held as recorded above.
+
+## WP3 measurement-to-build-list contract — 29 October 2026
+
+The capability backlog derives entry points and their existing tier ceilings from the closed inventory.
+Its group-HR list and complete JSON export rank applicable entries by the linked Phase 1 process's
+recorded staff actions per 30 days, then distinct linked people, then stable entry identity. These are
+process workload proxies, never measured usage or savings for an individual entry. Shared entry points
+use the busiest measured linked process; overlapping people are not summed. Uncovered processes,
+unavailable modules and unlinked handling work remain explicitly unmeasured, rather than zero.
+
+Each later capability wave should cite this versioned list and window as its prioritization input and
+explain exceptions or missing baseline coverage. Ranking cannot grant authority, raise a tier, waive
+human decisions, or establish headcount savings. No new Phase 1 process is invented to make an
+unrelated entry rank. See the [WP3 verification contract](../reviews/ai-architecture-wp3-verification-2026-10.md).
+This contract alone proves no verification result, release or installation.

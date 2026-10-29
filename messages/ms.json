@@ -26165,6 +26165,26 @@
     }
   },
   "processAssessment": {
+    "buildList": {
+      "title": "Senarai binaan mengikut keutamaan",
+      "subtitle": "Semak keupayaan seterusnya berdasarkan beban kerja proses yang direkodkan.",
+      "proxy": "Bilangan merujuk proses berkaitan, bukan penggunaan entri atau kerja yang dijimatkan. Entri bersama menggunakan proses terukur paling sibuk tanpa menggandakan orang. Entri di luar garis dasar kekal tidak diukur. Senarai ini tidak memberi kuasa.",
+      "export": "Eksport senarai lengkap (JSON)",
+      "rank": "Kedudukan",
+      "entry": "Titik masuk",
+      "tier": "Had peringkat",
+      "process": "Proses penentuan",
+      "staff": "Tindakan staf / 30 hari",
+      "people": "Orang terlibat",
+      "measured": "Garis dasar proses",
+      "outside_baseline": "Di luar garis dasar terukur",
+      "module_off": "Modul tidak tersedia",
+      "unlinked": "Tindakan staf tidak dipautkan",
+      "showing": "Memaparkan {from}–{to} daripada {total} entri",
+      "previous": "Sebelumnya",
+      "next": "Seterusnya",
+      "none": "Tiada entri tertunggak."
+    },
     "back": "Menara Kawalan",
     "title": "Peluang automasi",
     "description": "Di mana ejen AI boleh mengambil alih kerja pengendalian daripada HR, diukur daripada rekod anda. Halaman ini tidak mengubah data atau memanggil model AI.",

@@ -79,6 +79,7 @@ describe('process assessment (ADR-0131 Phase 1)', () => {
     const view = await assessProcesses(adminCtx(base), 90);
     const l = view.processes.find(p => p.id === 'leave')!;
     expect(l.enabled).toBe(true);
+    expect(l.peopleAffected).toBe(1);
     expect(l.measures).toEqual({
       started: 15, completed: 14, open: 1, agedOpen: 1, rework: 1, closedUndecided: 0,
       // Sorted durations 1,2,3,4,5,6,7,7,8,9,10,11,12,24 h → median 7, p90 = 11 + 0.7 × (12 − 11).
