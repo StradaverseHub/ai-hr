@@ -161,7 +161,8 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
               // ADR-0151 §4.5 — the named agent principal runs a switched-on agent only under a named administrator's switch-on.
               const sw=view.agentSwitches[feature.id as AgentFeature];
               return sw?.state==='attributed'?<p className="mt-1 text-xs text-muted-foreground">{t('agentRunsAs',{by:sw.by??t('agentUnknownAdmin'),date:f.dateTime(sw.at,{dateStyle:'medium',timeZone:'Asia/Kuala_Lumpur'})})}</p>
-                :sw?.state==='unattributed'?<p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t('agentUnattributed')}</p>:null;})()}</td>
+                :sw?.state==='unattributed'?<p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t('agentUnattributed')}</p>:null;})()}
+              {feature.staleOverride&&<p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t(feature.staleOverride.enabled?'staleOverrideOn':'staleOverrideOff')}</p>}</td>
             <td className="px-5 py-4"><span className={feature.state==='ready'?'text-emerald-700 dark:text-emerald-300':'text-muted-foreground'}>{t(`states.${feature.state}`)}</span></td>
             <td className="px-5 py-4">{usage(activity)}{activity&&<p className="mt-1 text-xs text-muted-foreground">{t('exceptions',{blocked:numbers(activity.blocked),failed:numbers(activity.failed)})}</p>}</td>
             <td className="px-5 py-4">{feature.mayWrite?<form action={setAiFeatureAction}><input type="hidden" name="feature" value={feature.id}/><input type="hidden" name="enabled" value={String(!feature.enabled)}/><button type="submit" className={btnGhost} aria-label={`${t(feature.enabled?'pause':'enable')} · ${t(`features.${feature.id}`)}`}>{t(feature.enabled?'pause':'enable')}</button></form>:t(feature.kind==='platform'?'platformManaged':'readOnly')}</td>

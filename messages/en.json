@@ -24446,7 +24446,9 @@
     "groupsPrecedence": "Which allowance applies to a login: its individual allowance; otherwise its department’s, then its company’s, then its role’s (when several match at the same level, the strictest limit applies); otherwise the default below.",
     "agentRunsAs": "Runs as the HR agent account, switched on by {by} on {date}.",
     "agentUnknownAdmin": "a former administrator",
-    "agentUnattributed": "Switched on without a named administrator, so the HR agent account does not run it. Pause it and enable it again to run it under your name."
+    "agentUnattributed": "Switched on without a named administrator, so the HR agent account does not run it. Pause it and enable it again to run it under your name.",
+    "staleOverrideOn": "An older switch stored for this feature is ignored. It follows its setting only.",
+    "staleOverrideOff": "An older pause stored for this feature is ignored. It follows its setting only."
   },
   "accountEmail": {
     "title": "Account email deliveries",
