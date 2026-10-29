@@ -400,13 +400,14 @@
     {
       "tag": "0678_ai_connection_probe_ledger",
       "owner": "AI Enhancement WP4 (PR45)",
-      "status": "reserved_filename_only",
-      "idx": null,
-      "when": null,
+      "status": "allocated_source_only",
+      "idx": 671,
+      "when": 1793330000004,
       "sourceRef": "7bcbe939c4423884d9209a4c098128754835d2b7",
       "sha256": "e96851f0b09ba117f9cec03852b9c270da456c36b69a5199a588f483e1a9772a",
       "notes": [
-        "Owner-authorized WP4 reply yields provisional idx655/when1793300000000. Filename retained; final metadata unallocated, no active freeze. Reissue above fresh canonical/live and all allocated predecessors, now including Board668-670. No apply/merge/deploy authorization."
+        "Owner-authorized WP4 reply yields provisional idx655/when1793300000000. Filename retained; final metadata unallocated, no active freeze. Reissue above fresh canonical/live and all allocated predecessors, now including Board668-670. No apply/merge/deploy authorization.",
+        "29 October 2026: owner authorizes WP2/WP4/WP15 staging coordination. Fresh main/alpha remain46049dead through667/1793330000000; owner independently reports healthy staging same source/buildfrlu88RYQnwzQeUnWZmEc. Source allocation671/1793330000004 follows Board668-670/1793330000001-3. Do not journal/integrate against a prefix omitting those predecessors or advance the live watermark before them. Wait for Board source/release handoff, then refresh canonical/live and reconcile any change before exact-candidate gate. No unrelated pending0669 is required; it remains unallocated. Allocation is for recorded exact SQL hash only, not deployment authority."
       ]
     }
   ],

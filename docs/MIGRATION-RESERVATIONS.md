@@ -143,3 +143,11 @@ Exact draft source is PR48 `47fb30f064df45807aaa0ab99994ed9da685266d`; its journ
 Named-approver0669's old idx655/when1793200000000 and probe0678's provisional idx655/when1793300000000 are invalid. Both retain their filenames but **have no current executable allocation**; reissue above fresh canonical/live/all allocated predecessors at their later integration. Do not carry their stale branch journals into this candidate.
 
 This is source-only allocation, not acceptance, merge, migration application or deployment authority. Recheck canonical, actual staging ledger and competing freezes immediately before journal commit and integration. If source or watermark advances, reconcile rather than overwrite occupied positions or append below a watermark. Preserve the exact applied journal prefix and all SQL bytes; run authorized Actions verification on the resulting exact candidate.
+
+## 29 October 2026 — WP4 probe source position after Board
+
+Owner-authorized WP2/WP4/WP15 release coordination requests a new0678 position. Refreshed main/alpha remain `46049dead200d6f436d10f5984c06634502a6286` through idx667/when1793330000000; the WP4 owner independently reports healthy staging at the same source/build `frlu88RYQnwzQeUnWZmEc`.
+
+Allocate **idx671 / when1793330000004 / `0678_ai_connection_probe_ledger.sql`**, exact SQL SHA256 `e96851f0b09ba117f9cec03852b9c270da456c36b69a5199a588f483e1a9772a`, after all three Board entries668–670/1793330000001–3. Its old655/1793300000000 metadata remains invalid. Named-approver0669 remains unallocated and is not a prerequisite.
+
+**Dependency/window hold:** wait for Board's source and release handoff. Do not journal or integrate a candidate omitting its allocated predecessors, do not advance staging's watermark past them, and do not import unrelated unmerged WIP merely to build a journal. After Board integration, refresh canonical/actual live ledger and all intervening claims; if anything differs, reconcile/reissue before journal commit and gate. This register allocates source metadata only, does not clear the runtime window, and authorizes no deployment from this chat.
