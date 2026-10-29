@@ -112,7 +112,8 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('0691 populated ordinary up
    const ea=await employee(t1.id,a,'A'),ec=await employee(t1.id,child,'CHILD'),eb=await employee(t1.id,b,'B'),ev=await employee(t1.id,a,'VOID',true),ef=await employee(t2.id,foreignCompany,'FOREIGN');
    await storage.client`insert into import_attempt_item(tenant_id,attempt_id,company_id,employment_id,item_key,label,ordinal,status,before,after)
     values(${t1.id}::uuid,${attempt.id}::uuid,${a}::uuid,${ev.employmentId}::uuid,'retained-void','Fictional retained history',1,'applied','{}'::jsonb,'{}'::jsonb)`;
-   await storage.client`insert into import_attempt_event(tenant_id,attempt_id,kind,actor_id,detail) values(${t1.id}::uuid,${attempt.id}::uuid,'reverted',${group.userId}::uuid,'{}'::jsonb)`;
+   await storage.client`insert into import_attempt_event(tenant_id,attempt_id,kind,actor_id,reason,detail)
+    values(${t1.id}::uuid,${attempt.id}::uuid,'reverted',${group.userId}::uuid,'Fictional retained import reverted before upgrade','{}'::jsonb)`;
    const scoped=await login(t1.id,'scoped-a',null,'hr_admin',a),scopedChild=await login(t1.id,'scoped-child',null,'hr_admin',child),scopedB=await login(t1.id,'scoped-b',null,'hr_admin',b);
    const self=await login(t1.id,'self',ea.personId,'employee',null),partner=await login(t1.id,'payroll',null,'payroll_partner',b),foreign=await login(t2.id,'foreign-hr',null,'hr_admin',foreignCompany);
    for(const tenant of [String(t1.id),String(t2.id)])await storage.client`insert into app.ai_agent_principal(tenant_id) values(${tenant}::uuid) on conflict(tenant_id) do nothing`;
