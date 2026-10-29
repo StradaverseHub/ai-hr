@@ -33,7 +33,7 @@ afterEach(() => { cleanup(); vi.useRealTimers(); });
 function sessionFixture(opts: { authenticate?: () => Promise<{ success: boolean }>; preventFails?: boolean } = {}) {
   const local = { getEnrolledLevelAsync: vi.fn(async () => 3), SecurityLevel: { SECRET: 1 },
     authenticateAsync: vi.fn(opts.authenticate ?? (async () => ({ success: true }))) };
-  const capture = { preventScreenCaptureAsync: vi.fn(async () => { if (opts.preventFails) throw new Error('no window'); }), enableAppSwitcherProtectionAsync: vi.fn(async () => undefined) };
+  const capture = { preventScreenCaptureAsync: vi.fn(async (_tag?: string) => { if (opts.preventFails) throw new Error('no window'); }), enableAppSwitcherProtectionAsync: vi.fn(async () => undefined) };
   let appState: ((v: string) => void) | null = null;
   const output = { exports: {} as any };
   const code = transpileModule(readFileSync('mobile/lib/session.tsx', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX } }).outputText;
@@ -97,7 +97,7 @@ describe('app lock on return to the foreground', () => {
 
 function otFixture(post: (body: any) => Promise<any>) {
   const alerts: { buttons: { text: string; onPress?: () => void }[] }[] = [];
-  const apiPostV2 = vi.fn((_p: string, _s: unknown, body: any) => post(body));
+  const apiPostV2 = vi.fn((_p: string, _s: unknown, body: any, _params?: Record<string, string>) => post(body));
   class RequestRejectedError extends Error {}
   class SignInRequiredError extends Error {}
   const Text = ({ children }: any) => <span>{children}</span>;
