@@ -8,6 +8,8 @@ import * as schema from '../db/schema';
 import { aiManagementView, AiControlError } from '../core/ai-management';
 import { aiInventoryView, aiManagementAlerts, aiRunHistory, setAgentActionPause } from '../core/ai-inventory';
 import { aiAlertExitCode, aiAlertSweep } from '../core/ai-alert-sweep';
+import {withAgentActionGuard} from '../core/assistant-actions/agent-action-guard';
+import {grantAssistant} from '../core/assistant-grant';
 import { assertAiActionUnpausedTx } from '../core/ai-governance';
 import { withAgentActionPauseScope } from '../core/agent-action-pause-scope';
 import { AiAllowanceError } from '../lib/ai/types';
@@ -83,6 +85,13 @@ describe('AI inventory access (ADR-0151 §4.7)', () => {
 });
 
 describe('per-action pause key hr_assistant:<actionId> (0696)', () => {
+  it('enforces a direct shared source guard pause without relying on browser request scope',async()=>{
+    await grantAssistant(group,{appUserId:group.userId!});
+    const check=()=>withTenant(group,tx=>withAgentActionGuard(tx,group,'leave.cancel'));
+    await expect(check()).resolves.toMatchObject({userId:group.userId});
+    await setAgentActionPause(group,'leave.cancel',true);await expect(check()).rejects.toBeInstanceOf(AiAllowanceError);
+    await setAgentActionPause(group,'leave.cancel',false);await expect(check()).resolves.toMatchObject({userId:group.userId});
+  });
   it('pauses one action inside the owning transaction, leaves others and unscoped checks running, and records it', async () => {
     await expect(withAgentActionPauseScope('leave.cancel', () => pauseCheck(group))).resolves.toBeUndefined();
     await setAgentActionPause(group, 'leave.cancel', true);
