@@ -100,3 +100,15 @@ Both complete Git statuses were empty; cleanup independently records owned Next 
 Receiver verification itself took18.684seconds:6.106s download,3.656s unpack and1.705s native checks (other phases include API/source verification and Next startup/requests). Its full workflow took174seconds from submission to last job completion, including setup/queue; occupied jobs169seconds. These figures are not a complete release. All five actual diagnostic attempts together consumed1,390 occupied standard-runner seconds (23.17minutes), including cancellation and failures; this is not authoritative billing or its rounding. Only one canonical build executed, and every receiver retry retained that original build.
 
 Remaining adoption work is unchanged: version and integrate the normal release producer/evidence policy, revalidate actual target environment/dependencies, transfer/install on staging, preserve migration/audit/catalog/health/restart/source/build-arrival requirements and demonstrate a complete representative release under600seconds with every required check. The diagnostic kind cannot authorize any of those operations or create a full-PASS baseline.
+
+## Generated semver wrapper compared by resolved target (29 October 2026)
+
+FACT (Mobile staging release, 29 October 2026): after a lockfile change, staging's incremental `pnpm install` regenerated
+`sharp@0.35.5`'s `node_modules/.bin/semver` wrapper as `exec … "$basedir/../../../semver/bin/semver.js"` (through the
+sibling `semver` link), while CI's fresh install spells `"$basedir/../../../../../semver@7.8.5/node_modules/semver/bin/semver.js"`.
+Both reach the same file, but the tree hash differed (actual `83f90ac4…`, expected `d69a084d…`) and the bundle was
+refused before migrations. `build-bundle.py` now hashes that one wrapper in a normalised form on BOTH sides: the
+receiver's NODE_PATH is rebased to the producer origin as before, and every `exec` target is replaced by where it
+resolves under the runtime's `node_modules`. Every exec line must resolve to one regular file inside `node_modules`;
+a wrapper aimed at another file, outside `node_modules`, at a missing file, or running another command still refuses.
+Tests: `.github/ci/build-shim-paths.test.py` (reverting the fix makes the sibling-link case refuse).

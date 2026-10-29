@@ -76,6 +76,29 @@ def rebase_installer_shim(data, source, producer_source):
         out.append(line)
     return b"".join(out)
 
+SHIM_EXEC = re.compile(rb'^(\s*exec (?:"\$basedir/node"|node)\s+)"\$basedir/([^"\n]+)"( "\$@"\n)$')
+
+def resolve_installer_exec(data, shim, modules):
+    """pnpm spells the same wrapper target two ways (a fresh install writes the target's store path, an incremental
+    relink writes it through the sibling symlink). Compare the RESOLVED target, as a path under this runtime's
+    node_modules, so both spellings hash alike and a wrapper aimed anywhere else still differs. Nothing is rewritten
+    on disk; every exec line must resolve to the same regular file inside node_modules."""
+    root = Path(os.path.realpath(modules))
+    out = []; targets = set()
+    for line in data.splitlines(keepends=True):
+        match = SHIM_EXEC.match(line)
+        if match:
+            relative = match.group(2).decode("utf-8")
+            require(not relative.startswith("/") and "\\" not in relative, "generated semver wrapper target must be relative")
+            resolved = Path(os.path.realpath(shim.parent / relative))
+            require(resolved.is_relative_to(root), "generated semver wrapper target escapes runtime dependencies")
+            require(resolved.is_file() and not resolved.is_symlink(), "generated semver wrapper target must be a regular file")
+            key = resolved.relative_to(root).as_posix(); targets.add(key)
+            line = match.group(1) + b'"$basedir/@node_modules/' + key.encode() + b'"' + match.group(3)
+        out.append(line)
+    require(len(targets) == 1, "generated semver wrapper must name exactly one target")
+    return b"".join(out)
+
 def package_identity(source, name, producer_source=None):
     require(name in EXTERNAL_PACKAGES, "unsupported external package")
     modules = source / "node_modules"
@@ -93,9 +116,13 @@ def package_identity(source, name, producer_source=None):
             path=Path(base)/child;before=regular(path,MAX_PACKAGE);total+=before.st_size
             require(total<=MAX_PACKAGE and len(rows)<2000,'external package exceeds comparison bound')
             relative=path.relative_to(target).as_posix();size=before.st_size
-            if producer_source is not None and name=='sharp' and value['version']=='0.35.5' and relative=='node_modules/.bin/semver':
+            if name=='sharp' and value['version']=='0.35.5' and relative=='node_modules/.bin/semver':
+                # The producer (producer_source None) and the receiver hash the same normalised form: the receiver's
+                # NODE_PATH rebased to the producer's origin, and the exec target compared by where it resolves.
                 require(before.st_size<=16384,'oversized generated installer shim')
-                compared=rebase_installer_shim(path.read_bytes(),source,producer_source)
+                raw=path.read_bytes()
+                compared=rebase_installer_shim(raw,source,producer_source) if producer_source is not None else raw
+                compared=resolve_installer_exec(compared,path,modules)
                 digest=hashlib.sha256(compared).hexdigest();size=len(compared)
             else:
                 digest=digest_file(path)
