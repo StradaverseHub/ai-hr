@@ -1013,6 +1013,39 @@ function priceOvertimeStage<B extends OvertimeBinding>(stage:ReturnType<typeof r
             const key = s.rate.id + (s.rate.accumulation === 'session' ? '/' + s.w.sessionId : '/day');
             rateTotals.set(key, add(rateTotals.get(key) ?? ZERO, s.minutes));
         }
+        // Select ranges using the original approved count, then round each row once across all its
+        // slices. Rounding individual physical slices would charge the same row differently when a
+        // session is split at midnight. Never move a rounded-away minute into a later rate band.
+        const rowKey = (rate: OvertimeRate, tierId: string, sessionId: string) => rate.id + '/' + tierId + (rate.accumulation === 'session' ? '/' + sessionId : '/day');
+        const rowTotals = new Map<string, {minutes: Q; rounding: import('./overtime-pattern-model').OvertimeTier['rounding']}>();
+        const allocationCounters = new Map<string, Q>();
+        const rowParts: {workId: string; rowKey: string; minutes: Q}[] = [];
+        for (const slice of slices) {
+            const key = slice.rate.id + (slice.rate.accumulation === 'session' ? '/' + slice.w.sessionId : '/day');
+            let position = allocationCounters.get(key) ?? ZERO, remaining = slice.minutes;
+            while (remaining.n > BigInt('0')) {
+                const whole = rateTotals.get(key)!, tier = slice.rate.tiers.find(t => { const at = slice.rate.tierMode === 'whole' ? whole : position; return compare(at, decimal(t.from)) >= 0 && (t.to === null || compare(at, decimal(t.to)) < 0); });
+                if (!tier) fail('uncovered', slice.rate.id, 'Payable duration exceeds configured tier coverage.');
+                const count = slice.rate.tierMode === 'whole' || tier.to === null ? remaining : min(remaining, sub(decimal(tier.to), position));
+                if (count.n <= BigInt('0')) fail('uncovered', tier.id, 'Tier cannot consume this payable range.');
+                const ownKey = rowKey(slice.rate, tier.id, slice.w.sessionId), old = rowTotals.get(ownKey);
+                rowTotals.set(ownKey, {minutes: add(old?.minutes ?? ZERO, count), rounding: tier.rounding});
+                rowParts.push({workId: slice.w.id, rowKey: ownKey, minutes: count});
+                position = add(position, count); remaining = sub(remaining, count);
+            }
+            allocationCounters.set(key, position);
+        }
+        const rowFactors = new Map<string, Q>();
+        for (const [key, row] of rowTotals) {
+            if (!row.rounding) continue;
+            if (input.layer === 'finalLegacy') fail('legacyLayer', key, 'Final legacy minutes cannot be rounded again.');
+            const step = decimal(row.rounding.step), rounded = mul(q(roundInteger(div(row.minutes, step), row.rounding.mode)), step);
+            const bounded = min(row.minutes, rounded);
+            rowFactors.set(key, div(bounded, row.minutes));
+            e.emit('rounding', 'row-' + key, {before: exact(row.minutes, 'minutes'), step: exact(step, 'minutes'), mode: row.rounding.mode, rounded: exact(rounded, 'minutes'), bounded: exact(bounded, 'minutes'), approvalBounded: true});
+        }
+        const chargedWork = new Map<string, Q>();
+        for (const part of rowParts) chargedWork.set(part.workId, add(chargedWork.get(part.workId) ?? ZERO, mul(part.minutes, rowFactors.get(part.rowKey) ?? q(BigInt(1)))));
         for (const slice of slices) {
             const { w, rate } = slice, key = rate.id + (rate.accumulation === 'session' ? '/' + w.sessionId : '/day');
             let position = counters.get(key) ?? ZERO, remaining = slice.minutes, part = 0;
@@ -1023,19 +1056,22 @@ function priceOvertimeStage<B extends OvertimeBinding>(stage:ReturnType<typeof r
                 const amountMinutes = rate.tierMode === 'whole' || tier.to === null ? remaining : min(remaining, sub(decimal(tier.to), position));
                 if (amountMinutes.n <= BigInt('0'))
                     fail('uncovered', tier.id, 'Tier cannot consume this payable range.');
+                const pricedMinutes = mul(amountMinutes, rowFactors.get(rowKey(rate, tier.id, w.sessionId)) ?? q(BigInt('1')));
                 setComputed(work);
-                e.computed.payableMinutes = amountMinutes;
+                e.computed.payableMinutes = pricedMinutes;
                 let gross: Q;
                 const payment = tier.payment;
                 if (payment.method === 'hourly') {
                     const rateValue = nonnegative(e.expression(payment.rate, { ...datedFacts?.get(w.id), dayType: w.dayType }), tier.id), multiplier = nonnegative(e.expression(payment.multiplier, { ...datedFacts?.get(w.id), dayType: w.dayType }), tier.id);
-                    gross = div(mul(mul(rateValue, multiplier), amountMinutes), SIXTY);
+                    gross = div(mul(mul(rateValue, multiplier), pricedMinutes), SIXTY);
                 }
                 else {
-                    e.computed.payableMinutes = payment.basis === 'day' ? sum(work.map(w => w.payable)) : payment.basis === 'session' ? sum(work.filter(x => x.sessionId === w.sessionId).map(x => x.payable)) : payment.basis === 'tier' ? (rate.tierMode === 'whole' ? whole : max(ZERO, sub(min(whole, tier.to === null ? whole : decimal(tier.to)), decimal(tier.from)))) : amountMinutes;
-                    gross = nonnegative(e.expression(payment.amount, { ...datedFacts?.get(w.id), dayType: w.dayType }), tier.id);
+                    e.computed.payableMinutes = payment.basis === 'day' ? sum(work.map(w => chargedWork.get(w.id) ?? w.payable)) : payment.basis === 'session' ? sum(work.filter(x => x.sessionId === w.sessionId).map(x => chargedWork.get(x.id) ?? x.payable)) : payment.basis === 'tier' ? mul(rowTotals.get(rowKey(rate, tier.id, w.sessionId))!.minutes, rowFactors.get(rowKey(rate, tier.id, w.sessionId)) ?? q(BigInt(1))) : pricedMinutes;
+                    gross = pricedMinutes.n === BigInt('0') ? ZERO : nonnegative(e.expression(payment.amount, { ...datedFacts?.get(w.id), dayType: w.dayType }), tier.id);
                     const suffix = payment.basis === 'day' ? 'day' : payment.basis === 'session' ? w.sessionId : payment.basis === 'tier' ? tier.id + '/' + (rate.accumulation === 'session' ? w.sessionId : 'day') : w.id + '/' + slice.ordinal + '/' + part;
                     const chargeKey = payment.chargeId + '/' + payment.basis + '/' + suffix, previous = charges.get(chargeKey);
+                    if (pricedMinutes.n === BigInt(0)) { gross = ZERO; }
+                    else
                     if (previous) {
                         if (compare(previous.amount, gross) !== 0 || previous.mapping !== tier.mapping.earningItemId)
                             fail('conflict', tier.id, 'A once-only charge has conflicting amounts or mappings.');
@@ -1048,7 +1084,7 @@ function priceOvertimeStage<B extends OvertimeBinding>(stage:ReturnType<typeof r
                     }
                 }
                 const id = [w.id, rate.id, tier.id, slice.ordinal, part].join('/');
-                lines.push({ id, source: input.source, sessionId: w.sessionId, segmentId: w.id, rateId: rate.id, tierId: tier.id, mapping: { ...tier.mapping }, rawMinutes: w.raw ? known(mul(w.raw, div(amountMinutes, w.payable)), 'minutes') : unknown('unrecordedLegacyRaw'), eligibleMinutes: w.eligible ? known(mul(w.eligible, div(amountMinutes, w.payable)), 'minutes') : unknown('unrecordedLegacyEligibility'), approvedMinutes: known(mul(w.approvalAllocated, div(amountMinutes, w.payable)), 'minutes'), payableMinutes: exact(amountMinutes, 'minutes'), gross: exact(gross, 'money'), adjusted: exact(gross, 'money'), amountMinorUnits: '0' });
+                if (pricedMinutes.n > BigInt('0')) lines.push({ id, source: input.source, sessionId: w.sessionId, segmentId: w.id, rateId: rate.id, tierId: tier.id, mapping: { ...tier.mapping }, rawMinutes: w.raw ? known(mul(w.raw, div(amountMinutes, w.payable)), 'minutes') : unknown('unrecordedLegacyRaw'), eligibleMinutes: w.eligible ? known(mul(w.eligible, div(amountMinutes, w.payable)), 'minutes') : unknown('unrecordedLegacyEligibility'), approvedMinutes: known(mul(w.approvalAllocated, div(amountMinutes, w.payable)), 'minutes'), payableMinutes: exact(pricedMinutes, 'minutes'), gross: exact(gross, 'money'), adjusted: exact(gross, 'money'), amountMinorUnits: '0' });
                 e.emit('rate', 'selected-' + id, { rateId: rate.id, tierId: tier.id, method: payment.method, from: exact(position, 'minutes'), to: exact(add(position, amountMinutes), 'minutes'), tierMode: rate.tierMode, accumulation: rate.accumulation, minutes: exact(amountMinutes, 'minutes'), gross: exact(gross, 'money'), mapping: tier.mapping, layerAttribution: 'proportionalByPayableCount' });
                 position = add(position, amountMinutes);
                 remaining = sub(remaining, amountMinutes);
@@ -1056,6 +1092,7 @@ function priceOvertimeStage<B extends OvertimeBinding>(stage:ReturnType<typeof r
             }
             counters.set(key, position);
         }
+        if (rowFactors.size) for (const w of work) w.payable = chargedWork.get(w.id) ?? ZERO;
         deductions('money', lines);
         setComputed(work);
         let cap: Q | null = null;

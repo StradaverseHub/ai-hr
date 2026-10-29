@@ -15,8 +15,8 @@ export type EssScalar=string|number|boolean|null;
 export type EssFieldChange={fieldId:string;before:EssScalar;value:EssScalar};
 export type EssRegisterChange={kind:'dependent'|'qualification'|'emergency';id:string|null;clientId:string;fields:EssFieldChange[]};
 export type EssProfileProposal={v:2;fields:EssFieldChange[];registers:EssRegisterChange[]};
-export type EssProfileSubmission={employmentId:string;proposal:EssProfileProposal};
-export type EssProfileFailureCode='invalid'|'permission'|'fieldClosed'|'stale'|'unavailable'|'addressReview'|'system';
+export type EssProfileSubmission={employmentId:string;proposal:EssProfileProposal;attachments?:import('./profile-attachment').ProfileAttachmentInput[]};
+export type EssProfileFailureCode='invalid'|'permission'|'fieldClosed'|'stale'|'unavailable'|'addressReview'|'attachmentRequired'|'system';
 export class EssProfileError extends Error{
  constructor(readonly code:Exclude<EssProfileFailureCode,'system'>,readonly fieldIds:readonly string[]=[]){super('The profile change could not be applied.');this.name='EssProfileError';}
 }

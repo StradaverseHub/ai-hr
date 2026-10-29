@@ -97,6 +97,7 @@ export async function workbookToCsvTexts(
   allowedSheetNames?:readonly string[],
   captureSource=false,
   preparePersonnel=false,
+  bounds?:{maxRows:number;maxCells:number},
 ): Promise<{ first: string; extra: Record<string, string>; source?:PersonnelWorksheetSource;preparation?:PersonnelWorkbookSource }> {
   const XLSX = await import('xlsx');
   // Normalise to a Uint8Array view: SheetJS accepts either, but being explicit keeps us robust to
@@ -104,7 +105,14 @@ export async function workbookToCsvTexts(
   const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
   // cellDates → real Date objects for date-formatted cells; we ISO-format them below so a spreadsheet
   // date lands as the engine's YYYY-MM-DD (DATE_RE) instead of an Excel serial number or locale string.
-  const wb = XLSX.read(bytes, { type: 'array', cellDates: true });
+  const wb = XLSX.read(bytes, { type: 'array', cellDates: true,...bounds?{sheetRows:bounds.maxRows+1}:{} });
+  if(bounds){
+    let cells=0;if(wb.SheetNames.length>32)throw Error('FILE_TOO_LARGE');
+    for(const name of wb.SheetNames){const ws=wb.Sheets[name],ref=ws?.['!fullref']??ws?.['!ref'];if(!ref)continue;
+      const range=XLSX.utils.decode_range(ref),height=range.e.r-range.s.r+1,width=range.e.c-range.s.c+1;
+      cells+=height*width;if(height>bounds.maxRows||width>256||cells>bounds.maxCells)throw Error('FILE_TOO_LARGE');
+    }
+  }
   const firstName = wb.SheetNames[0];
   if (!firstName) throw new Error('EMPTY_SHEET');
   // The explicit preparation path checks every worksheet range before materializing any CSV rows.

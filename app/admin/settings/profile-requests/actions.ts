@@ -18,6 +18,7 @@ import {
 } from '@/lib/profile-requestable-fields';
 
 const PAGE = '/admin/settings/profile-requests';
+const RULES_PAGE=PAGE+'/rules';
 
 /** A typed refusal names WHICH condition of 0313's write policy failed; anything else reports itself. */
 async function refuse(e: unknown): Promise<never> {
@@ -59,8 +60,14 @@ export async function saveProfileRequestFieldsAction(formData: FormData) {
   if(primaryOnly.some(id=>typeof id!=='string'))await refuse(new TenantSettingError('wrong_type'));
   const expectedFingerprint=String(formData.get('policyFingerprint')??'');
   if(!/^[0-9a-f]{64}$/.test(expectedFingerprint))await refuse(new TenantSettingError('wrong_type'));
+  const approvals:Record<string,{required:boolean;attachmentRequired:boolean}>={};
+  for(const field of essVisibleFields().filter(field=>field.ess.binding&&['immediate','approval'].includes(field.ess.edit))){
+   const required=formData.getAll(`approvalRequired:${field.id}`),attachment=formData.getAll(`attachmentRequired:${field.id}`);
+   if(required.length>1||required.length===1&&required[0]!=='on'||attachment.length!==1||!['true','false'].includes(String(attachment[0])))await refuse(new TenantSettingError('wrong_type'));
+   approvals[field.id]={required:required.length===1,attachmentRequired:required.length===1&&attachment[0]==='true'};
+  }
   let withdrawn=0;
-  try{({withdrawn}=await saveProfileVisibilityPolicy(s,{policy:{version:4,fields,groups,primaryOnly},expectedFingerprint,withdrawnReason:t('withdrawnReason')}));}
+  try{({withdrawn}=await saveProfileVisibilityPolicy(s,{policy:{version:5,fields,groups,primaryOnly,approvals},expectedFingerprint,withdrawnReason:t('withdrawnReason')}));}
   catch(e){await refuse(e);}
 
   revalidatePath(PAGE);
@@ -106,18 +113,18 @@ export async function saveNamedProfileRoutingAction(data:FormData){
  const s=await getSession(),t=await getTranslations('essProfile');
  try{
   const raw=String(data.get('policy')??'');if(raw.length>512000)throw new Error('invalid');
-  const input=JSON.parse(raw) as {expectedRevision:string;enabled:boolean;rules:import('@/lib/profile-routing-policy').ProfileRouteRule[];version?:1|2;previewFingerprint?:string};
+  const input=JSON.parse(raw) as {expectedRevision:string;enabled:boolean;rules:import('@/lib/profile-routing-policy').ProfileRouteRule[];version?:1|2|3;previewFingerprint?:string};
   const {saveProfileRoutingPolicy}=await import('@/core/profile-routing');
   await saveProfileRoutingPolicy(s,input);
- }catch{redirect(`${PAGE}?error=${encodeURIComponent(t('routingSaveFailed'))}`);}
- revalidatePath(PAGE);revalidatePath('/admin/personnel/profile-changes');revalidatePath('/', 'layout');redirect(PAGE);
+ }catch{redirect(`${RULES_PAGE}?error=${encodeURIComponent(t('routingSaveFailed'))}`);}
+ revalidatePath(PAGE);revalidatePath(RULES_PAGE);revalidatePath('/admin/personnel/profile-changes');revalidatePath('/', 'layout');redirect(RULES_PAGE);
 }
 
 export async function previewNamedProfileRoutingAction(data:FormData):Promise<{ok:true;matched:number;missing:number;overlapping:number;ineligible:number;fingerprint:string}|{ok:false;error:string}>{
  const s=await getSession(),t=await getTranslations('essProfile');
  try{
   const raw=String(data.get('policy')??'');if(raw.length>512000)throw new Error('invalid');
-  const parsed=JSON.parse(raw) as {enabled:boolean;rules:import('@/lib/profile-routing-policy').ProfileRouteRule[];version?:1|2;previewFingerprint?:string};
+  const parsed=JSON.parse(raw) as {enabled:boolean;rules:import('@/lib/profile-routing-policy').ProfileRouteRule[];version?:1|2|3;previewFingerprint?:string};
   const {previewProfileRoutingPolicy}=await import('@/core/profile-routing');
   return {ok:true,...await previewProfileRoutingPolicy(s,{enabled:parsed.enabled,rules:parsed.rules,version:parsed.version})};
  }catch{return {ok:false,error:t('routingSaveFailed')};}

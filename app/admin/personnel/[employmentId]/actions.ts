@@ -1485,6 +1485,9 @@ async function applyStatutorySection(
   // save; that turned "no MyKad" into "cannot record EPF/SOCSO at all" for exactly the passport holders
   // e3ce0d4d set out to support. The setter now accepts a null, so pass the stored value straight through.
   const icNumber = current.icNumber;
+  if (current?.epfMode === 'voluntary_excess' && current.epfEmployerRate != null && formData.get('epfMode') === 'manual_percentage' && formData.get('epfManualPercentageAdoptionConfirmed') !== 'on') {
+    throw new Error('Review and confirm the change from the existing top-up election to Manual (by percentage).');
+  }
   await pack.statutory.set(s, {
     personId,
     icNumber,

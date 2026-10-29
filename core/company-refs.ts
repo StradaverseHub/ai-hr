@@ -98,6 +98,7 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   {table:'employee_import_evaluation_attempt',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'An employee import AI evaluation for this company is retained until its own expiry owner removes it.'},
   {table:'employee_import_evaluation_run_membership',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'The model-run membership of an employee import AI evaluation retains its company with the evaluation.'},
   {table:'import_attempt_item',column:'company_id',disposition:'other',existsFunction:'app.import_history_company_in_use',note:'Personnel import history (ADR-0155) is append-only audit of what each file changed for this company; it is retained, never cascaded.'},
+  {table:'bank_import_row',column:'company_id',disposition:'other',note:'Bank and Statutory import source rows, validation and application outcomes retain their company; deleting a company must not cascade this import history.'},
   {table:'payroll_history_import_record',column:'company_id',disposition:'payroll',note:'An imported payroll identity and every correction or recovery retain their original company permanently.'},
   { table: 'employment_cost_allocation_set', column: 'company_id', disposition: 'employees', existsFunction: 'app.board3_allocation_company_in_use', note: 'Every retained allocation set, including cleared or superseded sets after a transfer, retains its company without exposing employee rows.' },
   { table: 'job_document', column: 'company_id', disposition: 'other', existsFunction: 'app.board3_job_company_in_use', note: 'Job documentation and its approval history are retained records, never company setup to cascade.' },
@@ -160,6 +161,7 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
 
   { table: 'reward_unit', column: 'company_id', disposition: 'payroll', note: 'A salary and bonus review with employee snapshots, funding and approval history. Preserve it even before posting.' },
   { table: 'reward_calendar', column: 'company_id', disposition: 'payroll', note: 'The reward approval deadlines set for a cycle in this company. They belong to the reward review history; preserve them with the reviews.' },
+  { table: 'reward_company_exclusion', column: 'company_id', disposition: 'other', note: 'Company-year participation decisions retain their exclusion and ending reasons as audit history, including after a company is brought back.' },
 
   // ── other links: any row refuses until the link is removed ───────────────────────────────────────────
   { table: 'company', column: 'parent_company_id', disposition: 'other', note: 'A sub-company. Re-parent or delete it first; deleting a parent must never orphan a subtree.' },
@@ -188,6 +190,7 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'company_logo', column: 'company_id', disposition: 'config', note: 'The company\'s logo image, held in its own side table.' },
   { table: 'company_statutory_my', column: 'company_id', disposition: 'config', note: 'The company\'s own EPF / SOCSO / LHDN registration numbers.' },
   { table: 'company_statutory_authority', column: 'company_id', disposition: 'config', note: 'Per-authority payment setup. Before company_bank_profile, which it references.' },
+  { table: 'bank_payment_export', column: 'company_id', disposition: 'payroll', note: 'An immutable generated bank-file artifact and its payroll snapshot evidence are retained financial history.' },
   { table: 'company_bank_profile', column: 'company_id', disposition: 'config', note: 'The company\'s disbursement bank accounts.' },
   { table: 'company_payroll_config', column: 'company_id', disposition: 'config', note: 'Cut-off and pay days. Before payroll_policy, which it references.' },
   { table: 'payroll_policy', column: 'company_id', disposition: 'config', note: 'The company\'s payroll policies.' },

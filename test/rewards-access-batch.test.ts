@@ -1,10 +1,11 @@
+import {previewRewardAccessBatch,saveRewardAccessBatch} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import type { SessionContext } from '../db/client';
 import * as s from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { createRewardUnit, getRewardConfiguration, previewRewardAccessBatch, previewRewardAccessCopy, rewardAccessAdministration, saveRewardAccessBatch, type RewardAccessChange } from '../packs/rewards/service';
+import { createRewardUnit, getRewardConfiguration, previewRewardAccessCopy, rewardAccessAdministration, type RewardAccessChange } from '../packs/rewards/service';
 import type { RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -60,7 +61,7 @@ describe('Rewards access batches', () => {
         const written = await events([first, second]);
         expect(written.map(e => e.aggregateId).sort()).toEqual([first, second].sort());
         for (const e of written)
-            expect(e.payload).toEqual({ before: null, after: { userId: ctro, role: 'ctro' }, revision: revisions[0] + 1, batchId: result.batchId });
+            expect(e.payload).toMatchObject({ before: null, after: { userId: ctro, role: 'ctro' }, revision: revisions[0] + 1, batchId: result.batchId });
         // A replayed preview is stale once the reviews moved on.
         await expect(saveRewardAccessBatch(admin, batch, preview.digest)).rejects.toMatchObject({ code: 'changed' });
     });

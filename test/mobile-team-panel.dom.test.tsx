@@ -44,7 +44,7 @@ function fixture() {
   const View = ({ children }: any) => <div>{children}</div>;
   const Text = ({ children }: any) => <span>{children}</span>;
   const native = { View, Text, Pressable: (p: any) => <button onClick={p.onPress}>{p.children}</button> };
-  const ui = { Button: (p: any) => <button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>, Muted: Text, LoadState: () => null };
+  const ui = { Button: (p: any) => <button disabled={p.disabled} aria-pressed={p.selected} data-kind={p.kind} onClick={p.onPress}>{p.title}</button>, Muted: Text, LoadState: () => null };
   const t = (k: string, v?: Record<string, unknown>) => (v ? `${k} ${Object.values(v).join('|')}` : k);
   const { TeamPanel } = load('mobile/lib/team-panel.tsx', {
     react: React, 'react/jsx-runtime': jsx, 'react-native': native, './ui': ui, './i18n': { t },
@@ -65,14 +65,17 @@ describe('team availability week navigation', () => {
     expect(screen.getByText(`teamWindow ${TODAY}|${v2team.addCalendarDays(TODAY, 6)}`)).toBeTruthy();
     // Today is inside the window: the headline counts APPROVED absence today only (pending is not away).
     expect(screen.getByText('awayToday 1|3')).toBeTruthy();
-    expect(screen.getByText('teamThisWeek')).toBeDisabled();
+    // The chosen window is shown as chosen (same primary chip as everywhere), not greyed out as disabled.
+    expect(screen.getByText('teamNext7Days')).not.toBeDisabled();
+    expect(screen.getByText('teamNext7Days')).toHaveAttribute('aria-pressed', 'true');expect(screen.getByText('teamNext7Days')).toHaveAttribute('data-kind', 'primary');
     fireEvent.click(screen.getByText('teamPrevWeek'));
     expect(last()).toEqual({ path: 'v2/team/availability', from: '2026-10-21', to: '2026-10-27' });
     // Outside today: the headline is about the period.
     expect(screen.getByText('teamAwayInWindow 1|3')).toBeTruthy();
     fireEvent.click(screen.getByText('teamPrevWeek'));
     expect(last()).toEqual({ path: 'v2/team/availability', from: '2026-10-14', to: '2026-10-20' });
-    fireEvent.click(screen.getByText('teamThisWeek'));
+    expect(screen.getByText('teamNext7Days')).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByText('teamNext7Days'));
     expect(last()).toEqual({ path: 'v2/team/availability', from: undefined, to: undefined });
     fireEvent.click(screen.getByText('teamNextWeek'));
     expect(last()).toEqual({ path: 'v2/team/availability', from: '2026-11-04', to: '2026-11-10' });

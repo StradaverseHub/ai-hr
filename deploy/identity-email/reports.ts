@@ -1,4 +1,5 @@
 /** Private report delivery orchestration. Preparation and identity come from server owners, never IPC. */
+import {emailDesignEnvelope,type EmailDesignEnvelope} from '../../lib/email-design/model';
 import {z} from 'zod';
 import {masterDeliveryRequest,MASTER_EMAIL_ATTACHMENT_MAX_BYTES,type MasterDeliveryOutcome,type MasterDeliveryReason} from '../../lib/employee-master-delivery-model';
 import type {MasterRenderContext} from './render-context';
@@ -8,6 +9,7 @@ export type MasterPreparedAttachment={bytes:Uint8Array;filename:string;contentTy
 export class MasterDeliveryPreparationError extends Error {constructor(public readonly reason:'notEligible'|'generationFailed'|'attachmentTooLarge'){super('Report preparation was refused.');}}
 export interface MasterDeliveryDependencies {
  ready():Promise<boolean>;
+ design?(id:string,token:string):Promise<unknown>;
  target(id:string,token:string):Promise<MasterDeliveryTarget|null>;
  verifyRecipient(target:MasterDeliveryTarget):Promise<'verified'|'changed'|'unavailable'>;
  prepare(id:string,token:string,target:MasterDeliveryTarget):Promise<MasterPreparedAttachment>;
@@ -16,7 +18,7 @@ export interface MasterDeliveryDependencies {
  /** Rechecks the exact durable target, consent/schedule/report versions and both principals at send time. */
  start(id:string,token:string,target:MasterDeliveryTarget):Promise<boolean>;
  finish(id:string,token:string,outcome:MasterDeliveryOutcome,reason:MasterDeliveryReason|null,metadata?:{rowCount:number;scopeIds:string[]}):Promise<boolean>;
- send(target:MasterDeliveryTarget,attachment:MasterPreparedAttachment,messageId:string):Promise<void>;
+ send(target:MasterDeliveryTarget,attachment:MasterPreparedAttachment,messageId:string,design?:EmailDesignEnvelope):Promise<void>;
  origin:string;
 }
 export function createMasterReportDeliveryService(d:MasterDeliveryDependencies) {
@@ -37,9 +39,10 @@ export function createMasterReportDeliveryService(d:MasterDeliveryDependencies) 
   if(!await d.authorize(id,token,target))return finish('skipped','notEligible');
   // Recipient verification can change during workbook generation. Check immediately before claiming SMTP.
   const fresh=await d.verifyRecipient(target);if(fresh==='unavailable')return {outcome:'unavailable' as const};if(fresh!=='verified')return finish('skipped','recipientChanged');
+  const design=d.design?emailDesignEnvelope.parse(await d.design(id,token)):undefined;
   if(!await d.start(id,token,target))return {outcome:'busy' as const};
   let outcome:MasterDeliveryOutcome='sent',reason:MasterDeliveryReason|null=null;
-  try{await d.send(target,attachment,`<employee-master-${id}@${host}>`);}catch(error){const failure=notificationSmtpFailure(error);outcome=failure.outcome==='uncertain'?'uncertain':'failed';reason=outcome==='uncertain'?'uncertain':failure.error==='smtpRejected'?'smtpRejected':'smtpUnavailable';}
+  try{await d.send(target,attachment,`<employee-master-${id}@${host}>`,design);}catch(error){const failure=notificationSmtpFailure(error);outcome=failure.outcome==='uncertain'?'uncertain':'failed';reason=outcome==='uncertain'?'uncertain':failure.error==='smtpRejected'?'smtpRejected':'smtpUnavailable';}
   // A lost finish acknowledgement leaves started durable, so the reclaim path can only mark uncertain.
   return finish(outcome,reason,{rowCount:attachment.rowCount,scopeIds:attachment.scopeIds});
  };

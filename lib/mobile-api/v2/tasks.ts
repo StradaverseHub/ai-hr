@@ -48,6 +48,22 @@ export const isNativeTaskKind = (kind: string): kind is NativeTaskKind => (NATIV
 const webPath = z.string().max(400).regex(/^\/(?!\/)[^\s\\]*$/);
 const subject = z.object({ name: name.nullable(), code: z.string().max(64).nullable() });
 
+/**
+ * What the web approvals page prints on this row for this caller (app/approvals/page.tsx, the same readers under the
+ * same session): leave — type, start → end, days; leave cancellation — type, the original leave's start → end, the
+ * days given back; attendance — the date; claim — type, amount, the date incurred. Read by `kind`; a fact the
+ * web's row does not carry is null. One flat shape (no per-kind union) so a later fact is an additive key.
+ */
+export const TaskSummaryV2 = z.object({
+  label: name.nullable(),
+  from: isoDate.nullable(),
+  to: isoDate.nullable(),
+  days: z.number().nullable(),
+  amount: MoneyV2.nullable(),
+  currency: z.string().max(8).nullable(),
+});
+export type TaskSummaryV2 = z.infer<typeof TaskSummaryV2>;
+
 export const TaskItemV2 = z.object({
   /** A UUID for every kind but notice acknowledgements, whose id is the inbox's composite reference. */
   id: z.string().min(1).max(128),
@@ -58,6 +74,11 @@ export const TaskItemV2 = z.object({
   nativeDecision: z.boolean(),
   /** Set exactly when `nativeDecision` is false. */
   webPath: webPath.nullable(),
+  /**
+   * Natively decided kinds only, and only when the web approvals page's own reader returns this row for the caller;
+   * null otherwise. Optional: an older server sends none, an older app strips it.
+   */
+  summary: TaskSummaryV2.nullable().optional(),
 });
 export type TaskItemV2 = z.infer<typeof TaskItemV2>;
 /** Keyset tuple: the inbox's own order (createdAt desc, kind, id — core/approvals-inbox.ts). */
@@ -134,6 +155,15 @@ export const AttendanceTaskDetailV2 = z.object({
   employeeReason: z.string().max(2000).nullable(),
   hasAttachment: z.boolean(),
   expected: attendanceExpected,
+  /**
+   * The web approver's "Original clock times": the attendance record's first in / last out as the kernel captured
+   * them when the employee asked (attendance_correction.original_clock_snapshot), shown read-only. Present only
+   * where the web shows it (a clock correction); null otherwise. `not_captured`: the request predates the
+   * snapshot; `no_record`: there was no attendance record that day. Optional for older servers.
+   */
+  original: z.object({ state: z.enum(['recorded', 'no_record', 'not_captured']), checkIn: clock.nullable(), checkOut: clock.nullable() }).nullable().optional(),
+  /** A clock-data correction's proposed clockings (the web's "Proposed" list), in the order asked; null when none. */
+  proposedPunches: z.array(z.object({ at: clock, direction: z.enum(['in', 'out']) })).max(100).nullable().optional(),
 });
 /** D12 — a pending expense claim as listPendingClaims reads it. Amounts are two-place decimal strings. */
 export const ClaimTaskDetailV2 = z.object({

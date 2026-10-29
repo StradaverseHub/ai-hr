@@ -100,7 +100,7 @@ describe('0db97f14 · the merged writer',()=>{
   const result=await upload(a,columns,[values]);
   expect(result,JSON.stringify(result)).toMatchObject({updated:1,failed:[],fileErrors:[]});
   const row=await statutoryRow(e.personId);
-  expect(row).toMatchObject({epfCitizenship:'pr',epfMode:'voluntary_excess',epfEmployeeRate:'0.1500',epfEmployerRate:'0.1600',employerBearsEpf:true,socsoCategory:'second',eisCategory:'none',eisEligible:false,subjectToSkbbk:true,employerBearsSocso:true,employerBearsEis:true,employerBearsSkbbk:false,subjectToHrdf:false,taxCircumstance:'spouse_working',taxCategory:3,disabledIndividual:true,disabledSpouse:true,childReliefMode:'auto_table',employerBearsTax:false});
+  expect(row).toMatchObject({epfCitizenship:'pr',epfMode:'manual_percentage',epfEmployeeRate:'0.1500',epfEmployerRate:'0.1600',employerBearsEpf:true,socsoCategory:'second',eisCategory:'none',eisEligible:false,subjectToSkbbk:true,employerBearsSocso:true,employerBearsEis:true,employerBearsSkbbk:false,subjectToHrdf:false,taxCircumstance:'spouse_working',taxCategory:3,disabledIndividual:true,disabledSpouse:true,childReliefMode:'auto_table',employerBearsTax:false});
   expect(row.childReliefTable).toMatchObject({under_18:{full:2},study_tertiary:{half:1}});
   const selection=await getTaxSelectionMY(a,e.id);
   expect(selection).toMatchObject({scheme:'knowledge_worker',transitionState:'resolved'});

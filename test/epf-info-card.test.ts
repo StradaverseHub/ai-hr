@@ -34,8 +34,8 @@ describe('EPF Info Card (127dffba)', () => {
    * it is the LIST that moved. The `manual_fixed` coercion stays asserted, for the reason 127dffba wrote it:
    * that literal was the disabled "coming soon" option, names no side and carries no figure.
    */
-  it('mapEpfUiMode still yields only LAWFUL enum values (four of them since 0491)', () => {
-    const lawful = new Set(['auto', 'voluntary_excess', 'exempt', 'manual_amount']);
+  it('mapEpfUiMode still yields only LAWFUL enum values (including manual percentage since 0678)', () => {
+    const lawful = new Set(['auto', 'voluntary_excess', 'exempt', 'manual_amount', 'manual_percentage']);
     for (const ui of [
       'auto',
       'manual_percentage',
@@ -58,7 +58,7 @@ describe('EPF Info Card (127dffba)', () => {
     for (const v of lawful) expect(decl.slice(0, 200), `${v} is a stored epf_mode label`).toContain(`'${v}'`);
     // Spot-check the canonical shapes are preserved.
     expect(mapEpfUiMode('auto', null, null).epfMode).toBe('auto');
-    expect(mapEpfUiMode('manual_percentage', 11, 13)).toMatchObject({ epfMode: 'voluntary_excess', epfEmployeeRate: 0.11, epfEmployerRate: 0.13 });
+    expect(mapEpfUiMode('manual_percentage', 11, 13)).toMatchObject({ epfMode: 'manual_percentage', epfEmployeeRate: 0.11, epfEmployerRate: 0.13 });
     expect(mapEpfUiMode('semi_auto', 11, null)).toMatchObject({ epfMode: 'voluntary_excess', epfEmployeeRate: 0.11, epfEmployerRate: null });
     expect(mapEpfUiMode('none', null, null).epfMode).toBe('exempt');
     // The RETIRED literal still coerces defensively to auto — see the block above.

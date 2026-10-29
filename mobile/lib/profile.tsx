@@ -47,6 +47,31 @@ export function profileValueText(field: ProfileFieldV2, value: string | null): s
   if (value === null || value === '') return t('profileNotRecorded');
   return field.options?.find((o) => o.value === value)?.label ?? value;
 }
+export type ProfileFieldGroup = { key: string; title: string; fields: ProfileFieldV2[] };
+/**
+ * The fields grouped as the web's My Profile groups them (the server's `group`), in the server's order. A server that
+ * predates `group` falls back to the coarse personal/contact sections, personal first, as before.
+ */
+export function profileFieldGroups(fields: readonly ProfileFieldV2[]): ProfileFieldGroup[] {
+  const legacy: Record<ProfileFieldV2['section'], MessageKey> = { personal: 'profilePersonal', contact: 'profileContact' };
+  const ordered = fields.some((f) => f.group) ? fields : [...fields.filter((f) => f.section === 'personal'), ...fields.filter((f) => f.section !== 'personal')];
+  const out: ProfileFieldGroup[] = [];
+  for (const f of ordered) {
+    const key = f.group?.key ?? `section:${f.section}`;
+    let group = out.find((g) => g.key === key);
+    if (!group) { group = { key, title: f.group?.title ?? t(legacy[f.section]), fields: [] }; out.push(group); }
+    group.fields.push(f);
+  }
+  return out;
+}
+/**
+ * A field's label where it is read OUTSIDE its group (a confirmation, a saved/refused list, an accessibility label):
+ * qualified with the group title when another shown field carries the same label, so the two phones stay distinct.
+ */
+export function profileFieldLabel(field: ProfileFieldV2, fields: readonly ProfileFieldV2[]): string {
+  const title = field.group?.title;
+  return title && fields.some((other) => other.fieldId !== field.fieldId && other.label === field.label) ? `${field.label} — ${title}` : field.label;
+}
 export function fmtProfileInstant(iso: string | null): string {
   if (!iso) return '';
   try { return new Intl.DateTimeFormat(appLocale() === 'ms' ? 'ms-MY' : 'en-MY', { timeZone: 'Asia/Kuala_Lumpur', day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(iso)); }
@@ -74,24 +99,19 @@ export function ProfileScreen() {
   const { palette } = useTenantDesign();
   const profile = useProfileWorkspace();
   const workspace = profile.data?.outcome === 'found' ? profile.data.workspace : null;
-  const sections: ['personal' | 'contact', MessageKey][] = [['personal', 'profilePersonal'], ['contact', 'profileContact']];
   return <Screen refreshing={profile.loading && profile.data != null} onRefresh={profile.reload}>
     <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
     <Title>{t('profileTitle')}</Title>
     <LoadState loading={profile.loading} hasData={profile.data != null} error={profile.error} onRetry={profile.reload} />
     {profile.data?.outcome === 'refused' && <Muted>{t(profile.data.code === 'unavailable' ? 'profileUnavailable' : 'profileNotFound')}</Muted>}
     {workspace && <>
-      {sections.map(([section, title]) => {
-        const fields = workspace.fields.filter((f) => f.section === section);
-        if (!fields.length) return null;
-        return <View key={section} style={{ gap: 8 }}>
-          <SectionLabel>{t(title)}</SectionLabel>
-          <Card>{fields.map((f) => <View key={f.fieldId} style={{ gap: 2 }}>
-            <Row label={f.label} value={profileValueText(f, f.value)} />
-            {f.pending && <Text style={{ color: palette.accent, fontSize: 14 }}>{t('profilePendingNote')}</Text>}
-          </View>)}</Card>
-        </View>;
-      })}
+      {profileFieldGroups(workspace.fields).map((group) => <View key={group.key} style={{ gap: 8 }}>
+        <SectionLabel>{group.title}</SectionLabel>
+        <Card>{group.fields.map((f) => <View key={f.fieldId} style={{ gap: 2 }}>
+          <Row label={f.label} value={profileValueText(f, f.value)} />
+          {f.pending && <Text style={{ color: palette.accent, fontSize: 14 }}>{t('profilePendingNote')}</Text>}
+        </View>)}</Card>
+      </View>)}
       {!workspace.fields.length && <Muted>{t('profileNothingShown')}</Muted>}
       {workspace.fields.some((f) => f.editable) && <Button title={t('profileRequestChange')} onPress={() => router.push('/profile/edit')} />}
       {!workspace.fields.some((f) => f.editable) && workspace.fields.length > 0 && <Muted>{t(workspace.fields.every((f) => f.readOnlyReason === 'employment_closed') ? 'profileReadOnlyEmployment' : 'profileNoEditable')}</Muted>}

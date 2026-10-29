@@ -725,6 +725,7 @@ export const roleAssignment = pgTable(
 export const appInvitation = pgTable(
   'app_invitation',
   {
+    emailLocale:text('email_locale').notNull().default('en'),
     id: id(),
     tenantId: tenantId(),
     companyId: uuid('company_id').references(() => company.id),
@@ -3363,7 +3364,7 @@ export const compensation = pgTable(
 // is NOT auto-applied"): those legacy figures are RATES, yet the rate election cannot carry them either
 // because voluntary_excess is max(elected, statutory) and can only raise. A typed amount is the only
 // affordance there is. See docs/adr/0087-epf-manual-amount-categories.md.
-export const epfModeEnum = pgEnum('epf_mode', ['auto', 'voluntary_excess', 'exempt', 'manual_amount']);
+export const epfModeEnum = pgEnum('epf_mode', ['auto', 'voluntary_excess', 'exempt', 'manual_amount', 'manual_percentage']);
 
 // ───────────── Employee statutory profile — Malaysia pack (per-person) ─────────────
 // Pack-owned (localization/my). Statutory identity is per Person, not per Employment.
@@ -3586,6 +3587,7 @@ export const employeeStatutoryMy = pgTable(
   },
   (t) => [
     uniqueIndex('employee_statutory_my_person_uq').on(t.personId),
+    check('employee_statutory_my_manual_percentage_rates', sql`${t.epfMode}::text <> 'manual_percentage' OR (${t.epfEmployeeRate} IS NOT NULL AND ${t.epfEmployerRate} IS NOT NULL AND ${t.epfEmployeeRate} BETWEEN 0.01 AND 1 AND ${t.epfEmployerRate} BETWEEN 0.01 AND 1)`),
     check('employee_statutory_my_tax_applicability_epoch_check', sql`${t.taxApplicabilityEpoch} >= 0`),
     check('employee_statutory_my_tax_circumstance_check', sql`${t.taxCircumstance} IS NULL OR ${t.taxCircumstance} = 'none' OR (${t.taxCircumstance} = 'single' AND ${t.taxCategory} = 1) OR (${t.taxCircumstance} = 'spouse_not_working' AND ${t.taxCategory} = 2) OR (${t.taxCircumstance} IN ('spouse_working', 'widow_divorced') AND ${t.taxCategory} = 3)`),
     // Item e3ce0d4d — PARTIAL: real ICs stay unique per tenant, but multiple non-Malaysian rows carrying a
@@ -3717,6 +3719,10 @@ export const companyBankProfile = pgTable(
     currency: text('currency').notNull().default('MYR'),
     // At most one primary per company (partial unique index below). The default account a payment run
     // debits when nothing more specific is chosen.
+    fileContactName: text('file_contact_name'),
+    fileContactPhone: text('file_contact_phone'),
+    fileStateCode: text('file_state_code'),
+    requirePayeeIdCheck: boolean('require_payee_id_check').notNull().default(false),
     isPrimary: boolean('is_primary').notNull().default(false),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -3727,6 +3733,16 @@ export const companyBankProfile = pgTable(
     uniqueIndex('company_bank_profile_primary_uq').on(t.companyId).where(sql`is_primary`),
   ],
 );
+
+/** Generated bank upload artifacts. Never a paid/filed status; immutable, company-admin scoped. */
+export const bankPaymentExport = pgTable('bank_payment_export', {
+  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
+  // Historical identity survives deletion of the bank's editable configuration.
+  bankProfileId:uuid('bank_profile_id').notNull(),actorUserId:uuid('actor_user_id').notNull().references(()=>appUser.id),
+  requestKey:uuid('request_key').notNull(),requestFingerprint:text('request_fingerprint').notNull(),valueDate:date('value_date').notNull(),tapeId:integer('tape_id').notNull(),
+  format:text('format').notNull(),sourceDigest:text('source_digest').notNull(),filename:text('filename').notNull(),
+  content:text('content').notNull(),recordCount:integer('record_count').notNull(),totalCents:bigint('total_cents',{mode:'number'}).notNull(),createdAt:createdAt(),
+},t=>[uniqueIndex('bank_payment_export_tape_uq').on(t.tenantId,t.valueDate,t.tapeId),uniqueIndex('bank_payment_export_request_uq').on(t.tenantId,t.actorUserId,t.requestKey),check('bank_payment_export_tape_range',sql`${t.tapeId} between 1 and 999`)]);
 
 // Per-authority statutory payment configuration (R46 orgbank 84719377). company_statutory_my is one flat
 // row per company holding the employer REFERENCE NUMBERS; it cannot hold per-authority payment routing.
@@ -5827,6 +5843,12 @@ export const profileChangeRequest = pgTable(
   },
   (t) => [index('profile_change_request_employment_idx').on(t.employmentId, t.status),uniqueIndex('profile_change_request_pending_photo_person_uq').on(t.tenantId,t.personId).where(sql`${t.status}='pending' AND ${t.proposed}->>'kind'='photo'`)],
 );
+
+/** Supporting evidence belongs to one immutable submitted request and its declared fields. */
+export const profileChangeAttachment=pgTable('profile_change_attachment',{
+ id:id(),tenantId:tenantId(),requestId:uuid('request_id').notNull().references(()=>profileChangeRequest.id,{onDelete:'cascade'}),
+ fieldIds:jsonb('field_ids').$type<string[]>().notNull(),fileName:text('file_name').notNull(),mimeType:text('mime_type').notNull(),sizeBytes:integer('size_bytes').notNull(),content:bytea('content').notNull(),createdAt:createdAt(),
+},t=>[index('profile_change_attachment_request_idx').on(t.requestId)]);
 
 /** Bytes are retained only while the canonical profile request is pending. */
 export const profilePhotoProposal=pgTable('profile_photo_proposal',{
@@ -10402,7 +10424,28 @@ export const rewardMember = pgTable('reward_member', {
   id: id(), tenantId: tenantId(), unitId: uuid('unit_id').notNull().references(() => rewardUnit.id),
   userId: uuid('user_id').notNull().references(() => appUser.id),
   role: text('role').$type<import('../packs/rewards/model').RewardRole>().notNull(), createdAt: createdAt(),
+  validFrom: date('valid_from').notNull().default(sql`((now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)`),
+  validTo: date('valid_to'), coversUserId: uuid('covers_user_id').references(() => appUser.id),
+  restoredReason: text('restored_reason'), restoredFingerprint: text('restored_fingerprint'),
 });
+/** Two-person access custody; only native functions write these RLS-protected records. */
+export const rewardAccessRequest=pgTable('reward_access_request',{
+ id:id(),tenantId:tenantId(),changes:jsonb('changes').notNull(),unitRevisions:jsonb('unit_revisions').$type<Record<string,number>>().notNull(),
+ beforeMembers:jsonb('before_members').notNull(),peopleFingerprints:jsonb('people_fingerprints').$type<Record<string,string>>().notNull(),
+ requestedBy:uuid('requested_by').notNull().references(()=>appUser.id),requestedAt:timestamp('requested_at',{withTimezone:true}).notNull().defaultNow(),
+ status:text('status').$type<'pending'|'approved'|'rejected'|'lapsed'>().notNull().default('pending'),
+ decidedBy:uuid('decided_by').references(()=>appUser.id),decidedAt:timestamp('decided_at',{withTimezone:true}),reason:text('reason'),
+});
+export const rewardAccessObservation=pgTable('reward_access_observation',{
+ tenantId:tenantId(),memberId:uuid('member_id').notNull().references(()=>rewardMember.id,{onDelete:'cascade'}),sourceEventId:uuid('source_event_id').notNull().references(()=>domainEvent.id),stateKey:text('state_key').notNull(),observedAt:timestamp('observed_at',{withTimezone:true}).notNull().defaultNow(),
+},table=>[primaryKey({columns:[table.tenantId,table.memberId,table.stateKey]})]);
+/** Soft unit pointer: internal transaction authorization must not block deletion of an unused review. */
+export const rewardAccessBootstrap=pgTable('reward_access_bootstrap',{
+ tenantId:tenantId(),unitId:uuid('unit_id').primaryKey(),transactionId:bigint('transaction_id',{mode:'bigint'}).notNull(),creatorId:uuid('creator_id').notNull().references(()=>appUser.id),
+});
+export const rewardAccessSourceEpoch=pgTable('reward_access_source_epoch',{
+ tenantId:tenantId(),sourceKind:text('source_kind').$type<'person'|'user'>().notNull(),sourceId:uuid('source_id').notNull(),generation:bigint('generation',{mode:'bigint'}).notNull().default(sql`1`),
+},table=>[primaryKey({columns:[table.tenantId,table.sourceKind,table.sourceId]})]);
 export const rewardEntry = pgTable('reward_entry', {
   id: id(), tenantId: tenantId(), unitId: uuid('unit_id').notNull().references(() => rewardUnit.id),
   employmentId: uuid('employment_id').notNull().references(() => employment.id),
@@ -11267,6 +11310,21 @@ export const importAttemptEvent=pgTable('import_attempt_event',{
  kind:text('kind').notNull().$type<import('../lib/import-history').ImportEventKind>(),actorId:uuid('actor_id').notNull().references(()=>appUser.id),
  reason:text('reason'),detail:jsonb('detail').notNull().default({}).$type<Record<string,unknown>>(),createdAt:createdAt(),
 },t=>[index('import_attempt_event_attempt_idx').on(t.tenantId,t.attemptId,t.createdAt),uniqueIndex('import_attempt_confirm_once_uq').on(t.attemptId).where(sql`${t.kind}='confirmed'`),uniqueIndex('import_attempt_revert_once_uq').on(t.attemptId).where(sql`${t.kind}='reverted'`)]);
+/** Mutable operational checkpoints; immutable HR change history remains in import_attempt*. */
+export const bankImportJob=pgTable('bank_import_job',{
+ id:id(),tenantId:tenantId(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),context:jsonb('context').notNull(),companyIds:uuid('company_ids').array().notNull().default(sql`'{}'::uuid[]`),
+ sourceName:text('source_name').notNull(),sourceHash:text('source_hash').notNull(),sourceBytes:integer('source_bytes').notNull(),uploadedBytes:integer('uploaded_bytes').notNull().default(0),
+ state:text('state').notNull().default('uploading'),total:integer('total').notNull().default(0),validated:integer('validated').notNull().default(0),valid:integer('valid').notNull().default(0),
+ invalid:integer('invalid').notNull().default(0),unchanged:integer('unchanged').notNull().default(0),processed:integer('processed').notNull().default(0),saved:integer('saved').notNull().default(0),failed:integer('failed').notNull().default(0),
+ attemptId:uuid('attempt_id').references(()=>importAttempt.id),error:text('error'),createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[uniqueIndex('bank_import_job_active_source').on(t.tenantId,t.sourceHash).where(sql`${t.state} in ('uploading','queued','validating','ready','importing')`),index('bank_import_job_queue').on(t.createdAt).where(sql`${t.state} in ('queued','validating','importing')`)]);
+export const bankImportChunk=pgTable('bank_import_chunk',{
+ jobId:uuid('job_id').notNull().references(()=>bankImportJob.id,{onDelete:'cascade'}),part:integer('part').notNull(),content:bytea('content').notNull(),
+},t=>[primaryKey({columns:[t.jobId,t.part]})]);
+export const bankImportRow=pgTable('bank_import_row',{
+ jobId:uuid('job_id').notNull().references(()=>bankImportJob.id,{onDelete:'cascade'}),ordinal:integer('ordinal').notNull(),record:jsonb('record').notNull(),preview:jsonb('preview'),
+ companyId:uuid('company_id').references(()=>company.id),employmentId:uuid('employment_id').references(()=>employment.id),binding:text('binding'),state:text('state').notNull().default('pending'),error:text('error'),
+},t=>[primaryKey({columns:[t.jobId,t.ordinal]}),index('bank_import_row_pending').on(t.jobId,t.state,t.ordinal)]);
 /** Current import amounts for batch dashboards; original closed batch counters stay immutable. */
 const payrollHistoryBatchView=pgView('payroll_history_effective_batch').as(qb=>qb.select({
  ...getTableColumns(payrollBatch),
@@ -11362,6 +11420,20 @@ export const letterCounter=pgTable('letter_counter',{
 export const letterVerificationRate=pgTable('letter_verification_rate',{
  scope:text('scope').notNull(),bucket:bigint('bucket',{mode:'number'}).notNull(),hits:integer('hits').notNull(),
 },t=>[primaryKey({columns:[t.scope,t.bucket]})]);
+
+// Tenant-owned email designs. Versions and assets are appended through checked native owners.
+export const emailDesign=pgTable('email_design',{
+ tenantId:tenantId(),kind:text('kind').notNull(),locale:text('locale').notNull(),revision:integer('revision').notNull(),document:jsonb('document'),
+ updatedBy:uuid('updated_by').references(()=>appUser.id),updatedAt:timestamp('updated_at',{withTimezone:true}).defaultNow().notNull(),
+},t=>[primaryKey({columns:[t.tenantId,t.kind,t.locale]})]);
+export const emailDesignVersion=pgTable('email_design_version',{
+ tenantId:tenantId(),kind:text('kind').notNull(),locale:text('locale').notNull(),revision:integer('revision').notNull(),document:jsonb('document'),
+ createdBy:uuid('created_by').references(()=>appUser.id),createdAt:createdAt(),
+},t=>[primaryKey({columns:[t.tenantId,t.kind,t.locale,t.revision]})]);
+export const emailAsset=pgTable('email_asset',{
+ id:id(),tenantId:tenantId(),token:text('token').notNull().default(sql`replace(gen_random_uuid()::text||gen_random_uuid()::text,'-','')`),sha256:text('sha256').notNull(),mime:text('mime').notNull(),bytes:bytea('bytes').notNull(),
+ uploadedBy:uuid('uploaded_by').notNull().references(()=>appUser.id),uploadedAt:timestamp('uploaded_at',{withTimezone:true}).defaultNow().notNull(),
+},t=>[uniqueIndex('email_asset_token_key').on(t.token)]);
 // ADR-0151 §4.5 (0672) — one named agent principal per tenant. Not a login: no app_user, role or credential.
 const agentPrincipalPrivate=pgSchema('app');
 export const aiAgentPrincipal=agentPrincipalPrivate.table('ai_agent_principal',{

@@ -125,7 +125,7 @@ export default async function AssistantPage({
         <PageHeader title={greeting} description={t('description')} />
         <OwnClearStatus status={sp.ownClear}/>
         <ErrorBanner message={errorMessage} />
-        <WorkspaceComposer layout="hero" action={askAssistantAction} tasks={tasks} labels={{
+        <WorkspaceComposer fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} layout="hero" action={askAssistantAction} tasks={tasks} labels={{
           tasks: t('workspace.tasks'), taskHint: t('workspace.taskHint'), question: t('workspace.question'),
           placeholder: t('placeholder'), ask: t('ask'), working: t('workspace.working'), scope: t('scopeNote'),
         }} />

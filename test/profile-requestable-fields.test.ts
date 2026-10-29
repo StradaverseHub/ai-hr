@@ -505,8 +505,9 @@ describe('r261 — the settings screen speaks the declaration\'s own vocabulary'
     expect(SETTINGS_PAGE).not.toMatch(/t\(`field\./);
   });
 
-  it('writes a complete bounded v3 policy and withdraws locked pending requests in the SAME canonical transaction',()=>{
-    expect(SETTINGS_ACTIONS).toContain('for(const field of essVisibleFields())');expect(SETTINGS_ACTIONS).toContain('formData.getAll(`permission:${field.id}`)');expect(SETTINGS_ACTIONS).toContain("posted.length!==1||!['editable','viewOnly','hide'].includes(String(posted[0]))");expect(SETTINGS_ACTIONS).not.toContain("formData.get('key')");expect(SETTINGS_ACTIONS).toContain('saveProfileVisibilityPolicy(s,{policy:{version:4,fields,groups,primaryOnly}');
+  it('writes a complete bounded v5 approval policy and withdraws locked pending requests in the SAME canonical transaction',()=>{
+    expect(SETTINGS_ACTIONS).toContain('for(const field of essVisibleFields())');expect(SETTINGS_ACTIONS).toContain('formData.getAll(`permission:${field.id}`)');expect(SETTINGS_ACTIONS).toContain("posted.length!==1||!['editable','viewOnly','hide'].includes(String(posted[0]))");expect(SETTINGS_ACTIONS).not.toContain("formData.get('key')");expect(SETTINGS_ACTIONS).toContain('saveProfileVisibilityPolicy(s,{policy:{version:5,fields,groups,primaryOnly,approvals}');
+    expect(SETTINGS_ACTIONS).toContain('formData.getAll(`approvalRequired:${field.id}`)');expect(SETTINGS_ACTIONS).toContain('formData.getAll(`attachmentRequired:${field.id}`)');expect(SETTINGS_ACTIONS).toContain("required.length>1||required.length===1&&required[0]!=='on'||attachment.length!==1||!['true','false'].includes(String(attachment[0]))");expect(SETTINGS_ACTIONS).toContain("attachmentRequired:required.length===1&&attachment[0]==='true'");
     expect(POLICY_OWNER).toContain('if(!isProfileVisibilityPolicyValue(p.policy))');expect(POLICY_OWNER).toContain('Object.keys(policy.fields).length!==ids.size');expect(POLICY_OWNER).toContain("setTenantSetting(before.ctx,{key:'ess.profile_change_fields',value:policy},tx)");expect(POLICY_OWNER).toContain('withdrawProfileChangesForLockedFields(before.ctx,{lockedKeys:locked,reason:p.withdrawnReason},tx)');
   });
 

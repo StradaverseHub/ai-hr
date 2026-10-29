@@ -8,7 +8,12 @@
         "route": "/me",
         "titleKey": "tour.me.intro.title",
         "bodyKey": "tour.me.intro.body",
-        "placement": "center"
+        "placement": "center",
+        "text": {
+          "title": "Review your profile changes",
+          "body": "Edit the fields your company permits and attach supporting documents where requested. The result distinguishes saved changes from changes waiting for approval; a request does not grant permission to approve your own change.",
+          "lang": "en"
+        }
       },
       {
         "id": "contact",
@@ -195,7 +200,12 @@
         "roles": [
           "hr_admin",
           "super_admin"
-        ]
+        ],
+        "text": {
+          "title": "Review payroll reports and payment files",
+          "body": "Use authorized payroll reports to check the results. In Payment submission, choose the required OCBC format and options, review the preview, and download only after checking the eligible source and totals. A download does not submit a payment to the bank.",
+          "lang": "en"
+        }
       },
       {
         "id": "generate",
@@ -220,7 +230,12 @@
         "route": "/admin/personnel",
         "titleKey": "tour.people.intro.title",
         "bodyKey": "tour.people.intro.body",
-        "placement": "center"
+        "placement": "center",
+        "text": {
+          "title": "Manage people and their profile rules",
+          "body": "Open an employee to review personal and statutory details. Manual EPF percentages require both rates. Profile field permissions and HR rules control changes and independent approval. Bank & Statutory imports validate in the background; review progress and results before confirming saves, and return to the existing import instead of uploading it again.",
+          "lang": "en"
+        }
       },
       {
         "id": "search",
@@ -575,7 +590,7 @@
         "placement": "bottom",
         "text": {
           "title": "Review the schedule configuration",
-          "body": "Use these settings to inspect shifts, schedules, breaks, file mappings and locations. Review the effective assignment before changing a result.",
+          "body": "Open Settings → Locations to inspect clocking points, coordinates and radius; retry a failed map without changing entered coordinates. Overtime setup guides you through four steps with a preview. Check effective assignments before changing an attendance result.",
           "lang": "en"
         },
         "roles": [
@@ -800,8 +815,8 @@
         "target": "[data-tour=\"rewards-configuration\"]",
         "placement": "bottom",
         "text": {
-          "title": "Check setup scope",
-          "body": "Create a review unit only for the intended company and business unit. Review the cycle, year and snapshot date before submitting.",
+          "title": "Check setup and shared configuration",
+          "body": "Check the company, business unit, year and snapshot date. Shared rewards configuration versions apply to future reviews. Company exclusions cover the whole reward year, require a reason and prevent new unit reviews; they do not remove existing reviews.",
           "lang": "en"
         },
         "roles": [
@@ -815,8 +830,8 @@
         "target": "[data-tour=\"rewards-admin-units\"]",
         "placement": "bottom",
         "text": {
-          "title": "Open and follow a review unit",
-          "body": "Open a listed unit to configure its policy and membership and follow its review state. Approved rewards require a separate authorized payroll posting.",
+          "title": "Check review access and coverage",
+          "body": "Use Rewards access for exact review roles, dates and temporary cover. Preview and save an access request, then have a different authorized administrator approve it. People changes can suspend eligibility. Check required-role coverage before submission; payroll posting remains a separate authorized action.",
           "lang": "en"
         },
         "roles": [
@@ -851,8 +866,8 @@
         "target": "[data-tour=\"rewards-review-units\"]",
         "placement": "bottom",
         "text": {
-          "title": "Open an available review unit",
-          "body": "Choose a unit you can access. Inspect its employee facts, policy and proposed changes before deciding or returning work.",
+          "title": "Find an available review",
+          "body": "Use the year, company, business-unit and stage filters or Waiting for me. Review your role, the current stage, due date, budget percentages and blockers. Opening a review does not grant decision authority or reveal restricted employee rows.",
           "lang": "en"
         },
         "roles": [
@@ -904,7 +919,7 @@
         "placement": "bottom",
         "text": {
           "title": "Use the assistant with context",
-          "body": "Ask about a specific company, employee or period. Review cited records and proposals; AI inherits your access and does not replace payroll calculations or human decisions.",
+          "body": "Ask about a specific company, employee or period. For supported import files, review the suggested destination and mapping, then validate and confirm in the native import screen. AI inherits your access and does not replace payroll calculations or human decisions.",
           "lang": "en"
         },
         "roles": [
@@ -1071,8 +1086,8 @@
         "target": "[data-tour=\"workflow-email-readiness\"]",
         "placement": "bottom",
         "text": {
-          "title": "Check email readiness",
-          "body": "Relay readiness, tenant policy and recipient consent are separate prerequisites. An inactive relay or missing installation upgrade needs the installation maintainer.",
+          "title": "Check email readiness and design",
+          "body": "Relay readiness, tenant policy and recipient consent are separate prerequisites. Group administrators can use Email templates to edit six language variants, preview blocks and restore saved versions. The protected AIHR content remains system-owned. Designs do not activate a relay or change recipients or schedules.",
           "lang": "en"
         },
         "roles": [

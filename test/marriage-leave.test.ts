@@ -642,13 +642,15 @@ describe('the refusal message exists and interpolates in every locale', () => {
 
 // ── Point 5 (ALREADY BUILT) — the half this feature depends on ───────────────────────────────────────
 describe('point 5 — the employee cannot set their own marital status (already built)', () => {
-  it('the HR-only writer refuses a non-admin outright', async () => {
+  it('refuses a non-admin without a prepared own-profile edit and leaves the record unchanged', async () => {
+    const before=await owner.db.select().from(schema.person).where(eq(schema.person.id,subject.personId));
     await expect(
       setPersonComplianceFields(subjectCtx, {
         employmentId: subject.employmentId,
         maritalStatus: 'married',
       }),
-    ).rejects.toThrow('Only an admin can set gender / marital status.');
+    ).rejects.toMatchObject({code:'permission',fieldIds:[]});
+    expect(await owner.db.select().from(schema.person).where(eq(schema.person.id,subject.personId))).toEqual(before);
   });
 
   it('marital status is a REQUESTABLE field — the employee asks, it is not written directly', async () => {

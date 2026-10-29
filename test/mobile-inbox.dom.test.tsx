@@ -71,7 +71,7 @@ function fixture() {
   const api = { apiGetV2, apiPostV2, apiGetPage: vi.fn() };
   const paged = load('mobile/lib/paged-list.tsx', { ...base, './api': api });
   const screens = load('mobile/lib/inbox.tsx', {
-    ...base, './api': api, './paged-list': paged, '../../lib/mobile-api/v2/notifications': v2notifications,
+    ...base, './api': api, './paged-list': paged, '../../lib/mobile-api/v2/notifications': v2notifications, './attendance-format': load('mobile/lib/attendance-format.ts', base),
     'react-native-safe-area-context': { SafeAreaView: View }, 'expo-router': { router: { push } },
     './design': { DesignText: Text, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark') }) },
     './session': { useSession: () => ({ employmentId: 'own', signOut }) },
@@ -101,6 +101,9 @@ describe('inbox list', () => {
     expect(f.notificationHref({ screen: 'constructor' })).toBeNull();
     expect(f.notificationHref(null)).toBeNull();
     expect(f.notificationHref({ screen: 'pay' })).toBe('/pay');
+    // The app's date-time style in the business zone (01:00Z is 09:00 in Kuala Lumpur), never the device's "10/27/2026, 1:00:00 AM".
+    expect(screen.getAllByText('27 Oct 2026, 09:00')).toHaveLength(3);
+    expect(screen.queryByText(/\d+\/\d+\/\d{4}/)).toBeNull();
   });
 
   it('a tap marks the row read first, then opens the destination the server re-derived', async () => {

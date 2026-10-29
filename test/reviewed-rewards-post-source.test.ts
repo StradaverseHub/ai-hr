@@ -1,3 +1,4 @@
+import {setRewardMember} from './rewards-access-fixture';
 /** Authored UNRUN: actual approved fictional Rewards workflows, no mounted command/shared custody,
  * provider/model money, bypassed ai_action_unpaused draft or production readiness claim. */
 import {randomUUID} from 'node:crypto';
@@ -11,7 +12,7 @@ import {assignRole,revokeRole} from '../core/admin';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {setAiAllowance} from '../core/ai-management';
 import {createBatch,setPayrollInput} from '../packs/payroll/service';
-import {createRewardUnit,getRewardUnit,saveRewardPolicy,saveRewardEntry,setRewardMember,decideRewardUnit,postRewardUnit,createOffcycleReview} from '../packs/rewards/service';
+import { createRewardUnit, getRewardUnit, saveRewardPolicy, saveRewardEntry, decideRewardUnit, postRewardUnit, createOffcycleReview } from '../packs/rewards/service';
 import {emptyFacts,type RewardRole} from '../packs/rewards/model';
 import {prepareReviewedRewardsPostSourceTx,confirmReviewedRewardsPostSourceTx,reconcileReviewedRewardsPostSourceTx,ReviewedRewardsPostUnavailable} from '../core/assistant-actions/reviewed-rewards-post-source';
 import {REVIEWED_REWARDS_POST_ACTION as action,ReviewedRewardsPostHumanContent,type ReviewedRewardsPostHumanContent as Human,type ReviewedRewardsPostPreparedSource} from '../lib/assistant-actions/reviewed-rewards-post-contract';

@@ -5,6 +5,49 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Owner-approved combined board allocation — 29 October 2026
+
+The owner subsequently expanded the same release to include Assistant file import and durable Bank & Statutory import. Both source owners agreed, and the owner explicitly approved this revised order while the central coordinator remained unavailable:
+
+| Index | Sequence | Migration | Exact SQL SHA256 |
+| ---: | ---: | --- | --- |
+| 675 | 1793330000011 | 0685_bank_import_jobs | 62ee5d8d7dedf892be25463edd4f47a6e729c03cc68c7024cdde4956c2d86021 |
+| 676 | 1793330000012 | 0686_ai_provider_custody_owner_rls | 571fe5c0865f1419cf500d3ce90f82fea8b80145dec8a48e0c75a0aa3d31555d |
+
+These entries follow the unchanged 560-entry board source prefix below. Staging subsequently received the code-only Mobile release `d35bcb00ca2209a3eaccad92177ce69d50667bbc`, also published on main and alpha. Its 554 applied rows through 0678 / sequence1793330000004 were independently compared in full and remain unchanged. The expanded candidate must preserve that entire applied journal and every applied SQL byte, rehearse the populated upgrade, and verify all 562 ordered rows after one installation. No artificial intermediate 560-row installation is required. The old unapplied Bank 0678 draft was renamed without changing its SQL bytes and its obsolete journal position was removed before integration. Earlier CI witnesses against the FA baseline retain their original identities; the new release witness must bind the actual D35 baseline.
+
+AI Enhancement relinquished its unwritten 0686 reservation. Its question-budget work is outside this release; any later 0687 / index677 / sequence1793330000013 allocation remains conditional on the expanded release's actual 562-row handoff and a fresh competing-claim check. It must not be inserted implicitly into this release. The provider correction preserves FORCE RLS and existing direct-table revocations; it adds only tenant- and fresh-human-bound access for the physical custody-table owner.
+
+The owner explicitly approved combining both board batches into one ten-item staging release,
+and approved the exact successor allocations below after both source owners agreed. The central
+register was freshly fetched at `439587ea07912ef2254bf9774b16b792d643b300`; no later claim
+was recorded, and reachable migration history contained no 0682–0684 filenames. Both the register
+coordinator and prerequisite release owner were notified of this combined allocation.
+
+Fresh canonical main/alpha and verified staging are
+`57b3c9fd232618c4ac62eed60fd92388c6606119`, with the exact 554-entry applied prefix through
+0678 / idx668 / sequence1793330000004. Every prior journal entry and SQL byte is preserved.
+The existing register allocations for 0679–0681 remain unchanged. The three original-five drafts
+are renamed without modifying their SQL bodies; their obsolete filenames/positions below cannot
+be used as an executable alternative.
+
+| Index | Sequence | Migration | Exact SQL SHA256 |
+| ---: | ---: | --- | --- |
+| 669 | 1793330000005 | 0679_email_templates_r2 | 07cb3af8566b1c9be162f88e5b16d912471cb1eb9ec2582ef7f9224620cdb622 |
+| 670 | 1793330000006 | 0680_rewards_exclusions_history | 8497edb87cbc4d4929700f3a8ba8abe3519cd2ce13c50f5f16a522a56093c344 |
+| 671 | 1793330000007 | 0681_rewards_approval_participation | 2600e08cde3498f3ce5f2c1fbd4fb1418ab22b7e87db3852768a1b932baa9cdc |
+| 672 | 1793330000008 | 0682_epf_manual_percentage | afe1902eef73ba0489c5690155c069a9eec1a0fb2758dcc94cb3451f03a6ea36 |
+| 673 | 1793330000009 | 0683_profile_field_approvals | 3bbc6af156e7440477c182b5a8cda9d64700d31cc91f584d2f63a9537ca81f97 |
+| 674 | 1793330000010 | 0684_ocbc_bank_payment_exports | f59a9a34b95b66c929ebe0385d048927eab791835f78e98c696930d4472eaeb6 |
+
+The unapplied 0679 body now includes a bounded, read-only recipient-locale accessor for Group HR reminder previews. It returns no template, identity, address or preference-enabled state, grants no table access, and changes no stored records. Its source hash above supersedes the earlier b259d07e4964830eb6781a5efdeaf0c64bc5278a6efefb7883fd8e93bc38ddfe draft after the full-gate renderer/locale defect was diagnosed. The original failed candidate and historical allocation notes retain that older hash. Filenames, indices and sequences are unchanged; no applied migration was modified.
+
+These six entries are an unapplied source allocation. The combined candidate requires a fresh
+complete GitHub Actions witness, populated ordinary-journal upgrade proof, a current private
+restore point and independently verified staging arrival. No production deployment or human
+staging acceptance is implied. Recheck source, full applied ledger and competing claims before
+integration/application; reconcile an intervening append rather than overwriting any position.
+
 ## Definitive coordinated source allocation — 27 October 2026
 
 The CI/efficiency coordinator reconciled the Board, AI and Mobile reservations and issued the
@@ -99,6 +142,40 @@ Routine coordinator: CI/efficiency `01a16cee-9004-72c2-aaf0-932d4d0a1582`; AI de
 any future journal append, obtain the final coordinated index/timestamp set from the actual source
 freeze and preserve the exact applied prefix. No human migration or deployed record is changed here.
 
+
+## Board approved items — isolated CI prerequisites, 29 October 2026
+
+The owner's current handoff requires all new migration sequences above `1793330000000`.
+Canonical main, alpha and verified staging were `46049dead200d6f436d10f5984c06634502a6286`,
+with all 553 applied entries matching the exact source prefix. Shared register commit
+`439587ea0` on `claude/migration-inventory-20261027` supersedes the still-unapplied allocations
+in `3060942cb` and `8167a9d85` after both source owners agreed the probe release should precede
+the database-dependent Board release.
+
+| Index | Sequence | Migration | Exact SQL SHA256 |
+| ---: | ---: | --- | --- |
+| 668 | 1793330000004 | 0678_ai_connection_probe_ledger | e96851f0b09ba117f9cec03852b9c270da456c36b69a5199a588f483e1a9772a |
+| 669 | 1793330000005 | 0679_email_templates_r2 | b259d07e4964830eb6781a5efdeaf0c64bc5278a6efefb7883fd8e93bc38ddfe |
+| 670 | 1793330000006 | 0680_rewards_exclusions_history | 8497edb87cbc4d4929700f3a8ba8abe3519cd2ce13c50f5f16a522a56093c344 |
+| 671 | 1793330000007 | 0681_rewards_approval_participation | 2600e08cde3498f3ce5f2c1fbd4fb1418ab22b7e87db3852768a1b932baa9cdc |
+
+The probe owner expressly permits only its exact public SQL from
+`7bcbe939c4423884d9209a4c098128754835d2b7:db/migrations/0678_ai_connection_probe_ledger.sql`
+as an isolated disposable-CI journal prerequisite. This does not integrate its unmerged application
+changes or grant this task authority to apply or deploy its migration. Its owner releases that
+source separately after the UI handoff. The final Board whole-gate candidate must merge the actual
+canonical/applied handoff and verify the real source again; earlier targeted evidence remains
+attributed to its own exact CI source.
+
+All four SQL bodies preserve their frozen hashes. Original draft comments are historical
+provenance; journal metadata owns execution order. No applied SQL or journal prefix is changed.
+Temporary duplicate Board draft installers are removed, and their original native assertions stay
+in the ordinary suites. Unique legacy-email conversion assertions use an ordinary Drizzle prefix,
+fictional populated baseline and full-journal upgrade.
+
+This records isolated source/CI preparation only. No migration application, staging acceptance or
+production deployment is claimed. Recheck canonical, the actual ledger and competing allocations
+before final integration. The unmerged named-approver 0669 retains no stale executable position.
 ## WP4 probe ledger reservation — 29 October 2026
 
 Owner: `codex/ai-review-wp4-gateway-20261029`. Claim **0678_ai_connection_probe_ledger**;
@@ -124,3 +201,20 @@ independently checked before this append. Every existing journal entry and appli
 is preserved. The0678 SQL SHA256 remains
 `e96851f0b09ba117f9cec03852b9c270da456c36b69a5199a588f483e1a9772a`.
 This source allocation does not itself establish migration application or release acceptance.
+## Historical original-five candidate — superseded 29 October 2026
+
+The old filenames and three positions below were never applied and are superseded by the owner-approved combined allocation at the top of this file.
+
+The approved-board candidate preserves the exact `main`/`alpha` journal prefix at
+`46049dead200d6f436d10f5984c06634502a6286`. Both refs were freshly fetched before this append;
+the staging ledger still contained553 rows with maximum timestamp1793330000000.
+These three successor entries are source allocations, not a deployment record:
+
+| Owner | Index | Timestamp | Filename tag |
+| --- | ---: | ---: | --- |
+| Approved board: EPF |668|1793330000001|0678_epf_manual_percentage|
+| Approved board: profile approvals |669|1793330000002|0679_profile_field_approvals|
+| Approved board: OCBC files |670|1793330000003|0680_ocbc_bank_payment_exports|
+
+The candidate must rehearse these together against the preserved prefix. Refresh refs and the target
+ledger again before any installation; reconcile an intervening append rather than overwriting it.

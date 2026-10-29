@@ -1,4 +1,6 @@
 import { generateKeyPairSync, sign } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { describe, expect, it, afterEach, vi } from 'vitest';
 import { validCompanyProfile, type CompanyProfile } from '../lib/mobile-connection';
 import { isWorkplaceSetupLink, readWorkplaceSetupLink, setupBytes, workplaceSetupLinks, WORKPLACE_SETUP_PATH } from '../lib/mobile-workplace-setup';
@@ -71,6 +73,53 @@ describe('signed workplace setup routing', () => {
       'https://hr.example.test/not-setup#setup=abc']) expect(() => readWorkplaceSetupLink(value)).toThrow();
     expect(() => workplaceSetupLinks(signed({ ...base, expiresAt: now - 1 }))).toThrow();
     expect(() => validCompanyProfile({ ...base, authProvider: 'keycloak', issuer: base.apiOrigin + '/realms/x' })).toThrow();
+    expect(isWorkplaceSetupLink('aihr://auth/callback?code=legacy')).toBe(false);
+  });
+});
+
+/**
+ * The phone does not have WHATWG URL. React Native installs Libraries/Blob/URL.js, a regex polyfill that knows only
+ * http(s) hosts: for `aihr://company#setup=…` it reports hostname '' and pathname '/'. Load the INSTALLED polyfill
+ * (Flow stripped by the app's own Babel) and run the shipped parser and verifier under it.
+ */
+function reactNativeUrl(): typeof URL {
+  const mobile = createRequire(new URL('../mobile/package.json', import.meta.url));
+  // Loaded from the app's own dependencies; the repository root does not install @babel/core or its types.
+  const babel = mobile('@babel/core') as { transformSync(code: string, options: Record<string, unknown>): { code?: string | null } | null };
+  const file = mobile.resolve('react-native/Libraries/Blob/URL.js');
+  const code = babel.transformSync(readFileSync(file, 'utf8'), { babelrc: false, configFile: false, filename: file,
+    plugins: [mobile.resolve('@babel/plugin-transform-flow-strip-types'), mobile.resolve('@babel/plugin-transform-modules-commonjs')] })!.code!;
+  const module = { exports: {} as { URL: typeof URL } };
+  new Function('exports', 'module', 'require', code)(module.exports, module, (id: string) => {
+    if (id === './NativeBlobModule') return { __esModule: true, default: null };
+    if (id === './URLSearchParams') return { URLSearchParams };
+    throw new Error('Unexpected polyfill dependency ' + id);
+  });
+  return module.exports.URL;
+}
+
+describe('workplace setup links on the React Native runtime', () => {
+  const RNURL = reactNativeUrl();
+  it('is the polyfill that cannot read an app link (the premise of the fix)', () => {
+    const native = new RNURL('aihr://company#setup=abc');
+    expect([native.protocol, native.hostname, native.pathname]).toEqual(['aihr:', '', '/']);
+  });
+  it('accepts and verifies both setup links, and still refuses the malformed ones', () => {
+    const links = workplaceSetupLinks(signed());
+    vi.stubGlobal('URL', RNURL);
+    for (const link of [links.app, links.web]) {
+      expect(isWorkplaceSetupLink(link)).toBe(true);
+      expect(verifyCompanyProfile(readWorkplaceSetupLink(link), trust)).toMatchObject({ apiOrigin: base.apiOrigin, organization: 'acme' });
+    }
+    for (const link of [links.web.replace('https:', 'http:'), links.web.replace('hr.example.test', 'attacker.test'),
+      links.web.replace('#setup=', '?organization=beta#setup='), links.web.replace('https://', 'https://user@'),
+      links.app.replace('company#', 'company/other#'), links.app.replace('company#', 'company:8080#'), links.app.replace('company#', 'company?x=1#'),
+      links.app + '&organization=beta', links.app + '#setup=again', links.app.replace('aihr:', 'javascript:'),
+      links.app.replace('company', 'name:password@company'), links.app.replace('aihr://', 'AIHR://'), 'aihr://company', 'aihr://company#setup=']) {
+      expect(() => readWorkplaceSetupLink(link)).toThrow();
+    }
+    // A malformed setup link is still recognised as one, so the app shows a refusal instead of ignoring it.
+    expect(isWorkplaceSetupLink(links.app.replace('company', 'name:password@company'))).toBe(true);
     expect(isWorkplaceSetupLink('aihr://auth/callback?code=legacy')).toBe(false);
   });
 });

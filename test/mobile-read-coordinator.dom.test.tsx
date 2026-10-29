@@ -46,3 +46,52 @@ describe('bounded shared read ownership',()=>{
     for(const value of [null,'','0','-1','not-a-date','9999999999','1'.repeat(1000),new Date(now-60000).toUTCString()])expect(retryAfterSeconds(value,now)).toBeUndefined();
   });
 });
+
+describe('bounded concurrency and one short retry',()=>{
+  function limited(concurrency:number,retry?:(e:unknown)=>number|undefined){
+    return createReadCoordinator({unavailable:seconds=>new Unavailable(seconds),obsolete:()=>new Obsolete(),backoff:()=>undefined,retry},64,concurrency);
+  }
+  const tick=()=>new Promise(r=>setTimeout(r,0));
+  it('starts at most N loads, queues the rest in order, and never starts a queued read nobody wants',async()=>{
+    const owner=limited(2),started:string[]=[],release=new Map<string,(v:string)=>void>();
+    const load=(key:string)=>()=>{started.push(key);return new Promise<string>(r=>{release.set(key,r);});};
+    const gone=new AbortController();
+    const reads=[owner.read('s','a',load('a')),owner.read('s','b',load('b')),owner.read('s','c',load('c'),gone.signal).catch(e=>e),owner.read('s','d',load('d'))];
+    await tick();expect(started).toEqual(['a','b']);
+    gone.abort();expect(await reads[2]).toBeInstanceOf(Unavailable);
+    release.get('a')!('A');await tick();expect(started).toEqual(['a','b','d']);
+    release.get('b')!('B');release.get('d')!('D');
+    expect(await Promise.all([reads[0],reads[1],reads[3]])).toEqual(['A','B','D']);
+    expect(started).not.toContain('c');
+  });
+  it('frees the slot when a load fails, and when a scope change cancels the queue',async()=>{
+    const owner=limited(1);let release!:(v:string)=>void;
+    const failing=owner.read('s','a',async()=>{throw new Error('down');}).catch(e=>e);
+    const next=owner.read('s','b',()=>new Promise<string>(r=>{release=r;}));
+    expect(await failing).toBeInstanceOf(Error);await tick();release('B');expect(await next).toBe('B');
+    const blocked=owner.read('s','c',()=>new Promise<string>(()=>{}));const waiting=owner.read('s','d',async()=>'never').catch(e=>e);
+    void blocked.catch(()=>{});
+    expect(await owner.read('other-scope','e',async()=>'E').catch(e=>e)).toBe('E');
+    expect(await waiting).toBeInstanceOf(Obsolete);
+  });
+  it('retries once after the port\'s delay, in a fresh slot, and gives up after the second refusal',async()=>{
+    vi.useFakeTimers();
+    try{
+      const busy=new Unavailable(1),owner=limited(1,e=>e===busy?1000:undefined);
+      const load=vi.fn().mockRejectedValueOnce(busy).mockResolvedValueOnce('fine');
+      const first=owner.read('s','a',load);
+      await vi.advanceTimersByTimeAsync(999);expect(load).toHaveBeenCalledOnce();
+      // The waiting retry holds no slot: another read runs meanwhile.
+      expect(await owner.read('s','other',async()=>'other')).toBe('other');
+      await vi.advanceTimersByTimeAsync(1);expect(await first).toBe('fine');expect(load).toHaveBeenCalledTimes(2);
+      const twice=vi.fn().mockRejectedValue(busy);const second=owner.read('s','b',twice).catch(e=>e);
+      await vi.advanceTimersByTimeAsync(5000);expect(await second).toBe(busy);expect(twice).toHaveBeenCalledTimes(2);
+      const long=vi.fn().mockRejectedValue(new Unavailable(5));const noRetry=limited(1,()=>undefined).read('s','c',long).catch(e=>e);
+      await vi.advanceTimersByTimeAsync(10000);expect(await noRetry).toBeInstanceOf(Unavailable);expect(long).toHaveBeenCalledOnce();
+      // A consumer that leaves during the wait cancels the retry.
+      const leave=new AbortController(),again=vi.fn().mockRejectedValueOnce(busy).mockResolvedValue('late');
+      const left=owner.read('s','d',again,leave.signal).catch(e=>e);await vi.advanceTimersByTimeAsync(10);leave.abort();
+      expect(await left).toBeInstanceOf(Unavailable);await vi.advanceTimersByTimeAsync(5000);expect(again).toHaveBeenCalledOnce();
+    }finally{vi.useRealTimers();}
+  });
+});

@@ -26,7 +26,7 @@ const ALL_TABLES = [
   // Person-wide disclosure choices survive cosmetic resets, but never a test-fixture reset.
   'employee_home_person_privacy_revision',
   // ESS pending photo bytes must not survive a fixture reset.
-  'profile_photo_proposal',
+  'profile_photo_proposal','profile_change_attachment',
   'lc_onboarding_case_revision','lc_onboarding_private_revision','lc_onboarding_notice','lc_onboarding_config','lc_onboarding_config_history','lc_onboarding_case','lc_onboarding_private','lc_onboarding_note','lc_onboarding_seen',
   'system_label_collision_baseline', 'system_label_criteria_epoch',
   'overtime_pattern_epoch','overtime_pattern','overtime_pattern_version','overtime_pattern_version_company','overtime_pattern_version_state','overtime_pattern_legacy_binding','overtime_pattern_assignment','overtime_pattern_assignment_employment',
@@ -41,7 +41,7 @@ const ALL_TABLES = [
   'performance_assessment_catalogue','performance_assessment_reminder_run','performance_assessment_reminder_recipient','performance_assessment_reminder_epoch',
   'performance_onehr_cycle', 'performance_onehr_review', 'performance_onehr_panel', 'performance_onehr_calibration', 'performance_onehr_calibration_entry', 'performance_onehr_plan', 'performance_onehr_evidence', 'performance_onehr_result',
   'attendance_workflow_cc_delivery', 'attendance_workflow_template', 'attendance_workflow_setting', 'attendance_workflow_request', 'attendance_workflow_decision',
-  'reward_cycle', 'reward_unit', 'reward_member', 'reward_entry', 'reward_decision', 'reward_calendar',
+  'reward_company_exclusion','reward_access_source_epoch','reward_access_bootstrap','reward_access_observation','reward_access_request','reward_cycle', 'reward_unit', 'reward_member', 'reward_entry', 'reward_decision', 'reward_calendar',
   'mobile_design_draft', 'mobile_design_release',
   'tenant', 'company', 'company_logo', 'person', 'position', 'department', 'cost_center', 'employment',
   'assignment', 'reporting_line', 'leave_type', 'leave_ledger',
@@ -69,7 +69,7 @@ const ALL_TABLES = [
   'movement_event_type',
   'holiday', 'holiday_group_holiday', 'attendance', 'attendance_policy', 'travel_request',
   'letter_verification_rate','letter_access_token','letter_recipient_event','letter_artifact','letter_approval_decision','letter_revision','letter_record','letter_job','letter_counter','letter_generation_batch','letter_template_field','letter_template_version','letter_template','letter_merge_field_version','letter_policy_version','letter_asset','letter_capability_grant',
-  'import_attempt_event','import_attempt_item','import_attempt',
+  'import_attempt_event','bank_import_row', 'bank_import_chunk', 'bank_import_job', 'import_attempt_item','import_attempt',
   'payroll_history_import_event','payroll_history_import_revision','payroll_history_import_snapshot','payroll_history_import_record','payroll_history_import_attempt',
   'payroll_batch', 'payslip', 'payroll_input', 'payroll_individual_txn', 'employee_cp38', 'company_statutory_my',
   'payroll_leave_exception', 'employment_holiday_calendar',
@@ -94,6 +94,7 @@ const ALL_TABLES = [
   'employee_device', 'attendance_clock_capture', 'attendance_attention_review',
   'notification', 'notification_pref', 'notification_delivery', 'notification_cursor', 'notification_email_policy',
   'account_email_delivery',
+  'email_design_version', 'email_design', 'email_asset',
   // 6e122302 — the Notice Board. `notice_recipient` cascades from `notice`, but BOTH are listed for the
   // ADR-0071 reason recorded further down: a table only ever cleared as a side effect is a table that
   // stops being cleared the day the cascade path changes. A surviving notice would also make a later

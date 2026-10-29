@@ -3,7 +3,7 @@ import {revalidatePath} from 'next/cache';
 import {z,ZodError} from 'zod';
 import {adminCompanies} from '@/core/read';
 import {getSession} from '@/lib/session';
-import {rewardPolicyTaken,listRewardPolicyGroups,saveRewardPolicyGroup,RewardPolicyGroupError,defaultPolicy} from '@/packs/rewards/service';
+import {changeRewardCompanyExclusion,rewardPolicyTaken,listRewardPolicyGroups,saveRewardPolicyGroup,RewardPolicyGroupError,defaultPolicy} from '@/packs/rewards/service';
 import {rewardPolicyFromForm,RewardPolicyInputError} from '@/app/rewards/policy-input';
 import type {SharedRewardSaveResult} from './editor';
 export async function saveSharedRewardPolicyAction(form:FormData):Promise<SharedRewardSaveResult>{
@@ -30,4 +30,12 @@ export async function loadSharedRewardTakenAction(year:number){
  const parsed=z.number().int().min(2000).max(2200).parse(year);
  const companies=await adminCompanies(session);
  return rewardPolicyTaken(session,companies.map(company=>company.id),parsed);
+}
+
+export async function changeSharedRewardExclusionAction(form:FormData):Promise<{ok:boolean}>{
+ const session=await getSession();
+ try{
+  await changeRewardCompanyExclusion(session,{companyId:form.get('companyId'),year:Number(form.get('year')),reason:form.get('reason'),endId:form.get('endId')||null});
+  revalidatePath('/admin/rewards','layout');return {ok:true};
+ }catch{return {ok:false};}
 }

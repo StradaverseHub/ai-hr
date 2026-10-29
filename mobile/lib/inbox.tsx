@@ -25,6 +25,7 @@ import { authGeneration } from './auth';
 import { config, identityNamespace } from './config';
 import { SignInRequiredError } from './errors';
 import { appLocale, t, type MessageKey } from './i18n';
+import { fmtInstant } from './attendance-format';
 import { PagedList, usePagedList, type PageLoader, type PagedListState } from './paged-list';
 import { useSession } from './session';
 import { Button, Card, LoadState, Muted, Row, Title } from './ui';
@@ -46,7 +47,9 @@ export function notificationHref(destination: NotificationDestination | null | u
 const openLabel = (destination: NotificationDestination | null) =>
   destination && notificationHref(destination) ? t(OPEN_LABEL[destination.screen]) : null;
 const itemKey = (item: NotificationItemV2) => item.id;
-const when = (iso: string) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleString() : iso; };
+/** The app's own date-time style in the person's language and the company's business zone (as every other screen), never
+ * the device's US-style default. */
+const when = (iso: string) => (Number.isFinite(new Date(iso).getTime()) ? fmtInstant(iso, 'Asia/Kuala_Lumpur') : iso);
 
 // ── Inbox ──────────────────────────────────────────────────────────────────────────────────────────────────────
 

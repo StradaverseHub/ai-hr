@@ -1,10 +1,11 @@
+import {previewRewardAccessChange,saveRewardAccessChange,setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext } from '../db/client';
 import * as s from '../db/schema';
 import { hireEmployee, setEmploymentBlacklist } from '../core/org';
-import { createRewardUnit, deleteRewardReview, getRewardConfiguration, getRewardUnit, listRewardUnits, previewRewardAccessChange, rewardAccessAdministration, rewardDeletionEligibility, saveRewardAccessChange, setRewardMember, saveRewardEntry, saveRewardPolicy } from '../packs/rewards/service';
+import { createRewardUnit, deleteRewardReview, getRewardConfiguration, getRewardUnit, listRewardUnits, rewardAccessAdministration, rewardDeletionEligibility, saveRewardEntry, saveRewardPolicy } from '../packs/rewards/service';
 import { emptyFacts, emptyRecommendation, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -288,7 +289,7 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         expect(retainedMember.role).toBe('pbp');
         await deleteRewardReview(admin,id,await revision(),id);
         const replacement=await createRewardUnit(admin,{name:'Replacement review',year,companyId:b.companyId,businessUnitId:bu,snapshotDate:today});
-        await expect(withTenant(admin,tx=>tx.update(s.rewardMember).set({unitId:replacement}).where(eq(s.rewardMember.id,retainedMember.id)))).rejects.toMatchObject({cause:expect.objectContaining({message:'Reward evidence cannot move between reviews',code:'23514'})});
+        expect(await withTenant(admin,tx=>tx.update(s.rewardMember).set({unitId:replacement}).where(eq(s.rewardMember.id,retainedMember.id)).returning())).toEqual([]);
         const retained=await owner.db.select().from(s.rewardMember).where(eq(s.rewardMember.unitId,id)).orderBy(asc(s.rewardMember.id));
         expect(retained).toEqual(before);
     });

@@ -1,4 +1,4 @@
-/** Independent exact current Profile scope (0560 insert/delete, 0571 routed read/update and
+/** Independent exact current Profile scope (0560 insert/delete, 0679 immutable routed snapshots and
  * the additive 0579 restrictive review gates), held
  * constant on both sides of historical 0515 comparisons; named routing is not legacy equivalence. */
 import {expect} from 'vitest';
@@ -20,7 +20,7 @@ const currentProfilePolicies:CurrentProfilePolicy[]=[
   {
     "policy": "profile_change_request_read",
     "cmd": "SELECT",
-    "qual": "tenant_id=app.current_tenant_id() AND EXISTS (SELECT 1 FROM employment e WHERE e.id=profile_change_request.employment_id AND e.tenant_id=profile_change_request.tenant_id AND e.person_id=profile_change_request.person_id AND (app.is_self_person(e.person_id) OR app.profile_route_reader(e.id,profile_change_request.route_approver_user_id,profile_change_request.route_approver_employment_id,profile_change_request.status::text)))",
+    "qual": "tenant_id=app.current_tenant_id() AND (app.access_profile_request_own(person_id) OR app.profile_request_reader(id))",
     "withCheck": null
   },
   {
@@ -32,8 +32,8 @@ const currentProfilePolicies:CurrentProfilePolicy[]=[
   {
     "policy": "profile_change_request_update",
     "cmd": "UPDATE",
-    "qual": "tenant_id=app.current_tenant_id() AND app.profile_route_reader(employment_id,route_approver_user_id,route_approver_employment_id,status::text)",
-    "withCheck": "tenant_id=app.current_tenant_id() AND app.profile_route_reader(employment_id,route_approver_user_id,route_approver_employment_id,status::text)"
+    "qual": "tenant_id=app.current_tenant_id() AND app.profile_request_reader(id)",
+    "withCheck": "tenant_id=app.current_tenant_id() AND app.profile_request_reader(id)"
   },
   {
     "policy": "profile_change_request_delete",

@@ -1,9 +1,10 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { lazy, Suspense, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { btnPrimary, inputCls } from '../ui';
 import type { AiWorkspaceTaskId } from '../../lib/ai/workspace-tasks';
+const AssistantFileImport=lazy(()=>import('./file-import').then(module=>({default:module.AssistantFileImport})));
 
 type Task = { id: AiWorkspaceTaskId; label: string; prompt: string };
 type Props = {
@@ -12,11 +13,11 @@ type Props = {
   labels: { tasks: string; taskHint: string; question: string; placeholder: string; ask: string; working: string; scope: string };
   /** 'hero': the Assistant home layout. The question box leads, with send inside it; task shortcuts follow as chips. */
   layout?: 'stacked' | 'hero';
+  fileImport?: boolean;
 };
 
-function ComposerFields({ tasks, labels, layout = 'stacked' }: Omit<Props, 'action'>) {
+function ComposerFields({ tasks, labels, layout = 'stacked',question,setQuestion }: Omit<Props, 'action'> & {question:string;setQuestion:(value:string)=>void}) {
   const { pending } = useFormStatus();
-  const [question, setQuestion] = useState('');
   const textarea = useRef<HTMLTextAreaElement>(null);
   const choose = (task: Task) => { setQuestion(task.prompt); textarea.current?.focus(); };
   if (layout === 'hero') return <>
@@ -66,6 +67,8 @@ function ComposerFields({ tasks, labels, layout = 'stacked' }: Omit<Props, 'acti
 }
 
 /** Task selection only writes local form state. No automatic provider call or hidden task capability. */
-export function WorkspaceComposer({ action, tasks, labels, layout }: Props) {
-  return <form action={action} className="space-y-4"><ComposerFields tasks={tasks} labels={labels} layout={layout} /></form>;
+export function WorkspaceComposer({ action, tasks, labels, layout,fileImport }: Props) {
+  const [question,setQuestion]=useState('');
+  const composer=<form action={action} className="space-y-4"><ComposerFields tasks={tasks} labels={labels} layout={layout} question={question} setQuestion={setQuestion}/></form>;
+  return fileImport?<Suspense fallback={composer}><AssistantFileImport normalComposer={composer} instruction={question} onInstructionChange={setQuestion}/></Suspense>:composer;
 }

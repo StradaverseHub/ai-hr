@@ -1,32 +1,21 @@
-import {revalidatePath} from 'next/cache';
+/** Compatibility admission for an already-open client. Processing is always delegated to the worker. */
+import {createHash} from 'node:crypto';
 import {requireAdmin} from '@/lib/authz';
-import {commitBankStatutoryUpload} from '@/core/bank-statutory-upload';
-import {BankStatutoryImportError} from '@/core/bank-statutory-import';
-import {ImportHistoryError,IMPORT_SOURCE_MAX_BYTES} from '@/core/import-history';
-import {publicErrorMessage} from '@/lib/public-error';
+import {createBankImportJob,uploadBankImportChunk,bankImportCommand} from '@/core/bank-import-job';
+import {BANK_IMPORT_CHUNK_BYTES} from '@/lib/bank-import-job';
+import {IMPORT_SOURCE_MAX_BYTES} from '@/core/import-history';
+import {assertBankImportOrigin,bankImportBody,bankImportHttpError} from '@/lib/bank-import-http';
 export const runtime='nodejs';
-/**
- * 0db97f14 — Bank & Statutory Import: the ORIGINAL file bytes, so Import History keeps the file and its
- * sha256. Same-origin only and bounded before parsing, like the Cost Center Allocation upload.
- */
 export async function POST(request:Request){
  const ctx=await requireAdmin();
- const origin=request.headers.get('origin');
- const host=request.headers.get('x-forwarded-host')??request.headers.get('host');
- if(!origin||!host||new URL(origin).host!==host)return Response.json({error:null},{status:403});
- if(Number(request.headers.get('content-length'))>IMPORT_SOURCE_MAX_BYTES)return Response.json({error:null},{status:413});
- if(!request.body)return Response.json({error:null},{status:400});
- const reader=request.body.getReader(),chunks:Uint8Array[]=[];let length=0;
  try{
-  while(true){const next=await reader.read();if(next.done)break;length+=next.value.length;
-   if(length>IMPORT_SOURCE_MAX_BYTES){await reader.cancel();return Response.json({error:null},{status:413});}chunks.push(next.value);}
-  const url=new URL(request.url);
-  const result=await commitBankStatutoryUpload(ctx,{name:url.searchParams.get('name')??'',operationKey:request.headers.get('x-upload-operation')??undefined,content:Buffer.concat(chunks)});
-  revalidatePath('/admin/personnel','layout');revalidatePath('/admin/personnel/import/history');
-  return Response.json(result,{headers:{'Cache-Control':'private, no-store'}});
- }catch(error){
-  const known=error instanceof ImportHistoryError||error instanceof BankStatutoryImportError;
-  if(!known)console.error('[bank statutory upload]',error);
-  return Response.json({error:known?publicErrorMessage(error):null},{status:400,headers:{'Cache-Control':'private, no-store'}});
- }finally{reader.releaseLock();}
+  assertBankImportOrigin(request);
+  const content=await bankImportBody(request,IMPORT_SOURCE_MAX_BYTES),name=new URL(request.url).searchParams.get('name')??'bank-statutory.csv';
+  const admitted=await createBankImportJob(ctx,{name,bytes:content.length,hash:createHash('sha256').update(content).digest('hex')});
+  if(!admitted.existing||admitted.job.state==='uploading'){
+   for(let offset=0,part=0;offset<content.length;offset+=BANK_IMPORT_CHUNK_BYTES,part++)await uploadBankImportChunk(ctx,admitted.job.id,part,content.subarray(offset,offset+BANK_IMPORT_CHUNK_BYTES));
+   admitted.job=await bankImportCommand(ctx,admitted.job.id,'validate');
+  }
+  return Response.json({jobId:admitted.job.id,error:'This file has a background import. Reload the importer to review its progress and confirm the validated changes.'},{status:409,headers:{'Cache-Control':'private, no-store'}});
+ }catch(error){return bankImportHttpError(error);}
 }

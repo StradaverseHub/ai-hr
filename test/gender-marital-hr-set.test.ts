@@ -90,13 +90,15 @@ describe('R4 #2 — HR-set gender / marital status', () => {
     });
   });
 
-  it('a non-admin session is rejected', async () => {
+  it('a non-admin without a prepared own-profile edit is rejected without changing the record', async () => {
     const E = await hire('Guarded');
     const uid = await createAppUser(b.tenantId, E.personId, 'employee');
     const empCtx: SessionContext = { tenantId: b.tenantId, userId: uid, personId: E.personId, roles: ['employee'] };
+    const before=await personRow(E.personId);
     await expect(
       setPersonComplianceFields(empCtx, { employmentId: E.employmentId, gender: 'male' }),
-    ).rejects.toThrow(/admin/i);
+    ).rejects.toMatchObject({code:'permission',fieldIds:[]});
+    expect(await personRow(E.personId)).toEqual(before);
     // nothing persisted
     expect((await personRow(E.personId)).gender).toBeNull();
   });

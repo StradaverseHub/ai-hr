@@ -63,6 +63,8 @@ export function approvalRefusalText(r: TaskDecisionRefusal): string {
   return r.code === 'decision_refused' && r.message && appLocale() === 'en' ? r.message : t(REFUSAL[r.code]);
 }
 const DAY_TYPE: Record<'workday' | 'rest_day' | 'holiday', MessageKey> = { workday: 'approvalWorkday', rest_day: 'approvalRestDay', holiday: 'approvalHoliday' };
+/** The web approver's duration label for a half day (lib/leave-duration.ts durationLabel), in the app's own words. */
+const HALF_DAY: Record<'half_day_am' | 'half_day_pm', MessageKey> = { half_day_am: 'halfAM', half_day_pm: 'halfPM' };
 const span = (from: string, to: string) => (from === to ? from : t('leaveDateSpan', { from, to }));
 const hours = (minutes: number) => String(Math.round((minutes / 60) * 100) / 100);
 const keyOf = (item: TaskItemV2) => `${item.kind}:${item.id}`;
@@ -72,10 +74,27 @@ function openOnWeb(path: string | null) {
   if (url) void Linking.openURL(url).catch(() => {});
 }
 
+/**
+ * The row's one-line summary: what the web approvals page prints on this row for this caller (the server sends only
+ * that — TaskItemV2.summary). Null when the server sent none.
+ */
+export function taskSummaryLine(item: TaskItemV2): string | null {
+  const s = item.summary;
+  if (!s) return null;
+  const parts = [
+    s.label,
+    s.from && s.to ? span(s.from, s.to) : s.from,
+    s.days != null ? fmtDays(s.days) : null,
+    s.amount != null ? claimMoney(s.amount, s.currency) : null,
+  ].filter((part): part is string => !!part);
+  return parts.length ? parts.join(' · ') : null;
+}
+
 export function TaskRow({ item }: { item: TaskItemV2 }) {
   const { palette } = useTenantDesign();
-  const label = `${t(KIND_LABEL[item.kind])}${item.subject.name ? ` · ${item.subject.name}` : ''}`;
-  const body = <><Text style={{ color: palette.text, fontSize: 17, fontWeight: '600' }}>{t(KIND_LABEL[item.kind])}</Text>{item.subject.name ? <Muted>{item.subject.name}</Muted> : null}</>;
+  const summary = taskSummaryLine(item);
+  const label = [t(KIND_LABEL[item.kind]), item.subject.name, summary].filter(Boolean).join(' · ');
+  const body = <><Text style={{ color: palette.text, fontSize: 17, fontWeight: '600' }}>{t(KIND_LABEL[item.kind])}</Text>{item.subject.name ? <Muted>{item.subject.name}</Muted> : null}{summary ? <Muted>{summary}</Muted> : null}</>;
   if (item.nativeDecision) {
     return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => router.push({ pathname: '/approvals/[kind]/[id]', params: { kind: item.kind, id: item.id } })}
       style={{ paddingVertical: 14, borderBottomWidth: 1, borderColor: palette.border, gap: 6 }}>{body}</Pressable>;
@@ -136,9 +155,11 @@ type Sent = { body: Body; phase: 'sending' | 'uncertain' };
 /** What the task asks, in one line: type · dates · days, or the attendance application's own facts. */
 export function taskLine(task: TaskDetailV2): string {
   if (task.kind === 'claim') return t('claimsApprovalLine', { type: task.claimItem ? `${task.claimType} · ${task.claimItem}` : task.claimType, amount: claimMoney(task.amount, task.currency), date: task.incurredOn });
-  if (task.kind === 'leave') return t('approvalLeaveLine', { type: task.leaveType, dates: span(task.startDate, task.endDate), days: fmtDays(task.days) })
+  // fmtDays already carries its unit ("5 days"); the summary templates add none (a "{days} days" template doubled it).
+  if (task.kind === 'leave') return t('approvalLeaveSummary', { type: task.leaveType, dates: span(task.startDate, task.endDate), days: fmtDays(task.days) })
+    + (task.durationType === 'half_day_am' || task.durationType === 'half_day_pm' ? ` · ${t(HALF_DAY[task.durationType])}` : '')
     + (task.fromTime && task.toTime ? ` · ${task.fromTime}–${task.toTime}` : '');
-  if (task.kind === 'leaveCancellation') return t('approvalCancellationLine', { type: task.leaveType, dates: task.cancelDates.join(', '), days: fmtDays(task.requestedDays) });
+  if (task.kind === 'leaveCancellation') return t('approvalCancellationSummary', { type: task.leaveType, dates: task.cancelDates.join(', '), days: fmtDays(task.requestedDays) });
   if (task.application === 'overtime') return t('approvalOvertimeLine', { date: task.date, hours: task.requestedOtMinutes == null ? '—' : hours(task.requestedOtMinutes) })
     + (task.plannedStart && task.plannedEnd ? ` · ${task.plannedStart}–${task.plannedEnd}` : '') + (task.dayType ? ` · ${t(DAY_TYPE[task.dayType])}` : '');
   return t('approvalCorrectionLine', { date: task.date }) + (task.proposedCheckIn || task.proposedCheckOut ? ` · ${task.proposedCheckIn ?? '—'}–${task.proposedCheckOut ?? '—'}` : '');
@@ -162,6 +183,7 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
   const busy = sent?.phase === 'sending';
   const pendingDates = task?.kind === 'leave' ? task.dates.filter((d) => d.status === 'pending').map((d) => d.date) : [];
   const perDate = pendingDates.length > 0;
+  const dayOf = new Map(task?.kind === 'leave' ? task.dates.map((d) => [d.date, d.days] as const) : []);
   const approving = checked ?? pendingDates;
   const partial = perDate && approving.length < pendingDates.length;
   const trimmed = reason.trim();
@@ -229,6 +251,16 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
               open={() => apiDownload(v2Download(taskPath('claim', task.id, 'document'), CLAIM_RECEIPT_MAX_BYTES, CLAIM_RECEIPT_TYPES), { attachment: r.id })} />)}
         </Card>
       </>}
+      {task.kind === 'attendance' && task.original && <Card>
+        {heading(t('approvalOriginalHeading'))}
+        <Muted>{task.original.state === 'not_captured' ? t('approvalOriginalNotCaptured') : task.original.state === 'no_record' ? t('approvalOriginalNoRecord')
+          : t('approvalOriginalTimes', { checkIn: task.original.checkIn ?? '—', checkOut: task.original.checkOut ?? '—' })}</Muted>
+      </Card>}
+      {task.kind === 'attendance' && task.proposedPunches && <Card>
+        {heading(t('approvalProposedHeading'))}
+        {task.proposedPunches.length === 0 ? <Muted>{t('approvalProposedNone')}</Muted>
+          : task.proposedPunches.map((p, i) => <Muted key={`${i}:${p.at}:${p.direction}`}>{t('approvalPunchLine', { at: p.at, direction: t(p.direction === 'in' ? 'approvalPunchIn' : 'approvalPunchOut') })}</Muted>)}
+      </Card>}
       {task.kind === 'leave' && task.teamCover && task.teamCover.length > 0 && <Card>
         {heading(t('approvalTeamCover'))}
         {task.teamCover.map((m) => <Muted key={m.name + m.dates.map((d) => d.date).join()}>{t('approvalTeamCoverLine', { name: m.name, dates: m.dates.map((d) => d.status === 'pending' ? t('approvalTeamPendingDate', { date: d.date }) : d.date).join(', ') })}</Muted>)}
@@ -240,7 +272,7 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
           return <Pressable key={date} accessibilityRole="checkbox" accessibilityLabel={date} accessibilityState={{ checked: on, disabled: busy || !!sent }} disabled={busy || !!sent} onPress={() => toggle(date)}
             style={{ minHeight: 48, flexDirection: 'row', gap: 12, alignItems: 'center' }}>
             <View style={{ width: 24, height: 24, borderWidth: 1, borderColor: on ? palette.accent : palette.border, borderRadius: 4, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: palette.accent }}>{on ? '✓' : ''}</Text></View>
-            <Text style={{ color: palette.text, flex: 1 }}>{date}</Text>
+            <Text style={{ color: palette.text, flex: 1 }}>{dayOf.has(date) ? t('approvalDateDays', { date, days: fmtDays(dayOf.get(date)!) }) : date}</Text>
           </Pressable>;
         })}
       </Card>}

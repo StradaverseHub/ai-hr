@@ -7,7 +7,7 @@ import {prepareSmtpRelay} from './smtp-credentials';
 import type {EmailRelay} from '../identity/email-relay';
 
 export type Relay=EmailRelay;
-type TextMail={to:string;subject:string;text:string};
+type TextMail={to:string;subject:string;text:string;html?:string};
 export type Mail=TextMail&(
   | {attachment?:undefined;messageId?:string}
   | {attachment:XlsxEmailAttachment;messageId:string}
@@ -19,7 +19,7 @@ export type MailTransport=(relay:Relay,message:Mail)=>Promise<void>;
 const messageId=z.string().max(320).regex(/^<[A-Za-z0-9][A-Za-z0-9._-]{0,119}@[A-Za-z0-9.-]{1,253}>$/)
   .refine(value=>value.slice(value.indexOf('@')+1,-1).split('.').every(label=>
     label.length<=63&&/^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(label)));
-const message=z.object({to:z.string(),subject:z.string(),text:z.string(),
+const message=z.object({to:z.string(),subject:z.string(),text:z.string(),html:z.string().max(1000000).optional(),
   messageId:messageId.optional(),attachment:xlsxEmailAttachment.optional(),
 }).strict().superRefine((mail,ctx)=>{
   if(mail.attachment&&(!mail.messageId||!z.email().max(320).regex(/^[\x21-\x7e]+$/).safeParse(mail.to).success))
@@ -37,7 +37,7 @@ export const sendSmtp:MailTransport=async(relay,input)=>{
     disableFileAccess:true,disableUrlAccess:true});
   try{
     const result=await transport.sendMail({from:{name:c.fromName,address:c.from},to:mail.to,
-      replyTo:c.replyTo||undefined,envelope:{from:c.from,to:[mail.to]},subject:mail.subject,text:mail.text,
+      replyTo:c.replyTo||undefined,envelope:{from:c.from,to:[mail.to]},subject:mail.subject,text:mail.text,...(mail.html?{html:mail.html}:{}),
       ...(mail.messageId?{messageId:mail.messageId}:{}),
       ...(mail.attachment?{attachments:[{filename:mail.attachment.filename,
         content:Buffer.isBuffer(mail.attachment.bytes)?mail.attachment.bytes:Buffer.from(mail.attachment.bytes),

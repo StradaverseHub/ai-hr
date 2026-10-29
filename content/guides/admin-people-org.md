@@ -6,6 +6,8 @@ Use [Organization](/admin/organization) and [Personnel](/admin/personnel) to mai
 2. Configure [Hiring defaults](/admin/settings/hiring-defaults) and [Employee numbering](/admin/settings/employee-id) if needed.
 3. Create the employee or open [Personnel import](/admin/personnel/import). Use the current template, preview the mapping and errors, and commit only after reviewing the selected company and records.
 4. Open the employee's profile and review personal details, employment, assignment, compensation, bank details and statutory information. Complete the hire workflow; an unfinished hire draft is not an active employment.
+
+For **Bank & Statutory**, upload the current CSV or Excel template and follow its background progress. This section accepts up to 250,000 rows and 128 MiB; other import sections retain their own limits. You can refresh and return to the same import while it validates. The same file cannot start another active import in the tenant. Review the validation results and affected employees before confirming any saves. Processing may retain rows already saved if later rows fail; review Import History and resolve the reported rows before retrying. A stopped or unavailable worker requires administrator attention, rather than repeated uploads.
 5. Record reporting lines so the intended supervisor can see their team and receive the workflows that use that relationship.
 
 ## Changes over time
@@ -17,6 +19,18 @@ Use the movement or termination workflow for employment changes. A resignation r
 ## Malaysian tax and payroll details
 
 Review tax circumstances, dependants and the employee's employment-specific statutory selections. Use the structured TP1, TP3 and zakat screens where appropriate. Prior-employer TP3 figures and imported payroll history are different inputs; do not enter the same earnings in both without reviewing the migration treatment. Use payroll's calculation detail to verify the resulting treatment.
+
+Under the employee's bank and statutory details, **Manual (by percentage)** requires both Employee Rate % and Employer Rate %, each from 1 to 100 with up to two decimal places. Payroll uses these chosen rates directly; select them only after confirming the appropriate election. **Auto (statutory)** and the other EPF categories retain their own calculation rules.
+
+An existing two-rate percentage top-up remains **Top-up (existing percentage election)** with its statutory minimum treatment. Converting it to Manual (by percentage) requires explicit confirmation on the form. Review both rates and the explanation before saving; changing the label alone must not be treated as preserving the old calculation.
+
+## Configure personal-information changes
+
+Administrators open [My Profile field permissions](/admin/settings/profile-requests) to review visibility, edit access, whether each editable field requires approval, and whether evidence is required. Requiring approval does not grant someone access to a hidden or restricted field. Review and save the intended settings.
+
+Open [HR Approval Rules](/admin/settings/profile-requests/rules) to configure which eligible HR approvers receive matching requests. Any one assigned approver may decide, subject to their current authority; an employee cannot approve their own request. Saving new rules does not silently change the approvers already assigned to a pending request.
+
+When reviewing a request, inspect the proposed values and its supporting files before deciding. Coupled fields, such as banking details, can remain together for approval even when one field normally permits a direct change. Keep the employee's saved-versus-waiting outcome in view when investigating an apparent missing update.
 
 ## Give the employee access
 

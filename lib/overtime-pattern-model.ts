@@ -117,6 +117,9 @@ export type OvertimeTier = {
     to: OvertimeDecimal | null;
     payment: OvertimePayment;
     mapping: OvertimeMapping;
+    /** Optional row rounding, applied once per tier/accumulation scope before pricing. Legacy absence
+     * preserves pattern-level rounding. Rounded counts never exceed the selected approved quantity. */
+    rounding?: {step: OvertimeDecimal; mode: OvertimeRoundingMode} | null;
 };
 export type OvertimeRate = {
     id: string;

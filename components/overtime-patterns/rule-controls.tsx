@@ -1,6 +1,7 @@
 'use client';
 
 import {useTranslations} from 'next-intl';
+import {OvertimeSelectionValues} from './selection-values';
 import {OvertimePositionValues} from './position-values';
 import {useOvertimeChoiceText} from './choice-label';
 import {Field, inputCls} from '@/components/ui';
@@ -100,7 +101,7 @@ export function ConditionControl({value,onChange,currency,choices={},definitions
     {value.type==='selection'||value.type==='null'?<Field label={t('field')}><select className={inputCls} value={value.field} onChange={event=>{const field=event.target.value as OvertimeSelectionField;onChange(value.type==='selection'?{...value,field,values:[]}:{...value,field});}}>{(assignment?OVERTIME_ASSIGNMENT_SELECTION_FIELDS:OVERTIME_SELECTION_FIELDS).map(field=><option key={field} value={field}>{t(`fields.${field}`)}</option>)}</select></Field>:null}
     {value.type==='selection'?<>
       <Field label={t('operator')}><select className={inputCls} value={value.operator} onChange={event=>onChange({...value,operator:event.target.value as 'in'|'notIn'})}><option value="in">{t('operators.in')}</option><option value="notIn">{t('operators.notIn')}</option></select></Field>
-      {value.field==='positionId'?<OvertimePositionValues options={choices.positionId??[]} selected={value.values} onChange={values=>onChange({...value,values})}/>:<Field label={t('values')}><select className={`${inputCls} min-h-24`} multiple value={value.values} onChange={event=>onChange({...value,values:Array.from(event.target.selectedOptions,option=>option.value)})}>{(choices[value.field]??[]).map(option=><option key={option.id} value={option.id}>{choiceText(value.field,option)}</option>)}{value.values.filter(id=>!(choices[value.field]??[]).some(option=>option.id===id)).map(id=><option key={id} value={id}>{t('unavailableReference',{id})}</option>)}</select></Field>}
+      {value.field==='positionId'?<OvertimePositionValues options={choices.positionId??[]} selected={value.values} onChange={values=>onChange({...value,values})}/>:<OvertimeSelectionValues field={value.field} options={choices[value.field]??[]} selected={value.values} onChange={values=>onChange({...value,values})}/>}
       {!(choices[value.field]?.length)?<p className="text-xs text-muted-foreground">{t('noChoices')}</p>:null}
     </>:null}
     {value.type==='null'?<Field label={t('operator')}><select className={inputCls} value={String(value.isNull)} onChange={event=>onChange({...value,isNull:event.target.value==='true'})}><option value="true">{t('isMissing')}</option><option value="false">{t('isPresent')}</option></select></Field>:null}
@@ -110,10 +111,17 @@ export function ConditionControl({value,onChange,currency,choices={},definitions
       <p className="text-xs text-muted-foreground">{t('clockConditionHelp')}</p>
     </>:null}
     {value.type==='compare'?<>
-      <Field label={t('operator')}><select className={inputCls} value={value.operator} onChange={event=>{const operator=event.target.value as typeof value.operator;onChange({...value,operator,...(operator==='between'?{upper:value.upper??blankLiteral(value.left.unit,currency)}:{upper:undefined})});}}>{['eq','ne','lt','lte','gt','gte','between'].map(operator=><option key={operator} value={operator}>{t(`operators.${operator}`)}</option>)}</select></Field>
-      <ExpressionControl label={t('left')} value={value.left} onChange={left=>onChange({...value,left})} currency={currency} choices={choices} definitions={definitions} depth={depth+1}/>
-      <ExpressionControl label={t('right')} value={value.right} onChange={right=>onChange({...value,right})} currency={currency} choices={choices} definitions={definitions} depth={depth+1}/>
-      {value.operator==='between'&&value.upper?<ExpressionControl label={t('upper')} value={value.upper} onChange={upper=>onChange({...value,upper})} currency={currency} choices={choices} definitions={definitions} depth={depth+1}/>:null}
+      {value.left.type==='field'&&value.right.type==='literal'&&(!value.upper||value.upper.type==='literal')?<div className="grid gap-3 sm:grid-cols-3">
+        <Field label={t('field')}><select className={inputCls} value={value.left.field} onChange={event=>{const field=event.target.value as OvertimeNumericField,unit=OVERTIME_NUMERIC_FIELDS[field];onChange({...value,left:{...value.left,id:value.left.id,type:'field',field,unit},right:{...blankLiteral(unit,currency),id:value.right.id},upper:value.operator==='between'?blankLiteral(unit,currency):undefined});}}>{Object.keys(OVERTIME_NUMERIC_FIELDS).map(field=><option key={field} value={field}>{t(`fields.${field}`)}</option>)}</select></Field>
+        <Field label={t('operator')}><select className={inputCls} value={value.operator} onChange={event=>{const operator=event.target.value as typeof value.operator;onChange({...value,operator,...(operator==='between'?{upper:value.upper??blankLiteral(value.left.unit,currency)}:{upper:undefined})});}}>{['eq','ne','lt','lte','gt','gte','between'].map(operator=><option key={operator} value={operator}>{t(`operators.${operator}`)}</option>)}</select></Field>
+        <Field label={`${t('guided.comparisonAmount')} · ${value.right.currency??t(`units.${value.right.unit}`)}`}><input inputMode="decimal" className={inputCls} value={value.right.value} onChange={event=>{if(value.right.type==='literal')onChange({...value,right:{...value.right,value:event.target.value}});}}/></Field>
+        {value.operator==='between'&&value.upper?.type==='literal'?<Field label={`${t('upper')} · ${value.upper.currency??t(`units.${value.upper.unit}`)}`}><input inputMode="decimal" className={inputCls} value={value.upper.value} onChange={event=>{if(value.upper?.type==='literal')onChange({...value,upper:{...value.upper,value:event.target.value}});}}/></Field>:null}
+      </div>:<Field label={t('operator')}><select className={inputCls} value={value.operator} onChange={event=>{const operator=event.target.value as typeof value.operator;onChange({...value,operator,...(operator==='between'?{upper:value.upper??blankLiteral(value.left.unit,currency)}:{upper:undefined})});}}>{['eq','ne','lt','lte','gt','gte','between'].map(operator=><option key={operator} value={operator}>{t(`operators.${operator}`)}</option>)}</select></Field>}
+      <details open={!(value.left.type==='field'&&value.right.type==='literal'&&(!value.upper||value.upper.type==='literal'))}><summary className="cursor-pointer text-sm text-primary">{t('guided.advancedCondition')}</summary><div className="mt-3 space-y-3">
+        <ExpressionControl label={t('left')} value={value.left} onChange={left=>onChange({...value,left})} currency={currency} choices={choices} definitions={definitions} depth={depth+1}/>
+        <ExpressionControl label={t('right')} value={value.right} onChange={right=>onChange({...value,right})} currency={currency} choices={choices} definitions={definitions} depth={depth+1}/>
+        {value.operator==='between'&&value.upper?<ExpressionControl label={t('upper')} value={value.upper} onChange={upper=>onChange({...value,upper})} currency={currency} choices={choices} definitions={definitions} depth={depth+1}/>:null}
+      </div></details>
     </>:null}
   </fieldset>;
 }

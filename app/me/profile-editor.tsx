@@ -1,4 +1,5 @@
 'use client';
+import {PROFILE_ATTACHMENT_MAX_BYTES,PROFILE_ATTACHMENT_MAX_FILES} from '@/lib/profile-attachment';
 import {useEffect,useRef,useState,type ReactNode} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
@@ -27,6 +28,7 @@ export function ProfileEditor({workspace,facts,extraPanels,history,hiddenTabs=[]
  const [editing,setEditing]=useState(false),[busy,setBusy]=useState(false),[changes,setChanges]=useState<Record<string,EssScalar>>({}),[newRows,setNewRows]=useState<NewRecord[]>([]),[error,setError]=useState<string|null>(null),[notice,setNotice]=useState<string|null>(null);
  const [comparisons,setComparisons]=useState<Record<string,EssReadRecord[]>>({}),[historyBusy,setHistoryBusy]=useState<string|null>(null);
  const [outcome,setOutcome]=useState<{saved:string[];waiting:string[]}|null>(null);
+ const [supportingFiles,setSupportingFiles]=useState<File[]>([]);
  const pending=useRef(false),requestButton=useRef<HTMLButtonElement>(null);
  const editable=new Set(workspace.editable),primaryEditable=new Set(workspace.legacyPrimaryEditable);
  const fields=essVisibleFields().filter(field=>!workspace.visible||workspace.visible.includes(field.id)),values={...facts.values,...workspace.values},dirty=Object.keys(changes).length>0||newRows.length>0;
@@ -43,7 +45,7 @@ export function ProfileEditor({workspace,facts,extraPanels,history,hiddenTabs=[]
   window.addEventListener('beforeunload',before);document.addEventListener('click',leave,true);document.addEventListener('submit',submit,true);
   return()=>{window.removeEventListener('beforeunload',before);document.removeEventListener('click',leave,true);document.removeEventListener('submit',submit,true);};
  },[editing,dirty,t]);
- function cancel(){if(pending.current)return;setChanges({});setNewRows([]);setEditing(false);setError(null);requestAnimationFrame(()=>requestButton.current?.focus());}
+ function cancel(){if(pending.current)return;setChanges({});setNewRows([]);setSupportingFiles([]);setEditing(false);setError(null);requestAnimationFrame(()=>requestButton.current?.focus());}
  function update(key:string,value:EssScalar,original:EssScalar|undefined){setChanges(previous=>{const next={...previous};if((value??null)===(original??null))delete next[key];else next[key]=value;return next;});}
  async function save(){
   if(pending.current)return;
@@ -56,9 +58,14 @@ export function ProfileEditor({workspace,facts,extraPanels,history,hiddenTabs=[]
   if(!proposal.fields.length&&!proposal.registers.length){cancel();return;}
   pending.current=true;setBusy(true);setError(null);setNotice(null);
   try{
-   const result=await saveMyProfileEditAction({employmentId:workspace.employmentId,proposal});
+   const fields=proposal.fields.concat(proposal.registers.flatMap(row=>row.fields)),required=fields.filter(field=>workspace.approvals?.[field.fieldId]?.attachmentRequired).map(field=>field.fieldId);
+   if(required.length&&!supportingFiles.length){setError(t('error.attachmentRequired')+' '+required.map(fieldLabel).join(', '));return;}
+   if(supportingFiles.length>PROFILE_ATTACHMENT_MAX_FILES||supportingFiles.some(file=>!file.size||file.size>PROFILE_ATTACHMENT_MAX_BYTES)||supportingFiles.reduce((total,file)=>total+file.size,0)>10*1024*1024){setError(t('attachmentLimit'));return;}
+   const fieldIds=fields.filter(field=>workspace.approvals?.[field.fieldId]?.required??true).map(field=>field.fieldId);
+   const attachments=fieldIds.length&&supportingFiles.length?await Promise.all(supportingFiles.map(async file=>({fileName:file.name,mimeType:file.type,fieldIds,contentBase64:await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]??'');reader.onerror=()=>reject(reader.error);reader.readAsDataURL(file);})}))):[];
+   const result=await saveMyProfileEditAction({employmentId:workspace.employmentId,proposal,...(attachments.length?{attachments}:{})});
    if(!result.ok){setError(t(`error.${result.code}`)+(result.fieldIds.length?' '+result.fieldIds.map(fieldLabel).join(', '):'')+('reference' in result&&result.reference?' '+t('reference',{reference:result.reference}):''));return;}
-   setChanges({});setNewRows([]);setEditing(false);setNotice(t('saved',{saved:result.value.saved.length,waiting:result.value.waiting.length}));setOutcome({saved:result.value.saved,waiting:result.value.waiting});router.refresh();requestAnimationFrame(()=>requestButton.current?.focus());
+   setChanges({});setNewRows([]);setSupportingFiles([]);setEditing(false);setNotice(t('saved',{saved:result.value.saved.length,waiting:result.value.waiting.length}));setOutcome({saved:result.value.saved,waiting:result.value.waiting});router.refresh();requestAnimationFrame(()=>requestButton.current?.focus());
   }catch{setError(t('error.system'));}finally{pending.current=false;setBusy(false);}
  }
  function control(field:typeof fields[number],source:Record<string,EssScalar>,row?:EssRecord|NewRecord){
@@ -89,7 +96,7 @@ export function ProfileEditor({workspace,facts,extraPanels,history,hiddenTabs=[]
    {workspace.fieldReadOnlyReasons?.[field.id]==='derivedChildCount'&&<p className="text-xs text-muted-foreground">{t('childCountDerived')}</p>}
    {!taxAvailable&&<p className="text-xs text-muted-foreground">{t('statutoryUnavailable')}</p>}
    {!applicable&&(bankApplicable||editing&&touched)&&<p className="text-xs text-amber-800 dark:text-amber-300">{t(!bankApplicable?'bankNotApplicable':!taxApplicable?'taxNotApplicable':'notApplicable')} {touched&&<button type="button" disabled={busy} onClick={()=>setChanges(previous=>{const next={...previous};delete next[key];return next;})} className="underline">{t('undo')}</button>}</p>}
-   {pendingLines.map(line=><p key={line.key} className="text-xs text-amber-800 dark:text-amber-300">{t('pendingValue',{value:line.value})}</p>)}
+   {allowed&&editing&&workspace.approvals?.[field.id]?.attachmentRequired&&<p className="text-xs text-muted-foreground">{t('requiredAttachedFile')}</p>}{pendingLines.map(line=><p key={line.key} className="text-xs text-amber-800 dark:text-amber-300">{t('pendingValue',{value:line.value})}</p>)}
   </div>;
  }
  async function loadHistory(movementId:string){if(historyBusy)return;setHistoryBusy(movementId);try{const result=await readMyProfileMovementAction({employmentId:workspace.employmentId,movementId});if(result.ok)setComparisons(previous=>({...previous,[movementId]:result.records}));else setError(t(`error.${result.code}`));}catch{setError(t('error.system'));}finally{setHistoryBusy(null);}}
@@ -116,6 +123,7 @@ export function ProfileEditor({workspace,facts,extraPanels,history,hiddenTabs=[]
  }));
  return <div className="space-y-4">
   <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted-foreground">{editing?t('editHelp'):t('viewHelp')}</p><div className="flex gap-2">{editing?<><Button type="button" variant="outline" disabled={busy} onClick={cancel}>{t('cancel')}</Button><Button type="button" disabled={busy} onClick={save}>{busy?t('saving'):t('save')}</Button></>:<Button ref={requestButton} type="button" disabled={!workspace.editable.length&&!workspace.legacyPrimaryEditable.length} onClick={()=>{setEditing(true);setNotice(null);setOutcome(null);}}>{t('requestEdit')}</Button>}</div></div>
+  {editing&&<div className="space-y-2 rounded-md border border-border p-4"><label className="block text-sm font-medium" htmlFor="profile-supporting-files">{t('supportingFiles')}</label><input id="profile-supporting-files" type="file" accept="application/pdf,image/png,image/jpeg" multiple disabled={busy} onChange={event=>setSupportingFiles(Array.from(event.target.files??[]))} className="text-sm"/><p className="text-xs text-muted-foreground">{t('attachmentLimit')}</p>{supportingFiles.map(file=><p key={`${file.name}:${file.lastModified}`} className="text-sm">{file.name}</p>)}</div>}
   {error&&<p role="alert" className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-900 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200">{error}</p>}{notice&&<div role="status" className="rounded-md border border-emerald-300 p-3 text-sm"><p>{notice}</p>{Boolean(outcome?.saved.length)&&<p className="mt-1">{t('savedFields',{fields:outcome!.saved.map(fieldLabel).join(', ')})}</p>}{Boolean(outcome?.waiting.length)&&<p className="mt-1">{t('waitingFields',{fields:outcome!.waiting.map(fieldLabel).join(', ')})}</p>}</div>}
   {activeKeys.length?<ClientTabs<PersonnelTabKey> key={activeKeys.join('|')} tabs={activeKeys.map(key=>({key,label:labels(`people.detail.tabs.${key}`)}))} panels={panels} emptyLabel={t('noRecords')} defaultTab={activeKeys.includes(defaultTab)?defaultTab:activeKeys[0]??defaultTab} ariaLabel={labels('me.title')} monolithTxt/>:<Card className="p-5 text-sm text-muted-foreground">{t('noVisibleSections')}</Card>}
  </div>;

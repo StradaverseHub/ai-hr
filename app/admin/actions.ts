@@ -4,7 +4,7 @@ import { LeavePayrollBusyError, LeavePayrollClosedError } from '@/packs/payroll/
 import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { getTranslations } from 'next-intl/server';
+import { getTranslations,getLocale } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 // 9da61c86 — the Holiday master pages, so its row actions have to answer WHICH page a row is on.
 import { pageOfIndex, parsePageSize } from '@/lib/pagination';
@@ -526,6 +526,7 @@ export async function setCompanyBankProfileAction(formData: FormData) {
       branch: (formData.get('branch') as string) || null,
       swiftCode: (formData.get('swiftCode') as string) || null,
       currency: (formData.get('currency') as string) || null,
+      ...(formData.get('bankFileSettingsPresent')==='1'?{fileContactName:String(formData.get('fileContactName')??''),fileContactPhone:String(formData.get('fileContactPhone')??''),fileStateCode:String(formData.get('fileStateCode')??''),requirePayeeIdCheck:formData.get('requirePayeeIdCheck')==='on'}:{}),
       isPrimary: formData.get('isPrimary') === 'on' || formData.get('isPrimary') === 'true',
     });
   } catch (e) {
@@ -1526,6 +1527,7 @@ export async function inviteUserAction(formData: FormData) {
     if(standalone&&!fullName)throw new Error('Enter the new user’s full name.');
     await inviteUser(s, {
       email: String(formData.get('email') ?? '').trim(),
+      emailLocale:String(formData.get('emailLocale')??await getLocale()),
       role: String(formData.get('role') ?? 'employee'),
       companyId: formData.get('companyId')==='group'?null:(formData.get('companyId') as string)||null,
       ...(standalone?{fullName}:{personId}),

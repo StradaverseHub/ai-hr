@@ -1,3 +1,4 @@
+import {setRewardMember} from './rewards-access-fixture';
 /**
  * P1 WP-H1 (truthful Post) and WP-G (Rewards approvals board, reward calendar 0646). Fictional fixtures only.
  * Every service call runs through withTenant as the app role (ai_hr_app, NOBYPASSRLS); direct RLS probes too.
@@ -12,7 +13,7 @@ import { hireEmployee } from '../core/org';
 import { assignRole, createCompany } from '../core/admin';
 import { setCompensation } from '../core/comp';
 import { createBatch, setPayrollInput } from '../packs/payroll/service';
-import { canPostRewardUnit, createRewardUnit, decideRewardUnit, getRewardCalendar, getRewardUnit, listRewardReviewStatus, postRewardUnit, rewardApprovalsBoard, rewardDueWording, saveRewardCalendar, saveRewardEntry, saveRewardPolicy, sendReadyRewardUnits, setRewardMember, emptyRewardCalendar } from '../packs/rewards/service';
+import { canPostRewardUnit, createRewardUnit, decideRewardUnit, getRewardCalendar, getRewardUnit, listRewardReviewStatus, postRewardUnit, rewardApprovalsBoard, rewardDueWording, saveRewardCalendar, saveRewardEntry, saveRewardPolicy, sendReadyRewardUnits, emptyRewardCalendar } from '../packs/rewards/service';
 import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -41,12 +42,12 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
     return hire.employmentId;
   }
   /** A unit with every seat assigned, policy configured, facts verified. confidentiality by salary. */
-  async function unit(code: string, people: { salary: number; confidentiality?: 'standard' | 'bg' | 'ec' }[]) {
+  async function unit(code: string, people: { salary: number; confidentiality?: 'standard' | 'bg' | 'ec' }[], buActor: SessionContext = actors.bu!) {
     const [bu] = await owner.db.insert(schema.businessUnit).values({ tenantId: b.tenantId, companyId: b.companyId, code, name: `Unit ${code}` }).returning();
     for (const [i, p] of people.entries()) await employee(`${code}-${i}`, p.salary, bu.id);
     const id = await createRewardUnit(admin, { name: 'Board cycle', year, companyId: b.companyId, businessUnitId: bu.id, snapshotDate: today });
     const rev = async () => (await getRewardUnit(admin, id)).unit.revision;
-    for (const seat of ['bu', 'bg', 'ctro', 'ec', 'pbp'] as const) await setRewardMember(admin, id, await rev(), actors[seat]!.userId!, seat);
+    for (const seat of ['bu', 'bg', 'ctro', 'ec', 'pbp'] as const) await setRewardMember(admin, id, await rev(), (seat === 'bu' ? buActor : actors[seat]!).userId!, seat);
     await setRewardMember(admin, id, await rev(), admin.userId!, 'payroll');
     await setRewardMember(admin, id, await rev(), actors.payrollOnly!.userId!, 'payroll');
     await setRewardMember(admin, id, await rev(), actors.grOnly!.userId!, 'gr');
@@ -58,7 +59,7 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
     }
     return id;
   }
-  const submit = async (id: string) => decideRewardUnit(actors.bu!, id, (await getRewardUnit(actors.bu!, id)).unit.revision, 'submit', OK);
+  const submit = async (id: string, who: SessionContext = actors.bu!) => decideRewardUnit(who, id, (await getRewardUnit(who, id)).unit.revision, 'submit', OK);
   const approveTo = async (id: string, stages: ('bg' | 'gr' | 'ctro' | 'ec')[]) => {
     for (const s of stages) { const who = s === 'gr' ? actors.grOnly! : actors[s]!; await decideRewardUnit(who, id, (await getRewardUnit(who, id)).unit.revision, 'approve', OK); }
   };
@@ -259,9 +260,18 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
   // ── G: bulk ────────────────────────────────────────────────────────────────────────────────────────
   describe('Send all ready', () => {
     it('sends ready units, skips a blocked one, refuses one that changed, one decision per success', async () => {
-      const ready1 = await unit('RDY1', [{ salary: 5000 }]), ready2 = await unit('RDY2', [{ salary: 5200 }]);
-      const blocked = await unit('BLK', [{ salary: 5400 }]), changed = await unit('CHG', [{ salary: 5600 }]);
-      for (const id of [ready1, ready2, blocked, changed]) await submit(id);
+      // Each BU CEO has their own real People placement; BG remains a group reviewer across units.
+      const buActors = new Map<string, SessionContext>();
+      async function boardUnit(code: string, salary: number) {
+        const p = await person(`${code}-bu`), userId = await createAppUser(b.tenantId, p.id, 'employee');
+        const buActor: SessionContext = { ...admin, userId, personId: p.id, roles: ['employee'], grants: undefined };
+        const id = await unit(code, [{ salary }], buActor); buActors.set(id, buActor); return id;
+      }
+      const ready1 = await boardUnit('RDY1', 5000), ready2 = await boardUnit('RDY2', 5200);
+      const blocked = await boardUnit('BLK', 5400), changed = await boardUnit('CHG', 5600);
+      expect(new Set([...buActors.values()].map(actor => actor.userId)).size).toBe(4);
+      await expect(getRewardUnit(buActors.get(ready1)!, ready2)).rejects.toThrow(/access has been removed/);
+      for (const id of [ready1, ready2, blocked, changed]) await submit(id, buActors.get(id)!);
       // Drift after submission: a record loses verification, so the BG seat sees a blocking restricted check.
       const [entry] = await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId, blocked));
       await owner.db.update(schema.rewardEntry).set({ facts: { ...entry.facts, reviewed: false } }).where(eq(schema.rewardEntry.id, entry.id));
@@ -272,7 +282,7 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
       expect(board.find(r => r.id === blocked)!.ready).toBe(false);
       // Another session returns and resubmits `changed` after the page opened: same stage, new revision.
       await decideRewardUnit(actors.bg!, changed, seen.find(s => s.unitId === changed)!.revision, 'return', 'Returned by another session for a fix');
-      await submit(changed);
+      await submit(changed, buActors.get(changed)!);
       const before = Object.fromEntries(await Promise.all([ready1, ready2, blocked, changed].map(async id => [id, (await decisions(id)).length] as const)));
       const result = await sendReadyRewardUnits(actors.bg!, [b.companyId], seen);
       expect(result.sent.sort()).toEqual([ready1, ready2].sort());

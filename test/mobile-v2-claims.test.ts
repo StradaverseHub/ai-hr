@@ -342,6 +342,9 @@ describe('the approver’s claim task (D12)', () => {
       fields: [{ key: 'client', label: 'Client', kind: 'text', value: 'Acme' }], receipts: [{ fileName: 'lunch.png', sizeBytes: PNG.byteLength }],
       reasonRequiredToReject: true, expected: { status: 'pending' },
     } });
+    // The list row's summary is the web approvals page's claim row: type, amount (its currency), date incurred.
+    const row = items.find((t) => t.id === id) as unknown as { summary: Record<string, unknown> };
+    expect(row.summary).toEqual({ label: 'Meals', from: RECENT, to: RECENT, days: null, amount: '42.50', currency: seen.body.task.currency });
     const receiptId = seen.body.task.receipts[0].id;
     const file = await taskDocument.GET(new Request(`${TASKS}/claim/${id}/document?attachment=${receiptId}`));
     expect(file.status).toBe(200);
@@ -350,6 +353,7 @@ describe('the approver’s claim task (D12)', () => {
     expect(await (await taskDocument.GET(new Request(`${TASKS}/claim/${id}/document?attachment=${randomUUID()}`))).json()).toEqual({ outcome: 'refused', code: 'no_document' });
     expect((await taskDocument.GET(new Request(`${TASKS}/claim/${id}/document`))).status).toBe(400);
     as(colleague);
+    expect(((await taskGet('')).body.items as { id: string }[]).map((t) => t.id), 'not their task: no row, so no amount').not.toContain(id);
     expect((await taskGet(`/claim/${id}`)).body).toEqual({ outcome: 'refused', code: 'not_assigned' });
     expect(await (await taskDocument.GET(new Request(`${TASKS}/claim/${id}/document?attachment=${receiptId}`))).json()).toEqual({ outcome: 'refused', code: 'not_assigned' });
     as(employee);

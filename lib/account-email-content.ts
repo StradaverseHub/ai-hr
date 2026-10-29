@@ -1,10 +1,21 @@
-/** One rendering owner for account emails and previews. Preview links are deliberately nonfunctional. */
-export function invitationEmailContent(organization:string,activationUrl:string){
- return {subject:'Your AI HR invitation',text:`You have been invited to AI HR. Organization code: ${organization}. Open the link to choose your username and password and enroll your authenticator.\n\n${activationUrl}\n\nThis invitation expires after seven days.`};
-}
-export function recoveryEmailContent(resetUrl:string){
- return {subject:'Reset your AI HR password',text:`A password reset was requested for your AI HR login.\n\nOpen this link within 30 minutes:\n${resetUrl}\n\nYour authenticator or a recovery code is still required if MFA is enrolled. If you did not request this, you can ignore this email.`};
-}
+/** Code-owned account security wording. The same locale owner serves real sends and fictional previews. */
+import type {EmailLocale} from './email-design/model';
+const copy={
+ en:{inviteSubject:'Your AI HR invitation',invite:(org:string,url:string)=>`You have been invited to AI HR. Organization code: ${org}. Open the link to choose your username and password and enroll your authenticator.\n\n${url}\n\nThis invitation expires after seven days.`,recoverySubject:'Reset your AI HR password',recovery:(url:string)=>`A password reset was requested for your AI HR login.\n\nOpen this link within 30 minutes:\n${url}\n\nYour authenticator or a recovery code is still required if MFA is enrolled. If you did not request this, you can ignore this email.`},
+ ms:{inviteSubject:'Jemputan AI HR anda',invite:(org:string,url:string)=>`Anda telah dijemput ke AI HR. Kod organisasi: ${org}. Buka pautan untuk memilih nama pengguna dan kata laluan serta mendaftarkan pengesah anda.\n\n${url}\n\nJemputan ini tamat tempoh selepas tujuh hari.`,recoverySubject:'Tetapkan semula kata laluan AI HR anda',recovery:(url:string)=>`Permintaan menetapkan semula kata laluan telah dibuat untuk log masuk AI HR anda.\n\nBuka pautan ini dalam masa 30 minit:\n${url}\n\nPengesah atau kod pemulihan anda masih diperlukan jika MFA telah didaftarkan. Jika anda tidak membuat permintaan ini, abaikan e-mel ini.`},
+ zh:{inviteSubject:'您的 AI HR 邀请',invite:(org:string,url:string)=>`您已受邀使用 AI HR。组织代码：${org}。打开链接以设置用户名和密码，并登记身份验证器。\n\n${url}\n\n此邀请将在七天后失效。`,recoverySubject:'重置您的 AI HR 密码',recovery:(url:string)=>`有人请求重置您的 AI HR 登录密码。\n\n请在 30 分钟内打开此链接：\n${url}\n\n如果已启用多重身份验证，仍需使用您的身份验证器或恢复码。如果这不是您发起的请求，可以忽略此邮件。`},
+ vi:{inviteSubject:'Lời mời AI HR của bạn',invite:(org:string,url:string)=>`Bạn đã được mời sử dụng AI HR. Mã tổ chức: ${org}. Mở liên kết để chọn tên đăng nhập, mật khẩu và đăng ký ứng dụng xác thực.\n\n${url}\n\nLời mời này hết hạn sau bảy ngày.`,recoverySubject:'Đặt lại mật khẩu AI HR của bạn',recovery:(url:string)=>`Đã có yêu cầu đặt lại mật khẩu đăng nhập AI HR của bạn.\n\nMở liên kết này trong vòng 30 phút:\n${url}\n\nBạn vẫn cần ứng dụng xác thực hoặc mã khôi phục nếu đã đăng ký MFA. Nếu bạn không yêu cầu, hãy bỏ qua email này.`},
+ ta:{inviteSubject:'உங்கள் AI HR அழைப்பு',invite:(org:string,url:string)=>`AI HR ஐப் பயன்படுத்த நீங்கள் அழைக்கப்பட்டுள்ளீர்கள். நிறுவனக் குறியீடு: ${org}. பயனர்பெயர், கடவுச்சொல் மற்றும் அங்கீகரிப்புச் செயலியை அமைக்க இணைப்பைத் திறக்கவும்.\n\n${url}\n\nஇந்த அழைப்பு ஏழு நாட்களுக்குப் பிறகு காலாவதியாகும்.`,recoverySubject:'உங்கள் AI HR கடவுச்சொல்லை மீட்டமைக்கவும்',recovery:(url:string)=>`உங்கள் AI HR உள்நுழைவுக் கடவுச்சொல்லை மீட்டமைக்கக் கோரப்பட்டுள்ளது.\n\nஇந்த இணைப்பை 30 நிமிடங்களுக்குள் திறக்கவும்:\n${url}\n\nMFA பதிவு செய்யப்பட்டிருந்தால், உங்கள் அங்கீகரிப்புச் செயலி அல்லது மீட்புக் குறியீடு இன்னும் தேவை. இந்தக் கோரிக்கையை நீங்கள் செய்யவில்லை என்றால், இந்த மின்னஞ்சலைப் புறக்கணிக்கலாம்.`},
+ th:{inviteSubject:'คำเชิญ AI HR ของคุณ',invite:(org:string,url:string)=>`คุณได้รับเชิญให้ใช้ AI HR รหัสองค์กร: ${org} เปิดลิงก์เพื่อเลือกชื่อผู้ใช้ รหัสผ่าน และลงทะเบียนแอปยืนยันตัวตน\n\n${url}\n\nคำเชิญนี้หมดอายุหลังจากเจ็ดวัน`,recoverySubject:'รีเซ็ตรหัสผ่าน AI HR ของคุณ',recovery:(url:string)=>`มีคำขอรีเซ็ตรหัสผ่านเข้าสู่ระบบ AI HR ของคุณ\n\nเปิดลิงก์นี้ภายใน 30 นาที:\n${url}\n\nหากลงทะเบียน MFA ไว้ คุณยังต้องใช้แอปยืนยันตัวตนหรือรหัสกู้คืน หากคุณไม่ได้ส่งคำขอนี้ สามารถละเว้นอีเมลนี้ได้`},
+} as const;
+export function invitationEmailContent(organization:string,activationUrl:string,locale:EmailLocale='en'){const words=copy[locale];return {subject:words.inviteSubject,text:words.invite(organization,activationUrl)};}
+export function recoveryEmailContent(resetUrl:string,locale:EmailLocale='en'){const words=copy[locale];return {subject:words.recoverySubject,text:words.recovery(resetUrl)};}
+/** Preview links are deliberately nonfunctional and contain no token. */
 export function accountEmailPreview(kind:'invitation'|'recovery'){
  return kind==='invitation'?invitationEmailContent('[organization code]','[Activation link hidden]'):recoveryEmailContent('[Password reset link hidden]');
+}
+/** Protected call-to-action labels cannot be edited independently of their code-owned destination. */
+export function accountEmailAction(kind:'invitation'|'recovery',locale:EmailLocale='en'){
+ const labels={en:{invitation:'Activate my account',recovery:'Reset my password'},ms:{invitation:'Aktifkan akaun saya',recovery:'Tetapkan semula kata laluan saya'},zh:{invitation:'激活我的账户',recovery:'重置我的密码'},vi:{invitation:'Kích hoạt tài khoản của tôi',recovery:'Đặt lại mật khẩu của tôi'},ta:{invitation:'எனது கணக்கைச் செயல்படுத்து',recovery:'எனது கடவுச்சொல்லை மீட்டமை'},th:{invitation:'เปิดใช้งานบัญชีของฉัน',recovery:'รีเซ็ตรหัสผ่านของฉัน'}};
+ return labels[locale][kind];
 }

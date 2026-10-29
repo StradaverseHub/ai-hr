@@ -7,7 +7,9 @@ import { authTransaction, readRecord, writeRecord } from './store';
 import { InternalAuthError, loginKey, takeRate, type Credential, type Organization, type AuthReply } from './service';
 import { sendInternalMail, type MailTransport } from './mail';
 import { AccountEmailDeliveryError, type AccountEmailContext } from '../account-email-model';
-import {invitationEmailContent} from '../account-email-content';
+import {accountEmailDesign} from '../email-design/delivery';
+import {renderEmailDesign} from '../email-design/render';
+import {accountEmailAction,invitationEmailContent} from '../account-email-content';
 export async function sendInternalInvitation(email: string, activationPath: string, context?: AccountEmailContext, transport?: MailTransport) {
   const match = /^\/invite\/([A-Za-z0-9_-]{43})\/activate$/.exec(activationPath);
   if (!match || !context) throw new AccountEmailDeliveryError('notEligible');
@@ -15,7 +17,8 @@ export async function sendInternalInvitation(email: string, activationPath: stri
   const invitation = rows[0];
   const org = invitation ? await readRecord<Organization>(client, `tenant:${invitation.tenant_id}`) : null;
   if (!org || invitation.email !== email) throw new AccountEmailDeliveryError('notEligible');
-  await sendInternalMail({to:email,...invitationEmailContent(org.code,internalConfig().origin+activationPath)},transport);
+  const design=await accountEmailDesign(context.deliveryId,context.leaseToken),link=internalConfig().origin+activationPath;
+  await sendInternalMail({to:email,...renderEmailDesign(design.document,'invitation',design.locale,{...invitationEmailContent(org.code,link,design.locale),link,buttonLabel:accountEmailAction('invitation',design.locale)},{...design.data,company_name:design.data?.company_name??org.name,organization_code:org.code,expiry_days:'7'})},transport);
   return { invitationId: 'internal' };
 }
 export async function startInvitation(token: string, username: string, password: string, native = false, sourceBudgeted = false): Promise<AuthReply> {

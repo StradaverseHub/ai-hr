@@ -7,7 +7,7 @@ import {pgSqlState} from '../../lib/db-error';
 import {policySchema,type RewardPolicy} from './model';
 import {normalizedRewardTargets,parseRewardPolicyGroupVersion,rewardPgUuid,rewardPolicyGroupEditSchema,type RewardPolicyGroupVersion} from './policy-group-model';
 export class RewardPolicyGroupError extends Error{
- constructor(readonly code:'invalid'|'changed'|'scope'|'system'|'overlap',readonly conflicts:RewardPolicyTaken[]=[]){super(`Reward shared configuration: ${code}`);this.name='RewardPolicyGroupError';}
+ constructor(readonly code:'invalid'|'changed'|'scope'|'system'|'overlap'|'excluded',readonly conflicts:RewardPolicyTaken[]=[]){super(`Reward shared configuration: ${code}`);this.name='RewardPolicyGroupError';}
 }
 function refusal(error:unknown):never{
  const state=pgSqlState(error);
@@ -36,7 +36,12 @@ export function saveRewardPolicyGroup(ctx:SessionContext,raw:unknown):Promise<Re
  return withRewardsTenant(ctx,async tx=>{
   try{
    // Share the commit's lock so a racing save yields named conflicts, without weakening SQL's guard.
-   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended('access-configuration:'||app.current_tenant_id()::text,0))`);
+   await tx.execute(sql`select app.access_workforce_write_lock()`);
+   for(const companyId of [...new Set(targets.map(row=>row.companyId))]){
+    const [row]=await tx.execute<{allowed:boolean;ok:boolean}>(sql`select exists(select 1 from company c where c.id=${companyId}::uuid and c.tenant_id=app.current_tenant_id() and app.reward_admin(c.id)) as allowed,app.reward_company_admin_available(${companyId}::uuid,${p.policy.year}) as ok`);
+    if(!row?.allowed)throw new RewardPolicyGroupError('scope');
+    if(!row.ok)throw new RewardPolicyGroupError('excluded');
+   }
    const taken=await rewardPolicyTakenTx(tx,targets.map(row=>row.companyId),p.policy.year);
    const conflicts=taken.filter(row=>row.groupId!==p.groupId&&targets.some(target=>target.companyId===row.companyId&&target.businessUnitId===row.businessUnitId));
    if(conflicts.length)throw new RewardPolicyGroupError('overlap',conflicts);

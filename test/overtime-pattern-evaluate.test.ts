@@ -338,3 +338,58 @@ describe('claimed OT window intersects configured duration count attribution',()
   expect(intersectOvertimeDurationAfter(r,lower.toString(),lower.toString())).toEqual({state:'unknown',reason:'claimedWindowUnavailable'});
  });
 });
+
+describe('independent tier duration rounding',()=>{
+ it('rounds each row once, preserves a zero-rate band, and reconciles recorded totals',()=>{
+  const p=definition();p.rates[0].tiers=[hourly('0','60','12','1.5'),hourly('60','120','12','0'),hourly('120',null,'12','1.5')];
+  p.rates[0].tiers[0].rounding={step:'15',mode:'down'};
+  p.rates[0].tiers[1].rounding={step:'15',mode:'down'};
+  p.rates[0].tiers[2].rounding={step:'15',mode:'down'};
+  const result=ready(evaluateOvertimePattern(p,input('137')));
+  expect(minutes(result.payableMinutes)).toBe('135/1');
+  expect(result.amountMinorUnits).toBe('2250'); // 60 min at18 + zero band +15 min at18
+  expect(result.lines.map(line=>line.amountMinorUnits)).toEqual(['1800','0','450']);
+  expect(parseRecordedOvertimeEvaluation(result)).toEqual(result);
+ });
+ it('aggregates slices before row rounding rather than rounding each physical slice twice',()=>{
+  const p=definition();p.rates[0].tiers[0].rounding={step:'15',mode:'down'};
+  const data=input('38');if(data.layer!=='raw')throw new Error('raw fixture');
+  data.segments[0].rawMinutes=fact('19');data.segments[0].approvedMinutes=fact('19','approval');
+  data.segments.push({...structuredClone(data.segments[0]),id:'segment_two',sessionId:'session_two'});
+  const result=ready(evaluateOvertimePattern(p,data));
+  expect(minutes(result.payableMinutes)).toBe('30/1');expect(result.amountMinorUnits).toBe('900');
+  expect(result.trace.filter(row=>row.kind==='rounding'&&row.id.startsWith('row-'))).toHaveLength(1);
+  expect(parseRecordedOvertimeEvaluation(result)).toEqual(result);
+ });
+ it('respects session accumulation with independently rounded row quantities',()=>{
+  const p=definition();p.rates[0].accumulation='session';p.rates[0].tiers[0].rounding={step:'15',mode:'down'};
+  const data=input('38');if(data.layer!=='raw')throw new Error('raw fixture');
+  data.segments[0].rawMinutes=fact('19');data.segments[0].approvedMinutes=fact('19','approval');
+  data.segments.push({...structuredClone(data.segments[0]),id:'segment_two',sessionId:'session_two'});
+  const result=ready(evaluateOvertimePattern(p,data));
+  expect(minutes(result.payableMinutes)).toBe('30/1');expect(result.amountMinorUnits).toBe('900');
+  expect(result.trace.filter(row=>row.kind==='rounding'&&row.id.startsWith('row-'))).toHaveLength(2);
+ });
+ it('never rounds a row upward beyond the canonical approved count',()=>{
+  const p=definition();p.rates[0].tiers[0].rounding={step:'15',mode:'up'};
+  const result=ready(evaluateOvertimePattern(p,input('17')));
+  expect(minutes(result.payableMinutes)).toBe('17/1');expect(result.amountMinorUnits).toBe('510');
+ });
+ it('produces an honest ineligible result when all rows round down to zero',()=>{
+  const p=definition();p.rates[0].tiers[0].rounding={step:'15',mode:'down'};
+  const result=evaluateOvertimePattern(p,input('7'));
+  expect(result.status).toBe('ineligible');if(result.status==='refused')throw new Error('Unexpected refusal');
+  expect(result.lines).toEqual([]);expect(result.amountMinorUnits).toBe('0');expect(parseRecordedOvertimeEvaluation(result)).toEqual(result);
+ });
+ it('refuses conflicting global and row rounding and incomplete row intervals',()=>{
+  const p=definition();p.durationRounding={step:'15',mode:'down'};p.rates[0].tiers[0].rounding={step:'15',mode:'down'};
+  expect(()=>validateOvertimePattern(p)).toThrow(/not both/);
+  p.durationRounding=null;p.rates[0].tiers[0].rounding={step:'0',mode:'down'};
+  expect(()=>validateOvertimePattern(p)).toThrow(/positive/);
+  p.rates[0].tiers[0].rounding={step:'',mode:'down'};
+  expect(()=>validateOvertimePatternDraft(p)).not.toThrow();expect(()=>validateOvertimePattern(p)).toThrow();
+ });
+ it('does not introduce optional rounding into an existing policy on save/reopen',()=>{
+  const p=definition();expect(validateOvertimePattern(p)).toEqual(p);expect(validateOvertimePatternDraft(p)).toEqual(p);
+ });
+});

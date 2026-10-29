@@ -161,11 +161,11 @@ describe('§1 the same strings on the draft and through the Active action give I
     manual_percentage: {
       draft: { epfMode: 'manual_percentage', epfEmployeeRate: '14.5', epfEmployerRate: '16', epfEmployeeAmount: '900' },
       posted: { epfMode: 'manual_percentage', epfEmployeeRate: '14.5', epfEmployerRate: '16' },
-      expect: { epfMode: 'voluntary_excess', epfEmployeeRate: '0.1450', epfEmployerRate: '0.1600', epfEmployeeAmount: null, epfEmployerAmount: null, epfManualReason: null },
+      expect: { epfMode: 'manual_percentage', epfEmployeeRate: '0.1450', epfEmployerRate: '0.1600', epfEmployeeAmount: null, epfEmployerAmount: null, epfManualReason: null },
     },
-    'manual_percentage, employer box blank': {
-      draft: { epfMode: 'manual_percentage', epfEmployeeRate: '12', epfEmployerRate: '' },
-      posted: { epfMode: 'manual_percentage', epfEmployeeRate: '12', epfEmployerRate: '' },
+    'legacy top-up, employer box blank': {
+      draft: { epfMode: 'voluntary_percentage', epfEmployeeRate: '12', epfEmployerRate: '' },
+      posted: { epfMode: 'voluntary_percentage', epfEmployeeRate: '12', epfEmployerRate: '' },
       expect: { epfMode: 'voluntary_excess', epfEmployeeRate: '0.1200', epfEmployerRate: null, epfEmployeeAmount: null, epfEmployerAmount: null, epfManualReason: null },
     },
     semi_auto: {
@@ -241,10 +241,10 @@ describe('§2 an EPF election the writer would refuse is refused before hireEmpl
   }
 
   it('a rate below the statutory floor (employee 10%)', async () => {
-    await refuses({ epfMode: 'manual_percentage', epfEmployeeRate: '10', epfEmployerRate: '13' }, 'epfEmployeeRate');
+    await refuses({ epfMode: 'voluntary_percentage', epfEmployeeRate: '10', epfEmployerRate: '13' }, 'epfEmployeeRate');
   });
-  it('an employer rate below its floor (semi-auto cannot carry one, manual percentage at 11%)', async () => {
-    await refuses({ epfMode: 'manual_percentage', epfEmployeeRate: '11', epfEmployerRate: '11' }, 'epfEmployerRate');
+  it('a legacy top-up employer rate below its floor', async () => {
+    await refuses({ epfMode: 'voluntary_percentage', epfEmployeeRate: '11', epfEmployerRate: '11' }, 'epfEmployerRate');
   });
   it('a rate over 100%', async () => {
     await refuses({ epfMode: 'semi_auto', epfEmployeeRate: '101' }, 'epfEmployeeRate');
@@ -272,14 +272,14 @@ describe('§2 an EPF election the writer would refuse is refused before hireEmpl
 
 // ── §3 a blank box is null, never zero ──────────────────────────────────────────────────────────────
 describe('§3 a blank box stays statutory (null), never 0% or RM0.00', () => {
-  it('blank and whitespace RATE boxes on Manual (By Percentage) activate with that side statutory', async () => {
+  it('blank and whitespace RATE boxes on legacy top-up activate with that side statutory', async () => {
     // Number('') and Number('   ') are 0 — a parse of the box would have refused this as 0% < 11%.
-    const { employmentId } = await activate(minimal({ epfMode: 'manual_percentage', epfEmployeeRate: '   ', epfEmployerRate: '' }));
+    const { employmentId } = await activate(minimal({ epfMode: 'voluntary_percentage', epfEmployeeRate: '   ', epfEmployerRate: '' }));
     const row = await statutoryOf(employmentId);
     expect(row.epfMode, 'epf_mode').toBe('voluntary_excess');
     expect(row.epfEmployeeRate, 'epf_employee_rate — blank is statutory').toBeNull();
     expect(row.epfEmployerRate, 'epf_employer_rate — blank is statutory').toBeNull();
-    expect(missingByTab(minimal({ epfMode: 'manual_percentage', epfEmployeeRate: '   ' }), myClientPack.statutory).bankStatutory).toEqual([]);
+    expect(missingByTab(minimal({ epfMode: 'voluntary_percentage', epfEmployeeRate: '   ' }), myClientPack.statutory).bankStatutory).toEqual([]);
   });
 
   it('a blank AMOUNT box on the side a category asks for is null, not 0.00', async () => {

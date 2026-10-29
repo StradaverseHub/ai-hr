@@ -66,10 +66,11 @@ export async function saveProfileVisibilityPolicy(ctx:SessionContext,p:{policy:u
   if(!isProfileVisibilityPolicyValue(p.policy))throw new TenantSettingError('wrong_type');
   const policy=p.policy,visible=essVisibleFields(),ids=new Set(visible.map(field=>field.id));
   const groupIds=new Set(visible.flatMap(field=>[profileTabPolicyKey(field.tab),profileSectionPolicyKey(field.tab,field.section)]));
-  if(policy.version===4&&Object.keys(policy.groups).some(id=>!groupIds.has(id)))throw new TenantSettingError('wrong_type');
+  if(policy.version!==3&&Object.keys(policy.groups).some(id=>!groupIds.has(id)))throw new TenantSettingError('wrong_type');
   if(Object.keys(policy.fields).length!==ids.size||Object.keys(policy.fields).some(id=>!ids.has(id)))throw new TenantSettingError('wrong_type');
   if(visible.some(field=>policy.fields[field.id]==='editable'&&(!field.ess.binding||!['immediate','approval'].includes(field.ess.edit))))throw new TenantSettingError('wrong_type');
   if(policy.primaryOnly.some(id=>!visible.some(field=>field.id===id&&field.ess.legacyPrimaryKey)||policy.fields[id]!=='viewOnly'))throw new TenantSettingError('wrong_type');
+  if(policy.version===5&&Object.keys(policy.approvals).some(id=>!visible.some(field=>field.id===id&&field.ess.binding&&['immediate','approval'].includes(field.ess.edit))))throw new TenantSettingError('wrong_type');
   const before=await freshProfileEditPolicyTx(tx,ctx);
   if(p.expectedFingerprint!==undefined&&p.expectedFingerprint!==profileVisibilityFingerprint(getSetting(before.ctx,'ess.profile_change_fields')))throw new TenantSettingError('wrong_type');
   const nextVisible=resolveEssVisibleIds(policy),nextEditable=resolveEssEditableIds(policy),nextPrimary=resolveEssPrimaryEditableIds(policy);
