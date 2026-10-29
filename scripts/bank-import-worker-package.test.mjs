@@ -28,5 +28,5 @@ test('exact-install continuation refuses changed bytes, inventory, modes and pri
 test('corrected never-started variants require a native runtime witness and safely restore unit bytes',()=>{
  const result=pythonCases('test/fixtures/bank-import-worker-variant-tests.py');
  assert.equal(result.status,0,result.stdout+'\n'+result.stderr);
- assert.match(result.stderr,/Ran 5 tests/);
+ assert.match(result.stderr,/Ran 7 tests/);
 });
