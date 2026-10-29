@@ -4,6 +4,7 @@ import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import * as dbClient from '../db/client';
 import {newPrivateReviewNonce,privateReviewCommitment} from '../core/assistant-actions/private-review-commitment';
+import {withAgentActionGuard} from '../core/assistant-actions/agent-action-guard';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
@@ -75,5 +76,12 @@ describe('WP9 retained pay component custody',()=>{
   const lost:typeof withTenant=async(who,work,options)=>{await real(who,work,options);throw Error('Fictional lost reply after commit');};
   const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(lost);try{await expect(confirmPayComponentReview(ctx,confirmation(review))).rejects.toThrow();}finally{spy.mockRestore();}
   const done=await reopenPayComponentReview(ctx,review.actionId);expect(done.kind).toBe('completed');expect(await confirmPayComponentReview(ctx,confirmation(review))).toEqual(done);expect((await state()).components.length-before.components.length).toBe(1);
+ });
+});
+
+describe('shared registry guard retains approve-tier boundary',()=>{
+ it('refuses Confirm for pay catalogue creation and accepts explicit human Approve',async()=>{
+  await expect(withTenant(ctx,tx=>withAgentActionGuard(tx,ctx,'typed_pay_components.create','confirm'))).rejects.toThrow();
+  const fresh=await withTenant(ctx,tx=>withAgentActionGuard(tx,ctx,'typed_pay_components.create','approve'));expect(fresh.userId).toBe(ctx.userId);
  });
 });

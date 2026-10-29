@@ -10,7 +10,7 @@ import {prepareReviewedPayComponentCreateTx,createReviewedPayComponentTx,readRev
 import {ReviewedPayComponentHumanContent as Human,ReviewedPayComponentConfirmation as Confirmation,ReviewedPayComponentPreparedSource as Prepared,ReviewedPayComponentSourceReceipt as Receipt} from '../../lib/assistant-actions/reviewed-pay-component-contract';
 export class ReviewedPayComponentUnavailable extends Error{constructor(){super('That pay-code setup needs another look. Please reopen Payroll Setup.');this.name='ReviewedPayComponentUnavailable';}}
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
-async function actor(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,'typed_pay_components.create');assertModuleEnabled(fresh,'payroll');return fresh;}
+async function actor(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,'typed_pay_components.create','approve');assertModuleEnabled(fresh,'payroll');return fresh;}
 /** Catalogue and fresh native admin ownership precede ANY custody row. The catalogue lock supplies
  * no authority; the exact existing app.is_admin predicate is still required. No source input is posted
  * to this interval and no native catalogue values leave through the callback binding itself. */
