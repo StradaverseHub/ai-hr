@@ -109,7 +109,17 @@ export type ApplyAdjustmentInput = {
 export async function applyLeaveAdjustmentBatch(
   ctx: SessionContext,
   p: ApplyAdjustmentInput,
-): Promise<{ batchId: string; targeted: number; written: number; skipped: number }> {
+): Promise<{ batchId: string; targeted: number; written: number; skipped: number; eventId: string }> {
+  return withTenant(ctx, (tx) => applyLeaveAdjustmentBatchTx(tx, ctx, p));
+}
+
+/** The same write in a caller-owned transaction (ADR-0151: an HR-prepared adjustment commits its review
+ *  receipt with the batch). Identical validation, locks and effects; `eventId` is the batch's event. */
+export async function applyLeaveAdjustmentBatchTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: ApplyAdjustmentInput,
+): Promise<{ batchId: string; targeted: number; written: number; skipped: number; eventId: string }> {
   // Capture the request before the first asynchronous boundary. OrgCriteria contains scalars and
   // arrays; cloning those arrays keeps the nominated set and saved criteria tied to the same input.
   const { effectiveOn, targetMode } = p;
@@ -135,7 +145,7 @@ export async function applyLeaveAdjustmentBatch(
   const leaveTypeIds = Array.from(new Set((p.leaveTypeIds ?? []).filter(Boolean)));
   if (!leaveTypeIds.length) throw new LeaveAdjustmentError('Choose at least one leave type.');
 
-  return withTenant(ctx, async (tx) => {
+  {
     await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
     // Leave types must exist and be visible to this session — RLS scopes the read, so an id from another
     // tenant simply does not come back and is refused here rather than silently skipped.
@@ -232,7 +242,7 @@ export async function applyLeaveAdjustmentBatch(
 
     // ONE event per batch, keyed on the BATCH — unlike the festive grant, whose summary event is keyed on
     // the tenant and therefore cannot be traced back to the rows it wrote.
-    await appendEvent(tx, {
+    const eventId = await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'leave-adjustment-batch',
       aggregateId: batch.id,
@@ -247,15 +257,16 @@ export async function applyLeaveAdjustmentBatch(
         targeted: targetIds.length * leaveTypeIds.length,
         written: rows.length,
       },
-    });
+    }, { returnId: true });
 
     return {
       batchId: batch.id,
       targeted: targetIds.length * leaveTypeIds.length,
       written: rows.length,
       skipped: targetIds.length * leaveTypeIds.length - rows.length,
+      eventId,
     };
-  });
+  }
 }
 
 /**

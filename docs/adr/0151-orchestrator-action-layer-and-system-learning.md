@@ -355,3 +355,65 @@ installed.
   - a real `app_user` for the agent: it could be granted roles, sign-in could resolve it, and it would pass the
     login-only AI admission by construction;
   - keeping `hr_admin` and filtering in code: authority would be unenforced at the database.
+
+## Amendment, 2026-10-29: first HR-administrator actions (§5 "later waves")
+
+Status: implementation decision under the owner's 2026-10-29 instruction. The actions reuse the wave 1b
+"assigned" binding (migration 0671, `createGenericAssignedReviewStore`); they add no parallel custody.
+Accepted here is not merged, tested or installed.
+
+### Choice
+
+No installation measures how often these happen yet: staging holds demo data and the process assessment has
+no production window. The choice therefore rests on the code paths. Each entry is a single-employee HR
+correction that recurs every month for every company, is keyed by hand on a dedicated screen today, and has
+a native service that already checks the HR administrator's authority over that employee's company:
+
+1. `leave.adjustment.apply`: add or deduct leave days for one employee and one leave type, with an effective
+   date and a reason (`applyLeaveAdjustmentBatch`, individual mode, one employment).
+2. `toil.credit.grant`: grant Leave Credit for one date one employee worked
+   (`grantLeaveCreditRows`, `hr_manual_grant`). HR enters the date, the hours worked, the reason and the
+   First Schedule consent. The engine names the day type from the roster, computes the credit, expiry and
+   First Schedule floor, refuses a date already credited, and shows the overtime the credit would stop
+   paying.
+3. `employees.movement.transfer`: an assignment-only Transfer or Organisation Assignment Change with an
+   effective date (`createMovementEventTx`). Department, position, business unit and location only; no grade,
+   pay, company or end of employment. A future date is recorded as a pending movement, exactly as on the
+   screen.
+
+Not taken:
+- Onboarding cases, because the onboarding module is mid-way through its v3.1 replacement and its legacy
+  case service is being retired.
+- Employment exit, discipline, access, erasure and payroll reversal, which remain permanent handoffs
+  (§4.4).
+
+### Binding and authority
+
+- The caller is the HR administrator; the subject is another person's employment. The binding names:
+  - the administrator's login and person;
+  - the subject's employment, company and person.
+- The stored subject is the employment (`receipt_subject_kind='employment'`).
+- Refused before anything else: a subject whose person is the caller's own, for every role.
+- Authority is the native service's. Preparation runs the same check the screen's write runs:
+  - leave adjustment: the employment visible and administered under `can_admin_employment`;
+  - Leave Credit: `assertAdminForEmploymentTx`;
+  - movement: `assertWorkforceEmploymentTx(...,'maintain')`.
+
+  The service checks again when it writes.
+- The model never supplies the days, the reason, the dates worked or the destination. Those are HR's own
+  inputs on the review card; the agent only opens the card for an employee HR chose.
+
+### Proof
+
+Completion is accepted only if the native effect was committed in this transaction, by this login, for
+this employment. The completion verifier proves, per kind:
+
+- leave adjustment: a batch of this login, a ledger row for this employment and leave type, and the
+  `leave.adjustment.applied` event on that batch;
+- Leave Credit: an `hr_manual_grant` accrual for this employment and its `toil.accrued` event;
+- movement: the movement's own event for this employment, either applied or scheduled.
+
+A prior-transaction event is refused as proof.
+
+Tier ceiling: Approve. These are HR decisions about someone else's record, and HR is the person who
+confirms.
