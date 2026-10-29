@@ -101,11 +101,13 @@ describe('V3.1 localized task controls', () => {
     });
     it('keeps a saved pending case open so HR can submit without reloading', async () => {
         const today = todayInKualaLumpur(), env = { today, now: today + 'T02:00:00.000Z', id: () => 'history', nextNumber: () => '', leave: {}, taskLoads: {}, lastTaskAssignment: {}, pendingApprovals: {}, lifetimeApprovals: {}, users: ['owner'] };
-        const c = blankCase('case', 'OB-1', 'draft', { fullName: 'Fictional Hire' }, env);
+        const c = blankCase('case', 'OB-1', 'draft', { fullName: 'Fictional Hire', confirmationDate: '2027-01-01' }, env);
         const detail = { case: c, config: defaultConfig('owner'), revision: 7, actor: { id: 'owner', name: 'HR', module: true, hr: true, master: false }, directory: [], labels: {}, notes: [], availability: {}, today, canOpenRequisition: false };
         render(<NextIntlClientProvider locale="en" messages={messages('en')}><OnboardingCaseView detail={detail}/></NextIntlClientProvider>);
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await screen.findByText('Case details saved.');
+        const local = mocks.change.mock.calls[0]![2].patch.local;
+        for (const key of ['confirmationDate', 'finalConfirmationDate', 'probationEndDate', 'provisionalEndOn']) expect(local).not.toHaveProperty(key);
         expect(screen.getByRole('button', { name: 'Submit case and confirm checklist' })).toBeVisible();
         await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled());
     });
