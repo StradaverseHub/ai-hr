@@ -21429,7 +21429,8 @@
     "success": {
       "save": "Draf disimpan. Geganti aktif tidak berubah.",
       "test": "Geganti menerima mesej ujian. Semak peti masuk sebelum pengaktifan.",
-      "apply": "Geganti diaktifkan. Jemputan dan pemulihan kata laluan kini boleh menggunakannya."
+      "apply": "Geganti diaktifkan. Jemputan dan pemulihan kata laluan kini boleh menggunakannya.",
+      "sender": "Pengirim kitar hayat dikemas kini. Pemulihan akaun dan lalai pemasangan kekal sama."
     },
     "connectionTitle": "Sambungan SMTP",
     "security": "Penyulitan",
@@ -21467,7 +21468,15 @@
     "notRecorded": "Tidak direkodkan",
     "backToConnections": "Kembali ke sambungan",
     "saveConnection": "Simpan sambungan",
-    "activeChangesHelp": "Relay aktif terus menggunakan tetapan terakhir yang diaktifkan. Simpan, uji dan sahkan penerimaan sebelum mengaktifkan perubahan ini."
+    "activeChangesHelp": "Relay aktif terus menggunakan tetapan terakhir yang diaktifkan. Simpan, uji dan sahkan penerimaan sebelum mengaktifkan perubahan ini.",
+    "lifecycleSenderTitle": "Pengirim e-mel onboarding dan offboarding",
+    "lifecycleSenderHelp": "Setiap pengirim menggunakan sambungan yang telah disahkan. Tanpa tetapan berasingan, pengirim menggunakan geganti aktif pemasangan.",
+    "applyTarget": "Gunakan sambungan yang diuji ini untuk",
+    "applyDefault": "Lalai pemasangan (akaun dan e-mel lain)",
+    "senderDefault": "Menggunakan lalai pemasangan",
+    "senderConfirmed": "Penerimaan disahkan pada {at}",
+    "senderPending": "Sambungan ini mempunyai perubahan tersimpan yang lebih baharu. Versi yang disahkan terus menghantar sehingga diuji dan digunakan semula.",
+    "senderTargetHelp": "Ujian tamat selepas 30 minit. Lalai pemasangan mengawal e-mel akaun. Pilihan kitar hayat hanya mengubah pengirim tersebut untuk penyewa semasa. Uji dan sahkan penerimaan semula selepas menyunting sambungan."
   },
   "workflowEmail": {
     "letterAccountTitle": "Surat untuk akaun ini",

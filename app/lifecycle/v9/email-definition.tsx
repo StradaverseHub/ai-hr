@@ -1,4 +1,5 @@
 'use client';
+import { managedEmailSenderProfiles, managedEmailSenderNames } from '@/lib/managed-email-policy';
 import { EmailAssets } from './email-assets';
 import type { ReactNode } from 'react';
 import type { EmailTemplate, Template } from '@/lib/lifecycle-v9-model';
@@ -11,7 +12,7 @@ export function EmailDefinition({ email, templates, disabled, change, selectModu
     {!hideName && <Field label="Name"><input className="v9-input" maxLength={200} value={email.name} disabled={disabled} onChange={event => change(next => { next.name = event.target.value; })}/></Field>}
     <div className="v9-email-metadata">
     <Field label="Module"><select value={email.module} disabled={disabled} onChange={event => { const module = event.target.value as EmailTemplate['module']; change(next => { next.module = module; next.links = []; next.attachments = []; }); selectModule?.(module); }}><option value="onb">Onboarding</option><option value="off">Offboarding</option></select></Field>
-    <Field label="Sender"><select value={email.sender} disabled={disabled} onChange={event => change(next => { next.sender = event.target.value; })}><option value="onboarding">HR Onboarding</option><option value="hr">Human Resource Department</option><option value="noreply">Kingdee AIHR</option></select></Field>
+    <Field label="Sender"><select value={email.sender} disabled={disabled} onChange={event => change(next => { next.sender = event.target.value; })}>{managedEmailSenderProfiles.map(profile => <option key={profile} value={profile}>{managedEmailSenderNames[profile]}</option>)}</select></Field>
     <label className="v9-actions"><input type="checkbox" checked={email.active} disabled={disabled || !email.subject.trim()} onChange={event => change(next => { next.active = event.target.checked; })}/>Active</label>
     </div>
     <Field label="Subject"><input className="v9-input" maxLength={1000} value={email.subject} disabled={disabled} onChange={event => change(next => { next.subject = event.target.value; })}/></Field>

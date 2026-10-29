@@ -4,7 +4,7 @@ const fixture = vi.hoisted(() => ({ sql: vi.fn(), credential: vi.fn(), active: v
 vi.mock('../db/client', () => ({ client: fixture.sql }));
 vi.mock('../lib/internal-auth/config', () => ({ internalConfig: () => ({ origin: 'https://fictional.example' }), internalIssuer: (tenant: string) => 'https://fictional.example/auth/' + tenant }));
 vi.mock('../lib/internal-auth/store', () => ({ readRecord: fixture.credential }));
-vi.mock('../lib/internal-auth/active-relay', () => ({ readActiveRelayTx: fixture.active }));
+vi.mock('../lib/internal-auth/active-relay', () => ({ readLifecycleRelayTx: fixture.active }));
 vi.mock('../lib/internal-auth/service', () => ({ assertActiveCredential: fixture.principal, InternalAuthError: class extends Error {} }));
 vi.mock('../lib/lifecycle-v9-pdf', () => ({ renderV9DocumentPdf: fixture.pdf }));
 import { internalLifecycleV9Mail } from '../lib/internal-auth/lifecycle-v9-mail';
@@ -34,6 +34,7 @@ const called = (fragment: string) => fixture.sql.mock.calls.some(call => call[0]
 it('accepts only delivery IDs, verifies the actual credential and sends after durable start', async () => {
   const transport = vi.fn(async () => { expect(called('email_start')).toBe(true); expect(called('email_finish')).toBe(false); });
   expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'sent', error: null });
+  expect(fixture.active).toHaveBeenNthCalledWith(1, fixture.sql, tenantId, 'hr');
   expect(fixture.credential).toHaveBeenCalledWith(fixture.sql, `credential:${subject}`);
   expect(transport).toHaveBeenCalledExactlyOnceWith(relay.relay, expect.objectContaining({ to: 'employee@fictional.invalid', cc: [], subject: 'Fictional saved subject', text: 'Fictional saved body', senderProfile: 'hr', attachments: [], messageId: `<lifecycle-v9.${request.deliveryId}@fictional.example>` }));
   expect(called('email_finish')).toBe(true);

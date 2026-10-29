@@ -7,7 +7,7 @@ import { opaque } from './crypto';
 import { INTERNAL_EMAIL_STATE_KEY } from './active-relay';
 import { sendSmtp, type Relay, type Mail, type MailTransport } from './smtp';
 import type {StoredEmailRelay} from '../identity/email-relay';
-import {publicEmailConnections,saveEmailConnection,testedEmailConnection,activateEmailConnection,type ConnectionState} from './email-connections';
+import {bindLifecycleEmailConnection,publicLifecycleSenders,publicEmailConnections,saveEmailConnection,testedEmailConnection,activateEmailConnection,type ConnectionState} from './email-connections';
 export { sendSmtp } from './smtp';
 export type { Relay, Mail, MailTransport } from './smtp';
 
@@ -37,8 +37,9 @@ export async function internalEmailRequest<T>(request: EmailSettingsRequest, tra
       const selected=request.connectionId&&state.connections&&Object.hasOwn(state.connections,request.connectionId)?state.connections[request.connectionId]:undefined;
       if(request.connectionId&&request.connectionId!=='new'&&!selected)throw new EmailSettingsError('conflict');
       return { active: state.active ? { ...state.active.config, hasPassword: Boolean(state.active.password) } : null,
+        supportsLifecycleSenders:true,lifecycleSenders:publicLifecycleSenders(state,ctx.tenantId),
         connections,selectedConnectionId:selected?.id,selectedConnectionName:selected?.name,
-        revision: request.connectionId?state.connectionsRevision??state.revision:state.revision, draft: selected?{id:selected.version,config:selected.config,hasPassword:Boolean(selected.password),testedAt:selected.testedAt&&selected.testedBy===identity.subject&&selected.testedAgainstRevision===state.revision?new Date(selected.testedAt).toISOString():null}:request.connectionId?null:draft ? { id: draft.id, config: draft.config, hasPassword: Boolean(draft.password), testedAt: draft.testedAt ? new Date(draft.testedAt).toISOString() : null } : null,
+        revision: request.connectionId?state.connectionsRevision??state.revision:state.revision, draft: selected?{id:selected.version,config:selected.config,hasPassword:Boolean(selected.password),testedAt:selected.testedAt&&selected.testedBy===identity.subject&&selected.testedAgainstRevision===state.revision&&(selected.testedAgainstLifecycleRevision??'initial')===(state.lifecycleRevision??'initial')?new Date(selected.testedAt).toISOString():null}:request.connectionId?null:draft ? { id: draft.id, config: draft.config, hasPassword: Boolean(draft.password), testedAt: draft.testedAt ? new Date(draft.testedAt).toISOString() : null } : null,
         testRecipient: identity.email } satisfies EmailSettingsView as T;
     }
     if(request.op==='save'&&request.connectionName!==undefined){
@@ -57,12 +58,14 @@ export async function internalEmailRequest<T>(request: EmailSettingsRequest, tra
           await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,'identity-email.test-failed','user',$2::uuid,$3::jsonb)",[ctx.tenantId,ctx.userId!,JSON.stringify({connectionId:connection.id})]);
           return {failed:true} as T;
         }
-        connection.testedAt=Date.now();connection.testedBy=identity.subject;connection.testedAgainstRevision=state.revision;
-      }else activateEmailConnection(state,connection.id,request.draftId,identity.subject,request.received);
+        connection.testedAt=Date.now();connection.testedBy=identity.subject;connection.testedAgainstRevision=state.revision;connection.testedAgainstLifecycleRevision=state.lifecycleRevision??'initial';
+      }else if(request.lifecycleSender)bindLifecycleEmailConnection(state,ctx.tenantId,request.lifecycleSender,connection.id,request.draftId,identity.subject,request.received);
+      else activateEmailConnection(state,connection.id,request.draftId,identity.subject,request.received);
       await writeRecord(tx,STATE,state,null);
-      await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,$3,'user',$2::uuid,$4::jsonb)",[ctx.tenantId,ctx.userId!,request.op==='test'?'identity-email.test-accepted':'identity-email.applied',JSON.stringify({connectionId:connection.id})]);
+      await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,$3,'user',$2::uuid,$4::jsonb)",[ctx.tenantId,ctx.userId!,request.op==='test'?'identity-email.test-accepted':request.lifecycleSender?'identity-email.lifecycle-sender-applied':'identity-email.applied',JSON.stringify({connectionId:connection.id,...(request.op==='apply'&&request.lifecycleSender?{profile:request.lifecycleSender}:{})})]);
       return {ok:true} as T;
     }
+    if (request.op === 'apply' && request.lifecycleSender) throw new EmailSettingsError('invalid');
     if (request.op === 'save') {
       if (request.revision !== state.revision) throw new EmailSettingsError('conflict');
       const config = emailConfigSchema.parse(request.config);

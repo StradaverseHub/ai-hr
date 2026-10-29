@@ -9,5 +9,4 @@ export const managedEmailAttachment = z.object({
   contentType: z.enum(['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'text/plain', 'text/csv']),
 }).strict().superRefine((file, context) => { if (file.cid && !file.contentType.startsWith('image/')) context.addIssue({ code: 'custom', message: 'Only an image can be embedded inline.' }); });
 export type ManagedEmailAttachment = z.infer<typeof managedEmailAttachment>;
-export const managedEmailSenderProfiles = ['onboarding', 'hr', 'noreply'] as const;
-export const managedEmailSenderNames = { onboarding: 'HR Onboarding', hr: 'Human Resource Department', noreply: 'Kingdee AI HR' } as const;
+export { managedEmailSenderProfiles, managedEmailSenderNames } from './managed-email-policy';

@@ -4,12 +4,13 @@ import { revalidatePath } from 'next/cache';
 import { requireIdentityEmailAdmin } from '@/lib/identity/email-settings';
 import { identityEmailRequest } from '@/lib/identity/email-ipc';
 import { EmailSettingsError, emailConfigSchema } from '@/lib/identity/email-model';
+import { managedEmailSenderProfiles, type ManagedEmailSenderProfile } from '@/lib/managed-email-policy';
 import {internalSelected} from '@/lib/internal-auth/config';
 import {saveAccountEmailRetention} from '@/core/account-email-retention';
 const path='/admin/settings/email';
 async function execute(op:'save'|'test'|'apply',form:FormData) {
  const {actor}=await requireIdentityEmailAdmin();
- let error:string|undefined;
+ let error:string|undefined;let appliedSender=false;
  let connectionId=String(form.get('connectionId')??'');
  try{
   if(op==='save') {
@@ -22,9 +23,14 @@ async function execute(op:'save'|'test'|'apply',form:FormData) {
    const saved=await identityEmailRequest<{connectionId?:string}>({op,actor,revision:String(form.get('revision')??''),config:result.data,password:String(form.get('password')??''),...(named?{connectionName:String(form.get('connectionName')??''),...(connectionId?{connectionId}:{})}:{})});
    connectionId=saved.connectionId??connectionId;
   }else if(op==='test') await identityEmailRequest({op,actor,draftId:String(form.get('draftId')??''),...(connectionId?{connectionId}:{})});
-  else await identityEmailRequest({op,actor,draftId:String(form.get('draftId')??''),received:form.get('received')==='true',...(connectionId?{connectionId}:{})});
+  else {
+   const profile=String(form.get('lifecycleSender')??'');
+   if(profile&&(!internalSelected()||!connectionId||!managedEmailSenderProfiles.includes(profile as ManagedEmailSenderProfile)))throw new EmailSettingsError('invalid');
+   await identityEmailRequest({op,actor,draftId:String(form.get('draftId')??''),received:form.get('received')==='true',...(connectionId?{connectionId}:{}),...(profile?{lifecycleSender:profile as ManagedEmailSenderProfile}:{})});
+   appliedSender=!!profile;
+  }
  }catch(e){error=e instanceof EmailSettingsError?e.code:'unavailable';}
- revalidatePath(path);redirect(path+'?'+new URLSearchParams({...error?{error}:{success:op},...(connectionId?{connection:connectionId}:form.has('connectionName')?{connection:'new'}:{})}));
+ revalidatePath(path);redirect(path+'?'+new URLSearchParams({...error?{error}:{success:appliedSender?'sender':op},...(connectionId?{connection:connectionId}:form.has('connectionName')?{connection:'new'}:{})}));
 }
 export async function saveEmailDraft(form:FormData){await execute('save',form);}
 export async function testEmailDraft(form:FormData){await execute('test',form);}

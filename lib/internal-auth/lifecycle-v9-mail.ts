@@ -7,7 +7,7 @@ import { notificationEmailLink, notificationSmtpFailure } from '../notification-
 import { internalConfig, internalIssuer } from './config';
 import { readRecord } from './store';
 import { assertActiveCredential, InternalAuthError, type Credential } from './service';
-import { readActiveRelayTx } from './active-relay';
+import { readLifecycleRelayTx } from './active-relay';
 import { sendSmtp, type MailTransport } from './smtp';
 
 /** Authentication owns credential verification and the applied relay. The caller supplies neither
@@ -16,7 +16,9 @@ export async function internalLifecycleV9Mail(input: LifecycleV9DeliveryRequest,
   const { deliveryId: id, leaseToken: token } = lifecycleV9DeliveryRequest.parse(input), origin = internalConfig().origin;
   const target = (await client`select app.lc_v9_email_target(${id}::uuid,${token}::uuid,${origin}) as target`)[0]?.target as LifecycleV9MailTarget | null;
   if (!target) return { outcome: 'skipped', error: 'notEligible' };
-  const active = await readActiveRelayTx(client);
+  const profile = target.payload.mail.delivery?.sender;
+  if (!profile || !['onboarding','hr','noreply'].includes(profile)) return { outcome: 'skipped', error: 'notEligible' };
+  const active = await readLifecycleRelayTx(client, target.tenantId, profile);
   if (!active) return { outcome: 'skipped', error: 'relayUnavailable' };
   const addresses: string[] = target.contact ? [target.contact.email] : [];
   for (const binding of target.bindings) {
@@ -58,9 +60,9 @@ export async function internalLifecycleV9Mail(input: LifecycleV9DeliveryRequest,
     return document.name + ': ' + notificationEmailLink(origin, `/me/lifecycle?case=${encodeURIComponent(target.caseId)}&document=${encodeURIComponent(documentId)}`);
   });
   const content = v9EmailContent(mail.body + (links.length ? '\n\n' + links.join('\n') : ''), assetReferences.filter(asset => asset.kind === 'image'));
-  const currentRelay = await readActiveRelayTx(client);
+  const currentRelay = await readLifecycleRelayTx(client, target.tenantId, profile);
   if (!currentRelay || currentRelay.revision !== active.revision) return { outcome: 'skipped', error: 'relayUnavailable' };
-  const proof = { bindings: target.bindings, contact: target.contact ?? null, addresses, relayRevision: active.revision };
+  const proof = { bindings: target.bindings, contact: target.contact ?? null, addresses, relayRevision: active.revision, senderProfile: profile, senderAddress: active.relay.config.from };
   // A separate completed statement persists start BEFORE any external message bytes are sent.
   const started = (await client`select app.lc_v9_email_start(${id}::uuid,${token}::uuid,${origin},${JSON.stringify(proof)}::jsonb) as started`)[0]?.started === true;
   if (!started) return { outcome: 'skipped', error: 'notEligible' };

@@ -21429,7 +21429,8 @@
     "success": {
       "save": "Draft saved. The active relay is unchanged.",
       "test": "The relay accepted the test message. Check the inbox before activation.",
-      "apply": "Relay activated. Invitations and password recovery can now use it."
+      "apply": "Relay activated. Invitations and password recovery can now use it.",
+      "sender": "Lifecycle sender updated. Account recovery and the installation default are unchanged."
     },
     "connectionTitle": "SMTP connection",
     "security": "Encryption",
@@ -21467,7 +21468,15 @@
     "notRecorded": "Not recorded",
     "backToConnections": "Back to connections",
     "saveConnection": "Save connection",
-    "activeChangesHelp": "The active relay continues using its last activated settings. Save, test and confirm receipt before activating these changes."
+    "activeChangesHelp": "The active relay continues using its last activated settings. Save, test and confirm receipt before activating these changes.",
+    "lifecycleSenderTitle": "Onboarding and offboarding senders",
+    "lifecycleSenderHelp": "Each sender uses its confirmed connection. Without a separate binding, it follows the active installation relay.",
+    "applyTarget": "Apply this tested connection to",
+    "applyDefault": "Installation default (account and other email)",
+    "senderDefault": "Uses installation default",
+    "senderConfirmed": "Receipt confirmed {at}",
+    "senderPending": "This connection has newer saved changes. The confirmed version continues sending until tested and applied again.",
+    "senderTargetHelp": "Tests expire after 30 minutes. The installation default controls account email. A lifecycle choice changes only that sender for the current tenant. Test and confirm receipt again after editing a connection."
   },
   "workflowEmail": {
     "letterAccountTitle": "Letters for this account",

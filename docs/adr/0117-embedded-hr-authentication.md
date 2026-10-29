@@ -49,3 +49,11 @@ resolves the exact existing HR identity and grants. Production authentication re
 valid origin TLS, supported operator runtime, private key/database backup, owner setup and reviewed
 activation prerequisites pass. This decision does not assert production activation or physical-device
 acceptance.
+
+## V9 lifecycle sender bindings — 29 October 2026
+
+The owner-pinned V9 application has three business senders: HR Onboarding, Human Resource Department and Kingdee AI HR. Their production addresses come from confirmed SMTP connections; prototype mailbox addresses are never credentials or sender authority. The existing enrolled installation email operator configures these through the same encrypted settings owner, not through an HR role or posted tenant ID.
+
+A binding stores a confirmed connection-version snapshot under the actual tenant and business profile. It requires the selected current connection version, the same operator's successful test within 30 minutes, explicit receipt and an unchanged sender-binding revision. Editing a saved connection leaves its working confirmed snapshot intact and visibly pending. Another binding change invalidates stale test receipts. Applying a lifecycle binding preserves the installation default used for account recovery and other email. An unbound profile follows that default. Compatibility providers do not advertise or accept this new binding operation.
+
+The private lifecycle sender chooses the frozen message profile in its actual tenant, reads only a confirmed snapshot or applied default, and rechecks its revision before committing SMTP start. The durable private proof records the actual sender address/profile and relay revision without secrets. Neither a template nor the browser posts credentials or an arbitrary From address. This is a candidate implementation amendment; testing, merge, installation and staging acceptance remain separate, and it grants no production deployment authority.

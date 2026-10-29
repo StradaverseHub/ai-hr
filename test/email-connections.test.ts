@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {defaultEmailConfig} from '../lib/identity/email-model';
-import {emailConnections,publicEmailConnections,saveEmailConnection,testedEmailConnection,activateEmailConnection,type ConnectionState} from '../lib/internal-auth/email-connections';
+import {bindLifecycleEmailConnection,publicLifecycleSenders,emailConnections,publicEmailConnections,saveEmailConnection,testedEmailConnection,activateEmailConnection,type ConnectionState} from '../lib/internal-auth/email-connections';
 const config={...defaultEmailConfig,host:'smtp.example.test',port:587,security:'starttls' as const,from:'hr@example.test',user:'hr@example.test',fromName:'OneHR'};
 const revision=(s:ConnectionState)=>s.connectionsRevision??s.revision;
 const state=():ConnectionState=>({revision:'initial',active:{config,password:'fictional-old-secret'}});
@@ -42,4 +42,38 @@ describe('named SMTP connections',()=>{
   c.testedAt=100_000;c.testedBy='operator';s.revision='changed-by-another-activation';
   expect(()=>activateEmailConnection(s,c.id,c.version,'operator',true,100_001)).toThrow();
  });
+});
+
+it('binds only a tested received version per tenant/profile and preserves the installation default',()=>{
+ const s=state(),tenant='11111111-1111-4111-8111-111111111111';emailConnections(s);const before=structuredClone(s.active),globalRevision=s.revision;
+ for(const profile of ['onboarding','hr','noreply'] as const){
+  const c=saveEmailConnection(s,{name:profile,config:{...config,from:profile+'@example.test'},password:'fictional-'+profile,revision:revision(s)});
+  expect(()=>bindLifecycleEmailConnection(s,tenant,profile,c.id,c.version,'operator',true,100001)).toThrow();
+  c.testedAt=100000;c.testedBy='operator';expect(()=>bindLifecycleEmailConnection(s,tenant,profile,c.id,c.version,'operator',false,100001)).toThrow();
+  expect(()=>bindLifecycleEmailConnection(s,tenant,profile,c.id,c.version,'other',true,100001)).toThrow();
+  bindLifecycleEmailConnection(s,tenant,profile,c.id,c.version,'operator',true,100001);
+ }
+ expect(s.active).toEqual(before);expect(s.revision).toBe(globalRevision);
+ expect(publicLifecycleSenders(s,tenant).map(sender=>sender.from)).toEqual(['onboarding@example.test','hr@example.test','noreply@example.test']);
+ expect(publicLifecycleSenders(s,'22222222-2222-4222-8222-222222222222').map(sender=>sender.from)).toEqual([config.from,config.from,config.from]);
+ const bound=s.lifecycleSenders![tenant]!.hr!,connection=s.connections![bound.connectionId];
+ saveEmailConnection(s,{id:connection.id,name:connection.name,config:{...config,from:'new-hr@example.test'},password:'fictional-new',revision:revision(s)});
+ expect(bound.relay.config.from).toBe('hr@example.test');expect(publicLifecycleSenders(s,tenant).find(sender=>sender.profile==='hr')).toMatchObject({from:'hr@example.test',hasUnappliedChanges:true});
+ expect(JSON.stringify(publicLifecycleSenders(s,tenant))).not.toContain('fictional-');
+ expect(()=>bindLifecycleEmailConnection(s,tenant,'hr',connection.id,connection.version,'operator',true,100001)).toThrow();
+});
+
+it('rejects a stale receipt after another administrator changes the sender bindings',()=>{
+ const s=state(),tenant='11111111-1111-4111-8111-111111111111';emailConnections(s);
+ const a=saveEmailConnection(s,{name:'First',config,password:'fictional-first',revision:revision(s)}),b=saveEmailConnection(s,{name:'Second',config,password:'fictional-second',revision:revision(s)});
+ for(const c of [a,b]){c.testedAt=100000;c.testedBy='operator';}
+ bindLifecycleEmailConnection(s,tenant,'hr',a.id,a.version,'operator',true,100001);
+ expect(()=>bindLifecycleEmailConnection(s,tenant,'hr',b.id,b.version,'operator',true,100001)).toThrow();expect(s.lifecycleSenders![tenant]!.hr!.connectionId).toBe(a.id);
+});
+
+it('reports legacy version-marker reuse while retaining the actual confirmed sender snapshot',()=>{
+ const s=state(),tenant='11111111-1111-4111-8111-111111111111';emailConnections(s);const c=s.connections!['current-relay'];c.testedAt=100000;c.testedBy='operator';c.testedAgainstRevision=s.revision;
+ bindLifecycleEmailConnection(s,tenant,'hr',c.id,c.version,'operator',true,100001);
+ s.connections!['current-relay']={...c,config:{...config,from:'changed-default@example.test'}};
+ expect(publicLifecycleSenders(s,tenant).find(sender=>sender.profile==='hr')).toMatchObject({from:config.from,hasUnappliedChanges:true});
 });

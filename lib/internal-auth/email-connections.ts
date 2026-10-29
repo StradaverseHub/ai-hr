@@ -1,9 +1,11 @@
+import { managedEmailSenderProfiles, type ManagedEmailSenderProfile } from '../managed-email-policy';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {EmailSettingsError,sameEmailCredential,type EmailConfig} from '../identity/email-model';
 import type {StoredEmailRelay} from '../identity/email-relay';
 
-export type SavedEmailConnection=StoredEmailRelay&{id:string;name:string;version:string;testedAt:number|null;testedBy:string|null;testedAgainstRevision?:string};
-export type ConnectionState={revision:string;active:StoredEmailRelay|null;connectionsRevision?:string;connections?:Record<string,SavedEmailConnection>;activeConnectionId?:string;activeConnectionVersion?:string;drafts?:Record<string,StoredEmailRelay&{id:string;testedAt:number|null;revision?:string}>};
+export type SavedEmailConnection=StoredEmailRelay&{id:string;name:string;version:string;testedAt:number|null;testedBy:string|null;testedAgainstRevision?:string;testedAgainstLifecycleRevision?:string};
+export type LifecycleSenderBinding={connectionId:string;version:string;relay:StoredEmailRelay;revision:string;appliedAt:number;appliedBy:string};
+export type ConnectionState={lifecycleRevision?:string;lifecycleSenders?:Record<string,Partial<Record<ManagedEmailSenderProfile,LifecycleSenderBinding>>>;revision:string;active:StoredEmailRelay|null;connectionsRevision?:string;connections?:Record<string,SavedEmailConnection>;activeConnectionId?:string;activeConnectionVersion?:string;drafts?:Record<string,StoredEmailRelay&{id:string;testedAt:number|null;revision?:string}>};
 const revision=()=>randomBytes(32).toString('base64url');
 /** Upgrade only the encrypted record's representation; the working relay remains byte-for-byte intact. */
 export function emailConnections(state:ConnectionState):Record<string,SavedEmailConnection>{
@@ -36,7 +38,7 @@ export function saveEmailConnection(state:ConnectionState,input:{id?:string;name
  const password=input.config.auth?(input.password||(previous&&sameEmailCredential(previous.config,input.config)?previous.password:undefined)):undefined;
  if(input.config.auth&&!password)throw new EmailSettingsError('invalid');
  const id=previous?.id??randomUUID();
- records[id]={id,name,config:input.config,password,version:randomUUID(),testedAt:null,testedBy:null,testedAgainstRevision:state.revision};
+ records[id]={id,name,config:input.config,password,version:randomUUID(),testedAt:null,testedBy:null,testedAgainstRevision:state.revision,testedAgainstLifecycleRevision:state.lifecycleRevision??'initial'};
  state.connectionsRevision=revision();return records[id];
 }
 export function testedEmailConnection(state:ConnectionState,id:string,version:string){
@@ -47,4 +49,24 @@ export function activateEmailConnection(state:ConnectionState,id:string,version:
  if(!received)throw new EmailSettingsError('needsReceipt');
  if(!c.testedAt||c.testedBy!==subject||c.testedAgainstRevision!==state.revision||c.testedAt<now-30*60_000)throw new EmailSettingsError('needsTest');
  state.active={config:c.config,password:c.password};state.activeConnectionId=c.id;state.activeConnectionVersion=c.version;state.revision=revision();state.connectionsRevision=revision();
+}
+
+/** Receipt-confirmed version snapshots are tenant/profile-bound; editing the saved connection cannot change a working sender. */
+export function bindLifecycleEmailConnection(state:ConnectionState,tenantId:string,profile:ManagedEmailSenderProfile,id:string,version:string,subject:string,received:boolean,now=Date.now()) {
+ if(!managedEmailSenderProfiles.includes(profile)||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(tenantId))throw new EmailSettingsError('invalid');
+ const c=testedEmailConnection(state,id,version);
+ if(!received)throw new EmailSettingsError('needsReceipt');
+ if(!c.testedAt||c.testedBy!==subject||c.testedAgainstRevision!==state.revision||c.testedAt<now-30*60_000)throw new EmailSettingsError('needsTest');
+ if((c.testedAgainstLifecycleRevision??'initial')!==(state.lifecycleRevision??'initial'))throw new EmailSettingsError('needsTest');
+ state.lifecycleSenders??={};state.lifecycleSenders[tenantId]??={};
+ const appliedRevision=revision();state.lifecycleRevision=appliedRevision;
+ state.lifecycleSenders[tenantId][profile]={connectionId:c.id,version:c.version,relay:structuredClone({config:c.config,password:c.password}),revision:appliedRevision,appliedAt:now,appliedBy:subject};
+ state.connectionsRevision=revision();
+}
+export function publicLifecycleSenders(state:ConnectionState,tenantId:string) {
+ return managedEmailSenderProfiles.map(profile=>{
+  const binding=state.lifecycleSenders?.[tenantId]?.[profile],connection=binding?state.connections?.[binding.connectionId]:undefined;
+  return {profile,from:binding?.relay.config.from??state.active?.config.from??null,hasUnappliedChanges:!!binding&&(!connection||connection.version!==binding.version||JSON.stringify(connection.config)!==JSON.stringify(binding.relay.config)||connection.password!==binding.relay.password),
+   ...(binding?{connectionId:binding.connectionId,appliedAt:new Date(binding.appliedAt).toISOString()}:{})};
+ });
 }

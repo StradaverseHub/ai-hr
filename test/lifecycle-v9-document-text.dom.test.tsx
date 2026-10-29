@@ -7,7 +7,7 @@ const document:Document={id:'doc',templateId:'template',name:'Fictional letter',
 it('previews per-person wording and sends only saved-instance edits',async()=>{
   const command=vi.fn(async()=>({ok:true})),close=vi.fn();render(<DocumentTextEditor document={document} person="Fictional person" busy={false} command={command} close={close}/>);
   expect(screen.getByText('For Fictional person only. The template does not change.')).toBeVisible();
-  fireEvent.change(screen.getByLabelText('Title'),{target:{value:'Reviewed title'}});fireEvent.click(screen.getByRole('button',{name:'Preview',exact:true}));expect(screen.getByRole('heading',{name:'Reviewed title'})).toBeVisible();expect(screen.getByText('For Fictional person')).toBeVisible();
+  fireEvent.change(screen.getByLabelText('Title'),{target:{value:'Reviewed title'}});fireEvent.click(screen.getByRole('button',{name:'Preview'}));expect(screen.getByRole('heading',{name:'Reviewed title'})).toBeVisible();expect(screen.getByText('For Fictional person')).toBeVisible();
   fireEvent.click(screen.getByRole('button',{name:'Done'}));await waitFor(()=>expect(close).toHaveBeenCalledOnce());expect(command).toHaveBeenCalledWith({type:'documentTextEdit',id:'doc',edits:{title:'Reviewed title'}});expect(document.edits).toEqual({});
 });
 it('retains wording on a save failure and resets only instance text',async()=>{

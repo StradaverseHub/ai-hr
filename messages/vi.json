@@ -21429,7 +21429,8 @@
     "success": {
       "save": "Đã lưu bản nháp. Cấu hình đang dùng không đổi.",
       "test": "Máy chủ đã nhận email thử. Kiểm tra hộp thư trước khi kích hoạt.",
-      "apply": "Đã kích hoạt. Lời mời và khôi phục mật khẩu có thể dùng máy chủ này."
+      "apply": "Đã kích hoạt. Lời mời và khôi phục mật khẩu có thể dùng máy chủ này.",
+      "sender": "Đã cập nhật người gửi thư vòng đời. Khôi phục tài khoản và mặc định của bản cài đặt không thay đổi."
     },
     "connectionTitle": "Kết nối SMTP",
     "security": "Mã hóa",
@@ -21467,7 +21468,15 @@
     "notRecorded": "Chưa ghi nhận",
     "backToConnections": "Quay lại danh sách kết nối",
     "saveConnection": "Lưu kết nối",
-    "activeChangesHelp": "Máy chủ chuyển tiếp đang dùng cài đặt đã kích hoạt gần nhất. Lưu, kiểm tra và xác nhận nhận thư trước khi kích hoạt thay đổi."
+    "activeChangesHelp": "Máy chủ chuyển tiếp đang dùng cài đặt đã kích hoạt gần nhất. Lưu, kiểm tra và xác nhận nhận thư trước khi kích hoạt thay đổi.",
+    "lifecycleSenderTitle": "Người gửi thư nhận việc và nghỉ việc",
+    "lifecycleSenderHelp": "Mỗi người gửi sử dụng kết nối đã được xác nhận. Nếu chưa liên kết riêng, hệ thống dùng máy chủ chuyển tiếp đang hoạt động của bản cài đặt.",
+    "applyTarget": "Áp dụng kết nối đã kiểm tra này cho",
+    "applyDefault": "Mặc định của bản cài đặt (thư tài khoản và thư khác)",
+    "senderDefault": "Dùng mặc định của bản cài đặt",
+    "senderConfirmed": "Đã xác nhận nhận thư lúc {at}",
+    "senderPending": "Kết nối này có thay đổi mới đã lưu. Phiên bản đã xác nhận vẫn gửi thư cho đến khi được kiểm tra và áp dụng lại.",
+    "senderTargetHelp": "Kết quả kiểm tra hết hạn sau 30 phút. Mặc định của bản cài đặt điều khiển thư tài khoản. Lựa chọn vòng đời chỉ thay đổi người gửi tương ứng cho đơn vị thuê hiện tại. Sau khi sửa kết nối, hãy kiểm tra và xác nhận nhận thư lần nữa."
   },
   "workflowEmail": {
     "letterAccountTitle": "Thư cho tài khoản này",
