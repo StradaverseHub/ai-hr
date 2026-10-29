@@ -122,3 +122,11 @@ test('a substituted packet directory and missing-packet cleanup scope cannot aut
  assert.equal(readPrivateInstall(grant.installId,{home,allowCleanup:true}).allowCleanup,true);
  assert.throws(()=>readPrivateInstall(grant.installId,{home})); // Never becomes activation authority.
 });
+
+test('bundle hashing and unpacking get ten minutes, inside the detached deploy deadline',async()=>{
+ const {BUNDLE_PYTHON_TIMEOUT_MS}=await import('./staging-build-install.mjs');
+ assert.equal(BUNDLE_PYTHON_TIMEOUT_MS,600000);
+ const source=readFileSync(new URL('./staging-build-install.mjs',import.meta.url),'utf8');
+ assert.equal(source.match(/timeout:BUNDLE_PYTHON_TIMEOUT_MS/g).length,2);
+ assert.ok(3*BUNDLE_PYTHON_TIMEOUT_MS+BUNDLE_PYTHON_TIMEOUT_MS<60*60_000);
+});
