@@ -38,13 +38,13 @@ export function ReviewedDecisionBatch({action,leaveChoices}:{action:Action;leave
  }
  return <section className="space-y-6" aria-label={t('title')} aria-busy={busy||loading}>
   <div className="max-w-prose space-y-2"><h2 className="text-lg font-semibold">{t('title')}</h2><p className="text-sm text-muted-foreground">{t('intro')}</p><p className="text-sm text-muted-foreground">{t('scope')}</p></div>
-  <Button type="button" variant="outline" disabled={busy||loading} onClick={()=>void load()}>{t(loading?'loading':'load')}</Button>
+  <Button type="button" className="min-h-11 h-auto max-w-full whitespace-normal break-words" variant="outline" disabled={busy||loading} onClick={()=>void load()}>{t(loading?'loading':'load')}</Button>
   {error&&<p role="alert" className="text-sm">{t('unavailable')}</p>}
   {rows?.length===0&&<p role="status" className="text-sm">{t('none')}</p>}
   <ReviewedDecisionBatchContext.Provider value={{busy,register}}>
    {rows&&rows.length>0&&<ol className="space-y-6">{rows.map(id=><li key={id} className="border-b border-border pb-6">{action===REVIEWED_LEAVE_DECISION_ACTION?<ModuleAssignedLeaveActionPanel choices={leaveChoices} resumeActionId={id}/>:<AssignedDecisionPanel action={action} resumeActionId={id}/>}</li>)}</ol>}
   </ReviewedDecisionBatchContext.Provider>
-  {rows&&rows.length>0&&<div className="space-y-2"><Button type="button" disabled={busy||selected.size===0} onClick={()=>void confirmSelected()}>{t(busy?'working':'confirm',{count:selected.size})}</Button><p className="max-w-prose text-xs text-muted-foreground">{t('independent')}</p></div>}
+  {rows&&rows.length>0&&<div className="space-y-2"><Button type="button" className="min-h-11 h-auto max-w-full whitespace-normal break-words py-2" disabled={busy||selected.size===0} onClick={()=>void confirmSelected()}>{t(busy?'working':'confirm',{count:selected.size})}</Button><p className="max-w-prose text-xs text-muted-foreground">{t('independent')}</p></div>}
   {finished&&<p role="status" className="text-sm">{t('finished')}</p>}
  </section>;
 }

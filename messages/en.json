@@ -19354,7 +19354,7 @@
         "loading": "Loading saved reviews…",
         "none": "No pending saved reviews are available.",
         "unavailable": "Could not finish this request. Reload the list or reopen the affected saved review.",
-        "confirm": "Confirm {count} reviewed decisions",
+        "confirm": "Confirm {count, plural, one {# reviewed decision} other {# reviewed decisions}}",
         "working": "Recording selected decisions…",
         "independent": "Each decision is checked and recorded separately. A later refusal does not undo earlier decisions. Closing this page stops further requests; reopen reviews to check uncertain results.",
         "finished": "Requests finished. Read each card’s result. Reopen any uncertain review before taking further action."
