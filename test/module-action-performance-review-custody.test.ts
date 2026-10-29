@@ -1,7 +1,11 @@
+import {lockLeaveDependenciesTx} from '../packs/leave/service';
 /** Authored UNRUN: actual shared0622/native-engine source fixtures, not mounted acceptance. */
 /** Authored UNRUN: source-only standard-cycle acknowledgement. Ratings below are explicit fictional
  * human fixture decisions to reach the native released state, never generated ratings or AI truth. */
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
+import * as dbClient from '../db/client';
+import * as vault from '../lib/pii/vault';
+import {newPrivateReviewNonce,privateReviewCommitment} from '../core/assistant-actions/private-review-commitment';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
@@ -46,4 +50,12 @@ describe('Review native acknowledgement shares encrypted review custody',()=>{
 
  it('retains the private nonce across fresh pending native revalidation instead of generating a different action on reopen',async()=>{const a=await fixture(),before=await state(a),first=await prepare(a),second=await prepare(a);expect(first.review).toEqual(second.review);expect(first.reviewedDigest).not.toBe(second.reviewedDigest);expect(await reopenReviewModuleActionReview(a.ctx,first.actionId)).toEqual({kind:'prepared',review:first});expect(await reopenReviewModuleActionReview(a.ctx,second.actionId)).toEqual({kind:'prepared',review:second});expect(JSON.stringify(first)).not.toContain('reviewNonce');expect(await state(a)).toEqual(before);});
 
+});
+
+async function retainedPerformanceReview(a:Awaited<ReturnType<typeof fixture>>){return withTenant(a.ctx,async tx=>{await lockLeaveDependenciesTx(tx,a.ctx.tenantId,[a.employmentId]);const review=await prepareOwnReviewAcknowledgementTx(tx,a.ctx,a.intent),body={reviewNonce:newPrivateReviewNonce(),engine:'standard_cycle_only' as const,intent:a.intent,review};
+ const binding={tenantId:a.ctx.tenantId,userId:a.ctx.userId!,personId:a.ctx.personId!,employmentId:a.employmentId,companyId:base.companyId},actionId=randomUUID(),action=MODULE_REVIEW_ACK_ACTION,intentDigest=createHash('sha256').update(JSON.stringify(body.intent)).digest('hex'),reviewedDigest=privateReviewCommitment([1,action,binding],body),identity=JSON.stringify([1,action,actionId,binding,intentDigest,reviewedDigest]),dek=vault.newDek();try{const kid=vault.newKid();await tx.execute(sql`select app.assistant_module_action_review_prepare(${action},${actionId}::uuid,${binding.personId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${intentDigest},${reviewedDigest},${kid},${vault.wrapDek(dek,'assistant:module-action:key:'+identity)},${vault.sealUnderDek(dek,kid,JSON.stringify(body),'assistant:module-action:body:'+identity)})`);return{actionId,reviewedDigest,action,contractVersion:1 as const};}finally{dek.fill(0);}});}
+describe('WP9 retained standard_cycle_only acknowledgement custody',()=>{
+ it('opens and completes exact original engine-wire rows once',async()=>{const a=await fixture(),old=await retainedPerformanceReview(a);expect((await reopenReviewModuleActionReview(a.ctx,old.actionId)).kind).toBe('prepared');await expect(confirmReviewModuleActionReview(a.ctx,{...old,reviewedDigest:'0'.repeat(64)})).rejects.toThrow();const done=await confirmReviewModuleActionReview(a.ctx,old);expect(done.kind).toBe('completed');const after=await state(a);expect(await confirmReviewModuleActionReview(a.ctx,old)).toEqual(done);expect(await reopenReviewModuleActionReview(a.ctx,old.actionId)).toEqual(done);expect(await state(a)).toEqual(after);});
+ it('retires old pending custody after grant removal without decrypting or acknowledging',async()=>{const a=await fixture(),old=await retainedPerformanceReview(a);await revokeAssistant(a.admin,{appUserId:a.ctx.userId!});const before=await state(a),unwrap=vi.spyOn(vault,'unwrapDek');try{expect((await discardReviewModuleActionReview(a.ctx,{action:MODULE_REVIEW_ACK_ACTION,contractVersion:1,actionId:old.actionId})).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect(await state(a)).toEqual(before);}finally{unwrap.mockRestore();}});
+ it('reconciles a genuinely committed acknowledgement after reply loss',async()=>{const a=await fixture(),r=await prepare(a),real=dbClient.withTenant;const lost:typeof withTenant=async(who,work,options)=>{await real(who,work,options);throw Error('Fictional lost reply after commit');};const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(lost);try{await expect(confirm(a,r)).rejects.toThrow();}finally{spy.mockRestore();}const after=await state(a),done=await reopenReviewModuleActionReview(a.ctx,r.actionId);expect(done.kind).toBe('completed');expect(await confirm(a,r)).toEqual(done);expect(await state(a)).toEqual(after);});
 });
