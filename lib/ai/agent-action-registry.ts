@@ -246,7 +246,7 @@ export const AGENT_ACTIONS=Object.freeze([
   idempotencyKey:'review_action_id',policy:{tier:'confirm',category:'claim_money'},reversal:{kind:'final'},evaluationCases:[conversation('propose:free_text')],
   screen:{native:'app/claims/page.tsx',entryPoints:['app/claims/actions.ts#cancelClaimAction']},review:{route:'/assistant/claims',handoff:'review_page'},
   // Generic SQL family (0670) with a hand-cloned TypeScript custody owner: WP9 moves it to generic_own first.
-  store:'dedicated',browserOwner:'claimCancellation',pauseKey:'hr_assistant'}),
+  store:'generic_own',browserOwner:'claimCancellation',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'performance.review.acknowledge',module:'performance',owner:'performance',service:'core/performance.ts#acknowledgeReview',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_standard_review_v1',inputSchema:'ReviewModuleActionPrepare',outputSchema:'ReviewModuleActionPreparedReview'},
   confirm:{status:'implemented',adapter:'module_standard_review_v1',inputSchema:'ReviewModuleActionConfirmation',outputSchema:'ReviewModuleActionCompletedReceipt'},

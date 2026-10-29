@@ -1,7 +1,6 @@
 /** Current human actor reads for this one action. Not a confirmation capability or AI pause check. */
-import { sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../../db/client';
-import { lockAccessConfigurationTx } from '../access-configuration-lock';
+import {isAiPrincipalCurrentTx} from '../ai-principal';
 import { mayUseAssistant } from '../assistant-grant';
 import { resolveEntitlementsTx } from '../entitlements';
 
@@ -22,20 +21,7 @@ export async function readOwnLeaveActorTx(tx: Tx, ctx: SessionContext): Promise<
   // The caller can retain and mutate its context while this function awaits the lock or SQL.
   // Bind every later read and the returned context to the same initial identity/carriers.
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
-  // Match withTenant's carrier serialization, including its legacy roles-only context. Checking
-  // only login/person would let a different context reuse this transaction's principal proof.
-  const grants = ctx.grants ?? (ctx.roles ?? []).map(role => ({ role, companyId: null }));
-  const roles = ctx.roles ?? Array.from(new Set(grants.map(grant => grant.role)));
-  await lockAccessConfigurationTx(tx, ctx.tenantId);
-  const rows = await tx.execute(sql`select u.id from public.app_user u
-    where u.id=${ctx.userId}::uuid and u.tenant_id=${ctx.tenantId}::uuid
-      and current_setting('transaction_isolation')='read committed'
-      and u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id()
-      and current_setting('app.roles',true)=${roles.join(',')}
-      and current_setting('app.grants',true)::jsonb=${JSON.stringify(grants)}::jsonb
-      and u.person_id=${ctx.personId}::uuid and u.archived_at is null
-      and not app.login_blocked(u.id) and app.principal_snapshot_current()`);
-  if ((rows as unknown as { id: string }[]).length !== 1) return null;
+  if(!await isAiPrincipalCurrentTx(tx,ctx))return null;
   const fresh: SessionContext = { ...ctx, entitlementsError: undefined,
     entitlements: await resolveEntitlementsTx(tx, ctx.tenantId) };
   return (await mayUseAssistant(fresh, tx)).allowed ? fresh : null;

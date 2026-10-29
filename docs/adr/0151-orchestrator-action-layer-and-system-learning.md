@@ -541,3 +541,20 @@ administrator-scoped outcome summary shown beside Assistant outcomes. Missing cl
 chasing are not yet built. The effective pause for these entries is their specialist switch (and
 `SETTING_KILL`); their `pauseKey` stays `hr_assistant` until WP12 widens it. This amendment proves no gate
 result or installation.
+
+
+### WP9 store 1 — claim cancellation custody, 30 October 2026
+
+`claims.cancel` now uses `createGenericOwnReviewStore` through the same public transport functions. Its
+0670 SQL kind, nonce commitment, sealed-body identity/purpose strings, metadata, reviewed digest, receipt
+and event verifier are unchanged. Existing in-flight rows remain readable; no migration or 0698 allocation
+is needed for this store. Compatibility tests construct the pre-refactor sealed-row format directly and
+reopen/complete/retire it through the generic family. A lost-reply fixture commits the native cancellation
+before the simulated transport failure, then reconciles it without repeating the effect.
+
+`withAgentActionGuard` composes current principal, Assistant grant, registered module, human review phase,
+tier and pause as additional prerequisites. The own-claim source and native cancellation service still own
+subject authority and effect rules. Other stores have not been migrated by this increment. The shared
+own-leave actor now calls `isAiPrincipalCurrentTx` for the existing principal/carrier check. No model writes
+or Automatic approval authority is added. Focused CI, combined-candidate acceptance and release gates
+remain separate evidence.

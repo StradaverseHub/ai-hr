@@ -1,11 +1,17 @@
 /** ADR-0151 wave 1: own pending claim cancellation through the generic review functions of migration 0670.
  * Real migrated database and real native claims service; fictional fixtures only. */
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
+import * as dbClient from '../db/client';
+import {newDek,newKid,wrapDek,sealUnderDek} from '../lib/pii/vault';
+import {newPrivateReviewNonce,privateReviewCommitment} from '../core/assistant-actions/private-review-commitment';
+import {withOwnClaimCancellationSubjectTx,prepareOwnClaimCancellationSourceTx} from '../core/assistant-actions/own-claim-cancellation-source';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
+import {setAiFeature} from '../core/ai-management';
+import {withAgentActionGuard} from '../core/assistant-actions/agent-action-guard';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {createClaimType,setClaimPolicy,submitClaim,decideClaim,cancelClaimTx} from '../packs/claims/service';
 import {prepareClaimCancellationReview,confirmClaimCancellationReview,reopenClaimCancellationReview,discardClaimCancellationReview,listClaimCancellationReviews,readClaimCancellationChoices} from '../core/assistant-actions/claim-cancellation-review-store';
@@ -76,5 +82,69 @@ describe('ADR-0151 own claim cancellation custody',()=>{
   const prior=await withTenant(ctx,tx=>cancelClaimTx(tx,ctx,claimId,subject.employmentId));
   await expect(withTenant(ctx,tx=>tx.execute(sql`select app.assistant_generic_review_complete(${r.actionId}::uuid,${action},${r.reviewedDigest},${prior.eventId}::uuid)`))).rejects.toThrow();
   expect(await custody(r.actionId)).toMatchObject({state:'awaiting_confirmation',receipt_event_id:null});
+ });
+});
+
+// Compatibility fixture authored from the pre-WP9 writer at 057dc9e12. It deliberately does not call
+// createGenericOwnReviewStore: a retained pre-upgrade sealed row must reopen and complete after this refactor.
+async function legacyClaimCancellationReview(){
+ return withTenant(ctx,tx=>withOwnClaimCancellationSubjectTx(tx,ctx,claimId,async(fresh,own)=>{
+  const native=await prepareOwnClaimCancellationSourceTx(tx,fresh,human());
+  const body={reviewNonce:newPrivateReviewNonce(),content:native.content,nativeReviewedDigest:native.reviewedDigest};
+  const binding={tenantId:fresh.tenantId,userId:fresh.userId!,personId:fresh.personId!,employmentId:own.employmentId,companyId:own.companyId};
+  const actionId=randomUUID(),intentDigest=createHash('sha256').update(JSON.stringify(body.content)).digest('hex'),reviewedDigest=privateReviewCommitment([1,action,binding],body);
+  const identity=JSON.stringify([1,action,actionId,binding,intentDigest,reviewedDigest]);
+  const dek=newDek();try{
+   const kid=newKid(),wrappedDek=wrapDek(dek,'assistant:module-action:key:'+identity),ciphertext=sealUnderDek(dek,kid,JSON.stringify(body),'assistant:module-action:body:'+identity);
+   await tx.execute(sql`select app.assistant_generic_review_prepare(${action},${actionId}::uuid,${binding.personId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${own.claimId}::uuid,${intentDigest},${reviewedDigest},${kid},${wrappedDek},${ciphertext})`);
+   return {actionId,reviewedDigest};
+  }finally{dek.fill(0);}
+ }));
+}
+describe('WP9 retained pre-upgrade claim cancellation rows',()=>{
+ it('reopens a pre-WP9 sealed review and commits its cancellation once through the generic family',async()=>{
+  const old=await legacyClaimCancellationReview();
+  const reopened=await reopenClaimCancellationReview(ctx,old.actionId);expect(reopened.kind).toBe('prepared');
+  if(reopened.kind==='prepared')expect(reopened.review.reviewedDigest).toBe(old.reviewedDigest);
+  const done=await confirm(old);expect(done.kind).toBe('completed');
+  expect(await reopenClaimCancellationReview(ctx,old.actionId)).toEqual(done);
+  expect(await confirm(old)).toEqual(done);expect((await state()).cancelled).toHaveLength(1);
+ });
+ it('keeps the retained review digest-bound and permits login-only retirement after grant removal',async()=>{
+  const old=await legacyClaimCancellationReview(),before=await state();
+  await expect(confirm({...old,reviewedDigest:'0'.repeat(64)})).rejects.toThrow();expect(await state()).toEqual(before);
+  await revokeAssistant(group(),{appUserId:ctx.userId!});
+  await expect(confirm(old)).rejects.toThrow();
+  expect((await discardClaimCancellationReview(ctx,{action,contractVersion:1,actionId:old.actionId})).receipt.state).toBe('discarded');
+  expect(await state()).toEqual(before);
+ });
+});
+
+describe('WP9 uncertain confirmation reconciliation',()=>{
+ it('reopens a committed cancellation after a simulated lost reply, without repeating the effect',async()=>{
+  const review=await prepare(),real=dbClient.withTenant;
+  const lostReply:typeof withTenant=async(who,work,options)=>{await real(who,work,options);throw Error('Fictional lost reply after commit');};
+  const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(lostReply);
+  try{await expect(confirm(review)).rejects.toThrow();}finally{spy.mockRestore();}
+  expect((await state()).cancelled).toHaveLength(1);
+  const reopened=await reopenClaimCancellationReview(ctx,review.actionId);expect(reopened.kind).toBe('completed');
+  expect(await confirm(review)).toEqual(reopened);expect((await state()).cancelled).toHaveLength(1);
+ });
+});
+
+
+describe('WP9 shared registry prerequisites at confirmation',()=>{
+ it('refuses a fresh module pause and resumes the same digest after the pause is lifted',async()=>{
+  const review=await prepare(),before=await state();await setAiFeature(group(),'hr_assistant',false);
+  expect(await readClaimCancellationChoices(ctx)).toEqual({kind:'unavailable'});await expect(confirm(review)).rejects.toThrow();expect(await state()).toEqual(before);
+  await setAiFeature(group(),'hr_assistant',true);expect((await confirm(review)).kind).toBe('completed');
+ });
+ it('reads the current registered module state rather than a retained enabled snapshot',async()=>{
+  const review=await prepare(),before=await state();await setModule(b.tenantId,'claims','disabled');
+  await expect(confirm(review)).rejects.toThrow();expect(await state()).toEqual(before);
+ });
+ it('refuses a handoff with no human review adapter',async()=>{
+  await expect(withTenant(ctx,tx=>withAgentActionGuard(tx,ctx,'employees.import'))).rejects.toThrow();
+  expect((await state()).cancelled).toHaveLength(0);
  });
 });
