@@ -156,7 +156,7 @@ export function Tp1DeclarationsList({ rows, compactOnMobile=false }: { rows: Tp1
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-border">
         <input
           type="search"
           value={query}
@@ -169,7 +169,7 @@ export function Tp1DeclarationsList({ rows, compactOnMobile=false }: { rows: Tp1
       </div>
 
       <ClientPager state={state} paramNames={{ page: 'dPage', size: 'dSize' }} />
-      <div className={`overflow-x-auto border-t border-border ${compactOnMobile?'hidden md:block':''}`}>
+      <div className={`overflow-x-auto ${compactOnMobile?'hidden md:block':''}`}>
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
