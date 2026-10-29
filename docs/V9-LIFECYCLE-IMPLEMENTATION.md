@@ -42,6 +42,10 @@ Document drafts expose block ordering, text, tables, signatures and field config
 
 Focused authoring verification covers 32 checks across five domain/DOM files, including server-valid workflow output, read-only configuration access, detached dry runs and table previews. This is development evidence, not whole-system acceptance or migration evidence. The working branch has been published with the owner's explicit push/CI/merge authorization; its current integration refresh preserves the concurrent Rewards and attendance changes from canonical main.
 
+V9 now opens on New Joiners and composes the existing authorized onboarding register. Its rows, draft sync, identities, progress and task state remain owned by the native onboarding service; the V9 company/search controls filter that projection. Case links currently open the existing onboarding case screen, so the complete V9 case/document adaptation remains outstanding. The native onboarding regression controls passed with the composition change.
+
+HR document controls now save HR-owned fields, refresh unsigned Personnel snapshots, and support designated before/after signatures. HR answers freeze once either party signs. Closed employee cases expose read-only forms. The pending leaver calculator also exposes the reason needed to keep its source date. Focused checks verify these ownership and signature boundaries; complete delivery and document journeys remain pending.
+
 ## Behavior that remains unchanged until an owner decision
 
 Post-last-working-day tasks block automatic closure. The two exit-form workflows count Monday through Friday, excluding no holidays in the supplied source. A late case may send the initial form message and its reminder on the same run. The acceptance-letter CC includes the line manager and PBP. Do not silently alter these behaviors while reproducing V9.

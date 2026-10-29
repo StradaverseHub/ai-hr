@@ -242,6 +242,7 @@ function linkedTasks(c: Case, doc: Document, action: TaskDefinition['documentAct
 export function saveDocument(c: Case, id: string, values: Record<string, string>, owner: 'employee' | 'hr', env: Environment): void {
   const doc = c.documents.find(d => d.id === id); if (!doc) throw new V9Error('Document not found.', 'not_found');
   if (c.state !== 'submitted' || documentFinal(doc) || ['withdrawn', 'superseded'].includes(doc.status)) throw new V9Error('This document is no longer editable.', 'conflict');
+  if (owner === 'hr' && (doc.hrSignature || doc.employeeSignature)) throw new V9Error('Signed document fields are frozen. Prepare a new document to make this correction.', 'conflict');
   if (owner === 'employee' && !['sent', 'opened'].includes(doc.status)) throw new V9Error('This document has not been released to you.');
   for (const [key, value] of Object.entries(values)) {
     const field = doc.fields.find(f => f.id === key); if (!field || field.owner !== owner) throw new V9Error('This field cannot be changed.', 'forbidden');
@@ -270,6 +271,11 @@ export function signDocument(c: Case, config: Config, id: string, role: 'employe
   } else {
     if (!doc.signatoryUserId || doc.signatoryUserId !== env.actor.id) throw new V9Error('Only the designated company HR signatory can sign this document.', 'forbidden');
     if (hrStep === 'before' && doc.status !== 'draft' || hrStep === 'after' && doc.status !== 'countersign' || hrStep === 'none') throw new V9Error('This document does not need an HR signature at this stage.', 'conflict');
+    for (const field of doc.fields) if (field.owner !== 'employee' && (!field.when || doc.values[field.when.field] === field.when.value)) {
+      const value = doc.values[field.id] ?? '';
+      validateFieldValue(field, value);
+      if (field.required && (!value.trim() || field.type === 'checkbox' && value !== 'true' || field.type === 'table' && value === '[]')) throw new V9Error(`Complete ${field.label} before signing.`);
+    }
     doc.hrSignature = { ...signature, at: env.now, by: { ...env.actor } }; doc.status = hrStep === 'before' ? 'hrsigned' : 'signed';
   }
   if (documentFinal(doc)) linkedTasks(c, doc, 'signed'); appendLog(c, env, 'document.signed', `${doc.name} · ${role}`);

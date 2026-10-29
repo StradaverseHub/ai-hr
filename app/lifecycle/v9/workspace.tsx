@@ -8,13 +8,13 @@ import { ClipboardList, FileText, GitBranch, ListChecks, LogOut, Settings, Users
 import { OnboardingDateInput } from '@/components/onboarding-date-input';
 import type { LifecycleV9Workspace as Workspace, LifecycleV9Command as Command } from '@/packs/lifecycle/service';
 import * as M from '@/lib/lifecycle-v9-model';
-import { DocumentBody } from '@/components/lifecycle-v9/document-body';
-import { SignatureInput } from '@/components/lifecycle-v9/signature-input';
+import { CaseDocument } from './case-document';
 import { WorkspaceSettings, MatchingRules } from './workspace-settings';
 import { CaseFiles } from './case-files';
 import { CaseCalculator } from './case-calculator';
 import { WorkflowEditor } from './workflow-editor';
 import { TemplateVersionEditor } from './template-version-editor';
+import { NativeJoiners, type NativeJoinersData } from './native-joiners';
 import { commandV9, createV9Offboarding, saveV9Config, setupV9 } from './actions';
 
 const RuleLabels = createContext<Workspace['options']['labels']>({});
@@ -29,9 +29,9 @@ function Dialog({ title, children, close }: { title: string; children: ReactNode
   useEffect(() => { ref.current?.showModal(); return () => ref.current?.close(); }, []);
   return <dialog className="v9-dialog" aria-label={title} ref={ref} onCancel={close}><header><h2>{title}</h2><button type="button" className="v9-button" aria-label="Close" onClick={close}><X size={18}/></button></header>{children}</dialog>;
 }
-export function V9Workspace({ initial, viewer }: { initial: Workspace; viewer: ViewerIdentity }) {
+export function V9Workspace({ initial, viewer, joiners = null }: { initial: Workspace; viewer: ViewerIdentity; joiners?: NativeJoinersData | null }) {
   const router = useRouter(), [busy, start] = useTransition();
-  const [view, setView] = useState<View>('leavers'), [selected, setSelected] = useState<string | null>(null), [search, setSearch] = useState(''), [company, setCompany] = useState(''), [module, setModule] = useState<M.Module>('off');
+  const [view, setView] = useState<View>('joiners'), [selected, setSelected] = useState<string | null>(null), [search, setSearch] = useState(''), [company, setCompany] = useState(''), [module, setModule] = useState<M.Module>('off');
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [creating, setCreating] = useState(false), [reason, setReason] = useState<{ type: 'cancel' | 'reopen'; value: string } | null>(null);
   const [mobileNavigation, setMobileNavigation] = useState(false);
   const [draft, setDraft] = useState(initial.config), [pick, setPick] = useState(''), [document, setDocument] = useState<M.Document | null>(null);
@@ -52,7 +52,8 @@ export function V9Workspace({ initial, viewer }: { initial: Workspace; viewer: V
       <div><div className="v9-crumb">{current ? `${current.module === 'off' ? 'Offboarding / Leavers' : 'Onboarding / New Joiners'} / ${current.facts.name}` : `${['leavers', 'offChecklists'].includes(view) ? 'Offboarding' : ['joiners', 'onbChecklists'].includes(view) ? 'Onboarding' : 'Admin'} / ${titles[view]}`}</div><header className="v9-heading"><div><h1>{current?.facts.name ?? titles[view]}</h1><p>{current ? `${current.number} · ${current.facts.employeeNo}` : view === 'leavers' ? 'Track leavers, returns and access revocation through to clearance.' : view === 'joiners' ? 'Track new joiners synced from Personnel Management and their onboarding progress.' : ''}</p></div><div className="v9-actions">{current ? <Button onClick={() => setSelected(null)}><ArrowLeft size={14}/> Back to list</Button> : view === 'leavers' ? <Button primary onClick={() => setCreating(true)} disabled={busy}><Plus size={14}/> Start offboarding</Button> : ['onbChecklists', 'offChecklists', 'templates', 'workflows', 'groups', 'settings'].includes(view) && initial.canConfigure ? <Button primary disabled={busy} onClick={() => save()}>Save changes</Button> : null}</div></header></div>
       {error && <div className="v9-notice v9-error" role="alert">{error}</div>}{notice && <div className="v9-notice" role="status">{notice}</div>}
       {current ? <CaseView c={current} config={config} users={initial.options.users} personnelWritableKeys={initial.personnelWritableKeys} busy={busy} command={command} onDocument={setDocument} onReason={type => setReason({ type, value: '' })}/> : <>
-      {(view === 'leavers' || view === 'joiners') && <><div className="v9-notice">{view === 'joiners' ? <>Personnel Management owns employee details. <Link className="v9-link" href="/lifecycle/onboarding">Open the existing New Joiners register</Link></> : 'Start a case from the employee record, review the checklist and confirm the case to begin assignments and workflows.'}</div><CaseList cases={cases.filter(c => c.module === (view === 'leavers' ? 'off' : 'onb'))} open={setSelected}/></>}
+      {view === 'joiners' && <NativeJoiners data={joiners} company={company} search={search}/>}
+      {view === 'leavers' && <><div className="v9-notice">Start a case from the employee record, review the checklist and confirm the case to begin assignments and workflows.</div><CaseList cases={cases.filter(c => c.module === 'off')} open={setSelected}/></>}
       {view === 'tasks' && <section className="v9-table-scroll"><table className="v9-table"><thead><tr>{['Task', 'Person', 'Assigned to', 'Due by', 'Status'].map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>{cases.flatMap(c => c.tasks.map(t => <tr key={c.id + t.id}><td><button type="button" className="v9-link" onClick={() => setSelected(c.id)}>{t.name}</button></td><td>{c.facts.name}</td><td>{initial.options.users.find(u => u.id === t.assignee)?.name ?? 'Unassigned'}</td><td>{date(t.dueOn)}</td><td>{t.status === 'notNeeded' ? 'Not needed' : t.status === 'progress' ? 'In progress' : t.status === 'done' ? 'Done' : 'To do'}</td></tr>))}</tbody></table>{!cases.some(c => c.tasks.length) && <p className="v9-panel v9-muted">No tasks to show.</p>}</section>}
       {view === 'records' && <section className="v9-table-scroll"><table className="v9-table"><thead><tr>{['Request', 'Employee', 'Case', 'Items', 'Status'].map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>{cases.filter(c => c.module === 'off' && c.state !== 'pending').map(c => <tr key={c.id}><td><button type="button" className="v9-link" onClick={() => setSelected(c.id)}>RVK-{c.number.split('-').at(-1)}</button></td><td>{c.facts.name}</td><td>{c.number}</td><td>{c.items.filter(i => M.isResolved(i.status) || i.status === 'notReturned').length} of {c.items.length} done</td><td><Badge c={c}/></td></tr>)}</tbody></table><p className="v9-panel v9-muted"><Link href="/lifecycle/requisitions/onboarding" className="v9-link">Open onboarding request records</Link></p></section>}
       {(view === 'onbChecklists' || view === 'offChecklists') && <ChecklistEditor config={config} module={view === 'onbChecklists' ? 'onb' : 'off'} selected={pick} select={setPick} edit={edit} editable={initial.canConfigure}/>}
@@ -65,7 +66,7 @@ export function V9Workspace({ initial, viewer }: { initial: Workspace; viewer: V
     </main></div>
     {creating && <NewCase employees={initial.options.employees} busy={busy} close={() => setCreating(false)} submit={input => perform(async () => { const result = await createV9Offboarding(input); if (result.ok) setCreating(false); return result; }, 'Offboarding case created.')}/>}
     {reason && current && <Dialog title={reason.type === 'cancel' ? 'Cancel offboarding case' : 'Reopen cleared case'} close={() => setReason(null)}><div className="v9-stack"><Field label="Reason" required><textarea rows={3} value={reason.value} onChange={e => setReason({ ...reason, value: e.target.value })}/></Field><Button primary disabled={busy || !reason.value.trim()} onClick={() => { command({ type: reason.type, reason: reason.value }); setReason(null); }}>Confirm</Button></div></Dialog>}
-    {document && <Dialog title={document.name} close={() => setDocument(null)}><DocumentView doc={document}/>{current && document.status === 'draft' && config.templates.find(t => t.id === document.templateId)?.hrStep === 'before' && <SignatureForm busy={busy} name={initial.actor.name} sign={signature => { command({ type: 'documentSign', id: document.id, signature }); setDocument(null); }}/>}</Dialog>}
+    {document && current && <Dialog title={document.name} close={() => setDocument(null)}><CaseDocument key={document.id} c={current} document={document} template={config.templates.find(t => t.id === document.templateId)} actor={initial.actor} busy={busy} command={value => { command(value); setDocument(null); }}/></Dialog>}
   </div></RuleLabels.Provider>;
 }
 function CaseList({ cases, open }: { cases: M.Case[]; open: (id: string) => void }) {
@@ -89,9 +90,6 @@ function NewCase({ employees, busy, close, submit }: { employees: Workspace['opt
   const [employee, setEmployee] = useState(''), [type, setType] = useState<M.ExitType>('Resignation'), [notice, setNotice] = useState(''), [last, setLast] = useState('');
   return <Dialog title="Start offboarding" close={close}><div className="v9-stack"><div className="v9-fields"><Field label="Employee" required><select value={employee} onChange={e => setEmployee(e.target.value)}><option value="">Choose an employee…</option>{employees.map(e => <option key={e.id} value={e.id}>{e.name} · {e.employeeNo}</option>)}</select></Field><Field label="Case type" required><select value={type} onChange={e => setType(e.target.value as M.ExitType)}>{['Resignation', 'Termination', 'Contract end', 'Retirement', 'Non-confirmation'].map(t => <option key={t}>{t}</option>)}</select></Field><Field label="Notice date" required><OnboardingDateInput label="Notice date" value={notice} onChange={setNotice}/></Field><Field label="Last working day" required><OnboardingDateInput label="Last working day" value={last} onChange={setLast}/></Field></div>{['Termination', 'Non-confirmation'].includes(type) && <p className="v9-notice v9-warning">For this case type, review whether access must be revoked on a specific date.</p>}<div className="v9-actions"><Button primary disabled={busy || !employee || !M.validDate(notice) || !M.validDate(last)} onClick={() => submit({ employmentId: employee, type, noticeDate: notice, lastDay: last })}>Start offboarding</Button><Button onClick={close}>Cancel</Button></div></div></Dialog>;
 }
-function DocumentView({ doc }: { doc: M.Document }) { return <DocumentBody document={doc}/>; }
-function SignatureForm({ name, busy, sign }: { name: string; busy: boolean; sign: (s: Pick<M.Signature, 'method' | 'value' | 'consent'>) => void }) { return <SignatureInput name={name} busy={busy} submit={sign}/>; }
-
 function ModuleTabs({ module, setModule }: { module: M.Module; setModule: (m: M.Module) => void }) { return <div className="v9-actions" role="tablist" aria-label="Module">{(['onb', 'off'] as const).map(m => <button key={m} type="button" role="tab" aria-selected={module === m} className={'v9-button' + (module === m ? ' v9-button-primary' : '')} onClick={() => setModule(m)}>{m === 'onb' ? 'Onboarding' : 'Offboarding'}</button>)}</div>; }
 type Edit = (fn: (n: M.Config) => void) => void;
 function ChecklistEditor({ config, module, selected, select, edit, editable }: { config: M.Config; module: M.Module; selected: string; select: (id: string) => void; edit: Edit; editable: boolean }) {

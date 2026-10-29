@@ -12,10 +12,11 @@ import { Button, Field, PageHeader, inputCls } from '@/components/ui';
 import { type OnboardingConfig, type onboardingList, type onboardingOptions } from '@/packs/lifecycle/service';
 import { effectiveFacts, matchChecklist, dayDate, currentReq, validDate, requisitionStatus, visibleRecentJoiner, missingCaseFields } from '@/lib/onboarding-model';
 type Options = Awaited<ReturnType<typeof onboardingOptions>>;
-export function Joiners({ rows, config, options }: {
+export function Joiners({ rows, config, options, embedded = false }: {
     rows: Awaited<ReturnType<typeof onboardingList>>;
     config: OnboardingConfig;
     options: Options;
+    embedded?: boolean;
 }) {
     const copy = useOnboardingCopy();
     const [query, setQuery] = useState(''), [group, setGroup] = useState(''), [status, setStatus] = useState(''), [state, setState] = useState(''), [from, setFrom] = useState(''), [to, setTo] = useState('');
@@ -27,7 +28,7 @@ export function Joiners({ rows, config, options }: {
     const label = (kind: keyof Options, id: string) => options[kind].find(x => x.id === id)?.name ?? id;
     const locale = useLocale();
     const overdue = (row: typeof rows[number]) => row.case.state !== 'cancelled' && (row.case.tasks.some(t => t.status !== 'done' && t.dueOn < today) || row.case.state === 'pending' && validDate(effectiveFacts(row.case).joinDate) && dayDate(effectiveFacts(row.case).joinDate, -7) < today || config.countEquipment && !!currentReq(row.case) && !currentReq(row.case)?.handedAt && effectiveFacts(row.case).joinDate <= today);
-    return <div className="onb-workspace space-y-5"><OnboardingBreadcrumb root="Onboarding" items={[{label:"New Joiners"}]}/><PageHeader title={copy("New Joiners")} description={copy("Track new joiners synced from Personnel Management and their onboarding progress.")}/>
+    return <div className="onb-workspace space-y-5">{!embedded && <><OnboardingBreadcrumb root="Onboarding" items={[{label:"New Joiners"}]}/><PageHeader title={copy("New Joiners")} description={copy("Track new joiners synced from Personnel Management and their onboarding progress.")}/></>}
  <div className="onb-sync"><span aria-hidden="true">↻</span><p>{copy("Synced from Personnel Management. A Draft record opens an onboarding case here, pre-filled with what Personnel Management already holds. Complete and submit the case to start the checklist and create the IT requisition.")}{latestSync&&<span className="onb-cell-sub">{copy('Latest Personnel sync')} · {onboardingTimestamp(latestSync)}</span>}</p></div>
  <div className="onb-filter-panel"><Field label={copy("Search by name")}><input value={query} onChange={e => setQuery(e.target.value)} className={inputCls}/></Field><Field label={copy("Business Group")}><select value={group} onChange={e => setGroup(e.target.value)} className={inputCls}><option value="">{copy("All groups")}</option>{options.businessGroup.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field><Field label={copy("Status")}><select value={status} onChange={e => setStatus(e.target.value)} className={inputCls}><option value="">{copy("All statuses")}</option><option value="Draft">{copy("Draft")}</option><option value="Active">{copy("Active")}</option></select></Field><Field label={copy("Case")}><select value={state} onChange={e => setState(e.target.value)} className={inputCls}><option value="">{copy("All cases")}</option><option value="pending">{copy("Pending submission")}</option><option value="submitted">{copy("Submitted")}</option><option value="cancelled">{copy("Cancelled")}</option></select></Field><Field label={copy("Join date from")}><OnboardingDateInput label={copy("Join date from")} value={from} onChange={setFrom}/></Field><Field label={copy("Join date to")}><OnboardingDateInput label={copy("Join date to")} value={to} onChange={setTo}/></Field></div>
  {rangeBad && <p role="alert" className="text-sm text-destructive">{copy("Join date to must be on or after Join date from.")}</p>}

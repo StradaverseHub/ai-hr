@@ -38,6 +38,21 @@ it('deduplicates multiple To roles while keeping each task owner reminder privat
   expect(c.mails.find(m => m.to[0] === 'hr2')?.body).toBe('Revoke access (due 2026-10-30)');
 });
 
+it('requires HR-owned answers before signing and freezes those fields after signature', () => {
+  const { c, config, environment } = fixture();
+  const definition = template(); definition.hrStep = 'before';
+  definition.versions[0].fields = [{ id: 'approval', label: 'HR approval', type: 'checkbox', owner: 'hr', pmKey: null, required: true, sensitive: false, options: [], section: 'main', when: null }];
+  config.templates = [definition]; environment.signatoryUserId = environment.actor.id;
+  const document = M.generate(c, config, definition.id, environment);
+  const signature: M.Signature = { by: environment.actor, at: environment.now, method: 'typed', value: 'HR Signatory', consent: true };
+  M.saveDocument(c, document.id, { approval: 'false' }, 'hr', environment);
+  expect(() => M.signDocument(c, config, document.id, 'hr', signature, environment)).toThrow('Complete HR approval');
+  M.saveDocument(c, document.id, { approval: 'true' }, 'hr', environment);
+  M.signDocument(c, config, document.id, 'hr', signature, environment);
+  expect(document.status).toBe('hrsigned');
+  expect(() => M.saveDocument(c, document.id, { approval: 'false' }, 'hr', environment)).toThrow('frozen');
+});
+
 describe('V9 calendar and matching parity', () => {
   it('keeps working-day triggers separate from the two checklist day conventions', () => {
     expect(M.addDays('2026-10-30', -10, true)).toBe('2026-10-16');
