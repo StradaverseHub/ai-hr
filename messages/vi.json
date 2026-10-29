@@ -6513,7 +6513,7 @@
         "reason": {
           "NO_TRANSACTION_FOR_CYCLE": "Không có giao dịch nào cho kỳ lương này",
           "NO_ADDITIONAL_PAY_THIS_RUN": "Không có khoản nào cho loại kỳ chạy này — lương hằng tháng cố định của họ được trả ở kỳ chạy thường",
-          "NOTHING_PAYABLE_THIS_PERIOD": "Không có lương cơ bản và không có khoản nào phải trả trong kỳ này — không chi trả gì nên không khai báo gì",
+          "NOTHING_PAYABLE_THIS_PERIOD": "Không có lương cơ bản hằng tháng và không có khoản nào phải trả trong tháng này.",
           "DEDUCTION_ONLY_THIS_PERIOD": "Chỉ có một khoản trừ đang chờ mà không có lương để trừ — trừ từ số không sẽ thành nợ nhân viên"
         }
       },
@@ -6661,6 +6661,9 @@
       "preChecksNothingPayableNoRemark": "Không có lý do nào được ghi trên hồ sơ lương.",
       "reprocessGapNothingPayable": "không có lương cơ bản hằng tháng",
       "reprocessReasonNothingPayable": "Được cố ý để ra ngoài lần chạy này — không có lương cơ bản hằng tháng và không có khoản nào phải trả trong tháng. Chỉ đánh dấu nếu sau đó đã nhập khoản nào cho họ.",
+      "reprocessGroupSkippedTitle": "Đã bỏ qua — {n} nhân viên không có gì để xử lý trong tháng này",
+      "reprocessGroupSkippedNote": "Không được đánh dấu và không tính là chờ xử lý: bảng lương đã đánh giá họ và không có khoản nào phải trả. Nếu có khoản được nhập cho họ trong tháng này, họ sẽ trở lại Mới / Chờ xử lý, và bạn vẫn có thể tự đánh dấu họ.",
+      "reprocessStatusSkipped": "Đã bỏ qua",
       "preChecksBadgeLegend": "Mục đánh dấu “Chặn xử lý” phải được sửa trước lần chạy này. Mục đánh dấu “Cảnh báo” vẫn xử lý được sau khi bạn xác nhận. Mục đánh dấu “Sẽ được để ra ngoài” không cần bạn làm gì cả.",
       "reprocessOutcomeStatus": {
         "reprocessed": "Đã xử lý lại",
@@ -6678,7 +6681,7 @@
       "reprocessReviewPcbConfiguration": "Kiểm tra cấu hình PCB",
       "reprocessOutcomeRecordedAt": "Ghi nhận lúc {at}",
       "reprocessOutcomeTitle": "Kết quả của nhân viên đã chọn",
-      "reprocessOutcomeSummary": "Đã chọn: {selected} · Đã xử lý lại: {succeeded} · Đã bỏ qua: {skipped} · Cấu hình chưa đầy đủ: {failed}",
+      "reprocessOutcomeSummary": "Đã chọn: {selected} · Đã xử lý lại: {succeeded} · Đã bỏ qua: {skipped} (đã hoàn tất — không có khoản phải trả) · Cấu hình chưa đầy đủ: {failed}",
       "reprocessStoppedPartial": "Việc xử lý đã dừng trước khi hoàn tất tất cả nhân viên đã chọn. Các kết quả đã lưu vẫn có hiệu lực. Kiểm tra chúng trước khi thử lại.",
       "reprocessOutcomeStatusHeading": "Trạng thái xử lý",
       "reprocessOutcomeCategoryHeading": "Phân loại thuế",
@@ -7669,7 +7672,7 @@
       "skipReason": {
         "NO_TRANSACTION_FOR_CYCLE": "Không có giao dịch nào cho kỳ lương này",
         "NO_ADDITIONAL_PAY_THIS_RUN": "Không có khoản nào cho loại kỳ chạy này — lương hằng tháng cố định của họ được trả ở kỳ chạy thường",
-        "NOTHING_PAYABLE_THIS_PERIOD": "Không có lương cơ bản và không có khoản nào phải trả trong kỳ này — không chi trả gì nên không khai báo gì",
+        "NOTHING_PAYABLE_THIS_PERIOD": "Không có lương cơ bản hằng tháng và không có khoản nào phải trả trong tháng này.",
         "DEDUCTION_ONLY_THIS_PERIOD": "Chỉ có một khoản trừ đang chờ mà không có lương để trừ — trừ từ số không sẽ thành nợ nhân viên"
       },
       "overall": {

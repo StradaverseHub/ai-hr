@@ -5789,7 +5789,7 @@
         "reason": {
           "NO_TRANSACTION_FOR_CYCLE": "No transaction entry for this payroll cycle",
           "NO_ADDITIONAL_PAY_THIS_RUN": "Nothing for this run type — their standing monthly pay is paid by the regular run",
-          "NOTHING_PAYABLE_THIS_PERIOD": "No basic salary and nothing payable this period — nothing was paid, so nothing was filed",
+          "NOTHING_PAYABLE_THIS_PERIOD": "No monthly basic salary and nothing was payable this month.",
           "DEDUCTION_ONLY_THIS_PERIOD": "Only a deduction was waiting and no pay to take it from — deducting from nothing would owe them money"
         }
       },
@@ -5937,6 +5937,9 @@
       "preChecksNothingPayableNoRemark": "No reason was recorded on the salary record.",
       "reprocessGapNothingPayable": "no monthly basic salary",
       "reprocessReasonNothingPayable": "Deliberately left out of this run — no monthly basic salary and nothing was payable this month. Tick them only if something has been keyed for them since.",
+      "reprocessGroupSkippedTitle": "Skipped — {n} employee(s) with nothing to process this month",
+      "reprocessGroupSkippedNote": "Not ticked and not counted as pending: payroll has already evaluated them and there was nothing to pay. If something is keyed for them this month they move back to New / Pending, and you can still tick them by hand.",
+      "reprocessStatusSkipped": "Skipped",
       "preChecksBadgeLegend": "Anything marked “Blocks processing” must be fixed before this run. Anything marked “Warning” can still be processed, after you confirm it. Anything marked “Will be skipped” needs nothing from you.",
       "reprocessOutcomeStatus": {
         "reprocessed": "Reprocessed",
@@ -5954,7 +5957,7 @@
       "reprocessReviewPcbConfiguration": "Review PCB configuration",
       "reprocessOutcomeRecordedAt": "Recorded at {at}",
       "reprocessOutcomeTitle": "Selected employee outcomes",
-      "reprocessOutcomeSummary": "Selected: {selected} · Reprocessed: {succeeded} · Skipped: {skipped} · Configuration incomplete: {failed}",
+      "reprocessOutcomeSummary": "Selected: {selected} · Reprocessed: {succeeded} · Skipped: {skipped} (completed — nothing payable) · Configuration incomplete: {failed}",
       "reprocessStoppedPartial": "Processing stopped before all selected employees finished. Saved outcomes remain valid. Review them before trying again.",
       "reprocessOutcomeStatusHeading": "Processing status",
       "reprocessOutcomeCategoryHeading": "Tax category",
@@ -7669,7 +7672,7 @@
       "skipReason": {
         "NO_TRANSACTION_FOR_CYCLE": "No transaction entry for this payroll cycle",
         "NO_ADDITIONAL_PAY_THIS_RUN": "Nothing for this run type — their standing monthly pay is paid by the regular run",
-        "NOTHING_PAYABLE_THIS_PERIOD": "No basic salary and nothing payable this period — nothing was paid, so nothing was filed",
+        "NOTHING_PAYABLE_THIS_PERIOD": "No monthly basic salary and nothing was payable this month.",
         "DEDUCTION_ONLY_THIS_PERIOD": "Only a deduction was waiting and no pay to take it from — deducting from nothing would owe them money"
       },
       "overall": {
