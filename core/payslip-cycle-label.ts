@@ -76,3 +76,17 @@ export function payrollRunLabel(
   const name = typeof run.historyImportCycleName === 'string' ? run.historyImportCycleName.trim() : '';
   return `${name || runTypeLabel}${BY_IMPORT_SUFFIX}`;
 }
+
+/**
+ * cdb1c6ca — the PAY CYCLE a Close Batch prompt names ("… close payroll for October 2026 and Monthly
+ * Salary?"). One rule for both surfaces that ask it — the run screen's Close batch button and the list's
+ * Close Batch screen: imported history keeps its "… - By Import" label, any other run reads its configured
+ * cycle's name, and a run opened under no cycle reads its run-type word.
+ */
+export function payrollCloseCycleLabel(
+  run: { historyImportAttemptId?: string | null; historyImportCycleName?: string | null; payrollCycleName?: string | null },
+  runTypeLabel: string,
+): string {
+  if (run.historyImportAttemptId) return payrollRunLabel(run, runTypeLabel);
+  return payslipCycleLabel({ cycleName: run.payrollCycleName, runTypeLabel }) ?? runTypeLabel;
+}

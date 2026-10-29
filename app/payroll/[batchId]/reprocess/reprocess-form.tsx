@@ -8,6 +8,7 @@ import { Button, EmployeeCode } from '@/components/ui';
 import { matchesEmployeeSearch } from '@/lib/employee-search';
 import { formatMoney } from '@/lib/money';
 import { withPayrollFrom } from '@/lib/return-to';
+import type { NothingPayableSkipKind } from '@/core/payroll-view';
 import { reprocessSelectedAction } from '../../actions';
 
 export type ReprocessCandidate = {
@@ -46,6 +47,13 @@ export type ReprocessAddCandidate = {
   blockers: string[];
   /** Readiness gaps that do not prevent it (no statutory profile / no bank details). */
   warnings: string[];
+  /**
+   * c3258a72 — the run has nothing to pay them this month (no monthly basic, no positive money keyed), in
+   * the kernel's own reason code. Non-null ⇒ the Skipped group: unticked, not pending, still tickable.
+   * Worked out from current data on every load (`listPayslipLessEligibleWithSkip`), so keying a fee for
+   * them moves them back to New / Pending. Absent/null ⇒ New / Pending as before.
+   */
+  skip?: NothingPayableSkipKind | null;
 };
 
 /** The gap codes the server sends → the payroll.batch key that names them. Exhaustive by construction:
@@ -61,14 +69,13 @@ const GAP_LABEL: Record<string, string> = {
 };
 
 /**
- * r369 (item eb949191) — the one warning code that REPLACES the row's reason sentence instead of being
- * appended to it.
+ * r369 (item eb949191) — the warning code for "the salary record names no monthly basic". It is never
+ * appended as "Also missing: …": nothing is missing, and the word says the operator forgot something.
  *
- * Everyone a regular run deliberately skipped lands on this list: they are eligible for the month and have
- * no payslip on the run. With no label at all the row reads "Eligible for this month and has no payslip on
- * this run" — which is an invitation to add somebody back into a month the run correctly paid them nothing
- * for. Appending it as "Also missing: no monthly basic salary" would be worse: nothing is missing, and the
- * word says the operator forgot something they did not.
+ * c3258a72 — it no longer chooses the row's sentence either. Whether the run leaves somebody out is the
+ * row's `skip` field (narrowed against keyed money); such rows live in the Skipped group. A row that still
+ * carries this warning in New / Pending is somebody the run WILL pay (a fee was keyed) or whose money the
+ * run cannot see (outside its chosen list), and "deliberately left out" would be false of them.
  */
 const DELIBERATE_SKIP = 'nothingPayable';
 
@@ -103,6 +110,8 @@ export function ReprocessForm({
    * record cannot be paid yet (the engine would refuse the whole submit).
    *
    * Absent/empty ⇒ the group is not rendered at all, and this screen is exactly what it was before.
+   *
+   * c3258a72 — a candidate with `skip` set is NOT in that group: it renders under Skipped, unticked.
    */
   newCandidates?: ReprocessAddCandidate[];
   /**
@@ -124,7 +133,11 @@ export function ReprocessForm({
 }) {
   const t = useTranslations('payroll.batch');
   const additions = newCandidates ?? [];
-  const addable = additions.filter((c) => c.blockers.length === 0);
+  // c3258a72 — the run has already decided there is nothing to pay these people, so they are not pending:
+  // their own group, never pre-ticked, never in the New / Pending count. `total` below still spans both.
+  const pendingAdditions = additions.filter((c) => !c.skip);
+  const skippedAdditions = additions.filter((c) => !!c.skip);
+  const addable = pendingAdditions.filter((c) => c.blockers.length === 0);
   const [selected, setSelected] = useState<Set<string>>(
     () =>
       new Set([
@@ -193,6 +206,8 @@ export function ReprocessForm({
    * below already NAMES every ticked person regardless of the search, so the full selection is on screen
    * and honoured, whereas dropping ticks as the operator types silently discards work they can see listed.
    */
+  const visiblePending = visibleAdditions.filter((c) => !c.skip);
+  const visibleSkipped = visibleAdditions.filter((c) => !!c.skip);
   const visibleIds = useMemo(
     () => new Set([...visibleEmployees, ...visibleAdditions].map((e) => e.employmentId)),
     [visibleEmployees, visibleAdditions],
@@ -236,6 +251,71 @@ export function ReprocessForm({
     e.preventDefault();
   };
 
+  const additionHead = (
+    <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+      <tr>
+        <th className="px-3 py-2 font-medium">{t('colEmployee')}</th>
+        <th className="whitespace-nowrap px-3 py-2 font-medium">{t('reprocessColStatus')}</th>
+        <th className="px-3 py-2 font-medium">{t('reprocessColReason')}</th>
+        <th className="whitespace-nowrap px-3 py-2 font-medium">{t('reprocessColJoined')}</th>
+      </tr>
+    </thead>
+  );
+  const noMatchRow = (
+    <tr>
+      <td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">
+        {t('reprocessNoMatches')}
+      </td>
+    </tr>
+  );
+  /** One payslip-less row, for either group. `skip` decides its status and sentence; see the groups. */
+  const additionRow = (c: ReprocessAddCandidate) => {
+    const on = selected.has(c.employmentId);
+    const blocked = c.blockers.length > 0;
+    const gaps = (codes: string[]) => codes.map((g) => t(GAP_LABEL[g] ?? g)).join(', ');
+    // The no-monthly-basic code is never an "Also missing" gap — see DELIBERATE_SKIP.
+    const otherWarnings = c.warnings.filter((w) => w !== DELIBERATE_SKIP);
+    return (
+      <tr key={c.employmentId} className={on ? 'bg-primary/5' : undefined}>
+        <td className="px-3 py-2">
+          <label className={`flex items-center gap-2 ${blocked ? 'opacity-60' : ''}`}>
+            <input
+              type="checkbox"
+              name="employmentIds"
+              value={c.employmentId}
+              checked={on}
+              disabled={blocked}
+              onChange={() => toggle(c.employmentId)}
+              className="size-4 rounded"
+            />
+            <EmployeeCode code={c.employeeCode} />
+            <span>{c.name}</span>
+          </label>
+        </td>
+        {c.skip ? (
+          <td className="whitespace-nowrap px-3 py-2 font-medium text-muted-foreground">{t('reprocessStatusSkipped')}</td>
+        ) : (
+          <td className="whitespace-nowrap px-3 py-2 font-medium text-amber-700 dark:text-amber-400">
+            {t('reprocessStatusNew')}
+          </td>
+        )}
+        <td className="px-3 py-2 text-xs text-muted-foreground">
+          {c.skip
+            ? t(`skipped.reason.${c.skip}`)
+            : blocked
+              ? t('reprocessReasonNotReady', { gaps: gaps(c.blockers) })
+              : c.outsideScope
+                ? t('reprocessReasonOutsideScope')
+                : t('reprocessReasonNew')}
+          {!blocked &&
+            otherWarnings.length > 0 &&
+            ` ${t('reprocessReasonMissing', { gaps: gaps(otherWarnings) })}`}
+        </td>
+        <td className="whitespace-nowrap px-3 py-2 text-muted-foreground tabular-nums">{c.hiredOn}</td>
+      </tr>
+    );
+  };
+
   return (
     <form action={reprocessSelectedAction} onKeyDown={blockImplicitSubmit} className="space-y-4">
       <input type="hidden" name="batchId" value={batchId} />
@@ -264,72 +344,37 @@ export function ReprocessForm({
 
       {/* fbcf706d — THE NEW / PENDING GROUP, above the people already paid. Rendered only when there is
           somebody in it, so a run with nobody waiting looks exactly as it did. */}
-      {additions.length > 0 && (
+      {pendingAdditions.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-amber-300 dark:border-amber-500/40">
           <table className="w-full min-w-[42rem] text-sm">
             <caption className="bg-amber-50 px-3 py-2 text-left text-xs font-semibold text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
-              {t('reprocessGroupNewTitle', { n: additions.length })}
+              {t('reprocessGroupNewTitle', { n: pendingAdditions.length })}
             </caption>
-            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2 font-medium">{t('colEmployee')}</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">{t('reprocessColStatus')}</th>
-                <th className="px-3 py-2 font-medium">{t('reprocessColReason')}</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">{t('reprocessColJoined')}</th>
-              </tr>
-            </thead>
+            {additionHead}
             <tbody className="divide-y divide-border">
-              {visibleAdditions.map((c) => {
-                const on = selected.has(c.employmentId);
-                const blocked = c.blockers.length > 0;
-                const gaps = (codes: string[]) => codes.map((g) => t(GAP_LABEL[g] ?? g)).join(', ');
-                // The deliberate skip owns the sentence above, so it must not also appear in "Also missing".
-                const otherWarnings = c.warnings.filter((w) => w !== DELIBERATE_SKIP);
-                return (
-                  <tr key={c.employmentId} className={on ? 'bg-primary/5' : undefined}>
-                    <td className="px-3 py-2">
-                      <label className={`flex items-center gap-2 ${blocked ? 'opacity-60' : ''}`}>
-                        <input
-                          type="checkbox"
-                          name="employmentIds"
-                          value={c.employmentId}
-                          checked={on}
-                          disabled={blocked}
-                          onChange={() => toggle(c.employmentId)}
-                          className="size-4 rounded"
-                        />
-                        <EmployeeCode code={c.employeeCode} />
-                        <span>{c.name}</span>
-                      </label>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 font-medium text-amber-700 dark:text-amber-400">
-                      {t('reprocessStatusNew')}
-                    </td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground">
-                      {blocked
-                        ? t('reprocessReasonNotReady', { gaps: gaps(c.blockers) })
-                        : c.warnings.includes(DELIBERATE_SKIP)
-                          ? t('reprocessReasonNothingPayable')
-                          : c.outsideScope
-                            ? t('reprocessReasonOutsideScope')
-                            : t('reprocessReasonNew')}
-                      {!blocked &&
-                        otherWarnings.length > 0 &&
-                        ` ${t('reprocessReasonMissing', { gaps: gaps(otherWarnings) })}`}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-muted-foreground tabular-nums">{c.hiredOn}</td>
-                  </tr>
-                );
-              })}
-              {visibleAdditions.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">
-                    {t('reprocessNoMatches')}
-                  </td>
-                </tr>
-              )}
+              {visiblePending.map((c) => additionRow(c))}
+              {visiblePending.length === 0 && noMatchRow}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* c3258a72 — THE SKIPPED GROUP. Payroll already evaluated these people and had nothing to pay, so
+          this is a completed outcome, not a to-do: neutral colours, unticked, outside the pending count,
+          with the run page's own reason sentence. Ticking one by hand still tries them again. */}
+      {skippedAdditions.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="w-full min-w-[42rem] text-sm">
+            <caption className="bg-muted px-3 py-2 text-left text-xs font-semibold text-foreground">
+              {t('reprocessGroupSkippedTitle', { n: skippedAdditions.length })}
+            </caption>
+            {additionHead}
+            <tbody className="divide-y divide-border">
+              {visibleSkipped.map((c) => additionRow(c))}
+              {visibleSkipped.length === 0 && noMatchRow}
+            </tbody>
+          </table>
+          <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{t('reprocessGroupSkippedNote')}</p>
         </div>
       )}
 

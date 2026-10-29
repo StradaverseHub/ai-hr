@@ -789,15 +789,5 @@
       "name": "operation",
       "reason": "Finite add/update/archive command discriminator for saveWorkforceRecordAction; both forms use the same canonical owner with fresh permission and version checks."
     }
-  ],
-  "components/epf-election.tsx": [
-    {
-      "tag": "input",
-      "context": "EpfElectionBody",
-      "hidden": false,
-      "occurrences": 1,
-      "name": "epfManualPercentageAdoptionConfirmed",
-      "reason": "One transient human acknowledgement of changing a stored legacy top-up to explicit manual percentages. It is not a persisted Personnel fact; the scoped statutory action verifies confirmation against the locked current election before writing."
-    }
   ]
 }

@@ -270,6 +270,11 @@ export type EmployeeDraftStatutory = {
    * statutory" (null), never 0% (which the floor refuses); a blank amount is null, never RM0.00.
    * `mapEpfUiMode` keeps only the boxes the category uses and nulls the rest, so a figure left in a box
    * the category no longer shows is neither judged nor stored.
+   *
+   * b6dbadc5 — under 'voluntary_percentage' (Top-up) the two rate boxes are the TOP-UP added to the normal
+   * EPF rate ('1' = one percentage point on top), persisted as 'topup_percentage'. A draft saved before
+   * b6dbadc5 holds full rates there; scripts/convert-epf-topup-percentage.ts lists such drafts for HR to
+   * re-enter rather than guessing the employee's normal rate.
    */
   epfEmployeeRate?: string;
   epfEmployerRate?: string;

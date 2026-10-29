@@ -4,7 +4,7 @@ import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {createBatch,generatePayslips} from '../core/payroll';
 import {getStatutoryProfileMY,setStatutoryProfileMY,InvalidEpfElectionError} from '../localization/my/statutory';
-import {mapEpfUiMode} from '../lib/epf-mode-map';
+import {mapEpfUiMode,retainLegacyTotalTopup} from '../lib/epf-mode-map';
 import {clientPackFor} from '../localization/registry.client';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {payslip} from '../db/schema';
@@ -61,7 +61,15 @@ describe('5e204d56 manual percentage persistence and payroll',()=>{
  it('does not convert an existing top-up when its displayed selection is saved',async()=>{
   const a=adminCtx(base),employee=await hire();
   await setStatutoryProfileMY(a,{personId:employee.personId,icNumber:'900101011234',epfMode:'voluntary_excess',epfEmployeeRate:.15,epfEmployerRate:.16});
-  await setStatutoryProfileMY(a,{personId:employee.personId,icNumber:'900101011234',...mapEpfUiMode('voluntary_percentage','15','16')});
+  // b6dbadc5 — the writers re-post a stored legacy total-rate row through retainLegacyTotalTopup: the same
+  // figures keep the legacy election; any other figure is saved as an additive top-up.
+  let current=await getStatutoryProfileMY(a,employee.personId);
+  await setStatutoryProfileMY(a,{personId:employee.personId,icNumber:'900101011234',...retainLegacyTotalTopup(mapEpfUiMode('voluntary_percentage','15','16'),current)});
   expect(await getStatutoryProfileMY(a,employee.personId)).toMatchObject({epfMode:'voluntary_excess',epfEmployeeRate:'0.1500',epfEmployerRate:'0.1600'});
+  current=await getStatutoryProfileMY(a,employee.personId);
+  await setStatutoryProfileMY(a,{personId:employee.personId,icNumber:'900101011234',...retainLegacyTotalTopup(mapEpfUiMode('voluntary_percentage','1','0'),current)});
+  expect(await getStatutoryProfileMY(a,employee.personId)).toMatchObject({epfMode:'topup_percentage',epfEmployeeRate:'0.0100',epfEmployerRate:'0.0000'});
+  await expect(setStatutoryProfileMY(a,{personId:employee.personId,icNumber:'900101011234',...mapEpfUiMode('voluntary_percentage','90','')})).rejects.toBeInstanceOf(InvalidEpfElectionError);
+  expect(await getStatutoryProfileMY(a,employee.personId)).toMatchObject({epfMode:'topup_percentage',epfEmployeeRate:'0.0100',epfEmployerRate:'0.0000'});
  });
 });

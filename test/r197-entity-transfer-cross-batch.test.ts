@@ -69,6 +69,7 @@ import { setCompensation } from '../core/comp';
 import { createMovementEvent, editMovementEvent, movementHistory, reverseMovementEvent } from '../core/movement';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import {
+  BatchNeedsRecalculationError,
   closeBatch,
   createAdditionalRun,
   createBatch,
@@ -520,6 +521,13 @@ describe('a transferred month, across the two batches that own it', () => {
     expect((await batchRow(incoming.batchId)).status).toBe('draft');
     expect(await slipOf(incoming.batchId, moved.employmentId)).toBeNull();
 
+    // 3244584c — recording the transfer now also marks the processed Fiamma run as owing a recalculation
+    // for this employee, so Close is refused on that first. The mark is cleared here (fixture only) to
+    // isolate the coverage question this case exists to pin.
+    await expect(closeBatch(a, { batchId: outgoing.batchId })).rejects.toThrow(BatchNeedsRecalculationError);
+    expect((await batchRow(outgoing.batchId)).recalcEmploymentIds).toEqual([moved.employmentId]);
+    await owner.db.update(schema.payrollBatch).set({ needsRecalcAt: null, recalcEmploymentIds: null })
+      .where(eq(schema.payrollBatch.id, outgoing.batchId));
     await expect(closeBatch(a, { batchId: outgoing.batchId })).rejects.toThrow(PayrollCoverageIncompleteError);
     await closeBatch(a, { batchId: outgoing.batchId }).catch((e) => {
       const problem = (e as PayrollCoverageIncompleteError).problems[0];

@@ -280,6 +280,19 @@ export function closedPayrollPeriodsFor(ctx: SessionContext, employmentId: strin
   return withTenant(ctx, (tx) => closedPeriodsTx(tx, employmentId));
 }
 
+/**
+ * 3244584c — the payroll facade's run marker, loaded at call time: the payroll kernel imports this module,
+ * so a static import of the facade would evaluate the two in a cycle.
+ */
+async function markPayrollRunsForCompensationTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: Parameters<typeof import('../packs/payroll/service').markRunsAffectedByEmploymentChangeTx>[2],
+) {
+  const { markRunsAffectedByEmploymentChangeTx } = await import('../packs/payroll/service');
+  return markRunsAffectedByEmploymentChangeTx(tx, ctx, p);
+}
+
 export async function setCompensation(
   ctx: SessionContext,
   p: {
@@ -430,6 +443,9 @@ export async function setCompensation(
           : {}),
       },
     });
+    // 3244584c — a processed run that paid this employee for a month from the effective date on is stale.
+    // A November revision never marks October.
+    await markPayrollRunsForCompensationTx(tx, ctx, { employmentIds: [p.employmentId], category: 'compensation', from: p.effectiveFrom });
     return { compensationId: row.id };
   };
   return outerTx ? run(outerTx) : withTenant(ctx, run);
@@ -625,6 +641,12 @@ export async function updateCompensation(
       // log; the corrected values live on compensation[aggregateId]. Only who/what-changed/when is logged.
       payload: { employmentId: p.employmentId, effectiveFrom: newFrom ?? row.validFrom, fieldsChanged },
     });
+    // 3244584c — a remarks-only edit changes nothing payroll reads; anything else stales the runs from the
+    // earlier of the old and the new effective date.
+    if (fieldsChanged.some((f) => f !== 'remarks')) {
+      const from = newFrom !== undefined && newFrom < row.validFrom ? newFrom : row.validFrom;
+      await markPayrollRunsForCompensationTx(tx, ctx, { employmentIds: [p.employmentId], category: 'compensation', from });
+    }
     return { compensationId: row.id };
   });
 }
@@ -702,6 +724,8 @@ export async function supersedeCompensation(
       // the append-only log records who removed which record and when, never the pay figures.
       payload: { employmentId: p.employmentId, effectiveFrom: row.validFrom, fieldsChanged: ['supersededAt'] },
     });
+    // 3244584c — removing a record hands its window back to the neighbour: runs from its start are stale.
+    await markPayrollRunsForCompensationTx(tx, ctx, { employmentIds: [p.employmentId], category: 'compensation', from: row.validFrom });
     return { compensationId: row.id };
   };
   return outerTx ? run(outerTx) : withTenant(ctx, run);
