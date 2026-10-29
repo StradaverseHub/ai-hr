@@ -5,6 +5,17 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Feedback menu operator switch — 30 October 2026 (unapplied reservation)
+
+Branch `claude/feedback-menu-operator-toggle-616263`, based on main/alpha `a3eb1eb0f` (566 journal entries).
+Local branches already claim 0691–0695 / sequences 1793330000017–1793330000021 (bank point read, AI review
+work packages), so this work takes the next free name and sequence. Its journal index (681 on this branch)
+follows whatever lands first and must be renumbered at integration; the SQL bytes do not change.
+
+| Owner | Sequence | Filename | Purpose |
+| --- | ---: | --- | --- |
+| Feedback menu switch | 1793330000022 | 0696_feedback_menu_operator_switch | Platform setting `feedback.menu_enabled` and operator-only read/write functions |
+
 ## Owner-approved combined board allocation — 29 October 2026
 
 ### Successor work in progress after the installed expanded release

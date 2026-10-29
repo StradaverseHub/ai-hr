@@ -5,12 +5,12 @@ import { getTranslations,getLocale } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { isOperator } from '@/lib/authz-model';
 import { isDemoDeployment } from '@/lib/demo-mode';
-import { listOperatorCustomers } from '@/core/operator-customers';
+import { listOperatorCustomers,operatorCustomerFeedbackMenu } from '@/core/operator-customers';
 import { MODULE_CATALOG } from '@/packs/catalog';
 import { Card, PageHeader,SectionHeader } from '@/components/ui';
 import { Badge } from '@/components/ui/badge';
 import { AutoRefresh } from '../../auto-refresh';
-import { CustomerNameForm,CustomerModuleForm } from '../../customer-forms';
+import { CustomerNameForm,CustomerModuleForm,CustomerFeedbackMenuForm } from '../../customer-forms';
 
 export default async function CustomerPage({params}:{params:Promise<{tenantId:string}>}) {
   const session=await getSession();
@@ -19,6 +19,7 @@ export default async function CustomerPage({params}:{params:Promise<{tenantId:st
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenantId))notFound();
   const [customer]=await listOperatorCustomers(session,tenantId);
   if(!customer)notFound();
+  const feedbackMenu=await operatorCustomerFeedbackMenu(session,tenantId);
   const w=await getTranslations('operatorWorkspace'),o=await getTranslations('operator');
   const locale=await getLocale();
   const date=new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short',timeZone:HR_LOCAL_TZ});
@@ -32,6 +33,8 @@ export default async function CustomerPage({params}:{params:Promise<{tenantId:st
         <dl className="space-y-4 text-sm"><div><dt className="text-muted-foreground">{w('organizationCode')}</dt><dd className="mt-1 font-medium">{customer.organizationCode??w('codeUnavailable')}</dd></div>
           <div><dt className="text-muted-foreground">{o('adminEmail')}</dt><dd className="mt-1 break-all">{customer.admin_email??'—'}</dd></div></dl>
         <p className="text-xs text-muted-foreground">{w('codeFixed')}</p><CustomerNameForm tenantId={tenantId} name={customer.customer_name}/>
+      </Card><Card className="space-y-4 p-5"><div className="flex items-start justify-between gap-3"><SectionHeader title={w('feedbackMenu')}/><Badge variant={feedbackMenu?'success':'default'}>{feedbackMenu?w('shown'):w('hidden')}</Badge></div>
+        <CustomerFeedbackMenuForm key={String(feedbackMenu)} tenantId={tenantId} enabled={feedbackMenu}/>
       </Card></section>
       <section className="space-y-5"><Card className="space-y-4 p-5"><SectionHeader title={w('modules')}/>
         <ul className="divide-y divide-border">{optional.map(m=>{

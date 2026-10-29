@@ -61,7 +61,8 @@ import { dispatchNotifications, listNotifications, unreadNotificationCount } fro
 import { listApprovalHistory } from '@/core/read';
 import { shapeApprovalHistoryItems } from '@/lib/approval-history';
 import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
-import { isModuleEnabledOrFalse } from '@/core/entitlements';
+import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
+import { FEEDBACK_MENU_SETTING } from '@/core/feedback';
 import { currentUiTheme } from '@/lib/ui-theme-server';
 import { UiThemeProvider } from '@/components/ui-theme-context';
 import { NavIndexProvider } from '@/components/nav-index-context';
@@ -244,6 +245,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const launcher = await assistantLauncherFor(session);
   // The Assistant row is offered only with actual access; any failure hides it (never fails open).
   const assistantAccess = await mayUseAssistant(session).then(access => access.allowed).catch(() => false);
+  // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
+  const feedbackAccess = settingEnabledOrDefault(session, FEEDBACK_MENU_SETTING);
   return (
     <html
       lang={locale}
@@ -305,6 +308,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // lib/nav-entitlements.ts for why nav fails OPEN while every service gate fails closed.
               enabledModules={visibleModuleCodes(session)}
               assistantAccess={assistantAccess}
+              feedbackAccess={feedbackAccess}
               defaultCollapsed={railCollapsed}
               // r398 — the Monolith rail's user line. Display only, the same identity the header shows.
               viewerName={viewer.name}

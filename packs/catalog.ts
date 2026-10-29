@@ -230,6 +230,9 @@ export const SETTING_CATALOG: SettingCatalogEntry[] = [
   { key: 'payroll.individual_txn_pay_enabled', moduleCode: 'payroll', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: true, customerVisible: true, description: 'Let the payroll kernel pay and deduct the one-off transaction ledger, instead of keeping it record-only.', sortOrder: 30 },
   { key: 'audit.hash_chain_enabled', moduleCode: null, scope: 'platform', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Tamper-evident hash chaining over the audit log. Integrity control — Stradaverse-managed, and one-way once enabled (slice 8).', sortOrder: 100 },
   { key: 'feedback.ai_planning_enabled', moduleCode: null, scope: 'platform', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: false, description: 'In-app AI drafting of improvement plans. Operator tooling, not a customer feature.', sortOrder: 110 },
+  // Operator switch (0696): the Feedback menu and board are on unless an operator turns them off for this
+  // customer from /operator. Platform-scoped so the customer's own admins cannot reopen it; no row = on.
+  { key: 'feedback.menu_enabled', moduleCode: null, scope: 'platform', valueType: 'boolean', defaultValue: true, defaultOnInstall: null, customerVisible: false, description: 'Show the Feedback menu and board to this customer. Operator-managed.', sortOrder: 111 },
   // ADR-0084 §2.5 — the nudge agent's kill switch, and the reason it DEFAULTS OFF. Every other automated
   // surface in this product waits for somebody to press a button; this one messages real employees on a
   // schedule with nobody pressing send, so it must be switched on deliberately per tenant rather than
@@ -456,6 +459,8 @@ export const LEGACY_SETTING_ENV_GATES: Readonly<Record<string, string | null>> =
   'payroll.individual_txn_pay_enabled': 'INDIVIDUAL_TXN_PAY_ENABLED',
   'audit.hash_chain_enabled': 'AUDIT_HASH_CHAIN_ENABLED',
   'feedback.ai_planning_enabled': 'FEEDBACK_AI_PLANNING_ENABLED',
+  // `null` — new operator switch (0696), never a deployment flag.
+  'feedback.menu_enabled': null,
   // `null` = NO env gate ever, the same meaning it carries in LEGACY_MODULE_ENV_GATES above. This
   // setting is NEW (ADR-0084 §2.5, r237) rather than migrated from a deployment flag, so there is no
   // legacy value to honour — and null keeps it out of `legacyEnabledSettingsIn`, which is the correct

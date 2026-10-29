@@ -28534,6 +28534,14 @@
     }
   },
   "operatorWorkspace": {
+    "feedbackMenu": "Feedback menu",
+    "shown": "Shown",
+    "hidden": "Hidden",
+    "feedbackMenuOnHelp": "This customer's people can see the Feedback menu and raise feedback. Hiding it removes the menu and closes the Feedback pages; existing feedback is kept.",
+    "feedbackMenuOffHelp": "The Feedback menu is hidden for this customer and its pages are closed. Existing feedback is kept and returns when the menu is shown again.",
+    "feedbackMenuHide": "Hide Feedback menu",
+    "feedbackMenuShow": "Show Feedback menu",
+    "feedbackMenuSaved": "Feedback menu updated.",
     "workspace": "Operator workspace",
     "customers": "Customers",
     "provisioning": "Provisioning",

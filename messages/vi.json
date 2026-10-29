@@ -28534,6 +28534,14 @@
     }
   },
   "operatorWorkspace": {
+    "feedbackMenu": "Menu Phản hồi",
+    "shown": "Đang hiển thị",
+    "hidden": "Đã ẩn",
+    "feedbackMenuOnHelp": "Nhân sự của khách hàng này có thể thấy menu Phản hồi và gửi phản hồi. Ẩn menu sẽ gỡ menu và đóng các trang Phản hồi; phản hồi hiện có vẫn được giữ lại.",
+    "feedbackMenuOffHelp": "Menu Phản hồi đang bị ẩn với khách hàng này và các trang của nó đã đóng. Phản hồi hiện có vẫn được giữ và sẽ xuất hiện lại khi menu được hiển thị.",
+    "feedbackMenuHide": "Ẩn menu Phản hồi",
+    "feedbackMenuShow": "Hiển thị menu Phản hồi",
+    "feedbackMenuSaved": "Đã cập nhật menu Phản hồi.",
     "workspace": "Không gian vận hành",
     "customers": "Khách hàng",
     "provisioning": "Khởi tạo",
