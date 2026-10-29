@@ -1,3 +1,4 @@
+import {splitProfileSubmission} from '../lib/profile-submission-policy';
 import {validateProfileAttachments,saveProfileAttachmentsTx} from './profile-attachments';
 import {profileFieldApproval} from '../lib/profile-edit-policy-value';
 import {createHash} from 'node:crypto';
@@ -368,7 +369,8 @@ async function prepareProfileChangeRequestTx(tx:Tx,ctx:SessionContext,p:OwnProfi
   // Legacy rows remain decidable/readable; no new request may bypass the versioned owner.
   if(!p.proposed||typeof p.proposed!=='object'||Array.isArray(p.proposed)||!('v' in p.proposed)||p.proposed.v!==2)throw new EssProfileError('invalid');
   const checked=await prepareProfileProposalTx(tx,ctx,p.employmentId,p.proposed);
-  if(checked.immediateRegisters.length||checked.proposal.fields.some(field=>!profileFieldApproval(getSetting(ctx,'ess.profile_change_fields'),personnelField(field.fieldId)!).required))throw new EssProfileError('invalid');
+  const partition=splitProfileSubmission(getSetting(ctx,'ess.profile_change_fields'),checked.proposal);
+  if(checked.immediateRegisters.length||partition.immediate.fields.length||partition.immediate.registers.length)throw new EssProfileError('invalid');
   const proposed=checked.proposal;
   const attachments=validateProfileAttachments(p.attachments??[]),keys=new Set(proposed.fields.concat(proposed.registers.flatMap(row=>row.fields)).map(field=>field.fieldId));
   if(attachments.some(file=>file.fieldIds.some(id=>!keys.has(id))))throw new EssProfileError('invalid');
