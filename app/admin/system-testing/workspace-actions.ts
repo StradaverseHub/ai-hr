@@ -58,6 +58,7 @@ export async function raiseTestingFeedbackAction(_prior: TestingActionState,form
 }
 export async function requestTestingRetestAction(_prior: TestingActionState,form: FormData): Promise<TestingActionState> {
   const ctx=await getSession();
+  if (!feedbackBoardOpen(ctx)) return { error: 'feedback_unavailable' };
   try { await requestTestingRetest(ctx,{ assignmentId: value(form,'assignmentId'),expectedRevision: integer(form,'assignmentRevision'),expectedVersionId: value(form,'versionId'),feedbackId: value(form,'feedbackId') }); }
   catch (error) { return refused(error); }
   refresh(); revalidatePath('/admin/system-testing/executions/[id]','page'); return { error: null };

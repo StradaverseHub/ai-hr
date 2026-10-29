@@ -8,7 +8,7 @@ vi.mock('../lib/session',()=>({getSession:m.session}));
 vi.mock('../core/entitlements',()=>({ModuleNotEnabledError:class ModuleNotEnabledError extends Error{}}));
 vi.mock('../app/feedback/board',()=>({feedbackBoardOpen:m.board}));
 vi.mock('../core/system-testing',()=>({SystemTestingError:class SystemTestingError extends Error{},assignTestingCase:m.assign,beginTestingExecution:m.begin,confirmTestingCatalogue:m.confirm,publishTestInstruction:m.publish,raiseTestingExecutionFeedback:m.raise,raiseRunAsFeedback:m.legacyRaise,requestTestingRetest:m.retest,saveTestInstructionDraft:m.save,saveTestingExecution:m.observe}));
-import { raiseLegacyTestingFeedbackAction,raiseTestingFeedbackAction,saveTestingInstructionAction,saveTestingObservationAction } from '../app/admin/system-testing/workspace-actions';
+import { raiseLegacyTestingFeedbackAction,raiseTestingFeedbackAction,requestTestingRetestAction,saveTestingInstructionAction,saveTestingObservationAction } from '../app/admin/system-testing/workspace-actions';
 const caseId='47335504-b4ad-401b-8d10-59499482ee22',versionId='0a576e11-b48e-4b89-94f3-b8430ccf426b';
 const session={tenantId:caseId,userId:versionId,roles:['hr_admin']};
 beforeEach(()=>{vi.clearAllMocks();m.session.mockResolvedValue(session);m.save.mockResolvedValue({caseId,revision:4,caseNo:7});m.publish.mockResolvedValue({caseId,versionId,ordinal:1,draftRevision:5});m.observe.mockResolvedValue({runId:caseId,revision:4});m.board.mockReturnValue(true);m.raise.mockResolvedValue({feedbackId:versionId});m.legacyRaise.mockResolvedValue({feedbackId:versionId});});
@@ -41,5 +41,17 @@ describe('testing server action provenance and failure contracts',()=>{
     await expect(raiseLegacyTestingFeedbackAction({error:null},legacy())).rejects.toThrow(`REDIRECT /feedback/${versionId}`);
     expect(m.raise).toHaveBeenCalledWith(session,{executionId:caseId,expectedRevision:2,kind:'defect'});
     expect(m.legacyRaise).toHaveBeenCalledWith(session,{runId:caseId,reporterEmploymentId:null});
+  });
+  it('refuses a retest from an already-open form when Feedback is switched off, and permits it when reopened',async()=>{
+    const f=new FormData();
+    for(const [key,value] of Object.entries({assignmentId:caseId,assignmentRevision:'2',versionId,feedbackId:versionId,tenantId:'caller-tenant',testerUserId:'caller-forgery'}))f.set(key,value);
+    m.board.mockReturnValue(false);
+    expect(await requestTestingRetestAction({error:null},f)).toEqual({error:'feedback_unavailable'});
+    expect(m.board).toHaveBeenCalledWith(session);
+    expect(m.retest).not.toHaveBeenCalled();expect(m.refresh).not.toHaveBeenCalled();
+    m.board.mockReturnValue(true);
+    expect(await requestTestingRetestAction({error:null},f)).toEqual({error:null});
+    expect(m.retest).toHaveBeenCalledExactlyOnceWith(session,{assignmentId:caseId,expectedRevision:2,expectedVersionId:versionId,feedbackId:versionId});
+    expect(m.refresh).toHaveBeenCalledWith('/admin/system-testing/executions/[id]','page');
   });
 });

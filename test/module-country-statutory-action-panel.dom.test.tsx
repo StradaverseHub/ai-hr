@@ -22,18 +22,22 @@ describe('human Country Personnel EPF/SOCSO browser',()=>{
   for(const [saved,expected] of [['0.1450',14.5],['0.0999',9.99],['0.0550',5.5],['0.0100',1],['1.0000',100]] as const)expect(epfRateToPercent(saved)).toBe(expected);
   expect(epfRateToPercent(.145)).toBe(14.5);expect(epfRateToPercent('0.145001')).toBeCloseTo(14.5001,10);expect(epfRateToPercent('not a rate')).toBeNull();
  });
- it('reopens legacy top-up unchanged and requires an explicit manual conversion acknowledgement in the native form',async()=>{
+ it('reopens legacy top-up unchanged, saves an edited Top-up as additive and switches to manual percentage without an acknowledgement (b6dbadc5)',async()=>{
   render(<ModuleCountryStatutoryActionPanel choices={choices}/>);
   fireEvent.change(screen.getByLabelText('record'),{target:{value:employmentId}});
   const legacy=CountryStatutoryEditable.parse({...editable(),fields:{...editable().fields,epfMode:'voluntary_excess',epfEmployeeRate:'0.1450',epfEmployerRate:'0.1600'}});
   fetcher.mockResolvedValueOnce(json(legacy));fireEvent.click(screen.getByRole('button',{name:'load'}));await screen.findByLabelText('authorship');
   expect(control('epfMode').value).toBe('voluntary_percentage');expect(control('epfEmployeeRate').value).toBe('14.5');expect(control('epfEmployerRate').value).toBe('16');
   const form=control('epfMode').closest('form');if(!form)throw Error('Native statutory form missing');
+  // Re-posted exactly as stored: the legacy total-rate election is kept, never read as a 14.5% + 16% top-up.
   expect(captureCountryStatutoryHumanForm(new FormData(form),legacy).input).toMatchObject({personId,epfMode:'voluntary_excess',epfEmployeeRate:.145,epfEmployerRate:.16});
+  fireEvent.change(control('epfEmployeeRate'),{target:{value:'1'}});fireEvent.change(control('epfEmployerRate'),{target:{value:'0'}});
+  expect(form.checkValidity()).toBe(true);
+  expect(captureCountryStatutoryHumanForm(new FormData(form),legacy).input).toMatchObject({personId,epfMode:'topup_percentage',epfEmployeeRate:.01,epfEmployerRate:0});
   fireEvent.change(control('epfMode'),{target:{value:'manual_percentage'}});
-  const consent=control('epfManualPercentageAdoptionConfirmed');if(!(consent instanceof HTMLInputElement))throw Error('Adoption checkbox missing');
-  expect(consent.type).toBe('checkbox');expect(consent.required).toBe(true);expect(consent.checked).toBe(false);expect(form.checkValidity()).toBe(false);
-  fireEvent.click(consent);expect(form.checkValidity()).toBe(true);
+  expect(document.querySelector('[name="epfManualPercentageAdoptionConfirmed"]')).toBeNull();
+  fireEvent.change(control('epfEmployeeRate'),{target:{value:'14.5'}});fireEvent.change(control('epfEmployerRate'),{target:{value:'16'}});
+  expect(form.checkValidity()).toBe(true);
   const converted=captureCountryStatutoryHumanForm(new FormData(form),legacy);expect(converted.input).toMatchObject({personId,epfMode:'manual_percentage',epfEmployeeRate:.145,epfEmployerRate:.16});expect(converted.input).not.toHaveProperty('epfManualPercentageAdoptionConfirmed');
   expect(fetcher).toHaveBeenCalledTimes(1);expect(screen.getByRole('button',{name:'prepare'}).hasAttribute('disabled')).toBe(true);
  });

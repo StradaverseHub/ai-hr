@@ -7,14 +7,19 @@ owning release gate.
 
 ## Feedback menu operator switch — 30 October 2026 (unapplied reservation)
 
-Branch `claude/feedback-menu-operator-toggle-616263`, based on main/alpha `a3eb1eb0f` (566 journal entries).
-Local branches already claim 0691–0695 / sequences 1793330000017–1793330000021 (bank point read, AI review
-work packages), so this work takes the next free name and sequence. Its journal index (681 on this branch)
-follows whatever lands first and must be renumbered at integration; the SQL bytes do not change.
+Branch `claude/feedback-menu-operator-toggle-616263` now includes main/alpha
+`4f66743d56f34755bb662824e163bfbef5f6ff17`, whose journal ends at
+`0697_epf_topup_percentage`, idx681 / when1793330000023. The owner explicitly approved
+appending Feedback at **idx682 / when1793330000024**, preserving its filename and SQL bytes.
+This supersedes the original idx681 / when1793330000022 reservation: applying that lower
+watermark after 0697 would silently skip Feedback. The existing canonical journal prefix is unchanged.
+The competing AI-review WP12 0696 reservation remains provisional and requires coordination
+at its integration freeze. Recheck the live ledger and canonical journal before installation.
+This allocation authorizes no deployment or server migration rehearsal.
 
-| Owner | Sequence | Filename | Purpose |
-| --- | ---: | --- | --- |
-| Feedback menu switch | 1793330000022 | 0696_feedback_menu_operator_switch | Platform setting `feedback.menu_enabled` and operator-only read/write functions |
+| Owner | Index | Sequence | Filename | Purpose |
+| --- | ---: | ---: | --- | --- |
+| Feedback menu switch | 682 | 1793330000024 | 0696_feedback_menu_operator_switch | Platform setting `feedback.menu_enabled` and operator-only read/write functions |
 
 ## Owner-approved combined board allocation — 29 October 2026
 
