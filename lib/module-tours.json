@@ -800,8 +800,8 @@
         "target": "[data-tour=\"rewards-configuration\"]",
         "placement": "bottom",
         "text": {
-          "title": "Check setup scope",
-          "body": "Create a review unit only for the intended company and business unit. Review the cycle, year and snapshot date before submitting.",
+          "title": "Check setup and shared configuration",
+          "body": "Check the company, business unit, year and snapshot date. Shared rewards configuration versions apply to future reviews. Company exclusions cover the whole reward year, require a reason and prevent new unit reviews; they do not remove existing reviews.",
           "lang": "en"
         },
         "roles": [
@@ -815,8 +815,8 @@
         "target": "[data-tour=\"rewards-admin-units\"]",
         "placement": "bottom",
         "text": {
-          "title": "Open and follow a review unit",
-          "body": "Open a listed unit to configure its policy and membership and follow its review state. Approved rewards require a separate authorized payroll posting.",
+          "title": "Check review access and coverage",
+          "body": "Use Rewards access for exact review roles, dates and temporary cover. Preview and save an access request, then have a different authorized administrator approve it. People changes can suspend eligibility. Check required-role coverage before submission; payroll posting remains a separate authorized action.",
           "lang": "en"
         },
         "roles": [
@@ -851,8 +851,8 @@
         "target": "[data-tour=\"rewards-review-units\"]",
         "placement": "bottom",
         "text": {
-          "title": "Open an available review unit",
-          "body": "Choose a unit you can access. Inspect its employee facts, policy and proposed changes before deciding or returning work.",
+          "title": "Find an available review",
+          "body": "Use the year, company, business-unit and stage filters or Waiting for me. Review your role, the current stage, due date, budget percentages and blockers. Opening a review does not grant decision authority or reveal restricted employee rows.",
           "lang": "en"
         },
         "roles": [
@@ -1071,8 +1071,8 @@
         "target": "[data-tour=\"workflow-email-readiness\"]",
         "placement": "bottom",
         "text": {
-          "title": "Check email readiness",
-          "body": "Relay readiness, tenant policy and recipient consent are separate prerequisites. An inactive relay or missing installation upgrade needs the installation maintainer.",
+          "title": "Check email readiness and design",
+          "body": "Relay readiness, tenant policy and recipient consent are separate prerequisites. Group administrators can use Email templates to edit six language variants, preview blocks and restore saved versions. The protected AIHR content remains system-owned. Designs do not activate a relay or change recipients or schedules.",
           "lang": "en"
         },
         "roles": [

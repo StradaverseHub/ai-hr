@@ -1,5 +1,11 @@
 Open [Rewards](/rewards) when you are explicitly assigned to a review, or follow the item from [Approvals](/approvals). A line-manager title alone does not give access to a compensation review.
 
+## Find your review
+
+The review list shows your role, the current stage and responsible reviewers where permitted, due dates, salary and bonus budget percentages, and blocker and exception counts. These figures summarize the review; they do not expose confidential employee rows or grant decision authority.
+
+Use the available year, company, business-unit and stage filters, or **Waiting for me**, to narrow the list. Clear filters if an expected review is missing. Access also depends on effective assignment dates and current People and login eligibility; ask an authorized administrator to inspect Rewards access if your assignment is suspended. Open the review and recheck its current state before acting.
+
 ## Review the assigned stage
 
 1. Confirm the cycle, company, business unit, review kind and current stage.
