@@ -86,8 +86,9 @@ const h=vi.hoisted(()=>{
   return {mode:'baseline',version:0,configurationDigest:'fixture'};
  });
  const retireStrategy=vi.fn();
+ const completeBudget=vi.fn(async()=>undefined);
  const seal=vi.fn((_binding:{question:string;answer:string})=>'sealed-fixture-receipt');
- return {state,runInTenant,converse,prepareStrategy,completeStrategy,retireStrategy,seal};
+ return {state,runInTenant,converse,prepareStrategy,completeStrategy,retireStrategy,completeBudget,seal};
 });
 
 vi.mock('../db/client',()=>({withTenant:h.runInTenant}));
@@ -95,6 +96,21 @@ vi.mock('../lib/ai',()=>({converse:h.converse}));
 vi.mock('../core/assistant-grant',()=>({assertMayUseAssistant:async()=>undefined}));
 vi.mock('../core/ai-config',()=>({resolveActiveAiConfig:async()=>h.state.configured?{provider:'anthropic',model:'fixture-model'}:null}));
 vi.mock('../core/ai-spend-task',()=>({bindAiSpendTaskTx:async(_tx:unknown,_ctx:unknown,configuration:unknown)=>configuration}));
+// This is deliberately a quota control-flow double, not proof of SQL atomicity or RLS. The real
+// reservation/admission/concurrency cases live in assistant-question-budget.test.ts.
+vi.mock('../core/assistant-question-budget',async()=>{
+ const {AiAllowanceError}=await import('../lib/ai/types');
+ class AssistantQuestionBudgetError extends AiAllowanceError{
+  constructor(readonly budgetCode:'budget_daily'|'budget_monthly'){super(budgetCode==='budget_daily'?'daily_limit':'monthly_limit');}
+ }
+ return {AssistantQuestionBudgetError,completeAssistantQuestionBudgetTx:h.completeBudget,
+  assistantQuestionBudgetBinding:()=>{
+   const budget=h.state.budget;
+   if(budget&&h.state.committed.exchanges.length>=budget.perUserDailyQuestions)throw new AssistantQuestionBudgetError('budget_daily');
+   if(budget&&budget.monthlyTokenCeiling===0)throw new AssistantQuestionBudgetError('budget_monthly');
+   return {period:'2026-10',reservation:{}};
+  }};
+});
 vi.mock('../core/module-agent-releases',()=>({prepareAssistantConversationStrategyTx:h.prepareStrategy,completeAssistantConversationStrategyTx:h.completeStrategy,
  retireAssistantConversationStrategyCapability:h.retireStrategy,withGovernedSpecialistReadBatch:async()=>{throw Error('no specialist reads in this fixture');}}));
 vi.mock('../core/assistant-provider-input',()=>({prepareAssistantConversation:(_ctx:unknown,configuration:unknown,args:unknown)=>({configuration,args})}));
@@ -140,6 +156,7 @@ describe('every admitted Assistant question counts exactly once',()=>{
   expect(rawText(exchanges()[0])).not.toContain(QUESTION);
   expect(usage()).toEqual([expect.objectContaining({tenantId:ctx.tenantId,inputTokens:5,outputTokens:7,cachedInputTokens:0,exchangeCount:1})]);
   expect(h.retireStrategy).toHaveBeenCalledTimes(1);
+  expect(h.completeBudget).toHaveBeenCalledTimes(1);
   // A fresh marker for the repeat: only the daily counter can stop it now.
   h.state.eraseDuringProvider=false;h.state.erased=false;
   expect(await outcome(askAssistant(ctx,{question:QUESTION}))).toBe('budget_daily');
