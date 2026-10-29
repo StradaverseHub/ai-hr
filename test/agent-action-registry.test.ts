@@ -2,7 +2,7 @@
  * database. Asserts registry = seeded app.assistant_action_kind rows = capability inventory = tier-ceiling map,
  * that every closed TypeScript list is derived from the registry, and that never-Automatic categories can never
  * be Automatic. Adding an action = one defineAgentAction entry + one INSERT row in a new migration. */
-import {describe,expect,expectTypeOf,it} from 'vitest';
+import {describe,expect,expectTypeOf,it,vi} from 'vitest';
 import {existsSync,readFileSync} from 'node:fs';
 import path from 'node:path';
 import {
@@ -19,6 +19,7 @@ import {AGENT_MODULE_CODES} from '../lib/ai/module-agents';
 import {ASSISTANT_CONVERSATION_HOLDOUTS} from '../lib/ai/assistant-conversation-holdouts';
 import {ASSISTANT_PROPOSAL_MODULE,ASSISTANT_PROPOSABLE_ACTIONS} from '../lib/ai/assistant-action-proposal-hints';
 import {AI_FEATURES} from '../lib/ai/features';
+import {createModuleActionBrowserHandler,GENERIC_MODULE_ACTIONS} from '../lib/assistant-actions/module-action-http';
 
 const ROOT=path.resolve(__dirname,'..');
 const read=(rel:string)=>readFileSync(path.join(ROOT,rel),'utf8');
@@ -190,5 +191,20 @@ describe('the agent action registry',()=>{
   for(const row of ASSISTANT_CONVERSATION_HOLDOUTS){const proposal=(row.source as {proposal?:unknown}).proposal;if(typeof proposal!=='string')continue;
    expect(getAgentAction(proposal as AgentAction['id']).evaluationCases.map(evaluation=>evaluation.case),row.id).toContain(row.id.slice(row.id.indexOf(':')+1));}
   for(const action of ASSISTANT_PROPOSABLE_ACTIONS)expect(ASSISTANT_PROPOSAL_MODULE[action]).toBe(getAgentAction(action).module);
+ });
+});
+
+describe('browser dispatch derived from the registry',()=>{
+ it('routes each generic action packet to exactly the owner its registry entry names',async()=>{
+  const owners=[...new Set(GENERIC_MODULE_ACTIONS.map(action=>getAgentAction(action).browserOwner))];
+  expect(owners.length).toBe(GENERIC_MODULE_ACTIONS.length);
+  for(const action of GENERIC_MODULE_ACTIONS){
+   const reject=vi.fn(async()=>{throw Error('wrong owner');}),handlers:Record<string,{list:ReturnType<typeof vi.fn>}>={};
+   for(const owner of owners)handlers[owner]={list:vi.fn(async()=>({kind:'unavailable'}))};
+   const handle=createModuleActionBrowserHandler({authenticate:vi.fn(async()=>({actual:'fictional session'})),list:reject,prepare:reject,reopen:reject,confirm:reject,discard:reject,...handlers} as unknown as Parameters<typeof createModuleActionBrowserHandler>[0],{publicOrigin:'https://fixture.test'});
+   await handle(new Request('https://fixture.test/api/assistant/module-actions',{method:'POST',headers:{Origin:'https://fixture.test','Content-Type':'application/json','Sec-Fetch-Site':'same-origin'},body:JSON.stringify({action,operation:'list'})}));
+   for(const owner of owners)expect(handlers[owner]!.list,`${action} -> ${owner}`).toHaveBeenCalledTimes(owner===getAgentAction(action).browserOwner?1:0);
+   expect(reject).not.toHaveBeenCalled();
+  }
  });
 });
