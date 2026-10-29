@@ -77,7 +77,8 @@ describe('the agent action registry',()=>{
   expectTypeOf<Extract<AgentAction,{readonly policy:{readonly tier:'automatic';readonly category:NeverAutomaticCategory}}>>().toBeNever();
   for(const action of AGENT_ACTIONS){
    if((NEVER_AUTOMATIC_CATEGORIES as readonly string[]).includes(action.policy.category))expect(action.policy.tier,action.id).not.toBe('automatic');
-   const policy:AgentActionDefinition['policy']=action.policy;
+   // Widened on purpose: no entry is Automatic yet (WP13 adds them), so the narrow type has no 'automatic'.
+   const policy=action.policy as AgentActionDefinition['policy'];
    if(policy.tier==='automatic')expect(AUTOMATIC_CATEGORIES as readonly string[]).toContain(policy.category);
    expect(()=>assertAgentActionTier(action.id,'automatic'),action.id).toThrow();
   }
