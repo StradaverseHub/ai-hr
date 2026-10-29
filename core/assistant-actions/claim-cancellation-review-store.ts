@@ -7,7 +7,7 @@ import {withOwnClaimCancellationSubjectTx,prepareOwnClaimCancellationSourceTx,co
 export class ClaimCancellationReviewUnavailable extends Error{constructor(){super('That claim cancellation review needs a fresh look. Please reopen it and try again.');this.name='ClaimCancellationReviewUnavailable';}}
 const fail=():never=>{throw new ClaimCancellationReviewUnavailable();};
 export const claimCancellationReviews=createGenericOwnReviewStore({
- action,subjectKind:'claim_request',subjectOf:human=>human.claimId,
+ action,subjectKind:'claim_request',subjectOf:(human:OwnClaimCancellationHumanContent)=>human.claimId,
  human:OwnClaimCancellationHumanContent,consequence:'pending_claim_cancelled_no_payment',
  prepared:ClaimCancellationPreparedReview,completed:ClaimCancellationCompletedReview,retired:ClaimCancellationRetiredReview,index:ClaimCancellationReviewIndex,indexKind:'claim_cancellation_review_index',
  withSubject:(tx,ctx,id,work)=>withOwnClaimCancellationSubjectTx(tx,ctx,id,(fresh,own)=>work(fresh,{subjectId:own.claimId,employmentId:own.employmentId,companyId:own.companyId})),
