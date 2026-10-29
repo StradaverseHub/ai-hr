@@ -9,7 +9,7 @@ import {ImportFileError} from '../lib/import-file';
 import {PersonnelImportHeaderError} from '../lib/personnel-import-contract';
 import {PersonnelCsvError} from '../lib/personnel-csv';
 import {decodeBankImportSource} from '../lib/bank-import-source.server';
-import {BANK_IMPORT_BATCH_ROWS} from '../lib/bank-import-job';
+import {BANK_IMPORT_BATCH_ROWS,BANK_IMPORT_VALIDATION_ROWS} from '../lib/bank-import-job';
 import {analyzeBankImportBatch,applyBankImportRowTx} from './import-sections';
 import {createImportAttemptTx,recordImportEventTx,sealImportPlan} from './import-history';
 import type {ImportPlanBase} from '../lib/import-history';
@@ -41,7 +41,7 @@ export async function processBankImportJob(ctx:SessionContext,id:string):Promise
   return;
  }
  if(job.state==='validating'){
-  const pending=await withTenant(ctx,tx=>tx.execute<QueueRow>(sql`select * from bank_import_row where job_id=${id}::uuid and state='pending' order by ordinal limit ${BANK_IMPORT_BATCH_ROWS}`));
+  const pending=await withTenant(ctx,tx=>tx.execute<QueueRow>(sql`select * from bank_import_row where job_id=${id}::uuid and state='pending' order by ordinal limit ${BANK_IMPORT_VALIDATION_ROWS}`));
   if(!pending.length){await withTenant(ctx,tx=>tx.execute(sql`update bank_import_job set state='ready',updated_at=now() where id=${id}::uuid and state='validating'`));return;}
   const analyzed=await analyzeBankImportBatch(ctx,pending.map(r=>r.record));
   if(analyzed.fileErrors.length)throw new Error(analyzed.fileErrors.join(' '));

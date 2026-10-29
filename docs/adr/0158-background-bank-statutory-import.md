@@ -11,7 +11,8 @@ submission of the same file. This is unsuitable for 100,000-row files.
 Use durable, creator-scoped jobs for this import. Admission reserves the original file's SHA256 under a
 partial unique index on tenant and hash. Uploads use idempotent 1 MiB parts. A separate supervised worker
 checks the checksum, decodes the source and validates bounded batches. No HTTP request waits for validation
-or saving. A ready preview requires explicit confirmation. Progress and preview pages contain at most
+or saving. Validation reads at most 1,000 rows per batch; saving ticks select at most 100 rows
+and commit each row separately. A ready preview requires explicit confirmation. Progress and preview pages contain at most
 100 rows. The supported input budget is 250,000 data rows and 128 MiB original/decoded text, with additional
 worksheet/cell bounds. Other importers retain their existing limits.
 

@@ -3,6 +3,7 @@ export const BANK_IMPORT_MAX_BYTES=128*1024*1024;
 export const BANK_IMPORT_MAX_ROWS=250_000;
 export const BANK_IMPORT_CHUNK_BYTES=1024*1024;
 export const BANK_IMPORT_BATCH_ROWS=100;
+export const BANK_IMPORT_VALIDATION_ROWS=1000;
 export const BANK_IMPORT_PAGE_ROWS=100;
 export const BANK_IMPORT_ACTIVE_STATES=['uploading','queued','validating','ready','importing'] as const;
 export type BankImportState=typeof BANK_IMPORT_ACTIVE_STATES[number]|'completed'|'failed'|'cancelled';

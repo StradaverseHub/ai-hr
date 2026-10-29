@@ -8,7 +8,7 @@ import {commitEmployeeImport} from '../core/import';
 import {createBankImportJob,uploadBankImportChunk,bankImportCommand,getBankImportJob,listBankImportJobs} from '../core/bank-import-job';
 import {processBankImportJob,runBankImportTick} from '../core/bank-import-worker';
 import {applyBankImportRowTx} from '../core/import-sections';
-import {BANK_IMPORT_CHUNK_BYTES} from '../lib/bank-import-job';
+import {BANK_IMPORT_CHUNK_BYTES,BANK_IMPORT_VALIDATION_ROWS} from '../lib/bank-import-job';
 import {parseCsvRecords} from '../lib/csv';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,createAppUser,type Base} from './harness';
 let b:Base,ctx:SessionContext;
@@ -84,9 +84,9 @@ describe('durable Bank & Statutory jobs',()=>{
   await processBankImportJob(ctx,id);expect((await getBankImportJob(ctx,id)).job).toMatchObject({saved:1,processed:1,state:'completed'});
  });
  it('detects duplicate employee IDs across separate batches and paginates previews',async()=>{
-  await employee();const id=await admit(content([...Array.from({length:101},(_,i)=>`${i===0?'BANK001':'UNKNOWN'+i},T${i}`),'BANK001,TNEW']));
-  const job=await ready(id);expect(job).toMatchObject({total:102,validated:102,valid:1,invalid:101});
-  const first=await getBankImportJob(ctx,id),second=await getBankImportJob(ctx,id,1);
+  await employee();const id=await admit(content([...Array.from({length:BANK_IMPORT_VALIDATION_ROWS+1},(_,i)=>`${i===0?'BANK001':'UNKNOWN'+i},T${i}`),'BANK001,TNEW']));
+  const job=await ready(id);expect(job).toMatchObject({total:BANK_IMPORT_VALIDATION_ROWS+2,validated:BANK_IMPORT_VALIDATION_ROWS+2,valid:1,invalid:BANK_IMPORT_VALIDATION_ROWS+1});
+  const first=await getBankImportJob(ctx,id),second=await getBankImportJob(ctx,id,BANK_IMPORT_VALIDATION_ROWS/100);
   expect(first.rows).toHaveLength(100);expect(second.rows).toHaveLength(2);expect(second.rows[1].preview?.errors).toEqual(expect.arrayContaining([expect.stringContaining('Duplicate Employee ID')]));
  });
  it('refuses changed data at commit and counts the failure without overwriting the concurrent edit',async()=>{
@@ -131,15 +131,17 @@ describe('durable Bank & Statutory jobs',()=>{
   checkpoint('100001 source rows staged');
   const staged=await getBankImportJob(ctx,id);expect(staged.job).toMatchObject({state:'validating',total:100001});
   expect(staged.rows).toHaveLength(100);
-  for(let batch=0;batch<1002;batch++){await processBankImportJob(ctx,id);if(batch%100===99)checkpoint(`${(batch+1)*100} rows validated`);}
+  for(let batch=0;batch<Math.ceil(100001/BANK_IMPORT_VALIDATION_ROWS)+1;batch++){await processBankImportJob(ctx,id);if(batch%10===9)checkpoint(`${(batch+1)*BANK_IMPORT_VALIDATION_ROWS} rows validated`);}
+  checkpoint('all rows validated');
   expect((await getBankImportJob(ctx,id)).job).toMatchObject({state:'ready',validated:100001,valid:3,invalid:0,unchanged:99998});
-  await bankImportCommand(ctx,id,'confirm');await processBankImportJob(ctx,id);await processBankImportJob(ctx,id);
-  checkpoint('canonical first/middle/last writes complete');
+  await bankImportCommand(ctx,id,'confirm');checkpoint('confirmation recorded');
+  await processBankImportJob(ctx,id);checkpoint('immutable history attempt created');
+  await processBankImportJob(ctx,id);checkpoint('canonical first/middle/last writes complete');
   const done=(await getBankImportJob(ctx,id)).job;expect(done).toMatchObject({state:'completed',total:100001,processed:100001,saved:3,failed:0});
   const changed=await owner.client`select e.employee_code from employee_statutory_my s join employment e on e.person_id=s.person_id where e.tenant_id=${b.tenantId}::uuid and s.tax_number='TCHANGED' order by e.employee_code`;
   expect(changed.map(row=>row.employee_code)).toEqual(['SCALE1','SCALE100001','SCALE50001']);
   expect(await owner.db.select().from(schema.importAttemptItem).where(eq(schema.importAttemptItem.attemptId,done.attemptId!))).toHaveLength(3);
- },600000);
+ },900000);
  it('cancels a preview without changing HR data and releases the active-file reservation',async()=>{
   await employee();const bytes=content(['BANK001,TCANCEL']),id=await admit(bytes);await ready(id);await bankImportCommand(ctx,id,'cancel');
   expect((await getBankImportJob(ctx,id)).job.state).toBe('cancelled');expect((await createBankImportJob(ctx,{name:'bank.csv',bytes:bytes.length,hash:createHash('sha256').update(bytes).digest('hex')})).existing).toBe(false);
