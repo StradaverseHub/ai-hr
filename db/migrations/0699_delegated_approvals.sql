@@ -34,14 +34,14 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT EXISTS(SELECT 1 FROM public.reporting_line adm JOIN public.reporting_line d ON d.subordinate_employment_id=adm.manager_employment_id AND d.tenant_id=adm.tenant_id
  WHERE adm.tenant_id=app.current_tenant_id() AND adm.subordinate_employment_id=subject_emp AND adm.line_type='administrative'
   AND adm.superseded_at IS NULL AND adm.valid_from<=current_date AND (adm.valid_to IS NULL OR adm.valid_to>current_date)
-  AND EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id WHERE e.id=d.manager_employment_id AND e.tenant_id=d.tenant_id AND u.id=app.current_user_id())
+  AND EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id WHERE e.id=d.manager_employment_id AND e.tenant_id=d.tenant_id AND u.id=app.current_user_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))
   AND app.delegation_line_covers(d.id,subject_emp,p_module,p_task_type));
 $$;
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.can_decide_via_delegation_from(p_delegator uuid,subject_emp uuid,p_module text,p_task_type text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.reporting_line d WHERE d.subordinate_employment_id=p_delegator AND d.tenant_id=app.current_tenant_id()
-  AND EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id WHERE e.id=d.manager_employment_id AND e.tenant_id=d.tenant_id AND u.id=app.current_user_id())
+  AND EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id WHERE e.id=d.manager_employment_id AND e.tenant_id=d.tenant_id AND u.id=app.current_user_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))
   AND app.delegation_line_covers(d.id,subject_emp,p_module,p_task_type));
 $$;
 --> statement-breakpoint
@@ -51,7 +51,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  FROM public.reporting_line adm JOIN public.reporting_line d ON d.subordinate_employment_id=adm.manager_employment_id AND d.tenant_id=adm.tenant_id
  WHERE adm.tenant_id=app.current_tenant_id() AND adm.line_type='administrative' AND adm.superseded_at IS NULL
   AND adm.valid_from<=current_date AND (adm.valid_to IS NULL OR adm.valid_to>current_date)
-  AND EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id WHERE e.id=d.manager_employment_id AND e.tenant_id=d.tenant_id AND u.id=app.current_user_id())
+  AND EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id WHERE e.id=d.manager_employment_id AND e.tenant_id=d.tenant_id AND u.id=app.current_user_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))
   AND app.delegation_line_covers(d.id,adm.subordinate_employment_id,wanted_module,wanted_task);
 $$;
 --> statement-breakpoint
