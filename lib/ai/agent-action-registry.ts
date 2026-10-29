@@ -203,7 +203,7 @@ export const AGENT_ACTIONS=Object.freeze([
   permission:{actor:'payroll_admin',guard:'core/assistant-actions/reviewed-payroll-close-source.ts#assertReviewedPayrollCloseActorTx'},subject:'company',blastRadius:{max:1,unit:'payroll_batch_one_company_period'},
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'payroll'},reversal:{kind:'entry_point',by:'app/payroll/actions.ts#unlockAction'},evaluationCases:[],
   screen:{native:'app/payroll/[batchId]/page.tsx',entryPoints:['app/payroll/actions.ts#closeAction']},review:{route:'/assistant/payroll-close',handoff:'review_page'},
-  store:'dedicated',browserOwner:'payrollClose',pauseKey:'hr_assistant'}),
+  store:'generic_own',browserOwner:'payrollClose',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'attendance.correction.request',module:'attendance',owner:'attendance',service:'packs/attendance/service.ts#requestAttendanceCorrection',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_attendance_review_v1',inputSchema:'AttendanceCorrectionReviewPrepare',outputSchema:'AttendanceCorrectionPreparedReview'},
   confirm:{status:'implemented',adapter:'module_attendance_review_v1',inputSchema:'AttendanceCorrectionReviewConfirmation',outputSchema:'AttendanceCorrectionCompletedReview'},
