@@ -11322,7 +11322,49 @@
       "gatewayAddress": "网关地址",
       "gatewayAddressHelp": "接受 OpenAI 风格请求的网关的 https 地址，以其 API 路径结尾（通常为 /v1）。仅限公网地址。每次调用前都会再次检查该地址。",
       "gatewayPresetFlatkey": "使用 Flatkey 的地址",
-      "gatewayModelHelp": "请按网关列出的名称准确输入模型名。"
+      "gatewayModelHelp": "请按网关列出的名称准确输入模型名。",
+      "pendingSaveNote": "保存后，此更改将作为待生效更改存储。在该更改通过基线检查并由您在下方启用之前，当前配置会继续使用。",
+      "pendingBadge": "待生效更改",
+      "discardPending": "放弃待生效更改",
+      "baseline": {
+        "title": "服务商与模型更改",
+        "intro": "服务商或模型的更改视同一次发布。在通过基线检查、或由集团管理员填写理由接受失败结果之前，更改保持待生效状态，当前配置继续使用。",
+        "none": "没有等待中的服务商或模型更改。",
+        "target": "{provider} · {model}",
+        "kinds": {
+          "pending": "待生效更改",
+          "openrouter_candidate": "已保存的 OpenRouter 候选",
+          "environment": "平台默认"
+        },
+        "status": {
+          "pending": "待处理",
+          "evaluating": "评估中",
+          "passed": "已通过",
+          "failed": "未通过",
+          "accepted": "已附理由接受"
+        },
+        "suites": {
+          "read_plan": "读取计划留出测试",
+          "human_plan": "人工问题留出测试"
+        },
+        "suiteProgress": "{total} 项中 {passed} 项通过，{failed} 项未通过",
+        "lastUpdated": "最后更新于 {date}",
+        "acceptedReason": "于 {date} 接受：{reason}",
+        "otherAdminRun": "此次运行由另一位管理员发起。运行检查将开始您自己的运行。",
+        "consent": "我授权发送这些固定的合成请求。它们不含人事数据，并计入我自己的 AI 额度。",
+        "run": "运行基线检查",
+        "continue": "继续基线检查",
+        "batchNote": "每次运行最多发送 {count} 个请求，并在第一个未通过的用例处停止。如果服务商或额度拒绝请求，可稍后从停止处继续。",
+        "acceptTitle": "接受此结果",
+        "acceptHelp": "只有集团管理员可以接受未通过或未完成的运行。理由会随运行记录一起保存在审计历史中，并且仅允许启用这一项更改。",
+        "acceptReason": "理由（至少 10 个字符）",
+        "acceptButton": "接受并允许启用",
+        "activate": "启用此更改",
+        "openRouterActivate": "请在上方的 OpenRouter 卡片中启用；仍需其自身的评估凭证。",
+        "platformNotEvaluated": "此模型尚未重新进行基线评估：{provider} · {model}（正在使用平台默认配置）。",
+        "platformEvaluated": "平台默认配置 {provider} · {model} 已通过或已接受基线检查。",
+        "activeNotEvaluated": "此模型尚未重新进行基线评估：{provider} · {model}（您当前启用的配置）。该配置会继续使用。如需评估，请将其重新保存为待生效更改并运行基线检查。"
+      }
     },
     "attendancePolicy": {
       "pageTitle": "班次设置",
@@ -24828,7 +24870,9 @@
       "next": "下一页",
       "pageOf": "第 {page} 页",
       "pausedTitle": "已暂停的操作"
-    }
+    },
+    "featureCapsTitle": "功能上限",
+    "featureCapsHelp": "为整个集团的某一项 AI 功能设置上限。该功能的每个请求都会计入，并在每个人、群组和公司的额度之外另行计算。留空表示不设额外上限。由模块设置开启的功能不在此列出。"
   },
   "accountEmail": {
     "title": "账户邮件发送记录",

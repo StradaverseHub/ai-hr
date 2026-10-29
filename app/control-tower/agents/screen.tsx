@@ -18,7 +18,7 @@ import { aiManagementHref, availableAiManagementSections, type AiManagementSecti
 import { aiInventoryView, aiManagementAlerts, aiRunHistory } from '@/core/ai-inventory';
 import { AI_RUN_PAGE_SIZE } from '@/lib/ai/ai-inventory';
 import { AiInventorySection } from './inventory-section';
-import { applyBulkAssistantAction, clearGroupAllowanceAction, setGroupAllowanceAction, clearUserAllowanceAction, setAiSpendBudgetAction, setAiAllowanceAction, setAiFeatureAction, setAssistantPermissionAction } from './actions';
+import { applyBulkAssistantAction, clearGroupAllowanceAction, setGroupAllowanceAction, clearUserAllowanceAction, setAiSpendBudgetAction, setAiAllowanceAction, setAiFeatureAction, setAiFeatureCapAction, setAssistantPermissionAction } from './actions';
 
 export type AiManagementSearch = {error?:string;toast?:string;q?:string;refresh?:string;runs?:string;feature?:string;planning?:string;bulk?:string;bulkWho?:string;bulkUser?:string|string[];from?:string;to?:string;page?:string};
 
@@ -72,6 +72,27 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     <button className={btnPrimary} type="submit">{t('save')}</button>
   </>;
   const formGrid = 'grid items-end gap-3 md:grid-cols-2 xl:grid-cols-[minmax(10rem,1fr)_minmax(7rem,10rem)_minmax(8rem,12rem)_minmax(7rem,10rem)_minmax(6rem,8rem)_auto]';
+  // WP14 / R19 — per-feature caps: the shared feature row (0694) holds the same three limits; its on/off switch stays
+  // on the features page. Only features without a module setting have such a row (setAiFeatureCap re-checks this).
+  const capFeatures = view.mayWriteUsers ? AI_FEATURES.filter(feature=>feature.setting===null) : [];
+  const capLevel = (used:number,limit:number|null) => limit==null?null:used>=limit?'at' as const:used>=limit*0.8?'near' as const:null;
+  const featureCapRow = (feature:typeof capFeatures[number]) => {
+    const policy = view.policies.find(p=>p.scopeKey===`feature:${feature.id}`), activity = view.usage.find(u=>u.feature_id===feature.id);
+    const daily = Number(activity?.daily_requests??0), recorded = Number(activity?.monthly_tokens??0), held = Number(activity?.held_tokens??0);
+    const use:AiAllowanceUse = {daily:{used:daily,limit:policy?.dailyRequests??null,level:capLevel(daily,policy?.dailyRequests??null)},tokens:{used:recorded+held,limit:policy?.monthlyTokens??null,level:capLevel(recorded+held,policy?.monthlyTokens??null)},recorded,held,enabled:policy?.enabled!==false,maxConcurrent:policy?.maxConcurrent??null};
+    const label = t(`features.${feature.id}`);
+    return <li key={feature.id} id={`ai-feature-cap-${feature.id}`} className="scroll-mt-4 py-4">
+      <form action={setAiFeatureCapAction} className={formGrid}>
+        <input type="hidden" name="feature" value={feature.id}/>
+        <div className="min-w-0 md:col-span-2 xl:col-span-1"><p className="break-words font-medium">{label}</p>{meters(use)}</div>
+        <label className="text-xs">{t('daily')}<input aria-label={`${label} · ${t('daily')}`} className={`${inputCls} mt-1`} type="number" min="0" max="1000000" step="1" name="dailyRequests" defaultValue={use.daily.limit??''} placeholder={t('unlimited')}/></label>
+        <label className="text-xs">{t('monthly')}<input aria-label={`${label} · ${t('monthly')}`} className={`${inputCls} mt-1`} type="number" min="0" max="1000000000000" step="1" name="monthlyTokens" defaultValue={use.tokens.limit??''} placeholder={t('unlimited')}/></label>
+        <label className="text-xs">{t('concurrent')}<input aria-label={`${label} · ${t('concurrent')}`} className={`${inputCls} mt-1`} type="number" min="0" max="1000000" step="1" name="maxConcurrent" defaultValue={use.maxConcurrent??''} placeholder={t('unlimited')}/></label>
+        <span aria-hidden className="hidden xl:block"/>
+        <button className={btnPrimary} type="submit">{t('save')}</button>
+      </form>
+    </li>;
+  };
   const companyRow = (c:typeof view.companies[number]) => <li key={c.id} id={`ai-company-${c.id}`} className="scroll-mt-4 py-4">
     <form action={setAiAllowanceAction} className={formGrid}>
       <input type="hidden" name="q" value={query}/><input type="hidden" name="kind" value="company"/><input type="hidden" name="subjectId" value={c.id}/>
@@ -193,6 +214,10 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
       <SectionHeader title={t('companyLimits')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('limitHelp')}</p><p className="mt-1 max-w-4xl text-xs text-muted-foreground">{t('concurrentHelp')}</p><p className="mt-2 max-w-4xl text-xs text-muted-foreground">{t('attribution')}</p>
       <ul className="mt-2 divide-y divide-border">{view.companies.map(companyRow)}</ul>{view.companies.length===0&&<p className="py-4 text-sm text-muted-foreground">{t('noCompanies')}</p>}
     </Card>
+    {capFeatures.length>0&&<Card id="feature-limits" className="scroll-mt-4 p-5">
+      <SectionHeader title={t('featureCapsTitle')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('featureCapsHelp')}</p>
+      <ul className="mt-2 divide-y divide-border">{capFeatures.map(featureCapRow)}</ul>
+    </Card>}
     {view.mayWriteUsers&&<Card id="user-limits" className="scroll-mt-4 p-5">
       <SectionHeader title={t('userLimits')}/><p className="mt-1 text-sm text-muted-foreground">{t('userHelp')}</p>
       <section id="ai-bulk" aria-labelledby="ai-bulk-heading" className="mt-4 scroll-mt-4 rounded-lg border border-border p-4">

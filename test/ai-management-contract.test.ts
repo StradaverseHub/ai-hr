@@ -20,6 +20,8 @@ const governedCallers:Record<string,{features:readonly string[];seams:readonly R
  'core/assistant-conversation-harness.ts':{features:['module_agent_evaluation'],seams:[/withAiAdmissionLifecycle\(cfg,\s*'module_agent_evaluation'/],issuedBy:'core/module-agent-releases.ts'},
  'core/module-agent-prompt-harness.ts':{features:['module_agent_evaluation'],seams:[/withAiAdmissionLifecycle\(cfg,\s*'module_agent_evaluation'/],issuedBy:'core/module-agent-releases.ts'},
  'core/module-agent-releases.ts':{features:['module_agent_evaluation','module_agent_planning'],seams:[/governedAiConfig\([^()]*'module_agent_evaluation'\)/,/governedAiConfig\([^()]*'module_agent_planning'\)/,/withAiAdmissionLifecycle\([^,()]*,\s*'module_agent_planning'/]},
+ // WP14: baseline holdouts against a pending provider change, issued for provider_evaluation on the run's own spend root.
+ 'core/ai-provider-baseline.ts':{features:['provider_evaluation'],seams:[/governedAiConfig\(ctx,\s*snapshot,\s*'provider_evaluation'\)/,/bindStrictAiSpendRoot\(governedAiConfig/]},
  'core/personnel-import-assistance.ts':{features:['personnel_import_mapping'],seams:[/const FEATURE\s*=\s*'personnel_import_mapping'/,/resolveActiveAiConfig\(tx,\s*ctx,\s*FEATURE\)/]},
 };
 // Shared Performance provider seam: it resolves no configuration of its own and admits every call under the

@@ -39,6 +39,7 @@ import { activateOpenRouterCandidateTx, providerCandidatesTx, removeOpenRouterCa
 import { readOpenRouterOptions, type OpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
 import { readGatewayOptions } from '../lib/ai/providers/gateway-options';
 import { OpenRouterModel } from '../lib/ai/providers/openrouter-transport';
+import { PROVIDER_BASELINE_SUITE_DIGEST } from '../lib/ai/provider-baseline-suites';
 
 export class AiConfigError extends Error {
   constructor(message: string) {
@@ -85,6 +86,8 @@ export type AiProviderView = {
   candidateSaved: boolean;
   candidateId: string | null;
   candidateVersion: string | null;
+  /** WP14: a direct provider has a saved change awaiting its baseline checks (never served until activated). */
+  pendingSaved?: boolean;
   activeModel: string | null;
   envKeyPresent: boolean; // a platform env key exists for this provider
 };
@@ -113,23 +116,25 @@ export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
       .from(aiProviderConfig);
     const byProvider = new Map(rows.map((r) => [r.provider, r]));
     const candidate = (await providerCandidatesTx(tx, ctx))[0];
+    const pending = new Map(Array.from(await tx.execute<{ provider: string; model: string; key_last4: string }>(sql`select provider,model,key_last4 from app.ai_provider_pending_view_v1()`)).map(r => [r.provider, r]));
     const providers: AiProviderView[] = PROVIDERS.map((p) => {
       const meta = PROVIDER_META[p];
-      const row = byProvider.get(p), draft = p === 'openrouter' ? candidate : undefined;
+      const row = byProvider.get(p), draft = p === 'openrouter' ? candidate : undefined, change = p === 'openrouter' ? undefined : pending.get(p);
       return {
         provider: p,
         label: meta.label,
         models: meta.models,
         defaultModel: meta.defaultModel,
-        configured: Boolean(draft || row),
-        model: draft?.model ?? row?.model ?? meta.defaultModel,
-        keyLast4: draft?.keyLast4 ?? row?.keyLast4 ?? null,
+        configured: Boolean(draft || row || change),
+        model: draft?.model ?? change?.model ?? row?.model ?? meta.defaultModel,
+        keyLast4: draft?.keyLast4 ?? change?.key_last4 ?? row?.keyLast4 ?? null,
         isActive: row?.isActive ?? false,
         providerOptions: draft?.providerOptions ?? (p==='openrouter'&&row?routingOptions(row.providerOptions):null),
         gatewayBaseUrl: p==='ai_gateway'&&row ? (()=>{ try { return readGatewayOptions(row.providerOptions).baseUrl; } catch { return null; } })() : null,
         candidateSaved: Boolean(draft),
         candidateId: draft?.id ?? null,
         candidateVersion: draft?.version ?? null,
+        pendingSaved: Boolean(change),
         activeModel: row?.isActive ? row.model : null,
         envKeyPresent: meta.envKeyVars.some((v) => Boolean(process.env[v]?.trim())),
       };
@@ -171,17 +176,10 @@ export function isAiConfigured(ctx: SessionContext): Promise<boolean> {
 
 // ─────────────────────────────── writes (admin) ───────────────────────────────
 
-/** Deactivate every config for the tenant, then activate `provider`. One tx → the one-active partial
- *  unique index is never violated. Caller must have verified the provider row exists. */
-async function activateTx(tx: Tx, provider: AiProvider) {
-  await tx.update(aiProviderConfig).set({ isActive: false }).where(eq(aiProviderConfig.isActive, true));
-  await tx.update(aiProviderConfig).set({ isActive: true, updatedAt: sql`now()` }).where(eq(aiProviderConfig.provider, provider));
-}
-
 /**
- * Store/update a provider config. `apiKey` is encrypted (tenant AAD) at write time; omit it to change
- * only the model on an existing provider (the stored key is kept — the UI shows it write-only).
- * `makeActive` activates this provider in the same tx.
+ * Store a provider change. `apiKey` is encrypted (tenant AAD) at write time; omit it to change only the model
+ * (the pending or stored key is kept — the UI shows it write-only). WP14: every change is stored PENDING and
+ * never served; activation is a separate, baseline-gated step (setActiveProvider). `makeActive` is refused.
  */
 export async function saveAiProviderConfig(
   ctx: SessionContext,
@@ -213,6 +211,9 @@ export async function saveAiProviderConfig(
           routingVersion: 1, routingDigest: createHash('sha256').update(JSON.stringify(providerOptions)).digest('hex') } });
       return;
     }
+    // WP14 (0694): a direct-provider change is stored PENDING. The live row and the gateway are untouched until
+    // the baseline checks pass (or a failure is accepted) and an administrator activates the change.
+    if (p.makeActive) throw new AiConfigError('Save the change, run the baseline checks, then activate it.');
     // 0661: an AI gateway stores exactly {version:1, baseUrl}; every other direct provider stores none.
     let providerOptions: Record<string, unknown> = {};
     if (p.provider === 'ai_gateway') {
@@ -226,78 +227,69 @@ export async function saveAiProviderConfig(
         throw new AiConfigError('Key storage is disabled — set AI_CONFIG_SECRET on the server to store keys.');
       }
       cipherFields = { apiKeyCiphertext: encryptSecret(apiKey, ctx.tenantId), keyLast4: keyLast4(apiKey) };
-    } else if (!existing) {
-      throw new AiConfigError('An API key is required to configure a new provider.');
     }
 
+    // Without a typed key the restricted owner keeps the pending key, else the stored key of this provider.
     let rowId: string;
-    if (existing) {
-      await tx
-        .update(aiProviderConfig)
-        .set({ model, providerOptions, ...(cipherFields ?? {}), updatedByUserId: ctx.userId ?? null, updatedAt: sql`now()` })
-        .where(eq(aiProviderConfig.id, existing.id));
-      rowId = existing.id;
-    } else {
-      const [ins] = await tx
-        .insert(aiProviderConfig)
-        .values({
-          tenantId: ctx.tenantId,
-          provider: p.provider as AiProvider,
-          model,
-          providerOptions,
-          apiKeyCiphertext: cipherFields!.apiKeyCiphertext,
-          keyLast4: cipherFields!.keyLast4,
-          createdByUserId: ctx.userId ?? null,
-        })
-        .returning({ id: aiProviderConfig.id });
-      rowId = ins.id;
-    }
-
-    if (p.makeActive) await activateTx(tx, p.provider as AiProvider);
+    try {
+      const [saved] = await tx.execute<{ id: string }>(sql`select app.ai_provider_pending_save_v1(${p.provider},${model},${cipherFields?.apiKeyCiphertext ?? null},
+        ${cipherFields?.keyLast4 ?? null},${JSON.stringify(providerOptions)}::jsonb) as id`);
+      if (!saved?.id) throw new Error('unsaved');
+      rowId = saved.id;
+    } catch { throw new AiConfigError(existing || apiKey ? 'The AI configuration change could not be saved.' : 'An API key is required to configure a new provider.'); }
 
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
-      aggregateType: 'ai-provider-config',
+      aggregateType: 'ai-provider-pending',
       aggregateId: rowId,
-      eventType: 'ai-provider-config.saved',
+      eventType: 'ai-provider-config.pending-saved',
       actor: actorOf(ctx),
       // Key/ciphertext/last4 are deliberately omitted from the (tenant-wide) event log.
-      payload: { provider: p.provider, model, active: Boolean(p.makeActive) },
+      payload: { provider: p.provider, model, active: false },
     });
   });
 }
 
-/** Make an already-configured provider the active one. */
-export async function setActiveProvider(ctx: SessionContext, p: { provider: string; evaluationReceipt?: string }): Promise<void> {
+const BASELINE_REQUIRED = 'A passed or accepted baseline check of this exact change is required before it can be activated.';
+/** Activate a provider change. WP14: a direct provider activates only its PENDING change, and only once a baseline
+ * run of that exact version has passed or had its failure accepted; OpenRouter additionally needs its existing
+ * evaluated candidate receipt. Either way the gate, the switch and the live row commit together. */
+export async function setActiveProvider(ctx: SessionContext, p: { provider: string; evaluationReceipt?: string; pendingVersion?: string }): Promise<void> {
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (!isProvider(p.provider)) throw new AiConfigError('Unknown AI provider.');
   await withTenant(ctx, async (tx) => {
     await assertConfigurationAdminTx(tx,ctx);
     if (p.provider === 'openrouter') {
+      const candidate = (await providerCandidatesTx(tx, ctx))[0];
+      if (!candidate) throw new AiConfigError('A current evaluated OpenRouter candidate and account-policy review are required.');
+      const [gate] = await tx.execute<{ id: string | null }>(sql`select app.ai_provider_baseline_gate_v1('openrouter_candidate',${candidate.id}::uuid,${candidate.version}::uuid,${PROVIDER_BASELINE_SUITE_DIGEST}) as id`);
+      if (!gate?.id) throw new AiConfigError(BASELINE_REQUIRED);
       let promoted: { rowId: string; evaluationId: string };
       try { promoted = await activateOpenRouterCandidateTx(tx, ctx, p.evaluationReceipt); }
       catch { throw new AiConfigError('A current evaluated OpenRouter candidate and account-policy review are required.'); }
+      // The promoted row remembers the run that admitted this exact version (0694 clears it on any later in-place change).
+      await tx.update(aiProviderConfig).set({ baselineRunId: gate.id }).where(eq(aiProviderConfig.id, promoted.rowId));
       await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'ai-provider-config', aggregateId: promoted.rowId,
-        eventType: 'ai-provider-config.activated', actor: actorOf(ctx), payload: { provider: p.provider, evaluationId: promoted.evaluationId,
-          protocolSuiteVersion: 1, accountReviewVersion: 1 } });
+        eventType: 'ai-provider-config.activated', actor: actorOf(ctx), payload: { provider: p.provider, model: candidate.model, evaluationId: promoted.evaluationId,
+          protocolSuiteVersion: 1, accountReviewVersion: 1, baselineRunId: gate.id } });
       return;
     }
-    const [row] = await tx
-      .select({ id: aiProviderConfig.id, model: aiProviderConfig.model, providerOptions: aiProviderConfig.providerOptions })
-      .from(aiProviderConfig)
-      .where(eq(aiProviderConfig.provider, p.provider as AiProvider))
-      .limit(1);
-    if (!row) throw new AiConfigError('Configure this provider with a key before activating it.');
-    providerModel(p.provider as AiProvider,row.model);
-    await activateTx(tx, p.provider as AiProvider);
+    const [pending] = await tx.execute<{ id: string; version_token: string; model: string }>(sql`select id,version_token,model from app.ai_provider_pending_view_v1() where provider=${p.provider}`);
+    if (!pending) throw new AiConfigError('Save the change, run the baseline checks, then activate it.');
+    if (p.pendingVersion !== undefined && p.pendingVersion !== pending.version_token) throw new AiConfigError('This change was edited after you opened it. Review it again.');
+    providerModel(p.provider as AiProvider,pending.model);
+    let activated: { config_id: string; baseline_run_id: string } | undefined;
+    try { [activated] = await tx.execute<{ config_id: string; baseline_run_id: string }>(sql`select config_id,baseline_run_id from app.ai_provider_pending_activate_v1(${pending.id}::uuid,${pending.version_token}::uuid,${PROVIDER_BASELINE_SUITE_DIGEST})`); }
+    catch { throw new AiConfigError(BASELINE_REQUIRED); }
+    if (!activated?.config_id) throw new AiConfigError(BASELINE_REQUIRED);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'ai-provider-config',
-      aggregateId: row.id,
+      aggregateId: activated.config_id,
       eventType: 'ai-provider-config.activated',
       actor: actorOf(ctx),
-      payload: { provider: p.provider },
+      payload: { provider: p.provider, model: pending.model, baselineRunId: activated.baseline_run_id },
     });
   });
 }
@@ -318,6 +310,27 @@ export async function disableAi(ctx: SessionContext): Promise<void> {
   });
 }
 
+async function discardPendingTx(tx: Tx, ctx: SessionContext, provider: AiProvider): Promise<boolean> {
+  let removed: { id: string | null } | undefined;
+  try { [removed] = await tx.execute<{ id: string | null }>(sql`select app.ai_provider_pending_remove_v1(${provider}) as id`); }
+  catch { throw new AiConfigError('The AI configuration change could not be discarded.'); }
+  if (!removed?.id) return false;
+  await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'ai-provider-pending', aggregateId: removed.id,
+    eventType: 'ai-provider-config.pending-discarded', actor: actorOf(ctx), payload: { provider } });
+  return true;
+}
+
+/** WP14: drop a direct provider's pending change. The live configuration is unchanged. */
+export async function discardPendingAiProviderChange(ctx: SessionContext, p: { provider: string }): Promise<void> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  if (!isProvider(p.provider) || p.provider === 'openrouter') throw new AiConfigError('Unknown AI provider.');
+  await withTenant(ctx, async (tx) => {
+    await assertConfigurationAdminTx(tx,ctx);
+    if (!(await discardPendingTx(tx, ctx, p.provider as AiProvider))) throw new AiConfigError('There is no pending change for this provider.');
+  });
+}
+
 /** Remove a provider's stored config + key entirely. */
 export async function removeAiProviderConfig(ctx: SessionContext, p: { provider: string }): Promise<void> {
   p=structuredClone(p);
@@ -329,7 +342,7 @@ export async function removeAiProviderConfig(ctx: SessionContext, p: { provider:
       const candidateId = await removeOpenRouterCandidateTx(tx, ctx);
       if (candidateId) await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'ai-provider-candidate', aggregateId: candidateId,
         eventType: 'ai-provider-config.candidate-removed', actor: actorOf(ctx), payload: { provider: p.provider } });
-    }
+    } else await discardPendingTx(tx, ctx, p.provider as AiProvider);
     const [row] = await tx
       .select({ id: aiProviderConfig.id })
       .from(aiProviderConfig)

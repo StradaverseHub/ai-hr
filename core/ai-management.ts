@@ -411,3 +411,26 @@ export async function clearGroupAllowance(ctx:SessionContext,p:{kind:unknown;sub
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'ai-control',aggregateId:target.kind==='group_role'?ctx.tenantId:target.subject,eventType:'ai-control.allowance-cleared',actor:actorOf(ctx),payload:{kind:target.kind,subject:target.subject,enabled:removed.enabled,dailyRequests:removed.dailyRequests,monthlyTokens:removed.monthlyTokens,maxConcurrent:removed.maxConcurrent}});
   });
 }
+
+// ── WP14 / R19: per-feature caps (0694). Kept apart from the feature switch above. ──
+/** Features whose shared row (kind 'feature') the 0662 guard admits; a feature switched by a tenant setting has none. */
+export const AI_FEATURE_CAP_IDS: readonly AiFeatureId[] = Object.freeze(AI_FEATURES.filter(f => f.setting === null).map(f => f.id));
+/** A tenant-wide cap on one feature: every run of that feature in the tenant counts (app.ai_admit, 0678), on top of
+ *  every individual, group, default and company allowance. Blank is no additional cap. Group administrators only;
+ *  the feature's on/off switch is preserved, never changed here. */
+export async function setAiFeatureCap(ctx:SessionContext,p:{feature:unknown;dailyRequests:number|null;monthlyTokens:number|null;maxConcurrent?:number|null}){
+  ctx = captureControlContext(ctx);
+  assertAdmin(ctx);
+  if(!isGroupAdmin(ctx))throw new AiControlError('Only a group administrator may change feature caps.');
+  const feature=p.feature;
+  if(!isAiFeature(feature)||!AI_FEATURE_CAP_IDS.includes(feature))throw new AiControlError('Unknown AI feature.');
+  const caps={dailyRequests:p.dailyRequests,monthlyTokens:p.monthlyTokens,maxConcurrent:p.maxConcurrent??null};
+  for(const [value,max] of [[caps.dailyRequests,1000000],[caps.monthlyTokens,1000000000000],[caps.maxConcurrent,1000000]] as const){if(value!==null&&(!Number.isSafeInteger(value)||value<0||value>max))throw new AiControlError('Invalid AI allowance.');}
+  await withTenant(ctx,async tx=>{
+    await currentControlAdminTx(tx, ctx, true);
+    const values={...caps,updatedByUserId:ctx.userId??null,updatedAt:sql`now()`};
+    await tx.insert(aiControlPolicy).values({tenantId:ctx.tenantId,scopeKey:`feature:${feature}`,kind:'feature',featureId:feature,enabled:true,...values})
+      .onConflictDoUpdate({target:[aiControlPolicy.tenantId,aiControlPolicy.scopeKey],set:values});
+    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'ai-control',aggregateId:ctx.tenantId,eventType:'ai-control.feature-cap-changed',actor:actorOf(ctx),payload:{feature,...caps}});
+  });
+}

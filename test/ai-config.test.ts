@@ -30,6 +30,7 @@ import {
 } from '../core/ai-config';
 import { hireEmployee } from '../core/org';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { activateDirectProviderFixture } from './ai-provider-change-fixture';
 
 describe('AES-256-GCM secret-at-rest', () => {
   it('round-trips, hides the plaintext, and binds to the tenant (AAD)', () => {
@@ -92,7 +93,7 @@ describe('ai-config service', () => {
 
   it('admin stores an encrypted key, the view hides it, and resolve decrypts it', async () => {
     const a = adminCtx(base);
-    await saveAiProviderConfig(a, { provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-live-anthropic-xyz', makeActive: true });
+    await activateDirectProviderFixture(a, { provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-live-anthropic-xyz' });
 
     const view = await getAiConfigView(a);
     const anth = view.providers.find((p) => p.provider === 'anthropic')!;
@@ -108,12 +109,13 @@ describe('ai-config service', () => {
     const cfg = await withTenant(a, (tx) => resolveActiveAiConfig(tx, a));
     expect(cfg).toMatchObject({ provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-live-anthropic-xyz' });
 
-    expect(await eventTypes()).toContain('ai-provider-config.saved');
+    // WP14: the save is a pending change; activation is a separate, baseline-gated event.
+    expect(await eventTypes()).toEqual(expect.arrayContaining(['ai-provider-config.pending-saved', 'ai-control.provider-baseline-accepted', 'ai-provider-config.activated']));
   });
 
   it('the ciphertext column is not readable by the app role', async () => {
     const a = adminCtx(base);
-    await saveAiProviderConfig(a, { provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-x-1234', makeActive: true });
+    await activateDirectProviderFixture(a, { provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-x-1234' });
     // The query must fail: ai_hr_app has no column-level SELECT on api_key_ciphertext. drizzle wraps
     // the Postgres error, so assert on the canonical cause (42501 = insufficient_privilege).
     const err = await withTenant(a, (tx) => tx.execute(sql`select api_key_ciphertext from ai_provider_config`)).then(
@@ -128,8 +130,8 @@ describe('ai-config service', () => {
 
   it('switching the active provider keeps exactly one active', async () => {
     const a = adminCtx(base);
-    await saveAiProviderConfig(a, { provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-anthropic-aaaa', makeActive: true });
-    await saveAiProviderConfig(a, { provider: 'openai', model: 'gpt-5.5', apiKey: 'sk-openai-bbbb', makeActive: true });
+    await activateDirectProviderFixture(a, { provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-anthropic-aaaa' });
+    await activateDirectProviderFixture(a, { provider: 'openai', model: 'gpt-5.5', apiKey: 'sk-openai-bbbb' });
 
     const cfg = await withTenant(a, (tx) => resolveActiveAiConfig(tx, a));
     expect(cfg?.provider).toBe('openai');
@@ -147,7 +149,7 @@ describe('ai-config service', () => {
 
   it('removing the active provider turns drafting off (no tenant config, no env)', async () => {
     const a = adminCtx(base);
-    await saveAiProviderConfig(a, { provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-z-1234', makeActive: true });
+    await activateDirectProviderFixture(a, { provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-z-1234' });
     await removeAiProviderConfig(a, { provider: 'anthropic' });
 
     const cfg = await withTenant(a, (tx) => resolveActiveAiConfig(tx, a));
