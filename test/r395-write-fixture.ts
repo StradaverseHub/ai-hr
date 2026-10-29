@@ -128,13 +128,21 @@ async function bothWays(ctx: Ctx, stmts: string[]): Promise<{ after: Outcome[]; 
 }
 
 const empRow = (name: string) => EMPS.find((e) => e.id === E[name])!;
+const DIAGNOSTIC_ERRORS:Record<string,string[]>={};
+const DIAGNOSTIC_ALLOWED:Record<string,string[]>={};
 const REPORT: Record<string, Record<string, { ok: number; rlsRefused: number; otherError: number }>> = {};
 const tally = (bucket: string, key: string, o: Outcome) => {
   REPORT[bucket] ??= {};
   REPORT[bucket][key] ??= { ok: 0, rlsRefused: 0, otherError: 0 };
   if (o.startsWith('ok:')) REPORT[bucket][key].ok++;
   else if (/row-level security|42501/.test(o)) REPORT[bucket][key].rlsRefused++;
-  else REPORT[bucket][key].otherError++;
+  else {
+    REPORT[bucket][key].otherError++;
+    const diagnosticKey=bucket+':'+key;
+    const message=o.replace(/[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}/g,'<fixture-uuid>').slice(0,320);
+    const rows=DIAGNOSTIC_ERRORS[diagnosticKey]??=[];
+    if(!rows.includes(message)&&rows.length<4)rows.push(message);
+  }
 };
 
 /** One isolated fixture per Vitest file; optional reports identify their partition explicitly. */
@@ -217,6 +225,10 @@ export const compareGenericWriteContext = async (i: number) => {
       for (let k = 0; k < stmts.length; k++) {
         expect(after[k], `${ctx.name}: ${labels[k]}`).toBe(before[k]);
         tally('generic', labels[k].split(' for ')[0], before[k]);
+        if(before[k].startsWith('ok:')&&labels[k].startsWith('insert ')){
+          const key=labels[k].split(' for ')[0],rows=DIAGNOSTIC_ALLOWED[key]??=[];
+          if(rows.length<4)rows.push(ctx.name+':'+labels[k]);
+        }
       }
     };
 export const assertGenericWriteNonVacuity = () => {
@@ -226,6 +238,8 @@ export const assertGenericWriteNonVacuity = () => {
     const refused = inserts.filter(([, v]) => v.rlsRefused > 0).map(([k]) => k);
     console.log(`[r395-write] insert tables with an allowed attempt: ${allowed.length}/${inserts.length}; with an RLS refusal: ${refused.length}/${inserts.length}`);
     console.log(`[r395-write] tallies ${JSON.stringify(g)}`);
+    console.log(`[r395-write] diagnostic-other-errors ${JSON.stringify(DIAGNOSTIC_ERRORS)}`);
+    console.log(`[r395-write] diagnostic-allowed-controls ${JSON.stringify(DIAGNOSTIC_ALLOWED)}`);
     expect(allowed.length).toBeGreaterThanOrEqual(40);
     expect(refused.length).toBeGreaterThanOrEqual(40);
     expect(Object.entries(g).filter(([k, v]) => k.startsWith('update ') && v.ok > 0).length).toBeGreaterThanOrEqual(40);
