@@ -20,7 +20,7 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
  });
 
  it('probes the wave 1 and 1b generic families, and every probed entry has an agent store',()=>{
-  expect([...PROBED_ACTION_IDS].sort()).toEqual(['approvals.attendance.decide','approvals.claim.decide','approvals.toil.decide','employees.movement.transfer','leave.adjustment.apply','leave.cancel','leave.edit','toil.credit.grant']);
+  expect([...PROBED_ACTION_IDS].sort()).toEqual(['approvals.attendance.decide','approvals.claim.decide','approvals.toil.decide','claims.cancel','employees.movement.transfer','leave.adjustment.apply','leave.cancel','leave.edit','toil.credit.grant']);
   for(const id of PROBED_ACTION_IDS)expect(AGENT_ACTIONS.find(action=>action.id===id)?.store,id).not.toBe('human_workflow_only');
  });
 
@@ -57,7 +57,7 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
   const pending=Object.entries(AGENT_ACTION_PARITY).filter(([,d])=>d.kind==='pending').map(([id])=>id).sort();
   // Exactly the ceiling: an adapter landing must remove its id here (the guard reports a stale ceiling entry).
   expect(pending).toEqual([...PARITY_PENDING_CEILING].sort());
-  expect(PARITY_PENDING_CEILING.size).toBeLessThanOrEqual(21);
+  expect(PARITY_PENDING_CEILING.size).toBeLessThanOrEqual(20);
   const stale=parityCoverageProblems(registry,{...declarations,'leave.apply':probed});
   expect(stale).toEqual(['leave.apply: has a probed declaration, so remove it from PARITY_PENDING_CEILING (the list only shrinks)']);
  });

@@ -24,7 +24,9 @@ import {setRestDay} from '../core/roster';
 import {grantAssistant} from '../core/assistant-grant';
 import {createMovementEventTx} from '../core/movement';
 import {isAdmin} from '../lib/authz-model';
-import {createClaimType,setClaimPolicy,submitClaim,decideClaimTx} from '../packs/claims/service';
+import {createClaimType,setClaimPolicy,submitClaim,decideClaimTx,cancelClaimTx} from '../packs/claims/service';
+import {prepareClaimCancellationReview,confirmClaimCancellationReview,readClaimCancellationChoices} from '../core/assistant-actions/claim-cancellation-review-store';
+import {OWN_CLAIM_CANCELLATION_ACTION} from '../lib/assistant-actions/own-claim-cancellation-contract';
 import {requestAttendanceCorrection,decideAttendanceCorrection} from '../packs/attendance/service';
 import {setToilPolicy,submitReplacementLeaveRequest,decideReplacementLeaveRequestTx,applyLeaveAdjustmentBatchTx,grantLeaveCreditRowsTx,requestLeave,cancelOwnLeaveTx,editLeaveRequestTx} from '../packs/leave/service';
 import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews,readClaimDecisionChoices,readAttendanceDecisionChoices,readToilDecisionChoices} from '../core/assistant-actions/assigned-decision-review-store';
@@ -111,8 +113,15 @@ async function buildWorld():Promise<World>{
  return {b,foreign,companyB:other.id,subject,people,group,as};
 }
 
-type Choices={kind:string;items?:{subjectId:string}[];employees?:{employmentId:string}[];requests?:{leaveRequestId:string}[]};
-const lists=(found:unknown,item:Item)=>{const c=found as Choices;return c?.kind==='choices'&&(!!c.items?.some(row=>row.subjectId===item.subjectId)||!!c.employees?.some(row=>row.employmentId===item.employmentId)||!!c.requests?.some(row=>row.leaveRequestId===item.subjectId));};
+type Choices={kind:string;items?:{subjectId:string}[];employees?:{employmentId:string}[];requests?:{leaveRequestId:string}[];claims?:{claimId:string}[]};
+const lists=(found:unknown,item:Item)=>{const c=found as Choices;return c?.kind==='choices'&&(!!c.items?.some(row=>row.subjectId===item.subjectId)||!!c.employees?.some(row=>row.employmentId===item.employmentId)||!!c.requests?.some(row=>row.leaveRequestId===item.subjectId)||!!c.claims?.some(row=>row.claimId===item.subjectId));};
+/** One pending claim the subject submitted on their own claims screen path. */
+async function pendingClaim(w:World):Promise<Item>{
+ w.claimTypeId??=(await createClaimType(w.group,{code:'FIC-PARITY',name:'Fictional parity travel',defaultTaxable:false,requiresReceipt:false})).id;
+ await setClaimPolicy(w.group,{claimTypeId:w.claimTypeId,annualBudget:1000,perClaimCap:1000,effectiveFrom:todayInKualaLumpur()});
+ const claim=await submitClaim(await w.as('employee'),{employmentId:w.subject.employmentId,claimTypeId:w.claimTypeId,amount:42.5,incurredOn:todayInKualaLumpur(),description:'Fictional taxi fare'});
+ return {subjectId:claim.id,employmentId:w.subject.employmentId};
+}
 /** The next n weekdays after today (HR date owner). */
 function weekdays(n:number){const out:string[]=[],next=new Date(todayInKualaLumpur()+'T00:00:00Z');while(out.length<n){next.setUTCDate(next.getUTCDate()+1);if(![0,6].includes(next.getUTCDay()))out.push(next.toISOString().slice(0,10));}return out;}
 /** One plain pending full-day leave request of the subject's, applied on their own leave screen path. */
@@ -125,11 +134,7 @@ const employmentItem=(w:World):Item=>({subjectId:w.subject.employmentId,employme
 
 const ADAPTERS:Record<ProbedActionId,Adapter>={
  'approvals.claim.decide':{store:claimDecisionReviews,
-  async create(w){
-   w.claimTypeId??=(await createClaimType(w.group,{code:'FIC-PARITY',name:'Fictional parity travel',defaultTaxable:false,requiresReceipt:false})).id;
-   await setClaimPolicy(w.group,{claimTypeId:w.claimTypeId,annualBudget:1000,perClaimCap:1000,effectiveFrom:todayInKualaLumpur()});
-   const claim=await submitClaim(await w.as('employee'),{employmentId:w.subject.employmentId,claimTypeId:w.claimTypeId,amount:42.5,incurredOn:todayInKualaLumpur(),description:'Fictional taxi fare'});
-   return {subjectId:claim.id,employmentId:w.subject.employmentId};},
+  create:pendingClaim,
   human:(_w,item)=>({action:ASSIGNED_CLAIM_DECISION_ACTION,contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,decision:'approved'}),
   offered:async(who,_w,item)=>lists(await readClaimDecisionChoices(who),item),
   screen:(tx,who,_w,item,decider)=>decideClaimTx(tx,who,{claimRequestId:item.subjectId,decision:'approve',deciderEmploymentId:decider})},
@@ -158,6 +163,13 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:(_w,item)=>({action:OWN_LEAVE_EDIT_ACTION,contractVersion:1,employmentId:item.employmentId,leaveRequestId:item.subjectId,startDate:item.dates![1],endDate:item.dates![2]}),
   offered:async(who,_w,item)=>lists(await readLeaveChangeChoices(who),item),
   screen:(tx,who,w,item)=>editLeaveRequestTx(tx,who,{leaveRequestId:item.subjectId,leaveTypeId:w.b.annualLeaveTypeId,startDate:item.dates![1],endDate:item.dates![2],durationType:'full_day',today:todayInKualaLumpur()})},
+ // Claims screen: cancelClaimAction calls cancelClaim(session, id) with no page admission.
+ 'claims.cancel':{
+  store:{prepare:prepareClaimCancellationReview,confirm:(who,r)=>confirmClaimCancellationReview(who,{action:OWN_CLAIM_CANCELLATION_ACTION,contractVersion:1,...r})},
+  create:pendingClaim,
+  human:(_w,item)=>({action:OWN_CLAIM_CANCELLATION_ACTION,contractVersion:1,employmentId:item.employmentId,claimId:item.subjectId,cancel:true}),
+  offered:async(who,_w,item)=>lists(await readClaimCancellationChoices(who),item),
+  screen:(tx,who,_w,item)=>cancelClaimTx(tx,who,item.subjectId)},
  // HR screens: the server actions call requireAdmin() (isAdmin) before the service.
  'leave.adjustment.apply':{store:leaveAdjustmentReviews,screenAdmits:isAdmin,
   create:async w=>employmentItem(w),

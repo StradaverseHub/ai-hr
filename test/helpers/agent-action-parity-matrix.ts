@@ -77,7 +77,7 @@ export const AGENT_ACTION_PARITY={
  'attendance.overtime.request':pending(NO_ADAPTER+' Generic own store.'),
  'claims.draft.save':pending(NO_ADAPTER+' Module-action store.'),
  'claims.submit':pending(NO_ADAPTER+' Module-action store.'),
- 'claims.cancel':pending(NO_ADAPTER+' Dedicated store (WP9 moves it to generic own first).'),
+ 'claims.cancel':{kind:'probed',screen:OWN_REQUEST},
  'performance.review.acknowledge':pending(NO_ADAPTER+' Module-action store; needs a released review fixture.'),
  'performance.onehr.plan.acknowledge':pending(NO_ADAPTER+' Module-action store; needs a OneHR plan fixture.'),
  'rewards.post':pending(NO_ADAPTER+' Dedicated store; needs an approved reward unit and open batch.'),
@@ -98,7 +98,7 @@ export const AGENT_ACTION_PARITY={
 export const PARITY_PENDING_CEILING:ReadonlySet<string>=new Set([
  'org.reporting.change','leave.apply','ess.profile.request','approvals.leave.decide',
  'knowledge_base.article.create','payroll.close','attendance.correction.request','attendance.overtime.request',
- 'claims.draft.save','claims.submit','claims.cancel','performance.review.acknowledge','performance.onehr.plan.acknowledge',
+ 'claims.draft.save','claims.submit','performance.review.acknowledge','performance.onehr.plan.acknowledge',
  'rewards.post','lifecycle.acknowledgement.submit','toil.replacement.request','multi_cycle_payroll.create_run',
  'typed_pay_components.create','country-my.statutory.update','notifications.email_preferences.save','system_testing.execution.save',
 ]);
