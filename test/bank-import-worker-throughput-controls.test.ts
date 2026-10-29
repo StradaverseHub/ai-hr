@@ -7,7 +7,7 @@ import {join} from 'node:path';
 
 const githubLinux=process.env.GITHUB_ACTIONS==='true'&&process.env.CI==='true'&&process.platform==='linux';
 
-function controls(script:'scripts/ci-bank-import-worker-throughput-controls.test.py'|'scripts/ci-bank-import-worker-resource-lifecycle-controls.test.py'){
+function controls(script:'scripts/ci-bank-import-worker-throughput-controls.test.py'|'scripts/ci-bank-import-worker-resource-lifecycle-controls.test.py'|'scripts/ci-bank-import-worker-dependency-provision-controls.test.py'){
  const directory=mkdtempSync(join(tmpdir(),'bank-throughput-controls-'));
  const stderrPath=join(directory,'stderr');
  const stderrFd=openSync(stderrPath,'wx',0o600);
@@ -36,7 +36,7 @@ function controls(script:'scripts/ci-bank-import-worker-throughput-controls.test
 describe.skipIf(!githubLinux)('Bank worker throughput consumer refusal controls on disposable GitHub Linux',()=>{
  let executed=0;
  beforeAll(()=>{expect(githubLinux,'Actual GitHub Linux CI is required').toBe(true);});
- afterAll(()=>{expect(executed,'Both real child control reports must be checked').toBe(2);});
+ afterAll(()=>{expect(executed,'All three real child control reports must be checked').toBe(3);});
  it('executes all thirteen pure refusal, lifecycle, warning, download and evidence groups without skips',()=>{
   const result=controls('scripts/ci-bank-import-worker-throughput-controls.test.py');
   expect(result.exitCode).toBe(0);expect(result.stdout).toBe('');expect(result.truncated).toBe(false);
@@ -49,6 +49,14 @@ describe.skipIf(!githubLinux)('Bank worker throughput consumer refusal controls 
   const result=controls('scripts/ci-bank-import-worker-resource-lifecycle-controls.test.py');
   expect(result.exitCode).toBe(0);expect(result.stdout).toBe('');expect(result.truncated).toBe(false);
   expect(result.text).toMatch(/^Ran 9 tests in [0-9.]+s\s*$/m);
+  expect(result.text).toMatch(/^OK\s*$/m);
+  expect(result.text).not.toMatch(/\b(?:skipped|FAILED|ERROR|FAIL)\b/i);
+  executed++;
+ },70_000);
+ it('executes all six exact dependency provisioning groups without skips',()=>{
+  const result=controls('scripts/ci-bank-import-worker-dependency-provision-controls.test.py');
+  expect(result.exitCode).toBe(0);expect(result.stdout).toBe('');expect(result.truncated).toBe(false);
+  expect(result.text).toMatch(/^Ran 6 tests in [0-9.]+s\s*$/m);
   expect(result.text).toMatch(/^OK\s*$/m);
   expect(result.text).not.toMatch(/\b(?:skipped|FAILED|ERROR|FAIL)\b/i);
   executed++;
