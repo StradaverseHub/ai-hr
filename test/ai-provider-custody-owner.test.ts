@@ -17,6 +17,12 @@ it('upgrades forced-RLS custody and saves, reloads, evaluates and promotes throu
  try{await owner.withTenant(ctx,async tx=>{
   await tx.execute(sql.raw(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS`));
   await tx.execute(sql.raw(`GRANT USAGE,CREATE ON SCHEMA public,app TO ${role}`));
+  const [ordinary]=await tx.execute<{id:string}>(sql`INSERT INTO public.app_user(tenant_id,workos_user_id)
+   VALUES(${ctx.tenantId}::uuid,${'synthetic-provider-user-'+randomUUID()}) RETURNING id`);
+  await tx.execute(sql`INSERT INTO public.role_assignment(tenant_id,app_user_id,company_id,role)
+   VALUES(${ctx.tenantId}::uuid,${ordinary.id}::uuid,NULL,'employee')`);
+  const [agent]=await tx.execute<{id:string}>(sql`INSERT INTO app.ai_agent_principal(tenant_id)
+   VALUES(${ctx.tenantId}::uuid) ON CONFLICT(tenant_id) DO UPDATE SET tenant_id=excluded.tenant_id RETURNING id`);
   for(const table of ['ai_provider_candidate','ai_provider_protocol_evaluation','ai_provider_config'])
    await tx.execute(sql.raw(`ALTER TABLE public.${table} OWNER TO ${role}`));
   await tx.execute(sql.raw(`GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${role}`));
@@ -76,6 +82,25 @@ it('upgrades forced-RLS custody and saves, reloads, evaluates and promotes throu
    await attempt.execute(sql`SET LOCAL ROLE ai_hr_app`);
    await attempt.execute(sql`SELECT * FROM app.ai_provider_candidate_view_v1()`);
   })).rejects.toThrow();
+  for(const identity of [
+   {user:ordinary.id,roles:'employee',grants:JSON.stringify([{role:'employee',companyId:null}]),agent:''},
+   {user:'',roles:'',grants:'[]',agent:agent.id},
+  ]){
+   const restore=new Error('rollback-custody-negative-context');
+   try{await tx.transaction(async scope=>{
+    await scope.execute(sql`SELECT set_config('app.user_id',${identity.user},true),set_config('app.roles',${identity.roles},true),
+     set_config('app.grants',${identity.grants},true),set_config('app.agent_principal_id',${identity.agent},true)`);
+    // Verify a genuine current tenant principal before testing the provider-specific denial.
+    if(identity.agent){const [current]=await scope.execute(sql`SELECT app.current_agent_principal() AS id`);expect(current.id).toBe(agent.id);}
+    else{const [current]=await scope.execute(sql`SELECT app.principal_snapshot_current() AS valid`);expect(current.valid).toBe(true);}
+    await expect(scope.transaction(attempt=>attempt.execute(sql`SELECT * FROM app.ai_provider_candidate_view_v1()`))).rejects.toThrow();
+    await expect(scope.transaction(attempt=>attempt.execute(sql`SELECT app.ai_provider_candidate_save_v1(
+     'fictional/forbidden','synthetic-ciphertext-never-sent','sent',${JSON.stringify(routing)}::jsonb)`))).rejects.toThrow();
+    await expect(scope.transaction(attempt=>attempt.execute(sql`SELECT * FROM app.ai_provider_evaluation_record_v1(
+     ${randomUUID()}::uuid,${id}::uuid,${edited.version}::uuid,${fingerprint},${principal},${JSON.stringify(summary)}::jsonb)`))).rejects.toThrow();
+    throw restore;
+   });}catch(error){if(error!==restore)throw error;}
+  }
   const [consumed]=await tx.execute(sql`SELECT app.ai_provider_evaluation_consume_v1(${evaluation}::uuid,${fingerprint},${principal}) AS id`);
   expect(consumed.id).toBe(evaluation);
   const [promoted]=await tx.execute(sql`SELECT app.ai_provider_candidate_promote_v1(${evaluation}::uuid) AS id`);
