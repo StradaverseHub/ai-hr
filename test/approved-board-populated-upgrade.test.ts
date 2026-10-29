@@ -27,7 +27,11 @@ it('upgrades populated payroll and Rewards from 562 to 566 receipts without rewr
  ]);
  // Preserve the separately reserved AI predecessor exactly as committed at dcea0fa56.
  expect(createHash('sha256').update(readFileSync('db/migrations/0687_assistant_question_budget.sql')).digest('hex')).toBe('ade48bffee0a5d6ebf72cdd61de36323f3650b81c805cd186701c5d8105e86c4');
- for(let index=1;index<manifest.length;index++)expect(manifest[index].folderMillis).toBeGreaterThan(manifest[index-1].folderMillis);
+ // Historical journal order includes an already-applied timestamp inversion. Preserve it;
+ // ordinary replay inserts journal order, while the receipt witness is timestamp then identity.
+ const orderedManifest=manifest.map((migration,index)=>({...migration,index})).sort((a,b)=>a.folderMillis-b.folderMillis||a.index-b.index);
+ let watermark=Math.max(...manifest.slice(0,start).map(m=>m.folderMillis));
+ for(const migration of manifest.slice(start)){expect(migration.folderMillis).toBeGreaterThan(watermark);watermark=migration.folderMillis;}
  const name='ai_hr_board_upgrade_'+randomUUID().replaceAll('-',''),directory=mkdtempSync(join(tmpdir(),'aihr-board-upgrade-'));
  const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);
  expect(['127.0.0.1','localhost']).toContain(ownerUrl.hostname);expect(ownerUrl.username).not.toBe('ai_hr_app');
@@ -55,7 +59,7 @@ it('upgrades populated payroll and Rewards from 562 to 566 receipts without rewr
   writeFileSync(join(directory,'meta/_journal.json'),JSON.stringify({...journal,entries:journal.entries.slice(0,start)}));
   await migrate(storage.db,{migrationsFolder:directory});
   const baseline=await ledger();expect(baseline).toHaveLength(start);
-  expect(baseline.map(row=>({hash:row.hash,when:Number(row.created_at)}))).toEqual(manifest.slice(0,start).map(m=>({hash:m.hash,when:m.folderMillis})));
+  expect(baseline.map(row=>({hash:row.hash,when:Number(row.created_at)}))).toEqual(orderedManifest.filter(m=>m.index<start).map(m=>({hash:m.hash,when:m.folderMillis})));
   const [clock]=await storage.client`select (now() at time zone 'Asia/Kuala_Lumpur')::date::text as day`;
   const day=clock.day as string,year=Number(day.slice(0,4)),policy={...defaultPolicy(year),patActual:500000,patTarget:1000000,targetMonthsBp:20000,multiplierBp:9000};
   // Physical historical witnesses, not fabricated current-command provenance. No guards are disabled.
@@ -63,14 +67,14 @@ it('upgrades populated payroll and Rewards from 562 to 566 receipts without rewr
    await tx`insert into tenant(id,workos_org_id,name) values(${f.tenant},${randomUUID()},'Fictional approved-board upgrade')`;
    for(const company of [f.company,f.catalogueCompany])await tx`insert into company(id,tenant_id,legal_name,country,currency) values(${company},${f.tenant},'Fictional upgrade company','MY','MYR')`;
    await tx`insert into department(id,tenant_id,company_id,name) values(${f.department},${f.tenant},${f.company},'Upgrade department')`;
-   // Both catalogue-global BUs used to be valid targets. Only validBu has a current People assignment.
-   for(const [bu,code] of [[f.validBu,'LIVE'],[f.legacyBu,'OLD']])await tx`insert into business_unit(id,tenant_id,company_id,code,name,is_global) values(${bu},${f.tenant},${f.catalogueCompany},${code},'Fictional global catalogue BU',true)`;
    await tx`insert into person(id,tenant_id,full_name,primary_email) values(${f.employeePerson},${f.tenant},'Fictional employee',${randomUUID()+'@upgrade.invalid'})`;
    for(const [user,role] of [[f.hrUser,'hr_admin'],[f.readerUser,'hr_admin'],[f.employeeUser,'employee']]){
     await tx`insert into app_user(id,tenant_id,person_id,workos_user_id) values(${user},${f.tenant},${user===f.employeeUser?f.employeePerson:null},${randomUUID()})`;
     await tx`insert into role_assignment(tenant_id,app_user_id,role) values(${f.tenant},${user},${role})`;
    }
    await actor(tx,f);
+   // Both catalogue-global BUs used to be valid targets. Only validBu has a current People assignment.
+   for(const [bu,code] of [[f.validBu,'LIVE'],[f.legacyBu,'OLD']])await tx`insert into business_unit(id,tenant_id,company_id,code,name,is_global) values(${bu},${f.tenant},${f.catalogueCompany},${code},'Fictional global catalogue BU',true)`;
    await tx`insert into employment(id,tenant_id,person_id,company_id,hired_on) values(${f.employment},${f.tenant},${f.employeePerson},${f.company},'2022-01-01')`;
    await tx`insert into assignment(tenant_id,employment_id,department_id,business_unit_id,employment_type,valid_from) values(${f.tenant},${f.employment},${f.department},${f.validBu},'full_time','2022-01-01')`;
    await tx`insert into compensation(tenant_id,employment_id,basic_salary,currency,valid_from) values(${f.tenant},${f.employment},5000,'MYR','2022-01-01')`;
@@ -93,7 +97,7 @@ it('upgrades populated payroll and Rewards from 562 to 566 receipts without rewr
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   expect(await historicalRows()).toEqual(before);
   const upgraded=await ledger();expect(upgraded).toHaveLength(566);expect(upgraded.slice(0,start)).toEqual(baseline);
-  expect(upgraded.map(row=>({hash:row.hash,when:Number(row.created_at)}))).toEqual(manifest.map(m=>({hash:m.hash,when:m.folderMillis})));
+  expect(upgraded.map(row=>({hash:row.hash,when:Number(row.created_at)}))).toEqual(orderedManifest.map(m=>({hash:m.hash,when:m.folderMillis})));
   expect(await storage.client`select id from payroll_txn_import_attempt`).toHaveLength(0); // Never invent ownership of old imports.
   expect(await storage.client`select reward_provenance from payroll_input`).toEqual([{reward_provenance:[]},{reward_provenance:[]}]);
   const newTables=['payroll_txn_import_attempt','reward_governance','reward_governance_history','reward_senior_evidence','reward_governance_public','reward_senior_award'];
