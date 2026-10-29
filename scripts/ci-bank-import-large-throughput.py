@@ -232,7 +232,7 @@ def main(supervised_seconds):
     def hold_pause(ordinal):
         nonlocal holder
         until=time.monotonic()+remaining(30)
-        with holder_error.open('xb') as stderr:
+        with validator.private_log(holder_error) as stderr:
             holder=REGISTRY.popen(fixture_argv('hold-pause'),cwd=runtime,env=fixture_env,gate_timeout=remaining(30),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=stderr,text=True,user=runner_uid,group=runner.pw_gid,extra_groups=[],umask=0o077,auxiliaries=fixture_auxiliaries)
         require(until>time.monotonic(),'latch gate consumed readiness budget')
         ready,_,_=select.select([holder.stdout],[],[],min(remaining(30),until-time.monotonic()))
@@ -250,7 +250,7 @@ def main(supervised_seconds):
         nonlocal active
         require(active is None,'one owned worker at a time');sealed()
         index=len(children);out=area/f'worker-{index}.stdout';err=area/f'worker-{index}.stderr'
-        with out.open('xb') as stdout,err.open('xb') as stderr:
+        with validator.private_log(out) as stdout,validator.private_log(err) as stderr:
             active=REGISTRY.popen([str(node),'--import','tsx','scripts/bank-import-runner.ts',*(['--once'] if once else [])],cwd=runtime,env=env,gate_timeout=remaining(30),stdout=stdout,stderr=stderr,user=worker.pw_uid,group=worker.pw_gid,extra_groups=[],umask=0o077,auxiliaries=native_auxiliaries)
         children.append({'process':active,'stdout':out,'stderr':err,'once':once})
         require(active.pid>0,'owned worker PID missing')

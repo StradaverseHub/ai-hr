@@ -104,7 +104,7 @@ def run_case(case,fmt,package,manifest,node_input,tracked):
             # release writer too. This is a real Linux guarantee, checked before launch.
             h.check(ctypes.CDLL(None,use_errno=True).prctl(1,signal.SIGKILL,0,0,0)==0 and os.getppid()==observer,'kernel parent-death controller guard failed')
             signal.setitimer(signal.ITIMER_REAL,max(0.01,STARTED+90-time.monotonic()))
-            stderr=(area/'worker-0.stderr').open('xb')
+            stderr=h.private_log(area/'worker-0.stderr')
             process=registry.popen(argv,cwd=runtime,env=env,gate_timeout=10,stdout=subprocess.PIPE,stderr=stderr,user=worker.pw_uid,group=worker.pw_gid,extra_groups=[],umask=0o077,auxiliaries=auxiliaries,_release=case!='kernel-eof')
             if case=='kernel-orphan':
                 ready,_,_=select.select([process.stdout],[],[],10)

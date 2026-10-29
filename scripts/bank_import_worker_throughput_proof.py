@@ -440,6 +440,11 @@ def atomic_root(path,value):
 def protected(path,directory=False):
     path=Path(path);info=path.lstat();check(not path.is_symlink() and info.st_uid==0 and not info.st_mode&0o022 and (stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode) and info.st_nlink==1),'root-protected regular ownership required');return info
 
+def private_log(path):
+    # Parent-created evidence must remain protected even with runner umask 0002.
+    fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    return os.fdopen(fd,'wb')
+
 def evidence_bytes(path,raw,*,refresh=False,mode=0o400):
     """Atomic root-owned evidence; retries accept exact bytes, never partial output."""
     path=Path(path);check(len(raw)<=1024**2,'bounded evidence bytes required')

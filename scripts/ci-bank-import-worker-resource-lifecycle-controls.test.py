@@ -56,7 +56,17 @@ class ResourceLifecycle(unittest.TestCase):
 
     def test_area_removal_interruption_and_log_export_are_retryable(self):
         with fixture() as (registry,snapshots,opt,proc):
-            area=registry.prepare_area();(area/'worker-4.stderr').write_bytes(b'original failure\n')
+            area=registry.prepare_area();log=area/'worker-4.stderr'
+            mask=os.umask(0)
+            try:
+                with p.private_log(log) as output: output.write(b'original failure\n')
+            finally: os.umask(mask)
+            info=log.lstat();self.assertEqual(info.st_mode&0o777,0o600)
+            self.assertEqual(info.st_uid,os.geteuid());self.assertEqual(info.st_nlink,1)
+            with self.assertRaises(FileExistsError): p.private_log(log)
+            link=area/'worker-3.stderr';link.symlink_to(log.name)
+            with self.assertRaises(FileExistsError): p.private_log(link)
+            link.unlink()
             save=registry.save
             def interrupted():
                 if registry.data['resources'][0]['state']=='removed': raise RuntimeError('after rmtree')
