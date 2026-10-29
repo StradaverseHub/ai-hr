@@ -1,6 +1,7 @@
 import { getSession } from '@/lib/session';
 import { inlineDisposition } from '@/lib/attachment-response';
-import { feedbackBoardOpen, getFeedbackAttachment } from '@/core/feedback';
+import { getFeedbackAttachment } from '@/core/feedback';
+import { feedbackBoardOpen } from '@/app/feedback/board';
 
 export const runtime = 'nodejs';
 

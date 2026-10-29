@@ -1,10 +1,11 @@
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {and,eq,sql} from 'drizzle-orm';
+import {and,asc,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {operatorCustomerFeedbackMenu,setOperatorCustomerFeedbackMenu} from '../core/operator-customers';
-import {feedbackBoardOpen,FEEDBACK_MENU_SETTING} from '../core/feedback';
+import {feedbackBoardOpen} from '../app/feedback/board';
+const FEEDBACK_MENU_SETTING='feedback.menu_enabled';
 import {setTenantSetting} from '../core/tenant-settings';
 import type {EntitledContext} from '../core/entitlements';
 import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -40,7 +41,7 @@ describe('operator Feedback menu switch',()=>{
     await setOperatorCustomerFeedbackMenu(operator,customer.tenantId,false);
     await setOperatorCustomerFeedbackMenu(operator,customer.tenantId,true);
     expect(await board(customer)).toBe(true);
-    const events=(await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.tenantId,customer.tenantId),eq(schema.domainEvent.eventType,'tenant-setting.changed'))))
+    const events=(await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.tenantId,customer.tenantId),eq(schema.domainEvent.eventType,'tenant-setting.changed'))).orderBy(asc(schema.domainEvent.occurredAt)))
       .filter(e=>(e.payload as {key?:string}).key===FEEDBACK_MENU_SETTING);
     expect(events.map(e=>(e.payload as {after:boolean}).after)).toEqual([false,true]);
     expect(events.every(e=>e.actorId===operator.userId)).toBe(true);

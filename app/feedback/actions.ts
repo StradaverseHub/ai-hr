@@ -16,9 +16,9 @@ import {
   refuteDeployment,
   restoreFeedback,
   submitFeedback,
-  feedbackBoardOpen,
   type BulkAction,
 } from '@/core/feedback';
+import { feedbackBoardOpen } from '@/app/feedback/board';
 import type { FeedbackCategory } from '@/db/schema';
 
 const BASE = '/feedback';

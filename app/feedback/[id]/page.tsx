@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { getFeedback, feedbackBoardOpen } from '@/core/feedback';
+import { getFeedback } from '@/core/feedback';
+import { feedbackBoardOpen } from '@/app/feedback/board';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { formatFeedbackDateTime } from '@/lib/feedback-date';
 import { statusTone } from '../page';

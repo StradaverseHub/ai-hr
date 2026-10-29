@@ -23,20 +23,10 @@ import {
   type FeedbackCategory,
   type FeedbackStatus,
 } from '../db/schema';
-import { getSettingOrFallback, resolveEntitlementsTx, settingEnabled, type EntitledContext } from './entitlements';
+import { resolveEntitlementsTx, settingEnabled } from './entitlements';
 import { assertAiPrincipalTx } from './ai-principal';
 import { withAiAdmissionCheck } from './ai-governance';
 import { draftInputDigest } from '../lib/ai/draft-input';
-
-/**
- * Operator switch (0696): whether this customer's Feedback board is open. Platform-scoped, so only an
- * operator changes it. The board's pages and actions fail CLOSED when the snapshot cannot resolve; the
- * rail reads the same key through settingEnabledOrDefault and fails open, per lib/nav-entitlements.ts.
- */
-export const FEEDBACK_MENU_SETTING = 'feedback.menu_enabled';
-export function feedbackBoardOpen(ctx: EntitledContext): boolean {
-  return getSettingOrFallback<boolean>(ctx, FEEDBACK_MENU_SETTING, false) === true;
-}
 
 export class FeedbackError extends Error {
   constructor(message: string) {

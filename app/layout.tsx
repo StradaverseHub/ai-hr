@@ -62,7 +62,6 @@ import { listApprovalHistory } from '@/core/read';
 import { shapeApprovalHistoryItems } from '@/lib/approval-history';
 import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
-import { FEEDBACK_MENU_SETTING } from '@/core/feedback';
 import { currentUiTheme } from '@/lib/ui-theme-server';
 import { UiThemeProvider } from '@/components/ui-theme-context';
 import { NavIndexProvider } from '@/components/nav-index-context';
@@ -246,7 +245,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // The Assistant row is offered only with actual access; any failure hides it (never fails open).
   const assistantAccess = await mayUseAssistant(session).then(access => access.allowed).catch(() => false);
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
-  const feedbackAccess = settingEnabledOrDefault(session, FEEDBACK_MENU_SETTING);
+  const feedbackAccess = settingEnabledOrDefault(session, 'feedback.menu_enabled');
   return (
     <html
       lang={locale}
