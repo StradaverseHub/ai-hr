@@ -3979,6 +3979,13 @@
       "breakpoints": true
     },
     {
+      "idx": 685,
+      "version": "7",
+      "when": 1793330000021,
+      "tag": "0695_assistant_learning_loop_scope",
+      "breakpoints": true
+    },
+    {
       "idx": 686,
       "version": "7",
       "when": 1793330000022,

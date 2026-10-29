@@ -27,6 +27,10 @@
 // WP13 (R18): the SAME pass runs the Automatic-tier chasers (overdue approvals; reviews undecided after their end
 // date) under the same principal, each only behind its own attributed switch in AI management. Template-only,
 // no model. They run before dispatch so tonight's reminders are projected in this pass.
+// WP11 (R5, ADR-0151 §4.6d): the SAME principal then maintains Assistant promotions — retiring expired and
+// exhausted ones and any live promotion whose measured action outcomes regressed (lib/ai/
+// promotion-outcome-regression.ts). Deterministic, no model and no spend (owner decision 2); its counts
+// are recorded in job_run.result. Before this, expiry was enforced only at read time.
 // Idempotent: a re-run opens nothing already open (and escalation fires once per (group, step) ever).
 // Schedule daily, e.g.
 //   0 3 * * *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/review-sweep.ts
@@ -37,6 +41,7 @@ import { sweepLeaveApprovalEscalations } from '../core/leave-escalation';
 import { sweepDueMovements } from '../core/movement-apply';
 import { runAutomaticChasers, runHrOrchestrator } from '../core/hr-orchestrator';
 import { engineWorkingDayCalendar } from '../core/automatic-chasers';
+import { maintainModuleAgentReleasesAsScheduledAgent } from '../core/module-agent-releases';
 import { agentContext, agentSwitchStatesTx, attributedEnablements, ensureAgentPrincipal } from '../core/agent-principal';
 import { drainNotificationProjection } from '../core/orchestrator-harness';
 import { dispatchNotificationsFromSweep } from '../core/notifications';
@@ -87,6 +92,9 @@ async function main() {
   let failures = 0;
   let notificationCappedTenants = 0;
   let notificationsCreated = 0;
+  let agentPromotionsRetired = 0;
+  let agentPromotionsOutcomeRegressed = 0;
+  let agentPromotionMaintenanceFailedTenants = 0;
   for (const t of tenants) {
     try {
       // Engine jobs retain the legacy no-login context: actorOf stamps system.
@@ -166,6 +174,19 @@ async function main() {
       triageNoProviderTenants += Number(triage.modelBlockReason === 'no_provider');
       triageCappedTenants += Number(triage.cappedOut);
       if (orchestration?.failed) console.error('  Orchestrator requires attention: a step failed.');
+      // WP11: promotion maintenance as the same named principal. A failure here is reported and counted,
+      // never silently skipped, and does not stop this tenant's notification dispatch below.
+      let releases = { retired: 0, outcomeRegressed: 0 };
+      let releasesFailed = false;
+      try {
+        releases = await maintainModuleAgentReleasesAsScheduledAgent(agentContext(t.id, principalId, entitlements));
+      } catch (e) {
+        releasesFailed = true;
+        agentPromotionMaintenanceFailedTenants++;
+        console.error(`  Assistant promotion maintenance failed: ${(e as Error).message}`);
+      }
+      agentPromotionsRetired += releases.retired;
+      agentPromotionsOutcomeRegressed += releases.outcomeRegressed;
 
       // Project the new started/reminder/escalation/nudge events into notifications now — gated on the
       // tenant's `notifications` entitlement, which the snapshot above makes this context answer truthfully.
@@ -175,7 +196,7 @@ async function main() {
         notificationCappedTenants++;
         console.error('  Notification queue reached its batch limit; more work may remain.');
       }
-      if (orchestration?.failed || chasers?.failed || projection.cappedOut) failures++;
+      if (orchestration?.failed || chasers?.failed || projection.cappedOut || releasesFailed) failures++;
       totalOpened += opened;
       totalReminders += reminders;
       totalEscalated += escalated;
@@ -191,6 +212,10 @@ async function main() {
           // Every nudge counter is printed, not just the flattering one: `orphaned` means a real gap with
           // nobody to tell, and `cappedOut` means work was left undone. A sweep that reports only what it
           // did reads as complete when it was truncated (AGENTS: no silent caps).
+          (releases.retired > 0
+            ? `, ${releases.retired} Assistant promotion(s) retired` +
+              (releases.outcomeRegressed > 0 ? ` (${releases.outcomeRegressed} on measured outcome regression)` : '')
+            : '') +
           (nudge.disabled
             ? ', nudges off'
             : `, ${nudge.sent} nudge(s) using fixed templates [principal_not_admitted]` +
@@ -259,6 +284,9 @@ async function main() {
         triageCappedTenants,
         notificationsCreated,
         notificationCappedTenants,
+        agentPromotionsRetired,
+        agentPromotionsOutcomeRegressed,
+        agentPromotionMaintenanceFailedTenants,
       },
     });
   } catch (e) {

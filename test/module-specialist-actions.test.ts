@@ -5,7 +5,7 @@ vi.mock('../core/assistant-actions/own-notification-preferences-source',()=>({re
 vi.mock('../lib/session',()=>({getBrowserCommandSession:state.session}));
 vi.mock('next/navigation',()=>({redirect:state.redirect}));
 vi.mock('next/cache',()=>({revalidatePath:state.refresh}));
-vi.mock('../core/module-agent-releases',()=>({createCanonicalSpecialistCandidate:state.create,evaluateCanonicalSpecialistCandidate:state.evaluate,promoteCanonicalSpecialistCandidate:state.promote,rollbackRoutingAgent:state.rollback,rollbackAssistantPromotion:state.rollback,runGovernedSpecialistJob:state.run}));
+vi.mock('../core/module-agent-releases',()=>({createCanonicalSpecialistCandidate:state.create,evaluateCanonicalSpecialistCandidate:state.evaluate,promoteCanonicalSpecialistCandidate:state.promote,rollbackAssistantPromotion:state.rollback,runGovernedSpecialistJob:state.run}));
 import {createSpecialistCandidateAction,evaluateSpecialistCandidateAction,promoteSpecialistCandidateAction,rollbackSpecialistCandidateAction,runSpecialistJobAction} from '../app/assistant/specialist-review-actions';
 const ctx={tenantId:'actual-session-tenant',userId:'actual-session-user'};
 const form=(values:Record<string,string|string[]>)=>{const f=new FormData();for(const[key,value]of Object.entries(values))for(const v of Array.isArray(value)?value:[value])f.append(key,v);return f;};
@@ -24,6 +24,12 @@ describe('specialist human actions forward no posted authority or success eviden
  });
  it('leaves finite promotion validation and independent evaluation evidence with the canonical owner',async()=>{
   await expect(promoteSpecialistCandidateAction(form({candidateId:'nominated',maxJobs:'5',hours:'1',evaluators:'invented',sourceDigest:'invented'}))).rejects.toThrow('FRAMEWORK_REDIRECT /control-tower/agents/assistant');expect(state.promote).toHaveBeenCalledExactlyOnceWith(ctx,{candidateId:'nominated',maxJobs:5,hours:1});
+ });
+ it('forwards only the approver scope choice (WP11) and refuses an unknown scope before authentication',async()=>{
+  await expect(promoteSpecialistCandidateAction(form({candidateId:'nominated',maxJobs:'5',hours:'1',scope:'tenant',companyId:'IGNORED'}))).rejects.toThrow('FRAMEWORK_REDIRECT /control-tower/agents/assistant');expect(state.promote).toHaveBeenLastCalledWith(ctx,{candidateId:'nominated',maxJobs:5,hours:1,scope:'tenant'});
+  await expect(promoteSpecialistCandidateAction(form({candidateId:'nominated',maxJobs:'5',hours:'1',scope:'company',companyId:'chosen-company'}))).rejects.toThrow('FRAMEWORK_REDIRECT /control-tower/agents/assistant');expect(state.promote).toHaveBeenLastCalledWith(ctx,{candidateId:'nominated',maxJobs:5,hours:1,scope:'company',companyId:'chosen-company'});
+  state.session.mockClear();state.promote.mockClear();
+  await expect(promoteSpecialistCandidateAction(form({candidateId:'nominated',maxJobs:'5',hours:'1',scope:'group'}))).rejects.toThrow('/control-tower/agents/assistant?error=agent_review');expect(state.session).not.toHaveBeenCalled();expect(state.promote).not.toHaveBeenCalled();
  });
  it('keeps source and employee choices out of the specialist read command',async()=>{
   await expect(runSpecialistJobAction(form({module:'payroll',commandNonce:'retained-command',employmentId:'FOREIGN',companyId:'FOREIGN',execute:'pay'}))).rejects.toThrow('FRAMEWORK_REDIRECT /assistant?governed=owned-job');expect(state.run).toHaveBeenCalledExactlyOnceWith(ctx,{module:'payroll'},{nonce:'retained-command'});

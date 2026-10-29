@@ -17163,7 +17163,14 @@
         "diagnosticState_no_followup": "No follow-up is identified in this bounded view. This is not a general readiness guarantee.",
         "diagnosticScope": "This decision uses the current permitted records above. It makes no changes and requires your own intent before any human workflow.",
         "diagnosticInspect": "Inspect current records",
-        "diagnosticRecord": "Inspect source record {n} above."
+        "diagnosticRecord": "Inspect source record {n} above.",
+        "scopeLegend": "Applies to",
+        "scopeUser": "Only the candidate's owner",
+        "scopeCompany": "Everyone in one company",
+        "scopeTenant": "Everyone in the organisation",
+        "scopeCompanyChoice": "Company",
+        "scopeHint": "A wider scope applies only to candidates without personal signals; company and organisation promotions affect other people's Assistant.",
+        "scopeSignalsOnly": "This candidate uses personal signals, so it can only apply to its owner."
       },
       "specialistFindings": {
         "scope_current_caller": "These notes use only the current records available to you.",
