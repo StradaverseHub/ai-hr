@@ -24028,7 +24028,7 @@
     "noCompanies": "Không có công ty trong phạm vi quản trị.",
     "inherited": "Kiểm soát hiện có",
     "businessLimits": "Quyền mô-đun, quyền chức năng và giới hạn Performance hiện có là năm bản nháp thành công mỗi trường, mỗi người dùng, mỗi ngày vẫn áp dụng.",
-    "legacyAssistant": "Ngân sách Assistant bổ sung: {daily} câu hỏi mỗi người dùng mỗi ngày và {tokens} token mỗi tháng cho toàn tổ chức. Ngân sách hiện có này đặt lại lúc 08:00 giờ Malaysia.",
+    "legacyAssistant": "Ngân sách Assistant bổ sung: {daily} câu hỏi mỗi người dùng mỗi ngày theo giờ Malaysia và {tokens} token mỗi tháng theo giờ Malaysia cho toàn tổ chức. Câu hỏi mới được tính trước khi gọi mô hình. Tổng của các tháng trước giữ nguyên kỳ hạch toán ban đầu.",
     "humanDecisions": "AI chỉ tư vấn. Các quyết định về lương, xếp hạng, tuyển dụng và truy cập vẫn cần phê duyệt và con người quyết định.",
     "spendTitle": "Hạn mức suy luận AI (USD)",
     "spendTab": "Chi tiêu",

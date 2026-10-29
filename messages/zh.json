@@ -24028,7 +24028,7 @@
     "noCompanies": "您的管理范围内没有公司。",
     "inherited": "现有控制",
     "businessLimits": "模块访问、功能权限以及 Performance 每位用户每日每个字段最多五次成功草稿的现有限制继续适用。",
-    "legacyAssistant": "额外的 Assistant 预算：每位用户每天 {daily} 个问题，整个组织每月 {tokens} 个令牌。 此现有预算在马来西亚时间 08:00 重置。",
+    "legacyAssistant": "额外的 Assistant 预算：每位用户按马来西亚日期每天 {daily} 个问题，整个组织按马来西亚月份每月 {tokens} 个令牌。新问题在调用模型前计入。以往月度总额保留原有的核算期间。",
     "humanDecisions": "AI 仅提供建议。薪酬、评级、招聘和访问权限仍须依照现有审批与人工决策。",
     "spendTitle": "AI 推理额度（美元）",
     "spendTab": "支出",

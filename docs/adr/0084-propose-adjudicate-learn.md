@@ -434,3 +434,24 @@ Everything past that is earned, per action type, on evidence that does not exist
 - **Do not read the zero counts on production as a defect.** The assistant module is simply not activated
   and no verdict has ever been resolved. Turning those on is two steps by hand, and it is what starts the
   clock on every metric in this document.
+
+## October 2026 review amendment — closed draft outputs (WP5)
+
+Record text in manager-review and claims-triage prompts is explicitly untrusted. The prepared WP5
+manager draft selects bounded indices into supplied passages; deterministic code reconstructs the
+draft from those passages and refuses invented prose, repeated indices or unknown fields. Existing
+source/authority checks still run at provider admission and before final audit. A selected passage
+remains an employee's recorded statement, not an independently verified fact or a rating.
+
+Claims triage proposes a closed verdict and rule ID. The existing source predicates adjudicate that
+rule, and code supplies a fixed follow-up question. Model-authored links, questions or instructions
+cannot be sent to a claimant. A query still changes no claim status or approval decision.
+
+Pay-rule proposals use a closed, bounded subset of the canonical rule validator. The user runs an
+authorized employee sample and confirms reviewing the unchanged sample before normal form Save.
+This interaction guard adds no payroll authority or server permission. Report drafts retain their
+caller-selected closed dataset and schema validator, with current admin/module authority checked by
+the core service and again at actual provider admission. No row data is sent by report design.
+
+See the [WP5 verification record](../reviews/ai-architecture-wp5-verification-2026-10.md) for tested
+cases and remaining release evidence; this amendment does not claim a staging deployment.

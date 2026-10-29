@@ -128,3 +128,23 @@ by this month's counted tokens, highest first, computed over every matching logi
 hidden behind an alphabetical first page. Group administrators can filter recent runs to blocked or failed
 calls and by capability. The unused per-agent switch action was removed; feature switches remain the single
 writer for the agents' canonical settings.
+
+## October 2026 review amendment — Assistant question quota (WP5)
+
+The prepared WP5 change replaces the additional Assistant budget's UTC rollover with Malaysia
+business days and question-start months. The HR date owner verifies the period returned by the
+database's clock; a caller-supplied deadline cannot move the quota day. Historical usage totals keep
+their original period because an aggregate has no evidence for rebucketing individual questions.
+The earlier UTC description above records the previous behavior, rather than the new rule.
+
+A question intent reserves its daily place before provider work. The tenant's existing AI-control
+transaction lock serializes quota checks with the actual model-run admission. Existing model-run
+actual tokens, or reserved estimates where usage is unknown, remain the provider exposure owner.
+Question metadata links final exchange accounting to those runs; it stores no question, record,
+prompt or model answer, grants no HR authority and cannot be reset by clearing chat content.
+The exchange and usage increment reconcile that metadata in the same transaction, including the
+born-retired fallback after erasure. Unknown provider usage remains held rather than becoming zero.
+
+These are prepared source requirements, not a claim of migration or staging acceptance. See the
+[WP5 verification record](../reviews/ai-architecture-wp5-verification-2026-10.md) for exact checks and
+remaining evidence. The coordinated SQL and populated-upgrade rehearsal remain prerequisites.

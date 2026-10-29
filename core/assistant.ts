@@ -11,7 +11,7 @@
  *
  * THE FIVE THINGS THAT ARE EASY TO GET WRONG HERE, EACH LEARNED FROM THE ADR OR FROM r223:
  *
- *  1. THE BUDGET IS CHECKED BEFORE SPENDING AND AGAIN BETWEEN TURNS. A per-call timeout does not bound a
+ *  1. THE BUDGET IS RESERVED BEFORE SPENDING AND AT EVERY PROVIDER ADMISSION. A per-call timeout does not bound a
  *     loop and neither does a single up-front check: eight turns of a runaway question would overshoot a
  *     monthly ceiling by the size of its own loop. §2.6.
  *  2. EVERY TOOL CALL RETURNS A RESULT. A dropped result is not a smaller answer, it is a malformed
