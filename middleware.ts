@@ -8,6 +8,7 @@ import { appOrigin, realAuthEnabled } from '@/lib/real-auth';
 import { isHealthRoute } from '@/lib/health-route';
 import { isMobileApiRoute } from '@/lib/mobile-api/routes';
 import {isLetterVerificationRoute} from '@/lib/letter-verification';
+import {isPublicEmailAssetRead} from '@/lib/email-design/asset-route';
 
 /**
  * Authentication routing and demo access protection.
@@ -129,7 +130,7 @@ export function middleware(req: NextRequest): NextResponse | Promise<NextRespons
   if (internalSelected()) {
     if (!internalReady()) return refuseUnconfigured();
     const path = req.nextUrl.pathname;
-    if (isAuthRoute(path) || isHealthRoute(path) || isMobileApiRoute(path) || isLetterVerificationRoute(path)) return withPathname(req);
+    if (isAuthRoute(path) || isHealthRoute(path) || isMobileApiRoute(path) || isLetterVerificationRoute(path) || isPublicEmailAssetRead(path,req.method)) return withPathname(req);
     if (/^[A-Za-z0-9_-]{43}$/.test(req.cookies.get(INTERNAL_SESSION_COOKIE)?.value || '')) return withPathname(req);
     if (wantsStatusNotRedirect(req)) return new NextResponse('Authentication required.', { status: 401, headers: { 'cache-control': 'no-store' } });
     const destination = new URL('/login', internalConfig().origin);
@@ -139,7 +140,7 @@ export function middleware(req: NextRequest): NextResponse | Promise<NextRespons
   if (keycloakSelected()) {
     if (!keycloakReady()) return refuseUnconfigured();
     const path = req.nextUrl.pathname;
-    if (isAuthRoute(path) || isHealthRoute(path) || isMobileApiRoute(path) || isLetterVerificationRoute(path)) return withPathname(req);
+    if (isAuthRoute(path) || isHealthRoute(path) || isMobileApiRoute(path) || isLetterVerificationRoute(path) || isPublicEmailAssetRead(path,req.method)) return withPathname(req);
     return withKeycloakSession(req);
   }
   const password = process.env.SHARE_PASSWORD;
@@ -155,6 +156,9 @@ export function middleware(req: NextRequest): NextResponse | Promise<NextRespons
   // above also applies to health. See lib/health-route.ts.
   if (isHealthRoute(req.nextUrl.pathname)) return withPathname(req);
   if (isLetterVerificationRoute(req.nextUrl.pathname)) return withPathname(req);
+  // Assets contain only validated raster bytes and use unguessable tokens. Provider readiness above
+  // still owns admission; mail proxies receive no HR session or administrative endpoint access.
+  if (isPublicEmailAssetRead(req.nextUrl.pathname,req.method)) return withPathname(req);
 
   // Mobile API requests bypass the Basic challenge because bearer authentication uses the same
   // Authorization header. Their handlers still own token/session verification and authorization;
