@@ -16,7 +16,7 @@ export type OwnLeaveCommandMessages=Readonly<{
  employment:string;leaveType:string;chooseEmployment:string;chooseLeaveType:string;date:string;reason:string;remark:string;
  prepare:string;preparing:string;confirm:string;confirming:string;discard:string;discarding:string;checking:string;reopen:string;
  explanation:string;confirmNote:string;uncertain:string;prepareUncertain:string;busy:string;submitted:string;submittedNote:string;
- discarded:string;expired:string;refused:string;unavailable:string;invalidSelection:string;needsRemark:string;openRequests:string;
+ discarded:string;expired:string;refused:string;unavailable:string;useLeaveForm:string;invalidSelection:string;needsRemark:string;openRequests:string;
  findReviews:string;findingReviews:string;savedReviews:string;noSavedReviews:string;openSavedReview:string;indexLimitNote:string;
  savedPending:string;savedCompleted:string;savedDiscarded:string;savedExpired:string;savedRefused:string;savedCreated:string;savedExpires:string;
 }>;
@@ -97,7 +97,7 @@ export function OwnLeaveCommandPanel({employments,messages:m,resumeActionId}:{
    else if(result.kind==='prepared'){if(operation!=='prepare'&&operation!=='reopen')throw unavailable();clearText();setState({kind:'review',review:result.review});}
    else if(result.kind==='completed'){if(operation==='prepare'||operation==='discard')throw unavailable();clearText();setState({kind:'completed',receipt:result.receipt});}
    else if(result.kind==='retired'){if(operation==='prepare')throw unavailable();clearText();setState({kind:'retired',receipt:result.receipt});}
-   else if(operation==='prepare'){setState({kind:'draft'});setError(result.kind==='needs_employee_remark'?m.needsRemark:result.kind==='needs_selection'?m.invalidSelection:m.unavailable);}
+   else if(operation==='prepare'){setState({kind:'draft'});setError(result.kind==='needs_employee_remark'?m.needsRemark:result.kind==='needs_selection'?m.invalidSelection:result.kind==='use_leave_form'?m.useLeaveForm:m.unavailable);}
    else{setState({kind:'uncertain',actionId:actionId??null,expectedIntentDigest});setError(m.unavailable);}
   }catch{
    if(mounted.current){if(operation!=='list'&&dispatched){clearText();setState({kind:'uncertain',actionId:state.kind==='uncertain'&&state.expectedIntentDigest&&!state.actionId?null:actionId??null,expectedIntentDigest});}setError(m.unavailable);}

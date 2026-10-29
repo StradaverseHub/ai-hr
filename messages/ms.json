@@ -28182,6 +28182,7 @@
       "expired": "Semakan yang disimpan ini telah tamat tempoh. Buka Cuti untuk menyemak atau membuat permohonan.",
       "refused": "Semakan ini tidak boleh digunakan. Buka Cuti untuk menyemak permohonan anda.",
       "unavailable": "Kita ambil laluan biasa: semakan ini tidak tersedia. Buka Cuti untuk menyemak permohonan anda.",
+      "useLeaveForm": "Permohonan ini perlu menggunakan borang Cuti penuh, contohnya kerana baki anda tidak mencukupi, tarikh telah berlalu atau jenis cuti memerlukan butiran lanjut. Tiada apa-apa disimpan. Gunakan Teruskan dalam borang Cuti.",
       "invalidSelection": "Pilih rekod pekerjaan anda sendiri, jenis cuti dan tarikh yang sah.",
       "needsRemark": "Tambah catatan pekerja anda sendiri, kemudian sediakan semakan sekali lagi.",
       "openRequests": "Buka permohonan cuti",
