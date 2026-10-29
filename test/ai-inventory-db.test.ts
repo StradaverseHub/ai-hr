@@ -15,7 +15,7 @@ import { withAgentActionPauseScope } from '../core/agent-action-pause-scope';
 import { AiAllowanceError } from '../lib/ai/types';
 import { AI_RUN_PAGE_SIZE } from '../lib/ai/ai-inventory';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 let base: Base, group: SessionContext, companyHr: SessionContext, employee: SessionContext;
 beforeAll(migrateTestDb);
@@ -86,7 +86,7 @@ describe('AI inventory access (ADR-0151 §4.7)', () => {
 
 describe('per-action pause key hr_assistant:<actionId> (0696)', () => {
   it('enforces a direct shared source guard pause without relying on browser request scope',async()=>{
-    await grantAssistant(group,{appUserId:group.userId!});
+    await setModule(base.tenantId,'assistant','active');await grantAssistant(group,{appUserId:group.userId!});
     const check=()=>withTenant(group,tx=>withAgentActionGuard(tx,group,'leave.cancel'));
     await expect(check()).resolves.toMatchObject({userId:group.userId});
     await setAgentActionPause(group,'leave.cancel',true);await expect(check()).rejects.toBeInstanceOf(AiAllowanceError);

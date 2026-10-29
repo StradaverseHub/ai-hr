@@ -140,7 +140,7 @@ describe('provider data register (R21)', () => {
   it('covers every gateway feature with closed field codes and a source anchor that exists', () => {
     expect(Object.keys(AI_DATA_REGISTER).sort()).toEqual(AI_FEATURES.map(f => f.id).sort());
     for (const [id, e] of Object.entries(AI_DATA_REGISTER)) {
-      expect(e.fields.length, id).toBeGreaterThan(0);
+      if(['approval_chasers','review_chasers','clock_reminders','document_reminders','lifecycle_chasers'].includes(id)){expect(e.fields,id).toEqual([]);expect(e.principalSendsNothing,id).toBe(true);expect(e.redaction,id).toBe('not_needed');}else expect(e.fields.length,id).toBeGreaterThan(0);
       for (const field of e.fields) expect(AI_DATA_FIELDS as readonly string[]).toContain(field);
       const first = e.anchor.split(/[ ,(]/)[0];
       expect(() => read(first), `${id} anchor ${first}`).not.toThrow();

@@ -416,11 +416,11 @@ describe('WP13 Automatic-tier chasers under the agent principal', () => {
 
   it('honours its own action pause for direct scheduled invocation without a browser scope',async()=>{
     const {E}=await fixture();await claim(base,E.employmentId,daysAgo(10));await switchEvent(base,APPROVALS,true);
-    const current=await agent();await setAgentActionPause(adminCtx(base),'approvals.claim.chase',true);
+    const current=await agent();await setAgentActionPause({...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]},'approvals.claim.chase',true);
     await runApprovalChasers(current,{calendar:calendar()});
     const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.tenantId,base.tenantId),eq(schema.domainEvent.eventType,APPROVAL_CHASE_EVENT)));
     expect(events).toEqual([]);expect(model.calls).toBe(0);
-    await setAgentActionPause(adminCtx(base),'approvals.claim.chase',false);
+    await setAgentActionPause({...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]},'approvals.claim.chase',false);
     await runApprovalChasers(current,{calendar:calendar()});
     const after=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.tenantId,base.tenantId),eq(schema.domainEvent.eventType,APPROVAL_CHASE_EVENT)));
     expect(after).toHaveLength(1);
