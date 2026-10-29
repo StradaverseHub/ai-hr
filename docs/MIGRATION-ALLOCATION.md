@@ -15,15 +15,26 @@ The approved-board implementation session read staging at source/build
 reserves 0687_assistant_question_budget at index677/sequence1793330000013. Preserve
 that competing claim; it is not part of this session's current main/alpha baseline.
 
-These filenames are reserved for the remaining approved board requests. Their SQL remains
-under docs/migration-drafts until the complete predecessor prefix is reconciled at integration.
-Journal indices and sequences are deferred; this table does not authorize application.
+The first combined development run exposed that the typed payroll provenance column needs the
+complete executable schema in every worker, rather than a draft applied only by selected tests.
+A fresh ref/worktree-claim check found only the two identical AI 0687 claims, and staging remained
+at 562 rows / sequence1793330000012. The candidate therefore carries that exact reserved predecessor
+from dcea0fa56 (SQL SHA256 ade48bffee0a5d6ebf72cdd61de36323f3650b81c805cd186701c5d8105e86c4)
+and its matching schema declaration, then appends the board successors below. This includes the
+schema prerequisite; the independent AI application delivery keeps its own owner and evidence.
 
-| Owner | Reserved filename | Purpose |
-| --- | --- | --- |
-| Approved transaction import | 0688_payroll_txn_import_attempts | Durable import outcomes, transaction ownership and safe batch revert |
-| Approved Rewards domain | 0689_rewards_unit_governance | Private unit inputs, independent confirmation and Senior plan decisions |
-| Approved Rewards configuration | 0690_rewards_policy_pair_membership | Enforce authoritative company/business-unit membership |
+| Owner | Index | Sequence | Filename | Purpose |
+| --- | ---: | ---: | --- | --- |
+| Existing AI prerequisite | 677 | 1793330000013 | 0687_assistant_question_budget | Preserve the already claimed predecessor unchanged |
+| Approved transaction import | 678 | 1793330000014 | 0688_payroll_txn_import_attempts | Durable import outcomes, transaction ownership and safe batch revert |
+| Approved Rewards domain | 679 | 1793330000015 | 0689_rewards_unit_governance | Private unit inputs, independent confirmation and Senior plan decisions |
+| Approved Rewards configuration | 680 | 1793330000016 | 0690_rewards_policy_pair_membership | Enforce authoritative company/business-unit membership |
+
+The original 562-entry prefix is unchanged; this candidate has 566 entries. Board SQL remains
+unapplied and under review, with draft copies retained temporarily for the contributing fixtures.
+Freeze and record final SQL hashes after repairs, rehearse the ordinary populated upgrade, and
+recheck the actual installed prefix before application. No database or deployment acceptance is
+implied by this source allocation.
 
 Refresh canonical refs, competing reservations and the actual ledger before journal append.
 Do not skip the occupied 0687 predecessor, rewrite applied SQL or infer deployment authority.

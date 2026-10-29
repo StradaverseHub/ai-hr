@@ -3935,6 +3935,34 @@
       "when": 1793330000012,
       "tag": "0686_ai_provider_custody_owner_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 677,
+      "version": "7",
+      "when": 1793330000013,
+      "tag": "0687_assistant_question_budget",
+      "breakpoints": true
+    },
+    {
+      "idx": 678,
+      "version": "7",
+      "when": 1793330000014,
+      "tag": "0688_payroll_txn_import_attempts",
+      "breakpoints": true
+    },
+    {
+      "idx": 679,
+      "version": "7",
+      "when": 1793330000015,
+      "tag": "0689_rewards_unit_governance",
+      "breakpoints": true
+    },
+    {
+      "idx": 680,
+      "version": "7",
+      "when": 1793330000016,
+      "tag": "0690_rewards_policy_pair_membership",
+      "breakpoints": true
     }
   ]
 }

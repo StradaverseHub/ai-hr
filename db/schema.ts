@@ -10973,6 +10973,19 @@ export const aiSpendTask=aiSpendPrivate.table('ai_spend_task',{
  id:id(),tenantId:tenantId(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),featureId:text('feature_id').notNull(),
  sourceKind:text('source_kind').notNull(),sourceId:uuid('source_id').notNull(),operation:text('operation').notNull(),createdAt:createdAt(),
 });
+/** 0687: private question quota identity, not a provider usage or HR-effect ledger. Definer-only access. */
+export const assistantQuestionBudget=aiSpendPrivate.table('assistant_question_budget',{
+ rootId:uuid('root_id').primaryKey().references(()=>aiSpendTask.id),tenantId:tenantId(),userId:uuid('user_id').notNull().references(()=>appUser.id),
+ questionDay:date('question_day').notNull(),period:text('period').notNull(),reservedAt:timestamp('reserved_at',{withTimezone:true}).notNull().defaultNow(),
+ exchangeId:uuid('exchange_id').unique().references(()=>assistantExchange.id,{onDelete:'set null'}),
+ accountedTokens:bigint('accounted_tokens',{mode:'bigint'}).notNull().default(sql`0`),completedAt:timestamp('completed_at',{withTimezone:true}),
+},t=>[
+ index('assistant_question_budget_day').on(t.tenantId,t.userId,t.questionDay),index('assistant_question_budget_period').on(t.tenantId,t.period),
+ check('assistant_question_budget_period_format',sql`${t.period}~'^[0-9]{4}-[0-9]{2}$'`),
+ check('assistant_question_budget_nonnegative',sql`${t.accountedTokens}>=0`),
+ check('assistant_question_budget_question_period',sql`${t.period}=to_char(${t.questionDay},'YYYY-MM')`),
+ check('assistant_question_budget_completion',sql`${t.completedAt} IS NOT NULL OR(${t.exchangeId} IS NULL AND ${t.accountedTokens}=0)`),
+]);
 /** Migration 0651: release-owned reviewed carrier certificates (free and metered). No app grant. */
 export const aiSpendReviewedCarrierCatalog=aiSpendPrivate.table('ai_spend_reviewed_carrier_catalog',{
  capabilityDigest:text('capability_digest').primaryKey().references(()=>aiSpendCapability.digest),tenantId:tenantId(),carrier:text('carrier').notNull(),
@@ -10997,7 +11010,8 @@ export const aiSpendAdmissionScope=aiSpendPrivate.table('ai_spend_admission_scop
  companyIds:uuid('company_ids').array().notNull(),featureId:text('feature_id').notNull(),rootId:uuid('root_id'),rootKind:text('root_kind'),
  requestDigest:text('request_digest'),configurationDigest:text('configuration_digest'),captureKind:text('capture_kind').notNull().default('actual_admission'),
  moneyMode:text('money_mode').notNull(),createdAt:createdAt(),
-},t=>[foreignKey({columns:[t.tenantId,t.rootId],foreignColumns:[aiSpendRoot.tenantId,aiSpendRoot.rootId]})]);
+},t=>[foreignKey({columns:[t.tenantId,t.rootId],foreignColumns:[aiSpendRoot.tenantId,aiSpendRoot.rootId]}),
+ index('ai_spend_question_root').on(t.tenantId,t.rootId).where(sql`${t.featureId}='hr_assistant'`)]);
 
 /** Migration 0650: own native outcome association metadata (FORCE RLS; app role SELECT/INSERT/DELETE only).
  * Evidence association, not an execution ledger; job/review/import columns reference AI tables not modelled here. */
