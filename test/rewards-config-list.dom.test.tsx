@@ -12,7 +12,7 @@ vi.mock('next-intl/server', () => ({ getLocale: async () => 'en-GB', getTranslat
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: async () => ({ s: { tenantId: 'tenant', userId: 'actor' }, scopeIds: ['company'] }) }));
 vi.mock('../lib/authz', () => ({ requireModule: vi.fn() }));
-vi.mock('../packs/rewards/service', async () => ({ listRewardUnits: ports.list, rewardCoverageForUnits: async () => [], rewardSetupChoices: ports.choices, rewardSharedPolicyChoices: ports.shared, rewardDueWording: (await import('../packs/rewards/calendar')).rewardDueWording }));
+vi.mock('../packs/rewards/service', async () => ({ listRewardUnits: ports.list, rewardCoverageForUnits: async () => [], rewardPolicyMemberships:vi.fn(async()=>[{companyId:'company',businessUnitId:'bu-1'},{companyId:'company',businessUnitId:'bu-2'}]),rewardSetupChoices: ports.choices, rewardSharedPolicyChoices: ports.shared, rewardDueWording: (await import('../packs/rewards/calendar')).rewardDueWording }));
 vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), deleteRewardAction: vi.fn() }));
 vi.mock('../app/admin/rewards/actions', () => ({ cancelRewardAction: vi.fn() }));
 import AdminPage from '../app/admin/rewards/page';
@@ -136,7 +136,7 @@ describe('Shared configuration visibility (56595838)', () => {
   const policy = { effectiveFrom: `${year + 1}-01-01`, meritMatrix: { SSTAR: [1000, 800, 800], STAR: [800, 600, 600], SCORE: [600, 450, 300], IMPRO: [0, 0, 0], PIP: [0, 0, 0] }, standardPools: [500, 100, 100], hPools: [400, 100, 50], targetMonthsBp: 20000, bonusMatrix: { '12': [0, 1, 2, 3, 4], H: [0, 1, 2, 3, 4] }, exemptReason: '' };
   it('names the version and opens its settings read-only', () => {
     render(wrap(<RewardReviewCreateForm {...props} shared={[{ groupId: 'g', versionId: 'v', revision: 3, name: 'Group Standard 2026', year, companyId: 'company', businessUnitId: 'bu-1', policy: policy as any }]} />));
-    expect(screen.getByText('Group Standard 2026 · Version 3')).toBeTruthy();
+    expect(screen.getAllByText('Group Standard 2026 · Version 3').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole('button', { name: 'View settings' }));
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText(/Group Standard 2026 · Version 3/)).toBeTruthy();

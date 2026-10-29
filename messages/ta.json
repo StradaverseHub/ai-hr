@@ -20857,8 +20857,8 @@
     "effectiveFrom": "Salary effective date",
     "joinedBefore": "Joined before",
     "confirmedBy": "Confirmed by",
-    "blockedFrom": "Pay-change exclusion starts",
-    "blockedTo": "Pay-change exclusion ends",
+    "blockedFrom": "விலக்கு தொடக்க தேதி",
+    "blockedTo": "விலக்கு முடிவு தேதி",
     "seniorGrades": "Senior-plan grades (comma separated)",
     "rangesHelp": "Salary ranges: grade, minimum RM, midpoint RM, maximum RM (one grade per line)",
     "patActual": "Actual PAT (RM)",
@@ -21040,7 +21040,10 @@
       "retry": "மீண்டும் முயலவும்",
       "conflict": "{year} ஆண்டில் {unit} ஏற்கனவே {name} இல் உள்ளது.",
       "excludedCompany": "ஆண்டிற்கான விலக்குகள்",
-      "companyArchived": "காப்பகத்தில்"
+      "companyArchived": "காப்பகத்தில்",
+      "selectedSummary": "தேர்ந்தெடுத்த நிறுவனங்கள் மற்றும் வணிக அலகுகள்",
+      "membershipChanged": "நிறுவனத் தொடர்பு மாறியுள்ளது; இந்தத் தேர்வைச் சரிபார்க்கவும்.",
+      "noMembership": "பணியாளர் நிர்வாகத்தில் தற்போதைய வணிக அலகு ஒதுக்கீடு இல்லை."
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",
@@ -21366,6 +21369,52 @@
         "lumpReason": "Budget-cap exemption reason (blank = caps apply)",
         "payWindowKeep": "Eligibility and effective dates"
       }
+    },
+    "policyGrids": {
+      "ranges": "சம்பள வரம்புகள் (MYR)",
+      "bonusMatrix": "தரத்தின் போனஸ் மாதங்கள்",
+      "branchFactors": "கிளைக் காரணிகள்",
+      "import": "Excel இலிருந்து இறக்குமதி",
+      "copy": "முந்தைய ஆண்டு அமைப்பை நகலெடு",
+      "columns": "Excel நெடுவரிசைகள்: {columns}",
+      "fileError": "குறிப்பிட்ட வரிசையில் நெடுவரிசைகளுடன் 2 MB வரை .xlsx கோப்பைப் பயன்படுத்தவும்.",
+      "choosePrevious": "{year} ஆண்டின் அமைப்பைத் தேர்ந்தெடுக்கவும்",
+      "version": "பதிப்பு {version}",
+      "noPrevious": "அணுகக்கூடிய முந்தைய ஆண்டு அமைப்பு இல்லை.",
+      "cancel": "ரத்து",
+      "preview": "முன்மொழியப்பட்ட மதிப்புகளின் முன்னோட்டம்",
+      "proposalInvalid": "பயன்படுத்திய பின் தவறான கலங்களைச் சரிசெய்யவும்; அதுவரை சேமிக்க முடியாது.",
+      "proposalHelp": "வரைவில் பயன்படுத்தும் முன் மதிப்புகளைச் சரிபார்க்கவும்.",
+      "apply": "வரைவில் பயன்படுத்து",
+      "grade": "தரம்",
+      "segment": "பிரிவு",
+      "minimum": "குறைந்தபட்சம்",
+      "midpoint": "நடுப்புள்ளி",
+      "maximum": "அதிகபட்சம்",
+      "noRange": "வரம்பு இல்லை",
+      "invalidCell": "சரியான மதிப்புகளை உள்ளிடவும்: அனைத்து தரங்கள், ஏறுவரிசை, UA = 0 மற்றும் அனுமதிக்கப்பட்ட தசம துல்லியம்.",
+      "remove": "நீக்கு",
+      "addSegment": "பிரிவைச் சேர்"
+    },
+    "eligibilitySummary": {
+      "title": "தகுதி மதிப்பீட்டின் அடிப்படை",
+      "activeAsOf": "இந்தத் தேதியில் பணியில்",
+      "joinedBefore": "இதற்கு முன் சேர்ந்தவர்",
+      "confirmedBy": "இதற்குள் உறுதிசெய்யப்பட்டவர்",
+      "effectiveFrom": "சம்பளம் அமலாகும் தேதி",
+      "salaryWindow": "சம்பள உயர்வு விலக்கு: அடிப்படைச் சம்பளம் {from}–{to} இடையில் மாறியது. போனஸ் அதன் தனித் தகுதி விதிகளுக்கு உட்பட்டது.",
+      "bonus": "போனஸ்: குறைந்தபட்ச மதிப்பீடு {rating}.",
+      "notice": "அறிவிப்புக் காலத்தில் உள்ள பணியாளர்களை விலக்கு.",
+      "er": "ER வழக்கு உள்ள பணியாளர்களை விலக்கு.",
+      "senior": "Senior திட்டம் (JG 21–23): மதிப்பாய்வில் தனித்தனியாகத் தேர்வு; இறுதி வெகுமதிகள் தனியாகக் கையாளப்படும்.",
+      "seniorLegacy": "Senior உறுப்பினர்கள் சேமிக்கப்பட்ட பழைய தர விதியைப் பின்பற்றுவர்.",
+      "legacyDefaults": "இல்லாத தகுதிப் புலங்கள் தற்போதைய இயல்புநிலைகளைப் பயன்படுத்தும்; புதிய அமைப்புப் பதிப்பைச் சேமித்து தெளிவுபடுத்தவும்.",
+      "unavailable": "தகுதி விவரங்கள் இல்லை. தொடர்வதற்கு முன் அமைப்பைப் புதுப்பிக்கவும்.",
+      "minimumRating": "குறைந்தபட்ச போனஸ் மதிப்பீடு"
+    },
+    "salaryExclusion": {
+      "label": "சம்பள உயர்வு விலக்கு – அடிப்படைச் சம்பளம் மாறிய காலம்",
+      "help": "சம்பள உயர்வு மற்றும் அதன் நிதி அடிப்படையில் சேர்க்கப்படாது. சரிசெய்யப்பட்ட அடிப்படைச் சம்பளத்தில் போனஸ் பெறத் தகுதி உள்ளது; போனஸ் நிதியில் சேர்க்கப்படும். அடிப்படைச் சம்பளம் மாறாத சமநிலை இடமாற்றங்களுக்கு விலக்கு இல்லை."
     }
   },
   "identityEmail": {

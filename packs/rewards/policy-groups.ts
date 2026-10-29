@@ -5,6 +5,8 @@ import type {SessionContext,Tx} from '../../db/client';
 import {withRewardsTenant} from '../../core/module-gate';
 import {pgSqlState} from '../../lib/db-error';
 import {policySchema,type RewardPolicy} from './model';
+import {rewardEligibilitySummary,type RewardEligibilitySummary} from './policy-eligibility';
+import {assertRewardPolicyGrids} from './policy-grid-validation';
 import {normalizedRewardTargets,parseRewardPolicyGroupVersion,rewardPgUuid,rewardPolicyGroupEditSchema,type RewardPolicyGroupVersion} from './policy-group-model';
 export class RewardPolicyGroupError extends Error{
  constructor(readonly code:'invalid'|'changed'|'scope'|'system'|'overlap'|'excluded',readonly conflicts:RewardPolicyTaken[]=[]){super(`Reward shared configuration: ${code}`);this.name='RewardPolicyGroupError';}
@@ -32,7 +34,10 @@ export function rewardPolicyTaken(ctx:SessionContext,companyIds:readonly string[
  return withRewardsTenant(ctx,tx=>rewardPolicyTakenTx(tx,ids,year));
 }
 export function saveRewardPolicyGroup(ctx:SessionContext,raw:unknown):Promise<RewardPolicyGroupVersion>{
- const p=rewardPolicyGroupEditSchema.parse(raw),targets=normalizedRewardTargets(p.targets);
+ const parsed=rewardPolicyGroupEditSchema.parse(raw);
+ try{assertRewardPolicyGrids(parsed.policy);}catch{throw new RewardPolicyGroupError('invalid');}
+ const {unitGovernanceDigest:_unitDigest,...policy}=parsed.policy as RewardPolicy&{unitGovernanceDigest?:string};
+ const p={...parsed,policy:policySchema.parse({...policy,patActual:0,patTarget:100,targetMonthsBp:0,multiplierBp:null,branchRatings:{},exemptReason:'',lumpUnitCents:null})},targets=normalizedRewardTargets(parsed.targets);
  return withRewardsTenant(ctx,async tx=>{
   try{
    // Share the commit's lock so a racing save yields named conflicts, without weakening SQL's guard.
@@ -63,8 +68,8 @@ export function rewardPolicyGroupUsage(ctx:SessionContext,groupId:string){
  });
 }
 /** The read-only settings a review creator sees (56595838): no salary ranges, profit figures or people. */
-export type RewardPolicySummary=Pick<RewardPolicy,'effectiveFrom'|'meritMatrix'|'standardPools'|'hPools'|'targetMonthsBp'|'bonusMatrix'|'exemptReason'>;
-const summary=(p:RewardPolicy):RewardPolicySummary=>({effectiveFrom:p.effectiveFrom,meritMatrix:p.meritMatrix,standardPools:p.standardPools,hPools:p.hPools,targetMonthsBp:p.targetMonthsBp,bonusMatrix:p.bonusMatrix,exemptReason:p.exemptReason});
+export type RewardPolicySummary=Pick<RewardPolicy,'effectiveFrom'|'meritMatrix'|'standardPools'|'hPools'|'targetMonthsBp'|'bonusMatrix'|'exemptReason'>&{eligibility:RewardEligibilitySummary};
+const summary=(p:RewardPolicy):RewardPolicySummary=>({effectiveFrom:p.effectiveFrom,meritMatrix:p.meritMatrix,standardPools:p.standardPools,hPools:p.hPools,targetMonthsBp:p.targetMonthsBp,bonusMatrix:p.bonusMatrix,exemptReason:p.exemptReason,eligibility:rewardEligibilitySummary(p)});
 export type RewardSharedChoice={groupId:string;versionId:string;revision:number;name:string;year:number;companyId:string;businessUnitId:string;policy:RewardPolicySummary|null};
 export function rewardSharedPolicyChoices(ctx:SessionContext,companyIds:readonly string[]):Promise<RewardSharedChoice[]>{
  if(companyIds.length>500)throw new RewardPolicyGroupError('invalid');
@@ -94,4 +99,13 @@ export async function rewardPolicyForReviewTx(tx:Tx,versionId:string|undefined,c
   if(!row?.binding||row.binding.versionId!==wantedVersion)throw new RewardPolicyGroupError('changed');
   return {...row.binding,groupId:rewardPgUuid.parse(row.binding.groupId),policy:policySchema.parse(row.binding.policy)};
  }catch(error){return refusal(error);}
+}
+
+/** Safe organisation membership projection: global catalogue visibility is never inferred as membership. */
+export function rewardPolicyMemberships(ctx:SessionContext,companyIds:readonly string[]){
+ const ids=z.array(rewardPgUuid).max(500).parse(companyIds);
+ return withRewardsTenant(ctx,async tx=>{
+  const rows=await tx.execute<{company_id:string;business_unit_id:string}>(sql`select * from app.reward_policy_memberships(${ids}::uuid[])`);
+  return rows.map(row=>({companyId:rewardPgUuid.parse(row.company_id),businessUnitId:rewardPgUuid.parse(row.business_unit_id)}));
+ });
 }

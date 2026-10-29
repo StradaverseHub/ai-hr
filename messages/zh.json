@@ -20857,8 +20857,8 @@
     "effectiveFrom": "Salary effective date",
     "joinedBefore": "Joined before",
     "confirmedBy": "Confirmed by",
-    "blockedFrom": "Pay-change exclusion starts",
-    "blockedTo": "Pay-change exclusion ends",
+    "blockedFrom": "排除开始日期",
+    "blockedTo": "排除结束日期",
     "seniorGrades": "Senior-plan grades (comma separated)",
     "rangesHelp": "Salary ranges: grade, minimum RM, midpoint RM, maximum RM (one grade per line)",
     "patActual": "Actual PAT (RM)",
@@ -21040,7 +21040,10 @@
       "retry": "重试",
       "conflict": "{unit} 在 {year} 年已纳入 {name}。",
       "excludedCompany": "年已排除公司",
-      "companyArchived": "已归档"
+      "companyArchived": "已归档",
+      "selectedSummary": "已选公司及业务单位",
+      "membershipChanged": "组织归属已变更，请检查此选择。",
+      "noMembership": "人员管理中没有当前业务单位归属。"
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",
@@ -21366,6 +21369,52 @@
         "lumpReason": "Budget-cap exemption reason (blank = caps apply)",
         "payWindowKeep": "Eligibility and effective dates"
       }
+    },
+    "policyGrids": {
+      "ranges": "薪资范围（MYR）",
+      "bonusMatrix": "各职级奖金月数",
+      "branchFactors": "分支系数",
+      "import": "从 Excel 导入",
+      "copy": "复制上一年的配置",
+      "columns": "Excel 列：{columns}",
+      "fileError": "请使用不超过 2 MB 的 .xlsx 文件，并按列顺序填写。",
+      "choosePrevious": "选择 {year} 年的配置",
+      "version": "版本 {version}",
+      "noPrevious": "没有可访问的上一年配置。",
+      "cancel": "取消",
+      "preview": "预览拟用数值",
+      "proposalInvalid": "应用后请修正无效单元格；修正前无法保存。",
+      "proposalHelp": "应用到草稿前请检查这些数值。",
+      "apply": "应用到草稿",
+      "grade": "职级",
+      "segment": "业务分段",
+      "minimum": "最低值",
+      "midpoint": "中点值",
+      "maximum": "最高值",
+      "noRange": "无范围",
+      "invalidCell": "请填写有效数值：完整职级、严格递增、UA = 0，并符合小数精度要求。",
+      "remove": "移除",
+      "addSegment": "添加分段"
+    },
+    "eligibilitySummary": {
+      "title": "资格评估依据",
+      "activeAsOf": "在此日期仍在职",
+      "joinedBefore": "入职早于",
+      "confirmedBy": "确认日期不晚于",
+      "effectiveFrom": "薪资生效日期",
+      "salaryWindow": "加薪排除期：基本薪资在 {from}–{to} 之间发生变更。奖金仍按其独立资格规则处理。",
+      "bonus": "奖金最低评级：{rating}。",
+      "notice": "排除通知期内员工。",
+      "er": "排除有 ER 个案的员工。",
+      "senior": "Senior 计划（JG 21–23）：在评审中逐人选择，最终奖励单独处理。",
+      "seniorLegacy": "Senior 计划成员按已保存的旧职级规则确定。",
+      "legacyDefaults": "未保存的资格字段使用现有政策默认值；请保存新配置版本以明确设置。",
+      "unavailable": "资格详情暂不可用，请刷新配置后继续。",
+      "minimumRating": "奖金最低评级"
+    },
+    "salaryExclusion": {
+      "label": "加薪排除期 — 基本薪资变更期间",
+      "help": "不计入加薪及加薪预算基数。仍可获得按调整后基本薪资计算的奖金，并计入奖金预算。基本薪资未变的平级调动不予排除。"
     }
   },
   "identityEmail": {

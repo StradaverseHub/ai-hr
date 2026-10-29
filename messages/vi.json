@@ -20857,8 +20857,8 @@
     "effectiveFrom": "Salary effective date",
     "joinedBefore": "Joined before",
     "confirmedBy": "Confirmed by",
-    "blockedFrom": "Pay-change exclusion starts",
-    "blockedTo": "Pay-change exclusion ends",
+    "blockedFrom": "Ngày bắt đầu loại trừ",
+    "blockedTo": "Ngày kết thúc loại trừ",
     "seniorGrades": "Senior-plan grades (comma separated)",
     "rangesHelp": "Salary ranges: grade, minimum RM, midpoint RM, maximum RM (one grade per line)",
     "patActual": "Actual PAT (RM)",
@@ -21040,7 +21040,10 @@
       "retry": "Thử lại",
       "conflict": "{unit} đã thuộc {name} cho năm {year}.",
       "excludedCompany": "Loại trừ cho năm",
-      "companyArchived": "Đã lưu trữ"
+      "companyArchived": "Đã lưu trữ",
+      "selectedSummary": "Công ty và đơn vị kinh doanh đã chọn",
+      "membershipChanged": "Quan hệ tổ chức đã đổi; hãy kiểm tra lựa chọn.",
+      "noMembership": "Không có đơn vị kinh doanh hiện tại trong Quản lý nhân sự."
     },
     "returnedTo": {
       "bu": "Returned to BU CEO",
@@ -21366,6 +21369,52 @@
         "lumpReason": "Budget-cap exemption reason (blank = caps apply)",
         "payWindowKeep": "Eligibility and effective dates"
       }
+    },
+    "policyGrids": {
+      "ranges": "Khoảng lương (MYR)",
+      "bonusMatrix": "Số tháng thưởng theo bậc",
+      "branchFactors": "Hệ số chi nhánh",
+      "import": "Nhập từ Excel",
+      "copy": "Sao chép cấu hình năm trước",
+      "columns": "Các cột Excel: {columns}",
+      "fileError": "Dùng tệp .xlsx tối đa 2 MB với các cột đúng thứ tự.",
+      "choosePrevious": "Chọn cấu hình năm {year}",
+      "version": "Phiên bản {version}",
+      "noPrevious": "Không có cấu hình năm trước mà bạn được phép xem.",
+      "cancel": "Hủy",
+      "preview": "Xem trước giá trị đề xuất",
+      "proposalInvalid": "Sửa ô không hợp lệ sau khi áp dụng; chưa thể lưu khi còn lỗi.",
+      "proposalHelp": "Kiểm tra các giá trị trước khi áp dụng vào bản nháp.",
+      "apply": "Áp dụng vào bản nháp",
+      "grade": "Bậc",
+      "segment": "Phân khúc",
+      "minimum": "Tối thiểu",
+      "midpoint": "Trung điểm",
+      "maximum": "Tối đa",
+      "noRange": "Không có khoảng",
+      "invalidCell": "Nhập giá trị hợp lệ: đủ bậc, tăng nghiêm ngặt, UA = 0 và đúng độ chính xác thập phân.",
+      "remove": "Xóa",
+      "addSegment": "Thêm phân khúc"
+    },
+    "eligibilitySummary": {
+      "title": "Điều kiện được xét theo",
+      "activeAsOf": "Đang làm việc tại ngày",
+      "joinedBefore": "Gia nhập trước",
+      "confirmedBy": "Xác nhận trước",
+      "effectiveFrom": "Lương có hiệu lực từ",
+      "salaryWindow": "Loại khỏi tăng lương: lương cơ bản thay đổi trong {from}–{to}. Thưởng vẫn theo điều kiện riêng.",
+      "bonus": "Thưởng: xếp hạng tối thiểu {rating}.",
+      "notice": "Loại nhân viên đang trong thời hạn báo trước.",
+      "er": "Loại nhân viên có vụ việc ER.",
+      "senior": "Kế hoạch Senior (JG 21–23): chọn từng người trong kỳ xét; mức thưởng cuối được xử lý riêng.",
+      "seniorLegacy": "Thành viên Senior theo quy tắc bậc cũ đã lưu.",
+      "legacyDefaults": "Trường điều kiện còn thiếu dùng mặc định hiện tại; lưu phiên bản cấu hình mới để xác định rõ.",
+      "unavailable": "Không có chi tiết điều kiện. Làm mới cấu hình trước khi tiếp tục.",
+      "minimumRating": "Xếp hạng thưởng tối thiểu"
+    },
+    "salaryExclusion": {
+      "label": "Loại khỏi tăng lương – lương cơ bản thay đổi trong",
+      "help": "Không tính tăng lương và không tính vào cơ sở quỹ tăng lương. Vẫn đủ điều kiện thưởng, tính theo lương cơ bản đã điều chỉnh và được tính vào quỹ thưởng. Điều chuyển ngang không đổi lương cơ bản không bị loại."
     }
   },
   "identityEmail": {
