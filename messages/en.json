@@ -28174,6 +28174,7 @@
       "expired": "This saved review has expired. Open Leave to check or make a request.",
       "refused": "This review cannot be used. Open Leave to check your request.",
       "unavailable": "A small detour: this review is unavailable. Open Leave to check your request.",
+      "useLeaveForm": "This request needs the full Leave form, for example because your balance doesn't cover it, the date has passed or the leave type needs more details. Nothing was saved. Use Continue in Leave form.",
       "invalidSelection": "Choose your own employment, leave type and a valid date.",
       "needsRemark": "Add your own employee remark, then prepare the review again.",
       "openRequests": "Open leave requests",

@@ -32,6 +32,7 @@ export async function ownLeaveCommandCopy(): Promise<OwnLeaveCommandMessages> {
     expired: t('expired'),
     refused: t('refused'),
     unavailable: t('unavailable'),
+    useLeaveForm: t('useLeaveForm'),
     invalidSelection: t('invalidSelection'),
     needsRemark: t('needsRemark'),
     openRequests: t('openRequests'),
