@@ -38,7 +38,7 @@ export function AssistantFileImport({normalComposer,instruction:providedInstruct
   if(!source||!consent||!instruction.trim()||active.current)return;
   const revision=epoch.current;active.current=true;setBusy('prepare');setError(null);setDraft(null);setReviewed(false);
   try{
-   const result=await prepareAssistantImportAction({target,source:source.parts[part].text,instruction,consent:true});
+   const result=await prepareAssistantImportAction({target,source:source.parts[part].text,sourceKind:source.parts[part].kind??'text',instruction,consent:true});
    if(revision!==epoch.current)return;
    if(!result.ok){setError(t('prepareError'));return;}
    setDraft(result.draft);setCsv(importDraftCsv(result.draft));

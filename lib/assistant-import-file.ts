@@ -1,15 +1,15 @@
 import {readImportFile,MAX_IMPORT_FILE_BYTES} from './import-file';
 
-export type ImportFileSource={name:string;parts:{label:string;text:string;formulas?:number;errors?:number}[]};
+export type ImportFileSource={name:string;parts:{label:string;text:string;kind?:'text'|'table';formulas?:number;errors?:number}[]};
 /** Decode locally; never upload a binary or silently truncate a sheet/document. */
 export async function readAssistantImportFile(file:File):Promise<ImportFileSource>{
  if(file.size===0||file.size>MAX_IMPORT_FILE_BYTES)throw Error('size');
  if(!file.name.toLowerCase().endsWith('.pdf')){
   const read=await readImportFile(file,{preparePersonnel:true});
-  const parts=read.preparation?.sheets.map(sheet=>({label:sheet.sheetName,text:sheet.text,
+  const parts=read.preparation?.sheets.map(sheet=>({label:sheet.sheetName,text:sheet.text,kind:'table' as const,
    formulas:sheet.source.rows.reduce((n,row)=>n+row.cells.filter(cell=>cell.formula!==undefined).length,0),
    errors:sheet.source.rows.reduce((n,row)=>n+row.cells.filter(cell=>cell.kind==='e').length,0),
-  }))??[{label:read.name,text:read.text}];
+  }))??[{label:read.name,text:read.text,kind:'table' as const}];
   if(!parts.length||parts.some(part=>part.text.length>48000))throw Error('size');
   return {name:file.name,parts};
  }
@@ -30,6 +30,6 @@ export async function readAssistantImportFile(file:File):Promise<ImportFileSourc
   }
   const text=pages.join('\n\n');
   if(!text.trim())throw Error('scan');
-  return {name:file.name,parts:[{label:file.name,text}]};
+  return {name:file.name,parts:[{label:file.name,text,kind:'text'}]};
  }finally{clearTimeout(deadline);await loading.destroy();}
 }

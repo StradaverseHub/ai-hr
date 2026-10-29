@@ -22,10 +22,13 @@ It is an extension of the Assistant workload, with its additional caller registe
 inventory. There is no separate model transport, provider SDK, feature allowance or database table.
 
 Source text is user-supplied data, never a grant, command or authority to access other records.
-The model receives only the selected source text, user request and canonical field identifiers.
+The model receives only the selected source text or numbered table rows, the user request and canonical field identifiers.
 It cannot call tools, query records, choose an arbitrary destination or invoke an import writer.
-Output is strict bounded JSON containing canonical field names and source character spans. The
-server derives values from those spans, rejecting unknown fields, extra keys, invalid/empty spans,
+Output is strict bounded JSON containing canonical field names and source cell/quote selectors.
+For a spreadsheet, the server sends numbered rows and derives values from whole cells, preserving
+CSV escaping and avoiding model character-count arithmetic. For PDF text or explicit literals in
+the user request (such as a stated start date or pay code), it verifies exact quotes in that source.
+The server rejects unknown fields, extra keys, nonexistent cells/quotes, invalid or empty spans,
 repeated fields and repeated source records. It never accepts model-authored replacement values
 or calculated amounts. Interpretation and completeness remain fallible, so the review explicitly
 asks the person to compare identifiers, dates, amounts and record counts with the source.
@@ -71,11 +74,12 @@ Changing the file, target, sheet or request invalidates the draft and disclosure
 or expiry invalidates in-flight results. A failed provider or malformed output shows a generic
 failure and offers no import confirmation. CSV edits update the review table and reset the user's
 review acknowledgement. CSV serialization preserves signed amounts and zero-prefixed identifiers;
-it is an import transport, not a downloadable spreadsheet export.
+it is an import transport, not a downloadable spreadsheet export. Formula and Excel-error counts
+are shown before provider disclosure. Extraction uses cached values and never recalculates formulas.
 
 ## Verification scope
 
-Focused tests cover closed contracts, exact-source values, invalid/fabricated spans, duplicate
+Focused tests cover closed contracts, exact-source values, invalid/fabricated cells, quotes or spans, duplicate
 records, consent, separate review, selected-sheet disclosure, discarded responses, one-use/expired
 handoffs, access refusal and admission-time revocation. Browser tests exercise actual PDF.js and
 the existing Excel decoder, plus real styled desktop/phone draft views. These checks use synthetic

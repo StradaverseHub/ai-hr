@@ -21,6 +21,18 @@ beforeEach(()=>{vi.resetAllMocks();mocks.read.mockResolvedValue({name:'records.p
 afterEach(cleanup);
 
 describe('source-bound extraction',()=>{
+ it('uses whole spreadsheet cells, preserving CSV quotes, line breaks and signed amounts',()=>{
+  const source='employee_no,amount,notes\r\n0007,-25.50,"He said ""Hi""\nagain"\r\n';
+  const result=captureImportDraft('payroll_individual',source,{rows:[{cells:[{field:'employee_id',cellId:'r2c1'},{field:'amount',cellId:'r2c2'},{field:'notes',cellId:'r2c3'}]}]},'','table');
+  expect(result.rows[0]).toContain('0007');expect(result.rows[0]).toContain('-25.50');expect(result.rows[0]).toContain('He said "Hi"\nagain');
+  expect(()=>captureImportDraft('payroll_individual',source,{rows:[{cells:[{field:'amount',cellId:'r20c1'}]}]},'','table')).toThrow();
+ });
+ it('rejects text slicing of a spreadsheet value and accepts only exact PDF/request quotes',()=>{
+  expect(()=>captureImportDraft('payroll_history','100',{rows:[{cells:[{field:'amount',start:0,end:2}]}]},'','table')).toThrow();
+  const result=captureImportDraft('payroll_history','Amount -25.50',{rows:[{cells:[{field:'amount',quote:'-25.50'}]}]});
+  expect(result.rows[0]).toContain('-25.50');
+  expect(()=>captureImportDraft('payroll_history','Amount -25.50',{rows:[{cells:[{field:'amount',quote:'999'}]}]})).toThrow();
+ });
  it('accepts literal dates supplied by the user, without allowing invented replacements',()=>{
   const request='Start date 2026-10-01';
   const result=captureImportDraft('payroll_fixed','E001',{rows:[{cells:[{field:'employee_id',start:0,end:4},{field:'start_date',from:'instruction',start:11,end:21}]}]},request);
@@ -64,7 +76,7 @@ describe('file preparation and review',()=>{
   expect(prepare).toBeDisabled();expect(mocks.prepare).not.toHaveBeenCalled();
   fireEvent.click(screen.getByLabelText(copy.consent));fireEvent.click(prepare);
   await screen.findByText('Draft: 1 records');
-  expect(mocks.prepare).toHaveBeenCalledWith({target:'payroll_history',source,instruction:'Prepare these payroll records',consent:true});
+  expect(mocks.prepare).toHaveBeenCalledWith({target:'payroll_history',source,sourceKind:'text',instruction:'Prepare these payroll records',consent:true});
   const next=screen.getByRole('button',{name:copy.review});expect(next).toBeDisabled();expect(mocks.push).not.toHaveBeenCalled();
   fireEvent.click(screen.getByLabelText(copy.reviewed));fireEvent.click(next);
   expect(mocks.push).toHaveBeenCalledWith(expect.stringMatching(/^\/payroll\/history-import\?assistantImport=[a-f0-9-]+$/));

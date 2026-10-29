@@ -3,7 +3,7 @@ const m=vi.hoisted(()=>({principal:vi.fn(),assistant:vi.fn(),module:vi.fn(),reso
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,run:(tx:object)=>unknown)=>run({})}));
 vi.mock('../core/ai-principal',()=>({assertAiPrincipalTx:m.principal}));
 vi.mock('../core/assistant-grant',()=>({assertMayUseAssistant:m.assistant}));
-vi.mock('../core/entitlements',()=>({assertModuleEnabled:m.module}));
+vi.mock('../core/entitlements',()=>({assertModuleEnabled:m.module,resolveEntitlementsTx:async()=>undefined}));
 vi.mock('../core/ai-config',()=>({resolveActiveAiConfig:m.resolve}));
 vi.mock('../core/ai-governance',()=>({withAiAdmissionCheck:(cfg:unknown,_feature:unknown,check:(tx:object)=>Promise<void>)=>{m.admission=()=>check({});return cfg;}}));
 vi.mock('../lib/ai',()=>({generateDraft:m.generate}));
