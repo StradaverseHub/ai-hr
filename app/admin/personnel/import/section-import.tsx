@@ -1,4 +1,5 @@
 'use client';
+import {BankImportProgress} from './bank-import-progress';
 import { personnelTemplateReferenceLists } from '@/lib/personnel-template-reference';
 import { useNricPolicyMessage } from '@/components/nric-policy-message';
 import {personnelImportExclusionRows} from '@/lib/personnel-import-exclusions';
@@ -282,6 +283,8 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
       }
     });
   };
+
+  if(section==='bank_statutory')return <div className="space-y-4"><Card className="space-y-3 p-5"><StepHeading num={1} label={t('sectionStep1')}/><div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={()=>void downloadTemplate()}>{t('sectionDownloadTemplate',{section:label})}</Button><Button variant="secondary" onClick={downloadCsvTemplate}>CSV</Button></div><p className="text-xs text-muted-foreground">{t('sectionUpdateOnlyNotice')}</p></Card><BankImportProgress/></div>;
 
   return (
     <div className="space-y-6">

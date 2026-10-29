@@ -11,6 +11,7 @@
  * when any item is blocked (all or nothing), checks the caller's preview hash, requires a reason, and
  * records exactly one `reverted` event.
  */
+import {BANK_IMPORT_MAX_BYTES} from '../lib/bank-import-job';
 import {createHash,randomUUID} from 'node:crypto';
 import {and,asc,desc,eq,getTableColumns,inArray,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
@@ -45,7 +46,7 @@ export type CreateImportAttemptInput<P extends ImportPlanBase>={kind:ImportKind;
 /** Records the validated upload. Every listed company must be maintainable (RLS insert policy). */
 export async function createImportAttemptTx<P extends ImportPlanBase>(tx:Tx,ctx:SessionContext,input:CreateImportAttemptInput<P>):Promise<{attemptId:string;plan:P;existing:boolean}>{
  if(!isImportKind(input.kind))fail('Unknown import kind.');
- if(input.content.length>IMPORT_SOURCE_MAX_BYTES)fail('Choose a file no larger than 10 MB.');
+ if(input.content.length>(input.kind==='bank_statutory'?BANK_IMPORT_MAX_BYTES:IMPORT_SOURCE_MAX_BYTES))fail(input.kind==='bank_statutory'?'Choose a file no larger than 128 MiB.':'Choose a file no larger than 10 MB.');
  await principalTx(tx,ctx);
  const sourceHash=importSourceHash(input.content),operationKey=input.operationKey&&uuid.test(input.operationKey)?input.operationKey:randomUUID();
  const[prior]=await tx.select({id:attempt.id,sourceHash:attempt.sourceHash,kind:attempt.kind,plan:attempt.plan}).from(attempt).where(and(eq(attempt.createdBy,ctx.userId!),eq(attempt.operationKey,operationKey)));
