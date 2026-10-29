@@ -610,3 +610,7 @@ The default 0670 OWN and 0671 ASSIGNED factories are protocol adapters to the sh
 ### WP9 notification preferences custody
 
 Notification preferences use generic OWN compatibility custody with the exact nonce/intent/cached-review wire and original capability supplied by the authenticated server owner. Current principal, module, own subject and configuration locks precede saved-card disclosure; native confirmation revalidates the original source digest. Cached reopen semantics and provider-free retirement remain unchanged.
+
+### WP9 profile request custody
+
+Profile change requests use generic OWN compatibility custody, retaining the original content wire, Workforce/own-employee interval, native request/event proof and source-drift refusal. The effect remains submission for HR review; it never applies or approves the proposal automatically.

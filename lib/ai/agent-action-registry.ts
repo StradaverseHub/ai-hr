@@ -155,7 +155,7 @@ export const AGENT_ACTIONS=Object.freeze([
   permission:{actor:'self',guard:'core/assistant-actions/own-profile-change-source.ts#prepareOwnProfileChangeSourceTx'},subject:'own_employment',blastRadius:{max:1,unit:'profile_change_request'},
   idempotencyKey:'review_action_id',policy:{tier:'confirm',category:'own_work'},reversal:{kind:'unknown'},evaluationCases:[],
   screen:{native:'app/me/page.tsx',entryPoints:[]},review:{route:'/assistant/profile',handoff:'review_page'},
-  store:'module_action',browserOwner:'profile',pauseKey:'hr_assistant'}),
+  store:'generic_own',browserOwner:'profile',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'approvals.leave.decide',module:'approvals',owner:'leave',service:'packs/leave/service.ts#decideLeave',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_leave_decision_review_v1',inputSchema:'LeaveDecisionReviewPrepare',outputSchema:'LeaveDecisionPreparedReview'},
   confirm:{status:'implemented',adapter:'module_leave_decision_review_v1',inputSchema:'LeaveDecisionReviewConfirmation',outputSchema:'LeaveDecisionCompletedReview'},
