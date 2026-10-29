@@ -90,7 +90,7 @@ CREATE TRIGGER lc_v9_native_private_source_events BEFORE UPDATE OF data ON lc_on
 CREATE FUNCTION app.lc_v9_native_task_source_events() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE state jsonb; before_private jsonb; facts jsonb;
 BEGIN
- IF OLD.data->>'state'<>'submitted' OR NEW.data->>'state'<>'submitted' OR NOT (NEW.data ? 'v9DefinitionRevision') OR OLD.data->'tasks' IS NOT DISTINCT FROM NEW.data->'tasks' THEN RETURN NEW; END IF;
+ IF OLD.data->>'state'<>'submitted' OR NEW.data->>'state'<>'submitted' OR NOT (NEW.data ? 'v9DefinitionRevision' OR EXISTS(SELECT 1 FROM lc_onboarding_private p WHERE p.case_id=NEW.id AND p.tenant_id=NEW.tenant_id AND p.data ? 'lifecycleV9')) OR OLD.data->'tasks' IS NOT DISTINCT FROM NEW.data->'tasks' THEN RETURN NEW; END IF;
  SELECT data INTO before_private FROM lc_onboarding_private WHERE case_id=NEW.id AND tenant_id=NEW.tenant_id FOR UPDATE;
  IF before_private IS NULL THEN RETURN NEW; END IF;
  state:=coalesce(before_private->'lifecycleV9','{}'::jsonb);

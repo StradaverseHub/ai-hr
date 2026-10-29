@@ -289,6 +289,8 @@ it('lets only the linked activated joiner complete a released native document an
   const own = (await v9OwnWork(joiner)).find(c => c.id === native.case.id)!;
   expect(own.documents).toHaveLength(1); expect(own.documents[0].status).toBe('sent');
   expect((await v9OwnWork(other)).some(c => c.id === native.case.id)).toBe(false);
+  // This case already adopted V9 private documents before the newer public adoption flag existed.
+  await owner.db.execute(sql`update lc_onboarding_case set data=data-'v9DefinitionRevision' where id=${own.id}::uuid`);
   const input = { caseId: own.id, revision: own.revision, documentId: own.documents[0].id, values: { contact: '+60111111111' }, signature: { method: 'typed' as const, value: 'Fictional activated V9 joiner', consent: true as const } };
   await expect(v9OwnDocument(other, input)).rejects.toMatchObject({ cause: { message: expect.stringContaining('not available') } });
   await expect(v9OwnDocument(joiner, { ...input, values: { forbidden: 'HR field tampering' } })).rejects.toMatchObject({ cause: { message: expect.stringContaining('cannot be changed') } });
