@@ -19,6 +19,7 @@ export async function PayrollLeaveFollowup({ session, batchId, failed, query, pa
     <SectionHeader title={t('title')} subtitle={t('description')} />
     {failed && <ErrorBanner message={t('error')} />}
     <p className="mb-4 text-sm text-muted-foreground">{t('noMoneyChange')}</p>
+    <Pager state={pageState(query, result.total, rows.length)} basePath={`/payroll/${batchId}`} params={params} paramNames={{ page: 'lfPage', size: 'lfSize' }} />
     <div className="divide-y">{rows.map(row => <details key={row.id} className="py-3" open={row.status === 'open'}>
       <summary className="cursor-pointer text-sm font-medium">{row.employee} · {row.leave_request_id.slice(0, 8)} · {t(`states.${row.status}`)}</summary>
       <div className="mt-3 space-y-3 text-sm">
@@ -51,6 +52,5 @@ export async function PayrollLeaveFollowup({ session, batchId, failed, query, pa
         </form>}
       </div>
     </details>)}</div>
-    <Pager state={pageState(query, result.total, rows.length)} basePath={`/payroll/${batchId}`} params={params} paramNames={{ page: 'lfPage', size: 'lfSize' }} />
   </Card>;
 }

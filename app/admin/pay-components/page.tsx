@@ -184,6 +184,7 @@ export default async function PayComponentsPage({
           </div>
         </div>
 
+        <Pager basePath={PAGE} params={{ q, status }} state={pgState} />
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -316,7 +317,6 @@ export default async function PayComponentsPage({
             </tbody>
           </table>
         </div>
-        <Pager basePath={PAGE} params={{ q, status }} state={pgState} />
       </Card>
     </div>
   );

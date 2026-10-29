@@ -122,8 +122,8 @@ export async function Pager({
   }
 
   return (
-    // `data-ui-pager` lets a theme place the pager (app/atelier.css puts it above the table); markup only.
-    <div data-ui-pager className="border-t border-border">
+    // `data-ui-pager` lets a theme place the pager (it sits above its table, so it is read before the rows); markup only.
+    <div data-ui-pager className="border-b border-border">
       {state.truncated && (
         <p className="border-b border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
           {t('truncated', { shown: ALL_ROW_CEILING, total: state.total })}{' '}

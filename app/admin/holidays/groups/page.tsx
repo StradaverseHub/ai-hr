@@ -69,6 +69,8 @@ export default async function HolidayGroupsPage({
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('empty')}</p>
         ) : (
           <>
+            {/* The record count and the rows-per-page choice, on the same bar every other list carries. */}
+            <Pager basePath="/admin/holidays/groups" state={pgState} />
             <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -128,8 +130,6 @@ export default async function HolidayGroupsPage({
               </tbody>
             </table>
             </div>
-            {/* The record count and the rows-per-page choice, on the same bar every other list carries. */}
-            <Pager basePath="/admin/holidays/groups" state={pgState} />
           </>
         )}
       </Card>

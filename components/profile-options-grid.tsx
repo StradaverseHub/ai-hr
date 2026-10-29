@@ -415,6 +415,8 @@ export function ProfileOptionsGrid({
         {error && <ErrorBanner message={error} />}
         {hasChanges && <p className="text-xs text-amber-600 dark:text-amber-400">{t('unsavedChanges')}</p>}
 
+        {/* The rows-per-page choice is remembered per screen, so opening Profile Options again keeps it. */}
+        <ClientPager state={pgState} rememberAs="profile-options" />
         <div className={tableWrapCls}>
           <table className="w-full text-sm">
             {/* Sticky header keeps backdrop-blur on top of the shared thead colours — theadCls's 50%-alpha
@@ -543,8 +545,6 @@ export function ProfileOptionsGrid({
             </tbody>
           </table>
         </div>
-        {/* The rows-per-page choice is remembered per screen, so opening Profile Options again keeps it. */}
-        <ClientPager state={pgState} rememberAs="profile-options" />
         <p className="text-xs text-muted-foreground">{t('legacyNote')}</p>
       </div>
 

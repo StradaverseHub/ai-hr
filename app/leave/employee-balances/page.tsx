@@ -571,6 +571,7 @@ export default async function EmployeeBalancesPage({
             </Card>
           ) : (
           <Card>
+            <Pager hrefFor={pagerHref} state={pageState(pq, total, rows.length)} exportHref={exportHref('csv')} />
             <div className="overflow-x-auto" data-testid="employee-balances-scroll" role="region" aria-label={tInq('balancesTitle')} tabIndex={0}>
               <table className={styles.table} data-testid="employee-balances-table">
                 {/* 026e16b9: no `tracking-wide` on these inquiry tables. Measured live, the extra letter-spacing
@@ -795,7 +796,6 @@ export default async function EmployeeBalancesPage({
                 </tbody>
               </table>
             </div>
-            <Pager hrefFor={pagerHref} state={pageState(pq, total, rows.length)} exportHref={exportHref('csv')} />
           </Card>
           )}
         </div>

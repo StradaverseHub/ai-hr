@@ -209,6 +209,7 @@ export default async function HolidaysPage({
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('empty')}</p>
         ) : (
           <>
+            <Pager basePath="/admin/holidays" params={{ country, year }} state={pgState} />
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -294,7 +295,6 @@ export default async function HolidaysPage({
                 </tbody>
               </table>
             </div>
-            <Pager basePath="/admin/holidays" params={{ country, year }} state={pgState} />
           </>
         )}
       </Card>

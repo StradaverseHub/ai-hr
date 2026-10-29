@@ -159,6 +159,16 @@ export default async function HiringDefaultsListPage({
           />
         </SettingsToolbar>
 
+        <Pager
+          basePath={PAGE}
+          params={{
+            q: q || undefined,
+            status: status === 'active' ? undefined : status,
+            sort: sort === 'company' ? undefined : sort,
+            dir: dir === 'asc' ? undefined : dir,
+          }}
+          state={pgState}
+        />
         <div className={tableWrapCls}>
           <table className="w-full text-sm">
             <thead className={theadCls}>
@@ -239,16 +249,6 @@ export default async function HiringDefaultsListPage({
             </tbody>
           </table>
         </div>
-        <Pager
-          basePath={PAGE}
-          params={{
-            q: q || undefined,
-            status: status === 'active' ? undefined : status,
-            sort: sort === 'company' ? undefined : sort,
-            dir: dir === 'asc' ? undefined : dir,
-          }}
-          state={pgState}
-        />
       </Card>
     </div>
   );

@@ -140,6 +140,7 @@ export function ZakatElectionsList({ rows }: { rows: ZakatElectionListRow[] }) {
         <span className="text-xs text-muted-foreground">{t('history.nShown', { count: sorted.length })}</span>
       </div>
 
+      <ClientPager state={state} paramNames={{ page: 'ePage', size: 'eSize' }} />
       <div className="overflow-x-auto border-t border-border">
         <table className="w-full min-w-[720px] text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -194,8 +195,6 @@ export function ZakatElectionsList({ rows }: { rows: ZakatElectionListRow[] }) {
           </tbody>
         </table>
       </div>
-
-      <ClientPager state={state} paramNames={{ page: 'ePage', size: 'eSize' }} />
     </div>
   );
 }

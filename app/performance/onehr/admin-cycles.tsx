@@ -32,6 +32,7 @@ export async function PerformanceCyclesAdmin({ cycles, rows, pgState, basePath, 
     <Card className="overflow-hidden" data-tour="performance-cycles">
       <SectionHeader title={t('reviewCycles')} count={cycles.length} />
       <div className="border-b border-border px-4 py-2 text-sm"><Link href="/performance/leaders" className="text-primary hover:underline">{to('leaders.title')} →</Link> <span className="text-muted-foreground">{to('leaders.listHint')}</span></div>
+      <Pager basePath={basePath} state={pgState} />
       {cycles.length === 0 ? (
         <p className="px-4 py-8 text-center text-sm text-muted-foreground">
           {t('noCycles')}
@@ -83,7 +84,6 @@ export async function PerformanceCyclesAdmin({ cycles, rows, pgState, basePath, 
           </tbody>
         </table>
       )}
-      <Pager basePath={basePath} state={pgState} />
     </Card>
 
     {admin && (

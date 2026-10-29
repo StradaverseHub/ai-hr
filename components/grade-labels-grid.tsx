@@ -461,6 +461,8 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
       {error && <ErrorBanner message={error} />}
       {hasChanges && <p className="text-xs text-amber-600 dark:text-amber-400">{t('unsavedChanges')}</p>}
 
+      {/* The rows-per-page choice is remembered per screen, so opening Job Grades again keeps it. */}
+      <ClientPager state={pgState} rememberAs="grade-labels" />
       <div className={tableWrapCls}>
         <table className="w-full text-sm">
           <thead className={theadCls}>
@@ -667,8 +669,6 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
           </tbody>
         </table>
       </div>
-      {/* The rows-per-page choice is remembered per screen, so opening Job Grades again keeps it. */}
-      <ClientPager state={pgState} rememberAs="grade-labels" />
 
       {confirmDelete && (
         <ConfirmDialog

@@ -135,6 +135,11 @@ export default async function AttendancePage({
             </Link>
           </div>
         </div>
+        <Pager
+          basePath="/attendance"
+          params={{ month: sp.month }}
+          state={summaryPage.state}
+        />
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -194,11 +199,6 @@ export default async function AttendancePage({
             </tbody>
           </table>
         </div>
-        <Pager
-          basePath="/attendance"
-          params={{ month: sp.month }}
-          state={summaryPage.state}
-        />
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
           {t('overtimeRecords.summaryNote')}
         </p>

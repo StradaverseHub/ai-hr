@@ -128,6 +128,7 @@ export function HistoryTable({
 
   return (
     <div className="overflow-x-auto">
+      <ClientPager state={state} />
       <table className="w-full text-sm">
         <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
@@ -530,7 +531,6 @@ export function HistoryTable({
           )}
         </tbody>
       </table>
-      <ClientPager state={state} />
     </div>
   );
 }

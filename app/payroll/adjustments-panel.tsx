@@ -175,6 +175,12 @@ export async function PayrollAdjustmentsPanel({
           <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{t('allowanceGateWarning')}</p>
         )}
       </div>
+      <Pager
+        basePath={pager.basePath}
+        params={pager.params}
+        paramNames={{ page: 'iPage', size: 'iSize' }}
+        state={inputPage.state}
+      />
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -235,12 +241,6 @@ export async function PayrollAdjustmentsPanel({
           </tbody>
         </table>
       </div>
-      <Pager
-        basePath={pager.basePath}
-        params={pager.params}
-        paramNames={{ page: 'iPage', size: 'iSize' }}
-        state={inputPage.state}
-      />
     </Card>
   );
 }

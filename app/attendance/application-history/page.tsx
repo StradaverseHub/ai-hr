@@ -109,8 +109,8 @@ export default async function AttendanceApplicationHistoryPage({ searchParams }:
     <AttendanceHistoryFilters selection={selection} panel={panel} defaultOpen={(await cookies()).get('attendance-history-panel')?.value === '1'}>
       <div className="space-y-4">
         {statusNav}
-        <AttendanceHistoryTable key={returnTo} rows={data.rows} returnTo={returnTo} />
         <div className="flex flex-wrap justify-between gap-4 text-sm"><p>{t('total', { count: data.total })}</p><nav aria-label={t('pagination')} className="flex items-center gap-4">{data.page > 1 && <Link className="inline-flex min-h-11 items-center text-primary underline" href={url(data.page - 1)}>{t('previous')}</Link>}<span>{t('page', { number: data.page })}</span>{data.page * data.pageSize < data.total && <Link className="inline-flex min-h-11 items-center text-primary underline" href={url(data.page + 1)}>{t('next')}</Link>}</nav></div>
+        <AttendanceHistoryTable key={returnTo} rows={data.rows} returnTo={returnTo} />
       </div>
     </AttendanceHistoryFilters>
     </CollapsibleEmployeePanel>

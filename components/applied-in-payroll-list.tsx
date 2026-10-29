@@ -147,6 +147,7 @@ export function AppliedInPayrollList({
         <span className="text-xs text-muted-foreground">{t('nShown', { count: sorted.length })}</span>
       </div>
 
+      <ClientPager state={state} paramNames={paramNames} />
       <div className="overflow-x-auto border-t border-border">
         <table className="w-full min-w-[720px] text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -191,8 +192,6 @@ export function AppliedInPayrollList({
           </tbody>
         </table>
       </div>
-
-      <ClientPager state={state} paramNames={paramNames} />
     </div>
   );
 }

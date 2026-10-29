@@ -158,64 +158,8 @@ export function BandGridEditor<Row extends Record<string, string>>({
 
   return (
     <div className="space-y-2">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <tr>
-              {showFrom && <th className="py-1.5 pr-3 font-medium">{fromHeader}</th>}
-              {columns.map((c) => (
-                <th key={c.key} className="py-1.5 pr-3 font-medium">
-                  {c.label}
-                </th>
-              ))}
-              <th className="py-1.5 font-medium">
-                <span className="sr-only">{actionsHeader}</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleRows.map((row, localIdx) => {
-              // Map the page-local index back to the row's position in the full `rows` array so
-              // onCell/onRemoveRow/isTop all operate on the correct global row.
-              const i = start + localIdx;
-              const isTop = i === lastIndex;
-              return (
-                <tr key={i} className="border-t border-border">
-                  {showFrom && (
-                    <td className="py-1.5 pr-3 tabular-nums text-muted-foreground">{fromFor(i)}</td>
-                  )}
-                  {columns.map((c) => (
-                    <td key={c.key} className="py-1.5 pr-3">
-                      <input
-                        type="number"
-                        step="any"
-                        value={row[c.key]}
-                        placeholder={c.isCeiling && isTop ? topBandLabel : ''}
-                        onChange={(e) => onCell(i, c.key, e.target.value)}
-                        className={`${inputCls} h-8 ${c.widthCls ?? 'w-28'}`}
-                      />
-                    </td>
-                  ))}
-                  <td className="py-1.5">
-                    <button
-                      type="button"
-                      onClick={() => onRemoveRow(i)}
-                      disabled={rows.length <= minRows}
-                      aria-label={removeRowLabel}
-                      title={removeRowLabel}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-input text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-40"
-                    >
-                      <span aria-hidden>&times;</span>
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
       {paginated && (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-2 text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-2 text-xs">
           <label className="flex items-center gap-2 text-muted-foreground">
             <span>{tp('rowsPerPage')}</span>
             <select
@@ -279,6 +223,62 @@ export function BandGridEditor<Row extends Record<string, string>>({
           </div>
         </div>
       )}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              {showFrom && <th className="py-1.5 pr-3 font-medium">{fromHeader}</th>}
+              {columns.map((c) => (
+                <th key={c.key} className="py-1.5 pr-3 font-medium">
+                  {c.label}
+                </th>
+              ))}
+              <th className="py-1.5 font-medium">
+                <span className="sr-only">{actionsHeader}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleRows.map((row, localIdx) => {
+              // Map the page-local index back to the row's position in the full `rows` array so
+              // onCell/onRemoveRow/isTop all operate on the correct global row.
+              const i = start + localIdx;
+              const isTop = i === lastIndex;
+              return (
+                <tr key={i} className="border-t border-border">
+                  {showFrom && (
+                    <td className="py-1.5 pr-3 tabular-nums text-muted-foreground">{fromFor(i)}</td>
+                  )}
+                  {columns.map((c) => (
+                    <td key={c.key} className="py-1.5 pr-3">
+                      <input
+                        type="number"
+                        step="any"
+                        value={row[c.key]}
+                        placeholder={c.isCeiling && isTop ? topBandLabel : ''}
+                        onChange={(e) => onCell(i, c.key, e.target.value)}
+                        className={`${inputCls} h-8 ${c.widthCls ?? 'w-28'}`}
+                      />
+                    </td>
+                  ))}
+                  <td className="py-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onRemoveRow(i)}
+                      disabled={rows.length <= minRows}
+                      aria-label={removeRowLabel}
+                      title={removeRowLabel}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-input text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-40"
+                    >
+                      <span aria-hidden>&times;</span>
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
       <button
         type="button"
         onClick={handleAddRow}

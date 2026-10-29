@@ -213,6 +213,18 @@ export default async function DashboardCardConfigPage({
                   )}
                 </form>
 
+                {/* The library's own filters ride in the address already, so the pager keeps them and the
+                    section it belongs to. */}
+                <Pager
+                  basePath={PAGE}
+                  params={{
+                    section: 'library',
+                    q: q || undefined,
+                    type: typeFilter || undefined,
+                    status: statusFilter || undefined,
+                  }}
+                  state={pgState}
+                />
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -302,18 +314,6 @@ export default async function DashboardCardConfigPage({
                     </tbody>
                   </table>
                 </div>
-                {/* The library's own filters ride in the address already, so the pager keeps them and the
-                    section it belongs to. */}
-                <Pager
-                  basePath={PAGE}
-                  params={{
-                    section: 'library',
-                    q: q || undefined,
-                    type: typeFilter || undefined,
-                    status: statusFilter || undefined,
-                  }}
-                  state={pgState}
-                />
               </Card>
 
               {showForm && (

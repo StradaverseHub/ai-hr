@@ -153,6 +153,7 @@ export default async function PersonnelPage({
       <FilterChips action="/personnel" fields={filterFields} values={filterValues} labels={filterLabels} />
 
       <Card className="overflow-hidden">
+        {pager}
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
@@ -207,7 +208,6 @@ export default async function PersonnelPage({
             )}
           </tbody>
         </table>
-        {pager}
       </Card>
 
     </div>

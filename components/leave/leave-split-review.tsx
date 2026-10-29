@@ -16,6 +16,7 @@ export async function LeaveSplitReview({ session, query, companyIds }: { session
     <Card>
       <SectionHeader title={t('title')} subtitle={t('description')} />
       <p className="mb-4 text-sm text-muted-foreground">{t('uncertainty')}</p>
+      <Pager state={pageState(query, result.total, result.rows.length)} basePath="/admin/leave-config/balance-health" />
       {result.rows.length === 0 ? <p className="py-4 text-sm text-muted-foreground">{t('empty')}</p> : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -43,7 +44,6 @@ export async function LeaveSplitReview({ session, query, companyIds }: { session
           </table>
         </div>
       )}
-      <Pager state={pageState(query, result.total, result.rows.length)} basePath="/admin/leave-config/balance-health" />
     </Card>
   );
 }

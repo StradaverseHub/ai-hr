@@ -871,6 +871,8 @@ export function SystemLabelsGrid({
 
         {/* Keep text columns readable beside Criteria and Head. The full-width grid scrolls inside
             its wrapper when these column minima exceed the available space. */}
+        {/* The rows-per-page choice is remembered per screen, so opening System Labels again keeps it. */}
+        <ClientPager state={pgState} rememberAs="system-labels" />
         <div className={tableWrapCls}>
           <table className="w-full text-sm" onPaste={onGridPaste}>
             <thead className={theadCls}>
@@ -1072,8 +1074,6 @@ export function SystemLabelsGrid({
             </tbody>
           </table>
         </div>
-        {/* The rows-per-page choice is remembered per screen, so opening System Labels again keeps it. */}
-        <ClientPager state={pgState} rememberAs="system-labels" />
         <p className="text-[11px] text-muted-foreground">{t('pasteHint')}</p>
       </div>
       )}

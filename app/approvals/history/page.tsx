@@ -161,6 +161,18 @@ export default async function ApprovalHistoryPage({
 
       <Card className="overflow-hidden">
         <SectionHeader title={t('rows')} count={items.length} />
+        <Pager
+          basePath="/approvals/history"
+          params={{
+            period: sp.period,
+            from: sp.from,
+            to: sp.to,
+            module: sp.module,
+            action: sp.action,
+            decider: sp.decider,
+          }}
+          state={pgState}
+        />
         {items.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('empty')}</p>
         ) : (
@@ -210,18 +222,6 @@ export default async function ApprovalHistoryPage({
             </tbody>
           </table>
         )}
-        <Pager
-          basePath="/approvals/history"
-          params={{
-            period: sp.period,
-            from: sp.from,
-            to: sp.to,
-            module: sp.module,
-            action: sp.action,
-            decider: sp.decider,
-          }}
-          state={pgState}
-        />
       </Card>
     </div>
   );

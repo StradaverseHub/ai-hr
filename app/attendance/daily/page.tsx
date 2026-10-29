@@ -150,6 +150,11 @@ export default async function DailyAttendancePage({
             {t('filters.apply')}
           </Button>
         </form>
+        <Pager
+          basePath="/attendance/daily"
+          params={{ date: sp.date, company: sp.company, dept: sp.dept, q: q || undefined }}
+          state={pgState}
+        />
         {/* Wide table — the extra columns scroll horizontally on narrow screens. */}
         <div className="overflow-x-auto">
           <table className="w-max min-w-full text-sm">
@@ -214,11 +219,6 @@ export default async function DailyAttendancePage({
             </tbody>
           </table>
         </div>
-        <Pager
-          basePath="/attendance/daily"
-          params={{ date: sp.date, company: sp.company, dept: sp.dept, q: q || undefined }}
-          state={pgState}
-        />
         <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">{t('dailyCalcNote')}</p>
       </Card>
     </div>

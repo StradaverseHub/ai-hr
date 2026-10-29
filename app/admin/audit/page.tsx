@@ -280,6 +280,7 @@ export default async function AuditPage({
 
       <Card data-tour="admin-audit-table" className="overflow-hidden">
         <SectionHeader title={t('events')} count={rows.length} />
+        <Pager basePath="/admin/audit" params={activeParams} state={pgState} exportHref={exportHref('csv')} />
         {groups.length === 0 ? (
           <AuditTable rows={rows} nowMs={nowMs} />
         ) : (
@@ -292,7 +293,6 @@ export default async function AuditPage({
             </div>
           ))
         )}
-        <Pager basePath="/admin/audit" params={activeParams} state={pgState} exportHref={exportHref('csv')} />
       </Card>
     </div>
   );

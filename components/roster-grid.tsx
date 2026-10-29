@@ -337,6 +337,7 @@ export function RosterGrid({
         <span className="ml-auto">{t('ghostHint')}</span>
       </div>
 
+      <ClientPager state={state} />
       {/* Grid */}
       {/* On compact views the identity block can be wider than the viewport. Let every column pan there;
           retain the shared pinned geometry on desktop and expose the pan region to keyboard users. */}
@@ -500,7 +501,6 @@ export function RosterGrid({
           </tbody>
         </table>
       </div>
-      <ClientPager state={state} />
     </div>
   );
 }
