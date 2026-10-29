@@ -251,7 +251,7 @@ export function validateFieldValue(field: Field, value: string): void {
     if (!Array.isArray(rows) || rows.length > 50 || !rows.every(row => Array.isArray(row) && row.length === (field.columns?.length ?? 0) && row.every(cell => typeof cell === 'string' && cell.length <= 1000))) throw new V9Error(`Enter valid rows for ${field.label}.`);
   }
 }
-export function documentFinal(d: Document): boolean { return ['completed', 'signed', 'acknowledged'].includes(d.status); }
+export function documentFinal(d: Document): boolean { return ['completed', 'signed', 'acknowledged'].includes(d.status) || d.templateType === 'Attachment' && ['sent', 'opened'].includes(d.status); }
 export function generate(c: Case, config: Config, templateId: string, env: Environment): Document {
   const existing = activeDocument(c, templateId); if (existing) return existing;
   const template = config.templates.find(t => t.id === templateId && t.module === c.module);
@@ -269,9 +269,9 @@ function linkedTasks(c: Case, doc: Document, action: TaskDefinition['documentAct
 }
 export function saveDocument(c: Case, id: string, values: Record<string, string>, owner: 'employee' | 'hr', env: Environment): void {
   const doc = c.documents.find(d => d.id === id); if (!doc) throw new V9Error('Document not found.', 'not_found');
+  if (owner === 'employee' && doc.templateType === 'Attachment') throw new V9Error('Attachments are read-only PDFs.', 'forbidden');
   if (c.state !== 'submitted' || documentFinal(doc) || ['withdrawn', 'superseded'].includes(doc.status)) throw new V9Error('This document is no longer editable.', 'conflict');
   if (owner === 'hr' && (doc.hrSignature || doc.employeeSignature)) throw new V9Error('Signed document fields are frozen. Prepare a new document to make this correction.', 'conflict');
-  if (owner === 'employee' && doc.templateType === 'Attachment') throw new V9Error('Attachments are read-only PDFs.', 'forbidden');
   if (owner === 'employee' && !['sent', 'opened'].includes(doc.status)) throw new V9Error('This document has not been released to you.');
   for (const [key, value] of Object.entries(values)) {
     const field = doc.fields.find(f => f.id === key); if (!field || field.owner !== owner) throw new V9Error('This field cannot be changed.', 'forbidden');
@@ -323,10 +323,21 @@ export function workflowMatches(c: Case, workflow: Workflow, today: string): boo
   });
 }
 function pendingPre(c: Case): (Task | Item)[] { const anchor = c.module === 'onb' ? c.facts.joinDate : c.facts.lastDay; return [...c.tasks, ...c.items].filter(t => !isResolved(t.status) && t.status !== 'notReturned' && t.dueOn <= anchor); }
-function skipReason(c: Case, workflow: Workflow): string {
+function skipReason(c: Case, workflow: Workflow, config: Config): string {
   const skip = workflow.trigger.skipIf;
   if (skip === 'noPre' && !pendingPre(c).length) return 'Nothing pending before the anchor date.';
-  if (skip === 'allDocsDone') { const ids = [...new Set(workflow.steps.filter(s => s.type === 'doc').map(s => s.template))]; if (ids.length && ids.every(id => { const d = activeDocument(c, id); return d && documentFinal(d); })) return 'All documents done.'; }
+  if (skip === 'allDocsDone') {
+    const referenced = new Set<string>();
+    for (const step of workflow.steps) {
+      if (step.type === 'doc' || step.type === 'waitSign') referenced.add(step.template);
+      else if (step.type === 'email') {
+        const email = config.emails.find(email => email.id === step.template);
+        for (const id of [...email?.links ?? [], ...email?.attachments ?? []]) referenced.add(id);
+      }
+    }
+    const ids = [...referenced].filter(id => config.templates.find(template => template.id === id)?.type !== 'Attachment');
+    if (ids.length && ids.every(id => { const document = activeDocument(c, id); return document && documentFinal(document); })) return 'All documents done.';
+  }
   if (skip.startsWith('task:') && c.tasks.some(t => t.name.toLocaleLowerCase() === skip.slice(5).toLocaleLowerCase() && isResolved(t.status))) return 'Linked task is done.';
   return '';
 }
@@ -449,7 +460,7 @@ export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: En
   let run = c.runs.find(r => r.id === runKey);
   if (run?.status === 'done') return run;
   if (!run) { run = { id: runKey, workflowId: workflow.id, revision: config.revision, date: env.today, status: 'running', cursor: 0, reason: '', at: env.now, definition: structuredClone(workflow), actor: { ...env.actor } }; c.runs.push(run); }
-  const skip = skipReason(c, workflow); if (skip) { if (run.status !== 'skipped' || run.reason !== skip) appendLog(c, env, 'workflow.skipped', `${workflow.name}: ${skip}`); run.status = 'skipped'; run.reason = skip; return run; }
+  const skip = skipReason(c, workflow, config); if (skip) { if (run.status !== 'skipped' || run.reason !== skip) appendLog(c, env, 'workflow.skipped', `${workflow.name}: ${skip}`); run.status = 'skipped'; run.reason = skip; return run; }
   run.status = 'running';
   try {
     while (run.cursor < workflow.steps.length) {

@@ -1075,7 +1075,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/admin/lifecycle',
     labelKey: 'nav.lifecycleConfig',
     guard: 'requireAdmin',
-    routes: ['/admin/lifecycle', '/lifecycle/v9'],
+    routes: ['/admin/lifecycle', '/lifecycle/v9', '/lifecycle/v9/onboarding/[id]'],
   },
   {
     screenKey: 'claimsConfig',

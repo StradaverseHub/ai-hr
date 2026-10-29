@@ -15,7 +15,7 @@ it('uses the native register, identities and progress while applying V9 company 
   const snapshot = JSON.stringify(data);
   const messages = JSON.parse(readFileSync('messages/en.json', 'utf8'));
   render(<NextIntlClientProvider locale="en" messages={messages} timeZone="Asia/Kuala_Lumpur"><NativeJoiners data={data} company="company-one" search="EMP-101"/></NextIntlClientProvider>);
-  expect(screen.getByRole('link', { name: 'Fictional Joiner One' })).toHaveAttribute('href', '/lifecycle/onboarding/cases/native-one');
+  expect(screen.getByRole('link', { name: 'Fictional Joiner One' })).toHaveAttribute('href', '/lifecycle/v9/onboarding/native-one');
   expect(screen.queryByRole('link', { name: 'Fictional Joiner Two' })).not.toBeInTheDocument();
   expect(screen.getByText('OB-001')).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'New Joiners' })).not.toBeInTheDocument();

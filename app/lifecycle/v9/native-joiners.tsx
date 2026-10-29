@@ -16,5 +16,5 @@ export function NativeJoiners({ data, company, search }: { data: NativeJoinersDa
     const facts = effectiveFacts(row.case);
     return (!company || facts.company === company) && (!query || `${facts.fullName} ${facts.employeeId} ${row.case.number}`.toLocaleLowerCase().includes(query));
   });
-  return <Joiners embedded rows={rows} config={data.config} options={data.options}/>;
+  return <Joiners embedded caseBasePath="/lifecycle/v9/onboarding/" rows={rows} config={data.config} options={data.options}/>;
 }

@@ -160,7 +160,10 @@ describe('C. app/layout.tsx writes the theme onto <html data-ui-theme>', () => {
     expect(htmlTags.length).toBe(4);
     expect(src.match(/<html\s+lang=\{locale\}\s+data-ui-theme=\{uiTheme\}/g) ?? []).toHaveLength(3);
     expect(src.match(/<html\s+lang=\{locale\}\s+data-ui-theme="classic"/g) ?? []).toHaveLength(1);
-    const v9Shell = src.slice(src.indexOf("if (pathname === '/lifecycle/v9')"), src.indexOf("const principals = await listPrincipals()"));
+    const start = src.indexOf("if (isLifecycleV9Path(pathname))"), end = src.indexOf("const principals = await listPrincipals()", start);
+    expect(start).toBeGreaterThanOrEqual(0); expect(end).toBeGreaterThan(start);
+    const v9Shell = src.slice(start, end);
+    expect(v9Shell).toContain("if (isLifecycleV9Path(pathname))");
     expect(v9Shell).toContain('forcedTheme="light" lifecycleV9');
     expect(v9Shell).toContain('<UiThemeProvider theme="classic">');
     // r401 — the cookie is read in ONE place, lib/ui-theme-server.ts, which the layout and the pages that branch

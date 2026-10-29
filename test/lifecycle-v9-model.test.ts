@@ -256,3 +256,15 @@ it('retains explicit email/workflow template references after retirement without
   const other = structuredClone(c); other.module = 'onb'; other.documents = [];
   expect(() => M.generate(other, config, definition.id, environment)).toThrow('this module');
 });
+
+
+it('finishes sent attachment PDFs and skips reminders using completed email-linked forms only', () => {
+  const { c, config, environment } = fixture(), form = template(), attachment = template(); attachment.id = 'pdf'; attachment.type = 'Attachment'; config.templates = [form, attachment];
+  const pdf = M.generate(c, config, attachment.id, environment); expect(M.documentFinal(pdf)).toBe(false); pdf.status = 'sent'; expect(M.documentFinal(pdf)).toBe(true); expect(pdf.employeeSignature).toBeNull();
+  const document = M.generate(c, config, form.id, environment); document.status = 'signed';
+  config.emails = [{ id: 'email', name: 'Forms reminder', module: 'off', active: true, sender: 'hr', subject: 'Reminder', body: '', cc: [], links: [form.id], attachments: [attachment.id], slots: [] }];
+  pdf.status = 'draft';
+  const reminder = workflow({ trigger: { event: 'submitted', days: 0, repeat: false, workdays: false, skipIf: 'allDocsDone' }, steps: [{ id: 'email', type: 'email', template: 'email', to: 'employee', cc: [] }] });
+  expect(M.runWorkflow(c, config, reminder, environment, 'submitted')).toMatchObject({ status: 'skipped', reason: 'All documents done.' });
+  expect(c.mails).toHaveLength(0);
+});
