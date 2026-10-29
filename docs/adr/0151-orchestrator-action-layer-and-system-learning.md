@@ -518,7 +518,8 @@ then missing clock-in, expiring documents and lifecycle steps) and give the agen
 Four registry entries now carry tier `automatic`: `approvals.claim.chase`, `approvals.attendance.chase` and
 `approvals.toil.chase` (category `chaser`, specialist `approval_chasers`) and `employees.review_overdue.remind`
 (category `reminder`, specialist `review_chasers`). Each declares an `automatic` block (overdue threshold in
-HR-local days, cooldown per item and stage, lifetime cap per item and stage, cap per run) that
+working days on the requester's roster minus holidays, the leave escalation's clock; registry defaults,
+per-company values a follow-up; cooldown per item and stage, lifetime cap per item and stage, cap per run) that
 `core/automatic-chasers.ts` enforces. They have no review store row, are never nominated, prepared or
 confirmed by a model, and stay out of the chat module contract, so existing specialist digests do not change.
 
@@ -527,13 +528,15 @@ management switch (`notifications.approval_chasers_enabled`, `notifications.revi
 off) attributed to the administrator who switched it on, re-checked in every effect transaction. A run appends
 one stamped `automatic-chase.*` event per item; nothing is approved, rejected, submitted or changed. The
 notification registry re-checks that the item still waits at the chased stage and tells its current approver
-(claims and replacement leave: the administrative manager, else company HR; attendance: the frozen workflow's
-undecided current-stage approvers; reviews: the manager at the manager stage, else company HR). Delegates are
+(claims and replacement leave: the administrative manager on a current, non-superseded line, else company HR;
+participant-routed attendance: only the participants the workflow's outstanding rule says can act now, so one in
+a sequential level; reviews: the manager at the manager stage, else company HR). Delegates are
 not chased, as for the leave escalation. Reminders before a review's end date stay the existing engine job.
 
-Migration 0697 adds the reference rows, the two switches to the AI control context, the principal's read and
-stamp policies for the new event types, two id-and-date-only source definers and an administrator-scoped
-outcome summary shown beside Assistant outcomes. Missing clock-in nudges, expiring documents and lifecycle step
+The two switches are template-only AI management agents: they never enter model admission, and the AI control
+context is unchanged. Migration 0697 adds the reference rows, the principal's read and stamp policies for the new
+event types, two id-and-date-only source definers, an outstanding-participant reader for attendance and an
+administrator-scoped outcome summary shown beside Assistant outcomes. Missing clock-in nudges, expiring documents and lifecycle step
 chasing are not yet built. The effective pause for these entries is their specialist switch (and
 `SETTING_KILL`); their `pauseKey` stays `hr_assistant` until WP12 widens it. This amendment proves no gate
 result or installation.
