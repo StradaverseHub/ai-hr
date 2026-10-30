@@ -34,12 +34,12 @@ import { resolveEntitlementsTx,assertModuleEnabled } from './entitlements';
 import { withAssistantReadTx, withAssistantJobReadsTx,withAssistantAdmissionReadsTx, type AssistantReadSession,type CanonicalModuleRead,type InterpretedModuleRead } from './assistant-read-session';
 import {captureMeasuredCases,compareMeasuredQuality} from '../lib/ai/paired-evaluation';
 import { executeRoutingHoldout, type RoutingEvaluationReport } from './module-agent-evaluation-harness';
-import { capturePromptPlanCandidate,adjudicatePromptReadPlan,promptCandidateSystem,PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT,PROMPT_SUITE_DIGEST,PROMPT_ENGINE_DIGEST,PROMPT_POLICY_DIGEST,PROMPT_INPUT_DIGEST,PROMPT_BASELINE } from '../lib/ai/module-agent-prompt-candidate';
+import { capturePromptPlanCandidate,adjudicatePromptReadPlan,PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT,PROMPT_SUITE_DIGEST,PROMPT_ENGINE_DIGEST,PROMPT_POLICY_DIGEST,PROMPT_INPUT_DIGEST,PROMPT_BASELINE } from '../lib/ai/module-agent-prompt-candidate';
 import { resolveAiProviderSnapshotTx } from './ai-provider-snapshot';
 import { governedAiConfig,withAiAdmissionCheck,withAiAdmissionLifecycle,bindStrictAiSpendRoot,preparePrivateAiTask } from './ai-governance';
 import { executePromptHoldout,promptMeasuredComparison,type PromptHoldoutReport,type PromptCase } from './module-agent-prompt-harness';
 import {draftInputDigest} from '../lib/ai/draft-input';
-import {HUMAN_PLAN_HOLDOUTS,HUMAN_PLAN_SUITE_DIGEST,humanQuestionPrompt} from '../lib/ai/human-plan-holdouts';
+import {HUMAN_PLAN_HOLDOUTS,HUMAN_PLAN_SUITE_DIGEST} from '../lib/ai/human-plan-holdouts';
 import { generateDraft } from '../lib/ai';
 import { assistantSourceDigest } from '../lib/ai/assistant-disclosure';
 type AgentReadResult=Awaited<ReturnType<AssistantReadSession['moduleWork']>>;
@@ -925,7 +925,15 @@ export async function evaluateHumanQuestionPlannerCandidate(ctx:SessionContext,i
  const cases:{id:string;state:'passed'|'failed'|'unavailable';outputDigest?:string;retained?:boolean}[]=[];let attempted=0,unavailable=0;
  const priorCases=Array.isArray(prepared.retained?.cases)?prepared.retained.cases:[];
  for(const fixture of HUMAN_PLAN_HOLDOUTS){const prior=priorCases.find(row=>row.id===fixture.id&&row.state==='passed');if(prior){cases.push({...prior,retained:true});continue;}attempted++;
-  let text:string;try{text=await generateDraft(prepared.cfg,{system:promptCandidateSystem(prepared.candidate.configuration),prompt:humanQuestionPrompt(fixture.question,fixture.locale),maxTokens:384,timeoutMs:15000});}catch{unavailable++;const failed=priorCases.find(row=>row.id===fixture.id&&row.state==='failed');cases.push(failed?{...failed,retained:true}:{id:fixture.id,state:'unavailable'});continue;}
+  let text:string;
+  try{
+   const task=await preparePrivateAiTask(prepared.cfg,'synthetic_read_plan_v1',async carrier=>{
+    const candidate=await candidateTx(carrier,current,prepared.candidate.id);
+    if(candidate.candidate_digest!==prepared.candidate.candidate_digest||candidate.author_user_id===current.userId)return fail();
+    return {version:1,suite:'human_plan_holdouts_v1',suiteDigest:HUMAN_PLAN_SUITE_DIGEST,candidate:candidate.configuration,fixtureId:fixture.id};
+   });
+   try{if(task.operation!=='draft')return fail();text=await generateDraft(task.configuration,task.args);}finally{task.dispose();}
+  }catch{unavailable++;const failed=priorCases.find(row=>row.id===fixture.id&&row.state==='failed');cases.push(failed?{...failed,retained:true}:{id:fixture.id,state:'unavailable'});continue;}
   let passed=false;try{const plan=adjudicatePromptReadPlan(text);passed=plan.decision===fixture.decision&&[...plan.modules].sort().join(',')===[...fixture.modules].sort().join(',');}catch{/* Typed refusal is not an invented success. */}
   cases.push({id:fixture.id,state:passed?'passed':'failed',outputDigest:routingDigest(text)});
  }

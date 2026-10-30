@@ -8,6 +8,7 @@ import {NATIVE_OUTLINE_KINDS as nativeOutlineKinds,type NativeOutlineSection,typ
 export {nativeParagraphOutline} from './native-insight-outline';
 export type {NativeOutlineSection,NativeInsightOutline} from './native-insight-outline';
 import {PROMPT_HOLDOUTS,promptCandidateSystem,capturePromptPlanCandidate} from './module-agent-prompt-candidate';
+import {HUMAN_PLAN_HOLDOUTS,HUMAN_PLAN_SUITE_DIGEST,humanQuestionPrompt} from './human-plan-holdouts';
 import {PERSONNEL_IMPORT_ASSISTANCE_REGISTRY} from '../personnel-import-assistance';
 import {ASSISTANT_CONVERSATION_HOLDOUTS} from './assistant-conversation-holdouts';
 import {captureAssistantConversationCandidate,assistantConversationCandidateSystem} from './assistant-conversation-candidate';
@@ -137,7 +138,16 @@ const contracts=Object.freeze({
   return {args:Object.freeze({system:stage==='first'?[protocolSystem]:[protocolSystem,'After the tool result, return exactly its marker and nothing else.'],turns,tools:[tool],maxTokens:1024,timeoutMs:15000})};
  }),
  synthetic_read_plan_v1:descriptor(['module_agent_evaluation'],'draft',input=>{
-  const r=row(input,['candidate','fixtureId']),candidate=capturePromptPlanCandidate(r.candidate),fixture=PROMPT_HOLDOUTS.find(f=>f.id===r.fixtureId);if(!fixture)return refuse();
+  const source=captureWorkloadSource(input);
+  // An explicit versioned branch selects only the twelve already-published human-planner
+  // fixtures. No locale, prose or expected answer can be substituted by the caller.
+  if(source&&typeof source==='object'&&!Array.isArray(source)&&Object.hasOwn(source,'version')){
+   const r=row(source,['version','suite','suiteDigest','candidate','fixtureId']);
+   if(r.version!==1||r.suite!=='human_plan_holdouts_v1'||r.suiteDigest!==HUMAN_PLAN_SUITE_DIGEST)return refuse();
+   const candidate=capturePromptPlanCandidate(r.candidate),fixture=HUMAN_PLAN_HOLDOUTS.find(f=>f.id===r.fixtureId);if(!fixture)return refuse();
+   return {args:Object.freeze({system:promptCandidateSystem(candidate),prompt:humanQuestionPrompt(fixture.question,fixture.locale),maxTokens:384,timeoutMs:15000})};
+  }
+  const r=row(source,['candidate','fixtureId']),candidate=capturePromptPlanCandidate(r.candidate),fixture=PROMPT_HOLDOUTS.find(f=>f.id===r.fixtureId);if(!fixture)return refuse();
   return {args:Object.freeze({system:promptCandidateSystem(candidate),prompt:fixture.question,maxTokens:384,timeoutMs:15000})};
  }),
  synthetic_assistant_conversation_v1:descriptor(['module_agent_evaluation'],'conversation',input=>{
