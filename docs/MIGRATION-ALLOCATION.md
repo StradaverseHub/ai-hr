@@ -402,3 +402,22 @@ The standard private `aihr-staging` alias was unavailable in this session, so th
 has **not** been verified. This is a provisional development/CI position, not an installation allocation.
 Before integration/application, reconcile competing source claims, actual ordered ledger and current
 canonical journal with the release owner. No applied SQL bytes, installation or acceptance are changed.
+
+## Feedback Kanban staging reconciliation — 30 October 2026
+
+The owner explicitly requested reconciliation, required release checks and staging deployment of
+PR114. Fresh main/alpha and healthy staging source are2ab4f6c12; staging build
+IlVluYN1mVKchUHs5im0D has571 applied entries, through0722 / sequence1793330000051.
+The repository's ordered exact-ledger verifier matched the entire prefix, including the two audited
+historical-byte identities. The prefix and every applied SQL byte remain unchanged.
+
+The earlier0727 filename is superseded by **0728_feedback_release_evidence**, idx686 /
+sequence**1793330000065**, because an unmerged Assistant draft also claims the0727 number.
+The SQL body is unchanged (SHA256 `d0914e5ec06a1f78b5e081164ab46330f37c29c8c3b2d0d6c592b205cee374c7`). A fresh inspection of1,928 local/origin refs
+and488 registered worktrees found no other claim at or above…065. The…052–064 claims remain
+unmerged development drafts, with collisions already present at…055 and…064; none is a prerequisite
+of this feedback change or included implicitly. Their owners must reallocate those unapplied entries
+above the actual installed watermark before their later integration/application. No foreign SQL,
+reservation or branch is edited. This owner-authorized migration-bearing release runs alone in the
+shared queue, against the complete unchanged canonical prefix. Installation still requires the frozen
+candidate's authenticated full release witness, populated-baseline upgrade proof and exclusive lease.

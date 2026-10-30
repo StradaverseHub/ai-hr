@@ -1,6 +1,7 @@
 /** Execute the actual operator SQL on disposable Postgres; the transport never contacts a host. */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
+import { readFileSync } from 'node:fs';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { feedbackBoardCounts, getFeedback, listFeedback, setFeedbackPlan, approveFeedbackPlan, submitFeedback, refuteDeployment } from '../core/feedback';
 import { recordFeedbackRelease } from '../scripts/improve/remote';
@@ -25,6 +26,30 @@ async function record(p: Parameters<typeof recordFeedbackRelease>[0]) {
   try { await connection.unsafe(text).simple(); } catch (error) { await connection.unsafe('ROLLBACK').simple(); throw error; } finally { connection.release(); }
 }
 describe('feedback release evidence', () => {
+  it('applies the real additive migration to populated pre-release Feedback tables without changing rows or RLS', async () => {
+    const first = await item(); await item(); await item();
+    const rollback = new Error('rollback-only-feedback-upgrade-proof');
+    let observed = false;
+    try {
+      await owner.db.transaction(async tx => {
+        // Reconstruct only this candidate's new column; every baseline table, policy and grant remains real.
+        await tx.execute(sql`ALTER TABLE feedback_request DROP COLUMN release`);
+        await tx.execute(sql`UPDATE feedback_request SET status='deployed' WHERE id=${first.id}`);
+        const before = Array.from(await tx.execute(sql`SELECT to_jsonb(f) AS row FROM feedback_request f ORDER BY id`));
+        const security = Array.from(await tx.execute(sql`SELECT relrowsecurity,relforcerowsecurity FROM pg_class WHERE oid='feedback_request'::regclass`));
+        expect(before).toHaveLength(3);
+        await tx.execute(sql.raw(readFileSync('db/migrations/0728_feedback_release_evidence.sql', 'utf8')));
+        const after = Array.from(await tx.execute(sql`SELECT to_jsonb(f)-'release' AS row FROM feedback_request f ORDER BY id`));
+        expect(after).toEqual(before);
+        expect(Array.from(await tx.execute(sql`SELECT release FROM feedback_request ORDER BY id`))).toEqual([{ release: null }, { release: null }, { release: null }]);
+        expect(Array.from(await tx.execute(sql`SELECT relrowsecurity,relforcerowsecurity FROM pg_class WHERE oid='feedback_request'::regclass`))).toEqual(security);
+        observed = true; throw rollback;
+      });
+    } catch (error) { if (error !== rollback) throw error; }
+    expect(observed).toBe(true);
+    expect((await getFeedback(adminCtx(base), first.id))?.release).toBeNull();
+  });
+
   it('requires staging → ready → production for the same exact build, records audit and filters/counts by that milestone', async () => {
     const p = await item();
     await expect(record({ ...p, stage: 'production' })).rejects.toThrow();
