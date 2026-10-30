@@ -118,6 +118,7 @@ it('preserves legacy prorated_basic semantics when a builder depends on a daily 
 it('reads an exact retained historical contribution instead of a current value or zero fallback',async()=>{
  await activate('Return 123.45');const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:context.period,payrollCycleId:context.cycleId});await generatePayslips(ctx,{batchId});
  const [slip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
- const saved=await savePayFormula(ctx,{formulaId:'HISTORY',description:'Exact source result',method:'write',source:`Return {#AnotherPayItems}("${item.code}", "${context.period}", "${context.cycleId}", "${slip.id}")`});
+ const [run]=await owner.db.select({runSeq:schema.payrollBatch.runSeq}).from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batchId));
+ const saved=await savePayFormula(ctx,{formulaId:'HISTORY',description:'Exact source result',method:'write',source:`Return {#AnotherPayItems}("${item.code}", "${context.period}", "${context.cycleId}", "${run.runSeq}")`});
  const result=await testPayFormula(ctx,{...saved,context:{...context,period:'2026-06',asOf:'2026-06-30'}});expect(result.passed,result.error??'retained source').toBe(true);expect(result.amount).toBe('123.45');
 });
