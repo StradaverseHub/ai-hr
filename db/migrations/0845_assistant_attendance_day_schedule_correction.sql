@@ -208,3 +208,59 @@ BEGIN
   EXECUTE replace(definition,marker,replacement);
  END LOOP;
 END $$;
+
+--> statement-breakpoint
+ALTER TABLE app.assistant_own_leave_review ADD COLUMN attendance_day_proof_version integer,ADD COLUMN attendance_day_dependencies text;
+--> statement-breakpoint
+ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_attendance_day_dependencies CHECK(
+ CASE WHEN action_kind='attendance.day_schedule.correct' THEN
+  (attendance_day_proof_version IS NULL AND attendance_day_dependencies IS NULL AND state<>'completed')
+  OR (attendance_day_proof_version IS NOT NULL AND attendance_day_proof_version=1 AND
+   ((state='awaiting_confirmation' AND attendance_day_dependencies IS NOT NULL AND attendance_day_dependencies ~ '^[a-f0-9]{64}$') OR (state<>'awaiting_confirmation' AND attendance_day_dependencies IS NULL)))
+ ELSE attendance_day_proof_version IS NULL AND attendance_day_dependencies IS NULL END);
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_attendance_day_schedule_arm(p_employment uuid,p_date date) RETURNS void
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app.assistant_attendance_day_schedule_scope(p_employment,p_date);
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND action_kind='attendance.day_schedule.correct' AND employment_id=p_employment AND day_schedule_date=p_date AND state='awaiting_confirmation' FOR UPDATE NOWAIT;
+ IF NOT FOUND OR r.attendance_day_proof_version IS DISTINCT FROM 1 OR r.attendance_day_dependencies IS NULL OR clock_timestamp()>=r.expires_at THEN RAISE EXCEPTION 'Attendance dependency arm unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_multi_cycle_run_review_identity(r.person_id);
+ IF app._assistant_attendance_dependency_digest(p_employment,p_date) IS DISTINCT FROM r.attendance_day_dependencies THEN RAISE EXCEPTION 'Attendance prepared dependencies changed' USING ERRCODE='42501';END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_attendance_day_schedule_arm(uuid,date) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_attendance_day_schedule_arm(uuid,date) TO ai_hr_app;
+--> statement-breakpoint
+ALTER FUNCTION app.assistant_attendance_day_schedule_command(text,uuid,uuid,uuid,uuid,uuid,date,text,text,text,text,text,uuid) RENAME TO _assistant_attendance_day_schedule_command_closure_previous;
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_attendance_day_schedule_command(p_operation text,p_id uuid DEFAULT NULL,p_person uuid DEFAULT NULL,p_employment uuid DEFAULT NULL,p_company uuid DEFAULT NULL,p_subject_person uuid DEFAULT NULL,p_date date DEFAULT NULL,p_intent text DEFAULT NULL,p_reviewed text DEFAULT NULL,p_kid text DEFAULT NULL,p_wrapped text DEFAULT NULL,p_ciphertext text DEFAULT NULL,p_event uuid DEFAULT NULL) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE old_row app.assistant_own_leave_review%ROWTYPE;output jsonb;dependencies text;expected jsonb;actual jsonb;
+BEGIN
+ IF p_operation='prepare' THEN
+  PERFORM app.assistant_attendance_day_schedule_scope(p_employment,p_date);
+  dependencies:=app._assistant_attendance_dependency_digest(p_employment,p_date);
+ ELSIF p_operation='complete' THEN
+  PERFORM app._assistant_multi_cycle_run_review_identity(NULL,false);
+  SELECT * INTO old_row FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND action_kind='attendance.day_schedule.correct' FOR UPDATE NOWAIT;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Attendance review unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ output:=app._assistant_attendance_day_schedule_command_closure_previous(p_operation,p_id,p_person,p_employment,p_company,p_subject_person,p_date,p_intent,p_reviewed,p_kid,p_wrapped,p_ciphertext,p_event);
+ IF p_operation='prepare' THEN
+  SELECT * INTO old_row FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND action_kind='attendance.day_schedule.correct' FOR UPDATE;
+  IF NOT FOUND OR old_row.state<>'awaiting_confirmation' OR old_row.person_id IS DISTINCT FROM p_person OR old_row.employment_id IS DISTINCT FROM p_employment OR old_row.company_id IS DISTINCT FROM p_company OR old_row.decision_subject_person_id IS DISTINCT FROM p_subject_person OR old_row.day_schedule_date IS DISTINCT FROM p_date OR old_row.receipt_subject_kind IS DISTINCT FROM 'employment' OR old_row.receipt_subject_id IS DISTINCT FROM p_employment OR old_row.intent_digest IS DISTINCT FROM p_intent OR old_row.reviewed_digest IS DISTINCT FROM p_reviewed THEN RAISE EXCEPTION 'Attendance prepare unavailable' USING ERRCODE='42501';END IF;
+  expected:=to_jsonb(old_row)||jsonb_build_object('attendance_day_proof_version',1,'attendance_day_dependencies',dependencies);
+  UPDATE app.assistant_own_leave_review SET attendance_day_proof_version=1,attendance_day_dependencies=dependencies WHERE id=p_id;
+  SELECT to_jsonb(q) INTO actual FROM app.assistant_own_leave_review q WHERE q.id=p_id;
+  IF actual IS DISTINCT FROM expected OR app._assistant_attendance_dependency_digest(p_employment,p_date) IS DISTINCT FROM dependencies
+  OR NOT EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content c WHERE c.action_id=p_id AND c.kid=p_kid AND c.wrapped_dek=p_wrapped AND c.ciphertext=p_ciphertext) THEN RAISE EXCEPTION 'Attendance protected prepare changed' USING ERRCODE='42501';END IF;
+  PERFORM app._assistant_multi_cycle_run_review_identity(p_person);
+  IF clock_timestamp()>=old_row.expires_at THEN RAISE EXCEPTION 'Attendance prepare expired' USING ERRCODE='42501';END IF;
+  RETURN app._assistant_attendance_day_schedule_json(p_id);
+ ELSIF p_operation='complete' AND old_row.state='awaiting_confirmation' THEN PERFORM app._assistant_attendance_completion_assert(p_id,to_jsonb(old_row),p_event);END IF;
+ RETURN output;
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_attendance_day_schedule_command(text,uuid,uuid,uuid,uuid,uuid,date,text,text,text,text,text,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_attendance_day_schedule_command(text,uuid,uuid,uuid,uuid,uuid,date,text,text,text,text,text,uuid) TO ai_hr_app;
+REVOKE ALL ON FUNCTION app._assistant_attendance_day_schedule_command_closure_previous(text,uuid,uuid,uuid,uuid,uuid,date,text,text,text,text,text,uuid) FROM PUBLIC,ai_hr_app;

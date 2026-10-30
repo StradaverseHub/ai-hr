@@ -29,6 +29,7 @@ export async function prepareDayScheduleSourceTx(tx:Tx,ctx:SessionContext,human:
 }
 export async function confirmDayScheduleSourceTx(tx:Tx,ctx:SessionContext,human:Human,expected:string,subject:DayScheduleSubject){
  const current=await prepareDayScheduleSourceTx(tx,ctx,human,subject);if(current.reviewedDigest!==expected)return fail();
+ await tx.execute(sql`select app.assistant_attendance_day_schedule_arm(${human.employmentId}::uuid,${human.date}::date)`);
  const native=await saveAttendanceDayEdit(ctx,nativeInput(human),tx,{returnEventId:true,reviewEffects:true});if(!native.eventId||!native.adjustmentId)return fail();
  const evidence=await readAttendanceDayScheduleEvidenceTx(tx,ctx,{employmentId:human.employmentId,date:human.date,eventId:native.eventId},true);
  if(JSON.stringify(evidence.before)!==JSON.stringify(current.review.before)||JSON.stringify(evidence.after)!==JSON.stringify(current.review.after))return fail();return{eventId:native.eventId};
