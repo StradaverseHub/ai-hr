@@ -6,23 +6,38 @@
 not release acceptance. [Draft PR 113](https://github.com/StradaverseHub/ai-hr/pull/113)
 is held; this work has not deployed to staging or production.
 
-The newest completed 30-route workload (`63b36a4c3`) retains **one million Claims
-and one million attendance rows**. All500 data journeys and native audit checks
-complete at both activity levels, but speed/browser acceptance fails:
+The newest completed 30-route workload (`d883ce28e`) retains **one million Claims
+and one million attendance rows**. All500 data journeys, allsix loaded browser
+journeys and native audit checks complete at both activity levels, but speed
+acceptance fails:
 
 | Activity pause | Read p95 | Mutation p95 | Complete data journeys | Complete loaded browsers |
 | --- | ---: | ---: | ---: | ---: |
-| [1s](https://github.com/StradaverseHub/ai-hr/actions/runs/41105246682) | 69.8s | 63.3s | 500/500 | 0/6 |
-| [5s](https://github.com/StradaverseHub/ai-hr/actions/runs/41105238515) | 64.5s | 57.3s | 500/500 | 1/6 |
+| [1s](https://github.com/StradaverseHub/ai-hr/actions/runs/41110032639) | 60.2s | 65.5s | 500/500 | 6/6 |
+| [5s](https://github.com/StradaverseHub/ai-hr/actions/runs/41110030713) | 50.6s | 53.9s | 500/500 | 6/6 |
 
 Both builds, migration runs and fixture assertions pass. Each verifies500 current-day
 attendance rows, no attendance before hire, all30 selected concurrent routes, nine
 authorization boundaries, no browser runtime errors and valid post-load native audit
-chains with only the known initialization prefix. Browser navigation timeouts remain
-failures. These separate hosted runners do not establish a causal scaling ratio.
+chains with only the known initialization prefix. Earlier browser timeouts remain
+failures in their original runs. These separate hosted runners do not establish a causal scaling ratio.
 An additional measured Home-role query fix is now an unapplied development migration.
 Its 188 affected application cases pass, and an exact-file populated-database
-comparison passes. Its HTTP/browser qualification remains pending.
+comparison passes. Its HTTP/browser qualification fails speed despite allsix
+browser journeys completing in each run.
+
+Actual CPU counters over the timed phase distinguish database and application work:
+one-second app367.75s / PostgreSQL660.36s over341.72wall seconds; five-second
+app327.05s / PostgreSQL629.65s over313.88wall seconds. Database throttling and host
+steal are zero. Host user/system counters include these components and Chromium,
+so they must not be added to component CPU. No production sizing claim follows.
+
+Six principals across roles/tenants each have create, edit and delete visibility
+observed every100ms through an independent committed-state reader. All18 per run
+become visible: one-second by12.2–19.9s, with35.7–50.6s remaining before their HTTP
+responses finish; five-second by10.8–20.6s, with25.3–42.5s remaining. These are
+upper bounds on when committed data became visible, not exact transaction timings
+or a causal attribution of the response tail. The frozen thresholds remain unmet.
 
 Earlier comparable development checkpoints are retained below with their original
 sources and narrower data volumes.
@@ -124,7 +139,7 @@ A reversible disposable-database experiment now isolates role/visibility plan re
 and a necessary reporting-edge precheck that retains the full original visibility
 query whenever any edge exists. The winning necessary-edge precheck is now drafted in unapplied migration0862;
 188 affected application cases and exact-file populated qualification pass; full
-HTTP/browser qualification remains pending. Function language, security
+HTTP/browser qualification fails speed. Function language, security
 attributes and execute ACLs remain unchanged. No installation has been changed.
 The first diagnostic run stopped before timing because the isolated worker lacked
 `pg_stat_statements`; its original failed setup is retained and the corrected run
@@ -134,6 +149,17 @@ The review-reader comparison on `cdb51ea36` uses 500 actual linked principals an
 five pairs of empty-queue reads each. Separate-before p95 is10,217.5ms, grouped
 5,197.5ms, separate-after9,666.1ms, with no errors. This supports the reader change;
 it does not establish an equivalent page-speed improvement or meet HTTP acceptance.
+
+Source `4303321f6` removes a redundant edit-policy refresh from the first profile
+task candidate read. That refresh took the exclusive access/profile write barriers
+and resolved edit settings even for an empty queue. The native reader/RLS still
+checks current routing and access in the candidate statement. Nonempty candidates
+still pass the existing second locked current-policy decision check; writers and
+decisions retain all their locks. A500-principal, three-reads-each native comparison
+measures p952,855.3ms before,978.9ms current and2,617.6ms restored, with identical
+empty outputs and forged-user/person refusals. The57 affected application cases
+pass. Full HTTP/browser qualification on `c6a904865` is pending; that additional
+commit changes only a diagnostic fixture's enum type, not its runtime value.
 
 | Run | Exact source and result |
 | --- | --- |
@@ -151,7 +177,12 @@ it does not establish an equivalent page-speed improvement or meet HTTP acceptan
 | [41107920846](https://github.com/StradaverseHub/ai-hr/actions/runs/41107920846) | `35a9544ed`: repaired native experiment PASS.500 actual principals/100 active probes: baseline p9513,995.9ms; role-plan12,102.5; necessary-edge guard98.8; visibility-plan wrappers5,841.0; restored baseline12,373.3. All phase identity/assignment/archival/forged-grant/foreign-subject checks and owner/ACL/security attributes PASS. Only the necessary-edge guard is selected for product SQL; global visibility wrappers are not adopted. |
 | [41110030641](https://github.com/StradaverseHub/ai-hr/actions/runs/41110030641) | `d883ce28e`: **188 affected application cases PASS** (159 DB,29 non-DB), zero skipped assertions, including future reporting-edge activation/revocation, current identity, isolation, sharing, restricted-owner and privacy boundaries. Whole compiler FAIL on a stray quote in the development diagnostic, not application source. Original failure retained. |
 | [41110027898](https://github.com/StradaverseHub/ai-hr/actions/runs/41110027898) | `d883ce28e`: exact-file Home-role diagnostic FAIL to load because of the same diagnostic syntax error. No timing claim from this run. |
-| [41111998461](https://github.com/StradaverseHub/ai-hr/actions/runs/41111998461) | `83d3e4304`: diagnostic-only syntax recovery; application and migration bytes unchanged. Exact-file populated native experiment PASS:500-principal inventory/100 active probes; canonical baseline p9528,335.5ms; guarded role178.4ms; restored baseline25,617.1ms. All phases return zero errors and pass live authorization checks; installed headers/security retained and original functions restored. Whole compiler remains pending. |
+| [41111998461](https://github.com/StradaverseHub/ai-hr/actions/runs/41111998461) | `83d3e4304`: diagnostic-only syntax recovery; application and migration bytes unchanged. Exact-file populated native experiment PASS:500-principal inventory/100 active probes; canonical baseline p9528,335.5ms; guarded role178.4ms; restored baseline25,617.1ms. All phases return zero errors and pass live authorization checks; installed headers/security retained and original functions restored. Whole compiler FAIL: diagnostic fixture reporting-line enum widened to string. The `as const` repair on `c6a904865` changes no runtime value; compiler recovery is separate. |
+| [41110032639](https://github.com/StradaverseHub/ai-hr/actions/runs/41110032639), [41110030713](https://github.com/StradaverseHub/ai-hr/actions/runs/41110030713) | `d883ce28e`: exact Home migration,30-route HTTP/browser with one million Claims and one million attendance records. Both complete500/500 CRUD journeys, allsix loaded browsers, all30routes, nine boundaries and native audit verification, with zero journey/runtime errors. One-second p95 read/write60.2/65.5s; five-second50.6/53.9s. **Speed FAIL**. Actual component CPU and18 visibility observations per run are described above. |
+| [41113395991](https://github.com/StradaverseHub/ai-hr/actions/runs/41113395991) | `4303321f6`: profile queue native comparison PASS;500 linked principals/three reads each per phase, p95 before2,855.3ms/current978.9ms/restored2,617.6ms; zero errors and forged user/person refusals. Empty-queue component evidence only. |
+| [41113396927](https://github.com/StradaverseHub/ai-hr/actions/runs/41113396927) | `4303321f6`: **57 affected cases PASS** (40 DB,17 non-DB), zero skipped assertions. Native profile assignments, actual decisions, denied/revoked photo access, field routing and policy behavior. Compiler qualification is separate; this source still carries the diagnostic enum typing error retained above. |
+| [41113543529](https://github.com/StradaverseHub/ai-hr/actions/runs/41113543529) | `c6a904865`: diagnostic enum typing repair; nine selected profile-option cases PASS, zero skips. Whole compiler pending. |
+| [41113693279](https://github.com/StradaverseHub/ai-hr/actions/runs/41113693279), [41113711375](https://github.com/StradaverseHub/ai-hr/actions/runs/41113711375) | Frozen `c6a904865`: one/five-second30-route full HTTP/browser recovery, one million Claims plus one million attendance rows, unchanged speed checks. Pending. |
 
 ## Workload and acceptance
 
@@ -203,7 +234,7 @@ it does not establish an equivalent page-speed improvement or meet HTTP acceptan
 | ORM | Application transactions no longer construct unused relational-query helpers for 319 schema tables. Explicit typed table queries remain; application, maintenance and bootstrap factories agree. |
 | Workforce access | The sealed read-only scope projection takes a shared advisory lock on the existing key. Configuration writers retain exclusive locks; no read-to-write upgrade or permission-result cache was added. |
 | Session and visibility SQL | Development migrations retain the canonical queries and cache PL/pgSQL execution plans per connection. Current principals, grants, termination and dates remain freshly evaluated; data/results are not cached. |
-| Home role read | An unapplied necessary reporting-edge gate avoids unrelated visibility evaluations for unassigned employees. If any eligible edge exists, the entire original visibility query remains authoritative. The188 affected cases and exact-file populated comparison pass; full load recovery remains pending. |
+| Home role read | An unapplied necessary reporting-edge gate avoids unrelated visibility evaluations for unassigned employees. If any eligible edge exists, the entire original visibility query remains authoritative. The188 affected cases and exact-file populated comparison pass; both full loads pass browser/functional checks but fail speed. |
 | Date display | Reuse immutable Kuala Lumpur date/time formatter objects; dates and formatted results remain fresh. Midnight, leap-day and year-boundary test cases cover behavior. |
 | Payroll, attendance and reports | SQL paging/aggregates and narrowed source reads; totals remain global to authorized scope. Employee Master avoids an export for its count and explicitly bounds source rows. |
 | Personnel | Authorized remote search returns eight matches, aborts stale requests and preserves current selection. No unbounded employment download for the picker. |
