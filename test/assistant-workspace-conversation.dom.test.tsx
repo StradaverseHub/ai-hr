@@ -3,6 +3,7 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
+import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
 const state=vi.hoisted(()=>({ask:vi.fn()}));
 vi.mock('../app/assistant/launcher-actions',()=>({askFromWorkspaceAction:state.ask}));
 import {WorkspaceConversation} from '../components/assistant/workspace-conversation';
@@ -12,12 +13,13 @@ function send(question:string){fireEvent.change(screen.getByLabelText(copy.works
 beforeEach(()=>state.ask.mockReset());afterEach(cleanup);
 describe('in-place Assistant conversation',()=>{
  it('shows the question and waiting reply immediately, keeps earlier replies and passes the opaque continuation only after success',async()=>{
-  let resolve!:(value:unknown)=>void;state.ask.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));show();
+  let resolve!:(value:unknown)=>void;state.ask.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));const view=show();
   send('How much leave do I have?');
   expect(screen.getByRole('log')).toHaveTextContent('How much leave do I have?');expect(screen.getByRole('log')).toHaveTextContent(chat.thinking);
   expect(screen.getByRole('button',{name:copy.workspace.working})).toBeDisabled();expect(state.ask).toHaveBeenCalledTimes(1);
   expect(state.ask).toHaveBeenCalledWith({question:'How much leave do I have?'});
   await act(async()=>resolve({ok:true,exchangeId:'exchange-1',conversationToken:'opaque-1',answer:<p>Annual leave: 12 days</p>}));
+  await captureAiReviewScreenshots(aiReviewDomHtml(view.container),'en','overview','Real in-place conversation component; fictional authorized-command response; no authenticated server/provider journey');
   state.ask.mockResolvedValueOnce({ok:true,exchangeId:'exchange-2',conversationToken:'opaque-2',answer:<p>Pending leave: 2 days</p>});send('And how much is pending?');
   await waitFor(()=>expect(screen.getByText('Pending leave: 2 days')).toBeInTheDocument());
   expect(screen.getByText('Annual leave: 12 days')).toBeInTheDocument();expect(state.ask).toHaveBeenLastCalledWith({question:'And how much is pending?',previousExchangeId:'exchange-1',previousConversationToken:'opaque-1'});

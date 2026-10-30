@@ -30,7 +30,7 @@ export async function askFromLauncherAction(input: { question: unknown; path: un
     const areas = await getTranslations('assistant.launcher.areas');
     text = `${question}\n\n[${t('launcher.contextNote', { area: areas(context.area) })}${context.recordId ? ` · ${context.recordId}` : ''}]`;
   }
-  if (!question || text.length > 2000 || input.previousExchangeId !== undefined && (typeof input.previousExchangeId !== 'string'||typeof input.previousConversationToken !== 'string')) return { ok: false, message: t('err_invalid_question') };
+  if (!question || text.length > 2000 || (input.previousExchangeId===undefined)!==(input.previousConversationToken===undefined) || input.previousExchangeId !== undefined && (typeof input.previousExchangeId !== 'string'||typeof input.previousConversationToken !== 'string')) return { ok: false, message: t('err_invalid_question') };
   try {
     const session = await getBrowserCommandSession();
     const conversationScope=JSON.stringify((await getScopeIds((await allowedCompanies(session)).map(company=>company.id))).sort());

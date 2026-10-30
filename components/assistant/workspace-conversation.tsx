@@ -35,7 +35,7 @@ export function WorkspaceConversation({initialTurn,tasks,fileImport,composer}:{i
    <div ref={log} role="log" aria-label={c('title')} aria-live="polite" aria-relevant="additions text" onScroll={()=>{const el=log.current;if(el){follow.current=el.scrollHeight-el.clientHeight-el.scrollTop<64;if(follow.current)setUnseen(false);}}} className="max-h-[60dvh] space-y-8 overflow-y-auto overscroll-contain px-1 text-sm leading-relaxed [overflow-anchor:none]">
     {turns.map(turn=><div key={turn.id} className="space-y-4">
      <p className="ml-auto w-fit max-w-[90%] whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-3">{turn.question}</p>
-     <div className="min-w-0 break-words px-1">{!turn.reply?<p role="status" className="text-muted-foreground">{c('thinking')}</p>:turn.reply.ok?turn.reply.answer:<p role="alert">{turn.reply.message}</p>}</div>
+     <div className="min-w-0 break-words px-1">{!turn.reply?<p role="status" className="text-muted-foreground">{c('thinking')}</p>:turn.reply.ok?(turn.reply.answer??<p role="status">{t('workspace.conversation.unavailable')}</p>):<p role="alert">{turn.reply.message}</p>}</div>
     </div>)}
    </div>
    {unseen&&<button type="button" onClick={()=>{follow.current=true;if(log.current)log.current.scrollTop=log.current.scrollHeight;setUnseen(false);}} className="mx-auto block min-h-11 rounded-full border border-border px-4 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{c('latest')}</button>}
