@@ -1,6 +1,6 @@
 /** Real native requests/custody; fictional actors only. No provider or binary workflow. */
 import {randomUUID} from 'node:crypto';
-import {eq,sql} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,afterEach,it,expect,vi} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {pgSqlState} from '../lib/db-error';
@@ -9,6 +9,7 @@ import * as vault from '../lib/pii/vault';
 import {hireEmployee} from '../core/org';
 import {createCompany} from '../core/admin';
 import {decideProfileChange} from '../core/profile';
+import {dispatchNotifications} from '../core/notifications';
 import {setTenantSetting} from '../core/tenant-settings';
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {readOwnProfileWorkspace,submitOwnProfileEdit} from '../core/profile-edit';
@@ -164,4 +165,15 @@ it('keeps all dedicated hybrid columns closed through the finite generic branch 
   let failure:unknown;try{await owner.db.execute(sql`update app.assistant_own_leave_review set ${sql.identifier(column.name)}=${value} where id=${r.actionId}::uuid`);}catch(error){failure=error;}expect(pgSqlState(failure),column.name+' must remain closed').toBe('23514');
  }
  expect(await stored(r.actionId)).toMatchObject({state:'awaiting_confirmation',bodies:1});expect(await row(id)).toMatchObject({status:'pending'});expect(await events(id)).toHaveLength(0);
+});
+
+it('retains the native subject notification projection without leaking reason or proposal values or duplicating delivery work',async()=>{
+ await setModule(b.tenantId,'notifications','active');await createAppUser(b.tenantId,subject.personId,'employee');
+ const id=await request(),reason='Private human rejection explanation',r=(await reviews.prepare(hr,human(id,reason))).review;
+ expect(await events(id)).toHaveLength(0);await reviews.confirm(hr,confirmation(r));const audit=await events(id);expect(audit).toHaveLength(1);
+ const dispatchCtx=await entitledCtx(b);await dispatchNotifications(dispatchCtx,{});
+ const notices=()=>owner.db.select().from(schema.notification).where(and(eq(schema.notification.tenantId,b.tenantId),eq(schema.notification.sourceEventId,audit[0].id)));
+ const rows=await notices();expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({recipientEmploymentId:subject.employmentId,sourceEventId:audit[0].id,kind:'profile.rejected',linkPath:'/me'});
+ expect(JSON.stringify(rows)).not.toContain(reason);expect(JSON.stringify(rows)).not.toContain('Private requested name');
+ await reviews.confirm(hr,confirmation(r));await dispatchNotifications(dispatchCtx,{});expect(await notices()).toEqual(rows);expect(await events(id)).toHaveLength(1);
 });

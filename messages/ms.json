@@ -20248,7 +20248,7 @@
         "description": "Semak satu permintaan menunggu dan sebab penolakan anda.",
         "intro": "Pilih permintaan menunggu. Baca di skrin Personel, kemudian masukkan sebab sendiri. Permintaan foto, lampiran dan daftar kekal dalam aliran asal.",
         "invalid": "Pilih permintaan yang layak dan masukkan sebab sehingga 2,000 aksara.",
-        "consequence": "Permintaan menjadi ditolak dan pekerja boleh membaca sebab anda. Tiada medan profil yang dicadangkan digunakan.",
+        "consequence": "Permintaan menjadi ditolak dan pekerja boleh membaca sebab anda. Tiada medan profil yang dicadangkan digunakan. Pemberitahuan dalam aplikasi dan e-mel aliran kerja yang layak mengikut tetapan organisasi serta pilihan pekerja.",
         "doneMessage": "Permintaan asal telah ditolak. Tiada medan profil yang dicadangkan digunakan.",
         "reason": "Sebab penolakan",
         "reasonHelp": "Wajib. Pekerja akan melihat sebab ini.",
