@@ -108,7 +108,7 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
     const selectedProvider = !usable ? null : provider ? activeProvider ? {provider:activeProvider.provider,model:activeProvider.model} : provider.envFallback : resolved;
     // Only provider/model metadata crosses to the view, after checking that its key can be resolved.
     const features = AI_FEATURES.map(f => {
-      if(f.kind==='agent'){const status=scheduledAgentFeatureStatus(fresh,f);return {...f,enabled:status.enabled,state:status.state,mayWrite:isGroupAdmin(ctx)};}
+      if(isScheduledAgentFeature(f)){const status=scheduledAgentFeatureStatus(fresh,f);return {...f,enabled:status.enabled,state:status.state,mayWrite:isGroupAdmin(ctx)};}
       const setting = f.setting ? SETTING_CATALOG.find(s => s.key === f.setting) : undefined;
       const enabled = setting ? (fresh.entitlements.settings[f.setting!] ?? setting.defaultValue) === true : policies.find(p => p.scopeKey === `feature:${f.id}`)?.enabled !== false;
       const effective = enabled && (!setting || getSetting(fresh,f.setting!) === true);
