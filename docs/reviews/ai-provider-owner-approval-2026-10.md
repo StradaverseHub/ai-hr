@@ -154,3 +154,36 @@ Further covered-byte changes require another exact technical disposition. A gene
 does not renew human approval. Fresh exact-source hosted checks remain required; prior failures and
 original receipts are retained under their actual SHAs. This technical refresh grants no release
 or deployment authority by itself.
+
+
+## Technical source binding — 31 October 2026, reviewed effect closure
+
+The release coordinator authorized only a technical source binding refresh on the SAME24 existing
+active approved records for exact source `82859a9a38d6624f146839d17a20a088aae3db13` and its
+fixture-only child `343378a622aaaa6088cb21c934c2552a4a72e0ab`. Original human wording, statuses,
+reviewer identities, evidence anchors and `2026-10-30T06:19:30Z` provenance remain unchanged;
+both pending blocks remain byte-identical. This is not a new human approval, privacy certification,
+data-purpose consent, runtime PASS or staging acceptance.
+
+Independent Rewards review retained the exact **1133-file** closure and approved the combined
+`3101bb6ef51eda1a07e9df4c5b38f6b61fdecab8` → `f7b88466ea29f470584f86c58d60feaf51a120c6`
+Bank/Organisation custody delta, followed by the exact three covered Attendance source files from
+`f7b88466ea29f470584f86c58d60feaf51a120c6` → `82859a9a38d6624f146839d17a20a088aae3db13`.
+The earlier technical digest `7e377aa5ee42e92ad3deab73a896b94b381af55f70d55a33b3d66215bb8b3e94`
+and final digest `3700a99d68fe80c8d85aaa92300dd27f97d87e14bf05346fac97c54492735bcd` were independently reconstructed; closure membership did not change.
+The SAME24 literals move from `c35cdfc5b601063f2f3158b073d631c3838fbacd57a7854cd969c4b6936b3b04` to the reviewed final digest only.
+
+Review provenance: `rewards-provider-scope-technical-review-f7b88466-20261031.md`,
+`rewards-provider-scope-technical-review-82859a9a-20261031.md` (SHA256 `c8522b3713b928d0c23c7e93154a164506b3165c026aa4fa41b8e74d3839b52c`),
+and `rewards-provider-closure-82859a9a.json` (SHA256 `3a8bdd768a3c3c5af8235eb939427586e9104e8532749df761457a0890c26bbe`).
+The final covered delta is limited to the day-schedule source, schedule-group source and generic
+assigned review preparation owner. Native IDs/amounts remain in local encrypted custody; the
+arm/current-state checks add restrictions without replacing native authority. Provider serializers,
+workload descriptors, gateway transports, spend, replay, output adjudication and fixed synthetic
+purposes remain unchanged. Operator fixtures and Payroll SQL add no provider serializer capability.
+No raw text, identity, HR dates/amounts, model money calculation or autonomous sensitive effect is
+authorized. These controls are not an anonymity guarantee.
+
+Prior failures and source receipts remain at their actual producing SHAs. Fresh source-bound hosted
+qualification and separate authenticated release evidence remain required. Further covered-source
+changes require another exact technical disposition; generated identities alone grant no approval.
