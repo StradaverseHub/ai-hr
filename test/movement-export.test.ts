@@ -53,6 +53,7 @@ const rev = (over: Partial<MovementReversal> = {}): MovementReversal => ({
 
 function row(over: Partial<MovementExportRow> = {}): MovementExportRow {
   return {
+    id: '7d1c2e4a-5b6f-4a8b-9c0d-1e2f3a4b5c6d',
     kind: 'promotion',
     status: 'applied' as MovementStatus,
     reversed: null,
@@ -160,17 +161,18 @@ describe('e6a144d4 — Employment History export builder', () => {
     expect(noReason[13]).toBe('');
   });
 
-  it('the fourteen approved columns, in the approved order', () => {
+  it('the approved columns in the approved order, then the Movement Event ID (646355e5 slice C)', () => {
     expect(movementExportColumns(t)).toEqual([
       'Event Type', 'Event Status', 'Effective Date', 'Recorded at', 'End Date', 'Company', 'Division',
       'Department', 'Section', 'Job Title', 'Currency', 'Basic Salary', 'Remarks', 'Correction Reason',
+      'Movement Event ID',
     ]);
   });
 
   it('header list and row shape cannot drift — every row is exactly as wide as the header', () => {
     const rows = [row(), row({ status: 'pending' }), row({ status: 'reversed', reversed: rev() })];
     const built = buildMovementExport(rows, { t, kindLabel });
-    expect(built.columns).toHaveLength(14);
+    expect(built.columns).toHaveLength(15);
     for (const r of built.rows) expect(r).toHaveLength(built.columns.length);
   });
 
@@ -178,7 +180,7 @@ describe('e6a144d4 — Employment History export builder', () => {
     for (const loc of LOCALES) {
       const tl = translator(loc);
       const cols = movementExportColumns(tl);
-      expect(cols, `${loc}.json`).toHaveLength(14);
+      expect(cols, `${loc}.json`).toHaveLength(15);
       for (const c of cols) expect(typeof c === 'string' && c.length > 0, `${loc}.json blank caption`).toBe(true);
       // The status captions the file prints, in every locale.
       for (const s of ['applied', 'pending', 'superseded'] as const) {
@@ -188,6 +190,16 @@ describe('e6a144d4 — Employment History export builder', () => {
         expect(typeof tl(`movement.${b}`), `${loc}.json missing movement.${b}`).toBe('string');
       }
     }
+  });
+
+  it('prints the Movement Event ID an import Update or Delete names, and none for the Hired row', () => {
+    const [promotion, hired, pseudo] = movementExportRows(
+      [row(), row({ kind: 'hired', id: '8e2d3f5b-6c7a-4b9c-8d1e-2f3a4b5c6d7e' }), row({ id: 'hired' })],
+      { t, kindLabel },
+    );
+    expect(promotion[14]).toBe('7d1c2e4a-5b6f-4a8b-9c0d-1e2f3a4b5c6d');
+    expect(hired[14]).toBe('');
+    expect(pseudo[14]).toBe('');
   });
 
   it('names the file with the employee ID, the name and EmploymentHistory', () => {

@@ -30,6 +30,10 @@ export type TwoStep = {
   noLabel: string;
 };
 
+/** 646355e5 — an optional required confirmation checkbox. Confirm stays disabled until it is ticked, and
+ *  the ticked value posts as `name=1` through a hidden input kept in the form (same Portal caveat). */
+export type AcknowledgementField = { name: string; label: string; warning?: string };
+
 type Props = {
   children: React.ReactNode;
   title?: string;
@@ -38,6 +42,7 @@ type Props = {
   description?: string;
   confirmLabel?: string;
   reasonField?: ReasonField;
+  acknowledgement?: AcknowledgementField;
   twoStep?: TwoStep;
   /** f00bd1eb — the dismiss button's words when "Cancel" would be wrong (a refusal is closed, not cancelled). */
   cancelLabel?: string;
@@ -63,6 +68,7 @@ export function ConfirmSubmit({
   description,
   confirmLabel,
   reasonField,
+  acknowledgement,
   twoStep,
   cancelLabel,
   confirmVariant,
@@ -76,9 +82,11 @@ export function ConfirmSubmit({
   const [reason, setReason] = React.useState('');
   const [step, setStep] = React.useState<1 | 2>(1);
   const [checked, setChecked] = React.useState<string[]>([]);
+  const [acknowledged, setAcknowledged] = React.useState(false);
   const onStep2 = !!twoStep && step === 2;
   const confirmDisabled =
-    (!!reasonField?.required && reason.trim().length === 0) || (!!twoStep && checked.length === 0);
+    (!!reasonField?.required && reason.trim().length === 0) || (!!twoStep && checked.length === 0) ||
+    (!!acknowledgement && !acknowledged);
   return (
     <AlertDialog.Root
       onOpenChange={(open) => {
@@ -86,12 +94,14 @@ export function ConfirmSubmit({
           setReason('');
           setStep(1);
           setChecked([]);
+          setAcknowledged(false);
         }
       }}
     >
       {/* Hidden mirrors live inside the enclosing <form> (unlike the portalled dialog body) so the
           reason text / checked reason codes are included in the submitted FormData. */}
       {reasonField ? <input type="hidden" name={reasonField.name} value={reason} /> : null}
+      {acknowledgement && acknowledged ? <input type="hidden" name={acknowledgement.name} value="1" /> : null}
       {twoStep
         ? checked.map((v) => <input key={v} type="hidden" name={twoStep.name} value={v} />)
         : null}
@@ -146,6 +156,20 @@ export function ConfirmSubmit({
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring dark:bg-input/30"
               />
             </label>
+          ) : null}
+          {acknowledgement ? (
+            <div className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+              {acknowledgement.warning ? <p className="mb-2">{acknowledgement.warning}</p> : null}
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={acknowledged}
+                  onChange={(e) => setAcknowledged(e.target.checked)}
+                  className="mt-1"
+                />
+                <span>{acknowledgement.label}</span>
+              </label>
+            </div>
           ) : null}
           <div className="mt-5 flex justify-end gap-2">
             <AlertDialog.Cancel asChild>

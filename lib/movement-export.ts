@@ -23,6 +23,7 @@ export type MovementExportStatusRow = Pick<MovementHistoryRow, 'status' | 'rever
 export type MovementExportRow = MovementExportStatusRow &
   Pick<
     MovementHistoryRow,
+    | 'id'
     | 'kind'
     | 'effectiveDate'
     | 'entryDate'
@@ -62,7 +63,7 @@ export function movementStatusLabel(row: MovementExportStatusRow, t: MovementExp
 }
 
 /**
- * The fourteen column captions, left to right, as the approved mockup draws them.
+ * The column captions, left to right, as the approved mockup draws them.
  *
  * Only three of these keys are new (`columns.eventStatus`, `columns.correctionReason`, and the button's
  * own `exportExcel` which lives on the page). The rest are the captions the screen and the detail view
@@ -86,8 +87,16 @@ export function movementExportColumns(t: MovementExportTranslator): string[] {
     t('movement.field.basicSalary'),
     t('movement.columns.remarks'),
     t('movement.columns.correctionReason'),
+    // 646355e5 slice C — the id a Movement import Update or Delete row names. Last, so the approved columns
+    // keep their places; blank for the Hired row, which is corrected on its own form and never deleted.
+    t('movement.columns.movementId'),
   ];
 }
+
+const MOVEMENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** The Movement Event ID cell: the event's own id, never the Hired row's pseudo-id. */
+export const movementExportId = (r: Pick<MovementHistoryRow, 'id' | 'kind'>): string =>
+  r.kind !== 'hired' && MOVEMENT_ID.test(r.id) ? r.id : '';
 
 /** Blank cells are EMPTY, never the on-screen em-dash — a dash is a value to a spreadsheet, and it
  *  poisons sorting and filtering on the column it sits in. */
@@ -124,6 +133,7 @@ export function movementExportRows(
     blank(r.remarks),
     // The reason typed in when the event was rolled back or cancelled; blank on events that were neither.
     blank(r.reversed?.reason),
+    movementExportId(r),
   ]);
 }
 

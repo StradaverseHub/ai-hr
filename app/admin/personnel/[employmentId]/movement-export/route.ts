@@ -70,7 +70,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ employm
     rows: built.rows,
     layout: {
       orientation: 'landscape',
-      // Event Type + Event Status stay in view as the reader scrolls the fourteen columns sideways.
+      // Event Type + Event Status stay in view as the reader scrolls the columns sideways.
       freeze: 2,
       subtitle: employeeLabel(emp.employeeCode, emp.name),
       description: emp.company ?? undefined,

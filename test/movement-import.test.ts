@@ -154,7 +154,9 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
 
  it('does not offer or execute a corrupt custom lifecycle mapping hidden behind an otherwise active code',async()=>{
   const id=await hire(),before=await state(id),ctx=adminCtx(b);
-  await owner.db.insert(movementEventType).values({tenantId:b.tenantId,code:'forged_exit',label:'Fictional forged lifecycle type',behaviourKind:'termination',isActive:true});
+  // 1d58019a Step 2 (ADR-0166) — Termination is a configurable behaviour now, so the forged mapping uses a
+  // lifecycle kind that is still out of reach for a tenant's own type.
+  await owner.db.insert(movementEventType).values({tenantId:b.tenantId,code:'forged_exit',label:'Fictional forged lifecycle type',behaviourKind:'probationExtension',isActive:true});
   expect((await movementImportCatalog(ctx,b.companyId)).types.some(type=>type.code==='forged_exit')).toBe(false);
   expect((await ready(csv([['EMP-0004','forged_exit',day(-1),'','','']]))).valid).toBe(0);expect(await state(id)).toEqual(before);
  });
@@ -183,8 +185,9 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
   const beforeBatch=await owner.db.select().from(payrollBatch).where(eq(payrollBatch.id,batch.id)),beforeSlips=await owner.db.select().from(payslip).where(eq(payslip.batchId,batch.id)).orderBy(asc(payslip.id));
   const text=csv([['EMP-0004','transfer',effective,b.deptB,'','Fictional historic transfer']]),preview=await ready(text);expect(preview.valid).toBe(1);expect((await commit(text,preview)).imported).toBe(1);
   expect(await owner.db.select().from(payrollBatch).where(eq(payrollBatch.id,batch.id))).toEqual(beforeBatch);expect(await owner.db.select().from(payslip).where(eq(payslip.batchId,batch.id)).orderBy(asc(payslip.id))).toEqual(beforeSlips);
-  const movement=(await movementHistory(ctx,id)).find(row=>row.kind==='transfer');expect(movement).toMatchObject({payrollLocked:true,canEdit:false,canReverse:false});
-  await expect(reverseMovementEvent(ctx,{employmentId:id,movementId:movement!.id,reason:'Fictional forbidden rollback'})).rejects.toThrow();
+  const movement=(await movementHistory(ctx,id)).find(row=>row.kind==='transfer');expect(movement).toMatchObject({payrollLocked:true,canReverse:true});
+  // 646355e5 — the closed run no longer locks the row, but a correction without the acknowledgement is refused.
+  await expect(reverseMovementEvent(ctx,{employmentId:id,movementId:movement!.id,reason:'Fictional unacknowledged rollback'})).rejects.toThrow(/already closed/);
  });
 
  it('rolls back transactional label epochs and an actually armed audit chain during preview',async()=>{

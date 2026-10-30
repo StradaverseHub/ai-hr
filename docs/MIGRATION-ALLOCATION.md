@@ -26,6 +26,61 @@ or protected-ref update is authorized by this source allocation.
 | --- | ---: | ---: | --- | --- |
 | Feedback menu switch | 683 | 1793330000031 | 0696_feedback_menu_operator_switch | Platform setting `feedback.menu_enabled` and operator-only read/write functions |
 
+## Board item 1d58019a (Movement Settings Steps 1 and 2): renumbered on 30 October 2026
+
+Both 1d58019a migrations are unapplied anywhere. Staging runs c4fad43c1, whose journal ends at 0698. Both are
+renumbered so that they append after every competing claim. The reason is that Step 1's original allocation,
+`0713_movement_settings_catalog` at sequence 1793330000042, collided with:
+
+- `codex/v9-lifecycle-alignment-20261029`: `0713_lifecycle_v9` at …042, then 0714–0720 at …043–…049;
+- `codex/ai-user-parity-personnel-check2-20261030` and `check3-20261030`: both also claim …042.
+
+Immediately before this commit, a fresh fetch and check of every local and `origin/*` ref, every registered
+worktree and every builder checkout found these maxima:
+
+- filenames: through `0720_lifecycle_v9_self_equipment` (plus `0716_assistant_emergency_contact_maintenance`);
+- journal sequences: through 1793330000049, other than this branch's own.
+
+Step 1 stays before Step 2. The SQL bytes of Step 1 are identical to the original 0713 file. Only the filename,
+the journal tag and the `when` value changed.
+
+| Owner | Index (on this branch) | Sequence | Filename | SQL SHA256 |
+| --- | ---: | ---: | --- | --- |
+| Board 1d58019a Step 1 | 684 | 1793330000050 | 0721_movement_settings_catalog | 7e0f83300471d5297a0345a16ed8e156fd3fbd7ed8fc5a521577173c1c0c1246 |
+| Board 1d58019a Step 2 | 685 | 1793330000051 | 0722_movement_type_controls | f05714a30e9d833ad6a6495546a1f5f41dabffbce88035e69cc98d2529fd9ec5 |
+
+Integrated after `main`'s Feedback switch (idx683 / …031) on 30 October 2026: indexes shift to 684 and 685; filenames, sequences and SQL bytes are unchanged.
+
+About the Step 2 entry:
+
+- It was first recorded as `0721_movement_type_controls` at …050 with SHA256 a0496be7…451cb.
+- Its body was then corrected before any application. It now explicitly revokes the UPDATE, DELETE and TRUNCATE
+  privileges that deploy/bootstrap-db.sql's default privileges would otherwise grant ai_hr_app.
+- That earlier hash identifies no file that exists now.
+
+The index is this branch's journal position only. At integration, recheck competing claims and the installed
+ledger. Never reuse 0713 or …042 for this item.
+
+## Board item 1d58019a (Movement Settings Enhancement, Step 1) — 30 October 2026
+
+Unapplied source reservation on `claude/fb-1d58019a` (base origin/main `f752ac7f5`, whose journal ends at
+idx682 / 0698_information_only_corrections / sequence1793330000030). A fresh check of every local and
+`origin/*` ref plus every registered worktree found migration filenames claimed through
+`0712_delegated_leave_review_receipts` and journal sequences through 1793330000041 (AI allocation branches,
+e.g. `codex/ai-dev-integration-work-20261030`). This item therefore takes the next free filename and sequence
+rather than any lower gap:
+
+| Owner | Index (on this branch) | Sequence | Filename | SQL SHA256 |
+| --- | ---: | ---: | --- | --- |
+| Board 1d58019a | 683 | 1793330000042 | 0713_movement_settings_catalog | 7e0f83300471d5297a0345a16ed8e156fd3fbd7ed8fc5a521577173c1c0c1246 |
+
+Superseded on 30 October 2026, before any application. The same SQL bytes are now
+`0721_movement_settings_catalog` at sequence 1793330000050 (see the renumbering section above).
+
+The index is this branch's journal position only. Integration with the AI 0699–0712 allocations must
+re-position the entry after them (index changes, filename/sequence/SQL bytes do not). Nothing is applied
+anywhere; recheck competing claims and the installed ledger before integration.
+
 ## Owner-approved combined board allocation — 29 October 2026
 
 ### Successor work in progress after the installed expanded release
