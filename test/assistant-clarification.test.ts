@@ -192,6 +192,7 @@ describe('a continuation rechecks its own original exchange before every provide
   await expect(askAssistant(ctx,{question:reply,clarificationExchangeId:stored.binding.exchangeId})).rejects.toMatchObject({code:'provider_error'});
   expect(transport).toHaveBeenCalledOnce();expect(JSON.stringify(transport.mock.calls[0][1])).not.toContain(stored.binding.question);expect(JSON.stringify(transport.mock.calls[0][1])).not.toContain(reply);
   const rows=await own(ctx);expect(rows.find(row=>row.id===stored.binding.exchangeId)?.contentRetiredAt).not.toBeNull();
+  const accounting=rows.filter(row=>row.id!==stored.binding.exchangeId);expect(accounting).toHaveLength(1);expect(accounting[0]).toMatchObject({question:'',answer:null,disclosureReceipt:null,toolCalls:[],error:null,turnCount:1,stop:'other'});expect(accounting[0].contentRetiredAt).not.toBeNull();
   expect(JSON.stringify(rows)).not.toContain(stored.binding.question);
  });
 });

@@ -156,6 +156,7 @@ describe('ordinary follow-up admission uses current human context only',()=>{
   }).mockResolvedValue(end);
   await expect(askAssistant(ctx,{question:'And taken?',previousExchangeId:second,previousConversationToken:tokens.get(second)})).rejects.toMatchObject({code:'provider_error'});
   expect(transport).toHaveBeenCalledOnce();
-  expect((await ownRows(ctx)).find(row=>row.id===first)?.contentRetiredAt).not.toBeNull();
+  const rows=await ownRows(ctx);expect(rows.find(row=>row.id===first)?.contentRetiredAt).not.toBeNull();
+  const accounting=rows.filter(row=>row.id!==first&&row.id!==second);expect(accounting).toHaveLength(1);expect(accounting[0]).toMatchObject({question:'',answer:null,disclosureReceipt:null,toolCalls:[],error:null,turnCount:1,stop:'other'});expect(accounting[0].contentRetiredAt).not.toBeNull();
  });
 });

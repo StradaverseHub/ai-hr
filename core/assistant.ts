@@ -172,6 +172,10 @@ export async function askAssistant(
   const clarification = p.clarificationExchangeId===undefined?null:await ownAssistantClarification(ctx,p.clarificationExchangeId,humanQuestion);
   // 0658: the new row records which own exchange it answered, so a later reply can carry this one too.
   const continuesExchangeId = assistantClarificationSourceExchangeId(clarification)??assistantConversationSourceExchangeId(conversationContext);
+  // This private callback closes over the authenticated owner-issued handle, never a posted ID.
+  // Retention/custody is rechecked again in the content transaction after provider latency.
+  const continuationCheck:((tx:Tx)=>Promise<void>)|undefined=clarification?tx=>assertOwnAssistantClarificationCurrentTx(tx,ctx,clarification):
+    conversationContext?tx=>assertOwnAssistantConversationContextCurrentTx(tx,ctx,conversationContext):undefined;
   // Stored history is human-readable. Each continuation is loaded by the actual own-row owner,
   // and only human text enters context; no prior model answer or historical HR result is replayed.
   // RETENTION (owner rule: raw chat content lives 30 days from ITS OWN question). A continuation stores
@@ -194,8 +198,7 @@ export async function askAssistant(
     // transaction. The strategy owner rechecks that own source exchange in this marker transaction and
     // before every provider round trip, so history erased or retired since that read never reaches one.
     const conversationStrategy=await prepareAssistantConversationStrategyTx(tx,ctx,rooted,question,
-      clarification?carrier=>assertOwnAssistantClarificationCurrentTx(carrier,ctx,clarification):
-      conversationContext?carrier=>assertOwnAssistantConversationContextCurrentTx(carrier,ctx,conversationContext):undefined);
+      continuationCheck);
     return { cfg:conversationStrategy.configuration, conversationStrategy, ...budget };
   }).catch(error=>{
     if(error instanceof AssistantQuestionBudgetError)throw new AssistantError(error.budgetCode);
@@ -290,27 +293,28 @@ export async function askAssistant(
 
   } catch (e) {
     if (e instanceof AssistantQuestionBudgetError) {
-      await persist(ctx, { reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error:e.budgetCode });
+      await persist(ctx, { continuationCheck, reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error:e.budgetCode });
       throw new AssistantError(e.budgetCode);
     }
     if (e instanceof AiAllowanceError) {
-      await persist(ctx, { reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: 'ai_control' });
+      await persist(ctx, { continuationCheck, reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: 'ai_control' });
       throw new AssistantError('ai_control');
     }
-    if(e instanceof AiPrivacyGateError){await persist(ctx,{reservation,strategy:conversationStrategy.capability,continuesExchangeId,appUserId,question,answer:'',audit,turnCount,hitTurnCap,stop,cfg,spend,period,error:'protected_input'});throw new AssistantError('protected_input');}
+    if(e instanceof AiPrivacyGateError){await persist(ctx,{continuationCheck,reservation,strategy:conversationStrategy.capability,continuesExchangeId,appUserId,question,answer:'',audit,turnCount,hitTurnCap,stop,cfg,spend,period,error:'protected_input'});throw new AssistantError('protected_input');}
     if (e instanceof AssistantError) {
       // A budget refusal mid-loop still records what was spent getting there.
       failure = e.code;
-      await persist(ctx, { reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: e.code });
+      await persist(ctx, { continuationCheck, reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: e.code });
       throw e;
     }
     failure = 'provider_error';
-    await persist(ctx, { reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: failure });
+    await persist(ctx, { continuationCheck, reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: failure });
     throw new AssistantError('provider_error');
   }
 
   // From here the question is ADMITTED: it counts against the allowance exactly once whatever happens.
   const recorded = await persist(ctx, {
+    continuationCheck,
     reservation,
     strategy:conversationStrategy.capability,
     continuesExchangeId,
@@ -370,6 +374,8 @@ async function runTools(
 }
 
 type PersistInput = {
+  /** Private same-Tx custody fence; never serialized or stored. Undefined for a genuinely new chat. */
+  continuationCheck?: (tx:Tx)=>Promise<void>;
   reservation:AssistantQuestionBudget;
   strategy:AssistantConversationStrategyCapability;
   appUserId: string;
@@ -431,6 +437,9 @@ async function persistWithContent(ctx: SessionContext, id: string, p: PersistInp
   const disclosureReceipt = sealAssistantDisclosure({ tenantId: ctx.tenantId, userId: p.appUserId,
     exchangeId: id, question: p.question, answer: p.answer }, p.sourceReads, p.answerPlan);
   await withTenant(ctx, async (tx) => {
+    // Keep the owner Access interval through INSERT + marker completion + accounting COMMIT.
+    // A source erased during the sole provider call must never acquire fresh retained content.
+    if(p.continuationCheck)await p.continuationCheck(tx);
     const [row] = await tx
       .insert(assistantExchange)
       .values({

@@ -137,9 +137,10 @@ describe('actual Assistant rejects all model-nominated batches',()=>{
   const {ctx}=await employeeWithReleasedPayslip(true),tool=ASSISTANT_TOOLS.find(t=>t.spec.name==='my_payslip_summary')!,spy=vi.spyOn(tool,'run');
   try{
    const duplicate=[{id:'same',name:tool.spec.name,input:{limit:1}},{id:'same',name:tool.spec.name,input:{limit:1}}],excessive=Array.from({length:17},(_,i)=>({id:`c${i}`,name:tool.spec.name,input:{limit:1}}));
-   for(const batch of [duplicate,excessive]){spy.mockClear();converse.mockReset();converse.mockResolvedValueOnce(toolUse(batch));const result=await askAssistant(ctx,{question:'My payslip'});expect(result.stop).toBe('other');expect(converse).toHaveBeenCalledOnce();expect(spy).toHaveBeenCalledOnce();expect(spy.mock.calls[0][1]).toEqual({limit:1});expect(converse.mock.calls[0][1].tools).toEqual([]);}
+   for(const batch of [duplicate,excessive]){spy.mockClear();converse.mockReset();converse.mockResolvedValueOnce(toolUse(batch));const result=await askAssistant(ctx,{question:'My payslip'});expect(result.stop).toBe('other');expect(converse).toHaveBeenCalledOnce();expect(spy).toHaveBeenCalledTimes(2);expect(spy.mock.calls.map(call=>call[1])).toEqual([{limit:1},{limit:1}]);expect(spy.mock.invocationCallOrder.every(order=>order<converse.mock.invocationCallOrder[0])).toBe(true);expect(converse.mock.calls[0][1].tools).toEqual([]);}
+   // The two reads are initial source + required preparation replay, both BEFORE model output.
    // A model refusal cannot disable the real native reader or masquerade as a completed answer.
-   spy.mockClear();converse.mockReset();converse.mockResolvedValueOnce(end);await expect(askAssistant(ctx,{question:'My payslip'})).resolves.toMatchObject({stop:'end'});expect(spy).toHaveBeenCalledOnce();
+   spy.mockClear();converse.mockReset();converse.mockResolvedValueOnce(end);await expect(askAssistant(ctx,{question:'My payslip'})).resolves.toMatchObject({stop:'end'});expect(spy).toHaveBeenCalledTimes(2);expect(spy.mock.calls.map(call=>call[1])).toEqual([{limit:1},{limit:1}]);expect(spy.mock.invocationCallOrder.every(order=>order<converse.mock.invocationCallOrder[0])).toBe(true);
   }finally{spy.mockRestore();}
  });
  it('keeps actual native refusal codes local and never sends a targeted profile question or public oracle to a model',async()=>{

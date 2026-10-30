@@ -28,6 +28,8 @@ const h=vi.hoisted(()=>{
   erased:false,
   /** Clear history while the provider call is in flight. */
   eraseDuringProvider:false,
+  continuationRetired:false,
+  retireContinuationDuringProvider:false,
   providerFailure:null as unknown,
   /** Acknowledgements lost AFTER a commit that wrote an exchange (connection reset after COMMIT). */
   lostCommitAcks:0,
@@ -74,6 +76,7 @@ const h=vi.hoisted(()=>{
  }
  const converse=vi.fn(async(_configuration:unknown,_args:{turns:Row[]})=>{
   if(state.eraseDuringProvider)state.erased=true;
+  if(state.retireContinuationDuringProvider)state.continuationRetired=true;
   if(state.providerFailure)throw state.providerFailure;
   return {text:'{"version":1,"mode":"insufficient","code":"no_verified_facts"}',toolCalls:[],stop:'end',usage:{inputTokens:5,outputTokens:7,cachedInputTokens:0}};
  });
@@ -81,6 +84,7 @@ const h=vi.hoisted(()=>{
   if(state.prepareFails)throw Error('Agent review could not be confirmed.');
   return {configuration,system:'fixture-strategy',variant:'baseline_v1',capability:{},provenance:{mode:'baseline',version:0,configurationDigest:'fixture'}};
  });
+ const recheckContinuation=vi.fn(async()=>{if(state.continuationRetired)throw Error('Current clarification unavailable.');});
  const completeStrategy=vi.fn(async(_tx:unknown,_ctx:unknown,_capability:unknown,_exchangeId:string)=>{
   if(state.erased)throw Error('Agent review could not be confirmed.');
   return {mode:'baseline',version:0,configurationDigest:'fixture'};
@@ -88,7 +92,7 @@ const h=vi.hoisted(()=>{
  const retireStrategy=vi.fn();
  const completeBudget=vi.fn(async()=>undefined);
  const seal=vi.fn((_binding:{question:string;answer:string})=>'sealed-fixture-receipt');
- return {state,runInTenant,converse,prepareStrategy,completeStrategy,retireStrategy,completeBudget,seal};
+ return {state,runInTenant,converse,prepareStrategy,recheckContinuation,completeStrategy,retireStrategy,completeBudget,seal};
 });
 
 vi.mock('../db/client',()=>({withTenant:h.runInTenant}));
@@ -116,7 +120,7 @@ vi.mock('../core/module-agent-releases',()=>({prepareAssistantConversationStrate
 vi.mock('../core/ai-governance',async()=>({preparePrivateAiTask:async(configuration:unknown,_contract:string,readSource:(tx:unknown,ctx:unknown)=>Promise<unknown>)=>{const {capturePrivateAssistantTask}=await import('../lib/ai/provider-assistant-policy');const prepared=capturePrivateAssistantTask(await readSource({},ctx));return{...prepared,configuration,operation:prepared.local.operation,dispose:()=>undefined};}}));
 vi.mock('../core/entitlements',()=>({resolveEntitlementsTx:async()=>({})}));
 vi.mock('../core/assistant-disclosure-read',()=>({assistantSourceReplay:()=>async()=>true}));
-vi.mock('../core/assistant-clarification',()=>({ownAssistantClarification:async()=>{if(!h.state.clarification)throw Error('Current clarification unavailable.');return Object.freeze({earlier:[],...h.state.clarification});},assistantClarificationSourceExchangeId:()=>null}));
+vi.mock('../core/assistant-clarification',()=>({ownAssistantClarification:async()=>{if(!h.state.clarification)throw Error('Current clarification unavailable.');return Object.freeze({earlier:[],...h.state.clarification});},assistantClarificationSourceExchangeId:()=>null,assertOwnAssistantClarificationCurrentTx:h.recheckContinuation}));
 vi.mock('../core/assistant-tools',()=>{const tool={module:'leave',sensitivity:'ordinary',spec:{name:'my_leave_balances',description:'Fictional bounded own read',inputSchema:{type:'object',properties:{},additionalProperties:false}},run:async()=>({ok:true,employments:[{employmentId:'fixture-employment',company:'Fixture Company',balances:[{leaveType:'Annual leave',available:113.75,taken:0,pending:0}]}]})};return{ASSISTANT_TOOLS:[tool],toolsFor:()=>[tool],specsFor:()=>[tool.spec]};});
 vi.mock('../core/assistant-read-session',()=>({withAssistantRead:async(_ctx:unknown,_module:unknown,read:(session:unknown)=>Promise<unknown>)=>read({}),withAssistantAdmissionReadsTx:async(_ctx:unknown,_tx:unknown,read:(session:unknown)=>Promise<unknown>)=>read({})}));
 vi.mock('../lib/ai/assistant-disclosure',()=>({sealAssistantDisclosure:h.seal,assistantSourceDigest:()=>'fixture-digest'}));
@@ -140,7 +144,7 @@ function expectAccountingOnly(row:Row|undefined){
 }
 
 beforeEach(()=>{
- Object.assign(h.state,{committed:{exchanges:[],usage:[]},budget:null,configured:true,prepareFails:false,erased:false,eraseDuringProvider:false,providerFailure:null,lostCommitAcks:0,clarification:null});
+ Object.assign(h.state,{committed:{exchanges:[],usage:[]},budget:null,configured:true,prepareFails:false,erased:false,eraseDuringProvider:false,continuationRetired:false,retireContinuationDuringProvider:false,providerFailure:null,lostCommitAcks:0,clarification:null});
  vi.clearAllMocks();
 });
 afterEach(()=>{vi.clearAllMocks();});
@@ -168,7 +172,7 @@ describe('every admitted Assistant question counts exactly once',()=>{
   expect(row.contentRetiredAt).toBeUndefined();
   expect(h.completeStrategy).toHaveBeenCalledTimes(1);expect(h.completeStrategy.mock.calls[0][3]).toBe(answer.exchangeId);
   // A new question has no transient continuation source to recheck.
-  expect(h.prepareStrategy.mock.calls[0][4]).toBeUndefined();
+  expect(h.prepareStrategy.mock.calls[0][4]).toBeUndefined();expect(h.recheckContinuation).not.toHaveBeenCalled();
   expect(usage()).toEqual([expect.objectContaining({inputTokens:5,outputTokens:7,exchangeCount:1})]);expect(h.retireStrategy).toHaveBeenCalledTimes(1);
  });
  it('a provider failure with the marker intact is recorded once with its generic error',async()=>{
@@ -225,5 +229,22 @@ describe('a clarification continuation cannot carry the original question past i
   expect(turns).toHaveLength(1);expect(turns[0]).toMatchObject({role:'user'});expect(JSON.parse(String(turns[0].content))).toMatchObject({operation:'conversation',intent:'leave_available',strategy:'baseline_v1'});
   expect(JSON.stringify(turns)).not.toContain(original);expect(JSON.stringify(turns)).not.toContain('Annual leave');
   expect(usage()).toHaveLength(1);
+ });
+});
+
+
+describe('post-provider authenticated continuation custody',()=>{
+ const id='00000000-0000-4000-8000-0000000000d4';
+ const prepare=()=>{h.state.clarification={originalQuestion:'My leave balance',slot:'leave_type',answer:'Annual leave'};};
+ it.each(['success','error'] as const)('retains only accounting when source retires during provider %s although strategy marker remains intact',async terminal=>{
+  prepare();h.state.retireContinuationDuringProvider=true;if(terminal==='error')h.state.providerFailure=Error('PRIVATE_PROVIDER_BODY');
+  expect(await outcome(askAssistant(ctx,{question:'Annual leave',clarificationExchangeId:id}))).toBe('provider_error');
+  expect(h.state.erased).toBe(false);expect(h.recheckContinuation).toHaveBeenCalledOnce();expect(h.completeStrategy).not.toHaveBeenCalled();
+  expect(exchanges()).toHaveLength(1);expectAccountingOnly(exchanges()[0]);expect(rawText(exchanges()[0])).not.toContain('Annual leave');expect(rawText(exchanges()[0])).not.toContain('PRIVATE');
+  expect(usage()).toHaveLength(1);expect(usage()[0]).toMatchObject({exchangeCount:1,inputTokens:terminal==='success'?5:0,outputTokens:terminal==='success'?7:0});expect(h.completeBudget).toHaveBeenCalledOnce();expect(h.retireStrategy).toHaveBeenCalledOnce();
+ });
+ it('retains the committed valid continuation once after a lost commit acknowledgement',async()=>{
+  prepare();h.state.lostCommitAcks=1;const result=await askAssistant(ctx,{question:'Annual leave',clarificationExchangeId:id});
+  expect(h.recheckContinuation).toHaveBeenCalledOnce();expect(h.completeStrategy).toHaveBeenCalledOnce();expect(exchanges()).toHaveLength(1);expect(exchanges()[0]).toMatchObject({id:result.exchangeId,question:'Annual leave'});expect(usage()).toEqual([expect.objectContaining({exchangeCount:1,inputTokens:5,outputTokens:7})]);expect(h.completeBudget).toHaveBeenCalledOnce();expect(h.retireStrategy).toHaveBeenCalledOnce();
  });
 });
