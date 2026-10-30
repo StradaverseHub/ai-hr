@@ -36,7 +36,8 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
   expect(probe).toContain("describe.each([...selection.actions])('ADR-0151 parity: %s'");
   for(const variant of PARITY_PROBE_VARIANTS)expect(probe.split("if(selection.variants.includes('"+variant+"')) describe")).toHaveLength(2);
   expect([...probe.matchAll(/if\(selection\.variants\.includes\(/g)]).toHaveLength(PARITY_PROBE_VARIANTS.length);
-  expect(probe.split("it.each([...PARITY_ROLES])")).toHaveLength(3);
+  // Ordinary actions, explicit allocation clear, and rejected decisions each cover every role.
+  expect(probe.split("it.each([...PARITY_ROLES])")).toHaveLength(4);
   // Inspect the actual implementation, never a comment-only wrapper: all native/own/custody probes,
   // independent declared screen expectations, rejection reason and foreign source non-effects stay.
   for(const assertion of ["const screen=await screenOutcome(adapter,who,item","const own=await tryPrepare(adapter,who,item","const confirm:ParityOutcome=own?await tryConfirm(adapter,who,own","if(!theirs)throw Error","foreign confirmation changed the owner's custody","foreign confirmation wrote a native event","screen differs from the declared matrix","cross-company/tenant agent must refuse","rejection must preserve the same explicit human reason","before confirmation","no adjustment row may be written"])expect(probe).toContain(assertion);
