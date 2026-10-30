@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {execFileSync,spawnSync} from 'node:child_process';
 import {mkdirSync,readFileSync,writeFileSync,existsSync} from 'node:fs';
 import {join,resolve} from 'node:path';
+import {createHash} from 'node:crypto';
 const root=resolve(process.env.GITHUB_WORKSPACE),temp=resolve(process.env.RUNNER_TEMP);
 const reader=join(root,'reader'),source=join(root,'source'),wrapper=join(root,'wrapper');
 const output=join(temp,'v9-review-public'),evidence=join(temp,'v9-review-private');
@@ -19,7 +20,13 @@ const result=spawnSync(process.execPath,['--import',join(source,'node_modules/ts
 // No build binaries, raw archives, private paths, configuration or operator credentials are uploaded.
 const refusal={...identity,exitCode:result.status,signal:result.signal,error:result.error?.code??null,assessmentProduced:existsSync(join(evidence,'review-only-assessment.json'))};
 if(refusal.assessmentProduced){const proof=JSON.parse(readFileSync(join(evidence,'review-only-assessment.json'),'utf8'));assert(proof.installationEligible===false&&proof.releaseAuthorized===false,'Noninstallable boundary required');refusal.assessment={kind:proof.kind,candidate:proof.candidate,tests:proof.tests,history:proof.history};}
-else refusal.reason=(result.stderr??'').slice(-5000).replaceAll(root,'[workspace]').replaceAll(temp,'[runner-temp]');
+else {
+ const text=result.stderr??'';
+ refusal.reason=['Unresolved','Incomplete','Foreign','changed','differs','exceeded','Expired','Missing','timed out'].find(code=>text.includes(code))??'ASSESSMENT_REFUSED';
+ refusal.diagnosticSha256=createHash('sha256').update(text).digest('hex');
+ const bindingsPath=join(evidence,'history-bindings.json');
+ if(existsSync(bindingsPath)){const bindings=JSON.parse(readFileSync(bindingsPath,'utf8'));refusal.unresolvedRunIds=bindings.filter(([,binding])=>binding.kind==='UNRESOLVED').map(([runId])=>runId);}
+}
 writeFileSync(join(output,'result.json'),JSON.stringify(refusal,null,2)+'\n',{mode:0o600,flag:'wx'});
 console.log(JSON.stringify(refusal));
 if(result.status!==0||!refusal.assessmentProduced)process.exitCode=1;
