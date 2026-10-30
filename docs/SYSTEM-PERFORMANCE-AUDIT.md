@@ -142,3 +142,26 @@ capacity certificate or a measurement of pool wait in isolation. Functional comp
 does not establish the proposed latency budgets. Multi-role/multi-tenant HTTP workloads,
 deep paging, imports/exports/payroll contention and target-host resource measurements
 remain required before a whole-system500-user or millions-of-records readiness claim.
+
+### Retained hosted results, 30 October 2026
+
+| Candidate / run | Evidence | Limits |
+| --- | --- | --- |
+| d7ab4676f /41010512996 | 20 functional assertions pass; million-row median5218ms fails | Initial JIT-only tuning did not satisfy the budget |
+| 2f12079e1 /41010956574 | Full failed-count/join plans retained | Almost a million repeated person/type probes; full sorting |
+| a03d10589 /41010867792 |24 non-DB and55 DB assertions pass; new fixtures fail; compiler/build catch readonly-array mutation | Fixture and typing repairs made afterward; original failures retained |
+|9d528facb /41011708143 |83 UI/route assertions pass; whole compiler and production build pass | DB selection stopped on unpublished partial-index/enum migration incompatibility |
+|1904b9acb /41011806546 |50 functional assertions pass; million-row median7572.5ms fails | Corrected full index alone did not constrain display joins |
+|54d5f29d0 /41012353092 |89 assertions pass; million-row median1199ms fails; one generated-code fixture collision | Page-before-join reduces work but still misses the unchanged1000ms budget |
+|0ccb8dd87 /41012887934 |55 assertions pass, no failures. Million-row median578.2ms/max631.6ms,25rows/12,307bytes.10k median27ms;100k40.1ms | Five warm samples, one concentrated employment, service-level calls; no HTTP or500-user certificate |
+|cf5738c60 /41012653080 |24 non-DB and136 DB assertions pass; whole compiler and production build pass | One generated-code fixture collision, repaired in0ccb8dd87 and covered by the successful55-assertion rerun |
+|40b7813e5 /41011891127 |500-session service burst exceeds240-second test limit | No complete capacity receipt |
+|cf5738c60 /41012655333 |Second burst exceeds240seconds. Retained checkpoint:500reads,500creates,232edits,0deletes completed at202seconds | Incomplete counts are not successes for whole journeys. Single default/off JIT creation samples232.6/217.8ms do not explain the bottleneck |
+
+Later main/alpha advanced to2ab4f6c12 with the Movement release and571-entry journal
+through0722 /1793330000051. Those changes are not implicitly included in this frozen
+performance candidate. The release orchestrator reports V9 ahead of this candidate,
+with proposed successor sequences56–63; verify actual installed source/ledger on handback.
+Our unapplied0726 must receive a fresh coordinated append above the actual watermark
+before later integration/release. Source or migration edits invalidate affected evidence;
+retain every original run identity rather than relabelling it.

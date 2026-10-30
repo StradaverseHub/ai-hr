@@ -346,3 +346,19 @@ append is for isolated hosted development tests only; it is not an installation
 allocation. Reconcile all unmerged reservations, the complete actual applied ledger
 and historical byte identities before integration or deployment. No existing journal
 entry or SQL byte changes. The index changes no grants or RLS.
+
+Performance release hold: subsequent canonical2ab4f6c12 appends0721/0722 at
+idx684–685 /when1793330000050–51. The orchestrator/V9 owner reports an earlier
+release position for V9 with proposed56–63 successors. Performance keeps55 only
+for its isolated development database; it must be reallocated above the actual
+accepted watermark at its later freeze. No release application or protected-branch
+merge is authorized by this development reservation. Preserve old receipts and rerun
+affected checks after reconciliation.
+
+The same unapplied0726 development migration also fences the DISTINCT-company CTE
+in `app.visible_employment_ids()`. Measured500-employment plans push admin checks
+below DISTINCT without the fence (500 evaluations), while materialization evaluates
+one per company. All visibility arms/security attributes remain intact. This broadens
+the release impact: require current app-role visibility-equivalence, hierarchy, grants
+and module RLS checks plus load regression before release. Earlier index-only migration
+receipts remain tied to their original bytes and do not verify this revised migration.

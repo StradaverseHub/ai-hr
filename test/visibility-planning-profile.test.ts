@@ -1,7 +1,8 @@
 import {randomUUID} from 'node:crypto';
-import {writeFileSync} from 'node:fs';
+import {readFileSync,writeFileSync} from 'node:fs';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
+import {withTenant} from '../db/client';
 import {appUser,employment,person,roleAssignment} from '../db/schema';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -14,16 +15,21 @@ it('profiles current permission planning over 500 employments without changing a
  await owner.db.insert(roleAssignment).values(users.map(u=>({tenantId:b.tenantId,appUserId:u.userId,role:'employee' as const,companyId:b.companyId})));
  const probe=users[0],probeCtx={...admin,userId:probe.userId,personId:probe.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
  const [{body}]=await owner.client`select prosrc as body from pg_proc where oid='app.visible_employment_ids()'::regprocedure`;
- const oldCompany="FROM (SELECT DISTINCT e.company_id FROM employment e WHERE e.tenant_id = app.current_tenant_id()) c";
- expect(body).toContain(oldCompany);
- const fenced=body.replace('admin_company AS (',"tenant_company AS MATERIALIZED (SELECT DISTINCT e.company_id FROM employment e WHERE e.tenant_id = app.current_tenant_id()), admin_company AS MATERIALIZED (").replace(oldCompany,'FROM tenant_company c');
+ const original=readFileSync(new URL('../db/migrations/0515_set_based_visibility.sql',import.meta.url),'utf8')
+   .split('CREATE OR REPLACE FUNCTION app.visible_employment_ids()')[1].split('AS $$')[1].split('$$;')[0];
+ expect(original).toContain('FROM (SELECT DISTINCT e.company_id');
+ expect(body).toContain('tenant_company AS MATERIALIZED');
+ const fenced=body;
  const visibilityPlans=await owner.withTenant(probeCtx,async tx=>{
    await tx.execute(sql`SET LOCAL jit = off`);
-   const baseline=await tx.execute(sql.raw('explain (analyze,buffers,format json) '+body));
+   const baseline=await tx.execute(sql.raw('explain (analyze,buffers,format json) '+original));
    const candidate=await tx.execute(sql.raw('explain (analyze,buffers,format json) '+fenced));
-   const before=await tx.execute(sql.raw(body)),after=await tx.execute(sql.raw(fenced));
+   const before=await tx.execute(sql.raw(original)),after=await tx.execute(sql.raw(fenced));
+   expect(Object.values(before[0])[0]).toEqual([probe.employmentId]);
    expect(after).toEqual(before);
    return {baseline,candidate};
  });
+ const appVisible=await withTenant(probeCtx,tx=>tx.execute(sql`select app.visible_employment_ids() as ids`));
+ expect(appVisible[0].ids).toEqual([probe.employmentId]);
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/visibility-planning.json',JSON.stringify(visibilityPlans,null,2));
 },60000);
