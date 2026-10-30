@@ -96,6 +96,7 @@ function componentFields(formData: FormData, normalizeCode = true): PayComponent
     eaFormLine: String(formData.get('eaFormLine') ?? '') || null,
     roundingMethod: String(formData.get('roundingMethod') ?? 'none'),
     rule: parseRule(String(formData.get('rule') ?? '')),
+    formulaContext: {ordinaryRate:String(formData.get('formulaOrdinaryRate')??''),hoursPerDay:String(formData.get('formulaHoursPerDay')??''),rate:String(formData.get('formulaRate')??'')},
     // Feedback 09b554e9 — LHDN PCB 2026 classification. The form ALWAYS supplies these (nulls when the
     // panels hide them), so the service's mandatory-pair / wrong-list / epf-bonus-without-epf validation is
     // authoritative on every save (PayComponentStatutoryConfigError → localised message below).

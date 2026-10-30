@@ -41,7 +41,7 @@ async function dependenciesTx(tx:Tx,ctx:SessionContext,program:FormulaProgram){
 async function dependencySnapshotTx(tx:Tx,ctx:SessionContext,program:FormulaProgram,selfId?:string){
  const analysis=analyzePayFormula(program),groups=await loadFormulaAccumulationGroupsTx(tx,ctx),codes=new Set(analysis.dependencies.filter(d=>d.kind!=='accumulation').map(d=>d.code.toUpperCase()));
  const selectedGroups=groups.filter(g=>analysis.dependencies.some(d=>d.kind==='accumulation'&&d.code.toUpperCase()===g.code));for(const g of selectedGroups)for(const member of g.members)codes.add(member);
- const rows=await tx.execute<{id:string;code:string;kind:string;rule:Record<string,unknown>|null;prorates:boolean;roundingMode:string;archivedAt:unknown}>(sql`select id,code,kind,rule as rule,prorates,rounding_method as "roundingMode",archived_at as "archivedAt" from pay_component where tenant_id=${ctx.tenantId}::uuid order by code`);
+ const rows=await tx.execute<{id:string;code:string;kind:string;rule:Record<string,unknown>|null;prorates:boolean;roundingMode:string;archivedAt:unknown}>(sql`select id,code,kind,rule as rule,prorates,formula_context as "formulaContext",rounding_method as "roundingMode",archived_at as "archivedAt" from pay_component where tenant_id=${ctx.tenantId}::uuid order by code`);
  const outputCodes=new Set(analysis.dependencies.filter(d=>['calculated','unprorated'].includes(d.kind)).map(d=>d.code.toUpperCase()));for(const g of selectedGroups)for(const member of g.members)outputCodes.add(member);
  const relevantFormulas=new Set<string>(),queue=[...outputCodes];for(let i=0;i<queue.length;i++){if(i>1000)throw new PayFormulaError('Formula dependency graph is too large.');const row=rows.find(r=>r.code.toUpperCase()===queue[i]);if(row?.rule?.kind==='formula_builder'){const formula=String(row.rule.formulaId);if(formula!==selfId)relevantFormulas.add(formula);for(const dependency of row.rule.dependencies as string[]){if(!outputCodes.has(dependency)){outputCodes.add(dependency);codes.add(dependency);queue.push(dependency);}}}}
  const catalog=rows.filter(r=>codes.has(r.code.toUpperCase())).map(r=>({...r,rule:r.rule?.kind==='formula_builder'&&r.rule.formulaId===selfId?{...r.rule,dependencies:undefined}:r.rule}));
@@ -99,7 +99,7 @@ export async function saveFormulaAccumulationGroup(ctx:SessionContext,p:{code:st
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'pay-formula-accumulation',aggregateId:id,eventType:'pay-formula.accumulation.saved',actor:actorOf(ctx),payload:{code:n,members,previousVersionId:last?.id??null}});return {id};
  });}
 export async function bindPayFormulaRuleTx(tx:Tx,ctx:SessionContext,rule:{kind:'formula_builder';formulaId:string;dependencies:string[];context?:{ordinaryRate?:string;hoursPerDay?:string;rate?:string}}){
- const active=await loadActiveFormulaProgramTx(tx,ctx,rule.formulaId);return {...rule,formulaId:active.formulaId,dependencies:active.dependencies};
+ const active=await loadActiveFormulaProgramTx(tx,ctx,rule.formulaId);return {kind:'formula_builder' as const,formulaId:active.formulaId,dependencies:active.dependencies};
 }
 export async function recordPayFormulaLinkTx(tx:Tx,ctx:SessionContext,p:{formulaId:string;componentId:string}){
  const active=await loadActiveFormulaProgramTx(tx,ctx,p.formulaId);const [seen]=await tx.execute(sql`select 1 from pay_formula_event where formula_id=${active.id}::uuid and component_id=${p.componentId}::uuid and kind='linked' limit 1`);if(!seen)await event(tx,ctx,{id:active.id,kind:'linked',revisionId:active.revisionId,componentId:p.componentId});

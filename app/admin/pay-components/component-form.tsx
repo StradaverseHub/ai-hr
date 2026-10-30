@@ -199,6 +199,7 @@ export async function ComponentForm({
               aiEnabled={aiEnabled}
               payItems={payItems}
               activeFormulas={formulaOptions.activeFormulas}
+              formulaContext={component?.formulaContext??null}
               previewEmployees={previewEmployees.map((e) => ({
                 employmentId: e.employmentId,
                 name: e.name,

@@ -1,3 +1,4 @@
+import {normalizeFormulaDecimal} from '../lib/pay-formula-language';
 import {createHash} from 'node:crypto';
 import {bindPayFormulaRuleTx,recordPayFormulaLinkTx} from './pay-formula';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
@@ -355,6 +356,7 @@ export type PayComponentInput = {
   prorates: boolean;
   eaFormLine?: string | null;
   roundingMethod?: string;
+  formulaContext?: {ordinaryRate?:string;hoursPerDay?:string;rate?:string}|null;
   // Configurable pay-rule (Payroll Setup). null / undefined / { kind: 'fixed' } ⇒ legacy fixed-amount behaviour.
   rule?: PayRule | null;
   // LHDN PCB 2026 classification (feedback 09b554e9). ALL THREE undefined ⇒ "not supplied" — legacy callers
@@ -490,7 +492,11 @@ export class PayRuleInvalidError extends Error {
   }
 }
 
-const attrsOf = (p: PayComponentInput) => ({ eaFormLine: cleanEaLine(p.eaFormLine), roundingMethod: cleanRounding(p.roundingMethod) });
+function cleanFormulaContext(value:PayComponentInput['formulaContext']){
+ if(value==null)return null;if(typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!['ordinaryRate','hoursPerDay','rate'].includes(k)))throw new PayComponentInputError([{field:'inputKind',code:'OUT_OF_RANGE'}]);
+ const result:{ordinaryRate?:string;hoursPerDay?:string;rate?:string}={};for(const key of ['ordinaryRate','hoursPerDay','rate'] as const){if(value[key]===undefined||value[key]==='')continue;try{const v=normalizeFormulaDecimal(value[key]!),n=Number(v);if(n<(key==='rate'?0:0.000000000001)||n>({ordinaryRate:366,hoursPerDay:24,rate:100}[key]))throw new Error();result[key]=v;}catch{throw new PayComponentInputError([{field:'inputKind',code:'OUT_OF_RANGE'}]);}}return result;
+}
+const attrsOf = (p: PayComponentInput) => ({ eaFormLine: cleanEaLine(p.eaFormLine), roundingMethod: cleanRounding(p.roundingMethod),...(p.formulaContext===undefined?{}:{formulaContext:cleanFormulaContext(p.formulaContext)}) });
 // Feedback 3c473773 — payroll category storage. undefined ⇒ the field was not supplied ⇒ {} ⇒ the stored
 // value survives (this is what keeps the seed and the backfills from wiping migration 0393's work). A
 // supplied value is coerced to the closed vocabulary or NULL, so a tampered form never persists a box the
@@ -729,7 +735,7 @@ export function createPayComponentsFromImport(ctx: SessionContext, rows: { input
 // The diffable catalog fields for the trimmed audit payload (changed field NAMES only — no values:
 // app/admin/audit/page.tsx never renders payloads, and free-text name/label in the immutable event
 // stream would violate the payload discipline the comment below enforces).
-const DIFF_FIELDS = ['name', 'label', 'description', 'pendingInputKind', 'kind', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase', 'isNonPayable', 'prorates', 'eaFormLine', 'roundingMethod', 'rule', 'epfBonus2012', 'pcbRemunerationType', 'pcbExemptionCode', 'displayCategory', 'orpOvertime', 'orpUnpaidLeave'] as const;
+const DIFF_FIELDS = ['name', 'label', 'description', 'pendingInputKind', 'kind', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase', 'isNonPayable', 'prorates', 'eaFormLine', 'roundingMethod', 'rule', 'formulaContext', 'epfBonus2012', 'pcbRemunerationType', 'pcbExemptionCode', 'displayCategory', 'orpOvertime', 'orpUnpaidLeave'] as const;
 
 // ── 61bf109d — dependency-graph plumbing ─────────────────────────────────────────────────────────────
 // A pay item may now be a percentage of ANOTHER pay item, or a formula that reads one, so the catalog is a
@@ -888,7 +894,7 @@ async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponent
         if (!(f in next)) return false; // label omitted ⇒ untouched ⇒ not a change
         const a = (next as Record<string, unknown>)[f];
         const b = (existing as unknown as Record<string, unknown>)[f];
-        return f === 'rule' ? JSON.stringify(a ?? null) !== JSON.stringify(b ?? null) : a !== b;
+        return (f === 'rule'||f==='formulaContext') ? JSON.stringify(a ?? null) !== JSON.stringify(b ?? null) : a !== b;
       });
       const nonCashKey = (r: typeof existing) => {
         if (!r.isNonPayable || !r.includedInPcb) return null;

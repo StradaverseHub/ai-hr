@@ -70,6 +70,7 @@ type Props = {
   aiEnabled: boolean;
   /** Other ACTIVE pay items in this tenant's catalog (this one excluded) — the reference picker's options. */
   payItems: PayItemOption[];
+  formulaContext?: {ordinaryRate?:string;hoursPerDay?:string;rate?:string}|null;
   activeFormulas?: {formulaId:string;description:string;dependencies:string[]}[];
   /** Employees the rule can be previewed against. */
   previewEmployees: PreviewEmployeeOption[];
@@ -102,6 +103,7 @@ function OperandFields({
   op: FormulaOperand;
   onChange: (o: FormulaOperand) => void;
   payItems: PayItemOption[];
+  formulaContext?: {ordinaryRate?:string;hoursPerDay?:string;rate?:string}|null;
   activeFormulas?: {formulaId:string;description:string;dependencies:string[]}[];
 }) {
   const t = useTranslations('payRule');
@@ -194,6 +196,7 @@ export function PayRuleEditor({
   payItems,
   previewEmployees,
   activeFormulas=[],
+  formulaContext,
   catalogueOnly = false,
 }: Props) {
   const t = useTranslations('payRule');
@@ -222,7 +225,7 @@ export function PayRuleEditor({
   const tc = useTranslations('payComponents');
   const [kind, setKind] = useState<PayRuleKind>(initialRule?.kind ?? pendingInputKind ?? 'fixed');
   const [formulaId,setFormulaId]=useState(initialRule?.kind==='formula_builder'?initialRule.formulaId:'');
-  const [builderContext,setBuilderContext]=useState<{ordinaryRate?:string;hoursPerDay?:string;rate?:string}>(initialRule?.kind==='formula_builder'?initialRule.context??{}:{});
+  const [builderContext,setBuilderContext]=useState<{ordinaryRate?:string;hoursPerDay?:string;rate?:string}>(formulaContext??{});
   const [prorates, setProrates] = useState(initialProrates);
   const [pct, setPct] = useState(initialRule?.kind === 'percent_of' ? String(initialRule.pct) : '');
   const [pctBase, setPctBase] = useState<'basic' | 'component'>(
@@ -285,7 +288,7 @@ export function PayRuleEditor({
       case 'qty_rate':
         return { kind: 'qty_rate', qty: num(qty), rate: num(rate) };
       case 'formula_builder':
-        return {kind:'formula_builder',formulaId,dependencies:activeFormulas.find(f=>f.formulaId===formulaId)?.dependencies??(initialRule?.kind==='formula_builder'&&initialRule.formulaId===formulaId?initialRule.dependencies:[]),context:Object.fromEntries(Object.entries(builderContext).filter(([,v])=>v?.trim()))};
+        return {kind:'formula_builder',formulaId,dependencies:activeFormulas.find(f=>f.formulaId===formulaId)?.dependencies??(initialRule?.kind==='formula_builder'&&initialRule.formulaId===formulaId?initialRule.dependencies:[])};
       case 'formula':
         return { kind: 'formula', start, terms };
       default:
@@ -425,9 +428,10 @@ export function PayRuleEditor({
 
         {kind==='formula_builder'&&<>
           <Field label={t('builderFormula')}><select value={formulaId} onChange={e=>setFormulaId(e.target.value)} className={inputCls} required><option value="">{t('builderNoFormula')}</option>{initialRule?.kind==='formula_builder'&&!activeFormulas.some(f=>f.formulaId===initialRule.formulaId)&&<option value={initialRule.formulaId}>{initialRule.formulaId}</option>}{activeFormulas.map(f=><option key={f.formulaId} value={f.formulaId}>{f.formulaId} — {f.description}</option>)}</select></Field>
-          {(['ordinaryRate','hoursPerDay','rate'] as const).map(key=><Field key={key} label={t(key==='ordinaryRate'?'builderOrdinaryRate':key==='hoursPerDay'?'builderHoursPerDay':'builderRate')}><input type="text" inputMode="decimal" value={builderContext[key]??''} onChange={e=>setBuilderContext(v=>({...v,[key]:e.target.value}))} className={inputCls}/></Field>)}
-          <p className="text-xs text-muted-foreground sm:col-span-3">{t('builderContextHint')} <Link href="/payroll/formula-builder" className="underline">{t('builderManage')}</Link></p>
+
         </>}
+          {(['ordinaryRate','hoursPerDay','rate'] as const).map(key=><Field key={key} label={t(key==='ordinaryRate'?'builderOrdinaryRate':key==='hoursPerDay'?'builderHoursPerDay':'builderRate')}><input name={key==='ordinaryRate'?'formulaOrdinaryRate':key==='hoursPerDay'?'formulaHoursPerDay':'formulaRate'} type="text" inputMode="decimal" value={builderContext[key]??''} onChange={e=>setBuilderContext(v=>({...v,[key]:e.target.value}))} className={inputCls}/></Field>)}
+          <p className="text-xs text-muted-foreground sm:col-span-3">{t('builderContextHint')} <Link href="/payroll/formula-builder" className="underline">{t('builderManage')}</Link></p>
         {kind === 'percent_of' && (
           <>
             <Field label={t('pctLabel')}>

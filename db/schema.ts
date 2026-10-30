@@ -7203,6 +7203,7 @@ export const payComponent = pgTable(
     // existing row stays valid (the compat golden is untouched). Resolved by core/pay-rule.ts and only read
     // inside the kernel's TYPED_PAY_COMPONENTS_ENABLED block — a rule is meaningless with typed components off.
     rule: jsonb('rule').$type<PayRule | null>(),
+    formulaContext: jsonb('formula_context').$type<{ordinaryRate?:string;hoursPerDay?:string;rate?:string}|null>(),
     // 61bf109d — RECORDED resolution order (migration 0330). A `percent_of base:'component'` or `formula`
     // rule makes one pay item depend on another, so the kernel can no longer resolve components in arbitrary
     // query order without risking two runs of the same payroll disagreeing. The dependency graph is
