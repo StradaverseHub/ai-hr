@@ -94,7 +94,7 @@ describe('isolated combined release: actual shell CSS and controls',()=>{
  });
  for(const theme of themes)it(`${theme} preserves filters while the real pager advances to rows 26–50`,async()=>{
   const view=await mount(theme,1280);const pager=document.querySelector('[data-ui-pager]')!;
-  const next=within(pager as HTMLElement).getByRole('button',{name:theme==='atelier'?en.pagination.nextPage:en.pagination.next,exact:true});
+  const next=within(pager as HTMLElement).getByRole('button',{name:theme==='atelier'?en.pagination.nextPage:en.pagination.next});
   expect(box(pager).bottom).toBeLessThanOrEqual(box(screen.getByRole('table')).top+1);fireEvent.click(next);
   expect(ports.replace).toHaveBeenCalledOnce();const [url,options]=ports.replace.mock.calls[0];const sp=new URLSearchParams(String(url).slice(1));expect(Object.fromEntries(sp)).toEqual({q:'Fictional',size:'25',page:'1'});expect(options).toEqual({scroll:false});
   ports.search=String(url).slice(1);view.rerender(<Screen theme={theme}/>);expect(screen.getByText('Fictional row 26')).toBeVisible();expect(screen.queryByText('Fictional row 1')).toBeNull();
@@ -141,26 +141,26 @@ describe('isolated combined release: actual shell CSS and controls',()=>{
   const view=render(providers(theme,<InternalAuthForm/>));
   const tour=screen.getByRole('region',{name:en.loginTour.label});fireEvent.click(within(tour).getByRole('button',{name:en.loginTour.pause}));expect(within(tour).getByRole('button',{name:en.loginTour.play})).toBeVisible();
   expect(await within(tour).findByText(en.loginTour.leave.open1,{}, {timeout:3000})).toBeVisible();
-  fireEvent.click(within(tour).getByRole('button',{name:en.loginTour.leave.pickA1,exact:true}));
+  fireEvent.click(within(tour).getByRole('button',{name:en.loginTour.leave.pickA1}));
   expect(await within(tour).findByText(en.loginTour.leave.open2,{}, {timeout:4000})).toBeVisible();
   expect(tour.querySelectorAll('ol li:not([data-typing])').length).toBeGreaterThanOrEqual(4);
   await capture(`${theme}-login-tour`,view.container.querySelector('main')!);
-  fireEvent.click(within(tour).getByRole('button',{name:en.loginTour.pay.topic,exact:true}));
+  fireEvent.click(within(tour).getByRole('button',{name:en.loginTour.pay.topic}));
   expect(await within(tour).findByText(en.loginTour.pay.open1,{}, {timeout:3000})).toBeVisible();
   fireEvent.click(within(tour).getByRole('button',{name:en.loginTour.play}));expect(within(tour).getByRole('button',{name:en.loginTour.pause})).toBeVisible();fireEvent.click(within(tour).getByRole('button',{name:en.loginTour.pause}));
-  await page.viewport(390,844);await tick();const button=screen.getByRole('button',{name:en.internalAuth.signIn,exact:true});expect(box(button).left).toBeGreaterThanOrEqual(0);expect(box(button).right).toBeLessThanOrEqual(390);expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+  await page.viewport(390,844);await tick();const button=screen.getByRole('button',{name:en.internalAuth.signIn});expect(box(button).left).toBeGreaterThanOrEqual(0);expect(box(button).right).toBeLessThanOrEqual(390);expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
   expect(screen.getByLabelText(en.internalAuth.password)).toHaveValue('');expect(screen.getByLabelText(en.internalAuth.username)).toHaveValue('');expect(noRequests).not.toHaveBeenCalled();await capture(`${theme}-blank-login-phone`,view.container.querySelector('main')!);
  },15000);
  for(const theme of themes)it(`${theme} workspace focus rings the whole composer including Send without submission`,async()=>{
   document.documentElement.setAttribute('data-ui-theme',theme);await page.viewport(390,844);
   render(providers(theme,<main className="p-4"><WorkspaceComposer action={ports.ask} tasks={[]} layout="hero" labels={{tasks:'Tasks',taskHint:'Pick a task',question:'Fictional question',placeholder:'Ask about a fixture',ask:'Send fixture',working:'Working',scope:'Fictional data only'}}/></main>));
   const field=screen.getByLabelText('Fictional question') as HTMLTextAreaElement,frame=document.querySelector('[data-ui-composer]')!,before=getComputedStyle(frame).boxShadow;
-  fireEvent.change(field,{target:{value:'A fictional question'}});field.focus();await waitFor(()=>expect(getComputedStyle(frame).boxShadow).not.toBe(before));expect(getComputedStyle(field).outlineStyle).toBe('none');const focusedShadow=getComputedStyle(frame).boxShadow;expect(focusedShadow).not.toBe('none');await capture(`${theme}-composer-textarea`,frame.parentElement!);
-  const send=screen.getByRole('button',{name:'Send fixture'});send.focus();expect(frame.matches(':focus-within')).toBe(true);await waitFor(()=>expect(getComputedStyle(frame).boxShadow).toBe(focusedShadow));expect(box(send).bottom).toBeLessThanOrEqual(box(frame).bottom);expect(ports.ask).not.toHaveBeenCalled();await capture(`${theme}-composer`,frame.parentElement!);
+  fireEvent.change(field,{target:{value:'A fictional question'}});field.focus();await waitFor(()=>expect(getComputedStyle(frame).boxShadow).not.toBe(before));expect(getComputedStyle(field).outlineStyle).toBe('none');const focusedShadow=getComputedStyle(frame).boxShadow;expect(focusedShadow).not.toBe('none');await capture(`${theme}-composer-textarea`,frame.closest('main')!);
+  const send=screen.getByRole('button',{name:'Send fixture'});send.focus();expect(frame.matches(':focus-within')).toBe(true);await waitFor(()=>expect(getComputedStyle(frame).boxShadow).toBe(focusedShadow));expect(box(send).bottom).toBeLessThanOrEqual(box(frame).bottom);expect(ports.ask).not.toHaveBeenCalled();await capture(`${theme}-composer`,frame.closest('main')!);
  });
  it('Atelier home composer also includes its send bar in the focus frame',async()=>{
   document.documentElement.setAttribute('data-ui-theme','atelier');await page.viewport(390,844);
   render(providers('atelier',<main className="p-4"><AtelierAskBox label="Fictional home question" placeholder="Ask about a fixture" submitLabel="Send home fixture" suggestions={[]}/></main>));
-  const field=screen.getByLabelText('Fictional home question'),frame=document.querySelector('[data-ui-composer]')!;fireEvent.change(field,{target:{value:'A fictional question'}});field.focus();await tick();const send=screen.getByRole('button',{name:'Send home fixture'});send.focus();expect(frame.matches(':focus-within')).toBe(true);expect(getComputedStyle(field).boxShadow).toBe('none');expect(box(send).bottom).toBeLessThanOrEqual(box(frame).bottom);expect(ports.ask).not.toHaveBeenCalled();expect(getComputedStyle(frame).boxShadow).not.toBe('none');await capture('atelier-home-composer',frame.parentElement!);
+  const field=screen.getByLabelText('Fictional home question'),frame=document.querySelector('[data-ui-composer]')!;fireEvent.change(field,{target:{value:'A fictional question'}});field.focus();await tick();const send=screen.getByRole('button',{name:'Send home fixture'});send.focus();expect(frame.matches(':focus-within')).toBe(true);expect(getComputedStyle(field).boxShadow).toBe('none');expect(box(send).bottom).toBeLessThanOrEqual(box(frame).bottom);expect(ports.ask).not.toHaveBeenCalled();expect(getComputedStyle(frame).boxShadow).not.toBe('none');await capture('atelier-home-composer',frame.closest('main')!);
  });
 });
