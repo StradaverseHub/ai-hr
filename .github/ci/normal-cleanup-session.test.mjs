@@ -28,3 +28,5 @@ test('READY and COMMIT refuse foreign selection, unknown fields, stale/old proof
 });
 
 test('grant expiry during post-removal full audit refuses final success without replaying engine',async()=>{const f=fixture();let audits=0;f.options.audit=async()=>{if(++audits===2)f.advance(31*60000);return {};};await assert.rejects(runNormalCleanupSession(f.options));assert.equal(f.events.filter(e=>e==='engine').length,1);assert.equal(f.events.filter(e=>e==='consumed').length,1);});
+
+test('failed post-cleanup full audit retains consumed state and never repeats engine',async()=>{const f=fixture();let calls=0;f.options.audit=async()=>{if(++calls===2)throw Error('controlled post-audit failure');};await assert.rejects(runNormalCleanupSession(f.options),/controlled post-audit failure/);assert.equal(f.events.filter(e=>e==='engine').length,1);assert.equal(f.events.filter(e=>e==='consumed').length,1);});

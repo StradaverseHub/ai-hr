@@ -9,7 +9,7 @@ import {cleanupFrames,readSingleCleanupCommit,acquireNormalCleanupLock,durableCl
 import {cleanupTreeFence,canonicalSourceExclusions} from './normal-cleanup-fences.mjs';
 test('continuous IPC preserves fragmented and coalesced READY/result frames',async()=>{const stream=new PassThrough(),frames=cleanupFrames(stream);const first=frames.next();stream.write('{"kind":"REA');stream.end('DY"}\n{"kind":"RESULT"}\n');assert.deepEqual(await first,{kind:'READY'});assert.deepEqual(await frames.next(),{kind:'RESULT'});await new Promise(done=>setImmediate(done));frames.finish();});
 test('actual subprocess IPC drains one strict COMMIT ending at EOF',async()=>{
- const module=new URL('./normal-cleanup-io.mjs',import.meta.url).href,child=spawn(process.execPath,['--input-type=module','-e',`import {readSingleCleanupCommit} from ${JSON.stringify(module)};const value=await readSingleCleanupCommit(process.stdin);process.stdout.write(JSON.stringify(value)+'\\n');`],{stdio:['pipe','pipe','pipe']});
+ const module=new URL('./normal-cleanup-io.mjs',import.meta.url).href,child=spawn(process.execPath,['--input-type=module','-e',`import {readSingleCleanupCommit} from ${JSON.stringify(module)};const value=await readSingleCleanupCommit(process.stdin);process.stdout.write(JSON.stringify(value)+String.fromCharCode(10));`],{stdio:['pipe','pipe','pipe']});
  let error='';child.stderr.on('data',b=>error+=b);const done=new Promise((yes,no)=>{child.once('error',no);child.once('close',code=>code===0?yes():no(Error(error)));});done.catch(()=>{});
  const frames=cleanupFrames(child.stdout);child.stdin.write('{"nonce":');child.stdin.end('"fictional"}\n');assert.deepEqual(await frames.next(),{nonce:'fictional'});await done;frames.finish();
 });

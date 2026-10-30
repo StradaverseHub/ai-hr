@@ -12,7 +12,7 @@ import {collectMigrationLedger} from './staging-migration-ledger.mjs';
 import {fingerprintStagingEnvironment} from './staging-environment.mjs';
 import {runNormalCleanupSession,RESULT_KIND} from './normal-cleanup-session.mjs';
 import {durableCleanupRecord,acquireNormalCleanupLock,readSingleCleanupCommit} from './normal-cleanup-io.mjs';
-import {cleanupTreeFence,canonicalSourceExclusions} from './normal-cleanup-fences.mjs';
+import {captureNormalCleanupFences,canonicalSourceExclusions} from './normal-cleanup-fences.mjs';
 import {validateCleanupRequest} from './staging-cleanup-protocol.mjs';
 import {validateInstallGrant,installJson,installHash} from './ci-install-grant.mjs';
 import {inspectCiBuildPacket} from './build-artifact.mjs';
@@ -216,28 +216,25 @@ async function readStatus(sourceRef,installId,buildRecordId){
  return {authorizationSha256:p.authorizationSha256,verified:JSON.parse(regular(join(p.directory,'verified.json'),1024**2)),
   activated:JSON.parse(regular(join(p.directory,'activated.json'),1024**2)),runtime:await confirmRuntime(sourceRef,installId,buildRecordId,{persist:false,allowCleanup:true}),releaseAuthorized:false};
 }
+export async function withNormalCleanupLock(directory,selection,operation){
+ const release=acquireNormalCleanupLock(join(directory,'normal-cleanup.lock'),selection);
+ try{return await operation();}finally{release();}
+}
 export async function cleanupCiBuild(sourceRef,installId,buildRecordId,request){
+ const p=selected(installId,sourceRef,buildRecordId,{allowCleanup:true});
+ return withNormalCleanupLock(p.directory,{source:sourceRef,installId,pid:process.pid},async()=>{
+  assert(!['ready','commit','consumed'].some(name=>existsSync(join(p.directory,'normal-cleanup-'+name+'.json'))),'Interrupted normal session requires explicit recovery');
+  return cleanupCiBuildLocked(sourceRef,installId,buildRecordId,request);
+ });
+}
+async function cleanupCiBuildLocked(sourceRef,installId,buildRecordId,request){
  const source=targetRoot(),p=selected(installId,sourceRef,buildRecordId,{allowCleanup:true}),g=p.grant;
  validateCleanupRequest(request,g);
  await confirmRuntime(sourceRef,installId,buildRecordId,{persist:false,allowCleanup:true});
  const activated=JSON.parse(regular(join(p.directory,'activated.json'),1024**2));
- const audit=join(p.directory,'audit');if(!existsSync(audit))mkdirSync(audit,{mode:0o700});privateDirectory(audit);
- if(!existsSync(join(audit,'bytes')))mkdirSync(join(audit,'bytes'),{mode:0o700});privateDirectory(join(audit,'bytes'));
+ retainNormalCleanupAudit(p,activated);
  const authorityPath=join(p.directory,'cleanup-authorized.json');
- if(!existsSync(authorityPath)){
-  // Both original trees must be present on first authorization. Retry audit state is enabled only
-  // by this immutable record, after every original audit byte has been retained.
-  privateDirectory(p.packet);
-  assert(isDeepStrictEqual(identity(lstatSync(p.next)),activated.activation.retainedDirectory)&&buildId(p.next)===g.baselineBuildId,'Expected owned previous build required before cleanup authorization');
-  for(const [name,bound]of [['system-testing.json',80*1024],['successful-build.json',1024**2],['build-provenance.json',1024**2],['bytes/build-bundle-files.json',16*1024**2]]){
-   const bytes=regular(join(p.packet,name),bound),path=join(audit,name);
-   if(existsSync(path))assert(regular(path,bound).equals(bytes),'Existing original audit record differs');else publish(path,bytes);
-  }
-  const authority={format:1,kind:'OWNED_CI_INSTALL_CLEANUP_AFTER_VERIFIED_ARRIVAL',sourceDirectory:source,source:sourceRef,installId,buildRecordId,nextBuildId:g.build.nextBuildId,
-   authorizationSha256:p.authorizationSha256,witnessFingerprint:g.witnessFingerprint,directory:identity(lstatSync(p.directory)),activeDirectory:activated.activation.activeDirectory,
-   retainedDirectory:activated.activation.retainedDirectory,packetDirectory:identity(lstatSync(p.packet)),sourceProof:request,sourceProofSha256:installHash(installJson(request)),authorizedAt:new Date().toISOString()};
-  save(authorityPath,authority);
- }
+ if(!existsSync(authorityPath))durableCleanupRecord(authorityPath,normalCleanupAuthority(source,p,activated,request));
  // Reopen every retained digest before deletion (also covers an interrupted audit copy or retry).
  await sourceContract(source,p);validateCleanupRequest(request,g);
  const cleanup=JSON.parse(execFileSync('python3',[join(ROOT,'.github/ci/cleanup-install.py'),p.directory],{encoding:'utf8',timeout:120000,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}}));
@@ -251,7 +248,12 @@ export async function cleanupCiBuild(sourceRef,installId,buildRecordId,request){
 }
 
 
-function retainNormalCleanupAudit(p,activated){
+function normalCleanupAuthority(source,p,activated,request){
+ const g=p.grant;return {format:1,kind:'OWNED_CI_INSTALL_CLEANUP_AFTER_VERIFIED_ARRIVAL',sourceDirectory:source,source:g.source,installId:g.installId,buildRecordId:g.build.buildRecordId,nextBuildId:g.build.nextBuildId,
+  authorizationSha256:p.authorizationSha256,witnessFingerprint:g.witnessFingerprint,directory:identity(lstatSync(p.directory)),activeDirectory:activated.activation.activeDirectory,
+  retainedDirectory:activated.activation.retainedDirectory,packetDirectory:identity(lstatSync(p.packet)),sourceProof:request,sourceProofSha256:installHash(installJson(request)),authorizedAt:new Date().toISOString()};
+}
+export function retainNormalCleanupAudit(p,activated){
  const g=p.grant;
  const audit=join(p.directory,'audit');if(!existsSync(audit))mkdirSync(audit,{mode:0o700});privateDirectory(audit);
  if(!existsSync(join(audit,'bytes')))mkdirSync(join(audit,'bytes'),{mode:0o700});privateDirectory(join(audit,'bytes'));
@@ -262,53 +264,44 @@ function retainNormalCleanupAudit(p,activated){
   assert(isDeepStrictEqual(identity(lstatSync(p.next)),activated.activation.retainedDirectory)&&buildId(p.next)===g.baselineBuildId,'Expected owned previous build required before cleanup authorization');
   for(const [name,bound]of [['system-testing.json',80*1024],['successful-build.json',1024**2],['build-provenance.json',1024**2],['bytes/build-bundle-files.json',16*1024**2]]){
    const bytes=regular(join(p.packet,name),bound),path=join(audit,name);
-   if(existsSync(path))assert(regular(path,bound).equals(bytes),'Existing original audit record differs');else publish(path,bytes);
+   if(existsSync(path))assert(regular(path,bound).equals(bytes),'Existing original audit record differs');else{const fd=openSync(path,'wx',0o600);try{writeFileSync(fd,bytes);fsyncSync(fd);}finally{closeSync(fd);}const directory=openSync(join(path,'..'),'r');try{fsyncSync(directory);}finally{closeSync(directory);}}
   }
  }
+ for(const folder of [join(p.directory,'audit/bytes'),join(p.directory,'audit'),p.directory]){const fd=openSync(folder,'r');try{fsyncSync(fd);}finally{closeSync(fd);}}
 }
+
 export async function cleanupCiBuildSession(sourceRef,installId,buildRecordId){
  const source=targetRoot(),p=selected(installId,sourceRef,buildRecordId),g=p.grant;
  assert(!existsSync(join(p.directory,'cleanup-authorized.json'))&&!existsSync(join(p.directory,'normal-cleanup-consumed.json')),'Prior cleanup attempt requires explicit recovery');
- const release=acquireNormalCleanupLock(join(p.directory,'normal-cleanup.lock'),{source:sourceRef,installId,pid:process.pid});
- try{
+ return withNormalCleanupLock(p.directory,{source:sourceRef,installId,pid:process.pid},async()=>{
+  assert(!existsSync(join(p.directory,'cleanup-authorized.json'))&&!existsSync(join(p.directory,'normal-cleanup-consumed.json')),'Concurrent cleanup attempt requires explicit recovery');
   const activated=JSON.parse(regular(join(p.directory,'activated.json'),1024**2));
   const official=await import(pathToFileURL(join(source,'scripts/improve/release.ts')).href),exclude=canonicalSourceExclusions((official.deploymentRsyncArgs??official.default?.deploymentRsyncArgs)(source));
   let expectedAuthority=null;
   const recordNames=['authorization.json','store.json','verified.json','activated.json','audit/system-testing.json','audit/successful-build.json','audit/build-provenance.json','audit/bytes/build-bundle-files.json'];
-  const fences=async()=>{
-   const started=Date.now();guardServerCli(sourceRef);const selectedNow=selected(installId,sourceRef,buildRecordId);
-   assert(selectedNow.authorizationSha256===p.authorizationSha256,'Original installation grant changed');runtimeContract(source,g);
-   assert(buildId(join(source,'.next'))===g.build.nextBuildId,'Active build changed');
-   const show=name=>execFileSync('systemctl',['show','aihr','--property='+name,'--value'],{encoding:'utf8',timeout:3000}).trim();
-   const result={source:sourceRef,installId,authorizationSha256:p.authorizationSha256,lease:{batch:process.env.AIHR_STAGING_BATCH,epoch:process.env.AIHR_STAGING_EPOCH},
-    pid:show('MainPID'),started:show('ExecMainStartTimestampMonotonic'),service:execFileSync('systemctl',['is-active','aihr'],{encoding:'utf8',timeout:3000}).trim(),
-    boot:installHash(readFileSync('/proc/sys/kernel/random/boot_id')),environment:fingerprintStagingEnvironment(source),
-    active:identity(lstatSync(join(source,'.next'))),retained:identity(lstatSync(p.next)),packet:identity(lstatSync(p.packet)),directory:identity(lstatSync(p.directory)),
-    sourceMetadata:cleanupTreeFence(source,exclude),compiledMetadata:cleanupTreeFence(join(source,'.next'),relative=>relative==='cache'),
-    records:recordNames.map(name=>[name,installHash(regular(join(p.directory,name),16*1024**2)),identity(lstatSync(join(p.directory,name)))]),
-    ledger:collectMigrationLedger(source)};
-   delete result.ledger.verifiedAt;
-   if(expectedAuthority)assert(regular(join(p.directory,'cleanup-authorized.json'),32768).equals(Buffer.from(installJson(expectedAuthority)+'\n')),'Final cleanup authority changed');
-   assert(result.service==='active'&&/^[1-9][0-9]*$/.test(result.pid)&&isDeepStrictEqual(result.active,activated.activation.activeDirectory)&&isDeepStrictEqual(result.retained,activated.activation.retainedDirectory),'Cleanup runtime/inodes changed');
-   const response=await fetch('http://127.0.0.1:'+(process.env.PORT??'3000')+'/health',{redirect:'manual',signal:AbortSignal.timeout(3000)});assert(response.status===200&&show('MainPID')===result.pid,'Cleanup health/PID changed');await response.arrayBuffer();
-   assert(Date.now()-started<=30000,'Fast cleanup fence exceeded deadline');return result;
-  };
+  const show=name=>execFileSync('systemctl',['show','aihr','--property='+name,'--value'],{encoding:'utf8',timeout:3000}).trim();
+  const fences=()=>captureNormalCleanupFences({source,p,activated,exclude,recordNames,ports:{
+   authority:async()=>{const current=selected(installId,sourceRef,buildRecordId);assert(current.authorizationSha256===p.authorizationSha256,'Original grant changed');if(expectedAuthority)assert(regular(join(p.directory,'cleanup-authorized.json'),32768).equals(Buffer.from(installJson(expectedAuthority)+'\n')),'Cleanup authority changed');},
+   lease:async()=>guardServerCli(sourceRef),leaseIdentity:async()=>({batch:process.env.AIHR_STAGING_BATCH,epoch:process.env.AIHR_STAGING_EPOCH}),
+   runtime:async()=>{runtimeContract(source,g);assert(buildId(join(source,'.next'))===g.build.nextBuildId,'Active build changed');},
+   service:async()=>({pid:show('MainPID'),started:show('ExecMainStartTimestampMonotonic'),active:execFileSync('systemctl',['is-active','aihr'],{encoding:'utf8',timeout:3000}).trim()==='active'}),
+   boot:async()=>installHash(readFileSync('/proc/sys/kernel/random/boot_id')),environment:async()=>fingerprintStagingEnvironment(source),ledger:async()=>collectMigrationLedger(source),
+   health:async()=>{const response=await fetch('http://127.0.0.1:'+(process.env.PORT??'3000')+'/health',{redirect:'manual',signal:AbortSignal.timeout(3000)});await response.arrayBuffer();return response.status;}
+  }});
   const {cleanup,runtime}=await runNormalCleanupSession({grant:g,
    retainAudit:async()=>{retainNormalCleanupAudit(p,activated);for(const folder of [join(p.directory,'audit/bytes'),join(p.directory,'audit'),p.directory]){const fd=openSync(folder,'r');try{fsyncSync(fd);}finally{closeSync(fd);}}},
    audit:()=>confirmRuntime(sourceRef,installId,buildRecordId,{persist:false,allowCleanup:true}),fences,
    persist:async(name,value)=>durableCleanupRecord(join(p.directory,'normal-cleanup-'+name+'.json'),value),
    consume:async ready=>durableCleanupRecord(join(p.directory,'normal-cleanup-consumed.json'),{kind:'NORMAL_CLEANUP_NONCE_CONSUMED',readySha256:installHash(installJson(ready))}),
    authorize:async request=>{
- const authority={format:1,kind:'OWNED_CI_INSTALL_CLEANUP_AFTER_VERIFIED_ARRIVAL',sourceDirectory:source,source:sourceRef,installId,buildRecordId,nextBuildId:g.build.nextBuildId,
-   authorizationSha256:p.authorizationSha256,witnessFingerprint:g.witnessFingerprint,directory:identity(lstatSync(p.directory)),activeDirectory:activated.activation.activeDirectory,
-   retainedDirectory:activated.activation.retainedDirectory,packetDirectory:identity(lstatSync(p.packet)),sourceProof:request,sourceProofSha256:installHash(installJson(request)),authorizedAt:new Date().toISOString()};
+ const authority=normalCleanupAuthority(source,p,activated,request);
  durableCleanupRecord(join(p.directory,'cleanup-authorized.json'),authority);expectedAuthority=authority;
    },
    removeOwned:async()=>JSON.parse(execFileSync('python3',[join(ROOT,'.github/ci/cleanup-install.py'),p.directory],{encoding:'utf8',timeout:120000,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}})),
    io:{ready:async ready=>{process.stdout.write(installJson(ready)+'\n');},commit:()=>readSingleCleanupCommit(process.stdin)}});
   assert(cleanup.kind==='OWNED_INSTALL_BYTES_ABSENT_AUDIT_RETAINED'&&cleanup.authorizationSha256===p.authorizationSha256&&cleanup.source===sourceRef&&cleanup.installId===installId&&cleanup.nextBuildId===g.build.nextBuildId&&cleanup.auditEvidenceRetained===true&&isDeepStrictEqual(cleanup.verifiedAbsent,['next','packet']),'Owned cleanup result differs');
   return {format:1,kind:RESULT_KIND,result:{format:1,kind:'CI_INSTALL_OWNED_CLEANUP_AND_FINAL_RUNTIME_VERIFIED',source:sourceRef,installId,buildRecordId,nextBuildId:g.build.nextBuildId,authorizationSha256:p.authorizationSha256,cleanup,runtime,ownedResourceCleanupVerified:true,releaseHandbackVerified:false}};
- }finally{release();}
+ });
 }
 
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){

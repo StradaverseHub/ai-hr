@@ -11,6 +11,11 @@ on:
         description: Exact candidate commit
         required: true
         type: string
+      normal_cleanup_probe:
+        description: Normal valid-grant cleanup IPC, real package/filter and refusal fixtures only; no release authority
+        required: false
+        default: false
+        type: boolean
       filesystem_activation_probe:
         description: Private Linux activation, byte inventory and installer refusal fixtures; no app build, DB, SSH or staging
         required: false
@@ -1014,5 +1019,41 @@ jobs:
         with:
           name: diagnostic-source-transfer-followup
           path: ${{ runner.temp }}/source-transfer-followup/
+          if-no-files-found: error
+          retention-days: 3
+
+  normal-cleanup:
+    if: ${{ inputs.normal_cleanup_probe }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', persist-credentials: false}
+      - name: Require exact reviewed source and controller
+        env:
+          EXPECTED: ${{ inputs.expected_sha }}
+          SELECTED: ${{ needs.resolve.outputs.sha }}
+          CONTROLLER: ${{ github.workflow_sha }}
+        run: test "$EXPECTED" = "$SELECTED" && test "$SELECTED" = "$CONTROLLER"
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
+      - uses: ./.github/actions/setup-alpha
+        with: {path: source, mobile: 'false', capacity_profile: bounded-suite-setup}
+      - name: Normal cleanup controller, IPC and actual package controls
+        working-directory: source
+        shell: bash
+        run: |
+          set -o pipefail
+          node --import tsx --test .github/ci/normal-cleanup-session.test.mjs .github/ci/normal-cleanup-io.test.mjs .github/ci/normal-cleanup-operator.test.mjs .github/ci/staging-cleanup-protocol.test.mjs .github/ci/staging-build-install.test.mjs .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs .github/ci/staging-environment.test.mjs 2>&1 | tee "$RUNNER_TEMP/normal-cleanup-controls.log"
+          python3 .github/ci/cleanup-install.test.py 2>&1 | tee "$RUNNER_TEMP/normal-cleanup-engine.log"
+          git diff --exit-code
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: diagnostic-normal-cleanup-not-release
+          path: |
+            ${{ runner.temp }}/normal-cleanup-controls.log
+            ${{ runner.temp }}/normal-cleanup-engine.log
           if-no-files-found: error
           retention-days: 3

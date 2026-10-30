@@ -5,10 +5,10 @@ import {installJson,installHash} from './ci-install-grant.mjs';
 import {createCleanupRequest} from './staging-cleanup-protocol.mjs';
 import {validateReady,createCommit,RESULT_KIND} from './normal-cleanup-session.mjs';
 import {cleanupFrames} from './normal-cleanup-io.mjs';
-export function openNormalCleanupChannel(args,{launch=spawn}={}){
+export function openNormalCleanupChannel(args,{launch=spawn,terminalTimeout=900000}={}){
  const child=launch('ssh',args,{stdio:['pipe','pipe','pipe']}),frames=cleanupFrames(child.stdout);let errorBytes=0;const stderr=[];
  child.stderr.on('data',chunk=>{errorBytes+=chunk.length;if(errorBytes<=65536)stderr.push(chunk);});
- const completed=new Promise((accept,reject)=>{child.once('error',reject);child.once('close',code=>code===0?accept():reject(Error('Cleanup transport failed; reconcile state and retain lease')));});completed.catch(()=>{});
+ const completed=new Promise((accept,reject)=>{const timer=setTimeout(()=>reject(Error('Cleanup terminal close timed out; retain lease and reconcile remote state')),terminalTimeout);child.once('error',error=>{clearTimeout(timer);reject(error);});child.once('close',code=>{clearTimeout(timer);code===0?accept():reject(Error('Cleanup transport failed; reconcile state and retain lease'));});});completed.catch(()=>{});
  child.stdin.on('error',()=>{});
  return {frames,stdin:child.stdin,success:async()=>{await completed;assert(errorBytes<=65536,'Cleanup stderr exceeds bound');frames.finish();},stderr:()=>({bytes:errorBytes,capturedSha256:installHash(Buffer.concat(stderr))})};
 }
