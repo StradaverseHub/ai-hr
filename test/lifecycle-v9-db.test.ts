@@ -24,6 +24,20 @@ beforeEach(async () => {
   await v9Setup(admin);
 });
 afterAll(closeAll);
+it('reports retained V9 company history without granting private case access to organisation HR',async()=>{
+  const c=await prepared(),userId=await createAppUser(base.tenantId,other.personId!,'hr_admin');
+  await owner.client`update role_assignment set company_id=${base.companyId}::uuid where tenant_id=${base.tenantId}::uuid and app_user_id=${userId}::uuid and role='hr_admin'`;
+  const reviewer:SessionContext={...other,userId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:base.companyId}]};
+  expect(await withTenant(reviewer,tx=>tx.execute(sql`select id from lc_v9_case where id=${c.id}::uuid`))).toEqual([]);
+  const retained=(ctx:SessionContext,company:string)=>withTenant(ctx,tx=>tx.execute<{used:boolean}>(sql`select app.lc_v9_company_employee_history_in_use(${company}::uuid) as used`));
+  expect(await retained(reviewer,base.companyId)).toEqual([{used:true}]);
+  expect(await retained(employee,base.companyId)).toEqual([{used:false}]);
+  expect(await retained(reviewer,randomUUID())).toEqual([{used:false}]);
+  const foreignBase=await seedBase(),foreign=await entitledCtx(foreignBase);
+  expect(await retained(foreign,base.companyId)).toEqual([{used:false}]);
+  await owner.client`update role_assignment set role='employee' where tenant_id=${base.tenantId}::uuid and app_user_id=${userId}::uuid and role='hr_admin'`;
+  expect(await retained(reviewer,base.companyId)).toEqual([{used:false}]);
+});
 async function prepared() {
   const workspace = await v9Workspace(admin), config = workspace.config!;
   config.checklists = [...config.checklists.filter(checklist => checklist.module === 'onb'), { id: 'fixture', name: 'Focused exit', module: 'off', rules: {}, tasks: [{ id: 'handover', name: 'Complete handover', by: 'employee', group: null, mode: 'manual', opens: null, due: 0, required: true, documentTemplate: null, documentAction: 'completed' }] }];
@@ -1031,9 +1045,9 @@ it('snapshots handed Native items by employment and records recovery on their or
   await expect(v9OwnItem(employee,workInput)).rejects.toThrow();
   const restored=await onboardingContext(admin);restored.config.groups.find(group=>group.id===assigned.group)!.members=[admin.userId!,employee.userId!];await onboardingSaveConfig(admin,restored.revision,restored.config);
   await expect(withTenant({...employee,tenantId:randomUUID()},tx=>tx.execute(sql`select app.lc_v9_assigned_item(${first.id}::uuid,${declared.revision},${assigned.id})`))).rejects.toThrow();
-  await owner.client`update app_user set archived_at=now() where id=${employee.userId}::uuid`;
+  await owner.client`update app_user set archived_at=now() where id=${employee.userId!}::uuid`;
   await expect(v9OwnItem(employee,workInput)).rejects.toThrow();
-  await owner.client`update app_user set archived_at=null where id=${employee.userId}::uuid`;
+  await owner.client`update app_user set archived_at=null where id=${employee.userId!}::uuid`;
   await v9OwnItem(employee,workInput);
   await expect(v9OwnItem(employee,{...workInput,status:'done'})).rejects.toThrow();
   let fresh=(await v9CaseDetail(admin,first.id)).case;
@@ -1076,7 +1090,7 @@ it('keeps team asset recovery behind existing IT authority, locked holder checks
   await expect(v9OwnItem(employee,input)).rejects.toThrow();
   expect((await getAsset(admin,asset.code)).status).toBe('issued');
   // Test-only IT authority, never a real account grant.
-  await owner.client`insert into lc_staff(tenant_id,user_id,company_id,level) values(${base.tenantId}::uuid,${employee.userId}::uuid,${base.companyId}::uuid,'agent')`;
+  await owner.client`insert into lc_staff(tenant_id,user_id,company_id,level) values(${base.tenantId}::uuid,${employee.userId!}::uuid,${base.companyId}::uuid,'agent')`;
   await expect(withTenant(employee,tx=>tx.execute(sql`select app.lc_v9_fulfil_item(${id}::uuid,${c.revision},${input.itemId},'done','')`))).rejects.toThrow();
   await expect(withTenant(employee,tx=>returnAssetTx(tx,employee,asset.code,{requisitionNumber:c.number,expectedHolder:{companyId:base.companyId,employeeNo:'FICTIONAL-WRONG-HOLDER'}}))).rejects.toThrow('holder changed');
   await expect(withTenant(employee,async tx=>{

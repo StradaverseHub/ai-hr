@@ -269,7 +269,7 @@ describe('V3.1 fulfilment, gates, progress and retained history', () => {
         expect(c.history.some(h => h.action === 'case.cancelled')).toBe(true);
     });
     it('rejects work without module, assigned-task or team rights', () => {
-        expect(() => M.submitCase(config, c, tech, env)).toThrow('access');
+        expect(() => M.submitCase(config, c, tech, env)).toThrow('Case actions');
         config.checklists[0]!.tasks = [template('pack')];
         M.submitCase(config, c, hr, env);
         expect(() => M.setTask(config, c, 'pack', 'done', tech, env)).toThrow('assigned');

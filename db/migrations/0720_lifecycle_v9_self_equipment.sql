@@ -97,3 +97,18 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.lc_v9_assigned_item(uuid,integer,text),app.lc_v9_fulfil_item(uuid,integer,text,text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.lc_v9_assigned_item(uuid,integer,text),app.lc_v9_fulfil_item(uuid,integer,text,text,text) TO ai_hr_app;
+
+
+-- Company deletion observes retained history without granting HR case or email-body access.
+CREATE FUNCTION app.lc_v9_company_employee_history_in_use(wanted_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce(wanted_company IS NOT NULL AND app.current_tenant_id() IS NOT NULL
+ AND app.principal_snapshot_current() AND app.is_admin_for(wanted_company)
+ AND EXISTS(SELECT 1 FROM public.company c WHERE c.id=wanted_company AND c.tenant_id=app.current_tenant_id())
+ AND (EXISTS(SELECT 1 FROM public.lc_v9_case c WHERE c.company_id=wanted_company AND c.tenant_id=app.current_tenant_id())
+ OR EXISTS(SELECT 1 FROM public.lc_v9_case_revision r WHERE r.company_id=wanted_company AND r.tenant_id=app.current_tenant_id())
+ OR EXISTS(SELECT 1 FROM public.lc_v9_file f WHERE f.company_id=wanted_company AND f.tenant_id=app.current_tenant_id())
+ OR EXISTS(SELECT 1 FROM public.lc_v9_email_delivery d WHERE d.company_id=wanted_company AND d.tenant_id=app.current_tenant_id())),false)
+$$;
+REVOKE ALL ON FUNCTION app.lc_v9_company_employee_history_in_use(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.lc_v9_company_employee_history_in_use(uuid) TO ai_hr_app;

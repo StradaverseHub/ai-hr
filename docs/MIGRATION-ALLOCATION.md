@@ -7,7 +7,7 @@ owning release gate.
 
 ## V9 verification-only source candidate — 30 October 2026
 
-The owner authorized TypeScript and full-gate verification, explicitly withholding deployment. The candidate preserves the complete569-entry main/alpha prefix at c4fad43c1d67d69125a3f37e7549a5a8a7053362 and the installed Feedback348 prefix through idx683/1793330000031. All eight SQL bodies are byte-identical moves of the V9 development drafts; their draft header comments remain historical provenance. Tests now use the ordinary journal rather than a fixture overlay.
+The owner authorized TypeScript and full-gate verification, explicitly withholding deployment. The candidate preserves the complete569-entry main/alpha prefix at c4fad43c1d67d69125a3f37e7549a5a8a7053362 and the installed Feedback348 prefix through idx683/1793330000031. The initial d13ccd6e0 candidate moved all eight development SQL bodies byte-for-byte; their draft header comments remain historical provenance. Its complete gate found a missing company-retention integration. The still-unapplied0720 now appends a fresh, company-HR-scoped retention boolean; the other seven SQL bodies remain exact. No applied SQL changes. Tests now use the ordinary journal rather than a fixture overlay.
 
 These are **verification-only source positions, not a centrally approved installation allocation**. AI confirmed its10 unapplied0703–0712/idx684–693/when32–41 claims unchanged; MOBILE reports no competing successor and Board adds noSQL. Those claims remain untouched and are not included. The deliberate index gap preserves their reservations. Before any integration/application, obtain the final coordinated sequence from the allocation owner, reconcile all absent predecessors and actual ledger, and rerun affected/fresh verification for any changed candidate. Do not deploy this isolated sequence or silently skip an earlier owning release. No protected ref, real account, staging or production data is changed by this source candidate.
 
@@ -20,7 +20,7 @@ These are **verification-only source positions, not a centrally approved install
 |698|1793330000046|0717_lifecycle_v9_delivery_review|a2a29747b6fcfea39dfc2e54f554f2f44fc9d365c911796066de1a4c36d2979f|
 |699|1793330000047|0718_lifecycle_v9_employment_class|8fcdc41c6db137aa69e29c5dab44a8788b7c3c30620b97d215d7bbbb65f34dd2|
 |700|1793330000048|0719_lifecycle_v9_business_recipients|aa3b80ffa3f013025569e0030fdee843c3af135cc7d0ae1611628cf0cb408035|
-|701|1793330000049|0720_lifecycle_v9_self_equipment|a9b2b8c6a53a42322a392cf4f98d1967033e17f20d28d6e17a0c3b861b36510e|
+|701|1793330000049|0720_lifecycle_v9_self_equipment|3e7f1b5fe1b08e33d9424ef8262649c4c9ca22356a893987aeaa1d81f391846b|
 
 ## Feedback menu operator switch — 30 October 2026 (unapplied successor)
 
