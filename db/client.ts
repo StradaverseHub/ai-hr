@@ -197,13 +197,19 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     const grants = ctx.grants ?? (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
     const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
     return db.transaction(async (tx) => {
+      // This existing cache only moves to true. Once armed, every arming decision
+      // must stay on, so its SET LOCAL can share the session setup round trip.
+      // Unknown tenants retain the original decision after setup: another transaction
+      // may arm the tenant while this first statement is awaiting its response.
+      const chainAlreadyArmed = tenantHasChainedHistory(ctx.tenantId);
+      const auditSetup = chainAlreadyArmed ? sql`, set_config('app.audit_hash_chain', 'on', true)` : sql``;
       // set_config(name, value, is_local=true) === SET LOCAL — cleared at COMMIT.
       // r394: ONE round trip, not four. Every withTenant transaction paid four sequential statements
       // before its first real query (measured: 145 of 366 statements on one employee navigation to
       // My Leave). The four are independent and all evaluated in this one row, so the outcome is the
       // same; test/r394-with-tenant-one-round-trip.test.ts pins both the values and the single statement.
       await tx.execute(
-        sql`select set_config('app.tenant_id', ${ctx.tenantId}, true), set_config('app.user_id', ${ctx.userId ?? ''}, true), set_config('app.roles', ${roleNames.join(',')}, true), set_config('app.grants', ${JSON.stringify(grants)}, true), set_config('app.agent_principal_id', ${ctx.agent?.principalId ?? ''}, true)`,
+        sql`select set_config('app.tenant_id', ${ctx.tenantId}, true), set_config('app.user_id', ${ctx.userId ?? ''}, true), set_config('app.roles', ${roleNames.join(',')}, true), set_config('app.grants', ${JSON.stringify(grants)}, true), set_config('app.agent_principal_id', ${ctx.agent?.principalId ?? ''}, true)${auditSetup}`,
       );
       // ADR-0030 Layer 2 gate: the domain_event hash-chain trigger only fires when this GUC is 'on'.
       // Off by default → chain columns stay NULL → byte-identical behaviour (deployment flag).
@@ -238,7 +244,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
       });
       if (chainDecision.refusedDisarm) warnChainDisarmRefused(ctx.tenantId, chainDecision.reason);
       if (chainDecision.armed) {
-        await tx.execute(sql`select set_config('app.audit_hash_chain', 'on', true)`);
+        if (!chainAlreadyArmed) await tx.execute(sql`select set_config('app.audit_hash_chain', 'on', true)`);
         // Remembered the moment we arm: the next transaction for this tenant must see that history now
         // exists, or a settings flip between the two could still open a one-transaction hole.
         markTenantChained(ctx.tenantId);

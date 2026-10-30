@@ -10,8 +10,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { withTenant, type SessionContext } from '../db/client';
-import { closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { createDb, withTenant, type SessionContext } from '../db/client';
+import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
 beforeAll(async () => { await migrateTestDb(); await resetDb(); b = await seedBase(); });
@@ -67,6 +67,35 @@ describe('r394 · withTenant session context in one round trip', () => {
     // …and none of the four is set again in a statement of its own.
     for (const k of ['app.tenant_id', 'app.user_id', 'app.roles', 'app.grants']) {
       expect(statements.filter((s) => s.includes(`set_config('${k}'`)), k).toHaveLength(1);
+    }
+  });
+
+  it('keeps warm audit arming and clears it across commit and rollback on the same backend', async () => {
+    const previous = process.env.AUDIT_HASH_CHAIN_ENABLED;
+    const url = new URL(process.env.DATABASE_URL!);
+    url.searchParams.set('application_name', 'audit-session-isolation');
+    const scoped = createDb(url.toString(), {max: 1});
+    const read = (ctx: SessionContext) => scoped.withTenant(ctx, async tx =>
+      (await tx.execute(sql`select pg_backend_pid() as pid, current_setting('app.audit_hash_chain', true) as chain,
+        current_setting('app.tenant_id', true) as tenant`))[0] as {pid: number; chain: string | null; tenant: string});
+    try {
+      process.env.AUDIT_HASH_CHAIN_ENABLED = 'true';
+      const first = await read(adminCtx(b));
+      expect(first.chain).toBe('on');
+      process.env.AUDIT_HASH_CHAIN_ENABLED = 'false';
+      const warm = await read(adminCtx(b));
+      expect(warm).toEqual(first);
+      const foreign = await seedBase();
+      const other = await read(adminCtx(foreign));
+      expect(other.pid).toBe(first.pid);
+      expect(other.tenant).toBe(foreign.tenantId);
+      expect(other.chain).not.toBe('on');
+      await expect(scoped.withTenant(adminCtx(b), async () => {throw Error('Fictional rollback');})).rejects.toThrow('Fictional rollback');
+      expect(await read(adminCtx(foreign))).toEqual(other);
+    } finally {
+      if (previous === undefined) delete process.env.AUDIT_HASH_CHAIN_ENABLED;
+      else process.env.AUDIT_HASH_CHAIN_ENABLED = previous;
+      await scoped.client.end();
     }
   });
 });
