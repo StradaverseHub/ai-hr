@@ -2,6 +2,7 @@
 import {useEffect,useRef,useState,useTransition} from 'react';
 import {useTranslations} from 'next-intl';
 import {Button} from '@/components/ui';
+import {NativeInsightOutline} from './native-insight-outline';
 import {assessmentWrittenRemarksAction} from '../onehr-actions';
 import type {getAssessmentWrittenRemarks} from '@/packs/performance/service';
 import type {WrittenAxis} from '@/packs/performance/onehr/written-remarks-model';
@@ -15,7 +16,7 @@ export function WrittenRemarks({reviewId,sessionId,axis}:{reviewId:string;sessio
   {busy&&<p role="status">{t('insight.working')}</p>}{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
   {!busy&&!result&&<Button type="button" variant="secondary" onClick={()=>load(false)}>{t('writtenRemarks.read')}</Button>}
   {!busy&&result?.pending&&<Button type="button" variant="secondary" onClick={()=>load(true)}>{t('insight.generate')}</Button>}
-  {!busy&&result?.data&&<p className="text-sm leading-relaxed">{result.data.paragraph}</p>}
+  {!busy&&result?.data&&<><p className="text-sm leading-relaxed">{result.data.paragraph}</p><NativeInsightOutline data={result.data} paragraphKind="remark"/></>}
   {result&&result.entries.length>0&&<details><summary className="min-h-11 cursor-pointer py-3 text-sm text-primary">{t('writtenRemarks.full')}</summary><ol className="space-y-4">{result.entries.map((e,i)=><li key={i} className="space-y-1 border-l-2 border-border pl-3"><p className="text-sm font-medium">{e.who}{e.on&&` · ${e.on}`}{e.move&&` · ${e.move}`}</p><blockquote className="whitespace-pre-wrap break-words text-sm leading-relaxed">{e.text}</blockquote></li>)}</ol></details>}
  </section>;
 }
