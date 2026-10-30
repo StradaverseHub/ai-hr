@@ -4153,6 +4153,13 @@
       "tag": "0726_assistant_cost_allocation_maintenance",
       "breakpoints": true
     },
-    {"idx":711,"version":"7","when":1793330000068,"tag":"0731_assistant_rewards_cancel_review","breakpoints":true}
+    {"idx":711,"version":"7","when":1793330000068,"tag":"0731_assistant_rewards_cancel_review","breakpoints":true},
+    {
+      "idx": 720,
+      "version": "7",
+      "when": 1793330000078,
+      "tag": "0741_assistant_rewards_cycle_calendar_review",
+      "breakpoints": true
+    }
   ]
 }

@@ -1411,25 +1411,32 @@ export async function getRewardCalendar(ctx: SessionContext, unitId: string) {
  * not yet created. A stale form is refused rather than overwriting another person's dates.
  */
 export async function saveRewardCalendar(ctx: SessionContext, unitId: string, revision: number, raw: unknown) {
+  return withRewardsTenant(ctx, async tx => (await saveRewardCalendarTx(tx, ctx, unitId, revision, raw)).revision);
+}
+
+/** Same native owner, composed with Assistant custody in its supplied transaction. */
+export async function saveRewardCalendarTx(tx: Tx, ctx: SessionContext, unitId: string, revision: number, raw: unknown) {
+  assertModuleGate(ctx, 'rewards');
   const values = rewardCalendarSchema.parse(raw);
-  return withRewardsTenant(ctx, async tx => {
-    const { unit, canEdit } = await calendarUnit(tx, unitId);
-    if (!canEdit) throw new RewardError('The reward calendar is maintained by Group Rewards or a company HR administrator.');
-    const [existing] = await tx.select().from(rewardCalendar).where(and(eq(rewardCalendar.cycleId, unit.cycleId), eq(rewardCalendar.companyId, unit.companyId))).for('update');
-    if ((existing?.revision ?? 0) !== revision) throw new RewardError('The reward calendar changed in another session. Reload before saving.');
-    const columns = {
-      buDue: values.due.bu, returnedDue: values.due.returned, bgDue: values.due.bg, grDue: values.due.gr, ctroDue: values.due.ctro, ecDue: values.due.ec, payrollDue: values.due.payroll,
-      caseDue: values.caseDue,
-      offcycleBgDays: values.offcycleDays.bg, offcycleGrDays: values.offcycleDays.gr, offcycleCtroDays: values.offcycleDays.ctro, offcycleEcDays: values.offcycleDays.ec, offcycleReturnedDays: values.offcycleDays.returned,
-      updatedBy: ctx.userId!, updatedAt: new Date(),
-    };
-    const [saved] = existing
-      ? await tx.update(rewardCalendar).set({ ...columns, revision: existing.revision + 1 }).where(eq(rewardCalendar.id, existing.id)).returning({ id: rewardCalendar.id, revision: rewardCalendar.revision })
-      : await tx.insert(rewardCalendar).values({ tenantId: ctx.tenantId, cycleId: unit.cycleId, companyId: unit.companyId, ...columns }).returning({ id: rewardCalendar.id, revision: rewardCalendar.revision });
-    // Deadlines stay editable after launch (62e743ed): the audit carries the dates before and after.
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'reward-calendar', aggregateId: saved.id, eventType: 'reward-calendar.updated', actor: actorOf(ctx), payload: { cycleId: unit.cycleId, companyId: unit.companyId, revision: saved.revision, values, before: existing ? calendarValues(existing) : null, after: values } });
-    return saved.revision;
-  });
+  z.number().int().nonnegative().parse(revision);
+  const { unit, canEdit } = await calendarUnit(tx, unitId);
+  if (!canEdit) throw new RewardError('The reward calendar is maintained by Group Rewards or a company HR administrator.');
+  const [existing] = await tx.select().from(rewardCalendar).where(and(eq(rewardCalendar.cycleId, unit.cycleId), eq(rewardCalendar.companyId, unit.companyId))).for('update');
+  if ((existing?.revision ?? 0) !== revision) throw new RewardError('The reward calendar changed in another session. Reload before saving.');
+  const columns = {
+    buDue: values.due.bu, returnedDue: values.due.returned, bgDue: values.due.bg, grDue: values.due.gr, ctroDue: values.due.ctro, ecDue: values.due.ec, payrollDue: values.due.payroll,
+    caseDue: values.caseDue,
+    offcycleBgDays: values.offcycleDays.bg, offcycleGrDays: values.offcycleDays.gr, offcycleCtroDays: values.offcycleDays.ctro, offcycleEcDays: values.offcycleDays.ec, offcycleReturnedDays: values.offcycleDays.returned,
+    updatedBy: ctx.userId!, updatedAt: new Date(),
+  };
+  const [saved] = existing
+    ? await tx.update(rewardCalendar).set({ ...columns, revision: existing.revision + 1 }).where(eq(rewardCalendar.id, existing.id)).returning({ id: rewardCalendar.id, revision: rewardCalendar.revision })
+    : await tx.insert(rewardCalendar).values({ tenantId: ctx.tenantId, cycleId: unit.cycleId, companyId: unit.companyId, ...columns }).returning({ id: rewardCalendar.id, revision: rewardCalendar.revision });
+  const eventId = randomUUID();
+  const [proof] = await tx.execute<{ hash: string }>(sql`select encode(sha256(convert_to(to_jsonb(c)::text,'UTF8')),'hex') as hash from reward_calendar c where c.id=${saved.id}::uuid`);
+  // Deadlines stay editable after launch (62e743ed): the audit carries the dates before and after.
+  await appendEvent(tx, { id: eventId, tenantId: ctx.tenantId, aggregateType: 'reward-calendar', aggregateId: saved.id, eventType: 'reward-calendar.updated', actor: actorOf(ctx), payload: { cycleId: unit.cycleId, companyId: unit.companyId, revision: saved.revision, values, before: existing ? calendarValues(existing) : null, after: values, calendarRowHash: proof.hash } });
+  return { calendarId: saved.id, cycleId: unit.cycleId, companyId: unit.companyId, revision: saved.revision, eventId };
 }
 
 // ── Approvals board (P1 WP-G) ────────────────────────────────────────────────────────────────────────────

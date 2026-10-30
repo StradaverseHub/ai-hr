@@ -93,6 +93,7 @@ export const AGENT_ACTION_PARITY={
  'performance.onehr.plan.acknowledge':{kind:'probed',screen:OWN_REQUEST},
  'rewards.post':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  // Fixture's assigned approver holds a real GR seat; other non-HR roles hold no cancellation seat.
+ 'rewards.calendar.update':{kind:'probed',screen:{...HR_ON_EMPLOYMENT,assigned_approver:A}},
  'rewards.cancel_review':{kind:'probed',screen:{...HR_ON_EMPLOYMENT,assigned_approver:A}},
  'lifecycle.acknowledgement.submit':{kind:'probed',screen:OWN_REQUEST},
  'toil.replacement.request':{kind:'probed',screen:OWN_REQUEST},
