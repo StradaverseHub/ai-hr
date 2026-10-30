@@ -29,6 +29,11 @@ on:
         default: 1s
         type: choice
         options: [1s, 5s]
+      system_attendance_days:
+        description: Attendance history per employee; 2000 days creates one million retained rows
+        default: '180'
+        type: choice
+        options: ['180', '2000']
       system_workers:
         description: Development app workers; total app pool and heap budgets stay fixed
         default: '1'
@@ -311,6 +316,7 @@ jobs:
       PERF_HTTP_SUITE: ${{ inputs.system_load_suite }}
       PERF_HTTP_THINK_MS: ${{ inputs.system_think_time == '5s' && '5000' || '1000' }}
       PERF_APP_WORKERS: ${{ inputs.system_workers || '1' }}
+      PERF_ATTENDANCE_DAYS: ${{ inputs.system_attendance_days || '180' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}

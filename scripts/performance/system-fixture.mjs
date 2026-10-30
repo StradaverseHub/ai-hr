@@ -28,6 +28,9 @@ const {writeRecord}=await import('../../lib/internal-auth/record-store.ts');
 const {internalIssuer}=await import('../../lib/internal-auth/config.ts');
 const {generateSecret}=await import('otplib');
 const today=todayInKualaLumpur(),month=today.slice(0,7),password='Synthetic-'+randomBytes(24).toString('hex');
+const attendanceDays=Number(process.env.PERF_ATTENDANCE_DAYS||180);assert([180,2000].includes(attendanceDays));
+// Retained attendance must not predate employment; preserve the old 180-day fixture's hire date.
+const hiredOn=attendanceDays===180?'2025-01-01':new Date(Date.parse(today+'T12:00:00Z')-(attendanceDays+1)*86400000).toISOString().slice(0,10);
 const hash=await passwordHash(password),users=[],tenants=[];
 try{
  await owner.client`create extension if not exists pg_stat_statements`;
@@ -50,7 +53,7 @@ try{
    const index=t*250+i,c=Math.floor(i/50),position=i%50,company=companies[c];
    const role=position===0&&c===0?'groupHR':position<2?'companyHR':position<4?'manager':'employee';
    const name=`PERF Person ${String(index).padStart(4,'0')}`,email=`person${index}@example.invalid`,username='person'+index;
-   const hired=await hireEmployee(ctx,{person:{fullName:name,primaryEmail:email},companyId:company.companyId,departmentId:company.departmentId,employmentType:'full_time',hiredOn:'2025-01-01',employeeCode:'PERF'+String(index).padStart(4,'0')});
+   const hired=await hireEmployee(ctx,{person:{fullName:name,primaryEmail:email},companyId:company.companyId,departmentId:company.departmentId,employmentType:'full_time',hiredOn,employeeCode:'PERF'+String(index).padStart(4,'0')});
    const userId=randomUUID(),subject=randomUUID(),version=randomUUID(),secret=generateSecret(),issuer=internalIssuer(b.tenantId);
    await owner.db.insert(s.appUser).values({id:userId,tenantId:b.tenantId,personId:hired.personId,workosUserId:'perf_'+userId});
    const grants=[{tenantId:b.tenantId,appUserId:userId,role:'employee',companyId:company.companyId}];
@@ -72,8 +75,8 @@ try{
     select ${b.tenantId}::uuid,e.id,${type.id}::uuid,1,${today}::date,'pending',now()-n*interval '1 minute'
     from unnest(${cohort.map(u=>u.employmentId)}::uuid[]) e(id)cross join generate_series(1,2000)n`;
   await owner.client`insert into attendance(tenant_id,employment_id,attendance_date,check_in_at,check_out_at,status,worked_minutes,ot_minutes)
-    select ${b.tenantId}::uuid,e.id,current_date-n,'09:00'::time,'17:00'::time,'present',480,0
-    from unnest(${cohort.map(u=>u.employmentId)}::uuid[]) e(id)cross join generate_series(0,179)n`;
+    select ${b.tenantId}::uuid,e.id,${today}::date-n,'09:00'::time,'17:00'::time,'present',480,0
+    from unnest(${cohort.map(u=>u.employmentId)}::uuid[]) e(id)cross join generate_series(0,${attendanceDays-1}::integer)n`;
   await owner.db.insert(s.payslip).values(cohort.map(u=>({tenantId:b.tenantId,batchId:u.batchId,employmentId:u.employmentId,basicSalary:'100',grossPay:'100',totalDeductions:'0',netPay:'100',employerCost:'100',statutory:{epfEmployee:0,epfEmployer:0,socsoEmployee:0,socsoEmployer:0,eisEmployee:0,eisEmployer:0,pcb:0}})));
   // A real current administrative reporting line, inside the same company, for each manager.
   await owner.db.insert(s.reportingLine).values(cohort.filter(u=>u.role==='manager').flatMap(u=>cohort.filter(v=>v.company===u.company&&v.index%50>=4+(u.index%50-2)*10&&v.index%50<14+(u.index%50-2)*10).map(v=>({tenantId:b.tenantId,managerEmploymentId:u.employmentId,subordinateEmploymentId:v.employmentId,lineType:'administrative',validFrom:'2025-01-01'}))));
@@ -81,6 +84,11 @@ try{
  for(const table of ['claim_request','attendance','employment','person','app_user','role_assignment','assignment','reporting_line','payslip'])await owner.client.unsafe('analyze '+table);
  const counts=await owner.client`select (select count(*)::int from claim_request)as claims,(select count(*)::int from attendance)as attendance,(select count(*)::int from payslip)as payslips`;
  assert.equal(counts[0].claims,1000000);assert.equal(users.length,500);
+ assert.equal(counts[0].attendance,users.length*attendanceDays);assert.equal(counts[0].payslips,500);
+ const [attendanceBounds]=await owner.client`select count(*) filter(where a.attendance_date=${today}::date)::int as current_rows,
+  count(*) filter(where a.attendance_date<e.hired_on)::int as before_hire
+  from attendance a join employment e on e.id=a.employment_id and e.tenant_id=a.tenant_id`;
+ assert.equal(attendanceBounds.current_rows,500);assert.equal(attendanceBounds.before_hire,0);
  const audit=await fixtureAuditCounts(owner.client,tenants.map(tenant=>tenant.tenantId));
  const auditCounts=tenants.map((tenant,index)=>({tenant:index,...Object.fromEntries(Object.entries(audit.find(row=>row.tenant_id===tenant.tenantId)??{}).filter(([key])=>key!=='tenant_id'))}));
  writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'audit-fixture.json'),JSON.stringify(auditCounts,null,2));
@@ -89,6 +97,6 @@ try{
  const modules=await owner.client`select tenant_id,array_agg(module_code order by module_code)as modules from tenant_module where tenant_id=any(${tenants.map(t=>t.tenantId)}::uuid[])and status='active'group by tenant_id`;
 
  writeFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),JSON.stringify({today,month,users,tenants}),{mode:0o600});
- writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'fixture.json'),JSON.stringify({fictional:true,tenants:2,companies:10,users:500,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,users.filter(u=>u.role===role).length])),counts:counts[0],authentication:'canonical encrypted internal sessions; normal HTTP session validation; not 500 account-enrollment throughput',auditHashChainRequested:process.env.AUDIT_HASH_CHAIN_ENABLED==='true',auditHashChain:audit.every(row=>row.chained>0&&row.events===row.chained+row.initialization_prefix),auditPolicy:'All post-initialization events chained; one canonical initialization prefix per tenant',auditCounts,explicitActiveModules:tenants.map((t,index)=>({tenant:index,modules:modules.find(row=>row.tenant_id===t.tenantId)?.modules??[]})),coreModules:MODULE_CATALOG.filter(m=>m.isCore).map(m=>m.code)},null,2));
+ writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'fixture.json'),JSON.stringify({fictional:true,tenants:2,companies:10,users:500,attendanceDays,attendanceBounds,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,users.filter(u=>u.role===role).length])),counts:counts[0],authentication:'canonical encrypted internal sessions; normal HTTP session validation; not 500 account-enrollment throughput',auditHashChainRequested:process.env.AUDIT_HASH_CHAIN_ENABLED==='true',auditHashChain:audit.every(row=>row.chained>0&&row.events===row.chained+row.initialization_prefix),auditPolicy:'All post-initialization events chained; one canonical initialization prefix per tenant',auditCounts,explicitActiveModules:tenants.map((t,index)=>({tenant:index,modules:modules.find(row=>row.tenant_id===t.tenantId)?.modules??[]})),coreModules:MODULE_CATALOG.filter(m=>m.isCore).map(m=>m.code)},null,2));
  console.log('[system-perf-fixture] complete; private sessions are outside artifact directory');
 }finally{await closeAll();}
