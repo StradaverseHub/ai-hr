@@ -18,7 +18,7 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
   expect(groups.every(group=>group.actions.length>0)).toBe(true);expect(new Set(actions).size).toBe(actions.length);expect([...actions].sort()).toEqual([...PROBED_ACTION_IDS].sort());
   expect(new Set(variants).size).toBe(variants.length);expect([...variants].sort()).toEqual([...PARITY_PROBE_VARIANTS].sort());
   expect(Object.keys(PARITY_PROBE_ENTRYPOINTS).sort()).toEqual(Object.keys(PARITY_PROBE_GROUPS).sort());expect(new Set(Object.values(PARITY_PROBE_ENTRYPOINTS)).size).toBe(groups.length);
-  expect(Object.keys(PARITY_PROBE_GROUPS).sort()).toEqual(['commands','personnel','requests','reviews']);
+  expect(Object.keys(PARITY_PROBE_GROUPS).sort()).toEqual(['commands','payroll','personnel','requests','reviews']);
   expect(PARITY_PROBE_GROUPS.personnel.actions).toEqual(['employees.document_metadata.maintain','employees.code.maintain','employees.passport.maintain','employees.payment_method.maintain','employees.fixed_item.archive','employees.tp3_opening.maintain','employees.cost_allocation.maintain']);
   expect(PARITY_PROBE_GROUPS.commands.actions).toHaveLength(10);expect(PARITY_PROBE_GROUPS.requests.actions).toHaveLength(13);expect(PARITY_PROBE_GROUPS.reviews.actions).toHaveLength(13);
   expect(PARITY_PROBE_GROUPS.commands.variants).toEqual(['adapter_coverage','rejected_decisions','routed_attendance','permission_revalidation','boundary_controls','standalone_tester']);

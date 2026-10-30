@@ -12390,16 +12390,18 @@ export async function prepareReviewedPayrollReopenTx(tx:Tx,ctx:SessionContext,p:
   const [parent]=await tx.select({status:payPeriod.status}).from(payPeriod).where(eq(payPeriod.id,source.payPeriodId)).limit(1);if(!parent)throw new BatchNotUnlockableError();
   const warnings=await batchDownstreamWarnings(tx,{batchId:source.id,companyId:source.companyId,payPeriod:source.payPeriod});
   const [context]=await tx.execute<{source:unknown}>(sql`select app.payroll_reopen_review_context(${source.id}::uuid) as source`);
-  const packet=z.object({companyName:z.string().min(1).max(4000),cycleName:z.string().max(4000).nullable(),sourceDigest:z.string().regex(/^[a-f0-9]{64}$/),people:z.array(z.guid()).max(10000),employees:z.array(z.guid()).max(10000)}).strict().parse(context?.source);
+  const packet=z.object({companyName:z.string().min(1).max(4000),cycleName:z.string().max(4000).nullable(),sourceDigest:z.string().regex(/^[a-f0-9]{64}$/),stableSourceDigest:z.string().regex(/^[a-f0-9]{64}$/),people:z.array(z.guid()).max(10000),employees:z.array(z.guid()).max(10000)}).strict().parse(context?.source);
   const review={batchId:source.id,companyId:source.companyId,companyName:packet.companyName,payPeriodId:source.payPeriodId,payPeriod:source.payPeriod,runType:batch.runType,runSeq:batch.runSeq,cycleName:packet.cycleName,beforeStatus:'closed' as const,afterStatus:'processed' as const,beforePeriodStatus:parent.status,afterPeriodStatus:'open' as const,parentWillReopen:parent.status==='closed',warnings,paymentWarningMeaning:'recorded_payment_summary_export_not_verified_bank_settlement' as const,consequence:'enable_later_payroll_edits_no_recalculation_payment_reversal_or_statutory_withdrawal' as const};
   const reviewedDigest=createHash('sha256').update(JSON.stringify(['payroll-reopen:v1',{tenantId:fresh.tenantId,userId:fresh.userId,personId:fresh.personId??null},p,review,packet.sourceDigest,packet.people,packet.employees])).digest('hex');
-  return{review,reviewedDigest,erasurePersonIds:packet.people,erasureEmploymentIds:packet.employees};
+  return{review,reviewedDigest,stableSourceDigest:packet.stableSourceDigest,erasurePersonIds:packet.people,erasureEmploymentIds:packet.employees};
  });
 }
 export async function reopenReviewedPayrollBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:string;reason:string},digest:string){
  const prepared=await prepareReviewedPayrollReopenTx(tx,ctx,p);if(prepared.reviewedDigest!==digest)throw new Error('Payroll reopening review changed');
  const native=await unlockClosedBatchTx(tx,ctx,p);
  if(JSON.stringify(native.warnings)!==JSON.stringify(prepared.review.warnings)||native.reopenedPeriod!==prepared.review.parentWillReopen)throw new Error('Payroll reopening effects changed');
+ const [afterSource]=await tx.execute<{source:{stableSourceDigest?:string}}>(sql`select app.payroll_reopen_review_context(${p.batchId}::uuid) as source`);
+ if(afterSource?.source?.stableSourceDigest!==prepared.stableSourceDigest)throw new Error('Payroll reopening source changed during native effect');
  const receipt=await readReviewedPayrollReopenReferenceTx(tx,ctx,{batchId:p.batchId,unlockedEventId:native.unlockedEventId});
  if(!receipt||receipt.statusHistoryId!==native.statusHistoryId||receipt.periodReopenedEventId!==native.periodReopenedEventId||receipt.currentStatus!=='processed')throw new Error('Payroll reopening proof unavailable');
  return{receipt,targetPeople:prepared.erasurePersonIds,targetEmployees:prepared.erasureEmploymentIds};

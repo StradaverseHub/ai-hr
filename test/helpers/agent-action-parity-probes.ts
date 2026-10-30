@@ -1,3 +1,5 @@
+import {preparePayrollReopenReview,confirmPayrollReopenReview,readPayrollReopenChoices} from '../../core/assistant-actions/payroll-reopen-review-store';
+import {unlockClosedBatch} from '../../packs/payroll/service';
 import {fixedItemArchiveReviews,readFixedItemArchiveChoices} from '../../core/assistant-actions/fixed-item-archive-review-store';
 import {archiveEmploymentPayComponent,setEmploymentPayComponent,seedPayComponentCatalog,listPayComponents} from '../../packs/payroll/service';
 import {tp3OpeningMaintenanceReviews,readTp3OpeningMaintenanceChoices} from '../../core/assistant-actions/tp3-opening-maintenance-review-store';
@@ -51,7 +53,7 @@ import {setCompensation} from '../../core/comp';
 import {setRestDay} from '../../core/roster';
 import {grantAssistant,revokeAssistant} from '../../core/assistant-grant';
 import {createMovementEventTx} from '../../core/movement';
-import {isAdmin} from '../../lib/authz-model';
+import {isAdmin,canManagePayroll} from '../../lib/authz-model';
 import {createClaimType,setClaimPolicy,submitClaim,decideClaimTx,cancelClaimTx} from '../../packs/claims/service';
 import {prepareClaimCancellationReview,confirmClaimCancellationReview,readClaimCancellationChoices} from '../../core/assistant-actions/claim-cancellation-review-store';
 import {OWN_CLAIM_CANCELLATION_ACTION} from '../../lib/assistant-actions/own-claim-cancellation-contract';
@@ -78,7 +80,7 @@ import {HR_LEAVE_ADJUSTMENT_ACTION,HR_MOVEMENT_TRANSFER_ACTION,HR_LEAVE_CREDIT_A
 import {AGENT_ACTIONS} from '../../lib/ai/agent-action-registry';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {AGENT_ACTION_PARITY,ATTENDANCE_WORKFLOW_PARITY,ALWAYS_REFUSED,PARITY_PHASES,PARITY_ROLES,PROBED_ACTION_IDS,expectedAgentOutcome,type ParityPhase,type ParityOutcome,type ParityRole,type ProbedActionId} from './agent-action-parity-matrix';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from '../harness';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from '../harness';
 
 
 vi.mock('server-only',()=>({}));
@@ -272,6 +274,8 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
  'performance.onehr.plan.acknowledge':{family:'own',screenAdmits:ownEmploymentScreen,store:packetStore('performance.onehr.plan.acknowledge',prepareOnehrModuleActionReview,confirmOnehrModuleActionReview),
   async create(w,h){const year=Number(todayInKualaLumpur().slice(0,4)),group=groupOf(h.base),[grade]=await owner.db.insert(schema.jobGrade).values({tenantId:h.base.tenantId,code:'12',name:'Fictional Grade12'}).returning({id:schema.jobGrade.id});await owner.db.update(schema.employment).set({gradeId:grade.id}).where(eq(schema.employment.companyId,h.companyId));const {cycleId}=await perf.createCycle(group,{name:'Fictional OneHR Review',companyId:h.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`});await perf.configureOnehrCycle(group,cycleId,null,defaultOnehrPolicy(onehrFramework));await perf.openCycle(group,{cycleId});const [review]=await owner.db.select({id:schema.performanceReview.id}).from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,h.person.employmentId)));await perf.saveOnehrPlan(await h.session(),review.id,null,{career:{aspiration:'Fictional workshop practice',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[{id:randomUUID(),area:'Fictional facilitation',dueOn:'',onJob:'Human fixture workshop',fromOthers:'',formalLearning:'',status:'not_started'}]},true);let [plan]=await owner.db.select().from(schema.onehrPlan).where(and(eq(schema.onehrPlan.employmentId,h.person.employmentId),eq(schema.onehrPlan.planYear,year+1)));await perf.reviewOnehrPlan(await w.as('manager'),plan.id,plan.revision,'Agreed','Fictional career conversation',true,undefined,todayInKualaLumpur());[plan]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id));return itemOf(h,plan.id,{revision:plan.revision});},
   human:item=>({action:'performance.onehr.plan.acknowledge',contractVersion:1,intent:{version:1,planId:item.subjectId,acknowledge:true}}),offered:async(who,item)=>listed(await readPerformanceModuleActionChoices(who),'items','sourceId',item.subjectId),screen:(tx,who,item)=>perf.acknowledgeOnehrPlanTx(tx,who,item.subjectId,item.revision!)},
+ 'payroll.reopen':{family:'hr_on_employment',pageAdmits:canManagePayroll,independentScreen:true,store:packetStore('payroll.reopen',preparePayrollReopenReview,confirmPayrollReopenReview),
+  async create(_w,h){const group=groupOf(h.base),period=previousPeriod();await requirePackFor('MY').statutory.set(group,{personId:h.person.personId,icNumber:'900101019885'});const {batchId}=await createBatch(group,{companyId:h.companyId,payPeriod:period,scope:{employmentIds:[h.person.employmentId]}});await generatePayslips(group,{batchId});await closeBatch(group,{batchId});await setSetting(h.base.tenantId,'payroll.unlock_enabled',true);return itemOf(h,batchId);},human:item=>({action:'payroll.reopen',contractVersion:1,batchId:item.subjectId,reason:'Fictional payroll reopen parity reason',confirmReopenClosedRun:true,acknowledgeRecordedDownstreamWarnings:true}),offered:async(who,item)=>listed(await readPayrollReopenChoices(who),'batches','batchId',item.subjectId),screen:(_tx,who,item)=>unlockClosedBatch(who,{batchId:item.subjectId,reason:'Fictional payroll reopen parity reason'})},
  'payroll.close':{family:'hr_on_employment',pageAdmits:isAdmin,independentScreen:true,store:packetStore('payroll.close',preparePayrollCloseReview,confirmPayrollCloseReview),
   async create(_w,h){const group=groupOf(h.base),period=previousPeriod();await requirePackFor('MY').statutory.set(group,{personId:h.person.personId,icNumber:'900101019885'});const {batchId}=await createBatch(group,{companyId:h.companyId,payPeriod:period,scope:{employmentIds:[h.person.employmentId]}});await generatePayslips(group,{batchId});return itemOf(h,batchId);},human:item=>({action:'payroll.close',contractVersion:1,batchId:item.subjectId,confirmCloseProcessedRun:true}),offered:async(who,item)=>listed(await readPayrollCloseModuleActionChoices(who),'batches','batchId',item.subjectId),screen:(_tx,who,item)=>closeBatch(who,{batchId:item.subjectId})},
  'multi_cycle_payroll.create_run':{family:'hr_on_employment',pageAdmits:isAdmin,store:packetStore('multi_cycle_payroll.create_run',prepareMultiCycleRunReview,confirmMultiCycleRunReview),

@@ -210,7 +210,7 @@ export const AGENT_ACTIONS=Object.freeze([
   screen:{native:'app/payroll/[batchId]/page.tsx',entryPoints:['app/payroll/actions.ts#closeAction']},review:{route:'/assistant/payroll-close',handoff:'review_page'},
   store:'generic_own',browserOwner:'payrollClose',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'payroll.reopen',module:'payroll',owner:'payroll',service:'packs/payroll/service.ts#unlockClosedBatch',contractVersion:1,
-  prepare:{status:'implemented',adapter:'module_payroll_reopen_review_v1',inputSchema:'PayrollReopenHumanContent',outputSchema:'PayrollReopenPrepared'},
+  prepare:{status:'implemented',adapter:'module_payroll_reopen_review_v1',inputSchema:'ReviewedPayrollReopenHumanContent',outputSchema:'PayrollReopenPrepared'},
   confirm:{status:'implemented',adapter:'module_payroll_reopen_review_v1',inputSchema:'PayrollReopenConfirmation',outputSchema:'PayrollReopenCompleted'},
   outcome:'canonical_receipt_required',semantics:'historical_reopen_not_reset_recalculated_or_payment_reversed',humanInputs:['batchId','reason','confirmReopenClosedRun','acknowledgeRecordedDownstreamWarnings'],
   permission:{actor:'payroll_admin',guard:'core/assistant-actions/reviewed-payroll-reopen-source.ts#assertReviewedPayrollReopenActorTx'},subject:'company',blastRadius:{max:1,unit:'payroll_batch_one_company_period'},

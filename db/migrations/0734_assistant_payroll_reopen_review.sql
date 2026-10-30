@@ -5,17 +5,22 @@ ALTER TABLE app.assistant_own_leave_review ADD COLUMN payroll_reopen_batch_id uu
 --> statement-breakpoint
 -- Preserve every predecessor CHECK verbatim for every predecessor action. New kind uses the
 -- same truthful USER/company/run/period binding shape with its OWN named columns.
-DO $$ DECLARE c record;newexpr text;
+DO $$ DECLARE c record;strict_nulls text;newexpr text;
 BEGIN
+ -- Explicit shape: ONLY actor/common lifecycle and the four reopening columns are admitted.
+ -- Every other legacy dedicated column is NULL; never copy or constant-fold a predecessor tree.
+ SELECT string_agg(format('%I IS NULL',attname),' AND ' ORDER BY attnum) INTO strict_nulls
+ FROM pg_attribute WHERE attrelid='app.assistant_own_leave_review'::regclass AND attnum>0 AND NOT attisdropped
+ AND attname NOT IN('action_kind','id','tenant_id','user_id','person_id','employment_id','company_id','intent_digest','reviewed_digest','state','created_at','expires_at','payroll_reopen_batch_id','payroll_reopen_period_id','payroll_reopened_event_id','payroll_reopen_person_ids');
+ IF strict_nulls IS NULL THEN RAISE EXCEPTION 'Reopening dedicated column inventory unavailable';END IF;
+ newexpr:='employment_id IS NULL AND company_id IS NOT NULL AND payroll_reopen_batch_id IS NOT NULL AND payroll_reopen_period_id IS NOT NULL AND ((state=''completed'')=(payroll_reopened_event_id IS NOT NULL)) AND (payroll_reopen_person_ids IS NULL OR array_position(payroll_reopen_person_ids,NULL) IS NULL) AND '||strict_nulls;
  FOR c IN SELECT conname,pg_get_expr(conbin,conrelid) expr FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND position('action_kind' in pg_get_expr(conbin,conrelid))>0 LOOP
-  newexpr:=replace(c.expr,'action_kind','''payroll.close''::text');
-  newexpr:=replace(replace(replace(replace(newexpr,'payroll_close_batch_id','payroll_reopen_batch_id'),'payroll_close_period_id','payroll_reopen_period_id'),'payroll_closed_event_id','payroll_reopened_event_id'),'payroll_review_person_ids','payroll_reopen_person_ids');
   EXECUTE format('ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT %I',c.conname);
   EXECUTE format('ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT %I CHECK(CASE WHEN action_kind=''payroll.reopen'' THEN (%s) ELSE (%s) END)',c.conname,newexpr,c.expr);
  END LOOP;
 END $$;
 --> statement-breakpoint
-ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_payroll_reopen_columns CHECK(CASE WHEN action_kind='payroll.reopen' THEN payroll_close_batch_id IS NULL AND payroll_close_period_id IS NULL AND payroll_closed_event_id IS NULL AND payroll_review_person_ids IS NULL AND (payroll_reopen_person_ids IS NULL OR array_position(payroll_reopen_person_ids,NULL) IS NULL) ELSE payroll_reopen_batch_id IS NULL AND payroll_reopen_period_id IS NULL AND payroll_reopened_event_id IS NULL AND payroll_reopen_person_ids IS NULL END);
+ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_payroll_reopen_columns CHECK(action_kind='payroll.reopen' OR (payroll_reopen_batch_id IS NULL AND payroll_reopen_period_id IS NULL AND payroll_reopened_event_id IS NULL AND payroll_reopen_person_ids IS NULL));
 --> statement-breakpoint
 CREATE FUNCTION app._assistant_payroll_reopen_review_identity(p_person uuid,p_bind boolean DEFAULT true,p_write boolean DEFAULT true) RETURNS void
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -29,7 +34,7 @@ REVOKE ALL ON FUNCTION app._assistant_payroll_reopen_review_identity(uuid,boolea
 -- Narrow canonical snapshot: no money, individual source rows or raw witness leaves the function.
 CREATE FUNCTION app.payroll_reopen_review_context(p_batch uuid) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE b public.payroll_batch%ROWTYPE;c public.company%ROWTYPE;parent public.pay_period%ROWTYPE;cycle public.payroll_cycle%ROWTYPE;witness jsonb;people uuid[];employees uuid[];
+DECLARE b public.payroll_batch%ROWTYPE;c public.company%ROWTYPE;parent public.pay_period%ROWTYPE;cycle public.payroll_cycle%ROWTYPE;witness jsonb;stable_witness jsonb;people uuid[];employees uuid[];
 BEGIN
  PERFORM app._assistant_payroll_reopen_review_identity(NULL,false,false);
  SELECT * INTO b FROM public.payroll_batch WHERE id=p_batch AND tenant_id=app.current_tenant_id();
@@ -47,7 +52,10 @@ BEGIN
  'reports',(SELECT coalesce(jsonb_agg(jsonb_build_array(r.id,r.status,r.xmin::text) ORDER BY r.id),'[]'::jsonb) FROM public.statutory_report r WHERE r.tenant_id=b.tenant_id AND r.company_id=b.company_id AND r.period_key=b.pay_period),
  'people',people,'employees',employees) INTO witness;
  IF octet_length(witness::text)>1000000 THEN RAISE EXCEPTION 'Payroll reopening requires native handoff' USING ERRCODE='54000';END IF;
- RETURN jsonb_build_object('companyName',c.legal_name,'cycleName',cycle.name,'sourceDigest',encode(sha256(convert_to(witness::text,'UTF8')),'hex'),'people',people,'employees',employees);
+ SELECT jsonb_build_object('batch',to_jsonb(b)-'status','parent',to_jsonb(parent)-'status','company',to_jsonb(c),'companyVersion',(SELECT xmin::text FROM public.company WHERE id=c.id),'cycle',to_jsonb(cycle),'cycleVersion',(SELECT xmin::text FROM public.payroll_cycle WHERE id=cycle.id),'people',people,'employees',employees,
+ 'exports',(SELECT coalesce(jsonb_agg(jsonb_build_array(e.id,e.xmin::text) ORDER BY e.id),'[]'::jsonb) FROM public.domain_event e WHERE e.tenant_id=b.tenant_id AND e.aggregate_id=b.id AND e.event_type='payroll-batch.payment-summary.exported'),
+ 'reports',(SELECT coalesce(jsonb_agg(jsonb_build_array(r.id,r.status,r.xmin::text) ORDER BY r.id),'[]'::jsonb) FROM public.statutory_report r WHERE r.tenant_id=b.tenant_id AND r.company_id=b.company_id AND r.period_key=b.pay_period)) INTO stable_witness;
+ RETURN jsonb_build_object('companyName',c.legal_name,'cycleName',cycle.name,'sourceDigest',encode(sha256(convert_to(witness::text,'UTF8')),'hex'),'stableSourceDigest',encode(sha256(convert_to(stable_witness::text,'UTF8')),'hex'),'people',people,'employees',employees);
 END $$;
 REVOKE ALL ON FUNCTION app.payroll_reopen_review_context(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.payroll_reopen_review_context(uuid) TO ai_hr_app;

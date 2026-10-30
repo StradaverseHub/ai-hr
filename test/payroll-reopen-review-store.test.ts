@@ -3,6 +3,8 @@ import {eq,sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,afterEach,describe,it,expect,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
+import {erasePersonPii} from '../core/pdpa';
+import {assignRole} from '../core/admin';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {requirePackFor} from '../localization/registry';
@@ -41,4 +43,21 @@ describe('Payroll reopening complete native/custody effect',()=>{
  it('repeats the configurable native unlock permission at confirmation and allows metadata/discard after revocation',async()=>{const r=await prepare();await setPayrollPermissionGrant(ctx,{companyId:b.companyId,permissionKey:'payroll.unlock',role:'hr_admin',allowed:false});await revokeAssistant(ctx,{appUserId:ctx.userId!});const before=await state();await expect(confirm(r)).rejects.toThrow();expect((await listPayrollReopenReviews(ctx)).reviews.map(row=>row.actionId)).toContain(r.actionId);expect((await discardPayrollReopenReview(ctx,retirement(r))).receipt.state).toBe('discarded');expect(await state()).toEqual(before);});
  it('refuses disabled switch before prepare or effect, and bounds native choices',async()=>{expect((await readPayrollReopenChoices(ctx)).kind).toBe('choices');await setSetting(b.tenantId,'payroll.unlock_enabled',false);ctx={...await entitledCtx(b,['hr_admin']),personId:ctx.personId,grants:[{role:'hr_admin',companyId:null}]};const before=await state();await expect(prepare()).rejects.toThrow();expect(await state()).toEqual(before);});
  it('retires expired review bodies and cannot attach unrelated native events',async()=>{const r=await prepare();const before=await state();await expect(withTenant(ctx,tx=>tx.execute(sql`select app.assistant_payroll_reopen_review_complete(${r.actionId}::uuid,${r.reviewedDigest},${randomUUID()}::uuid)`))).rejects.toThrow();await owner.db.execute(sql`update app.assistant_own_leave_review set expires_at=clock_timestamp()-interval '1 second' where id=${r.actionId}::uuid`);const retired=await reopenPayrollReopenReview(ctx,r.actionId);expect(retired.kind).toBe('retired');expect(await state()).toEqual(before);});
+ it('preserves actual native configurable payroll-partner unlock authority without an HR-only prerequisite',async()=>{
+  const userId=await createAppUser(b.tenantId,null,'employee');await assignRole(ctx,{appUserId:userId,role:'payroll_partner',companyId:b.companyId});await grantAssistant(ctx,{appUserId:userId});
+  const partner={...await entitledCtx(b,['employee','payroll_partner']),userId,personId:undefined,grants:[{role:'employee' as const,companyId:null},{role:'payroll_partner' as const,companyId:b.companyId}]};
+  await expect(preparePayrollReopenReview(partner,human())).rejects.toThrow();
+  await setPayrollPermissionGrant(ctx,{companyId:b.companyId,permissionKey:'payroll.unlock',role:'payroll_partner',allowed:true});
+  const prepared=await preparePayrollReopenReview(partner,human());if(prepared.kind!=='prepared')throw Error();expect((await confirmPayrollReopenReview(partner,confirmation(prepared.review))).kind).toBe('completed');
+ });
+ it('erases the complete affected run cohort encrypted review without changing payroll data',async()=>{
+  const r=await prepare(),before=await state();await erasePersonPii(ctx,{subjectEmploymentId:employmentId,scope:'contact',requestRef:'FICTIONAL-REOPEN-ERASURE',reason:'Fictional run-cohort privacy request'});
+  const [stored]=await owner.db.execute<{state:string;people:unknown;bodies:number}>(sql`select r.state,r.payroll_reopen_person_ids people,(select count(*)::int from app.assistant_own_leave_review_content c where c.action_id=r.id) bodies from app.assistant_own_leave_review r where r.id=${r.actionId}::uuid`);
+  expect(stored).toEqual({state:'refused',people:null,bodies:0});const after=await state();expect(after.batch).toEqual(before.batch);expect(after.slips).toEqual(before.slips);expect(after.events.some(e=>e.eventType==='pii.erased'&&(e.payload as {erasedFields?:string[]})?.erasedFields?.includes('assistantPreparedReviews'))).toBe(true);
+ });
+ it('rolls back when warning evidence changes inside the native update after its warning reader',async()=>{
+  const r=await prepare(),before=await state();await owner.db.execute(sql`create function app.fictional_reopen_export_race() returns trigger language plpgsql as $$begin if NEW.status='processed' and OLD.status='closed' then insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) values(NEW.tenant_id,'payroll-batch',NEW.id,'payroll-batch.payment-summary.exported','user',app.current_user_id(),'{}'::jsonb);end if;return NEW;end$$`);await owner.db.execute(sql`create trigger fictional_reopen_export_race after update on public.payroll_batch for each row execute function app.fictional_reopen_export_race()`);
+  try{await expect(confirm(r)).rejects.toThrow();expect(await state()).toEqual(before);}finally{await owner.db.execute(sql`drop trigger fictional_reopen_export_race on public.payroll_batch`);await owner.db.execute(sql`drop function app.fictional_reopen_export_race()`);}
+ });
+
 });
