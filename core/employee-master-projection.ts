@@ -98,19 +98,30 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
   const related=relatedIds.length?await tx.select({id:schema.employment.id,employeeCode:schema.employment.employeeCode,fullName:schema.person.fullName}).from(schema.employment).innerJoin(schema.person,eq(schema.person.id,schema.employment.personId)).where(inArray(schema.employment.id,relatedIds)):[];
   const relatedById=new Map(related.map(row=>[row.id,row]));
   const actors=needed.has('document')||needed.has('movement')||needed.has('movementComparison')||needed.has('audit')||needed.has('shiftHistory')?await tx.select({id:schema.appUser.id,name:schema.person.fullName}).from(schema.appUser).leftJoin(schema.person,eq(schema.person.id,schema.appUser.personId)):[];
-  const actorName=(id:unknown)=>actors.find(actor=>actor.id===id)?.name??null;
+  const actorNames=new Map(actors.map(actor=>[actor.id,actor.name]));
+  const actorName=(id:unknown)=>actorNames.get(String(id))??null;
   const clockLinks=needed.has('clockingLocation')?await tx.select({employmentId:schema.employeeClockingLocation.employmentId,site:schema.clockingLocation}).from(schema.employeeClockingLocation).innerJoin(schema.clockingLocation,eq(schema.clockingLocation.id,schema.employeeClockingLocation.clockingLocationId)).where(inArray(schema.employeeClockingLocation.employmentId,ids.length?ids:['00000000-0000-0000-0000-000000000000'])):[];
+  // This cache belongs to one projection/snapshot. Group each source once instead of scanning
+  // up to 50,000 owner rows again for every employment; fresh slices preserve caller sort semantics.
+  const rowIndexes=new Map<Row[],Map<string,Map<unknown,Row[]>>>();
+  const grouped=(rows:Row[],key:string,value:unknown)=>{
+    let keys=rowIndexes.get(rows);if(!keys){keys=new Map();rowIndexes.set(rows,keys);}
+    let index=keys.get(key);if(!index){index=new Map();for(const row of rows){const bucket=index.get(row[key])??[];bucket.push(row);index.set(row[key],bucket);}keys.set(key,index);}
+    return (index.get(value)??[]).slice();
+  };
+  const fieldsByOwner=new Map<string,typeof fields>();
+  for(const field of fields){const owned=fieldsByOwner.get(field.owner)??[];owned.push(field);fieldsByOwner.set(field.owner,owned);}
   const results:MasterSubject[]=[...unknownScope];
   for(const employment of employments){
     if(Date.now()-started>30_000)throw new Error('This report took too long. Narrow its companies/conditions before running it again.');
     const scopeDate=scopeDates.get(employment.id)!,companyId=proofs.get(employment.id+'|'+scopeDate)?.companyId??(scopeDate===today?await companyOnDate(tx,employment.id,scopeDate):null);if(!companyId||!spec.companyIds.includes(companyId))continue;
     const subject:MasterSubject={id:employment.id,kind:'employment',personId:employment.personId,companyId,owners:{}};
     const e=employment as unknown as Row;
-    const own=(rows:Row[],key='employmentId')=>rows.filter(row=>row[key]===employment.id);
-    const personOwn=(rows:Row[])=>rows.filter(row=>row.personId===employment.personId);
+    const own=(rows:Row[],key='employmentId')=>grouped(rows,key,employment.id);
+    const personOwn=(rows:Row[])=>grouped(rows,'personId',employment.personId);
     const install=(owner:string,rows:Row[],overrides:(row:Row,index:number,all:Row[])=>Row=()=>({}))=>{
       if(!needed.has(owner))return;
-      const ownerFields=fields.filter(field=>field.owner===owner);
+      const ownerFields=fieldsByOwner.get(owner)??[];
       const scopedRows=rows.filter(row=>{
         if(!['assignment','compensation','payItem','cp38','shiftHistory','movement','movementComparison','leaveRecalc','leaveRequest','hireCorrection'].includes(owner))return true;
         const rawStart=date(row.validFrom??row.effectiveFrom??row.effectiveDate??row.startDate??row.changeEffectiveOn??row.effectiveOn),start=owner==='cp38'&&rawStart?.length===7?rawStart+'-01':rawStart;
@@ -292,7 +303,7 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
       };
       const subject:MasterSubject={id:draft.id,kind:'draft',personId:null,companyId:draft.companyId,owners:{}};
       for(const owner of needed){
-        const ownerFields=fields.filter(field=>field.owner===owner);
+        const ownerFields=fieldsByOwner.get(owner)??[];
         subject.owners[owner]=(sources[owner]??[{}]).map((row,index)=>{
           const values:Record<string,MasterCell>={};
           for(const field of ownerFields){
