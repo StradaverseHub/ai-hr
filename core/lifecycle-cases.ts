@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 /**
  * Lifecycle cases (ADR-0095) — employee ONBOARDING and OFFBOARDING.
  *
@@ -56,18 +57,20 @@ async function stepViews(tx: Tx, c: CaseRow): Promise<StepView[]> {
 }
 
 /** Re-derive Completed / In Progress from the steps; call after anything that can change them. */
-async function reconcileCompletion(tx: Tx, ctx: SessionContext, c: CaseRow): Promise<CaseRow> {
+async function reconcileCompletion(tx: Tx, ctx: SessionContext, c: CaseRow, witness?: { eventId: string | null }): Promise<CaseRow> {
   if (c.status === 'cancelled') return c;
   const views = await stepViews(tx, c);
   const complete = isCaseComplete(views, { kind: c.kind as CaseKind, outcome: c.outcome as CaseFacts['outcome'] });
   if (complete && c.status === 'in_progress') {
     const [u] = await tx.update(lcCase).set({ status: 'completed', completedAt: new Date() }).where(eq(lcCase.id, c.id)).returning();
-    await recordChange(tx, ctx, { refType: 'case', refId: c.id, action: 'case.completed', detail: {}, eventType: 'lifecycle-case.completed', subjectEmploymentId: c.employmentId, eventRef: { number: c.number, kind: c.kind } });
+    if (witness) witness.eventId = randomUUID();
+    await recordChange(tx, ctx, { eventId: witness?.eventId ?? undefined, refType: 'case', refId: c.id, action: 'case.completed', detail: {}, eventType: 'lifecycle-case.completed', subjectEmploymentId: c.employmentId, eventRef: { number: c.number, kind: c.kind } });
     return u!;
   }
   if (!complete && c.status === 'completed') {
     const [u] = await tx.update(lcCase).set({ status: 'in_progress', completedAt: null }).where(eq(lcCase.id, c.id)).returning();
-    await recordChange(tx, ctx, { refType: 'case', refId: c.id, action: 'case.reverted', detail: {}, eventType: 'lifecycle-case.reopened', subjectEmploymentId: c.employmentId, eventRef: { number: c.number, kind: c.kind } });
+    if (witness) witness.eventId = randomUUID();
+    await recordChange(tx, ctx, { eventId: witness?.eventId ?? undefined, refType: 'case', refId: c.id, action: 'case.reverted', detail: {}, eventType: 'lifecycle-case.reopened', subjectEmploymentId: c.employmentId, eventRef: { number: c.number, kind: c.kind } });
     return u!;
   }
   return c;
@@ -248,10 +251,13 @@ const BLOCK_MESSAGE: Record<NonNullable<StepView['blocked']>, string> = {
   already_done: 'This step is already done.',
 };
 
-export async function tickStep(
-  ctx: SessionContext, kind: CaseKind, number: string, key: string, p: { reference?: string | null; notes?: string | null } = {},
-): Promise<{ status: string }> {
-  return withTenant(ctx, async (tx) => {
+export type TickStepInput = { reference?: string | null; notes?: string | null };
+/** The same native owner for standalone UI and an enclosing reviewed command. The caller must roll
+ * back its whole transaction on failure. Returned identities prove inserts, not transaction commit.
+ * No Assistant authority, delegation or employment-link assumption is introduced here. */
+export async function tickStepTx(
+  tx: Tx, ctx: SessionContext, kind: CaseKind, number: string, key: string, p: TickStepInput = {},
+): Promise<{status: string; caseId: string; stepKey: string; stepEventId: string; completionEventId: string | null}> {
     const c = await loadCase(tx, number, kind, true);
     await requireLevel(tx, c.companyId, LEVEL.agent, 'only staff work cases');
     const views = await stepViews(tx, c);
@@ -263,9 +269,19 @@ export async function tickStep(
     }
     await tx.insert(lcCaseStep).values({ caseId: c.id, tenantId: ctx.tenantId, stepKey: key, done: true, doneBy: ctx.userId ?? null, doneAt: new Date(), reference: clean(p.reference, 100), notes: clean(p.notes, 2000) })
       .onConflictDoUpdate({ target: [lcCaseStep.caseId, lcCaseStep.stepKey], set: { done: true, doneBy: ctx.userId ?? null, doneAt: new Date(), reference: clean(p.reference, 100), notes: p.notes !== undefined ? clean(p.notes, 2000) : sql`${lcCaseStep.notes}` } });
-    await recordChange(tx, ctx, { refType: 'case', refId: c.id, action: 'step.done', detail: { step: st.label, key, reference: clean(p.reference, 100) }, eventType: 'lifecycle-case.step-done', subjectEmploymentId: c.employmentId, eventRef: { number, step: key } });
-    const after = await reconcileCompletion(tx, ctx, c);
-    return { status: after.status };
+    const stepEventId = randomUUID();
+    await recordChange(tx, ctx, { eventId: stepEventId, refType: 'case', refId: c.id, action: 'step.done', detail: { step: st.label, key, reference: clean(p.reference, 100) }, eventType: 'lifecycle-case.step-done', subjectEmploymentId: c.employmentId, eventRef: { number, step: key } });
+    const completion = { eventId: null as string | null };
+    const after = await reconcileCompletion(tx, ctx, c, completion);
+    return { status: after.status, caseId: c.id, stepKey: key, stepEventId, completionEventId: completion.eventId };
+}
+
+export async function tickStep(
+  ctx: SessionContext, kind: CaseKind, number: string, key: string, p: TickStepInput = {},
+): Promise<{ status: string }> {
+  return withTenant(ctx, async (tx) => {
+    const result = await tickStepTx(tx, ctx, kind, number, key, p);
+    return { status: result.status };
   });
 }
 
