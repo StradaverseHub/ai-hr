@@ -482,3 +482,7 @@ The archive, MY TP3 opening and cost allocation source reservations 0724/0725/07
 ## Performance check-in completion — provisional source reservation
 
 Coordinator allocated `0740_assistant_performance_checkin_complete_custody`, idx719 / version7 / when1793330000077 / breakpoints:true on 30 October 2026. Development only, above the owned cancellation slice. The accepted installation ledger must be refreshed before integration/application. Same physical custody ledger, native same-transaction completion and exact captured native timestamp proof; ordinary native audit remains unchanged. No release or installation authorization.
+
+## Performance mounted check-in scheduling — provisional source reservation
+
+Coordinator allocated `0747_assistant_performance_checkin_schedule_custody`, idx726 / version7 / when1793330000084 / breakpoints:true on 30 October 2026. Unapplied provisional development source only. The same ledger binds an employment creation intent and private prospective UUID; a protected physical INSERT witness records the actual created result. Refresh accepted journal/ledger ordering before integration or application. No installation, release or deployment authority.
