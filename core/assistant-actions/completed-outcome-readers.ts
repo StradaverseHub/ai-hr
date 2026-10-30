@@ -1,6 +1,8 @@
 import {scheduleGroupMaintenanceReviews} from './schedule-group-maintenance-review-store';
 import {profileRequestRejectionReviews} from './profile-request-rejection-review-store';
 import {readCompletedPayrollReopenOutcomeTx} from './payroll-reopen-review-store';
+import {departmentArchiveReviews} from './department-archive-review-store';
+import {positionArchiveReviews} from './position-archive-review-store';
 import {fixedItemArchiveReviews} from './fixed-item-archive-review-store';
 import {tp3OpeningMaintenanceReviews} from './tp3-opening-maintenance-review-store';
 import {costAllocationMaintenanceReviews} from './cost-allocation-maintenance-review-store';
@@ -95,6 +97,8 @@ const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOut
  'lifecycle.acknowledgement.submit':(tx,ctx,id)=>readCompletedLifecycleAckOutcomeTx(tx,ctx,id),
  'toil.replacement.request':(tx,ctx,id)=>readCompletedToilRequestOutcomeTx(tx,ctx,id),
  'multi_cycle_payroll.create_run':(tx,ctx,id)=>readCompletedMultiCycleRunOutcomeTx(tx,ctx,id),
+ 'org.department.archive':(tx,ctx,id)=>departmentArchiveReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'org.position.archive':(tx,ctx,id)=>positionArchiveReviews.readCompletedOutcomeTx(tx,ctx,id),
  'typed_pay_components.create':(tx,ctx,id)=>readCompletedPayComponentOutcomeTx(tx,ctx,id),
  'payroll.reopen':(tx,ctx,id)=>readCompletedPayrollReopenOutcomeTx(tx,ctx,id),
  'payroll.close':(tx,ctx,id)=>readCompletedPayrollCloseOutcomeTx(tx,ctx,id),
