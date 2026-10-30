@@ -104,6 +104,7 @@ export async function draftPayRule(
     captured.componentCode!=null&&(typeof captured.componentCode!=='string'||captured.componentCode.length>100)||
     captured.componentProrates!==undefined&&typeof captured.componentProrates!=='boolean')throw new PayRuleDraftError('invalid_output');
   p=Object.freeze({description:captured.description.trim(),componentCode:captured.componentCode?.trim()||null,componentProrates:captured.componentProrates});
+  const auditComponentCode=p.componentCode?redactPII(p.componentCode):null;
   // Administrative authority is established BEFORE configuration lookup, not inherited from a page.
   const cfg = await withTenant(ctx, async tx=>{await assertPayRuleDraftAuthorTx(tx,ctx);return resolveActiveAiConfig(tx, ctx, 'pay_rule_draft');});
   if (!cfg) throw new PayRuleDraftError('not_configured');
@@ -157,9 +158,8 @@ export async function draftPayRule(
   await recordProposal(ctx, {
     type: 'pay_rule_draft',
     // No subject: nothing is written until the admin saves, so there is no row for this to be about.
-    facts: { componentCode: p.componentCode ?? null, prorates: p.componentProrates ?? false },
-    // The DESCRIPTION never lands here — it is the admin's free text (sent to the provider with only
-    // emails/IC/phone runs masked). Only the shape the model chose.
+    facts: { componentCode: auditComponentCode, prorates: p.componentProrates ?? false },
+    // The DESCRIPTION never lands here or in provider arguments. Only the requested rule kind leaves.
     proposal: { ruleKind: rule?.kind ?? null, hasExplanation: Boolean(explanation) },
     adjudication: reason === null ? { ok: true } : { ok: false, reason },
     provider: cfg.provider,
@@ -183,7 +183,7 @@ export async function draftPayRule(
       aggregateId: ctx.tenantId,
       eventType: 'pay-component.ai-rule-drafted',
       actor: { type: 'agent' }, // lowercase per db/events.ts Actor enum
-      payload: { provider: cfg.provider, model: cfg.model, componentCode: p.componentCode ?? null, ruleKind: rule.kind },
+      payload: { provider: cfg.provider, model: cfg.model, componentCode: auditComponentCode, ruleKind: rule.kind },
     });
   });
 
