@@ -282,7 +282,7 @@ export const AGENT_ACTIONS=Object.freeze([
   outcome:'canonical_receipt_required',semantics:'goal_approved_not_review_locked_or_rating_or_pay_decided',humanInputs:['employmentId','subjectId','approve'],
   permission:{actor:'assigned_approver',guard:'core/assistant-actions/goal-approval-source.ts#withGoalApprovalSubjectTx'},subject:'other_employment',blastRadius:{max:1,unit:'performance_goal'},
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'final'},evaluationCases:[],
-  screen:{native:'app/performance/review/[reviewId]/page.tsx',entryPoints:['app/performance/actions.ts#approveGoalAction']},review:{route:'/assistant/performance/goals',handoff:'review_page'},
+  screen:{native:'app/performance/review/[reviewId]/page.tsx',entryPoints:[]},review:{route:'/assistant/performance/goals',handoff:'review_page'},
   store:'generic_assigned',browserOwner:'goalApproval',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'performance.review.acknowledge',module:'performance',owner:'performance',service:'core/performance.ts#acknowledgeReview',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_standard_review_v1',inputSchema:'ReviewModuleActionPrepare',outputSchema:'ReviewModuleActionPreparedReview'},

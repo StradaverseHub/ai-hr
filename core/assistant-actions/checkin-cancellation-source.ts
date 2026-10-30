@@ -1,3 +1,4 @@
+import {PerformancePostimageProof} from './performance-postimage-proof';
 /** One native check-in cancellation. Only date/participant/status are projected; shared notes are never read here. */
 import {createHash} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
@@ -22,19 +23,19 @@ export async function withCheckInCancellationSubjectTx<T>(tx:Tx,ctx:SessionConte
 }
 async function review(tx:Tx,ctx:SessionContext,human:Human){
  const s=await subject(tx,ctx,human.subjectId);if(s.employmentId!==human.employmentId)return fail();
- const native=await readCheckInCancellationSourceTx(tx,ctx,human.subjectId),g=native.checkin;
+ const native=await readCheckInCancellationSourceTx(tx,ctx,human.subjectId,true),g=native.checkin;
  const item=C.Item.parse({subjectId:g.id,employmentId:g.subjectEmploymentId,employeeName:s.employeeName,companyName:s.companyName,scheduledOn:g.scheduledOn,before:'scheduled',after:'cancelled'});
- return{review:item,reviewedDigest:hash([1,C.action,s,human,native.reviewDigest,item]),nativeDigest:native.reviewDigest};
+ return{review:item,reviewedDigest:hash([1,C.action,s,human,native.reviewDigest,item]),nativeDigest:native.reviewDigest,postimageProof:PerformancePostimageProof.parse(native.postimageProof),normalizedReplacement:null};
 }
 export async function prepareCheckInCancellationSourceTx(tx:Tx,ctx:SessionContext,human:Human){return review(tx,ctx,human);}
 export async function confirmCheckInCancellationSourceTx(tx:Tx,ctx:SessionContext,human:Human,expected:string){
  const current=await review(tx,ctx,human);if(current.reviewedDigest!==expected)return fail();
- const effect=await cancelCheckInTx(tx,ctx,{checkinId:human.subjectId},current.nativeDigest);
- return{eventId:effect.eventId,receipt:await reconcileCheckInCancellationSourceTx(tx,ctx,{subjectId:effect.checkinId,employmentId:effect.employmentId,eventId:effect.eventId})};
+ const effect=await cancelCheckInTx(tx,ctx,{checkinId:human.subjectId},current.nativeDigest,true);
+ return{eventId:effect.eventId,receipt:C.Receipt.parse({kind:'cancelled',subjectId:effect.checkinId,employmentId:effect.employmentId,eventId:effect.eventId})};
 }
-export async function reconcileCheckInCancellationSourceTx(tx:Tx,ctx:SessionContext,reference:{subjectId:string;employmentId:string;eventId:string}){
+export async function reconcileCheckInCancellationSourceTx(tx:Tx,ctx:SessionContext,reference:{subjectId:string;employmentId:string;eventId:string;actionId:string}){
  const s=await subject(tx,ctx,reference.subjectId);if(s.employmentId!==reference.employmentId)return fail();
- const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_checkin_cancel_receipt(${reference.subjectId}::uuid,${reference.eventId}::uuid) as receipt`);return C.Receipt.parse(row?.receipt);
+ const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_performance_review_receipt(${reference.actionId}::uuid,${reference.eventId}::uuid) as receipt`);return C.Receipt.parse(row?.receipt);
 }
 export async function readCheckInCancellationChoicesTx(tx:Tx,ctx:SessionContext,selection:unknown){
  const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve'),pick=C.Selection.parse(selection??{query:''});

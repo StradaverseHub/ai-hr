@@ -1,3 +1,4 @@
+import {PerformancePostimageProof} from './performance-postimage-proof';
 /** One native check-in completion. Purpose-bound human notes review; terminal receipts never contain notes. */
 import {createHash} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
@@ -23,19 +24,19 @@ export async function withCheckInCompletionSubjectTx<T>(tx:Tx,ctx:SessionContext
 async function review(tx:Tx,ctx:SessionContext,human:Human){
  const s=await subject(tx,ctx,human.subjectId);if(s.employmentId!==human.employmentId)return fail();
  if(s.noteChars>8000||s.noteBytes>32000)return fail();
- const native=await readCheckInCompletionPlanTx(tx,ctx,{checkinId:human.subjectId,...(human.notesMode==='replace'?{notes:human.notes}:{})}),g=native.checkin;
+ const native=await readCheckInCompletionPlanTx(tx,ctx,{checkinId:human.subjectId,...(human.notesMode==='replace'?{notes:human.notes}:{})},true),g=native.checkin;
  const item=C.Item.parse({subjectId:g.id,employmentId:g.subjectEmploymentId,employeeName:s.employeeName,companyName:s.companyName,scheduledOn:g.scheduledOn,before:'scheduled',after:'completed',beforeNotes:g.notes,afterNotes:native.afterNotes,notesMode:human.notesMode});
- return{review:item,reviewedDigest:hash([1,C.action,s,human,native.reviewDigest,item]),nativeDigest:native.reviewDigest};
+ return{review:item,reviewedDigest:hash([1,C.action,s,human,native.reviewDigest,item]),nativeDigest:native.reviewDigest,postimageProof:PerformancePostimageProof.parse(native.postimageProof),normalizedReplacement:human.notesMode==='replace'?native.afterNotes:null};
 }
 export async function prepareCheckInCompletionSourceTx(tx:Tx,ctx:SessionContext,human:Human){return review(tx,ctx,human);}
 export async function confirmCheckInCompletionSourceTx(tx:Tx,ctx:SessionContext,human:Human,expected:string){
  const current=await review(tx,ctx,human);if(current.reviewedDigest!==expected)return fail();
- const effect=await completeCheckInTx(tx,ctx,{checkinId:human.subjectId,...(human.notesMode==='replace'?{notes:human.notes}:{})},current.nativeDigest);
- return{eventId:effect.eventId,receipt:await reconcileCheckInCompletionSourceTx(tx,ctx,{subjectId:effect.checkinId,employmentId:effect.employmentId,eventId:effect.eventId})};
+ const effect=await completeCheckInTx(tx,ctx,{checkinId:human.subjectId,...(human.notesMode==='replace'?{notes:human.notes}:{})},current.nativeDigest,true);
+ return{eventId:effect.eventId,receipt:C.Receipt.parse({kind:'completed',subjectId:effect.checkinId,employmentId:effect.employmentId,eventId:effect.eventId,completedAt:effect.completedAt})};
 }
-export async function reconcileCheckInCompletionSourceTx(tx:Tx,ctx:SessionContext,reference:{subjectId:string;employmentId:string;eventId:string}){
+export async function reconcileCheckInCompletionSourceTx(tx:Tx,ctx:SessionContext,reference:{subjectId:string;employmentId:string;eventId:string;actionId:string}){
  const s=await subject(tx,ctx,reference.subjectId);if(s.employmentId!==reference.employmentId)return fail();
- const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_checkin_complete_receipt(${reference.subjectId}::uuid,${reference.eventId}::uuid) as receipt`);return C.Receipt.parse(row?.receipt);
+ const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_performance_review_receipt(${reference.actionId}::uuid,${reference.eventId}::uuid) as receipt`);return C.Receipt.parse(row?.receipt);
 }
 export async function readCheckInCompletionChoicesTx(tx:Tx,ctx:SessionContext,selection:unknown){
  const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');await lockAccessConfigurationTx(tx,fresh.tenantId);const pick=C.Selection.parse(selection??{query:''});
