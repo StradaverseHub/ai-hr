@@ -16,13 +16,13 @@ describe('the shared Assistant hands actions to humans rather than executing the
   for(const value of [[{...first,route:'https://attacker.test/'}],[{...first,route:'/assistant/leave?employmentId=other'}],[{...first,module:'payroll'}],[{...first,action:'payroll.close'}],[{...first,effect:'submitted'}],[{...first,roles:['hr_admin']}],[{...first,reviewedDigest:'a'.repeat(64)}],[],[first,first]])expect(()=>checkedModuleHumanHandoffs('leave',value)).toThrow();
   expect(checkedModuleHumanHandoffs('leave',undefined)).toEqual([]);expect(checkedModuleHumanHandoffs('system_explorer',[])).toEqual([]);
  });
- it('normalizes JSON property order but never accepts a partial or altered Performance engine list',()=>{
-  const rows=moduleHumanActionHandoffs('performance');expect(rows.map(row=>row.action)).toEqual(['performance.review.acknowledge','performance.onehr.plan.acknowledge']);
+ it('normalizes JSON property order but never accepts a partial or altered Performance action list',()=>{
+  const rows=moduleHumanActionHandoffs('performance');expect(rows.map(row=>row.action)).toEqual(['performance.checkin.cancel','performance.checkin.complete','performance.goal.approve','performance.review.acknowledge','performance.onehr.plan.acknowledge']);
   const reversedKeys=rows.map(row=>Object.fromEntries(Object.entries(row).reverse()));expect(checkedModuleHumanHandoffs('performance',reversedKeys)).toEqual(rows);expect(()=>checkedModuleHumanHandoffs('performance',rows.slice(0,1))).toThrow();
  });
- it('renders one fixed human review link for both Performance engines and no fabricated HR facts',()=>{
+ it('renders the exact fixed Performance review pages, deduplicates acknowledgement engines and carries no fabricated HR facts',()=>{
   const result=presentGroundedToolOutcome('my_module_work',{ok:true,module:'performance',data:{rows:[],truncated:false},humanActions:moduleHumanActionHandoffs('performance')});
-  expect(result?.cards).toEqual([{title:{kind:'module',module:'performance'},facts:[],href:'/assistant/performance',linkPurpose:'human_review'}]);expect(result?.truncated).toBe(false);
+  expect(result?.cards).toEqual(['/assistant/performance/checkins','/assistant/performance/checkins/complete','/assistant/performance/goals','/assistant/performance'].map(href=>({title:{kind:'module',module:'performance'},facts:[],href,linkPurpose:'human_review'})));expect(result?.truncated).toBe(false);
  });
  it('keeps legacy facts unchanged and refuses forged action metadata before a canonical-looking link exists',()=>{
   const data={rows:[],truncated:false};expect(presentGroundedToolOutcome('my_module_work',{ok:true,module:'leave',data})?.cards).toEqual([]);
