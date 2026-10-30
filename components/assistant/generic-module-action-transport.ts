@@ -2,12 +2,13 @@
  * confirm, discard) for the own overtime request and the three assigned decisions. Every packet is checked
  * against the action's strict schema before it leaves the page, and every response is checked against the
  * operation, the echoed action id and the prepared subject before the page shows it. Nothing here retries. */
-import {GENERIC_CHOICES_RESPONSE_BYTES,OvertimeRequestModuleActionBrowserPacket,ClaimDecisionModuleActionBrowserPacket,AttendanceDecisionModuleActionBrowserPacket,ToilDecisionModuleActionBrowserPacket,LeaveAdjustmentModuleActionBrowserPacket,MovementTransferModuleActionBrowserPacket,LeaveCreditModuleActionBrowserPacket,parseGenericModuleActionBrowserResult,type GenericModuleAction,type GenericModuleActionBrowserPacket,type GenericModuleActionBrowserResult} from '@/lib/assistant-actions/module-action-http';
+import {GENERIC_CHOICES_RESPONSE_BYTES,QualificationMaintenanceModuleActionBrowserPacket,OvertimeRequestModuleActionBrowserPacket,ClaimDecisionModuleActionBrowserPacket,AttendanceDecisionModuleActionBrowserPacket,ToilDecisionModuleActionBrowserPacket,LeaveAdjustmentModuleActionBrowserPacket,MovementTransferModuleActionBrowserPacket,LeaveCreditModuleActionBrowserPacket,parseGenericModuleActionBrowserResult,type GenericModuleAction,type GenericModuleActionBrowserPacket,type GenericModuleActionBrowserResult} from '@/lib/assistant-actions/module-action-http';
 import {OWN_OVERTIME_REQUEST_ACTION} from '@/lib/assistant-actions/own-overtime-request-contract';
 import {ASSIGNED_CLAIM_DECISION_ACTION,ASSIGNED_ATTENDANCE_DECISION_ACTION,ASSIGNED_TOIL_DECISION_ACTION} from '@/lib/assistant-actions/assigned-decision-contract';
 import {HR_LEAVE_ADJUSTMENT_ACTION,HR_MOVEMENT_TRANSFER_ACTION,HR_LEAVE_CREDIT_ACTION} from '@/lib/assistant-actions/hr-prepared-contract';
+import {QUALIFICATION_MAINTENANCE_ACTION} from '@/lib/assistant-actions/qualification-maintenance-contract';
 export type GenericPacket=GenericModuleActionBrowserPacket&{action:GenericModuleAction};
-const PACKETS={[OWN_OVERTIME_REQUEST_ACTION]:OvertimeRequestModuleActionBrowserPacket,[ASSIGNED_CLAIM_DECISION_ACTION]:ClaimDecisionModuleActionBrowserPacket,[ASSIGNED_ATTENDANCE_DECISION_ACTION]:AttendanceDecisionModuleActionBrowserPacket,[ASSIGNED_TOIL_DECISION_ACTION]:ToilDecisionModuleActionBrowserPacket,[HR_LEAVE_ADJUSTMENT_ACTION]:LeaveAdjustmentModuleActionBrowserPacket,[HR_MOVEMENT_TRANSFER_ACTION]:MovementTransferModuleActionBrowserPacket,[HR_LEAVE_CREDIT_ACTION]:LeaveCreditModuleActionBrowserPacket} as const;
+const PACKETS={[QUALIFICATION_MAINTENANCE_ACTION]:QualificationMaintenanceModuleActionBrowserPacket,[OWN_OVERTIME_REQUEST_ACTION]:OvertimeRequestModuleActionBrowserPacket,[ASSIGNED_CLAIM_DECISION_ACTION]:ClaimDecisionModuleActionBrowserPacket,[ASSIGNED_ATTENDANCE_DECISION_ACTION]:AttendanceDecisionModuleActionBrowserPacket,[ASSIGNED_TOIL_DECISION_ACTION]:ToilDecisionModuleActionBrowserPacket,[HR_LEAVE_ADJUSTMENT_ACTION]:LeaveAdjustmentModuleActionBrowserPacket,[HR_MOVEMENT_TRANSFER_ACTION]:MovementTransferModuleActionBrowserPacket,[HR_LEAVE_CREDIT_ACTION]:LeaveCreditModuleActionBrowserPacket} as const;
 const fail=()=>Error('Module action unavailable.');
 /** Strict packet or null. The clone keeps a later state change from altering what was checked. */
 export function checkGenericPacket(value:unknown):GenericPacket|null{
@@ -18,7 +19,7 @@ export const packetActionId=(packet:GenericPacket):string|null=>packet.operation
 export async function readGenericModuleActionResponse(response:Response,packet:GenericPacket):Promise<GenericModuleActionBrowserResult>{
  const reject=async():Promise<never>=>{await response.body?.cancel().catch(()=>undefined);throw fail();};
  if(!response.ok||response.headers.get('content-type')?.split(';')[0].trim().toLowerCase()!=='application/json'||!response.body)return reject();
- const limit=packet.operation==='choices'?GENERIC_CHOICES_RESPONSE_BYTES:32768,reader=response.body.getReader(),parts:Uint8Array[]=[];let bytes=0,fragments=0;
+ const limit=packet.operation==='choices'?GENERIC_CHOICES_RESPONSE_BYTES:packet.action===QUALIFICATION_MAINTENANCE_ACTION?131072:32768,reader=response.body.getReader(),parts:Uint8Array[]=[];let bytes=0,fragments=0;
  try{for(;;){const part=await reader.read();if(part.done)break;bytes+=part.value.byteLength;if(++fragments>1024||bytes>limit)throw fail();parts.push(part.value);}
   const data=new Uint8Array(bytes);let offset=0;for(const part of parts){data.set(part,offset);offset+=part.byteLength;}
   return parseGenericModuleActionBrowserResult(packet,JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(data)));

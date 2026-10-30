@@ -17,12 +17,12 @@ export type ModuleHumanHandoff=z.infer<typeof AnyHandoff>;
  * destination must still prove the current caller, source permission and human confirmation. */
 export function moduleHumanActionHandoffs(module:AgentModuleCode):readonly ModuleHumanHandoff[]{
  // Existing native import is a distinct human workflow, never a generic prepare/confirm adapter.
- if(module==='employees'){const declared=getModuleAgentAction('employees','employees.import');if(declared?.prepare.status!=='human_workflow_only'||declared.confirm.status!=='human_workflow_only')return Object.freeze([]);return Object.freeze([employeeImportHumanHandoff()]);}
- return Object.freeze(routes.filter(row=>row.module===module).flatMap(row=>{
+ const nativeImport=module==='employees'&&getModuleAgentAction('employees','employees.import')?.prepare.status==='human_workflow_only'?[employeeImportHumanHandoff()]:[];
+ return Object.freeze([...nativeImport,...routes.filter(row=>row.module===module).flatMap(row=>{
   const declared=getModuleAgentAction(row.module,row.action);if(declared?.prepare.status!=='implemented'||declared.confirm.status!=='implemented')return [];
   const nomination=parseModuleAgentActionNomination({module:row.module,action:row.action,phase:'prepare'});if(nomination.kind!=='prepare'||nomination.effect!=='none'||!nomination.requiresHumanSelection)return [];
   return [Object.freeze(Handoff.parse({...row,requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}))];
- }));
+ })]);
 }
 /** No provider-supplied URL, selector, grant, confirmation or extra action can become a link. Legacy
  * read outcomes without handoff metadata keep their original presentation. */

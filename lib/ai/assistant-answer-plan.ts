@@ -15,7 +15,7 @@ import {FOLLOWUP_CODES,type FollowupCode} from './module-specialist-followup';
 import {LEAVE_SUMMARY_EXPLAIN_KEYS,type LeaveSummaryExplainKey} from '../leave-summary-explain';
 import {ENTITLEMENT_STATUS_LABEL_KEY,type EntitlementStatus,type EligibilityRuleNotice} from '../entitlement-status';
 
-export const ANSWER_PLAN_LIMITS=Object.freeze({bytes:8192,reads:128,blocks:16,cards:25,presentationCards:26,factsPerCard:64,explanationsPerRead:512,textBytes:2000});
+export const ANSWER_PLAN_LIMITS=Object.freeze({bytes:8192,reads:128,blocks:16,cards:25,presentationCards:27,factsPerCard:64,explanationsPerRead:512,textBytes:2000});
 export const ASSISTANT_LEAVE_ELIGIBILITY_CODES=Object.freeze(['not_active','no_rules','no_match','undated_axes'] as const);
 export const ASSISTANT_LEAVE_RULE_STATES=Object.freeze(['matched','in_force','expired','not_yet','table_stopped'] as const satisfies readonly EligibilityRuleNotice['state'][]);
 export type AssistantExplanationCode=`leave_status:${EntitlementStatus}`|`leave_eligibility:${typeof ASSISTANT_LEAVE_ELIGIBILITY_CODES[number]}`|`leave_rule:${typeof ASSISTANT_LEAVE_RULE_STATES[number]}`|`specialist_finding:${SpecialistFinding}`|`specialist_followup:${FollowupCode}`|`leave_summary:${LeaveSummaryExplainKey}`;
@@ -151,8 +151,8 @@ function currentReads(input:readonly AssistantAnswerRead[]):readonly CurrentRead
   const cards:CurrentRead['cards'][number][]=[];
   for(const value of array(p.cards,ANSWER_PLAN_LIMITS.presentationCards)){
    const card=object(value);
-   // The actual module presenter appends one deduplicated, source-owned human handoff. It is
-   // not a 26th fact selector or effect capability; future/unknown extra cards fail closed.
+   // The actual module presenter appends deduplicated, source-owned human handoffs. It is
+   // not extra fact selectors or effect capability; future/unknown extra cards fail closed.
    if(cards.length>=ANSWER_PLAN_LIMITS.cards&&(!Array.isArray(card.facts)||card.facts.length!==0||card.linkPurpose!=='human_review'||typeof card.href!=='string'||!moduleHumanActionHandoffs(p.module).some(handoff=>handoff.route===card.href)))return fail();if(card.withheld!==undefined&&typeof card.withheld!=='boolean')return fail();
    const facts:Readonly<{known:boolean}>[]=[];
    for(const value of array(card.facts,ANSWER_PLAN_LIMITS.factsPerCard)){

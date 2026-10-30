@@ -169,7 +169,7 @@ describe('the agent action registry',()=>{
    const expected=agentActionsByModule(module).filter(action=>action.review.handoff==='review_page').map(action=>({module,action:action.id,route:action.review.route}));
    if(module!=='employees')expect(moduleHumanActionHandoffs(module).map(row=>({module:row.module,action:row.action,route:row.route})),module).toEqual(expected);
   }
-  expect(moduleHumanActionHandoffs('employees').map(row=>row.action)).toEqual(AGENT_ACTIONS.filter(action=>action.review.handoff==='native_workflow').map(action=>action.id));
+  expect(moduleHumanActionHandoffs('employees').map(row=>row.action)).toEqual(AGENT_ACTIONS.filter(action=>action.module==='employees'&&action.review.handoff!=='none').map(action=>action.id));
  });
 
  it('anchors every guard, screen, review page, browser owner, evaluation case and pause key to real source',()=>{
