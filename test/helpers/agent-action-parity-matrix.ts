@@ -82,6 +82,7 @@ export const AGENT_ACTION_PARITY={
  'approvals.attendance.decide':{kind:'probed',screen:ASSIGNED_DECISION},
  'approvals.toil.decide':{kind:'probed',screen:ASSIGNED_DECISION},
  'knowledge_base.article.create':{kind:'probed',scope:'caller_tenant',scopeReason:'The closed input has no tenant selector. Native creation is inside the caller tenant; foreign-tenant own creation is valid, while review custody never crosses logins or tenants.',screen:CALLER_TENANT_ADMIN},
+ 'payroll.reopen':{kind:'probed',screen:HR_ON_EMPLOYMENT,page:{...CALLER_TENANT_ADMIN,payroll_partner:A}},
  'payroll.close':{kind:'probed',screen:HR_ON_EMPLOYMENT,page:CALLER_TENANT_ADMIN},
  'attendance.correction.request':{kind:'probed',screen:OWN_REQUEST},
  'attendance.overtime.request':{kind:'probed',screen:OWN_REQUEST},

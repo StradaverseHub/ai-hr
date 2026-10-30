@@ -39,19 +39,19 @@ END $$;
 REVOKE ALL ON FUNCTION app.employment_cost_allocation_subject(uuid,date,boolean) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.employment_cost_allocation_subject(uuid,date,boolean) TO ai_hr_app;
 --> statement-breakpoint
--- Preserve every predecessor's column rules verbatim, including nullable actor branches.
+-- Preserve every predecessor's column rules once, including nullable actor branches.
+-- Bounded canonical eight-field branch; predecessor remains exactly once in ELSE.
 DO $$ DECLARE item record;previous text;scope_name text;matches integer;
 BEGIN
  SELECT count(*),min(conname) INTO matches,scope_name FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND pg_get_expr(conbin,conrelid) LIKE '%testing_execution_id IS NOT NULL%' AND pg_get_expr(conbin,conrelid) LIKE '%employment_id IS NULL%';
  IF matches<>1 THEN RAISE EXCEPTION '0726: actor scope drift';END IF;
  FOR item IN SELECT * FROM (VALUES
  (scope_name,'employment_id IS NOT NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL'),
- ('assistant_review_kind_columns',NULL::text),
+ ('assistant_review_kind_columns','leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL AND performance_ack_event_id IS NULL'),
  ('assistant_review_decision_columns','decision_subject_person_id IS NOT NULL AND decision_request_id IS NULL AND decision_step_id IS NULL AND decision_event_id IS NULL AND decision_applicant_person_id IS NULL'),
  ('assistant_review_generic_receipt','receipt_subject_kind=''employment'' AND receipt_subject_id=employment_id AND ((state=''completed'')=(receipt_event_id IS NOT NULL))')) requirements(name,expression) LOOP
   SELECT pg_get_expr(conbin,conrelid) INTO previous FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname=item.name;
   IF previous IS NULL THEN RAISE EXCEPTION '0726: missing %',item.name;END IF;
-  IF item.expression IS NULL THEN item.expression:=replace(previous,'action_kind','''employees.qualification.maintain''::text');END IF;
   EXECUTE format('ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT %I',item.name);
   EXECUTE format('ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT %I CHECK (CASE WHEN action_kind=''employees.cost_allocation.maintain'' THEN (%s) ELSE (%s) END)',item.name,item.expression,previous);
  END LOOP;

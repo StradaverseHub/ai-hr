@@ -18,7 +18,7 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
   expect(groups.every(group=>group.actions.length>0)).toBe(true);expect(new Set(actions).size).toBe(actions.length);expect([...actions].sort()).toEqual([...PROBED_ACTION_IDS].sort());
   expect(new Set(variants).size).toBe(variants.length);expect([...variants].sort()).toEqual([...PARITY_PROBE_VARIANTS].sort());
   expect(Object.keys(PARITY_PROBE_ENTRYPOINTS).sort()).toEqual(Object.keys(PARITY_PROBE_GROUPS).sort());expect(new Set(Object.values(PARITY_PROBE_ENTRYPOINTS)).size).toBe(groups.length);
-  expect(Object.keys(PARITY_PROBE_GROUPS).sort()).toEqual(['commands','personnel','requests','reviews']);
+  expect(Object.keys(PARITY_PROBE_GROUPS).sort()).toEqual(['commands','payroll','personnel','requests','reviews']);
   expect(PARITY_PROBE_GROUPS.personnel.actions).toEqual(['employees.document_metadata.maintain','employees.code.maintain','employees.passport.maintain','employees.payment_method.maintain','employees.fixed_item.archive','employees.tp3_opening.maintain','employees.cost_allocation.maintain']);
   expect(PARITY_PROBE_GROUPS.commands.actions).toHaveLength(10);expect(PARITY_PROBE_GROUPS.requests.actions).toHaveLength(13);expect(PARITY_PROBE_GROUPS.reviews.actions).toHaveLength(13);
   expect(PARITY_PROBE_GROUPS.commands.variants).toEqual(['adapter_coverage','rejected_decisions','routed_attendance','permission_revalidation','boundary_controls','standalone_tester']);
@@ -35,7 +35,8 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
   expect(probe).toContain("describe.each([...selection.actions])('ADR-0151 parity: %s'");
   for(const variant of PARITY_PROBE_VARIANTS)expect(probe.split("if(selection.variants.includes('"+variant+"')) describe")).toHaveLength(2);
   expect([...probe.matchAll(/if\(selection\.variants\.includes\(/g)]).toHaveLength(PARITY_PROBE_VARIANTS.length);
-  expect(probe.split("it.each([...PARITY_ROLES])")).toHaveLength(3);
+  // Ordinary actions, explicit allocation clear, and rejected decisions each cover every role.
+  expect(probe.split("it.each([...PARITY_ROLES])")).toHaveLength(4);
   // Inspect the actual implementation, never a comment-only wrapper: all native/own/custody probes,
   // independent declared screen expectations, rejection reason and foreign source non-effects stay.
   for(const assertion of ["const screen=await screenOutcome(adapter,who,item","const own=await tryPrepare(adapter,who,item","const confirm:ParityOutcome=own?await tryConfirm(adapter,who,own","if(!theirs)throw Error","foreign confirmation changed the owner's custody","foreign confirmation wrote a native event","screen differs from the declared matrix","cross-company/tenant agent must refuse","rejection must preserve the same explicit human reason","before confirmation","no adjustment row may be written"])expect(probe).toContain(assertion);
@@ -55,7 +56,7 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
  });
 
  it('has a real adapter for every human review action, with no remaining pending ceiling',()=>{
-  const humanActions=[...PARITY_PENDING_ORIGINAL,'approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer','toil.credit.grant','employees.qualification.maintain','employees.compensation.maintain','employees.emergency_contact.maintain','employees.draft.activate','employees.workforce_profile.maintain','employees.family.maintain','employees.bank.maintain','employees.fixed_item.archive','employees.document_metadata.maintain','employees.code.maintain','employees.passport.maintain','employees.cost_allocation.maintain','employees.payment_method.maintain','employees.tp3_opening.maintain'];
+  const humanActions=[...PARITY_PENDING_ORIGINAL,'payroll.reopen','approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer','toil.credit.grant','employees.qualification.maintain','employees.compensation.maintain','employees.emergency_contact.maintain','employees.draft.activate','employees.workforce_profile.maintain','employees.family.maintain','employees.bank.maintain','employees.fixed_item.archive','employees.document_metadata.maintain','employees.code.maintain','employees.passport.maintain','employees.cost_allocation.maintain','employees.payment_method.maintain','employees.tp3_opening.maintain'];
   expect([...PROBED_ACTION_IDS].sort()).toEqual(humanActions.sort());
   expect(PROBED_ACTION_IDS).toHaveLength(humanActions.length);expect(PARITY_PENDING_CEILING.size).toBe(0);
   for(const id of PROBED_ACTION_IDS)expect(AGENT_ACTIONS.find(action=>action.id===id)?.store,id).not.toBe('human_workflow_only');
