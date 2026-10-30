@@ -4166,6 +4166,13 @@
       "when": 1793330000079,
       "tag": "0742_assistant_lifecycle_offboarding_step_undo",
       "breakpoints": true
+    },
+    {
+      "idx": 728,
+      "version": "7",
+      "when": 1793330000086,
+      "tag": "0749_assistant_lifecycle_offboarding_case_cancel",
+      "breakpoints": true
     }
   ]
 }
