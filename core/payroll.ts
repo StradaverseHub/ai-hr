@@ -12409,7 +12409,7 @@ export async function reopenReviewedPayrollBatchTx(tx:Tx,ctx:SessionContext,p:{b
 export async function readReviewedPayrollReopenReferenceTx(tx:Tx,ctx:SessionContext,p:{batchId:string;unlockedEventId:string}){
  await reviewedPayrollReopenAuthorityTx(tx,ctx,p.batchId);
  const [row]=await tx.execute<{receipt:unknown}>(sql`select app.read_own_payroll_reopen_effect(${p.batchId}::uuid,${p.unlockedEventId}::uuid) as receipt`);
- return row?.receipt?ReviewedPayrollReopenSourceReceipt.omit({kind:true,proof:true,semantics:true,replayed:true}).parse(row.receipt):null;
+ return row?.receipt?ReviewedPayrollReopenSourceReceipt.parse({...z.record(z.string(),z.unknown()).parse(row.receipt),kind:'reopened',proof:'exact_unlock_history_batch_event_conditional_parent_event',semantics:'historical_reopen_not_reset_recalculated_or_payment_reversed',replayed:false}):null;
 }
 export async function reviewedPayrollReopenChoiceMetadataTx(tx:Tx,ctx:SessionContext){
  await lockAccessConfigurationTx(tx,ctx.tenantId);

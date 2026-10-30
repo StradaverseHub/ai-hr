@@ -13,6 +13,8 @@ This slice adds current-month native reset/reopen navigation to the existing Ass
 - Transactions include individual adjustments, fixed items, deductions, TP1, TP3, zakat and imports. Personnel owns fixed-item archive and TP3 opening; no changes made here.
 - Export/statutory surfaces include payment submission, statutory form generation, statutory adjustments, EA/PCB/EPF/SOCSO and history exports. Binary generation, external submissions and imports remain native handoffs; no claim of execution coverage.
 
+Follow-up reopening execution is implemented through the native unlock owner and shared encrypted custody in PR119; verification is still in progress. This document records the initial handoff slice. See the reopening contract review for current execution boundaries. Reset remains handoff-only.
+
 ## Boundary and integration
 
 The reader uses the Payroll pack's existing RLS-scoped list owner, filters each row to the actor's payroll company grant, admits a real user without requiring a PERSON, respects reset/admin and reopen/payroll native page floors, and suppresses disabled switches. Only identity labels and native hrefs render; money, employee details and receipts are excluded. Up to 25 eligible current-month runs render; Payroll list links expose older runs through native navigation.

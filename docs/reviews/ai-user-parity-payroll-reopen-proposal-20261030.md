@@ -1,6 +1,6 @@
 # Payroll closed-run reopening: proposed complete review contract
 
-Status: source-traced proposal for coordinator review; no execution adapter mounted. Recovery handoff PR119 remains partial coverage. Selected intent is **reopen one existing closed run**, not reset or recalculate it.
+Status: coordinator-approved reopening contract, now implemented in draft PR119. Focused verification is in progress; successful Assistant confirmation is not yet established. Selected intent is **reopen one existing closed run**; reset and recalculation remain separate capabilities. Release hold remains.
 
 ## Actual native owner and effects
 
@@ -26,9 +26,9 @@ Private canonical fingerprint covers actual run binding/state and relevant row v
 
 Warnings can change via statutory/payment writers outside period ownership. Recompute them at confirmation under READ COMMITTED and refuse mismatch; do not claim period ownership serializes every external writer. Freeze the authoritative source read's witness and execute immediately in the same transaction. If stronger prevention than this read-at-confirm boundary is required, enumerate writers and coordinate a shared lock rather than silently broadening native locking.
 
-## Proposed minimal native seam
+## Native transaction seam
 
-Extract the existing unlock body into `unlockClosedBatchTx(tx,ctx,input)` in the same owner file, retaining identical checks, native period lock, effect order and public return semantics. Public `unlockClosedBatch` keeps its captured caller/input and wraps the Tx owner, returning its historical `{warnings,reopenedPeriod}` only. Tx seam additionally returns the inserted statusHistoryId, unlockedEventId and nullable periodReopenedEventId by RETURNING/native appendEvent IDs. Do not infer “latest event”. Reuse the original body; no second mutation implementation.
+The existing unlock body is extracted into `unlockClosedBatchTx(tx,ctx,input)` in the same owner file, retaining identical checks, native period lock, effect order and public return semantics. Public `unlockClosedBatch` keeps its captured caller/input and wraps the Tx owner, returning its historical `{warnings,reopenedPeriod}` only. The Tx seam additionally returns statusHistoryId, unlockedEventId and nullable periodReopenedEventId. These UUIDs are preallocated by the native server owner and inserted explicitly, so INSERT RETURNING adds no new audit SELECT requirement for payroll partners. Both native event payloads link the exact history and conditional parent event. The original body remains the single mutation implementation; no latest-event inference is used.
 
 Add pack-exported reviewed helpers for preflight/source fingerprint and reconciliation. Assistant interval owns fresh access, current user and financial company scope, exact batch/month key and nominated binding before custody. Guard uses `withAgentActionGuard(...,'payroll.reopen','approve')`, payroll entitlement and native unlock permission/switch. Confirm executes native Tx seam within the **same top-level custody Tx**, never nested withTenant. SQL completion verifies exact native history/event references, actor, tenant, aggregate, reason and conditional parent event. A historical completed receipt may report later current state separately (reclosed run or changed parent), without rerunning unlock.
 
@@ -36,16 +36,17 @@ Add pack-exported reviewed helpers for preflight/source fingerprint and reconcil
 
 Use createGenericOwnReviewStore (as payroll-close-review-store), seal/open source envelope and current actor/key binding; index/discard/expire/reopen and uncertain-outcome semantics stay in shared machinery. Store target erasure links for the author PERSON when present and native run's affected employment/person cohort in private metadata, never browser props. Confirm must atomically bind stored actionId and expected keyed review digest to exact effect IDs. SQL uniqueness guards replay. Reconcile completed entries by those IDs; missing/foreign/mutated evidence refuses instead of retrying a business mutation. Reopening a review UI is a read/recovery operation; distinct from reopening a payroll run.
 
-## Requested allocation and shared questions
+## Coordinator allocation and resolved shared boundaries
 
-**One append-only migration slot requested**, private unique name `assistant_payroll_reopen_review_v1`: new dedicated encrypted-custody table/functions/grants/RLS and exact native proof FK/reference validation, action-kind insert for payroll.reopen, privacy/erasure integration with existing helpers. No existing applied SQL edits. Coordinator assigns executable number/journal identity before migration-bearing checks.
+**Allocated UNAPPLIED development identity:** 0734_assistant_payroll_reopen_review / journal idx714 / version7 / when1793330000071. The closed purpose is `assistant_payroll_reopen_review_v1`: dedicated columns and narrow functions on the SAME existing encrypted ledger, exact native proof/FK validation, action-kind insertion and privacy/erasure integration. No second ledger and no existing applied SQL edits. This identity permits isolated development CI; it is not an installation reservation.
 
-1. Approve additive `payroll.reopen` registry/browserOwner/outcome-reader/shared route union entries, keeping approve/payroll policy and existing owners unchanged?
-2. Confirm one migration can carry custody, action-kind declaration and erasure registration using current coordinator contracts, or allocate split slots if ownership requires it?
-3. Confirm native warning's payment-export evidence is presented as recorded export, and confirmation read-at-boundary semantics above are acceptable; otherwise identify the broader writer-lock requirement before implementing it.
-4. Confirm erasure binding should follow close's complete run cohort (plus optional author person), even though no per-person pay row changes occur.
+Coordinator approved additive registry/browser/outcome entries at approve/payroll tier, native configurable unlock authority, full run-cohort plus optional author privacy binding, recorded-payment-export wording and same-transaction READ COMMITTED confirmation-boundary comparison. No future/external-writer serialization is claimed.
 
-## Acceptance cases required before mounting
+Actual 0704 membership is a registry FK: the obsolete action-kind CHECK is absent. Only the unique actor-scope and named legacy receipt-column CHECK receive new-kind branches. Every other predecessor CHECK stays physically unchanged with verified name/raw-predicate hashes; a separate finite new-kind CHECK enforces all legacy dedicated columns NULL and the new run/period/event/state shape. Metadata-only diagnostics report constraint names and byte sizes before deparse.
+
+The exact isolated source repairs d7c/9bd/22a/f82/b55 were authorized by the coordinator. The SQL repairs affect only this held stack's never-applied source files; they do not modify accepted historical SQL or authorize merging this divergent stack into main.
+
+## Acceptance cases and focused verification
 
 - Native parity: closed parent → processed/open + exact history + both exact events; already-open parent → processed/open + exact history/batch event only; independent expected event payloads and unchanged payslip/totals/claim/loan/GL/sibling rows.
 - Direct native vs reviewed Tx behavior parity with native permission remapping, tenant and company scope, payroll partner, HR/super admin, real unlinked USER; SYSTEM retained natively/refused by Assistant.

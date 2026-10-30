@@ -1,4 +1,4 @@
-/** Proposed complete human review boundary. Not registered or mounted until custody/proof review.
+/** Closed human review boundary for one native Payroll reopening, with shared custody and proof.
  * Models nominate a run only; a human authors the reason and acknowledges consequences. */
 import {z} from 'zod';
 export const REVIEWED_PAYROLL_REOPEN_ACTION='payroll.reopen' as const;

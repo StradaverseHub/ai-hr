@@ -10,7 +10,7 @@ import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {requirePackFor} from '../localization/registry';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
-import {createBatch,generatePayslips,closeBatch,unlockClosedBatch,setPayrollPermissionGrant} from '../packs/payroll/service';
+import {createBatch,generatePayslips,closeBatch,unlockClosedBatch,createAdditionalRun,setPayrollPermissionGrant} from '../packs/payroll/service';
 import {preparePayrollReopenReview,confirmPayrollReopenReview,reopenPayrollReopenReview,discardPayrollReopenReview,listPayrollReopenReviews,readPayrollReopenChoices} from '../core/assistant-actions/payroll-reopen-review-store';
 import {preparePayrollCloseReview} from '../core/assistant-actions/payroll-close-review-store';
 import {PayrollReopen as C} from '../lib/assistant-actions/reviewed-payroll-reopen-contract';
@@ -81,6 +81,17 @@ describe('Payroll reopening complete native/custody effect',()=>{
  });
  it('reopens a still-pending review without changing its private source or business state',async()=>{
   const r=await prepare(),before=await state();const pending=await reopenPayrollReopenReview(ctx,r.actionId);expect(pending.kind).toBe('prepared');expect(await state()).toEqual(before);
+ });
+
+ it('reopens only the selected run while an already-open parent and sibling draft remain unchanged, with no parent event',async()=>{
+  await unlockClosedBatch(ctx,{batchId,reason:'Fictional sibling fixture'});
+  const sibling=await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:period,runType:'bonus'});
+  await closeBatch(ctx,{batchId});
+  const [beforeSibling]=await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,sibling.batchId));
+  const r=await prepare();expect(r.review).toMatchObject({beforePeriodStatus:'open',parentWillReopen:false});
+  const done=await confirm(r);if(done.kind!=='completed')throw Error('Expected completed reopening');
+  expect(done.receipt.receipt).toMatchObject({batchId,parentWasReopened:false,periodReopenedEventId:null,currentPeriodStatus:'open'});
+  const [afterSibling]=await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,sibling.batchId));expect(afterSibling).toEqual(beforeSibling);
  });
 
 });
