@@ -18,3 +18,7 @@ describe('offboarding browser transport correspondence',()=>{
   expect(OffboardingStepUndoPacket.safeParse({action:'lifecycle.offboarding.outcome',operation:'list'}).success).toBe(false);
  });
 });
+
+it('correlates every offered case number with the explicit human selection',()=>{
+ const p=OffboardingStepUndoPacket.parse({action:C.action,operation:'choices',selection:{caseNumber:'OFB-0001'}}),choice={kind:'choices',cases:[{caseId:id,caseNumber:'OFB-0001',steps:[{key:'resign_submit',label:'Submit resignation'}]}],truncated:false};expect(parseOffboardingStepUndoResult(p,choice)).toEqual(choice);expect(()=>parseOffboardingStepUndoResult(p,{...choice,cases:[{...choice.cases[0],caseNumber:'OFB-OTHER'}]})).toThrow();expect(parseOffboardingStepUndoResult(p,{...choice,cases:[]})).toEqual({...choice,cases:[]});
+});

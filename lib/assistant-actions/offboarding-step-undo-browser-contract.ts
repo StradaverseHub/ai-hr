@@ -14,6 +14,7 @@ export type OffboardingStepUndoResult=z.infer<typeof OffboardingStepUndoResult>;
 export function parseOffboardingStepUndoResult(packet:OffboardingStepUndoPacket,value:unknown):OffboardingStepUndoResult{
  const result=OffboardingStepUndoResult.parse(value),op=packet.operation;
  if(!(op==='choices'?result.kind==='choices'||result.kind==='unavailable':op==='list'?result.kind==='offboarding_step_undo_review_index':op==='prepare'?result.kind==='prepared':op==='discard'?result.kind==='retired':op==='confirm'?result.kind==='completed'||result.kind==='retired':result.kind==='prepared'||result.kind==='completed'||result.kind==='retired'))throw Error('Offboarding response unavailable.');
+ if(op==='choices'&&result.kind==='choices'&&result.cases.some(c=>c.caseNumber!==packet.selection.caseNumber))throw Error('Offboarding response unavailable.');
  const expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?packet.confirmation.actionId:null;
  const id=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null;
  if(expected&&expected!==id)throw Error('Offboarding response unavailable.');
