@@ -4096,6 +4096,13 @@
       "when": 1793330000047,
       "tag": "0718_assistant_family_maintenance",
       "breakpoints": true
+    },
+    {
+      "idx": 700,
+      "version": "7",
+      "when": 1793330000048,
+      "tag": "0719_assistant_bank_maintenance",
+      "breakpoints": true
     }
   ]
 }

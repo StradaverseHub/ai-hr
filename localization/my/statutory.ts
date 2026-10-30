@@ -571,10 +571,7 @@ export type BankInput = {
  * throws NoStatutoryProfileError otherwise. Validates require-when-enabled for both custom-holder fields.
  * Appends an `employee.bank.updated` DomainEvent (before/after) per substrate discipline.
  */
-export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
-  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
-  outerTx?: Tx) {
-  ctx=captureStatutoryContext(ctx);p=structuredClone(p);
+function normalizedBankValuesMY(p:BankInput){
   const enableName = p.enableCustomHolderName ?? false;
   const enableId = p.enableCustomHolderId ?? false;
   const holderName = (p.customHolderName ?? '').trim() || null;
@@ -588,7 +585,7 @@ export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
     customHolderId: holderId,
   });
   if (gap) throw new IncompleteCustomHolderError(gap);
-  const values = {
+  return {
     bankName: (p.bankName ?? '').trim() || null,
     bankAccountNo: (p.bankAccountNo ?? '').trim() || null,
     // When a switch is off we null its stored value so a disabled holder can't linger and be resolved later.
@@ -597,6 +594,12 @@ export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
     enableCustomHolderId: enableId,
     customHolderId: enableId ? holderId : null,
   };
+}
+export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx) {
+  ctx=captureStatutoryContext(ctx);p=structuredClone(p);
+  const values = normalizedBankValuesMY(p);
   const run = async (tx:Tx) => {
     await statutoryWriteIntervalMYTx(tx,ctx);
     const [existing] = await tx
@@ -1514,3 +1517,13 @@ export async function readReviewedStatutoryEditableMYTx(tx:Tx,ctx:SessionContext
 /** Purpose-authorized labels only. Caller has checked granular fields for the complete company set. */
 export async function reviewedStatutoryChoiceMetadataMYTx(tx:Tx,ctx:SessionContext,supplied:readonly string[],limit=21){ctx=captureStatutoryContext(ctx);const companyIds=[...new Set(supplied.map(id=>z.uuid().parse(id).toLowerCase()))].sort();if(!companyIds.length)return[];if(companyIds.length>100||!Number.isInteger(limit)||limit<1||limit>21||!ctx.userId)throw new Error('Statutory choices unavailable');await lockReviewedStatutorySourceTx(tx,ctx);return tx.select({employmentId:employment.id,personId:person.id,employeeCode:employment.employeeCode,name:person.fullName,companyId:employment.companyId,companyName:company.legalName}).from(employment).innerJoin(company,and(eq(company.id,employment.companyId),eq(company.tenantId,employment.tenantId))).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).innerJoin(employeeStatutoryMy,and(eq(employeeStatutoryMy.personId,employment.personId),eq(employeeStatutoryMy.tenantId,employment.tenantId))).where(and(eq(employment.tenantId,ctx.tenantId),inArray(employment.companyId,companyIds),eq(company.country,'MY'),sql`app.principal_snapshot_current() and app.is_admin() and app.can_see_person(${person.id}) and app.is_admin_for(${company.id}) and app.can_admin_payroll_employment(${employment.id}) and app.access_workforce_employment(${employment.id},'workforce.maintain')`)).orderBy(asc(employment.id)).limit(limit);}
 export async function readReviewedStatutoryLabelsMYTx(tx:Tx,ctx:SessionContext,employmentId:string,personId:string){ctx=captureStatutoryContext(ctx);await lockReviewedStatutoryProfileMYTx(tx,ctx,personId);const [row]=await tx.select({employmentId:employment.id,personId:person.id,employeeCode:employment.employeeCode,name:person.fullName,companyName:company.legalName}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).innerJoin(company,and(eq(company.id,employment.companyId),eq(company.tenantId,employment.tenantId))).where(and(eq(employment.id,employmentId),eq(person.id,personId),eq(employment.tenantId,ctx.tenantId),eq(company.country,'MY'),sql`app.is_admin_for(${company.id}) and app.can_admin_payroll_employment(${employment.id}) and app.access_workforce_employment(${employment.id},'workforce.maintain')`));if(!row)throw new Error('Statutory labels unavailable');return row;}
+
+/** Country-owned exact Bank Information partial command preview. No write is performed here; both
+ * review and the native setter use normalizedBankValuesMY, including disabled-holder clearing. */
+export async function prepareReviewedBankMYTx(tx:Tx,ctx:SessionContext,p:BankInput){
+ ctx=captureStatutoryContext(ctx);p=structuredClone(p);
+ const snapshot=await lockReviewedStatutoryPersonMYTx(tx,ctx,p.personId);if(!snapshot)throw new NoStatutoryProfileError();
+ const before={bankName:snapshot.profile.bankName,bankAccountNo:snapshot.profile.bankAccountNo,enableCustomHolderName:snapshot.profile.enableCustomHolderName,customHolderName:snapshot.profile.customHolderName,enableCustomHolderId:snapshot.profile.enableCustomHolderId,customHolderId:snapshot.profile.customHolderId},after=normalizedBankValuesMY(p);
+ const [personVersion]=await tx.execute<{revision:string}>(sql`select xmin::text as revision from person where id=${p.personId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+ return {statutoryId:snapshot.profile.id,before,after,reviewedDigest:createHash('sha256').update(JSON.stringify(['bank:MY:v1',snapshot,personVersion,after])).digest('hex')};
+}

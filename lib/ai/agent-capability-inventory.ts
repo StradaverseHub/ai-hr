@@ -1,3 +1,4 @@
+/** Bank Information subset is registered separately. Legacy setBankAction stays backlog:approve because its MY fallback is broader than the supported actual-country review. */
 /** ADR-0151 §4.2 — every human entry point that can change data, classified for the orchestrator.
  * The tier ceiling also constrains runtime preparation and confirmation. Each owning service
  * keeps its own authorization; the agent reaches an effect only through a registered module action.

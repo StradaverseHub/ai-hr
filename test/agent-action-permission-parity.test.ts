@@ -3,6 +3,7 @@ import {maintainWorkforceRecord,workforceEditor} from '../core/workforce-mainten
 import {workforceMaintenanceFields} from '../lib/workforce-maintenance-fields';
 import {familyMaintenanceReviews,readFamilyMaintenanceChoices} from '../core/assistant-actions/family-maintenance-review-store';
 import {addDependent} from '../core/workforce-registers';
+import {bankMaintenanceReviews,readBankMaintenanceChoices} from '../core/assistant-actions/bank-maintenance-review-store';
 import {emergencyContactMaintenanceReviews,readEmergencyContactMaintenanceChoices} from '../core/assistant-actions/emergency-contact-maintenance-review-store';
 import {addEmergencyContact} from '../core/workforce-registers';
 /** ADR-0151 §7 "Parity", review R16 (WP8) — the generic per-entry role matrix, driven by the agent action
@@ -374,6 +375,11 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'employees.workforce_profile.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,section:'personal',...(item.proposal as {expectedVersion:string;values:Record<string,string|null>})}),
   offered:async(who,item)=>listed(await readWorkforceProfileMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>maintainWorkforceRecord(who,{employmentId:item.employmentId,kind:'person',rowId:null,operation:'update',patch:(item.proposal as {values:Record<string,string|null>}).values,expectedVersion:(item.proposal as {expectedVersion:string}).expectedVersion},tx)},
+ 'employees.bank.maintain':{family:'hr_on_employment',store:bankMaintenanceReviews,screenAdmits:isAdmin,
+  create:async(_w,h)=>{await requirePackFor('MY').statutory.set(groupOf(h.base),{personId:h.person.personId,icNumber:null});return itemOf(h,h.person.personId);},
+  human:item=>({action:'employees.bank.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,fields:{bankName:'Fictional bank',bankAccountNo:'000-FICTIONAL',enableCustomHolderName:false,customHolderName:null,enableCustomHolderId:false,customHolderId:null}}),
+  offered:async(who,item)=>listed(await readBankMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
+  screen:(tx,who,item)=>requirePackFor('MY').statutory.setBank(who,{personId:item.subjectId,bankName:'Fictional bank',bankAccountNo:'000-FICTIONAL',enableCustomHolderName:false,customHolderName:null,enableCustomHolderId:false,customHolderId:null},tx)},
  'employees.emergency_contact.maintain':{family:'hr_on_employment',store:emergencyContactMaintenanceReviews,screenAdmits:isAdmin,
   create:async(_w,h)=>itemOf(h,h.person.personId),
   human:item=>({action:'employees.emergency_contact.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'add',contactId:null,fields:{fullName:'Fictional Emergency Contact',relationship:null,mobilePhone:'000-FICTIONAL',homePhone:null,address:null,remarks:'Fictional human note',priority:'primary'}}),
