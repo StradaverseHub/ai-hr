@@ -20,9 +20,11 @@ describe('646355e5 — known lifecycle events have audited inverses',()=>{
   await setMovementEventTypeActive(ctx,{code:kind,active:false});
   await editMovementEvent(ctx,{employmentId:e.employmentId,movementId:row.id,kind,effectiveDate:correctedDate,reason:'Fictional date correction'});
   expect((await employee(e.employmentId))[field]).toBe(correctedDate);
+  if(kind==='groupJoinDateCorrection')expect((await employee(e.employmentId)).joinDate).toBe(correctedDate);
   const current=(await movementHistory(ctx,e.employmentId)).find(r=>r.kind===kind&&r.status==='applied')!;
   await reverseMovementEvent(ctx,{employmentId:e.employmentId,movementId:current.id,reason:'Fictional incorrect date event'});
   expect((await employee(e.employmentId))[field]).toBe(before[field]);
+  expect((await employee(e.employmentId)).joinDate).toBe(before.joinDate);
   expect((await movementHistory(ctx,e.employmentId)).filter(r=>r.kind==='hired')).toHaveLength(1);
  });
  it('corrects a probation extension and restores both the original extension and the derived final date on Delete',async()=>{

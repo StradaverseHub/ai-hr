@@ -1194,7 +1194,8 @@ const REVERSIBLE_INFO_DATE_FIELDS: readonly string[] = ['confirmationDate', 'fin
 const KIND_SCOPED_INFO_DATE_FIELDS: Readonly<Record<string, readonly string[]>> = {
   probationExtension: ['extendedConfirmationDate','finalConfirmationDate'],
   joinDateChange: ['joinDate'],
-  groupJoinDateCorrection: ['hiredOn'],
+  // The date owner also moves a company Join Date still synchronised with the Group Join Date.
+  groupJoinDateCorrection: ['hiredOn','joinDate'],
   resignation: ['tenderResignationDate','resignationDate','lastWorkingDate'],
   entityTransfer: ['joinDate'],
   // 646355e5 — the exit-dates leg applyTerminationTx writes beside the termination itself.
@@ -3880,7 +3881,7 @@ async function reverseLegTx(
           dates.hiredOn=before.hiredOn;
         }else dates.extendedConfirmationDate=before.extendedConfirmationDate??null;
       }
-      if(tag.type==='joinDateChange'&&fields.includes('joinDate')&&(cur.joinDate??null)!==(after.joinDate??null))throw new MovementNotCorrectableError('A later Join Date change conflicts with this event. Review it first.');
+      if(['joinDateChange','groupJoinDateCorrection'].includes(tag.type)&&fields.includes('joinDate')&&(cur.joinDate??null)!==(after.joinDate??null))throw new MovementNotCorrectableError('A later Join Date change conflicts with this event. Review it first.');
       if (Object.keys(restore).length || Object.keys(dates).length) {
         await withExitDateAuthorityTx(tx,employmentId,()=>setEmploymentInfo(ctx, { employmentId, ...restore, ...dates, movement: tag }, tx));
       }
