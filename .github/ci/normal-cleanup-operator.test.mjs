@@ -19,7 +19,7 @@ for(const dirty of [false,true])test('actual parent driver and server orchestrat
  else{const result=await run;assert.equal(result.cleanup.fictional,true);assert.equal(JSON.parse(readFileSync(join(directory,'engine-observed.json'))).consumed,true);assert.ok(saved.includes('cleanup-session-commit.json'));assert.ok(!existsSync(join(directory,'normal-cleanup.lock')));}
 });
 test('actual canonical release filter imports under installed tsx and parses every exclusion',()=>{
- const script=`import {deploymentRsyncArgs} from './scripts/improve/release.ts';console.log(JSON.stringify(deploymentRsyncArgs('/fictional/source')));`;
+ const script=`const raw=await import('./scripts/improve/release.ts');const official={...(raw.default??{}),...raw};if(typeof official.deploymentRsyncArgs!=='function')throw Error('Actual canonical filter export missing');console.log(JSON.stringify(official.deploymentRsyncArgs('/fictional/source')));`;
  const result=spawnSync(process.execPath,['--import','tsx','--input-type=module','-e',script],{cwd:process.cwd(),encoding:'utf8',timeout:30000});assert.equal(result.status,0,result.stderr);
  const args=JSON.parse(result.stdout),excluded=canonicalSourceExclusions(args);
  for(const path of ['.env.production','.next','node_modules','nested/node_modules','mobile/android','mobile/secret.pem','docs/adr','scratchpad','.improve'])assert.ok(excluded(path),path);
