@@ -27,3 +27,12 @@ export const ReviewedPayrollReopenSourceReceipt=z.object({kind:z.literal('reopen
  proof:z.literal('exact_unlock_history_batch_event_conditional_parent_event'),
  semantics:z.literal('historical_reopen_not_reset_recalculated_or_payment_reversed'),replayed:z.boolean(),
 }).strict().refine(row=>row.parentWasReopened===(row.periodReopenedEventId!==null));
+const digest=z.string().regex(/^[a-f0-9]{64}$/);
+export const PayrollReopenConfirmation=z.object({...base,actionId:id,reviewedDigest:digest}).strict();
+export const PayrollReopenRetirement=z.object({...base,actionId:id}).strict();
+export const PayrollReopenPrepared=z.object({...base,actionId:id,reviewedDigest:digest,createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),content:ReviewedPayrollReopenHumanContent,review:ReviewedPayrollReopenReview}).strict().refine(row=>row.content.batchId===row.review.batchId);
+export const PayrollReopenCompleted=z.object({...base,actionId:id,state:z.literal('completed'),receipt:ReviewedPayrollReopenSourceReceipt}).strict();
+export const PayrollReopenRetired=z.object({...base,actionId:id,state:z.enum(['discarded','expired','refused'])}).strict();
+export const PayrollReopenIndex=z.object({kind:z.literal('payroll_reopen_review_index'),reviews:z.array(z.object({...base,actionId:id,state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict()).max(25)}).strict();
+export const PayrollReopenChoices=z.discriminatedUnion('kind',[z.object({kind:z.literal('choices'),batches:z.array(z.object({batchId:id,companyName:z.string().min(1).max(4000),payPeriod:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),cycleName:z.string().max(4000).nullable()}).strict()).max(25)}).strict(),z.object({kind:z.literal('unavailable')}).strict()]);
+export const PayrollReopen={action:REVIEWED_PAYROLL_REOPEN_ACTION,Human:ReviewedPayrollReopenHumanContent,Item:ReviewedPayrollReopenReview,Receipt:ReviewedPayrollReopenSourceReceipt,Prepared:PayrollReopenPrepared,Completed:PayrollReopenCompleted,Retired:PayrollReopenRetired,Index:PayrollReopenIndex,Choices:PayrollReopenChoices,Confirmation:PayrollReopenConfirmation,Retirement:PayrollReopenRetirement,Selection:z.object({}).strict(),indexKind:'payroll_reopen_review_index'} as const;
