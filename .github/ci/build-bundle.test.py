@@ -102,6 +102,14 @@ class BundleTests(unittest.TestCase):
             'context':'build-manifest','path':'manifest.json','type':'regular',
             'sizeBytes':bundle.MAX_MANIFEST+1,'limitBytes':bundle.MAX_MANIFEST})
 
+    def test_external_package_member_refusal_reports_its_distinct_size_boundary(self):
+        file=self.source/'node_modules/.store/fontkit/index.js'
+        with file.open('wb') as stream:stream.truncate(bundle.MAX_PACKAGE+1)
+        with self.assertRaises(ValueError) as caught:bundle.package_identity(self.source,'fontkit')
+        self.assertEqual(self.refusal_details(caught.exception),{
+            'context':'external-package-file:fontkit','path':'index.js','type':'regular',
+            'sizeBytes':bundle.MAX_PACKAGE+1,'limitBytes':bundle.MAX_PACKAGE})
+
     def test_nonregular_and_escaped_path_diagnostics_do_not_follow_or_read_objects(self):
         file=self.root/'blocked-fifo';os.mkfifo(file)
         with self.assertRaises(ValueError) as caught:bundle.regular(file,context='fixture',root=self.root)
