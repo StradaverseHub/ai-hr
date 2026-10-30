@@ -2686,18 +2686,21 @@ export async function updatePosition(ctx: SessionContext, p: { id: string; title
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'position', aggregateId: p.id, eventType: 'position.updated', actor: actorOf(ctx), payload: { title, description } });
   });
 }
+/** Transaction seam for enclosing human-review custody. Native callers retain the same locks,
+ * RLS, duplicate refusal and event owner; callers must not open a nested transaction. */
+export async function archivePositionTx(tx: Tx, ctx: SessionContext, p: { id: string; archived: boolean }) {
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+  await lockLabelCriteriaTx(tx,ctx.tenantId);
+  await tx.update(position).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(position.id, p.id)).catch((e) => {
+    if (isUniqueViolation(e)) throw new DuplicateError('An active position with this title already exists — rename it before unarchiving.');
+    throw e;
+  });
+  return appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'position', aggregateId: p.id, eventType: p.archived ? 'position.archived' : 'position.unarchived', actor: actorOf(ctx), payload: {} }, {returnId:true});
+}
 export function archivePosition(ctx: SessionContext, p: { id: string; archived: boolean }) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
-    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-    await lockLabelCriteriaTx(tx,ctx.tenantId);
-    await tx.update(position).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(position.id, p.id)).catch((e) => {
-      if (isUniqueViolation(e)) throw new DuplicateError('An active position with this title already exists — rename it before unarchiving.');
-      throw e;
-    });
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'position', aggregateId: p.id, eventType: p.archived ? 'position.archived' : 'position.unarchived', actor: actorOf(ctx), payload: {} });
-  });
+  return withTenant(ctx, async tx => { await archivePositionTx(tx,ctx,p); });
 }
 export async function deletePosition(ctx: SessionContext, p: { id: string }) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
