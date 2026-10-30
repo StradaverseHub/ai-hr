@@ -85,6 +85,11 @@ export function protectedPerformanceCommand(kind:unknown,input:unknown){
   const fields:Record<string,string>={aspiration:'aspiration',aspirationnow:'aspirationNow',aspirationlong:'aspirationLong',strengths:'strengths',preferences:'preferences',mentor:'mentor',mobilitynote:'mobilityNote'};return {commands:[{action:'career_field',field:fields[field],value:spanFor(value)}]};
  }
  if(kind==='review'||kind==='journey'){
+  const review=kind==='journey'?p.review:p;
+  if(review&&typeof review==='object'&&!Array.isArray(review)){
+   const owner=review as Record<string,unknown>,marked=/^\s*mark\s+(.+)\s+(yes|no|not yet)\s*$/i.exec(text);
+   if(owner.draftKind==='feedback'&&marked){const label=marked[1].trim(),answer=marked[2],targets=list(owner.targets,1000).map(value=>row(value,['id','label'])),hits=targets.filter(target=>typeof target.id==='string'&&typeof target.label==='string'&&target.label.trim().normalize('NFKC').toLocaleLowerCase('en')===label.normalize('NFKC').toLocaleLowerCase('en'));if(hits.length!==1||String(hits[0].id).startsWith('principle:'))return refuse('ambiguous_performance_target');const start=text.indexOf(label),answerStart=text.lastIndexOf(answer);if(start<0||answerStart<start+label.length)return refuse();return {commands:[{action:'feedback_answer',id:hits[0].id,target:{start,end:start+label.length},answer:{start:answerStart,end:answerStart+answer.length}}]};}
+  }
   const remark=/^\s*(?:overall )?remark\s*:\s*([\s\S]+)$/i.exec(text);
   if(remark&&(typeof p.draftKind==='string'||p.review!==null&&typeof p.review==='object'))return {commands:[{action:'overall_remark',text:spanFor(remark[1].trim())}]};
   const evidence=/^\s*log evidence\s*:\s*([\s\S]+)$/i.exec(text),e=p.evidence;
