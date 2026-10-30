@@ -294,7 +294,7 @@ it('upgrades the exact observed populated Board prefix without rewriting applied
   const [switches]=await storage.client`select count(*)::int as n from app.ai_feature_setting`;expect(switches.n).toBe(15);
   // Ordinary replay is idempotent; it neither re-applies the tail nor rewrites retained rows.
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
-  expect(await ledger()).toEqual(after);expect(await retainedRows()).toEqual(before);
+  expect(await ledger()).toEqual(after);expect(await retainedRows()).toEqual(retained);
  }finally{
   await storage.client.end();if(created)await admin.unsafe(`DROP DATABASE "${name}" WITH (FORCE)`);await admin.end();rmSync(directory,{recursive:true,force:true});
  }
