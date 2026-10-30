@@ -11,6 +11,8 @@ const Human=z.object({...base,...Selection.shape,consent}).strict();
 /** Prospective human display of an actual successful native preview, never inferred counter math. */
 const ReservedCodeOutcome=z.discriminatedUnion('kind',[
  z.object({kind:z.literal('no_reservation'),reservedEmployeeCode:z.null()}).strict(),
+ // Stored code with reserved_number NULL; this does not infer how that code was entered.
+ z.object({kind:z.literal('unreserved_code'),reservedEmployeeCode:code}).strict(),
  z.object({kind:z.literal('released_tip'),reservedEmployeeCode:code}).strict(),
  z.object({kind:z.literal('retained_gap'),reservedEmployeeCode:code}).strict(),
 ]);

@@ -22,13 +22,20 @@ it('cannot carry private captured input or other-people data at any human respon
   expect(()=>parse(prepare,value)).toThrow();
  }
 });
-it.each(['no_reservation','released_tip','retained_gap'])('displays only the bounded native %s consequence without counter arithmetic',kind=>{
+it.each(['no_reservation','unreserved_code','released_tip','retained_gap'])('displays only the bounded native %s consequence without counter arithmetic',kind=>{
  const outcome=kind==='no_reservation'?{kind,reservedEmployeeCode:null}:{kind,reservedEmployeeCode:'HELD-0042'};
  expect(()=>parse(prepare,{kind:'prepared',review:{...prepared,review:{...review,reservedCodeOutcome:outcome}}})).not.toThrow();
  for(const extra of [{reservedNumber:42},{increment:5},{expectedCounter:37},{configId:id},{released:kind==='released_tip'}])expect(C.ReservedCodeOutcome.safeParse({...outcome,...extra}).success).toBe(false);
 });
+it('can display a saved identifier without a numeric reservation without guessing its origin or numeric meaning',()=>{
+ for(const reservedEmployeeCode of ['MANUAL-0042','EMP-0042','0042','人員甲']){
+  const outcome={kind:'unreserved_code',reservedEmployeeCode};expect(C.ReservedCodeOutcome.parse(outcome)).toEqual(outcome);
+  expect(()=>parse(prepare,{kind:'prepared',review:{...prepared,review:{...review,reservedCodeOutcome:outcome}}})).not.toThrow();
+  for(const extra of [{origin:'manual'},{sequenceUnchanged:true},{numericReservation:null},{gap:true}])expect(C.ReservedCodeOutcome.safeParse({...outcome,...extra}).success).toBe(false);
+ }
+});
 it('refuses contradictory reservation labels and empty or unbounded held identifiers',()=>{
- for(const value of [{kind:'no_reservation',reservedEmployeeCode:'HELD-1'},{kind:'released_tip',reservedEmployeeCode:null},{kind:'retained_gap',reservedEmployeeCode:''},{kind:'released_tip',reservedEmployeeCode:'x'.repeat(513)},{kind:'released_tip',reservedEmployeeCode:'HELD-1',retainedGap:true}])expect(C.ReservedCodeOutcome.safeParse(value).success).toBe(false);
+ for(const value of [{kind:'no_reservation',reservedEmployeeCode:'HELD-1'},{kind:'unreserved_code',reservedEmployeeCode:null},{kind:'unreserved_code',reservedEmployeeCode:''},{kind:'unreserved_code',reservedEmployeeCode:'MANUAL-1',released:false},{kind:'unreserved_code',reservedEmployeeCode:'MANUAL-1',reservedNumber:42},{kind:'released_tip',reservedEmployeeCode:null},{kind:'retained_gap',reservedEmployeeCode:''},{kind:'released_tip',reservedEmployeeCode:'x'.repeat(513)},{kind:'released_tip',reservedEmployeeCode:'HELD-1',retainedGap:true}])expect(C.ReservedCodeOutcome.safeParse(value).success).toBe(false);
 });
 it.each(['draftId','companyId'] as const)('binds both internal review layers and the prepare request to the same %s',field=>{
  expect(()=>parse(prepare,{kind:'prepared',review:{...prepared,review:{...review,[field]:other}}})).toThrow();
