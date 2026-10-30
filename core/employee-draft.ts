@@ -737,6 +737,9 @@ export async function saveAndCompleteEmployeeDraft(ctx:SessionContext,p:{id?:str
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // saveEmployeeDraft acquires and retains this exact row's lock before pinning or saving input.
     const saved=await saveEmployeeDraft(ctx,p,tx);
+    // Explicit custody owns the whole transaction: no activation savepoint may hide a failure or
+    // give the native rows/event a subtransaction xmin instead of its top-level receipt witness.
+    if(outerTx)return {ok:true as const,value:await completeEmployeeDraftTx(tx,ctx,saved.id)};
     try {
       const value=await tx.transaction(activationTx=>completeEmployeeDraftTx(activationTx,ctx,saved.id));
       return {ok:true as const,value};

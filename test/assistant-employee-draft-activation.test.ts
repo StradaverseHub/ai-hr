@@ -26,6 +26,9 @@ describe('saved employee draft human activation',()=>{
   const after=await snapshot(d.id);expect(after.people).toBe(before.people+1);expect(after.employments).toBe(before.employments+1);
   const rows=await owner.db.select({code:s.employment.employeeCode}).from(s.employment).where(eq(s.employment.id,done.receipt.receipt.employmentId));expect(rows).toEqual([{code:d.employeeCode}]);
   const pay=await owner.db.select({basic:s.compensation.basicSalary,allowance:s.compensation.monthlyAllowance}).from(s.compensation).where(eq(s.compensation.employmentId,done.receipt.receipt.employmentId));expect(pay).toEqual([{basic:'3000.00',allowance:'100.00'}]);
+  // The completed custody row is written in the top-level command transaction. Native witnesses
+  // must share that xmin; an inner activation savepoint cannot masquerade as the same transaction.
+  const [proof]=await owner.db.execute<{sameXmin:boolean}>(sql`select r.xmin=e.xmin and r.xmin=p.xmin and r.xmin=d.xmin as "sameXmin" from app.assistant_own_leave_review r join employment e on e.id=r.employment_id join person p on p.id=e.person_id and p.tenant_id=e.tenant_id join domain_event d on d.id=r.receipt_event_id where r.id=${r.actionId}::uuid`);expect(proof).toEqual({sameXmin:true});
  });
  it('rejects changed draft, wrong digest and changed company policy without a native write',async()=>{
   const d=await draft(),r=(await store.prepare(hr,human(d.id))).review,before=await snapshot(d.id);await expect(store.confirm(hr,{...confirmation(r),reviewedDigest:'0'.repeat(64)})).rejects.toThrow();expect(await snapshot(d.id)).toEqual(before);
