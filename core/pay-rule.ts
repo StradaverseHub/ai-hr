@@ -75,7 +75,7 @@ export class PayRuleEvalError extends Error {
 // Order matters: this array drives the Input Type dropdown, so it reads as the ticket words it — a fixed
 // amount · a quantity multiplied by a rate · a percentage of another pay item · a number of days or hours ·
 // a value calculated by a formula.
-export const PAY_RULE_KINDS = ['fixed', 'qty_rate', 'percent_of', 'per_day', 'per_hour', 'flat_capped', 'formula'] as const;
+export const PAY_RULE_KINDS = ['fixed', 'qty_rate', 'percent_of', 'per_day', 'per_hour', 'flat_capped', 'formula', 'formula_builder'] as const;
 export type PayRuleKind = (typeof PAY_RULE_KINDS)[number];
 
 /** The FIXED, NAMED input set a formula may read. Exported so the UI builds its operand picker from the
@@ -237,6 +237,20 @@ export function validatePayRule(rule: PayRule | null, componentProrates: boolean
       // carries NO period scaling of its own and (unlike per_day/per_hour) is compatible with `prorates`.
       if (!inQty(rule.qty) || !inMoney(rule.rate)) return { ok: false, code: 'OUT_OF_RANGE' };
       return { ok: true };
+    case 'formula_builder': {
+      if (typeof rule.formulaId !== 'string' || !rule.formulaId.trim() || rule.formulaId.length > 64 ||
+          !Array.isArray(rule.dependencies) || rule.dependencies.length > 1000 ||
+          rule.dependencies.some(code => typeof code !== 'string' || !code.trim() || code.length > 64)) return {ok:false,code:'BAD_KIND'};
+      if (rule.context !== undefined) {
+        if (!rule.context || typeof rule.context !== 'object' || Object.keys(rule.context).some(key => !['ordinaryRate','hoursPerDay','rate'].includes(key))) return {ok:false,code:'BAD_KIND'};
+        for (const [key,value] of Object.entries(rule.context)) {
+          if (typeof value !== 'string' || value.length > 32 || !/^\d+(?:\.\d{1,12})?$/.test(value)) return {ok:false,code:'OUT_OF_RANGE'};
+          const number=Number(value), maximum=key==='ordinaryRate'?366:key==='hoursPerDay'?24:100;
+          if (!Number.isFinite(number) || number>maximum || (key==='rate'?number<0:number<=0)) return {ok:false,code:'OUT_OF_RANGE'};
+        }
+      }
+      return {ok:true};
+    }
     case 'formula': {
       // 61bf109d — the restricted formula. Every operand must be in the FIXED, NAMED set.
       //
@@ -289,6 +303,7 @@ export function payRuleDependencies(rule: PayRule | null): string[] {
     if (n) out.add(n);
   };
   if (rule.kind === 'percent_of' && rule.base === 'component') add(rule.componentCode);
+  if (rule.kind === 'formula_builder') for (const code of rule.dependencies ?? []) add(code);
   if (rule.kind === 'formula') {
     const operands: FormulaOperand[] = [rule.start, ...(Array.isArray(rule.terms) ? rule.terms.map((t) => t?.operand) : [])].filter(
       Boolean,
@@ -700,7 +715,14 @@ export function validatePayRuleAgainstCatalog(
  *  identically; resolvePayComponentSet is what populates it, in recorded resolution order. A code that is
  *  absent reads as 0 — the employee simply does not have that pay item this period, which is a figure, not
  *  an error, and must never abort a batch. */
+export type FormulaBuilderPayRule = Extract<PayRule,{kind:'formula_builder'}>;
+/** The pure resolver consumes an authorized snapshot; it never loads private employee data. */
+export type PayRuleFormulaRuntime = {
+  resolve(rule:FormulaBuilderPayRule,component:ResolvablePayComponent):string;
+  publish(code:string,components:readonly {component:ResolvablePayComponent;amount:number}[]):void;
+};
 export type PayRuleScope = {
+  formulaBuilder?:PayRuleFormulaRuntime;
   basic: number;
   daysWorked: number;
   hours: number;
@@ -843,6 +865,8 @@ export function resolvePayRule(
       case 'qty_rate':
         out = rule.qty * rule.rate;
         break;
+      case 'formula_builder':
+        throw new PayRuleEvalError('Formula Builder requires an authorized employee and payroll source snapshot.');
       case 'formula': {
         // Left-to-right fold — no operator precedence, because the admin builds the steps in the order they
         // are applied and a hidden precedence rule is exactly the kind of surprise that shows up on a
@@ -899,6 +923,11 @@ export function resolvePayRule(
  *  The same CODE may appear more than once (a recurring value and a one-off batch value), which is why the
  *  result is positional. */
 export type ResolvablePayComponent = {
+  /** Retained original entry, never inferred from a previously calculated transaction. */
+  formulaInput?:string;
+  prorates?:boolean;
+  prorateOverride?:boolean|null;
+  rounding?:string|null;
   code: string;
   rule: PayRule | null;
   amount: number;
@@ -1039,7 +1068,13 @@ export function resolvePayComponentSet(
       // A null / `fixed` rule short-circuits to the stored amount — the exact expression the kernel used
       // before 61bf109d, so an all-fixed catalog is untouched by the ordering machinery.
       const stepsOut = traceFor && traceFor.index === i ? traceFor.steps : undefined;
-      const v = c.rule && c.rule.kind !== 'fixed' ? resolvePayRule(c.rule, scoped, c.amount, local, stepsOut) : c.amount;
+      let v:number;
+      if(c.rule?.kind==='formula_builder') {
+        if(!scoped.formulaBuilder)throw new PayRuleEvalError('Formula Builder requires an authorized employee and payroll source snapshot.');
+        const exact=scoped.formulaBuilder.resolve(c.rule,c);
+        v=Number(exact);
+        if(!Number.isFinite(v)||v<0||v>100_000_000)throw new PayRuleEvalError('The formula result must be a supported non-negative Pay Item amount.');
+      } else v = c.rule && c.rule.kind !== 'fixed' ? resolvePayRule(c.rule, scoped, c.amount, local, stepsOut) : c.amount;
       if (local?.length) {
         for (const n of local) notices!.push({ code, ...n });
         local.length = 0;
@@ -1050,6 +1085,7 @@ export function resolvePayComponentSet(
     if (g.fixedAllowance) atCurrentRank += total;
     // A caller-pinned code (BASIC) keeps the authoritative figure — see AUTHORITATIVE PRE-SEEDS above.
     if (!pinned.has(code)) components[code] = total;
+    scoped.formulaBuilder?.publish(code,g.idx.map(index=>({component:comps[index],amount:out[index]})));
   }
   return out;
 }
