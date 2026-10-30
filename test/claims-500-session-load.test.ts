@@ -25,7 +25,7 @@ it('measures 500 simultaneous employee read/create/edit/delete journeys over one
  const started=performance.now();let checkpointAt=0;
  const checkpoint=()=>{
    if(performance.now()-checkpointAt<1000)return;checkpointAt=performance.now();
-   if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/claims-500-progress.json',JSON.stringify({kind:'incomplete-service-burst',elapsedMs:performance.now()-started,completed:Object.fromEntries(Object.entries(samples).map(([key,values])=>[key,values.length]))}));
+   if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/claims-500-progress.json',JSON.stringify({kind:'incomplete-service-burst',elapsedMs:performance.now()-started,completed:Object.fromEntries(Object.entries(samples).map(([key,values])=>{const sorted=[...values].sort((a,b)=>a-b);return [key,{samples:values.length,p50Ms:sorted[Math.ceil(sorted.length*.5)-1],p95Ms:sorted[Math.ceil(sorted.length*.95)-1],maxMs:sorted.at(-1)}];}))}));
  };
  checkpoint();
  const timed=async<T>(operation:string,run:()=>Promise<T>)=>{const start=performance.now();try{return await run();}finally{samples[operation].push(performance.now()-start);checkpoint();}};
