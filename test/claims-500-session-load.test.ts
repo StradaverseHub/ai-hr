@@ -1,5 +1,6 @@
 /** Service burst probe, not an HTTP/browser capacity certificate. Uses the ordinary ten-connection
  * application pool and real distinct employee principals; no authorization bypass in measured work. */
+import {setTimeout as pause} from 'node:timers/promises';
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {afterAll,beforeAll,expect,it} from 'vitest';
@@ -8,7 +9,7 @@ import {appUser,employment,person,roleAssignment} from '../db/schema';
 import {createClaimType,deleteClaimDraft,listClaimHistoryPage,listClaimsForEmployment,saveClaimDraft} from '../packs/claims/service';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
-it('measures 500 simultaneous employee read/create/edit/delete journeys over one million distributed claims',async()=>{
+it('measures burst and paced journeys for 500 employee sessions over one million distributed claims',async()=>{
  await resetDb();const b=await seedBase(),admin=adminCtx(b);
  const type=await createClaimType(admin,{code:'BURST',name:'Fictional burst',defaultTaxable:false,requiresReceipt:false});
  const users=Array.from({length:500},(_,i)=>({personId:randomUUID(),employmentId:randomUUID(),userId:randomUUID(),name:'Fictional '+i}));
@@ -26,11 +27,12 @@ it('measures 500 simultaneous employee read/create/edit/delete journeys over one
  await owner.client`analyze app_user`;
  await owner.client`analyze role_assignment`;
  await owner.client`analyze claim_type`;
- const samples:Record<string,number[]>={read:[],create:[],edit:[],delete:[]};
+ let samples:Record<string,number[]>={read:[],create:[],edit:[],delete:[]};
+ let phase='burst';
  const started=performance.now();let checkpointAt=0;
  const checkpoint=()=>{
    if(performance.now()-checkpointAt<1000)return;checkpointAt=performance.now();
-   if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/claims-500-progress.json',JSON.stringify({kind:'incomplete-service-burst',elapsedMs:performance.now()-started,completed:Object.fromEntries(Object.entries(samples).map(([key,values])=>{const sorted=[...values].sort((a,b)=>a-b);return [key,{samples:values.length,p50Ms:sorted[Math.ceil(sorted.length*.5)-1],p95Ms:sorted[Math.ceil(sorted.length*.95)-1],maxMs:sorted.at(-1)}];}))}));
+   if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/claims-500-progress.json',JSON.stringify({kind:'incomplete-service-load',phase,elapsedMs:performance.now()-started,completed:Object.fromEntries(Object.entries(samples).map(([key,values])=>{const sorted=[...values].sort((a,b)=>a-b);return [key,{samples:values.length,p50Ms:sorted[Math.ceil(sorted.length*.5)-1],p95Ms:sorted[Math.ceil(sorted.length*.95)-1],maxMs:sorted.at(-1)}];}))}));
  };
  checkpoint();
  const timed=async<T>(operation:string,run:()=>Promise<T>)=>{const start=performance.now();try{return await run();}finally{samples[operation].push(performance.now()-start);checkpoint();}};
@@ -44,25 +46,36 @@ it('measures 500 simultaneous employee read/create/edit/delete journeys over one
    await deleteClaimDraft(warmCtx,draft.id,warm.employmentId);
  }
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/claims-jit-comparison.json',JSON.stringify(comparison));
- const results=await Promise.allSettled(users.map(async(u,i)=>{
+ const phases:Record<string,unknown>={};
+ for(phase of ['burst','paced']){
+  samples={read:[],create:[],edit:[],delete:[]};const phaseStart=performance.now();
+  const results=await Promise.allSettled(users.map(async(u,i)=>{
+   if(phase==='paced')await pause(i*20);
+   const think=()=>phase==='paced'?pause(750+(i%11)*50):Promise.resolve();
    const ctx={...admin,userId:u.userId,personId:u.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
    const page=await timed('read',()=>listClaimHistoryPage(ctx,u.employmentId));
    expect(page.state.total).toBe(2000);expect(page.rows).toHaveLength(25);
    // A real different employee's id cannot be used to read their claim.
    if(i===0)expect(await listClaimsForEmployment(ctx,users[1].employmentId,{claimId:page.rows[0].id})).toEqual([]);
+   if(i===0){const denied=await listClaimHistoryPage(ctx,users[1].employmentId);expect(denied.rows).toEqual([]);expect(denied.state.total).toBe(0);}
+   await think();
    const input={employmentId:u.employmentId,claimTypeId:type.id,incurredOn:'2026-01-02',amount:1};
    const draft=await timed('create',()=>saveClaimDraft(ctx,input));
+   await think();
    await timed('edit',()=>saveClaimDraft(ctx,{...input,id:draft.id,amount:2}));
    expect((await listClaimsForEmployment(ctx,u.employmentId,{claimId:draft.id}))[0]?.amount).toBe(2);
+   await think();
    await timed('delete',()=>deleteClaimDraft(ctx,draft.id,u.employmentId));
    expect(await listClaimsForEmployment(ctx,u.employmentId,{claimId:draft.id})).toEqual([]);
- }));
- const failures=results.flatMap((r,i)=>r.status==='rejected'?[{session:i,message:String(r.reason)}]:[]);
- const quantiles=Object.fromEntries(Object.entries(samples).map(([k,values])=>{values.sort((a,b)=>a-b);return[k,{samples:values.length,p50Ms:values[Math.ceil(values.length*.5)-1],p95Ms:values[Math.ceil(values.length*.95)-1],p99Ms:values[Math.ceil(values.length*.99)-1],maxMs:values.at(-1)}];}));
- const report={kind:'service-burst-only',fixtureStatistics:'all principal and claim fixture tables analyzed',sessions:500,records:1000000,applicationPool:10,jitComparison:comparison,elapsedMs:performance.now()-started,errors:failures.length,operations:quantiles,failures};
- if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/claims-500-sessions.json',JSON.stringify(report,null,2));
- console.info('[claims-500-sessions]',JSON.stringify(report));
- expect(failures).toEqual([]);
+  }));
+  const failures=results.flatMap((r,i)=>r.status==='rejected'?[{session:i,message:String(r.reason)}]:[]);
+  const operations=Object.fromEntries(Object.entries(samples).map(([k,values])=>{values.sort((a,b)=>a-b);return[k,{samples:values.length,p50Ms:values[Math.ceil(values.length*.5)-1],p95Ms:values[Math.ceil(values.length*.95)-1],p99Ms:values[Math.ceil(values.length*.99)-1],maxMs:values.at(-1)}];}));
+  phases[phase]={elapsedMs:performance.now()-phaseStart,errors:failures.length,operations,failures};
+  const report={kind:'service-burst-and-paced-only',fixtureStatistics:'all principal and claim fixture tables analyzed',sessions:500,records:1000000,applicationPool:10,pacedAssumption:'Warm after burst;500 starts over10seconds;750–1250ms pause between actions',auditHashChainFlag:process.env.AUDIT_HASH_CHAIN_ENABLED==='true',jitComparison:comparison,elapsedMs:performance.now()-started,phases};
+  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/claims-500-sessions.json',JSON.stringify(report,null,2));
+  console.info('[claims-500-sessions]',JSON.stringify(report));
+  expect(failures).toEqual([]);
+ }
  const [remaining]=await owner.client`select count(*)::int as n from claim_request where tenant_id=${b.tenantId}::uuid`;
  expect(remaining.n).toBe(1000000);
 },240000);
