@@ -87,6 +87,80 @@ const PERFORMANCE=['performance.ai_360_enabled','performance.ai_tc_enabled','per
  'performance.ai_review_enabled','performance.ai_idp_enabled','performance.ai_calib_enabled'];
 const hash=(value:Buffer)=>createHash('sha256').update(value).digest('hex');
 
+// Exact reviewed additions after the historical568 prefix, independently traced to native ADD COLUMN
+// declarations. Old NULL values remain original values; no runtime result supplies this expectation.
+const ADDED_REVIEW_COLUMNS={
+ "allocation_effective_company_id": "uuid",
+ "allocation_effective_date": "date",
+ "checkin_schedule_birth_hash": "text",
+ "checkin_schedule_birth_xact": "text",
+ "checkin_schedule_birth_xmin": "text",
+ "checkin_schedule_date": "date",
+ "checkin_schedule_manager_id": "uuid",
+ "checkin_schedule_planned_id": "uuid",
+ "checkin_schedule_result_id": "uuid",
+ "day_schedule_date": "date",
+ "department_archive_desired": "boolean",
+ "draft_discard_capture_xid": "xid8",
+ "draft_discard_delete_witness": "jsonb",
+ "draft_discard_delete_xid": "xid8",
+ "draft_discard_source": "jsonb",
+ "draft_discard_source_ctid": "tid",
+ "draft_discard_source_xmin": "text",
+ "employee_id_template_desired_status": "text",
+ "offboarding_cancel_case_version": "text",
+ "offboarding_cancel_effect_commitment": "text",
+ "offboarding_completion_event_id": "uuid",
+ "offboarding_expect_completion": "boolean",
+ "offboarding_step_case_version": "text",
+ "offboarding_step_effect_commitment": "text",
+ "offboarding_step_key": "text",
+ "offboarding_step_version": "text",
+ "offboarding_undo_case_event_id": "uuid",
+ "offboarding_undo_expect_reopening": "boolean",
+ "offboarding_undo_step_key": "text",
+ "payroll_reopen_batch_id": "uuid",
+ "payroll_reopen_period_id": "uuid",
+ "payroll_reopen_person_ids": "uuid[]",
+ "payroll_reopened_event_id": "uuid",
+ "payroll_reset_batch_id": "uuid",
+ "payroll_reset_event_id": "uuid",
+ "payroll_reset_period_id": "uuid",
+ "payroll_reset_person_ids": "uuid[]",
+ "payroll_reset_proof": "jsonb",
+ "people_general_after_email": "boolean",
+ "people_general_after_nric": "boolean",
+ "people_general_before_email": "boolean",
+ "people_general_before_nric": "boolean",
+ "people_general_before_revision": "uuid",
+ "people_general_native_revision": "uuid",
+ "performance_postimage_event_id": "uuid",
+ "performance_postimage_mode": "text",
+ "performance_postimage_notes": "text",
+ "performance_postimage_root_xid": "xid8",
+ "performance_postimage_unchanged": "text",
+ "performance_postimage_version": "integer",
+ "position_archive_desired": "boolean",
+ "rewards_calendar_cycle_id": "uuid",
+ "rewards_calendar_event_id": "uuid",
+ "rewards_calendar_id": "uuid",
+ "rewards_calendar_revision": "integer",
+ "rewards_calendar_unit_id": "uuid",
+ "rewards_return_commitment": "text",
+ "rewards_return_completed_xid": "xid8",
+ "rewards_return_decision_id": "uuid",
+ "rewards_return_snapshot": "jsonb"
+} as const;
+function reviewRecords(value:unknown):Record<string,unknown>[] {
+ expect(Array.isArray(value),'physical review row collection').toBe(true);
+ if(!Array.isArray(value))throw Error('Expected physical review rows');
+ return value.map(row=>{
+  expect(row!==null&&typeof row==='object'&&!Array.isArray(row),'physical review record').toBe(true);
+  if(row===null||typeof row!=='object'||Array.isArray(row))throw Error('Expected physical review record');
+  return row as Record<string,unknown>;
+ });
+}
+
 it('upgrades the exact observed populated Board prefix without rewriting applied history, payroll, settings or sealed reviews',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as Journal;
  const prefix=journal.entries.findIndex(entry=>entry.tag===TAIL[0].tag);
@@ -163,7 +237,27 @@ it('upgrades the exact observed populated Board prefix without rewriting applied
   for(const row of priorPerformance)expect(row).toMatchObject({default_value:true,default_on_install:true});
   const baseline=await ledger();
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
-  expect(await retainedRows()).toEqual(before);
+  const retained=await retainedRows();
+  expect(Object.keys(retained).sort()).toEqual(Object.keys(before).sort());
+  // Every original non-review table and every opaque sealed-content byte stays exactly unchanged.
+  for(const key of Object.keys(before))if(key!=='review')expect(retained[key],key+' exact physical preservation').toEqual(before[key]);
+  const newKeys=Object.keys(ADDED_REVIEW_COLUMNS).sort();expect(newKeys).toHaveLength(60);
+  const catalog=await storage.client<{name:string;type:string}[]>`
+   select a.attname::text name,format_type(a.atttypid,a.atttypmod) type from pg_attribute a
+   where a.attrelid='app.assistant_own_leave_review'::regclass and a.attnum>0 and not a.attisdropped
+    and a.attname::text=any(${newKeys}::text[]) order by a.attname`;
+  const sorted=(rows:readonly {name:string;type:string}[])=>[...rows].sort((a,b)=>a.name.localeCompare(b.name));
+  expect(sorted(catalog)).toEqual(sorted(Object.entries(ADDED_REVIEW_COLUMNS).map(([name,type])=>({name,type}))));
+  const oldReviews=reviewRecords(before.review),newReviews=reviewRecords(retained.review);
+  expect(newReviews).toHaveLength(oldReviews.length);
+  for(let index=0;index<oldReviews.length;index++){
+   const oldRow=oldReviews[index],newRow=newReviews[index],oldKeys=Object.keys(oldRow).sort();
+   expect(new Set([...oldKeys,...newKeys]).size,'dedicated keys are genuine additions').toBe(oldKeys.length+newKeys.length);
+   expect(Object.keys(newRow).sort(),'exact original-plus-dedicated physical schema').toEqual([...oldKeys,...newKeys].sort());
+   for(const key of newKeys){expect(oldRow,key+' absent in historical prefix').not.toHaveProperty(key);expect(newRow[key],key+' independently declared NULL addition').toBeNull();}
+   // Preserve ALL original values, including original NULLs; never strip NULLs or ignore old keys.
+   expect(Object.fromEntries(oldKeys.map(key=>[key,newRow[key]])),'every original review value').toEqual(oldRow);
+  }
   const after=await ledger();expect(after).toHaveLength(633);expect(after.slice(0,prefix)).toEqual(baseline);
   expect(after.slice(prefix).map(({hash,created_at})=>({hash,created_at}))).toEqual(TAIL.map(({tag,when})=>({hash:hashFile(tag),created_at:String(when)})));
   const changedDefinitions=await storage.client`select * from setting_definition order by key`;
