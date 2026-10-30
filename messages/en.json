@@ -14824,6 +14824,12 @@
     "previewAnyOne": "Any one of these can approve"
   },
   "feedback": {
+    "kanbanScroll": "Scroll sideways to see other stages.",
+    "kanbanPrevious": "Previous stages",
+    "kanbanNext": "Next stages",
+    "kanbanLoaded": "Showing {shown, number} of {total, number}.",
+    "kanbanViewStage": "View this stage",
+    "kanbanNotLoaded": "Items in this stage are outside the loaded results.",
     "viewLabel": "Feedback view",
     "viewList": "List",
     "viewKanban": "Kanban",

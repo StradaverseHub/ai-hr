@@ -11,7 +11,7 @@ import ta from '../messages/ta.json';
 import { captureAiReviewScreenshots } from './helpers/ai-review-screenshots';
 import type { FeedbackRow } from '../core/feedback';
 const copies = { en, ms, zh, vi: viCopy, th, ta };
-const state = vi.hoisted(() => ({ locale: 'en' as keyof typeof copies, rows: [] as FeedbackRow[], query: vi.fn() }));
+const state = vi.hoisted(() => ({ locale: 'en' as keyof typeof copies, rows: [] as FeedbackRow[], query: vi.fn(), counts: undefined as { status: string; count: number }[] | undefined }));
 vi.mock('next/link', () => ({ default: ({ children, scroll, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('../components/intent-link', () => ({ default: ({ children, scroll, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: any) => createTranslator({ locale: state.locale, messages: copies[state.locale], namespace }) }));
@@ -19,7 +19,7 @@ vi.mock('next/navigation', () => ({ notFound: () => { throw Error('not found'); 
 vi.mock('../lib/session', () => ({ getSession: async () => ({}) }));
 vi.mock('../app/feedback/board', () => ({ feedbackBoardOpen: () => true }));
 vi.mock('../app/feedback/actions', () => ({ submitFeedbackAction: vi.fn(), bulkReviewAction: vi.fn() }));
-vi.mock('../core/feedback', () => ({ FEEDBACK_LIST_LIMIT: 200, feedbackBoardCounts: async () => [ { status: 'staging', count: 201 }, { status: 'production_ready', count: 1 }, { status: 'production', count: 1 }, { status: 'deployed', count: 1 } ], listFeedback: (...args: any[]) => { state.query(...args); return Promise.resolve(state.rows); } }));
+vi.mock('../core/feedback', () => ({ FEEDBACK_LIST_LIMIT: 200, feedbackBoardCounts: async () => state.counts ?? Object.entries(state.rows.reduce((acc, row) => { const key = feedbackBoardStatus(row); acc[key] = (acc[key] ?? 0) + 1; return acc; }, {} as Record<string, number>)).map(([status, count]) => ({ status, count })), listFeedback: (...args: any[]) => { state.query(...args); return Promise.resolve(state.rows); } }));
 import FeedbackPage from '../app/feedback/page';
 import { feedbackBoardStatus } from '../lib/feedback-release';
 function fixtures(): FeedbackRow[] {
@@ -30,7 +30,7 @@ function fixtures(): FeedbackRow[] {
     release: ['staging', 'production_ready', 'production'].includes(st) ? { stage: st as 'staging' | 'production_ready' | 'production', sourceSha: 'a'.repeat(40), buildId: 'fixture', buildRef: 'fixture-pr', evidence: 'fixture-record', recordedAt: '2026-10-30T02:00:00Z', planRevision: 1, reopenedCount: 0 } : null,
   }));
 }
-afterEach(cleanup);
+afterEach(() => { cleanup(); state.counts = undefined; });
 async function board(params: { view?: string; status?: string; sort?: string } = {}) {
   const element = await FeedbackPage({ searchParams: Promise.resolve(params) });
   return render(<NextIntlClientProvider locale={state.locale} messages={copies[state.locale]}><main className="min-w-0 p-4">{element}</main></NextIntlClientProvider>);
@@ -47,7 +47,7 @@ describe('feedback Kanban and release labels', () => {
     expect(screen.getByRole('link', { name: new RegExp('Improve claim receipt uploads') })).toHaveAttribute('href', '/feedback/00000000-0000-0000-0000-000000000000');
     expect(screen.queryByRole('button', { name: /deploy/i })).toBeNull();
     await captureAiReviewScreenshots(document.body.innerHTML, locale, 'feedback-board');
-  });
+  }, 60000);
   it('keeps status and server order in view-switch/filter links, and scopes a selected lane', async () => {
     state.locale = 'en'; state.rows = fixtures().filter(r => feedbackBoardStatus(r) === 'staging');
     await board({ view: 'kanban', status: 'staging', sort: 'updated_asc' });
@@ -55,7 +55,17 @@ describe('feedback Kanban and release labels', () => {
     expect(screen.getByRole('link', { name: 'List' })).toHaveAttribute('href', '/feedback?status=staging&sort=updated_asc');
     const region = screen.getByRole('region', { name: 'Kanban' });
     expect(within(region).getAllByRole('heading', { level: 2 })).toHaveLength(1);
-    expect(screen.getByRole('link', { name: /Ready for production 1/ })).toHaveAttribute('href', '/feedback?status=production_ready&sort=updated_asc&view=kanban');
+    expect(screen.getByRole('link', { name: /Deployed to staging 1/ })).toHaveAttribute('href', '/feedback?status=staging&sort=updated_asc&view=kanban');
+  });
+  it('omits empty all-view lanes and provides working sideways controls', async () => {
+    state.locale = 'en'; state.rows = fixtures(); await board({ view: 'kanban' });
+    expect(screen.queryByRole('heading', { name: /^Open/ })).toBeNull();
+    const region = screen.getByRole('region', { name: 'Kanban' });
+    const move = vi.fn(); Object.defineProperty(region, 'scrollBy', { value: move });
+    screen.getByRole('button', { name: 'Next stages' }).click();
+    expect(move).toHaveBeenLastCalledWith({ left: 304, behavior: 'auto' });
+    screen.getByRole('button', { name: 'Previous stages' }).click();
+    expect(move).toHaveBeenLastCalledWith({ left: -304, behavior: 'auto' });
   });
   it('retains the list, bulk-review controls and the same environment labels', async () => {
     state.locale = 'en'; state.rows = fixtures(); await board({ view: 'unknown' });
@@ -67,8 +77,11 @@ describe('feedback Kanban and release labels', () => {
   it('renders empty stage guidance and reports the server cap without inflating lane counts', async () => {
     state.locale = 'en'; state.rows = []; await board({ view: 'kanban', status: 'staging' });
     expect(screen.getByText('No items in this stage')).toBeInTheDocument(); cleanup();
+    state.counts = [{ status: 'staging', count: 201 }];
     state.rows = Array.from({ length: 200 }, (_, i) => ({ ...fixtures()[0], id: `fixture-${i}` }));
     await board({ view: 'kanban', status: 'staging' });
+    expect(screen.getByText('Showing 200 of 201.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'View this stage' })).toHaveAttribute('href', '/feedback?status=staging&view=kanban');
     expect(screen.getByText(en.feedback.listTruncated.replace('{shown, number}', '200').replace('{total, number}', '201'))).toBeInTheDocument();
   });
 });

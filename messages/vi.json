@@ -14824,6 +14824,12 @@
     "previewAnyOne": "Bất kỳ ai trong số này đều có thể duyệt"
   },
   "feedback": {
+    "kanbanScroll": "Cuộn ngang để xem các giai đoạn khác.",
+    "kanbanPrevious": "Giai đoạn trước",
+    "kanbanNext": "Giai đoạn sau",
+    "kanbanLoaded": "Hiển thị {shown, number} trên {total, number}.",
+    "kanbanViewStage": "Xem giai đoạn này",
+    "kanbanNotLoaded": "Các mục ở giai đoạn này nằm ngoài kết quả đã tải.",
     "viewLabel": "Chế độ xem phản hồi",
     "viewList": "Danh sách",
     "viewKanban": "Kanban",

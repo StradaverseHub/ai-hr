@@ -14824,6 +14824,12 @@
     "previewAnyOne": "Mana-mana seorang daripada ini boleh meluluskan"
   },
   "feedback": {
+    "kanbanScroll": "Tatal ke sisi untuk melihat peringkat lain.",
+    "kanbanPrevious": "Peringkat sebelumnya",
+    "kanbanNext": "Peringkat seterusnya",
+    "kanbanLoaded": "Memaparkan {shown, number} daripada {total, number}.",
+    "kanbanViewStage": "Lihat peringkat ini",
+    "kanbanNotLoaded": "Item pada peringkat ini di luar hasil yang dimuatkan.",
     "viewLabel": "Paparan maklum balas",
     "viewList": "Senarai",
     "viewKanban": "Kanban",

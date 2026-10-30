@@ -14824,6 +14824,12 @@
     "previewAnyOne": "คนใดคนหนึ่งในนี้อนุมัติได้"
   },
   "feedback": {
+    "kanbanScroll": "เลื่อนด้านข้างเพื่อดูขั้นตอนอื่น",
+    "kanbanPrevious": "ขั้นตอนก่อนหน้า",
+    "kanbanNext": "ขั้นตอนถัดไป",
+    "kanbanLoaded": "แสดง {shown, number} จาก {total, number} รายการ",
+    "kanbanViewStage": "ดูขั้นตอนนี้",
+    "kanbanNotLoaded": "รายการในขั้นตอนนี้อยู่นอกผลลัพธ์ที่โหลดไว้",
     "viewLabel": "มุมมองข้อเสนอแนะ",
     "viewList": "รายการ",
     "viewKanban": "คัมบัง",

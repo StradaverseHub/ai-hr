@@ -193,7 +193,7 @@ export default async function FeedbackPage({
           </p>
         )}
         {activeView === 'kanban' ? (
-          <FeedbackKanban rows={rows} status={activeStatus} />
+          <FeedbackKanban rows={rows} status={activeStatus} counts={counts} sort={activeSort} />
         ) : rows.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('empty')}</p>
         ) : (
