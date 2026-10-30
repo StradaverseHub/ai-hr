@@ -1,0 +1,12 @@
+/** Protocol fixtures only; canonical database effects are covered in the custody suite. */
+import {expect,it} from 'vitest';
+import {DepartmentArchiveBrowserPacket,parseGenericModuleActionBrowserResult} from '../lib/assistant-actions/module-action-http';
+const action='org.department.archive' as const,departmentId='84000000-0000-4000-8000-000000000001',companyId='84000000-0000-4000-8000-000000000002',actionId='84000000-0000-4000-8000-000000000003';
+const input={action,contractVersion:1 as const,departmentId,expectedArchived:false,archived:true};
+const packet=DepartmentArchiveBrowserPacket.parse({action,operation:'prepare',input});
+const prepared=()=>({kind:'prepared',review:{action,contractVersion:1,actionId,reviewedDigest:'a'.repeat(64),createdAt:'2026-10-30T00:00:00Z',expiresAt:'2026-10-30T00:10:00Z',content:input,review:{departmentId,companyId,companyName:'Fictional Company',name:'Fictional Department',archived:false,afterArchived:true},consequence:'catalogue_archive_state_only_no_assignment_or_access_change'}});
+it('accepts the exact native department review without an employment binding',()=>{expect(parseGenericModuleActionBrowserResult(packet,prepared()).kind).toBe('prepared');});
+it('refuses posted actor, routing or fake employee fields',()=>{for(const extra of [{employmentId:departmentId},{headEmploymentId:departmentId},{businessUnitId:departmentId},{personId:departmentId}])expect(DepartmentArchiveBrowserPacket.safeParse({action,operation:'prepare',input:{...input,...extra}}).success).toBe(false);});
+it('refuses a substituted department even when both response halves agree',()=>{const result=prepared();result.review.content={...input,departmentId:companyId};result.review.review.departmentId=companyId;expect(()=>parseGenericModuleActionBrowserResult(packet,result)).toThrow();});
+it('refuses private routing projections or a position action response',()=>{expect(()=>parseGenericModuleActionBrowserResult(packet,{...prepared(),routing:{headEmploymentId:departmentId}})).toThrow();const result=prepared();expect(()=>parseGenericModuleActionBrowserResult(packet,{...result,review:{...result.review,action:'org.position.archive'}})).toThrow();});
+it('requires the exact saved action ID during recovery',()=>{const resume=DepartmentArchiveBrowserPacket.parse({action,operation:'reopen',actionId:companyId});expect(()=>parseGenericModuleActionBrowserResult(resume,prepared())).toThrow();});

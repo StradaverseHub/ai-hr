@@ -75,6 +75,15 @@ export async function lockLabelCriteriaTx(tx: Tx, tenantId: string): Promise<voi
   }
 }
 
+/** Read barrier for catalogue review. Same physical rows/order as the native criteria writer,
+ * without counting a read as a configuration change. Call before any label row lock. */
+export async function lockLabelCriteriaReadTx(tx: Tx, tenantId: string): Promise<void> {
+  for (const kind of LABEL_KINDS) {
+    await tx.execute(sql`insert into system_label_criteria_epoch(tenant_id,label_kind) values(${tenantId}::uuid,${kind}) on conflict do nothing`);
+    await tx.execute(sql`select revision from system_label_criteria_epoch where tenant_id=${tenantId}::uuid and label_kind=${kind} for update`);
+  }
+}
+
 /** Load a label row's origin company + is_global, or throw if it does not exist in the tenant. */
 async function loadLabel(
   tx: Tx,

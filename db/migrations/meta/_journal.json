@@ -4152,6 +4152,20 @@
       "when": 1793330000055,
       "tag": "0726_assistant_cost_allocation_maintenance",
       "breakpoints": true
+    },
+    {
+      "idx": 713,
+      "version": "7",
+      "when": 1793330000070,
+      "tag": "0733_assistant_position_archive_custody",
+      "breakpoints": true
+    },
+    {
+      "idx": 722,
+      "version": "7",
+      "when": 1793330000080,
+      "tag": "0743_assistant_department_archive_custody",
+      "breakpoints": true
     }
   ]
 }
