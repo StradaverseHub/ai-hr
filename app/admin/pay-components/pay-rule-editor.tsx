@@ -70,6 +70,7 @@ type Props = {
   aiEnabled: boolean;
   /** Other ACTIVE pay items in this tenant's catalog (this one excluded) — the reference picker's options. */
   payItems: PayItemOption[];
+  builderEnabled?:boolean;
   formulaContext?: {ordinaryRate?:string;hoursPerDay?:string;rate?:string}|null;
   activeFormulas?: {formulaId:string;description:string;dependencies:string[]}[];
   /** Employees the rule can be previewed against. */
@@ -103,6 +104,7 @@ function OperandFields({
   op: FormulaOperand;
   onChange: (o: FormulaOperand) => void;
   payItems: PayItemOption[];
+  builderEnabled?:boolean;
   formulaContext?: {ordinaryRate?:string;hoursPerDay?:string;rate?:string}|null;
   activeFormulas?: {formulaId:string;description:string;dependencies:string[]}[];
 }) {
@@ -197,6 +199,7 @@ export function PayRuleEditor({
   previewEmployees,
   activeFormulas=[],
   formulaContext,
+  builderEnabled=true,
   catalogueOnly = false,
 }: Props) {
   const t = useTranslations('payRule');
@@ -418,7 +421,7 @@ export function PayRuleEditor({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Field label={t('kindLabel')}>
           <select value={kind} onChange={(e) => setKind(e.target.value as PayRuleKind)} className={inputCls}>
-            {PAY_RULE_KINDS.map((k) => (
+            {PAY_RULE_KINDS.filter(k=>k!=='formula_builder'||builderEnabled||initialRule?.kind==='formula_builder').map((k) => (
               <option key={k} value={k}>
                 {t(`kind_${k}`)}
               </option>

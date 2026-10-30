@@ -48,6 +48,8 @@ BEGIN
  ELSIF TG_TABLE_NAME='pay_formula_event' THEN
   IF NOT EXISTS(SELECT 1 FROM public.pay_formula WHERE id=NEW.formula_id AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Formula event identity mismatch'; END IF;
   IF NEW.revision_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.pay_formula_revision WHERE id=NEW.revision_id AND formula_id=NEW.formula_id AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Formula revision identity mismatch'; END IF;
+  IF NEW.component_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.pay_component WHERE id=NEW.component_id AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Formula Pay Item identity mismatch'; END IF;
+  IF NEW.test_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.pay_formula_test WHERE id=NEW.test_id AND tenant_id=NEW.tenant_id AND revision_id=NEW.revision_id) THEN RAISE EXCEPTION 'Formula test identity mismatch'; END IF;
   IF NEW.kind='activated' AND NOT EXISTS(SELECT 1 FROM public.pay_formula_test t JOIN public.pay_formula_revision r ON r.id=t.revision_id WHERE t.id=NEW.test_id AND t.revision_id=NEW.revision_id AND r.formula_id=NEW.formula_id AND t.tenant_id=NEW.tenant_id AND t.passed) THEN RAISE EXCEPTION 'A matching successful formula test is required'; END IF;
  ELSIF TG_TABLE_NAME IN ('pay_formula_test','pay_formula_evaluation') THEN
   IF NOT EXISTS(SELECT 1 FROM public.pay_formula_revision WHERE id=NEW.revision_id AND tenant_id=NEW.tenant_id) OR NOT EXISTS(SELECT 1 FROM public.employment WHERE id=NEW.employment_id AND tenant_id=NEW.tenant_id) OR NOT EXISTS(SELECT 1 FROM public.company WHERE id=NEW.company_id AND tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Formula source identity mismatch'; END IF;

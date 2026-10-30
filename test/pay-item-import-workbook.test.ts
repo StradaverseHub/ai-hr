@@ -37,8 +37,8 @@ function catalogueRow(code: string, patch: Partial<PayItemCatalogueRow> = {}): P
 }
 
 describe('Pay Items workbook contract', () => {
-  it('represents every calculated canonical input kind in the pure pending contract', () => {
-    expect([...PENDING_PAY_INPUT_KINDS]).toEqual(PAY_RULE_KINDS.filter(kind => kind !== 'fixed'));
+  it('represents every workbook-supported calculated kind; reusable formulas require native tested-ID linking', () => {
+    expect([...PENDING_PAY_INPUT_KINDS]).toEqual(PAY_RULE_KINDS.filter(kind => kind !== 'fixed'&&kind!=='formula_builder'));
   });
   it('generates exactly three sheets, all current headers, and a blank entry sheet with no invented samples', async () => {
     const bytes = await buildPayItemWorkbook(vocabulary), wb = XLSX.read(bytes, { type: 'buffer', cellFormula: true });

@@ -5,7 +5,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
-import {seedPayComponentCatalog,upsertPayComponent,listPayComponents,deletePayComponent} from '../core/pay-components';
+import {seedPayComponentCatalog,upsertPayComponent,listPayComponents,deletePayComponent,PayComponentInUseError} from '../core/pay-components';
 import {savePayFormula,testPayFormula,setPayFormulaActive,getPayFormula,deletePayFormula,loadActiveFormulaProgramTx,saveFormulaAccumulationGroup} from '../core/pay-formula';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import type {PayFormulaContext} from '../lib/pay-formula-model';
@@ -34,7 +34,7 @@ it('binds server dependencies and locks a used identity while retaining receipts
  await upsertPayComponent(ctx,{...settings,code:'BUILDER',rule:{kind:'formula_builder',formulaId:'LINKED',dependencies:['FORGED']}});
  const row=(await listPayComponents(ctx)).find(p=>p.code==='BUILDER')!;expect(row.rule).toMatchObject({kind:'formula_builder',formulaId:'LINKED',dependencies:['BASIC']});
  await expect(savePayFormula(ctx,{id:s.id,expectedRevisionId:s.revisionId,formulaId:'RENAMED',description:'Cannot rename',method:'write',source:'Return 2'})).rejects.toThrow();
- await expect(deletePayComponent(ctx,row.id)).rejects.toThrow(/in use|used|referenced/i);
+ await expect(deletePayComponent(ctx,row.id)).rejects.toBeInstanceOf(PayComponentInUseError);
  await expect(deletePayFormula(ctx,{id:s.id,reason:'Cannot erase a used formula'})).rejects.toThrow(/retained/);
  await setPayFormulaActive(ctx,{id:s.id,active:false});await expect(withTenant(ctx,tx=>loadActiveFormulaProgramTx(tx,ctx,'LINKED'))).rejects.toThrow(/inactive/);
  await upsertPayComponent(ctx,{...settings,code:'BUILDER',name:'Updated inactive display name',rule:row.rule});
