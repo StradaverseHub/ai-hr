@@ -30,6 +30,14 @@ Deploy verified changes to staging first. Verify exact source/build arrival, mig
 
 Preserve staging data and private target configuration. Read [operator access](../deploy/OPERATOR-ACCESS.md) before remote commands. Inspect release tooling's real target and coordinate with the current release owner. Determine installed source and build using `deploy/deploy-state.sh status` and independent arrival/service checks; an old commit or board-owner name in a note is not live evidence.
 
+## Verification recovery — owner decision, 30 October 2026
+
+After a complete frozen gate has run, **rerun only failed areas and checks invalidated by a repair**. Retain valid successful evidence; do not start a new complete gate merely because one job failed. The owner reaffirmed this in the Board chat: “We should not run a fresh gate, we should only run the areas where it fails.” This recovery decision supersedes older blanket fresh-whole-run instructions for that situation. Let all already-planned chunks finish before repairing or retrying.
+
+A broader run needs a concrete coverage/identity invalidation or an explicit new owner decision, not a default retry rule. Preserve original failures, successful job/artifact identities, exact source/controller/baseline, runtime, complete coverage and independent final verification. Never relabel a failed workflow, manufacture a PASS, or silently treat focused development evidence as deployment authority.
+
+The existing CI resume assessors are scheduling-only; the current operator verifier does not yet adopt focused recovery as a release witness. Record that tooling gap and implement/review authenticated recovery rather than wasting another full run or bypassing verification. See [CI recovery policy](CI-STAGING-VERIFICATION-POLICY.md#owner-recovery-decision--30-october-2026) and [ADR-0114](adr/0114-impact-aware-release-and-learning.md#owner-clarification--30-october-2026).
+
 ## Public-repository Actions capacity
 
 Use standard public-repository GitHub-hosted runners only. The owner forbids paid larger runners and spending-limit increases. Inspect actual current runner resources, workflow, repository visibility and capacity before making performance/cost claims. [Actions procedure](ALPHA-STAGING-ACTIONS.md) and [CI policy](CI-STAGING-VERIFICATION-POLICY.md) own candidate dispatch and authenticated evidence. Inspect actual enable switches; this document grants no authority to enable automatic CD.

@@ -100,3 +100,9 @@ more precise evidence supports narrowing it.
 References: Anthropic, [test-impact analysis](https://claude.com/ko/resources/articles/agentic-coding-is-straining-ci-heres-how-we-scaled-test-impact-analysis-at-anthropic),
 14 September 2026; [risk-tiered development safeguards](https://claude.com/resources/articles/how-anthropic-secures-its-ai-native-software-development-lifecycle),
 21 July 2026. These support the approach; our policy and thresholds are local engineering decisions.
+
+## Owner clarification — 30 October 2026
+
+The owner reaffirmed that recovery after a complete frozen gate runs only failed areas and checks invalidated by the repair. Valid successful evidence is retained. A single failure does not justify restarting the complete gate. Let all planned chunks finish, preserve the failed run, and identify any source/controller/runtime/coverage invalidation explicitly before expanding recovery scope.
+
+The CI-specific adoption gap is recorded in [CI recovery policy](../CI-STAGING-VERIFICATION-POLICY.md#owner-recovery-decision--30-october-2026): existing resume assessors are not release receipts, and the current operator accepts only a successful single whole witness. The owner decision must be implemented through authenticated, independently verified recovery; it is not permission to fabricate receipts or relabel failed evidence. Older blanket fresh-whole-run recovery guidance is superseded by this clarification.
