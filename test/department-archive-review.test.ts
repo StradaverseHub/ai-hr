@@ -1,5 +1,6 @@
 import {afterAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq} from 'drizzle-orm';
+import {pgSqlState} from '../lib/db-error';
 import {withTenant} from '../db/client';
 import * as schema from '../db/schema';
 import {archiveDepartment,updateDepartment,createBusinessUnit,createCompany,bulkSaveLabels} from '../core/admin';
@@ -82,10 +83,11 @@ describe('department catalogue archive source, pending Assistant custody',()=>{
   await hireEmployee(adminCtx(b),{person:{fullName:'Fictional Archived Department Holder',primaryEmail:b.tenantId+'-archived@fixture.test'},companyId:b.companyId,departmentId:b.deptB,employmentType:'full_time',hiredOn:'2025-01-01'});
   await archiveDepartment(adminCtx(b),{id:b.deptB,archived:true});const restore=human(b,false),r=await prepare(b,restore);expect((await confirm(b,r.reviewedDigest,restore)).archived).toBe(false);
  });
- it('hands off a retained business unit outside the department Criteria',async()=>{
+ it('retains the native storage guard against an unavailable business unit',async()=>{
   const ctx=adminCtx(b),other=await createCompany(ctx,{legalName:'Fictional Routing Company',country:'MY',currency:'MYR'}),bu=await createBusinessUnit({...ctx,grants:[{role:'hr_admin',companyId:null}]},{companyId:other.id,code:'FIC-OTHER',name:'Fictional Other Unit'});
-  await owner.db.update(schema.department).set({businessUnitId:bu.id}).where(eq(schema.department.id,b.deptB));
-  await expect(prepare(b)).rejects.toThrow();expect((await owner.db.select().from(schema.department).where(eq(schema.department.id,b.deptB)))[0]).toMatchObject({businessUnitId:bu.id,archivedAt:null});
+  let error:unknown;try{await owner.db.update(schema.department).set({businessUnitId:bu.id}).where(eq(schema.department.id,b.deptB));}catch(caught){error=caught;}
+  expect(pgSqlState(error)).toBe('23514');expect((await owner.db.select().from(schema.department).where(eq(schema.department.id,b.deptB)))[0]).toMatchObject({businessUnitId:null,archivedAt:null});
+  expect((await prepare(b)).review).toMatchObject({departmentId:b.deptB,archived:false,afterArchived:true});
  });
  it('retains a shared business unit allowed by the native Criteria owner',async()=>{
   const ctx={...adminCtx(b),grants:[{role:'hr_admin' as const,companyId:null}]},other=await createCompany(ctx,{legalName:'Fictional Shared Unit Company',country:'MY',currency:'MYR'}),bu=await createBusinessUnit(ctx,{companyId:other.id,code:'FIC-SHARED',name:'Fictional Shared Unit'});
