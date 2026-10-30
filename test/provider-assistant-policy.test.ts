@@ -33,11 +33,12 @@ describe('private Assistant closed reference descriptor',()=>{
   for(const text of ['PRIVATE model prose','{"version":1,"mode":"social","code":"greeting"}','{"version":1,"mode":"propose","action":"claims.cancel","hints":{}}','{"version":1,"mode":"insufficient","code":"no_verified_facts"}'])expect(()=>adjudicatePrivateAssistantTerminal(text,local)).toThrow();
  });
  it('closes planning over nominated source modules and uses only fixed generated instructions',()=>{
-  const prepared=capturePrivateAssistantTask({version:1,operation:'draft',intent:'leave_available',modules:['leave']}),args=prepared.args as GenerateArgs;
-  expect(args.prompt).toBe('{"version":1,"operation":"draft","intent":"leave_available","modules":["leave"]}');expect(args.maxTokens).toBe(384);
+  const prepared=capturePrivateAssistantTask({version:1,operation:'draft',intent:'leave_available',strategy:'concise_v1',modules:['leave']}),args=prepared.args as GenerateArgs;
+  expect(args.prompt).toBe('{"version":1,"operation":"draft","intent":"leave_available","strategy":"concise_v1","modules":["leave"]}');expect(args.maxTokens).toBe(384);
+  const explicit=capturePrivateAssistantTask({version:1,operation:'draft',intent:'leave_available',strategy:'explicit_scope_v1',modules:['leave']}).args as GenerateArgs;expect(args.system).not.toBe(explicit.system);expect(explicit.system).toContain('You propose a plan; canonical authorization');
   expect(adjudicatePrivateAssistantReadPlan('{"decision":"read","modules":["leave"]}',prepared.local)).toEqual({decision:'read',modules:['leave']});
   expect(()=>adjudicatePrivateAssistantReadPlan('{"decision":"read","modules":["payroll"]}',prepared.local)).toThrow();
-  expect(()=>capturePrivateAssistantTask({version:1,operation:'draft',intent:'leave_available',modules:['leave'],question:'PRIVATE user words'})).toThrow();
+  expect(()=>capturePrivateAssistantTask({version:1,operation:'draft',intent:'leave_available',strategy:'concise_v1',modules:['leave'],question:'PRIVATE user words'})).toThrow();
  });
 });
 describe('local closed intent grammar',()=>{

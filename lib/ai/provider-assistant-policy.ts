@@ -3,7 +3,7 @@
 import {createHash} from 'node:crypto';
 import {types as nodeTypes} from 'node:util';
 import {z} from 'zod';
-import {adjudicatePromptReadPlan} from './module-agent-prompt-candidate';
+import {adjudicatePromptReadPlan,promptCandidateSystem} from './module-agent-prompt-candidate';
 import {captureAssistantProposalHints,type AssistantProposableAction,type AssistantProposalHints} from './assistant-action-proposal-hints';
 import {assistantConversationCandidateSystem,type AssistantConversationCandidate} from './assistant-conversation-candidate';
 import {isCalendarDate} from '../calendar-date';
@@ -19,7 +19,7 @@ const ordinal=z.number().int().min(0),explanation=z.enum(ASSISTANT_EXPLANATION_C
 const read=z.object({read:ordinal.max(7),module:z.enum(AGENT_MODULE_CODES as [AgentModuleCode,...AgentModuleCode[]]),cards:z.array(z.object({card:ordinal.max(24),facts:z.array(z.object({fact:ordinal.max(63),field:z.enum(JOB_FACT_FIELDS),available:z.boolean()}).strict()).max(64)}).strict()).max(25),explanations:z.array(z.object({card:ordinal.max(24).nullable(),code:explanation}).strict()).max(512)}).strict();
 const payload=z.discriminatedUnion('operation',[
  z.object({version:z.literal(1),operation:z.literal('conversation'),intent:z.enum(PRIVATE_ASSISTANT_INTENTS),strategy:z.enum(['baseline_v1','focused_v1']),reads:z.array(read).max(8)}).strict(),
- z.object({version:z.literal(1),operation:z.literal('draft'),intent:z.enum(PRIVATE_ASSISTANT_INTENTS),modules:z.array(z.enum(AGENT_MODULE_CODES as [AgentModuleCode,...AgentModuleCode[]])).min(1).max(4)}).strict(),
+ z.object({version:z.literal(1),operation:z.literal('draft'),intent:z.enum(PRIVATE_ASSISTANT_INTENTS),strategy:z.enum(['concise_v1','explicit_scope_v1']),modules:z.array(z.enum(AGENT_MODULE_CODES as [AgentModuleCode,...AgentModuleCode[]])).min(1).max(4)}).strict(),
 ]);
 export type PrivateAssistantPayload=z.infer<typeof payload>;
 const fail=():never=>{throw new AiGatewayError('The private Assistant request could not be confirmed.');};
@@ -46,7 +46,7 @@ function capture(value:unknown):PrivateAssistantPayload{
 const system='Select only relevant available ordinal facts or canonical explanations from this closed source catalogue. There are no HR values or human words here. Never infer amounts, identities, causes, outcomes, permissions, dates or missing information. Return exactly one JSON object: {"version":1,"mode":"answer","blocks":[{"kind":"fact","read":0,"card":0,"fact":0}]} or an available {"kind":"explanation","read":0,"card":null,"code":"exact-code"} block; select 1 to 16 distinct blocks. Use {"version":1,"mode":"insufficient","code":"no_verified_facts"} only when no available references exist. Do not return prose, tools, actions, effects, history or other fields. For leave_available prioritize available; leave_pending prioritize pending; leave_taken prioritize taken. Other intents select the smallest useful current-source answer.';
 export function capturePrivateAssistantTask(value:unknown):{args:ConverseArgs|GenerateArgs;local:PrivateAssistantPayload}{
  const local=capture(value),json=JSON.stringify(local);
- if(local.operation==='draft')return{args:Object.freeze({system:'Choose only from the supplied source-owned module list. Return exactly {"decision":"read","modules":["closed-module-code"]}, using the supplied modules only, or {"decision":"refuse","modules":[]}. Never add modules, prose, effects or other keys.',prompt:json,maxTokens:384,timeoutMs:15000}),local};
+ if(local.operation==='draft')return{args:Object.freeze({system:promptCandidateSystem({kind:'read_plan_prompt_v1',variant:local.strategy})+' Choose only from the supplied source-owned module list. Return exactly {"decision":"read","modules":["closed-module-code"]}, using the supplied modules only, or {"decision":"refuse","modules":[]}. Never add modules, prose, effects or other keys.',prompt:json,maxTokens:384,timeoutMs:15000}),local};
  return{args:Object.freeze({system:[assistantConversationCandidateSystem({kind:'assistant_answer_prompt_v1',variant:local.strategy}),system],turns:[{role:'user' as const,content:json}],tools:[],maxTokens:2048,timeoutMs:30000}),local};
 }
 export function fingerprintPrivateAssistantTask(value:unknown):string{return createHash('sha256').update(JSON.stringify(capture(value))).digest('hex');}
