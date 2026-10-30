@@ -6,7 +6,21 @@ The owner reaffirmed failed-area-only recovery in the Board chat: after the comp
 
 Preserve original failing runs and raw errors. Every retained/replacement result must bind authenticated producing jobs/artifacts, exact candidate/controller/baseline, runtime and complete non-overlapping coverage. A failed run stays failed; replacement evidence must retain its own identity. A focused pass alone is not a release receipt.
 
-**Implementation status:** `resume-assessment.mjs`, `resume-source.mjs` and `resume-repair.mjs` assess scheduling/coverage only. `release-policy.mjs` currently admits a successful first-attempt single full workflow; `operator-release.mjs` has no authenticated focused-recovery adoption path. Saving this owner decision does not claim that path is implemented or relax existing executable refusals. Complete and review that path with original failure provenance before using combined evidence for deployment. Do not substitute another full gate for this missing implementation or forge an older-policy receipt.
+**Implementation:** `focused-recovery.mjs` and `focused-recovery-policy.mjs` implement the separately versioned `aihr-focused-recovery/v1` operator route. Existing full-run admission remains strict. Recovery v1 accepts an unchanged canonical candidate/controller only, after a completed first-attempt failed full run whose build, compiler, migrations, controller, browsers and all unaffected test jobs passed. It currently supports failed no-DB units; unsupported failures refuse. It discards the failed process as evidence of success and requires successful authenticated focused runs covering every file and original assertion in each failed unit, with exact runtime/classifier identities. No overlap, omitted file, dropped assertion, skipped test, foreign run or failed process is accepted.
+
+The adapter independently reconstructs the original complete plan, authenticates complete GitHub job/artifact inventories and archive digests, and retains the original failing reports. Every focused result keeps its own producing run/job/artifact identities. The clean operator verification controller is recorded separately from the original build/test controller and must have successful controller-only regression validation containing recovery refusal tests. The distinct recovery certificate binds all retained/replacement provenance, complete counts and original failures. It does not rewrite the failed workflow or issue a fabricated original gate receipt.
+
+The existing installation grant remains bound to the original successful build artifact and source, with its witness fingerprint bound to the recovery certificate. Original-run metadata stays failed. Immediately before source transfer and detached launch, the adapter reauthenticates all run/job/artifact metadata and bytes, reconstructs coverage again and checks unchanged candidate/verifier/alpha/baseline. Target/profile, immutable migrations, exact compiled build, source checksum, health and guarded cleanup checks are unchanged.
+
+From the clean verifier checkout, retaining the unchanged candidate in its own checkout:
+
+```sh
+export AIHR_RECOVERY_CONTROLLER_RUN_ID=ACTUAL_CONTROLLER_ONLY_RUN_ID
+node --import tsx .github/ci/operator-release.mjs verify-recovery \
+  /ABSOLUTE/FROZEN/CANDIDATE ORIGINAL_FULL_RUN_ID '[FOCUSED_RUN_IDS]'
+```
+
+Use `deploy-recovery` with the same identities only under staging deployment authority. Run only failed/invalidated areas; a focused pass alone or the old scheduling-only assessors still grants no deployment authority. This is an explicit recovery policy version, not an undocumented relaxation of normal single-run admission.
 
 Current case: repair candidate/controller `c4fad43c1d67d69125a3f37e7549a5a8a7053362`, baseline `348b720e7a82c5e5573fc09196d06dfce50c787c`, original full run `40990989039`. The currently observed failure is the `nodb-f0f364cf77d50dce` unit's unhandled autosave callback from `test/onehr-ui.dom.test.tsx`; final complete failed-area selection must use the terminal job inventory, not this interim observation. No second whole gate was dispatched.
 
