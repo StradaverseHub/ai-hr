@@ -1,5 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {replayMyTaxBasis,type TaxBasisReplayInput,type TaxBasisItemSetting} from '../localization/my/tax-basis-replay';
+import {statutory,foldPriorSlipIntoAccumulators,openingAccumulatorsFromTp3} from '../localization/my/payroll';
 import {DEFAULT_MY_STATUTORY} from '../localization/my/statutory-tables';
 const basic:TaxBasisItemSetting={id:'basic',code:'BASIC',name:'Basic salary',kind:'earning',includedInPcb:true,pcbRemunerationType:'normal',pcbExemptionCode:null,isNonPayable:false,epfBonus2012:false};
 const travel:TaxBasisItemSetting={...basic,id:'travel',code:'TRAVEL',name:'Travel allowance'};
@@ -15,4 +16,22 @@ describe('explicit historical tax basis replay',()=>{
  it('refuses out-of-cutoff records, duplicate identities and ambiguous run order',()=>{let p=input();p.upToMonth=2;expect(()=>replayMyTaxBasis(p)).toThrow(/outside/);p=input();p.slips[1].id=p.slips[0].id;expect(()=>replayMyTaxBasis(p)).toThrow(/more than once/);p=input();p.slips[1].period=p.slips[0].period;expect(()=>replayMyTaxBasis(p)).toThrow(/run order/);});
  it('reduces only the tax base for a taxable payroll deduction',()=>{const p=input();p.slips=p.slips.slice(0,1);p.settings.push({...basic,id:'unpaid',code:'UNPAID',kind:'deduction'});p.slips[0].sourceLines.push({code:'UNPAID',amount:100,direction:'deduction'});p.slips[0].expectedOtherDeductions=100;expect(replayMyTaxBasis(p)[0].basis.pcb).toBe(5400);expect(p.slips[0].expectedGross).toBe(5500);});
  it('requires known year-specific exemption codes and unambiguous latest classifications',()=>{let p=input();p.settings[1]={...travel,pcbExemptionCode:'PCB_UNKNOWN'};expect(()=>replayMyTaxBasis(p)).toThrow(/unsupported/);p=input();p.settings[1]={...travel,pcbRemunerationType:null};expect(()=>replayMyTaxBasis(p)).toThrow(/explicit supported/);p=input();p.settings.push({...travel});expect(()=>replayMyTaxBasis(p)).toThrow(/ambiguous/);});
+});
+
+describe('corrected PCB input seam',()=>{
+ it('changes only PCB when an earlier same-month income basis changes',()=>{
+  const original=statutory(5000,undefined,1000,100,{month:1},{resident:false});
+  const corrected=statutory(5000,undefined,1000,100,{month:1},{resident:false,pcbCashNormalOverride:5500,pcbAdditionalOverride:0});
+  expect(corrected.pcb).toBe(1650);expect(original.pcb).toBe(1830);
+  for(const key of ['epfEmployee','epfEmployer','socsoEmployee','socsoEmployer','socsoSkbbk','eisEmployee','eisEmployer'] as const)expect(corrected[key]).toBe(original[key]);
+ });
+ it('folds a corrected basis while preserving the actual PCB and EPF paid',()=>{
+  const acc=openingAccumulatorsFromTp3(null,4000);
+  foldPriorSlipIntoAccumulators(acc,{gross:5500,statutory:{bases:{pcb:5400},epfEmployee:550,pcb:35,lp:0,zakat:0}},4000);
+  expect(acc.grossRemuneration).toBe(5400);expect(acc.netRemuneration).toBe(4850);expect(acc.epfClaimed).toBe(550);expect(acc.pcbPaid).toBe(35);
+ });
+ it('rejects negative or nonfinite reviewed inputs',()=>{
+  expect(()=>statutory(5000,undefined,0,0,undefined,{pcbCashNormalOverride:-1})).toThrow(/Invalid reviewed/);
+  expect(()=>statutory(5000,undefined,0,0,undefined,{pcbAdditionalOverride:NaN})).toThrow(/Invalid reviewed/);
+ });
 });

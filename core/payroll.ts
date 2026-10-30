@@ -4856,6 +4856,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           .where(
             and(
               inArray(payslip.employmentId, empIds),
+              eq(payrollBatch.companyId,batch.companyId),
               like(payrollBatch.payPeriod, `${pYear}-%`),
               lt(payrollBatch.payPeriod, payPeriod),
             ),
@@ -5030,6 +5031,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     const earlierExemptionLimits = new Map<string, Map<string, number | null>>();
     const retainedOneOffExemptions = new Map<string, {code:string;annualLimit:number|null;item:string;amount:number}[]>();
     const earlierRunByEmp = new Map<string, { additional: number; overtime: number }>();
+    const earlierTaxBasisByEmp = new Map<string,{additionalDelta:number;normal:number|undefined;paidPcb:number;paidBonus:number;corrected:boolean}>();
     const earlierNonCashByEmp = new Map<string,{ownedEntries:NonCashEntry[];regularEntries:NonCashEntry[]|null;ownedEaEntries:NonCashEaEntry[];regularEaEntries:NonCashEaEntry[]|null;legacyRegular:boolean}>();
     const accumulatedNonCashByEmp = new Map<string,{bik:number;vola:number;complete:boolean}>();
     for(const e of emps) accumulatedNonCashByEmp.set(e.employmentId,{bik:0,vola:0,complete:true});
@@ -5051,7 +5053,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         })
         .from(payslip)
         .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-        .where(and(eq(payrollBatch.payPeriodId, batch.payPeriodId), lt(payrollBatch.runSeq, batch.runSeq)));
+        .where(and(eq(payrollBatch.companyId,batch.companyId),eq(payrollBatch.payPeriodId, batch.payPeriodId), lt(payrollBatch.runSeq, batch.runSeq)));
       const correctedEarlier = await readEffectiveTaxBasesTx(tx, ctx, earlier.map(s => s.id));
       for (const r of earlier) {
         const correction = correctedEarlier.get(r.id);
@@ -5061,7 +5063,12 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           refs.push(correction.correction); taxBasisCorrectionsByEmp.set(r.employmentId, refs);
         }
         const cur = earlierRunByEmp.get(r.employmentId) ?? { additional: 0, overtime: 0 };
-        cur.additional = round2(cur.additional + Number(correction ? correction.basis.additional : r.bonus));
+        cur.additional = round2(cur.additional + Number(r.bonus));
+        const taxBasis = earlierTaxBasisByEmp.get(r.employmentId) ?? {additionalDelta:0,normal:undefined,paidPcb:0,paidBonus:0,corrected:false};
+        const paidSource = (r.statutory ?? {}) as {pcb?:number;pcbBonus?:number};
+        taxBasis.paidPcb=round2(taxBasis.paidPcb+Number(paidSource.pcb??0));taxBasis.paidBonus=round2(taxBasis.paidBonus+Number(paidSource.pcbBonus??0));
+        if(correction){taxBasis.corrected=true;taxBasis.additionalDelta=round2(taxBasis.additionalDelta+Number(correction.basis.additional)-Number(r.bonus));if(r.runType==='regular')taxBasis.normal=Number(correction.basis.normal);}
+        earlierTaxBasisByEmp.set(r.employmentId,taxBasis);
         if (r.runType === 'regular') cur.overtime = round2(cur.overtime + Number(r.ot));
         earlierRunByEmp.set(r.employmentId, cur);
         const nc=earlierNonCashByEmp.get(r.employmentId) ?? {ownedEntries:[],regularEntries:null,ownedEaEntries:[],regularEaEntries:null,legacyRegular:false};
@@ -7038,6 +7045,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // pair must apply the month's rebate ONCE, and the regular run is the one that carries it.
       const tp1Rebate = isAdditionalRun ? 0 : round2(tp1RebateByEmp.get(e.employmentId) ?? 0);
       let zakatOffsetTotal = round2(effectiveZakat + tp1Rebate);
+      const earlierTaxBasis=earlierTaxBasisByEmp.get(e.employmentId);
       const computeMonth = (additional: number, ot: number, zakatCurrent = zakatOffsetTotal, bases = stOpts) =>
         pack.payroll.statutory(
           wagesExOt,
@@ -7045,7 +7053,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           additional,
           ot,
           { month: pMonth, acc: accByEmp.get(e.employmentId), lpCurrent: lp, zakatCurrent },
-          bases,
+          earlierTaxBasis?.corrected ? {...bases,pcbCashNormalOverride:earlierTaxBasis.normal,pcbAdditionalOverride:round2(additional+earlierTaxBasis.additionalDelta)} : bases,
           rules,
         );
       // Step 4 (f3148da1) — the OT figure fed to the statutory engine INCLUDES the converted excess, so the
@@ -7119,7 +7127,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // one line inside `coreFor` when the expression became a function of `bases`; for `bases === stOpts`
         // it is the identical object the previous `additionalBaseline` const built.)
         const baseline = { ...bases, epfAdditionalExcluded: 0, socsoWageExtra: 0, pcbNonCashNormal: nonCashBefore };
-        return isAdditionalRun
+        const result = isAdditionalRun
           ? deltaStat(
               computeMonth(earlierRun.additional + bonus, earlierRun.overtime, undefined, bases),
               computeMonth(earlierRun.additional, earlierRun.overtime, effectiveZakat, baseline),
@@ -7133,6 +7141,12 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
                 ),
               )
             : computeMonth(bonus, otStat, undefined, bases);
+        if(earlierTaxBasis?.corrected && (isAdditionalRun||restatesMonth)){
+          const cumulative=computeMonth(round2(earlierRun.additional+bonus),isAdditionalRun?earlierRun.overtime:round2(earlierRun.overtime+otStat),undefined,bases);
+          const corrected=deltaStat(cumulative,{pcb:earlierTaxBasis.paidPcb,pcbBonus:earlierTaxBasis.paidBonus});
+          return {...result,pcb:corrected.pcb,pcbBonus:corrected.pcbBonus,pcbMeta:corrected.pcbMeta};
+        }
+        return result;
       };
       const stCore = coreFor(stOpts);
       /**
@@ -7192,7 +7206,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           0,
           round2(wagesExOt + statOvertime - en.socsoWageExcluded + en.socsoWageExtra - en.socsoWageDeduction),
         ),
-        pcb: round2(Math.max(0, round2(wagesExOt + statOvertime - en.pcbWageDeduction)) + statAdditional + nonCashCumulative.bik + nonCashCumulative.vola),
+        pcb: round2((earlierTaxBasis?.corrected && earlierTaxBasis.normal!==undefined ? earlierTaxBasis.normal : Math.max(0, round2(wagesExOt + statOvertime - en.pcbWageDeduction))) + statAdditional + (earlierTaxBasis?.additionalDelta??0) + nonCashCumulative.bik + nonCashCumulative.vola),
         hrdf: isAdditionalRun ? 0 : hrdfBase,
       };
       // Feedback 6b134681 — the per-item stamp this run writes. A regular run stamps every line it folded;
@@ -7227,7 +7241,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           if(amount>0) stampComponentLines.push({code:line.earningItemCode,name:line.earningItemName,amount,buckets:[{bucket:'ot',amount}],...line.treatment}); }
       }
       const nonCashSnapshot:PcbNonCashSnapshot={version:1,current:totalNonCash(cumulativeEntries),ownedCurrent:totalNonCash(ownedEntries),owned:nonCashOwned,cumulative:nonCashCumulative,before:nonCashBefore,
-        accumulated:accumulatedNonCashByEmp.get(e.employmentId) ?? {bik:0,vola:0,complete:true},cashNormal:Math.max(0,round2(wagesExOt+statOvertime-en.pcbWageDeduction)),entries:cumulativeEntries,ownedEntries,eaEntries:cumulativeEaEntries,ownedEaEntries};
+        accumulated:accumulatedNonCashByEmp.get(e.employmentId) ?? {bik:0,vola:0,complete:true},cashNormal:earlierTaxBasis?.corrected && earlierTaxBasis.normal!==undefined ? earlierTaxBasis.normal : Math.max(0,round2(wagesExOt+statOvertime-en.pcbWageDeduction)),entries:cumulativeEntries,ownedEntries,eaEntries:cumulativeEaEntries,ownedEaEntries};
       if(!readPcbNonCash(nonCashSnapshot))throw new NonCashBenefitConfigurationError('month','month_baseline_unavailable');
       const stComputed = {
         ...stCore,
