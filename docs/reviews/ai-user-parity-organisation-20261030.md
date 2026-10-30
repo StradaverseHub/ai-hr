@@ -1,6 +1,6 @@
 # Organisation Assistant parity — first slice
 
-Status: mounted-grid native source preparation, NOT a complete Assistant action.
+Status: complete bounded catalogue action source authored; composed custody/UI hosted verification pending.
 
 ## Native inventory and boundaries
 
@@ -21,6 +21,18 @@ Confirmation repeats source/digest/preview, re-reads current metadata in that tr
 
 ## Dependency and limits
 
-Generic assigned custody requires employment/person bindings and cannot represent a position truthfully. Coordinator migration request is recorded in the exclusive phase status file. No shared custody/registry changes, migration slot, HTTP exposure, six-locale UI, completed replay locator or erasure registration is claimed. The source cannot itself grant Assistant eligibility; the future adapter must repeat the shared action guard and encrypted custody lifecycle. Exact event-ID return is native transaction evidence, not a durable replay proof.
+Generic assigned custody cannot represent a position truthfully. Coordinator allocated UNAPPLIED PROVISIONAL0733 /idx713 /when1793330000070, permitting development CI only. The source now uses the same physical encrypted ledger through a position-specific compatibility adapter; it does not alter the shared engine or weaken assigned bindings. Native writer and current source guards remain authoritative. The complete composed action remains unverified until its actual candidate checks finish; it is not installed or accepted.
 
 Authored focused DB tests additionally cover native preview rollback, stable read epochs, in-use refusal and Criteria staleness; original cases cover native archive/restore/event identity, stale edits, ABA, foreign tenant, global labels and employee refusal. Hosted results are recorded separately; no local tests/compiler/build/DB were run. No release or deployment is authorized.
+
+## Complete slice source composition (pending new hosted verification)
+
+`org.position.archive` is now wired locally through the existing encrypted physical ledger and `createReviewCustody`, the typed registry, shared same-origin HTTP owner, strict browser transport, closed completed-outcome reader, `/assistant/org-positions`, guarded Organisation link and all six locales. This implements only one archive/restore toggle of a canonical nonglobal position with no extra-company criteria. Creation, deletion, metadata edits, shared/global scope changes and batch saves remain native handoffs.
+
+The position binding is tenant/user/nullable ACTOR person/company/position/desired state. Employment is NULL; no target employee/person is fabricated. Existing catalogue privacy capture uses `targets:[]`; the shared engine still captures a real actor person automatically. Public envelope digest/actionId are distinct from `body.nativeReviewedDigest`. Current native permission precedes body nomination/decryption; company/position bind the encrypted identity and commitment. Confirmation calls the unchanged mounted bulk owner and verifies a matching top-transaction native event/row; replay requires the same current position row version and exact original actor/event/kind/state. Own-login discard remains possible after native or Assistant permission loss. Canonical actor erasure retires its private body through the existing ledger erasure owner.
+
+New SQL constraints wrap each predecessor predicate exactly once with an explicit new-kind branch. The canonical eight legacy receipt fields stay NULL; dedicated-family guards remain unchanged. No recursive `replace` of a full predecessor expression is used. Only coordinator-approved isolated shared fixes are adopted: d7 compiler, 9bd seed category, 22 probe counting, f82 bounded UNAPPLIED0726 and b55 bounded UNAPPLIED0716. Conflict resolution kept the held native 0726 subject owner and existing review facts, adding only f82's bounded expression and six-line note; no cost-recovery parent bundle was imported.
+
+Inventory is additive: existing commands/requests/reviews/personnel partitions remain 10/13/13/7 actions. A fifth Organisation wrapper adds exactly one action and all eleven existing real role names, using the native mounted page's actual list/admission plus `bulkSaveLabels`; internal fixture role family is catalogue. Extra real unlinked USER, SYSTEM, foreign-login/company/tenant, role/grant loss, expiry, envelope mismatch, stale metadata, historical event, savepoint-local proof, actor erasure and hybrid-column fixtures are authored. Tests separately report actual constraint bytes and hosted PostgreSQL evidence. UI tests cover explicit confirmation, uncertainty, same-ID recovery, substitution, expiry, permission-loss discard and all six locales; hosted screenshots use real rendered components with fictional data and scripted endpoints, not an authenticated journey.
+
+Verified historical source-only checkpoint: run41022930260 on89d7 source11 + archive panel10 + whole compiler PASS; Criteria16 PASS retained on0917/run41021703850. These results do not certify the new composed custody/UI source. No local tests, collection, compiler, build, DB or dev server were run. Release hold remains.

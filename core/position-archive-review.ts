@@ -11,7 +11,7 @@ export class PositionArchiveUnavailable extends Error { constructor(){super('Reo
 export const positionArchiveUnavailable=():never=>{throw new PositionArchiveUnavailable();};
 const fail=positionArchiveUnavailable;
 const Fields=z.object({title:z.string(),jobFamily:z.string().nullable(),label:z.string().nullable(),description:z.string().nullable(),isGlobal:z.boolean(),companyId:z.guid()}).strict();
-const Source=z.object({positionId:z.guid(),companyId:z.guid(),title:z.string(),archived:z.boolean(),inUse:z.boolean(),fields:Fields,revision:z.string(),companyRevision:z.string(),criteria:z.unknown(),epoch:z.string(),authority:z.unknown()}).strict();
+const Source=z.object({positionId:z.guid(),companyId:z.guid(),companyName:z.string(),title:z.string(),archived:z.boolean(),inUse:z.boolean(),fields:Fields,revision:z.string(),companyRevision:z.string(),criteria:z.unknown(),epoch:z.string(),authority:z.unknown()}).strict();
 export async function lockPositionArchiveSourceTx(tx:Tx,ctx:SessionContext,id:string){
  await tx.execute(sql`select app.access_workforce_write_lock()`);
  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
@@ -37,7 +37,7 @@ export async function preparePositionArchiveTx(tx:Tx,ctx:SessionContext,value:un
  // outside this savepoint. The preview's row, event and epoch changes are all rolled back.
  await tx.execute(sql`savepoint position_archive_native_preview`);
  try{await apply(tx,ctx,s,content.archived,false);}finally{await tx.execute(sql`rollback to savepoint position_archive_native_preview`);await tx.execute(sql`release savepoint position_archive_native_preview`);}
- const review=Review.parse({positionId:s.positionId,companyId:s.companyId,title:s.title,archived:s.archived,afterArchived:content.archived});
+ const review=Review.parse({positionId:s.positionId,companyId:s.companyId,companyName:s.companyName,title:s.title,archived:s.archived,afterArchived:content.archived});
  const reviewedDigest=createHash('sha256').update(JSON.stringify([1,ctx.tenantId,ctx.userId??null,ctx.personId??null,content,s])).digest('hex');
  return {content,review,reviewedDigest};
 }

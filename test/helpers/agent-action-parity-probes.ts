@@ -1,3 +1,5 @@
+import {positionArchiveReviews,readPositionArchiveChoices} from '../../core/assistant-actions/position-archive-review-store';
+import {createPosition,bulkSaveLabels,listPositionsForLabels} from '../../core/admin';
 import {fixedItemArchiveReviews,readFixedItemArchiveChoices} from '../../core/assistant-actions/fixed-item-archive-review-store';
 import {archiveEmploymentPayComponent,setEmploymentPayComponent,seedPayComponentCatalog,listPayComponents} from '../../packs/payroll/service';
 import {tp3OpeningMaintenanceReviews,readTp3OpeningMaintenanceChoices} from '../../core/assistant-actions/tp3-opening-maintenance-review-store';
@@ -156,7 +158,7 @@ type World={
  login(base:Base,person:Person,role:DbRole,companyId:string|null):Promise<{ctx:SessionContext;userId:string}>;
  claimTypes:Map<string,string>;
 };
-type Family='assigned_decision'|'hr_on_employment'|'own';
+type Family='assigned_decision'|'hr_on_employment'|'own'|'catalogue';
 type Adapter={
  family:Family;store:Store;independentScreen?:boolean;pageAdmits?:(who:SessionContext)=>boolean;
  /** The page/route admission the screen's server action calls before its service (e.g. requireAdmin → isAdmin). */
@@ -262,6 +264,12 @@ async function notificationIdentity(who:SessionContext){
  await owner.db.insert(schema.appExternalIdentity).values({issuer:identity.issuer,subject:identity.subject,appUserId:who.userId!}).onConflictDoNothing();provider.current.mockResolvedValue(identity);return identity;
 }
 const ADAPTERS:Record<ProbedActionId,Adapter>={
+ 'org.position.archive':{family:'catalogue',store:packetStore('org.position.archive',positionArchiveReviews.prepare,positionArchiveReviews.confirm),
+  screenAdmits:async(who,item)=>isAdmin(who)&&(await listPositionsForLabels(who)).some(p=>p.id===item.subjectId&&!p.inUse),
+  create:async(_w,h)=>{const title='FIC_POSITION_'+randomUUID().slice(0,8),p=await createPosition(groupOf(h.base),{companyId:h.companyId,title});return itemOf(h,p.id,{code:title});},
+  human:item=>({action:'org.position.archive',contractVersion:1,positionId:item.subjectId,expectedArchived:false,archived:true}),
+  offered:async(who,item)=>{const choices=await readPositionArchiveChoices(who,{query:item.code});return choices.kind==='choices'&&choices.positions.some(p=>p.positionId===item.subjectId);},
+  screen:(tx,who,item)=>bulkSaveLabels(who,'position',{creates:[],updates:[{key:item.subjectId,id:item.subjectId,title:item.code,jobFamily:'',label:'',description:'',archived:true}]},tx)},
  'approvals.leave.decide':{family:'assigned_decision',store:packetStore('approvals.leave.decide',prepareLeaveDecisionReview,confirmLeaveDecisionReview),
   async create(w,h){const item=await pendingLeave(w,h);const steps=await owner.db.select().from(schema.leaveApprovalStep).where(eq(schema.leaveApprovalStep.leaveRequestId,item.subjectId)).orderBy(schema.leaveApprovalStep.stepIndex);return {...item,stepId:steps.find(row=>row.status==='pending')?.id??null};},
   human:(item,o)=>({action:'approvals.leave.decide',contractVersion:1,leaveRequestId:item.subjectId,currentStepId:item.stepId??null,decision:o.decision,rejectReason:o.decision==='rejected'?REJECT_REASON:null,confirmAssignedDecision:true}),
