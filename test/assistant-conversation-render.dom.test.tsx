@@ -62,7 +62,7 @@ describe('grounded conversation rendering',()=>{
  });
  it('shows record context once for adjacent facts and keeps technical provenance inside closed Sources',async()=>{
   const issued=await view('employees',{rows:[{employeeCode:'COMPACT-REC',company:'Only employer',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false});
-  const shown=render(await GroundedWorkspaceReply({ctx,reply:answer([select(issued,0,'employeeCode'),select(issued,0,'company')])})),region=screen.getByRole('region',{name:en.assistant.workspace.conversation.answerLabel}),list=region.querySelector(':scope > ul')!;
+  const shown=render(await GroundedWorkspaceReply({ctx,reply:answer([select(issued,0,'employeeCode'),select(issued,0,'company')])})),region=screen.getByRole('region',{name:en.assistant.workspace.conversation.answerLabel}),list=region.querySelector<HTMLUListElement>(':scope > ul')!;
   expect([...list.querySelectorAll('li > span:first-child')].filter(row=>row.className.includes('block')).map(row=>row.textContent)).toEqual(['Only employer']);
   expect(within(list).getAllByRole('listitem').map(row=>row.textContent)).toEqual([`Only employer${en.assistant.workspace.jobs.field_employeeCode}: COMPACT-REC`,`${en.assistant.workspace.jobs.field_company}: Only employer`]);
   expect([...region.querySelectorAll(':scope > p')].map(row=>row.textContent)).not.toContain(en.assistant.workspace.conversation.canonicalNote);
