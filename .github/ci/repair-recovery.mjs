@@ -45,13 +45,20 @@ export function validateRepairDelta({cwd,original,candidate}){
  // Explicitly bind all unchanged non-product inputs, including tests, SQL, workflows and package locks.
  return {changed,baseTree:git(cwd,'rev-parse',original+'^{tree}'),headTree:git(cwd,'rev-parse',candidate+'^{tree}'),diffSha256:hash(git(cwd,'diff','--binary','--no-ext-diff',original,candidate))};
 }
-function latestHistory({source,focusedWorkflowId,candidateBranch,focusedRunIds,buildRunId}){
- const after=source.run.updated_at,query='created='+encodeURIComponent('>='+after),known=new Set([...focusedRunIds,buildRunId]);
- const rows=[...pages(`actions/workflows/${WORKFLOW_ID}/runs?${query}`,'workflow_runs'),...pages(`actions/workflows/${focusedWorkflowId}/runs?${query}`,'workflow_runs')];
- const titles=new Set([`Alpha CI · ${candidateBranch}`,`Canonical build only · ${candidateBranch}`,`Focused only · ${candidateBranch}`]);
- const relevant=rows.filter(r=>titles.has(r.display_title));
+export function validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId}){
+ const after=source.run.updated_at,known=new Set([...focusedRunIds,buildRunId]);
+ assert(source.run.display_title?.startsWith('Alpha CI · '),'Original workflow title must identify its frozen branch');
+ const titles=new Set([source.run.display_title,`Alpha CI · ${candidateBranch}`,`Canonical build only · ${candidateBranch}`,`Focused only · ${candidateBranch}`]);
+ // An overlapping run may start before the original completes and fail afterwards. Creation-time
+ // filtering alone would silently discard that later failure. Bind completion/update history too.
+ const relevant=rows.filter(r=>r.id!==source.run.id&&titles.has(r.display_title)&&Date.parse(r.updated_at)>=Date.parse(after));
  assert(relevant.length===known.size&&new Set(relevant.map(r=>r.id)).size===known.size&&relevant.every(r=>known.has(r.id)&&r.status==='completed'&&r.conclusion==='success'&&r.run_attempt===1),'Unaccounted, pending, failed or superseding repair execution');
  return {kind:'AUTHENTICATED_COMPLETE_REPAIR_HISTORY',sourceRunId:source.run.id,after,runIds:relevant.map(r=>r.id).sort((a,b)=>a-b),metadataFingerprint:hash(relevant.map(r=>({id:r.id,controller:r.head_sha,status:r.status,conclusion:r.conclusion,attempt:r.run_attempt,updatedAt:r.updated_at})).sort((a,b)=>a.id-b.id))};
+}
+function latestHistory({source,focusedWorkflowId,candidateBranch,focusedRunIds,buildRunId}){
+ const since=new Date(Date.parse(source.run.created_at)-86400000).toISOString(),query='created='+encodeURIComponent('>='+since);
+ const rows=[...pages(`actions/workflows/${WORKFLOW_ID}/runs?${query}`,'workflow_runs'),...pages(`actions/workflows/${focusedWorkflowId}/runs?${query}`,'workflow_runs')];
+ return validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId});
 }
 export async function verifyRepairedCi({candidatePath,originalPath,runId,baseline,focusedRunIds,buildRunId,candidateBranch,evidenceDirectory,reuse=false}){
  candidatePath=resolve(candidatePath);originalPath=resolve(originalPath);runId=Number(runId);buildRunId=Number(buildRunId);

@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {fixture,put,now} from './resume-test-fixtures.mjs';
 import {collectRecoveryEvidence} from './focused-recovery.mjs';
 import {assessResumeSource} from './resume-source.mjs';
-import {validateRepairArchiveInventory,assertRepairRevalidation} from './repair-recovery.mjs';
+import {validateRepairArchiveInventory,assertRepairRevalidation,validateLatestRepairHistory} from './repair-recovery.mjs';
 import {operatorRelease} from './operator-release.mjs';
 test('real collector authenticates API/ZIP bytes, separates failure diagnostics, and revalidates unchanged original evidence',async()=>{
  const root=mkdtempSync(join(tmpdir(),'aihr-repair-adapter-')),bin=join(root,'bin'),responses=join(root,'api'),directory=join(root,'evidence');mkdirSync(bin);mkdirSync(responses);
@@ -42,4 +42,14 @@ test('actual deploy-repair boundary refuses pending/mismatched review before can
   if(value===undefined)delete process.env.AIHR_REPAIR_REVIEWED_CONTROLLER;else process.env.AIHR_REPAIR_REVIEWED_CONTROLLER=value;
   await assert.rejects(operatorRelease({candidatePath:'/nonexistent-candidate-review-probe',execute:true,repair:{}}),/Exact independent verifier review required/);
  }}finally{if(previous===undefined)delete process.env.AIHR_REPAIR_REVIEWED_CONTROLLER;else process.env.AIHR_REPAIR_REVIEWED_CONTROLLER=previous;}
+});
+test('latest history does not lose overlapping failures, pending runs or executions on the original source branch',()=>{
+ const source={run:{id:100,display_title:'Alpha CI · original',created_at:'2026-10-30T01:00:00Z',updated_at:'2026-10-30T02:00:00Z'}};
+ const rows=[{id:200,display_title:'Focused only · repair',head_sha:'controller',status:'completed',conclusion:'success',run_attempt:1,updated_at:'2026-10-30T03:00:00Z'},{id:300,display_title:'Canonical build only · repair',head_sha:'controller',status:'completed',conclusion:'success',run_attempt:1,updated_at:'2026-10-30T03:00:00Z'}];
+ const input={source,rows,candidateBranch:'repair',focusedRunIds:[200],buildRunId:300};assert.deepEqual(validateLatestRepairHistory(input).runIds,[200,300]);
+ for(const title of ['Alpha CI · original','Alpha CI · repair','Focused only · repair'])for(const status of ['completed','in_progress']){
+  const overlapping={id:400,display_title:title,created_at:'2026-10-30T01:30:00Z',updated_at:'2026-10-30T02:30:00Z',status,conclusion:status==='completed'?'failure':null,run_attempt:1};
+  assert.throws(()=>validateLatestRepairHistory({...input,rows:[...rows,overlapping]}),/Unaccounted/);
+ }
+ assert.throws(()=>validateLatestRepairHistory({...input,rows:rows.slice(1)}),/Unaccounted/);
 });
