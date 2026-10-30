@@ -51,7 +51,7 @@ BEGIN
  END LOOP;
 END $$;
 --> statement-breakpoint
--- One pending review per employment PER CALLER, preserving every previous index predicate.
+-- One pending review per goal PER CALLER, preserving every previous index predicate.
 DO $$
 DECLARE generic_predicate text;assigned_predicate text;
 BEGIN
