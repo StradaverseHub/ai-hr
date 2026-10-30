@@ -17588,7 +17588,10 @@
         "testing_state_blocked": "Tester reported a blocker",
         "testing_state_retest_required": "Retest required; earlier observations do not verify current instructions",
         "testing_state_not_applicable": "Tester reported not applicable",
-        "testing_state_partial": "Tester reported a partial result"
+        "testing_state_partial": "Tester reported a partial result",
+        "field_backgroundAgentsTotal": "Scheduled-agent switches",
+        "field_backgroundAgentSwitchesOn": "Switches on",
+        "field_backgroundAgentEffectiveSwitchesOn": "Switches meeting configuration checks"
       },
       "module_overview_label": "Explore my workflows",
       "module_overview_prompt": "Which current Assistant module capabilities are available to me? Use my_module_work for assistant. Explain the scope and limits without reading unrelated records.",
@@ -19268,8 +19271,12 @@
           "recorded": "For {record}, the recorded value for {field} is {value}.",
           "backgroundAgentsTotal": "There are {value} scheduled-agent switches in this view.",
           "backgroundAgentSwitchesOn": "{value} scheduled-agent switches are on.",
-          "backgroundAgentEffectiveSwitchesOn": "{value} switches are enabled after module and restriction checks."
-        }
+          "backgroundAgentEffectiveSwitchesOn": "{value} switches are enabled after module and restriction checks.",
+          "backgroundAgentsTotalOne": "There is {value} scheduled-agent switch in this view.",
+          "backgroundAgentSwitchesOnOne": "{value} scheduled-agent switch is on.",
+          "backgroundAgentEffectiveSwitchesOnOne": "{value} switch meets its configuration requirements."
+        },
+        "manageAgentSwitches": "Manage agent switches"
       },
       "proposal": {
         "titleLeaveCancel": "Cancel a pending leave request",

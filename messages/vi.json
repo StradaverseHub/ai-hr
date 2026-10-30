@@ -17588,7 +17588,10 @@
         "testing_state_blocked": "Người kiểm thử báo bị chặn",
         "testing_state_retest_required": "Cần kiểm thử lại; quan sát cũ không xác minh hướng dẫn hiện tại",
         "testing_state_not_applicable": "Người kiểm thử báo không áp dụng",
-        "testing_state_partial": "Người kiểm thử báo kết quả một phần"
+        "testing_state_partial": "Người kiểm thử báo kết quả một phần",
+        "field_backgroundAgentsTotal": "Công tắc tác nhân theo lịch",
+        "field_backgroundAgentSwitchesOn": "Công tắc đang bật",
+        "field_backgroundAgentEffectiveSwitchesOn": "Công tắc đáp ứng kiểm tra cấu hình"
       },
       "module_overview_label": "Khám phá quy trình của tôi",
       "module_overview_prompt": "Tôi có thể sử dụng những chức năng mô-đun Assistant nào? Dùng my_module_work cho assistant và giải thích phạm vi mà không đọc hồ sơ không liên quan.",
@@ -19268,8 +19271,12 @@
           "recorded": "Với {record}, giá trị được ghi nhận cho {field} là {value}.",
           "backgroundAgentsTotal": "Có {value} công tắc tác nhân theo lịch trong chế độ xem này.",
           "backgroundAgentSwitchesOn": "{value} công tắc tác nhân theo lịch đang bật.",
-          "backgroundAgentEffectiveSwitchesOn": "{value} công tắc được bật sau khi kiểm tra mô-đun và các hạn chế."
-        }
+          "backgroundAgentEffectiveSwitchesOn": "{value} công tắc được bật sau khi kiểm tra mô-đun và các hạn chế.",
+          "backgroundAgentsTotalOne": "Có {value} công tắc tác nhân theo lịch trong chế độ xem này.",
+          "backgroundAgentSwitchesOnOne": "{value} công tắc tác nhân theo lịch đang bật.",
+          "backgroundAgentEffectiveSwitchesOnOne": "{value} công tắc được bật sau khi kiểm tra mô-đun và các hạn chế."
+        },
+        "manageAgentSwitches": "Quản lý công tắc tác nhân"
       },
       "proposal": {
         "titleLeaveCancel": "Hủy đơn nghỉ phép đang chờ",

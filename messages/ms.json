@@ -17588,7 +17588,10 @@
         "testing_state_blocked": "Penguji melaporkan halangan",
         "testing_state_retest_required": "Ujian semula diperlukan; pemerhatian lama tidak mengesahkan arahan semasa",
         "testing_state_not_applicable": "Penguji melaporkan tidak berkenaan",
-        "testing_state_partial": "Penguji melaporkan keputusan separa"
+        "testing_state_partial": "Penguji melaporkan keputusan separa",
+        "field_backgroundAgentsTotal": "Suis ejen berjadual",
+        "field_backgroundAgentSwitchesOn": "Suis dihidupkan",
+        "field_backgroundAgentEffectiveSwitchesOn": "Suis yang memenuhi semakan konfigurasi"
       },
       "module_overview_label": "Terokai aliran kerja saya",
       "module_overview_prompt": "Apakah keupayaan modul Assistant yang tersedia untuk saya? Gunakan my_module_work untuk assistant. Jelaskan skop dan had tanpa membaca rekod yang tidak berkaitan.",
@@ -19268,8 +19271,12 @@
           "recorded": "Untuk {record}, nilai yang direkodkan bagi {field} ialah {value}.",
           "backgroundAgentsTotal": "Terdapat {value} suis ejen berjadual dalam paparan ini.",
           "backgroundAgentSwitchesOn": "{value} suis ejen berjadual dihidupkan.",
-          "backgroundAgentEffectiveSwitchesOn": "{value} suis didayakan selepas semakan modul dan sekatan."
-        }
+          "backgroundAgentEffectiveSwitchesOn": "{value} suis didayakan selepas semakan modul dan sekatan.",
+          "backgroundAgentsTotalOne": "Terdapat {value} suis ejen berjadual dalam paparan ini.",
+          "backgroundAgentSwitchesOnOne": "{value} suis ejen berjadual dihidupkan.",
+          "backgroundAgentEffectiveSwitchesOnOne": "{value} suis didayakan selepas semakan modul dan sekatan."
+        },
+        "manageAgentSwitches": "Urus suis ejen"
       },
       "proposal": {
         "titleLeaveCancel": "Batalkan permohonan cuti yang belum selesai",

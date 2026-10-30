@@ -42,6 +42,15 @@ function answer(facts:readonly Selected[]):Reply{return reply({version:1,mode:'a
 async function view(module:AgentModuleCode,data:unknown){state.data=data;return loadCanonicalModuleJob(ctx,{module});}
 beforeEach(()=>{state.locale='en';vi.clearAllMocks();});afterEach(()=>{cleanup();vi.restoreAllMocks();});
 describe('grounded conversation rendering',()=>{
+ it('answers agent switch counts directly and exposes only the source-owned group administration link',async()=>{
+  const principal={...ctx,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
+  state.data={capabilities:[{module:'assistant',capability:'current-caller'}],adminAgentStatus:{total:3,switchesOn:1,effectiveSwitchesOn:0,managementHref:'/control-tower/agents/features#ai-features'}};
+  const issued=await loadCanonicalModuleJob(principal,{module:'assistant'}),selected=[select(issued,0,'backgroundAgentsTotal'),select(issued,0,'backgroundAgentSwitchesOn')];
+  const shown=render(await GroundedWorkspaceReply({ctx:principal,reply:answer(selected)}));
+  expect(shown.container).toHaveTextContent('There are 3 scheduled-agent switches in this view.');expect(shown.container).toHaveTextContent('1 scheduled-agent switch is on.');
+  expect(screen.getByRole('link',{name:en.assistant.workspace.conversation.manageAgentSwitches})).toHaveAttribute('href','/control-tower/agents/features#ai-features');
+  expect(shown.container).toHaveTextContent(en.assistant.workspace.conversation.backgroundSwitchNote);expect(shown.container).not.toHaveTextContent('3 agents are running');
+ });
  it.each(['en','ms','zh','ta','th','vi'])('%s shows model-selected order using original canonical heading/field/value formatting with closed source details',async locale=>{
   state.locale=locale;const issued=await view('employees',{rows:[{employeeCode:'REC-FIRST',company:'Fictional first employer',hiredOn:'2020-01-01',terminatedOn:null,status:'active'},{employeeCode:'REC-SECOND',company:'Fictional second employer',hiredOn:'2021-01-01',terminatedOn:null,status:'active'}],truncated:false}),facts=[select(issued,1,'employeeCode'),select(issued,0,'employeeCode')];
   const result=render(await GroundedWorkspaceReply({ctx,reply:answer(facts)})),copy=localeCopy(locale).assistant.workspace;

@@ -17588,7 +17588,10 @@
         "testing_state_blocked": "ผู้ทดสอบรายงานว่าติดขัด",
         "testing_state_retest_required": "ต้องทดสอบใหม่ ผลสังเกตเดิมไม่ยืนยันคำแนะนำปัจจุบัน",
         "testing_state_not_applicable": "ผู้ทดสอบรายงานว่าไม่เกี่ยวข้อง",
-        "testing_state_partial": "ผู้ทดสอบรายงานผลบางส่วน"
+        "testing_state_partial": "ผู้ทดสอบรายงานผลบางส่วน",
+        "field_backgroundAgentsTotal": "สวิตช์เอเจนต์ตามกำหนดเวลา",
+        "field_backgroundAgentSwitchesOn": "สวิตช์ที่เปิดอยู่",
+        "field_backgroundAgentEffectiveSwitchesOn": "สวิตช์ที่ผ่านการตรวจสอบการตั้งค่า"
       },
       "module_overview_label": "สำรวจขั้นตอนงานของฉัน",
       "module_overview_prompt": "ฉันใช้ความสามารถของโมดูล Assistant ใดได้บ้าง ใช้ my_module_work สำหรับ assistant และอธิบายขอบเขตโดยไม่อ่านข้อมูลที่ไม่เกี่ยวข้อง",
@@ -19268,8 +19271,12 @@
           "recorded": "สำหรับ {record} ค่าที่บันทึกไว้ของ {field} คือ {value}",
           "backgroundAgentsTotal": "ในมุมมองนี้มีสวิตช์เอเจนต์ตามกำหนดเวลา {value} ตัว",
           "backgroundAgentSwitchesOn": "สวิตช์เอเจนต์ตามกำหนดเวลา {value} ตัวเปิดอยู่",
-          "backgroundAgentEffectiveSwitchesOn": "สวิตช์ {value} ตัวเปิดใช้งานหลังตรวจสอบโมดูลและข้อจำกัดแล้ว"
-        }
+          "backgroundAgentEffectiveSwitchesOn": "สวิตช์ {value} ตัวเปิดใช้งานหลังตรวจสอบโมดูลและข้อจำกัดแล้ว",
+          "backgroundAgentsTotalOne": "ในมุมมองนี้มีสวิตช์เอเจนต์ตามกำหนดเวลา {value} ตัว",
+          "backgroundAgentSwitchesOnOne": "สวิตช์เอเจนต์ตามกำหนดเวลา {value} ตัวเปิดอยู่",
+          "backgroundAgentEffectiveSwitchesOnOne": "สวิตช์ {value} ตัวเปิดใช้งานหลังตรวจสอบโมดูลและข้อจำกัดแล้ว"
+        },
+        "manageAgentSwitches": "จัดการสวิตช์เอเจนต์"
       },
       "proposal": {
         "titleLeaveCancel": "ยกเลิกคำขอลาที่รออนุมัติ",

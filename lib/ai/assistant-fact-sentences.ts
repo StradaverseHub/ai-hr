@@ -4,9 +4,9 @@ import type {JobCard,JobFact} from './module-jobs';
 import type {AgentModuleCode} from './module-agents';
 export function assistantFactSentenceKey(module:AgentModuleCode,card:JobCard,fact:JobFact,toolName?:string):string{
  const field=String(fact.field);
- if(module==='assistant'&&field==='backgroundAgentsTotal')return 'backgroundAgentsTotal';
- if(module==='assistant'&&field==='backgroundAgentSwitchesOn')return 'backgroundAgentSwitchesOn';
- if(module==='assistant'&&field==='backgroundAgentEffectiveSwitchesOn')return 'backgroundAgentEffectiveSwitchesOn';
+ if(module==='assistant'&&field==='backgroundAgentsTotal')return fact.value===1?'backgroundAgentsTotalOne':'backgroundAgentsTotal';
+ if(module==='assistant'&&field==='backgroundAgentSwitchesOn')return fact.value===1?'backgroundAgentSwitchesOnOne':'backgroundAgentSwitchesOn';
+ if(module==='assistant'&&field==='backgroundAgentEffectiveSwitchesOn')return fact.value===1?'backgroundAgentEffectiveSwitchesOnOne':'backgroundAgentEffectiveSwitchesOn';
  if(field==='relationship'&&toolName==='my_reporting_line'){
   if(fact.value==='manager')return 'manager';if(fact.value==='report')return 'report';
  }

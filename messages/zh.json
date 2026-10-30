@@ -17588,7 +17588,10 @@
         "testing_state_blocked": "测试人员报告受阻",
         "testing_state_retest_required": "需要重新测试；以往观察不能验证当前说明",
         "testing_state_not_applicable": "测试人员报告不适用",
-        "testing_state_partial": "测试人员报告部分结果"
+        "testing_state_partial": "测试人员报告部分结果",
+        "field_backgroundAgentsTotal": "定时代理开关",
+        "field_backgroundAgentSwitchesOn": "已开启的开关",
+        "field_backgroundAgentEffectiveSwitchesOn": "通过配置检查的开关"
       },
       "module_overview_label": "探索我的工作流程",
       "module_overview_prompt": "我目前可以使用哪些 Assistant 模块功能？请使用 my_module_work 查询 assistant，说明范围及限制，不读取无关记录。",
@@ -19268,8 +19271,12 @@
           "recorded": "{record}中，{field}的记录值是{value}。",
           "backgroundAgentsTotal": "此视图中有{value}个定时代理开关。",
           "backgroundAgentSwitchesOn": "有{value}个定时代理开关已开启。",
-          "backgroundAgentEffectiveSwitchesOn": "经过模块和限制检查后，有{value}个开关处于启用状态。"
-        }
+          "backgroundAgentEffectiveSwitchesOn": "经过模块和限制检查后，有{value}个开关处于启用状态。",
+          "backgroundAgentsTotalOne": "此视图中有{value}个定时代理开关。",
+          "backgroundAgentSwitchesOnOne": "有{value}个定时代理开关已开启。",
+          "backgroundAgentEffectiveSwitchesOnOne": "经过模块和限制检查后，有{value}个开关处于启用状态。"
+        },
+        "manageAgentSwitches": "管理代理开关"
       },
       "proposal": {
         "titleLeaveCancel": "取消待审批的请假申请",

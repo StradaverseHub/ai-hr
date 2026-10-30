@@ -17588,7 +17588,10 @@
         "testing_state_blocked": "சோதனையாளர் தடையைப் பதிவு செய்தார்",
         "testing_state_retest_required": "மீண்டும் சோதிக்க வேண்டும்; முந்தைய பதிவுகள் தற்போதைய வழிமுறையை உறுதிப்படுத்தாது",
         "testing_state_not_applicable": "சோதனையாளர் பொருந்தாது எனப் பதிவு செய்தார்",
-        "testing_state_partial": "சோதனையாளர் பகுதி முடிவைப் பதிவு செய்தார்"
+        "testing_state_partial": "சோதனையாளர் பகுதி முடிவைப் பதிவு செய்தார்",
+        "field_backgroundAgentsTotal": "திட்டமிட்ட முகவர் அமைப்புகள்",
+        "field_backgroundAgentSwitchesOn": "இயக்கப்பட்ட அமைப்புகள்",
+        "field_backgroundAgentEffectiveSwitchesOn": "கட்டமைப்புச் சரிபார்ப்புகளைப் பூர்த்தி செய்யும் அமைப்புகள்"
       },
       "module_overview_label": "எனது பணிப்பாய்வுகளை ஆராய்க",
       "module_overview_prompt": "எனக்கு எந்த Assistant தொகுதி திறன்கள் கிடைக்கின்றன? assistant க்கான my_module_work ஐப் பயன்படுத்தி, தொடர்பற்ற பதிவுகளைப் படிக்காமல் வரம்புகளை விளக்கவும்.",
@@ -19268,8 +19271,12 @@
           "recorded": "{record} பதிவில் {field} என்பதன் மதிப்பு {value}.",
           "backgroundAgentsTotal": "இந்தக் காட்சியில் {value} திட்டமிட்ட முகவர் சுவிட்சுகள் உள்ளன.",
           "backgroundAgentSwitchesOn": "{value} திட்டமிட்ட முகவர் சுவிட்சுகள் இயக்கப்பட்டுள்ளன.",
-          "backgroundAgentEffectiveSwitchesOn": "தொகுதி மற்றும் கட்டுப்பாட்டுச் சரிபார்ப்புகளுக்குப் பிறகு {value} சுவிட்சுகள் இயக்கப்பட்டுள்ளன."
-        }
+          "backgroundAgentEffectiveSwitchesOn": "தொகுதி மற்றும் கட்டுப்பாட்டுச் சரிபார்ப்புகளுக்குப் பிறகு {value} சுவிட்சுகள் இயக்கப்பட்டுள்ளன.",
+          "backgroundAgentsTotalOne": "இந்தக் காட்சியில் {value} திட்டமிட்ட முகவர் சுவிட்சுகள் உள்ளன.",
+          "backgroundAgentSwitchesOnOne": "{value} திட்டமிட்ட முகவர் சுவிட்சுகள் இயக்கப்பட்டுள்ளன.",
+          "backgroundAgentEffectiveSwitchesOnOne": "தொகுதி மற்றும் கட்டுப்பாட்டுச் சரிபார்ப்புகளுக்குப் பிறகு {value} சுவிட்சுகள் இயக்கப்பட்டுள்ளன."
+        },
+        "manageAgentSwitches": "முகவர் அமைப்புகளை நிர்வகிக்கவும்"
       },
       "proposal": {
         "titleLeaveCancel": "நிலுவையிலுள்ள விடுப்பு விண்ணப்பத்தை ரத்துசெய்",
