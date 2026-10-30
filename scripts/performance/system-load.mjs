@@ -14,7 +14,8 @@ const fixture=JSON.parse(readFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture
 const db=postgres(process.env.MIGRATION_DATABASE_URL,{max:2});
 const agent=new https.Agent({keepAlive:true,maxSockets:600,rejectUnauthorized:false,
  lookup:(_host,options,callback)=>options.all?callback(null,[{address:'127.0.0.1',family:4}]):callback(null,'127.0.0.1',4)});
-const report={kind:'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:500,tenants:2,companies:10,startedAt:new Date().toISOString(),
+const suite=process.env.PERF_HTTP_SUITE||'claims-heavy';assert(['claims-heavy','whole-system'].includes(suite));
+const report={suite,kind:'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:500,tenants:2,companies:10,startedAt:new Date().toISOString(),
  assumptions:{arrivalWindowMs:10000,thinkTimeMs:1000,steadyHoldMs:30000,navigation:'full-document HTTP stress plus real server actions',tls:'fixture-only self-signed localhost',browserContexts:6,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
  coverage:[],boundaries:[],browser:[],phases:[],functionalErrors:[],browserErrors:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
@@ -54,6 +55,8 @@ async function databaseSnapshot(label){
 const employee=fixture.users.find(u=>u.role==='employee'),hr=fixture.users.find(u=>u.role==='companyHR'),group=fixture.users.find(u=>u.role==='groupHR'),manager=fixture.users.find(u=>u.role==='manager');
 const employeeRoutes=['/','/me','/claims','/leave','/attendance/individual','/me/payslip','/notices','/performance/home','/lifecycle'];
 const hrRoutes=['/admin/personnel','/attendance','/payroll','/reports','/reports/employee-master','/lifecycle/onboarding','/lifecycle/offboarding','/roster','/letters/register','/performance','/rewards','/system-testing','/feedback','/knowledge-base','/control-tower','/admin/settings/movement'];
+const managerRoutes=['/approvals','/approvals/history','/performance/home','/claims'];
+const routePool=user=>user.role==='employee'?employeeRoutes:user.role==='manager'?managerRoutes:[...hrRoutes,'/claims'];
 let browser,sampling,progressTimer,contextTemplates,lastPage;
 try{
  save();await db`select pg_stat_statements_reset()`;
@@ -96,7 +99,7 @@ try{
  }
  for(const user of [employee,manager,hr,group,fixture.users[254],fixture.users[251]]){
   const ctx=await context(user),page=await ctx.newPage();
-  for(const route of user.role==='employee'?['/claims','/leave','/attendance/individual']:user.role==='manager'?['/approvals','/performance/home']:['/admin/personnel','/payroll','/lifecycle/onboarding'])await visit(page,user,route);
+  for(const route of suite==='whole-system'?routePool(user):user.role==='employee'?['/claims','/leave','/attendance/individual']:user.role==='manager'?['/approvals','/performance/home']:['/admin/personnel','/payroll','/lifecycle/onboarding'])await visit(page,user,route);
   await page.screenshot({path:join(out,'browser-'+user.index+'.png'),fullPage:false});await ctx.close();
  }
  // Locale projection and real client navigation must work before any capacity claim.
@@ -143,6 +146,26 @@ try{
  assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
  report.browser.push({role:'employee',workflow:'claim create/edit/delete',persisted:true});await ctx.close();
  contextTemplates={createTemplate,deleteTemplate};
+ // Real server actions must reject another employee's draft even for broadly visible HR actors.
+ // Provision and clean up through the owner's HTTP action; the independent DB oracle only reads.
+ for(const [actor,victim]of [[employee,fixture.users[5]],[hr,fixture.users[54]],[group,fixture.users[254]]]){
+  const description='PERF_BOUNDARY_'+actor.index,fields={...createTemplate.fields};
+  for(const [key,value]of Object.entries({employmentId:victim.employmentId,claimTypeId:victim.claimTypeId,amount:'7',incurredOn:fixture.today,description,intent:'draft'}))fields[createTemplate.prefix+key]=value;
+  delete fields[createTemplate.prefix+'draftId'];
+  await request(victim,'/claims',fields,createTemplate.status,false,createTemplate.headers);
+  const [protectedDraft]=await db`select id from claim_request where employment_id=${victim.employmentId}::uuid and status='draft' and description=${description}`;
+  assert(protectedDraft,'boundary fixture did not persist through HTTP');
+  for(const selector of [actor.employmentId,victim.employmentId]){
+   const response=await request(actor,'/claims',{...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:selector,[deleteTemplate.prefix+'id']:protectedDraft.id},deleteTemplate.status,false,deleteTemplate.headers);
+   const redirect=new URL(String(response.headers['x-action-redirect']??response.headers.location).split(';')[0],base);
+   assert(redirect.searchParams.get('error'),'foreign draft deletion was not explicitly refused');
+   const [unchanged]=await db`select employment_id,amount,status from claim_request where id=${protectedDraft.id}::uuid`;
+   assert(unchanged);assert.equal(unchanged.employment_id,victim.employmentId);assert.equal(Number(unchanged.amount),7);assert.equal(unchanged.status,'draft');
+   report.boundaries.push({kind:'foreign-draft-delete',role:actor.role,scope:actor.tenant!==victim.tenant?'other-tenant':actor.company!==victim.company?'other-company':'other-person',selector:selector===actor.employmentId?'own':'foreign',passed:true});
+  }
+  await request(victim,'/claims',{...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:victim.employmentId,[deleteTemplate.prefix+'id']:protectedDraft.id},deleteTemplate.status,false,deleteTemplate.headers);
+  assert.equal((await db`select id from claim_request where id=${protectedDraft.id}::uuid`).length,0);
+ }
  await databaseSnapshot('pilot');
  if(report.coverage.some(v=>v.status==='failed'))throw Error('Pilot route failures must be diagnosed before a 500-user run');
  await db`select pg_stat_statements_reset()`;
@@ -162,7 +185,8 @@ try{
   await pause(i*20);progress.launched++;progress.active++;progress.peakActive=Math.max(progress.peakActive,progress.active);
   let iteration=0;
   try{do{
-  const routes=user.role==='employee'?['/me','/claims','/leave']:user.role==='manager'?['/approvals','/claims','/performance/home']:['/admin/personnel','/payroll','/claims'];
+  const pool=routePool(user);
+  const routes=suite==='whole-system'?Array.from({length:3},(_,step)=>pool[(i+iteration*3+step)%pool.length]):user.role==='employee'?['/me','/claims','/leave']:user.role==='manager'?['/approvals','/claims','/performance/home']:['/admin/personnel','/payroll','/claims'];
   for(const route of routes){await request(user,route);await pause(1000);}
   const description='PERF_HTTP_'+i+'_'+iteration;
   const template=contextTemplates.createTemplate,fields={...template.fields};
@@ -184,8 +208,9 @@ try{
  clearInterval(sampling);sampling=null;clearInterval(progressTimer);progressTimer=null;report.progress={...progress,elapsedMs:performance.now()-started};
  report.functionalErrors=results.flatMap((value,index)=>value.status==='rejected'?[{user:index,error:String(value.reason.message).slice(0,180)}]:[]);
  const loaded=samples.slice(offset),reads=loaded.filter(v=>v.method==='GET'),writes=loaded.filter(v=>v.method==='POST');
- report.phases.push({name:'500-paced-HTTP-users',elapsedMs:performance.now()-started,completed:results.filter(v=>v.status==='fulfilled').length,errors:report.functionalErrors.length,
+ report.phases.push({name:'500-paced-HTTP-users-'+suite,elapsedMs:performance.now()-started,completed:results.filter(v=>v.status==='fulfilled').length,errors:report.functionalErrors.length,
   read:summary(reads.map(v=>v.durationMs)),write:summary(writes.map(v=>v.durationMs)),ttfb:summary(loaded.map(v=>v.ttfbMs)),wireBytes:loaded.reduce((sum,v)=>sum+v.wireBytes,0),decodedBytes:loaded.reduce((sum,v)=>sum+v.decodedBytes,0)});
+ report.concurrentRouteCoverage=[...new Set([...employeeRoutes,...managerRoutes,...hrRoutes])].map(route=>({route,requests:loaded.filter(sample=>sample.method==='GET'&&sample.route===route).length,users:new Set(loaded.filter(sample=>sample.method==='GET'&&sample.route===route).map(sample=>sample.user)).size}));
  const steady=loaded.filter(sample=>sample.startedMs>=steadyStart&&sample.startedMs<steadyUntil);
  report.steady={durationMs:30000,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,{
   read:summary(steady.filter(v=>v.role===role&&v.method==='GET').map(v=>v.durationMs)),
@@ -193,6 +218,6 @@ try{
  }]))};
  report.latencyTargetMet=progress.peakActive===500&&Object.values(report.steady.roles).every(role=>role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
  writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));
- await databaseSnapshot('loaded');save();assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
+ await databaseSnapshot('loaded');save();if(suite==='whole-system')assert(report.concurrentRouteCoverage.every(route=>route.requests>0),'wider concurrent route coverage incomplete');assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
 }catch(error){if(lastPage&&!lastPage.isClosed())await lastPage.screenshot({path:join(out,'browser-failure.png'),fullPage:false}).catch(()=>{});report.error=String(error.message).slice(0,350);writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));await databaseSnapshot('failure').catch(()=>{});save();throw error;}
 finally{if(progressTimer)clearInterval(progressTimer);if(sampling)clearInterval(sampling);if(browser)await browser.close();agent.destroy();await db.end();save();}
