@@ -941,7 +941,7 @@ state=dict(state='ok',stale_build='0',ref='a'*40,built_ref='a'*40,build_id='fixt
 q.live_state=lambda:dict(state)
 `;
   fs.writeFileSync(fixtureCoordinator, coordinatorPrelude + 'q.main(root)\n');
-  const setupQueue = spawnSync(python, ['-c', coordinatorPrelude + `
+  const setupQueue = spawnSync(python, ['-B', '-c', coordinatorPrelude + `
 c=q.Coordinator(root)
 def request(action,**fields):return c.request(dict(protocol=q.PROTOCOL,actor='r291-fixture',action=action,**fields))
 key=str(uuid.uuid4())
@@ -956,7 +956,7 @@ p.write_text(json.dumps(grant));p.chmod(0o600)
   fs.writeFileSync(path.join(box.bin, 'python3'), `#!/bin/sh
 if [ "\${1:-}" = /var/tmp/aihr-deploy/staging-release-queue/coordinator.py ]; then
  shift
- exec ${shellQuote(python)} ${shellQuote(fixtureCoordinator)} "$@"
+ exec ${shellQuote(python)} -B ${shellQuote(fixtureCoordinator)} "$@"
 fi
 exec ${shellQuote(python)} "$@"
 `, { mode: 0o700 });

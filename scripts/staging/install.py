@@ -6,6 +6,8 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import sys
+sys.dont_write_bytecode = True
 from coordinator import require, private
 
 INSTALL = r'''

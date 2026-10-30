@@ -7,6 +7,8 @@ from pathlib import Path
 import shlex
 import subprocess
 import sys
+import sys
+sys.dont_write_bytecode = True
 from coordinator import PROTOCOL, canonical, require, private, sha
 
 REMOTE = '/var/tmp/aihr-deploy/staging-release-queue/coordinator.py'

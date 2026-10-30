@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 import tempfile
 import uuid
+import sys
+sys.dont_write_bytecode = True
 from coordinator import Coordinator, PROTOCOL
 
 

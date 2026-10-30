@@ -510,6 +510,7 @@ def capture_and_publish(args, source_github, github, root):
         # Package capture shares the staging lease with installation and acceptance. The credential
         # is private; read-only --check remains usable without acquiring a lease.
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'staging'))
+        sys.dont_write_bytecode = True
         from lease import load_lease, guard_command
         staging_lease = load_lease(args.ref) if args.accept_staging else None
         def protected(command):
