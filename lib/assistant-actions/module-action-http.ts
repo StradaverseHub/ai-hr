@@ -594,7 +594,8 @@ export type ModuleActionBrowserOwners<Session>=Readonly<{
  compensationMaintenance?:GenericOwner<Session>;
  costAllocationMaintenance?:GenericOwner<Session>;
  paymentMethodMaintenance?:GenericOwner<Session>;
- employeeIdTemplateStatus?:GenericOwner<Session>;departmentArchive?:GenericOwner<Session>;
+ employeeIdTemplateStatus?:GenericOwner<Session>;
+ departmentArchive?:GenericOwner<Session>;
  positionArchive?:GenericOwner<Session>;
  employeeCodeMaintenance?:GenericOwner<Session>;
  workforceProfileMaintenance?:GenericOwner<Session>;
