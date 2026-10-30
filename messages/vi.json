@@ -3093,7 +3093,8 @@
         "cost_allocations": "Phân bổ trung tâm chi phí",
         "bank_statutory": "Ngân hàng & Luật định",
         "employee_full": "Tất cả — nhân viên mới",
-        "movement": "Biến động"
+        "movement": "Biến động",
+        "information_correction": "Chỉ chỉnh sửa thông tin"
       },
       "reference": "Mã tham chiếu",
       "referenceLabel": "Mã tham chiếu {reference}",
@@ -3171,6 +3172,51 @@
         "created": "Đã tạo {code} · {name}",
         "willVoid": "Nhân viên này sẽ bị vô hiệu: bị loại khỏi danh sách, số lượng nhân sự và bảng lương, vẫn giữ trong nhật ký kiểm tra. Mã nhân viên, email và NRIC được giải phóng."
       }
+    },
+    "informationCorrection": {
+      "title": "Chỉ chỉnh sửa thông tin",
+      "hint": "Sửa thông tin việc làm mà không tính lại giao dịch đã hoàn tất.",
+      "mode": "Chế độ chỉnh sửa",
+      "existing": "Sửa tổ chức khi tuyển dụng",
+      "protection": "Bảng lương hoàn tất, phiếu lương đã phát hành, báo cáo chốt và dữ liệu nghĩa vụ, nghỉ phép, chấm công, tăng ca trước đây không thay đổi. Không tính lại lịch sử.",
+      "warning": "Thông tin sửa có thể ảnh hưởng lương, báo cáo nghĩa vụ và chính sách việc làm tương lai. Dùng quy trình biến động nhân sự cho điều chuyển và thay đổi nghiệp vụ thực tế.",
+      "field": "Trường",
+      "before": "Giá trị hiện tại",
+      "after": "Giá trị đề xuất",
+      "reason": "Lý do chỉnh sửa",
+      "review": "Xem lại chỉnh sửa",
+      "back": "Quay lại sửa",
+      "confirm": "Xác nhận chỉ chỉnh sửa thông tin",
+      "saving": "Đang lưu…",
+      "loading": "Đang tải…",
+      "saved": "Đã sửa thông tin. Giao dịch hoàn tất không thay đổi.",
+      "unchanged": "Không thay đổi — bỏ qua dòng này.",
+      "history": "Lịch sử chỉnh sửa",
+      "noHistory": "Chưa có bản ghi chỉ chỉnh sửa thông tin.",
+      "importHelp": "Mã công ty xác minh công ty hiện tại. Mã công ty mới không bắt buộc. Ô chỉnh sửa trống giữ nguyên giá trị. Xem mã hệ thống trên các trang tham chiếu. Tối đa 200 dòng.",
+      "template": "Tải mẫu Excel",
+      "file": "Tệp Excel (.xlsx)",
+      "validate": "Kiểm tra tệp",
+      "results": "Kết quả nhập",
+      "resultCounts": "{succeeded} thành công · {failed} thất bại · {unchanged} không đổi",
+      "previewCounts": "{total} dòng · {valid} chỉnh sửa hợp lệ · {invalid} lỗi",
+      "batchHistory": "Xem lịch sử lô nhập",
+      "row": "Dòng {row}",
+      "validOnly": "Chỉ áp dụng chỉnh sửa hợp lệ. Dòng thất bại không thay đổi thông tin nhân viên.",
+      "confirmValid": "Xác nhận {count} chỉnh sửa hợp lệ",
+      "fields": {
+        "companyId": "Công ty",
+        "hiredOn": "Ngày vào tập đoàn",
+        "joinDate": "Ngày vào làm",
+        "gradeId": "Bậc công việc",
+        "employmentType": "Loại việc làm"
+      },
+      "statuses": {
+        "applied": "Thành công",
+        "failed": "Thất bại",
+        "unchanged": "Không đổi"
+      },
+      "effective": "Xử lý trong tương lai sử dụng thông tin đã sửa từ {date}."
     }
   },
   "leave": {

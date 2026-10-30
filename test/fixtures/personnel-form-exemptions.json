@@ -789,5 +789,23 @@
       "name": "operation",
       "reason": "Finite add/update/archive command discriminator for saveWorkforceRecordAction; both forms use the same canonical owner with fresh permission and version checks."
     }
+  ],
+  "app/admin/personnel/information-correction-form.tsx": [
+    {
+      "tag": "textarea",
+      "name": "informationCorrectionReason",
+      "context": "InformationForm",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Mandatory reason for the audited information-correction workflow; it is audit provenance, not an employee master fact, and the service validates its length."
+    },
+    {
+      "tag": "input",
+      "name": "correction-mode",
+      "context": "HireCorrectionModes",
+      "hidden": false,
+      "occurrences": 2,
+      "reason": "Finite choice between the existing operational workflow and information-only correction; it controls presentation and never submits an employee fact."
+    }
   ]
 }

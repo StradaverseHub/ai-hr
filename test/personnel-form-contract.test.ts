@@ -1,7 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
-import {personnelControl,personnelInput,personnelFormChoices,personnelFormIssue,personnelFormName,personnelFormRequired,personnelFormMetadataIssue,personnelFormWidget,personnelWorkflowControl,personnelWorkflowCarry,personnelDisplay} from '../lib/personnel-form-contract';
+import {personnelControl,personnelInput,personnelFormChoices,personnelFormIssue,personnelFormName,personnelFormRequired,personnelFormMetadataIssue,personnelFormWidget,personnelWorkflowControl,personnelWorkflowInput,personnelWorkflowCarry,personnelDisplay} from '../lib/personnel-form-contract';
 import {personnelFieldChoices,personnelFieldLabel} from '../lib/personnel-import-contract';
 import {auditPersonnelFormSource} from './helpers/personnel-form-source';
 const birth='profile.personal_details.dateofbirth';
@@ -164,4 +164,14 @@ describe('Personnel shared form contract',()=>{
     expect(auditPersonnelFormSource('fixture.tsx',source.replace('taxcategory','unknowntransport'),PERSONNEL_FIELDS).issues.some(issue=>issue.message.includes('Unknown Personnel'))).toBe(true);
     expect(auditPersonnelFormSource('fixture.tsx',source.replace('personnelCarry','personnelInput'),PERSONNEL_FIELDS).issues.some(issue=>issue.message.includes('different facts'))).toBe(true);
   });
+  it('keeps Join Date display-only outside the explicitly declared information workflow',()=>{
+    const id='employment.employment_dates_and_service.joindate',field=PERSONNEL_FIELDS.find(row=>row.id===id)!;
+    expect(personnelFormWidget(id)).toBe('display');
+    expect(()=>personnelInput(id)).toThrow('specialized renderer');
+    expect(personnelWorkflowInput(id,'informationCorrection')).toMatchObject({'data-personnel-field':id,name:'joinDate',type:'date'});
+    expect(()=>personnelWorkflowInput(id,'hireCorrection')).toThrow();
+    expect(personnelFormMetadataIssue({...field,form:{...field.form,workflowWidgets:{informationCorrection:'number'}}})).toContain('contradicts canonical type');
+    expect(personnelFormMetadataIssue({...field,form:{...field.form,workflowWidgets:{movement:'date'}}})).toContain('lacks an owning binding');
+  });
+
 });

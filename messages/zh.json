@@ -3093,7 +3093,8 @@
         "cost_allocations": "成本中心分配",
         "bank_statutory": "银行与法定",
         "employee_full": "全部 — 新员工",
-        "movement": "人事变动"
+        "movement": "人事变动",
+        "information_correction": "仅信息更正"
       },
       "reference": "参考号",
       "referenceLabel": "参考号 {reference}",
@@ -3171,6 +3172,51 @@
         "created": "已创建 {code} · {name}",
         "willVoid": "该员工将被作废：从列表、人数统计和薪资中移除，保留在审计记录中。员工编号、邮箱和 NRIC 将被释放。"
       }
+    },
+    "informationCorrection": {
+      "title": "仅信息更正",
+      "hint": "更正现有雇佣信息，不重新计算已完成的交易。",
+      "mode": "更正模式",
+      "existing": "入职组织信息更正",
+      "protection": "已完成的薪资、已发布的工资单、已定稿的报告以及历史法定缴纳、假期、考勤和加班记录保持不变，不进行历史重算。",
+      "warning": "更正后的信息可能影响未来薪资、法定申报和雇佣政策。实际调动和业务变更请使用雇佣异动流程。",
+      "field": "字段",
+      "before": "现有值",
+      "after": "拟更正值",
+      "reason": "更正原因",
+      "review": "复核更正",
+      "back": "返回编辑",
+      "confirm": "确认仅信息更正",
+      "saving": "保存中…",
+      "loading": "加载中…",
+      "saved": "信息已更正，已完成的交易保持不变。",
+      "unchanged": "未更改 — 将跳过此行。",
+      "history": "更正历史",
+      "noHistory": "尚无仅信息更正记录。",
+      "importHelp": "公司代码用于核对现有公司。新公司代码为可选项。空白更正单元格表示保持原值。系统代码见参考表。最多200行。",
+      "template": "下载Excel模板",
+      "file": "Excel文件 (.xlsx)",
+      "validate": "校验文件",
+      "results": "导入结果",
+      "resultCounts": "{succeeded}成功 · {failed}失败 · {unchanged}未更改",
+      "previewCounts": "{total}行 · {valid}项有效更正 · {invalid}项错误",
+      "batchHistory": "查看导入批次历史",
+      "row": "第{row}行",
+      "validOnly": "仅应用有效更正。失败行不会更改该员工的任何信息。",
+      "confirmValid": "确认{count}项有效更正",
+      "fields": {
+        "companyId": "公司",
+        "hiredOn": "集团入职日期",
+        "joinDate": "入职日期",
+        "gradeId": "职级",
+        "employmentType": "雇佣类型"
+      },
+      "statuses": {
+        "applied": "成功",
+        "failed": "失败",
+        "unchanged": "未更改"
+      },
+      "effective": "未来处理将从{date}起使用这些更正信息。"
     }
   },
   "leave": {

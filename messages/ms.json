@@ -3093,7 +3093,8 @@
         "cost_allocations": "Peruntukan Pusat Kos",
         "bank_statutory": "Bank & Berkanun",
         "employee_full": "Semua — pekerja baharu",
-        "movement": "Pergerakan"
+        "movement": "Pergerakan",
+        "information_correction": "Pembetulan Maklumat Sahaja"
       },
       "reference": "Rujukan",
       "referenceLabel": "Rujukan {reference}",
@@ -3171,6 +3172,51 @@
         "created": "Dicipta {code} · {name}",
         "willVoid": "Pekerja ini akan dibatalkan: dikeluarkan daripada senarai, bilangan pekerja dan gaji, disimpan dalam jejak audit. ID Pekerja, e-mel dan NRIC dibebaskan."
       }
+    },
+    "informationCorrection": {
+      "title": "Pembetulan Maklumat Sahaja",
+      "hint": "Betulkan maklumat pekerjaan tanpa mengira semula transaksi yang selesai.",
+      "mode": "Mod pembetulan",
+      "existing": "Pembetulan organisasi semasa pengambilan",
+      "protection": "Gaji selesai, slip gaji dikeluarkan, laporan muktamad serta rekod berkanun, cuti, kehadiran dan kerja lebih masa terdahulu kekal. Tiada pengiraan semula sejarah.",
+      "warning": "Maklumat dibetulkan mungkin mempengaruhi gaji, pelaporan berkanun dan polisi pekerjaan akan datang. Gunakan Pergerakan Pekerjaan untuk pertukaran sebenar dan perubahan operasi.",
+      "field": "Medan",
+      "before": "Nilai sedia ada",
+      "after": "Nilai dicadangkan",
+      "reason": "Sebab pembetulan",
+      "review": "Semak pembetulan",
+      "back": "Kembali menyunting",
+      "confirm": "Sahkan pembetulan maklumat sahaja",
+      "saving": "Menyimpan…",
+      "loading": "Memuatkan…",
+      "saved": "Maklumat dibetulkan. Transaksi selesai kekal.",
+      "unchanged": "Tiada perubahan — baris ini akan dilangkau.",
+      "history": "Sejarah pembetulan",
+      "noHistory": "Tiada pembetulan maklumat sahaja direkodkan.",
+      "importHelp": "Kod Syarikat menyemak syarikat sedia ada. Kod Syarikat Baharu adalah pilihan. Sel pembetulan kosong mengekalkan nilai. Rujuk helaian kod sistem. Maksimum 200 baris.",
+      "template": "Muat turun templat Excel",
+      "file": "Fail Excel (.xlsx)",
+      "validate": "Sahkan fail",
+      "results": "Keputusan import",
+      "resultCounts": "{succeeded} berjaya · {failed} gagal · {unchanged} tiada perubahan",
+      "previewCounts": "{total} baris · {valid} pembetulan sah · {invalid} ralat",
+      "batchHistory": "Lihat sejarah kelompok import",
+      "row": "Baris {row}",
+      "validOnly": "Hanya pembetulan sah digunakan. Baris gagal tidak mengubah maklumat pekerja.",
+      "confirmValid": "Sahkan {count} pembetulan sah",
+      "fields": {
+        "companyId": "Syarikat",
+        "hiredOn": "Tarikh Menyertai Kumpulan",
+        "joinDate": "Tarikh Menyertai",
+        "gradeId": "Gred Jawatan",
+        "employmentType": "Jenis Pekerjaan"
+      },
+      "statuses": {
+        "applied": "Berjaya",
+        "failed": "Gagal",
+        "unchanged": "Tiada perubahan"
+      },
+      "effective": "Proses akan datang menggunakan maklumat dibetulkan mulai {date}."
     }
   },
   "leave": {
