@@ -6,19 +6,23 @@ import * as s from '../../db/schema';
 import {AttendanceDayReviewRow,AttendanceDayReviewSummary,AttendanceDayReviewWitness,AttendanceDayReviewView,type AttendanceDayReviewSummaryData,type AttendanceDayReviewWitnessData} from '../../lib/attendance-day-review';
 import type {AttendanceDayEditorData} from './day-adjustment';
 import {readOvertimePatternCalculationTx} from './overtime-calculation';
-const State=z.object({override:AttendanceDayReviewSummary.shape.override,day:AttendanceDayReviewSummary.shape.day,pattern:AttendanceDayReviewSummary.shape.pattern,payroll:AttendanceDayReviewSummary.shape.payroll,rows:z.array(AttendanceDayReviewRow).max(256)}).strict();
+const PrivateRetention=z.array(z.object({key:z.guid(),digest:z.string().regex(/^[a-f0-9]{64}$/)}).strict()).max(25);
+const State=z.object({override:AttendanceDayReviewSummary.shape.override,day:AttendanceDayReviewSummary.shape.day,pattern:AttendanceDayReviewSummary.shape.pattern,payroll:AttendanceDayReviewSummary.shape.payroll,rows:z.array(AttendanceDayReviewRow).max(256),privateRetention:PrivateRetention}).strict();
 export async function captureAttendanceDayReviewStateTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string},payrollBatchIds:string[],editor:AttendanceDayEditorData){
  const ids=z.array(z.guid()).max(25).parse([...new Set(payrollBatchIds)].sort());
  const [record]=await tx.execute<{state:unknown}>(sql`select app.assistant_attendance_day_schedule_effect_state(${p.employmentId}::uuid,${p.date}::date,${JSON.stringify(ids)}::jsonb) as state`);
  const state=State.parse(record?.state),summary=AttendanceDayReviewSummary.parse({override:state.override,day:state.day,pattern:state.pattern,payroll:state.payroll,resolvedShiftCode:editor.schedule.shiftCode??null,resolvedDayKind:editor.schedule.dayKind,legacyRows:editor.rows.map(row=>({key:row.key,bucket:row.bucket,ratePattern:row.ratePattern,rate:row.rate??null,calculatedMinutes:row.calculatedMinutes,effectiveMinutes:row.effectiveMinutes,orphan:row.orphan===true}))});
- return {summary,rows:state.rows};
+ return {summary,rows:state.rows,privateRetention:state.privateRetention};
 }
-/** Opaque tuple hashes/safe summaries only. Subject-readable events never carry OT monetary evidence. */
-export async function attendanceDayReviewWitnessTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string},payrollBatchIds:string[],before:{summary:AttendanceDayReviewSummaryData;rows:z.infer<typeof AttendanceDayReviewRow>[]},after:typeof before):Promise<AttendanceDayReviewWitnessData>{
+/** Financial row hashes cover identity only; the native financial reader validates immutable contents.
+ * Unrelated payroll retention fingerprints remain in memory and never enter an audit payload.
+ * Opaque non-financial tuple hashes/safe summaries only. Subject-readable events never carry OT monetary evidence. */
+export async function attendanceDayReviewWitnessTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string},payrollBatchIds:string[],before:{summary:AttendanceDayReviewSummaryData;rows:z.infer<typeof AttendanceDayReviewRow>[];privateRetention:z.infer<typeof PrivateRetention>},after:typeof before):Promise<AttendanceDayReviewWitnessData>{
  const write=after.rows.find(row=>row.kind==='adjustment');if(!write||!ctx.userId)throw Error('Native day effect proof is unavailable.');
  const ids=[...new Set(payrollBatchIds)].sort(),events=await tx.execute<{id:string}>(sql`select d.id from domain_event d where d.tenant_id=${ctx.tenantId}::uuid and d.subject_employment_id=${p.employmentId}::uuid and d.actor_type='user' and d.actor_id=${ctx.userId}::uuid and d.xmin=${write.xid}::xid and ((d.event_type='overtime.calculation.recorded' and d.aggregate_id=${after.summary.pattern.sourceId}::uuid and d.payload->>'calculationId'=${after.summary.pattern.calculationId}) or (d.event_type='attendance.overtime-pattern.refused' and d.payload->>'date'=${p.date}) or (d.event_type='payroll-batch.recalc-required' and d.aggregate_id in (select value::uuid from jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb)))) order by d.id limit 101`);
- const witness=AttendanceDayReviewWitness.parse({version:1,date:p.date,payrollBatchIds:ids,before,after,relatedEventIds:Array.from(events).map(row=>row.id)});
- const punches=(rows:typeof before.rows)=>rows.filter(row=>['punch','attendance_clock','payroll_other'].includes(row.kind)).map(({kind,key,digest})=>({kind,key,digest}));
+ if(JSON.stringify(before.privateRetention)!==JSON.stringify(after.privateRetention))throw Error('Unrelated payroll data changed during the native correction.');
+ const witness=AttendanceDayReviewWitness.parse({version:1,date:p.date,payrollBatchIds:ids,before:{summary:before.summary,rows:before.rows},after:{summary:after.summary,rows:after.rows},relatedEventIds:Array.from(events).map(row=>row.id)});
+ const punches=(rows:typeof before.rows)=>rows.filter(row=>['punch','attendance_clock'].includes(row.kind)).map(({kind,key,digest})=>({kind,key,digest}));
  if(JSON.stringify(punches(before.rows))!==JSON.stringify(punches(after.rows)))throw Error('A day schedule correction cannot change captured clocks.');
  return witness;
 }

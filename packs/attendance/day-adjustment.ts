@@ -71,10 +71,18 @@ export type AttendanceDayEdit={employmentId:string;date:string;baseline:string;r
   {kind:'overtime';rows:{key:string;minutes:number|null}[]}
 );
 
-async function lockedAttendanceDayEditStateTx(tx:Tx,ctx:SessionContext,p:AttendanceDayEdit){
+async function lockAttendanceDaySubjectTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}){
     await lockAttendanceLeaveDependenciesTx(tx,ctx,[p.employmentId]);
     const employee=await subject(tx,ctx,p.employmentId);if(!employee||employee.self)throw new Error('You cannot correct your own attendance or an employee outside your administrator scope.');
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
+}
+/** Native pre-decryption interval admission. Recorded receipts do not reopen a payroll or mutate a day. */
+export async function lockAttendanceDayScheduleIntervalTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string},mode:'pending'|'recorded'){
+    assertModuleGate(ctx,'attendance');dateValue(p.date);await lockAttendanceDaySubjectTx(tx,ctx,p);
+    if(mode==='pending'){await lockAttendancePayrollTx(tx,p.employmentId,p.date);await assertNoDependentAttendanceCreditTx(tx,p.employmentId,p.date);}
+}
+async function lockedAttendanceDayEditStateTx(tx:Tx,ctx:SessionContext,p:AttendanceDayEdit){
+    await lockAttendanceDaySubjectTx(tx,ctx,p);
     const payroll=await lockAttendancePayrollTx(tx,p.employmentId,p.date);
     await assertNoDependentAttendanceCreditTx(tx,p.employmentId,p.date);
     if(payroll.some(b=>b.status==='processed')&&!p.confirmPayrollRecalculation)throw new Error('Confirm that processed payroll will be marked for recalculation.');

@@ -113,3 +113,4 @@ export {setOfflineClockingPolicy,readOfflineClockingSettings,readOfflineClocking
 export {setEmploymentScheduleGroupTx,currentShiftIdsForEmploymentTx} from '../../core/roster';
 
 export {previewAttendanceDayScheduleTx,readAttendanceDayScheduleEvidenceTx} from './day-schedule-preview';
+export {lockAttendanceDayScheduleIntervalTx} from './day-adjustment';
