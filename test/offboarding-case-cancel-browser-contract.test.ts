@@ -1,0 +1,16 @@
+/** Authored UNRUN pure protocol cases; no backend action is mounted. */
+import {describe,it,expect} from 'vitest';
+import {OffboardingCaseCancelPacket as Packet,parseOffboardingCaseCancelResult as parse} from '../lib/assistant-actions/offboarding-case-cancel-browser-contract';
+import {OffboardingCaseCancel as C} from '../lib/assistant-actions/offboarding-case-cancel-contract';
+import {caseId,actionId,eventId,cancelHuman,cancelPrepared,cancelCompleted} from './helpers/offboarding-case-cancel-browser-fixture';
+const prepare=Packet.parse({action:C.action,operation:'prepare',input:cancelHuman}),confirm=Packet.parse({action:C.action,operation:'confirm',confirmation:{action:C.action,contractVersion:1,actionId,reviewedDigest:'a'.repeat(64)}});
+describe('unexposed cancellation transport correspondence',()=>{
+ it('accepts only the exact prepared case/reason and preserves normalized human intent',()=>{expect(parse(prepare,{kind:'prepared',review:cancelPrepared})).toEqual({kind:'prepared',review:cancelPrepared});expect(()=>parse(prepare,{kind:'prepared',review:{...cancelPrepared,content:{...cancelHuman,reason:'Changed'},review:{...cancelPrepared.review,after:{...cancelPrepared.review.after,cancelReason:'Changed'}}}})).toThrow();});
+ it('refuses substituted review identities and operation confusion',()=>{expect(parse(confirm,{kind:'completed',receipt:cancelCompleted})).toEqual({kind:'completed',receipt:cancelCompleted});expect(()=>parse(confirm,{kind:'completed',receipt:{...cancelCompleted,actionId:eventId}})).toThrow();expect(()=>parse(confirm,{kind:'prepared',review:cancelPrepared})).toThrow();expect(()=>parse(prepare,{kind:'completed',receipt:cancelCompleted})).toThrow();});
+ it.each(['actor','session','scope','companyId','wholeEffectCommitment','caseVersion','nativeEvent','delegate'])('refuses posted transport authority/private proof %s',key=>{expect(Packet.safeParse({...confirm,[key]:caseId}).success).toBe(false);});
+ it('refuses incoherent review reason/state/times and server-only proof fields',()=>{
+  for(const review of [{...cancelPrepared,review:{...cancelPrepared.review,after:{status:'cancelled',cancelReason:'Other'}}},{...cancelPrepared,expiresAt:cancelPrepared.createdAt},{...cancelPrepared,wholeEffectCommitment:'a'.repeat(64)},{...cancelPrepared,review:{...cancelPrepared.review,before:{status:'cancelled',cancelReason:null}}}])expect(()=>parse(prepare,{kind:'prepared',review})).toThrow();
+ });
+ it('requires exactly one minimal human-nominated case and no linked-row/private facts',()=>{const p=Packet.parse({action:C.action,operation:'choices',selection:{caseNumber:'OFB-0001'}});const choice={kind:'choices',cases:[{caseId,caseNumber:'OFB-0001'}],truncated:false};expect(parse(p,choice)).toEqual(choice);for(const patch of [{cases:[]},{cases:[...choice.cases,...choice.cases]},{cases:[{...choice.cases[0],employmentId:eventId}]}])expect(()=>parse(p,{...choice,...patch})).toThrow();});
+ it('refuses outcome, case-reopening and related IT actions in this lane',()=>{for(const action of ['lifecycle.offboarding.outcome','lifecycle.offboarding.case.reopen','lifecycle.it.return.cancel'])expect(Packet.safeParse({action,operation:'list'}).success).toBe(false);expect(Packet.safeParse({action:C.action,operation:'cancel_it',caseId}).success).toBe(false);});
+});
