@@ -1,11 +1,13 @@
 /** Development evidence only. This never issues a release receipt or invokes deployment. */
 import {execFileSync, spawnSync} from 'node:child_process';
+import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {appendFileSync, mkdirSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
 import {isAbsolute, join, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {hostHealth} from './host-health.mjs';
-import {capturePostgresEvidence, validatePostgresEvidence} from './postgres-evidence.mjs';
+import {CI_POLICY} from './policy-version.mjs';
+import {capturePostgresEvidence, validatePostgresEvidence, postgresProfileFromEnv, V15_POSTGRES_PROFILE} from './postgres-evidence.mjs';
 
 const postgres = fileURLToPath(new URL('./postgres.sh', import.meta.url));
 const hash = text => createHash('sha256').update(text).digest('hex');
@@ -94,6 +96,18 @@ function testEnvironment(kind, profileDirectory) {
   return env;
 }
 
+export function assertFocusedPostgresProfile(env) {
+  const profile = postgresProfileFromEnv(env);
+  assert.deepEqual(profile, V15_POSTGRES_PROFILE, 'Focused DB checks require the exact v15 PostgreSQL profile');
+  return profile;
+}
+
+// This identity includes the execution profile, separately from the selected-file hash.
+export function focusedPlanIdentity({sha, controller, files, groups, classifierHash, execution}) {
+  const plan = {policyVersion: CI_POLICY, sha, controller, files, groups, classifierHash, execution};
+  return {...plan, fingerprint: hash(JSON.stringify(plan))};
+}
+
 export function runFocused(destination) {
   runnerOnly();
   const cwd = process.cwd(), sha = process.env.AIHR_CI_HEAD, controller = process.env.AIHR_CI_CONTROL_HEAD;
@@ -106,15 +120,17 @@ export function runFocused(destination) {
     cwd, input: files.join('\n') + '\n', encoding: 'utf8', maxBuffer: 1024 * 1024,
   });
   const groups = partitionSelection(files, output);
+  const postgresProfile = groups.DB.length ? assertFocusedPostgresProfile(process.env) : null;
   const dir = resolve(destination), runnerTemp = realpathSync(process.env.RUNNER_TEMP);
   if (!relative(runnerTemp, dir) || relative(runnerTemp, dir).startsWith('../') || isAbsolute(relative(runnerTemp, dir)))
     throw Error('Evidence must use an owned directory under RUNNER_TEMP');
   mkdirSync(dir, {recursive: true});
+  const identity = focusedPlanIdentity({sha, controller, files, groups, classifierHash: hash(readFileSync(classifier)),
+    execution: {workers: 2, postgres: postgresProfile}});
   const report = {kind: 'FOCUSED_ONLY', releaseEligible: false, schemaVersion: 1, sha, controller,
     runId: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT,
     runtime: {node: process.versions.node, platform: process.platform, arch: process.arch},
-    startedAt: new Date().toISOString(), files, groups, manifestHash: hash(JSON.stringify(files)), classifierHash: hash(readFileSync(classifier)),
-    batches: [], exitCode: 1};
+    startedAt: new Date().toISOString(), ...identity, manifestHash: hash(JSON.stringify(files)), batches: [], exitCode: 1};
   const pgEnv = {...process.env, AIHR_CI_UNIT: 'db-1'};
   let touchedDatabase = false;
   try {
@@ -150,8 +166,8 @@ export function runFocused(destination) {
   finally {
     if (touchedDatabase) {
       try {
-        report.databaseTerminalEvidence = capturePostgresEvidence('db-1');
-        validatePostgresEvidence(report.databaseTerminalEvidence, {postgres: {memoryBytes: Number(process.env.AIHR_CI_PG_MEMORY_GIB ?? '1') * 1073741824, jit: process.env.AIHR_CI_PG_JIT ?? 'on'}});
+        report.databaseTerminalEvidence = capturePostgresEvidence('db-1', postgresProfile);
+        validatePostgresEvidence(report.databaseTerminalEvidence, {postgres: postgresProfile});
       } catch (error) { report.databaseTelemetryError = String(error); report.exitCode = 1; }
       const stats = spawnSync('bash', [postgres, 'stats'], {encoding: 'utf8', env: pgEnv});
       if (stats.status !== 0) report.exitCode = 1;

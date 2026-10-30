@@ -4,13 +4,20 @@ set -euo pipefail
 [[ "${GITHUB_ACTIONS:-}" == true && "${CI:-}" == true ]] || { echo 'GitHub CI only' >&2; exit 2; }
 [[ "${GITHUB_RUN_ID:-}" =~ ^[0-9]+$ && "${GITHUB_RUN_ATTEMPT:-}" =~ ^[0-9]+$ && "${AIHR_CI_UNIT:-}" =~ ^db-([1-4]|[0-9a-f]{16})$ ]] || exit 2
 [[ "${1:-}" == reset || "${1:-}" == stop || "${1:-}" == stats ]] || exit 2
-memory_gib="${AIHR_CI_PG_MEMORY_GIB:-1}"
-[[ "$memory_gib" == 1 || "$memory_gib" == 2 ]] || exit 2
-jit_args=()
-if [[ -n "${AIHR_CI_PG_JIT:-}" ]]; then
-  [[ "$AIHR_CI_PG_JIT" == on || "$AIHR_CI_PG_JIT" == off ]] || exit 2
-  jit_args=(-c "jit=$AIHR_CI_PG_JIT")
-fi
+# A named profile is mandatory even for historical diagnostic-only configurations.
+case "${AIHR_CI_PG_PROFILE:-}" in
+  2)
+    [[ ! ${AIHR_CI_PG_MEMORY_GIB+x} && "${AIHR_CI_PG_CONFIGURED_CAP_BYTES:-}" == 2113929216 && "${AIHR_CI_PG_PEAK_BUDGET_BYTES:-}" == 2147483648 && "${AIHR_CI_PG_JIT:-}" == on ]] || exit 2
+    memory_bytes=2113929216 ;;
+  legacy-1g|legacy-2g)
+    [[ ! ${AIHR_CI_PG_CONFIGURED_CAP_BYTES+x} && ! ${AIHR_CI_PG_PEAK_BUDGET_BYTES+x} ]] || exit 2
+    memory_gib="${AIHR_CI_PG_MEMORY_GIB:-}"
+    [[ ( "$AIHR_CI_PG_PROFILE" == legacy-1g && "$memory_gib" == 1 ) || ( "$AIHR_CI_PG_PROFILE" == legacy-2g && "$memory_gib" == 2 ) ]] || exit 2
+    [[ "${AIHR_CI_PG_JIT:-}" == on || "${AIHR_CI_PG_JIT:-}" == off ]] || exit 2
+    memory_bytes=$((memory_gib * 1073741824)) ;;
+  *) exit 2 ;;
+esac
+jit_args=(-c "jit=$AIHR_CI_PG_JIT")
 statement_args=()
 [[ "${AIHR_CI_PG_STATEMENTS:-0}" == 0 || "${AIHR_CI_PG_STATEMENTS:-0}" == 1 ]] || exit 2
 if [[ "${AIHR_CI_PG_STATEMENTS:-0}" == 1 ]]; then
@@ -30,7 +37,7 @@ fi
 [[ "${1:-}" == reset ]] || exit 2
 # Data lives on the disposable runner disk, not a RAM disk. Removal also removes its anonymous volume.
 docker run -d --name "$name" --label "aihr-owner=$name" --network host \
-  --memory="${memory_gib}g" --memory-swap="${memory_gib}g" --shm-size=128m \
+  --memory="$memory_bytes" --memory-swap="$memory_bytes" --shm-size=128m \
   -e POSTGRES_HOST_AUTH_METHOD=trust -e TZ=Asia/Kuala_Lumpur postgres:16@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97 \
   -c listen_addresses=127.0.0.1 -c port=5433 -c fsync=off -c synchronous_commit=off \
   -c full_page_writes=off -c wal_level=minimal -c max_wal_senders=0 \

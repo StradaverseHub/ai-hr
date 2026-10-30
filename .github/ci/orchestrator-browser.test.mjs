@@ -79,3 +79,16 @@ test('outcome fixture rows are fictional, scoped to the manifest companies and m
   const broken = manifest(); broken.actors[2].userId = "x'; drop table person; --";
   assert.throws(() => outcomeFixtureSql(broken));
 });
+
+
+test('database consumer requires exact v15 cap/budget identity and refuses legacy or mixed selectors', async () => {
+  const {assertBrowserPostgresProfile} = await import('./orchestrator-browser.mjs');
+  const env = {AIHR_CI_PG_PROFILE: '2', AIHR_CI_PG_CONFIGURED_CAP_BYTES: '2113929216',
+    AIHR_CI_PG_PEAK_BUDGET_BYTES: '2147483648', AIHR_CI_PG_JIT: 'on'};
+  assert.deepEqual(assertBrowserPostgresProfile(env), {profileVersion: 2, configuredCapBytes: 2113929216, peakBudgetBytes: 2147483648, jit: 'on'});
+  for (const changes of [{AIHR_CI_PG_PROFILE: undefined}, {AIHR_CI_PG_PROFILE: '1'},
+    {AIHR_CI_PG_CONFIGURED_CAP_BYTES: '2147483648'}, {AIHR_CI_PG_PEAK_BUDGET_BYTES: '2147483649'},
+    {AIHR_CI_PG_MEMORY_GIB: '2'}, {AIHR_CI_PG_JIT: 'off'}, {AIHR_CI_PG_JIT: undefined}])
+    assert.throws(() => assertBrowserPostgresProfile({...env, ...changes}));
+  assert.throws(() => assertBrowserPostgresProfile({AIHR_CI_PG_PROFILE: 'legacy-2g', AIHR_CI_PG_MEMORY_GIB: '2', AIHR_CI_PG_JIT: 'on'}));
+});

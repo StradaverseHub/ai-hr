@@ -8,8 +8,7 @@ import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {isDeepStrictEqual as equal} from 'node:util';
 import {verifyFocusedResult} from '../focused-checks.mjs';
-import {capturePostgresEvidence,validatePostgresEvidence} from '../postgres-evidence.mjs';
-import {CI_EXECUTION} from '../manifest.mjs';
+import {capturePostgresEvidence,validatePostgresEvidence,postgresProfileFromEnv} from '../postgres-evidence.mjs';
 const BASE='3c51317ea43ded103e782c37b55eccf9fdeae05c';
 const ORIGINAL_HASH='95272f90e5684476686231bc16efe1a5895b0c7d8afa580139b693fea270b9a6';
 export const FILES=Object.freeze(['test/attendance-policy-storage.test.ts','test/attendance-policy-storage-pricing.test.ts','test/attendance-policy-storage-settlement.test.ts','test/attendance-policy-storage-unclocked.test.ts']);
@@ -56,11 +55,12 @@ export async function benchmark(){
  assert(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'&&process.env.CI==='true'&&process.env.RUNNER_ENVIRONMENT==='github-hosted'&&process.env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr');
  const cwd=realpathSync(process.cwd()),sha=git(cwd,'rev-parse','HEAD');assert.equal(sha,process.env.AIHR_CI_HEAD);assert.equal(git(cwd,'status','--porcelain'),'');
  assert.equal(process.env.AIHR_CI_PG_MEMORY_GIB,'2');assert.equal(process.env.AIHR_CI_PG_JIT,'on');
+ const postgresProfile=postgresProfileFromEnv(process.env);assert.equal(postgresProfile.profileVersion,1);assert.equal(postgresProfile.profileId,'legacy-2g');
  const original=execFileSync('git',['show',BASE+':'+FILES[0]],{cwd,encoding:'utf8',maxBuffer:1024*1024});
  const contents=Object.fromEntries(FILES.map(f=>[f,readFileSync(join(cwd,f),'utf8')])),helper=readFileSync(join(cwd,HELPER),'utf8');
  const ts=createRequire(join(cwd,'package.json'))('typescript'),proof=sourceProof(original,contents,helper,ts);
  const out=join(realpathSync(process.env.RUNNER_TEMP),'diagnostic-attendance-split');mkdirSync(out,{mode:0o700});
- const report={kind:'PAIRED_ATTENDANCE_DIAGNOSTIC_NOT_RELEASE_EVIDENCE',sha,controller:process.env.AIHR_CI_CONTROL_HEAD,runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,sourceProof:proof,releaseAuthorized:false,order:['split','monolith'],orderCaveat:'Split runs first; later monolith can benefit from warm OS/dependency caches. Both use fresh containers. One pair is not a statistical benchmark.',runtime:{node:process.versions.node,platform:process.platform,arch:process.arch},startedAt:new Date().toISOString(),phases:[],exitCode:1};
+ const report={kind:'PAIRED_ATTENDANCE_DIAGNOSTIC_NOT_RELEASE_EVIDENCE',sha,controller:process.env.AIHR_CI_CONTROL_HEAD,runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,sourceProof:proof,execution:{workers:2,postgres:postgresProfile},releaseAuthorized:false,order:['split','monolith'],orderCaveat:'Split runs first; later monolith can benefit from warm OS/dependency caches. Both use fresh containers. One pair is not a statistical benchmark.',runtime:{node:process.versions.node,platform:process.platform,arch:process.arch},startedAt:new Date().toISOString(),phases:[],exitCode:1};
  const env={...process.env,AIHR_CI_UNIT:'db-3',VITEST_MAX_WORKERS:'2',VITEST_MAX_WORKERS_NODB:'2',TEST_DB_NAMESPACE:'attendance_pair',DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test'};
  const control=(action)=>{const result=spawnSync('bash',[postgres,action],{env,encoding:'utf8',timeout:180000,maxBuffer:1024*1024});assert.equal(result.status,0,'Owned PostgreSQL '+action+' failed');return result;};
  const results=[];let changed=false;
@@ -80,7 +80,7 @@ export async function benchmark(){
    const resultPath=join(directory,'vitest.json');
    await ownedCommand('pnpm',['exec','vitest','run',...phase.files,'--reporter=default','--reporter=json','--outputFile.json='+resultPath],{cwd,env:e,log:join(directory,'vitest.log')});phase.processExitCode=0;phase.afterTests=new Date().toISOString();
    const result=JSON.parse(readFileSync(resultPath,'utf8'));phase.cases=verifyFocusedResult(result,[...phase.files].sort(),cwd);assert.equal(phase.cases,100);results.push(result);
-   phase.databaseEvidence=capturePostgresEvidence('db-3');validatePostgresEvidence(phase.databaseEvidence,CI_EXECUTION);
+   phase.databaseEvidence=capturePostgresEvidence('db-3',postgresProfile);validatePostgresEvidence(phase.databaseEvidence,report.execution);
    control('stop');phase.databaseRemoved=true;phase.endedAt=new Date().toISOString();
    if(changed){writeFileSync(join(cwd,FILES[0]),contents[FILES[0]]);changed=false;}
    assert.equal(git(cwd,'status','--porcelain'),'');

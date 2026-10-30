@@ -21,7 +21,9 @@ env:
   TZ: Asia/Kuala_Lumpur
   LANG: en_US.UTF-8
   AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
-  AIHR_CI_PG_MEMORY_GIB: '2'
+  AIHR_CI_PG_PROFILE: '2'
+  AIHR_CI_PG_CONFIGURED_CAP_BYTES: '2113929216'
+  AIHR_CI_PG_PEAK_BUDGET_BYTES: '2147483648'
   AIHR_CI_PG_JIT: 'on'
 jobs:
   resolve:
