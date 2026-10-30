@@ -135,7 +135,7 @@ GRANT EXECUTE ON FUNCTION app.assistant_rewards_calendar_review_read(uuid) TO ai
 --> statement-breakpoint
 CREATE FUNCTION app._assistant_rewards_calendar_values(q public.reward_calendar) RETURNS jsonb
  LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT jsonb_build_object('due',jsonb_build_object('bu',q.bu_due,'returned',q.returned_due,'bg',q.bg_due,'gr',q.gr_due,'ctro',q.ctro_due,'ec',q.ec_due,'payroll',q.payroll_due),'caseDue',q.case_due,'offcycleDays',jsonb_build_object('bg',q.offcycle_bg_days,'gr',q.offcycle_gr_days,'ctro',q.offcycle_ctro_days,'ec',q.offcycle_ec_days,'returned',q.offcycle_returned_days));
+ SELECT jsonb_build_object('due',jsonb_build_object('bu',(q).bu_due,'returned',(q).returned_due,'bg',(q).bg_due,'gr',(q).gr_due,'ctro',(q).ctro_due,'ec',(q).ec_due,'payroll',(q).payroll_due),'caseDue',(q).case_due,'offcycleDays',jsonb_build_object('bg',(q).offcycle_bg_days,'gr',(q).offcycle_gr_days,'ctro',(q).offcycle_ctro_days,'ec',(q).offcycle_ec_days,'returned',(q).offcycle_returned_days));
 $$;
 REVOKE ALL ON FUNCTION app._assistant_rewards_calendar_values(public.reward_calendar) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
