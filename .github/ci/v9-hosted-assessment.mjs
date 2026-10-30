@@ -14,6 +14,10 @@ const identity={kind:'V9_HOSTED_READ_ONLY_ASSESSMENT',wrapper:sha(wrapper),reade
 assert(process.env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&process.env.GITHUB_EVENT_NAME==='workflow_dispatch'&&process.env.GITHUB_RUN_ATTEMPT==='1','First-attempt same-repository manual diagnostic required');
 assert(identity.wrapper===process.env.V9_WRAPPER_SHA&&identity.reader==='281d2fff8d8eac0f61dce84689f2b1636d6f166f'&&identity.candidate==='72a2673af354f382502ecc7799316fac3c19b1ac','Frozen identities differ');
 [source,reader,wrapper].forEach(clean);
+// actions/checkout omits the optional .git suffix; normalize only the verified canonical URL.
+const origin=execFileSync('git',['remote','get-url','origin'],{cwd:source,encoding:'utf8'}).trim();
+assert(/^https:\/\/github\.com\/stradaversehub\/ai-hr(?:\.git)?$/i.test(origin),'Foreign checkout origin');
+execFileSync('git',['remote','set-url','origin','https://github.com/StradaverseHub/ai-hr.git'],{cwd:source});
 writeFileSync(join(output,'identity.json'),JSON.stringify(identity,null,2)+'\n',{mode:0o600,flag:'wx'});
 const result=spawnSync(process.execPath,['--import',join(source,'node_modules/tsx/dist/loader.mjs'),join(reader,'.github/ci/v9-db-resource-assessment.mjs'),source,'41042016086',evidence],{cwd:reader,encoding:'utf8',timeout:50*60*1000,maxBuffer:8*1024**2,env:{...process.env,AIHR_CI_HEAD:identity.candidate}});
 [source,reader,wrapper].forEach(clean);
