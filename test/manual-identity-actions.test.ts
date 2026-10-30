@@ -28,4 +28,17 @@ describe('manual identity server-action authority and secret handling',()=>{
   expect(m.create).toHaveBeenLastCalledWith(ctx,expect.objectContaining({personId:''}));
  });
 
+ it.each([
+  ['resume',resumeManualAccountAction,'created'],
+  ['cancel',cancelManualAccountAction,'cancelled'],
+ ] as const)('%s retains the canonical command and returns to manual setup',async(kind,action,outcome)=>{
+  const form=new FormData();form.set('id','unfinished-setup');form.set('password','Temporary-password-12345');form.set('returnTo','https://foreign.test');
+  await expect(action(form)).rejects.toThrow(`REDIRECT /admin/users/create?manualSuccess=${outcome}`);
+  if(kind==='resume')expect(m.resume).toHaveBeenCalledWith(ctx,'unfinished-setup','Temporary-password-12345');
+  else expect(m.cancel).toHaveBeenCalledWith(ctx,'unfinished-setup');
+  expect(m.revalidate.mock.calls).toEqual([['/admin/users'],['/admin/users/create']]);
+  m.revalidate.mockClear();(kind==='resume'?m.resume:m.cancel).mockRejectedValue(new Error('Private provider detail'));
+  await expect(action(form)).rejects.toThrow('REDIRECT /admin/users/create?manualError=unavailable');expect(m.revalidate).not.toHaveBeenCalled();
+ });
+
 });
