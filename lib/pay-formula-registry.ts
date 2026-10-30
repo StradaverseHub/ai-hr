@@ -4,6 +4,8 @@ export type FormulaValue = {type:'decimal';value:string}|{type:'string';value:st
 export type FormulaParameter = {name:string;type:FormulaType;literal?:boolean;choices?:readonly string[];optional?:boolean};
 export type FormulaFunction = {code:string;aliases:readonly string[];category:string;label:string;description:string;returns:FormulaType|'field';parameters:readonly FormulaParameter[];source:string};
 export const PAY_FORMULA_REGISTRY_VERSION = 'payroll-formula-1';
+/** Bump when Native source selection, authorization or numeric boundary semantics change. */
+export const PAY_FORMULA_PROVIDER_VERSION = 'native-payroll-sources-1';
 export const PAY_FORMULA_FIELD_TYPES:Readonly<Record<'profile'|'employee',Readonly<Record<string,FormulaType>>>> = {
  profile:{joinDate:'date',groupJoinDate:'date',resignationDate:'date',confirmationDate:'date',lastWorkingDate:'date',employmentType:'string',employeeNo:'string',departmentCode:'string',positionCode:'string',gradeCode:'string'},
  employee:{dateOfBirth:'date',gender:'string',nationality:'string',maritalStatus:'string'},

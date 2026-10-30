@@ -6,13 +6,15 @@ import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import {isCalendarDate} from '../lib/calendar-date';
 import {serviceYearsAt} from '../lib/completed-years';
 import {PayFormulaError as FormulaLanguageError,evaluatePayFormula,analyzePayFormula,normalizeFormulaDecimal,addFormulaDecimal,applyFormulaAmount,divideFormulaDecimal,type FormulaRequest,type FormulaValue} from '../lib/pay-formula-language';
+import {PAY_FORMULA_PROVIDER_VERSION} from '../lib/pay-formula-registry';
 import {PayFormulaError,type ActiveFormula,type PayFormulaContext,type FormulaReadRequirements} from '../lib/pay-formula-model';
 import {resolvePayrollPermission,loadActiveFormulaProgramTx,loadFormulaAccumulationGroupsTx,recordFormulaEvaluationTx,resolvePayComponentSet,resolveAssignedPolicy,resolveProrationSettings,prorationDivisorDays,usesWorkingDayProration,workingDayRoster,cutOffWindowFor,type PayRuleScope,type PayRuleFormulaRuntime,type ResolvablePayComponent,readPayrollComponentInputsTx,readPayrollIndividualLedgerTx,readPayrollAttendanceHoursTx,payRuleDependencies,payRuleReadsFixedAllowanceTotal,payItemFeedsOvertimeOrp} from '../packs/payroll/service';
-import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx} from './workforce-access';
+import {assertWorkforceEmploymentTx} from './workforce-access';
 import {companyOnDate,companySegmentsForPeriodBulk,segmentForCompany} from './employment-company';
 import {employmentInformationAt} from './information-correction-history';
 import {employment,companyPayrollConfig} from '../db/schema';
 import {eq} from 'drizzle-orm';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {holidayDatesFor} from './holidays';
 import {eligibleWorkingDays,payrollIncrementBasic,payrollRateBasic,payrollRoundAmount} from '../lib/payroll-basic';
 import {isModuleEnabled,settingEnabled} from './entitlements';
@@ -25,13 +27,25 @@ const itemKey=(code:string)=>code.trim().toUpperCase();
 const decimal=(v:string):FormulaValue=>({type:'decimal',value:normalizeFormulaDecimal(v)});
 const unavailable=(name:string)=>new PayFormulaError('Formula source is unavailable or ambiguous: '+name,'FORMULA_SOURCE_UNAVAILABLE');
 const category=(s:string):FormulaReadRequirements['categories'][number]=>s==='payroll'?'compensation':s==='restricted'||s==='documents'?'confidential_hr':s==='identity'||s==='bank'||s==='statutory'?s:'personnel';
-const requirements=(fields:string[]):FormulaReadRequirements=>({fieldIds:[...new Set(fields)].sort(),categories:[...new Set(fields.map(id=>{const f=PERSONNEL_FIELDS.find(f=>f.id===id);if(!f)throw unavailable(id);return category(f.sensitivity);}))].sort()});
+const requirements=(fields:string[],workforce?:boolean):FormulaReadRequirements=>({fieldIds:[...new Set(fields)].sort(),categories:[...new Set(fields.map(id=>{const f=PERSONNEL_FIELDS.find(f=>f.id===id);if(!f)throw unavailable(id);return category(f.sensitivity);}))].sort(),...(workforce===undefined?{}:{workforce})});
+/** Financial source authority remains the Native financial owner. Workforce-record purposes
+ * are an additional requirement only when an expression actually reads that class of source. */
+async function financialSubjectTx(tx:Tx,ctx:SessionContext,companyId:string,employmentId:string){
+ if(!uuid.test(companyId)||!uuid.test(employmentId)||!ctx.userId)throw new PayFormulaError('The payroll employee or permission is unavailable.','FORMULA_SOURCE_DENIED');
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ const [row]=await tx.execute<{companyId:string;allowed:boolean}>(sql`select e.company_id as "companyId",app.principal_snapshot_current() and app.can_admin_payroll_for(${companyId}::uuid) and app.can_admin_payroll_employment(e.id) as allowed from public.employment e join public.company paying on paying.id=${companyId}::uuid and paying.tenant_id=${ctx.tenantId}::uuid where e.id=${employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid`);
+ if(!row?.allowed)throw new PayFormulaError('The payroll employee or permission is unavailable.','FORMULA_SOURCE_DENIED');return row;
+}
 export async function formulaReadRequirementsAllowedTx(tx:Tx,ctx:SessionContext,companyId:string,employmentId:string,r:FormulaReadRequirements){
- try{await assertWorkforceCompanyTx(tx,ctx,companyId,'view');await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');}catch{return false;}
- if(r.fieldIds.some(id=>!PERSONNEL_FIELDS.some(f=>f.id===id)))return false;
- const needed=new Set([...r.categories,...requirements(r.fieldIds).categories]);
- for(const c of needed)if(!await resolvePayrollPermission(tx,ctx,`report.read.${c}`,companyId))return false;
- return true;
+ let subject:{companyId:string};try{subject=await financialSubjectTx(tx,ctx,companyId,employmentId);}catch{return false;}
+ const valid=['personnel','compensation','identity','bank','statutory','confidential_hr'];
+ if(r.fieldIds.some(id=>!PERSONNEL_FIELDS.some(f=>f.id===id))||r.categories.some(c=>!valid.includes(c)))return false;
+ const needed=new Set([...r.categories,...requirements(r.fieldIds).categories]),privateRecord=[...needed].some(c=>['identity','bank','statutory','confidential_hr'].includes(c));
+ const workforce=privateRecord||(typeof r.workforce==='boolean'?r.workforce:[...needed].some(c=>c!=='compensation'));
+ if(workforce){try{await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');}catch{return false;}}
+ for(const c of needed){if(!await resolvePayrollPermission(tx,ctx,`report.read.${c}`,companyId))return false;
+  if(workforce&&c!=='compensation'&&subject.companyId!==companyId&&!await resolvePayrollPermission(tx,ctx,`report.read.${c}`,subject.companyId))return false;
+ }return true;
 }
 const profileFields:Record<string,string>={joinDate:'employment.employment_dates_and_service.joindate',groupJoinDate:'employment.employment_dates_and_service.hiredon',resignationDate:'employment.employment_dates_and_service.resignationdate',confirmationDate:'employment.employment_dates_and_service.confirmationdate',lastWorkingDate:'employment.employment_dates_and_service.lastworkingdate',employmentType:'employment.organisation_assignment.employmenttype',employeeNo:'profile.personal_details.employeecode',departmentCode:'employment.organisation_assignment.departmentname',positionCode:'employment.organisation_assignment.positionname',gradeCode:'employment.organisation_assignment.gradename'};
 const employeeFields:Record<string,string>={dateOfBirth:'profile.personal_details.dateofbirth',gender:'profile.personal_details.gender',nationality:'profile.personal_details.nationality',maritalStatus:'profile.personal_details.maritalstatus'};
@@ -54,7 +68,7 @@ type Evaluation={formula:ActiveFormula;componentCode:string;amount:string;explan
  * not zeros; evaluating a branch that never reads that source remains possible. */
 export async function preparePayFormulaRuntimeTx(tx:Tx,ctx:SessionContext,context:PayFormulaContext,snapshot:FormulaRuntimeSnapshot,override?:ActiveFormula){
  if(!uuid.test(context.companyId)||!uuid.test(context.employmentId)||(!uuid.test(context.cycleId)&&!(snapshot.batchId&&context.cycleId===''))||!/^\d{4}-\d{2}$/.test(context.period)||!isCalendarDate(context.asOf))throw unavailable('test context');
- await assertWorkforceCompanyTx(tx,ctx,context.companyId,'view');await assertWorkforceEmploymentTx(tx,ctx,context.employmentId,'view');
+ await financialSubjectTx(tx,ctx,context.companyId,context.employmentId);
  if(await companyOnDate(tx,context.employmentId,context.asOf)!==context.companyId)throw unavailable('employee company at selected date');
  const cycles=context.cycleId?await tx.execute<{id:string}>(sql`select id from payroll_cycle where id=${context.cycleId}::uuid and company_id=${context.companyId}::uuid and tenant_id=${ctx.tenantId}::uuid`):[];if(context.cycleId&&cycles.length!==1)throw unavailable('payroll cycle');
  const catalog=await tx.execute<CatalogRow>(sql`select id,code,kind,rule,prorates,rounding_method as rounding,resolution_order as "resolutionOrder",formula_context as context,archived_at is not null as archived from pay_component where tenant_id=${ctx.tenantId}::uuid order by code`);
@@ -64,9 +78,9 @@ export async function preparePayFormulaRuntimeTx(tx:Tx,ctx:SessionContext,contex
  for(const c of snapshot.components)if(c.rule?.kind==='formula_builder'&&!(override&&itemKey(c.code)===itemKey(context.currentCode))&&JSON.stringify([...c.rule.dependencies].sort())!==JSON.stringify([...(active.get(c.rule.formulaId)?.dependencies??[])].sort()))throw unavailable('Pay Item dependency plan');
  const calls=[...active.values()].flatMap(f=>analyzePayFormula(f.program).calls);
  const allowed=new Map<string,boolean>(),values=new Map<string,unknown>(),sources:unknown[]=[];
- const requestedFields=new Set(calls.flatMap(sourceFields));requestedFields.add(basicField);if(snapshot.components.some(c=>c.rule?.kind==='formula_builder'&&(c.prorateOverride??c.prorates)))requestedFields.add(profileFields.groupJoinDate);
+ const requestedFields=new Set(calls.flatMap(sourceFields));requestedFields.add(basicField);
  for(const id of requestedFields)allowed.set(id,await formulaReadRequirementsAllowedTx(tx,ctx,context.companyId,context.employmentId,requirements([id])));
- if(!allowed.has(profileFields.groupJoinDate))allowed.set(profileFields.groupJoinDate,await formulaReadRequirementsAllowedTx(tx,ctx,context.companyId,context.employmentId,requirements([profileFields.groupJoinDate])));
+ const financialAllowed=new Map<string,boolean>();for(const id of [basicField,profileFields.groupJoinDate])financialAllowed.set(id,await formulaReadRequirementsAllowedTx(tx,ctx,context.companyId,context.employmentId,requirements([id],false)));
  const hiredOn=employmentInformationAt('hiredOn',sql`${context.asOf}::date`,sql`${employment.hiredOn}`),joinDate=employmentInformationAt('joinDate',sql`${context.asOf}::date`,sql`${employment.joinDate}`);
  // Only fetch source categories the actor can read. Exact named columns avoid accidental widening.
  const employmentNeeded=[...requestedFields].some(id=>allowed.get(id)&&Object.values(profileFields).includes(id));
@@ -91,7 +105,7 @@ export async function preparePayFormulaRuntimeTx(tx:Tx,ctx:SessionContext,contex
  }
  const raw=new Map<string,string>(),unprorated=new Map<string,string>([['BASIC',snapshot.basic]]),prorated=new Map<string,string>([['BASIC',snapshot.proratedBasic]]),applied=new Map<ResolvablePayComponent,string>(),exact=new Map<ResolvablePayComponent,string>(),evaluations:Evaluation[]=[];
  const unknownInputs=new Set<string>();for(const c of snapshot.inputComponents??snapshot.components){if(c.formulaInput===undefined)unknownInputs.add(itemKey(c.code));else raw.set(itemKey(c.code),addFormulaDecimal(raw.get(itemKey(c.code))??'0',c.formulaInput));}for(const code of unknownInputs)raw.delete(code);raw.set('BASIC',snapshot.basic);
- const usedFields=new Set<string>(),read=(id:string)=>{if(!allowed.get(id))throw new PayFormulaError('Formula source permission is unavailable.','FORMULA_SOURCE_DENIED');usedFields.add(id);const v=values.get(id);if(v===null||v===undefined||v==='')throw unavailable(id);return String(v);};
+ let usedWorkforce=false;const usedFields=new Set<string>(),read=(id:string)=>{if(!allowed.get(id))throw new PayFormulaError('Formula source permission is unavailable.','FORMULA_SOURCE_DENIED');usedFields.add(id);const v=values.get(id);if(v===null||v===undefined||v==='')throw unavailable(id);return String(v);};
  const fieldValue=(id:string,type:'date'|'string'):FormulaValue=>({type,value:read(id)});
  const legacyPersonnel=(code:string,proratedValue:boolean,seen=new Set<string>()):boolean=>{
   if(code==='BASIC')return proratedValue;if(seen.has(code))return false;seen.add(code);
@@ -105,11 +119,11 @@ export async function preparePayFormulaRuntimeTx(tx:Tx,ctx:SessionContext,contex
    }
   }return false;
  };
- const fromMap=(m:Map<string,string>,name:string)=>{if(itemKey(name)!=='BASIC')catalogItem(name);if(!allowed.get(basicField))throw new PayFormulaError('Formula source permission is unavailable.','FORMULA_SOURCE_DENIED');usedFields.add(basicField);if(m!==raw&&legacyPersonnel(itemKey(name),m===prorated)){if(!allowed.get(profileFields.groupJoinDate))throw new FormulaLanguageError('source_denied','Formula source permission is unavailable.');usedFields.add(profileFields.groupJoinDate);}const v=m.get(itemKey(name));if(v===undefined)throw unavailable(name);return decimal(v);};
+ const fromMap=(m:Map<string,string>,name:string)=>{if(itemKey(name)!=='BASIC')catalogItem(name);if(!allowed.get(basicField))throw new PayFormulaError('Formula source permission is unavailable.','FORMULA_SOURCE_DENIED');usedFields.add(basicField);if(m!==raw&&legacyPersonnel(itemKey(name),m===prorated)){if(!financialAllowed.get(profileFields.groupJoinDate))throw new FormulaLanguageError('source_denied','Formula source permission is unavailable.');usedFields.add(profileFields.groupJoinDate);}const v=m.get(itemKey(name));if(v===undefined)throw unavailable(name);return decimal(v);};
  const runtime:PayRuleFormulaRuntime={
  resolve(rule,component){const formula=active.get(rule.formulaId);if(!formula)throw unavailable(rule.formulaId);const config=catalogItem(component.code);
- const implicitFields=[basicField,...((component.prorateOverride??component.prorates)?[profileFields.groupJoinDate]:[])];for(const id of implicitFields){if(!allowed.get(id))throw new PayFormulaError('Formula source permission is unavailable.','FORMULA_SOURCE_DENIED');usedFields.add(id);}
- const result=evaluatePayFormula(formula.program,{resolve(request){const args=request.args.map(a=>String(a.value)),code=request.code;for(const id of sourceFields(request)){if(!allowed.get(id))throw new FormulaLanguageError('source_denied','Formula source permission is unavailable.',request.loc);usedFields.add(id);}
+ const implicitFields=[basicField,...((component.prorateOverride??component.prorates)?[profileFields.groupJoinDate]:[])];for(const id of implicitFields){if(!financialAllowed.get(id))throw new PayFormulaError('Formula source permission is unavailable.','FORMULA_SOURCE_DENIED');usedFields.add(id);}
+ const result=evaluatePayFormula(formula.program,{resolve(request){const args=request.args.map(a=>String(a.value)),code=request.code;const fields=sourceFields(request);for(const id of fields){if(!allowed.get(id))throw new FormulaLanguageError('source_denied','Formula source permission is unavailable.',request.loc);usedFields.add(id);}if(requirements(fields).categories.some(c=>c!=='compensation'))usedWorkforce=true;
  switch(code){
  case 'Basic':return decimal(read(basicField));
  case 'Payrate':{const value=({monthly:'Monthly',daily:'Daily',hourly:'Hourly',custom_period:'Custom Period'} as Record<string,string>)[read(payModeField)];if(!value)throw unavailable('pay mode');return {type:'string',value};}
@@ -127,15 +141,15 @@ export async function preparePayFormulaRuntimeTx(tx:Tx,ctx:SessionContext,contex
  default:throw unavailable(code);
  }
  }});const amount=result.amount;exact.set(component,amount);if(Number(amount)<0||Number(amount)>1e8)throw unavailable('result outside Pay Item amount limits');const paid=applyFormulaAmount(result.amount,{factor:(component.prorateOverride??component.prorates)?snapshot.factor:undefined,rounding:component.rounding as 'none'|'up'|'down'|'nearest'});applied.set(component,paid);
- evaluations.push({formula,componentCode:component.code,amount:paid,explanations:result.explanations,reads:result.reads,sources:{context:{...context,currentCode:component.code,input:component.formulaInput??context.input},catalog:config,sourceEvidence:sources.map(source=>Object.fromEntries(Object.entries(source as Record<string,unknown>).filter(([key])=>!['value','values'].includes(key)))),factor:(component.prorateOverride??component.prorates)?snapshot.factor:undefined,sourceFingerprint:fingerprint({sources,fields:[...values].sort(([a],[b])=>a.localeCompare(b)),raw:[...raw],basic:snapshot.basic,proratedBasic:snapshot.proratedBasic})},readRequirements:requirements([...usedFields])});return amount;
+ evaluations.push({formula,componentCode:component.code,amount:paid,explanations:result.explanations,reads:result.reads,sources:{providerVersion:PAY_FORMULA_PROVIDER_VERSION,context:{...context,currentCode:component.code,input:component.formulaInput??context.input},catalog:config,sourceEvidence:sources.map(source=>Object.fromEntries(Object.entries(source as Record<string,unknown>).filter(([key])=>!['value','values'].includes(key)))),factor:(component.prorateOverride??component.prorates)?snapshot.factor:undefined,sourceFingerprint:fingerprint({providerVersion:PAY_FORMULA_PROVIDER_VERSION,sources,fields:[...values].sort(([a],[b])=>a.localeCompare(b)),raw:[...raw],basic:snapshot.basic,proratedBasic:snapshot.proratedBasic})},readRequirements:requirements([...usedFields],usedWorkforce)});return amount;
  },
  publish(code,components){if(code==='BASIC')return;let before='0',after='0';for(const row of components){const value=applied.get(row.component);before=addFormulaDecimal(before,exact.get(row.component)??((!row.component.rule||row.component.rule.kind==='fixed')&&row.component.formulaInput!==undefined?normalizeFormulaDecimal(row.component.formulaInput):legacyDecimal(row.amount)));after=addFormulaDecimal(after,value??normalizeFormulaDecimal(String(payrollRoundAmount((row.component.prorateOverride??row.component.prorates)?row.amount*(snapshot.legacyFactor??Number(snapshot.factor)):row.amount,row.component.rounding))));}unprorated.set(code,before);prorated.set(code,after);}
  };
- return {runtime,applied,evaluations,sourceFingerprint:()=>fingerprint({context,catalog,groups,sources,raw:[...raw],basic:snapshot.basic,proratedBasic:snapshot.proratedBasic,factor:snapshot.factor,fields:[...values].sort(([a],[b])=>a.localeCompare(b)),sourceEvidence:snapshot.sourceEvidence}),readRequirements:()=>requirements([...usedFields]),async record(){const refs=[];for(const e of evaluations){if(!snapshot.batchId)throw unavailable('payroll batch');const evaluationId=await recordFormulaEvaluationTx(tx,ctx,{...e,companyId:context.companyId,employmentId:context.employmentId,batchId:snapshot.batchId,period:context.period});refs.push({formulaId:e.formula.formulaId,revisionId:e.formula.revisionId,contentHash:e.formula.contentHash,evaluationId,componentCode:e.componentCode,amount:e.amount});}return refs;}};
+ return {runtime,applied,evaluations,sourceFingerprint:()=>fingerprint({providerVersion:PAY_FORMULA_PROVIDER_VERSION,context,catalog,groups,sources,raw:[...raw],basic:snapshot.basic,proratedBasic:snapshot.proratedBasic,factor:snapshot.factor,fields:[...values].sort(([a],[b])=>a.localeCompare(b)),sourceEvidence:snapshot.sourceEvidence}),readRequirements:()=>requirements([...usedFields],usedWorkforce),async record(){const refs=[];for(const e of evaluations){if(!snapshot.batchId)throw unavailable('payroll batch');const evaluationId=await recordFormulaEvaluationTx(tx,ctx,{...e,companyId:context.companyId,employmentId:context.employmentId,batchId:snapshot.batchId,period:context.period});refs.push({formulaId:e.formula.formulaId,revisionId:e.formula.revisionId,contentHash:e.formula.contentHash,evaluationId,componentCode:e.componentCode,amount:e.amount});}return refs;}};
 }
 
 export async function simulatePayFormulaTx(tx:Tx,ctx:SessionContext,formula:ActiveFormula,context:PayFormulaContext){
- await assertWorkforceCompanyTx(tx,ctx,context.companyId,'view');await assertWorkforceEmploymentTx(tx,ctx,context.employmentId,'view');
+ await financialSubjectTx(tx,ctx,context.companyId,context.employmentId);
  if(!isCalendarDate(context.asOf)||!/^\d{4}-(0[1-9]|1[0-2])$/.test(context.period)||!uuid.test(context.cycleId))throw unavailable('test context');
  if(!isModuleEnabled(ctx,'typed_pay_components'))throw unavailable('Typed Pay Items module');
  const start=context.period+'-01',dim=new Date(Date.UTC(Number(context.period.slice(0,4)),Number(context.period.slice(5)),0)).getUTCDate(),end=context.period+'-'+String(dim).padStart(2,'0');

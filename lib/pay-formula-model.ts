@@ -2,7 +2,7 @@ import type {FormulaProgram} from './pay-formula-language';
 export type PayFormulaMethod='write'|'conditions';
 export type PayFormulaContext={companyId:string;employmentId:string;period:string;cycleId:string;asOf:string;currentCode:string;input:string;batchId?:string};
 export type PayFormulaRevision={id:string;ordinal:number;description:string;method:PayFormulaMethod;source:string;program:FormulaProgram;contentHash:string;dependencies:string[];dependencySnapshot?:unknown;createdAt:string};
-export type FormulaReadRequirements={categories:('personnel'|'compensation'|'identity'|'bank'|'statutory'|'confidential_hr')[];fieldIds:string[]};
+export type FormulaReadRequirements={categories:('personnel'|'compensation'|'identity'|'bank'|'statutory'|'confidential_hr')[];fieldIds:string[];workforce?:boolean};
 export type PayFormulaTest={id:string;revisionId:string;passed:boolean;amount:string|null;explanations:string[];error:string|null;context:PayFormulaContext;sourceFingerprint:string;dependencyFingerprint:string;readRequirements:FormulaReadRequirements;createdAt:string};
 export type PayFormulaCapabilities={view:boolean;edit:boolean;test:boolean;activate:boolean;deactivate:boolean;delete:boolean};
 export type PayFormulaEvaluationSummary={companyName:string|null;employeeCode:string|null;employeeName:string|null;id:string;revisionId:string;componentCode:string;period:string;amount:string;createdAt:string};

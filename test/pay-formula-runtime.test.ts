@@ -123,7 +123,7 @@ it('reads an exact retained historical contribution instead of a current value o
  const result=await testPayFormula(ctx,{...saved,context:{...context,period:'2026-06',asOf:'2026-06-30'}});expect(result.passed,result.error??'retained source').toBe(true);expect(result.amount).toBe('123.45');
 });
 it('keeps large legacy cent amounts exact at both named value boundaries',async()=>{
- const source=await upsertPayComponent(ctx,{...item,code:'LARGE_CENTS',name:'Large legacy cents',rule:{kind:'qty_rate',qty:33333333.33,rate:1}});
+ const source=await upsertPayComponent(ctx,{...item,code:'LARGE_CENTS',name:'Large legacy cents',rule:{kind:'qty_rate',qty:1,rate:33333333.33}});
  await setEmploymentPayComponent(ctx,{employmentId:employee.employmentId,componentId:source.id,amount:1,effectiveFrom:context.period+'-01'});
  const saved=await savePayFormula(ctx,{formulaId:'LARGE',description:'Legacy monetary boundary',method:'write',source:'If {#PayItem}("LARGE_CENTS") = 33333333.33 And {#PayItemNoProrate}("LARGE_CENTS") = 33333333.33 Then\n Return 1\nElse\n Return 0\nEnd If'});
  const result=await testPayFormula(ctx,{...saved,context});expect(result.amount).toBe('1');
