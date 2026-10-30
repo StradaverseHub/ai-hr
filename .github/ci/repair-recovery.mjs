@@ -84,16 +84,17 @@ export async function verifyRepairedCi({candidatePath,originalPath,runId,baselin
  const plan=planAt(candidatePath,{controller,baseline,runtime:archived.runtime}),impactContext=reconstructRepairImpact({cwd:candidatePath,base:original,head:candidate,controller:verificationController});
  assert(isDeepStrictEqual(delta.changed,impactContext.plan.changed),'Reconstructed impact omitted repair paths');
  const disposition=repairDisposition({sourcePlan,plan,assessment,impactContext,verificationController});
- assert(plan.units.filter(u=>disposition.fresh.includes(u.id)).every(u=>u.kind==='nodb'),'Affected DB/browser coverage needs a validated replacement route; cannot retain it');
+ assert(plan.units.filter(u=>disposition.fresh.includes(u.id)).every(u=>u.kind==='nodb'||u.kind==='db'),'Affected browser coverage needs a validated replacement route; cannot retain it');
  assert(plan.units.filter(u=>disposition.fresh.includes(u.id)).every(u=>!u.pdfTools),'Affected PDF tooling unit needs its full source-bound environment proof');
  const workflow=api('actions/workflows/alpha-focused-checks.yml');assert(workflow.path==='.github/workflows/alpha-focused-checks.yml'&&workflow.state==='active','Focused workflow registry differs');
  const focused=[];
  for(const id of focusedRunIds.slice().sort((a,b)=>a-b)){
   const m=metadata(id),authenticated=validateRepairFocusedMetadata({...m,expected:{runId:id,controller,workflowId:workflow.id,after:source.run.updated_at}});
-  const f=await collectRecoveryEvidence(id,join(dir,'focused-'+id),{reuse}),artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
+  const f=await collectRecoveryEvidence(id,join(dir,'focused-'+id),{reuse,repairPackets:true}),artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
   assert(isDeepStrictEqual(m,facts(f)),'Focused metadata changed during download');
-  assert(isDeepStrictEqual([...packet.keys()].sort(),['focused.json','nodb.vitest.json']),'Exact no-DB focused packet required');
-  focused.push({...f,...authenticated,artifact,report:packet.get('focused.json'),result:packet.get('nodb.vitest.json')});
+  const report=packet.get('focused.json'),database=report?.groups?.DB?.length>0,resultName=database?'db.vitest.json':'nodb.vitest.json';
+  assert(isDeepStrictEqual([...packet.keys()].sort(),[resultName,'focused.json'].sort()),'Exact homogeneous focused packet required');
+  focused.push({...f,...authenticated,artifact,report,result:packet.get(resultName)});
  }
  const bm=metadata(buildRunId);validateRepairBuildMetadata({...bm,expected:{runId:buildRunId,controller,after:source.run.updated_at,candidateBranch}});
  validateRepairArchiveInventory(bm,new Set([BUILD_ARTIFACT,NEXT_APPLICATION_STATE]),()=> 'build');assert(bm.artifacts.some(a=>a.name===BUILD_ARTIFACT),'Mandatory fresh canonical build packet missing');
@@ -113,8 +114,11 @@ export async function verifyRepairedCi({candidatePath,originalPath,runId,baselin
  save(dir,reuse?`revalidation-${randomUUID()}.json`:'verification.json',result);return result;
 }
 function facts(f){return {run:f.run,jobs:f.jobs,artifacts:f.artifacts};}
+export function assertRepairRevalidation(evidence,current){
+ assert(isDeepStrictEqual(current.recovery,evidence.recovery)&&isDeepStrictEqual(current.build,evidence.build)&&isDeepStrictEqual(current.artifacts,evidence.artifacts),'Repair evidence changed before launch');return true;
+}
 export async function revalidateRepairedCi(evidence){
  assert(cleanHead(controllerRoot)===evidence.verificationController,'Verification controller changed');
  const current=await verifyRepairedCi({...evidence,runId:evidence.originalRunId,evidenceDirectory:evidence.evidenceDirectory,reuse:true});
- assert(isDeepStrictEqual(current.recovery,evidence.recovery)&&isDeepStrictEqual(current.build,evidence.build)&&isDeepStrictEqual(current.artifacts,evidence.artifacts),'Repair evidence changed before launch');return true;
+ return assertRepairRevalidation(evidence,current);
 }

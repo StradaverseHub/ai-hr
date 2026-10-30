@@ -48,6 +48,18 @@ for(const [name,change] of [
 ])test('v2 refuses '+name,()=>{const f=input();change(f);assert.throws(()=>verifyRepairRecovery(f));});
 function focusedMetadata(){const f=input(),p=f.focused[0];return {run:p.run,jobs:p.jobs,artifacts:[p.artifact],expected:{runId:200,controller:f.plan.controller,workflowId:999,after:time(5)},now};}
 test('Fresh whole compiler is authenticated at its real focused producing job',()=>assert.equal(validateRepairFocusedMetadata(focusedMetadata()).compiler.jobId,302));
+function dbInput(){
+ const f=input(),unit=f.plan.units.find(u=>u.kind==='db'),original=f.reports.find(r=>r.id===unit.id),p=structuredClone(f.focused[0]);
+ const impact=f.impactContext.plan;impact.run=[...impact.run,...unit.files].sort();impact.selection[unit.files[0]]=['transitive DB consumer'];const {fingerprint,...body}=impact;impact.fingerprint=hash(body);
+ p.run.id=201;p.producer.run_id=201;p.report.runId='201';p.report.files=unit.files.slice().sort();p.report.manifestHash=hash(JSON.stringify(p.report.files));p.report.groups={NODB:[],DB:p.report.files};p.report.batches[0]={...p.report.batches[0],kind:'DB',files:p.report.files,startedAt:time(2.9)};
+ p.report.databaseTerminalEvidence={...structuredClone(original.databaseTerminalEvidence),name:'aihr-ci-201-1-db-1',capturedAt:time(2.2)};
+ p.result=structuredClone(original.batches[0].result);p.result.testResults[0].name='/home/runner/work/ai-hr/ai-hr/source/'+unit.files[0];p.compiler=null;
+ f.focused.push(p);f.history.runIds.push(201);return f;
+}
+test('A changed DB consumer receives a complete fresh owned PG16 unit, with original resources and assertions',()=>{const c=verifyRepairRecovery(dbInput());assert.equal(c.units.filter(u=>u.kind==='repaired-source').length,2);assert.equal(c.tests,5);});
+for(const [name,change] of [
+ ['wrong database owner',f=>f.focused[1].report.databaseTerminalEvidence.name='foreign'],['database OOM',f=>f.focused[1].report.databaseTerminalEvidence.memoryEvents.oom_kill=1],['database budget drift',f=>f.focused[1].report.databaseTerminalEvidence.memoryMax=1073741824],['JIT drift',f=>f.focused[1].report.databaseTerminalEvidence.settings.jit='off'],['PG patch drift',f=>f.focused[1].report.databaseTerminalEvidence.settings.serverVersionNum='160099'],['DB capture before execution',f=>f.focused[1].report.databaseTerminalEvidence.capturedAt=time(10)],['mixed DB selection',f=>f.focused[1].report.groups.NODB=['test/plain.test.ts']],['wrong DB classifier',f=>f.focused[1].report.groups={DB:[],NODB:f.focused[1].report.files}],['missing DB resource evidence',f=>delete f.focused[1].report.databaseTerminalEvidence],
+])test('DB repair refuses '+name,()=>{const f=dbInput();change(f);assert.throws(()=>verifyRepairRecovery(f));});
 for(const [name,change] of [['compiler failure',f=>f.jobs[2].conclusion='failure'],['foreign compiler controller',f=>f.jobs[2].head_sha='f'.repeat(40)],['focused build is not canonical replacement',f=>f.jobs[3].conclusion='success'],['rerun',f=>f.run.run_attempt=2],['extra artifact',f=>f.artifacts.push({...f.artifacts[0],name:'production-build-v1'})],['early artifact',f=>f.artifacts[0].created_at=time(10)],['missing job',f=>f.jobs.pop()],['expired',f=>f.artifacts[0].expired=true]])test('Fresh metadata refuses '+name,()=>{const f=focusedMetadata();change(f);assert.throws(()=>validateRepairFocusedMetadata(f));});
 function buildMetadata(){const f=input();return {run:f.buildRun,jobs:f.buildJobs,expected:{runId:500,controller:f.plan.controller,after:time(5),candidateBranch:'repair',now}};}
 test('Only actual canonical build-only workflow is admitted',()=>assert.equal(validateRepairBuildMetadata(buildMetadata()).name,'build'));

@@ -68,10 +68,10 @@ case into an implicit whole-gate retry or a release exception.
 
 The first v2 implementation supports modified existing product TypeScript files only, with
 unchanged test inventory, SQL, security owners, dependencies and execution infrastructure.
-It replaces whole affected no-DB processes using authenticated focused packets, requires at
+It replaces whole affected no-DB and DB processes using authenticated focused packets, requires at
 least one fresh whole compiler, and uses a separate actual canonical build-only run. Affected
-DB, browser or PDF-environment units refuse; their successful original results can be retained
-only when independently unaffected. This is a limitation, not permission to reduce impact.
+browser or PDF-environment units refuse; their successful original results can be retained
+only when independently unaffected. Fresh DB evidence must cover one entire original unit in a fresh job-owned PostgreSQL container with the original PG16 patch, 2 GiB budget, JIT and zero-OOM proof. This is a limitation, not permission to reduce impact.
 
 After the exact controller passes its hosted controls and independent review, set
 `AIHR_RECOVERY_CONTROLLER_RUN_ID` to that controller-only run and

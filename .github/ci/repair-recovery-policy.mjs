@@ -4,6 +4,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {relative} from 'node:path';
 import {hash,requiredEvidence} from './manifest.mjs';
 import {verifyUnitReport} from './verify-shards.mjs';
+import {validatePostgresEvidence} from './postgres-evidence.mjs';
 import {REPOSITORY,REPOSITORY_ID,WORKFLOW_ID,WORKFLOW_PATH} from './release-policy.mjs';
 export const REPAIR_RECOVERY_POLICY='aihr-cross-source-recovery/v2';
 const same=(a,b,message)=>assert(isDeepStrictEqual(a,b),message);
@@ -77,8 +78,7 @@ export function verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun,repor
  assert(verificationDiagnostic.controller===verificationController&&id(verificationDiagnostic.runId),'Hosted verifier diagnostic required');
  const disposition=repairDisposition({sourcePlan,plan,assessment,impactContext,verificationController}),fresh=new Set(disposition.fresh);
  assert(fresh.size>0,'No failed/invalidated units to recover');
- // v2 starts with exact no-DB processes. Unsupported DB/browser invalidation remains closed.
- assert(plan.units.filter(u=>fresh.has(u.id)).every(u=>u.kind==='nodb'),'Affected DB/browser units require a separately validated execution route');
+ assert(plan.units.filter(u=>fresh.has(u.id)).every(u=>u.kind==='nodb'||u.kind==='db'),'Affected browser units require a separately validated execution route');
  assert(Array.isArray(reports)&&reports.length===sourcePlan.units.length&&new Set(reports.map(r=>r.id)).size===reports.length,'Complete original reports required');
  assert(build?.canonicalCandidateInputsVerified===true&&build.source===plan.sha&&build.controller===plan.controller&&build.runId===buildRun.id&&buildRun.conclusion==='success','Fresh source-bound canonical build required');
  assert(history?.kind==='AUTHENTICATED_COMPLETE_REPAIR_HISTORY'&&history.sourceRunId===sourceRun.id&&Array.isArray(history.runIds)&&history.runIds.includes(buildRun.id),'Complete latest execution history required');
@@ -87,12 +87,18 @@ export function verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun,repor
   const r=f.report;assert(r.kind==='FOCUSED_ONLY'&&r.releaseEligible===false&&r.schemaVersion===1&&r.sha===plan.sha&&r.controller===plan.controller&&r.runId===String(f.run.id)&&r.attempt==='1'&&r.exitCode===0,'Fresh report identity differs');
   same(r.runtime,plan.runtime,'Focused runtime changed');assert(r.classifierHash===classifierHash&&r.manifestHash===hash(JSON.stringify(r.files)),'Classifier/selection differs');
   assert(r.healthBefore?.ok===true&&r.healthAfter?.ok===true&&Array.isArray(r.files)&&r.files.length>0&&r.files.length<=64&&new Set(r.files).size===r.files.length,'Unhealthy or unbounded focused selection');
-  same(r.files,r.files.slice().sort(),'Noncanonical focused selection');same(r.groups,{NODB:r.files,DB:[]},'Only no-DB replacement supported');
-  assert(r.batches?.length===1&&r.batches[0].kind==='NODB'&&r.batches[0].exitCode===0&&r.batches[0].processExitCode===0&&r.batches[0].signal===null,'Fresh process did not pass');same(r.batches[0].files,r.files,'Focused process omitted files');
+  same(r.files,r.files.slice().sort(),'Noncanonical focused selection');const database=r.groups?.DB?.length>0,kind=database?'DB':'NODB';same(r.groups,database?{NODB:[],DB:r.files}:{NODB:r.files,DB:[]},'One homogeneous focused partition required');
+  assert(r.batches?.length===1&&r.batches[0].kind===kind&&r.batches[0].exitCode===0&&r.batches[0].processExitCode===0&&r.batches[0].signal===null,'Fresh process did not pass');same(r.batches[0].files,r.files,'Focused process omitted files');
+  if(database){
+   const unit=plan.units.find(u=>u.kind==='db'&&isDeepStrictEqual(u.files.slice().sort(),r.files));assert(unit&&fresh.has(unit.id),'DB recovery must rerun one entire original unit in its own fresh database');
+   validatePostgresEvidence(r.databaseTerminalEvidence,plan.execution);
+   const e=r.databaseTerminalEvidence,original=reports.find(x=>x.id===unit.id)?.databaseTerminalEvidence;
+   assert(e.name===`aihr-ci-${f.run.id}-1-db-1`&&Date.parse(e.capturedAt)>=Date.parse(r.batches[0].startedAt)&&Date.parse(e.capturedAt)<=Date.parse(f.producer.completed_at)&&e.settings.serverVersionNum===original?.settings?.serverVersionNum,'DB ownership, capture interval or actual PG16 runtime differs');
+  }
   assert(Date.parse(r.startedAt)>=Date.parse(f.producer.started_at)&&Date.parse(r.endedAt)<=Date.parse(f.producer.completed_at)&&Date.parse(r.endedAt)>=Date.parse(r.startedAt),'Focused report outside producing job');
   const cases=caseInventory(f.result,r.files,'/home/runner/work/ai-hr/ai-hr/source',{passing:true});
   assert(r.batches[0].assertions===[...cases.values()].reduce((n,c)=>n+c.length,0),'Focused summary count differs');
-  for(const [path,names] of cases){const unit=plan.units.find(u=>u.files.includes(path));assert(unit&&fresh.has(unit.id)&&!replacements.has(path),'Foreign, retained or duplicated replacement');replacements.set(path,{cases:names,runId:f.run.id,jobId:f.producer.id,artifactId:f.artifact.id,digest:f.artifact.digest});}
+  for(const [path,names] of cases){const unit=plan.units.find(u=>u.files.includes(path));assert(unit&&unit.kind===(database?'db':'nodb')&&fresh.has(unit.id)&&!replacements.has(path),'Foreign, misclassified, retained or duplicated replacement');replacements.set(path,{cases:names,runId:f.run.id,jobId:f.producer.id,artifactId:f.artifact.id,digest:f.artifact.digest});}
   if(f.compiler){const job=f.jobs.find(j=>j.name==='typecheck');assert(f.compiler.runId===f.run.id&&f.compiler.controller===plan.controller&&f.compiler.jobId===job?.id&&job.conclusion==='success','Fresh whole compiler identity differs');compilers.push(f.compiler);}
   focusedSources.push({runId:f.run.id,jobId:f.producer.id,artifactId:f.artifact.id,digest:f.artifact.digest,reportHash:hash(r),resultHash:hash(f.result)});
  }
