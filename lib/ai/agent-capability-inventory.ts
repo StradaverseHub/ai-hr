@@ -1,3 +1,4 @@
+// employees.profile_request.reject implements non-own pending scalar-request rejection only; approve/photo/evidence/register paths remain native.
 // Bounded hand TP3 opening review leaves broader setTp3Action/form exports backlog.
 // Payment-method MY/other-employment review is bounded; the broad legacy export remains backlog.
 /** Passport review covers existing MY profiles only. Broad setPassportAction stays backlog:approve for no-row and legacy-country paths. */

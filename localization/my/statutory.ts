@@ -633,7 +633,16 @@ export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
   ctx=captureStatutoryContext(ctx);p=structuredClone(p);
   const values = normalizedBankValuesMY(p);
   const run = async (tx:Tx) => {
-    await statutoryMaintenanceSubjectMYTx(tx,ctx,p);
+    // Only the native ESS caller's enclosing transaction may use its protected bank purpose.
+    // Entry precedes the private bank read; the existing deferred delta/audit guards own completion.
+    let directBank = false;
+    if (outerTx) {
+      await statutoryWriteIntervalMYTx(tx,ctx);
+      const [purpose] = await tx.execute<{allowed:boolean}>(sql`select app.profile_direct_bank_person(${p.personId}::uuid)
+        and (${p.employmentId??null}::uuid is null or app.profile_direct_subject(${p.employmentId??null}::uuid)) as allowed`);
+      directBank = purpose?.allowed === true;
+    }
+    if (!directBank) await statutoryMaintenanceSubjectMYTx(tx,ctx,p);
     const [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,

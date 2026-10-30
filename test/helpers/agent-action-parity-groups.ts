@@ -25,7 +25,7 @@ export const PARITY_PROBE_GROUPS={
  personnel:{actions:[
   'employees.document_metadata.maintain','employees.code.maintain','employees.passport.maintain',
   'employees.payment_method.maintain','employees.fixed_item.archive','employees.tp3_opening.maintain',
-  'employees.cost_allocation.maintain',
+  'employees.cost_allocation.maintain','employees.profile_request.reject',
  ],variants:['cost_allocation_clear']},
 } satisfies Record<string,{actions:readonly ProbedActionId[];variants:readonly ParityProbeVariant[]}>;
 export type ParityProbeGroup=keyof typeof PARITY_PROBE_GROUPS;
