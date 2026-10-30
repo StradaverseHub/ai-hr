@@ -25,6 +25,9 @@ function decimal(text:string,loc:FormulaLocation=start):bigint{
 }
 function decimalText(n:bigint){const a=abs(n),whole=a/SCALE,fraction=(a%SCALE).toString().padStart(12,'0').replace(/0+$/,'');return (n<Z?'-':'')+whole.toString()+(fraction?'.'+fraction:'');}
 export function normalizeFormulaDecimal(value:string){return decimalText(decimal(value));}
+export function addFormulaDecimal(a:string,b:string){return decimalText(bounded(decimal(a)+decimal(b)));}
+export function multiplyFormulaDecimal(a:string,b:string){return decimalText(bounded(roundedDivision(decimal(a)*decimal(b),SCALE)));}
+export function divideFormulaDecimal(a:string,b:string){return decimalText(bounded(roundedDivision(decimal(a)*SCALE,decimal(b))));}
 export function roundFormulaDecimal(value:string,places=2){if(!Number.isInteger(places)||places<0||places>12)fail('precision','Rounding precision must be an integer from 0 to 12');const n=decimal(value),factor=TEN**BigInt(12-places);return decimalText(bounded(roundedDivision(n,factor)*factor));}
 export type FormulaLiteral=Exclude<FormulaValue,{type:'date'}>;
 export type FormulaExpression=
