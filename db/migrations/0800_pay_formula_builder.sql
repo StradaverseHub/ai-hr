@@ -28,9 +28,15 @@ CREATE FUNCTION app.pay_formula_category(p_company uuid,p_category text) RETURNS
  ELSE c.role IN ('hr_admin','super_admin') END)
 $$;
 CREATE FUNCTION app.pay_formula_trace_access(p_company uuid,p_employment uuid,p_required jsonb) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
- SELECT app.principal_snapshot_current() AND app.can_admin_payroll_for(p_company) AND app.access_workforce_employment(p_employment,'workforce.view')
+ WITH subject AS (SELECT company_id FROM public.employment WHERE id=p_employment AND tenant_id=app.current_tenant_id()),
+ needed AS (SELECT coalesce(CASE WHEN jsonb_typeof(p_required->'workforce')='boolean' THEN (p_required->>'workforce')::boolean END,
+   EXISTS(SELECT 1 FROM jsonb_array_elements_text(p_required->'categories') c WHERE c<>'compensation'))
+   OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(p_required->'categories') c WHERE c NOT IN ('compensation','personnel')) AS workforce)
+ SELECT app.principal_snapshot_current() AND app.can_admin_payroll_for(p_company) AND app.can_admin_payroll_employment(p_employment)
  AND jsonb_typeof(p_required->'categories')='array' AND jsonb_typeof(p_required->'fieldIds')='array'
  AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements_text(p_required->'categories') c WHERE NOT app.pay_formula_category(p_company,c))
+ AND (NOT (SELECT workforce FROM needed) OR (app.access_workforce_employment(p_employment,'workforce.view')
+   AND NOT EXISTS(SELECT 1 FROM subject,jsonb_array_elements_text(p_required->'categories') c WHERE subject.company_id<>p_company AND c<>'compensation' AND NOT app.pay_formula_category(subject.company_id,c))))
 $$;
 REVOKE ALL ON FUNCTION app.pay_formula_catalog_access(),app.pay_formula_definition_read(),app.pay_formula_category(uuid,text),app.pay_formula_trace_access(uuid,uuid,jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.pay_formula_catalog_access(),app.pay_formula_definition_read(),app.pay_formula_category(uuid,text),app.pay_formula_trace_access(uuid,uuid,jsonb) TO ai_hr_app;
