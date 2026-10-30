@@ -6,7 +6,7 @@ The module has three groups and nine leaves: Onboarding (New Joiners, Checklist 
 
 ## Checklist definitions
 
-New checklist precedes the Owned by you / Other checklists selector cards. Cards show role, matching rules, tasks, population and owner. Duplicate creates new checklist/task identities owned by the initiating actor. Only the current owner can transfer ownership or delete; transfer requires an available user with access to the same module. Existing configuration authority remains independently required. Deletion requires explicit confirmation and may remove the final checklist: new cases then have equipment/access or return/revoke work without checklist tasks. Pending overrides fall back to automatic matching. Active native confirmed snapshots and submitted offboarding snapshots remain retained; native Draft reconciliation continues through its existing owner.
+New checklist precedes the Owned by you / Other checklists selector cards. Cards show role, matching rules, tasks, population and owner. Duplicate creates new checklist/task identities owned by the initiating actor. Only the current owner can transfer ownership or delete; transfer requires an available existing configuration writer with access to the same module. Ownership does not grant configuration authority. Existing configuration authority remains independently required. Deletion requires explicit confirmation and may remove the final checklist: new cases then have equipment/access or return/revoke work without checklist tasks. Pending overrides fall back to automatic matching. Active native confirmed snapshots and submitted offboarding snapshots remain retained; native Draft reconciliation continues through its existing owner.
 
 ## Explicit document replacement
 

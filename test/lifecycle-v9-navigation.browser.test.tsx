@@ -26,6 +26,7 @@ const {V9Workspace,ChecklistEditor}=await import('../app/lifecycle/v9/workspace'
 afterEach(async()=>{cleanup();document.documentElement.removeAttribute('data-ui-theme');document.documentElement.classList.remove('dark');await page.viewport(1280,720);});
 it.each(['classic','monolith','atelier'] as const)('keeps AIHR %s chrome and the same V9 hierarchy/content sections in a real browser',async theme=>{
  await page.viewport(1440,1000);document.documentElement.setAttribute('data-ui-theme',theme);
+ await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
  const permissions={onboarding:true,offboarding:true,administration:true};
  render(<UiThemeProvider theme={theme}><NextIntlClientProvider locale="en" messages={messages}>
   <div data-app-shell className="flex" style={{height:'100dvh'}}>
@@ -45,7 +46,7 @@ it.each(['classic','monolith','atelier'] as const)('keeps AIHR %s chrome and the
  const documents=screen.getByRole('region',{name:'Document templates'}),emails=screen.getByRole('region',{name:'Email templates'});
  expect(getComputedStyle(documents).backgroundColor).toBe(getComputedStyle(palette).backgroundColor);
  const expectedInk=getComputedStyle(palette).color;
- if(getComputedStyle(workspace).color!==expectedInk)console.info('V9_THEME_PAINT_DIAGNOSTIC '+JSON.stringify({theme,rootTheme:document.documentElement.getAttribute('data-ui-theme'),rootInk:getComputedStyle(document.documentElement).getPropertyValue('--foreground'),workspaceInk:getComputedStyle(workspace).getPropertyValue('--foreground'),paint:getComputedStyle(workspace).color,expectedInk}));
+ if(getComputedStyle(workspace).color!==expectedInk)console.info('V9_THEME_PAINT_DIAGNOSTIC '+JSON.stringify({theme,rootTheme:document.documentElement.getAttribute('data-ui-theme'),rootInk:getComputedStyle(document.documentElement).getPropertyValue('--foreground'),workspaceInk:getComputedStyle(workspace).getPropertyValue('--foreground'),paint:getComputedStyle(workspace).color,expectedInk,ancestors:[workspace.parentElement,workspace.parentElement?.parentElement,document.body].filter(Boolean).map(node=>({tag:node!.tagName,classes:node!.className,ink:getComputedStyle(node!).getPropertyValue('--foreground'),paint:getComputedStyle(node!).color}))}));
  await expect.poll(() => getComputedStyle(workspace).color).toBe(expectedInk);palette.remove();
  expect(documents.getBoundingClientRect().top).toBeLessThan(emails.getBoundingClientRect().top);
  expect(Math.abs(documents.getBoundingClientRect().left-emails.getBoundingClientRect().left)).toBeLessThan(1);
@@ -74,4 +75,10 @@ it.each(['classic','monolith','atelier'] as const)('keeps checklist controls and
  const shot=await page.screenshot({path:`../.vitest-attachments/v9-checklist-${theme}-dark-mobile.png`,animations:'disabled',base64:true,scale:'css'});console.info('V9_DERIVED_NAV_SCREENSHOT '+JSON.stringify({theme,view:'checklist',mode:'dark',fixture:'fictional',base64:shot.base64}));
  view.unmount();render(<div className="v9-workspace"><RequestRecords cases={[]} native={null} labels={{}} company="" search="" openCase={()=>{}}/></div>);
  fireEvent.click(screen.getByRole('button',{name:'Export (CSV)'}));expect(screen.getByRole('textbox',{name:'Request records CSV'})).toBeInTheDocument();expect(screen.getByRole('button',{name:'Download CSV'}).getBoundingClientRect().right).toBeLessThanOrEqual(391);
+});
+
+it('repaints an existing V9 workspace when the selected AIHR theme changes',async()=>{
+ document.documentElement.setAttribute('data-ui-theme','classic');render(<div className="v9-workspace v9-workspace-global"><p>Fictional theme switch</p></div>);
+ const workspace=document.querySelector('.v9-workspace-global')!;
+ for(const theme of ['classic','monolith','atelier']){document.documentElement.setAttribute('data-ui-theme',theme);await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));const sample=document.createElement('span');sample.style.color='var(--foreground)';workspace.appendChild(sample);await expect.poll(()=>getComputedStyle(workspace).color).toBe(getComputedStyle(sample).color);sample.remove();}
 });

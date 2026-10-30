@@ -1362,6 +1362,10 @@ it('transfers checklist ownership only from its current owner to an active modul
   await expect(v9SaveConfig(admin,config.revision,config)).rejects.toThrow('access to this module');
   const native=await onboardingContext(admin);native.config.access.offboarding.push(other.userId!);await onboardingSaveConfig(admin,native.revision,native.config);
   config=(await v9Workspace(admin)).config!;config.checklists.find(checklist=>checklist.id===originalId)!.ownerUserId=other.userId!;
+  await expect(v9SaveConfig(admin,config.revision,config)).rejects.toThrow('existing configuration authority');
+  expect((await v9Workspace(admin)).options.checklistOwnerIds).not.toContain(other.userId);
+  await owner.client`update role_assignment set role='hr_admin',company_id=null where tenant_id=${base.tenantId}::uuid and app_user_id=${other.userId!}::uuid and role='employee'`;
+  expect((await v9Workspace(admin)).options.checklistOwnerIds).toContain(other.userId);
   const before=structuredClone(config);await v9SaveConfig(admin,config.revision,config);
   await expect(v9SaveConfig(admin,before.revision,before)).rejects.toThrow('Settings changed');
   config=(await v9Workspace(admin)).config!;config.checklists=config.checklists.filter(checklist=>checklist.id!==originalId);
