@@ -410,7 +410,7 @@ export const AGENT_ACTIONS=Object.freeze([
   prepare:{status:'implemented',adapter:'cost_allocation_maintenance_review_v1',inputSchema:'CostAllocationMaintenance.Human',outputSchema:'CostAllocationMaintenance.Prepared'},
   confirm:{status:'implemented',adapter:'cost_allocation_maintenance_review_v1',inputSchema:'CostAllocationMaintenance.Confirmation',outputSchema:'CostAllocationMaintenance.Completed'},
   outcome:'canonical_receipt_required',semantics:'dated_distribution_replaced_or_cleared_no_payroll_recalculation',humanInputs:['employmentId','subjectId','effectiveDate','effectiveCompanyId','expectedRevision','operation','rows'],
-  permission:{actor:'workforce_maintainer',guard:'core/assistant-actions/cost-allocation-maintenance-source.ts#withCostAllocationIntervalTx'},subject:'other_employment',blastRadius:{max:1,unit:'one_dated_distribution_complete_replace_or_clear'},
+  permission:{actor:'hr_admin',guard:'core/assistant-actions/cost-allocation-maintenance-source.ts#withCostAllocationIntervalTx'},subject:'other_employment',blastRadius:{max:1,unit:'one_dated_distribution_complete_replace_or_clear'},
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'repeat'},evaluationCases:[],
   screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:[]},review:{route:'/assistant/cost-allocation',handoff:'review_page'},
   store:'generic_assigned',browserOwner:'costAllocationMaintenance',pauseKey:'hr_assistant'}),

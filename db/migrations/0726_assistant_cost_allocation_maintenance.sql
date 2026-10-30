@@ -20,25 +20,6 @@ $$;
 REVOKE ALL ON FUNCTION app.employment_cost_allocation_review_visible(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.employment_cost_allocation_review_visible(uuid) TO ai_hr_app;
 --> statement-breakpoint
--- Native positive capability projection. This does not grant raw personnel/assignment reads or
--- change system provisioning. Canonical INVOKER date proof runs inside this separately fenced owner.
-CREATE FUNCTION app.employment_cost_allocation_subject(p_employment uuid,p_date date,p_write boolean DEFAULT false) RETURNS jsonb
- LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE e public.employment;dated uuid;operation text:=CASE WHEN p_write THEN 'workforce.maintain' ELSE 'workforce.view' END;
-BEGIN
- IF app.current_user_id() IS NULL OR app.current_tenant_id() IS NULL OR app.principal_snapshot_current() IS NOT TRUE THEN RAISE EXCEPTION 'Allocation access denied' USING ERRCODE='42501';END IF;
- IF p_write THEN PERFORM app.access_workforce_write_lock();END IF;
- IF app.access_workforce_employment(p_employment,operation) IS NOT TRUE THEN RAISE EXCEPTION 'Allocation access denied' USING ERRCODE='42501';END IF;
- IF p_write THEN SELECT * INTO e FROM public.employment WHERE id=p_employment AND tenant_id=app.current_tenant_id() FOR UPDATE;
- ELSE SELECT * INTO e FROM public.employment WHERE id=p_employment AND tenant_id=app.current_tenant_id();END IF;
- IF NOT FOUND THEN RAISE EXCEPTION 'Allocation access denied' USING ERRCODE='42501';END IF;
- SELECT proof.company_id INTO dated FROM app.proven_company_date_points(jsonb_build_array(jsonb_build_object('employmentId',e.id,'date',p_date))) proof WHERE proof.employment_id=e.id AND proof.on_date=p_date AND proof.reason IS NULL;
- IF dated IS NULL OR app.access_workforce_company(dated,operation) IS NOT TRUE OR (p_write AND NOT EXISTS(SELECT 1 FROM public.company c WHERE c.id=dated AND c.tenant_id=e.tenant_id AND c.archived_at IS NULL)) THEN RAISE EXCEPTION 'Allocation dated company unavailable' USING ERRCODE='42501';END IF;
- RETURN jsonb_build_object('employment',jsonb_build_object('id',e.id,'personId',e.person_id,'companyId',e.company_id,'hiredOn',e.hired_on,'terminatedOn',e.terminated_on),'companyId',dated);
-END $$;
-REVOKE ALL ON FUNCTION app.employment_cost_allocation_subject(uuid,date,boolean) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.employment_cost_allocation_subject(uuid,date,boolean) TO ai_hr_app;
---> statement-breakpoint
 -- Preserve every predecessor's column rules verbatim, including nullable actor branches.
 DO $$ DECLARE item record;previous text;scope_name text;matches integer;
 BEGIN
@@ -67,7 +48,8 @@ BEGIN
  EXECUTE 'CREATE UNIQUE INDEX assistant_review_assigned_pending_subject ON app.assistant_own_leave_review(tenant_id,action_kind,receipt_subject_id,user_id) WHERE ('||assigned_predicate||') OR (action_kind=''employees.cost_allocation.maintain'' AND state=''awaiting_confirmation'' AND receipt_subject_id IS NOT NULL)';
 END $$;
 --> statement-breakpoint
--- Minimal command authority, no role floor. Before any return prove the real person, date/company,
+-- Preserve native HR/super-admin scoped authority and supported Workforce capability checks. Before any
+-- return prove the real person, date/company,
 -- retained current-company identity, current user and the all-active-company view witness.
 CREATE FUNCTION app._assistant_cost_allocation_scope(p_employment uuid,p_date date,p_company uuid,p_current_company uuid DEFAULT NULL,p_subject_person uuid DEFAULT NULL) RETURNS void
  LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -108,7 +90,7 @@ END $$;
 REVOKE ALL ON FUNCTION app.cost_allocation_review_identity(uuid,date,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.cost_allocation_review_identity(uuid,date,uuid) TO ai_hr_app;
 --> statement-breakpoint
--- Native-owned event projection avoids a new broad audit RLS grant for positive non-HR maintainers.
+-- Native-owned event projection keeps exact receipt proof behind the same native scoped authority.
 -- Current proof covers only changed tuples; historical recovery uses the immutable native event/set.
 CREATE FUNCTION app.cost_allocation_review_receipt(p_employment uuid,p_event uuid,p_current boolean DEFAULT false) RETURNS jsonb
  LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -178,9 +160,9 @@ BEGIN
  PERFORM app._assistant_multi_cycle_run_review_identity(NULL,false);
  IF p_operation IS NULL OR p_operation NOT IN('prepare','subject','read','discard','index','complete') THEN RAISE EXCEPTION 'Allocation review unavailable' USING ERRCODE='42501';END IF;
  IF p_operation='index' THEN
-  SELECT coalesce(jsonb_agg(jsonb_build_object('action',action_kind,'contractVersion',1,'actionId',id,'state',state,'createdAt',to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'expiresAt',to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')) ORDER BY created_at DESC,id DESC),'[]'::jsonb) INTO output FROM (SELECT r.* FROM app.assistant_own_leave_review r JOIN public.employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id AND e.person_id=r.decision_subject_person_id AND e.company_id=r.company_id
-  WHERE r.tenant_id=t AND r.user_id=u AND r.action_kind='employees.cost_allocation.maintain' AND r.person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=u AND a.tenant_id=t) AND r.decision_subject_person_id IS DISTINCT FROM r.person_id
-  AND app.employment_cost_allocation_review_visible(r.employment_id) AND app.access_workforce_company(r.allocation_effective_company_id,'workforce.maintain') AND EXISTS(SELECT 1 FROM app.proven_company_date_points(jsonb_build_array(jsonb_build_object('employmentId',e.id,'date',r.allocation_effective_date))) proof WHERE proof.employment_id=e.id AND proof.company_id=r.allocation_effective_company_id AND proof.reason IS NULL) ORDER BY r.created_at DESC,r.id DESC LIMIT 25) selected;
+  SELECT coalesce(jsonb_agg(jsonb_build_object('action',action_kind,'contractVersion',1,'actionId',id,'state',state,'createdAt',to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'expiresAt',to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')) ORDER BY created_at DESC,id DESC),'[]'::jsonb) INTO output FROM (SELECT listed.* FROM app.assistant_own_leave_review listed JOIN public.employment e ON e.id=listed.employment_id AND e.tenant_id=listed.tenant_id AND e.person_id=listed.decision_subject_person_id AND e.company_id=listed.company_id
+  WHERE listed.tenant_id=t AND listed.user_id=u AND listed.action_kind='employees.cost_allocation.maintain' AND listed.person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=u AND a.tenant_id=t) AND listed.decision_subject_person_id IS DISTINCT FROM listed.person_id
+  AND app.employment_cost_allocation_review_visible(listed.employment_id) AND app.access_workforce_company(listed.allocation_effective_company_id,'workforce.maintain') AND EXISTS(SELECT 1 FROM app.proven_company_date_points(jsonb_build_array(jsonb_build_object('employmentId',e.id,'date',listed.allocation_effective_date))) proof WHERE proof.employment_id=e.id AND proof.company_id=listed.allocation_effective_company_id AND proof.reason IS NULL) ORDER BY listed.created_at DESC,listed.id DESC LIMIT 25) selected;
   RETURN output;
  END IF;
  IF p_operation='prepare' THEN
