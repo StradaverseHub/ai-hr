@@ -1,3 +1,5 @@
+import {documentMetadataReviews,readDocumentMetadataChoices} from '../../core/assistant-actions/document-metadata-review-store';
+import {addEmployeeDocument,updateEmployeeDocumentMeta} from '../../core/employee-documents';
 import {PARITY_PROBE_GROUPS,type ParityProbeGroup,type ParityProbeVariant} from './agent-action-parity-groups';
 import {workforceProfileMaintenanceReviews,readWorkforceProfileMaintenanceChoices} from '../../core/assistant-actions/workforce-profile-maintenance-review-store';
 import {maintainWorkforceRecord,workforceEditor} from '../../core/workforce-maintenance';
@@ -381,6 +383,11 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'employees.bank.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,fields:{bankName:'Fictional bank',bankAccountNo:'000-FICTIONAL',enableCustomHolderName:false,customHolderName:null,enableCustomHolderId:false,customHolderId:null}}),
   offered:async(who,item)=>listed(await readBankMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>requirePackFor('MY').statutory.setBank(who,{personId:item.subjectId,bankName:'Fictional bank',bankAccountNo:'000-FICTIONAL',enableCustomHolderName:false,customHolderName:null,enableCustomHolderId:false,customHolderId:null},tx)},
+ 'employees.document_metadata.maintain':{family:'hr_on_employment',store:documentMetadataReviews,screenAdmits:isAdmin,
+  create:async(_w,h)=>{const doc=await addEmployeeDocument(groupOf(h.base),{employmentId:h.person.employmentId,title:'Fictional metadata original',fileName:'fixture.txt',mimeType:'text/plain',content:Buffer.from('Fictional fixture attachment')});return itemOf(h,doc.id);},
+  human:item=>({action:'employees.document_metadata.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,fields:{title:'Fictional revised metadata',category:'Fictional category',description:'Fictional description'}}),
+  offered:async(who,item)=>listed(await readDocumentMetadataChoices(who,{query:item.name,employmentId:item.employmentId}),'documents','id',item.subjectId),
+  screen:(tx,who,item)=>updateEmployeeDocumentMeta(who,{documentId:item.subjectId,title:'Fictional revised metadata',category:'Fictional category',description:'Fictional description'},tx)},
  'employees.emergency_contact.maintain':{family:'hr_on_employment',store:emergencyContactMaintenanceReviews,screenAdmits:isAdmin,
   create:async(_w,h)=>itemOf(h,h.person.personId),
   human:item=>({action:'employees.emergency_contact.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'add',contactId:null,fields:{fullName:'Fictional Emergency Contact',relationship:null,mobilePhone:'000-FICTIONAL',homePhone:null,address:null,remarks:'Fictional human note',priority:'primary'}}),

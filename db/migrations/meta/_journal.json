@@ -4103,6 +4103,13 @@
       "when": 1793330000048,
       "tag": "0719_assistant_bank_maintenance",
       "breakpoints": true
+    },
+    {
+      "idx": 701,
+      "version": "7",
+      "when": 1793330000049,
+      "tag": "0720_assistant_document_metadata",
+      "breakpoints": true
     }
   ]
 }
