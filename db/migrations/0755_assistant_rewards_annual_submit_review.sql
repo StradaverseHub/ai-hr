@@ -1,4 +1,4 @@
--- UNAPPLIED PROVISIONAL DEVELOPMENT ONLY. Allocated 0755 / idx734 / version7 / when1793330000092 / breakpoints:true. Private proof stage; NOT journal-mounted/applied/CI.
+-- UNAPPLIED PROVISIONAL DEVELOPMENT ONLY. Allocated 0755 / idx734 / version7 / when1793330000092 / breakpoints:true. Private proof stage; Journal identity reserved; NOT applied/CI.
 -- SAME encrypted ledger; legacy Rewards refs retain truthful unit/event/reviewed-revision meaning.
 -- Private whole-effect hashes/IDs retire with encrypted content; completed refs have a protected commitment.
 ALTER TABLE app.assistant_own_leave_review ADD COLUMN rewards_submit_decision_id uuid UNIQUE,
@@ -529,7 +529,7 @@ BEGIN
  IF NOT FOUND OR before_row.state<>'awaiting_confirmation' OR clock_timestamp()>=before_row.expires_at OR before_row.rewards_submit_snapshot IS NULL OR NOT EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content c WHERE c.action_id=before_row.id) THEN RAISE EXCEPTION 'Annual submission unavailable' USING ERRCODE='42501';END IF;
  PERFORM app.assistant_rewards_submit_scope(before_row.rewards_unit_id,before_row.id,true);
  -- This transaction-level lock has no explicit unlock. It is a refusal-only fence, not authority.
- PERFORM pg_advisory_xact_lock(hashtextextended('assistant-rewards-submit-hidden-fence:'||before_row.tenant_id::text||':'||before_row.rewards_unit_id::text,0));
+ IF NOT pg_try_advisory_xact_lock(hashtextextended('assistant-rewards-submit-hidden-fence:'||before_row.tenant_id::text||':'||before_row.rewards_unit_id::text,0)) THEN RAISE EXCEPTION 'Annual submission hidden dependency busy' USING ERRCODE='55P03';END IF;
  current_snapshot:=app._assistant_rewards_submit_snapshot(before_row.rewards_unit_id);
  IF current_snapshot IS DISTINCT FROM before_row.rewards_submit_snapshot-'nativeDecisionDigest' THEN RAISE EXCEPTION 'Annual submission source changed' USING ERRCODE='42501';END IF;
  expected_row:=before_row;expected_row.rewards_submit_effect_xid:=pg_current_xact_id();
@@ -580,11 +580,16 @@ REVOKE ALL ON FUNCTION app._assistant_rewards_submit_refusal_fence_held(uuid,uui
 --> statement-breakpoint
 CREATE FUNCTION app._assistant_rewards_submit_hidden_interval() RETURNS trigger
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE previous_tenant uuid;previous_unit uuid;following_tenant uuid;following_unit uuid;root_xid xid8:=pg_current_xact_id_if_assigned();
+DECLARE guard_key bigint;previous_tenant uuid;previous_unit uuid;following_tenant uuid;following_unit uuid;root_xid xid8:=pg_current_xact_id_if_assigned();
 BEGIN
  IF TG_RELID NOT IN ('public.reward_governance'::regclass,'public.reward_governance_public'::regclass,'public.reward_governance_history'::regclass,'public.reward_senior_award'::regclass,'public.reward_senior_evidence'::regclass) OR TG_OP NOT IN ('INSERT','UPDATE','DELETE') THEN RAISE EXCEPTION 'Invalid annual submission hidden interval';END IF;
  IF TG_OP<>'INSERT' THEN previous_tenant:=OLD.tenant_id;previous_unit:=OLD.unit_id;END IF;IF TG_OP<>'DELETE' THEN following_tenant:=NEW.tenant_id;following_unit:=NEW.unit_id;END IF;
  IF app._assistant_rewards_submit_refusal_fence_held(previous_tenant,previous_unit) OR app._assistant_rewards_submit_refusal_fence_held(following_tenant,following_unit) OR (root_xid IS NOT NULL AND EXISTS(SELECT 1 FROM app.assistant_own_leave_review r WHERE r.action_kind='rewards.annual_review.submit' AND r.state IN ('awaiting_confirmation','completed') AND r.rewards_submit_effect_xid=root_xid AND ((r.tenant_id=previous_tenant AND r.rewards_unit_id=previous_unit) OR (r.tenant_id=following_tenant AND r.rewards_unit_id=following_unit)))) THEN RAISE EXCEPTION 'Annual submission hidden dependency write refused' USING ERRCODE='42501';END IF;
+ -- All actual writers join the same key, even outside the normal native unit lock. Try-only
+ -- shared admission is canonical and bounded; an owning exclusive fence was already refused above.
+ FOR guard_key IN SELECT DISTINCT hashtextextended('assistant-rewards-submit-hidden-fence:'||image.tenant_id::text||':'||image.unit_id::text,0) FROM (VALUES(previous_tenant,previous_unit),(following_tenant,following_unit)) image(tenant_id,unit_id) WHERE image.tenant_id IS NOT NULL AND image.unit_id IS NOT NULL ORDER BY 1 LOOP
+  IF NOT pg_try_advisory_xact_lock_shared(guard_key) THEN RAISE EXCEPTION 'Annual submission hidden dependency busy' USING ERRCODE='55P03';END IF;
+ END LOOP;
  IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app._assistant_rewards_submit_hidden_interval() FROM PUBLIC,ai_hr_app;
