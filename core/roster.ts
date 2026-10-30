@@ -1663,7 +1663,8 @@ export async function setEmploymentScheduleGroupTx(
   tx: Tx,
   ctx: SessionContext,
   p: { employmentId: string; attendanceRuleId: string | null },
-): Promise<{ id: string; attendanceRuleId: string | null; changed: boolean }> {
+  options?: { returnEventId: true },
+): Promise<{ id: string; attendanceRuleId: string | null; changed: boolean; eventId?: string }> {
   p={...p};
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   await tx.execute(sql`select app.access_workforce_write_lock()`);
@@ -1705,7 +1706,7 @@ export async function setEmploymentScheduleGroupTx(
     {existingReferences:true}, // A group edit does not create a new assignment of an archived source.
   );
 
-  await appendEvent(tx, {
+  const eventId = await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'employment',
     aggregateId: p.employmentId,
@@ -1713,8 +1714,8 @@ export async function setEmploymentScheduleGroupTx(
     actor: actorOf(ctx),
     subjectEmploymentId: p.employmentId,
     payload: { before: emp.before ?? null, after: ruleId },
-  });
-  return { id: p.employmentId, attendanceRuleId: ruleId, changed: true };
+  }, { returnId: options?.returnEventId === true });
+  return { id: p.employmentId, attendanceRuleId: ruleId, changed: true, ...(eventId ? {eventId} : {}) };
 }
 
 /** Nothing was ticked. A form-shaped mistake, refused in the service so no door can post an empty batch. */
