@@ -24,8 +24,15 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('0691 populated ordinary up
   expect(process.env.GITHUB_ACTIONS).toBe('true');expect(process.env.CI).toBe('true');
   const started=performance.now(),deadline=started+150000;
   const budget=()=>expect(performance.now()<deadline,'150-second work budget reserves owned cleanup within 180 seconds').toBe(true);
-  const journalBytes=readFileSync('db/migrations/meta/_journal.json');
-  const journal=JSON.parse(journalBytes.toString()) as {entries:Entry[];[key:string]:unknown};
+  const sourceJournalBytes=readFileSync('db/migrations/meta/_journal.json');
+  const sourceJournal=JSON.parse(sourceJournalBytes.toString()) as {entries:Entry[];[key:string]:unknown};
+  expect(sourceJournal.entries.length).toBe(582);
+  exact(sourceJournal.entries.slice(581).map(({idx,when,tag})=>({idx,when,tag})),[{idx:696,when:1793330000200,tag:'0800_pay_formula_builder'}],'Only the exact ratified Formula successor follows the immutable Bank proof prefix');
+  expect(sha(readFileSync('db/migrations/0800_pay_formula_builder.sql'))).toBe('f8ba2919eb59346bc86453667cc7952a5671db88b740fcab3c41b4530802c322');
+  // This fixture proves the Bank policy change in isolation. Actual 582-row source upgrades are
+  // independently covered by lifecycle-v9-populated-upgrade and pay-formula-upgrade.
+  const journal={...sourceJournal,entries:sourceJournal.entries.slice(0,581)};
+  const journalBytes=Buffer.from(JSON.stringify(journal,null,2)+'\n');
   const boundary=journal.entries.findIndex(e=>e.tag===TAG);
   expect(boundary).toBe(580);expect(journal.entries.length).toBe(581);
   expect(sha(journalBytes)).toBe('0ec4efea88ff081124c96922f3f84988e4dc1e082a7e46d25d2ae7b59550137e');
@@ -165,7 +172,11 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('0691 populated ordinary up
    for(const table of ['public.tenant','public.company','public.person','public.employment','public.employee_statutory_my','public.app_user','public.role_assignment','app.ai_agent_principal','public.import_attempt','public.import_attempt_item','public.import_attempt_event'])expect(beforeFacts[table].length,'Fixture must populate '+table).toBeGreaterThan(0);
    expect(beforeFacts['public.person'].length).toBe(5);expect(beforeFacts['public.employment'].length).toBe(5);expect(beforeFacts['public.employee_statutory_my'].length).toBe(5);
    const unchanged=async()=>{exact(await allFacts(),beforeFacts,'All public/app table rows must retain their exact complete JSON bytes');exact(await metadata(),beforeMetadata,'Roles, table ownership/ACL/RLS flags and all function definitions/catalog/owner/ACL must be unchanged');};
-   phase='normal-full-migration';budget();await migrate(storage.db,{migrationsFolder:'db/migrations'});budget();
+   phase='normal-bank-prefix-migration';
+   copyFileSync('db/migrations/'+TAG+'.sql',join(directory,TAG+'.sql'));
+   expect(sha(readFileSync(join(directory,TAG+'.sql')))).toBe(SQL_SHA);
+   writeFileSync(join(directory,'meta/_journal.json'),journalBytes);
+   budget();await migrate(storage.db,{migrationsFolder:directory});budget();
    const applied=await ledger();expect(applied.length).toBe(581);exact(applied.slice(0,boundary),prior,'The complete old 580-row ledger prefix must be immutable');
    exact(applied.map(({hash,created_at})=>({hash,created_at})),expectedLedger,'Normal migrator ledger must match every exact source SQL hash/timestamp');
    exact(applied.slice(boundary).map(({hash,created_at})=>({hash,created_at})),[{hash:SQL_SHA,created_at:'1793330000075'}],'Exactly the allocated 0691 ledger row must append');
@@ -175,10 +186,10 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('0691 populated ordinary up
    exact(normalized,beforePolicies,'Policy OID, command, roles, permissiveness, WITH CHECK and additive named-agent policies must remain exact');
    const changed=afterPolicies.find(p=>p.schema==='public'&&p.table==='employment'&&p.name==='employment_rls')!;expect(changed.qual).toContain(HINT);
    phase='verify-retention-and-authority';await unchanged();exact(await visibility(),beforeVisibility,'Every principal and marker must return the same ordered IDs before/after');
-   phase='normal-idempotent-rerun';await migrate(storage.db,{migrationsFolder:'db/migrations'});exact(await ledger(),applied,'Rerunning the actual full migrator must append nothing');
+   phase='normal-idempotent-rerun';await migrate(storage.db,{migrationsFolder:directory});exact(await ledger(),applied,'Rerunning the exact Bank prefix with the ordinary migrator must append nothing');
    exact(await policyRows(),afterPolicies,'Idempotent rerun must preserve the installed policy catalog');await unchanged();exact(await visibility(),beforeVisibility,'Idempotent rerun must retain the same authority');budget();
-   expect(sha(readFileSync('db/migrations/'+TAG+'.sql'))).toBe(SQL_SHA);expect(sha(readFileSync('db/migrations/meta/_journal.json'))).toBe(sha(journalBytes));
-   console.info('[bank-point-read-upgrade]',JSON.stringify({kind:'DISPOSABLE_POPULATED_580_TO_581_SIX_SCOPE_UPGRADE_NOT_RELEASE',prefixRows:prior.length,resultRows:applied.length,appendedSqlSha256:SQL_SHA,appendedTimestamp:journal.entries[boundary].when,
+   expect(sha(readFileSync('db/migrations/'+TAG+'.sql'))).toBe(SQL_SHA);expect(sha(readFileSync('db/migrations/meta/_journal.json'))).toBe(sha(sourceJournalBytes));
+   console.info('[bank-point-read-upgrade]',JSON.stringify({kind:'SCOPED_POPULATED_580_TO_581_BANK_PREFIX_NOT_FINAL_SOURCE_UPGRADE',prefixRows:prior.length,resultRows:applied.length,appendedSqlSha256:SQL_SHA,appendedTimestamp:journal.entries[boundary].when,
     ledgerSha256:sha(JSON.stringify(applied)),factTables:Object.keys(beforeFacts).length,fullRowsSha256:sha(JSON.stringify(beforeFacts)),retainedPeople:5,retainedEmployments:5,retainedStatutory:5,contexts:actors.length,humanPrincipals:actors.filter(a=>a.human).length,namedAgentPrincipals:principals.length,markerStates:4,
     onlyEmploymentUsingChanged:true,allRetainedRowsUnchanged:true,rolesFunctionsOwnershipAclAndRlsUnchanged:true,orderedVisibilityUnchanged:true,idempotent:true,elapsedMs:performance.now()-started,liveLedgerClaim:false,releaseAuthorized:false}));
   }catch(error){primary=error;console.info('[bank-point-read-upgrade-failed]',JSON.stringify({phase,elapsedMs:performance.now()-started,sqlState:(error as {code?:string})?.code}));throw error;}finally{

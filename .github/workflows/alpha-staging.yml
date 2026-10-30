@@ -419,7 +419,10 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: next-application-build-failure
-          path: ${{ runner.temp }}/normal-next-application-cache/comparison.json
+          path: |
+            ${{ runner.temp }}/normal-next-application-cache/comparison.json
+            ${{ runner.temp }}/normal-next-application-cache/canonical-build.log
+            ${{ runner.temp }}/normal-next-application-cache/application-typegen.log
           if-no-files-found: warn
           retention-days: 3
       - name: Bound optional compiler cache upload

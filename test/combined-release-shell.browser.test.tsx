@@ -18,11 +18,12 @@ import '../app/globals.css';
 import '../app/atelier.css';
 import '../app/login/login.css';
 
-const ports=vi.hoisted(()=>({path:'/admin/personnel',search:'q=Fictional&size=25',replace:vi.fn(),push:vi.fn(),scope:vi.fn(),ask:vi.fn(),delegation:vi.fn()}));
+const ports=vi.hoisted(()=>({path:'/admin/personnel',search:'q=Fictional&size=25',replace:vi.fn(),push:vi.fn(),scope:vi.fn(),ask:vi.fn(),workspaceAsk:vi.fn(),delegation:vi.fn()}));
 vi.mock('next/navigation',()=>({usePathname:()=>ports.path,useSearchParams:()=>new URLSearchParams(ports.search),useRouter:()=>({replace:ports.replace,push:ports.push,refresh:vi.fn()})}));
 vi.mock('../components/intent-link',async()=>{const React=await import('react');function Link({prefetch:_prefetch,...props}:ComponentProps<'a'>&{prefetch?:boolean}){return React.createElement('a',{...props,onClick:(event:MouseEvent<HTMLAnchorElement>)=>{event.preventDefault();props.onClick?.(event);}});}return{default:Link,IntentLink:Link};});
 vi.mock('@/app/scope-actions',()=>({setCompanyScope:ports.scope}));
 vi.mock('@/app/assistant/actions',()=>({askAssistantAction:ports.ask}));
+vi.mock('@/app/assistant/launcher-actions',()=>({askFromWorkspaceAction:ports.workspaceAsk}));
 vi.mock('@/app/delegations/actions',()=>({loadDelegationContextAction:ports.delegation}));
 vi.mock('@/components/delegation-manager',()=>({DelegationManager:()=>null}));
 const {Sidebar}=await import('../components/sidebar');
@@ -156,7 +157,7 @@ describe('isolated combined release: actual shell CSS and controls',()=>{
   render(providers(theme,<main className="p-4"><WorkspaceComposer action={ports.ask} tasks={[]} layout="hero" labels={{tasks:'Tasks',taskHint:'Pick a task',question:'Fictional question',placeholder:'Ask about a fixture',ask:'Send fixture',working:'Working',scope:'Fictional data only'}}/></main>));
   const field=screen.getByLabelText('Fictional question') as HTMLTextAreaElement,frame=document.querySelector('[data-ui-composer]')!,before=getComputedStyle(frame).boxShadow;
   fireEvent.change(field,{target:{value:'A fictional question'}});field.focus();await waitFor(()=>expect(getComputedStyle(frame).boxShadow).not.toBe(before));expect(getComputedStyle(field).outlineStyle).toBe('none');const focusedShadow=getComputedStyle(frame).boxShadow;expect(focusedShadow).not.toBe('none');await capture(`${theme}-composer-textarea`,frame.closest('main')!);
-  const send=screen.getByRole('button',{name:'Send fixture'});send.focus();expect(frame.matches(':focus-within')).toBe(true);await waitFor(()=>expect(getComputedStyle(frame).boxShadow).toBe(focusedShadow));expect(box(send).bottom).toBeLessThanOrEqual(box(frame).bottom);expect(ports.ask).not.toHaveBeenCalled();await capture(`${theme}-composer`,frame.closest('main')!);
+  const send=screen.getByRole('button',{name:'Send fixture'});send.focus();expect(frame.matches(':focus-within')).toBe(true);await waitFor(()=>expect(getComputedStyle(frame).boxShadow).toBe(focusedShadow));expect(box(send).bottom).toBeLessThanOrEqual(box(frame).bottom);expect(ports.ask).not.toHaveBeenCalled();expect(ports.workspaceAsk).not.toHaveBeenCalled();await capture(`${theme}-composer`,frame.closest('main')!);
  });
  it('Atelier home composer focuses its whole frame without a second textarea outline',async()=>{
   document.documentElement.setAttribute('data-ui-theme','atelier');document.body.className=geometry.body;await page.viewport(390,844);
@@ -173,11 +174,11 @@ describe('isolated combined release: actual shell CSS and controls',()=>{
   await capture('atelier-home-composer-textarea',frame.closest('main')!);
   fireEvent.change(field,{target:{value:'A fictional question'}});
   const send=screen.getByRole('button',{name:'Send home fixture'});send.focus();expect(document.activeElement).toBe(send);expect(frame.matches(':focus-within')).toBe(true);
-  await waitFor(()=>expect(getComputedStyle(frame).boxShadow).not.toBe(before));expect(getComputedStyle(frame).boxShadow).not.toBe('none');expect(box(send).bottom).toBeLessThanOrEqual(box(frame).bottom);expect(ports.ask).not.toHaveBeenCalled();
+  await waitFor(()=>expect(getComputedStyle(frame).boxShadow).not.toBe(before));expect(getComputedStyle(frame).boxShadow).not.toBe('none');expect(box(send).bottom).toBeLessThanOrEqual(box(frame).bottom);expect(ports.ask).not.toHaveBeenCalled();expect(ports.workspaceAsk).not.toHaveBeenCalled();
   await capture('atelier-home-composer-send',frame.closest('main')!);
   // The composer exception must preserve the normal accessible field focus treatment.
   const control=screen.getByLabelText('Ordinary field focus control');control.focus();expect(control.matches(':focus-visible')).toBe(true);
   expect(getComputedStyle(control).outlineStyle).not.toBe('none');expect(parseFloat(getComputedStyle(control).outlineWidth)).toBeGreaterThan(0);
-  expect(getComputedStyle(control).boxShadow).not.toBe('none');expect(ports.ask).not.toHaveBeenCalled();
+  expect(getComputedStyle(control).boxShadow).not.toBe('none');expect(ports.ask).not.toHaveBeenCalled();expect(ports.workspaceAsk).not.toHaveBeenCalled();
  });
 });
