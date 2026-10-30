@@ -29,7 +29,7 @@ import {pendingAttendanceTaskMetadata} from '../packs/attendance/service';
 import {pendingProfileTaskMetadata} from './profile';
 import {pendingResignationTaskMetadata} from './offboarding';
 import {pendingNoticeAcknowledgementTasks} from './notice';
-import {pendingReviewTaskMetadata} from './employment-review';
+import {pendingReviewTaskGroups} from './employment-review';
 import {pendingPerformanceTasks} from '../packs/performance/service';
 import {pendingRewardTasks} from '../packs/rewards/service';
 import type {PackTaskItem,PackTaskKind,PackTaskProvider} from '../lib/assigned-work';
@@ -122,13 +122,13 @@ async function loadPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,m
  options:{noticeAcknowledgements?:boolean;claimLimit?:number}){
   // Each owner proves actual current assignment without selecting its private decision workspace.
   // A platform role or broad read permission alone is not an actionable task assignment.
-  const [leave,cancellations,replacement,attendance,profile,claimResult,resignations,managerReviews,hrReviews,noticeAcknowledgements,packTaskLists]=await Promise.all([
+  const [leave,cancellations,replacement,attendance,profile,claimResult,resignations,reviewTasks,noticeAcknowledgements,packTaskLists]=await Promise.all([
     pendingLeaveTaskMetadata(ctx,scopeIds),pendingLeaveCancellationTaskMetadata(ctx,scopeIds),
     listPendingReplacementLeaveTasks(ctx,{companyIds:scopeIds}),
     modules.attendance?pendingAttendanceTaskMetadata(ctx,scopeIds):Promise.resolve([]),
     pendingProfileTaskMetadata(ctx,scopeIds),
     modules.claims?(options.claimLimit?pendingClaimTaskSummary(ctx,scopeIds,options.claimLimit):pendingClaimTaskMetadata(ctx,scopeIds).then(items=>({items,total:items.length}))):Promise.resolve({items:[],total:0}),
-    pendingResignationTaskMetadata(ctx,scopeIds),pendingReviewTaskMetadata(ctx,'manager',scopeIds),pendingReviewTaskMetadata(ctx,'hr',scopeIds),
+    pendingResignationTaskMetadata(ctx,scopeIds),pendingReviewTaskGroups(ctx,scopeIds),
     options.noticeAcknowledgements===false?Promise.resolve([]):pendingNoticeAcknowledgementTasks(ctx),
     Promise.all(PACK_TASK_SOURCES.map(source=>modules[source.module]?source.load(ctx,scopeIds):Promise.resolve([]))),
   ]);
@@ -145,7 +145,7 @@ async function loadPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,m
     ...project(attendance,'attendance'),
     ...profile.map(row=>({id:row.id,kind:'profile' as const,subjectName:row.employee,createdAt:iso(row.createdAt),linkPath:`/admin/personnel/profile-changes?assigned=1&requestId=${row.id}#request-${row.id}`})),
     ...project(claims,'claim'),...project(resignations,'resignation'),
-    ...project(managerReviews,'managerReview'),...project(hrReviews,'hrReview'),
+    ...project(reviewTasks.manager,'managerReview'),...project(reviewTasks.hr,'hrReview'),
     ...packTasks.map(({id,kind,subjectName,createdAt,linkPath})=>({id,kind,subjectName,createdAt,linkPath})),
   ];
   items.sort((a,b)=>a.createdAt<b.createdAt?1:a.createdAt>b.createdAt?-1:a.kind.localeCompare(b.kind)||a.id.localeCompare(b.id));

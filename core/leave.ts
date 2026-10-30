@@ -12311,6 +12311,8 @@ export async function pendingLeaveCancellationTaskMetadata(ctx:SessionContext,co
     companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
    .orderBy(desc(leaveCancellationRequest.createdAt),asc(leaveCancellationRequest.id));
  });
+ // The native principal was already proved above. No candidate needs a second decision transaction.
+ if(candidates.length===0)return [];
  const allowed=new Set(await actionableLeaveCancellationIds(ctx,candidates.map(row=>row.id)));
  return candidates.filter(row=>allowed.has(row.id));
 }

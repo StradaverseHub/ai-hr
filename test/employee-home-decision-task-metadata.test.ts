@@ -38,6 +38,12 @@ describe('Home assigned-decision metadata is an uncapped projection at its sourc
   await expect(pendingProfileTaskMetadata({...ctx,userId:randomUUID()})).rejects.toThrow();
   await expect(pendingProfileTaskMetadata({...ctx,personId:randomUUID()})).rejects.toThrow();
  });
+ it('returns an empty leave cancellation queue only after validating the native principal',async()=>{
+  const ctx=adminCtx(b);
+  expect(await pendingLeaveCancellationTaskMetadata(ctx)).toEqual([]);
+  await expect(pendingLeaveCancellationTaskMetadata({...ctx,userId:randomUUID()})).rejects.toThrow();
+  await expect(pendingLeaveCancellationTaskMetadata({...ctx,personId:randomUUID()})).rejects.toThrow();
+ });
  it('reads every pending leave header while reasons, units and application dates are unavailable to the runtime role',async()=>{
   const e=await subject(),today=todayInKualaLumpur();
   const heads=await owner.db.insert(s.leaveRequest).values(Array.from({length:211},()=>({tenantId:b.tenantId,employmentId:e.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:today,endDate:today,days:'1',reason:'Fictional private leave reason'}))).returning({id:s.leaveRequest.id});

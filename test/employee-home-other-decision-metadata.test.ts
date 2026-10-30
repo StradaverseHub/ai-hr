@@ -6,7 +6,7 @@ import * as s from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {pendingAttendanceTaskMetadata} from '../packs/attendance/service';
 import {pendingResignationTaskMetadata,decideResignation} from '../core/offboarding';
-import {pendingReviewTaskMetadata,submitManagerEvaluation,decideReview} from '../core/employment-review';
+import {pendingReviewTaskGroups,pendingReviewTaskMetadata,submitManagerEvaluation,decideReview} from '../core/employment-review';
 import {listPendingTasks} from '../core/approvals-inbox';
 import {AssignedWorkPrincipalUnavailableError} from '../lib/assigned-work';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -34,6 +34,13 @@ function noPrivate(rows:unknown[]){
  for(const row of rows)for(const key of ['reason','lastWorkingDay','proposedCheckIn','clockChanges','managerComments','managerRecommendation','hrComments','decision'])expect(row).not.toHaveProperty(key);
 }
 describe('Home other assigned-decision metadata owners',()=>{
+ it('checks the actual principal for an empty grouped review queue',async()=>{
+  const ctx=adminCtx(b);
+  expect(await pendingReviewTaskGroups(ctx)).toEqual({manager:[],hr:[]});
+  await expect(pendingReviewTaskGroups({...ctx,userId:randomUUID()})).rejects.toThrow(AssignedWorkPrincipalUnavailableError);
+  await expect(pendingReviewTaskGroups({...ctx,personId:randomUUID()})).rejects.toThrow(AssignedWorkPrincipalUnavailableError);
+ });
+
  it('counts every attendance header without private proposal access, preserves scope and refuses a forged person',async()=>{
   const e=await hire(),ctx=adminCtx(b);
   const heads=await owner.db.insert(s.attendanceCorrection).values(Array.from({length:211},(_,i)=>{
@@ -77,6 +84,11 @@ describe('Home other assigned-decision metadata owners',()=>{
   const heads=await owner.db.insert(s.employmentReview).values(subjects.map(employmentId=>({tenantId:b.tenantId,employmentId,personId:e.personId,reviewType:'probation' as const,managerEmploymentId:m.employmentId,endDate:todayInKualaLumpur(),dueDate:todayInKualaLumpur(),managerComments:'Fictional private evaluation'}))).returning({id:s.employmentReview.id});
   await onlyColumns('employment_review',['person_id','manager_employment_id','due_date'],'manager_comments',async()=>{
    const rows=await pendingReviewTaskMetadata(ctx,'manager');expect(rows).toHaveLength(211);noPrivate(rows);
+   expect(await pendingReviewTaskGroups(ctx)).toEqual({manager:rows,hr:[]});
+   expect(await pendingReviewTaskGroups(ctx,[])).toEqual({manager:[],hr:[]});
+   expect(await pendingReviewTaskGroups(other)).toEqual({manager:[],hr:[]});
+   expect(await pendingReviewTaskGroups(adminCtx(b))).toEqual({manager:[],hr:[]});
+   await expect(pendingReviewTaskGroups({...ctx,personId:x.personId})).rejects.toThrow(AssignedWorkPrincipalUnavailableError);
    expect(rows.every(r=>r.dueDate===todayInKualaLumpur())).toBe(true);expect(await pendingReviewTaskMetadata(ctx,'manager',[])).toEqual([]);
    expect(await pendingReviewTaskMetadata(other,'manager')).toEqual([]);
    expect(await pendingReviewTaskMetadata(adminCtx(b),'manager')).toEqual([]);
@@ -86,7 +98,17 @@ describe('Home other assigned-decision metadata owners',()=>{
   expect(await pendingReviewTaskMetadata(ctx,'manager')).toHaveLength(210);
   expect(await pendingReviewTaskMetadata(adminCtx(b),'hr')).toMatchObject([{id:heads[0].id,dueDate:todayInKualaLumpur()}]);
   expect(await pendingReviewTaskMetadata(ctx,'hr')).toEqual([]);
+  for(const viewer of [ctx,other,adminCtx(b)]){
+   const grouped=await pendingReviewTaskGroups(viewer);
+   expect(grouped).toEqual({manager:await pendingReviewTaskMetadata(viewer,'manager'),hr:await pendingReviewTaskMetadata(viewer,'hr')});
+   noPrivate([...grouped.manager,...grouped.hr]);
+  }
+  const foreign=await seedBase();
+  expect(await pendingReviewTaskGroups(adminCtx(foreign))).toEqual({manager:[],hr:[]});
   await decideReview(adminCtx(b),{reviewId:heads[0].id,decision:'confirm'});
   expect(await pendingReviewTaskMetadata(adminCtx(b),'hr')).toEqual([]);
+  expect((await pendingReviewTaskGroups(adminCtx(b))).hr).toEqual([]);
+  await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,uid));
+  await expect(pendingReviewTaskGroups(ctx)).rejects.toThrow(AssignedWorkPrincipalUnavailableError);
  });
 });
