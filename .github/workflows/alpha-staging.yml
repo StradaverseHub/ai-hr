@@ -253,8 +253,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CERTIFICATE_RUNS_JSON: ${{ inputs.fixture_certificate_runs }}
         run: |
-          git fetch origin f133ce140f38f782d44de1187a82b822e2acdb74
-          git worktree add --detach "$RUNNER_TEMP/frozen-fixture-proof-controller" f133ce140f38f782d44de1187a82b822e2acdb74
+          git fetch origin 74ccf39d8d74ea3905a101a467e85a584fe607b6
+          git worktree add --detach "$RUNNER_TEMP/frozen-fixture-proof-controller" 74ccf39d8d74ea3905a101a467e85a584fe607b6
           ln -s "$GITHUB_WORKSPACE/scratchpad/fixture-projection-candidate/node_modules" "$RUNNER_TEMP/frozen-fixture-proof-controller/node_modules"
           node --input-type=module <<'NODE'
           import {writeFileSync} from 'node:fs';
