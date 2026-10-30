@@ -15,6 +15,7 @@ export type OffboardingCaseCancelResult=z.infer<typeof OffboardingCaseCancelResu
 export function parseOffboardingCaseCancelResult(packet:OffboardingCaseCancelPacket,value:unknown):OffboardingCaseCancelResult{
  const result=OffboardingCaseCancelResult.parse(value),op=packet.operation;
  if(!(op==='choices'?result.kind==='choices'||result.kind==='unavailable':op==='list'?result.kind==='offboarding_case_cancel_review_index':op==='prepare'?result.kind==='prepared':op==='discard'?result.kind==='retired':op==='confirm'?result.kind==='completed'||result.kind==='retired':result.kind==='prepared'||result.kind==='completed'||result.kind==='retired'))throw Error('Case cancellation response unavailable.');
+ if(op==='choices'&&result.kind==='choices'&&result.cases[0].caseNumber!==packet.selection.caseNumber)throw Error('Case cancellation response unavailable.');
  const expected=op==='reopen'?packet.actionId:op==='confirm'||op==='discard'?packet.confirmation.actionId:null;
  const actual=result.kind==='prepared'?result.review.actionId:result.kind==='completed'||result.kind==='retired'?result.receipt.actionId:null;
  if(expected&&expected!==actual)throw Error('Case cancellation response unavailable.');
