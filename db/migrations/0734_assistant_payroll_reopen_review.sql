@@ -283,3 +283,12 @@ BEGIN
   EXECUTE definition;
  END LOOP;
 END $$;
+
+--> statement-breakpoint
+-- Add this kind's complete original private cohort before terminal custody clears the array.
+DO $$ DECLARE definition text;marker text:='||coalesce(r.payroll_review_person_ids,''{}''::uuid[])';
+BEGIN
+ definition:=pg_get_functiondef('app.native_outcome_targets_capture(uuid,uuid,uuid,text,uuid,uuid,jsonb)'::regprocedure);
+ IF (length(definition)-length(replace(definition,marker,'')))/length(marker)<>1 THEN RAISE EXCEPTION '0734 privacy capture owner drift';END IF;
+ EXECUTE replace(definition,marker,marker||'||coalesce(r.payroll_reopen_person_ids,''{}''::uuid[])');
+END $$;

@@ -9506,7 +9506,9 @@ export async function unlockClosedBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:st
     }
 
     const actor = actorOf(ctx);
-    const [history] = await tx.insert(payrollStatusHistory).values({
+    const history={id:randomUUID()};
+    await tx.insert(payrollStatusHistory).values({
+      id:history.id,
       tenantId: ctx.tenantId,
       batchId: p.batchId,
       action: 'unlock',
@@ -9517,20 +9519,20 @@ export async function unlockClosedBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:st
       reason,
       before: { status: 'closed', periodReopened: reopenedPeriod },
       after: { status: 'processed', warnings },
-    }).returning({id:payrollStatusHistory.id});
-    if(!history)throw new Error('Payroll unlock history reference unavailable');
+    });
     const periodReopenedEventId = reopenedPeriod ? randomUUID() : null;
-    const unlockedEventId = await appendEvent(tx, {
+    const unlockedEventId=randomUUID();
+    await appendEvent(tx, {
+      id:unlockedEventId,
       tenantId: ctx.tenantId,
       aggregateType: 'payroll-batch',
       aggregateId: p.batchId,
       eventType: 'payroll-batch.unlocked',
       actor,
       payload: { companyId: batch.companyId, payPeriod: batch.payPeriod, reason, warnings, reopenedPeriod, statusHistoryId:history.id, periodReopenedEventId },
-    },{returnId:true});
-    if(typeof unlockedEventId!=='string')throw new Error('Payroll unlock event reference unavailable');
+    });
     if (reopenedPeriod) {
-      const eventId=await appendEvent(tx, {
+      await appendEvent(tx, {
         id:periodReopenedEventId!,
         tenantId: ctx.tenantId,
         aggregateType: 'pay-period',
@@ -9538,9 +9540,7 @@ export async function unlockClosedBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:st
         eventType: 'pay-period.reopened',
         actor,
         payload: { batchId: p.batchId, reason, unlockedEventId, statusHistoryId:history.id },
-      },{returnId:true});
-      if(typeof eventId!=='string')throw new Error('Payroll period reopen event reference unavailable');
-      if(eventId!==periodReopenedEventId)throw new Error('Payroll parent event binding changed');
+      });
     }
     return { warnings, reopenedPeriod, statusHistoryId:history.id, unlockedEventId, periodReopenedEventId };
 }

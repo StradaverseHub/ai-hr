@@ -1,3 +1,4 @@
+import {prepareReviewedPayrollReopenSourceTx,confirmReviewedPayrollReopenSourceTx} from '../core/assistant-actions/reviewed-payroll-reopen-source';
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,afterEach,describe,it,expect,vi} from 'vitest';
@@ -68,6 +69,18 @@ describe('Payroll reopening complete native/custody effect',()=>{
   for(const c of columns){const value=c.type==='uuid'?"'10000000-0000-4000-8000-000000000099'::uuid":c.type==='uuid[]'?"ARRAY['10000000-0000-4000-8000-000000000099'::uuid]":c.type==='date'?"'2026-01-01'::date":c.type.includes('int')?'1':c.type==='jsonb'?"'{}'::jsonb":"'hybrid'";let caught:unknown;try{await owner.db.execute(sql.raw(`update app.assistant_own_leave_review set "${c.name}"=${value} where id='${r.actionId}'::uuid`));}catch(e){caught=e;}expect(codes(caught),c.name).toBe('23514');}
   await unlockClosedBatch(ctx,{batchId,reason:'Fictional close hybrid fixture'});const close=await preparePayrollCloseReview(ctx,{action:'payroll.close',contractVersion:1,batchId,confirmCloseProcessedRun:true});if(close.kind!=='prepared')throw Error();let caught:unknown;try{await owner.db.execute(sql`update app.assistant_own_leave_review set payroll_reopen_batch_id=${batchId}::uuid where id=${close.review.actionId}::uuid`);}catch(e){caught=e;}expect(codes(caught)).toBe('23514');
   const [sizes]=await owner.db.execute<{count:number;max:number;total:number}>(sql`select count(*)::int count,max(octet_length(pg_get_expr(conbin,conrelid)))::int max,sum(octet_length(pg_get_expr(conbin,conrelid)))::int total from pg_constraint where conrelid='app.assistant_own_leave_review'::regclass and contype='c'`);console.info('Payroll custody CHECK bytes',sizes);expect(sizes.count).toBeGreaterThan(10);
+ });
+
+ it('keeps the private native review stable across committed custody preparation, then executes through the direct source owner',async()=>{
+  const before=await withTenant(ctx,tx=>prepareReviewedPayrollReopenSourceTx(tx,ctx,human()));
+  await prepare();
+  const fresh=await withTenant(ctx,tx=>prepareReviewedPayrollReopenSourceTx(tx,ctx,human()));
+  expect(fresh.reviewedDigest===before.reviewedDigest,'Native source changed during custody-only preparation').toBe(true);
+  const done=await withTenant(ctx,tx=>confirmReviewedPayrollReopenSourceTx(tx,ctx,human(),fresh.reviewedDigest));
+  expect(done.receipt).toMatchObject({batchId,currentStatus:'processed',parentWasReopened:true});
+ });
+ it('reopens a still-pending review without changing its private source or business state',async()=>{
+  const r=await prepare(),before=await state();const pending=await reopenPayrollReopenReview(ctx,r.actionId);expect(pending.kind).toBe('prepared');expect(await state()).toEqual(before);
  });
 
 });
