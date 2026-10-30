@@ -69,7 +69,9 @@ import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews,readC
 import {leaveCancellationReviews,leaveEditReviews,readLeaveChangeChoices} from '../../core/assistant-actions/leave-change-review-store';
 import {compensationMaintenanceReviews,readCompensationMaintenanceChoices} from '../../core/assistant-actions/compensation-maintenance-review-store';
 import {employeeDraftActivationReviews,readEmployeeDraftActivationChoices} from '../../core/assistant-actions/employee-draft-activation-review-store';
-import {createEmployeeDraftWithReservedCode,saveEmployeeDraft,saveAndCompleteEmployeeDraft} from '../../core/employee-draft';
+import {employeeDraftDiscardReviews,readEmployeeDraftDiscardChoices} from '../../core/assistant-actions/employee-draft-discard-review-store';
+import {EmployeeDraftDiscard} from '../../lib/assistant-actions/employee-draft-discard-contract';
+import {createEmployeeDraftWithReservedCode,saveEmployeeDraft,saveAndCompleteEmployeeDraft,discardEmployeeDraft} from '../../core/employee-draft';
 import type {EmployeeDraftData} from '../../lib/employee-draft-schema';
 import {qualificationMaintenanceReviews,readQualificationMaintenanceChoices} from '../../core/assistant-actions/qualification-maintenance-review-store';
 import {addQualification} from '../../core/workforce-registers';
@@ -141,7 +143,7 @@ const DEFAULT_OPTIONS:Options={decision:'approved',workflow:false};
 /** Who the item belongs to: the default fictional subject, or a positive-control subject in another company or tenant. */
 type Home={person:Person;base:Base;companyId:string;departmentId:string;name:string;session():Promise<SessionContext>};
 type Item={subjectId:string;employmentId:string;leaveTypeId:string;name:string;transferTo:string;date?:string;dates?:string[];managerId?:string;claimTypeId?:string;proposal?:unknown;code?:string;personId?:string;companyId?:string;cycleId?:string;batchId?:string;period?:string;stepId?:string|null;revision?:number;assignmentId?:string;versionId?:string};
-type Review={actionId:string;reviewedDigest:string};
+type Review={actionId:string;reviewedDigest:string;content?:unknown};
 /** The store surface the harness uses; each concrete store is structurally assignable to it. */
 type Store={
  prepare(ctx:SessionContext,input:unknown):Promise<{review:Review}>;
@@ -160,6 +162,7 @@ type World={
 };
 type Family='assigned_decision'|'hr_on_employment'|'own';
 type Adapter={
+ confirmation?:(review:Review)=>Review;
  family:Family;store:Store;independentScreen?:boolean;pageAdmits?:(who:SessionContext)=>boolean;
  /** The page/route admission the screen's server action calls before its service (e.g. requireAdmin → isAdmin). */
  screenAdmits?:(who:SessionContext,item:Item)=>boolean|Promise<boolean>;
@@ -442,6 +445,12 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'employees.emergency_contact.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'add',contactId:null,fields:{fullName:'Fictional Emergency Contact',relationship:null,mobilePhone:'000-FICTIONAL',homePhone:null,address:null,remarks:'Fictional human note',priority:'primary'}}),
   offered:async(who,item)=>listed(await readEmergencyContactMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>addEmergencyContact(who,{personId:item.subjectId,fullName:'Fictional Emergency Contact',relationship:null,mobilePhone:'000-FICTIONAL',homePhone:null,address:null,remarks:'Fictional human note',priority:'primary'},tx)},
+ 'employees.draft.discard':{family:'hr_on_employment',store:employeeDraftDiscardReviews,screenAdmits:isAdmin,
+  async create(_w,h){const draft=await createEmployeeDraftWithReservedCode(groupOf(h.base),{companyId:h.companyId,fullName:'Fictional discard draft',primaryEmail:randomUUID()+'@fixture.test',employeeIdMode:'manual',employeeCode:'D-'+randomUUID().slice(0,10).toUpperCase()});return itemOf(h,draft.id,{companyId:h.companyId});},
+  human:item=>({action:EmployeeDraftDiscard.action,contractVersion:1,draftId:item.subjectId,companyId:item.companyId,consent:'discard_saved_draft_captured_input'}),
+  confirmation:review=>({...EmployeeDraftDiscard.Human.parse(review.content),actionId:review.actionId,reviewedDigest:review.reviewedDigest}),
+  offered:async(who,item)=>listed(await readEmployeeDraftDiscardChoices(who,{}),'drafts','draftId',item.subjectId),
+  screen:(tx,who,item)=>discardEmployeeDraft(who,item.subjectId,tx)},
  'employees.draft.activate':{family:'hr_on_employment',store:{prepare:employeeDraftActivationReviews.prepare,confirm:(ctx,input)=>employeeDraftActivationReviews.confirm(ctx,{action:'employees.draft.activate',contractVersion:1,...input})},screenAdmits:isAdmin,
   async create(_w,h){const root=groupOf(h.base),draft=await createEmployeeDraftWithReservedCode(root,{companyId:h.companyId,fullName:'Fictional saved draft',primaryEmail:randomUUID()+'@fixture.test',employeeIdMode:'manual',employeeCode:'P-'+randomUUID().slice(0,10).toUpperCase()}),data:EmployeeDraftData={profile:{fullName:'Fictional saved draft',primaryEmail:randomUUID()+'@fixture.test',employeeCode:draft.employeeCode,employeeIdMode:'manual'},employment:{companyId:h.companyId,departmentId:h.departmentId,employmentType:'full_time',hiredOn:todayInKualaLumpur()},payroll:{basicSalary:'3000'}};await saveEmployeeDraft(root,{id:draft.id,data,currentStep:4});return itemOf(h,draft.id,{companyId:h.companyId,proposal:data});},
   human:item=>({action:'employees.draft.activate',contractVersion:1,draftId:item.subjectId,companyId:item.companyId}),
@@ -485,7 +494,7 @@ async function tryPrepare(adapter:Adapter,who:SessionContext,item:Item,o:Options
  try{return (await adapter.store.prepare(who,adapter.human(item,o))).review;}catch(error){notes[key]=why(error);return null;}
 }
 async function tryConfirm(adapter:Adapter,who:SessionContext,review:Review,notes:Record<string,string>,key:string):Promise<ParityOutcome>{
- try{const done=await adapter.store.confirm(who,{actionId:review.actionId,reviewedDigest:review.reviewedDigest});if(done.kind==='completed')return 'allow';notes[key]='kind '+done.kind;}catch(error){notes[key]=why(error);}
+ try{const done=await adapter.store.confirm(who,adapter.confirmation?.(review)??{actionId:review.actionId,reviewedDigest:review.reviewedDigest});if(done.kind==='completed')return 'allow';notes[key]='kind '+done.kind;}catch(error){notes[key]=why(error);}
  return 'deny';
 }
 

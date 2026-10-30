@@ -19753,6 +19753,63 @@
           "other": "其他"
         }
       },
+      "employeeDraftDiscard": {
+        "title": "丢弃已保存的员工草稿",
+        "description": "丢弃草稿前，请核对已保存的信息及员工编号的处理结果。",
+        "back": "返回助手",
+        "intro": "选择要核对的已保存草稿。丢弃后，该草稿中的所有已保存信息都会被删除。",
+        "working": "处理中…",
+        "unavailable": "无法核实结果。请重新打开同一份已保存的审核，或在人事管理中查看草稿。",
+        "choicesUnavailable": "暂时无法获取草稿。请在人事管理中检查您当前的访问权限。",
+        "draft": "已保存的草稿",
+        "choose": "选择草稿",
+        "unnamed": "未命名草稿",
+        "unassigned": "未指定公司",
+        "empty": "没有可用的已保存草稿。",
+        "truncated": "显示最近的 25 份草稿。请打开人事管理查看更多。",
+        "handoff": "丢弃前，请在人事管理中核对这份草稿。",
+        "onboardingHandoff": "此草稿关联了入职事项。请在人事管理中核对对事项和任务的影响。",
+        "native": "打开人事草稿",
+        "prepareConsent": "我已选择这份草稿，并希望核对丢弃其已保存信息的后果。",
+        "prepare": "核对草稿丢弃",
+        "reviewTitle": "核对已保存草稿的丢弃",
+        "company": "公司",
+        "reservation": "员工编号处理结果",
+        "consequence": "确认后，将永久删除此草稿中的所有已保存信息，且无法在应用中恢复。此操作不会删除员工记录。",
+        "expires": "审核到期时间",
+        "expired": "此审核已过期。请从人事草稿重新开始审核。",
+        "confirmConsent": "我已核对此草稿及员工编号的处理结果。我授权永久删除此草稿中的所有已保存信息，并了解无法在应用中撤销。",
+        "confirm": "丢弃已保存的草稿",
+        "retire": "取消本次审核",
+        "retireNote": "取消本次审核会保留已保存的草稿。",
+        "uncertain": "结果尚不确定。请重新打开同一份审核以恢复结果，然后再尝试其他丢弃操作。",
+        "uncertainUnknown": "审核可能已保存。请先查找已保存的审核，再重新开始。",
+        "reopen": "重新打开已保存的审核",
+        "done": "已丢弃保存的草稿",
+        "doneNote": "草稿及其已保存信息已被删除，无法在应用中恢复。",
+        "another": "核对另一份草稿",
+        "find": "查找我的已保存审核",
+        "noReviews": "未找到已保存的审核。",
+        "outcomes": {
+          "no_reservation": "此草稿没有预留的员工编号，不会退回任何号码。",
+          "unreserved_code": "此草稿将不再占用员工编号 {code}，没有需要退回的序列预留号码。",
+          "released_tip": "员工编号 {code} 位于序列末尾，其预留号码将退回序列。",
+          "retained_gap": "此草稿将不再占用员工编号 {code}。其号码不会退回序列，空号将保留。"
+        },
+        "completedOutcomes": {
+          "no_reservation": "此草稿没有预留的员工编号，也未退回任何号码。",
+          "unreserved_code": "此草稿已不再占用员工编号 {code}，没有需要退回的序列预留号码。",
+          "released_tip": "员工编号 {code} 的预留号码已退回序列。",
+          "retained_gap": "此草稿已不再占用员工编号 {code}。其号码未退回序列，空号仍然保留。"
+        },
+        "states": {
+          "awaiting_confirmation": "等待确认",
+          "completed": "已丢弃保存的草稿",
+          "discarded": "审核已取消，草稿已保留",
+          "expired": "审核已过期",
+          "refused": "无法继续审核"
+        }
+      },
       "employeeDraftActivation": {
         "title": "启用已保存的员工草稿",
         "description": "审核支持的已保存草稿，并确认通过原生服务创建员工。",

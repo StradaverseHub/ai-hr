@@ -1,3 +1,4 @@
+import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {assertWorkforceCompanyTx} from './workforce-access';
@@ -660,6 +661,7 @@ export async function discardEmployeeDraft(
   const capture = options?.returnResult === true;
   if (capture && !outerTx) throw new Error('Draft discard result requires an enclosing transaction.');
   const run = async (tx: Tx): Promise<void | EmployeeDraftDiscardResult> => {
+    await boundNativeOutcomeTransactionTx(tx);
     const [row] = await tx
       .select({
         reservedEmployeeCode: employeeDraft.reservedEmployeeCode,
@@ -670,10 +672,18 @@ export async function discardEmployeeDraft(
       .where(eq(employeeDraft.id, id))
       .limit(1);
     await onboardingSyncDraftTx(ctx,tx,id,'discard');
-    const deleted = await tx
-      .delete(employeeDraft)
-      .where(eq(employeeDraft.id, id))
-      .returning({ id: employeeDraft.id });
+    let deleted: { id: string }[];
+    try {
+      deleted = await tx.execute<{ id: string }>(sql`select id from app.native_employee_draft_discard_delete(${id}::uuid)`);
+    } catch (error) {
+      const { pgErrorChain } = await import('../lib/db-error');
+      // Translate only this closed port's dedicated zero-DELETE refusal. Counter, audit and
+      // authority errors retain their native meaning and escape the enclosing transaction.
+      if (pgErrorChain(error).some(link => link.code === 'P0002' && link.message === 'Draft delete not found')) {
+        throw new Error('Draft not found (or not visible).');
+      }
+      throw error;
+    }
     if (deleted.length === 0) throw new Error('Draft not found (or not visible).');
     const released = row ? await releaseReservedNumber(tx, ctx.tenantId, row) : false;
     const event = {

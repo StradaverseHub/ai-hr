@@ -1,4 +1,4 @@
-/** Pure authored contract/transport checks; no native proof or database success is claimed. */
+/** Pure contract/transport checks; actual native deletion proof remains SQL-owned. */
 import {expect,it} from 'vitest';
 import {EmployeeDraftDiscard as C,EmployeeDraftDiscardBrowserPacket as Packet,parseEmployeeDraftDiscardBrowserResult as parse} from '../lib/assistant-actions/employee-draft-discard-contract';
 const id='10000000-0000-4000-8000-000000000001',other='10000000-0000-4000-8000-000000000002';
@@ -6,8 +6,8 @@ const selection={draftId:id,companyId:id},human={action:C.action,contractVersion
 const review={...selection,companyName:'Authorized company',draftLabel:'Saved draft',scope:'saved_draft_without_any_linked_onboarding_case',capturedInput:'saved_draft_row_deleted_without_application_undo',reservedCodeOutcome:{kind:'retained_gap',reservedEmployeeCode:'HELD-0042'},consequence:'native_saved_draft_deleted_not_employee'};
 const prepared={action:C.action,contractVersion:1,actionId:id,reviewedDigest:'a'.repeat(64),createdAt:'2026-10-30T00:00:00.000Z',expiresAt:'2026-10-30T00:10:00.000Z',content:human,review};
 const prepare={action:C.action,operation:'prepare',input:human},response={kind:'prepared',review:prepared};
-const retired={kind:'retired',review:{action:C.action,contractVersion:1,actionId:id,state:'discarded'}};
-const reopen={action:C.action,operation:'reopen',actionId:id,selection};
+const retired={kind:'retired',receipt:{action:C.action,contractVersion:1,actionId:id,state:'discarded'}};
+const reopen={action:C.action,operation:'reopen',actionId:id};
 it('accepts only a saved draft/company nomination and explicit consent to discard the saved captured input',()=>{
  expect(Packet.parse(prepare)).toEqual(prepare);expect(C.Selection.parse(selection)).toEqual(selection);
  for(const input of [{...human,consent:false},{...human,consent:true},{...human,consent:'activate'},{...selection},{...human,draftId:undefined},{...human,companyId:null}])expect(Packet.safeParse({...prepare,input}).success).toBe(false);
@@ -44,19 +44,21 @@ it.each(['draftId','companyId'] as const)('binds both internal review layers and
 it('compares human selection semantically rather than rejecting reordered JSON object keys',()=>{
  const reordered={consent:human.consent,companyId:id,draftId:id,contractVersion:1,action:C.action};expect(parse({...prepare,input:reordered},response)).toEqual(response);
 });
-it('binds reopen to both the action identity and selected draft/company',()=>{
- expect(parse(reopen,response)).toEqual(response);
- for(const packet of [{...reopen,actionId:other},{...reopen,selection:{...selection,draftId:other}},{...reopen,selection:{...selection,companyId:other}}])expect(()=>parse(packet,response)).toThrow();
+it('binds reopen to its action identity without trusting a caller-supplied draft selector',()=>{
+ expect(parse(reopen,response)).toEqual(response);expect(()=>parse({...reopen,actionId:other},response)).toThrow();expect(Packet.safeParse({...reopen,selection}).success).toBe(false);
 });
 it('prevents action/operation confusion and foreign review retirement',()=>{
  const retire={action:C.action,operation:'retire',confirmation:{action:C.action,contractVersion:1,actionId:id}};expect(parse(retire,retired)).toEqual(retired);
- for(const [packet,result]of [[prepare,retired],[retire,response],[{...reopen,action:C.action+'.activate'},response],[retire,{...retired,review:{...retired.review,actionId:other}}]])expect(()=>parse(packet,result)).toThrow();
+ for(const [packet,result]of [[prepare,retired],[retire,response],[{...reopen,action:C.action+'.activate'},response],[retire,{...retired,receipt:{...retired.receipt,actionId:other}}]])expect(()=>parse(packet,result)).toThrow();
  expect(()=>parse({...prepare,actor:'hr_admin'},response)).toThrow();
 });
-it('has no completion receipt or confirmation-result representation while proof remains unsettled',()=>{
- const confirm={action:C.action,operation:'confirm',confirmation:{...human,actionId:id,reviewedDigest:'a'.repeat(64)}};expect(Packet.safeParse(confirm).success).toBe(true);
- for(const value of [response,retired,{kind:'completed',receipt:{draftId:id,eventId:id}},{kind:'handoff',reason:'native_proof_pending_review',route:'/admin/personnel/new'}])expect(()=>parse(confirm,value)).toThrow();
- expect('Completed' in C).toBe(false);expect('Receipt' in C).toBe(false);
+it('requires complete native receipt references and binds confirmation responses to the exact selected subject',()=>{
+ const confirm={action:C.action,operation:'confirm',confirmation:{...human,actionId:id,reviewedDigest:'a'.repeat(64)}};
+ const receipt={kind:'discarded',...selection,eventId:id,reservedCodeOutcome:review.reservedCodeOutcome,capturedInput:review.capturedInput,consequence:C.consequence};
+ const completed={kind:'completed',receipt:{action:C.action,contractVersion:1,actionId:id,state:'completed',receipt}};
+ expect(parse(confirm,completed)).toEqual(completed);
+ for(const value of [response,{kind:'completed',receipt:{draftId:id,eventId:id}},{...completed,receipt:{...completed.receipt,actionId:other}},{...completed,receipt:{...completed.receipt,receipt:{...receipt,draftId:other}}},{...completed,receipt:{...completed.receipt,receipt:{...receipt,companyId:other}}}])expect(()=>parse(confirm,value)).toThrow();
+ expect(Packet.safeParse({...confirm,confirmation:{...confirm.confirmation,consent:false}}).success).toBe(false);
 });
 it('uses honest workflow handoffs for unsupported source shapes without adding private diagnostics',()=>{
  for(const reason of ['unassigned_company','linked_onboarding_case','unsupported_reservation_shape','native_discard_refused','source_out_of_bounds'])expect(parse(prepare,{kind:'handoff',reason,route:'/admin/personnel/new'})).toEqual({kind:'handoff',reason,route:'/admin/personnel/new'});
