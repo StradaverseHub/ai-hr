@@ -20535,7 +20535,8 @@
           "rejected": "已拒绝",
           "withdrawn": "已撤回"
         },
-        "reviewHint": "确认前，请核对下方取消信息。"
+        "reviewHint": "确认前，请核对下方取消信息。",
+        "company": "公司"
       }
     },
     "denied_unavailable": "我这边遇到了小状况，请稍后再试。",

@@ -20535,7 +20535,8 @@
           "rejected": "Rejected",
           "withdrawn": "Withdrawn"
         },
-        "reviewHint": "Review the cancellation below before confirming."
+        "reviewHint": "Review the cancellation below before confirming.",
+        "company": "Company"
       }
     },
     "denied_unavailable": "A little snag on my side. Please try again in a moment.",

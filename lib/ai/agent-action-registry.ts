@@ -282,7 +282,7 @@ export const AGENT_ACTIONS=Object.freeze([
   outcome:'canonical_receipt_required',semantics:'whole_review_cancelled_history_retained',humanInputs:['unitId','revision','reason','confirmWholeReview'],
   permission:{actor:'assigned_approver',guard:'core/assistant-actions/rewards-cancel-source.ts#assertRewardsCancelActorTx'},subject:'company',blastRadius:{max:1,unit:'one_reward_review'},
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'pay'},reversal:{kind:'unknown'},evaluationCases:[],
-  screen:{native:'app/rewards/[unitId]/page.tsx',entryPoints:['app/admin/rewards/actions.ts#cancelRewardAction']},review:{route:'/assistant/rewards/cancel',handoff:'review_page'},
+  screen:{native:'app/admin/rewards/page.tsx',entryPoints:['app/admin/rewards/actions.ts#cancelRewardAction']},review:{route:'/assistant/rewards/cancel',handoff:'review_page'},
   store:'generic_assigned',browserOwner:'rewardsCancel',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'lifecycle.acknowledgement.submit',module:'lifecycle',owner:'lifecycle',service:'core/lifecycle-self.ts#submitMyAcknowledgement',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_lifecycle_ack_review_v1',inputSchema:'LifecycleAckReviewPrepare',outputSchema:'LifecycleAckPreparedReview'},

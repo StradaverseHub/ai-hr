@@ -2,7 +2,7 @@ import {z} from 'zod';
 export const REWARDS_CANCEL_ACTION='rewards.cancel_review' as const;
 const id=z.guid(),digest=z.string().regex(/^[a-f0-9]{64}$/),base={action:z.literal(REWARDS_CANCEL_ACTION),contractVersion:z.literal(1)};
 export const RewardsCancelHuman=z.object({...base,unitId:id,revision:z.number().int().nonnegative(),reason:z.string().trim().min(10).max(4000),confirmWholeReview:z.literal(true)}).strict();
-export const RewardsCancelReview=z.object({unitId:id,companyId:id,name:z.string().max(1000),revision:z.number().int().nonnegative(),before:z.enum(['draft','bg','gr','ctro','ec','approved']),after:z.literal('withdrawn'),reason:z.string().min(10).max(4000),consequence:z.literal('whole_review_cancelled_entries_and_decisions_retained_reservation_released')}).strict();
+export const RewardsCancelReview=z.object({unitId:id,companyId:id,companyName:z.string().min(1).max(1000),name:z.string().max(1000),revision:z.number().int().nonnegative(),before:z.enum(['draft','bg','gr','ctro','ec','approved']),after:z.literal('withdrawn'),reason:z.string().min(10).max(4000),consequence:z.literal('whole_review_cancelled_entries_and_decisions_retained_reservation_released')}).strict();
 export const RewardsCancelReceipt=z.object({kind:z.literal('cancelled'),unitId:id,eventId:id,cancelledRevision:z.number().int().nonnegative(),currentRevision:z.number().int().nonnegative(),currentStatus:z.string().max(40),proof:z.literal('historical_cancellation_current_unit')}).strict();
 export const RewardsCancelConfirmation=z.object({...base,actionId:id,reviewedDigest:digest}).strict();
 export const RewardsCancelRetirement=z.object({...base,actionId:id}).strict();
@@ -10,4 +10,4 @@ export const RewardsCancelPrepared=z.object({...base,actionId:id,reviewedDigest:
 export const RewardsCancelCompleted=z.object({...base,actionId:id,state:z.literal('completed'),receipt:RewardsCancelReceipt}).strict();
 export const RewardsCancelRetired=z.object({...base,actionId:id,state:z.enum(['discarded','expired','refused'])}).strict();
 export const RewardsCancelIndex=z.object({kind:z.literal('rewards_cancel_review_index'),reviews:z.array(z.object({...base,actionId:id,state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict()).max(25).refine(r=>new Set(r.map(x=>x.actionId)).size===r.length)}).strict();
-export const RewardsCancelChoices=z.object({kind:z.literal('choices'),units:z.array(z.object({unitId:id,name:z.string().max(1000),revision:z.number().int().nonnegative(),status:z.string().max(40)}).strict()).max(20),truncated:z.boolean()}).strict();
+export const RewardsCancelChoices=z.object({kind:z.literal('choices'),units:z.array(z.object({unitId:id,companyName:z.string().min(1).max(1000),name:z.string().max(1000),revision:z.number().int().nonnegative(),status:z.string().max(40)}).strict()).max(20),truncated:z.boolean()}).strict();

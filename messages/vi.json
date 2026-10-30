@@ -20535,7 +20535,8 @@
           "rejected": "Bị từ chối",
           "withdrawn": "Đã rút"
         },
-        "reviewHint": "Xem lại việc hủy bên dưới trước khi xác nhận."
+        "reviewHint": "Xem lại việc hủy bên dưới trước khi xác nhận.",
+        "company": "Công ty"
       }
     },
     "denied_unavailable": "Phía tôi gặp chút trục trặc. Vui lòng thử lại sau giây lát.",

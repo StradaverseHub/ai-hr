@@ -20535,7 +20535,8 @@
           "rejected": "Ditolak",
           "withdrawn": "Ditarik balik"
         },
-        "reviewHint": "Semak pembatalan di bawah sebelum mengesahkan."
+        "reviewHint": "Semak pembatalan di bawah sebelum mengesahkan.",
+        "company": "Syarikat"
       }
     },
     "denied_unavailable": "Ada sedikit masalah di pihak saya. Sila cuba lagi sebentar nanti.",

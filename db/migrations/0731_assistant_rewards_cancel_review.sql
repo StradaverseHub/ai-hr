@@ -5,7 +5,7 @@ INSERT INTO app.assistant_action_kind(id,module,tier_ceiling,category,review_kin
 --> statement-breakpoint
 -- Preserve every predecessor CHECK byte-expression for all predecessor kinds. Only the new closed
 -- kind uses the existing unit/company column family; no assigned employment/person is fabricated.
-DO $$ DECLARE c record; old text; canonical text; null_columns text; scope_name text; rewards_name text; matches integer;
+DO $$ DECLARE c record; old text; canonical text; null_columns text; scope_name text; rewards_name text; matches integer; before_hashes jsonb; after_hashes jsonb; raw_bytes integer;
 BEGIN
  -- Closed metadata/receipt whitelist. Every other physical column is strictly NULL for cancellation,
  -- including all existing assigned subject and other action receipt columns. No predecessor tree copy.
@@ -23,12 +23,20 @@ BEGIN
  SELECT count(*),min(conname) INTO matches,rewards_name FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c'
  AND conkey @> ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid='app.assistant_own_leave_review'::regclass AND attname='action_kind'),(SELECT attnum FROM pg_attribute WHERE attrelid='app.assistant_own_leave_review'::regclass AND attname='rewards_unit_id')]::smallint[];
  IF matches<>1 THEN RAISE EXCEPTION '0731 Rewards column shape drift';END IF;
+ SELECT jsonb_object_agg(conname,encode(sha256(convert_to(conbin::text,'UTF8')),'hex') ORDER BY conname) INTO before_hashes FROM pg_constraint
+ WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND conname NOT IN (scope_name,rewards_name,'assistant_review_kind_columns');
  FOR c IN SELECT conname FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND conname IN (scope_name,rewards_name,'assistant_review_kind_columns') LOOP
+ SELECT octet_length(conbin::text) INTO raw_bytes FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname=c.conname;
+ RAISE NOTICE '0731 target % raw conbin bytes before deparse %',c.conname,raw_bytes;
  SELECT pg_get_expr(conbin,conrelid) INTO old FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname=c.conname;
  RAISE NOTICE '0731 wrapping %, predecessor bytes %, finite new branch bytes %',c.conname,octet_length(old),octet_length(canonical);
  EXECUTE format('ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT %I',c.conname);
  EXECUTE format('ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT %I CHECK (CASE WHEN action_kind=''rewards.cancel_review'' THEN (%s) ELSE (%s) END)',c.conname,canonical,old);
  END LOOP;
+ SELECT jsonb_object_agg(conname,encode(sha256(convert_to(conbin::text,'UTF8')),'hex') ORDER BY conname) INTO after_hashes FROM pg_constraint
+ WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND conname NOT IN (scope_name,rewards_name,'assistant_review_kind_columns');
+ IF before_hashes IS NULL OR before_hashes IS DISTINCT FROM after_hashes THEN RAISE EXCEPTION '0731 untouched predecessor CHECK changed';END IF;
+ RAISE NOTICE '0731 untouched CHECK hashes identical, digest %',encode(sha256(convert_to(before_hashes::text,'UTF8')),'hex');
 END $$;
 --> statement-breakpoint
 CREATE FUNCTION app._assistant_rewards_cancel_review_identity(p_person uuid,p_bind boolean DEFAULT true,p_write boolean DEFAULT true) RETURNS void
@@ -192,7 +200,9 @@ BEGIN
   IF q.parent_unit_id IS NOT NULL THEN PERFORM 1 FROM public.reward_unit WHERE id=q.parent_unit_id AND tenant_id=q.tenant_id FOR UPDATE NOWAIT; END IF;
  END IF;
  SELECT encode(sha256(convert_to(to_jsonb(u)::text||':'||u.xmin::text,'UTF8')),'hex') INTO fingerprint FROM public.reward_unit u WHERE u.id=q.id AND u.tenant_id=q.tenant_id;
- RETURN jsonb_build_object('unitId',q.id,'companyId',q.company_id,'name',q.name,'revision',q.revision,'status',q.status,'fingerprint',fingerprint);
+ RETURN (SELECT jsonb_build_object('unitId',q.id,'companyId',q.company_id,'companyName',c.legal_name,'name',rc.name||' · '||coalesce(nullif(trim(b.label),''),b.code),'revision',q.revision,'status',q.status,'fingerprint',fingerprint)
+ FROM public.company c JOIN public.reward_cycle rc ON rc.id=q.cycle_id AND rc.tenant_id=q.tenant_id JOIN public.business_unit b ON b.id=q.business_unit_id AND b.tenant_id=q.tenant_id
+ WHERE c.id=q.company_id AND c.tenant_id=q.tenant_id);
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_rewards_cancel_scope(uuid,boolean) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_rewards_cancel_scope(uuid,boolean) TO ai_hr_app;
@@ -215,8 +225,10 @@ CREATE FUNCTION app.assistant_rewards_cancel_choices() RETURNS jsonb
 DECLARE items jsonb;
 BEGIN
  PERFORM app._assistant_rewards_cancel_review_identity(NULL,false);
- SELECT coalesce(jsonb_agg(jsonb_build_object('unitId',q.id,'name',q.name,'revision',q.revision,'status',q.status) ORDER BY q.name,q.id),'[]'::jsonb) INTO items
- FROM (SELECT u.* FROM public.reward_unit u WHERE u.tenant_id=app.current_tenant_id() AND u.deleted_at IS NULL AND u.status IN ('draft','bg','gr','ctro','ec','approved') AND (app.reward_admin(u.company_id) OR EXISTS(SELECT 1 FROM app.reward_roles(u.id) r(role) WHERE r.role='gr')) ORDER BY u.name,u.id LIMIT 21) q;
+ SELECT coalesce(jsonb_agg(jsonb_build_object('unitId',q.id,'name',q.display_name,'companyName',q.company_name,'revision',q.revision,'status',q.status) ORDER BY q.company_name,q.display_name,q.id),'[]'::jsonb) INTO items
+ FROM (SELECT u.id,u.revision,u.status,c.legal_name AS company_name,rc.name||' · '||coalesce(nullif(trim(b.label),''),b.code) AS display_name
+ FROM public.reward_unit u JOIN public.company c ON c.id=u.company_id AND c.tenant_id=u.tenant_id JOIN public.reward_cycle rc ON rc.id=u.cycle_id AND rc.tenant_id=u.tenant_id JOIN public.business_unit b ON b.id=u.business_unit_id AND b.tenant_id=u.tenant_id
+ WHERE u.tenant_id=app.current_tenant_id() AND u.deleted_at IS NULL AND u.status IN ('draft','bg','gr','ctro','ec','approved') AND (app.reward_admin(u.company_id) OR EXISTS(SELECT 1 FROM app.reward_roles(u.id) r(role) WHERE r.role='gr')) ORDER BY c.legal_name,display_name,u.id LIMIT 21) q;
  RETURN jsonb_build_object('kind','choices','truncated',jsonb_array_length(items)>20,'units',CASE WHEN jsonb_array_length(items)>20 THEN items-20 ELSE items END);
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_rewards_cancel_choices() FROM PUBLIC;
