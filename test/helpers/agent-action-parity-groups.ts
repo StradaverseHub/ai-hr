@@ -5,7 +5,7 @@ const COMMAND_VARIANTS=['adapter_coverage','rejected_decisions','routed_attendan
 export const PARITY_PROBE_VARIANTS=[...COMMAND_VARIANTS,'cost_allocation_clear'] as const;
 export type ParityProbeVariant=typeof PARITY_PROBE_VARIANTS[number];
 export const PARITY_PROBE_GROUPS={
- performance:{actions:['performance.goal.approve'],variants:[]},
+ performance:{actions:['performance.goal.approve','performance.checkin.cancel'],variants:[]},
  commands:{actions:[
   'org.reporting.change','knowledge_base.article.create','typed_pay_components.create','leave.adjustment.apply',
   'employees.compensation.maintain','employees.bank.maintain','employees.emergency_contact.maintain',

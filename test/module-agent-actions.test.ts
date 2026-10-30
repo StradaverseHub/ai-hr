@@ -91,7 +91,7 @@ it('keeps ESS human selection distinct from requests for approval and refuses mo
 });
 it('keeps explicit Claims submission distinct from draft saving and declares the modern Performance acknowledgement separately',()=>{
  expect(MODULE_AGENT_ACTIONS.claims.actions.map(row=>row.id)).toEqual(['claims.submit','claims.draft.save','claims.cancel']);expect(getModuleAgentAction('claims','claims.submit')).toMatchObject({publicBoundary:'packs/claims/service.ts#submitDraftClaims',outcome:'submitted_not_approved',prepare:{status:'implemented',adapter:'module_claim_submission_review_v1'}});expect(MODULE_AGENT_ACTIONS.claims.money).toBe('canonical_engine_only');
- expect(MODULE_AGENT_ACTIONS.performance.actions.map(row=>row.id)).toEqual(['performance.review.acknowledge','performance.goal.approve','performance.onehr.plan.acknowledge']);
+ expect(MODULE_AGENT_ACTIONS.performance.actions.map(row=>row.id)).toEqual(['performance.review.acknowledge','performance.checkin.cancel','performance.goal.approve','performance.onehr.plan.acknowledge']);
  expect(parseModuleAgentActionNomination({module:'claims',action:'claims.draft.save',phase:'prepare'})).toEqual({kind:'prepare',module:'claims',action:'claims.draft.save',adapter:'module_claim_draft_review_v1',requiresHumanSelection:true,effect:'none'});
  for(const extra of [{enteredAmount:100},{draftId:'posted'},{expectedDraftRevision:'1'},{fieldValues:{private:'posted'}},{confirm:true}])expect(()=>parseModuleAgentActionNomination({module:'claims',action:'claims.draft.save',phase:'prepare',...extra})).toThrow();
  expect(()=>parseModuleAgentActionNomination({module:'claims',action:'claims.draft.save',phase:'confirm'})).toThrow();

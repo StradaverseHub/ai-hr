@@ -109,15 +109,15 @@ describe('prompt block and the prefix-caching order rule',()=>{
 describe('current caller facts (core owner)',()=>{
  const base:SessionContext={tenantId:'fictional-tenant',userId:'fictional-user'};
  it('maps the session’s own person, roles and grants to registry actor classes',()=>{
-  expect(assistantActionActors({...base,personId:'fictional-person',roles:['employee'],grants:[{role:'employee',companyId:null}]})).toEqual(['self','assigned_approver','assigned_tester']);
-  expect(assistantActionActors({...base,personId:null,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]})).toEqual(['assigned_tester','hr_admin','tenant_admin','payroll_admin','rewards_admin']);
+  expect(assistantActionActors({...base,personId:'fictional-person',roles:['employee'],grants:[{role:'employee',companyId:null}]})).toEqual(['self','performance_decider','assigned_approver','assigned_tester']);
+  expect(assistantActionActors({...base,personId:null,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]})).toEqual(['performance_decider','assigned_tester','hr_admin','tenant_admin','payroll_admin','rewards_admin']);
   expect(assistantActionActors({tenantId:'fictional-tenant'})).toEqual([]);
  });
  it('reads each pause fresh in a savepoint: a confirmed pause is paused, an unconfirmable control throws (never “stale”)',async()=>{
   const tx={transaction:vi.fn(async(work:(savepoint:unknown)=>Promise<unknown>)=>work({}))} as unknown as Tx;
   const ctx={...base,personId:'fictional-person',roles:['employee']};
   vi.mocked(assertAiActionUnpausedTx).mockResolvedValueOnce(undefined);
-  expect(await assistantProposalCallerTx(tx,ctx)).toEqual({readableModules:['leave','claims','attendance','approvals'],actors:['self','assigned_approver','assigned_tester'],pausedKeys:[]});
+  expect(await assistantProposalCallerTx(tx,ctx)).toEqual({readableModules:['leave','claims','attendance','approvals'],actors:['self','performance_decider','assigned_approver','assigned_tester'],pausedKeys:[]});
   vi.mocked(assertAiActionUnpausedTx).mockRejectedValueOnce(new AiAllowanceError('paused'));
   const paused=await assistantProposalCallerTx(tx,ctx);expect(paused.pausedKeys).toEqual([...ASSISTANT_CHAT_PAUSE_KEYS]);expect(assistantProposalCatalogue(paused)).toEqual([]);
   expect(vi.mocked(assertAiActionUnpausedTx).mock.calls.map(call=>call[2])).toEqual([...ASSISTANT_CHAT_PAUSE_KEYS,...ASSISTANT_CHAT_PAUSE_KEYS]);
@@ -145,3 +145,5 @@ describe('client bundle boundary',()=>{
   }
  });
 });
+
+it('descriptive Performance decider metadata does not create an inline effect proposal',()=>{expect(assistantProposalCatalogue({...everyone,actors:['performance_decider']})).toEqual([]);});

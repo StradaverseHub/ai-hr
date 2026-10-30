@@ -4159,6 +4159,13 @@
       "when": 1793330000067,
       "tag": "0730_assistant_performance_goal_approval",
       "breakpoints": true
+    },
+    {
+      "idx": 716,
+      "version": "7",
+      "when": 1793330000074,
+      "tag": "0737_assistant_performance_checkin_cancel",
+      "breakpoints": true
     }
   ]
 }
