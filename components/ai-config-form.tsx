@@ -12,19 +12,17 @@ import { readOpenRouterOptions, type OpenRouterOptions } from '@/lib/ai/provider
 import { useFormatter,useTranslations } from 'next-intl';
 import type {ProviderProtocolSummary} from '@/lib/ai/provider-protocol';
 import { toast } from 'sonner';
-import { Loader2, PlugZap, Trash2 } from 'lucide-react';
+import { CheckCircle2, Loader2, PlugZap, Trash2 } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import type { AiConfigView, AiProviderView } from '@/core/ai-config';
 import {
   evaluateProviderCandidateAction,
   disableAiAction,
-  discardPendingProviderChangeAction,
   removeAiProviderConfigAction,
   saveAiProviderConfigAction,
   setActiveProviderAction,
   testConnectionAction,
 } from '@/app/admin/ai/actions';
-// WP14: a direct provider's save is stored as a pending change; it is activated from the baseline checks section.
 
 export function AiConfigForm({ config }: { config: AiConfigView }) {
   const t = useTranslations('admin.ai');
@@ -113,11 +111,6 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
               {t('active')}
             </span>
           )}
-          {!router && p.pendingSaved && (
-            <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-              {t('pendingBadge')}
-            </span>
-          )}
           {!p.configured && p.envKeyPresent && (
             <span className="text-[10px] text-muted-foreground">{t('envKeyPresent')}</span>
           )}
@@ -180,7 +173,10 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
           <p className="text-xs text-muted-foreground">{t('accountPluginsReview')}</p>
         </fieldset>}
         {!storable && <p className="text-xs text-amber-600 dark:text-amber-400">{t('notStorable')}</p>}
-        {router ? <p className="text-xs text-muted-foreground">{t('candidateSaveNote')}</p> : <p className="text-xs text-muted-foreground">{t('pendingSaveNote')}</p>}
+        {router ? <p className="text-xs text-muted-foreground">{t('candidateSaveNote')}</p> : <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input type="checkbox" name="makeActive" defaultChecked={!p.isActive} className="size-4" />
+          {t('makeActive')}
+        </label>}
         <div className="flex flex-wrap items-center gap-2">
           <Button type="submit" disabled={!canSave} className={router?'min-h-11':undefined}>
             {t('save')}
@@ -220,11 +216,12 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
       </section>}
       {p.configured && (
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-          {!router && p.pendingSaved && (
-            <form action={discardPendingProviderChangeAction}>
+          {!router && !p.isActive && (
+            <form action={setActiveProviderAction}>
               <input type="hidden" name="provider" value={p.provider} />
               <Button type="submit" variant="ghost" size="sm">
-                {t('discardPending')}
+                <CheckCircle2 className="size-3.5" />
+                {t('useThis')}
               </Button>
             </form>
           )}

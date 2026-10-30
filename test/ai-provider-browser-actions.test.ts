@@ -4,20 +4,19 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 const browser=vi.hoisted(()=>({selected:undefined as string|undefined}));
-const owners=vi.hoisted(()=>({save:vi.fn(),activate:vi.fn(),disable:vi.fn(),remove:vi.fn(),metadata:vi.fn(),evaluate:vi.fn(),assessment:vi.fn(),discard:vi.fn(),run:vi.fn(),accept:vi.fn()}));
+const owners=vi.hoisted(()=>({save:vi.fn(),activate:vi.fn(),disable:vi.fn(),remove:vi.fn(),metadata:vi.fn(),evaluate:vi.fn(),assessment:vi.fn()}));
 vi.mock('next/headers',()=>({cookies:async()=>({get:(name:string)=>name==='dev_user'&&browser.selected?{value:browser.selected}:undefined}),headers:async()=>new Headers()}));
 vi.mock('../lib/workos',()=>({currentWorkosSession:async()=>null}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 vi.mock('next/navigation',()=>({redirect:vi.fn(()=>{throw Error('fixture redirect');})}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:string)=>key)}));
-vi.mock('../core/ai-config',()=>({AiConfigError:class extends Error{},saveAiProviderConfig:owners.save,setActiveProvider:owners.activate,disableAi:owners.disable,removeAiProviderConfig:owners.remove,testConnection:owners.metadata,discardPendingAiProviderChange:owners.discard}));
-vi.mock('../core/ai-provider-baseline',()=>({runProviderBaseline:owners.run,acceptProviderBaselineFailure:owners.accept}));
+vi.mock('../core/ai-config',()=>({AiConfigError:class extends Error{},saveAiProviderConfig:owners.save,setActiveProvider:owners.activate,disableAi:owners.disable,removeAiProviderConfig:owners.remove,testConnection:owners.metadata}));
 vi.mock('../core/ai-provider-readiness',()=>({evaluateProviderCandidate:owners.evaluate}));
 vi.mock('../packs/performance/service',()=>({ASSESSMENT_AI_FEATURES:['review_summary'],setAssessmentAiSwitch:owners.assessment}));
 import {redirect} from 'next/navigation';
 import {AiConfigError} from '../core/ai-config';
 import { getSession } from '../lib/session';
-import { acceptProviderBaselineAction, disableAiAction, discardPendingProviderChangeAction, evaluateProviderCandidateAction, removeAiProviderConfigAction, runProviderBaselineAction, saveAiProviderConfigAction, setActiveProviderAction, testConnectionAction } from '../app/admin/ai/actions';
+import { disableAiAction, evaluateProviderCandidateAction, removeAiProviderConfigAction, saveAiProviderConfigAction, setActiveProviderAction, testConnectionAction } from '../app/admin/ai/actions';
 import { closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 let base:Base;
 const candidateId='11111111-1111-4111-8111-111111111111',candidateVersion='22222222-2222-4222-8222-222222222222';
@@ -31,13 +30,12 @@ beforeEach(async()=>{
   owners.evaluate.mockResolvedValue({receipt:'opaque-fixture-receipt',candidateId,candidateVersion,expiresAt:new Date(Date.now()+60000).toISOString()});
 });
 afterEach(()=>vi.unstubAllEnvs());afterAll(closeAll);
-const form=()=>{const value=new FormData();value.set('provider','openrouter');value.set('model','fictional/model');value.set('feature','review_summary');value.set('on','true');value.set('kind','environment');value.set('consent','true');value.set('runId',candidateId);value.set('reason','Fictional accepted reason for the fixture.');return value;};
+const form=()=>{const value=new FormData();value.set('provider','openrouter');value.set('model','fictional/model');value.set('feature','review_summary');value.set('on','true');return value;};
 describe('provider browser selected-session boundary',()=>{
   it.each(['absent','unknown'] as const)('refuses %s cookie on every mutation and RPC before calling an owner',async mode=>{
     if(mode==='absent')expect((await getSession()).userId).toBe(base.adminUserId);
     else browser.selected=randomUUID();
-    for(const invoke of [()=>saveAiProviderConfigAction(form()),()=>setActiveProviderAction(form()),()=>removeAiProviderConfigAction(form()),()=>disableAiAction(),
-      ()=>discardPendingProviderChangeAction(form()),()=>runProviderBaselineAction(form()),()=>acceptProviderBaselineAction(form())]) {
+    for(const invoke of [()=>saveAiProviderConfigAction(form()),()=>setActiveProviderAction(form()),()=>removeAiProviderConfigAction(form()),()=>disableAiAction()]) {
       await expect(invoke()).rejects.toThrow();
     }
     expect(await testConnectionAction({provider:'openrouter',model:'fictional/model'})).toEqual({ok:false,error:'testFail'});

@@ -11,8 +11,7 @@ import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {recordOwnAgentFeedback} from '../core/module-agent-feedback';
 import {erasePersonPii,erasePersonPiiTx} from '../core/pdpa';
-import {resolveActiveAiConfig} from '../core/ai-config';
-import {activateDirectProviderFixture} from './ai-provider-change-fixture';
+import {saveAiProviderConfig,resolveActiveAiConfig} from '../core/ai-config';
 import {bindAiSpendTaskTx} from '../core/ai-spend-task';
 import {prepareAssistantConversationStrategyTx,recheckAssistantConversationStrategyTx} from '../core/module-agent-releases';
 import {eraseOwnAssistantHistory,retireExpiredAssistantHistoryTx,ASSISTANT_TRANSCRIPT_RETENTION_DAYS} from '../core/assistant-history-retention';
@@ -46,7 +45,7 @@ describe('actual own transcript retirement without allowance reset',()=>{
   const[count]=await withTenant(mine.ctx,tx=>tx.execute<{n:number}>(sql`select count(*)::int as n from public.assistant_exchange where app_user_id=app.current_user_id() and asked_at>=date_trunc('day',clock_timestamp())`));expect(count.n).toBe(1);
  });
  it('invalidates an actual prepared baseline marker before any next provider read or completion can persist',async()=>{
-  const mine=await actor();await grantAssistant(adminCtx(b),{appUserId:mine.ctx.userId!});await activateDirectProviderFixture(adminCtx(b),{provider:'openai',model:'fictional-history-model',apiKey:'fictional-key'});
+  const mine=await actor();await grantAssistant(adminCtx(b),{appUserId:mine.ctx.userId!});await saveAiProviderConfig(adminCtx(b),{provider:'openai',model:'fictional-history-model',apiKey:'fictional-key',makeActive:true});
   const selected=await withTenant(mine.ctx,async tx=>{const cfg=await resolveActiveAiConfig(tx,mine.ctx,'hr_assistant');if(!cfg)throw Error('Missing actual fixture configuration');return prepareAssistantConversationStrategyTx(tx,mine.ctx,await bindAiSpendTaskTx(tx,mine.ctx,cfg,{kind:'assistant_question'}),'Fictional in-flight private question');});
   await withTenant(mine.ctx,tx=>recheckAssistantConversationStrategyTx(tx,mine.ctx,selected.capability));await eraseOwnAssistantHistory(mine.ctx);
   await expect(withTenant(mine.ctx,tx=>recheckAssistantConversationStrategyTx(tx,mine.ctx,selected.capability))).rejects.toThrow();expect(await rows()).toEqual([]);

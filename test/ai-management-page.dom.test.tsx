@@ -27,7 +27,6 @@ const navigation=vi.hoisted(()=>({redirect:vi.fn((location:string)=>{throw Objec
 vi.mock('next/navigation',()=>({redirect:navigation.redirect}));
 const providerScreen=vi.hoisted(()=>vi.fn(async()=>null));
 vi.mock('../app/admin/ai/provider-screen',()=>({AiProviderScreen:providerScreen}));
-vi.mock('../app/admin/ai/provider-baseline-panel',()=>({AiProviderBaselinePanel:async()=>null}));
 import AiManagementProviderPage from '../app/control-tower/agents/provider/page';
 import { usdDisplay } from '../app/control-tower/agents/usd-display';
 

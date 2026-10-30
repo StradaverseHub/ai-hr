@@ -6,7 +6,6 @@ import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
 import { AiConfigError, resolveActiveAiConfig, saveAiProviderConfig } from '../core/ai-config';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
-import { activateDirectProviderFixture } from './ai-provider-change-fixture';
 
 describe('general AI gateway provider (0661)', () => {
   let base: Base;
@@ -15,7 +14,7 @@ describe('general AI gateway provider (0661)', () => {
   afterAll(async () => { await closeAll(); });
   it('stores a public https gateway address, reads it back, and refuses internal or malformed ones', async () => {
     const a = { ...adminCtx(base), grants: [{ role: 'hr_admin', companyId: null }] } as SessionContext;
-    await activateDirectProviderFixture(a, { provider: 'ai_gateway', model: 'gpt-5.5', apiKey: 'sk-gateway-1234', providerOptions: { version: 1, baseUrl: 'https://router.flatkey.ai/v1' } });
+    await saveAiProviderConfig(a, { provider: 'ai_gateway', model: 'gpt-5.5', apiKey: 'sk-gateway-1234', makeActive: true, providerOptions: { version: 1, baseUrl: 'https://router.flatkey.ai/v1' } });
     const [row] = await owner.db.select().from(schema.aiProviderConfig).where(eq(schema.aiProviderConfig.tenantId, base.tenantId));
     expect(row).toMatchObject({ provider: 'ai_gateway', model: 'gpt-5.5', providerOptions: { version: 1, baseUrl: 'https://router.flatkey.ai/v1' } });
     const resolved = await withTenant(a, tx => resolveActiveAiConfig(tx, a));
