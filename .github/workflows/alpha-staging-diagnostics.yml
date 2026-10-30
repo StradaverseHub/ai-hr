@@ -727,7 +727,7 @@ jobs:
           retention-days: 3
 
   filesystem-activation:
-    if: ${{ inputs.filesystem_activation_probe && inputs.installer_fixture_phase != 'source-transfer-followup' && inputs.installer_fixture_phase != 'ledger-connection-followup' && inputs.installer_fixture_phase != 'pdf-tools-setup' && inputs.installer_fixture_phase != 'private-access-integration' && github.repository == 'StradaverseHub/ai-hr' }}
+    if: ${{ inputs.filesystem_activation_probe && inputs.installer_fixture_phase != 'normal-cleanup' && inputs.installer_fixture_phase != 'source-transfer-followup' && inputs.installer_fixture_phase != 'ledger-connection-followup' && inputs.installer_fixture_phase != 'pdf-tools-setup' && inputs.installer_fixture_phase != 'private-access-integration' && github.repository == 'StradaverseHub/ai-hr' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

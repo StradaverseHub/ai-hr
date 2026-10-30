@@ -51,4 +51,5 @@ test('normal cleanup diagnostic selects only the explicit non-activation phase',
  assert.doesNotMatch(workflow,/normal_cleanup_probe/);assert.match(workflow,/options: \[full,[^\n]*normal-cleanup\]/);
  // Every existing activation fixture keeps its own activation guard, so normal=false cannot enter it.
  const activationJobs=[...workflow.matchAll(/^  ([a-z-]+):\n    if: \$\{\{ (inputs\.filesystem_activation_probe[^\n]+) \}\}/gm)];assert.ok(activationJobs.length>=4);
+ for(const [,name,guard] of activationJobs)assert.ok(guard.includes("inputs.installer_fixture_phase != 'normal-cleanup'")||/inputs\.installer_fixture_phase == '(?!normal-cleanup)[a-z-]+'/.test(guard),'Activation route must exclude normal cleanup even for conflicting selectors: '+name);
 });
