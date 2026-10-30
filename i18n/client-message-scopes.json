@@ -7,6 +7,7 @@
       "approvals",
       "assistant.fileImport",
       "assistant.launcher",
+      "assistant.workspace.chat",
       "auth",
       "commandBar",
       "common",
@@ -28,6 +29,7 @@
   "segments": {
     "": {
       "prefixes": [
+        "assistant",
         "attendance.clock",
         "common.databaseError",
         "dashboard",
@@ -80,6 +82,7 @@
         "allowanceV4",
         "appliedInPayroll",
         "assistant.fileImport",
+        "assistant.protectedInput",
         "attendance",
         "attendanceSettingsHub",
         "attendanceWorkflow",
@@ -166,28 +169,7 @@
         "admin.personnel.benefitScheme.colPickedUpBy",
         "admin.personnel.benefitScheme.effectiveFrom",
         "admin.personnel.benefitScheme.title",
-        "assistant.fileImport",
-        "assistant.workspace.approvalActions",
-        "assistant.workspace.attendanceActions",
-        "assistant.workspace.claimActions",
-        "assistant.workspace.countryStatutoryActions",
-        "assistant.workspace.decisionActions",
-        "assistant.workspace.hrActions",
-        "assistant.workspace.knowledgeActions",
-        "assistant.workspace.lifecycleActions",
-        "assistant.workspace.moduleActions",
-        "assistant.workspace.multiCycleRunActions",
-        "assistant.workspace.orgActions",
-        "assistant.workspace.overtimeActions",
-        "assistant.workspace.ownClear",
-        "assistant.workspace.payComponentActions",
-        "assistant.workspace.payrollCloseActions",
-        "assistant.workspace.performanceActions",
-        "assistant.workspace.profileActions",
-        "assistant.workspace.proposal",
-        "assistant.workspace.rewardsActions",
-        "assistant.workspace.testingActions",
-        "assistant.workspace.toilActions",
+        "assistant",
         "attendance",
         "common.databaseError",
         "components.confirmSubmit",
@@ -300,7 +282,8 @@
       "prefixes": [
         "common",
         "internalAuth",
-        "loginPresentation"
+        "loginPresentation",
+        "loginTour"
       ],
       "unknown": []
     },
@@ -342,10 +325,16 @@
     },
     "lifecycle": {
       "prefixes": [
+        "accessConfiguration",
+        "auth",
         "common.databaseError",
         "components.confirmSubmit",
+        "components.uiTheme",
         "lifecycle",
-        "onboardingV31.copy"
+        "nav",
+        "onboarding",
+        "onboardingV31.copy",
+        "topbar"
       ],
       "unknown": []
     },
@@ -354,6 +343,7 @@
         "common",
         "internalAuth",
         "loginPresentation",
+        "loginTour",
         "mobileSetup"
       ],
       "unknown": []
@@ -422,7 +412,6 @@
     "mobile-preview": {
       "prefixes": [
         "attendance.clock",
-        "claims",
         "common.databaseError",
         "me.leaveBalanceTable",
         "mobilePreview",
@@ -491,6 +480,7 @@
         "me",
         "overtimePatterns",
         "pagination",
+        "payFormula",
         "payroll.batch",
         "payroll.config",
         "payroll.ea.override",
@@ -523,6 +513,8 @@
     },
     "performance": {
       "prefixes": [
+        "assistant.protectedInput",
+        "assistant.workspace.chat",
         "common.databaseError",
         "components.confirmSubmit",
         "components.drawer",
@@ -543,6 +535,7 @@
     },
     "reports": {
       "prefixes": [
+        "assistant",
         "common.databaseError",
         "employeeMasterReports",
         "payrollComparison"
@@ -553,7 +546,8 @@
       "prefixes": [
         "common",
         "internalAuth",
-        "loginPresentation"
+        "loginPresentation",
+        "loginTour"
       ],
       "unknown": []
     },
