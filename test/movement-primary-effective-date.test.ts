@@ -27,7 +27,7 @@ async function snapshot(id:string){return{
 async function assertPromotionBeforeTransfer(id:string){
  const ctx=adminCtx(b),before=await snapshot(id),history=await movementHistory(ctx,id),promotion=history.find(row=>row.kind==='promotion')!,transfer=history.find(row=>row.kind==='transfer')!;
  expect(history.filter(row=>row.kind==='promotion')).toHaveLength(1);expect(promotion.effectiveDate).toBe(day(-6));expect(transfer.effectiveDate).toBe(day(-4));
- expect(promotion.canEdit).toBe(false);expect(transfer.canEdit).toBe(true);
+ expect(promotion.canEdit).toBe(true);expect(transfer.canEdit).toBe(true);
  const detail=await movementDetail(ctx,id,promotion.id);
  expect(detail?.row.effectiveDate).toBe(day(-6));
  expect(detail?.before).toMatchObject({department:'Finance',salaryAmount:'3000.00',grade:'Original Grade'});
@@ -42,7 +42,7 @@ describe('comparison Movement effective date is independent of its primary leg',
   const result=await commitMovementImport(ctx,{companyId:b.companyId,csv,selection:preview.selection,inputHash:preview.inputHash,fingerprints:Object.fromEntries(preview.employees.filter(row=>row.fingerprint).map(row=>[row.employeeCode,row.fingerprint!])),acknowledgeExcluded:true});expect(result).toMatchObject({imported:2,failed:0});
   const {promotion,transfer}=await assertPromotionBeforeTransfer(id),before=await snapshot(id);
   const gradeAnchor=before.events.find(row=>row.id===promotion.id)!;expect(gradeAnchor.eventType).toBe('employment.grade.changed');expect(gradeAnchor.payload).toMatchObject({movement:{effectiveDate:day(-6)}});
-  await expect(editMovementEvent(ctx,{employmentId:id,movementId:promotion.id,kind:'promotion',effectiveDate:day(-6),gradeId:higher.id,basicSalary:3500,reason:'Cannot edit before later transfer'})).rejects.toThrow(/most recent movement/);expect(await snapshot(id)).toEqual(before);
+  await expect(editMovementEvent(ctx,{employmentId:id,movementId:promotion.id,kind:'promotion',effectiveDate:day(-6),gradeId:higher.id,basicSalary:3500,reason:'Unchanged older correction'})).rejects.toBeInstanceOf(MovementNoChangeError);expect(await snapshot(id)).toEqual(before);
   await reverseMovementEvent(ctx,{employmentId:id,movementId:transfer.id,reason:'Fictional latest transfer rollback'});
   const noOpBefore=await snapshot(id);
   await expect(editMovementEvent(ctx,{employmentId:id,movementId:promotion.id,kind:'promotion',effectiveDate:day(-6),gradeId:higher.id,basicSalary:3500,reason:'Unchanged promotion'})).rejects.toBeInstanceOf(MovementNoChangeError);expect(await snapshot(id)).toEqual(noOpBefore);

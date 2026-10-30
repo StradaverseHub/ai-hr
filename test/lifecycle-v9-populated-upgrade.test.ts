@@ -11,7 +11,7 @@ import {createDb} from '../db/client';
 it('preserves populated Native issuance, private data, identity and every applied receipt through the ordinary V9 upgrade',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8'));
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
- expect(boundary).toBe(569);expect(journal.entries.slice(boundary)).toHaveLength(8);
+ expect(boundary).toBe(571);expect(journal.entries.slice(boundary)).toHaveLength(8);
  const directory=mkdtempSync(join(tmpdir(),'v9-ordinary-upgrade-')),name='ai_hr_v9_upgrade_'+randomUUID().replaceAll('-','');
  const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);
  expect(['127.0.0.1','localhost']).toContain(ownerUrl.hostname);expect(ownerUrl.username).not.toBe('ai_hr_app');

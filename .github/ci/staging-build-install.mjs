@@ -14,6 +14,7 @@ import {validateCleanupRequest} from './staging-cleanup-protocol.mjs';
 import {validateInstallGrant,installJson,installHash} from './ci-install-grant.mjs';
 import {inspectCiBuildPacket} from './build-artifact.mjs';
 import {assertBuildRuntime,assertBuildDotenvCompileKeys} from './build-production.mjs';
+import {guardServerCli,COORDINATOR} from '../../scripts/staging/lease.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 // Hashing or unpacking the ~850 MB build bundle on the 4 GB staging host exceeded 120 s under host load (wave 1b,
 // 29 Oct 2026). Each call stays well inside release.ts's 60-minute deploy deadline, even across the three verifications.
@@ -248,12 +249,15 @@ export async function cleanupCiBuild(sourceRef,installId,buildRecordId,request){
 
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const [mode,sourceRef,installId,buildRecordId]=process.argv.slice(2);
+ guardServerCli(mode==='initialize'?process.env.AIHR_STAGING_CANDIDATE:sourceRef);
  (async()=>{
   targetRoot();
   if(mode==='initialize'){
    assert(process.argv.length===3,'Initialization takes only bounded stdin');
    const chunks=[];let total=0;for await(const chunk of process.stdin){total+=chunk.length;assert(total<=32*1024,'Installation grant exceeds bound');chunks.push(chunk);}
-   return initializePrivateInstall(JSON.parse(Buffer.concat(chunks)));
+   const grant=JSON.parse(Buffer.concat(chunks));
+   if(existsSync(COORDINATOR))assert(grant.source===process.env.AIHR_STAGING_CANDIDATE,'Installation source differs from lease');
+   return initializePrivateInstall(grant);
   }
   assert(process.argv.length===6&&['stage','activate','confirm-runtime','status','cleanup'].includes(mode),'Exact installer mode/source/install/build record required');
   if(mode==='cleanup'){const chunks=[];let total=0;for await(const chunk of process.stdin){total+=chunk.length;assert(total<=32*1024,'Cleanup proof exceeds bound');chunks.push(chunk);}return cleanupCiBuild(sourceRef,installId,buildRecordId,JSON.parse(Buffer.concat(chunks)));}

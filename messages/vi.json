@@ -1640,7 +1640,8 @@
           "endDate": "Ngày kết thúc",
           "remarks": "Ghi chú",
           "action": "Thao tác",
-          "correctionReason": "Lý do chỉnh sửa"
+          "correctionReason": "Lý do chỉnh sửa",
+          "movementId": "Mã sự kiện biến động"
         },
         "detail": {
           "eventInformation": "Thông tin sự kiện",
@@ -1653,7 +1654,8 @@
           "backToHistory": "Quay lại lịch sử",
           "recordedBy": "Người ghi nhận",
           "recordedAt": "Thời điểm ghi nhận",
-          "system": "Hệ thống"
+          "system": "Hệ thống",
+          "documents": "Tài liệu hỗ trợ"
         },
         "field": {
           "company": "Công ty",
@@ -1748,7 +1750,14 @@
           "entityTransferHint": "Chọn công ty mà nhân viên sẽ chuyển đến. Danh sách Đơn vị kinh doanh, Phòng ban, Chức danh và Địa điểm làm việc bên dưới hiện hiển thị lựa chọn của công ty đích — hãy chọn Phòng ban trong đó. Mã nhân viên, Ngày gia nhập Tập đoàn và lịch sử của họ giữ nguyên.",
           "selectPlaceholder": "Chọn…",
           "pendingTargetUnavailable": "Giá trị đích đã lưu không còn nằm trong các lựa chọn hoặc phạm vi truy cập hiện tại của bạn. Không thể lưu bản chỉnh sửa này. Hãy kiểm tra thay đổi chưa có hiệu lực trước khi tiếp tục.",
-          "resignationLifecycleHint": "Thông tin nghỉ việc có hiệu lực vào Ngày hiệu lực. Ghi riêng ngày nộp đơn, ngày nghỉ việc và ngày làm việc cuối cùng."
+          "resignationLifecycleHint": "Thông tin nghỉ việc có hiệu lực vào Ngày hiệu lực. Ghi riêng ngày nộp đơn, ngày nghỉ việc và ngày làm việc cuối cùng.",
+          "closedPayrollTitle": "Bảng lương {periods} đã được khóa sổ.",
+          "closedPayrollBody": "Việc điều chỉnh này cập nhật hồ sơ nhân viên và các lần xử lý sau. Bảng lương đã khóa, phiếu lương đã phát hành và các hồ sơ nộp theo luật định giữ nguyên số liệu cuối cùng và sẽ không được tính lại. Nếu cần điều chỉnh số tiền, hãy dùng quy trình điều chỉnh lương. Mức lương đã điều chỉnh có hiệu lực từ tháng đầu tiên sau kỳ lương đã khóa.",
+          "closedPayrollAcknowledge": "Tôi hiểu rằng bảng lương đã khóa sẽ không thay đổi.",
+          "mustChange": "Bắt buộc thay đổi",
+          "mustChangeRefused": "Loại sự kiện này yêu cầu {field} phải thay đổi. Hãy nhập giá trị mới.",
+          "documentOptional": "Tài liệu hỗ trợ (tùy chọn)",
+          "documentRequired": "Tài liệu hỗ trợ (bắt buộc khi trường này thay đổi)"
         },
         "edit": "Sửa",
         "rollback": "Hoàn tác",
@@ -1842,7 +1851,8 @@
           "originalHeading": "Ghi nhận ban đầu",
           "correctedHeading": "Đã điều chỉnh",
           "noneValue": "Không"
-        }
+        },
+        "payrollClosedBadge": "Đã khóa lương: {periods}"
       },
       "salaryCurrency": "Tiền tệ",
       "emergency": {
@@ -2361,7 +2371,30 @@
           "duplicate_system_field": "Cùng một Trường hệ thống xuất hiện nhiều lần trong biến động này.",
           "system_field_required": "Chọn Trường hệ thống mà dòng này thay đổi, hoặc để trống Trước và Sau.",
           "before_mismatch": "Giá trị Trước không khớp với hồ sơ hiện tại của nhân viên; hồ sơ đã thay đổi kể từ khi chuẩn bị tệp. Nhân viên này không được nhập.",
-          "workbook_old_layout": "Tệp này dùng mẫu Biến động cũ (mỗi loại biến động một trang, cho một công ty). Hãy tải mẫu mới và sao chép các dòng của bạn vào đó."
+          "workbook_old_layout": "Tệp này dùng mẫu Biến động cũ (mỗi loại biến động một trang, cho một công ty). Hãy tải mẫu mới và sao chép các dòng của bạn vào đó.",
+          "unknown_action": "Thao tác phải là Tạo, Cập nhật hoặc Xóa (để trống nghĩa là Tạo).",
+          "movement_id_required": "Cập nhật và Xóa cần Mã sự kiện biến động của biến động cần thay đổi.",
+          "movement_id_unknown": "Không tìm thấy biến động nào có Mã sự kiện biến động này cho nhân viên này.",
+          "movement_id_other_employee": "Mã sự kiện biến động này thuộc về nhân viên khác. Hãy kiểm tra Mã nhân viên ở dòng này.",
+          "movement_already_rolled_back": "Biến động này đã được hoàn tác.",
+          "movement_superseded": "Biến động này đã bị một biến động sau thay thế và chưa từng có hiệu lực, nên không có gì để thay đổi.",
+          "movement_hire_not_supported": "Không thể thay đổi việc tuyển dụng bằng nhập dữ liệu. Hãy dùng Điều chỉnh thông tin tuyển dụng trên thẻ Biến động.",
+          "movement_update_not_supported": "Loại sự kiện này không thể cập nhật bằng nhập dữ liệu. Hãy sửa trên thẻ Biến động.",
+          "movement_not_correctable": "Không thể thay đổi biến động này theo yêu cầu",
+          "movement_id_not_for_create": "Để trống Mã sự kiện biến động cho biến động mới, hoặc chọn Cập nhật hay Xóa.",
+          "reason_not_for_create": "Lý do chỉ dùng cho Cập nhật và Xóa. Hãy dùng Ghi chú cho biến động mới.",
+          "reason_required": "Nhập Lý do cho mọi Cập nhật và Xóa.",
+          "not_applicable_on_delete": "Để trống Trường hệ thống, Trước và Sau ở dòng Xóa.",
+          "conflicting_values": "Các dòng của cùng một biến động có giá trị khác nhau",
+          "duplicate_movement_id": "Cùng một Mã sự kiện biến động xuất hiện ở nhiều hơn một Cập nhật hoặc Xóa. Mỗi biến động chỉ ghi một lần.",
+          "increment_amount_not_for_update": "Không thể dùng Số tiền tăng lương để cập nhật biến động. Hãy nhập Lương cơ bản đã sửa.",
+          "event_mismatch": "Không khớp với biến động có Mã sự kiện biến động này",
+          "closed_payroll_acknowledgement_required": "Bảng lương của biến động này đã đóng. Hãy đánh dấu xác nhận bảng lương đã đóng trước khi lưu",
+          "movement_field_not_included": "Loại sự kiện này không thay đổi trường này.",
+          "movement_field_not_editable": "Không thể sửa trường này cho loại sự kiện này.",
+          "movement_field_must_change": "Loại sự kiện này yêu cầu trường này phải thay đổi.",
+          "movement_document_required": "Thay đổi này cần tài liệu hỗ trợ, mà tệp nhập không thể mang theo. Hãy ghi nhận biến động này ở thẻ Biến động.",
+          "movement_document_not_enabled": "Loại sự kiện này không nhận tài liệu hỗ trợ cho trường này."
         },
         "v2": {
           "type": "Loại Biến động",
@@ -2454,8 +2487,24 @@
             "eventType": "Loại sự kiện",
             "systemField": "Trường hệ thống",
             "before": "Trước",
-            "after": "Sau"
-          }
+            "after": "Sau",
+            "action": "Thao tác",
+            "movementId": "Mã sự kiện biến động",
+            "reason": "Lý do"
+          },
+          "action": {
+            "create": "Tạo",
+            "update": "Cập nhật",
+            "delete": "Xóa"
+          },
+          "guideAction": "Thao tác: để trống hoặc chọn Tạo để ghi nhận biến động mới. Chọn Cập nhật để sửa một biến động hiện có hoặc Xóa để hoàn tác nó. Cập nhật và Xóa cần Mã sự kiện biến động và Lý do.",
+          "guideMovementId": "Mã sự kiện biến động: sao chép từ cột Mã sự kiện biến động trong tệp tải xuống Lịch sử công việc của nhân viên (Tải Excel trên thẻ Biến động). Mã phải thuộc về nhân viên ở dòng đó.",
+          "guideUpdate": "Cập nhật: nhập một dòng cho mỗi trường cần sửa, với giá trị mới ở cột Sau. Ô trống giữ nguyên giá trị đã ghi nhận, kể cả Ngày hiệu lực hoặc Loại sự kiện để trống; không có gì bị xóa trắng. Xóa: một dòng để trống Trường hệ thống, Trước và Sau.",
+          "guideReason": "Lý do: vì sao biến động được sửa hoặc hoàn tác. Bắt buộc với Cập nhật và Xóa và được lưu trong lịch sử kiểm tra. Nếu bảng lương của kỳ đó đã đóng, bạn xác nhận điều đó trên màn hình trước khi lưu.",
+          "closedPayrollRow": "Bảng lương kỳ {periods} đã đóng.",
+          "closedPayrollTitle": "Một số chỉnh sửa thay đổi biến động thuộc kỳ lương đã đóng ({periods}).",
+          "closedPayrollBody": "Các chỉnh sửa này cập nhật hồ sơ nhân viên và việc xử lý về sau. Bảng lương đã đóng, phiếu lương đã phát hành và các tờ khai theo luật định giữ nguyên số liệu đã chốt và sẽ không được tính lại. Nếu không xác nhận, các nhân viên liên quan sẽ không được lưu.",
+          "closedPayrollAcknowledge": "Tôi hiểu rằng bảng lương đã đóng sẽ không thay đổi."
         }
       },
       "headerAssistance": {
@@ -3166,7 +3215,11 @@
         "movement": "Biến động",
         "noMovement": "Không có mục lịch sử",
         "scheduled": "Đã lên lịch cho ngày hiệu lực",
-        "rows": "Dòng {rows}"
+        "rows": "Dòng {rows}",
+        "update": "Cập nhật biến động hiện có",
+        "delete": "Xóa: biến động đã được hoàn tác",
+        "reason": "Lý do: {reason}",
+        "closedPayroll": "Đã xác nhận bảng lương đã đóng: {periods}"
       },
       "employeeFull": {
         "created": "Đã tạo {code} · {name}",
@@ -16584,7 +16637,7 @@
   },
   "movementSettings": {
     "title": "Cài đặt biến động",
-    "description": "Các loại sự kiện nghề nghiệp mà HR có thể ghi nhận cho nhân viên. Đổi tên cho khớp với cách gọi của tổ chức bạn, tắt những loại không dùng, và thêm loại của riêng bạn.",
+    "description": "Các loại sự kiện nghề nghiệp mà HR có thể ghi nhận cho nhân viên, và các lý do chấm dứt mà chúng cung cấp.",
     "behaviourNotice": "Một vài loại sự kiện có hệ quả thực sự — Chấm dứt kết thúc việc làm, Xác nhận hoàn tất thử việc, sửa ngày gia nhập làm thay đổi phép năm. Bạn có thể đổi tên hoặc tắt chúng; bạn không thể thay đổi việc chúng làm. Loại sự kiện của riêng bạn chỉ ghi nhận những thông tin bạn nhập.",
     "catalogTitle": "Loại sự kiện",
     "save": "Lưu",
@@ -16609,7 +16662,10 @@
       "behaviour": "Việc nó làm",
       "status": "Trạng thái",
       "action": "Thao tác",
-      "created": "Ngày tạo"
+      "created": "Ngày tạo",
+      "classification": "Phân loại",
+      "description": "Mô tả",
+      "group": "Nhóm"
     },
     "status": {
       "active": "Đang dùng",
@@ -16617,7 +16673,7 @@
       "all": "Tất cả"
     },
     "searchPlaceholder": "Tìm loại sự kiện hoặc mã…",
-    "createNew": "+ Thêm sự kiện biến động",
+    "createNew": "+ Thêm loại sự kiện",
     "edit": "Sửa",
     "editTitle": "Sửa loại sự kiện",
     "editHint": "Đổi tên cho khớp với cách gọi của tổ chức bạn. Loại có sẵn giữ nguyên chức năng; chỉ loại do bạn tạo mới đổi được hành vi.",
@@ -16625,7 +16681,95 @@
     "empty": "Không có loại sự kiện nào khớp với tìm kiếm này.",
     "builtIn": "Có sẵn",
     "saving": "Đang lưu…",
-    "close": "Đóng"
+    "close": "Đóng",
+    "tabs": {
+      "types": "Loại sự kiện",
+      "reasons": "Lý do chấm dứt"
+    },
+    "classification": {
+      "termination": "Chấm dứt",
+      "nonTermination": "Không chấm dứt"
+    },
+    "noDescription": "Không có mô tả",
+    "deleteBlocked": {
+      "title": "Không thể xóa {name}",
+      "inUse": "Loại này đã được các biến động ghi nhận sử dụng. Xóa nó sẽ khiến lịch sử của những nhân viên đó không có tên, nên hệ thống giữ lại.",
+      "builtIn": "Đây là một trong các loại sự kiện tiêu chuẩn có sẵn trong hệ thống, nên không thể xóa.",
+      "switchOffInstead": "Bạn có thể tắt nó. Nó sẽ không còn hiển thị khi HR ghi nhận biến động mới, và các bản ghi đang dùng nó vẫn giữ nguyên ý nghĩa.",
+      "alreadyOff": "Loại này đã tắt, nên không còn hiển thị khi HR ghi nhận biến động mới. Các bản ghi đang dùng nó vẫn giữ nguyên ý nghĩa."
+    },
+    "config": {
+      "newTitle": "Thêm loại sự kiện",
+      "newSubtitle": "Loại sự kiện của riêng bạn",
+      "builtInType": "Loại sự kiện tiêu chuẩn",
+      "customType": "Loại sự kiện của riêng bạn",
+      "breadcrumb": "Đường dẫn",
+      "code": "Mã (lưu trên mọi bản ghi, không thể thay đổi)",
+      "codeAuto": "Được tạo từ tên khi bạn lưu",
+      "sections": {
+        "general": "Thông tin chung",
+        "classification": "Phân loại",
+        "description": "Mô tả",
+        "reasons": "Lý do chấm dứt",
+        "fields": "Kiểm soát trường"
+      },
+      "classificationHint": "Được xác định bởi việc loại sự kiện này làm: Chấm dứt sẽ kết thúc việc làm, mọi loại khác là Không chấm dứt.",
+      "optional": "(không bắt buộc)",
+      "descriptionHint": "Hiển thị cho HR bên dưới loại sự kiện khi ghi nhận biến động mới.",
+      "descriptionPlaceholder": "vd. Điều chuyển sang vai trò mới sau khi tái cấu trúc.",
+      "classificationLocked": "Đã khóa: loại này đã được dùng bởi các biến động đã ghi nhận.",
+      "classificationBuiltIn": "Các loại sự kiện tiêu chuẩn giữ phân loại cố định.",
+      "reasonsHint": "Đánh dấu các lý do HR có thể chọn khi ghi nhận loại sự kiện này.",
+      "reasonsAllHint": "Không đánh dấu lý do nào: mọi lý do đang dùng đều được cung cấp.",
+      "reasonsManageHint": "Lý do được thêm, đổi tên hoặc tắt ở thẻ Lý do chấm dứt.",
+      "fieldsHint": "Chọn những thông tin việc làm mà loại sự kiện này thay đổi. HR chỉ thấy các trường bạn đưa vào khi ghi nhận.",
+      "fieldsNotApplicable": "Kiểm soát trường áp dụng cho các loại sự kiện thay đổi thông tin việc làm. Loại sự kiện này không thay đổi.",
+      "fieldsCompanyLocked": "Luôn được thay đổi bởi Điều chuyển pháp nhân.",
+      "fieldColumns": {
+        "field": "Trường",
+        "include": "Muốn thay đổi",
+        "edit": "Cho phép sửa",
+        "mustChange": "Bắt buộc thay đổi",
+        "file": "Bật tệp"
+      },
+      "fieldGroups": {
+        "organisation": "Phân công tổ chức",
+        "labels": "Nhãn tổ chức bổ sung",
+        "salary": "Lương cơ bản"
+      },
+      "documents": {
+        "none": "Tắt",
+        "optional": "Tùy chọn",
+        "required": "Bắt buộc"
+      }
+    },
+    "reasons": {
+      "createNew": "+ Thêm lý do",
+      "add": "Thêm lý do",
+      "addTitle": "Thêm lý do chấm dứt",
+      "addHint": "Đặt tên theo cách tổ chức của bạn dùng và chọn nhóm. Sau đó lý do sẽ hiển thị khi HR ghi nhận chấm dứt.",
+      "renameTitle": "Đổi tên lý do chấm dứt",
+      "renameHint": "Các bản ghi đã dùng lý do này vẫn giữ nó và sẽ hiển thị tên mới.",
+      "rename": "Đổi tên",
+      "namePlaceholder": "vd. Thỏa thuận chấm dứt",
+      "groupPlaceholder": "— Chọn nhóm —",
+      "groupFixed": "Nhóm quyết định cách tính trường hợp nghỉ việc trong báo cáo biến động nhân sự và chấm dứt, nên không thể thay đổi sau khi đã thêm lý do.",
+      "notice": "Ba nhóm này cố định vì chúng được dùng cho báo cáo biến động nhân sự và chấm dứt.",
+      "inUse": "Đã được các trường hợp chấm dứt ghi nhận sử dụng",
+      "emptyGroup": "Không có lý do nào trong nhóm này.",
+      "deactivateConfirmTitle": "Tắt lý do này?",
+      "deactivateConfirmDescription": "Lý do sẽ không còn hiển thị khi HR ghi nhận chấm dứt. Các trường hợp chấm dứt đã dùng lý do này vẫn giữ nguyên. Bạn có thể bật lại bất cứ lúc nào.",
+      "activateConfirmTitle": "Bật lý do này?",
+      "activateConfirmDescription": "Lý do sẽ hiển thị lại khi HR ghi nhận chấm dứt.",
+      "deleteConfirmTitle": "Xóa lý do này?",
+      "deleteConfirmDescription": "Lý do sẽ bị xóa khỏi danh sách. Chỉ áp dụng cho lý do của riêng bạn chưa được trường hợp chấm dứt nào sử dụng.",
+      "deleteBlocked": {
+        "inUse": "Lý do này đã được các trường hợp chấm dứt ghi nhận sử dụng. Xóa nó sẽ khiến các bản ghi đó không có tên lý do, nên hệ thống giữ lại.",
+        "builtIn": "Đây là một trong các lý do tiêu chuẩn có sẵn trong hệ thống, nên không thể xóa.",
+        "switchOffInstead": "Bạn có thể tắt nó. Lý do sẽ không còn hiển thị khi HR ghi nhận chấm dứt, và các bản ghi đang dùng vẫn giữ nguyên lý do.",
+        "alreadyOff": "Lý do này đã tắt, nên không còn hiển thị khi HR ghi nhận chấm dứt. Các bản ghi đang dùng vẫn giữ nguyên lý do."
+      }
+    }
   },
   "hiringDefaults": {
     "title": "Mặc định tuyển dụng",

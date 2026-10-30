@@ -11,8 +11,11 @@ export const MOVEMENT_IMPORT_COLUMNS=['employee_code',...MOVEMENT_IMPORT_FIELDS.
 export const MOVEMENT_IMPORT_HEADERS=['Employee ID',...MOVEMENT_IMPORT_FIELDS.map(field=>field==='kind'?'EventType':field==='effectiveDate'?'EffectiveDate':field.replace(/([a-z])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase()))];
 /** ac6645ec — `companyCode` (Company ID cell) is resolved per record by the server into `companyId`; `before`
  * holds the Before cells by System Field key; `sourceRows` lists every sheet row of one grouped movement. */
-export type MovementImportRecord={row:number;employeeCode:string;cells:Partial<Record<MovementFormField,string>>;errors:string[];incrementAmount?:string;importVersion?:2;source?:{sheet:string;row:number};companyCode?:string;companyId?:string;employeeName?:string;before?:Record<string,string>;sourceRows?:number[]};
-export type MovementImportRow={row:number;employeeCode:string;eventType:string;effectiveDate:string;status:'valid'|'invalid'|'excluded'|'imported'|'failed';errors:string[];warnings?:string[];source?:{sheet:string;row:number};sourceRows?:number[];companyCode?:string;baselineDate?:string;before?:Record<string,string|null>;proposed?:Record<string,string|null>;scheduled?:boolean;payrollFlaggedPeriods?:string[]};
+/** 646355e5 slice C — `action` (blank = create) and `movementId`/`reason` come from the version 4 columns; an
+ * Update or Delete names ONE existing movement, resolved only within the row's tenant, company and employee. */
+export type MovementImportAction='create'|'update'|'delete';
+export type MovementImportRecord={row:number;employeeCode:string;cells:Partial<Record<MovementFormField,string>>;errors:string[];incrementAmount?:string;importVersion?:2;source?:{sheet:string;row:number};companyCode?:string;companyId?:string;employeeName?:string;before?:Record<string,string>;sourceRows?:number[];action?:MovementImportAction;movementId?:string;reason?:string};
+export type MovementImportRow={row:number;employeeCode:string;eventType:string;effectiveDate:string;status:'valid'|'invalid'|'excluded'|'imported'|'failed';errors:string[];warnings?:string[];source?:{sheet:string;row:number};sourceRows?:number[];companyCode?:string;baselineDate?:string;before?:Record<string,string|null>;proposed?:Record<string,string|null>;scheduled?:boolean;payrollFlaggedPeriods?:string[];action?:MovementImportAction;movementId?:string;closedPayrollPeriods?:string[]};
 /** `key` identifies one employee of one company in a multi-company file (selection and fingerprints). */
 export type MovementImportEmployee={employeeCode:string;employmentId:string|null;name:string|null;rows:MovementImportRow[];fingerprint:string|null;key?:string;companyId?:string|null;companyName?:string|null};
 export type MovementImportPreview={inputHash:string;selection:number[];fileErrors:string[];employees:MovementImportEmployee[];excluded:number;valid:number};
@@ -82,14 +85,15 @@ export function movementImportHasBlacklistInput(cells:MovementImportRecord['cell
 }
 export function movementImportCellIssues(record:MovementImportRecord,behaviour:string):string[]{
  const issues=[...record.errors];const visible=new Set(movementFormFields(behaviour,record.cells.terminationReasonCode));
- if(behaviour==='blacklist'&&!movementImportHasBlacklistInput(record.cells)&&!issues.includes('blacklist_input_required'))issues.push('blacklist_input_required');
+ if(behaviour==='blacklist'&&record.action!=='update'&&!movementImportHasBlacklistInput(record.cells)&&!issues.includes('blacklist_input_required'))issues.push('blacklist_input_required');
  for(const field of MOVEMENT_IMPORT_FIELDS){
   const value=record.cells[field];
   // Every row carries a date. Blacklist is a current-day flag; the server verifies its date explicitly.
   if(field==='effectiveDate'&&behaviour==='blacklist')continue;
   if(value&&!visible.has(field)){issues.push(`not_applicable:${field}`);continue;}
   if(!visible.has(field))continue;
-  if(!value&&movementImportRequired(field,behaviour))issues.push(`required:${field}`);
+  // An Update keeps every value it leaves blank (646355e5 slice C), so nothing is required of it here.
+  if(!value&&record.action!=='update'&&movementImportRequired(field,behaviour))issues.push(`required:${field}`);
   if(!value)continue;
   if(['effectiveDate','endDate','resignationDate','tenderResignationDate','resignationEffectiveDate'].includes(field)){if(!movementImportDate(value))issues.push(`invalid_date:${field}`);}
   else if(!['kind','companyId','businessUnitId','departmentId','positionId','gradeId','locationId','managerEmploymentId'].includes(field)){

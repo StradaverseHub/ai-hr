@@ -3986,58 +3986,72 @@
       "breakpoints": true
     },
     {
-      "idx": 694,
+      "idx": 684,
       "version": "7",
-      "when": 1793330000042,
+      "when": 1793330000050,
+      "tag": "0721_movement_settings_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 685,
+      "version": "7",
+      "when": 1793330000051,
+      "tag": "0722_movement_type_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 686,
+      "version": "7",
+      "when": 1793330000056,
       "tag": "0713_lifecycle_v9",
       "breakpoints": true
     },
     {
-      "idx": 695,
+      "idx": 687,
       "version": "7",
-      "when": 1793330000043,
+      "when": 1793330000057,
       "tag": "0714_lifecycle_v9_email",
       "breakpoints": true
     },
     {
-      "idx": 696,
+      "idx": 688,
       "version": "7",
-      "when": 1793330000044,
+      "when": 1793330000058,
       "tag": "0715_lifecycle_v9_email_assets",
       "breakpoints": true
     },
     {
-      "idx": 697,
+      "idx": 689,
       "version": "7",
-      "when": 1793330000045,
+      "when": 1793330000059,
       "tag": "0716_lifecycle_v9_events",
       "breakpoints": true
     },
     {
-      "idx": 698,
+      "idx": 690,
       "version": "7",
-      "when": 1793330000046,
+      "when": 1793330000060,
       "tag": "0717_lifecycle_v9_delivery_review",
       "breakpoints": true
     },
     {
-      "idx": 699,
+      "idx": 691,
       "version": "7",
-      "when": 1793330000047,
+      "when": 1793330000061,
       "tag": "0718_lifecycle_v9_employment_class",
       "breakpoints": true
     },
     {
-      "idx": 700,
+      "idx": 692,
       "version": "7",
-      "when": 1793330000048,
+      "when": 1793330000062,
       "tag": "0719_lifecycle_v9_business_recipients",
       "breakpoints": true
     },
     {
-      "idx": 701,
+      "idx": 693,
       "version": "7",
-      "when": 1793330000049,
+      "when": 1793330000063,
       "tag": "0720_lifecycle_v9_self_equipment",
       "breakpoints": true
     }

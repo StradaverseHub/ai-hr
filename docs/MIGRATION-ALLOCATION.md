@@ -5,22 +5,26 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
-## V9 verification-only source candidate — 30 October 2026
+## V9 coordinated staging successor — 30 October 2026
 
-The owner authorized TypeScript and full-gate verification, explicitly withholding deployment. The candidate preserves the complete569-entry main/alpha prefix at c4fad43c1d67d69125a3f37e7549a5a8a7053362 and the installed Feedback348 prefix through idx683/1793330000031. The initial d13ccd6e0 candidate moved all eight development SQL bodies byte-for-byte; their draft header comments remain historical provenance. Its complete gate found a missing company-retention integration. The still-unapplied0720 now appends a fresh, company-HR-scoped retention boolean; the other seven SQL bodies remain exact. No applied SQL changes. Tests now use the ordinary journal rather than a fixture overlay.
+The owner explicitly resumed this session, authorized merging V9 and deploying to staging, and appointed a release orchestrator. V9 is the next authorized application release after Board handback and the separate queue-guard verification window. No AI, MOBILE, performance or Bank feature payload is included. Production remains unauthorized.
 
-These are **verification-only source positions, not a centrally approved installation allocation**. AI confirmed its10 unapplied0703–0712/idx684–693/when32–41 claims unchanged; MOBILE reports no competing successor and Board adds noSQL. Those claims remain untouched and are not included. The deliberate index gap preserves their reservations. Before any integration/application, obtain the final coordinated sequence from the allocation owner, reconcile all absent predecessors and actual ledger, and rerun affected/fresh verification for any changed candidate. Do not deploy this isolated sequence or silently skip an earlier owning release. No protected ref, real account, staging or production data is changed by this source candidate.
+The fresh canonical/accepted baseline is `2ab4f6c120a28692857e93adeed072d463713ab6`: preserve its complete571-entry journal and every applied SQL byte, including0721/0722 atidx684–685/when1793330000050–51. V9's earlier verification-only0713–0720/idx694–701/when42–49 positions were never installed and are superseded: those lower timestamps would now be skipped.
+
+The freeze audit inspected1887 refs/237 unique journals plus476 registered worktree journals. Known unapplied AI personnel claims end at54 and performance0726 at55; none of the inspected worktrees claimed56 or later. The release orchestrator and the AI, parity, performance, MOBILE and Bank owners were notified. Lower provisional AI0703–0712 and other uninstalled claims must be reallocated above the actual installed watermark before their later owning release; they are not silently included or replayed here. Bank's proposed successor64/idx694 remains provisional until this release's actual handback.
+
+V9 appends immediately after the installed prefix atidx686–693/when1793330000056–63. Its eight SQL bodies remain byte-identical to verified435d6f7a7; only unapplied journal metadata changes. Revalidate the current source/ledger and peer claims before admission. This allocation does not waive authenticated aggregate verification, migration rehearsals, scoped rendered acceptance, the shared lease or exact staging arrival.
 
 | Index | Timestamp | Filename | SQL SHA256 |
 | ---: | ---: | --- | --- |
-|694|1793330000042|0713_lifecycle_v9|7cd451abc6b6fd5a2a7bd46aae2078e6d7b33d795f07e2c132d42637a44aeb3f|
-|695|1793330000043|0714_lifecycle_v9_email|1b4320ab4ad3d69c79213ba7c01e92a6aa89dfc06719cdcdfcc30de71a8d4c97|
-|696|1793330000044|0715_lifecycle_v9_email_assets|7cce0a32d622fa500692deee33d1dc2738009fdddb3c9a7500c627cd50ede0ce|
-|697|1793330000045|0716_lifecycle_v9_events|98f23c7f62f93508f7da8eb4d51c891467ee87ec6d090cae2c64e1e111b51a1b|
-|698|1793330000046|0717_lifecycle_v9_delivery_review|a2a29747b6fcfea39dfc2e54f554f2f44fc9d365c911796066de1a4c36d2979f|
-|699|1793330000047|0718_lifecycle_v9_employment_class|8fcdc41c6db137aa69e29c5dab44a8788b7c3c30620b97d215d7bbbb65f34dd2|
-|700|1793330000048|0719_lifecycle_v9_business_recipients|aa3b80ffa3f013025569e0030fdee843c3af135cc7d0ae1611628cf0cb408035|
-|701|1793330000049|0720_lifecycle_v9_self_equipment|3e7f1b5fe1b08e33d9424ef8262649c4c9ca22356a893987aeaa1d81f391846b|
+|686|1793330000056|0713_lifecycle_v9|7cd451abc6b6fd5a2a7bd46aae2078e6d7b33d795f07e2c132d42637a44aeb3f|
+|687|1793330000057|0714_lifecycle_v9_email|1b4320ab4ad3d69c79213ba7c01e92a6aa89dfc06719cdcdfcc30de71a8d4c97|
+|688|1793330000058|0715_lifecycle_v9_email_assets|7cce0a32d622fa500692deee33d1dc2738009fdddb3c9a7500c627cd50ede0ce|
+|689|1793330000059|0716_lifecycle_v9_events|98f23c7f62f93508f7da8eb4d51c891467ee87ec6d090cae2c64e1e111b51a1b|
+|690|1793330000060|0717_lifecycle_v9_delivery_review|a2a29747b6fcfea39dfc2e54f554f2f44fc9d365c911796066de1a4c36d2979f|
+|691|1793330000061|0718_lifecycle_v9_employment_class|8fcdc41c6db137aa69e29c5dab44a8788b7c3c30620b97d215d7bbbb65f34dd2|
+|692|1793330000062|0719_lifecycle_v9_business_recipients|aa3b80ffa3f013025569e0030fdee843c3af135cc7d0ae1611628cf0cb408035|
+|693|1793330000063|0720_lifecycle_v9_self_equipment|3e7f1b5fe1b08e33d9424ef8262649c4c9ca22356a893987aeaa1d81f391846b|
 
 ## Feedback menu operator switch — 30 October 2026 (unapplied successor)
 
@@ -42,6 +46,61 @@ or protected-ref update is authorized by this source allocation.
 | Owner | Index | Sequence | Filename | Purpose |
 | --- | ---: | ---: | --- | --- |
 | Feedback menu switch | 683 | 1793330000031 | 0696_feedback_menu_operator_switch | Platform setting `feedback.menu_enabled` and operator-only read/write functions |
+
+## Board item 1d58019a (Movement Settings Steps 1 and 2): renumbered on 30 October 2026
+
+Both 1d58019a migrations are unapplied anywhere. Staging runs c4fad43c1, whose journal ends at 0698. Both are
+renumbered so that they append after every competing claim. The reason is that Step 1's original allocation,
+`0713_movement_settings_catalog` at sequence 1793330000042, collided with:
+
+- `codex/v9-lifecycle-alignment-20261029`: `0713_lifecycle_v9` at …042, then 0714–0720 at …043–…049;
+- `codex/ai-user-parity-personnel-check2-20261030` and `check3-20261030`: both also claim …042.
+
+Immediately before this commit, a fresh fetch and check of every local and `origin/*` ref, every registered
+worktree and every builder checkout found these maxima:
+
+- filenames: through `0720_lifecycle_v9_self_equipment` (plus `0716_assistant_emergency_contact_maintenance`);
+- journal sequences: through 1793330000049, other than this branch's own.
+
+Step 1 stays before Step 2. The SQL bytes of Step 1 are identical to the original 0713 file. Only the filename,
+the journal tag and the `when` value changed.
+
+| Owner | Index (on this branch) | Sequence | Filename | SQL SHA256 |
+| --- | ---: | ---: | --- | --- |
+| Board 1d58019a Step 1 | 684 | 1793330000050 | 0721_movement_settings_catalog | 7e0f83300471d5297a0345a16ed8e156fd3fbd7ed8fc5a521577173c1c0c1246 |
+| Board 1d58019a Step 2 | 685 | 1793330000051 | 0722_movement_type_controls | f05714a30e9d833ad6a6495546a1f5f41dabffbce88035e69cc98d2529fd9ec5 |
+
+Integrated after `main`'s Feedback switch (idx683 / …031) on 30 October 2026: indexes shift to 684 and 685; filenames, sequences and SQL bytes are unchanged.
+
+About the Step 2 entry:
+
+- It was first recorded as `0721_movement_type_controls` at …050 with SHA256 a0496be7…451cb.
+- Its body was then corrected before any application. It now explicitly revokes the UPDATE, DELETE and TRUNCATE
+  privileges that deploy/bootstrap-db.sql's default privileges would otherwise grant ai_hr_app.
+- That earlier hash identifies no file that exists now.
+
+The index is this branch's journal position only. At integration, recheck competing claims and the installed
+ledger. Never reuse 0713 or …042 for this item.
+
+## Board item 1d58019a (Movement Settings Enhancement, Step 1) — 30 October 2026
+
+Unapplied source reservation on `claude/fb-1d58019a` (base origin/main `f752ac7f5`, whose journal ends at
+idx682 / 0698_information_only_corrections / sequence1793330000030). A fresh check of every local and
+`origin/*` ref plus every registered worktree found migration filenames claimed through
+`0712_delegated_leave_review_receipts` and journal sequences through 1793330000041 (AI allocation branches,
+e.g. `codex/ai-dev-integration-work-20261030`). This item therefore takes the next free filename and sequence
+rather than any lower gap:
+
+| Owner | Index (on this branch) | Sequence | Filename | SQL SHA256 |
+| --- | ---: | ---: | --- | --- |
+| Board 1d58019a | 683 | 1793330000042 | 0713_movement_settings_catalog | 7e0f83300471d5297a0345a16ed8e156fd3fbd7ed8fc5a521577173c1c0c1246 |
+
+Superseded on 30 October 2026, before any application. The same SQL bytes are now
+`0721_movement_settings_catalog` at sequence 1793330000050 (see the renumbering section above).
+
+The index is this branch's journal position only. Integration with the AI 0699–0712 allocations must
+re-position the entry after them (index changes, filename/sequence/SQL bytes do not). Nothing is applied
+anywhere; recheck competing claims and the installed ledger before integration.
 
 ## Owner-approved combined board allocation — 29 October 2026
 

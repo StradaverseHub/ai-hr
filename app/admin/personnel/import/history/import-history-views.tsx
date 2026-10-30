@@ -76,11 +76,14 @@ async function ItemValue({kind,value}:{kind:ImportKind;value:unknown}){
  if(kind==='movement'){
   // ac6645ec — one movement: its event type and date, then each changed field's value on this side.
   const root=await getTranslations(),resolve=(key:string,fallback:string)=>root.has(key)?root(key):fallback;
-  const state=value as {eventLabel?:string;effectiveDate?:string;movementId?:string|null;scheduled?:boolean;sourceRows?:number[];values?:Record<string,string|null>};
+  const state=value as {eventLabel?:string;effectiveDate?:string;movementId?:string|null;scheduled?:boolean;sourceRows?:number[];values?:Record<string,string|null>;action?:'update'|'delete';reason?:string;closedPayrollPeriods?:string[]};
   const values=Object.entries(state.values??{});
   return <div className="space-y-1"><p className="font-medium">{state.eventLabel??t('movementItem.movement')} · {state.effectiveDate}</p>
    {state.sourceRows?.length?<p className="text-xs text-muted-foreground">{t('movementItem.rows',{rows:state.sourceRows.join(', ')})}</p>:null}
-   {!state.movementId&&<p className="text-xs text-muted-foreground">{t('movementItem.noMovement')}</p>}
+   {/* 646355e5 slice C — an Update or Delete of an existing movement, with the reason it was given. */}
+   {state.action&&<p className="text-xs text-muted-foreground">{t(`movementItem.${state.action}`)}{state.reason?' · '+t('movementItem.reason',{reason:state.reason}):''}</p>}
+   {!!state.closedPayrollPeriods?.length&&<p className="text-xs text-muted-foreground">{t('movementItem.closedPayroll',{periods:state.closedPayrollPeriods.join(', ')})}</p>}
+   {!state.movementId&&state.action!=='delete'&&<p className="text-xs text-muted-foreground">{t('movementItem.noMovement')}</p>}
    {state.scheduled&&<p className="text-xs text-muted-foreground">{t('movementItem.scheduled')}</p>}
    {values.length>0&&<dl className="space-y-1">{values.map(([field,v])=><div key={field}><dt className="inline text-muted-foreground">{movementImportFieldLabel(field,resolve)}: </dt><dd className="inline break-all">{v??'—'}</dd></div>)}</dl>}</div>;
  }

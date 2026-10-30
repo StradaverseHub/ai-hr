@@ -50,10 +50,13 @@ export function verifyMovementErrorReceipt(token:string,context:{tenantId:string
  * not to a company: Company ID is a per-row cell resolved and authorized by the server. The MAC is context
  * binding only; it never authorizes a company, employee or value.
  */
-export type MovementTemplateMetadata={version:3;keyId:string;tenantReference:string;downloadedAt:string;catalogue:string;captions:string[];signature:string};
+/** 646355e5 slice C — version 4 signs the eleven captions (Action, Movement Event ID and Reason appended);
+ * version 3 (eight captions) stays readable and imports as Create only. */
+export type MovementTemplateMetadata={version:3|4;keyId:string;tenantReference:string;downloadedAt:string;catalogue:string;captions:string[];signature:string};
 function templatePayload(m:Omit<MovementTemplateMetadata,'signature'>){return {version:m.version,keyId:m.keyId,tenantReference:m.tenantReference,downloadedAt:m.downloadedAt,catalogue:m.catalogue,captions:m.captions};}
-export function signMovementTemplate(p:{tenantId:string;downloadedAt:string;catalogue:string;captions:string[]}):MovementTemplateMetadata{
- const base=templatePayload({version:3,keyId:key().id,tenantReference:'t1_'+mac('tenant',[p.tenantId,3]),downloadedAt:p.downloadedAt,catalogue:p.catalogue,captions:p.captions});
+export function signMovementTemplate(p:{tenantId:string;downloadedAt:string;catalogue:string;captions:string[];version?:3|4}):MovementTemplateMetadata{
+ const version=p.version??4;
+ const base=templatePayload({version,keyId:key().id,tenantReference:'t1_'+mac('tenant',[p.tenantId,version]),downloadedAt:p.downloadedAt,catalogue:p.catalogue,captions:p.captions});
  return {...base,signature:mac('template',base)};
 }
 export function verifyMovementTemplate(raw:unknown,tenantId:string):MovementTemplateMetadata{
@@ -61,10 +64,10 @@ export function verifyMovementTemplate(raw:unknown,tenantId:string):MovementTemp
  const m=raw as MovementTemplateMetadata;
  // A per-type workbook (version 2) is a retired layout, not a corrupt file: say so plainly.
  if((raw as {version?:unknown}).version===2)throw new Error('workbook_old_layout');
- if(m.version!==3||m.keyId!==key().id||typeof m.tenantReference!=='string'||typeof m.downloadedAt!=='string'||!/^\d{4}-\d{2}-\d{2}T/.test(m.downloadedAt)||typeof m.catalogue!=='string'||!Array.isArray(m.captions)||m.captions.length>20||m.captions.some(c=>typeof c!=='string'||c.length>200)||typeof m.signature!=='string')throw new Error('workbook_metadata_invalid');
+ if(m.version!==3&&m.version!==4||m.captions?.length!==(m.version===3?8:11)||m.keyId!==key().id||typeof m.tenantReference!=='string'||typeof m.downloadedAt!=='string'||!/^\d{4}-\d{2}-\d{2}T/.test(m.downloadedAt)||typeof m.catalogue!=='string'||!Array.isArray(m.captions)||m.captions.length>20||m.captions.some(c=>typeof c!=='string'||c.length>200)||typeof m.signature!=='string')throw new Error('workbook_metadata_invalid');
  const base=templatePayload(m);
  if(!same(m.signature,mac('template',base)))throw new Error('workbook_metadata_invalid');
- if(!same(m.tenantReference,'t1_'+mac('tenant',[tenantId,3])))throw new Error('workbook_metadata_invalid');
+ if(!same(m.tenantReference,'t1_'+mac('tenant',[tenantId,m.version])))throw new Error('workbook_metadata_invalid');
  return {...base,signature:m.signature};
 }
 

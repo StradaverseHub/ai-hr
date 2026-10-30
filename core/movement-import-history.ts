@@ -7,7 +7,7 @@ import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {createImportAttemptTx,importAttemptEventsTx,importAttemptItemsTx,lockImportAttemptTx,recordImportEventTx,recordImportFailure,recordImportItemTx,sealImportPlan,ImportHistoryError,type ImportAttemptItemRow,type ImportRevertHandler} from './import-history';
 import {commitMovementImport,previewMovementImport,movementImportTypes,movementImportStateTx,type MovementImportItemState} from './movement-import';
-import {movementLedgerMarkerTx,movementReversalBlockerTx,reverseMovementForImportTx} from './movement';
+import {createMovementEventTx,editMovementEventTx,movementCorrectionBaseTx,movementHistoryTx,movementLedgerMarkerTx,movementReversalBlockerTx,reverseMovementForImportTx,type CreateMovementInput} from './movement';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {readMovementSource,movementWorkbookCatalogue} from '../lib/movement-workbook.server';
 import {movementImportIssueText} from '../lib/movement-import-issues';
@@ -48,7 +48,7 @@ export type MovementUploadResult=MovementImportResult&{attemptId:string;alreadyC
  * browser cannot swap it), the reviewed plan's fingerprints must still hold for each employee, and each
  * employee is saved in its own transaction together with its history items.
  */
-export async function confirmMovementUpload(ctx:SessionContext,input:{attemptId:string;previewHash:string;employees:string[];acknowledgeExcluded:boolean}&Words):Promise<MovementUploadResult>{
+export async function confirmMovementUpload(ctx:SessionContext,input:{attemptId:string;previewHash:string;employees:string[];acknowledgeExcluded:boolean;acknowledgeClosedPayroll?:boolean}&Words):Promise<MovementUploadResult>{
  type Held={plan:MovementImportPlan;content:Buffer;name:string};
  let prepared:Held|{already:MovementUploadResult};
  try{
@@ -72,7 +72,7 @@ export async function confirmMovementUpload(ctx:SessionContext,input:{attemptId:
  if(input.employees.some(key=>!plan.employees.some(e=>e.key===key&&e.valid))||!selected.length)throw new ImportHistoryError('Choose at least one employee whose movements were checked without errors.');
  let result:MovementImportResult;
  try{
-  result=await commitMovementImport(ctx,{csv:'',records:source.records,sourceHash:source.sourceHash,catalogueHash:source.catalogueHash,inputHash:plan.inputHash,fingerprints:plan.fingerprints,selection:selected.flatMap(e=>e.rows),acknowledgeExcluded:input.acknowledgeExcluded,history:{attemptId:input.attemptId}});
+  result=await commitMovementImport(ctx,{csv:'',records:source.records,sourceHash:source.sourceHash,catalogueHash:source.catalogueHash,inputHash:plan.inputHash,fingerprints:plan.fingerprints,selection:selected.flatMap(e=>e.rows),acknowledgeExcluded:input.acknowledgeExcluded,acknowledgeClosedPayroll:input.acknowledgeClosedPayroll===true,history:{attemptId:input.attemptId}});
  }catch(error){
   const known=error instanceof Error&&/^[a-z_]+$/.test(error.message)?new ImportHistoryError(movementImportIssueText(error.message,input.resolve)):error;
   await recordImportFailure(ctx,input.attemptId,'movement','failed',known);throw known;
@@ -87,7 +87,7 @@ export async function confirmMovementUpload(ctx:SessionContext,input:{attemptId:
    for(const employee of result.employees){const failedRows=employee.rows.filter(r=>r.status==='failed');if(!failedRows.length||!employee.companyId)continue;
     await recordImportItemTx(tx,ctx,{attemptId:input.attemptId,companyId:employee.companyId,employmentId:employee.employmentId,itemKey:`failed|${movementEmployeeKey(employee)}`,label:`${employee.employeeCode}${employee.name?' · '+employee.name:''}`,ordinal:Math.min(...failedRows.map(r=>r.row)),status:'failed',errors:[describe(failedRows.flatMap(r=>r.errors))]});}
    for(const employee of invalid)if(employee.companyId)await recordImportItemTx(tx,ctx,{attemptId:input.attemptId,companyId:employee.companyId,employmentId:null,itemKey:`invalid|${employee.key}`,label:`${employee.employeeCode}${employee.name?' · '+employee.name:''}`,ordinal:Math.min(...employee.rows),status:'failed',errors:employee.errors});
-   await recordImportEventTx(tx,ctx,{attemptId:input.attemptId,kind:'confirmed',importKind:'movement',detail:{succeeded:result.imported,failed}});
+   await recordImportEventTx(tx,ctx,{attemptId:input.attemptId,kind:'confirmed',importKind:'movement',detail:{succeeded:result.imported,failed,...(input.acknowledgeClosedPayroll===true?{closedPayrollAcknowledged:true}:{})}});
   });
  }catch(error){
   if(String((error as {message?:string})?.message??'').includes('import_attempt_confirm_once_uq'))return{...result,attemptId:input.attemptId,alreadyCommitted:true};
@@ -101,11 +101,57 @@ const itemState=(value:unknown)=>value as MovementImportItemState;
 const fieldCaption=(field:string)=>movementImportFieldLabel(field,personnelImportLabelResolvers[0]);
 /** Writer locks precede the attempt row lock in revert, the same order as the Movement rollback. */
 async function lockMovementWritersTx(tx:Tx,ctx:SessionContext){await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);}
+/** The revert's own reason is not known while it is only being checked; the check never commits. */
+const CHECK_REASON='Import revert check';
+const isCorrectionItem=(i:ImportAttemptItemRow)=>!!itemState(i.after).action;
+/** Newest import write first within each employee: creates before corrections, later rows before earlier. */
+const revertOrder=(items:ImportAttemptItemRow[])=>[...items].sort((a,b)=>(a.employmentId??'').localeCompare(b.employmentId??'')||(itemState(b.after).sequence??0)-(itemState(a.after).sequence??0)||b.ordinal-a.ordinal);
+/**
+ * One item's compensation, through the Movement owner:
+ *  - a created movement is rolled back (unchanged since ac6645ec);
+ *  - 646355e5 slice C — an Update is corrected again, back to the movement's original recorded values, through
+ *    the same editMovementEventTx the manual Edit uses (the movement the Update left is the one corrected);
+ *  - a Delete re-records the original movement from its recorded input through createMovementEventTx.
+ * No closed-payroll acknowledgement is passed: a whole-import revert has no confirmation step (ADR-0164 §5).
+ */
+async function revertItemTx(tx:Tx,ctx:SessionContext,i:ImportAttemptItemRow,reason:string){
+ const after=itemState(i.after),before=itemState(i.before);
+ if(!i.employmentId)throw new ImportHistoryError('This import cannot be reverted.');
+ if(after.action==='update'){
+  if(!after.movementId||!before.original)throw new ImportHistoryError('This import cannot be reverted.');
+  await editMovementEventTx(tx,ctx,{...(before.original as CreateMovementInput),employmentId:i.employmentId,movementId:after.movementId,reason});
+ }else if(after.action==='delete'){
+  if(!before.original)throw new ImportHistoryError('This import cannot be reverted.');
+  await createMovementEventTx(tx,ctx,{...(before.original as CreateMovementInput),employmentId:i.employmentId});
+ }else{
+  if(!after.movementId)throw new ImportHistoryError('This import cannot be reverted.');
+  await reverseMovementForImportTx(tx,ctx,i.employmentId,after.movementId,reason);
+ }
+}
+/** Static blockers of an Update or Delete item: the event it touched changed later, or a later movement would
+ *  be overwritten by re-recording a deleted one. The rehearsal below catches every owner refusal besides. */
+async function correctionBlockersTx(tx:Tx,ctx:SessionContext,employmentId:string,i:ImportAttemptItemRow,importIds:Set<string>):Promise<string[]>{
+ const after=itemState(i.after),before=itemState(i.before),blockers:string[]=[];
+ if(!before.original)blockers.push('The original values of this movement were not recorded, so it cannot be restored.');
+ if(after.action==='update'){
+  const left=after.movementId?await movementCorrectionBaseTx(tx,ctx,employmentId,after.movementId):null;
+  if(!left||left.reversed||left.status==='superseded')blockers.push('The movement this import corrected has been changed or rolled back since, so its original values cannot be put back without overwriting that change.');
+ }else{
+  const later=(await movementHistoryTx(tx,ctx,employmentId)).filter(row=>!row.reversed&&row.status!=='superseded'&&row.kind!=='hired'&&!importIds.has(row.id)&&row.effectiveDate>before.effectiveDate).sort((a,b)=>a.effectiveDate.localeCompare(b.effectiveDate))[0];
+  if(later)blockers.push(`A movement dated ${later.effectiveDate} now follows the deleted ${before.eventLabel} of ${before.effectiveDate}, so re-recording it would overwrite that later movement. Roll the later movement back first, or record the event again by hand.`);
+ }
+ return blockers;
+}
+/** A refusal's sentence for a blocker; database wrappers never reach the screen. */
+function blockerText(error:unknown){return error instanceof Error&&!('query'in error)&&!('cause'in error)&&error.name!=='DrizzleQueryError'?error.message:'This change could not be put back. Review the employee’s Employment History.';}
+class RevertRehearsal extends Error{constructor(){super('movement_revert_rehearsal');}}
 /**
  * Revert: all or nothing. Each movement must pass the Movement owner's own rollback guards (reversible type,
  * not superseded, not already reversed, no closed payroll period), and every field it changed must still
  * hold the value this import left (a later movement or edit blocks it). Movements are rolled back newest
  * first through the owner's rollback, with the revert reason; they stay in Employment History, reversed.
+ * 646355e5 slice C — an employee with Update or Delete items is also rehearsed: the very compensation the
+ * revert would write runs in a savepoint that always rolls back, so the preview and the commit agree.
  */
 export const movementRevertHandler:ImportRevertHandler={
  kind:'movement',
@@ -121,26 +167,33 @@ export const movementRevertHandler:ImportRevertHandler={
    // The newest import movement that changed a field is the one whose value must still be in place.
    const newest=new Map<string,ImportAttemptItemRow>();
    for(const i of [...list].sort((a,b)=>(itemState(a.after).sequence??0)-(itemState(b.after).sequence??0)))for(const field of Object.keys(itemState(i.after).raw??{}))newest.set(field,i);
+   const importIds=new Set(list.flatMap(i=>[itemState(i.after).movementId,itemState(i.before).movementId].filter((id):id is string=>!!id)));
+   const found=new Map<string,string[]>();
    for(const i of list){
-    const after=itemState(i.after),before=itemState(i.before),blockers:string[]=[];
+    const after=itemState(i.after),blockers:string[]=[];
     if(!access?.ok)blockers.push('You no longer have permission to maintain this employee.');
+    else if(after.action)blockers.push(...await correctionBlockersTx(tx,ctx,employmentId,i,importIds));
     else if(!after.movementId)blockers.push('This movement left no Employment History entry to roll back.');
-    else{
-     const reason=await movementReversalBlockerTx(tx,ctx,employmentId,after.movementId);if(reason)blockers.push(reason);
-     for(const [field,value]of Object.entries(after.raw??{}))if(newest.get(field)?.id===i.id&&(state[field]??null)!==(value??null))blockers.push(`${fieldCaption(field)} has been changed since this import (for example by a later movement), so this movement cannot be rolled back without overwriting that change.`);
-    }
+    else{const reason=await movementReversalBlockerTx(tx,ctx,employmentId,after.movementId);if(reason)blockers.push(reason);}
+    if(access?.ok&&(after.action||after.movementId))for(const [field,value]of Object.entries(after.raw??{}))if(newest.get(field)?.id===i.id&&(state[field]??null)!==(value??null))blockers.push(`${fieldCaption(field)} has been changed since this import (for example by a later movement), so this movement cannot be rolled back without overwriting that change.`);
+    found.set(i.id,blockers);
+   }
+   if(access?.ok&&list.some(isCorrectionItem)&&list.every(i=>!found.get(i.id)!.length)){
+    let failing:ImportAttemptItemRow|undefined,refusal:unknown;
+    try{await tx.transaction(async rehearsal=>{for(const i of revertOrder(list)){try{await revertItemTx(rehearsal,ctx,i,CHECK_REASON);}catch(error){failing=i;refusal=error;throw error;}}throw new RevertRehearsal();});}
+    catch(error){if(!(error instanceof RevertRehearsal)){if(!failing)throw error;found.get(failing.id)!.push(blockerText(refusal));}}
+   }
+   for(const i of list){
+    const before=itemState(i.before);
     // The shared revert control lists `fields`: the values each changed field goes back to.
-    out.push({itemId:i.id,blockers:[...new Set(blockers)],restore:{movementId:after.movementId,fields:Object.entries(before.values??{}).map(([field,value])=>({field:fieldCaption(field),value:value??'—'}))}});
+    out.push({itemId:i.id,blockers:[...new Set(found.get(i.id))],restore:{movementId:itemState(i.after).movementId??before.movementId,fields:Object.entries(before.values??{}).map(([field,value])=>({field:fieldCaption(field),value:value??'—'}))}});
    }
   }
   return{items:out,fingerprint};
  },
  async apply(tx,ctx,items,options){
-  const reason=options?.reason??'';let reversed=0;
-  for(const i of [...items].sort((a,b)=>(a.employmentId??'').localeCompare(b.employmentId??'')||(itemState(b.after).sequence??0)-(itemState(a.after).sequence??0)||b.ordinal-a.ordinal)){
-   const after=itemState(i.after);if(!after.movementId||!i.employmentId)throw new ImportHistoryError('This import cannot be reverted.');
-   await reverseMovementForImportTx(tx,ctx,i.employmentId,after.movementId,reason);reversed++;
-  }
-  return{movements:reversed};
+  const reason=options?.reason??'';let reversed=0,restored=0;
+  for(const i of revertOrder(items)){await revertItemTx(tx,ctx,i,reason);if(isCorrectionItem(i))restored++;else reversed++;}
+  return{movements:reversed,...(restored?{corrections:restored}:{})};
  },
 };
