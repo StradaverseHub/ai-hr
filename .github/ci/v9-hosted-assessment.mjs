@@ -7,7 +7,7 @@ import {publicRefusal} from './v9-hosted-refusal.mjs';
 const root=resolve(process.env.GITHUB_WORKSPACE),temp=resolve(process.env.RUNNER_TEMP);
 const reader=join(root,'reader'),source=join(root,'source'),wrapper=join(root,'wrapper');
 const output=join(temp,'v9-review-public'),evidence=join(temp,'v9-review-private');
-mkdirSync(output,{mode:0o700});
+mkdirSync(output,{recursive:true,mode:0o700});
 const sha=p=>execFileSync('git',['rev-parse','HEAD'],{cwd:p,encoding:'utf8'}).trim();
 const clean=p=>assert(!execFileSync('git',['status','--porcelain'],{cwd:p,encoding:'utf8'}),'Exact clean checkout required');
 const identity={kind:'V9_HOSTED_READ_ONLY_ASSESSMENT',wrapper:sha(wrapper),reader:sha(reader),candidate:sha(source),originalRunId:41039154492,focusedRunId:41042016086,installationEligible:false,releaseAuthorized:false};

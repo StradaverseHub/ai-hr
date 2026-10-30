@@ -90,11 +90,15 @@ jobs:
         with: {version: 10.33.2}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with: {node-version: '22.23.3'}
+      - name: Check bounded refusal metadata controls
+        run: node --test wrapper/.github/ci/v9-hosted-refusal.test.mjs
+      - name: Probe exact finite producer log API transport
+        run: node wrapper/.github/ci/v9-hosted-log-probe.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
       - name: Install frozen source reader dependencies only
         working-directory: source
         run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Check bounded refusal metadata controls
-        run: node --test wrapper/.github/ci/v9-hosted-refusal.test.mjs
       - name: Assess actual authenticated evidence without installation authority
         run: node wrapper/.github/ci/v9-hosted-assessment.mjs
         env:

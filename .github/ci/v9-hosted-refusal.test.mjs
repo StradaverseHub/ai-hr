@@ -11,3 +11,7 @@ test('unknown text, foreign files and arbitrary locations never publish',()=>{
 test('locations are bounded and duplicate frames removed',()=>{
  const script='.github/ci/reader.mjs';const r=publicRefusal(Array.from({length:100},(_,i)=>` at f (/a/reader/${script}:${i+1}:2)`).join('\n'),[script]);assert.equal(r.frames.length,16);assert.deepEqual(publicRefusal(`/a/reader/${script}:1:2 /a/reader/${script}:1:2`,[script]).frames,[{script,line:1}]);
 });
+
+test('transport diagnostics reveal fixed status/code values without raw responses',()=>{
+ const r=publicRefusal('gh: private payload TOKEN=secret (HTTP 403) ENOBUFS');assert.deepEqual(r.httpStatuses,[403]);assert.deepEqual(r.transportCodes,['ENOBUFS']);assert(!JSON.stringify(r).includes('TOKEN'));assert(!JSON.stringify(r).includes('private payload'));
+});
