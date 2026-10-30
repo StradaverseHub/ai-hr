@@ -1,15 +1,12 @@
-/** Specialist disclosure review is source-owned. Pending/default records never authorize egress.
+/** Disclosure review is source-owned. Pending/default records never authorize egress.
  * Technical automated testing is evidence for a human specialist, never a fabricated approval. */
 import {AiGatewayError} from './types';
 import {PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST} from './provider-data-source-manifest';
 export type ProviderDataReviewRecord=Readonly<{contractId:string;status:'pending'|'approved';sourceDigest:string;reviewer:string;evidence:string;reviewedAt:string}>;
-export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Object.freeze([
- {contractId:'structured_canonical_records_v1',status:'pending',sourceDigest:'',reviewer:'pending',evidence:'pending',reviewedAt:'pending'},
- {contractId:'attendance_trend_analysis_v1',status:'pending',sourceDigest:'',reviewer:'pending',evidence:'pending',reviewedAt:'pending'},
- {contractId:'aggregate_comparison_analysis_v1',status:'pending',sourceDigest:'',reviewer:'pending',evidence:'pending',reviewedAt:'pending'},
-].map(row=>Object.freeze(row as ProviderDataReviewRecord)));
+import {PROVIDER_DATA_REVIEW_RECORDS} from './provider-data-approvals';
+export {PROVIDER_DATA_REVIEW_RECORDS} from './provider-data-approvals';
 /** Record-shape validation only. This function cannot issue a capability or replace the STATIC
- * registry. Actual named specialist signoff and its immutable evidence must exist before editing it. */
+ * registry. Actual human approval and its immutable evidence must exist before editing it. Owner provisional approval is identified as such in the evidence; it is not specialist certification. */
 export function isCompleteProviderDataReview(record:ProviderDataReviewRecord,expectedDigest:string):boolean{
  const date=Date.parse(record.reviewedAt);
  return record.status==='approved'&&/^[a-f0-9]{64}$/.test(expectedDigest)&&record.sourceDigest===expectedDigest&&

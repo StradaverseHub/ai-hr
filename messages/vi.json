@@ -19755,7 +19755,15 @@
         "temporarily_unavailable": "AI tạm thời không khả dụng hoặc bạn đã hết hạn mức.",
         "failed": "Không thể hoàn tất phân tích. Vui lòng thử lại."
       }
-    }
+    },
+    "protectedInput": {
+      "payRule": "Chọn mẫu quy tắc rõ ràng và sửa giá trị. Các giá trị được giữ cục bộ. Dùng trình sửa gốc cho công thức hoặc mô tả khác.",
+      "report": "Chọn cột báo cáo trước, rồi dùng đầu vào gợi ý để sắp xếp. Bộ lọc riêng tư và yêu cầu tự do dùng trình tạo thủ công.",
+      "layout": "Chỉ định dạng nguyên văn thành đoạn hoặc danh sách. Không viết lại ý nghĩa hay tạo tuyên bố phát triển. Dùng biểu mẫu gốc cho nội dung định hướng tương lai.",
+      "performance": "Dùng lệnh trường rõ ràng và thêm lời của bạn sau dấu hai chấm. Ứng dụng xác định mục tiêu cục bộ; không suy đoán xếp hạng hoặc gửi thay bạn.",
+      "calibration": "Dùng yêu cầu đọc rõ ràng. Tên được đối chiếu cục bộ với danh sách bạn được phép xem; yêu cầu mơ hồ cần làm rõ."
+    },
+    "err_protected_input": "Yêu cầu cần đầu vào được bảo vệ phù hợp. Chọn tác vụ hoặc mẫu đầu vào gợi ý, hoặc dùng màn hình gốc cho chi tiết khác."
   },
   "controlTower": {
     "howTitle": "Trung tâm điều hành hoạt động thế nào",

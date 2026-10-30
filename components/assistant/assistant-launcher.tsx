@@ -16,6 +16,7 @@ type Turn = { id: number; question: string; area: PageArea | null; reply?: { ok:
  * small chat window and can be docked as a right-side panel. It knows the page's AREA and, at most, one
  * record id from the address, never what is on the screen. */
 export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom-right' | 'bottom-left'; hiddenAreas: readonly PageArea[] }) {
+ const privacyNotice=useTranslations('assistant.workspace.chat')('privacy');
   const t = useTranslations('assistant.launcher'), areas = useTranslations('assistant.launcher.areas');
   const pathname = usePathname() ?? '/';
   const context = resolvePageContext(pathname);
@@ -122,7 +123,7 @@ export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom
           <button type="submit" disabled={pending || !question.trim()} aria-busy={pending} aria-label={pending ? t('working') : t('send')} title={t('send')}
             className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"><ArrowUp aria-hidden className="size-4"/></button>
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">{t('scope')}</p>
+        <p className="mt-2 text-xs text-muted-foreground">{t('scope')}</p><p className="mt-2 text-xs leading-relaxed text-muted-foreground">{privacyNotice}</p>
       </form>
     </section>}
   </AssistantChatSubmitContext.Provider>;

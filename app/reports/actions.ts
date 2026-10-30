@@ -1,4 +1,6 @@
 'use server';
+import {ProviderWorkloadUnavailableError} from '@/lib/ai/provider-workload-policy';
+import {AiPrivacyGateError} from '@/lib/ai/provider-privacy-request';
 
 import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
@@ -140,7 +142,7 @@ export async function draftReport(
   spec?: CustomReportSpec;
   explanation?: string;
   recommendations?: ReportRecommendations;
-  error?: 'not_configured' | 'invalid_output' | 'forbidden';
+  error?: 'not_configured' | 'invalid_output' | 'forbidden' | 'protected_input';
 }> {
   const s = await getSession();
   if (!isAdmin(s)) return { ok: false, error: 'forbidden' };
@@ -148,6 +150,7 @@ export async function draftReport(
     const { spec, explanation, recommendations } = await draftReportSpec(s, { datasetId, description });
     return { ok: true, spec, explanation, recommendations };
   } catch (e) {
+    if(e instanceof ProviderWorkloadUnavailableError||e instanceof AiPrivacyGateError)return {ok:false,error:'protected_input'};
     if (e instanceof ReportDraftError) return { ok: false, error: e.reason };
     return { ok: false, error: 'invalid_output' };
   }

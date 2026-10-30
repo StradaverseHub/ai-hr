@@ -26,18 +26,14 @@ export type LauncherReply =
 export async function askFromLauncherAction(input: { question: unknown; path: unknown; previousExchangeId?: unknown; previousConversationToken?:unknown; clarificationExchangeId?:unknown }): Promise<LauncherReply> {
   const t = await getTranslations('assistant');
   const question = typeof input.question === 'string' ? input.question.trim() : '';
-  const context = resolvePageContext(input.path);
-  let text = question;
-  if (context && input.clarificationExchangeId===undefined && !assistantSocialIntent(question)) {
-    const areas = await getTranslations('assistant.launcher.areas');
-    text = `${question}\n\n[${t('launcher.contextNote', { area: areas(context.area) })}${context.recordId ? ` · ${context.recordId}` : ''}]`;
-  }
+  // Page labels and record identifiers are presentation context, never part of human intent.
+  const text=question;
   if (!question || text.length > 2000 || (input.previousExchangeId===undefined)!==(input.previousConversationToken===undefined) || input.previousExchangeId !== undefined && (typeof input.previousExchangeId !== 'string'||typeof input.previousConversationToken !== 'string')) return { ok: false, message: t('err_invalid_question') };
   if(input.clarificationExchangeId!==undefined&&(typeof input.clarificationExchangeId!=='string'||input.previousExchangeId!==undefined))return {ok:false,message:t('workspace.conversation.unavailable')};
   try {
     const session = await getBrowserCommandSession();
     const conversationScope=JSON.stringify((await getScopeIds((await allowedCompanies(session)).map(company=>company.id))).sort());
-    const { exchangeId, conversationToken } = await askAssistant(session, { question: text, conversationScope,...(input.clarificationExchangeId===undefined?{}:{clarificationExchangeId:input.clarificationExchangeId as string}), ...(input.previousExchangeId === undefined ? {} : {previousExchangeId: input.previousExchangeId as string,previousConversationToken: input.previousConversationToken as string}) });
+    const { exchangeId, conversationToken } = await askAssistant(session, { question, conversationScope,...(input.clarificationExchangeId===undefined?{}:{clarificationExchangeId:input.clarificationExchangeId as string}), ...(input.previousExchangeId === undefined ? {} : {previousExchangeId: input.previousExchangeId as string,previousConversationToken: input.previousConversationToken as string}) });
     revalidatePath('/assistant');
     const workspace = await loadAiWorkspace(session, { selectedExchangeId: exchangeId, includeGovernance: false });
     const exchange = workspace.history.find(row => row.id === exchangeId);

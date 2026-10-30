@@ -1,4 +1,6 @@
 'use client';
+import {useTranslations} from 'next-intl';
+import {ProtectedInputHelp} from '@/components/assistant/protected-input-help';
 
 /**
  * Custom Report Builder — the three-panel drag-and-drop designer (ADR-0074, c440b365).
@@ -69,6 +71,7 @@ export function ReportBuilder({
   toast?: string;
   labels: Labels;
 }) {
+  const privacyText=useTranslations('assistant')('err_protected_input');
   const L0 = initialSpec.layout ?? {};
   const [name, setName] = useState(initialName);
   const [shared, setShared] = useState(initialShared);
@@ -242,6 +245,7 @@ export function ReportBuilder({
         if (res.spec.layout?.orientation) setOrientation(res.spec.layout.orientation);
         setRecs(res.recommendations ?? null);
         setAiMsg(`${labels.aiApplied}${res.explanation ? ` — ${res.explanation}` : ''}`);
+      } else if(res.error==='protected_input'){setAiMsg(privacyText);
       } else if (res.error === 'not_configured') {
         setAiMsg(labels.aiNotConfigured);
       } else {
@@ -711,7 +715,7 @@ export function ReportBuilder({
           {/* AI Report Designer */}
           <div className="rounded-2xl border border-border bg-card p-4">
             <h3 className="mb-1 flex items-center gap-1.5 text-sm font-semibold">✨ {labels.aiTitle}</h3>
-            <p className="mb-2 text-[11px] text-muted-foreground">{labels.aiDescribe}</p>
+            <p className="mb-2 text-[11px] text-muted-foreground">{labels.aiDescribe}</p><ProtectedInputHelp kind="report" onChoose={setAiText} choices={columns.length?[`columns: ${columns.join(', ')}`]:[]}/>
             <textarea
               value={aiText}
               onChange={(e) => setAiText(e.target.value)}

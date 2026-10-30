@@ -19755,7 +19755,15 @@
         "temporarily_unavailable": "AI is temporarily unavailable or your allowance has been reached.",
         "failed": "I could not complete that analysis. Please try again."
       }
-    }
+    },
+    "protectedInput": {
+      "payRule": "Choose an explicit rule template and edit its values. Values stay local. Use the native editor for formulas or other descriptions.",
+      "report": "Select report columns first, then use the suggested input to arrange that selection. Private filters and narrative requests stay in the manual builder.",
+      "layout": "This formats your existing words as a paragraph or bullets. It does not rewrite meaning or create development claims. Forward-looking drafts use the native form.",
+      "performance": "Use an explicit field command and add your own words after the colon. The application resolves targets locally; it never infers a rating or submits for you.",
+      "calibration": "Use an explicit read request. Names resolve against your current authorized roster locally; ambiguous requests need clarification."
+    },
+    "err_protected_input": "This request needs a supported protected input. Choose a suggested task or input template, or use the native screen for other details."
   },
   "controlTower": {
     "howTitle": "How the Control Tower works",

@@ -19755,7 +19755,15 @@
         "temporarily_unavailable": "AI tidak tersedia buat sementara waktu atau had penggunaan anda telah dicapai.",
         "failed": "Analisis tidak dapat diselesaikan. Sila cuba lagi."
       }
-    }
+    },
+    "protectedInput": {
+      "payRule": "Pilih templat peraturan yang jelas dan edit nilainya. Nilai kekal setempat. Gunakan editor asal untuk formula atau penerangan lain.",
+      "report": "Pilih lajur laporan dahulu, kemudian gunakan input cadangan untuk menyusunnya. Penapis peribadi dan permintaan naratif menggunakan pembina manual.",
+      "layout": "Ini memformat perkataan sedia ada sebagai perenggan atau senarai. Ia tidak mengubah makna atau mencipta dakwaan pembangunan. Gunakan borang asal untuk draf masa hadapan.",
+      "performance": "Gunakan arahan medan yang jelas dan tambah perkataan anda selepas titik bertindih. Sasaran diselesaikan secara setempat; tiada penilaian disimpulkan atau penghantaran automatik.",
+      "calibration": "Gunakan permintaan bacaan yang jelas. Nama dipadankan dengan senarai yang dibenarkan secara setempat; permintaan kabur memerlukan penjelasan."
+    },
+    "err_protected_input": "Permintaan ini memerlukan input terlindung yang disokong. Pilih tugas atau templat input yang dicadangkan, atau gunakan skrin asal untuk butiran lain."
   },
   "controlTower": {
     "howTitle": "Cara Menara Kawalan berfungsi",

@@ -1,3 +1,4 @@
+import {AiPrivacyGateError} from '../lib/ai/provider-privacy-request';
 /**
  * ADR-0082 slice 3 — THE LOOP. The caller that finally joins `converse()` (r221) to the tool registry
  * (r223), which have existed side by side with nothing between them since 2026-08-26.
@@ -93,6 +94,7 @@ export type AssistantErrorCode =
   | 'invalid_question'
   /** The provider failed. The detail is deliberately NOT carried to the caller. */
   | 'provider_error'
+  | 'protected_input'
   /** A shared feature, company or user AI control refused the request. */
   | 'ai_control';
 
@@ -295,6 +297,7 @@ export async function askAssistant(
       await persist(ctx, { reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: 'ai_control' });
       throw new AssistantError('ai_control');
     }
+    if(e instanceof AiPrivacyGateError){await persist(ctx,{reservation,strategy:conversationStrategy.capability,continuesExchangeId,appUserId,question,answer:'',audit,turnCount,hitTurnCap,stop,cfg,spend,period,error:'protected_input'});throw new AssistantError('protected_input');}
     if (e instanceof AssistantError) {
       // A budget refusal mid-loop still records what was spent getting there.
       failure = e.code;

@@ -74,12 +74,12 @@ describe('the floating chat command',()=>{
   expect(await askFromWorkspaceAction({question:'And pending?',previousExchangeId:'prior',previousConversationToken:'proof'})).toEqual({ok:true,exchangeId:'next',conversationToken:'new-proof',answer:'assistant.workspace.conversation.unavailable'});
   expect(owner.ask).toHaveBeenCalledWith(ctx,{question:'And pending?',conversationScope:'["company-1"]',previousExchangeId:'prior',previousConversationToken:'proof'});
  });
- it('sends the question with the server-derived context through askAssistant and returns the canonical card',async()=>{
+ it('keeps ordinary human intent intact on a record page and returns the canonical card',async()=>{
   owner.ask.mockResolvedValue({exchangeId:'exchange-1'});owner.workspace.mockResolvedValue({history:[{id:'exchange-1',grounded:{kind:'fixture'}}]});owner.reply.mockResolvedValue('CARD');
   const reply=await askFromLauncherAction({question:'  How much leave do I have?  ',path:`/leave/${id}`});
   expect(reply).toEqual({ok:true,exchangeId:'exchange-1',answer:'CARD'});
   const sent=owner.ask.mock.calls[0][1].question as string;
-  expect(sent.startsWith('How much leave do I have?\n\n[')).toBe(true);expect(sent).toContain('assistant.launcher.areas.leave');expect(sent).toContain(id);
+  expect(sent).toBe('How much leave do I have?');expect(sent).not.toContain(id);expect(sent).not.toContain('assistant.launcher.areas.leave');
   expect(owner.ask.mock.calls[0][0]).toBe(ctx);expect(owner.workspace).toHaveBeenCalledWith(ctx,{selectedExchangeId:'exchange-1',includeGovernance:false});
  });
  it('adds no context where the path is not a known area, and never trusts a posted label',async()=>{

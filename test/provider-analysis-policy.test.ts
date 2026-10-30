@@ -96,7 +96,7 @@ describe('reusable feature-specific aggregate analysis candidates',()=>{
   for(const cohort of out.cohorts){expect(cohort.populationBand).toBe('20_to_49');for(const row of cohort.metrics){expect(row.supportBand).toBe('20_to_49');expect(row.slicesMayOverlap).toBe(true);}}
   expect(out.cohorts[0].metrics[0].slices).toEqual([{category,peopleBand:'5_to_9',changeBand:'increase_5_to_10_percent'}]);
   expect(review.json).not.toContain('37');expect(review.json).not.toMatch(/"(?:population|support|people|amount|salary|rating|personKey|date)":/);
-  expect(review.reviewStatus).toBe('pending');expect(review.sourceStatus).toBe('requires_native_owner_replay');expect(()=>assertProviderAnalysisReviewApproved(cap,current)).toThrow();retireProviderAnalysis(cap);
+  expect(review.reviewStatus).toBe('approved');expect(review.sourceStatus).toBe('requires_native_owner_replay');expect(()=>assertProviderAnalysisReviewApproved(cap,current)).not.toThrow();retireProviderAnalysis(cap);
  });
  it('binds the canonical original source exactly and does not manufacture source authority or review acceptance',()=>{
   const source=aggregateFixture('payroll','payroll_cost','headcount','recorded_headcount_change','base_pay'),current=aggregateBinding(source,'payroll_explanation');
@@ -135,8 +135,8 @@ describe('reusable feature-specific aggregate analysis candidates',()=>{
   for(const feature of ['hr_assistant','report_insight'] as const){const current={...aggregateBinding(source,feature),operation:'draft' as const},cap=prepareProviderAnalysis(current,source);expect(inspectPreparedProviderAnalysis(cap,current).purpose).toBe('aggregate_comparison_analysis');retireProviderAnalysis(cap);}
   expect(()=>prepareProviderAnalysis({...aggregateBinding(source),operation:'draft'},'PRIVATE RAW PROMPT')).toThrow();
  });
- it('records every AI feature explicitly, including blocked import/vision/drafting variants, without any approved entry',()=>{
-  expect(PROVIDER_ANALYSIS_COVERAGE.map(row=>row.feature)).toEqual(AI_FEATURES.map(row=>row.id));expect(PROVIDER_ANALYSIS_COVERAGE.every(row=>row.reviewStatus==='pending')).toBe(true);
+ it('records every AI feature explicitly, including blocked import/vision/drafting variants, without granting unsupported feature variants',()=>{
+  expect(PROVIDER_ANALYSIS_COVERAGE.map(row=>row.feature)).toEqual(AI_FEATURES.map(row=>row.id));expect(PROVIDER_ANALYSIS_COVERAGE.every(row=>row.reviewStatus==='approved')).toBe(true);
   expect(PROVIDER_ANALYSIS_COVERAGE.find(row=>row.feature==='personnel_import_mapping')).toMatchObject({domains:[],operations:[]});
   for(const row of PROVIDER_ANALYSIS_COVERAGE)expect(row.blockedVariants).toEqual(expect.arrayContaining(['raw_images','raw_free_text','unstructured_drafting','individual_ratings_or_recommendations']));
  });

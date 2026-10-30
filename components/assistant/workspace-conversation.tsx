@@ -44,5 +44,6 @@ export function WorkspaceConversation({initialTurn,tasks,fileImport,composer,res
    {unseen&&<button type="button" onClick={()=>{follow.current=true;if(log.current)log.current.scrollTop=log.current.scrollHeight;setUnseen(false);}} className="mx-auto block min-h-11 rounded-full border border-border px-4 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{c('latest')}</button>}
   </>}
   <div className={turns.length?'shrink-0 pt-4':undefined}>{composer?<div key={generation}>{composer({action:send,pending})}</div>:<WorkspaceComposer key={generation} fileImport={fileImport} clearAfterSubmit clientSubmit pending={pending} layout="hero" action={send} tasks={turns.length?[]:tasks} labels={{tasks:t('workspace.tasks'),taskHint:t('workspace.taskHint'),question:t('workspace.question'),placeholder:t('placeholder'),ask:t('ask'),working:t('workspace.working'),scope:t('scopeNote')}}/>}</div>
+ <p className="shrink-0 pt-2 text-xs leading-relaxed text-muted-foreground">{c('privacy')}</p>
  </section></AssistantChatSubmitContext.Provider>;
 }
