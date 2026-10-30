@@ -1,4 +1,6 @@
 'use server';
+import {ProviderWorkloadUnavailableError} from '@/lib/ai/provider-workload-policy';
+import {AiPrivacyGateError} from '@/lib/ai/provider-privacy-request';
 
 import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
@@ -264,6 +266,7 @@ export async function draftPayRuleAction(p: {
     });
     return { rule, explanation };
   } catch (e) {
+    if(e instanceof ProviderWorkloadUnavailableError||e instanceof AiPrivacyGateError)return {error:(await getTranslations('assistant'))('err_protected_input')};
     if (e instanceof PayRuleDraftError) {
       return { error: e.reason === 'not_configured' ? t('assistUnconfigured') : e.reason === 'forbidden' ? t('assistNotAuthorised') : t('assistFailed') };
     }

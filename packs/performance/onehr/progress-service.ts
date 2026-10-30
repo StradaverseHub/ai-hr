@@ -1,3 +1,4 @@
+import {withCanonicalAiReadTx} from '../../../core/ai-read-transaction';
 import { and,asc,eq,isNull,sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { SessionContext,Tx } from '../../../db/client';
@@ -18,9 +19,9 @@ async function cycleFor(tx:Tx,cycleId:string){
 const filterSchema=z.object({companyId:z.uuid().optional(),department:z.string().max(300).optional(),businessGroup:z.string().max(300).optional(),q:z.string().max(200).optional(),module:z.enum(progressModules).default('pm'),state:z.enum(['all','pending','active','done']).default('all')});
 /** HR gets completion metadata only. Private drafts, answers, conversations and anonymous feedback never cross this DTO.
  * Employment and assignment come through the OneHR projection views (VF-07); HR reads its own rows, unchanged. */
-export async function getAssessmentProgress(ctx:SessionContext,cycleId:string,raw:unknown={}){
+export async function getAssessmentProgress(ctx:SessionContext,cycleId:string,raw:unknown={},existingTx?:Tx){
  z.uuid().parse(cycleId);const filter=filterSchema.parse(raw);
- return withPerformanceTenant(ctx,async tx=>{
+ return withCanonicalAiReadTx(ctx,existingTx,'performance',withPerformanceTenant,async tx=>{
   const config=await cycleFor(tx,cycleId);
   const policy=policySchema.parse(config.policy),today=todayInKualaLumpur(),year=Number(config.cycle.periodEnd.slice(0,4))+(policy.kind==='year_end'?1:0);
   const population=await tx.select({review:onehrReview,name:onehrLabel.labelOrPerson(person.fullName,onehrEmployment.id),code:onehrEmployment.employeeCode,company:company.legalName,companyId:onehrReview.companyId,group:sql<string>`coalesce((select c.legal_name from company c where c.id=${company.parentCompanyId} and c.tenant_id=${company.tenantId}),'')`,department:sql<string>`coalesce((select d.name from app.onehr_assignment a join department d on d.id=a.department_id and d.tenant_id=a.tenant_id where a.employment_id=${onehrReview.employmentId} and a.tenant_id=${onehrReview.tenantId} and a.superseded_at is null and a.valid_from<=${today}::date and (a.valid_to is null or a.valid_to>${today}::date) order by a.valid_from desc,a.id limit 1),'')`}).from(onehrReview).innerJoin(onehrEmployment,eq(onehrEmployment.id,onehrReview.employmentId)).leftJoin(person,eq(person.id,onehrEmployment.personId)).innerJoin(company,eq(company.id,onehrReview.companyId)).where(and(eq(onehrReview.cycleId,cycleId),filter.companyId?eq(onehrReview.companyId,filter.companyId):undefined,sql`app.onehr_admin(${onehrReview.companyId}) and app.assessment_review_participates(${onehrReview.reviewId}) and (${person.id} is not null or ${onehrLabel.visible(onehrEmployment.id)})`)).orderBy(asc(onehrLabel.labelOrPerson(person.fullName,onehrEmployment.id)),asc(onehrReview.reviewId)).limit(20001);

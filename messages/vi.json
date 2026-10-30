@@ -15332,9 +15332,9 @@
       "UNSAFE_DIVISION": "Bạn không thể chia cho không. Hãy chọn một giá trị khác để chia."
     },
     "assistButton": "Hỗ trợ bằng AI",
-    "assistTitle": "Mô tả cách tính khoản này",
-    "assistDescription": "Viết bằng ngôn ngữ thông thường — AI gợi ý một quy tắc để bạn xem lại trước khi lưu.",
-    "assistPlaceholder": "ví dụ: Trả 10% lương cơ bản, hoặc RM50 mỗi ngày làm việc.",
+    "assistTitle": "Chọn mẫu quy tắc lương",
+    "assistDescription": "Dùng mẫu được hỗ trợ, sửa tham số và xem kiểm tra gốc trước khi lưu.",
+    "assistPlaceholder": "10% of basic",
     "assistSubmit": "Gợi ý quy tắc",
     "assistUse": "Dùng quy tắc này",
     "assistCancel": "Hủy",
@@ -16293,9 +16293,9 @@
       "subtitle": "Chọn trường, sắp xếp bố cục và để AI thiết kế cho bạn."
     },
     "ai": {
-      "title": "Trình thiết kế báo cáo AI",
-      "describe": "Mô tả báo cáo bạn muốn và AI sẽ dựng bố cục để bạn xem lại.",
-      "placeholder": "ví dụ: giờ OT hàng tháng theo phòng ban kèm tổng",
+      "title": "Sắp xếp cột báo cáo đã chọn",
+      "describe": "Chọn cột trước. AI chỉ gợi ý thứ tự cho tập cột đó; đặt bộ lọc và phép tính trong trình tạo thủ công.",
+      "placeholder": "columns: name, balance",
       "generate": "Tạo bố cục",
       "generating": "Đang tạo…",
       "notConfigured": "AI chưa được cấu hình — hãy nhờ quản trị viên kết nối nhà cung cấp trong cài đặt AI.",
@@ -17765,10 +17765,13 @@
         "testing_state_blocked": "Người kiểm thử báo bị chặn",
         "testing_state_retest_required": "Cần kiểm thử lại; quan sát cũ không xác minh hướng dẫn hiện tại",
         "testing_state_not_applicable": "Người kiểm thử báo không áp dụng",
-        "testing_state_partial": "Người kiểm thử báo kết quả một phần"
+        "testing_state_partial": "Người kiểm thử báo kết quả một phần",
+        "field_backgroundAgentsTotal": "Công tắc tác nhân theo lịch",
+        "field_backgroundAgentSwitchesOn": "Công tắc đang bật",
+        "field_backgroundAgentEffectiveSwitchesOn": "Công tắc đáp ứng kiểm tra cấu hình"
       },
       "module_overview_label": "Khám phá quy trình của tôi",
-      "module_overview_prompt": "Tôi có thể sử dụng những chức năng mô-đun Assistant nào? Dùng my_module_work cho assistant và giải thích phạm vi mà không đọc hồ sơ không liên quan.",
+      "module_overview_prompt": "Bạn có thể giúp tôi những gì?",
       "leave_available_label": "Số dư nghỉ phép của tôi",
       "leave_available_prompt": "Hiện tôi còn bao nhiêu ngày phép có thể sử dụng?",
       "leave_requests_label": "Theo dõi nghỉ phép",
@@ -17780,17 +17783,17 @@
       "reporting_line_label": "Quan hệ báo cáo của tôi",
       "reporting_line_prompt": "Tôi báo cáo cho ai và ai báo cáo cho tôi?",
       "work_profile_label": "Hồ sơ công việc của tôi",
-      "work_profile_prompt": "Hiển thị hồ sơ công việc của chính tôi, gồm công ty và phòng ban.",
+      "work_profile_prompt": "Hiển thị hồ sơ công việc, công ty và tình trạng việc làm của chính tôi.",
       "payslip_label": "Phiếu lương mới nhất",
       "payslip_prompt": "Hiển thị bản tóm tắt đã ghi nhận trên phiếu lương mới nhất đã phát hành của tôi.",
       "pay_change_label": "Thay đổi lương của tôi",
       "pay_change_prompt": "Giải thích các thay đổi đã ghi nhận giữa hai phiếu lương đã phát hành gần đây nhất của tôi.",
       "answers": {
-        "grounded": "Đây là các hồ sơ hiện tại liên quan đến cuộc trò chuyện đó.",
-        "partial": "Một số phần cần được kiểm tra lại. Mở tác vụ liên quan bên dưới để xem chi tiết tôi có thể hiển thị hiện tại.",
-        "generic": "Rất sẵn lòng giúp. Chọn tác vụ bên dưới hoặc đặt câu hỏi cụ thể, tôi sẽ kiểm tra các hồ sơ bạn được phép truy cập.",
-        "unavailable": "Câu trả lời đó cần kiểm tra lại. Hiện tôi chưa thể hiển thị chi tiết một cách an toàn. Hãy thử tác vụ liên quan bên dưới.",
-        "check": "Kiểm tra thông tin hiện tại",
+        "grounded": "Tôi tìm thấy hồ sơ để kiểm tra nhưng chưa thể đưa ra câu trả lời đáng tin cậy. Bạn có thể xem chúng trong Nguồn.",
+        "partial": "Không thể kiểm tra một số hồ sơ. Câu trả lời này có thể chưa đầy đủ.",
+        "generic": "Bạn muốn biết điều gì? Hãy hỏi tôi về công việc của bạn.",
+        "unavailable": "Hiện tôi không thể mở lại câu trả lời này. Vui lòng hỏi lại.",
+        "check": "Mở cuộc trò chuyện",
         "openTask": "Mở tác vụ hiện tại",
         "tool_my_leave_balances": "Số dư nghỉ phép của bạn",
         "tool_my_leave_requests": "Đơn nghỉ phép của bạn",
@@ -19385,8 +19388,11 @@
       },
       "conversation": {
         "answerLabel": "Câu trả lời từ hồ sơ của bạn",
+        "catalogueIntro": "Tôi có thể giúp bạn tìm câu trả lời về công việc. Ví dụ, bạn có thể hỏi:",
+        "catalogueScope": "Tôi kiểm tra quyền truy cập của bạn cho mỗi yêu cầu. Mọi thay đổi cần bạn xác nhận trong quy trình tương ứng.",
+        "moreAreas": "Hiện thêm {count} lĩnh vực",
         "canonicalNote": "Dựa trên hồ sơ hiện tại mà bạn được phép truy cập.",
-        "sources": "Xem hồ sơ nguồn",
+        "sources": "Nguồn",
         "clarify_employment": "Bạn muốn tôi kiểm tra hồ sơ việc làm nào?",
         "clarify_leave_type": "Bạn đang hỏi về loại nghỉ phép nào?",
         "clarify_period": "Bạn muốn tôi xem kỳ nào?",
@@ -19394,15 +19400,60 @@
         "replyLabel": "Câu trả lời của bạn",
         "continue": "Tiếp tục",
         "reopenBeforeReply": "Hãy mở lại cuộc trò chuyện này trước khi trả lời.",
-        "unavailable": "Việc này cần được kiểm tra lại. Hãy làm mới cuộc trò chuyện hoặc mở một công việc bên dưới.",
-        "insufficient_no_verified_facts": "Tôi không tìm thấy hồ sơ hiện tại để trả lời câu hỏi đó. Hãy thử chọn một công việc bên dưới.",
-        "insufficient_unsupported_explanation": "Tôi có thể hiển thị các giá trị đã ghi nhận, nhưng chưa thể xác minh lời giải thích đó. Hãy kiểm tra trang thường dùng hoặc hỏi bộ phận nhân sự.",
-        "refuse_unsupported_request": "Việc đó nằm ngoài phạm vi tôi có thể hỗ trợ tại đây. Hãy chọn một công việc được hỗ trợ bên dưới.",
+        "unavailable": "Hiện tôi không thể xác minh câu trả lời đó. Vui lòng hỏi lại.",
+        "insufficient_no_verified_facts": "Tôi không tìm thấy hồ sơ hiện tại để trả lời. Bạn có thể cho biết thêm một chút không?",
+        "insufficient_unsupported_explanation": "Tôi có thể cho biết những gì đã được ghi nhận nhưng không thể xác minh nguyên nhân. Bộ phận nhân sự có thể hỗ trợ.",
+        "refuse_unsupported_request": "Tôi có thể giúp trả lời về ứng dụng này và hồ sơ công việc của bạn. Bạn muốn kiểm tra điều gì?",
         "refuse_human_review_required": "Việc này cần con người quyết định. Hãy mở trang thường dùng để xem xét với người phụ trách phù hợp.",
         "contextLimit": "Hãy bắt đầu câu hỏi mới để bổ sung thêm chi tiết.",
         "comparison": "Các giá trị đã ghi nhận, đặt cạnh nhau",
         "recordColumn": "Bản ghi",
-        "moreRules": "Hiển thị thêm {count} quy tắc"
+        "moreRules": "Hiển thị thêm {count} quy tắc",
+        "allAreas": "Xem tất cả lĩnh vực có sẵn",
+        "social_greeting": "Chào bạn! Bạn muốn biết điều gì về công việc?",
+        "social_thanks": "Không có gì. Tôi còn có thể giúp gì nữa?",
+        "backgroundSwitchNote": "Các cài đặt công tắc này không có nghĩa là tác nhân đang chạy.",
+        "example_leave": "Tôi còn bao nhiêu ngày phép?",
+        "example_payroll": "Tôi có thể xem phiếu lương ở đâu?",
+        "example_claims": "Yêu cầu chi phí của tôi đang ở trạng thái nào?",
+        "example_org": "Tôi báo cáo cho ai?",
+        "example_employees": "Thông tin công việc nào của tôi được ghi nhận?",
+        "example_attendance": "Hồ sơ chấm công của tôi cho biết gì?",
+        "example_performance": "Bản đánh giá của tôi đang ở trạng thái nào?",
+        "example_area": "Tôi có thể kiểm tra gì trong {area}?",
+        "natural": {
+          "manager": "Người quản lý được ghi nhận của bạn là {record}.",
+          "report": "{record} được ghi nhận là báo cáo cho bạn.",
+          "leave_available": "Số dư {record} của bạn là {value}.",
+          "leave_taken": "Hồ sơ {record} của bạn ghi nhận đã dùng {value}.",
+          "leave_pending": "Hồ sơ {record} của bạn ghi nhận {value} đang chờ duyệt.",
+          "pay_gross": "Lương gộp được ghi nhận cho {record} là {value}.",
+          "pay_deductions": "Các khoản khấu trừ được ghi nhận cho {record} là {value}.",
+          "pay_net": "Lương thực nhận được ghi nhận cho {record} là {value}.",
+          "employeeCode": "Mã nhân viên được ghi nhận cho {record} là {value}.",
+          "company": "Hồ sơ này thuộc {value}.",
+          "companyFor": "Công ty được ghi nhận cho {record} là {value}.",
+          "workStatus": "Việc làm tại {record} được đánh dấu là {value}.",
+          "claimStatus": "Yêu cầu chi phí {record} được đánh dấu là {value}.",
+          "attendanceStatus": "Hồ sơ chấm công cho {record} được đánh dấu là {value}.",
+          "status": "Trạng thái được ghi nhận cho {record} là {value}.",
+          "hiredOn": "Ngày tuyển dụng được ghi nhận cho {record} là {value}.",
+          "terminatedOn": "Ngày kết thúc việc làm được ghi nhận cho {record} là {value}.",
+          "hours": "Thời lượng được ghi nhận cho {record} là {value} giờ.",
+          "days": "Thời lượng được ghi nhận cho {record} là {value} ngày.",
+          "progress": "Tiến độ được ghi nhận cho {record} là {value}%.",
+          "from": "Ngày bắt đầu được ghi nhận cho {record} là {value}.",
+          "to": "Ngày kết thúc được ghi nhận cho {record} là {value}.",
+          "paidAt": "Ngày thanh toán được ghi nhận cho {record} là {value}.",
+          "recorded": "Với {record}, giá trị được ghi nhận cho {field} là {value}.",
+          "backgroundAgentsTotal": "Có {value} công tắc tác nhân theo lịch trong chế độ xem này.",
+          "backgroundAgentSwitchesOn": "{value} công tắc tác nhân theo lịch đang bật.",
+          "backgroundAgentEffectiveSwitchesOn": "{value} công tắc được bật sau khi kiểm tra mô-đun và các hạn chế.",
+          "backgroundAgentsTotalOne": "Có {value} công tắc tác nhân theo lịch trong chế độ xem này.",
+          "backgroundAgentSwitchesOnOne": "{value} công tắc tác nhân theo lịch đang bật.",
+          "backgroundAgentEffectiveSwitchesOnOne": "{value} công tắc được bật sau khi kiểm tra mô-đun và các hạn chế."
+        },
+        "manageAgentSwitches": "Quản lý công tắc tác nhân"
       },
       "proposal": {
         "titleLeaveCancel": "Hủy đơn nghỉ phép đang chờ",
@@ -19602,6 +19653,16 @@
         "yes": "Có",
         "no": "Không",
         "doneCredit": "Đã ghi {days} ngày phép bù cho {date}."
+      },
+      "chat": {
+        "title": "Cuộc trò chuyện",
+        "new": "Trò chuyện mới",
+        "thinking": "Đang suy nghĩ…",
+        "latest": "Phản hồi mới nhất",
+        "rate": "Đánh giá phản hồi này",
+        "recent": "Trò chuyện gần đây",
+        "tools": "Các cách làm việc khác",
+        "privacy": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn."
       }
     },
     "denied_unavailable": "Phía tôi gặp chút trục trặc. Vui lòng thử lại sau giây lát.",
@@ -19633,7 +19694,7 @@
       "undock": "Quay lại khung chat nổi",
       "close": "Đóng",
       "intro": "Hãy hỏi về những gì bạn đang xem. Tôi chỉ biết bạn đang ở khu vực nào của hệ thống, không biết nội dung trên màn hình, và chỉ đọc được những gì bạn đã được phép xem.",
-      "working": "Đang xử lý…",
+      "working": "Đang suy nghĩ…",
       "failed": "Yêu cầu chưa gửi được. Vui lòng thử lại.",
       "noCard": "Không có thẻ trả lời cho câu hỏi này.",
       "openInAssistant": "Mở trong Trợ lý",
@@ -19660,7 +19721,9 @@
         "analytics": "Phân tích",
         "controlTower": "Tháp điều khiển",
         "settings": "Cài đặt"
-      }
+      },
+      "identity": "Trợ lý AI",
+      "welcome": "Xin chào! Tôi là trợ lý AI của bạn. Bạn cần tôi giúp gì?"
     },
     "fileImport": {
       "title": "Chuẩn bị nhập từ tệp",
@@ -19696,7 +19759,44 @@
       "next": "Màn hình nhập kiểm tra quyền và bản ghi hiện tại. Kiểm tra công ty, ảnh hưởng số dư hoặc nội dung thay thế, rồi xác nhận để lưu. Bản nháp chỉ ở trong thẻ này tối đa 10 phút và mất khi tải lại.",
       "expired": "Bản nháp không còn hoặc đã hết hạn. Quay lại trợ lý để chuẩn bị lại.",
       "formulaNotice": "Trang tính có {formulas} ô công thức và {errors} lỗi Excel. Việc chuẩn bị dùng giá trị đã lưu, không tính lại công thức. Kiểm tra các giá trị này trong nguồn trước khi tiếp tục."
-    }
+    },
+    "privateAnalysis": {
+      "title": "Phân tích xu hướng riêng tư",
+      "description": "So sánh xu hướng theo nhóm và công việc hiện tại mà không gửi tên, số tiền chính xác hay văn bản hồ sơ đến nhà cung cấp AI.",
+      "companyScope": "Sử dụng các công ty bạn đã chọn. Không áp dụng bộ lọc phòng ban, tìm kiếm hoặc biểu đồ.",
+      "domain": "Lĩnh vực",
+      "month": "Tháng đã kết thúc",
+      "compareWindow": "So sánh tháng đã chọn với tháng trước. Các phép tính chính xác được giữ trong ứng dụng.",
+      "snapshotWindow": "Hiển thị tình trạng hiện được ghi nhận. Chấm công dùng tháng đã chọn; không suy đoán xu hướng lịch sử hoặc nguyên nhân.",
+      "run": "Giải thích xu hướng",
+      "thinking": "Đang suy nghĩ…",
+      "result": "Phân tích được bảo vệ",
+      "domains": {
+        "workforce": "Nhân sự",
+        "attendance": "Chấm công",
+        "leave": "Nghỉ phép",
+        "payroll": "Tiền lương",
+        "claims": "Bồi hoàn",
+        "performance": "Hiệu suất",
+        "rewards": "Khen thưởng",
+        "organisation": "Tổ chức"
+      },
+      "notices": {
+        "invalid_request": "Chọn lĩnh vực được hỗ trợ và tháng đã kết thúc.",
+        "privacy_unavailable": "Không đủ dữ liệu nhóm an toàn hoặc yêu cầu cần đầu vào được bảo vệ phù hợp. Xem báo cáo gốc để biết chi tiết.",
+        "unavailable": "Phân tích không khả dụng với quyền truy cập hoặc hồ sơ hiện tại của bạn.",
+        "temporarily_unavailable": "AI tạm thời không khả dụng hoặc bạn đã hết hạn mức.",
+        "failed": "Không thể hoàn tất phân tích. Vui lòng thử lại."
+      }
+    },
+    "protectedInput": {
+      "payRule": "Chọn mẫu quy tắc rõ ràng và sửa giá trị. Các giá trị được giữ cục bộ. Dùng trình sửa gốc cho công thức hoặc mô tả khác.",
+      "report": "Chọn cột báo cáo trước, rồi dùng đầu vào gợi ý để sắp xếp. Bộ lọc riêng tư và yêu cầu tự do dùng trình tạo thủ công.",
+      "layout": "Chỉ định dạng nguyên văn thành đoạn hoặc danh sách. Không viết lại ý nghĩa hay tạo tuyên bố phát triển. Dùng biểu mẫu gốc cho nội dung định hướng tương lai.",
+      "performance": "Dùng lệnh trường rõ ràng và thêm lời của bạn sau dấu hai chấm. Ứng dụng xác định mục tiêu cục bộ; không suy đoán xếp hạng hoặc gửi thay bạn.",
+      "calibration": "Dùng yêu cầu đọc rõ ràng. Tên được đối chiếu cục bộ với danh sách bạn được phép xem; yêu cầu mơ hồ cần làm rõ."
+    },
+    "err_protected_input": "Yêu cầu cần đầu vào được bảo vệ phù hợp. Chọn tác vụ hoặc mẫu đầu vào gợi ý, hoặc dùng màn hình gốc cho chi tiết khác."
   },
   "controlTower": {
     "howTitle": "Trung tâm điều hành hoạt động thế nào",
@@ -22280,7 +22380,7 @@
     "bonus": "Always-no reviewer bonus (points)",
     "penalty": "Always-yes reviewer penalty (points)",
     "aiDraft": "Draft with AI",
-    "aiDraftHelp": "Choose relevant passages from your notes and shared evidence to prepare an editable draft. Check the draft before using it; all decisions remain yours.",
+    "aiDraftHelp": "Sắp xếp trích đoạn từ ghi chú của bạn và bằng chứng được phép thành đề cương có thể sửa. Ý nghĩa được giữ cục bộ; kiểm tra nguyên văn trước khi dùng.",
     "aiDrafting": "Preparing draft…",
     "aiUnavailable": "AI drafting is unavailable. Continue with the form.",
     "managerReassign": "Reassign reviewer",
@@ -23183,10 +23283,10 @@
       "onBox": "Trong ô: {band}, từ {source}"
     },
     "rewrite": {
-      "title": "Soạn với AI",
-      "help": "Xem lại và chỉnh sửa gợi ý trước khi dùng trong biểu mẫu.",
+      "title": "Định dạng lời của tôi",
+      "help": "Chọn bố cục đoạn hoặc danh sách. Nguyên văn được giữ cục bộ và không đổi ý nghĩa.",
       "yourWords": "Lời của bạn",
-      "instruction": "Bạn muốn thay đổi cách diễn đạt thế nào?",
+      "instruction": "Lệnh bố cục",
       "polishInstruction": "Trau chuốt câu chữ mà không thêm sự kiện.",
       "working": "Đang chuẩn bị…",
       "generate": "Chuẩn bị gợi ý",
@@ -23194,17 +23294,17 @@
       "unavailable": "Không thể chuẩn bị bản nháp. Bạn có thể tiếp tục viết hoặc thử lại.",
       "changed": "Trường này đã thay đổi. Hãy đóng gợi ý và yêu cầu gợi ý mới từ nội dung hiện tại.",
       "tooLong": "Rút ngắn gợi ý còn {limit} ký tự trước khi dùng.",
-      "suggestion": "Cách diễn đạt được gợi ý",
+      "suggestion": "Văn bản đã định dạng",
       "discard": "Bỏ",
-      "keep": "Dùng câu chữ"
+      "keep": "Giữ định dạng"
     },
     "careerDraft": {
       "title": "Soạn kế hoạch nghề nghiệp",
-      "help": "Xem xét mục tiêu và nguyện vọng dài hạn được đề xuất dựa trên vai trò đã chọn và đánh giá của bạn. Tự chọn nguyện vọng điều chuyển.",
+      "help": "Xem đề cương khoảng cách kỹ năng và mục tiêu đã ghi nhận. Nguyện vọng dài hạn lấy từ lời bạn tự nhập; AI không tự tạo. Bạn tự chọn khả năng điều chuyển.",
       "generate": "Soạn kế hoạch",
       "saveDirection": "Lưu hướng nghề nghiệp đã chọn trước khi soạn kế hoạch.",
-      "empty": "Không còn khoảng trống phát triển hoặc nguyện vọng trống để soạn.",
-      "preview": "Xem xét đề xuất. Nội dung giữ lại được lưu thành bản nháp riêng để bạn sửa trước khi chia sẻ.",
+      "empty": "Chọn hướng đã lưu hoặc tự nhập nguyện vọng dài hạn. Không tạo nguyện vọng mới.",
+      "preview": "Xem lại mục tiêu gốc đã chọn và lời của bạn trước khi giữ trong kế hoạch riêng.",
       "keepAspiration": "Giữ nguyện vọng dài hạn",
       "keep": "Giữ bản nháp đã chọn"
     },
@@ -24030,6 +24130,10 @@
       "saved": "The unit is left out of this cycle.",
       "broughtBack": "The unit takes part again.",
       "failed": "Something went wrong. Try again."
+    },
+    "protectedOutline": {
+      "title": "Đề cương nguồn do AI sắp xếp",
+      "help": "AI chọn thứ tự đọc. Đây vẫn là dữ kiện và lời gốc; không tạo xếp hạng, quyết định hoặc ý nghĩa mới."
     }
   },
   "allowanceV2": {
@@ -24941,7 +25045,28 @@
     "groupsPrecedence": "Hạn mức áp dụng cho một tài khoản: hạn mức riêng; nếu không có thì của phòng ban, rồi công ty, rồi vai trò (nếu nhiều nhóm cùng cấp khớp, áp dụng giới hạn chặt nhất); nếu không có thì dùng mặc định bên dưới.",
     "agentRunsAs": "Chạy dưới tài khoản tác tử HR, do {by} bật vào {date}.",
     "agentUnknownAdmin": "một quản trị viên trước đây",
-    "agentUnattributed": "Đã bật mà không có quản trị viên được nêu tên, nên tài khoản tác tử HR không chạy. Hãy tạm dừng rồi bật lại để chạy dưới tên của bạn."
+    "agentUnattributed": "Đã bật mà không có quản trị viên được nêu tên, nên tài khoản tác tử HR không chạy. Hãy tạm dừng rồi bật lại để chạy dưới tên của bạn.",
+    "privateFeatures": {
+      "hr_assistant": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "provider_evaluation": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "module_agent_evaluation": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "personnel_import_mapping": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "module_agent_planning": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "readiness_reminders": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "claims_triage": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "payroll_hypotheses": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "payroll_explanation": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "pay_rule_draft": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "report_insight": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "performance_360": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "performance_tc": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "performance_pm": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "performance_review": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "performance_idp": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "performance_calib": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "performance_assistant": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "feedback_planning": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn."
+    }
   },
   "accountEmail": {
     "title": "Lịch sử gửi email tài khoản",

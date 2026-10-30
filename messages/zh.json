@@ -15332,9 +15332,9 @@
       "UNSAFE_DIVISION": "不能除以零。请选择其他数值作为除数。"
     },
     "assistButton": "AI 协助",
-    "assistTitle": "描述应如何计算",
-    "assistDescription": "用通俗语言描述——AI 会建议一条规则，保存前由你审核。",
-    "assistPlaceholder": "例如：支付基本薪资的 10%，或每个工作日 RM50。",
+    "assistTitle": "选择薪资规则模板",
+    "assistDescription": "使用支持的模板，编辑参数，并在保存前查看原生验证结果。",
+    "assistPlaceholder": "10% of basic",
     "assistSubmit": "建议规则",
     "assistUse": "使用此规则",
     "assistCancel": "取消",
@@ -16293,9 +16293,9 @@
       "subtitle": "选择字段、排列布局，或让 AI 为你设计。"
     },
     "ai": {
-      "title": "AI 报表设计器",
-      "describe": "描述你想要的报表，AI 将为你排布以供审阅。",
-      "placeholder": "例如：按部门统计每月加班工时及合计",
+      "title": "排列所选报表列",
+      "describe": "请先选择列。AI 仅建议这些列的排列顺序；筛选和计算请在手动构建器中设置。",
+      "placeholder": "columns: name, balance",
       "generate": "生成布局",
       "generating": "生成中…",
       "notConfigured": "AI 未配置——请管理员在 AI 设置中连接服务商。",
@@ -17765,10 +17765,13 @@
         "testing_state_blocked": "测试人员报告受阻",
         "testing_state_retest_required": "需要重新测试；以往观察不能验证当前说明",
         "testing_state_not_applicable": "测试人员报告不适用",
-        "testing_state_partial": "测试人员报告部分结果"
+        "testing_state_partial": "测试人员报告部分结果",
+        "field_backgroundAgentsTotal": "定时代理开关",
+        "field_backgroundAgentSwitchesOn": "已开启的开关",
+        "field_backgroundAgentEffectiveSwitchesOn": "通过配置检查的开关"
       },
       "module_overview_label": "探索我的工作流程",
-      "module_overview_prompt": "我目前可以使用哪些 Assistant 模块功能？请使用 my_module_work 查询 assistant，说明范围及限制，不读取无关记录。",
+      "module_overview_prompt": "你可以帮我做什么？",
       "leave_available_label": "我的假期余额",
       "leave_available_prompt": "我目前有多少可用假期？",
       "leave_requests_label": "查看我的请假进度",
@@ -17780,17 +17783,17 @@
       "reporting_line_label": "我的汇报关系",
       "reporting_line_prompt": "我向谁汇报，谁向我汇报？",
       "work_profile_label": "我的工作记录",
-      "work_profile_prompt": "显示我本人的工作记录，包括公司和部门。",
+      "work_profile_prompt": "显示我自己的工作记录、公司和在职状态。",
       "payslip_label": "我最新的工资单",
       "payslip_prompt": "显示我最新已发布工资单的记录摘要。",
       "pay_change_label": "我的薪资变化",
       "pay_change_prompt": "解释我最近两张已发布工资单之间已记录的变化。",
       "answers": {
-        "grounded": "以下是这段对话所依据的当前记录。",
-        "partial": "部分内容需要重新核实。请打开下方相关任务，查看我目前可以显示的详情。",
-        "generic": "乐意帮忙。请选择下方任务或提出具体问题，我会核查你有权查看的记录。",
-        "unavailable": "这条回答需要重新核实。我现在无法安全显示其中的详情。请尝试下方相关任务。",
-        "check": "核查当前事实",
+        "grounded": "我找到了可查看的记录，但还无法给出可靠答案。你可以在“来源”中查看这些记录。",
+        "partial": "部分记录无法核查，因此此答案可能不完整。",
+        "generic": "你想了解什么？可以问我有关你工作的问题。",
+        "unavailable": "目前无法重新打开此答案。请再问一次。",
+        "check": "打开对话",
         "openTask": "打开当前任务",
         "tool_my_leave_balances": "你的假期余额",
         "tool_my_leave_requests": "你的休假申请",
@@ -19385,8 +19388,11 @@
       },
       "conversation": {
         "answerLabel": "根据您的记录回答",
+        "catalogueIntro": "我可以帮你查找与工作有关的答案。比如，你可以问：",
+        "catalogueScope": "每次请求我都会检查你的访问权限。更改需要你在相应流程中确认。",
+        "moreAreas": "再显示 {count} 个领域",
         "canonicalNote": "依据您目前有权查看的最新记录。",
-        "sources": "查看来源记录",
+        "sources": "来源",
         "clarify_employment": "您想查询哪一份雇佣记录？",
         "clarify_leave_type": "您指的是哪种假期？",
         "clarify_period": "您想查询哪个期间？",
@@ -19394,15 +19400,60 @@
         "replyLabel": "您的回复",
         "continue": "继续",
         "reopenBeforeReply": "请重新打开这段对话后再回复。",
-        "unavailable": "这需要重新核实。请刷新对话，或打开下方的任务。",
-        "insufficient_no_verified_facts": "我没有找到可用于回答此问题的最新记录。请尝试选择下方的任务。",
-        "insufficient_unsupported_explanation": "我可以展示记录中的数值，但目前无法核实这个解释。请查看常用页面或咨询人力资源部。",
-        "refuse_unsupported_request": "这超出了我在这里能协助的范围。请选择下方支持的任务。",
+        "unavailable": "目前无法核实此答案。请再问一次。",
+        "insufficient_no_verified_facts": "我没有找到能回答这个问题的当前记录。可以再补充一点信息吗？",
+        "insufficient_unsupported_explanation": "我可以展示已记录的信息，但无法核实原因。你可以向人事部门咨询。",
+        "refuse_unsupported_request": "我可以回答有关此应用和你工作记录的问题。你想查看什么？",
         "refuse_human_review_required": "这需要由人作出决定。请打开常用页面，与适当的负责人一起审核。",
         "contextLimit": "请发起新问题，以便补充更多详情。",
         "comparison": "并列查看已记录的数据",
         "recordColumn": "记录",
-        "moreRules": "显示其余 {count} 条规则"
+        "moreRules": "显示其余 {count} 条规则",
+        "allAreas": "查看所有可用领域",
+        "social_greeting": "你好！你想了解工作中的什么事情？",
+        "social_thanks": "不客气。还有什么可以帮你的吗？",
+        "backgroundSwitchNote": "这些开关设置并不表示代理正在运行。",
+        "example_leave": "我还有多少假期？",
+        "example_payroll": "在哪里可以查看我的工资单？",
+        "example_claims": "我的报销申请是什么状态？",
+        "example_org": "我向谁汇报？",
+        "example_employees": "系统记录了我的哪些工作信息？",
+        "example_attendance": "我的考勤记录显示什么？",
+        "example_performance": "我的评估目前是什么状态？",
+        "example_area": "我可以在{area}中查看什么？",
+        "natural": {
+          "manager": "记录中你的经理是{record}。",
+          "report": "记录显示{record}向你汇报。",
+          "leave_available": "你的{record}余额是{value}。",
+          "leave_taken": "你的{record}记录显示已使用{value}。",
+          "leave_pending": "你的{record}记录显示有{value}待审批。",
+          "pay_gross": "{record}记录的税前工资是{value}。",
+          "pay_deductions": "{record}记录的扣款是{value}。",
+          "pay_net": "{record}记录的实发工资是{value}。",
+          "employeeCode": "{record}记录的员工编号是{value}。",
+          "company": "这条记录所属的公司是{value}。",
+          "companyFor": "{record}记录的公司是{value}。",
+          "workStatus": "在{record}的雇佣状态标记为{value}。",
+          "claimStatus": "{record}报销申请标记为{value}。",
+          "attendanceStatus": "{record}的考勤记录标记为{value}。",
+          "status": "{record}记录的状态是{value}。",
+          "hiredOn": "{record}记录的入职日期是{value}。",
+          "terminatedOn": "{record}记录的雇佣结束日期是{value}。",
+          "hours": "{record}记录的时长是{value}小时。",
+          "days": "{record}记录的时长是{value}天。",
+          "progress": "{record}记录的进度是{value}%。",
+          "from": "{record}记录的开始日期是{value}。",
+          "to": "{record}记录的结束日期是{value}。",
+          "paidAt": "{record}记录的付款日期是{value}。",
+          "recorded": "{record}中，{field}的记录值是{value}。",
+          "backgroundAgentsTotal": "此视图中有{value}个定时代理开关。",
+          "backgroundAgentSwitchesOn": "有{value}个定时代理开关已开启。",
+          "backgroundAgentEffectiveSwitchesOn": "经过模块和限制检查后，有{value}个开关处于启用状态。",
+          "backgroundAgentsTotalOne": "此视图中有{value}个定时代理开关。",
+          "backgroundAgentSwitchesOnOne": "有{value}个定时代理开关已开启。",
+          "backgroundAgentEffectiveSwitchesOnOne": "经过模块和限制检查后，有{value}个开关处于启用状态。"
+        },
+        "manageAgentSwitches": "管理代理开关"
       },
       "proposal": {
         "titleLeaveCancel": "取消待审批的请假申请",
@@ -19602,6 +19653,16 @@
         "yes": "是",
         "no": "否",
         "doneCredit": "已为 {date} 记入 {days} 天假期抵扣。"
+      },
+      "chat": {
+        "title": "对话",
+        "new": "新对话",
+        "thinking": "思考中…",
+        "latest": "最新回复",
+        "rate": "评价此回复",
+        "recent": "最近的对话",
+        "tools": "更多工作方式",
+        "privacy": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。"
       }
     },
     "denied_unavailable": "我这边遇到了小状况，请稍后再试。",
@@ -19633,7 +19694,7 @@
       "undock": "返回悬浮聊天",
       "close": "关闭",
       "intro": "可以就您正在查看的内容提问。我只知道您位于系统的哪个区域，不知道屏幕上的内容，并且只能读取您本来就有权查看的信息。",
-      "working": "处理中…",
+      "working": "思考中…",
       "failed": "发送未成功，请重试。",
       "noCard": "此问题没有生成回答卡片。",
       "openInAssistant": "在助手中打开",
@@ -19660,7 +19721,9 @@
         "analytics": "分析",
         "controlTower": "控制塔",
         "settings": "设置"
-      }
+      },
+      "identity": "AI 助手",
+      "welcome": "您好！我是您的 AI 助手。有什么可以帮您？"
     },
     "fileImport": {
       "title": "从文件准备导入",
@@ -19696,7 +19759,44 @@
       "next": "导入页面将检查权限和现有记录。请审核公司、余额影响或替换内容，再明确确认保存。草稿仅在此标签页保留最多 10 分钟，刷新后会丢失。",
       "expired": "此助手草稿已失效或过期。请返回助手重新准备文件。",
       "formulaNotice": "此工作表包含 {formulas} 个公式单元格和 {errors} 个 Excel 错误。准备时使用已保存的值，不会重新计算公式。继续前请核对原文中的这些值。"
-    }
+    },
+    "privateAnalysis": {
+      "title": "私密分析工作规律",
+      "description": "比较群体趋势和当前工作情况，不向 AI 服务商发送姓名、精确金额或记录原文。",
+      "companyScope": "使用您所选的公司，不应用部门、搜索或图表筛选条件。",
+      "domain": "领域",
+      "month": "已结束的月份",
+      "compareWindow": "比较所选月份与上一个月。精确计算保留在应用内。",
+      "snapshotWindow": "展示当前已记录的情况。考勤使用所选月份，不推断历史趋势或原因。",
+      "run": "分析规律",
+      "thinking": "正在思考…",
+      "result": "受保护的分析",
+      "domains": {
+        "workforce": "人员",
+        "attendance": "考勤",
+        "leave": "休假",
+        "payroll": "薪资",
+        "claims": "报销",
+        "performance": "绩效",
+        "rewards": "奖励",
+        "organisation": "组织"
+      },
+      "notices": {
+        "invalid_request": "请选择支持的领域和已结束的月份。",
+        "privacy_unavailable": "安全汇总数据不足，或此请求需要支持的受保护输入。详情请查看原始报表。",
+        "unavailable": "您的当前权限或记录暂不支持此分析。",
+        "temporarily_unavailable": "AI 暂不可用，或已达到使用额度。",
+        "failed": "未能完成分析，请重试。"
+      }
+    },
+    "protectedInput": {
+      "payRule": "选择明确的规则模板并修改数值。数值保留在本地。公式或其他描述请使用原生编辑器。",
+      "report": "先选择报表列，再使用建议输入排列所选列。私人筛选值和自由描述请使用手动报表构建器。",
+      "layout": "仅将您的原文排成段落或项目列表，不改写含义或编造发展计划。前瞻性草稿请使用原生表单。",
+      "performance": "使用明确的字段命令，在冒号后填写您自己的文字。应用在本地解析目标，不推断评级，也不会代您提交。",
+      "calibration": "使用明确的读取请求。姓名仅与您当前有权查看的本地名单匹配；歧义请求需要澄清。"
+    },
+    "err_protected_input": "此请求需要受支持的受保护输入。请选择建议的任务或输入模板，其他详情请使用原生页面。"
   },
   "controlTower": {
     "howTitle": "控制塔的运作方式",
@@ -22280,7 +22380,7 @@
     "bonus": "Always-no reviewer bonus (points)",
     "penalty": "Always-yes reviewer penalty (points)",
     "aiDraft": "Draft with AI",
-    "aiDraftHelp": "Choose relevant passages from your notes and shared evidence to prepare an editable draft. Check the draft before using it; all decisions remain yours.",
+    "aiDraftHelp": "将您自己的笔记和有权查看的证据原文整理为可编辑提纲。原文含义保留在本地，使用前请核对。",
     "aiDrafting": "Preparing draft…",
     "aiUnavailable": "AI drafting is unavailable. Continue with the form.",
     "managerReassign": "Reassign reviewer",
@@ -23183,10 +23283,10 @@
       "onBox": "当前九宫格：{band}，来源：{source}"
     },
     "rewrite": {
-      "title": "使用 AI 起草",
-      "help": "请先审阅并修改建议，再将其用于表单。",
+      "title": "排版我的文字",
+      "help": "选择段落或项目列表。原文保留在本地，不改变含义。",
       "yourWords": "您的原文",
-      "instruction": "您希望如何修改措辞？",
+      "instruction": "排版指令",
       "polishInstruction": "润色措辞，不添加事实。",
       "working": "正在准备…",
       "generate": "生成建议",
@@ -23194,17 +23294,17 @@
       "unavailable": "无法准备草稿。您可以继续自行撰写或重试。",
       "changed": "该字段已更改。请关闭此建议，再根据当前原文请求新建议。",
       "tooLong": "请将建议缩短至 {limit} 个字符以内再使用。",
-      "suggestion": "建议措辞",
+      "suggestion": "排版后的文字",
       "discard": "放弃",
-      "keep": "使用措辞"
+      "keep": "保留排版"
     },
     "careerDraft": {
       "title": "起草职业发展计划",
-      "help": "根据您选择的岗位和评估，审核建议目标及长期愿望。请自行选择流动意向。",
+      "help": "查看已记录的技能差距和目标提纲。长期志向只使用您亲自填写的文字，AI 不会编造。请自行选择流动意愿。",
       "generate": "起草计划",
       "saveDirection": "请先保存选定的职业方向，再起草计划。",
-      "empty": "目前没有更多差距或空白的长期愿望可供起草。",
-      "preview": "请审核建议。保留的内容将保存为私人草稿，供您编辑后再分享。",
+      "empty": "请选择已保存的方向或填写自己的长期志向，不会编造新的志向。",
+      "preview": "保留到私人计划前，请核对所选原生目标和您自己的文字。",
       "keepAspiration": "保留长期愿望",
       "keep": "保留所选草稿"
     },
@@ -24030,6 +24130,10 @@
       "saved": "The unit is left out of this cycle.",
       "broughtBack": "The unit takes part again.",
       "failed": "Something went wrong. Try again."
+    },
+    "protectedOutline": {
+      "title": "AI 排列的原文提纲",
+      "help": "AI 只选择阅读顺序。内容仍是原生事实和原文，不生成评级、决定或新的含义。"
     }
   },
   "allowanceV2": {
@@ -24941,7 +25045,28 @@
     "groupsPrecedence": "登录账号适用的额度：其个人额度；否则依次为所在部门、公司、角色的额度（同一层级有多个匹配时，适用最严格的上限）；否则为下方的默认额度。",
     "agentRunsAs": "以 HR 代理账户运行，由 {by} 于 {date} 开启。",
     "agentUnknownAdmin": "一位前任管理员",
-    "agentUnattributed": "开启时未记录具名管理员，因此 HR 代理账户不会运行。请先暂停再重新启用，以您的名义运行。"
+    "agentUnattributed": "开启时未记录具名管理员，因此 HR 代理账户不会运行。请先暂停再重新启用，以您的名义运行。",
+    "privateFeatures": {
+      "hr_assistant": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "provider_evaluation": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "module_agent_evaluation": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "personnel_import_mapping": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "module_agent_planning": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "readiness_reminders": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "claims_triage": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "payroll_hypotheses": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "payroll_explanation": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "pay_rule_draft": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "report_insight": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "performance_360": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "performance_tc": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "performance_pm": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "performance_review": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "performance_idp": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "performance_calib": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "performance_assistant": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "feedback_planning": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。"
+    }
   },
   "accountEmail": {
     "title": "账户邮件发送记录",

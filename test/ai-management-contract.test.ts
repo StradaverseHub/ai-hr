@@ -15,6 +15,10 @@ const coreCallers:Record<string,string>={'core/assistant.ts':'hr_assistant','cor
 // personnel import header assistant (resolveActiveAiConfig through its FEATURE constant). Every entry names
 // registered features and must show each listed seam; an unregistered caller still fails above.
 const governedCallers:Record<string,{features:readonly string[];seams:readonly RegExp[];issuedBy?:string;issuerImport?:string}>={
+ // Shared closed analysis entrypoint: config feature stays server-issued; projection and native replay bind exact bytes.
+ 'core/ai-payroll-comparison-analysis.ts':{features:['payroll_explanation'],seams:[/resolveActiveAiConfig\(tx,ctx,'payroll_explanation'\)/,/executePayrollComparisonTx\(tx,current,/,/generatePrivateAiAnalysis\(configuration,/]},
+ 'core/ai-workforce-analysis.ts':{features:['report_insight'],seams:[/resolveActiveAiConfig\(tx,fresh,'report_insight'\)/,/authorizeSourceTx\(tx,current,selected\)/,/generatePrivateAiAnalysis\(configuration,/]},
+ 'core/ai-governance.ts':{features:AI_FEATURES.map(feature=>feature.id),seams:[/const issued=issuedConfigurations.get\(configuration\)/,/prepareProviderAnalysis\(binding,source\)/,/bindProviderPrivacyRequest\(next,/,/generateDraft\(prepared.configuration,prepared.args\)/]},
  'core/assistant-import.ts':{features:['hr_assistant'],seams:[/const FEATURE\s*=\s*'hr_assistant'/,/resolveActiveAiConfig\(tx,\s*ctx,\s*FEATURE\)/,/withAiAdmissionCheck\(cfg,FEATURE/]},
  'lib/ai/provider-protocol.ts':{features:['provider_evaluation'],seams:[/if \(configuration\.provider !== 'openrouter' \|\| !configuration\.governance\) return unavailable\(\);/,/return await governance\.run\(request, async/],issuedBy:'core/ai-provider-readiness.ts',issuerImport:"from '../lib/ai/provider-protocol'"},
  'core/assistant-conversation-harness.ts':{features:['module_agent_evaluation'],seams:[/withAiAdmissionLifecycle\(cfg,\s*'module_agent_evaluation'/],issuedBy:'core/module-agent-releases.ts'},
@@ -39,7 +43,7 @@ describe('complete AI management inventory and boundary',()=>{
    }
    const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)){
     const call=ts.isIdentifier(node.expression)?aliases.get(node.expression.text)??node.expression.text:ts.isPropertyAccessExpression(node.expression)&&ts.isIdentifier(node.expression.expression)&&namespaces.has(node.expression.expression.text)?node.expression.name.text:'';
-    if(['generateDraft','readImage','converse',performanceSeam.call].includes(call))calls++;
+    if(['generateDraft','readImage','converse','generatePrivateAiAnalysis',performanceSeam.call].includes(call))calls++;
    }ts.forEachChild(node,visit);};visit(tree);
    expect(aiBoundaryViolations(file,src),file).toEqual([]);
    if(!calls)continue;

@@ -14,6 +14,7 @@ import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import * as perf from '../packs/performance/service';
+import {assessmentDevelopmentContext} from '../packs/performance/onehr/development-suggestion-service';
 import { defaultPolicy, type KPI } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import sourceGolden from './fixtures/onehr/source-golden.json';
@@ -153,9 +154,9 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await perf.addPerformanceAttachment(self,{reviewId,evidenceId,stageKind:null,fileName:'claim-9999.txt',mimeType:'text/plain',content:Buffer.from('Verified delivery 15.9 million units. Contact proof@example.test.')});
     const privateId=await perf.addOnehrEvidence(self,reviewId,{kind:'recognition',body:'Private record.',occurredOn:todayInKualaLumpur(),state:'draft',supersedesId:null,links:[]});await perf.addPerformanceAttachment(self,{reviewId,evidenceId:privateId,stageKind:null,fileName:'private.txt',mimeType:'text/plain',content:Buffer.from('Private 777777 units.')});
     vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
-    vi.mocked(generateDraft).mockImplementationOnce(async(_cfg,args)=>{const facts=JSON.parse(args.prompt) as {index:number;text:string}[];expect(args.prompt).not.toContain('Private 777777');expect(args.prompt).not.toContain('claim-9999');expect(args.prompt).not.toContain('proof@example.test');const file=facts.find(f=>f.text==='Verified delivery 15.9 million units.')!;return JSON.stringify({items:[file.index]});});
+    vi.mocked(generateDraft).mockImplementationOnce(async(_cfg,args)=>{const facts=JSON.parse(args.prompt).passages as {index:number;kind:string;lengthBand:string}[];expect(args.prompt).not.toContain('Private 777777');expect(args.prompt).not.toContain('claim-9999');expect(args.prompt).not.toContain('proof@example.test');expect(facts.length).toBeGreaterThanOrEqual(3);expect(args.prompt).not.toContain('15.9 million');const file=facts.at(-2)!;return JSON.stringify({items:[file.index]});});
     expect(await perf.draftOnehrNarrative(mgr,reviewId,'Prepare a draft.')).toBe('Verified delivery 15.9 million units.');expect(readImage).not.toHaveBeenCalled();
-    vi.mocked(generateDraft).mockImplementationOnce(async(_cfg,args)=>{const facts=JSON.parse(args.prompt) as {index:number;text:string}[],file=facts.find(f=>f.text==='Verified delivery 15.9 million units.')!;await perf.changeOnehrEvidenceState(self,evidenceId,'retracted');return JSON.stringify({items:[file.index]});});
+    vi.mocked(generateDraft).mockImplementationOnce(async(_cfg,args)=>{const facts=JSON.parse(args.prompt).passages as {index:number;kind:string;lengthBand:string}[],file=facts.at(-2)!;await perf.changeOnehrEvidenceState(self,evidenceId,'retracted');return JSON.stringify({items:[file.index]});});
     expect(await perf.draftOnehrNarrative(mgr,reviewId,'Prepare a draft.')).toBe('');
   });
 
@@ -290,11 +291,11 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   it('creates eligible AI starter drafts with atomic daily quotas and leaves human proposal untouched',async()=>{
     const [library]=await owner.db.insert(schema.performanceKpiLibrary).values({tenantId:b.tenantId,companyId:b.companyId,name:'Starter delivery',template:{title:'Starter delivery',description:'Governed wording',category:'Delivery',unit:'units',weightBp:10000,scoring:{mechanism:'A',method:'more',target:100,rates:[80,90,100,110,120]},spread:{rate:[80,90,100,110,120]}}}).returning();
     vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
-    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify([{id:library.id,weightage:3,target:250},{id:randomUUID(),weightage:5}]));
+    vi.mocked(generateDraft).mockResolvedValue('{"items":[0]}');
     const request=randomUUID(),first=await perf.sendReviewMessage(self,reviewId,'setting',null,request,'Suggest a starter scorecard','starter');
     expect(first).toMatchObject({draftUpdated:true,settingQuota:{remaining:4,limit:5}});
-    let own=await view(self);expect(own.kpis).toHaveLength(1);expect(own.kpis[0]).toMatchObject({title:'Starter delivery',description:'Governed wording',weightBp:10000,numberSource:'ai',scoring:{target:250,rates:[200,225,250,275,300]},setting:'draft',actual:null,locked:false});
-    expect(await perf.sendReviewMessage(self,reviewId,'setting',null,request,'Suggest a starter scorecard','starter')).toEqual(first);expect(generateDraft).toHaveBeenCalledOnce();
+    let own=await view(self);expect(own.kpis).toHaveLength(1);expect(own.kpis[0]).toMatchObject({title:'Starter delivery',description:'Governed wording',weightBp:10000,numberSource:'spread',scoring:{target:100,rates:[80,90,100,110,120]},setting:'draft',actual:null,locked:false});
+    expect(await perf.sendReviewMessage(self,reviewId,'setting',null,request,'Suggest a starter scorecard','starter')).toEqual(first);expect(generateDraft).toHaveBeenCalledOnce();const outbound=vi.mocked(generateDraft).mock.calls[0][1].prompt;for(const secret of [library.id,'Starter delivery','Governed wording','250'])expect(outbound).not.toContain(secret);
     await expect(perf.sendReviewMessage(self,reviewId,'setting',0,randomUUID(),'Suggest a starter scorecard','starter')).rejects.toThrow(/conversation changed/);
     expect(await owner.db.select().from(schema.assessmentAiUse)).toHaveLength(1);expect((await view(self)).revision).toBe(own.revision);
     expect(await withTenant(mgr,tx=>tx.select().from(schema.assessmentAiUse))).toEqual([]);
@@ -302,7 +303,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await expect(perf.sendReviewMessage(mgr,reviewId,'setting',null,randomUUID(),'Suggest a starter scorecard','starter')).rejects.toThrow(/unavailable/);
     vi.mocked(generateDraft).mockRejectedValue(new Error('Provider unavailable'));
     await expect(perf.sendReviewMessage(self,reviewId,'setting',first.revision,randomUUID(),'Suggest a starter scorecard','starter')).rejects.toThrow(/usable scorecard/);expect(await owner.db.select().from(schema.assessmentAiUse)).toHaveLength(1);
-    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify([{id:library.id,weightage:1,target:100}]));
+    vi.mocked(generateDraft).mockResolvedValue('{"items":[0]}');
     let conversation=first;for(let i=0;i<3;i++)conversation=await perf.sendReviewMessage(self,reviewId,'setting',conversation.revision,randomUUID(),'Suggest a starter scorecard','starter');
     // Two concurrent final-slot requests cannot both consume the last daily use.
     const results=await Promise.allSettled([0,1].map(()=>perf.sendReviewMessage(self,reviewId,'setting',conversation.revision,randomUUID(),'Suggest a starter scorecard','starter')));
@@ -314,10 +315,17 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await expect(perf.sendReviewMessage(self,reviewId,'setting',conversation.revision,randomUUID(),'Suggest a starter scorecard','starter')).rejects.toThrow(/unavailable/);
   });
 
+  it('refuses an invented protected starter reference without charging quota or writing a scorecard',async()=>{
+    await owner.db.insert(schema.performanceKpiLibrary).values({tenantId:b.tenantId,companyId:b.companyId,name:'Only eligible starter',template:{title:'Only eligible starter',description:'Native governed definition',category:'Delivery',unit:'units',weightBp:10000,scoring:{mechanism:'A',method:'more',target:100,rates:[80,90,100,110,120]},spread:{rate:[80,90,100,110,120]}}});
+    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);vi.mocked(generateDraft).mockResolvedValue('{"items":[999]}');
+    await expect(perf.sendReviewMessage(self,reviewId,'setting',null,randomUUID(),'Suggest a starter scorecard','starter')).rejects.toThrow(/usable scorecard/);
+    expect(generateDraft).toHaveBeenCalledOnce();expect((await view(self)).kpis).toEqual([]);expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);expect((await owner.db.select().from(schema.agentProposal)).some(row=>row.adjudication==='rejected')).toBe(true);
+  });
+
   it('edits KPI setup from chat through the form writer and rolls back when conversation revision is stale',async()=>{
     const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:manager.employmentId}]);
     await prepareMockedSpend('performance_assistant');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
-    const text='Set Delivery weight to 35',request=randomUUID();vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'set_weight',id,target:{start:4,end:12},value:{start:23,end:25}}]}));
+    const text='Set Delivery weight to 35',request=randomUUID();vi.mocked(generateDraft).mockResolvedValue('{"items":[0]}');
     const first=await perf.sendReviewMessage(self,reviewId,'setting',null,request,text);
     expect(first.draftUpdated).toBe(true);expect((await view(self)).kpis[0]).toMatchObject({weightBp:3500,setting:'draft',actual:null,locked:false});
     expect(await perf.sendReviewMessage(self,reviewId,'setting',null,request,text)).toEqual(first);expect(generateDraft).toHaveBeenCalledOnce();
@@ -335,7 +343,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await prepareMockedSpend('performance_assistant');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     const span=(text:string,value:string)=>({start:text.indexOf(value),end:text.indexOf(value)+value.length});
     const text='Aspiration: Lead operations. Goal: Facilitation. On the job: Run a workshop.';
-    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'career_field',field:'aspirationNow',value:span(text,'Lead operations.')},{action:'add_goal',area:span(text,'Facilitation'),onJob:span(text,'Run a workshop.')}]}));
+    vi.mocked(generateDraft).mockResolvedValue('{"items":[0,1]}');
     const request=randomUUID(),first=await perf.sendReviewMessage(self,reviewId,'career',null,request,text);
     expect(first.draftUpdated).toBe(true);let own=await view(self),plan=own.plans[0];
     expect(own.careerProfile?.career.aspirationNow).toBe('Lead operations.');expect(plan).toMatchObject({status:'draft',goals:[{area:'Facilitation',onJob:'Run a workshop.',dueOn:''}]});
@@ -359,7 +367,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   it('logs explicit evidence through chat exactly once and rolls back on a stale conversation',async()=>{
     await prepareMockedSpend('performance_assistant');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     const text='Log evidence: I resolved the deployment issue with the team.',body='I resolved the deployment issue with the team.';
-    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'log_evidence',body:{start:text.indexOf(body),end:text.length}}]}));
+    vi.mocked(generateDraft).mockResolvedValue('{"items":[0]}');
     const request=randomUUID(),first=await perf.sendReviewMessage(self,reviewId,'evidence',null,request,text);
     expect(first.draftUpdated).toBe(true);expect((await view(self)).evidence).toMatchObject([{body,state:'shared',kind:'recognition'}]);
     expect((await view(mgr)).evidence).toMatchObject([{body}]);
@@ -374,7 +382,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const request=(await perf.onehrAssignments(peers[0].ctx)).feedback.find(f=>f.subject==='Assessment subject')!,card=await perf.getOnehrFeedback(peers[0].ctx,request.id),statement=card.statements[0],principle=statement.principle;
     const text=`Record ${statement.text} as yes. ${principle} comment: Clear follow-through.`,span=(value:string)=>({start:text.indexOf(value),end:text.indexOf(value)+value.length});
     await prepareMockedSpend('performance_assistant');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
-    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'feedback_answer',id:statement.id,target:span(statement.text),answer:span('yes')},{action:'feedback_comment',id:`principle:${principle}`,target:span(principle),text:span('Clear follow-through.')}]}));
+    vi.mocked(generateDraft).mockResolvedValue('{"items":[0,1]}');
     const messageId=randomUUID(),reply=await perf.sendFeedbackMessage(peers[0].ctx,reviewId,request.id,null,messageId,text);
     expect(reply.draftUpdated).toBe(true);let saved=await perf.getOnehrFeedback(peers[0].ctx,request.id);
     expect(saved).toMatchObject({submitted:false,answers:null,draft:{payload:{kind:'feedback',answers:{[statement.id]:'yes'},comments:{[principle]:'Clear follow-through.'}}}});
@@ -406,7 +414,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:manager.employmentId}],true);
     await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'Agreed');
     await prepareMockedSpend('performance_assistant');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
-    const text='Record Delivery at 100',request=randomUUID(),proposal=JSON.stringify({commands:[{action:'kpi_result',id,target:{start:7,end:15},actual:{start:19,end:22}}]});
+    const text='Record Delivery at 100',request=randomUUID(),proposal='{"items":[0]}';
     vi.mocked(generateDraft).mockResolvedValue(proposal);
     const result=await perf.sendReviewMessage(self,reviewId,'results',null,request,text);
     expect(result).toMatchObject({draftUpdated:true,messages:[{role:'user',text},{role:'assistant',kind:'update'}]});
@@ -417,7 +425,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect(await perf.sendReviewMessage(self,reviewId,'results',null,request,text)).toEqual(result);expect(generateDraft).toHaveBeenCalledOnce();
     const [ledger]=await owner.db.select().from(schema.agentProposal);expect(ledger.proposalType).toBe('performance_draft_command');expect(JSON.stringify(ledger.proposal)).not.toContain(text);
     vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'kpi_result',id,target:{start:7,end:15},actual:{start:19,end:22},approved:true}]}));
-    const rejected=await perf.sendReviewMessage(self,reviewId,'results',result.revision,randomUUID(),text);expect(rejected.draftUpdated).toBe(false);expect((await view(self)).drafts.find(d=>d.kind==='results')?.revision).toBe(1);
+    const rejected=await perf.sendReviewMessage(self,reviewId,'results',result.revision,randomUUID(),text);expect(rejected.draftUpdated).toBe(false);expect((await view(self)).drafts.find(d=>d.kind==='results')?.revision).toBe(1);expect((await owner.db.select().from(schema.agentProposal)).some(row=>row.adjudication==='rejected')).toBe(true);
     const conversation=await perf.getReviewConversation(self,reviewId,'results');
     vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'overall_remark',text:{start:0,end:5}}]}));
     await expect(perf.sendReviewMessage(self,reviewId,'results',0,randomUUID(),'Ready to review.')).rejects.toThrow(/conversation changed/);
@@ -431,7 +439,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const old=await perf.addOnehrEvidence(self,reviewId,{kind:'delivery',body:'Outdated milestone claim.',occurredOn:todayInKualaLumpur(),state:'shared',supersedesId:null,links:[]});
     await perf.addOnehrEvidence(self,reviewId,{kind:'delivery',body:'Corrected milestone evidence.',occurredOn:todayInKualaLumpur(),state:'shared',supersedesId:old,links:[]});
     const before=await view(mgr);expect(await perf.draftOnehrNarrative(mgr,reviewId,'Verified delivery.')).toBe('Verified delivery.');
-    const prompt=vi.mocked(generateDraft).mock.calls[0][1].prompt;expect(prompt).toContain('Corrected milestone evidence.');expect(prompt).not.toMatch(/Private evidence|Outdated milestone/);
+    const prompt=vi.mocked(generateDraft).mock.calls[0][1].prompt;expect((await view(mgr)).evidence.some(e=>e.body==='Corrected milestone evidence.'&&e.state==='shared')).toBe(true);expect(prompt).not.toContain('Corrected milestone evidence.');expect(prompt).not.toMatch(/Private evidence|Outdated milestone/);
     expect((await view(mgr)).revision).toBe(before.revision);expect(await owner.db.select().from(schema.payrollInput)).toEqual([]);
     const [proposal]=await owner.db.select().from(schema.agentProposal);expect(proposal).toMatchObject({proposalType:'onehr_narrative',proposal:{items:[0]},adjudication:'accepted',decision:null});expect(JSON.stringify(proposal)).not.toContain('Verified delivery.');
   });
@@ -447,14 +455,16 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await complete();vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     expect(await perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID())).toMatchObject({empty:true,goals:[],remaining:5});expect(generateDraft).not.toHaveBeenCalled();
     await perf.releaseOnehrResult(a,reviewId,'feedback',true);
-    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify([{area:'Collaborative delivery',item_ids:['lp:0','foreign-subject'],experience:'Lead a cross-team retrospective',exposure:'Request feedback from a mentor',education:'Study facilitation methods',dueOn:'2099-01-01'},{area:'Invented source',item_ids:['foreign-subject']} ]));
-    const result=await perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID());expect(result).toMatchObject({empty:false,remaining:4,goals:[{area:'Collaborative delivery',itemIds:['lp:0']}]});expect(result.goals).toHaveLength(1);expect((await view(self)).plans).toEqual([]);
+    const native=await assessmentDevelopmentContext(self,reviewId),expected=native.gaps.pool[0];expect(expected).toMatchObject({id:'lp:0',kind:'leadership'});
+    vi.mocked(generateDraft).mockResolvedValueOnce('{"items":[0,999]}');await expect(perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID())).rejects.toThrow(/No usable goal/);expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);
+    vi.mocked(generateDraft).mockResolvedValue('{"items":[0]}');
+    const result=await perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID());expect(result).toMatchObject({empty:false,remaining:4,goals:[{area:expected.label,itemIds:['lp:0']}]});expect(result.goals).toHaveLength(1);expect((await view(self)).plans).toEqual([]);
     const prompt=vi.mocked(generateDraft).mock.calls[0][1].prompt;for(const peer of peers)expect(prompt).not.toContain(peer.employmentId);expect(prompt).not.toContain('Peer 0');
     const career={aspiration:'Develop practical facilitation',mobility:'stay',mobilityNote:'',targetProfileId:null},manual={id:randomUUID(),area:'My existing goal',dueOn:'',onJob:'Own practical assignment',fromOthers:'',formalLearning:'',status:'not_started'};
     await perf.setAssessmentAiSwitch({...a,grants:[{role:'hr_admin',companyId:null}]},'idp',false);
     await expect(perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID())).rejects.toThrow(/unavailable/);
     await perf.applyAssessmentDevelopmentGoals(self,reviewId,null,{careerRevision:null,career,goals:[manual]},result.goals,result.sourceDigest);
-    const plan=(await view(self)).plans[0];expect(plan.status).toBe('draft');expect(plan.goals.map(g=>g.area)).toEqual(['My existing goal','Collaborative delivery']);expect(plan.goals[1]).toMatchObject({dueOn:'',managerComment:'',status:'not_started'});
+    const plan=(await view(self)).plans[0];expect(plan.status).toBe('draft');expect(plan.goals.map(g=>g.area)).toEqual(['My existing goal',expected.label]);expect(plan.goals[1]).toMatchObject({dueOn:'',managerComment:'',status:'not_started'});
     expect((await view(mgr)).plans).toEqual([]);expect((await owner.db.select().from(schema.assessmentAiUse))).toHaveLength(1);
     await expect(perf.suggestAssessmentDevelopmentGoals(mgr,reviewId,randomUUID())).rejects.toThrow(/only for your/);
     expect((await withTenant(mgr,tx=>tx.execute<{value:unknown}>(sql`select app.assessment_development_feedback(${reviewId}::uuid) as value`)))[0].value).toBeNull();
@@ -462,13 +472,13 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   it('limits successful development suggestion runs to five per Malaysia day and never charges malformed proposals',async()=>{
     await complete();await perf.releaseOnehrResult(a,reviewId,'feedback',true);vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     vi.mocked(generateDraft).mockResolvedValueOnce('not JSON');await expect(perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID())).rejects.toThrow(/No usable goal/);expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);
-    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify([{area:'Practical delivery',item_ids:['lp:0'],experience:'Lead a small review'}]));
+    vi.mocked(generateDraft).mockResolvedValue('{"items":[0]}');
     for(let i=0;i<5;i++)expect((await perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID())).remaining).toBe(4-i);
     await expect(perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID())).rejects.toThrow(/All 5 development/);expect(generateDraft).toHaveBeenCalledTimes(6);expect((await view(self)).plans).toEqual([]);expect((await view(self)).developmentQuota).toMatchObject({remaining:0,limit:5});
   });
   it('discards development proposals when their released feedback is withdrawn and refuses stale keep/drop actions',async()=>{
     await complete();await perf.releaseOnehrResult(a,reviewId,'feedback',true);vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
-    const response=JSON.stringify([{area:'Practical delivery',item_ids:['lp:0'],experience:'Lead a small review'}]);
+    const response='{"items":[0]}';
     vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.releaseOnehrResult(a,reviewId,'feedback',false);return response;});
     await expect(perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID())).rejects.toThrow(/assessment or plan changed/);expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);
     await perf.releaseOnehrResult(a,reviewId,'feedback',true);vi.mocked(generateDraft).mockResolvedValue(response);const result=await perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID());
@@ -480,8 +490,8 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await perf.approveOnehrScorecard(mgr,reviewId,(await view(mgr)).revision,true,'Agreed targets');
     await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:0,note:'The agreed delivery needs improvement. Contact practice.owner@example.test.'}],'Review the delivery gaps.');
     vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
-    vi.mocked(generateDraft).mockImplementation(async(_cfg,request)=>request.system.includes('aspirationLong')?JSON.stringify({aspirationLong:'I aim to deepen my delivery practice.',mobility:'relocate',targetProfileId:randomUUID(),strengths:'Invented strength'}):JSON.stringify([{i:0,area:'Invented goal',experience:'Lead a delivery retrospective',exposure:'Ask a mentor',education:'Study delivery planning',dueOn:'2099-01-01'}]));
-    const result=await perf.suggestAssessmentCareerPlan(self,reviewId,randomUUID());expect(result).toMatchObject({remaining:4,goals:[{area:'Delivery reliability',onJob:'Lead a delivery retrospective'}],aspirationLong:'I aim to deepen my delivery practice.'});
+    vi.mocked(generateDraft).mockResolvedValue('{"items":[0]}');
+    const result=await perf.suggestAssessmentCareerPlan(self,reviewId,randomUUID(),{aspirationLong:'I aim to deepen my delivery practice.'});expect(result).toMatchObject({remaining:4,goals:[{area:'Delivery reliability',onJob:'Practise this development area in an appropriate work activity and record your learning.'}],aspirationLong:'I aim to deepen my delivery practice.'});
     expect(generateDraft).toHaveBeenCalledTimes(2);expect(vi.mocked(generateDraft).mock.calls.map(([,request])=>request.prompt).join(' ')).not.toContain('practice.owner@example.test');expect((await view(self)).plans).toEqual([]);expect((await view(self)).careerProfile).toBeNull();expect((await view(self)).careerDraftQuota?.remaining).toBe(4);
     const career={aspiration:'My chosen direction',aspirationLong:'',mobility:null,mobilityNote:'My own travel preference',targetProfileId:null},manual={id:randomUUID(),area:'My manual goal',dueOn:`${year+1}-06-01`,onJob:'My own action',fromOthers:'',formalLearning:'',status:'not_started'};
     await expect(perf.applyAssessmentCareerPlan(self,reviewId,null,{careerRevision:null,career,goals:[manual]},[{...result.goals[0],area:'Invented goal'}],result.aspirationLong,result.sourceDigest)).rejects.toThrow(/available development gaps/);
@@ -495,11 +505,11 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   it('counts partial whole-plan drafts independently and refuses stale assessment or career changes',async()=>{
     await complete();await perf.releaseOnehrResult(a,reviewId,'feedback',true);vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     // A profile-only success still counts; a malformed action response does not invent generic goals.
-    vi.mocked(generateDraft).mockImplementation(async(_cfg,request)=>request.system.includes('aspirationLong')?'\n{"aspirationLong":"Grow my practice"}':'not JSON');
-    const request=randomUUID(),first=await perf.suggestAssessmentCareerPlan(self,reviewId,request);expect(first).toMatchObject({goals:[],aspirationLong:'Grow my practice',remaining:4});
-    await expect(perf.suggestAssessmentCareerPlan(self,reviewId,request)).rejects.toThrow(/already completed/);expect(generateDraft).toHaveBeenCalledTimes(2);
-    for(let i=0;i<4;i++)expect((await perf.suggestAssessmentCareerPlan(self,reviewId,randomUUID())).remaining).toBe(3-i);
-    await expect(perf.suggestAssessmentCareerPlan(self,reviewId,randomUUID())).rejects.toThrow(/All 5 career plan/);
+    vi.mocked(generateDraft).mockImplementation(async(_cfg,request)=>JSON.parse(request.prompt).passages.some((p:{kind:string})=>p.kind==='authored')?'{"items":[0]}':'not JSON');
+    const request=randomUUID(),first=await perf.suggestAssessmentCareerPlan(self,reviewId,request,{aspirationLong:'Grow my practice'});expect(first).toMatchObject({goals:[],aspirationLong:'Grow my practice',remaining:4});
+    await expect(perf.suggestAssessmentCareerPlan(self,reviewId,request,{aspirationLong:'Grow my practice'})).rejects.toThrow(/already completed/);expect(generateDraft).toHaveBeenCalledTimes(2);
+    for(let i=0;i<4;i++)expect((await perf.suggestAssessmentCareerPlan(self,reviewId,randomUUID(),{aspirationLong:'Grow my practice'})).remaining).toBe(3-i);
+    await expect(perf.suggestAssessmentCareerPlan(self,reviewId,randomUUID(),{aspirationLong:'Grow my practice'})).rejects.toThrow(/All 5 career plan/);
     expect((await view(self)).developmentQuota?.remaining).toBe(5);
     const career={aspiration:'My own direction',aspirationLong:'My own longer-term words',mobility:'stay',mobilityNote:'',targetProfileId:null};
     await perf.saveAssessmentCareerProfile(self,reviewId,null,career);
@@ -508,7 +518,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   });
   it('rejects an in-flight whole-plan draft after evidence release is withdrawn without charging quota',async()=>{
     await complete();await perf.releaseOnehrResult(a,reviewId,'feedback',true);vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
-    vi.mocked(generateDraft).mockImplementation(async(_cfg,request)=>{if(request.system.includes('aspirationLong'))return '{"aspirationLong":"Grow my practice"}';await perf.releaseOnehrResult(a,reviewId,'feedback',false);return JSON.stringify([{area:'Facilitation',item_ids:['lp:0'],experience:'Lead a workshop'}]);});
+    vi.mocked(generateDraft).mockImplementation(async(_cfg,request)=>{await perf.releaseOnehrResult(a,reviewId,'feedback',false);return '{"items":[0]}';});
     await expect(perf.suggestAssessmentCareerPlan(self,reviewId,randomUUID())).rejects.toThrow(/changed/);expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);expect((await view(self)).plans).toEqual([]);
   });
 

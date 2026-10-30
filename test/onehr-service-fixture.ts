@@ -71,7 +71,7 @@ export function createOnehrServiceFixtures(fixtureState: {readonly b: Base; read
     return id;
   }
 
-  async function complete(reviewCompetencies=true,overallRemark='',sections=false){
+  async function complete(reviewCompetencies=true,overallRemark='',sections=false,selfDemonstrates=false){
     const id=randomUUID(),scoring={mechanism:'A' as const,method:'more' as const,rates:[0,50,100,150,200] as [number,number,number,number,number]};
     await perf.saveOnehrKpis(fixtureState.self,fixtureState.reviewId,(await view(fixtureState.self)).revision,[{id,title:'Deliver agreed outcomes',description:'Evidence-led delivery',weightBp:10000,unit:'units',scoring,moderatorEmploymentId:fixtureState.manager.employmentId}],true);
     await perf.approveOnehrScorecard(fixtureState.mgr,fixtureState.reviewId,(await view()).revision,true,'Agreed objectives');
@@ -79,7 +79,10 @@ export function createOnehrServiceFixtures(fixtureState: {readonly b: Base; read
     if(overallRemark)await perf.saveAssessmentDraft(fixtureState.mgr,fixtureState.reviewId,(await view()).revision,null,{kind:'moderation',lines:[{id,actual:100,note:'Verified'}],remark:overallRemark});
     await perf.moderateOnehrKpi(fixtureState.mgr,fixtureState.reviewId,(await view()).revision,id,100,'Verified');
     await perf.confirmOnehrPerformance(fixtureState.mgr,fixtureState.reviewId,(await view()).revision,'ME',overallRemark);
-    await perf.submitOnehrCompetencies(fixtureState.self,fixtureState.reviewId,(await view(fixtureState.self)).revision,{'skill-1':{answer:'no',remark:''},'skill-2':{answer:'no',remark:''}},false,'I am developing these skills through assigned work.',sections?{Technical:'Employee category history.'}:{});
+    // The default remains the original Developing source. Protected discussion admission cases opt
+    // into explicit native Demonstrate answers with no supporting examples, creating a real question.
+    const selfAnswer=selfDemonstrates?'yes':'no';
+    await perf.submitOnehrCompetencies(fixtureState.self,fixtureState.reviewId,(await view(fixtureState.self)).revision,{'skill-1':{answer:selfAnswer,remark:''},'skill-2':{answer:selfAnswer,remark:''}},false,'I am developing these skills through assigned work.',sections?{Technical:'Employee category history.'}:{});
     if(reviewCompetencies)await perf.submitOnehrCompetencies(fixtureState.mgr,fixtureState.reviewId,(await view()).revision,{'skill-1':{answer:'yes',remark:'Observed delivery'},'skill-2':{answer:'yes',remark:'Observed future skill'}},true,'',sections?{Technical:'Manager category history.'}:{});
     await perf.assignOnehrPanel(fixtureState.mgr,fixtureState.reviewId,(await view()).revision,fixtureState.peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));
     for(let i=0;i<fixtureState.peers.length;i++){

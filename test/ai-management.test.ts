@@ -1,3 +1,14 @@
+/** TEST ONLY: synthetic privacy-review seam for this legacy allowance/counter suite. The new
+ * disclosure assertion/consumption is isolated so every original quota, RLS, source, admission,
+ * spend and durable unknown-usage/settlement control below remains real. Binding, transfer,
+ * revocation, config provenance and provider egress stay real. Dedicated provider-privacy-request,
+ * provider-data-review-gate and ai-private-analysis tests exercise actual disclosure refusal.
+ * This fixture grants no production review status and admits no real provider data. */
+vi.mock('../lib/ai/provider-privacy-request', async importActual => {
+ const actual = await importActual<typeof import('../lib/ai/provider-privacy-request')>();
+ return {...actual,assertProviderPrivacyRequest:()=>{},consumeProviderPrivacyRequest:()=>{}};
+});
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import * as tenantDb from '../db/client';
@@ -185,7 +196,7 @@ describe('scoped administration and inventory',()=>{
   // check requires; without it the marker fails closed before the allowance refusal this case observes.
   vi.stubEnv('AI_CONFIG_SECRET','fictional-allowance-marker-secret');
   const transport=vi.spyOn(openaiAdapter,'converse');
-  try{await expect(askAssistant(group,{question:'What can you help with?'})).rejects.toMatchObject({code:'ai_control'});expect(transport).not.toHaveBeenCalled();}
+  try{await expect(askAssistant(group,{question:'show assistant capabilities'})).rejects.toMatchObject({code:'ai_control'});expect(transport).not.toHaveBeenCalled();}
   finally{vi.restoreAllMocks();vi.unstubAllEnvs();}
   await setAssistantPermission(group,base.adminUserId,false);
   expect((await aiManagementView(group)).users.find(u=>u.id===base.adminUserId)?.assistantGranted).toBe(false);

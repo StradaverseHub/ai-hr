@@ -1,5 +1,7 @@
+import {ASSISTANT_PRIVATE_CONTRACT,resolvePrivateAssistantIntent,resolvePrivateAssistantProposal,capturePrivateAssistantTask,adjudicatePrivateAssistantReadPlan} from '../lib/ai/provider-assistant-policy';
+import {assistantReadableModules} from './assistant-readable-modules';
 import {ASSISTANT_CONVERSATION_LIMITS} from './assistant-clarification';
-import type {ResolvedAiConfig} from '../lib/ai/types';
+import type {ResolvedAiConfig,GenerateArgs} from '../lib/ai/types';
 import {captureAssistantConversationCandidate,assistantConversationCandidateSystem,nextAssistantConversationArms,ASSISTANT_CONVERSATION_BASELINE,ASSISTANT_CONVERSATION_ENGINE_DIGEST,ASSISTANT_CONVERSATION_POLICY_DIGEST,compareAssistantConversationArms,scoreAssistantConversationTrial,type ConversationArm,type ConversationCaseResult,type AssistantConversationCandidate} from '../lib/ai/assistant-conversation-candidate';
 import {ASSISTANT_CONVERSATION_HOLDOUTS,ASSISTANT_CONVERSATION_INPUT_DIGEST,ASSISTANT_CONVERSATION_SUITE_DIGEST} from '../lib/ai/assistant-conversation-holdouts';
 import {executeAssistantConversationHoldout} from './assistant-conversation-harness';
@@ -34,7 +36,7 @@ import {captureMeasuredCases,compareMeasuredQuality} from '../lib/ai/paired-eval
 import { executeRoutingHoldout, type RoutingEvaluationReport } from './module-agent-evaluation-harness';
 import { capturePromptPlanCandidate,adjudicatePromptReadPlan,promptCandidateSystem,PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT,PROMPT_SUITE_DIGEST,PROMPT_ENGINE_DIGEST,PROMPT_POLICY_DIGEST,PROMPT_INPUT_DIGEST,PROMPT_BASELINE } from '../lib/ai/module-agent-prompt-candidate';
 import { resolveAiProviderSnapshotTx } from './ai-provider-snapshot';
-import { governedAiConfig,withAiAdmissionCheck,withAiAdmissionLifecycle,bindStrictAiSpendRoot } from './ai-governance';
+import { governedAiConfig,withAiAdmissionCheck,withAiAdmissionLifecycle,bindStrictAiSpendRoot,preparePrivateAiTask } from './ai-governance';
 import { executePromptHoldout,promptMeasuredComparison,type PromptHoldoutReport,type PromptCase } from './module-agent-prompt-harness';
 import {draftInputDigest} from '../lib/ai/draft-input';
 import {HUMAN_PLAN_HOLDOUTS,HUMAN_PLAN_SUITE_DIGEST,humanQuestionPrompt} from '../lib/ai/human-plan-holdouts';
@@ -824,9 +826,10 @@ export async function proposeOwnModuleReadPlan(ctx:SessionContext,input:{permit:
  const current=capture(ctx),token=input.permit,question=input.question,locale=input.locale,consent=input.consent?{...input.consent}:null;
  if(!exact(input,['permit','question','locale','consent'])||typeof question!=='string'||!question.trim()||Buffer.byteLength(question,'utf8')>2000||!questionLocales.includes(locale as QuestionLocale)||!consent||!exact(consent,['questionOnly','oneRequest','sourceDigest'])||consent.questionOnly!==true||consent.oneRequest!==true||consent.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST)return fail();
  const permit=openPlanPermit(current,token),nonce=permit.nonce,questionDigest=routingDigest([current.tenantId,current.userId,nonce,locale,question]),started=Date.now();
+ const intent=resolvePrivateAssistantIntent(question);if(!intent.intent||!intent.module||resolvePrivateAssistantProposal(question))return{state:'chooser' as const};
  try{
   const prepared=await withTenant(current,async tx=>{
-   const fresh=await guard(tx,current,false);await currentPlanPermitTx(tx,permit);await assertAiActionUnpausedTx(tx,fresh,'module_agent_planning');await agentReleaseIntervalTx(tx,current,current.userId!,false);await signalIntervalTx(tx,current,current.userId!);await proposalNonceTx(tx,current,nonce);
+   const fresh=await guard(tx,current,false);await currentPlanPermitTx(tx,permit);await assertAiActionUnpausedTx(tx,fresh,'module_agent_planning');if(!assistantReadableModules(fresh).includes(intent.module!))return{unavailable:true as const};await agentReleaseIntervalTx(tx,current,current.userId!,false);await signalIntervalTx(tx,current,current.userId!);await proposalNonceTx(tx,current,nonce);
    const [existing]=await tx.execute<PlanProposalRow>(sql`select ${proposalProjection} from public.ai_agent_plan_proposal where tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid and request_nonce=${nonce}::uuid`);
    if(existing){const prior=openProposal(existing,current);await currentPlanningBindingTx(tx,current,prior.binding);if(prior.proof.questionDigest!==questionDigest||prior.proof.locale!==locale||!Number.isSafeInteger(prior.proof.duplicateReplays)||Number(prior.proof.duplicateReplays)<0)return fail();await tx.execute(sql`update public.ai_agent_plan_proposal set receipt=${seal('human-plan',current.tenantId,existing.id,{...prior.proof,duplicateReplays:Number(prior.proof.duplicateReplays)+1})} where id=${existing.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);return {replayed:true as const,id:existing.id};}
    const [promotion]=await tx.execute<{id:string;candidate_id:string}>(sql`select p.id,p.candidate_id from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='read_plan_prompt_v1' where p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${current.userId}::uuid and p.expires_at>now() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id) order by p.created_at desc,p.id desc limit 1 for update of p nowait`);
@@ -841,7 +844,9 @@ export async function proposeOwnModuleReadPlan(ctx:SessionContext,input:{permit:
    return {replayed:false as const,id,candidate,bound};
   });
   if('unavailable' in prepared)return {state:'chooser' as const};const proposalId=prepared.id;if(typeof proposalId!=='string')return fail();if(prepared.replayed)return {state:'replayed' as const,proposalId};
-  const outbound=Object.freeze({system:promptCandidateSystem(prepared.candidate.configuration),prompt:humanQuestionPrompt(question,locale),maxTokens:384,timeoutMs:15000}),expectedInputDigest=draftInputDigest(outbound);
+ const privatePayload=Object.freeze({version:1,operation:'draft' as const,intent:intent.intent,strategy:capturePromptPlanCandidate(prepared.candidate.configuration).variant,modules:Object.freeze([intent.module])});
+ const captured=capturePrivateAssistantTask(privatePayload);if(Array.isArray(captured.args.system))return fail();
+ const outbound=captured.args as GenerateArgs,expectedInputDigest=draftInputDigest(outbound);
   // Fresh provider configuration is issued only after durable reservation. No transaction spans network.
   const cfg=await withTenant(current,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);const checked=await currentPlanningBindingTx(tx,current,prepared.bound);
    const admitted=withAiAdmissionCheck(bindStrictAiSpendRoot(governedAiConfig(checked.fresh,checked.snapshot,'module_agent_planning'),{rootTaskId:checked.candidate.id,kind:'agent'}),'module_agent_planning',async carrier=>{
@@ -864,8 +869,18 @@ export async function proposeOwnModuleReadPlan(ctx:SessionContext,input:{permit:
     },
    });
   });
-  let text:string|undefined;try{text=await generateDraft(cfg,outbound);}catch{/* Reserved request is terminally failed; it is never automatically sent again. */}
-  let plan:ReturnType<typeof adjudicatePromptReadPlan>|undefined;try{if(text!==undefined)plan=adjudicatePromptReadPlan(text);}catch{/* Malformed prose never becomes a plan. */}
+  let text:string|undefined,privateLocal:unknown;
+  try{
+   const privacy=await preparePrivateAiTask(cfg,ASSISTANT_PRIVATE_CONTRACT,async(carrier,principal)=>{
+    await currentPlanPermitTx(carrier,permit);const checked=await currentPlanningBindingTx(carrier,principal,prepared.bound);await proposalNonceTx(carrier,principal,nonce);
+    if(!privatePayload.modules.every(module=>assistantReadableModules(checked.fresh).includes(module)))return fail();
+    const [row]=await carrier.execute<PlanProposalRow>(sql`select ${proposalProjection} from public.ai_agent_plan_proposal where id=${prepared.id}::uuid and tenant_id=${principal.tenantId}::uuid and user_id=${principal.userId}::uuid`);
+    if(!row||row.state!=='reserved'||openProposal(row,principal).proof.state!=='reserved')return fail();
+    return privatePayload;
+   });
+   try{if(privacy.operation!=='draft')return fail();privateLocal=privacy.local;text=await generateDraft(privacy.configuration,privacy.args);}finally{privacy.dispose();}
+  }catch{/* Reserved request is terminally failed; it is never automatically sent again. */}
+  let plan:ReturnType<typeof adjudicatePromptReadPlan>|undefined;try{if(text!==undefined)plan=adjudicatePrivateAssistantReadPlan(text,privateLocal);}catch{/* Malformed or broadened proposals never become a plan. */}
   await withTenant(current,async tx=>{await currentPlanPermitTx(tx,permit);await currentPlanningBindingTx(tx,current,prepared.bound);await proposalNonceTx(tx,current,nonce);
    const [row]=await tx.execute<PlanProposalRow>(sql`select ${proposalProjection} from public.ai_agent_plan_proposal where id=${prepared.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid`);if(!row||row.state!=='reserved')return fail();const {proof}=openProposal(row,current);
    const state=text===undefined||proof.settled!==true||typeof proof.runId!=='string'?'failed':plan?.decision==='read'?'ready':'refused';
@@ -1159,7 +1174,7 @@ export async function prepareAssistantConversationStrategyTx(tx:Tx,supplied:Sess
  const [created]=await tx.execute<{incarnation:string}>(sql`insert into public.ai_assistant_answer_strategy_use(id,tenant_id,user_id,person_id,promotion_id,candidate_digest,provider_fingerprint,source_digest,receipt) values(${id}::uuid,${ctx.tenantId}::uuid,${ctx.userId}::uuid,${ctx.personId??null}::uuid,${promotionId}::uuid,${candidateDigest},${snapshot.fingerprint},${MODULE_AGENT_SOURCE_DIGEST},${receipt}) returning incarnation::text as incarnation`);if(!created||!/^\d+$/.test(created.incarnation))return fail();
  const record:ConversationStrategyUse={ctx,id,incarnation:created.incarnation,promotionId,candidateDigest,providerFingerprint:snapshot.fingerprint,questionDigest,provenance};conversationStrategyUses.set(capability,record);
  const wrapped=withAiAdmissionCheck(configuration,'hr_assistant',async carrier=>{await recheckAssistantConversationStrategyTx(carrier,ctx,capability);if(continuationSourceTx)await continuationSourceTx(carrier);});
- return Object.freeze({configuration:wrapped,system:assistantConversationCandidateSystem(strategy),capability:capability as AssistantConversationStrategyCapability,provenance});
+ return Object.freeze({configuration:wrapped,system:assistantConversationCandidateSystem(strategy),variant:strategy.variant,capability:capability as AssistantConversationStrategyCapability,provenance});
 }
 /** Rechecked before each provider round-trip and before the actual exchange insert. No missing or
  * erased metadata is recreated, no used-job count/native spend is refunded after uncertainty. */

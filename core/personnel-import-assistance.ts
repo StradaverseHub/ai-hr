@@ -10,7 +10,9 @@ import {assertEmployeeImportEvaluationActiveTx,registerEmployeeImportEvaluationR
 import {assertAiPrincipalTx} from './ai-principal';
 import {assertWorkforceCompanyTx} from './workforce-access';
 import {resolveActiveAiConfig} from './ai-config';
-import {withAiAdmissionCheck,withAiAdmissionLifecycle} from './ai-governance';
+import {withAiAdmissionCheck,withAiAdmissionLifecycle,preparePrivateAiTask} from './ai-governance';
+import {getProviderWorkloadDescriptor} from '../lib/ai/provider-workload-policy';
+import type {GenerateArgs} from '../lib/ai/types';
 import {preparePersonnelImportAssistanceTx,readPersonnelImportAssistanceTx,claimPersonnelImportAssistanceTx,completePersonnelImportAssistanceTx,failPersonnelImportAssistanceTx,type PersonnelImportAssistanceBinding} from './personnel-import-assistance-store';
 const unavailable=()=>Error('Header proposal unavailable');
 export const PERSONNEL_IMPORT_ASSISTANCE_UNAVAILABLE='Those headings need another look. Let’s review them before trying again.';
@@ -23,10 +25,14 @@ function packet(value:unknown){
  const parsed=PersonnelImportHeaderAssistanceRequestSchema.parse(value),headers=capturePersonnelImportHeaders(parsed.headers);
  const p=Object.freeze({...parsed,headers,consent:Object.freeze({...parsed.consent})}),digests=personnelImportHeaderDigests(headers);
  if(p.sourceRevision!==digests.sourceRevision||p.registryDigest!==digests.registryDigest)throw unavailable();
- const prompt=JSON.stringify({headings:headers,fields:PERSONNEL_IMPORT_ASSISTANCE_REGISTRY});
- const inputDigest=draftInputDigest({system:SYSTEM,prompt,maxTokens:MAX_TOKENS});
+ // Headings may contain names or pasted HR data. Derive only canonical semantic candidates locally;
+ // unknown heading meaning remains unresolved rather than sending the original text for masking.
+ const candidates=personnelImportHeaderCandidates(headers.map(h=>h.heading),{columns:PERSONNEL_IMPORT_ASSISTANCE_REGISTRY.map(f=>f.field)});
+ const protectedSource=Object.freeze({columns:Object.freeze(candidates.map(row=>Object.freeze({columnIndex:headers[row.index].columnIndex,candidates:Object.freeze(row.matches.length<=5?[...row.matches]:[])})))});
+ const args=getProviderWorkloadDescriptor('personnel_header_mapping_v1')!.capture(protectedSource).args as GenerateArgs;
+ const prompt=args.prompt,inputDigest=draftInputDigest(args);
  const preparation=Object.freeze({companyId:p.companyId,operationNonce:p.operationNonce,sourceRevision:p.sourceRevision,registryDigest:p.registryDigest,headersDigest:digests.headersDigest,inputDigest,headerIndexes:headers.map(h=>h.columnIndex),mode:p.mode,...(p.evaluationBinding?{evaluationBinding:p.evaluationBinding}:{}),consent:p.consent});
- return{p,headers,prompt,inputDigest,preparation};
+ return{p,headers,prompt,inputDigest,preparation,protectedSource};
 }
 const context=(supplied:SessionContext)=>({...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))});
 /** Explicit NEW preparation only. It cannot resolve a provider, reserve tokens or dispatch. */
@@ -43,7 +49,7 @@ async function execute(supplied:SessionContext,value:unknown,reopen:boolean):Pro
  let binding:PersonnelImportAssistanceBinding|undefined,dispatched=false;
  const ctx=context(supplied);
  try{
-  const command=PersonnelImportHeaderAssistanceCommandSchema.parse(value),{p,headers,prompt,inputDigest,preparation}=packet(command.request);
+  const command=PersonnelImportHeaderAssistanceCommandSchema.parse(value),{p,headers,prompt,inputDigest,preparation,protectedSource}=packet(command.request);
   binding=Object.freeze({attemptId:command.attemptId,attemptVersion:command.attemptVersion,companyId:p.companyId,sourceRevision:p.sourceRevision,registryDigest:p.registryDigest,inputDigest,...(p.evaluationBinding?{evaluationBinding:p.evaluationBinding}:{})});
   const exact=binding;
   const initial=await withTenant(ctx,async tx=>{await guard(tx,ctx,p.companyId);const prepared=await readPersonnelImportAssistanceTx(tx,ctx,exact,preparation);if(!reopen&&prepared.state==='ready'&&p.evaluationBinding)await assertEmployeeImportEvaluationActiveTx(tx,ctx,p.evaluationBinding,p.companyId,p.mode==='ai');const cfg=!reopen&&prepared.state==='ready'&&p.mode==='ai'?await resolveActiveAiConfig(tx,ctx,FEATURE):null;return{prepared,cfg};});
@@ -62,11 +68,16 @@ async function execute(supplied:SessionContext,value:unknown,reopen:boolean):Pro
    if(!initial.cfg||headers.length>32||p.consent.sendHeadingsOnly!==true)throw unavailable();
    let cfg=withAiAdmissionCheck(initial.cfg,FEATURE,async tx=>{await guard(tx,ctx,p.companyId);if(p.evaluationBinding)await assertEmployeeImportEvaluationActiveTx(tx,ctx,p.evaluationBinding,p.companyId,true);const current=await readPersonnelImportAssistanceTx(tx,ctx,exact,preparation);if(current.state!=='ready'||current.attemptId!==exact.attemptId||current.attemptVersion!==exact.attemptVersion)throw unavailable();});
    cfg=withAiAdmissionLifecycle(cfg,FEATURE,{async admitted(tx,event){if(event.request.operation!=='draft'||event.request.inputDigest!==exact.inputDigest)throw unavailable();await claimPersonnelImportAssistanceTx(tx,ctx,exact,event.runId);if(p.evaluationBinding)await registerEmployeeImportEvaluationRunTx(tx,ctx,p.evaluationBinding,p.companyId,exact.attemptId,event.runId);dispatched=true;}});
-   // COMPLETE outbound payload: reviewed headings and STATIC registry. No company/tenant/attempt IDs,
-   // source hashes, filenames, sheets, rows, catalogue values or cells. One explicit call, no retries.
-   const text=await generateDraft(cfg,{system:SYSTEM,prompt,maxTokens:MAX_TOKENS,timeoutMs:20000});
+   const protectedTask=await preparePrivateAiTask(cfg,'personnel_header_mapping_v1',async tx=>{await guard(tx,ctx,p.companyId);const current=await readPersonnelImportAssistanceTx(tx,ctx,exact,preparation);if(current.state!=='ready')throw unavailable();return protectedSource;});
+   let text:string;
+   try{if(protectedTask.operation!=='draft')throw unavailable();text=await generateDraft(protectedTask.configuration,protectedTask.args as GenerateArgs);}finally{protectedTask.dispose();}
    if(Buffer.byteLength(text,'utf8')>32768)throw unavailable();
    const raw=z.object({mappings:z.array(PersonnelImportHeaderMappingSchema).min(1).max(32)}).strict().parse(JSON.parse(text));
+   // A provider can only select meanings established by the local canonical header owner.
+   // Static registry membership alone does not justify mapping an unknown private heading.
+   for(const mapping of raw.mappings){const allowed=protectedSource.columns.find(column=>column.columnIndex===mapping.columnIndex)?.candidates??[];
+    if(mapping.status==='mapped'&&!allowed.includes(mapping.field)||mapping.status==='ambiguous'&&mapping.fields.some(field=>!allowed.includes(field)))throw unavailable();
+   }
    proposal=capturePersonnelImportHeaderProposal({version:1,sourceRevision:p.sourceRevision,registryDigest:p.registryDigest,mappings:raw.mappings},headers);
   }
   await withTenant(ctx,async tx=>{await guard(tx,ctx,p.companyId);await completePersonnelImportAssistanceTx(tx,ctx,exact,proposal);});

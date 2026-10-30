@@ -1,3 +1,4 @@
+import {consumeProviderEgressDispatch} from '../provider-egress';
 import { hasTokenCounts } from '../usage';
 /**
  * Google (Gemini) adapter (ADR-0023). Uses the current unified SDK `@google/genai` (Gemini Developer
@@ -31,6 +32,8 @@ export const googleAdapter: AiAdapter = {
   provider: 'google',
   async readImage(cfg,args){
     try{
+      if(cfg.provider!=='google')throw new AiGatewayError('The AI provider route could not be confirmed.');
+      consumeProviderEgressDispatch(cfg,'image',args);
       const result=await new GoogleGenAI({apiKey:cfg.apiKey}).models.generateContent({model:cfg.model,contents:[{role:'user',parts:[{inlineData:{mimeType:args.mimeType,data:Buffer.from(args.data).toString('base64')}}]}],config:{systemInstruction:imageReadInstruction,maxOutputTokens:2500,abortSignal:args.signal,httpOptions:{timeout:args.timeoutMs,retryOptions:{attempts:1}}}});
       if(hasTokenCounts(result.usageMetadata,['promptTokenCount','candidatesTokenCount']))args.onUsage?.(usageFor(result.usageMetadata));
       if(result.promptFeedback?.blockReason||result.candidates?.some(candidate=>['SAFETY','IMAGE_SAFETY','PROHIBITED_CONTENT','BLOCKLIST'].includes(candidate.finishReason??'')))throw new AiImageReadError(false);
@@ -40,6 +43,8 @@ export const googleAdapter: AiAdapter = {
 
   async generate(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
     try {
+      if(cfg.provider!=='google')throw new AiGatewayError('The AI provider route could not be confirmed.');
+      consumeProviderEgressDispatch(cfg,'draft',args);
       const response = await client(cfg.apiKey).models.generateContent({
         model: cfg.model,
         contents: args.prompt,
@@ -55,6 +60,8 @@ export const googleAdapter: AiAdapter = {
 
   async validate(cfg: ResolvedAiConfig): Promise<ValidateResult> {
     try {
+      if(cfg.provider!=='google')throw new AiGatewayError('The AI provider route could not be confirmed.');
+      consumeProviderEgressDispatch(cfg,'probe');
       // Cheapest probe that validates BOTH the key and the model id: a 1-token generation.
       await client(cfg.apiKey).models.generateContent({
         model: cfg.model,
@@ -81,6 +88,8 @@ export const googleAdapter: AiAdapter = {
    */
   async converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promise<ConverseResult> {
     try {
+      if(cfg.provider!=='google')throw new AiGatewayError('The AI provider route could not be confirmed.');
+      consumeProviderEgressDispatch(cfg,'conversation',args);
       const declarations = requestTools(args.tools);
       const response = await client(cfg.apiKey).models.generateContent({
         model: cfg.model,

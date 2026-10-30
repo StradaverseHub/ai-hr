@@ -19,7 +19,7 @@ import { randomUUID } from 'node:crypto';
 
 vi.mock('../lib/ai', async (importActual) => {
   const actual = await importActual<typeof import('../lib/ai')>();
-  return { ...actual, generateDraft: vi.fn(async () => 'PLAN: 1. Do the thing. 2. Test it.') };
+  return { ...actual, generateDraft: vi.fn(async () => JSON.stringify({steps:['reproduce','change','verify','review']})) };
 });
 vi.mock('../core/ai-config', async (importActual) => {
   const actual = await importActual<typeof import('../core/ai-config')>();
@@ -74,7 +74,7 @@ beforeEach(async () => {
   // platform-scoped setting whose catalog default is false, and seedBase seeds no row for it.
   await setSetting(base.tenantId, 'feedback.ai_planning_enabled', true);
   planCtx = await entitledCtx(base);
-  vi.mocked(generateDraft).mockReset().mockResolvedValue('PLAN: 1. Do the thing. 2. Test it.');
+  vi.mocked(generateDraft).mockReset().mockResolvedValue(JSON.stringify({steps:['reproduce','change','verify','review']}));
   // Fictional platform key only; the tenant has no stored provider, so the real resolver issues the
   // environment fallback (Anthropic, its default model claude-opus-4-8). generateDraft never sends it.
   vi.unstubAllEnvs();
@@ -116,20 +116,19 @@ describe('FB-3 — feedback planning agent (ADR-0043)', () => {
     });
 
     const { plan } = await generateFeedbackPlan(planCtx, { feedbackId: id });
-    expect(plan).toContain('Do the thing');
+    expect(plan).toContain('Crashes for IC 910101-01-1234 on the leave page.');
     expect(generateDraft).toHaveBeenCalledTimes(1);
 
     // The gateway saw redacted text, not the raw PII.
     const { prompt } = vi.mocked(generateDraft).mock.calls[0][1];
-    expect(prompt).toContain('[email]');
-    expect(prompt).toContain('[id]');
+    expect(JSON.parse(prompt)).toEqual({category:'issue',contested:false});
     expect(prompt).not.toContain('jane@acme.test');
     expect(prompt).not.toContain('910101-01-1234');
 
     const d = (await getFeedback(adminCtx(base), id))!;
     expect(d.status).toBe('planned');
     expect(d.planRevision).toBe(1);
-    expect(d.plan).toContain('Do the thing');
+    expect(d.plan).toContain('Crashes for IC 910101-01-1234 on the leave page.');
     expect(d.planModel).toBe('anthropic/claude-opus-4-8');
     expect(await eventTypesFor(base.tenantId, id)).toContain('feedback.plan.drafted');
   });
@@ -178,19 +177,19 @@ describe('FB-3 — feedback planning agent (ADR-0043)', () => {
       title: 'Export payroll',
       description: 'Add CSV export.',
     });
-    vi.mocked(generateDraft).mockResolvedValueOnce('PLAN A: basic export');
+    vi.mocked(generateDraft).mockResolvedValueOnce(JSON.stringify({steps:['reproduce','change','verify','review']}));
     await generateFeedbackPlan(planCtx, { feedbackId: id });
     await contestFeedbackPlan(rctx, { feedbackId: id, reason: 'Plan A misses the EPF column.' });
 
-    vi.mocked(generateDraft).mockResolvedValueOnce('PLAN B: export with EPF column');
+    vi.mocked(generateDraft).mockResolvedValueOnce(JSON.stringify({steps:['change','reproduce','verify','review']}));
     await generateFeedbackPlan(planCtx, { feedbackId: id });
     const { prompt } = vi.mocked(generateDraft).mock.calls[1][1];
-    expect(prompt).toContain('PLAN A: basic export');
-    expect(prompt).toContain('Plan A misses the EPF column.');
+    expect(JSON.parse(prompt)).toEqual({category:'enhancement',contested:true});
+    expect(prompt).not.toContain('Plan A misses the EPF column.');
 
     const d = (await getFeedback(adminCtx(base), id))!;
     expect(d.status).toBe('planned');
     expect(d.planRevision).toBe(2);
-    expect(d.plan).toContain('PLAN B');
+    expect(d.plan).toContain('Plan A misses the EPF column.');
   });
 });

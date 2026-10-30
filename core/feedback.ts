@@ -26,7 +26,8 @@ import {
 } from '../db/schema';
 import { resolveEntitlementsTx, settingEnabled } from './entitlements';
 import { assertAiPrincipalTx } from './ai-principal';
-import { withAiAdmissionCheck } from './ai-governance';
+import { withAiAdmissionCheck,preparePrivateAiTask } from './ai-governance';
+import type {GenerateArgs} from '../lib/ai/types';
 import { draftInputDigest } from '../lib/ai/draft-input';
 
 export class FeedbackError extends Error {
@@ -281,12 +282,20 @@ export async function generateFeedbackPlan(ctx: SessionContext, p: { feedbackId:
     );
   }
 
-  const args=Object.freeze({system,prompt:`Write an implementation plan for this product feedback:\n\n${lines.join('\n')}`,maxTokens:2048});
-  const sourceDigest=feedbackPlanningDigest(fb),inputDigest=draftInputDigest(args);
+  const sourceDigest=feedbackPlanningDigest(fb);let inputDigest:string|undefined;
   const bound=withAiAdmissionCheck(aiCfg,'feedback_planning',async(tx,request)=>{
     if(request.operation!=='draft'||request.inputDigest!==inputDigest||feedbackPlanningDigest(await feedbackPlanningSourceTx(tx,ctx,fb.id,true))!==sourceDigest)throw new FeedbackError('Current feedback planning source could not be confirmed.');
   });
-  const plan=await generateDraft(bound,args);
+  const task=await preparePrivateAiTask(bound,'feedback_task_outline_v1',async tx=>{if(feedbackPlanningDigest(await feedbackPlanningSourceTx(tx,ctx,fb.id,true))!==sourceDigest)throw new FeedbackError('Current feedback planning source could not be confirmed.');return {category:fb.category,contested:fb.status==='contested',source:sourceDigest};});
+  let plan:string;
+  try{
+    if(task.operation!=='draft')throw new FeedbackError('Protected planning operation unavailable.');inputDigest=draftInputDigest(task.args as GenerateArgs);
+    const selected:unknown=JSON.parse(await generateDraft(task.configuration,task.args as GenerateArgs));
+    if(!selected||typeof selected!=='object'||Array.isArray(selected)||Object.keys(selected).join(',')!=='steps'||!Array.isArray((selected as {steps:unknown}).steps))throw new FeedbackError('A supported plan outline is required.');
+    const steps=(selected as {steps:unknown[]}).steps,required=['reproduce','change','verify','review'];if(steps.length!==4||new Set(steps).size!==4||steps.some(s=>typeof s!=='string'||!required.includes(s)))throw new FeedbackError('A supported plan outline is required.');
+    const wording:Record<string,string>={reproduce:`Check the reported situation: ${fb.description}`,change:`Make the requested change: ${fb.expectedFunction||fb.expectedBehavior||fb.description}`,verify:`Verify the expected result: ${fb.expectedBehavior||fb.expectedFunction||fb.description}`,review:'Show the completed change and verification evidence to the reporter for review before release.'};
+    plan=`${fb.title}\n\n`+steps.map((step,index)=>`${index+1}. ${wording[step as string]}`).join('\n\n')+(fb.status==='contested'&&fb.contestReason?`\n\nReporter’s requested revisions: ${fb.contestReason}`:'');
+  }finally{task.dispose();}
   if(!plan.trim())throw new FeedbackError('A plan is required.');
   await withTenant(ctx,async tx=>{
     // A provider result is not authority to overwrite a concurrently changed source or plan.

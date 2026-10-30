@@ -23,14 +23,14 @@ beforeEach(async()=>{
  await grantAssistant(ctx,{appUserId:base.adminUserId});
  vi.stubEnv('AI_CONFIG_SECRET','fictional-assistant-quota-marker-secret');vi.stubEnv('OPENAI_API_KEY','fictional-never-sent');
  for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');
- vi.spyOn(openaiAdapter,'converse').mockResolvedValue(end);
+ vi.spyOn(openaiAdapter,'converse').mockImplementation(async(_cfg,args)=>{const first=args.turns[0];if(first?.role!=='user')throw Error('Expected one fixed native catalogue turn');const catalogue=JSON.parse(first.content) as {reads:{read:number;cards:{card:number;facts:{fact:number;available:boolean}[]}[]}[]};for(const read of catalogue.reads)for(const card of read.cards){const fact=card.facts.find(fact=>fact.available);if(fact)return {...end,text:JSON.stringify({version:1,mode:'answer',blocks:[{kind:'fact',read:read.read,card:card.card,fact:fact.fact}]})};}throw Error('Expected a nonempty native capability catalogue');});
 });
 async function budget(daily:number,monthly=1_000_000){
  await owner.db.insert(s.assistantBudget).values({tenantId:base.tenantId,monthlyTokenCeiling:monthly,perUserDailyQuestions:daily,effectiveFrom:todayInKualaLumpur()})
   .onConflictDoUpdate({target:[s.assistantBudget.tenantId,s.assistantBudget.effectiveFrom],targetWhere:sql`archived_at is null`,set:{monthlyTokenCeiling:monthly,perUserDailyQuestions:daily}});
 }
 const transport=()=>{const converse=openaiAdapter.converse;if(!converse)throw Error('Missing fictional conversation adapter');return vi.mocked(converse);};
-const ask=()=>askAssistant(ctx,{question:'Fictional question with no HR facts'});
+const ask=()=>askAssistant(ctx,{question:'show assistant capabilities'});
 const quotaRows=()=>owner.db.execute<{root_id:string;period:string;question_day:string;exchange_id:string|null;accounted_tokens:string}>(sql`select root_id,period,question_day::text,exchange_id,accounted_tokens::text from app.assistant_question_budget where tenant_id=${base.tenantId}::uuid order by reserved_at,root_id`);
 function deferred<T=void>(){let resolve!:(value:T|PromiseLike<T>)=>void;const promise=new Promise<T>(r=>{resolve=r;});return {promise,resolve};}
 describe('atomic Malaysia-day Assistant question quota',()=>{
@@ -43,6 +43,7 @@ describe('atomic Malaysia-day Assistant question quota',()=>{
    expect(openaiAdapter.converse).toHaveBeenCalledOnce();
    const rows=await quotaRows();expect(rows).toHaveLength(1);expect(rows[0].exchange_id).toBeNull();
   }finally{release.resolve();await first;}
+  const call=transport().mock.calls[0][1];expect(call.tools).toEqual([]);expect(call.cacheKey).toBeUndefined();expect(JSON.stringify(call.turns)).not.toContain('show assistant capabilities');
   const [row]=await quotaRows();expect(row.exchange_id).toBeTruthy();expect(row.accounted_tokens).toBe('12');
   expect(row.question_day).toBe(todayInKualaLumpur());expect(row.period).toBe(row.question_day.slice(0,7));
  });
@@ -102,7 +103,7 @@ describe('atomic Malaysia-day Assistant question quota',()=>{
   await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.assistant_question_budget_admit(${quota.root_id}::uuid,1)`))).rejects.toThrow();
  });
  it('does not let caller-supplied dates move quota day or usage period',async()=>{
-  await budget(1);await askAssistant(ctx,{question:'Fictional clock question',now:new Date(Date.now()+86_400_000)});
+  await budget(1);await askAssistant(ctx,{question:'show assistant capabilities',now:new Date(Date.now()+86_400_000)});
   const [row]=await quotaRows();expect(row.question_day).toBe(todayInKualaLumpur());
   const [usage]=await owner.db.select().from(s.assistantUsage).where(eq(s.assistantUsage.tenantId,base.tenantId));expect(usage.period).toBe(row.period);
  });

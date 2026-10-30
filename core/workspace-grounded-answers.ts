@@ -18,14 +18,14 @@ export type GroundedWorkspaceAnswer=Readonly<{mode:'grounded'|'generic'|'unavail
 export function workspaceGroundedAnswers(ctx:SessionContext,session:AssistantReadSession,tx?:Tx){
  let remaining=32;const cache=new Map<string,Promise<CanonicalModuleJobView>>();
  // A sealed proposal is re-adjudicated against the caller's CURRENT module read set on every replay.
- const caller=(plan:AssistantAnswerPlan)=>plan.mode==='propose'?{readableModules:assistantReadableModules(ctx)}:{};
+ const caller=(plan:AssistantAnswerPlan,question:string)=>({question,...(plan.mode==='propose'?{readableModules:assistantReadableModules(ctx)}:{})});
  return async(binding:AssistantDisclosureBinding,receipt:unknown):Promise<GroundedWorkspaceAnswer>=>{
   const empty=(mode:'generic'|'unavailable'):GroundedWorkspaceAnswer=>Object.freeze({mode,views:Object.freeze([]),fallbackModules:Object.freeze([]),partial:false,tools:Object.freeze([])});
   try{await withAssistantRead(ctx,null,async()=>undefined,session);}catch{return empty('unavailable');}
   if(binding.tenantId!==ctx.tenantId||binding.userId!==ctx.userId)return empty('unavailable');
   const disclosure=openAssistantAnswerDisclosure(binding,receipt);if(disclosure===null)return empty('unavailable');
   const {reads,plan}=disclosure;
-  if(reads.length===0){if(plan)try{return Object.freeze({...empty('generic'),conversation:Object.freeze({plan:adjudicateAssistantAnswerPlan(plan,[],caller(plan)),...(plan.mode==='clarify'&&!canClarifyAssistantQuestion(binding.question)?{clarificationAllowed:false as const}:{}),facts:Object.freeze([])})});}catch{return empty('unavailable');}return empty('generic');}
+  if(reads.length===0){if(plan)try{return Object.freeze({...empty('generic'),conversation:Object.freeze({plan:adjudicateAssistantAnswerPlan(plan,[],caller(plan,binding.question)),...(plan.mode==='clarify'&&!canClarifyAssistantQuestion(binding.question)?{clarificationAllowed:false as const}:{}),facts:Object.freeze([])})});}catch{return empty('unavailable');}return empty('generic');}
   const answerReads:AssistantAnswerRead[]=[],indexedViews=new Map<number,CanonicalModuleJobView>();
   const views:CanonicalModuleJobView[]=[],fallback=new Set<AgentModuleCode>(),tools:string[]=[],seen=new Set<string>();let partial=reads.length>8;
   for(const [read,source] of reads.slice(0,8).entries()){
@@ -39,7 +39,7 @@ export function workspaceGroundedAnswers(ctx:SessionContext,session:AssistantRea
    if(view.state==='ready'){views.push(view);tools.push(source.name);indexedViews.set(read,view);answerReads.push(Object.freeze({read,presentation:view.presentation,explanations:assistantAnswerExplanationAvailability(view.answerExplanations??[])}));}else{partial=true;fallback.add(fallbackModule);}
   }
   let conversation:AssistantConversationView|null=null;
-  if(plan)try{const checked=adjudicateAssistantAnswerPlan(plan,answerReads,caller(plan));
+  if(plan)try{const checked=adjudicateAssistantAnswerPlan(plan,answerReads,caller(plan,binding.question));
    const segments:AssistantConversationSegment[]=checked.mode==='answer'?checked.blocks.map((block):AssistantConversationSegment=>{
     const view=indexedViews.get(block.read);if(!view||view.state!=='ready')throw Error();
     if(block.kind==='fact')return Object.freeze({kind:'fact',view,card:block.card,fact:block.fact});

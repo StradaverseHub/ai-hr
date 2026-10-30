@@ -1,8 +1,11 @@
+import {assistantReadableModules} from '../../core/assistant-readable-modules';
+import {todayInKualaLumpur} from '../../lib/hr-date';
 /** Canonical typed facts only. A model answer, copied receipt or arbitrary JSON cannot render here. */
 import type {ReactNode} from 'react';
 import {conversationFactLayout} from '../../lib/ai/assistant-answer-layout';
+import {assistantFactSentenceKey} from '../../lib/ai/assistant-fact-sentences';
 import {randomUUID} from 'node:crypto';
-import {askAssistantAction} from '../../app/assistant/actions';
+import {ConversationClarification} from './conversation-clarification';
 import {saveGovernedJobFeedbackAction,eraseGovernedJobFeedbackAction} from '../../app/assistant/job-feedback-actions';
 import {runGovernedPlanAction} from '../../app/assistant/governed-job-actions';
 import type {GovernedWorkspaceJobView} from '../../core/workspace-module-jobs';
@@ -20,6 +23,7 @@ import {ConversationActionProposal} from './conversation-action-proposal';
 import {moduleHumanActionHandoffs} from '../../lib/ai/module-human-handoffs';
 import {ASSISTANT_PROPOSAL_MODULE,isAssistantProposableAction} from '../../lib/ai/assistant-action-proposal-hints';
 import {ConversationExplanation} from './conversation-explanation';
+import {AssistantCatalogueSummary} from './assistant-catalogue-summary';
 import {ModuleSpecialistFindings} from './module-specialist-findings';
 import {OwnClearForm} from './own-clear';
 const knownStates=new Set(['active','probation','resigned','terminated','pending','approved','rejected','cancelled','draft','paid','closed','completed','in_progress','not_tested','passed','failed','skipped','annual','offcycle','regular','day','hour','not_started','self_review','manager_review','submitted','acknowledged','present','absent','late','half_day','active_serving_notice','blacklisted','withhold','full_day','half_day_am','half_day_pm','hourly','administrative','functional','taken','converted_to_pay','lapsed','reversed','pass','fail','blocked','partial','manager','report']);
@@ -94,19 +98,24 @@ const closedConversationFields=(value:object,fields:readonly string[])=>JSON.str
 /** Selection/order comes from the checked plan; every displayed value still comes from an original
  * fresh canonical view. Unknown plans, hidden/null facts and unsupported explanations refuse. */
 async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation:ConversationReply;ctx:SessionContext;exchangeId?:string}){
- const[copy,text]=await Promise.all([getTranslations('assistant.workspace.conversation'),canonicalJobText()]);
+ const[copy,text,workspaceCopy]=await Promise.all([getTranslations('assistant.workspace.conversation'),canonicalJobText(),getTranslations('assistant.workspace')]);
  const unavailable=()=> <p role="status" className="text-sm text-muted-foreground">{copy('unavailable')}</p>;
  try{
   const plan=conversation.plan;if(!closedConversationFields(conversation,['plan','facts',...(conversation.clarificationAllowed===undefined?[]:['clarificationAllowed']),...(conversation.segments===undefined?[]:['segments'])])||!Array.isArray(conversation.facts)||(conversation.clarificationAllowed!==undefined&&conversation.clarificationAllowed!==false)||!plan||plan.version!==1)return unavailable();
   if(plan.mode!=='answer'&&conversation.segments!==undefined)return unavailable();
+  if(plan.mode==='social'){
+   if(!closedConversationFields(plan,['version','mode','code'])||!['greeting','thanks'].includes(plan.code)||conversation.facts.length!==0)return unavailable();
+   return <p className="text-sm leading-relaxed">{copy(`social_${plan.code}`)}</p>;
+  }
   if(plan.mode==='clarify'){
    if(!closedConversationFields(plan,['version','mode','slot'])||!['employment','leave_type','period','module'].includes(plan.slot)||conversation.facts.length!==0)return unavailable();
+   const taskModules={leave_available:'leave',leave_requests:'leave',claim_statuses:'claims',holidays:'org',reporting_line:'org',work_profile:'employees',payslip:'payroll',module_overview:'assistant'} as const;
+   // Optional shortcuts cannot suppress the existing owned reply form or exhausted-context notice.
+   // An absent offering snapshot grants nothing; the actual command reauthorizes every reply.
+   const choices=plan.slot==='module'&&conversation.clarificationAllowed!==false?(()=>{try{const readable=assistantReadableModules(ctx);return Object.entries(taskModules).filter(([,module])=>readable.includes(module)).map(([task])=>({label:workspaceCopy(`${task}_label`),prompt:workspaceCopy(`${task}_prompt`,{date:todayInKualaLumpur()})}));}catch{return [];}})():undefined;
    const bound=typeof exchangeId==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(exchangeId),labelId=bound?'assistant-clarification-'+exchangeId:'assistant-clarification-unavailable';
    return <section aria-labelledby={labelId} className="space-y-3"><h2 id={labelId} className="text-base font-medium">{copy(`clarify_${plan.slot}`)}</h2>
-    {conversation.clarificationAllowed===false?<p role="status" className="text-sm text-muted-foreground">{copy('contextLimit')}</p>:bound?<form action={askAssistantAction} className="space-y-3"><input type="hidden" name="clarificationExchangeId" value={exchangeId}/>
-     <label className="block text-sm">{copy('replyLabel')}<textarea name="clarificationAnswer" required maxLength={500} rows={2} className="mt-1 min-h-11 w-full rounded-md border bg-background px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"/></label>
-     <button type="submit" className="min-h-11 rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('continue')}</button>
-    </form>:<p role="status" className="text-sm text-muted-foreground">{copy('reopenBeforeReply')}</p>}
+    {conversation.clarificationAllowed===false?<p role="status" className="text-sm text-muted-foreground">{copy('contextLimit')}</p>:bound?<ConversationClarification exchangeId={exchangeId!} replyLabel={copy('replyLabel')} continueLabel={copy('continue')} choices={choices}/>:<p role="status" className="text-sm text-muted-foreground">{copy('reopenBeforeReply')}</p>}
    </section>;
   }
   // ADR-0151 §4.3: an adjudicated proposal renders the inline review card. It is a suggestion only: the
@@ -135,7 +144,7 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
     const card=selected.explanation.card===null?null:selected.view.presentation.cards[selected.explanation.card];
     const company=card?.facts.find(fact=>fact.field==='company'&&typeof fact.value==='string')?.value;
     const heading=card?canonicalHeading(card,text):text.t(`module_${selected.view.presentation.module}`);
-    return <li key={index} className="space-y-1 break-words text-sm leading-relaxed"><p className="font-medium">{heading}{typeof company==='string'&&company!==heading?` (${company})`:''}</p>{await ConversationExplanation({view:selected.view,explanation:selected.explanation,ctx})}</li>;
+    return <div key={index} className="space-y-1 break-words text-sm leading-relaxed">{card&&<p className="text-xs text-muted-foreground">{heading}{typeof company==='string'&&company!==heading?` (${company})`:''}</p>}{await ConversationExplanation({view:selected.view,explanation:selected.explanation,ctx})}</div>;
    }
    const paired=conversation.facts[factIndex++];
    if(selected.kind!=='fact'||!closedConversationFields(selected,['kind','view','card','fact'])||!paired||paired.view!==selected.view||paired.card!==selected.card||paired.fact!==selected.fact)throw Error();
@@ -149,9 +158,10 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
    }
    const progress=fact.field==='progressPercent'&&typeof fact.value==='number'&&fact.value>=0&&fact.value<=100
     ? <progress aria-label={text.t('field_progressPercent')} value={fact.value} max={100} className="mt-2 block h-2 w-full max-w-sm accent-primary">{fact.value}%</progress>:null;
-   const content=<><span className="font-medium">{canonicalHeading(card,text)}</span>{' — '}{text.t(`field_${fact.field}`)}{': '}<span className="tabular-nums">{value}</span>{progress}{card.withheld&&<span className="block text-xs text-muted-foreground">{text.t('withheld')}</span>}</>;
+   const sentence=copy(`natural.${assistantFactSentenceKey(selected.view.presentation.module,card,fact,selected.view.toolName)}`,{record:canonicalHeading(card,text),field:text.t(`field_${fact.field}`),value:String(value)});
+   const content=<><span className="tabular-nums">{sentence}</span>{progress}{card.withheld&&<span className="block text-xs text-muted-foreground">{text.t('withheld')}</span>}</>;
    renderedFacts.push({view:selected.view,card:selected.card,fact:selected.fact,value:String(value),content});
-   return <li key={index} className="break-words text-sm leading-relaxed">{content}</li>;
+   return <p key={index} className="break-words text-sm leading-relaxed">{content}</p>;
   }));
   const factOnly=plan.blocks.every(block=>block.kind==='fact');
   const layout=factOnly?conversationFactLayout(renderedFacts.map(row=>({sourceKey:row.view.viewId,presentation:row.view.presentation,card:row.card,fact:row.fact}))):{kind:'list' as const};
@@ -162,19 +172,25 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
      return <tr key={row.sourceKey+':'+row.card} className="border-t"><th scope="row" className="max-w-xs break-words px-3 py-2 align-top font-medium">{heading}{typeof company==='string'&&company!==heading?` (${company})`:''}</th>{row.positions.map((position,index)=><td key={index} className="break-words px-3 py-2 align-top tabular-nums">{renderedFacts[position].value}</td>)}</tr>;
     })}</tbody>
    </table></div>:factOnly&&renderedFacts.length===1?<p className="break-words text-sm leading-relaxed">{renderedFacts[0].content}</p>:
-    factOnly?<ul className="space-y-2">{lines}</ul>:<ol className="list-decimal space-y-3 pl-5">{lines}</ol>;
+    <div data-conversation-paragraphs="" className="space-y-3">{lines}</div>;
   const sources=await Promise.all(views.map(async view=>({id:view.viewId,card:await CanonicalModuleJob({view,ctx})})));
-  return <section aria-label={copy('answerLabel')} className="space-y-3"><p className="text-xs text-muted-foreground">{copy('canonicalNote')}</p>{answerBody}
-   <details className="rounded-lg border border-border p-3"><summary className="min-h-11 cursor-pointer py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('sources')}</summary><div className="mt-3 space-y-4">{sources.map(source=><div key={source.id}>{source.card}</div>)}</div></details>
+  return <section aria-label={copy('answerLabel')} className="space-y-3">{answerBody}
+   {renderedFacts.some(row=>row.view.presentation.module==='assistant'&&['backgroundAgentsTotal','backgroundAgentSwitchesOn','backgroundAgentEffectiveSwitchesOn'].includes(String(row.view.presentation.cards[row.card].facts[row.fact].field)))&&<p className="text-xs text-muted-foreground">{copy('backgroundSwitchNote')}</p>}
+   {renderedFacts.some(row=>row.view.presentation.module==='assistant'&&row.view.presentation.cards[row.card].href==='/control-tower/agents/features#ai-features')&&<a href="/control-tower/agents/features#ai-features" className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('manageAgentSwitches')}</a>}
+   {views.some(view=>view.state==='ready'&&view.presentation.truncated)&&<p className="text-xs text-muted-foreground">{text.t('truncated')}</p>}
+   <details className="text-muted-foreground"><summary className="min-h-11 w-fit cursor-pointer py-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('sources')}</summary><div className="mt-2 space-y-4 rounded-lg border border-border p-3"><p className="text-xs">{copy('canonicalNote')}</p>{sources.map(source=><div key={source.id}>{source.card}</div>)}</div></details>
   </section>;
  }catch{return unavailable();}
 }
 /** No arbitrary model prose is rendered. Clarification/refusal precede legacy grounded/generic mode. */
 export async function GroundedWorkspaceReply({reply,ctx,exchangeId}:{reply:GroundedWorkspaceAnswer;ctx:SessionContext;exchangeId?:string}){
- const t=await getTranslations('assistant.workspace.answers'),conversation=reply.conversation??null;
+ const[t,copy]=await Promise.all([getTranslations('assistant.workspace.answers'),getTranslations('assistant.workspace.conversation')]),conversation=reply.conversation??null;
+ let catalogue:ReactNode=null;
+ if(conversation===null&&reply.mode==='grounded'&&reply.views.length===1)catalogue=await AssistantCatalogueSummary({view:reply.views[0],ctx});
+ const legacySources=conversation===null&&reply.mode==='grounded'?await Promise.all(reply.views.map(async view=>({id:view.viewId,card:await CanonicalModuleJob({view,ctx})}))):[];
  return <div className="mt-3 space-y-4">
-  {conversation!==null?await ConversationReplyBody({conversation,ctx,exchangeId}):reply.mode==='grounded'?<><p className="text-sm text-muted-foreground">{t('grounded')}</p>
-   {reply.views.map(view=><CanonicalModuleJob key={view.viewId} view={view} ctx={ctx}/>)}
+  {conversation!==null?await ConversationReplyBody({conversation,ctx,exchangeId}):reply.mode==='grounded'?<>{catalogue??<p className="text-sm">{t('grounded')}</p>}
+   <details className="text-muted-foreground"><summary className="min-h-11 w-fit cursor-pointer py-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('sources')}</summary><div className="mt-2 space-y-4 rounded-lg border border-border p-3">{legacySources.map(source=><div key={source.id}>{source.card}</div>)}</div></details>
    {reply.partial&&<p className="text-xs text-muted-foreground">{t('partial')}</p>}</>:
    <p className="text-sm text-muted-foreground">{t(reply.mode==='generic'?'generic':'unavailable')}</p>}
   {conversation?.plan.mode==='refuse'&&conversation.plan.code==='human_review_required'&&await ConversationReviewLinks({views:reply.views,ctx})}

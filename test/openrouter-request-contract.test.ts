@@ -1,9 +1,10 @@
+import {fixtureOpenRouterTransport as createOpenRouterTransport} from './helpers/provider-egress-fixture';
 import Ajv2020 from 'ajv/dist/2020';
 import type {AnySchemaObject} from 'ajv';
 import {describe, expect, it, vi} from 'vitest';
 import vendor from './fixtures/openrouter-chat-plugin-contract-20261029.json';
 import endpoint from './fixtures/openrouter-tool-endpoint-contract-20261029.json';
-import {buildOpenRouterRequest, createOpenRouterTransport} from '../lib/ai/providers/openrouter-transport';
+import {buildOpenRouterRequest} from '../lib/ai/providers/openrouter-transport';
 import type {ConverseArgs} from '../lib/ai/types';
 
 // The oracle is the independently downloaded vendor contract, not our plugin allowlist.

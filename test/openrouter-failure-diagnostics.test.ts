@@ -1,7 +1,7 @@
+import {fixtureOpenRouterTransport as createOpenRouterTransport} from './helpers/provider-egress-fixture';
 /** Synthetic transport only. Diagnostics may contain three closed fields, never provider bodies,
  * credentials, prompts or exception text. No network, hosted-provider or HR-record claim. */
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {createOpenRouterTransport} from '../lib/ai/providers/openrouter-transport';
 import {AiGatewayError,type ConverseArgs} from '../lib/ai/types';
 const privateKey='fixture-private-key-never-use',privatePrompt='fixture-private-prompt',privateBody='fixture-private-provider-body';
 const config=()=>({model:'fictional/diagnostics',apiKey:privateKey,routing:{allowedProviders:['fixture-host'],allowFallbacks:false,sort:'latency'}});

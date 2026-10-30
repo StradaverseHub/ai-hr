@@ -1,6 +1,7 @@
+import {fixtureOpenRouterTransport as createOpenRouterTransport} from './helpers/provider-egress-fixture';
 /** Authored mocked-only transport acceptance. UNRUN; no real key, network or HR records. */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildOpenRouterRequest, createOpenRouterTransport } from '../lib/ai/providers/openrouter-transport';
+import { buildOpenRouterRequest } from '../lib/ai/providers/openrouter-transport';
 import { AiGatewayError, type ConverseArgs } from '../lib/ai/types';
 const secret = 'fictional-openrouter-key-never-use';
 const config = () => ({ model: 'openai/fictional-model', apiKey: secret,

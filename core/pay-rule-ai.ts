@@ -16,8 +16,7 @@ import { adjudicateAiPayRule } from '../packs/payroll/ai-rule-proposal';
  *
  * Mirrors generateFeedbackPlan / draftManagerReview exactly:
  *   - short read-tx to resolveActiveAiConfig (null ⇒ feature OFF when unconfigured → typed error);
- *   - the admin's free-text description through redactPII (emails, MY IC numbers, phone-like runs masked;
- *     names and other prose are NOT) — no employee row data is read, but whatever the admin typed is sent;
+ *   - a closed locally parsed rule intent; human numeric parameters and component codes stay local;
  *   - generateDraft OUTSIDE any tx, maxTokens ~512;
  *   - ONE shot: an invalid/unparseable model output ⇒ a single typed PayRuleDraftError (no retry, no 2nd call);
  *   - NEVER writes the component — returns the rule object for the admin to review + save via upsertPayComponent;
@@ -26,7 +25,9 @@ import { adjudicateAiPayRule } from '../packs/payroll/ai-rule-proposal';
 import {sql} from 'drizzle-orm';
 import {assertAiPrincipalTx} from './ai-principal';
 import {assertModuleEnabled,resolveEntitlementsTx} from './entitlements';
-import {withAiAdmissionCheck} from './ai-governance';
+import {withAiAdmissionCheck,preparePrivateAiTask} from './ai-governance';
+import {ProviderWorkloadUnavailableError,protectedPayRuleInput} from '../lib/ai/provider-workload-policy';
+import type {GenerateArgs} from '../lib/ai/types';
 import {draftInputDigest} from '../lib/ai/draft-input';
 import { withTenant, type SessionContext,type Tx } from '../db/client';
 import { appendEvent } from '../db/events';
@@ -102,22 +103,28 @@ export async function draftPayRule(
   if(typeof captured.description!=='string'||!captured.description.trim()||captured.description.length>4000||
     captured.componentCode!=null&&(typeof captured.componentCode!=='string'||captured.componentCode.length>100)||
     captured.componentProrates!==undefined&&typeof captured.componentProrates!=='boolean')throw new PayRuleDraftError('invalid_output');
-  p=Object.freeze({description:redactPII(captured.description.trim()),componentCode:captured.componentCode?redactPII(captured.componentCode.trim()):null,componentProrates:captured.componentProrates});
+  p=Object.freeze({description:captured.description.trim(),componentCode:captured.componentCode?.trim()||null,componentProrates:captured.componentProrates});
+  const auditComponentCode=p.componentCode?redactPII(p.componentCode):null;
   // Administrative authority is established BEFORE configuration lookup, not inherited from a page.
   const cfg = await withTenant(ctx, async tx=>{await assertPayRuleDraftAuthorTx(tx,ctx);return resolveActiveAiConfig(tx, ctx, 'pay_rule_draft');});
   if (!cfg) throw new PayRuleDraftError('not_configured');
 
-  // Mask emails/IC/phone runs in the admin's free text before it leaves the tenant. A name the admin types
-  // is NOT masked (redactPII does not detect names).
-  const prompt=JSON.stringify({untrustedRequest:{description:p.description,componentCode:p.componentCode??null}});
-  const args=Object.freeze({system:SYSTEM,prompt,maxTokens:512}),expected=draftInputDigest(args);
+  // Only the locally recognized rule kind leaves the tenant. Native validation owns all parameters.
+  let expected:string|undefined;
   let authorityUnconfirmed=false;
   const bound=withAiAdmissionCheck(cfg,'pay_rule_draft',async(tx,request)=>{
     try{await assertPayRuleDraftAuthorTx(tx,ctx);}catch(error){authorityUnconfirmed=true;throw error;}
     if(request.operation!=='draft'||request.inputDigest!==expected)throw new PayRuleDraftError('invalid_output');
   });
-  let raw:string;try{raw=await generateDraft(bound,args);}catch{
+  let raw:string;try{
+    const task=await preparePrivateAiTask(bound,'authored_pay_rule_v1',async tx=>{await assertPayRuleDraftAuthorTx(tx,ctx);return {description:p.description,prorates:p.componentProrates??false};});
+    try{if(task.operation!=='draft')throw new PayRuleDraftError('invalid_output');expected=draftInputDigest(task.args as GenerateArgs);const selected:unknown=JSON.parse(await generateDraft(task.configuration,task.args as GenerateArgs)),local={rule:protectedPayRuleInput(p.description)};
+      if(!selected||typeof selected!=='object'||Array.isArray(selected)||Object.keys(selected).join(',')!=='kind'||(selected as {kind:unknown}).kind!==local.rule.kind)throw new PayRuleDraftError('invalid_output');
+      raw=JSON.stringify({rule:local.rule,explanation:'Prepared the requested rule from your supplied parameters. Review the native validation and values before saving.'});
+    }finally{task.dispose();}
+  }catch(error){
     if(!authorityUnconfirmed)try{await withTenant(ctx,tx=>assertPayRuleDraftAuthorTx(tx,ctx));}catch{authorityUnconfirmed=true;}
+    if(!authorityUnconfirmed&&error instanceof ProviderWorkloadUnavailableError)throw error;
     throw new PayRuleDraftError(authorityUnconfirmed?'forbidden':'invalid_output');
   }
 
@@ -151,9 +158,8 @@ export async function draftPayRule(
   await recordProposal(ctx, {
     type: 'pay_rule_draft',
     // No subject: nothing is written until the admin saves, so there is no row for this to be about.
-    facts: { componentCode: p.componentCode ?? null, prorates: p.componentProrates ?? false },
-    // The DESCRIPTION never lands here — it is the admin's free text (sent to the provider with only
-    // emails/IC/phone runs masked). Only the shape the model chose.
+    facts: { componentCode: auditComponentCode, prorates: p.componentProrates ?? false },
+    // The DESCRIPTION never lands here or in provider arguments. Only the requested rule kind leaves.
     proposal: { ruleKind: rule?.kind ?? null, hasExplanation: Boolean(explanation) },
     adjudication: reason === null ? { ok: true } : { ok: false, reason },
     provider: cfg.provider,
@@ -177,7 +183,7 @@ export async function draftPayRule(
       aggregateId: ctx.tenantId,
       eventType: 'pay-component.ai-rule-drafted',
       actor: { type: 'agent' }, // lowercase per db/events.ts Actor enum
-      payload: { provider: cfg.provider, model: cfg.model, componentCode: p.componentCode ?? null, ruleKind: rule.kind },
+      payload: { provider: cfg.provider, model: cfg.model, componentCode: auditComponentCode, ruleKind: rule.kind },
     });
   });
 

@@ -15332,9 +15332,9 @@
       "UNSAFE_DIVISION": "Anda tidak boleh membahagi dengan sifar. Pilih nilai lain untuk membahagi."
     },
     "assistButton": "Bantuan AI",
-    "assistTitle": "Terangkan cara ia patut dikira",
-    "assistDescription": "Tulis dalam bahasa biasa — AI mencadangkan peraturan untuk anda semak sebelum simpan.",
-    "assistPlaceholder": "cth. Bayar 10% daripada gaji asas, atau RM50 sehari bekerja.",
+    "assistTitle": "Pilih templat peraturan gaji",
+    "assistDescription": "Gunakan templat yang disokong, edit parameternya dan semak pengesahan asal sebelum menyimpan.",
+    "assistPlaceholder": "10% of basic",
     "assistSubmit": "Cadang peraturan",
     "assistUse": "Guna peraturan ini",
     "assistCancel": "Batal",
@@ -16293,9 +16293,9 @@
       "subtitle": "Pilih medan anda, atur susun atur, dan biar AI merekanya untuk anda."
     },
     "ai": {
-      "title": "Pereka Laporan AI",
-      "describe": "Terangkan laporan yang anda mahu dan AI akan menyusunnya untuk semakan anda.",
-      "placeholder": "cth. jam OT bulanan ikut jabatan dengan jumlah",
+      "title": "Susun lajur laporan pilihan",
+      "describe": "Pilih lajur dahulu. AI boleh mencadangkan susunan bagi pilihan itu sahaja; tetapkan penapis dan pengiraan dalam pembina manual.",
+      "placeholder": "columns: name, balance",
       "generate": "Jana susun atur",
       "generating": "Menjana…",
       "notConfigured": "AI belum dikonfigur — minta pentadbir menyambung penyedia dalam tetapan AI.",
@@ -17765,10 +17765,13 @@
         "testing_state_blocked": "Penguji melaporkan halangan",
         "testing_state_retest_required": "Ujian semula diperlukan; pemerhatian lama tidak mengesahkan arahan semasa",
         "testing_state_not_applicable": "Penguji melaporkan tidak berkenaan",
-        "testing_state_partial": "Penguji melaporkan keputusan separa"
+        "testing_state_partial": "Penguji melaporkan keputusan separa",
+        "field_backgroundAgentsTotal": "Suis ejen berjadual",
+        "field_backgroundAgentSwitchesOn": "Suis dihidupkan",
+        "field_backgroundAgentEffectiveSwitchesOn": "Suis yang memenuhi semakan konfigurasi"
       },
       "module_overview_label": "Terokai aliran kerja saya",
-      "module_overview_prompt": "Apakah keupayaan modul Assistant yang tersedia untuk saya? Gunakan my_module_work untuk assistant. Jelaskan skop dan had tanpa membaca rekod yang tidak berkaitan.",
+      "module_overview_prompt": "Apakah yang boleh anda bantu saya?",
       "leave_available_label": "Baki cuti saya",
       "leave_available_prompt": "Berapakah baki cuti yang boleh saya gunakan sekarang?",
       "leave_requests_label": "Jejak cuti saya",
@@ -17780,17 +17783,17 @@
       "reporting_line_label": "Hubungan pelaporan saya",
       "reporting_line_prompt": "Kepada siapa saya melapor, dan siapa yang melapor kepada saya?",
       "work_profile_label": "Rekod kerja saya",
-      "work_profile_prompt": "Tunjukkan rekod kerja saya sendiri, termasuk syarikat dan jabatan.",
+      "work_profile_prompt": "Tunjukkan rekod kerja, syarikat dan status pekerjaan saya sendiri.",
       "payslip_label": "Slip gaji terkini saya",
       "payslip_prompt": "Tunjukkan ringkasan yang direkodkan pada slip gaji terkini saya yang telah dikeluarkan.",
       "pay_change_label": "Perubahan gaji saya",
       "pay_change_prompt": "Jelaskan perubahan yang direkodkan antara dua slip gaji terkini saya yang telah dikeluarkan.",
       "answers": {
-        "grounded": "Berikut rekod semasa di sebalik perbualan itu.",
-        "partial": "Sesetengah bahagian perlu disemak semula. Buka tugasan berkaitan di bawah untuk butiran yang boleh saya tunjukkan sekarang.",
-        "generic": "Sedia membantu. Pilih tugasan di bawah atau tanya soalan khusus, dan saya akan semak rekod yang boleh anda akses.",
-        "unavailable": "Jawapan itu perlu disemak semula. Saya belum dapat menunjukkan butirannya dengan selamat. Cuba tugasan berkaitan di bawah.",
-        "check": "Semak fakta semasa",
+        "grounded": "Saya menemui rekod untuk disemak, tetapi belum dapat memberikan jawapan yang boleh dipercayai. Anda boleh menyemaknya dalam Sumber.",
+        "partial": "Sesetengah rekod tidak dapat disemak. Jawapan ini mungkin tidak lengkap.",
+        "generic": "Apa yang ingin anda tahu? Tanya saya tentang kerja anda.",
+        "unavailable": "Saya tidak dapat membuka semula jawapan ini sekarang. Sila tanya sekali lagi.",
+        "check": "Buka perbualan",
         "openTask": "Buka tugasan semasa",
         "tool_my_leave_balances": "Baki cuti anda",
         "tool_my_leave_requests": "Permohonan cuti anda",
@@ -19385,8 +19388,11 @@
       },
       "conversation": {
         "answerLabel": "Jawapan daripada rekod anda",
+        "catalogueIntro": "Saya boleh membantu mencari jawapan tentang kerja anda. Contohnya, anda boleh bertanya:",
+        "catalogueScope": "Saya menyemak akses anda bagi setiap permintaan. Perubahan memerlukan pengesahan anda dalam aliran kerja yang berkaitan.",
+        "moreAreas": "Tunjukkan {count} bidang lagi",
         "canonicalNote": "Berdasarkan rekod semasa yang boleh anda akses.",
-        "sources": "Lihat rekod sumber",
+        "sources": "Sumber",
         "clarify_employment": "Rekod pekerjaan yang mana perlu saya semak?",
         "clarify_leave_type": "Jenis cuti yang mana anda maksudkan?",
         "clarify_period": "Tempoh yang mana perlu saya semak?",
@@ -19394,15 +19400,60 @@
         "replyLabel": "Jawapan anda",
         "continue": "Teruskan",
         "reopenBeforeReply": "Buka semula perbualan ini sebelum menjawab.",
-        "unavailable": "Yang ini perlu disemak semula. Muat semula perbualan ini atau buka tugasan di bawah.",
-        "insufficient_no_verified_facts": "Saya tidak menemui rekod semasa untuk menjawabnya. Cuba pilih tugasan di bawah.",
-        "insufficient_unsupported_explanation": "Saya boleh menunjukkan nilai dalam rekod, tetapi belum dapat mengesahkan penjelasan itu. Semak halaman biasa atau tanya HR.",
-        "refuse_unsupported_request": "Yang itu di luar bidang saya di sini. Pilih tugasan yang disokong di bawah.",
+        "unavailable": "Saya tidak dapat mengesahkan jawapan itu sekarang. Sila tanya sekali lagi.",
+        "insufficient_no_verified_facts": "Saya tidak menemui rekod semasa untuk menjawabnya. Boleh berikan sedikit lagi maklumat?",
+        "insufficient_unsupported_explanation": "Saya boleh menunjukkan apa yang direkodkan, tetapi tidak dapat mengesahkan sebabnya. HR mungkin boleh membantu.",
+        "refuse_unsupported_request": "Saya boleh membantu dengan soalan tentang aplikasi ini dan rekod kerja anda. Apa yang ingin anda semak?",
         "refuse_human_review_required": "Ini memerlukan keputusan manusia. Buka halaman biasa untuk menyemaknya dengan pihak yang sesuai.",
         "contextLimit": "Mulakan soalan baharu untuk menambah butiran lanjut.",
         "comparison": "Nilai direkodkan, sebelah menyebelah",
         "recordColumn": "Rekod",
-        "moreRules": "Tunjukkan {count} peraturan lagi"
+        "moreRules": "Tunjukkan {count} peraturan lagi",
+        "allAreas": "Lihat semua bidang yang tersedia",
+        "social_greeting": "Hai! Apa yang ingin anda tahu tentang kerja anda?",
+        "social_thanks": "Sama-sama. Ada lagi yang boleh saya bantu?",
+        "backgroundSwitchNote": "Tetapan suis ini tidak bermakna ejen sedang berjalan.",
+        "example_leave": "Berapa baki cuti saya?",
+        "example_payroll": "Di mana saya boleh melihat slip gaji saya?",
+        "example_claims": "Apakah status tuntutan saya?",
+        "example_org": "Kepada siapa saya melapor?",
+        "example_employees": "Apakah butiran kerja saya yang direkodkan?",
+        "example_attendance": "Apakah yang ditunjukkan oleh rekod kehadiran saya?",
+        "example_performance": "Apakah status penilaian saya?",
+        "example_area": "Apa yang boleh saya semak dalam {area}?",
+        "natural": {
+          "manager": "Pengurus yang direkodkan untuk anda ialah {record}.",
+          "report": "{record} direkodkan sebagai melapor kepada anda.",
+          "leave_available": "Baki {record} anda ialah {value}.",
+          "leave_taken": "Rekod {record} anda menunjukkan {value} telah diambil.",
+          "leave_pending": "Rekod {record} anda menunjukkan {value} menunggu kelulusan.",
+          "pay_gross": "Gaji kasar yang direkodkan untuk {record} ialah {value}.",
+          "pay_deductions": "Potongan yang direkodkan untuk {record} ialah {value}.",
+          "pay_net": "Gaji bersih yang direkodkan untuk {record} ialah {value}.",
+          "employeeCode": "Kod pekerja yang direkodkan untuk {record} ialah {value}.",
+          "company": "Rekod ini adalah dengan {value}.",
+          "companyFor": "Syarikat yang direkodkan untuk {record} ialah {value}.",
+          "workStatus": "Pekerjaan dengan {record} ditandakan sebagai {value}.",
+          "claimStatus": "Tuntutan {record} ditandakan sebagai {value}.",
+          "attendanceStatus": "Rekod kehadiran untuk {record} ditandakan sebagai {value}.",
+          "status": "Status yang direkodkan untuk {record} ialah {value}.",
+          "hiredOn": "Tarikh mula bekerja yang direkodkan untuk {record} ialah {value}.",
+          "terminatedOn": "Tarikh tamat pekerjaan yang direkodkan untuk {record} ialah {value}.",
+          "hours": "Tempoh yang direkodkan untuk {record} ialah {value} jam.",
+          "days": "Tempoh yang direkodkan untuk {record} ialah {value} hari.",
+          "progress": "Kemajuan yang direkodkan untuk {record} ialah {value}%.",
+          "from": "Tarikh mula yang direkodkan untuk {record} ialah {value}.",
+          "to": "Tarikh akhir yang direkodkan untuk {record} ialah {value}.",
+          "paidAt": "Tarikh pembayaran yang direkodkan untuk {record} ialah {value}.",
+          "recorded": "Untuk {record}, nilai yang direkodkan bagi {field} ialah {value}.",
+          "backgroundAgentsTotal": "Terdapat {value} suis ejen berjadual dalam paparan ini.",
+          "backgroundAgentSwitchesOn": "{value} suis ejen berjadual dihidupkan.",
+          "backgroundAgentEffectiveSwitchesOn": "{value} suis didayakan selepas semakan modul dan sekatan.",
+          "backgroundAgentsTotalOne": "Terdapat {value} suis ejen berjadual dalam paparan ini.",
+          "backgroundAgentSwitchesOnOne": "{value} suis ejen berjadual dihidupkan.",
+          "backgroundAgentEffectiveSwitchesOnOne": "{value} suis didayakan selepas semakan modul dan sekatan."
+        },
+        "manageAgentSwitches": "Urus suis ejen"
       },
       "proposal": {
         "titleLeaveCancel": "Batalkan permohonan cuti yang belum selesai",
@@ -19602,6 +19653,16 @@
         "yes": "Ya",
         "no": "Tidak",
         "doneCredit": "{days} hari Kredit Cuti disimpan untuk {date}."
+      },
+      "chat": {
+        "title": "Perbualan",
+        "new": "Sembang baharu",
+        "thinking": "Sedang berfikir…",
+        "latest": "Balasan terkini",
+        "rate": "Nilai balasan ini",
+        "recent": "Sembang terkini",
+        "tools": "Cara lain untuk bekerja",
+        "privacy": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat."
       }
     },
     "denied_unavailable": "Ada sedikit masalah di pihak saya. Sila cuba lagi sebentar nanti.",
@@ -19633,7 +19694,7 @@
       "undock": "Kembali ke sembang terapung",
       "close": "Tutup",
       "intro": "Tanya tentang apa yang anda sedang lihat. Saya tahu bahagian sistem yang anda buka, bukan apa yang ada pada skrin anda, dan saya hanya boleh membaca apa yang anda sudah dibenarkan lihat.",
-      "working": "Sedang diproses…",
+      "working": "Sedang berfikir…",
       "failed": "Permintaan itu tidak berjaya. Sila cuba lagi.",
       "noCard": "Tiada kad jawapan dihasilkan untuk soalan ini.",
       "openInAssistant": "Buka dalam Pembantu",
@@ -19660,7 +19721,9 @@
         "analytics": "Analitik",
         "controlTower": "Menara Kawalan",
         "settings": "Tetapan"
-      }
+      },
+      "identity": "Pembantu AI",
+      "welcome": "Hai! Saya pembantu AI anda. Apa yang boleh saya bantu?"
     },
     "fileImport": {
       "title": "Sediakan import daripada fail",
@@ -19696,7 +19759,44 @@
       "next": "Skrin import menyemak kebenaran dan rekod semasa. Semak syarikat, kesan baki atau penggantian di sana, kemudian sahkan untuk menyimpan. Draf kekal dalam tab ini sehingga 10 minit dan hilang jika dimuat semula.",
       "expired": "Draf pembantu ini tiada atau telah luput. Kembali ke pembantu dan sediakan fail semula.",
       "formulaNotice": "Lembaran ini mengandungi {formulas} sel formula dan {errors} ralat Excel. Penyediaan menggunakan nilai sel tersimpan tanpa mengira semula formula. Semak nilainya dalam sumber sebelum meneruskan."
-    }
+    },
+    "privateAnalysis": {
+      "title": "Terokai corak secara peribadi",
+      "description": "Bandingkan trend berkumpulan dan kerja semasa tanpa menghantar nama, amaun tepat atau teks rekod kepada penyedia AI.",
+      "companyScope": "Menggunakan syarikat pilihan anda. Penapis jabatan, carian dan carta tidak digunakan.",
+      "domain": "Bidang",
+      "month": "Bulan yang lengkap",
+      "compareWindow": "Membandingkan bulan pilihan dengan bulan sebelumnya. Pengiraan tepat kekal dalam aplikasi.",
+      "snapshotWindow": "Menunjukkan kedudukan semasa yang direkodkan. Kehadiran menggunakan bulan pilihan; tiada trend sejarah atau punca disimpulkan.",
+      "run": "Terangkan corak",
+      "thinking": "Sedang berfikir…",
+      "result": "Analisis terlindung",
+      "domains": {
+        "workforce": "Tenaga kerja",
+        "attendance": "Kehadiran",
+        "leave": "Cuti",
+        "payroll": "Gaji",
+        "claims": "Tuntutan",
+        "performance": "Prestasi",
+        "rewards": "Ganjaran",
+        "organisation": "Organisasi"
+      },
+      "notices": {
+        "invalid_request": "Pilih bidang yang disokong dan bulan yang lengkap.",
+        "privacy_unavailable": "Data berkumpulan yang selamat tidak mencukupi atau permintaan memerlukan input terlindung yang disokong. Gunakan laporan asal untuk butiran.",
+        "unavailable": "Analisis ini tidak tersedia untuk akses atau rekod semasa anda.",
+        "temporarily_unavailable": "AI tidak tersedia buat sementara waktu atau had penggunaan anda telah dicapai.",
+        "failed": "Analisis tidak dapat diselesaikan. Sila cuba lagi."
+      }
+    },
+    "protectedInput": {
+      "payRule": "Pilih templat peraturan yang jelas dan edit nilainya. Nilai kekal setempat. Gunakan editor asal untuk formula atau penerangan lain.",
+      "report": "Pilih lajur laporan dahulu, kemudian gunakan input cadangan untuk menyusunnya. Penapis peribadi dan permintaan naratif menggunakan pembina manual.",
+      "layout": "Ini memformat perkataan sedia ada sebagai perenggan atau senarai. Ia tidak mengubah makna atau mencipta dakwaan pembangunan. Gunakan borang asal untuk draf masa hadapan.",
+      "performance": "Gunakan arahan medan yang jelas dan tambah perkataan anda selepas titik bertindih. Sasaran diselesaikan secara setempat; tiada penilaian disimpulkan atau penghantaran automatik.",
+      "calibration": "Gunakan permintaan bacaan yang jelas. Nama dipadankan dengan senarai yang dibenarkan secara setempat; permintaan kabur memerlukan penjelasan."
+    },
+    "err_protected_input": "Permintaan ini memerlukan input terlindung yang disokong. Pilih tugas atau templat input yang dicadangkan, atau gunakan skrin asal untuk butiran lain."
   },
   "controlTower": {
     "howTitle": "Cara Menara Kawalan berfungsi",
@@ -22280,7 +22380,7 @@
     "bonus": "Always-no reviewer bonus (points)",
     "penalty": "Always-yes reviewer penalty (points)",
     "aiDraft": "Draft with AI",
-    "aiDraftHelp": "Choose relevant passages from your notes and shared evidence to prepare an editable draft. Check the draft before using it; all decisions remain yours.",
+    "aiDraftHelp": "Susun petikan berkaitan daripada nota sendiri dan bukti yang dibenarkan menjadi rangka boleh diedit. Maknanya kekal setempat; semak perkataan asal sebelum digunakan.",
     "aiDrafting": "Preparing draft…",
     "aiUnavailable": "AI drafting is unavailable. Continue with the form.",
     "managerReassign": "Reassign reviewer",
@@ -23183,10 +23283,10 @@
       "onBox": "Dalam kotak: {band}, daripada {source}"
     },
     "rewrite": {
-      "title": "Draf dengan AI",
-      "help": "Semak dan sunting cadangan sebelum menggunakannya dalam borang anda.",
+      "title": "Format perkataan saya",
+      "help": "Pilih susun atur perenggan atau senarai. Perkataan asal kekal setempat dan maknanya tidak berubah.",
       "yourWords": "Kata-kata anda",
-      "instruction": "Bagaimanakah ayat perlu diubah?",
+      "instruction": "Arahan susun atur",
       "polishInstruction": "Perkemas ayat tanpa menambah fakta.",
       "working": "Sedang menyediakan…",
       "generate": "Sediakan cadangan",
@@ -23194,17 +23294,17 @@
       "unavailable": "Draf tidak dapat disediakan. Anda boleh terus menulis atau cuba lagi.",
       "changed": "Medan ini telah berubah. Tutup cadangan ini dan minta cadangan baharu berdasarkan ayat semasa.",
       "tooLong": "Pendekkan cadangan kepada {limit} aksara sebelum menggunakannya.",
-      "suggestion": "Ayat yang dicadangkan",
+      "suggestion": "Perkataan yang diformat",
       "discard": "Buang",
-      "keep": "Gunakan ayat"
+      "keep": "Kekalkan format"
     },
     "careerDraft": {
       "title": "Draf pelan kerjaya anda",
-      "help": "Semak cadangan matlamat dan aspirasi jangka panjang berdasarkan peranan pilihan serta penilaian anda. Pilih mobiliti sendiri.",
+      "help": "Semak rangka jurang kemahiran dan matlamat yang direkodkan. Aspirasi jangka panjang datang daripada perkataan yang anda masukkan sendiri; AI tidak menciptanya. Pilih mobiliti sendiri.",
       "generate": "Draf pelan",
       "saveDirection": "Simpan hala tuju pilihan sebelum mendraf pelan.",
-      "empty": "Tiada jurang lanjut atau aspirasi kosong untuk didraf.",
-      "preview": "Semak cadangan. Pilihan yang disimpan menjadi draf peribadi untuk diedit sebelum dikongsi.",
+      "empty": "Pilih hala tuju yang disimpan atau masukkan aspirasi jangka panjang sendiri. Tiada aspirasi baharu akan direka.",
+      "preview": "Semak matlamat asal yang dipilih dan perkataan anda sebelum menyimpannya dalam pelan peribadi.",
       "keepAspiration": "Simpan aspirasi jangka panjang",
       "keep": "Simpan draf pilihan"
     },
@@ -24030,6 +24130,10 @@
       "saved": "The unit is left out of this cycle.",
       "broughtBack": "The unit takes part again.",
       "failed": "Something went wrong. Try again."
+    },
+    "protectedOutline": {
+      "title": "Rangka sumber yang disusun AI",
+      "help": "AI memilih urutan bacaan. Ini ialah fakta dan perkataan asal; tiada penilaian, keputusan atau makna baharu dijana."
     }
   },
   "allowanceV2": {
@@ -24941,7 +25045,28 @@
     "groupsPrecedence": "Peruntukan yang terpakai bagi log masuk: peruntukan individunya; jika tiada, peruntukan jabatannya, kemudian syarikatnya, kemudian peranannya (jika beberapa sepadan pada tahap yang sama, had paling ketat terpakai); jika tiada, lalai di bawah.",
     "agentRunsAs": "Dijalankan sebagai akaun ejen HR, dihidupkan oleh {by} pada {date}.",
     "agentUnknownAdmin": "seorang bekas pentadbir",
-    "agentUnattributed": "Dihidupkan tanpa pentadbir yang dinamakan, jadi akaun ejen HR tidak menjalankannya. Jedakan dan dayakan semula untuk menjalankannya atas nama anda."
+    "agentUnattributed": "Dihidupkan tanpa pentadbir yang dinamakan, jadi akaun ejen HR tidak menjalankannya. Jedakan dan dayakan semula untuk menjalankannya atas nama anda.",
+    "privateFeatures": {
+      "hr_assistant": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "provider_evaluation": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "module_agent_evaluation": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "personnel_import_mapping": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "module_agent_planning": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "readiness_reminders": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "claims_triage": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "payroll_hypotheses": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "payroll_explanation": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "pay_rule_draft": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "report_insight": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "performance_360": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "performance_tc": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "performance_pm": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "performance_review": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "performance_idp": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "performance_calib": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "performance_assistant": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "feedback_planning": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat."
+    }
   },
   "accountEmail": {
     "title": "Penghantaran e-mel akaun",

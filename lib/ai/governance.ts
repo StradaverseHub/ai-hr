@@ -1,3 +1,4 @@
+import {transferProviderPrivacyRequest} from './provider-privacy-request';
 import { AiGatewayError, type AiUsage, type AiRunObservation, type ResolvedAiConfig } from './types';
 import { readOpenRouterOptions } from './providers/openrouter-configuration';
 import { readGatewayOptions } from './providers/gateway-options';
@@ -39,6 +40,7 @@ export function captureAiConfig(cfg: ResolvedAiConfig): ResolvedAiConfig {
   const captured=Object.freeze({provider,model,apiKey,...(providerOptions?{providerOptions}:{}),...(gatewayBaseUrl?{gatewayBaseUrl}:{}),
    ...(run?{governance:Object.freeze({run})}:{})});
   const probe=probes.get(cfg);if(probe)probes.set(captured,probe);
+  transferProviderPrivacyRequest(cfg,captured);
   return captured;
  }catch{throw new AiGatewayError('The current AI configuration could not be confirmed.');}
 }

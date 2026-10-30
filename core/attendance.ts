@@ -1,3 +1,4 @@
+import { withCanonicalAiReadTx } from './ai-read-transaction';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 import {attendancePolicyAttestedRawTrace} from '../lib/attendance-policy-attested-trace';
@@ -3279,8 +3280,9 @@ const WEEK_LIMIT_MINUTES = 45 * 60;
 export function attendanceMonthSummary(
   ctx: SessionContext,
   p: { month: string; companyIds?: string[]; today?: string; measurement?:'raw' },
+  existingTx?: Tx,
 ): Promise<MonthSummaryRow[]> {
-  return withTenant(ctx, async (tx) => {
+  return withCanonicalAiReadTx(ctx, existingTx, 'attendance', withTenant, async (tx) => {
     const monthStart = `${p.month}-01`;
     const [y, m] = p.month.split('-').map(Number);
     const monthEnd = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
@@ -7195,4 +7197,16 @@ export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:str
     }
     return result;
   });
+}
+
+/** Native monthly measurement, reduced to local distinct-person membership. No raw measurement override. */
+export async function attendanceAnalysisSourceTx(tx:Tx,ctx:SessionContext,companyIds:readonly string[],month:string){
+ if(!companyIds.length)throw Error('Attendance analysis requires a company scope.');
+ const summary=await attendanceMonthSummary(ctx,{month,companyIds:[...companyIds]},tx);
+ const ids=summary.map(row=>row.employmentId);
+ const people=ids.length?await tx.select({id:employment.id,personId:employment.personId}).from(employment)
+  .where(and(inArray(employment.id,ids),inArray(employment.companyId,[...companyIds]))):[];
+ const byId=new Map(people.map(row=>[row.id,row.personId]));
+ return {selection:month,rows:summary.map(row=>{const personId=byId.get(row.employmentId);if(!personId)throw Error('Incomplete attendance population.');
+  return {personId,conditions:{lateness_prevalence:row.late>0,absence_prevalence:row.absent>0}};})};
 }

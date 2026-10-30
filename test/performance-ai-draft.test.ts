@@ -125,12 +125,13 @@ describe('ADR-0022 — AI-assisted review drafting', () => {
     // The gateway saw redacted free text + the structured signals — and NOT the raw PII.
     expect(generateDraft).toHaveBeenCalledTimes(1);
     const { prompt } = vi.mocked(generateDraft).mock.calls[0][1];
-    expect(prompt).toContain('[email]');
-    expect(prompt).toContain('[id]');
+    expect(JSON.parse(prompt)).toMatchObject({task:'manager_review'});
+    expect(prompt).not.toContain('[email]');
+    expect(prompt).not.toContain('[id]');
     expect(prompt).not.toContain('jane@acme.test');
     expect(prompt).not.toContain('910101-01-1234');
-    expect(prompt).toContain('Improve test coverage to 80%');
-    expect(prompt).toContain('Employee self-rating: 4');
+    expect(prompt).not.toContain('Improve test coverage to 80%');
+    expect(prompt).not.toContain('Employee self-rating: 4');
 
     // Draft-only: the review row is untouched.
     const [rev] = await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id, reviewId));
