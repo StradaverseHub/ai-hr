@@ -6,7 +6,7 @@ import {createReviewCustody} from './generic-review-custody';
 import {OwnLeaveSealedReview} from './own-leave-content';
 import * as C from '../../lib/assistant-actions/position-archive-contract';
 import {withAgentActionGuard} from './agent-action-guard';
-import {lockPositionArchiveSourceTx,preparePositionArchiveTx,confirmPositionArchiveTx,positionArchiveUnavailable as fail} from '../position-archive-review';
+import {lockPositionArchiveSourceTx,preparePositionArchiveTx,confirmPositionArchiveTx,positionArchiveUnavailable as fail} from './position-archive-source';
 const action=C.POSITION_ARCHIVE_ACTION,digest=z.string().regex(/^[a-f0-9]{64}$/);
 const Binding=z.object({tenantId:z.guid(),userId:z.guid(),personId:z.guid().nullable(),companyId:z.guid(),positionId:z.guid(),archived:z.boolean()}).strict();
 const Metadata=z.object({actionId:z.guid(),action:z.literal(action),contractVersion:z.literal(1),binding:Binding,intentDigest:digest.nullable(),reviewedDigest:digest.nullable(),state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict();

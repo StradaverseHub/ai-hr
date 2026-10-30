@@ -121,13 +121,15 @@ export const AGENT_ACTIONS=Object.freeze([
   idempotencyKey:'import_attempt_version',policy:{tier:'handoff',category:'personnel'},reversal:{kind:'entry_point',by:'app/admin/personnel/import/history/actions.ts#revertImportAction'},evaluationCases:[],
   screen:{native:'app/admin/personnel/import/page.tsx',entryPoints:['app/admin/personnel/import/actions.ts#commitImportAction']},review:{route:'/admin/personnel/import',handoff:'native_workflow'},
   store:'human_workflow_only',browserOwner:null,pauseKey:'hr_assistant'}),
+ // Bounded checkbox effect inside a composite grid Save: no distinct complete native export maps
+ // one-to-one to this slice. Keep the full saveLabelsGridAction inventory in backlog.
  defineAgentAction({id:'org.position.archive',module:'org',owner:'organization',service:'core/admin.ts#bulkSaveLabels',contractVersion:1,
   prepare:{status:'implemented',adapter:'position_archive_review_v1',inputSchema:'PositionArchiveHuman',outputSchema:'PositionArchivePrepared'},
   confirm:{status:'implemented',adapter:'position_archive_review_v1',inputSchema:'PositionArchiveEnvelopeConfirmation',outputSchema:'PositionArchiveCompleted'},
   outcome:'canonical_receipt_required',semantics:'native_position_archive_current_record',humanInputs:['positionId','expectedArchived','archived'],
-  permission:{actor:'hr_admin',guard:'core/position-archive-review.ts#lockPositionArchiveSourceTx'},subject:'company',blastRadius:{max:1,unit:'position_catalogue_entry'},
+  permission:{actor:'hr_admin',guard:'core/assistant-actions/position-archive-source.ts#lockPositionArchiveSourceTx'},subject:'company',blastRadius:{max:1,unit:'position_catalogue_entry'},
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'repeat'},evaluationCases:[],
-  screen:{native:'app/admin/settings/system-labels/page.tsx',entryPoints:['app/admin/settings/actions.ts#saveLabelsGridAction']},review:{route:'/assistant/org-positions',handoff:'review_page'},
+  screen:{native:'app/admin/settings/system-labels/page.tsx',entryPoints:[]},review:{route:'/assistant/org-positions',handoff:'review_page'},
   store:'generic_own',browserOwner:'positionArchive',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'org.reporting.change',module:'org',owner:'organization',service:'core/workforce-commands.ts#setReportingLine',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_org_reporting_review_v1',inputSchema:'OrgActionPrepare',outputSchema:'OrgActionPreparedReview'},

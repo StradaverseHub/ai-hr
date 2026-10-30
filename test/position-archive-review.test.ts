@@ -5,7 +5,7 @@ import * as schema from '../db/schema';
 import {archivePosition,updatePosition} from '../core/admin';
 import {hireEmployee} from '../core/org';
 import {setLabelCriteria} from '../core/system-labels';
-import {preparePositionArchiveTx,confirmPositionArchiveTx} from '../core/position-archive-review';
+import {preparePositionArchiveTx,confirmPositionArchiveTx} from '../core/assistant-actions/position-archive-source';
 import {POSITION_ARCHIVE_ACTION as action,PositionArchiveHuman} from '../lib/assistant-actions/position-archive-contract';
 import {adminCtx,owner,resetDb,seedBase,closeAll,type Base} from './harness';
 let b:Base;

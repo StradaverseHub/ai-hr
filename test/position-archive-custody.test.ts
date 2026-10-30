@@ -4,7 +4,7 @@ import {afterAll,afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {pgSqlState} from '../lib/db-error';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
-import {positionArchiveReviews as reviews,readPositionArchiveChoices} from '../core/assistant-actions/position-archive-review-store';
+import {positionArchiveReviews as reviews,readPositionArchiveChoices,positionArchiveEntryAvailable} from '../core/assistant-actions/position-archive-review-store';
 import {hireEmployee} from '../core/org';
 import {erasePersonPii} from '../core/pdpa';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
@@ -39,7 +39,7 @@ describe('genuine catalogue encrypted custody on the existing ledger',()=>{
   const r=(await reviews.prepare(ctx,intent())).review;await owner.db.update(schema.roleAssignment).set({role:'employee'}).where(eq(schema.roleAssignment.appUserId,ctx.userId!));const fresh={...ctx,roles:['employee' as const],grants:[{role:'employee' as const,companyId:null}]};
   await expect(reviews.reopen(fresh,r.actionId)).rejects.toThrow();expect((await reviews.discard(fresh,{action,contractVersion:1,actionId:r.actionId})).receipt.state).toBe('discarded');
  });
- it('refuses SYSTEM and employee carriers',async()=>{await expect(reviews.prepare({...ctx,userId:null},intent())).rejects.toThrow();const userId=await createAppUser(b.tenantId,null,'employee');await grantAssistant(ctx,{appUserId:userId});const employee={...ctx,userId,roles:['employee' as const],grants:[{role:'employee' as const,companyId:null}]};await expect(reviews.prepare(employee,intent())).rejects.toThrow();});
+ it('refuses SYSTEM and employee carriers',async()=>{await expect(reviews.prepare({...ctx,userId:undefined},intent())).rejects.toThrow();const userId=await createAppUser(b.tenantId,null,'employee');await grantAssistant(ctx,{appUserId:userId});const employee={...ctx,userId,roles:['employee' as const],grants:[{role:'employee' as const,companyId:null}]};await expect(reviews.prepare(employee,intent())).rejects.toThrow();});
  it('refuses a stale source without retiring or executing its pending review',async()=>{
   const r=(await reviews.prepare(ctx,intent())).review;await owner.db.update(schema.position).set({label:'Changed'}).where(eq(schema.position.id,b.positionId));await expect(reviews.confirm(ctx,confirmation(r))).rejects.toThrow();expect(await stored(r.actionId)).toMatchObject({state:'awaiting_confirmation',bodyCount:1,eventId:null});
  });
@@ -77,7 +77,7 @@ describe('genuine catalogue encrypted custody on the existing ledger',()=>{
   expect(await stored(r.actionId)).toMatchObject({state:'refused',bodyCount:0,employmentId:null,eventId:null});
  });
  it('refuses another company and tenant at choices/prepare',async()=>{
-  const other=await seedBase();expect(await readPositionArchiveChoices(ctx,{query:'',positionId:other.positionId})).toEqual({kind:'unavailable'});await expect(reviews.prepare(ctx,{...intent(),positionId:other.positionId})).rejects.toThrow();
-  const c=await createCompany(ctx,{legalName:'Fictional Other Scope',country:'MY',currency:'MYR'}),userId=await createAppUser(b.tenantId,null,'hr_admin');await owner.db.update(schema.roleAssignment).set({companyId:c.id}).where(eq(schema.roleAssignment.appUserId,userId));await grantAssistant(ctx,{appUserId:userId});const otherCompany={...ctx,userId,grants:[{role:'hr_admin' as const,companyId:c.id}]};await expect(reviews.prepare(otherCompany,intent())).rejects.toThrow();
+  expect(await positionArchiveEntryAvailable(ctx)).toBe(true);const other=await seedBase();expect(await readPositionArchiveChoices(ctx,{query:'',positionId:other.positionId})).toEqual({kind:'unavailable'});await expect(reviews.prepare(ctx,{...intent(),positionId:other.positionId})).rejects.toThrow();
+  const c=await createCompany(ctx,{legalName:'Fictional Other Scope',country:'MY',currency:'MYR'}),userId=await createAppUser(b.tenantId,null,'hr_admin');await owner.db.update(schema.roleAssignment).set({companyId:c.id}).where(eq(schema.roleAssignment.appUserId,userId));await grantAssistant(ctx,{appUserId:userId});const otherCompany={...ctx,userId,grants:[{role:'hr_admin' as const,companyId:c.id}]};expect(await positionArchiveEntryAvailable(otherCompany)).toBe(false);await expect(reviews.prepare(otherCompany,intent())).rejects.toThrow();
  });
 });

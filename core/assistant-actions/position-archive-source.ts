@@ -2,11 +2,11 @@
 import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
-import type {SessionContext,Tx} from '../db/client';
-import {bulkSaveLabels} from './admin';
-import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
-import {lockLabelCriteriaReadTx} from './system-labels';
-import {PositionArchiveHuman as Human,PositionArchiveReview as Review,PositionArchiveConfirmation as Confirmation,PositionArchiveReceipt as Receipt} from '../lib/assistant-actions/position-archive-contract';
+import type {SessionContext,Tx} from '../../db/client';
+import {bulkSaveLabels} from '../admin';
+import {lockLeaveDependencyConfigurationTx} from '../leave-dependency-lock';
+import {lockLabelCriteriaReadTx} from '../system-labels';
+import {PositionArchiveHuman as Human,PositionArchiveReview as Review,PositionArchiveConfirmation as Confirmation,PositionArchiveReceipt as Receipt} from '../../lib/assistant-actions/position-archive-contract';
 export class PositionArchiveUnavailable extends Error { constructor(){super('Reopen the position in System Labels to review its current state.');this.name='PositionArchiveUnavailable';} }
 export const positionArchiveUnavailable=():never=>{throw new PositionArchiveUnavailable();};
 const fail=positionArchiveUnavailable;
