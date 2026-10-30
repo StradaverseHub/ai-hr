@@ -116,6 +116,8 @@ try{
   await Promise.all([page.waitForURL(url=>url.pathname==='/claims',{timeout:90000}),page.locator('a[href="/claims"]:visible').first().click()]);
   await page.locator('textarea[name="description"]').waitFor();assert.equal(documents.length,0,'client link unexpectedly reloaded the document');
   assert.equal((await page.locator('h1').innerText()).trim(),'Claims');assert(await page.locator('main tbody tr').count()>0);
+  const catalog=JSON.parse(readFileSync(new URL('../../messages/en.json',import.meta.url),'utf8'));
+  assert((await page.locator('main').innerText()).includes(catalog.claims.typeLabel),'client form lost route translations');
   report.browser.push({workflow:'client navigation',from:'/leave',to:'/claims',documentRequests:0,passed:true});await ctx.close();save();
  }
  // Capture progressive-enhancement action metadata from the actual built form. No hardcoded action ID.
@@ -146,6 +148,24 @@ try{
  assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
  report.browser.push({role:'employee',workflow:'claim create/edit/delete',persisted:true});await ctx.close();
  contextTemplates={createTemplate,deleteTemplate};
+ assert.equal(report.browserErrors.length,0,'baseline browser errors must be fixed before load');
+ const actionProtocol=template=>({fieldNames:Object.keys(template.fields),prefix:template.prefix,status:template.status,
+  arguments:Object.fromEntries(Object.entries(template.fields).filter(([key])=>/^\d+$/.test(key)).map(([key,value])=>{try{return [key,JSON.parse(value)];}catch{return [key,typeof value];}}))});
+ report.actionProtocol={create:actionProtocol(createTemplate),delete:actionProtocol(deleteTemplate)};save();
+ // Prove the captured browser protocol can be replayed before exercising another actor or load.
+ {
+  const description='PERF_HTTP_PREFLIGHT',fields={...createTemplate.fields};
+  for(const [key,value]of Object.entries({employmentId:employee.employmentId,claimTypeId:employee.claimTypeId,amount:'1',incurredOn:fixture.today,description,intent:'draft'}))fields[createTemplate.prefix+key]=value;
+  delete fields[createTemplate.prefix+'draftId'];
+  const response=await request(employee,'/claims',fields,createTemplate.status,false,createTemplate.headers);
+  report.actionPreflight={status:response.status,redirect:response.headers['x-action-redirect']??response.headers.location??null,
+   publicErrors:[...response.content.matchAll(/"error":"([^"\n]{1,300})"/g)].map(match=>match[1])};save();
+  const [draft]=await db`select id from claim_request where employment_id=${employee.employmentId}::uuid and status='draft'and description=${description}`;
+  assert(draft,'same-actor HTTP action preflight did not persist');
+  await request(employee,'/claims',{...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:employee.employmentId,[deleteTemplate.prefix+'id']:draft.id},deleteTemplate.status,false,deleteTemplate.headers);
+  assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
+  report.actionPreflight.persisted=true;save();
+ }
  // Real server actions must reject another employee's draft even for broadly visible HR actors.
  // Provision and clean up through the owner's HTTP action; the independent DB oracle only reads.
  for(const [actor,victim]of [[employee,fixture.users[5]],[hr,fixture.users[54]],[group,fixture.users[254]]]){

@@ -1,3 +1,4 @@
+import {RouteMessages} from '@/components/route-messages';
 import {EmployeePersonalHome} from '@/components/employee-home/personal-home';
 import {HomeAccessError,readEmployeeHomeIdentity} from '@/core/employee-home';
 import {notFound} from 'next/navigation';
@@ -147,7 +148,7 @@ function orderTree(rows: BreakdownRow[]) {
 // silent bounce to the dashboard stops being a rare curiosity and becomes the normal experience of
 // declining a module. The code is resolved against MODULE_CATALOG and DISCARDED if unknown: nothing from
 // the query string is ever rendered, only a catalogue name that was compiled into the build.
-export default async function DashboardPage({
+async function DashboardContent({
   searchParams,
 }: {
   searchParams?: Promise<{ moduleUnavailable?: string | string[];employmentId?:string|string[];workspace?:string|string[] }>;
@@ -765,4 +766,8 @@ export default async function DashboardPage({
       />
     </div>
   );
+}
+
+export default function DashboardPage(props:Parameters<typeof DashboardContent>[0]){
+ return <RouteMessages segment=""><DashboardContent {...props}/></RouteMessages>;
 }

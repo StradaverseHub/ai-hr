@@ -1,3 +1,4 @@
+import {routeMessageLayout} from '@/components/route-messages';
 import type { ReactNode } from 'react';
 import { getTranslations } from 'next-intl/server';
 import { moduleLayout } from '@/lib/module-layout';
@@ -15,7 +16,7 @@ const PerformanceModuleGuard = moduleLayout('performance');
  * area title only: tab strips and the cycle render per page, so this layout reads nothing beyond its translations.
  * <UiThemeArea> makes client structural branches (useUiTheme) render Classic structure inside the area.
  */
-export default async function PerformanceLayout({ children }: { children: ReactNode }) {
+async function PerformanceLayout({ children }: { children: ReactNode }) {
   const t = await getTranslations('nav');
   return (
     <PerformanceModuleGuard>
@@ -30,3 +31,5 @@ export default async function PerformanceLayout({ children }: { children: ReactN
     </PerformanceModuleGuard>
   );
 }
+
+export default routeMessageLayout('performance',PerformanceLayout);
