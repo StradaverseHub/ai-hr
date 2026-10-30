@@ -7,6 +7,9 @@ import * as s from '../db/schema';
 import {createEmployeeDraftWithReservedCode,saveEmployeeDraft,saveAndCompleteEmployeeDraft,getEmployeeDraft,previewSavedEmployeeDraftActivationTx} from '../core/employee-draft';
 import {hireEmployee} from '../core/org';
 import {grantAssistant} from '../core/assistant-grant';
+import {createCompany} from '../core/admin';
+import {LABEL_KINDS,labelUsableByCompany,setLabelCriteria} from '../core/system-labels';
+import {withEmployeeDraftActivationIntervalTx,prepareEmployeeDraftActivationSourceTx} from '../core/assistant-actions/employee-draft-activation-source';
 import {employeeDraftActivationReviews as store,readEmployeeDraftActivationChoices} from '../core/assistant-actions/employee-draft-activation-review-store';
 import {EmployeeDraftActivation as C} from '../lib/assistant-actions/employee-draft-activation-contract';
 import {createEntitlementTemplate,createEligibilityRule} from '../core/entitlement-template';
@@ -21,6 +24,32 @@ const human=(id:string)=>({action:C.action,contractVersion:1,draftId:id,companyI
 const confirmation=(r:{actionId:string;reviewedDigest:string})=>({action:C.action,contractVersion:1,actionId:r.actionId,reviewedDigest:r.reviewedDigest});
 async function snapshot(id:string){const [row]=await owner.db.execute<{draft:unknown;people:number;employments:number;events:number}>(sql`select (select to_jsonb(d) from employee_draft d where d.id=${id}::uuid) as draft,(select count(*)::int from person where tenant_id=${b.tenantId}::uuid) as people,(select count(*)::int from employment where tenant_id=${b.tenantId}::uuid) as employments,(select count(*)::int from domain_event where tenant_id=${b.tenantId}::uuid) as events`);return row;}
 describe('saved employee draft human activation',()=>{
+ // These are separate committed request intervals. Native locks deliberately advance their
+ // coordination epochs, while rollback-only previews must leave every business source unchanged.
+ const readSource=(id:string)=>withTenant(hr,tx=>withEmployeeDraftActivationIntervalTx(tx,hr,{draftId:id,companyId:b.companyId},fresh=>prepareEmployeeDraftActivationSourceTx(tx,fresh,C.Human.parse(human(id)))));
+ const criteriaEpochs=async()=>Array.from(await owner.db.execute<{kind:string;revision:string}>(sql`select label_kind as kind,revision::text as revision from system_label_criteria_epoch where tenant_id=${b.tenantId}::uuid order by label_kind`));
+ it('keeps the same native digest across committed request intervals despite advancing Criteria lock epochs',async()=>{
+  const d=await draft(),before=await snapshot(d.id),epochsBefore=await criteriaEpochs(),first=await readSource(d.id),epochsFirst=await criteriaEpochs(),second=await readSource(d.id),epochsSecond=await criteriaEpochs();
+  expect(epochsBefore.map(row=>row.kind)).toEqual([...LABEL_KINDS].sort());expect(epochsFirst.map(row=>row.kind)).toEqual(epochsBefore.map(row=>row.kind));expect(epochsSecond.map(row=>row.kind)).toEqual(epochsBefore.map(row=>row.kind));
+  for(let i=0;i<epochsBefore.length;i++){expect(BigInt(epochsFirst[i].revision)).toBeGreaterThan(BigInt(epochsBefore[i].revision));expect(BigInt(epochsSecond[i].revision)).toBeGreaterThan(BigInt(epochsFirst[i].revision));}
+  expect(second).toEqual(first);expect(await snapshot(d.id)).toEqual(before);
+  const prepared=await store.prepare(hr,human(d.id)),reopened=await store.reopen(hr,prepared.review.actionId);expect(reopened).toEqual(prepared);expect(await snapshot(d.id)).toEqual(before);expect((await store.confirm(hr,confirmation(prepared.review))).kind).toBe('completed');
+ });
+ it('binds a real department assignment change while the original company stays natively usable',async()=>{
+  const extra=await createCompany(hr,{legalName:'Fictional additional Criteria company',country:'MY',currency:'MYR'});
+  await setLabelCriteria(hr,{kind:'department',labelId:b.deptA,isGlobal:false,companyIds:[b.companyId]});
+  const d=await draft(),prepared=await store.prepare(hr,human(d.id)),sourceBefore=await readSource(d.id);
+  const selectedRows=async()=>{const [row]=await owner.db.execute<{company:unknown;department:unknown}>(sql`select (select to_jsonb(c) from company c where c.id=${b.companyId}::uuid and c.tenant_id=${b.tenantId}::uuid) as company,(select to_jsonb(d) from department d where d.id=${b.deptA}::uuid and d.tenant_id=${b.tenantId}::uuid) as department`);return row;};
+  const rowsBefore=await selectedRows();expect(await withTenant(hr,tx=>labelUsableByCompany(tx,b.tenantId,'department',b.deptA,b.companyId))).toBe(true);
+  await setLabelCriteria(hr,{kind:'department',labelId:b.deptA,isGlobal:false,companyIds:[b.companyId,extra.id]});
+  // Native Criteria rewrites the junction through its normal owner while leaving these bound
+  // selected rows and the native original-company permission unchanged. The new slice must notice.
+  expect(await selectedRows()).toEqual(rowsBefore);expect(await withTenant(hr,tx=>labelUsableByCompany(tx,b.tenantId,'department',b.deptA,b.companyId))).toBe(true);expect(await withTenant(hr,tx=>labelUsableByCompany(tx,b.tenantId,'department',b.deptA,extra.id))).toBe(true);
+  const sourceAfter=await readSource(d.id);expect(sourceAfter.reviewedDigest).not.toBe(sourceBefore.reviewedDigest);expect(sourceAfter.review).toEqual(sourceBefore.review);
+  const beforeRefusal=await snapshot(d.id);await expect(store.confirm(hr,confirmation(prepared.review))).rejects.toThrow();expect(await snapshot(d.id)).toEqual(beforeRefusal);
+  const [custody]=await owner.db.execute<{state:string}>(sql`select state from app.assistant_own_leave_review where id=${prepared.review.actionId}::uuid`);expect(custody.state).toBe('awaiting_confirmation');
+ });
+
  it('fully releases the rollback-only preview before actual native rows and completion event are written',async()=>{
   const d=await draft(),before=await snapshot(d.id);
   await withTenant(hr,async tx=>{
