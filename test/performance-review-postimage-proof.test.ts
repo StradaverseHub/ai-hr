@@ -75,7 +75,7 @@ it('SQL derives preservation from the locked DB notes and uses pure UTC serializ
 });
 it('rejects forged prepare commitments before inserting custody',async()=>{
  const a=await fixture('goal'),id=randomUUID();
- await expect(withTenant(a.ctx,tx=>tx.execute(sql`select app.assistant_performance_review_prepare(${a.action},${id}::uuid,${a.ctx.personId}::uuid,${a.employee.employmentId}::uuid,${b.companyId}::uuid,${a.employee.personId}::uuid,${a.id}::uuid,${'1'.repeat(64)},${'2'.repeat(64)},'fictional','fictional','fictional',${JSON.stringify({version:1,unchanged:'0'.repeat(64),notes:null,notesMode:null})}::jsonb,NULL)`))).rejects.toThrow('Performance source changed before custody');expect(await proof(id)).toBeUndefined();
+ await expect(withTenant(a.ctx,tx=>tx.execute(sql`select app.assistant_performance_review_prepare(${a.action},${id}::uuid,${a.ctx.personId}::uuid,${a.employee.employmentId}::uuid,${b.companyId}::uuid,${a.employee.personId}::uuid,${a.id}::uuid,${'1'.repeat(64)},${'2'.repeat(64)},'fictional','fictional','fictional',${JSON.stringify({version:1,unchanged:'0'.repeat(64),notes:null,notesMode:null})}::jsonb,NULL)`))).rejects.toMatchObject({cause:{code:'42501',message:'Performance source changed before custody'}});expect(await proof(id)).toBeUndefined();
 });
 for(const completed of [false,true])it(`refuses retroactive proof for a genuine legacy ${completed?'completed':'pending'} packet`,async()=>{
  const a=await fixture('goal'),r=(await a.prepare()).review,legacyId=randomUUID();
@@ -102,6 +102,10 @@ it('documents the genuine functional-partner native-positive and bounded Assista
  const [u]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:'user_'+randomUUID(),personId:partner.personId}).returning({id:schema.appUser.id});
  await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:u.id,companyId:b.companyId,role:'performance_comp_partner'});await grantAssistant(group(),{appUserId:u.id});
  const ctx:SessionContext={...await entitledCtx(b,['performance_comp_partner']),userId:u.id,personId:partner.personId,grants:[{role:'performance_comp_partner',companyId:b.companyId}]};
+ // Both are genuine managers at the native delegation write-time level. The partner manages a
+ // DIFFERENT employee; this creates no administrative visibility of the original goal's subject.
+ const separateReport=await hire('Fictional Partner Separate Direct Report');
+ await setReportingLine(group(),{subordinateEmploymentId:separateReport.employmentId,managerEmploymentId:partner.employmentId,lineType:'administrative',validFrom:'2026-01-01'});
  await setReportingLine(group(),{subordinateEmploymentId:a.manager.employmentId,managerEmploymentId:partner.employmentId,lineType:'delegate',validFrom:'2026-01-01',reason:'Fictional whole-scope stand-in'});
  const scopes=await withTenant(ctx,tx=>tx.execute<{general:boolean;functional:boolean}>(sql`select app.can_see_employment(${a.employee.employmentId}::uuid) as general,app.can_admin_perfcomp_employment(${a.employee.employmentId}::uuid) as functional`));expect(scopes[0]).toEqual({general:false,functional:true});
  await expect(withTenant(ctx,async tx=>{await approveGoalTx(tx,ctx,{goalId:a.id});throw Error('native positive rollback');})).rejects.toThrow('native positive rollback');
@@ -138,25 +142,25 @@ for(const kind of ['goal','cancel','preserve','replace'] as const)for(const muta
   await completeProtectedTx(tx,a,r);
   await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`);
   await mutate(tx);
- })).rejects.toThrow('Performance completed command is closed until commit');
+ })).rejects.toMatchObject({cause:{code:'42501',message:'Performance completed command is closed until commit'}});
  expect(await state(a)).toEqual(before);expect(await proof(r.actionId)).toMatchObject({state:'awaiting_confirmation',bodies:1});
 });
 
 it('refuses a real child-savepoint native effect as a top-transaction completion witness',async()=>{
  const a=await fixture('goal'),r=(await a.prepare()).review,before=await state(a);
- await expect(withTenant(a.ctx,async tx=>{await tx.execute(sql`SAVEPOINT fictional_child_effect`);const current=await readGoalApprovalSourceTx(tx,a.ctx,a.id,true),effect=await approveGoalTx(tx,a.ctx,{goalId:a.id},current.reviewDigest,true);await tx.execute(sql`RELEASE SAVEPOINT fictional_child_effect`);await tx.execute(sql`select app.assistant_assigned_review_complete(${r.actionId}::uuid,${a.action},${r.reviewedDigest},${effect.eventId}::uuid)`);})).rejects.toThrow('Performance postimage unavailable');expect(await state(a)).toEqual(before);
+ await expect(withTenant(a.ctx,async tx=>{await tx.execute(sql`SAVEPOINT fictional_child_effect`);const current=await readGoalApprovalSourceTx(tx,a.ctx,a.id,true),effect=await approveGoalTx(tx,a.ctx,{goalId:a.id},current.reviewDigest,true);await tx.execute(sql`RELEASE SAVEPOINT fictional_child_effect`);await tx.execute(sql`select app.assistant_assigned_review_complete(${r.actionId}::uuid,${a.action},${r.reviewedDigest},${effect.eventId}::uuid)`);})).rejects.toMatchObject({cause:{code:'42501',message:'Performance postimage unavailable'}});expect(await state(a)).toEqual(before);
 });
 it('refuses a matching native goal/event committed by an earlier transaction',async()=>{
  const a=await fixture('goal'),r=(await a.prepare()).review,effect=await withTenant(a.ctx,async tx=>{const current=await readGoalApprovalSourceTx(tx,a.ctx,a.id,true);return approveGoalTx(tx,a.ctx,{goalId:a.id},current.reviewDigest,true);}),before=await state(a);
- await expect(withTenant(a.ctx,tx=>tx.execute(sql`select app.assistant_assigned_review_complete(${r.actionId}::uuid,${a.action},${r.reviewedDigest},${effect.eventId}::uuid)`))).rejects.toThrow('Performance postimage unavailable');expect(await state(a)).toEqual(before);expect(await proof(r.actionId)).toMatchObject({state:'awaiting_confirmation',bodies:1});
+ await expect(withTenant(a.ctx,tx=>tx.execute(sql`select app.assistant_assigned_review_complete(${r.actionId}::uuid,${a.action},${r.reviewedDigest},${effect.eventId}::uuid)`))).rejects.toMatchObject({cause:{code:'42501',message:'Performance postimage unavailable'}});expect(await state(a)).toEqual(before);expect(await proof(r.actionId)).toMatchObject({state:'awaiting_confirmation',bodies:1});
 });
 it('keeps nondeferrable fences active within a later child savepoint',async()=>{
  const a=await fixture('cancel'),r=(await a.prepare()).review,before=await state(a);
- await expect(withTenant(a.ctx,async tx=>{await completeProtectedTx(tx,a,r);await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`);await tx.execute(sql`SAVEPOINT fictional_child_tamper`);await tx.update(schema.performanceCheckin).set({notes:'Child tamper'}).where(eq(schema.performanceCheckin.id,a.id));await tx.execute(sql`RELEASE SAVEPOINT fictional_child_tamper`);})).rejects.toThrow('Performance completed command is closed until commit');expect(await state(a)).toEqual(before);
+ await expect(withTenant(a.ctx,async tx=>{await completeProtectedTx(tx,a,r);await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`);await tx.execute(sql`SAVEPOINT fictional_child_tamper`);await tx.update(schema.performanceCheckin).set({notes:'Child tamper'}).where(eq(schema.performanceCheckin.id,a.id));await tx.execute(sql`RELEASE SAVEPOINT fictional_child_tamper`);})).rejects.toMatchObject({cause:{code:'42501',message:'Performance completed command is closed until commit'}});expect(await state(a)).toEqual(before);
 });
 it('does not let a context switch hide the same transaction receipt from a real group administrator writer',async()=>{
  const a=await fixture('goal'),r=(await a.prepare()).review,before=await state(a);
- await expect(withTenant(a.ctx,async tx=>{await completeProtectedTx(tx,a,r);await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`);await tx.execute(sql`select set_config('app.user_id',${b.adminUserId},true),set_config('app.roles','hr_admin',true),set_config('app.grants',${JSON.stringify([{role:'hr_admin',companyId:null}])},true)`);await tx.update(schema.performanceGoal).set({title:'Context-switch tamper'}).where(eq(schema.performanceGoal.id,a.id));})).rejects.toThrow('Performance completed command is closed until commit');expect(await state(a)).toEqual(before);
+ await expect(withTenant(a.ctx,async tx=>{await completeProtectedTx(tx,a,r);await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`);await tx.execute(sql`select set_config('app.user_id',${b.adminUserId},true),set_config('app.roles','hr_admin',true),set_config('app.grants',${JSON.stringify([{role:'hr_admin',companyId:null}])},true)`);await tx.update(schema.performanceGoal).set({title:'Context-switch tamper'}).where(eq(schema.performanceGoal.id,a.id));})).rejects.toMatchObject({cause:{code:'42501',message:'Performance completed command is closed until commit'}});expect(await state(a)).toEqual(before);
 });
 for(const field of ['delete','state','action_kind','receipt_subject_id','user_id','performance_postimage_root_xid'] as const)it(`keeps completed ${field} immutable even when an owner trigger tries removing the fence anchor`,async()=>{
  const a=await fixture('goal'),r=(await a.prepare()).review,before=await state(a),value=field==='state'?"'refused'":field==='action_kind'?"'performance.checkin.cancel'":field==='performance_postimage_root_xid'?'NULL':`'${randomUUID()}'::uuid`;
@@ -188,4 +192,15 @@ for(const kind of ['goal','cancel','preserve','replace'] as const)it(`preserves 
   else{const input={checkinId:a.id,...(kind==='replace'?{notes:' Default native replacement '}:{})},source=await readCheckInCompletionPlanTx(tx,a.ctx,input);expect(source.postimageProof).toBeUndefined();await completeCheckInTx(tx,a.ctx,input,source.reviewDigest);}
  });
  const after=await state(a);expect(after.row).toMatchObject(kind==='goal'?{approvalStatus:'approved'}:{status:kind==='cancel'?'cancelled':'completed'});expect(after.events.filter(e=>e.eventType===({goal:'performance-goal.approved',cancel:'performance-checkin.cancelled',preserve:'performance-checkin.completed',replace:'performance-checkin.completed'}[kind]))).toHaveLength(1);
+});
+
+for(const kind of ['goal','cancel','preserve','replace'] as const)for(const changed of ['root','actor-person'] as const)it(`refuses ${kind} initial persisted custody ${changed} rewrite by a later BEFORE trigger`,async()=>{
+ const a=await fixture(kind),r=(await a.prepare()).review,before=await state(a);
+ const mutation=changed==='root'?"NEW.performance_postimage_root_xid:='0'::xid8;":`NEW.person_id:='${a.employee.personId}'::uuid;`;
+ // Alphabetical order is deliberate: this mutates NEW AFTER performance_postimage_retire, while
+ // OLD is still awaiting_confirmation, before the completed writer fences can see a stored anchor.
+ await owner.db.execute(sql.raw(`CREATE FUNCTION app.zz_fictional_completed_metadata() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$BEGIN IF NEW.id='${r.actionId}'::uuid AND NEW.state='completed' AND pg_trigger_depth()=1 THEN ${mutation} END IF;RETURN NEW;END$$`));
+ await owner.db.execute(sql`CREATE TRIGGER zz_fictional_completed_metadata BEFORE UPDATE ON app.assistant_own_leave_review FOR EACH ROW EXECUTE FUNCTION app.zz_fictional_completed_metadata()`);
+ try{await expect(withTenant(a.ctx,tx=>completeProtectedTx(tx,a,r))).rejects.toMatchObject({cause:{code:'42501',message:'Performance completed custody changed'}});expect(await state(a)).toEqual(before);expect(await proof(r.actionId)).toMatchObject({state:'awaiting_confirmation',root:null,event:null,bodies:1});}
+ finally{await owner.db.execute(sql`DROP TRIGGER zz_fictional_completed_metadata ON app.assistant_own_leave_review`);await owner.db.execute(sql`DROP FUNCTION app.zz_fictional_completed_metadata()`);}
 });

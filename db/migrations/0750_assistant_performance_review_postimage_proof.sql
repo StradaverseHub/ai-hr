@@ -200,7 +200,7 @@ ALTER FUNCTION app.assistant_assigned_review_complete(uuid,text,text,uuid) RENAM
 --> statement-breakpoint
 CREATE FUNCTION app.assistant_assigned_review_complete(p_id uuid,p_kind text,p_digest text,p_event uuid) RETURNS jsonb
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE r app.assistant_own_leave_review%ROWTYPE;proof jsonb;completed_at timestamptz;
+DECLARE r app.assistant_own_leave_review%ROWTYPE;proof jsonb;completed_at timestamptz;expected_row jsonb;persisted_row jsonb;
 BEGIN
  IF p_kind NOT IN ('performance.goal.approve','performance.checkin.cancel','performance.checkin.complete') THEN RETURN app._assistant_assigned_review_complete_0750_previous(p_id,p_kind,p_digest,p_event);END IF;
  PERFORM app._assistant_leave_decision_login();
@@ -216,6 +216,15 @@ BEGIN
   UPDATE app.assistant_own_leave_review SET intent_digest=NULL,reviewed_digest=NULL,state='completed',receipt_event_id=p_event,performance_postimage_event_id=p_event,performance_postimage_root_xid=pg_current_xact_id() WHERE id=r.id;
   DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
   IF app._assistant_generic_review_verify_0750_previous(r.id,p_event) IS NOT TRUE OR app._performance_postimage_matches(p_kind,r.receipt_subject_id,proof,completed_at) IS NOT TRUE THEN RAISE EXCEPTION 'Performance postimage changed during completion' USING ERRCODE='42501';END IF;
+  -- A later BEFORE trigger can rewrite NEW before the completed-row fence activates. Verify the
+  -- actual persisted custody row after every ledger/content trigger, allowing ONLY this documented
+  -- completion/scrub delta. The old typed row retains every original binding and foreign NULL column.
+  expected_row:=to_jsonb(r)||jsonb_build_object('state','completed','intent_digest',NULL,'reviewed_digest',NULL,
+   'receipt_event_id',p_event,'performance_postimage_event_id',p_event,'performance_postimage_root_xid',pg_current_xact_id(),
+   'performance_postimage_unchanged',NULL,'performance_postimage_notes',NULL,'performance_postimage_mode',NULL);
+  SELECT to_jsonb(actual) INTO persisted_row FROM app.assistant_own_leave_review actual WHERE id=r.id;
+  IF persisted_row IS DISTINCT FROM expected_row OR EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content WHERE action_id=r.id)
+  THEN RAISE EXCEPTION 'Performance completed custody changed' USING ERRCODE='42501';END IF;
  ELSE RAISE EXCEPTION 'Performance review unavailable' USING ERRCODE='42501';END IF;
  RETURN app._assistant_assigned_review_json(r.id);
 END $$;
