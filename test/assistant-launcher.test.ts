@@ -64,6 +64,11 @@ describe('floating button settings fail closed',()=>{
 });
 
 describe('the floating chat command',()=>{
+ it('passes a full 500-character clarification answer unchanged without a page-context suffix',async()=>{
+  owner.ask.mockResolvedValue({exchangeId:'clarified'});owner.workspace.mockResolvedValue({history:[]});
+  const question='x'.repeat(500);await askFromLauncherAction({question,path:'/leave',clarificationExchangeId:id});
+  expect(owner.ask).toHaveBeenCalledWith(ctx,{question,conversationScope:'["company-1"]',clarificationExchangeId:id});
+ });
  it('passes only the server company context and paired opaque continuation to the shared command',async()=>{
   owner.ask.mockResolvedValue({exchangeId:'next',conversationToken:'new-proof'});owner.workspace.mockResolvedValue({history:[]});
   expect(await askFromWorkspaceAction({question:'And pending?',previousExchangeId:'prior',previousConversationToken:'proof'})).toEqual({ok:true,exchangeId:'next',conversationToken:'new-proof',answer:'assistant.workspace.conversation.unavailable'});

@@ -27,7 +27,7 @@ export async function askFromLauncherAction(input: { question: unknown; path: un
   const question = typeof input.question === 'string' ? input.question.trim() : '';
   const context = resolvePageContext(input.path);
   let text = question;
-  if (context) {
+  if (context && input.clarificationExchangeId===undefined) {
     const areas = await getTranslations('assistant.launcher.areas');
     text = `${question}\n\n[${t('launcher.contextNote', { area: areas(context.area) })}${context.recordId ? ` · ${context.recordId}` : ''}]`;
   }
