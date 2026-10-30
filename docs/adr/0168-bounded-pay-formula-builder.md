@@ -50,6 +50,6 @@ IDs cannot be renamed/deleted. Operators can deactivate them. Configured accumul
 saving and testing a new revision. A future grammar or registry expansion must preserve versioned evaluator
 compatibility and both editors. No general-purpose scripting escape hatch is provided.
 
-Migration0744/sequence1793330000081 is append-only and unapplied. Standard GitHub Actions owns application
+Migration0746/sequence1793330000083 is append-only and unapplied. Standard GitHub Actions owns application
 tests, whole TypeScript/build and clean/populated ordinary upgrade rehearsals. Rendered component review
 and staging acceptance are distinct gates; this ADR authorizes neither deployment nor integration.

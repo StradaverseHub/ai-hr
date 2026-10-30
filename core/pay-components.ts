@@ -1667,7 +1667,8 @@ export function deletePayComponent(ctx: SessionContext, id: string) {
       .select({ n: sql<number>`count(*)::int` })
       .from(payrollBatchComponent)
       .where(eq(payrollBatchComponent.componentId, id));
-    const refs = (rec?.n ?? 0) + (bat?.n ?? 0);
+    const [formulaHistory]=await tx.execute<{n:number}>(sql`select count(*)::int as n from pay_formula_event where tenant_id=${ctx.tenantId}::uuid and component_id=${id}::uuid`);
+    const refs = (rec?.n ?? 0) + (bat?.n ?? 0) + (formulaHistory?.n??0);
     if (refs > 0) throw new PayComponentInUseError(refs);
     await tx.delete(payComponent).where(eq(payComponent.id, id));
     await appendEvent(tx, {

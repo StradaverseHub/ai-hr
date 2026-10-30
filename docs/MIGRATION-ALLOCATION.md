@@ -429,3 +429,19 @@ Tax0737/…074 remain separate, unapplied review branches and are not included h
 This reserves source only. Recheck competing claims and the live ledger before integration/application;
 no staging/production deployment or protected-branch integration is authorized. Clean and populated
 ordinary journal rehearsals are in `test/pay-formula-upgrade.test.ts` and run in standard Actions.
+
+### Formula reservation superseded again before application
+
+Immediately before the second hosted verification freeze, a fresh fetch still aligned main/alpha at
+`d6cb83d620d8d4380c981a72fc41628780840b4e`; staging still has579 receipts through1793330000063.
+A fresh scan of1501 distinct ref heads and310 registered worktrees discovered a concurrent external
+Payroll reset reservation0744/…081 and newer external0745/…082 claims. Formula Builder therefore
+supersedes its never-applied0744/…081 reservation with **0746_pay_formula_builder / idx694 /
+1793330000083**. No lower reserved/applied migration is changed or included. The migration also keeps
+an immutable durable batch UUID in private evaluation history without a live-batch FK: canonical
+processed→reset→delete-draft cleanup must retain formula evidence without mutating/deleting it.
+The insert binding still verifies a real matching payroll batch/company/period. Native Pay Item deletion
+now uses its existing in-use refusal for a retained formula link instead of exposing a foreign-key error.
+
+These remain source reservations. All future integration/application gates must repeat collision and
+watermark checks; concurrent external branches have twice selected an already-pushed provisional claim.
