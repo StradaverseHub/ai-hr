@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fixture,now,time} from './resume-test-fixtures.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
-import {hash} from './manifest.mjs';
+import {hash,buildUnits} from './manifest.mjs';
 import {verifyRepairRecovery,repairDisposition,validateRepairFocusedMetadata,validateRepairBuildMetadata,validateRepairGrantEvidence} from './repair-recovery-policy.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
@@ -147,6 +147,11 @@ function partialRetentionFixture(){
  const f=browserFixture(),unit=f.plan.units.find(u=>u.kind==='db'),selected=unit.files[0],unaffected='test/db-unaffected.test.ts',original=f.reports.find(r=>r.id===unit.id);
  unit.files.push(unaffected);f.plan.suite.push(unaffected);f.plan.suite.sort();
  const result=original.batches[0].result;result.testResults.push({name:'/candidate/'+unaffected,status:'passed',assertionResults:[{status:'passed',fullName:'unchanged behavioral case /candidate/'+unaffected}]});result.numTotalTests++;result.numPassedTests++;
+ const oldId=unit.id,browserFiles=f.sourcePlan.units.find(u=>u.kind==='browser').files;
+ const rebuilt=buildUnits(f.sourcePlan.suite,{db:[selected,unaffected],nodb:f.sourcePlan.suite.filter(p=>![selected,unaffected].includes(p))},browserFiles),rebuiltUnit=rebuilt.find(u=>u.kind==='db');
+ f.sourcePlan.units=rebuilt;f.plan.units=rebuilt;original.id=rebuiltUnit.id;original.files=rebuiltUnit.files;
+ for(const witness of f.assessment.reusable)if(witness.id===oldId)witness.id=rebuiltUnit.id;
+
  for(const plan of [f.sourcePlan,f.plan]){const {fingerprint,...body}=plan;plan.fingerprint=hash(body);}
  for(const report of f.reports)report.fingerprint=f.sourcePlan.fingerprint;
  f.assessment.fingerprint=f.sourcePlan.fingerprint;for(const witness of f.assessment.reusable)witness.reportHash=hash(f.reports.find(r=>r.id===witness.id));
@@ -155,7 +160,7 @@ function partialRetentionFixture(){
  const p=structuredClone(f.focused[0]);p.run.id=201;p.producer.run_id=201;p.report.runId='201';p.report.files=[selected];p.report.manifestHash=hash(JSON.stringify(p.report.files));p.report.groups={NODB:[],DB:[selected]};p.report.batches[0]={...p.report.batches[0],kind:'DB',files:[selected],startedAt:time(2.9)};
  p.report.databaseTerminalEvidence={...structuredClone(original.databaseTerminalEvidence),name:'aihr-ci-201-1-db-1',capturedAt:time(2.2)};
  p.result=structuredClone(original.batches[0].result);p.result.testResults=p.result.testResults.filter(x=>x.name==='/candidate/'+selected);p.result.testResults[0].name='/home/runner/work/ai-hr/ai-hr/source/'+selected;p.result.numTotalTests=1;p.result.numPassedTests=1;p.compiler=null;
- f.focused.push(p);f.history.runIds.push(201);return {f,unit,unaffected};
+ f.focused.push(p);f.history.runIds.push(201);return {f,unit:rebuiltUnit,unaffected};
 }
 test('Successful original processes retain unaffected authenticated file assertions without relabelling; affected DB subset uses fresh owned resources',()=>{
  const {f,unit,unaffected}=partialRetentionFixture(),c=verifyFixtureBrowserRecovery(f),u=c.units.find(u=>u.id===unit.id);
