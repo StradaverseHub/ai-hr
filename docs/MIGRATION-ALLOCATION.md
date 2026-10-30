@@ -482,3 +482,42 @@ The migration-bearing aggregate needs its own authenticated complete witness, po
 upgrade and restore-readiness evidence, web/native/controller checks, one truthful isolated ticket
 and explicit combined human acceptance. PR115 source inclusion does not enable recovery-v2
 installation adoption. No staging claim, migration application or production authority follows here.
+
+## Six-scope MOBILE successor — coordinated source reservation, 30 October 2026
+
+The owner authorized Bank to join the isolated MOBILE, ENHANCEMENT, BREADCRUMB,
+PR115-source and Feedback candidate for source preparation and combined checks only.
+The Bank-containing candidate remains under an explicit protected-branch/PR merge,
+staging deployment and independent worker activation hold until concrete readiness is reviewed.
+The earlier five-scope deployment authorization does not lift this hold.
+
+The release orchestrator ratified the following source-only order after V9 human acceptance
+and completed lease handback. The accepted V9 baseline is
+`d6cb83d620d8d4380c981a72fc41628780840b4e`, build `2a2TlmC0dUsC0GcmbIAXZ`,
+with579 ordered applied rows through idx693 / sequence1793330000063.
+All579 source journal entries and existing SQL bytes remain unchanged.
+
+| Owner | Index | Sequence | Filename | SQL SHA256 |
+| --- | ---: | ---: | --- | --- |
+| Feedback PR114 | 694 | 1793330000065 | 0728_feedback_release_evidence | d0914e5ec06a1f78b5e081164ab46330f37c29c8c3b2d0d6c592b205cee374c7 |
+| Bank | 695 | 1793330000075 | 0691_bank_import_point_read | be6f8d38850fadd9151d58ea7476d8f60e09a0bf2b2b078e0196f4cb90c5bfe9 |
+
+Immediately before writing this reservation and journal, a fresh fetch and source audit covered
+2037 local/origin refs and506 registered worktrees. Existing parsed claims ended at…074.
+The two conflicted journals were accounted for by parsing both complete variants without
+editing foreign files: the owned preparation merge ended at…065/…064, and the old unrelated
+Feedback-menu merge ended at…022/…023. There was no…075-or-later claim at that observation.
+Unrelated draft payloads at…064 and…066–074 remain excluded and their reservations/history
+remain untouched; their owners must reconcile unapplied positions before later integration.
+The old Bank idx686/…064 position was an isolated development fixture, never an installation
+reservation, and is not copied into this aggregate journal.
+
+The pre-Bank580-entry source prefix is exactly accepted V9579 followed by Feedback…065.
+The aggregate appends only the unchanged Bank SQL at…075, for581 source journal entries.
+This freezes a finite source contract for the Bank successor proof controllers; old producer/
+consumer contracts pinned to earlier prefixes must refuse this candidate. Preserve historical
+refusal coverage and require a reviewed explicit new prefix/slot/SQL contract, fresh exact-source
+packet, short401 and full100001 native-save proof with independent cleanup verification.
+A complete aggregate witness, populated upgrade, restore readiness, web/native/controller
+journeys and independent review are still required. No protected-ref move, staging claim,
+installation, worker activation, human acceptance or production authority follows from this record.

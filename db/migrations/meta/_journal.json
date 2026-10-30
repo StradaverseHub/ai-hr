@@ -4061,6 +4061,13 @@
       "when": 1793330000065,
       "tag": "0728_feedback_release_evidence",
       "breakpoints": true
+    },
+    {
+      "idx": 695,
+      "version": "7",
+      "when": 1793330000075,
+      "tag": "0691_bank_import_point_read",
+      "breakpoints": true
     }
   ]
 }
