@@ -4166,6 +4166,13 @@
       "when": 1793330000075,
       "tag": "0738_assistant_attendance_day_schedule_correction",
       "breakpoints": true
+    },
+    {
+      "idx": 732,
+      "version": "7",
+      "when": 1793330000090,
+      "tag": "0753_assistant_attendance_day_overtime_correction",
+      "breakpoints": true
     }
   ]
 }
