@@ -214,3 +214,54 @@ it('role loss leaves raw native author DELETE rights intact but cannot stamp or 
  await owner.db.update(s.roleAssignment).set({role:'employee'}).where(eq(s.roleAssignment.appUserId,userId));const employee={...who,roles:['employee'],grants:[{role:'employee',companyId:null}]};await assertRefusal(withTenant(employee,tx=>source(tx,d.id,employee)),'42501');await expect(discardEmployeeDraft(employee,d.id)).rejects.toThrow('Only an admin');
  await withTenant(employee,async tx=>{const deleted=await tx.execute<{id:string}>(sql`select id from app.native_employee_draft_discard_delete(${d.id}::uuid)`);expect(deleted).toEqual([{id:d.id}]);});expect(await status(id)).toMatchObject({state:'discarded',source:null,stamp:null,arm:null,bodies:0});
 });
+
+
+// The global Payroll CHECK is evaluated during the native child's two-column witness UPDATE.
+// This is a precise pure-shape capability, not access to Payroll data or its private owners.
+it('keeps the sole custom ledger CHECK helper immutable, invoker-only and executable only by the narrow child',async()=>{
+ const [shape]=await owner.db.execute<{child:boolean;grant_option:boolean;app:boolean;public:boolean;owner_is_child:boolean;owner_matches_ledger:boolean;security_definer:boolean;volatility:string;returns_boolean:boolean;returns_set:boolean;search_path_exact:boolean;body_sha256:string}>(sql`
+  select has_function_privilege('ai_hr_draft_discard_port',p.oid,'EXECUTE') child,
+   has_function_privilege('ai_hr_draft_discard_port',p.oid,'EXECUTE WITH GRANT OPTION') grant_option,
+   has_function_privilege('ai_hr_app',p.oid,'EXECUTE') app,
+   exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) acl where acl.grantee=0 and acl.privilege_type='EXECUTE') public,
+   p.proowner=(select oid from pg_roles where rolname='ai_hr_draft_discard_port') owner_is_child,
+   p.proowner=(select relowner from pg_class where oid='app.assistant_own_leave_review'::regclass) owner_matches_ledger,
+   p.prosecdef security_definer,p.provolatile::text volatility,p.prorettype='boolean'::regtype returns_boolean,p.proretset returns_set,
+   p.proconfig=array['search_path=pg_catalog, public, pg_temp']::text[] search_path_exact,
+   encode(sha256(convert_to(p.prosrc,'UTF8')),'hex') body_sha256
+  from pg_proc p where p.oid='app._payroll_completion_shape(jsonb,text,text)'::regprocedure`);
+ expect(shape).toEqual({child:true,grant_option:false,app:false,public:false,owner_is_child:false,owner_matches_ledger:true,security_definer:false,volatility:'i',returns_boolean:true,returns_set:false,search_path_exact:true,body_sha256:'c4d1d333cb7e5ad876d51eb9c165caa9c1826b57f7c0c46351d098ea0c7e913d'});
+ const [checks]=await owner.db.execute<{count:number;validated:boolean}>(sql`select count(*)::int count,bool_and(convalidated) validated from pg_constraint where conrelid='app.assistant_own_leave_review'::regclass and contype='c'`);expect(checks.count).toBeGreaterThan(0);expect(checks.validated).toBe(true);
+ // Ask PostgreSQL for the installed dependency graph, not a source regex or hardcoded test owner.
+ const dependencies=await owner.db.execute<{constraint_name:string;schema_name:string;function_name:string;argument_types:string}>(sql`
+  select distinct c.conname::text constraint_name,n.nspname::text schema_name,p.proname::text function_name,oidvectortypes(p.proargtypes) argument_types
+  from pg_constraint c join pg_depend d on d.classid='pg_constraint'::regclass and d.objid=c.oid and d.refclassid='pg_proc'::regclass
+   join pg_proc p on p.oid=d.refobjid join pg_namespace n on n.oid=p.pronamespace
+  where c.conrelid='app.assistant_own_leave_review'::regclass and c.contype='c' and n.nspname<>'pg_catalog'
+  order by constraint_name,schema_name,function_name,argument_types`);
+ expect(Array.from(dependencies)).toEqual([{constraint_name:'payroll_completion_root_closed',schema_name:'app',function_name:'_payroll_completion_shape',argument_types:'jsonb, text, text'}]);
+ const privateHelpers=await owner.db.execute<{name:string;child:boolean;app:boolean;public:boolean}>(sql`
+  select p.proname::text name,has_function_privilege('ai_hr_draft_discard_port',p.oid,'EXECUTE') child,
+   has_function_privilege('ai_hr_app',p.oid,'EXECUTE') app,
+   exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) acl where acl.grantee=0 and acl.privilege_type='EXECUTE') public
+  from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app'
+   and left(p.proname,length('_payroll_completion_'))='_payroll_completion_' and p.proname<>'_payroll_completion_shape'
+  order by p.proname,oidvectortypes(p.proargtypes)`);
+ expect(Array.from(privateHelpers)).toEqual(['_payroll_completion_assert','_payroll_completion_authority','_payroll_completion_body_retired','_payroll_completion_capture','_payroll_completion_final','_payroll_completion_root','_payroll_completion_snapshot','_payroll_completion_uuid_array','_payroll_completion_writer_fence'].map(name=>({name,child:false,app:false,public:false})));
+ const ledgerColumns=await owner.db.execute<{name:string;read:boolean;write:boolean}>(sql`select attname::text name,has_column_privilege('ai_hr_draft_discard_port',attrelid,attnum,'SELECT') read,has_column_privilege('ai_hr_draft_discard_port',attrelid,attnum,'UPDATE') write from pg_attribute where attrelid='app.assistant_own_leave_review'::regclass and attnum>0 and not attisdropped order by attname`);
+ expect(ledgerColumns.filter(column=>column.read).map(column=>column.name)).toEqual(['action_kind','company_id','draft_discard_capture_xid','draft_discard_delete_witness','draft_discard_delete_xid','draft_discard_source','draft_discard_source_ctid','draft_discard_source_xmin','expires_at','id','person_id','receipt_subject_id','receipt_subject_kind','state','tenant_id','user_id']);
+ expect(ledgerColumns.filter(column=>column.write).map(column=>column.name)).toEqual(['draft_discard_delete_witness','draft_discard_delete_xid']);
+});
+it('actual app login cannot invoke the NULL-root shape helper or its nested UUID helper',async()=>{
+ const before=await snapshot();
+ await assertRefusal(withTenant(ctx,tx=>tx.execute(sql`select app._payroll_completion_shape(null::jsonb,'employees.draft.discard','awaiting_confirmation')`)),'42501','permission denied for function _payroll_completion_shape');
+ await assertRefusal(withTenant(ctx,tx=>tx.execute(sql`select app._payroll_completion_uuid_array('[]'::jsonb)`)),'42501','permission denied for function _payroll_completion_uuid_array');
+ expect(await snapshot()).toEqual(before);
+});
+it.each([{name:'empty object',value:{}},{name:'Payroll-looking object',value:{phase:'completed',xid:'1'}},{name:'JSON null',value:null},{name:'array',value:[]}])('global CHECK rejects a non-NULL foreign $name root on a genuine draft receipt and rolls back',async({value})=>{
+ const d=await plain(),id=await prepare(d.id),before=await snapshot();
+ const [original]=await owner.db.execute<{is_null:boolean}>(sql`select payroll_completion_root is null is_null from app.assistant_own_leave_review where id=${id}::uuid`);expect(original).toEqual({is_null:true});
+ let error:unknown;try{await owner.db.execute(sql`update app.assistant_own_leave_review set payroll_completion_root=${JSON.stringify(value)}::jsonb where id=${id}::uuid`);}catch(caught){error=caught;}
+ expect(pgSqlState(error)).toBe('23514');expect(pgErrorChain(error).some(link=>typeof link.message==='string'&&link.message.includes('payroll_completion_root_closed'))).toBe(true);
+ expect(await snapshot()).toEqual(before);
+});

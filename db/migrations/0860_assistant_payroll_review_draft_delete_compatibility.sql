@@ -843,3 +843,8 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_own_leave_reviews_expire_own(integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_own_leave_reviews_expire_own(integer) TO ai_hr_app;
+
+--> statement-breakpoint
+-- The global review CHECK evaluates this pure invoker predicate on foreign-kind SQL-NULL roots.
+-- Permit only the narrow native discard child; PUBLIC/app and nested Payroll helpers stay private.
+GRANT EXECUTE ON FUNCTION app._payroll_completion_shape(jsonb,text,text) TO ai_hr_draft_discard_port;
