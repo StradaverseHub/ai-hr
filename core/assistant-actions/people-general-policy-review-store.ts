@@ -1,0 +1,29 @@
+/** Unexposed composition proposal. Same encrypted custody; authenticated tenant is the only subject. */
+import {sql} from 'drizzle-orm';
+import {z} from 'zod';
+import {createReviewCustody} from './generic-review-custody';
+import {OwnLeaveSealedReview} from './own-leave-content';
+import * as C from '../../lib/assistant-actions/people-general-policy-contract';
+import {withAgentActionGuard} from './agent-action-guard';
+import {lockPeopleGeneralPolicySourceTx,preparePeopleGeneralPolicyTx,confirmPeopleGeneralPolicyTx,peopleGeneralPolicyUnavailable as fail} from './people-general-policy-source';
+const action=C.PEOPLE_GENERAL_POLICY_ACTION,digest=z.string().regex(/^[a-f0-9]{64}$/);
+const Binding=z.object({tenantId:z.guid(),userId:z.guid(),personId:z.guid().nullable(),companyId:z.null(),employmentId:z.null(),before:C.PeopleGeneralPolicyValues,after:C.PeopleGeneralPolicyValues,beforeRevision:z.guid().nullable()}).strict();
+const Metadata=z.object({actionId:z.guid(),action:z.literal(action),contractVersion:z.literal(1),binding:Binding,intentDigest:digest.nullable(),reviewedDigest:digest.nullable(),state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict();
+const Stored=z.object({metadata:Metadata,sealed:OwnLeaveSealedReview.nullable(),eventId:z.guid().nullable(),nativeRevision:z.guid().nullable()}).strict().refine(r=>(r.metadata.state==='awaiting_confirmation')===(r.sealed!==null&&r.metadata.intentDigest!==null&&r.metadata.reviewedDigest!==null)&&(r.metadata.state==='completed')===(r.eventId!==null)&&(r.metadata.state!=='completed'||r.nativeRevision!==null)&&(r.metadata.state==='awaiting_confirmation'||r.sealed===null&&r.metadata.intentDigest===null&&r.metadata.reviewedDigest===null));
+type Subject={tenantId:string};
+const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
+export const peopleGeneralPolicyReviews=createReviewCustody<z.infer<typeof C.PeopleGeneralPolicyHuman>,z.infer<typeof Binding>,z.infer<typeof Stored>,Subject,Awaited<ReturnType<typeof preparePeopleGeneralPolicyTx>>,Awaited<ReturnType<typeof confirmPeopleGeneralPolicyTx>>,z.infer<typeof C.PeopleGeneralPolicyPrepared>,z.infer<typeof C.PeopleGeneralPolicyCompleted>,z.infer<typeof C.PeopleGeneralPolicyRetired>,z.infer<typeof C.PeopleGeneralPolicyIndex>>({
+ action,tier:'approve',human:C.PeopleGeneralPolicyHuman,metadata:Metadata,stored:Stored,confirmation:C.PeopleGeneralPolicyEnvelopeConfirmation,retirement:C.PeopleGeneralPolicyRetirement,retired:C.PeopleGeneralPolicyRetired,index:C.PeopleGeneralPolicyIndex,indexKind:'people_general_policy_review_index',
+ async withInterval(tx,ctx,_nomination,work){const fresh=await withAgentActionGuard(tx,ctx,action,'approve');const current=await lockPeopleGeneralPolicySourceTx(tx,fresh);return work(fresh,{tenantId:current.tenantId});},
+ binding:(ctx,s,h,n)=>Binding.parse({tenantId:s.tenantId,userId:ctx.userId,personId:ctx.personId??null,companyId:null,employmentId:null,before:h.expected,after:h.desired,beforeRevision:n.nativeBefore.revision}),
+ assertSubjectBinding:(b,s)=>{if(b.tenantId!==s.tenantId)return fail();},assertHumanBinding:(b,h)=>{if(!same(b.before,h.expected)||!same(b.after,h.desired))return fail();},
+ prepareNative:preparePeopleGeneralPolicyTx,confirmNative:(tx,ctx,body)=>confirmPeopleGeneralPolicyTx(tx,ctx,body.content,{action,contractVersion:1,reviewedDigest:body.nativeReviewedDigest}),
+ pending:(r,b,n)=>C.PeopleGeneralPolicyPrepared.parse({action,contractVersion:1,actionId:r.metadata.actionId,reviewedDigest:r.metadata.reviewedDigest,createdAt:r.metadata.createdAt,expiresAt:r.metadata.expiresAt,content:b.content,review:n.review,consequence:'organisation_policy_future_admission_existing_records_unchanged'}),
+ async completed(tx,_ctx,r){if(!r.eventId||!r.nativeRevision)return fail();const [row]=await tx.execute<{receipt:unknown}>(sql`select app.people_general_policy_receipt(${r.eventId}::uuid,${r.nativeRevision}::uuid) receipt`);const receipt=C.PeopleGeneralPolicyReceipt.parse(row?.receipt);if(receipt.tenantId!==r.metadata.binding.tenantId||!same(receipt.policy,r.metadata.binding.after))return fail();return C.PeopleGeneralPolicyCompleted.parse({action,contractVersion:1,actionId:r.metadata.actionId,state:'completed',receipt});},
+ event:r=>r.eventId,nativeEvent:n=>n.receipt.eventId,assertCompletion:(r,n)=>{if(r.eventId!==n.receipt.eventId||r.nativeRevision!==n.nativeRevision||r.metadata.binding.tenantId!==n.receipt.tenantId||!same(r.metadata.binding.after,n.receipt.policy))return fail();},targets:()=>[],
+ async prepareRow(tx,m,sealed,_s,h,n){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_people_general_policy_command('prepare',${m.actionId}::uuid,${m.binding.personId}::uuid,${JSON.stringify(h.expected)}::jsonb,${JSON.stringify(h.desired)}::jsonb,${n.nativeBefore.revision}::uuid,${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) review`);return row?.review;},
+ async readRow(tx,id){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_people_general_policy_command('read',${id}::uuid) review`);return row?.review;},
+ async completeRow(tx,id,expected,n){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_people_general_policy_command('complete',${id}::uuid,NULL,NULL,NULL,${n.nativeRevision}::uuid,NULL,${expected},NULL,NULL,NULL,${n.receipt.eventId}::uuid) review`);return row?.review;},
+ async discardRow(tx,id){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_people_general_policy_command('discard',${id}::uuid) review`);return row?.review;},
+ async indexRows(tx){const [row]=await tx.execute<{rows:unknown}>(sql`select app.assistant_people_general_policy_command('index') rows`);return z.array(z.unknown()).parse(row?.rows);},unavailable:fail,
+});
