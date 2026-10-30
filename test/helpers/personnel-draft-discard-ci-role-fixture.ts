@@ -42,7 +42,7 @@ export function assertDisposableDraftDiscardFixture(adminUrl:string):void{
  check(env.TEST_DATABASE_URL,'ai_hr_app');migration.pathname='/postgres';
  if(admin.href!==migration.href)refuse();
  const evidence=env.AIHR_FOCUSED_EVIDENCE_DIR,temp=env.RUNNER_TEMP;
- if(!evidence||!temp||!isAbsolute(evidence)||!isAbsolute(temp))refuse();
+ if(!evidence||!temp||!isAbsolute(evidence)||!isAbsolute(temp))return refuse();
  if(realpathSync(evidence)!==join(realpathSync(temp),'aihr-focused'))refuse();
  if(resolve(evidence)!==realpathSync(evidence))refuse();
 }

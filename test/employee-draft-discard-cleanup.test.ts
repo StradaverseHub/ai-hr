@@ -81,7 +81,7 @@ it('body-only owner lock then Access request cannot create a body-owner/Access c
   }
   expect(result?.ok).toBe(false);expect(pgSqlState(result?.error)).toBe('55P03');
   expect(pgErrorChain(result?.error).some(link=>(link.message??'').includes('could not obtain lock'))).toBe(true);
-  if(waiting)expect(waitingResult?.status).toBe('fulfilled');
+  expect(waitingResult?.status).toBe('fulfilled');
  });
  expect(await snapshot()).toEqual(before);
 });

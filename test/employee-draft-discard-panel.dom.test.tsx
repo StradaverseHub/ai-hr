@@ -144,8 +144,12 @@ it('clears the pending deadline and ignores late rejection on unmount',async()=>
   fetcher.mockReturnValueOnce(new Promise<Response>((_,reject)=>{rejectFetch=reject;}));
   const view=render(<EmployeeDraftDiscardPanel resumeActionId={actionId}/>);
   fireEvent.click(screen.getByRole('button',{name:copy.reopen}));await settleDeadlineUi();
+  // Drain only queued focus/selection tasks; the pending 20-second request deadline stays live.
+  await act(async()=>{await vi.advanceTimersByTimeAsync(0);});
   const signal=fetcher.mock.calls[0][1].signal as AbortSignal;expect(signal.aborted).toBe(false);expect(vi.getTimerCount()).toBe(1);
-  view.unmount();expect(signal.aborted).toBe(true);expect(vi.getTimerCount()).toBe(0);
+  view.unmount();expect(signal.aborted).toBe(true);
+  await act(async()=>{await vi.advanceTimersByTimeAsync(0);});await settleDeadlineUi();
+  expect(vi.getTimerCount()).toBe(0);
   rejectFetch!(Error('late transport rejection'));await settleDeadlineUi();expect(packets()).toEqual([{action:C.action,operation:'reopen',actionId}]);
  }finally{cleanup();vi.useRealTimers();}
 });
