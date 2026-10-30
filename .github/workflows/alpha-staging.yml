@@ -32,6 +32,11 @@ on:
         required: false
         default: false
         type: boolean
+      fixture_projection:
+        description: Additional read-only immutable fixture repair impact projection; controller diagnostics only
+        required: false
+        default: false
+        type: boolean
   push:
     branches: [alpha]
   pull_request:
@@ -131,6 +136,36 @@ jobs:
             ${{ runner.temp }}/scheduling-model.json
           if-no-files-found: error
           retention-days: 3
+      - name: Refuse non-diagnostic fixture projection
+        if: ${{ inputs.fixture_projection }}
+        env: {CONTROLLER_ONLY: '${{ inputs.controller_only }}', DIAGNOSTICS_ONLY: '${{ inputs.diagnostics_only }}'}
+        run: test "$CONTROLLER_ONLY" = true && test "$DIAGNOSTICS_ONLY" = true
+      - name: Prepare exact immutable projection worktrees
+        if: ${{ inputs.fixture_projection }}
+        run: |
+          git fetch origin a16f0beb40e2d331273ac2aaf40c7eb8effb280b 6bdddf4f84b3ecb693d8fbf29409373e49c73ac9
+          git worktree add --detach "$RUNNER_TEMP/fixture-original" a16f0beb40e2d331273ac2aaf40c7eb8effb280b
+          git worktree add --detach "$RUNNER_TEMP/fixture-candidate" 6bdddf4f84b3ecb693d8fbf29409373e49c73ac9
+      - name: Install declared parser dependencies for optional projection only
+        if: ${{ inputs.fixture_projection }}
+        uses: ./.github/actions/setup-alpha
+        with: {path: '${{ runner.temp }}/fixture-candidate', mobile: 'false', capacity_profile: legacy}
+      - name: Project immutable repair coverage without executing application or tests
+        if: ${{ inputs.fixture_projection }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+          MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+        run: |
+          ln -s "$RUNNER_TEMP/fixture-candidate/node_modules" node_modules
+          node --import tsx .github/ci/fixture-browser-impact-projection.mjs "$RUNNER_TEMP/fixture-original" "$RUNNER_TEMP/fixture-candidate" "$RUNNER_TEMP/fixture-impact-projection.json"
+      - if: ${{ inputs.fixture_projection }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: fixture-impact-projection-diagnostic
+          path: ${{ runner.temp }}/fixture-impact-projection.json
+          if-no-files-found: error
+          retention-days: 7
   typecheck:
     if: ${{ !inputs.diagnostics_only && !inputs.build_only }}
     needs: resolve
