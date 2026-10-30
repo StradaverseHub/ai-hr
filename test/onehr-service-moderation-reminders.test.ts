@@ -316,7 +316,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   });
 
   it('refuses an invented protected starter reference without charging quota or writing a scorecard',async()=>{
-    await owner.db.insert(schema.performanceKpiLibrary).values({tenantId:b.tenantId,companyId:b.companyId,name:'Only eligible starter',template:{title:'Only eligible starter',description:'Native governed definition',category:'Delivery',unit:'units',weightBp:10000,scoring:{mechanism:'A',method:'more',target:100,rates:[80,90,100,110,120]}}});
+    await owner.db.insert(schema.performanceKpiLibrary).values({tenantId:b.tenantId,companyId:b.companyId,name:'Only eligible starter',template:{title:'Only eligible starter',description:'Native governed definition',category:'Delivery',unit:'units',weightBp:10000,scoring:{mechanism:'A',method:'more',target:100,rates:[80,90,100,110,120]},spread:{rate:[80,90,100,110,120]}}});
     vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);vi.mocked(generateDraft).mockResolvedValue('{"items":[999]}');
     await expect(perf.sendReviewMessage(self,reviewId,'setting',null,randomUUID(),'Suggest a starter scorecard','starter')).rejects.toThrow(/usable scorecard/);
     expect(generateDraft).toHaveBeenCalledOnce();expect((await view(self)).kpis).toEqual([]);expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);expect((await owner.db.select().from(schema.agentProposal)).some(row=>row.adjudication==='rejected')).toBe(true);
