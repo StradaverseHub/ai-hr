@@ -31,7 +31,9 @@
 -- of the employment (the same scope that sees Employment History), and a document filed against a pay field
 -- additionally requires the compensation read predicate (0099 compensation_rls). INSERT requires an admin
 -- with workforce maintain, and for a pay field the compensation write predicate. The service checks the
--- admin role and the movement's own visibility as well. New tables never inherit grants (ADR-0002).
+-- admin role and the movement's own visibility as well. New tables never inherit grants (ADR-0002), but
+-- deploy/bootstrap-db.sql's ALTER DEFAULT PRIVILEGES makes every new table fully writable by ai_hr_app
+-- (see 0313's header), so the privileges these tables must NOT have are revoked explicitly below.
 
 CREATE TABLE IF NOT EXISTS "movement_type_termination_reason" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -47,6 +49,7 @@ CREATE TABLE IF NOT EXISTS "movement_type_termination_reason" (
 CREATE UNIQUE INDEX IF NOT EXISTS "movement_type_termination_reason_uq" ON "movement_type_termination_reason" USING btree ("tenant_id","type_code","reason_code");--> statement-breakpoint
 REVOKE ALL ON "movement_type_termination_reason" FROM PUBLIC;--> statement-breakpoint
 GRANT SELECT, INSERT, DELETE ON "movement_type_termination_reason" TO ai_hr_app;--> statement-breakpoint
+REVOKE UPDATE, TRUNCATE ON "movement_type_termination_reason" FROM ai_hr_app;--> statement-breakpoint
 ALTER TABLE "movement_type_termination_reason" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "movement_type_termination_reason" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY "movement_type_termination_reason_read" ON "movement_type_termination_reason" FOR SELECT
@@ -83,6 +86,7 @@ CREATE TABLE IF NOT EXISTS "movement_type_field_rule" (
 CREATE UNIQUE INDEX IF NOT EXISTS "movement_type_field_rule_uq" ON "movement_type_field_rule" USING btree ("tenant_id","type_code","field");--> statement-breakpoint
 REVOKE ALL ON "movement_type_field_rule" FROM PUBLIC;--> statement-breakpoint
 GRANT SELECT, INSERT, DELETE ON "movement_type_field_rule" TO ai_hr_app;--> statement-breakpoint
+REVOKE UPDATE, TRUNCATE ON "movement_type_field_rule" FROM ai_hr_app;--> statement-breakpoint
 ALTER TABLE "movement_type_field_rule" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "movement_type_field_rule" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY "movement_type_field_rule_read" ON "movement_type_field_rule" FOR SELECT
@@ -120,6 +124,8 @@ CREATE TABLE IF NOT EXISTS "movement_attachment" (
 CREATE INDEX IF NOT EXISTS "movement_attachment_group_idx" ON "movement_attachment" USING btree ("tenant_id","employment_id","movement_group_id");--> statement-breakpoint
 REVOKE ALL ON "movement_attachment" FROM PUBLIC;--> statement-breakpoint
 GRANT SELECT, INSERT ON "movement_attachment" TO ai_hr_app;--> statement-breakpoint
+-- Append-only evidence: no UPDATE or DELETE for the application role, whatever the default privileges say.
+REVOKE UPDATE, DELETE, TRUNCATE ON "movement_attachment" FROM ai_hr_app;--> statement-breakpoint
 ALTER TABLE "movement_attachment" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "movement_attachment" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY "movement_attachment_read" ON "movement_attachment" FOR SELECT

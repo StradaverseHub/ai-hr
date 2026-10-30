@@ -114,6 +114,12 @@ async function rlsRefused(p: Promise<unknown>) {
   expect(pgText(err)).toMatch(/row-level security/i);
 }
 
+async function privilegeRefused(p: Promise<unknown>) {
+  const err = await p.then(() => null, (e: unknown) => e);
+  expect(err, 'expected a refusal').not.toBeNull();
+  expect(pgText(err)).toMatch(/permission denied/i);
+}
+
 const rule = (field: MovementFieldRule['field'], over: Partial<MovementFieldRule> = {}): MovementFieldRule => ({
   field,
   included: true,
@@ -471,10 +477,17 @@ describe('1d58019a Step 2 — supporting documents are read only by Employment H
     await expect(readMovementAttachment(scoped, hire.employmentId, doc.id)).rejects.toThrow();
 
     await expect(readMovementAttachment(adminCtx(b), hire.employmentId, randomUUID())).rejects.toBeInstanceOf(MovementDocumentError);
-    // Append-only evidence: the application role cannot change or remove a document.
-    await expect(
+    // Append-only evidence: the application role holds no UPDATE or DELETE on documents (migration 0722
+    // revokes them explicitly, because the bootstrap's default privileges would otherwise grant both).
+    await privilegeRefused(
       withTenant(adminCtx(b), (tx) => tx.delete(schema.movementAttachment).where(eq(schema.movementAttachment.id, doc.id))),
-    ).rejects.toThrow();
+    );
+    await privilegeRefused(
+      withTenant(adminCtx(b), (tx) =>
+        tx.update(schema.movementAttachment).set({ fileName: 'tampered.pdf' }).where(eq(schema.movementAttachment.id, doc.id)),
+      ),
+    );
+    expect(await owner.db.select({ id: schema.movementAttachment.id }).from(schema.movementAttachment)).toHaveLength(1);
   });
 });
 

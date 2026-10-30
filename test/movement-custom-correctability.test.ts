@@ -58,7 +58,9 @@ describe('custom Movement correction uses canonical behavior and retains recorde
   await reverseMovementEvent(ctx,{employmentId:e.employmentId,movementId:live[0].id,reason:'Fictional record rollback'});
   expect((await movementCurrentState(ctx,e.employmentId)).departmentId).toBe(b.deptA);
  });
- it.each(['not_a_builtin','termination'])('renders existing history but grants no correction authority for corrupt custom behavior %s',async behaviourKind=>{
+ // 1d58019a Step 2 (ADR-0166) — Termination is a configurable custom behaviour now, so the corrupt-mapping case
+ // uses a lifecycle kind that is still out of reach; the re-pointed-to-Termination case is pinned separately below.
+ it.each(['not_a_builtin','probationExtension'])('renders existing history but grants no correction authority for corrupt custom behavior %s',async behaviourKind=>{
   const e=await hire(),ctx=adminCtx(b),type=await saveMovementEventType(ctx,{label:'Fictional corrupt reference',behaviourKind:'secondment'});
   await createMovementEvent(ctx,{employmentId:e.employmentId,kind:type.code,effectiveDate:day(-2)});
   // Malformed fixture only: exercise canonical read-side refusal rather than weakening type writes.
@@ -68,6 +70,19 @@ describe('custom Movement correction uses canonical behavior and retains recorde
   const before=await state(e.employmentId);
   await expect(editMovementEvent(ctx,{employmentId:e.employmentId,movementId:row.id,kind:type.code,effectiveDate:day(-1),reason:'Fictional corrupt correction'})).rejects.toThrow('Unknown movement event type');
   await expect(reverseMovementEvent(ctx,{employmentId:e.employmentId,movementId:row.id,reason:'Fictional corrupt rollback'})).rejects.toBeInstanceOf(MovementNotCorrectableError);
+  expect(await state(e.employmentId)).toEqual(before);
+ });
+ it('grants no correction authority to a recorded custom movement re-pointed to Termination around the service',async()=>{
+  const e=await hire(),ctx=adminCtx(b),type=await saveMovementEventType(ctx,{label:'Fictional repointed reference',behaviourKind:'secondment'});
+  await createMovementEvent(ctx,{employmentId:e.employmentId,kind:type.code,effectiveDate:day(-2)});
+  // The service refuses this re-point once the type is used (1d58019a Step 2); the fixture writes around it.
+  await expect(saveMovementEventType(ctx,{code:type.code,label:'Fictional repointed reference',behaviourKind:'termination'})).rejects.toThrow(/already used by recorded movements/i);
+  await owner.db.update(movementEventType).set({behaviourKind:'termination'}).where(and(eq(movementEventType.tenantId,b.tenantId),eq(movementEventType.code,type.code)));
+  const history=await movementHistory(ctx,e.employmentId),row=history.find(item=>item.kind===type.code)!;
+  expect(row).toMatchObject({kind:type.code,canEdit:false,canReverse:false});
+  const before=await state(e.employmentId);
+  await expect(editMovementEvent(ctx,{employmentId:e.employmentId,movementId:row.id,kind:type.code,effectiveDate:day(-1),endDate:day(-1),terminationReasonCode:'misconduct',reason:'Fictional repointed correction'})).rejects.toBeInstanceOf(MovementNotCorrectableError);
+  await expect(reverseMovementEvent(ctx,{employmentId:e.employmentId,movementId:row.id,reason:'Fictional repointed rollback'})).rejects.toBeInstanceOf(MovementNotCorrectableError);
   expect(await state(e.employmentId)).toEqual(before);
  });
  it('retains exclusive lifecycle families and tenant subject visibility for a custom comparison',async()=>{

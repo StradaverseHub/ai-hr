@@ -753,7 +753,8 @@ describe('SOURCE GUARDS — the New Event form', () => {
     // The shared admission/template contract offers Company for this built-in alone.
     expect(MOVEMENT_KINDS.filter(kind => movementFormFields(kind).includes('companyId'))).toEqual(['entityTransfer']);
     const from = NEW_EVENT.indexOf("'company', label(movementField('companyId'))");
-    const end = NEW_EVENT.indexOf("row('businessUnit'", from);
+    // 1d58019a Step 2 — each comparison row now names its Field Controls field first (row(field, key, …)).
+    const end = NEW_EVENT.indexOf("row('businessUnitId', 'businessUnit'", from);
     expect(from).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(from);
     const company = NEW_EVENT.slice(from, end);

@@ -50,7 +50,7 @@ export type MovementWorkbookChoice={value:string;labelKey:string;label?:string};
  * any of the given Termination types offers, in catalogue order, under the organisation's own names. Without
  * reasons on the types (a caller that has none), the built-in list as before.
  */
-export function movementWorkbookScalarChoices(field:MovementFormField,types?:readonly MovementWorkbookType[]):MovementWorkbookChoice[]{
+export function movementWorkbookScalarChoices(field:MovementFormField,types?:readonly MovementWorkbookType[]):readonly MovementWorkbookChoice[]{
  if(field!=='terminationReasonCode')return personnelFieldChoices(personnelFormField(MOVEMENT_FORM_IDS[field]));
  const tenant=(types??[]).filter(type=>type.behaviour==='termination'&&type.reasons);
  if(!tenant.length)return TERMINATION_REASON_CODES.map(value=>({value,labelKey:'people.detail.movement.terminationReason.'+value}));

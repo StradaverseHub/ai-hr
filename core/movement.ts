@@ -1218,6 +1218,14 @@ type Correctability = { canReverse: boolean; canEdit: boolean; stateChanging: bo
 function correctabilityOf(row: ProjectedRow, group: RawEvent[], isLatest: boolean, behaviour:string|null): Correctability {
   const stateChanging = group.some((e) => STATE_CHANGING_EVENT_TYPES.has(e.eventType));
   if (!group.length || !behaviour) return { canReverse: false, canEdit: false, stateChanging };
+  // 1d58019a Step 2 (ADR-0166) — a Termination row must BE a termination in the ledger: its own
+  // employment.terminated leg, or the scheduled intent. Since a tenant's own type may carry the Termination
+  // behaviour, a type re-pointed around the service after use (the service locks a used type's behaviour)
+  // would otherwise make, say, a recorded Secondment correctable as an exit. Such a row stays visible and
+  // gets no correction authority, exactly as an unresolvable behaviour gets none.
+  if (behaviour === 'termination' && !group.some((e) => e.eventType === 'employment.terminated' || e.eventType === 'employment.movement.scheduled')) {
+    return { canReverse: false, canEdit: false, stateChanging };
+  }
   const supported = group.every(
     (e) =>
       REVERSIBLE_EVENT_TYPES.has(e.eventType) &&
