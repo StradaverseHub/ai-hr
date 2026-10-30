@@ -7,6 +7,7 @@ import {isAbsolute, join, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {hostHealth} from './host-health.mjs';
 import {CI_POLICY} from './policy-version.mjs';
+import {restrictedPortRequest,executeDatabaseSetup,runRestrictedPortQualification,SOURCE_PINS} from './restricted-port-qualification.mjs';
 import {capturePostgresEvidence, validatePostgresEvidence, postgresProfileFromEnv, V15_POSTGRES_PROFILE} from './postgres-evidence.mjs';
 
 const postgres = fileURLToPath(new URL('./postgres.sh', import.meta.url));
@@ -120,13 +121,14 @@ export function runFocused(destination) {
     cwd, input: files.join('\n') + '\n', encoding: 'utf8', maxBuffer: 1024 * 1024,
   });
   const groups = partitionSelection(files, output);
+  const qualifyPort = restrictedPortRequest(process.env.AIHR_QUALIFY_RESTRICTED_PORT, groups, process.env.AIHR_RESTRICTED_PORT_TYPECHECK);
   const postgresProfile = groups.DB.length ? assertFocusedPostgresProfile(process.env) : null;
   const dir = resolve(destination), runnerTemp = realpathSync(process.env.RUNNER_TEMP);
   if (!relative(runnerTemp, dir) || relative(runnerTemp, dir).startsWith('../') || isAbsolute(relative(runnerTemp, dir)))
     throw Error('Evidence must use an owned directory under RUNNER_TEMP');
   mkdirSync(dir, {recursive: true});
   const identity = focusedPlanIdentity({sha, controller, files, groups, classifierHash: hash(readFileSync(classifier)),
-    execution: {workers: 2, postgres: postgresProfile}});
+    execution: {workers: 2, postgres: postgresProfile, ...(qualifyPort?{restrictedPortPrerequisite:{version:2,sourcePins:SOURCE_PINS}}:{})}});
   const report = {kind: 'FOCUSED_ONLY', releaseEligible: false, schemaVersion: 1, sha, controller,
     runId: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT,
     runtime: {node: process.versions.node, platform: process.platform, arch: process.arch},
@@ -145,8 +147,14 @@ export function runFocused(destination) {
         if (kind === 'DB') {
           if (!hostHealth().ok) throw Error('Runner disk headroom below guard before DB batch');
           touchedDatabase = true;
-          if (spawnSync('bash', [postgres, 'reset'], {stdio: 'inherit', env: pgEnv}).status !== 0) throw Error('Owned PostgreSQL setup failed');
-          if (spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit', env}).status !== 0) throw Error('Candidate migration failed');
+          if (qualifyPort) batch.prerequisiteQualification = {enabled:true,status:'pending'};
+          executeDatabaseSetup(qualifyPort, {
+            reset(){if (spawnSync('bash', [postgres, 'reset'], {stdio: 'inherit', env: pgEnv}).status !== 0) throw Error('Owned PostgreSQL setup failed');},
+            before(){runRestrictedPortQualification(cwd,'before',dir,env);},
+            migrate(){if (spawnSync('pnpm', ['db:migrate'], {stdio: 'inherit', env}).status !== 0) throw Error('Candidate migration failed');},
+            after(){runRestrictedPortQualification(cwd,'after',dir,env);},
+          });
+          if (qualifyPort) batch.prerequisiteQualification.status = 'passed';
         }
         const resultPath = join(dir, `${kind.toLowerCase()}.vitest.json`);
         const args = ['exec', 'vitest', 'run'];
@@ -157,7 +165,7 @@ export function runFocused(destination) {
         if (child.error || child.status !== 0) throw Error('Selected test process failed');
         batch.assertions = verifyFocusedResult(JSON.parse(readFileSync(resultPath, 'utf8')), selected, cwd);
         batch.exitCode = 0;
-      } catch (error) { batch.error = error instanceof Error ? error.message : 'Focused batch failed'; }
+      } catch (error) { batch.error = error instanceof Error ? error.message : 'Focused batch failed'; if(batch.prerequisiteQualification?.status==='pending')batch.prerequisiteQualification.status='failed'; }
       finally { batch.endedAt = new Date().toISOString(); }
     }
     assertCandidate(cwd, sha);
