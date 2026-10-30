@@ -51,8 +51,12 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   const missingScript=await page.evaluate(families=>Array.from(document.fonts as unknown as Iterable<FontFace>).filter(face=>families.includes(face.family.replace(/^['"]|['"]$/g,''))&&face.status!=='loaded').map(face=>`${face.family} ${face.weight}`),[...new Set<string>(SCRIPT_FONTS.map(font=>font.family))]);
   if(missingScript.length)throw Error('Script fonts did not load: '+missingScript.join(', '));
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1);
+  // Calendar consent requires both values visible without horizontal panning. Page overflow alone
+  // misses a clipped comparison cell inside a scrolling holder (observed in the Tamil fixture).
+  const clippedCalendarCells=section==='chat-card-rewards-calendar'?await page.evaluate(()=>Array.from(document.querySelectorAll('table td')).some(cell=>{const box=cell.getBoundingClientRect();return box.left<0||box.right>window.innerWidth+1||cell.scrollWidth>cell.clientWidth+1;})):false;
   const file=`${locale}-${section}-${device}.png`;await page.screenshot({path:join(out,file),fullPage:true});
-  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme:'classic',fixture});
+  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme:'classic',fixture,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
+  if(clippedCalendarCells)throw Error('Calendar before/after value is clipped; inspect the captured evidence.');
   // This existing table intentionally scrolls horizontally on small screens. Capture its action
   // column too, so the mobile evidence shows the real controls rather than only the left-hand labels.
   if(section==='followup-features'&&device==='mobile'){
