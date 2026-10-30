@@ -3721,12 +3721,59 @@ export async function movementRowsAfterSequenceTx(tx: Tx, ctx: SessionContext, e
 }
 
 /** ac6645ec — a whole-import revert rolls each movement back through the one rollback body, with its reason. */
-export async function reverseMovementForImportTx(tx: Tx, ctx: SessionContext, employmentId: string, movementId: string, reason: string) {
+export async function reverseMovementForImportTx(tx: Tx, ctx: SessionContext, employmentId: string, movementId: string, reason: string, opts?: { acknowledgeClosedPayroll?: boolean }) {
   assertMovementAdmin(ctx, 'roll back a movement');
   if (!reason.trim()) throw new MovementReasonRequiredError('A reason is required. Record why this movement event is being rolled back.');
   await assertWorkforceEmploymentTx(tx, ctx, employmentId, 'maintain');
   await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
-  await reverseMovementTx(tx, ctx, employmentId, movementId, reason.trim(), false);
+  // 646355e5 slice C — an import Delete row behind closed payroll enters the same authority as the Roll Back
+  // dialog, and only when the import's confirmation box was ticked. A whole-import revert never passes it.
+  const run = () => reverseMovementTx(tx, ctx, employmentId, movementId, reason.trim(), false);
+  if (opts?.acknowledgeClosedPayroll === true) await withClosedPayrollCorrectionAuthorityTx(tx, employmentId, run);
+  else await run();
+}
+
+/**
+ * 646355e5 slice C — read-only: the movement as recorded, for an import Update to overlay only the cells HR
+ * filled in. Values come from the movement's own legs (replayInputOfTx), never from today's master data, so a
+ * blank cell keeps the event's value rather than clearing it. `input` is null when this module cannot rebuild
+ * the movement's values (the caller refuses the row); `kind` is the catalogue code, as a form would post it.
+ */
+export async function movementCorrectionBaseTx(tx: Tx, ctx: SessionContext, employmentId: string, movementId: string) {
+  const { events, rows, statusOf, resolvedTypes } = await projectRows(tx, ctx.tenantId, employmentId);
+  const row = rows.find((r) => r.id === movementId);
+  if (!row) return null;
+  const behaviour = resolvedTypes.get(row.kind)?.behaviourKind ?? null;
+  const status = statusOf(row);
+  const g = groupEventsOf(events, row);
+  const plain: CreateMovementInput = { employmentId, kind: row.kind, effectiveDate: row.effectiveDate, endDate: row.endDate, remarks: row.remarks };
+  let input: CreateMovementInput | null = null;
+  if (behaviour && row.kind !== 'hired' && !row.reversed && status !== 'superseded') {
+    // A pending movement wrote nothing: its values are the saved intent, read exactly as the Edit retains them.
+    if (row.scheduled && status === 'pending') {
+      const saved = (events.find((e) => e.id === row.id)?.payload as { input?: unknown } | undefined)?.input;
+      const retained: Record<string, unknown> = {};
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) for (const key of MOVEMENT_PENDING_INPUT_FIELDS) {
+        const value: unknown = Reflect.get(saved, key);
+        if (value === null || typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))) retained[key] = value;
+      }
+      input = { ...retained, ...plain } as CreateMovementInput;
+    } else if (behaviour === 'secondment' || behaviour === 'actingPosition') input = plain;
+    else if (isComparisonKind(behaviour) || behaviour === 'resignation') {
+      const { typeCode: _code, ...replayed } = await replayInputOfTx(tx, row, g, behaviour);
+      input = { ...replayed, employmentId, kind: row.kind };
+      const moved = g.find((e) => e.eventType === 'employment.company.transferred');
+      const to = (moved?.payload as { after?: { companyId?: string } } | undefined)?.after?.companyId;
+      if (to) input.companyId = to;
+    } else if (behaviour === 'termination') {
+      const leg = g.find((e) => e.eventType === 'employment.terminated')?.payload as { terminationReasonCode?: string | null; terminationNoticeDays?: number | null } | undefined;
+      const info = g.find((e) => e.eventType === 'employment.info.updated')?.payload as { after?: { tenderResignationDate?: string | null } } | undefined;
+      if (leg) input = { ...plain, terminationReasonCode: leg.terminationReasonCode ?? null, terminationNoticeDays: leg.terminationNoticeDays ?? null, resignationDate: info?.after?.tenderResignationDate ?? null };
+    }
+  }
+  // `recorded` is the bare movement (type, dates, remarks) for kinds whose effect IS their date (Join Date
+  // Change, Probation Extension …); an import revert re-records a deleted movement from `input ?? recorded`.
+  return { id: row.id, kind: row.kind, behaviour, effectiveDate: row.effectiveDate, status, reversed: !!row.reversed, scheduled: row.scheduled, input, recorded: plain };
 }
 
 /** The rollback guards, shared by the rollback and by read-only eligibility checks. */
@@ -3894,12 +3941,18 @@ export type EditMovementInput = CreateMovementInput & {
  */
 export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMovementInput) {
   assertMovementAdmin(ctx, 'correct a movement');
+  return withTenant(ctx, (tx) => editMovementEventTx(tx, ctx, rawEdit));
+}
+
+/** 646355e5 slice C — the same correction in a caller-owned transaction (a Movement import Update row). */
+export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawEdit: EditMovementInput) {
+  assertMovementAdmin(ctx, 'correct a movement');
   // 476f23ed — same catalogue resolution as createMovementEvent, and for the same reason: a correction
   // replays through the same writers, so it has to arrive carrying the same behaviour kind + code pair.
   // An INACTIVE type is allowed here — a movement already recorded under a type since switched off must
   // still be correctable, or switching a type off would strand its history.
   rawEdit = { ...rawEdit };
-  return withTenant(ctx, async (tx) => {
+  return (async (tx: Tx) => {
     await assertWorkforceEmploymentTx(tx,ctx,rawEdit.employmentId,'maintain');
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const p = await resolveInputTypeTx(tx, ctx, rawEdit, 'correct', { allowInactive: true });
@@ -4151,7 +4204,7 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
       ? await withClosedPayrollCorrectionAuthorityTx(tx, p.employmentId, correctAndReplay)
       : await correctAndReplay();
     return {...result,behaviourKind:p.kind,replayed:replay.length};
-  });
+  })(outerTx);
 }
 
 export type ResignationInformation = Record<typeof RESIGNATION_INFO_FIELDS[number],{

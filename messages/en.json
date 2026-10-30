@@ -1638,7 +1638,8 @@
           "endDate": "End Date",
           "remarks": "Remarks",
           "action": "Action",
-          "correctionReason": "Correction Reason"
+          "correctionReason": "Correction Reason",
+          "movementId": "Movement Event ID"
         },
         "detail": {
           "eventInformation": "Event Information",
@@ -2363,7 +2364,25 @@
           "duplicate_system_field": "The same System Field appears more than once for this movement.",
           "system_field_required": "Choose the System Field this row changes, or leave Before and After blank.",
           "before_mismatch": "Before does not match the employee’s current record; it has changed since the file was prepared. This employee is not imported.",
-          "workbook_old_layout": "This file uses the old Movement template (one sheet per movement type for one company). Download the new template and copy your rows into it."
+          "workbook_old_layout": "This file uses the old Movement template (one sheet per movement type for one company). Download the new template and copy your rows into it.",
+          "unknown_action": "Action must be Create, Update or Delete (leave it blank for Create).",
+          "movement_id_required": "Update and Delete need the Movement Event ID of the movement to change.",
+          "movement_id_unknown": "No movement with this Movement Event ID was found for this employee.",
+          "movement_id_other_employee": "This Movement Event ID belongs to another employee. Check the Employee ID on this row.",
+          "movement_already_rolled_back": "This movement has already been rolled back.",
+          "movement_superseded": "This movement was overtaken by a later one and never took effect, so there is nothing to change.",
+          "movement_hire_not_supported": "The hire cannot be changed by import. Use Correct hire details on the Movement tab.",
+          "movement_update_not_supported": "This event type cannot be updated by import. Correct it on the Movement tab.",
+          "movement_not_correctable": "This movement cannot be changed as requested",
+          "movement_id_not_for_create": "Leave Movement Event ID blank for a new movement, or choose Update or Delete.",
+          "reason_not_for_create": "Reason is only used for Update and Delete. Use Remarks for a new movement.",
+          "reason_required": "Enter a Reason for every Update and Delete.",
+          "not_applicable_on_delete": "Leave System Fields, Before and After blank on a Delete row.",
+          "conflicting_values": "Rows for the same movement give different values",
+          "duplicate_movement_id": "The same Movement Event ID appears in more than one Update or Delete. Name each movement once.",
+          "increment_amount_not_for_update": "Increment Amount cannot be used to update a movement. Enter the corrected Basic Salary instead.",
+          "event_mismatch": "Does not match the movement with this Movement Event ID",
+          "closed_payroll_acknowledgement_required": "Payroll is already closed for this movement. Tick the closed-payroll confirmation before saving"
         },
         "v2": {
           "type": "Movement type",
@@ -2456,8 +2475,24 @@
             "eventType": "Event Type",
             "systemField": "System Fields",
             "before": "Before",
-            "after": "After"
-          }
+            "after": "After",
+            "action": "Action",
+            "movementId": "Movement Event ID",
+            "reason": "Reason"
+          },
+          "action": {
+            "create": "Create",
+            "update": "Update",
+            "delete": "Delete"
+          },
+          "guideAction": "Action: leave it blank or choose Create to record a new movement. Choose Update to correct an existing movement or Delete to roll it back. Update and Delete need the Movement Event ID and a Reason.",
+          "guideMovementId": "Movement Event ID: copy it from the Movement Event ID column of the employee’s Employment History download (Download Excel on the Movement tab). It must belong to the employee in that row.",
+          "guideUpdate": "Update: enter one row for each field to correct, with the new value in After. Blank cells keep the recorded value, including a blank Effective Date or Event Type; nothing is cleared. Delete: one row with System Fields, Before and After left blank.",
+          "guideReason": "Reason: why the movement is being corrected or rolled back. It is required for Update and Delete and is kept in the audit history. Where payroll for the period is already closed, you confirm that on screen before saving.",
+          "closedPayrollRow": "Payroll for {periods} is already closed.",
+          "closedPayrollTitle": "Some corrections change movements behind closed payroll ({periods}).",
+          "closedPayrollBody": "These corrections update the employees’ records and future processing. The closed payroll, released payslips and statutory submissions keep their finalised figures and will not be recalculated. Without this confirmation, the employees concerned are not saved.",
+          "closedPayrollAcknowledge": "I understand that closed payroll will not change."
         }
       },
       "headerAssistance": {
@@ -3168,7 +3203,11 @@
         "movement": "Movement",
         "noMovement": "No history entry",
         "scheduled": "Scheduled for its effective date",
-        "rows": "Rows {rows}"
+        "rows": "Rows {rows}",
+        "update": "Update of an existing movement",
+        "delete": "Delete: movement rolled back",
+        "reason": "Reason: {reason}",
+        "closedPayroll": "Closed payroll confirmed: {periods}"
       },
       "employeeFull": {
         "created": "Created {code} · {name}",

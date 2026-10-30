@@ -14,7 +14,7 @@ import {readSpreadsheetArchive,decodeSpreadsheetXml,SpreadsheetArchiveError,type
 import {movementWorkbookScalarChoices,type MovementWorkbookType} from './movement-workbook-layout';
 import {signMovementTemplate,verifyMovementTemplate} from './movement-workbook-metadata.server';
 import {MOVEMENT_IMPORT_LIMITS,type MovementImportRecord} from './movement-import-contract';
-import {MOVEMENT_COLUMNS,MOVEMENT_SHEET,movementColumnCaptions,movementHeaderIssue,movementRowsToRecords,movementSystemFields,movementTypeDisplay,type MovementSheetRow} from './movement-import-rows';
+import {MOVEMENT_ACTIONS,MOVEMENT_COLUMNS,MOVEMENT_SHEET,movementActionLabel,movementColumnCaptions,movementColumnsFor,movementHeaderIssue,movementHeaderVersion,movementRowsToRecords,movementSystemFields,movementTypeDisplay,type MovementSheetRow} from './movement-import-rows';
 import type {MovementFormField} from './movement-form-contract';
 import type {PersonnelLabelResolver} from './personnel-import-contract';
 import {personnelImportLabelResolvers} from './personnel-import-labels.server';
@@ -61,13 +61,17 @@ export async function buildMovementWorkbook(p:MovementTemplateInput){
   [words('guideDates','Dates: DD-MMM-YYYY (for example 01-Jan-2027) or YYYY-MM-DD. Blacklist uses the current Kuala Lumpur day.')],
   [words('guideLimits','At most 200 rows and 50 employees per file, and 20 movements per employee. Each employee’s movements are saved together or not at all; other employees still go through.')],
   [words('guideNoRow','A movement with no field change (for example a Confirmation with no salary change) is one row with System Fields, Before and After left blank.')],
+  [words('guideAction','Action: leave it blank or choose Create to record a new movement. Choose Update to correct an existing movement or Delete to roll it back. Update and Delete need the Movement Event ID and a Reason.')],
+  [words('guideMovementId','Movement Event ID: copy it from the Movement Event ID column of the employee’s Employment History download (Download Excel on the Movement tab). It must belong to the employee in that row.')],
+  [words('guideUpdate','Update: enter one row for each field to correct, with the new value in After. Blank cells keep the recorded value, including a blank Effective Date or Event Type; nothing is cleared. Delete: one row with System Fields, Before and After left blank.')],
+  [words('guideReason','Reason: why the movement is being corrected or rolled back. It is required for Update and Delete and is kept in the audit history. Where payroll for the period is already closed, you confirm that on screen before saving.')],
  ];
  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(instructions.map(row=>row.map(business))),'Instructions');
  const rows=MOVEMENT_IMPORT_LIMITS.rows;
  const data:string[][]=[captions,...Array.from({length:rows},()=>MOVEMENT_COLUMNS.map(()=>''))];
  const sheet=XLSX.utils.aoa_to_sheet(data);
  for(let r=1;r<=rows;r++)for(let c=0;c<MOVEMENT_COLUMNS.length;c++){const address=col(c)+(r+1),cell=sheet[address]??={t:'s',v:''};cell.z='@';}
- sheet['!cols']=MOVEMENT_COLUMNS.map(column=>({wch:column==='employeeName'||column==='systemField'?26:column==='before'||column==='after'?30:18}));
+ sheet['!cols']=MOVEMENT_COLUMNS.map(column=>({wch:column==='employeeName'||column==='systemField'?26:column==='before'||column==='after'||column==='reason'?30:column==='movementId'?38:18}));
  XLSX.utils.book_append_sheet(wb,sheet,MOVEMENT_SHEET);
  // Reference: event types × System Fields, Company IDs, then each company's allowed values.
  const reference:string[][]=[[words('referenceTypes','Event types and the System Fields each may change')],[words('colEventType','Event Type'),words('colCode','Code'),words('colFields','System Fields')]];
@@ -91,8 +95,8 @@ export async function buildMovementWorkbook(p:MovementTemplateInput){
  const referenceSheet=XLSX.utils.aoa_to_sheet(reference);referenceSheet['!cols']=[{wch:24},{wch:28},{wch:28},{wch:40}];
  for(const [address,cell]of Object.entries(referenceSheet))if(!address.startsWith('!'))(cell as import('xlsx').CellObject).z='@';
  XLSX.utils.book_append_sheet(wb,referenceSheet,'Reference');
- const lists:string[][]=[[captions[0],captions[4],captions[5]]];
- const columns=[p.companies.map(c=>c.code),p.types.map(type=>movementTypeDisplay(p.types,type,p.resolve)),[...fieldLabels.values()]].map(values=>[...new Set(values.filter(v=>v.trim()))]);
+ const lists:string[][]=[[captions[0],captions[4],captions[5],captions[8]]];
+ const columns=[p.companies.map(c=>c.code),p.types.map(type=>movementTypeDisplay(p.types,type,p.resolve)),[...fieldLabels.values()],MOVEMENT_ACTIONS.map(action=>movementActionLabel(action,p.resolve))].map(values=>[...new Set(values.filter(v=>v.trim()))]);
  if(Math.max(...columns.map(values=>values.length))+1>MOVEMENT_WORKBOOK_SHEET_ROWS.Lists)throw new Error('movement_reference_catalog_too_large');
  columns.forEach((values,c)=>values.forEach((value,r)=>{lists[r+1]??=[];lists[r+1][c]=business(value);}));
  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(lists),'Lists');
@@ -103,7 +107,7 @@ export async function buildMovementWorkbook(p:MovementTemplateInput){
  const path='xl/worksheets/sheet2.xml',entry=zip.file(path);if(!entry)throw new Error('workbook_layout_invalid');let text=await entry.async('string');
  text=text.replace(/<sheetViews>[\s\S]*?<\/sheetViews>/,'<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>');
  if(!text.includes('<sheetViews>'))text=text.replace(/<sheetFormatPr\b|<cols>|<sheetData/,match=>'<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'+match);
- const validated=[[0,0],[4,1],[5,2]].filter(([,list])=>columns[list].length);
+ const validated=[[0,0],[4,1],[5,2],[8,3]].filter(([,list])=>columns[list].length);
  const validation=`<dataValidations count="${validated.length}">${validated.map(([c,list])=>`<dataValidation type="list" allowBlank="1" showErrorMessage="0" sqref="${col(c)}2:${col(c)}${rows+1}"><formula1>${xml('AIHR_Movement_List_'+list)}</formula1></dataValidation>`).join('')}</dataValidations>`;
  const at=text.search(/<(?:hyperlinks|printOptions|pageMargins|pageSetup|headerFooter|rowBreaks|colBreaks|customProperties|cellWatches|ignoredErrors|smartTags|drawing|legacyDrawing|picture|oleObjects|controls|webPublishItems|tableParts|extLst)\b|<\/worksheet>/);if(at<0)throw new Error('workbook_layout_invalid');
  if(validated.length)text=text.slice(0,at)+validation+text.slice(at);
@@ -194,23 +198,27 @@ export async function readMovementWorkbookRows(bytes:Buffer,p:{tenantId:string;t
  if(metadata.catalogue!==movementWorkbookCatalogue({types:p.types}))throw new Error('workbook_catalogue_changed');
  for(const name of wb.SheetNames){const sheet=wb.Sheets[name];if(Object.values(sheet).some(c=>c&&typeof c==='object'&&'f'in c&&c.f))throw new Error('formula_input');if(!ALLOWED_SHEETS.includes(name)&&Object.values(sheet).some(c=>c&&typeof c==='object'&&'v'in c&&String(c.v??'').trim()))throw new Error('workbook_unexpected_sheet');}
  const sheet=wb.Sheets[MOVEMENT_SHEET],range=XLSX.utils.decode_range(sheet['!ref']??'A1');
- for(let c=0;c<MOVEMENT_COLUMNS.length;c++){const header=sheet[XLSX.utils.encode_cell({r:0,c})];if(String(header?.v??'')!==metadata.captions[c])throw new Error('workbook_columns_changed');}
+ // 646355e5 slice C — a version 3 template has the first eight columns; its rows read as Create.
+ const width=movementColumnsFor(metadata.version).length;
+ for(let c=0;c<width;c++){const header=sheet[XLSX.utils.encode_cell({r:0,c})];if(String(header?.v??'')!==metadata.captions[c])throw new Error('workbook_columns_changed');}
  const read=(r:number,c:number)=>{const cell=sheet[XLSX.utils.encode_cell({r,c})];if(!cell||cell.v==null)return '';
   if(cell.t==='n'&&DATE_COLUMNS.has(c)&&(c===3||/[dy]/i.test(String(cell.z??''))&&!/^General$/i.test(String(cell.z??'')))){const d=XLSX.SSF.parse_date_code(Number(cell.v));if(d)return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;}
   return String(cell.v);};
  const rows:MovementSheetRow[]=[];
  for(let r=1;r<=range.e.r;r++){
-  for(let c=MOVEMENT_COLUMNS.length;c<=range.e.c;c++)if(String(sheet[XLSX.utils.encode_cell({r,c})]?.v??'').trim())throw new Error('workbook_columns_changed');
-  const values=MOVEMENT_COLUMNS.map((_,c)=>read(r,c));if(values.some(v=>v.length>32767))throw new Error('workbook_structure_invalid');
+  for(let c=width;c<=range.e.c;c++)if(String(sheet[XLSX.utils.encode_cell({r,c})]?.v??'').trim())throw new Error('workbook_columns_changed');
+  const values=MOVEMENT_COLUMNS.map((_,c)=>c<width?read(r,c):'');if(values.some(v=>v.length>32767))throw new Error('workbook_structure_invalid');
   if(values.some(v=>v.trim()))rows.push({row:r+1,values});
  }
  return rows;
 }
-/** The same eight columns as CSV (no signature: the CSV is a transport only, and every row is re-checked). */
+/** The same columns as CSV (no signature: the CSV is a transport only, and every row is re-checked). The eight
+ * version 3 captions read as Create only; the eleven version 4 captions add Action, Movement Event ID and Reason. */
 export function readMovementCsvRows(text:string,resolvers:PersonnelLabelResolver[]):MovementSheetRow[]{
  const grid=parseCsv(text.replace(/^﻿/,''));if(!grid.length)throw new Error('empty_file');
  const issue=movementHeaderIssue(grid[0],resolvers);if(issue)throw new Error(issue);
- return grid.slice(1).map((values,index)=>{if(values.slice(MOVEMENT_COLUMNS.length).some(v=>v.trim()))throw new Error('workbook_columns_changed');return{row:index+2,values:MOVEMENT_COLUMNS.map((_,c)=>values[c]??'')};}).filter(row=>row.values.some(v=>v.trim()));
+ const width=movementColumnsFor(movementHeaderVersion(grid[0],resolvers)??4).length;
+ return grid.slice(1).map((values,index)=>{if(values.slice(width).some(v=>v.trim()))throw new Error('workbook_columns_changed');return{row:index+2,values:MOVEMENT_COLUMNS.map((_,c)=>c<width?values[c]??'':'')};}).filter(row=>row.values.some(v=>v.trim()));
 }
 export const MOVEMENT_FILE_CODES=['file_too_large','empty_file','invalid_file','workbook_damaged','workbook_too_large','workbook_old_layout','workbook_columns_changed','workbook_metadata_invalid','workbook_catalogue_changed','workbook_structure_invalid','workbook_password_not_supported','workbook_unexpected_sheet','workbook_key_unavailable','formula_input','malformed_csv'] as const;
 /** Reads an uploaded file (signed .xlsx template or the same columns as UTF-8 .csv) into movement records. */

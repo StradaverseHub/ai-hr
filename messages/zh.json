@@ -1638,7 +1638,8 @@
           "endDate": "结束日期",
           "remarks": "备注",
           "action": "操作",
-          "correctionReason": "更正原因"
+          "correctionReason": "更正原因",
+          "movementId": "异动事件编号"
         },
         "detail": {
           "eventInformation": "事件信息",
@@ -2363,7 +2364,25 @@
           "duplicate_system_field": "同一系统字段在此调动中出现多次。",
           "system_field_required": "请选择此行更改的系统字段，或将变更前和变更后留空。",
           "before_mismatch": "变更前与员工当前记录不符；自准备文件以来记录已更改。该员工未被导入。",
-          "workbook_old_layout": "此文件使用旧的调动模板（每种调动类型一个工作表，仅限一家公司）。请下载新模板并将您的行复制进去。"
+          "workbook_old_layout": "此文件使用旧的调动模板（每种调动类型一个工作表，仅限一家公司）。请下载新模板并将您的行复制进去。",
+          "unknown_action": "操作必须为新建、更新或删除（留空表示新建）。",
+          "movement_id_required": "更新和删除需要填写要更改的异动的异动事件编号。",
+          "movement_id_unknown": "未找到该员工具有此异动事件编号的异动。",
+          "movement_id_other_employee": "此异动事件编号属于另一名员工。请检查此行的员工编号。",
+          "movement_already_rolled_back": "此异动已被撤销。",
+          "movement_superseded": "此异动已被之后的异动取代且从未生效，因此无需更改。",
+          "movement_hire_not_supported": "无法通过导入更改入职记录。请在变动标签页使用“更正入职信息”。",
+          "movement_update_not_supported": "此事件类型无法通过导入更新。请在变动标签页更正。",
+          "movement_not_correctable": "无法按要求更改此异动",
+          "movement_id_not_for_create": "新建异动时请将异动事件编号留空，或选择更新或删除。",
+          "reason_not_for_create": "原因仅用于更新和删除。新建异动请使用备注。",
+          "reason_required": "每项更新和删除都必须填写原因。",
+          "not_applicable_on_delete": "删除行的系统字段、变更前和变更后须留空。",
+          "conflicting_values": "同一异动的各行给出了不同的值",
+          "duplicate_movement_id": "同一异动事件编号出现在多个更新或删除中。每个异动只能指定一次。",
+          "increment_amount_not_for_update": "加薪金额不能用于更新异动。请改为填写更正后的基本工资。",
+          "event_mismatch": "与此异动事件编号对应的异动不符",
+          "closed_payroll_acknowledgement_required": "此异动的薪资已关闭。请在保存前勾选已关闭薪资的确认"
         },
         "v2": {
           "type": "人事异动类型",
@@ -2456,8 +2475,24 @@
             "eventType": "事件类型",
             "systemField": "系统字段",
             "before": "变更前",
-            "after": "变更后"
-          }
+            "after": "变更后",
+            "action": "操作",
+            "movementId": "异动事件编号",
+            "reason": "原因"
+          },
+          "action": {
+            "create": "新建",
+            "update": "更新",
+            "delete": "删除"
+          },
+          "guideAction": "操作：留空或选择“新建”以记录新的异动。选择“更新”更正现有异动，或选择“删除”将其撤销。更新和删除需要填写异动事件编号和原因。",
+          "guideMovementId": "异动事件编号：从员工的雇佣历史下载文件（变动标签页上的“下载 Excel”）中的“异动事件编号”列复制。该编号必须属于该行的员工。",
+          "guideUpdate": "更新：每个需更正的字段填写一行，并在“变更后”中填写新值。空白单元格保留已记录的值，包括空白的生效日期或事件类型；不会清空任何内容。删除：一行，系统字段、变更前和变更后留空。",
+          "guideReason": "原因：更正或撤销该异动的理由。更新和删除必须填写，并会保存在审计历史中。如该期间的薪资已关闭，您需在保存前于屏幕上确认。",
+          "closedPayrollRow": "{periods} 的薪资已关闭。",
+          "closedPayrollTitle": "部分更正涉及薪资已关闭期间的异动（{periods}）。",
+          "closedPayrollBody": "这些更正会更新员工记录及之后的处理。已关闭的薪资、已发放的工资单和法定申报将保留其最终数字，不会重新计算。未勾选此确认时，相关员工不会被保存。",
+          "closedPayrollAcknowledge": "我了解已关闭的薪资不会改变。"
         }
       },
       "headerAssistance": {
@@ -3168,7 +3203,11 @@
         "movement": "调动",
         "noMovement": "无历史记录条目",
         "scheduled": "已安排在生效日期执行",
-        "rows": "第 {rows} 行"
+        "rows": "第 {rows} 行",
+        "update": "更新现有异动",
+        "delete": "删除：异动已撤销",
+        "reason": "原因：{reason}",
+        "closedPayroll": "已确认薪资已关闭：{periods}"
       },
       "employeeFull": {
         "created": "已创建 {code} · {name}",

@@ -33,7 +33,7 @@ beforeEach(()=>{vi.stubEnv('MOVEMENT_IMPORT_WORKBOOK_KEY',Buffer.alloc(32,9).toS
 afterEach(()=>{vi.unstubAllEnvs();});
 
 describe('per-sheet-role workbook contract (d9e33556)',()=>{
- it('exposes one explicit contract: only Reference is larger; Movements data limits stay 200 rows / 50 employees / 8 columns',()=>{
+ it('exposes one explicit contract: only Reference is larger; Movements data limits stay 200 rows / 50 employees / 11 columns (646355e5 slice C)',()=>{
   expect(MOVEMENT_WORKBOOK_SHEET_ROWS).toEqual({Instructions:10_005,Movements:10_005,Reference:50_000,Lists:10_005,_meta:10_005});
   expect(MOVEMENT_WORKBOOK_STANDARD_SHEET_ROWS).toBe(10_005);
   expect(MOVEMENT_WORKBOOK_LIMITS).toEqual({maxBytes:5_000_000,maxExpandedBytes:64_000_000,maxEntries:6000,maxCells:650_000});
@@ -106,8 +106,8 @@ describe('per-sheet-role workbook contract (d9e33556)',()=>{
   expect((await source(many)).fileErrors).toEqual(['too_many_rows']);
   const employees=await fill(bytes,Array.from({length:51},(_,i)=>['FIC',`E${3000+i}`,'','01-Jan-2027','Increment','incrementAmount','','1']));
   expect((await source(employees)).fileErrors).toEqual(['too_many_employees']);
-  // As Excel saves it: the note in column I also widens the sheet dimension.
-  const wide=await patch(bytes,movements,text=>setDimension(202,'I')(addCell(202,'<is><t>note</t></is>','I')(text)));
+  // As Excel saves it: the note in column L (after the eleven version 4 columns) also widens the dimension.
+  const wide=await patch(bytes,movements,text=>setDimension(202,'L')(addCell(202,'<is><t>note</t></is>','L')(text)));
   expect((await source(wide)).fileErrors).toEqual(['workbook_columns_changed']);
  },60_000);
 

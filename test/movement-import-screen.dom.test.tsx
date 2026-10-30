@@ -44,6 +44,19 @@ describe('single-template Movement import screen (ac6645ec)',()=>{
   const alert=await screen.findByRole('alert');expect(alert).toHaveTextContent(en.people.import.movement.issues.no_movement_entries);expect(alert).not.toHaveTextContent(en.people.import.movement.issues.workbook_structure_invalid);
   expect(screen.queryByRole('button',{name:'Confirm and import selected events'})).toBeNull();
  });
+ it('646355e5 slice C — names an Update or Delete and its closed months, and posts the closed-payroll confirmation only when ticked',async()=>{
+  const correction={...row(2,'GOOD','valid'),action:'delete',movementId:'7d1c2e4a-5b6f-4a8b-9c0d-1e2f3a4b5c6d',closedPayrollPeriods:['2026-09']};
+  const closed={inputHash:'file-bound',selection:[2],fileErrors:[],valid:1,excluded:0,employees:[{key:'company-a|GOOD',companyId:'company-a',companyName:'EXT · Fictional A',employeeCode:'GOOD',employmentId:'good',name:'Fictional valid',fingerprint:'good-fingerprint',rows:[correction]}]};
+  mocks.fetch.mockResolvedValueOnce(response({ok:true,attemptId:'attempt-3',previewHash:'hash-3',preview:closed}));mount();choose();fireEvent.click(screen.getByRole('button',{name:'Check file'}));
+  await screen.findByRole('heading',{name:'Review events before importing'});
+  expect(screen.getByText(/^Delete · /)).toBeInTheDocument();expect(screen.getByText('Payroll for 2026-09 is already closed.')).toBeInTheDocument();
+  const box=screen.getByRole('checkbox',{name:en.people.import.movement.sheet.closedPayrollAcknowledge});expect(box).not.toBeChecked();
+  const save=screen.getByRole('button',{name:'Confirm and import selected events'});expect(save).toBeEnabled();
+  mocks.fetch.mockResolvedValueOnce(response({ok:false,message:'stop here'}));fireEvent.click(save);await screen.findByText('stop here');
+  expect((mocks.fetch.mock.calls[1][1].body as FormData).get('acknowledgeClosedPayroll')).toBe('false');
+  fireEvent.click(box);mocks.fetch.mockResolvedValueOnce(response({ok:false,message:'stop again'}));fireEvent.click(save);await screen.findByText('stop again');
+  expect((mocks.fetch.mock.calls[2][1].body as FormData).get('acknowledgeClosedPayroll')).toBe('true');
+ });
  it('shows the import history refusal message as returned',async()=>{
   mocks.fetch.mockResolvedValueOnce(response({ok:false,error:'workbook_old_layout'}));mount();choose();fireEvent.click(screen.getByRole('button',{name:'Check file'}));
   expect(await screen.findByRole('alert')).toHaveTextContent(en.people.import.movement.issues.workbook_old_layout);
