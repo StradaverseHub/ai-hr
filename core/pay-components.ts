@@ -840,7 +840,7 @@ async function preparePayComponentWriteTx(tx:Tx,ctx:SessionContext,p:PayComponen
     if(candidate?.kind==='formula_builder'&&p.code.trim().toUpperCase()==='BASIC')throw new PayRuleInvalidError('BAD_KIND');
     // Retain a byte-identical inactive link for ordinary metadata/settings maintenance. Only a NEW
     // or changed link must obtain today's active tested revision; the kernel still refuses inactive use.
-    const [stored]=candidate?.kind==='formula_builder'?await tx.select({rule:payComponent.rule}).from(payComponent).where(and(eq(payComponent.tenantId,ctx.tenantId),eq(payComponent.code,p.code.trim().toUpperCase()))).limit(1):[];
+    const [stored]=candidate?.kind==='formula_builder'?await tx.select({rule:payComponent.rule}).from(payComponent).where(and(eq(payComponent.tenantId,ctx.tenantId),eq(payComponent.code,p.code))).limit(1):[];
     const unchanged=stored?.rule?.kind==='formula_builder'&&candidate?.kind==='formula_builder'&&stored.rule.formulaId===candidate.formulaId&&JSON.stringify([...stored.rule.dependencies].sort())===JSON.stringify([...candidate.dependencies].sort());
     const rule = unchanged ? stored.rule : candidate?.kind==='formula_builder' ? await bindPayFormulaRuleTx(tx,ctx,candidate) : candidate;
     if (p.pendingInputKind != null && (!PENDING_PAY_INPUT_KINDS.includes(p.pendingInputKind) || rule != null))
