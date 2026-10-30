@@ -51,7 +51,7 @@ function psql(file:string,user:'postgres'|'ai_hr_owner'|'ai_hr_app'='postgres',v
 }
 async function catalog(){const text=psql('snapshot.sql'),line=text.split('\n').find(x=>/^[a-f0-9]{64}\t/.test(x));if(!line)fail('Missing actual catalog receipt');const split=line!.indexOf('\t');return{sha:line!.slice(0,split),catalog:JSON.parse(line!.slice(split+1))};}
 async function assertChildAbsent(){const rows=await connection`select 1 from pg_roles where rolname='ai_hr_draft_discard_port'`;if(rows.length)fail('Child must genuinely be absent');}
-async function ledger(){return Array.from(await connection<LedgerRow[]>`select id::text,hash,created_at::text from drizzle.__drizzle_migrations order by id`);}
+async function ledger(){return Array.from(await connection<LedgerRow[]>`select m.id::text as id,m.hash,m.created_at::text as created_at from drizzle.__drizzle_migrations as m order by m.id`);}
 async function fixtureData(){const [r]=await connection`select jsonb_build_object(
  'draft',(select to_jsonb(d) from employee_draft d where d.id='8a000000-0000-4000-8000-000000000006'),
  'review',(select to_jsonb(r) from app.assistant_own_leave_review r where r.id='8a000000-0000-4000-8000-000000000007'),
