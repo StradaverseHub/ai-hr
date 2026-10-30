@@ -130,9 +130,6 @@ export function mileageBands(bands: readonly { fromKm: number; toKm: number | nu
 
 // ── List ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
-/** Newest first, id-tied, on the instant the list carries (deterministic for the keyset). */
-const order = (a: { createdAt: string; id: string }, b: { createdAt: string; id: string }) =>
-  a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
 /** A draft the kernel could not price yet stores 0, which the web shows as "no amount": never a 0.00 payable. */
 const amountOf = (r: ClaimRow) => (r.status === 'draft' && !(r.amount > 0) ? null : sum(r.amount));
 const statusOf = (s: string): ClaimStatusV2 => {
@@ -155,17 +152,11 @@ export async function ownClaimsPage(
   const empty = { items: [], nextCursor: null, counts: { ...ZERO_COUNTS } };
   if (!claimsEnabled(ctx)) return { enabled: false, employmentId: null, currency: null, ...empty };
   if (!employmentId) return { enabled: true, employmentId: null, currency: null, ...empty };
-  const [rows, currency] = await Promise.all([claims.listClaimsForEmployment(ctx, employmentId), currencyOfEmployment(ctx, employmentId)]);
-  const all = rows.map((r) => ({ row: r, createdAt: r.createdAt, id: r.id })).sort(order);
-  const counts = { ...ZERO_COUNTS };
-  for (const { row } of all) counts[statusOf(row.status)] += 1;
-  const at = q.cursor ? { createdAt: q.cursor[0], id: q.cursor[1] } : null;
-  const after = all.filter((r) => (!q.status || r.row.status === q.status) && (!at || order(r, at) > 0)).slice(0, q.limit + 1);
-  const page = after.slice(0, q.limit), last = page[page.length - 1];
+  const [page, currency] = await Promise.all([claims.listEmploymentClaimsCursorPage(ctx, employmentId, q), currencyOfEmployment(ctx, employmentId)]);
   return {
-    enabled: true, employmentId, currency, counts,
-    items: page.map((r) => summaryOf(r.row)),
-    nextCursor: after.length > q.limit && last ? encodeCursor(CLAIMS_CURSOR, [last.createdAt, last.id]) : null,
+    enabled: true, employmentId, currency, counts: page.counts,
+    items: page.rows.map(summaryOf),
+    nextCursor: page.next ? encodeCursor(CLAIMS_CURSOR, page.next) : null,
   };
 }
 

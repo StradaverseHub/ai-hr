@@ -3387,12 +3387,14 @@ const toRow = (r: RawClaimRow, atts: Map<string, ClaimRow['attachments']>): Clai
   attachments: atts.get(r.id) ?? [],
 });
 
-type EmploymentClaimRead = {claimId?: string; status?: 'draft' | 'history'; limit?: number; offset?: number};
+type EmploymentClaimRead = {claimId?: string; status?: 'draft' | 'history'; claimStatus?: string; cursorOrder?: boolean; before?: readonly [string, string]; limit?: number; offset?: number};
 function employmentClaimWhere(employmentId: string, opts: EmploymentClaimRead) {
   return and(eq(claimRequest.employmentId, employmentId),
     opts.claimId ? eq(claimRequest.id, opts.claimId) : undefined,
     opts.status === 'draft' ? eq(claimRequest.status, 'draft') : undefined,
-    opts.status === 'history' ? ne(claimRequest.status, 'draft') : undefined);
+    opts.status === 'history' ? ne(claimRequest.status, 'draft') : undefined,
+    opts.claimStatus ? eq(claimRequest.status, opts.claimStatus as typeof CLAIM_STATUSES[number]) : undefined,
+    opts.before ? sql`(date_trunc('milliseconds',${claimRequest.createdAt}),${claimRequest.id}) < (${opts.before[0]}::timestamptz,${opts.before[1]}::uuid)` : undefined);
 }
 async function employmentClaimRowsTx(tx: Tx, employmentId: string, opts: EmploymentClaimRead = {}): Promise<ClaimRow[]> {
   const query = tx.select(rowSelect()).from(claimRequest)
@@ -3401,7 +3403,7 @@ async function employmentClaimRowsTx(tx: Tx, employmentId: string, opts: Employm
     .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
     .innerJoin(person, eq(person.id, employment.personId))
     .where(employmentClaimWhere(employmentId, opts))
-    .orderBy(desc(claimRequest.createdAt), desc(claimRequest.id)).$dynamic();
+    .orderBy(opts.cursorOrder ? sql`date_trunc('milliseconds',${claimRequest.createdAt}) desc` : desc(claimRequest.createdAt), desc(claimRequest.id)).$dynamic();
   if (opts.limit !== undefined) query.limit(opts.limit);
   if (opts.offset !== undefined) query.offset(opts.offset);
   const rows = await query;
@@ -3423,6 +3425,9 @@ export function listClaimDraftsForEmployment(ctx: SessionContext, employmentId: 
 export function listClaimHistoryPage(ctx: SessionContext, employmentId: string, input: {page?: string; size?: string} = {}) {
   const query = parsePageQuery(input);
   return withTenant(ctx, async tx => {
+    // RLS expands into large policy plans; LLVM compilation dominates these interactive reads.
+    // Limit interpretation to this read transaction; the server's JIT setting is unchanged.
+    await tx.execute(sql`SET LOCAL jit = off`);
     const [countRow] = await tx.select({n: sql<number>`count(*)::int`}).from(claimRequest)
       .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
       .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
@@ -3430,6 +3435,29 @@ export function listClaimHistoryPage(ctx: SessionContext, employmentId: string, 
       .where(employmentClaimWhere(employmentId, {status: 'history'}));
     const rows = await employmentClaimRowsTx(tx, employmentId, {status: 'history', limit: query.limit, offset: query.offset});
     return {rows, state: pageState(query, Number(countRow?.n ?? 0), rows.length)};
+  });
+}
+
+/** SQL continuation for mobile lists. Counts span all statuses; receipt metadata is page-only.
+ * Millisecond ordering preserves the existing mobile cursor contract (including timestamp ties). */
+export function listEmploymentClaimsCursorPage(ctx: SessionContext, employmentId: string, input: {
+  status?: typeof CLAIM_STATUSES[number]; limit: number; cursor: readonly [string, string] | null;
+}) {
+  const {status, limit} = input, cursor = input.cursor ? [...input.cursor] as [string,string] : null;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100 || status && !CLAIM_STATUSES.includes(status)
+    || cursor && (!Number.isFinite(Date.parse(cursor[0])) || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(cursor[1]))) throw new RangeError('Invalid claim page');
+  return withTenant(ctx, async tx => {
+    await tx.execute(sql`SET LOCAL jit = off`);
+    const totals = await tx.select({status: claimRequest.status, n: sql<number>`count(*)::int`}).from(claimRequest)
+      .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
+      .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(employmentClaimWhere(employmentId, {})).groupBy(claimRequest.status);
+    const counts = Object.fromEntries(CLAIM_STATUSES.map(status => [status, 0])) as Record<typeof CLAIM_STATUSES[number],number>;
+    for (const row of totals) counts[row.status] = Number(row.n);
+    const found = await employmentClaimRowsTx(tx, employmentId, {claimStatus: status, before: cursor ?? undefined, cursorOrder: true, limit: limit + 1});
+    const rows = found.slice(0,limit), last = rows.at(-1);
+    return {rows, counts, next: found.length > limit && last ? [last.createdAt,last.id] as const : null};
   });
 }
 
