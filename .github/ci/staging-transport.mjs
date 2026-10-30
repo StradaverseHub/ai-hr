@@ -41,6 +41,9 @@ export function stagingTransport(candidatePath,environment=process.env){
 }
 /** Verify the authoritative pending marker; the legacy helper's zero exit alone is insufficient.
  * The coordinating release owner must still hold the exclusive staging window.
+ * @param {string} ref
+ * @param {string} dir
+ * @param {string} stateDir
  */
 export function strictPendingCommand(ref,dir=STAGING.directory,stateDir=STAGING.stateDirectory){
  if(!sha(ref)||!isAbsolute(dir)||!isAbsolute(stateDir)||dir.includes('\0')||stateDir.includes('\0'))throw Error('Invalid staging pending identity');

@@ -29,6 +29,7 @@ import {
   editMovementEvent,
   movementHistory,
   MovementNoChangeError,
+  MovementClosedPayrollAcknowledgementError,
   MovementNotCorrectableError,
   reverseMovementEvent,
 } from '../core/movement';
@@ -91,7 +92,14 @@ async function openCompensation(employmentId: string) {
 
 async function employmentRow(employmentId: string) {
   const [row] = await owner.db
-    .select({ gradeId: schema.employment.gradeId, orgDivision: schema.employment.orgDivision })
+    .select({
+      gradeId: schema.employment.gradeId,
+      orgDivision: schema.employment.orgDivision,
+      // 646355e5 — the termination columns a Termination correction restores.
+      terminatedOn: schema.employment.terminatedOn,
+      terminationReasonCode: schema.employment.terminationReasonCode,
+      lastWorkingDate: schema.employment.lastWorkingDate,
+    })
     .from(schema.employment)
     .where(eq(schema.employment.id, employmentId))
     .limit(1);
@@ -230,7 +238,7 @@ describe('reverseMovementEvent — Rollback is recorded as a visible reversal', 
     expect(line.managerEmploymentId).toBe(mgrA.employmentId);
   });
 
-  it('refuses the Hired row and a Termination — those are not corrections this screen owns', async () => {
+  it('refuses the Hired row, and (646355e5) rolls an applied Termination back to the active record', async () => {
     const hire = await hireOne();
     const hired = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'hired')!;
     expect(hired.canReverse).toBe(false);
@@ -248,7 +256,51 @@ describe('reverseMovementEvent — Rollback is recorded as a visible reversal', 
       terminationReasonCode: 'misconduct',
     });
     const term = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'termination')!;
-    expect(term.canReverse).toBe(false);
+    expect(term.canReverse).toBe(true);
+    expect(term.canEdit).toBe(true);
+    expect((await employmentRow(hire.employmentId)).terminatedOn).toBe('2026-07-31');
+    const closedVersion = await owner.db
+      .select({ id: schema.assignment.id })
+      .from(schema.assignment)
+      .where(and(eq(schema.assignment.employmentId, hire.employmentId), eq(schema.assignment.validTo, '2026-07-31')));
+    expect(closedVersion).toHaveLength(1);
+
+    await reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: term.id, reason: 'Terminated the wrong employee' });
+
+    const restored = await employmentRow(hire.employmentId);
+    expect(restored.terminatedOn).toBeNull();
+    expect(restored.terminationReasonCode).toBeNull();
+    expect(restored.lastWorkingDate).toBeNull();
+    // The assignment the termination closed is open again — the same version, not a new one.
+    expect((await openAssignment(hire.employmentId)).id).toBe(closedVersion[0].id);
+    const rolledBack = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.id === term.id)!;
+    expect(rolledBack.reversed).toBeTruthy();
+  });
+
+  it('646355e5 — corrects an applied Termination date in place', async () => {
+    const hire = await hireOne();
+    await createMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      kind: 'termination',
+      effectiveDate: '2026-07-31',
+      endDate: '2026-07-31',
+      terminationReasonCode: 'misconduct',
+    });
+    const term = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'termination')!;
+    await editMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      movementId: term.id,
+      kind: 'termination',
+      effectiveDate: '2026-07-15',
+      endDate: '2026-07-15',
+      terminationReasonCode: 'misconduct',
+      reason: 'Wrong termination date keyed',
+    });
+    const row = await employmentRow(hire.employmentId);
+    expect(row.terminatedOn).toBe('2026-07-15');
+    expect(row.lastWorkingDate).toBe('2026-07-15');
+    const live = (await movementHistory(adminCtx(b), hire.employmentId)).filter((r) => r.kind === 'termination' && !r.reversed);
+    expect(live.map((r) => r.effectiveDate)).toEqual(['2026-07-15']);
   });
 
   it('rejects a non-admin caller (defence-in-depth over the writers)', async () => {
@@ -377,42 +429,76 @@ describe('editMovementEvent — a correction is a replay through the same writer
     expect(open.businessUnitId).toBe(bu.id);
   });
 
-  it('refuses an in-place edit of an older movement, and names the way out', async () => {
+  it('646355e5 — corrects an OLDER movement and replays the later one on top of it', async () => {
     const hire = await hireOne();
+    await setCompensation(adminCtx(b), { employmentId: hire.employmentId, basicSalary: 4000, effectiveFrom: '2026-01-01' });
     await createMovementEvent(adminCtx(b), {
       employmentId: hire.employmentId,
-      kind: 'transfer',
+      kind: 'increment',
       effectiveDate: '2026-03-01',
-      departmentId: b.deptB,
+      basicSalary: 5000,
     });
-    // 941c9dac — this used to read 2026-09-01, a date that was in the FUTURE when the test was written.
-    // It passed only because a future-dated movement applied on save, which is the fault that item fixed;
-    // such a movement is now Pending and changes nothing, so it could no longer be the "later movement"
-    // this test needs. The date moves into the past: the rule under test (only the most recent
-    // state-changing movement may be corrected in place) is about ORDER, not about future dating.
     await createMovementEvent(adminCtx(b), {
       employmentId: hire.employmentId,
       kind: 'transfer',
       effectiveDate: '2026-06-01',
-      departmentId: b.deptA,
+      departmentId: b.deptB,
     });
     const rows = await movementHistory(adminCtx(b), hire.employmentId);
-    const older = rows.filter((r) => r.kind === 'transfer')[0];
-    const newer = rows.filter((r) => r.kind === 'transfer')[1];
-    expect(older.canEdit).toBe(false);
-    expect(older.canReverse).toBe(true); // a rollback of a middle movement is still safe
-    expect(newer.canEdit).toBe(true);
+    const older = rows.find((r) => r.kind === 'increment')!;
+    expect(older.canEdit).toBe(true);
 
+    const result = await editMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      movementId: older.id,
+      kind: 'increment',
+      effectiveDate: '2026-03-01',
+      basicSalary: 4500,
+      reason: 'Wrong amount keyed',
+    });
+    expect(result.replayed).toBe(1);
+    // The corrected salary is in force, and the later transfer still applies on its own date.
+    expect((await openCompensation(hire.employmentId)).basicSalary).toBe('4500.00');
+    expect((await openAssignment(hire.employmentId)).departmentId).toBe(b.deptB);
+    expect((await openAssignment(hire.employmentId)).validFrom).toBe('2026-06-01');
+    const live = (await movementHistory(adminCtx(b), hire.employmentId)).filter((r) => !r.reversed && r.kind !== 'hired');
+    expect(live.map((r) => [r.kind, r.effectiveDate])).toEqual(
+      expect.arrayContaining([['increment', '2026-03-01'], ['transfer', '2026-06-01']]),
+    );
+    expect(live).toHaveLength(2);
+  });
+
+  it('refuses an older correction that would make a later movement meaningless, and changes nothing', async () => {
+    const hire = await hireOne();
+    await setCompensation(adminCtx(b), { employmentId: hire.employmentId, basicSalary: 4000, effectiveFrom: '2026-01-01' });
+    await createMovementEvent(adminCtx(b), { employmentId: hire.employmentId, kind: 'increment', effectiveDate: '2026-03-01', basicSalary: 5000 });
+    await createMovementEvent(adminCtx(b), { employmentId: hire.employmentId, kind: 'increment', effectiveDate: '2026-06-01', basicSalary: 6000 });
+    const older = (await movementHistory(adminCtx(b), hire.employmentId)).filter((r) => r.kind === 'increment')[0];
+    expect(older.effectiveDate).toBe('2026-03-01');
+    const before = await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId, hire.employmentId));
+    // Correcting March to 6000 would leave the June increment changing nothing — refused, nothing written.
     await expect(
       editMovementEvent(adminCtx(b), {
         employmentId: hire.employmentId,
         movementId: older.id,
-        kind: 'transfer',
+        kind: 'increment',
         effectiveDate: '2026-03-01',
-        departmentId: b.deptA,
-        reason: 'Wrong department',
+        basicSalary: 6000,
+        reason: 'Wrong amount',
       }),
-    ).rejects.toThrow(/most recent movement/i);
+    ).rejects.toThrow(/would no longer change anything/i);
+    expect(await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId, hire.employmentId))).toEqual(before);
+    // A corrected date may not jump past the later movement either.
+    await expect(
+      editMovementEvent(adminCtx(b), {
+        employmentId: hire.employmentId,
+        movementId: older.id,
+        kind: 'increment',
+        effectiveDate: '2026-07-01',
+        basicSalary: 5000,
+        reason: 'Wrong date',
+      }),
+    ).rejects.toThrow(/falls after the later/i);
   });
 
   it('leaves a later movement alone when an earlier one is rolled back (last write wins on flat columns)', async () => {
@@ -443,8 +529,8 @@ describe('editMovementEvent — a correction is a replay through the same writer
   });
 });
 
-describe('payroll interaction — block on closed, warn on processed, never reprocess', () => {
-  it('refuses a correction whose window a CLOSED payroll run relied on', async () => {
+describe('payroll interaction — acknowledge on closed, warn on processed, never reprocess', () => {
+  it('646355e5 — a CLOSED run requires an explicit acknowledgement, then corrects without touching the payslip', async () => {
     const hire = await hireOne();
     await setCompensation(adminCtx(b), {
       employmentId: hire.employmentId,
@@ -460,14 +546,68 @@ describe('payroll interaction — block on closed, warn on processed, never repr
     await closedPayrollFor(hire.employmentId, '2026-06');
     const move = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'increment')!;
 
+    // The closed run is named, and no longer hides the affordances.
     expect(move.payrollLocked).toBe(true);
-    expect(move.canReverse).toBe(false);
-    expect(move.canEdit).toBe(false);
+    expect(move.payrollClosedPeriods).toEqual(['2026-06']);
+    expect(move.canReverse).toBe(true);
+    expect(move.canEdit).toBe(true);
+    const slipsBefore = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId, hire.employmentId));
+
+    // Without the acknowledgement: refused, and nothing moved.
     await expect(
       reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: move.id, reason: 'Keyed in error' }),
-    ).rejects.toThrow(/closed payroll/i);
-    // Nothing moved: the salary in force is still the one the closed run paid against.
+    ).rejects.toBeInstanceOf(MovementClosedPayrollAcknowledgementError);
     expect((await openCompensation(hire.employmentId)).basicSalary).toBe('5000.00');
+    // A posted flag on another call does not leak into this one: the edit path refuses the same way.
+    await expect(
+      editMovementEvent(adminCtx(b), {
+        employmentId: hire.employmentId,
+        movementId: move.id,
+        kind: 'increment',
+        effectiveDate: '2026-06-01',
+        basicSalary: 4500,
+        reason: 'Wrong amount keyed',
+      }),
+    ).rejects.toBeInstanceOf(MovementClosedPayrollAcknowledgementError);
+    expect((await openCompensation(hire.employmentId)).basicSalary).toBe('5000.00');
+
+    // With it: the correction applies to the record…
+    await editMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      movementId: move.id,
+      kind: 'increment',
+      effectiveDate: '2026-06-01',
+      basicSalary: 4500,
+      reason: 'Wrong amount keyed',
+      acknowledgeClosedPayroll: true,
+    });
+    expect((await openCompensation(hire.employmentId)).basicSalary).toBe('4500.00');
+    // …the corrected salary starts after the closed month, which keeps the record it was paid on…
+    expect((await openCompensation(hire.employmentId)).validFrom).toBe('2026-07-01');
+    const june = await owner.db
+      .select({ basicSalary: schema.compensation.basicSalary, validTo: schema.compensation.validTo })
+      .from(schema.compensation)
+      .where(and(eq(schema.compensation.employmentId, hire.employmentId), eq(schema.compensation.validFrom, '2026-06-01'), isNull(schema.compensation.supersededAt)));
+    expect(june).toEqual([{ basicSalary: '5000.00', validTo: '2026-07-01' }]);
+    // …the closed payslip is byte-for-byte what was issued, and its document metadata is retained…
+    expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId, hire.employmentId))).toEqual(slipsBefore);
+    const retained = await owner.db
+      .select({ payslipId: schema.informationPayslipSnapshot.payslipId })
+      .from(schema.informationPayslipSnapshot)
+      .where(eq(schema.informationPayslipSnapshot.employmentId, hire.employmentId));
+    expect(retained.map((r) => r.payslipId)).toEqual(slipsBefore.map((s) => s.id));
+    // …and the audit trail records the acknowledged periods with the reason.
+    const [reversal] = await owner.db
+      .select({ payload: schema.domainEvent.payload })
+      .from(schema.domainEvent)
+      .where(and(eq(schema.domainEvent.subjectEmploymentId, hire.employmentId), eq(schema.domainEvent.eventType, 'employment.movement.reversed')));
+    expect(reversal.payload).toMatchObject({
+      corrected: true,
+      reason: 'Wrong amount keyed',
+      closedPayrollPeriods: ['2026-06'],
+      closedPayrollAcknowledged: true,
+      snapshotCount: 1,
+    });
   });
 
   it('only WARNS when a processed (not yet closed) run covered the period — the correction still applies', async () => {

@@ -1,6 +1,7 @@
 import { getSession } from '@/lib/session';
 import { inlineDisposition } from '@/lib/attachment-response';
 import { getFeedbackAttachment } from '@/core/feedback';
+import { feedbackBoardOpen } from '@/app/feedback/board';
 
 export const runtime = 'nodejs';
 
@@ -8,6 +9,7 @@ export const runtime = 'nodejs';
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const s = await getSession();
+  if (!feedbackBoardOpen(s)) return new Response('Not found', { status: 404 });
   const att = await getFeedbackAttachment(s, id);
   if (!att) return new Response('Not found', { status: 404 });
 

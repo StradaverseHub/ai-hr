@@ -409,6 +409,12 @@ class CommandTests(unittest.TestCase):
                          'nodeVersion': 'v24.22.1', 'nextVersion': '16.3.8', 'sourceFilesVerified': 2}
         self.args = ['--ref', self.sha, '--ssh-config', str(self.config)]
         self.approval = ['--accept-staging', '--build-id', BUILD, '--approval-evidence', str(self.evidence)]
+        self.lease = Path(self.tmp.name) / 'lease.json'
+        self.lease.write_text(json.dumps({'protocol':'aihr-staging-queue/v1','candidate':self.sha,'epoch':1,'batch':'00000000-0000-4000-8000-000000000001','token':'b'*64,'releaseAuthorized':False}))
+        self.lease.chmod(0o600)
+        import os
+        lease_env = patch.dict(os.environ, {'AIHR_STAGING_LEASE_FILE':str(self.lease.resolve())})
+        lease_env.start(); self.addCleanup(lease_env.stop)
         raw = io.BytesIO()
         with tarfile.open(fileobj=raw, mode='w:gz') as archive:
             for name, value in [('.next/BUILD_ID', BUILD),
@@ -424,6 +430,8 @@ class CommandTests(unittest.TestCase):
         self.assertIn('StrictHostKeyChecking=yes', args)
         self.assertEqual(args[-2], 'aihr-staging')
         if ' tar ' in args[-1]:
+            self.assertIn('coordinator.py guard -- bash -c', args[-1])
+            self.assertIn('AIHR_STAGING_CANDIDATE=' + self.sha, args[-1])
             kwargs['stdout'].write(self.runtime); self.after_capture()
             return subprocess.CompletedProcess(args, 0)
         self.snapshot_count += 1
@@ -444,6 +452,15 @@ class CommandTests(unittest.TestCase):
             with self.subTest(options=options), self.assertRaises(ValueError):
                 self.invoke('--accept-staging', *options)
         self.assertFalse(self.github.calls)
+
+    def test_publication_refuses_missing_or_foreign_lease_without_github_writes(self):
+        import os
+        with patch.dict(os.environ, {'AIHR_STAGING_LEASE_FILE':''}), self.assertRaises(ValueError):
+            self.invoke(*self.approval)
+        grant=json.loads(self.lease.read_text());grant['candidate']='c'*40
+        self.lease.write_text(json.dumps(grant))
+        with self.assertRaises(ValueError): self.invoke(*self.approval)
+        self.assertFalse(self.github.refs)
 
     def test_preflight_requires_no_acceptance_and_makes_no_github_writes(self):
         result = json.loads(self.invoke('--check'))

@@ -85,6 +85,7 @@ describe('ADR-0151 agent capability inventory',()=>{
    ['app/payroll/actions.ts','resetAction','handoff:payroll_reversal'],
    ['app/approvals/actions.ts','decideResignationAction','handoff:employment_exit_or_discipline'],
    ['app/control-tower/agents/actions.ts','setAiAllowanceAction','handoff:ai_governance'],
+   ['app/operator/actions.ts','setCustomerFeedbackMenuAction','handoff:platform_operator'],
   ];
   for(const [file,name,value] of expectations)expect(inventory[file]?.[name],`${file} › ${name}`).toBe(value);
   for(const entries of Object.values(inventory))for(const value of Object.values(entries)){

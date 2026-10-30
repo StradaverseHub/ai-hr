@@ -5,6 +5,82 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Feedback menu operator switch — 30 October 2026 (unapplied successor)
+
+Branch `claude/feedback-menu-operator-toggle-616263` includes verified staging source
+`f752ac7f5d0323c5eae2280c3830af05b6da465f`. Its complete568-entry applied journal ends at
+`0698_information_only_corrections`, idx682 / when1793330000030. The existing credential-free
+ordered ledger export was independently compared to every applied source identity.
+The owner explicitly approved appending Feedback at **idx683 / when1793330000031**,
+preserving its `0696` filename and SQL bytes. This supersedes earlier idx681/…022 and
+idx682/…024 reservations, which would be skipped after Board's applied watermark.
+The complete installed prefix and applied SQL bytes are unchanged. AI migration allocations
+remain provisional until their own freeze above the actual accepted ledger.
+
+Source/CI preparation does not release Board's exclusive acceptance window. Staging installation
+still requires the verified complete exact-SHA gate, final canonical handback and deployment scope.
+Recheck live source/build/ledger and branch alignment before installation; no server rehearsal
+or protected-ref update is authorized by this source allocation.
+
+| Owner | Index | Sequence | Filename | Purpose |
+| --- | ---: | ---: | --- | --- |
+| Feedback menu switch | 683 | 1793330000031 | 0696_feedback_menu_operator_switch | Platform setting `feedback.menu_enabled` and operator-only read/write functions |
+
+## Board item 1d58019a (Movement Settings Steps 1 and 2): renumbered on 30 October 2026
+
+Both 1d58019a migrations are unapplied anywhere. Staging runs c4fad43c1, whose journal ends at 0698. Both are
+renumbered so that they append after every competing claim. The reason is that Step 1's original allocation,
+`0713_movement_settings_catalog` at sequence 1793330000042, collided with:
+
+- `codex/v9-lifecycle-alignment-20261029`: `0713_lifecycle_v9` at …042, then 0714–0720 at …043–…049;
+- `codex/ai-user-parity-personnel-check2-20261030` and `check3-20261030`: both also claim …042.
+
+Immediately before this commit, a fresh fetch and check of every local and `origin/*` ref, every registered
+worktree and every builder checkout found these maxima:
+
+- filenames: through `0720_lifecycle_v9_self_equipment` (plus `0716_assistant_emergency_contact_maintenance`);
+- journal sequences: through 1793330000049, other than this branch's own.
+
+Step 1 stays before Step 2. The SQL bytes of Step 1 are identical to the original 0713 file. Only the filename,
+the journal tag and the `when` value changed.
+
+| Owner | Index (on this branch) | Sequence | Filename | SQL SHA256 |
+| --- | ---: | ---: | --- | --- |
+| Board 1d58019a Step 1 | 684 | 1793330000050 | 0721_movement_settings_catalog | 7e0f83300471d5297a0345a16ed8e156fd3fbd7ed8fc5a521577173c1c0c1246 |
+| Board 1d58019a Step 2 | 685 | 1793330000051 | 0722_movement_type_controls | f05714a30e9d833ad6a6495546a1f5f41dabffbce88035e69cc98d2529fd9ec5 |
+
+Integrated after `main`'s Feedback switch (idx683 / …031) on 30 October 2026: indexes shift to 684 and 685; filenames, sequences and SQL bytes are unchanged.
+
+About the Step 2 entry:
+
+- It was first recorded as `0721_movement_type_controls` at …050 with SHA256 a0496be7…451cb.
+- Its body was then corrected before any application. It now explicitly revokes the UPDATE, DELETE and TRUNCATE
+  privileges that deploy/bootstrap-db.sql's default privileges would otherwise grant ai_hr_app.
+- That earlier hash identifies no file that exists now.
+
+The index is this branch's journal position only. At integration, recheck competing claims and the installed
+ledger. Never reuse 0713 or …042 for this item.
+
+## Board item 1d58019a (Movement Settings Enhancement, Step 1) — 30 October 2026
+
+Unapplied source reservation on `claude/fb-1d58019a` (base origin/main `f752ac7f5`, whose journal ends at
+idx682 / 0698_information_only_corrections / sequence1793330000030). A fresh check of every local and
+`origin/*` ref plus every registered worktree found migration filenames claimed through
+`0712_delegated_leave_review_receipts` and journal sequences through 1793330000041 (AI allocation branches,
+e.g. `codex/ai-dev-integration-work-20261030`). This item therefore takes the next free filename and sequence
+rather than any lower gap:
+
+| Owner | Index (on this branch) | Sequence | Filename | SQL SHA256 |
+| --- | ---: | ---: | --- | --- |
+| Board 1d58019a | 683 | 1793330000042 | 0713_movement_settings_catalog | 7e0f83300471d5297a0345a16ed8e156fd3fbd7ed8fc5a521577173c1c0c1246 |
+
+Superseded on 30 October 2026, before any application. The same SQL bytes are now
+`0721_movement_settings_catalog` at sequence 1793330000050 (see the renumbering section above).
+
+The index is this branch's journal position only. Integration with the AI 0699–0712 allocations must
+re-position the entry after them (index changes, filename/sequence/SQL bytes do not). Nothing is applied
+anywhere; recheck competing claims and the installed ledger before integration.
+
 ## Owner-approved combined board allocation — 29 October 2026
 
 ### Successor work in progress after the installed expanded release
@@ -274,3 +350,43 @@ competing0687 or when>=1793330000013. Board and the migration coordinator were n
 The existing562-entry journal prefix and all applied SQL bytes are preserved. The appended SQL SHA256
 is `ade48bffee0a5d6ebf72cdd61de36323f3650b81c805cd186701c5d8105e86c4`. This reserves source only; it authorizes no staging migration
 without the exact-candidate gate, populated upgrade proof, restore readiness and exclusive handoff.
+
+## Information-only correction development candidate — 30 October 2026
+
+Feedback 8550b282 owns source filename 0698_information_only_corrections. Fresh main/alpha a3eb1eb0f
+and staging retain the 566-row prefix through 0690 / 1793330000016. Reachable sources already claim
+0691 (Bank), 0692–0697 (AI) and other 0696/0697 candidates; those claims remain untouched.
+This isolated development journal uses idx681 / sequence1793330000030 solely to build and test the
+candidate against the current canonical prefix. It is NOT an installation allocation. Before branch
+integration or installation, obtain the coordinated source freeze, include every required allocated
+predecessor in its real order and reassign this unapplied journal entry. Never deploy this isolated
+journal beyond reserved predecessors. No applied SQL byte or canonical journal entry is changed.
+
+## Board-first staging allocation — 30 October 2026
+
+The owner explicitly instructed the Board chat to complete its full gate and deploy FIRST to staging.
+FEEDBACK, ENHANCEMENT, MOBILE and Onboarding were notified and hold staging mutations until verified
+Board handback. Fresh canonical main/alpha are 4f66743d56f34755bb662824e163bfbef5f6ff17; live staging
+reports the same healthy source/build and no stale build. The existing canonical prefix ends in
+0697_epf_topup_percentage, idx681 / sequence1793330000023. Preserve the complete567-entry prefix and
+every applied SQL hash.
+
+The development-only0698 reservation above is superseded for this authorized first release:
+
+| Owner | Index | Timestamp | Filename tag |
+| --- | ---: | ---: | --- |
+| Board information-only corrections,8550b282 |682|1793330000030|0698_information_only_corrections|
+
+The unapplied journal position is682. The0698 SQL remains a development candidate until its final
+exact-SHA gate, including the retained statutory-report projections; no applied SQL bytes change.
+Ordinary populated upgrade, whole gate, restore readiness
+and exact staging arrival are required before completion. No Bank, Feedback, Enhancement, Mobile or
+V9 feature source is implicitly included. Previously reviewed#62 fixture bytes remain included.
+
+Feedback's earlier approved idx682/sequence1793330000024 must NOT be installed after this release,
+because it would be skipped. Its owner reports superseding user approval for idx683/1793330000031,
+with its filename and SQL unchanged, only after merging the verified Board baseline and obtaining a
+fresh exact-SHA full gate. Its older focused/full-gate evidence stays tied to the older candidate.
+Other unapplied lower-timestamp claims likewise require a fresh coordinated append above the actual
+installed watermark before their own release. V9's eight drafts remain unallocated. This allocation
+grants no production deployment or human staging acceptance.

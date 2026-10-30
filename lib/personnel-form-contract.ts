@@ -24,7 +24,11 @@ export function personnelControl(id:string,mode:PersonnelFormMode='edit',context
   return { 'data-personnel-field':id, ...(mode==='draft' ? {} : field.form!.name ? {name:field.form!.name} : {}), required:mode==='draft' ? false : personnelFormRequired(id,mode,context) };
 }
 export function personnelInput(id:string,mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
-  const field=personnelFormField(id);const widget=personnelFormWidget(id);
+  return personnelInputPresentation(id,personnelFormWidget(id),mode,context);
+}
+/** Both ordinary and workflow inputs use the same scalar presentation owner. */
+function personnelInputPresentation(id:string,widget:ReturnType<typeof personnelFormWidget>,mode:PersonnelFormMode,context:PersonnelFormContext) {
+  const field=personnelFormField(id);
   if(!widget || !['text','email','date','month','number','checkbox','file'].includes(widget))throw new Error(`Personnel field needs its specialized renderer: ${id}`);
   const minimum=field.form!.minOwner?context[field.form!.minOwner]:field.form!.min;
   if(field.form!.minOwner&&(typeof minimum!=='string'||!isCalendarDate(minimum)))throw new Error(`Personnel date minimum context is missing or invalid: ${id}`);
@@ -66,6 +70,11 @@ export function personnelFormMetadataIssue(field:PersonnelFieldDescriptor):strin
   if(widget==='display'&&!field.form?.workflowReason)return `Personnel display field needs its derived/owner reason: ${field.id}`;
   if(field.form?.required?.create!=null||field.form?.required?.draft!=null)return `Personnel create requirement has a duplicate authority: ${field.id}`;
   if(field.form?.minOwner&&(field.type!=='date'||widget&&widget!=='date'||field.form.min!=null))return `Personnel date minimum contradicts canonical metadata: ${field.id}`;
+  for(const [workflow,workflowWidget] of Object.entries(field.form?.workflowWidgets??{})){
+    if(!workflowWidget||!field.form?.workflowNames||!Object.hasOwn(field.form.workflowNames,workflow))return `Personnel workflow widget lacks an owning binding: ${field.id}`;
+    const issue=personnelFormMetadataIssue({...field,form:{...field.form,widget:workflowWidget,workflowWidgets:undefined}});
+    if(issue)return issue;
+  }
   return null;
 }
 
@@ -81,16 +90,17 @@ export function personnelOwnedChoices<T>(id:string,owner:string,choices:readonly
 }
 
 /** A dedicated workflow may submit the same fact under its own explicitly declared action name. */
-export function personnelWorkflowControl(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd',mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
+export function personnelWorkflowControl(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd'|'informationCorrection',mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
   const name=personnelFormField(id).form!.workflowNames?.[workflow];
   if(!name)throw new Error(`Personnel workflow binding is missing: ${workflow}:${id}`);
   return {...personnelControl(id,mode,context),name};
 }
-export function personnelWorkflowInput(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd',mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
-  return {...personnelInput(id,mode,context),...personnelWorkflowControl(id,workflow,mode,context)};
+export function personnelWorkflowInput(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd'|'informationCorrection',mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
+  const widget=personnelFormField(id).form!.workflowWidgets?.[workflow]??personnelFormWidget(id);
+  return {...personnelInputPresentation(id,widget,mode,context),...personnelWorkflowControl(id,workflow,mode,context)};
 }
 
-export function personnelWorkflowCarry(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd') {
+export function personnelWorkflowCarry(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd'|'informationCorrection') {
   return {...personnelWorkflowControl(id,workflow),type:'hidden',required:false};
 }
 

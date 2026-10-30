@@ -17,6 +17,7 @@ import { isFixtureResetLockError } from './harness-reset-errors';
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
 
 const ALL_TABLES = [
+  'information_payslip_snapshot',
   'app.assistant_question_budget',
   'payroll_txn_import_attempt',
   'reward_senior_evidence','reward_senior_award','reward_governance_public','reward_governance_history','reward_governance',
@@ -70,6 +71,12 @@ const ALL_TABLES = [
   // line above: a surviving overlay row would rename or switch off an event type for a later test file,
   // and the symptom would be a movement that "disappeared" from Employment History with no obvious cause.
   'movement_event_type',
+  // 1d58019a — the termination-reason overlay (migration 0721), explicit for the same reason: a surviving
+  // row would rename or switch off a reason for a later test file.
+  'termination_reason',
+  // 1d58019a Step 2 (migration 0722) — per-type reason lists, Field Controls and movement documents. A
+  // surviving rule would silently narrow the New Event form (or refuse a movement) in a later test file.
+  'movement_type_termination_reason', 'movement_type_field_rule', 'movement_attachment',
   'holiday', 'holiday_group_holiday', 'attendance', 'attendance_policy', 'travel_request',
   'letter_verification_rate','letter_access_token','letter_recipient_event','letter_artifact','letter_approval_decision','letter_revision','letter_record','letter_job','letter_counter','letter_generation_batch','letter_template_field','letter_template_version','letter_template','letter_merge_field_version','letter_policy_version','letter_asset','letter_capability_grant',
   'import_attempt_event','bank_import_row', 'bank_import_chunk', 'bank_import_job', 'import_attempt_item','import_attempt',

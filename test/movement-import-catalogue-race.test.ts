@@ -42,7 +42,8 @@ describe('canonical catalogue mutation versus import final admission',()=>{
    expect(result.employees[0].rows[0].proposed?.departmentId).toBe('Operations');expect((await movementOwner.movementCurrentState(ctx,e.employmentId)).departmentId).toBe(b.deptB);
    const events=await owner.db.select().from(domainEvent).where(eq(domainEvent.subjectEmploymentId,e.employmentId)).orderBy(asc(domainEvent.sequence));
    expect(events).toEqual(expect.arrayContaining([expect.objectContaining({payload:expect.objectContaining({movement:expect.objectContaining({type:code})})})]));
-   if(mode==='delete'){expect(outcome.ok).toBe(false);if(!outcome.ok)expect(outcome.error).toMatchObject({message:expect.stringContaining('already used')});}
+   // 1d58019a Step 2 — once the import commits the type is used, so a queued remap is refused like a delete.
+   if(mode==='delete'||mode==='remap'){expect(outcome.ok).toBe(false);if(!outcome.ok)expect(outcome.error).toMatchObject({message:expect.stringContaining('already used')});}
    else expect(outcome.ok).toBe(true);
   }finally{release();await Promise.allSettled([importing,...(mutation?[mutation]:[])]);stateSpy.mockRestore();tenantSpy.mockRestore();}
  });
