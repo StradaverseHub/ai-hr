@@ -8971,7 +8971,7 @@ export const claimRequest = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('claim_request_employment_idx').on(t.employmentId, t.status),
-    index('claim_request_history_order_idx').on(t.employmentId, t.createdAt.desc(), t.id.desc()).where(sql`${t.status} <> 'draft'`)],
+    index('claim_request_history_order_idx').on(t.employmentId, t.createdAt.desc(), t.id.desc())],
 );
 
 export const claimAttachment = pgTable(
