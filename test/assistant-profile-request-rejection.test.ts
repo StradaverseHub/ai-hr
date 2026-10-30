@@ -9,6 +9,7 @@ import {hireEmployee} from '../core/org';
 import {createCompany} from '../core/admin';
 import {decideProfileChange} from '../core/profile';
 import {setTenantSetting} from '../core/tenant-settings';
+import {accessConfigurationStore} from '../core/access-configuration-store';
 import {readOwnProfileWorkspace,submitOwnProfileEdit} from '../core/profile-edit';
 import {saveProfileVisibilityPolicy} from '../core/profile-edit-policy';
 import {previewProfileRoutingPolicy,saveProfileRoutingPolicy} from '../core/profile-routing';
@@ -117,17 +118,39 @@ it('uses the real named route snapshot and refuses an unassigned HR or changed d
  expect(id).toMatch(/^[a-f0-9-]{36}$/);await expect(reviews.prepare(other,human(id))).rejects.toThrow();const r=(await reviews.prepare(hr,human(id))).review;expect(r.review.fieldIds).toEqual([fieldId]);expect(JSON.stringify(r)).not.toContain('Private named-route proposal');
  await owner.db.update(schema.assignment).set({departmentId:b.deptB}).where(eq(schema.assignment.employmentId,subject.employmentId));await expect(reviews.reopen(hr,r.actionId)).rejects.toThrow();await expect(reviews.confirm(hr,confirmation(r))).rejects.toThrow();expect(await row(id)).toMatchObject({status:'pending'});expect((await events(id)).filter(event=>event.eventType==='profile-change.rejected')).toHaveLength(0);
 });
+/** Reconstruct only this disposable tenant's pre-Access state AFTER every actor/role insertion has
+ * committed its deferred native bootstrap trigger. Retain real identities/roles/employment, audit,
+ * configuration generation and every trigger. Canonical reinitialization can then install fresh defaults.
+ * No role may be inserted after this helper and before the legacy review under test. */
+async function legacyUninitializedFixture(){
+ const roles=await owner.db.select().from(schema.roleAssignment).where(eq(schema.roleAssignment.tenantId,b.tenantId)).orderBy(schema.roleAssignment.id),audit=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId,b.tenantId)).orderBy(schema.domainEvent.id);
+ expect(roles.some(role=>role.appUserId===b.adminUserId&&role.role==='hr_admin'&&role.companyId===null)).toBe(true);expect(roles.some(role=>role.appUserId===hr.userId&&role.role==='hr_admin')).toBe(true);
+ await owner.db.transaction(async tx=>{
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`);
+  await tx.execute(sql`delete from access_user_override where tenant_id=${b.tenantId}::uuid`);
+  await tx.execute(sql`delete from access_membership where tenant_id=${b.tenantId}::uuid`);
+  await tx.execute(sql`delete from access_group_grant where tenant_id=${b.tenantId}::uuid`);
+  await tx.execute(sql`delete from access_group where tenant_id=${b.tenantId}::uuid`);
+  await tx.execute(sql`delete from access_configuration where tenant_id=${b.tenantId}::uuid`);
+ });
+ expect(await owner.db.select().from(schema.roleAssignment).where(eq(schema.roleAssignment.tenantId,b.tenantId)).orderBy(schema.roleAssignment.id)).toEqual(roles);expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId,b.tenantId)).orderBy(schema.domainEvent.id)).toEqual(audit);
+ const [authority]=await withTenant(hr,tx=>tx.execute<{principal:boolean;admin:boolean;subject:boolean}>(sql`select app.principal_snapshot_current() as principal,app.is_admin() as admin,app.can_admin_employment(${subject.employmentId}::uuid) as subject`));expect(authority).toEqual({principal:true,admin:true,subject:true});
+ const [state]=await owner.db.execute<{configurations:number;groups:number;anchor:boolean}>(sql`select (select count(*)::int from access_configuration where tenant_id=${b.tenantId}::uuid) as configurations,(select count(*)::int from access_group where tenant_id=${b.tenantId}::uuid) as groups,exists(select 1 from app.access_profile_write_generation where tenant_id=${b.tenantId}::uuid) as anchor`);expect(state).toEqual({configurations:0,groups:0,anchor:true});
+}
 it('supports native legacy HR rejection without initializing Access as a review side effect',async()=>{
+ await legacyUninitializedFixture();
  const [before]=await owner.db.execute<{initialized:boolean}>(sql`select exists(select 1 from access_configuration where tenant_id=${b.tenantId}::uuid and initialized) as initialized`);expect(before.initialized).toBe(false);
  const id=await request(),r=(await reviews.prepare(hr,human(id))).review;expect((await reviews.confirm(hr,confirmation(r))).kind).toBe('completed');expect(await row(id)).toMatchObject({status:'rejected',decisionReason:'Please correct the supporting details.'});
  const [after]=await owner.db.execute<{initialized:boolean}>(sql`select exists(select 1 from access_configuration where tenant_id=${b.tenantId}::uuid and initialized) as initialized`);expect(after.initialized).toBe(false);
 });
 it('invalidates a legacy prepared review when Access is genuinely initialized before confirmation',async()=>{
+ await legacyUninitializedFixture();
  const [before]=await owner.db.execute<{initialized:boolean}>(sql`select exists(select 1 from access_configuration where tenant_id=${b.tenantId}::uuid and initialized) as initialized`);expect(before.initialized).toBe(false);
- const id=await request(),r=(await reviews.prepare(hr,human(id))).review;await withTenant(group(),tx=>tx.execute(sql`select app.access_configuration_initialize()`));
+ const id=await request(),r=(await reviews.prepare(hr,human(id))).review;const ctx=group();await withTenant(ctx,tx=>accessConfigurationStore.loadCurrent(tx,ctx));
  await expect(reviews.reopen(hr,r.actionId)).rejects.toThrow();await expect(reviews.confirm(hr,confirmation(r))).rejects.toThrow();expect(await row(id)).toMatchObject({status:'pending',decisionReason:null});expect(await events(id)).toHaveLength(0);expect(await stored(r.actionId)).toMatchObject({state:'awaiting_confirmation',bodies:1});
 });
 it('keeps the native legacy commitment stable for an uninitialized Access row',async()=>{
+ await legacyUninitializedFixture();
  const [before]=await owner.db.execute<{initialized:boolean}>(sql`select exists(select 1 from access_configuration where tenant_id=${b.tenantId}::uuid and initialized) as initialized`);expect(before.initialized).toBe(false);
  const id=await request(),r=(await reviews.prepare(hr,human(id))).review;await owner.db.execute(sql`insert into access_configuration(tenant_id,initialized) values(${b.tenantId}::uuid,false) on conflict(tenant_id) do update set revision=gen_random_uuid() where not access_configuration.initialized`);
  expect((await reviews.reopen(hr,r.actionId)).kind).toBe('prepared');expect((await reviews.confirm(hr,confirmation(r))).kind).toBe('completed');expect(await row(id)).toMatchObject({status:'rejected'});
