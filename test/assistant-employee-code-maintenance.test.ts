@@ -95,3 +95,28 @@ describe('native positive employment Employee ID correction',()=>{
   await expect(withTenant(who,async tx=>{await setWorkforceEmployeeCode(who,{employmentId:input.employmentId,employeeCode:'ROLLBACK-42',expectedCode:input.expectedCode},tx);throw Error('fictional outer rollback');})).rejects.toThrow('fictional outer rollback');expect(await snapshot()).toEqual(before);await expect(setWorkforceEmployeeCode(who,{employmentId:input.employmentId,employeeCode:input.employeeCode,expectedCode:input.expectedCode})).resolves.toMatchObject({changed:true});
  });
 });
+
+/** Real USER-only accounts: no fixture PERSON or EMPLOYMENT is manufactured for the actor. */
+async function unlinkedCustodyLogin(role:'hr_admin'|'employee'='hr_admin'):Promise<SessionContext>{
+ const [user]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:'user_'+randomUUID(),personId:null}).returning({id:schema.appUser.id});
+ await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role,companyId:null});
+ await grantAssistant(group(),{appUserId:user.id});
+ return{...await entitledCtx(b,[role]),userId:user.id,personId:null,grants:[{role,companyId:null}]};
+}
+async function unlinkedCustodyRow(id:string){
+ const [row]=await owner.db.execute(sql`select user_id as "userId",person_id as "actorPersonId",employment_id as "employmentId",company_id as "companyId",decision_subject_person_id as "subjectPersonId",testing_execution_id as "testingExecutionId",testing_run_id as "testingRunId",testing_event_id as "testingEventId",state,receipt_event_id as "eventId",(select count(*)::int from app.assistant_own_leave_review_content c where c.action_id=r.id) as bodies,coalesce((select length(c.ciphertext)>0 from app.assistant_own_leave_review_content c where c.action_id=r.id),false) as encrypted from app.assistant_own_leave_review r where id=${id}::uuid`);return row;
+}
+
+it.each(['hr_admin','employee'] as const)('keeps a genuine unlinked %s actor separate from the code subject through native rollback, encrypted custody and recovery',async role=>{
+ const who=await unlinkedCustodyLogin(role),foreign=await unlinkedCustodyLogin(role);
+ if(role==='employee'){await owner.db.execute(sql`update access_capability set supported=true,bindings='[{"owner":"unlinked-code-fixture","operation":"read-write"}]'::jsonb where id in ('workforce.view','workforce.maintain')`);for(const account of [who,foreign]){await permission(account,'workforce.view','allow');await permission(account,'workforce.maintain','allow');}}
+ const input=await human(who),before=await snapshot();
+ await expect(withTenant(who,async tx=>{expect(await setWorkforceEmployeeCode(who,{employmentId:input.employmentId,expectedCode:input.expectedCode,employeeCode:input.employeeCode},tx)).toMatchObject({changed:true});throw Error('unlinked native rollback');})).rejects.toThrow('unlinked native rollback');expect(await snapshot()).toEqual(before);
+ const r=(await employeeCodeMaintenanceReviews.prepare(who,input)).review;
+ expect(await unlinkedCustodyRow(r.actionId)).toMatchObject({userId:who.userId,actorPersonId:null,employmentId:subject.employmentId,companyId:b.companyId,subjectPersonId:subject.personId,testingExecutionId:null,testingRunId:null,testingEventId:null,state:'awaiting_confirmation',eventId:null,bodies:1,encrypted:true});
+ expect((await employeeCodeMaintenanceReviews.reopen(who,r.actionId)).kind).toBe('prepared');await expect(employeeCodeMaintenanceReviews.reopen(foreign,r.actionId)).rejects.toThrow();await expect(employeeCodeMaintenanceReviews.confirm(foreign,confirm(r))).rejects.toThrow();expect(await snapshot()).toEqual(before);
+ const done=await employeeCodeMaintenanceReviews.confirm(who,confirm(r));expect(done.kind).toBe('completed');expect(await employeeCodeMaintenanceReviews.reopen(who,r.actionId)).toEqual(done);expect(await employeeCodeMaintenanceReviews.confirm(who,confirm(r))).toEqual(done);
+ expect(await unlinkedCustodyRow(r.actionId)).toMatchObject({userId:who.userId,actorPersonId:null,subjectPersonId:subject.personId,state:'completed',bodies:0,encrypted:false});
+ const events=(await snapshot()).events.filter(event=>event.eventType==='employment.employee-code.set'&&event.actorId===who.userId);expect(events).toHaveLength(1);expect(events[0]).toMatchObject({actorType:'user',actorId:who.userId,subjectEmploymentId:subject.employmentId});
+ const next=(await employeeCodeMaintenanceReviews.prepare(who,await human(who,subject.employmentId,'RELINK-42'))).review;await owner.db.update(schema.appUser).set({personId:subject.personId}).where(eq(schema.appUser.id,who.userId!));const relinked=await snapshot();await expect(employeeCodeMaintenanceReviews.reopen(who,next.actionId)).rejects.toThrow();await expect(employeeCodeMaintenanceReviews.confirm(who,confirm(next))).rejects.toThrow();await expect(employeeCodeMaintenanceReviews.reopen({...who,personId:subject.personId},next.actionId)).rejects.toThrow();expect(await snapshot()).toEqual(relinked);expect(await unlinkedCustodyRow(next.actionId)).toMatchObject({actorPersonId:null,subjectPersonId:subject.personId,state:'awaiting_confirmation',bodies:1});
+});

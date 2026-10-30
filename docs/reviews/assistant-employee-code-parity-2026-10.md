@@ -56,3 +56,14 @@ existing awaited searchParams/access pattern. No dependency or runtime was provi
 Only static diff checks and source manifest generation are local. Parent owns exact-SHA Actions checks
 with whole typecheck ON. No tests/compiler/DB/build/devserver/CI/push/PR/merge/deployment occurred here.
 Global release hold remains.
+
+Nullable actor custody amendment (source only): this provisional migration extends the original
+actor/subject scope CHECK for this exact action only. A current authorized USER may have no PERSON;
+employment/company stay required and all testing columns stay null. The entire predecessor predicate
+is retained in ELSE; subject-person, no-self, current principal, permission and receipt proofs remain.
+Authored unrun fixtures use two actual app_user rows with personId:null, contrast the native owner in
+a rolled-back outer transaction, then prepare/reopen/confirm/replay the real encrypted ledger. They
+assert nullable actor versus nonnull true subject, exact user ownership, sealed-body presence/retirement,
+foreign-login refusal, one native event and stale/fresh-self refusal after actor relinking.
+The code fixture additionally covers a genuine unlinked non-HR USER granted native Workforce view and maintain.
+No tests, collection, compiler, database, build or server were run for this amendment.

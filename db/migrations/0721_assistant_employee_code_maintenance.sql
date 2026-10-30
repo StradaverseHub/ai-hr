@@ -6,6 +6,23 @@
 INSERT INTO app.assistant_action_kind(id,module,tier_ceiling,category,review_kind) VALUES
  ('employees.code.maintain','employees','approve','personnel','employees.code.maintain');
 --> statement-breakpoint
+-- A USER need not be linked to a PERSON. Only this kind gains a nullable actor identity;
+-- its true subject remains bound by the existing decision/binding/receipt owners.
+-- Preserve the complete accepted scope predicate for every predecessor kind.
+DO $$
+DECLARE previous text;constraint_name text;matches integer;
+BEGIN
+ SELECT count(*),min(conname) INTO matches,constraint_name FROM pg_constraint
+  WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c'
+   AND pg_get_expr(conbin,conrelid) LIKE '%testing_execution_id IS NOT NULL%'
+   AND pg_get_expr(conbin,conrelid) LIKE '%employment_id IS NULL%';
+ IF matches<>1 THEN RAISE EXCEPTION '0721: unexpected actor subject scope predicate';END IF;
+ SELECT pg_get_expr(conbin,conrelid) INTO previous FROM pg_constraint
+  WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname=constraint_name;
+ EXECUTE format('ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT %I',constraint_name);
+ EXECUTE format('ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT %I CHECK (CASE WHEN action_kind=''employees.code.maintain'' THEN employment_id IS NOT NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL ELSE (%s) END)',constraint_name,previous);
+END $$;
+--> statement-breakpoint
 -- Extend the existing HR generic branch itself, preserving its complete predicate. Other dedicated
 -- receipt families retain their separate null-column CHECKs from 0622. Refuse unexpected schema drift.
 DO $$
