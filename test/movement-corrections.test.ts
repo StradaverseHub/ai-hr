@@ -92,7 +92,14 @@ async function openCompensation(employmentId: string) {
 
 async function employmentRow(employmentId: string) {
   const [row] = await owner.db
-    .select({ gradeId: schema.employment.gradeId, orgDivision: schema.employment.orgDivision })
+    .select({
+      gradeId: schema.employment.gradeId,
+      orgDivision: schema.employment.orgDivision,
+      // 646355e5 — the termination columns a Termination correction restores.
+      terminatedOn: schema.employment.terminatedOn,
+      terminationReasonCode: schema.employment.terminationReasonCode,
+      lastWorkingDate: schema.employment.lastWorkingDate,
+    })
     .from(schema.employment)
     .where(eq(schema.employment.id, employmentId))
     .limit(1);
@@ -267,7 +274,7 @@ describe('reverseMovementEvent — Rollback is recorded as a visible reversal', 
     // The assignment the termination closed is open again — the same version, not a new one.
     expect((await openAssignment(hire.employmentId)).id).toBe(closedVersion[0].id);
     const rolledBack = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.id === term.id)!;
-    expect(rolledBack.reversed).toBe(true);
+    expect(rolledBack.reversed).toBeTruthy();
   });
 
   it('646355e5 — corrects an applied Termination date in place', async () => {
@@ -463,40 +470,32 @@ describe('editMovementEvent — a correction is a replay through the same writer
 
   it('refuses an older correction that would make a later movement meaningless, and changes nothing', async () => {
     const hire = await hireOne();
-    await createMovementEvent(adminCtx(b), {
-      employmentId: hire.employmentId,
-      kind: 'transfer',
-      effectiveDate: '2026-03-01',
-      departmentId: b.deptB,
-    });
-    await createMovementEvent(adminCtx(b), {
-      employmentId: hire.employmentId,
-      kind: 'transfer',
-      effectiveDate: '2026-06-01',
-      departmentId: b.deptA,
-    });
-    const rows = await movementHistory(adminCtx(b), hire.employmentId);
-    const older = rows.filter((r) => r.kind === 'transfer')[0];
-    const before = await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId, hire.employmentId));
+    await setCompensation(adminCtx(b), { employmentId: hire.employmentId, basicSalary: 4000, effectiveFrom: '2026-01-01' });
+    await createMovementEvent(adminCtx(b), { employmentId: hire.employmentId, kind: 'increment', effectiveDate: '2026-03-01', basicSalary: 5000 });
+    await createMovementEvent(adminCtx(b), { employmentId: hire.employmentId, kind: 'increment', effectiveDate: '2026-06-01', basicSalary: 6000 });
+    const older = (await movementHistory(adminCtx(b), hire.employmentId)).filter((r) => r.kind === 'increment')[0];
+    expect(older.effectiveDate).toBe('2026-03-01');
+    const before = await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId, hire.employmentId));
+    // Correcting March to 6000 would leave the June increment changing nothing — refused, nothing written.
     await expect(
       editMovementEvent(adminCtx(b), {
         employmentId: hire.employmentId,
         movementId: older.id,
-        kind: 'transfer',
+        kind: 'increment',
         effectiveDate: '2026-03-01',
-        departmentId: b.deptA,
-        reason: 'Wrong department',
+        basicSalary: 6000,
+        reason: 'Wrong amount',
       }),
     ).rejects.toThrow(/would no longer change anything/i);
-    expect(await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId, hire.employmentId))).toEqual(before);
+    expect(await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId, hire.employmentId))).toEqual(before);
     // A corrected date may not jump past the later movement either.
     await expect(
       editMovementEvent(adminCtx(b), {
         employmentId: hire.employmentId,
         movementId: older.id,
-        kind: 'transfer',
+        kind: 'increment',
         effectiveDate: '2026-07-01',
-        departmentId: b.deptB,
+        basicSalary: 5000,
         reason: 'Wrong date',
       }),
     ).rejects.toThrow(/falls after the later/i);
