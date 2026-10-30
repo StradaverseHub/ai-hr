@@ -102,15 +102,16 @@ export async function AiInventorySection({inventory,mayPause}:{inventory:AiInven
         <thead className="border-y border-border bg-muted/40"><tr>{(['feature','fields','redaction','images'] as const).map(c=><th key={c} scope="col" className="px-5 py-2 text-xs font-medium">{t(`inv.register.cols.${c}`)}</th>)}</tr></thead>
         <tbody className="divide-y divide-border">{inventory.register.map(({featureId,entry})=><tr key={featureId} className="align-top">
           <td className="px-5 py-3"><p className="font-medium">{t(`features.${featureId}`)}</p><p className="break-all text-xs text-muted-foreground">{entry.anchor}</p></td>
-          <td className="px-5 py-3 text-xs">{entry.fields.map(field=>t(`inv.register.fields.${field}`)).join(' · ')}{entry.principalSendsNothing&&<p className="mt-1 text-muted-foreground">{t('inv.register.principalNothing')}</p>}</td>
-          <td className="px-5 py-3 text-xs"><Badge variant={entry.redaction==='none'?'danger':entry.redaction==='partial'?'warning':undefined}>{t(`inv.register.redaction.${entry.redaction}`)}</Badge></td>
+          <td className="px-5 py-3 text-xs">{entry.fields.map(field=>t(`inv.register.fields.${field}`)).join(' · ')}<p className="mt-1 text-muted-foreground">{t(`inv.register.review.${entry.review}`)}</p>{entry.principalSendsNothing&&<p className="mt-1 text-muted-foreground">{t('inv.register.principalNothing')}</p>}</td>
+          <td className="px-5 py-3 text-xs"><Badge variant={entry.review==='pending'?'warning':undefined}>{t(`inv.register.redaction.${entry.redaction}`)}</Badge></td>
           <td className="px-5 py-3 text-xs">{t(entry.images?'inv.register.imagesYes':'inv.register.imagesNo')}</td>
         </tr>)}</tbody></table></div>
       <ul className="divide-y divide-border border-t border-border md:hidden">{inventory.register.map(({featureId,entry})=><li key={featureId} className="px-4 py-3 text-sm">
         <p className="font-medium">{t(`features.${featureId}`)}</p>
         <p className="mt-1 text-xs">{entry.fields.map(field=>t(`inv.register.fields.${field}`)).join(' · ')}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{t(`inv.register.review.${entry.review}`)}</p>
         {entry.principalSendsNothing&&<p className="mt-1 text-xs text-muted-foreground">{t('inv.register.principalNothing')}</p>}
-        <p className="mt-1 flex flex-wrap items-center gap-2 text-xs"><Badge variant={entry.redaction==='none'?'danger':entry.redaction==='partial'?'warning':undefined}>{t(`inv.register.redaction.${entry.redaction}`)}</Badge>{t(entry.images?'inv.register.imagesYes':'inv.register.imagesNo')}</p>
+        <p className="mt-1 flex flex-wrap items-center gap-2 text-xs"><Badge variant={entry.review==='pending'?'warning':undefined}>{t(`inv.register.redaction.${entry.redaction}`)}</Badge>{t(entry.images?'inv.register.imagesYes':'inv.register.imagesNo')}</p>
         <p className="mt-1 break-all text-xs text-muted-foreground">{entry.anchor}</p>
       </li>)}</ul>
     </Card>}

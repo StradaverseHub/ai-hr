@@ -13,6 +13,7 @@ import {PERSONNEL_IMPORT_ASSISTANCE_REGISTRY} from '../personnel-import-assistan
 import {ASSISTANT_CONVERSATION_HOLDOUTS} from './assistant-conversation-holdouts';
 import {captureAssistantConversationCandidate,assistantConversationCandidateSystem} from './assistant-conversation-candidate';
 import {buildAssistantConversationSystem} from './assistant-conversation-system';
+import {assistantProposalCatalogue,syntheticAssistantProposalCaller} from './assistant-action-catalogue';
 import {ASSISTANT_TOOL_CATALOGUE} from './assistant-tool-catalogue';
 import type {AiTurn,AiToolCall,AiToolResult,AiToolSpec} from './types';
 
@@ -171,7 +172,7 @@ const contracts=Object.freeze({
    }
    if(!calls.length||new Set(calls.map(c=>c.id)).size!==calls.length)return refuse();turns.push({role:'assistant',content:'',toolCalls:calls},{role:'tool',results});
   }
-  return {args:Object.freeze({system:buildAssistantConversationSystem(assistantConversationCandidateSystem(strategy)),turns,tools:ASSISTANT_TOOL_CATALOGUE.map(spec=>({...spec,inputSchema:structuredClone(spec.inputSchema)})),maxTokens:2048,timeoutMs:15000})};
+  return {args:Object.freeze({system:buildAssistantConversationSystem(assistantConversationCandidateSystem(strategy),assistantProposalCatalogue(syntheticAssistantProposalCaller(fixture.readableModules??[]))),turns,tools:ASSISTANT_TOOL_CATALOGUE.map(spec=>({...spec,inputSchema:structuredClone(spec.inputSchema)})),maxTokens:2048,timeoutMs:15000})};
  }),
  readiness_message_v1:descriptor(['readiness_reminders'],'draft',input=>{const r=row(input,['gap','audience']),gap=member(r.gap,gaps),audience=member(r.audience,['employee','hr'] as const);return {args:Object.freeze({system:'Choose a reminder tone for the supplied missing-record category. Return only JSON {"tone":"direct"} or {"tone":"supportive"}. Do not emit prose, names, numbers, URLs or decisions. The application writes the reminder from its own template.',prompt:JSON.stringify({gap,audience,employeeAction:'request_correction_for_human_review'}),maxTokens:80})};}),
  claim_detail_triage_v1:descriptor(['claims_triage'],'draft',input=>{const r=row(input,['detail','source']),detail=member(r.detail,['missing','brief'] as const);return {args:Object.freeze({system:'A native source established that a claim description is insufficient. Suggest whether to request detail or abstain. Return exactly JSON {"requestDetail":true} or {"requestDetail":false}. This does not approve, reject, submit or assess the financial merits of a claim. No prose or values.',prompt:JSON.stringify({detail,availableQuestion:'request_expense_description'}),maxTokens:80})};}),
@@ -200,6 +201,8 @@ const contracts=Object.freeze({
  performance_literal_command_v1:descriptor(['performance_assistant'],'draft',input=>{const r=row(input,['kind','payload']),kind=member(r.kind,['career','review','journey','setting'] as const),proposal=protectedPerformanceCommand(kind,r.payload),command=proposal.commands[0];return {args:Object.freeze({system:'Confirm a locally parsed explicit user draft command. Return exactly JSON {"action":"suppliedAction"}. Content, identities, dates, values and UTF-16 spans are withheld. Do not infer or add commands, submit, approve, rate, calculate, change access or make employment decisions. Native adjudication and the human review flow remain mandatory.',prompt:JSON.stringify({action:command.action}),maxTokens:80}),local:Object.freeze({proposal})};}),
 });
 export type ProviderWorkloadContractId=keyof typeof contracts;
+/** Metadata only: the actual closed descriptor IDs; grants no source or provider authority. */
+export const PROVIDER_WORKLOAD_CONTRACT_IDS=Object.freeze(Object.keys(contracts) as ProviderWorkloadContractId[]);
 export function getProviderWorkloadDescriptor(id:string):ProviderWorkloadDescriptor|undefined{return Object.hasOwn(contracts,id)?contracts[id as ProviderWorkloadContractId]:undefined;}
 /** Availability describes implemented safe variants, not review approval or a rollout promise. */
 export const PROVIDER_WORKLOAD_AVAILABILITY=Object.freeze([

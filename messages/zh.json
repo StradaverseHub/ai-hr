@@ -27166,15 +27166,15 @@
       },
       "register": {
         "title": "服务商数据登记",
-        "intro": "针对每个 AI 功能：哪些类型的数据会离开贵公司发送给 AI 服务商，以及发送前会遮盖什么。在选择或更换服务商之前请先阅读。",
-        "namesNote": "遮盖会移除电子邮件地址、马来西亚身份证号码和电话号码，但从不移除姓名。",
-        "principalNothing": "定时运行不向服务商发送任何内容（仅使用模板）。",
+        "intro": "各 AI 功能支持的外发数据类别。本地输入不等于提供商负载；仍须具备权限、重新核验来源及当前隐私批准。",
+        "namesNote": "不支持的原始文本、身份、精确日期或金额及图像会被拒绝。引用和粗粒度区间仍可能透露结构，并不保证匿名。",
+        "principalNothing": "定时执行主体不向提供商发送数据：仅使用模板或拒绝执行。",
         "imagesYes": "发送图片",
         "imagesNo": "无图片",
         "cols": {
           "feature": "功能",
-          "fields": "发送的数据",
-          "redaction": "遮盖",
+          "fields": "支持的外发数据",
+          "redaction": "保护方式",
           "images": "图片"
         },
         "fields": {
@@ -27182,7 +27182,7 @@
           "scoped_hr_records": "用户可读取的 HR 记录（休假、档案、薪资摘要、报销）",
           "pasted_import_source": "粘贴的导入数据",
           "admin_prompt": "管理员编写的指令",
-          "synthetic_only": "仅虚构测试数据",
+          "synthetic_only": "仅限固定虚构测试数据",
           "column_headings": "上传文件的列标题",
           "gap_codes": "仅缺失字段代码",
           "claim_details": "报销类型、项目、金额、日期和说明",
@@ -27196,13 +27196,23 @@
           "approver_names": "审批人和作者姓名",
           "attachment_text": "从附件读取的文本",
           "image_attachments": "图片附件",
-          "product_feedback_text": "产品反馈文本"
+          "product_feedback_text": "产品反馈文本",
+          "closed_references": "不透明引用与限定类别（来源文本和值保留在本地）",
+          "coarse_aggregate_bands": "粗粒度汇总区间（不保证匿名）",
+          "pseudonymous_person_bands": "带随机别名的个人区间（并非匿名）"
         },
         "redaction": {
           "pii_masked": "已遮盖",
           "partial": "部分遮盖",
           "none": "未遮盖",
-          "not_needed": "无需遮盖"
+          "not_needed": "无需遮盖",
+          "protected_contract": "受保护的投影"
+        },
+        "review": {
+          "approved": "来源审核匹配；仍适用其他运行时检查。",
+          "pending": "隐私审核待完成或与当前来源不匹配。",
+          "unsupported": "没有支持的外发契约。",
+          "template_only": "仅使用模板；不请求模型。"
         }
       },
       "alerts": {

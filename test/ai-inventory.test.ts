@@ -2,6 +2,13 @@
  *  switch drift, run range/paging, the provider data register, six-locale copy and the static wiring. No database. */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import {capturePrivateAssistantTask,privateAssistantCatalogue} from '../lib/ai/provider-assistant-policy';
+import type {AssistantAnswerRead} from '../lib/ai/assistant-answer-plan';
+import {PROVIDER_WORKLOAD_CONTRACT_IDS,getProviderWorkloadDescriptor} from '../lib/ai/provider-workload-policy';
+import {WORKLOAD_DISCLOSURE_FIELDS,providerDisclosureForFeature} from '../lib/ai/provider-disclosure-inventory';
+import {providerDataReviewStatus} from '../lib/ai/provider-data-reviews';
+import {assertProviderPrivacyRequest} from '../lib/ai/provider-privacy-request';
+import type {ResolvedAiConfig} from '../lib/ai/types';
 import { AI_FEATURES } from '../lib/ai/features';
 import { AGENT_ACTIONS, agentActionPauseKey } from '../lib/ai/agent-action-registry';
 import { MODULE_JOBS } from '../lib/ai/module-jobs';
@@ -140,19 +147,42 @@ describe('provider data register (R21)', () => {
   it('covers every gateway feature with closed field codes and a source anchor that exists', () => {
     expect(Object.keys(AI_DATA_REGISTER).sort()).toEqual(AI_FEATURES.map(f => f.id).sort());
     for (const [id, e] of Object.entries(AI_DATA_REGISTER)) {
-      if(['approval_chasers','review_chasers','clock_reminders','document_reminders','lifecycle_chasers'].includes(id)){expect(e.fields,id).toEqual([]);expect(e.principalSendsNothing,id).toBe(true);expect(e.redaction,id).toBe('not_needed');}else expect(e.fields.length,id).toBeGreaterThan(0);
+      if(['approval_chasers','review_chasers','clock_reminders','document_reminders','lifecycle_chasers'].includes(id)){expect(e.fields,id).toEqual([]);expect(e.principalSendsNothing,id).toBe(true);expect(e.redaction,id).toBe('not_needed');expect(e.review,id).toBe('template_only');}else expect(e.contracts.length,id).toBeGreaterThan(0);
       for (const field of e.fields) expect(AI_DATA_FIELDS as readonly string[]).toContain(field);
       const first = e.anchor.split(/[ ,(]/)[0];
       expect(() => read(first), `${id} anchor ${first}`).not.toThrow();
-      expect(e.images).toBe(e.fields.includes('image_attachments'));
+      expect(e.images,id).toBe(false);expect(e.fields,id).not.toContain('image_attachments');
     }
   });
-  it('records the known exposures: the Assistant chat is unmasked, names are never masked', () => {
-    expect(AI_DATA_REGISTER.hr_assistant.redaction).toBe('none');
-    expect(read('lib/ai/index.ts')).toMatch(/redactPII is deliberately NOT applied here/);
-    expect(AI_DATA_REGISTER.performance_calib.fields).toContain('full_names');
-    expect(AI_DATA_REGISTER.readiness_reminders.principalSendsNothing).toBe(true);
-    expect(AI_DATA_REGISTER.claims_triage.principalSendsNothing).toBe(true);
+  it('derives outgoing categories and feature bindings from every closed descriptor, with no raw-field default',()=>{
+    expect(Object.keys(WORKLOAD_DISCLOSURE_FIELDS).sort()).toEqual([...PROVIDER_WORKLOAD_CONTRACT_IDS].sort());
+    for(const id of PROVIDER_WORKLOAD_CONTRACT_IDS){const descriptor=getProviderWorkloadDescriptor(id)!;for(const feature of descriptor.features){const entry=AI_DATA_REGISTER[feature];expect(entry.contracts.map(row=>row.id),id).toContain(id);expect(entry.fields,id).toContain(WORKLOAD_DISCLOSURE_FIELDS[id]);}}
+    for(const feature of AI_FEATURES){const entry=AI_DATA_REGISTER[feature.id];expect(entry.fields).toEqual(providerDisclosureForFeature(feature.id).fields);for(const contract of entry.contracts)expect(contract.reviewStatus).toBe(providerDataReviewStatus(contract.id));}
+    for(const field of ['question_text','scoped_hr_records','full_names','image_attachments','payroll_figures'])expect(AI_DATA_FIELDS as readonly string[]).not.toContain(field);
+    expect(AI_DATA_REGISTER.hr_assistant.fields).toContain('pseudonymous_person_bands');
+    expect(AI_DATA_REGISTER.performance_calib.fields).toContain('closed_references');
+    expect(AI_DATA_REGISTER.performance_pm.remaining).toContain('raw_images');
+  });
+  it('matches actual Assistant outgoing references while the native names, dates, values and raw language stay local',()=>{
+    const source:AssistantAnswerRead={read:0,presentation:{module:'leave',cards:[{title:{kind:'text',value:'PRIVATE Alice'},facts:[{field:'available',value:13.75,format:'number'},{field:'employeeCode',value:'PRIVATE-EMP-27',format:'text'},{field:'asOf',value:'2026-11-01',format:'date'}]}],truncated:false},explanations:[]};
+    const payload=privateAssistantCatalogue('leave_available',[source]),captured=capturePrivateAssistantTask(payload),outgoing=JSON.stringify(captured.args);
+    for(const raw of ['PRIVATE','Alice','13.75','2026-11-01','EMP-27'])expect(outgoing).not.toContain(raw);
+    expect(outgoing).toContain('available');expect(AI_DATA_REGISTER.hr_assistant.fields).toContain('closed_references');
+    expect(source.presentation.cards[0].facts[0].value).toBe(13.75);
+    expect(()=>capturePrivateAssistantTask({...payload,question:'PRIVATE raw question'})).toThrow();
+  });
+  it('discloses calibration selection instead of names and refuses raw images or unknown import headings',()=>{
+    const person={id:'10000000-0000-4000-8000-000000000001',name:'PRIVATE Alice'};
+    const calibration=getProviderWorkloadDescriptor('performance_calibration_read_v1')!.capture({message:'explain PRIVATE Alice',axis:'performance',people:[person],units:[]});
+    const outgoing=JSON.stringify(calibration.args);expect(outgoing).toContain('person');expect(outgoing).not.toContain(person.name);expect(outgoing).not.toContain(person.id);
+    expect(calibration.local).toMatchObject({query:{reviewId:person.id}});
+    expect(()=>getProviderWorkloadDescriptor('personnel_header_mapping_v1')!.capture({columns:[{columnIndex:0,candidates:[],heading:'PRIVATE salary'}]})).toThrow();
+    expect(()=>getProviderWorkloadDescriptor('performance_narrative_selection_v1')!.capture({task:'manager_review',passages:[],images:['PRIVATE image']})).toThrow();
+  });
+  it('does not turn register metadata into provider admission or scheduled model permission',()=>{
+    providerDisclosureForFeature('hr_assistant');
+    expect(()=>assertProviderPrivacyRequest({} as ResolvedAiConfig,'conversation','a'.repeat(64),'hr_assistant')).toThrow();
+    expect(AI_DATA_REGISTER.readiness_reminders.principalSendsNothing).toBe(true);expect(AI_DATA_REGISTER.claims_triage.principalSendsNothing).toBe(true);
   });
 });
 
@@ -165,7 +195,8 @@ describe('six-locale copy', () => {
       for (const k of AI_COMPONENT_KINDS) expect(inv.kinds[k], `${locale} ${k}`).toBeTruthy();
       for (const k of ['automatic', 'confirm', 'approve', 'handoff']) expect(inv.tiers[k]).toBeTruthy();
       for (const k of AI_DATA_FIELDS) expect(inv.register.fields[k], `${locale} ${k}`).toBeTruthy();
-      for (const k of ['pii_masked', 'partial', 'none', 'not_needed']) expect(inv.register.redaction[k]).toBeTruthy();
+      for (const k of ['protected_contract','not_needed']) expect(inv.register.redaction[k]).toBeTruthy();
+      for(const k of ['approved','pending','unsupported','template_only'])expect(inv.register.review[k],`${locale} ${k}`).toBeTruthy();
       for (const k of ['failure_rate', 'principal_refusals', 'spend_near_cap', 'switch_drift']) expect(inv.alerts[k]).toContain('{count}');
       for (const k of ['help', 'unavailable']) expect(inv.alerts[k], `${locale} alerts.${k}`).toBeTruthy();
       expect(inv.pausedTitle).toBeTruthy();

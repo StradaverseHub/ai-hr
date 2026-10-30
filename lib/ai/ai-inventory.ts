@@ -9,13 +9,14 @@
  *  2. ALERT THRESHOLDS and their evaluation (R20), shared by the AI management banner and scripts/ai-alerts.ts.
  *  3. SWITCH DRIFT: configured-vs-effective switch disagreement, from the AI management view's own fields.
  *  4. THE PROVIDER DATA REGISTER (R21): per gateway feature, which field categories leave the tenant for the model
- *     provider and after which redaction. Each entry names the prompt builder it was read from; a reviewer
- *     re-reads that source when the feature changes. It is a disclosure record, not an enforcement mechanism.
+ *     provider through a supported protected serializer, and its source-bound review state. Local inputs are
+ *     distinct from outgoing data. It is a disclosure record, not an enforcement mechanism.
  *  5. RUN HISTORY RANGE AND PAGING.
  *
  * This file grants nothing. Access is core/ai-inventory.ts's job; authority stays user ∩ registry ∩ tier ∩ switches.
  */
-import {AI_FEATURES,type AiFeatureId} from './features';
+import {AI_FEATURES,isTemplateOnlyAiFeature,type AiFeatureId} from './features';
+import {PROVIDER_OUTGOING_FIELDS,providerDisclosureForFeature,type ProviderOutgoingField} from './provider-disclosure-inventory';
 import {AGENT_ACTIONS,agentActionPauseKey} from './agent-action-registry';
 import {MODULE_JOBS} from './module-jobs';
 import {AGENT_PRINCIPAL_SPECIALISTS} from './agent-capability-inventory';
@@ -154,43 +155,23 @@ export function switchDrift(features:readonly SwitchDriftFeature[],agentSwitches
 }
 
 // ── Provider data register (R21) ────────────────────────────────────────────────────────────────────────────
-export const AI_DATA_FIELDS=['question_text','scoped_hr_records','pasted_import_source','admin_prompt','synthetic_only','column_headings',
- 'gap_codes','claim_details','payroll_ratios','payroll_figures','rule_description','field_catalogue','performance_text','first_name',
- 'full_names','approver_names','attachment_text','image_attachments','product_feedback_text'] as const;
-export type AiDataField=(typeof AI_DATA_FIELDS)[number];
-/** pii_masked = redactPII (emails, Malaysian IC numbers, phone-like runs; NEVER names); partial = some fields
- * masked, others not; none = sent as read; not_needed = no free text or no tenant data. */
-export type AiRedaction='pii_masked'|'partial'|'none'|'not_needed';
+/** Outgoing categories only. Human language, names, headings, dates, amounts and native records
+ * may be local inputs; they are NOT automatically provider fields. Unsupported shapes fail closed. */
+export const AI_DATA_FIELDS=PROVIDER_OUTGOING_FIELDS;
+export type AiDataField=ProviderOutgoingField;
+export type AiRedaction='protected_contract'|'not_needed';
 export type AiDataRegisterEntry=Readonly<{fields:readonly AiDataField[];redaction:AiRedaction;images:boolean;
- /** Scheduled (agent principal) use sends nothing: template only or refused before any read. */
- principalSendsNothing?:true;anchor:string}>;
-/** Read from source at e71f7ec43 (prompt builders named in `anchor`). Re-read the anchor when a feature changes. */
-export const AI_DATA_REGISTER:Readonly<Record<AiFeatureId,AiDataRegisterEntry>>=Object.freeze({
- hr_assistant:{fields:['question_text','scoped_hr_records','pasted_import_source','admin_prompt'],redaction:'none',images:false,anchor:'core/assistant.ts (converse; lib/ai/index.ts skips redaction), core/assistant-tools.ts, core/assistant-import.ts'},
- provider_evaluation:{fields:['synthetic_only'],redaction:'not_needed',images:false,anchor:'lib/ai/provider-protocol.ts, core/ai-provider-readiness.ts'},
- module_agent_evaluation:{fields:['synthetic_only','admin_prompt'],redaction:'not_needed',images:false,anchor:'core/module-agent-prompt-harness.ts, core/assistant-conversation-harness.ts'},
- personnel_import_mapping:{fields:['column_headings','field_catalogue'],redaction:'none',images:false,anchor:'core/personnel-import-assistance.ts'},
- module_agent_planning:{fields:['question_text','admin_prompt'],redaction:'none',images:false,anchor:'core/module-agent-releases.ts (human question prompt)'},
- approval_chasers:{fields:[],redaction:'not_needed',images:false,principalSendsNothing:true,anchor:'core/automatic-chasers.ts (fixed templates only)'},
- review_chasers:{fields:[],redaction:'not_needed',images:false,principalSendsNothing:true,anchor:'core/automatic-chasers.ts (fixed templates only)'},
- clock_reminders:{fields:[],redaction:'not_needed',images:false,principalSendsNothing:true,anchor:'core/automatic-followups.ts (fixed templates only)'},
- document_reminders:{fields:[],redaction:'not_needed',images:false,principalSendsNothing:true,anchor:'core/automatic-followups.ts (fixed templates only)'},
- lifecycle_chasers:{fields:[],redaction:'not_needed',images:false,principalSendsNothing:true,anchor:'core/automatic-followups.ts (fixed templates only)'},
- readiness_reminders:{fields:['gap_codes'],redaction:'not_needed',images:false,principalSendsNothing:true,anchor:'core/readiness-nudge.ts'},
- claims_triage:{fields:['claim_details'],redaction:'pii_masked',images:false,principalSendsNothing:true,anchor:'core/input-triage.ts (claimAsText)'},
- payroll_hypotheses:{fields:['payroll_ratios'],redaction:'not_needed',images:false,anchor:'core/payroll-hypothesis.ts (featuresAsText)'},
- payroll_explanation:{fields:['payroll_figures'],redaction:'not_needed',images:false,anchor:'core/payroll-anomaly-narrate.ts'},
- pay_rule_draft:{fields:['rule_description'],redaction:'pii_masked',images:false,anchor:'core/pay-rule-ai.ts'},
- report_insight:{fields:['field_catalogue','question_text'],redaction:'pii_masked',images:false,anchor:'core/report-ai.ts'},
- performance_360:{fields:['performance_text'],redaction:'pii_masked',images:false,anchor:'packs/performance/onehr/feedback-conversation.ts, rewrite-service.ts'},
- performance_tc:{fields:['performance_text','first_name','approver_names'],redaction:'pii_masked',images:false,anchor:'packs/performance/onehr/competency-insight-service.ts, potential-insight-service.ts, written-remarks-service.ts'},
- performance_pm:{fields:['performance_text','approver_names','attachment_text','image_attachments','question_text'],redaction:'partial',images:true,anchor:'core/performance.ts (manager review draft), packs/performance/onehr/insight-service.ts, evidence-reading.ts, review-command-ai.ts'},
- performance_review:{fields:['performance_text','question_text','first_name'],redaction:'pii_masked',images:false,anchor:'packs/performance/onehr/guide-service.ts, admin-agent-service.ts, talent-insight-service.ts'},
- performance_idp:{fields:['performance_text','first_name'],redaction:'partial',images:false,anchor:'packs/performance/onehr/career-draft-service.ts, development-suggestion-service.ts (unredacted), idp-fit-service.ts'},
- performance_calib:{fields:['question_text','full_names'],redaction:'none',images:false,anchor:'packs/performance/onehr/calibration-conversation.ts'},
- performance_assistant:{fields:['question_text','performance_text'],redaction:'none',images:false,anchor:'packs/performance/onehr/review-command-ai.ts, provider-source-draft.ts'},
- feedback_planning:{fields:['product_feedback_text'],redaction:'pii_masked',images:false,anchor:'core/feedback.ts'},
-});
+ principalSendsNothing?:true;anchor:string;contracts:ReturnType<typeof providerDisclosureForFeature>['contracts'];
+ review:'approved'|'pending'|'unsupported'|'template_only';remaining:readonly string[]}>;
+/** Derived from the actual descriptor feature bindings and exact source-bound review owner.
+ * This is disclosure, never proof of runtime availability, a provider request, or permission. */
+export const AI_DATA_REGISTER:Readonly<Record<AiFeatureId,AiDataRegisterEntry>>=Object.freeze(Object.fromEntries(AI_FEATURES.map(feature=>{
+ const disclosure=providerDisclosureForFeature(feature.id),template=isTemplateOnlyAiFeature(feature.id);
+ const review=template?'template_only':disclosure.contracts.length===0?'unsupported':disclosure.contracts.every(row=>row.reviewStatus==='approved')?'approved':'pending';
+ return [feature.id,Object.freeze({fields:disclosure.fields,redaction:disclosure.fields.length?'protected_contract':'not_needed',images:false,
+  ...((template||feature.id==='readiness_reminders'||feature.id==='claims_triage')?{principalSendsNothing:true as const}:{}),
+  anchor:disclosure.anchors.join(', ')||'lib/ai/features.ts',contracts:disclosure.contracts,review,remaining:disclosure.remaining})];
+})) as Record<AiFeatureId,AiDataRegisterEntry>);
 
 // ── Run history range and paging ───────────────────────────────────────────────────────────────────────────
 export const AI_RUN_PAGE_SIZE=50;

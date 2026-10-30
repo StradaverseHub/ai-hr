@@ -27166,15 +27166,15 @@
       },
       "register": {
         "title": "Sổ đăng ký dữ liệu gửi nhà cung cấp",
-        "intro": "Với mỗi tính năng AI: loại dữ liệu nào rời công ty của bạn đến nhà cung cấp AI và phần nào được che trước. Hãy đọc trước khi chọn hoặc đổi nhà cung cấp.",
-        "namesNote": "Việc che sẽ xóa địa chỉ email, số CMND Malaysia và số điện thoại. Không bao giờ xóa tên.",
-        "principalNothing": "Các lượt chạy theo lịch không gửi gì đến nhà cung cấp (chỉ dùng mẫu).",
+        "intro": "Các loại dữ liệu gửi đi được hỗ trợ cho từng tính năng AI. Đầu vào cục bộ không phải nội dung gửi nhà cung cấp; vẫn cần quyền, kiểm tra lại nguồn và phê duyệt quyền riêng tư hiện hành.",
+        "namesNote": "Văn bản gốc, danh tính, ngày hoặc số tiền chính xác và hình ảnh không được hỗ trợ sẽ bị từ chối. Tham chiếu và khoảng thô vẫn có thể lộ cấu trúc; không bảo đảm ẩn danh.",
+        "principalNothing": "Tác nhân theo lịch không gửi dữ liệu tới nhà cung cấp: dùng mẫu hoặc từ chối.",
         "imagesYes": "Có gửi hình ảnh",
         "imagesNo": "Không có hình ảnh",
         "cols": {
           "feature": "Tính năng",
-          "fields": "Dữ liệu gửi đi",
-          "redaction": "Che dữ liệu",
+          "fields": "Dữ liệu gửi đi được hỗ trợ",
+          "redaction": "Bảo vệ",
           "images": "Hình ảnh"
         },
         "fields": {
@@ -27182,7 +27182,7 @@
           "scoped_hr_records": "Hồ sơ HR người dùng được phép đọc (nghỉ phép, hồ sơ, tóm tắt lương, khoản chi)",
           "pasted_import_source": "Dữ liệu nhập được dán",
           "admin_prompt": "Chỉ dẫn do quản trị viên viết",
-          "synthetic_only": "Chỉ dữ liệu thử nghiệm hư cấu",
+          "synthetic_only": "Chỉ dữ liệu kiểm thử hư cấu cố định",
           "column_headings": "Tiêu đề cột của tệp tải lên",
           "gap_codes": "Chỉ mã trường còn thiếu",
           "claim_details": "Loại khoản chi, mục, số tiền, ngày và mô tả",
@@ -27196,13 +27196,23 @@
           "approver_names": "Tên người phê duyệt và người viết",
           "attachment_text": "Văn bản đọc từ tệp đính kèm",
           "image_attachments": "Hình ảnh đính kèm",
-          "product_feedback_text": "Văn bản phản hồi sản phẩm"
+          "product_feedback_text": "Văn bản phản hồi sản phẩm",
+          "closed_references": "Tham chiếu mờ và danh mục cố định (văn bản và giá trị nguồn ở lại cục bộ)",
+          "coarse_aggregate_bands": "Khoảng tổng hợp thô (không bảo đảm ẩn danh)",
+          "pseudonymous_person_bands": "Khoảng theo người với bí danh ngẫu nhiên (không ẩn danh)"
         },
         "redaction": {
           "pii_masked": "Đã che",
           "partial": "Che một phần",
           "none": "Không che",
-          "not_needed": "Không cần"
+          "not_needed": "Không cần",
+          "protected_contract": "Phép chiếu được bảo vệ"
+        },
+        "review": {
+          "approved": "Đánh giá khớp nguồn; các kiểm tra khi chạy khác vẫn áp dụng.",
+          "pending": "Đánh giá quyền riêng tư đang chờ hoặc không khớp nguồn này.",
+          "unsupported": "Không có hợp đồng gửi đi được hỗ trợ.",
+          "template_only": "Chỉ dùng mẫu; không yêu cầu mô hình."
         }
       },
       "alerts": {

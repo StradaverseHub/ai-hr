@@ -27166,15 +27166,15 @@
       },
       "register": {
         "title": "Daftar data pembekal",
-        "intro": "Bagi setiap ciri AI: jenis data yang keluar dari syarikat anda kepada pembekal AI, dan apa yang disembunyikan terlebih dahulu. Baca ini sebelum memilih atau menukar pembekal.",
-        "namesNote": "Penyembunyian membuang alamat e-mel, nombor kad pengenalan Malaysia dan nombor telefon. Ia tidak pernah membuang nama.",
-        "principalNothing": "Larian berjadual tidak menghantar apa-apa kepada pembekal (templat sahaja).",
+        "intro": "Kategori muatan keluar yang disokong bagi setiap ciri AI. Input tempatan bukan muatan pembekal; kebenaran, semakan semula sumber dan kelulusan privasi semasa masih diperlukan.",
+        "namesNote": "Teks asal, identiti, tarikh atau amaun tepat dan imej natif yang tidak disokong ditolak. Rujukan dan julat kasar masih boleh mendedahkan struktur; ini bukan jaminan tanpa nama.",
+        "principalNothing": "Prinsipal berjadual tidak menghantar data kepada pembekal: templat atau penolakan.",
         "imagesYes": "Imej dihantar",
         "imagesNo": "Tiada imej",
         "cols": {
           "feature": "Ciri",
-          "fields": "Data dihantar",
-          "redaction": "Penyembunyian",
+          "fields": "Data keluar yang disokong",
+          "redaction": "Perlindungan",
           "images": "Imej"
         },
         "fields": {
@@ -27182,7 +27182,7 @@
           "scoped_hr_records": "Rekod HR yang boleh dibaca pengguna (cuti, profil, ringkasan gaji, tuntutan)",
           "pasted_import_source": "Data import yang ditampal",
           "admin_prompt": "Arahan yang ditulis pentadbir",
-          "synthetic_only": "Data ujian rekaan sahaja",
+          "synthetic_only": "Data ujian rekaan tetap sahaja",
           "column_headings": "Tajuk lajur fail yang dimuat naik",
           "gap_codes": "Kod medan yang hilang sahaja",
           "claim_details": "Jenis tuntutan, item, amaun, tarikh dan keterangan",
@@ -27196,13 +27196,23 @@
           "approver_names": "Nama pelulus dan penulis",
           "attachment_text": "Teks yang dibaca daripada lampiran",
           "image_attachments": "Lampiran imej",
-          "product_feedback_text": "Teks maklum balas produk"
+          "product_feedback_text": "Teks maklum balas produk",
+          "closed_references": "Rujukan legap dan kategori tertutup (teks serta nilai sumber kekal setempat)",
+          "coarse_aggregate_bands": "Julat agregat kasar (bukan jaminan tanpa nama)",
+          "pseudonymous_person_bands": "Julat setiap orang dengan alias rawak (bukan tanpa nama)"
         },
         "redaction": {
           "pii_masked": "Disembunyikan",
           "partial": "Sebahagian disembunyikan",
           "none": "Tidak disembunyikan",
-          "not_needed": "Tidak perlu"
+          "not_needed": "Tidak perlu",
+          "protected_contract": "Unjuran terlindung"
+        },
+        "review": {
+          "approved": "Semakan sumber sepadan; semakan masa jalan lain masih terpakai.",
+          "pending": "Semakan privasi belum selesai atau tidak sepadan dengan sumber ini.",
+          "unsupported": "Tiada kontrak keluar yang disokong.",
+          "template_only": "Templat sahaja; tiada permintaan model."
         }
       },
       "alerts": {

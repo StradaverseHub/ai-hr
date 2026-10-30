@@ -27166,15 +27166,15 @@
       },
       "register": {
         "title": "Provider data register",
-        "intro": "For each AI feature: which kinds of data leave your company for the AI provider, and what is masked first. Read this before choosing or changing the provider.",
-        "namesNote": "Masking removes email addresses, Malaysian IC numbers and phone numbers. It never removes names.",
-        "principalNothing": "Scheduled runs send nothing to the provider (template only).",
+        "intro": "Supported outgoing payload categories for each AI feature. Local inputs are not provider payloads; permissions, source replay and current privacy approval are still required.",
+        "namesNote": "Unsupported native raw text, identities, exact dates or amounts and images are refused. References and coarse bands can still reveal structure; they are not an anonymity guarantee.",
+        "principalNothing": "Scheduled principals send no provider data: templates or refusal.",
         "imagesYes": "Images sent",
         "imagesNo": "No images",
         "cols": {
           "feature": "Feature",
-          "fields": "Data sent",
-          "redaction": "Masking",
+          "fields": "Supported outgoing data",
+          "redaction": "Protection",
           "images": "Images"
         },
         "fields": {
@@ -27182,7 +27182,7 @@
           "scoped_hr_records": "HR records the user may read (leave, profile, pay summary, claims)",
           "pasted_import_source": "Pasted import data",
           "admin_prompt": "Administrator-written instructions",
-          "synthetic_only": "Fictional test data only",
+          "synthetic_only": "Fixed fictional test data only",
           "column_headings": "Column headings of an uploaded file",
           "gap_codes": "Missing-field codes only",
           "claim_details": "Claim type, item, amount, dates and description",
@@ -27196,13 +27196,23 @@
           "approver_names": "Approver and author names",
           "attachment_text": "Text read from attachments",
           "image_attachments": "Image attachments",
-          "product_feedback_text": "Product feedback text"
+          "product_feedback_text": "Product feedback text",
+          "closed_references": "Opaque references and closed categories (source text and values stay local)",
+          "coarse_aggregate_bands": "Coarse aggregate bands (not an anonymity guarantee)",
+          "pseudonymous_person_bands": "Per-person bands with random aliases (not anonymous)"
         },
         "redaction": {
           "pii_masked": "Masked",
           "partial": "Partly masked",
           "none": "Not masked",
-          "not_needed": "Not needed"
+          "not_needed": "Not needed",
+          "protected_contract": "Protected projection"
+        },
+        "review": {
+          "approved": "Source review matches; other runtime checks still apply.",
+          "pending": "Privacy review is pending or does not match this source.",
+          "unsupported": "No supported outgoing contract.",
+          "template_only": "Templates only; no model request."
         }
       },
       "alerts": {

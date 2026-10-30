@@ -70,7 +70,9 @@ describe('AI inventory in six rendered locales',()=>{
   expect(actions.querySelector('li details summary')?.textContent).toContain('leave.cancel');
   const register=screen.getByRole('table',{name:inv.register.title});
   expect(within(register).getAllByRole('row').length).toBe(AI_FEATURES.length+1);
-  expect(within(register).getAllByText(inv.register.redaction.none).length).toBe(Object.values(AI_DATA_REGISTER).filter(e=>e.redaction==='none').length);
+  expect(within(register).getAllByText(inv.register.redaction.protected_contract).length).toBe(Object.values(AI_DATA_REGISTER).filter(e=>e.redaction==='protected_contract').length);
+  expect(within(register).queryByText(inv.register.fields.full_names)).toBeNull();expect(within(register).queryByText(inv.register.imagesYes)).toBeNull();
+  for(const entry of Object.values(AI_DATA_REGISTER))expect(within(register).getAllByText(inv.register.review[entry.review]).length).toBeGreaterThan(0);
   expect(document.body.textContent).not.toMatch(/MISSING_MESSAGE|aiManagement\.inv\./);
   await captureAiReviewScreenshots(document.body.innerHTML,locale,'inventory-group');
  },60000);
