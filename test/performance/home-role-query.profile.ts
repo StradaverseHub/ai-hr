@@ -61,7 +61,7 @@ it('isolates Home role and reporting-visibility query planning with fresh native
  // The measured guard phase applies the exact journaled DDL to the populated fixture.
  // This proves function behavior/attributes, not installed-ledger or release admission.
  expect(guardedRole).toContain(guardedBody.trim());
- expect([body.trim(),guardedBody.trim()]).toContain(roleDefinition.installedBody.trim());';
+ expect([body.trim(),guardedBody.trim()]).toContain(roleDefinition.installedBody.trim());
  const phases:Record<string,unknown>={},probes=users.slice(0,100);
  try{
   for(const phase of ['baseline','role-plan','guarded-role','visibility-plans','baseline-after']){
