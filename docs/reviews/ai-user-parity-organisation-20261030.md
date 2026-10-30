@@ -1,6 +1,6 @@
 # Organisation Assistant parity — first slice
 
-Status: first position slice verified under the release hold. Department archive/restore is prepared locally; its coordinator migration allocation and hosted verification are pending.
+Status: first position slice verified under the release hold. Department archive/restore source is published; coordinator allocated provisional0743 and database verification is pending.
 
 ## Native inventory and boundaries
 
@@ -77,3 +77,12 @@ Authored department source cases cover archive/restore and exact event identity,
 This inventory is a source map, not an implementation or acceptance claim for the remaining rows. Release hold, protected refs, staging and production remain unchanged.
 
 The complete department SQL proposal is retained as `docs/reviews/organisation-department-custody-draft.sql`, outside the executable migrations/journal. Source checkpoint verification selects only database-free UI/protocol/registry checks and the whole compiler while the allocation is pending. Database and role claims require the subsequently assigned migration and a separate exact-SHA run.
+
+
+## Department allocation and source evidence
+
+The coordinator allocated `0743_assistant_department_archive_custody` / idx722 / version7 / when1793330000080 / breakpoints:true for isolated development. The reviewed proposal moves into that migration with only allocation comments/exception labels changed; all predecessor SQL bytes and journal entries are preserved. Reserved sibling gaps receive no placeholder SQL. This remains UNAPPLIED and grants no installation or release authority.
+
+Original source run [41033164684](https://github.com/StradaverseHub/ai-hr/actions/runs/41033164684) on exact `f250f45e0e4c31eef9522e2efe92fe03dfff9c7e` completed: whole compiler PASS; NODB69PASS/1FAIL. The sole failure was registry52SQL versus53declared actions while the department proposal was deliberately outside executable migrations. The strict invariant stays unchanged. Retained successful evidence: departmentUI12 (six locales, desktop/mobile, all12 overflow:false), protocol5, OrgRSC9, sharedHTTP21, parityguard13 and registry9. No pass is moved to a later SHA. English desktop and Tamil mobile captures were visually inspected; these are real components with scripted endpoints, not authenticated journeys.
+
+Planned allocation recovery covers department source18, custody16 including the actual closed outcome/privacy bridge, both Organisation actions across all eleven real roles (22), affected position/Emergency/pay-component ledger regressions, registry and whole compiler. Source and UI bytes are unchanged from the original checkpoint. The broader native inventory remains open; release hold is unchanged.

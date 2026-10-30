@@ -1,4 +1,5 @@
--- DRAFT ONLY: department allocation is pending; no executable tag/index/when is claimed.
+-- 0743 / idx722 / when1793330000080: UNAPPLIED PROVISIONAL DEVELOPMENT ONLY.
+-- Coordinator allocation; reconcile above the accepted installation ledger before any release.
 -- Mounted System Labels catalogue custody; no new table, raw event grant or employee impersonation.
 CREATE FUNCTION app.department_archive_grid_source(p_id uuid) RETURNS jsonb
  LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -45,14 +46,14 @@ ALTER TABLE app.assistant_own_leave_review ADD COLUMN department_archive_desired
 DO $$ DECLARE item record;previous text;scope_name text;matches integer;
 BEGIN
  SELECT count(*),min(conname) INTO matches,scope_name FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND pg_get_expr(conbin,conrelid) LIKE '%testing_execution_id IS NOT NULL%' AND pg_get_expr(conbin,conrelid) LIKE '%employment_id IS NULL%';
- IF matches<>1 THEN RAISE EXCEPTION 'Department draft: actor scope drift';END IF;
+ IF matches<>1 THEN RAISE EXCEPTION '0743: actor scope drift';END IF;
  FOR item IN SELECT * FROM (VALUES
  (scope_name,'employment_id IS NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL'),
  ('assistant_review_kind_columns','performance_ack_event_id IS NULL AND leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL'),
  ('assistant_review_decision_columns','decision_subject_person_id IS NULL AND decision_request_id IS NULL AND decision_step_id IS NULL AND decision_event_id IS NULL AND decision_applicant_person_id IS NULL'),
  ('assistant_review_generic_receipt','receipt_subject_kind IS NOT DISTINCT FROM ''department'' AND receipt_subject_id IS NOT NULL AND ((state=''completed'')=(receipt_event_id IS NOT NULL))')) requirements(name,expression) LOOP
   SELECT pg_get_expr(conbin,conrelid) INTO previous FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname=item.name;
-  IF previous IS NULL THEN RAISE EXCEPTION 'Department draft: missing %',item.name;END IF;
+  IF previous IS NULL THEN RAISE EXCEPTION '0743: missing %',item.name;END IF;
   EXECUTE format('ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT %I',item.name);
   EXECUTE format('ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT %I CHECK(CASE WHEN action_kind=''org.department.archive'' THEN (%s) ELSE (%s) END)',item.name,item.expression,previous);
  END LOOP;
@@ -61,7 +62,7 @@ END $$;
 DO $$ DECLARE predicate text;
 BEGIN
  SELECT pg_get_expr(indpred,indrelid) INTO predicate FROM pg_index WHERE indexrelid='app.assistant_review_generic_pending_subject'::regclass;
- IF predicate IS NULL THEN RAISE EXCEPTION 'Department draft: pending index drift';END IF;
+ IF predicate IS NULL THEN RAISE EXCEPTION '0743: pending index drift';END IF;
  DROP INDEX app.assistant_review_generic_pending_subject;
  EXECUTE 'CREATE UNIQUE INDEX assistant_review_generic_pending_subject ON app.assistant_own_leave_review(tenant_id,action_kind,receipt_subject_id) WHERE ('||predicate||') AND action_kind<>''org.department.archive''';
 END $$;
@@ -151,7 +152,7 @@ BEGIN
   definition:=pg_get_functiondef(target);
   IF target='app.native_outcome_targets_require(uuid,uuid,uuid,text,uuid,uuid)'::regprocedure THEN marker:='WHEN ''employees.qualification.maintain'' THEN r.receipt_event_id';replacement:=marker||' WHEN ''org.department.archive'' THEN r.receipt_event_id';
   ELSE marker:='''employees.qualification.maintain''';replacement:=marker||',''org.department.archive''';END IF;
-  IF(length(definition)-length(replace(definition,marker,'')))/length(marker)<>1 THEN RAISE EXCEPTION 'Department draft: closed outcome drift %',target;END IF;
+  IF(length(definition)-length(replace(definition,marker,'')))/length(marker)<>1 THEN RAISE EXCEPTION '0743: closed outcome drift %',target;END IF;
   EXECUTE replace(definition,marker,replacement);
  END LOOP;
 END $$;

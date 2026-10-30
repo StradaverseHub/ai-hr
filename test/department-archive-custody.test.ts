@@ -5,6 +5,7 @@ import {pgSqlState} from '../lib/db-error';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {departmentArchiveReviews as reviews,readDepartmentArchiveChoices,departmentArchiveEntryAvailable} from '../core/assistant-actions/department-archive-review-store';
+import {readCompletedNativeOutcomeTx} from '../core/assistant-actions/completed-outcome-readers';
 import {hireEmployee} from '../core/org';
 import {erasePersonPii} from '../core/pdpa';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
@@ -28,6 +29,13 @@ describe('genuine catalogue encrypted custody on the existing ledger',()=>{
   expect(events.find(e=>e.id===held.eventId)).toMatchObject({actorId:ctx.userId,actorType:'user',aggregateType:'department',payload:{name:'Operations',archived:true}});
   const [proof]=await owner.db.execute<{same:boolean}>(sql`select r.xmin=p.xmin and r.xmin=d.xmin as same from app.assistant_own_leave_review r join department p on p.id=r.receipt_subject_id join domain_event d on d.id=r.receipt_event_id where r.id=${r.actionId}::uuid`);expect(proof.same).toBe(true);
   const restored=(await reviews.prepare(ctx,{...intent(),expectedArchived:true,archived:false})).review,doneRestore=await reviews.confirm(ctx,confirmation(restored));expect(doneRestore.kind).toBe('completed');if(doneRestore.kind!=='completed')throw Error('Missing restore receipt');expect(doneRestore.receipt.receipt.archived).toBe(false);expect(await reviews.reopen(ctx,restored.actionId)).toEqual(doneRestore);
+ });
+ it('verifies the closed outcome bridge with current actor, native event and privacy custody',async()=>{
+  const r=(await reviews.prepare(ctx,intent())).review,done=await reviews.confirm(ctx,confirmation(r));if(done.kind!=='completed')throw Error('Missing canonical receipt');
+  const reference={source:'review',action,actionId:r.actionId},eventId=done.receipt.receipt.eventId;
+  expect((await withTenant(ctx,tx=>readCompletedNativeOutcomeTx(tx,ctx,reference))).evidence).toEqual({action,sourceId:r.actionId,eventId,currentStatus:null});
+  const userId=await createAppUser(b.tenantId,null,'hr_admin');await grantAssistant(ctx,{appUserId:userId});const other={...ctx,userId};await expect(withTenant(other,tx=>readCompletedNativeOutcomeTx(tx,other,reference))).rejects.toThrow();
+  await owner.db.update(schema.department).set({label:'Fictional later native metadata'}).where(eq(schema.department.id,b.deptB));await expect(withTenant(ctx,tx=>readCompletedNativeOutcomeTx(tx,ctx,reference))).rejects.toThrow();
  });
  it('refuses foreign logins without changing the original body or source',async()=>{
   const r=(await reviews.prepare(ctx,intent())).review,userId=await createAppUser(b.tenantId,null,'hr_admin');await grantAssistant(ctx,{appUserId:userId});const other={...ctx,userId};
