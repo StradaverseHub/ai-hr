@@ -1,0 +1,6 @@
+import {withTenant,type SessionContext} from '../../db/client';
+import {createGenericAssignedReviewStore} from './generic-assigned-review-store';
+import {ScheduleGroupMaintenance as C} from '../../lib/assistant-actions/schedule-group-maintenance-contract';
+import {withScheduleGroupMaintenanceSubjectTx,prepareScheduleGroupMaintenanceSourceTx,confirmScheduleGroupMaintenanceSourceTx,reconcileScheduleGroupMaintenanceSourceTx,readScheduleGroupMaintenanceChoicesTx,scheduleGroupMaintenanceUnavailable} from './schedule-group-maintenance-source';
+export const scheduleGroupMaintenanceReviews=createGenericAssignedReviewStore({action:C.action,human:C.Human,consequence:C.consequence,prepared:C.Prepared,completed:C.Completed,retired:C.Retired,index:C.Index,indexKind:C.indexKind,withSubject:withScheduleGroupMaintenanceSubjectTx,prepare:prepareScheduleGroupMaintenanceSourceTx,confirm:confirmScheduleGroupMaintenanceSourceTx,reconcile:reconcileScheduleGroupMaintenanceSourceTx,unavailable:scheduleGroupMaintenanceUnavailable});
+export async function readScheduleGroupMaintenanceChoices(supplied:SessionContext,selection?:unknown){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};try{return await withTenant(ctx,tx=>readScheduleGroupMaintenanceChoicesTx(tx,ctx,selection));}catch{return{kind:'unavailable' as const};}}

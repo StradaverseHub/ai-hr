@@ -1,3 +1,6 @@
+import {scheduleGroupMaintenanceReviews,readScheduleGroupMaintenanceChoices} from '../../core/assistant-actions/schedule-group-maintenance-review-store';
+import {ensureStandardRule} from '../../packs/attendance/service';
+import {setEmploymentScheduleGroupTx} from '../../core/roster';
 import {fixedItemArchiveReviews,readFixedItemArchiveChoices} from '../../core/assistant-actions/fixed-item-archive-review-store';
 import {archiveEmploymentPayComponent,setEmploymentPayComponent,seedPayComponentCatalog,listPayComponents} from '../../packs/payroll/service';
 import {tp3OpeningMaintenanceReviews,readTp3OpeningMaintenanceChoices} from '../../core/assistant-actions/tp3-opening-maintenance-review-store';
@@ -394,6 +397,11 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'employees.payment_method.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,expectedMethod:null,paymentMethod:'cash'}),
   offered:async(who,item)=>listed(await readPaymentMethodMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>setEmploymentPaymentMethod(who,{employmentId:item.employmentId,paymentMethod:'cash'},tx)},
+ 'attendance.schedule_group.maintain':{family:'hr_on_employment',screenAdmits:isAdmin,store:scheduleGroupMaintenanceReviews,
+  create:async(_w,h)=>{const rule=await ensureStandardRule(groupOf(h.base));await owner.db.update(schema.employment).set({attendanceRuleId:rule.id}).where(and(eq(schema.employment.id,h.person.employmentId),eq(schema.employment.tenantId,h.base.tenantId)));return itemOf(h,h.person.employmentId,{proposal:{expectedGroupId:rule.id,attendanceRuleId:null}});},
+  human:item=>({action:'attendance.schedule_group.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,...(item.proposal as {expectedGroupId:string;attendanceRuleId:null})}),
+  offered:async(who,item)=>listed(await readScheduleGroupMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
+  screen:(tx,who,item)=>setEmploymentScheduleGroupTx(tx,who,{employmentId:item.employmentId,attendanceRuleId:null})},
  'employees.code.maintain':{family:'hr_on_employment',store:employeeCodeMaintenanceReviews,
   // Baseline construction is an owner fixture read, before per-role Assistant authority is exercised.
   create:async(_w,h)=>{const [selected]=await owner.db.select({employeeCode:schema.employment.employeeCode}).from(schema.employment).where(and(eq(schema.employment.id,h.person.employmentId),eq(schema.employment.tenantId,h.base.tenantId)));if(!selected)throw Error('Missing native code fixture');return itemOf(h,h.person.employmentId,{proposal:{expectedCode:selected.employeeCode,employeeCode:'FIC-'+randomUUID().slice(0,8).toUpperCase()}});},

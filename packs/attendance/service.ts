@@ -108,3 +108,6 @@ export {createOfflineAdjudicator,readOfflineClockingPolicyTx,offlineEffectiveIns
 export {readOfflineClockSnapshotTx,offlineClockSnapshotPort,offlineClockPolicyRevision,type OfflineClockSnapshotDeployment} from './mobile-offline-snapshot';
 // The per-company offline clocking settings write and the review count (draft 0647). No server-only import below.
 export {setOfflineClockingPolicy,readOfflineClockingSettings,readOfflineClockingSettingsTx,offlineClockingColumnsPresentTx,countOfflineClaimsAwaitingReview,countOfflineClaimsAwaitingReviewTx,countOpenOfflineContexts,countOpenOfflineContextsTx,OfflineClockingSettingsError,type OfflineClockingSettingsRefusal,type OfflineClockingSettingsView,type OfflineClockingPolicyInput} from './mobile-offline-settings';
+
+// Assistant receipt mode remains in the same native roster owner and transaction.
+export {setEmploymentScheduleGroupTx,currentShiftIdsForEmploymentTx} from '../../core/roster';

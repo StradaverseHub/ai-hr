@@ -4159,6 +4159,13 @@
       "when": 1793330000064,
       "tag": "0727_assistant_personnel_review_navigation",
       "breakpoints": true
+    },
+    {
+      "idx": 709,
+      "version": "7",
+      "when": 1793330000066,
+      "tag": "0729_assistant_attendance_schedule_group",
+      "breakpoints": true
     }
   ]
 }
