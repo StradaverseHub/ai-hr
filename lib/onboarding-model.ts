@@ -1,3 +1,7 @@
+import type { JoinerSectionSetting, JoinerSections } from './onboarding-page-access';
+import { resolveV9CaseFields, missingV9CaseFields, validateV9CaseValue, type CaseField } from './lifecycle-v9-case-form';
+import { v9EmploymentRule } from './lifecycle-v9-employment';
+import type { EmploymentConfirmationDates } from './employment-confirmation';
 /**
  * V3.1 onboarding domain. Separate from the legacy lc_case/ITR process.
  * These aggregate values are persisted under row locks; definition IDs never depend on array indexes.
@@ -20,7 +24,7 @@ export type Facts = {
     costCentre: string;
     ic: string;
     passport: string;
-};
+} & Partial<Record<keyof EmploymentConfirmationDates, string>>;
 export type Group = {
     id: Id;
     name: string;
@@ -58,6 +62,9 @@ export type TaskDef = {
     opens: number | null;
     due: number;
     gate: boolean;
+    required?: boolean;
+    documentTemplate?: Id | null;
+    documentAction?: 'completed' | 'signed' | 'sent';
 };
 export type Checklist = {
     id: Id;
@@ -87,6 +94,10 @@ export type Config = {
     access: {
         onboarding: Id[];
         offboarding: Id[];
+        joinerViewGroups?: Id[];
+        joinerSections?: Record<Id,JoinerSectionSetting>;
+        recordGroups?: Id[];
+        recordHR?: boolean;
     };
     countEquipment: boolean;
     techGroup: string;
@@ -98,11 +109,17 @@ export type Config = {
         confirmingGroup: string;
     };
     recentActiveDays: number;
+    v9ChecklistRevision?: number;
+    v9CaseFields?: CaseField[];
 };
 export type Actor = {
     id: Id;
     name: string;
     module: boolean;
+    page?: boolean;
+    sections?: JoinerSections | null;
+    caseActions?: boolean;
+    records?: boolean;
     hr: boolean;
     master: boolean;
 };
@@ -173,6 +190,11 @@ export type Item = {
     removed: boolean;
     retiredFlag: boolean;
     revokeNeeded: boolean;
+    fulfilmentMethod?: 'rr' | 'manual';
+    dueDay?: number;
+    assignmentFailure?: string | null;
+    employeeReceipt?: { status: 'received' | 'problem'; at: string; by: Id; note: string };
+    recovery?: { offboardingCaseId: string; outcome: 'returned' | 'revoked'; at: string; by: string; reason: string };
 };
 export type Requisition = {
     id: Id;
@@ -198,6 +220,7 @@ export type Case = {
     employmentId: Id | null;
     personId: Id | null;
     personnelStatus: 'Draft' | 'Active';
+    v9DefinitionRevision?: number;
     syncedAt: string;
     source: Partial<Facts>;
     sourceVersion: string;
@@ -212,6 +235,10 @@ export type Case = {
     deviceType: string;
     floor: string;
     notes: string;
+    /** Ephemeral HR-private values; the storage service strips these from public case rows. */
+    caseValues?: Record<string,string>;
+    caseContactEmail?: string;
+    equipmentOverrides?: Record<string, { group?: string; method?: 'rr' | 'manual'; due?: number }>;
     selected: Id[];
     extras: Extra[];
     checklistOverride: Id | 'none' | null;
@@ -269,11 +296,12 @@ export class OnboardingError extends Error {
 }
 export function fail(message: string, code = 'invalid', fields: string[] = []): never { throw new OnboardingError(message, code, fields); }
 export const facts = (c: Case): Partial<Facts> => ({ ...c.local, ...c.source });
-export const effectiveFacts = (c: Case): Facts => ({
+export const effectiveFacts = (c: Case): Required<Facts> => ({
+    finalConfirmationDate: '', confirmationDate: '', probationEndDate: '', provisionalEndOn: '',
     fullName: '', employeeId: '', joinDate: '', title: '', department: '', company: '', businessGroup: '', grade: '',
     employmentType: '', supervisor: '', gbsTa: '', email: '', costCentre: '', ic: '', passport: '', ...facts(c),
 });
-export const matches = (rules: Rules, f: Facts) => Object.entries(rules).every(([key, values]) => !values?.length || values.includes(f[key as keyof Facts]));
+export const matches = (rules: Rules, f: Facts) => Object.entries(rules).every(([key, values]) => !values?.length || (key === 'employmentType' ? values.some(value => ['permanent','contract','probation'].includes(value.toLowerCase()) ? v9EmploymentRule(value, f) === true : value === f.employmentType) : values.includes(f[key as keyof Facts] as string)));
 export const canonicalRules = (rules: Rules) => JSON.stringify(Object.entries(rules).filter(([, v]) => v?.length).sort(([a], [b]) => a.localeCompare(b)).map(([key, v]) => [key, [...v!].sort()]));
 export const specificity = (rules: Rules) => Object.values(rules).filter(v => v?.length).length;
 export function matchChecklist(config: Config, c: Case): {
@@ -337,6 +365,7 @@ export function log(c: Case, a: Actor, env: Environment, action: string, detail 
 }
 const member = (config: Config, group: Id | null, user: Id) => !!group && !!config.groups.find(g => g.id === group)?.members.includes(user);
 export const inGroup = member;
+const caseActor = (a:Actor) => a.module || a.caseActions || fail('Case actions are not allowed for this group.', 'forbidden');
 const moduleActor = (a: Actor) => a.module || fail('Onboarding access is required.', 'forbidden');
 const userAllowed = (env: Environment, id: Id) => env.users.includes(id) || fail('Choose an active user in this organisation.');
 export const available = (env: Environment, id: Id, date: string) => !(env.leave[id] ?? []).includes(date);
@@ -344,7 +373,7 @@ function taskAssignee(config: Config, t: Task, env: Environment, exclude?: Id): 
     const group = config.groups.find(g => g.id === t.group);
     if (!group)
         return null;
-    return group.members.filter(id => id !== exclude && env.users.includes(id) && available(env, id, t.dueOn) && (env.taskLoads[id] ?? 0) < group.limit)
+    return group.members.filter(id => id !== exclude && env.users.includes(id) && available(env, id, t.dueOn) && (group.limit === 0 || (env.taskLoads[id] ?? 0) < group.limit))
         .sort((a, b) => (env.taskLoads[a] ?? 0) - (env.taskLoads[b] ?? 0) || (env.lastTaskAssignment[a] ?? '').localeCompare(env.lastTaskAssignment[b] ?? '') || group.members.indexOf(a) - group.members.indexOf(b))[0] ?? null;
 }
 export function assignTask(config: Config, c: Case, t: Task, a: Actor, env: Environment, rerun = false) {
@@ -422,6 +451,62 @@ function autoApprove(item: Item, c: Case, a: Actor, env: Environment) {
     }
     refreshApproval(item);
 }
+export function equipmentDate(c: Case, item: Pick<Item, 'dueDay'>): string {
+    const join = effectiveFacts(c).joinDate, day = item.dueDay ?? 1;
+    if (day === 0) { if (!validDate(join)) fail('Choose a valid join date.'); return join; }
+    const due = dayDate(join, day); if (!validDate(due)) fail('The equipment due date is outside the supported calendar.'); return due;
+}
+function validateEquipmentOverrides(config: Config, c: Case) {
+    for (const [id, override] of Object.entries(c.equipmentOverrides ?? {})) {
+        if (!config.catalogue.some(item => item.id === id) || override.group !== undefined && !config.groups.some(group => group.id === override.group) || override.method !== undefined && !['rr','manual'].includes(override.method) || override.due !== undefined && (!Number.isInteger(override.due) || override.due < -999 || override.due > 9999)) fail('Review the equipment assignment overrides.');
+    }
+}
+export type EquipmentBulk = { ids: string[]; group?: string; method?: 'rr' | 'manual'; due?: number };
+export function assignEquipment(config: Config, c: Case, item: Item, a: Actor, env: Environment) {
+    const group = config.groups.find(group => group.id === item.team), due = equipmentDate(c, item);
+    const candidates = (group?.members ?? []).filter(id => env.users.includes(id) && available(env, id, due) && (!group!.limit || (env.taskLoads[id] ?? 0) < group!.limit));
+    candidates.sort((a, b) => (env.taskLoads[a] ?? 0) - (env.taskLoads[b] ?? 0) || group!.members.indexOf(a) - group!.members.indexOf(b));
+    item.claim = candidates[0] ?? null;
+    item.assignmentFailure = item.claim ? null : 'No eligible member is available on ' + due + ' within this team’s open-task limit.';
+    if (item.claim) env.taskLoads[item.claim] = (env.taskLoads[item.claim] ?? 0) + 1;
+    log(c, a, env, item.claim ? 'item.assigned' : 'item.assignment_failed', item.name);
+}
+export function manualEquipment(config: Config, c: Case, id: string, user: string | null, a: Actor, env: Environment, rr = false) {
+    const request = currentReq(c), item = request?.items.find(item => item.id === id);
+    if (c.state !== 'submitted' || !request || request.cancelledAt || request.handedAt || !item || !activeItem(item) || ['ready','handed'].includes(item.state)) fail('Choose an open approved equipment item.');
+    if (!a.module && !(a.caseActions&&a.sections?.equip==='act') && !inGroup(config, item.team, a.id)) fail('Only the fulfilling team or onboarding editors can assign this item.', 'forbidden');
+    if (user && (!env.users.includes(user) || !inGroup(config, item.team, user))) fail('Choose an eligible member of the fulfilling team.');
+    if (item.claim) env.taskLoads[item.claim] = Math.max(0, (env.taskLoads[item.claim] ?? 0) - 1);
+    item.claim = null; item.assignmentFailure = null;
+    if (rr) assignEquipment(config, c, item, a, env);
+    else { item.claim = user; if (user) env.taskLoads[user] = (env.taskLoads[user] ?? 0) + 1; log(c, a, env, 'item.assigned', item.name + (user ? ' · ' + (env.userNames?.[user] ?? 'Team member') : ' · unassigned')); }
+}
+export function bulkEquipment(config: Config, c: Case, change: EquipmentBulk, a: Actor, env: Environment) {
+    if(!a.module&&!(a.caseActions&&a.sections?.equip==='act'))fail('Equipment case actions are required.','forbidden');
+    if (!change.ids.length || new Set(change.ids).size !== change.ids.length || change.group === undefined && change.method === undefined && change.due === undefined) fail('Choose items and at least one equipment change.');
+    if (change.group !== undefined && !config.groups.some(group => group.id === change.group)) fail('Choose an existing assignment group.');
+    if (change.method !== undefined && !['rr','manual'].includes(change.method)) fail('Choose Round robin or Manual.');
+    if (change.due !== undefined && (!Number.isInteger(change.due) || change.due < -999 || change.due > 9999)) fail('Choose an equipment due day from -999 to 9999.');
+    let changed = change.ids.length;
+    if (c.state === 'pending') {
+        if (change.ids.some(id => ![...c.selected, ...c.extras.map(item => item.catalogueId)].includes(id) || !config.catalogue.some(item => item.id === id))) fail('Choose only items selected on this case.');
+        c.equipmentOverrides ??= {};
+        for (const id of change.ids) c.equipmentOverrides[id] = { ...c.equipmentOverrides[id], ...(change.group !== undefined ? { group: change.group } : {}), ...(change.method !== undefined ? { method: change.method } : {}), ...(change.due !== undefined ? { due: change.due } : {}) };
+    } else {
+        const request = currentReq(c);
+        if (c.state !== 'submitted' || !request || request.cancelledAt || request.handedAt) fail('This requisition is closed.');
+        if (change.ids.some(id => !request.items.some(item => item.id === id))) fail('An equipment item is no longer available.');
+        const targets = request.items.filter(item => change.ids.includes(item.id) && !item.removed && !['rejected','withdrawn'].includes(item.approval) && !['ready','handed'].includes(item.state));
+        changed = targets.length; if (!changed) fail('No open equipment items match this change.');
+        for (const item of targets) {
+            if (change.due !== undefined) { item.dueDay = change.due; }
+            if (change.method !== undefined) item.fulfilmentMethod = change.method;
+            if (change.group !== undefined && change.group !== item.team) { if (item.claim) env.taskLoads[item.claim] = Math.max(0, (env.taskLoads[item.claim] ?? 0) - 1); item.team = change.group; item.claim = null; item.assignmentFailure = null; }
+            if ((item.fulfilmentMethod ?? (config.v9ChecklistRevision ? 'rr' : 'manual')) === 'rr' && !item.claim && activeItem(item)) assignEquipment(config, c, item, a, env);
+        }
+    }
+    log(c, a, env, 'equipment.bulk_updated', changed + ' items · ' + [change.group ? 'team ' + config.groups.find(group => group.id === change.group)!.name : '', change.method ?? '', change.due !== undefined ? 'due Day ' + change.due : ''].filter(Boolean).join(' · '));
+}
 export function addItem(config: Config, c: Case, r: Requisition, cat: Catalogue, source: 'matched' | 'exception', fromCase: boolean, reason: string, send: boolean, confirmedBy: Id | null, a: Actor, env: Environment): Item {
     if (!cat.active)
         fail('This catalogue item is retired.');
@@ -447,14 +532,24 @@ export function addItem(config: Config, c: Case, r: Requisition, cat: Catalogue,
             env.lifetimeApprovals[id] = (env.lifetimeApprovals[id] ?? 0) + 1;
         }
     }
+    if (config.v9ChecklistRevision) {
+        const override = c.equipmentOverrides?.[cat.id];
+        item.team = override?.group ?? item.team; item.fulfilmentMethod = override?.method ?? 'rr'; item.dueDay = override?.due ?? -1;
+    }
     r.items.push(item);
     autoApprove(item, c, a, env);
+    if (item.fulfilmentMethod === 'rr' && activeItem(item)) assignEquipment(config, c, item, a, env);
     log(c, a, env, 'item.added', cat.name);
     return item;
 }
 const REQUIRED_FIELD_LABELS: Record<string, string> = { fullName: 'Full name', joinDate: 'Join date', title: 'Job title', department: 'Department', company: 'Company', supervisor: 'Supervisor', hiring: 'New hire or replacement', replacedEmployee: 'Employee being replaced' };
 /** Shared required-field projection for validation and the onboarding preparation UI. */
-export function missingCaseFields(c: Case): string[] {
+export function nativeCaseFormValues(c: Case): Record<string,string> {
+    const f = effectiveFacts(c);
+    return { ...c.caseValues, name: f.fullName, empNo: f.employeeId, joinInput: f.joinDate, position: f.title, dept: f.department, company: f.company, group: f.businessGroup, supervisor: f.supervisor, ta: f.gbsTa, hireType: c.hiring, replacing: c.replacedEmployee, email: c.caseContactEmail ?? f.email, floor: c.floor, costCentre: f.costCentre, icNo: f.ic, passportNo: f.passport, notes: c.notes };
+}
+export function missingCaseFields(c: Case, config?: Config, hr = true): string[] {
+    if (config?.v9CaseFields) return missingV9CaseFields(resolveV9CaseFields('onb', config.v9CaseFields), effectiveFacts(c), nativeCaseFormValues(c), hr).map(field => field.key);
     const f = effectiveFacts(c), missing = ['fullName', 'joinDate', 'title', 'department', 'company', 'supervisor'].filter(k => !f[k as keyof Facts]?.trim());
     if (!c.hiring)
         missing.push('hiring');
@@ -462,12 +557,13 @@ export function missingCaseFields(c: Case): string[] {
         missing.push('replacedEmployee');
     return missing;
 }
-export function validateCase(config: Config, c: Case) {
+export function validateCase(config: Config, c: Case, hr = true) {
     if (c.checklistOverride && c.checklistOverride !== 'none' && !config.checklists.some(cl => cl.id === c.checklistOverride) && !(c.personnelStatus === 'Active' && c.confirmedChecklist?.id === c.checklistOverride))
         fail('The selected checklist is unavailable. Choose another checklist or No checklist.', 'invalid', ['checklistOverride']);
-    const f = effectiveFacts(c), missing = missingCaseFields(c);
+    const f = effectiveFacts(c), missing = missingCaseFields(c, config, hr);
+    validateEquipmentOverrides(config, c);
     if (missing.length)
-        fail('Complete: ' + missing.map(key => REQUIRED_FIELD_LABELS[key] ?? key).join(', '), 'required', missing);
+        fail('Complete: ' + missing.map(key => config.v9CaseFields?.find(field => field.key === key)?.label || REQUIRED_FIELD_LABELS[key] || key).join(', '), 'required', missing);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(f.joinDate) || Number.isNaN(Date.parse(f.joinDate)) || new Date(f.joinDate).toISOString().slice(0, 10) !== f.joinDate)
         fail('Enter a valid join date.', 'invalid', ['joinDate']);
     if (f.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email))
@@ -489,12 +585,12 @@ export function validateCase(config: Config, c: Case) {
         fail('An item may only be requested once.');
 }
 export function submitCase(config: Config, c: Case, a: Actor, env: Environment) {
-    moduleActor(a);
+    caseActor(a);
     if (c.state === 'cancelled')
         fail('Reopen the case before submitting.');
     if (c.state === 'submitted' && !c.reconcileNeeded)
         return;
-    validateCase(config, c);
+    validateCase(config, c, a.hr);
     const chosen = matchChecklist(config, c).checklist;
     if (c.state === 'pending' && !chosen)
         fail('Choose an onboarding checklist before submitting.', 'required', ['checklistOverride']);
@@ -519,6 +615,7 @@ export function submitCase(config: Config, c: Case, a: Actor, env: Environment) 
                 if (task.by === 'group' && task.method === 'rr' && !task.assignee && task.status !== 'done')
                     assignTask(config, c, task, a, env);
             c.confirmedChecklist = chosen ? structuredClone(chosen) : null;
+            if (config.v9ChecklistRevision) c.v9DefinitionRevision = config.v9ChecklistRevision;
             c.reconcileNeeded = false;
             log(c, a, env, 'case.reconfirmed');
         }
@@ -529,6 +626,7 @@ export function submitCase(config: Config, c: Case, a: Actor, env: Environment) 
     c.tasks = (chosen?.tasks ?? []).map(t => instantiate(t, chosen!, c));
     c.confirmedChecklist = chosen ? structuredClone(chosen) : null;
     c.state = 'submitted';
+    if (config.v9ChecklistRevision) c.v9DefinitionRevision = config.v9ChecklistRevision;
     c.submittedAt = env.now;
     c.submittedBy = a.id;
     c.reconcileNeeded = false;
@@ -547,7 +645,7 @@ export function removeItem(config: Config, c: Case, item: Item, a: Actor, env: E
     if (!r || r.handedAt || r.cancelledAt)
         fail('Items cannot be removed after handover.');
     if (viaCase) {
-        moduleActor(a);
+        caseActor(a);
         if (!item.fromCase)
             fail('Case edits cannot remove items added by Group Tech.');
     }
@@ -598,34 +696,67 @@ export function reconcileItems(config: Config, c: Case, a: Actor, env: Environme
         r.noteVersion++;
     }
 }
-export type CasePatch = Partial<Pick<Case, 'hiring' | 'replacedEmployee' | 'deviceType' | 'floor' | 'notes' | 'selected' | 'extras' | 'checklistOverride'>> & {
+export type CasePatch = Partial<Pick<Case, 'hiring' | 'replacedEmployee' | 'deviceType' | 'floor' | 'notes' | 'selected' | 'extras' | 'checklistOverride' | 'equipmentOverrides' | 'caseValues' | 'caseContactEmail'>> & {
     local?: Partial<Facts>;
 };
 export function saveCase(config: Config, c: Case, patch: CasePatch, a: Actor, env: Environment) {
-    moduleActor(a);
+    caseActor(a);
+    if(!a.module&&a.sections){
+        const equal=(left:unknown,right:unknown)=>JSON.stringify(left)===JSON.stringify(right);
+        for(const [key,value] of Object.entries(patch)){
+            if(value===undefined)continue;
+            const changed=key==='local'?Object.entries(patch.local??{}).some(([field,value])=>value!==effectiveFacts(c)[field as keyof Facts]):!equal(value,c[key as keyof Case]);
+            if(!changed)continue;
+            const permitted=['selected','extras','equipmentOverrides','deviceType'].includes(key)?a.sections.equip==='act':key==='checklistOverride'?a.sections.checklist==='all':key==='notes'?a.sections.notes==='view':a.sections.case==='view';
+            if(!permitted)fail('This case section is hidden or read-only for your group.','forbidden');
+        }
+    }
     if (c.state === 'cancelled')
         fail('Reopen the case to edit it.');
+    if (patch.caseValues !== undefined || patch.caseContactEmail !== undefined) {
+        if (!config.v9CaseFields) fail('Configure the V9 case form before editing its values.');
+        const fields = resolveV9CaseFields('onb', config.v9CaseFields);
+        for (const [key,value] of Object.entries(patch.caseValues ?? {})) {
+            const field = fields.find(field => field.key === key && field.custom);
+            if (!field) fail('Choose an existing custom case field.');
+            if (field.hrOnly && !a.hr) fail('Company HR access is required for this case field.', 'forbidden');
+            try { validateV9CaseValue(field, value); } catch (error) { fail(error instanceof Error ? error.message : 'Review the case field.'); }
+        }
+        if (patch.caseContactEmail !== undefined && fields.find(field=>field.key==='email')?.hrOnly && !a.hr) fail('Company HR access is required for this case field.', 'forbidden');
+        if (patch.caseContactEmail !== undefined && patch.caseContactEmail && !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(patch.caseContactEmail)) fail('Enter a valid new hire email.');
+        if (patch.caseValues !== undefined) c.caseValues = { ...c.caseValues, ...structuredClone(patch.caseValues) };
+        if (patch.caseContactEmail !== undefined) c.caseContactEmail = patch.caseContactEmail;
+    }
+    if (!a.hr) {
+        const fieldKeys = { hiring: 'hireType', replacedEmployee: 'replacing', floor: 'floor', notes: 'notes', deviceType: 'deviceType' } as const;
+        for (const [key, fieldKey] of Object.entries(fieldKeys)) {
+            if (patch[key as keyof CasePatch] !== undefined && config.v9CaseFields?.some(field => field.key === fieldKey && field.hrOnly))
+                fail('Company HR access is required for this case field.', 'forbidden');
+        }
+    }
     const priorChecklist = JSON.stringify(matchChecklist(config, c).checklist);
     for (const [key, value] of Object.entries(patch.local ?? {})) {
+        if (config.v9CaseFields && value !== effectiveFacts(c)[key as keyof Facts]) fail('This field comes from Personnel Management. Edit it there.');
         if (c.source[key as keyof Facts] !== undefined && value !== c.source[key as keyof Facts])
             fail('This field comes from Personnel Management. Edit it there.');
         if (['costCentre', 'ic', 'passport'].includes(key) && !a.hr)
             fail('HR access is required.', 'forbidden');
         c.local[key as keyof Facts] = value;
     }
-    for (const key of ['hiring', 'replacedEmployee', 'deviceType', 'floor', 'notes', 'selected', 'extras', 'checklistOverride'] as const)
+    for (const key of ['hiring', 'replacedEmployee', 'deviceType', 'floor', 'notes', 'selected', 'extras', 'checklistOverride', 'equipmentOverrides'] as const)
         if (patch[key] !== undefined)
             (c as unknown as Record<string, unknown>)[key] = structuredClone(patch[key]);
+    validateEquipmentOverrides(config, c);
     if (c.state === 'submitted') {
         if (priorChecklist !== JSON.stringify(matchChecklist(config, c).checklist))
             c.reconcileNeeded = true;
-        validateCase(config, c);
+        validateCase(config, c, a.hr);
         reconcileItems(config, c, a, env);
     }
     log(c, a, env, 'case.saved');
 }
 export function cancelCase(c: Case, reason: string, a: Actor, env: Environment, note = '') {
-    moduleActor(a);
+    caseActor(a);
     if (!reason.trim())
         fail('A cancellation reason is required.');
     if (c.state === 'cancelled')
@@ -646,7 +777,7 @@ export function cancelCase(c: Case, reason: string, a: Actor, env: Environment, 
     log(c, a, env, 'case.cancelled', reason + (note ? ' · ' + note : ''));
 }
 export function reopenCase(c: Case, a: Actor, env: Environment) {
-    moduleActor(a);
+    caseActor(a);
     if (c.state !== 'cancelled')
         fail('Only cancelled cases can be reopened.');
     c.state = 'pending';
@@ -670,6 +801,8 @@ export function setTask(config: Config, c: Case, taskId: Id, status: Task['statu
         fail('Task not found.');
     if (t.assignee !== a.id)
         fail('Only the assigned person can update this task.', 'forbidden');
+    if (t.documentTemplate && status === 'done')
+        fail('Complete the linked document to finish this task.');
     if (t.by === 'joiner' && t.gate && status === 'done')
         fail('Complete the device acknowledgement form to finish this task.');
     if (t.opensOn && t.opensOn > env.today)
@@ -682,7 +815,7 @@ export function setTask(config: Config, c: Case, taskId: Id, status: Task['statu
     log(c, a, env, 'task.status', t.name + ' · ' + status);
 }
 export function manualTask(config: Config, c: Case, id: Id, user: Id | null, a: Actor, env: Environment, rr = false) {
-    moduleActor(a);
+    if(!a.module&&!(a.caseActions&&a.sections?.checklist==='all'))fail('Checklist case actions are required.','forbidden');
     if (c.state !== 'submitted')
         fail('Submit this case first.');
     const t = c.tasks.find(t => t.id === id);
@@ -730,6 +863,7 @@ export function decide(config: Config, c: Case, itemIds: Id[], decision: 'approv
         refreshApproval(item);
         if (decision === 'approve')
             autoApprove(item, c, a, env);
+        if (item.fulfilmentMethod === 'rr' && !item.claim && activeItem(item)) assignEquipment(config, c, item, a, env);
     }
 }
 export function assignApproval(config: Config, c: Case, itemId: Id, stepId: Id, user: Id | null, a: Actor, env: Environment) {
@@ -751,6 +885,7 @@ export function assignApproval(config: Config, c: Case, itemId: Id, stepId: Id, 
                 s.fallback = !id && s.method === 'rr';
                 s.unavailable = !id;
                 autoApprove(i, c, a, env);
+                if (i.fulfilmentMethod === 'rr' && !i.claim && activeItem(i)) assignEquipment(config, c, i, a, env);
             }
     log(c, a, env, 'approval.assigned', item.name);
 }
@@ -760,8 +895,10 @@ export function fulfil(config: Config, c: Case, itemId: Id, status: 'todo' | 'pr
         fail('This item is not available for fulfilment.');
     if (!member(config, i.team, a.id))
         fail('Only the fulfilling team can work this item.', 'forbidden');
+    if (i.fulfilmentMethod && ['ready','handed'].includes(i.state)) { if (status === 'done') return; fail('Completed equipment stays on its requisition.', 'conflict'); }
     if (i.claim && i.claim !== a.id)
         fail('A teammate has claimed this item.', 'conflict');
+    if (i.claim && !['ready','handed'].includes(i.state)) env.taskLoads[i.claim] = Math.max(0, (env.taskLoads[i.claim] ?? 0) - 1);
     if (status === 'todo') {
         i.state = i.card && i.stage === 'tech' ? 'printed' : 'todo';
         i.claim = null;
@@ -769,6 +906,7 @@ export function fulfil(config: Config, c: Case, itemId: Id, status: 'todo' | 'pr
     else if (status === 'progress') {
         i.state = 'progress';
         i.claim = a.id;
+        env.taskLoads[a.id] = (env.taskLoads[a.id] ?? 0) + 1;
     }
     else {
         i.claim = null;
@@ -779,9 +917,12 @@ export function fulfil(config: Config, c: Case, itemId: Id, status: 'todo' | 'pr
             if (!tech)
                 fail('Configure the Group Tech fulfilling group before printing access cards.');
             i.team = tech.id;
+            if (i.fulfilmentMethod === 'rr') assignEquipment(config, c, i, a, env);
         }
-        else
+        else {
             i.state = 'ready';
+            if (i.fulfilmentMethod) i.claim = a.id;
+        }
     }
     log(c, a, env, 'item.status', i.name + ' · ' + i.state);
 }
@@ -819,6 +960,7 @@ export function validateConfig(config: Config) {
         if (new Set(list.map(x => x.id)).size !== list.length)
             fail('Definition identifiers must be unique.');
     const groups = new Set(config.groups.map(g => g.id)), flows = new Set(config.workflows.map(w => w.id)), routes = new Set(config.routings.map(r => r.id));
+    if ([...(config.access.joinerViewGroups??[]),...(config.access.recordGroups??[]),...Object.keys(config.access.joinerSections??{})].some(id=>!groups.has(id)))fail('Choose existing groups for page and request-record access.');
     const allowedRules = (rules: Rules, allowed: string[], single = false) => {
         for (const [key, values] of Object.entries(rules))
             if (values?.length && (!allowed.includes(key) || single && values.length > 1))
@@ -832,8 +974,8 @@ export function validateConfig(config: Config) {
         for (const row of route.rows)
             allowedRules(row.rules, ['businessGroup', 'company', 'department', 'title'], true);
     for (const g of config.groups)
-        if (!g.name.trim() || !Number.isInteger(g.limit) || g.limit < 1 || new Set(g.members).size !== g.members.length)
-            fail('Choose a group name, positive task limit and distinct members.');
+        if (!g.name.trim() || !Number.isInteger(g.limit) || g.limit < 0 || new Set(g.members).size !== g.members.length)
+            fail('Choose a group name, nonnegative task limit (zero means unlimited) and distinct members.');
     for (const list of [...config.checklists.map(c => c.tasks), ...config.workflows.map(w => w.steps), ...config.routings.map(r => r.rows)])
         if (new Set(list.map(x => x.id)).size !== list.length)
             fail('Task, step and routing-row identifiers must be unique within each definition.');

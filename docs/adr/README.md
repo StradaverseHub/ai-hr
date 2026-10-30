@@ -63,6 +63,7 @@ Read only records relevant to the task. A newer decision supersedes an older one
 - [ADR-0049 — Job-function partner roles](0049-job-function-partner-roles.md)
 - [ADR-0050 — Self Personal Tax Relief (LHDN TP1), yearly self-service + PCB divisor fix](0050-tp1-self-relief.md)
 - [ADR-0051 — Feedback module v2: close the loop (post-deploy refute) + bulk review + dashboard](0051-feedback-loop-closure.md)
+- [Feedback release milestones](feedback-release-milestones.md) — proposed extension of ADR-0051; environment evidence and Kanban projection.
 - [ADR-0052 — Hierarchy visibility (direct + indirect / HOD) and approval delegation](0052-hierarchy-visibility-and-delegation.md)
 - [ADR-0053 — Automated Probation / Contract / Internship Review Workflow](0053-employment-review-workflow.md)
 - [ADR-0054 — Location master data (attendance state input)](0054-location-master-data.md)

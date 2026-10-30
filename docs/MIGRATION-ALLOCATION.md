@@ -5,6 +5,27 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## V9 coordinated staging successor — 30 October 2026
+
+The owner explicitly resumed this session, authorized merging V9 and deploying to staging, and appointed a release orchestrator. V9 is the next authorized application release after Board handback and the separate queue-guard verification window. No AI, MOBILE, performance or Bank feature payload is included. Production remains unauthorized.
+
+The fresh canonical/accepted baseline is `2ab4f6c120a28692857e93adeed072d463713ab6`: preserve its complete571-entry journal and every applied SQL byte, including0721/0722 atidx684–685/when1793330000050–51. V9's earlier verification-only0713–0720/idx694–701/when42–49 positions were never installed and are superseded: those lower timestamps would now be skipped.
+
+The freeze audit inspected1887 refs/237 unique journals plus476 registered worktree journals. Known unapplied AI personnel claims end at54 and performance0726 at55; none of the inspected worktrees claimed56 or later. The release orchestrator and the AI, parity, performance, MOBILE and Bank owners were notified. Lower provisional AI0703–0712 and other uninstalled claims must be reallocated above the actual installed watermark before their later owning release; they are not silently included or replayed here. Bank's proposed successor64/idx694 remains provisional until this release's actual handback.
+
+V9 appends immediately after the installed prefix atidx686–693/when1793330000056–63. Six SQL bodies remain byte-identical to verified435d6f7a7. The still-unapplied0714/0719 bodies now implement the HTML’s explicit self-test behavior for pending/closed cases: the frozen recipient must equal the initiating actor, CC must be empty and no onboarding contact is permitted; real delivery remains restricted to submitted cases. The installed571-entry prefix and these eight allocated positions are unchanged. Revalidate the current source/ledger and peer claims before admission. This allocation does not waive authenticated aggregate verification, migration rehearsals, scoped rendered acceptance, the shared lease or exact staging arrival.
+
+| Index | Timestamp | Filename | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|686|1793330000056|0713_lifecycle_v9|7cd451abc6b6fd5a2a7bd46aae2078e6d7b33d795f07e2c132d42637a44aeb3f|
+|687|1793330000057|0714_lifecycle_v9_email|6e2a5914825c1b89a73ba02c0da88f24c63c641ea6eab73280197b564387271b|
+|688|1793330000058|0715_lifecycle_v9_email_assets|7cce0a32d622fa500692deee33d1dc2738009fdddb3c9a7500c627cd50ede0ce|
+|689|1793330000059|0716_lifecycle_v9_events|98f23c7f62f93508f7da8eb4d51c891467ee87ec6d090cae2c64e1e111b51a1b|
+|690|1793330000060|0717_lifecycle_v9_delivery_review|a2a29747b6fcfea39dfc2e54f554f2f44fc9d365c911796066de1a4c36d2979f|
+|691|1793330000061|0718_lifecycle_v9_employment_class|8fcdc41c6db137aa69e29c5dab44a8788b7c3c30620b97d215d7bbbb65f34dd2|
+|692|1793330000062|0719_lifecycle_v9_business_recipients|4547c284bbacdf709cd5a5c66b1f7458a981cc2dec40825ead194081ab9f2f22|
+|693|1793330000063|0720_lifecycle_v9_self_equipment|3e7f1b5fe1b08e33d9424ef8262649c4c9ca22356a893987aeaa1d81f391846b|
+
 ## Feedback menu operator switch — 30 October 2026 (unapplied successor)
 
 Branch `claude/feedback-menu-operator-toggle-616263` includes verified staging source
@@ -390,3 +411,74 @@ fresh exact-SHA full gate. Its older focused/full-gate evidence stays tied to th
 Other unapplied lower-timestamp claims likewise require a fresh coordinated append above the actual
 installed watermark before their own release. V9's eight drafts remain unallocated. This allocation
 grants no production deployment or human staging acceptance.
+
+## Feedback Kanban and release evidence — isolated development, 30 October 2026
+
+`codex/feedback-kanban-release-status-20261030` starts at freshly fetched matching main/alpha
+`2ab4f6c120a28692857e93adeed072d463713ab6`. Registered worktree inspection found filenames through
+0726 and sequences through 1793330000064. This development candidate reserves
+`0727_feedback_release_evidence`, idx686 / sequence1793330000065, after its unchanged canonical prefix.
+It adds nullable feedback release evidence without guessing environments for existing records.
+The standard private `aihr-staging` alias was unavailable in this session, so the installed watermark
+has **not** been verified. This is a provisional development/CI position, not an installation allocation.
+Before integration/application, reconcile competing source claims, actual ordered ledger and current
+canonical journal with the release owner. No applied SQL bytes, installation or acceptance are changed.
+
+## Feedback Kanban staging reconciliation — 30 October 2026
+
+The owner explicitly requested reconciliation, required release checks and staging deployment of
+PR114. Fresh main/alpha and healthy staging source are2ab4f6c12; staging build
+IlVluYN1mVKchUHs5im0D has571 applied entries, through0722 / sequence1793330000051.
+The repository's ordered exact-ledger verifier matched the entire prefix, including the two audited
+historical-byte identities. The prefix and every applied SQL byte remain unchanged.
+
+The earlier0727 filename is superseded by **0728_feedback_release_evidence**, idx686 /
+sequence**1793330000065**, because an unmerged Assistant draft also claims the0727 number.
+The SQL body is unchanged (SHA256 `d0914e5ec06a1f78b5e081164ab46330f37c29c8c3b2d0d6c592b205cee374c7`). A fresh inspection of1,928 local/origin refs
+and488 registered worktrees found no other claim at or above…065. The…052–064 claims remain
+unmerged development drafts, with collisions already present at…055 and…064; none is a prerequisite
+of this feedback change or included implicitly. Their owners must reallocate those unapplied entries
+above the actual installed watermark before their later integration/application. No foreign SQL,
+reservation or branch is edited. This owner-authorized migration-bearing release runs alone in the
+shared queue, against the complete unchanged canonical prefix. Installation still requires the frozen
+candidate's authenticated full release witness, populated-baseline upgrade proof and exclusive lease.
+
+
+## Feedback preparation after V9 publication — 30 October 2026
+
+The earlier Feedback gate passed at d82ff8bee against baseline2ab4f6c12. Its installation
+preflight refused when alpha advanced to V9 d6cb83d62; no Feedback source, packet, migration
+or service mutation occurred. The claimed-only Feedback lease was safely aborted. The owner’s
+later release order places Onboarding/V9 first, then the combined MOBILE, ENHANCEMENT,
+BREADCRUMB and PR115 release, before this Feedback release can claim the window.
+
+This separate preparation branch preserves d6cb83d62’s entire journal prefix and moves the
+still-unapplied0728 entry to provisional idx694 / sequence1793330000065. Its SQL SHA256 remains
+`d0914e5ec06a1f78b5e081164ab46330f37c29c8c3b2d0d6c592b205cee374c7`. This is source
+compatibility preparation only. Reconcile index, sequence and competing claims again against
+the actual accepted combined baseline and complete ordered staging ledger before freezing
+the next candidate. The earlier gate is preserved for its original source and baseline; it
+does not authorize installation of this merged preparation source. No staging claim, application,
+acceptance or production authority is implied.
+
+## Five-scope MOBILE successor — compatibility preparation, 30 October 2026
+
+The owner authorized Feedback PR114 to join MOBILE, ENHANCEMENT, BREADCRUMB and PR115 source
+in one isolated successor release. MOBILE remains the aggregate integration and installation owner.
+The prepared source normally merges Feedback member12893f30d8a5d739ed6ec196a727c4ca30d6d90b
+with the preserved four-scope checkpoint898b2e53b3649c1ad4e68b6917763fcbb0ad9e28.
+It retains V9d6cb83d620d8d4380c981a72fc41628780840b4e's exact579-entry journal prefix and
+existing SQL bytes, then appends only0728_feedback_release_evidence at provisional idx694 /
+sequence1793330000065. Its SQL SHA256 remains
+`d0914e5ec06a1f78b5e081164ab46330f37c29c8c3b2d0d6c592b205cee374c7`.
+
+This is compatibility preparation, not a final installation allocation or accepted baseline.
+Unmerged drafts now claim filenames through0737 and sequences through1793330000074, with
+collisions among those drafts. Do not silently advance Feedback over foreign claims, import
+unrelated payloads or infer that unmerged draft positions are installation reservations.
+Before final freeze, coordinate canonical claims against V9's actual accepted ordered ledger and
+watermark. Preserve the original member witnesses at their original candidates and baselines.
+The migration-bearing aggregate needs its own authenticated complete witness, populated-baseline
+upgrade and restore-readiness evidence, web/native/controller checks, one truthful isolated ticket
+and explicit combined human acceptance. PR115 source inclusion does not enable recovery-v2
+installation adoption. No staging claim, migration application or production authority follows here.

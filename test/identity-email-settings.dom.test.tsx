@@ -110,3 +110,11 @@ describe('SMTP settings discovery and temporary demo testing',()=>{
   m.allowed.mockResolvedValue(true);m.read.mockRejectedValue(new EmailSettingsError('unavailable'));await page();expect(screen.getByText(messages.identityEmail.errors.unavailable)).toBeInTheDocument();expect(screen.queryByLabelText(messages.identityEmail.host)).toBeNull();
  });
 });
+it('shows confirmed profile addresses and keeps installation-default activation as the explicit default',async()=>{
+ m.allowed.mockResolvedValue(true);const config={...defaultEmailConfig,host:'smtp.fixture.test',from:'default@fixture.test'};
+ m.read.mockResolvedValue({supportsLifecycleSenders:true,lifecycleSenders:[{profile:'hr',from:'confirmed-hr@fixture.test',connectionId:'fixture',appliedAt:'2026-10-29T00:00:00Z',hasUnappliedChanges:true},{profile:'onboarding',from:config.from,hasUnappliedChanges:false},{profile:'noreply',from:config.from,hasUnappliedChanges:false}],active:config,connections:[],selectedConnectionId:'fixture',selectedConnectionName:'Fictional sender',draft:{id:'version',config,hasPassword:false,testedAt:'2026-10-29T00:00:00Z'},revision:'revision',testRecipient:'operator@fixture.test'});
+ await page({connection:'fixture',success:'sender'});
+ expect(screen.getByText(messages.identityEmail.lifecycleSenderTitle)).toBeVisible();expect(screen.getByText(/confirmed-hr@fixture.test/)).toBeVisible();expect(screen.getByText(messages.identityEmail.senderPending)).toBeVisible();
+ const target=screen.getByLabelText(messages.identityEmail.applyTarget);expect(target).toHaveValue('');expect(within(target).getAllByRole('option').map(option=>option.getAttribute('value'))).toEqual(['','onboarding','hr','noreply']);fireEvent.change(target,{target:{value:'hr'}});expect(target).toHaveValue('hr');
+ expect(screen.getByLabelText(messages.identityEmail.received)).toBeRequired();expect(screen.getByText(messages.identityEmail.success.sender)).toBeVisible();expect(screen.queryByText(messages.identityEmail.success.apply)).not.toBeInTheDocument();
+});

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { feedbackBoardStatus, feedbackStatusTone as statusTone } from '@/lib/feedback-release';
 // r399: board rows prefetch the item on hover/focus (components/intent-link.tsx), so opening one skips the shell.
 import Link from '@/components/intent-link';
 import { useTranslations } from 'next-intl';
@@ -10,29 +11,6 @@ import { formatFeedbackDateTime } from '@/lib/feedback-date';
 import { DEFAULT_FEEDBACK_SORT, flipFeedbackSort, type FeedbackSort } from '@/lib/feedback-sort';
 import { ClientPager, useClientPageQuery } from '@/components/client-pager';
 import { bulkReviewAction } from './actions';
-
-// Kept in sync with statusTone in page.tsx (a pure mapping; duplicated to stay inside the client boundary).
-function statusTone(status: string): string {
-  switch (status) {
-    case 'open':
-      return 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400';
-    case 'planned':
-      return 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400';
-    case 'contested':
-      return 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400';
-    case 'approved':
-    case 'building':
-      return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400';
-    // Matches app/feedback/page.tsx — amber, the "needs you" colour, not a shade of in-progress.
-    case 'blocked':
-      return 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300';
-    case 'done':
-    case 'deployed':
-      return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400';
-    default:
-      return 'bg-muted text-muted-foreground';
-  }
-}
 
 /** The review list with checkbox multi-select + a bulk action bar (approve / cancel the selection at once).
  *  The bar is a server-action form carrying the selected ids; the service skips items in the wrong state and
@@ -196,8 +174,8 @@ export function BulkTable({
               <td className="px-4 py-2.5 text-muted-foreground">{t(`category_${r.category}`)}</td>
               <td className="px-4 py-2.5 text-muted-foreground">{r.reporter ?? t('accountReporter')}{r.reporter === null && r.reporterUserId && <span className="block break-all text-[10px]">{r.reporterUserId}</span>}</td>
               <td className="px-4 py-2.5">
-                <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusTone(r.status)}`}>
-                  {t(`status_${r.status}`)}
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusTone(feedbackBoardStatus(r))}`}>
+                  {t(feedbackBoardStatus(r) === 'deployed' ? 'releaseUnverified' : `status_${feedbackBoardStatus(r)}`)}
                 </span>
               </td>
               {/* An item nobody has touched since it was raised shows the time it was raised — updated_at

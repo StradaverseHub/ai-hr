@@ -101,11 +101,13 @@ describe('V3.1 localized task controls', () => {
     });
     it('keeps a saved pending case open so HR can submit without reloading', async () => {
         const today = todayInKualaLumpur(), env = { today, now: today + 'T02:00:00.000Z', id: () => 'history', nextNumber: () => '', leave: {}, taskLoads: {}, lastTaskAssignment: {}, pendingApprovals: {}, lifetimeApprovals: {}, users: ['owner'] };
-        const c = blankCase('case', 'OB-1', 'draft', { fullName: 'Fictional Hire' }, env);
+        const c = blankCase('case', 'OB-1', 'draft', { fullName: 'Fictional Hire', confirmationDate: '2027-01-01' }, env);
         const detail = { case: c, config: defaultConfig('owner'), revision: 7, actor: { id: 'owner', name: 'HR', module: true, hr: true, master: false }, directory: [], labels: {}, notes: [], availability: {}, today, canOpenRequisition: false };
         render(<NextIntlClientProvider locale="en" messages={messages('en')}><OnboardingCaseView detail={detail}/></NextIntlClientProvider>);
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         await screen.findByText('Case details saved.');
+        const local = mocks.change.mock.calls[0]![2].patch.local;
+        for (const key of ['confirmationDate', 'finalConfirmationDate', 'probationEndDate', 'provisionalEndOn']) expect(local).not.toHaveProperty(key);
         expect(screen.getByRole('button', { name: 'Submit case and confirm checklist' })).toBeVisible();
         await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled());
     });
@@ -209,4 +211,27 @@ describe('prototype group editing and retained requisitions',()=>{
   expect(screen.getByText('Handed over')).toBeVisible();expect(screen.getByText('In sequence · Saved sequential policy')).toBeVisible();expect(screen.getByText(/Recorded review · Approved · Recorded Reviewer/)).toBeVisible();
   expect(screen.queryByText(/Current parallel policy/)).toBeNull();expect(screen.queryByRole('button')).toBeNull();expect(screen.queryByRole('combobox')).toBeNull();expect(screen.queryByRole('textbox')).toBeNull();
  });
+});
+
+it('shows an unlimited group as available without a zero-maximum workload meter', () => {
+  const config = defaultConfig('owner'); config.groups[0]!.limit = 0;
+  const context = { config, revision: 1, actor: { id: 'owner', module: true, master: false }, directory: [{ id: 'owner', name: 'Fictional HR' }], checklistCounts: {}, loads: { owner: 1500 }, availability: {}, matchCounts: {}, totalJoiners: 0 };
+  const options = { businessGroup: [], company: [], department: [], title: [], grade: [], employmentType: [] };
+  render(<NextIntlClientProvider locale="en" messages={messages('en')}><OnboardingSettings context={context as never} options={options as never} initialTab="groups"/></NextIntlClientProvider>);
+  const group = within(screen.getByRole('region', { name: 'People GBS' }));
+  expect(group.getByText('Available')).toBeVisible(); expect(group.queryByText('At limit')).not.toBeInTheDocument();
+  expect(group.getByText(/No task limit/)).toBeVisible(); expect(group.queryByRole('progressbar')).not.toBeInTheDocument();
+  expect(group.getByRole('spinbutton', { name: 'Open onboarding task limit per person' })).toHaveAttribute('min', '0');
+});
+it('renders a group viewer with read-only case/checklist controls and no case-action buttons',async()=>{
+ const {JOINER_SECTION_PRESETS}=await import('../lib/onboarding-page-access');const {defaultV9CaseFields}=await import('../lib/lifecycle-v9-case-form');
+ const today=todayInKualaLumpur(),env={today,now:today+'T02:00:00Z',id:()=> 'fictional-id',nextNumber:()=> 'IT-1',leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:['owner','viewer']};
+ const config=defaultConfig('owner');config.v9CaseFields=defaultV9CaseFields('onb');config.v9ChecklistRevision=1;
+ const c=blankCase('case','OB-view','draft',{fullName:'Fictional read-only joiner',company:'company',department:'department',title:'position',joinDate:today,supervisor:'fictional-supervisor-employment'},env);
+ const detail={case:c,config,revision:1,actor:{id:'viewer',name:'Fictional viewer',module:false,page:true,caseActions:false,sections:JOINER_SECTION_PRESETS.coord,hr:false,master:false},directory:[],labels:{supervisor:'Fictional named manager'},notes:[],availability:{},today,canOpenRequisition:false};
+ render(<NextIntlClientProvider locale="en" messages={messages('en')}><OnboardingCaseView detail={detail} registerHref="/lifecycle/v9" options={{supervisor:[],company:[],department:[],businessGroup:[],title:[],grade:[],employmentType:[]}}/></NextIntlClientProvider>);
+ expect(screen.getByText('Fictional named manager')).toBeInTheDocument();expect(screen.queryByText('fictional-supervisor-employment')).not.toBeInTheDocument();
+ expect(screen.getByRole('heading',{name:'Fictional read-only joiner'})).toBeVisible();
+ expect(screen.queryByRole('button',{name:'Cancel onboarding case'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Submit case and confirm checklist'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Save'})).not.toBeInTheDocument();
+ expect(screen.getByRole('combobox',{name:'Checklist choice'})).toBeDisabled();expect(mocks.change).not.toHaveBeenCalled();
 });

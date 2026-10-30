@@ -6,7 +6,13 @@ import geometry from './fixtures/combined-release-shell-geometry.json';
 // This guard prevents the synthetic session shell from silently drifting from that layout.
 describe('combined release rendered-shell source boundary',()=>{
  it('pins every copied shell class to the actual server layout',()=>{
-  const source=readFileSync('app/layout.tsx','utf8');
+  const layout=readFileSync('app/layout.tsx','utf8');
+  const shellAt=layout.indexOf('<div data-app-shell ');
+  expect(shellAt).toBeGreaterThan(0);
+  const bodyAt=layout.lastIndexOf('<body ',shellAt);
+  expect(bodyAt).toBeGreaterThan(0);
+  // V9 owns a separate earlier body. Pin the ordinary shell that this fixture actually renders.
+  const source=layout.slice(bodyAt);
   for(const [key,pattern] of Object.entries({body:/<body className="([^"]+)"/,shell:/<div data-app-shell className="([^"]+)"/,content:/<div data-app-content className="([^"]+)"/,header:/<header className="([^"]+)" data-app-header>/,main:/<main className="([^"]+)">/})){
    expect(source.match(pattern)?.[1],key).toBe(geometry[key as keyof typeof geometry]);
   }

@@ -25,6 +25,7 @@ describe('Ops and Strata placement never grants authority',()=>{
   ['/admin/claims/reimbursements','ops','claims','hr'],['/admin/claims','ops','claims','config'],
   // D-P1-32 PT-X5 — Performance & Talent (the area home and every route below it) and Performance admin (the cycle
   // list and one cycle's admin area), one module each.
+  ['/lifecycle/v9','ops','onboarding','hr'],['/me/lifecycle','ops','onboarding','mine'],
   ['/performance/home','strata','performance','mine'],['/performance/my','strata','performance','mine'],
   ['/performance/workspace','strata','performance','mine'],['/performance/calibration/talent-box','strata','performance','mine'],
   ['/performance','strata','performanceAdmin','hr'],['/performance/0f9b4c1e-2d3a-4b5c-8d7e-6f5a4b3c2d1e/cycle/calendar','strata','performanceAdmin','hr'],

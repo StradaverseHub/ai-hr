@@ -55,6 +55,8 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(path==='/control-tower/agents'||path.startsWith('/control-tower/agents/'))return modulePlacement('controlTower','ai');
   if(path.startsWith('/control-tower'))return modulePlacement('controlTower','hr');
   if(path.startsWith('/admin/lifecycle'))return modulePlacement('onboarding','config');
+  if(path==='/me/lifecycle')return modulePlacement('onboarding','mine');
+  if(path.startsWith('/lifecycle/v9'))return modulePlacement('onboarding','hr');
   if(path.startsWith('/lifecycle/onboarding')||path.startsWith('/lifecycle/requisitions'))return modulePlacement('onboarding','hr');
   if(path==='/lifecycle')return modulePlacement('onboarding','mine');
   if(path==='/leave/tracker')return modulePlacement('leave','team');

@@ -428,6 +428,8 @@
     "myPerformance": "Prestasi Saya",
     "mySystemTesting": "Ujian Saya",
     "myTasks": "Tugas saya",
+    "onboardingOffboarding": "Kemasukan & pemberhentian pekerja",
+    "myLifecycle": "Kemasukan & pemberhentian saya",
     "newJoiners": "Pekerja baharu",
     "onboardingRequisitions": "Permintaan kelengkapan",
     "allOnboardingRequisitions": "Semua permohonan",
@@ -11152,7 +11154,7 @@
         "onboardingModuleAccess": "Hanya Pentadbir Utama dengan pentadbiran HR seluruh kumpulan boleh memberi atau membuang akses modul.",
         "onboardingRequisitions": "Kumpulan penyediaan, kelulusan dan penambahan sistem yang ditetapkan, pengguna modul serta HR syarikat boleh membaca permintaan. Tindakan mengikut hak pasukan, langkah atau item semasa. Sebutan hanya memberi konteks perbincangannya.",
         "onboardingSettings": "Pengguna modul Onboarding mengurus dasar, katalog, aliran kelulusan dan penghalaan. Pentadbir Utama tanpa akses modul hanya mengurus kumpulan dan kebenaran.",
-        "onboardingV31": "Memerlukan kebenaran modul Onboarding yang jelas, berasingan daripada peranan HR. Medan identiti HR juga memerlukan akses HR syarikat.",
+        "onboardingV31": "Memerlukan kebenaran modul Onboarding atau akses halaman kumpulan yang dikonfigurasi. Paparan bahagian dan tindakan kes adalah berasingan; medan khusus HR juga memerlukan akses HR syarikat.",
         "performanceHome": "Everyone signed in reaches it while Performance is on. Each card shows only the viewer's own work and the results released to them; a leader seat adds aggregate counts for the people it leads, never one person's band.",
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked. The department view lists only the people whose current head-of-department assignment names you, read-only.",
         "payrollConfig": "Semua orang boleh membukanya; hanya pentadbir syarikat boleh mengubahnya.",
@@ -14825,6 +14827,26 @@
     "previewAnyOne": "Mana-mana seorang daripada ini boleh meluluskan"
   },
   "feedback": {
+    "kanbanScroll": "Tatal ke sisi untuk melihat peringkat lain.",
+    "kanbanPrevious": "Peringkat sebelumnya",
+    "kanbanNext": "Peringkat seterusnya",
+    "kanbanLoaded": "Memaparkan {shown, number} daripada {total, number}.",
+    "kanbanViewStage": "Lihat peringkat ini",
+    "kanbanNotLoaded": "Item pada peringkat ini di luar hasil yang dimuatkan.",
+    "viewLabel": "Paparan maklum balas",
+    "viewList": "Senarai",
+    "viewKanban": "Kanban",
+    "kanbanHint": "Buka kad untuk semakan. Peringkat keluaran direkodkan selepas semakan penggunaan; kad tidak boleh diseret untuk menukar status.",
+    "kanbanEmpty": "Tiada item pada peringkat ini",
+    "status_staging": "Digunakan di staging",
+    "status_production_ready": "Sedia untuk produksi",
+    "status_production": "Digunakan di produksi",
+    "releaseUnverified": "Penggunaan belum disahkan",
+    "releaseUnverifiedHint": "Item ini ditandakan telah digunakan sebelum penjejakan persekitaran. Persekitaran penggunaannya belum disahkan.",
+    "releaseProgress": "Kemajuan keluaran",
+    "releaseHint_staging": "Dipasang di staging. Menunggu penerimaan staging dan pakej produksi.",
+    "releaseHint_production_ready": "Staging diterima dan pakej produksi disahkan. Menunggu kebenaran penggunaan produksi secara berasingan.",
+    "releaseHint_production": "Dipasang di produksi dan disemak dengan sumber dan binaan yang direkodkan.",
     "title": "Maklum Balas",
     "subtitle": "Log isu, penambahbaikan atau idea baharu — pembantu merangka pelan untuk anda semak sebelum ia dibina.",
     "logTitle": "Log maklum balas",
@@ -21883,7 +21905,8 @@
     "success": {
       "save": "Draf disimpan. Geganti aktif tidak berubah.",
       "test": "Geganti menerima mesej ujian. Semak peti masuk sebelum pengaktifan.",
-      "apply": "Geganti diaktifkan. Jemputan dan pemulihan kata laluan kini boleh menggunakannya."
+      "apply": "Geganti diaktifkan. Jemputan dan pemulihan kata laluan kini boleh menggunakannya.",
+      "sender": "Pengirim kitar hayat dikemas kini. Pemulihan akaun dan lalai pemasangan kekal sama."
     },
     "connectionTitle": "Sambungan SMTP",
     "security": "Penyulitan",
@@ -21921,7 +21944,15 @@
     "notRecorded": "Tidak direkodkan",
     "backToConnections": "Kembali ke sambungan",
     "saveConnection": "Simpan sambungan",
-    "activeChangesHelp": "Relay aktif terus menggunakan tetapan terakhir yang diaktifkan. Simpan, uji dan sahkan penerimaan sebelum mengaktifkan perubahan ini."
+    "activeChangesHelp": "Relay aktif terus menggunakan tetapan terakhir yang diaktifkan. Simpan, uji dan sahkan penerimaan sebelum mengaktifkan perubahan ini.",
+    "lifecycleSenderTitle": "Pengirim e-mel onboarding dan offboarding",
+    "lifecycleSenderHelp": "Setiap pengirim menggunakan sambungan yang telah disahkan. Tanpa tetapan berasingan, pengirim menggunakan geganti aktif pemasangan.",
+    "applyTarget": "Gunakan sambungan yang diuji ini untuk",
+    "applyDefault": "Lalai pemasangan (akaun dan e-mel lain)",
+    "senderDefault": "Menggunakan lalai pemasangan",
+    "senderConfirmed": "Penerimaan disahkan pada {at}",
+    "senderPending": "Sambungan ini mempunyai perubahan tersimpan yang lebih baharu. Versi yang disahkan terus menghantar sehingga diuji dan digunakan semula.",
+    "senderTargetHelp": "Ujian tamat selepas 30 minit. Lalai pemasangan mengawal e-mel akaun. Pilihan kitar hayat hanya mengubah pengirim tersebut untuk penyewa semasa. Uji dan sahkan penerimaan semula selepas menyunting sambungan."
   },
   "workflowEmail": {
     "letterAccountTitle": "Surat untuk akaun ini",
@@ -26898,6 +26929,7 @@
       "c035edd9bd720": "Keluarkan daripada kumpulan",
       "c5d9c3ec58913": "Cari orang untuk ditambah ke",
       "c95332e75dac8": "Bekerja melalui Tugas saya",
+      "v9NoTaskLimit": "Tiada had tugas",
       "cd1a339556dbb": "tugas terbuka"
     }
   },
