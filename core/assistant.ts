@@ -36,9 +36,14 @@ import { randomUUID } from 'node:crypto';
 import { assistantSourceDigest, sealAssistantDisclosure, type AssistantSourceRead } from '../lib/ai/assistant-disclosure';
 import { ownAssistantClarification, assertOwnAssistantClarificationCurrentTx, assistantClarificationSourceExchangeId } from './assistant-clarification';
 import {ownAssistantConversationContext,assertOwnAssistantConversationContextCurrentTx,assistantConversationSourceExchangeId,issueAssistantConversationToken} from './assistant-conversation-context';
-import {buildAssistantConversationSystem} from '../lib/ai/assistant-conversation-system';
-import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability,type AssistantConversationStrategyCapability} from './module-agent-releases';
-import { parseAssistantAnswerPlan, adjudicateAssistantAnswerPlan, type AssistantAnswerPlan, type AssistantAnswerRead } from '../lib/ai/assistant-answer-plan';
+import {ASSISTANT_PRIVATE_CONTRACT,resolvePrivateAssistantIntent,resolvePrivateAssistantProposal,privateAssistantCatalogue,adjudicatePrivateAssistantTerminal,resolvePrivateAssistantClarifiedIntent,selectPrivateAssistantCards,type PrivateAssistantLocalEmployment} from '../lib/ai/provider-assistant-policy';
+import {preparePrivateAiTask} from './ai-governance';
+import {todayInKualaLumpur} from '../lib/hr-date';
+import {resolveEntitlementsTx} from './entitlements';
+import {withAssistantAdmissionReadsTx} from './assistant-read-session';
+import {assistantSourceReplay} from './assistant-disclosure-read';
+import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability,readGovernedSpecialistToolResultTx,type AssistantConversationStrategyCapability} from './module-agent-releases';
+import { adjudicateAssistantAnswerPlan, type AssistantAnswerPlan, type AssistantAnswerRead } from '../lib/ai/assistant-answer-plan';
 import { assistantToolAnswerExplanations } from '../lib/ai/assistant-tool-answer-evidence';
 import { assistantAnswerExplanationAvailability } from '../lib/ai/assistant-answer-explanations';
 import { isGroundedToolName, presentGroundedToolOutcome } from '../lib/ai/grounded-tool-presentation';
@@ -47,7 +52,7 @@ import { captureAgentReadBatch, serializeAgentReadResult } from '../lib/ai/agent
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { assistantExchange, assistantUsage } from '../db/schema';
 import { converse } from '../lib/ai';
-import { AiAllowanceError, type AiStop, type AiToolCall, type AiToolResult, type AiTurn, type AiUsage } from '../lib/ai/types';
+import { AiAllowanceError,AiGatewayError, type AiStop, type AiToolCall, type AiToolResult, type AiUsage } from '../lib/ai/types';
 import { resolveActiveAiConfig } from './ai-config';
 import {bindAiSpendTaskTx} from './ai-spend-task';
 import {assistantQuestionBudgetBinding,AssistantQuestionBudgetError,completeAssistantQuestionBudgetTx,type AssistantQuestionBudget} from './assistant-question-budget';
@@ -55,9 +60,8 @@ import { assertMayUseAssistant } from './assistant-grant';
 import { withAssistantRead,type AssistantReadSession } from './assistant-read-session';
 import {withGovernedSpecialistReadBatch} from './module-agent-releases';
 import {isAgentModuleCode,type AgentModuleCode} from '../lib/ai/module-agents';
-import { prepareAssistantConversation } from './assistant-provider-input';
 import { ASSISTANT_PUBLIC_REPLIES, assistantPublicToolResult } from '../lib/ai/assistant-public-replies';
-import { ASSISTANT_TOOLS, toolsFor, type AssistantTool, type ToolOutcome } from './assistant-tools';
+import { ASSISTANT_TOOLS, toolsFor,specsFor, type AssistantTool, type ToolOutcome } from './assistant-tools';
 import { assistantReadableModules } from './assistant-readable-modules';
 
 /**
@@ -121,14 +125,6 @@ export type AssistantAnswer = {
  */
 const MAX_QUESTION_CHARS = 2000;
 
-
-/**
- * The cache-routing hint. Stable per ROLE, and deliberately not per tenant or per user: OpenAI documents
- * `prompt_cache_key` as a routing hint and its own guidance is that an identifier-shaped key fragments
- * the cache to one entry per person, which is the opposite of what a shared prefix is for. `ConverseArgs`
- * states outright that it must never be a tenant id, user id or email.
- */
-const CACHE_KEY = 'assistant-v2';
 
 /** Every registered name — consulted ONLY to label an audit refusal, never to resolve a call. */
 const ASSISTANT_TOOL_NAMES: ReadonlySet<string> = new Set(ASSISTANT_TOOLS.map((t) => t.spec.name));
@@ -211,18 +207,14 @@ export async function askAssistant(
   // a tool outside the tenant's modules cannot be reached by the model simply naming it.
   const offered = toolsFor(ctx);
   const tools = offered.map((t) => t.spec);
-  // Human intent only, ending with the current question. Ordinary earlier questions are explicitly
-  // labelled untrusted human context, never replayed as assistant answers or current HR evidence.
-  // The dedicated clarification path preserves its authenticated slot semantics.
-  const turns: AiTurn[] = clarification ? (()=>{
-    const steps=[...clarification.earlier,{question:clarification.originalQuestion,slot:clarification.slot}];
-    return [{role:'user',content:steps[0]!.question} as AiTurn,
-      ...steps.map((step,i)=>({role:'user',content:JSON.stringify({humanClarification:{slot:step.slot,answer:i+1<steps.length?steps[i+1]!.question:clarification.answer}})}) as AiTurn)];
-  })() : [...(conversationContext?.questions.map(previous=>({role:'user' as const,content:JSON.stringify({previousHumanQuestion:previous})}))??[]),{ role: 'user', content: question }];
+  // Own-row context is interpreted only by the closed LOCAL grammar. Human wording, prior
+  // answers, tenant labels and provider continuation state never enter a provider request.
+  const localHistory=clarification?[...clarification.earlier.map(step=>step.question),clarification.originalQuestion]:conversationContext?.questions??[];
+  const intent=clarification?resolvePrivateAssistantClarifiedIntent(clarification):resolvePrivateAssistantIntent(humanQuestion,localHistory);
+  const proposal=resolvePrivateAssistantProposal(humanQuestion);
   const audit: { name: string; input: unknown; rowCount: number | null; refusal?: string }[] = [];
 
   const sourceReads: AssistantSourceRead[] = [];
-  const toolBatchNonces=new Map<string,string>();
   let sourcesComplete = true;
   let answer = '';
   let answerPlan: AssistantAnswerPlan | undefined;
@@ -234,81 +226,66 @@ export async function askAssistant(
   let failure: string | null = null;
 
   try {
-    for (let i = 0; i < MAX_TURNS; i++) {
-      // The quota admission callback rechecks actual + held token exposure atomically at every turn.
-      if (Date.now() >= deadline) {
-        stop = 'other';
-        failure = 'deadline';
-        break;
+    if(Date.now()>=deadline)throw new AssistantError('provider_error');
+    if(intent.social){answerPlan=adjudicateAssistantAnswerPlan({version:1,mode:'social',code:intent.social},[],{question:humanQuestion});stop='end';answer=JSON.stringify(answerPlan);}
+    else if(proposal){answerPlan=adjudicateAssistantAnswerPlan({version:1,mode:'propose',action:proposal.action,hints:proposal.hints},[],{question:humanQuestion,readableModules:assistantReadableModules(ctx)});stop='end';answer=JSON.stringify(answerPlan);}
+    else if(!intent.intent){answerPlan={version:1,mode:'clarify',slot:clarification?.slot??'module'};stop='end';answer=JSON.stringify(answerPlan);}
+    else if(intent.intent==='pay_change'){answerPlan=adjudicateAssistantAnswerPlan({version:1,mode:'insufficient',code:'unsupported_explanation'},[],{question:humanQuestion});stop='end';answer=JSON.stringify(answerPlan);}
+    else{
+      // These server-owned own-subject calls are the only local read plan for the recognized intent.
+      // No model-supplied argument, person identity, tool name or output can nominate another read.
+      const module=intent.module;if(!module)throw new AssistantError('invalid_question');
+      const selected:readonly {name:string;input:Record<string,unknown>}[]=intent.intent==='leave_available'||intent.intent==='leave_pending'||intent.intent==='leave_taken'?[{name:'my_leave_balances',input:{}}]:
+        intent.intent==='leave_requests'?[{name:'my_leave_requests',input:{limit:10}}]:intent.intent==='claim_statuses'?[{name:'my_claim_statuses',input:{limit:10}}]:
+        intent.intent==='holidays'?[{name:'upcoming_holidays',input:{from:intent.fromDate??todayInKualaLumpur(),limit:10}}]:intent.intent==='reporting_line'?[{name:'my_reporting_line',input:{}}]:
+        intent.intent==='payslip'?[{name:'my_payslip_summary',input:{limit:clarification?.slot==='period'||clarification?.earlier.some(step=>step.slot==='period')?12:1}}]:[{name:'my_module_work',input:{module}}];
+      const calls=selected.map((call,index)=>({id:`local-read-${index}`,name:call.name,input:call.input}));
+      const results=await runTools(ctx,offered,calls,audit,sourceReads,randomUUID());
+      if(results.some(result=>result.isError))sourcesComplete=false;
+      const localEmployments:PrivateAssistantLocalEmployment[]=[];
+      let ordinal=0;
+      for(const result of results){if(result.isError)continue;const read=ordinal++;try{if(!isGroundedToolName(result.name))continue;const outcome=JSON.parse(result.content),presentation=presentGroundedToolOutcome(result.name,outcome);if(presentation&&read<8){answerReads.push(Object.freeze({read,presentation,explanations:assistantAnswerExplanationAvailability(assistantToolAnswerExplanations(result.name,outcome,presentation))}));
+        // Identity grouping remains local and comes from this exact successful own-subject source.
+        // Multiple own employments with the same company label remain ambiguous, never merged.
+        if(result.name==='my_leave_balances'&&Array.isArray(outcome.employments)){let card=0;for(const employment of outcome.employments){if(!employment||typeof employment!=='object'||!Array.isArray(employment.balances))continue;for(const _balance of employment.balances){if(card<presentation.cards.length&&typeof employment.employmentId==='string'&&typeof employment.company==='string')localEmployments.push({read,card,key:employment.employmentId,labels:[employment.company]});card++;}}}
+      }}catch{/* No unsupported source acquires answer authority. */}}
+      if(!sourcesComplete)throw new AssistantError('provider_error');
+      const selectedCards=selectPrivateAssistantCards(intent.intent,answerReads,clarification,localEmployments);
+      const catalogue=privateAssistantCatalogue(intent.intent,answerReads,conversationStrategy.variant,selectedCards.selection);
+      const hasReferences=catalogue.operation==='conversation'&&catalogue.reads.some(read=>read.explanations.length||read.cards.some(card=>card.facts.some(fact=>fact.available)));
+      if(selectedCards.slot){answerPlan={version:1,mode:'clarify',slot:selectedCards.slot};stop='end';answer=JSON.stringify(answerPlan);}
+      else if(!hasReferences){answerPlan=adjudicateAssistantAnswerPlan({version:1,mode:'insufficient',code:'no_verified_facts'},answerReads,{question:humanQuestion});stop='end';answer=JSON.stringify(answerPlan);}
+      else{
+        const prepared=await preparePrivateAiTask(cfg,ASSISTANT_PRIVATE_CONTRACT,async(tx,current)=>{
+          if(Date.now()>=deadline)throw new AiGatewayError('The current Assistant source access could not be confirmed.');
+          const fresh={...current,entitlements:await resolveEntitlementsTx(tx,current.tenantId),entitlementsExempt:undefined,entitlementsError:undefined};
+          if(JSON.stringify(specsFor(fresh))!==JSON.stringify(tools))throw new AiGatewayError('The current Assistant tools changed.');
+          const valid=await withAssistantAdmissionReadsTx(fresh,tx,session=>assistantSourceReplay(fresh,session,async source=>{
+            const input=source.input&&typeof source.input==='object'&&!Array.isArray(source.input)?source.input as Record<string,unknown>:null;
+            if(source.name!=='my_module_work'||!source.moduleJobId||!input||Object.keys(input).length!==1||!isAgentModuleCode(input.module))throw new AiGatewayError('The current Assistant source access could not be confirmed.');
+            return(await readGovernedSpecialistToolResultTx(tx,fresh,source.moduleJobId,input.module)).outcome;
+          })(sourceReads));
+          if(!valid||Date.now()>=deadline)throw new AiGatewayError('The current Assistant source access could not be confirmed.');
+          // Full canonical fingerprints above replay even if masked reference metadata is equal.
+          return catalogue;
+        });
+        try{
+          if(prepared.operation!=='conversation')throw new AssistantError('provider_error');
+          const res=await converse(prepared.configuration,prepared.args);turnCount++;
+          spend.inputTokens+=res.usage.inputTokens;spend.outputTokens+=res.usage.outputTokens;spend.cachedInputTokens+=res.usage.cachedInputTokens;stop=res.stop;
+          // Model text/state never returns to a provider. It may nominate only this request's closed
+          // available references; the existing canonical adjudicator checks their current meaning.
+          answer=res.text;
+          // Preserve terminal refusal/truncation/unknown feedback and observed usage. A model asking
+          // for tools it was never offered receives a truthful non-answer; no call is dispatched.
+          if(res.toolCalls.length||res.stop==='tool_use')stop='other';
+          if(stop==='end')try{answerPlan=adjudicateAssistantAnswerPlan(adjudicatePrivateAssistantTerminal(res.text,prepared.local),answerReads,{question:humanQuestion,readableModules:assistantReadableModules(ctx)});}catch{answerPlan=undefined;}
+          // Raw text remains audit-only under the existing custody/retention owner. Canonical display
+          // needs the adjudicated plan; no failed model output is silently relabelled a valid answer.
+        }finally{prepared.dispose();}
       }
-
-      const prepared = prepareAssistantConversation(ctx, cfg, {
-        system: buildAssistantConversationSystem(conversationStrategy.system),
-        turns,
-        tools,
-        maxTokens: 2048,
-        timeoutMs: TURN_TIMEOUT_MS,
-        // OpenRouter reviewed carriers forbid cache hints. Choose before capture/digest; stripping
-        // it later would invalidate the prepared request. The direct providers keep their prefix.
-        ...(cfg.provider==='openrouter'?{}:{cacheKey:CACHE_KEY}),
-      }, sourceReads, deadline);
-      const res = await converse(prepared.configuration, prepared.args);
-      turnCount++;
-      spend.inputTokens += res.usage.inputTokens;
-      spend.outputTokens += res.usage.outputTokens;
-      spend.cachedInputTokens += res.usage.cachedInputTokens;
-      stop = res.stop;
-
-      if (res.stop !== 'tool_use') {
-        // All terminal text remains audit-only. Only a complete, source-adjudicated end plan can
-        // nominate a conversational response; refusal/truncation/unknown stop never gains that meaning.
-        answer = res.text;
-        // Terminal model output proposes references, never displayable HR prose. Invalid/truncated
-        // plans retain their audit text but acquire no conversational disclosure authority.
-        // A proposal (ADR-0151 §4.3) is only a suggestion sealed in this same exchange record: nothing is
-        // prepared or written here. It also needs the caller's current module read set, read only for it.
-        if (res.stop === 'end' && sourcesComplete) try {
-          const parsed = parseAssistantAnswerPlan(res.text);
-          answerPlan = adjudicateAssistantAnswerPlan(parsed, answerReads, {question:humanQuestion,...(parsed.mode === 'propose' ? { readableModules: assistantReadableModules(ctx) } : {})});
-        } catch { answerPlan = undefined; }
-        break;
-      }
-
-      const capturedCalls = captureAgentReadBatch(res.toolCalls);
-      // The assistant turn must carry the calls AND the opaque provider state back verbatim, or the
-      // provider sees tool results answering a request it has no record of making.
-      turns.push({
-        role: 'assistant',
-        content: res.text,
-        toolCalls: [...capturedCalls],
-        providerState: res.providerState,
-      });
-      const batchKey=JSON.stringify(capturedCalls);let batchNonce=toolBatchNonces.get(batchKey);if(!batchNonce){batchNonce=randomUUID();toolBatchNonces.set(batchKey,batchNonce);}
-      const sourceOffset = sourceReads.length;
-      const results = await runTools(ctx, offered, capturedCalls, audit, sourceReads,batchNonce);
-      if (results.some(result => result.isError)) sourcesComplete = false;
-      turns.push({ role: 'tool', results });
-      let ordinal = sourceOffset;
-      for (const result of results) {
-        if (result.isError) continue;
-        const read = ordinal++;
-        try {
-          if (!isGroundedToolName(result.name)) continue;
-          const outcome=JSON.parse(result.content),presentation = presentGroundedToolOutcome(result.name,outcome);
-          if (presentation && read < 8) answerReads.push(Object.freeze({ read, presentation,
-            explanations:assistantAnswerExplanationAvailability(assistantToolAnswerExplanations(result.name,outcome,presentation)) }));
-        } catch { /* Unsupported canonical presentation cannot authorize an answer reference. */ }
-      }
-      // Canonical record labels and permitted contextual fields disambiguate flattened rows. Balances
-      // and money are not duplicated. Tool result
-      // fingerprints are still replayed before the next provider admission in prepareAssistantConversation.
-      turns.push({role:'user',content:JSON.stringify({kind:'source_owned_answer_catalogue',reads:answerReads.map(source=>({read:source.read,tool:sourceReads[source.read].name,module:source.presentation.module,
-        cards:source.presentation.cards.slice(0,25).map((card,cardIndex)=>({card:cardIndex,title:card.title,withheld:card.withheld===true,
-          context:card.withheld?[]:card.facts.filter(fact=>['company','employeeCode','leaveType','period','asOf','cycleStart','from','to','date','incurredOn','createdAt'].includes(fact.field)&&fact.value!==null).map(fact=>({field:fact.field,value:fact.value})),
-          facts:card.facts.map((fact,factIndex)=>({fact:factIndex,field:fact.field,format:fact.format,available:(card.withheld!==true||source.presentation.module==='leave')&&fact.value!==null&&(typeof fact.value!=='string'||fact.value.trim().length>0)}))})),explanations:source.explanations}))})});
-
-      if (i === MAX_TURNS - 1) hitTurnCap = true;
     }
+
   } catch (e) {
     if (e instanceof AssistantQuestionBudgetError) {
       await persist(ctx, { reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error:e.budgetCode });
