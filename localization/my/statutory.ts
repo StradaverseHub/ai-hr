@@ -1,3 +1,4 @@
+import {assertWorkforcePersonTx,assertWorkforceEmploymentTx,WorkforceAccessError} from '../../core/workforce-access';
 import {isDeepStrictEqual} from 'node:util';
 import {captureStatutorySourceContext as captureStatutoryContext,lockStatutorySourceTx as statutoryWriteIntervalMYTx,lockReviewedStatutorySourceTx} from '../../core/statutory-source-lock';
 import {createHash} from 'node:crypto';
@@ -555,6 +556,8 @@ export { IncompleteCustomHolderError };
  *  dedicated Bank Information card, which saves independently of the full statutory row. */
 export type BankInput = {
   personId: string;
+  /** Optional Personnel nomination; its current employment/person ownership is resolved in the owner Tx. */
+  employmentId?: string;
   bankName?: string | null;
   bankAccountNo?: string | null;
   enableCustomHolderName?: boolean;
@@ -595,13 +598,34 @@ function normalizedBankValuesMY(p:BankInput){
     customHolderId: enableId ? holderId : null,
   };
 }
+/** Interactive bank writes retain the native HR floor and join the shared-person Workforce owner.
+ * No-user provisioning retains its existing RLS/service behavior. A genuine unlinked USER still
+ * takes every interactive check: absence of PERSON is never treated as a system principal. */
+async function statutoryMaintenanceSubjectMYTx(tx:Tx,ctx:SessionContext,p:{personId:string;employmentId?:string}){
+ await statutoryWriteIntervalMYTx(tx,ctx);
+ if(ctx.userId){
+  const [floor]=await tx.execute<{allowed:boolean}>(sql`select app.is_admin() and app.can_see_person(${p.personId}::uuid) as allowed`);
+  if(floor?.allowed!==true)throw new WorkforceAccessError();
+  await assertWorkforcePersonTx(tx,ctx,p.personId,'maintain');
+ }
+ if(p.employmentId!==undefined){
+  if(ctx.userId){await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'view');await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');}
+  const [selected]=await tx.select({personId:employment.personId}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).for('share');
+  if(!selected||selected.personId!==p.personId.toLowerCase())throw new WorkforceAccessError();
+ }
+}
+/** Authority/identity metadata only: no bank or sibling statutory value is read for editor admission. */
+export async function canMaintainBankProfileMY(supplied:SessionContext,p:{personId:string;employmentId:string}):Promise<boolean>{
+ const ctx=captureStatutoryContext(supplied);p=structuredClone(p);
+ try{return await withTenant(ctx,async tx=>{await statutoryMaintenanceSubjectMYTx(tx,ctx,p);return true;});}catch{return false;}
+}
 export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
   outerTx?: Tx) {
   ctx=captureStatutoryContext(ctx);p=structuredClone(p);
   const values = normalizedBankValuesMY(p);
   const run = async (tx:Tx) => {
-    await statutoryWriteIntervalMYTx(tx,ctx);
+    await statutoryMaintenanceSubjectMYTx(tx,ctx,p);
     const [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,

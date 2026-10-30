@@ -1,3 +1,4 @@
+import {workforceViewScope} from '../../core/workforce-access';
 import {PARITY_PROBE_GROUPS,type ParityProbeGroup,type ParityProbeVariant} from './agent-action-parity-groups';
 import {workforceProfileMaintenanceReviews,readWorkforceProfileMaintenanceChoices} from '../../core/assistant-actions/workforce-profile-maintenance-review-store';
 import {maintainWorkforceRecord,workforceEditor} from '../../core/workforce-maintenance';
@@ -47,7 +48,7 @@ import {overtimeRequestReviews,readOvertimeRequestChoices} from '../../core/assi
 import {OWN_OVERTIME_REQUEST_ACTION} from '../../lib/assistant-actions/own-overtime-request-contract';
 import {toilRequestReviews} from '../../core/assistant-actions/toil-request-review-store';
 import {readToilRequestModuleActionChoices} from '../../core/assistant-actions/module-action-server';
-import {myEmployment} from '../../core/read';
+import {myEmployment,employeeDetail} from '../../core/read';
 import {resolveEntitlementsTx} from '../../core/entitlements';
 import {setToilPolicy,submitReplacementLeaveRequest,decideReplacementLeaveRequestTx,applyLeaveAdjustmentBatchTx,grantLeaveCreditRowsTx,requestLeave,cancelOwnLeaveTx,editLeaveRequestTx} from '../../packs/leave/service';
 import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews,readClaimDecisionChoices,readAttendanceDecisionChoices,readToilDecisionChoices} from '../../core/assistant-actions/assigned-decision-review-store';
@@ -376,11 +377,11 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'employees.workforce_profile.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,section:'personal',...(item.proposal as {expectedVersion:string;values:Record<string,string|null>})}),
   offered:async(who,item)=>listed(await readWorkforceProfileMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>maintainWorkforceRecord(who,{employmentId:item.employmentId,kind:'person',rowId:null,operation:'update',patch:(item.proposal as {values:Record<string,string|null>}).values,expectedVersion:(item.proposal as {expectedVersion:string}).expectedVersion},tx)},
- 'employees.bank.maintain':{family:'hr_on_employment',store:bankMaintenanceReviews,screenAdmits:isAdmin,
+ 'employees.bank.maintain':{family:'hr_on_employment',store:bankMaintenanceReviews,screenAdmits:async(who,item)=>isAdmin(who)&&(await workforceViewScope(who)).canOpen&&!!await employeeDetail(who,item.employmentId,'workforce'),
   create:async(_w,h)=>{await requirePackFor('MY').statutory.set(groupOf(h.base),{personId:h.person.personId,icNumber:null});return itemOf(h,h.person.personId);},
   human:item=>({action:'employees.bank.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,fields:{bankName:'Fictional bank',bankAccountNo:'000-FICTIONAL',enableCustomHolderName:false,customHolderName:null,enableCustomHolderId:false,customHolderId:null}}),
   offered:async(who,item)=>listed(await readBankMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
-  screen:(tx,who,item)=>requirePackFor('MY').statutory.setBank(who,{personId:item.subjectId,bankName:'Fictional bank',bankAccountNo:'000-FICTIONAL',enableCustomHolderName:false,customHolderName:null,enableCustomHolderId:false,customHolderId:null},tx)},
+  screen:(tx,who,item)=>requirePackFor('MY').statutory.setBank(who,{personId:item.subjectId,employmentId:item.employmentId,bankName:'Fictional bank',bankAccountNo:'000-FICTIONAL',enableCustomHolderName:false,customHolderName:null,enableCustomHolderId:false,customHolderId:null},tx)},
  'employees.emergency_contact.maintain':{family:'hr_on_employment',store:emergencyContactMaintenanceReviews,screenAdmits:isAdmin,
   create:async(_w,h)=>itemOf(h,h.person.personId),
   human:item=>({action:'employees.emergency_contact.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'add',contactId:null,fields:{fullName:'Fictional Emergency Contact',relationship:null,mobilePhone:'000-FICTIONAL',homePhone:null,address:null,remarks:'Fictional human note',priority:'primary'}}),
