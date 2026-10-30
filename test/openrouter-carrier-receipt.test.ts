@@ -1,9 +1,9 @@
+import {fixtureOpenRouterTransport as createOpenRouterTransport} from './helpers/provider-egress-fixture';
 /** Fictional reviewed profiles and mocked HTTP only. Exercises the REAL carrier/transport/HMAC
  * composition used by governance. No principal, SQL settlement, real route or invoice proof. */
 import {createHmac} from 'node:crypto';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {ResolvedAiConfig} from '../lib/ai/types';
-import {createOpenRouterTransport} from '../lib/ai/providers/openrouter-transport';
 import {readOpenRouterOptions} from '../lib/ai/providers/openrouter-configuration';
 import {aiSpendConfigurationDigest,createAiSpendReceiptScope} from '../lib/ai/spend-receipt';
 import {draftInputDigest} from '../lib/ai/draft-input';
@@ -32,7 +32,7 @@ async function composed(kind:'free'|'metered',cost:string,metadataId='gen-compos
  const terminal=JSON.stringify({id:'gen-composed',model:cfg.model,choices:[{index:0,finish_reason:'stop',message:{role:'assistant',content:'Synthetic answer'}}]}).replace(/}$/,',"usage":{"cost":'+cost+'}}');
  const metadata='{"data":{"id":'+JSON.stringify(metadataId)+',"model":'+JSON.stringify(cfg.model)+',"is_byok":false,"streamed":false,"total_cost":'+cost+'}}';
  const fetcher=vi.fn<typeof fetch>().mockResolvedValueOnce(response(terminal)).mockResolvedValueOnce(response(metadata));
- const consume=()=>scope.run(()=>createOpenRouterTransport(fetcher)({model:cfg.model,apiKey:cfg.apiKey,routing:options.routing},args));
+ const consume=()=>scope.run(()=>createOpenRouterTransport(fetcher,req.operation)({model:cfg.model,apiKey:cfg.apiKey,routing:options.routing},args));
  const result=kind==='free'?await withReviewedFreeDispatch(proof,cfg,req,consume):await withReviewedMeteredDispatch(proof,cfg,req,consume);
  return{cfg,binding,envelope,result,fetcher,receipt:scope.receipt()};
 }

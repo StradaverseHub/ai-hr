@@ -1,3 +1,4 @@
+import {fixtureOpenRouterTransport as createOpenRouterTransport} from './helpers/provider-egress-fixture';
 /** Authored UNRUN. Real app-role admission/cryptographic verifier/reconciliation; fictional price
  * capability only + HTTP transport mock. No live provider ceiling or actual key provisioning proof. */
 import {createHmac,randomUUID} from 'node:crypto';
@@ -9,7 +10,6 @@ import {providerCandidatesTx} from '../core/ai-provider-readiness';
 import {resolveAiProviderCandidateSnapshotTx} from '../core/ai-provider-snapshot';
 import {bindStrictAiSpendRoot,governedAiConfig} from '../core/ai-governance';
 import {readOpenRouterOptions} from '../lib/ai/providers/openrouter-configuration';
-import {createOpenRouterTransport} from '../lib/ai/providers/openrouter-transport';
 import {aiSpendConfigurationDigest,createAiSpendReceiptScope} from '../lib/ai/spend-receipt';
 import {generateDraft} from '../lib/ai';
 import {installSyntheticSpendCapability,installSyntheticSpendReceiptVerifier} from './ai-spend-fixture';

@@ -1,7 +1,8 @@
+import {fixtureOpenRouterTransport as createOpenRouterTransport} from './helpers/provider-egress-fixture';
 /** Authored UNRUN. Fictional source-issued control record + mocked HTTP only. This does NOT certify
  * a real model/endpoint/workspace, prove current routability or activate any provider. */
 import {afterEach,beforeEach,describe,it,expect,vi} from 'vitest';
-import {createOpenRouterTransport,buildOpenRouterRequest,OpenRouterModel} from '../lib/ai/providers/openrouter-transport';
+import {buildOpenRouterRequest,OpenRouterModel} from '../lib/ai/providers/openrouter-transport';
 import {captureReviewedFreeCarrier,FIXED_FREE_CARRIER_SOURCE_DIGEST,FIXED_FREE_INVARIANTS,issueReviewedFreeProof,currentReviewedFreeEnvelope,withReviewedFreeDispatch,consumeReviewedFreePost} from '../lib/ai/providers/openrouter-fixed-free-carrier';
 import {aiSpendConfigurationDigest} from '../lib/ai/spend-receipt';
 import {draftInputDigest} from '../lib/ai/draft-input';
@@ -22,7 +23,7 @@ describe('conditional source-owned free carrier dispatch',()=>{
  it('uses exactly one original-deadline POST with source0price caps, fixed endpoint, privacy and disabled processing',async()=>{
   const req=request(),proof=issueReviewedFreeProof(profile(),cfg,req),envelope=currentReviewedFreeEnvelope(cfg,req,proof);expect(envelope).toMatchObject({reservedNanos:'1',requestDigest:req.inputDigest});
   const fetcher=vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({id:'gen-fictional',model:cfg.model,choices:[{index:0,finish_reason:'stop',message:{role:'assistant',content:'Synthetic answer'}}],usage:{prompt_tokens:1,completion_tokens:1,total_tokens:2,cost:0}}),{headers:{'content-type':'application/json'}}));
-  await withReviewedFreeDispatch(proof,cfg,req,()=>createOpenRouterTransport(fetcher)(configuration(),args));expect(fetcher).toHaveBeenCalledTimes(1);
+  await withReviewedFreeDispatch(proof,cfg,req,()=>createOpenRouterTransport(fetcher,req.operation)(configuration(),args));expect(fetcher).toHaveBeenCalledTimes(1);
   const body=JSON.parse(String(fetcher.mock.calls[0][1]?.body));expect(body.provider).toMatchObject({only:['fictional/endpoint'],order:['fictional/endpoint'],allow_fallbacks:false,require_parameters:true,data_collection:'deny',zdr:true,max_price:{prompt:0,completion:0,request:0}});expect(body.plugins.every((entry:{enabled:boolean})=>entry.enabled===false)).toBe(true);expect(body).not.toHaveProperty('models');expect(body).not.toHaveProperty('cache_control');expect(fetcher.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
   await expect(withReviewedFreeDispatch(proof,cfg,req,async()=>undefined)).rejects.toThrow();
  });
@@ -30,19 +31,19 @@ describe('conditional source-owned free carrier dispatch',()=>{
   const input:ConverseArgs={...args,turns:[{role:'user',content:'Synthetic question'},{role:'assistant',content:'',toolCalls:[{id:'call-1',name:'synthetic_read',input:{}}]},{role:'tool',results:[{id:'call-1',name:'synthetic_read',content:'Synthetic canonical result'}]}],tools:[{name:'synthetic_read',description:'Synthetic only',inputSchema:{type:'object',properties:{},required:[],additionalProperties:false}}]};
   const req=Object.freeze({operation:'conversation' as const,reservedTokens:100,inputDigest:conversationInputDigest(input)}),proof=issueReviewedFreeProof(captureReviewedFreeCarrier({...profile(),operation:'conversation'}),cfg,req);currentReviewedFreeEnvelope(cfg,req,proof);
   const fetcher=vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({id:'gen-fictional-tools',model:cfg.model,choices:[{index:0,finish_reason:'stop',message:{role:'assistant',content:'Synthetic final'}}],usage:{prompt_tokens:1,completion_tokens:1,total_tokens:2,cost:0}}),{headers:{'content-type':'application/json'}}));
-  await withReviewedFreeDispatch(proof,cfg,req,()=>createOpenRouterTransport(fetcher)(configuration(),input));expect(fetcher).toHaveBeenCalledTimes(1);const body=JSON.parse(String(fetcher.mock.calls[0][1]?.body));expect(body.tools).toMatchObject([{type:'function',function:{name:'synthetic_read'}}]);expect(body.messages[3]).toMatchObject({role:'tool',tool_call_id:'call-1'});
-  const cached={...input,cacheKey:'opaque-cache'},changed=Object.freeze({...req,inputDigest:conversationInputDigest(cached)}),second=issueReviewedFreeProof(captureReviewedFreeCarrier({...profile(),operation:'conversation'}),cfg,changed);currentReviewedFreeEnvelope(cfg,changed,second);await expect(withReviewedFreeDispatch(second,cfg,changed,()=>createOpenRouterTransport(fetcher)(configuration(),cached))).rejects.toThrow();expect(fetcher).toHaveBeenCalledTimes(1);
+  await withReviewedFreeDispatch(proof,cfg,req,()=>createOpenRouterTransport(fetcher,req.operation)(configuration(),input));expect(fetcher).toHaveBeenCalledTimes(1);const body=JSON.parse(String(fetcher.mock.calls[0][1]?.body));expect(body.tools).toMatchObject([{type:'function',function:{name:'synthetic_read'}}]);expect(body.messages[3]).toMatchObject({role:'tool',tool_call_id:'call-1'});
+  const cached={...input,cacheKey:'opaque-cache'},changed=Object.freeze({...req,inputDigest:conversationInputDigest(cached)}),second=issueReviewedFreeProof(captureReviewedFreeCarrier({...profile(),operation:'conversation'}),cfg,changed);currentReviewedFreeEnvelope(cfg,changed,second);await expect(withReviewedFreeDispatch(second,cfg,changed,()=>createOpenRouterTransport(fetcher,req.operation)(configuration(),cached))).rejects.toThrow();expect(fetcher).toHaveBeenCalledTimes(1);
  });
  it('rejects detached asynchronous dispatch after the original scope closes',async()=>{
   const req=request(),proof=issueReviewedFreeProof(profile(),cfg,req);currentReviewedFreeEnvelope(cfg,req,proof);
   let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});let late!:Promise<unknown>;const fetcher=vi.fn<typeof fetch>();
-  await withReviewedFreeDispatch(proof,cfg,req,async()=>{const body=buildOpenRouterRequest({model:cfg.model,routing:(cfg.providerOptions as {routing:unknown}).routing},args);consumeReviewedFreePost(cfg,body);late=(async()=>{await gate;return createOpenRouterTransport(fetcher)(configuration(),args);})();});
+  await withReviewedFreeDispatch(proof,cfg,req,async()=>{const body=buildOpenRouterRequest({model:cfg.model,routing:(cfg.providerOptions as {routing:unknown}).routing},args);consumeReviewedFreePost(cfg,body);late=(async()=>{await gate;return createOpenRouterTransport(fetcher,req.operation)(configuration(),args);})();});
   release();await expect(late).rejects.toThrow();expect(fetcher).not.toHaveBeenCalled();
  });
  it('refuses copied proofs, changed request/key and duplicate dispatch before HTTP',async()=>{
   const req=request(),proof=issueReviewedFreeProof(profile(),cfg,req);currentReviewedFreeEnvelope(cfg,req,proof);const fetcher=vi.fn<typeof fetch>();
   await expect(withReviewedFreeDispatch({...proof},cfg,req,async()=>undefined)).rejects.toThrow();await expect(withReviewedFreeDispatch(proof,{...cfg},req,async()=>undefined)).rejects.toThrow();
-  await expect(withReviewedFreeDispatch(proof,cfg,req,()=>createOpenRouterTransport(fetcher)(configuration(),{...args,turns:[{role:'user',content:'Changed'}]}))).rejects.toThrow();expect(fetcher).not.toHaveBeenCalled();
+  await expect(withReviewedFreeDispatch(proof,cfg,req,()=>createOpenRouterTransport(fetcher,req.operation)(configuration(),{...args,turns:[{role:'user',content:'Changed'}]}))).rejects.toThrow();expect(fetcher).not.toHaveBeenCalled();
   const second=issueReviewedFreeProof(profile(),cfg,req);currentReviewedFreeEnvelope(cfg,req,second);
   await expect(withReviewedFreeDispatch(second,cfg,req,async()=>{const body=buildOpenRouterRequest({model:cfg.model,routing:(cfg.providerOptions as {routing:unknown}).routing},args);consumeReviewedFreePost({...cfg,apiKey:'other-key'},body);})).rejects.toThrow();
   const third=issueReviewedFreeProof(profile(),cfg,req);currentReviewedFreeEnvelope(cfg,req,third);

@@ -1,6 +1,6 @@
 /** Authored UNRUN. Mocked terminal JSON only, not real provider capability or billing proof. */
 import {afterEach,expect,it,vi} from 'vitest';
-import {createOpenRouterAdapter} from '../lib/ai/providers/openrouter';
+import {fixtureOpenRouterAdapter as createOpenRouterAdapter} from './helpers/provider-egress-fixture';
 import {openrouterAdapter} from '../lib/ai/providers/openrouter';
 import {readOpenRouterOptions} from '../lib/ai/providers/openrouter-configuration';
 import {runProviderProtocolEvaluation} from '../lib/ai/provider-protocol';

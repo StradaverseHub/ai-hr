@@ -1,6 +1,6 @@
 /** Mocked-only adapter/probe regressions, authored UNRUN. No real provider or key. */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createOpenRouterAdapter } from '../lib/ai/providers/openrouter';
+import {fixtureOpenRouterAdapter as createOpenRouterAdapter} from './helpers/provider-egress-fixture';
 import { readOpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
 import { envFallbackConfig } from '../lib/ai/registry';
 import type { AiUsage, ResolvedAiConfig } from '../lib/ai/types';
