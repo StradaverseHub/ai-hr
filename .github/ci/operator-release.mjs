@@ -8,7 +8,7 @@ import {STAGING,bindStaging,stagingTransport,strictPendingCommand} from './stagi
 import {stagingInstallerCommand,transferAndLaunchCiBuild,installationGrantFromVerifiedFiles,validateInstalledArrival,validatePrelaunchState,validateFinalCleanup} from './staging-ci-promotion.mjs';
 import {expectedMigrationLedger,expectedBaselineMigrationLedger,validateMigrationLedgerRows,stagingLedgerProbeCommand,LEDGER_QUERY,verifyBaselineMigrationPreflight} from './staging-migration-ledger.mjs';
 import {stagingEnvironmentProbeCommand} from './staging-environment.mjs';
-import {createCleanupRequest} from './staging-cleanup-protocol.mjs';
+import {openNormalCleanupChannel,driveNormalCleanup} from './normal-cleanup-operator.mjs';
 import {assertRsyncPacketCapability} from './rsync-packet-capability.mjs';
 import {verifyRecoveredCi,revalidateRecoveredCi} from './focused-recovery.mjs';
 import {verifyRepairedCi,revalidateRepairedCi} from './repair-recovery.mjs';
@@ -74,8 +74,10 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
  const installed=JSON.parse(ssh(stagingInstallerCommand('status',grant.source,grant.installId,grant.build.buildRecordId),{timeout:60000}));
  const expectedLedger=expectedMigrationLedger(candidatePath);
  const initialArrival=validateInstalledArrival(installed,grant,expectedLedger);save('installed-arrival.json',{...initialArrival,fullSourceChecksumVerified:true});frozen();
- const cleanupRequest=createCleanupRequest(grant,{output:checksum,checkedAt:checksumCheckedAt,arrival:initialArrival});
- const cleaned=JSON.parse(ssh(stagingInstallerCommand('cleanup',grant.source,grant.installId,grant.build.buildRecordId),{input:JSON.stringify(cleanupRequest),timeout:180000}));
+ const cleanupCommand=stagingInstallerCommand('cleanup-session',grant.source,grant.installId,grant.build.buildRecordId);
+ const channel=openNormalCleanupChannel(transport.sshArgs(guardCommand(lease,cleanupCommand)));
+ const cleaned=await driveNormalCleanup({channel,grant,arrival:initialArrival,frozen,save,
+  checksum:()=>execFileSync('rsync',['--dry-run','--checksum','--itemize-changes',...transport.rsyncArgs(official,candidatePath)],{encoding:'utf8',timeout:120000,maxBuffer:16*1024**2})});
  const arrival=validateFinalCleanup(cleaned,{grant,installed,expectedLedger});save('owned-cleanup.json',cleaned);frozen();
  const finalChecksum=execFileSync('rsync',['--dry-run','--checksum','--itemize-changes',...transport.rsyncArgs(official,candidatePath)],{encoding:'utf8',timeout:120000,maxBuffer:16*1024**2});
  save('final-source-arrival.json',{source:evidence.sha,checksum:true,output:finalChecksum,checkedAt:new Date().toISOString()});
