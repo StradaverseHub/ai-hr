@@ -1,3 +1,54 @@
+-- Private native audit owner. Exact0534 mode/head selection and lock key, reused by its trigger.
+-- Bank alone requests refusal rather than waiting after other native interval locks are held.
+CREATE FUNCTION app._domain_event_next(p_tenant uuid,p_try boolean DEFAULT false) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE v_prev_hash text;v_prev_seq bigint;armed boolean;
+BEGIN
+ IF p_try THEN
+  IF NOT pg_try_advisory_xact_lock(hashtext('audit-chain:'||p_tenant::text)) THEN
+   RAISE EXCEPTION 'Audit chain busy' USING ERRCODE='55P03';END IF;
+ ELSE PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||p_tenant::text));END IF;
+ SELECT chain_seq,hash INTO v_prev_seq,v_prev_hash FROM public.domain_event
+  WHERE tenant_id=p_tenant AND chain_seq IS NOT NULL ORDER BY chain_seq DESC LIMIT 1;
+ armed:=current_setting('app.audit_hash_chain',true) IS NOT DISTINCT FROM 'on' OR v_prev_seq IS NOT NULL
+  OR EXISTS(SELECT 1 FROM public.tenant_setting WHERE tenant_id=p_tenant AND key='audit.hash_chain_enabled' AND value='true'::jsonb);
+ RETURN jsonb_build_object('armed',armed,'priorSeq',v_prev_seq,'priorHash',v_prev_hash);
+END $$;
+DO $audit_owner$ DECLARE native_owner name;BEGIN SELECT r.rolname INTO STRICT native_owner FROM pg_proc p JOIN pg_roles r ON r.oid=p.proowner WHERE p.oid='app.domain_event_chain_tg()'::regprocedure;EXECUTE format('ALTER FUNCTION app._domain_event_next(uuid,boolean) OWNER TO %I',native_owner);END $audit_owner$;
+REVOKE ALL ON FUNCTION app._domain_event_next(uuid,boolean) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- Decode and qualify generated slots through the native hash/link owner. This candidate is NOT
+-- expected evidence: compare the candidate with the independently stored PRE-native image.
+CREATE FUNCTION app._domain_event_preimage_for(p_event public.domain_event) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE prior_seq bigint;prior_hash text;n bigint;selected_n bigint;
+BEGIN
+ -- VOLATILE fresh snapshots include this command's own INSERT and peer rows. A qualified
+ -- composite must actually be the persisted selected event, never an arbitrary supplied tuple.
+ IF NOT EXISTS(SELECT 1 FROM public.domain_event e WHERE e.id=p_event.id AND e.tenant_id=p_event.tenant_id
+  AND to_jsonb(e) IS NOT DISTINCT FROM to_jsonb(p_event)) THEN RETURN NULL;END IF;
+ IF p_event.chain_seq IS NULL THEN
+  IF p_event.prev_hash IS NOT NULL OR p_event.hash IS NOT NULL THEN RETURN NULL;END IF;
+  RETURN jsonb_build_object('armed',false,'priorSeq',NULL,'priorHash',NULL);
+ END IF;
+ IF p_event.chain_seq<1 OR p_event.prev_hash IS NULL OR p_event.hash IS NULL THEN RETURN NULL;END IF;
+ SELECT count(*) INTO selected_n FROM public.domain_event WHERE tenant_id=p_event.tenant_id AND chain_seq=p_event.chain_seq;
+ IF selected_n<>1 THEN RETURN NULL;END IF;
+ IF p_event.chain_seq>1 THEN
+  SELECT count(*) INTO n FROM public.domain_event WHERE tenant_id=p_event.tenant_id AND chain_seq=p_event.chain_seq-1;
+  IF n<>1 THEN RETURN NULL;END IF;
+  SELECT chain_seq,hash INTO prior_seq,prior_hash FROM public.domain_event
+   WHERE tenant_id=p_event.tenant_id AND chain_seq=p_event.chain_seq-1;
+ END IF;
+ IF p_event.prev_hash IS DISTINCT FROM coalesce(prior_hash,'GENESIS')
+  OR p_event.hash IS DISTINCT FROM app.domain_event_hash(p_event.prev_hash,p_event.tenant_id,p_event.chain_seq,
+   p_event.aggregate_type,p_event.aggregate_id,p_event.event_type,p_event.actor_type::text,p_event.actor_id,
+   p_event.subject_employment_id,p_event.payload) THEN RETURN NULL;END IF;
+ RETURN jsonb_build_object('armed',true,'priorSeq',prior_seq,'priorHash',prior_hash);
+END $$;
+DO $audit_owner$ DECLARE native_owner name;BEGIN SELECT r.rolname INTO STRICT native_owner FROM pg_proc p JOIN pg_roles r ON r.oid=p.proowner WHERE p.oid='app.domain_event_chain_tg()'::regprocedure;EXECUTE format('ALTER FUNCTION app._domain_event_preimage_for(public.domain_event) OWNER TO %I',native_owner);END $audit_owner$;
+REVOKE ALL ON FUNCTION app._domain_event_preimage_for(public.domain_event) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 -- PRIVATE UNALLOCATED SOURCE PROPOSAL / UNRUN. Needs independent SQL and native-flow review.
 -- Compose AFTER the currently frozen generic owners and shared body-write guard; never edit applied SQL.
 ALTER TABLE app.assistant_own_leave_review
@@ -7,7 +58,8 @@ ALTER TABLE app.assistant_own_leave_review
  ADD COLUMN bank_event_payload_hash text,
  ADD COLUMN bank_event_scope_hash text,
  ADD COLUMN bank_retained_prepare_hash text,
- ADD COLUMN bank_retained_root_xid xid8;
+ ADD COLUMN bank_retained_root_xid xid8,
+ ADD COLUMN bank_audit_preimage jsonb;
 --> statement-breakpoint
 ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_bank_retained_columns CHECK(
  CASE WHEN action_kind='employees.bank.maintain' THEN
@@ -30,6 +82,23 @@ ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_bank_retaine
     AND bank_after_hash IS NULL AND bank_event_payload_hash IS NULL AND bank_event_scope_hash IS NULL AND bank_retained_root_xid IS NULL END
  ELSE bank_retained_version IS NULL AND bank_retained_prepare_hash IS NULL AND bank_before_hash IS NULL
   AND bank_after_hash IS NULL AND bank_event_payload_hash IS NULL AND bank_event_scope_hash IS NULL AND bank_retained_root_xid IS NULL END);
+--> statement-breakpoint
+-- Private PRE-native audit custody never enters the encrypted metadata binding. A JSON null
+-- is not absence. Foreign action kinds, terminal retirements and erased proofs require SQL NULL.
+ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_bank_audit_preimage CHECK(
+ CASE WHEN action_kind<>'employees.bank.maintain' OR bank_retained_version IS DISTINCT FROM 1
+  OR bank_retained_root_xid IS NULL THEN bank_audit_preimage IS NULL
+ ELSE bank_audit_preimage IS NOT NULL AND jsonb_typeof(bank_audit_preimage)='object'
+  AND bank_audit_preimage ?& ARRAY['armed','priorSeq','priorHash']
+  AND bank_audit_preimage-ARRAY['armed','priorSeq','priorHash']='{}'::jsonb
+  AND jsonb_typeof(bank_audit_preimage->'armed')='boolean'
+  AND CASE WHEN bank_audit_preimage->'armed'='false'::jsonb THEN
+   bank_audit_preimage->'priorSeq'='null'::jsonb AND bank_audit_preimage->'priorHash'='null'::jsonb
+  ELSE (bank_audit_preimage->'priorSeq'='null'::jsonb AND bank_audit_preimage->'priorHash'='null'::jsonb)
+   OR (jsonb_typeof(bank_audit_preimage->'priorSeq')='number'
+    AND bank_audit_preimage->>'priorSeq' ~ '^[1-9][0-9]*$'
+    AND jsonb_typeof(bank_audit_preimage->'priorHash')='string'
+    AND bank_audit_preimage->>'priorHash' ~ '^[a-f0-9]{64}$') END END IS TRUE);
 --> statement-breakpoint
 -- Ordinary non-bank statutory writers should probe only this transaction's armed bank reviews.
 CREATE INDEX assistant_bank_review_active_root ON app.assistant_own_leave_review
@@ -90,6 +159,20 @@ LANGUAGE sql STABLE SET search_path=pg_catalog,public,pg_temp AS $$
    ORDER BY (e.terminated_on IS NOT NULL),e.hired_on,e.id LIMIT 1))
 $$;
 REVOKE ALL ON FUNCTION app._bank_event_scope(uuid,uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- Keep every business metadata key under the original encrypted scope commitment. Qualify
+-- generated audit slots separately against the independent PRE-native image, never today's head.
+CREATE FUNCTION app._bank_event_scope_valid(p_scope text,p_preimage jsonb,p_event public.domain_event) RETURNS boolean
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE candidate jsonb;
+BEGIN
+ IF p_preimage IS NULL THEN RETURN false;END IF;
+ candidate:=app._domain_event_preimage_for(p_event);
+ RETURN candidate IS NOT NULL AND candidate IS NOT DISTINCT FROM p_preimage
+  AND p_scope IS NOT DISTINCT FROM app._bank_json_hash(
+   to_jsonb(p_event)-ARRAY['id','sequence','occurred_at','payload','chain_seq','prev_hash','hash']);
+END $$;
+REVOKE ALL ON FUNCTION app._bank_event_scope_valid(text,jsonb,public.domain_event) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 -- Native expected values, not a caller hash assertion. p_after is the closed local-human command
 -- normalized by the existing country owner. SQL independently binds actual BEFORE and exact payload;
@@ -186,11 +269,11 @@ BEGIN
      OLD.decision_subject_person_id,OLD.receipt_subject_kind,OLD.receipt_subject_id,OLD.receipt_event_id,
      OLD.state,OLD.created_at,OLD.expires_at,OLD.bank_retained_version) THEN
     RAISE EXCEPTION 'Bank completed identity immutable' USING ERRCODE='42501';END IF;
-   IF ROW(NEW.bank_retained_prepare_hash,NEW.bank_before_hash,NEW.bank_after_hash,NEW.bank_event_payload_hash,NEW.bank_event_scope_hash,NEW.bank_retained_root_xid)
-    IS DISTINCT FROM ROW(OLD.bank_retained_prepare_hash,OLD.bank_before_hash,OLD.bank_after_hash,OLD.bank_event_payload_hash,OLD.bank_event_scope_hash,OLD.bank_retained_root_xid) THEN
+   IF ROW(NEW.bank_retained_prepare_hash,NEW.bank_before_hash,NEW.bank_after_hash,NEW.bank_event_payload_hash,NEW.bank_event_scope_hash,NEW.bank_retained_root_xid,NEW.bank_audit_preimage)
+    IS DISTINCT FROM ROW(OLD.bank_retained_prepare_hash,OLD.bank_before_hash,OLD.bank_after_hash,OLD.bank_event_payload_hash,OLD.bank_event_scope_hash,OLD.bank_retained_root_xid,OLD.bank_audit_preimage) THEN
     SELECT EXISTS(SELECT 1 FROM app.assistant_review_erasure_intent i WHERE i.xact_id=pg_current_xact_id()
      AND i.tenant_id=OLD.tenant_id AND i.user_id=app.current_user_id() AND OLD.id=ANY(i.review_ids)) INTO erasure;
-    IF NOT erasure OR NEW.bank_retained_prepare_hash IS NOT NULL OR NEW.bank_before_hash IS NOT NULL OR NEW.bank_after_hash IS NOT NULL OR NEW.bank_event_payload_hash IS NOT NULL OR NEW.bank_event_scope_hash IS NOT NULL OR NEW.bank_retained_root_xid IS NOT NULL THEN
+    IF NOT erasure OR NEW.bank_retained_prepare_hash IS NOT NULL OR NEW.bank_before_hash IS NOT NULL OR NEW.bank_after_hash IS NOT NULL OR NEW.bank_event_payload_hash IS NOT NULL OR NEW.bank_event_scope_hash IS NOT NULL OR NEW.bank_retained_root_xid IS NOT NULL OR NEW.bank_audit_preimage IS NOT NULL THEN
      RAISE EXCEPTION 'Bank private proof erasure unavailable' USING ERRCODE='42501';END IF;
    END IF;
   END IF;
@@ -200,10 +283,17 @@ BEGIN
   IF OLD.bank_retained_version=1 AND NEW.bank_retained_version IS DISTINCT FROM OLD.bank_retained_version THEN
    RAISE EXCEPTION 'Bank proof version immutable' USING ERRCODE='42501';END IF;
   IF NEW.state IN('discarded','expired','refused') THEN
-   IF TG_WHEN='BEFORE' THEN NEW.bank_retained_prepare_hash:=NULL;NEW.bank_before_hash:=NULL;NEW.bank_after_hash:=NULL;NEW.bank_event_payload_hash:=NULL;NEW.bank_event_scope_hash:=NULL;NEW.bank_retained_root_xid:=NULL;
-   ELSIF NEW.bank_retained_prepare_hash IS NOT NULL OR NEW.bank_before_hash IS NOT NULL OR NEW.bank_after_hash IS NOT NULL OR NEW.bank_event_payload_hash IS NOT NULL OR NEW.bank_event_scope_hash IS NOT NULL OR NEW.bank_retained_root_xid IS NOT NULL THEN
+   IF TG_WHEN='BEFORE' THEN NEW.bank_retained_prepare_hash:=NULL;NEW.bank_before_hash:=NULL;NEW.bank_after_hash:=NULL;NEW.bank_event_payload_hash:=NULL;NEW.bank_event_scope_hash:=NULL;NEW.bank_retained_root_xid:=NULL;NEW.bank_audit_preimage:=NULL;
+   ELSIF NEW.bank_retained_prepare_hash IS NOT NULL OR NEW.bank_before_hash IS NOT NULL OR NEW.bank_after_hash IS NOT NULL OR NEW.bank_event_payload_hash IS NOT NULL OR NEW.bank_event_scope_hash IS NOT NULL OR NEW.bank_retained_root_xid IS NOT NULL OR NEW.bank_audit_preimage IS NOT NULL THEN
     RAISE EXCEPTION 'Bank terminal private proof unavailable' USING ERRCODE='42501';END IF;
   ELSIF NEW.state='awaiting_confirmation' THEN
+   IF NEW.bank_audit_preimage IS DISTINCT FROM OLD.bank_audit_preimage
+    OR NEW.bank_retained_root_xid IS DISTINCT FROM OLD.bank_retained_root_xid THEN
+    IF OLD.bank_retained_root_xid IS NOT NULL OR OLD.bank_audit_preimage IS NOT NULL
+     OR NEW.bank_retained_root_xid IS DISTINCT FROM pg_current_xact_id()
+     OR NEW.bank_audit_preimage IS DISTINCT FROM app._domain_event_next(NEW.tenant_id,true) THEN
+     RAISE EXCEPTION 'Bank audit preimage immutable' USING ERRCODE='42501';END IF;
+   END IF;
    IF OLD.bank_retained_version=1 AND ROW(NEW.bank_retained_prepare_hash,NEW.bank_before_hash,NEW.bank_after_hash,NEW.bank_event_payload_hash,NEW.bank_event_scope_hash) IS DISTINCT FROM ROW(OLD.bank_retained_prepare_hash,OLD.bank_before_hash,OLD.bank_after_hash,OLD.bank_event_payload_hash,OLD.bank_event_scope_hash) THEN
     RAISE EXCEPTION 'Bank prepared source immutable' USING ERRCODE='42501';END IF;
    IF OLD.bank_retained_version IS DISTINCT FROM 1 OR NEW.bank_retained_root_xid IS DISTINCT FROM OLD.bank_retained_root_xid THEN
@@ -215,8 +305,8 @@ BEGIN
    END IF;
   ELSIF NEW.state='completed' AND OLD.state='awaiting_confirmation' THEN
    IF NEW.bank_retained_root_xid IS DISTINCT FROM pg_current_xact_id()
-    OR ROW(NEW.bank_retained_version,NEW.bank_retained_prepare_hash,NEW.bank_retained_root_xid)
-     IS DISTINCT FROM ROW(OLD.bank_retained_version,OLD.bank_retained_prepare_hash,OLD.bank_retained_root_xid) THEN
+    OR ROW(NEW.bank_retained_version,NEW.bank_retained_prepare_hash,NEW.bank_retained_root_xid,NEW.bank_audit_preimage)
+     IS DISTINCT FROM ROW(OLD.bank_retained_version,OLD.bank_retained_prepare_hash,OLD.bank_retained_root_xid,OLD.bank_audit_preimage) THEN
     RAISE EXCEPTION 'Bank completion arm unavailable' USING ERRCODE='42501';END IF;
   END IF;
  END IF;
@@ -238,7 +328,7 @@ BEGIN
   OR NEW.xact_id<>pg_current_xact_id() OR NEW.tenant_id<>app.current_tenant_id()
   OR NEW.user_id<>app.current_user_id() THEN
   RAISE EXCEPTION 'Bank private proof erasure unavailable' USING ERRCODE='42501';END IF;
- UPDATE app.assistant_own_leave_review r SET bank_retained_prepare_hash=NULL,bank_before_hash=NULL,bank_after_hash=NULL,bank_event_payload_hash=NULL,bank_event_scope_hash=NULL,bank_retained_root_xid=NULL
+ UPDATE app.assistant_own_leave_review r SET bank_retained_prepare_hash=NULL,bank_before_hash=NULL,bank_after_hash=NULL,bank_event_payload_hash=NULL,bank_event_scope_hash=NULL,bank_retained_root_xid=NULL,bank_audit_preimage=NULL
  WHERE r.id=ANY(NEW.review_ids) AND r.tenant_id=NEW.tenant_id AND r.action_kind='employees.bank.maintain'
   AND r.bank_retained_version=1;
  RETURN NEW;
@@ -304,16 +394,20 @@ GRANT EXECUTE ON FUNCTION app.assistant_bank_review_prepare(uuid,uuid,uuid,uuid,
 CREATE FUNCTION app.assistant_bank_review_arm(p_id uuid) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE r app.assistant_own_leave_review%ROWTYPE;q public.employee_statutory_my%ROWTYPE;
- expected_parent jsonb;actual_parent jsonb;expected_body jsonb;actual_body jsonb;
+ expected_parent jsonb;actual_parent jsonb;expected_body jsonb;actual_body jsonb;audit_pre jsonb;
 BEGIN
  PERFORM app._bank_review_interval();
  SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id()
   AND user_id=app.current_user_id() AND action_kind='employees.bank.maintain' FOR UPDATE NOWAIT;
  IF NOT FOUND OR r.state<>'awaiting_confirmation' OR r.bank_retained_version IS DISTINCT FROM 1
-  OR r.bank_retained_prepare_hash IS NULL OR clock_timestamp()>=r.expires_at THEN
+  OR r.bank_retained_prepare_hash IS NULL OR clock_timestamp()>=r.expires_at
+  OR (r.bank_retained_root_xid IS NOT NULL AND r.bank_retained_root_xid IS DISTINCT FROM pg_current_xact_id()) THEN
   RAISE EXCEPTION 'Bank review arm unavailable' USING ERRCODE='42501';END IF;
  PERFORM app._assistant_assigned_review_binding(r.action_kind,r.person_id,r.employment_id,r.company_id,r.decision_subject_person_id,r.receipt_subject_id);
  PERFORM app.assistant_bank_maintenance_scope(r.employment_id);
+ audit_pre:=app._domain_event_next(r.tenant_id,true);
+ IF r.bank_retained_root_xid=pg_current_xact_id() AND r.bank_audit_preimage IS DISTINCT FROM audit_pre THEN
+  RAISE EXCEPTION 'Bank audit preimage immutable' USING ERRCODE='42501';END IF;
  SELECT * INTO q FROM public.employee_statutory_my WHERE tenant_id=r.tenant_id AND person_id=r.decision_subject_person_id FOR UPDATE NOWAIT;
  IF NOT FOUND OR app._bank_full_hash(q) IS DISTINCT FROM r.bank_before_hash
   OR app._bank_retained_hash(q) IS DISTINCT FROM r.bank_retained_prepare_hash
@@ -321,9 +415,9 @@ BEGIN
   RAISE EXCEPTION 'Bank retained source changed' USING ERRCODE='42501';END IF;
  SELECT to_jsonb(c) INTO expected_body FROM app.assistant_own_leave_review_content c WHERE c.action_id=r.id;
  IF expected_body IS NULL THEN RAISE EXCEPTION 'Bank review arm unavailable' USING ERRCODE='42501';END IF;
- expected_parent:=to_jsonb(r)||jsonb_build_object('bank_retained_root_xid',pg_current_xact_id());
+ expected_parent:=to_jsonb(r)||jsonb_build_object('bank_retained_root_xid',pg_current_xact_id(),'bank_audit_preimage',audit_pre);
  IF r.bank_retained_root_xid IS DISTINCT FROM pg_current_xact_id() THEN
-  UPDATE app.assistant_own_leave_review SET bank_retained_root_xid=pg_current_xact_id() WHERE id=r.id;
+  UPDATE app.assistant_own_leave_review SET bank_retained_root_xid=pg_current_xact_id(),bank_audit_preimage=audit_pre WHERE id=r.id;
  END IF;
  -- Re-read after every arm callback. Do not let later completion bless a newly tainted baseline.
  SELECT to_jsonb(a) INTO actual_parent FROM app.assistant_own_leave_review a WHERE a.id=r.id;
@@ -338,7 +432,8 @@ BEGIN
  SELECT * INTO q FROM public.employee_statutory_my WHERE tenant_id=r.tenant_id AND person_id=r.decision_subject_person_id FOR UPDATE NOWAIT;
  IF NOT FOUND OR app._bank_full_hash(q) IS DISTINCT FROM r.bank_before_hash
   OR app._bank_retained_hash(q) IS DISTINCT FROM r.bank_retained_prepare_hash
-  OR app._bank_json_hash(app._bank_event_scope(q.tenant_id,q.person_id,q.id,r.user_id)) IS DISTINCT FROM r.bank_event_scope_hash THEN
+  OR app._bank_json_hash(app._bank_event_scope(q.tenant_id,q.person_id,q.id,r.user_id)) IS DISTINCT FROM r.bank_event_scope_hash
+  OR app._domain_event_next(r.tenant_id,true) IS DISTINCT FROM audit_pre THEN
   RAISE EXCEPTION 'Bank retained source changed' USING ERRCODE='42501';END IF;
  IF clock_timestamp()>=r.expires_at THEN RAISE EXCEPTION 'Bank completion deadline unavailable' USING ERRCODE='42501';END IF;
 END $$;
@@ -414,7 +509,7 @@ BEGIN
   RAISE EXCEPTION 'Bank reviewed after-state changed' USING ERRCODE='42501';END IF;
  SELECT * INTO d FROM public.domain_event WHERE id=p_event AND tenant_id=r.tenant_id;
  IF NOT FOUND OR app._bank_json_hash(d.payload) IS DISTINCT FROM r.bank_event_payload_hash
-  OR app._bank_json_hash(to_jsonb(d)-ARRAY['id','sequence','occurred_at','payload']) IS DISTINCT FROM r.bank_event_scope_hash
+  OR app._bank_event_scope_valid(r.bank_event_scope_hash,r.bank_audit_preimage,d) IS NOT TRUE
   OR d.occurred_at IS DISTINCT FROM transaction_timestamp() THEN
   RAISE EXCEPTION 'Bank reviewed event changed' USING ERRCODE='42501';END IF;
  IF q.updated_at IS DISTINCT FROM transaction_timestamp() OR app._assistant_generic_review_verify(r.id,p_event) IS NOT TRUE THEN
@@ -472,7 +567,7 @@ BEGIN
  IF NOT FOUND THEN RETURN false;END IF;
  -- Historical receipt does not freeze a mutable current statutory row after this command committed.
  RETURN app._bank_json_hash(d.payload) IS NOT DISTINCT FROM r.bank_event_payload_hash
-  AND app._bank_json_hash(to_jsonb(d)-ARRAY['id','sequence','occurred_at','payload']) IS NOT DISTINCT FROM r.bank_event_scope_hash;
+  AND app._bank_event_scope_valid(r.bank_event_scope_hash,r.bank_audit_preimage,d) IS TRUE;
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_bank_review_receipt_valid(uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_bank_review_receipt_valid(uuid,uuid) TO ai_hr_app;
@@ -492,6 +587,7 @@ BEGIN
  END IF;
  IF r.state<>'completed' OR r.bank_retained_root_xid IS DISTINCT FROM NEW.bank_retained_root_xid
   OR r.bank_retained_prepare_hash IS DISTINCT FROM NEW.bank_retained_prepare_hash
+  OR r.bank_audit_preimage IS DISTINCT FROM NEW.bank_audit_preimage
   OR EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content WHERE action_id=r.id) THEN
   RAISE EXCEPTION 'Bank completed custody changed' USING ERRCODE='42501';END IF;
  SELECT * INTO q FROM public.employee_statutory_my WHERE tenant_id=r.tenant_id AND person_id=r.decision_subject_person_id;
@@ -503,5 +599,78 @@ END $$;
 REVOKE ALL ON FUNCTION app._bank_review_completion_check() FROM PUBLIC,ai_hr_app;
 CREATE CONSTRAINT TRIGGER bank_review_completion_check AFTER INSERT OR UPDATE ON app.assistant_own_leave_review
 DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
-WHEN(NEW.action_kind='employees.bank.maintain' AND NEW.state='completed' AND NEW.bank_retained_version=1)
+WHEN(NEW.action_kind='employees.bank.maintain' AND (NEW.state='completed' OR NEW.bank_retained_root_xid IS NOT NULL) AND NEW.bank_retained_version=1)
 EXECUTE FUNCTION app._bank_review_completion_check();
+
+--> statement-breakpoint
+-- Once a Bank receipt completes in this root, protect only its original selected chain position
+-- and immediate predecessor. Later append positions and other tenants remain ordinary native work.
+-- Actual OLD+NEW in BOTH trigger phases catch retargets and later BEFORE callbacks even after
+-- callers have forced every deferred constraint IMMEDIATE. No actor/port gate enters native SQL.
+CREATE FUNCTION app._bank_audit_dependency_fence() RETURNS trigger
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE old_t uuid;new_t uuid;old_seq bigint;new_seq bigint;old_id uuid;new_id uuid;
+ r app.assistant_own_leave_review%ROWTYPE;prior bigint;selected bigint;
+BEGIN
+ IF TG_RELID<>'public.domain_event'::regclass OR TG_LEVEL<>'ROW' OR TG_WHEN NOT IN('BEFORE','AFTER')
+  OR TG_OP NOT IN('INSERT','UPDATE','DELETE') THEN RAISE EXCEPTION 'Bank audit fence unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP<>'INSERT' THEN old_t:=OLD.tenant_id;old_seq:=OLD.chain_seq;old_id:=OLD.id;END IF;
+ IF TG_OP<>'DELETE' THEN new_t:=NEW.tenant_id;new_seq:=NEW.chain_seq;new_id:=NEW.id;END IF;
+ FOR r IN SELECT q.* FROM app.assistant_own_leave_review q WHERE q.action_kind='employees.bank.maintain'
+  AND q.bank_retained_version=1 AND q.state='completed' AND q.bank_retained_root_xid=pg_current_xact_id()
+  AND q.bank_audit_preimage->'armed'='true'::jsonb LOOP
+  -- The existing selected-ID BEFORE+AFTER fence retains its exact refusal and full behavior.
+  IF TG_OP<>'INSERT' AND (old_id=r.receipt_event_id OR new_id=r.receipt_event_id) THEN CONTINUE;END IF;
+  prior:=(r.bank_audit_preimage->>'priorSeq')::bigint;selected:=coalesce(prior,0)+1;
+  IF (old_t=r.tenant_id AND (old_seq=selected OR old_seq=prior))
+   OR (new_t=r.tenant_id AND (new_seq=selected OR new_seq=prior)) THEN
+   RAISE EXCEPTION 'Bank audit edge closed until commit' USING ERRCODE='42501';END IF;
+ END LOOP;
+ IF TG_WHEN='AFTER' THEN RETURN NULL;END IF;IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;
+END $$;
+DO $audit_owner$ DECLARE native_owner name;BEGIN SELECT r.rolname INTO STRICT native_owner FROM pg_proc p JOIN pg_roles r ON r.oid=p.proowner WHERE p.oid='app.domain_event_chain_tg()'::regprocedure;EXECUTE format('ALTER FUNCTION app._bank_audit_dependency_fence() OWNER TO %I',native_owner);END $audit_owner$;
+REVOKE ALL ON FUNCTION app._bank_audit_dependency_fence() FROM PUBLIC,ai_hr_app;
+-- Sort after canonical domain_event_chain_tg so native-supplied slots normalize first; AFTER
+-- still closes later BEFORE callbacks. UPDATE/DELETE keep the same actual OLD+NEW protection.
+CREATE TRIGGER native_bank_audit_dependency_fence BEFORE INSERT OR UPDATE OR DELETE ON public.domain_event
+FOR EACH ROW EXECUTE FUNCTION app._bank_audit_dependency_fence();
+CREATE TRIGGER bank_audit_dependency_fence_after AFTER INSERT OR UPDATE OR DELETE ON public.domain_event
+FOR EACH ROW EXECUTE FUNCTION app._bank_audit_dependency_fence();
+
+--> statement-breakpoint
+-- Insertion-time owner observation, BEFORE any later callback can clear/retype generated slots.
+-- This compares the ORIGINAL protected PREimage, never records a replacement expected snapshot.
+-- Do not filter on mutable NEW metadata: a later BEFORE callback could restore a masked tenant,
+-- actor or event kind. The audit GUC is connection-wide; protect its held-frame mode as well as
+-- the original tenant's head. Other tenants/positions remain free while this protected fact holds.
+CREATE FUNCTION app._bank_audit_owner_frame_guard() RETURNS void
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ FOR r IN SELECT q.* FROM app.assistant_own_leave_review q WHERE q.action_kind='employees.bank.maintain'
+  AND q.bank_retained_version=1 AND q.state='awaiting_confirmation'
+  AND q.bank_retained_root_xid=pg_current_xact_id() AND q.bank_audit_preimage IS NOT NULL LOOP
+  -- Arm already owns this exact native key. Reentrant NOWAIT cannot add a blocking lock inversion.
+  IF app._domain_event_next(r.tenant_id,true) IS DISTINCT FROM r.bank_audit_preimage THEN
+   RAISE EXCEPTION 'Bank audit decision changed before native INSERT' USING ERRCODE='42501';END IF;
+ END LOOP;
+END $$;
+DO $audit_owner$ DECLARE native_owner name;BEGIN SELECT r.rolname INTO STRICT native_owner FROM pg_proc p JOIN pg_roles r ON r.oid=p.proowner WHERE p.oid='app.domain_event_chain_tg()'::regprocedure;EXECUTE format('ALTER FUNCTION app._bank_audit_owner_frame_guard() OWNER TO %I',native_owner);END $audit_owner$;
+REVOKE ALL ON FUNCTION app._bank_audit_owner_frame_guard() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- Append replacement only: applied0534 remains byte-identical. Unarmed native rows are returned
+-- unchanged, including caller-provided values, exactly as before; Bank separately closes its tuple.
+CREATE OR REPLACE FUNCTION app.domain_event_chain_tg() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE pre jsonb;
+BEGIN
+ pre:=app._domain_event_next(NEW.tenant_id);
+ PERFORM app._bank_audit_owner_frame_guard();
+ IF NOT (pre->>'armed')::boolean THEN RETURN NEW;END IF;
+ NEW.chain_seq:=coalesce((pre->>'priorSeq')::bigint,0)+1;
+ NEW.prev_hash:=coalesce(pre->>'priorHash','GENESIS');
+ NEW.hash:=app.domain_event_hash(NEW.prev_hash,NEW.tenant_id,NEW.chain_seq,NEW.aggregate_type,
+  NEW.aggregate_id,NEW.event_type,NEW.actor_type::text,NEW.actor_id,NEW.subject_employment_id,NEW.payload);
+ RETURN NEW;
+END $$;
+--> statement-breakpoint

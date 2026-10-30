@@ -1,5 +1,7 @@
 import {assertReviewBodyPendingParentContract} from './helpers/review-body-pending-parent-contract';
 import {erasePersonPii} from '../core/pdpa';
+import {appendEvent} from '../db/events';
+import {verifyTenantChain} from '../core/audit-chain';
 /** Authored exact-SHA CI witnesses; native country owner and real migrated encrypted custody. */
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
@@ -26,7 +28,7 @@ const confirm=(r:{actionId:string;reviewedDigest:string})=>({action:C.action,con
 const profile=()=>withTenant(ctx,tx=>pack().statutory.get(ctx,target.personId,tx));
 async function state(){return{profile:await profile(),events:await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.tenantId,b.tenantId)).orderBy(s.domainEvent.id)};}
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
-beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-bank-maintenance-custody-key-1234');await resetDb();b=await seedBase();for(const m of ['assistant','payroll','country-my'])await setModule(b.tenantId,m,'active');ctx={...await entitledCtx(b,['hr_admin']),grants:[{role:'hr_admin',companyId:null}]};await grantAssistant(ctx,{appUserId:ctx.userId!});target=await hireEmployee(ctx,{person:{fullName:'Fictional Bank Employee',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});await pack().statutory.set(ctx,{personId:target.personId,icNumber:null,epfNumber:'PRIVATE-EPF',socsoNumber:'PRIVATE-SOCSO',taxNumber:'PRIVATE-TAX',bankName:'Legacy Fictional Bank',bankAccountNo:'000-FICTIONAL-OLD'});await pack().statutory.setBank(ctx,{personId:target.personId,bankName:'Legacy Fictional Bank',bankAccountNo:'000-FICTIONAL-OLD',enableCustomHolderName:true,customHolderName:'Old Payee',enableCustomHolderId:true,customHolderId:'PRIVATE-OLD-ID'});});
+beforeEach(async()=>{vi.stubEnv('AUDIT_HASH_CHAIN_ENABLED','false');vi.stubEnv('AI_CONFIG_SECRET','fictional-bank-maintenance-custody-key-1234');await resetDb();b=await seedBase();for(const m of ['assistant','payroll','country-my'])await setModule(b.tenantId,m,'active');ctx={...await entitledCtx(b,['hr_admin']),grants:[{role:'hr_admin',companyId:null}]};await grantAssistant(ctx,{appUserId:ctx.userId!});target=await hireEmployee(ctx,{person:{fullName:'Fictional Bank Employee',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});await pack().statutory.set(ctx,{personId:target.personId,icNumber:null,epfNumber:'PRIVATE-EPF',socsoNumber:'PRIVATE-SOCSO',taxNumber:'PRIVATE-TAX',bankName:'Legacy Fictional Bank',bankAccountNo:'000-FICTIONAL-OLD'});await pack().statutory.setBank(ctx,{personId:target.personId,bankName:'Legacy Fictional Bank',bankAccountNo:'000-FICTIONAL-OLD',enableCustomHolderName:true,customHolderName:'Old Payee',enableCustomHolderId:true,customHolderId:'PRIVATE-OLD-ID'});});
 it('keeps the same native source digest when equivalent entitlement sets arrive in another order',async()=>{
  const left=structuredClone(ctx.entitlements!);if(!left)throw Error('Expected resolved fixture entitlements');
  const right={...left,enabledModules:[...left.enabledModules].reverse(),scopedModules:Object.fromEntries(Object.entries(left.scopedModules).reverse().map(([code,companies])=>[code,[...companies].reverse()])),settings:Object.fromEntries(Object.entries(left.settings).reverse())},before=await state(),input=C.Human.parse(human());
@@ -117,8 +119,10 @@ async function bankSqlFlow(r:BankPrepared,hooks:{entry?:(tx:Tx)=>Promise<void>;a
 async function exactBankRefusal(work:()=>Promise<unknown>,message:string){
  const before=await retainedState();let error:unknown,rawError:unknown;const real=bankDbClient.withTenant;
  const observed:typeof withTenant=async(who,run,options)=>{try{return await real(who,run,options);}catch(e){rawError=e;throw e;}};
- const spy=vi.spyOn(bankDbClient,'withTenant').mockImplementation(observed);
- try{try{await work();}catch(e){error=e;}}finally{spy.mockRestore();}
+ const previousObserver=bankAuditErrorObserver;
+ const spy=bankAuditHarnessActive?null:vi.spyOn(bankDbClient,'withTenant').mockImplementation(observed);
+ if(bankAuditHarnessActive)bankAuditErrorObserver=e=>{rawError=e;};
+ try{try{await work();}catch(e){error=e;}}finally{spy?.mockRestore();bankAuditErrorObserver=previousObserver;}
  error=rawError??error;
  expect(pgSqlState(error)).toBe('42501');const messages:unknown[]=[];
  for(let current=error;current&&typeof current==='object';current=(current as {cause?:unknown}).cause)messages.push((current as {message?:unknown}).message);
@@ -217,10 +221,11 @@ it('bank closure: actual native DELETE-body trigger crossing server deadline rol
 it('bank closure: canonical pending and completed privacy erasure removes private retained hashes with real audit',async()=>{
  const pending=(await store.prepare(ctx,human())).review;
  await erasePersonPii(ctx,{subjectEmploymentId:target.employmentId,scope:'contact',requestRef:'FICTIONAL-BANK-PENDING',reason:'Fictional bank review erasure'});
- const [retired]=await owner.db.execute(sql`select state,bank_retained_prepare_hash,bank_before_hash,bank_after_hash,bank_event_payload_hash,bank_event_scope_hash,bank_retained_root_xid from app.assistant_own_leave_review where id=${pending.actionId}::uuid`);expect(retired).toEqual({state:'refused',bank_retained_prepare_hash:null,bank_before_hash:null,bank_after_hash:null,bank_event_payload_hash:null,bank_event_scope_hash:null,bank_retained_root_xid:null});
+ const [retired]=await owner.db.execute(sql`select state,bank_retained_prepare_hash,bank_before_hash,bank_after_hash,bank_event_payload_hash,bank_event_scope_hash,bank_retained_root_xid,bank_audit_preimage from app.assistant_own_leave_review where id=${pending.actionId}::uuid`);expect(retired).toEqual({state:'refused',bank_retained_prepare_hash:null,bank_before_hash:null,bank_after_hash:null,bank_event_payload_hash:null,bank_event_scope_hash:null,bank_retained_root_xid:null,bank_audit_preimage:null});
  const complete=(await store.prepare(ctx,human())).review;await store.confirm(ctx,confirm(complete));
+ const [armed]=await owner.db.execute<{image:unknown}>(sql`select bank_audit_preimage image from app.assistant_own_leave_review where id=${complete.actionId}::uuid`);expect(armed.image).not.toBeNull();
  await erasePersonPii(ctx,{subjectEmploymentId:target.employmentId,scope:'contact',requestRef:'FICTIONAL-BANK-COMPLETED',reason:'Fictional completed bank erasure'});
- const [closed]=await owner.db.execute(sql`select state,bank_retained_prepare_hash,bank_before_hash,bank_after_hash,bank_event_payload_hash,bank_event_scope_hash,bank_retained_root_xid from app.assistant_own_leave_review where id=${complete.actionId}::uuid`);expect(closed).toEqual({state:'completed',bank_retained_prepare_hash:null,bank_before_hash:null,bank_after_hash:null,bank_event_payload_hash:null,bank_event_scope_hash:null,bank_retained_root_xid:null});
+ const [closed]=await owner.db.execute(sql`select state,bank_retained_prepare_hash,bank_before_hash,bank_after_hash,bank_event_payload_hash,bank_event_scope_hash,bank_retained_root_xid,bank_audit_preimage from app.assistant_own_leave_review where id=${complete.actionId}::uuid`);expect(closed).toEqual({state:'completed',bank_retained_prepare_hash:null,bank_before_hash:null,bank_after_hash:null,bank_event_payload_hash:null,bank_event_scope_hash:null,bank_retained_root_xid:null,bank_audit_preimage:null});
 });
 
 it.each(['created_at','expires_at'] as const)('bank V2: actual initial-arm %s callback cannot nominate a new completed baseline',async field=>{
@@ -298,4 +303,237 @@ it('bank V2: later owner DELETE cannot remove completed metadata while genuine U
  // This is the actual configured app_user -> review ON DELETE CASCADE, not a forged erasure GUC.
  await owner.db.delete(s.appUser).where(eq(s.appUser.id,userId));
  const [gone]=await owner.db.execute<{count:number}>(sql`select count(*)::int count from app.assistant_own_leave_review where id=${second.actionId}::uuid`);expect(gone.count).toBe(0);expect(await profile()).toEqual(nativeBefore);
+});
+
+let bankAuditHarnessActive=false;
+let bankAuditErrorObserver:((error:unknown)=>void)|null=null;
+// V3 audit slots are qualified by the native audit owner, against an independent PRE-native root.
+async function observedBankSuccess<T>(work:()=>Promise<T>):Promise<T>{
+ const real=bankDbClient.withTenant;const raw:Array<{code:string|null;messages:unknown[]}>=[];let result:T|undefined,publicFailure:unknown;
+ const record=(error:unknown)=>{
+  const messages:unknown[]=[];for(let e=error;e&&typeof e==='object';e=(e as {cause?:unknown}).cause)messages.push((e as {message?:unknown}).message);
+  raw.push({code:pgSqlState(error)??null,messages});
+ };
+ const observed:typeof withTenant=async(who,run,options)=>{try{return await real(who,run,options);}catch(error){record(error);throw error;}};
+ const previousObserver=bankAuditErrorObserver;const spy=bankAuditHarnessActive?null:vi.spyOn(bankDbClient,'withTenant').mockImplementation(observed);if(bankAuditHarnessActive)bankAuditErrorObserver=record;
+ try{try{result=await work();}catch(error){publicFailure=error;}}finally{spy?.mockRestore();bankAuditErrorObserver=previousObserver;}
+ // This is fixture-only observation before the public boundary sanitizes. No production cause/log change.
+ expect({publicFailure:publicFailure instanceof Error?publicFailure.name:null,raw},'real transaction positive must complete; original inner SQL cause retained here').toEqual({publicFailure:null,raw:[]});
+ return result as T;
+}
+type AuditMode='unarmed'|'guc'|'persisted'|'history';
+async function withAuditMode<T>(mode:AuditMode,work:(guc:'on'|'off')=>Promise<T>):Promise<T>{
+ vi.stubEnv('AUDIT_HASH_CHAIN_ENABLED','false');
+ const [initial]=await owner.db.execute<{n:number}>(sql`select count(*)::int n from domain_event where tenant_id=${b.tenantId}::uuid and chain_seq is not null`);expect(initial.n).toBe(0);
+ if(mode==='persisted')await owner.db.execute(sql`insert into tenant_setting(tenant_id,key,value,source,updated_by) values(${b.tenantId}::uuid,'audit.hash_chain_enabled','true'::jsonb,'customer',${ctx.userId}::uuid) on conflict(tenant_id,key) do update set value='true'::jsonb`);
+ if(mode==='history')await withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('app.audit_hash_chain','on',true)`);await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'fictional-audit-history',aggregateId:randomUUID(),eventType:'fictional-audit-history.created',actor:{type:'user',id:ctx.userId!},payload:{fictional:true}});});
+ const real=bankDbClient.withTenant,guc=mode==='guc'?'on':'off';
+ const configured:typeof withTenant=async(who,run,options)=>{try{return await real(who,async tx=>{await tx.execute(sql`select set_config('app.audit_hash_chain',${guc},true)`);const value=await run(tx);const [after]=await tx.execute<{guc:string}>(sql`select current_setting('app.audit_hash_chain') guc`);expect(after.guc).toBe(guc);return value;},options);}catch(error){bankAuditErrorObserver?.(error);throw error;}};
+ const spy=vi.spyOn(bankDbClient,'withTenant').mockImplementation(configured);
+ bankAuditHarnessActive=true;try{return await work(guc);}finally{bankAuditHarnessActive=false;bankAuditErrorObserver=null;spy.mockRestore();}
+}
+async function auditEvent(id:string){const [row]=await owner.db.execute<{id:string;chain_seq:string|null;prev_hash:string|null;hash:string|null;recomputed:string|null}>(sql`select id,chain_seq::text,prev_hash,hash,app.domain_event_hash(prev_hash,tenant_id,chain_seq,aggregate_type,aggregate_id,event_type,actor_type::text,actor_id,subject_employment_id,payload) recomputed from domain_event where id=${id}::uuid`);expect(row).toBeDefined();return row;}
+it.each(['unarmed','guc','persisted','history'] as const)('bank V4: real encrypted roundtrip and non-assistant native event retain canonical %s audit behavior',async mode=>{
+ await withAuditMode(mode,async()=>{
+  const native=await withTenant(ctx,tx=>appendEvent(tx,{tenantId:b.tenantId,aggregateType:'fictional-native-audit-control',aggregateId:randomUUID(),eventType:'fictional-native-audit-control.created',actor:{type:'user',id:ctx.userId!},payload:{fictional:'native parity'}},{returnId:true}));expect(native).toEqual(expect.any(String));
+  const control=await auditEvent(native!);
+  const r=(await store.prepare(ctx,human())).review;
+  const done=await observedBankSuccess(()=>store.confirm(ctx,confirm(r)));expect(done.kind).toBe('completed');
+  const [receipt]=await owner.db.execute<{id:string}>(sql`select receipt_event_id id from app.assistant_own_leave_review where id=${r.actionId}::uuid`);const bank=await auditEvent(receipt.id);
+  if(mode==='unarmed'){expect(control).toMatchObject({chain_seq:null,prev_hash:null,hash:null});expect(bank).toMatchObject({chain_seq:null,prev_hash:null,hash:null});}
+  else{expect(control.hash).toMatch(/^[a-f0-9]{64}$/);expect(control.hash).toBe(control.recomputed);expect(bank.hash).toBe(bank.recomputed);expect(bank.prev_hash).toBe(control.hash);expect(BigInt(bank.chain_seq!)).toBe(BigInt(control.chain_seq!)+BigInt(1));}
+  expect(await observedBankSuccess(()=>store.reopen(ctx,r.actionId))).toEqual(done);expect(await observedBankSuccess(()=>store.confirm(ctx,confirm(r)))).toEqual(done);
+  const chain=await verifyTenantChain(ctx);expect(chain.valid).toBe(true);expect(chain.issues).toEqual([]);expect(chain.unchainedInsideChain).toBe(0);
+ });
+});
+it.each(['unarmed','guc'] as const)('bank V4: %s audit tuple cannot launder a different armed mode with a valid native hash',async mode=>{
+ await withAuditMode(mode,async()=>{
+  const r=(await store.prepare(ctx,human())).review;
+  const body=mode==='unarmed'?`NEW.chain_seq:=1;NEW.prev_hash:='GENESIS';NEW.hash:=app.domain_event_hash(NEW.prev_hash,NEW.tenant_id,NEW.chain_seq,NEW.aggregate_type,NEW.aggregate_id,NEW.event_type,NEW.actor_type::text,NEW.actor_id,NEW.subject_employment_id,NEW.payload);`:'NEW.chain_seq:=NULL;NEW.prev_hash:=NULL;NEW.hash:=NULL;';
+  await withBankHook({relation:'public.domain_event',timing:'BEFORE',event:'INSERT',prefix:'zz',when:`NEW.tenant_id='${b.tenantId}'::uuid AND NEW.event_type='employee.bank.updated'`,body},async sequence=>{
+   const before=await markProbe(sequence);await exactBankRefusal(()=>store.confirm(ctx,confirm(r)),'Bank reviewed event changed');expect(await probeValue(sequence)).toBe(before+BigInt(1));
+  });
+ });
+});
+it.each(['chain_seq','prev_hash','hash'] as const)('bank V4: generated %s tamper rolls back real native effect and whole custody',async field=>{
+ await withAuditMode('guc',async()=>{
+  const r=(await store.prepare(ctx,human())).review;
+  const body=field==='chain_seq'?'NEW.chain_seq:=NEW.chain_seq+1;':field==='prev_hash'?"NEW.prev_hash:='FICTIONAL-WRONG-HEAD';":"NEW.hash:=repeat('0',64);";
+  await withBankHook({relation:'public.domain_event',timing:'BEFORE',event:'INSERT',prefix:'zz',when:`NEW.tenant_id='${b.tenantId}'::uuid AND NEW.event_type='employee.bank.updated'`,body},async sequence=>{
+   const before=await markProbe(sequence);await exactBankRefusal(()=>store.confirm(ctx,confirm(r)),'Bank reviewed event changed');expect(await probeValue(sequence)).toBe(before+BigInt(1));
+  });
+ });
+});
+it('bank V4: actual first-event GUC disarm after arm cannot change independently committed mode',async()=>{
+ await withAuditMode('guc',async()=>{
+  const r=(await store.prepare(ctx,human())).review,original=pack().statutory.setBank;let entered=false;
+  const native=vi.spyOn(pack().statutory,'setBank').mockImplementation(async(who,input,tx)=>{entered=true;if(!tx)throw Error('Expected actual enclosing transaction');await tx.execute(sql`select set_config('app.audit_hash_chain','off',true)`);return original(who,input,tx);});
+  try{await withBankHook({relation:'public.domain_event',timing:'BEFORE',event:'INSERT',prefix:'aa',when:`NEW.tenant_id='${b.tenantId}'::uuid AND NEW.event_type='employee.bank.updated'`,body:'PERFORM 1;'},async sequence=>{const before=await markProbe(sequence);await exactBankRefusal(()=>store.confirm(ctx,confirm(r)),'Bank audit decision changed before native INSERT');expect(entered).toBe(true);expect(await probeValue(sequence)).toBe(before+BigInt(1));});}finally{native.mockRestore();}
+ });
+});
+it('bank V4: another canonical event between arm and native INSERT cannot nominate a new expected head',async()=>{
+ await withAuditMode('guc',async()=>{
+  const r=(await store.prepare(ctx,human())).review,original=pack().statutory.setBank;let inserted=false;
+  const native=vi.spyOn(pack().statutory,'setBank').mockImplementation(async(who,input,tx)=>{if(!tx)throw Error('Expected actual enclosing transaction');await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'fictional-head-interposition',aggregateId:randomUUID(),eventType:'fictional-head-interposition.created',actor:{type:'user',id:ctx.userId!},payload:{fictional:true}});inserted=true;return original(who,input,tx);});
+  try{await exactBankRefusal(()=>store.confirm(ctx,confirm(r)),'Bank audit decision changed before native INSERT');expect(inserted).toBe(true);}finally{native.mockRestore();}
+ });
+});
+it('bank V4: real competing native audit lock refuses whole confirmation with 55P03 instead of lock inversion',async()=>{
+ const r=(await store.prepare(ctx,human())).review,before=await retainedState();let release!:()=>void,ready!:()=>void;const held=new Promise<void>(resolve=>{release=resolve;}),started=new Promise<void>(resolve=>{ready=resolve;});
+ const blocker=owner.db.transaction(async tx=>{await tx.execute(sql`select pg_advisory_xact_lock(hashtext('audit-chain:'||${b.tenantId}::text))`);ready();await held;});
+ await started;const real=bankDbClient.withTenant;let raw:unknown;
+ const observe:typeof withTenant=async(who,run,options)=>{try{return await real(who,run,options);}catch(error){raw=error;throw error;}};
+ const spy=vi.spyOn(bankDbClient,'withTenant').mockImplementation(observe);
+ try{await expect(store.confirm(ctx,confirm(r))).rejects.toThrow();expect(pgSqlState(raw)).toBe('55P03');const messages:unknown[]=[];for(let e=raw;e&&typeof e==='object';e=(e as {cause?:unknown}).cause)messages.push((e as {message?:unknown}).message);expect(messages).toContain('Audit chain busy');}
+ finally{spy.mockRestore();release();await blocker;}
+ expect(await retainedState()).toEqual(before);expect(await observedBankSuccess(()=>store.confirm(ctx,confirm(r)))).toMatchObject({kind:'completed'});
+});
+it('bank V4: native unarmed non-assistant INSERT retains exact preexisting caller-slot semantics',async()=>{
+ const id=randomUUID();await withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('app.audit_hash_chain','off',true)`);await tx.insert(s.domainEvent).values({id,tenantId:b.tenantId,aggregateType:'fictional-legacy-slot-parity',aggregateId:randomUUID(),eventType:'fictional-legacy-slot-parity.created',actorType:'user',actorId:ctx.userId!,payload:{fictional:true},chainSeq:41,prevHash:'FICTIONAL-LEGACY-PREV',hash:'FICTIONAL-LEGACY-HASH'});});
+ expect(await auditEvent(id)).toMatchObject({chain_seq:'41',prev_hash:'FICTIONAL-LEGACY-PREV',hash:'FICTIONAL-LEGACY-HASH'});
+});
+it('bank V4: private native audit preimage owner grants no app log or helper read authority',async()=>{
+ let failure:unknown;try{await withTenant(ctx,tx=>tx.execute(sql`select app._domain_event_next(${b.tenantId}::uuid,true)`));}catch(error){failure=error;}expect(pgSqlState(failure)).toBe('42501');
+ const [acl]=await owner.db.execute<{app:boolean;public:boolean;same_owner:boolean}>(sql`select (select proowner from pg_proc where oid='app._domain_event_next(uuid,boolean)'::regprocedure)=(select proowner from pg_proc where oid='app.domain_event_chain_tg()'::regprocedure) same_owner,has_function_privilege('ai_hr_app','app._domain_event_next(uuid,boolean)','EXECUTE') app,exists(select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where p.oid='app._domain_event_next(uuid,boolean)'::regprocedure and a.grantee=0 and a.privilege_type='EXECUTE') public`);expect(acl).toEqual({same_owner:true,app:false,public:false});
+});
+it('bank V4: raw arm COMMIT without completion rolls back and original encrypted packet still reopens and confirms',async()=>{
+ const r=(await store.prepare(ctx,human())).review;
+ await exactBankRefusal(()=>withTenant(ctx,tx=>tx.execute(sql`select app.assistant_bank_review_arm(${r.actionId}::uuid)`)),'Bank completed custody changed');
+ expect(await observedBankSuccess(()=>store.reopen(ctx,r.actionId))).toEqual({kind:'prepared',review:r});
+ expect(await observedBankSuccess(()=>store.confirm(ctx,confirm(r)))).toMatchObject({kind:'completed'});
+});
+it('bank V4: repeated same-root arm keeps original encrypted binding and body and never rebases expected audit head',async()=>{
+ await withAuditMode('guc',async()=>{
+  const r=(await store.prepare(ctx,human())).review;
+  const [before]=await withTenant(ctx,tx=>tx.execute<{review:{metadata:{binding:unknown};sealed:unknown}}>(sql`select app.assistant_assigned_review_read(${r.actionId}::uuid,${C.action}) review`));let repeated=false;
+  await bankSqlFlow(r,{entry:async tx=>{
+   await tx.execute(sql`select app.assistant_bank_review_arm(${r.actionId}::uuid)`);repeated=true;
+   const [after]=await tx.execute<{review:{metadata:{binding:unknown};sealed:unknown}}>(sql`select app.assistant_assigned_review_read(${r.actionId}::uuid,${C.action}) review`);
+   expect(after.review.metadata.binding).toEqual(before.review.metadata.binding);expect(after.review.sealed).toEqual(before.review.sealed);
+  }});expect(repeated).toBe(true);expect(await observedBankSuccess(()=>store.reopen(ctx,r.actionId))).toMatchObject({kind:'completed'});
+ });
+});
+it('bank V4: completed recovery keeps original event contribution after later native bank, audit mode/head and employment ordering change',async()=>{
+ const r=(await store.prepare(ctx,human())).review,done=await observedBankSuccess(()=>store.confirm(ctx,confirm(r)));
+ await withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('app.audit_hash_chain','on',true)`);await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'fictional-later-chain',aggregateId:randomUUID(),eventType:'fictional-later-chain.created',actor:{type:'user',id:ctx.userId!},payload:{fictional:true}});});
+ const company=await createCompany(ctx,{legalName:'Fictional Later Shared Bank Company',country:'MY',currency:'MYR'}),department=await createDepartment(ctx,{companyId:company.id,name:'Fictional Later Department'});
+ const earlier=await hireEmployee(ctx,{person:{id:target.personId},companyId:company.id,departmentId:department.id,employmentType:'full_time',hiredOn:'2020-01-01'});
+ const [selected]=await owner.db.execute<{id:string}>(sql`select id from employment where tenant_id=${b.tenantId}::uuid and person_id=${target.personId}::uuid order by (terminated_on is not null),hired_on,id limit 1`);expect(selected.id).toBe(earlier.employmentId);
+ await pack().statutory.setBank(ctx,{personId:target.personId,bankName:fields().bankName,bankAccountNo:'000-FICTIONAL-LATER',enableCustomHolderName:false,enableCustomHolderId:false});
+ const [chained]=await owner.db.execute<{n:number}>(sql`select count(*)::int n from domain_event where tenant_id=${b.tenantId}::uuid and chain_seq is not null`);expect(chained.n).toBeGreaterThan(0);
+ expect(await observedBankSuccess(()=>store.reopen(ctx,r.actionId))).toEqual(done);expect(await observedBankSuccess(()=>store.confirm(ctx,confirm(r)))).toEqual(done);
+});
+it.each(['discarded','expired'] as const)('bank V4: %s cleanup retains SQL NULL private audit preimage and closes original custody',async state=>{
+ const r=(await store.prepare(ctx,human())).review;
+ if(state==='discarded')expect(await store.discard(ctx,{action:C.action,contractVersion:1,actionId:r.actionId})).toMatchObject({kind:'retired',receipt:{state}});
+ else{await owner.db.execute(sql`update app.assistant_own_leave_review set created_at=clock_timestamp()-interval '2 minutes',expires_at=clock_timestamp()-interval '1 second' where id=${r.actionId}::uuid`);
+  const [due]=await owner.db.execute(sql`select state,created_at<expires_at chronology,expires_at<clock_timestamp() due,(select count(*)::int from app.assistant_own_leave_review_content c where c.action_id=r.id) bodies from app.assistant_own_leave_review r where id=${r.actionId}::uuid`);expect(due).toEqual({state:'awaiting_confirmation',chronology:true,due:true,bodies:1});
+  expect(await store.reopen(ctx,r.actionId)).toMatchObject({kind:'retired',receipt:{state}});}
+ const [row]=await owner.db.execute(sql`select state,bank_audit_preimage,(select count(*)::int from app.assistant_own_leave_review_content c where c.action_id=r.id) bodies from app.assistant_own_leave_review r where id=${r.actionId}::uuid`);expect(row).toEqual({state,bank_audit_preimage:null,bodies:0});
+});
+
+async function auditControl(){const id=await withTenant(ctx,tx=>appendEvent(tx,{tenantId:b.tenantId,aggregateType:'fictional-audit-edge-control',aggregateId:randomUUID(),eventType:'fictional-audit-edge-control.created',actor:{type:'user',id:ctx.userId!},payload:{fictional:true}},{returnId:true}));expect(id).toEqual(expect.any(String));return auditEvent(id!);}
+async function withAuditFixtureWriter(work:(helpers:{erase(tx:Tx,id:string):Promise<void>;system(tx:Tx,tenant:string,id:string):Promise<void>})=>Promise<void>){
+ const suffix=randomUUID().replaceAll('-',''),erase='bank_audit_erase_'+suffix,system='bank_audit_system_'+suffix;
+ await owner.db.execute(sql.raw(`CREATE FUNCTION app.${erase}(p uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $probe$ BEGIN DELETE FROM public.domain_event WHERE id=p;END $probe$;
+ CREATE FUNCTION app.${system}(t uuid,p uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $probe$ BEGIN INSERT INTO public.domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(p,t,'fictional-other-native-system',p,'fictional-other-native-system.created','system',NULL,'{"fictional":true}'::jsonb);END $probe$;
+ REVOKE ALL ON FUNCTION app.${erase}(uuid),app.${system}(uuid,uuid) FROM PUBLIC;
+ GRANT EXECUTE ON FUNCTION app.${erase}(uuid),app.${system}(uuid,uuid) TO ai_hr_app;`));
+ try{await work({erase:async(tx,id)=>{await tx.execute(sql`select ${sql.raw('app.'+erase)}(${id}::uuid)`);},system:async(tx,tenant,id)=>{await tx.execute(sql`select ${sql.raw('app.'+system)}(${tenant}::uuid,${id}::uuid)`);}});}
+ finally{await owner.db.execute(sql.raw(`DROP FUNCTION app.${erase}(uuid);DROP FUNCTION app.${system}(uuid,uuid);`));}
+}
+it('bank V5: genuine interposed event plus paired canonical rewrite cannot duplicate the protected selected chain position',async()=>{
+ await withAuditMode('guc',async()=>{
+  const head=await auditControl();expect(head.hash).toMatch(/^[a-f0-9]{64}$/);const selected=(BigInt(head.chain_seq!)+BigInt(1)).toString(),r=(await store.prepare(ctx,human())).review,original=pack().statutory.setBank;let inserted=false;
+  const native=vi.spyOn(pack().statutory,'setBank').mockImplementation(async(who,input,tx)=>{if(!tx)throw Error('Expected real enclosing Tx');const id=await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'fictional-interposed-F',aggregateId:randomUUID(),eventType:'fictional-interposed-F.created',actor:{type:'user',id:ctx.userId!},payload:{fictional:true}},{returnId:true});expect(id).toEqual(expect.any(String));inserted=true;return original(who,input,tx);});
+  try{await withBankHook({relation:'public.domain_event',timing:'BEFORE',event:'INSERT',prefix:'aa',when:`NEW.tenant_id='${b.tenantId}'::uuid AND NEW.event_type='employee.bank.updated'`,body:'PERFORM 1;'},async earlySequence=>{const earlyBefore=await markProbe(earlySequence);await withBankHook({relation:'public.domain_event',timing:'BEFORE',event:'INSERT',prefix:'zz',when:`NEW.tenant_id='${b.tenantId}'::uuid AND NEW.event_type='employee.bank.updated'`,body:`NEW.chain_seq:=${selected};NEW.prev_hash:='${head.hash}';NEW.hash:=app.domain_event_hash(NEW.prev_hash,NEW.tenant_id,NEW.chain_seq,NEW.aggregate_type,NEW.aggregate_id,NEW.event_type,NEW.actor_type::text,NEW.actor_id,NEW.subject_employment_id,NEW.payload);`},async sequence=>{const before=await markProbe(sequence);await exactBankRefusal(()=>store.confirm(ctx,confirm(r)),'Bank audit decision changed before native INSERT');expect(inserted).toBe(true);expect(await probeValue(earlySequence)).toBe(earlyBefore+BigInt(1));expect(await probeValue(sequence),'late paired rewrite must not run after canonical owner refusal').toBe(before);});});}finally{native.mockRestore();}
+ });
+});
+it.each(['duplicate_insert','retarget_update','predecessor_update','predecessor_delete'] as const)('bank V5: actual late %s cannot invalidate original audit edge after constraints forced immediate',async operation=>{
+ await withAuditMode('guc',async()=>{
+  const head=await auditControl();expect(head.hash).toMatch(/^[a-f0-9]{64}$/);const selected=(BigInt(head.chain_seq!)+BigInt(1)).toString(),r=(await store.prepare(ctx,human())).review;let lateAttempted=false;
+  const retarget=operation==='retarget_update',insert=operation==='duplicate_insert',deleting=operation==='predecessor_delete';
+  const event=insert?'INSERT':deleting?'DELETE':'UPDATE',timing='BEFORE' as const,prefix=insert||retarget?'zz':'aa';
+  const when=insert||retarget?`NEW.tenant_id='${b.tenantId}'::uuid AND NEW.event_type='fictional-late-audit-edge.created'`:`OLD.id='${head.id}'::uuid`;
+  const body=insert||retarget?`NEW.chain_seq:=${selected};NEW.prev_hash:='${head.hash}';NEW.hash:=app.domain_event_hash(NEW.prev_hash,NEW.tenant_id,NEW.chain_seq,NEW.aggregate_type,NEW.aggregate_id,NEW.event_type,NEW.actor_type::text,NEW.actor_id,NEW.subject_employment_id,NEW.payload);`:'PERFORM 1;';
+  await withBankHook({relation:'public.domain_event',timing,event,prefix,when,body},async sequence=>{
+   const before=await markProbe(sequence);
+   await withAuditFixtureWriter(async({erase})=>withBankOwnerNoops(async({eventNoop})=>exactBankRefusal(()=>bankSqlFlow(r,{after:async tx=>{
+    await tx.execute(sql`set constraints all immediate`);lateAttempted=true;
+    if(insert||retarget){const id=await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'fictional-late-audit-edge',aggregateId:randomUUID(),eventType:'fictional-late-audit-edge.created',actor:{type:'user',id:ctx.userId!},payload:{fictional:true}},{returnId:true});if(retarget){expect(id).toEqual(expect.any(String));await eventNoop(tx,id!);}}
+    else if(deleting)await erase(tx,head.id);else await eventNoop(tx,head.id);
+   }}),'Bank audit edge closed until commit')));
+   expect(lateAttempted).toBe(true);expect(await probeValue(sequence)).toBe(before+BigInt(1));
+  });
+ });
+});
+it('bank V5: ordinary later append and other-tenant SYSTEM INSERT still work in completed Bank root after immediate constraints',async()=>{
+ const other=await seedBase(),otherId=randomUUID();
+ await withAuditMode('guc',async()=>{
+  const r=(await store.prepare(ctx,human())).review;let appended:string|undefined;
+  await withAuditFixtureWriter(async({system})=>{await bankSqlFlow(r,{after:async tx=>{
+   await tx.execute(sql`set constraints all immediate`);
+   appended=await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'fictional-later-native-append',aggregateId:randomUUID(),eventType:'fictional-later-native-append.created',actor:{type:'user',id:ctx.userId!},payload:{fictional:true}},{returnId:true});
+   await system(tx,other.tenantId,otherId);
+  }});});expect(appended).toEqual(expect.any(String));
+  const [receipt]=await owner.db.execute<{id:string}>(sql`select receipt_event_id id from app.assistant_own_leave_review where id=${r.actionId}::uuid`),bank=await auditEvent(receipt.id),later=await auditEvent(appended!),foreign=await auditEvent(otherId);
+  expect(later.prev_hash).toBe(bank.hash);expect(later.hash).toBe(later.recomputed);expect(BigInt(later.chain_seq!)).toBe(BigInt(bank.chain_seq!)+BigInt(1));expect(foreign.chain_seq).toBe(bank.chain_seq);expect(foreign.hash).toBe(foreign.recomputed);
+  expect(await observedBankSuccess(()=>store.reopen(ctx,r.actionId))).toMatchObject({kind:'completed'});expect((await verifyTenantChain(ctx)).valid).toBe(true);
+ });
+});
+it('bank V5: a legitimate audit append between human prepare and actual arm does not change encrypted review authority',async()=>{
+ await withAuditMode('guc',async()=>{const r=(await store.prepare(ctx,human())).review,control=await auditControl(),done=await observedBankSuccess(()=>store.confirm(ctx,confirm(r)));const [row]=await owner.db.execute<{id:string}>(sql`select receipt_event_id id from app.assistant_own_leave_review where id=${r.actionId}::uuid`);expect((await auditEvent(row.id)).prev_hash).toBe(control.hash);expect(await observedBankSuccess(()=>store.reopen(ctx,r.actionId))).toEqual(done);});
+});
+it('bank V5: canonical native SYSTEM owner writer remains admitted without user/person/purpose even when GUC is off and persisted audit is on',async()=>{
+ await withAuditMode('persisted',async()=>{
+  const id=randomUUID();await owner.db.transaction(async tx=>{await tx.execute(sql`select set_config('app.audit_hash_chain','off',true),set_config('app.tenant_id','',true),set_config('app.user_id','',true),set_config('app.roles','',true)`);await tx.insert(s.domainEvent).values({id,tenantId:b.tenantId,aggregateType:'fictional-native-system',aggregateId:randomUUID(),eventType:'fictional-native-system.created',actorType:'system',actorId:null,payload:{fictional:true}});});
+  const event=await auditEvent(id);expect(event.chain_seq).toBe('1');expect(event.hash).toBe(event.recomputed);
+ });
+});
+it('bank V5: genuine unlinked USER native event requires no Personnel-purpose or assistant entitlement',async()=>{
+ await withAuditMode('guc',async()=>{
+  const userId=await createAppUser(b.tenantId,null,'hr_admin'),who:SessionContext={...await entitledCtx(b,['hr_admin']),userId,personId:null,grants:[{role:'hr_admin',companyId:null}]};
+  const id=await withTenant(who,tx=>appendEvent(tx,{tenantId:b.tenantId,aggregateType:'fictional-native-unlinked',aggregateId:randomUUID(),eventType:'fictional-native-unlinked.created',actor:{type:'user',id:userId},payload:{fictional:true}},{returnId:true}));expect(id).toEqual(expect.any(String));const event=await auditEvent(id!);expect(event.chain_seq).toBe('1');expect(event.hash).toBe(event.recomputed);
+ });
+});
+it('bank V5: actual native AFTER INSERT observer sees and qualifies its own persisted event through fresh canonical owner',async()=>{
+ await withAuditMode('guc',async()=>{
+  const r=(await store.prepare(ctx,human())).review;
+  await withBankHook({relation:'public.domain_event',timing:'AFTER',event:'INSERT',prefix:'zz',when:`NEW.tenant_id='${b.tenantId}'::uuid AND NEW.event_type='employee.bank.updated'`,body:"IF app._domain_event_preimage_for(NEW::public.domain_event) IS NULL THEN RAISE EXCEPTION 'Fictional AFTER observer missed own persisted event' USING ERRCODE='42501';END IF;"},async sequence=>{const before=await markProbe(sequence);expect(await observedBankSuccess(()=>store.confirm(ctx,confirm(r)))).toMatchObject({kind:'completed'});expect(await probeValue(sequence)).toBe(before+BigInt(1));});
+ });
+});
+
+it('bank V6: initially unarmed frame refuses genuine chain-start interpose before late NULL laundering can run',async()=>{
+ await withAuditMode('unarmed',async()=>{
+  // Positive native control in a real rolled-back transaction: first chaining is lawful outside a
+  // held Bank frame. It must not leave history that would arm the attack's original PRE baseline.
+  let nativeControl=false;await expect(withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('app.audit_hash_chain','on',true)`);const id=await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'fictional-first-chain-control',aggregateId:randomUUID(),eventType:'fictional-first-chain-control.created',actor:{type:'user',id:ctx.userId!},payload:{fictional:true}},{returnId:true});const [row]=await tx.execute<{seq:string;valid:boolean}>(sql`select chain_seq::text seq,hash=app.domain_event_hash(prev_hash,tenant_id,chain_seq,aggregate_type,aggregate_id,event_type,actor_type::text,actor_id,subject_employment_id,payload) valid from domain_event where id=${id!}::uuid`);expect(row).toEqual({seq:'1',valid:true});nativeControl=true;throw Error('FICTIONAL-NATIVE-CONTROL-ROLLBACK');})).rejects.toThrow('FICTIONAL-NATIVE-CONTROL-ROLLBACK');expect(nativeControl).toBe(true);
+  const [clear]=await owner.db.execute<{n:number}>(sql`select count(*)::int n from domain_event where tenant_id=${b.tenantId}::uuid and chain_seq is not null`);expect(clear.n).toBe(0);
+  const r=(await store.prepare(ctx,human())).review,original=pack().statutory.setBank;let entered=false,firstChained=false;
+  const native=vi.spyOn(pack().statutory,'setBank').mockImplementation(async(who,input,tx)=>{entered=true;if(!tx)throw Error('Expected actual enclosing Tx');await tx.execute(sql`select set_config('app.audit_hash_chain','on',true)`);await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'fictional-first-chain-F',aggregateId:randomUUID(),eventType:'fictional-first-chain-F.created',actor:{type:'user',id:ctx.userId!},payload:{fictional:true}},{returnId:true});firstChained=true;await tx.execute(sql`select set_config('app.audit_hash_chain','off',true)`);return original(who,input,tx);});
+  try{await withBankHook({relation:'public.domain_event',timing:'BEFORE',event:'INSERT',prefix:'aa',when:`NEW.tenant_id='${b.tenantId}'::uuid AND NEW.event_type='fictional-first-chain-F.created'`,body:'PERFORM 1;'},async firstSequence=>{const firstBefore=await markProbe(firstSequence);await withBankHook({relation:'public.domain_event',timing:'BEFORE',event:'INSERT',prefix:'zz',when:`NEW.event_type='employee.bank.updated'`,body:'NEW.chain_seq:=NULL;NEW.prev_hash:=NULL;NEW.hash:=NULL;'},async lateSequence=>{const lateBefore=await markProbe(lateSequence);await exactBankRefusal(()=>store.confirm(ctx,confirm(r)),'Bank audit decision changed before native INSERT');expect(entered).toBe(true);expect(firstChained,'first chain must be refused at actual owner before returning').toBe(false);expect(await probeValue(firstSequence)).toBe(firstBefore+BigInt(1));expect(await probeValue(lateSequence),'late laundering cannot run').toBe(lateBefore);});});}finally{native.mockRestore();}
+ });
+});
+it('bank V6: supplied SYSTEM audit slots normalize through native owner before bounded dependency guard',async()=>{
+ await withAuditMode('guc',async()=>{
+  const r=(await store.prepare(ctx,human())).review,id=randomUUID();let selected:string|undefined;
+  await bankSqlFlow(r,{after:async(tx,eventId)=>{selected=eventId;await tx.execute(sql`set constraints all immediate`);const [bank]=await tx.execute<{seq:string}>(sql`select chain_seq::text seq from domain_event where id=${eventId}::uuid`);
+   // Original native0534 overwrites these deliberately supplied slots while armed. The new BEFORE
+   // fence must run after that normalization, rather than refuse a tuple that never becomes real.
+   await tx.insert(s.domainEvent).values({id,tenantId:b.tenantId,aggregateType:'fictional-supplied-system-slots',aggregateId:randomUUID(),eventType:'fictional-supplied-system-slots.created',actorType:'system',actorId:null,payload:{fictional:true},chainSeq:Number(bank.seq),prevHash:'FICTIONAL-SUPPLIED-PREV',hash:'FICTIONAL-SUPPLIED-HASH'});
+  }});const bank=await auditEvent(selected!),normalized=await auditEvent(id);expect(BigInt(normalized.chain_seq!)).toBe(BigInt(bank.chain_seq!)+BigInt(1));expect(normalized.prev_hash).toBe(bank.hash);expect(normalized.hash).toBe(normalized.recomputed);expect(await observedBankSuccess(()=>store.reopen(ctx,r.actionId))).toMatchObject({kind:'completed'});
+ });
+});
+it('bank V6: another-tenant native SYSTEM INSERT remains allowed while original Bank frame is still pending and stable',async()=>{
+ const other=await seedBase(),otherId=randomUUID();await withAuditMode('guc',async()=>{
+  const r=(await store.prepare(ctx,human())).review;let entered=false;
+  await withAuditFixtureWriter(async({system})=>{await bankSqlFlow(r,{entry:async tx=>{await system(tx,other.tenantId,otherId);entered=true;}});});expect(entered).toBe(true);const foreign=await auditEvent(otherId);expect(foreign.chain_seq).toBe('1');expect(foreign.hash).toBe(foreign.recomputed);expect(await observedBankSuccess(()=>store.reopen(ctx,r.actionId))).toMatchObject({kind:'completed'});
+ });
+});
+it('bank V6: insertion-time frame observation cannot be bypassed by masking NEW tenant before owner and restoring it late',async()=>{
+ const other=await seedBase();await withAuditMode('unarmed',async()=>{
+  const r=(await store.prepare(ctx,human())).review,original=pack().statutory.setBank;let entered=false;
+  const native=vi.spyOn(pack().statutory,'setBank').mockImplementation(async(who,input,tx)=>{entered=true;if(!tx)throw Error('Expected actual enclosing Tx');await tx.execute(sql`select set_config('app.audit_hash_chain','on',true)`);return original(who,input,tx);});
+  try{await withBankHook({relation:'public.domain_event',timing:'BEFORE',event:'INSERT',prefix:'aa',when:"NEW.event_type='employee.bank.updated'",body:`NEW.tenant_id:='${other.tenantId}'::uuid;`},async earlySequence=>{const earlyBefore=await markProbe(earlySequence);await withBankHook({relation:'public.domain_event',timing:'BEFORE',event:'INSERT',prefix:'zz',when:"NEW.event_type='employee.bank.updated'",body:`NEW.tenant_id:='${b.tenantId}'::uuid;NEW.chain_seq:=NULL;NEW.prev_hash:=NULL;NEW.hash:=NULL;PERFORM set_config('app.audit_hash_chain','off',true);`},async lateSequence=>{const lateBefore=await markProbe(lateSequence);await exactBankRefusal(()=>store.confirm(ctx,confirm(r)),'Bank audit decision changed before native INSERT');expect(entered).toBe(true);expect(await probeValue(earlySequence)).toBe(earlyBefore+BigInt(1));expect(await probeValue(lateSequence)).toBe(lateBefore);});});}finally{native.mockRestore();}
+ });
 });

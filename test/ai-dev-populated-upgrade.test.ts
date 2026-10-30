@@ -89,7 +89,7 @@ const PERFORMANCE=['performance.ai_360_enabled','performance.ai_tc_enabled','per
  'performance.ai_review_enabled','performance.ai_idp_enabled','performance.ai_calib_enabled'];
 const hash=(value:Buffer)=>createHash('sha256').update(value).digest('hex');
 
-// Exact reviewed78 additions after the historical568 prefix, independently traced to native ADD COLUMN
+// Exact reviewed79 additions after the historical568 prefix, independently traced to native ADD COLUMN
 // declarations. Old NULL values remain original values; no runtime result supplies this expectation.
 const ADDED_REVIEW_COLUMNS={
  "allocation_effective_company_id": "uuid",
@@ -101,6 +101,7 @@ const ADDED_REVIEW_COLUMNS={
  "attendance_group_proof_version": "integer",
  "attendance_group_unchanged": "text",
  "bank_after_hash": "text",
+ "bank_audit_preimage": "jsonb",
  "bank_before_hash": "text",
  "bank_event_payload_hash": "text",
  "bank_event_scope_hash": "text",
@@ -261,7 +262,7 @@ it('upgrades the exact observed populated Board prefix without rewriting applied
   expect(Object.keys(retained).sort()).toEqual(Object.keys(before).sort());
   // Every original non-review table and every opaque sealed-content byte stays exactly unchanged.
   for(const key of Object.keys(before))if(key!=='review')expect(retained[key],key+' exact physical preservation').toEqual(before[key]);
-  const newKeys=Object.keys(ADDED_REVIEW_COLUMNS).sort();expect(newKeys).toHaveLength(78);
+  const newKeys=Object.keys(ADDED_REVIEW_COLUMNS).sort();expect(newKeys).toHaveLength(79);
   const catalog=await storage.client<{name:string;type:string}[]>`
    select a.attname::text name,format_type(a.atttypid,a.atttypmod) type from pg_attribute a
    where a.attrelid='app.assistant_own_leave_review'::regclass and a.attnum>0 and not a.attisdropped
