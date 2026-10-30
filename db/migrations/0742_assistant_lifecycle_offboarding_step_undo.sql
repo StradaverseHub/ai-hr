@@ -6,15 +6,25 @@ INSERT INTO app.assistant_action_kind(id,module,tier_ceiling,category,review_kin
 -- Extend only the three predicates that reject the new nullable-case family. Freeze their names
 -- before DDL; preserve every other dedicated guard and every predecessor expression once.
 DO $$ DECLARE item record;previous text;scope_name text;case_name text;matches integer; BEGIN
+ -- Inspect the raw catalog representation BEFORE rebuilding any predicate. Never deparse every
+ -- ledger CHECK: inherited duplicated trees can be megabytes and dominate migration peak memory.
+ FOR item IN SELECT conname,pg_column_size(conbin) AS bytes FROM pg_constraint
+  WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c'
+   AND conname IN ('assistant_own_leave_review_check','assistant_own_leave_review_check16','assistant_review_kind_columns') LOOP
+  RAISE NOTICE '0742 raw conbin % bytes %',item.conname,item.bytes;
+ END LOOP;
+ -- Frozen held-ledger identities verified by the original aa600 migration notices. Installation
+ -- reconciliation must revalidate these identities; refuse any unexpected predicate rather than guess.
  SELECT count(*),min(conname) INTO matches,scope_name FROM pg_constraint
- WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c'
- AND pg_get_expr(conbin,conrelid) LIKE '%testing_execution_id IS NOT NULL%'
- AND pg_get_expr(conbin,conrelid) LIKE '%employment_id IS NULL%';
+ WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND conname='assistant_own_leave_review_check';
  IF matches<>1 THEN RAISE EXCEPTION '0742: unexpected scope predicate';END IF;
+ SELECT pg_get_expr(conbin,conrelid) INTO previous FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname=scope_name;
+ IF previous NOT LIKE '%testing_execution_id IS NOT NULL%' OR previous NOT LIKE '%employment_id IS NULL%' THEN RAISE EXCEPTION '0742: unexpected scope shape';END IF;
  SELECT count(*),min(conname) INTO matches,case_name FROM pg_constraint
- WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c'
- AND conname<>'assistant_offboarding_step_columns' AND pg_get_expr(conbin,conrelid) LIKE '%lifecycle_case_id IS NOT NULL%';
+ WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND conname='assistant_own_leave_review_check16';
  IF matches<>1 THEN RAISE EXCEPTION '0742: unexpected lifecycle predicate';END IF;
+ SELECT pg_get_expr(conbin,conrelid) INTO previous FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname=case_name;
+ IF previous NOT LIKE '%lifecycle_case_id IS NOT NULL%' THEN RAISE EXCEPTION '0742: unexpected lifecycle shape';END IF;
  FOR item IN SELECT * FROM (VALUES
   (scope_name,'company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL'),
   (case_name,'lifecycle_case_id IS NOT NULL AND ((state=''completed'')=(lifecycle_submitted_event_id IS NOT NULL))'),

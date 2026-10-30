@@ -2,7 +2,7 @@ import {offboardingStepUndoReviews} from '../../core/assistant-actions/offboardi
 import {readOffboardingStepUndoChoices} from '../../core/assistant-actions/offboarding-step-undo-source';
 import {offboardingStepReviews} from '../../core/assistant-actions/offboarding-step-completion-review-store';
 import {readOffboardingStepChoices} from '../../core/assistant-actions/offboarding-step-completion-source';
-import {createOffboardingCase,tickStep,tickStepTx,undoStepTx} from '../../packs/lifecycle/service';
+import {createOffboardingCase,tickStepTx,undoStepTx} from '../../packs/lifecycle/service';
 import {fixedItemArchiveReviews,readFixedItemArchiveChoices} from '../../core/assistant-actions/fixed-item-archive-review-store';
 import {archiveEmploymentPayComponent,setEmploymentPayComponent,seedPayComponentCatalog,listPayComponents} from '../../packs/payroll/service';
 import {tp3OpeningMaintenanceReviews,readTp3OpeningMaintenanceChoices} from '../../core/assistant-actions/tp3-opening-maintenance-review-store';
