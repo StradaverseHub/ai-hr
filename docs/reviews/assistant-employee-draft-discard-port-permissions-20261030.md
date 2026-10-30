@@ -440,3 +440,152 @@ Read-only review of the current0622 owner confirms that its redaction captures a
 - Proof-only clearing can occur when the canonical erased-body count is zero. Preserve that count; do not fake a deleted body or redefine the native audit result.
 
 All built-in calls in the fenced runtime examples are explicitly pg_catalog-qualified to avoid introducing overload lookup through a writable public schema. The final role/schema catalog review must still consider PUBLIC and inherited CREATE privileges, and the real native helper environment; a search_path declaration alone is not a privilege attestation.
+
+
+## Saved draft DELETE cleanup — NONEXECUTABLE SQL proposal
+
+**Review text only. Do not execute, copy into a migration or mount.** No migration filename/index/timestamp, role/grant expansion, source-proof implementation or production authority is claimed. This proposal adds no repository changes. It describes only deferred retirement of existing draft-review ciphertexts after an actual native DELETE; it does not prove discard completion, stamp a witness or erase all PII/history/backups.
+
+Verified source baseline: `835b2d68e8924638d61902c35229e9ef88e123e5`. Relevant existing owners: `0579_configurable_access.sql` (`app.access_workforce_storage_owner`, `app.access_workforce_write_lock`, native draft statement/row triggers), `0622_own_leave_review_store.sql` (private ledger/content tables and protected identity owner), and `0714_assistant_employee_draft_activation.sql` (current activation completion requires pending body and removes its completed body). The new discard kind and its future private source/witness terminal guard are dependencies, not implemented by this prototype.
+
+### Proposed trigger and ordered partial index
+
+The generic trigger stamps **nothing**. It is bound to exact `public.employee_draft`, fires only after a real DELETE and defers ALL cleanup until COMMIT. There is no immediate retirement of another user's rows, no app-executable marker writer and no Lifecycle key/query copied here. The future discard port alone may produce a discard-specific stamp under its independently reviewed proof design; an activation DELETE must never mint discard proof.
+
+Normal application native DELETE already acquires canonical Access through its existing BEFORE statement trigger. At deferred cleanup, check the existing real storage-owner predicate FIRST: a trusted maintenance caller always uses **try** acquisition of the exact existing OLD-tenant Access key, even when OLD tenant equals the current tenant. Maintenance may already hold physical rows while an app caller owns Access and waits on those rows; routing same-tenant owner maintenance through the blocking ordinary helper could form a cycle. Only the non-storage-owner application branch requires OLD tenant=current tenant and calls the existing reentrant Access owner. The storage-owner predicate binds both `session_user` and selected role; never trust `current_user` inside a SECURITY DEFINER function. Do not change tenant/USER/role GUCs. This maintenance branch is serialization only, not a new application admission course. Built-in try-lock, hash and clock calls in the private prototype are explicitly `pg_catalog` qualified.
+
+```sql
+-- NONEXECUTABLE REVIEW PROTOTYPE. Required new-kind/terminal-guard dependencies are not installed.
+-- Same existing canonical Access key; no new coordination key is introduced.
+CREATE INDEX assistant_review_pending_draft_cleanup
+ ON app.assistant_own_leave_review(tenant_id,receipt_subject_id,id)
+ WHERE receipt_subject_kind='employee_draft'
+   AND action_kind IN ('employees.draft.activate','employees.draft.discard')
+   AND state='awaiting_confirmation';
+
+CREATE FUNCTION app._assistant_employee_draft_delete_cleanup() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER
+ SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE candidate record; changed integer; owned boolean;
+BEGIN
+ IF TG_OP IS DISTINCT FROM 'DELETE'
+    OR TG_RELID IS DISTINCT FROM 'public.employee_draft'::regclass THEN
+  RAISE EXCEPTION 'Draft review cleanup unavailable' USING ERRCODE='42501';
+ END IF;
+ IF OLD.tenant_id IS NULL OR OLD.id IS NULL THEN
+  RAISE EXCEPTION 'Draft review cleanup unavailable' USING ERRCODE='42501';
+ END IF;
+
+ -- Storage-owner maintenance always tries FIRST, including same-tenant maintenance.
+ -- It may already hold physical rows while another app caller owns Access and waits on
+ -- those rows; routing it through the blocking ordinary helper could create a cycle.
+ IF app.access_workforce_storage_owner() IS TRUE THEN
+  SELECT pg_catalog.pg_try_advisory_xact_lock(
+   pg_catalog.hashtextextended('access-configuration:'||OLD.tenant_id::text,0)
+  ) INTO owned;
+  IF owned IS NOT TRUE THEN
+   RAISE EXCEPTION 'Draft review cleanup busy' USING ERRCODE='55P03';
+  END IF;
+  -- No application principal/policy decision, GUC retargeting or current_user authority.
+ ELSE
+  IF OLD.tenant_id IS DISTINCT FROM app.current_tenant_id() THEN
+   RAISE EXCEPTION 'Draft review cleanup unavailable' USING ERRCODE='42501';
+  END IF;
+  -- Ordinary app DELETE already owns this barrier through its BEFORE statement trigger.
+  PERFORM app.access_workforce_write_lock();
+ END IF;
+
+ -- PL/pgSQL uses an internal cursor for this FOR query; fetch bounded batches rather
+ -- than collecting every ID/body in one array. No LIMIT, SKIP LOCKED or global-N cap.
+ -- The additive partial index supports this tenant/subject/id order. Verify the actual
+ -- hosted plan; the planner is not forced to choose an index by this SQL text.
+ FOR candidate IN
+  SELECT r.id
+  FROM app.assistant_own_leave_review r
+  WHERE r.tenant_id=OLD.tenant_id
+    AND r.receipt_subject_kind='employee_draft'
+    AND r.receipt_subject_id=OLD.id
+    AND r.action_kind IN ('employees.draft.activate','employees.draft.discard')
+    AND r.state='awaiting_confirmation'
+  ORDER BY r.id
+  FOR UPDATE OF r NOWAIT
+ LOOP
+  -- A raw owner may hold only the content row, then wait for canonical Access. Lock it
+  -- NOWAIT before any state change/body DELETE to avoid waiting through that cycle.
+  -- Read no ciphertext; a missing body is valid row-only retirement, not an error.
+  PERFORM 1 FROM app.assistant_own_leave_review_content c
+   WHERE c.action_id=candidate.id FOR UPDATE OF c NOWAIT;
+
+  -- REQUIRED dependency: the future schema-owner terminal guard for the new discard
+  -- kind must recognize this exact actual-DELETE cleanup course and clear ALL its
+  -- private source/witness columns on retirement. Do not invent those columns here.
+  -- Existing activation's constraints/columns remain unchanged. No witness is stamped.
+  UPDATE app.assistant_own_leave_review r
+   SET state=CASE WHEN pg_catalog.clock_timestamp()>=r.expires_at THEN 'expired' ELSE 'discarded' END,
+       intent_digest=NULL,reviewed_digest=NULL
+   WHERE r.id=candidate.id AND r.tenant_id=OLD.tenant_id
+     AND r.receipt_subject_kind='employee_draft' AND r.receipt_subject_id=OLD.id
+     AND r.action_kind IN ('employees.draft.activate','employees.draft.discard')
+     AND r.state='awaiting_confirmation';
+  GET DIAGNOSTICS changed=ROW_COUNT;
+  IF changed<>1 THEN
+   RAISE EXCEPTION 'Draft review cleanup changed' USING ERRCODE='40001';
+  END IF;
+  DELETE FROM app.assistant_own_leave_review_content c WHERE c.action_id=candidate.id;
+  IF EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content c WHERE c.action_id=candidate.id) THEN
+   RAISE EXCEPTION 'Draft review body retirement incomplete' USING ERRCODE='42501';
+  END IF;
+ END LOOP;
+
+ -- Closed prepare owners take the SAME canonical Access barrier and require the real
+ -- draft, so they cannot insert a new pending row after this scan but before commit.
+ -- No matching pending row also means no body belonging to such a pending row remains.
+ -- Already-terminal legacy body orphans are outside this pending-retirement course;
+ -- they are neither silently repaired nor a new reason to refuse ordinary native DELETE.
+ IF EXISTS(
+  SELECT 1 FROM app.assistant_own_leave_review r
+  WHERE r.tenant_id=OLD.tenant_id
+    AND r.receipt_subject_kind='employee_draft' AND r.receipt_subject_id=OLD.id
+    AND r.action_kind IN ('employees.draft.activate','employees.draft.discard')
+    AND r.state='awaiting_confirmation'
+ ) THEN
+  RAISE EXCEPTION 'Draft review cleanup incomplete' USING ERRCODE='42501';
+ END IF;
+ RETURN NULL;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION app._assistant_employee_draft_delete_cleanup() FROM PUBLIC,ai_hr_app;
+
+CREATE CONSTRAINT TRIGGER assistant_employee_draft_delete_cleanup
+ AFTER DELETE ON public.employee_draft
+ DEFERRABLE INITIALLY DEFERRED
+ FOR EACH ROW EXECUTE FUNCTION app._assistant_employee_draft_delete_cleanup();
+```
+
+No public EXECUTE grant, raw ledger/content grant, trigger-attachment grant or ALTER-role template belongs to this change. The private function's SECURITY DEFINER owner must be the actual schema owner at any later migration execution; that remains deployment/migration-owner controlled, not an application input. A fake/temp relation trigger still fails the exact TG_RELID check even in a privileged test; normal app cannot attach this function without EXECUTE. Existing normal DELETE RLS/row-trigger admission remains authoritative.
+
+### Completion, retirement and rollback semantics
+
+All current and other-user pending activation/discard bodies remain until deferred cleanup. This course retires pending custody only; it neither repairs nor claims to remove pre-existing already-terminal legacy body orphans. Per-retired-row body assertions cover only rows actually retired here, and the final assertion covers remaining matching pending custody. A legitimate current activation completes through existing 0714 and deletes its body before COMMIT; a future current discard must do the same only after its independent actual-native proof. This cursor excludes completed rows. Default native GUI discard/activation with neither, either or both same-user kinds still has remaining pending bodies retired at COMMIT; other users' number of reviews is not bounded by that same-user pair.
+
+`SET CONSTRAINTS ... IMMEDIATE` (or ALL IMMEDIATE) can deliberately fire cleanup before native completion. It may retire the pending body; a later activation/discard completion must then refuse, and the caller must roll back the WHOLE transaction. It must never resurrect the row/body, accept completed-by-absence or catch the refusal and commit a claimed Assistant success. A default native DELETE that is not claiming Assistant completion may still commit its truthful deletion and retirement after immediate cleanup.
+
+The future new-kind terminal guard must clear every private source/witness field only along legitimate schema-owner transitions, including this actual DELETE cleanup, existing generic expiry and privacy/erasure retirement. It must prevent application creation/transplant/mutation of witness fields. Activation's existing field/check relationships stay unchanged. This proposal does not invent a function/GUC to bless a transition or settle that guard's implementation.
+
+Install non-increasing `lock_timeout` and `statement_timeout` bounds BEFORE commands and retain them through COMMIT/deferred work; do not restore them before COMMIT. PostgreSQL statement_timeout bounds each SQL command (including the COMMIT command running deferred work), not elapsed duration of the whole multi-command transaction; lock_timeout bounds individual lock waits. Internal statements/cursor batches do not provide a fixed overall business-operation duration promise. With unbounded review fanout, timeout/refusal and whole-transaction rollback are acceptable. There is no fixed GUI progress, memory-to-zero, eventual-success or fixed wall-clock guarantee. Review rows and each existing matching content row use NOWAIT before state mutation/body deletion; missing bodies permit row-only retirement. Failures, cancellation, guard errors or final-assertion failures escape the whole native transaction, leaving no partial cleanup/deletion/counter/event commit.
+
+The ordered partial index avoids requiring a large ID array and supplies the intended scan order. The PL/pgSQL cursor fetches incrementally, but the planner may select another plan/sort; verify representative hosted plans and bounded memory behavior rather than treating the index declaration as a proof. The function has no numeric LIMIT, SKIP LOCKED omission or silent cleanup truncation.
+
+Actual DELETE matters: app baseline `0337_employee_draft.sql` grants SELECT/INSERT/UPDATE/DELETE, not TRUNCATE. Privileged raw-owner TRUNCATE does not fire a DELETE row trigger. Any production owner TRUNCATE/reset/restore requires a separately reviewed operator cleanup protocol; test harness reset must reset all associated state. This proposal does not invent a production TRUNCATE guarantee or claim global PII purge.
+
+### Hosted verification plan after independent source review and allocation
+
+- Actual native default discard and activation with zero pending reviews, activation only, discard only, both current-user kinds and many other USERs; current legitimate completion happens before COMMIT, remaining pending-row count and bodies of rows retired by this trigger are zero afterward, unrelated tenant/draft/kind rows and completed receipts remain unchanged.
+- TTL boundaries produce expired versus discarded; per-row digests and future new-kind source/witness fields clear, no body survives for a row retired by this trigger and no matching pending custody remains; old activation constraints remain valid. For every row retired by this trigger, verify body absence immediately after DELETE. A pre-existing matching already-terminal legacy body orphan remains unchanged and is explicitly outside the pending-custody cleanup claim; it must not create permanent ordinary native GUI refusal. Any broader historical-orphan cleanup requires separate coordinator policy review.
+- One other USER's review row locked by another transaction; a late review row in the ordered scan locked; a late content-only row locked by a raw owner that subsequently requests canonical Access while the native transaction owns Access; future guard failure, content-delete failure, final-assertion failure, cancellation and COMMIT timeout: ALL draft/counter/event/review/body effects roll back; no skipped body or partially committed native deletion. The content-only lock fixture must prove the prelock raises NOWAIT before that candidate's state UPDATE/DELETE, releases the native transaction's Access on WHOLE-Tx rollback and leaves ALL earlier candidates plus draft/counter/events unchanged; the owner can then acquire Access. Also verify a missing-body candidate retires its row successfully without reading ciphertext. Native success may be retried only through the normal fresh source course after rollback.
+- Many-user/fanout fixtures exceed any same-user pending cap. Exercise actual ordered index/cursor plan and memory observations under representative hosted settings without promising fixed completion time. No all-ID arrays, silent N cap or SKIP LOCKED pass.
+- Concurrent prepare/expiry/retirement versus native DELETE uses canonical Access serialization: a later prepare cannot retain a body for a deleted draft. Race same tenant/draft and independent tenants; native counter/config edits and Lifecycle work stay with their own existing owners, not copied lock keys.
+- Trusted storage-owner same-tenant AND multi-tenant maintenance, no tenant GUC, mismatched current tenant, busy exact OLD-tenant Access key and many deleted OLD tenants: owner predicate is real session/selected-role authority, no GUC changes, busy is WHOLE-Tx failure even when OLD tenant=current tenant. Force a same-tenant owner-row-lock versus app-Access interleaving to prove immediate refusal rather than a blocking-helper cycle. App/definer `current_user` is not owner authority. Fake/temp relation trigger and direct function invocation are refused; no new application grants.
+- Force constraints IMMEDIATE before completion and after default native deletion. Premature current Assistant completion refuses and rolls back fully; normal default deletion can still truthfully commit retirement. Rollback-only preview loses every DELETE/deferred event/retirement effect and cannot supply final completion proof.
+- The selected B port-only actual-DELETE/native-event/counter proof is a separate, unimplemented dependency; this generic cleanup never stamps either discard or activation. Native audit retains its normal reserved-code metadata. Test owner TRUNCATE only as an explicit out-of-trigger/reset protocol case; do not label it covered by DELETE cleanup.
