@@ -74,5 +74,23 @@ class WorkerPackageTests(unittest.TestCase):
     def test_refuses_size_bomb_and_invalid_modes_before_extraction(self):
         with self.assertRaisesRegex(ValueError,'file entry'): fmt.validate_manifest(self.changed(lambda m:next(r for r in m['entries'] if r['type']=='file').update(size=fmt.MAX_FILE+1)),SOURCE)
         with self.assertRaisesRegex(ValueError,'file entry'): fmt.validate_manifest(self.changed(lambda m:next(r for r in m['entries'] if r['type']=='file').update(mode=0o4755)),SOURCE)
+    def corrected_manifest(self):
+        result=self.changed(lambda m:m.update(format=2,kind='bank-import-worker-package-v2',controllerSource='2'*40,producerSha256='3'*64,formatSha256='4'*64))
+        for path in ['localization/registry.ts','i18n/config.ts']:
+            result['entries'].append({'path':path,'type':'file','size':0,'sha256':fmt.digest(b''),'mode':0o644})
+            parent=path.split('/')[0];result['entries'].append({'path':parent,'type':'directory'})
+        result['entries'].sort(key=lambda row:row['path']);return result
+    def test_corrected_activation_binds_controller_and_required_country_and_language_roots(self):
+        manifest=self.corrected_manifest();fmt.require_activation_manifest(manifest,'2'*40)
+        with self.assertRaisesRegex(ValueError,'controller differs'): fmt.require_activation_manifest(manifest,'5'*40)
+        for missing in ['localization/registry.ts','i18n/config.ts']:
+            broken=copy.deepcopy(manifest);broken['entries']=[row for row in broken['entries'] if row['path']!=missing]
+            with self.assertRaisesRegex(ValueError,'closure missing'): fmt.require_activation_manifest(broken,'2'*40)
+    def test_original_v1_is_byte_evidence_only_and_keeps_its_original_root_policy(self):
+        fmt.validate_manifest(self.manifest,SOURCE)
+        with self.assertRaisesRegex(ValueError,'not an activation'): fmt.require_activation_manifest(self.manifest)
+        forged=self.corrected_manifest();forged.update(format=1,kind='bank-import-worker-package-v1')
+        for key in ['controllerSource','producerSha256','formatSha256']: del forged[key]
+        with self.assertRaisesRegex(ValueError,'v1 payload root'): fmt.validate_manifest(forged,SOURCE)
 
 unittest.main()

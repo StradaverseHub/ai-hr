@@ -14,7 +14,8 @@ MAX_FILE = 256 * 1024**2
 MAX_MANIFEST = 32 * 1024**2
 MAX_ENTRIES = 200000
 ROOT_FILES = {'package.json', 'pnpm-lock.yaml', 'tsconfig.json'}
-ROOT_DIRS = {'app','components','content','core','data','db','deploy','lib','messages','packs','public','scripts','types','node_modules'}
+LEGACY_ROOT_DIRS = {'app','components','content','core','data','db','deploy','lib','messages','packs','public','scripts','types','node_modules'}
+ROOT_DIRS = LEGACY_ROOT_DIRS|{'assets','i18n','localization'}
 RUNTIME = {'node':'22.23.3','abi':'127','platform':'linux','arch':'x64','glibc':'2.39'}
 
 def require(ok, message):
@@ -34,8 +35,14 @@ def safe_path(value):
     return value
 
 def validate_manifest(manifest, source, lock_hash=None, package_hash=None):
-    require(isinstance(manifest,dict) and set(manifest)=={'format','kind','source','runtime','lockSha256','packageSha256','entries'},'manifest fields')
-    require(manifest['format']==1 and manifest['kind']=='bank-import-worker-package-v1' and re.fullmatch('[a-f0-9]{40}',source or '') and manifest['source']==source,'source identity')
+    require(isinstance(manifest,dict),'manifest object')
+    version=manifest.get('format');fields={'format','kind','source','runtime','lockSha256','packageSha256','entries'}
+    if version==2: fields|={'controllerSource','producerSha256','formatSha256'}
+    require(version in (1,2) and set(manifest)==fields,'manifest fields')
+    require(manifest['kind']=='bank-import-worker-package-v'+str(version) and re.fullmatch('[a-f0-9]{40}',source or '') and manifest['source']==source,'source identity')
+    if version==2:
+        require(isinstance(manifest['controllerSource'],str) and re.fullmatch('[a-f0-9]{40}',manifest['controllerSource']),'controller identity')
+        for key in ['producerSha256','formatSha256']: require(isinstance(manifest[key],str) and re.fullmatch('[a-f0-9]{64}',manifest[key]),'controller byte identity')
     require(manifest['runtime']==RUNTIME,'runtime identity')
     for field,wanted in [('lockSha256',lock_hash),('packageSha256',package_hash)]:
         require(isinstance(manifest[field],str) and re.fullmatch('[a-f0-9]{64}',manifest[field]) and (wanted is None or manifest[field]==wanted),'independent package/lock identity')
@@ -43,6 +50,7 @@ def validate_manifest(manifest, source, lock_hash=None, package_hash=None):
     entries={};total=0
     for row in rows:
         require(isinstance(row,dict),'entry object');path=safe_path(row.get('path'));kind=row.get('type')
+        require(version==2 or path in ROOT_FILES or path.split('/')[0] in LEGACY_ROOT_DIRS,'unexpected v1 payload root')
         require(path not in entries,'duplicate entry')
         if kind=='file':
             require(set(row)=={'path','type','size','sha256','mode'} and type(row['size']) is int and 0<=row['size']<=MAX_FILE and row['mode'] in (0o644,0o755) and isinstance(row['sha256'],str) and re.fullmatch('[a-f0-9]{64}',row['sha256']),'file entry')
@@ -76,6 +84,15 @@ def validate_manifest(manifest, source, lock_hash=None, package_hash=None):
         require(entries[resolve_link(path,set())]['type']=='file','required runtime input absent')
     for path,field in [('package.json','packageSha256'),('pnpm-lock.yaml','lockSha256')]:
         require(entries[path]['type']=='file' and entries[path]['sha256']==manifest[field],'manifest/package bytes differ')
+    return entries
+
+def require_activation_manifest(manifest,controller=None):
+    """Historical v1 packets remain byte evidence only; corrected activation requires v2 inputs."""
+    require(manifest.get('format')==2 and manifest.get('kind')=='bank-import-worker-package-v2','v1 is not an activation packet')
+    if controller is not None: require(manifest['controllerSource']==controller,'activation controller differs')
+    entries=validate_manifest(manifest,manifest['source'])
+    for path in ['localization/registry.ts','i18n/config.ts']:
+        require(entries.get(path,{}).get('type')=='file','country/localization runtime closure missing')
     return entries
 
 def inspect_archive(path, source, lock_hash=None, package_hash=None):

@@ -1,8 +1,6 @@
 name: bank-import-worker-package
-run-name: Worker bytes only · ${{ github.sha }}
+run-name: Archived worker runtime gate · controller ${{ github.sha }} · source 968354c
 on:
-  push:
-    branches: ['codex/combined-expanded-*']
   workflow_dispatch:
 permissions:
   contents: read
@@ -12,36 +10,78 @@ concurrency:
   cancel-in-progress: false
 jobs:
   worker-package:
-    if: ${{ github.repository == 'StradaverseHub/ai-hr' }}
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.run_attempt == 1 }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     env:
       TZ: Asia/Kuala_Lumpur
-      DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
-      MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
-      TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
-      TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      SOURCE_SHA: 968354c00a71df7baccd499eb60757a3307ed61e
+      DATABASE_URL: postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test
+      MIGRATION_DATABASE_URL: postgres://ai_hr_owner@127.0.0.1:5433/ai_hr_test
+      TEST_DATABASE_URL: postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test
+      TEST_MIGRATION_DATABASE_URL: postgres://ai_hr_owner@127.0.0.1:5433/ai_hr_test
+      AIHR_CI_UNIT: db-1
+      AIHR_CI_PG_MEMORY_GIB: '2'
+      AIHR_CI_PG_JIT: 'on'
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Checkout immutable workflow controller
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ github.sha }}
+          path: controller
           persist-credentials: false
-      - uses: ./.github/actions/setup-alpha
+      - name: Checkout exact installed production source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: 968354c00a71df7baccd499eb60757a3307ed61e
+          path: source
+          persist-credentials: false
+      - uses: ./controller/.github/actions/setup-alpha
         with:
           node: '22.23.3'
-          path: .
+          path: source
           mobile: 'false'
       - name: Verify bounded worker package controls
+        working-directory: controller
         run: node --test scripts/bank-import-worker-package.test.mjs
-      - name: Produce immutable worker bytes from this exact source
-        run: node scripts/bank-import-worker-package.mjs "$GITHUB_WORKSPACE" "$RUNNER_TEMP/worker-package" "$GITHUB_SHA"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - name: Produce v2 worker bytes from clean frozen production source
+        run: node controller/scripts/bank-import-worker-package.mjs "$GITHUB_WORKSPACE/source" "$RUNNER_TEMP/worker-package" "$SOURCE_SHA"
+      - name: Prepare owned disposable PostgreSQL and distinct physical owner
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash controller/.github/ci/postgres.sh reset
+          docker exec "aihr-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${AIHR_CI_UNIT}" \
+            psql -U postgres -p 5433 -X -v ON_ERROR_STOP=1 \
+            -c 'CREATE ROLE ai_hr_owner LOGIN SUPERUSER;' \
+            -c 'ALTER DATABASE ai_hr_test OWNER TO ai_hr_owner;'
+      - name: Apply exact production ordinary journal and catalogs
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm db:migrate
+          node --import tsx scripts/seed-catalogs.ts
+      - name: Gate actual extracted archived worker and native synthetic job
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo --preserve-env=GITHUB_ACTIONS,CI,GITHUB_SHA,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT \
+            python3 -I -B controller/scripts/ci-bank-import-worker-archive-runtime-smoke.py \
+            --controller "$GITHUB_WORKSPACE/controller" --source "$GITHUB_WORKSPACE/source" \
+            --package-dir "$RUNNER_TEMP/worker-package" --node "$(command -v node)"
+      - name: Upload closed authenticated bytes and actual runtime proof
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: worker-package-v1
+          name: worker-package-v2
           path: |
             ${{ runner.temp }}/worker-package/worker-package.zip
             ${{ runner.temp }}/worker-package/worker-manifest.json
             ${{ runner.temp }}/worker-package/worker-provenance.json
+            ${{ runner.temp }}/worker-package/worker-runtime-proof.json
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
+      - name: Stop owned disposable PostgreSQL
+        if: ${{ always() }}
+        run: bash controller/.github/ci/postgres.sh stop

@@ -3,6 +3,7 @@ No entry point here. Human bootstrap must hash-pin the generated helper before P
 Only a first staging installation is supported; existing identities, units and environments refuse.
 """
 import argparse
+from contextlib import contextmanager
 import fcntl
 import hashlib
 import json
@@ -10,6 +11,7 @@ import os
 from pathlib import Path
 import pwd
 import re
+import signal
 import stat
 import subprocess
 import tempfile
@@ -25,6 +27,23 @@ USER='aihr-import'
 LOCK_DIRECTORY=Path('/run/aihr-bank-import')
 BASE_ENV={'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','LANG':'C.UTF-8'}
 ENV_KEYS={'DATABASE_URL','MIGRATION_DATABASE_URL','AUDIT_HASH_CHAIN_ENABLED','NODE_EXTRA_CA_CERTS','PGSSLMODE','PGSSLROOTCERT','PGSSLCERT','PGSSLKEY'}
+
+class ActivationInterrupted(Exception): pass
+
+@contextmanager
+def activation_guard(cleanup):
+    signals=(signal.SIGHUP,signal.SIGTERM,signal.SIGINT)
+    previous={item:signal.getsignal(item) for item in signals}
+    def interrupted(signum,frame): raise ActivationInterrupted('activation interrupted by '+signal.Signals(signum).name)
+    for item in signals: signal.signal(item,interrupted)
+    try: yield
+    except BaseException:
+        # A second terminal/session signal must not interrupt the managed transaction drain.
+        for item in signals: signal.signal(item,signal.SIG_IGN)
+        cleanup()
+        raise
+    finally:
+        for item,handler in previous.items(): signal.signal(item,handler)
 
 def check(ok,message):
     if not ok: raise ValueError('Worker installation refused: '+message)
@@ -131,15 +150,34 @@ def write_new(path,data,mode):
     with os.fdopen(fd,'wb') as stream: stream.write(data);stream.flush();os.fsync(stream.fileno())
 
 def service_properties():
-    fields=['User','Group','WorkingDirectory','FragmentPath','DropInPaths','ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition','Environment','EnvironmentFiles','PassEnvironment','RootDirectory','RootImage','PAMName','MainPID','NRestarts','ActiveState','SubState']
+    fields=['User','Group','WorkingDirectory','FragmentPath','DropInPaths','ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition','Environment','EnvironmentFiles','PassEnvironment','RootDirectory','RootImage','PAMName','MainPID','NRestarts','ActiveState','SubState','UnitFileState']
     raw=command(['/usr/bin/systemctl','show','aihr-bank-import.service','--no-pager',*['--property='+key for key in fields]]).stdout
-    return dict(line.split('=',1) for line in raw.splitlines() if '=' in line)
+    properties=dict(line.split('=',1) for line in raw.splitlines() if '=' in line)
+    # systemctl omits empty command arrays even with --all on this installation. Prove their
+    # actual typed values; missing/unknown D-Bus properties are never treated as empty.
+    unit=json.loads(command(['/usr/bin/busctl','--json=short','call','org.freedesktop.systemd1','/org/freedesktop/systemd1','org.freedesktop.systemd1.Manager','LoadUnit','s','aihr-bank-import.service']).stdout)
+    check(unit.get('type')=='o' and isinstance(unit.get('data'),list) and len(unit['data'])==1 and re.fullmatch('/org/freedesktop/systemd1/unit/[A-Za-z0-9_]+',unit['data'][0]),'typed unit metadata unavailable')
+    properties['_commands']={key:json.loads(command(['/usr/bin/busctl','--json=short','get-property','org.freedesktop.systemd1',unit['data'][0],'org.freedesktop.systemd1.Service',key]).stdout) for key in ['ExecStart','ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition']}
+    return properties
+
+def validate_command_proofs(proofs):
+    hooks={'ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition'}
+    check(isinstance(proofs,dict) and set(proofs)==hooks|{'ExecStart'},'complete typed command proof required')
+    for key,value in proofs.items():
+        check(isinstance(value,dict) and set(value)=={'type','data'} and value['type']=='a(sasbttttuii)' and isinstance(value['data'],list),'unknown or malformed command property: '+key)
+        if key in hooks: check(value['data']==[],'nonempty command hook: '+key)
+        else:
+            rows=value['data'];check(len(rows)==1 and isinstance(rows[0],list) and len(rows[0])==10,'one typed worker command required')
+            row=rows[0];check(row[0]==str(NODE) and row[1]==[str(NODE),'--import','tsx','scripts/bank-import-runner.ts'] and row[2] is False and all(type(v) is int for v in row[3:]),'typed worker command differs')
 
 def validate_service(properties,release):
+    validate_command_proofs(properties.get('_commands'))
     for key,wanted in {'User':USER,'Group':USER,'WorkingDirectory':str(release),'FragmentPath':str(UNIT),'Environment':'NODE_ENV=production','EnvironmentFiles':str(ENV)+' (ignore_errors=no)'}.items():
         check(properties.get(key)==wanted,'actual worker service configuration differs: '+key)
-    for key in ['DropInPaths','ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition','PassEnvironment','RootDirectory','RootImage','PAMName']:
+    for key in ['DropInPaths','PassEnvironment','RootDirectory','RootImage','PAMName']:
         check(properties.get(key)=='','unreviewed service override: '+key)
+    for key in ['ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition']:
+        check(key not in properties or properties[key]=='','nonempty displayed command hook: '+key)
 
 def stop_owned_first_install():
     """Normal managed stop; independently disable even if the stop request fails or times out."""
@@ -220,36 +258,33 @@ def install(argv,fmt):
     root_protected(ENV.parent);root_protected(UNIT.parent)
     unit=service_unit(args.source).encode();unit_written=False;started=False
     try:
-        command(['/usr/sbin/useradd','--system','--user-group','--no-create-home','--home-dir','/nonexistent','--shell','/usr/sbin/nologin',USER])
-        identity=pwd.getpwnam(USER);check(identity.pw_uid>0 and identity.pw_gid>0,'non-root dedicated identity required')
-        for key in ('NODE_EXTRA_CA_CERTS','PGSSLROOTCERT','PGSSLCERT','PGSSLKEY'):
-            values={environment.get(key),app.get(key),owner.get(key)}-{None,''}
-            for value in values: command(['/usr/sbin/runuser','--user',USER,'--','/usr/bin/test','-r',value])
-        check(deployment_state(args.source,args.build_id)==state,'web deployment changed during preparation')
-        write_new(ENV,(''.join(key+'='+json.dumps(environment[key],ensure_ascii=False)+'\n' for key in sorted(environment))).encode(),0o600)
-        write_new(UNIT,unit,0o644);unit_written=True
-        command(['/usr/bin/systemctl','daemon-reload']);validate_service(service_properties(),release)
-        command(['/usr/bin/systemctl','start','aihr-bank-import.service']);started=True
-        expected_pid=None
-        for attempt in range(3):
-            time.sleep(4);properties=service_properties();validate_service(properties,release)
-            check(properties['ActiveState']=='active' and properties['SubState']=='running' and properties['NRestarts']=='0','worker must remain running without restarts')
-            pid=int(properties['MainPID']);check(pid>0 and (expected_pid is None or expected_pid==pid),'worker PID changed');expected_pid=pid
-            process=Path('/proc')/str(pid)
-            check(process.stat().st_uid==identity.pw_uid and (process/'cwd').resolve()==release,'live worker user/directory differ')
-            check(read_bounded(process/'cmdline',65536).split(b'\0')[:-1]==[str(NODE).encode(),b'--import',b'tsx',b'scripts/bank-import-runner.ts'],'live worker command differs')
-            # procfs has st_size=0, but read_bounded still enforces the actual read ceiling.
-            actual=dict(item.split(b'=',1) for item in read_bounded(process/'environ',1024**2).split(b'\0') if b'=' in item)
-            check(all(actual.get(k.encode())==v.encode() for k,v in environment.items()),'live selected worker environment differs')
-            check(not any(k.encode() in actual for k in ('NODE_OPTIONS','NODE_PATH','LD_PRELOAD','LD_LIBRARY_PATH','PYTHONPATH')),'unexpected worker loader environment')
-        check(deployment_state(args.source,args.build_id)==state,'web deployment changed before worker acceptance')
-        check(hashlib.sha256(read_bounded(ENV,1024**2)).hexdigest()==hashlib.sha256((''.join(key+'='+json.dumps(environment[key],ensure_ascii=False)+'\n' for key in sorted(environment))).encode()).hexdigest(),'protected worker environment changed')
-        command(['/usr/bin/systemctl','enable','aihr-bank-import.service'])
-        record={'source':args.source,'webBuildId':args.build_id,'archiveSha256':args.archive_sha256,'manifestSha256':fmt.digest(fmt.canonical(manifest)),'selectedEnvironmentSha256':hashlib.sha256(read_bounded(ENV,1024**2)).hexdigest(),'unitSha256':hashlib.sha256(unit).hexdigest(),'workerPid':expected_pid,'serviceStable':True,'journeyVerified':False}
-        write_new(release/'worker-install-v2.json',(json.dumps(record,sort_keys=True)+'\n').encode(),0o444)
-        print(json.dumps(record))
-    except Exception:
-        if unit_written:
-            stop_owned_first_install()
-        raise
+        with activation_guard(lambda: stop_owned_first_install() if unit_written else None):
+            command(['/usr/sbin/useradd','--system','--user-group','--no-create-home','--home-dir','/nonexistent','--shell','/usr/sbin/nologin',USER])
+            identity=pwd.getpwnam(USER);check(identity.pw_uid>0 and identity.pw_gid>0,'non-root dedicated identity required')
+            for key in ('NODE_EXTRA_CA_CERTS','PGSSLROOTCERT','PGSSLCERT','PGSSLKEY'):
+                values={environment.get(key),app.get(key),owner.get(key)}-{None,''}
+                for value in values: command(['/usr/sbin/runuser','--user',USER,'--','/usr/bin/test','-r',value])
+            check(deployment_state(args.source,args.build_id)==state,'web deployment changed during preparation')
+            write_new(ENV,(''.join(key+'='+json.dumps(environment[key],ensure_ascii=False)+'\n' for key in sorted(environment))).encode(),0o600)
+            write_new(UNIT,unit,0o644);unit_written=True
+            command(['/usr/bin/systemctl','daemon-reload']);validate_service(service_properties(),release)
+            command(['/usr/bin/systemctl','start','aihr-bank-import.service']);started=True
+            expected_pid=None
+            for attempt in range(3):
+                time.sleep(4);properties=service_properties();validate_service(properties,release)
+                check(properties['ActiveState']=='active' and properties['SubState']=='running' and properties['NRestarts']=='0','worker must remain running without restarts')
+                pid=int(properties['MainPID']);check(pid>0 and (expected_pid is None or expected_pid==pid),'worker PID changed');expected_pid=pid
+                process=Path('/proc')/str(pid)
+                check(process.stat().st_uid==identity.pw_uid and (process/'cwd').resolve()==release,'live worker user/directory differ')
+                check(read_bounded(process/'cmdline',65536).split(b'\0')[:-1]==[str(NODE).encode(),b'--import',b'tsx',b'scripts/bank-import-runner.ts'],'live worker command differs')
+                # procfs has st_size=0, but read_bounded still enforces the actual read ceiling.
+                actual=dict(item.split(b'=',1) for item in read_bounded(process/'environ',1024**2).split(b'\0') if b'=' in item)
+                check(all(actual.get(k.encode())==v.encode() for k,v in environment.items()),'live selected worker environment differs')
+                check(not any(k.encode() in actual for k in ('NODE_OPTIONS','NODE_PATH','LD_PRELOAD','LD_LIBRARY_PATH','PYTHONPATH')),'unexpected worker loader environment')
+            check(deployment_state(args.source,args.build_id)==state,'web deployment changed before worker acceptance')
+            check(hashlib.sha256(read_bounded(ENV,1024**2)).hexdigest()==hashlib.sha256((''.join(key+'='+json.dumps(environment[key],ensure_ascii=False)+'\n' for key in sorted(environment))).encode()).hexdigest(),'protected worker environment changed')
+            command(['/usr/bin/systemctl','enable','aihr-bank-import.service'])
+            record={'source':args.source,'webBuildId':args.build_id,'archiveSha256':args.archive_sha256,'manifestSha256':fmt.digest(fmt.canonical(manifest)),'selectedEnvironmentSha256':hashlib.sha256(read_bounded(ENV,1024**2)).hexdigest(),'unitSha256':hashlib.sha256(unit).hexdigest(),'workerPid':expected_pid,'serviceStable':True,'journeyVerified':False}
+            write_new(release/'worker-install-v2.json',(json.dumps(record,sort_keys=True)+'\n').encode(),0o444)
+            print(json.dumps(record))
     finally: os.close(lock_fd)

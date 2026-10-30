@@ -13,10 +13,20 @@ function pythonCases(path){
 test('closed worker package format rejects altered bytes, links, inventory and provenance',()=>{
  const result=pythonCases('test/fixtures/bank-import-worker-package-tests.py');
  assert.equal(result.status,0,result.stdout+'\n'+result.stderr);
- assert.match(result.stderr,/Ran 9 tests/);
+ assert.match(result.stderr,/Ran 11 tests/);
 });
 test('worker installer refuses mutable trust inputs and fixes the privileged service definition',()=>{
  const result=pythonCases('test/fixtures/bank-import-worker-installer-tests.py');
  assert.equal(result.status,0,result.stdout+'\n'+result.stderr);
- assert.match(result.stderr,/Ran 8 tests/);
+ assert.match(result.stderr,/Ran 12 tests/);
+});
+test('exact-install continuation refuses changed bytes, inventory, modes and prior activation',()=>{
+ const result=pythonCases('test/fixtures/bank-import-worker-recovery-tests.py');
+ assert.equal(result.status,0,result.stdout+'\n'+result.stderr);
+ assert.match(result.stderr,/Ran 6 tests/);
+});
+test('corrected never-started variants require a native runtime witness and safely restore unit bytes',()=>{
+ const result=pythonCases('test/fixtures/bank-import-worker-variant-tests.py');
+ assert.equal(result.status,0,result.stdout+'\n'+result.stderr);
+ assert.match(result.stderr,/Ran 7 tests/);
 });

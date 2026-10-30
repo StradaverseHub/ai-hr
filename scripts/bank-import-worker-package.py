@@ -14,11 +14,15 @@ sys.dont_write_bytecode=True
 
 def main():
     root,output=map(lambda value:Path(value).absolute(),sys.argv[1:3]);source=sys.argv[3]
+    controller=Path(__file__).resolve().parents[1]
     spec=importlib.util.spec_from_file_location('worker_format',Path(__file__).resolve().parents[1]/'deploy/systemd/bank_import_worker_format.py')
     fmt=importlib.util.module_from_spec(spec);spec.loader.exec_module(fmt)
     runtime=json.load(sys.stdin);fmt.require(runtime==fmt.RUNTIME,'producer runtime')
     fmt.require(root.resolve()==root and output.resolve()==output and not output.exists() and not output.is_relative_to(root),'canonical new output outside source')
     def git(*args): return subprocess.check_output(['git','-C',str(root),*args])
+    def controller_git(*args): return subprocess.check_output(['git','-C',str(controller),*args])
+    controller_source=controller_git('rev-parse','HEAD').decode().strip()
+    fmt.require(not controller_git('status','--porcelain','--untracked-files=all'),'exact clean controller required')
     fmt.require(git('rev-parse','HEAD').decode().strip()==source and not git('status','--porcelain','--untracked-files=all'),'exact clean candidate required')
     entries={};files={};links={};total=0
     def parents(path):
@@ -60,7 +64,8 @@ def main():
             elif path.is_dir(): entries[relative]={'path':relative,'type':'directory'};parents(relative)
             else: add_file(relative)
     entries['node_modules']={'path':'node_modules','type':'directory'}
-    manifest={'format':1,'kind':'bank-import-worker-package-v1','source':source,'runtime':runtime,'lockSha256':entries['pnpm-lock.yaml']['sha256'],'packageSha256':entries['package.json']['sha256'],'entries':[entries[p] for p in sorted(entries)]}
+    manifest={'format':2,'kind':'bank-import-worker-package-v2','source':source,'controllerSource':controller_source,'producerSha256':fmt.digest(Path(__file__).read_bytes()),'formatSha256':fmt.digest((controller/'deploy/systemd/bank_import_worker_format.py').read_bytes()),'runtime':runtime,'lockSha256':entries['pnpm-lock.yaml']['sha256'],'packageSha256':entries['package.json']['sha256'],'entries':[entries[p] for p in sorted(entries)]}
+    fmt.require_activation_manifest(manifest,controller_source)
     fmt.validate_manifest(manifest,source);raw_manifest=fmt.canonical(manifest);fmt.require(len(raw_manifest)<=fmt.MAX_MANIFEST,'manifest bytes')
     output.mkdir(mode=0o700,parents=True);archive_path=output/'worker-package.zip'
     with zipfile.ZipFile(archive_path,'x',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as archive:
@@ -71,11 +76,12 @@ def main():
     fmt.require(archive_path.stat().st_size<=fmt.MAX_ARCHIVE,'archive bytes')
     fmt.inspect_archive(archive_path,source,manifest['lockSha256'],manifest['packageSha256'])
     fmt.require(git('rev-parse','HEAD').decode().strip()==source and not git('status','--porcelain','--untracked-files=all'),'candidate changed during packaging')
+    fmt.require(controller_git('rev-parse','HEAD').decode().strip()==controller_source and not controller_git('status','--porcelain','--untracked-files=all'),'controller changed during packaging')
     (output/'worker-manifest.json').write_bytes(raw_manifest)
     h=hashlib.sha256()
     with archive_path.open('rb') as stream:
         for block in iter(lambda:stream.read(1024**2),b''): h.update(block)
-    provenance={'format':1,'kind':'WORKER_BYTES_ONLY_NOT_RELEASE_AUTHORITY','source':source,'runtime':runtime,'archiveSha256':h.hexdigest(),'archiveBytes':archive_path.stat().st_size,'manifestSha256':fmt.digest(raw_manifest),'packageSha256':manifest['packageSha256'],'lockSha256':manifest['lockSha256'],'entries':len(entries),'unpackedBytes':total}
+    provenance={'format':2,'kind':'WORKER_BYTES_ONLY_NOT_RELEASE_AUTHORITY','source':source,'controllerSource':controller_source,'producerSha256':manifest['producerSha256'],'formatSha256':manifest['formatSha256'],'runtime':runtime,'archiveSha256':h.hexdigest(),'archiveBytes':archive_path.stat().st_size,'manifestSha256':fmt.digest(raw_manifest),'packageSha256':manifest['packageSha256'],'lockSha256':manifest['lockSha256'],'entries':len(entries),'unpackedBytes':total}
     (output/'worker-provenance.json').write_bytes(fmt.canonical(provenance));print(json.dumps(provenance))
 
 if __name__=='__main__': main()
