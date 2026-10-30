@@ -3984,6 +3984,62 @@
       "when": 1793330000031,
       "tag": "0696_feedback_menu_operator_switch",
       "breakpoints": true
+    },
+    {
+      "idx": 694,
+      "version": "7",
+      "when": 1793330000042,
+      "tag": "0713_lifecycle_v9",
+      "breakpoints": true
+    },
+    {
+      "idx": 695,
+      "version": "7",
+      "when": 1793330000043,
+      "tag": "0714_lifecycle_v9_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 696,
+      "version": "7",
+      "when": 1793330000044,
+      "tag": "0715_lifecycle_v9_email_assets",
+      "breakpoints": true
+    },
+    {
+      "idx": 697,
+      "version": "7",
+      "when": 1793330000045,
+      "tag": "0716_lifecycle_v9_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 698,
+      "version": "7",
+      "when": 1793330000046,
+      "tag": "0717_lifecycle_v9_delivery_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 699,
+      "version": "7",
+      "when": 1793330000047,
+      "tag": "0718_lifecycle_v9_employment_class",
+      "breakpoints": true
+    },
+    {
+      "idx": 700,
+      "version": "7",
+      "when": 1793330000048,
+      "tag": "0719_lifecycle_v9_business_recipients",
+      "breakpoints": true
+    },
+    {
+      "idx": 701,
+      "version": "7",
+      "when": 1793330000049,
+      "tag": "0720_lifecycle_v9_self_equipment",
+      "breakpoints": true
     }
   ]
 }

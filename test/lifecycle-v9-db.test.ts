@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
-import { installLifecycleV9Drafts } from './fixtures/lifecycle-v9/drafts';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
@@ -13,7 +12,6 @@ import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUs
 
 let base: Base, admin: SessionContext, employee: SessionContext, other: SessionContext, employmentId: string;
 beforeAll(async () => {
-  await installLifecycleV9Drafts(owner.client);
   assetPng = await (await import('sharp')).default({ create: { width: 2, height: 2, channels: 4, background: { r: 79, g: 70, b: 229, alpha: 1 } } }).png().toBuffer();
 });
 beforeEach(async () => {

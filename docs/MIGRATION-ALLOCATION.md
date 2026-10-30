@@ -5,6 +5,23 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## V9 verification-only source candidate — 30 October 2026
+
+The owner authorized TypeScript and full-gate verification, explicitly withholding deployment. The candidate preserves the complete569-entry main/alpha prefix at c4fad43c1d67d69125a3f37e7549a5a8a7053362 and the installed Feedback348 prefix through idx683/1793330000031. All eight SQL bodies are byte-identical moves of the V9 development drafts; their draft header comments remain historical provenance. Tests now use the ordinary journal rather than a fixture overlay.
+
+These are **verification-only source positions, not a centrally approved installation allocation**. AI confirmed its10 unapplied0703–0712/idx684–693/when32–41 claims unchanged; MOBILE reports no competing successor and Board adds noSQL. Those claims remain untouched and are not included. The deliberate index gap preserves their reservations. Before any integration/application, obtain the final coordinated sequence from the allocation owner, reconcile all absent predecessors and actual ledger, and rerun affected/fresh verification for any changed candidate. Do not deploy this isolated sequence or silently skip an earlier owning release. No protected ref, real account, staging or production data is changed by this source candidate.
+
+| Index | Timestamp | Filename | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|694|1793330000042|0713_lifecycle_v9|7cd451abc6b6fd5a2a7bd46aae2078e6d7b33d795f07e2c132d42637a44aeb3f|
+|695|1793330000043|0714_lifecycle_v9_email|1b4320ab4ad3d69c79213ba7c01e92a6aa89dfc06719cdcdfcc30de71a8d4c97|
+|696|1793330000044|0715_lifecycle_v9_email_assets|7cce0a32d622fa500692deee33d1dc2738009fdddb3c9a7500c627cd50ede0ce|
+|697|1793330000045|0716_lifecycle_v9_events|98f23c7f62f93508f7da8eb4d51c891467ee87ec6d090cae2c64e1e111b51a1b|
+|698|1793330000046|0717_lifecycle_v9_delivery_review|a2a29747b6fcfea39dfc2e54f554f2f44fc9d365c911796066de1a4c36d2979f|
+|699|1793330000047|0718_lifecycle_v9_employment_class|8fcdc41c6db137aa69e29c5dab44a8788b7c3c30620b97d215d7bbbb65f34dd2|
+|700|1793330000048|0719_lifecycle_v9_business_recipients|aa3b80ffa3f013025569e0030fdee843c3af135cc7d0ae1611628cf0cb408035|
+|701|1793330000049|0720_lifecycle_v9_self_equipment|a9b2b8c6a53a42322a392cf4f98d1967033e17f20d28d6e17a0c3b861b36510e|
+
 ## Feedback menu operator switch — 30 October 2026 (unapplied successor)
 
 Branch `claude/feedback-menu-operator-toggle-616263` includes verified staging source

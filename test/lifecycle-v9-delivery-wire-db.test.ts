@@ -16,7 +16,6 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 import { addDays } from '../lib/lifecycle-v9-model';
 import { v9Setup, v9Workspace, v9SaveConfig, v9UploadEmailAsset, v9CreateOffboarding, v9Command, v9CaseDetail, v9DeliverEmails, v9Sweep, v9PreviewUpdatedEmail } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner } from './harness';
-import { installLifecycleV9Drafts } from './fixtures/lifecycle-v9/drafts';
 import { startReportSmtpSink } from './fixtures/managed-report-delivery/smtp-sink';
 import { fixtureMailAttachments } from './fixtures/lifecycle-v9/mime-attachments';
 const web = vi.hoisted(()=>({ context: null as SessionContext|null, identity: null as { issuer: string; subject: string; email: string; emailVerified: boolean }|null }));
@@ -24,7 +23,6 @@ vi.mock('../lib/session',()=>({getSession:async()=>web.context}));
 vi.mock('../lib/internal-auth/web-session',()=>({currentInternalIdentity:async()=>web.identity}));
 let directory: string;
 beforeAll(async()=>{
-  await installLifecycleV9Drafts(owner.client);
   directory=mkdtempSync(join(tmpdir(),'aihr-v9-private-smtp-'));
   writeFileSync(join(directory,'extensions.cnf'),'subjectAltName=IP:127.0.0.1\nbasicConstraints=CA:FALSE\nextendedKeyUsage=serverAuth\n');
   const run=(args:string[])=>execFileSync('openssl',args,{cwd:directory,stdio:'ignore'});

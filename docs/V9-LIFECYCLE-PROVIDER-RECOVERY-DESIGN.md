@@ -1,6 +1,6 @@
 # V9 providing-team recovery boundary
 
-Status: owner explicitly approved scoped team recovery on 30 October 2026. Implemented in the unallocated candidate with focused database and component verification; complete affected regression passed 135 tests and both recovery journeys passed again after the final account-check lock ordering change; six capability-inventory checks passed. The local compiler exhausted its default 4 GiB heap, so current type verification remains outstanding. Release sequencing remains held under the separate owner instruction in MOBILE; this approval grants no deployment or real-account access.
+Status: owner explicitly approved scoped team recovery on 30 October 2026. Implemented in the verification-only ordinary-journal candidate with focused database and component verification; complete affected regression passed 135 tests and both recovery journeys passed again after the final account-check lock ordering change; six capability-inventory checks passed. The local compiler exhausted its default 4 GiB heap, so current type verification remains outstanding. The owner has resumed TypeScript and full-gate verification only; deployment remains explicitly held. Final installation allocation is still pending. This grants no real-account access.
 
 The supplied HTML gives providing teams return/revoke work. An employee declaration remains separate from an actual issuing-record recovery. The approved implementation adds a confirmation action for the currently assigned providing-team member.
 

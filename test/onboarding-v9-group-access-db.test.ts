@@ -1,4 +1,4 @@
-import {beforeAll,beforeEach,afterAll,it,expect} from 'vitest';
+import {beforeEach,afterAll,it,expect} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {saveEmployeeDraft} from '../core/employee-draft';
@@ -7,9 +7,8 @@ import {onboardingContext,onboardingList,onboardingDetail,onboardingCommand,onbo
 import {defaultV9CaseFields} from '../lib/lifecycle-v9-case-form';
 import {joinerPageSections} from '../lib/onboarding-page-access';
 import {closeAll,resetDb,seedBase,setModule,entitledCtx,createAppUser,owner,type Base} from './harness';
-import {installLifecycleV9Drafts} from './fixtures/lifecycle-v9/drafts';
 let base:Base,admin:SessionContext,member:SessionContext,id:string;
-beforeAll(()=>installLifecycleV9Drafts(owner.client));afterAll(closeAll);
+afterAll(closeAll);
 beforeEach(async()=>{
  await resetDb();base=await seedBase();await setModule(base.tenantId,'lifecycle','active');admin=await entitledCtx(base);await v9Setup(admin);
  const manager=await hireEmployee(admin,{companyId:base.companyId,departmentId:base.deptA,positionId:base.positionId,employmentType:'full_time',hiredOn:'2026-01-01',person:{fullName:'Fictional access reviewer',primaryEmail:'reviewer@example.test'}});
