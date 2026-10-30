@@ -3569,7 +3569,7 @@ export default async function EmployeePage({
   // corrected. `canEdit` comes from the service, so a row the service would refuse never renders a form.
   // Include the edited code's metadata even if inactive; the client needs its resolved behavior.
   const movementEditRow = spEditMovement ? movements.find((m) => m.id === spEditMovement && m.canEdit) : undefined;
-  const movementEditInput = movementEditRow && (movementEditRow.status === 'pending' || movementEditRow.kind === 'resignation')
+  const movementEditInput = movementEditRow && (movementEditRow.status === 'pending' || movementEditRow.kind === 'resignation' || movementEditRow.kind === 'termination')
     ? await movementPendingEditInput(s, employmentId, movementEditRow.id) : null;
   const editEventCard = canCreateMovement && movementEditRow && movementFormProps ? (
     <Card id="section-movement-edit-event" className="overflow-hidden">
@@ -3612,7 +3612,10 @@ export default async function EmployeePage({
                   ? ['entityTransfer']
                   : isComparisonKind(behaviour)
                     ? [...INTERCHANGEABLE_COMPARISON_KINDS]
-                    : [behaviour, 'secondment', 'actingPosition'];
+                    : // 646355e5 — exits are families of one; the service refuses any crossing.
+                      behaviour === 'termination' || behaviour === 'resignation'
+                      ? [behaviour]
+                      : [behaviour, 'secondment', 'actingPosition'];
             const codes = movementTypes
               .filter((r) => r.active && family.includes(r.behaviourKind))
               .map((r) => r.code);

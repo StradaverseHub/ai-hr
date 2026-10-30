@@ -37,14 +37,14 @@ describe('custom Movement correction uses canonical behavior and retains recorde
   expect((await movementCurrentState(ctx,e.employmentId)).departmentId).toBe(b.deptA);
   expect((await movementHistory(ctx,e.employmentId)).find(row=>row.id===live[0].id)).toMatchObject({kind:type.code,status:'reversed'});
  });
- it('keeps the latest-applied restriction on a custom comparison after a later state-changing movement',async()=>{
+ it('646355e5 — an older custom comparison edit that changes nothing is refused without writing',async()=>{
   const e=await hire(),ctx=adminCtx(b),type=await saveMovementEventType(ctx,{label:'Fictional older promotion',behaviourKind:'promotion'});
   await createMovementEvent(ctx,{employmentId:e.employmentId,kind:type.code,effectiveDate:day(-2),departmentId:b.deptB});
   const original=(await movementHistory(ctx,e.employmentId)).find(row=>row.kind===type.code)!;
   await createMovementEvent(ctx,{employmentId:e.employmentId,kind:'transfer',effectiveDate:day(-1),departmentId:b.deptA});
-  expect((await movementHistory(ctx,e.employmentId)).find(row=>row.id===original.id)?.canEdit).toBe(false);
+  expect((await movementHistory(ctx,e.employmentId)).find(row=>row.id===original.id)?.canEdit).toBe(true);
   const before=await state(e.employmentId);
-  await expect(editMovementEvent(ctx,{employmentId:e.employmentId,movementId:original.id,kind:type.code,effectiveDate:day(-2),remarks:'Fictional older correction',reason:'Fictional refusal'})).rejects.toThrow('Only the most recent movement');
+  await expect(editMovementEvent(ctx,{employmentId:e.employmentId,movementId:original.id,kind:type.code,effectiveDate:day(-2),remarks:'Fictional older correction',reason:'Fictional refusal'})).rejects.toThrow(/leave nothing changed/);
   expect(await state(e.employmentId)).toEqual(before);
  });
  it('preserves ordinary record-only custom correction and its exact catalogue code',async()=>{
