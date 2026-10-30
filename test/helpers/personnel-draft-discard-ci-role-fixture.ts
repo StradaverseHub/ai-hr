@@ -65,6 +65,9 @@ export async function readDraftDiscardRoleCatalog(sql:DraftDiscardCatalogSql):Pr
 export function assertDraftDiscardRoleCatalog(catalog:RoleCatalog,allowMissing=false):void{
  const byName=new Map(catalog.roles.map(role=>[role.name,role]));
  if(!byName.has('ai_hr_app')||!allowMissing&&byName.size!==3)refuse();
+ // Fresh controller cluster is app-only. A partially existing owner/child graph is uncertain,
+ // so it is refused rather than completed or reconciled by this fixture.
+ if(allowMissing&&byName.size!==1&&byName.size!==3)refuse();
  for(const role of catalog.roles){
   if(!roleNames.some(name=>name===role.name)||role.login!==(role.name!=='ai_hr_draft_discard_port')||!role.inherit
    ||role.super||role.createDb||role.createRole||role.replication||role.bypassRls||role.connectionLimit!==-1||role.validUntil!==null)refuse();

@@ -96,6 +96,11 @@ describe('pure disposable role fixture refusal before any role write',()=>{
    }
   });
  }
+ it.each(['ai_hr_owner','ai_hr_draft_discard_port'])('refuses an existing partial graph missing %s rather than provisioning the missing endpoint',missing=>{
+  const catalog=exactRoleCatalog();catalog.roles=catalog.roles.filter(role=>role.name!==missing);
+  catalog.edges=catalog.edges.filter(edge=>edge.role!==missing&&edge.member!==missing);
+  const before=structuredClone(catalog);expect(()=>assertDraftDiscardRoleCatalog(catalog,true)).toThrow();expect(catalog).toEqual(before);
+ });
  const mutations:{name:string;mutate:(catalog:RoleCatalog)=>void}[]=[
   {name:'app can directly SET/inherit child',mutate:c=>{c.edges.push({role:'ai_hr_draft_discard_port',member:'ai_hr_app',grantor:'postgres',inherit:true,set:true,admin:false});}},
   {name:'app reaches child through a bridge',mutate:c=>{c.edges.push({role:'bridge',member:'ai_hr_app',grantor:'postgres',inherit:true,set:true,admin:false},{role:'ai_hr_draft_discard_port',member:'bridge',grantor:'postgres',inherit:true,set:true,admin:false});}},
