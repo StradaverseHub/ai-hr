@@ -53,7 +53,7 @@ it('refuses direct app-role entry when Access is held elsewhere',async()=>{await
 it.each(['roles','person_link','archived'] as const)('refuses stale actual %s without a body projection',async change=>{
  expect(await run()).toEqual({noLinkedCase:true});if(change==='roles')await owner.db.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,ctx.userId!));
  else if(change==='archived')await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,ctx.userId!));
- else{const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'New fictional link'}).returning({id:s.person.id});await owner.db.update(s.appUser).set({personId:person.id}).where(eq(s.appUser.id,ctx.userId!));}
+ else{const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'New fictional link',primaryEmail:randomUUID()+'@fixture.invalid'}).returning({id:s.person.id});await owner.db.update(s.appUser).set({personId:person.id}).where(eq(s.appUser.id,ctx.userId!));}
  await denied(run());
 });
 it.each(['workforce.view','workforce.maintain'] as const)('preserves the restrictive native %s denial',async capabilityId=>{
@@ -83,7 +83,7 @@ it('keeps the draft and releases all fences when the enclosing command rolls bac
  await expect(withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);await onboardingDraftDiscardContextTx(ctx,tx,subject(),{tryOnly:true});await tx.delete(s.employeeDraft).where(eq(s.employeeDraft.id,draftId));throw Error('outer refusal');})).rejects.toThrow('outer refusal');expect(await owner.db.select({id:s.employeeDraft.id}).from(s.employeeDraft).where(eq(s.employeeDraft.id,draftId))).toHaveLength(1);expect(await tryKeys()).toEqual({access:true,audit:true,onboarding:true});
 });
 it('preserves the actual native author course for a linked HR USER without inventing a company-admin-only floor',async()=>{
- const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional draft author'}).returning({id:s.person.id});await owner.db.update(s.appUser).set({personId:person.id}).where(eq(s.appUser.id,ctx.userId!));await owner.db.update(s.roleAssignment).set({companyId:otherCompany}).where(eq(s.roleAssignment.appUserId,ctx.userId!));await owner.db.update(s.employeeDraft).set({createdByPersonId:person.id}).where(eq(s.employeeDraft.id,draftId));const author={...ctx,personId:person.id,grants:[{role:'hr_admin',companyId:otherCompany}]};
+ const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional draft author',primaryEmail:randomUUID()+'@fixture.invalid'}).returning({id:s.person.id});await owner.db.update(s.appUser).set({personId:person.id}).where(eq(s.appUser.id,ctx.userId!));await owner.db.update(s.roleAssignment).set({companyId:otherCompany}).where(eq(s.roleAssignment.appUserId,ctx.userId!));await owner.db.update(s.employeeDraft).set({createdByPersonId:person.id}).where(eq(s.employeeDraft.id,draftId));const author={...ctx,personId:person.id,grants:[{role:'hr_admin',companyId:otherCompany}]};
  const [scope]=await withTenant(author,tx=>tx.execute<{admin:boolean;author:boolean}>(sql`select app.is_admin_for(${b.companyId}::uuid) admin,app.is_self_person(${person.id}::uuid) author`));expect(scope).toEqual({admin:false,author:true});expect(await run(author)).toEqual({noLinkedCase:true});
  const employeeId=await createAppUser(b.tenantId,person.id,'employee');await denied(run({...author,userId:employeeId,roles:['employee'],grants:[{role:'employee',companyId:null}]}));
 });
