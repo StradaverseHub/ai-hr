@@ -75,6 +75,7 @@ export const AGENT_ACTION_PARITY={
  'org.reporting.change':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'org.position.archive':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'org.department.archive':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'org.people_general.change':{kind:'probed',scope:'caller_tenant',scopeReason:'Implicit authenticated tenant policy has no target selector. Foreign group HR can change only their own tenant policy; another-company scoped HR has no whole-organisation authority. Cross-user review adoption remains refused.',screen:{...HR_ON_EMPLOYMENT,company_hr:D,another_tenant:A}},
  'org.employee_id_template.status':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'leave.apply':{kind:'probed',screen:OWN_REQUEST},
  'leave.cancel':{kind:'probed',screen:OWN_REQUEST},
