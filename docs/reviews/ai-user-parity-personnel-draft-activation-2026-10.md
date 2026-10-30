@@ -29,3 +29,14 @@ Authored non-MYR company/native-currency and formatted/fractional money witnesse
 Installed Next.js documentation was not available in this dependency-free builder or the canonical main checkout. The new server page follows the current repository's awaited `searchParams` and existing Assistant access pattern; framework behavior remains for the exact-SHA compiler/renderer checks. No dependencies or local runtime were provisioned.
 
 Release hold remains: no merges, main/alpha movement, staging/production deploys, release publication or PR101 release integration/full gate.
+
+
+## Transaction and receipt recovery review
+
+The frozen initial Actions run exposed an unclosed preview savepoint and excess Human-envelope
+keys entering a strict native receipt. The preview now owns an explicit SAVEPOINT, rolls back to it
+and RELEASEs it in finally before any actual activation. The ordinary wizard transaction is unchanged.
+A native fixture activates after preview and requires Person, Employment and completed-event xmin
+to equal pg_current_xact_id(), independently of custody-row equality. Receipt construction whitelists
+its exact fields; its strict schema and top-level transaction proof remain intact. Hosted rechecks are
+required before claiming the repaired behavior works.

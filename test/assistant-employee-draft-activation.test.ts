@@ -4,7 +4,7 @@ import {eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
-import {createEmployeeDraftWithReservedCode,saveEmployeeDraft,saveAndCompleteEmployeeDraft,getEmployeeDraft} from '../core/employee-draft';
+import {createEmployeeDraftWithReservedCode,saveEmployeeDraft,saveAndCompleteEmployeeDraft,getEmployeeDraft,previewSavedEmployeeDraftActivationTx} from '../core/employee-draft';
 import {hireEmployee} from '../core/org';
 import {grantAssistant} from '../core/assistant-grant';
 import {employeeDraftActivationReviews as store,readEmployeeDraftActivationChoices} from '../core/assistant-actions/employee-draft-activation-review-store';
@@ -21,6 +21,14 @@ const human=(id:string)=>({action:C.action,contractVersion:1,draftId:id,companyI
 const confirmation=(r:{actionId:string;reviewedDigest:string})=>({action:C.action,contractVersion:1,actionId:r.actionId,reviewedDigest:r.reviewedDigest});
 async function snapshot(id:string){const [row]=await owner.db.execute<{draft:unknown;people:number;employments:number;events:number}>(sql`select (select to_jsonb(d) from employee_draft d where d.id=${id}::uuid) as draft,(select count(*)::int from person where tenant_id=${b.tenantId}::uuid) as people,(select count(*)::int from employment where tenant_id=${b.tenantId}::uuid) as employments,(select count(*)::int from domain_event where tenant_id=${b.tenantId}::uuid) as events`);return row;}
 describe('saved employee draft human activation',()=>{
+ it('fully releases the rollback-only preview before actual native rows and completion event are written',async()=>{
+  const d=await draft(),before=await snapshot(d.id);
+  await withTenant(hr,async tx=>{
+   const preview=await previewSavedEmployeeDraftActivationTx(tx,hr,{id:d.id,data:d.data,currentStep:4});expect(preview.compensation.basicSalary).toBe('3000.00');expect(await snapshot(d.id)).toEqual(before);
+   const done=await saveAndCompleteEmployeeDraft(hr,{id:d.id,data:d.data,currentStep:4},tx);
+   const [proof]=await tx.execute<{sameXmin:boolean}>(sql`select e.xmin=pg_current_xact_id()::xid and p.xmin=pg_current_xact_id()::xid and event.xmin=pg_current_xact_id()::xid as "sameXmin" from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id join domain_event event on event.subject_employment_id=e.id and event.tenant_id=e.tenant_id where e.id=${done.employmentId}::uuid and event.event_type='employee-draft.completed' and event.aggregate_id=${d.id}::uuid`);expect(proof).toEqual({sameXmin:true});
+  });
+ });
  it('reviews every supported captured value, performs native hire once, and recovers its original receipt',async()=>{
   const d=await draft(),before=await snapshot(d.id),r=(await store.prepare(hr,human(d.id))).review;expect(r.review.reservedEmployeeCode).toBe(d.employeeCode);expect(Object.fromEntries(r.review.fields.map(row=>[row.section+'.'+row.key,row.value]))).toEqual(Object.fromEntries(Object.entries(d.data).flatMap(([section,fields])=>Object.entries(fields).map(([key,value])=>[section+'.'+key,value]))));expect(r.review.initialBasicSalary).toBe('3000.00');expect(await snapshot(d.id)).toEqual(before);
   const done=await store.confirm(hr,confirmation(r));expect(done.kind).toBe('completed');if(done.kind!=='completed')throw Error('Missing receipt');expect(done.receipt.receipt).toMatchObject({draftId:d.id,companyId:b.companyId,employeeCode:d.employeeCode});expect(await getEmployeeDraft(hr,d.id)).toBeNull();expect(await store.reopen(hr,r.actionId)).toEqual(done);expect(await store.confirm(hr,confirmation(r))).toEqual(done);

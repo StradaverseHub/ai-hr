@@ -764,20 +764,22 @@ export type EmployeeDraftActivationPreview={
  compensation:{basicSalary:string;monthlyAllowance:string;currency:string;payMode:string;paymentTerm:string;rateAmount:string|null;validFrom:string;remarks:string|null};
  openingLeaveGrants:{leaveTypeId:string;code:string;name:string;entryType:string;days:string;effectiveOn:string}[];
 };
-class EmployeeDraftPreviewRollback extends Error{constructor(readonly preview:EmployeeDraftActivationPreview){super('Rollback native Draft activation preview');}}
 export async function previewSavedEmployeeDraftActivationTx(tx:Tx,supplied:SessionContext,p:{id:string;data:EmployeeDraftData;currentStep:number}):Promise<EmployeeDraftActivationPreview>{
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
  // Configuration and retained source locks precede the rollback-only savepoint, so they survive it.
  await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await lockLabelCriteriaTx(tx,ctx.tenantId);
  const [draft]=await tx.select({id:employeeDraft.id}).from(employeeDraft).where(and(eq(employeeDraft.id,p.id),eq(employeeDraft.tenantId,ctx.tenantId))).for('update');if(!draft)throw new DraftActivationValidationError('draft_unavailable',[]);
  const lifecycle=await onboardingDraftActivationContextTx(ctx,tx);if(lifecycle.willSynchronize)throw new DraftActivationValidationError('invalid_data',[]);
- try{await tx.transaction(async previewTx=>{
-  const done=await saveAndCompleteEmployeeDraft(ctx,p,previewTx);
-  const compensationRows=await previewTx.execute<EmployeeDraftActivationPreview['compensation']>(sql`select basic_salary as "basicSalary",monthly_allowance as "monthlyAllowance",currency,pay_mode as "payMode",payment_term as "paymentTerm",rate_amount as "rateAmount",valid_from::text as "validFrom",remarks from compensation where tenant_id=${ctx.tenantId}::uuid and employment_id=${done.employmentId}::uuid and valid_to is null and superseded_at is null`);if(compensationRows.length!==1)throw new DraftActivationValidationError('payroll_invalid',[]);
-  const grantRows=await previewTx.execute<EmployeeDraftActivationPreview['openingLeaveGrants'][number]>(sql`select l.leave_type_id as "leaveTypeId",t.code,t.name,l.entry_type::text as "entryType",l.days,l.effective_on::text as "effectiveOn" from leave_ledger l join leave_type t on t.id=l.leave_type_id and t.tenant_id=l.tenant_id where l.tenant_id=${ctx.tenantId}::uuid and l.employment_id=${done.employmentId}::uuid order by l.leave_type_id,l.entry_type,l.effective_on,l.days`);
-  throw new EmployeeDraftPreviewRollback({compensation:{...compensationRows[0]},openingLeaveGrants:Array.from(grantRows).map(row=>({...row}))});
- });}catch(error){if(error instanceof EmployeeDraftPreviewRollback)return error.preview;throw error;}
- throw new Error('Native Draft preview did not roll back');
+ await tx.execute(sql`savepoint ai_employee_draft_activation_preview`);
+ try{
+  const done=await saveAndCompleteEmployeeDraft(ctx,p,tx);
+  const compensationRows=await tx.execute<EmployeeDraftActivationPreview['compensation']>(sql`select basic_salary as "basicSalary",monthly_allowance as "monthlyAllowance",currency,pay_mode as "payMode",payment_term as "paymentTerm",rate_amount as "rateAmount",valid_from::text as "validFrom",remarks from compensation where tenant_id=${ctx.tenantId}::uuid and employment_id=${done.employmentId}::uuid and valid_to is null and superseded_at is null`);if(compensationRows.length!==1)throw new DraftActivationValidationError('payroll_invalid',[]);
+  const grantRows=await tx.execute<EmployeeDraftActivationPreview['openingLeaveGrants'][number]>(sql`select l.leave_type_id as "leaveTypeId",t.code,t.name,l.entry_type::text as "entryType",l.days,l.effective_on::text as "effectiveOn" from leave_ledger l join leave_type t on t.id=l.leave_type_id and t.tenant_id=l.tenant_id where l.tenant_id=${ctx.tenantId}::uuid and l.employment_id=${done.employmentId}::uuid order by l.leave_type_id,l.entry_type,l.effective_on,l.days`);
+  return{compensation:{...compensationRows[0]},openingLeaveGrants:Array.from(grantRows).map(row=>({...row}))};
+ }finally{
+  await tx.execute(sql`rollback to savepoint ai_employee_draft_activation_preview`);
+  await tx.execute(sql`release savepoint ai_employee_draft_activation_preview`);
+ }
 }
 
 /** Activate one locked Draft through canonical owners in a single explicit transaction.

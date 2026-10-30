@@ -438,14 +438,16 @@ async function observe(id:ProbedActionId,role:ParityRole,o:Options=DEFAULT_OPTIO
  let w=await buildWorld(),item=await adapter.create(w,w.home,o),who=await w.as(role);
  const screen=await screenOutcome(adapter,who,item,w.people[role].employmentId,o,notes);
  if(adapter.independentScreen){w=await buildWorld();item=await adapter.create(w,w.home,o);who=await w.as(role);}
+ // Creating the reference login changes native Access/policy revisions. Finish that setup before
+ // either review, so this custody probe does not accidentally manufacture a stale source.
+ const reference=PARITY_ROLES.find(r=>r!==role&&expectedAgentOutcome(declared,r)==='allow'),referenceActor=reference?await w.as(reference):null;
  let offer:ParityOutcome='deny';
  try{offer=await adapter.offered(who,item)?'allow':'deny';}catch(error){notes.offer=why(error);}
  const own=await tryPrepare(adapter,who,item,o,notes),prepare:ParityOutcome=own?'allow':'deny';
  // Probe another login BEFORE any effect changes the shared source. A permitted actor must not be
  // able to adopt another permitted actor's review, including another login linked to the same person.
- const reference=PARITY_ROLES.find(r=>r!==role&&expectedAgentOutcome(declared,r)==='allow');
  let theirs:Review|null,crossActor=who;
- if(reference){const referenceActor=await w.as(reference);notes.crossUserReference=reference;theirs=await tryPrepare(adapter,referenceActor,item,o,notes,'reference');}
+ if(reference&&referenceActor){notes.crossUserReference=reference;theirs=await tryPrepare(adapter,referenceActor,item,o,notes,'reference');}
  else if(own){crossActor=(await w.login(w.b,w.subject,'employee',null)).ctx;notes.crossUserReference='same_person_new_login_attempts_original_review';theirs=own;}
  else throw Error(`${id}: no permitted reference actor for custody refusal: ${JSON.stringify(notes)}`);
  if(!theirs)throw Error(`${id}: reference preparation failed, so cross-user confirmation proves nothing: ${notes.reference}`);

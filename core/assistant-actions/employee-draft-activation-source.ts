@@ -64,12 +64,12 @@ export async function confirmEmployeeDraftActivationSourceTx(tx:Tx,ctx:SessionCo
  const current=await source(tx,ctx,human);if(current.reviewedDigest!==expected)return fail();
  const done=await saveAndCompleteEmployeeDraft(ctx,{id:human.draftId,data:current.data,currentStep:current.draft.currentStep},tx);
  const rows=await tx.execute<{eventId:string}>(sql`select d.id as "eventId" from domain_event d where d.tenant_id=${ctx.tenantId}::uuid and d.aggregate_type='employee-draft' and d.aggregate_id=${human.draftId}::uuid and d.event_type='employee-draft.completed' and d.subject_employment_id=${done.employmentId}::uuid and d.actor_type='user' and d.actor_id=${ctx.userId}::uuid and d.xmin=pg_current_xact_id()::xid`);if(rows.length!==1)return fail();
- return reconcileEmployeeDraftActivationSourceTx(tx,ctx,{...human,eventId:rows[0].eventId});
+ return reconcileEmployeeDraftActivationSourceTx(tx,ctx,{draftId:human.draftId,companyId:human.companyId,eventId:rows[0].eventId});
 }
 export async function reconcileEmployeeDraftActivationSourceTx(tx:Tx,ctx:SessionContext,reference:{draftId:string;companyId:string;eventId:string}){
  await assertWorkforceCompanyTx(tx,ctx,reference.companyId,'maintain');
  const [row]=await tx.execute<{employmentId:string;personId:string;employeeCode:string}>(sql`select e.id as "employmentId",e.person_id as "personId",d.payload->>'reservedEmployeeCode' as "employeeCode" from domain_event d join employment e on e.id=d.subject_employment_id and e.tenant_id=d.tenant_id where d.id=${reference.eventId}::uuid and d.tenant_id=${ctx.tenantId}::uuid and d.aggregate_type='employee-draft' and d.aggregate_id=${reference.draftId}::uuid and d.event_type='employee-draft.completed' and d.actor_type='user' and d.actor_id=${ctx.userId}::uuid and e.company_id=${reference.companyId}::uuid and d.payload->>'employmentId'=e.id::text and d.payload->>'companyId'=e.company_id::text`);if(!row)return fail();
- return C.Receipt.parse({kind:'activated',...reference,...row,semantics:'employment_created_not_payroll_processed_or_access_granted'});
+ return C.Receipt.parse({kind:'activated',draftId:reference.draftId,companyId:reference.companyId,eventId:reference.eventId,employmentId:row.employmentId,personId:row.personId,employeeCode:row.employeeCode,semantics:'employment_created_not_payroll_processed_or_access_granted'});
 }
 export async function readEmployeeDraftActivationChoicesTx(tx:Tx,ctx:SessionContext,selection:unknown){
  const fresh=await employeeDraftActivationActorTx(tx,ctx),pick=C.Selection.parse(selection??{});await tx.execute(sql`select app.access_workforce_write_lock()`);const lifecycle=await onboardingDraftActivationContextTx(fresh,tx);

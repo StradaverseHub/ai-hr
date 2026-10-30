@@ -67,10 +67,13 @@ export type AgentAutomaticSpecialist='approval_chasers'|'review_chasers'|'clock_
 export type AgentAutomaticSource='claim'|'attendance_correction'|'replacement_leave'|'employment_review'|'missing_clock'|'passport_expiry'|'lifecycle_step';
 export type AgentAutomaticPolicy=Readonly<{specialist:AgentAutomaticSpecialist;source:AgentAutomaticSource;/** Default working_wait. Fixed presence/expiry sources have explicit eligibility and no overdue-day interpretation. */eligibility?:'working_wait'|'previous_date_record_gap'|'recorded_expiry_30_calendar_days';overdueAfterDays:number;cooldownDays:number;maxPerItem:number;maxPerRun:number}>;
 
+/** Closed country-owned members; metadata never resolves or executes a callable. */
+export type AgentActionServiceMember='statutory.set'|'statutory.setBank';
+
 /** The policy field reuses WP2's AgentActionPolicy union, so `{category:'pay',tier:'automatic'}` (or any
  * never-Automatic category paired with Automatic) is a compile error in the entry itself. */
 export type AgentActionDefinition=Readonly<{
- id:string;module:AgentModuleCode;owner:AgentActionOwner;service:Anchor;serviceMember?:'statutory.set';observations?:'human_actual_only';
+ id:string;module:AgentModuleCode;owner:AgentActionOwner;service:Anchor;serviceMember?:AgentActionServiceMember;observations?:'human_actual_only';
  contractVersion:number;prepare:AgentActionPhase;confirm:AgentActionPhase;
  outcome:'canonical_receipt_required'|'submitted_not_approved'|'notification_only';semantics:string;
  humanInputs:readonly string[]|'native_page_only';
