@@ -1,0 +1,19 @@
+# Rewards annual return — native seam/contract checkpoint
+
+Owned isolated tree/branch ai-user-parity-rewards-annual-return-20261030, base exact510d2fb94ad1b1e41eb8aa88a082018d7684dbcb. Completed calendarPR134 and cancellationPR124 remain frozen. Release HOLD.
+
+## Bounded native intent
+Return ONE annual review to draft through SAME `decideRewardUnit(action=return)` owner. Native mounted /rewards/[unitId] current-stage BG/GR/CTRO/EC seat or approved-stage GR/CTRO/EC; actual active reward_roles, not title or blanket HR. Native `transition` remains authority. Human reason10–4000. Return writes a native decision, moves unit to draft, clears approved digest and increments revision; all entries and prior decisions remain. Derived Returned destination BU; new revision needs its full route. Annual funding reservation values are unchanged. No employee compensation/payroll/import/external notification effect. Off-cycle decisions are outside this slice.
+
+The generic decideAction export accepts multiple actions and off-cycle variants, so its backlog classification remains; future registry entryPoints must be empty for this bounded subset. No false whole-export coverage.
+
+## Accepted minimal seam
+The initial proposal also added shared audit metadata for every action; automatic approval review rejected that broader change. The executed safer alternative only extracts the existing transaction body byte for byte; audit append/payload, native calculations and all existing rules/effects remain exact. Body SHA2563361d8332183e0eb257d6ed9f159347da6e9e58558192f4d88f55377cb23f57e, independently saved /private/tmp/rewards-return-native-body-preservation.json. Existing wrapper still returns stage. Annual preflight/facade use same funding/load/transition/digest; public preflight contains only true unit/company/stage/revision/private opaque hashes, no people/counts/pay. No registry, HTTP, UI or SQL enabled.
+
+## Pending allocation/proof decision
+Request ONE private purpose assistant_rewards_annual_return_review, no number/idx/when claimed. Same encrypted ledger, real unit/company, actor USER/nullable PERSON, no fabricated employment. Dedicated unit/decision/event/reviewed-revision refs; strict new-kind whitelist, unrelatedNULL and old-kind new columnsNULL. Only actual rejecting CHECKs may wrap; predecessor once and untouched hashes proven.
+
+Proposed proof preserves native existing routed payload {from,to,revision}. A purpose SQL reader must discover EXACTONE actual currentTOPTX native return decision+event+updated annual unit, matching actor/unit/reviewedrevision/from/to/human reason/native private decision digest; completion rechecks exact refs/row hashes/currentTOPTX. No general audit SELECT grant or invented UUID receipt. Requires coordinator semantic review before implementation. Pending authority must be checked before unwrap; completed own historical recovery must permit draft/later resubmission while revalidating original action seat/current scope. No private projection before native purpose admission.
+
+## Authored verification, not executed
+Six native DB fixture cases cover effect-free preflight, exact native decision/event and retained entries/history, actual-stage-only authority, stale/draft/short-reason refusals, whole-transaction rollback and unchanged legacy return result. Three pure contract cases bind the whole annual intent, exact reason/unit/revision, allowed native outcome and receipt progression. Hosted focused exactSHA/wholecompilertrue required; no local tests/collection/compiler/build/DB/devserver. Existing generic decision regressions also need affected hosted coverage. No verified/enabled/installed/accepted/released claim.
