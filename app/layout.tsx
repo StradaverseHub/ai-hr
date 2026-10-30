@@ -51,7 +51,7 @@ import {canConfigureAccess} from '@/core/access-configuration-editor';
 import {workforceViewScope} from '@/core/workforce-access';
 import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
-import { listPendingTasks } from '@/core/approvals-inbox';
+import { pendingTaskSummary } from '@/core/approvals-inbox';
 import { onboardingTasks, onboardingUnreadNoticeCount, onboardingNotices, onboardingNavigation } from '@/packs/lifecycle/service';
 import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
 import { NotificationCenter, type NotificationTaskItem } from '@/components/notification-center';
@@ -206,12 +206,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // same reason `notifEnabled` two lines above uses it: this is the root layout and a throw 500s every
   // authenticated route. `listPendingTasks` takes the answer rather than asking, so the loud/quiet choice
   // belongs to whichever surface calls it.
-  const approvalTasks = await listPendingTasks(session, scopeIds, {
+  const approvalSummary = await pendingTaskSummary(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: isModuleEnabledOrFalse(session, 'claims'),
     performance: isModuleEnabledOrFalse(session, 'performance'),
     rewards: isModuleEnabledOrFalse(session, 'rewards'),
   });
+  const approvalTasks=approvalSummary.items;
   // The canonical inbox admits ordinary employees only for an actionable, non-self v3/v4 assignment.
   // Reuse that result; do not promote the viewer to manager or query the assignment owner twice.
   const hasAssignedAttendanceApproval = !canApprove && approvalTasks.some(task => task.kind === 'attendance');
@@ -226,7 +227,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const onboardingAccess=onboardingNav.module;
   // Profile Changes now has its own Personnel queue. Count only tasks this inbox actually opens;
   // My tasks and the bell still contain every canonical task, without another query.
-  const legacyApprovalCount = approvalTasks.filter(task => task.linkPath.split(/[?#]/, 1)[0] === '/approvals').length;
+  const legacyApprovalCount = approvalSummary.approvalCount;
   const hasAssignedApproval = !canApprove && legacyApprovalCount>0;
   const pendingTasks:NotificationTaskItem[]=[...approvalTasks,...onboardingQueue.map(onboardingNotificationTask)];
   // These five recipient reads are independent. Keep this batch after dispatch and separate
@@ -303,7 +304,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // self-excluding, admin-only categories gated inside listPendingTasks. NOT the bell's
               // taskCount below, which also folds in unread action notifications (not approval records).
               approvalCount={legacyApprovalCount}
-              taskCount={pendingTasks.length}
+              taskCount={approvalSummary.total+onboardingQueue.length}
               onboardingAccess={onboardingAccess}
               onboardingJoinerCount={onboardingNav.joiners}
               onboardingChecklistCount={onboardingNav.checklists}
@@ -445,7 +446,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                     items={[...notifItems,...onboardingUnread]}
                     tasks={pendingTasks}
                     taskNotifications={taskNotifs}
-                    taskCount={pendingTasks.length + taskNotifCount}
+                    taskCount={approvalSummary.total+onboardingQueue.length+taskNotifCount}
                     readItems={[...readNotifs,...onboardingRead]}
                     history={approvalHistory}
                     canApprove={canApprove}

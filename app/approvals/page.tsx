@@ -1,3 +1,5 @@
+import { Pager } from '@/components/pager';
+import {parsePageQuery,pageState} from '@/lib/pagination';
 import {AttendanceUnclockedEvidence} from '@/components/attendance-unclocked-evidence';
 import {LeaveCreditClaimReviewNotice} from '@/components/leave/leave-credit-claim-review';
 import {leaveCreditClaimReviewBlocks} from '@/lib/leave-credit-claim-review';
@@ -28,7 +30,7 @@ import {
   formatProposedValue,
   requestableField,
 } from '@/lib/profile-requestable-fields';
-import { listPendingClaims } from '@/core/claims';
+import { listPendingClaims, listPendingClaimsPage } from '@/packs/claims/service';
 import { listResignationRequests } from '@/core/offboarding';
 import { listReviews, pendingManagerReviewsFor } from '@/core/employment-review';
 // 5ff7daff — the approver's queue for employee replacement-leave claims, reached through the leave-pack
@@ -38,7 +40,7 @@ import { listReviews, pendingManagerReviewsFor } from '@/core/employment-review'
 import { listPendingReplacementLeaveRequests } from '@/packs/leave/service';
 import { decideReplacementLeaveRequestAction } from '@/app/leave/actions';
 import { myOwnEmploymentSubjects } from '@/core/read';
-import {listPendingTasks} from '@/core/approvals-inbox';
+import {pendingTaskSummary} from '@/core/approvals-inbox';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
   approveClaimAction,
@@ -167,12 +169,12 @@ function DecideButtons({
 export default async function ApprovalsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; sort?: string; category?: string;task?:string|string[];requestId?:string|string[] }>;
+  searchParams: Promise<{ error?: string; sort?: string; category?: string;claimsPage?:string;claimsSize?:string;task?:string|string[];requestId?:string|string[] }>;
 }) {
   const { s, scopeIds } = await scopedSession();
   const admin=isAdmin(s),manager=(s.roles??[]).includes('manager');
   const attendanceOn=isModuleEnabledOrFalse(s,'attendance'),claimsOn=isModuleEnabledOrFalse(s,'claims');
-  const {error,sort:sortParam,category:categoryParam,task,requestId}=await searchParams;
+  const {error,sort:sortParam,category:categoryParam,claimsPage,claimsSize,task,requestId}=await searchParams;
   let focus:AssignedApprovalFocus|null;
   try{focus=parseAssignedApprovalFocus(task,requestId);}catch{notFound();}
   if(focus&&!await isCurrentAssignedApproval(s,focus,{attendance:attendanceOn,claims:claimsOn}))notFound();
@@ -188,7 +190,7 @@ export default async function ApprovalsPage({
   const [rewardReviews,assignedAttendance,assignedTasks]=await Promise.all([
     !focus&&isModuleEnabledOrFalse(s,'rewards')?pendingRewardReviews(s,scopeIds):Promise.resolve([]),
     focus?Promise.resolve(focus.kind==='attendance'):attendanceOn?hasPendingAttendanceParticipantAssignment(s):Promise.resolve(false),
-    !focus&&!admin&&!manager?listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn,performance:false,rewards:false},{noticeAcknowledgements:false}):Promise.resolve([]),
+    !focus&&!admin&&!manager?pendingTaskSummary(s,scopeIds,{attendance:attendanceOn,claims:claimsOn,performance:false,rewards:false}).then(summary=>summary.items.filter(task=>task.kind!=='noticeAcknowledgement')):Promise.resolve([]),
   ]);
   if(!focus&&!admin&&!manager&&!rewardReviews.length&&!assignedAttendance&&!assignedTasks.length)redirect('/');
   const attendanceOnly=!admin&&!manager&&!rewardReviews.length&&assignedAttendance&&assignedTasks.every(task=>task.kind==='attendance');
@@ -239,7 +241,7 @@ export default async function ApprovalsPage({
   // b833a077 (r362) — `travel` stood between `corrections` and `profileChanges` in this destructuring and
   // `listTravelRequests` in the Promise.all below. My Travel was removed completely: no form can create a
   // travel request any more, so there is no queue to decide. The travel_request rows are kept for audit.
-  const [leave, leaveCancellations, replacementRequests, loadedCorrections, claims, resignations] = await Promise.all([
+  const [leave, leaveCancellations, replacementRequests, loadedCorrections, claimResult, resignations] = await Promise.all([
     // 8cb7b089 pre-fix: cap the 200-row limit over PENDING rows only. Without the status filter, a pending
     // request older than the 200 most recent rows of ANY status silently never reached this inbox — quietly
     // incomplete before, actively misleading once calendar pills deep-link straight to this section.
@@ -255,9 +257,10 @@ export default async function ApprovalsPage({
     // used rather than the throwing one for the reason its header gives — a resolver outage must degrade
     // one queue, not the whole inbox.
     attendanceOn&&include('attendance') ? listAttendanceCorrections(s, { companyIds: queueScope, status: 'pending',requestId:focusedId('attendance') }) : Promise.resolve([]),
-    claimsOn && !attendanceOnly&&include('claim') ? listPendingClaims(s,{requestId:focusedId('claim')}) : Promise.resolve([]),
+    claimsOn && !attendanceOnly&&include('claim') ? (focus?listPendingClaims(s,{requestId:focusedId('claim')}).then(rows=>({rows,page:pageState(parsePageQuery(),rows.length,rows.length)})):listPendingClaimsPage(s,{page:claimsPage,size:claimsSize,sort,companyIds:queueScope})) : Promise.resolve({rows:[],page:pageState(parsePageQuery(),0,0)}),
     admin&&include('resignation') ? listResignationRequests(s, { status: 'pending',requestId:focusedId('resignation') }) : Promise.resolve([]),
   ]);
+  const claims=claimResult.rows;
   const corrections = attendanceOnly&&!focus ? loadedCorrections.filter(row => (row.workflow?.routingVersion === 3 || row.workflow?.routingVersion === 4) && row.canDecide && row.personId !== s.personId) : loadedCorrections;
   // 1e9145d4 — the kind of day each OVERTIME row is asking for, so a rest-day or public-holiday plan is
   // impossible to miss while saying no is still cheap. Resolved through scheduleFor (the same resolver the
@@ -337,7 +340,7 @@ export default async function ApprovalsPage({
   const rm = (n: number) => `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`;
 
   // Category panel (2dec6406) — ONE population per category, taken from the SAME in-memory lists the
-  // sections render (no SQL pending count anywhere), so panel badge = Pending card = section heading by
+  // sections render. Claims use the SQL page total so panel badge = Pending card = section heading by
   // construction. Attendance vs Overtime is a ROW split of the one corrections list via the shared
   // isOvertimeCorrection predicate.
   const pendingCounts = {
@@ -346,7 +349,7 @@ export default async function ApprovalsPage({
     replacementLeave: replacementRequests.length,
     attendance: corrections.filter((c) => !isOvertimeCorrection(c)).length,
     overtime: corrections.filter(isOvertimeCorrection).length,
-    claim: claims.length,
+    claim: claimResult.page.total,
     resignations: resignations.length,
     managerReviews: managerReviews.length,
     hrReviews: hrReviews.length,
@@ -391,7 +394,7 @@ export default async function ApprovalsPage({
     (visible('leave') ? pendingLeave.length : 0) +
     (visible('leaveCancellation') ? pendingCancellations.length : 0) +
     (visible('replacementLeave') ? replacementRequests.length : 0) +
-    (visible('claims') ? claims.length : 0) +
+    (visible('claims') ? claimResult.page.total : 0) +
     (visible('corrections') ? visibleCorrections.length : 0) +
     (visible('resignations') ? resignations.length : 0) +
     (visible('managerReviews') ? managerReviews.length : 0) +
@@ -945,7 +948,8 @@ export default async function ApprovalsPage({
 
       {visible('claims') && (
       <Card className="overflow-hidden">
-        <SectionHeader title={t('claims')} count={claims.length} />
+        <SectionHeader title={t('claims')} count={claimResult.page.total} />
+        {!focus&&<Pager basePath="/approvals" params={{category:categoryParam,sort:sortParam}} paramNames={{page:'claimsPage',size:'claimsSize'}} state={claimResult.page} />}
         {claims.length === 0 ? (
           <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingClaims')}</p>
         ) : (

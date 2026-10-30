@@ -52,7 +52,6 @@
   ],
   "claims": [
     "app/approvals/actions.ts",
-    "app/approvals/page.tsx",
     "core/report-registry.ts"
   ],
   "lifecycle": [],

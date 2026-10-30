@@ -7,7 +7,7 @@ import type {AssignedApprovalMetadata} from '../lib/assigned-work';
  * admin-write); every state change appends a DomainEvent. The lifecycle (submit/decide) + payout live in
  * later slices of this file.
  */
-import { and, desc, eq, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withClaimsTenant` — every one of this file's
 // 35 exported entry points refuses a tenant without the Claims module, however the call was reached.
@@ -3536,6 +3536,39 @@ export async function listPendingClaims(ctx: SessionContext,opts:{requestId?:str
   });
 }
 
+/** SQL-paged approval workspace. Full legacy readers remain available to their existing owners. */
+export function listPendingClaimsPage(ctx:SessionContext,opts:{page?:string;size?:string;sort?:'latest'|'oldest'|'name_asc'|'name_desc';companyIds?:string[]}={}){
+ const page=parsePageQuery(opts);
+ return withTenant(ctx,async tx=>{
+  await tx.execute(sql`SET LOCAL jit = off`);
+  const subjects=await tx.select({employmentId:employment.id,name:person.fullName}).from(employment)
+   .innerJoin(person,eq(person.id,employment.personId)).where(and(eq(employment.tenantId,ctx.tenantId),
+    opts.companyIds===undefined?undefined:inArray(employment.companyId,opts.companyIds)));
+  const scoped=await filterDelegationOrgScopeTx(tx,ctx,subjects,row=>row.employmentId);
+  if(!scoped.length)return {rows:[] as ClaimRow[],page:pageState(page,0,0)};
+  const where=and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),
+   inArray(claimRequest.employmentId,scoped.map(row=>row.employmentId)),
+   sql`${claimRequest.claimTypeId}=ANY(ARRAY(SELECT ${claimType.id} FROM ${claimType}))`);
+  const names=JSON.stringify(Object.fromEntries(scoped.map(row=>[row.employmentId,row.name])));
+  const name=sql`(${names}::jsonb ->> ${claimRequest.employmentId}::text)`;
+  const order=opts.sort==='oldest'?[asc(claimRequest.createdAt),asc(claimRequest.id)]:
+   opts.sort==='name_asc'?[asc(name),desc(claimRequest.createdAt),asc(claimRequest.id)]:
+   opts.sort==='name_desc'?[desc(name),desc(claimRequest.createdAt),asc(claimRequest.id)]:[desc(claimRequest.createdAt),asc(claimRequest.id)];
+  const [count]=await tx.select({total:sql<number>`count(*)::int`}).from(claimRequest).where(where);
+  const ids=await tx.select({id:claimRequest.id}).from(claimRequest).where(where).orderBy(...order).limit(page.limit).offset(page.offset);
+  if(!ids.length)return {rows:[] as ClaimRow[],page:pageState(page,count.total,0)};
+  // Private fields and attachments are read only for the visible page, after the SQL boundary.
+  const rows=await tx.select(rowSelect()).from(claimRequest)
+   .innerJoin(claimType,eq(claimType.id,claimRequest.claimTypeId)).leftJoin(claimItem,eq(claimItem.id,claimRequest.claimItemId))
+   .innerJoin(employment,eq(employment.id,claimRequest.employmentId)).innerJoin(person,eq(person.id,employment.personId))
+   .where(inArray(claimRequest.id,ids.map(row=>row.id)));
+  const attachments=await attachmentsByClaim(tx,ids.map(row=>row.id));
+  const byId=new Map(rows.map(row=>[row.id,toRow(row,attachments)]));
+  const ordered=ids.flatMap(row=>byId.has(row.id)?[byId.get(row.id)!]:[]);
+  return {rows:ordered,page:pageState(page,count.total,ordered.length)};
+ });
+}
+
 /** M11 — the facts of a claim that the list row (ClaimRow) does not carry, for its detail screens. */
 export type ClaimRecordFacts = {
   id: string;
@@ -3880,23 +3913,40 @@ export async function markReimbursementsPaid(
 }
 
 
+/** Metadata remains uncapped for full task screens; shell callers use the counted preview. */
 export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+ return (await readPendingClaimTasks(ctx,companyIds)).items;
+}
+
+export function pendingClaimTaskSummary(ctx:SessionContext,companyIds:string[]|undefined,limit=25){
+ if(!Number.isSafeInteger(limit)||limit<1||limit>200)throw new Error('Invalid claim task preview limit');
+ return readPendingClaimTasks(ctx,companyIds,limit);
+}
+
+async function readPendingClaimTasks(ctx:SessionContext,companyIds?:string[],limit?:number){
  return withTenant(ctx,async tx=>{
   await tx.execute(sql`SET LOCAL jit = off`);
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,personId:employment.personId,
-   employee:person.fullName,createdAt:claimRequest.createdAt}).from(claimRequest)
-   .innerJoin(employment,and(eq(employment.id,claimRequest.employmentId),eq(employment.tenantId,claimRequest.tenantId)))
-   .leftJoin(person,eq(person.id,employment.personId))
-   .where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),sql`NOT app.is_self_person(${employment.personId})`,
-    companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
-   .orderBy(desc(claimRequest.createdAt),claimRequest.id);
-  const scoped=await filterDelegationOrgScopeTx(tx,ctx,rows,row=>row.employmentId);
+  // Resolve names and authority over employments before touching request history. Joining person
+  // and employment to every historical request repeats their RLS and authorization work per claim.
+  const subjects=await tx.select({employmentId:employment.id,personId:employment.personId,employee:person.fullName})
+   .from(employment).leftJoin(person,eq(person.id,employment.personId))
+   .where(and(eq(employment.tenantId,ctx.tenantId),sql`NOT app.is_self_person(${employment.personId})`,
+    companyIds===undefined?undefined:inArray(employment.companyId,companyIds)));
+  const scoped=await filterDelegationOrgScopeTx(tx,ctx,subjects,row=>row.employmentId);
   const allowed=await claimDecisionEmploymentsTx(tx,ctx,scoped.map(row=>row.employmentId));
-  return scoped.filter(row=>allowed.has(row.employmentId));
+  if(!allowed.size)return {items:[] as AssignedApprovalMetadata[],total:0};
+  const byEmployment=new Map(scoped.map(row=>[row.employmentId,row]));
+  const where=and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),inArray(claimRequest.employmentId,[...allowed]));
+  const query=tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,createdAt:claimRequest.createdAt})
+   .from(claimRequest).where(where).orderBy(desc(claimRequest.createdAt),claimRequest.id).$dynamic();
+  const rows=await (limit===undefined?query:query.limit(limit));
+  const items=rows.map(row=>({...byEmployment.get(row.employmentId)!,...row}));
+  if(limit===undefined)return {items,total:items.length};
+  const [count]=await tx.select({total:sql<number>`count(*)::int`}).from(claimRequest).where(where);
+  return {items,total:count.total};
  });
 }
-
 
 /** Authority depends on the subject employment, not the number of requests it owns. Keep this
  * transaction-local: never reuse a decision across requests or after reporting/delegation changes. */
