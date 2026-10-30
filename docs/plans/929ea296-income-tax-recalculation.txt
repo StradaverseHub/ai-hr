@@ -1,0 +1,66 @@
+VERDICT: Not built yet   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+Changing a Pay Item's tax settings does not correct historical taxable income. Payroll history can be imported and corrected, but there is no dedicated action to review and recalculate only its income tax basis.
+
+WHAT WE'LL CHANGE
+
+- Add Recalculate Income Tax Value under Payroll Settings. Choose one company, year, January through the selected month, and all eligible employees or named employees. Include former employees with history in that company.
+- Preview monthly and year-to-date taxable and exempt income, differences, employee counts and the latest saved Pay Item settings. Show the previous treatment where recorded; otherwise say it is unavailable.
+- Explain missing information and blocked employees before confirmation. Confirm the exact eligible employees, period and settings reviewed; changing any of them requires a new preview.
+- Save an auditable tax-basis correction without replacing original payroll transactions, closed batches or issued payslips. Subsequent payroll calculations and newly generated applicable tax reports use the corrected basis, with its correction reference.
+- Show batch history, actor, time, employee results, before-and-after values and reasons for failure. Retrying failed employees cannot duplicate successful corrections.
+
+WHAT YOU'LL GET
+
+Correct supported historical tax values without deleting and re-importing payroll history. See exactly which employees and months changed, with the original history retained.
+
+GOOD TO KNOW
+
+- Salary, allowances, deductions, actual PCB deducted, payments and existing statutory reports or submissions stay unchanged. Correcting or reissuing those follows the separate controlled process.
+- Incomplete history is held for correction, never estimated. If changed annual exemptions would affect a later saved month's tax basis, extend the selected period and preview again; later months are never changed silently.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+SOURCE AND OWNERSHIP
+
+Investigated aligned origin/main and origin/alpha at 2ab4f6c120a28692857e93adeed072d463713ab6, fetched 30 October 2026. Staging deploy-state independently reports the same installed and built ref with stale_build=0. The live item was open, revision 0, plan absent, no attachments, no prior plan revisions and only feedback.submitted; recheck immediately before publication.
+
+The Payroll Settings owner is app/payroll/setup/page.tsx. Publish a proposed full-width route /payroll/income-tax-recalculation with list/detail history, employee search and confirmation, following DESIGN.md and all six locales. Use packs/payroll/service.ts as the application boundary. Add dedicated scoped permissions payroll.tax-basis.view and payroll.tax-basis.recalculate; grant them to the existing payroll administration roles through the permission catalog, never to employees implicitly. Require current payroll-admin company authority plus the explicit permission on every preview, confirm, result and export. Reads and writes must recheck live grants, tenant, company and employment identity; never accept tenant, actor or scope from the form. Narrow grants cannot borrow broader role authority.
+
+core/payroll-history-revisions.ts owns immutable import attempts, source/revision snapshots, preview fingerprints, history lock and dependency warnings. db/migrations/0602_payroll_history_revisions.sql makes snapshots immutable and exposes only the effective imported revision through RLS. Do not relax these controls or reuse whole-payroll overwrite to edit only tax data. ADR-0090 and ADR-0093 preserve saved statutory and salary provenance; this proposal is an explicit narrow correction owner, not a rewrite of those snapshots. ADR-0162's reset toggle does not grant tax-recalculation authority or permission to unlock a closed batch.
+
+ELIGIBILITY AND DETERMINISTIC REPLAY
+
+Resolve effective records by tenant, original company, employment ID, tax year, payroll cycle and run identity; include departed employments and preserve transfers as separate employer contexts. Source only amounts actually saved for each run. Never regenerate earnings from today's salary, formula, assignments, attendance or employment status. Normal draft payroll belongs to normal processing; this action only corrects supported saved history. Closed/issued source results may be referenced as immutable evidence; their batch, payslip and money rows are never updated, reopened or replaced.
+
+core/payroll-history-import.ts importedComponentLines retains importedLines with code, amount and display buckets for allowance, overtime, bonus and other deduction; it does not preserve every original item identifier or original tax classification, and it omits basic/statutory/LP detail from those lines. core/payslip-imported-lines.ts explicitly makes those lines display evidence, not EA-routing evidence. Build a separate validated tax-input adapter over complete saved evidence, without promoting these arrays to componentLines or inferring old tax settings from today's catalog. Prove reconciliation against all original monetary totals and exact item mappings, including archived/renamed codes and aliases. Missing source lines, ambiguous/reused codes, unmatched items, unsupported noncash provenance or unknown year rules block the whole employee's correction with an actionable reason. Existing fallback-to-gross is not proof of an exact historical taxable basis; label an old base unavailable where applicable, show a new supported base only when independently reconstructible, and never invent a numeric difference.
+
+Snapshot the latest saved applicable Pay Item PCB settings at confirmation, including subject-to-PCB, remuneration stream, exemption and optional-deduction classifications; store IDs, version/content hashes and values. This is an intentional retrospective configuration correction, not a claim those settings applied when payroll was first run. Keep compensation, employment tax category/circumstances, TP1/TP3 evidence and historical amounts under their existing period owners. Apply statutory rules and exemption limits applicable to the selected assessment year, not today's year. Refuse future-dated or incompatible classifications rather than making unsupported eligibility decisions.
+
+Reuse country-pack deterministic classification and exemption owners through the registry, extracting reusable pure input/replay helpers from core/payroll.ts as necessary. Do not copy the payroll kernel or invoke full processing. Replay January through the inclusive cutoff in stable month/cycle/run order, with correct normal/additional remuneration ownership and rounding, annual per-code exemption use and TP3 opening usage exactly once. Preserve recorded EPF contributions, PCB paid, zakat, rebates and relief declarations. Update only derived income-tax remuneration/exempt and classification-dependent relief bases; no replacement tax deduction or changed non-tax statutory base is saved. Dependent months beyond cutoff are read for consistency only: if changed annual allocation would require correcting their saved tax basis, block the employee and require an explicitly extended preview. Never write outside selection/year or silently recalculate later runs.
+
+CORRECTION OWNER AND CONSUMERS
+
+Add append-only tax-basis batch, employee-outcome and correction-revision records with tenant/company RLS, necessary grants, ownership foreign keys, immutable source references, old/new values, config/rules versions, reason, actor and timestamps. Allocate any migration/journal entries only at build time using docs/MIGRATION-ALLOCATION.md; no number is reserved by this plan. One effective correction per exact source revision; later corrections supersede explicitly, never sum repeated deltas. An import replacement/revert or other source change invalidates the prior overlay for that source; consumers must refuse unresolved stale corrections, not silently apply mismatched evidence.
+
+Introduce one shared effective tax-basis read contract. Wire future payroll YTD accumulators and exemption usage in core/payroll.ts, localization/my/payroll.ts foldPriorSlipIntoAccumulators, localization/my/multicycle-worksheet.ts and applicable newly generated MY income-tax reports to that contract. Separate original historical working/issued-document readers from corrected-basis consumers: historical working must show its original basis with a correction link, never reinterpret an old result using current inputs. Enumerate all PCB/EA/YTD readers before implementation; do not release with mixed corrected and uncorrected consumers. EA and similar reports require their full existing routing/completeness evidence plus corrected tax inputs; block unsupported report generation rather than invent EA box provenance. Save the exact correction set in every newly generated calculation/report snapshot. Existing artifact bytes, filing statuses, payment references, payslips, batch totals and original import provenance remain unchanged; warn that previously issued reports may require the separate correction process.
+
+EXECUTION AND RECOVERY
+
+Server-owned preview resolves all-employees into explicit employment IDs and records eligible, unchanged and blocked counts; users explicitly confirm the displayed eligible subset, never an implicit best-effort skip. Freeze source revisions, latest config, applicable rules, authority/scope and proposed values into an expiring preview fingerprint. Revalidate under the established history-before-access/record lock order at confirmation. Race with import/revert, payroll, settings edits, permissions or changed employee selection must reject the stale preview. A repeated confirmation key returns the same batch. Settings must remain pinned consistently through a batch; serialize conflicting saves or stop and disclose partial progress if the version changes rather than mix configurations.
+
+Use controlled bounded processing with durable Pending, Processing, Completed, Completed with errors and Failed states plus employee outcomes. Commit each employee's full selected period and its audit event atomically under the payroll-history write barrier; a crash must not expose half an employee/year. Record failed attempts durably outside a rolled-back employee transaction, recover interrupted jobs safely and retry only failed employees after a fresh preview against current evidence. Success counts exclude unchanged, blocked and failed records. Existing readers acquire the shared history barrier and never see a half-written correction. A successful correction is not erased by code rollback: preserve readable revisions and refuse affected calculations if an older binary cannot interpret them. Reversal, when permitted, is a separately authorized audited compensating revision with current dependency checks; no delete, blanket reset or unsupported automatic undo.
+
+VERIFICATION AND RELEASE
+
+Run application checks, TypeScript and builds only through standard GitHub-hosted alpha-focused-checks.yml on the frozen candidate, not on the Mac. Test the exact RM500 January-March example independently; taxable-to-nontaxable and capped exemptions; normal/additional runs; optional deductions/noncash support or explicit refusal; TP3 and annual boundary; historical missing treatment/base; joined/resigned/transferred employees; inclusive cutoff; later-dependency refusal; cross-tenant/company and revoked/narrow grants; stale preview/config/source races; duplicate confirmations; partial failure/crash/retry; no duplicate accumulation; stale overlay after import/revert; exact future-PCB/worksheet/new-report consumer parity; and byte/value preservation of original closed/issued results, money, payments and previous artifacts. Render actual six-locale configuration, preview, confirmation, empty/error/partial/history/detail journeys and verify accessible keyboard controls. If migrations are needed, rehearse clean and populated baselines with immutable snapshot triggers intact. Preserve original failed Actions evidence; rerun only failed/affected checks after repairs. Plan approval authorizes implementation; human preview/diff review and required release evidence remain separate from staging/production deployment authority.
+
+AUTHORITATIVE REFERENCE
+
+HASiL's current employer specification index links its assessment-year 2026 computerised PCB specification. Its accumulated remuneration/exemption rules explain why this correction must use year-specific ordered replay rather than multiply a tax flag by gross pay. This planning reference does not certify any tenant's tax treatment. Verify supported assessment-year sources again during implementation and retain repository source provenance in docs/architecture/STATUTORY-SOURCES.md.
+https://www.hasil.gov.my/majikan/jadual-pcb-dan-spesifikasi-data/
+https://www.hasil.gov.my/wp-content/uploads/spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf
