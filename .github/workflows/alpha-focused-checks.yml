@@ -15,6 +15,10 @@ on:
         description: JSON array of 1–64 tracked unit/DOM test paths; candidate classifier owns DB selection
         required: true
         type: string
+      run_system_load:
+        description: Isolated production HTTP/browser profiling; no release or deployment
+        default: false
+        type: boolean
       profile_database:
         description: Opt-in reset/seed/template timing when the candidate implements test/profile.ts
         default: false
@@ -92,6 +96,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
   selected-tests:
+    if: ${{ !inputs.run_system_load }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -262,3 +267,43 @@ jobs:
           persist-credentials: false
       - name: Compile and exercise native proof handoff models
         run: bash automation/.github/ci/native-proof-models.sh "$GITHUB_WORKSPACE/source"
+
+  system-http-browser-load:
+    if: ${{ inputs.run_system_load }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_UNIT: db-1
+      AIHR_CI_PG_DURABLE: '1'
+      AIHR_CI_PG_STATEMENTS: '1'
+      AIHR_CI_PG_STATEMENTS_OWNER: system-http-profile
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 0, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {mobile: 'false', capacity_profile: legacy}
+      - name: Select an actual installed browser or install Chromium
+        shell: bash
+        run: |
+          if command -v google-chrome >/dev/null; then
+            echo "PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(command -v google-chrome)" >> "$GITHUB_ENV"
+            google-chrome --version
+          else
+            pnpm exec playwright install --with-deps chromium
+          fi
+      - name: Production HTTP and browser performance on a fictional runner database
+        run: node scripts/performance/system-runner.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: system-http-browser-development-evidence
+          path: ${{ runner.temp }}/system-performance-evidence/
+          if-no-files-found: error
+          retention-days: 14

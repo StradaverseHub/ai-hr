@@ -1,0 +1,77 @@
+/** Only an owned GitHub fixture database. Session records use canonical encrypted storage. */
+import assert from 'node:assert/strict';
+import {randomUUID,randomBytes} from 'node:crypto';
+import {writeFileSync} from 'node:fs';
+import {join} from 'node:path';
+assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.AUTH_PROVIDER,'internal');
+for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
+ const url=new URL(process.env[key]);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'5433');assert.equal(url.pathname,'/ai_hr_system_perf');
+}
+const {seedBase,adminCtx,owner,closeAll}=await import('../../test/harness.ts');
+const s=await import('../../db/schema.ts');
+const {hireEmployee}=await import('../../core/org.ts');
+const {createClaimType}=await import('../../packs/claims/service.ts');
+const {createBatch}=await import('../../packs/payroll/service.ts');
+const {MODULE_CATALOG}=await import('../../packs/catalog.ts');
+const {todayInKualaLumpur}=await import('../../lib/hr-date.ts');
+const {passwordHash,opaque,digest}=await import('../../lib/internal-auth/crypto.ts');
+const {writeRecord}=await import('../../lib/internal-auth/record-store.ts');
+const {internalIssuer}=await import('../../lib/internal-auth/config.ts');
+const {generateSecret}=await import('otplib');
+const today=todayInKualaLumpur(),month=today.slice(0,7),password='Synthetic-'+randomBytes(24).toString('hex');
+const hash=await passwordHash(password),users=[],tenants=[];
+try{
+ await owner.client`create extension if not exists pg_stat_statements`;
+ for(let t=0;t<2;t++){
+  const b=await seedBase(),ctx=adminCtx(b),organization=t?'perf-b':'perf-a';
+  await owner.db.insert(s.tenantModule).values(MODULE_CATALOG.filter(m=>!m.isCore&&m.packBacked).map(m=>({tenantId:b.tenantId,moduleCode:m.code,status:'active'}))).onConflictDoNothing();
+  const org={code:organization,tenantId:b.tenantId,name:'Performance organization '+t};
+  await writeRecord(owner.client,'org:'+organization,org,null);await writeRecord(owner.client,'tenant:'+b.tenantId,org,null);
+  const type=await createClaimType(ctx,{code:'PERF',name:'Performance claim',defaultTaxable:false,requiresReceipt:false});
+  const companies=[];
+  for(let c=0;c<5;c++){
+   let companyId=b.companyId,departmentId=b.deptA;
+   if(c){const [company]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:`PERF Company ${t}-${c}`,country:'MY'}).returning();companyId=company.id;
+    const [department]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId,name:'Performance department'}).returning();departmentId=department.id;
+   }
+   const {batchId}=await createBatch(ctx,{companyId,payPeriod:month});companies.push({companyId,departmentId,batchId});
+  }
+  tenants.push({tenantId:b.tenantId,organization,claimTypeId:type.id,companies});
+  for(let i=0;i<250;i++){
+   const index=t*250+i,c=Math.floor(i/50),position=i%50,company=companies[c];
+   const role=position===0&&c===0?'groupHR':position<2?'companyHR':position<4?'manager':'employee';
+   const name=`PERF Person ${String(index).padStart(4,'0')}`,email=`person${index}@example.invalid`,username='person'+index;
+   const hired=await hireEmployee(ctx,{person:{fullName:name,primaryEmail:email},companyId:company.companyId,departmentId:company.departmentId,employmentType:'full_time',hiredOn:'2025-01-01',employeeCode:'PERF'+String(index).padStart(4,'0')});
+   const userId=randomUUID(),subject=randomUUID(),version=randomUUID(),secret=generateSecret(),issuer=internalIssuer(b.tenantId);
+   await owner.db.insert(s.appUser).values({id:userId,tenantId:b.tenantId,personId:hired.personId,workosUserId:'perf_'+userId});
+   const grants=[{tenantId:b.tenantId,appUserId:userId,role:'employee',companyId:company.companyId}];
+   if(role==='companyHR'||role==='groupHR')grants.push({tenantId:b.tenantId,appUserId:userId,role:'hr_admin',companyId:role==='groupHR'?null:company.companyId});
+   if(role==='groupHR')for(const r of ['payroll_partner','performance_comp_partner'])grants.push({tenantId:b.tenantId,appUserId:userId,role:r,companyId:null});
+   await owner.db.insert(s.roleAssignment).values(grants);
+   await owner.client`insert into app_external_identity(issuer,subject,app_user_id)values(${issuer},${subject},${userId}::uuid)`;
+   const credential={subject,version,tenantId:b.tenantId,issuer,organization,username,email,emailVerified:true,enabled:true,password:hash,mustChange:false,totpSecret:secret,lastStep:-1,recoveryHashes:[]};
+   await writeRecord(owner.client,'credential:'+subject,credential,subject);await writeRecord(owner.client,'login:'+digest(organization+'\0'+username),{subject},subject);
+   const token=opaque(),family=randomUUID(),expiry=Date.now()+8*3600000;
+   await writeRecord(owner.client,'family:'+family,{subject},subject,expiry);
+   await writeRecord(owner.client,'session:'+digest(token),{subject,version,family,native:false,absoluteExpiry:expiry},subject,expiry);
+   users.push({index,tenant:t,company:c,role,name,userId,subject,employmentId:hired.employmentId,personId:hired.personId,companyId:company.companyId,batchId:company.batchId,claimTypeId:type.id,token,organization,username,password,secret});
+   if(index%50===49)console.log('[system-perf-fixture] provisioned '+(index+1)+' principals');
+  }
+  const cohort=users.filter(u=>u.tenant===t);
+  await owner.client`insert into claim_request(tenant_id,employment_id,claim_type_id,amount,incurred_on,status,created_at)
+    select ${b.tenantId}::uuid,e.id,${type.id}::uuid,1,${today}::date,'pending',now()-n*interval '1 minute'
+    from unnest(${cohort.map(u=>u.employmentId)}::uuid[]) e(id)cross join generate_series(1,2000)n`;
+  await owner.client`insert into attendance(tenant_id,employment_id,attendance_date,check_in_at,check_out_at,status,worked_minutes,ot_minutes)
+    select ${b.tenantId}::uuid,e.id,current_date-n,'09:00'::time,'17:00'::time,'present',480,0
+    from unnest(${cohort.map(u=>u.employmentId)}::uuid[]) e(id)cross join generate_series(0,179)n`;
+  await owner.db.insert(s.payslip).values(cohort.map(u=>({tenantId:b.tenantId,batchId:u.batchId,employmentId:u.employmentId,basicSalary:'100',grossPay:'100',totalDeductions:'0',netPay:'100',employerCost:'100',statutory:{epfEmployee:0,epfEmployer:0,socsoEmployee:0,socsoEmployer:0,eisEmployee:0,eisEmployer:0,pcb:0}})));
+  // A real current administrative reporting line, inside the same company, for each manager.
+  await owner.db.insert(s.reportingLine).values(cohort.filter(u=>u.role==='manager').flatMap(u=>cohort.filter(v=>v.company===u.company&&v.index%50>=4+(u.index%50-2)*10&&v.index%50<14+(u.index%50-2)*10).map(v=>({tenantId:b.tenantId,managerEmploymentId:u.employmentId,subordinateEmploymentId:v.employmentId,lineType:'administrative',validFrom:'2025-01-01'}))));
+ }
+ for(const table of ['claim_request','attendance','employment','person','app_user','role_assignment','assignment','reporting_line','payslip'])await owner.client.unsafe('analyze '+table);
+ const counts=await owner.client`select (select count(*)::int from claim_request)as claims,(select count(*)::int from attendance)as attendance,(select count(*)::int from payslip)as payslips`;
+ assert.equal(counts[0].claims,1000000);assert.equal(users.length,500);
+ writeFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),JSON.stringify({today,month,users,tenants}),{mode:0o600});
+ writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'fixture.json'),JSON.stringify({fictional:true,tenants:2,companies:10,users:500,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,users.filter(u=>u.role===role).length])),counts:counts[0],authentication:'canonical encrypted internal sessions; normal HTTP session validation; not 500 account-enrollment throughput',auditHashChain:process.env.AUDIT_HASH_CHAIN_ENABLED==='true'},null,2));
+ console.log('[system-perf-fixture] complete; private sessions are outside artifact directory');
+}finally{await closeAll();}
