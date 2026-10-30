@@ -987,24 +987,32 @@ export async function decideRewardUnit(ctx: SessionContext, unitId: string, revi
 export async function cancelRewardReview(ctx: SessionContext, unitId: string, revision: number, reason: string) {
   idSchema.parse(unitId); reason = z.string().trim().max(4000).parse(reason);
   if (reason.length < 10) throw new RewardError('Explain why the review is being cancelled (at least 10 characters).');
-  return withRewardsTenant(ctx, async tx => {
-    const [unit] = await tx.select().from(rewardUnit).where(eq(rewardUnit.id, unitId)).for('update');
-    if (!unit || unit.deletedAt) throw new RewardError('Reward unit not found or access has been removed.');
-    const roles = await rolesFor(tx, unitId);
-    const [admin] = await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${unit.companyId}::uuid) as ok`);
-    if (!admin?.ok && !roles.includes('gr')) throw new RewardError('Only the company Rewards administrator or Group Rewards may cancel this review.');
-    assertRevision(unit, revision);
-    if (['posted', 'withdrawn', 'rejected'].includes(unit.status)) throw new RewardError('This review can no longer be cancelled.');
-    // Serialize with sibling off-cycle submissions against the same annual funding.
-    if (unit.parentUnitId) await tx.select({ id: rewardUnit.id }).from(rewardUnit).where(eq(rewardUnit.id, unit.parentUnitId)).for('update');
-    await tx.update(rewardUnit).set({ status: 'withdrawn', approvedDigest: null, revision: revision + 1, updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
-    // reward_decision RLS admits only a seat holder; an administrator without a seat is recorded by the audit event.
-    if (roles.some(r => r !== 'pbp')) {
-      const entries = await tx.select().from(rewardEntry).where(eq(rewardEntry.unitId, unitId)).orderBy(asc(rewardEntry.id));
-      await tx.insert(rewardDecision).values({ tenantId: ctx.tenantId, unitId, actorId: ctx.userId!, revision, action: 'withdraw', fromStage: unit.status, toStage: 'withdrawn', reason, digest: digest(unit, entries) });
-    }
-    await stamp(tx, ctx, unitId, 'cancelled', { fromStage: unit.status, reason, revision, before: { status: unit.status, revision }, after: { status: 'withdrawn', revision: revision + 1 } });
-  });
+  return withRewardsTenant(ctx, tx => cancelRewardReviewTx(tx, ctx, unitId, revision, reason));
+}
+
+/** Native transaction seam for reviewed cancellation. Caller owns rollback of the entire transaction.
+ * Authority and state remain here, including GR users without an administrator role. */
+export async function cancelRewardReviewTx(tx: Tx, ctx: SessionContext, unitId: string, revision: number, reason: string) {
+  assertModuleGate(ctx, 'rewards');
+  idSchema.parse(unitId); reason = z.string().trim().min(10).max(4000).parse(reason);
+  const [unit] = await tx.select().from(rewardUnit).where(eq(rewardUnit.id, unitId)).for('update');
+  if (!unit || unit.deletedAt) throw new RewardError('Reward unit not found or access has been removed.');
+  const roles = await rolesFor(tx, unitId);
+  const [admin] = await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${unit.companyId}::uuid) as ok`);
+  if (!admin?.ok && !roles.includes('gr')) throw new RewardError('Only the company Rewards administrator or Group Rewards may cancel this review.');
+  assertRevision(unit, revision);
+  if (['posted', 'withdrawn', 'rejected'].includes(unit.status)) throw new RewardError('This review can no longer be cancelled.');
+  // Serialize with sibling off-cycle submissions against the same annual funding.
+  if (unit.parentUnitId) await tx.select({ id: rewardUnit.id }).from(rewardUnit).where(eq(rewardUnit.id, unit.parentUnitId)).for('update');
+  await tx.update(rewardUnit).set({ status: 'withdrawn', approvedDigest: null, revision: revision + 1, updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
+  // reward_decision RLS admits only a seat holder; an administrator without a seat is recorded by the audit event.
+  if (roles.some(r => r !== 'pbp')) {
+    const entries = await tx.select().from(rewardEntry).where(eq(rewardEntry.unitId, unitId)).orderBy(asc(rewardEntry.id));
+    await tx.insert(rewardDecision).values({ tenantId: ctx.tenantId, unitId, actorId: ctx.userId!, revision, action: 'withdraw', fromStage: unit.status, toStage: 'withdrawn', reason, digest: digest(unit, entries) });
+  }
+  const eventId = await stamp(tx, ctx, unitId, 'cancelled', { fromStage: unit.status, reason, revision, before: { status: unit.status, revision }, after: { status: 'withdrawn', revision: revision + 1 } }, true);
+  if (!eventId) throw new RewardError('Cancellation audit identity unavailable.');
+  return { unitId, eventId, cancelledRevision: revision, currentRevision: revision + 1, status: 'withdrawn' as const };
 }
 
 export async function rewardPayrollChoices(ctx: SessionContext, unitId: string) {

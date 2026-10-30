@@ -3,11 +3,11 @@ import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInp
 import {setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
-import type { SessionContext } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { cancelRewardReview, createRewardUnit, decideRewardUnit, emptyRewardCalendar, getRewardUnit, listRewardReviewStatus, listRewardUnits, pendingRewardTasks, rewardApprovalsBoard, saveRewardCalendar, saveRewardEntry, saveRewardPolicy } from '../packs/rewards/service';
+import { cancelRewardReviewTx, cancelRewardReview, createRewardUnit, decideRewardUnit, emptyRewardCalendar, getRewardUnit, listRewardReviewStatus, listRewardUnits, pendingRewardTasks, rewardApprovalsBoard, saveRewardCalendar, saveRewardEntry, saveRewardPolicy } from '../packs/rewards/service';
 import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -101,11 +101,12 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
     expect((await pendingRewardTasks(actors.bg!, undefined)).map(x => x.id)).toContain(unitId);
     await expect(cancelRewardReview(admin, unitId, rev, 'too short')).rejects.toThrow('at least 10 characters');
     await expect(cancelRewardReview(actors.bu!, unitId, rev, 'Unit merged into another review')).rejects.toThrow('Only the company Rewards administrator or Group Rewards');
-    await cancelRewardReview(admin, unitId, rev, 'Unit merged into another review');
+    const receipt = await cancelRewardReview(admin, unitId, rev, 'Unit merged into another review');
     const v = await view();
     expect(v.unit.status).toBe('withdrawn'); expect(v.rows).toHaveLength(2);
     expect(v.decisions[0]).toMatchObject({ action: 'withdraw', fromStage: 'bg', toStage: 'withdrawn', reason: 'Unit merged into another review' });
     const [event] = await events('reward-unit.cancelled');
+    expect(receipt).toEqual({ unitId, eventId: event.id, cancelledRevision: rev, currentRevision: rev + 1, status: 'withdrawn' });
     expect(event.payload).toMatchObject({ fromStage: 'bg', reason: 'Unit merged into another review', before: { status: 'bg' }, after: { status: 'withdrawn' } });
     expect(await pendingRewardTasks(actors.bg!, undefined)).toEqual([]);
     expect((await rewardApprovalsBoard(admin, [b.companyId])).map(x => x.id)).not.toContain(unitId);
@@ -113,6 +114,20 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
     await expect(cancelRewardReview(admin, unitId, v.unit.revision, 'Cancel it a second time')).rejects.toThrow('can no longer be cancelled');
     const r = await row();
     expect(r).toMatchObject({ status: 'withdrawn', canCancel: false, seat: null, cancellation: { on: today, reason: 'Unit merged into another review', by: 'Fictional Rewards administrator' } });
+  });
+
+  it('rolls back cancellation, decision and audit when the custody transaction fails', async () => {
+    const rev = await submit(), before = await view(), priorEvents = await events('reward-unit.cancelled');
+    await expect(withTenant(admin, async tx => {
+      const receipt = await cancelRewardReviewTx(tx, admin, unitId, rev, 'Cancelled during custody rollback check');
+      expect(receipt.currentRevision).toBe(rev + 1);
+      throw new Error('custody write failed');
+    })).rejects.toThrow('custody write failed');
+    const after = await view();
+    expect(after.unit.status).toBe(before.unit.status);
+    expect(after.unit.revision).toBe(rev);
+    expect(after.decisions).toEqual(before.decisions);
+    expect(await events('reward-unit.cancelled')).toEqual(priorEvents);
   });
 
   it('lets a seatless company administrator cancel, recorded by the audit event alone', async () => {
