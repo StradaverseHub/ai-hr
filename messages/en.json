@@ -30464,6 +30464,10 @@
     "reviewUnfinished": "Review unfinished employees",
     "recoverTitle": "Review this interrupted recalculation?",
     "recoverDescription": "Previous successful corrections will remain saved. Unfinished employees will be marked for review. You must generate and confirm a fresh preview using the latest saved settings before recalculating them; the old preview will not be reused.",
-    "recoverAction": "Yes — Review unfinished employees"
+    "recoverAction": "Yes — Review unfinished employees",
+    "noticeOriginal": "This shows the original payroll calculation. Later income-tax basis corrections are recorded separately.",
+    "noticeApplied": "This result uses recorded income-tax basis corrections. Actual PCB paid and issued payroll remain unchanged.",
+    "noticeReferences": "Income-tax correction references",
+    "noticeView": "View income-tax correction"
   }
 }

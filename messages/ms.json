@@ -30464,6 +30464,10 @@
     "reviewUnfinished": "Semak pekerja belum selesai",
     "recoverTitle": "Semak pengiraan semula yang terganggu ini?",
     "recoverDescription": "Pembetulan berjaya terdahulu kekal disimpan. Pekerja yang belum selesai akan ditandakan untuk semakan. Anda mesti menjana dan mengesahkan pratonton baharu menggunakan tetapan terkini sebelum mengira semula mereka; pratonton lama tidak akan digunakan semula.",
-    "recoverAction": "Ya — Semak pekerja belum selesai"
+    "recoverAction": "Ya — Semak pekerja belum selesai",
+    "noticeOriginal": "Ini menunjukkan pengiraan gaji asal. Pembetulan asas cukai pendapatan kemudian direkodkan secara berasingan.",
+    "noticeApplied": "Hasil ini menggunakan pembetulan asas cukai pendapatan yang direkodkan. PCB yang dibayar dan gaji yang telah dikeluarkan kekal tidak berubah.",
+    "noticeReferences": "Rujukan pembetulan cukai pendapatan",
+    "noticeView": "Lihat pembetulan cukai pendapatan"
   }
 }

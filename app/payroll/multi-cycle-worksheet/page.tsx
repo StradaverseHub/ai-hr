@@ -1,3 +1,6 @@
+import {TaxBasisCorrectionNotice} from '@/components/payroll-tax-basis-notice';
+import {taxBasisNoticeStrings} from '@/lib/payroll-tax-basis-notice-labels';
+import {taxBasisNoticeReferences} from '@/packs/payroll/service';
 /**
  * ADR-0024 §7 — Multi-Cycle Statutory Worksheet.
  *
@@ -59,6 +62,9 @@ export default async function MultiCycleWorksheetPage({
     ? await pack.payroll.multiCycleWorksheet(s, { companyIds: scopeIds, year })
     : null;
 
+  const correctionReferences = await taxBasisNoticeReferences(s, worksheet?.taxBasisCorrections);
+  const correctionStrings = await taxBasisNoticeStrings('original');
+
   const money = (n: number) =>
     new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
   const signed = (n: number) => (n > 0 ? `+${money(n)}` : money(n));
@@ -71,6 +77,8 @@ export default async function MultiCycleWorksheetPage({
         description={t('subtitle')}
         back={{ href: '/payroll/reports', label: t('backToReports') }}
       />
+
+      <TaxBasisCorrectionNotice references={correctionReferences} strings={correctionStrings}/>
 
       {/* Said first and said plainly. The reviewer's first question about a screen that shows what
           their statutory figures "would be" is whether opening it has already changed something. */}

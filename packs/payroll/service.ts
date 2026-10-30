@@ -34,6 +34,7 @@
  * split (rung 5b).
  */
 export * from '../../core/payroll';
+export * from '../../core/payroll-tax-basis-notices';
 export * from '../../core/payroll-closed-runs';
 export * from '../../core/payroll-leave';
 export * from '../../core/payroll-cycle';

@@ -30464,6 +30464,10 @@
     "reviewUnfinished": "Xem xét nhân viên chưa hoàn tất",
     "recoverTitle": "Xem xét lần tính lại bị gián đoạn này?",
     "recoverDescription": "Các điều chỉnh thành công trước đó vẫn được lưu. Nhân viên chưa hoàn tất sẽ được đánh dấu để xem xét. Bạn phải tạo và xác nhận bản xem trước mới theo thiết lập đã lưu mới nhất trước khi tính lại; không dùng lại bản xem trước cũ.",
-    "recoverAction": "Có — Xem xét nhân viên chưa hoàn tất"
+    "recoverAction": "Có — Xem xét nhân viên chưa hoàn tất",
+    "noticeOriginal": "Đây là phép tính lương gốc. Các điều chỉnh cơ sở thuế thu nhập sau đó được lưu riêng.",
+    "noticeApplied": "Kết quả này sử dụng các điều chỉnh cơ sở thuế thu nhập đã lưu. PCB thực tế đã nộp và bảng lương đã phát hành không thay đổi.",
+    "noticeReferences": "Mã tham chiếu điều chỉnh thuế thu nhập",
+    "noticeView": "Xem điều chỉnh thuế thu nhập"
   }
 }

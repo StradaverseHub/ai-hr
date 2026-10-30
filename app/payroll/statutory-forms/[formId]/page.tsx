@@ -1,3 +1,5 @@
+import {taxBasisNoticeReferences} from '@/packs/payroll/service';
+import {taxBasisNoticeStrings} from '@/lib/payroll-tax-basis-notice-labels';
 import { notFound, redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -174,6 +176,8 @@ export default async function StatutoryFormPage({
   // Unconditional, and safe to be: past the `notFound` above, `companyId` named a company whose
   // jurisdiction registers this report — an empty or foreign id yields no `def` and never reaches here.
   const result = await reportPreview(s, { companyId, reportId: formId, periodKey });
+  const taxBasisNotice = {references: await taxBasisNoticeReferences(s, result?.meta.taxBasisCorrections), strings: await taxBasisNoticeStrings('applied')};
+
   const companyName = companies.find((c) => c.id === companyId)?.name ?? '—';
   // `submissionDueFor` only models a monthly deadline, so an annual period comes back "unknown" — the
   // honest answer for Form E, whose statutory date was never stated to us.
@@ -337,6 +341,7 @@ export default async function StatutoryFormPage({
       ) : (
         <StatutoryReportPanel
           result={result}
+          taxBasisNotice={taxBasisNotice}
           /* An employee name opens that person's EA statement for the year — the ONLY route to a
              per-employee EA, since an EA is one statement per person and never a company-wide table.
              The YEAR, never the period: the EA page tests its `year` against /^\d{4}$/ and falls back
