@@ -959,7 +959,9 @@ export async function approveGoalTx(tx:Tx,ctx:SessionContext,p:{goalId:string},e
   if(expectedDigest!==undefined&&expectedDigest!==reviewDigest)throw new PerfError('The goal changed. Review it again.');
   await tx.update(performanceGoal).set({approvalStatus:'approved',approvedByUserId:ctx.userId??null,approvedAt:sql`now()`,updatedAt:sql`now()`}).where(eq(performanceGoal.id,g.id));
   if(postimageProof)await assertPerformancePostimageTx(tx,'performance.goal.approve',g.id,postimageProof);
-  const eventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'performance-goal',aggregateId:g.id,eventType:'performance-goal.approved',actor:actorOf(ctx),subjectEmploymentId:g.employmentId},{returnId:true});
+  // INSERT RETURNING would add event-read authority. This server UUID is only an insertion
+  // reference; protected custody still verifies the actual event/type/actor/subject/top transaction.
+  const eventId=randomUUID();await appendEvent(tx,{id:eventId,tenantId:ctx.tenantId,aggregateType:'performance-goal',aggregateId:g.id,eventType:'performance-goal.approved',actor:actorOf(ctx),subjectEmploymentId:g.employmentId});
   if(postimageProof)await assertPerformancePostimageTx(tx,'performance.goal.approve',g.id,postimageProof);
   return {goalId:g.id,employmentId:g.employmentId,eventId};
 }
