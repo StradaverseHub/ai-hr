@@ -271,7 +271,7 @@ export const AGENT_ACTIONS=Object.freeze([
  defineAgentAction({id:'performance.checkin.schedule',module:'performance',owner:'performance',service:'packs/performance/service.ts#scheduleCheckInTx',contractVersion:1,
   prepare:{status:'implemented',adapter:'performance_checkin_schedule_review_v1',inputSchema:'CheckInScheduling.Human',outputSchema:'CheckInScheduling.Prepared'},
   confirm:{status:'implemented',adapter:'performance_checkin_schedule_review_v1',inputSchema:'CheckInScheduling.Confirmation',outputSchema:'CheckInScheduling.Completed'},
-  outcome:'canonical_receipt_required',semantics:'scheduled_checkin_scheduled_with_human_notes_choice',humanInputs:['employmentId','scheduledOn','confirmSchedule'],
+  outcome:'canonical_receipt_required',semantics:'new_scheduled_checkin_created_for_selected_employee_and_date',humanInputs:['employmentId','scheduledOn','confirmSchedule'],
   permission:{actor:'performance_decider',guard:'core/assistant-actions/checkin-scheduling-source.ts#withCheckInSchedulingSubjectTx'},subject:'employment',blastRadius:{max:1,unit:'new_performance_checkin'},
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'final'},evaluationCases:[],
   screen:{native:'app/performance/page.tsx',entryPoints:[]},review:{route:'/assistant/performance/checkins/schedule',handoff:'review_page'},
