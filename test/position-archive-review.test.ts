@@ -4,7 +4,6 @@ import {withTenant} from '../db/client';
 import * as schema from '../db/schema';
 import {archivePosition,updatePosition} from '../core/admin';
 import {hireEmployee} from '../core/org';
-import {todayInKualaLumpur} from '../lib/hr-date';
 import {setLabelCriteria} from '../core/system-labels';
 import {preparePositionArchiveTx,confirmPositionArchiveTx} from '../core/position-archive-review';
 import {POSITION_ARCHIVE_ACTION as action,PositionArchiveHuman} from '../lib/assistant-actions/position-archive-contract';
@@ -41,7 +40,8 @@ describe('position catalogue archive source, pending Assistant custody',()=>{
   const [rowAfter]=await owner.db.select().from(schema.position).where(eq(schema.position.id,b.positionId));expect(rowAfter).toEqual(rowBefore);
  });
  it('matches the grid in-use guard for any nonsuperseded assignment',async()=>{
-  await hireEmployee(adminCtx(b),{person:{fullName:'Fictional Position Holder'},companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+  const hired=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional Position Holder',primaryEmail:b.tenantId+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:'2025-01-01'});
+  await owner.db.update(schema.assignment).set({validTo:'2025-12-31'}).where(eq(schema.assignment.employmentId,hired.employmentId));
   await expect(prepare(b)).rejects.toThrow();
  });
  it('binds Criteria changes even if the position metadata stays unchanged',async()=>{
