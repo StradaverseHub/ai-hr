@@ -104,6 +104,7 @@ export const AGENT_ACTION_PARITY={
  'employees.cost_allocation.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.payment_method.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'attendance.schedule_group.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'employees.profile_request.reject':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.code.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.workforce_profile.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.passport.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},

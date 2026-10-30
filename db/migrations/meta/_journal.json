@@ -4166,6 +4166,20 @@
       "when": 1793330000066,
       "tag": "0729_assistant_attendance_schedule_group",
       "breakpoints": true
+    },
+    {
+      "idx": 712,
+      "version": "7",
+      "when": 1793330000069,
+      "tag": "0732_assistant_personnel_profile_request_rejection",
+      "breakpoints": true
+    },
+    {
+      "idx": 718,
+      "version": "7",
+      "when": 1793330000076,
+      "tag": "0739_native_ess_bank_direct_purpose",
+      "breakpoints": true
     }
   ]
 }
