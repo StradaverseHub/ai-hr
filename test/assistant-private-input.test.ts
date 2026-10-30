@@ -51,6 +51,13 @@ describe('private conversational native Assistant integration',()=>{
   const {ctx}=await fixture(),prior=await clarify(ctx),transport=vi.spyOn(openaiAdapter,'converse');
   const result=await askAssistant(ctx,{question,clarificationExchangeId:prior});expect(transport).not.toHaveBeenCalled();expect((await recorded(ctx,result.exchangeId)).proof.plan).toEqual({version:1,mode:'clarify',slot:'leave_type'});
  });
+ it('accepts a corrected leave-type reply after an earlier invalid answer',async()=>{
+  const {ctx}=await fixture(),prior=await clarify(ctx);const transport=vi.spyOn(openaiAdapter,'converse').mockImplementation(async(_cfg,args)=>{
+   const turn=args.turns[0];if(turn.role!=='user')throw Error('Expected metadata');const parsed=capturePrivateAssistantTask(JSON.parse(turn.content)).local;if(parsed.operation!=='conversation')throw Error('Expected conversation');const read=parsed.reads.find(read=>read.module==='leave')!,card=read.cards.find(card=>card.facts.some(fact=>fact.field==='available'&&fact.available))!,fact=card.facts.find(fact=>fact.field==='available'&&fact.available)!;return{text:JSON.stringify({version:1,mode:'answer',blocks:[{kind:'fact',read:read.read,card:card.card,fact:fact.fact}]}),stop:'end',toolCalls:[],usage,usageReported:true};
+  });
+  const invalid=await askAssistant(ctx,{question:'Unknown Leave',clarificationExchangeId:prior});expect(transport).not.toHaveBeenCalled();
+  const corrected=await askAssistant(ctx,{question:'Annual Leave',clarificationExchangeId:invalid.exchangeId});expect(transport).toHaveBeenCalledOnce();expect((await recorded(ctx,corrected.exchangeId)).proof.plan).toMatchObject({mode:'answer'});
+ });
  it('never turns a named original question plus bare module into an own read',async()=>{
   const {ctx}=await fixture(),prior=await clarify(ctx,'Alice leave balance','module'),transport=vi.spyOn(openaiAdapter,'converse');
   const result=await askAssistant(ctx,{question:'leave',clarificationExchangeId:prior});expect(transport).not.toHaveBeenCalled();expect(result.toolsUsed).toEqual([]);expect((await recorded(ctx,result.exchangeId)).proof.plan).toEqual({version:1,mode:'clarify',slot:'module'});

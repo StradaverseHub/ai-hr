@@ -144,7 +144,7 @@ export function selectPrivateAssistantCards(intent:PrivateAssistantIntent,reads:
  const result=(slot?:'employment'|'leave_type'|'period')=>({selection:reads.map(read=>({read:read.read,cards:candidates.filter(row=>row.read===read.read).map(row=>row.card)})),...(slot?{slot}:{})});
  const steps=clarification?[...clarification.earlier,{question:clarification.originalQuestion,slot:clarification.slot}]:[];
  for(let index=0;index<steps.length;index++){
-  const slot=steps[index].slot;if(slot==='module')continue;const answer=normalize(steps[index+1]?.question??clarification!.answer);
+  const slot=steps[index].slot;if(slot==='module'||steps[index+1]?.slot===slot)continue;const answer=normalize(steps[index+1]?.question??clarification!.answer);
   const options=new Map<string,Option[]>();
   for(const candidate of candidates){const label=slot==='leave_type'?candidate.leaveType:slot==='period'?candidate.period:undefined;
    const key=slot==='employment'?candidate.employment?.key:label===undefined?undefined:normalize(label);if(key===undefined)continue;

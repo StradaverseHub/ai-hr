@@ -85,6 +85,10 @@ describe('fresh LOCAL clarification and source-owned strategy',()=>{
  it.each(['Alice Annual Leave','not Annual Leave','Annual Leave and Sick Leave','Unknown Leave'])('keeps unknown/mixed/named slot answer %s on the same slot',answer=>{
   expect(selectPrivateAssistantCards('leave_available',cards(),chain(answer),employment).slot).toBe('leave_type');
  });
+ it('allows a corrected same-slot reply after a prior unknown answer instead of trapping the conversation',()=>{
+  const owned={originalQuestion:'Unknown Leave',slot:'leave_type' as const,answer:'Sick Leave',earlier:[{question:'My leave balance',slot:'leave_type' as const}]};
+  expect(selectPrivateAssistantCards('leave_available',cards(),owned,employment)).toEqual({selection:[{read:0,cards:[1]}]});
+ });
  it('keeps distinct own employments separate even when their company labels collide',()=>{
   const duplicate=[employment[0],{...employment[1],key:'LOCAL-employment-B'}];
   expect(selectPrivateAssistantCards('leave_available',cards(),chain('PRIVATE COMPANY','employment'),duplicate).slot).toBe('employment');
