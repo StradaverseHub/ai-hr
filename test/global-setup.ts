@@ -32,7 +32,7 @@ import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { seedCatalogs } from '../scripts/seed-catalogs';
-import {prepareDisposableDraftDiscardRoles,DRAFT_DISCARD_ROLE_FIXTURE_FINGERPRINT_INPUT} from './helpers/personnel-draft-discard-ci-role-fixture';
+import {ensureDraftDiscardTestRoles,DRAFT_DISCARD_ROLE_FIXTURE_FINGERPRINT_INPUT} from './helpers/personnel-draft-discard-ci-role-fixture';
 
 /** Swap the database name on a postgres:// URL, preserving credentials, host, port and params. */
 export function withDatabase(url: string, dbName: string): string {
@@ -219,8 +219,8 @@ async function setupImpl({ provide }: { provide?: (k: string, v: unknown) => voi
 
   // Cluster roles are not cloned with a database or covered by its saved fingerprint. Validate
   // the exact disposable role graph before EVERY cache decision, including reuse. No live bootstrap.
-  const roleFixture=await prepareDisposableDraftDiscardRoles(adminUrl);
-  writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'personnel-draft-discard-role-prerequisites.json'),JSON.stringify({
+  const roleFixture=await ensureDraftDiscardTestRoles(adminUrl);
+  if(roleFixture.mode==='focused_disposable')writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'personnel-draft-discard-role-prerequisites.json'),JSON.stringify({
     kind:'PERSONNEL_DRAFT_DISCARD_DISPOSABLE_ROLE_PREREQUISITES',candidate:process.env.AIHR_CI_HEAD,
     controller:process.env.AIHR_CI_CONTROL_HEAD,runId:process.env.GITHUB_RUN_ID,
     helperSha256:createHash('sha256').update(readFileSync(DRAFT_DISCARD_ROLE_FIXTURE_FINGERPRINT_INPUT)).digest('hex'),

@@ -44,7 +44,7 @@ describe('the template fingerprint covers everything that decides the schema', (
   it('hashes the role fixture and validates the live cluster graph before any template reuse', () => {
     expect([...FINGERPRINT_EXTRA_FILES]).toContain('test/helpers/personnel-draft-discard-ci-role-fixture.ts');
     const source = readFileSync('test/global-setup.ts', 'utf8');
-    const validation = source.indexOf('await prepareDisposableDraftDiscardRoles(adminUrl)');
+    const validation = source.indexOf('await ensureDraftDiscardTestRoles(adminUrl)');
     const reuse = source.indexOf('if (await templateIsReusable(');
     expect(validation).toBeGreaterThan(0);
     expect(reuse).toBeGreaterThan(validation);

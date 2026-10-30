@@ -17,7 +17,7 @@ export const isDraftDiscardFixtureDatabasePath=(path:string)=>/^\/ai_hr_test(?:_
 export type RoleRow={oid:number;name:string;login:boolean;inherit:boolean;super:boolean;createDb:boolean;createRole:boolean;replication:boolean;bypassRls:boolean;connectionLimit:number;validUntil:string|null};
 export type MembershipRow={role:string;member:string;grantor:string;inherit:boolean;set:boolean;admin:boolean};
 export type RoleCatalog={roles:RoleRow[];edges:MembershipRow[]};
-export type DisposableRoleFixture=RoleCatalog&{postgres:{versionNumber:number;versionText:string;session:string;current:string}};
+export type DraftDiscardRoleFixture=RoleCatalog&{mode:'focused_disposable'|'preprovisioned_read_only';postgres:{versionNumber:number;versionText:string;session:string;current:string}};
 const refuse=():never=>{throw Error('Disposable focused role fixture prerequisites are not satisfied.');};
 const sha=(value:string|undefined)=>/^[0-9a-f]{40}$/.test(value??'');
 const numeric=(value:string|undefined)=>/^[1-9][0-9]*$/.test(value??'');
@@ -79,7 +79,7 @@ export function assertDraftDiscardRoleCatalog(catalog:RoleCatalog,allowMissing=f
   if(actual.length!==1||actual[0].inherit!==edge.inherit||actual[0].set!==edge.set||actual[0].admin!==edge.admin||actual[0].grantor!=='postgres')refuse();
  }
 }
-export async function prepareDisposableDraftDiscardRoles(adminUrl:string):Promise<DisposableRoleFixture>{
+export async function prepareDisposableDraftDiscardRoles(adminUrl:string):Promise<DraftDiscardRoleFixture>{
  assertDisposableDraftDiscardFixture(adminUrl);
  const admin=postgres(adminUrl,{max:1,onnotice:()=>{},connect_timeout:5});
  try{return await admin.begin(async tx=>{
@@ -110,6 +110,28 @@ export async function prepareDisposableDraftDiscardRoles(adminUrl:string):Promis
    pg_has_role('ai_hr_app','ai_hr_draft_discard_port','MEMBER') as "appMemberChild",
    pg_has_role('ai_hr_draft_discard_port','ai_hr_owner','MEMBER') as "childMemberOwner"`;
   if(paths.inheritsChild||!paths.setsChild||paths.appMemberChild||paths.childMemberOwner)refuse();
-  return {...after,postgres:{versionNumber:server.version,versionText:server.versionText,session:server.session,current:server.current}};
+  return {...after,mode:'focused_disposable' as const,postgres:{versionNumber:server.version,versionText:server.versionText,session:server.session,current:server.current}};
  });}finally{await admin.end({timeout:5});}
+}
+
+/** Other test contexts may use an already provisioned graph. This path never creates or repairs
+ * roles, assumes no superuser identity, and writes no focused artifact. Missing prerequisites refuse. */
+export async function validateExistingDraftDiscardRoles(adminUrl:string):Promise<DraftDiscardRoleFixture>{
+ const connection=postgres(adminUrl,{max:1,onnotice:()=>{},connect_timeout:5});
+ try{return await connection.begin(async tx=>{
+  await tx`set transaction read only`;
+  const [server]=await tx<{version:number;versionText:string;session:string;current:string}[]>`select
+   current_setting('server_version_num')::int as version,version() as "versionText",
+   session_user::text as session,current_user::text as current`;
+  if(server.version<160000)refuse();
+  const catalog=await readDraftDiscardRoleCatalog(tx);assertDraftDiscardRoleCatalog(catalog);
+  return {...catalog,mode:'preprovisioned_read_only' as const,postgres:{versionNumber:server.version,versionText:server.versionText,session:server.session,current:server.current}};
+ });}finally{await connection.end({timeout:5});}
+}
+/** Focused intent always takes the strict guard. A failed guard cannot fall back to a connection
+ * or another provisioning course. Other contexts only validate their existing operator prerequisite. */
+export function ensureDraftDiscardTestRoles(adminUrl:string):Promise<DraftDiscardRoleFixture>{
+ if(process.env.AIHR_FOCUSED_SUITE_CAPACITY==='true'||process.env.GITHUB_WORKFLOW==='alpha-focused-checks')
+  return prepareDisposableDraftDiscardRoles(adminUrl);
+ return validateExistingDraftDiscardRoles(adminUrl);
 }

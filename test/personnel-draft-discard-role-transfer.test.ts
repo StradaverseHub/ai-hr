@@ -9,7 +9,7 @@ import postgres from 'postgres';
 import {describe,expect,it} from 'vitest';
 import {
  assertDisposableDraftDiscardFixture,assertDraftDiscardRoleCatalog,readDraftDiscardRoleCatalog,
- DRAFT_DISCARD_ROLE_FIXTURE_FINGERPRINT_INPUT,isDraftDiscardFixtureDatabasePath,type DraftDiscardCatalogSql,type RoleCatalog,
+ DRAFT_DISCARD_ROLE_FIXTURE_FINGERPRINT_INPUT,isDraftDiscardFixtureDatabasePath,ensureDraftDiscardTestRoles,validateExistingDraftDiscardRoles,type DraftDiscardCatalogSql,type RoleCatalog,
 } from './helpers/personnel-draft-discard-ci-role-fixture';
 
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
@@ -125,6 +125,18 @@ it('accepts the exact canonical aifocus names and refuses the previously invente
   expect(isDraftDiscardFixtureDatabasePath(path),path).toBe(false);
 });
 
+it('refuses invalid focused intent before any connection and never falls back to provisioning elsewhere',async()=>{
+ const previous={actions:process.env.GITHUB_ACTIONS,focused:process.env.AIHR_FOCUSED_SUITE_CAPACITY};
+ try{
+  process.env.GITHUB_ACTIONS='false';process.env.AIHR_FOCUSED_SUITE_CAPACITY='true';
+  await expect(ensureDraftDiscardTestRoles('postgres://nobody:nothing@127.0.0.1:1/no_database'))
+   .rejects.toThrow('Disposable focused role fixture prerequisites are not satisfied.');
+ }finally{
+  if(previous.actions===undefined)delete process.env.GITHUB_ACTIONS;else process.env.GITHUB_ACTIONS=previous.actions;
+  if(previous.focused===undefined)delete process.env.AIHR_FOCUSED_SUITE_CAPACITY;else process.env.AIHR_FOCUSED_SUITE_CAPACITY=previous.focused;
+ }
+});
+
 it('runs the actual domain preflight and ownership transfers as a restricted authenticated owner, never postgres SET ROLE',async()=>{
  const migrationUrl=process.env.TEST_MIGRATION_DATABASE_URL;
  if(!migrationUrl)throw Error('Missing disposable migration connection.');
@@ -145,6 +157,11 @@ it('runs the actual domain preflight and ownership transfers as a restricted aut
   await admin.unsafe(`REVOKE ALL ON DATABASE "${database}" FROM PUBLIC`);
   await admin.unsafe(`GRANT CONNECT ON DATABASE "${database}" TO ai_hr_app`);
   owner=connection(adminUrl,database,'ai_hr_owner');app=connection(adminUrl,database,'ai_hr_app');
+  const readOnlyUrl=new URL(adminUrl);readOnlyUrl.username='ai_hr_owner';
+  const readOnly=await validateExistingDraftDiscardRoles(readOnlyUrl.toString());
+  expect(readOnly.mode).toBe('preprovisioned_read_only');
+  expect(readOnly.postgres).toMatchObject({session:'ai_hr_owner',current:'ai_hr_owner'});
+  expect({roles:readOnly.roles,edges:readOnly.edges}).toEqual(catalog);
   const initial=await loginState(owner);
   expect(initial).toEqual({session:'ai_hr_owner',current:'ai_hr_owner',priorRole:'none',super:false,createDb:false,createRole:false,bypassRls:false,inheritsChild:false,setsChild:true});
   // An actual denied role-creation statement, not a mock of rolsuper or a postgres SET ROLE session.
