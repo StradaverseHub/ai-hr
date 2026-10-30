@@ -28,8 +28,8 @@ export async function deleteFormulaAction(input:{id:string;reason:string}){
 export async function saveAccumulationAction(input:{code:string;members:string[]}){
  return execute(async()=>{const saved=await saveFormulaAccumulationGroup(await getSession(),{code:input.code,members:input.members});revalidatePath(PAGE);return saved;});
 }
-export async function searchFormulaEmployeesAction(input:{query:string;companyId:string}){
- return execute(async()=>{const {searchPayFormulaEmployees}=await import('@/packs/payroll/service');return await searchPayFormulaEmployees(await getSession(),input.query,input.companyId);});
+export async function searchFormulaEmployeesAction(input:{query:string;companyId:string;period:string;asOf:string}){
+ return execute(async()=>{const {searchPayFormulaEmployees}=await import('@/packs/payroll/service');return await searchPayFormulaEmployees(await getSession(),input.query,input.companyId,{period:input.period,asOf:input.asOf});});
 }
 
 export async function listFormulaBatchesAction(input:{companyId:string;period:string;cycleId:string}){return execute(async()=>{const {listPayFormulaBatches}=await import('@/packs/payroll/service');return listPayFormulaBatches(await getSession(),input);});}

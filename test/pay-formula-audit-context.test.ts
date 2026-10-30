@@ -1,5 +1,8 @@
 /** Optional audit labels have independent current permissions; financial evidence keeps its original requirements. */
 import {eq} from 'drizzle-orm';
+import {randomUUID} from 'node:crypto';
+import {createCompany,createDepartment} from '../core/admin';
+import {createMovementEvent} from '../core/movement';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
@@ -7,7 +10,7 @@ import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {seedPayComponentCatalog,upsertPayComponent,setEmploymentPayComponent} from '../core/pay-components';
 import {createBatch,generatePayslips} from '../core/payroll';
-import {savePayFormula,testPayFormula,setPayFormulaActive,getFormulaEvaluation,getPayFormula} from '../core/pay-formula';
+import {savePayFormula,testPayFormula,setPayFormulaActive,getFormulaEvaluation,getPayFormula,searchPayFormulaEmployees} from '../core/pay-formula';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let base:Base;
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();base=await seedBase();});afterAll(closeAll);
@@ -34,4 +37,20 @@ it('identifies the paying company and independently redacts employee name/code w
  expect(await getFormulaEvaluation(ctx,evidence.id)).toMatchObject({companyName:'Fictional Paying Company',employeeCode:null,employeeName:null,amount:'1'});
  expect((await getPayFormula(ctx,saved.id))?.evaluations).toEqual([expect.objectContaining({employeeCode:null,employeeName:null,amount:'1'})]);
  expect((await owner.db.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.id,evidence.id)))[0]).toEqual(evidence);
+});
+
+it('finds a transferred employee in the selected historical paying company without widening the current Workforce roster',async()=>{
+ const ctx=await entitledCtx(base),incoming=await createCompany(ctx,{legalName:'Fictional incoming company',country:'MY'}),department=await createDepartment(ctx,{companyId:incoming.id,name:'Incoming team'});
+ const employee=await hireEmployee(ctx,{person:{fullName:'Historical Locator Employee',primaryEmail:'formula-historical-locator@example.invalid'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});
+ await createMovementEvent(ctx,{employmentId:employee.employmentId,kind:'entityTransfer',effectiveDate:'2026-05-11',companyId:incoming.id,departmentId:department.id});
+ expect(await searchPayFormulaEmployees(ctx,'Historical Locator',base.companyId)).toEqual([]);
+ expect(await searchPayFormulaEmployees(ctx,'Historical Locator',base.companyId,{period:'2026-05',asOf:'2026-05-10'})).toEqual([expect.objectContaining({id:employee.employmentId,companyId:base.companyId,name:'Historical Locator Employee'})]);
+ expect(await searchPayFormulaEmployees(ctx,'Historical Locator',base.companyId,{period:'2026-05',asOf:'2026-05-11'})).toEqual([]);
+ expect(await searchPayFormulaEmployees(ctx,'Historical Locator',incoming.id,{period:'2026-05',asOf:'2026-05-11'})).toEqual([expect.objectContaining({id:employee.employmentId,companyId:incoming.id})]);
+ await expect(searchPayFormulaEmployees(ctx,'Historical Locator',base.companyId,{period:'2026-05',asOf:'2026-06-10'})).rejects.toThrow('within the selected payroll month');
+ const [user]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:'historical-locator-'+randomUUID()}).returning();
+ const grants=[{role:'hr_admin' as const,companyId:base.companyId},{role:'payroll_partner' as const,companyId:incoming.id}];
+ await owner.db.insert(schema.roleAssignment).values(grants.map(grant=>({tenantId:base.tenantId,appUserId:user.id,...grant})));
+ const financialOnly={...ctx,userId:user.id,roles:['hr_admin','payroll_partner'],grants};
+ expect(await searchPayFormulaEmployees(financialOnly,'Historical Locator',base.companyId,{period:'2026-05',asOf:'2026-05-10'})).toEqual([]);
 });
