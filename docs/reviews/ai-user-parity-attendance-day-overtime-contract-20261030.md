@@ -1,6 +1,6 @@
 # Proposed contract: reviewed dated overtime-row correction
 
-Status: source-reviewed proposal only, 30 October 2026. No action, adapter, executable migration or journal entry is implemented by this document. Coordinator review and one migration allocation are required before the migration-bearing slice is mounted.
+Status: native OT foundation authored for source/proof review, 30 October 2026; unrun and unmounted. The coordinator conditionally cleared the contract and allocated provisional0753/idx732/version7/when1793330000090/breakpoints:true. The full implementation source/proof still requires review before candidate freeze, mounting or public CI. No installation or accepted-ledger claim.
 
 Base: exact frozen PR127 head `ce0ace24ed0957d9f1655b8a6e25c13d352edfe8`. The schedule correction candidate remains unchanged. This separate contract branch intentionally preserves the held parity stack; freshly fetched main and alpha are both `d6cb83d620d8d4380c981a72fc41628780840b4e` (299 ahead / 107 behind at the base). It is not an integration or release base decision.
 
@@ -104,7 +104,7 @@ Keep current top-transaction proof for calculated rows, newly changed pattern so
 
 ## Exact migration requirement for coordinator allocation
 
-Request **one new, unapplied development migration**, provisional private suffix `assistant_attendance_day_overtime_correction`; proposed helper prefix `assistant_attendance_day_overtime_*`. No executable filename, journal index, version or timestamp is claimed. It must append after the reconciled accepted ledger and preserve all existing migration bytes, including0738.
+Request **one new, unapplied development migration**, provisional private suffix `assistant_attendance_day_overtime_correction`; proposed helper prefix `assistant_attendance_day_overtime_*`. Coordinator allocation is now `0753_assistant_attendance_day_overtime_correction.sql`, idx732, version7, when1793330000090, breakpoints:true, UNAPPLIED PROVISIONAL DEVELOPMENT ONLY. This branch appends only that journal claim, with no sibling placeholders. Integration must reconcile it against the actual accepted ledger and preserve all existing migration bytes, including0738.
 
 Required operations in that single migration:
 
@@ -116,7 +116,7 @@ Required operations in that single migration:
 6. Extend the exact existing native-outcome completed/target/choices owners for this one kind with marker/count guards. Reuse generic target capture and person/employment erasure. Completion calls the OT current proof before persisting event ID and clearing private content.
 7. Revoke PUBLIC/private-helper access and grant only necessary scoped entrypoints to `ai_hr_app`. Preserve SECURITY DEFINER search_path pinning and native authority on every operation.
 
-Coordinator decisions requested: confirm proposed action/route/tier and allocate the single migration identity. The existing crypto/custody contract already represents the typed date; no shared engine decision is requested. Full mount and migration-bearing hosted checks wait for the allocated identity.
+The coordinator conditionally cleared the proposed action/route/tier and supplied the single identity above. The existing crypto/custody contract already represents typed date; no shared engine decision is requested. Full source/proof review remains required before mounting or public CI.
 
 ## Verification plan and review handoff
 
@@ -135,10 +135,27 @@ Open proof obligations are implementation-specific native OT evidence admission 
 
 ## Unmounted typed proposal prepared while allocation is pending
 
-The separate branch now contains `lib/assistant-actions/day-overtime-correction-contract.ts` and fictional fixtures/tests only. No registry, transport, route, UI, native owner, SQL or journal is wired to them. The source manifest is deferred to the eventual approved mount; no hosted check or runtime claim is made for these authored files.
+The separate branch now contains `lib/assistant-actions/day-overtime-correction-contract.ts` and fictional fixtures/tests only. No registry, transport, route, UI, native owner, SQL or journal is wired to them. The source manifest is refreshed at the native implementation review checkpoint; no hosted check or runtime claim is made for these authored files.
 
 The proposal adds `manualMinutes`, native recorded `manualCalculatedMinutes` and `autoEffectiveMinutes` to an OT-specific native row view, with native completeness and approved OT minutes. It does not change the schedule view's strict schema. Prepared data binds selected rows, Auto resets and unselected manual values; native proofs must still authenticate eligibility and full stored-map provenance. The 20k code-unit/native transport cap and explicit 20k UTF-8 narrowing are enforced without truncation, along with the 48k review budget.
 
 The proposed completed receipt retains the exact selected `rows`, because ciphertext is erased after completion and a null reset can be an actual native write even when the map was already Auto. An eventual opt-in native OT event witness must therefore retain the normalized selected rows from the actual native writer input. Do not infer requested rows by comparing maps, or recover them from a posted receipt. This is safe row selection/minutes metadata already represented in native manual-row history, not salary or pattern financial evidence. Its exact native proof and SQL completion check are still pending review/allocation.
 
 Proposed native implementation sequence after allocation: factor a narrow OT review admission seam from the actual owner's existing validation/locks; add an explicitly discriminated OT opt-in witness branch that preserves the schedule proof and default writer path; retain locks outside rollback preview; capture actual native before/after plus normalized selected rows; verify protected schedule/clocks and unselected map provenance; read current and immutable financial evidence through its native owner. Only then mount source/custody/registry/browser wiring. Repeated preview stability, actual top-transaction proof, native legacy-manual refusal and real payroll retention must be demonstrated with hosted owner fixtures, not these fictional contract fixtures.
+
+
+## Native foundation authored in the isolated implementation tree
+
+The preserved contract branch stays at9b37e42a0 and PR127 stays atce0ace24e. The new implementation tree is `ai-user-parity-attendance-ot-owner-20261030`, branch `codex/ai-user-parity-attendance-ot-owner-20261030`, based exactly on9b37. No live WIP or foreign migration tails are imported.
+
+Actual source changes for this review stage:
+
+- `lib/attendance-day-overtime-review.ts` owns native OT view/witness schemas. The unmounted human contract now consumes these domain schemas, so the native pack never imports Assistant policy/contracts.
+- `day-adjustment.ts` factors its original OT map-validation/write loop into a private helper used by the default writer and new locked OT review admission. Null resets retain the original early-return semantics. The new explicit `reviewOvertimeEffects` option is overtime-only. The schedule option/branch and default event-before-payroll order/payload are preserved.
+- `day-overtime-effects.ts` captures native rows/summary/private retention and native manual map, checks unchanged schedule overrides and full unselected manual provenance, and creates a separate selected-input witness. It reuses existing safe snapshot/financial/proof owners rather than duplicating calculations. Actual captured-day review also checks the financial owner's exact dated-company predicate before canonical money commitments, even when a first pattern source has not been created. This is an explicit review-visibility narrowing; default native write authority is unchanged. Financial values remain native and unavailable/UNKNOWN/refused states remain real outcomes.
+- `day-overtime-preview.ts` retains native locks outside a rollback SAVEPOINT, calls the real writer and reads actual native effects. Stable equality excludes only first-created adjustment ID, new adjustment updatedAt and new selected non-null row recordedAt; every unselected actor/time/field and selected actor/bucket/original calculation/value remains in the private commitment. Native financial input/approval/reference/duration digests and exact authorized before/after financial views remain bound. Earning-label locks are reacquired after rollback; original baseline must remain unchanged.
+- Allocated0753 adds scoped OT identity/receipt helpers and the closed typed-date custody capability. Its proof authenticates the entire actual stored adjustment JSON, exact normalized selected rows, actual selected actor/ISO timestamp against the saved native update time, unchanged schedule, full manual map and every unselected entry, original clocks, native day/pattern children, every processed payroll row and calculation/refusal/payroll audit in the real top transaction. It compares no app-generated timestamp with DB event time, which has different clock/transaction semantics. Historical mode authenticates the original immutable native payload/map without requiring current mutable day/payroll equality. PUBLIC/private helper grants are closed; existing native financial readers validate financial content. SQL0738 and all predecessors are unchanged.
+
+The native facade exports the new locked admission and preview/evidence functions for owner fixtures. There is no new registry/browser/server/custody TS adapter, native form adapter, route or UI yet. The SQL kind and closed command are unapplied source only. Those remaining action mounts follow a full source/proof disposition; no action is represented as implemented in the current registry.
+
+Authored verification now includes21 real-owner integration cases (19 named cases plus2 selected actor/time variants), the12 existing contract proposal cases and3 migration/source guards. Cases cover first native no-op Auto creation, actual manual figures/top-transaction write, stable repeated previews/unselected provenance, approved Auto, orphan/incomplete reset, invalid/zero/over-work input, full outer rollback, stale/self/wrong-kind, original historical/wrong-date/old/SAVEPOINT proof, cross-kind stale behavior, processed/closed/already-stale payroll, actual normalized inputs, altered unselected/selected provenance, real native2500MYR-to-UNKNOWN/refusal and Auto restoration, pre-write financial reader refusal, Full Flexi sessions and dependent credit. These are authored intentions, not results. Existing default native26 and schedule effect12 regressions must also be checked because the writer helper was extracted. No local runtime was run; no candidate was pushed or CI dispatched at this checkpoint.

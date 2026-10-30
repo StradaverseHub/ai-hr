@@ -1,25 +1,15 @@
 /** Unmounted proposal. Native Attendance owns every resulting figure and business refusal. */
 import {z} from 'zod';
-import {AttendanceDayReviewLegacyRow,AttendanceDayReviewView} from '../attendance-day-review';
+import {AttendanceDayOvertimeChanges as Changes,AttendanceDayOvertimeReviewRow as Row,AttendanceDayOvertimeReviewView as View} from '../attendance-day-overtime-review';
 
 export const DAY_OVERTIME_CORRECTION_ACTION='attendance.day_overtime.correct' as const;
-const id=z.guid(),digest=z.string().regex(/^[a-f0-9]{64}$/),minute=z.number().int().min(0).max(1440);
+const id=z.guid(),digest=z.string().regex(/^[a-f0-9]{64}$/);
 const base={action:z.literal(DAY_OVERTIME_CORRECTION_ACTION),contractVersion:z.literal(1)};
 const bytes=(value:unknown)=>new TextEncoder().encode(JSON.stringify(value)).byteLength;
 const bounded=(value:unknown)=>bytes(value)<=48000;
-const uniqueKeys=(rows:readonly {key:string}[])=>new Set(rows.map(row=>row.key)).size===rows.length;
-const Changes=z.array(z.object({key:z.string().min(1).max(500),minutes:minute.nullable()}).strict()).min(1).max(100)
- .refine(uniqueKeys,'Choose each native overtime row once.')
- .refine(rows=>JSON.stringify(rows).length<=20000&&bytes(rows)<=20000,'Review this larger change on the native Attendance screen.');
 const Human=z.object({...base,employmentId:id,subjectId:id,date:z.iso.date(),baseline:digest,rows:Changes,
  reason:z.string().trim().min(1).max(500),confirmPayrollRecalculation:z.boolean()}).strict().refine(v=>v.employmentId===v.subjectId);
 
-// These are native display facts, not an Assistant overtime or approval calculator. Keep manual zero
-// distinct from null (Auto), and preserve the approved Auto value separately from original calculation.
-const Row=AttendanceDayReviewLegacyRow.extend({manualMinutes:minute.nullable(),manualCalculatedMinutes:z.number().int().nullable(),autoEffectiveMinutes:z.number().int()}).strict()
- .refine(v=>(v.manualMinutes===null)===(v.manualCalculatedMinutes===null));
-const View=AttendanceDayReviewView.omit({legacyRows:true}).extend({complete:z.boolean(),approvedOtMinutes:z.number().int().nullable(),legacyRows:z.array(Row).max(100)}).strict()
- .refine(v=>uniqueKeys(v.legacyRows)&&new Set(v.payroll.map(row=>row.batchId)).size===v.payroll.length);
 type ViewData=z.infer<typeof View>;
 type ChangesData=z.infer<typeof Changes>;
 function effectsMatch(before:ViewData,after:ViewData){

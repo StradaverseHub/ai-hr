@@ -1,0 +1,15 @@
+import {readFileSync} from 'node:fs';
+import {expect,it} from 'vitest';
+const sql=readFileSync('db/migrations/0753_assistant_attendance_day_overtime_correction.sql','utf8');
+it('adds only the allocated provisional OT nomination with canonical bounded predecessor-preserving custody branches',()=>{
+ expect(sql).toContain('0753 / idx732 / version7 / when1793330000090');expect(sql).toContain('day_overtime_date IS NOT NULL ELSE day_overtime_date IS NULL');
+ const block=sql.split('--> statement-breakpoint').find(part=>part.includes('scope_keys smallint[]'));expect(block).toBeTruthy();expect(block).toContain('conkey @> scope_keys');expect(block).toContain('octet_length(conbin::text)');expect(block).toContain('item.name,item.expression,previous');expect(block).toContain('leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL AND performance_ack_event_id IS NULL');expect(block).not.toContain('replace(previous');expect(sql).not.toContain('ADD CONSTRAINT assistant_review_action_kind');
+});
+it('authenticates normalized selected input and the full actual native manual map including actor/time and unselected provenance',()=>{
+ for(const text of ["d.payload->>'kind' IS DISTINCT FROM 'overtime'","d.payload->'reviewOvertimeEffects'","w->'selectedRows'","jsonb_build_object('id',a.id,'tenantId',a.tenant_id", "'manualOtRows',a.manual_ot_rows", "manual_entry->>'actorId' IS DISTINCT FROM d.actor_id::text", "(manual_entry->>'recordedAt')::timestamptz>updated_stamp",'expected_map IS DISTINCT FROM actual_map','Day overtime schedule/version retention unavailable','Day current event unavailable','Day actual effects changed','Day payroll audit unavailable','Day refusal audit unavailable'])expect(sql).toContain(text);
+ expect(sql).not.toContain('CREATE OR REPLACE FUNCTION app.assistant_attendance_day_schedule');expect(sql).not.toContain('ALTER FUNCTION app.assistant_attendance_day_schedule');
+});
+it('keeps financial evidence native and private and excludes only newly generated preview identity/times from stable equality',()=>{
+ const preview=readFileSync('packs/attendance/day-overtime-preview.ts','utf8'),effects=readFileSync('packs/attendance/day-overtime-effects.ts','utf8');
+ expect(preview).toContain('lockAttendanceDayOvertimeReviewTx');expect(preview).toContain('rollback to savepoint attendance_day_overtime_preview');expect(preview).toContain('id:current.adjustment?adjustment.id:undefined');expect(preview).toContain('if(!selected.has(key))return[key,value]');expect(preview).toContain('before,canonical,beforeView,evidence.after,proposedHeader,stableAdjustment');expect(effects).toContain('provenCompanyDatesTx');expect(effects).toContain('app.can_admin_payroll_for');expect(effects).toContain('attendanceDayReviewViewTx');expect(effects).toContain('selectedRows,before:{summary:before.summary,rows:before.rows},after:{summary:after.summary,rows:after.rows}');
+});

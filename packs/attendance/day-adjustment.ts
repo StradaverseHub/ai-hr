@@ -1,3 +1,5 @@
+import {AttendanceDayOvertimeChanges} from '../../lib/attendance-day-overtime-review';
+import {captureAttendanceDayOvertimeStateTx,attendanceDayOvertimeViewTx,attendanceDayOvertimeWitnessTx} from './day-overtime-effects';
 import {captureAttendanceDayReviewStateTx,attendanceDayReviewWitnessTx} from './day-schedule-effects';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
@@ -108,27 +110,47 @@ export async function lockAttendanceDayScheduleReviewTx(tx:Tx,ctx:SessionContext
  assertModuleGate(ctx,'attendance');return lockedAttendanceDayEditStateTx(tx,ctx,p);
 }
 
-export async function saveAttendanceDayEdit(ctx:SessionContext,p:AttendanceDayEdit,existingTx?:Tx,options?:{returnEventId:true;reviewEffects?:true}):Promise<{version:number;adjustmentId?:string;eventId?:string}>{
+function nativeOvertimeManualRows(ctx:SessionContext,current:AttendanceDayEditorData,rows:Extract<AttendanceDayEdit,{kind:'overtime'}>['rows']):ManualOtRows{
+  const manual:ManualOtRows={...current.adjustment?.manualOtRows};
+  if(!Array.isArray(rows)||!rows.length||rows.length>100)throw new Error('Select the overtime rows to change.');
+  const seen=new Set<string>();
+  for(const input of rows){
+    if(seen.has(input.key))throw new Error('An overtime row was submitted twice.');seen.add(input.key);
+    const row=current.rows.find(r=>r.key===input.key);if(!row)throw new Error('The overtime row no longer applies. Reload this day.');
+    if(input.minutes===null){delete manual[input.key];continue;}
+    if(!current.complete||row.orphan||!Number.isSafeInteger(input.minutes)||input.minutes<0||input.minutes>1440)throw new Error('Enter whole overtime minutes for an applicable row on a complete attendance day.');
+    manual[input.key]={minutes:input.minutes,bucket:row.bucket,calculatedMinutes:row.calculatedMinutes,recordedAt:new Date().toISOString(),actorId:ctx.userId??'system'};
+  }
+  return manual;
+}
+
+/** OT-only review admission under the same native business locks; no independent calculator. */
+export async function lockAttendanceDayOvertimeReviewTx(tx:Tx,ctx:SessionContext,p:Extract<AttendanceDayEdit,{kind:'overtime'}>){
+ p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+ if(p.kind!=='overtime')throw Error('Choose a supported attendance correction.');
+ dateValue(p.date);const reason=p.reason.trim();if(!reason||reason.length>500)throw Error('Explain the correction in at most 500 characters.');
+ assertModuleGate(ctx,'attendance');const locked=await lockedAttendanceDayEditStateTx(tx,ctx,p);
+ nativeOvertimeManualRows(ctx,locked.current,p.rows);AttendanceDayOvertimeChanges.parse(p.rows);return locked;
+}
+
+export async function saveAttendanceDayEdit(ctx:SessionContext,p:AttendanceDayEdit,existingTx?:Tx,options?:{returnEventId:true;reviewEffects?:true;reviewOvertimeEffects?:true}):Promise<{version:number;adjustmentId?:string;eventId?:string}>{
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  if(options?.reviewOvertimeEffects&&p.kind!=='overtime')throw Error('Reviewed overtime effects support overtime corrections only.');
   if(options?.reviewEffects&&p.kind!=='schedule')throw Error('Reviewed effects support schedule corrections only.');
   if(!['schedule','overtime'].includes(p.kind))throw new Error('Choose a supported attendance correction.');
   dateValue(p.date);const reason=p.reason.trim();if(!reason||reason.length>500)throw new Error('Explain the correction in at most 500 characters.');
   return withAttendanceDayTx(ctx,async tx=>{
     const {current,payroll}=await lockedAttendanceDayEditStateTx(tx,ctx,p);
     const beforeReview=options?.reviewEffects?await captureAttendanceDayReviewStateTx(tx,ctx,p,payroll.map(row=>row.batchId),current):null;
-    let shiftId=current.shiftId,dayKind=current.dayKind;const manual:ManualOtRows={...current.adjustment?.manualOtRows};
+    if(options?.reviewOvertimeEffects&&p.kind==='overtime'){nativeOvertimeManualRows(ctx,current,p.rows);AttendanceDayOvertimeChanges.parse(p.rows);}
+    const beforeOvertime=options?.reviewOvertimeEffects?await captureAttendanceDayOvertimeStateTx(tx,ctx,p,payroll.map(row=>row.batchId),current):null;
+    // Write authority alone is insufficient: validate authorized native financial evidence BEFORE mutation.
+    if(beforeOvertime)await attendanceDayOvertimeViewTx(tx,ctx,p,beforeOvertime.summary);
+    let shiftId=current.shiftId,dayKind=current.dayKind;let manual:ManualOtRows={...current.adjustment?.manualOtRows};
     if(p.kind==='schedule'){
       shiftId=p.shiftId;dayKind=p.dayKind;
     }else{
-      if(!Array.isArray(p.rows)||!p.rows.length||p.rows.length>100)throw new Error('Select the overtime rows to change.');
-      const seen=new Set<string>();
-      for(const input of p.rows){
-        if(seen.has(input.key))throw new Error('An overtime row was submitted twice.');seen.add(input.key);
-        const row=current.rows.find(r=>r.key===input.key);if(!row)throw new Error('The overtime row no longer applies. Reload this day.');
-        if(input.minutes===null){delete manual[input.key];continue;}
-        if(!current.complete||row.orphan||!Number.isSafeInteger(input.minutes)||input.minutes<0||input.minutes>1440)throw new Error('Enter whole overtime minutes for an applicable row on a complete attendance day.');
-        manual[input.key]={minutes:input.minutes,bucket:row.bucket,calculatedMinutes:row.calculatedMinutes,recordedAt:new Date().toISOString(),actorId:ctx.userId??'system'};
-      }
+      manual=nativeOvertimeManualRows(ctx,current,p.rows);
     }
     const values={shiftId,dayKind,manualOtRows:manual,reason,updatedBy:ctx.userId??'system',updatedAt:new Date(),version:(current.adjustment?.version??0)+1};
     const [saved]=await tx.insert(s.attendanceDayAdjustment).values({tenantId:ctx.tenantId,employmentId:p.employmentId,attendanceDate:p.date,...values})
@@ -150,6 +172,13 @@ export async function saveAttendanceDayEdit(ctx:SessionContext,p:AttendanceDayEd
       const afterReview=await captureAttendanceDayReviewStateTx(tx,ctx,p,payroll.map(row=>row.batchId),afterEditor);
       const reviewEffects=await attendanceDayReviewWitnessTx(tx,ctx,p,payroll.map(row=>row.batchId),beforeReview,afterReview);
       eventId=await appendEvent(tx,{...eventArgs,payload:{...eventArgs.payload,reviewEffects}},{returnId:true});
+    }else if(options?.reviewOvertimeEffects&&p.kind==='overtime'){
+      await markAttendancePayrollTx(tx,ctx,payroll,p.employmentId);
+      const editor=await readTx(tx,ctx,p.employmentId,p.date);if(!beforeOvertime||!editor)throw Error('Native overtime review is unavailable.');
+      const after=await captureAttendanceDayOvertimeStateTx(tx,ctx,p,payroll.map(row=>row.batchId),editor);
+      await attendanceDayOvertimeViewTx(tx,ctx,p,after.summary);
+      const reviewOvertimeEffects=await attendanceDayOvertimeWitnessTx(tx,ctx,p,payroll.map(row=>row.batchId),beforeOvertime,after);
+      eventId=await appendEvent(tx,{...eventArgs,payload:{...eventArgs.payload,reviewOvertimeEffects}},{returnId:true});
     }else{
       eventId=await appendEvent(tx,eventArgs,{returnId:options?.returnEventId===true});
       await markAttendancePayrollTx(tx,ctx,payroll,p.employmentId);
