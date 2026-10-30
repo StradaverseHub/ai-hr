@@ -9440,6 +9440,21 @@ export async function unlockClosedBatch(ctx: SessionContext, p: { batchId: strin
   const reason = (p.reason ?? '').trim();
   if (!reason) throw new UnlockReasonRequiredError();
   return withTenant(ctx, async (tx) => {
+    const {warnings,reopenedPeriod}=await unlockClosedBatchTx(tx,ctx,p);
+    return {warnings,reopenedPeriod};
+  });
+}
+
+/** Same native unlock owner inside an existing top-level transaction. Exact references are
+ * returned for atomic reviewed custody; callers must not infer a latest event after commit. */
+export async function unlockClosedBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:string;reason?:string}) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+  if (!settingEnabled(ctx, 'payroll.unlock_enabled')) {
+    // See resetProcessedBatch — a risk switch being off is not "Payroll is not on your plan".
+    throw new SettingNotEnabledError('payroll.unlock_enabled', 'Payroll unlock is not enabled.');
+  }
+  const reason = (p.reason ?? '').trim();
+  if (!reason) throw new UnlockReasonRequiredError();
     await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);
     const [batch] = await tx
       .select({
@@ -9489,7 +9504,7 @@ export async function unlockClosedBatch(ctx: SessionContext, p: { batchId: strin
     }
 
     const actor = actorOf(ctx);
-    await tx.insert(payrollStatusHistory).values({
+    const [history] = await tx.insert(payrollStatusHistory).values({
       tenantId: ctx.tenantId,
       batchId: p.batchId,
       action: 'unlock',
@@ -9500,27 +9515,31 @@ export async function unlockClosedBatch(ctx: SessionContext, p: { batchId: strin
       reason,
       before: { status: 'closed', periodReopened: reopenedPeriod },
       after: { status: 'processed', warnings },
-    });
-    await appendEvent(tx, {
+    }).returning({id:payrollStatusHistory.id});
+    if(!history)throw new Error('Payroll unlock history reference unavailable');
+    const unlockedEventId = await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'payroll-batch',
       aggregateId: p.batchId,
       eventType: 'payroll-batch.unlocked',
       actor,
       payload: { companyId: batch.companyId, payPeriod: batch.payPeriod, reason, warnings, reopenedPeriod },
-    });
+    },{returnId:true});
+    if(typeof unlockedEventId!=='string')throw new Error('Payroll unlock event reference unavailable');
+    let periodReopenedEventId:string|null=null;
     if (reopenedPeriod) {
-      await appendEvent(tx, {
+      const eventId=await appendEvent(tx, {
         tenantId: ctx.tenantId,
         aggregateType: 'pay-period',
         aggregateId: batch.payPeriodId,
         eventType: 'pay-period.reopened',
         actor,
         payload: { batchId: p.batchId, reason },
-      });
+      },{returnId:true});
+      if(typeof eventId!=='string')throw new Error('Payroll period reopen event reference unavailable');
+      periodReopenedEventId=eventId;
     }
-    return { warnings, reopenedPeriod };
-  });
+    return { warnings, reopenedPeriod, statusHistoryId:history.id, unlockedEventId, periodReopenedEventId };
 }
 
 /**
