@@ -19,8 +19,10 @@ import {validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mj
 import {verifyFixtureBrowserRecovery,repairDisposition,validateRepairFocusedMetadata,validateRepairBuildMetadata,RETAINED_PDF_EXECUTION_CONTROLLER} from './fixture-browser-recovery-policy.mjs';
 import {validatePdfRepairMetadata,PDF_REPAIR_TITLE} from './pdf-repair-metadata.mjs';
 import {validateBrowserRepairMetadata,BROWSER_REPAIR_WORKFLOW_ID,BROWSER_REPAIR_WORKFLOW_PATH} from './browser-repair-metadata.mjs';
-const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}));
-function pages(path,key){const rows=[];for(let page=1;page<=10;page++){const r=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${page}`);assert(Array.isArray(r[key]),'Missing complete API inventory');rows.push(...r[key]);if(r[key].length<100)return rows;}throw Error('Repair API inventory exceeds bound');}
+import {finiteGithubJson,finiteGithubPages} from './finite-github-read.mjs';
+const api=finiteGithubJson;
+const pages=finiteGithubPages;
+const collectFiniteRecovery=(id,dir,options)=>collectRecoveryEvidence(id,dir,{...options,apiRead:api,apiPages:pages});
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024**2,timeout:60000}).trim();
 const save=(dir,name,value)=>writeFileSync(join(dir,name),JSON.stringify(value,null,2)+'\n',{flag:'wx',mode:0o600});
 function metadata(runId){return {run:api(`actions/runs/${runId}`),jobs:pages(`actions/runs/${runId}/jobs?filter=all`,'jobs'),artifacts:pages(`actions/runs/${runId}/artifacts`,'artifacts')};}
@@ -125,7 +127,7 @@ export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,b
  const producerFor=name=>name==='gate-plan'?'plan':name==='gate-evidence'?'verify':name===COMPILER_STATE_ARTIFACT?'typecheck':name.startsWith('unit-')?((u)=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`)(preliminary.units.find(u=>'unit-'+u.id===name)):'build';
  validateRepairArchiveInventory(originalMetadata,allowed,producerFor);
  const dir=evidenceDirectory??join(controllerRoot,'scratchpad',`validated-repair-${runId}-${randomUUID()}`),sourceDir=join(dir,'original');
- const source=await collectRecoveryEvidence(runId,sourceDir,{reuse,prefetchDirectory:process.env.AIHR_REPAIR_ORIGINAL_PREFETCH_DIR||undefined});
+ const source=await collectFiniteRecovery(runId,sourceDir,{reuse,prefetchDirectory:process.env.AIHR_REPAIR_ORIGINAL_PREFETCH_DIR||undefined});
  assert(isDeepStrictEqual(originalMetadata,facts(source)),'Original metadata changed during download');
  const archived=source.parsed.get('gate-plan')?.get('ci-plan.json');assert(archived,'Original full plan missing');
  const sourcePlan=planAt(originalPath,{controller,baseline,runtime:archived.runtime}),expected={candidate:original,controller,baseline,runId};
@@ -143,7 +145,7 @@ export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,b
  const allowedFocusTitles=new Set([candidateBranch,...candidateRefs].map(ref=>'Focused only · '+ref));
  for(const id of focusedRunIds.slice().sort((a,b)=>a-b)){
   const m=metadata(id);assert(allowedFocusTitles.has(m.run.display_title),'Unregistered source alias focused execution');const authenticated=validateRepairFocusedMetadata({...m,expected:{runId:id,controller,workflowId:workflow.id,after:source.run.updated_at}});
-  const f=await collectRecoveryEvidence(id,join(dir,'focused-'+id),{reuse,fixturePackets:true}),artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
+  const f=await collectFiniteRecovery(id,join(dir,'focused-'+id),{reuse,fixturePackets:true}),artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
   assert(isDeepStrictEqual(m,facts(f)),'Focused metadata changed during download');
   const report=packet.get('focused.json'),database=report?.groups?.DB?.length>0,resultName=database?'db.vitest.json':'nodb.vitest.json';
   assert(isDeepStrictEqual([...packet.keys()].sort(),[resultName,'focused.json'].sort()),'Exact homogeneous focused packet required');
@@ -153,7 +155,7 @@ export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,b
  assert(cm.run.display_title==='Focused only · '+candidateBranch,'Auxiliary compiler must use the primary frozen source ref');
  const compilerAuthenticated=validateRepairFocusedMetadata({...cm,expected:{runId:compilerRunId,controller,workflowId:workflow.id,after:source.run.updated_at}});
  assert(compilerAuthenticated.compiler,'Auxiliary whole compiler failed or skipped');
- const compilerEvidence=await collectRecoveryEvidence(compilerRunId,join(dir,'compiler-'+compilerRunId),{reuse,compilerPackets:true});
+ const compilerEvidence=await collectFiniteRecovery(compilerRunId,join(dir,'compiler-'+compilerRunId),{reuse,compilerPackets:true});
  assert(isDeepStrictEqual(cm,facts(compilerEvidence)),'Compiler metadata changed during download');
  const compilerPacket=compilerEvidence.parsed.get('focused-development-evidence');
  assert(isDeepStrictEqual([...compilerPacket.keys()],['focused.json']),'Compiler auxiliary packet namespace differs');
@@ -162,7 +164,7 @@ export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,b
  const browserWorkflow=api('actions/workflows/alpha-staging-browser-checks.yml');
  assert(browserWorkflow.id===BROWSER_REPAIR_WORKFLOW_ID&&browserWorkflow.path===BROWSER_REPAIR_WORKFLOW_PATH&&browserWorkflow.state==='active','Browser workflow registry differs');
  const bindings=validateBrowserRepairMetadata({...browserMetadata,expected:{runId:browserRunId,controller,after:source.run.updated_at,candidateBranch}});
- const browserEvidence=await collectRecoveryEvidence(browserRunId,join(dir,'browser-'+browserRunId),{reuse,browserPackets:true});
+ const browserEvidence=await collectFiniteRecovery(browserRunId,join(dir,'browser-'+browserRunId),{reuse,browserPackets:true});
  assert(isDeepStrictEqual(browserMetadata,facts(browserEvidence)),'Browser metadata changed during byte download');
  const packets=bindings.map(({engine,artifact,identityArtifact})=>{
   const unitPacket=browserEvidence.parsed.get(artifact.name),identity=browserEvidence.parsed.get(identityArtifact.name);
@@ -173,7 +175,7 @@ export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,b
  let pdf=null;
  if(needsPdf){
   const pm=metadata(pdfRunId),binding=validatePdfRepairMetadata({...pm,expected:{runId:pdfRunId,verificationController:RETAINED_PDF_EXECUTION_CONTROLLER,after:source.run.updated_at}});
-  const evidence=await collectRecoveryEvidence(pdfRunId,join(dir,'pdf-'+pdfRunId),{reuse});assert(isDeepStrictEqual(pm,facts(evidence)),'PDF metadata changed during byte download');
+  const evidence=await collectFiniteRecovery(pdfRunId,join(dir,'pdf-'+pdfRunId),{reuse});assert(isDeepStrictEqual(pm,facts(evidence)),'PDF metadata changed during byte download');
   const packet=evidence.parsed.get(binding.artifact.name),unit=plan.units.find(u=>u.pdfTools);
   const required=[`unit-${unit.id}.json`,`${unit.id}-batch-0.json`,`health-before-${unit.id}.json`,'pdf-tools-setup.json','code-controller.json'].sort();
   assert(isDeepStrictEqual([...packet.keys()].sort(),required),'Complete closed PDF unit archive required');
@@ -183,7 +185,7 @@ export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,b
  const bm=metadata(buildRunId);validateRepairBuildMetadata({...bm,expected:{runId:buildRunId,controller,after:source.run.updated_at,candidateBranch}});
  validateRepairArchiveInventory(bm,new Set([BUILD_ARTIFACT,NEXT_APPLICATION_STATE]),()=> 'build');assert(bm.artifacts.some(a=>a.name===BUILD_ARTIFACT),'Mandatory fresh canonical build packet missing');
  // Main evidence directory names the replacement build's real producer, as the installer expects.
- const built=await collectRecoveryEvidence(buildRunId,dir,{reuse,includeRaw:true,prefetchDirectory:process.env.AIHR_REPAIR_BUILD_PREFETCH_DIR||undefined});assert(isDeepStrictEqual(bm,facts(built)),'Build metadata changed during download');
+ const built=await collectFiniteRecovery(buildRunId,dir,{reuse,includeRaw:true,prefetchDirectory:process.env.AIHR_REPAIR_BUILD_PREFETCH_DIR||undefined});assert(isDeepStrictEqual(bm,facts(built)),'Build metadata changed during download');
  if(built.parsed.has(NEXT_APPLICATION_STATE)){const files=built.rawParsed.get(NEXT_APPLICATION_STATE);assert(isDeepStrictEqual([...files.keys()].sort(),NEXT_APPLICATION_MEMBERS),'Application cache packet differs');
   const state=inspectNextStatePacket({files,run:built.run,job:built.jobs.find(j=>j.name==='build')});assert(state.producer.source===candidate&&state.producer.controller===controller,'Supplemental state source/controller differs');
  }

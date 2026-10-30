@@ -1,3 +1,4 @@
+import './finite-github-read.test.mjs';
 /** Actual GitHub transport/ZIP/extractor/source-assessment pipeline with a local API executable. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,7 +19,8 @@ test('real collector authenticates API/ZIP bytes, separates failure diagnostics,
  const stateFile=join(responses,'state.json'),state=()=>writeFileSync(stateFile,JSON.stringify({run:f.run,jobs:f.jobs,artifacts:f.artifacts}));state();
  for(const a of f.artifacts)writeFileSync(join(responses,String(a.id)+'.zip'),f.archives.get(a.name));
  writeFileSync(join(bin,'gh'),'#!'+process.execPath+'\n'+
-  'const fs=require("node:fs"),p=process.argv[3].split("?")[0],r=process.env.AIHR_FAKE_REPAIR_API,s=JSON.parse(fs.readFileSync(r+"/state.json"));if(p.endsWith("/artifacts"))process.stdout.write(JSON.stringify({artifacts:s.artifacts}));else if(p.endsWith("/jobs"))process.stdout.write(JSON.stringify({jobs:s.jobs}));else if(/artifacts\\/\\d+\\/zip$/.test(p))process.stdout.write(fs.readFileSync(r+"/"+p.split("/").at(-2)+".zip"));else process.stdout.write(JSON.stringify(s.run));\n',{mode:0o700});
+  'if(process.argv.includes("--include"))process.stdout.write("HTTP/2.0 200 OK\\r\\n\\r\\n");\n'+
+  'const fs=require("node:fs"),p=process.argv.at(-1).split("?")[0],r=process.env.AIHR_FAKE_REPAIR_API,s=JSON.parse(fs.readFileSync(r+"/state.json"));if(p.endsWith("/artifacts"))process.stdout.write(JSON.stringify({artifacts:s.artifacts}));else if(p.endsWith("/jobs"))process.stdout.write(JSON.stringify({jobs:s.jobs}));else if(/artifacts\\/\\d+\\/zip$/.test(p))process.stdout.write(fs.readFileSync(r+"/"+p.split("/").at(-2)+".zip"));else process.stdout.write(JSON.stringify(s.run));\n',{mode:0o700});
  const previousPath=process.env.PATH,previousApi=process.env.AIHR_FAKE_REPAIR_API;process.env.PATH=bin+':'+previousPath;process.env.AIHR_FAKE_REPAIR_API=responses;
  const assess=source=>assessResumeSource({...source,expectedPlan:f.expectedPlan,expected:f.expected,now});
  const producer=name=>name==='gate-plan'?'plan':name==='next-application-build-failure'?'build':name.startsWith('unit-browser-')?`browser (${name.slice('unit-browser-'.length)})`:`test (${name.slice('unit-'.length)})`;
@@ -93,7 +95,8 @@ test('Real history collector supplies old-created newly-completed failures and r
  const state={395777276:[row(3,'Canonical build only · repair')],999:[row(2,'Focused only · repair')],395862646:[row(4,'Tooling transport only · repair')]};
  const statePath=join(root,'state.json'),queries=join(root,'queries.txt'),saveState=()=>writeFileSync(statePath,JSON.stringify(state));saveState();
  writeFileSync(join(bin,'gh'),'#!'+process.execPath+'\n'+
-  'const fs=require("node:fs"),p=process.argv[3],root=process.env.AIHR_HISTORY_TEST_ROOT;fs.appendFileSync(root+"/queries.txt",p+"\\n");const id=p.match(/workflows\\/(\\d+)\\//)[1],s=JSON.parse(fs.readFileSync(root+"/state.json"));let rows=s[id];if(p.includes("created="))rows=rows.filter(r=>!r.created_at.startsWith("2020"));process.stdout.write(JSON.stringify({total_count:s.incomplete?rows.length+1:rows.length,workflow_runs:rows}));\n',{mode:0o700});
+  'if(process.argv.includes("--include"))process.stdout.write("HTTP/2.0 200 OK\\r\\n\\r\\n");\n'+
+  'const fs=require("node:fs"),p=process.argv.at(-1),root=process.env.AIHR_HISTORY_TEST_ROOT;fs.appendFileSync(root+"/queries.txt",p+"\\n");const id=p.match(/workflows\\/(\\d+)\\//)[1],s=JSON.parse(fs.readFileSync(root+"/state.json"));let rows=s[id];if(p.includes("created="))rows=rows.filter(r=>!r.created_at.startsWith("2020"));process.stdout.write(JSON.stringify({total_count:s.incomplete?rows.length+1:rows.length,workflow_runs:rows}));\n',{mode:0o700});
  const oldPath=process.env.PATH,oldRoot=process.env.AIHR_HISTORY_TEST_ROOT;process.env.PATH=bin+':'+oldPath;process.env.AIHR_HISTORY_TEST_ROOT=root;
  const input={source:{run:{id:1,display_title:'Alpha CI · repair',updated_at:'2026-10-30T02:00:00Z'}},focusedWorkflowId:999,candidateBranch:'repair',focusedRunIds:[2],buildRunId:3,browserRunId:4};
  try{
@@ -128,7 +131,8 @@ test('Actual complete history collector retains deleted-alias failures even with
  const row={id:2,display_title:'Focused only · codex/mobile-recovery-6bdd-01',head_sha:'controller',created_at:'2020-01-01T00:00:00Z',updated_at:'2026-10-30T02:30:00Z',status:'completed',conclusion:'failure',run_attempt:1};
  writeFileSync(join(root,'row.json'),JSON.stringify(row));
  writeFileSync(join(bin,'gh'),'#!'+process.execPath+'\n'+
-  'const fs=require("node:fs"),p=process.argv[3],row=JSON.parse(fs.readFileSync(process.env.AIHR_DELETED_ALIAS_ROOT+"/row.json")),rows=p.includes("workflows/999/")?[row]:[];process.stdout.write(JSON.stringify({total_count:rows.length,workflow_runs:rows}));\n',{mode:0o700});
+  'if(process.argv.includes("--include"))process.stdout.write("HTTP/2.0 200 OK\\r\\n\\r\\n");\n'+
+  'const fs=require("node:fs"),p=process.argv.at(-1),row=JSON.parse(fs.readFileSync(process.env.AIHR_DELETED_ALIAS_ROOT+"/row.json")),rows=p.includes("workflows/999/")?[row]:[];process.stdout.write(JSON.stringify({total_count:rows.length,workflow_runs:rows}));\n',{mode:0o700});
  const previous=process.env.PATH,old=process.env.AIHR_DELETED_ALIAS_ROOT;process.env.PATH=bin+':'+previous;process.env.AIHR_DELETED_ALIAS_ROOT=root;
  const input={source:{run:{id:1,display_title:'Alpha CI · repair',updated_at:'2026-10-30T02:00:00Z'}},focusedWorkflowId:999,candidateBranch:'repair',candidateRefs:[],focusedRunIds:[],buildRunId:3,browserRunId:4};
  try{

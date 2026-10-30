@@ -1,5 +1,6 @@
 /** Hosted immutable-source scheduling projection; never supplies passing test evidence. */
 import assert from 'node:assert/strict';
+import {finiteGithubJson,finiteGithubPages} from './finite-github-read.mjs';
 import {execFileSync} from 'node:child_process';
 import {writeFileSync} from 'node:fs';
 import {createPlan,hash} from './plan.mjs';
@@ -11,9 +12,9 @@ const [originalPath,candidatePath,output]=process.argv.slice(2),original='a16f0b
 const git=(path,...args)=>execFileSync('git',args,{cwd:path,encoding:'utf8'}).trim();
 assert(git(originalPath,'rev-parse','HEAD')===original&&git(candidatePath,'rev-parse','HEAD')===candidate,'Exact frozen source checkouts required');
 const verificationController=git(process.cwd(),'rev-parse','HEAD');validateFixtureRepairDelta({cwd:candidatePath,original,candidate});
-const api=path=>JSON.parse(execFileSync('gh',['api','repos/StradaverseHub/ai-hr/'+path],{encoding:'utf8',maxBuffer:32*1024**2}));
+const api=finiteGithubJson;
 const run=api('actions/runs/'+runId);assert(run.id===runId&&run.repository.id===1333414856&&run.workflow_id===395777276&&run.head_sha===controller&&run.run_attempt===1&&run.status==='completed'&&run.conclusion==='failure','Complete authenticated original failure required');
-const jobs=[];for(let page=1;page<=10;page++){const data=api(`actions/runs/${runId}/jobs?filter=all&per_page=100&page=${page}`);jobs.push(...data.jobs);if(data.jobs.length<100)break;if(page===10)throw Error('Job inventory exceeds bound');}
+const jobs=finiteGithubPages(`actions/runs/${runId}/jobs?filter=all`,'jobs');
 assert(jobs.every(j=>j.status==='completed'),'Original planned jobs must finish');
 process.env.AIHR_CI_CLASSIFIER_RUNTIME='native';
 const boundPlan=path=>{const local=createPlan(path),{fingerprint,...body}={...local,controller,migrationBase:controller};return {...body,fingerprint:hash(body)};};

@@ -18,8 +18,8 @@ const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}
 function pages(path,key){const rows=[];for(let page=1;page<=10;page++){const data=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${page}`);assert(Array.isArray(data[key]),'Missing API inventory');rows.push(...data[key]);if(data[key].length<100)return rows;}throw Error('Recovery API inventory exceeds bound');}
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024**2}).trim();
 const save=(dir,name,value)=>writeFileSync(join(dir,name),JSON.stringify(value,null,2)+'\n',{flag:'wx',mode:0o600});
-async function collect(runId,dir,{reuse=false,prefetchDirectory,includeRaw=false,repairPackets=false,browserPackets=false,compilerPackets=false,fixturePackets=false}={}){
- const run=api(`actions/runs/${runId}`),jobs=pages(`actions/runs/${runId}/jobs?filter=all`,'jobs'),artifacts=pages(`actions/runs/${runId}/artifacts`,'artifacts');
+async function collect(runId,dir,{reuse=false,prefetchDirectory,includeRaw=false,repairPackets=false,browserPackets=false,compilerPackets=false,fixturePackets=false,apiRead=api,apiPages=pages}={}){
+ const run=apiRead(`actions/runs/${runId}`),jobs=apiPages(`actions/runs/${runId}/jobs?filter=all`,'jobs'),artifacts=apiPages(`actions/runs/${runId}/artifacts`,'artifacts');
  assert(run.id===runId&&run.status==='completed'&&run.run_attempt===1&&['success','failure'].includes(run.conclusion),'Incomplete/foreign/rerun recovery input');
  if(!reuse){mkdirSync(dir,{recursive:true,mode:0o700});save(dir,'run.json',run);save(dir,'jobs.json',jobs);save(dir,'artifacts.json',artifacts);save(dir,'archive-downloads.json',await downloadCiArchives(artifacts,dir,{prefetchDirectory}));}
  const archives=new Map(),parsed=new Map(),rawParsed=new Map(),temporary=reuse?mkdtempSync(join(tmpdir(),'aihr-recovery-read-')):null;
