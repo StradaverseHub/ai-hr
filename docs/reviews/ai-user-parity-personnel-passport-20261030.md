@@ -15,3 +15,13 @@ The browser has separate input consent and confirmation consent, displays every 
 Authored (UNRUN) evidence covers no-write preparation; canonical trim/uppercase; exact sibling/DOB preservation; stored-nationality clear/incomplete rules; profile/nationality/company/config staleness; identity/personnel visibility before private reads/decryption and independence from bank/pay/statutory visibility; unsupported country/missing profile; current/forged/self/tenant principal refusal; native failure/atomic rollback; historical/forged-current proof; same-person alternate event employment; concurrent/replayed same-ID outcomes; retained-company membership/identity/Workforce denials; expiry/grant loss; exhaustive role adapters; actual HTTP/browser transport, separate confirmation/uncertain recovery and six-locale renderer fixtures.
 
 No tests, compiler, build, DB, dev server or local application execution was run. Only source/static diff and manifest generation are authorized here. Runtime acceptance requires parent review and exact-SHA hosted checks. Migration0722 / idx703 / when1793330000051 is an unapplied PROVISIONAL source claim, with0720/0721 reserved to sibling packages and absent from this isolated base. Reconcile order above the then-accepted live ledger at integration freeze; no installation priority or release authority. Historical SQL bytes are preserved. Parent repair0506e5a is not included: its unrelated bank/creation changes remain parent-owned. The service-member types mirror the parent's finite union and add only `statutory.setPassport`; composition must keep all three exact members and the derived publicMember type. No push, CI, PR, protected-ref move, merge, credentials, live HR action or deployment was performed. Release hold persists.
+
+Nullable actor custody amendment (source only): this provisional migration extends the original
+actor/subject scope CHECK for this exact action only. A current authorized USER may have no PERSON;
+employment/company stay required and all testing columns stay null. The entire predecessor predicate
+is retained in ELSE; subject-person, no-self, current principal, permission and receipt proofs remain.
+Authored unrun fixtures use two actual app_user rows with personId:null, contrast the native owner in
+a rolled-back outer transaction, then prepare/reopen/confirm/replay the real encrypted ledger. They
+assert nullable actor versus nonnull true subject, exact user ownership, sealed-body presence/retirement,
+foreign-login refusal, one native event and stale/fresh-self refusal after actor relinking.
+No tests, collection, compiler, database, build or server were run for this amendment.
