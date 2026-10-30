@@ -17,7 +17,7 @@ export async function saveFormulaAction(input:{id?:string;expectedRevisionId?:st
  return execute(async()=>{const ctx=await getSession();const saved=await savePayFormula(ctx,{id:input.id,expectedRevisionId:input.expectedRevisionId,formulaId:input.formulaId,description:input.description,method:input.method,source:input.source});revalidatePath(PAGE);revalidatePath(PAGE+'/'+saved.id);const formula=await getPayFormula(ctx,saved.id);if(!formula){const t=await getTranslations('payFormula');throw new PayFormulaError(t('savedUnavailable'));}return formula;});
 }
 export async function testFormulaAction(input:{id:string;revisionId:string;context:PayFormulaContext}){
- return execute(async()=>{const ctx=await getSession();const context={companyId:input.context.companyId,employmentId:input.context.employmentId,period:input.context.period,cycleId:input.context.cycleId,asOf:input.context.asOf,currentCode:input.context.currentCode,input:input.context.input};const test=await testPayFormula(ctx,{id:input.id,revisionId:input.revisionId,context});const formula=await getPayFormula(ctx,input.id);revalidatePath(PAGE);return {test,formula};});
+ return execute(async()=>{const ctx=await getSession();const context={companyId:input.context.companyId,employmentId:input.context.employmentId,period:input.context.period,cycleId:input.context.cycleId,asOf:input.context.asOf,currentCode:input.context.currentCode,input:input.context.input,...(input.context.batchId?{batchId:input.context.batchId}:{})};const test=await testPayFormula(ctx,{id:input.id,revisionId:input.revisionId,context});const formula=await getPayFormula(ctx,input.id);revalidatePath(PAGE);return {test,formula};});
 }
 export async function formulaStateAction(input:{id:string;revisionId?:string;testId?:string;active:boolean}){
  return execute(async()=>{const ctx=await getSession();await setPayFormulaActive(ctx,{id:input.id,revisionId:input.revisionId,testId:input.testId,active:input.active});revalidatePath(PAGE);revalidatePath(PAGE+'/'+input.id);return await getPayFormula(ctx,input.id);});
@@ -31,3 +31,5 @@ export async function saveAccumulationAction(input:{code:string;members:string[]
 export async function searchFormulaEmployeesAction(input:{query:string;companyId:string}){
  return execute(async()=>{const {searchPayFormulaEmployees}=await import('@/packs/payroll/service');return await searchPayFormulaEmployees(await getSession(),input.query,input.companyId);});
 }
+
+export async function listFormulaBatchesAction(input:{companyId:string;period:string;cycleId:string}){return execute(async()=>{const {listPayFormulaBatches}=await import('@/packs/payroll/service');return listPayFormulaBatches(await getSession(),input);});}

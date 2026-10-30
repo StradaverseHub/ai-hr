@@ -10,7 +10,7 @@ import {lockPayComponentCatalogTx} from './pay-component-catalog-lock';
 import {parsePayFormula,printPayFormula,analyzePayFormula,PAY_FORMULA_EVALUATOR_VERSION,type FormulaProgram} from '../lib/pay-formula-language';
 import {PAY_FORMULA_REGISTRY_VERSION} from '../lib/pay-formula-registry';
 import {PayFormulaError,type ActiveFormula,type PayFormulaContext,type PayFormulaView,type PayFormulaRevision,type PayFormulaTest,type FormulaReadRequirements} from '../lib/pay-formula-model';
-import {planResolutionOrder,isStatutoryComponent,payRuleDependencies,payRuleReadsFixedAllowanceTotal,isFixedAllowanceComponent,type PayRule,type PayRuleCatalogNode} from './pay-rule';
+import {planResolutionOrder,isStatutoryComponent,payRuleDependencies,payRuleReadsFixedAllowanceTotal,payItemFeedsOvertimeOrp,type PayRule,type PayRuleCatalogNode} from './pay-rule';
 import {simulatePayFormulaTx,formulaReadRequirementsAllowedTx} from './pay-formula-runtime';
 const uuid=/^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;
 const code=(v:string)=>{const n=v?.trim().toUpperCase();if(!n||!/^[A-Z][A-Z0-9_]{0,63}$/.test(n))throw new PayFormulaError('Enter an ID starting with a letter, using up to 64 letters, digits or underscores.');return n;};
@@ -42,13 +42,13 @@ async function dependenciesTx(tx:Tx,ctx:SessionContext,program:FormulaProgram){
 async function dependencySnapshotTx(tx:Tx,ctx:SessionContext,program:FormulaProgram,selfId?:string){
  const analysis=analyzePayFormula(program),groups=await loadFormulaAccumulationGroupsTx(tx,ctx),codes=new Set(analysis.dependencies.filter(d=>d.kind!=='accumulation').map(d=>d.code.toUpperCase()));
  const selectedGroups=groups.filter(g=>analysis.dependencies.some(d=>d.kind==='accumulation'&&d.code.toUpperCase()===g.code));for(const g of selectedGroups)for(const member of g.members)codes.add(member);
- const rows=await tx.execute<{id:string;code:string;kind:string;rule:Record<string,unknown>|null;prorates:boolean;roundingMode:string;archivedAt:unknown}>(sql`select id,code,kind,rule as rule,prorates,formula_context as "formulaContext",rounding_method as "roundingMode",archived_at as "archivedAt" from pay_component where tenant_id=${ctx.tenantId}::uuid order by code`);
+ const rows=await tx.execute<{id:string;code:string;kind:string;rule:Record<string,unknown>|null;prorates:boolean;orpOvertime:boolean;roundingMode:string;archivedAt:unknown}>(sql`select id,code,kind,rule as rule,prorates,orp_overtime as "orpOvertime",formula_context as "formulaContext",rounding_method as "roundingMode",archived_at as "archivedAt" from pay_component where tenant_id=${ctx.tenantId}::uuid order by code`);
  const outputCodes=new Set(analysis.dependencies.filter(d=>['calculated','unprorated'].includes(d.kind)).map(d=>d.code.toUpperCase()));for(const g of selectedGroups)for(const member of g.members)outputCodes.add(member);
  const relevantFormulas=new Set<string>(),queue=[...outputCodes];
  for(let i=0;i<queue.length;i++){
   if(i>1000)throw new PayFormulaError('Formula dependency graph is too large.');const row=rows.find(r=>r.code.toUpperCase()===queue[i]);if(!row)continue;
   const rule=row.rule as PayRule|null;if(rule?.kind==='formula_builder'&&rule.formulaId!==selfId)relevantFormulas.add(rule.formulaId);
-  const dependencies=payRuleDependencies(rule);if(payRuleReadsFixedAllowanceTotal(rule))dependencies.push(...rows.filter(r=>isFixedAllowanceComponent(r.code,r.kind,r.rule as PayRule|null)).map(r=>r.code));
+  const dependencies=payRuleDependencies(rule);if(payRuleReadsFixedAllowanceTotal(rule))dependencies.push(...rows.filter(r=>r.code.toUpperCase()!==row.code.toUpperCase()&&!r.archivedAt&&payItemFeedsOvertimeOrp(r.code,r.kind,r.rule as PayRule|null,r.orpOvertime)).map(r=>r.code));
   for(const raw of dependencies){const dependency=raw.toUpperCase();if(!outputCodes.has(dependency)){outputCodes.add(dependency);codes.add(dependency);queue.push(dependency);}}
  }
  const catalog=rows.filter(r=>codes.has(r.code.toUpperCase())).map(r=>({...r,rule:r.rule?.kind==='formula_builder'&&r.rule.formulaId===selfId?{...r.rule,dependencies:undefined}:r.rule}));
@@ -106,7 +106,7 @@ export async function saveFormulaAccumulationGroup(ctx:SessionContext,p:{code:st
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'pay-formula-accumulation',aggregateId:id,eventType:'pay-formula.accumulation.saved',actor:actorOf(ctx),payload:{code:n,members,previousVersionId:last?.id??null}});return {id};
  });}
 export async function bindPayFormulaRuleTx(tx:Tx,ctx:SessionContext,rule:{kind:'formula_builder';formulaId:string;dependencies:string[];context?:{ordinaryRate?:string;hoursPerDay?:string;rate?:string}}){
- const active=await loadActiveFormulaProgramTx(tx,ctx,rule.formulaId);return {kind:'formula_builder' as const,formulaId:active.formulaId,dependencies:active.dependencies};
+ assertModuleGate(ctx,'typed_pay_components');const active=await loadActiveFormulaProgramTx(tx,ctx,rule.formulaId);return {kind:'formula_builder' as const,formulaId:active.formulaId,dependencies:active.dependencies};
 }
 export async function recordPayFormulaLinkTx(tx:Tx,ctx:SessionContext,p:{formulaId:string;componentId:string}){
  const active=await loadActiveFormulaProgramTx(tx,ctx,p.formulaId);const [seen]=await tx.execute(sql`select 1 from pay_formula_event where formula_id=${active.id}::uuid and component_id=${p.componentId}::uuid and kind='linked' limit 1`);if(!seen)await event(tx,ctx,{id:active.id,kind:'linked',revisionId:active.revisionId,componentId:p.componentId});
@@ -141,4 +141,9 @@ export async function payFormulaOptions(ctx:SessionContext){return withTenant(ct
  await authority(tx,ctx);const companies=await tx.execute<{id:string;name:string}>(sql`select id,legal_name as name from company where tenant_id=${ctx.tenantId}::uuid and archived_at is null and app.can_admin_payroll_for(id) order by legal_name`),employees=await tx.execute<{id:string;companyId:string;code:string;name:string}>(sql`select e.id,e.company_id as "companyId",coalesce(e.employee_code,'') as code,p.full_name as name from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.tenant_id=${ctx.tenantId}::uuid and app.can_admin_payroll_for(e.company_id) and app.access_workforce_employment(e.id,'workforce.view') order by e.employee_code,e.id limit 50`),cycles=await tx.execute<{id:string;companyId:string;code:string;label:string}>(sql`select id,company_id as "companyId",coalesce(code,id::text) as code,name as label from payroll_cycle where tenant_id=${ctx.tenantId}::uuid and archived_at is null and app.can_admin_payroll_for(company_id) order by code`),payItems=await tx.execute<{code:string;name:string}>(sql`select code,name from pay_component where tenant_id=${ctx.tenantId}::uuid and archived_at is null and kind<>'contribution' order by code`),formulas=await tx.execute<{formulaId:string}>(sql`select formula_id as "formulaId" from pay_formula where tenant_id=${ctx.tenantId}::uuid order by formula_id`),activeFormulas:{id:string;formulaId:string;description:string;revisionId:string;dependencies:string[]}[]=[];
  for(const f of formulas){try{const a=await loadActiveFormulaProgramTx(tx,ctx,f.formulaId);const [r]=await tx.execute<{description:string}>(sql`select description from pay_formula_revision where id=${a.revisionId}::uuid`);activeFormulas.push({id:a.id,formulaId:a.formulaId,revisionId:a.revisionId,description:r.description,dependencies:a.dependencies});}catch(e){if(!(e instanceof PayFormulaError))throw e;}}
  return {companies,employees,cycles,payItems:payItems.filter(p=>!isStatutoryComponent(p.code)),activeFormulas,accumulations:await loadFormulaAccumulationGroupsTx(tx,ctx),capabilities:{view:true,edit:true,test:true,activate:true,deactivate:true,delete:true}};
+ });}
+
+export async function listPayFormulaBatches(ctx:SessionContext,p:{companyId:string;period:string;cycleId:string}){return withTenant(ctx,async tx=>{
+ if(!uuid.test(p.companyId)||!uuid.test(p.cycleId)||!/^\d{4}-(0[1-9]|1[0-2])$/.test(p.period))throw new PayFormulaError('Choose a company, period and payroll cycle.');await authority(tx,ctx,p.companyId);
+ const rows=await tx.execute<{id:string;runSeq:number;status:string}>(sql`select id,run_seq as "runSeq",status from payroll_batch where tenant_id=${ctx.tenantId}::uuid and company_id=${p.companyId}::uuid and pay_period=${p.period} and payroll_cycle_id=${p.cycleId}::uuid order by run_seq,id limit 1001`);if(rows.length>1000)throw new PayFormulaError('Too many matching payroll runs. Narrow the selected period and cycle.');return rows;
  });}

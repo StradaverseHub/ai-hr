@@ -430,6 +430,7 @@ export const STATUTORY_RELEVANT_FIELDS = [
   'prorates',
   'roundingMethod',
   'rule',
+  'formulaContext',
   'pendingInputKind',
   'epfBonus2012',
   'pcbRemunerationType',
@@ -836,7 +837,12 @@ function payComponentCreateValues(ctx:SessionContext,p:PayComponentInput,prepare
 async function preparePayComponentWriteTx(tx:Tx,ctx:SessionContext,p:PayComponentInput,options:{ createOnly?: boolean; updateOnly?: boolean; archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean; returnCreatedEventId?: boolean }) {
     await lockPayComponentCatalogTx(tx,ctx);
     const candidate = ruleOf(p);
-    const rule = candidate?.kind==='formula_builder' ? await bindPayFormulaRuleTx(tx,ctx,candidate) : candidate;
+    if(candidate?.kind==='formula_builder'&&p.code.trim().toUpperCase()==='BASIC')throw new PayRuleInvalidError('BAD_KIND');
+    // Retain a byte-identical inactive link for ordinary metadata/settings maintenance. Only a NEW
+    // or changed link must obtain today's active tested revision; the kernel still refuses inactive use.
+    const [stored]=candidate?.kind==='formula_builder'?await tx.select({rule:payComponent.rule}).from(payComponent).where(and(eq(payComponent.tenantId,ctx.tenantId),eq(payComponent.code,p.code.trim().toUpperCase()))).limit(1):[];
+    const unchanged=stored?.rule?.kind==='formula_builder'&&candidate?.kind==='formula_builder'&&stored.rule.formulaId===candidate.formulaId&&JSON.stringify([...stored.rule.dependencies].sort())===JSON.stringify([...candidate.dependencies].sort());
+    const rule = unchanged ? stored.rule : candidate?.kind==='formula_builder' ? await bindPayFormulaRuleTx(tx,ctx,candidate) : candidate;
     if (p.pendingInputKind != null && (!PENDING_PAY_INPUT_KINDS.includes(p.pendingInputKind) || rule != null))
       throw new PayComponentInputError([{ field: 'inputKind', code: 'invalidPendingCalculation' }]);
     if ((p.pendingInputKind === 'per_day' || p.pendingInputKind === 'per_hour') && p.prorates)
@@ -911,7 +917,7 @@ async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponent
         .returning({ id: payComponent.id });
       id = row.id;
     }
-    if(rule?.kind==='formula_builder')await recordPayFormulaLinkTx(tx,ctx,{formulaId:rule.formulaId,componentId:id});
+    if(rule?.kind==='formula_builder'&&!(existing?.rule?.kind==='formula_builder'&&existing.rule.formulaId===rule.formulaId))await recordPayFormulaLinkTx(tx,ctx,{formulaId:rule.formulaId,componentId:id});
     // 61bf109d — RECORD the resolution order for the whole catalog now that the graph has changed. It is
     // recomputed rather than patched because one edited rule can re-rank items that were not touched, and
     // it is written INSIDE the same transaction as the rule, so the order and the rule it was derived from
