@@ -41,7 +41,7 @@ async function review(tx:Tx,ctx:SessionContext,human:Human){
 export const preparePassportMaintenanceSourceTx=review;
 export async function confirmPassportMaintenanceSourceTx(tx:Tx,ctx:SessionContext,human:Human,expected:string){
  const current=await review(tx,ctx,human);if(current.reviewedDigest!==expected)return fail();const s=await subject(tx,ctx,human.employmentId),pack=requirePackFor(s.country);
- const row=await pack.statutory.setPassport(ctx,{personId:s.subjectId,...current.review.after},tx);
+ const row=await pack.statutory.setPassport(ctx,{personId:s.subjectId,employmentId:human.employmentId,...current.review.after},tx);
  const events=await tx.execute<{eventId:string}>(sql`select d.id as "eventId" from domain_event d join employment e on e.id=d.subject_employment_id and e.tenant_id=d.tenant_id where d.tenant_id=${ctx.tenantId}::uuid and d.aggregate_type='employee-statutory' and d.aggregate_id=${row.id}::uuid and e.person_id=${human.subjectId}::uuid and d.event_type='employee.passport.updated' and d.actor_type='user' and d.actor_id=${ctx.userId}::uuid and d.xmin=pg_current_xact_id()::xid`);
  if(events.length!==1)return fail();const eventId=events[0].eventId;return{eventId,receipt:await reconcilePassportMaintenanceSourceTx(tx,ctx,{subjectId:human.subjectId,employmentId:human.employmentId,eventId})};
 }

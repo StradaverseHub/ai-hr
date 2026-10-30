@@ -1732,6 +1732,7 @@ async function applyPassportSection(
   if (!pack) throw new Error('No localization pack for MY');
   await pack.statutory.setPassport(s, {
     personId: String(formData.get('personId')),
+    employmentId:String(formData.get('employmentId')),
     passportNumber: (formData.get('passportNumber') as string) || null,
     passportIssueDate: (formData.get('passportIssueDate') as string) || null,
     passportExpiryDate: (formData.get('passportExpiryDate') as string) || null,

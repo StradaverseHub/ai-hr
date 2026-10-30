@@ -598,7 +598,7 @@ function normalizedBankValuesMY(p:BankInput){
     customHolderId: enableId ? holderId : null,
   };
 }
-/** Interactive bank writes retain the native HR floor and join the shared-person Workforce owner.
+/** Interactive partial bank/passport writes retain the native HR floor and join the shared-person Workforce owner.
  * No-user provisioning retains its existing RLS/service behavior. A genuine unlinked USER still
  * takes every interactive check: absence of PERSON is never treated as a system principal. */
 async function statutoryMaintenanceSubjectMYTx(tx:Tx,ctx:SessionContext,p:{personId:string;employmentId?:string}){
@@ -1065,6 +1065,8 @@ export class PassportRequiredError extends Error {
 
 export type PassportInput = {
   personId: string;
+  /** Optional nomination; native authority and true ownership are rechecked in the same transaction. */
+  employmentId?:string;
   passportNumber?: string | null;
   passportIssueDate?: string | null;
   passportExpiryDate?: string | null;
@@ -1117,13 +1119,18 @@ export function validatePassportProfileMY(p:PassportInput,nationality:string|nul
  const values=normalizedPassportValuesMY(p),trioComplete=Boolean(values.passportNumber&&values.passportIssueDate&&values.passportExpiryDate),anyFieldPresent=Object.values(values).some(Boolean);
  return trioComplete||(isMalaysianNationality(nationality)&&!anyFieldPresent);
 }
+/** Passport editor admission metadata only; the SAME native guard reads no government-ID fields. */
+export async function canMaintainPassportProfileMY(supplied:SessionContext,p:{personId:string;employmentId:string}):Promise<boolean>{
+ const ctx=captureStatutoryContext(supplied);p=structuredClone(p);
+ try{return await withTenant(ctx,async tx=>{await statutoryMaintenanceSubjectMYTx(tx,ctx,p);return true;});}catch{return false;}
+}
 export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput,
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
   outerTx?: Tx) {
   ctx=captureStatutoryContext(ctx);p=structuredClone(p);
   const values=normalizedPassportValuesMY(p),anyFieldPresent=Object.values(values).some(Boolean);
   const run = async (tx:Tx) => {
-    await statutoryWriteIntervalMYTx(tx,ctx);
+    await statutoryMaintenanceSubjectMYTx(tx,ctx,p);
     // Nationality is derived from the person RECORD inside the same RLS tx — never from the caller.
     const [subject] = await tx
       .select({ nationality: person.nationality })

@@ -412,6 +412,7 @@ export interface CountryPack {
     setIc: MyStatutoryModule['setIcProfileMY'];
     canApplyIcChange:MyStatutoryModule['canApplyIcProfileChangeMY'];
     setPassport: MyStatutoryModule['setPassportProfileMY'];
+    passportEditAccess?:MyStatutoryModule['canMaintainPassportProfileMY'];
     /** Minimal six-field, existing-profile local human review. */
     reviewedPassport?:{read:MyStatutoryModule['readReviewedPassportMYTx'];prepare:MyStatutoryModule['prepareReviewedPassportMYTx']};
     validatePassport:MyStatutoryModule['validatePassportProfileMY'];
