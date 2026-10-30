@@ -891,15 +891,16 @@ export function Sidebar({
       if (isCollapsible(r)) {
         const kids = r.children.filter(canSeeChild).filter((c) => !c.disabled);
         const parent = t(r.labelKey);
+        const parentHref = r.defaultHref ?? (kids[0] ? kids[0].navigationHref ?? kids[0].href : null);
         const activeKid = kids.filter((c) => isRowActive(c))
           .sort((a, b) => b.href.split('?')[0].length - a.href.split('?')[0].length)[0];
         for (const c of kids) {
-          const entry = { href: c.navigationHref ?? c.href, label: t(c.labelKey), section, parent };
+          const entry = { href: c.navigationHref ?? c.href, label: t(c.labelKey), section, parent, parentHref };
           navEntries.push(entry);
           if (!activeEntry && c === activeKid) activeEntry = entry;
         }
       } else if (!r.disabled) {
-        const entry = { href: r.navigationHref ?? r.href, label: t(r.labelKey), section, parent: null };
+        const entry = { href: r.navigationHref ?? r.href, label: t(r.labelKey), section, parent: null, parentHref: null };
         navEntries.push(entry);
         if (!activeEntry && isRowActive(r)) activeEntry = entry;
       }

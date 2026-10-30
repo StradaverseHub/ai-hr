@@ -36,7 +36,7 @@ describe('login presentation', () => {
     wrap(<LoginShell presentation={{ ...DEFAULT_LOGIN_PRESENTATION, mediaType: 'image', mediaUrl: 'https://example.test/welcome.png', alt: 'Fictional workspace' }}>Form</LoginShell>);
     fireEvent.error(screen.getByRole('img', { name: 'Fictional workspace' }));
     expect(screen.queryByRole('img')).toBeNull();
-    expect(screen.getByText(en.loginPresentation.people)).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: en.loginTour.label })).toBeInTheDocument();
   });
   it('keeps GIF motion stopped until chosen and lets the visitor stop it', async () => {
     wrap(<LoginShell presentation={{ ...DEFAULT_LOGIN_PRESENTATION, mediaType: 'gif', mediaUrl: 'https://example.test/welcome.gif', alt: 'Fictional animation' }}>Form</LoginShell>);

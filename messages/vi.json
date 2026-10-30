@@ -13383,6 +13383,7 @@
     "live": "Trực tiếp",
     "scope": "Phạm vi",
     "breadcrumb": "Đường dẫn",
+    "details": "Chi tiết",
     "homePreferences": "Tùy chọn trang chủ"
   },
   "components": {
@@ -28655,10 +28656,6 @@
   "loginPresentation": {
     "headline": "Con người. Công việc. Cùng một nơi.",
     "description": "Nhân sự, nghỉ phép, chấm công và tiền lương — trong AIHR.",
-    "people": "Nhân sự & tổ chức",
-    "work": "Nghỉ phép & chấm công",
-    "growth": "Hiệu suất & phát triển",
-    "topicsLabel": "Không gian nhân sự",
     "footer": "AIHR · Không gian làm việc cho nhân sự",
     "welcome": "Chào mừng trở lại",
     "signInSubtitle": "Đăng nhập AIHR",
@@ -28673,9 +28670,9 @@
     "getHelp": "Gặp khó khăn khi đăng nhập? Nhận trợ giúp",
     "getHelpBody": "Liên hệ quản trị viên nhân sự để lấy mã tổ chức và tên đăng nhập. Dùng “Quên mật khẩu?” để khôi phục tài khoản.",
     "settingsTitle": "Giao diện đăng nhập & trình duyệt",
-    "settingsDescription": "Chọn hình ảnh, GIF hoặc video hiển thị bên trái trang đăng nhập.",
+    "settingsDescription": "Hiển thị phần tham quan tương tác, hoặc chọn hình ảnh, GIF hay video của riêng bạn cho bên trái trang đăng nhập.",
     "mediaType": "Nội dung chào mừng",
-    "none": "Chào mừng mặc định",
+    "none": "Tham quan tương tác (mặc định)",
     "image": "Hình ảnh",
     "gif": "GIF động",
     "video": "Video",
@@ -28695,6 +28692,56 @@
     },
     "iconUrl": "URL biểu tượng trình duyệt",
     "iconHelp": "Dùng liên kết HTTPS trực tiếp tới PNG hoặc ICO vuông, nên là 32×32 hoặc 48×48 pixel. Để trống để dùng biểu tượng AIHR. Có thể cần tải lại trang để cập nhật biểu tượng đã lưu."
+  },
+  "loginTour": {
+    "label": "Tham quan trợ lý AIHR",
+    "roleDescription": "bản trình diễn tương tác",
+    "title": "Trợ lý AIHR · sẵn sàng hỗ trợ",
+    "pause": "Tạm dừng",
+    "play": "Phát",
+    "topicsLabel": "Chủ đề tham quan",
+    "you": "Bạn",
+    "typing": "Trợ lý đang soạn",
+    "again": "Xem lại",
+    "leave": {
+      "topic": "Nghỉ phép & chấm công",
+      "open1": "Chào buổi sáng. Năm nay bạn còn 9 ngày phép năm.",
+      "pickA1": "Nghỉ thứ Sáu",
+      "pickA1Reply": "Tôi đã chuẩn bị đơn nghỉ phép năm một ngày cho thứ Sáu. Bạn sẽ còn 8 ngày.",
+      "pickB1": "Tuần này ai vắng?",
+      "pickB1Reply": "Tuần này có hai người trong nhóm bạn nghỉ phép. Thứ Sáu vẫn đủ người.",
+      "open2": "Gửi đơn nghỉ thứ Sáu cho quản lý của bạn nhé?",
+      "pickA2": "Gửi",
+      "pickA2Reply": "Đã gửi. Tôi sẽ báo ngay khi quản lý của bạn quyết định.",
+      "pickB2": "Để sau",
+      "pickB2Reply": "Không sao. Chưa có gì được gửi."
+    },
+    "pay": {
+      "topic": "Lương & hoàn ứng",
+      "open1": "Phiếu lương mới nhất của bạn đã sẵn sàng. Lương thực nhận cao hơn tháng trước.",
+      "pickA1": "Vì sao cao hơn?",
+      "pickA1Reply": "Phiếu lương này đã bao gồm giờ làm thêm được duyệt của bạn.",
+      "pickB1": "Mở phiếu lương",
+      "pickB1Reply": "Đây là thu nhập, khoản khấu trừ và khoản đóng góp, từng dòng một.",
+      "open2": "Yêu cầu hoàn ứng công tác tuần trước của bạn vẫn là bản nháp. Gửi ngay?",
+      "pickA2": "Gửi yêu cầu",
+      "pickA2Reply": "Đã gửi cho quản lý của bạn phê duyệt.",
+      "pickB2": "Để sau",
+      "pickB2Reply": "Được. Nó vẫn nằm trong bản nháp cho đến khi bạn sẵn sàng."
+    },
+    "growth": {
+      "topic": "Hiệu suất & phát triển",
+      "open1": "Đánh giá giữa năm của bạn đến hạn trong 5 ngày. Ba trong bốn mục tiêu đang đúng tiến độ.",
+      "pickA1": "Soạn tự đánh giá",
+      "pickA1Reply": "Đây là bản nháp từ cập nhật mục tiêu của bạn. Hãy chỉnh sửa bằng lời của chính bạn trước khi gửi.",
+      "pickB1": "Xem mục tiêu",
+      "pickB1Reply": "Ba mục tiêu đúng tiến độ. Mục tiêu khảo sát khách hàng cần chú ý.",
+      "open2": "Có một khóa học phù hợp kế hoạch phát triển của bạn: Coaching for results. Thêm vào?",
+      "pickA2": "Thêm",
+      "pickA2Reply": "Đã thêm vào kế hoạch. Quản lý sẽ thấy trong buổi trao đổi tới.",
+      "pickB2": "Để sau",
+      "pickB2Reply": "Đã lưu trong gợi ý để xem sau."
+    }
   },
   "ownLeaveReview": {
     "title": "Bản xem lại đơn nghỉ đã lưu",

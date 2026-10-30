@@ -193,6 +193,10 @@ export default async function MyRequestStatusPage({
             );
           })}
         </div>
+        {/* No pager over a refused list: its total would be 0 beside a sentence saying there are hundreds. */}
+        {refusal == null ? (
+          <Pager basePath="/attendance/request-status" params={{ status: sp.status }} state={reqPage.state} />
+        ) : null}
         {/* REFUSED, NOT SLICED. `maNoRequests` says "you have not filed any" and would be a lie here: the
             reader has MORE than this screen shows, not none. The status pills above stay drawn, because
             narrowing by one of them is the way out — the status is part of the query now. */}
@@ -328,10 +332,6 @@ export default async function MyRequestStatusPage({
             </ul>
           </>
         )}
-        {/* No pager over a refused list: its total would be 0 beside a sentence saying there are hundreds. */}
-        {refusal == null ? (
-          <Pager basePath="/attendance/request-status" params={{ status: sp.status }} state={reqPage.state} />
-        ) : null}
       </Card>
     </div>
   );

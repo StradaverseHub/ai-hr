@@ -561,6 +561,7 @@ export default async function PeoplePage({
       )}
 
       <Card className="overflow-hidden" data-tour="people-table">
+        {pager}
         {/* The table can now carry up to sixteen columns, so it scrolls INSIDE its card rather than
             pushing the page sideways — the same rule the full-width change (c002b3c3) was careful about. */}
         <div className="overflow-x-auto">
@@ -639,7 +640,6 @@ export default async function PeoplePage({
             </tbody>
           </table>
         </div>
-        {pager}
       </Card>
 
     </div>

@@ -156,7 +156,7 @@ export function Tp1DeclarationsList({ rows, compactOnMobile=false }: { rows: Tp1
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-border">
         <input
           type="search"
           value={query}
@@ -168,7 +168,8 @@ export function Tp1DeclarationsList({ rows, compactOnMobile=false }: { rows: Tp1
         <span className="text-xs text-muted-foreground">{t('history.nShown', { count: sorted.length })}</span>
       </div>
 
-      <div className={`overflow-x-auto border-t border-border ${compactOnMobile?'hidden md:block':''}`}>
+      <ClientPager state={state} paramNames={{ page: 'dPage', size: 'dSize' }} />
+      <div className={`overflow-x-auto ${compactOnMobile?'hidden md:block':''}`}>
         <table className="w-full min-w-[640px] text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
@@ -243,7 +244,6 @@ export function Tp1DeclarationsList({ rows, compactOnMobile=false }: { rows: Tp1
         </article>)}
         {pageRows.length===0&&<p className="p-6 text-center text-sm text-muted-foreground">{t(rows.length===0?'history.empty':'history.noMatches')}</p>}
       </div>}
-      <ClientPager state={state} paramNames={{ page: 'dPage', size: 'dSize' }} />
     </div>
   );
 }

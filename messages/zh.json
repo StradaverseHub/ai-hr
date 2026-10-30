@@ -13383,6 +13383,7 @@
     "live": "实时",
     "scope": "范围",
     "breadcrumb": "面包屑导航",
+    "details": "详情",
     "homePreferences": "首页偏好设置"
   },
   "components": {
@@ -28655,10 +28656,6 @@
   "loginPresentation": {
     "headline": "员工、工作，尽在一处。",
     "description": "人员、假勤与薪资，在 AIHR 一站管理。",
-    "people": "人员与组织",
-    "work": "假期与考勤",
-    "growth": "绩效与发展",
-    "topicsLabel": "人力资源工作区",
     "footer": "AIHR · 为员工打造的工作空间",
     "welcome": "欢迎回来",
     "signInSubtitle": "登录 AIHR",
@@ -28673,9 +28670,9 @@
     "getHelp": "登录遇到问题？获取帮助",
     "getHelpBody": "请联系人力资源管理员获取组织代码和用户名。如需恢复现有账户，请使用“忘记密码”。",
     "settingsTitle": "登录页与浏览器外观",
-    "settingsDescription": "选择登录页左侧显示的图片、GIF 或视频。",
+    "settingsDescription": "显示互动导览，或为登录页面左侧选择您自己的图片、GIF 或视频。",
     "mediaType": "欢迎媒体",
-    "none": "默认欢迎页",
+    "none": "互动导览（默认）",
     "image": "图片",
     "gif": "GIF 动画",
     "video": "视频",
@@ -28695,6 +28692,56 @@
     },
     "iconUrl": "浏览器图标链接",
     "iconHelp": "使用正方形 PNG 或 ICO 文件的直接 HTTPS 链接，建议尺寸为 32×32 或 48×48 像素。留空使用 AIHR 图标。刷新页面后浏览器才可能更新缓存的标签图标。"
+  },
+  "loginTour": {
+    "label": "AIHR 助手导览",
+    "roleDescription": "互动演示",
+    "title": "AIHR 助手 · 随时为您服务",
+    "pause": "暂停导览",
+    "play": "播放导览",
+    "topicsLabel": "导览主题",
+    "you": "您",
+    "typing": "助手正在输入",
+    "again": "重新观看",
+    "leave": {
+      "topic": "休假与考勤",
+      "open1": "早上好。您今年还剩 9 天年假。",
+      "pickA1": "周五请假",
+      "pickA1Reply": "我已为您准备好周五一天的年假申请。之后您还剩 8 天。",
+      "pickB1": "本周谁不在？",
+      "pickB1Reply": "您的团队本周有两人休假。周五人手充足。",
+      "open2": "要把周五的请假申请发送给您的经理吗？",
+      "pickA2": "发送",
+      "pickA2Reply": "已发送。经理做出决定后我会马上通知您。",
+      "pickB2": "暂时不用",
+      "pickB2Reply": "好的，没有发送任何内容。"
+    },
+    "pay": {
+      "topic": "薪资与报销",
+      "open1": "您最新的工资单已出。实发工资比上个月高。",
+      "pickA1": "为什么更高？",
+      "pickA1Reply": "本期工资单包含了您已批准的加班。",
+      "pickB1": "打开我的工资单",
+      "pickB1Reply": "在这里：收入、扣款和缴款，逐项列出。",
+      "open2": "您上周的差旅报销仍是草稿。现在提交吗？",
+      "pickA2": "提交报销",
+      "pickA2Reply": "已提交给您的经理审批。",
+      "pickB2": "稍后",
+      "pickB2Reply": "好的，它会保留在您的草稿中，等您准备好再提交。"
+    },
+    "growth": {
+      "topic": "绩效与发展",
+      "open1": "您的年中评估将在 5 天后截止。四个目标中有三个进展顺利。",
+      "pickA1": "起草我的自评",
+      "pickA1Reply": "这是根据您的目标进展生成的草稿。提交前请用您自己的话修改。",
+      "pickB1": "查看我的目标",
+      "pickB1Reply": "三个目标进展顺利，客户调查目标需要关注。",
+      "open2": "有一门课程适合您的发展计划：Coaching for results。要添加吗？",
+      "pickA2": "添加",
+      "pickA2Reply": "已添加到您的计划中。经理会在下次沟通时看到。",
+      "pickB2": "以后再说",
+      "pickB2Reply": "已保存到您的建议中，方便以后查看。"
+    }
   },
   "ownLeaveReview": {
     "title": "已保存的休假预览",

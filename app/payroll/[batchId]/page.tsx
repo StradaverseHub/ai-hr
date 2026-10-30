@@ -1175,6 +1175,11 @@ export default async function BatchPage({
 
       <Card className="overflow-hidden">
         <SectionHeader title={t('payslipsTitle')} count={slips.length} />
+        <Pager
+          basePath={`/payroll/${batchId}`}
+          params={{ from, hw }}
+          state={slipPage.state}
+        />
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -1267,11 +1272,6 @@ export default async function BatchPage({
             </tbody>
           </table>
         </div>
-        <Pager
-          basePath={`/payroll/${batchId}`}
-          params={{ from, hw }}
-          state={slipPage.state}
-        />
         {slipPage.rows.length > 0 && (
           <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t('provenanceNote')}</p>
         )}

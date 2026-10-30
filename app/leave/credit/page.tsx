@@ -176,24 +176,9 @@ export default async function LeaveCreditHistoryPage({
       </Card>
 
       <Card className="overflow-hidden p-0">
-        {pageRows.length === 0 ? (
-          <p className="p-6 text-sm text-muted-foreground" data-testid="lch-empty">
-            {all.length === 0 ? t('empty') : isFiltered(q.filters) ? t('emptyFiltered') : t('emptyTab')}
-          </p>
-        ) : (
-          <LeaveCreditHistoryTable
-            rows={pageRows}
-            today={today}
-            leaveTypeNames={leaveTypeNames}
-            requestDates={requestDates}
-            cancelAction={cancelLeaveCreditRequestAction}
-            back={backQs}
-          />
-        )}
-
         {/* Rows per page, position, and the page steps — the shared pager's look and words, with the three
             sizes the reporter asked for (the shared <Pager> offers 25 / 50 / 100 / 200 / All). */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3" data-testid="lch-pager">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3" data-testid="lch-pager">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>{tPage('rowsPerPage')}</span>
             <span className="inline-flex overflow-hidden rounded-md border border-border">
@@ -226,6 +211,21 @@ export default async function LeaveCreditHistoryPage({
             {page < lastPage ? <Link href={href({ page: lastPage })} className={pagerStepCls}>{tPage('last')}</Link> : <span className={pagerStepMutedCls}>{tPage('last')}</span>}
           </div>
         </div>
+
+        {pageRows.length === 0 ? (
+          <p className="p-6 text-sm text-muted-foreground" data-testid="lch-empty">
+            {all.length === 0 ? t('empty') : isFiltered(q.filters) ? t('emptyFiltered') : t('emptyTab')}
+          </p>
+        ) : (
+          <LeaveCreditHistoryTable
+            rows={pageRows}
+            today={today}
+            leaveTypeNames={leaveTypeNames}
+            requestDates={requestDates}
+            cancelAction={cancelLeaveCreditRequestAction}
+            back={backQs}
+          />
+        )}
       </Card>
     </div>
   );

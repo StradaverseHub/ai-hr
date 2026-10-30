@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { InternalAuthForm } from '../app/login/internal-form';
@@ -74,7 +74,10 @@ describe('embedded browser forms', () => {
     expect(await screen.findByRole('heading', { name: en.internalAuth.signingInTitle })).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent(en.internalAuth.signingInHelp);
     // The stray screen this replaces: a "Sign in" heading with a Continue button that POSTed /login/api/complete.
-    expect(screen.queryByRole('button')).toBeNull();
+    const auth = screen.getByRole('region', { name: en.internalAuth.signingInTitle });
+    expect(within(auth).queryByRole('button')).toBeNull();
+    expect(auth.querySelector('form')).toBeNull();
+    expect(screen.getByRole('region', { name: en.loginTour.label })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: en.internalAuth.loginTitle })).toBeNull();
     expect(assign).toHaveBeenCalledExactlyOnceWith('/home');
     expect(fetcher.mock.calls.map(([url]) => url)).toEqual(['/login/api/login', '/login/api/mfa']);
@@ -84,7 +87,10 @@ describe('embedded browser forms', () => {
     view({ mode: 'accept', invitation: 'i'.repeat(43) });
     await userEvent.setup().click(screen.getByRole('button', { name: en.internalAuth.continue }));
     expect(await screen.findByRole('heading', { name: en.internalAuth.signingInTitle })).toBeInTheDocument();
-    expect(screen.queryByRole('button')).toBeNull();
+    const auth = screen.getByRole('region', { name: en.internalAuth.signingInTitle });
+    expect(within(auth).queryByRole('button')).toBeNull();
+    expect(auth.querySelector('form')).toBeNull();
+    expect(screen.getByRole('region', { name: en.loginTour.label })).toBeInTheDocument();
   });
   it('removes a recovery token from browser history and submits it only in the reset POST body', async () => {
     const token = 'r'.repeat(43); window.history.replaceState(null, '', '/reset-password#token=' + token);

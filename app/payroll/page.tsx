@@ -537,6 +537,19 @@ export default async function PayrollPage({
 
       <Card className="overflow-hidden" data-tour="payroll-batches">
         <SectionHeader title={t('batches')} count={rows.length} />
+        {/* Paging must carry the whole filter state, so page 2 of a four-month selection is still that
+            selection. hrefFor (rather than `params`) because the address holds REPEATED params. */}
+        <Pager
+          hrefFor={(over) => {
+            const base = dashboardHref(filters);
+            const extra = new URLSearchParams();
+            if (over.page) extra.set('page', String(over.page));
+            if (over.size ?? pgState.size) extra.set('size', String(over.size ?? pgState.size));
+            const qs = extra.toString();
+            return qs ? `${base}&${qs}` : base;
+          }}
+          state={pgState}
+        />
         {/* Full-width table; horizontal scroll lives on this wrapper so a narrow viewport scrolls the
             GRID rather than the page, and no column has to wrap to fit. */}
         <div className="overflow-x-auto">
@@ -568,20 +581,6 @@ export default async function PayrollPage({
             </tbody>
           </table>
         </div>
-
-        {/* Paging must carry the whole filter state, so page 2 of a four-month selection is still that
-            selection. hrefFor (rather than `params`) because the address holds REPEATED params. */}
-        <Pager
-          hrefFor={(over) => {
-            const base = dashboardHref(filters);
-            const extra = new URLSearchParams();
-            if (over.page) extra.set('page', String(over.page));
-            if (over.size ?? pgState.size) extra.set('size', String(over.size ?? pgState.size));
-            const qs = extra.toString();
-            return qs ? `${base}&${qs}` : base;
-          }}
-          state={pgState}
-        />
       </Card>
     </div>
   );
