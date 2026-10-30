@@ -17738,7 +17738,7 @@
         "field_backgroundAgentEffectiveSwitchesOn": "Suis yang memenuhi semakan konfigurasi"
       },
       "module_overview_label": "Terokai aliran kerja saya",
-      "module_overview_prompt": "Apakah keupayaan modul Assistant yang tersedia untuk saya? Gunakan my_module_work untuk assistant. Jelaskan skop dan had tanpa membaca rekod yang tidak berkaitan.",
+      "module_overview_prompt": "Apakah yang boleh anda bantu saya?",
       "leave_available_label": "Baki cuti saya",
       "leave_available_prompt": "Berapakah baki cuti yang boleh saya gunakan sekarang?",
       "leave_requests_label": "Jejak cuti saya",
@@ -17750,7 +17750,7 @@
       "reporting_line_label": "Hubungan pelaporan saya",
       "reporting_line_prompt": "Kepada siapa saya melapor, dan siapa yang melapor kepada saya?",
       "work_profile_label": "Rekod kerja saya",
-      "work_profile_prompt": "Tunjukkan rekod kerja saya sendiri, termasuk syarikat dan jabatan.",
+      "work_profile_prompt": "Tunjukkan rekod kerja, syarikat dan status pekerjaan saya sendiri.",
       "payslip_label": "Slip gaji terkini saya",
       "payslip_prompt": "Tunjukkan ringkasan yang direkodkan pada slip gaji terkini saya yang telah dikeluarkan.",
       "pay_change_label": "Perubahan gaji saya",
@@ -19628,7 +19628,8 @@
         "latest": "Balasan terkini",
         "rate": "Nilai balasan ini",
         "recent": "Sembang terkini",
-        "tools": "Cara lain untuk bekerja"
+        "tools": "Cara lain untuk bekerja",
+        "privacy": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat."
       }
     },
     "denied_unavailable": "Ada sedikit masalah di pihak saya. Sila cuba lagi sebentar nanti.",
@@ -19725,6 +19726,35 @@
       "next": "Skrin import menyemak kebenaran dan rekod semasa. Semak syarikat, kesan baki atau penggantian di sana, kemudian sahkan untuk menyimpan. Draf kekal dalam tab ini sehingga 10 minit dan hilang jika dimuat semula.",
       "expired": "Draf pembantu ini tiada atau telah luput. Kembali ke pembantu dan sediakan fail semula.",
       "formulaNotice": "Lembaran ini mengandungi {formulas} sel formula dan {errors} ralat Excel. Penyediaan menggunakan nilai sel tersimpan tanpa mengira semula formula. Semak nilainya dalam sumber sebelum meneruskan."
+    },
+    "privateAnalysis": {
+      "title": "Terokai corak secara peribadi",
+      "description": "Bandingkan trend berkumpulan dan kerja semasa tanpa menghantar nama, amaun tepat atau teks rekod kepada penyedia AI.",
+      "companyScope": "Menggunakan syarikat pilihan anda. Penapis jabatan, carian dan carta tidak digunakan.",
+      "domain": "Bidang",
+      "month": "Bulan yang lengkap",
+      "compareWindow": "Membandingkan bulan pilihan dengan bulan sebelumnya. Pengiraan tepat kekal dalam aplikasi.",
+      "snapshotWindow": "Menunjukkan kedudukan semasa yang direkodkan. Kehadiran menggunakan bulan pilihan; tiada trend sejarah atau punca disimpulkan.",
+      "run": "Terangkan corak",
+      "thinking": "Sedang berfikir…",
+      "result": "Analisis terlindung",
+      "domains": {
+        "workforce": "Tenaga kerja",
+        "attendance": "Kehadiran",
+        "leave": "Cuti",
+        "payroll": "Gaji",
+        "claims": "Tuntutan",
+        "performance": "Prestasi",
+        "rewards": "Ganjaran",
+        "organisation": "Organisasi"
+      },
+      "notices": {
+        "invalid_request": "Pilih bidang yang disokong dan bulan yang lengkap.",
+        "privacy_unavailable": "Data berkumpulan yang selamat tidak mencukupi atau permintaan memerlukan input terlindung yang disokong. Gunakan laporan asal untuk butiran.",
+        "unavailable": "Analisis ini tidak tersedia untuk akses atau rekod semasa anda.",
+        "temporarily_unavailable": "AI tidak tersedia buat sementara waktu atau had penggunaan anda telah dicapai.",
+        "failed": "Analisis tidak dapat diselesaikan. Sila cuba lagi."
+      }
     }
   },
   "controlTower": {
@@ -24961,7 +24991,28 @@
     "groupsPrecedence": "Peruntukan yang terpakai bagi log masuk: peruntukan individunya; jika tiada, peruntukan jabatannya, kemudian syarikatnya, kemudian peranannya (jika beberapa sepadan pada tahap yang sama, had paling ketat terpakai); jika tiada, lalai di bawah.",
     "agentRunsAs": "Dijalankan sebagai akaun ejen HR, dihidupkan oleh {by} pada {date}.",
     "agentUnknownAdmin": "seorang bekas pentadbir",
-    "agentUnattributed": "Dihidupkan tanpa pentadbir yang dinamakan, jadi akaun ejen HR tidak menjalankannya. Jedakan dan dayakan semula untuk menjalankannya atas nama anda."
+    "agentUnattributed": "Dihidupkan tanpa pentadbir yang dinamakan, jadi akaun ejen HR tidak menjalankannya. Jedakan dan dayakan semula untuk menjalankannya atas nama anda.",
+    "privateFeatures": {
+      "hr_assistant": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "provider_evaluation": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "module_agent_evaluation": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "personnel_import_mapping": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "module_agent_planning": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "readiness_reminders": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "claims_triage": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "payroll_hypotheses": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "payroll_explanation": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "pay_rule_draft": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "report_insight": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "performance_360": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "performance_tc": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "performance_pm": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "performance_review": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "performance_idp": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "performance_calib": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "performance_assistant": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "feedback_planning": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat."
+    }
   },
   "accountEmail": {
     "title": "Penghantaran e-mel akaun",

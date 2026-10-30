@@ -1,3 +1,5 @@
+import {assistantReadableModules} from '../../core/assistant-readable-modules';
+import {todayInKualaLumpur} from '../../lib/hr-date';
 /** Canonical typed facts only. A model answer, copied receipt or arbitrary JSON cannot render here. */
 import type {ReactNode} from 'react';
 import {conversationFactLayout} from '../../lib/ai/assistant-answer-layout';
@@ -96,7 +98,7 @@ const closedConversationFields=(value:object,fields:readonly string[])=>JSON.str
 /** Selection/order comes from the checked plan; every displayed value still comes from an original
  * fresh canonical view. Unknown plans, hidden/null facts and unsupported explanations refuse. */
 async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation:ConversationReply;ctx:SessionContext;exchangeId?:string}){
- const[copy,text]=await Promise.all([getTranslations('assistant.workspace.conversation'),canonicalJobText()]);
+ const[copy,text,workspaceCopy]=await Promise.all([getTranslations('assistant.workspace.conversation'),canonicalJobText(),getTranslations('assistant.workspace')]);
  const unavailable=()=> <p role="status" className="text-sm text-muted-foreground">{copy('unavailable')}</p>;
  try{
   const plan=conversation.plan;if(!closedConversationFields(conversation,['plan','facts',...(conversation.clarificationAllowed===undefined?[]:['clarificationAllowed']),...(conversation.segments===undefined?[]:['segments'])])||!Array.isArray(conversation.facts)||(conversation.clarificationAllowed!==undefined&&conversation.clarificationAllowed!==false)||!plan||plan.version!==1)return unavailable();
@@ -107,9 +109,12 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
   }
   if(plan.mode==='clarify'){
    if(!closedConversationFields(plan,['version','mode','slot'])||!['employment','leave_type','period','module'].includes(plan.slot)||conversation.facts.length!==0)return unavailable();
+   const taskModules={leave_available:'leave',leave_requests:'leave',claim_statuses:'claims',holidays:'org',reporting_line:'org',work_profile:'employees',payslip:'payroll',module_overview:'assistant'} as const;
+   const readable=assistantReadableModules(ctx);
+   const choices=plan.slot==='module'?Object.entries(taskModules).filter(([,module])=>readable.includes(module)).map(([task])=>({label:workspaceCopy(`${task}_label`),prompt:workspaceCopy(`${task}_prompt`,{date:todayInKualaLumpur()})})):undefined;
    const bound=typeof exchangeId==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(exchangeId),labelId=bound?'assistant-clarification-'+exchangeId:'assistant-clarification-unavailable';
    return <section aria-labelledby={labelId} className="space-y-3"><h2 id={labelId} className="text-base font-medium">{copy(`clarify_${plan.slot}`)}</h2>
-    {conversation.clarificationAllowed===false?<p role="status" className="text-sm text-muted-foreground">{copy('contextLimit')}</p>:bound?<ConversationClarification exchangeId={exchangeId!} replyLabel={copy('replyLabel')} continueLabel={copy('continue')}/>:<p role="status" className="text-sm text-muted-foreground">{copy('reopenBeforeReply')}</p>}
+    {conversation.clarificationAllowed===false?<p role="status" className="text-sm text-muted-foreground">{copy('contextLimit')}</p>:bound?<ConversationClarification exchangeId={exchangeId!} replyLabel={copy('replyLabel')} continueLabel={copy('continue')} choices={choices}/>:<p role="status" className="text-sm text-muted-foreground">{copy('reopenBeforeReply')}</p>}
    </section>;
   }
   // ADR-0151 §4.3: an adjudicated proposal renders the inline review card. It is a suggestion only: the

@@ -1,3 +1,7 @@
+import {ProtectedAnalysis} from '@/components/assistant/protected-analysis';
+import {isAdmin} from '@/lib/authz-model';
+import {allowedCompanies} from '@/core/read';
+import {getScopeIds} from '@/lib/scope';
 import {AssistantHistoryPrivacy} from '../../components/assistant/history-privacy';
 import {OwnClearForm,OwnClearStatus} from '../../components/assistant/own-clear';
 import {eraseConversationMetadataAction} from './agent-review-actions';
@@ -109,6 +113,7 @@ export default async function AssistantPage({
     );
   }
 
+  const analysisScope=isAdmin(s)?await allowedCompanies(s).then(rows=>getScopeIds(rows.map(row=>row.id))).catch(()=>[]):[];
   const { history } = workspace;
   const selectedJob=sp.job===undefined||sp.governed!==undefined?null:await loadCanonicalModuleJob(s,{module:sp.job});
   // Shortcuts are offered only where the target's own authorization rules admit this session.
@@ -137,6 +142,7 @@ export default async function AssistantPage({
       <details open={Boolean(sp.job||sp.governed||sp.proposal||sp.planning)} className="border-t border-border pt-2">
         <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.chat.tools')}</summary>
         <div className="space-y-6 pt-3">
+          {analysisScope.length>0&&<ProtectedAnalysis scopeIds={analysisScope}/>}
           <ModuleJobChooser modules={workspace.jobModules} selected={sp.job} actions={actionEntries}/>
           {selectedJob&&<CanonicalModuleJob view={selectedJob} ctx={s}/>}
           {workspace.governedJob&&<GovernedWorkspaceJob view={workspace.governedJob} ctx={s}/>}

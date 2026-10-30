@@ -9,7 +9,7 @@ type Disclosure=Readonly<{feature:AiFeatureId;operation:AiOperation;inputDigest:
 type Owned={disclosure:Disclosure;deadline:number;used:boolean;revoked:boolean};
 const issued=new WeakMap<object,Owned>();
 export class AiPrivacyGateError extends AiGatewayError{
- constructor(){super('This AI request needs a reviewed data-protection policy. You can continue using the application directly.');this.name='AiPrivacyGateError';}
+ constructor(readonly reason:'unreviewed'|'unsupported'|'small_cohort'|'source'='unreviewed'){super(reason==='unreviewed'?'This AI request needs a reviewed data-protection policy. You can continue using the application directly.':reason==='small_cohort'?'There is not enough grouped data for a protected AI analysis.':'This request needs protected input. You can continue using the application directly.');this.name='AiPrivacyGateError';}
 }
 const refuse=():never=>{throw new AiPrivacyGateError();};
 /** INTERNAL issuer: only core/ai-governance may import this symbol in production. */

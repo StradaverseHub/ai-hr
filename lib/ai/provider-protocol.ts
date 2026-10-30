@@ -32,7 +32,7 @@ export async function runProviderProtocolEvaluation(configuration: ResolvedAiCon
   const inTime = () => { if (performance.now() - started >= PROVIDER_PROTOCOL_LIMITS.totalMs) return unavailable(); };
   let usage:AiUsage[]=[],accounting=createAiRunAccounting(configuration.provider);
   const cfg=withAiRunObserver(configuration,{
-    beforeCall(record){if(performance.now()-started>=PROVIDER_PROTOCOL_LIMITS.totalMs){record({inputTokens:0,outputTokens:0,cachedInputTokens:0});return unavailable();}},
+    beforeCall(){if(performance.now()-started>=PROVIDER_PROTOCOL_LIMITS.totalMs)return unavailable();},
     usage(value){usage.push({...value});},observation(value){accounting.observe(value);},
     settled(){const actual=usage.length===1&&validUsage(usage[0])?usage[0]:null;observations.push(actual);const receipt=accounting.snapshot(actual?actual.inputTokens+actual.outputTokens+actual.cachedInputTokens:null);charges.push(receipt.providerObservationStatus==='reported'?receipt.openrouterAccountCostCredits:null);},
   });

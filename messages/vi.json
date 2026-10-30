@@ -17738,7 +17738,7 @@
         "field_backgroundAgentEffectiveSwitchesOn": "Công tắc đáp ứng kiểm tra cấu hình"
       },
       "module_overview_label": "Khám phá quy trình của tôi",
-      "module_overview_prompt": "Tôi có thể sử dụng những chức năng mô-đun Assistant nào? Dùng my_module_work cho assistant và giải thích phạm vi mà không đọc hồ sơ không liên quan.",
+      "module_overview_prompt": "Bạn có thể giúp tôi những gì?",
       "leave_available_label": "Số dư nghỉ phép của tôi",
       "leave_available_prompt": "Hiện tôi còn bao nhiêu ngày phép có thể sử dụng?",
       "leave_requests_label": "Theo dõi nghỉ phép",
@@ -17750,7 +17750,7 @@
       "reporting_line_label": "Quan hệ báo cáo của tôi",
       "reporting_line_prompt": "Tôi báo cáo cho ai và ai báo cáo cho tôi?",
       "work_profile_label": "Hồ sơ công việc của tôi",
-      "work_profile_prompt": "Hiển thị hồ sơ công việc của chính tôi, gồm công ty và phòng ban.",
+      "work_profile_prompt": "Hiển thị hồ sơ công việc, công ty và tình trạng việc làm của chính tôi.",
       "payslip_label": "Phiếu lương mới nhất",
       "payslip_prompt": "Hiển thị bản tóm tắt đã ghi nhận trên phiếu lương mới nhất đã phát hành của tôi.",
       "pay_change_label": "Thay đổi lương của tôi",
@@ -19628,7 +19628,8 @@
         "latest": "Phản hồi mới nhất",
         "rate": "Đánh giá phản hồi này",
         "recent": "Trò chuyện gần đây",
-        "tools": "Các cách làm việc khác"
+        "tools": "Các cách làm việc khác",
+        "privacy": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn."
       }
     },
     "denied_unavailable": "Phía tôi gặp chút trục trặc. Vui lòng thử lại sau giây lát.",
@@ -19725,6 +19726,35 @@
       "next": "Màn hình nhập kiểm tra quyền và bản ghi hiện tại. Kiểm tra công ty, ảnh hưởng số dư hoặc nội dung thay thế, rồi xác nhận để lưu. Bản nháp chỉ ở trong thẻ này tối đa 10 phút và mất khi tải lại.",
       "expired": "Bản nháp không còn hoặc đã hết hạn. Quay lại trợ lý để chuẩn bị lại.",
       "formulaNotice": "Trang tính có {formulas} ô công thức và {errors} lỗi Excel. Việc chuẩn bị dùng giá trị đã lưu, không tính lại công thức. Kiểm tra các giá trị này trong nguồn trước khi tiếp tục."
+    },
+    "privateAnalysis": {
+      "title": "Phân tích xu hướng riêng tư",
+      "description": "So sánh xu hướng theo nhóm và công việc hiện tại mà không gửi tên, số tiền chính xác hay văn bản hồ sơ đến nhà cung cấp AI.",
+      "companyScope": "Sử dụng các công ty bạn đã chọn. Không áp dụng bộ lọc phòng ban, tìm kiếm hoặc biểu đồ.",
+      "domain": "Lĩnh vực",
+      "month": "Tháng đã kết thúc",
+      "compareWindow": "So sánh tháng đã chọn với tháng trước. Các phép tính chính xác được giữ trong ứng dụng.",
+      "snapshotWindow": "Hiển thị tình trạng hiện được ghi nhận. Chấm công dùng tháng đã chọn; không suy đoán xu hướng lịch sử hoặc nguyên nhân.",
+      "run": "Giải thích xu hướng",
+      "thinking": "Đang suy nghĩ…",
+      "result": "Phân tích được bảo vệ",
+      "domains": {
+        "workforce": "Nhân sự",
+        "attendance": "Chấm công",
+        "leave": "Nghỉ phép",
+        "payroll": "Tiền lương",
+        "claims": "Bồi hoàn",
+        "performance": "Hiệu suất",
+        "rewards": "Khen thưởng",
+        "organisation": "Tổ chức"
+      },
+      "notices": {
+        "invalid_request": "Chọn lĩnh vực được hỗ trợ và tháng đã kết thúc.",
+        "privacy_unavailable": "Không đủ dữ liệu nhóm an toàn hoặc yêu cầu cần đầu vào được bảo vệ phù hợp. Xem báo cáo gốc để biết chi tiết.",
+        "unavailable": "Phân tích không khả dụng với quyền truy cập hoặc hồ sơ hiện tại của bạn.",
+        "temporarily_unavailable": "AI tạm thời không khả dụng hoặc bạn đã hết hạn mức.",
+        "failed": "Không thể hoàn tất phân tích. Vui lòng thử lại."
+      }
     }
   },
   "controlTower": {
@@ -24961,7 +24991,28 @@
     "groupsPrecedence": "Hạn mức áp dụng cho một tài khoản: hạn mức riêng; nếu không có thì của phòng ban, rồi công ty, rồi vai trò (nếu nhiều nhóm cùng cấp khớp, áp dụng giới hạn chặt nhất); nếu không có thì dùng mặc định bên dưới.",
     "agentRunsAs": "Chạy dưới tài khoản tác tử HR, do {by} bật vào {date}.",
     "agentUnknownAdmin": "một quản trị viên trước đây",
-    "agentUnattributed": "Đã bật mà không có quản trị viên được nêu tên, nên tài khoản tác tử HR không chạy. Hãy tạm dừng rồi bật lại để chạy dưới tên của bạn."
+    "agentUnattributed": "Đã bật mà không có quản trị viên được nêu tên, nên tài khoản tác tử HR không chạy. Hãy tạm dừng rồi bật lại để chạy dưới tên của bạn.",
+    "privateFeatures": {
+      "hr_assistant": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "provider_evaluation": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "module_agent_evaluation": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "personnel_import_mapping": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "module_agent_planning": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "readiness_reminders": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "claims_triage": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "payroll_hypotheses": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "payroll_explanation": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "pay_rule_draft": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "report_insight": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "performance_360": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "performance_tc": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "performance_pm": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "performance_review": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "performance_idp": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "performance_calib": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "performance_assistant": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "feedback_planning": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn."
+    }
   },
   "accountEmail": {
     "title": "Lịch sử gửi email tài khoản",

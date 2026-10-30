@@ -17738,7 +17738,7 @@
         "field_backgroundAgentEffectiveSwitchesOn": "通过配置检查的开关"
       },
       "module_overview_label": "探索我的工作流程",
-      "module_overview_prompt": "我目前可以使用哪些 Assistant 模块功能？请使用 my_module_work 查询 assistant，说明范围及限制，不读取无关记录。",
+      "module_overview_prompt": "你可以帮我做什么？",
       "leave_available_label": "我的假期余额",
       "leave_available_prompt": "我目前有多少可用假期？",
       "leave_requests_label": "查看我的请假进度",
@@ -17750,7 +17750,7 @@
       "reporting_line_label": "我的汇报关系",
       "reporting_line_prompt": "我向谁汇报，谁向我汇报？",
       "work_profile_label": "我的工作记录",
-      "work_profile_prompt": "显示我本人的工作记录，包括公司和部门。",
+      "work_profile_prompt": "显示我自己的工作记录、公司和在职状态。",
       "payslip_label": "我最新的工资单",
       "payslip_prompt": "显示我最新已发布工资单的记录摘要。",
       "pay_change_label": "我的薪资变化",
@@ -19628,7 +19628,8 @@
         "latest": "最新回复",
         "rate": "评价此回复",
         "recent": "最近的对话",
-        "tools": "更多工作方式"
+        "tools": "更多工作方式",
+        "privacy": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。"
       }
     },
     "denied_unavailable": "我这边遇到了小状况，请稍后再试。",
@@ -19725,6 +19726,35 @@
       "next": "导入页面将检查权限和现有记录。请审核公司、余额影响或替换内容，再明确确认保存。草稿仅在此标签页保留最多 10 分钟，刷新后会丢失。",
       "expired": "此助手草稿已失效或过期。请返回助手重新准备文件。",
       "formulaNotice": "此工作表包含 {formulas} 个公式单元格和 {errors} 个 Excel 错误。准备时使用已保存的值，不会重新计算公式。继续前请核对原文中的这些值。"
+    },
+    "privateAnalysis": {
+      "title": "私密分析工作规律",
+      "description": "比较群体趋势和当前工作情况，不向 AI 服务商发送姓名、精确金额或记录原文。",
+      "companyScope": "使用您所选的公司，不应用部门、搜索或图表筛选条件。",
+      "domain": "领域",
+      "month": "已结束的月份",
+      "compareWindow": "比较所选月份与上一个月。精确计算保留在应用内。",
+      "snapshotWindow": "展示当前已记录的情况。考勤使用所选月份，不推断历史趋势或原因。",
+      "run": "分析规律",
+      "thinking": "正在思考…",
+      "result": "受保护的分析",
+      "domains": {
+        "workforce": "人员",
+        "attendance": "考勤",
+        "leave": "休假",
+        "payroll": "薪资",
+        "claims": "报销",
+        "performance": "绩效",
+        "rewards": "奖励",
+        "organisation": "组织"
+      },
+      "notices": {
+        "invalid_request": "请选择支持的领域和已结束的月份。",
+        "privacy_unavailable": "安全汇总数据不足，或此请求需要支持的受保护输入。详情请查看原始报表。",
+        "unavailable": "您的当前权限或记录暂不支持此分析。",
+        "temporarily_unavailable": "AI 暂不可用，或已达到使用额度。",
+        "failed": "未能完成分析，请重试。"
+      }
     }
   },
   "controlTower": {
@@ -24961,7 +24991,28 @@
     "groupsPrecedence": "登录账号适用的额度：其个人额度；否则依次为所在部门、公司、角色的额度（同一层级有多个匹配时，适用最严格的上限）；否则为下方的默认额度。",
     "agentRunsAs": "以 HR 代理账户运行，由 {by} 于 {date} 开启。",
     "agentUnknownAdmin": "一位前任管理员",
-    "agentUnattributed": "开启时未记录具名管理员，因此 HR 代理账户不会运行。请先暂停再重新启用，以您的名义运行。"
+    "agentUnattributed": "开启时未记录具名管理员，因此 HR 代理账户不会运行。请先暂停再重新启用，以您的名义运行。",
+    "privateFeatures": {
+      "hr_assistant": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "provider_evaluation": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "module_agent_evaluation": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "personnel_import_mapping": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "module_agent_planning": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "readiness_reminders": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "claims_triage": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "payroll_hypotheses": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "payroll_explanation": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "pay_rule_draft": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "report_insight": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "performance_360": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "performance_tc": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "performance_pm": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "performance_review": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "performance_idp": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "performance_calib": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "performance_assistant": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。",
+      "feedback_planning": "您的提问原文和记录数值保留在应用内。AI 仅接收受支持的受保护引用或汇总事实。不支持的输入会被阻止。"
+    }
   },
   "accountEmail": {
     "title": "账户邮件发送记录",

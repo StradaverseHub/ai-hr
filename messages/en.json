@@ -17738,7 +17738,7 @@
         "field_backgroundAgentEffectiveSwitchesOn": "Switches meeting configuration checks"
       },
       "module_overview_label": "Explore my workflows",
-      "module_overview_prompt": "Which current Assistant module capabilities are available to me? Use my_module_work for assistant. Explain the scope and limits without reading unrelated records.",
+      "module_overview_prompt": "What can you help me with?",
       "leave_available_label": "My leave balance",
       "leave_available_prompt": "How much leave do I currently have available?",
       "leave_requests_label": "Track my leave",
@@ -17750,7 +17750,7 @@
       "reporting_line_label": "My reporting line",
       "reporting_line_prompt": "Who do I report to, and who reports to me?",
       "work_profile_label": "My work record",
-      "work_profile_prompt": "Show my own work record, including company and department.",
+      "work_profile_prompt": "Show my own work record, company and employment status.",
       "payslip_label": "My latest payslip",
       "payslip_prompt": "Show the recorded summary of my latest released payslip.",
       "pay_change_label": "Changes in my pay",
@@ -19628,7 +19628,8 @@
         "latest": "Latest reply",
         "rate": "Rate this reply",
         "recent": "Recent chats",
-        "tools": "More ways to work"
+        "tools": "More ways to work",
+        "privacy": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked."
       }
     },
     "denied_unavailable": "A little snag on my side. Please try again in a moment.",
@@ -19725,6 +19726,35 @@
       "next": "The import screen checks permissions and live records. Review the company, balance effects or replacements there, then explicitly confirm to save. Drafts stay in this tab for up to 10 minutes and are lost on refresh.",
       "expired": "This assistant draft is unavailable or expired. Return to the assistant and prepare the file again.",
       "formulaNotice": "This worksheet contains {formulas} formula cells and {errors} Excel errors. Preparation uses saved cell values and does not recalculate formulas. Check these values in the source before continuing."
+    },
+    "privateAnalysis": {
+      "title": "Explore patterns privately",
+      "description": "Compare grouped trends and current work without sending names, exact amounts or record text to the AI provider.",
+      "companyScope": "Uses your selected companies. Department, search and chart filters do not apply.",
+      "domain": "Area",
+      "month": "Completed month",
+      "compareWindow": "Compares the selected month with the previous month. Exact calculations stay in the application.",
+      "snapshotWindow": "Shows the current recorded position. Attendance uses the selected month; no historical trend or cause is inferred.",
+      "run": "Explain patterns",
+      "thinking": "Thinking…",
+      "result": "Protected analysis",
+      "domains": {
+        "workforce": "Workforce",
+        "attendance": "Attendance",
+        "leave": "Leave",
+        "payroll": "Payroll",
+        "claims": "Claims",
+        "performance": "Performance",
+        "rewards": "Rewards",
+        "organisation": "Organisation"
+      },
+      "notices": {
+        "invalid_request": "Choose a supported area and completed month.",
+        "privacy_unavailable": "There is not enough safely grouped data, or this request needs a supported protected input. Use the native report for details.",
+        "unavailable": "This analysis is unavailable for your current access or records.",
+        "temporarily_unavailable": "AI is temporarily unavailable or your allowance has been reached.",
+        "failed": "I could not complete that analysis. Please try again."
+      }
     }
   },
   "controlTower": {
@@ -24961,7 +24991,28 @@
     "groupsPrecedence": "Which allowance applies to a login: its individual allowance; otherwise its department’s, then its company’s, then its role’s (when several match at the same level, the strictest limit applies); otherwise the default below.",
     "agentRunsAs": "Runs as the HR agent account, switched on by {by} on {date}.",
     "agentUnknownAdmin": "a former administrator",
-    "agentUnattributed": "Switched on without a named administrator, so the HR agent account does not run it. Pause it and enable it again to run it under your name."
+    "agentUnattributed": "Switched on without a named administrator, so the HR agent account does not run it. Pause it and enable it again to run it under your name.",
+    "privateFeatures": {
+      "hr_assistant": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
+      "provider_evaluation": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
+      "module_agent_evaluation": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
+      "personnel_import_mapping": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
+      "module_agent_planning": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
+      "readiness_reminders": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
+      "claims_triage": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
+      "payroll_hypotheses": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
+      "payroll_explanation": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
+      "pay_rule_draft": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
+      "report_insight": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
+      "performance_360": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
+      "performance_tc": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
+      "performance_pm": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
+      "performance_review": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
+      "performance_idp": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
+      "performance_calib": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
+      "performance_assistant": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
+      "feedback_planning": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked."
+    }
   },
   "accountEmail": {
     "title": "Account email deliveries",

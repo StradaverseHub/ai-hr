@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useId,useRef,useState} from 'react';
-import {protectedAnalysisAction,type ProtectedAnalysisDomain,type ProtectedAnalysisNotice} from '@/app/analytics/ai-actions';
+import {readProtectedAnalysisAction,type ProtectedAnalysisDomain,type ProtectedAnalysisNotice} from '@/app/analytics/ai-actions';
 import {todayInKualaLumpur} from '@/lib/hr-date';
 import {previousPayrollComparisonPeriod} from '@/lib/payroll-period-comparison';
 import {ThinkingIndicator} from './thinking-indicator';
@@ -23,7 +23,7 @@ export function ProtectedAnalysisPanel({labels,scopeKey,defaultMonth}:{labels:Pr
   if(busy.current)return;busy.current=true;setPending(true);setText('');setNotice(null);
   const request=++sequence.current,captured={scopeKey,domain,month};
   try{
-   const result=await protectedAnalysisAction({domain,...(monthly?{month}:{})});
+   const result=await readProtectedAnalysisAction({domain,...(monthly?{month}:{})});
    if(request!==sequence.current||captured.scopeKey!==current.current.scopeKey||captured.domain!==current.current.domain||captured.month!==current.current.month)return;
    if(result.ok){if(result.scopeKey!==captured.scopeKey)setNotice('unavailable');else setText(result.text);}
    else setNotice(result.notice);

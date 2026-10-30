@@ -19,7 +19,7 @@ export type ProtectedAnalysisNotice='invalid_request'|'privacy_unavailable'|'una
 export type ProtectedAnalysisResult={ok:true;text:string;scopeKey:string}|{ok:false;notice:ProtectedAnalysisNotice};
 /** Explicit read-only command. Posted company/report/filter/provider data is never accepted. Native
  * services retain their fresh granular permissions and source validation on every actual admission. */
-export async function protectedAnalysisAction(raw:unknown):Promise<ProtectedAnalysisResult>{
+export async function readProtectedAnalysisAction(raw:unknown):Promise<ProtectedAnalysisResult>{
  const parsed=input.safeParse(raw);if(!parsed.success)return {ok:false,notice:'invalid_request'};
  const todayPeriod=todayInKualaLumpur().slice(0,7),month=parsed.data.month??previousPayrollComparisonPeriod(todayPeriod);
  if(!isPayrollComparisonPeriod(month)||month>=todayPeriod)return {ok:false,notice:'invalid_request'};
