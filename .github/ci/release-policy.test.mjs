@@ -16,7 +16,7 @@ const expected={candidate,controller,baseline,runId,now};
 function run(){return {id:runId,repository:{id:REPOSITORY_ID,full_name:REPOSITORY},head_repository:{id:REPOSITORY_ID},workflow_id:WORKFLOW_ID,path:WORKFLOW_PATH,event:'workflow_dispatch',head_branch:'main',head_sha:controller,status:'completed',conclusion:'success',run_attempt:1,created_at:new Date(now).toISOString()};}
 function jobs(){return requiredEvidence(proof().expectedPlan).jobs.map(name=>({name,status:'completed',conclusion:'success',run_attempt:1}));}
 function artifacts(){return requiredEvidence(proof().expectedPlan).artifacts.map((name,n)=>({id:n+1,name,size_in_bytes:2,digest:digest(Buffer.from('{}')),expired:false,workflow_run:{id:runId,repository_id:REPOSITORY_ID,head_repository_id:REPOSITORY_ID,head_sha:controller,head_branch:'main'}}));}
-function databaseEvidence(){return {schemaVersion:1,memoryLimit:2*1024**3,memoryMax:2*1024**3,memoryPeak:500000000,memoryEvents:{oom_kill:0},state:{Running:true,OOMKilled:false,Dead:false},settings:{jit:'on',jitAvailable:true,serverVersionNum:'160015'}};}
+function databaseEvidence(){return {schemaVersion:2,profileVersion:2,configuredCapBytes:2113929216,peakBudgetBytes:2147483648,errors:{},memoryLimit:2113929216,memorySwap:2113929216,memoryMax:2113929216,memorySwapMax:0,memoryPeak:500000000,memoryEvents:{oom:0,oom_kill:0},state:{Running:true,OOMKilled:false,Dead:false},settings:{jit:'on',jitAvailable:true,serverVersionNum:'160015'}};}
 function proof(){
  const suite=Array.from({length:8},(_,n)=>`test/example-${n}.test.ts`);
  const units=buildUnits(suite,{nodb:suite.slice(0,4),db:suite.slice(4)},['test/layout.browser.test.tsx']);

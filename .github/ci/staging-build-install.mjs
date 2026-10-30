@@ -16,7 +16,7 @@ import {captureNormalCleanupFences,canonicalSourceExclusions} from './normal-cle
 import {validateCleanupRequest} from './staging-cleanup-protocol.mjs';
 import {validateInstallGrant,installJson,installHash} from './ci-install-grant.mjs';
 import {inspectCiBuildPacket} from './build-artifact.mjs';
-import {assertBuildRuntime,assertBuildDotenvCompileKeys} from './build-production.mjs';
+import {assertBuildRuntime,assertBuildDotenvCompileKeys,assertBuildCapacityProfile} from './build-production.mjs';
 import {guardServerCli,COORDINATOR} from '../../scripts/staging/lease.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 // Hashing or unpacking the ~850 MB build bundle on the 4 GB staging host exceeded 120 s under host load (wave 1b,
@@ -123,10 +123,12 @@ function compiledContract(next,testing,prepared){
 }
 function verifyDirectory(source,p,{active=false,records=p.packet}={}){
  const output=execFileSync('python3',[join(ROOT,'.github/ci/build-bundle.py'),active?'verify-active-directory':'verify-directory',active?join(source,'.next'):p.next,join(records,'bytes/build-bundle-files.json'),source,p.grant.build.buildSourcePath],{stdio:active?'pipe':'inherit',encoding:active?'utf8':undefined,timeout:BUNDLE_PYTHON_TIMEOUT_MS,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
- return active?JSON.parse(output):undefined;
+ if(!active)return undefined;
+ const inventory=JSON.parse(output);assert(inventory.format===2,'Current compiled inventory format required');assertBuildCapacityProfile(inventory.capacityProfile);return inventory;
 }
 async function nativeContract(source,p){
  const require=createRequire(join(source,'package.json')),manifest=JSON.parse(regular(join(p.packet,'bytes/build-bundle-files.json'),16*1024**2));
+ assert(manifest.format===2,'Current native manifest format required');assertBuildCapacityProfile(manifest.capacityProfile);
  const alias=name=>join(p.next,manifest.aliases.find(a=>a.package===name).path);
  const sharp=require(alias('sharp')),fontkit=require(alias('fontkit'));
  const pixels=Buffer.from([255,0,0,255,0,255,0,255,0,0,255,255,255,255,255,255]);
@@ -135,7 +137,7 @@ async function nativeContract(source,p){
  assert(decoded.equals(pixels),'Recipient native Sharp codec roundtrip differs');
  const face=fontkit.create(brotliDecompressSync(readFileSync(join(source,'assets/fonts/NotoSansSC-Regular.otf.br'))));
  for(const ch of '实发工资 Aisyah Rahman 實發工資')if(ch!==' ')assert(face.glyphForCodePoint(ch.codePointAt(0)).id!==0,'Recipient CJK glyph missing');
- return {sharp:sharp.versions.sharp,vips:sharp.versions.vips,pngSha256:installHash(png),webpSha256:installHash(webp),losslessPixels:true,cjkGlyphsPresent:true};
+ return {format:2,capacityProfile:p.grant.build.capacityProfile,sharp:sharp.versions.sharp,vips:sharp.versions.vips,pngSha256:installHash(png),webpSha256:installHash(webp),losslessPixels:true,cjkGlyphsPresent:true};
 }
 async function preserveOriginalRecord(p,{testing,prepared,preparedBytes}){
  const directory=testing.systemTestingBuildDirectory('remote');testing.ensurePrivateReleaseDirectory(directory);

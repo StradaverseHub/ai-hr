@@ -10,6 +10,17 @@ const controllerRoot=fileURLToPath(new URL('../../',import.meta.url));
 const SHA=/^[a-f0-9]{40}$/;
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const fail=message=>{throw Error('Production build producer refused: '+message);};
+// Closed format2 byte-capacity identity; never use manifest values as allowance.
+export const BUILD_CAPACITY_PROFILE=Object.freeze({profileVersion:2,archiveMaxBytes:276824064,zipMaxBytes:293601280});
+export function assertBuildCapacityProfile(profile){
+ if(!isDeepStrictEqual(profile,BUILD_CAPACITY_PROFILE))fail('unknown or mixed build capacity profile');
+ return profile;
+}
+export function assertBuildPacketAggregate(sizes){
+ if(!Array.isArray(sizes)||sizes.length!==5||sizes.some(size=>!Number.isSafeInteger(size)||size<1)
+  ||sizes.reduce((total,size)=>total+size,0)>BUILD_CAPACITY_PROFILE.zipMaxBytes)fail('five-member build packet aggregate exceeds bound');
+ return true;
+}
 export const STAGING_BUILD_RUNTIME=Object.freeze({node:'22.23.3',abi:'127',platform:'linux',arch:'x64',glibc:'2.39',next:'16.3.8'});
 
 export function assertBuildRuntime(runtime,environment){
@@ -125,12 +136,13 @@ export async function produceBuild({source=process.cwd(),output,purpose='release
  execFileSync('python3',[join(controllerRoot,'.github/ci/build-bundle.py'),'pack',source,join(output,'bytes')],{stdio:'inherit'});
  const packEndedAt=Date.now();
  const manifestBytes=bytes(join(output,'bytes/build-bundle-files.json'),16*1024*1024),manifest=JSON.parse(manifestBytes);
- if(manifest.platform!=='linux'||manifest.nextBuildId!==buildId)fail('bundle/build identity mismatch');
+ assertBuildCapacityProfile(manifest.capacityProfile);
+ if(manifest.format!==2||manifest.platform!=='linux'||manifest.nextBuildId!==buildId)fail('bundle/build identity mismatch');
  testing.verifyInstalledTestingBuild(prepared,source);
  if(cleanHead(source)!==environment.AIHR_CI_HEAD||cleanHead(controllerRoot)!==environment.AIHR_CI_CONTROL_HEAD
   ||!testing.readPublishedTestingBuild(directory,{sourceRef:environment.AIHR_CI_HEAD,buildRecordId}).bytes.equals(preparedBytes)
   ||!bytes(observationPath,1024*1024).equals(observationBytes))fail('source or build evidence changed during packaging');
- const provenance={format:1,kind:purpose==='diagnostic'?'diagnostic-system-testing-build-not-release':'ci-system-testing-build-candidate',source:environment.AIHR_CI_HEAD,controller:environment.AIHR_CI_CONTROL_HEAD,
+ const provenance={format:2,capacityProfile:BUILD_CAPACITY_PROFILE,kind:purpose==='diagnostic'?'diagnostic-system-testing-build-not-release':'ci-system-testing-build-candidate',source:environment.AIHR_CI_HEAD,controller:environment.AIHR_CI_CONTROL_HEAD,
   repository:'StradaverseHub/ai-hr',repositoryId:1333414856,runId:Number(environment.GITHUB_RUN_ID),runAttempt:1,
   workflowRef:environment.GITHUB_WORKFLOW_REF,runtime,buildRecordId,nextBuildId:buildId,
   lockSha256:hash(readFileSync(join(source,'pnpm-lock.yaml'))),packageSha256:hash(readFileSync(join(source,'package.json'))),
@@ -141,7 +153,11 @@ export async function produceBuild({source=process.cwd(),output,purpose='release
   provenance.diagnosticRunner={name:environment.RUNNER_NAME,sourcePath:source,bootSha256:hash(readFileSync('/proc/sys/kernel/random/boot_id'))};
   provenance.diagnosticDurations={canonicalBuildMs:endedAt-startedAt,packMs:packEndedAt-packStartedAt};
  }
- for(const [name,data]of [['system-testing.json',preparedBytes],['successful-build.json',observationBytes],['build-provenance.json',Buffer.from(JSON.stringify(provenance)+'\n')]])writeFileSync(join(output,name),data,{flag:'wx',mode:0o600});
+ const records=[['system-testing.json',preparedBytes],['successful-build.json',observationBytes],['build-provenance.json',Buffer.from(JSON.stringify(provenance)+'\n')]];
+ const archive=lstatSync(join(output,'bytes/build-bundle.tar.gz'));
+ if(!archive.isFile()||archive.isSymbolicLink()||archive.nlink!==1||archive.size<1||archive.size>BUILD_CAPACITY_PROFILE.archiveMaxBytes||archive.size!==manifest.archiveBytes)fail('actual archive capacity differs');
+ assertBuildPacketAggregate([...records.map(([,data])=>data.length),manifestBytes.length,archive.size]);
+ for(const [name,data]of records)writeFileSync(join(output,name),data,{flag:'wx',mode:0o600});
  return provenance;
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){

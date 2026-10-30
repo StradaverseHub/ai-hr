@@ -27,6 +27,35 @@ function pageDirs(dir: string): string[] {
   return out;
 }
 
+type LoadingContract={namespace:string;key:string;parent?:{folder:string;specifier:string}};
+const LOCALIZED:Readonly<Record<string,LoadingContract>>={
+  'app/attendance/my-roster':{namespace:'attendance.myCalendar',key:'loading'},
+  'app/me/ea':{namespace:'myEa',key:'loading'},
+  'app/me/payslip':{namespace:'myPayslip',key:'loading'},
+  'app/me/tp3':{namespace:'myTp3',key:'loading'},
+  'app/payroll/formula-builder':{namespace:'payFormula',key:'loading'},
+  'app/payroll/formula-builder/new':{namespace:'payFormula',key:'loading',parent:{folder:'app/payroll/formula-builder',specifier:'../loading'}},
+  'app/payroll/formula-builder/[id]':{namespace:'payFormula',key:'loading',parent:{folder:'app/payroll/formula-builder',specifier:'../loading'}},
+  'app/payroll/formula-builder/evaluations/[id]':{namespace:'payFormula',key:'traceLoading'},
+};
+const readLoading=(folder:string)=>fs.readFileSync(path.join(ROOT,folder,'loading.tsx'),'utf8');
+function assertLocalizedLoading(folder:string,read:(folder:string)=>string,visited=new Set<string>()):void {
+  const contract=LOCALIZED[folder];expect(contract,folder).toBeDefined();
+  expect(visited.has(folder),'loading owner must not cycle').toBe(false);visited.add(folder);
+  const source=read(folder);
+  if(contract.parent){
+    // Only these two exact child statements may delegate, and only to the finite known owner.
+    expect(source.trim(),folder).toBe(`export {default} from '${contract.parent.specifier}';`);
+    expect(path.resolve(ROOT,folder,contract.parent.specifier+'.tsx')).toBe(path.resolve(ROOT,contract.parent.folder,'loading.tsx'));
+    expect(LOCALIZED[contract.parent.folder]).toMatchObject({namespace:contract.namespace,key:contract.key});
+    return assertLocalizedLoading(contract.parent.folder,read,visited);
+  }
+  expect(source,folder).toContain(`getTranslations('${contract.namespace}')`);
+  expect(source,folder).toContain('role="status"');
+  expect(source,folder).toContain(`t('${contract.key}')`);
+  expect(source,folder).not.toMatch(/animate-(?:pulse|spin)/);
+}
+
 describe('r394 · every page folder has a loading boundary', () => {
   const dirs = pageDirs('app');
 
@@ -44,16 +73,38 @@ describe('r394 · every page folder has a loading boundary', () => {
       const f = path.join(ROOT, d, 'loading.tsx');
       if (!fs.existsSync(f)) { missing.push(d); continue; }
       const source = fs.readFileSync(f, 'utf8');
-      const localized: Record<string,string> = {'app/attendance/my-roster':'attendance.myCalendar','app/me/ea':'myEa','app/me/payslip':'myPayslip','app/me/tp3':'myTp3','app/payroll/formula-builder':'payFormula','app/payroll/formula-builder/new':'payFormula','app/payroll/formula-builder/[id]':'payFormula','app/payroll/formula-builder/evaluations/[id]':'payFormula'};
-      if (localized[d]) {
-        expect(source, d).toContain(`getTranslations('${localized[d]}')`);
-        expect(source, d).toContain('role="status"');
-        expect(source, d).toContain("t('loading')");
-        expect(source, d).not.toMatch(/animate-(?:pulse|spin)/);
-      } else if (!source.includes("from '@/components/route-loading'")) wrong.push(d);
+      if (LOCALIZED[d]) assertLocalizedLoading(d,readLoading);
+      else if (!source.includes("from '@/components/route-loading'")) wrong.push(d);
     }
     expect(missing, 'add `export { default } from \'@/components/route-loading\';` as loading.tsx').toEqual([]);
     expect(wrong).toEqual([]);
+  });
+
+  it('accepts only the two exact Formula parent delegates and checks their real owner',()=>{
+    for(const folder of ['app/payroll/formula-builder/new','app/payroll/formula-builder/[id]']){
+      const visited:string[]=[];
+      assertLocalizedLoading(folder,wanted=>{visited.push(wanted);return readLoading(wanted);});
+      expect(visited).toEqual([folder,'app/payroll/formula-builder']);
+      for(const wrong of ["export {default} from './missing';","export {default} from '../../loading';","export {default} from '/foreign/loading';",readLoading(folder)+"\nthrow new Error('extra child code');"]){
+        expect(()=>assertLocalizedLoading(folder,wanted=>wanted===folder?wrong:readLoading(wanted))).toThrow();
+      }
+      expect(()=>assertLocalizedLoading(folder,wanted=>{
+        if(wanted==='app/payroll/formula-builder')throw new Error('missing owner');return readLoading(wanted);
+      })).toThrow('missing owner');
+    }
+  });
+
+  it('refuses a missing namespace, status, correct key or reduced-motion boundary through a delegate',()=>{
+    const owner='app/payroll/formula-builder',source=readLoading(owner);
+    const wrong=[source.replace("getTranslations('payFormula')","getTranslations('foreign')"),
+      source.replace('role="status"','role="none"'),source.replace("t('loading')","t('other')"),source+'\n// animate-pulse'];
+    for(const changed of wrong){expect(changed).not.toBe(source);
+      expect(()=>assertLocalizedLoading(owner+'/[id]',wanted=>wanted===owner?changed:readLoading(wanted))).toThrow();
+    }
+    const trace=owner+'/evaluations/[id]',traceSource=readLoading(trace);
+    expect(traceSource).toContain("t('traceLoading')");
+    expect(()=>assertLocalizedLoading(trace,wanted=>wanted===trace?traceSource.replace("t('traceLoading')","t('loading')"):readLoading(wanted))).toThrow();
+    expect(()=>assertLocalizedLoading('app/unregistered',readLoading)).toThrow();
   });
 
   it('the exempt full-screen pages stay without the app-shell skeleton', () => {

@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -62,10 +63,86 @@ class BundleTests(unittest.TestCase):
             bundle.unpack(archive,manifest,self.destination,self.target)
         self.assertFalse(self.destination.exists())
 
+    def refusal_details(self, error):
+        prefix='Build bundle refused: nonregular or oversized file; '
+        self.assertTrue(str(error).startswith(prefix))
+        self.assertNotIn(str(self.root),str(error))
+        self.assertNotIn('\n',str(error))
+        return json.loads(str(error)[len(prefix):])
+
+    def test_oversized_member_refusal_identifies_exact_bound_without_reading_payload(self):
+        file=self.source/'.next/server/oversized.js'
+        with file.open('wb') as stream:stream.truncate(bundle.MAX_FILE+1)
+        with self.assertRaises(ValueError) as caught:bundle.pack(self.source,self.output)
+        self.assertEqual(self.refusal_details(caught.exception),{
+            'context':'build-payload-member','path':'server/oversized.js','type':'regular',
+            'sizeBytes':bundle.MAX_FILE+1,'limitBytes':bundle.MAX_FILE})
+        self.assertFalse(self.output.exists())
+
+    def test_compressed_archive_refusal_reports_actual_size_and_preserves_owned_cleanup(self):
+        # Isolate the archive boundary with a smaller test-only limit; production limits never change.
+        with mock.patch.object(bundle,'MAX_ARCHIVE',1):
+            with self.assertRaises(ValueError) as caught:bundle.pack(self.source,self.output)
+        details=self.refusal_details(caught.exception)
+        self.assertEqual({k:details[k] for k in ['context','path','type','limitBytes']},{
+            'context':'compressed-build-archive','path':'build-bundle.tar.gz','type':'regular','limitBytes':1})
+        self.assertGreater(details['sizeBytes'],1)
+        self.assertFalse(self.output.exists())
+
+    def test_external_package_and_manifest_refusals_identify_their_distinct_bounds(self):
+        file=self.source/'node_modules/.store/sharp/package.json'
+        with file.open('wb') as stream:stream.truncate(256*1024+1)
+        with self.assertRaises(ValueError) as caught:bundle.package_identity(self.source,'sharp')
+        self.assertEqual(self.refusal_details(caught.exception),{
+            'context':'external-package-manifest:sharp','path':'package.json','type':'regular',
+            'sizeBytes':256*1024+1,'limitBytes':256*1024})
+        file=self.root/'manifest.json'
+        with file.open('wb') as stream:stream.truncate(bundle.MAX_MANIFEST+1)
+        with self.assertRaises(ValueError) as caught:bundle.read_manifest(file)
+        self.assertEqual(self.refusal_details(caught.exception),{
+            'context':'build-manifest','path':'manifest.json','type':'regular',
+            'sizeBytes':bundle.MAX_MANIFEST+1,'limitBytes':bundle.MAX_MANIFEST})
+
+    def test_external_package_member_refusal_reports_its_distinct_size_boundary(self):
+        file=self.source/'node_modules/.store/fontkit/index.js'
+        with file.open('wb') as stream:stream.truncate(bundle.MAX_PACKAGE+1)
+        with self.assertRaises(ValueError) as caught:bundle.package_identity(self.source,'fontkit')
+        self.assertEqual(self.refusal_details(caught.exception),{
+            'context':'external-package-file:fontkit','path':'index.js','type':'regular',
+            'sizeBytes':bundle.MAX_PACKAGE+1,'limitBytes':bundle.MAX_PACKAGE})
+
+    def test_nonregular_and_escaped_path_diagnostics_do_not_follow_or_read_objects(self):
+        file=self.root/'blocked-fifo';os.mkfifo(file)
+        with self.assertRaises(ValueError) as caught:bundle.regular(file,context='fixture',root=self.root)
+        details=self.refusal_details(caught.exception);self.assertEqual(details['type'],'fifo')
+        self.assertEqual(details['path'],'blocked-fifo')
+        file=self.root/'escaped\nname';file.write_text('PRIVATE_CONTENT_MUST_STAY_LOCAL')
+        with self.assertRaises(ValueError) as caught:bundle.regular(file,0,context='fixture',root=self.root)
+        self.assertNotIn('PRIVATE_CONTENT_MUST_STAY_LOCAL',str(caught.exception))
+        self.assertEqual(self.refusal_details(caught.exception)['path'],'escaped\nname')
+
+    def test_cli_pack_measurement_is_separate_from_the_unchanged_byte_manifest(self):
+        child=subprocess.run([sys.executable,str(path),'pack',str(self.source),str(self.output)],
+                             capture_output=True,text=True,check=True)
+        summary=json.loads(child.stdout);measurement=json.loads(child.stderr)
+        self.assertEqual(set(summary),{'format','capacityProfile','kind','files','archiveBytes','unpackedBytes','releaseAuthorized'})
+        self.assertEqual(summary['format'],2);self.assertEqual(summary['capacityProfile'],bundle.CAPACITY_PROFILE)
+        self.assertEqual(set(measurement),{'kind','compressionLevel','cpuSeconds','elapsedSeconds','releaseAuthorized'})
+        self.assertEqual(measurement['kind'],'BUILD_BUNDLE_PACK_MEASUREMENT_NOT_RELEASE')
+        self.assertEqual(measurement['compressionLevel'],9);self.assertFalse(measurement['releaseAuthorized'])
+        self.assertGreater(measurement['cpuSeconds'],0);self.assertGreater(measurement['elapsedSeconds'],0)
+        manifest=self.output/'build-bundle-files.json';archive=self.output/'build-bundle.tar.gz'
+        actual=bundle.unpack(archive,manifest,self.destination,self.target)
+        self.assertEqual(summary['archiveBytes'],actual['archiveBytes'])
+        self.assertEqual(summary['files'],len(actual['files']))
+        for row in actual['files']:
+            self.assertEqual((self.destination/row['path']).read_bytes(),(self.source/'.next'/row['path']).read_bytes())
+
     def test_round_trip_preserves_all_production_bytes_and_rebuilds_only_known_aliases(self):
         m,archive,manifest=self.packed();actual=bundle.unpack(archive,manifest,self.destination,self.target)
         self.assertEqual(m,actual);self.assertNotIn('result',m)
         self.assertEqual(m['kind'],'next-build-byte-bundle')
+        self.assertEqual(archive.read_bytes()[8],2)  # Actual gzip header identifies maximum DEFLATE compression.
         for row in m['files']:self.assertEqual((self.destination/row['path']).read_bytes(),(self.source/'.next'/row['path']).read_bytes())
         self.assertTrue((self.destination/'types').is_dir())
         self.assertFalse((self.destination/'cache').exists());self.assertFalse((self.destination/'dev').exists())
@@ -218,7 +295,7 @@ class BundleTests(unittest.TestCase):
         self.assertFalse((shared/'output').exists())
 
     def test_noncanonical_duplicate_json_keys_refuse(self):
-        m,archive,manifest=self.packed();data=manifest.read_bytes();manifest.write_bytes(b'{"format":1,'+data[1:])
+        m,archive,manifest=self.packed();data=manifest.read_bytes();manifest.write_bytes(b'{"format":2,'+data[1:])
         self.refuses_extract(archive,manifest)
 
 
@@ -297,5 +374,68 @@ class BundleTests(unittest.TestCase):
         (self.destination/'cache').symlink_to(outside,target_is_directory=True)
         with self.assertRaises(ValueError):bundle.verify_directory(self.destination,manifest,self.target,str(self.source),allow_runtime_cache=True)
         self.assertEqual((outside/'preserve').read_text(),'private')
+
+    def test_current_capacity_contract_matches_actual_javascript_export(self):
+        javascript=Path(__file__).with_name('build-production.mjs').resolve().as_uri()
+        script='import {BUILD_CAPACITY_PROFILE} from '+json.dumps(javascript)+';console.log(JSON.stringify(BUILD_CAPACITY_PROFILE));'
+        actual=json.loads(subprocess.run(['node','--input-type=module','-e',script],capture_output=True,text=True,check=True).stdout)
+        self.assertEqual(actual,bundle.CAPACITY_PROFILE)
+        self.assertEqual(bundle.CAPACITY_PROFILE,{'profileVersion':2,'archiveMaxBytes':276824064,'zipMaxBytes':293601280})
+        self.assertEqual((bundle.MAX_ARCHIVE,bundle.MAX_ZIP),(276824064,293601280))
+        self.assertEqual((bundle.MAX_FILE,bundle.MAX_PACKAGE,bundle.MAX_MANIFEST,bundle.MAX_UNPACKED,bundle.MAX_FILES),
+                         (256*1024**2,32*1024**2,16*1024**2,2*1024**3,40000))
+
+    def test_manifest_accepts_new_archive_range_but_only_exact_current_profile(self):
+        original,archive,manifest=self.packed()
+        for size in [256*1024**2+1,bundle.MAX_ARCHIVE]:
+            current=json.loads(json.dumps(original));current['archiveBytes']=size
+            self.assertIs(bundle.validate_manifest(current),current)
+        mutations=[lambda d:d.update(format=1),lambda d:d.update(format=True),lambda d:d.pop('capacityProfile'),
+            lambda d:d['capacityProfile'].update(profileVersion=True),lambda d:d['capacityProfile'].update(profileVersion=1),
+            lambda d:d['capacityProfile'].update(archiveMaxBytes=256*1024**2),
+            lambda d:d['capacityProfile'].update(archiveMaxBytes=float(bundle.MAX_ARCHIVE)),
+            lambda d:d['capacityProfile'].update(zipMaxBytes=bundle.MAX_ZIP+1),
+            lambda d:d['capacityProfile'].pop('zipMaxBytes'),lambda d:d['capacityProfile'].update(extra=1),
+            lambda d:d.update(archiveBytes=bundle.MAX_ARCHIVE+1),lambda d:d['files'][0].update(size=bundle.MAX_FILE+1),
+            lambda d:d.update(directories=['empty-%05d'%i for i in range(bundle.MAX_FILES)])]
+        for mutate in mutations:
+            current=json.loads(json.dumps(original));mutate(current)
+            with self.subTest(manifest=current.get('capacityProfile'),format=current.get('format')):
+                with self.assertRaises(ValueError):bundle.validate_manifest(current)
+
+    def test_old_baseline_manifest_is_opaque_immutable_and_never_a_current_fallback(self):
+        current,archive,manifest=self.packed();bundle.unpack(archive,manifest,self.destination,self.target)
+        baseline=json.loads(json.dumps(current));baseline['format']=1;baseline.pop('capacityProfile')
+        retained=self.root/'retained-baseline-format1.json';self.save(baseline,retained)
+        before=retained.read_bytes();build_before=(self.destination/'BUILD_ID').read_bytes()
+        for admit in [lambda:bundle.validate_manifest(baseline),lambda:bundle.read_manifest(retained),
+                      lambda:bundle.unpack(archive,retained,self.root/'rejected-candidate',self.target),
+                      lambda:bundle.verify_directory(self.destination,retained,self.target,str(self.source))]:
+            with self.assertRaises(ValueError):admit()
+            self.assertEqual(retained.read_bytes(),before)
+            self.assertEqual((self.destination/'BUILD_ID').read_bytes(),build_before)
+            self.assertFalse((self.root/'rejected-candidate').exists())
+        self.assertEqual(bundle.read_manifest(manifest),current)
+        self.assertEqual(bundle.verify_directory(self.destination,manifest,self.target,str(self.source)),current)
+
+    def test_actual_oversized_archive_refuses_before_hash_or_output(self):
+        current,archive,manifest=self.packed()
+        current['archiveBytes']=bundle.MAX_ARCHIVE;self.save(current,manifest)
+        with archive.open('wb') as stream:stream.truncate(bundle.MAX_ARCHIVE+1)
+        with mock.patch.object(bundle,'digest_file',side_effect=AssertionError('oversized bytes must not be hashed')):
+            with self.assertRaisesRegex(ValueError,'compressed-build-archive'):
+                bundle.unpack(archive,manifest,self.destination,self.target)
+        self.assertFalse(self.destination.exists())
+
+    def test_unpack_and_verification_cli_results_bind_current_format_and_capacity(self):
+        current,archive,manifest=self.packed()
+        commands=[['unpack',str(archive),str(manifest),str(self.destination),str(self.target)],
+                  ['verify-directory',str(self.destination),str(manifest),str(self.target),str(self.source)],
+                  ['verify-active-directory',str(self.destination),str(manifest),str(self.target),str(self.source)]]
+        for arguments in commands:
+            result=subprocess.run([sys.executable,str(path),*arguments],capture_output=True,text=True,check=True)
+            summary=json.loads(result.stdout)
+            self.assertEqual(summary['format'],2);self.assertEqual(summary['capacityProfile'],bundle.CAPACITY_PROFILE)
+            self.assertEqual(summary['archiveBytes'],current['archiveBytes']);self.assertFalse(summary['releaseAuthorized'])
 
 if __name__=='__main__':unittest.main()

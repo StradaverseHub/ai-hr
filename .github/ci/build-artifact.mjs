@@ -3,9 +3,10 @@ import {createHash} from 'node:crypto';
 import {openSync,closeSync,fstatSync,readSync,lstatSync,readFileSync,readdirSync,realpathSync,constants} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {isDeepStrictEqual} from 'node:util';
-import {assertSuccessfulObservation,STAGING_BUILD_RUNTIME} from './build-production.mjs';
+import {assertSuccessfulObservation,STAGING_BUILD_RUNTIME,BUILD_CAPACITY_PROFILE,assertBuildCapacityProfile,assertBuildPacketAggregate} from './build-production.mjs';
 export const BUILD_ARTIFACT='production-build-v1';
-export const BUILD_ZIP_MAX=280*1024**2;
+export const BUILD_ARCHIVE_MAX=BUILD_CAPACITY_PROFILE.archiveMaxBytes;
+export const BUILD_ZIP_MAX=BUILD_CAPACITY_PROFILE.zipMaxBytes;
 const fail=message=>{throw Error('CI build packet refused: '+message);};
 const requireValue=(value,message)=>{if(!value)fail(message);};
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -45,7 +46,8 @@ export function inspectCiBuildPacket(directory,expected){
  const prepared=JSON.parse(preparedBytes),observation=JSON.parse(evidence['successful-build.json'].data),manifest=JSON.parse(evidence['bytes/build-bundle-files.json'].data);
  requireValue(/^[a-f0-9]{40}$/.test(expected.candidate??'')&&/^[a-f0-9]{40}$/.test(expected.controller??'')
   &&Number.isSafeInteger(expected.runId)&&expected.runId>0&&['main','alpha'].includes(expected.controllerBranch),'independent expected identity');
- requireValue(p?.format===1&&p.kind==='ci-system-testing-build-candidate'&&p.releaseAuthorized===false
+ assertBuildCapacityProfile(p?.capacityProfile);assertBuildCapacityProfile(manifest?.capacityProfile);
+ requireValue(p?.format===2&&p.kind==='ci-system-testing-build-candidate'&&p.releaseAuthorized===false
   &&p.source===expected.candidate&&p.controller===expected.controller&&p.runId===expected.runId&&p.runAttempt===1
   &&p.repository==='StradaverseHub/ai-hr'&&p.repositoryId===1333414856
   &&p.workflowRef==='StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/'+expected.controllerBranch
@@ -61,11 +63,12 @@ export function inspectCiBuildPacket(directory,expected){
  const started=Date.parse(expected.producerStartedAt),completed=Date.parse(expected.producerCompletedAt);
  requireValue(Number.isFinite(started)&&Number.isFinite(completed)&&completed>=started,'producing job times');
  assertSuccessfulObservation(observation,prepared,preparedBytes,p.nextBuildId,started,completed);
- requireValue(manifest?.format===1&&manifest.kind==='next-build-byte-bundle'&&manifest.platform==='linux'&&manifest.nextBuildId===p.nextBuildId
+ requireValue(manifest?.format===2&&manifest.kind==='next-build-byte-bundle'&&manifest.platform==='linux'&&manifest.nextBuildId===p.nextBuildId
   &&manifest.archiveBytes===p.archiveBytes&&manifest.archiveSha256===p.archiveSha256,'bundle identity');
- const archive=file(join(directory,'bytes/build-bundle.tar.gz'),256*1024**2,false);
+ const archive=file(join(directory,'bytes/build-bundle.tar.gz'),BUILD_ARCHIVE_MAX,false);
+ assertBuildPacketAggregate([...Object.values(evidence).map(member=>member.bytes),archive.bytes]);
  requireValue(archive.bytes===p.archiveBytes&&archive.sha256===p.archiveSha256,'bundle archive bytes differ');
- return {kind:'AUTHENTICATED_CI_BUILD_PACKET_NOT_DEPLOYMENT',source:p.source,controller:p.controller,runId:p.runId,
+ return {format:2,capacityProfile:BUILD_CAPACITY_PROFILE,kind:'AUTHENTICATED_CI_BUILD_PACKET_NOT_DEPLOYMENT',source:p.source,controller:p.controller,runId:p.runId,
   nextBuildId:p.nextBuildId,buildRecordId:p.buildRecordId,buildSourcePath:p.buildSourcePath,runtime:p.runtime,
   provenanceSha256:evidence['build-provenance.json'].sha256,archiveSha256:p.archiveSha256,archiveBytes:p.archiveBytes,
   manifestSha256:p.manifestSha256,preparedSha256:p.preparedSha256,successfulObservationSha256:p.successfulObservationSha256,

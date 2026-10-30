@@ -7,9 +7,9 @@ import {join} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {CI_POLICY} from './policy-version.mjs';
 import {BUILD_ARTIFACT} from './build-artifact.mjs';
-import {STAGING_BUILD_RUNTIME,assertBuildDotenvCompileKeys} from './build-production.mjs';
+import {STAGING_BUILD_RUNTIME,BUILD_CAPACITY_PROFILE,assertBuildDotenvCompileKeys} from './build-production.mjs';
 import {validateInstallGrant,createInstallGrant,installJson,installHash} from './ci-install-grant.mjs';
-import {initializePrivateInstall,readPrivateInstall,assertServiceDescriptor} from './staging-build-install.mjs';
+import {initializePrivateInstall,readPrivateInstall,assertServiceDescriptor,retainNormalCleanupAudit} from './staging-build-install.mjs';
 import {installationFixture as fixture} from './staging-install-test-fixture.mjs';
 const uuid=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
 const sha=c=>c.repeat(40),digest=c=>c.repeat(64);
@@ -37,8 +37,10 @@ test('grant scope, exact shapes, hashes, runtime and immutable source/build iden
   g=>g.target='production',g=>g.controllerBranch='codex/work',g=>g.source='short',g=>g.baselineBuildId=g.build.nextBuildId,
   g=>g.environmentSha256='bad',g=>g.witnessFingerprint='bad',g=>g.runAttempt=2,g=>g.extra='unrecognized',
   g=>g.artifact.extra=true,g=>g.artifact.digest=digest('a'),g=>g.build.extra=true,
-  g=>g.build.runtime.node='22.0.0',g=>g.build.archiveBytes=256*1024**2+1,
-  g=>g.build.buildSourcePath='/source/../other',g=>g.build.preparedSha256='bad',g=>g.installId='../escape'
+  g=>g.build.runtime.node='22.0.0',g=>g.build.archiveBytes=264*1024**2+1,
+  g=>g.format=1,g=>g.build.format=1,g=>delete g.build.capacityProfile,g=>g.policyVersion='aihr-staging-ci/v15',
+  g=>g.build.capacityProfile.profileVersion=1,g=>g.build.capacityProfile.archiveMaxBytes=268435456,g=>g.build.capacityProfile.zipMaxBytes++,
+  g=>g.build.capacityProfile.extra=true,g=>g.build.buildSourcePath='/source/../other',g=>g.build.preparedSha256='bad',g=>g.installId='../escape'
  ]){const {grant}=fixture();mutate(grant);assert.throws(()=>validateInstallGrant(grant));}
 });
 test('expired or overlong authority never silently extends the original CI lifetime',()=>{
@@ -129,4 +131,33 @@ test('bundle hashing and unpacking get ten minutes, inside the detached deploy d
  const source=readFileSync(new URL('./staging-build-install.mjs',import.meta.url),'utf8');
  assert.equal(source.match(/timeout:BUNDLE_PYTHON_TIMEOUT_MS/g).length,2);
  assert.ok(3*BUNDLE_PYTHON_TIMEOUT_MS+BUNDLE_PYTHON_TIMEOUT_MS<60*60_000);
+});
+
+
+test('only the closed current grant admits the newly bounded archive range',()=>{
+ const {grant}=fixture();
+ assert.equal(grant.format,2);assert.equal(grant.build.format,2);assert.deepEqual(grant.build.capacityProfile,BUILD_CAPACITY_PROFILE);
+ for(const archiveBytes of [256*1024**2+1,264*1024**2])assert.doesNotThrow(()=>validateInstallGrant({...grant,build:{...grant.build,archiveBytes}}));
+ assert.throws(()=>validateInstallGrant({...grant,build:{...grant.build,archiveBytes:264*1024**2+1}}));
+});
+test('retained baseline identity fences preserve opaque old records without a legacy decoder or new authority',t=>{
+ const directory=privateFixture(t),next=join(directory,'retained'),packet=join(directory,'packet');
+ mkdirSync(next,{mode:0o700});mkdirSync(packet,{mode:0o700});mkdirSync(join(packet,'bytes'),{mode:0o700});
+ writeFileSync(join(next,'BUILD_ID'),'old-baseline');
+ const opaque=Buffer.from('{"format":1,"oldBaselineRecord":"unchanged and never decoded"}\n');
+ writeFileSync(join(next,'original-format1-manifest.json'),opaque,{mode:0o600});
+ const entries={'system-testing.json':Buffer.from('new prepared record'),'successful-build.json':Buffer.from('new observation record'),
+  'build-provenance.json':Buffer.from('new current provenance'),'bytes/build-bundle-files.json':Buffer.from('new current manifest')};
+ for(const [name,data]of Object.entries(entries))writeFileSync(join(packet,name),data,{mode:0o600});
+ const stat=statSync(next),p={directory,next,packet,grant:{baselineBuildId:'old-baseline'}},activated={activation:{retainedDirectory:{device:stat.dev,inode:stat.ino}}};
+ retainNormalCleanupAudit(p,activated);
+ assert.deepEqual(readFileSync(join(next,'original-format1-manifest.json')),opaque);
+ assert.equal(readFileSync(join(next,'BUILD_ID'),'utf8'),'old-baseline');
+ for(const [name,data]of Object.entries(entries))assert.deepEqual(readFileSync(join(directory,'audit',name)),data);
+ assert.equal(readdirSync(directory).includes('cleanup-authorized.json'),false,'Audit retention alone grants no cleanup authority');
+ for(const changed of [{activation:{retainedDirectory:{device:stat.dev,inode:stat.ino+1}}}, {activation:{retainedDirectory:{device:stat.dev+1,inode:stat.ino}}}])assert.throws(()=>retainNormalCleanupAudit(p,changed));
+ writeFileSync(join(next,'BUILD_ID'),'foreign');assert.throws(()=>retainNormalCleanupAudit(p,activated));writeFileSync(join(next,'BUILD_ID'),'old-baseline');
+ writeFileSync(join(packet,'build-provenance.json'),'changed current record');assert.throws(()=>retainNormalCleanupAudit(p,activated));
+ assert.deepEqual(readFileSync(join(next,'original-format1-manifest.json')),opaque);
+ assert.equal(readFileSync(join(next,'BUILD_ID'),'utf8'),'old-baseline');
 });

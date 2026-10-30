@@ -6,6 +6,7 @@ import {createHash} from 'node:crypto';
 import {mkdtempSync,rmSync,readFileSync,writeFileSync,symlinkSync,chmodSync,existsSync,statSync,realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {BUILD_ARTIFACT,BUILD_ZIP_MAX} from './build-artifact.mjs';
 import {downloadCiArchives,readCiArchive} from './archive-downloads.mjs';
 const payload=Buffer.from('immutable fixture bytes 中文\n');
 const digest=b=>'sha256:'+createHash('sha256').update(b).digest('hex');
@@ -82,4 +83,26 @@ test('prefetch symlinks, public files/directories and output alias refuse',async
  const publicCache=directory(t);writeFileSync(join(publicCache,a.name+'.zip'),payload,{mode:0o644});await assert.rejects(downloadCiArchives([a],directory(t),{prefetchDirectory:publicCache,start:transport()}));
  chmodSync(publicCache,0o755);await assert.rejects(downloadCiArchives([a],directory(t),{prefetchDirectory:publicCache,start:transport()}));
  await assert.rejects(downloadCiArchives([a],cache,{prefetchDirectory:cache,start:transport()}));
+});
+
+
+test('build namespace alone reaches the unchanged280MiB metadata boundary; +1 refuses before transport',async t=>{
+ assert.equal(BUILD_ZIP_MAX,293601280);
+ for(const size of [BUILD_ZIP_MAX,BUILD_ZIP_MAX+1]){
+  let starts=0;const dir=directory(t),a={...artifact(),name:BUILD_ARTIFACT,size_in_bytes:size};
+  await assert.rejects(downloadCiArchives([a],dir,{start:()=>{starts++;throw Error('metadata-only transfer probe');}}));
+  assert.equal(starts,size===BUILD_ZIP_MAX?1:0,'Exact boundary reaches transport; oversized metadata never opens a child');
+ }
+ for(const name of ['unit-fixture-1','diagnostic-build-transport-producer']){
+  let starts=0;await assert.rejects(downloadCiArchives([{...artifact(),name,size_in_bytes:64*1024**2+1}],directory(t),{start:()=>{starts++;throw Error('must not start');}}));assert.equal(starts,0);
+ }
+});
+test('build-prefetch still validates authenticated exact bytes before copy and refuses stream overflow',async t=>{
+ const a={...artifact(),name:BUILD_ARTIFACT};
+ const cache=directory(t),dir=directory(t);writeFileSync(join(cache,a.name+'.zip'),payload,{mode:0o600});
+ const r=await downloadCiArchives([a],dir,{prefetchDirectory:cache,start:()=>{throw Error('must use intact cache');}});
+ assert.deepEqual(readCiArchive(a,r.artifacts[0].path),payload);assert.equal(r.artifacts[0].reusedPrefetch,true);
+ const alteredCache=directory(t);writeFileSync(join(alteredCache,a.name+'.zip'),Buffer.alloc(payload.length,65),{mode:0o600});let starts=0;
+ await assert.rejects(downloadCiArchives([a],directory(t),{prefetchDirectory:alteredCache,start:()=>{starts++;throw Error('must not redownload');}}));assert.equal(starts,0);
+ await assert.rejects(downloadCiArchives([a],directory(t),{start:transport({bytes:Buffer.concat([payload,Buffer.from('x')])})}));
 });

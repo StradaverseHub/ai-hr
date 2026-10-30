@@ -48,7 +48,7 @@ test('measured 993-file database inventory changes isolation boundaries without 
  assert(units.every(u=>u.files.length>0&&u.files.length<=24));
  assert.equal(p.units.filter(u=>u.kind==='nodb').length,4);assert.equal(p.units.filter(u=>u.kind==='browser').length,3);
  assert.equal(requiredEvidence(p).jobs.length,57);assert.equal(requiredEvidence(p).artifacts.length,52);
- assert.equal(CI_EXECUTION.workers,2);assert.deepEqual(CI_EXECUTION.postgres,{memoryBytes:2*1024**3,jit:'on'});
+ assert.equal(CI_EXECUTION.workers,2);assert.deepEqual(CI_EXECUTION.postgres,{profileVersion:2,configuredCapBytes:2113929216,peakBudgetBytes:2147483648,jit:'on'});
 });
 test('increased matrix admission keeps every job on a free standard runner and refuses an old wider unit as current coverage',()=>{
  const yaml=readFileSync(new URL('../workflows/alpha-staging.yml',import.meta.url),'utf8');
