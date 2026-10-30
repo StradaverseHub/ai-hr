@@ -40,6 +40,7 @@ describe('Pay Items workbook contract', () => {
   it('represents every workbook-supported calculated kind; reusable formulas require native tested-ID linking', () => {
     expect([...PENDING_PAY_INPUT_KINDS]).toEqual(PAY_RULE_KINDS.filter(kind => kind !== 'fixed'&&kind!=='formula_builder'));
   });
+  it('refuses reusable Formula Builder imports that cannot bind a tested Formula ID',()=>{const raw=[...valid];raw[PAY_ITEM_COLUMNS.findIndex(([field])=>field==='inputKind')]='formula_builder';const row=normalizePayItemRow(readPayItemWorkbook(upload([raw]))[0],vocabulary);expect(row.errors).toContainEqual({field:'inputKind',code:'invalidChoice'});expect(row.input.pendingInputKind).toBeNull();expect(vocabulary.inputKind?.some(choice=>choice.value==='formula_builder')).toBe(false);});
   it('generates exactly three sheets, all current headers, and a blank entry sheet with no invented samples', async () => {
     const bytes = await buildPayItemWorkbook(vocabulary), wb = XLSX.read(bytes, { type: 'buffer', cellFormula: true });
     expect(wb.SheetNames).toEqual(['Instructions', 'Pay Items', 'Sample']);
