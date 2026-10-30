@@ -1,3 +1,4 @@
+import {offboardingStepUndoReviews} from './offboarding-step-undo-review-store';
 import {offboardingStepReviews} from './offboarding-step-completion-review-store';
 import {fixedItemArchiveReviews} from './fixed-item-archive-review-store';
 import {tp3OpeningMaintenanceReviews} from './tp3-opening-maintenance-review-store';
@@ -88,6 +89,7 @@ const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOut
  'attendance.correction.request':(tx,ctx,id)=>readCompletedAttendanceCorrectionOutcomeTx(tx,ctx,id),
  'country-my.statutory.update':(tx,ctx,id)=>readCompletedCountryStatutoryOutcomeTx(tx,ctx,id),
  'approvals.leave.decide':(tx,ctx,id)=>readCompletedLeaveDecisionOutcomeTx(tx,ctx,id),
+ 'lifecycle.offboarding.step.undo':(tx,ctx,id)=>offboardingStepUndoReviews.readCompletedOutcomeTx(tx,ctx,id),
  'lifecycle.offboarding.step.complete':(tx,ctx,id)=>offboardingStepReviews.readCompletedOutcomeTx(tx,ctx,id),
  'lifecycle.acknowledgement.submit':(tx,ctx,id)=>readCompletedLifecycleAckOutcomeTx(tx,ctx,id),
  'toil.replacement.request':(tx,ctx,id)=>readCompletedToilRequestOutcomeTx(tx,ctx,id),
