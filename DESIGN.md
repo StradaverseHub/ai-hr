@@ -168,7 +168,7 @@ The V9 onboarding/offboarding workspace and its employee work controls follow th
 
 Employee return declarations and assigned-team recovery confirmation are separate controls. Team confirmation is shown only with a fresh item capability; errors retain the entered note and announce recovery guidance. View-only case groups have disabled fields and no case-action buttons. These visibility rules accompany service and database authorization.
 
-The surface contract is recorded in [.impeccable/surfaces/lifecycle-v9.md](.impeccable/surfaces/lifecycle-v9.md). Current finish verdict: **pending**. Fictional rendered case, group and employee journeys establish working interactions; the original reference-file render remains unavailable, so exact visual parity and final integrated acceptance are not established. No new shipping raster assets are introduced by this surface.
+The surface contract is recorded in [.impeccable/surfaces/lifecycle-v9.md](.impeccable/surfaces/lifecycle-v9.md). Current finish verdict: **source and interaction review complete; final release verification and reference-render comparison remain separate**. The scoped checklist and exact verification identities are recorded in [the finish review](docs/V9-LIFECYCLE-FINISH-REVIEW.md). Fictional rendered case, group and employee journeys establish working interactions; the original reference-file render remains unavailable, so exact visual parity and final integrated acceptance are not established. No new shipping raster assets are introduced by this surface.
 
 ## Elevation & Depth
 

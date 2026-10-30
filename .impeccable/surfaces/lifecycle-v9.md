@@ -26,3 +26,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 ## Verification boundary
 
 The browser rejected opening the original local-file URL. Source markup and embedded styles establish the reference; no rendered comparison of the supplied file has been claimed. A permitted reference capture and actual built admin/employee captures remain necessary before claiming visual parity. Test controls, fixture identities and the fixed simulated date are reference harness features, not production product controls.
+
+## Finish verdict
+
+Source and interaction review is complete; the [finish review](../../docs/V9-LIFECYCLE-FINISH-REVIEW.md) records the workflow-state checklist, independent review and exact hosted evidence. No new shipping raster was introduced. Final integrated release verification, permitted reference-render comparison and human staging acceptance remain distinct claims.
