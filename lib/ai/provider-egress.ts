@@ -12,7 +12,7 @@ import {imageInputDigest} from './image-input';
 import {readOpenRouterOptions} from './providers/openrouter-configuration';
 
 type LogicalInput=GenerateArgs|ConverseArgs|ImageReadArgs;
-type Dispatch={active:boolean;used:boolean;operation:AiOperation;configurationDigest:string;inputDigest:string|null};
+type Dispatch={active:boolean;used:boolean;operation:AiOperation;configurationDigest:string;inputDigest:string|null;assertPrivacy?:()=>void};
 const dispatch=new AsyncLocalStorage<Dispatch>();
 const refused=():never=>{throw new AiGatewayError('The prepared AI provider dispatch could not be confirmed.');};
 
@@ -50,18 +50,19 @@ function logicalDigest(operation:AiOperation,args?:LogicalInput):string|null{
 }
 /** Issued only after the gateway's privacy provenance and deterministic admission have succeeded.
  * Reusing, nesting or retaining the ambient context never mints a second send. */
-export async function withProviderEgressDispatch<T>(cfg:ResolvedAiConfig,request:Readonly<Pick<AiAdmission,'operation'|'inputDigest'>>,call:()=>Promise<T>):Promise<T>{
+export async function withProviderEgressDispatch<T>(cfg:ResolvedAiConfig,request:Readonly<Pick<AiAdmission,'operation'|'inputDigest'>>,call:()=>Promise<T>,assertPrivacy?:()=>void):Promise<T>{
  plainProperties(request);
  if(Object.keys(request).some(key=>!['operation','inputDigest'].includes(key)))return refused();
  if(dispatch.getStore()?.active||!['draft','conversation','image','probe'].includes(request.operation))return refused();
  if(request.operation==='probe'?request.inputDigest!==undefined:typeof request.inputDigest!=='string'||!/^[a-f0-9]{64}$/.test(request.inputDigest))return refused();
- const state:Dispatch={active:true,used:false,operation:request.operation,configurationDigest:configurationDigest(cfg),inputDigest:request.inputDigest??null};
+ const state:Dispatch={active:true,used:false,operation:request.operation,configurationDigest:configurationDigest(cfg),inputDigest:request.inputDigest??null,assertPrivacy};
  return dispatch.run(state,async()=>{try{return await call();}finally{state.active=false;}});
 }
 /** Non-consuming preflight for the gateway route's async DNS/public-host check. */
 export function assertProviderEgressDispatch(cfg:ResolvedAiConfig,operation:AiOperation,args?:LogicalInput):void{
  try{
   const state=dispatch.getStore();
+  if(state?.active)state.assertPrivacy?.();
   if(!state?.active||state.used||state.operation!==operation||state.configurationDigest!==configurationDigest(cfg)||state.inputDigest!==logicalDigest(operation,args))return refused();
  }catch{return refused();}
 }

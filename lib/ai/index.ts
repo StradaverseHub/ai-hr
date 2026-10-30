@@ -77,8 +77,8 @@ export async function generateDraft(cfg: ResolvedAiConfig, args: GenerateArgs): 
   const inputDigest=draftInputDigest(args);
   assertProviderPrivacyRequest(cfg,'draft',inputDigest);
   return governed(cfg,{operation:'draft',reservedTokens:textReservation(args.system+args.prompt,args.maxTokens),inputDigest},(record,observe)=>{
-   consumeProviderPrivacyRequest(cfg,'draft',inputDigest);
-   return withProviderEgressDispatch(cfg,{operation:'draft',inputDigest},()=>generateDraftTransport(cfg,{...args,onUsage:record,onObservation:cfg.provider==='openrouter'?observe:undefined}));
+   const assertPrivacy=consumeProviderPrivacyRequest(cfg,'draft',inputDigest);
+   return withProviderEgressDispatch(cfg,{operation:'draft',inputDigest},()=>generateDraftTransport(cfg,{...args,onUsage:record,onObservation:cfg.provider==='openrouter'?observe:undefined}),assertPrivacy);
   });
 }
 async function generateDraftTransport(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
@@ -101,8 +101,8 @@ export async function readImage(cfg:ResolvedAiConfig,args:Omit<ImageReadArgs,'si
  const inputDigest=imageInputDigest(captured);
  assertProviderPrivacyRequest(cfg,'image',inputDigest);
  return governed(cfg,{operation:'image',reservedTokens:Math.min(1000000000,Math.max(32768,captured.data.length*2)+2500),inputDigest},record=>{
-  consumeProviderPrivacyRequest(cfg,'image',inputDigest);
-  return withProviderEgressDispatch(cfg,{operation:'image',inputDigest},()=>readImageTransport(cfg,{...captured,onUsage:record}));
+  const assertPrivacy=consumeProviderPrivacyRequest(cfg,'image',inputDigest);
+  return withProviderEgressDispatch(cfg,{operation:'image',inputDigest},()=>readImageTransport(cfg,{...captured,onUsage:record}),assertPrivacy);
  });
 }
 async function readImageTransport(cfg:ResolvedAiConfig,args:Omit<ImageReadArgs,'signal'|'timeoutMs'>&Partial<Pick<ImageReadArgs,'signal'|'timeoutMs'>>){
@@ -159,14 +159,14 @@ export async function converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promi
   const inputDigest=conversationInputDigest(args);
   assertProviderPrivacyRequest(cfg,'conversation',inputDigest);
   return governed(cfg,{operation:'conversation',reservedTokens:textReservation(text,args.maxTokens),inputDigest},async(record,observe)=>{
-   consumeProviderPrivacyRequest(cfg,'conversation',inputDigest);
+   const assertPrivacy=consumeProviderPrivacyRequest(cfg,'conversation',inputDigest);
    return withProviderEgressDispatch(cfg,{operation:'conversation',inputDigest},async()=>{let terminalObserved=false;const terminal:{usage:AiRunObservation['usage']}={usage:null};const result=await adapter.converse!(cfg,{...args,...(cfg.provider==='openrouter'?{onObservation:(observation:AiRunObservation)=>{
    terminalObserved=true;terminal.usage=observation.usage;observe?.(observation);if(observation.usage)record(observation.usage);
   }}:{}),maxTokens:args.maxTokens??2048,timeoutMs:args.timeoutMs??120_000});
   if(terminalObserved){const usage=terminal.usage,reported=result.usageReported===true;if(reported?(!usage||usage.inputTokens!==result.usage.inputTokens||usage.outputTokens!==result.usage.outputTokens||usage.cachedInputTokens!==result.usage.cachedInputTokens):usage!==null)throw new AiGatewayError('The AI provider usage could not be confirmed.');}
   // A charged-but-rejected completion may never return. Actual terminal usage is already recorded
   // by the trusted adapter callback; do not double-record successful OpenRouter counters.
-  if(!terminalObserved&&(result.usageReported??[result.usage.inputTokens,result.usage.outputTokens,result.usage.cachedInputTokens].some(n=>n>0)))record(result.usage);return result;});});
+  if(!terminalObserved&&(result.usageReported??[result.usage.inputTokens,result.usage.outputTokens,result.usage.cachedInputTokens].some(n=>n>0)))record(result.usage);return result;},assertPrivacy);});
 }
 
 /**

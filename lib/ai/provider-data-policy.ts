@@ -1,3 +1,5 @@
+import {providerDataReviewStatus,assertProviderDataContractReviewed} from './provider-data-reviews';
+import {PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST} from './provider-data-source-manifest';
 /** Provider-data minimization primitives. This module grants neither source access nor permission to
  * dispatch: native owners must authorize/replay sources and the gateway must enforce the review gate.
  * No review is implied by a successful local projection. The initial contract remains PENDING. */
@@ -29,7 +31,7 @@ const formats:readonly JobFact['format'][]=Object.freeze(['text','number','date'
 /** Closed source contract, not a posted schema or a reviewed:true override. A genuine specialist
  * review and its durable evidence must precede any future source change to this review record. */
 const contract=Object.freeze({id:PROVIDER_DATA_CONTRACT,sourceVersion:'structured-canonical-records.v1',feature:'hr_assistant',operation:'conversation',
- reviewStatus:'pending' as ProviderDataReviewStatus,
+
  sourceDigest:hash(JSON.stringify({version:1,id:PROVIDER_DATA_CONTRACT,purpose:'source_selection_only',shape:{root:['version','records'],record:['ordinal','module','fields'],field:['ordinal','field','format','available','value']},
   protected:'every value scalar becomes a random opaque handle',modules,fields:allowedFields,formats,limits:PROVIDER_DATA_LIMITS}))});
 type Owned={binding:ProviderDataBinding;bindingDigest:string;projection:PreparedProviderDataProjection;values:Map<string,ProviderDataScalar>;monotonicDeadline:number;timer?:ReturnType<typeof setTimeout>};
@@ -95,7 +97,7 @@ export function prepareProviderData(binding:unknown,payload:unknown):PreparedPro
   });
   const json=JSON.stringify({version:1,purpose:'source_selection_only',records});if(Buffer.byteLength(json,'utf8')>PROVIDER_DATA_LIMITS.totalBytes)return unavailable();
   const originalSourceFingerprint=hash(JSON.stringify({version:1,records:sourceRecords}));
-  const projection=Object.freeze({purpose:'source_selection_only' as const,json,sanitizedDigest:hash(json),originalSourceFingerprint,contractId:contract.id,contractSourceVersion:contract.sourceVersion,contractSourceDigest:contract.sourceDigest,reviewStatus:contract.reviewStatus});
+  const projection=Object.freeze({purpose:'source_selection_only' as const,json,sanitizedDigest:hash(json),originalSourceFingerprint,contractId:contract.id,contractSourceVersion:contract.sourceVersion,contractSourceDigest:PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST,reviewStatus:providerDataReviewStatus(contract.id)});
   const capability=Object.freeze(Object.create(null)) as PreparedProviderData;
   const state:Owned={binding:capturedBinding,bindingDigest:hash(JSON.stringify(capturedBinding)),projection,values,monotonicDeadline:performance.now()+Math.max(0,capturedBinding.expiresAt-Date.now())};
   state.timer=setTimeout(()=>{values.clear();prepared.delete(capability);},Math.max(1,capturedBinding.expiresAt-Date.now()));state.timer.unref?.();
@@ -114,7 +116,7 @@ export function resolveProviderDataHandle(capability:unknown,current:unknown,han
 }
 export function assertProviderDataReviewApproved(capability:unknown,current:unknown):void{
  const state=owned(capability,current);
- if(state.projection.reviewStatus!=='approved'||contract.reviewStatus!=='approved')return unavailable();
+ try{assertProviderDataContractReviewed(contract.id,state.projection.contractSourceDigest);}catch{return unavailable();}
 }
 /** Explicit completion/cancellation clears local values immediately; expiration also clears on access.
  * Nothing here persists a mapping, raw scalar, prompt, tenant identifier or model output. */

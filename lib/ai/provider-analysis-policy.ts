@@ -1,3 +1,5 @@
+import {providerDataReviewStatus,assertProviderDataContractReviewed} from './provider-data-reviews';
+import {PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST} from './provider-data-source-manifest';
 /** CLOSED attendance-analysis projection, prepared locally for specialist review only. PENDING means
  * no provider dispatch is authorized. Pseudonymized bands still expose relationships/cardinality and
  * may permit reidentification; provisional cohort thresholds are not an anonymity guarantee.
@@ -25,7 +27,7 @@ export type PreparedAttendanceAnalysis=Readonly<{readonly [attendanceBrand]:true
 export type AttendanceAnalysisProjection=Readonly<{purpose:'attendance_trend_analysis';sourceStatus:'requires_native_owner_replay';risk:'pseudonymized_person_level_bands';
  json:string;sanitizedDigest:string;originalSourceFingerprint:string;contractId:typeof ATTENDANCE_ANALYSIS_CONTRACT;contractSourceVersion:string;contractSourceDigest:string;reviewStatus:ProviderDataReviewStatus}>;
 const hash=(text:string)=>createHash('sha256').update(text,'utf8').digest('hex');
-const contract=Object.freeze({id:ATTENDANCE_ANALYSIS_CONTRACT,version:'attendance-trend-analysis.v1',reviewStatus:'pending' as ProviderDataReviewStatus,
+const contract=Object.freeze({id:ATTENDANCE_ANALYSIS_CONTRACT,version:'attendance-trend-analysis.v1',
  digest:hash(JSON.stringify({id:ATTENDANCE_ANALYSIS_CONTRACT,version:1,purpose:'attendance_trend_analysis',windows,cohortLabels,periods,attendanceBands,punctualityBands,trends,
   input:{root:['version','window','cohorts'],cohort:['cohort','trend','records'],trend:['attendance','punctuality'],record:['personKey','period','attendanceBand','punctualityBand']},
   output:'personKey becomes a random per-preparation consistent alias; records reorder by random alias',limits:ATTENDANCE_ANALYSIS_LIMITS}))});
@@ -101,7 +103,7 @@ export function prepareAttendanceTrendAnalysis(current:unknown,payload:unknown):
   const sourceJson=JSON.stringify({version:1,window,cohorts:sourceCohorts}),json=JSON.stringify({version:1,purpose:'attendance_trend_analysis',window,cohorts:output});
   if(Buffer.byteLength(sourceJson,'utf8')>ATTENDANCE_ANALYSIS_LIMITS.bytes||Buffer.byteLength(json,'utf8')>ATTENDANCE_ANALYSIS_LIMITS.bytes)return unavailable();
   const projection:AttendanceAnalysisProjection=Object.freeze({purpose:'attendance_trend_analysis',sourceStatus:'requires_native_owner_replay',risk:'pseudonymized_person_level_bands',json,
-   sanitizedDigest:hash(json),originalSourceFingerprint:hash(sourceJson),contractId:contract.id,contractSourceVersion:contract.version,contractSourceDigest:contract.digest,reviewStatus:contract.reviewStatus});
+   sanitizedDigest:hash(json),originalSourceFingerprint:hash(sourceJson),contractId:contract.id,contractSourceVersion:contract.version,contractSourceDigest:PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST,reviewStatus:providerDataReviewStatus(contract.id)});
   const capability=Object.freeze(Object.create(null)) as PreparedAttendanceAnalysis;
   const state:Owned={binding:capturedBinding,bindingDigest:hash(JSON.stringify(capturedBinding)),projection,people,deadline:performance.now()+Math.max(0,capturedBinding.expiresAt-Date.now())};
   state.timer=setTimeout(()=>{people.clear();vault.delete(capability);},Math.max(1,capturedBinding.expiresAt-Date.now()));state.timer.unref?.();vault.set(capability,state);return capability;
@@ -114,7 +116,7 @@ export function resolveAttendancePersonAlias(capability:unknown,current:unknown,
  const state=owned(capability,current);if(typeof alias!=='string'||!/^person_[A-Za-z0-9_-]{24}$/.test(alias)||!state.people.has(alias))return unavailable();return state.people.get(alias)!;
 }
 export function assertAttendanceTrendReviewApproved(capability:unknown,current:unknown):void{
- const state=owned(capability,current);if(state.projection.reviewStatus!=='approved'||contract.reviewStatus!=='approved')return unavailable();
+ const state=owned(capability,current);try{assertProviderDataContractReviewed(contract.id,state.projection.contractSourceDigest);}catch{return unavailable();}
 }
 export function retireAttendanceTrendAnalysis(capability:unknown):void{
  if(!capability||typeof capability!=='object')return;const state=vault.get(capability);if(!state)return;state.people.clear();if(state.timer)clearTimeout(state.timer);vault.delete(capability);
@@ -135,7 +137,7 @@ declare const analysisBrand:unique symbol;
 export type PreparedProviderAnalysis=Readonly<{readonly [analysisBrand]:true}>;
 export type PreparedProviderAnalysisProjection=Readonly<{purpose:'aggregate_comparison_analysis';sourceStatus:'requires_native_owner_replay';risk:'coarse_aggregate_bands_not_anonymity';json:string;sanitizedDigest:string;
  originalSourceFingerprint:string;contractId:typeof PROVIDER_ANALYSIS_CONTRACT;contractSourceVersion:string;contractSourceDigest:string;reviewStatus:ProviderDataReviewStatus}>;
-const aggregateContract=Object.freeze({id:PROVIDER_ANALYSIS_CONTRACT,version:'aggregate-comparison-analysis.v1',reviewStatus:'pending' as ProviderDataReviewStatus,
+const aggregateContract=Object.freeze({id:PROVIDER_ANALYSIS_CONTRACT,version:'aggregate-comparison-analysis.v1',
  digest:hash(JSON.stringify({id:PROVIDER_ANALYSIS_CONTRACT,version:1,metrics:ANALYSIS_DOMAIN_METRICS,drivers:ANALYSIS_DOMAIN_DRIVERS,categories:ANALYSIS_DOMAIN_CATEGORIES,coverage:PROVIDER_ANALYSIS_COVERAGE,
   changeBands:PROVIDER_ANALYSIS_CHANGE_BANDS,cohorts:aggregateCohorts,windows,relationships,limits:PROVIDER_ANALYSIS_LIMITS,
   shape:{root:['version','domain','window','cohorts'],cohort:['cohort','population','metrics'],metric:['metric','support','changeBand','drivers','slices'],driver:['code','relationship'],slice:['category','people','changeBand']},
@@ -203,14 +205,14 @@ export function prepareProviderAnalysis(current:unknown,payload:unknown):Prepare
    scale:'native_source_relative_change_bands',cohorts});
   if(Buffer.byteLength(json,'utf8')>PROVIDER_ANALYSIS_LIMITS.bytes)return aggregateUnavailable();
   const projection:PreparedProviderAnalysisProjection=Object.freeze({purpose:'aggregate_comparison_analysis',sourceStatus:'requires_native_owner_replay',risk:'coarse_aggregate_bands_not_anonymity',json,sanitizedDigest:hash(json),
-   originalSourceFingerprint,contractId:aggregateContract.id,contractSourceVersion:aggregateContract.version,contractSourceDigest:aggregateContract.digest,reviewStatus:aggregateContract.reviewStatus});
+   originalSourceFingerprint,contractId:aggregateContract.id,contractSourceVersion:aggregateContract.version,contractSourceDigest:PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST,reviewStatus:providerDataReviewStatus(aggregateContract.id)});
   const capability=Object.freeze(Object.create(null)) as PreparedProviderAnalysis,state:AggregateOwned={binding:capturedBinding,bindingDigest:hash(JSON.stringify(capturedBinding)),projection,deadline:performance.now()+Math.max(0,capturedBinding.expiresAt-Date.now())};
   state.timer=setTimeout(()=>{aggregateVault.delete(capability);},Math.max(1,capturedBinding.expiresAt-Date.now()));state.timer.unref?.();aggregateVault.set(capability,state);return capability;
  }catch{return aggregateUnavailable();}
 }
 export function inspectPreparedProviderAnalysis(capability:unknown,current:unknown):PreparedProviderAnalysisProjection{return aggregateOwned(capability,current).projection;}
 export function assertProviderAnalysisReviewApproved(capability:unknown,current:unknown):void{
- const state=aggregateOwned(capability,current);if(state.projection.reviewStatus!=='approved'||aggregateContract.reviewStatus!=='approved')return aggregateUnavailable();
+ const state=aggregateOwned(capability,current);try{assertProviderDataContractReviewed(aggregateContract.id,state.projection.contractSourceDigest);}catch{return aggregateUnavailable();}
 }
 export function retireProviderAnalysis(capability:unknown):void{
  if(!capability||typeof capability!=='object')return;const state=aggregateVault.get(capability);if(!state)return;if(state.timer)clearTimeout(state.timer);aggregateVault.delete(capability);

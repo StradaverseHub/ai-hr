@@ -1,17 +1,30 @@
-/** Source-reviewed disclosure registry. An approved record is a technical source review, never legal
- * adequacy, installed acceptance, or human employment decision authority. Pending records refuse.
- * Review digest covers exact transform sources/dependencies, not a caller-supplied schema hash. */
+/** Specialist disclosure review is source-owned. Pending/default records never authorize egress.
+ * Technical automated testing is evidence for a human specialist, never a fabricated approval. */
 import {AiGatewayError} from './types';
 import {PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST} from './provider-data-source-manifest';
-export type ProviderDataReviewRecord=Readonly<{contractId:string;status:'pending'|'approved';sourceDigest:string;reviewer:string;evidence:string}>;
+export type ProviderDataReviewRecord=Readonly<{contractId:string;status:'pending'|'approved';sourceDigest:string;reviewer:string;evidence:string;reviewedAt:string}>;
 export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Object.freeze([
- {contractId:'structured_canonical_records_v1',status:'pending',sourceDigest:'',reviewer:'pending',evidence:'pending'},
- {contractId:'attendance_trend_analysis_v1',status:'pending',sourceDigest:'',reviewer:'pending',evidence:'pending'},
- {contractId:'aggregate_comparison_analysis_v1',status:'pending',sourceDigest:'',reviewer:'pending',evidence:'pending'},
+ {contractId:'structured_canonical_records_v1',status:'pending',sourceDigest:'',reviewer:'pending',evidence:'pending',reviewedAt:'pending'},
+ {contractId:'attendance_trend_analysis_v1',status:'pending',sourceDigest:'',reviewer:'pending',evidence:'pending',reviewedAt:'pending'},
+ {contractId:'aggregate_comparison_analysis_v1',status:'pending',sourceDigest:'',reviewer:'pending',evidence:'pending',reviewedAt:'pending'},
 ].map(row=>Object.freeze(row as ProviderDataReviewRecord)));
+/** Record-shape validation only. This function cannot issue a capability or replace the STATIC
+ * registry. Actual named specialist signoff and its immutable evidence must exist before editing it. */
+export function isCompleteProviderDataReview(record:ProviderDataReviewRecord,expectedDigest:string):boolean{
+ const date=Date.parse(record.reviewedAt);
+ return record.status==='approved'&&/^[a-f0-9]{64}$/.test(expectedDigest)&&record.sourceDigest===expectedDigest&&
+  /^human:[A-Za-z0-9][A-Za-z0-9 ._@/-]{2,119}$/.test(record.reviewer)&&!/(?:pending|unknown|placeholder|todo)/i.test(record.reviewer)&&
+  /^docs\/reviews\/[a-z0-9][a-z0-9-]+\.md#[a-z0-9][a-z0-9-]{2,}$/.test(record.evidence)&&!/(?:pending|placeholder|todo)/i.test(record.evidence)&&
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(record.reviewedAt)&&Number.isFinite(date)&&date<=Date.now();
+}
 export function assertProviderDataContractReviewed(contractId:string,sourceDigest:string):void{
  const review=PROVIDER_DATA_REVIEW_RECORDS.find(row=>row.contractId===contractId);
- // A source edit invalidates approval even if the closed schema shape remains identical.
- if(!review||review.status!=='approved'||!review.evidence||!review.reviewer||review.sourceDigest!==sourceDigest||sourceDigest!==PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST)
+ if(!review||sourceDigest!==PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST||!isCompleteProviderDataReview(review,sourceDigest))
   throw new AiGatewayError('The AI data-protection review is pending or no longer matches this request.');
+}
+
+/** Single review-state owner for local projection metadata and the runtime boundary. */
+export function providerDataReviewStatus(contractId:string):'pending'|'approved'{
+ const review=PROVIDER_DATA_REVIEW_RECORDS.find(row=>row.contractId===contractId);
+ return review&&isCompleteProviderDataReview(review,PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST)?'approved':'pending';
 }

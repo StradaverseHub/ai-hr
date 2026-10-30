@@ -4,7 +4,7 @@
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 const review=vi.hoisted(()=>({approved:true}));
-vi.mock('../lib/ai/provider-data-reviews',()=>({assertProviderDataContractReviewed(){if(!review.approved)throw Error('Review pending');}}));
+vi.mock('../lib/ai/provider-data-reviews',()=>({providerDataReviewStatus(){return review.approved?'approved':'pending';},assertProviderDataContractReviewed(){if(!review.approved)throw Error('Review pending');}}));
 import {withTenant,type SessionContext} from '../db/client';
 import {aiProviderConfig} from '../db/schema';
 import {resolveActiveAiConfig} from '../core/ai-config';
@@ -33,7 +33,7 @@ it('refuses changed sources and cancelled prepared requests without admissions o
 });
 it('preserves actual charged usage and failed settlement when the provider rejects output',async()=>{
  const cfg=await configuration(),adapter=vi.spyOn(anthropicAdapter,'generate').mockImplementation(async(_cfg,args)=>{args.onUsage?.({inputTokens:8,outputTokens:2,cachedInputTokens:0});throw Error('Synthetic output refusal');});
- try{await expect(generatePrivateAiAnalysis(cfg,async()=>source())).rejects.toThrow('Synthetic output refusal');const rows=await withTenant(ctx(),tx=>tx.execute<{state:string;actual_tokens:number}>(sql`select state,actual_tokens from ai_model_run`));expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({state:'failed',actual_tokens:10});}finally{adapter.mockRestore();}
+ try{await expect(generatePrivateAiAnalysis(cfg,async()=>source())).rejects.toThrow('Synthetic output refusal');const rows=await withTenant(ctx(),tx=>tx.execute<{state:string;actual_tokens:number}>(sql`select state,actual_tokens::int as actual_tokens from ai_model_run`));expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({state:'failed',actual_tokens:10});}finally{adapter.mockRestore();}
 });
 it('keeps a pending specialist review blocking before any reservation even after a valid local projection',async()=>{
  const cfg=await configuration();review.approved=false;const adapter=vi.spyOn(anthropicAdapter,'generate');

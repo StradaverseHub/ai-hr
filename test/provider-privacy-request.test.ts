@@ -2,7 +2,7 @@
 import {createHash} from 'node:crypto';
 import {afterEach,expect,it,vi} from 'vitest';
 const review=vi.hoisted(()=>({approved:true}));
-vi.mock('../lib/ai/provider-data-reviews',()=>({assertProviderDataContractReviewed(){if(!review.approved)throw Error('Review pending');}}));
+vi.mock('../lib/ai/provider-data-reviews',()=>({providerDataReviewStatus(){return review.approved?'approved':'pending';},assertProviderDataContractReviewed(){if(!review.approved)throw Error('Review pending');}}));
 import {bindProviderPrivacyRequest,transferProviderPrivacyRequest,assertProviderPrivacyRequest,consumeProviderPrivacyRequest,revokeProviderPrivacyRequest} from '../lib/ai/provider-privacy-request';
 import {captureAiConfig} from '../lib/ai/governance';
 import {draftInputDigest} from '../lib/ai/draft-input';
@@ -49,4 +49,9 @@ it('keeps unknown raw requests out of every workload operation without admitting
 it('revokes all captured views when a prepared analysis is disposed before admission',()=>{
  const c=cfg();bindProviderPrivacyRequest(c,binding());const retained=captureAiConfig(c);revokeProviderPrivacyRequest(c);
  expect(()=>assertProviderPrivacyRequest(retained,'draft',digest)).toThrow();expect(()=>consumeProviderPrivacyRequest(c,'draft',digest)).toThrow();
+});
+
+it('keeps revocation and expiry effective at the serializer after dispatch has been issued',()=>{
+ const c=cfg();bindProviderPrivacyRequest(c,binding());const check=consumeProviderPrivacyRequest(c,'draft',digest);expect(()=>check()).not.toThrow();revokeProviderPrivacyRequest(c);expect(()=>check()).toThrow();
+ const other=cfg();bindProviderPrivacyRequest(other,binding());const delayed=consumeProviderPrivacyRequest(other,'draft',digest);vi.useFakeTimers();vi.advanceTimersByTime(60001);expect(()=>delayed()).toThrow();
 });

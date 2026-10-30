@@ -1,3 +1,4 @@
+import {providerDataReviewStatus} from './provider-data-reviews';
 /** Candidate analysis coverage only. No listed contract is specialist-approved or activated here.
  * Existing feature/source/actor/spend checks still apply; a candidate grants no new native workflow.
  * Exact raw drafts, individual assessments, import labels/documents and vision remain blocked. */
@@ -49,4 +50,4 @@ export const BLOCKED_ANALYSIS_VARIANTS=Object.freeze(['raw_free_text','raw_docum
 export const PROVIDER_ANALYSIS_COVERAGE=Object.freeze(AI_FEATURES.map(feature=>Object.freeze({feature:feature.id,
  domains:featureDomains[feature.id]??Object.freeze([] as ProviderAnalysisDomain[]),
  operations:Object.freeze(feature.id==='hr_assistant'?['conversation','draft'] as const:featureDomains[feature.id]?['draft'] as const:[]),
- reviewStatus:'pending' as const,blockedVariants:BLOCKED_ANALYSIS_VARIANTS})));
+ reviewStatus:providerDataReviewStatus('aggregate_comparison_analysis_v1'),blockedVariants:BLOCKED_ANALYSIS_VARIANTS})));

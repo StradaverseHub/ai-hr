@@ -127,3 +127,12 @@ describe('one-use final provider egress dispatch',()=>{
   for(const [,init] of fetcher.mock.calls){expect(init.method).toBe('GET');expect(init.body).toBeUndefined();}
  });
 });
+
+it('rechecks privacy at the actual serializer after asynchronous transport preparation',async()=>{
+ const cfg:ResolvedAiConfig={provider:'openai',model:'fictional-model',apiKey:'fictional-key'};
+ const input:GenerateArgs={system:'Synthetic fixed policy',prompt:'Synthetic aggregate comparison',maxTokens:32};
+ let revoked=false;const send=withProviderEgressDispatch(cfg,{operation:'draft',inputDigest:draftInputDigest(input)},async()=>{
+  await Promise.resolve();revoked=true;return openaiAdapter.generate(cfg,input);
+ },()=>{if(revoked)throw Error('Synthetic retired disclosure');});
+ await expect(send).rejects.toThrow();expect(sdk.openai).not.toHaveBeenCalled();
+});
