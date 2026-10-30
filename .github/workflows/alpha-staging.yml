@@ -32,6 +32,11 @@ on:
         required: false
         default: false
         type: boolean
+      finite_stage_assessment:
+        description: Read-only finite coverage and supported-source history assessment; no installation authority
+        required: false
+        default: false
+        type: boolean
       fixture_projection:
         description: Additional read-only immutable fixture repair impact projection; controller diagnostics only
         required: false
@@ -74,7 +79,7 @@ jobs:
   resolve:
     if: ${{ github.repository == 'StradaverseHub/ai-hr' && (github.event_name != 'pull_request' || (!github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: ${{ inputs.finite_stage_assessment && 30 || 5 }}
     outputs:
       sha: ${{ steps.candidate.outputs.sha }}
       branch: ${{ steps.candidate.outputs.branch }}
@@ -103,7 +108,7 @@ jobs:
           CONTROLLER_ONLY: ${{ inputs.controller_only }}
         run: test "$EVENT" = workflow_dispatch && test "$DIAGNOSTICS_ONLY" = false && test "$CONTROLLER_ONLY" = false
       - name: CI integrity regression checks
-        run: node --experimental-strip-types --test .github/ci/rsync-packet-capability.test.mjs .github/ci/pdf-tool-scope.test.mjs .github/ci/pdf-tools.test.mjs .github/ci/compiler-cache.test.mjs .github/ci/cache-artifact-discovery.test.mjs .github/ci/compiler-wrapper.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/ci.test.mjs .github/ci/release-policy.test.mjs .github/ci/archive-downloads.test.mjs .github/ci/prefetch-ci.test.mjs .github/ci/migration-history.test.mjs .github/ci/manifest.test.mjs .github/ci/db-scheduling.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/report-run-cost.test.mjs .github/ci/resume-assessment.test.mjs .github/ci/resume-source.test.mjs .github/ci/resume-repair.test.mjs .github/ci/repair-impact.test.mjs .github/ci/build-production.test.mjs .github/ci/build-artifact.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-application-restore.test.mjs .github/ci/staging-transport.test.mjs .github/ci/staging-build-install.test.mjs .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs .github/ci/staging-environment.test.mjs .github/ci/staging-preflight.test.mjs .github/ci/customer-runtime-transition.test.mjs .github/ci/customer-runtime-snapshot.test.mjs .github/ci/staging-cleanup-protocol.test.mjs .github/ci/focused-recovery.test.mjs .github/ci/repair-recovery.test.mjs .github/ci/repair-recovery-adapter.test.mjs
+        run: node --experimental-strip-types --test .github/ci/rsync-packet-capability.test.mjs .github/ci/pdf-tool-scope.test.mjs .github/ci/pdf-tools.test.mjs .github/ci/compiler-cache.test.mjs .github/ci/cache-artifact-discovery.test.mjs .github/ci/compiler-wrapper.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/ci.test.mjs .github/ci/release-policy.test.mjs .github/ci/archive-downloads.test.mjs .github/ci/prefetch-ci.test.mjs .github/ci/migration-history.test.mjs .github/ci/manifest.test.mjs .github/ci/db-scheduling.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/report-run-cost.test.mjs .github/ci/resume-assessment.test.mjs .github/ci/resume-source.test.mjs .github/ci/resume-repair.test.mjs .github/ci/repair-impact.test.mjs .github/ci/build-production.test.mjs .github/ci/build-artifact.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-application-restore.test.mjs .github/ci/staging-transport.test.mjs .github/ci/staging-build-install.test.mjs .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs .github/ci/staging-environment.test.mjs .github/ci/staging-preflight.test.mjs .github/ci/customer-runtime-transition.test.mjs .github/ci/customer-runtime-snapshot.test.mjs .github/ci/staging-cleanup-protocol.test.mjs .github/ci/focused-recovery.test.mjs .github/ci/repair-recovery.test.mjs .github/ci/repair-recovery-adapter.test.mjs .github/ci/finite-candidate-history.test.mjs
       - name: Build byte transport regression checks
         run: |
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/staging -p "test_*.py"
@@ -237,6 +242,32 @@ jobs:
           name: fixture-pdf-unit-evidence
           path: ${{ runner.temp }}/fixture-pdf-evidence/
           if-no-files-found: error
+          retention-days: 14
+      - name: Refuse invalid finite staging assessment selection
+        if: ${{ inputs.finite_stage_assessment }}
+        env: {PROJECTION: '${{ inputs.fixture_projection }}', CONTROLLER_ONLY: '${{ inputs.controller_only }}', DIAGNOSTICS_ONLY: '${{ inputs.diagnostics_only }}', CERTIFICATE: '${{ inputs.fixture_certificate }}', PDF: '${{ inputs.fixture_pdf_unit }}'}
+        run: test "$PROJECTION" = true && test "$CONTROLLER_ONLY" = true && test "$DIAGNOSTICS_ONLY" = true && test "$CERTIFICATE" = false && test "$PDF" = false
+      - name: Compose frozen coverage and independent supported-source history assessment
+        if: ${{ inputs.finite_stage_assessment }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CERTIFICATE_RUNS_JSON: ${{ inputs.fixture_certificate_runs }}
+        run: |
+          git fetch origin f133ce140f38f782d44de1187a82b822e2acdb74
+          git worktree add --detach "$RUNNER_TEMP/frozen-fixture-proof-controller" f133ce140f38f782d44de1187a82b822e2acdb74
+          ln -s "$GITHUB_WORKSPACE/scratchpad/fixture-projection-candidate/node_modules" "$RUNNER_TEMP/frozen-fixture-proof-controller/node_modules"
+          node --input-type=module <<'NODE'
+          import {writeFileSync} from 'node:fs';
+          const options={proofControllerPath:process.env.RUNNER_TEMP+'/frozen-fixture-proof-controller',candidatePath:process.env.GITHUB_WORKSPACE+'/scratchpad/fixture-projection-candidate',originalPath:process.env.RUNNER_TEMP+'/fixture-original',runs:JSON.parse(process.env.CERTIFICATE_RUNS_JSON),evidenceDirectory:process.env.RUNNER_TEMP+'/finite-staging-assessment'};
+          writeFileSync(process.env.RUNNER_TEMP+'/finite-staging-options.json',JSON.stringify(options));
+          NODE
+          node --import tsx .github/ci/finite-staging-assessment.mjs "$RUNNER_TEMP/finite-staging-options.json"
+      - if: ${{ always() && inputs.finite_stage_assessment }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: finite-staging-readiness-assessment
+          path: ${{ runner.temp }}/finite-staging-assessment/**/*.json
+          if-no-files-found: warn
           retention-days: 14
       - name: Refuse certificate without the diagnostic parser projection
         if: ${{ inputs.fixture_certificate }}
