@@ -4166,6 +4166,13 @@
       "when": 1793330000081,
       "tag": "0744_assistant_payroll_reset_review",
       "breakpoints": true
+    },
+    {
+      "idx": 733,
+      "version": "7",
+      "when": 1793330000091,
+      "tag": "0754_assistant_payroll_review_draft_delete_compatibility",
+      "breakpoints": true
     }
   ]
 }
