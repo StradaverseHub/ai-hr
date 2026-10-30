@@ -65,3 +65,7 @@
 .v9-config-picker>section>button{display:flex;flex-direction:column;gap:4px;align-items:flex-start;width:100%;text-align:left;padding:12px 14px;border:2px solid transparent;border-radius:min(12px,var(--radius));background:var(--card);color:var(--foreground)}
 .v9-config-picker>section>button[aria-current=true]{border-color:var(--primary)}
 .v9-config-picker>section>h2{font-size:11px;letter-spacing:.06em;color:var(--muted-foreground);margin:8px 0 0}
+
+/* Theme attributes participate in the selector so WebKit invalidates inherited text paint on a theme change. */
+:root[data-ui-theme] .v9-workspace{color:var(--foreground)}
+.v9-config-picker>button.v9-button-primary{background:var(--primary);color:var(--primary-foreground);min-height:44px;justify-content:center;align-items:center}

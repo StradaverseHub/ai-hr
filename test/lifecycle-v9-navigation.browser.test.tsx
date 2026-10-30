@@ -44,7 +44,9 @@ it.each(['classic','monolith','atelier'] as const)('keeps AIHR %s chrome and the
  const palette=document.createElement('div');palette.style.backgroundColor='var(--card)';palette.style.color='var(--foreground)';workspace.appendChild(palette);
  const documents=screen.getByRole('region',{name:'Document templates'}),emails=screen.getByRole('region',{name:'Email templates'});
  expect(getComputedStyle(documents).backgroundColor).toBe(getComputedStyle(palette).backgroundColor);
- await expect.poll(() => getComputedStyle(workspace).color).toBe(getComputedStyle(palette).color);palette.remove();
+ const expectedInk=getComputedStyle(palette).color;
+ if(getComputedStyle(workspace).color!==expectedInk)console.info('V9_THEME_PAINT_DIAGNOSTIC '+JSON.stringify({theme,rootTheme:document.documentElement.getAttribute('data-ui-theme'),rootInk:getComputedStyle(document.documentElement).getPropertyValue('--foreground'),workspaceInk:getComputedStyle(workspace).getPropertyValue('--foreground'),paint:getComputedStyle(workspace).color,expectedInk}));
+ await expect.poll(() => getComputedStyle(workspace).color).toBe(expectedInk);palette.remove();
  expect(documents.getBoundingClientRect().top).toBeLessThan(emails.getBoundingClientRect().top);
  expect(Math.abs(documents.getBoundingClientRect().left-emails.getBoundingClientRect().left)).toBeLessThan(1);
  expect(screen.getByRole('button',{name:'New template'}).getBoundingClientRect().right).toBeLessThanOrEqual(documents.getBoundingClientRect().right+1);
@@ -63,6 +65,7 @@ it.each(['classic','monolith','atelier'] as const)('keeps checklist controls and
  await page.viewport(390,844);document.documentElement.setAttribute('data-ui-theme',theme);document.documentElement.classList.add('dark');
  const view=render(<ChecklistFixture/>);
  const newButton=screen.getByRole('button',{name:'New checklist'}),card=screen.getByRole('button',{name:/Fictional clearance/});
+ const token=document.createElement('span');token.style.backgroundColor='var(--primary)';document.body.appendChild(token);expect(getComputedStyle(newButton).backgroundColor).toBe(getComputedStyle(token).backgroundColor);token.remove();
  expect(newButton.getBoundingClientRect().top).toBeLessThan(card.getBoundingClientRect().top);
  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(391);
  fireEvent.click(screen.getByRole('button',{name:'Duplicate'}));expect(screen.getByRole('textbox',{name:'Checklist name'})).toHaveValue('Copy of Fictional clearance');

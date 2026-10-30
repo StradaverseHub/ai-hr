@@ -113,6 +113,6 @@ it('exports the eleven reference columns with labels, real item names, not-retur
  render(<RequestRecords cases={props.cases} native={null} labels={{title:{position:'Site engineer'},businessGroup:{group:'Fictional group'}}} company="two" search="Offboarding person" openCase={props.openCase}/>);
  fireEvent.click(screen.getByRole('button',{name:'Export (CSV)'}));
  const csv=(screen.getByRole('textbox',{name:'Request records CSV'}) as HTMLTextAreaElement).value;
- expect(csv.split('\r\n')[0]).toBe('Type,Request,Case,Person,Job title,Business Group,Join date / last working day,Status,Done,Items,Handed over / cleared');
+ expect(csv.split(/\r?\n/)[0]).toBe('Type,Request,Case,Person,Job title,Business Group,Join date / last working day,Status,Done,Items,Handed over / cleared');
  expect(csv).toContain('Site engineer,Fictional group,2026-10-30,Cleared,1/1,Fictional laptop (not returned),2026-10-30T10:00:00Z');
 });
