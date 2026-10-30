@@ -1,3 +1,4 @@
+import {goalApprovalReviews} from './goal-approval-review-store';
 import {fixedItemArchiveReviews} from './fixed-item-archive-review-store';
 import {tp3OpeningMaintenanceReviews} from './tp3-opening-maintenance-review-store';
 import {costAllocationMaintenanceReviews} from './cost-allocation-maintenance-review-store';
@@ -50,6 +51,7 @@ function currentStatus(completion:unknown){const outer=object(completion),receip
  * entry without a reader (or a reader without an entry) a compile error. Each reader rechecks authority. */
 type CompletedOutcomeReader=(tx:Tx,ctx:SessionContext,id:string,server:NativeOutcomeServerContext)=>Promise<{completion:unknown;eventId:string}>;
 const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOutcomeReader>>={
+ 'performance.goal.approve':(tx,ctx,id)=>goalApprovalReviews.readCompletedOutcomeTx(tx,ctx,id),
  'leave.apply':(tx,ctx,id)=>readCompletedOwnLeaveOutcomeTx(tx,ctx,id),
  'ess.profile.request':(tx,ctx,id)=>readCompletedProfileOutcomeTx(tx,ctx,id),
  'notifications.email_preferences.save':(tx,ctx,id,server)=>server.notificationIdentity?readCompletedNotificationOutcomeTx(tx,ctx,id,server.notificationIdentity):unavailable(),

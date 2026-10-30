@@ -23,15 +23,15 @@ END $$;
 -- Extend the existing HR generic branch itself, preserving its complete predicate. Other dedicated
 -- receipt families retain their separate null-column CHECKs from 0622. Refuse unexpected schema drift.
 DO $$
-DECLARE previous text;generic_columns text;
+DECLARE previous text;
 BEGIN
  SELECT pg_get_expr(c.conbin,c.conrelid) INTO previous FROM pg_constraint c
   WHERE c.conrelid='app.assistant_own_leave_review'::regclass AND c.conname='assistant_review_kind_columns' AND c.contype='c';
  IF previous IS NULL OR position('employees.qualification.maintain' in previous)=0 THEN RAISE EXCEPTION '0730: existing generic assigned branch unavailable';END IF;
- -- Evaluate the already accepted generic-column rule for the new kind, preserving all sibling cases.
- generic_columns:=replace(previous,'action_kind','''employees.qualification.maintain''::text');
+ -- Canonical strict generic legacy-column null rule (0670/0671/0677).
+ -- Carry the predecessor expression ONCE; copying it into the new branch grows exponentially.
  ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT assistant_review_kind_columns;
- EXECUTE 'ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_review_kind_columns CHECK (CASE WHEN action_kind=''performance.goal.approve'' THEN ('||generic_columns||') ELSE ('||previous||') END)';
+ EXECUTE 'ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_review_kind_columns CHECK (CASE WHEN action_kind=''performance.goal.approve'' THEN leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL AND performance_ack_event_id IS NULL ELSE ('||previous||') END)';
 END $$;
 --> statement-breakpoint
 -- Preserve each remaining prior expression exactly, adding only a branch for this kind.
