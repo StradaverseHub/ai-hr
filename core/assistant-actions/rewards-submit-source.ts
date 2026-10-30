@@ -1,4 +1,4 @@
-/** Unmounted annual-submit source. Private SQL proof/fence review and allocation are still pending. */
+/** Annual-submit source. Reviewed SQL proof/fence; closed local mount awaits hosted verification. */
 import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';

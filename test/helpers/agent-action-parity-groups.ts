@@ -5,6 +5,7 @@ const COMMAND_VARIANTS=['adapter_coverage','rejected_decisions','routed_attendan
 export const PARITY_PROBE_VARIANTS=[...COMMAND_VARIANTS,'cost_allocation_clear'] as const;
 export type ParityProbeVariant=typeof PARITY_PROBE_VARIANTS[number];
 export const PARITY_PROBE_GROUPS={
+ rewardsSubmit:{actions:['rewards.annual_review.submit'],variants:[]},
  rewardsReturn:{actions:['rewards.annual_review.return'],variants:[]},
  rewardsCalendar:{actions:['rewards.calendar.update'],variants:[]},
  rewards:{actions:['rewards.cancel_review'],variants:[]},
@@ -31,4 +32,4 @@ export const PARITY_PROBE_GROUPS={
  ],variants:['cost_allocation_clear']},
 } satisfies Record<string,{actions:readonly ProbedActionId[];variants:readonly ParityProbeVariant[]}>;
 export type ParityProbeGroup=keyof typeof PARITY_PROBE_GROUPS;
-export const PARITY_PROBE_ENTRYPOINTS:Record<ParityProbeGroup,string>={rewardsReturn:'test/agent-action-permission-parity-rewards-return.test.ts',rewardsCalendar:'test/agent-action-permission-parity-rewards-calendar.test.ts',rewards:'test/agent-action-permission-parity-rewards.test.ts',commands:'test/agent-action-permission-parity-commands.test.ts',requests:'test/agent-action-permission-parity-requests.test.ts',reviews:'test/agent-action-permission-parity-reviews.test.ts',personnel:'test/agent-action-permission-parity-personnel.test.ts'};
+export const PARITY_PROBE_ENTRYPOINTS:Record<ParityProbeGroup,string>={rewardsSubmit:'test/agent-action-permission-parity-rewards-submit.test.ts',rewardsReturn:'test/agent-action-permission-parity-rewards-return.test.ts',rewardsCalendar:'test/agent-action-permission-parity-rewards-calendar.test.ts',rewards:'test/agent-action-permission-parity-rewards.test.ts',commands:'test/agent-action-permission-parity-commands.test.ts',requests:'test/agent-action-permission-parity-requests.test.ts',reviews:'test/agent-action-permission-parity-reviews.test.ts',personnel:'test/agent-action-permission-parity-personnel.test.ts'};

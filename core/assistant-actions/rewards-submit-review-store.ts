@@ -1,4 +1,4 @@
-/** Unmounted annual-submit custody; exact private SQL review/allocation is pending. */
+/** Annual-submit custody; source-cleared SQL identity, unexecuted closed local integration. */
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {Tx,SessionContext} from '../../db/client';

@@ -1,5 +1,5 @@
 {
-  "status": "PREPARED_FOR_SOURCE_REVIEW_NOT_AUTHORIZED_FOR_DISPATCH",
+  "status": "CLOSED_LOCAL_MOUNT_FROZEN_FOR_COMPOSITION_REVIEW_NOT_AUTHORIZED_FOR_DISPATCH",
   "baseSha": "5e1208577a13bf61ee28c8874886e8df9d32385f",
   "candidateRef": "codex/ai-user-parity-rewards-annual-submit-20261030",
   "candidateShaRule": "Freeze and record the complete full40 SHA after independent proof and closed integration review; never dispatch an incomplete unmounted stage.",
@@ -21,27 +21,53 @@
   "groups": [
     {
       "name": "submission_native_and_private_proof",
-      "tests": ["test/rewards-submit-native.test.ts", "test/rewards-submit-proof.test.ts", "test/rewards-submit-contract.test.ts", "test/rewards-submit-browser.test.ts"]
+      "tests": [
+        "test/rewards-submit-native.test.ts",
+        "test/rewards-submit-proof.test.ts",
+        "test/rewards-submit-contract.test.ts",
+        "test/rewards-submit-browser.test.ts"
+      ]
     },
     {
       "name": "real_encrypted_custody",
-      "tests": ["test/rewards-submit-custody.test.ts", "test/rewards-return-custody.test.ts", "test/rewards-cancel-custody.test.ts", "test/rewards-calendar-custody.test.ts"]
+      "tests": [
+        "test/rewards-submit-custody.test.ts",
+        "test/rewards-return-custody.test.ts",
+        "test/rewards-cancel-custody.test.ts",
+        "test/rewards-calendar-custody.test.ts"
+      ]
     },
     {
       "name": "native_decision_regressions",
-      "tests": ["test/rewards-service.test.ts", "test/rewards-offcycle.test.ts", "test/rewards-return-native.test.ts", "test/rewards-post-review-store.test.ts", "test/rewards-unit-governance-db.test.ts"]
+      "tests": [
+        "test/rewards-service.test.ts",
+        "test/rewards-offcycle.test.ts",
+        "test/rewards-return-native.test.ts",
+        "test/rewards-post-review-store.test.ts",
+        "test/rewards-unit-governance-db.test.ts"
+      ]
     },
     {
       "name": "human_ui_and_closed_shared_boundaries",
-      "tests": ["test/rewards-submit-panel.dom.test.tsx", "test/agent-action-registry.test.ts", "test/agent-action-permission-parity-guard.test.ts", "test/assistant-action-entries.test.ts", "test/module-jobs.dom.test.tsx", "test/module-agent-actions.test.ts", "test/module-human-action-handoff.test.ts", "test/module-action-http.test.ts"]
+      "tests": [
+        "test/rewards-submit-panel.dom.test.tsx",
+        "test/agent-action-registry.test.ts",
+        "test/agent-action-permission-parity-guard.test.ts",
+        "test/assistant-action-entries.test.ts",
+        "test/module-jobs.dom.test.tsx",
+        "test/module-agent-actions.test.ts",
+        "test/module-human-action-handoff.test.ts",
+        "test/module-action-http.test.ts"
+      ]
+    },
+    {
+      "name": "actual_BU_stage_roles",
+      "tests": [
+        "test/agent-action-permission-parity-rewards-submit.test.ts"
+      ],
+      "expectedFixture": "Actual employee login has the real native BU seat and matching People assignment; all other ten roles deny at native screen, offer, prepare, own confirm and foreign confirm. No HR override."
     }
   ],
-  "closedMountFollowupGroup": {
-    "name": "actual_BU_stage_roles",
-    "state": "MUST_AUTHOR_AND_REVIEW_WITH_CLOSED_REGISTRY_MOUNT_BEFORE_DISPATCH",
-    "tests": ["test/agent-action-permission-parity-rewards-submit.test.ts"],
-    "expectedFixture": "Give the actual employee actor the real native BU seat and matching People assignment, preserving native self rules. All other ten roles, including HR and GR titles without that BU seat, must be refused by the screen/native service, offer, prepare, own confirm and foreign confirm boundaries. No blanket HR matrix."
-  },
   "evidenceRequirements": [
     "Actual native unit draft to bg at the same revision and native approved digest, one real native submit decision and unchanged routed event payload",
     "Real NOSUPERUSER/NOBYPASSRLS function/table owner and BU-only principal, genuinely nonempty hidden governance/history/awards, zero raw hidden visibility",
@@ -52,5 +78,7 @@
     "Actual encrypted body expiry/discard/erasure, stale source and revoked identity/authority before unwrap",
     "Six locales times desktop/mobile actual browser captures; clear fixture limitation and overflow checks",
     "focused.json exact candidate/controller, actual assertion JSON, full workflow/job terminal states, compiler logs and database OOM state"
-  ]
+  ],
+  "sourceSqlSha256": "4a9df518a54243b868bb6d64fb8bb161e74ce1bd2f8025035ed2d2816a373e81",
+  "composition": "Strict owned schema and bounded HTTP parser; authenticated session owner; RSC review route reuses predecessor framework APIs; live native BU choice availability; original outcome reader; closed role matrix. No dependency install/local execution."
 }

@@ -1,4 +1,4 @@
-/** Unmounted annual-only human submission contract; no mutation is enabled here. */
+/** Annual-only human submission contract; native service owns every effect. */
 import {z} from 'zod';
 export const REWARDS_SUBMIT_ACTION='rewards.annual_review.submit' as const;
 const stage=z.enum(['draft','bg','gr','ctro','ec','approved','posted','rejected','withdrawn']);
