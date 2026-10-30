@@ -16,6 +16,11 @@ const Stored=z.object({metadata:Metadata,sealed:OwnLeaveSealedReview.nullable(),
  const pending=row.metadata.state==='awaiting_confirmation',completed=row.metadata.state==='completed';
  return pending===(row.sealed!==null&&row.metadata.intentDigest!==null&&row.metadata.reviewedDigest!==null)&&completed===(row.eventId!==null&&row.nativeOutcome!==null)&&(pending||row.sealed===null&&row.metadata.intentDigest===null&&row.metadata.reviewedDigest===null)&&(completed||row.eventId===null&&row.nativeOutcome===null);
 });
+/** The command returns its nested private Stored record, never the flat browser retirement DTO. */
+function retiredFromStored(value:unknown,expectedActionId:string){
+ const row=Stored.parse(value);if(row.metadata.actionId!==expectedActionId)return fail();
+ return C.Retired.parse({action:C.action,contractVersion:1,actionId:row.metadata.actionId,state:row.metadata.state});
+}
 const Body=z.object({reviewNonce:PrivateReviewNonce,content:C.Human,nativeReviewedDigest:digest}).strict().refine(value=>new TextEncoder().encode(JSON.stringify(value)).byteLength<=8000);
 const custody=createReviewCustody<z.infer<typeof C.Human>,z.infer<typeof Binding>,z.infer<typeof Stored>,DraftDiscardInterval,Awaited<ReturnType<typeof prepareEmployeeDraftDiscardSourceTx>>,Awaited<ReturnType<typeof confirmEmployeeDraftDiscardSourceTx>>,z.infer<typeof C.Prepared>,z.infer<typeof C.Completed>,z.infer<typeof C.Retired>,z.infer<typeof C.Index>>({
  action:C.action,tier:'approve',human:C.Human,metadata:Metadata,stored:Stored,confirmation:C.Confirmation,retirement:C.Retirement,retired:C.Retired,index:C.Index,indexKind:C.indexKind,
@@ -42,7 +47,7 @@ const custody=createReviewCustody<z.infer<typeof C.Human>,z.infer<typeof Binding
  async prepareRow(tx,m,sealed,_source,_human,current){const b=m.binding;const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_employee_draft_discard_command('prepare',${m.actionId}::uuid,${b.personId}::uuid,${b.companyId}::uuid,${b.draftId}::uuid,${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext},${current.sourceDigest}) as review`);return row?.review;},
  async readRow(tx,id){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_employee_draft_discard_command('read',${id}::uuid) as review`);return row?.review;},
  async completeRow(tx,id,expected,native){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_employee_draft_discard_command('complete',${id}::uuid,NULL,NULL,NULL,NULL,${expected},NULL,NULL,NULL,NULL,${native.eventId}::uuid) as review`);return row?.review;},
- async discardRow(tx,id){const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_employee_draft_discard_command('discard',${id}::uuid) as receipt`);return row?.receipt;},
+ async discardRow(tx,id){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_employee_draft_discard_command('discard',${id}::uuid) as review`);return retiredFromStored(row?.review,id);},
  async indexRows(tx){const [row]=await tx.execute<{rows:unknown}>(sql`select app.assistant_employee_draft_discard_command('index') as rows`);return z.array(z.unknown()).parse(row?.rows);},unavailable:fail,
 });
 export async function readEmployeeDraftDiscardChoices(supplied:SessionContext,selection?:unknown){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};try{return await withTenant(ctx,tx=>readEmployeeDraftDiscardChoicesTx(tx,ctx,selection));}catch{return{kind:'unavailable' as const};}}
@@ -50,6 +55,6 @@ export async function readEmployeeDraftDiscardChoices(supplied:SessionContext,se
 /** These two terminal/metadata courses install bounds before the common principal's Access wait,
  * and keep them through COMMIT. They do not decrypt bodies or execute native mutations. */
 export const employeeDraftDiscardReviews=Object.freeze({...custody,
- async discard(supplied:SessionContext,input:unknown){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};const parsed=C.Retirement.safeParse(input);if(!parsed.success)return fail();try{return await withTenant(ctx,async tx=>{await boundNativeOutcomeTransactionTx(tx);await assertAiPrincipalTx(tx,ctx);const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_employee_draft_discard_command('discard',${parsed.data.actionId}::uuid) as receipt`);return{kind:'retired' as const,receipt:C.Retired.parse(row?.receipt)};});}catch{return fail();}},
+ async discard(supplied:SessionContext,input:unknown){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};const parsed=C.Retirement.safeParse(input);if(!parsed.success)return fail();try{return await withTenant(ctx,async tx=>{await boundNativeOutcomeTransactionTx(tx);await assertAiPrincipalTx(tx,ctx);const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_employee_draft_discard_command('discard',${parsed.data.actionId}::uuid) as review`);return{kind:'retired' as const,receipt:retiredFromStored(row?.review,parsed.data.actionId)};});}catch{return fail();}},
  async list(supplied:SessionContext){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};try{return await withTenant(ctx,async tx=>{await boundNativeOutcomeTransactionTx(tx);await assertAiPrincipalTx(tx,ctx);const [row]=await tx.execute<{rows:unknown}>(sql`select app.assistant_employee_draft_discard_command('index') as rows`);return C.Index.parse({kind:C.indexKind,reviews:row?.rows});});}catch{return fail();}},
 });

@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {EmployeeDraftDiscardPanel} from '../components/assistant/employee-draft-discard-panel';
 import {EmployeeDraftDiscard as C} from '../lib/assistant-actions/employee-draft-discard-contract';
@@ -77,6 +77,77 @@ it('cancels an oversized streamed response before parsing or displaying a review
 
 it('refuses non-JSON responses and duplicate in-flight confirmations',async()=>{
  let finish:((value:Response)=>void)|undefined;fetcher.mockResolvedValueOnce(json(choices)).mockResolvedValueOnce(json(prepared())).mockImplementationOnce(()=>new Promise<Response>(resolve=>{finish=resolve;}));render(<EmployeeDraftDiscardPanel/>);await prepare();fireEvent.click(screen.getByLabelText(copy.confirmConsent));const button=screen.getByRole('button',{name:copy.confirm});fireEvent.click(button);fireEvent.click(button);expect(packets().filter(packet=>packet.operation==='confirm')).toHaveLength(1);finish!(new Response('<html>untrusted response</html>',{headers:{'Content-Type':'text/html'}}));await screen.findByRole('alert');expect(screen.queryByRole('heading',{name:copy.done})).toBeNull();
+});
+
+it('cancels a rejected-MIME pending body without waiting for an abort-ignoring cancellation',async()=>{
+ const cancel=vi.fn(()=>new Promise<void>(()=>{}));
+ fetcher.mockResolvedValueOnce(new Response(new ReadableStream<Uint8Array>({pull(){return new Promise<void>(()=>{});},cancel}),{headers:{'Content-Type':'text/html'}}));
+ render(<EmployeeDraftDiscardPanel resumeActionId={actionId}/>);fireEvent.click(screen.getByRole('button',{name:copy.reopen}));
+ await screen.findByRole('alert');expect(cancel).toHaveBeenCalledOnce();
+ expect(screen.getByRole('region',{name:copy.title}).getAttribute('aria-busy')).toBe('false');
+ expect((screen.getByRole('button',{name:copy.reopen}) as HTMLButtonElement).disabled).toBe(false);
+ expect(packets()).toEqual([{action:C.action,operation:'reopen',actionId}]);
+});
+
+// No findBy/waitFor under fake timers: these fixtures flush only finite promise work and advance
+// the actual request deadline explicitly. The transport deliberately ignores the AbortSignal.
+async function settleDeadlineUi(){await act(async()=>{for(let turn=0;turn<12;turn++)await Promise.resolve();});}
+for(const pending of ['fetch','body'] as const)it(`times out a genuinely pending ${pending} and reopens the original receipt with one confirmation`,async()=>{
+ vi.useFakeTimers({toFake:['setTimeout','clearTimeout','Date']});
+ try{
+  let finishFetch:((response:Response)=>void)|undefined;
+  const cancel=vi.fn(()=>new Promise<void>(()=>{}));
+  const hanging=pending==='fetch'?new Promise<Response>(resolve=>{finishFetch=resolve;}):Promise.resolve(new Response(new ReadableStream<Uint8Array>({
+   pull(){return new Promise<void>(()=>{});},cancel,
+  }),{headers:{'Content-Type':'application/json'}}));
+  fetcher.mockResolvedValueOnce(json(prepared())).mockReturnValueOnce(hanging).mockResolvedValueOnce(json(completed()));
+  const view=render(<EmployeeDraftDiscardPanel resumeActionId={actionId}/>);
+  fireEvent.click(screen.getByRole('button',{name:copy.reopen}));await settleDeadlineUi();
+  expect(screen.getByRole('heading',{name:copy.reviewTitle})).toBeTruthy();
+  fireEvent.click(screen.getByLabelText(copy.confirmConsent));fireEvent.click(screen.getByRole('button',{name:copy.confirm}));await settleDeadlineUi();
+  const signal=fetcher.mock.calls[1][1].signal as AbortSignal;
+  expect(signal.aborted).toBe(false);expect(screen.getByRole('region',{name:copy.title}).getAttribute('aria-busy')).toBe('true');
+  await act(async()=>{await vi.advanceTimersByTimeAsync(19999);});
+  expect(screen.queryByRole('alert')).toBeNull();expect(signal.aborted).toBe(false);
+  expect((screen.getByRole('button',{name:copy.confirm}) as HTMLButtonElement).disabled).toBe(true);
+  await act(async()=>{await vi.advanceTimersByTimeAsync(1);});await settleDeadlineUi();
+  expect(signal.aborted).toBe(true);expect(screen.getByRole('alert').textContent).toBe(copy.unavailable);
+  expect(screen.getByRole('status').textContent).toBe(copy.uncertain);
+  expect(screen.getByRole('region',{name:copy.title}).getAttribute('aria-busy')).toBe('false');
+  expect(screen.queryByRole('button',{name:copy.confirm})).toBeNull();
+  if(pending==='body')expect(cancel).toHaveBeenCalledTimes(1);
+  const reopen=screen.getByRole('button',{name:copy.reopen}) as HTMLButtonElement;expect(reopen.disabled).toBe(false);
+  fireEvent.click(reopen);await settleDeadlineUi();
+  expect(screen.getByRole('heading',{name:copy.done})).toBeTruthy();
+  expect(screen.getByText(text(copy.completedOutcomes.released_tip))).toBeTruthy();
+  expect(packets()).toEqual([
+   {action:C.action,operation:'reopen',actionId},
+   {action:C.action,operation:'confirm',confirmation:{...content,actionId,reviewedDigest:'a'.repeat(64)}},
+   {action:C.action,operation:'reopen',actionId},
+  ]);
+  expect(packets().filter(packet=>packet.operation==='confirm')).toHaveLength(1);
+  if(finishFetch){
+   // A late, otherwise valid response cannot replace the receipt recovered by the newer request.
+   const late=json(completed('retained_gap')),cancelLate=vi.spyOn(late.body!,'cancel');finishFetch(late);await settleDeadlineUi();
+   expect(cancelLate).toHaveBeenCalledTimes(1);
+   expect(screen.queryByText(text(copy.completedOutcomes.retained_gap))).toBeNull();
+   expect(screen.getByText(text(copy.completedOutcomes.released_tip))).toBeTruthy();
+  }
+  expect(vi.getTimerCount()).toBe(0);view.unmount();expect(vi.getTimerCount()).toBe(0);
+ }finally{cleanup();vi.useRealTimers();}
+});
+
+it('clears the pending deadline and ignores late rejection on unmount',async()=>{
+ vi.useFakeTimers({toFake:['setTimeout','clearTimeout','Date']});
+ try{
+  let rejectFetch:((error:Error)=>void)|undefined;
+  fetcher.mockReturnValueOnce(new Promise<Response>((_,reject)=>{rejectFetch=reject;}));
+  const view=render(<EmployeeDraftDiscardPanel resumeActionId={actionId}/>);
+  fireEvent.click(screen.getByRole('button',{name:copy.reopen}));await settleDeadlineUi();
+  const signal=fetcher.mock.calls[0][1].signal as AbortSignal;expect(signal.aborted).toBe(false);expect(vi.getTimerCount()).toBe(1);
+  view.unmount();expect(signal.aborted).toBe(true);expect(vi.getTimerCount()).toBe(0);
+  rejectFetch!(Error('late transport rejection'));await settleDeadlineUi();expect(packets()).toEqual([{action:C.action,operation:'reopen',actionId}]);
+ }finally{cleanup();vi.useRealTimers();}
 });
 
 for(const [locale,messages]of Object.entries({en,ms,zh,vi:viMessages,th,ta}))it(`renders saved-input consent and native outcome in ${locale}`,async()=>{

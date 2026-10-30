@@ -12,13 +12,14 @@ type Retired=z.infer<typeof C.Retired>;
 type Outcome=z.infer<typeof C.ReservedCodeOutcome>;
 type State={kind:'selection'}|{kind:'review';review:Prepared}|{kind:'completed';receipt:Completed}|{kind:'retired';receipt:Retired}|{kind:'uncertain';actionId:string|null}|{kind:'handoff';draftId:string|null};
 const consent='discard_saved_draft_captured_input' as const;
+const REQUEST_DEADLINE_MS=20000;
 /** Exact saved-input review. The browser never calculates the reservation outcome or retries a command. */
 export function EmployeeDraftDiscardPanel({resumeActionId,initialDraftId}:{resumeActionId?:string;initialDraftId?:string}){
  const t=useTranslations('assistant.workspace.employeeDraftDiscard'),format=useFormatter(),id=useId();
  const [choices,setChoices]=useState<z.infer<typeof C.Choices>|null>(null),[draftId,setDraftId]=useState(initialDraftId&&z.guid().safeParse(initialDraftId).success?initialDraftId:'');
  const [state,setState]=useState<State>(()=>resumeActionId?{kind:'uncertain',actionId:z.guid().safeParse(resumeActionId).success?resumeActionId:null}:{kind:'selection'});
  const [index,setIndex]=useState<z.infer<typeof C.Index>|null>(null),[agreed,setAgreed]=useState(false),[confirmed,setConfirmed]=useState(false),[busy,setBusy]=useState<string|null>(null),[error,setError]=useState(''),[now,setNow]=useState(()=>Date.now());
- const active=useRef(true),flight=useRef(false),sequence=useRef(0),abort=useRef<AbortController|null>(null),status=useRef<HTMLParagraphElement>(null);
+ const active=useRef(true),flight=useRef(false),sequence=useRef(0),abort=useRef<(()=>void)|null>(null),status=useRef<HTMLParagraphElement>(null);
  const review=state.kind==='review'?state.review:null;
  const stamp=(value:string)=>format.dateTime(new Date(value),{dateStyle:'medium',timeStyle:'short'});
  const nativeHref=(selectedId?:string|null)=>selectedId?`/admin/personnel/new?draft=${encodeURIComponent(selectedId)}`:'/admin/personnel/new';
@@ -31,14 +32,29 @@ export function EmployeeDraftDiscardPanel({resumeActionId,initialDraftId}:{resum
   const packet=checked.data,op=packet.operation,token=++sequence.current;
   const prior=state.kind==='review'?state.review.actionId:state.kind==='uncertain'?state.actionId:null;
   const actionId=op==='reopen'?packet.actionId:op==='confirm'||op==='retire'?packet.confirmation.actionId:prior;
-  flight.current=true;setBusy(op);setError('');const controller=new AbortController();abort.current=controller;
+  flight.current=true;setBusy(op);setError('');const controller=new AbortController();
+  let reader:ReadableStreamDefaultReader<Uint8Array>|null=null,responseBody:ReadableStream<Uint8Array>|null=null,timer:ReturnType<typeof setTimeout>|null=null,cancelledBody=false;
+  let rejectStopped:(reason:Error)=>void=()=>{};
+  const stopped=new Promise<never>((_,reject)=>{rejectStopped=reject;});
+  // A settled race still observes late rejection; cancellation must never wait on the transport.
+  void stopped.catch(()=>{});
+  const cancelBody=()=>{if(cancelledBody||!reader&&!responseBody)return;cancelledBody=true;try{const cancelling=reader?reader.cancel():responseBody?.cancel();void cancelling?.catch(()=>{});}catch{/* already closed */}};
+  const stop=()=>{if(timer!==null){clearTimeout(timer);timer=null;}rejectStopped(Error('Request stopped'));controller.abort();cancelBody();};
+  const deadlineAt=Date.now()+REQUEST_DEADLINE_MS;
+  timer=setTimeout(stop,REQUEST_DEADLINE_MS);abort.current=stop;
   try{
-   const response=await fetch('/api/assistant/module-actions',{method:'POST',mode:'same-origin',credentials:'same-origin',cache:'no-store',redirect:'error',signal:controller.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify(packet)});
+   const pending=fetch('/api/assistant/module-actions',{method:'POST',mode:'same-origin',credentials:'same-origin',cache:'no-store',redirect:'error',signal:controller.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify(packet)}).then(response=>{
+    if(controller.signal.aborted){try{void response.body?.cancel().catch(()=>{});}catch{/* already closed */}throw Error('Request stopped');}
+    return response;
+   });
+   const response=await Promise.race([pending,stopped]);responseBody=response.body;
    if(!response.ok||response.headers.get('content-type')?.split(';')[0]!=='application/json'||!response.body)throw Error();
-   const reader=response.body.getReader(),parts:Uint8Array[]=[];let bytes=0;
-   try{for(;;){const part=await reader.read();if(part.done)break;bytes+=part.value.byteLength;if(bytes>65536||parts.length>=1024){await reader.cancel();throw Error();}parts.push(part.value);}}finally{reader.releaseLock();}
+   reader=response.body.getReader();const parts:Uint8Array[]=[];let bytes=0,finishedBody=false;
+   try{for(;;){const part=await Promise.race([reader.read(),stopped]);if(part.done){finishedBody=true;break;}bytes+=part.value.byteLength;if(bytes>65536||parts.length>=1024){cancelBody();throw Error();}parts.push(part.value);}}finally{if(!finishedBody)cancelBody();try{reader.releaseLock();}catch{/* a stopped read may still be pending */}reader=null;}
    const all=new Uint8Array(bytes);let offset=0;for(const part of parts){all.set(part,offset);offset+=part.byteLength;}
    const next=parseEmployeeDraftDiscardBrowserResult(packet,JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(all)));
+   // Synchronous decode/validation also belongs to the same deadline if the event loop was delayed.
+   if(controller.signal.aborted||Date.now()>=deadlineAt){stop();throw Error('Request stopped');}
    if(!active.current||sequence.current!==token)return;
    if(next.kind==='choices'||next.kind==='unavailable'){setChoices(next);setAgreed(false);return;}
    if(next.kind==='employee_draft_discard_review_index'){setIndex(next);return;}
@@ -49,9 +65,9 @@ export function EmployeeDraftDiscardPanel({resumeActionId,initialDraftId}:{resum
    if(next.kind==='handoff'){setState({kind:'handoff',draftId:op==='prepare'?packet.input.draftId:review?.content.draftId??null});return;}
    throw Error();
   }catch{if(active.current&&sequence.current===token){setError(t('unavailable'));if(op==='choices'){setChoices({kind:'unavailable'});return;}clearConsent();if(op!=='list')setState({kind:'uncertain',actionId});}}
-  finally{if(sequence.current===token){flight.current=false;abort.current=null;if(active.current)setBusy(null);}}
+  finally{if(timer!==null)clearTimeout(timer);controller.abort();cancelBody();if(sequence.current===token){flight.current=false;abort.current=null;if(active.current)setBusy(null);}}
  }
- useEffect(()=>{active.current=true;flight.current=false;if(state.kind==='selection')void send({action:C.action,operation:'choices',selection:{}});return()=>{active.current=false;sequence.current++;abort.current?.abort();};
+ useEffect(()=>{active.current=true;flight.current=false;if(state.kind==='selection')void send({action:C.action,operation:'choices',selection:{}});return()=>{active.current=false;sequence.current++;abort.current?.();};
   // eslint-disable-next-line react-hooks/exhaustive-deps
  },[]);
  const drafts=choices?.kind==='choices'?choices.drafts:[],selected=drafts.find(row=>row.draftId===draftId),expired=review?now>=Date.parse(review.expiresAt):false;

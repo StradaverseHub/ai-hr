@@ -9,7 +9,7 @@ import {createConfig} from '../core/employee-id-config';
 import {createEmployeeDraftWithReservedCode,discardEmployeeDraft,saveEmployeeDraft} from '../core/employee-draft';
 import {hireEmployee} from '../core/org';
 import {erasePersonPiiTx} from '../core/pdpa';
-import {pgSqlState} from '../lib/db-error';
+import {pgSqlState,pgErrorChain} from '../lib/db-error';
 import {grantAssistant} from '../core/assistant-grant';
 import {employeeDraftDiscardReviews} from '../core/assistant-actions/employee-draft-discard-review-store';
 import {requireNativeOutcomeTargetsTx} from '../core/module-native-outcome-targets';
@@ -36,7 +36,25 @@ async function snapshot(){return{
  bodies:await owner.db.execute(sql`select c.* from app.assistant_own_leave_review_content c join app.assistant_own_leave_review r on r.id=c.action_id where r.tenant_id=${b.tenantId}::uuid order by c.action_id`),
 };}
 const linked=(tx:Tx,draft:string)=>tx.execute(sql`insert into lc_onboarding_case(tenant_id,company_id,source_draft_id,data) values(${b.tenantId}::uuid,${b.companyId}::uuid,${draft}::uuid,'{"version":1,"state":"cancelled","source":{},"tasks":[],"requisitions":[]}'::jsonb)`);
-async function assertRefusal(work:Promise<unknown>,code?:string){let error:unknown;try{await work;}catch(e){error=e;}expect(error).toBeDefined();if(code)expect(pgSqlState(error)).toBe(code);}
+async function assertRefusal(work:Promise<unknown>,code?:string,message?:string){let error:unknown;try{await work;}catch(e){error=e;}expect(error).toBeDefined();if(code)expect(pgSqlState(error)).toBe(code);if(message)expect(pgErrorChain(error).some(link=>link.message===message)).toBe(true);}
+/** Test-only owner probe sees this app transaction's uncommitted physical proof. It returns no
+ * source/body values, is restricted to the actual current USER/tenant, and is removed in finally. */
+type PhaseProof={stamped:boolean;draftAbsent:boolean;casePresent:boolean;stampRowXmin:string;parentXid:string;deleteXid:string|null;armXid:string|null;eventPresent:boolean;eventRowXmin:string|null};
+async function withPhaseProbe(work:()=>Promise<void>){
+ await owner.db.execute(sql`create function public.ai_discard_test_phase_probe(p_id uuid,p_event uuid) returns jsonb language sql security definer set search_path=pg_catalog,public,pg_temp as $$
+  select pg_catalog.jsonb_build_object('stamped',r.draft_discard_delete_witness is not null,
+   'draftAbsent',not exists(select 1 from public.employee_draft d where d.id=r.receipt_subject_id and d.tenant_id=r.tenant_id),
+   'casePresent',exists(select 1 from public.lc_onboarding_case c where c.source_draft_id=r.receipt_subject_id and c.tenant_id=r.tenant_id),
+   'stampRowXmin',r.xmin::text,'parentXid',pg_catalog.pg_current_xact_id()::xid::text,
+   'deleteXid',r.draft_discard_delete_xid::xid::text,'armXid',r.draft_discard_capture_xid::xid::text,
+   'eventPresent',exists(select 1 from public.domain_event e where e.id=p_event and e.tenant_id=r.tenant_id and e.actor_id=r.user_id and e.actor_type='user' and e.aggregate_type='employee-draft' and e.aggregate_id=r.receipt_subject_id and e.event_type='employee-draft.discarded'),
+   'eventRowXmin',(select e.xmin::text from public.domain_event e where e.id=p_event and e.tenant_id=r.tenant_id))
+  from app.assistant_own_leave_review r where r.id=p_id and r.tenant_id=app.current_tenant_id() and r.user_id=app.current_user_id()
+ $$`);
+ try{await owner.db.execute(sql`revoke all on function public.ai_discard_test_phase_probe(uuid,uuid) from public`);await owner.db.execute(sql`grant execute on function public.ai_discard_test_phase_probe(uuid,uuid) to ai_hr_app`);await work();}finally{await owner.db.execute(sql`drop function public.ai_discard_test_phase_probe(uuid,uuid)`);}
+}
+async function phaseProof(tx:Tx,id:string,event:string|null=null){const [row]=await tx.execute<{value:PhaseProof}>(sql`select public.ai_discard_test_phase_probe(${id}::uuid,${event}::uuid) value`);expect(row.value).not.toBeNull();return row.value;}
+function expectChildProof(proof:PhaseProof){expect(proof).toMatchObject({stamped:true,draftAbsent:true,eventPresent:true});expect(proof.deleteXid).toBe(proof.parentXid);expect(proof.armXid).toBe(proof.parentXid);expect(proof.stampRowXmin).not.toBe(proof.parentXid);expect(proof.eventRowXmin).not.toBe(proof.parentXid);}
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();ctx=adminCtx(b);await setModule(b.tenantId,'lifecycle',null);});
 
@@ -65,8 +83,9 @@ it('ordinary GUI deletion skips an old review arm and retires all pending custod
 });
 it('ordinary GUI retains native linked-case semantics after an old review, while current-TX armed capture refuses a new same-TX case',async()=>{
  const d=await plain(),id=await prepare(d.id);await owner.db.transaction(tx=>linked(tx,d.id));await discardEmployeeDraft(ctx,d.id);expect(await status(id)).toMatchObject({state:'discarded',bodies:0,stamp:null});
- const second=await plain(),review=await prepare(second.id),before=await snapshot();
- await assertRefusal(withTenant(ctx,async tx=>{await source(tx,second.id);await linked(tx,second.id);await discardEmployeeDraft(ctx,second.id,tx,{returnResult:true});}),'42501');expect(await snapshot()).toEqual(before);expect(await status(review)).toMatchObject({state:'awaiting_confirmation',stamp:null});
+ const second=await plain(),review=await prepare(second.id),before=await snapshot();let inserted=false,portAttempted=false;
+ await withPhaseProbe(async()=>{await assertRefusal(withTenant(ctx,async tx=>{await source(tx,second.id);await linked(tx,second.id);const proof=await phaseProof(tx,review);expect(proof.casePresent).toBe(true);expect(proof.stamped).toBe(false);inserted=true;portAttempted=true;await discardEmployeeDraft(ctx,second.id,tx,{returnResult:true});}),'42501','Draft discard unavailable');});
+ expect({inserted,portAttempted}).toEqual({inserted:true,portAttempted:true});expect(await snapshot()).toEqual(before);expect(await status(review)).toMatchObject({state:'awaiting_confirmation',stamp:null});
 });
 it('direct SQL source/prepare cannot bypass the canonical linked-case helper',async()=>{
  const d=await plain();await owner.db.transaction(tx=>linked(tx,d.id));const before=await snapshot();await assertRefusal(withTenant(ctx,tx=>source(tx,d.id)),'42501');await assertRefusal(withTenant(ctx,tx=>command(tx,ctx,'prepare',randomUUID(),d.id,INTENT)),'42501');expect(await snapshot()).toEqual(before);
@@ -86,11 +105,17 @@ it.each(['no_reservation','unreserved_code','retained_gap'] as const)('proves th
  const id=await prepare(d.id);const done=await withTenant(ctx,async tx=>{await source(tx,d.id);const native=await discardEmployeeDraft(ctx,d.id,tx,{returnResult:true});return complete(tx,id,native.eventId);});expect(done.nativeOutcome).toEqual({kind,reservedEmployeeCode:kind==='no_reservation'?null:d.employeeCode});
 });
 it('refuses raw activation-style DELETE plus a forged same-TX discard event: actual port stamp is mandatory',async()=>{
- const d=await plain(),id=await prepare(d.id),before=await snapshot();await assertRefusal(withTenant(ctx,async tx=>{await source(tx,d.id);await tx.delete(s.employeeDraft).where(eq(s.employeeDraft.id,d.id));const event=await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'employee-draft',aggregateId:d.id,eventType:'employee-draft.discarded',actor:actorOf(ctx),payload:{}},{returnId:true});await complete(tx,id,event);}),'42501');expect(await snapshot()).toEqual(before);
+ const d=await plain(),id=await prepare(d.id),before=await snapshot();let deleted=false,eventCreated=false,completeAttempted=false;
+ await withPhaseProbe(async()=>{await assertRefusal(withTenant(ctx,async tx=>{await source(tx,d.id);const removed=await tx.delete(s.employeeDraft).where(eq(s.employeeDraft.id,d.id)).returning({id:s.employeeDraft.id});expect(removed).toEqual([{id:d.id}]);deleted=true;const event=await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'employee-draft',aggregateId:d.id,eventType:'employee-draft.discarded',actor:actorOf(ctx),payload:{}},{returnId:true});const proof=await phaseProof(tx,id,event);expect(proof).toMatchObject({stamped:false,draftAbsent:true,eventPresent:true});expect(proof.eventRowXmin).toBe(proof.parentXid);eventCreated=true;completeAttempted=true;await complete(tx,id,event);}),'42501','Draft discard proof unavailable');});
+ expect({deleted,eventCreated,completeAttempted}).toEqual({deleted:true,eventCreated:true,completeAttempted:true});expect(await snapshot()).toEqual(before);
 });
 it('refuses a released child-savepoint actual DELETE and a later attempt to re-arm its missing source',async()=>{
- const d=await plain(),id=await prepare(d.id),before=await snapshot();await assertRefusal(withTenant(ctx,async tx=>{await source(tx,d.id);const native=await tx.transaction(inner=>discardEmployeeDraft(ctx,d.id,inner,{returnResult:true}));await complete(tx,id,native.eventId);}),'42501');expect(await snapshot()).toEqual(before);
- await assertRefusal(withTenant(ctx,async tx=>{await source(tx,d.id);const native=await tx.transaction(inner=>discardEmployeeDraft(ctx,d.id,inner,{returnResult:true}));await command(tx,ctx,'source',null,d.id);await complete(tx,id,native.eventId);}),'42501');expect(await snapshot()).toEqual(before);
+ const d=await plain(),id=await prepare(d.id),before=await snapshot();let childWitness=false,completeAttempted=false;
+ await withPhaseProbe(async()=>{await assertRefusal(withTenant(ctx,async tx=>{await source(tx,d.id);const native=await tx.transaction(inner=>discardEmployeeDraft(ctx,d.id,inner,{returnResult:true}));expectChildProof(await phaseProof(tx,id,native.eventId));childWitness=true;completeAttempted=true;await complete(tx,id,native.eventId);}),'42501','Draft discard proof unavailable');});
+ expect({childWitness,completeAttempted}).toEqual({childWitness:true,completeAttempted:true});expect(await snapshot()).toEqual(before);
+ let retainedChildWitness=false,rearmAttempted=false;
+ await withPhaseProbe(async()=>{await assertRefusal(withTenant(ctx,async tx=>{await source(tx,d.id);const native=await tx.transaction(inner=>discardEmployeeDraft(ctx,d.id,inner,{returnResult:true}));expectChildProof(await phaseProof(tx,id,native.eventId));retainedChildWitness=true;rearmAttempted=true;await command(tx,ctx,'source',null,d.id);}),'42501','Draft discard unavailable');});
+ expect({retainedChildWitness,rearmAttempted}).toEqual({retainedChildWitness:true,rearmAttempted:true});expect(await snapshot()).toEqual(before);
 });
 it('same-XID draft updates invalidate ctid even though xmin alone would still match',async()=>{
  const d=await plain(),id=await prepare(d.id),before=await snapshot();await assertRefusal(withTenant(ctx,async tx=>{const v=await source(tx,d.id);await tx.update(s.employeeDraft).set({label:'Changed same transaction'}).where(eq(s.employeeDraft.id,d.id));const [now]=await tx.execute<{xmin:string;ctid:string}>(sql`select xmin::text,ctid::text from employee_draft where id=${d.id}::uuid`);expect(now.ctid).not.toBe(v.ctid);const native=await discardEmployeeDraft(ctx,d.id,tx,{returnResult:true});await complete(tx,id,native.eventId);}),'42501');expect(await snapshot()).toEqual(before);
@@ -142,14 +167,17 @@ it('capture deadline crossing refuses completion and rolls back the already atte
  await assertRefusal(withTenant(ctx,async tx=>{await source(tx,d.id);const native=await discardEmployeeDraft(ctx,d.id,tx,{returnResult:true});expect(native.eventId).toMatch(/^[a-f0-9-]{36}$/);await tx.execute(sql`select pg_sleep(1.1)`);await complete(tx,id,native.eventId);}),'42501');expect(await snapshot()).toEqual(before);
 });
 it('a matching historical event cannot adopt a current actual port DELETE stamp',async()=>{
- const d=await plain(),id=await prepare(d.id),oldEvent=await withTenant(ctx,tx=>appendEvent(tx,{tenantId:b.tenantId,aggregateType:'employee-draft',aggregateId:d.id,eventType:'employee-draft.discarded',actor:actorOf(ctx),payload:{}},{returnId:true})),before=await snapshot();
- await assertRefusal(withTenant(ctx,async tx=>{await source(tx,d.id);const native=await discardEmployeeDraft(ctx,d.id,tx,{returnResult:true});expect(native.eventId).not.toBe(oldEvent);await complete(tx,id,oldEvent);}),'42501');expect(await snapshot()).toEqual(before);
+ const d=await plain(),id=await prepare(d.id),oldEvent=await withTenant(ctx,tx=>appendEvent(tx,{tenantId:b.tenantId,aggregateType:'employee-draft',aggregateId:d.id,eventType:'employee-draft.discarded',actor:actorOf(ctx),payload:{}},{returnId:true})),before=await snapshot();let currentProof=false,historicalProof=false,completeAttempted=false;
+ await withPhaseProbe(async()=>{await assertRefusal(withTenant(ctx,async tx=>{await source(tx,d.id);const native=await discardEmployeeDraft(ctx,d.id,tx,{returnResult:true});expect(native.eventId).not.toBe(oldEvent);const actual=await phaseProof(tx,id,native.eventId);expect(actual).toMatchObject({stamped:true,draftAbsent:true,eventPresent:true});expect(actual.stampRowXmin).toBe(actual.parentXid);expect(actual.eventRowXmin).toBe(actual.parentXid);currentProof=true;const old=await phaseProof(tx,id,oldEvent);expect(old.eventPresent).toBe(true);expect(old.eventRowXmin).not.toBe(old.parentXid);historicalProof=true;completeAttempted=true;await complete(tx,id,oldEvent);}),'42501','Draft discard proof unavailable');});
+ expect({currentProof,historicalProof,completeAttempted}).toEqual({currentProof:true,historicalProof:true,completeAttempted:true});expect(await snapshot()).toEqual(before);
 });
 it('the invoker guard rejects an actual owner-context no-op UPDATE before it can wash child stamp xmin',async()=>{
- const d=await plain(),id=await prepare(d.id),before=await snapshot();
- await owner.db.execute(sql`create function public.ai_discard_test_owner_noop(p_id uuid) returns void language plpgsql security definer set search_path=pg_catalog,public,pg_temp as $$begin update app.assistant_own_leave_review set state=state,draft_discard_capture_xid=pg_current_xact_id() where id=p_id;end$$`);
- await owner.db.execute(sql`revoke all on function public.ai_discard_test_owner_noop(uuid) from public`);await owner.db.execute(sql`grant execute on function public.ai_discard_test_owner_noop(uuid) to ai_hr_app`);
- try{await assertRefusal(withTenant(ctx,async tx=>{await source(tx,d.id);await tx.transaction(inner=>discardEmployeeDraft(ctx,d.id,inner,{returnResult:true}));await tx.execute(sql`select public.ai_discard_test_owner_noop(${id}::uuid)`);}),'42501');expect(await snapshot()).toEqual(before);}finally{await owner.db.execute(sql`drop function public.ai_discard_test_owner_noop(uuid)`);}
+ const d=await plain(),id=await prepare(d.id),before=await snapshot();let actualChildWitness=false,ownerUpdateAttempted=false;
+ await owner.db.execute(sql`create function public.ai_discard_test_owner_noop(p_id uuid) returns void language plpgsql security definer set search_path=pg_catalog,public,pg_temp as $$begin update app.assistant_own_leave_review set state=state,draft_discard_capture_xid=pg_catalog.pg_current_xact_id() where id=p_id;end$$`);
+ try{await owner.db.execute(sql`revoke all on function public.ai_discard_test_owner_noop(uuid) from public`);await owner.db.execute(sql`grant execute on function public.ai_discard_test_owner_noop(uuid) to ai_hr_app`);
+  await withPhaseProbe(async()=>{await assertRefusal(withTenant(ctx,async tx=>{await source(tx,d.id);const native=await tx.transaction(inner=>discardEmployeeDraft(ctx,d.id,inner,{returnResult:true}));expectChildProof(await phaseProof(tx,id,native.eventId));actualChildWitness=true;ownerUpdateAttempted=true;await tx.execute(sql`select public.ai_discard_test_owner_noop(${id}::uuid)`);}),'42501','Pending witness immutable');});
+  expect({actualChildWitness,ownerUpdateAttempted}).toEqual({actualChildWitness:true,ownerUpdateAttempted:true});expect(await snapshot()).toEqual(before);
+ }finally{await owner.db.execute(sql`drop function public.ai_discard_test_owner_noop(uuid)`);}
 });
 it('schema-owner SQL cannot forge a pending deletion witness without the actual restricted child DELETE',async()=>{
  const d=await plain(),id=await prepare(d.id),before=await snapshot();await assertRefusal(owner.db.execute(sql`update app.assistant_own_leave_review set draft_discard_delete_witness=jsonb_build_object('rowDigest',draft_discard_source->>'rowDigest','admittedAt',to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')),draft_discard_delete_xid=pg_current_xact_id() where id=${id}::uuid`),'42501');expect(await snapshot()).toEqual(before);
