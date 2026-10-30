@@ -177,7 +177,7 @@ export function MovementNewEvent({
    * by category on the server. `typeLabel` is the turnover classification the code derives, shown read-only
    * beside the picker so HR can see what the exit will be reported as without being able to contradict it.
    */
-  terminationReasons: { code: string; category: string; categoryLabel: string; label: string; typeLabel: string }[];
+  terminationReasons: { code: string; category: string; categoryLabel: string; label: string; typeLabel: string; active?: boolean }[];
   /**
    * 476f23ed — the event types this organisation offers, from Movement Settings. `code` is what the ledger
    * records; `label` is the organisation's own name (null = use the shipped translation); `behaviourKind`
@@ -185,7 +185,7 @@ export function MovementNewEvent({
    * asks for. That is how a tenant's own "Redeployment" gets the Transfer form without the form knowing
    * anything about Redeployment.
    */
-  types?: { code: string; label: string | null; behaviourKind: string }[];
+  types?: { code: string; label: string | null; behaviourKind: string; description?: string | null }[];
   /**
    * b7b22514 — the legal entities an Entity Transfer may move this employee to: the current one (always
    * first, it is the select's initial value) followed by every company the actor ADMINISTERS. That set is
@@ -205,7 +205,8 @@ export function MovementNewEvent({
   const tPay = useTranslations('people.detail');
   const label=(id:string)=>personnelFormLabel(id,(key,fallback)=>key.startsWith('people.detail.')&&tPay.has(key.slice(14))?tPay(key.slice(14)):fallback);
   // 476f23ed — the catalogue, with the built-in list as the fallback for a render that was given none.
-  const catalog = types?.length ? types : KINDS.map((k) => ({ code: k, label: null, behaviourKind: k }));
+  const catalog: { code: string; label: string | null; behaviourKind: string; description?: string | null }[] =
+    types?.length ? types : KINDS.map((k) => ({ code: k, label: null, behaviourKind: k }));
   const byCode = new Map(catalog.map((c) => [c.code, c]));
   /** What a code DOES. Every branch below asks this, never the code itself. */
   const behaviourOf = (k: string): string => byCode.get(k)?.behaviourKind ?? k;
@@ -287,6 +288,11 @@ export function MovementNewEvent({
   const showEndDate = movementFormFields(behaviour).includes('endDate');
   const showEffectiveDate = movementFormFields(behaviour).includes('effectiveDate');
   const [terminationReason, setTerminationReason] = useState<string>(saved?.terminationReasonCode ?? '');
+  // 1d58019a — a switched-off reason is never offered for a new termination, but one this movement already
+  // carries stays selectable so correcting it does not force a different reason. The service enforces both.
+  const offeredReasons = terminationReasons.filter(
+    (r) => r.active !== false || r.code === saved?.terminationReasonCode,
+  );
   // "Resignation Date — mandatory for resignation cases" (the reporter's rule). Shown only for that reason,
   // because for a dismissal or a contract expiry there is no resignation to date.
   const showResignationDate = isTermination && terminationReason === 'resignation';
@@ -495,6 +501,12 @@ export function MovementNewEvent({
               </option>
             ))}
           </select>
+          {/* 1d58019a — the organisation's note for this event type, from Movement Settings. */}
+          {byCode.get(kind)?.description && (
+            <span data-testid="movement-type-description" className="text-xs text-muted-foreground">
+              {byCode.get(kind)!.description}
+            </span>
+          )}
         </label>
 
         {showEffectiveDate && (
@@ -562,9 +574,9 @@ export function MovementNewEvent({
                 <option value="">{t('form.terminationReasonPlaceholder')}</option>
                 {/* One optgroup per category — the Voluntary / Involuntary split the reporter asked for.
                     Deduped on the fly so the grouping comes from the catalogue's own order, not a second list. */}
-                {[...new Set(terminationReasons.map((r) => r.category))].map((cat) => (
-                  <optgroup key={cat} label={terminationReasons.find((r) => r.category === cat)!.categoryLabel}>
-                    {terminationReasons
+                {[...new Set(offeredReasons.map((r) => r.category))].map((cat) => (
+                  <optgroup key={cat} label={offeredReasons.find((r) => r.category === cat)!.categoryLabel}>
+                    {offeredReasons
                       .filter((r) => r.category === cat)
                       .map((r) => (
                         <option key={r.code} value={r.code}>

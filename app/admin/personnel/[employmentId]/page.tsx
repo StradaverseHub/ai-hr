@@ -109,7 +109,7 @@ import { partitionMovementRows } from '@/lib/movement-visibility';
 // and the screen cannot print different names for the same event.
 import { movementKindLabel as movementKindLabelOf } from '@/lib/movement-kind-label';
 // ae9350f2 — the built-in exit-reason catalogue behind the Termination movement.
-import { TERMINATION_REASONS } from '@/core/termination-reason';
+import { terminationReasonCatalogue } from '@/core/termination-reason-catalog';
 // 476f23ed — the tenant's configurable movement event-type catalogue.
 import { listMovementEventTypes } from '@/core/movement-type';
 import { MovementNewEvent } from './movement-new-event';
@@ -573,6 +573,10 @@ export default async function EmployeePage({
   // to the active ones below. A tenant that has configured nothing gets the built-in list unchanged.
   const movementTypes = admin ? await listMovementEventTypes(s) : [];
   const movementTypeByCode = new Map(movementTypes.map((r) => [r.code, r]));
+  // 1d58019a — the tenant's exit reasons (built-ins with its renames, plus its own), switched-off ones
+  // included and flagged: the New Event form offers the active ones and keeps a switched-off reason that a
+  // termination being corrected already carries.
+  const terminationReasonRows = admin ? await terminationReasonCatalogue(s) : [];
   const movementDetailData = admin && spMovement ? await movementDetail(s, employmentId, spMovement) : null;
   const resignationInfo = admin ? await resignationInformation(s, employmentId) : null;
   const costAllocationView = admin && emp.companyId ? await getEmploymentCostAllocations(s, employmentId) : null;
@@ -3526,22 +3530,26 @@ export default async function EmployeePage({
         orgByCompany: movementOrgByCompany,
         profileOptions,
         employmentTypes: personnelFormChoices('employment.organisation_assignment.employmenttype').map(choice=>({value:choice.value,label:t(choice.labelKey.slice(14))})),
-        // ae9350f2 — the built-in exit-reason catalogue, pre-translated here (the island holds no server
-        // imports). `typeLabel` reuses the EXISTING termination-type labels, so the classification the
-        // reason derives reads the same everywhere it already appears (turnover analytics included).
-        terminationReasons: TERMINATION_REASONS.map((r) => ({
+        // ae9350f2 — the exit-reason catalogue, pre-translated here (the island holds no server imports).
+        // `typeLabel` reuses the EXISTING termination-type labels, so the classification the reason derives
+        // reads the same everywhere it already appears (turnover analytics included). 1d58019a — now the
+        // TENANT's catalogue: its own name wins, a built-in it never renamed keeps the shipped label.
+        terminationReasons: terminationReasonRows.map((r) => ({
           code: r.code,
           category: r.category,
           categoryLabel: t(`movement.terminationReasonCategory.${r.category}` as 'movement.terminationReasonCategory.voluntary'),
-          label: t(`movement.terminationReason.${r.code}` as 'movement.terminationReason.resignation'),
-          typeLabel: TERMINATION_TYPE_LABEL[r.type],
+          label:
+            r.label ??
+            (r.builtIn ? t(`movement.terminationReason.${r.code}` as 'movement.terminationReason.resignation') : r.code),
+          typeLabel: TERMINATION_TYPE_LABEL[r.terminationType],
+          active: r.active,
         })),
         // 476f23ed — the event types this organisation offers, already filtered to the active ones and
         // already labelled. The island holds no server imports, so the catalogue is resolved here; passing
         // `behaviourKind` is what lets the form ask for the right fields for one of their OWN types.
         types: movementTypes
           .filter((r) => r.active)
-          .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind })),
+          .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind, description: r.description })),
         cancelHref: `/admin/personnel/${employmentId}?tab=careerMovement`,
       }
     : null;

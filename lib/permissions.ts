@@ -549,7 +549,14 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/admin/settings/movement',
     labelKey: 'nav.movementSettings',
     guard: 'requireAdmin',
-    routes: ['/admin/settings/movement'],
+    // 1d58019a — the Termination Reasons tab and the event-type configuration pages are part of the SAME
+    // screen and carry the same guard (requireAdmin on each page, plus the services' own admin check).
+    routes: [
+      '/admin/settings/movement',
+      '/admin/settings/movement/reasons',
+      '/admin/settings/movement/types/new',
+      '/admin/settings/movement/types/[code]',
+    ],
   },
   {
     // 7b5f18c3 — Hiring Defaults, relocated out of Personnel (Admin) into System Settings as a company
