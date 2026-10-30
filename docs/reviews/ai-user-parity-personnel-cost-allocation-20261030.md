@@ -52,6 +52,7 @@ The original native [run41019097513](https://github.com/StradaverseHub/ai-hr/act
 
 Static preservation verified all592 SQL predecessors besides the owned UNAPPLIED0726 file, the entire journal, every other registry definition and the unchanged native history test. The restored subjectTx body matches the pre-wave5 a609 native owner byte-for-byte. Manifest regeneration is deliberately left to the parent after composition with independent repairs.
 
+
 ## Bounded constraint-growth source repair
 
 The own UNAPPLIED0726 generic-kind column branch now names the canonical eight legacy receipt fields explicitly: `leave_request_id`, `submission_event_id`, `notification_event_id`, `profile_request_id`, `profile_requested_event_id`, `claim_draft_id`, `claim_saved_event_id` and `performance_ack_event_id`, all NULL. These are the0622 legacy receipt columns and the exact finite generic branch introduced in0670;0671/0677/0713–0715 extend its action list without changing that predicate. Evaluating later wrappers at the qualification kind reaches the same eight-NULL branch, so the literal is equivalent for the new cost kind.

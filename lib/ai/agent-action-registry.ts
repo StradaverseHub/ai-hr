@@ -41,8 +41,8 @@ import {OWN_LEAVE_CONTRACT_VERSION} from '../assistant-actions/own-leave-contrac
 export type AgentActionOwner='personnel'|'organization'|'leave'|'profile'|'knowledge_base'|'payroll'|'attendance'|'claims'|'performance'|'rewards'|'lifecycle'|'country_pack_my'|'notifications'|'system_testing';
 export type AgentActionPhaseStatus='implemented'|'human_workflow_only'|'pending_adapter';
 export type AgentActionPhase=Readonly<{status:AgentActionPhaseStatus;adapter:string|null;inputSchema:string|null;outputSchema:string|null}>;
-export type AgentActionActor='lifecycle_staff'|'self'|'assigned_approver'|'hr_admin'|'workforce_maintainer'|'tenant_admin'|'payroll_admin'|'rewards_admin'|'assigned_tester'|'agent_principal';
-export type AgentActionSubject='lifecycle_case'|'own_employment'|'own_user'|'assigned_request'|'other_employment'|'other_person'|'company'|'tenant';
+export type AgentActionActor='lifecycle_staff'|'performance_decider'|'self'|'assigned_approver'|'hr_admin'|'workforce_maintainer'|'tenant_admin'|'payroll_admin'|'rewards_admin'|'assigned_tester'|'agent_principal';
+export type AgentActionSubject='employment'|'performance_checkin'|'lifecycle_case'|'own_employment'|'own_user'|'assigned_request'|'other_employment'|'other_person'|'company'|'tenant';
 export type AgentActionStoreFamily='dedicated'|'generic_own'|'generic_assigned'|'module_action'|'own_leave'|'human_workflow_only';
 export type AgentActionHandoff='review_page'|'native_workflow'|'none';
 export type AgentActionIdempotencyKey='review_action_id'|'import_attempt_version'|'chase_item_stage_cooldown';
@@ -280,6 +280,38 @@ export const AGENT_ACTIONS=Object.freeze([
   screen:{native:'app/claims/page.tsx',entryPoints:['app/claims/actions.ts#cancelClaimAction']},review:{route:'/assistant/claims',handoff:'review_page'},
   // Generic SQL family (0670) with a hand-cloned TypeScript custody owner: WP9 moves it to generic_own first.
   store:'generic_own',browserOwner:'claimCancellation',pauseKey:'hr_assistant'}),
+ defineAgentAction({id:'performance.checkin.cancel',module:'performance',owner:'performance',service:'packs/performance/service.ts#cancelCheckInTx',contractVersion:1,
+  prepare:{status:'implemented',adapter:'performance_checkin_cancel_review_v1',inputSchema:'CheckInCancellation.Human',outputSchema:'CheckInCancellation.Prepared'},
+  confirm:{status:'implemented',adapter:'performance_checkin_cancel_review_v1',inputSchema:'CheckInCancellation.Confirmation',outputSchema:'CheckInCancellation.Completed'},
+  outcome:'canonical_receipt_required',semantics:'scheduled_checkin_cancelled_not_completed_or_notes_changed',humanInputs:['employmentId','subjectId','cancel'],
+  permission:{actor:'performance_decider',guard:'core/assistant-actions/checkin-cancellation-source.ts#withCheckInCancellationSubjectTx'},subject:'performance_checkin',blastRadius:{max:1,unit:'performance_checkin'},
+  idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'final'},evaluationCases:[],
+  screen:{native:'app/performance/page.tsx',entryPoints:['app/performance/actions.ts#cancelCheckInAction']},review:{route:'/assistant/performance/checkins',handoff:'review_page'},
+  store:'generic_assigned',browserOwner:'checkInCancellation',pauseKey:'hr_assistant'}),
+ defineAgentAction({id:'performance.checkin.complete',module:'performance',owner:'performance',service:'packs/performance/service.ts#completeCheckInTx',contractVersion:1,
+  prepare:{status:'implemented',adapter:'performance_checkin_complete_review_v1',inputSchema:'CheckInCompletion.Human',outputSchema:'CheckInCompletion.Prepared'},
+  confirm:{status:'implemented',adapter:'performance_checkin_complete_review_v1',inputSchema:'CheckInCompletion.Confirmation',outputSchema:'CheckInCompletion.Completed'},
+  outcome:'canonical_receipt_required',semantics:'scheduled_checkin_completed_with_human_notes_choice',humanInputs:['employmentId','subjectId','complete','notesMode','notes'],
+  permission:{actor:'performance_decider',guard:'core/assistant-actions/checkin-completion-source.ts#withCheckInCompletionSubjectTx'},subject:'performance_checkin',blastRadius:{max:1,unit:'performance_checkin'},
+  idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'final'},evaluationCases:[],
+  screen:{native:'app/performance/page.tsx',entryPoints:['app/performance/actions.ts#completeCheckInAction']},review:{route:'/assistant/performance/checkins/complete',handoff:'review_page'},
+  store:'generic_assigned',browserOwner:'checkInCompletion',pauseKey:'hr_assistant'}),
+ defineAgentAction({id:'performance.checkin.schedule',module:'performance',owner:'performance',service:'packs/performance/service.ts#scheduleCheckInTx',contractVersion:1,
+  prepare:{status:'implemented',adapter:'performance_checkin_schedule_review_v1',inputSchema:'CheckInScheduling.Human',outputSchema:'CheckInScheduling.Prepared'},
+  confirm:{status:'implemented',adapter:'performance_checkin_schedule_review_v1',inputSchema:'CheckInScheduling.Confirmation',outputSchema:'CheckInScheduling.Completed'},
+  outcome:'canonical_receipt_required',semantics:'new_scheduled_checkin_created_for_selected_employee_and_date',humanInputs:['employmentId','scheduledOn','confirmSchedule'],
+  permission:{actor:'performance_decider',guard:'core/assistant-actions/checkin-scheduling-source.ts#withCheckInSchedulingSubjectTx'},subject:'employment',blastRadius:{max:1,unit:'new_performance_checkin'},
+  idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'final'},evaluationCases:[],
+  screen:{native:'app/performance/page.tsx',entryPoints:[]},review:{route:'/assistant/performance/checkins/schedule',handoff:'review_page'},
+  store:'generic_assigned',browserOwner:'checkInScheduling',pauseKey:'hr_assistant'}),
+ defineAgentAction({id:'performance.goal.approve',module:'performance',owner:'performance',service:'packs/performance/service.ts#approveGoalTx',contractVersion:1,
+  prepare:{status:'implemented',adapter:'performance_goal_approval_review_v1',inputSchema:'GoalApproval.Human',outputSchema:'GoalApproval.Prepared'},
+  confirm:{status:'implemented',adapter:'performance_goal_approval_review_v1',inputSchema:'GoalApproval.Confirmation',outputSchema:'GoalApproval.Completed'},
+  outcome:'canonical_receipt_required',semantics:'goal_approved_not_review_locked_or_rating_or_pay_decided',humanInputs:['employmentId','subjectId','approve'],
+  permission:{actor:'assigned_approver',guard:'core/assistant-actions/goal-approval-source.ts#withGoalApprovalSubjectTx'},subject:'other_employment',blastRadius:{max:1,unit:'performance_goal'},
+  idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'final'},evaluationCases:[],
+  screen:{native:'app/performance/review/[reviewId]/page.tsx',entryPoints:[]},review:{route:'/assistant/performance/goals',handoff:'review_page'},
+  store:'generic_assigned',browserOwner:'goalApproval',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'performance.review.acknowledge',module:'performance',owner:'performance',service:'core/performance.ts#acknowledgeReview',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_standard_review_v1',inputSchema:'ReviewModuleActionPrepare',outputSchema:'ReviewModuleActionPreparedReview'},
   confirm:{status:'implemented',adapter:'module_standard_review_v1',inputSchema:'ReviewModuleActionConfirmation',outputSchema:'ReviewModuleActionCompletedReceipt'},

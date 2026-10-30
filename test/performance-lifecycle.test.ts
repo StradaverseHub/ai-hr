@@ -9,11 +9,13 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
-import type { SessionContext } from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import {
   acknowledgeReview,
   addPerformanceAttachment,
   approveGoal,
+  approveGoalTx,
+  readGoalApprovalSourceTx,
   calibrationView,
   closeReview,
   commitCalibration,
@@ -153,6 +155,23 @@ describe('performance lifecycle', () => {
     const { id: goalId } = await createGoal(eCtx, { employmentId: E1.employmentId, cycleId, title: 'Ship it' });
     await proposeGoals(eCtx, { reviewId: r1 });
     await expect(approveGoal(pCtx, { goalId })).rejects.toThrow(); // assertCanDecide → plain Error
+  });
+
+  it('reviewed goal approval refuses changed content and rolls the effect and event back together',async()=>{
+    const {mCtx,eCtx,E1,cycleId,r1}=await setup();
+    const {id:goalId}=await createGoal(eCtx,{employmentId:E1.employmentId,cycleId,title:'Original goal'});
+    await proposeGoals(eCtx,{reviewId:r1});
+    const source=await withTenant(mCtx,tx=>readGoalApprovalSourceTx(tx,mCtx,goalId));
+    await updateGoal(eCtx,{goalId,title:'Changed goal'});
+    await expect(withTenant(mCtx,tx=>approveGoalTx(tx,mCtx,{goalId},source.reviewDigest))).rejects.toThrow('The goal changed');
+    expect(await eventTypesFor(base.tenantId,goalId)).not.toContain('performance-goal.approved');
+    const fresh=await withTenant(mCtx,tx=>readGoalApprovalSourceTx(tx,mCtx,goalId));
+    await expect(withTenant(mCtx,async tx=>{await approveGoalTx(tx,mCtx,{goalId},fresh.reviewDigest);throw Error('completion failed');})).rejects.toThrow('completion failed');
+    expect(await eventTypesFor(base.tenantId,goalId)).not.toContain('performance-goal.approved');
+    const effect=await withTenant(mCtx,tx=>approveGoalTx(tx,mCtx,{goalId},fresh.reviewDigest));
+    const [event]=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.id,effect.eventId));
+    expect(event).toMatchObject({aggregateId:goalId,eventType:'performance-goal.approved',subjectEmploymentId:E1.employmentId,actorId:mCtx.userId});
+    await expect(withTenant(mCtx,tx=>approveGoalTx(tx,mCtx,{goalId},fresh.reviewDigest))).rejects.toThrow();
   });
 
   it('goal flow: propose→approve→lock; lock blocked while unapproved; locked goals immutable; empty propose errors', async () => {
