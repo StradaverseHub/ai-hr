@@ -1,6 +1,6 @@
 /** ADR-0109. One coordination layer above the existing governed HR services. */
 import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type Tx, type SessionContext } from '../db/client';
 import { appendEvent } from '../db/events';
 import * as schema from '../db/schema';
 import { agentReadinessSnapshot, GAP_BLOCKS, readinessSnapshot, type ReadinessGapId } from './record-readiness';
@@ -188,4 +188,15 @@ export async function orchestrationQueue(ctx: SessionContext) {
       lastRun: runs.length ? { at: runs[0].at, ...summarizeOrchestrationPass(runs[0].payload) } : null,
     };
   }, { readOnlySnapshot: true });
+}
+
+/** Recorded readiness queue workload, not a claim about live workforce health or historic throughput. */
+export async function organisationAnalysisSourceTx(tx:Tx,ctx:SessionContext,companyIds:readonly string[]){
+ assertAdmin(ctx);if(!companyIds.length)throw Error('Workload analysis requires a company scope.');
+ const rows=await tx.select({personId:schema.employment.personId,state:schema.hrOrchestrationCase.state})
+  .from(schema.hrOrchestrationCase).innerJoin(schema.employment,eq(schema.employment.id,schema.hrOrchestrationCase.employmentId))
+  .innerJoin(schema.person,eq(schema.person.id,schema.employment.personId)).innerJoin(schema.company,eq(schema.company.id,schema.employment.companyId))
+  .where(inArray(schema.employment.companyId,[...companyIds]));
+ return {selection:'recorded_noninactive_cases',rows:rows.filter(row=>row.state!=='inactive').map(row=>({personId:row.personId,
+  conditions:{open_workload:row.state==='needs_input'||row.state==='needs_review'}}))};
 }
