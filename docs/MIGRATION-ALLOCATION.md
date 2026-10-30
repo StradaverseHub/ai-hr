@@ -474,3 +474,7 @@ installation priority, protected-ref movement or deployment is authorized.
 claim above47797e588.0724/idx705 belongs to the independent archive worker and is absent from this
 isolated tree. Reconcile both at integration freeze; no installation priority or release authority.
 No historical migration bytes are edited.
+
+### Personnel Wave 5 composition — no installation priority
+
+The archive, MY TP3 opening and cost allocation source reservations 0724/0725/0726 (idx705/706/707, when1793330000053/54/55) remain UNAPPLIED and PROVISIONAL. Incoming unverified coordination reports a competing performance 0726/when55 claim and V9 append proposals at when56–63. These are leads, not verified installed history or authority. Before integration freeze, reconcile and reallocate **all our unapplied 0713–0726** above the actual then-installed ordered ledger and timestamp watermark. No exclusive reservation, applied SQL rename, silent amendment of other claims, protected-ref movement or release action is authorized by this composition.

@@ -19,10 +19,11 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
   expect(new Set(variants).size).toBe(variants.length);expect([...variants].sort()).toEqual([...PARITY_PROBE_VARIANTS].sort());
   expect(Object.keys(PARITY_PROBE_ENTRYPOINTS).sort()).toEqual(Object.keys(PARITY_PROBE_GROUPS).sort());expect(new Set(Object.values(PARITY_PROBE_ENTRYPOINTS)).size).toBe(groups.length);
   expect(Object.keys(PARITY_PROBE_GROUPS).sort()).toEqual(['commands','personnel','requests','reviews']);
-  expect(PARITY_PROBE_GROUPS.personnel.actions).toEqual(['employees.document_metadata.maintain','employees.code.maintain','employees.passport.maintain','employees.payment_method.maintain']);
+  expect(PARITY_PROBE_GROUPS.personnel.actions).toEqual(['employees.document_metadata.maintain','employees.code.maintain','employees.passport.maintain','employees.payment_method.maintain','employees.fixed_item.archive','employees.tp3_opening.maintain','employees.cost_allocation.maintain']);
   expect(PARITY_PROBE_GROUPS.commands.actions).toHaveLength(10);expect(PARITY_PROBE_GROUPS.requests.actions).toHaveLength(13);expect(PARITY_PROBE_GROUPS.reviews.actions).toHaveLength(13);
-  expect(PARITY_PROBE_GROUPS.commands.variants).toEqual([...PARITY_PROBE_VARIANTS]);
-  for(const group of ['requests','reviews','personnel'] as const)expect(PARITY_PROBE_GROUPS[group].variants).toEqual([]);
+  expect(PARITY_PROBE_GROUPS.commands.variants).toEqual(['adapter_coverage','rejected_decisions','routed_attendance','permission_revalidation','boundary_controls','standalone_tester']);
+  expect(PARITY_PROBE_GROUPS.personnel.variants).toEqual(['cost_allocation_clear']);
+  for(const group of ['requests','reviews'] as const)expect(PARITY_PROBE_GROUPS[group].variants).toEqual([]);
   expect(PARITY_PROBE_ENTRYPOINTS.personnel).toBe('test/agent-action-permission-parity-personnel.test.ts');
  });
  it('uses the real shared executable probes from every wrapper and keeps each wrapper classified DB',()=>{
