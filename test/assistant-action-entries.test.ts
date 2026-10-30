@@ -2,8 +2,10 @@
  * gates they mirror; live-scope answers are stubbed at their source to prove fail-closed behaviour. No
  * database: the target actions' own refusals are proved by their own suites. */
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const source=vi.hoisted(()=>({companies:vi.fn(),assigned:vi.fn(),rewards:vi.fn(),cancel:vi.fn(),calendar:vi.fn()}));
+const source=vi.hoisted(()=>({companies:vi.fn(),assigned:vi.fn(),rewards:vi.fn(),cancel:vi.fn(),calendar:vi.fn(),position:vi.fn(),department:vi.fn()}));
 vi.mock('../core/workforce-access',()=>({workforceCompanies:source.companies}));
+vi.mock('../core/assistant-actions/position-archive-review-store',()=>({positionArchiveEntryAvailable:source.position}));
+vi.mock('../core/assistant-actions/department-archive-review-store',()=>({departmentArchiveEntryAvailable:source.department}));
 vi.mock('../packs/rewards/service',()=>({administersRewardsForAnyCompany:source.rewards}));
 vi.mock('../core/assistant-actions/module-action-server',()=>({readAssignedLeaveModuleActionChoices:source.assigned}));
 vi.mock('../core/assistant-actions/rewards-cancel-source',()=>({readRewardsCancelChoices:source.cancel}));
@@ -15,7 +17,7 @@ import {canAuthor} from '../core/knowledge-base';
 import {AGENT_MODULE_CODES} from '../lib/ai/module-agents';
 const ctxOf=(role:string)=>({tenantId:'t',userId:'u',roles:[role],grants:[{role,companyId:null}]}) as SessionContext;
 const task={leaveRequestId:'10000000-0000-4000-8000-000000000002',currentStepId:null,stepIndex:null,applicantLabel:'Fictional applicant',createdAt:'2026-10-27T00:00:00Z'};
-beforeEach(()=>{vi.clearAllMocks();source.companies.mockResolvedValue([]);source.assigned.mockResolvedValue({kind:'choices',truncated:false,tasks:[]});source.rewards.mockResolvedValue(false);source.cancel.mockResolvedValue({units:[]});source.calendar.mockResolvedValue({units:[]});});
+beforeEach(()=>{vi.clearAllMocks();source.companies.mockResolvedValue([]);source.assigned.mockResolvedValue({kind:'choices',truncated:false,tasks:[]});source.rewards.mockResolvedValue(false);source.cancel.mockResolvedValue({units:[]});source.calendar.mockResolvedValue({units:[]});source.position.mockResolvedValue(false);source.department.mockResolvedValue(false);});
 describe('role floors mirror the target gates',()=>{
  it('mirrors each target gate: admin-only floors refuse employees and managers, payroll floors admit the payroll partner only where the target does',()=>{
   const ctxOf=(role:string)=>({tenantId:'t',userId:'u',roles:[role],grants:[{role,companyId:null}]}) as SessionContext;
@@ -31,10 +33,13 @@ describe('role floors mirror the target gates',()=>{
  });
 });
 describe('live-scope shortcuts fail closed',()=>{
- it('offers reporting-line changes only with current workforce maintenance scope',async()=>{
+ it('offers Organisation only with current workforce maintenance or native catalogue archive scope',async()=>{
   expect(await moduleActionEntryAccess(ctxOf('employee'),'org')).toBe('refused');expect(source.companies).toHaveBeenCalledWith(expect.objectContaining({userId:'u'}),'maintain');
   source.companies.mockResolvedValueOnce(['company']);expect(await moduleActionEntryAccess(ctxOf('hr_admin'),'org')).toBe('allowed');
   source.companies.mockRejectedValueOnce(Error('PRIVATE scope failure'));expect(await moduleActionEntryAccess(ctxOf('hr_admin'),'org')).toBe('unknown');
+  source.department.mockClear();source.position.mockResolvedValueOnce(true);expect(await moduleActionEntryAccess(ctxOf('employee'),'org')).toBe('allowed');expect(source.department).not.toHaveBeenCalled();
+  source.department.mockResolvedValueOnce(true);expect(await moduleActionEntryAccess(ctxOf('employee'),'org')).toBe('allowed');
+  source.position.mockRejectedValueOnce(Error('PRIVATE catalogue failure'));expect(await moduleActionEntryAccess(ctxOf('employee'),'org')).toBe('unknown');
  });
  it('offers assigned decisions to managers and admins, and to anyone else only with a current assigned task',async()=>{
   for(const role of ['manager','hr_admin','super_admin'])expect(await moduleActionEntryAccess(ctxOf(role),'assigned_leave')).toBe('allowed');expect(source.assigned).not.toHaveBeenCalled();

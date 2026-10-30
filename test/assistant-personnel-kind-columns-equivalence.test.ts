@@ -34,25 +34,28 @@ it('stores each amended branch once instead of recursively copying the predecess
 });
 
 type Input=Record<string,unknown>;
-async function isolated(tx:Tx,work:(insert:(value:Input)=>Promise<unknown>)=>Promise<void>){
+async function isolated(tx:Tx,work:(insert:(value:Input,executor?:Tx)=>Promise<unknown>)=>Promise<void>){
  const table=sql.identifier('personnel_kind_guard_'+randomUUID().replaceAll('-',''));
  // CTAS deliberately copies column types only: no FK, NOT NULL, RLS, defaults or other CHECK may
  // create a false positive. The exact live expression and constraint name are installed unchanged.
  await tx.execute(sql`create temporary table ${table} on commit drop as select * from app.assistant_own_leave_review with no data`);
  await tx.execute(sql`alter table ${table} add constraint assistant_review_kind_columns check (${sql.raw(actual)})`);
- await work(value=>tx.execute(sql`insert into ${table} select r.* from jsonb_populate_record(null::app.assistant_own_leave_review,${JSON.stringify(value)}::jsonb) r`));
+ await work((value,executor=tx)=>executor.execute(sql`insert into ${table} select r.* from jsonb_populate_record(null::app.assistant_own_leave_review,${JSON.stringify(value)}::jsonb) r`));
 }
 
 it.each(KINDS)('actual %s kind CHECK admits all-null and refuses all eight correctly typed dedicated-field poisons',async kind=>{
  await owner.db.transaction(tx=>isolated(tx,async insert=>{
   await insert({action_kind:kind});
+  let checked=0;
   for(const column of COLUMNS){
-   let error:unknown;await tx.execute(sql`savepoint personnel_kind_poison`);
-   try{await insert({action_kind:kind,[column]:randomUUID()});}catch(cause){error=cause;}
-   finally{await tx.execute(sql`rollback to savepoint personnel_kind_poison`);await tx.execute(sql`release savepoint personnel_kind_poison`);}
+   let error:unknown;
+   // Use the driver's scoped savepoint client: manual SQL rollback does not clear postgres-js's
+   // root uncaughtError. The invalid INSERT must execute on inner, not the captured root tx.
+   try{await tx.transaction(inner=>insert({action_kind:kind,[column]:randomUUID()},inner));}catch(cause){error=cause;}
    expect(pgSqlState(error),`${kind}/${column}`).toBe('23514');
-   expect(pgErrorChain(error).some(link=>link.message?.includes('constraint "assistant_review_kind_columns"')),column).toBe(true);
+   expect(pgErrorChain(error).some(link=>link.message?.includes('constraint "assistant_review_kind_columns"')),column).toBe(true);checked++;
   }
+  expect(checked).toBe(8);await insert({action_kind:kind});
  }));
 });
 
