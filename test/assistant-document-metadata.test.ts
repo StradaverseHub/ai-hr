@@ -119,3 +119,24 @@ it('excludes a genuinely issued immutable letter pointer and preserves the nativ
  const [document]=await owner.db.select().from(s.employeeDocument).where(sql`${s.employeeDocument.letterArtifactId} is not null`);expect(document).toBeTruthy();const before=await state();const choices=await readDocumentMetadataChoices(ctx,{query:'',employmentId:target.employmentId});expect(choices.kind).toBe('choices');if(choices.kind==='choices')expect(choices.documents.map(doc=>doc.id)).not.toContain(document.id);
  await expect(store.prepare(ctx,human(document.id))).rejects.toThrow();await expect(updateEmployeeDocumentMeta(ctx,{documentId:document.id,...fields()})).rejects.toThrow();expect(await state()).toEqual(before);expect((await store.list(ctx)).reviews).toEqual([]);
 });
+
+/** Real USER-only accounts: no fixture PERSON or EMPLOYMENT is manufactured for the actor. */
+async function unlinkedCustodyLogin(role:'hr_admin'|'employee'='hr_admin'):Promise<SessionContext>{
+ const [user]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:'user_'+randomUUID(),personId:null}).returning({id:s.appUser.id});
+ await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role,companyId:null});
+ await grantAssistant(group(),{appUserId:user.id});
+ return{...await entitledCtx(b,[role]),userId:user.id,personId:null,grants:[{role,companyId:null}]};
+}
+async function unlinkedCustodyRow(id:string){
+ const [row]=await owner.db.execute(sql`select user_id as "userId",person_id as "actorPersonId",employment_id as "employmentId",company_id as "companyId",decision_subject_person_id as "subjectPersonId",testing_execution_id as "testingExecutionId",testing_run_id as "testingRunId",testing_event_id as "testingEventId",state,receipt_event_id as "eventId",(select count(*)::int from app.assistant_own_leave_review_content c where c.action_id=r.id) as bodies,coalesce((select length(c.ciphertext)>0 from app.assistant_own_leave_review_content c where c.action_id=r.id),false) as encrypted from app.assistant_own_leave_review r where id=${id}::uuid`);return row;
+}
+
+it('keeps two genuine unlinked HR users distinct through native rollback, encrypted metadata custody, replay and actor relinking',async()=>{
+ const who=await unlinkedCustodyLogin(),foreign=await unlinkedCustodyLogin(),input=human(),before=await state();
+ await expect(withTenant(who,async tx=>{expect(await updateEmployeeDocumentMeta(who,{documentId,...input.fields},tx)).toMatchObject({id:documentId,eventId:expect.any(String)});throw Error('unlinked native rollback');})).rejects.toThrow('unlinked native rollback');expect(await state()).toEqual(before);
+ const r=(await store.prepare(who,input)).review;expect(await unlinkedCustodyRow(r.actionId)).toMatchObject({userId:who.userId,actorPersonId:null,employmentId:target.employmentId,companyId:b.companyId,subjectPersonId:target.personId,testingExecutionId:null,testingRunId:null,testingEventId:null,state:'awaiting_confirmation',eventId:null,bodies:1,encrypted:true});
+ expect((await store.reopen(who,r.actionId)).kind).toBe('prepared');await expect(store.reopen(foreign,r.actionId)).rejects.toThrow();await expect(store.confirm(foreign,confirmation(r))).rejects.toThrow();expect(await state()).toEqual(before);
+ const done=await store.confirm(who,confirmation(r));expect(done.kind).toBe('completed');expect(await store.reopen(who,r.actionId)).toEqual(done);expect(await store.confirm(who,confirmation(r))).toEqual(done);expect(await unlinkedCustodyRow(r.actionId)).toMatchObject({userId:who.userId,actorPersonId:null,subjectPersonId:target.personId,state:'completed',bodies:0,encrypted:false});
+ const events=(await state()).events.filter(event=>event.eventType==='employee-document.updated'&&event.actorId===who.userId);expect(events).toHaveLength(1);expect(events[0]).toMatchObject({actorType:'user',actorId:who.userId,subjectEmploymentId:target.employmentId,aggregateId:documentId});
+ const next=(await store.prepare(who,human())).review;await owner.db.update(s.appUser).set({personId:target.personId}).where(eq(s.appUser.id,who.userId!));const relinked=await state();await expect(store.reopen(who,next.actionId)).rejects.toThrow();await expect(store.confirm(who,confirmation(next))).rejects.toThrow();await expect(store.reopen({...who,personId:target.personId},next.actionId)).rejects.toThrow();expect(await state()).toEqual(relinked);expect(await unlinkedCustodyRow(next.actionId)).toMatchObject({actorPersonId:null,subjectPersonId:target.personId,state:'awaiting_confirmation',bodies:1});
+});
