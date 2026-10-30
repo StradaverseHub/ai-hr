@@ -1,3 +1,6 @@
+import {offboardingStepReviews} from '../../core/assistant-actions/offboarding-step-completion-review-store';
+import {readOffboardingStepChoices} from '../../core/assistant-actions/offboarding-step-completion-source';
+import {createOffboardingCase,tickStepTx} from '../../packs/lifecycle/service';
 import {fixedItemArchiveReviews,readFixedItemArchiveChoices} from '../../core/assistant-actions/fixed-item-archive-review-store';
 import {archiveEmploymentPayComponent,setEmploymentPayComponent,seedPayComponentCatalog,listPayComponents} from '../../packs/payroll/service';
 import {tp3OpeningMaintenanceReviews,readTp3OpeningMaintenanceChoices} from '../../core/assistant-actions/tp3-opening-maintenance-review-store';
@@ -262,6 +265,12 @@ async function notificationIdentity(who:SessionContext){
  await owner.db.insert(schema.appExternalIdentity).values({issuer:identity.issuer,subject:identity.subject,appUserId:who.userId!}).onConflictDoNothing();provider.current.mockResolvedValue(identity);return identity;
 }
 const ADAPTERS:Record<ProbedActionId,Adapter>={
+ 'lifecycle.offboarding.step.complete':{family:'hr_on_employment',store:packetStore('lifecycle.offboarding.step.complete',offboardingStepReviews.prepare,offboardingStepReviews.confirm),
+  async create(_w,h){const c=await createOffboardingCase(groupOf(h.base),{companyId:h.companyId,fullName:'Fictional offboarding subject',employeeNo:'F-'+randomUUID().slice(0,8),resignationDate:todayInKualaLumpur(),personId:h.person.personId,employmentId:h.person.employmentId});return {...itemOf(h,c.id),code:c.number};},
+  human:item=>({caseId:item.subjectId,caseNumber:item.code!,stepKey:'resign_submit',reference:null,notes:null,confirmStepCompletion:true,acceptDerivedCaseCompletion:false}),
+  offered:async(who,item)=>{const choices=await readOffboardingStepChoices(who,{caseNumber:item.code});return choices.kind==='choices'&&choices.cases.some(c=>c.caseId===item.subjectId&&c.steps.some(step=>step.key==='resign_submit'));},
+  screen:(tx,who,item)=>tickStepTx(tx,who,'offboarding',item.code!,'resign_submit')},
+
  'approvals.leave.decide':{family:'assigned_decision',store:packetStore('approvals.leave.decide',prepareLeaveDecisionReview,confirmLeaveDecisionReview),
   async create(w,h){const item=await pendingLeave(w,h);const steps=await owner.db.select().from(schema.leaveApprovalStep).where(eq(schema.leaveApprovalStep.leaveRequestId,item.subjectId)).orderBy(schema.leaveApprovalStep.stepIndex);return {...item,stepId:steps.find(row=>row.status==='pending')?.id??null};},
   human:(item,o)=>({action:'approvals.leave.decide',contractVersion:1,leaveRequestId:item.subjectId,currentStepId:item.stepId??null,decision:o.decision,rejectReason:o.decision==='rejected'?REJECT_REASON:null,confirmAssignedDecision:true}),

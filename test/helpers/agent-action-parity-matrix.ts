@@ -92,6 +92,8 @@ export const AGENT_ACTION_PARITY={
  'performance.review.acknowledge':{kind:'probed',screen:OWN_REQUEST},
  'performance.onehr.plan.acknowledge':{kind:'probed',screen:OWN_REQUEST},
  'rewards.post':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ // Stock role fixture: no lc_staff grants. Unlinked native staff positive control is in offboarding-step-review-store.test.ts.
+ 'lifecycle.offboarding.step.complete':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'lifecycle.acknowledgement.submit':{kind:'probed',screen:OWN_REQUEST},
  'toil.replacement.request':{kind:'probed',screen:OWN_REQUEST},
  'multi_cycle_payroll.create_run':{kind:'probed',screen:HR_ON_EMPLOYMENT,page:CALLER_TENANT_ADMIN},

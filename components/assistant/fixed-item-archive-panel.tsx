@@ -22,9 +22,9 @@ export function FixedItemArchivePanel({resumeActionId,initialEmploymentId}:{resu
   try{const result=await sendGenericModuleAction(packet,abort.signal);if(!alive.current)return;
    if(packet.operation==='choices'){setChoices(C.Choices.parse(result));setConsent(false);return;}
    if(packet.operation==='list'){setIndex(C.Index.parse(result));return;}
-   clear();if(result.kind==='prepared'){setState({kind:'review',review:C.Prepared.parse(result.review)});return;}
-   if(result.kind==='completed'){setState({kind:'completed',receipt:C.Completed.parse(result.receipt)});return;}
-   if(result.kind==='retired'){setState({kind:'retired',receipt:C.Retired.parse(result.receipt)});return;}throw Error();
+   clear();if(result.kind==='prepared'&&'review' in result){setState({kind:'review',review:C.Prepared.parse(result.review)});return;}
+   if(result.kind==='completed'&&'receipt' in result){setState({kind:'completed',receipt:C.Completed.parse(result.receipt)});return;}
+   if(result.kind==='retired'&&'receipt' in result){setState({kind:'retired',receipt:C.Retired.parse(result.receipt)});return;}throw Error();
   }catch{if(alive.current){if(packet.operation==='choices'){setChoices({kind:'unavailable'});setError(t('unavailable'));return;}clear();if(packet.operation!=='list')setState({kind:'uncertain',actionId:packetActionId(packet)??review?.actionId??null});setError(t('unavailable'));}}
   finally{flight.current=false;controller.current=null;if(alive.current)setBusy(false);}
  }
