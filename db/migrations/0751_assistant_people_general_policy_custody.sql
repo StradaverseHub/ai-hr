@@ -186,10 +186,104 @@ CREATE FUNCTION app._assistant_people_general_policy_json(p_id uuid) RETURNS jso
 $$;
 REVOKE ALL ON FUNCTION app._assistant_people_general_policy_json(uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+-- Protected native facts reconcile EVERY persisted policy binding, including the reviewed baseline.
+CREATE FUNCTION app._assistant_people_general_policy_verified(p_id uuid,p_root boolean) RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.assistant_own_leave_review r
+ JOIN app.people_general_native_observation o ON o.tenant_id=r.tenant_id AND o.user_id=r.user_id AND o.event_id=r.receipt_event_id AND o.revision=r.people_general_native_revision
+ JOIN public.domain_event d ON d.id=o.event_id AND d.tenant_id=o.tenant_id
+ WHERE r.id=p_id AND r.action_kind='org.people_general.change' AND r.state='completed'
+ AND r.company_id IS NULL AND r.employment_id IS NULL AND r.receipt_subject_kind='people_general_policy' AND r.receipt_subject_id=r.tenant_id
+ AND r.intent_digest IS NULL AND r.reviewed_digest IS NULL
+ AND r.people_general_before_revision IS NOT DISTINCT FROM o.before_revision
+ AND r.people_general_before_nric=o.before_nric AND r.people_general_before_email=o.before_email
+ AND r.people_general_after_nric=o.desired_nric AND r.people_general_after_email=o.desired_email
+ AND o.inserted_policy=(r.people_general_before_revision IS NULL)
+ AND d.aggregate_type='people-general' AND d.aggregate_id=o.tenant_id AND d.event_type='people-general.changed' AND d.actor_type='user' AND d.actor_id=o.user_id AND d.subject_employment_id IS NULL
+ AND d.payload=jsonb_build_object('before',jsonb_build_object('allowDuplicatedNric',o.before_nric,'allowDuplicatedEmail',o.before_email),'after',jsonb_build_object('allowDuplicatedNric',o.desired_nric,'allowDuplicatedEmail',o.desired_email))
+ AND NOT EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content c WHERE c.action_id=r.id)
+ AND (NOT p_root OR(o.native_xid=pg_current_xact_id() AND o.xmin=pg_current_xact_id()::xid AND d.xmin=pg_current_xact_id()::xid AND r.xmin=pg_current_xact_id()::xid
+  AND EXISTS(SELECT 1 FROM public.people_general_policy p WHERE p.tenant_id=o.tenant_id AND p.revision=o.revision AND p.allow_duplicated_nric=o.desired_nric AND p.allow_duplicated_email=o.desired_email AND p.xmin=pg_current_xact_id()::xid))));
+$$;
+REVOKE ALL ON FUNCTION app._assistant_people_general_policy_verified(uuid,boolean) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app._people_general_observation_immutable() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_RELID<>'app.people_general_native_observation'::regclass THEN RAISE EXCEPTION 'Policy observation guard unavailable' USING ERRCODE='42501';END IF;
+ IF OLD.event_id IS NOT NULL THEN
+  IF TG_OP='DELETE' THEN
+   -- Preserve actual native-event and tenant retention cascades, not arbitrary provenance deletion.
+   IF EXISTS(SELECT 1 FROM public.tenant WHERE id=OLD.tenant_id) AND EXISTS(SELECT 1 FROM public.domain_event WHERE id=OLD.event_id) THEN RAISE EXCEPTION 'Policy observation immutable' USING ERRCODE='42501';END IF;
+  ELSIF to_jsonb(NEW) IS DISTINCT FROM to_jsonb(OLD) THEN RAISE EXCEPTION 'Policy observation immutable' USING ERRCODE='42501';END IF;
+ END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app._people_general_observation_immutable() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER people_general_observation_immutable AFTER UPDATE OR DELETE ON app.people_general_native_observation FOR EACH ROW EXECUTE FUNCTION app._people_general_observation_immutable();
+--> statement-breakpoint
+-- AFTER sees the actual postimage even when a later-named BEFORE trigger rewrites NEW.
+-- Completed identity is permanent across later transactions; canonical no-op redaction stays valid.
+CREATE FUNCTION app._assistant_people_general_policy_immutable() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_RELID<>'app.assistant_own_leave_review'::regclass THEN RAISE EXCEPTION 'Policy review guard unavailable' USING ERRCODE='42501';END IF;
+ IF OLD.action_kind='org.people_general.change' AND OLD.state='completed' THEN
+  IF TG_OP='DELETE' THEN
+   -- Existing parent FK deletion semantics remain: tenant, USER and actual actor PERSON cascades.
+   IF EXISTS(SELECT 1 FROM public.tenant WHERE id=OLD.tenant_id) AND EXISTS(SELECT 1 FROM public.app_user WHERE id=OLD.user_id)
+    AND(OLD.person_id IS NULL OR EXISTS(SELECT 1 FROM public.person WHERE id=OLD.person_id)) THEN RAISE EXCEPTION 'Completed policy review immutable' USING ERRCODE='42501';END IF;
+  ELSIF to_jsonb(NEW) IS DISTINCT FROM to_jsonb(OLD) THEN RAISE EXCEPTION 'Completed policy review immutable' USING ERRCODE='42501';END IF;
+ END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app._assistant_people_general_policy_immutable() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER assistant_people_general_policy_immutable AFTER UPDATE OR DELETE ON app.assistant_own_leave_review FOR EACH ROW EXECUTE FUNCTION app._assistant_people_general_policy_immutable();
+--> statement-breakpoint
+CREATE FUNCTION app._assistant_people_general_policy_content_guard() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_RELID<>'app.assistant_own_leave_review_content'::regclass THEN RAISE EXCEPTION 'Policy content guard unavailable' USING ERRCODE='42501';END IF;
+ IF EXISTS(SELECT 1 FROM app.assistant_own_leave_review WHERE id=NEW.action_id AND action_kind='org.people_general.change' AND state='completed') THEN RAISE EXCEPTION 'Completed policy body unavailable' USING ERRCODE='42501';END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app._assistant_people_general_policy_content_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER assistant_people_general_policy_content_guard AFTER INSERT OR UPDATE ON app.assistant_own_leave_review_content FOR EACH ROW EXECUTE FUNCTION app._assistant_people_general_policy_content_guard();
+--> statement-breakpoint
+-- A completed review fences its claimed logical policy/event for the REST of its root transaction,
+-- including after SET CONSTRAINTS IMMEDIATE. Later native transactions may legitimately change policy.
+CREATE FUNCTION app._people_general_policy_root_fence() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE claims boolean;old_row jsonb:=to_jsonb(OLD);new_row jsonb;
+BEGIN
+ IF TG_OP<>'DELETE' THEN new_row:=to_jsonb(NEW);END IF;
+ IF TG_RELID='public.people_general_policy'::regclass THEN
+  SELECT EXISTS(SELECT 1 FROM app.assistant_own_leave_review r JOIN app.people_general_native_observation o ON o.tenant_id=r.tenant_id AND o.event_id=r.receipt_event_id AND o.revision=r.people_general_native_revision WHERE r.action_kind='org.people_general.change' AND r.state='completed' AND r.tenant_id=(old_row->>'tenant_id')::uuid AND o.native_xid=pg_current_xact_id()) INTO claims;
+  IF claims AND(TG_OP='DELETE' OR ROW(old_row->'tenant_id',old_row->'revision',old_row->'allow_duplicated_nric',old_row->'allow_duplicated_email') IS DISTINCT FROM ROW(new_row->'tenant_id',new_row->'revision',new_row->'allow_duplicated_nric',new_row->'allow_duplicated_email')) THEN RAISE EXCEPTION 'Policy root effect changed' USING ERRCODE='42501';END IF;
+ ELSIF TG_RELID='public.domain_event'::regclass THEN
+  SELECT EXISTS(SELECT 1 FROM app.assistant_own_leave_review r JOIN app.people_general_native_observation o ON o.tenant_id=r.tenant_id AND o.event_id=r.receipt_event_id AND o.revision=r.people_general_native_revision WHERE r.action_kind='org.people_general.change' AND r.state='completed' AND r.receipt_event_id=(old_row->>'id')::uuid AND o.native_xid=pg_current_xact_id()) INTO claims;
+  IF claims AND(TG_OP='DELETE' OR old_row IS DISTINCT FROM new_row) THEN RAISE EXCEPTION 'Policy root event changed' USING ERRCODE='42501';END IF;
+ ELSE RAISE EXCEPTION 'Policy root fence unavailable' USING ERRCODE='42501';END IF;IF TG_WHEN='BEFORE' THEN RETURN OLD;END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app._people_general_policy_root_fence() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER people_general_policy_root_fence AFTER UPDATE OR DELETE ON public.people_general_policy FOR EACH ROW EXECUTE FUNCTION app._people_general_policy_root_fence();
+CREATE TRIGGER people_general_event_root_fence AFTER UPDATE OR DELETE ON public.domain_event FOR EACH ROW EXECUTE FUNCTION app._people_general_policy_root_fence();
+-- BEFORE DELETE captures the association before the event's native provenance FK cascade.
+CREATE TRIGGER people_general_event_root_delete_fence BEFORE DELETE ON public.domain_event FOR EACH ROW EXECUTE FUNCTION app._people_general_policy_root_fence();
+--> statement-breakpoint
+CREATE FUNCTION app._assistant_people_general_policy_completion_guard() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE root_effect boolean;
+BEGIN
+ IF TG_RELID<>'app.assistant_own_leave_review'::regclass OR NEW.action_kind<>'org.people_general.change' OR NEW.state<>'completed' THEN RETURN NULL;END IF;
+ SELECT o.native_xid=pg_current_xact_id() INTO root_effect FROM app.people_general_native_observation o WHERE o.revision=NEW.people_general_native_revision AND o.event_id=NEW.receipt_event_id;
+ IF NOT app._assistant_people_general_policy_verified(NEW.id,coalesce(root_effect,false)) THEN RAISE EXCEPTION 'Policy completion proof changed' USING ERRCODE='42501';END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app._assistant_people_general_policy_completion_guard() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER assistant_people_general_policy_completed AFTER INSERT OR UPDATE ON app.assistant_own_leave_review DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.action_kind='org.people_general.change' AND NEW.state='completed') EXECUTE FUNCTION app._assistant_people_general_policy_completion_guard();
+
+--> statement-breakpoint
 -- p_revision is the reviewed baseline on prepare and exact native-produced revision on complete.
 CREATE FUNCTION app.assistant_people_general_policy_command(p_operation text,p_id uuid DEFAULT NULL,p_person uuid DEFAULT NULL,p_before jsonb DEFAULT NULL,p_after jsonb DEFAULT NULL,p_revision uuid DEFAULT NULL,p_intent text DEFAULT NULL,p_reviewed text DEFAULT NULL,p_kid text DEFAULT NULL,p_wrapped text DEFAULT NULL,p_ciphertext text DEFAULT NULL,p_event uuid DEFAULT NULL) RETURNS jsonb
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();stamp timestamptz;source jsonb;effect jsonb;result jsonb;
+DECLARE r app.assistant_own_leave_review%ROWTYPE;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();stamp timestamptz;source jsonb;effect jsonb;result jsonb;expected_postimage jsonb;actual_postimage jsonb;
 BEGIN
  PERFORM app._assistant_pay_component_review_identity(NULL,false);
  IF p_operation IS NULL OR p_operation NOT IN('prepare','read','discard','index','complete') THEN RAISE EXCEPTION 'Policy review unavailable' USING ERRCODE='42501';END IF;
@@ -219,6 +313,7 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'Policy review unavailable' USING ERRCODE='42501';END IF;
  PERFORM app._assistant_pay_component_review_identity(r.person_id);
  IF p_operation<>'discard' THEN PERFORM app._people_general_policy_review_actor();END IF;
+ IF r.state='completed' AND NOT app._assistant_people_general_policy_verified(r.id,false) THEN RAISE EXCEPTION 'Policy completed binding unavailable' USING ERRCODE='42501';END IF;
  IF p_operation='complete' THEN
   IF r.state='completed' THEN IF r.receipt_event_id IS DISTINCT FROM p_event OR r.people_general_native_revision IS DISTINCT FROM p_revision THEN RAISE EXCEPTION 'Policy review unavailable' USING ERRCODE='42501';END IF;
   ELSIF r.state='awaiting_confirmation' AND clock_timestamp()<r.expires_at THEN
@@ -228,13 +323,22 @@ BEGIN
     OR effect->'before' IS DISTINCT FROM jsonb_build_object('allowDuplicatedNric',r.people_general_before_nric,'allowDuplicatedEmail',r.people_general_before_email)
     OR effect->'after' IS DISTINCT FROM jsonb_build_object('allowDuplicatedNric',r.people_general_after_nric,'allowDuplicatedEmail',r.people_general_after_email)
     OR(effect->>'insertedPolicy')::boolean IS DISTINCT FROM(r.people_general_before_revision IS NULL) THEN RAISE EXCEPTION 'Policy review unavailable' USING ERRCODE='42501';END IF;
+   expected_postimage:=to_jsonb(r)||jsonb_build_object('state','completed','intent_digest',NULL,'reviewed_digest',NULL,'receipt_event_id',p_event,'people_general_native_revision',p_revision);
+   -- Cleanup before terminal UPDATE also supports a caller's already-IMMEDIATE constraints.
+   DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
    UPDATE app.assistant_own_leave_review SET state='completed',intent_digest=NULL,reviewed_digest=NULL,receipt_event_id=p_event,people_general_native_revision=p_revision WHERE id=r.id;
+   SELECT to_jsonb(saved) INTO actual_postimage FROM app.assistant_own_leave_review saved WHERE saved.id=r.id;
+   IF actual_postimage IS DISTINCT FROM expected_postimage OR NOT app._assistant_people_general_policy_verified(r.id,true) THEN RAISE EXCEPTION 'Policy completion postimage changed' USING ERRCODE='42501';END IF;
   ELSE RAISE EXCEPTION 'Policy review unavailable' USING ERRCODE='42501';END IF;
  ELSIF p_operation='discard' THEN
   IF r.state='completed' THEN RAISE EXCEPTION 'Policy review unavailable' USING ERRCODE='42501';END IF;
   IF r.state='awaiting_confirmation' THEN UPDATE app.assistant_own_leave_review SET state=CASE WHEN clock_timestamp()>=r.expires_at THEN 'expired' ELSE 'discarded' END,intent_digest=NULL,reviewed_digest=NULL WHERE id=r.id;END IF;
  ELSIF p_operation='read' AND r.state='awaiting_confirmation' AND clock_timestamp()>=r.expires_at THEN UPDATE app.assistant_own_leave_review SET state='expired',intent_digest=NULL,reviewed_digest=NULL WHERE id=r.id;END IF;
  DELETE FROM app.assistant_own_leave_review_content c USING app.assistant_own_leave_review ended WHERE c.action_id=ended.id AND ended.id=p_id AND ended.state<>'awaiting_confirmation';
+ IF p_operation='complete' THEN
+  IF expected_postimage IS NOT NULL THEN SELECT to_jsonb(saved) INTO actual_postimage FROM app.assistant_own_leave_review saved WHERE saved.id=r.id;IF actual_postimage IS DISTINCT FROM expected_postimage THEN RAISE EXCEPTION 'Policy completion postimage changed' USING ERRCODE='42501';END IF;END IF;
+  IF NOT app._assistant_people_general_policy_verified(r.id,expected_postimage IS NOT NULL) THEN RAISE EXCEPTION 'Policy completion binding changed' USING ERRCODE='42501';END IF;
+ END IF;
  IF p_operation='discard' THEN SELECT jsonb_build_object('action',ended.action_kind,'contractVersion',1,'actionId',ended.id,'state',ended.state) INTO result FROM app.assistant_own_leave_review ended WHERE ended.id=p_id;RETURN result;END IF;
  RETURN app._assistant_people_general_policy_json(p_id);
 END $$;
