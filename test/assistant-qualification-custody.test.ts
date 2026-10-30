@@ -227,3 +227,21 @@ describe('Qualification native source and encrypted review lifecycle',()=>{
   expect(await readQualificationMaintenanceChoices(foreignHr,{query:'',employmentId:subject.employmentId})).toEqual({kind:'unavailable'});
  });
 });
+
+
+describe('Qualification bounded review source',()=>{
+ it('includes explicitly selected authorized subject even when its search query has no match',async()=>{
+  const choices=await readQualificationMaintenanceChoices(hr,{query:'No matching employee by this invented label',employmentId:subject.employmentId});
+  expect(choices).toMatchObject({kind:'choices',employees:[{employmentId:subject.employmentId}]});
+ });
+ it('refuses an oversized complete review inside custody transaction without orphaning a pending command',async()=>{
+  const text='漢'.repeat(4000);
+  await addQualification(hr,{employmentId:subject.employmentId,qualification:'Diploma',description:text,institute:text,major:text,result:text,isHighest:true});
+  const target=await addQualification(hr,{employmentId:subject.employmentId,qualification:'Bachelor',description:text,institute:text,major:text,result:text});
+  const input={...human('update',target.id),fields:{...qualificationFields('Bachelor',true),description:'漢'.repeat(4000)}};
+  expect(Q.Human.safeParse(input).success).toBe(true);
+  const before=await effects();
+  await expect(qualificationMaintenanceReviews.prepare(hr,input)).rejects.toThrow();
+  expect((await qualificationMaintenanceReviews.list(hr)).reviews).toEqual([]);expect(await effects()).toEqual(before);
+ });
+});

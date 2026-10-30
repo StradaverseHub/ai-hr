@@ -13,7 +13,7 @@ export const QualificationMaintenance={action:QUALIFICATION_MAINTENANCE_ACTION,F
  Selection:z.object({query:z.string().trim().max(80),employmentId:uuid.optional()}).strict(),
  Choices:z.discriminatedUnion('kind',[z.object({kind:z.literal('choices'),employees:z.array(Subject).max(25),truncated:z.boolean(),qualifications:z.array(z.object({id:uuid,fields:Fields,revision:z.string()}).strict()).max(100),options:z.array(z.object({value:z.string(),label:z.string()}).strict()).max(200)}).strict(),z.object({kind:z.literal('unavailable')}).strict()]),
  Confirmation:z.object({...base,actionId:uuid,reviewedDigest:digest}).strict(),Retirement:z.object({...base,actionId:uuid}).strict(),
- Prepared:z.object({...base,actionId:uuid,reviewedDigest:digest,createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),content:Human,review:Item,consequence:z.literal(consequence)}).strict(),
+ Prepared:z.object({...base,actionId:uuid,reviewedDigest:digest,createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),content:Human,review:Item,consequence:z.literal(consequence)}).strict().refine(v=>new TextEncoder().encode(JSON.stringify(v)).byteLength<=120000,'Qualification review display exceeds its local response budget'),
  Completed:z.object({...base,actionId:uuid,state:z.literal('completed'),receipt:Receipt}).strict(),
  Retired:z.object({...base,actionId:uuid,state:z.enum(['discarded','expired','refused'])}).strict(),
  Index:z.object({kind:z.literal('qualification_maintenance_review_index'),reviews:z.array(z.object({...base,actionId:uuid,state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict()).max(25)}).strict(),
