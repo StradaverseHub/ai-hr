@@ -3,6 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {captureNativeOutcomeTargetsTx} from '../core/module-native-outcome-targets';
 import * as s from '../db/schema';
 import {assignRole} from '../core/admin';
 import {erasePersonPii} from '../core/pdpa';
@@ -13,22 +14,34 @@ import {createBatch,createLoan,prefillLoansForBatch,generatePayslips,resetProces
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 let b:Base,ctx:SessionContext,batchId:string,employmentId:string,loanId:string,repId:string,claimId:string,individualId:string,period:string;
+const originalTargets=new Map<string,{people:string[];employees:string[]}>();
 const reviewedDigest='b'.repeat(64),intentDigest='c'.repeat(64),reason='Fictional human correction';
 const ids=(values:string[])=>sql`ARRAY[${sql.join(values.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
 function databaseError(error:unknown){let current=error,code:string|undefined;const messages:string[]=[];for(let i=0;i<8&&current&&typeof current==='object';i++){const row=current as {code?:unknown;message?:unknown;cause?:unknown};if(typeof row.code==='string')code=row.code;if(typeof row.message==='string')messages.push(row.message);current=row.cause;}return{code,message:messages.join('\n')};}
 async function refused(work:(tx:Tx)=>Promise<unknown>,message:string,code='P0001'){let failure:unknown;try{await withTenant(ctx,work);}catch(error){failure=error;}expect(failure,'Expected the exact native proof refusal').toBeDefined();const actual=databaseError(failure);expect(actual.code).toBe(code);expect(actual.message).toContain(message);}
 async function prepare(zone?:string){const actionId=randomUUID();await withTenant(ctx,async tx=>{
  if(zone)await tx.execute(sql`select set_config('TimeZone',${zone},true)`);
- const [row]=await tx.execute<{source:{people:string[];sourceDigest:string}}>(sql`select app.payroll_reset_review_context(${batchId}::uuid) as source`);
+ const [row]=await tx.execute<{source:{people:string[];employees:string[];sourceDigest:string}}>(sql`select app.payroll_reset_review_context(${batchId}::uuid) as source`);
+ originalTargets.set(actionId,{people:row.source.people,employees:row.source.employees});
  const [batch]=await tx.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,batchId));
  await tx.execute(sql`select app.assistant_payroll_reset_review_prepare(${actionId}::uuid,${ctx.personId??null}::uuid,${batchId}::uuid,${b.companyId}::uuid,${batch.payPeriodId}::uuid,${ids(row.source.people)},NULL::uuid,ARRAY[]::uuid[],${intentDigest},${reviewedDigest},${'a'.repeat(16)},'fictional-wrapped-key','fictional-proof-fixture-ciphertext',${row.source.sourceDigest})`);
  });return actionId;}
 async function arm(tx:Tx,id:string){await previewReviewedPayrollResetTx(tx,ctx,{batchId,reason});await tx.execute(sql`select app.assistant_payroll_reset_review_arm(${id}::uuid,${reason})`);}
-async function complete(tx:Tx,id:string,eventId:string){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_payroll_reset_review_complete(${id}::uuid,${reviewedDigest},${eventId}::uuid) as review`);return row.review;}
+async function complete(tx:Tx,id:string,eventId:string){
+ const [entry]=await tx.execute<{state:string}>(sql`select state from app.assistant_payroll_reset_reviews_index() where action_id=${id}::uuid`);
+ if(entry?.state==='awaiting_confirmation'){
+  // Exercise the original exact native verifier before capture; invalid-effect tests retain their
+  // real native refusal. The complete actual cohort came from the original private source owner.
+  await tx.execute(sql`select app.assistant_payroll_reset_review_verify(${id}::uuid,${eventId}::uuid)`);
+  const targets=originalTargets.get(id);if(!targets)throw Error('Missing original native proof fixture cohort');
+  await captureNativeOutcomeTargetsTx(tx,ctx,{action:'payroll.reset',sourceId:id,eventId,targets:[...targets.people.map(value=>({kind:'person' as const,id:value})),...targets.employees.map(value=>({kind:'employment' as const,id:value}))]});
+ }
+ const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_payroll_reset_review_complete(${id}::uuid,${reviewedDigest},${eventId}::uuid) as review`);return row.review;
+}
 async function state(){return{batch:await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,batchId)),slips:await owner.db.select().from(s.payslip).where(eq(s.payslip.tenantId,b.tenantId)).orderBy(s.payslip.id),loans:await owner.db.select().from(s.employeeLoan).where(eq(s.employeeLoan.tenantId,b.tenantId)).orderBy(s.employeeLoan.id),reps:await owner.db.select().from(s.loanRepayment).where(eq(s.loanRepayment.tenantId,b.tenantId)).orderBy(s.loanRepayment.id),claims:await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.tenantId,b.tenantId)).orderBy(s.claimRequest.id),individuals:await owner.db.select().from(s.payrollIndividualTxn).where(eq(s.payrollIndividualTxn.tenantId,b.tenantId)).orderBy(s.payrollIndividualTxn.id),events:await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.tenantId,b.tenantId)).orderBy(s.domainEvent.id),history:await owner.db.select().from(s.payrollStatusHistory).where(eq(s.payrollStatusHistory.tenantId,b.tenantId)).orderBy(s.payrollStatusHistory.id)};}
 beforeAll(async()=>{await migrateTestDb();});afterAll(closeAll);
 beforeEach(async()=>{
- await resetDb();b=await seedBase();for(const module of ['payroll','multi_cycle_payroll'] as const)await setModule(b.tenantId,module,'active');
+ originalTargets.clear();await resetDb();b=await seedBase();for(const module of ['payroll','multi_cycle_payroll'] as const)await setModule(b.tenantId,module,'active');
  await setSetting(b.tenantId,'payroll.reset_enabled',true);ctx=await entitledCtx(b,['hr_admin']);
  const [year,month]=todayInKualaLumpur().split('-').map(Number);period=new Date(Date.UTC(year,month-2,1)).toISOString().slice(0,7);
  const hire=await hireEmployee(ctx,{person:{fullName:'Fictional reset proof employee',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:String(year-1)+'-01-01'});employmentId=hire.employmentId;
