@@ -53,7 +53,7 @@ import {
   type EmploymentTypeValue,
   type TerminationType,
 } from './org';
-import { isTerminationReasonCode, terminationTypeForReason } from './termination-reason';
+import { assertTerminationReasonOfferedTx, resolveTerminationReasonTx } from './termination-reason-catalog';
 import {
   COMPARISON_KINDS,
   INTERCHANGEABLE_COMPARISON_KINDS,
@@ -2512,9 +2512,11 @@ async function planTerminationTx(
 
   const reasonCode = p.terminationReasonCode?.trim() || null;
   if (!reasonCode) throw new Error('A termination reason is required.');
-  if (!isTerminationReasonCode(reasonCode)) throw new Error('Unknown termination reason.');
-  // Non-null by construction — every catalogue entry carries a type (core/termination-reason.ts).
-  const terminationType = terminationTypeForReason(reasonCode) as TerminationType;
+  // 1d58019a — the TENANT's catalogue (built-ins plus its own reasons; switched-off ones still resolve so a
+  // pending termination applies and a correction keeps its reason). A NEW one is refused at the call site.
+  const reason = await resolveTerminationReasonTx(tx, ctx.tenantId, reasonCode);
+  if (!reason) throw new Error('Unknown termination reason.');
+  const terminationType: TerminationType = reason.terminationType;
 
   // "Resignation Date — mandatory for resignation cases."
   const resignationDate = p.resignationDate?.trim() || null;
@@ -2855,6 +2857,7 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
     // see the "Termination" section above for why a future-dated one must not write anything today.
     case 'termination': {
         const plan = await planTerminationTx(tx, ctx, p, 'create');
+        await assertTerminationReasonOfferedTx(tx, ctx.tenantId, plan.reasonCode);
         return plan.effectiveDate > todayInKualaLumpur()
           ? scheduleTerminationTx(tx, ctx, p.employmentId, plan)
           : applyTerminationTx(tx, ctx, p.employmentId, plan);
