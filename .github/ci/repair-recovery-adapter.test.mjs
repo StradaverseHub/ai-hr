@@ -122,3 +122,17 @@ test('Actual compiler auxiliary extractor accepts mixed packets as source identi
  const extract=(data,name)=>{writeFileSync(archive,browserExec('python3',['-c','import io,json,sys,zipfile; b=io.BytesIO(); z=zipfile.ZipFile(b,"w"); [(z.writestr(k,v)) for k,v in json.load(sys.stdin).items()]; z.close(); sys.stdout.buffer.write(b.getvalue())'],{input:JSON.stringify(data)}));return browserExec('python3',[script,archive,join(root,name)],{stdio:'pipe'});};
  try{extract(entries,'valid');assert.deepEqual(JSON.parse(readFileSync(join(root,'valid/focused.json'))).groups,{NODB:['a'],DB:['b']});assert.throws(()=>readFileSync(join(root,'valid/db.vitest.json')));assert.throws(()=>extract({...entries,'../escape.json':'{}'},'bad'));const missing={...entries};delete missing['db.vitest.json'];assert.throws(()=>extract(missing,'missing'));}finally{rmSync(root,{recursive:true,force:true});}
 });
+
+test('Actual complete history collector retains deleted-alias failures even with an empty advertised registry',()=>{
+ const root=mkdtempSync(join(tmpdir(),'aihr-deleted-alias-history-')),bin=join(root,'bin');mkdirSync(bin);
+ const row={id:2,display_title:'Focused only · codex/mobile-recovery-6bdd-01',head_sha:'controller',created_at:'2020-01-01T00:00:00Z',updated_at:'2026-10-30T02:30:00Z',status:'completed',conclusion:'failure',run_attempt:1};
+ writeFileSync(join(root,'row.json'),JSON.stringify(row));
+ writeFileSync(join(bin,'gh'),'#!'+process.execPath+'\n'+
+  'const fs=require("node:fs"),p=process.argv[3],row=JSON.parse(fs.readFileSync(process.env.AIHR_DELETED_ALIAS_ROOT+"/row.json")),rows=p.includes("workflows/999/")?[row]:[];process.stdout.write(JSON.stringify({total_count:rows.length,workflow_runs:rows}));\n',{mode:0o700});
+ const previous=process.env.PATH,old=process.env.AIHR_DELETED_ALIAS_ROOT;process.env.PATH=bin+':'+previous;process.env.AIHR_DELETED_ALIAS_ROOT=root;
+ const input={source:{run:{id:1,display_title:'Alpha CI · repair',updated_at:'2026-10-30T02:00:00Z'}},focusedWorkflowId:999,candidateBranch:'repair',candidateRefs:[],focusedRunIds:[],buildRunId:3,browserRunId:4};
+ try{
+  assert.throws(()=>collectCompleteRepairHistory(input),/Unaccounted/);
+  row.display_title='Focused only · codex/mobile-recovery-6bdd-001';writeFileSync(join(root,'row.json'),JSON.stringify(row));assert.throws(()=>collectCompleteRepairHistory(input),/Malformed/);
+ }finally{process.env.PATH=previous;if(old===undefined)delete process.env.AIHR_DELETED_ALIAS_ROOT;else process.env.AIHR_DELETED_ALIAS_ROOT=old;rmSync(root,{recursive:true,force:true});}
+});

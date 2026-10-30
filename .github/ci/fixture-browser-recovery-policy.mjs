@@ -1,6 +1,7 @@
 /** Cross-source v2 accounting. API/archive/source authentication belongs to the adapter. */
 import assert from 'node:assert/strict';
 import {isDeepStrictEqual} from 'node:util';
+import {validatePdfRepairMetadata} from './pdf-repair-metadata.mjs';
 import {validateBrowserRepairMetadata,validateBrowserRepairImage} from './browser-repair-metadata.mjs';
 import {relative} from 'node:path';
 import {hash,requiredEvidence} from './manifest.mjs';
@@ -55,13 +56,15 @@ export function repairDisposition({sourcePlan,plan,assessment,impactContext,veri
  same(impact.classifications.map(c=>c.path).sort(),impact.changed.slice().sort(),'Incomplete changed-path classifications');
  assert(Array.isArray(impact.run)&&impact.run.every(p=>plan.suite.includes(p))&&new Set(impact.run).size===impact.run.length&&typeof impact.browser==='boolean','Invalid affected test coverage');
  if(impact.tier==='impact')assert(impact.reasons.length===0&&!['high','unknown'].includes(impact.risk)&&impact.classifications.every(c=>!['high','unknown'].includes(c.risk)&&Array.isArray(c.uncertainties)&&c.uncertainties.length===0),'Impact tier contradicts full invalidation');
- const passed=new Map(assessment.reusable.map(x=>[x.id,x])),selected=new Set(impact.run),fresh=[],retained=[];
+ const passed=new Map(assessment.reusable.map(x=>[x.id,x])),selected=new Set(impact.run),fresh=[],retained=[],fileSelection={};
  for(const u of plan.units){
-  const affected=impact.tier==='full'||!passed.has(u.id)||u.files.some(p=>selected.has(p))||(u.kind==='browser'&&(impact.browser||impact.changed.some(p=>/\.(tsx|css)$/.test(p)||p.startsWith('public/'))));
-  (affected?fresh:retained).push(u.id);
+  const complete=impact.tier==='full'||!passed.has(u.id)||(u.kind==='browser'&&(impact.browser||impact.changed.some(p=>/\.(tsx|css)$/.test(p)||p.startsWith('public/'))));
+  const files=complete?u.files.slice():u.files.filter(p=>selected.has(p));fileSelection[u.id]=files;
+  (files.length?fresh:retained).push(u.id);
  }
- return {fresh,retained,impactFingerprint:fingerprint,sourceInputsFingerprint:impactContext.sourceInputsFingerprint};
+ return {fresh,retained,fileSelection,impactFingerprint:fingerprint,sourceInputsFingerprint:impactContext.sourceInputsFingerprint};
 }
+
 function caseInventory(result,files,cwd,{passing}){
  assert(Array.isArray(result?.testResults)&&result.testResults.length===files.length,'Complete assertion inventory required');
  if(passing)assert(result.success===true&&result.numFailedTests===0&&result.numFailedTestSuites===0&&[result.numPendingTests??0,result.numPendingTestSuites??0,result.numTodoTests??0].every(x=>x===0),'Failed or skipped fresh process');
@@ -90,12 +93,12 @@ export function validateCompilerAuxiliary(aux,{plan,sourceRun,classifierHash,his
  assert(r.files.every(p=>plan.suite.includes(p))&&Array.isArray(r.batches)&&r.batches.length>0&&r.batches.every(b=>b.exitCode===0&&b.processExitCode===0&&b.signal===null),'Unsuccessful auxiliary source preflight');
  return {...authenticated.compiler,auxiliary:true,artifactId:aux.artifacts[0].id,digest:aux.artifacts[0].digest,reportHash:hash(r)};
 }
-export function verifyFixtureBrowserRecovery({sourcePlan,plan,assessment,sourceRun,reports,focused,browsers=[],compilerAuxiliary=null,impactContext,classifierHash,verificationController,verificationDiagnostic,reviewedController=null,buildRun,build,history}){
+export function verifyFixtureBrowserRecovery({sourcePlan,plan,assessment,sourceRun,reports,focused,browsers=[],pdf=null,compilerAuxiliary=null,impactContext,classifierHash,verificationController,verificationDiagnostic,reviewedController=null,buildRun,build,history}){
  assert(sourceRun.status==='completed'&&sourceRun.conclusion==='failure'&&sourceRun.run_attempt===1&&assessment.sourceRun.id===sourceRun.id,'Original complete failure required');
  assert(assessment.sha===sourcePlan.sha&&assessment.controller===sourcePlan.controller&&assessment.fingerprint===sourcePlan.fingerprint&&assessment.baseline===plan.migrationBase,'Original source assessment differs');
  assert(verificationDiagnostic.controller===verificationController&&id(verificationDiagnostic.runId),'Hosted verifier diagnostic required');
  assert(reviewedController===null||reviewedController===verificationController,'Reviewed verifier identity changed');
- const disposition=repairDisposition({sourcePlan,plan,assessment,impactContext,verificationController}),fresh=new Set(disposition.fresh);
+ const disposition=repairDisposition({sourcePlan,plan,assessment,impactContext,verificationController}),fresh=new Set(disposition.fresh),needed=new Map(Object.entries(disposition.fileSelection).map(([id,files])=>[id,new Set(files)]));
  assert(fresh.size>0,'No failed/invalidated units to recover');
  const browserUnits=plan.units.filter(u=>u.kind==='browser'&&fresh.has(u.id));
  assert(browsers.length===(browserUnits.length?1:0)&&(!browserUnits.length||browserUnits.length===3),'One complete three-engine replacement execution required');
@@ -110,7 +113,7 @@ export function verifyFixtureBrowserRecovery({sourcePlan,plan,assessment,sourceR
   same(r.files,r.files.slice().sort(),'Noncanonical focused selection');const database=r.groups?.DB?.length>0,kind=database?'DB':'NODB';same(r.groups,database?{NODB:[],DB:r.files}:{NODB:r.files,DB:[]},'One homogeneous focused partition required');
   assert(r.batches?.length===1&&r.batches[0].kind===kind&&r.batches[0].exitCode===0&&r.batches[0].processExitCode===0&&r.batches[0].signal===null,'Fresh process did not pass');same(r.batches[0].files,r.files,'Focused process omitted files');
   if(database){
-   const unit=plan.units.find(u=>u.kind==='db'&&isDeepStrictEqual(u.files.slice().sort(),r.files));assert(unit&&fresh.has(unit.id),'DB recovery must rerun one entire original unit in its own fresh database');
+   const unit=plan.units.find(u=>u.kind==='db'&&isDeepStrictEqual(disposition.fileSelection[u.id].slice().sort(),r.files));assert(unit&&fresh.has(unit.id),'DB recovery must rerun the entire independently selected original-unit subset in its own fresh database');
    validatePostgresEvidence(r.databaseTerminalEvidence,plan.execution);
    const e=r.databaseTerminalEvidence,original=reports.find(x=>x.id===unit.id)?.databaseTerminalEvidence;
    assert(e.name===`aihr-ci-${f.run.id}-1-db-1`&&Date.parse(e.capturedAt)>=Date.parse(r.batches[0].startedAt)&&Date.parse(e.capturedAt)<=Date.parse(f.producer.completed_at)&&e.settings.serverVersionNum===original?.settings?.serverVersionNum,'DB ownership, capture interval or actual PG16 runtime differs');
@@ -118,9 +121,21 @@ export function verifyFixtureBrowserRecovery({sourcePlan,plan,assessment,sourceR
   assert(Date.parse(r.startedAt)>=Date.parse(f.producer.started_at)&&Date.parse(r.endedAt)<=Date.parse(f.producer.completed_at)&&Date.parse(r.endedAt)>=Date.parse(r.startedAt),'Focused report outside producing job');
   const cases=caseInventory(f.result,r.files,'/home/runner/work/ai-hr/ai-hr/source',{passing:true});
   assert(r.batches[0].assertions===[...cases.values()].reduce((n,c)=>n+c.length,0),'Focused summary count differs');
-  for(const [path,names] of cases){const unit=plan.units.find(u=>u.files.includes(path));assert(unit&&unit.kind===(database?'db':'nodb')&&fresh.has(unit.id)&&!replacements.has(path),'Foreign, misclassified, retained or duplicated replacement');replacements.set(path,{cases:names,runId:f.run.id,jobId:f.producer.id,artifactId:f.artifact.id,digest:f.artifact.digest});}
+  for(const [path,names] of cases){const unit=plan.units.find(u=>u.files.includes(path));assert(unit&&unit.kind===(database?'db':'nodb')&&fresh.has(unit.id)&&needed.get(unit.id).has(path)&&!replacements.has(path),'Foreign, misclassified, retained or duplicated replacement');replacements.set(path,{cases:names,runId:f.run.id,jobId:f.producer.id,artifactId:f.artifact.id,digest:f.artifact.digest});}
   if(f.compiler){const job=f.jobs.find(j=>j.name==='typecheck');assert(f.compiler.runId===f.run.id&&f.compiler.controller===plan.controller&&f.compiler.jobId===job?.id&&job.conclusion==='success','Fresh whole compiler identity differs');compilers.push(f.compiler);}
   focusedSources.push({runId:f.run.id,jobId:f.producer.id,artifactId:f.artifact.id,digest:f.artifact.digest,reportHash:hash(r),resultHash:hash(f.result)});
+ }
+ const pdfUnits=plan.units.filter(u=>u.pdfTools&&fresh.has(u.id)),pdfSources=[];
+ assert((pdfUnits.length>0)===(pdf!==null)&&pdfUnits.length<=1,'Exactly the required complete native PDF unit must be authenticated');
+ if(pdf){
+  const binding=validatePdfRepairMetadata({...pdf,expected:{runId:pdf.run.id,verificationController,after:sourceRun.updated_at}});
+  assert(history.runIds.includes(pdf.run.id)&&pdf.codeController===plan.controller,'Unaccounted or unpinned PDF code controller');
+  const {fingerprint,...executionBody}={...plan,controller:verificationController},executionPlan={...executionBody,fingerprint:hash(executionBody)};
+  const u=pdfUnits[0];assert(pdf.report?.id===u.id,'Foreign PDF unit');verifyUnitReport(executionPlan,pdf.report);
+  assert(pdf.report.batches.length===1&&isDeepStrictEqual(pdf.report.pdfToolSetup,pdf.setup)&&isDeepStrictEqual(pdf.report.batches[0].result,pdf.result),'PDF setup or standalone result differs');
+  const cases=caseInventory(pdf.result,u.files,pdf.report.cwd,{passing:true});
+  for(const [path,names] of cases){assert(needed.get(u.id).has(path)&&!replacements.has(path),'Extra or duplicate PDF replacement');replacements.set(path,{cases:names,runId:pdf.run.id,jobId:binding.producer.id,artifactId:binding.artifact.id,digest:binding.artifact.digest,executionController:verificationController,codeController:pdf.codeController});}
+  pdfSources.push({runId:pdf.run.id,jobId:binding.producer.id,artifactId:binding.artifact.id,digest:binding.artifact.digest,executionController:verificationController,codeController:pdf.codeController,reportHash:hash(pdf.report),setupHash:hash(pdf.setup)});
  }
  const browserSources=[];
  for(const b of browsers){
@@ -151,9 +166,17 @@ export function verifyFixtureBrowserRecovery({sourcePlan,plan,assessment,sourceR
   same(report.files,u.files,'Original process coverage changed');const originals=new Map();
   for(const batch of report.batches??[]){const files=(batch.result?.testResults??[]).map(f=>relative(report.cwd,f.name).split('\\').join('/'));assert(files.length>0&&files.every(p=>u.files.includes(p)),'Original batch has foreign coverage');const names=caseInventory(batch.result,files,report.cwd,{passing:false});for(const [path,cases] of names){assert(!originals.has(path),'Duplicate original assertion file');originals.set(path,cases);}}
   assert(originals.size===u.files.length,'Original failed/affected process did not enumerate every file');let count=0;const files=[];
-  for(const path of u.files){const replacement=replacements.get(u.kind==='browser'?u.id+'\0'+path:path);assert(replacement,'Missing failed/affected file: '+path);same(replacement.cases,originals.get(path),'Dropped/changed original assertions');count+=replacement.cases.length;files.push({path,...replacement});}
-  tests+=count;units.push({id:u.id,kind:'repaired-source',originalReportHash:hash(report),tests:count,files});
+  const witness=assessment.reusable.find(x=>x.id===u.id);
+  if(needed.get(u.id).size<u.files.length){assert(witness?.source&&witness.reportHash===hash(report),'Partial retention requires authenticated successful original process');verifyUnitReport(sourcePlan,report);}
+  for(const path of u.files){
+   if(needed.get(u.id).has(path)){
+    const replacement=replacements.get(u.kind==='browser'?u.id+'\0'+path:path);assert(replacement,'Missing failed/affected file: '+path);same(replacement.cases,originals.get(path),'Dropped/changed original assertions');count+=replacement.cases.length;files.push({path,kind:'fresh',...replacement});
+   }else{
+    assert(witness?.source,'Cannot retain assertions from a failed original process');const cases=originals.get(path);count+=cases.length;files.push({path,kind:'retained-original',cases,originalSha:sourcePlan.sha,originalReportHash:hash(report),source:witness.source});
+   }
+  }
+  tests+=count;units.push({id:u.id,kind:needed.get(u.id).size===u.files.length?'repaired-source':'mixed-source',originalReportHash:hash(report),tests:count,files});
  }
- assert(replacements.size===plan.units.filter(u=>fresh.has(u.id)).reduce((n,u)=>n+u.files.length,0),'Incomplete or excessive replacement coverage');
- return {kind:'AUTHENTICATED_FIXTURE_BROWSER_RECOVERY',recoveryPolicy:REPAIR_RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,verificationDiagnostic,reviewedController:null,pendingReview:true,releaseAuthorized:false,baseline:plan.migrationBase,runId:buildRun.id,originalRunId:sourceRun.id,originalSha:sourcePlan.sha,originalConclusion:sourceRun.conclusion,originalFingerprint:sourcePlan.fingerprint,candidateFingerprint:plan.fingerprint,disposition,originalFailureObservations:assessment.observations,focusedSources,browserSources,compilers,history,units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests};
+ assert(replacements.size===[...needed.values()].reduce((n,files)=>n+files.size,0),'Incomplete or excessive replacement coverage');
+ return {kind:'AUTHENTICATED_FIXTURE_BROWSER_RECOVERY',recoveryPolicy:REPAIR_RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,verificationDiagnostic,reviewedController:null,pendingReview:true,releaseAuthorized:false,baseline:plan.migrationBase,runId:buildRun.id,originalRunId:sourceRun.id,originalSha:sourcePlan.sha,originalConclusion:sourceRun.conclusion,originalFingerprint:sourcePlan.fingerprint,candidateFingerprint:plan.fingerprint,disposition,originalFailureObservations:assessment.observations,focusedSources,browserSources,pdfSources,compilers,history,units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests};
 }

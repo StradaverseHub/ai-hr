@@ -1,5 +1,5 @@
 name: alpha-staging-ci
-run-name: ${{ inputs.build_only && 'Canonical build only' || inputs.controller_only && 'CI controller checks' || inputs.diagnostics_only && 'Runner diagnostics' || 'Alpha CI' }} · ${{ inputs.candidate_ref || github.head_ref || 'alpha' }}
+run-name: ${{ inputs.fixture_pdf_unit && 'Fixture PDF unit' || inputs.build_only && 'Canonical build only' || inputs.controller_only && 'CI controller checks' || inputs.diagnostics_only && 'Runner diagnostics' || 'Alpha CI' }} · ${{ inputs.candidate_ref || github.head_ref || 'alpha' }}
 on:
   workflow_dispatch:
     inputs:
@@ -43,10 +43,15 @@ on:
         default: false
         type: boolean
       fixture_certificate_runs:
-        description: JSON object with focusedRunIds, buildRunId, browserRunId, compilerRunId and diagnosticId
+        description: JSON object with focusedRunIds, buildRunId, browserRunId, compilerRunId, pdfRunId and diagnosticId
         required: false
         default: '{}'
         type: string
+      fixture_pdf_unit:
+        description: Complete native PDF repair unit only; reviewed verifier execution and pinned published code, no release authority
+        required: false
+        default: false
+        type: boolean
   push:
     branches: [alpha]
   pull_request:
@@ -184,6 +189,55 @@ jobs:
           path: ${{ runner.temp }}/fixture-impact-projection.json
           if-no-files-found: error
           retention-days: 7
+      - name: Refuse invalid PDF-only diagnostic execution
+        if: ${{ inputs.fixture_pdf_unit }}
+        env: {PROJECTION: '${{ inputs.fixture_projection }}', CONTROLLER_ONLY: '${{ inputs.controller_only }}', DIAGNOSTICS_ONLY: '${{ inputs.diagnostics_only }}', CERTIFICATE: '${{ inputs.fixture_certificate }}'}
+        run: test "$PROJECTION" = true && test "$CONTROLLER_ONLY" = true && test "$DIAGNOSTICS_ONLY" = true && test "$CERTIFICATE" = false
+      - name: Pin published execution code for the complete PDF unit
+        if: ${{ inputs.fixture_pdf_unit }}
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/fixture-pdf-controller" d6cb83d620d8d4380c981a72fc41628780840b4e
+          mkdir -p "$RUNNER_TEMP/fixture-pdf-session" "$RUNNER_TEMP/fixture-pdf-evidence"
+      - name: Prepare exact native PDF tools using pinned execution code
+        if: ${{ inputs.fixture_pdf_unit }}
+        working-directory: scratchpad/fixture-projection-candidate
+        env:
+          RUNNER_TEMP: ${{ runner.temp }}/fixture-pdf-session
+          AIHR_CI_HEAD: 6bdddf4f84b3ecb693d8fbf29409373e49c73ac9
+          AIHR_CI_MIGRATION_BASE: d6cb83d620d8d4380c981a72fc41628780840b4e
+          DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+          MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+        run: node "${{ runner.temp }}/fixture-pdf-controller/.github/ci/pdf-tools.mjs" --unit nodb-777a5fd9e0cdf740
+      - name: Run complete audited PDF unit with pinned execution code
+        if: ${{ inputs.fixture_pdf_unit }}
+        working-directory: scratchpad/fixture-projection-candidate
+        env:
+          RUNNER_TEMP: ${{ runner.temp }}/fixture-pdf-session
+          AIHR_CI_HEAD: 6bdddf4f84b3ecb693d8fbf29409373e49c73ac9
+          AIHR_CI_MIGRATION_BASE: d6cb83d620d8d4380c981a72fc41628780840b4e
+          DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+          MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+          TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+          TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+        run: |
+          node "${{ runner.temp }}/fixture-pdf-controller/.github/ci/run-unit.mjs" nodb-777a5fd9e0cdf740 "${{ runner.temp }}/fixture-pdf-evidence"
+          cp "$RUNNER_TEMP/pdf-tools-setup.json" "${{ runner.temp }}/fixture-pdf-evidence/pdf-tools-setup.json"
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {execFileSync} from 'node:child_process';
+          import {writeFileSync} from 'node:fs';
+          const head=cwd=>execFileSync('git',['rev-parse','HEAD'],{cwd,encoding:'utf8'}).trim();
+          const source=head(process.cwd()),codeController=head('${{ runner.temp }}/fixture-pdf-controller');
+          assert.equal(source,'6bdddf4f84b3ecb693d8fbf29409373e49c73ac9');assert.equal(codeController,'d6cb83d620d8d4380c981a72fc41628780840b4e');
+          writeFileSync('${{ runner.temp }}/fixture-pdf-evidence/code-controller.json',JSON.stringify({source,codeController,executionController:process.env.GITHUB_SHA}));
+          NODE
+      - if: ${{ inputs.fixture_pdf_unit }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: fixture-pdf-unit-evidence
+          path: ${{ runner.temp }}/fixture-pdf-evidence/
+          if-no-files-found: error
+          retention-days: 14
       - name: Refuse certificate without the diagnostic parser projection
         if: ${{ inputs.fixture_certificate }}
         env: {PROJECTION: '${{ inputs.fixture_projection }}', CONTROLLER_ONLY: '${{ inputs.controller_only }}', DIAGNOSTICS_ONLY: '${{ inputs.diagnostics_only }}'}
@@ -198,8 +252,8 @@ jobs:
           import assert from 'node:assert/strict';
           import {writeFileSync} from 'node:fs';
           const r=JSON.parse(process.env.CERTIFICATE_RUNS_JSON);
-          assert.deepEqual(Object.keys(r).sort(),['browserRunId','buildRunId','compilerRunId','diagnosticId','focusedRunIds'].sort());
-          const options={candidatePath:process.env.GITHUB_WORKSPACE+'/scratchpad/fixture-projection-candidate',originalPath:process.env.RUNNER_TEMP+'/fixture-original',runId:41028659062,baseline:'d6cb83d620d8d4380c981a72fc41628780840b4e',focusedRunIds:r.focusedRunIds,buildRunId:r.buildRunId,browserRunId:r.browserRunId,compilerRunId:r.compilerRunId,candidateBranch:'codex/mobile-bank-feedback-staging-prep-20261030',evidenceDirectory:process.env.RUNNER_TEMP+'/fixture-browser-proof'};
+          assert.deepEqual(Object.keys(r).sort(),['browserRunId','buildRunId','compilerRunId','diagnosticId','focusedRunIds','pdfRunId'].sort());
+          const options={candidatePath:process.env.GITHUB_WORKSPACE+'/scratchpad/fixture-projection-candidate',originalPath:process.env.RUNNER_TEMP+'/fixture-original',runId:41028659062,baseline:'d6cb83d620d8d4380c981a72fc41628780840b4e',focusedRunIds:r.focusedRunIds,buildRunId:r.buildRunId,browserRunId:r.browserRunId,compilerRunId:r.compilerRunId,pdfRunId:r.pdfRunId,candidateBranch:'codex/mobile-bank-feedback-staging-prep-20261030',evidenceDirectory:process.env.RUNNER_TEMP+'/fixture-browser-proof'};
           assert(Number.isSafeInteger(r.diagnosticId)&&r.diagnosticId>0);
           writeFileSync(process.env.RUNNER_TEMP+'/fixture-certificate-options.json',JSON.stringify(options));
           writeFileSync(process.env.GITHUB_ENV,'AIHR_RECOVERY_CONTROLLER_RUN_ID='+r.diagnosticId+'\n',{flag:'a'});

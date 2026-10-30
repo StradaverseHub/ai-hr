@@ -142,3 +142,35 @@ test('Mixed successful preflight authenticates a whole compiler without supplyin
  const f=auxiliaryCompilerFixture(),c=verifyFixtureBrowserRecovery(f);assert.equal(c.tests,5);assert.equal(c.compilers.length,1);assert.equal(c.compilers[0].runId,201);assert.equal(c.compilers[0].auxiliary,true);assert(!c.focusedSources.some(s=>s.runId===201));
 });
 for(const [name,change] of [['old source',f=>f.compilerAuxiliary.report.sha=f.sourcePlan.sha],['failed compiler',f=>f.compilerAuxiliary.jobs.find(j=>j.name==='typecheck').conclusion='failure'],['expired archive',f=>f.compilerAuxiliary.artifacts[0].expired=true],['unaccounted compiler',f=>f.history.runIds=f.history.runIds.filter(id=>id!==201)],['duplicate source file',f=>f.compilerAuxiliary.report.groups.DB.push(f.compilerAuxiliary.report.groups.NODB[0])],['failed preflight',f=>f.compilerAuxiliary.report.batches[0].exitCode=1],['unhealthy source',f=>f.compilerAuxiliary.report.healthAfter.ok=false],['report before job',f=>f.compilerAuxiliary.report.startedAt='2020-01-01T00:00:00Z']])test('Auxiliary compiler refuses '+name,()=>{const f=auxiliaryCompilerFixture();change(f);assert.throws(()=>verifyFixtureBrowserRecovery(f));});
+
+function partialRetentionFixture(){
+ const f=browserFixture(),unit=f.plan.units.find(u=>u.kind==='db'),selected=unit.files[0],unaffected='test/db-unaffected.test.ts',original=f.reports.find(r=>r.id===unit.id);
+ unit.files.push(unaffected);f.plan.suite.push(unaffected);f.plan.suite.sort();
+ const result=original.batches[0].result;result.testResults.push({name:'/candidate/'+unaffected,status:'passed',assertionResults:[{status:'passed',fullName:'unchanged behavioral case /candidate/'+unaffected}]});result.numTotalTests++;result.numPassedTests++;
+ for(const plan of [f.sourcePlan,f.plan]){const {fingerprint,...body}=plan;plan.fingerprint=hash(body);}
+ for(const report of f.reports)report.fingerprint=f.sourcePlan.fingerprint;
+ f.assessment.fingerprint=f.sourcePlan.fingerprint;for(const witness of f.assessment.reusable)witness.reportHash=hash(f.reports.find(r=>r.id===witness.id));
+ for(const p of f.browsers[0].packets)p.report.fingerprint=f.plan.fingerprint;
+ const impact=f.impactContext.plan;impact.run=[...impact.run,selected].sort();impact.selection[selected]=['affected consumer'];const {fingerprint,...body}=impact;impact.fingerprint=hash(body);
+ const p=structuredClone(f.focused[0]);p.run.id=201;p.producer.run_id=201;p.report.runId='201';p.report.files=[selected];p.report.manifestHash=hash(JSON.stringify(p.report.files));p.report.groups={NODB:[],DB:[selected]};p.report.batches[0]={...p.report.batches[0],kind:'DB',files:[selected],startedAt:time(2.9)};
+ p.report.databaseTerminalEvidence={...structuredClone(original.databaseTerminalEvidence),name:'aihr-ci-201-1-db-1',capturedAt:time(2.2)};
+ p.result=structuredClone(original.batches[0].result);p.result.testResults=p.result.testResults.filter(x=>x.name==='/candidate/'+selected);p.result.testResults[0].name='/home/runner/work/ai-hr/ai-hr/source/'+selected;p.result.numTotalTests=1;p.result.numPassedTests=1;p.compiler=null;
+ f.focused.push(p);f.history.runIds.push(201);return {f,unit,unaffected};
+}
+test('Successful original processes retain unaffected authenticated file assertions without relabelling; affected DB subset uses fresh owned resources',()=>{
+ const {f,unit,unaffected}=partialRetentionFixture(),c=verifyFixtureBrowserRecovery(f),u=c.units.find(u=>u.id===unit.id);
+ assert.equal(c.tests,6);assert.equal(u.kind,'mixed-source');assert.equal(u.files.find(x=>x.path===unaffected).kind,'retained-original');assert.equal(u.files.find(x=>x.path===unaffected).originalSha,f.sourcePlan.sha);assert.equal(u.files.find(x=>x.kind==='fresh').runId,201);assert.equal(c.originalConclusion,'failure');
+});
+for(const [name,change] of [['failed process cannot retain',({f,unit})=>f.assessment.reusable=f.assessment.reusable.filter(x=>x.id!==unit.id)],['unselected replacement',({f,unaffected})=>{const r=f.focused[1].report;r.files=[unaffected];r.groups.DB=[unaffected];r.manifestHash=hash(JSON.stringify(r.files));r.batches[0].files=r.files;}],['tampered original report',({f,unit})=>f.reports.find(r=>r.id===unit.id).batches[0].result.testResults[1].assertionResults[0].status='failed'],['missing selected subset',({f})=>f.focused.pop()]])test('File retention refuses '+name,()=>{const item=partialRetentionFixture();change(item);assert.throws(()=>verifyFixtureBrowserRecovery(item.f));});
+
+import {validatePdfRepairMetadata,PDF_REPAIR_TITLE} from './pdf-repair-metadata.mjs';
+function pdfMetadataFixture(){
+ const f=browserFixture(),stamp=Date.now(),at=n=>new Date(stamp-n*60000).toISOString();
+ const run={...f.sourceRun,id:8000,head_sha:f.verificationController,head_branch:'codex/browser-recovery-verifier-20261030',display_title:PDF_REPAIR_TITLE,conclusion:'success',created_at:at(4),updated_at:at(1)};
+ const names=['resolve','typecheck','migrations','test','controller-tests','plan','runner-diagnostics','build','browser','verify','deployment-hold'];
+ const jobs=names.map((name,i)=>({id:8100+i,name,run_id:run.id,head_sha:run.head_sha,head_branch:run.head_branch,run_attempt:1,status:'completed',conclusion:['resolve','deployment-hold'].includes(name)?'success':'skipped',started_at:at(3),completed_at:at(2),steps:[{name:'Run complete audited PDF unit with pinned execution code',conclusion:'success'}]}));
+ const artifacts=['controller-plan-diagnostics','fixture-impact-projection-diagnostic','fixture-pdf-unit-evidence'].map((name,i)=>({id:8200+i,name,size_in_bytes:100,digest:'sha256:'+'a'.repeat(64),expired:false,created_at:at(2.5),expires_at:at(-60),workflow_run:{id:run.id,repository_id:1333414856,head_repository_id:1333414856,head_sha:run.head_sha,head_branch:run.head_branch}}));
+ return {run,jobs,artifacts,expected:{runId:8000,verificationController:f.verificationController,after:at(8)}};
+}
+test('Complete PDF execution records the actual independent verifier producer rather than relabelling it as the published code controller',()=>{const f=pdfMetadataFixture();assert.equal(validatePdfRepairMetadata(f).producer.id,8100);assert.equal(f.run.head_sha,f.expected.verificationController);});
+for(const [name,change] of [['foreign controller',f=>f.run.head_sha='f'.repeat(40)],['foreign workflow',f=>f.run.workflow_id++],['wrong mode',f=>f.run.display_title='CI controller checks · verifier'],['native setup without tests',f=>f.jobs[0].steps[0].conclusion='skipped'],['failed tests',f=>f.jobs[0].conclusion='failure'],['extra test workflow job',f=>f.jobs[3].conclusion='success'],['missing archive',f=>f.artifacts.pop()],['foreign archive',f=>f.artifacts[2].workflow_run.head_sha='f'.repeat(40)],['missing digest',f=>delete f.artifacts[2].digest],['expired artifact',f=>f.artifacts[2].expired=true],['rerun',f=>f.run.run_attempt=2],['stale',f=>f.run.created_at='2020-01-01T00:00:00Z']])test('PDF metadata refuses '+name,()=>{const f=pdfMetadataFixture();change(f);assert.throws(()=>validatePdfRepairMetadata(f));});

@@ -17,6 +17,7 @@ import {reconstructFixtureRepairImpact} from './fixture-repair-impact.mjs';
 import {collectRecoveryEvidence} from './focused-recovery.mjs';
 import {validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
 import {verifyFixtureBrowserRecovery,repairDisposition,validateRepairFocusedMetadata,validateRepairBuildMetadata} from './fixture-browser-recovery-policy.mjs';
+import {validatePdfRepairMetadata,PDF_REPAIR_TITLE} from './pdf-repair-metadata.mjs';
 import {validateBrowserRepairMetadata,BROWSER_REPAIR_WORKFLOW_ID,BROWSER_REPAIR_WORKFLOW_PATH} from './browser-repair-metadata.mjs';
 const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}));
 function pages(path,key){const rows=[];for(let page=1;page<=10;page++){const r=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${page}`);assert(Array.isArray(r[key]),'Missing complete API inventory');rows.push(...r[key]);if(r[key].length<100)return rows;}throw Error('Repair API inventory exceeds bound');}
@@ -47,15 +48,18 @@ export function validateFixtureRepairDelta({cwd,original,candidate}){
  assert(isDeepStrictEqual(changed,allowed),'Exact reviewed fixture repair inventory required');
  return {changed,baseTree:git(cwd,'rev-parse',original+'^{tree}'),headTree:git(cwd,'rev-parse',candidate+'^{tree}'),diffSha256:hash(git(cwd,'diff','--binary','--no-ext-diff',original,candidate))};
 }
-export function validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId,browserRunId,compilerRunId,candidateRefs=[]}){
- const after=source.run.updated_at,known=new Set([...focusedRunIds,buildRunId,...(browserRunId?[browserRunId]:[]),...(compilerRunId?[compilerRunId]:[])]);
+export function validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId,browserRunId,compilerRunId,pdfRunId,candidateRefs=[]}){
+ const after=source.run.updated_at,known=new Set([...focusedRunIds,buildRunId,...(browserRunId?[browserRunId]:[]),...(compilerRunId?[compilerRunId]:[]),...(pdfRunId?[pdfRunId]:[])]);
  assert(Number.isFinite(Date.parse(after))&&Array.isArray(rows)&&rows.length<=8000,'Invalid or unbounded repair history');
  assert(source.run.display_title?.startsWith('Alpha CI · '),'Original workflow title must identify its frozen branch');
- const titles=new Set([source.run.display_title,...[candidateBranch,...candidateRefs].flatMap(ref=>['Alpha CI','Canonical build only','Focused only','Tooling transport only'].map(prefix=>prefix+' · '+ref))]);
+ const historicalAliases=Array.from({length:99},(_,i)=>'codex/mobile-recovery-6bdd-'+String(i+1).padStart(2,'0'));
+ const titles=new Set([source.run.display_title,PDF_REPAIR_TITLE,...[candidateBranch,...candidateRefs,...historicalAliases].flatMap(ref=>['Alpha CI','Canonical build only','Focused only','Tooling transport only'].map(prefix=>prefix+' · '+ref))]);
  // An overlapping run may start before the original completes and fail afterwards. Creation-time
  // filtering alone would silently discard that later failure. Bind completion/update history too.
  const matching=new Map();
- for(const r of rows){if(r.id===source.run.id||!titles.has(r.display_title))continue;
+ for(const r of rows){
+  if(typeof r.display_title==='string'&&r.display_title.includes('codex/mobile-recovery-6bdd-'))assert(titles.has(r.display_title),'Malformed or unexpected recovery alias history title');
+  if(r.id===source.run.id||!titles.has(r.display_title))continue;
   assert(Number.isSafeInteger(r.id)&&r.id>0&&Number.isFinite(Date.parse(r.created_at))&&Number.isFinite(Date.parse(r.updated_at))&&Date.parse(r.updated_at)>=Date.parse(r.created_at)&&['queued','in_progress','waiting','requested','pending','completed'].includes(r.status),'Malformed relevant history execution');
   const record={id:r.id,display_title:r.display_title,controller:r.head_sha,status:r.status,conclusion:r.conclusion,attempt:r.run_attempt,createdAt:r.created_at,updatedAt:r.updated_at};
   assert(!matching.has(r.id)||isDeepStrictEqual(matching.get(r.id),record),'Conflicting history API snapshots; retry after stabilization');matching.set(r.id,record);
@@ -65,7 +69,7 @@ export function validateLatestRepairHistory({source,rows,candidateBranch,focused
  return {kind:'AUTHENTICATED_COMPLETE_REPAIR_HISTORY',sourceRunId:source.run.id,after,runIds:relevant.map(r=>r.id).sort((a,b)=>a-b),metadataFingerprint:hash(relevant.sort((a,b)=>a.id-b.id))};
 }
 /** Every unfiltered workflow row is inventoried, including old-created runs updated recently. */
-export function collectCompleteRepairHistory({source,focusedWorkflowId,candidateBranch,focusedRunIds,buildRunId,browserRunId,compilerRunId,candidateRefs=[]}){
+export function collectCompleteRepairHistory({source,focusedWorkflowId,candidateBranch,focusedRunIds,buildRunId,browserRunId,compilerRunId,pdfRunId,candidateRefs=[]}){
  const inventory=()=>{
   const rows=[];
   for(const workflowId of [WORKFLOW_ID,focusedWorkflowId,BROWSER_REPAIR_WORKFLOW_ID]){
@@ -80,7 +84,7 @@ export function collectCompleteRepairHistory({source,focusedWorkflowId,candidate
     assert(page<100,'Workflow history exceeds bound');
    }
   }
-  return validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId,browserRunId,compilerRunId,candidateRefs});
+  return validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId,browserRunId,compilerRunId,pdfRunId,candidateRefs});
  };
  const first=inventory(),second=inventory();
  assert(isDeepStrictEqual(first,second),'Relevant repair history changed during reconciliation; retry');
@@ -95,8 +99,8 @@ export function parseFixtureAliases(rows,candidate){
  }
  return found;
 }
-export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,baseline,focusedRunIds,buildRunId,browserRunId,compilerRunId,candidateBranch,evidenceDirectory,reuse=false}){
- candidatePath=resolve(candidatePath);originalPath=resolve(originalPath);runId=Number(runId);buildRunId=Number(buildRunId);browserRunId=Number(browserRunId);compilerRunId=Number(compilerRunId);
+export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,baseline,focusedRunIds,buildRunId,browserRunId,compilerRunId,pdfRunId,candidateBranch,evidenceDirectory,reuse=false}){
+ candidatePath=resolve(candidatePath);originalPath=resolve(originalPath);runId=Number(runId);buildRunId=Number(buildRunId);browserRunId=Number(browserRunId);compilerRunId=Number(compilerRunId);pdfRunId=Number(pdfRunId);
  assert(Number.isSafeInteger(compilerRunId)&&compilerRunId>0&&![runId,buildRunId,browserRunId,...focusedRunIds].includes(compilerRunId),'Distinct auxiliary compiler execution required');
  assert(Number.isSafeInteger(browserRunId)&&browserRunId>0&&![runId,buildRunId,...focusedRunIds].includes(browserRunId),'Distinct complete browser run required');
  assert(/^[a-f0-9]{40}$/.test(baseline??'')&&Number.isSafeInteger(runId)&&runId>0&&Number.isSafeInteger(buildRunId)&&buildRunId>0&&buildRunId!==runId,'Exact original/build/baseline identities required');
@@ -132,7 +136,8 @@ export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,b
  assert(isDeepStrictEqual(delta.changed,impactContext.plan.changed),'Reconstructed impact omitted repair paths');
  const disposition=repairDisposition({sourcePlan,plan,assessment,impactContext,verificationController});
  assert(plan.units.filter(u=>u.kind==='browser').every(u=>disposition.fresh.includes(u.id)),'Finite browser fixture repair must replace all three engine units');
- assert(plan.units.filter(u=>disposition.fresh.includes(u.id)).every(u=>!u.pdfTools),'Affected PDF tooling unit needs its full source-bound environment proof');
+ const needsPdf=plan.units.some(u=>disposition.fresh.includes(u.id)&&u.pdfTools);
+ assert(!needsPdf||(Number.isSafeInteger(pdfRunId)&&pdfRunId>0&&![runId,buildRunId,browserRunId,compilerRunId,...focusedRunIds].includes(pdfRunId)),'Distinct complete audited PDF execution required');
  const workflow=api('actions/workflows/alpha-focused-checks.yml');assert(workflow.path==='.github/workflows/alpha-focused-checks.yml'&&workflow.state==='active','Focused workflow registry differs');
  const focused=[];
  const allowedFocusTitles=new Set([candidateBranch,...candidateRefs].map(ref=>'Focused only · '+ref));
@@ -165,6 +170,16 @@ export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,b
   return {engine,report:unitPacket.get(`unit-browser-${engine}.json`),result:unitPacket.get(`browser-${engine}-batch-0.json`),binding:identity.get('image-binding.json'),...identity.get('source-binding.json')};
  });
  const browsers=[{...browserEvidence,candidateBranch,lockSha256:hash(readFileSync(join(candidatePath,'pnpm-lock.yaml'))),packets}];
+ let pdf=null;
+ if(needsPdf){
+  const pm=metadata(pdfRunId),binding=validatePdfRepairMetadata({...pm,expected:{runId:pdfRunId,verificationController,after:source.run.updated_at}});
+  const evidence=await collectRecoveryEvidence(pdfRunId,join(dir,'pdf-'+pdfRunId),{reuse});assert(isDeepStrictEqual(pm,facts(evidence)),'PDF metadata changed during byte download');
+  const packet=evidence.parsed.get(binding.artifact.name),unit=plan.units.find(u=>u.pdfTools);
+  const required=[`unit-${unit.id}.json`,`${unit.id}-batch-0.json`,`health-before-${unit.id}.json`,'pdf-tools-setup.json','code-controller.json'].sort();
+  assert(isDeepStrictEqual([...packet.keys()].sort(),required),'Complete closed PDF unit archive required');
+  const code=packet.get('code-controller.json');assert(code?.codeController===controller&&code.executionController===verificationController&&code.source===candidate,'PDF controller identities differ');
+  pdf={...evidence,codeController:code.codeController,report:packet.get(`unit-${unit.id}.json`),result:packet.get(`${unit.id}-batch-0.json`),setup:packet.get('pdf-tools-setup.json')};
+ }
  const bm=metadata(buildRunId);validateRepairBuildMetadata({...bm,expected:{runId:buildRunId,controller,after:source.run.updated_at,candidateBranch}});
  validateRepairArchiveInventory(bm,new Set([BUILD_ARTIFACT,NEXT_APPLICATION_STATE]),()=> 'build');assert(bm.artifacts.some(a=>a.name===BUILD_ARTIFACT),'Mandatory fresh canonical build packet missing');
  // Main evidence directory names the replacement build's real producer, as the installer expects.
@@ -172,15 +187,15 @@ export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,b
  if(built.parsed.has(NEXT_APPLICATION_STATE)){const files=built.rawParsed.get(NEXT_APPLICATION_STATE);assert(isDeepStrictEqual([...files.keys()].sort(),NEXT_APPLICATION_MEMBERS),'Application cache packet differs');
   const state=inspectNextStatePacket({files,run:built.run,job:built.jobs.find(j=>j.name==='build')});assert(state.producer.source===candidate&&state.producer.controller===controller,'Supplemental state source/controller differs');
  }
- const p={candidate,controller,baseline,runId:buildRunId,browserRunId,compilerRunId,controllerBranch:built.run.head_branch},build=await sourceBoundBuild({candidatePath,dir,p,jobs:built.jobs});
- const history=collectCompleteRepairHistory({source,focusedWorkflowId:workflow.id,candidateBranch,focusedRunIds,buildRunId,browserRunId,compilerRunId,candidateRefs});
+ const p={candidate,controller,baseline,runId:buildRunId,browserRunId,compilerRunId,pdfRunId,controllerBranch:built.run.head_branch},build=await sourceBoundBuild({candidatePath,dir,p,jobs:built.jobs});
+ const history=collectCompleteRepairHistory({source,focusedWorkflowId:workflow.id,candidateBranch,focusedRunIds,buildRunId,browserRunId,compilerRunId,pdfRunId,candidateRefs});
  const reports=sourcePlan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
- const recovery=verifyFixtureBrowserRecovery({sourcePlan,plan,assessment,sourceRun:source.run,reports,focused,browsers,compilerAuxiliary,impactContext,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,verificationDiagnostic,reviewedController,buildRun:built.run,build,history});
+ const recovery=verifyFixtureBrowserRecovery({sourcePlan,plan,assessment,sourceRun:source.run,reports,focused,browsers,pdf,compilerAuxiliary,impactContext,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,verificationDiagnostic,reviewedController,buildRun:built.run,build,history});
  recovery.aliasHeads=aliasHeads;recovery.compilerRunId=compilerRunId;recovery.delta=delta;recovery.originalArtifacts=source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}));recovery.originalJobConclusions=source.jobs.map(j=>({id:j.id,name:j.name,conclusion:j.conclusion}));
  assert(isDeepStrictEqual(aliasHeads,readAliases()),'Recovery alias registry changed during verification');
  assert(cleanHead(candidatePath)===candidate&&cleanHead(originalPath)===original&&cleanHead(controllerRoot)===verificationController,'Source/controller changed while verifying');
  assert([baseline,candidate].includes(api('git/ref/heads/alpha').object?.sha),'Alpha moved away from exact staging baseline/candidate');
- const result={...recovery,recovery,result:'DIAGNOSTIC_NONINSTALLABLE',tier:'diagnostic',installationEligible:false,fingerprint:hash(recovery),build,candidatePath,originalPath,originalRunId:runId,candidateBranch,focusedRunIds:focusedRunIds.slice().sort((a,b)=>a-b),buildRunId,browserRunId,compilerRunId,controllerBranch:built.run.head_branch,evidenceDirectory:dir,verifiedAt:new Date().toISOString(),url:built.run.html_url,artifacts:built.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
+ const result={...recovery,recovery,result:'DIAGNOSTIC_NONINSTALLABLE',tier:'diagnostic',installationEligible:false,fingerprint:hash(recovery),build,candidatePath,originalPath,originalRunId:runId,candidateBranch,focusedRunIds:focusedRunIds.slice().sort((a,b)=>a-b),buildRunId,browserRunId,compilerRunId,pdfRunId,controllerBranch:built.run.head_branch,evidenceDirectory:dir,verifiedAt:new Date().toISOString(),url:built.run.html_url,artifacts:built.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
  save(dir,reuse?`revalidation-${randomUUID()}.json`:'verification.json',result);return result;
 }
 function facts(f){return {run:f.run,jobs:f.jobs,artifacts:f.artifacts};}
