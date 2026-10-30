@@ -326,3 +326,26 @@ Subsequent retained evidence:
   capacity guarantee. Baseline-after burst timings returned to the original slow range.
   Increase only the experiment's completion budget to480seconds; endpoint latency thresholds
   remain unchanged. Keep this original timeout and all partial reports.
+
+Controlled repeat41024687484 (source76dfc8fbd) completed all three fixture preparations
+and all six500-principal service phases with zero journey failures. Same-run paced p95:
+
+| Implementation | Read | Create | Edit | Delete |
+| --- | ---: | ---: | ---: | ---: |
+| SQL baseline before |1787.4ms|1766.6ms|1756.6ms|1708.9ms|
+| PL/pgSQL plan cache |28.4ms|24.6ms|27.8ms|18.3ms|
+| SQL baseline after |1888.4ms|1890.0ms|1880.8ms|1770.8ms|
+
+This controls warm execution order and reproduces the planning improvement. Burst candidate
+p95 remained2595/2584/1657/1550ms, so it does not satisfy a simultaneous-burst target. The
+fixture still covers paced service journeys with audit-chain off, not sustained500-user HTTP.
+The SQL/profile experiments are explicitly opt-in through `profile_database_sql=true` so normal
+verification does not require a profiling extension or rewrite a function for an experiment.
+
+The production driver successorffef01ebf holds users in repeated journeys until30seconds
+after its10second ramp and records active/peak users. Its six browser contexts start after
+the full cohort arrives. Per-role steady-state p95 thresholds and nonempty read/write samples
+are required, preventing a fast majority or short-lived sessions from hiding HR latency.
+It writes partial progress, request samples and wait evidence every five seconds. This is a
+full-document HTTPS stress mix with real server actions; no login-enrollment or native-client
+navigation throughput claim is implied. Earlier one-journey runs retain their narrower scope.

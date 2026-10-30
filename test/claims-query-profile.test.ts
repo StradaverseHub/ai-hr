@@ -5,7 +5,7 @@ import {afterAll,beforeAll,expect,it} from 'vitest';
 import {closeAll,migrateTestDb,owner} from './harness';
 import {runClaimsLoad} from './fixtures/claims-load';
 beforeAll(migrateTestDb);afterAll(closeAll);
-it('profiles 500-session SQL and enforces the paced speed target',async()=>{
+it.runIf(process.env.AIHR_CI_PG_STATEMENTS==='1')('profiles 500-session SQL and enforces the paced speed target',async()=>{
  expect(process.env.AIHR_CI_PG_STATEMENTS).toBe('1');
  await owner.client`create extension if not exists pg_stat_statements`;
  const out=process.env.AIHR_FOCUSED_EVIDENCE_DIR!;expect(out).toBeTruthy();
