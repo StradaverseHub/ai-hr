@@ -225,7 +225,10 @@ and an explicit unknown source join date must not inherit a local date. Repairs
 `7b7e4b444` / `f256f8f34` add direct native comparisons with the existing owner.
 Current-main fixture/lifecycle checks and whole compiler run
 [41119700182](https://github.com/StradaverseHub/ai-hr/actions/runs/41119700182);
-the later explicit-null date assertion needs its own final focused evidence.
+**75 cases PASS** (32 DB,43 non-DB), zero skips; **whole compiler PASS** on
+`2cfde7e0b`. The final explicit-null date assertion and lifecycle suite then pass
+**29 native cases**, zero skips, plus the **whole compiler** on frozen
+`e0897e409` in [41120612459](https://github.com/StradaverseHub/ai-hr/actions/runs/41120612459).
 These later source changes are not relabelled onto the source645 load runs.
 
 Generated fingerprints are refreshed after integration. The immutable Git-blob
@@ -236,7 +239,10 @@ approved-contract records still identify the earlier approved digest, and the tw
 pending records are untouched. The source-bound approval gate therefore remains
 closed in this draft; ordinary protected-provider positive checks cannot yet pass.
 Run [41119710456](https://github.com/StradaverseHub/ai-hr/actions/runs/41119710456)
-retains the real gate result. No generated hash alone renews human approval.
+retains the real gate result on `2cfde7e0b`: two cases PASS (including exact manifest
+freshness), one FAIL because approved records still carry the old digest. No skipped
+assertions. This is an unresolved approval-binding hold, not an all-green application
+receipt. No generated hash alone renews human approval.
 The [technical review and exact proposed scope](reviews/system-performance-provider-source-review-20261031.md)
 records the reviewed changes; a fingerprint-only proposal is prepared and unapplied.
 
@@ -378,6 +384,14 @@ fetching a redirect target, rebuilding the root shell. The current test intentio
 measures full documents and real redirecting actions. A separately labelled warm
 client-navigation workload is still needed; it must preserve principal, scoped-data
 and persistence checks rather than substituting HTTP success alone.
+
+The Claims action's own-employment selection is an authority boundary, not merely
+a display lookup. The draft owner's person equality check does not replace active
+subject selection. Any faster save path must compose the equivalent native selection
+proof with the canonical command, retain receipt rollback and submit rules, and keep
+the client view current across employment changes and navigation. Returning bounded
+draft state without rebuilding the global shell needs its own behavior/browser proof;
+removing the existing action guard is not an approved performance shortcut.
 
 Priorities remain:
 
