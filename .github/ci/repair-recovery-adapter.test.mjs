@@ -1,7 +1,7 @@
 /** Actual GitHub transport/ZIP/extractor/source-assessment pipeline with a local API executable. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,readdirSync,rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fixture,put,now} from './resume-test-fixtures.mjs';
@@ -135,4 +135,18 @@ test('Actual complete history collector retains deleted-alias failures even with
   assert.throws(()=>collectCompleteRepairHistory(input),/Unaccounted/);
   row.display_title='Focused only · codex/mobile-recovery-6bdd-001';writeFileSync(join(root,'row.json'),JSON.stringify(row));assert.throws(()=>collectCompleteRepairHistory(input),/Malformed/);
  }finally{process.env.PATH=previous;if(old===undefined)delete process.env.AIHR_DELETED_ALIAS_ROOT;else process.env.AIHR_DELETED_ALIAS_ROOT=old;rmSync(root,{recursive:true,force:true});}
+});
+
+test('Finite fixture reader preserves exact complete inert duration diagnostics without expanding v2 packet admission',()=>{
+ const root=mkdtempSync(join(tmpdir(),'fixture-duration-reader-')),path=join(root,'packet.zip');
+ const fixed=['baseline.sequence.json','baseline.log','baseline.vitest.json','duration.log','duration.sequence.json','duration.vitest.json','proof.json'];
+ const basic={'focused.json':JSON.stringify({groups:{NODB:['test/node.test.ts'],DB:[]}}),'nodb.vitest.json':'{}'},entries={...basic,...Object.fromEntries(fixed.map(n=>['duration-sequence-smoke/'+n,'{}']))};
+ const zip=e=>writeFileSync(path,browserExec('python3',['-c','import io,json,sys,zipfile; b=io.BytesIO(); z=zipfile.ZipFile(b,"w"); [(z.writestr(k,v)) for k,v in json.load(sys.stdin).items()]; z.close(); sys.stdout.buffer.write(b.getvalue())'],{input:JSON.stringify(e)}));
+ let index=0;const extract=(e,legacy=false)=>{zip(e);const destination=join(root,'out-'+index++);browserExec('python3',[browserFilePath(new URL(legacy?'./repair-recovery-extract.py':'./fixture-repair-extract.py',import.meta.url)),path,destination],{stdio:'pipe'});return destination;};
+ try{
+  const directory=extract(entries);assert.deepEqual(readdirSync(directory).sort(),['focused.json','nodb.vitest.json']);assert.throws(()=>extract(entries,true));
+  assert.deepEqual(readdirSync(extract(basic)).sort(),['focused.json','nodb.vitest.json']);
+  const missing={...entries};delete missing['duration-sequence-smoke/proof.json'];
+  for(const e of [missing,{...entries,'duration-sequence-smoke/unknown.json':'{}'},{...entries,'duration-sequence-smoke/../evil.json':'{}'},{...entries,'duration-sequence-smoke/proof.json':'x'.repeat(16*1024*1024+1)},{...entries,'focused.json':JSON.stringify({groups:{NODB:[],DB:['test/db.test.ts']}}),'db.vitest.json':'{}'}])assert.throws(()=>extract(e));
+ }finally{rmSync(root,{recursive:true,force:true});}
 });

@@ -94,6 +94,7 @@ export function validateCompilerAuxiliary(aux,{plan,sourceRun,classifierHash,his
  assert(r.files.every(p=>plan.suite.includes(p))&&Array.isArray(r.batches)&&r.batches.length>0&&r.batches.every(b=>b.exitCode===0&&b.processExitCode===0&&b.signal===null),'Unsuccessful auxiliary source preflight');
  return {...authenticated.compiler,auxiliary:true,artifactId:aux.artifacts[0].id,digest:aux.artifacts[0].digest,reportHash:hash(r)};
 }
+export const RETAINED_PDF_EXECUTION_CONTROLLER='f133ce140f38f782d44de1187a82b822e2acdb74';
 export function verifyFixtureBrowserRecovery({sourcePlan,plan,assessment,sourceRun,reports,focused,browsers=[],pdf=null,compilerAuxiliary=null,impactContext,classifierHash,verificationController,verificationDiagnostic,reviewedController=null,buildRun,build,history}){
  assert(sourceRun.status==='completed'&&sourceRun.conclusion==='failure'&&sourceRun.run_attempt===1&&assessment.sourceRun.id===sourceRun.id,'Original complete failure required');
  assert(assessment.sha===sourcePlan.sha&&assessment.controller===sourcePlan.controller&&assessment.fingerprint===sourcePlan.fingerprint&&assessment.baseline===plan.migrationBase,'Original source assessment differs');
@@ -129,14 +130,14 @@ export function verifyFixtureBrowserRecovery({sourcePlan,plan,assessment,sourceR
  const pdfUnits=plan.units.filter(u=>u.pdfTools&&fresh.has(u.id)),pdfSources=[];
  assert((pdfUnits.length>0)===(pdf!==null)&&pdfUnits.length<=1,'Exactly the required complete native PDF unit must be authenticated');
  if(pdf){
-  const binding=validatePdfRepairMetadata({...pdf,expected:{runId:pdf.run.id,verificationController,after:sourceRun.updated_at}});
+  const binding=validatePdfRepairMetadata({...pdf,expected:{runId:pdf.run.id,verificationController:RETAINED_PDF_EXECUTION_CONTROLLER,after:sourceRun.updated_at}});
   assert(history.runIds.includes(pdf.run.id)&&pdf.codeController===plan.controller,'Unaccounted or unpinned PDF code controller');
-  const {fingerprint,...executionBody}={...plan,controller:verificationController},executionPlan={...executionBody,fingerprint:hash(executionBody)};
+  const {fingerprint,...executionBody}={...plan,controller:RETAINED_PDF_EXECUTION_CONTROLLER},executionPlan={...executionBody,fingerprint:hash(executionBody)};
   const u=pdfUnits[0];assert(pdf.report?.id===u.id,'Foreign PDF unit');validateCompleteUnitHealth({report:pdf.report,standaloneHealth:pdf.standaloneHealth,producer:binding.producer});verifyUnitReport(executionPlan,pdf.report);
   assert(pdf.report.batches.length===1&&isDeepStrictEqual(pdf.report.pdfToolSetup,pdf.setup)&&isDeepStrictEqual(pdf.report.batches[0].result,pdf.result),'PDF setup or standalone result differs');
   const cases=caseInventory(pdf.result,u.files,pdf.report.cwd,{passing:true});
-  for(const [path,names] of cases){assert(needed.get(u.id).has(path)&&!replacements.has(path),'Extra or duplicate PDF replacement');replacements.set(path,{cases:names,runId:pdf.run.id,jobId:binding.producer.id,artifactId:binding.artifact.id,digest:binding.artifact.digest,executionController:verificationController,codeController:pdf.codeController});}
-  pdfSources.push({runId:pdf.run.id,jobId:binding.producer.id,artifactId:binding.artifact.id,digest:binding.artifact.digest,executionController:verificationController,codeController:pdf.codeController,reportHash:hash(pdf.report),setupHash:hash(pdf.setup)});
+  for(const [path,names] of cases){assert(needed.get(u.id).has(path)&&!replacements.has(path),'Extra or duplicate PDF replacement');replacements.set(path,{cases:names,runId:pdf.run.id,jobId:binding.producer.id,artifactId:binding.artifact.id,digest:binding.artifact.digest,executionController:RETAINED_PDF_EXECUTION_CONTROLLER,codeController:pdf.codeController});}
+  pdfSources.push({runId:pdf.run.id,jobId:binding.producer.id,artifactId:binding.artifact.id,digest:binding.artifact.digest,executionController:RETAINED_PDF_EXECUTION_CONTROLLER,codeController:pdf.codeController,reportHash:hash(pdf.report),setupHash:hash(pdf.setup)});
  }
  const browserSources=[];
  for(const b of browsers){

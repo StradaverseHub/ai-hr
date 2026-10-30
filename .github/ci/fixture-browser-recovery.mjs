@@ -16,7 +16,7 @@ import {assessResumeSource} from './resume-source.mjs';
 import {reconstructFixtureRepairImpact} from './fixture-repair-impact.mjs';
 import {collectRecoveryEvidence} from './focused-recovery.mjs';
 import {validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
-import {verifyFixtureBrowserRecovery,repairDisposition,validateRepairFocusedMetadata,validateRepairBuildMetadata} from './fixture-browser-recovery-policy.mjs';
+import {verifyFixtureBrowserRecovery,repairDisposition,validateRepairFocusedMetadata,validateRepairBuildMetadata,RETAINED_PDF_EXECUTION_CONTROLLER} from './fixture-browser-recovery-policy.mjs';
 import {validatePdfRepairMetadata,PDF_REPAIR_TITLE} from './pdf-repair-metadata.mjs';
 import {validateBrowserRepairMetadata,BROWSER_REPAIR_WORKFLOW_ID,BROWSER_REPAIR_WORKFLOW_PATH} from './browser-repair-metadata.mjs';
 const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}));
@@ -143,7 +143,7 @@ export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,b
  const allowedFocusTitles=new Set([candidateBranch,...candidateRefs].map(ref=>'Focused only · '+ref));
  for(const id of focusedRunIds.slice().sort((a,b)=>a-b)){
   const m=metadata(id);assert(allowedFocusTitles.has(m.run.display_title),'Unregistered source alias focused execution');const authenticated=validateRepairFocusedMetadata({...m,expected:{runId:id,controller,workflowId:workflow.id,after:source.run.updated_at}});
-  const f=await collectRecoveryEvidence(id,join(dir,'focused-'+id),{reuse,repairPackets:true}),artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
+  const f=await collectRecoveryEvidence(id,join(dir,'focused-'+id),{reuse,fixturePackets:true}),artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
   assert(isDeepStrictEqual(m,facts(f)),'Focused metadata changed during download');
   const report=packet.get('focused.json'),database=report?.groups?.DB?.length>0,resultName=database?'db.vitest.json':'nodb.vitest.json';
   assert(isDeepStrictEqual([...packet.keys()].sort(),[resultName,'focused.json'].sort()),'Exact homogeneous focused packet required');
@@ -172,12 +172,12 @@ export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,b
  const browsers=[{...browserEvidence,candidateBranch,lockSha256:hash(readFileSync(join(candidatePath,'pnpm-lock.yaml'))),packets}];
  let pdf=null;
  if(needsPdf){
-  const pm=metadata(pdfRunId),binding=validatePdfRepairMetadata({...pm,expected:{runId:pdfRunId,verificationController,after:source.run.updated_at}});
+  const pm=metadata(pdfRunId),binding=validatePdfRepairMetadata({...pm,expected:{runId:pdfRunId,verificationController:RETAINED_PDF_EXECUTION_CONTROLLER,after:source.run.updated_at}});
   const evidence=await collectRecoveryEvidence(pdfRunId,join(dir,'pdf-'+pdfRunId),{reuse});assert(isDeepStrictEqual(pm,facts(evidence)),'PDF metadata changed during byte download');
   const packet=evidence.parsed.get(binding.artifact.name),unit=plan.units.find(u=>u.pdfTools);
   const required=[`unit-${unit.id}.json`,`${unit.id}-batch-0.json`,`health-before-${unit.id}.json`,'pdf-tools-setup.json','code-controller.json'].sort();
   assert(isDeepStrictEqual([...packet.keys()].sort(),required),'Complete closed PDF unit archive required');
-  const code=packet.get('code-controller.json');assert(code?.codeController===controller&&code.executionController===verificationController&&code.source===candidate,'PDF controller identities differ');
+  const code=packet.get('code-controller.json');assert(code?.codeController===controller&&code.executionController===RETAINED_PDF_EXECUTION_CONTROLLER&&code.source===candidate,'PDF controller identities differ');
   pdf={...evidence,standaloneHealth:packet.get(`health-before-${unit.id}.json`),codeController:code.codeController,report:packet.get(`unit-${unit.id}.json`),result:packet.get(`${unit.id}-batch-0.json`),setup:packet.get('pdf-tools-setup.json')};
  }
  const bm=metadata(buildRunId);validateRepairBuildMetadata({...bm,expected:{runId:buildRunId,controller,after:source.run.updated_at,candidateBranch}});

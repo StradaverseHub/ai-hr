@@ -74,7 +74,7 @@ jobs:
   resolve:
     if: ${{ github.repository == 'StradaverseHub/ai-hr' && (github.event_name != 'pull_request' || (!github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: ${{ inputs.fixture_projection && 10 || 5 }}
     outputs:
       sha: ${{ steps.candidate.outputs.sha }}
       branch: ${{ steps.candidate.outputs.branch }}
@@ -180,6 +180,7 @@ jobs:
           MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
         run: |
           ln -s "$GITHUB_WORKSPACE/scratchpad/fixture-projection-candidate/node_modules" node_modules
+          node .github/ci/fixture-repair-transport-proof.mjs
           node --import tsx --test .github/ci/fixture-impact-classifier.test.mjs
           node --import tsx .github/ci/fixture-browser-impact-projection.mjs "$RUNNER_TEMP/fixture-original" "$GITHUB_WORKSPACE/scratchpad/fixture-projection-candidate" "$RUNNER_TEMP/fixture-impact-projection.json"
       - if: ${{ inputs.fixture_projection }}
