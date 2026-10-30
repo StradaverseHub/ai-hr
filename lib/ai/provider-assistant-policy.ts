@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {types as nodeTypes} from 'node:util';
 import {z} from 'zod';
 import {adjudicatePromptReadPlan} from './module-agent-prompt-candidate';
+import {captureAssistantProposalHints,type AssistantProposableAction,type AssistantProposalHints} from './assistant-action-proposal-hints';
 import {isCalendarDate} from '../calendar-date';
 import {AiGatewayError,type ConverseArgs,type GenerateArgs} from './types';
 import {AGENT_MODULE_CODES,type AgentModuleCode} from './module-agents';
@@ -39,13 +40,13 @@ function capture(value:unknown):PrivateAssistantPayload{
   if(new Set(parsed.reads.map(row=>row.read)).size!==parsed.reads.length)return fail();
   for(const row of parsed.reads){if(new Set(row.cards.map(card=>card.card)).size!==row.cards.length||new Set(row.explanations.map(item=>JSON.stringify(item))).size!==row.explanations.length)return fail();for(const card of row.cards)if(new Set(card.facts.map(fact=>fact.fact)).size!==card.facts.length)return fail();}
  }
- return parsed;
+ const freeze=(value:unknown):void=>{if(value&&typeof value==='object'){for(const item of Object.values(value))freeze(item);Object.freeze(value);}};freeze(parsed);return parsed;
 }
 const system='Select only relevant available ordinal facts or canonical explanations from this closed source catalogue. There are no HR values or human words here. Never infer amounts, identities, causes, outcomes, permissions, dates or missing information. Return exactly one JSON object: {"version":1,"mode":"answer","blocks":[{"kind":"fact","read":0,"card":0,"fact":0}]} or an available {"kind":"explanation","read":0,"card":null,"code":"exact-code"} block; select 1 to 16 distinct blocks. Use {"version":1,"mode":"insufficient","code":"no_verified_facts"} only when no available references exist. Do not return prose, tools, actions, effects, history or other fields. For leave_available prioritize available; leave_pending prioritize pending; leave_taken prioritize taken. Other intents select the smallest useful current-source answer.';
 export function capturePrivateAssistantTask(value:unknown):{args:ConverseArgs|GenerateArgs;local:PrivateAssistantPayload}{
  const local=capture(value),json=JSON.stringify(local);
  if(local.operation==='draft')return{args:Object.freeze({system:'Choose only from the supplied source-owned module list. Return exactly {"decision":"read","modules":["closed-module-code"]}, using the supplied modules only, or {"decision":"refuse","modules":[]}. Never add modules, prose, effects or other keys.',prompt:json,maxTokens:384,timeoutMs:15000}),local};
- return{args:Object.freeze({system:[system],turns:[{role:'user',content:json}],tools:[],maxTokens:2048,timeoutMs:30000}),local};
+ return{args:Object.freeze({system:[system],turns:[{role:'user' as const,content:json}],tools:[],maxTokens:2048,timeoutMs:30000}),local};
 }
 export function fingerprintPrivateAssistantTask(value:unknown):string{return createHash('sha256').update(JSON.stringify(capture(value))).digest('hex');}
 export function privateAssistantCatalogue(intent:PrivateAssistantIntent,reads:readonly AssistantAnswerRead[]):PrivateAssistantPayload{
@@ -72,21 +73,44 @@ const aliases:Readonly<Partial<Record<PrivateAssistantIntent,readonly string[]>>
  attendance:['my attendance','show my attendance'],performance:['my performance review','show my review status'],notifications:['my notifications'],approvals:['my approvals'],toil:['my replacement credits'],lifecycle:['my onboarding'],knowledge_base:['my knowledge base','show published guides'],rewards:['my rewards'],
 });
 const dictionaries=[en,ms,zh,vi,ta,th];
+const moduleNames:Readonly<Partial<Record<AgentModuleCode,readonly string[]>>>=Object.freeze({
+ assistant:['assistant','pembantu','助手','trợ lý','உதவியாளர்','ผู้ช่วย'],leave:['leave','cuti','请假','nghỉ phép','விடுப்பு','การลา'],claims:['claims','tuntutan','报销','bồi hoàn','கோரிக்கைகள்','การเบิกจ่าย'],payroll:['payroll','gaji','薪资','lương','சம்பளம்','เงินเดือน'],attendance:['attendance','kehadiran','考勤','chấm công','வருகை','การลงเวลา'],
+});
+export function resolvePrivateAssistantProposal(question:string):Readonly<{action:AssistantProposableAction;hints:AssistantProposalHints}>|null{
+ const text=normalize(question);
+ const phrases:Readonly<Partial<Record<AssistantProposableAction,readonly string[]>>>=Object.freeze({
+  'leave.cancel':['cancel my leave','batalkan cuti saya','取消我的请假','hủy đơn nghỉ phép của tôi','எனது விடுப்பை ரத்து செய்','ยกเลิกการลาของฉัน'],
+  'claims.cancel':['cancel my claim','cancel my claims','batalkan tuntutan saya','取消我的报销','hủy yêu cầu bồi hoàn của tôi','எனது கோரிக்கையை ரத்து செய்','ยกเลิกการเบิกจ่ายของฉัน'],
+  'approvals.claim.decide':['review claim approvals','review my claim approvals','semak kelulusan tuntutan','审核报销审批','xem xét phê duyệt bồi hoàn','கோரிக்கை ஒப்புதல்களை மதிப்பாய்வு செய்','ตรวจสอบการอนุมัติการเบิกจ่าย'],
+  'approvals.attendance.decide':['review attendance approvals','review my attendance approvals','semak kelulusan kehadiran','审核考勤审批','xem xét phê duyệt chấm công','வருகை ஒப்புதல்களை மதிப்பாய்வு செய்','ตรวจสอบการอนุมัติการลงเวลา'],
+  'approvals.toil.decide':['review replacement credit approvals','review my replacement credit approvals','semak kelulusan kredit gantian','审核调休审批','xem xét phê duyệt nghỉ bù','மாற்று விடுப்பு ஒப்புதல்களை மதிப்பாய்வு செய்','ตรวจสอบการอนุมัติวันหยุดชดเชย'],
+ });
+ for(const [action,values]of Object.entries(phrases))if(values?.some(value=>normalize(value)===text))return{action:action as AssistantProposableAction,hints:captureAssistantProposalHints(action,{})};
+ const change=/^change my leave to (\d{4}-\d{2}-\d{2}) through (\d{4}-\d{2}-\d{2})$/.exec(text);
+ const overtime=/^request overtime on (\d{4}-\d{2}-\d{2}) from (\d{2}:\d{2}) to (\d{2}:\d{2})$/.exec(text);
+ try{
+  if(change)return{action:'leave.edit',hints:captureAssistantProposalHints('leave.edit',{newStartDate:change[1],newEndDate:change[2]})};
+  if(overtime)return{action:'attendance.overtime.request',hints:captureAssistantProposalHints('attendance.overtime.request',{date:overtime[1],plannedStartTime:overtime[2],plannedEndTime:overtime[3]})};
+ }catch{return null;}
+ return null;
+}
 /** A closed local grammar, NOT regex masking of arbitrary language. Unknown wording stays local and
  * asks for a module; names, free prose and pasted instructions are never sent as an alleged safe intent. */
-export function resolvePrivateAssistantIntent(question:string,previous:readonly string[]=[]):Readonly<{intent:PrivateAssistantIntent|null;social:'greeting'|'thanks'|null;fromDate?:string}>{
+export function resolvePrivateAssistantIntent(question:string,previous:readonly string[]=[]):Readonly<{intent:PrivateAssistantIntent|null;social:'greeting'|'thanks'|null;fromDate?:string;module?:AgentModuleCode}>{
  const social=assistantSocialIntent(question);if(social)return{intent:null,social};
  const normalized=normalize(question);
- for(const dictionary of dictionaries){const template=dictionary.assistant.workspace.holidays_prompt,[prefix,suffix]=template.split('{date}');if(suffix===undefined)continue;const before=normalize(prefix),after=normalize(suffix);if(normalized.startsWith(before)&&normalized.endsWith(after)){const date=normalized.slice(before.length,after?normalized.length-after.length:undefined).trim();if(isCalendarDate(date))return{intent:'holidays',social:null,fromDate:date};}}
+ for(const dictionary of dictionaries){const template=dictionary.assistant.workspace.holidays_prompt,[prefix,suffix]=template.split('{date}');if(suffix===undefined)continue;const before=normalize(prefix),after=normalize(suffix);if(normalized.startsWith(before)&&normalized.endsWith(after)){const date=normalized.slice(before.length,after?normalized.length-after.length:undefined).trim();if(isCalendarDate(date))return{intent:'holidays',social:null,fromDate:date,module:'org'};}}
  for(const intent of PRIVATE_ASSISTANT_INTENTS){
-  if(aliases[intent]?.some(alias=>normalize(alias)===normalized)||dictionaries.some(dictionary=>{const key=`${intent}_prompt` as keyof typeof en.assistant.workspace;const value=dictionary.assistant.workspace[key as keyof typeof dictionary.assistant.workspace];return typeof value==='string'&&!value.includes('{date}')&&normalize(value)===normalized;}))return{intent,social:null};
+  if(aliases[intent]?.some(alias=>normalize(alias)===normalized)||dictionaries.some(dictionary=>{const key=`${intent}_prompt` as keyof typeof en.assistant.workspace;const value=dictionary.assistant.workspace[key as keyof typeof dictionary.assistant.workspace];return typeof value==='string'&&!value.includes('{date}')&&normalize(value)===normalized;}))return{intent,social:null,module:privateAssistantModules(intent)[0]};
  }
- for(const module of AGENT_MODULE_CODES)if(normalized===normalize(module.replaceAll('_',' '))){const map:Partial<Record<AgentModuleCode,PrivateAssistantIntent>>={leave:'leave_available',claims:'claim_statuses',payroll:'payslip',employees:'work_profile',org:'reporting_line',assistant:'module_overview',attendance:'attendance',performance:'performance',notifications:'notifications',approvals:'approvals',toil:'toil',lifecycle:'lifecycle',knowledge_base:'knowledge_base',rewards:'rewards'};return{intent:map[module]??null,social:null};}
+ for(const module of AGENT_MODULE_CODES){const names=[module.replaceAll('_',' '),...(moduleNames[module]??[])];if(names.some(name=>normalized===normalize(name))){const map:Partial<Record<AgentModuleCode,PrivateAssistantIntent>>={leave:'leave_available',claims:'claim_statuses',payroll:'payslip',employees:'work_profile',org:'reporting_line',assistant:'module_overview',attendance:'attendance',performance:'performance',notifications:'notifications',approvals:'approvals',toil:'toil',lifecycle:'lifecycle',knowledge_base:'knowledge_base',rewards:'rewards'};return{intent:map[module]??null,social:null,module};}
+  if(names.some(name=>normalized===`what can you help me with in ${normalize(name)}`||normalized===`show current capabilities for ${normalize(name)}`))return{intent:'module_overview',social:null,module};
+ }
  const last=previous.length?resolvePrivateAssistantIntent(previous[previous.length-1],previous.slice(0,-1)).intent:null;
  if(last&&['leave_available','leave_pending','leave_taken'].includes(last)){
-  if(['and pending','what about pending','and how much is pending'].includes(normalized))return{intent:'leave_pending',social:null};
-  if(['and taken','what about taken','and how much have i taken'].includes(normalized))return{intent:'leave_taken',social:null};
-  if(['and available','what about available'].includes(normalized))return{intent:'leave_available',social:null};
+  if(['and pending','what about pending','and how much is pending'].includes(normalized))return{intent:'leave_pending',social:null,module:'leave'};
+  if(['and taken','what about taken','and how much have i taken'].includes(normalized))return{intent:'leave_taken',social:null,module:'leave'};
+  if(['and available','what about available'].includes(normalized))return{intent:'leave_available',social:null,module:'leave'};
  }
  return{intent:null,social:null};
 }
