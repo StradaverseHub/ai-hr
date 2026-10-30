@@ -172,24 +172,31 @@ describe('exact native source ownership at callback tail',()=>{
   try{await Promise.allSettled([generateFeedbackPlan(a,{feedbackId:id})]);}finally{await withdrawal;}expect(transport).toHaveBeenCalledOnce();expect((await owner.db.select().from(schema.feedbackRequest).where(eq(schema.feedbackRequest.id,id)))[0].status).toBe('cancelled');
  });
  it.each(['cancel','type'] as const)('holds actual triage %s source against its native writer through admission',async kind=>{
-  const claim=await claimFixture(),[type]=await owner.db.select().from(schema.claimType).where(eq(schema.claimType.id,claim.claimTypeId));let writer:Promise<void>|undefined;
+  const claim=await claimFixture(),[type]=await owner.db.select().from(schema.claimType).where(eq(schema.claimType.id,claim.claimTypeId));let writer:Promise<void>|undefined,observed=false;
   afterSourceReplay=async tx=>{
-   if(kind==='cancel'){
-    // The native row-write guard refuses busy source custody immediately; it does not wait.
-    await expect(cancelClaim(a,claim.id)).rejects.toMatchObject({cause:{code:'55P03',message:'Claims source is busy'}});
-   }else{
-    const [holder]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);
-    writer=updateClaimType(a,{id:type.id,name:'Changed canonical type label',requiresReceipt:type.requiresReceipt,defaultTaxable:type.defaultTaxable});
-    await observedBlocked(holder.pid,writer);
-   }
-   expect(transport).not.toHaveBeenCalled();expect((await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,claim.id)))[0].status).toBe('pending');
+   const [holder]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);
+   // Cancellation first locks the selected request FOR UPDATE; type editing also waits on its row.
+   // Observe that real wait without awaiting completion inside the transaction that owns FOR SHARE.
+   writer=kind==='cancel'?cancelClaim(a,claim.id):updateClaimType(a,{id:type.id,name:'Changed canonical type label',requiresReceipt:type.requiresReceipt,defaultTaxable:type.defaultTaxable});
+   await observedBlocked(holder.pid,writer);
+   expect(transport).not.toHaveBeenCalled();expect((await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,claim.id)))[0].status).toBe('pending');observed=true;
   };
-  try{await Promise.allSettled([triagePendingClaims(a)]);}finally{await writer;}expect(transport).toHaveBeenCalledOnce();
-  if(kind==='cancel'){
-   expect((await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,claim.id)))[0].status).toBe('pending');
-   await cancelClaim(a,claim.id);
-   expect((await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,claim.id)))[0].status).toBe('cancelled');
-  }else expect((await owner.db.select().from(schema.claimType).where(eq(schema.claimType.id,type.id)))[0].name).toBe('Changed canonical type label');
+  // The writer may invalidate triage's later result replay, but must complete after admission releases.
+  try{await Promise.allSettled([triagePendingClaims(a)]);}finally{await writer;}
+  expect(observed).toBe(true);expect(transport).toHaveBeenCalledOnce();
+  if(kind==='cancel')expect((await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,claim.id)))[0].status).toBe('cancelled');
+  else expect((await owner.db.select().from(schema.claimType).where(eq(schema.claimType.id,type.id)))[0].name).toBe('Changed canonical type label');
+ });
+ it('refuses another native claim row write during tenant source custody and permits it after admission',async()=>{
+  const claim=await claimFixture(),[draft]=await owner.db.insert(schema.claimRequest).values({tenantId:b.tenantId,employmentId:claim.employmentId,claimTypeId:claim.claimTypeId,amount:'12.00',incurredOn:todayInKualaLumpur(),description:'Original sibling draft.',status:'draft'}).returning();
+  const write=()=>withTenant(a,tx=>tx.update(schema.claimRequest).set({description:'Changed sibling draft.'}).where(eq(schema.claimRequest.id,draft.id)).returning({id:schema.claimRequest.id,description:schema.claimRequest.description}));let observed=false;
+  afterSourceReplay=async()=>{
+   // This draft is outside the pending-row footprint, so its BEFORE trigger reaches TRY custody.
+   await expect(write()).rejects.toMatchObject({cause:{code:'55P03',message:'Claims source is busy'}});
+   expect((await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,draft.id)))[0]).toEqual(draft);expect(transport).not.toHaveBeenCalled();observed=true;
+  };
+  expect(await triagePendingClaims(a)).toMatchObject({asked:1,queried:1,cleared:0});expect(observed).toBe(true);expect(transport).toHaveBeenCalledOnce();
+  expect(await write()).toEqual([{id:draft.id,description:'Changed sibling draft.'}]);expect((await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,draft.id)))[0].description).toBe('Changed sibling draft.');
  });
  it('prevents actual standard manager-review writes at callback tail, then permits native submission after admission',async()=>{
   const f=await performanceFixture(),[before]=await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id,f.reviewId)),submission={reviewId:f.reviewId,managerRating:4,overallRating:4,managerComments:'Actual fictional native manager decision.'};
