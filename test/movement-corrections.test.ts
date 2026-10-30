@@ -582,6 +582,13 @@ describe('payroll interaction — acknowledge on closed, warn on processed, neve
       acknowledgeClosedPayroll: true,
     });
     expect((await openCompensation(hire.employmentId)).basicSalary).toBe('4500.00');
+    // …the corrected salary starts after the closed month, which keeps the record it was paid on…
+    expect((await openCompensation(hire.employmentId)).validFrom).toBe('2026-07-01');
+    const june = await owner.db
+      .select({ basicSalary: schema.compensation.basicSalary, validTo: schema.compensation.validTo })
+      .from(schema.compensation)
+      .where(and(eq(schema.compensation.employmentId, hire.employmentId), eq(schema.compensation.validFrom, '2026-06-01'), isNull(schema.compensation.supersededAt)));
+    expect(june).toEqual([{ basicSalary: '5000.00', validTo: '2026-07-01' }]);
     // …the closed payslip is byte-for-byte what was issued, and its document metadata is retained…
     expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId, hire.employmentId))).toEqual(slipsBefore);
     const retained = await owner.db

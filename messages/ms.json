@@ -1748,7 +1748,7 @@
           "pendingTargetUnavailable": "Sasaran yang disimpan tidak lagi tersedia dalam pilihan atau skop akses semasa anda. Pembetulan ini tidak boleh disimpan. Semak peristiwa yang belum berkuat kuasa sebelum meneruskan.",
           "resignationLifecycleHint": "Maklumat peletakan jawatan berkuat kuasa pada Tarikh Kuat Kuasa. Rekodkan tarikh penyerahan, tarikh peletakan jawatan dan tarikh terakhir bekerja secara berasingan.",
           "closedPayrollTitle": "Gaji bagi {periods} telah ditutup.",
-          "closedPayrollBody": "Pembetulan ini mengemas kini rekod pekerja dan pemprosesan akan datang. Gaji yang telah ditutup, slip gaji yang telah dikeluarkan dan penyerahan berkanun mengekalkan angka muktamad dan tidak akan dikira semula. Jika sesuatu amaun perlu diselaraskan, gunakan proses pembetulan gaji.",
+          "closedPayrollBody": "Pembetulan ini mengemas kini rekod pekerja dan pemprosesan akan datang. Gaji yang telah ditutup, slip gaji yang telah dikeluarkan dan penyerahan berkanun mengekalkan angka muktamad dan tidak akan dikira semula. Jika sesuatu amaun perlu diselaraskan, gunakan proses pembetulan gaji. Gaji yang dibetulkan berkuat kuasa mulai bulan pertama selepas gaji yang telah ditutup.",
           "closedPayrollAcknowledge": "Saya faham bahawa gaji yang telah ditutup tidak akan berubah."
         },
         "edit": "Sunting",

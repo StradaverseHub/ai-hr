@@ -1748,7 +1748,7 @@
           "pendingTargetUnavailable": "Giá trị đích đã lưu không còn nằm trong các lựa chọn hoặc phạm vi truy cập hiện tại của bạn. Không thể lưu bản chỉnh sửa này. Hãy kiểm tra thay đổi chưa có hiệu lực trước khi tiếp tục.",
           "resignationLifecycleHint": "Thông tin nghỉ việc có hiệu lực vào Ngày hiệu lực. Ghi riêng ngày nộp đơn, ngày nghỉ việc và ngày làm việc cuối cùng.",
           "closedPayrollTitle": "Bảng lương {periods} đã được khóa sổ.",
-          "closedPayrollBody": "Việc điều chỉnh này cập nhật hồ sơ nhân viên và các lần xử lý sau. Bảng lương đã khóa, phiếu lương đã phát hành và các hồ sơ nộp theo luật định giữ nguyên số liệu cuối cùng và sẽ không được tính lại. Nếu cần điều chỉnh số tiền, hãy dùng quy trình điều chỉnh lương.",
+          "closedPayrollBody": "Việc điều chỉnh này cập nhật hồ sơ nhân viên và các lần xử lý sau. Bảng lương đã khóa, phiếu lương đã phát hành và các hồ sơ nộp theo luật định giữ nguyên số liệu cuối cùng và sẽ không được tính lại. Nếu cần điều chỉnh số tiền, hãy dùng quy trình điều chỉnh lương. Mức lương đã điều chỉnh có hiệu lực từ tháng đầu tiên sau kỳ lương đã khóa.",
           "closedPayrollAcknowledge": "Tôi hiểu rằng bảng lương đã khóa sẽ không thay đổi."
         },
         "edit": "Sửa",

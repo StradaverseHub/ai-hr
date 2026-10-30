@@ -197,7 +197,7 @@ export class SalaryRemarkRequiredError extends Error {
 }
 
 /** First day of the month AFTER a 'YYYY-MM' pay period — the exclusive end of its date range. */
-const nextMonthStart = (period: string): string => {
+export const nextMonthStart = (period: string): string => {
   const [y, m] = period.split('-').map(Number);
   return m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
 };
@@ -344,7 +344,13 @@ export async function setCompensation(
       )
       .limit(1);
     if (cur) {
-      await tx.update(compensation).set({ validTo: p.effectiveFrom }).where(eq(compensation.id, cur.id));
+      // 646355e5 — inside an acknowledged Movement correction, a salary clamped to the first open day can
+      // land on the very day the restored record starts; that record is replaced rather than left empty.
+      if (cur.validFrom === p.effectiveFrom && hasClosedPayrollCorrectionAuthorityTx(tx, p.employmentId)) {
+        await tx.update(compensation).set({ supersededAt: new Date() }).where(eq(compensation.id, cur.id));
+      } else {
+        await tx.update(compensation).set({ validTo: p.effectiveFrom }).where(eq(compensation.id, cur.id));
+      }
     }
     // Carry-forward semantics: undefined allowance keeps the prior figure (or 0 for a brand-new record);
     // an explicit value (incl. 0) sets it. This stops a basic-only revision from silently zeroing allowance.

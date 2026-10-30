@@ -76,6 +76,7 @@ import {
 } from './hire-correction';
 import {
   closedPeriodsTx,
+  nextMonthStart,
   overlapsClosedPeriod,
   processedPeriodsTx,
   setCompensation,
@@ -2311,7 +2312,10 @@ async function applyComparisonMovementTx(
           ...(dPayMode ? { payMode: dPayMode } : {}),
           ...(dPaymentTerm ? { paymentTerm: dPaymentTerm } : {}),
           ...(remarks ? { remarks } : {}),
-          effectiveFrom: p.effectiveDate,
+          // 646355e5 — an acknowledged correction never re-dates a salary into closed months.
+          effectiveFrom: hasClosedPayrollCorrectionAuthorityTx(tx, p.employmentId)
+            ? await salaryStartAfterClosedPayrollTx(tx, p.employmentId, p.effectiveDate)
+            : p.effectiveDate,
           movement: tag({ withRemarks: false }),
         },
         tx,
@@ -3222,6 +3226,72 @@ const crossesEntityTransfer = (from: string, to: string): boolean =>
 
 /** Undo ONE leg of a movement. `tag` marks every compensating write as a companion of the rollback, so the
  *  projection keeps rendering exactly one row per movement. */
+/** 646355e5 — the first day after the last closed payroll month overlapping [from, to), or null. */
+async function firstOpenDayAfterClosedTx(tx: Tx, employmentId: string, from: string, to: string | null): Promise<string | null> {
+  const closed = (await closedPeriodsTx(tx, employmentId)).filter((period) => overlapsClosedPeriod([period], from, to)).sort();
+  return closed.length ? nextMonthStart(closed[closed.length - 1]) : null;
+}
+
+/** 646355e5 — where a corrected salary starts: its own date, or the first day after closed months. */
+async function salaryStartAfterClosedPayrollTx(tx: Tx, employmentId: string, effectiveDate: string): Promise<string> {
+  const firstOpen = await firstOpenDayAfterClosedTx(tx, employmentId, effectiveDate, null);
+  return firstOpen && firstOpen > effectiveDate ? firstOpen : effectiveDate;
+}
+
+/**
+ * 646355e5 — undo a movement's salary record when closed payroll relied on it. The record keeps the
+ * closed months it paid (it is shortened, never removed); the previous salary is restored from the first
+ * open day for the rest of the window. Returns false when no closed month overlaps (the ordinary undo runs).
+ */
+async function undoSalaryAfterClosedPayrollTx(tx: Tx, ctx: SessionContext, employmentId: string, id: string, tag: MovementTag): Promise<boolean> {
+  const [rec] = await tx.select().from(compensation).where(eq(compensation.id, id)).limit(1);
+  const firstOpen = await firstOpenDayAfterClosedTx(tx, employmentId, rec.validFrom, rec.validTo);
+  if (!firstOpen) return false;
+  if (rec.validTo !== null && rec.validTo <= firstOpen) return true; // paid entirely in closed months
+  const [prev] = await tx
+    .select()
+    .from(compensation)
+    .where(and(eq(compensation.employmentId, employmentId), isNull(compensation.supersededAt), eq(compensation.validTo, rec.validFrom)))
+    .orderBy(desc(compensation.validFrom))
+    .limit(1);
+  await tx.update(compensation).set({ validTo: firstOpen }).where(eq(compensation.id, rec.id));
+  if (!prev) return true;
+  const [restored] = await tx
+    .insert(compensation)
+    .values({
+      tenantId: prev.tenantId,
+      employmentId,
+      basicSalary: prev.basicSalary,
+      currency: prev.currency,
+      monthlyAllowance: prev.monthlyAllowance,
+      payMode: prev.payMode,
+      paymentTerm: prev.paymentTerm,
+      rateAmount: prev.rateAmount,
+      remarks: prev.remarks,
+      validFrom: firstOpen,
+      validTo: rec.validTo,
+    })
+    .returning({ id: compensation.id });
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'compensation',
+    aggregateId: restored.id,
+    eventType: 'compensation.set',
+    actor: actorOf(ctx),
+    subjectEmploymentId: employmentId,
+    // Same redact-to-reference shape as setCompensation: amounts live on the row, never in the ledger.
+    payload: {
+      employmentId,
+      effectiveFrom: firstOpen,
+      fieldsChanged: ['basicSalary'],
+      restoredFrom: prev.id,
+      shortenedRecord: rec.id,
+      movement: { type: tag.type, groupId: tag.groupId, secondary: true },
+    },
+  });
+  return true;
+}
+
 /** 646355e5 — one later movement to put back after an older one is corrected. */
 type ReplayStep = { movementId: string; label: string; effectiveDate: string; sequence: number; behaviour: string; input: CreateMovementInput };
 
@@ -3496,6 +3566,9 @@ async function reverseLegTx(
         .where(and(eq(compensation.id, e.aggregateId), eq(compensation.employmentId, employmentId)))
         .limit(1);
       if (!row || row.supersededAt) return;
+      // 646355e5 — behind an acknowledged closed payroll the record those months were paid on is never
+      // removed (migration 0277 guard). The undo starts on the first day after the closed months instead.
+      if (hasClosedPayrollCorrectionAuthorityTx(tx, employmentId) && (await undoSalaryAfterClosedPayrollTx(tx, ctx, employmentId, row.id, tag))) return;
       // The Basic Salary card's own writer: it reopens the previous salary window and re-runs the
       // closed-payroll refusal as a backstop under the guard this module already applied.
       await supersedeCompensation(ctx, { compensationId: row.id, employmentId }, tx);
