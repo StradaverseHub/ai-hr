@@ -17,6 +17,8 @@ it('links the actual upload receipt without replacing the email body or per-pers
   expect(current().body).toBe('Dear colleague,'); expect(current().slots).toEqual([]);
   expect(fetcher).toHaveBeenCalledExactlyOnceWith('/lifecycle/v9/email-assets',expect.objectContaining({ method: 'POST', body: expect.any(FormData) }));
   expect(screen.getByRole('link',{name:file.name})).toHaveAttribute('href',`/lifecycle/v9/email-assets/${file.id}`);
+  // A receipt can appear before the upload transition enables its actions.
+  await waitFor(()=>expect(screen.getByRole('button',{name:`Remove file ${file.name}`})).toBeEnabled());
   fireEvent.click(screen.getByRole('button',{name:`Remove file ${file.name}`})); expect(current().files).toEqual([]);
 });
 it('inserts and removes the source inline-image token without exposing a public asset URL', async () => {
@@ -24,6 +26,7 @@ it('inserts and removes the source inline-image token without exposing a public 
   render(<Harness/>); fireEvent.change(screen.getByLabelText('Add image'),{target:{files:[new File(['Fictional image'],'Fictional logo.png',{type:'image/png'})]}});
   await waitFor(()=>expect(current().images).toEqual([image]));
   expect(screen.getByRole('img',{name:image.name})).toHaveAttribute('src',`/lifecycle/v9/email-assets/${image.id}`);
+  await waitFor(()=>expect(screen.getByRole('button',{name:`Insert ${image.name}`})).toBeEnabled());
   fireEvent.click(screen.getByRole('button',{name:`Insert ${image.name}`})); expect(current().body).toBe(`Dear colleague,\n\n{image:${image.id}}\n`);
   fireEvent.click(screen.getByRole('button',{name:`Remove image ${image.name}`})); expect(current().images).toEqual([]); expect(current().body).not.toContain('{image:');
 });
