@@ -15369,7 +15369,8 @@
     "builderOrdinaryRate": "Pembahagi kadar biasa",
     "builderHoursPerDay": "Jam sehari",
     "builderRate": "Pengganda kadar",
-    "builderContextHint": "Tetapkan hanya ikatan yang digunakan oleh formula ini. Uji formula tersimpan dalam pembina formula dengan pekerja, tempoh dan kitarannya."
+    "builderContextHint": "Tetapkan hanya ikatan yang digunakan oleh formula ini. Uji formula tersimpan dalam pembina formula dengan pekerja, tempoh dan kitarannya.",
+    "builderBindings": "Tetapan konteks formula"
   },
   "review": {
     "title": "Penilaian",
@@ -30605,6 +30606,10 @@
     "up": "Atas",
     "down": "Bawah",
     "remove": "Buang",
-    "savedUnavailable": "Formula tersimpan tidak tersedia. Muat semula senarai."
+    "savedUnavailable": "Formula tersimpan tidak tersedia. Muat semula senarai.",
+    "payrollRun": "Larian gaji",
+    "standaloneRun": "Ujian kendiri (tiada larian dipilih)",
+    "loadRuns": "Muatkan larian sepadan",
+    "runNumber": "Larian {number}"
   }
 }

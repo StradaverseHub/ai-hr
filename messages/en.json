@@ -15369,7 +15369,8 @@
     "builderOrdinaryRate": "Ordinary-rate divisor",
     "builderHoursPerDay": "Hours per day",
     "builderRate": "Rate multiplier",
-    "builderContextHint": "Set only the bindings used by this formula. Test the saved formula in Formula Builder with its employee, period and cycle."
+    "builderContextHint": "Set only the bindings used by this formula. Test the saved formula in Formula Builder with its employee, period and cycle.",
+    "builderBindings": "Formula context bindings"
   },
   "review": {
     "title": "Reviews",
@@ -30605,6 +30606,10 @@
     "up": "Up",
     "down": "Down",
     "remove": "Remove",
-    "savedUnavailable": "The saved formula is unavailable. Refresh the list."
+    "savedUnavailable": "The saved formula is unavailable. Refresh the list.",
+    "payrollRun": "Payroll run",
+    "standaloneRun": "Standalone test (no selected run)",
+    "loadRuns": "Load matching runs",
+    "runNumber": "Run {number}"
   }
 }

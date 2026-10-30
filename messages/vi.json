@@ -15369,7 +15369,8 @@
     "builderOrdinaryRate": "Số chia mức thông thường",
     "builderHoursPerDay": "Giờ mỗi ngày",
     "builderRate": "Hệ số",
-    "builderContextHint": "Chỉ đặt các liên kết được công thức sử dụng. Kiểm thử công thức đã lưu trong trình tạo với nhân viên, kỳ và chu kỳ."
+    "builderContextHint": "Chỉ đặt các liên kết được công thức sử dụng. Kiểm thử công thức đã lưu trong trình tạo với nhân viên, kỳ và chu kỳ.",
+    "builderBindings": "Thiết lập ngữ cảnh công thức"
   },
   "review": {
     "title": "Đánh giá",
@@ -30605,6 +30606,10 @@
     "up": "Lên",
     "down": "Xuống",
     "remove": "Bỏ",
-    "savedUnavailable": "Công thức đã lưu không khả dụng. Làm mới danh sách."
+    "savedUnavailable": "Công thức đã lưu không khả dụng. Làm mới danh sách.",
+    "payrollRun": "Đợt tính lương",
+    "standaloneRun": "Kiểm tra độc lập (chưa chọn đợt)",
+    "loadRuns": "Tải các đợt phù hợp",
+    "runNumber": "Đợt {number}"
   }
 }

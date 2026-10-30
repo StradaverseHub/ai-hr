@@ -15369,7 +15369,8 @@
     "builderOrdinaryRate": "普通费率除数",
     "builderHoursPerDay": "每日工时",
     "builderRate": "倍率",
-    "builderContextHint": "仅设置此公式使用的绑定。请在公式构建器中选择员工、月份及周期测试已保存公式。"
+    "builderContextHint": "仅设置此公式使用的绑定。请在公式构建器中选择员工、月份及周期测试已保存公式。",
+    "builderBindings": "公式上下文设置"
   },
   "review": {
     "title": "评估",
@@ -30605,6 +30606,10 @@
     "up": "上移",
     "down": "下移",
     "remove": "移除",
-    "savedUnavailable": "已保存的公式不可用，请刷新列表。"
+    "savedUnavailable": "已保存的公式不可用，请刷新列表。",
+    "payrollRun": "薪资运行批次",
+    "standaloneRun": "独立测试（未选择批次）",
+    "loadRuns": "加载匹配批次",
+    "runNumber": "批次 {number}"
   }
 }
