@@ -576,6 +576,32 @@ describe('Formula evidence retains a company independently of its current employ
       ? await tx.select().from(schema.payFormulaTest).where(eq(schema.payFormulaTest.companyId,target))
       : await tx.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.companyId,target)));
     expect(await readPrivate()).toHaveLength(1);
+    const readNativeReceipt=async()=>{
+      if(kind==='test'){
+        const view=await getPayFormula(ctx,saved.id);expect(view).not.toBeNull();
+        const matching=view!.tests.filter(receipt=>receipt.id===tested.id);expect(matching).toHaveLength(1);
+        const receipt=matching[0];
+        expect(receipt).toMatchObject({id:tested.id,revisionId:saved.revisionId,passed,amount:tested.amount,error:tested.error,
+          context:tested.context,sourceFingerprint:tested.sourceFingerprint,dependencyFingerprint:tested.dependencyFingerprint,
+          readRequirements:tested.readRequirements,explanations:tested.explanations});
+        expect(receipt.sourceFingerprint).toMatch(/^[a-f0-9]{64}$/);
+        expect(receipt.dependencyFingerprint).toMatch(/^[a-f0-9]{64}$/);
+        expect(receipt.readRequirements.categories).toContain('identity');
+        expect(receipt.readRequirements.fieldIds.length).toBeGreaterThan(0);
+        if(passed)expect(receipt.explanations).toContain(privateValue);
+        else expect(receipt.error).toMatch(/division by zero/i);
+        return receipt;
+      }
+      const receipt=await getFormulaEvaluation(ctx,evaluationId!);expect(receipt).not.toBeNull();
+      expect(receipt).toMatchObject({id:evaluationId,formulaId:'RETAINED_COMPANY',revisionId:saved.revisionId,
+        companyId:target,employmentId:employee.employmentId,componentCode:'OVERTIME',period:'2026-05',amount:'1',
+        payload:{explanations:tested.explanations,reads:[],sources:[]}});
+      expect(receipt!.payload.explanations).toContain(privateValue);
+      expect(receipt!.contentHash).toMatch(/^[a-f0-9]{64}$/);
+      expect(receipt!.payload).toMatchObject({contentHash:receipt!.contentHash});
+      return receipt;
+    };
+    const nativeBefore=await readNativeReceipt();
     // Revoke the real private category while retaining current company administration. The actor
     // must demonstrably lose BOTH direct RLS and service trace access, but keep the boolean guard.
     await owner.db.insert(schema.payrollPermissionGrant).values({tenantId:b.tenantId,companyId:target,role:'hr_admin',permissionKey:'report.read.identity',allowed:false});
@@ -591,6 +617,7 @@ describe('Formula evidence retains a company independently of its current employ
     expect(readOnly).toEqual({retained:true,mode:'on'});expect(await evidence()).toEqual(before);
     await owner.db.delete(schema.payrollPermissionGrant).where(and(eq(schema.payrollPermissionGrant.companyId,target),eq(schema.payrollPermissionGrant.permissionKey,'report.read.identity')));
     expect(await readPrivate()).toHaveLength(1);expect(await evidence()).toEqual(before);
+    expect(await readNativeReceipt(),'native private receipt must return unchanged after scope restoration').toEqual(nativeBefore);
 
     if(kind==='test'&&passed){
       const user=async(role:'employee'|'payroll_partner'|'hr_admin',companyId:string|null,personId:string|null=null):Promise<SessionContext>=>{
