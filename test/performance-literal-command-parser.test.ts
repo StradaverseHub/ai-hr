@@ -6,7 +6,7 @@ import {adjudicateReviewCommands,type ReviewCommandFacts} from '../packs/perform
 import {adjudicateEvidenceCommands,type EvidenceCommandFacts} from '../packs/performance/onehr/evidence-command-model';
 import {kpiSchema,careerSchema} from '../packs/performance/onehr/model';
 const id='00000000-0000-4000-8000-000000000001';
-const kpi=()=>kpiSchema.parse({id,title:'Delivery 🧑🏽‍💻 100',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:null});
+const kpi=()=>kpiSchema.parse({id,title:'Delivery 🧑🏽‍💻 100',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:null,setting:'draft',settingRemark:'',actual:null,note:'',approvedActual:null,moderationRemark:'',locked:false});
 const setting=(text:string):SettingCommandFacts=>({text,kpis:[kpi()],library:[],moderatorEmploymentId:null});
 const career=(text:string):CareerCommandFacts=>({text,career:careerSchema.parse({aspiration:'',mobility:null,mobilityNote:'',targetProfileId:null}),careerRevision:null,planRevision:null,goals:[],roles:[],canEditCareer:true,canEditGoals:true});
 const review=(text:string):ReviewCommandFacts=>({text,draft:{kind:'results',lines:[{id,actual:null,note:''}],remark:''},targets:[{id,label:kpi().title}]});
