@@ -10,7 +10,7 @@ import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness
 beforeAll(migrateTestDb);afterAll(closeAll);
 
 it('isolates Home role and reporting-visibility query planning with fresh native role proofs',async()=>{
- await resetDb();const b=await seedBase(),foreign=await seedBase(),base=adminCtx(b);
+ await resetDb();await owner.client`create extension if not exists pg_stat_statements`;const b=await seedBase(),foreign=await seedBase(),base=adminCtx(b);
  const companies=await owner.db.insert(s.company).values(Array.from({length:10},(_,i)=>({tenantId:b.tenantId,country:'MY',legalName:'Fictional role-profile company '+i}))).returning();
  const departments=await owner.db.insert(s.department).values(companies.map(c=>({tenantId:b.tenantId,companyId:c.id,name:'Fictional role-profile department'}))).returning();
  const users=Array.from({length:500},(_,i)=>({index:i,id:randomUUID(),personId:randomUUID(),employmentId:randomUUID(),companyId:companies[Math.floor(i/50)].id,departmentId:departments[Math.floor(i/50)].id,
@@ -36,10 +36,26 @@ it('isolates Home role and reporting-visibility query planning with fresh native
   const {original,body,...security}=row;
   definitions.push({signature,original,body,security,cached});
  }
+ // A cheap necessary-condition gate prevents an unassigned employee's role lookup
+ // from planning/evaluating every report/person visibility predicate. The full
+ // original visibility query remains authoritative whenever an edge exists.
+ const roleDefinition=definitions[0],body=roleDefinition.body as string;
+ const reportStart='OR EXISTS(\n   SELECT 1 FROM public.reporting_line r JOIN public.employment report ON report.id=r.subordinate_employment_id';
+ const reportEnd="  ) THEN 'manager' ELSE 'employee' END";
+ expect(body.split(reportStart)).toHaveLength(2);expect(body.split(reportEnd)).toHaveLength(2);
+ const guardedBody=body.replace(reportStart,`OR CASE WHEN EXISTS(
+   SELECT 1 FROM public.reporting_line pending_edge
+   WHERE pending_edge.manager_employment_id=e.id AND pending_edge.tenant_id=e.tenant_id
+    AND pending_edge.valid_to IS NULL AND pending_edge.superseded_at IS NULL
+    AND pending_edge.line_type::text<>'delegate'
+  ) THEN EXISTS(
+   SELECT 1 FROM public.reporting_line r JOIN public.employment report ON report.id=r.subordinate_employment_id`)
+  .replace(reportEnd,"  ) ELSE false END THEN 'manager' ELSE 'employee' END");
+ const guardedRole=roleDefinition.original.slice(0,roleDefinition.original.indexOf('AS $function$'))+'AS $home_role_guard$'+guardedBody+'$home_role_guard$;';
  const phases:Record<string,unknown>={},probes=users.slice(0,100);
  try{
-  for(const phase of ['baseline','role-plan','visibility-plans','baseline-after']){
-   for(const [i,definition]of definitions.entries())await owner.client.unsafe((phase==='role-plan'&&i===0||phase==='visibility-plans'&&i>0)?definition.cached:definition.original);
+  for(const phase of ['baseline','role-plan','guarded-role','visibility-plans','baseline-after']){
+   for(const [i,definition]of definitions.entries())await owner.client.unsafe(phase==='guarded-role'&&i===0?guardedRole:(phase==='role-plan'&&i===0||phase==='visibility-plans'&&i>0)?definition.cached:definition.original);
    for(const definition of definitions){
     const [security]=await owner.client`select proowner::text,proacl::text,prosecdef,provolatile,proconfig from pg_proc where oid=${definition.signature}::regprocedure`;
     expect(security).toEqual(definition.security);
