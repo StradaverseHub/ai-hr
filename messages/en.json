@@ -21236,7 +21236,7 @@
         "expires": "Review expires",
         "consequence": "Only the catalogue archive state changes. Existing employee assignments and access stay unchanged.",
         "expired": "This review has expired. Reopen it to check its status.",
-        "consent": "I have checked this position, company and change.",
+        "consent": "I reviewed this change and the retained company audit reference.",
         "confirm": "Confirm change",
         "reopen": "Reopen saved review",
         "discard": "Discard review",
@@ -21248,7 +21248,9 @@
         "uncertain": "The outcome is uncertain. Reopen the same saved review before doing anything else.",
         "completed": "The native change is recorded.",
         "retired": "This review has been retired.",
-        "unavailable": "This review is unavailable. Reopen System Labels to check current values and permissions."
+        "unavailable": "This review is unavailable. Reopen System Labels to check current values and permissions.",
+        "retentionNotice": "Creating this review retains an audit reference to this company. That reference prevents permanent deletion of the company, even if this review is discarded or expires. Use the native settings page if you do not want to create an Assistant review.",
+        "retentionReview": "The company audit reference is retained after this review is discarded or expires. Permanent company deletion remains blocked while that reference is retained."
       },
       "departmentArchive": {
         "title": "Archive or restore a department",
@@ -21267,7 +21269,7 @@
         "expires": "Review expires",
         "consequence": "Only the catalogue archive state changes. The department head, business unit, employee assignments and access grants are preserved.",
         "expired": "This review has expired. Reopen it to check its status.",
-        "consent": "I have checked this department, company and change.",
+        "consent": "I reviewed this change and the retained company audit reference.",
         "confirm": "Confirm change",
         "reopen": "Reopen saved review",
         "discard": "Discard review",
@@ -21280,7 +21282,9 @@
         "completed": "The native change is recorded.",
         "retired": "This review has been retired.",
         "unavailable": "This review is unavailable. Reopen System Labels to check current values and permissions.",
-        "department": "Department"
+        "department": "Department",
+        "retentionNotice": "Creating this review retains an audit reference to this company. That reference prevents permanent deletion of the company, even if this review is discarded or expires. Use the native settings page if you do not want to create an Assistant review.",
+        "retentionReview": "The company audit reference is retained after this review is discarded or expires. Permanent company deletion remains blocked while that reference is retained."
       },
       "rewardsCalendar": {
         "calendar": {
@@ -21595,7 +21599,7 @@
         "expires": "Review expires",
         "consequence": "Only template status changes. Future hires may use another configured rule or the legacy rule. Existing employee codes, the current running number and template format stay unchanged.",
         "expired": "This review has expired. Reopen it to check its status.",
-        "consent": "I have checked this template, company and the effect on future hires.",
+        "consent": "I reviewed this change and the retained company audit reference.",
         "confirm": "Confirm change",
         "reopen": "Reopen saved review",
         "discard": "Discard review",
@@ -21613,7 +21617,9 @@
         "prefix": "Prefix",
         "suffix": "Suffix",
         "none": "None",
-        "unnamed": "Unnamed template"
+        "unnamed": "Unnamed template",
+        "retentionNotice": "Creating this review retains an audit reference to this company. That reference prevents permanent deletion of the company, even if this review is discarded or expires. Use the native settings page if you do not want to create an Assistant review.",
+        "retentionReview": "The company audit reference is retained after this review is discarded or expires. Permanent company deletion remains blocked while that reference is retained."
       },
       "peopleGeneralPolicy": {
         "back": "Back to Organisation",

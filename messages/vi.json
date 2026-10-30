@@ -21236,7 +21236,7 @@
         "expires": "Hết hạn xem xét",
         "consequence": "Chỉ thay đổi trạng thái lưu trữ danh mục. Phân công nhân viên và quyền truy cập hiện tại giữ nguyên.",
         "expired": "Lần xem xét này đã hết hạn. Mở lại để kiểm tra trạng thái.",
-        "consent": "Tôi đã kiểm tra chức danh, công ty và thay đổi.",
+        "consent": "Tôi đã xem xét thay đổi này và tham chiếu kiểm toán công ty được giữ lại.",
         "confirm": "Xác nhận thay đổi",
         "reopen": "Mở lại bản xem xét đã lưu",
         "discard": "Hủy bản xem xét",
@@ -21248,7 +21248,9 @@
         "uncertain": "Kết quả chưa chắc chắn. Mở lại đúng bản xem xét đã lưu trước khi làm việc khác.",
         "completed": "Đã ghi nhận thay đổi trong hệ thống gốc.",
         "retired": "Bản xem xét này đã kết thúc.",
-        "unavailable": "Không thể mở bản xem xét. Mở Nhãn hệ thống để kiểm tra giá trị và quyền hiện tại."
+        "unavailable": "Không thể mở bản xem xét. Mở Nhãn hệ thống để kiểm tra giá trị và quyền hiện tại.",
+        "retentionNotice": "Việc tạo bản xem xét này sẽ giữ lại một tham chiếu kiểm toán đến công ty này. Tham chiếu đó ngăn việc xóa vĩnh viễn công ty, kể cả khi bản xem xét bị hủy hoặc hết hạn. Hãy dùng trang cài đặt gốc nếu bạn không muốn tạo bản xem xét của Trợ lý.",
+        "retentionReview": "Tham chiếu kiểm toán công ty vẫn được giữ lại sau khi bản xem xét bị hủy hoặc hết hạn. Việc xóa vĩnh viễn công ty vẫn bị chặn chừng nào tham chiếu đó còn được giữ lại."
       },
       "departmentArchive": {
         "title": "Lưu trữ hoặc khôi phục phòng ban",
@@ -21267,7 +21269,7 @@
         "expires": "Hết hạn xem xét",
         "consequence": "Chỉ thay đổi trạng thái lưu trữ danh mục. Trưởng phòng, đơn vị kinh doanh, phân công nhân viên và quyền truy cập được giữ nguyên.",
         "expired": "Lần xem xét này đã hết hạn. Mở lại để kiểm tra trạng thái.",
-        "consent": "Tôi đã kiểm tra phòng ban, công ty và thay đổi.",
+        "consent": "Tôi đã xem xét thay đổi này và tham chiếu kiểm toán công ty được giữ lại.",
         "confirm": "Xác nhận thay đổi",
         "reopen": "Mở lại bản xem xét đã lưu",
         "discard": "Hủy bản xem xét",
@@ -21280,7 +21282,9 @@
         "completed": "Đã ghi nhận thay đổi trong hệ thống gốc.",
         "retired": "Bản xem xét này đã kết thúc.",
         "unavailable": "Không thể mở bản xem xét. Mở Nhãn hệ thống để kiểm tra giá trị và quyền hiện tại.",
-        "department": "Phòng ban"
+        "department": "Phòng ban",
+        "retentionNotice": "Việc tạo bản xem xét này sẽ giữ lại một tham chiếu kiểm toán đến công ty này. Tham chiếu đó ngăn việc xóa vĩnh viễn công ty, kể cả khi bản xem xét bị hủy hoặc hết hạn. Hãy dùng trang cài đặt gốc nếu bạn không muốn tạo bản xem xét của Trợ lý.",
+        "retentionReview": "Tham chiếu kiểm toán công ty vẫn được giữ lại sau khi bản xem xét bị hủy hoặc hết hạn. Việc xóa vĩnh viễn công ty vẫn bị chặn chừng nào tham chiếu đó còn được giữ lại."
       },
       "rewardsCalendar": {
         "calendar": {
@@ -21595,7 +21599,7 @@
         "expires": "Hết hạn xem xét",
         "consequence": "Chỉ trạng thái mẫu thay đổi. Nhân viên tuyển mới có thể dùng quy tắc đã cấu hình khác hoặc quy tắc cũ. Mã nhân viên hiện có, số thứ tự hiện tại và định dạng mẫu được giữ nguyên.",
         "expired": "Lần xem xét này đã hết hạn. Mở lại để kiểm tra trạng thái.",
-        "consent": "Tôi đã kiểm tra mẫu, công ty và ảnh hưởng đến nhân viên tuyển mới.",
+        "consent": "Tôi đã xem xét thay đổi này và tham chiếu kiểm toán công ty được giữ lại.",
         "confirm": "Xác nhận thay đổi",
         "reopen": "Mở lại bản xem xét đã lưu",
         "discard": "Hủy bản xem xét",
@@ -21613,7 +21617,9 @@
         "prefix": "Tiền tố",
         "suffix": "Hậu tố",
         "none": "Không có",
-        "unnamed": "Mẫu chưa đặt tên"
+        "unnamed": "Mẫu chưa đặt tên",
+        "retentionNotice": "Việc tạo bản xem xét này sẽ giữ lại một tham chiếu kiểm toán đến công ty này. Tham chiếu đó ngăn việc xóa vĩnh viễn công ty, kể cả khi bản xem xét bị hủy hoặc hết hạn. Hãy dùng trang cài đặt gốc nếu bạn không muốn tạo bản xem xét của Trợ lý.",
+        "retentionReview": "Tham chiếu kiểm toán công ty vẫn được giữ lại sau khi bản xem xét bị hủy hoặc hết hạn. Việc xóa vĩnh viễn công ty vẫn bị chặn chừng nào tham chiếu đó còn được giữ lại."
       },
       "peopleGeneralPolicy": {
         "back": "Quay lại Tổ chức",

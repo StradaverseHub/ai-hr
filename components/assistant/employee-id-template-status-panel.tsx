@@ -36,6 +36,7 @@ export function EmployeeIdTemplateStatusPanel({initialChoices,resumeActionId}:{i
  return <section className="space-y-5" aria-busy={busy}>
   <p ref={status} tabIndex={-1} role="status" aria-live="polite">{busy?t('working'):state.kind==='uncertain'?t('uncertain'):state.kind==='completed'?t('completed'):state.kind==='retired'?t('retired'):t('description')}</p>
   {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
+  <div className="space-y-2"><p className="text-sm text-muted-foreground">{t('retentionNotice')}</p><Link href="/admin/settings/employee-id" className="inline-flex min-h-11 items-center underline">{t('manual')}</Link></div>
   {state.kind==='selection'&&<form onSubmit={e=>{e.preventDefault();if(selected)void dispatch({action,operation:'prepare',input:{action,contractVersion:1,configId:selected.configId,expectedStatus:selected.status,status:selected.status==='active'?'inactive':'active'}});}} className="space-y-4">
    <fieldset disabled={busy} className="space-y-4"><label className="block" htmlFor={id+'-query'}>{t('search')}<input id={id+'-query'} className={inputCls} value={query} maxLength={80} onChange={e=>{setQuery(e.target.value);setSelectedId('');}}/></label>
    <Button className="h-auto min-h-11 whitespace-normal text-left" type="button" onClick={()=>void dispatch({action,operation:'choices',selection:{query}})}>{t('search')}</Button>
@@ -43,7 +44,7 @@ export function EmployeeIdTemplateStatusPanel({initialChoices,resumeActionId}:{i
    <Button className="h-auto min-h-11 whitespace-normal text-left" type="submit" disabled={!selected}>{t('prepare')}</Button></fieldset>
   </form>}
   {review&&<div className="space-y-4"><dl className="grid gap-2"><dt>{t('template')}</dt><dd className="font-medium break-words">{review.review.templateName??t('unnamed')}</dd><dt>{t('company')}</dt><dd className="break-words">{review.review.companyName}</dd><dt>{t('prefix')}</dt><dd className="break-words">{review.review.prefix}</dd><dt>{t('suffix')}</dt><dd className="break-words">{review.review.suffix||t('none')}</dd><dt>{t('before')}</dt><dd>{t(review.review.status)}</dd><dt>{t('after')}</dt><dd>{t(review.review.afterStatus)}</dd><dt>{t('expires')}</dt><dd>{format.dateTime(new Date(review.expiresAt),{dateStyle:'medium',timeStyle:'short'})}</dd></dl>
-   <p>{t('consequence')}</p>{now>=Date.parse(review.expiresAt)?<p role="alert">{t('expired')}</p>:<label className="flex gap-2"><input type="checkbox" disabled={busy} checked={consent} onChange={e=>setConsent(e.target.checked)}/>{t('consent')}</label>}
+   <p>{t('consequence')}</p><p className="text-sm text-muted-foreground">{t('retentionReview')}</p>{now>=Date.parse(review.expiresAt)?<p role="alert">{t('expired')}</p>:<label className="flex gap-2"><input type="checkbox" disabled={busy} checked={consent} onChange={e=>setConsent(e.target.checked)}/>{t('consent')}</label>}
    <Button className="h-auto min-h-11 whitespace-normal text-left" disabled={busy||!consent||now>=Date.parse(review.expiresAt)} onClick={()=>void dispatch({action,operation:'confirm',confirmation:{action,contractVersion:1,actionId:review.actionId,reviewedDigest:review.reviewedDigest}})}>{t('confirm')}</Button>
   </div>}
   {terminalId&&<div className="flex flex-wrap gap-3"><Button className="h-auto min-h-11 whitespace-normal text-left" disabled={busy} onClick={()=>void dispatch({action,operation:'reopen',actionId:terminalId})}>{t('reopen')}</Button><Button className="h-auto min-h-11 whitespace-normal text-left" disabled={busy} onClick={()=>void dispatch({action,operation:'discard',confirmation:{action,contractVersion:1,actionId:terminalId}})}>{t('discard')}</Button></div>}
@@ -51,6 +52,6 @@ export function EmployeeIdTemplateStatusPanel({initialChoices,resumeActionId}:{i
   <Button className="h-auto min-h-11 whitespace-normal text-left" disabled={busy} onClick={()=>void dispatch({action,operation:'list'})}>{t('saved')}</Button>
   {index.length>0&&<ul className="space-y-2">{index.map(r=><li key={r.actionId}><Button className="h-auto min-h-11 whitespace-normal text-left" disabled={busy} onClick={()=>void dispatch({action,operation:'reopen',actionId:r.actionId})}>{t('reopen')} · {format.dateTime(new Date(r.createdAt),{dateStyle:'medium',timeStyle:'short'})}</Button></li>)}</ul>}
   {(state.kind==='completed'||state.kind==='retired')&&<Button className="h-auto min-h-11 whitespace-normal text-left" disabled={busy} onClick={()=>{setState({kind:'selection'});setConsent(false);setSelectedId('');setIndex([]);void dispatch({action,operation:'choices',selection:{query:''}});}}>{t('newReview')}</Button>}
-  <Link href="/admin/settings/employee-id" className="inline-flex min-h-11 items-center underline">{t('manual')}</Link>
+
  </section>;
 }

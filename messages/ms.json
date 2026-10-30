@@ -21236,7 +21236,7 @@
         "expires": "Semakan tamat",
         "consequence": "Hanya status arkib katalog berubah. Penugasan pekerja dan akses sedia ada kekal.",
         "expired": "Semakan ini telah tamat. Buka semula untuk menyemak status.",
-        "consent": "Saya telah menyemak jawatan, syarikat dan perubahan ini.",
+        "consent": "Saya telah menyemak perubahan ini dan rujukan audit syarikat yang dikekalkan.",
         "confirm": "Sahkan perubahan",
         "reopen": "Buka semula semakan tersimpan",
         "discard": "Buang semakan",
@@ -21248,7 +21248,9 @@
         "uncertain": "Hasil belum pasti. Buka semula semakan tersimpan yang sama sebelum tindakan lain.",
         "completed": "Perubahan asal telah direkodkan.",
         "retired": "Semakan ini telah ditamatkan.",
-        "unavailable": "Semakan tidak tersedia. Buka Label Sistem untuk menyemak nilai dan kebenaran semasa."
+        "unavailable": "Semakan tidak tersedia. Buka Label Sistem untuk menyemak nilai dan kebenaran semasa.",
+        "retentionNotice": "Mencipta semakan ini mengekalkan rujukan audit kepada syarikat ini. Rujukan itu menghalang pemadaman kekal syarikat, walaupun semakan ini dibuang atau tamat tempoh. Gunakan halaman tetapan asal jika anda tidak mahu mencipta semakan Pembantu.",
+        "retentionReview": "Rujukan audit syarikat dikekalkan selepas semakan ini dibuang atau tamat tempoh. Pemadaman kekal syarikat tetap disekat selagi rujukan itu dikekalkan."
       },
       "departmentArchive": {
         "title": "Arkib atau pulihkan jabatan",
@@ -21267,7 +21269,7 @@
         "expires": "Semakan tamat",
         "consequence": "Hanya status arkib katalog berubah. Ketua jabatan, unit perniagaan, penugasan pekerja dan pemberian akses dikekalkan.",
         "expired": "Semakan ini telah tamat. Buka semula untuk menyemak status.",
-        "consent": "Saya telah menyemak jabatan, syarikat dan perubahan ini.",
+        "consent": "Saya telah menyemak perubahan ini dan rujukan audit syarikat yang dikekalkan.",
         "confirm": "Sahkan perubahan",
         "reopen": "Buka semula semakan tersimpan",
         "discard": "Buang semakan",
@@ -21280,7 +21282,9 @@
         "completed": "Perubahan asal telah direkodkan.",
         "retired": "Semakan ini telah ditamatkan.",
         "unavailable": "Semakan tidak tersedia. Buka Label Sistem untuk menyemak nilai dan kebenaran semasa.",
-        "department": "Jabatan"
+        "department": "Jabatan",
+        "retentionNotice": "Mencipta semakan ini mengekalkan rujukan audit kepada syarikat ini. Rujukan itu menghalang pemadaman kekal syarikat, walaupun semakan ini dibuang atau tamat tempoh. Gunakan halaman tetapan asal jika anda tidak mahu mencipta semakan Pembantu.",
+        "retentionReview": "Rujukan audit syarikat dikekalkan selepas semakan ini dibuang atau tamat tempoh. Pemadaman kekal syarikat tetap disekat selagi rujukan itu dikekalkan."
       },
       "rewardsCalendar": {
         "calendar": {
@@ -21595,7 +21599,7 @@
         "expires": "Semakan tamat",
         "consequence": "Hanya status templat berubah. Pengambilan akan datang mungkin menggunakan peraturan lain yang dikonfigurasi atau peraturan lama. Kod pekerja sedia ada, nombor berjalan semasa dan format templat dikekalkan.",
         "expired": "Semakan ini telah tamat. Buka semula untuk menyemak status.",
-        "consent": "Saya telah menyemak templat, syarikat dan kesannya pada pengambilan akan datang.",
+        "consent": "Saya telah menyemak perubahan ini dan rujukan audit syarikat yang dikekalkan.",
         "confirm": "Sahkan perubahan",
         "reopen": "Buka semula semakan tersimpan",
         "discard": "Buang semakan",
@@ -21613,7 +21617,9 @@
         "prefix": "Awalan",
         "suffix": "Akhiran",
         "none": "Tiada",
-        "unnamed": "Templat tanpa nama"
+        "unnamed": "Templat tanpa nama",
+        "retentionNotice": "Mencipta semakan ini mengekalkan rujukan audit kepada syarikat ini. Rujukan itu menghalang pemadaman kekal syarikat, walaupun semakan ini dibuang atau tamat tempoh. Gunakan halaman tetapan asal jika anda tidak mahu mencipta semakan Pembantu.",
+        "retentionReview": "Rujukan audit syarikat dikekalkan selepas semakan ini dibuang atau tamat tempoh. Pemadaman kekal syarikat tetap disekat selagi rujukan itu dikekalkan."
       },
       "peopleGeneralPolicy": {
         "back": "Kembali ke Organisasi",

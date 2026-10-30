@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
 import {EmployeeIdTemplateStatusPanel} from '../components/assistant/employee-id-template-status-panel';
@@ -14,7 +14,7 @@ const human={action,contractVersion:1,configId,expectedStatus:'active',status:'i
 const prepared=()=>({kind:'prepared',review:{action,contractVersion:1,actionId,reviewedDigest:'a'.repeat(64),createdAt:new Date(Date.now()-1000).toISOString(),expiresAt:new Date(Date.now()+60000).toISOString(),content:human,review:{configId,companyId,companyName:subject.companyName,templateName:subject.templateName,prefix:subject.prefix,suffix:subject.suffix,status:'active',afterStatus:'inactive'},consequence:'template_status_only_future_hire_rule_no_counter_or_existing_code_change'}});
 const completed=()=>({kind:'completed',receipt:{action,contractVersion:1,actionId,state:'completed',receipt:{kind:'recorded',configId,companyId,templateName:subject.templateName,prefix:subject.prefix,suffix:subject.suffix,status:'inactive',eventId,semantics:'native_employee_id_template_status_current_record'}}});
 const fetcher=vi.fn(),json=(body:unknown)=>new Response(JSON.stringify(body),{status:200,headers:{'Content-Type':'application/json'}}),packets=()=>fetcher.mock.calls.map(call=>JSON.parse(call[1].body));
-beforeEach(()=>{translation.messages=en;fetcher.mockReset();vi.stubGlobal('fetch',fetcher);});afterEach(()=>{cleanup();vi.unstubAllGlobals();});
+beforeEach(()=>{translation.messages=en;fetcher.mockReset();vi.stubGlobal('fetch',fetcher);});afterEach(()=>{cleanup();vi.useRealTimers();vi.unstubAllGlobals();});
 async function prepare(){fireEvent.change(screen.getByLabelText(copy.template),{target:{value:configId}});fireEvent.click(screen.getByRole('button',{name:copy.prepare}));await screen.findByText(copy.consent);}
 it('posts only the selected template status intent, then requires a separate explicit confirmation',async()=>{
  fetcher.mockResolvedValueOnce(json(prepared())).mockResolvedValueOnce(json(completed()));render(<EmployeeIdTemplateStatusPanel initialChoices={choices}/>);await prepare();expect(packets()).toEqual([{action,operation:'prepare',input:human}]);const confirm=screen.getByRole('button',{name:copy.confirm}) as HTMLButtonElement;expect(confirm.disabled).toBe(true);fireEvent.click(screen.getByLabelText(copy.consent));fireEvent.click(confirm);await screen.findByText(copy.completed);expect(packets()[1]).toEqual({action,operation:'confirm',confirmation:{action,contractVersion:1,actionId,reviewedDigest:'a'.repeat(64)}});
@@ -29,3 +29,26 @@ it('allows actor-only discard UI after native permission loss',async()=>{fetcher
 it('shows an unnamed native template and empty suffix without inventing format values',async()=>{const r=prepared(),pending={...r,review:{...r.review,review:{...r.review.review,templateName:null,suffix:''}}};fetcher.mockResolvedValueOnce(json(pending));render(<EmployeeIdTemplateStatusPanel initialChoices={choices}/>);await prepare();expect(screen.getByText(copy.unnamed)).toBeTruthy();expect(screen.getByText(copy.none)).toBeTruthy();expect(screen.getByText(subject.prefix)).toBeTruthy();});
 it('prepares activation with the exact opposite inactive baseline',async()=>{const r=prepared(),input={...human,expectedStatus:'inactive',status:'active'},pending={...r,review:{...r.review,content:input,review:{...r.review.review,status:'inactive',afterStatus:'active'}}};fetcher.mockResolvedValueOnce(json(pending));render(<EmployeeIdTemplateStatusPanel initialChoices={{...choices,templates:[{...subject,status:'inactive'}]}}/>);await prepare();expect(packets()).toEqual([{action,operation:'prepare',input}]);});
 for(const [locale,messages]of Object.entries({en,ms,zh,ta,th,vi:viMessages}))it(`renders native before/after and saved recovery in ${locale}`,async()=>{translation.messages=messages;const t=messages.assistant.workspace.employeeIdTemplateStatus;fetcher.mockResolvedValueOnce(json(prepared()));render(<EmployeeIdTemplateStatusPanel initialChoices={choices} resumeActionId={actionId}/>);fireEvent.click(screen.getByRole('button',{name:t.reopen}));await screen.findByText(t.consent);expect(screen.getByText(t.before)).toBeTruthy();expect(screen.getByText(t.after)).toBeTruthy();expect(screen.getByText(subject.templateName)).toBeTruthy();expect(screen.getByText(subject.companyName)).toBeTruthy();expect((screen.getByRole('button',{name:t.confirm}) as HTMLButtonElement).disabled).toBe(true);await captureAiReviewScreenshots(aiReviewDomHtml(document.body),locale,'chat-card-employee-id-template-status','real company template component; fictional native before/after; scripted endpoint, no authenticated server journey');},120000);
+
+for(const phase of ['fetch','stream'] as const)it(`enables same-ID user recovery after a never-settling ${phase}, without effect retry`,async()=>{
+ let late:((response:Response)=>void)|undefined;
+ const stalled=phase==='fetch'?()=>new Promise<Response>(resolve=>{late=resolve;}):()=>Promise.resolve(new Response(new ReadableStream<Uint8Array>({pull:()=>new Promise<void>(()=>{}),cancel:()=>new Promise<void>(()=>{})}),{headers:{'Content-Type':'application/json'}}));
+ fetcher.mockResolvedValueOnce(json(prepared())).mockImplementationOnce(stalled).mockResolvedValueOnce(json(completed()));
+ render(<EmployeeIdTemplateStatusPanel initialChoices={choices}/>);await prepare();vi.useFakeTimers();
+ fireEvent.click(screen.getByLabelText(copy.consent));
+ await act(async()=>{fireEvent.click(screen.getByRole('button',{name:copy.confirm}));await vi.advanceTimersByTimeAsync(15001);});vi.useRealTimers();
+ await screen.findByText(copy.uncertain);const reopen=screen.getByRole('button',{name:copy.reopen}) as HTMLButtonElement;expect(reopen.disabled).toBe(false);
+ fireEvent.click(reopen);await screen.findByText(copy.completed);
+ expect(packets().filter(p=>p.operation==='confirm')).toHaveLength(1);expect(packets()[2]).toEqual({action,operation:'reopen',actionId});
+ if(late){await act(async()=>{late!(json(completed()));await Promise.resolve();});expect(screen.getByText(copy.completed)).toBeTruthy();expect(packets()).toHaveLength(3);}
+});
+
+it('discloses retained-company deletion consequences and native handoff before prepare, final consent and same-ID recovery',async()=>{
+ fetcher.mockResolvedValueOnce(json(prepared())).mockRejectedValueOnce(Error('Fictional lost confirmation response'));
+ render(<EmployeeIdTemplateStatusPanel initialChoices={choices}/>);
+ expect(screen.getByText(copy.retentionNotice)).toBeTruthy();expect(screen.getByRole('link',{name:copy.manual}).getAttribute('href')).toBe('/admin/settings/employee-id');expect(fetcher).not.toHaveBeenCalled();
+ await prepare();expect(screen.getByText(copy.retentionReview)).toBeTruthy();expect(screen.getByLabelText(copy.consent)).toBeTruthy();
+ fireEvent.click(screen.getByLabelText(copy.consent));fireEvent.click(screen.getByRole('button',{name:copy.confirm}));await screen.findByText(copy.uncertain);
+ expect(screen.getByText(copy.retentionNotice)).toBeTruthy();expect((screen.getByRole('button',{name:copy.reopen}) as HTMLButtonElement).disabled).toBe(false);
+ expect(packets().filter(p=>p.operation==='confirm')).toHaveLength(1);
+});

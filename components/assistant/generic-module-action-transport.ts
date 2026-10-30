@@ -53,17 +53,36 @@ export function checkGenericPacket(value:unknown):GenericPacket|null{
  const checked=PACKETS[action as keyof typeof PACKETS].safeParse(structuredClone(value));return checked.success?checked.data as GenericPacket:null;
 }
 export const packetActionId=(packet:GenericPacket):string|null=>packet.operation==='reopen'?packet.actionId:packet.operation==='confirm'||packet.operation==='discard'?(packet.confirmation as {actionId:string}).actionId:null;
-export async function readGenericModuleActionResponse(response:Response,packet:GenericPacket):Promise<GenericModuleActionBrowserResult>{
- const reject=async():Promise<never>=>{await response.body?.cancel().catch(()=>undefined);throw fail();};
+type WaitForResponse=<T>(work:Promise<T>)=>Promise<T>;
+const immediateWait:WaitForResponse=work=>work;
+const cancelResponse=(cancel:()=>Promise<unknown>)=>{try{void cancel().catch(()=>undefined);}catch{}};
+export async function readGenericModuleActionResponse(response:Response,packet:GenericPacket,wait:WaitForResponse=immediateWait):Promise<GenericModuleActionBrowserResult>{
+ const reject=async():Promise<never>=>{if(response.body)cancelResponse(()=>response.body!.cancel());throw fail();};
  if(!response.ok||response.headers.get('content-type')?.split(';')[0].trim().toLowerCase()!=='application/json'||!response.body)return reject();
  const limit=packet.operation==='choices'?GENERIC_CHOICES_RESPONSE_BYTES:packet.action===REVIEWED_PAYROLL_RESET_ACTION||packet.action===REVIEWED_PAYROLL_REOPEN_ACTION||packet.action===CHECKIN_SCHEDULING_ACTION||packet.action===CHECKIN_COMPLETION_ACTION||packet.action===CHECKIN_CANCELLATION_ACTION||packet.action===GOAL_APPROVAL_ACTION||packet.action===DAY_SCHEDULE_CORRECTION_ACTION||packet.action===SCHEDULE_GROUP_MAINTENANCE_ACTION||packet.action===PROFILE_REQUEST_REJECTION_ACTION||packet.action===FAMILY_MAINTENANCE_ACTION||packet.action===BANK_MAINTENANCE_ACTION||packet.action===TP3_OPENING_MAINTENANCE_ACTION||packet.action===COST_ALLOCATION_MAINTENANCE_ACTION||packet.action===PAYMENT_METHOD_MAINTENANCE_ACTION||packet.action===EMPLOYEE_CODE_MAINTENANCE_ACTION||packet.action===PASSPORT_MAINTENANCE_ACTION||packet.action===FIXED_ITEM_ARCHIVE_ACTION||packet.action===DOCUMENT_METADATA_ACTION||packet.action===QUALIFICATION_MAINTENANCE_ACTION||packet.action===COMPENSATION_MAINTENANCE_ACTION||packet.action===EMERGENCY_CONTACT_MAINTENANCE_ACTION||packet.action===WORKFORCE_PROFILE_MAINTENANCE_ACTION?131072:32768,reader=response.body.getReader(),parts:Uint8Array[]=[];let bytes=0,fragments=0;
- try{for(;;){const part=await reader.read();if(part.done)break;bytes+=part.value.byteLength;if(++fragments>1024||bytes>limit)throw fail();parts.push(part.value);}
+ try{for(;;){const part=await wait(reader.read());if(part.done)break;bytes+=part.value.byteLength;if(++fragments>1024||bytes>limit)throw fail();parts.push(part.value);}
   const data=new Uint8Array(bytes);let offset=0;for(const part of parts){data.set(part,offset);offset+=part.byteLength;}
   return parseGenericModuleActionBrowserResult(packet,JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(data)));
- }catch{await reader.cancel().catch(()=>undefined);throw fail();}finally{reader.releaseLock();}
+ }catch{cancelResponse(()=>reader.cancel());throw fail();}finally{try{reader.releaseLock();}catch{}}
 }
-/** One POST to the same guarded endpoint the wave 1 panels use. */
+/** One POST, one deadline covering fetch AND body; no automatic effect retry.
+ * An already tighter caller abort remains authoritative. Timeout never resets between chunks. */
 export async function sendGenericModuleAction(packet:GenericPacket,signal:AbortSignal):Promise<GenericModuleActionBrowserResult>{
- const response=await fetch('/api/assistant/module-actions',{method:'POST',mode:'same-origin',credentials:'same-origin',cache:'no-store',redirect:'error',signal,headers:{'Content-Type':'application/json'},body:JSON.stringify(packet)});
- return readGenericModuleActionResponse(response,packet);
+ const deadline=performance.now()+15000,controller=new AbortController();let rejectStop!:()=>void;
+ const stopped=new Promise<never>((_,reject)=>{rejectStop=()=>reject(fail());});void stopped.catch(()=>undefined);
+ const stop=()=>{controller.abort();rejectStop();};
+ signal.addEventListener('abort',stop,{once:true});
+ const overdue=()=>performance.now()>=deadline;
+ const timer=setTimeout(stop,Math.max(0,deadline-performance.now())),wait:WaitForResponse=async work=>{
+  const joined=Promise.race([work,stopped]);if(overdue())stop();const value=await joined;if(overdue()){stop();throw fail();}return value;
+ };
+ try{
+  if(signal.aborted||overdue()){stop();throw fail();}
+  const pending=fetch('/api/assistant/module-actions',{method:'POST',mode:'same-origin',credentials:'same-origin',cache:'no-store',redirect:'error',signal:controller.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify(packet)}).then(response=>{
+   // A custom/late transport can ignore AbortSignal; discard its body without blocking recovery.
+   if(overdue())stop();if(controller.signal.aborted){if(response.body)cancelResponse(()=>response.body!.cancel());throw fail();}return response;
+  });
+  const response=await wait(pending),result=await readGenericModuleActionResponse(response,packet,wait);
+  if(overdue())stop();if(controller.signal.aborted)throw fail();return result;
+ }catch{throw fail();}finally{clearTimeout(timer);signal.removeEventListener('abort',stop);}
 }
