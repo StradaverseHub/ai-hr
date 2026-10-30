@@ -6,15 +6,15 @@
 not release acceptance. [Draft PR 113](https://github.com/StradaverseHub/ai-hr/pull/113)
 is held; this work has not deployed to staging or production.
 
-The newest completed 30-route workload (`d883ce28e`) retains **one million Claims
+The newest completed 30-route workload (`c6a904865`) retains **one million Claims
 and one million attendance rows**. All500 data journeys, allsix loaded browser
 journeys and native audit checks complete at both activity levels, but speed
 acceptance fails:
 
 | Activity pause | Read p95 | Mutation p95 | Complete data journeys | Complete loaded browsers |
 | --- | ---: | ---: | ---: | ---: |
-| [1s](https://github.com/StradaverseHub/ai-hr/actions/runs/41110032639) | 60.2s | 65.5s | 500/500 | 6/6 |
-| [5s](https://github.com/StradaverseHub/ai-hr/actions/runs/41110030713) | 50.6s | 53.9s | 500/500 | 6/6 |
+| [1s](https://github.com/StradaverseHub/ai-hr/actions/runs/41113693279) | 54.5s | 59.1s | 500/500 | 6/6 |
+| [5s](https://github.com/StradaverseHub/ai-hr/actions/runs/41113711375) | 50.5s | 53.9s | 500/500 | 6/6 |
 
 Both builds, migration runs and fixture assertions pass. Each verifies500 current-day
 attendance rows, no attendance before hire, all30 selected concurrent routes, nine
@@ -27,15 +27,15 @@ comparison passes. Its HTTP/browser qualification fails speed despite allsix
 browser journeys completing in each run.
 
 Actual CPU counters over the timed phase distinguish database and application work:
-one-second app367.75s / PostgreSQL660.36s over341.72wall seconds; five-second
-app327.05s / PostgreSQL629.65s over313.88wall seconds. Database throttling and host
+one-second app325.55s / PostgreSQL619.97s over311.20wall seconds; five-second
+app332.91s / PostgreSQL582.49s over308.24wall seconds. Database throttling and host
 steal are zero. Host user/system counters include these components and Chromium,
 so they must not be added to component CPU. No production sizing claim follows.
 
 Six principals across roles/tenants each have create, edit and delete visibility
 observed every100ms through an independent committed-state reader. All18 per run
-become visible: one-second by12.2–19.9s, with35.7–50.6s remaining before their HTTP
-responses finish; five-second by10.8–20.6s, with25.3–42.5s remaining. These are
+become visible: one-second by11.7–24.2s; five-second by10.7–20.3s. Their HTTP
+responses still finish tens of seconds after these observations. These are
 upper bounds on when committed data became visible, not exact transaction timings
 or a causal attribution of the response tail. The frozen thresholds remain unmet.
 
@@ -181,8 +181,29 @@ commit changes only a diagnostic fixture's enum type, not its runtime value.
 | [41110032639](https://github.com/StradaverseHub/ai-hr/actions/runs/41110032639), [41110030713](https://github.com/StradaverseHub/ai-hr/actions/runs/41110030713) | `d883ce28e`: exact Home migration,30-route HTTP/browser with one million Claims and one million attendance records. Both complete500/500 CRUD journeys, allsix loaded browsers, all30routes, nine boundaries and native audit verification, with zero journey/runtime errors. One-second p95 read/write60.2/65.5s; five-second50.6/53.9s. **Speed FAIL**. Actual component CPU and18 visibility observations per run are described above. |
 | [41113395991](https://github.com/StradaverseHub/ai-hr/actions/runs/41113395991) | `4303321f6`: profile queue native comparison PASS;500 linked principals/three reads each per phase, p95 before2,855.3ms/current978.9ms/restored2,617.6ms; zero errors and forged user/person refusals. Empty-queue component evidence only. |
 | [41113396927](https://github.com/StradaverseHub/ai-hr/actions/runs/41113396927) | `4303321f6`: **57 affected cases PASS** (40 DB,17 non-DB), zero skipped assertions. Native profile assignments, actual decisions, denied/revoked photo access, field routing and policy behavior. Compiler qualification is separate; this source still carries the diagnostic enum typing error retained above. |
-| [41113543529](https://github.com/StradaverseHub/ai-hr/actions/runs/41113543529) | `c6a904865`: diagnostic enum typing repair; nine selected profile-option cases PASS, zero skips. Whole compiler pending. |
-| [41113693279](https://github.com/StradaverseHub/ai-hr/actions/runs/41113693279), [41113711375](https://github.com/StradaverseHub/ai-hr/actions/runs/41113711375) | Frozen `c6a904865`: one/five-second30-route full HTTP/browser recovery, one million Claims plus one million attendance rows, unchanged speed checks. Pending. |
+| [41113543529](https://github.com/StradaverseHub/ai-hr/actions/runs/41113543529) | `c6a904865`: diagnostic enum typing repair; nine selected profile-option cases PASS, zero skips. **Whole compiler PASS.** |
+| [41113693279](https://github.com/StradaverseHub/ai-hr/actions/runs/41113693279), [41113711375](https://github.com/StradaverseHub/ai-hr/actions/runs/41113711375) | Frozen `c6a904865`: one/five-second30-route full HTTP/browser recovery, one million Claims plus one million attendance rows, unchanged speed checks. Both complete500/500 data journeys,6/6 loaded browsers, all30routes, nine boundaries and native audit verification, with zero journey/runtime errors. One-second read/write p9554.5/59.1s; five-second50.5/53.9s. **Speed FAIL**. All18 visibility observations per run succeed. Separate hosts prevent attributing a causal improvement ratio. |
+
+An additional development candidate, `645a2ac90`, batches audit arming into session
+setup **only when the existing one-way tenant marker is already true**. The arming
+decision still runs after setup. Unknown/first-arm tenants retain the original
+separate setter, including if another transaction arms the tenant during the setup
+await. No new cache or permission-result reuse is introduced. Native audit/RLS/
+privacy/suspended-tenant checks and same-backend commit/rollback isolation pass
+**322 cases** (264 DB,58 non-DB), with zero skipped assertions. The whole compiler
+also passes. The500-principal native setup/query-count comparison passes in runs
+[41114900759](https://github.com/StradaverseHub/ai-hr/actions/runs/41114900759) and
+[41114890203](https://github.com/StradaverseHub/ai-hr/actions/runs/41114890203).
+Each phase has1,500 transactions: separate-before and separate-after each issue
+1,500 session setters plus1,500 audit setters; combined issues1,500 combined
+setters and no separate audit setters. All native principal/tenant/armed checks
+pass. Per-principal three-transaction p95 is1,073.2ms before /811.9ms combined /
+807.1ms restored. The warmed control is comparable to combined, so this establishes
+a round-trip reduction, **not a consistent latency improvement**.
+Full one/five-second HTTP/browser qualification is pending in frozen source645 runs
+[41115991569](https://github.com/StradaverseHub/ai-hr/actions/runs/41115991569) and
+[41115973494](https://github.com/StradaverseHub/ai-hr/actions/runs/41115973494).
+The earlier `c6a904865` HTTP tests do not qualify this later setup change.
 
 ## Workload and acceptance
 
@@ -330,13 +351,35 @@ Priorities remain:
 2. Establish application CPU, database execution, pool wait and browser budgets on
    representative installation hardware. Do not infer required hardware solely
    from this shared development runner.
-3. Exercise million-row histories beyond Claims, concentrated and distributed
+3. Exercise million-row histories beyond the retained Claims/attendance fixture, concentrated and distributed
    companies, deep paging, imports/exports and payroll calculation/publication
    alongside ordinary interactive reads and writes.
 4. Add bounded queued/streamed generation for expensive reports and documents;
    measure restart recovery, memory and effect on interactive latency.
 5. Reconcile migrations and fresh main/alpha before any release gate. A passing
    focused run, merged source or draft PR grants no deployment authority.
+
+Additional whole-system source findings need their own behavior and load evidence:
+
+- The Reports hub requests every authorized Master report and then displays five.
+  The preview reader also materializes its full ID inventory before checking each
+  definition individually. A bounded candidate scan plus a separate authorized
+  lookup for the saved-report banner must preserve denied-report skipping, order,
+  definition recovery and the explicit full-list API.
+- Personnel draft rows are deliberately pinned into the employee list and counted
+  separately from employments. They are unpaged and include full draft data to
+  compute missing fields. Any bounded replacement must preserve the current draft
+  card, filter/scope rules, outstanding-work visibility and employment-only totals.
+- Hydrated baseline visits cover the selected routes, but Home cards can handle a
+  failed fetch without a JavaScript runtime error. Explicit card-ready/error checks
+  and loaded Home navigation should supplement the existing heading/table checks;
+  successful root HTML alone does not certify all asynchronous cards.
+
+The final500-user acceptance hardware/topology is not confirmed. The owner was
+asked whether to match production infrastructure, retain the four-CPU all-in-one
+diagnostic target, or specify application/database resources. This does not block
+isolated profiling; it does prevent treating these runner measurements as production
+capacity acceptance. No live host, database or configuration was changed or load-tested.
 
 Fixtures, private keys and native session tokens stay outside public artifacts.
 The HTTP evidence contains fictional screenshots, timings, normalized SQL, sampled
