@@ -413,7 +413,7 @@ export async function triagePendingClaims(ctx: SessionContext): Promise<TriageRu
        const selected:unknown=JSON.parse(await generateDraft(task.configuration,task.args as GenerateArgs));
        if(!selected||typeof selected!=='object'||Array.isArray(selected)||Object.keys(selected).join(',')!=='requestDetail'||typeof(selected as {requestDetail:unknown}).requestDetail!=='boolean')throw Error('Protected claim choice unavailable.');
        if(!(selected as {requestDetail:boolean}).requestDetail)continue;
-       raw=JSON.stringify({verdict:'query',policyRuleId:'claim.detail_insufficient',reason:'Please add enough detail about this expense for a person to review it.'});
+       raw=JSON.stringify({verdict:'query',policyRuleId:'claim.detail_insufficient'});
       }finally{task.dispose();}
     } catch {
       // Provider down, timed out, refused. Nothing proposed, nothing recorded; the next pass re-asks

@@ -10,7 +10,7 @@ import {ASSISTANT_CONVERSATION_HOLDOUTS} from './assistant-conversation-holdouts
 import {captureAssistantConversationCandidate,assistantConversationCandidateSystem} from './assistant-conversation-candidate';
 import {buildAssistantConversationSystem} from './assistant-conversation-system';
 import {ASSISTANT_TOOL_CATALOGUE} from './assistant-tool-catalogue';
-import type {AiTurn,AiToolCall,AiToolResult} from './types';
+import type {AiTurn,AiToolCall,AiToolResult,AiToolSpec} from './types';
 
 export class ProviderWorkloadUnavailableError extends AiGatewayError {
  constructor(public readonly variant:string){super('This task needs a supported protected source. Use the native screen for the remaining details.');this.name='ProviderWorkloadUnavailableError';}
@@ -109,7 +109,7 @@ const contracts=Object.freeze({
  synthetic_protocol_echo_v1:descriptor(['provider_evaluation'],'draft',input=>{const r=row(input,['marker']),m=marker(r.marker);return {args:Object.freeze({system:protocolSystem,prompt:`Return exactly this token and nothing else: ${m}`,maxTokens:1024,timeoutMs:15000})};}),
  synthetic_protocol_tools_v1:descriptor(['provider_evaluation'],'conversation',input=>{
   const r=row(input,['marker','stage','callId']),m=marker(r.marker),stage=member(r.stage,['first','final'] as const);
-  const tool={name:'integration_echo',description:'Synthetic integration fixture only. Return the supplied marker through the tool; this tool has no side effects.',inputSchema:{type:'object' as const,properties:{marker:{type:'string' as const,enum:[m]}},required:['marker'],additionalProperties:false}};
+  const tool:AiToolSpec={name:'integration_echo',description:'Synthetic integration fixture only. Return the supplied marker through the tool; this tool has no side effects.',inputSchema:{type:'object',properties:{marker:{type:'string',enum:[m]}},required:['marker'],additionalProperties:false}};
   const question=`Call integration_echo exactly once with marker ${m}. Do not answer in text yet.`;
   if(stage==='first'&&r.callId!==null)return refuse();
   if(stage==='final'&&(typeof r.callId!=='string'||! /^[\x21-\x7e]{1,200}$/.test(r.callId)))return refuse();
@@ -121,7 +121,10 @@ const contracts=Object.freeze({
   return {args:Object.freeze({system:promptCandidateSystem(candidate),prompt:fixture.question,maxTokens:384,timeoutMs:15000})};
  }),
  synthetic_assistant_conversation_v1:descriptor(['module_agent_evaluation'],'conversation',input=>{
-  const r=row(input,['fixtureId','strategy','steps']),fixture=ASSISTANT_CONVERSATION_HOLDOUTS.find(f=>f.id===r.fixtureId);if(!fixture)return refuse();const strategy=captureAssistantConversationCandidate(r.strategy);
+  const r=row(input,['fixtureId','strategy','steps']),fixture=ASSISTANT_CONVERSATION_HOLDOUTS.find(f=>f.id===r.fixtureId);if(!fixture)return refuse();
+  // Strict source capture deliberately uses null-prototype records. Rebuild only these two already
+  // captured data fields as a plain object for the source-owned closed candidate validator.
+  const strategy=captureAssistantConversationCandidate({...row(r.strategy,['kind','variant'])});
   const turns:AiTurn[]=[{role:'user',content:JSON.stringify({locale:fixture.locale,question:fixture.question,evaluationClock:'2026-10-01',fictionalSource:true})}];
   for(const value of list(r.steps,2)){
    const step=row(value,['calls']),calls:AiToolCall[]=[],results:AiToolResult[]=[];

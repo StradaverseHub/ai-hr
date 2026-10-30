@@ -132,8 +132,14 @@ describe('ADR-0082 §2.3 — the registry cannot do what it must not do', () => 
     // arbitrary service imports into tool implementations.
     expect(SOURCE.match(/^import .* from '\.\/assistant-read-session';$/gm)).toEqual(["import { withAssistantRead, type AssistantReadSession } from './assistant-read-session';"]);
     expect(dataImports.sort()).toEqual(
-      ['../db/client', '../lib/ai/types', '../lib/hr-date', './entitlements', './payslip-earning-lines', './assistant-read-session', '../lib/ai/assistant-public-replies', '../lib/ai/module-agents', './assistant-leave-projection'].sort(),
+      ['../db/client', '../lib/ai/types', '../lib/hr-date', './entitlements', './payslip-earning-lines', './assistant-read-session', '../lib/ai/assistant-public-replies', '../lib/ai/module-agents', './assistant-leave-projection', '../lib/ai/assistant-tool-catalogue'].sort(),
     );
+    const metadata=readFileSync('lib/ai/assistant-tool-catalogue.ts','utf8'),modules=readFileSync('lib/ai/module-agents.ts','utf8');
+    // Only immutable schema metadata is shared. This exact new edge cannot import executable core
+    // services, a DB/provider handle or a dynamic module; its only runtime dependency is a pure enum.
+    expect(metadata.match(/^import .*;$/gm)).toEqual(["import type {AiJsonSchema,AiToolSpec} from './types';","import {AGENT_MODULE_CODES} from './module-agents';"]);
+    for(const source of [metadata,modules])expect(source).not.toMatch(/(?:\b(?:import|require)\s*\(|\b(?:from|import)\s*['"](?:.*\/)?(?:core|db)\/|\bfetch\s*\()/);
+    expect(modules.match(/^import .*;$/gm)).toBeNull();
   });
 });
 
