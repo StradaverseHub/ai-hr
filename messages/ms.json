@@ -30608,7 +30608,7 @@
     "remove": "Buang",
     "savedUnavailable": "Formula tersimpan tidak tersedia. Muat semula senarai.",
     "payrollRun": "Larian gaji",
-    "standaloneRun": "Ujian kendiri (tiada larian dipilih)",
+    "standaloneRun": "Pemilihan larian automatik",
     "loadRuns": "Muatkan larian sepadan",
     "runNumber": "Larian {number}"
   }

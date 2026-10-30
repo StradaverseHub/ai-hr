@@ -36,6 +36,7 @@ it('binds server dependencies and locks a used identity while retaining receipts
  await expect(savePayFormula(ctx,{id:s.id,expectedRevisionId:s.revisionId,formulaId:'RENAMED',description:'Cannot rename',method:'write',source:'Return 2'})).rejects.toThrow();
  await expect(deletePayFormula(ctx,{id:s.id,reason:'Cannot erase a used formula'})).rejects.toThrow(/retained/);
  await setPayFormulaActive(ctx,{id:s.id,active:false});await expect(withTenant(ctx,tx=>loadActiveFormulaProgramTx(tx,ctx,'LINKED'))).rejects.toThrow(/inactive/);
+ await upsertPayComponent(ctx,{...settings,code:'BUILDER',name:'Updated inactive display name',rule:row.rule});
  const view=await getPayFormula(ctx,s.id);expect(view?.status).toBe('inactive');expect(view?.tests.some(t=>t.id===s.test.id)).toBe(true);expect(view?.usage.map(u=>u.id)).toContain(row.id);
 });
 it('rejects dependency changes after a test and exposes no private receipt after source-category denial',async()=>{

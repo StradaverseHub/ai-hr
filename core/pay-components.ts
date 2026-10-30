@@ -836,7 +836,7 @@ function payComponentCreateValues(ctx:SessionContext,p:PayComponentInput,prepare
 
 async function preparePayComponentWriteTx(tx:Tx,ctx:SessionContext,p:PayComponentInput,options:{ createOnly?: boolean; updateOnly?: boolean; archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean; returnCreatedEventId?: boolean }) {
     await lockPayComponentCatalogTx(tx,ctx);
-    const candidate = ruleOf(p);
+    const candidate = ruleOf(p);const candidateValidation=validatePayRule(candidate,p.prorates);if(!candidateValidation.ok)throw new PayRuleInvalidError(candidateValidation.code);
     if(candidate?.kind==='formula_builder'&&p.code.trim().toUpperCase()==='BASIC')throw new PayRuleInvalidError('BAD_KIND');
     // Retain a byte-identical inactive link for ordinary metadata/settings maintenance. Only a NEW
     // or changed link must obtain today's active tested revision; the kernel still refuses inactive use.

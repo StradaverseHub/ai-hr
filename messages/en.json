@@ -30608,7 +30608,7 @@
     "remove": "Remove",
     "savedUnavailable": "The saved formula is unavailable. Refresh the list.",
     "payrollRun": "Payroll run",
-    "standaloneRun": "Standalone test (no selected run)",
+    "standaloneRun": "Automatic run selection",
     "loadRuns": "Load matching runs",
     "runNumber": "Run {number}"
   }

@@ -30608,7 +30608,7 @@
     "remove": "Bỏ",
     "savedUnavailable": "Công thức đã lưu không khả dụng. Làm mới danh sách.",
     "payrollRun": "Đợt tính lương",
-    "standaloneRun": "Kiểm tra độc lập (chưa chọn đợt)",
+    "standaloneRun": "Tự động chọn đợt",
     "loadRuns": "Tải các đợt phù hợp",
     "runNumber": "Đợt {number}"
   }

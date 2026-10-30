@@ -30608,7 +30608,7 @@
     "remove": "移除",
     "savedUnavailable": "已保存的公式不可用，请刷新列表。",
     "payrollRun": "薪资运行批次",
-    "standaloneRun": "独立测试（未选择批次）",
+    "standaloneRun": "自动选择运行批次",
     "loadRuns": "加载匹配批次",
     "runNumber": "批次 {number}"
   }
