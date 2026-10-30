@@ -26161,7 +26161,8 @@
       "review_required": "需要审阅源码、身份或关联缺陷。",
       "invalid": "请检查字段、预期结果和所选决定。",
       "limit": "超出支持的大小或记录数量限制。",
-      "module_unavailable": "此账户未启用系统测试。"
+      "module_unavailable": "此账户未启用系统测试。",
+      "feedback_unavailable": "此账户已关闭反馈功能。"
     },
     "updateReasons": {
       "new_reviewed_guide": "新的已审阅指南",
@@ -28768,6 +28769,14 @@
     }
   },
   "operatorWorkspace": {
+    "feedbackMenu": "反馈菜单",
+    "shown": "显示",
+    "hidden": "隐藏",
+    "feedbackMenuOnHelp": "该客户的员工可以看到反馈菜单并提交反馈。隐藏后将移除菜单并关闭反馈页面；现有反馈会保留。",
+    "feedbackMenuOffHelp": "该客户的反馈菜单已隐藏，反馈页面已关闭。现有反馈会保留，重新显示菜单后即可再次查看。",
+    "feedbackMenuHide": "隐藏反馈菜单",
+    "feedbackMenuShow": "显示反馈菜单",
+    "feedbackMenuSaved": "反馈菜单已更新。",
     "workspace": "运营工作区",
     "customers": "客户",
     "provisioning": "客户开通",

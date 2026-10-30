@@ -3,7 +3,7 @@ import { useActionState, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { btnPrimary, inputCls } from '@/components/ui';
 import { emptyOperatorState, type OperatorActionState } from './action-state';
-import { submitCustomerAction,renameCustomerAction,changeCustomerModuleAction } from './actions';
+import { submitCustomerAction,renameCustomerAction,changeCustomerModuleAction,setCustomerFeedbackMenuAction } from './actions';
 import type { CustomerModule } from '@/core/operator-customers';
 import type { DeactivationBlocker } from '@/core/module-deactivation';
 
@@ -73,5 +73,13 @@ export function CustomerModuleForm({tenantId,modules,grants,blockers,busy}:{tena
       <button type="submit" className={btnPrimary} disabled={busy||pending||blocked}>{pending?w('saving'):enabled?w('disable'):w('enable')}</button>
     </div>}
     <Result state={state} success={w('changeQueued')}/>
+  </form>;
+}
+export function CustomerFeedbackMenuForm({tenantId,enabled}:{tenantId:string;enabled:boolean}) {
+  const w=useTranslations('operatorWorkspace');
+  const [state,action,pending]=useActionState(setCustomerFeedbackMenuAction,emptyOperatorState);
+  return <form action={action} className="space-y-3"><input type="hidden" name="tenantId" value={tenantId}/><input type="hidden" name="enabled" value={String(!enabled)}/>
+    <p className="text-sm text-muted-foreground">{w(enabled?'feedbackMenuOnHelp':'feedbackMenuOffHelp')}</p>
+    <Result state={state} success={w('feedbackMenuSaved')}/><button type="submit" className={btnPrimary} disabled={pending}>{pending?w('saving'):w(enabled?'feedbackMenuHide':'feedbackMenuShow')}</button>
   </form>;
 }

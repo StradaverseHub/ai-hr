@@ -131,6 +131,20 @@ alive() {
 cmd="${1:-status}"
 shift 2>/dev/null || true
 
+# Mutating marker calls on commissioned staging must carry the same lease as the deploy.
+# Reads remain available during failures and recovery. Fail closed before instrumentation writes.
+if [ "$REPO" = /opt/ai-hr ] && [ -f /var/tmp/aihr-deploy/staging-release-queue/coordinator.py ]; then
+  case "$cmd" in
+    status|follow) ;;
+    *)
+      if [ "${AIHR_STAGING_STATE_GUARDED:-}" != 1 ]; then
+        exec python3 /var/tmp/aihr-deploy/staging-release-queue/coordinator.py guard -- env AIHR_STAGING_STATE_GUARDED=1 bash "$REPO/deploy/deploy-state.sh" "$cmd" "$@"
+      fi
+      python3 /var/tmp/aihr-deploy/staging-release-queue/coordinator.py assert-env || exit 78
+      ;;
+  esac
+fi
+
 case "$cmd" in
 
   # Called by improve:release BEFORE the rsync. Closes the window in which the local process dies

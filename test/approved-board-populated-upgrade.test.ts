@@ -17,7 +17,7 @@ function identities(){return Object.fromEntries(['tenant','company','catalogueCo
 it.each([562,563])('upgrades populated payroll and Rewards from %i through the current journal without rewriting money or historical scope',async(start)=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as Journal;
  const manifest=readMigrationFiles({migrationsFolder:'db/migrations'});
- expect(journal.entries.length).toBeGreaterThanOrEqual(567);
+ expect(journal.entries.length).toBeGreaterThanOrEqual(569);
  expect(journal.entries[start-1].tag).toBe(start===562?'0686_ai_provider_custody_owner_rls':'0687_assistant_question_budget');
  expect(journal.entries.slice(start,567).map(({idx,when,tag})=>({idx,when,tag}))).toEqual([
   {idx:677,when:1793330000013,tag:'0687_assistant_question_budget'},
@@ -27,6 +27,11 @@ it.each([562,563])('upgrades populated payroll and Rewards from %i through the c
   // b6dbadc5 — the EPF Top-up percentage mode rides the same populated upgrade.
   {idx:681,when:1793330000023,tag:'0697_epf_topup_percentage'},
  ].slice(start-562));
+ // Preserve the installed Board successor and apply Feedback strictly above its watermark.
+ expect(journal.entries.slice(567,569).map(({idx,when,tag})=>({idx,when,tag}))).toEqual([
+  {idx:682,when:1793330000030,tag:'0698_information_only_corrections'},
+  {idx:683,when:1793330000031,tag:'0696_feedback_menu_operator_switch'},
+ ]);
  // Preserve the separately reserved AI predecessor exactly as committed at dcea0fa56.
  expect(createHash('sha256').update(readFileSync('db/migrations/0687_assistant_question_budget.sql')).digest('hex')).toBe('ade48bffee0a5d6ebf72cdd61de36323f3650b81c805cd186701c5d8105e86c4');
  // Historical journal order includes an already-applied timestamp inversion. Preserve it;

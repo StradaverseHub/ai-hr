@@ -26161,7 +26161,8 @@
       "review_required": "Cần xem xét nguồn, định danh hoặc lỗi liên kết.",
       "invalid": "Kiểm tra trường, kết quả mong đợi và quyết định đã chọn.",
       "limit": "Đã vượt giới hạn kích thước hoặc số bản ghi.",
-      "module_unavailable": "Tài khoản này chưa bật Kiểm thử hệ thống."
+      "module_unavailable": "Tài khoản này chưa bật Kiểm thử hệ thống.",
+      "feedback_unavailable": "Phản hồi đã bị tắt cho tài khoản này."
     },
     "updateReasons": {
       "new_reviewed_guide": "Hướng dẫn mới đã xem xét",
@@ -28768,6 +28769,14 @@
     }
   },
   "operatorWorkspace": {
+    "feedbackMenu": "Menu Phản hồi",
+    "shown": "Đang hiển thị",
+    "hidden": "Đã ẩn",
+    "feedbackMenuOnHelp": "Nhân sự của khách hàng này có thể thấy menu Phản hồi và gửi phản hồi. Ẩn menu sẽ gỡ menu và đóng các trang Phản hồi; phản hồi hiện có vẫn được giữ lại.",
+    "feedbackMenuOffHelp": "Menu Phản hồi đang bị ẩn với khách hàng này và các trang của nó đã đóng. Phản hồi hiện có vẫn được giữ và sẽ xuất hiện lại khi menu được hiển thị.",
+    "feedbackMenuHide": "Ẩn menu Phản hồi",
+    "feedbackMenuShow": "Hiển thị menu Phản hồi",
+    "feedbackMenuSaved": "Đã cập nhật menu Phản hồi.",
     "workspace": "Không gian vận hành",
     "customers": "Khách hàng",
     "provisioning": "Khởi tạo",

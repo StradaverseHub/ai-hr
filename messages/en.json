@@ -26161,7 +26161,8 @@
       "review_required": "Source, identity or linked defect review is required.",
       "invalid": "Check the fields, expected results and selected decisions.",
       "limit": "The supported size or record limit was exceeded.",
-      "module_unavailable": "System Testing is not enabled for this account."
+      "module_unavailable": "System Testing is not enabled for this account.",
+      "feedback_unavailable": "Feedback is turned off for this account."
     },
     "updateReasons": {
       "new_reviewed_guide": "New reviewed guide",
@@ -28768,6 +28769,14 @@
     }
   },
   "operatorWorkspace": {
+    "feedbackMenu": "Feedback menu",
+    "shown": "Shown",
+    "hidden": "Hidden",
+    "feedbackMenuOnHelp": "This customer's people can see the Feedback menu and raise feedback. Hiding it removes the menu and closes the Feedback pages; existing feedback is kept.",
+    "feedbackMenuOffHelp": "The Feedback menu is hidden for this customer and its pages are closed. Existing feedback is kept and returns when the menu is shown again.",
+    "feedbackMenuHide": "Hide Feedback menu",
+    "feedbackMenuShow": "Show Feedback menu",
+    "feedbackMenuSaved": "Feedback menu updated.",
     "workspace": "Operator workspace",
     "customers": "Customers",
     "provisioning": "Provisioning",

@@ -5,6 +5,27 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Feedback menu operator switch — 30 October 2026 (unapplied successor)
+
+Branch `claude/feedback-menu-operator-toggle-616263` includes verified staging source
+`f752ac7f5d0323c5eae2280c3830af05b6da465f`. Its complete568-entry applied journal ends at
+`0698_information_only_corrections`, idx682 / when1793330000030. The existing credential-free
+ordered ledger export was independently compared to every applied source identity.
+The owner explicitly approved appending Feedback at **idx683 / when1793330000031**,
+preserving its `0696` filename and SQL bytes. This supersedes earlier idx681/…022 and
+idx682/…024 reservations, which would be skipped after Board's applied watermark.
+The complete installed prefix and applied SQL bytes are unchanged. AI migration allocations
+remain provisional until their own freeze above the actual accepted ledger.
+
+Source/CI preparation does not release Board's exclusive acceptance window. Staging installation
+still requires the verified complete exact-SHA gate, final canonical handback and deployment scope.
+Recheck live source/build/ledger and branch alignment before installation; no server rehearsal
+or protected-ref update is authorized by this source allocation.
+
+| Owner | Index | Sequence | Filename | Purpose |
+| --- | ---: | ---: | --- | --- |
+| Feedback menu switch | 683 | 1793330000031 | 0696_feedback_menu_operator_switch | Platform setting `feedback.menu_enabled` and operator-only read/write functions |
+
 ## Board item 1d58019a (Movement Settings Steps 1 and 2): renumbered on 30 October 2026
 
 Both 1d58019a migrations are unapplied anywhere. Staging runs c4fad43c1, whose journal ends at 0698. Both are
@@ -25,8 +46,10 @@ the journal tag and the `when` value changed.
 
 | Owner | Index (on this branch) | Sequence | Filename | SQL SHA256 |
 | --- | ---: | ---: | --- | --- |
-| Board 1d58019a Step 1 | 683 | 1793330000050 | 0721_movement_settings_catalog | 7e0f83300471d5297a0345a16ed8e156fd3fbd7ed8fc5a521577173c1c0c1246 |
-| Board 1d58019a Step 2 | 684 | 1793330000051 | 0722_movement_type_controls | f05714a30e9d833ad6a6495546a1f5f41dabffbce88035e69cc98d2529fd9ec5 |
+| Board 1d58019a Step 1 | 684 | 1793330000050 | 0721_movement_settings_catalog | 7e0f83300471d5297a0345a16ed8e156fd3fbd7ed8fc5a521577173c1c0c1246 |
+| Board 1d58019a Step 2 | 685 | 1793330000051 | 0722_movement_type_controls | f05714a30e9d833ad6a6495546a1f5f41dabffbce88035e69cc98d2529fd9ec5 |
+
+Integrated after `main`'s Feedback switch (idx683 / …031) on 30 October 2026: indexes shift to 684 and 685; filenames, sequences and SQL bytes are unchanged.
 
 About the Step 2 entry:
 
