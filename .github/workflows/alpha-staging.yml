@@ -284,7 +284,7 @@ jobs:
           python3 ../automation/.github/ci/cleanup-install.test.py -v
           python3 ../automation/.github/ci/build-bundle.test.py -v
       - name: Exercise actual official detached-deploy helpers with shim transport
-        run: node --import tsx --test ../automation/.github/ci/operator-flow.test.mjs ../automation/.github/ci/build-source-binding.test.mjs ../automation/.github/ci/next-build-launcher.test.mjs ../automation/.github/ci/staging-source-transfer.test.mjs ../automation/.github/ci/staging-launcher.test.mjs
+        run: node --import tsx --test ../automation/.github/ci/operator-flow.test.mjs ../automation/.github/ci/normal-cleanup-operator.test.mjs ../automation/.github/ci/build-source-binding.test.mjs ../automation/.github/ci/next-build-launcher.test.mjs ../automation/.github/ci/staging-source-transfer.test.mjs ../automation/.github/ci/staging-launcher.test.mjs
   plan:
     outputs:
       test_matrix: ${{ steps.matrix.outputs.test_matrix }}
