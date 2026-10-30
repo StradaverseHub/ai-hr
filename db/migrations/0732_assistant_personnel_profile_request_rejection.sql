@@ -164,8 +164,14 @@ CREATE FUNCTION app.assistant_profile_rejection_authority_hash(p_request uuid) R
 DECLARE result text;
 BEGIN
  IF app.assistant_profile_rejection_scope(p_request) IS NOT TRUE THEN RAISE EXCEPTION 'Profile rejection authority unavailable' USING ERRCODE='42501';END IF;
- SELECT encode(sha256(convert_to(jsonb_build_array(s.revision)::text,'UTF8')),'hex') INTO result FROM public.access_configuration s WHERE s.tenant_id=app.current_tenant_id() AND s.initialized;
- IF result IS NULL THEN RAISE EXCEPTION 'Profile rejection authority unavailable' USING ERRCODE='42501';END IF;RETURN result;
+ -- Match the native Access owner's effective legacy-versus-initialized semantics. The caller
+ -- already holds the shared Access write barrier; do not initialize Access merely to review HR work.
+ -- Missing and uninitialized rows both use legacy role authority, so their commitment is stable.
+ -- Genuine initialization or any later logical revision produces a different commitment.
+ SELECT encode(sha256(convert_to(COALESCE((SELECT jsonb_build_array(1,'initialized_access',s.revision)
+  FROM public.access_configuration s WHERE s.tenant_id=app.current_tenant_id() AND s.initialized),
+  jsonb_build_array(1,'legacy_uninitialized_access'))::text,'UTF8')),'hex') INTO result;
+ RETURN result;
 END $$;
 REVOKE ALL ON FUNCTION app.assistant_profile_rejection_authority_hash(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.assistant_profile_rejection_authority_hash(uuid) TO ai_hr_app;
