@@ -7,7 +7,15 @@ assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.AUTH_PR
 for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
  const url=new URL(process.env[key]);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'5433');assert.equal(url.pathname,'/ai_hr_system_perf');
 }
+const auditRequested=process.env.AUDIT_HASH_CHAIN_ENABLED==='true';
+assert(auditRequested,'the production workload requires audit chaining');
 const {seedBase,adminCtx,owner,closeAll}=await import('../../test/harness.ts');
+// The ordinary unit harness deliberately clears deployment gates. Restore this fixture's
+// explicit opt-in before seeding any domain events; production app/driver already retain it.
+process.env.AUDIT_HASH_CHAIN_ENABLED='true';
+for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
+ const url=new URL(process.env[key]);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'5433');assert.equal(url.pathname,'/ai_hr_system_perf');
+}
 const s=await import('../../db/schema.ts');
 const {hireEmployee}=await import('../../core/org.ts');
 const {createClaimType}=await import('../../packs/claims/service.ts');
