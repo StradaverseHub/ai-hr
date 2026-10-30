@@ -1,8 +1,9 @@
 import Link from 'next/link';
+import {PerformanceNativeHandoffs} from '@/components/assistant/performance-native-handoffs';
 import {getTranslations} from 'next-intl/server';
 import {Card,PageHeader} from '@/components/ui';
 import {ModulePerformanceActionSection} from '@/components/assistant/module-performance-action-section';
 /** GET is choice composition only; each explicit human transition uses the fixed guarded POST. */
 export default async function AssistantPerformanceAcknowledgementsPage({searchParams}:{searchParams:Promise<{review?:string|string[];engine?:string|string[]}>}){
- const t=await getTranslations('assistant.workspace.performanceActions'),query=await searchParams;return <div className="mx-auto max-w-3xl space-y-5"><Link href="/assistant?job=performance" className="inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('back')}</Link><PageHeader title={t('title')} description={t('description')}/><Card className="p-5"><ModulePerformanceActionSection resumeActionId={query.review} resumeEngine={query.engine}/></Card></div>;
+ const t=await getTranslations('assistant.workspace.performanceActions'),query=await searchParams;return <div className="mx-auto max-w-3xl space-y-5"><Link href="/assistant?job=performance" className="inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('back')}</Link><PageHeader title={t('title')} description={t('description')}/><Card className="p-5"><ModulePerformanceActionSection resumeActionId={query.review} resumeEngine={query.engine}/></Card><Card className="p-5"><PerformanceNativeHandoffs/></Card></div>;
 }
