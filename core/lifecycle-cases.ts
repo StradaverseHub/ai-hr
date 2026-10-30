@@ -212,18 +212,31 @@ export async function listCases(ctx: SessionContext, kind: CaseKind, f: { compan
 
 /** Minimal purpose-bound native choices in the caller's guarded transaction. Native company staff
  * authority is checked before selecting case facts; no private person/contact/notes projection. */
-export async function offboardingStepChoicesTx(tx: Tx, ctx: SessionContext, number: string) {
+async function offboardingCaseForStepChoicesTx(tx: Tx, ctx: SessionContext, number: string, minimum: number) {
   const [scope] = await tx.select({id:lcCase.id,companyId:lcCase.companyId}).from(lcCase)
     .where(and(eq(lcCase.number,number),eq(lcCase.kind,'offboarding'))).limit(1).for('share',{noWait:true});
   if(!scope) throw new LifecycleError('Case not found.','not_found');
   // A row-locking SELECT can be filtered by lc_staff's admin-only UPDATE policy. A short SHARE
   // table interval instead fences actual staff writers/phantoms without changing row authority.
   await tx.execute(sql`lock table lc_staff in share mode nowait`);
-  await requireLevel(tx,scope.companyId,LEVEL.agent,'only staff read cases');
+  await requireLevel(tx,scope.companyId,minimum,'only staff read cases');
   const [c] = await tx.select({id:lcCase.id,number:lcCase.number,kind:lcCase.kind,status:lcCase.status,laptopRequired:lcCase.laptopRequired,carparkRequired:lcCase.carparkRequired,outcome:lcCase.outcome}).from(lcCase).where(eq(lcCase.id,scope.id));
-  if(!c||c.status!=='in_progress') throw new LifecycleError('Step choices unavailable.','conflict');
+  if(!c||c.status==='cancelled') throw new LifecycleError('Step choices unavailable.','conflict');
+  return c;
+}
+export async function offboardingStepChoicesTx(tx: Tx, ctx: SessionContext, number: string) {
+  const c=await offboardingCaseForStepChoicesTx(tx,ctx,number,LEVEL.agent);
+  if(c.status!=='in_progress') throw new LifecycleError('Step choices unavailable.','conflict');
   const views=await stepViews(tx,c);
   return {caseId:c.id,caseNumber:c.number,steps:views.filter(step=>!step.blocked&&step.key!==OFFBOARDING_OUTCOME_STEP).map(step=>({key:step.key,label:step.label}))};
+}
+function offboardingUndoStepEligible(definitions:readonly {key:string;active:boolean}[],step:StepView|undefined):step is StepView {
+  return !!step&&step.key!==OFFBOARDING_OUTCOME_STEP&&step.done&&step.applicability==='applicable'&&definitions.some(d=>d.key===step.key&&d.active);
+}
+/** Same native manager scope and active/applicable bounded intent as the undo review projection. */
+export async function offboardingStepUndoChoicesTx(tx: Tx, ctx: SessionContext, number: string) {
+  const c=await offboardingCaseForStepChoicesTx(tx,ctx,number,LEVEL.manager),definitions=await loadStepDefsTx(tx,'offboarding'),views=await stepViews(tx,c);
+  return {caseId:c.id,caseNumber:c.number,steps:views.filter(step=>offboardingUndoStepEligible(definitions,step)).map(step=>({key:step.key,label:step.label}))};
 }
 
 export async function getCase(ctx: SessionContext, kind: CaseKind, number: string) {
@@ -319,8 +332,10 @@ export async function tickStep(
   });
 }
 
-export async function undoStep(ctx: SessionContext, kind: CaseKind, number: string, key: string, reason?: string | null): Promise<void> {
-  await withTenant(ctx, async (tx) => {
+/** The same native undo owner in a caller-supplied top transaction. No Assistant authority is
+ * inferred here. caseEventId may represent either native derived transition for general callers;
+ * the bounded active/applicable offboarding review accepts only optional case reopening. */
+export async function undoStepTx(tx: Tx, ctx: SessionContext, kind: CaseKind, number: string, key: string, reason?: string | null) {
     const c = await loadCase(tx, number, kind, true);
     await requireLevel(tx, c.companyId, LEVEL.manager, 'only a manager undoes a step');
     if (c.status === 'cancelled') throw new LifecycleError(BLOCK_MESSAGE.cancelled, 'conflict');
@@ -330,9 +345,37 @@ export async function undoStep(ctx: SessionContext, kind: CaseKind, number: stri
       throw new LifecycleError('The outcome step stays done while an outcome is recorded.', 'conflict');
     }
     await tx.update(lcCaseStep).set({ done: false, doneBy: null, doneAt: null }).where(and(eq(lcCaseStep.caseId, c.id), eq(lcCaseStep.stepKey, key)));
-    await recordChange(tx, ctx, { refType: 'case', refId: c.id, action: 'step.undone', detail: { key, reason: clean(reason, 500) }, eventType: 'lifecycle-case.step-undone', subjectEmploymentId: c.employmentId, eventRef: { number, step: key } });
-    await reconcileCompletion(tx, ctx, c);
-  });
+    const [proof] = await tx.execute<{rowHash:string;rowVersion:string}>(sql`select encode(sha256(convert_to(to_jsonb(a)::text,'UTF8')),'hex') as "rowHash",a.xmin::text as "rowVersion" from lc_case_step a where a.case_id=${c.id}::uuid and a.tenant_id=${ctx.tenantId}::uuid and a.step_key=${key}`);
+    if (!proof) throw new LifecycleError('Step audit unavailable.', 'conflict');
+    const stepEventId = randomUUID();
+    await recordChange(tx, ctx, { eventId: stepEventId, refType: 'case', refId: c.id, action: 'step.undone', detail: { key, reason: clean(reason, 500) }, eventType: 'lifecycle-case.step-undone', subjectEmploymentId: c.employmentId, eventRef: { number, step: key, stepRowHash: proof.rowHash, stepRowVersion: proof.rowVersion } });
+    const witness = {eventId:null as string|null};
+    const after = await reconcileCompletion(tx, ctx, c, witness);
+    return {caseId:c.id,stepKey:key,status:after.status,stepEventId,caseEventId:witness.eventId};
+}
+
+/** Preserve the existing native screen API and its optional reason semantics. */
+export async function undoStep(ctx: SessionContext, kind: CaseKind, number: string, key: string, reason?: string | null): Promise<void> {
+  await withTenant(ctx, async tx => {await undoStepTx(tx,ctx,kind,number,key,reason);});
+}
+
+/** Canonical bounded projection; the enclosing reviewed interval must also lock all definitions and
+ * case/step state until commit. Inactive/NA historical work stays in the native workflow. */
+export async function prepareOffboardingStepUndoTx(tx: Tx, ctx: SessionContext, caseId: string, number: string, key: string, reason?: string | null) {
+  const c = await loadCase(tx,number,'offboarding',true);
+  await requireLevel(tx,c.companyId,LEVEL.manager,'only a manager undoes a step');
+  if(c.id!==caseId||c.status==='cancelled'||key===OFFBOARDING_OUTCOME_STEP) throw new LifecycleError('Step undo unavailable.','conflict');
+  const definitions=await loadStepDefsTx(tx,'offboarding'),views=await stepViews(tx,c),step=views.find(v=>v.key===key);
+  if(!offboardingUndoStepEligible(definitions,step)) throw new LifecycleError('Use the native workflow for this step.','conflict');
+  const [record]=await tx.select().from(lcCaseStep).where(and(eq(lcCaseStep.caseId,c.id),eq(lcCaseStep.stepKey,key))).limit(1).for('update');
+  if(!record?.done) throw new LifecycleError('That step is not done.','conflict');
+  const complete=isCaseComplete(views.map(v=>v.key===key?{...v,done:false}:v),factsOf(c));
+  if(complete) throw new LifecycleError('Use the native workflow for this step.','conflict');
+  return {caseId:c.id,caseNumber:c.number,companyId:c.companyId,stepKey:key,stepLabel:step.label,
+    resignationDate:c.resignationDate!,lastWorkingDay:c.lastWorkingDay,
+    before:{done:true as const,caseStatus:c.status,reference:record.reference,notes:record.notes},
+    after:{done:false as const,caseStatus:'in_progress' as const,reference:record.reference,notes:record.notes},
+    reopensCase:c.status==='completed',reason:clean(reason,500)};
 }
 
 export async function saveStepNotes(ctx: SessionContext, kind: CaseKind, number: string, key: string, notes: string | null): Promise<void> {

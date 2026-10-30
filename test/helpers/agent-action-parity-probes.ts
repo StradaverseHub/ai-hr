@@ -1,6 +1,8 @@
+import {offboardingStepUndoReviews} from '../../core/assistant-actions/offboarding-step-undo-review-store';
+import {readOffboardingStepUndoChoices} from '../../core/assistant-actions/offboarding-step-undo-source';
 import {offboardingStepReviews} from '../../core/assistant-actions/offboarding-step-completion-review-store';
 import {readOffboardingStepChoices} from '../../core/assistant-actions/offboarding-step-completion-source';
-import {createOffboardingCase,tickStepTx} from '../../packs/lifecycle/service';
+import {createOffboardingCase,tickStep,tickStepTx,undoStepTx} from '../../packs/lifecycle/service';
 import {fixedItemArchiveReviews,readFixedItemArchiveChoices} from '../../core/assistant-actions/fixed-item-archive-review-store';
 import {archiveEmploymentPayComponent,setEmploymentPayComponent,seedPayComponentCatalog,listPayComponents} from '../../packs/payroll/service';
 import {tp3OpeningMaintenanceReviews,readTp3OpeningMaintenanceChoices} from '../../core/assistant-actions/tp3-opening-maintenance-review-store';
@@ -265,6 +267,11 @@ async function notificationIdentity(who:SessionContext){
  await owner.db.insert(schema.appExternalIdentity).values({issuer:identity.issuer,subject:identity.subject,appUserId:who.userId!}).onConflictDoNothing();provider.current.mockResolvedValue(identity);return identity;
 }
 const ADAPTERS:Record<ProbedActionId,Adapter>={
+ 'lifecycle.offboarding.step.undo':{family:'hr_on_employment',store:packetStore('lifecycle.offboarding.step.undo',offboardingStepUndoReviews.prepare,offboardingStepUndoReviews.confirm),
+  async create(_w,h){const root=groupOf(h.base),c=await createOffboardingCase(root,{companyId:h.companyId,fullName:'Fictional offboarding undo subject',employeeNo:'U-'+randomUUID().slice(0,8),resignationDate:todayInKualaLumpur(),personId:h.person.personId,employmentId:h.person.employmentId});await tickStep(root,'offboarding',c.number,'resign_submit');return {...itemOf(h,c.id),code:c.number};},
+  human:item=>({caseId:item.subjectId,caseNumber:item.code!,stepKey:'resign_submit',reason:null,confirmUndo:true,acceptCaseReopening:false}),
+  offered:async(who,item)=>{const choices=await readOffboardingStepUndoChoices(who,{caseNumber:item.code});return choices.kind==='choices'&&choices.cases.some(c=>c.caseId===item.subjectId&&c.steps.some(step=>step.key==='resign_submit'));},
+  screen:(tx,who,item)=>undoStepTx(tx,who,'offboarding',item.code!,'resign_submit')},
  'lifecycle.offboarding.step.complete':{family:'hr_on_employment',store:packetStore('lifecycle.offboarding.step.complete',offboardingStepReviews.prepare,offboardingStepReviews.confirm),
   async create(_w,h){const c=await createOffboardingCase(groupOf(h.base),{companyId:h.companyId,fullName:'Fictional offboarding subject',employeeNo:'F-'+randomUUID().slice(0,8),resignationDate:todayInKualaLumpur(),personId:h.person.personId,employmentId:h.person.employmentId});return {...itemOf(h,c.id),code:c.number};},
   human:item=>({caseId:item.subjectId,caseNumber:item.code!,stepKey:'resign_submit',reference:null,notes:null,confirmStepCompletion:true,acceptDerivedCaseCompletion:false}),
