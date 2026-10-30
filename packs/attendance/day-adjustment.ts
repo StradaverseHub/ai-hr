@@ -3,7 +3,7 @@ import { and, asc, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../../db/client';
 import { actorOf, appendEvent } from '../../db/events';
 import * as s from '../../db/schema';
-import { withAttendanceTenant } from '../../core/module-gate';
+import { withAttendanceTenant,assertModuleGate } from '../../core/module-gate';
 import { attendanceDayCalculationTx, recomputeDayFigures, decideAttendanceCorrection, lockAttendanceLeaveDependenciesTx } from '../../core/attendance';
 import { attendanceWorkflowsForTx } from '../../core/attendance-workflow';
 import { assertShiftsAllowedForEmploymentsTx } from '../../core/schedule-shift-eligibility';
@@ -56,8 +56,13 @@ async function readTx(tx:Tx,ctx:SessionContext,employmentId:string,date:string) 
     history:events.map(e=>({...e,at:e.at.toISOString()})),adjustment};
 }
 
-export async function attendanceDayEditor(ctx:SessionContext,employmentId:string,date:string){
-  dateValue(date);return withAttendanceTenant(ctx,tx=>readTx(tx,ctx,employmentId,date));
+/** Native module admission is unchanged for both default and already-owned transaction paths. */
+async function withAttendanceDayTx<T>(ctx:SessionContext,work:(tx:Tx)=>Promise<T>,existingTx?:Tx):Promise<T>{
+  if(existingTx){assertModuleGate(ctx,'attendance');return work(existingTx);}
+  return withAttendanceTenant(ctx,work);
+}
+export async function attendanceDayEditor(ctx:SessionContext,employmentId:string,date:string,existingTx?:Tx){
+  dateValue(date);return withAttendanceDayTx(ctx,tx=>readTx(tx,ctx,employmentId,date),existingTx);
 }
 export type AttendanceDayEditorData=NonNullable<Awaited<ReturnType<typeof attendanceDayEditor>>>;
 export type AttendanceDayEdit={employmentId:string;date:string;baseline:string;reason:string;confirmPayrollRecalculation:boolean} & (
@@ -65,11 +70,11 @@ export type AttendanceDayEdit={employmentId:string;date:string;baseline:string;r
   {kind:'overtime';rows:{key:string;minutes:number|null}[]}
 );
 
-export async function saveAttendanceDayEdit(ctx:SessionContext,p:AttendanceDayEdit){
+export async function saveAttendanceDayEdit(ctx:SessionContext,p:AttendanceDayEdit,existingTx?:Tx,options?:{returnEventId:true}):Promise<{version:number;adjustmentId?:string;eventId?:string}>{
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if(!['schedule','overtime'].includes(p.kind))throw new Error('Choose a supported attendance correction.');
   dateValue(p.date);const reason=p.reason.trim();if(!reason||reason.length>500)throw new Error('Explain the correction in at most 500 characters.');
-  return withAttendanceTenant(ctx,async tx=>{
+  return withAttendanceDayTx(ctx,async tx=>{
     await lockAttendanceLeaveDependenciesTx(tx,ctx,[p.employmentId]);
     const employee=await subject(tx,ctx,p.employmentId);if(!employee||employee.self)throw new Error('You cannot correct your own attendance or an employee outside your administrator scope.');
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
@@ -110,11 +115,11 @@ export async function saveAttendanceDayEdit(ctx:SessionContext,p:AttendanceDayEd
       await tx.update(s.attendance).set(figures.columns).where(eq(s.attendance.id,calculated.day.id));
       await refreshOvertimePatternDayTx(tx,ctx,{employmentId:p.employmentId,date:p.date,reason:'Corrected attendance day'});
     }
-    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance-day-adjustment',aggregateId:saved.id,eventType:'attendance.day.corrected',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,
-      payload:{date:p.date,kind:p.kind,reason,before:current.adjustment,after:saved,scheduleBefore:current.schedule,scheduleAfter:calculated.schedule,calculationBefore:current.rows,calculationAfter:calculated.rows}});
+    const eventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance-day-adjustment',aggregateId:saved.id,eventType:'attendance.day.corrected',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,
+      payload:{date:p.date,kind:p.kind,reason,before:current.adjustment,after:saved,scheduleBefore:current.schedule,scheduleAfter:calculated.schedule,calculationBefore:current.rows,calculationAfter:calculated.rows}},{returnId:options?.returnEventId===true});
     await markAttendancePayrollTx(tx,ctx,payroll,p.employmentId);
-    return {version:saved.version};
-  });
+    return eventId?{version:saved.version,adjustmentId:saved.id,eventId}:{version:saved.version};
+  },existingTx);
 }
 
 export async function amendExistingAttendanceApplication(ctx:SessionContext,p:{employmentId:string;date:string;correctionId:string;baseline:string;reason:string;checkIn:string|null;checkOut:string|null;expectedStageIndex?:number;confirmPayrollRecalculation?:boolean}){
