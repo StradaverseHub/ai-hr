@@ -66,6 +66,8 @@
 .v9-config-picker>section>button[aria-current=true]{border-color:var(--primary)}
 .v9-config-picker>section>h2{font-size:11px;letter-spacing:.06em;color:var(--muted-foreground);margin:8px 0 0}
 
-/* Theme attributes participate in the selector so WebKit invalidates inherited text paint on a theme change. */
+/* V9 text follows the selected AIHR shell tokens. */
 :root[data-ui-theme] .v9-workspace{color:var(--foreground)}
 .v9-config-picker>button.v9-button-primary{background:var(--primary);color:var(--primary-foreground);min-height:44px;justify-content:center;align-items:center}
+
+.v9-checklist-name{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%}

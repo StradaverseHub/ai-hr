@@ -43,7 +43,7 @@ it('deletes the last checklist only after explicit confirmation and leaves creat
   render(<ManagedEditor/>);fireEvent.click(screen.getByRole('button',{name:'Delete checklist'}));
   expect(JSON.parse(screen.getByTestId('managed-config').textContent!).checklists).toHaveLength(1);
   fireEvent.click(screen.getByRole('button',{name:'Confirm delete checklist'}));
-  expect(JSON.parse(screen.getByTestId('managed-config').textContent!).checklists).toEqual([]);expect(screen.getByRole('button',{name:'New checklist'})).toBeEnabled();
+  expect(JSON.parse(screen.getByTestId('managed-config').textContent!).checklists).toEqual([]);expect(screen.getByRole('button',{name:'New checklist'})).toBeEnabled();expect(screen.getByRole('heading',{name:'No offboarding checklists'})).toBeInTheDocument();expect(screen.getByText('Leavers currently get return and revoke only, with no offboarding tasks.')).toBeInTheDocument();
 });
 it('keeps nonowners and view-only users from ownership and lifecycle actions',()=>{
   const view=render(<ManagedEditor owner="someone-else"/>);
