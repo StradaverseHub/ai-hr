@@ -9,9 +9,10 @@ import * as s from '../../db/schema';
 const mode=vi.hoisted(()=>({lean:false}));
 vi.mock('drizzle-orm/postgres-js',async original=>{
  const native=await original<typeof import('drizzle-orm/postgres-js')>();
+ const schema=await import('../../db/schema');
  return {...native,drizzle:(client:Sql,options:Record<string,unknown>={})=>{
-  if(!mode.lean)return native.drizzle(client,options);
-  const {schema:_schema,...rest}=options;return native.drizzle(client,rest);
+  const {schema:_schema,...rest}=options;
+  return mode.lean?native.drizzle(client,rest):native.drizzle(client,{...rest,schema});
  }};
 });
 import {createDb,type SessionContext} from '../../db/client';

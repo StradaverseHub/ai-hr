@@ -58,6 +58,7 @@ const employeeRoutes=['/','/me','/claims','/leave','/attendance/individual','/me
 const hrRoutes=['/admin/personnel','/attendance','/payroll','/reports','/reports/employee-master','/lifecycle/onboarding','/lifecycle/offboarding','/roster','/letters/register','/performance','/rewards','/system-testing','/feedback','/knowledge-base','/control-tower','/admin/settings/movement'];
 const managerRoutes=['/approvals','/approvals/history','/performance/home','/claims'];
 const routePool=user=>user.role==='employee'?employeeRoutes:user.role==='manager'?managerRoutes:[...hrRoutes,'/claims'];
+const roleCounts=new Map(),roleOrdinals=new Map(fixture.users.map(user=>{const ordinal=roleCounts.get(user.role)??0;roleCounts.set(user.role,ordinal+1);return [user.index,ordinal];}));
 let browser,sampling,progressTimer,contextTemplates,lastPage;
 try{
  save();await db`select pg_stat_statements_reset()`;
@@ -209,7 +210,7 @@ try{
   let iteration=0;
   try{do{
   const pool=routePool(user);
-  const routes=suite==='whole-system'?Array.from({length:3},(_,step)=>pool[(i+iteration*3+step)%pool.length]):user.role==='employee'?['/me','/claims','/leave']:user.role==='manager'?['/approvals','/claims','/performance/home']:['/admin/personnel','/payroll','/claims'];
+  const routes=suite==='whole-system'?Array.from({length:3},(_,step)=>pool[(roleOrdinals.get(user.index)+iteration*3+step)%pool.length]):user.role==='employee'?['/me','/claims','/leave']:user.role==='manager'?['/approvals','/claims','/performance/home']:['/admin/personnel','/payroll','/claims'];
   for(const route of routes){await request(user,route);await pause(1000);}
   const description='PERF_HTTP_'+i+'_'+iteration;
   const template=contextTemplates.createTemplate,fields={...template.fields};
