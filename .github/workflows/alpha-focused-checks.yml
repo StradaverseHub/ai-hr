@@ -24,6 +24,11 @@ on:
         default: claims-heavy
         type: choice
         options: [claims-heavy, whole-system]
+      system_think_time:
+        description: Time between actions for each of the 500 active users
+        default: 1s
+        type: choice
+        options: [1s, 5s]
       service_profile:
         description: Explicit service benchmark outside the normal unit-test inventory
         default: none
@@ -299,6 +304,7 @@ jobs:
       AIHR_CI_PG_STATEMENTS: '1'
       AIHR_CI_PG_STATEMENTS_OWNER: system-http-profile
       PERF_HTTP_SUITE: ${{ inputs.system_load_suite }}
+      PERF_HTTP_THINK_MS: ${{ inputs.system_think_time == '5s' && '5000' || '1000' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
