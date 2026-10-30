@@ -2,9 +2,10 @@
  * gates they mirror; live-scope answers are stubbed at their source to prove fail-closed behaviour. No
  * database: the target actions' own refusals are proved by their own suites. */
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const source=vi.hoisted(()=>({companies:vi.fn(),assigned:vi.fn(),rewards:vi.fn(),cancel:vi.fn(),calendar:vi.fn(),position:vi.fn(),department:vi.fn(),annualReturn:vi.fn()}));
+const source=vi.hoisted(()=>({companies:vi.fn(),assigned:vi.fn(),rewards:vi.fn(),cancel:vi.fn(),calendar:vi.fn(),position:vi.fn(),department:vi.fn(),idTemplate:vi.fn(),annualReturn:vi.fn()}));
 vi.mock('../core/workforce-access',()=>({workforceCompanies:source.companies}));
 vi.mock('../core/assistant-actions/position-archive-review-store',()=>({positionArchiveEntryAvailable:source.position}));
+vi.mock('../core/assistant-actions/employee-id-template-status-review-store',()=>({employeeIdTemplateStatusEntryAvailable:source.idTemplate}));
 vi.mock('../core/assistant-actions/department-archive-review-store',()=>({departmentArchiveEntryAvailable:source.department}));
 vi.mock('../packs/rewards/service',()=>({administersRewardsForAnyCompany:source.rewards}));
 vi.mock('../core/assistant-actions/module-action-server',()=>({readAssignedLeaveModuleActionChoices:source.assigned}));
@@ -18,7 +19,7 @@ import {canAuthor} from '../core/knowledge-base';
 import {AGENT_MODULE_CODES} from '../lib/ai/module-agents';
 const ctxOf=(role:string)=>({tenantId:'t',userId:'u',roles:[role],grants:[{role,companyId:null}]}) as SessionContext;
 const task={leaveRequestId:'10000000-0000-4000-8000-000000000002',currentStepId:null,stepIndex:null,applicantLabel:'Fictional applicant',createdAt:'2026-10-27T00:00:00Z'};
-beforeEach(()=>{vi.clearAllMocks();source.companies.mockResolvedValue([]);source.assigned.mockResolvedValue({kind:'choices',truncated:false,tasks:[]});source.rewards.mockResolvedValue(false);source.cancel.mockResolvedValue({units:[]});source.calendar.mockResolvedValue({units:[]});source.position.mockResolvedValue(false);source.department.mockResolvedValue(false);source.annualReturn.mockResolvedValue({units:[]});});
+beforeEach(()=>{vi.clearAllMocks();source.companies.mockResolvedValue([]);source.assigned.mockResolvedValue({kind:'choices',truncated:false,tasks:[]});source.rewards.mockResolvedValue(false);source.cancel.mockResolvedValue({units:[]});source.calendar.mockResolvedValue({units:[]});source.position.mockResolvedValue(false);source.department.mockResolvedValue(false);source.idTemplate.mockResolvedValue(false);source.annualReturn.mockResolvedValue({units:[]});});
 describe('role floors mirror the target gates',()=>{
  it('mirrors each target gate: admin-only floors refuse employees and managers, payroll floors admit the payroll partner only where the target does',()=>{
   const ctxOf=(role:string)=>({tenantId:'t',userId:'u',roles:[role],grants:[{role,companyId:null}]}) as SessionContext;

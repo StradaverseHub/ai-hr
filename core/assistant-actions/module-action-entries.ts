@@ -1,3 +1,4 @@
+import {employeeIdTemplateStatusEntryAvailable} from './employee-id-template-status-review-store';
 import {departmentArchiveEntryAvailable} from './department-archive-review-store';
 import {positionArchiveEntryAvailable} from './position-archive-review-store';
 import {readRewardsReturnChoices} from './rewards-return-source';
@@ -24,7 +25,7 @@ export async function moduleActionEntryAccess(supplied:SessionContext,entry:Modu
   if(entry==='rewards_return')return (await readRewardsReturnChoices(ctx)).units.length>0?'allowed':'refused';
   if(entry==='rewards_calendar')return (await readRewardsCalendarChoices(ctx)).units.length>0?'allowed':'refused';
   if(entry==='rewards_cancel')return (await readRewardsCancelChoices(ctx)).units.length>0?'allowed':'refused';
-  if(entry==='org')return (await workforceCompanies(ctx,'maintain')).length>0||await positionArchiveEntryAvailable(ctx)||await departmentArchiveEntryAvailable(ctx)?'allowed':'refused';
+  if(entry==='org')return (await workforceCompanies(ctx,'maintain')).length>0||await positionArchiveEntryAvailable(ctx)||await departmentArchiveEntryAvailable(ctx)||await employeeIdTemplateStatusEntryAvailable(ctx)?'allowed':'refused';
   // Posting needs app.reward_admin for the unit's company (plus its payroll seat, checked per unit).
   if(entry==='rewards')return await administersRewardsForAnyCompany(ctx)?'allowed':'refused';
   // Same audience as the native Approvals entry (app/layout.tsx canApprove = admin or manager), plus

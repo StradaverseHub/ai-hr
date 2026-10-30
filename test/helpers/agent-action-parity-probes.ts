@@ -7,6 +7,11 @@ import {profileRequestRejectionReviews,readProfileRequestRejectionChoices} from 
 import {decideProfileChange} from '../../core/profile';
 import {preparePayrollReopenReview,confirmPayrollReopenReview,readPayrollReopenChoices} from '../../core/assistant-actions/payroll-reopen-review-store';
 import {unlockClosedBatch} from '../../packs/payroll/service';
+import {peopleGeneralPolicyReviews} from '../../core/assistant-actions/people-general-policy-review-store';
+import {canConfigurePeopleGeneral,readPeopleGeneralTx,savePeopleGeneral} from '../../core/people-general';
+import {employeeIdTemplateStatusReviews,readEmployeeIdTemplateStatusChoices} from '../../core/assistant-actions/employee-id-template-status-review-store';
+import {createConfig as createEmployeeIdConfig,setStatus as setEmployeeIdConfigStatus,listConfigs as listEmployeeIdConfigs} from '../../core/employee-id-config';
+import {allowedCompanies} from '../../core/read';
 import {departmentArchiveReviews,readDepartmentArchiveChoices} from '../../core/assistant-actions/department-archive-review-store';
 import {listDepartmentsForLabels} from '../../core/admin';
 import {positionArchiveReviews,readPositionArchiveChoices} from '../../core/assistant-actions/position-archive-review-store';
@@ -189,7 +194,7 @@ type World={
  login(base:Base,person:Person,role:DbRole,companyId:string|null):Promise<{ctx:SessionContext;userId:string}>;
  claimTypes:Map<string,string>;
 };
-type Family='assigned_checkin'|'assigned_goal'|'assigned_decision'|'hr_on_employment'|'own'|'catalogue';
+type Family='assigned_checkin'|'assigned_goal'|'assigned_decision'|'hr_on_employment'|'own'|'catalogue'|'tenant_policy';
 type Adapter={
  confirmation?:(review:Review)=>Review;
  family:Family;store:Store;independentScreen?:boolean;pageAdmits?:(who:SessionContext)=>boolean;
@@ -296,6 +301,10 @@ async function notificationIdentity(who:SessionContext){
  await owner.db.insert(schema.appExternalIdentity).values({issuer:identity.issuer,subject:identity.subject,appUserId:who.userId!}).onConflictDoNothing();provider.current.mockResolvedValue(identity);return identity;
 }
 const ADAPTERS:Record<ProbedActionId,Adapter>={
+ 'org.people_general.change':{family:'tenant_policy',store:packetStore('org.people_general.change',peopleGeneralPolicyReviews.prepare,peopleGeneralPolicyReviews.confirm),
+  screenAdmits:who=>canConfigurePeopleGeneral(who),create:async(_w,h)=>itemOf(h,h.base.tenantId),
+  human:()=>({action:'org.people_general.change',contractVersion:1,expected:{allowDuplicatedNric:false,allowDuplicatedEmail:false},desired:{allowDuplicatedNric:true,allowDuplicatedEmail:true}}),
+  offered:who=>canConfigurePeopleGeneral(who),screen:async(tx,who)=>savePeopleGeneral(who,{...await readPeopleGeneralTx(tx),allowDuplicatedNric:true,allowDuplicatedEmail:true},tx)},
  'org.position.archive':{family:'catalogue',store:packetStore('org.position.archive',positionArchiveReviews.prepare,positionArchiveReviews.confirm),
   screenAdmits:async(who,item)=>isAdmin(who)&&(await listPositionsForLabels(who)).some(p=>p.id===item.subjectId&&!p.inUse),
   create:async(_w,h)=>{const title='FIC_POSITION_'+randomUUID().slice(0,8),p=await createPosition(groupOf(h.base),{companyId:h.companyId,title});return itemOf(h,p.id,{code:title});},
@@ -324,6 +333,12 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   offered:async(who,item)=>{const choices=await readOffboardingStepChoices(who,{caseNumber:item.code});return choices.kind==='choices'&&choices.cases.some(c=>c.caseId===item.subjectId&&c.steps.some(step=>step.key==='resign_submit'));},
   screen:(tx,who,item)=>tickStepTx(tx,who,'offboarding',item.code!,'resign_submit')},
 
+ 'org.employee_id_template.status':{family:'catalogue',store:packetStore('org.employee_id_template.status',employeeIdTemplateStatusReviews.prepare,employeeIdTemplateStatusReviews.confirm),
+  screenAdmits:async(who,item)=>isAdmin(who)&&(await listEmployeeIdConfigs(who,(await allowedCompanies(who)).map(c=>c.id))).some(p=>p.id===item.subjectId),
+  create:async(_w,h)=>{const prefix='FIC'+randomUUID().replaceAll('-','').slice(0,8).toUpperCase(),p=await createEmployeeIdConfig(groupOf(h.base),{companyId:h.companyId,templateName:prefix,prefix,numberLength:4});return itemOf(h,p.id,{code:prefix});},
+  human:item=>({action:'org.employee_id_template.status',contractVersion:1,configId:item.subjectId,expectedStatus:'active',status:'inactive'}),
+  offered:async(who,item)=>{const choices=await readEmployeeIdTemplateStatusChoices(who,{query:item.code});return choices.kind==='choices'&&choices.templates.some(p=>p.configId===item.subjectId);},
+  screen:(tx,who,item)=>setEmployeeIdConfigStatus(who,{id:item.subjectId,status:'inactive'},tx)},
  'approvals.leave.decide':{family:'assigned_decision',store:packetStore('approvals.leave.decide',prepareLeaveDecisionReview,confirmLeaveDecisionReview),
   async create(w,h){const item=await pendingLeave(w,h);const steps=await owner.db.select().from(schema.leaveApprovalStep).where(eq(schema.leaveApprovalStep.leaveRequestId,item.subjectId)).orderBy(schema.leaveApprovalStep.stepIndex);return {...item,stepId:steps.find(row=>row.status==='pending')?.id??null};},
   human:(item,o)=>({action:'approvals.leave.decide',contractVersion:1,leaveRequestId:item.subjectId,currentStepId:item.stepId??null,decision:o.decision,rejectReason:o.decision==='rejected'?REJECT_REASON:null,confirmAssignedDecision:true}),

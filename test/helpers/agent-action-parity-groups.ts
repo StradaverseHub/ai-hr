@@ -7,7 +7,7 @@ export type ParityProbeVariant=typeof PARITY_PROBE_VARIANTS[number];
 export const PARITY_PROBE_GROUPS={
  attendance:{actions:['attendance.schedule_group.maintain','attendance.day_schedule.correct'],variants:[]},
  payroll:{actions:['payroll.reopen'],variants:[]},
- organisation:{actions:['org.position.archive','org.department.archive'],variants:[]},
+ organisation:{actions:['org.people_general.change','org.position.archive','org.department.archive','org.employee_id_template.status'],variants:[]},
  rewardsReturn:{actions:['rewards.annual_review.return'],variants:[]},
  rewardsCalendar:{actions:['rewards.calendar.update'],variants:[]},
  rewards:{actions:['rewards.cancel_review'],variants:[]},
