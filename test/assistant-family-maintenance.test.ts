@@ -202,7 +202,7 @@ describe('Family ledger closed columns',()=>{
   const columns=await owner.db.execute<{name:string;type:string}>(sql`select attname as name,format_type(atttypid,atttypmod) as type from pg_attribute where attrelid='app.assistant_own_leave_review'::regclass and attnum>0 and not attisdropped order by attnum`);
   const dedicated=Array.from(columns).filter(column=>!allowed.includes(column.name));expect(dedicated.length).toBeGreaterThan(40);
   for(const column of dedicated){
-   const value=column.type==='uuid'?sql`${randomUUID()}::uuid`:column.type==='uuid[]'?sql`ARRAY[${randomUUID()}::uuid]`:column.type==='integer'?sql`1`:column.type==='text'?sql`'fictional-hybrid'`:null;
+   const value=column.type==='uuid'?sql`${randomUUID()}::uuid`:column.type==='uuid[]'?sql`ARRAY[${randomUUID()}::uuid]`:column.type==='integer'?sql`1`:column.type==='boolean'?sql`true::boolean`:column.type==='date'?sql`DATE '2026-10-30'`:column.type==='text'?sql`'fictional-hybrid'`:null;
    if(!value)throw Error(`Unreviewed dedicated column type ${column.name}: ${column.type}`);
    let failure:unknown;try{await owner.db.execute(sql`update app.assistant_own_leave_review set ${sql.identifier(column.name)}=${value} where id=${id}::uuid`);}catch(error){failure=error;}
    // Prove the per-kind CHECK, rather than accepting a foreign key or privilege failure as coverage.
