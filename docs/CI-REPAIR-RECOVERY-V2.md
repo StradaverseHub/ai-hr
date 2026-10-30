@@ -83,6 +83,13 @@ node --import tsx .github/ci/operator-release.mjs verify-repair /ABS/CANDIDATE O
   '{"originalPath":"/ABS/FROZEN_ORIGINAL","candidateBranch":"FROZEN_BRANCH","focusedRunIds":[FOCUSED_RUN],"buildRunId":CANONICAL_BUILD_ONLY_RUN}'
 ```
 
+Before review, the same read-only command can exercise the complete real composition after hosted
+controller checks pass. It returns `DIAGNOSTIC_NONINSTALLABLE`, `pendingReview:true`,
+`reviewedController:null`, `installationEligible:false` and `releaseAuthorized:false`. Both grant
+creation and the actual deployment boundary reject it. After independent review, generate a new
+fully authenticated certificate with the exact reviewed controller; never edit or relabel the
+diagnostic. The review identity is inside the certificate fingerprint and prelaunch revalidation.
+
 `deploy-repair` uses the same options and existing guarded installer only under the release
 owner's staging authority. The original failed run is recorded separately; the installation
 grant names the replacement build's actual successful run. Every original and replacement

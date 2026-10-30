@@ -8,6 +8,7 @@ import {fixture,put,now} from './resume-test-fixtures.mjs';
 import {collectRecoveryEvidence} from './focused-recovery.mjs';
 import {assessResumeSource} from './resume-source.mjs';
 import {validateRepairArchiveInventory,assertRepairRevalidation} from './repair-recovery.mjs';
+import {operatorRelease} from './operator-release.mjs';
 test('real collector authenticates API/ZIP bytes, separates failure diagnostics, and revalidates unchanged original evidence',async()=>{
  const root=mkdtempSync(join(tmpdir(),'aihr-repair-adapter-')),bin=join(root,'bin'),responses=join(root,'api'),directory=join(root,'evidence');mkdirSync(bin);mkdirSync(responses);
  const f=fixture(),unit=f.expectedPlan.units.find(u=>u.kind==='nodb'),report=f.reports.find(r=>r.id===unit.id);
@@ -34,4 +35,11 @@ test('prelaunch comparison refuses certificate, canonical bytes or authenticated
  const e={recovery:{originalSha:'original',sha:'repair',originalArtifacts:[{id:1,digest:'original'}]},build:{source:'repair',archiveSha256:'canonical'},artifacts:[{id:2,digest:'replacement'}]};
  assert.equal(assertRepairRevalidation(e,structuredClone(e)),true);
  for(const change of [x=>x.recovery.originalArtifacts[0].digest='changed',x=>x.recovery.sha='foreign',x=>x.build.archiveSha256='foreign',x=>x.artifacts[0].id++]){const c=structuredClone(e);change(c);assert.throws(()=>assertRepairRevalidation(e,c));}
+});
+test('actual deploy-repair boundary refuses pending/mismatched review before candidate access, transport or lease phase',async()=>{
+ const previous=process.env.AIHR_REPAIR_REVIEWED_CONTROLLER;
+ try{for(const value of [undefined,'f'.repeat(40)]){
+  if(value===undefined)delete process.env.AIHR_REPAIR_REVIEWED_CONTROLLER;else process.env.AIHR_REPAIR_REVIEWED_CONTROLLER=value;
+  await assert.rejects(operatorRelease({candidatePath:'/nonexistent-candidate-review-probe',execute:true,repair:{}}),/Exact independent verifier review required/);
+ }}finally{if(previous===undefined)delete process.env.AIHR_REPAIR_REVIEWED_CONTROLLER;else process.env.AIHR_REPAIR_REVIEWED_CONTROLLER=previous;}
 });

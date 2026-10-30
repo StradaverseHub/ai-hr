@@ -72,10 +72,14 @@ function caseInventory(result,files,cwd,{passing}){
  }
  if(passing)assert(result.numPassedTests===total&&result.numTotalTests===total,'Fresh assertion total differs');return found;
 }
-export function verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun,reports,focused,impactContext,classifierHash,verificationController,verificationDiagnostic,buildRun,build,history}){
+export function requireReviewedRepairController({execute,repair,controller,reviewedController}){
+ if(execute&&repair)assert(sha(controller)&&reviewedController===controller,'Exact independent verifier review required before any repair deployment operation');
+}
+export function verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun,reports,focused,impactContext,classifierHash,verificationController,verificationDiagnostic,reviewedController=null,buildRun,build,history}){
  assert(sourceRun.status==='completed'&&sourceRun.conclusion==='failure'&&sourceRun.run_attempt===1&&assessment.sourceRun.id===sourceRun.id,'Original complete failure required');
  assert(assessment.sha===sourcePlan.sha&&assessment.controller===sourcePlan.controller&&assessment.fingerprint===sourcePlan.fingerprint&&assessment.baseline===plan.migrationBase,'Original source assessment differs');
  assert(verificationDiagnostic.controller===verificationController&&id(verificationDiagnostic.runId),'Hosted verifier diagnostic required');
+ assert(reviewedController===null||reviewedController===verificationController,'Reviewed verifier identity changed');
  const disposition=repairDisposition({sourcePlan,plan,assessment,impactContext,verificationController}),fresh=new Set(disposition.fresh);
  assert(fresh.size>0,'No failed/invalidated units to recover');
  assert(plan.units.filter(u=>fresh.has(u.id)).every(u=>u.kind==='nodb'||u.kind==='db'),'Affected browser units require a separately validated execution route');
@@ -116,10 +120,11 @@ export function verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun,repor
   tests+=count;units.push({id:u.id,kind:'repaired-source',originalReportHash:hash(report),tests:count,files});
  }
  assert(replacements.size===plan.units.filter(u=>fresh.has(u.id)).reduce((n,u)=>n+u.files.length,0),'Incomplete or excessive replacement coverage');
- return {kind:'AUTHENTICATED_CROSS_SOURCE_RECOVERY',recoveryPolicy:REPAIR_RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,verificationDiagnostic,baseline:plan.migrationBase,runId:buildRun.id,originalRunId:sourceRun.id,originalSha:sourcePlan.sha,originalConclusion:sourceRun.conclusion,originalFingerprint:sourcePlan.fingerprint,candidateFingerprint:plan.fingerprint,disposition,originalFailureObservations:assessment.observations,focusedSources,compilers,history,units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests};
+ return {kind:'AUTHENTICATED_CROSS_SOURCE_RECOVERY',recoveryPolicy:REPAIR_RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,verificationDiagnostic,reviewedController,pendingReview:reviewedController===null,releaseAuthorized:false,baseline:plan.migrationBase,runId:buildRun.id,originalRunId:sourceRun.id,originalSha:sourcePlan.sha,originalConclusion:sourceRun.conclusion,originalFingerprint:sourcePlan.fingerprint,candidateFingerprint:plan.fingerprint,disposition,originalFailureObservations:assessment.observations,focusedSources,compilers,history,units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests};
 }
 export function validateRepairGrantEvidence(evidence,run){
  const c=evidence.recovery;assert(c?.kind==='AUTHENTICATED_CROSS_SOURCE_RECOVERY'&&c.recoveryPolicy===REPAIR_RECOVERY_POLICY&&c.originalConclusion==='failure'&&c.originalSha!==c.sha&&c.originalRunId!==c.runId&&evidence.fingerprint===hash(c),'Cross-source recovery certificate required');
+ assert(c.pendingReview===false&&c.reviewedController===c.verificationController&&c.releaseAuthorized===false,'Pending-review diagnostic cannot authorize an installation grant');
  for(const key of ['sha','controller','verificationController','baseline','runId','policyVersion','suiteFiles','browserFiles','tests'])same(evidence[key],c[key],'Recovery grant identity differs: '+key);
  assert(run.id===c.runId&&run.head_sha===c.controller&&run.conclusion==='success'&&run.status==='completed'&&run.run_attempt===1&&c.verificationDiagnostic?.controller===c.verificationController&&id(c.verificationDiagnostic.runId)&&c.compilers?.length>0&&c.focusedSources?.length>0&&c.units?.some(u=>u.kind==='repaired-source'),'Missing replacement build/compiler/controller provenance');return true;
 }

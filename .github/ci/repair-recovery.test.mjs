@@ -28,7 +28,7 @@ function input(){
  const result=structuredClone(failed.batches[0].result);result.success=true;result.testResults[0].name='/home/runner/work/ai-hr/ai-hr/source/'+unit.files[0];
  const buildRun={...f.run,id:500,conclusion:'success',created_at:time(4),updated_at:time(1),display_title:'Canonical build only · repair'};
  const buildJobs=['resolve','typecheck','migrations','test','controller-tests','plan','runner-diagnostics','build','browser','verify','deployment-hold'].map((name,i)=>({id:600+i,name,run_id:500,head_sha:buildRun.head_sha,head_branch:buildRun.head_branch,run_attempt:1,status:'completed',conclusion:['resolve','build','deployment-hold'].includes(name)?'success':'skipped',started_at:time(3),completed_at:time(2)}));
- return {sourcePlan,plan,assessment,sourceRun:f.run,reports:f.reports,focused:[{run,jobs,artifact,producer:jobs[1],compiler:{runId:200,jobId:302,controller:run.head_sha},report,result}],impactContext,classifierHash:'classifier',verificationController,verificationDiagnostic:{controller:verificationController,runId:900},buildRun,buildJobs,build:{canonicalCandidateInputsVerified:true,source:candidate,controller:plan.controller,runId:500},history:{kind:'AUTHENTICATED_COMPLETE_REPAIR_HISTORY',sourceRunId:f.run.id,runIds:[200,500]}};
+ return {sourcePlan,plan,assessment,sourceRun:f.run,reports:f.reports,focused:[{run,jobs,artifact,producer:jobs[1],compiler:{runId:200,jobId:302,controller:run.head_sha},report,result}],impactContext,classifierHash:'classifier',verificationController,verificationDiagnostic:{controller:verificationController,runId:900},reviewedController:verificationController,buildRun,buildJobs,build:{canonicalCandidateInputsVerified:true,source:candidate,controller:plan.controller,runId:500},history:{kind:'AUTHENTICATED_COMPLETE_REPAIR_HISTORY',sourceRunId:f.run.id,runIds:[200,500]}};
 }
 test('v2 preserves failed source and retained report identities while replacing compiler/build and whole failed process',()=>{
  const f=input(),original=structuredClone(f.reports),c=verifyRepairRecovery(f);assert.deepEqual(f.reports,original);assert.equal(c.originalConclusion,'failure');assert.equal(c.originalSha,f.sourcePlan.sha);assert.equal(c.sha,f.plan.sha);assert.equal(c.runId,500);assert.equal(c.tests,5);assert.equal(c.units.filter(u=>u.kind==='retained').length,4);assert.equal(c.units.find(u=>u.kind==='retained').originalSha,f.sourcePlan.sha);
@@ -69,6 +69,13 @@ test('v2 grant binds fresh canonical producer while retaining original failed ru
  const run={...g.run,id:c.runId,head_sha:c.controller},producer={...g.producer,run_id:c.runId,head_sha:c.controller};
  assert.equal(validateRepairGrantEvidence(e,run),true);const grant=createInstallGrant({...g,evidence:e,run,producer});assert.equal(grant.source,c.sha);assert.equal(grant.runId,500);assert.equal(grant.witnessFingerprint,hash(c));assert.equal(c.originalRunId,100);
  for(const change of [x=>x.recovery.originalConclusion='success',x=>x.recovery.tests++,x=>x.verificationController='a'.repeat(40),x=>delete x.recovery.compilers]){const bad=structuredClone(e);change(bad);assert.throws(()=>validateRepairGrantEvidence(bad,run));}
+});
+test('Successful read-only composition under hosted diagnostics is visibly noninstallable until exact review',()=>{
+ const f=input();f.reviewedController=null;const c=verifyRepairRecovery(f);assert.equal(c.pendingReview,true);assert.equal(c.reviewedController,null);assert.equal(c.releaseAuthorized,false);
+ const g=installationFixture(),e={...g.evidence,...c,recovery:c,fingerprint:hash(c),build:{...g.evidence.build,...f.build}},run={...g.run,id:c.runId,head_sha:c.controller},producer={...g.producer,run_id:c.runId,head_sha:c.controller};
+ // Even a forged outer PASS cannot turn the diagnostic certificate into a grant.
+ assert.throws(()=>createInstallGrant({...g,evidence:e,run,producer}),/Pending-review/);
+ const changed=structuredClone(f);changed.reviewedController='f'.repeat(40);assert.throws(()=>verifyRepairRecovery(changed),/Reviewed verifier/);
 });
 test('Repair delta independently rejects tests, SQL, workflow, lock, security-owner and added files',()=>{
  const root=mkdtempSync(join(tmpdir(),'aihr-repair-delta-'));

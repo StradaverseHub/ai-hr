@@ -12,6 +12,7 @@ import {createCleanupRequest} from './staging-cleanup-protocol.mjs';
 import {assertRsyncPacketCapability} from './rsync-packet-capability.mjs';
 import {verifyRecoveredCi,revalidateRecoveredCi} from './focused-recovery.mjs';
 import {verifyRepairedCi,revalidateRepairedCi} from './repair-recovery.mjs';
+import {requireReviewedRepairController} from './repair-recovery-policy.mjs';
 import {probeStagingProfile} from './staging-preflight.mjs';
 import {readLease,guardCommand,guardedRsync,leasePhase,redactLeaseError} from '../../scripts/staging/lease.mjs';
 export {STAGING,bindStaging};
@@ -25,6 +26,7 @@ export function requireSuccessfulBuild(official,status,sha){
 export async function operatorRelease(options){try{return await leasedOperatorRelease(options);}catch(error){throw redactLeaseError(error);}}
 async function leasedOperatorRelease({candidatePath,runId,execute=false,recoveryRunIds=[],repair=null}){
  candidatePath=resolve(candidatePath);bindStaging(process.env);
+ if(execute&&repair)requireReviewedRepairController({execute,repair,controller:cleanHead(controllerRoot),reviewedController:process.env.AIHR_REPAIR_REVIEWED_CONTROLLER});
  const packetTransport=execute?assertRsyncPacketCapability():null;
  // Import the ACTUAL frozen candidate's official release helpers; never rewrite its gate code.
  const load=async path=>{const raw=await import(pathToFileURL(join(candidatePath,path)).href);return {...(raw.default??{}),...raw};};
