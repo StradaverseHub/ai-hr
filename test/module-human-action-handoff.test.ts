@@ -70,7 +70,7 @@ it('offers the fixed pay-code human page without model rules, classification or 
 });
 
 it('offers fixed Rewards human pages without amounts, unit selectors or model approval',()=>{
- const rows=moduleHumanActionHandoffs('rewards');expect(rows).toEqual([{module:'rewards',action:'rewards.post',route:'/assistant/rewards',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'rewards',action:'rewards.cancel_review',route:'/assistant/rewards/cancel',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'rewards',action:'rewards.calendar.update',route:'/assistant/rewards/calendar',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
+ const rows=moduleHumanActionHandoffs('rewards');expect(rows).toEqual([{module:'rewards',action:'rewards.post',route:'/assistant/rewards',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'rewards',action:'rewards.cancel_review',route:'/assistant/rewards/cancel',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'rewards',action:'rewards.calendar.update',route:'/assistant/rewards/calendar',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'rewards',action:'rewards.annual_review.return',route:'/assistant/rewards/return',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
  for(const extra of [{unitId:'other'},{awards:[]},{newBasic:100},{employeeIds:[]},{approved:true},{route:'/assistant/rewards?unit=other'}])expect(()=>checkedModuleHumanHandoffs('rewards',rows.map(row=>({...row,...extra})))).toThrow();
 });
 
