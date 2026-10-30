@@ -58,3 +58,30 @@ test('latest history does not lose overlapping failures, pending runs or executi
  }
  assert.throws(()=>validateLatestRepairHistory({...input,rows:[...rows,{...rows[0],updated_at:'not-a-time'}]}),/Malformed/);
 });
+
+import {validateLatestRepairHistory as browserHistory,validateFixtureRepairDelta} from './fixture-browser-recovery.mjs';
+test('Browser history refuses unaccounted, pending, overlapping failures and exact-run omission',()=>{
+ const source={run:{id:1,display_title:'Alpha CI · repair',updated_at:'2026-10-30T02:00:00Z'}};
+ const row=(id,title)=>({id,display_title:title,created_at:'2026-10-30T02:10:00Z',updated_at:'2026-10-30T02:20:00Z',status:'completed',conclusion:'success',run_attempt:1});
+ const rows=[row(2,'Focused only · repair'),row(3,'Canonical build only · repair'),row(4,'Tooling transport only · repair')],f={source,rows,candidateBranch:'repair',focusedRunIds:[2],buildRunId:3,browserRunId:4};
+ assert.deepEqual(browserHistory(f).runIds,[2,3,4]);
+ for(const change of [x=>x.rows.pop(),x=>x.rows[2].conclusion='failure',x=>x.rows[2].status='queued',x=>x.rows.push({...row(5,'Tooling transport only · repair'),created_at:'2026-10-30T01:00:00Z',conclusion:'failure'}),x=>x.rows.push({...row(6,'Tooling transport only · repair'),created_at:'2020-01-01T00:00:00Z',status:'pending'})]){const bad=structuredClone(f);change(bad);assert.throws(()=>browserHistory(bad));}
+});
+test('Finite fixture route refuses arbitrary commits before touching Git or candidate paths',()=>{
+ assert.throws(()=>validateFixtureRepairDelta({cwd:'/no-path',original:'a'.repeat(40),candidate:'b'.repeat(40)}),/independently reviewed exact fixture/);
+});
+
+import {execFileSync as browserExec} from 'node:child_process';
+import {fileURLToPath as browserFilePath} from 'node:url';
+test('Actual bounded browser extractor preserves unit results, binds image text and refuses unknown members',()=>{
+ const root=mkdtempSync(join(tmpdir(),'aihr-browser-extract-')),archive=join(root,'packet.zip'),script=browserFilePath(new URL('./browser-repair-extract.py',import.meta.url));
+ const writeZip=entries=>writeFileSync(archive,browserExec('python3',['-c','import io,json,sys,zipfile; b=io.BytesIO(); z=zipfile.ZipFile(b,"w"); [(z.writestr(k,v)) for k,v in json.load(sys.stdin).items()]; z.close(); sys.stdout.buffer.write(b.getvalue())'],{input:JSON.stringify(entries)}));
+ const extract=(entries,mode,label)=>{writeZip(entries);return browserExec('python3',[script,archive,join(root,label),mode,'chromium'],{stdio:'pipe'});};
+ const unit={'unit-browser-chromium.json':'{"report":true}','browser-chromium-batch-0.json':'{"result":true}'};
+ const identity={'filesystem-capacity.txt':'facts','image-binding.json':'{"binding":true}','installed-packages.tsv':'packages','lockfile-sha256.txt':'lock text\n','source-sha.txt':'source text\n'};
+ try{
+  extract(unit,'unit','unit');assert.deepEqual(JSON.parse(readFileSync(join(root,'unit/unit-browser-chromium.json'))),{report:true});
+  extract(identity,'identity','identity');assert.deepEqual(JSON.parse(readFileSync(join(root,'identity/source-binding.json'))),{sourceText:'source text\n',lockText:'lock text\n'});
+  let i=0;for(const entries of [{...unit,'../escape.json':'{}'},{...unit,'unexpected.json':'{}'},{'unit-browser-chromium.json':'{}'},{...identity,'unexpected.txt':'x'},{...identity,'ui-screenshots/extra.png':'x'}])assert.throws(()=>extract(entries,entries['image-binding.json']?'identity':'unit','refuse-'+i++));
+ }finally{rmSync(root,{recursive:true,force:true});}
+});
