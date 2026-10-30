@@ -4054,6 +4054,13 @@
       "when": 1793330000063,
       "tag": "0720_lifecycle_v9_self_equipment",
       "breakpoints": true
+    },
+    {
+      "idx": 694,
+      "version": "7",
+      "when": 1793330000078,
+      "tag": "0741_pay_formula_builder",
+      "breakpoints": true
     }
   ]
 }

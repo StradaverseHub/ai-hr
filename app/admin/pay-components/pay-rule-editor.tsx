@@ -27,6 +27,7 @@
  * The Prorates checkbox lives HERE (not in the flags row) because proration interacts with per-day/per-hour
  * rules — keeping them together lets the live validator surface the conflict as the admin toggles either one.
  */
+import Link from 'next/link';
 import { useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -69,6 +70,7 @@ type Props = {
   aiEnabled: boolean;
   /** Other ACTIVE pay items in this tenant's catalog (this one excluded) — the reference picker's options. */
   payItems: PayItemOption[];
+  activeFormulas?: {formulaId:string;description:string;dependencies:string[]}[];
   /** Employees the rule can be previewed against. */
   previewEmployees: PreviewEmployeeOption[];
 };
@@ -100,6 +102,7 @@ function OperandFields({
   op: FormulaOperand;
   onChange: (o: FormulaOperand) => void;
   payItems: PayItemOption[];
+  activeFormulas?: {formulaId:string;description:string;dependencies:string[]}[];
 }) {
   const t = useTranslations('payRule');
   return (
@@ -190,6 +193,7 @@ export function PayRuleEditor({
   aiEnabled,
   payItems,
   previewEmployees,
+  activeFormulas=[],
   catalogueOnly = false,
 }: Props) {
   const t = useTranslations('payRule');
@@ -217,6 +221,8 @@ export function PayRuleEditor({
   const [reviewedPreviewIdentity,setReviewedPreviewIdentity]=useState<string|null>(null);
   const tc = useTranslations('payComponents');
   const [kind, setKind] = useState<PayRuleKind>(initialRule?.kind ?? pendingInputKind ?? 'fixed');
+  const [formulaId,setFormulaId]=useState(initialRule?.kind==='formula_builder'?initialRule.formulaId:'');
+  const [builderContext,setBuilderContext]=useState<{ordinaryRate?:string;hoursPerDay?:string;rate?:string}>(initialRule?.kind==='formula_builder'?initialRule.context??{}:{});
   const [prorates, setProrates] = useState(initialProrates);
   const [pct, setPct] = useState(initialRule?.kind === 'percent_of' ? String(initialRule.pct) : '');
   const [pctBase, setPctBase] = useState<'basic' | 'component'>(
@@ -278,12 +284,14 @@ export function PayRuleEditor({
         return { kind: 'flat_capped', value: num(value), cap: num(cap) };
       case 'qty_rate':
         return { kind: 'qty_rate', qty: num(qty), rate: num(rate) };
+      case 'formula_builder':
+        return {kind:'formula_builder',formulaId,dependencies:activeFormulas.find(f=>f.formulaId===formulaId)?.dependencies??(initialRule?.kind==='formula_builder'&&initialRule.formulaId===formulaId?initialRule.dependencies:[]),context:Object.fromEntries(Object.entries(builderContext).filter(([,v])=>v?.trim()))};
       case 'formula':
         return { kind: 'formula', start, terms };
       default:
         return null;
     }
-  }, [kind, pct, pctBase, pctCode, rate, qty, value, cap, start, terms]);
+  }, [kind, pct, pctBase, pctCode, rate, qty, value, cap, start, terms, formulaId, builderContext, activeFormulas, initialRule]);
 
   const previewIdentity=JSON.stringify([formIdentity.code,formIdentity.kind,prorates,rule,previewEmp?.employmentId??null]);
   const validation = validatePayRule(rule, prorates);
@@ -415,6 +423,11 @@ export function PayRuleEditor({
           </select>
         </Field>
 
+        {kind==='formula_builder'&&<>
+          <Field label={t('builderFormula')}><select value={formulaId} onChange={e=>setFormulaId(e.target.value)} className={inputCls} required><option value="">{t('builderNoFormula')}</option>{initialRule?.kind==='formula_builder'&&!activeFormulas.some(f=>f.formulaId===initialRule.formulaId)&&<option value={initialRule.formulaId}>{initialRule.formulaId}</option>}{activeFormulas.map(f=><option key={f.formulaId} value={f.formulaId}>{f.formulaId} — {f.description}</option>)}</select></Field>
+          {(['ordinaryRate','hoursPerDay','rate'] as const).map(key=><Field key={key} label={t(key==='ordinaryRate'?'builderOrdinaryRate':key==='hoursPerDay'?'builderHoursPerDay':'builderRate')}><input type="text" inputMode="decimal" value={builderContext[key]??''} onChange={e=>setBuilderContext(v=>({...v,[key]:e.target.value}))} className={inputCls}/></Field>)}
+          <p className="text-xs text-muted-foreground sm:col-span-3">{t('builderContextHint')} <Link href="/payroll/formula-builder" className="underline">{t('builderManage')}</Link></p>
+        </>}
         {kind === 'percent_of' && (
           <>
             <Field label={t('pctLabel')}>
@@ -594,7 +607,7 @@ export function PayRuleEditor({
       {/* ── Check against an employee ──────────────────────────────────────────────────────────────
           The server evaluates the CANDIDATE rule with the same function the payroll run uses, against this
           employee's real basic / hours / other pay items. Nothing is written. */}
-      {!catalogueOnly && (kind !== 'fixed'||aiDraftNeedsPreview) && (
+      {!catalogueOnly && (kind !== 'fixed'&&kind!=='formula_builder'||aiDraftNeedsPreview) && (
         <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
           <h5 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('previewTitle')}</h5>
           <p className="text-xs text-muted-foreground">{t('previewHint')}</p>

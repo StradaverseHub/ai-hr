@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {bindPayFormulaRuleTx,recordPayFormulaLinkTx} from './pay-formula';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {lockPayComponentCatalogTx} from './pay-component-catalog-lock';
 import { classifyNonCashBenefit, NonCashBenefitConfigurationError } from '../localization/noncash-benefits';
@@ -828,7 +829,8 @@ function payComponentCreateValues(ctx:SessionContext,p:PayComponentInput,prepare
 
 async function preparePayComponentWriteTx(tx:Tx,ctx:SessionContext,p:PayComponentInput,options:{ createOnly?: boolean; updateOnly?: boolean; archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean; returnCreatedEventId?: boolean }) {
     await lockPayComponentCatalogTx(tx,ctx);
-    const rule = ruleOf(p);
+    const candidate = ruleOf(p);
+    const rule = candidate?.kind==='formula_builder' ? await bindPayFormulaRuleTx(tx,ctx,candidate) : candidate;
     if (p.pendingInputKind != null && (!PENDING_PAY_INPUT_KINDS.includes(p.pendingInputKind) || rule != null))
       throw new PayComponentInputError([{ field: 'inputKind', code: 'invalidPendingCalculation' }]);
     if ((p.pendingInputKind === 'per_day' || p.pendingInputKind === 'per_hour') && p.prorates)
@@ -903,6 +905,7 @@ async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponent
         .returning({ id: payComponent.id });
       id = row.id;
     }
+    if(rule?.kind==='formula_builder')await recordPayFormulaLinkTx(tx,ctx,{formulaId:rule.formulaId,componentId:id});
     // 61bf109d — RECORD the resolution order for the whole catalog now that the graph has changed. It is
     // recomputed rather than patched because one edited rule can re-rank items that were not touched, and
     // it is written INSIDE the same transaction as the rule, so the order and the rule it was derived from
@@ -1083,6 +1086,7 @@ export function previewPayRule(
   },
 ) {
   return withTenant(ctx, async (tx): Promise<PayRulePreviewResult> => {
+    if(p.rule?.kind==='formula_builder')throw new Error('Use Formula Builder Test Formula with the employee, payroll period and cycle.');
     const code = p.code.trim().toUpperCase();
     const structural = validatePayRule(p.rule, p.prorates);
     if (!structural.ok) return { ok: false, code: structural.code };
@@ -1451,6 +1455,9 @@ export async function deriveIndividualTxnAmountTx(
     if (!item || item.archivedAt != null) return { derived: false };
     assertPayComponentReady(item);
     const rule = item.rule as PayRule | null;
+    // Builder inputs are persisted verbatim and evaluated by the payroll provider in its real cycle.
+    // A one-off entry cannot substitute a guessed cycle or replace its raw input with a preview result.
+    if (rule?.kind==='formula_builder') return { derived: false };
     if (!payRuleDerivesAmount(rule)) return { derived: false };
 
     const inputUnit = payRuleInputUnit(rule);
