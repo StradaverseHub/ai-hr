@@ -509,7 +509,7 @@ def capture_and_publish(args, source_github, github, root):
                '-o', 'ConnectTimeout=12', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3', args.staging_alias]
         # Package capture shares the staging lease with installation and acceptance. The credential
         # is private; read-only --check remains usable without acquiring a lease.
-        sys.path.insert(0, str(ROOT / 'scripts/staging'))
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'staging'))
         from lease import load_lease, guard_command
         staging_lease = load_lease(args.ref) if args.accept_staging else None
         def protected(command):
@@ -573,5 +573,5 @@ if __name__ == '__main__':
         main()
     except (ValueError, OSError, subprocess.SubprocessError) as error:
         # Do not dump SSH input, credential environment, signed URLs or binary API responses.
-        print('Production package publication refused: ' + str(error), file=sys.stderr)
+        print('Production package publication refused: ' + re.sub(r'[a-f0-9]{64}', '<REDACTED>', str(error)), file=sys.stderr)
         sys.exit(1)

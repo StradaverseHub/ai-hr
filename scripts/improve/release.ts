@@ -44,7 +44,8 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tierFor } from '../gate-tier-git';
-import { readLease, guardCommand, guardedRsync, leasePhase } from '../staging/lease.mjs';
+import { readLease, guardCommand, guardedRsync, leasePhase, redactLeaseError } from '../staging/lease.mjs';
+import { strictPendingCommand } from '../../.github/ci/staging-transport.mjs';
 import { decideReleaseGate, type DeployedVerdict, type GateReceipt } from './release-gate';
 import { markDeployed } from './remote';
 import { readyProductionBaseline } from '../gate-impact-git';
@@ -398,6 +399,7 @@ export function deployedVerdict(worktree: string): DeployedVerdict {
  * `releaseBuiltItem` is now this plus the board write, so the two cannot drift.
  */
 export async function deployWorktree(p: { worktree: string }): Promise<void> {
+ try {
   if (!p.worktree || !existsSync(p.worktree)) {
     throw new Error(`worktree not found: ${p.worktree}`);
   }
@@ -468,10 +470,11 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
 
   leasePhase(stagingLease,(command: string, options: Record<string, unknown>)=>execFileSync('ssh',sshArgs(command),{encoding:'utf8',timeout:30000,...options}),'installing');
 
-  // 2. Announce the release on the box BEFORE a single byte of source moves. See buildPendingCommand.
+  // 2. Announce BEFORE source transfer. strictPendingCommand hardens the legacy bootstrap helper
+  // by checking the actual marker instead of inheriting the bootstrap-only success fallback.
   console.log(`→ announcing ${head.slice(0, 7)} on the server (so an interrupted rsync is detectable)`);
   try {
-    execFileSync('ssh', protectedSsh(buildPendingCommand(head)), { stdio: 'inherit', maxBuffer: 1024 * 1024 });
+    execFileSync('ssh', protectedSsh(strictPendingCommand(head,DIR,DEPLOY_STATE_DIR)), { stdio: 'inherit', maxBuffer: 1024 * 1024 });
   } catch {
     throw new Error('Staging lease/pending announcement refused; no source transferred.');
   }
@@ -537,6 +540,7 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
     console.warn('⚠ release learning needs attention: '+String(e));
   }
 
+ } catch(error) { throw redactLeaseError(error); }
 }
 
 export async function releaseBuiltItem(p: {

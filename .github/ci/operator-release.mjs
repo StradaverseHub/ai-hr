@@ -12,7 +12,7 @@ import {createCleanupRequest} from './staging-cleanup-protocol.mjs';
 import {assertRsyncPacketCapability} from './rsync-packet-capability.mjs';
 import {verifyRecoveredCi,revalidateRecoveredCi} from './focused-recovery.mjs';
 import {probeStagingProfile} from './staging-preflight.mjs';
-import {readLease,guardCommand,guardedRsync,leasePhase} from '../../scripts/staging/lease.mjs';
+import {readLease,guardCommand,guardedRsync,leasePhase,redactLeaseError} from '../../scripts/staging/lease.mjs';
 export {STAGING,bindStaging};
 export function followStagingDeployment(official,ssh,observation={}){
  return official.followDeploy({...observation,run:offset=>ssh(official.buildFollowCommand(offset),{encoding:null,stdio:['ignore','pipe','inherit']})});
@@ -21,7 +21,8 @@ export function requireSuccessfulBuild(official,status,sha){
  if(!official.isSuccessState(status.state??'unknown')||status.built_ref!==sha||status.stale_build!=='0')throw Error('Remote build/migration failed; no arrival or deployed board state claimed');
  return status;
 }
-export async function operatorRelease({candidatePath,runId,execute=false,recoveryRunIds=[]}){
+export async function operatorRelease(options){try{return await leasedOperatorRelease(options);}catch(error){throw redactLeaseError(error);}}
+async function leasedOperatorRelease({candidatePath,runId,execute=false,recoveryRunIds=[]}){
  candidatePath=resolve(candidatePath);bindStaging(process.env);
  const packetTransport=execute?assertRsyncPacketCapability():null;
  // Import the ACTUAL frozen candidate's official release helpers; never rewrite its gate code.

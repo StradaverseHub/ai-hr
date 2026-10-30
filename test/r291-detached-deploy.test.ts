@@ -926,6 +926,41 @@ function runReleaseCli(box: Box, extra: Record<string, string> = {}, reporterEmp
   const head = git('rev-parse', 'HEAD').stdout.trim();
   fs.writeFileSync(path.join(wt, '.gate-receipt.json'), JSON.stringify({ sha: head, result: 'PASS', tier: 'full' }));
 
+  // Commission the REAL coordinator in private fixture state. Transport redirects its fixed remote
+  // path; admission, credential validation and operation locks are not stubbed or disabled.
+  const queueRoot = path.join(box.dir, 'staging-queue');
+  fs.mkdirSync(queueRoot, { mode: 0o700 });
+  const leaseFile = path.join(box.dir, 'staging-lease.json');
+  const fixtureCoordinator = path.join(box.dir, 'coordinator-fixture.py');
+  const python = spawnSync('python3', ['-c', 'import sys;print(sys.executable)'], { encoding: 'utf8' }).stdout.trim();
+  const coordinatorPrelude = `import sys,json,pathlib,uuid
+sys.path.insert(0, ${JSON.stringify(path.join(REPO, 'scripts/staging'))})
+import coordinator as q
+root=pathlib.Path(${JSON.stringify(queueRoot)})
+state=dict(state='ok',stale_build='0',ref='a'*40,built_ref='a'*40,build_id='fixture-baseline',built_build_id='fixture-baseline')
+q.live_state=lambda:dict(state)
+`;
+  fs.writeFileSync(fixtureCoordinator, coordinatorPrelude + 'q.main(root)\n');
+  const setupQueue = spawnSync(python, ['-c', coordinatorPrelude + `
+c=q.Coordinator(root)
+def request(action,**fields):return c.request(dict(protocol=q.PROTOCOL,actor='r291-fixture',action=action,**fields))
+key=str(uuid.uuid4())
+request('submit',spec=dict(id=key,source=${JSON.stringify(head)},base='a'*40,dependencies=[],risk='ordinary',migrations=[],acceptance='Original r291 release assertions',evidence='Isolated fixture gate'))
+batch=request('prepare',tickets=[key],candidate=${JSON.stringify(head)},baseline='a'*40,baselineBuild='fixture-baseline')['batch']
+grant=request('claim',batch=batch)
+p=pathlib.Path(${JSON.stringify(leaseFile)})
+p.write_text(json.dumps(grant));p.chmod(0o600)
+`], { encoding: 'utf8' });
+  expect(setupQueue.status, setupQueue.stderr).toBe(0);
+  const shellQuote = (value: string) => "'" + value.replace(/'/g, "'\"'\"'") + "'";
+  fs.writeFileSync(path.join(box.bin, 'python3'), `#!/bin/sh
+if [ "\${1:-}" = /var/tmp/aihr-deploy/staging-release-queue/coordinator.py ]; then
+ shift
+ exec ${shellQuote(python)} ${shellQuote(fixtureCoordinator)} "$@"
+fi
+exec ${shellQuote(python)} "$@"
+`, { mode: 0o700 });
+
   // Retain the real receiver and build-child boundary. Only pnpm's expensive actual compilation is
   // shimmed: it writes a real BUILD_ID. The rsync shim transfers this fixture's committed catalogue.
   const quote = (value: string) => "'" + value.replace(/'/g, "'\"'\"'") + "'";
@@ -973,6 +1008,7 @@ cp ${quote(path.join(wt, 'lib/system-testing/catalogue.json'))} ${quote(path.joi
         DEPLOY_TRACE: box.trace,
         DEPLOY_SQL_TRACE: box.sqlTrace,
         AIHR_DEPLOY_STATE_DIR: box.stateDir,
+        AIHR_STAGING_LEASE_FILE: fs.realpathSync(leaseFile),
         IMPROVE_SSH_HOST: 'shim.invalid',
         IMPROVE_SSH_PORT: '2222',
         IMPROVE_SSH_USER: 'test-operator',
@@ -1134,13 +1170,13 @@ describe('source shape (not executable — see file header)', () => {
     expect(release, 'nor a follow of its own').not.toContain('followDeploy(');
     // …and the shared path still does all four steps, so the split did not drop one on the way.
     expect(deploy).toContain("run('npx', ['tsc', '--noEmit']");
-    expect(deploy).toContain('buildPendingCommand(');
+    expect(deploy).toContain('strictPendingCommand(');
     expect(deploy).toContain("run('rsync'");
     expect(deploy).toContain('buildLaunchCommand(');
     expect(deploy).toContain('followDeploy(');
     // The ANNOUNCE is the step the hand-rolled deploy forgot; it is inside the shared path now, so a
     // no-item deploy cannot forget it.
-    expect(deploy.indexOf('buildPendingCommand('), 'announce comes BEFORE the rsync').toBeLessThan(
+    expect(deploy.indexOf('strictPendingCommand('), 'strict announce comes BEFORE the rsync').toBeLessThan(
       deploy.indexOf("run('rsync'"),
     );
 

@@ -57,10 +57,10 @@ The shared CLI needs Python 3, Git and existing private OpenSSH access; it has n
 model SDK dependency. Run it from the reviewed controller checkout. Both AI tools use identical commands:
 
 ```sh
-python3 scripts/staging/queue.py status --actor SESSION_ID --ssh-config /PRIVATE/ssh_config
-python3 scripts/staging/queue.py submit --actor SESSION_ID --ssh-config /PRIVATE/ssh_config --request /PRIVATE/ticket.json
-python3 scripts/staging/queue.py prepare --actor CONTROLLER_ID --ssh-config /PRIVATE/ssh_config --worktree /ABSOLUTE/CANDIDATE --request /PRIVATE/batch.json
-python3 scripts/staging/queue.py claim --actor CONTROLLER_ID --ssh-config /PRIVATE/ssh_config --request /PRIVATE/claim.json --lease-file /PRIVATE/new-lease.json
+python3 scripts/staging/release_queue.py status --actor SESSION_ID --ssh-config /PRIVATE/ssh_config
+python3 scripts/staging/release_queue.py submit --actor SESSION_ID --ssh-config /PRIVATE/ssh_config --request /PRIVATE/ticket.json
+python3 scripts/staging/release_queue.py prepare --actor CONTROLLER_ID --ssh-config /PRIVATE/ssh_config --worktree /ABSOLUTE/CANDIDATE --request /PRIVATE/batch.json
+python3 scripts/staging/release_queue.py claim --actor CONTROLLER_ID --ssh-config /PRIVATE/ssh_config --request /PRIVATE/claim.json --lease-file /PRIVATE/new-lease.json
 ```
 
 Ticket request fields:
@@ -81,8 +81,8 @@ and `arrived` without releasing the lease. Continue the existing human acceptanc
 use the same credential for `approve_staging.py`. Production remains separately authorized.
 
 ```sh
-python3 scripts/staging/queue.py phase --actor CONTROLLER_ID --request /PRIVATE/accepting.json --lease-file /PRIVATE/new-lease.json --ssh-config /PRIVATE/ssh_config
-python3 scripts/staging/queue.py finish --actor CONTROLLER_ID --request /PRIVATE/handback.json --lease-file /PRIVATE/new-lease.json --ssh-config /PRIVATE/ssh_config
+python3 scripts/staging/release_queue.py phase --actor CONTROLLER_ID --request /PRIVATE/accepting.json --lease-file /PRIVATE/new-lease.json --ssh-config /PRIVATE/ssh_config
+python3 scripts/staging/release_queue.py finish --actor CONTROLLER_ID --request /PRIVATE/handback.json --lease-file /PRIVATE/new-lease.json --ssh-config /PRIVATE/ssh_config
 ```
 
 Phase request: `{"phase":"accepting","build":"EXACT_RUNNING_BUILD_ID"}` (or `capturing`).

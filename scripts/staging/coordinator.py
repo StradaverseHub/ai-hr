@@ -90,7 +90,7 @@ class Coordinator:
         try:
             private(self.root / 'operations.lock')
             fcntl.flock(fd, (fcntl.LOCK_EX | fcntl.LOCK_NB) if exclusive else fcntl.LOCK_SH)
-            yield
+            yield fd
         finally:
             os.close(fd)
 
@@ -237,9 +237,9 @@ def environment_request(action='assert'):
     return {'protocol': PROTOCOL, 'action': action, 'actor': 'guard', 'batch': os.environ.get('AIHR_STAGING_BATCH'), 'epoch': int(os.environ.get('AIHR_STAGING_EPOCH', '0')), 'token': os.environ.get('AIHR_STAGING_TOKEN', ''), 'candidate': os.environ.get('AIHR_STAGING_CANDIDATE')}
 
 
-def main():
+def main(root=ROOT):
     os.umask(0o077)
-    c = Coordinator()
+    c = Coordinator(root)
     if len(sys.argv) > 1:
         require(sys.argv[1] in ('guard', 'assert-env'), 'Unknown guard mode')
         r = environment_request()
@@ -249,9 +249,11 @@ def main():
             if sys.argv[1] == 'assert-env': return
         if sys.argv[1] == 'guard':
             require(sys.argv[2:3] == ['--'] and len(sys.argv) > 3, 'Guard requires command after --')
-            with c.operations():
+            with c.operations() as operation_fd:
                 with c.transaction(): c.lease(r)
-                raise SystemExit(subprocess.call(sys.argv[3:]))
+                # The command inherits the lock: even SIGKILL of this guard cannot make a still
+                # running child disappear from admission. Detached deploys also acquire their own lock.
+                raise SystemExit(subprocess.call(sys.argv[3:], pass_fds=(operation_fd,)))
     else:
         raw = sys.stdin.buffer.read(64 * 1024 + 1); require(len(raw) <= 64 * 1024, 'Request too large')
         print(canonical(c.request(json.loads(raw))))

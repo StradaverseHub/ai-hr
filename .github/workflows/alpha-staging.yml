@@ -89,6 +89,7 @@ jobs:
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/staging -p "test_*.py"
           node --test scripts/staging/lease.test.mjs
           PYTHONDONTWRITEBYTECODE=1 python3 scripts/staging/pilot.py
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/releases -p "test_*.py"
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-bundle.test.py
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-transport-extract.test.py
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-activate.test.py

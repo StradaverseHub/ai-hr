@@ -33,6 +33,15 @@ def hold_operation(root, ready, done):
     c.db.close()
 
 
+def orphan_operation(root, grant, marker):
+    import sys
+    c=Coordinator(root,lambda:dict(STATE))
+    with c.operations() as fd:
+        with c.transaction(): c.lease(grant)
+        child=subprocess.Popen([sys.executable,'-c',"import pathlib,time;pathlib.Path(__import__('sys').argv[1]).write_text('started');time.sleep(3)",marker],pass_fds=(fd,),stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        os._exit(0)  # Only this owned fixture launcher dies; the operation child must retain its lock.
+
+
 class QueueTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -68,7 +77,7 @@ class QueueTest(unittest.TestCase):
 
     def test_two_ai_sessions_share_durable_state_and_atomic_claim(self):
         batch = self.batch([self.ticket('c'*40), self.ticket('d'*40)])
-        with concurrent.futures.ProcessPoolExecutor(max_workers=4) as pool:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=4, mp_context=multiprocessing.get_context('spawn')) as pool:
             results = list(pool.map(competing_claim, [str(self.root)]*4, [batch]*4))
         grants = [g for g in results if g]
         self.assertEqual(len(grants), 1)
@@ -148,6 +157,21 @@ class QueueTest(unittest.TestCase):
         finally: done.set();child.join(10)
         self.assertEqual(child.exitcode,0)
         self.request('finish', **g, reason='Capture subprocess finished')
+
+    def test_orphan_operation_keeps_lock_after_launcher_dies(self):
+        import time
+        g=self.claim();marker=str(self.root/'child-started')
+        child=multiprocessing.get_context('spawn').Process(target=orphan_operation,args=(str(self.root),g,marker));child.start();child.join(10)
+        self.assertEqual(child.exitcode,0)
+        deadline=time.monotonic()+2
+        while not Path(marker).exists() and time.monotonic()<deadline:time.sleep(.01)
+        self.assertTrue(Path(marker).exists())
+        with self.assertRaises(BlockingIOError):self.request('abort',**g,reason='Child still owns operation')
+        deadline=time.monotonic()+5
+        while True:
+            try:self.request('abort',**g,reason='Owned child completed');break
+            except BlockingIOError:
+                self.assertLess(time.monotonic(),deadline);time.sleep(.05)
 
     def test_recovery_requires_exact_identity_ack_and_healthy_observation(self):
         g=self.claim();self.request('phase',**g,phase='installing')

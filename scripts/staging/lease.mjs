@@ -30,3 +30,5 @@ export function guardServerCli(candidate){
  }
  execFileSync('python3',[COORDINATOR,'assert-env'],{stdio:['ignore','ignore','inherit']});
 }
+
+export function redactLeaseError(error){return new Error(String(error?.message??error).replaceAll(/[a-f0-9]{64}/g,'<REDACTED>'));}
