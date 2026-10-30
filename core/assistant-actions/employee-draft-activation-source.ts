@@ -16,6 +16,11 @@ import {onboardingDraftActivationContextTx} from '../../packs/lifecycle/service'
 export class EmployeeDraftActivationUnavailable extends Error{constructor(){super('Please reopen the draft on the native Personnel screen.');this.name='EmployeeDraftActivationUnavailable';}}
 export const employeeDraftActivationUnavailable=():never=>{throw new EmployeeDraftActivationUnavailable();};
 const fail=employeeDraftActivationUnavailable,hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
+/** Commercial module/company arrays are sets; private digest ordering is not authority. */
+export function employeeDraftActivationEntitlements(snapshot:SessionContext['entitlements']){
+ if(!snapshot)return snapshot;
+ return {...snapshot,enabledModules:[...new Set(snapshot.enabledModules)].sort(),scopedModules:Object.fromEntries(Object.entries(snapshot.scopedModules).sort(([a],[b])=>a<b?-1:a>b?1:0).map(([code,companies])=>[code,[...new Set(companies)].sort()])),settings:Object.fromEntries(Object.entries(snapshot.settings).sort(([a],[b])=>a<b?-1:a>b?1:0))};
+}
 const allowed={profile:['fullName','primaryEmail','employeeCode','employeeIdMode','phone'],employment:['companyId','departmentId','employmentType','hiredOn'],payroll:['basicSalary','monthlyAllowance','payMode','paymentTerm','rateAmount','remarks']} as const;
 /** A closed supported subset. No nonempty captured field may be silently ignored by this review. */
 export function supportedEmployeeDraftActivationData(value:unknown):value is EmployeeDraftData{
@@ -52,7 +57,7 @@ async function source(tx:Tx,ctx:SessionContext,p:Human){
  const fields=Object.entries(data).flatMap(([section,contents])=>Object.hasOwn(allowed,section)?Object.entries(contents as Record<string,string>).map(([key,value])=>({section,key,value})):[]);
  const native=await previewSavedEmployeeDraftActivationTx(tx,ctx,{id:p.draftId,data,currentStep:draft.currentStep}),pay=native.compensation;
  const review=C.Item.parse({draftId:p.draftId,companyId:p.companyId,companyName:company.name,country:company.country,currency:pay.currency,departmentName:department.name,reservedEmployeeCode:draft.reservedEmployeeCode,fields,standingLeaveTypes:types.map(t=>({id:t.id,code:t.code,name:t.name})),openingLeaveGrants:native.openingLeaveGrants,initialBasicSalary:pay.basicSalary,initialMonthlyAllowance:pay.monthlyAllowance,payMode:pay.payMode,paymentTerm:pay.paymentTerm,rateAmount:pay.rateAmount??'',remarks:pay.remarks??''});
- return{draft,data,review,reviewedDigest:hash([1,C.action,draft,company.snapshot,department.snapshot,rule,types,Array.from(configuration),lifecycle,native,ctx.entitlements])};
+ return{draft,data,review,reviewedDigest:hash([1,C.action,draft,company.snapshot,department.snapshot,rule,types,Array.from(configuration).sort((a,b)=>a.kind<b.kind?-1:a.kind>b.kind?1:0),lifecycle,native,employeeDraftActivationEntitlements(ctx.entitlements)])};
 }
 export async function prepareEmployeeDraftActivationSourceTx(tx:Tx,ctx:SessionContext,human:Human){const native=await source(tx,ctx,human);return{content:human,review:native.review,reviewedDigest:native.reviewedDigest};}
 export async function confirmEmployeeDraftActivationSourceTx(tx:Tx,ctx:SessionContext,human:Human,expected:string){
@@ -69,5 +74,5 @@ export async function reconcileEmployeeDraftActivationSourceTx(tx:Tx,ctx:Session
 export async function readEmployeeDraftActivationChoicesTx(tx:Tx,ctx:SessionContext,selection:unknown){
  const fresh=await employeeDraftActivationActorTx(tx,ctx),pick=C.Selection.parse(selection??{});await tx.execute(sql`select app.access_workforce_write_lock()`);const lifecycle=await onboardingDraftActivationContextTx(fresh,tx);
  const rows=await tx.execute<{draftId:string;companyId:string;label:string;employeeCode:string|null;data:unknown;country:string}>(sql`select d.id as "draftId",d.company_id as "companyId",d.label,d.reserved_employee_code as "employeeCode",d.data,c.country from employee_draft d join company c on c.id=d.company_id and c.tenant_id=d.tenant_id where d.tenant_id=${fresh.tenantId}::uuid and app.is_admin_for(c.id) and app.access_workforce_company(c.id,'workforce.maintain') and (${pick.companyId??null}::uuid is null or c.id=${pick.companyId??null}::uuid) order by d.updated_at desc,d.id desc limit 26`);
- return C.Choices.parse({kind:'choices',drafts:Array.from(rows).slice(0,25).map(r=>({draftId:r.draftId,companyId:r.companyId,label:r.label,employeeCode:r.employeeCode??'',supported:!lifecycle.willSynchronize&&r.country==='MY'&&!!r.employeeCode&&supportedEmployeeDraftActivationData(r.data)&&!missingForCreation(r.data as EmployeeDraftData).length&&!missingToCreate(r.data as EmployeeDraftData).length,route:'/admin/personnel/new'})),truncated:rows.length>25});
+ return C.Choices.parse({kind:'choices',drafts:Array.from(rows).slice(0,25).map(r=>({draftId:r.draftId,companyId:r.companyId,label:r.label,employeeCode:r.employeeCode??'',supported:!lifecycle.willSynchronize&&r.country==='MY'&&!!r.employeeCode&&supportedEmployeeDraftActivationData(r.data)&&!missingForCreation(r.data as EmployeeDraftData).length&&!missingToCreate(r.data as EmployeeDraftData).length,unsupportedReason:lifecycle.willSynchronize?'configured_onboarding':r.country==='MY'&&!!r.employeeCode&&supportedEmployeeDraftActivationData(r.data)&&!missingForCreation(r.data as EmployeeDraftData).length&&!missingToCreate(r.data as EmployeeDraftData).length?null:'captured_shape',route:'/admin/personnel/new'})),truncated:rows.length>25});
 }

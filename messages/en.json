@@ -19763,6 +19763,7 @@
         "choose": "Choose a draft",
         "truncated": "Showing the latest 25 drafts. Open Personnel for more.",
         "handoff": "This draft has captured fields that require the native review.",
+        "onboardingHandoff": "Onboarding is configured for this organisation. Activating this draft can create or update onboarding cases and tasks. Review those consequences in the native Personnel workflow.",
         "native": "Open Personnel draft workflow",
         "prepareConsent": "I chose this saved draft for review.",
         "prepare": "Review draft activation",

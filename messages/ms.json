@@ -19763,6 +19763,7 @@
         "choose": "Pilih draf",
         "truncated": "Memaparkan 25 draf terkini. Buka Personel untuk selebihnya.",
         "handoff": "Draf ini mempunyai medan yang perlu disemak dalam aliran asal.",
+        "onboardingHandoff": "Orientasi pekerja dikonfigurasikan untuk organisasi ini. Pengaktifan draf ini boleh mencipta atau mengemas kini kes dan tugas orientasi. Semak kesannya dalam aliran Personnel asal.",
         "native": "Buka aliran draf Personel",
         "prepareConsent": "Saya memilih draf tersimpan ini untuk semakan.",
         "prepare": "Semak pengaktifan draf",
