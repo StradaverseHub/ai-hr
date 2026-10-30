@@ -153,6 +153,12 @@ jobs:
       - name: Prepare exact immutable projection worktrees
         if: ${{ inputs.fixture_projection }}
         run: |
+          test "$GITHUB_REPOSITORY" = StradaverseHub/ai-hr
+          case "$(git remote get-url origin)" in
+            https://github.com/StradaverseHub/ai-hr|https://github.com/StradaverseHub/ai-hr.git) ;;
+            *) echo 'Unexpected hosted checkout repository' >&2; exit 2 ;;
+          esac
+          git remote set-url origin https://github.com/StradaverseHub/ai-hr.git
           git fetch origin a16f0beb40e2d331273ac2aaf40c7eb8effb280b 6bdddf4f84b3ecb693d8fbf29409373e49c73ac9
           git worktree add --detach "$RUNNER_TEMP/fixture-original" a16f0beb40e2d331273ac2aaf40c7eb8effb280b
           mkdir -p scratchpad
