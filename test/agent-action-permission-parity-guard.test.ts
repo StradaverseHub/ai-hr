@@ -36,6 +36,7 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
   expect(probe).toContain("describe.each([...selection.actions])('ADR-0151 parity: %s'");
   for(const variant of PARITY_PROBE_VARIANTS)expect(probe.split("if(selection.variants.includes('"+variant+"')) describe")).toHaveLength(2);
   expect([...probe.matchAll(/if\(selection\.variants\.includes\(/g)]).toHaveLength(PARITY_PROBE_VARIANTS.length);
+  // Ordinary actions, explicit allocation clear, and rejected decisions each cover every role.
   expect(probe.split("it.each([...PARITY_ROLES])")).toHaveLength(4);
   // Inspect the actual implementation, never a comment-only wrapper: all native/own/custody probes,
   // independent declared screen expectations, rejection reason and foreign source non-effects stay.
