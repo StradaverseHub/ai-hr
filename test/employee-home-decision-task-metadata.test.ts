@@ -47,10 +47,10 @@ describe('Home assigned-decision metadata is an uncapped projection at its sourc
  it('reads every claim header without amount, receipt, custom field or description access',async()=>{
   await setModule(b.tenantId,'claims','active');const e=await subject(),ctx=adminCtx(b);
   const type=await createClaimType(ctx,{code:'HOME_META',name:'Fictional metadata claims',requiresReceipt:false,defaultTaxable:false});
-  const heads=await owner.db.insert(s.claimRequest).values(Array.from({length:211},()=>({tenantId:b.tenantId,employmentId:e.employmentId,claimTypeId:type.id,amount:'8923.45',incurredOn:todayInKualaLumpur(),description:'Fictional private claim description'}))).returning({id:s.claimRequest.id});
+  const heads=await owner.db.insert(s.claimRequest).values(Array.from({length:1201},()=>({tenantId:b.tenantId,employmentId:e.employmentId,claimTypeId:type.id,amount:'8923.45',incurredOn:todayInKualaLumpur(),description:'Fictional private claim description'}))).returning({id:s.claimRequest.id});
   await onlyColumns('claim_request',baseColumns,async()=>{
    await expectDenied(withTenant(ctx,tx=>tx.select({amount:s.claimRequest.amount}).from(s.claimRequest)));
-   const rows=await pendingClaimTaskMetadata(ctx);expect(rows).toHaveLength(211);
+   const rows=await pendingClaimTaskMetadata(ctx);expect(rows).toHaveLength(1201);
    expect(new Set(rows.map(r=>r.id))).toEqual(new Set(heads.map(r=>r.id)));expectHeaders(rows);
    expect(JSON.stringify(rows)).not.toContain('8923.45');expect(await pendingClaimTaskMetadata(ctx,[])).toEqual([]);
   });

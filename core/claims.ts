@@ -3881,7 +3881,8 @@ export async function markReimbursementsPaid(
 
 
 export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
- const candidates=await withTenant(ctx,async tx=>{
+ return withTenant(ctx,async tx=>{
+  await tx.execute(sql`SET LOCAL jit = off`);
   await assertAssignedWorkPrincipalTx(tx,ctx);
   const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,personId:employment.personId,
    employee:person.fullName,createdAt:claimRequest.createdAt}).from(claimRequest)
@@ -3890,28 +3891,35 @@ export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:st
    .where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),sql`NOT app.is_self_person(${employment.personId})`,
     companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
    .orderBy(desc(claimRequest.createdAt),claimRequest.id);
-  return filterDelegationOrgScopeTx(tx,ctx,rows,row=>row.employmentId);
+  const scoped=await filterDelegationOrgScopeTx(tx,ctx,rows,row=>row.employmentId);
+  const allowed=await claimDecisionEmploymentsTx(tx,ctx,scoped.map(row=>row.employmentId));
+  return scoped.filter(row=>allowed.has(row.employmentId));
  });
- const allowed=new Set(await actionablePendingClaimIds(ctx,candidates.map(row=>row.id)));
- return candidates.filter(row=>allowed.has(row.id));
 }
 
+
+/** Authority depends on the subject employment, not the number of requests it owns. Keep this
+ * transaction-local: never reuse a decision across requests or after reporting/delegation changes. */
+async function claimDecisionEmploymentsTx(tx:Tx,ctx:SessionContext,employmentIds:readonly string[]){
+ const allowed=new Set<string>();
+ for(const employmentId of new Set(employmentIds)){
+  try{await assertCanDecide(tx,ctx,employmentId,'claim',scopeOf('claims.claim'));allowed.add(employmentId);}
+  catch(error){if(!isApprovalDecisionRefusal(error,'claim'))throw error;}
+ }
+ return allowed;
+}
 
 export function actionablePendingClaimIds(ctx:SessionContext,requestIds:readonly string[]){
  return withTenant(ctx,async tx=>{
   if(!requestIds.length)return [];
+  await tx.execute(sql`SET LOCAL jit = off`);
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const result:string[]=[],ids=[...new Set(requestIds)];
-  // The existing inbox is not capped at 1,000 claims. Bound each SQL parameter batch without turning
-  // a valid large queue into an exception in the shared application header.
+  const rows:{id:string;employmentId:string}[]=[],ids=[...new Set(requestIds)];
   for(let offset=0;offset<ids.length;offset+=1000){
-   const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId}).from(claimRequest)
-    .where(and(inArray(claimRequest.id,ids.slice(offset,offset+1000)),eq(claimRequest.status,'pending'))).orderBy(claimRequest.id);
-   for(const row of rows){
-    try{await assertCanDecide(tx,ctx,row.employmentId,'claim',scopeOf('claims.claim'));result.push(row.id);}
-    catch(error){if(!isApprovalDecisionRefusal(error,'claim'))throw error;}
-   }
+   rows.push(...await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId}).from(claimRequest)
+    .where(and(inArray(claimRequest.id,ids.slice(offset,offset+1000)),eq(claimRequest.status,'pending'))).orderBy(claimRequest.id));
   }
-  return result.sort();
+  const allowed=await claimDecisionEmploymentsTx(tx,ctx,rows.map(row=>row.employmentId));
+  return rows.filter(row=>allowed.has(row.employmentId)).map(row=>row.id).sort();
  });
 }

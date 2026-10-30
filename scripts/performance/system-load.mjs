@@ -46,22 +46,24 @@ async function databaseSnapshot(label){
  const settings=await db`select current_setting('fsync')as fsync,current_setting('synchronous_commit')as synchronous_commit,current_setting('jit')as jit`;
  assert.equal(settings[0].fsync,'on');assert.equal(settings[0].synchronous_commit,'on');
  const statements=await db`select queryid::text,calls,total_exec_time,total_plan_time,mean_exec_time,rows,shared_blks_hit,shared_blks_read,temp_blks_written,
- left(query,1800)as normalized_query from pg_stat_statements where dbid=(select oid from pg_database where datname=current_database())
+ jit_generation_time,jit_inlining_time,jit_optimization_time,jit_emission_time,left(query,1800)as normalized_query from pg_stat_statements where dbid=(select oid from pg_database where datname=current_database())
  and query not like '%pg_stat_%' order by total_exec_time+total_plan_time desc limit 35`;
- writeFileSync(join(out,'database-'+label+'.json'),JSON.stringify({settings,statements},null,2));
+ const active=await db`select pid,state,wait_event_type,wait_event,extract(epoch from(clock_timestamp()-query_start))as age_seconds,left(query,4000)as query from pg_stat_activity where datname=current_database()and pid<>pg_backend_pid()`;
+ writeFileSync(join(out,'database-'+label+'.json'),JSON.stringify({settings,statements,active},null,2));
 }
 const employee=fixture.users.find(u=>u.role==='employee'),hr=fixture.users.find(u=>u.role==='companyHR'),group=fixture.users.find(u=>u.role==='groupHR'),manager=fixture.users.find(u=>u.role==='manager');
-const employeeRoutes=['/','/me','/claims','/leave','/attendance/individual','/payroll/individual-payslip','/notices','/performance/my','/lifecycle/me'];
+const employeeRoutes=['/','/me','/claims','/leave','/attendance/individual','/me/payslip','/notices','/performance/my','/lifecycle/me'];
 const hrRoutes=['/admin/personnel','/attendance','/payroll','/reports','/reports/employee-master','/lifecycle/onboarding','/lifecycle/offboarding','/roster','/letters/register','/performance','/rewards','/system-testing','/feedback','/knowledge-base','/control-tower','/admin/settings/movement'];
 let browser,sampling,contextTemplates;
 try{
- await db`select pg_stat_statements_reset()`;
+ save();await db`select pg_stat_statements_reset()`;
  const anonymous=await request(null,'/claims',undefined,307,false);assert(String(anonymous.headers.location).includes('/login'));report.boundaries.push({kind:'anonymous',passed:true});
  for(const user of [employee,manager,hr,group]){
   const routes=user===employee?employeeRoutes:user===manager?['/approvals','/approvals/history','/performance/team']:hrRoutes;
   for(const route of routes){
+   const diagnostic=setTimeout(()=>{databaseSnapshot('slow-pilot').catch(()=>{});},10000);
    try{const response=await request(user,route);report.coverage.push({role:user.role,route,status:'passed',durationMs:response.durationMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});}
-   catch(error){report.coverage.push({role:user.role,route,status:'failed',reason:String(error.message).slice(0,180)});}
+   catch(error){report.coverage.push({role:user.role,route,status:'failed',reason:String(error.message).slice(0,180)});save();throw error;}finally{clearTimeout(diagnostic);}
    save();
   }
  }
@@ -81,7 +83,7 @@ try{
   report.browser.push({role:user.role,path,heading,elapsedMs:performance.now()-start,...timing});save();
  }
  for(const user of [employee,manager,hr,group,fixture.users[254],fixture.users[251]]){
-  const ctx=await context(user),page=await ctx.newPage();page.on('pageerror',error=>report.browserErrors.push({role:user.role,error:error.name+': '+error.message.slice(0,150)}));
+  const ctx=await context(user),page=await ctx.newPage();page.on('pageerror',error=>report.browserErrors.push({role:user.role,error:error.name+': '+error.message.slice(0,150)}));page.on('console',message=>{if(message.type()==='error')report.browserErrors.push({role:user.role,error:message.text().slice(0,150)});});
   for(const route of user.role==='employee'?['/claims','/leave','/attendance/individual']:user.role==='manager'?['/approvals','/performance/team']:['/admin/personnel','/payroll','/lifecycle/onboarding'])await visit(page,user,route);
   await page.screenshot({path:join(out,'browser-'+user.index+'.png'),fullPage:false});await ctx.close();
  }
