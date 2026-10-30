@@ -9151,6 +9151,18 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
   const reason = (p.reason ?? '').trim();
   if (!reason) throw new ResetReasonRequiredError();
   return withTenant(ctx, async (tx) => {
+    const {payslipsCleared,loanInstalmentsReversed,claimsReverted}=await resetProcessedBatchTx(tx,ctx,p);
+    return {payslipsCleared,loanInstalmentsReversed,claimsReverted};
+  });
+}
+
+/** The existing native reset owner in a caller-owned transaction. Public reset keeps its original
+ * result shape. Explicit server-allocated audit references avoid introducing audit SELECT rights. */
+export async function resetProcessedBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:string;reason?:string}) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+  if (!settingEnabled(ctx,'payroll.reset_enabled')) throw new SettingNotEnabledError('payroll.reset_enabled','Payroll reset is not enabled.');
+  const reason=(p.reason??'').trim();
+  if (!reason) throw new ResetReasonRequiredError();
     await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);
     const [batch] = await tx
       .select({
@@ -9235,7 +9247,9 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
     // timestamp, reason, and before/after snapshot for every rollback / unlock / reprocess). Mirrors the
     // unlock/reprocess inserts so the rollback path is uniformly queryable, not only via the domain event.
     const resetActor = actorOf(ctx);
+    const statusHistoryId=randomUUID(),resetEventId=randomUUID();
     await tx.insert(payrollStatusHistory).values({
+      id:statusHistoryId,
       tenantId: ctx.tenantId,
       batchId: p.batchId,
       action: 'rollback',
@@ -9262,9 +9276,11 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
       tenantId: ctx.tenantId,
       aggregateType: 'payroll-batch',
       aggregateId: p.batchId,
+      id:resetEventId,
       eventType: 'payroll-batch.reset',
       actor: resetActor,
       payload: {
+        statusHistoryId,
         fromStatus: 'processed',
         toStatus: 'draft',
         companyId: batch.companyId,
@@ -9281,11 +9297,11 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
       },
     });
     return {
+      statusHistoryId,resetEventId,loansReopened,
       payslipsCleared: clearedSlips.length,
       loanInstalmentsReversed,
       claimsReverted: revertedClaims.length,
     };
-  });
 }
 
 // ─────────────── Granular payroll RBAC (feedback 9bc442bc, reporter expected_function) ───────────────
