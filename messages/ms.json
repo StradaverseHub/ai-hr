@@ -18493,6 +18493,16 @@
           "completed": "Keputusan direkodkan"
         }
       },
+      "attendanceNativeWorkflows": {
+        "title": "Teruskan dalam Kehadiran",
+        "description": "Tindakan ini membuka borang asal. Semak dan simpan di sana; membuka pautan tidak mengubah rekod. Rakaman waktu memerlukan kawalan dan bukti waktu asal.",
+        "clock": "Buka rakaman waktu",
+        "corrections": "Buka pembetulan hari kehadiran",
+        "schedule": "Buka penetapan syif bertarikh dan kumpulan jadual",
+        "roster": "Buka jadual tugas dan akruan TOIL",
+        "calendar": "Buka penetapan kalendar cuti pekerja",
+        "calendarHelp": "Untuk kalendar cuti, pilih pekerja dan buka tab Kehadiran. Borang asal menyemak tarikh, cuti gantian, TOIL dan penggajian terjejas."
+      },
       "attendanceActions": {
         "back": "Kembali ke Pembantu",
         "employment": "Pekerjaan anda",

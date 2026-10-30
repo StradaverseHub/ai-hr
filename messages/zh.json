@@ -18493,6 +18493,16 @@
           "completed": "决定已记录"
         }
       },
+      "attendanceNativeWorkflows": {
+        "title": "在考勤中继续",
+        "description": "这些操作会打开原生表单。请在那里审核并保存；打开链接不会更改记录。打卡需要使用原生打卡控件并提供相应证据。",
+        "clock": "打开打卡",
+        "corrections": "打开考勤日更正",
+        "schedule": "打开按日期生效的班次及排班组分配",
+        "roster": "打开值班表及补休累积",
+        "calendar": "打开员工假日日历分配",
+        "calendarHelp": "如需分配假日日历，请选择员工并打开考勤选项卡。原生表单会检查日期、替代假日、补休和受影响的薪资。"
+      },
       "attendanceActions": {
         "back": "返回助手",
         "employment": "您的任职",

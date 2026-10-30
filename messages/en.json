@@ -18493,6 +18493,16 @@
           "completed": "Decision recorded"
         }
       },
+      "attendanceNativeWorkflows": {
+        "title": "Continue in Attendance",
+        "description": "These actions open the native form. Review and save there; opening a link does not change a record. Clock capture requires the native clock controls and evidence.",
+        "clock": "Open clock capture",
+        "corrections": "Open attendance day corrections",
+        "schedule": "Open dated shift and schedule group assignments",
+        "roster": "Open duty roster and TOIL accrual",
+        "calendar": "Open employee holiday calendar assignments",
+        "calendarHelp": "For holiday calendars, select an employee and open the Attendance tab. The native form checks dates, replacement holidays, TOIL and affected payroll."
+      },
       "attendanceActions": {
         "back": "Back to Assistant",
         "employment": "Your employment",

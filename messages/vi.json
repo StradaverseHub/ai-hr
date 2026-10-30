@@ -18493,6 +18493,16 @@
           "completed": "Đã ghi quyết định"
         }
       },
+      "attendanceNativeWorkflows": {
+        "title": "Tiếp tục trong Chấm công",
+        "description": "Các thao tác này mở biểu mẫu gốc. Hãy xem xét và lưu tại đó; mở liên kết không thay đổi hồ sơ. Ghi nhận giờ cần dùng điều khiển chấm công gốc và bằng chứng.",
+        "clock": "Mở ghi nhận giờ",
+        "corrections": "Mở điều chỉnh ngày chấm công",
+        "schedule": "Mở phân ca theo ngày và nhóm lịch",
+        "roster": "Mở lịch trực và tích lũy TOIL",
+        "calendar": "Mở phân lịch ngày lễ cho nhân viên",
+        "calendarHelp": "Để phân lịch ngày lễ, hãy chọn nhân viên rồi mở thẻ Chấm công. Biểu mẫu gốc kiểm tra ngày, ngày nghỉ thay thế, TOIL và bảng lương bị ảnh hưởng."
+      },
       "attendanceActions": {
         "back": "Quay lại Trợ lý",
         "employment": "Việc làm của bạn",
