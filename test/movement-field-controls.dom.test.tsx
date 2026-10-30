@@ -309,7 +309,7 @@ describe('1d58019a Step 2 — source guards', () => {
     expect(page.match(/\.\.\.typeControls\(r\.code\)/g) ?? []).toHaveLength(2);
     expect(page).toContain('await movementAttachments(s, employmentId, spMovement)');
     expect(page).toContain('/movement-documents/${doc.id}');
-    expect(page).toContain("movementTypeByCode.get(movementEditRow.kind)?.behaviourKind === 'termination'");
+    expect(page).toContain("kind: movementEditRow.correctionKind ?? movementEditRow.kind");
     const route = fs.readFileSync(
       path.resolve(__dirname, '../app/admin/personnel/[employmentId]/movement-documents/[documentId]/route.ts'),
       'utf8',

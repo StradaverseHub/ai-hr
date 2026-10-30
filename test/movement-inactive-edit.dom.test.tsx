@@ -52,10 +52,9 @@ describe('an inactive custom Movement keeps its authorized Edit behavior metadat
   const start=source.indexOf('const editEventCard'),end=source.indexOf('const hireCorrectionCard',start);
   expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start+500);
   const parent=source.slice(start,end);
-  expect(parent).toContain('.filter((r) => r.active || r.code === movementEditRow.kind)');
+  expect(parent).toContain('.filter((r) => r.active || r.code === (movementEditRow.correctionKind ?? movementEditRow.kind))');
   expect(parent).toContain('behaviourKind: r.behaviourKind');
-  expect(parent).toContain('movementTypeByCode.get(movementEditRow.kind)?.behaviourKind');
-  expect(parent).toContain('isComparisonKind(behaviour)');
-  expect(parent).toContain('return Array.from(new Set([movementEditRow.kind, ...codes]))');
+  expect(parent).toContain('kind: movementEditRow.correctionKind ?? movementEditRow.kind');
+  expect(parent).toContain('allowedKinds: Array.from(new Set([movementEditRow.correctionKind ?? movementEditRow.kind, ...movementTypes.filter(r => r.active).map(r => r.code)]))');
  });
 });

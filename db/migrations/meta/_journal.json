@@ -4054,6 +4054,13 @@
       "when": 1793330000063,
       "tag": "0720_lifecycle_v9_self_equipment",
       "breakpoints": true
+    },
+    {
+      "idx": 694,
+      "version": "7",
+      "when": 1793330000066,
+      "tag": "0729_movement_exit_payroll_preservation",
+      "breakpoints": true
     }
   ]
 }

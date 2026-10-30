@@ -411,3 +411,9 @@ fresh exact-SHA full gate. Its older focused/full-gate evidence stays tied to th
 Other unapplied lower-timestamp claims likewise require a fresh coordinated append above the actual
 installed watermark before their own release. V9's eight drafts remain unallocated. This allocation
 grants no production deployment or human staging acceptance.
+
+## Feedback 646355e5 revision 2 — ended-employment payroll preservation
+
+Reserved on 30 October 2026 on codex/movement-replan-20261030. Fresh main/alpha fetch plus 1,957 reachable branch journals and 495 registered worktrees found filenames through 0728 and sequences through 1793330000065. The live staging ledger has 571 rows and watermark1793330000051. After merging main d6cb83d62, this candidate appends 0729_movement_exit_payroll_preservation at idx694 / sequence1793330000066 after the complete unchanged canonical prefix through 0720_lifecycle_v9_self_equipment (sequence1793330000063). The migration SQL bytes are unchanged. Recheck live watermark and competing reservations at integration; the index may shift, applied bytes may not.
+
+The migration replaces the metadata-preservation helper's open-assignment assumption for ended employments and includes exit/blacklist status changes in historical-readiness refusal. It changes no employment, payroll, snapshot or ledger rows during migration. This reservation grants no installation authority.
