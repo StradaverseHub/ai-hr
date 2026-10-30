@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID,randomBytes} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
+import {fixtureAuditCounts,assertFixtureAudit} from './fixture-audit.ts';
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.AUTH_PROVIDER,'internal');
 for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
  const url=new URL(process.env[key]);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'5433');assert.equal(url.pathname,'/ai_hr_system_perf');
@@ -80,11 +81,14 @@ try{
  for(const table of ['claim_request','attendance','employment','person','app_user','role_assignment','assignment','reporting_line','payslip'])await owner.client.unsafe('analyze '+table);
  const counts=await owner.client`select (select count(*)::int from claim_request)as claims,(select count(*)::int from attendance)as attendance,(select count(*)::int from payslip)as payslips`;
  assert.equal(counts[0].claims,1000000);assert.equal(users.length,500);
- const audit=await owner.client`select tenant_id,count(*)::int as events,count(*)filter(where chain_seq is not null)::int as chained from domain_event where tenant_id=any(${tenants.map(t=>t.tenantId)}::uuid[])group by tenant_id`;
- assert.equal(audit.length,2);assert(audit.every(row=>row.events>0&&row.events===row.chained),'fixture audit events must actually be chained');
+ const audit=await fixtureAuditCounts(owner.client,tenants.map(tenant=>tenant.tenantId));
+ const auditCounts=tenants.map((tenant,index)=>({tenant:index,...Object.fromEntries(Object.entries(audit.find(row=>row.tenant_id===tenant.tenantId)??{}).filter(([key])=>key!=='tenant_id'))}));
+ writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'audit-fixture.json'),JSON.stringify(auditCounts,null,2));
+ assertFixtureAudit(audit,tenants.map(tenant=>tenant.tenantId));
+ for(const tenant of tenants)tenant.auditUnchainedPrefix=audit.find(row=>row.tenant_id===tenant.tenantId).initialization_prefix;
  const modules=await owner.client`select tenant_id,array_agg(module_code order by module_code)as modules from tenant_module where tenant_id=any(${tenants.map(t=>t.tenantId)}::uuid[])and status='active'group by tenant_id`;
 
  writeFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),JSON.stringify({today,month,users,tenants}),{mode:0o600});
- writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'fixture.json'),JSON.stringify({fictional:true,tenants:2,companies:10,users:500,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,users.filter(u=>u.role===role).length])),counts:counts[0],authentication:'canonical encrypted internal sessions; normal HTTP session validation; not 500 account-enrollment throughput',auditHashChainRequested:process.env.AUDIT_HASH_CHAIN_ENABLED==='true',auditHashChain:audit.every(row=>row.events===row.chained),auditCounts:tenants.map((t,index)=>({tenant:index,events:audit.find(row=>row.tenant_id===t.tenantId)?.events,chained:audit.find(row=>row.tenant_id===t.tenantId)?.chained})),explicitActiveModules:tenants.map((t,index)=>({tenant:index,modules:modules.find(row=>row.tenant_id===t.tenantId)?.modules??[]})),coreModules:MODULE_CATALOG.filter(m=>m.isCore).map(m=>m.code)},null,2));
+ writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'fixture.json'),JSON.stringify({fictional:true,tenants:2,companies:10,users:500,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,users.filter(u=>u.role===role).length])),counts:counts[0],authentication:'canonical encrypted internal sessions; normal HTTP session validation; not 500 account-enrollment throughput',auditHashChainRequested:process.env.AUDIT_HASH_CHAIN_ENABLED==='true',auditHashChain:audit.every(row=>row.chained>0&&row.events===row.chained+row.initialization_prefix),auditPolicy:'All post-initialization events chained; one canonical initialization prefix per tenant',auditCounts,explicitActiveModules:tenants.map((t,index)=>({tenant:index,modules:modules.find(row=>row.tenant_id===t.tenantId)?.modules??[]})),coreModules:MODULE_CATALOG.filter(m=>m.isCore).map(m=>m.code)},null,2));
  console.log('[system-perf-fixture] complete; private sessions are outside artifact directory');
 }finally{await closeAll();}

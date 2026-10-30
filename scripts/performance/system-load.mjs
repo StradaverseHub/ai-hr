@@ -68,7 +68,9 @@ async function verifyAudit(){
   const result=await verifyTenantChain({tenantId:principal.tenant_id,userId:actor.userId,personId:actor.personId,
    roles:[...new Set(principal.grants.map(grant=>grant.role))],grants:principal.grants});
   report.auditVerification.push({tenant:actor.tenant,...result});save();
-  assert(result.valid&&result.checked>0&&result.unchained===0&&result.unchainedInsideChain===0,'native audit chain coverage or integrity failure');
+  const expectedPrefix=fixture.tenants[actor.tenant]?.auditUnchainedPrefix;
+  assert.equal(expectedPrefix,1,'fixture initialization prefix must be independently checked before load');
+  assert(result.valid&&result.checked>0&&result.unchained===expectedPrefix&&result.unchainedInsideChain===0,'native audit chain coverage or integrity failure');
  }
  assert.equal(report.auditVerification.length,2);
 }
