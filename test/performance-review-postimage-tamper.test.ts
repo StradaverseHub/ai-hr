@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {expect,it} from 'vitest';
 import {owner} from './harness';
-import {b,fixture,state,proof,installPerformancePostimageFixtures} from './helpers/performance-postimage-fixture';
+import {b,hire,fixture,state,proof,installPerformancePostimageFixtures} from './helpers/performance-postimage-fixture';
 installPerformancePostimageFixtures();
 
 for(const kind of ['goal','cancel','preserve','replace'] as const)for(const stage of ['update','event','before-custody','custody','body'] as const){

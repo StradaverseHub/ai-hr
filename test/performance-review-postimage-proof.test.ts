@@ -2,7 +2,7 @@
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {expect,it} from 'vitest';
-import {withTenant} from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {setReportingLine} from '../core/org';
 import {approveGoalTx,updateGoal,readGoalApprovalSourceTx,readCheckInCancellationSourceTx,cancelCheckInTx,readCheckInCompletionPlanTx,completeCheckInTx} from '../packs/performance/service';
