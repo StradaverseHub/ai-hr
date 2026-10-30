@@ -19,3 +19,9 @@ The dedicated browser protocol remains separate from generic employment protocol
 ## Focused verification
 
 Authored native6, contract10, browser correspondence9, DOM3, HTTP1, actual-ledger shape2 and real custody tests cover authority, retained metadata, consent, exact event pairs, current-transaction refusal, rollback, stale source/definitions, company/outcome narrowing, erasure/expiry, repeat recovery and ABA. Lifecycle role probes add the second action to the existing group, preserving all other groups/declarations. Existing lifecycle native, completion choices and affected shared registry/catalogue/transport tests plus whole compiler are planned on the frozen full SHA. No local application tests, compiler, migrations, DB or server were run. Hosted evidence is recorded in the exclusive phase file after actual jobs finish; this note does not claim a pass.
+
+## Original failure and narrow recovery
+
+Original aa600e282e8f5916fe3cdb66ef3a4022179507e0 run41037460486 retained117 actual passing non-DB cases, then PostgreSQL OOMKilled:true while rebuilding0742 against an inherited6.93MB predicate, before any DB cases executed. Whole compiler failed only on a duplicate tickStep test import. All original jobs finished before repairs.
+
+The separate recovery branch adopts only the expressly approved b55c3168 isolated UNAPPLIED0716 finite eight-NULL branch (every other0716 byte independently compared unchanged), removes the duplicate import, and bounds own0742 catalogue discovery to the exact original-notice constraint identities with expected-shape checks and raw conbin size notices. It does not deparse every ledger constraint, weaken admission, edit applied SQL or increase resources. All117 non-DB results remain on actual aa600; recovery runs unexecuted DB files, the newly affected emergency custody file, manifest-bound catalogue and whole compiler. Exact candidate and results belong in the exclusive phase file after actual checks.
