@@ -310,3 +310,169 @@ CREATE TRIGGER performance_completed_checkin_fence BEFORE UPDATE OR DELETE ON pu
 CREATE TRIGGER performance_completed_event_fence BEFORE INSERT OR UPDATE OR DELETE ON public.domain_event FOR EACH ROW EXECUTE FUNCTION app._performance_completed_writer_fence();
 CREATE TRIGGER performance_completed_actor_fence BEFORE UPDATE OR DELETE ON public.app_user FOR EACH ROW EXECUTE FUNCTION app._performance_completed_writer_fence();
 CREATE TRIGGER performance_completed_employment_fence BEFORE UPDATE OR DELETE ON public.employment FOR EACH ROW EXECUTE FUNCTION app._performance_completed_writer_fence();
+
+--> statement-breakpoint
+-- PRIVATE ADDITIVE source proposal for end of UNAPPLIED0750 / mapped0857, after0747/0854.
+-- Existing same ledger, same birth witness/root columns, no new table/column/hash/RLS grant.
+CREATE FUNCTION app._performance_schedule_complete_closed(p_id uuid,p_digest text,p_event uuid) RETURNS void
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;expected jsonb;actual jsonb;
+BEGIN
+ PERFORM app._assistant_leave_decision_login();
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id()
+ AND user_id=app.current_user_id() AND action_kind='performance.checkin.schedule' FOR UPDATE;
+ IF NOT FOUND OR p_event IS NULL THEN RAISE EXCEPTION 'Scheduling proof unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_assigned_review_binding(r.action_kind,r.person_id,r.employment_id,r.company_id,r.decision_subject_person_id,r.receipt_subject_id);
+ IF r.state='completed' THEN
+  IF r.receipt_event_id IS DISTINCT FROM p_event THEN RAISE EXCEPTION 'Scheduling proof unavailable' USING ERRCODE='42501';END IF;
+  -- Historical later Tx uses existing canonical birth/event receipt: legitimate complete/cancel allowed.
+  PERFORM app.assistant_checkin_schedule_receipt(p_id,p_event);RETURN;
+ END IF;
+ IF r.state<>'awaiting_confirmation' OR p_digest IS DISTINCT FROM r.reviewed_digest
+ OR clock_timestamp()>=r.expires_at OR r.checkin_schedule_birth_xact IS DISTINCT FROM pg_current_xact_id()::text
+ OR app._assistant_generic_review_verify(r.id,p_event) IS NOT TRUE
+ THEN RAISE EXCEPTION 'Scheduling current-root postimage unavailable' USING ERRCODE='42501';END IF;
+ UPDATE app.assistant_own_leave_review SET intent_digest=NULL,reviewed_digest=NULL,state='completed',receipt_event_id=p_event WHERE id=r.id;
+ DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+ PERFORM app._assistant_assigned_review_binding(r.action_kind,r.person_id,r.employment_id,r.company_id,r.decision_subject_person_id,r.receipt_subject_id);
+ expected:=to_jsonb(r)||jsonb_build_object('state','completed','receipt_event_id',p_event,'intent_digest',NULL,'reviewed_digest',NULL);
+ SELECT to_jsonb(a) INTO actual FROM app.assistant_own_leave_review a WHERE id=r.id;
+ -- Existing physical verifier includes exact actual scheduled/null notes/null completed_at/defaults,
+ -- native created_at SQL clock, original birth hash/xmin/top root and actual exact event. WHOLE
+ -- ledger comparison binds all original identity/foreign NULL columns after every ledger/body trigger.
+ IF actual IS DISTINCT FROM expected OR app._assistant_generic_review_verify(r.id,p_event) IS NOT TRUE
+ OR EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content WHERE action_id=r.id)
+ OR clock_timestamp()>=r.expires_at
+ THEN RAISE EXCEPTION 'Scheduling final custody changed' USING ERRCODE='42501';END IF;
+END $$;
+REVOKE ALL ON FUNCTION app._performance_schedule_complete_closed(uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+
+-- AFTER companion and BEFORE anchor guard protect OLD original schedule kind, not only NEW kind.
+-- Later canonical privacy scrub may remove private content; all original identity/birth/event anchors
+-- stay fixed. No-op same-root completed update and deletion refuse even after IMMEDIATE/bodygone.
+CREATE FUNCTION app._performance_schedule_anchor_closed() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE actual jsonb;
+BEGIN
+ IF TG_RELID<>'app.assistant_own_leave_review'::regclass::oid OR TG_LEVEL<>'ROW' OR TG_WHEN NOT IN ('BEFORE','AFTER')
+ THEN RAISE EXCEPTION 'Unexpected scheduling anchor relation' USING ERRCODE='42501';END IF;
+ IF OLD.action_kind='performance.checkin.schedule' AND OLD.state='completed' THEN
+  IF TG_OP='DELETE' OR OLD.checkin_schedule_birth_xact=pg_current_xact_id()::text
+  THEN RAISE EXCEPTION 'Scheduling completed command is closed until commit' USING ERRCODE='42501';END IF;
+  IF ROW(NEW.id,NEW.action_kind,NEW.tenant_id,NEW.user_id,NEW.person_id,NEW.employment_id,NEW.company_id,
+   NEW.decision_subject_person_id,NEW.receipt_subject_kind,NEW.receipt_subject_id,NEW.receipt_event_id,NEW.state,
+   NEW.checkin_schedule_planned_id,NEW.checkin_schedule_date,NEW.checkin_schedule_manager_id,NEW.checkin_schedule_result_id,
+   NEW.checkin_schedule_birth_hash,NEW.checkin_schedule_birth_xmin,NEW.checkin_schedule_birth_xact,NEW.created_at,NEW.expires_at)
+  IS DISTINCT FROM ROW(OLD.id,OLD.action_kind,OLD.tenant_id,OLD.user_id,OLD.person_id,OLD.employment_id,OLD.company_id,
+   OLD.decision_subject_person_id,OLD.receipt_subject_kind,OLD.receipt_subject_id,OLD.receipt_event_id,OLD.state,
+   OLD.checkin_schedule_planned_id,OLD.checkin_schedule_date,OLD.checkin_schedule_manager_id,OLD.checkin_schedule_result_id,
+   OLD.checkin_schedule_birth_hash,OLD.checkin_schedule_birth_xmin,OLD.checkin_schedule_birth_xact,OLD.created_at,OLD.expires_at)
+  THEN RAISE EXCEPTION 'Immutable scheduling history' USING ERRCODE='42501';END IF;
+ END IF;
+ IF TG_WHEN='AFTER' AND TG_OP='UPDATE' AND
+  (OLD.action_kind='performance.checkin.schedule' OR NEW.action_kind='performance.checkin.schedule')
+  AND (OLD.state='completed' OR NEW.state='completed') THEN
+  SELECT to_jsonb(a) INTO actual FROM app.assistant_own_leave_review a WHERE id=NEW.id;
+  IF actual IS DISTINCT FROM to_jsonb(NEW) THEN RAISE EXCEPTION 'Scheduling actual anchor changed' USING ERRCODE='42501';END IF;
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+END $$;
+REVOKE ALL ON FUNCTION app._performance_schedule_anchor_closed() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER performance_schedule_anchor_before BEFORE UPDATE OR DELETE ON app.assistant_own_leave_review FOR EACH ROW EXECUTE FUNCTION app._performance_schedule_anchor_closed();
+CREATE TRIGGER performance_schedule_anchor_after AFTER UPDATE OR DELETE ON app.assistant_own_leave_review FOR EACH ROW EXECUTE FUNCTION app._performance_schedule_anchor_closed();
+
+-- No completed body resurrection/retarget, including late BEFORE action_id rewrite. Deleting
+-- original body during completion is permitted; any subsequent reinsert is independently refused.
+CREATE FUNCTION app._performance_completed_body_closed() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE old_ref uuid;new_ref uuid;
+BEGIN
+ IF TG_RELID<>'app.assistant_own_leave_review_content'::regclass::oid OR TG_WHEN NOT IN ('BEFORE','AFTER') OR TG_LEVEL<>'ROW'
+ THEN RAISE EXCEPTION 'Unexpected Performance body relation' USING ERRCODE='42501';END IF;
+ IF TG_OP<>'INSERT' THEN old_ref:=OLD.action_id;END IF;
+ IF TG_OP<>'DELETE' THEN new_ref:=NEW.action_id;END IF;
+ IF TG_OP<>'DELETE' AND EXISTS(SELECT 1 FROM app.assistant_own_leave_review r
+ WHERE r.id IN (old_ref,new_ref) AND r.state='completed'
+ AND r.action_kind IN ('performance.goal.approve','performance.checkin.cancel','performance.checkin.complete','performance.checkin.schedule'))
+ THEN RAISE EXCEPTION 'Completed Performance content is closed' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+END $$;
+REVOKE ALL ON FUNCTION app._performance_completed_body_closed() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER performance_completed_body_before BEFORE INSERT OR UPDATE ON app.assistant_own_leave_review_content FOR EACH ROW EXECUTE FUNCTION app._performance_completed_body_closed();
+CREATE TRIGGER performance_completed_body_after AFTER INSERT OR UPDATE ON app.assistant_own_leave_review_content FOR EACH ROW EXECUTE FUNCTION app._performance_completed_body_closed();
+
+--> statement-breakpoint
+-- PRIVATE replacement for UNAPPLIED0750 / aggregate0857 function ONLY. No slot/install permission.
+CREATE OR REPLACE FUNCTION app.assistant_assigned_review_complete(p_id uuid,p_kind text,p_digest text,p_event uuid) RETURNS jsonb
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r app.assistant_own_leave_review%ROWTYPE;proof jsonb;completed_at timestamptz;expected_row jsonb;persisted_row jsonb;
+BEGIN
+ IF p_kind='performance.checkin.schedule' THEN
+  PERFORM app._performance_schedule_complete_closed(p_id,p_digest,p_event);
+  RETURN app._assistant_assigned_review_json(p_id);
+ END IF;
+ IF p_kind NOT IN ('performance.goal.approve','performance.checkin.cancel','performance.checkin.complete') THEN RETURN app._assistant_assigned_review_complete_0750_previous(p_id,p_kind,p_digest,p_event);END IF;
+ PERFORM app._assistant_leave_decision_login();
+ SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND action_kind=p_kind FOR UPDATE;
+ IF NOT FOUND OR r.performance_postimage_version IS DISTINCT FROM 1 OR p_event IS NULL THEN RAISE EXCEPTION 'Performance proof unavailable; open native history' USING ERRCODE='42501';END IF;
+ PERFORM app._assistant_assigned_review_binding(r.action_kind,r.person_id,r.employment_id,r.company_id,r.decision_subject_person_id,r.receipt_subject_id);
+ IF r.state='completed' THEN
+  IF r.performance_postimage_event_id IS DISTINCT FROM p_event OR r.receipt_event_id IS DISTINCT FROM p_event THEN RAISE EXCEPTION 'Performance proof unavailable' USING ERRCODE='42501';END IF;
+ ELSIF r.state='awaiting_confirmation' AND clock_timestamp()<r.expires_at THEN
+  IF p_digest IS DISTINCT FROM r.reviewed_digest OR app._assistant_generic_review_verify(r.id,p_event) IS NOT TRUE THEN RAISE EXCEPTION 'Performance postimage unavailable' USING ERRCODE='42501';END IF;
+  proof:=jsonb_build_object('version',1,'unchanged',r.performance_postimage_unchanged,'notes',r.performance_postimage_notes,'notesMode',r.performance_postimage_mode);
+  IF p_kind='performance.checkin.complete' THEN SELECT (payload->>'completedAt')::timestamptz INTO completed_at FROM public.domain_event WHERE id=p_event AND tenant_id=r.tenant_id;END IF;
+  UPDATE app.assistant_own_leave_review SET intent_digest=NULL,reviewed_digest=NULL,state='completed',receipt_event_id=p_event,performance_postimage_event_id=p_event,performance_postimage_root_xid=pg_current_xact_id() WHERE id=r.id;
+  DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+  IF app._assistant_generic_review_verify_0750_previous(r.id,p_event) IS NOT TRUE OR app._performance_postimage_matches(p_kind,r.receipt_subject_id,proof,completed_at) IS NOT TRUE THEN RAISE EXCEPTION 'Performance postimage changed during completion' USING ERRCODE='42501';END IF;
+  -- A later BEFORE trigger can rewrite NEW before the completed-row fence activates. Verify the
+  -- actual persisted custody row after every ledger/content trigger, allowing ONLY this documented
+  -- completion/scrub delta. The old typed row retains every original binding and foreign NULL column.
+  expected_row:=to_jsonb(r)||jsonb_build_object('state','completed','intent_digest',NULL,'reviewed_digest',NULL,
+   'receipt_event_id',p_event,'performance_postimage_event_id',p_event,'performance_postimage_root_xid',pg_current_xact_id(),
+   'performance_postimage_unchanged',NULL,'performance_postimage_notes',NULL,'performance_postimage_mode',NULL);
+  SELECT to_jsonb(actual) INTO persisted_row FROM app.assistant_own_leave_review actual WHERE id=r.id;
+  IF persisted_row IS DISTINCT FROM expected_row OR clock_timestamp()>=r.expires_at OR EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content WHERE action_id=r.id)
+  THEN RAISE EXCEPTION 'Performance completed custody changed' USING ERRCODE='42501';END IF;
+ ELSE RAISE EXCEPTION 'Performance review unavailable' USING ERRCODE='42501';END IF;
+ RETURN app._assistant_assigned_review_json(r.id);
+END $$;
+
+--> statement-breakpoint
+-- PRIVATE: replace existing helper; retain existing BEFORE triggers and ADD actual AFTER companions.
+CREATE OR REPLACE FUNCTION app._performance_completed_writer_fence() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE blocked boolean:=false;old_id uuid;new_id uuid;old_tenant uuid;new_tenant uuid;
+BEGIN
+ IF TG_WHEN NOT IN ('BEFORE','AFTER') OR TG_LEVEL<>'ROW' OR TG_RELID NOT IN ('public.performance_goal'::regclass,'public.performance_checkin'::regclass,'public.domain_event'::regclass,'public.app_user'::regclass,'public.employment'::regclass)
+ THEN RAISE EXCEPTION 'Unexpected Performance proof writer' USING ERRCODE='42501';END IF;
+ IF TG_OP<>'INSERT' THEN old_id:=OLD.id;old_tenant:=OLD.tenant_id;END IF;
+ IF TG_OP<>'DELETE' THEN new_id:=NEW.id;new_tenant:=NEW.tenant_id;END IF;
+ IF TG_RELID='public.app_user'::regclass THEN
+  IF TG_OP='UPDATE' AND ROW(OLD.id,OLD.tenant_id,OLD.person_id) IS NOT DISTINCT FROM ROW(NEW.id,NEW.tenant_id,NEW.person_id) THEN RETURN NEW;END IF;
+ END IF;
+ IF TG_RELID='public.employment'::regclass THEN
+  IF TG_OP='UPDATE' AND ROW(OLD.id,OLD.tenant_id,OLD.person_id,OLD.company_id) IS NOT DISTINCT FROM ROW(NEW.id,NEW.tenant_id,NEW.person_id,NEW.company_id) THEN RETURN NEW;END IF;
+ END IF;
+ IF TG_RELID='public.domain_event'::regclass THEN
+  SELECT EXISTS(SELECT 1 FROM app.assistant_own_leave_review r
+   WHERE r.state='completed' AND ((r.performance_postimage_version=1 AND r.action_kind IN ('performance.goal.approve','performance.checkin.cancel','performance.checkin.complete') AND r.performance_postimage_root_xid=pg_current_xact_id()) OR (r.action_kind='performance.checkin.schedule' AND r.checkin_schedule_birth_xact=pg_current_xact_id()::text))
+   AND (r.receipt_event_id IN (old_id,new_id) OR (TG_OP<>'INSERT' AND r.tenant_id=old_tenant AND (CASE WHEN r.action_kind='performance.checkin.schedule' THEN r.checkin_schedule_result_id ELSE r.receipt_subject_id END)=OLD.aggregate_id) OR (TG_OP<>'DELETE' AND r.tenant_id=new_tenant AND (CASE WHEN r.action_kind='performance.checkin.schedule' THEN r.checkin_schedule_result_id ELSE r.receipt_subject_id END)=NEW.aggregate_id))) INTO blocked;
+ ELSE
+  SELECT EXISTS(SELECT 1 FROM app.assistant_own_leave_review r
+   WHERE r.state='completed' AND ((r.performance_postimage_version=1 AND r.action_kind IN ('performance.goal.approve','performance.checkin.cancel','performance.checkin.complete') AND r.performance_postimage_root_xid=pg_current_xact_id()) OR (r.action_kind='performance.checkin.schedule' AND r.checkin_schedule_birth_xact=pg_current_xact_id()::text))
+   AND r.tenant_id IN (old_tenant,new_tenant) AND CASE
+    WHEN TG_RELID='public.app_user'::regclass THEN r.user_id IN (old_id,new_id)
+    WHEN TG_RELID='public.employment'::regclass THEN r.employment_id IN (old_id,new_id)
+    WHEN TG_RELID='public.performance_goal'::regclass THEN r.action_kind='performance.goal.approve' AND r.receipt_subject_id IN (old_id,new_id)
+    ELSE (r.action_kind IN ('performance.checkin.cancel','performance.checkin.complete') AND r.receipt_subject_id IN (old_id,new_id)) OR (r.action_kind='performance.checkin.schedule' AND r.checkin_schedule_result_id IN (old_id,new_id)) END) INTO blocked;
+ END IF;
+ IF blocked THEN RAISE EXCEPTION 'Performance completed command is closed until commit' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+END $$;
+REVOKE ALL ON FUNCTION app._performance_completed_writer_fence() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER performance_completed_goal_after AFTER UPDATE OR DELETE ON public.performance_goal FOR EACH ROW EXECUTE FUNCTION app._performance_completed_writer_fence();
+CREATE TRIGGER performance_completed_checkin_after AFTER UPDATE OR DELETE ON public.performance_checkin FOR EACH ROW EXECUTE FUNCTION app._performance_completed_writer_fence();
+CREATE TRIGGER performance_completed_event_after AFTER INSERT OR UPDATE OR DELETE ON public.domain_event FOR EACH ROW EXECUTE FUNCTION app._performance_completed_writer_fence();
+CREATE TRIGGER performance_completed_actor_after AFTER UPDATE OR DELETE ON public.app_user FOR EACH ROW EXECUTE FUNCTION app._performance_completed_writer_fence();
+CREATE TRIGGER performance_completed_employment_after AFTER UPDATE OR DELETE ON public.employment FOR EACH ROW EXECUTE FUNCTION app._performance_completed_writer_fence();

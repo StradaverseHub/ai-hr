@@ -1,3 +1,4 @@
+import {assertReviewBodyPendingParentContract} from './helpers/review-body-pending-parent-contract';
 /** Authored UNRUN: actual native correction/workflow effects, coordinated drafts required, no guard bypass. */
 import {createHash,randomUUID} from 'node:crypto';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -103,3 +104,5 @@ describe('WP9 retained attendance request custody',()=>{
   const done=await reopenAttendanceCorrectionReview(a.ctx,review.actionId);expect(done.kind).toBe('completed');expect(await confirm(a,review)).toEqual(done);const after=await state(a);expect(after.requests).toHaveLength(1);expect(after.attendance).toEqual(before.attendance);
  });
 });
+
+it('shared body contract: real Attendance pending writes and terminal retarget refusal',async()=>{const a=await fixture();await assertReviewBodyPendingParentContract({ctx:a.ctx,kind:action,businessSnapshot:()=>state(a),prepare:()=>prepare(a),retire:r=>discardAttendanceCorrectionReview(a.ctx,retirement(r))});});

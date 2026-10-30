@@ -1,3 +1,4 @@
+import {assertReviewBodyPendingParentContract} from './helpers/review-body-pending-parent-contract';
 /** Authored UNRUN pending coordinator source review, mounting and exact-SHA hosted dispatch. */
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
@@ -71,3 +72,5 @@ it('rejects dedicated/generic hybrid custody fields and loss of actual case/comp
 it('preserves canonical erasure of already completed custody in a later transaction',async()=>{
  f=await caseCancelFixture(true);const r=await prepare();await reviews.confirm(f.ctx,confirmation(r));await erasePersonPii(adminCtx(f.b),{subjectEmploymentId:f.subject!.employmentId,scope:'contact',requestRef:'FICTIONAL-COMPLETED-ERASURE',reason:'Fictional completed subject request'});expect(await privateRow(r.actionId)).toMatchObject({state:'completed',bodies:0,commitment:null,intent_digest:null,reviewed_digest:null});
 });
+
+it('shared body contract: real Lifecycle pending writes and terminal retarget refusal',async()=>{await assertReviewBodyPendingParentContract({ctx:f.ctx,kind:C.action,businessSnapshot:()=>caseCancelSnapshot(f),prepare,retire:r=>reviews.discard(f.ctx,{action:C.action,contractVersion:1,actionId:r.actionId})});});

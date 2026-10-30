@@ -810,3 +810,8 @@ Coordinator allocated `0740_assistant_performance_checkin_complete_custody`, idx
 ## Performance mounted check-in scheduling — provisional source reservation
 
 Coordinator allocated `0747_assistant_performance_checkin_schedule_custody`, idx726 / version7 / when1793330000084 / breakpoints:true on 30 October 2026. Unapplied provisional development source only. The same ledger binds an employment creation intent and private prospective UUID; a protected physical INSERT witness records the actual created result. Refresh accepted journal/ledger ordering before integration or application. No installation, release or deployment authority.
+
+
+## Shared prepared review body parent — 31 October source reservation
+
+Root coordinator reserved `0861_assistant_review_body_pending_parent`, idx747 / version7 / when1793330000261 / breakpoints:true, after0860 in the reconciled aggregate. Unapplied development source only; no installed-history priority or runtime-success claim. The exact independently reviewed SQL adds the same physical ledger body's pending-parent write invariant with sorted NOWAIT locks; existing native proof, expiry, cleanup, grants and RLS remain authoritative. Actual installed ledger and source hashes require root verification before any staging action.

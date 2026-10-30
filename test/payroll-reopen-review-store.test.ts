@@ -1,3 +1,4 @@
+import {assertReviewBodyPendingParentContract} from './helpers/review-body-pending-parent-contract';
 import {prepareReviewedPayrollReopenSourceTx,confirmReviewedPayrollReopenSourceTx} from '../core/assistant-actions/reviewed-payroll-reopen-source';
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
@@ -98,3 +99,5 @@ describe('Payroll reopening complete native/custody effect',()=>{
  });
 
 });
+
+it('shared body contract: real Payroll pending writes and terminal retarget refusal',async()=>{await assertReviewBodyPendingParentContract({ctx,kind:C.action,businessSnapshot:state,prepare,retire:r=>discardPayrollReopenReview(ctx,retirement(r))});});

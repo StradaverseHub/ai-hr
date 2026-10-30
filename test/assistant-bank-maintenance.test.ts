@@ -1,3 +1,5 @@
+import {assertReviewBodyPendingParentContract} from './helpers/review-body-pending-parent-contract';
+import {erasePersonPii} from '../core/pdpa';
 /** Authored exact-SHA CI witnesses; native country owner and real migrated encrypted custody. */
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
@@ -73,3 +75,19 @@ it('honors an explicit Workforce denial in another retained employment company',
 });
 
 it('hands a missing native statutory profile to Personnel without creating one from bank values',async()=>{await owner.db.delete(s.employeeStatutoryMy).where(eq(s.employeeStatutoryMy.personId,target.personId));const native=vi.spyOn(pack().statutory,'setBank');await expect(store.prepare(ctx,human())).rejects.toThrow();expect(native).not.toHaveBeenCalled();expect(await profile()).toBeNull();});
+
+it('shared body contract: real Personnel pending writes and terminal retarget refusal',async()=>{await assertReviewBodyPendingParentContract({ctx,kind:C.action,businessSnapshot:state,retireTx:(tx,id)=>tx.execute(sql`select app.assistant_assigned_review_read(${id}::uuid,${C.action},true)`),prepare:async()=>(await store.prepare(ctx,human())).review,retire:r=>store.discard(ctx,{action:C.action,contractVersion:1,actionId:r.actionId})});});
+
+it.each(['completed','expired','refused'] as const)('shared body guard refuses actual Personnel %s parent without state synthesis',async terminalState=>{
+ await assertReviewBodyPendingParentContract({ctx,kind:C.action,terminalState,businessSnapshot:state,
+  prepare:async()=>(await store.prepare(ctx,human())).review,
+  retire:async r=>{
+   if(terminalState==='completed'){expect((await store.confirm(ctx,confirm(r))).kind).toBe('completed');return;}
+   if(terminalState==='expired'){
+    await owner.db.execute(sql`update app.assistant_own_leave_review set created_at=clock_timestamp()-interval '2 minutes',expires_at=clock_timestamp()-interval '1 second' where id=${r.actionId}::uuid`);
+    expect(await store.confirm(ctx,confirm(r))).toMatchObject({kind:'retired',receipt:{state:'expired'}});return;
+   }
+   await erasePersonPii(ctx,{subjectEmploymentId:target.employmentId,scope:'contact',requestRef:'FICTIONAL-SHARED-BODY-GUARD',reason:'Fictional retained-body refusal'});
+  },
+ });
+});
