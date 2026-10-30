@@ -1,3 +1,4 @@
+import {consumeOpenRouterProviderEgress} from '../provider-egress';
 /** UNRELEASED fixed-endpoint server transport. No tenant/provider activation or authorization is established
  * here. The gateway owner must freshly authorize/redact every field BEFORE calling it and settle
  * actual usage honestly. No arbitrary endpoint, enabled plugins, retries, tool execution or persistent key. */
@@ -159,6 +160,7 @@ export function createOpenRouterTransport(fetcher: typeof fetch) {
       if (controller.signal.aborted) throw unavailable();
       const run = async () => {
         phase = 'dispatch';
+        consumeOpenRouterProviderEgress({provider:'openrouter',model:cfg.model,apiKey:cfg.apiKey,providerOptions:readOpenRouterOptions({version:1,routing:cfg.routing})},args);
         consumeReviewedFreePost({provider:'openrouter',model:cfg.model,apiKey:cfg.apiKey,providerOptions:readOpenRouterOptions({version:1,routing:cfg.routing})},body);
         consumeReviewedMeteredPost({provider:'openrouter',model:cfg.model,apiKey:cfg.apiKey,providerOptions:readOpenRouterOptions({version:1,routing:cfg.routing})},body);
         phase = 'network';

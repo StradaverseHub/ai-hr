@@ -1,3 +1,4 @@
+import {assertProviderEgressDispatch,consumeProviderEgressDispatch} from '../provider-egress';
 /** OpenRouter adapter. No tools execute here. No image capability, retries, automatic route/model,
  * environment key or captured tenant state. Metadata validation is not a real tool/quality evaluation.
  * Gateway callers still own fresh scope/minimal-field authorization and canonical effects. */
@@ -28,6 +29,7 @@ async function metadata(fetcher: typeof fetch, cfg: ResolvedAiConfig): Promise<V
   void cancelled.catch(() => {}); controller.signal.addEventListener('abort', stop, { once: true });
   const timer = setTimeout(() => controller.abort(), 10_000);
   try {
+    consumeProviderEgressDispatch(cfg,'probe');
     const c = configuration(cfg);
     OpenRouterTransportConfiguration.parse(c);
     // Reuse the real request configuration validator without sending a prompt.
@@ -64,6 +66,7 @@ export function createOpenRouterAdapter(fetcher: typeof fetch): AiAdapter {
     provider: 'openrouter',
     async generate(cfg, args) {
       try {
+        assertProviderEgressDispatch(cfg,'draft',args);
         if (!cfg.governance) throw unavailable();
         const result = await transport(configuration(cfg), { system: [args.system], turns: [{ role: 'user', content: args.prompt }],
           tools: [], maxTokens: args.maxTokens ?? 2048, ...(args.timeoutMs === undefined ? {} : { timeoutMs: args.timeoutMs }) }, args.signal,terminal=>{
@@ -76,6 +79,7 @@ export function createOpenRouterAdapter(fetcher: typeof fetch): AiAdapter {
     },
     async converse(cfg, args) {
       try {
+        assertProviderEgressDispatch(cfg,'conversation',args);
         if (!cfg.governance) throw unavailable();
         const {onObservation,...request}=args;
         const result=await transport(configuration(cfg),request,undefined,terminal=>{
