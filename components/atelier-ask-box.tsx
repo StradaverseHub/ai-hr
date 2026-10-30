@@ -1,15 +1,14 @@
 'use client';
 
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { ArrowUp } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { askAssistantAction } from '@/app/assistant/actions';
+import { WorkspaceConversation } from './assistant/workspace-conversation';
 
 /**
  * Atelier round 1 — Home's ask box. It is the EXISTING assistant (ADR-0082), not a new one: the form posts
- * to askAssistantAction, which records the exchange and opens /assistant on the answer, read back from the
- * audit row. app/dashboard-atelier.tsx renders this only when mayUseAssistant() allows the viewer, so a
+ * through the shared in-place conversation. The server records and reauthorizes each answer. app/dashboard-atelier.tsx renders this only when mayUseAssistant() allows the viewer, so a
  * person without the module or a grant never meets a box that cannot answer.
  *
  * The suggestion chips only FILL the box; nothing is sent until the person presses Ask.
@@ -24,7 +23,7 @@ type Props = {
 };
 
 export function AtelierAskBox(props: Props) {
-  return <form action={askAssistantAction} className="atelier-ask-form"><AskFields {...props}/></form>;
+  return <WorkspaceConversation tasks={[]} fileImport={false} composer={({action,pending})=><form onSubmit={event=>{event.preventDefault();if(!pending)void action(new FormData(event.currentTarget));}} className="atelier-ask-form"><AskFields {...props} pending={pending}/></form>}/>;
 }
 
 function AskFields({
@@ -32,12 +31,16 @@ function AskFields({
   placeholder,
   submitLabel,
   suggestions,
-}: Props) {
-  const { pending } = useFormStatus();
+  pending:externalPending,
+}: Props & {pending?:boolean}) {
+  const status=useFormStatus();
+  const pending=externalPending??status.pending;
   const t = useTranslations('assistant.workspace');
   const id = useId();
   const ref = useRef<HTMLTextAreaElement>(null);
   const [value, setValue] = useState('');
+  const wasPending=useRef(false);
+  useEffect(()=>{if(wasPending.current&&!pending)setValue('');wasPending.current=pending;},[pending]);
   return (
     <>
       <div className="atelier-ask">

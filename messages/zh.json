@@ -19425,6 +19425,15 @@
         "yes": "是",
         "no": "否",
         "doneCredit": "已为 {date} 记入 {days} 天假期抵扣。"
+      },
+      "chat": {
+        "title": "对话",
+        "new": "新对话",
+        "thinking": "我来查一下…",
+        "latest": "最新回复",
+        "rate": "评价此回复",
+        "recent": "最近的对话",
+        "tools": "更多工作方式"
       }
     },
     "denied_unavailable": "我这边遇到了小状况，请稍后再试。",

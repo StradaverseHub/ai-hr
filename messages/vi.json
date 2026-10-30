@@ -19425,6 +19425,15 @@
         "yes": "Có",
         "no": "Không",
         "doneCredit": "Đã ghi {days} ngày phép bù cho {date}."
+      },
+      "chat": {
+        "title": "Cuộc trò chuyện",
+        "new": "Trò chuyện mới",
+        "thinking": "Để tôi kiểm tra…",
+        "latest": "Phản hồi mới nhất",
+        "rate": "Đánh giá phản hồi này",
+        "recent": "Trò chuyện gần đây",
+        "tools": "Các cách làm việc khác"
       }
     },
     "denied_unavailable": "Phía tôi gặp chút trục trặc. Vui lòng thử lại sau giây lát.",

@@ -19425,6 +19425,15 @@
         "yes": "Yes",
         "no": "No",
         "doneCredit": "{days} day(s) of Leave Credit banked for {date}."
+      },
+      "chat": {
+        "title": "Conversation",
+        "new": "New chat",
+        "thinking": "Let me check…",
+        "latest": "Latest reply",
+        "rate": "Rate this reply",
+        "recent": "Recent chats",
+        "tools": "More ways to work"
       }
     },
     "denied_unavailable": "A little snag on my side. Please try again in a moment.",

@@ -19425,6 +19425,15 @@
         "yes": "Ya",
         "no": "Tidak",
         "doneCredit": "{days} hari Kredit Cuti disimpan untuk {date}."
+      },
+      "chat": {
+        "title": "Perbualan",
+        "new": "Sembang baharu",
+        "thinking": "Biar saya semak…",
+        "latest": "Balasan terkini",
+        "rate": "Nilai balasan ini",
+        "recent": "Sembang terkini",
+        "tools": "Cara lain untuk bekerja"
       }
     },
     "denied_unavailable": "Ada sedikit masalah di pihak saya. Sila cuba lagi sebentar nanti.",
