@@ -28,7 +28,7 @@ historical reads require exact employee, period, cycle and run identities.
 
 The tenant catalog owns stable public Formula IDs, immutable saved revisions, immutable test receipts,
 activation events and configured accumulation-group revisions. A saved revision contains source, typed
-program, dependency snapshot, content hash and evaluator/registry versions. Activation requires the exact
+program, dependency snapshot, content hash and provider/evaluator/registry versions. Activation requires the exact
 latest revision's successful receipt, current dependency fingerprint and unchanged selected test sources.
 It atomically checks and updates the full legacy/builder Pay Item dependency graph under catalog lock.
 Raw input and historical reads are validated but do not create output-order edges. An inactive linked
@@ -57,3 +57,23 @@ compatibility and both editors. No general-purpose scripting escape hatch is pro
 Migration0800/sequence1793330000200 is append-only and unapplied. Standard GitHub Actions owns application
 tests, whole TypeScript/build and clean/populated ordinary upgrade rehearsals. Rendered component review
 and staging acceptance are distinct gates; this ADR authorizes neither deployment nor integration.
+
+## Financial and private-source authority
+
+The provider preserves Native financial authority for the paying company and the current financial
+employment subject. A dated company/period proof still binds calculation context. A Basic/Input/Payrate
+calculation or Native implicit proration does not invent a Workforce-purpose requirement. Explicit
+private Workforce expressions require current Workforce employment access and their exact report
+category permissions. If current and paying companies differ, every non-compensation category of a
+Workforce read is checked in both companies. This prevents strong historical-company rights from
+unlocking private current-company facts.
+
+Immutable read requirements record optional Workforce provenance. Missing provenance remains
+conservative for older non-compensation evidence; identity, bank, statutory and confidential categories
+always require Workforce access. Private-source permissions are checked at actual use, separately from
+financial-only source caches, so an unread denied branch never supplies a value or taints a result.
+
+Audit context labels are current display facts, separate from immutable money/source evidence. The
+reader independently authorizes employee code (Personnel) and full name (Identity) before selecting
+those columns. Financially permitted evidence remains available with protected employee labels when
+these extra fields are denied. The paying-company label uses the stored paying-company identity.

@@ -459,7 +459,12 @@ the append-only journal: this adds exactly one entry after the unchanged canonic
 create placeholder migrations, fill gaps, or change any applied SQL bytes.
 
 This supersedes every provisional Formula0741/0744/0746 reservation above, all never applied.
-Current SQL SHA256: `ce3968009648ff47bcaa1dbbbed519220c623c3da860ce5b89c90ff285165c1c`.
+Current SQL SHA256: `f8ba2919eb59346bc86453667cc7952a5671db88b740fcab3c41b4530802c322`.
 Tenant-binding checks include optional event component/test references. Migration and normal populated
 upgrade witnesses will be rerun on this exact reservation. Final integration/application still requires
 fresh competing-claim, canonical-prefix and live ordered-ledger verification; this is not deployment authority.
+
+The still-unapplied0800 body now distinguishes Native financial subject authority from explicit
+Workforce-purpose source provenance and intersects private-category rights with the current company.
+This changes no default grants and adds no schema columns; immutable requirements JSON carries the
+optional provenance flag. Clean and populated ordinary upgrades are rerun after this final SQL change.
