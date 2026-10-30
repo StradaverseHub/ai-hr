@@ -1,7 +1,7 @@
 import {readPayrollComponentInputsTx,readPayrollIndividualLedgerTx,readPayrollAttendanceHoursTx} from './payroll-formula-inputs';
 import {eligibleWorkingDays,payrollIncrementBasic,payrollRateBasic,payrollRoundAmount as roundAmount} from '../lib/payroll-basic';
 import {preparePayFormulaRuntimeTx} from './pay-formula-runtime';
-import {lockPayComponentCatalogTx} from './pay-component-catalog-lock';
+import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
 import {divideFormulaDecimal,applyFormulaAmount} from '../lib/pay-formula-language';
 import {payrollProrationRatio} from '../lib/payroll-proration';
 import {payrollProrationFactor as prorationFactor} from '../lib/payroll-proration';
@@ -3746,7 +3746,7 @@ export async function generatePayslips(
   },
 ) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
-  return withTenant(ctx, async tx=>{await lockPayComponentCatalogTx(tx,ctx);await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);return generatePayslipsTx(tx,ctx,p);});
+  return withTenant(ctx, async tx=>{await lockPayComponentCatalogReadTx(tx,ctx);await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);return generatePayslipsTx(tx,ctx,p);});
 }
 
 async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePayslipsParams) {
@@ -5235,7 +5235,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
                 name: t.compName ?? t.compCode,
                 kind: t.compKind ?? t.kind,
                 amount: amt,
-                formulaInput:!t.compRule||t.compRule.kind==='fixed'||t.compRule.kind==='formula_builder'?t.amount:undefined,
+                formulaInput:t.amount,
                 rounding: t.compRounding ?? 'none',
                 epf: t.compEpf ?? false,
                 socso: t.compSocso ?? false,
@@ -9477,7 +9477,7 @@ export async function reprocessSelectedEmployees(
   try {
     for (const employmentId of enq.employmentIds) {
       await withTenant(ctx, async (tx) => {
-        await lockPayComponentCatalogTx(tx,ctx);
+        await lockPayComponentCatalogReadTx(tx,ctx);
         const ownedBatch=await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);
         // One authoritative checkpoint: exact job row + batch lock stay held until this employee's
         // money AND outcome commit. Duplicate/resumed workers see committed outcomes before acting.
