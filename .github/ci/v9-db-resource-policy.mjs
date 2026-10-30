@@ -18,9 +18,9 @@ export function caseInventory(result,files,cwd){
  return {entries:[...found].sort(([a],[b])=>a.localeCompare(b)),total};
 }
 /** A short page is not proof of completeness when GitHub still reports more rows. */
-export function collectPages(read,key){
+export function collectPages(read,key,{limit=1000}={}){
  const rows=[],seen=new Set();let total=null;
- for(let page=1;page<=10;page++){const d=read(page);assert(Array.isArray(d?.[key])&&Number.isSafeInteger(d.total_count)&&d.total_count>=0&&d.total_count<=1000,'Missing/unbounded API total');if(total===null)total=d.total_count;assert(total===d.total_count,'API inventory changed during pagination');for(const row of d[key]){assert(Number.isSafeInteger(row.id)&&row.id>0&&!seen.has(row.id),'Repeated/foreign API row');seen.add(row.id);rows.push(row);}assert(rows.length<=total,'API inventory exceeds total');if(rows.length===total)return rows;assert(d[key].length===100,'Truncated API inventory');}
+ for(let page=1;page<=Math.ceil(limit/100);page++){const d=read(page);assert(Array.isArray(d?.[key])&&Number.isSafeInteger(d.total_count)&&d.total_count>=0&&d.total_count<=limit,'Missing/unbounded API total');if(total===null)total=d.total_count;assert(total===d.total_count,'API inventory changed during pagination');for(const row of d[key]){assert(Number.isSafeInteger(row.id)&&row.id>0&&!seen.has(row.id),'Repeated/foreign API row');seen.add(row.id);rows.push(row);}assert(rows.length<=total,'API inventory exceeds total');if(rows.length===total)return rows;assert(d[key].length===100,'Truncated API inventory');}
  throw Error('Incomplete bounded API pagination');
 }
 /** Includes runs overlapping original completion, active runs predating the lookback and duplicate API snapshots. */
@@ -38,7 +38,7 @@ export function checkHistory(rows,{original,focusedRunId,workflowIds,bindings=ne
  const source=seen.get(original.id);assert(source?.status==='completed'&&source.conclusion==='failure'&&source.attempt===1&&source.controller===V9_DB_CASE.controller&&source.updated===original.updated_at,'Original absent/altered in complete history');
  const fresh=[...seen.values()].filter(r=>r.id!==original.id&&(r.status!=='completed'||date(r.updated)>=date(original.updated_at)));
  assert(fresh.length===1&&fresh[0].id===focusedRunId&&fresh[0].status==='completed'&&fresh[0].conclusion==='success'&&fresh[0].attempt===1&&fresh[0].controller===V9_DB_CASE.controller,'Unaccounted, pending, failed or superseding execution');
- return {kind:'COMPLETE_HISTORY_REVIEW_ONLY',hash:hash([...seen.values()].sort((a,b)=>a.id-b.id)),runIds:[original.id,focusedRunId]};
+ return {kind:'COMPLETE_HISTORY_REVIEW_ONLY',inventoryHash:hash(rows),inventoryRows:rows.length,hash:hash([...seen.values()].sort((a,b)=>a.id-b.id)),runIds:[original.id,focusedRunId]};
 }
 export function validateFreshDb({plan,unit,source,focused,classifierHash,selectedLog,focusedWorkflowId,oldCases,now=Date.now()}){
  const pin=V9_DB_CASE;

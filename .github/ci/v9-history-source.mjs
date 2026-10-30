@@ -5,7 +5,14 @@ import {existsSync,readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {REPOSITORY,REPOSITORY_ID,verifyArtifactBytes} from './release-policy.mjs';
-import {V9_DB_CASE as pin} from './v9-db-resource-policy.mjs';
+import {V9_DB_CASE as pin,collectPages} from './v9-db-resource-policy.mjs';
+/** No creation/status/branch cutoff: an arbitrarily old queued run may complete later. */
+export function collectCompleteWorkflowHistory(workflowIds,api){
+ assert(Array.isArray(workflowIds)&&workflowIds.length>0&&workflowIds.length<=8&&new Set(workflowIds).size===workflowIds.length&&workflowIds.every(id=>Number.isSafeInteger(id)&&id>0),'Bounded workflow registry required');
+ const rows=[];
+ for(const id of workflowIds)rows.push(...collectPages(page=>api(`actions/workflows/${id}/runs?per_page=100&page=${page}`),'workflow_runs',{limit:8000}));
+ assert(rows.length<=8000,'Global history exceeds bounded complete inventory');return rows;
+}
 export function bindHistoryApplications({rows,original,focusedRunId,metadata,directory}){
  const bindings=new Map(),seen=new Map();
  for(const row of rows){if(row.id===original.id||row.id===focusedRunId||row.status==='completed'&&Date.parse(row.updated_at)<Date.parse(original.updated_at))continue;if(seen.has(row.id)){assert(seen.get(row.id)===JSON.stringify(row),'Changing history snapshot');continue;}seen.set(row.id,JSON.stringify(row));

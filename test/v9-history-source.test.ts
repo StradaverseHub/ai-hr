@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 const mock=vi.hoisted(()=>({command:vi.fn()}));
 vi.mock('node:child_process',async()=>({...await vi.importActual<typeof import('node:child_process')>('node:child_process'),execFileSync:mock.command}));
-import {bindHistoryApplications} from '../.github/ci/v9-history-source.mjs';
+import {bindHistoryApplications,collectCompleteWorkflowHistory} from '../.github/ci/v9-history-source.mjs';
 import {V9_DB_CASE as pin,checkHistory} from '../.github/ci/v9-db-resource-policy.mjs';
 import {digest,REPOSITORY_ID} from '../.github/ci/release-policy.mjs';
 const dirs:string[]=[];afterEach(()=>{for(const dir of dirs.splice(0))rmSync(dir,{recursive:true,force:true});vi.clearAllMocks();});
@@ -31,4 +31,16 @@ it.each([
 ] as const)('refuses %s in the real source-binding adapter',(name,change)=>{const f=fixture();change(f);expect(()=>bindHistoryApplications(f)).toThrow();});
 it('leaves active/missing or untrusted bindings unresolved rather than inferring a mutable ref',()=>{
  for(const change of [(f:any)=>{f.m.artifacts=[];},(f:any)=>{f.m.jobs[0].status='in_progress';},(f:any)=>{f.rows[0].head_sha='f'.repeat(40);f.m.run.head_sha='f'.repeat(40);}]){const f=fixture();change(f);expect(bindHistoryApplications(f).size).toBe(0);}
+});
+
+it('collects old-created executions that completed after the original, without any creation/status/branch cutoff',()=>{
+ const f=fixture(),old={...f.rows[0],created_at:f.at(-172800),updated_at:f.at(-10)},queries:string[]=[];
+ const rows=collectCompleteWorkflowHistory([55],path=>{queries.push(path);return {total_count:1,workflow_runs:[old]};});expect(rows).toEqual([old]);expect(queries.every(path=>!/[?&](created|status|branch)=/.test(path))).toBe(true);
+ const original={...f.rows[0],id:pin.runId,display_title:`Alpha CI · ${pin.branch}`,updated_at:f.original.updated_at,created_at:f.at(-300),conclusion:'failure'},focused={...f.rows[0],id:321,display_title:`Focused only · ${pin.branch}`,conclusion:'success'};
+ const bindings=new Map([[999,{runId:999,source:pin.candidate,controller:pin.controller,authenticated:true,artifactId:555,digest:digest(f.bytes)}]]);
+ expect(()=>checkHistory([original,focused,...rows],{original,focusedRunId:321,workflowIds:[55],bindings,now:f.now})).toThrow('Unaccounted');
+});
+it('collects more than a thousand unfiltered workflow rows and refuses an over-bound history',()=>{
+ const all=Array.from({length:1237},(_,i)=>({id:i+1}));const rows=collectCompleteWorkflowHistory([55],path=>{const page=Number(new URL('https://api.invalid/'+path).searchParams.get('page'));return {total_count:all.length,workflow_runs:all.slice((page-1)*100,page*100)};});expect(rows).toHaveLength(1237);
+ expect(()=>collectCompleteWorkflowHistory([55],()=>({total_count:8001,workflow_runs:[]}))).toThrow();
 });
