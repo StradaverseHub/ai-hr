@@ -63,8 +63,8 @@ describe('Ordinary document exact three-field native review',()=>{
   await expect(updateEmployeeDocumentMeta(ctx,{documentId,title:' '})).rejects.toThrow();await expect(store.prepare(ctx,{...human(),fields:{...fields(),title:' '}})).rejects.toThrow();
  });
  it('can prepare, reopen and confirm when runtime SELECT of content is denied',async()=>{
-  const columns=await owner.db.execute<{name:string}>(sql`select attname as name from pg_attribute where attrelid='employee_document'::regclass and attnum>0 and not attisdropped and attname<>'content' order by attnum`);await owner.db.execute(sql`revoke select on employee_document from ai_hr_app`);await owner.db.execute(sql`grant select (${sql.join(columns.map(column=>sql.identifier(column.name)),sql`,`)}) on employee_document to ai_hr_app`);
-  try{const r=(await store.prepare(ctx,human())).review;expect((await store.reopen(ctx,r.actionId)).kind).toBe('prepared');expect((await store.confirm(ctx,confirmation(r))).kind).toBe('completed');await expect(withTenant(ctx,tx=>tx.select({content:s.employeeDocument.content}).from(s.employeeDocument))).rejects.toThrow();}
+  const columns=await owner.db.execute<{name:string}>(sql`select attname as name from pg_attribute where attrelid='employee_document'::regclass and attnum>0 and not attisdropped and attname<>'content' order by attnum`);await owner.db.execute(sql`revoke select on employee_document from ai_hr_app`);await owner.db.execute(sql`grant select (${sql.join([...columns.map(column=>sql.identifier(column.name)),sql.identifier('xmin')],sql`,`)}) on employee_document to ai_hr_app`);
+  try{await expect(withTenant(ctx,tx=>tx.select({content:s.employeeDocument.content}).from(s.employeeDocument))).rejects.toThrow();const r=(await store.prepare(ctx,human())).review;expect((await store.reopen(ctx,r.actionId)).kind).toBe('prepared');expect((await store.confirm(ctx,confirmation(r))).kind).toBe('completed');await expect(withTenant(ctx,tx=>tx.select({content:s.employeeDocument.content}).from(s.employeeDocument))).rejects.toThrow();}
   finally{await owner.db.execute(sql`grant select on employee_document to ai_hr_app`);}
  });
  it.each(['metadata','attachment','company'] as const)('refuses changed %s revision without a metadata effect',async kind=>{
@@ -110,6 +110,7 @@ describe('Document receipt exact current native row and all three fields',()=>{
 });
 
 it('excludes a genuinely issued immutable letter pointer and preserves the native Letter handoff',async()=>{
+ vi.stubEnv('AUTH_PUBLIC_ORIGIN','https://letters.fixture.test');
  const letters=await import('../core/letters');const reviewer=await login(other);
  const name=await letters.saveLetterField(ctx,{companyId:b.companyId,definition:{key:'employeeName',label:'Employee name',description:'Fictional native source',kind:'text',source:'employee.name',required:true,editable:false,sensitive:false},active:true});
  const template=await letters.saveLetterTemplate(ctx,{companyId:b.companyId,code:'METAFIXTURE',name:'Fictional metadata protection letter',category:'confirmation',effectiveFrom:todayInKualaLumpur(),document:{version:1,language:'en',blocks:[{type:'paragraph',content:[{type:'text',text:'Fictional letter for '},{type:'field',key:'employeeName'}]}]},fieldVersionIds:[name.id]});
