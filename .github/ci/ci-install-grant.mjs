@@ -6,6 +6,7 @@ import {CI_POLICY} from './policy-version.mjs';
 import {BUILD_ARTIFACT} from './build-artifact.mjs';
 import {STAGING_BUILD_RUNTIME} from './build-production.mjs';
 import {validateRecoveryGrantEvidence} from './focused-recovery-policy.mjs';
+import {validateRepairGrantEvidence,REPAIR_RECOVERY_POLICY} from './repair-recovery-policy.mjs';
 export const installHash=bytes=>createHash('sha256').update(bytes).digest('hex');
 export function installJson(value){
  if(Array.isArray(value))return '['+value.map(installJson).join(',')+']';
@@ -40,8 +41,9 @@ export function createInstallGrant({evidence,run,producer,baselineBuildId,enviro
  assert(evidence.policyVersion===CI_POLICY&&evidence.result==='PASS'&&evidence.tier==='ci'&&evidence.build?.canonicalCandidateInputsVerified===true
   &&evidence.build.source===evidence.sha&&evidence.build.controller===evidence.controller&&evidence.build.runId===evidence.runId,'Complete authenticated current CI evidence required');
  const recovered=evidence.recovery!==undefined;
- if(recovered)validateRecoveryGrantEvidence(evidence,run);
- assert(run.id===evidence.runId&&run.head_sha===evidence.controller&&run.status==='completed'&&run.conclusion===(recovered?'failure':'success')&&run.run_attempt===1
+ const repaired=evidence.recovery?.recoveryPolicy===REPAIR_RECOVERY_POLICY;
+ if(recovered)(repaired?validateRepairGrantEvidence:validateRecoveryGrantEvidence)(evidence,run);
+ assert(run.id===evidence.runId&&run.head_sha===evidence.controller&&run.status==='completed'&&run.conclusion===(recovered&&!repaired?'failure':'success')&&run.run_attempt===1
   &&run.repository?.id===1333414856&&run.head_repository?.id===1333414856
   &&producer.name==='build'&&producer.run_id===run.id&&producer.run_attempt===1&&producer.head_sha===run.head_sha&&producer.conclusion==='success','Original authenticated successful run/build required');
  const artifacts=evidence.artifacts.filter(a=>a.name===BUILD_ARTIFACT);assert(artifacts.length===1,'Unique authenticated build artifact required');
