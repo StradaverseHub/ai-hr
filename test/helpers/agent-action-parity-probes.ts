@@ -1,3 +1,5 @@
+import {employeeCodeMaintenanceReviews,readEmployeeCodeMaintenanceChoices} from '../../core/assistant-actions/employee-code-maintenance-review-store';
+import {setWorkforceEmployeeCode} from '../../core/workforce-code';
 import {documentMetadataReviews,readDocumentMetadataChoices} from '../../core/assistant-actions/document-metadata-review-store';
 import {addEmployeeDocument,updateEmployeeDocumentMeta} from '../../core/employee-documents';
 import {PARITY_PROBE_GROUPS,type ParityProbeGroup,type ParityProbeVariant} from './agent-action-parity-groups';
@@ -373,6 +375,11 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'employees.compensation.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'set',compensationId:null,fields:{basicSalary:'2500.25',currency:'MYR',payMode:'monthly',paymentTerm:'monthly',rateAmount:null,remarks:'Fictional human salary',effectiveFrom:todayInKualaLumpur()}}),
   offered:async(who,item)=>listed(await readCompensationMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>setCompensation(who,{employmentId:item.employmentId,basicSalary:2500.25,currency:'MYR',payMode:'monthly',paymentTerm:'monthly',rateAmount:null,remarks:'Fictional human salary',effectiveFrom:todayInKualaLumpur()},tx)},
+ 'employees.code.maintain':{family:'hr_on_employment',store:employeeCodeMaintenanceReviews,
+  create:async(_w,h)=>{const rows=await readEmployeeCodeMaintenanceChoices(groupOf(h.base),{query:'',employmentId:h.person.employmentId});if(rows.kind!=='choices')throw Error('Native code fixture unavailable');const selected=rows.employees.find(row=>row.employmentId===h.person.employmentId);if(!selected)throw Error('Missing native code fixture');return itemOf(h,h.person.employmentId,{proposal:{expectedCode:selected.employeeCode,employeeCode:'FIC-'+randomUUID().slice(0,8).toUpperCase()}});},
+  human:item=>({action:'employees.code.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,...(item.proposal as {expectedCode:string|null;employeeCode:string})}),
+  offered:async(who,item)=>listed(await readEmployeeCodeMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
+  screen:(tx,who,item)=>setWorkforceEmployeeCode(who,{employmentId:item.employmentId,...(item.proposal as {expectedCode:string|null;employeeCode:string})},tx)},
  'employees.workforce_profile.maintain':{family:'hr_on_employment',store:workforceProfileMaintenanceReviews,
   create:async(_w,h)=>{const workspace=await workforceEditor(groupOf(h.base),h.person.employmentId);if(!workspace)throw Error('Native profile fixture unavailable');const values=Object.fromEntries(workforceMaintenanceFields('person','personal').map(({key})=>[key,workspace.profile[key as keyof typeof workspace.profile]]));values.preferredName='Fictional reviewed name';return itemOf(h,h.person.employmentId,{proposal:{expectedVersion:workspace.profileVersion,values}});},
   human:item=>({action:'employees.workforce_profile.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,section:'personal',...(item.proposal as {expectedVersion:string;values:Record<string,string|null>})}),

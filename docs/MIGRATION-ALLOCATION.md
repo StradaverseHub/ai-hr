@@ -444,3 +444,5 @@ All numbers remain PROVISIONAL until integration reconciles the then-live ordere
 priority, migration application, protected-ref movement or deployment is authorized. This adds only one
 ordinary-document metadata action to the existing encrypted assigned ledger; every prior kind remains
 under its prior owner/constraints and the same dynamic outcome bounds.
+
+0721 / idx702 / when1793330000050: employee-code Assistant maintenance, PROVISIONAL SOURCE CLAIM ONLY. Sibling0720 is separately owned; integration must reconcile the actual ordered ledger above the live watermark. No installation priority or deployment authority.

@@ -96,7 +96,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/personnel/[employmentId]/tax-selection-actions.ts":{"savePayrollTaxSelectionAction":"backlog:approve"},
  // Profile person/update sections are supported by employees.workforce_profile.maintain; this composite
  // export also reaches qualification/emergency/dependent kinds, which remain distinct pending parity.
- "app/admin/personnel/[employmentId]/workforce-record-actions.ts":{"saveWorkforceCodeAction":"backlog:approve","saveWorkforceRecordAction":"backlog:approve"},
+ "app/admin/personnel/[employmentId]/workforce-record-actions.ts":{"saveWorkforceCodeAction":"registered:employees.code.maintain","saveWorkforceRecordAction":"backlog:approve"},
  "app/admin/personnel/actions.ts":{"decideProfileChangeAction":"backlog:approve"},
  "app/admin/personnel/column-actions.ts":{"resetEmployeeColumnsAction":"backlog:approve","saveEmployeeColumnsAction":"backlog:approve"},
  "app/admin/personnel/import/actions.ts":{"associateReusedEmployeeImportHeaderAction":"backlog:approve","beginEmployeeImportEvaluationAction":"backlog:approve","commitImportAction":"registered:employees.import","eraseOwnImportEvaluationMetadataAction":"handoff:privacy_erasure","prepareEmployeeImportEvaluationCommitAction":"backlog:approve","recordEmployeeImportEvaluationTelemetryAction":"backlog:approve","reopenEmployeeImportEvaluationAction":"backlog:approve","validateImportAction":"backlog:automatic"},

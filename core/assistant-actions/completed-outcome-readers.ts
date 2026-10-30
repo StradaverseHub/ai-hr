@@ -1,3 +1,4 @@
+import {employeeCodeMaintenanceReviews} from './employee-code-maintenance-review-store';
 import {familyMaintenanceReviews} from './family-maintenance-review-store';
 import {bankMaintenanceReviews} from './bank-maintenance-review-store';
 import {documentMetadataReviews} from './document-metadata-review-store';
@@ -58,6 +59,7 @@ const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOut
  'approvals.toil.decide':(tx,ctx,id)=>toilDecisionReviews.readCompletedOutcomeTx(tx,ctx,id),
  'leave.adjustment.apply':(tx,ctx,id)=>leaveAdjustmentReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.compensation.maintain':(tx,ctx,id)=>compensationMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.code.maintain':(tx,ctx,id)=>employeeCodeMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.workforce_profile.maintain':(tx,ctx,id)=>workforceProfileMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.bank.maintain':(tx,ctx,id)=>bankMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.document_metadata.maintain':(tx,ctx,id)=>documentMetadataReviews.readCompletedOutcomeTx(tx,ctx,id),
