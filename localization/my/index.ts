@@ -10,7 +10,7 @@ import { MY_EA_REPORTING } from './ea-reporting';
 import { validateEpfElection } from './epf-election';
 import { convertLegacyEpfTopupsMY } from './epf-topup-conversion-db';
 import { legacyTopupConversionCsv } from './epf-topup-conversion';
-import { readReviewedPassportMYTx,prepareReviewedPassportMYTx,prepareReviewedBankMYTx,readReviewedStatutoryEditableMYTx,reviewedStatutoryChoiceMetadataMYTx,readReviewedStatutoryLabelsMYTx,lockReviewedStatutoryProfileMYTx,withStatutoryProfileWriteMY,prepareReviewedStatutoryProfileMYTx,confirmReviewedStatutoryProfileMYTx,readReviewedStatutoryProfileReferenceMYTx,correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, getStatutoryEditSnapshotMY, isValidIC, normalizeIC, setBankProfileMY, setRegistrationNumbersMY, setIcProfileMY, canApplyIcProfileChangeMY, setOthersStatutoryMY, setPassportProfileMY, validatePassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
+import { canMaintainBankProfileMY,readReviewedPassportMYTx,prepareReviewedPassportMYTx,prepareReviewedBankMYTx,readReviewedStatutoryEditableMYTx,reviewedStatutoryChoiceMetadataMYTx,readReviewedStatutoryLabelsMYTx,lockReviewedStatutoryProfileMYTx,withStatutoryProfileWriteMY,prepareReviewedStatutoryProfileMYTx,confirmReviewedStatutoryProfileMYTx,readReviewedStatutoryProfileReferenceMYTx,correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, getStatutoryEditSnapshotMY, isValidIC, normalizeIC, setBankProfileMY, setRegistrationNumbersMY, setIcProfileMY, canApplyIcProfileChangeMY, setOthersStatutoryMY, setPassportProfileMY, validatePassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026, MY_STATES } from './holidays';
 import {
@@ -93,6 +93,7 @@ export const myPack: CountryPack = {
     // Partial save of only the salary-payment bank columns + custom-payment-holder controls (item ef720d3a —
     // Bank Information split out of the statutory form into its own card with its own save).
     setBank: setBankProfileMY,
+    bankEditAccess:canMaintainBankProfileMY,
     reviewedBank:prepareReviewedBankMYTx,
     setRegistrationNumbers:setRegistrationNumbersMY,
     // Partial saves for the Identification & Tax card (item 8b5334db): IC relocated to the Profile tab (its own

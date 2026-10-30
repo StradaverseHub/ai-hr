@@ -5,6 +5,7 @@ import {employeeCodeMaintenanceReviews,readEmployeeCodeMaintenanceChoices} from 
 import {setWorkforceEmployeeCode} from '../../core/workforce-code';
 import {documentMetadataReviews,readDocumentMetadataChoices} from '../../core/assistant-actions/document-metadata-review-store';
 import {addEmployeeDocument,updateEmployeeDocumentMeta} from '../../core/employee-documents';
+import {workforceViewScope} from '../../core/workforce-access';
 import {PARITY_PROBE_GROUPS,type ParityProbeGroup,type ParityProbeVariant} from './agent-action-parity-groups';
 import {workforceProfileMaintenanceReviews,readWorkforceProfileMaintenanceChoices} from '../../core/assistant-actions/workforce-profile-maintenance-review-store';
 import {maintainWorkforceRecord,workforceEditor} from '../../core/workforce-maintenance';
@@ -54,7 +55,7 @@ import {overtimeRequestReviews,readOvertimeRequestChoices} from '../../core/assi
 import {OWN_OVERTIME_REQUEST_ACTION} from '../../lib/assistant-actions/own-overtime-request-contract';
 import {toilRequestReviews} from '../../core/assistant-actions/toil-request-review-store';
 import {readToilRequestModuleActionChoices} from '../../core/assistant-actions/module-action-server';
-import {myEmployment} from '../../core/read';
+import {myEmployment,employeeDetail} from '../../core/read';
 import {resolveEntitlementsTx} from '../../core/entitlements';
 import {setToilPolicy,submitReplacementLeaveRequest,decideReplacementLeaveRequestTx,applyLeaveAdjustmentBatchTx,grantLeaveCreditRowsTx,requestLeave,cancelOwnLeaveTx,editLeaveRequestTx} from '../../packs/leave/service';
 import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews,readClaimDecisionChoices,readAttendanceDecisionChoices,readToilDecisionChoices} from '../../core/assistant-actions/assigned-decision-review-store';
@@ -398,11 +399,11 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'employees.passport.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,fields:{passportNumber:'FICTIONAL',passportIssueDate:'2020-01-01',passportExpiryDate:'2030-01-01',passportRemark:null,passportIssuingCountry:null,passportIssuingCountryCode:null}}),
   offered:async(who,item)=>listed(await readPassportMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>requirePackFor('MY').statutory.setPassport(who,{personId:item.subjectId,passportNumber:'FICTIONAL',passportIssueDate:'2020-01-01',passportExpiryDate:'2030-01-01',passportRemark:null,passportIssuingCountry:null,passportIssuingCountryCode:null},tx)},
- 'employees.bank.maintain':{family:'hr_on_employment',store:bankMaintenanceReviews,screenAdmits:isAdmin,
+ 'employees.bank.maintain':{family:'hr_on_employment',store:bankMaintenanceReviews,screenAdmits:async(who,item)=>isAdmin(who)&&(await workforceViewScope(who)).canOpen&&!!await employeeDetail(who,item.employmentId,'workforce'),
   create:async(_w,h)=>{await requirePackFor('MY').statutory.set(groupOf(h.base),{personId:h.person.personId,icNumber:null});return itemOf(h,h.person.personId);},
   human:item=>({action:'employees.bank.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,fields:{bankName:'Fictional bank',bankAccountNo:'000-FICTIONAL',enableCustomHolderName:false,customHolderName:null,enableCustomHolderId:false,customHolderId:null}}),
   offered:async(who,item)=>listed(await readBankMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
-  screen:(tx,who,item)=>requirePackFor('MY').statutory.setBank(who,{personId:item.subjectId,bankName:'Fictional bank',bankAccountNo:'000-FICTIONAL',enableCustomHolderName:false,customHolderName:null,enableCustomHolderId:false,customHolderId:null},tx)},
+  screen:(tx,who,item)=>requirePackFor('MY').statutory.setBank(who,{personId:item.subjectId,employmentId:item.employmentId,bankName:'Fictional bank',bankAccountNo:'000-FICTIONAL',enableCustomHolderName:false,customHolderName:null,enableCustomHolderId:false,customHolderId:null},tx)},
  'employees.document_metadata.maintain':{family:'hr_on_employment',store:documentMetadataReviews,screenAdmits:isAdmin,
   create:async(_w,h)=>{const doc=await addEmployeeDocument(groupOf(h.base),{employmentId:h.person.employmentId,title:'Fictional metadata original',fileName:'fixture.txt',mimeType:'text/plain',content:Buffer.from('Fictional fixture attachment')});return itemOf(h,doc.id);},
   human:item=>({action:'employees.document_metadata.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,fields:{title:'Fictional revised metadata',category:'Fictional category',description:'Fictional description'}}),
