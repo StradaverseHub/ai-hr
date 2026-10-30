@@ -1,0 +1,25 @@
+/** Isolated hosted read-only wrapper; the reader and APP are physically pinned separately. */
+import assert from 'node:assert/strict';
+import {execFileSync,spawnSync} from 'node:child_process';
+import {mkdirSync,readFileSync,writeFileSync,existsSync} from 'node:fs';
+import {join,resolve} from 'node:path';
+const root=resolve(process.env.GITHUB_WORKSPACE),temp=resolve(process.env.RUNNER_TEMP);
+const reader=join(root,'reader'),source=join(root,'source'),wrapper=join(root,'wrapper');
+const output=join(temp,'v9-review-public'),evidence=join(temp,'v9-review-private');
+mkdirSync(output,{mode:0o700});
+const sha=p=>execFileSync('git',['rev-parse','HEAD'],{cwd:p,encoding:'utf8'}).trim();
+const clean=p=>assert(!execFileSync('git',['status','--porcelain'],{cwd:p,encoding:'utf8'}),'Exact clean checkout required');
+const identity={kind:'V9_HOSTED_READ_ONLY_ASSESSMENT',wrapper:sha(wrapper),reader:sha(reader),candidate:sha(source),originalRunId:41039154492,focusedRunId:41042016086,installationEligible:false,releaseAuthorized:false};
+assert(process.env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&process.env.GITHUB_EVENT_NAME==='workflow_dispatch'&&process.env.GITHUB_RUN_ATTEMPT==='1','First-attempt same-repository manual diagnostic required');
+assert(identity.wrapper===process.env.V9_WRAPPER_SHA&&identity.reader==='281d2fff8d8eac0f61dce84689f2b1636d6f166f'&&identity.candidate==='72a2673af354f382502ecc7799316fac3c19b1ac','Frozen identities differ');
+[source,reader,wrapper].forEach(clean);
+writeFileSync(join(output,'identity.json'),JSON.stringify(identity,null,2)+'\n',{mode:0o600,flag:'wx'});
+const result=spawnSync(process.execPath,['--import',join(source,'node_modules/tsx/dist/loader.mjs'),join(reader,'.github/ci/v9-db-resource-assessment.mjs'),source,'41042016086',evidence],{cwd:reader,encoding:'utf8',timeout:50*60*1000,maxBuffer:8*1024**2,env:{...process.env,AIHR_CI_HEAD:identity.candidate}});
+[source,reader,wrapper].forEach(clean);
+// No build binaries, raw archives, private paths, configuration or operator credentials are uploaded.
+const refusal={...identity,exitCode:result.status,signal:result.signal,error:result.error?.code??null,assessmentProduced:existsSync(join(evidence,'review-only-assessment.json'))};
+if(refusal.assessmentProduced){const proof=JSON.parse(readFileSync(join(evidence,'review-only-assessment.json'),'utf8'));assert(proof.installationEligible===false&&proof.releaseAuthorized===false,'Noninstallable boundary required');refusal.assessment={kind:proof.kind,candidate:proof.candidate,tests:proof.tests,history:proof.history};}
+else refusal.reason=(result.stderr??'').slice(-5000).replaceAll(root,'[workspace]').replaceAll(temp,'[runner-temp]');
+writeFileSync(join(output,'result.json'),JSON.stringify(refusal,null,2)+'\n',{mode:0o600,flag:'wx'});
+console.log(JSON.stringify(refusal));
+if(result.status!==0||!refusal.assessmentProduced)process.exitCode=1;
