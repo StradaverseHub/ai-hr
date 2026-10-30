@@ -1,5 +1,6 @@
 """Byte-bundle fixtures only: no Next compilation, app, database, network or release."""
 import gzip
+from contextlib import redirect_stderr
 import hashlib
 import importlib.util
 import io
@@ -124,7 +125,10 @@ class BundleTests(unittest.TestCase):
     def test_cli_pack_measurement_is_separate_from_the_unchanged_byte_manifest(self):
         child=subprocess.run([sys.executable,str(path),'pack',str(self.source),str(self.output)],
                              capture_output=True,text=True,check=True)
-        summary=json.loads(child.stdout);measurement=json.loads(child.stderr)
+        summary=json.loads(child.stdout);diagnostic,measurement=[json.loads(line) for line in child.stderr.splitlines()]
+        self.assertEqual(diagnostic["kind"],"BUILD_BUNDLE_INVENTORY_DIAGNOSTIC_NOT_ADMISSION")
+        self.assertFalse(diagnostic["releaseAuthorized"]);self.assertTrue(diagnostic["capacityCheckPending"])
+        self.assertEqual(diagnostic["archiveBytes"],summary["archiveBytes"])
         self.assertEqual(set(summary),{'format','capacityProfile','kind','files','archiveBytes','unpackedBytes','releaseAuthorized'})
         self.assertEqual(summary['format'],2);self.assertEqual(summary['capacityProfile'],bundle.CAPACITY_PROFILE)
         self.assertEqual(set(measurement),{'kind','compressionLevel','cpuSeconds','elapsedSeconds','releaseAuthorized'})
@@ -437,5 +441,77 @@ class BundleTests(unittest.TestCase):
             summary=json.loads(result.stdout)
             self.assertEqual(summary['format'],2);self.assertEqual(summary['capacityProfile'],bundle.CAPACITY_PROFILE)
             self.assertEqual(summary['archiveBytes'],current['archiveBytes']);self.assertFalse(summary['releaseAuthorized'])
+
+
+    def test_pack_inventory_uses_actual_rows_and_never_discloses_content_or_excluded_tree(self):
+        chunks=self.source/'.next/server/chunks';chunks.mkdir()
+        secret=b'PRIVATE_SOURCE_CONTENT_MUST_NOT_APPEAR_IN_DIAGNOSTIC'
+        (chunks/'observed.js').write_bytes(secret)
+        (chunks/'observed.js.map').write_bytes(b'x'*123)
+        (self.source/'.next/cache/turbopack/excluded-private.sst').write_bytes(b'CACHE_CONTENT_NOT_IN_PAYLOAD')
+        log=io.StringIO()
+        with redirect_stderr(log):manifest,archive,metadata=self.packed()
+        lines=log.getvalue().splitlines();self.assertEqual(len(lines),1)
+        actual=json.loads(lines[0])
+        self.assertEqual(set(actual),{'kind','diagnosticVersion','releaseAuthorized','capacityCheckPending','capacityProfile',
+            'compressionLevel','archiveBytes','archiveLimitBytes','files','directories','externalAliases','unpackedBytes',
+            'directoryTotals','extensionTotals','memberListDigestFormat','memberListSha256','largestMembers'})
+        self.assertEqual(actual['files'],len(manifest['files']))
+        self.assertEqual(actual['directories'],len(manifest['directories']))
+        self.assertEqual(actual['externalAliases'],2)
+        self.assertEqual(actual['unpackedBytes'],sum(row['size'] for row in manifest['files']))
+        self.assertEqual(actual['archiveBytes'],archive.stat().st_size)
+        self.assertEqual(actual['archiveLimitBytes'],276824064)
+        self.assertEqual(actual['capacityProfile'],bundle.CAPACITY_PROFILE)
+        self.assertEqual(actual['compressionLevel'],9)
+        expected_digest=hashlib.sha256()
+        for row in manifest['files']:
+            expected_digest.update((json.dumps(row,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False)+'\n').encode())
+        self.assertEqual(actual['memberListSha256'],expected_digest.hexdigest())
+        self.assertEqual(actual['directoryTotals']['server/chunks'],{'files':2,'bytes':len(secret)+123})
+        self.assertEqual(actual['extensionTotals']['.map'],{'files':1,'bytes':123})
+        self.assertEqual(sum(row['bytes'] for row in actual['directoryTotals'].values()),manifest['unpackedBytes'])
+        self.assertEqual(sum(row['files'] for row in actual['extensionTotals'].values()),len(manifest['files']))
+        self.assertEqual(actual['largestMembers'],sorted(manifest['files'],key=lambda row:(-row['size'],row['path']))[:20])
+        self.assertNotIn(secret.decode(),log.getvalue());self.assertNotIn(str(self.root),log.getvalue())
+        self.assertNotIn('excluded-private.sst',log.getvalue());self.assertNotIn('CACHE_CONTENT_NOT_IN_PAYLOAD',log.getvalue())
+        self.assertFalse(actual['releaseAuthorized']);self.assertTrue(actual['capacityCheckPending'])
+        self.assertLessEqual(len(log.getvalue().encode()),32768)
+
+    def test_pack_inventory_is_deterministic_capped_and_does_not_change_archived_bytes_or_manifest(self):
+        for i in range(60):
+            (self.source/'.next/server/app'/('bounded-%02d.js'%i)).write_bytes(b'x'*(i+1))
+        first_log=io.StringIO();second_log=io.StringIO()
+        with redirect_stderr(first_log):first,archive,metadata=self.packed()
+        with redirect_stderr(second_log):second=bundle.pack(self.source,self.root/'second-output')
+        self.assertEqual(first_log.getvalue(),second_log.getvalue())
+        self.assertEqual(first,second)
+        actual=json.loads(first_log.getvalue())
+        self.assertEqual(len(actual['largestMembers']),20)
+        self.assertEqual(actual['files'],63)
+        self.assertEqual(set(actual['directoryTotals']),set(bundle.PACK_DIAGNOSTIC_DIRECTORIES))
+        self.assertEqual(set(actual['extensionTotals']),set(bundle.PACK_DIAGNOSTIC_EXTENSIONS))
+        self.assertLessEqual(len(first_log.getvalue().encode()),32768)
+        # Disabling metadata emission changes neither the deterministic gzip stream nor canonical manifest.
+        with mock.patch.object(bundle,'emit_pack_inventory_diagnostic') as emission:
+            unchanged=bundle.pack(self.source,self.root/'metadata-disabled-output')
+        emission.assert_called_once();self.assertEqual(first,unchanged)
+        self.assertEqual(archive.read_bytes(),(self.root/'metadata-disabled-output/build-bundle.tar.gz').read_bytes())
+        self.assertEqual(metadata.read_bytes(),(self.root/'metadata-disabled-output/build-bundle-files.json').read_bytes())
+
+    def test_oversized_archive_still_fails_after_diagnostic_before_hash_manifest_and_cleans_everything(self):
+        output=io.StringIO();original_digest=bundle.digest_file
+        def reject_archive_hash(file):
+            if Path(file).name=='build-bundle.tar.gz':raise AssertionError('oversized archive must not be hashed')
+            return original_digest(file)
+        with redirect_stderr(output),mock.patch.object(bundle,'MAX_ARCHIVE',1),mock.patch.object(bundle,'digest_file',side_effect=reject_archive_hash):
+            with self.assertRaises(ValueError) as caught:bundle.pack(self.source,self.output)
+        details=self.refusal_details(caught.exception)
+        self.assertEqual(details['context'],'compressed-build-archive');self.assertEqual(details['limitBytes'],1)
+        actual=json.loads(output.getvalue())
+        self.assertEqual(actual['archiveBytes'],details['sizeBytes']);self.assertGreater(actual['archiveBytes'],1)
+        self.assertTrue(actual['capacityCheckPending']);self.assertFalse(actual['releaseAuthorized'])
+        self.assertFalse(self.output.exists());self.assertFalse((self.output/'build-bundle-files.json').exists())
+
 
 if __name__=='__main__':unittest.main()
