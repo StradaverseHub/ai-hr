@@ -12,7 +12,7 @@ import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {requirePackFor} from '../localization/registry';
 import {grantAssistant} from '../core/assistant-grant';
-import {createBatch,generatePayslips,closeBatch,resetProcessedBatch,deleteDraftBatch,createAdditionalRun,setPayrollInput} from '../packs/payroll/service';
+import {createBatch,generatePayslips,closeBatch,unlockClosedBatch,resetProcessedBatch,deleteDraftBatch,createAdditionalRun,setPayrollInput} from '../packs/payroll/service';
 import {preparePayrollResetReview,confirmPayrollResetReview,discardPayrollResetReview,reopenPayrollResetReview,listPayrollResetReviews} from '../core/assistant-actions/payroll-reset-review-store';
 import {preparePayrollReopenReview,confirmPayrollReopenReview} from '../core/assistant-actions/payroll-reopen-review-store';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -136,6 +136,14 @@ describe('Payroll review/native draft deletion compatibility',()=>{
  it('refuses an actual late BEFORE INSERT rewrite to a missing target rather than trusting nominated bindings',async()=>{
   const saved=await capturedPending(),before=await deletionState();await owner.db.execute(sql`create function app.zz_fictional_review_binding_rewrite() returns trigger language plpgsql as $$begin if NEW.action_kind='payroll.reset' then NEW.payroll_reset_batch_id:=gen_random_uuid();end if;return NEW;end$$`);await owner.db.execute(sql`create trigger zz_fictional_review_binding_rewrite before insert on app.assistant_own_leave_review for each row execute function app.zz_fictional_review_binding_rewrite()`);
   try{let failure:unknown;try{await owner.db.transaction(tx=>restoreCaptured(tx,saved));}catch(e){failure=e;}expect(errorCode(failure)).toBe('23503');expect(await deletionState()).toEqual(before);}finally{await owner.db.execute(sql`drop trigger zz_fictional_review_binding_rewrite on app.assistant_own_leave_review`);await owner.db.execute(sql`drop function app.zz_fictional_review_binding_rewrite()`);}
+ });
+
+ it('retires a genuine pending reopening through native unlock, reset and deletion while preserving its sibling',async()=>{
+  const sibling=(await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:period,runType:'bonus'})).batchId,siblingBefore=await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,sibling));
+  await closeBatch(ctx,{batchId});const prepared=await preparePayrollReopenReview(ctx,{action:'payroll.reopen',contractVersion:1,batchId,reason,confirmReopenClosedRun:true,acknowledgeRecordedDownstreamWarnings:true});if(prepared.kind!=='prepared')throw Error('Expected genuine pending reopening review');const id=prepared.review.actionId;
+  const identity=async()=>Array.from(await owner.db.execute(sql`select to_jsonb(r)-ARRAY['state','intent_digest','reviewed_digest','payroll_reopen_person_ids'] as row from app.assistant_own_leave_review r where id=${id}::uuid`)),beforeIdentity=await identity(),beforeCapture=await capture(id);expect(beforeCapture.rows).toEqual([]); // Pending review has no completed effect capture; nonempty completed retention is covered separately.
+  await unlockClosedBatch(ctx,{batchId,reason});await resetProcessedBatch(ctx,{batchId,reason});await deleteDraftBatch(ctx,{batchId});
+  const [retired]=await owner.db.execute<{state:string;people:unknown;intent:unknown;digest:unknown;body:number}>(sql`select state,payroll_reopen_person_ids people,intent_digest intent,reviewed_digest digest,(select count(*)::int from app.assistant_own_leave_review_content where action_id=r.id) body from app.assistant_own_leave_review r where id=${id}::uuid`);expect(retired).toEqual({state:'refused',people:null,intent:null,digest:null,body:0});expect(await identity()).toEqual(beforeIdentity);expect(await capture(id)).toEqual(beforeCapture);expect(await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,sibling))).toEqual(siblingBefore);expect((await owner.db.select().from(s.payPeriod).where(eq(s.payPeriod.id,periodId))).length).toBe(1);
  });
 
 });
