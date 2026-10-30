@@ -1,7 +1,8 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { HR_LOCAL_TZ } from '@/lib/hr-date';
-import { CONFIGURABLE_BEHAVIOUR_KINDS, listMovementEventTypes } from '@/core/movement-type';
+import Link from '@/components/intent-link';
+import { listMovementEventTypesForSettings } from '@/core/movement-type';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { Pager } from '@/components/pager';
 import {
@@ -9,8 +10,8 @@ import {
   Card,
   ErrorBanner,
   PageHeader,
-  SectionHeader,
   btnPrimary,
+  pageWideCls,
   tableWrapCls,
   tbodyCls,
   theadCls,
@@ -30,72 +31,48 @@ import {
   type SortDir,
 } from '@/components/settings-list';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import { MovementTypeDialog, type MovementTypeDialogLabels } from './movement-type-dialog';
 import { deleteMovementEventTypeAction, setMovementEventTypeActiveAction } from './actions';
+import { DeleteExplanation } from './delete-explanation';
+import { MovementSettingsTabs } from './movement-settings-tabs';
 
 const PAGE = '/admin/settings/movement';
 
 /**
- * Movement Settings — the movement event type catalogue (476f23ed, redesigned by 1b87e8a0).
+ * Movement Settings — the movement event type catalogue (476f23ed, redesigned by 1b87e8a0, re-laid by
+ * 1d58019a).
  *
- * WHAT 1b87e8a0 CHANGED, AND ONLY THAT. The screen was a card per event type with a rename box inside
- * each one and an Add card sitting in the list. It is now the row listing the reporter asked for, in the
- * shape /admin/pay-components and Employee ID already use: a toolbar of [Add · search · status filter],
- * the house table, and row actions on the right. The toolbar pieces come from components/settings-list
- * .tsx, which is the same module the relocated Hiring Defaults list uses — that shared import is what
- * makes "the standard" one thing instead of two, and test/settings-list-idiom.test.ts fails if either
- * screen drifts off it.
+ * 1d58019a (Step 1, ADR-0165) — WHAT CHANGED ON THIS SCREEN, AND ONLY THAT:
+ *   • FULL WIDTH (pageWideCls) and TWO TABS: Event Types (this page) and Termination Reasons
+ *     (./reasons/page.tsx). Each tab is a real sub-route, the house tab idiom.
+ *   • Two new columns. CLASSIFICATION is DERIVED from the behaviour — Termination for the termination
+ *     behaviour, Non-Termination for everything else — and is read-only in this step; it has no column of
+ *     its own in the database, so it cannot disagree with what the type does. DESCRIPTION is the optional
+ *     note the configuration page edits (movement_event_type.description, migration 0721). The old "What It
+ *     Does" column moved onto the configuration page with the picker it describes.
+ *   • DELETE ON EVERY ROW. A deletable row (one of the organisation's own that nothing has recorded) keeps
+ *     the ordinary confirm-and-delete. A built-in or in-use row opens delete-explanation.tsx: why it cannot
+ *     be deleted, with Switch Off offered instead. The button used to be missing on those rows, and nobody
+ *     was told why. The service refusals stay authoritative either way.
+ *   • ADD AND EDIT ARE PAGES, NOT A MODAL: /types/new and /types/[code] (event-type-config-page.tsx). The
+ *     reporter asked for a dedicated configuration page organised in cards; the modal that 1b87e8a0's
+ *     re-build introduced is retired, and so are its `?new=`/`?edit=` predecessors — still no second
+ *     source of truth for "is the form open".
  *
- * ⚠️ THE RE-BUILD: ADD/EDIT IS A MODAL, NOT A PANEL UNDER THE LIST. The first build opened the form in
- * a card at the BOTTOM of the page via `?new=1` / `?edit=CODE`, copying the Employee ID Auto Running
- * Number screen for consistency. The reporter contested it — "not user-friendly … a poor user
- * experience" — and they were right: a form below the list means you lose your place in the list, and
- * on a catalogue whose rows you scan and switch on and off, your place IS the work. It is now
- * movement-type-dialog.tsx, a client island holding nothing but "is it open". Consequences worth
- * knowing before editing this file:
- *   • The list never moves. Opening Add or Edit is not a navigation, so scroll, search, sort and the
- *     status filter all stay exactly as they were, and Radix hands focus back to the row's own Edit
- *     button on close.
- *   • `?new=`/`?edit=` are GONE, not kept alongside. Two sources of truth for "is the form open" is
- *     precisely how the bottom panel would grow back.
- *   • THE PAGE STAYS A SERVER COMPONENT and passes the island serialisable values only — strings,
- *     booleans, and arrays of {value,label} computed HERE. Not a function, and not a function nested
- *     inside an object-literal prop either: that variant returned 500 on every request this week while
- *     tsc, the suite and the boundary guard all stayed green (test/server-client-boundary.test.ts is
- *     now depth-aware for it).
+ * WHAT STAYS (each line was a decision once — see git history for the full notes):
+ *   • The toolbar, search, sort and status filter come from components/settings-list.tsx, the shared
+ *     System Settings idiom (test/settings-list-idiom.test.ts).
+ *   • PAGED SINCE 9da61c86, REVERSING the note that once stood here. It read:
+ *     "NO PAGINATION, deliberately. A tenant has a handful of event types; searching finds one faster than paging." The
+ *     premise is still true, but a control that appears only once a list grows is a surprise, not a
+ *     framework (fc776376). The contract is lib/pagination + components/Pager, never a hand-rolled sixth.
+ *   • Created, not Last Updated: there is no updated_at, and a built-in reads "Built-in" because it has no
+ *     creation date (MovementEventTypeRow.createdAt).
+ *   • Status defaults to ALL: switching a type back on is a main reason to open this screen.
+ *   • THE PAGE STAYS A SERVER COMPONENT and hands client islands serialisable values only.
+ *   • A built-in type's BEHAVIOUR is never editable; a custom type may only map onto a consequence-free
+ *     behaviour (CONFIGURABLE_BEHAVIOUR_KINDS). The service refuses the rest independently of any screen.
  *
- * NOT THE SAME SHAPE AS HIRING DEFAULTS, on purpose. That screen is per-company and needs a list of
- * companies plus a page per company; this one is a flat catalogue and must not grow a list it does not
- * need. Shared conventions, different screens — say so in the release note so the next request does not
- * read the difference as drift.
- *
- * TWO OF THE REPORTER'S FIVE COLUMNS HAVE NOTHING BEHIND THEM, disclosed rather than faked:
- *   • Description — movement_event_type holds a code, a behaviour kind and a display label, and nothing
- *     descriptive. `label` IS the Event Type column and `code` is the ledger identity; repurposing either
- *     would put the same value in two columns.
- *   • Last Updated — there is no updated_at. Created ships instead (see MovementEventTypeRow.createdAt),
- *     and it reads "Built-in" for a shipped type, which has no creation date and whose overlay row's
- *     created_at is the date of a rename, not of a creation. Adding updated_at is a migration plus a
- *     write-path change and was raised to the reporter as its own request.
- *
- * PAGED SINCE 9da61c86, REVERSING the note that stood here. It read: "NO PAGINATION, deliberately. A
- * tenant has a handful of event types; searching finds one faster than paging." The premise is still
- * true — this catalogue IS small — but the conclusion was the one fc776376 had already overturned for the
- * whole product: a control that appears only once a list grows is not a framework, it is a surprise, and
- * a reader who never sees the row count or the rows-per-page choice reports that paging does not exist.
- * The half of the note that was right is kept in full: the contract is lib/pagination + components/Pager,
- * never a hand-rolled sixth.
- *
- * STATUS DEFAULTS TO ALL, not to Active like the other catalogues. Switching a type back ON is a main
- * reason to open this screen; an Active default would hide exactly the rows you came for.
- *
- * WHAT IS STILL NOT EDITABLE HERE. A built-in type's BEHAVIOUR. Termination ends employment, Confirmation
- * completes probation, a join-date correction moves leave entitlement — those consequences belong to the
- * built-in kind, not to its name. So a built-in offers Rename and Off/On and nothing else, and a custom
- * type may only be mapped onto a consequence-free behaviour (CONFIGURABLE_BEHAVIOUR_KINDS). The service
- * refuses the rest independently of this screen. And there is no Delete on a built-in or on a type in
- * use: Employment History is a read-time projection over the event ledger and a movement records its
- * type as a CODE, so removing a referenced code would leave those rows unlabelled for good.
+ * Viewing is admin-only in the service too (listMovementEventTypesForSettings), not only in requireAdmin().
  */
 export default async function MovementSettingsPage({
   searchParams,
@@ -116,7 +93,7 @@ export default async function MovementSettingsPage({
   const tk = await getTranslations('people.detail.movement.eventType');
   const sp = await searchParams;
 
-  const rows = await listMovementEventTypes(s);
+  const rows = await listMovementEventTypesForSettings(s);
 
   /** The shipped translation for a built-in kind; the humanized code for anything else. */
   const shippedLabel = (code: string): string => {
@@ -193,59 +170,21 @@ export default async function MovementSettingsPage({
   const sortHref = (col: 'name' | 'status' | 'created') =>
     href({ sort: col, dir: sort === col && dir === 'asc' ? 'desc' : 'asc' });
 
-  /** The only behaviours a tenant may point one of its OWN types at — the consequence-free ones. Built
-   *  in the server component and handed over as plain {value,label} rows: the island must never import
-   *  core/movement-type (it pulls the pg driver through db/client) and must never be handed a
-   *  translator. */
-  const behaviourOptions = CONFIGURABLE_BEHAVIOUR_KINDS.map((k) => ({
-    value: k as string,
-    label: shippedLabel(k),
-  }));
-  /** Add and Edit differ only in their words; the dialog itself is one component. */
-  const addLabels: MovementTypeDialogLabels = {
-    title: t('addTitle'),
-    hint: t('addHint'),
-    name: t('columns.name'),
-    namePlaceholder: t('addNamePlaceholder'),
-    behaviour: t('columns.behaviour'),
-    behaviourPlaceholder: t('addBehaviourPlaceholder'),
-    builtInBehaviour: t('builtInBehaviour'),
-    submit: t('add'),
-    saving: t('saving'),
-    cancel: t('cancel'),
-    close: t('close'),
-  };
-  const editLabels: MovementTypeDialogLabels = {
-    ...addLabels,
-    title: t('editTitle'),
-    hint: t('editHint'),
-    submit: t('save'),
-  };
+  /** 1d58019a — derived, never stored: see the header. */
+  const isTermination = (r: { behaviourKind: string }) => r.behaviourKind === 'termination';
+  const editHref = (code: string) => `${PAGE}/types/${encodeURIComponent(code)}`;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className={pageWideCls}>
       <PageHeader title={t('title')} description={t('description')} />
+      <MovementSettingsTabs active="types" labels={{ types: t('tabs.types'), reasons: t('tabs.reasons') }} />
       <ErrorBanner message={sp.error} />
 
-      <p className="rounded-[1.25rem] border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
-        {t('behaviourNotice')}
-      </p>
-
       <Card className="overflow-hidden">
-        <SectionHeader title={t('catalogTitle')} count={visible.length} />
-
         <SettingsToolbar>
-          <MovementTypeDialog
-            triggerLabel={t('createNew')}
-            triggerClassName={btnPrimary}
-            code={null}
-            builtIn={false}
-            initialLabel=""
-            initialBehaviourKind=""
-            behaviourLabel=""
-            behaviourOptions={behaviourOptions}
-            labels={addLabels}
-          />
+          <Link href={`${PAGE}/types/new`} className={btnPrimary}>
+            {t('createNew')}
+          </Link>
           <SettingsSearch
             action={PAGE}
             value={q}
@@ -283,7 +222,8 @@ export default async function MovementSettingsPage({
                 <th className={thCls}>
                   <SortHeader label={t('columns.name')} href={sortHref('name')} active={sort === 'name'} dir={dir} />
                 </th>
-                <th className={thCls}>{t('columns.behaviour')}</th>
+                <th className={thCls}>{t('columns.classification')}</th>
+                <th className={thCls}>{t('columns.description')}</th>
                 <th className={thCls}>
                   <SortHeader label={t('columns.status')} href={sortHref('status')} active={sort === 'status'} dir={dir} />
                 </th>
@@ -305,8 +245,12 @@ export default async function MovementSettingsPage({
                     <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">{r.code}</div>
                   </td>
                   <td className="px-3 py-2">
-                    {shippedLabel(r.behaviourKind)}
-                    {r.builtIn && <div className="text-xs text-muted-foreground">{t('builtInBehaviour')}</div>}
+                    <Badge variant={isTermination(r) ? 'danger' : 'accent'}>
+                      {isTermination(r) ? t('classification.termination') : t('classification.nonTermination')}
+                    </Badge>
+                  </td>
+                  <td className="max-w-xs px-3 py-2 text-xs text-muted-foreground">
+                    {r.description ?? <span className="italic">{t('noDescription')}</span>}
                   </td>
                   <td className="px-3 py-2">
                     <Badge variant={r.active ? 'success' : 'default'}>
@@ -319,19 +263,10 @@ export default async function MovementSettingsPage({
                   </td>
                   <td className="px-3 py-2">
                     <div className={rowActionsCls}>
-                      {/* Edit opens over the list. Closing it returns focus to THIS button, so the row
-                          you were working on is still the row you are looking at. */}
-                      <MovementTypeDialog
-                        triggerLabel={t('edit')}
-                        triggerClassName={rowActionCls}
-                        code={r.code}
-                        builtIn={r.builtIn}
-                        initialLabel={displayLabel(r)}
-                        initialBehaviourKind={r.behaviourKind}
-                        behaviourLabel={shippedLabel(r.behaviourKind)}
-                        behaviourOptions={behaviourOptions}
-                        labels={editLabels}
-                      />
+                      {/* 1d58019a — Edit opens the type's own configuration page. */}
+                      <Link href={editHref(r.code)} className={rowActionCls}>
+                        {t('edit')}
+                      </Link>
                       <form action={setMovementEventTypeActiveAction} className="inline-flex">
                         <input type="hidden" name="code" value={r.code} />
                         <input type="hidden" name="active" value={r.active ? 'false' : 'true'} />
@@ -347,8 +282,9 @@ export default async function MovementSettingsPage({
                           {r.active ? t('deactivate') : t('activate')}
                         </ConfirmSubmit>
                       </form>
-                      {/* Delete exists only where it is honest: a custom type nothing has recorded yet. */}
-                      {!r.builtIn && !r.inUse && (
+                      {/* 1d58019a — Delete on EVERY row. Only a custom type nothing has recorded is actually
+                          deletable; every other row's Delete explains why not and offers Switch Off. */}
+                      {!r.builtIn && !r.inUse ? (
                         <form action={deleteMovementEventTypeAction} className="inline-flex">
                           <input type="hidden" name="code" value={r.code} />
                           <ConfirmSubmit
@@ -363,6 +299,19 @@ export default async function MovementSettingsPage({
                             {t('delete')}
                           </ConfirmSubmit>
                         </form>
+                      ) : (
+                        <DeleteExplanation
+                          target="type"
+                          code={r.code}
+                          triggerLabel={t('delete')}
+                          title={t('deleteBlocked.title', { name: displayLabel(r) })}
+                          paragraphs={[
+                            r.inUse ? t('deleteBlocked.inUse') : t('deleteBlocked.builtIn'),
+                            r.active ? t('deleteBlocked.switchOffInstead') : t('deleteBlocked.alreadyOff'),
+                          ]}
+                          closeLabel={t('close')}
+                          switchOffLabel={r.active ? t('deactivate') : null}
+                        />
                       )}
                     </div>
                   </td>
@@ -370,7 +319,7 @@ export default async function MovementSettingsPage({
               ))}
               {visible.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
                     {t('empty')}
                   </td>
                 </tr>

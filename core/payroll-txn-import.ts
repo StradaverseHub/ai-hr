@@ -815,6 +815,8 @@ async function analyzeIndividual(
           payPeriod,
           quantity,
           unit: inputUnit,
+          // 34062f81 — priced exactly as the entry form saves it: calendar_days follows the row's own date.
+          effectiveDate: txnDate,
         });
         if (d.derived) {
           amount = d.amount;

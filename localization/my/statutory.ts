@@ -443,8 +443,20 @@ async function writeStatutoryProfileMYTx(tx:Tx,ctx:SessionContext,p:StatutoryInp
         },
       },
     },{returnId:true});
+    // 3244584c — a changed EPF election or SOCSO/EIS control changes what a processed run computed. These
+    // settings carry no effective date, so every processed run that paid the person is marked. A save that
+    // leaves them as they were (an IC or address edit on the same form) marks nothing.
+    if (existing && STATUTORY_RECALC_FIELDS_MY.some((k) => String(existing[k] ?? '') !== String(values[k] ?? ''))) {
+      const { markRunsAffectedByEmploymentChangeTx } = await import('../../packs/payroll/service');
+      await markRunsAffectedByEmploymentChangeTx(tx, ctx, { personId: p.personId, category: 'statutory', from: null });
+    }
     return { id,eventId };
 }
+
+/** 3244584c — the statutory-profile columns the payroll engine reads (read on the `existing` projection). */
+const STATUTORY_RECALC_FIELDS_MY = ['subjectToSocso','socsoCategory','eisCategory','eisEligible','subjectToSkbbk',
+  'employerBearsSocso','employerBearsEis','employerBearsSkbbk','employerBearsEpf','epfMode','epfEmployeeRate',
+  'epfEmployerRate','epfEmployeeAmount','epfEmployerAmount'] as const;
 
 export async function setStatutoryProfileMY(ctx:SessionContext,p:StatutoryInput,outerTx?:Tx){
   ctx=captureStatutoryContext(ctx);p=structuredClone(p);
@@ -1428,7 +1440,7 @@ export async function setRegistrationNumbersMY(ctx:SessionContext,p:{personId:st
 export const reviewedStatutoryInputSchemaMY=z.object({
  personId:z.uuid().transform(id=>id.toLowerCase()),epfNumber:z.string().max(512).optional(),socsoNumber:z.string().max(512).optional(),
  socsoCategory:z.enum(['auto','first','second','none']).optional(),eisCategory:z.enum(['auto','none']).optional(),subjectToSkbbk:z.boolean().optional(),employerBearsSocso:z.boolean().optional(),employerBearsEis:z.boolean().optional(),employerBearsSkbbk:z.boolean().optional(),employerBearsEpf:z.boolean().optional(),
- epfCitizenship:z.enum(['citizen','pr','non_citizen']).optional(),epfMode:z.enum(['auto','voluntary_excess','exempt','manual_amount','manual_percentage']).optional(),epfEmployeeRate:z.number().finite().nullable().optional(),epfEmployerRate:z.number().finite().nullable().optional(),epfEmployeeAmount:z.number().finite().nullable().optional(),epfEmployerAmount:z.number().finite().nullable().optional(),epfManualReason:z.string().max(4000).nullable().optional(),
+ epfCitizenship:z.enum(['citizen','pr','non_citizen']).optional(),epfMode:z.enum(['auto','voluntary_excess','exempt','manual_amount','manual_percentage','topup_percentage']).optional(),epfEmployeeRate:z.number().finite().nullable().optional(),epfEmployerRate:z.number().finite().nullable().optional(),epfEmployeeAmount:z.number().finite().nullable().optional(),epfEmployerAmount:z.number().finite().nullable().optional(),epfManualReason:z.string().max(4000).nullable().optional(),
 }).strict();
 async function lockReviewedStatutoryPersonIdMYTx(tx:Tx,ctx:SessionContext,personId:string){
  if(!ctx.userId)throw new Error('Statutory review unavailable');

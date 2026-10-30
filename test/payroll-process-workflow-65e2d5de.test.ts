@@ -216,7 +216,12 @@ describe('65e2d5de · D — the reprocess search cannot shrink the submitted set
   });
 
   it('both tables render the FILTERED rows, and Select all takes only what is on screen', () => {
-    expect(REPROCESS_FORM).toContain('{visibleAdditions.map((c) => {');
+    // c3258a72 — the additions table now renders in two groups, New / Pending and Skipped, both cut from the
+    // FILTERED additions, so the search still narrows every row on screen.
+    expect(REPROCESS_FORM).toContain('const visiblePending = visibleAdditions.filter((c) => !c.skip);');
+    expect(REPROCESS_FORM).toContain('const visibleSkipped = visibleAdditions.filter((c) => !!c.skip);');
+    expect(REPROCESS_FORM).toContain('{visiblePending.map((c) => additionRow(c))}');
+    expect(REPROCESS_FORM).toContain('{visibleSkipped.map((c) => additionRow(c))}');
     expect(REPROCESS_FORM).toContain('{visibleEmployees.map((e) => {');
     expect(REPROCESS_FORM).toContain('setSelected(new Set(visibleEmployees.map((e) => e.employmentId)))');
   });

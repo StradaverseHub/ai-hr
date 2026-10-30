@@ -19,7 +19,7 @@ import type {SessionContext,Tx} from '../db/client';
 import {company,employment} from '../db/schema';
 import {requirePackFor,type CountryPack} from '../localization/registry';
 import {clientPackFor} from '../localization/registry.client';
-import {mapEpfUiMode} from '../lib/epf-mode-map';
+import {mapEpfUiMode,retainLegacyTotalTopup} from '../lib/epf-mode-map';
 import {applyPersonnelOperationalValuesTx} from './personnel-import-operations';
 import {setEmploymentPaymentMethod} from './org';
 import {isPaymentMethod} from '../lib/payment-methods';
@@ -91,7 +91,13 @@ export function bankStatutoryMergedErrors(subject:Pick<BankStatutorySubject,'pac
   const fields=mapEpfUiMode(merged.epf_category||'auto',merged.epf_employee_rate||null,merged.epf_employer_rate||null,merged.epf_employee_amount||null,merged.epf_employer_amount||null,merged.epf_manual_reason||null);
   const kept:Record<string,unknown>={epf_employee_rate:fields.epfEmployeeRate,epf_employer_rate:fields.epfEmployerRate,epf_employee_amount:fields.epfEmployeeAmount,epf_employer_amount:fields.epfEmployerAmount,epf_manual_reason:fields.epfManualReason};
   for(const c of Object.keys(kept))if(has(c)&&patch[c]&&kept[c]==null)errors.push(`${label(c)}: not used by EPF Category "${merged.epf_category||'auto'}" — leave it blank or choose a category that uses it`);
-  try{subject.pack.statutory.validateEpfElection(fields);}catch(error){errors.push(`${label('epf_category')}: ${(error as Error).message}`);}
+  // b6dbadc5 — an election re-posted exactly as stored is not re-judged here: an unconverted legacy total-rate
+  // Top-up row carries TOTAL rates that the additive rule would misread. The writer keeps such a row as it is
+  // (`retainLegacyTotalTopup`) and the pack's setter still validates whatever it writes.
+  const epfColumns=['epf_category','epf_employee_rate','epf_employer_rate','epf_employee_amount','epf_employer_amount','epf_manual_reason'];
+  if(!epfColumns.every(c=>(merged[c]??'')===(stored[c]??''))){
+   try{subject.pack.statutory.validateEpfElection(fields);}catch(error){errors.push(`${label('epf_category')}: ${(error as Error).message}`);}
+  }
  }
  if(has('tax_circumstance')&&has('tax_category')&&merged.tax_circumstance&&merged.tax_circumstance!=='none'){
   const category=circumstanceCategory(subject.country,merged.tax_circumstance);
@@ -160,7 +166,7 @@ export async function applyBankStatutoryPatchTx(tx:Tx,ctx:SessionContext,subject
    socsoCategory:m.socso_category||'auto',eisCategory:m.eis_category==='none'?'none':'auto',
    subjectToSkbbk:yes(m.subject_to_skbbk),employerBearsSocso:yes(m.employer_bears_socso),employerBearsEis:yes(m.employer_bears_eis),employerBearsSkbbk:yes(m.employer_bears_skbbk),employerBearsEpf:yes(m.employer_bears_epf),
    epfCitizenship:(['citizen','pr','non_citizen'].includes(m.epf_citizenship)?m.epf_citizenship:'citizen') as 'citizen'|'pr'|'non_citizen',
-   ...mapEpfUiMode(m.epf_category||'auto',m.epf_employee_rate||null,m.epf_employer_rate||null,m.epf_employee_amount||null,m.epf_employer_amount||null,m.epf_manual_reason||null),
+   ...retainLegacyTotalTopup(mapEpfUiMode(m.epf_category||'auto',m.epf_employee_rate||null,m.epf_employer_rate||null,m.epf_employee_amount||null,m.epf_employer_amount||null,m.epf_manual_reason||null),row),
    bankName:row.bankName??undefined,bankAccountNo:row.bankAccountNo??undefined,
    tp3Year:row.tp3Year??null,tp3NetRemuneration:money(row.tp3NetRemuneration),tp3EpfClaimed:money(row.tp3EpfClaimed),tp3PcbPaid:money(row.tp3PcbPaid),tp3ZakatPaid:money(row.tp3ZakatPaid),
    zakatActive:row.zakatActive??false,zakatState:row.zakatState??null,zakatMethod:row.zakatMethod??null,zakatPercent:money(row.zakatPercent),zakatFixed:money(row.zakatFixed),zakatEffectiveFrom:row.zakatEffectiveFrom??null,zakatEffectiveTo:row.zakatEffectiveTo??null,
@@ -229,6 +235,11 @@ export const bankStatutoryRevertHandler:ImportRevertHandler={
      // the tab cannot choose it and no owner writes it, so it still blocks.
      else if(before[c]===''&&c==='tax_residency')blockers.push(`${label(c)} was awaiting confirmation before this import. That state cannot be restored; change the residency on the employee's profile instead.`);
     }
+    // b6dbadc5 — a Top-up rate recorded as a FULL rate (before additive top-ups, or read from an unconverted
+    // legacy row) would be restored as an increment of the same size. Refuse rather than re-price EPF.
+    const restored={...state,...before};
+    if(restored.epf_category==='voluntary_percentage'&&['epf_category','epf_employee_rate','epf_employer_rate'].some(c=>c in before)&&(restored.epf_employee_rate||restored.epf_employer_rate)&&itemState(i.before).epfTopupBasis!=='additive')
+     blockers.push(`${label('epf_category')}: this import was recorded while Top-up rates were full rates, and Top-up rates are now added to the normal EPF rate. Set the EPF election on the employee's record instead.`);
    }
    out.push({itemId:i.id,blockers,restore:{fields:Object.keys(before).map(c=>({field:label(c),value:shown(before[c])}))}});
   }

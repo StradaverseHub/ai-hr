@@ -5956,6 +5956,20 @@ function withLeaveTx<T>(ctx: SessionContext, existingTx: Tx | undefined, run: (t
   return existingTx ? run(existingTx) : withTenant(ctx, run);
 }
 
+/** Information-only corrections apply to future processing. Earlier leave runs require an
+ * independent historical review rather than interpreting today's corrected service/grade/company.
+ * This guard runs after the ordinary dependency locks and before any ledger writes. */
+async function assertInformationLeavePeriodTx(tx:Tx,asOf:string,scope:{employmentIds?:readonly string[];companyIds?:readonly string[];gradeIds?:readonly string[]}={}){
+ const [protectedPeriod]=await tx.select({id:employment.id}).from(employment).where(and(
+  scope.employmentIds!==undefined?(scope.employmentIds.length?inArray(employment.id,[...scope.employmentIds]):sql`false`):undefined,
+  scope.companyIds?.length?inArray(employment.companyId,[...scope.companyIds]):undefined,
+  scope.gradeIds?.length?inArray(employment.gradeId,[...scope.gradeIds]):undefined,
+  // 646355e5 — an acknowledged Movement correction behind closed payroll is the same kind of boundary.
+  sql`exists(select 1 from domain_event ev where ev.tenant_id=app.current_tenant_id() and ev.subject_employment_id=${employment.id} and ((ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${asOf}) or (ev.event_type='employment.movement.reversed' and ev.payload->>'closedPayrollCorrectedOn'>${asOf})))`,
+ )).limit(1);
+ if(protectedPeriod)throw new Error('Historical leave processing before an information-only correction requires review. Use a current processing date or exclude the corrected employee.');
+}
+
 /** A cohort writer owns its complete ordered subject set before any calculation. These are
  * nomination-only IDs; business facts are read afterward by the unchanged canonical engine.
  * Read-only previews do not acquire employment-exclusive ownership. */
@@ -8796,6 +8810,7 @@ export async function openLeaveYear(
   return withTenant(ctx, async (tx): Promise<OpenLeaveYearResult> => {
     await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds.length ? scopeEmpIds : undefined }, !dryRun);
     const yearStart = `${p.year}-01-01`;
+    await assertInformationLeavePeriodTx(tx,yearStart,{employmentIds:scopeEmpIds.length?scopeEmpIds:undefined});
     // r193 — the leave year is a WINDOW now, not the instant at its left edge. See `effectiveGrantStart`.
     const yearEnd = `${p.year}-12-31`;
 
@@ -10076,6 +10091,7 @@ export async function accrueEarnedLeave(
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx): Promise<EarnedAccrualResult> => {
     await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds === null ? undefined : scopeEmpIds, companyIds: scopeCompanyIds, gradeIds: scopeGradeIds }, !dryRun);
+    await assertInformationLeavePeriodTx(tx,p.asOf,{employmentIds:scopeEmpIds===null?undefined:scopeEmpIds,companyIds:scopeCompanyIds,gradeIds:scopeGradeIds});
     const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
 
     // ── feedback cf9dcb98 — the empty-preview explanation. Everything below this comment runs ONLY where
@@ -11048,6 +11064,7 @@ export async function reprojectA2cEntitlement(
   // Preserve this owner's historical empty-scope meaning: [] is unscoped here, unlike earned accrual.
   const protectedIds = (p.employmentIds ?? []).filter(Boolean);
   await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: protectedIds.length ? protectedIds : undefined });
+  await assertInformationLeavePeriodTx(tx,p.asOf,{employmentIds:protectedIds.length?protectedIds:undefined});
   const none = { affected: 0, totalDelta: 0, packBlocked: [] as PackBlockedEmployment[] };
 
   const [type] = await tx
@@ -11368,6 +11385,7 @@ export async function reprojectEntitlementForEmployment(
     if (!currentEmployment || JSON.stringify(emp) !== JSON.stringify(currentEmployment)) {
       throw new LeaveDependencyUnavailable();
     }
+    await assertInformationLeavePeriodTx(tx,asOf,{employmentIds:[p.employmentId]});
     const pack = packFor(emp.country);
     if (!pack) return none;
     // Same live-in-cycle window guard the granting engines use: pre-hire or terminated-before-this-year

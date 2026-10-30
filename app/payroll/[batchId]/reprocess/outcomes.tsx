@@ -4,6 +4,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { Badge, Card, EmployeeName, SectionHeader } from '@/components/ui';
 import type { RecomputeDisclosureRow, ReprocessEmployeeOutcome } from '@/packs/payroll/service';
 import { formatMoney } from '@/lib/money';
+import { formatDate } from '@/lib/utils';
 import type { PayrollResultRun } from '../../payroll-result-href';
 import { reprocessResultHrefs } from './result-links';
 
@@ -13,10 +14,20 @@ const TAX_CODES = new Set([
   'not_resident', 'citizenship_unknown', 'overlap',
 ]);
 
+/**
+ * 3244584c — the run-level reason a reprocess stopped, as a message key. A recognised code names the
+ * blocker (and what to do); anything else, including jobs recorded before this item, keeps the generic line.
+ */
+export function reprocessStoppedMessageKey(code: string | null | undefined) {
+  return code && REPROCESS_STOPPED_CODES.has(code) ? `reprocessStopped_${code}` : 'reprocessStoppedPartial';
+}
+const REPROCESS_STOPPED_CODES = new Set(['BATCH_NOT_PROCESSED', 'PERIOD_CLOSED', 'PERMISSION_DENIED', 'SUPERSEDED']);
+
 /** Displays a recorded attempt; it never recalculates or substitutes a current employee profile. */
 export async function ReprocessOutcomeStatus({ outcome }: { outcome: ReprocessEmployeeOutcome }) {
   const t = await getTranslations('payroll.batch');
-  return <Badge variant={outcome.status === 'reprocessed' ? 'success' : outcome.status === 'skipped' ? 'default' : 'warning'}>
+  // 3244584c — an exclusion is the run doing the right thing (neutral); not_eligible still needs a person.
+  return <Badge variant={outcome.status === 'reprocessed' ? 'success' : outcome.status === 'skipped' || outcome.status === 'excluded' ? 'default' : 'warning'}>
     {t(`reprocessOutcomeStatus.${outcome.status}`)}
   </Badge>;
 }
@@ -28,7 +39,11 @@ export async function ReprocessOutcomeRemarks({
   const tp = await getTranslations('payroll.process');
   const locale = await getLocale();
   const noncashReason = outcome.validationDetails?.length === 1 ? outcome.validationDetails[0].gap : '';
-  const fullReason = outcome.status === 'skipped' ? t('reprocessNothingPayableFull')
+  // 3244584c — WHY the employee no longer belongs to the month, with the date that decided it.
+  const exclusionDate = outcome.validationDetails?.[0]?.date;
+  const fullReason = outcome.status === 'excluded' || outcome.status === 'not_eligible'
+    ? t(`reprocessExclusion_${outcome.reasonCode}${exclusionDate ? 'Dated' : ''}`, exclusionDate ? { date: formatDate(exclusionDate) } : {})
+    : outcome.status === 'skipped' ? t('reprocessNothingPayableFull')
     : outcome.status === 'reprocessed' ? t('reprocessSucceededReason')
     : outcome.reasonCode === 'TAX_SCHEME_CONFIGURATION_INCOMPLETE' && TAX_SELECTION_CODES.has(outcome.validationCode ?? '')
       ? tp(`taxSelection_${outcome.validationCode}`)
@@ -44,7 +59,11 @@ export async function ReprocessOutcomeRemarks({
   const taxHref = `/payroll/${batchId}/tax-configuration/${outcome.employmentId}${query.size ? `?${query}` : ''}`;
   return <div className="space-y-1 text-xs">
     <p>{outcome.status === 'skipped' ? t('reprocessNothingPayableShort') : fullReason}</p>
-    {outcome.resultRetained && <p className="font-medium text-amber-800 dark:text-amber-300">{t('reprocessPreviousResultRetained')}</p>}
+    {outcome.status === 'excluded' && outcome.historyId && <p className="text-muted-foreground">{t('reprocessExcludedRemoved')}</p>}
+    {outcome.status === 'not_eligible' && <p className="font-medium text-amber-800 dark:text-amber-300">
+      {t(outcome.validationCode === 'last_on_run' ? 'reprocessNotEligibleLastOnRun' : 'reprocessNotEligibleRemovalOff')}
+    </p>}
+    {outcome.resultRetained && outcome.status !== 'not_eligible' && <p className="font-medium text-amber-800 dark:text-amber-300">{t('reprocessPreviousResultRetained')}</p>}
     {outcome.status === 'skipped' && <details className="text-muted-foreground">
       <summary className="cursor-pointer text-primary">{t('reprocessOutcomeDetails')}</summary>
       <p className="pt-1">{fullReason}</p>
@@ -61,7 +80,7 @@ export async function ReprocessOutcomeRemarks({
   </div>;
 }
 
-export async function ReprocessOutcomePanel({ outcomes, history, slips, run, currency, batchId, from, jobId, selected, stopped }: {
+export async function ReprocessOutcomePanel({ outcomes, history, slips, run, currency, batchId, from, jobId, selected, stopped, stoppedCode }: {
   outcomes: readonly ReprocessEmployeeOutcome[];
   history: readonly RecomputeDisclosureRow[];
   slips: readonly { id: string; employmentId: string; version: number }[];
@@ -72,20 +91,25 @@ export async function ReprocessOutcomePanel({ outcomes, history, slips, run, cur
   jobId: string;
   selected: number;
   stopped: boolean;
+  /** 3244584c — the job's recorded run-level reason (payroll_reprocess_job.error), when it stopped. */
+  stoppedCode?: string | null;
 }) {
   const t = await getTranslations('payroll.batch');
   const ts = await getTranslations('people.detail.incentiveDeclarations');
   const resultHrefs = reprocessResultHrefs(outcomes.map(outcome => ({...outcome, id:outcome.employmentId})), slips, run, from);
   const byHistory = new Map(history.map(row => [row.id, row]));
-  const counts = { reprocessed: 0, skipped: 0, validation_failed: 0 };
+  const counts = { reprocessed: 0, skipped: 0, validation_failed: 0, excluded: 0, not_eligible: 0 };
   for (const outcome of outcomes) counts[outcome.status]++;
   return <Card className="overflow-hidden">
     <SectionHeader title={t('reprocessOutcomeTitle')} count={outcomes.length} />
     <p className="px-4 pb-3 text-sm">{t('reprocessOutcomeSummary', {
       selected, succeeded: counts.reprocessed, skipped: counts.skipped, failed: counts.validation_failed,
     })}</p>
+    {counts.excluded + counts.not_eligible > 0 && <p className="-mt-2 px-4 pb-3 text-sm">{t('reprocessOutcomeExclusionSummary', {
+      excluded: counts.excluded, notEligible: counts.not_eligible,
+    })}</p>}
     {(stopped || outcomes.length < selected) && <p className="border-y border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-      {t('reprocessStoppedPartial')}
+      {t(reprocessStoppedMessageKey(stopped ? stoppedCode : null))}
     </p>}
     <div className="overflow-x-auto">
       <table className="w-full min-w-[52rem] text-sm">

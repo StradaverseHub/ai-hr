@@ -1,3 +1,4 @@
+import {frozenPayslipInformation,informationPayslipDocument,informationPayslipDocuments,informationDocumentRow,overlayInformationDocument} from './information-correction-history';
 import {payrollComparisonAvailability} from '../lib/payroll-comparison-result';
 import {recordedPayrollComparisonAmount, recordedPayrollComparisonCurrency, recordedPayrollProrationCoverage} from '../lib/payroll-comparison-source';
 import {payPeriodBounds, payslipCoverage} from './payslip-segment';
@@ -52,9 +53,11 @@ import { employmentStatusSql } from './employment-status-sql';
 import {
   collectableCycleIds,
   intendedCycleFilter,
+  listPayslipLessEligible,
   resolveBatchScopeFilter,
   type BatchScope,
   type PayrollSkipReason,
+  type PayslipLessEligibleRow,
 } from './payroll';
 // 3c473773 — pure, db-free: which payslip box each earning belongs in, from the payslip's own stamp.
 import { payslipDisplayEarnings } from './pay-display-category';
@@ -167,7 +170,7 @@ const cleanRunType = (v: unknown): RunType | undefined =>
  * ("Monthly - By Import"), so a reader filtering by cycle must find it under that cycle's run type, not
  * under "Adjustment". Every other run answers its own `run_type`, byte-identical to before.
  */
-const filterRunTypeSql = sql`(case when ${payrollBatch.historyImportAttemptId} is not null then coalesce((select pc.run_type from payroll_cycle pc where pc.id = ${payrollBatch.payrollCycleId}), ${payrollBatch.runType}) else ${payrollBatch.runType} end)`;
+const filterRunTypeSql = sql`app.payroll_filter_run_type(${payrollBatch.historyImportAttemptId},${payrollBatch.runType}::text,(select pc.run_type::text from payroll_cycle pc where pc.id=${payrollBatch.payrollCycleId}))`;
 
 /** Optional period narrowing on a 'YYYY-MM' pay-period column (default payroll_batch.pay_period; the
  *  Individual inquiry passes the txn row's own pay_period so unattached rows filter too): year+month →
@@ -1050,7 +1053,7 @@ export function listProcessedPayslipsAcross(
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
   const cycle = cleanRunType(p.cycle);
   const limit = Number.isInteger(p.limit) && p.limit! > 0 ? p.limit! : undefined;
-  return withTenant(ctx, (tx) => {
+  return withTenant(ctx, async (tx) => {
     const q = tx
       .select({
         id: payslip.id,
@@ -1107,7 +1110,14 @@ export function listProcessedPayslipsAcross(
       .$dynamic();
     // An absent cap does not call .limit() at all, so every existing caller — including the CSV
     // export, which must never be clipped — issues exactly the query it issued before.
-    return limit ? q.limit(limit) : q;
+    const rows=await (limit ? q.limit(limit) : q);
+    const retained=await informationPayslipDocuments(tx,{...p,cycle,intendedCycle:true});
+    const seen=new Set(rows.map(row=>row.id));
+    for(const document of retained){const r=informationDocumentRow(document);if(seen.has(r.id))continue;
+      rows.push({id:r.id,employmentId:r.employmentId,employeeName:r.employeeName,employeeCode:r.employeeCode,companyId:r.companyId,company:r.company,currency:r.currency,batchId:r.batchId!,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,batchStatus:r.batchStatus,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null,coverageFrom:r.coverageFrom??null,coverageTo:r.coverageTo??null,releasedAt:r.releasedAt,version:r.version,basic:r.basic,allowance:r.allowance,overtime:r.overtime,bonus:r.bonus,gross:r.gross,statutory:r.statutory,otherDeductions:r.otherDeductions,totalDeductions:r.totalDeductions,net:r.net});
+    }
+    if(retained.length)rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
+    return limit?rows.slice(0,limit):rows;
   });
 }
 
@@ -1168,8 +1178,8 @@ export function listPayslipRunsFor(
   p: { companyIds: string[]; employmentId: string },
 ): Promise<PayslipRunRow[]> {
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, async (tx) => {
+    const rows=await tx
       .select({
         payslipId: payslip.id,
         companyId: payrollBatch.companyId,
@@ -1182,8 +1192,14 @@ export function listPayslipRunsFor(
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
       .where(and(inArray(payrollBatch.companyId, p.companyIds), eq(payslip.employmentId, p.employmentId)))
-      .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(payrollBatch.companyId)),
-  );
+      .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(payrollBatch.companyId));
+    const seen=new Set(rows.map(r=>r.payslipId));
+    for(const document of await informationPayslipDocuments(tx,p)){
+      const r=informationDocumentRow(document);if(seen.has(r.id))continue;
+      rows.push({payslipId:r.id,companyId:r.companyId,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null});
+    }
+    return rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.companyId.localeCompare(b.companyId));
+  });
 }
 
 // ───────────────────── 4. Payroll Register (feedback 622e12eb) ─────────────────────
@@ -1287,6 +1303,7 @@ export function listPayrollRegisterAcross(
   return withTenant(ctx, async (tx) => {
     const rows = await tx
       .select({
+        correctionSlipId:payslip.id,
         employeeCode: employment.employeeCode,
         employeeName: person.fullName,
         company: company.legalName,
@@ -1294,11 +1311,11 @@ export function listPayrollRegisterAcross(
         currency: company.currency,
         department: department.name,
         position: position.title,
-        jobGrade: jobGrade.name,
+        jobGrade: frozenPayslipInformation('grade',sql`${jobGrade.name}`),
         // 9cbf5e0d — the DERIVED Employee Status, so the Payroll Register agrees with Personnel instead of
         // printing the retired stored enum (On Leave / Offboarding / Terminated).
         employmentStatus: employmentStatusSql(),
-        employmentType: assignment.employmentType,
+        employmentType: frozenPayslipInformation('employmentType',sql`${assignment.employmentType}`),
         payPeriod: payrollBatch.payPeriod,
         payrollCycle: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
@@ -1341,13 +1358,20 @@ export function listPayrollRegisterAcross(
       )
       .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName));
 
+    const retained=await informationPayslipDocuments(tx,{...p,cycle});
+    for(const document of retained){
+      const saved=informationDocumentRow(document),index=rows.findIndex(r=>r.correctionSlipId===saved.id);
+      if(index>=0)rows[index]=overlayInformationDocument(rows[index],document);
+      else rows.push({correctionSlipId:saved.id,employeeCode:saved.employeeCode,employeeName:saved.employeeName,company:saved.company,currency:saved.currency,department:saved.department,position:saved.position,jobGrade:saved.jobGrade,employmentStatus:saved.employmentStatus,employmentType:saved.employmentType,payPeriod:saved.payPeriod,payrollCycle:saved.runType,runSeq:saved.runSeq,historyImportAttemptId:saved.historyImportAttemptId??null,historyImportCycleName:saved.historyImportCycleName??null,daysWorked:saved.daysWorked??null,basic:saved.basic,allowance:saved.allowance,overtime:saved.overtime,bonus:saved.bonus,gross:saved.gross,statutory:saved.statutory,otherDeductions:saved.otherDeductions,totalDeductions:saved.totalDeductions,net:saved.net,employerCost:saved.employerCost});
+    }
+    if(retained.length)rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
     return rows.map((r) => {
       const st = (r.statutory ?? {}) as Record<string, unknown>;
       const n = (k: string): number => {
         const v = Number(st[k] ?? 0);
         return Number.isFinite(v) ? v : 0;
       };
-      const { statutory: _statutory, ...rest } = r;
+      const { statutory: _statutory, correctionSlipId:_correctionSlipId, ...rest } = r;
       // 3c473773 — the EARNINGS columns follow this payslip's own box stamp, so the register cannot
       // disagree with the payslip about which box an amount is in. The DEDUCTION and EMPLOYER columns
       // below stay AS COMPUTED (the full employee share), which is this read's documented contract above
@@ -1510,7 +1534,7 @@ export function payslipForReview(
 ): Promise<PayslipReviewRow | null> {
   if (p.companyIds.length === 0) return Promise.resolve(null); // fail closed — no scope, no payslip
   return withTenant(ctx, async (tx) => {
-    const [row] = await tx
+    const [liveRow] = await tx
       .select({
         id: payslip.id,
         employmentId: payslip.employmentId,
@@ -1560,8 +1584,8 @@ export function payslipForReview(
         category: employment.employmentCategory,
         department: department.name,
         position: position.title,
-        jobGrade: jobGrade.name,
-        employmentType: assignment.employmentType,
+        jobGrade: frozenPayslipInformation('grade',sql`${jobGrade.name}`),
+        employmentType: frozenPayslipInformation('employmentType',sql`${assignment.employmentType}`),
         paymentMethod: employment.paymentMethod,
         bankName: employeeStatutoryMy.bankName,
         bankAccountNo: employeeStatutoryMy.bankAccountNo,
@@ -1595,6 +1619,10 @@ export function payslipForReview(
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
       .where(and(eq(payslip.id, p.payslipId), inArray(payrollBatch.companyId, p.companyIds)))
       .limit(1);
+    const document=await informationPayslipDocument(tx,p.payslipId);
+    const retained=document?informationDocumentRow(document):null;
+    if(retained&&!p.companyIds.includes(retained.companyId))return null;
+    const row=liveRow?overlayInformationDocument(liveRow,document):retained;
     if (!row) return null;
     const { bankAccountNo, icNumber, passportNumber, ...rest } = row;
     const acct = (bankAccountNo ?? '').trim();
@@ -2554,11 +2582,20 @@ const PENDING_MONEY_DOORS: readonly PendingMoneyDoor[] = [
  * are none here).
  */
 export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): Promise<PendingBatchMoney> {
+  return withTenant(ctx, (tx) => pendingBatchMoneyTx(tx, ctx, p));
+}
+
+/**
+ * cdb1c6ca — the same read inside a caller's transaction. Close asks "who is deliberately skipped" while
+ * it holds the run's locks, and a nested `withTenant` would open a SECOND connection that never joins
+ * them (db/client.ts). The body is unchanged; only who opens the transaction moved.
+ */
+export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: string }): Promise<PendingBatchMoney> {
   const typedComponents = isModuleEnabled(ctx, 'typed_pay_components');
   // Matches generatePayslips' own dependency: the individual fold rides the per-component fold, so with
   // typed components off a payable one-off row has nothing to fold through and pays nothing either.
   const individualTxnPay = typedComponents && settingEnabled(ctx, 'payroll.individual_txn_pay_enabled');
-  return withTenant(ctx, async (tx) => {
+  return (async () => {
     let inertRows = 0;
     const empty: PendingBatchMoney = { lines: [], byDoor: [], employees: 0, earnings: 0, deductions: 0, inertRows: 0 };
     const [batch] = await tx
@@ -2805,7 +2842,7 @@ export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): 
       inertRows,
       formulaOvertimeReview,
     };
-  });
+  })();
 }
 
 /**
@@ -2833,11 +2870,73 @@ export function narrowToNothingPayable<T extends { employmentId: string }>(
   rows: readonly T[],
   pending: PendingBatchMoney | null,
 ): T[] {
-  if (!pending) return [...rows];
-  // An unavailable obligation cannot justify a definite 'will be skipped' notice.
-  if (pending.formulaOvertimeReview?.status === 'unavailable') return [];
-  const paid = new Set(pending.lines.filter((l) => l.amount > 0).map((l) => l.employmentId));
-  return rows.filter((r) => !paid.has(r.employmentId));
+  // c3258a72 — one answer: the run page's notice, the Reprocess screen's Skipped group and the close-batch
+  // check all ask `nothingPayableSkipKind`, so "will be skipped" cannot mean two things on two screens.
+  return rows.filter((r) => nothingPayableSkipKind(r.employmentId, pending) !== null);
+}
+
+/** c3258a72 — the two regular-run skip reasons a no-monthly-basic employee can carry. */
+export type NothingPayableSkipKind = Extract<PayrollSkipReason, 'NOTHING_PAYABLE_THIS_PERIOD' | 'DEDUCTION_ONLY_THIS_PERIOD'>;
+
+/**
+ * c3258a72 — THE SHARED PREDICATE: is this no-monthly-basic employee one the run leaves out, and in which
+ * words? Returns the same reason `generatePayslips`' `regularRunNothingPayable` stamps, or null when the run
+ * would pay them (or when that cannot honestly be said).
+ *
+ * PRECONDITION: `employmentId` is a member of `preProcessChecksTx`' `nothingPayable` list — the salary
+ * record names no monthly basic. This function only answers the money half, from the "what will this run
+ * pay" card (`pendingBatchMoney`), for the reasons `narrowToNothingPayable` gives above:
+ *   • a POSITIVE line ⇒ null — a keyed director's fee means the run pays them;
+ *   • only NEGATIVE lines ⇒ DEDUCTION_ONLY_THIS_PERIOD — skipped too, in its own words;
+ *   • no line ⇒ NOTHING_PAYABLE_THIS_PERIOD;
+ *   • an unavailable formula-overtime read ⇒ null — an unknown obligation cannot justify a definite skip;
+ *   • `pending === null` (no card on the screen, e.g. the wizard before a batch exists) ⇒
+ *     NOTHING_PAYABLE_THIS_PERIOD, the forward-looking sentence, as `narrowToNothingPayable` always did.
+ * Pure; the authoritative decision is still the kernel's at generate time.
+ */
+export function nothingPayableSkipKind(
+  employmentId: string,
+  pending: PendingBatchMoney | null,
+): NothingPayableSkipKind | null {
+  if (!pending) return 'NOTHING_PAYABLE_THIS_PERIOD';
+  if (pending.formulaOvertimeReview?.status === 'unavailable') return null;
+  let deduction = false;
+  for (const l of pending.lines) {
+    if (l.employmentId !== employmentId) continue;
+    if (l.amount > 0) return null;
+    if (l.amount < 0) deduction = true;
+  }
+  return deduction ? 'DEDUCTION_ONLY_THIS_PERIOD' : 'NOTHING_PAYABLE_THIS_PERIOD';
+}
+
+/** c3258a72 — a payslip-less eligible employee, with the run's skip decision stated as a field. */
+export type PayslipLessEligibleWithSkipRow = PayslipLessEligibleRow & {
+  /** Non-null ⇒ the run has nothing to pay them this month: Skipped, not New / Pending. */
+  skip: NothingPayableSkipKind | null;
+};
+
+/**
+ * c3258a72 — `listPayslipLessEligible`, with each row's skip decision made explicit.
+ *
+ * The Reprocess screen used to put everyone on that list into "New / Pending", ticked, so an employee with no
+ * monthly basic and nothing payable was retried — and skipped again — on every reprocess. The `nothingPayable`
+ * warning there comes from the salary record alone; this narrows it against the run's money doors with
+ * `nothingPayableSkipKind`, so a director whose fee has been keyed since stays pending and is paid.
+ *
+ * NEVER SKIPPED: a row with a readiness BLOCKER (a genuine fault stays a fault, never a quiet "Skipped"),
+ * and a row OUTSIDE the run's chosen list — `pendingBatchMoney` reads only the run's scope, so for them it
+ * cannot see keyed money and has no basis for saying nothing is payable. The card is read only when some
+ * row could be skipped. Read-only, no event.
+ */
+export async function listPayslipLessEligibleWithSkip(
+  ctx: SessionContext,
+  p: { batchId: string },
+): Promise<PayslipLessEligibleWithSkipRow[]> {
+  const rows = await listPayslipLessEligible(ctx, p);
+  const could = (r: PayslipLessEligibleRow) =>
+    r.blockers.length === 0 && !r.outsideScope && r.warnings.includes('nothingPayable');
+  const pending = rows.some(could) ? await pendingBatchMoney(ctx, p) : null;
+  return rows.map((r) => ({ ...r, skip: pending && could(r) ? nothingPayableSkipKind(r.employmentId, pending) : null }));
 }
 
 // ───────────────────── 9. When a run was processed (dashboard "Processed date") ─────────────────────

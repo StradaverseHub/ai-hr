@@ -40,6 +40,7 @@ import { addDaysIso, addMonths, monthOf, monthRange } from '../lib/roster-month'
 // a3d485f6 — "today" for the refusal's suggested date is a CALENDAR DAY, so it goes through the tenant
 // timezone (the repo rule this file's addDaysIso comment states from the other side).
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { isTransactionEffectiveDate } from '../lib/transaction-effective-date';
 import { assertPayComponentReady, payComponentIdentityIssues, PENDING_PAY_INPUT_KINDS, type PendingPayInputKind } from '../lib/pay-component-contract';
 import { payItemImportFileName } from '../lib/pay-component-import';
 import {
@@ -1174,6 +1175,14 @@ async function resolveRuleForEmploymentTx(
     /** The catalog nodes, when the caller has already loaded them (previewPayRule validates against them). */
     catalog?: PayRuleCatalogNode[];
     override?: { hours?: number | null; days?: number | null };
+    /**
+     * 34062f81 — a dated one-off transaction's Effective Date ('YYYY-MM-DD', already validated by the
+     * caller). It moves ONE input and nothing else: `calendar_days` becomes the length of THIS DATE'S month
+     * (30 for 28-Sep-2026, 29 for 15-Feb-2024). Basic, attendance, recurring items and resolution order
+     * keep reading the period window above — their owners did not change. Absent ⇒ the period's month,
+     * which is what the admin preview and every pre-34062f81 caller get.
+     */
+    calendarDate?: string;
   },
 ): Promise<EmploymentRuleResolution> {
   const { code, periodStart, periodEnd } = p;
@@ -1214,13 +1223,16 @@ async function resolveRuleForEmploymentTx(
   // 0 here while the kernel read a real figure, and the preview would lie about the run.
   //   • calendarDays: the length of the period's OWN month, derived from periodStart rather than from
   //     `periodDays`, so a keyed `days` override (the one-off transaction path) cannot move it — the month
-  //     is 31 days long whatever quantity the operator typed.
+  //     is 31 days long whatever quantity the operator typed. 34062f81 — or, for a DATED transaction, the
+  //     length of the month its Effective Date falls in (`calendarDate`), so a line dated in February is
+  //     divided by February's 28 (29 in a leap year) even when it is paid in an October run.
   //   • proratedBasic: this path deliberately answers for a FULL period (factor 1) — the divergence
   //     documented at length on previewPayRule and stated on screen by payRule.previewNote. At factor 1
   //     the EA-1955 prorated basic IS the basic, so that is what it reports, consistently with `days`
   //     already being the full period here.
-  const [periodYear, periodMonth] = periodStart.split('-').map(Number);
-  const calendarDays = new Date(Date.UTC(periodYear, periodMonth, 0)).getUTCDate();
+  // monthRange is the repository's pure month module (Date.UTC day-0, so leap years are the calendar's,
+  // not ours); `.to` is the month's last ISO date, whose day IS the month's length.
+  const calendarDays = Number(monthRange(monthOf(p.calendarDate ?? periodStart)).to.slice(8, 10));
   const proratedBasic = basic;
 
   // This employee's recurring pay items in the period window (the same period-aware predicate the kernel
@@ -1336,6 +1348,18 @@ export class TxnQuantityRequiredError extends Error {
   }
 }
 
+/**
+ * 34062f81 — a dated one-off transaction's Effective Date is not a real calendar day. Refused rather than
+ * ignored: silently falling back to the payroll month would price the line against the wrong month's
+ * calendar days, which is exactly the defect this date exists to close.
+ */
+export class TxnEffectiveDateInvalidError extends Error {
+  constructor(public readonly txnDate: string) {
+    super(`Effective date "${txnDate}" is not a valid calendar date.`);
+    this.name = 'TxnEffectiveDateInvalidError';
+  }
+}
+
 /** What a pay item does to a one-off transaction's amount. `derived: false` is the legacy case — a null or
  *  `fixed` rule (and an unknown/archived item, which the ledger's own component guard refuses
  *  authoritatively) leaves the operator's typed amount exactly as it was. */
@@ -1382,8 +1406,18 @@ export function deriveIndividualTxnAmount(
     payPeriod: string;
     quantity: number | null;
     unit: string | null;
+    /**
+     * 34062f81 — the transaction's Effective Date ('YYYY-MM-DD'). When given, `calendar_days` is the length
+     * of that date's month (leap years included) instead of the pay month's; nothing else moves. Omitted
+     * or null ⇒ the pay month, byte-identical to before. A malformed value is refused
+     * (TxnEffectiveDateInvalidError), never quietly ignored.
+     */
+    effectiveDate?: string | null;
   },
 ): Promise<IndividualTxnAmountDerivation> {
+  if (p.effectiveDate != null && !isTransactionEffectiveDate(p.effectiveDate)) {
+    return Promise.reject(new TxnEffectiveDateInvalidError(p.effectiveDate));
+  }
   return withTenant(ctx, (tx) => deriveIndividualTxnAmountTx(tx, ctx, p));
 }
 
@@ -1391,6 +1425,9 @@ export function deriveIndividualTxnAmount(
 export async function deriveIndividualTxnAmountTx(
  tx:Tx,ctx:SessionContext,p:Parameters<typeof deriveIndividualTxnAmount>[1],
 ):Promise<IndividualTxnAmountDerivation>{
+    if (p.effectiveDate != null && !isTransactionEffectiveDate(p.effectiveDate)) {
+      throw new TxnEffectiveDateInvalidError(p.effectiveDate);
+    }
     // COMPANY SCOPE IS AN APPLICATION CONCERN — RLS only isolates tenants. Without this an admin scoped to
     // one company could ask what a formula pays for an employee in another and read their basic salary
     // back out of the figure. Answering "nothing derived" rather than throwing is deliberate: the write
@@ -1433,6 +1470,7 @@ export async function deriveIndividualTxnAmountTx(
       employmentId: p.employmentId,
       periodStart,
       periodEnd,
+      ...(p.effectiveDate != null ? { calendarDate: p.effectiveDate } : {}),
       override:
         inputUnit === 'hours'
           ? { hours: p.quantity }

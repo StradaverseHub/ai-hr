@@ -963,8 +963,10 @@
       "epfManualEmployeeRateRequired": "Phải nhập Tỷ lệ nhân viên % khi Loại EPF là Thủ công (theo tỷ lệ).",
       "epfManualEmployerRateRequired": "Phải nhập Tỷ lệ chủ lao động % khi Loại EPF là Thủ công (theo tỷ lệ).",
       "epfManualRateRange": "Nhập tỷ lệ từ 1% đến 100%.",
-      "epfManualAdoptionPreview": "Hồ sơ hiện dùng lựa chọn đóng thêm có mức tối thiểu theo quy định. Chuyển sang Thủ công (theo tỷ lệ) sẽ dùng chính xác hai tỷ lệ đã nhập. Lựa chọn cũ không đổi cho đến khi xác nhận và lưu.",
-      "epfManualAdoptionConfirm": "Tôi đã kiểm tra tỷ lệ và xác nhận chuyển sang Thủ công (theo tỷ lệ).",
+      "epfTopupEmployeeRate": "Tỷ lệ đóng thêm của nhân viên %",
+      "epfTopupEmployerRate": "Tỷ lệ đóng thêm của người sử dụng lao động %",
+      "epfTopupRateRange": "Nhập mức đóng thêm từ 0% đến {max}%. Tỷ lệ EPF thông thường cộng mức đóng thêm không được vượt quá 100%.",
+      "epfTopupLegacyHint": "Các ô này vẫn hiển thị tổng tỷ lệ của nhân viên này từ trước khi mức đóng thêm được cộng vào tỷ lệ thông thường. Lưu mà không thay đổi sẽ giữ nguyên mức đóng hiện tại. Nếu bạn thay đổi bất kỳ ô nào, cả hai ô sẽ được lưu là mức đóng thêm cộng vào tỷ lệ EPF thông thường.",
       "epfModeManualPercentage": "Thủ công (theo phần trăm)",
       "epfModeSemiAuto": "Bán tự động (chỉ tỷ lệ người lao động)",
       "epfModeManualEmployeeAmount": "Thủ công (Nhân viên theo số tiền)",
@@ -977,7 +979,7 @@
       "epfEmployeeAmount": "Số tiền nhân viên (RM mỗi tháng)",
       "epfEmployerAmount": "Số tiền người sử dụng lao động (RM mỗi tháng)",
       "epfManualReason": "Lý do cho số tiền cố định",
-      "epfElectionHint": "Đóng vượt tự nguyện (i-Topup, Mẫu KWSP 17A/18A) đặt tỷ lệ bằng hoặc cao hơn mức luật định 11%/13%; bên để trống giữ mức luật định. Các loại Thủ công (theo số tiền) dùng một số tiền ringgit chính xác thay cho tỷ lệ, và bắt buộc phải có lý do. Miễn chỉ dành cho nhân viên thực sự được miễn.",
+      "epfElectionHint": "Đóng thêm (KWSP i-Topup, Mẫu 17A/18A) cộng phần trăm đã nhập vào tỷ lệ EPF thông thường của mỗi bên; Bán tự động đặt tổng tỷ lệ của nhân viên bằng hoặc cao hơn mức luật định 11%. Bên để trống giữ mức luật định. Các loại Thủ công (theo số tiền) dùng một số tiền ringgit chính xác thay cho tỷ lệ, và bắt buộc phải có lý do. Miễn chỉ dành cho nhân viên thực sự được miễn.",
       "terminationType": "Loại chấm dứt",
       "terminationTypeUnspecified": "— Không xác định —",
       "terminationVoluntary": "Tự nguyện (từ chức)",
@@ -1015,7 +1017,7 @@
       "dateError": "Ngày kết thúc hiệu lực không được trước ngày bắt đầu hiệu lực.",
       "amountError": "Số tiền phải lớn hơn không.",
       "currencyUnsupported": "Chỉ hỗ trợ MYR — lương được tính bằng MYR.",
-      "epfVoluntaryHint": "Nhập tổng tỷ lệ của mỗi bên bằng hoặc cao hơn mức tối thiểu theo luật (người lao động 11%, người SDLĐ 12–13%). Để trống để giữ mức theo luật.",
+      "epfVoluntaryHint": "Chỉ nhập phần trăm đóng thêm cộng vào tỷ lệ EPF thông thường: với tỷ lệ nhân viên thông thường 11%, đóng thêm 1% thành 12%. 0 hoặc để trống thì không cộng thêm. Tỷ lệ thông thường vẫn theo quy định EPF thông thường (tuổi, quốc tịch và bậc lương).",
       "epfSemiAutoHint": "Nhập tỷ lệ người lao động bằng hoặc cao hơn mức 11% theo luật. Phần người sử dụng lao động giữ tự động (theo luật).",
       "workState": "Bang làm việc",
       "grade": "Bậc",
@@ -1636,7 +1638,8 @@
           "endDate": "Ngày kết thúc",
           "remarks": "Ghi chú",
           "action": "Thao tác",
-          "correctionReason": "Lý do chỉnh sửa"
+          "correctionReason": "Lý do chỉnh sửa",
+          "movementId": "Mã sự kiện biến động"
         },
         "detail": {
           "eventInformation": "Thông tin sự kiện",
@@ -1649,7 +1652,8 @@
           "backToHistory": "Quay lại lịch sử",
           "recordedBy": "Người ghi nhận",
           "recordedAt": "Thời điểm ghi nhận",
-          "system": "Hệ thống"
+          "system": "Hệ thống",
+          "documents": "Tài liệu hỗ trợ"
         },
         "field": {
           "company": "Công ty",
@@ -1744,7 +1748,14 @@
           "entityTransferHint": "Chọn công ty mà nhân viên sẽ chuyển đến. Danh sách Đơn vị kinh doanh, Phòng ban, Chức danh và Địa điểm làm việc bên dưới hiện hiển thị lựa chọn của công ty đích — hãy chọn Phòng ban trong đó. Mã nhân viên, Ngày gia nhập Tập đoàn và lịch sử của họ giữ nguyên.",
           "selectPlaceholder": "Chọn…",
           "pendingTargetUnavailable": "Giá trị đích đã lưu không còn nằm trong các lựa chọn hoặc phạm vi truy cập hiện tại của bạn. Không thể lưu bản chỉnh sửa này. Hãy kiểm tra thay đổi chưa có hiệu lực trước khi tiếp tục.",
-          "resignationLifecycleHint": "Thông tin nghỉ việc có hiệu lực vào Ngày hiệu lực. Ghi riêng ngày nộp đơn, ngày nghỉ việc và ngày làm việc cuối cùng."
+          "resignationLifecycleHint": "Thông tin nghỉ việc có hiệu lực vào Ngày hiệu lực. Ghi riêng ngày nộp đơn, ngày nghỉ việc và ngày làm việc cuối cùng.",
+          "closedPayrollTitle": "Bảng lương {periods} đã được khóa sổ.",
+          "closedPayrollBody": "Việc điều chỉnh này cập nhật hồ sơ nhân viên và các lần xử lý sau. Bảng lương đã khóa, phiếu lương đã phát hành và các hồ sơ nộp theo luật định giữ nguyên số liệu cuối cùng và sẽ không được tính lại. Nếu cần điều chỉnh số tiền, hãy dùng quy trình điều chỉnh lương. Mức lương đã điều chỉnh có hiệu lực từ tháng đầu tiên sau kỳ lương đã khóa.",
+          "closedPayrollAcknowledge": "Tôi hiểu rằng bảng lương đã khóa sẽ không thay đổi.",
+          "mustChange": "Bắt buộc thay đổi",
+          "mustChangeRefused": "Loại sự kiện này yêu cầu {field} phải thay đổi. Hãy nhập giá trị mới.",
+          "documentOptional": "Tài liệu hỗ trợ (tùy chọn)",
+          "documentRequired": "Tài liệu hỗ trợ (bắt buộc khi trường này thay đổi)"
         },
         "edit": "Sửa",
         "rollback": "Hoàn tác",
@@ -1838,7 +1849,8 @@
           "originalHeading": "Ghi nhận ban đầu",
           "correctedHeading": "Đã điều chỉnh",
           "noneValue": "Không"
-        }
+        },
+        "payrollClosedBadge": "Đã khóa lương: {periods}"
       },
       "salaryCurrency": "Tiền tệ",
       "emergency": {
@@ -2322,6 +2334,9 @@
           "workbook_columns_changed": "Tiêu đề hoặc bố cục cột của sổ làm việc đã thay đổi. Hãy tải sổ làm việc mới và giữ nguyên tiêu đề.",
           "workbook_identity_changed": "Mã nhân viên được điền sẵn đã bị thay đổi. Hãy tải đúng danh sách nhân viên hoặc dùng sổ làm việc trống có tất cả loại.",
           "workbook_structure_invalid": "Cấu trúc sổ làm việc này không được hỗ trợ. Hãy tải sổ làm việc mới.",
+          "workbook_damaged": "Tệp bị hỏng hoặc không phải sổ làm việc Excel hợp lệ. Hãy lưu lại trong Excel hoặc tải sổ làm việc mới.",
+          "workbook_too_large": "Sổ làm việc vượt quá kích thước mà lần nhập này hỗ trợ. Chỉ giữ các trang đã tải xuống và tối đa 200 dòng biến động, hoặc tải sổ làm việc mới.",
+          "no_movement_entries": "Không có mục biến động nào để kiểm tra. Nhập ít nhất một dòng trên trang Movements bên dưới tiêu đề, rồi tải tệp lên lại.",
           "workbook_password_not_supported": "Không hỗ trợ sổ làm việc được bảo vệ bằng mật khẩu. Hãy dùng sổ làm việc gốc không có mật khẩu.",
           "workbook_unexpected_sheet": "Sổ làm việc có trang tính bổ sung chứa dữ liệu. Hãy giữ các trang tính Biến động gốc.",
           "workbook_business_value_invalid": "Một giá trị trong sổ làm việc quá dài hoặc chứa tham chiếu nội bộ. Hãy sửa giá trị nguồn trước khi tải xuống.",
@@ -2354,7 +2369,30 @@
           "duplicate_system_field": "Cùng một Trường hệ thống xuất hiện nhiều lần trong biến động này.",
           "system_field_required": "Chọn Trường hệ thống mà dòng này thay đổi, hoặc để trống Trước và Sau.",
           "before_mismatch": "Giá trị Trước không khớp với hồ sơ hiện tại của nhân viên; hồ sơ đã thay đổi kể từ khi chuẩn bị tệp. Nhân viên này không được nhập.",
-          "workbook_old_layout": "Tệp này dùng mẫu Biến động cũ (mỗi loại biến động một trang, cho một công ty). Hãy tải mẫu mới và sao chép các dòng của bạn vào đó."
+          "workbook_old_layout": "Tệp này dùng mẫu Biến động cũ (mỗi loại biến động một trang, cho một công ty). Hãy tải mẫu mới và sao chép các dòng của bạn vào đó.",
+          "unknown_action": "Thao tác phải là Tạo, Cập nhật hoặc Xóa (để trống nghĩa là Tạo).",
+          "movement_id_required": "Cập nhật và Xóa cần Mã sự kiện biến động của biến động cần thay đổi.",
+          "movement_id_unknown": "Không tìm thấy biến động nào có Mã sự kiện biến động này cho nhân viên này.",
+          "movement_id_other_employee": "Mã sự kiện biến động này thuộc về nhân viên khác. Hãy kiểm tra Mã nhân viên ở dòng này.",
+          "movement_already_rolled_back": "Biến động này đã được hoàn tác.",
+          "movement_superseded": "Biến động này đã bị một biến động sau thay thế và chưa từng có hiệu lực, nên không có gì để thay đổi.",
+          "movement_hire_not_supported": "Không thể thay đổi việc tuyển dụng bằng nhập dữ liệu. Hãy dùng Điều chỉnh thông tin tuyển dụng trên thẻ Biến động.",
+          "movement_update_not_supported": "Loại sự kiện này không thể cập nhật bằng nhập dữ liệu. Hãy sửa trên thẻ Biến động.",
+          "movement_not_correctable": "Không thể thay đổi biến động này theo yêu cầu",
+          "movement_id_not_for_create": "Để trống Mã sự kiện biến động cho biến động mới, hoặc chọn Cập nhật hay Xóa.",
+          "reason_not_for_create": "Lý do chỉ dùng cho Cập nhật và Xóa. Hãy dùng Ghi chú cho biến động mới.",
+          "reason_required": "Nhập Lý do cho mọi Cập nhật và Xóa.",
+          "not_applicable_on_delete": "Để trống Trường hệ thống, Trước và Sau ở dòng Xóa.",
+          "conflicting_values": "Các dòng của cùng một biến động có giá trị khác nhau",
+          "duplicate_movement_id": "Cùng một Mã sự kiện biến động xuất hiện ở nhiều hơn một Cập nhật hoặc Xóa. Mỗi biến động chỉ ghi một lần.",
+          "increment_amount_not_for_update": "Không thể dùng Số tiền tăng lương để cập nhật biến động. Hãy nhập Lương cơ bản đã sửa.",
+          "event_mismatch": "Không khớp với biến động có Mã sự kiện biến động này",
+          "closed_payroll_acknowledgement_required": "Bảng lương của biến động này đã đóng. Hãy đánh dấu xác nhận bảng lương đã đóng trước khi lưu",
+          "movement_field_not_included": "Loại sự kiện này không thay đổi trường này.",
+          "movement_field_not_editable": "Không thể sửa trường này cho loại sự kiện này.",
+          "movement_field_must_change": "Loại sự kiện này yêu cầu trường này phải thay đổi.",
+          "movement_document_required": "Thay đổi này cần tài liệu hỗ trợ, mà tệp nhập không thể mang theo. Hãy ghi nhận biến động này ở thẻ Biến động.",
+          "movement_document_not_enabled": "Loại sự kiện này không nhận tài liệu hỗ trợ cho trường này."
         },
         "v2": {
           "type": "Loại Biến động",
@@ -2447,8 +2485,24 @@
             "eventType": "Loại sự kiện",
             "systemField": "Trường hệ thống",
             "before": "Trước",
-            "after": "Sau"
-          }
+            "after": "Sau",
+            "action": "Thao tác",
+            "movementId": "Mã sự kiện biến động",
+            "reason": "Lý do"
+          },
+          "action": {
+            "create": "Tạo",
+            "update": "Cập nhật",
+            "delete": "Xóa"
+          },
+          "guideAction": "Thao tác: để trống hoặc chọn Tạo để ghi nhận biến động mới. Chọn Cập nhật để sửa một biến động hiện có hoặc Xóa để hoàn tác nó. Cập nhật và Xóa cần Mã sự kiện biến động và Lý do.",
+          "guideMovementId": "Mã sự kiện biến động: sao chép từ cột Mã sự kiện biến động trong tệp tải xuống Lịch sử công việc của nhân viên (Tải Excel trên thẻ Biến động). Mã phải thuộc về nhân viên ở dòng đó.",
+          "guideUpdate": "Cập nhật: nhập một dòng cho mỗi trường cần sửa, với giá trị mới ở cột Sau. Ô trống giữ nguyên giá trị đã ghi nhận, kể cả Ngày hiệu lực hoặc Loại sự kiện để trống; không có gì bị xóa trắng. Xóa: một dòng để trống Trường hệ thống, Trước và Sau.",
+          "guideReason": "Lý do: vì sao biến động được sửa hoặc hoàn tác. Bắt buộc với Cập nhật và Xóa và được lưu trong lịch sử kiểm tra. Nếu bảng lương của kỳ đó đã đóng, bạn xác nhận điều đó trên màn hình trước khi lưu.",
+          "closedPayrollRow": "Bảng lương kỳ {periods} đã đóng.",
+          "closedPayrollTitle": "Một số chỉnh sửa thay đổi biến động thuộc kỳ lương đã đóng ({periods}).",
+          "closedPayrollBody": "Các chỉnh sửa này cập nhật hồ sơ nhân viên và việc xử lý về sau. Bảng lương đã đóng, phiếu lương đã phát hành và các tờ khai theo luật định giữ nguyên số liệu đã chốt và sẽ không được tính lại. Nếu không xác nhận, các nhân viên liên quan sẽ không được lưu.",
+          "closedPayrollAcknowledge": "Tôi hiểu rằng bảng lương đã đóng sẽ không thay đổi."
         }
       },
       "headerAssistance": {
@@ -3086,7 +3140,8 @@
         "cost_allocations": "Phân bổ trung tâm chi phí",
         "bank_statutory": "Ngân hàng & Luật định",
         "employee_full": "Tất cả — nhân viên mới",
-        "movement": "Biến động"
+        "movement": "Biến động",
+        "information_correction": "Chỉ chỉnh sửa thông tin"
       },
       "reference": "Mã tham chiếu",
       "referenceLabel": "Mã tham chiếu {reference}",
@@ -3158,12 +3213,61 @@
         "movement": "Biến động",
         "noMovement": "Không có mục lịch sử",
         "scheduled": "Đã lên lịch cho ngày hiệu lực",
-        "rows": "Dòng {rows}"
+        "rows": "Dòng {rows}",
+        "update": "Cập nhật biến động hiện có",
+        "delete": "Xóa: biến động đã được hoàn tác",
+        "reason": "Lý do: {reason}",
+        "closedPayroll": "Đã xác nhận bảng lương đã đóng: {periods}"
       },
       "employeeFull": {
         "created": "Đã tạo {code} · {name}",
         "willVoid": "Nhân viên này sẽ bị vô hiệu: bị loại khỏi danh sách, số lượng nhân sự và bảng lương, vẫn giữ trong nhật ký kiểm tra. Mã nhân viên, email và NRIC được giải phóng."
       }
+    },
+    "informationCorrection": {
+      "title": "Chỉ chỉnh sửa thông tin",
+      "hint": "Sửa thông tin việc làm mà không tính lại giao dịch đã hoàn tất.",
+      "mode": "Chế độ chỉnh sửa",
+      "existing": "Sửa tổ chức khi tuyển dụng",
+      "protection": "Bảng lương hoàn tất, phiếu lương đã phát hành, báo cáo chốt và dữ liệu nghĩa vụ, nghỉ phép, chấm công, tăng ca trước đây không thay đổi. Không tính lại lịch sử.",
+      "warning": "Thông tin sửa có thể ảnh hưởng lương, báo cáo nghĩa vụ và chính sách việc làm tương lai. Dùng quy trình biến động nhân sự cho điều chuyển và thay đổi nghiệp vụ thực tế.",
+      "field": "Trường",
+      "before": "Giá trị hiện tại",
+      "after": "Giá trị đề xuất",
+      "reason": "Lý do chỉnh sửa",
+      "review": "Xem lại chỉnh sửa",
+      "back": "Quay lại sửa",
+      "confirm": "Xác nhận chỉ chỉnh sửa thông tin",
+      "saving": "Đang lưu…",
+      "loading": "Đang tải…",
+      "saved": "Đã sửa thông tin. Giao dịch hoàn tất không thay đổi.",
+      "unchanged": "Không thay đổi — bỏ qua dòng này.",
+      "history": "Lịch sử chỉnh sửa",
+      "noHistory": "Chưa có bản ghi chỉ chỉnh sửa thông tin.",
+      "importHelp": "Mã công ty xác minh công ty hiện tại. Mã công ty mới không bắt buộc. Ô chỉnh sửa trống giữ nguyên giá trị. Xem mã hệ thống trên các trang tham chiếu. Tối đa 200 dòng.",
+      "template": "Tải mẫu Excel",
+      "file": "Tệp Excel (.xlsx)",
+      "validate": "Kiểm tra tệp",
+      "results": "Kết quả nhập",
+      "resultCounts": "{succeeded} thành công · {failed} thất bại · {unchanged} không đổi",
+      "previewCounts": "{total} dòng · {valid} chỉnh sửa hợp lệ · {invalid} lỗi",
+      "batchHistory": "Xem lịch sử lô nhập",
+      "row": "Dòng {row}",
+      "validOnly": "Chỉ áp dụng chỉnh sửa hợp lệ. Dòng thất bại không thay đổi thông tin nhân viên.",
+      "confirmValid": "Xác nhận {count} chỉnh sửa hợp lệ",
+      "fields": {
+        "companyId": "Công ty",
+        "hiredOn": "Ngày vào tập đoàn",
+        "joinDate": "Ngày vào làm",
+        "gradeId": "Bậc công việc",
+        "employmentType": "Loại việc làm"
+      },
+      "statuses": {
+        "applied": "Thành công",
+        "failed": "Thất bại",
+        "unchanged": "Không đổi"
+      },
+      "effective": "Xử lý trong tương lai sử dụng thông tin đã sửa từ {date}."
     }
   },
   "leave": {
@@ -6472,10 +6576,10 @@
       "publishStatePublished": "Đã công bố cho nhân viên",
       "unpublishedBannerTitle": "Các phiếu lương này chưa hiển thị với nhân viên",
       "unpublishedBannerBody": "Kỳ lương này đã được tính nhưng chưa công bố. Nhân viên không thể xem phiếu lương của mình cho đến khi bạn đóng kỳ. Việc đóng kỳ sẽ thông báo cho từng nhân viên trong kỳ này rằng phiếu lương đã sẵn sàng, và công bố phiếu lương — ngay lập tức, hoặc vào ngày phát hành phiếu lương đã cấu hình của công ty nếu có.",
-      "closeConfirmTitle": "Đóng kỳ lương này và công bố cho nhân viên?",
+      "closeConfirmTitle": "Bạn có chắc chắn muốn đóng bảng lương {month} và {cycle} không?",
       "closeConfirmBody": "Thao tác này công bố {n} phiếu lương cho nhân viên trong kỳ này và thông báo cho từng người. Việc công bố diễn ra ngay lập tức trừ khi công ty này có cấu hình ngày phát hành phiếu lương, khi đó sẽ được lên lịch vào ngày đó. Sau khi đóng, kỳ lương không thể thay đổi.",
-      "closeConfirmYes": "Có, đóng và công bố",
-      "closeDone": "Đã đóng kỳ lương — phiếu lương đã công bố cho nhân viên.",
+      "closeConfirmYes": "Có",
+      "closeDone": "Đã đóng đợt lương thành công.",
       "closeNotProcessed": "Chỉ có thể đóng kỳ lương đã được xử lý.",
       "closePermissionDenied": "Bạn không có quyền đóng kỳ lương.",
       "publishedBy": "Công bố bởi {actor} vào {when}",
@@ -6513,7 +6617,7 @@
         "reason": {
           "NO_TRANSACTION_FOR_CYCLE": "Không có giao dịch nào cho kỳ lương này",
           "NO_ADDITIONAL_PAY_THIS_RUN": "Không có khoản nào cho loại kỳ chạy này — lương hằng tháng cố định của họ được trả ở kỳ chạy thường",
-          "NOTHING_PAYABLE_THIS_PERIOD": "Không có lương cơ bản và không có khoản nào phải trả trong kỳ này — không chi trả gì nên không khai báo gì",
+          "NOTHING_PAYABLE_THIS_PERIOD": "Không có lương cơ bản hằng tháng và không có khoản nào phải trả trong tháng này.",
           "DEDUCTION_ONLY_THIS_PERIOD": "Chỉ có một khoản trừ đang chờ mà không có lương để trừ — trừ từ số không sẽ thành nợ nhân viên"
         }
       },
@@ -6661,11 +6765,16 @@
       "preChecksNothingPayableNoRemark": "Không có lý do nào được ghi trên hồ sơ lương.",
       "reprocessGapNothingPayable": "không có lương cơ bản hằng tháng",
       "reprocessReasonNothingPayable": "Được cố ý để ra ngoài lần chạy này — không có lương cơ bản hằng tháng và không có khoản nào phải trả trong tháng. Chỉ đánh dấu nếu sau đó đã nhập khoản nào cho họ.",
+      "reprocessGroupSkippedTitle": "Đã bỏ qua — {n} nhân viên không có gì để xử lý trong tháng này",
+      "reprocessGroupSkippedNote": "Không được đánh dấu và không tính là chờ xử lý: bảng lương đã đánh giá họ và không có khoản nào phải trả. Nếu có khoản được nhập cho họ trong tháng này, họ sẽ trở lại Mới / Chờ xử lý, và bạn vẫn có thể tự đánh dấu họ.",
+      "reprocessStatusSkipped": "Đã bỏ qua",
       "preChecksBadgeLegend": "Mục đánh dấu “Chặn xử lý” phải được sửa trước lần chạy này. Mục đánh dấu “Cảnh báo” vẫn xử lý được sau khi bạn xác nhận. Mục đánh dấu “Sẽ được để ra ngoài” không cần bạn làm gì cả.",
       "reprocessOutcomeStatus": {
         "reprocessed": "Đã xử lý lại",
         "skipped": "Đã bỏ qua",
-        "validation_failed": "Cấu hình chưa đầy đủ"
+        "validation_failed": "Cấu hình chưa đầy đủ",
+        "excluded": "Đã loại trừ",
+        "not_eligible": "Không đủ điều kiện"
       },
       "reprocessNothingPayableFull": "Không xác định được khoản thu nhập phải trả trong kỳ lương này. Lương không được tính lại. Phiếu lương, danh sách của đợt lương, giao dịch và lịch sử hiện có được giữ nguyên.",
       "reprocessSucceededReason": "Đã lưu kết quả tính lương mới cho nhân viên này.",
@@ -6678,7 +6787,7 @@
       "reprocessReviewPcbConfiguration": "Kiểm tra cấu hình PCB",
       "reprocessOutcomeRecordedAt": "Ghi nhận lúc {at}",
       "reprocessOutcomeTitle": "Kết quả của nhân viên đã chọn",
-      "reprocessOutcomeSummary": "Đã chọn: {selected} · Đã xử lý lại: {succeeded} · Đã bỏ qua: {skipped} · Cấu hình chưa đầy đủ: {failed}",
+      "reprocessOutcomeSummary": "Đã chọn: {selected} · Đã xử lý lại: {succeeded} · Đã bỏ qua: {skipped} (đã hoàn tất — không có khoản phải trả) · Cấu hình chưa đầy đủ: {failed}",
       "reprocessStoppedPartial": "Việc xử lý đã dừng trước khi hoàn tất tất cả nhân viên đã chọn. Các kết quả đã lưu vẫn có hiệu lực. Kiểm tra chúng trước khi thử lại.",
       "reprocessOutcomeStatusHeading": "Trạng thái xử lý",
       "reprocessOutcomeCategoryHeading": "Phân loại thuế",
@@ -6686,7 +6795,36 @@
       "reprocessLegacyOutcomeUnavailable": "Tác vụ trước đây không ghi nhận kết quả từng người. Lịch sử tính toán đã lưu vẫn có ở bên dưới.",
       "publishStateHistory": "Lịch sử đã nhập",
       "historyNoPayment": "Nhập lịch sử không ghi nhận ngày thanh toán.",
-      "unlockOverwrittenByImport": "Một phiếu lương trong đợt này đã bị ghi đè bởi Nhập lịch sử lương. Hãy hoàn tác lần nhập đó từ Log File trước khi mở khóa đợt."
+      "unlockOverwrittenByImport": "Một phiếu lương trong đợt này đã bị ghi đè bởi Nhập lịch sử lương. Hãy hoàn tác lần nhập đó từ Log File trước khi mở khóa đợt.",
+      "reprocessExclusion_RESIGNED_BEFORE_PERIOD": "Đã nghỉ việc trước tháng lương này.",
+      "reprocessExclusion_RESIGNED_BEFORE_PERIODDated": "Đã nghỉ việc trước tháng lương này (ngày làm việc cuối {date}).",
+      "reprocessExclusion_JOINED_AFTER_PERIOD": "Vào làm sau tháng lương này.",
+      "reprocessExclusion_JOINED_AFTER_PERIODDated": "Vào làm sau tháng lương này (ngày vào làm {date}).",
+      "reprocessExclusion_NOT_WITH_COMPANY_IN_PERIOD": "Không thuộc công ty này trong tháng lương này.",
+      "reprocessExclusion_NOT_WITH_COMPANY_IN_PERIODDated": "Không thuộc công ty này trong tháng lương này (chuyển đi ngày {date}).",
+      "reprocessExcludedRemoved": "Kết quả trước đó của nhân viên cho tháng này đã được gỡ khỏi kỳ lương và lưu trong lịch sử. Các kỳ trả góp khoản vay, yêu cầu bồi hoàn và giao dịch một lần mà kết quả đó đã dùng đều được giải phóng. Khoản thanh toán đã thực hiện không bị hoàn lại; hãy dùng các bước điều chỉnh hiện có cho việc đó.",
+      "reprocessNotEligibleRemovalOff": "Kết quả trước đó vẫn được giữ, vì tính năng gỡ nhân viên khỏi kỳ lương đang tắt cho công ty của bạn hoặc bạn không có quyền đó. Quản trị viên có thể gỡ bằng “Gỡ nhân viên khỏi kỳ lương này”.",
+      "reprocessNotEligibleLastOnRun": "Kết quả trước đó vẫn được giữ, vì đây là nhân viên duy nhất còn lại trong kỳ lương này. Hãy đặt lại kỳ lương để xóa kết quả.",
+      "reprocessOutcomeExclusionSummary": "Đã loại trừ: {excluded} · Không đủ điều kiện: {notEligible}",
+      "reprocessStopped_BATCH_NOT_PROCESSED": "Đã dừng xử lý: kỳ lương này không còn ở trạng thái Đã xử lý (có thể đã được phê duyệt, chi trả hoặc đặt lại). Các kết quả đã lưu vẫn hợp lệ. Hãy dùng các bước điều chỉnh hiện có cho kỳ lương đã chuyển sang bước tiếp theo.",
+      "reprocessStopped_PERIOD_CLOSED": "Đã dừng xử lý: kỳ trả lương của lần chạy này đã đóng. Các kết quả đã lưu vẫn hợp lệ. Hãy mở lại kỳ theo các bước hiện có trước khi xử lý lại.",
+      "reprocessStopped_PERMISSION_DENIED": "Đã dừng xử lý: bạn không còn quyền xử lý lại kỳ lương này. Các kết quả đã lưu vẫn hợp lệ. Hãy yêu cầu quản trị viên cấp quyền.",
+      "reprocessStopped_SUPERSEDED": "Đã dừng xử lý: một lần thử khác đã tiếp quản lần xử lý lại này. Các kết quả đã lưu vẫn hợp lệ. Hãy tải lại để xem kết quả mới nhất trước khi thử lại.",
+      "recalcChangeLine": "{name}: {changes}",
+      "recalcChangeCategory": {
+        "termination": "ngày nghỉ việc hoặc chấm dứt đã thay đổi",
+        "hire_date": "ngày vào làm đã thay đổi",
+        "transfer": "việc chuyển công ty đã thay đổi",
+        "compensation": "lương đã thay đổi",
+        "statutory": "thiết lập theo luật định đã thay đổi"
+      },
+      "closeConfirmNo": "Không",
+      "closeBack": "Quay lại Xử lý lương",
+      "closeSummaryPayslips": "Phiếu lương",
+      "closeBlockedPending": "Không thể đóng kỳ lương này: {n} nhân viên đủ điều kiện cho kỳ lương này vẫn ở trạng thái Mới / Chờ xử lý: {names}. Hãy xử lý họ bằng Xử lý lại trước, sau đó đóng lại.",
+      "closeBlockedReprocessRunning": "Không thể đóng kỳ lương này khi việc xử lý lại vẫn đang chạy. Hãy chờ xử lý lại hoàn tất, sau đó đóng lại.",
+      "closeBlockedReprocessFailed": "Không thể đóng kỳ lương này: lần xử lý lại gần nhất đã thất bại cho {n} nhân viên: {names}. Hãy khắc phục vấn đề được báo cáo và xử lý lại cho họ, sau đó đóng lại.",
+      "closeBlockedAndMore": " và {n} người khác"
     },
     "transactions": {
       "title": "Nhập liệu giao dịch",
@@ -7058,6 +7196,7 @@
         "dayGridDays": "Số ngày",
         "dayGridEmpty": "Hãy thêm ít nhất một ngày trước khi lưu.",
         "dayGridRoundingHint": "Mỗi ngày được tính và làm tròn đến xu riêng, nên tổng của nhiều ngày có thể lệch một xu so với cùng số lượng nhập thành một con số.",
+        "dayGridCalendarDaysHint": "Số ngày theo lịch trong tháng theo Ngày hiệu lực của từng dòng, nên các ngày ở những tháng khác nhau được tính riêng (ví dụ 30 cho tháng 9, 29 cho tháng 2 năm 2024).",
         "dayGridNoRuleHint": "Mục lương này chưa đặt công thức nên số tiền của từng ngày phải nhập tay. Hãy đặt công thức cho mục trong Danh mục mục lương và hệ thống sẽ tự tính.",
         "dayGridViewDays": "Hiện các ngày đằng sau tổng này",
         "dayGridEditHint": "Để sửa hoặc xóa một trong số này, hãy chuyển danh sách phía trên sang Theo giao dịch.",
@@ -7282,6 +7421,8 @@
           "capped": "Đang hiển thị {cap} kết quả gần nhất. Hãy thu hẹp bộ lọc phía trên để xem các tháng trước.",
           "itemsHeading": "Các khoản lương chi tiết",
           "itemsNote": "Các khoản một lần đã được tính trong tổng ở trên. Các khoản chỉ ghi nhận không phải thu nhập tiền mặt; phúc lợi chịu thuế có thể ảnh hưởng đến PCB và lương thực nhận.",
+          "nonPayableHeading": "Các khoản không chi trả",
+          "nonPayableNote": "Không chi trả cho nhân viên và không tính vào tổng lương hoặc lương thực nhận.",
           "itemRemark": "Được nhập là “{remark}”",
           "sourceHeading": "Các khoản này đến từ đâu",
           "sourceNote": "Các giao dịch riêng lẻ được ghi nhận cho nhân viên này trong kỳ tính lương này. Chúng được liệt kê bên cạnh các khoản đã ghi nhận chứ không ghép cặp với chúng: hai bản ghi có thể trùng khoản lương và số tiền, nên chỉ người nhập mới biết bản ghi nào ứng với khoản nào.",
@@ -7669,7 +7810,7 @@
       "skipReason": {
         "NO_TRANSACTION_FOR_CYCLE": "Không có giao dịch nào cho kỳ lương này",
         "NO_ADDITIONAL_PAY_THIS_RUN": "Không có khoản nào cho loại kỳ chạy này — lương hằng tháng cố định của họ được trả ở kỳ chạy thường",
-        "NOTHING_PAYABLE_THIS_PERIOD": "Không có lương cơ bản và không có khoản nào phải trả trong kỳ này — không chi trả gì nên không khai báo gì",
+        "NOTHING_PAYABLE_THIS_PERIOD": "Không có lương cơ bản hằng tháng và không có khoản nào phải trả trong tháng này.",
         "DEDUCTION_ONLY_THIS_PERIOD": "Chỉ có một khoản trừ đang chờ mà không có lương để trừ — trừ từ số không sẽ thành nợ nhân viên"
       },
       "overall": {
@@ -15203,7 +15344,7 @@
     "previewNote": "Hiển thị cho một kỳ ĐẦY ĐỦ, trước khi chia theo tỷ lệ và làm tròn — bảng lương áp dụng những bước đó khi chạy.",
     "previewFailed": "Không thể tính kết quả cho nhân viên đó.",
     "operand_fixed_allowances": "Tất cả phụ cấp cố định",
-    "formulaDivisionNote": "Bạn có thể chia cho một giá trị thực tế như số ngày hoặc số giờ làm việc. Nếu giá trị đó bằng 0 với một nhân viên, mục lương này không trả gì cho nhân viên đó và kỳ lương vẫn hoàn tất — hãy xem bản xem trước tại đây trước khi dựa vào nó.",
+    "formulaDivisionNote": "Chỉ để tham khảo — công thức này hợp lệ và có thể lưu. Công thức chia cho một giá trị thay đổi theo nhân viên hoặc theo ngày, như số ngày theo lịch trong tháng, số ngày làm việc hoặc số giờ làm việc. Nếu giá trị đó bằng 0 với một nhân viên, mục lương này không trả gì cho nhân viên đó và kỳ lương vẫn hoàn tất. Hãy kiểm tra số tiền với một nhân viên bên dưới.",
     "previewZeroDivisor": "Mục này trả RM 0.00 cho nhân viên này vì \"{divisor}\" bằng 0 ở bước {step}. Kỳ lương vẫn sẽ hoàn tất.",
     "formulaLine": "Công thức này đọc là",
     "formulaLineHint": "Dấu ngoặc thể hiện thứ tự các bước vốn đã chạy, từ trên xuống dưới — cách tính không có gì thay đổi.",
@@ -16495,7 +16636,7 @@
   },
   "movementSettings": {
     "title": "Cài đặt biến động",
-    "description": "Các loại sự kiện nghề nghiệp mà HR có thể ghi nhận cho nhân viên. Đổi tên cho khớp với cách gọi của tổ chức bạn, tắt những loại không dùng, và thêm loại của riêng bạn.",
+    "description": "Các loại sự kiện nghề nghiệp mà HR có thể ghi nhận cho nhân viên, và các lý do chấm dứt mà chúng cung cấp.",
     "behaviourNotice": "Một vài loại sự kiện có hệ quả thực sự — Chấm dứt kết thúc việc làm, Xác nhận hoàn tất thử việc, sửa ngày gia nhập làm thay đổi phép năm. Bạn có thể đổi tên hoặc tắt chúng; bạn không thể thay đổi việc chúng làm. Loại sự kiện của riêng bạn chỉ ghi nhận những thông tin bạn nhập.",
     "catalogTitle": "Loại sự kiện",
     "save": "Lưu",
@@ -16520,7 +16661,10 @@
       "behaviour": "Việc nó làm",
       "status": "Trạng thái",
       "action": "Thao tác",
-      "created": "Ngày tạo"
+      "created": "Ngày tạo",
+      "classification": "Phân loại",
+      "description": "Mô tả",
+      "group": "Nhóm"
     },
     "status": {
       "active": "Đang dùng",
@@ -16528,7 +16672,7 @@
       "all": "Tất cả"
     },
     "searchPlaceholder": "Tìm loại sự kiện hoặc mã…",
-    "createNew": "+ Thêm sự kiện biến động",
+    "createNew": "+ Thêm loại sự kiện",
     "edit": "Sửa",
     "editTitle": "Sửa loại sự kiện",
     "editHint": "Đổi tên cho khớp với cách gọi của tổ chức bạn. Loại có sẵn giữ nguyên chức năng; chỉ loại do bạn tạo mới đổi được hành vi.",
@@ -16536,7 +16680,95 @@
     "empty": "Không có loại sự kiện nào khớp với tìm kiếm này.",
     "builtIn": "Có sẵn",
     "saving": "Đang lưu…",
-    "close": "Đóng"
+    "close": "Đóng",
+    "tabs": {
+      "types": "Loại sự kiện",
+      "reasons": "Lý do chấm dứt"
+    },
+    "classification": {
+      "termination": "Chấm dứt",
+      "nonTermination": "Không chấm dứt"
+    },
+    "noDescription": "Không có mô tả",
+    "deleteBlocked": {
+      "title": "Không thể xóa {name}",
+      "inUse": "Loại này đã được các biến động ghi nhận sử dụng. Xóa nó sẽ khiến lịch sử của những nhân viên đó không có tên, nên hệ thống giữ lại.",
+      "builtIn": "Đây là một trong các loại sự kiện tiêu chuẩn có sẵn trong hệ thống, nên không thể xóa.",
+      "switchOffInstead": "Bạn có thể tắt nó. Nó sẽ không còn hiển thị khi HR ghi nhận biến động mới, và các bản ghi đang dùng nó vẫn giữ nguyên ý nghĩa.",
+      "alreadyOff": "Loại này đã tắt, nên không còn hiển thị khi HR ghi nhận biến động mới. Các bản ghi đang dùng nó vẫn giữ nguyên ý nghĩa."
+    },
+    "config": {
+      "newTitle": "Thêm loại sự kiện",
+      "newSubtitle": "Loại sự kiện của riêng bạn",
+      "builtInType": "Loại sự kiện tiêu chuẩn",
+      "customType": "Loại sự kiện của riêng bạn",
+      "breadcrumb": "Đường dẫn",
+      "code": "Mã (lưu trên mọi bản ghi, không thể thay đổi)",
+      "codeAuto": "Được tạo từ tên khi bạn lưu",
+      "sections": {
+        "general": "Thông tin chung",
+        "classification": "Phân loại",
+        "description": "Mô tả",
+        "reasons": "Lý do chấm dứt",
+        "fields": "Kiểm soát trường"
+      },
+      "classificationHint": "Được xác định bởi việc loại sự kiện này làm: Chấm dứt sẽ kết thúc việc làm, mọi loại khác là Không chấm dứt.",
+      "optional": "(không bắt buộc)",
+      "descriptionHint": "Hiển thị cho HR bên dưới loại sự kiện khi ghi nhận biến động mới.",
+      "descriptionPlaceholder": "vd. Điều chuyển sang vai trò mới sau khi tái cấu trúc.",
+      "classificationLocked": "Đã khóa: loại này đã được dùng bởi các biến động đã ghi nhận.",
+      "classificationBuiltIn": "Các loại sự kiện tiêu chuẩn giữ phân loại cố định.",
+      "reasonsHint": "Đánh dấu các lý do HR có thể chọn khi ghi nhận loại sự kiện này.",
+      "reasonsAllHint": "Không đánh dấu lý do nào: mọi lý do đang dùng đều được cung cấp.",
+      "reasonsManageHint": "Lý do được thêm, đổi tên hoặc tắt ở thẻ Lý do chấm dứt.",
+      "fieldsHint": "Chọn những thông tin việc làm mà loại sự kiện này thay đổi. HR chỉ thấy các trường bạn đưa vào khi ghi nhận.",
+      "fieldsNotApplicable": "Kiểm soát trường áp dụng cho các loại sự kiện thay đổi thông tin việc làm. Loại sự kiện này không thay đổi.",
+      "fieldsCompanyLocked": "Luôn được thay đổi bởi Điều chuyển pháp nhân.",
+      "fieldColumns": {
+        "field": "Trường",
+        "include": "Muốn thay đổi",
+        "edit": "Cho phép sửa",
+        "mustChange": "Bắt buộc thay đổi",
+        "file": "Bật tệp"
+      },
+      "fieldGroups": {
+        "organisation": "Phân công tổ chức",
+        "labels": "Nhãn tổ chức bổ sung",
+        "salary": "Lương cơ bản"
+      },
+      "documents": {
+        "none": "Tắt",
+        "optional": "Tùy chọn",
+        "required": "Bắt buộc"
+      }
+    },
+    "reasons": {
+      "createNew": "+ Thêm lý do",
+      "add": "Thêm lý do",
+      "addTitle": "Thêm lý do chấm dứt",
+      "addHint": "Đặt tên theo cách tổ chức của bạn dùng và chọn nhóm. Sau đó lý do sẽ hiển thị khi HR ghi nhận chấm dứt.",
+      "renameTitle": "Đổi tên lý do chấm dứt",
+      "renameHint": "Các bản ghi đã dùng lý do này vẫn giữ nó và sẽ hiển thị tên mới.",
+      "rename": "Đổi tên",
+      "namePlaceholder": "vd. Thỏa thuận chấm dứt",
+      "groupPlaceholder": "— Chọn nhóm —",
+      "groupFixed": "Nhóm quyết định cách tính trường hợp nghỉ việc trong báo cáo biến động nhân sự và chấm dứt, nên không thể thay đổi sau khi đã thêm lý do.",
+      "notice": "Ba nhóm này cố định vì chúng được dùng cho báo cáo biến động nhân sự và chấm dứt.",
+      "inUse": "Đã được các trường hợp chấm dứt ghi nhận sử dụng",
+      "emptyGroup": "Không có lý do nào trong nhóm này.",
+      "deactivateConfirmTitle": "Tắt lý do này?",
+      "deactivateConfirmDescription": "Lý do sẽ không còn hiển thị khi HR ghi nhận chấm dứt. Các trường hợp chấm dứt đã dùng lý do này vẫn giữ nguyên. Bạn có thể bật lại bất cứ lúc nào.",
+      "activateConfirmTitle": "Bật lý do này?",
+      "activateConfirmDescription": "Lý do sẽ hiển thị lại khi HR ghi nhận chấm dứt.",
+      "deleteConfirmTitle": "Xóa lý do này?",
+      "deleteConfirmDescription": "Lý do sẽ bị xóa khỏi danh sách. Chỉ áp dụng cho lý do của riêng bạn chưa được trường hợp chấm dứt nào sử dụng.",
+      "deleteBlocked": {
+        "inUse": "Lý do này đã được các trường hợp chấm dứt ghi nhận sử dụng. Xóa nó sẽ khiến các bản ghi đó không có tên lý do, nên hệ thống giữ lại.",
+        "builtIn": "Đây là một trong các lý do tiêu chuẩn có sẵn trong hệ thống, nên không thể xóa.",
+        "switchOffInstead": "Bạn có thể tắt nó. Lý do sẽ không còn hiển thị khi HR ghi nhận chấm dứt, và các bản ghi đang dùng vẫn giữ nguyên lý do.",
+        "alreadyOff": "Lý do này đã tắt, nên không còn hiển thị khi HR ghi nhận chấm dứt. Các bản ghi đang dùng vẫn giữ nguyên lý do."
+      }
+    }
   },
   "hiringDefaults": {
     "title": "Mặc định tuyển dụng",
@@ -18948,7 +19180,9 @@
             "auto": "Quy định pháp định",
             "voluntary_excess": "Đóng thêm tự nguyện",
             "exempt": "Miễn",
-            "manual_amount": "Số tiền cố định"
+            "manual_amount": "Số tiền cố định",
+            "manual_percentage": "Tỷ lệ thủ công",
+            "topup_percentage": "Đóng thêm trên tỷ lệ thông thường"
           },
           "epfCitizenship": {
             "citizen": "Công dân Malaysia",
@@ -25928,7 +26162,8 @@
       "review_required": "Cần xem xét nguồn, định danh hoặc lỗi liên kết.",
       "invalid": "Kiểm tra trường, kết quả mong đợi và quyết định đã chọn.",
       "limit": "Đã vượt giới hạn kích thước hoặc số bản ghi.",
-      "module_unavailable": "Tài khoản này chưa bật Kiểm thử hệ thống."
+      "module_unavailable": "Tài khoản này chưa bật Kiểm thử hệ thống.",
+      "feedback_unavailable": "Phản hồi đã bị tắt cho tài khoản này."
     },
     "updateReasons": {
       "new_reviewed_guide": "Hướng dẫn mới đã xem xét",
@@ -28535,6 +28770,14 @@
     }
   },
   "operatorWorkspace": {
+    "feedbackMenu": "Menu Phản hồi",
+    "shown": "Đang hiển thị",
+    "hidden": "Đã ẩn",
+    "feedbackMenuOnHelp": "Nhân sự của khách hàng này có thể thấy menu Phản hồi và gửi phản hồi. Ẩn menu sẽ gỡ menu và đóng các trang Phản hồi; phản hồi hiện có vẫn được giữ lại.",
+    "feedbackMenuOffHelp": "Menu Phản hồi đang bị ẩn với khách hàng này và các trang của nó đã đóng. Phản hồi hiện có vẫn được giữ và sẽ xuất hiện lại khi menu được hiển thị.",
+    "feedbackMenuHide": "Ẩn menu Phản hồi",
+    "feedbackMenuShow": "Hiển thị menu Phản hồi",
+    "feedbackMenuSaved": "Đã cập nhật menu Phản hồi.",
     "workspace": "Không gian vận hành",
     "customers": "Khách hàng",
     "provisioning": "Khởi tạo",

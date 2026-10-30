@@ -963,8 +963,10 @@
       "epfManualEmployeeRateRequired": "Employee Rate % is required when EPF Category is Manual (by percentage).",
       "epfManualEmployerRateRequired": "Employer Rate % is required when EPF Category is Manual (by percentage).",
       "epfManualRateRange": "Enter a percentage from 1% to 100%.",
-      "epfManualAdoptionPreview": "This record currently uses a top-up election, which keeps the statutory minimum. Changing to Manual (by percentage) will use the two entered rates exactly; no existing election changes until you confirm and save.",
-      "epfManualAdoptionConfirm": "I have reviewed the entered rates and confirm this change to Manual (by percentage).",
+      "epfTopupEmployeeRate": "Top-up Employee Rate %",
+      "epfTopupEmployerRate": "Top-up Employer Rate %",
+      "epfTopupRateRange": "Enter a top-up from 0% to {max}%. The normal EPF rate plus the top-up cannot be more than 100%.",
+      "epfTopupLegacyHint": "These boxes still show this employee's full rates from before top-ups were added on top of the normal rate. Saving them unchanged keeps today's contribution. If you change either box, both boxes are saved as top-ups added to the normal EPF rate.",
       "epfModeManualPercentage": "Manual (by percentage)",
       "epfModeSemiAuto": "Semi-Auto (employee rate only)",
       "epfModeManualEmployeeAmount": "Manual (Employee by Amount)",
@@ -977,7 +979,7 @@
       "epfEmployeeAmount": "Employee amount (RM per month)",
       "epfEmployerAmount": "Employer amount (RM per month)",
       "epfManualReason": "Reason for the fixed amount",
-      "epfElectionHint": "Voluntary excess (i-Topup, KWSP Form 17A/18A) sets a rate at or above the statutory 11%/13%; a blank side stays statutory. The Manual (by Amount) categories use an exact ringgit figure instead of a rate, and a reason is required for them. Exempt is for legitimately-exempt employees only.",
+      "epfElectionHint": "Top-up (KWSP i-Topup, Form 17A/18A) adds the entered percentage on top of the normal EPF rate on each side; Semi-Auto sets the employee's total rate at or above the statutory 11%. A blank side stays statutory. The Manual (by Amount) categories use an exact ringgit figure instead of a rate, and a reason is required for them. Exempt is for legitimately-exempt employees only.",
       "terminationType": "Termination type",
       "terminationTypeUnspecified": "— Unspecified —",
       "terminationVoluntary": "Voluntary (resignation)",
@@ -1015,7 +1017,7 @@
       "dateError": "Effective end date cannot be before the effective start date.",
       "amountError": "Amount must be greater than zero.",
       "currencyUnsupported": "Only MYR is supported — payroll is computed in MYR.",
-      "epfVoluntaryHint": "Enter each side's total rate at or above the statutory floor (employee 11%, employer 12–13%). Leave a side blank to keep it statutory.",
+      "epfVoluntaryHint": "Enter only the extra percentage to add on top of the normal EPF rate: with a normal 11% employee rate, a 1% top-up makes 12%. 0 or blank adds nothing. The normal rate still follows the usual EPF rules (age, citizenship and wage band).",
       "epfSemiAutoHint": "Enter the employee rate at or above the statutory 11%. The employer side stays automatic (statutory).",
       "workState": "Work state",
       "grade": "Grade",
@@ -1636,7 +1638,8 @@
           "endDate": "End Date",
           "remarks": "Remarks",
           "action": "Action",
-          "correctionReason": "Correction Reason"
+          "correctionReason": "Correction Reason",
+          "movementId": "Movement Event ID"
         },
         "detail": {
           "eventInformation": "Event Information",
@@ -1649,7 +1652,8 @@
           "backToHistory": "Back to history",
           "recordedBy": "Recorded by",
           "recordedAt": "Recorded at",
-          "system": "System"
+          "system": "System",
+          "documents": "Supporting documents"
         },
         "field": {
           "company": "Company",
@@ -1744,7 +1748,14 @@
           "entityTransferHint": "Choose the company the employee is moving to. The Business Unit, Department, Position and Work Location lists below now show the destination company’s options — pick a Department there. Their employee ID, Group Join Date and history stay exactly as they are.",
           "selectPlaceholder": "Select…",
           "pendingTargetUnavailable": "A saved target is no longer available in your current choices or access scope. This correction cannot be saved. Review the pending event before continuing.",
-          "resignationLifecycleHint": "Resignation information takes effect on the Effective Date. Record the tender date, resignation date and last working date separately."
+          "resignationLifecycleHint": "Resignation information takes effect on the Effective Date. Record the tender date, resignation date and last working date separately.",
+          "closedPayrollTitle": "Payroll for {periods} is already closed.",
+          "closedPayrollBody": "This correction updates the employee's record and future processing. The closed payroll, released payslips and statutory submissions keep their finalised figures and will not be recalculated. If an amount needs adjusting, use the payroll correction process. A corrected salary takes effect from the first month after the closed payroll.",
+          "closedPayrollAcknowledge": "I understand that closed payroll will not change.",
+          "mustChange": "Required to change",
+          "mustChangeRefused": "{field} must change for this event type. Enter the new value.",
+          "documentOptional": "Supporting document (optional)",
+          "documentRequired": "Supporting document (required when this changes)"
         },
         "edit": "Edit",
         "rollback": "Roll Back",
@@ -1838,7 +1849,8 @@
           "originalHeading": "Originally recorded",
           "correctedHeading": "Corrected",
           "noneValue": "None"
-        }
+        },
+        "payrollClosedBadge": "Payroll closed: {periods}"
       },
       "salaryCurrency": "Currency",
       "emergency": {
@@ -2322,6 +2334,9 @@
           "workbook_columns_changed": "The workbook headings or column layout changed. Download a new workbook and keep its headings unchanged.",
           "workbook_identity_changed": "A prefilled Employee ID was changed. Download the correct employees or use the blank full workbook.",
           "workbook_structure_invalid": "The workbook structure is not supported. Download a new workbook.",
+          "workbook_damaged": "The file is damaged or is not a valid Excel workbook. Save it again in Excel or download a new workbook.",
+          "workbook_too_large": "The workbook is larger than this import supports. Keep only the downloaded sheets and at most 200 movement rows, or download a new workbook.",
+          "no_movement_entries": "There are no movement entries to check. Enter at least one row on the Movements sheet below the headings, then upload the file again.",
           "workbook_password_not_supported": "Password-protected workbooks are not supported. Use the original workbook without a password.",
           "workbook_unexpected_sheet": "The workbook contains an unexpected nonempty tab. Keep the original movement tabs.",
           "workbook_business_value_invalid": "A workbook value is too long or contains an internal reference. Correct the source value before downloading.",
@@ -2354,7 +2369,30 @@
           "duplicate_system_field": "The same System Field appears more than once for this movement.",
           "system_field_required": "Choose the System Field this row changes, or leave Before and After blank.",
           "before_mismatch": "Before does not match the employee’s current record; it has changed since the file was prepared. This employee is not imported.",
-          "workbook_old_layout": "This file uses the old Movement template (one sheet per movement type for one company). Download the new template and copy your rows into it."
+          "workbook_old_layout": "This file uses the old Movement template (one sheet per movement type for one company). Download the new template and copy your rows into it.",
+          "unknown_action": "Action must be Create, Update or Delete (leave it blank for Create).",
+          "movement_id_required": "Update and Delete need the Movement Event ID of the movement to change.",
+          "movement_id_unknown": "No movement with this Movement Event ID was found for this employee.",
+          "movement_id_other_employee": "This Movement Event ID belongs to another employee. Check the Employee ID on this row.",
+          "movement_already_rolled_back": "This movement has already been rolled back.",
+          "movement_superseded": "This movement was overtaken by a later one and never took effect, so there is nothing to change.",
+          "movement_hire_not_supported": "The hire cannot be changed by import. Use Correct hire details on the Movement tab.",
+          "movement_update_not_supported": "This event type cannot be updated by import. Correct it on the Movement tab.",
+          "movement_not_correctable": "This movement cannot be changed as requested",
+          "movement_id_not_for_create": "Leave Movement Event ID blank for a new movement, or choose Update or Delete.",
+          "reason_not_for_create": "Reason is only used for Update and Delete. Use Remarks for a new movement.",
+          "reason_required": "Enter a Reason for every Update and Delete.",
+          "not_applicable_on_delete": "Leave System Fields, Before and After blank on a Delete row.",
+          "conflicting_values": "Rows for the same movement give different values",
+          "duplicate_movement_id": "The same Movement Event ID appears in more than one Update or Delete. Name each movement once.",
+          "increment_amount_not_for_update": "Increment Amount cannot be used to update a movement. Enter the corrected Basic Salary instead.",
+          "event_mismatch": "Does not match the movement with this Movement Event ID",
+          "closed_payroll_acknowledgement_required": "Payroll is already closed for this movement. Tick the closed-payroll confirmation before saving",
+          "movement_field_not_included": "This event type does not change this field.",
+          "movement_field_not_editable": "This field cannot be edited for this event type.",
+          "movement_field_must_change": "This event type requires this field to change.",
+          "movement_document_required": "This change needs a supporting document, which an import cannot carry. Record this movement on the Movement tab instead.",
+          "movement_document_not_enabled": "This event type does not take a supporting document for this field."
         },
         "v2": {
           "type": "Movement type",
@@ -2447,8 +2485,24 @@
             "eventType": "Event Type",
             "systemField": "System Fields",
             "before": "Before",
-            "after": "After"
-          }
+            "after": "After",
+            "action": "Action",
+            "movementId": "Movement Event ID",
+            "reason": "Reason"
+          },
+          "action": {
+            "create": "Create",
+            "update": "Update",
+            "delete": "Delete"
+          },
+          "guideAction": "Action: leave it blank or choose Create to record a new movement. Choose Update to correct an existing movement or Delete to roll it back. Update and Delete need the Movement Event ID and a Reason.",
+          "guideMovementId": "Movement Event ID: copy it from the Movement Event ID column of the employee’s Employment History download (Download Excel on the Movement tab). It must belong to the employee in that row.",
+          "guideUpdate": "Update: enter one row for each field to correct, with the new value in After. Blank cells keep the recorded value, including a blank Effective Date or Event Type; nothing is cleared. Delete: one row with System Fields, Before and After left blank.",
+          "guideReason": "Reason: why the movement is being corrected or rolled back. It is required for Update and Delete and is kept in the audit history. Where payroll for the period is already closed, you confirm that on screen before saving.",
+          "closedPayrollRow": "Payroll for {periods} is already closed.",
+          "closedPayrollTitle": "Some corrections change movements behind closed payroll ({periods}).",
+          "closedPayrollBody": "These corrections update the employees’ records and future processing. The closed payroll, released payslips and statutory submissions keep their finalised figures and will not be recalculated. Without this confirmation, the employees concerned are not saved.",
+          "closedPayrollAcknowledge": "I understand that closed payroll will not change."
         }
       },
       "headerAssistance": {
@@ -3086,7 +3140,8 @@
         "cost_allocations": "Cost Center Allocation",
         "bank_statutory": "Bank & Statutory",
         "employee_full": "Everything — new employees",
-        "movement": "Movement"
+        "movement": "Movement",
+        "information_correction": "Information-Only Correction"
       },
       "reference": "Reference",
       "referenceLabel": "Reference {reference}",
@@ -3158,12 +3213,61 @@
         "movement": "Movement",
         "noMovement": "No history entry",
         "scheduled": "Scheduled for its effective date",
-        "rows": "Rows {rows}"
+        "rows": "Rows {rows}",
+        "update": "Update of an existing movement",
+        "delete": "Delete: movement rolled back",
+        "reason": "Reason: {reason}",
+        "closedPayroll": "Closed payroll confirmed: {periods}"
       },
       "employeeFull": {
         "created": "Created {code} · {name}",
         "willVoid": "This employee will be voided: removed from lists, headcount and payroll, kept in the audit trail. The Employee ID, email and NRIC are freed."
       }
+    },
+    "informationCorrection": {
+      "title": "Information-Only Correction",
+      "hint": "Correct existing employment information without recalculating completed transactions.",
+      "mode": "Correction mode",
+      "existing": "Organisation hire correction",
+      "protection": "Completed payroll, released payslips, finalized reports, historical statutory, leave, attendance and overtime stay unchanged. No historical recalculation will run.",
+      "warning": "Corrected information may affect future payroll, statutory reporting and employment policies. Use Employment Movement for genuine transfers and operational changes.",
+      "field": "Field",
+      "before": "Existing value",
+      "after": "Proposed value",
+      "reason": "Correction reason",
+      "review": "Review corrections",
+      "back": "Back to edit",
+      "confirm": "Confirm information-only correction",
+      "saving": "Saving…",
+      "loading": "Loading…",
+      "saved": "Information corrected. Completed transactions remain unchanged.",
+      "unchanged": "Unchanged — this row will be skipped.",
+      "history": "Correction history",
+      "noHistory": "No information-only corrections recorded.",
+      "importHelp": "Company Code verifies the existing company. New Company Code is optional. Blank correction cells mean unchanged. Use the reference sheets for system codes. Maximum 200 rows.",
+      "template": "Download Excel template",
+      "file": "Excel file (.xlsx)",
+      "validate": "Validate file",
+      "results": "Import results",
+      "resultCounts": "{succeeded} successful · {failed} failed · {unchanged} unchanged",
+      "previewCounts": "{total} rows · {valid} valid corrections · {invalid} errors",
+      "batchHistory": "View import batch history",
+      "row": "Row {row}",
+      "validOnly": "Only valid corrections will be applied. An unsuccessful row changes nothing for that employee.",
+      "confirmValid": "Confirm {count, plural, one {# valid correction} other {# valid corrections}}",
+      "fields": {
+        "companyId": "Company",
+        "hiredOn": "Group Join Date",
+        "joinDate": "Join Date",
+        "gradeId": "Job Grade",
+        "employmentType": "Employment Type"
+      },
+      "statuses": {
+        "applied": "Successful",
+        "failed": "Failed",
+        "unchanged": "Unchanged"
+      },
+      "effective": "Future processing uses these corrected details from {date}."
     }
   },
   "leave": {
@@ -5748,10 +5852,10 @@
       "publishStatePublished": "Published to employees",
       "unpublishedBannerTitle": "These payslips are not visible to employees yet",
       "unpublishedBannerBody": "This run is calculated but not published. Employees cannot see their payslips until you close it. Closing notifies every employee in this run that their payslip is ready, and publishes it — immediately, or on the company's configured payslip release date where one is set.",
-      "closeConfirmTitle": "Close this run and publish it to employees?",
+      "closeConfirmTitle": "Are you sure you want to close payroll for {month} and {cycle}?",
       "closeConfirmBody": "This publishes {n} payslip(s) to the employees in this run and notifies each of them. Publication is immediate unless this company has a configured payslip release date, in which case it is scheduled for that date. Once closed, the run is immutable.",
-      "closeConfirmYes": "Yes, close and publish",
-      "closeDone": "Payroll closed — payslips published to employees.",
+      "closeConfirmYes": "Yes",
+      "closeDone": "Payroll batch closed successfully.",
       "closeNotProcessed": "Only a processed payroll process can be closed.",
       "closePermissionDenied": "You do not have permission to close a payroll process.",
       "publishedBy": "Published by {actor} on {when}",
@@ -5789,7 +5893,7 @@
         "reason": {
           "NO_TRANSACTION_FOR_CYCLE": "No transaction entry for this payroll cycle",
           "NO_ADDITIONAL_PAY_THIS_RUN": "Nothing for this run type — their standing monthly pay is paid by the regular run",
-          "NOTHING_PAYABLE_THIS_PERIOD": "No basic salary and nothing payable this period — nothing was paid, so nothing was filed",
+          "NOTHING_PAYABLE_THIS_PERIOD": "No monthly basic salary and nothing was payable this month.",
           "DEDUCTION_ONLY_THIS_PERIOD": "Only a deduction was waiting and no pay to take it from — deducting from nothing would owe them money"
         }
       },
@@ -5937,11 +6041,16 @@
       "preChecksNothingPayableNoRemark": "No reason was recorded on the salary record.",
       "reprocessGapNothingPayable": "no monthly basic salary",
       "reprocessReasonNothingPayable": "Deliberately left out of this run — no monthly basic salary and nothing was payable this month. Tick them only if something has been keyed for them since.",
+      "reprocessGroupSkippedTitle": "Skipped — {n} employee(s) with nothing to process this month",
+      "reprocessGroupSkippedNote": "Not ticked and not counted as pending: payroll has already evaluated them and there was nothing to pay. If something is keyed for them this month they move back to New / Pending, and you can still tick them by hand.",
+      "reprocessStatusSkipped": "Skipped",
       "preChecksBadgeLegend": "Anything marked “Blocks processing” must be fixed before this run. Anything marked “Warning” can still be processed, after you confirm it. Anything marked “Will be skipped” needs nothing from you.",
       "reprocessOutcomeStatus": {
         "reprocessed": "Reprocessed",
         "skipped": "Skipped",
-        "validation_failed": "Configuration incomplete"
+        "validation_failed": "Configuration incomplete",
+        "excluded": "Excluded",
+        "not_eligible": "Not eligible"
       },
       "reprocessNothingPayableFull": "No payable earnings were resolved for this pay period. Payroll recalculation was not performed. Existing payslip, run membership, transactions and history were retained.",
       "reprocessSucceededReason": "A new payroll result was saved for this employee.",
@@ -5954,7 +6063,7 @@
       "reprocessReviewPcbConfiguration": "Review PCB configuration",
       "reprocessOutcomeRecordedAt": "Recorded at {at}",
       "reprocessOutcomeTitle": "Selected employee outcomes",
-      "reprocessOutcomeSummary": "Selected: {selected} · Reprocessed: {succeeded} · Skipped: {skipped} · Configuration incomplete: {failed}",
+      "reprocessOutcomeSummary": "Selected: {selected} · Reprocessed: {succeeded} · Skipped: {skipped} (completed — nothing payable) · Configuration incomplete: {failed}",
       "reprocessStoppedPartial": "Processing stopped before all selected employees finished. Saved outcomes remain valid. Review them before trying again.",
       "reprocessOutcomeStatusHeading": "Processing status",
       "reprocessOutcomeCategoryHeading": "Tax category",
@@ -5962,7 +6071,36 @@
       "reprocessLegacyOutcomeUnavailable": "This earlier job did not record individual outcomes. Its saved calculation history remains available below.",
       "publishStateHistory": "Imported history",
       "historyNoPayment": "No payment date is recorded by a history import.",
-      "unlockOverwrittenByImport": "A payslip in this run was overwritten by Import Payroll History. Revert that import from its Log File before unlocking the run."
+      "unlockOverwrittenByImport": "A payslip in this run was overwritten by Import Payroll History. Revert that import from its Log File before unlocking the run.",
+      "reprocessExclusion_RESIGNED_BEFORE_PERIOD": "Resigned before this payroll month.",
+      "reprocessExclusion_RESIGNED_BEFORE_PERIODDated": "Resigned before this payroll month (last day {date}).",
+      "reprocessExclusion_JOINED_AFTER_PERIOD": "Joins after this payroll month.",
+      "reprocessExclusion_JOINED_AFTER_PERIODDated": "Joins after this payroll month (join date {date}).",
+      "reprocessExclusion_NOT_WITH_COMPANY_IN_PERIOD": "Not with this company during this payroll month.",
+      "reprocessExclusion_NOT_WITH_COMPANY_IN_PERIODDated": "Not with this company during this payroll month (moved on {date}).",
+      "reprocessExcludedRemoved": "Their previous result for this month was removed from the run and kept in history. Loan instalments, claims and one-off transactions it used were released. A payment already made is not reversed; use the existing correction steps for that.",
+      "reprocessNotEligibleRemovalOff": "Their previous result is kept, because removing employees from a run is switched off for your company or you do not have that permission. An administrator can remove it with “Remove employees from this run”.",
+      "reprocessNotEligibleLastOnRun": "Their previous result is kept, because they are the only employee left on this run. Reset the run instead to clear it.",
+      "reprocessOutcomeExclusionSummary": "Excluded: {excluded} · Not eligible: {notEligible}",
+      "reprocessStopped_BATCH_NOT_PROCESSED": "Processing stopped: this run is no longer in Processed status (it may have been approved, paid or reset). Saved outcomes remain valid. Use the existing correction steps for a run that has moved on.",
+      "reprocessStopped_PERIOD_CLOSED": "Processing stopped: the pay period for this run is closed. Saved outcomes remain valid. Reopen the period through the existing steps before reprocessing.",
+      "reprocessStopped_PERMISSION_DENIED": "Processing stopped: you no longer have permission to reprocess this run. Saved outcomes remain valid. Ask an administrator for access.",
+      "reprocessStopped_SUPERSEDED": "Processing stopped: another attempt took over this reprocess. Saved outcomes remain valid. Refresh to see the latest result before trying again.",
+      "recalcChangeLine": "{name}: {changes}",
+      "recalcChangeCategory": {
+        "termination": "resignation or termination date changed",
+        "hire_date": "join date changed",
+        "transfer": "company transfer changed",
+        "compensation": "salary changed",
+        "statutory": "statutory settings changed"
+      },
+      "closeConfirmNo": "No",
+      "closeBack": "Back to Payroll Process",
+      "closeSummaryPayslips": "Payslips",
+      "closeBlockedPending": "This run cannot be closed: {n} employee(s) eligible for this run are still New / Pending: {names}. Process them with Reprocess first, then close again.",
+      "closeBlockedReprocessRunning": "This run cannot be closed while a reprocess is still running on it. Wait for the reprocess to finish, then close again.",
+      "closeBlockedReprocessFailed": "This run cannot be closed: the latest reprocess failed for {n} employee(s): {names}. Fix the reported problem and reprocess them, then close again.",
+      "closeBlockedAndMore": " and {n} more"
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -7058,6 +7196,7 @@
         "dayGridDays": "Dates",
         "dayGridEmpty": "Add at least one date before saving.",
         "dayGridRoundingHint": "Each date is worked out and rounded to the cent on its own, so a set of dates can total a cent away from the same quantity entered as one figure.",
+        "dayGridCalendarDaysHint": "Calendar days in the month follow each line's own Effective Date, so dates in different months are worked out separately (for example 30 for September, 29 for February 2024).",
         "dayGridNoRuleHint": "This pay item has no formula set, so the amount for each date is entered by hand. Set a formula on the item in Payroll Item Master and it will be worked out for you.",
         "dayGridViewDays": "Show the dates behind this total",
         "dayGridEditHint": "To change or remove one of these, switch the list above to By transaction.",
@@ -7282,6 +7421,8 @@
           "capped": "Showing the {cap} most recent results. Narrow the filters above to see earlier months.",
           "itemsHeading": "Itemised payroll items",
           "itemsNote": "One-off items are included in the totals above. Record-only items are not cash earnings; taxable benefits can affect PCB and net pay.",
+          "nonPayableHeading": "Non-payable amounts",
+          "nonPayableNote": "Not paid to the employee and not included in gross or net pay.",
           "itemRemark": "Entered as “{remark}”",
           "sourceHeading": "Where these came from",
           "sourceNote": "The individual transactions recorded against this employee on this payroll run. They are listed beside the recorded items rather than matched to them: two entries can share a pay item and an amount, so only the person who keyed them can say which is which.",
@@ -7669,7 +7810,7 @@
       "skipReason": {
         "NO_TRANSACTION_FOR_CYCLE": "No transaction entry for this payroll cycle",
         "NO_ADDITIONAL_PAY_THIS_RUN": "Nothing for this run type — their standing monthly pay is paid by the regular run",
-        "NOTHING_PAYABLE_THIS_PERIOD": "No basic salary and nothing payable this period — nothing was paid, so nothing was filed",
+        "NOTHING_PAYABLE_THIS_PERIOD": "No monthly basic salary and nothing was payable this month.",
         "DEDUCTION_ONLY_THIS_PERIOD": "Only a deduction was waiting and no pay to take it from — deducting from nothing would owe them money"
       },
       "overall": {
@@ -15203,7 +15344,7 @@
     "previewNote": "Shown for a FULL period, before proration and rounding — payroll applies those when the run happens.",
     "previewFailed": "Could not work out a result for that employee.",
     "operand_fixed_allowances": "All fixed allowances",
-    "formulaDivisionNote": "You may divide by a live value such as days or hours worked. If it is zero for an employee, this pay item pays nothing for that employee and the run still completes — check the preview here before you rely on it.",
+    "formulaDivisionNote": "For information only — this formula is valid and can be saved. It divides by a value that differs per employee or per date, such as calendar days in the month, days worked or hours worked. If that value is zero for an employee, this pay item pays nothing for that employee and the payroll run still completes. Check the figure against an employee below.",
     "previewZeroDivisor": "This pays RM 0.00 for this employee because \"{divisor}\" is zero at step {step}. The payroll run will still complete.",
     "formulaLine": "This formula reads",
     "formulaLineHint": "The brackets show the order the steps already run in, top to bottom — nothing about how this is calculated has changed.",
@@ -16495,7 +16636,7 @@
   },
   "movementSettings": {
     "title": "Movement Settings",
-    "description": "The career event types HR can record on an employee. Rename them to match the language your organisation uses, switch off the ones you do not use, and add your own.",
+    "description": "The career event types HR can record on an employee, and the termination reasons they offer.",
     "behaviourNotice": "A few event types drive real consequences — Termination ends employment, Confirmation completes probation, a join-date correction changes leave entitlement. You can rename those or switch them off; you cannot change what they do. Your own event types are recorded on the employee and change only the details you enter.",
     "catalogTitle": "Event Types",
     "save": "Save",
@@ -16520,7 +16661,10 @@
       "behaviour": "What It Does",
       "status": "Status",
       "action": "Action",
-      "created": "Created"
+      "created": "Created",
+      "classification": "Classification",
+      "description": "Description",
+      "group": "Group"
     },
     "status": {
       "active": "Active",
@@ -16528,7 +16672,7 @@
       "all": "All"
     },
     "searchPlaceholder": "Search event type or code…",
-    "createNew": "+ Add Movement Event",
+    "createNew": "+ Add Event Type",
     "edit": "Edit",
     "editTitle": "Edit Event Type",
     "editHint": "Rename it to match the language your organisation uses. A built-in type keeps what it does; only your own types can be re-pointed.",
@@ -16536,7 +16680,95 @@
     "empty": "No event types match this search.",
     "builtIn": "Built-in",
     "saving": "Saving…",
-    "close": "Close"
+    "close": "Close",
+    "tabs": {
+      "types": "Event Types",
+      "reasons": "Termination Reasons"
+    },
+    "classification": {
+      "termination": "Termination",
+      "nonTermination": "Non-Termination"
+    },
+    "noDescription": "No description",
+    "deleteBlocked": {
+      "title": "{name} cannot be deleted",
+      "inUse": "It is already used by recorded movements. Deleting it would leave those employees' history without a name, so the system keeps it.",
+      "builtIn": "It is one of the standard event types the system ships with, so it cannot be removed.",
+      "switchOffInstead": "You can switch it off instead. It stops appearing when HR records a new movement, and the records that use it keep their meaning.",
+      "alreadyOff": "It is already switched off, so it no longer appears when HR records a new movement. The records that use it keep their meaning."
+    },
+    "config": {
+      "newTitle": "Add Event Type",
+      "newSubtitle": "Your own event type",
+      "builtInType": "Standard event type",
+      "customType": "Your own event type",
+      "breadcrumb": "Breadcrumb",
+      "code": "Code (kept on every record, cannot change)",
+      "codeAuto": "Created from the name when you save",
+      "sections": {
+        "general": "General Information",
+        "classification": "Classification",
+        "description": "Description",
+        "reasons": "Termination Reasons",
+        "fields": "Field Controls"
+      },
+      "classificationHint": "Set by what the event type does: Termination ends employment, everything else is Non-Termination.",
+      "optional": "(optional)",
+      "descriptionHint": "Shown to HR under the event type when they record a new movement.",
+      "descriptionPlaceholder": "e.g. Reassignment to a new role after a restructure.",
+      "classificationLocked": "Locked: this type is already used by recorded movements.",
+      "classificationBuiltIn": "Standard event types keep their fixed classification.",
+      "reasonsHint": "Tick the reasons HR can choose when recording this event type.",
+      "reasonsAllHint": "None ticked: every active reason is offered.",
+      "reasonsManageHint": "Reasons are added, renamed or switched off on the Termination Reasons tab.",
+      "fieldsHint": "Choose which employment details this event type changes. HR sees only the fields you include when recording it.",
+      "fieldsNotApplicable": "Field Controls apply to event types that change employment details. This event type does not.",
+      "fieldsCompanyLocked": "Always changed by an Entity Transfer.",
+      "fieldColumns": {
+        "field": "Field",
+        "include": "Want to Change This",
+        "edit": "Allow to Edit",
+        "mustChange": "Required to Change",
+        "file": "File Enabled"
+      },
+      "fieldGroups": {
+        "organisation": "Organisation Assignment",
+        "labels": "Additional Organisation Labels",
+        "salary": "Basic Salary"
+      },
+      "documents": {
+        "none": "Off",
+        "optional": "Optional",
+        "required": "Required"
+      }
+    },
+    "reasons": {
+      "createNew": "+ Add Reason",
+      "add": "Add Reason",
+      "addTitle": "Add a Termination Reason",
+      "addHint": "Give it the name your organisation uses and choose its group. It then appears when HR records a termination.",
+      "renameTitle": "Rename Termination Reason",
+      "renameHint": "Records that already use this reason keep it; they show the new name.",
+      "rename": "Rename",
+      "namePlaceholder": "e.g. Mutual Separation",
+      "groupPlaceholder": "— Choose a group —",
+      "groupFixed": "The group decides how the exit is counted in the turnover and termination reports, so it cannot be changed after the reason is added.",
+      "notice": "The three groups are fixed because they feed the turnover and termination reports.",
+      "inUse": "Used by recorded terminations",
+      "emptyGroup": "No reasons in this group.",
+      "deactivateConfirmTitle": "Switch this reason off?",
+      "deactivateConfirmDescription": "It stops appearing when HR records a termination. Terminations that already use it keep their reason. You can switch it back on at any time.",
+      "activateConfirmTitle": "Switch this reason on?",
+      "activateConfirmDescription": "It appears again when HR records a termination.",
+      "deleteConfirmTitle": "Delete this reason?",
+      "deleteConfirmDescription": "It is removed from the list. This is only offered for your own reasons that no termination uses yet.",
+      "deleteBlocked": {
+        "inUse": "It is already used by recorded terminations. Deleting it would leave those records without a reason name, so the system keeps it.",
+        "builtIn": "It is one of the standard reasons the system ships with, so it cannot be removed.",
+        "switchOffInstead": "You can switch it off instead. It stops appearing when HR records a termination, and the records that use it keep their reason.",
+        "alreadyOff": "It is already switched off, so it no longer appears when HR records a termination. The records that use it keep their reason."
+      }
+    }
   },
   "hiringDefaults": {
     "title": "Hiring Defaults",
@@ -18948,7 +19180,9 @@
             "auto": "Statutory rules",
             "voluntary_excess": "Voluntary excess",
             "exempt": "Exempt",
-            "manual_amount": "Fixed amount"
+            "manual_amount": "Fixed amount",
+            "manual_percentage": "Manual percentage",
+            "topup_percentage": "Top-up on the normal rate"
           },
           "epfCitizenship": {
             "citizen": "Malaysian citizen",
@@ -25928,7 +26162,8 @@
       "review_required": "Source, identity or linked defect review is required.",
       "invalid": "Check the fields, expected results and selected decisions.",
       "limit": "The supported size or record limit was exceeded.",
-      "module_unavailable": "System Testing is not enabled for this account."
+      "module_unavailable": "System Testing is not enabled for this account.",
+      "feedback_unavailable": "Feedback is turned off for this account."
     },
     "updateReasons": {
       "new_reviewed_guide": "New reviewed guide",
@@ -28535,6 +28770,14 @@
     }
   },
   "operatorWorkspace": {
+    "feedbackMenu": "Feedback menu",
+    "shown": "Shown",
+    "hidden": "Hidden",
+    "feedbackMenuOnHelp": "This customer's people can see the Feedback menu and raise feedback. Hiding it removes the menu and closes the Feedback pages; existing feedback is kept.",
+    "feedbackMenuOffHelp": "The Feedback menu is hidden for this customer and its pages are closed. Existing feedback is kept and returns when the menu is shown again.",
+    "feedbackMenuHide": "Hide Feedback menu",
+    "feedbackMenuShow": "Show Feedback menu",
+    "feedbackMenuSaved": "Feedback menu updated.",
     "workspace": "Operator workspace",
     "customers": "Customers",
     "provisioning": "Provisioning",

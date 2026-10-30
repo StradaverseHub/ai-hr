@@ -30,7 +30,7 @@
 import { useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Loader2, Plus, Sparkles, X } from 'lucide-react';
+import { Info, Loader2, Plus, Sparkles, X } from 'lucide-react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { Button, Field, inputCls } from '@/components/ui';
 import {
@@ -514,8 +514,21 @@ export function PayRuleEditor({
               must know about BEFORE they save: an employee for whom that value is zero is paid nothing for
               this item. Shown only when the formula actually does it, so it is a consequence of a choice
               just made rather than standing boilerplate everyone learns to skip. */}
-          {terms.some((s) => s.op === '/' && s.operand.ref !== 'number') && (
-            <p className="rounded-md bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">{t('formulaDivisionNote')}</p>
+          {/* 34062f81 — IT IS AN ADVISORY, AND IT MUST LOOK LIKE ONE. Drawn in amber it read as a refusal: the
+              reporter took "Basic Salary / Calendar days in the month × Days worked" — a formula that
+              validates and saves — to be rejected. It is now a neutral, icon-led note (role="note"), shown
+              only while the formula IS valid, and it says so in its first words. A genuine validation
+              failure keeps its own red errors.* message beside the Prorates box, so the two can never be
+              confused. Parser validation and the runtime zero-divisor guard are unchanged. */}
+          {validation.ok && terms.some((s) => s.op === '/' && s.operand.ref !== 'number') && (
+            <p
+              role="note"
+              data-testid="formula-division-advisory"
+              className="flex items-start gap-2 rounded-md border border-border bg-muted/40 p-2 text-xs text-muted-foreground"
+            >
+              <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+              <span>{t('formulaDivisionNote')}</span>
+            </p>
           )}
 
           {/* Five columns since e318eaec: operator · what · value · NAME FOR THAT VALUE · remove. */}

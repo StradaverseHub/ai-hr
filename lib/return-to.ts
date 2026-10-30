@@ -110,12 +110,28 @@ export function payrollListReturnTo(raw: unknown): string {
  * also accepts `/payroll/…` sub-paths, where `status=` means nothing).
  */
 export function payrollListAfterReset(raw: unknown): string {
+  return payrollListShowingStatus(raw, 'draft');
+}
+
+/**
+ * cdb1c6ca — the same rule for a successful CLOSE from the list's Close Batch screen. Close is offered on
+ * PROCESSED rows only, so "Status: Processed" (or "Reprocess Required") is the filter the operator is most
+ * likely standing in, and the run is about to read Closed. The plan promises "the row shows Closed", so a
+ * status filter that would hide the closed run is cleared — for exactly the reasons set out above — and
+ * every other filter is kept.
+ */
+export function payrollListAfterClose(raw: unknown): string {
+  return payrollListShowingStatus(raw, 'closed');
+}
+
+/** The list as left, minus a status filter that would hide a run now in `status`. */
+function payrollListShowingStatus(raw: unknown, status: 'draft' | 'closed'): string {
   const dest = payrollListReturnTo(raw);
   const [path, query = ''] = dest.split('?', 2);
   if (path !== '/payroll') return dest;
   const params = query.split('&').filter(Boolean);
   // Defensive on the plural: the control emits at most one today, but `applyFilters` intersects a set.
-  if (!params.some((p) => p.startsWith('status=') && p !== 'status=draft')) return dest;
+  if (!params.some((p) => p.startsWith('status=') && p !== `status=${status}`)) return dest;
   const kept = params.filter((p) => !p.startsWith('status='));
   return kept.length > 0 ? `${path}?${kept.join('&')}` : path;
 }

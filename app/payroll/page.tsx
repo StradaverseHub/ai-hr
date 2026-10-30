@@ -3,7 +3,7 @@ import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
-import { listBatches } from '@/core/payroll';
+import { listBatches, payrollCloseCompanyIds } from '@/core/payroll';
 import { listBatchProcessedDates } from '@/core/payroll-view';
 import { listCompanies } from '@/core/read';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
@@ -187,6 +187,14 @@ export default async function PayrollPage({
   // Only the VISIBLE page's runs are dated: the event read is keyed on the batch ids actually rendered,
   // so it costs one small indexed query no matter how many runs the year holds.
   const processedOn = await listBatchProcessedDates(s, batchPage.map((b) => b.id));
+  // cdb1c6ca — WHERE CLOSE BATCH IS OFFERED: the companies on this page where the operator may close
+  // payroll (payroll scope + the granular payroll.close key). Resolved once per COMPANY on the server —
+  // never per row in the client — and only for the processed rows actually rendered. Visibility only;
+  // closeBatch re-asserts the permission on every close.
+  const closeCompanies = await payrollCloseCompanyIds(
+    s,
+    batchPage.filter((b) => b.status === 'processed').map((b) => b.companyId),
+  );
 
   const unpublishedCount = allBatches.filter((b) => payrollPublicationState(b) === 'unpublished').length;
 
@@ -390,6 +398,20 @@ export default async function PayrollPage({
                   className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
                 >
                   {tb('removeAction')}
+                </Link>
+              )}
+              {/* cdb1c6ca — CLOSE BATCH, from the list. PROCESSED rows only (a draft has nothing to
+                  publish; a closed run is already closed) and only where the operator holds
+                  payroll.close for the row's company. A LINK to its own confirmation screen, never a
+                  dialog in this menu (9f8cd608): the screen names the month and pay cycle, says what
+                  closing does, and offers Yes / No. Placed before Reset, which stays last as the
+                  whole-run undo. */}
+              {b.status === 'processed' && closeCompanies.has(b.companyId) && (
+                <Link
+                  href={`/payroll/${b.id}/close?from=${fromQuery}`}
+                  className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:underline"
+                >
+                  {tb('closeBatch')}
                 </Link>
               )}
               {/* Reset / Zeroize (feedback a03b2d9b): PROCESSED rows only — a processed run is

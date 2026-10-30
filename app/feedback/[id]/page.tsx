@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { getFeedback } from '@/core/feedback';
+import { feedbackBoardOpen } from '@/app/feedback/board';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { formatFeedbackDateTime } from '@/lib/feedback-date';
 import { statusTone } from '../page';
@@ -63,6 +64,7 @@ export default async function FeedbackDetailPage({
 }) {
   const { id } = await params;
   const s = await getSession();
+  if (!feedbackBoardOpen(s)) notFound();
   const t = await getTranslations('feedback');
   const { error } = await searchParams;
   const fb = await getFeedback(s, id);

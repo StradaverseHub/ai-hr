@@ -25,7 +25,7 @@ describe('single-template Movement transport (ac6645ec)',()=>{
  it('confirms only the attempt, its hash and chosen employee keys; client rows, fingerprints and hashes are never forwarded',async()=>{
   const response=await POST(request('apply',{attemptId:'attempt',previewHash:'hash',employees:'["company|E1"]',acknowledgeExcluded:'true',fingerprints:'{"E1":"forged"}',records:'[{"row":1}]',inputHash:'forged'}));
   expect(response.status).toBe(200);const input=mocks.confirm.mock.calls[0][1];
-  expect(input).toMatchObject({attemptId:'attempt',previewHash:'hash',employees:['company|E1'],acknowledgeExcluded:true});expect(Object.keys(input).sort()).toEqual(['acknowledgeExcluded','attemptId','employees','previewHash','resolve']);
+  expect(input).toMatchObject({attemptId:'attempt',previewHash:'hash',employees:['company|E1'],acknowledgeExcluded:true});expect(Object.keys(input).sort()).toEqual(['acknowledgeClosedPayroll','acknowledgeExcluded','attemptId','employees','previewHash','resolve']);expect(input.acknowledgeClosedPayroll).toBe(false); // 646355e5 — only an explicit 'true' acknowledges closed payroll
  });
  it.each(['not json','{"a":1}','[1]'])('refuses a malformed employee selection %s before any write',async employees=>{
   const response=await POST(request('apply',{attemptId:'attempt',previewHash:'hash',employees}));expect(response.status).toBe(400);expect((await response.json()).error).toBe('invalid_selection');expect(mocks.confirm).not.toHaveBeenCalled();

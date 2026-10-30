@@ -513,6 +513,22 @@
       "occurrences": 1,
       "name": "movementId",
       "reason": "Guarded action record/subject pointer (movementId) used by MovementNewEvent; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "row",
+      "nameExpression": "`document.${field}`",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "1d58019a Step 2 (ADR-0166) supporting-document upload for a comparison field whose event type enables File; the file is movement evidence stored by core/movement-attachments.ts through the Movement writer, not a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "MovementNewEvent",
+      "name": "acknowledgeClosedPayroll",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "646355e5 (ADR-0164) closed-payroll acknowledgement on a movement correction: an instruction to the correction service (MovementClosedPayrollAcknowledgementError), not a Personnel fact. The checkbox shipped with 646355e5 without an exemption entry."
     }
   ],
   "app/admin/personnel/[employmentId]/hire-correction-form.tsx": [
@@ -790,14 +806,22 @@
       "reason": "Finite add/update/archive command discriminator for saveWorkforceRecordAction; both forms use the same canonical owner with fresh permission and version checks."
     }
   ],
-  "components/epf-election.tsx": [
+  "app/admin/personnel/information-correction-form.tsx": [
     {
-      "tag": "input",
-      "context": "EpfElectionBody",
+      "tag": "textarea",
+      "name": "informationCorrectionReason",
+      "context": "InformationForm",
       "hidden": false,
       "occurrences": 1,
-      "name": "epfManualPercentageAdoptionConfirmed",
-      "reason": "One transient human acknowledgement of changing a stored legacy top-up to explicit manual percentages. It is not a persisted Personnel fact; the scoped statutory action verifies confirmation against the locked current election before writing."
+      "reason": "Mandatory reason for the audited information-correction workflow; it is audit provenance, not an employee master fact, and the service validates its length."
+    },
+    {
+      "tag": "input",
+      "name": "correction-mode",
+      "context": "HireCorrectionModes",
+      "hidden": false,
+      "occurrences": 2,
+      "reason": "Finite choice between the existing operational workflow and information-only correction; it controls presentation and never submits an employee fact."
     }
   ]
 }

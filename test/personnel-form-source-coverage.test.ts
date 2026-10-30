@@ -57,7 +57,7 @@ describe('actual mounted Personnel form inventory',()=>{
     expect(controlCount).toBeGreaterThan(100);
     expect(boundaries.get('components/profile-option-select.tsx')).toContain('owning Personnel widget');
   });
-  it('owns EPF native requirements in descriptor context and bounds the transient conversion acknowledgement',()=>{
+  it('owns EPF native requirements in descriptor context and mounts no unbound acknowledgement',()=>{
     for(const side of ['employee','employer']){
       const id=`bank_statutory.epf_contribution.epf${side}rate`;
       expect(personnelInput(id,'edit',{epfManualPercentage:true}).required).toBe(true);
@@ -67,14 +67,15 @@ describe('actual mounted Personnel form inventory',()=>{
     const file='components/epf-election.tsx',source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
     const audit=(text:string)=>auditPersonnelFormSource(file,text,PERSONNEL_FIELDS,{exemptions:exemptions[file],resolveImportSource:personnelImportSourceReader(root)});
     expect(audit(source).issues).toEqual([]);
-    expect(exemptions[file].map(({tag,name,context,hidden,occurrences})=>({tag,name,context,hidden,occurrences}))).toEqual([{tag:'input',name:'epfManualPercentageAdoptionConfirmed',context:'EpfElectionBody',hidden:false,occurrences:1}]);
+    // b6dbadc5 — the 5e204d56 adoption tick box is retired, and with it the module's only exemption.
+    expect(exemptions[file]).toBeUndefined();
+    expect(source).not.toContain('name="epfManualPercentageAdoptionConfirmed"');
     const binding="personnelInput('bank_statutory.epf_contribution.epfemployeerate',formMode,{epfManualPercentage:manualPercentage})";
     expect(source).toContain(binding);
     expect(audit(source.replace(binding,binding+'} required={true')).issues.some(issue=>issue.message.includes('required bypasses descriptor'))).toBe(true);
-    const checkbox='<input type="checkbox" name="epfManualPercentageAdoptionConfirmed"';
-    expect(source).toContain(checkbox);
-    expect(audit(source.replace(checkbox,checkbox+' /><input type="checkbox" name="epfManualPercentageAdoptionConfirmed"')).issues.some(issue=>issue.message.includes('occurrence changed'))).toBe(true);
-    expect(audit(source.replace('name="epfManualPercentageAdoptionConfirmed"','name="unknownAcknowledgement"')).issues.some(issue=>issue.message.includes('Unbound Personnel control'))).toBe(true);
+    const anchor='{/* b6dbadc5 — the Manual (by percentage) adoption message';
+    expect(source).toContain(anchor);
+    expect(audit(source.replace(anchor,'<input type="checkbox" name="epfManualPercentageAdoptionConfirmed" />'+anchor)).issues.some(issue=>issue.message.includes('Unbound Personnel control'))).toBe(true);
   });
   it('keeps Workforce transport exemptions finite and refuses invented or cross-register bindings',()=>{
     for(const kind of ['person','qualification','emergency','dependent'] as const)for(const {key,field}of workforceMaintenanceFields(kind)){
@@ -146,4 +147,20 @@ describe('actual mounted Personnel form inventory',()=>{
     expect(extra).not.toBe(source);
     expect(auditPersonnelFormSource(file,extra,PERSONNEL_FIELDS,{exemptions:exemptions[file],resolveImportSource:personnelImportSourceReader(root)}).issues.some(issue=>issue.message.includes('occurrence changed'))).toBe(true);
   });
+  it('resolves the information workflow from its actual finite map and refuses invented or unbounded controls',()=>{
+    const file='app/admin/personnel/information-correction-form.tsx',source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
+    const reader=personnelImportSourceReader(root);
+    const audit=(text:string,resolveImportSource=reader)=>auditPersonnelFormSource(file,text,PERSONNEL_FIELDS,{exemptions:exemptions[file],resolveImportSource});
+    expect(audit(source)).toMatchObject({controls:5,issues:[]});
+    const binding='INFORMATION_FIELD_IDS[field]';expect(source).toContain(binding);
+    expect(audit(source.replaceAll(binding,'INFORMATION_FIELD_IDS[unregisteredKey]')).issues.some(issue=>issue.message.includes('Unresolved Personnel binding'))).toBe(true);
+    const wrongMap=(from:string,specifier:string)=>{const text=reader(from,specifier);return specifier==='@/lib/information-correction'?text?.replace('employment.employment_dates_and_service.hiredon','unregistered.personnel.fact'):text;};
+    expect(audit(source,wrongMap).issues.some(issue=>issue.message.includes('Unknown Personnel form field'))).toBe(true);
+    const unbounded=(from:string,specifier:string)=>{const text=reader(from,specifier);return specifier==='@/lib/information-correction'?text?.replace(/export const INFORMATION_FIELDS=\[[^\n]+\] as const;/,'export const INFORMATION_FIELDS=unboundedCorrectionKeys();'):text;};
+    expect(audit(source,unbounded).issues.some(issue=>issue.message.includes('Unresolved Personnel binding'))).toBe(true);
+    const reason='<textarea name="informationCorrectionReason"';expect(source).toContain(reason);
+    expect(audit(source.replace(reason,'<textarea name="informationCorrectionReason"/>'+reason)).issues.some(issue=>issue.message.includes('occurrence changed'))).toBe(true);
+    expect(exemptions[file].map(item=>({name:item.name,occurrences:item.occurrences}))).toEqual([{name:'informationCorrectionReason',occurrences:1},{name:'correction-mode',occurrences:2}]);
+  });
+
 });

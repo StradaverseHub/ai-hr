@@ -1,3 +1,4 @@
+import {HireCorrectionModes} from '../information-correction-form';
 import { getEmploymentCostAllocations } from '@/core/employment-cost-allocations';
 import { CostCenterAllocations } from '@/components/personnel/cost-center-allocations';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
@@ -94,6 +95,7 @@ import {
 import {
   movementHistory,
   movementDetail,
+  movementAttachments,
   movementPendingEditInput,
   resignationInformation,
   movementCurrentState,
@@ -108,9 +110,11 @@ import { partitionMovementRows } from '@/lib/movement-visibility';
 // and the screen cannot print different names for the same event.
 import { movementKindLabel as movementKindLabelOf } from '@/lib/movement-kind-label';
 // ae9350f2 — the built-in exit-reason catalogue behind the Termination movement.
-import { TERMINATION_REASONS } from '@/core/termination-reason';
+import { terminationReasonCatalogue } from '@/core/termination-reason-catalog';
 // 476f23ed — the tenant's configurable movement event-type catalogue.
 import { listMovementEventTypes } from '@/core/movement-type';
+// 1d58019a Step 2 — each type's offered reasons and Field Controls, for the New Event / Edit form.
+import { movementTypeControls, type MovementTypeControls } from '@/core/movement-type-controls';
 import { MovementNewEvent } from './movement-new-event';
 // c063eea9 — "Correct hire details" on the Hired row: the read behind the form, and its client island.
 import { HireCorrectionError, hireCorrectionView, type HireCorrectionField } from '@/core/hire-correction';
@@ -180,6 +184,15 @@ import { encashmentSnapshotForEmployment } from '@/core/leave-encashment';
 import { unfreezeEncashmentAction, adjustEncashmentAction } from './encashment-actions';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
+
+/** 1d58019a Step 2 — a movement document's field, as the existing `people.detail.movement.field.*` keys name it. */
+const MOVEMENT_DOCUMENT_FIELD_KEYS: Record<string, string> = {
+  companyId: 'company', businessUnitId: 'businessUnit', departmentId: 'department', positionId: 'position',
+  gradeId: 'grade', employmentType: 'employmentType', locationId: 'location', managerEmploymentId: 'manager',
+  basicSalary: 'basicSalary', currency: 'currency', payMode: 'payMode', paymentTerm: 'paymentTerm',
+  orgDivision: 'orgDivision', employmentCategory: 'employmentCategory', orgRegion: 'orgRegion', orgBranch: 'orgBranch',
+  orgTeam: 'orgTeam', orgSection: 'orgSection', orgLine: 'orgLine', orgBase: 'orgBase',
+};
 
 export default async function EmployeePage({
   params,
@@ -572,7 +585,20 @@ export default async function EmployeePage({
   // to the active ones below. A tenant that has configured nothing gets the built-in list unchanged.
   const movementTypes = admin ? await listMovementEventTypes(s) : [];
   const movementTypeByCode = new Map(movementTypes.map((r) => [r.code, r]));
+  // 1d58019a Step 2 (ADR-0166) — the controls the form applies on screen; the writer enforces them again.
+  const movementControls = admin ? await movementTypeControls(s, movementTypes) : new Map<string, MovementTypeControls>();
+  const typeControls = (code: string) => {
+    const c = movementControls.get(code);
+    return { reasonCodes: c?.reasonCodes ?? null, ...(c?.configured ? { rules: c.rules } : {}) };
+  };
+  // 1d58019a — the tenant's exit reasons (built-ins with its renames, plus its own), switched-off ones
+  // included and flagged: the New Event form offers the active ones and keeps a switched-off reason that a
+  // termination being corrected already carries.
+  const terminationReasonRows = admin ? await terminationReasonCatalogue(s) : [];
   const movementDetailData = admin && spMovement ? await movementDetail(s, employmentId, spMovement) : null;
+  // 1d58019a Step 2 — the movement's supporting documents; the service applies history visibility and the
+  // table's pay rule, so a document this admin may not see is simply not listed.
+  const movementDocuments = movementDetailData && spMovement ? await movementAttachments(s, employmentId, spMovement) : [];
   const resignationInfo = admin ? await resignationInformation(s, employmentId) : null;
   const costAllocationView = admin && emp.companyId ? await getEmploymentCostAllocations(s, employmentId) : null;
   /**
@@ -3291,6 +3317,16 @@ export default async function EmployeePage({
                         // and reverseMovementEvent refuses a blank one regardless — the dialog is not the
                         // only caller, so the control lives in the service and the form only mirrors it.
                         reasonField={{ name: 'reason', label: t('movement.correctionReasonLabel'), required: true }}
+                        // 646355e5 — a closed run no longer blocks the rollback; HR confirms it stays as issued.
+                        acknowledgement={
+                          m.payrollLocked
+                            ? {
+                                name: 'acknowledgeClosedPayroll',
+                                warning: `${t('movement.form.closedPayrollTitle', { periods: m.payrollClosedPeriods.join(', ') })} ${t('movement.form.closedPayrollBody')}`,
+                                label: t('movement.form.closedPayrollAcknowledge'),
+                              }
+                            : undefined
+                        }
                         variant="ghost"
                         size="sm"
                         className="h-auto p-0 text-sm font-normal text-primary hover:bg-transparent hover:underline"
@@ -3300,7 +3336,9 @@ export default async function EmployeePage({
                     </form>
                   )}
                   {m.payrollLocked && (
-                    <span className="text-xs text-muted-foreground">{t('movement.payrollLocked')}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {t('movement.payrollClosedBadge', { periods: m.payrollClosedPeriods.join(', ') })}
+                    </span>
                   )}
                 </div>
               </td>
@@ -3433,6 +3471,25 @@ export default async function EmployeePage({
           </ul>
         </div>
       )}
+      {movementDocuments.length > 0 && (
+        // 1d58019a Step 2 — the supporting documents recorded with this movement.
+        <section className="border-t border-border px-4 py-3 text-sm" aria-label={t('movement.detail.documents')}>
+          <h3 className="font-medium">{t('movement.detail.documents')}</h3>
+          <ul className="mt-2 space-y-1">
+            {movementDocuments.map((doc) => (
+              <li key={doc.id} className="flex flex-wrap items-baseline gap-2">
+                <span className="text-xs text-muted-foreground">{t(`movement.field.${MOVEMENT_DOCUMENT_FIELD_KEYS[doc.field] ?? 'salary'}` as 'movement.field.salary')}</span>
+                <a
+                  href={`/admin/personnel/${employmentId}/movement-documents/${doc.id}`}
+                  className="font-medium text-primary hover:underline"
+                >
+                  {doc.fileName}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {movementDetailData.pendingIntent ? (
         <section className="border-t border-border" aria-label={t('movement.detail.scheduledValues')}>
           <h3 className="px-4 pt-4 font-medium">{t('movement.detail.scheduledValues')}</h3>
@@ -3525,22 +3582,26 @@ export default async function EmployeePage({
         orgByCompany: movementOrgByCompany,
         profileOptions,
         employmentTypes: personnelFormChoices('employment.organisation_assignment.employmenttype').map(choice=>({value:choice.value,label:t(choice.labelKey.slice(14))})),
-        // ae9350f2 — the built-in exit-reason catalogue, pre-translated here (the island holds no server
-        // imports). `typeLabel` reuses the EXISTING termination-type labels, so the classification the
-        // reason derives reads the same everywhere it already appears (turnover analytics included).
-        terminationReasons: TERMINATION_REASONS.map((r) => ({
+        // ae9350f2 — the exit-reason catalogue, pre-translated here (the island holds no server imports).
+        // `typeLabel` reuses the EXISTING termination-type labels, so the classification the reason derives
+        // reads the same everywhere it already appears (turnover analytics included). 1d58019a — now the
+        // TENANT's catalogue: its own name wins, a built-in it never renamed keeps the shipped label.
+        terminationReasons: terminationReasonRows.map((r) => ({
           code: r.code,
           category: r.category,
           categoryLabel: t(`movement.terminationReasonCategory.${r.category}` as 'movement.terminationReasonCategory.voluntary'),
-          label: t(`movement.terminationReason.${r.code}` as 'movement.terminationReason.resignation'),
-          typeLabel: TERMINATION_TYPE_LABEL[r.type],
+          label:
+            r.label ??
+            (r.builtIn ? t(`movement.terminationReason.${r.code}` as 'movement.terminationReason.resignation') : r.code),
+          typeLabel: TERMINATION_TYPE_LABEL[r.terminationType],
+          active: r.active,
         })),
         // 476f23ed — the event types this organisation offers, already filtered to the active ones and
         // already labelled. The island holds no server imports, so the catalogue is resolved here; passing
         // `behaviourKind` is what lets the form ask for the right fields for one of their OWN types.
         types: movementTypes
           .filter((r) => r.active)
-          .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind })),
+          .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind, description: r.description, ...typeControls(r.code) })),
         cancelHref: `/admin/personnel/${employmentId}?tab=careerMovement`,
       }
     : null;
@@ -3556,7 +3617,8 @@ export default async function EmployeePage({
   // corrected. `canEdit` comes from the service, so a row the service would refuse never renders a form.
   // Include the edited code's metadata even if inactive; the client needs its resolved behavior.
   const movementEditRow = spEditMovement ? movements.find((m) => m.id === spEditMovement && m.canEdit) : undefined;
-  const movementEditInput = movementEditRow && (movementEditRow.status === 'pending' || movementEditRow.kind === 'resignation')
+  // 1d58019a Step 2 — termination is decided by the catalogue, so a tenant's own Termination type pre-fills too.
+  const movementEditInput = movementEditRow && (movementEditRow.status === 'pending' || movementEditRow.kind === 'resignation' || movementTypeByCode.get(movementEditRow.kind)?.behaviourKind === 'termination')
     ? await movementPendingEditInput(s, employmentId, movementEditRow.id) : null;
   const editEventCard = canCreateMovement && movementEditRow && movementFormProps ? (
     <Card id="section-movement-edit-event" className="overflow-hidden">
@@ -3566,7 +3628,7 @@ export default async function EmployeePage({
         {...movementFormProps}
         types={movementTypes
           .filter((r) => r.active || r.code === movementEditRow.kind)
-          .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind }))}
+          .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind, ...typeControls(r.code) }))}
         edit={{
           movementId: movementEditRow.id,
           kind: movementEditRow.kind,
@@ -3599,7 +3661,10 @@ export default async function EmployeePage({
                   ? ['entityTransfer']
                   : isComparisonKind(behaviour)
                     ? [...INTERCHANGEABLE_COMPARISON_KINDS]
-                    : [behaviour, 'secondment', 'actingPosition'];
+                    : // 646355e5 — exits are families of one; the service refuses any crossing.
+                      behaviour === 'termination' || behaviour === 'resignation'
+                      ? [behaviour]
+                      : [behaviour, 'secondment', 'actingPosition'];
             const codes = movementTypes
               .filter((r) => r.active && family.includes(r.behaviourKind))
               .map((r) => r.code);
@@ -3608,6 +3673,7 @@ export default async function EmployeePage({
             return Array.from(new Set([movementEditRow.kind, ...codes]));
           })(),
           payrollWarning: movementEditRow.payrollWarning,
+          payrollClosedPeriods: movementEditRow.payrollClosedPeriods,
         }}
       />
     </Card>
@@ -3686,13 +3752,13 @@ export default async function EmployeePage({
           return (
             <Card id="section-hire-correction" className="overflow-hidden">
               <SectionHeader title={t('movement.hireCorrection.title')} />
-              <HireCorrectionForm
+              <HireCorrectionModes employmentId={employmentId}><HireCorrectionForm
                 employmentId={employmentId}
                 heading={`${movementKindLabel('hired')} · ${formatDmy(hireCorrection.hiredOn)}`}
                 fields={fields}
                 readOnly={readOnly}
                 cancelHref={`/admin/personnel/${employmentId}?tab=careerMovement`}
-              />
+              /></HireCorrectionModes>
             </Card>
           );
         })()

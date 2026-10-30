@@ -41,7 +41,9 @@ export async function POST(request:Request){
    const raw=String(data.get('employees')??'');if(raw.length>20000)throw new Error('invalid_selection');
    let employees:unknown;try{employees=JSON.parse(raw);}catch{throw new Error('invalid_selection');}
    if(!Array.isArray(employees)||employees.length>200||employees.some(key=>typeof key!=='string'||key.length>300))throw new Error('invalid_selection');
-   const result=await confirmMovementUpload(ctx,{attemptId:String(data.get('attemptId')??''),previewHash:String(data.get('previewHash')??''),employees:employees as string[],acknowledgeExcluded:data.get('acknowledgeExcluded')==='true',resolve});
+   const result=await confirmMovementUpload(ctx,{attemptId:String(data.get('attemptId')??''),previewHash:String(data.get('previewHash')??''),employees:employees as string[],acknowledgeExcluded:data.get('acknowledgeExcluded')==='true',
+    // 646355e5 slice C — the closed-payroll confirmation box; the server decides where it is needed.
+    acknowledgeClosedPayroll:data.get('acknowledgeClosedPayroll')==='true',resolve});
    if(result.imported){revalidatePath('/admin/personnel');for(const employee of result.employees)if(employee.employmentId)revalidatePath('/admin/personnel/'+employee.employmentId);}
    revalidatePath('/admin/personnel/import/history');
    return reply({ok:true,result});

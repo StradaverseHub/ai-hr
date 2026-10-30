@@ -137,11 +137,12 @@ function renderWorkspace(
 ) {
   panelMock.mockResolvedValue(panel);
   previewOneMock.mockResolvedValue({ ok: true, derived: false });
-  previewManyMock.mockImplementation((input: { quantities: string[] }) =>
+  // 34062f81 — the request carries (date, quantity) pairs; each answer is echoed back with both.
+  previewManyMock.mockImplementation((input: { entries: { txnDate: string; quantity: string }[] }) =>
     Promise.resolve({
       ok: true,
       derived: true,
-      amounts: input.quantities.map((q) => ({ quantity: q, amount: (HOURLY * Number(q)).toFixed(2) })),
+      amounts: input.entries.map((e) => ({ ...e, amount: (HOURLY * Number(e.quantity)).toFixed(2) })),
       code: 'OT1_5',
       inputUnit: 'hours',
       zeroDivisor: null,
@@ -382,9 +383,13 @@ describe('4e403268 · the dated grid', () => {
     await screen.findAllByLabelText('Calculated amount');
 
     // Whatever the keystroke-by-keystroke history, the LAST call is the settled state — and it carries
-    // two quantities for three rows, because two of the rows ask the same question.
-    const last = previewManyMock.mock.calls.at(-1)?.[0] as { quantities: string[] };
-    expect(last.quantities).toEqual(['2', '3']);
+    // two quantities for three rows, because two of the rows ask the same question. 34062f81 — the rows
+    // have no date yet, so each pair carries '' and is priced against the pay month, as before.
+    const last = previewManyMock.mock.calls.at(-1)?.[0] as { entries: { txnDate: string; quantity: string }[] };
+    expect(last.entries).toEqual([
+      { txnDate: '', quantity: '2' },
+      { txnDate: '', quantity: '3' },
+    ]);
   });
 
   it('posts every line in ONE action — all of them or none', async () => {

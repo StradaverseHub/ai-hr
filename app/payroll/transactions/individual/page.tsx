@@ -5,7 +5,7 @@ import { listBatches } from '@/core/payroll';
 import { listCompanies, listEmployees } from '@/core/read';
 import { listPayComponents } from '@/core/pay-components';
 import { listPayrollCycles } from '@/core/payroll-cycle';
-import { payRuleAllowsDayByDay, payRuleDerivesAmount, payRuleInputUnit, type PayRule } from '@/core/pay-rule';
+import { payRuleAllowsDayByDay, payRuleDerivesAmount, payRuleInputUnit, payRuleReadsOperand, type PayRule } from '@/core/pay-rule';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { ErrorBanner, PageHeader, pageWideCls } from '@/components/ui';
 import { TxnWorkspace, type TxnBatch, type TxnEmployee, type TxnPayrollCycle } from './txn-workspace';
@@ -76,6 +76,9 @@ export default async function IndividualTransactionPage({
     // allowance apart from an item with no rule at all — both read false/null, and only one of them
     // may be keyed day by day).
     variesByDay: payRuleAllowsDayByDay(c.rule as PayRule | null),
+    // 34062f81 — whether the formula reads Calendar Days in the Month, which a dated line takes from its
+    // own Effective Date. Drives one explanatory line on the Day by Day grid; never a figure.
+    readsCalendarDays: payRuleReadsOperand(c.rule as PayRule | null, 'calendar_days'),
   }));
 
   // The Company pre-filter is view-only narrowing on the already access-fenced employee list, so scope the

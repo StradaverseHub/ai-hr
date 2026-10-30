@@ -377,7 +377,7 @@ export async function fillTables() {
     const tableFks = new Map(fks.filter((f) => f.tbl === table).map((f) => [f.col as string, f.ref as string]));
     const lit = (v: string) => `'${v.replace(/'/g, "''")}'`;
 
-    const build = async (e: Row, i: number, nullPolicyCol: boolean): Promise<string | null> => {
+    const build = async (e: Row, i: number, nullPolicyCol: boolean, parentBindings: Readonly<Record<string,string>> = {}): Promise<string | null> => {
       const names: string[] = [];
       const vals: string[] = [];
       for (const c of cols) {
@@ -385,7 +385,8 @@ export async function fillTables() {
         const isPolicyCol = policyCols.get(table)?.has(c.name) ?? false;
         let v: string | null = null;
         const override = OVERRIDES[table]?.[c.name];
-        if (override !== undefined) v = override;
+        if (ref && Object.hasOwn(parentBindings,ref)) v=lit(parentBindings[ref]);
+        else if (override !== undefined) v = override;
         else if (c.name === 'tenant_id') v = lit(e.tenant_id as string);
         else if (isPolicyCol && nullPolicyCol) v = 'null';
         else if (ref === 'employment' || (isPolicyCol && /employment_id$/.test(c.name))) {
@@ -557,7 +558,7 @@ export const ctxByName = (n: string) => {
 };
 
 /** Statement builders per filled table: (employment row, index, nullPolicyCol) → INSERT text, or null. */
-export const BUILDERS = new Map<string, (e: Row, i: number, nullPolicyCol: boolean) => Promise<string | null>>();
+export const BUILDERS = new Map<string, (e: Row, i: number, nullPolicyCol: boolean, parentBindings?: Readonly<Record<string,string>>) => Promise<string | null>>();
 export let EMPS: Row[] = [];
 
 /** Seed the org, fill every rewritten table, and check the filler left the org alone. */

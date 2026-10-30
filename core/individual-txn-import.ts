@@ -98,7 +98,7 @@ export async function confirmIndividualImport(ctx:SessionContext,p:{id:string;sc
      if(!item)throw new IndividualImportError('previewChanged');
      const rule=item.rule as PayRule|null;
      if(r.method==='daily'&&(!payRuleAllowsDayByDay(rule)||!payRuleDerivesAmount(rule)||payRuleInputUnit(rule)==null))throw new IndividualImportError('previewChanged');
-     const priced=await deriveIndividualTxnAmountTx(savepoint,ctx,{componentId:resolved.componentId,employmentId:resolved.employmentId,companyId:resolved.companyId,payPeriod:resolved.payPeriod,quantity:resolved.quantity,unit:resolved.unit});
+     const priced=await deriveIndividualTxnAmountTx(savepoint,ctx,{componentId:resolved.componentId,employmentId:resolved.employmentId,companyId:resolved.companyId,payPeriod:resolved.payPeriod,quantity:resolved.quantity,unit:resolved.unit,effectiveDate:resolved.txnDate});
      if(priced.derived&&priced.amount.toFixed(2)!==row.amount)throw new IndividualImportError('previewChanged');
      const result=await createIndividualTxnsBulkTx(savepoint,ctx,{
       ...(resolved.targetBatchId?{batchId:resolved.targetBatchId}:{companyId:resolved.companyId,payPeriod:resolved.payPeriod}),

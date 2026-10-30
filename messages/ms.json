@@ -963,8 +963,10 @@
       "epfManualEmployeeRateRequired": "Kadar Pekerja % diperlukan apabila Kategori EPF ialah Manual (mengikut peratusan).",
       "epfManualEmployerRateRequired": "Kadar Majikan % diperlukan apabila Kategori EPF ialah Manual (mengikut peratusan).",
       "epfManualRateRange": "Masukkan peratusan dari 1% hingga 100%.",
-      "epfManualAdoptionPreview": "Rekod ini menggunakan pilihan tambahan dengan minimum berkanun. Manual (mengikut peratusan) menggunakan kedua-dua kadar yang dimasukkan. Pilihan sedia ada tidak berubah sehingga anda mengesahkan dan menyimpan.",
-      "epfManualAdoptionConfirm": "Saya telah menyemak kadar dan mengesahkan perubahan kepada Manual (mengikut peratusan).",
+      "epfTopupEmployeeRate": "Kadar Tambahan Pekerja %",
+      "epfTopupEmployerRate": "Kadar Tambahan Majikan %",
+      "epfTopupRateRange": "Masukkan tambahan dari 0% hingga {max}%. Kadar KWSP biasa berserta tambahan tidak boleh melebihi 100%.",
+      "epfTopupLegacyHint": "Kotak ini masih menunjukkan kadar penuh pekerja ini dari sebelum tambahan ditambah di atas kadar biasa. Menyimpannya tanpa perubahan mengekalkan caruman semasa. Jika anda menukar mana-mana kotak, kedua-dua kotak disimpan sebagai tambahan di atas kadar KWSP biasa.",
       "epfModeManualPercentage": "Manual (mengikut peratusan)",
       "epfModeSemiAuto": "Separa-Auto (kadar pekerja sahaja)",
       "epfModeManualEmployeeAmount": "Manual (Pekerja mengikut Jumlah)",
@@ -977,7 +979,7 @@
       "epfEmployeeAmount": "Jumlah pekerja (RM sebulan)",
       "epfEmployerAmount": "Jumlah majikan (RM sebulan)",
       "epfManualReason": "Sebab bagi jumlah tetap",
-      "epfElectionHint": "Lebihan sukarela (i-Topup, Borang KWSP 17A/18A) menetapkan kadar pada atau melebihi kadar berkanun 11%/13%; bahagian kosong kekal berkanun. Kategori Manual (mengikut Jumlah) menggunakan jumlah ringgit yang tepat dan bukan kadar, dan sebab adalah wajib bagi kategori tersebut. Pengecualian untuk pekerja yang benar-benar dikecualikan sahaja.",
+      "epfElectionHint": "Tambahan (i-Topup KWSP, Borang 17A/18A) menambah peratusan yang dimasukkan di atas kadar KWSP biasa bagi setiap pihak; Separa-Auto menetapkan jumlah kadar pekerja pada atau melebihi kadar berkanun 11%. Bahagian kosong kekal berkanun. Kategori Manual (mengikut Jumlah) menggunakan jumlah ringgit yang tepat dan bukan kadar, dan sebab adalah wajib bagi kategori tersebut. Pengecualian untuk pekerja yang benar-benar dikecualikan sahaja.",
       "terminationType": "Jenis penamatan",
       "terminationTypeUnspecified": "— Tidak dinyatakan —",
       "terminationVoluntary": "Sukarela (peletakan jawatan)",
@@ -1015,7 +1017,7 @@
       "dateError": "Tarikh tamat berkuat kuasa tidak boleh sebelum tarikh mula berkuat kuasa.",
       "amountError": "Jumlah mesti lebih daripada sifar.",
       "currencyUnsupported": "Hanya MYR disokong — gaji dikira dalam MYR.",
-      "epfVoluntaryHint": "Masukkan kadar penuh setiap pihak pada atau melebihi paras berkanun (pekerja 11%, majikan 12–13%). Biar kosong untuk kekal berkanun.",
+      "epfVoluntaryHint": "Masukkan hanya peratusan tambahan di atas kadar KWSP biasa: dengan kadar pekerja biasa 11%, tambahan 1% menjadikannya 12%. 0 atau kosong tidak menambah apa-apa. Kadar biasa tetap mengikut peraturan KWSP yang biasa (umur, kewarganegaraan dan jalur gaji).",
       "epfSemiAutoHint": "Masukkan kadar pekerja pada atau melebihi 11% berkanun. Bahagian majikan kekal automatik (berkanun).",
       "workState": "Negeri bekerja",
       "grade": "Gred",
@@ -1636,7 +1638,8 @@
           "endDate": "Tarikh Tamat",
           "remarks": "Catatan",
           "action": "Tindakan",
-          "correctionReason": "Sebab Pembetulan"
+          "correctionReason": "Sebab Pembetulan",
+          "movementId": "ID Peristiwa Pergerakan"
         },
         "detail": {
           "eventInformation": "Maklumat Acara",
@@ -1649,7 +1652,8 @@
           "backToHistory": "Kembali ke sejarah",
           "recordedBy": "Direkodkan oleh",
           "recordedAt": "Direkodkan pada",
-          "system": "Sistem"
+          "system": "Sistem",
+          "documents": "Dokumen sokongan"
         },
         "field": {
           "company": "Syarikat",
@@ -1744,7 +1748,14 @@
           "entityTransferHint": "Pilih syarikat yang pekerja ini akan pindah. Senarai Unit Perniagaan, Jabatan, Jawatan dan Lokasi Kerja di bawah kini menunjukkan pilihan syarikat destinasi — pilih Jabatan di situ. ID pekerja, Tarikh Menyertai Kumpulan dan sejarah mereka kekal seperti sedia ada.",
           "selectPlaceholder": "Pilih…",
           "pendingTargetUnavailable": "Sasaran yang disimpan tidak lagi tersedia dalam pilihan atau skop akses semasa anda. Pembetulan ini tidak boleh disimpan. Semak peristiwa yang belum berkuat kuasa sebelum meneruskan.",
-          "resignationLifecycleHint": "Maklumat peletakan jawatan berkuat kuasa pada Tarikh Kuat Kuasa. Rekodkan tarikh penyerahan, tarikh peletakan jawatan dan tarikh terakhir bekerja secara berasingan."
+          "resignationLifecycleHint": "Maklumat peletakan jawatan berkuat kuasa pada Tarikh Kuat Kuasa. Rekodkan tarikh penyerahan, tarikh peletakan jawatan dan tarikh terakhir bekerja secara berasingan.",
+          "closedPayrollTitle": "Gaji bagi {periods} telah ditutup.",
+          "closedPayrollBody": "Pembetulan ini mengemas kini rekod pekerja dan pemprosesan akan datang. Gaji yang telah ditutup, slip gaji yang telah dikeluarkan dan penyerahan berkanun mengekalkan angka muktamad dan tidak akan dikira semula. Jika sesuatu amaun perlu diselaraskan, gunakan proses pembetulan gaji. Gaji yang dibetulkan berkuat kuasa mulai bulan pertama selepas gaji yang telah ditutup.",
+          "closedPayrollAcknowledge": "Saya faham bahawa gaji yang telah ditutup tidak akan berubah.",
+          "mustChange": "Wajib diubah",
+          "mustChangeRefused": "{field} mesti diubah untuk jenis peristiwa ini. Masukkan nilai baharu.",
+          "documentOptional": "Dokumen sokongan (pilihan)",
+          "documentRequired": "Dokumen sokongan (wajib apabila ini berubah)"
         },
         "edit": "Sunting",
         "rollback": "Batalkan",
@@ -1838,7 +1849,8 @@
           "originalHeading": "Direkodkan asalnya",
           "correctedHeading": "Dibetulkan",
           "noneValue": "Tiada"
-        }
+        },
+        "payrollClosedBadge": "Gaji ditutup: {periods}"
       },
       "salaryCurrency": "Mata wang",
       "emergency": {
@@ -2322,6 +2334,9 @@
           "workbook_columns_changed": "Tajuk atau susun atur lajur buku kerja telah berubah. Muat turun buku kerja baharu dan kekalkan tajuk asalnya.",
           "workbook_identity_changed": "ID Pekerja yang diisi terlebih dahulu telah diubah. Muat turun pekerja yang betul atau gunakan buku kerja penuh yang kosong.",
           "workbook_structure_invalid": "Struktur buku kerja ini tidak disokong. Muat turun buku kerja baharu.",
+          "workbook_damaged": "Fail ini rosak atau bukan buku kerja Excel yang sah. Simpan semula dalam Excel atau muat turun buku kerja baharu.",
+          "workbook_too_large": "Buku kerja ini melebihi saiz yang disokong oleh import ini. Kekalkan hanya helaian yang dimuat turun dan maksimum 200 baris pergerakan, atau muat turun buku kerja baharu.",
+          "no_movement_entries": "Tiada entri pergerakan untuk disemak. Masukkan sekurang-kurangnya satu baris pada helaian Movements di bawah pengepala, kemudian muat naik fail sekali lagi.",
           "workbook_password_not_supported": "Buku kerja yang dilindungi kata laluan tidak disokong. Gunakan buku kerja asal tanpa kata laluan.",
           "workbook_unexpected_sheet": "Buku kerja mengandungi tab tambahan yang tidak kosong. Kekalkan tab Pergerakan asal.",
           "workbook_business_value_invalid": "Nilai dalam buku kerja terlalu panjang atau mengandungi rujukan dalaman. Betulkan nilai sumber sebelum memuat turun.",
@@ -2354,7 +2369,30 @@
           "duplicate_system_field": "Medan Sistem yang sama muncul lebih daripada sekali bagi pergerakan ini.",
           "system_field_required": "Pilih Medan Sistem yang diubah oleh baris ini, atau biarkan Sebelum dan Selepas kosong.",
           "before_mismatch": "Sebelum tidak sepadan dengan rekod semasa pekerja; ia telah berubah sejak fail disediakan. Pekerja ini tidak diimport.",
-          "workbook_old_layout": "Fail ini menggunakan templat Pergerakan lama (satu helaian bagi setiap jenis pergerakan untuk satu syarikat). Muat turun templat baharu dan salin baris anda ke dalamnya."
+          "workbook_old_layout": "Fail ini menggunakan templat Pergerakan lama (satu helaian bagi setiap jenis pergerakan untuk satu syarikat). Muat turun templat baharu dan salin baris anda ke dalamnya.",
+          "unknown_action": "Tindakan mestilah Cipta, Kemas kini atau Padam (biarkan kosong untuk Cipta).",
+          "movement_id_required": "Kemas kini dan Padam memerlukan ID Peristiwa Pergerakan bagi pergerakan yang hendak diubah.",
+          "movement_id_unknown": "Tiada pergerakan dengan ID Peristiwa Pergerakan ini ditemui untuk pekerja ini.",
+          "movement_id_other_employee": "ID Peristiwa Pergerakan ini milik pekerja lain. Semak ID Pekerja pada baris ini.",
+          "movement_already_rolled_back": "Pergerakan ini telah pun dibatalkan.",
+          "movement_superseded": "Pergerakan ini telah diatasi oleh pergerakan kemudian dan tidak pernah berkuat kuasa, jadi tiada apa yang perlu diubah.",
+          "movement_hire_not_supported": "Pengambilan tidak boleh diubah melalui import. Gunakan Betulkan butiran pengambilan pada tab Pergerakan.",
+          "movement_update_not_supported": "Jenis peristiwa ini tidak boleh dikemas kini melalui import. Betulkannya pada tab Pergerakan.",
+          "movement_not_correctable": "Pergerakan ini tidak boleh diubah seperti yang diminta",
+          "movement_id_not_for_create": "Biarkan ID Peristiwa Pergerakan kosong untuk pergerakan baharu, atau pilih Kemas kini atau Padam.",
+          "reason_not_for_create": "Sebab hanya digunakan untuk Kemas kini dan Padam. Gunakan Catatan untuk pergerakan baharu.",
+          "reason_required": "Masukkan Sebab bagi setiap Kemas kini dan Padam.",
+          "not_applicable_on_delete": "Biarkan Medan Sistem, Sebelum dan Selepas kosong pada baris Padam.",
+          "conflicting_values": "Baris untuk pergerakan yang sama memberikan nilai yang berbeza",
+          "duplicate_movement_id": "ID Peristiwa Pergerakan yang sama muncul dalam lebih daripada satu Kemas kini atau Padam. Namakan setiap pergerakan sekali sahaja.",
+          "increment_amount_not_for_update": "Amaun Kenaikan tidak boleh digunakan untuk mengemas kini pergerakan. Masukkan Gaji Pokok yang dibetulkan.",
+          "event_mismatch": "Tidak sepadan dengan pergerakan yang mempunyai ID Peristiwa Pergerakan ini",
+          "closed_payroll_acknowledgement_required": "Gaji untuk pergerakan ini sudah ditutup. Tandakan pengesahan gaji ditutup sebelum menyimpan",
+          "movement_field_not_included": "Jenis peristiwa ini tidak mengubah medan ini.",
+          "movement_field_not_editable": "Medan ini tidak boleh disunting untuk jenis peristiwa ini.",
+          "movement_field_must_change": "Jenis peristiwa ini memerlukan medan ini diubah.",
+          "movement_document_required": "Perubahan ini memerlukan dokumen sokongan, yang tidak boleh dibawa oleh import. Rekodkan pergerakan ini di tab Pergerakan.",
+          "movement_document_not_enabled": "Jenis peristiwa ini tidak menerima dokumen sokongan untuk medan ini."
         },
         "v2": {
           "type": "Jenis Pergerakan",
@@ -2447,8 +2485,24 @@
             "eventType": "Jenis Peristiwa",
             "systemField": "Medan Sistem",
             "before": "Sebelum",
-            "after": "Selepas"
-          }
+            "after": "Selepas",
+            "action": "Tindakan",
+            "movementId": "ID Peristiwa Pergerakan",
+            "reason": "Sebab"
+          },
+          "action": {
+            "create": "Cipta",
+            "update": "Kemas kini",
+            "delete": "Padam"
+          },
+          "guideAction": "Tindakan: biarkan kosong atau pilih Cipta untuk merekod pergerakan baharu. Pilih Kemas kini untuk membetulkan pergerakan sedia ada atau Padam untuk membatalkannya. Kemas kini dan Padam memerlukan ID Peristiwa Pergerakan dan Sebab.",
+          "guideMovementId": "ID Peristiwa Pergerakan: salin daripada lajur ID Peristiwa Pergerakan dalam muat turun Sejarah Pekerjaan pekerja (Muat Turun Excel pada tab Pergerakan). Ia mesti milik pekerja dalam baris tersebut.",
+          "guideUpdate": "Kemas kini: masukkan satu baris bagi setiap medan yang hendak dibetulkan, dengan nilai baharu dalam Selepas. Sel kosong mengekalkan nilai yang direkodkan, termasuk Tarikh Berkuat Kuasa atau Jenis Peristiwa yang kosong; tiada apa yang dikosongkan. Padam: satu baris dengan Medan Sistem, Sebelum dan Selepas dibiarkan kosong.",
+          "guideReason": "Sebab: mengapa pergerakan dibetulkan atau dibatalkan. Ia wajib untuk Kemas kini dan Padam dan disimpan dalam sejarah audit. Jika gaji bagi tempoh itu sudah ditutup, anda mengesahkannya pada skrin sebelum menyimpan.",
+          "closedPayrollRow": "Gaji bagi {periods} sudah ditutup.",
+          "closedPayrollTitle": "Sesetengah pembetulan mengubah pergerakan di sebalik gaji yang telah ditutup ({periods}).",
+          "closedPayrollBody": "Pembetulan ini mengemas kini rekod pekerja dan pemprosesan akan datang. Gaji yang ditutup, slip gaji yang telah dikeluarkan dan penyerahan berkanun mengekalkan angka muktamad dan tidak akan dikira semula. Tanpa pengesahan ini, pekerja berkenaan tidak disimpan.",
+          "closedPayrollAcknowledge": "Saya faham bahawa gaji yang telah ditutup tidak akan berubah."
         }
       },
       "headerAssistance": {
@@ -3086,7 +3140,8 @@
         "cost_allocations": "Peruntukan Pusat Kos",
         "bank_statutory": "Bank & Berkanun",
         "employee_full": "Semua — pekerja baharu",
-        "movement": "Pergerakan"
+        "movement": "Pergerakan",
+        "information_correction": "Pembetulan Maklumat Sahaja"
       },
       "reference": "Rujukan",
       "referenceLabel": "Rujukan {reference}",
@@ -3158,12 +3213,61 @@
         "movement": "Pergerakan",
         "noMovement": "Tiada entri sejarah",
         "scheduled": "Dijadualkan pada tarikh berkuat kuasa",
-        "rows": "Baris {rows}"
+        "rows": "Baris {rows}",
+        "update": "Kemas kini pergerakan sedia ada",
+        "delete": "Padam: pergerakan dibatalkan",
+        "reason": "Sebab: {reason}",
+        "closedPayroll": "Gaji ditutup disahkan: {periods}"
       },
       "employeeFull": {
         "created": "Dicipta {code} · {name}",
         "willVoid": "Pekerja ini akan dibatalkan: dikeluarkan daripada senarai, bilangan pekerja dan gaji, disimpan dalam jejak audit. ID Pekerja, e-mel dan NRIC dibebaskan."
       }
+    },
+    "informationCorrection": {
+      "title": "Pembetulan Maklumat Sahaja",
+      "hint": "Betulkan maklumat pekerjaan tanpa mengira semula transaksi yang selesai.",
+      "mode": "Mod pembetulan",
+      "existing": "Pembetulan organisasi semasa pengambilan",
+      "protection": "Gaji selesai, slip gaji dikeluarkan, laporan muktamad serta rekod berkanun, cuti, kehadiran dan kerja lebih masa terdahulu kekal. Tiada pengiraan semula sejarah.",
+      "warning": "Maklumat dibetulkan mungkin mempengaruhi gaji, pelaporan berkanun dan polisi pekerjaan akan datang. Gunakan Pergerakan Pekerjaan untuk pertukaran sebenar dan perubahan operasi.",
+      "field": "Medan",
+      "before": "Nilai sedia ada",
+      "after": "Nilai dicadangkan",
+      "reason": "Sebab pembetulan",
+      "review": "Semak pembetulan",
+      "back": "Kembali menyunting",
+      "confirm": "Sahkan pembetulan maklumat sahaja",
+      "saving": "Menyimpan…",
+      "loading": "Memuatkan…",
+      "saved": "Maklumat dibetulkan. Transaksi selesai kekal.",
+      "unchanged": "Tiada perubahan — baris ini akan dilangkau.",
+      "history": "Sejarah pembetulan",
+      "noHistory": "Tiada pembetulan maklumat sahaja direkodkan.",
+      "importHelp": "Kod Syarikat menyemak syarikat sedia ada. Kod Syarikat Baharu adalah pilihan. Sel pembetulan kosong mengekalkan nilai. Rujuk helaian kod sistem. Maksimum 200 baris.",
+      "template": "Muat turun templat Excel",
+      "file": "Fail Excel (.xlsx)",
+      "validate": "Sahkan fail",
+      "results": "Keputusan import",
+      "resultCounts": "{succeeded} berjaya · {failed} gagal · {unchanged} tiada perubahan",
+      "previewCounts": "{total} baris · {valid} pembetulan sah · {invalid} ralat",
+      "batchHistory": "Lihat sejarah kelompok import",
+      "row": "Baris {row}",
+      "validOnly": "Hanya pembetulan sah digunakan. Baris gagal tidak mengubah maklumat pekerja.",
+      "confirmValid": "Sahkan {count} pembetulan sah",
+      "fields": {
+        "companyId": "Syarikat",
+        "hiredOn": "Tarikh Menyertai Kumpulan",
+        "joinDate": "Tarikh Menyertai",
+        "gradeId": "Gred Jawatan",
+        "employmentType": "Jenis Pekerjaan"
+      },
+      "statuses": {
+        "applied": "Berjaya",
+        "failed": "Gagal",
+        "unchanged": "Tiada perubahan"
+      },
+      "effective": "Proses akan datang menggunakan maklumat dibetulkan mulai {date}."
     }
   },
   "leave": {
@@ -6472,10 +6576,10 @@
       "publishStatePublished": "Diterbitkan kepada pekerja",
       "unpublishedBannerTitle": "Slip gaji ini belum kelihatan kepada pekerja",
       "unpublishedBannerBody": "Proses ini telah dikira tetapi belum diterbitkan. Pekerja tidak dapat melihat slip gaji mereka sehingga anda menutupnya. Penutupan akan memberitahu setiap pekerja dalam proses ini bahawa slip gaji mereka sedia, dan menerbitkannya — serta-merta, atau pada tarikh pelepasan slip gaji yang ditetapkan bagi syarikat jika ada.",
-      "closeConfirmTitle": "Tutup proses ini dan terbitkan kepada pekerja?",
+      "closeConfirmTitle": "Adakah anda pasti mahu menutup gaji bagi {month} dan {cycle}?",
       "closeConfirmBody": "Ini akan menerbitkan {n} slip gaji kepada pekerja dalam proses ini dan memberitahu setiap seorang. Penerbitan adalah serta-merta melainkan syarikat ini mempunyai tarikh pelepasan slip gaji yang ditetapkan, maka ia dijadualkan pada tarikh tersebut. Setelah ditutup, proses ini tidak boleh diubah.",
-      "closeConfirmYes": "Ya, tutup dan terbitkan",
-      "closeDone": "Proses gaji ditutup — slip gaji diterbitkan kepada pekerja.",
+      "closeConfirmYes": "Ya",
+      "closeDone": "Kelompok gaji berjaya ditutup.",
       "closeNotProcessed": "Hanya proses gaji yang telah diproses boleh ditutup.",
       "closePermissionDenied": "Anda tiada kebenaran untuk menutup proses gaji.",
       "publishedBy": "Diterbitkan oleh {actor} pada {when}",
@@ -6513,7 +6617,7 @@
         "reason": {
           "NO_TRANSACTION_FOR_CYCLE": "Tiada catatan transaksi untuk kitaran gaji ini",
           "NO_ADDITIONAL_PAY_THIS_RUN": "Tiada apa-apa untuk jenis proses ini — gaji bulanan tetap mereka dibayar oleh proses gaji biasa",
-          "NOTHING_PAYABLE_THIS_PERIOD": "Tiada gaji asas dan tiada apa-apa untuk dibayar tempoh ini — tiada bayaran dibuat, jadi tiada apa-apa dilaporkan",
+          "NOTHING_PAYABLE_THIS_PERIOD": "Tiada gaji asas bulanan dan tiada apa-apa untuk dibayar bulan ini.",
           "DEDUCTION_ONLY_THIS_PERIOD": "Hanya potongan yang menunggu dan tiada gaji untuk menolaknya — menolak daripada sifar akan menghutangi pekerja"
         }
       },
@@ -6661,11 +6765,16 @@
       "preChecksNothingPayableNoRemark": "Tiada sebab direkodkan pada rekod gaji.",
       "reprocessGapNothingPayable": "tiada gaji asas bulanan",
       "reprocessReasonNothingPayable": "Sengaja dikecualikan daripada proses ini — tiada gaji asas bulanan dan tiada apa-apa untuk dibayar bulan ini. Tandakan mereka hanya jika sesuatu telah dimasukkan untuk mereka selepas itu.",
+      "reprocessGroupSkippedTitle": "Dilangkau — {n} pekerja tanpa apa-apa untuk diproses bulan ini",
+      "reprocessGroupSkippedNote": "Tidak ditandakan dan tidak dikira sebagai belum selesai: gaji mereka telah pun dinilai dan tiada apa-apa untuk dibayar. Jika sesuatu dimasukkan untuk mereka bulan ini, mereka kembali ke Baharu / Belum Selesai, dan anda masih boleh menandakan mereka secara manual.",
+      "reprocessStatusSkipped": "Dilangkau",
       "preChecksBadgeLegend": "Apa-apa yang bertanda “Menghalang pemprosesan” mesti dibetulkan sebelum proses ini. Apa-apa yang bertanda “Amaran” masih boleh diproses selepas anda mengesahkannya. Apa-apa yang bertanda “Akan dikecualikan” tidak memerlukan apa-apa daripada anda.",
       "reprocessOutcomeStatus": {
         "reprocessed": "Diproses semula",
         "skipped": "Dilangkau",
-        "validation_failed": "Konfigurasi tidak lengkap"
+        "validation_failed": "Konfigurasi tidak lengkap",
+        "excluded": "Dikecualikan",
+        "not_eligible": "Tidak layak"
       },
       "reprocessNothingPayableFull": "Tiada pendapatan yang perlu dibayar dikenal pasti bagi tempoh penggajian ini. Pengiraan semula tidak dilakukan. Slip gaji, keahlian dalam larian penggajian, transaksi dan sejarah sedia ada dikekalkan.",
       "reprocessSucceededReason": "Hasil penggajian baharu telah disimpan untuk pekerja ini.",
@@ -6678,7 +6787,7 @@
       "reprocessReviewPcbConfiguration": "Semak konfigurasi PCB",
       "reprocessOutcomeRecordedAt": "Direkodkan pada {at}",
       "reprocessOutcomeTitle": "Hasil pekerja yang dipilih",
-      "reprocessOutcomeSummary": "Dipilih: {selected} · Diproses semula: {succeeded} · Dilangkau: {skipped} · Konfigurasi tidak lengkap: {failed}",
+      "reprocessOutcomeSummary": "Dipilih: {selected} · Diproses semula: {succeeded} · Dilangkau: {skipped} (selesai — tiada apa-apa untuk dibayar) · Konfigurasi tidak lengkap: {failed}",
       "reprocessStoppedPartial": "Pemprosesan terhenti sebelum semua pekerja yang dipilih selesai. Hasil yang disimpan masih sah. Semak hasil tersebut sebelum mencuba lagi.",
       "reprocessOutcomeStatusHeading": "Status pemprosesan",
       "reprocessOutcomeCategoryHeading": "Kategori cukai",
@@ -6686,7 +6795,36 @@
       "reprocessLegacyOutcomeUnavailable": "Tugas terdahulu ini tidak merekodkan hasil individu. Sejarah pengiraan yang disimpan masih tersedia di bawah.",
       "publishStateHistory": "Sejarah diimport",
       "historyNoPayment": "Import sejarah tidak merekodkan tarikh bayaran.",
-      "unlockOverwrittenByImport": "Slip gaji dalam larian ini telah ditulis ganti oleh Import Sejarah Gaji. Batalkan import itu daripada Log File sebelum membuka kunci larian."
+      "unlockOverwrittenByImport": "Slip gaji dalam larian ini telah ditulis ganti oleh Import Sejarah Gaji. Batalkan import itu daripada Log File sebelum membuka kunci larian.",
+      "reprocessExclusion_RESIGNED_BEFORE_PERIOD": "Meletak jawatan sebelum bulan gaji ini.",
+      "reprocessExclusion_RESIGNED_BEFORE_PERIODDated": "Meletak jawatan sebelum bulan gaji ini (hari terakhir {date}).",
+      "reprocessExclusion_JOINED_AFTER_PERIOD": "Menyertai selepas bulan gaji ini.",
+      "reprocessExclusion_JOINED_AFTER_PERIODDated": "Menyertai selepas bulan gaji ini (tarikh menyertai {date}).",
+      "reprocessExclusion_NOT_WITH_COMPANY_IN_PERIOD": "Tidak bersama syarikat ini sepanjang bulan gaji ini.",
+      "reprocessExclusion_NOT_WITH_COMPANY_IN_PERIODDated": "Tidak bersama syarikat ini sepanjang bulan gaji ini (berpindah pada {date}).",
+      "reprocessExcludedRemoved": "Keputusan terdahulu mereka untuk bulan ini telah dikeluarkan daripada larian dan disimpan dalam sejarah. Ansuran pinjaman, tuntutan dan transaksi sekali sahaja yang digunakannya telah dilepaskan. Bayaran yang telah dibuat tidak dibatalkan; gunakan langkah pembetulan sedia ada untuk itu.",
+      "reprocessNotEligibleRemovalOff": "Keputusan terdahulu mereka dikekalkan kerana pengeluaran pekerja daripada larian dimatikan untuk syarikat anda atau anda tiada kebenaran itu. Pentadbir boleh mengeluarkannya melalui “Keluarkan pekerja daripada larian ini”.",
+      "reprocessNotEligibleLastOnRun": "Keputusan terdahulu mereka dikekalkan kerana mereka satu-satunya pekerja yang tinggal dalam larian ini. Tetapkan semula larian untuk mengosongkannya.",
+      "reprocessOutcomeExclusionSummary": "Dikecualikan: {excluded} · Tidak layak: {notEligible}",
+      "reprocessStopped_BATCH_NOT_PROCESSED": "Pemprosesan dihentikan: larian ini tidak lagi berstatus Diproses (mungkin telah diluluskan, dibayar atau ditetapkan semula). Keputusan yang disimpan kekal sah. Gunakan langkah pembetulan sedia ada untuk larian yang telah bergerak ke hadapan.",
+      "reprocessStopped_PERIOD_CLOSED": "Pemprosesan dihentikan: tempoh gaji bagi larian ini telah ditutup. Keputusan yang disimpan kekal sah. Buka semula tempoh melalui langkah sedia ada sebelum memproses semula.",
+      "reprocessStopped_PERMISSION_DENIED": "Pemprosesan dihentikan: anda tidak lagi mempunyai kebenaran untuk memproses semula larian ini. Keputusan yang disimpan kekal sah. Minta akses daripada pentadbir.",
+      "reprocessStopped_SUPERSEDED": "Pemprosesan dihentikan: percubaan lain telah mengambil alih pemprosesan semula ini. Keputusan yang disimpan kekal sah. Muat semula untuk melihat keputusan terkini sebelum mencuba lagi.",
+      "recalcChangeLine": "{name}: {changes}",
+      "recalcChangeCategory": {
+        "termination": "tarikh peletakan jawatan atau penamatan diubah",
+        "hire_date": "tarikh menyertai diubah",
+        "transfer": "pertukaran syarikat diubah",
+        "compensation": "gaji diubah",
+        "statutory": "tetapan berkanun diubah"
+      },
+      "closeConfirmNo": "Tidak",
+      "closeBack": "Kembali ke Proses Gaji",
+      "closeSummaryPayslips": "Slip gaji",
+      "closeBlockedPending": "Proses ini tidak boleh ditutup: {n} pekerja yang layak untuk proses ini masih Baharu / Belum Selesai: {names}. Proses mereka melalui Proses semula dahulu, kemudian tutup semula.",
+      "closeBlockedReprocessRunning": "Proses ini tidak boleh ditutup semasa proses semula masih berjalan padanya. Tunggu sehingga proses semula selesai, kemudian tutup semula.",
+      "closeBlockedReprocessFailed": "Proses ini tidak boleh ditutup: proses semula terkini gagal bagi {n} pekerja: {names}. Betulkan masalah yang dilaporkan dan proses semula mereka, kemudian tutup semula.",
+      "closeBlockedAndMore": " dan {n} lagi"
     },
     "transactions": {
       "title": "Kemasukan Transaksi",
@@ -7058,6 +7196,7 @@
         "dayGridDays": "Tarikh",
         "dayGridEmpty": "Tambah sekurang-kurangnya satu tarikh sebelum menyimpan.",
         "dayGridRoundingHint": "Setiap tarikh dikira dan dibundarkan kepada sen secara berasingan, jadi jumlah beberapa tarikh boleh berbeza satu sen daripada kuantiti yang sama dimasukkan sebagai satu angka.",
+        "dayGridCalendarDaysHint": "Hari kalendar dalam bulan mengikut Tarikh berkuat kuasa setiap baris, jadi tarikh dalam bulan berlainan dikira secara berasingan (contohnya 30 untuk September, 29 untuk Februari 2024).",
         "dayGridNoRuleHint": "Item gaji ini tiada formula, jadi jumlah bagi setiap tarikh dimasukkan secara manual. Tetapkan formula pada item itu dalam Fail Induk Item Gaji dan ia akan dikira untuk anda.",
         "dayGridViewDays": "Tunjukkan tarikh di sebalik jumlah ini",
         "dayGridEditHint": "Untuk mengubah atau membuang salah satu, tukar senarai di atas kepada Mengikut transaksi.",
@@ -7282,6 +7421,8 @@
           "capped": "Memaparkan {cap} keputusan terkini. Perhalusi penapis di atas untuk melihat bulan terdahulu.",
           "itemsHeading": "Butiran item gaji",
           "itemsNote": "Item sekali sahaja termasuk dalam jumlah di atas. Item rekod sahaja bukan pendapatan tunai; manfaat bercukai boleh menjejaskan PCB dan gaji bersih.",
+          "nonPayableHeading": "Amaun tidak dibayar",
+          "nonPayableNote": "Tidak dibayar kepada pekerja dan tidak termasuk dalam gaji kasar atau gaji bersih.",
           "itemRemark": "Dimasukkan sebagai “{remark}”",
           "sourceHeading": "Dari mana ia datang",
           "sourceNote": "Transaksi individu yang direkodkan terhadap pekerja ini pada larian gaji ini. Ia disenaraikan di sebelah item yang direkodkan dan bukan dipadankan dengannya: dua entri boleh berkongsi item gaji dan amaun yang sama, jadi hanya orang yang memasukkannya boleh menyatakan yang mana satu.",
@@ -7669,7 +7810,7 @@
       "skipReason": {
         "NO_TRANSACTION_FOR_CYCLE": "Tiada catatan transaksi untuk kitaran gaji ini",
         "NO_ADDITIONAL_PAY_THIS_RUN": "Tiada apa-apa untuk jenis proses ini — gaji bulanan tetap mereka dibayar oleh proses gaji biasa",
-        "NOTHING_PAYABLE_THIS_PERIOD": "Tiada gaji asas dan tiada apa-apa untuk dibayar tempoh ini — tiada bayaran dibuat, jadi tiada apa-apa dilaporkan",
+        "NOTHING_PAYABLE_THIS_PERIOD": "Tiada gaji asas bulanan dan tiada apa-apa untuk dibayar bulan ini.",
         "DEDUCTION_ONLY_THIS_PERIOD": "Hanya potongan yang menunggu dan tiada gaji untuk menolaknya — menolak daripada sifar akan menghutangi pekerja"
       },
       "overall": {
@@ -15203,7 +15344,7 @@
     "previewNote": "Ditunjukkan untuk tempoh PENUH, sebelum pembahagian pro rata dan pembundaran — payroll menggunakannya semasa proses dijalankan.",
     "previewFailed": "Tidak dapat mengira hasil untuk pekerja itu.",
     "operand_fixed_allowances": "Semua elaun tetap",
-    "formulaDivisionNote": "Anda boleh bahagi dengan nilai langsung seperti hari atau jam bekerja. Jika ia sifar bagi seseorang pekerja, item gaji ini tidak membayar apa-apa untuk pekerja itu dan proses gaji tetap selesai — semak pratonton di sini sebelum anda bergantung padanya.",
+    "formulaDivisionNote": "Untuk makluman sahaja — formula ini sah dan boleh disimpan. Ia membahagi dengan nilai yang berbeza bagi setiap pekerja atau tarikh, seperti hari kalendar dalam bulan, hari bekerja atau jam bekerja. Jika nilai itu sifar bagi seseorang pekerja, item gaji ini tidak membayar apa-apa untuk pekerja itu dan proses gaji tetap selesai. Semak angkanya terhadap seorang pekerja di bawah.",
     "previewZeroDivisor": "Ini membayar RM 0.00 untuk pekerja ini kerana \"{divisor}\" adalah sifar pada langkah {step}. Proses gaji tetap akan selesai.",
     "formulaLine": "Formula ini berbunyi",
     "formulaLineHint": "Kurungan menunjukkan susunan langkah yang sedia dijalankan, dari atas ke bawah — cara pengiraan ini tidak berubah.",
@@ -16495,7 +16636,7 @@
   },
   "movementSettings": {
     "title": "Tetapan Pergerakan",
-    "description": "Jenis peristiwa kerjaya yang boleh direkodkan oleh HR untuk pekerja. Namakan semula mengikut istilah organisasi anda, matikan yang tidak digunakan, dan tambah jenis anda sendiri.",
+    "description": "Jenis peristiwa kerjaya yang boleh direkodkan oleh HR bagi pekerja, dan sebab penamatan yang ditawarkan.",
     "behaviourNotice": "Beberapa jenis peristiwa membawa akibat sebenar — Penamatan menamatkan pekerjaan, Pengesahan melengkapkan tempoh percubaan, pembetulan tarikh menyertai mengubah kelayakan cuti. Anda boleh menamakannya semula atau mematikannya; anda tidak boleh mengubah fungsinya. Jenis peristiwa anda sendiri hanya merekodkan maklumat yang anda masukkan.",
     "catalogTitle": "Jenis Peristiwa",
     "save": "Simpan",
@@ -16520,7 +16661,10 @@
       "behaviour": "Fungsinya",
       "status": "Status",
       "action": "Tindakan",
-      "created": "Dicipta"
+      "created": "Dicipta",
+      "classification": "Klasifikasi",
+      "description": "Keterangan",
+      "group": "Kumpulan"
     },
     "status": {
       "active": "Aktif",
@@ -16528,7 +16672,7 @@
       "all": "Semua"
     },
     "searchPlaceholder": "Cari jenis peristiwa atau kod…",
-    "createNew": "+ Tambah Peristiwa Pergerakan",
+    "createNew": "+ Tambah Jenis Peristiwa",
     "edit": "Sunting",
     "editTitle": "Sunting Jenis Peristiwa",
     "editHint": "Namakan semula mengikut bahasa yang digunakan organisasi anda. Jenis terbina dalam mengekalkan fungsinya; hanya jenis anda sendiri boleh ditukar fungsinya.",
@@ -16536,7 +16680,95 @@
     "empty": "Tiada jenis peristiwa sepadan dengan carian ini.",
     "builtIn": "Terbina dalam",
     "saving": "Menyimpan…",
-    "close": "Tutup"
+    "close": "Tutup",
+    "tabs": {
+      "types": "Jenis Peristiwa",
+      "reasons": "Sebab Penamatan"
+    },
+    "classification": {
+      "termination": "Penamatan",
+      "nonTermination": "Bukan Penamatan"
+    },
+    "noDescription": "Tiada keterangan",
+    "deleteBlocked": {
+      "title": "{name} tidak boleh dipadam",
+      "inUse": "Ia sudah digunakan oleh pergerakan yang direkodkan. Memadamnya akan menyebabkan sejarah pekerja tersebut tanpa nama, jadi sistem menyimpannya.",
+      "builtIn": "Ia ialah salah satu jenis peristiwa standard yang disediakan oleh sistem, jadi ia tidak boleh dibuang.",
+      "switchOffInstead": "Anda boleh mematikannya. Ia tidak lagi dipaparkan apabila HR merekodkan pergerakan baharu, dan rekod yang menggunakannya kekal maksudnya.",
+      "alreadyOff": "Ia sudah dimatikan, jadi ia tidak lagi dipaparkan apabila HR merekodkan pergerakan baharu. Rekod yang menggunakannya kekal maksudnya."
+    },
+    "config": {
+      "newTitle": "Tambah Jenis Peristiwa",
+      "newSubtitle": "Jenis peristiwa anda sendiri",
+      "builtInType": "Jenis peristiwa standard",
+      "customType": "Jenis peristiwa anda sendiri",
+      "breadcrumb": "Laluan navigasi",
+      "code": "Kod (disimpan pada setiap rekod, tidak boleh diubah)",
+      "codeAuto": "Dijana daripada nama apabila anda menyimpan",
+      "sections": {
+        "general": "Maklumat Am",
+        "classification": "Klasifikasi",
+        "description": "Keterangan",
+        "reasons": "Sebab Penamatan",
+        "fields": "Kawalan Medan"
+      },
+      "classificationHint": "Ditentukan oleh fungsi jenis peristiwa: Penamatan menamatkan pekerjaan, selainnya Bukan Penamatan.",
+      "optional": "(pilihan)",
+      "descriptionHint": "Dipaparkan kepada HR di bawah jenis peristiwa apabila mereka merekodkan pergerakan baharu.",
+      "descriptionPlaceholder": "cth. Penempatan semula ke jawatan baharu selepas penstrukturan semula.",
+      "classificationLocked": "Dikunci: jenis ini sudah digunakan oleh pergerakan yang direkodkan.",
+      "classificationBuiltIn": "Jenis peristiwa standard mengekalkan klasifikasi tetapnya.",
+      "reasonsHint": "Tandakan sebab yang boleh dipilih oleh HR semasa merekodkan jenis peristiwa ini.",
+      "reasonsAllHint": "Tiada yang ditanda: semua sebab yang aktif ditawarkan.",
+      "reasonsManageHint": "Sebab ditambah, dinamakan semula atau dimatikan di tab Sebab Penamatan.",
+      "fieldsHint": "Pilih butiran pekerjaan yang diubah oleh jenis peristiwa ini. HR hanya melihat medan yang anda sertakan semasa merekodkannya.",
+      "fieldsNotApplicable": "Kawalan Medan digunakan untuk jenis peristiwa yang mengubah butiran pekerjaan. Jenis peristiwa ini tidak berbuat demikian.",
+      "fieldsCompanyLocked": "Sentiasa diubah oleh Pemindahan Entiti.",
+      "fieldColumns": {
+        "field": "Medan",
+        "include": "Mahu Mengubah Ini",
+        "edit": "Benarkan Suntingan",
+        "mustChange": "Wajib Diubah",
+        "file": "Fail Dibenarkan"
+      },
+      "fieldGroups": {
+        "organisation": "Penugasan Organisasi",
+        "labels": "Label Organisasi Tambahan",
+        "salary": "Gaji Pokok"
+      },
+      "documents": {
+        "none": "Tidak",
+        "optional": "Pilihan",
+        "required": "Wajib"
+      }
+    },
+    "reasons": {
+      "createNew": "+ Tambah Sebab",
+      "add": "Tambah Sebab",
+      "addTitle": "Tambah Sebab Penamatan",
+      "addHint": "Berikan nama yang digunakan oleh organisasi anda dan pilih kumpulannya. Ia kemudian dipaparkan apabila HR merekodkan penamatan.",
+      "renameTitle": "Namakan Semula Sebab Penamatan",
+      "renameHint": "Rekod yang sudah menggunakan sebab ini mengekalkannya; ia memaparkan nama baharu.",
+      "rename": "Namakan Semula",
+      "namePlaceholder": "cth. Perpisahan Bersama",
+      "groupPlaceholder": "— Pilih kumpulan —",
+      "groupFixed": "Kumpulan menentukan cara penamatan dikira dalam laporan pusing ganti dan penamatan, jadi ia tidak boleh diubah selepas sebab ditambah.",
+      "notice": "Tiga kumpulan ini tetap kerana ia digunakan oleh laporan pusing ganti dan penamatan.",
+      "inUse": "Digunakan oleh penamatan yang direkodkan",
+      "emptyGroup": "Tiada sebab dalam kumpulan ini.",
+      "deactivateConfirmTitle": "Matikan sebab ini?",
+      "deactivateConfirmDescription": "Ia tidak lagi dipaparkan apabila HR merekodkan penamatan. Penamatan yang sudah menggunakannya mengekalkan sebabnya. Anda boleh menghidupkannya semula pada bila-bila masa.",
+      "activateConfirmTitle": "Hidupkan sebab ini?",
+      "activateConfirmDescription": "Ia dipaparkan semula apabila HR merekodkan penamatan.",
+      "deleteConfirmTitle": "Padam sebab ini?",
+      "deleteConfirmDescription": "Ia dibuang daripada senarai. Ini hanya ditawarkan untuk sebab anda sendiri yang belum digunakan oleh mana-mana penamatan.",
+      "deleteBlocked": {
+        "inUse": "Ia sudah digunakan oleh penamatan yang direkodkan. Memadamnya akan menyebabkan rekod tersebut tanpa nama sebab, jadi sistem menyimpannya.",
+        "builtIn": "Ia ialah salah satu sebab standard yang disediakan oleh sistem, jadi ia tidak boleh dibuang.",
+        "switchOffInstead": "Anda boleh mematikannya. Ia tidak lagi dipaparkan apabila HR merekodkan penamatan, dan rekod yang menggunakannya mengekalkan sebabnya.",
+        "alreadyOff": "Ia sudah dimatikan, jadi ia tidak lagi dipaparkan apabila HR merekodkan penamatan. Rekod yang menggunakannya mengekalkan sebabnya."
+      }
+    }
   },
   "hiringDefaults": {
     "title": "Tetapan Lalai Pengambilan",
@@ -18948,7 +19180,9 @@
             "auto": "Peraturan berkanun",
             "voluntary_excess": "Lebihan sukarela",
             "exempt": "Dikecualikan",
-            "manual_amount": "Amaun tetap"
+            "manual_amount": "Amaun tetap",
+            "manual_percentage": "Peratusan manual",
+            "topup_percentage": "Tambahan di atas kadar biasa"
           },
           "epfCitizenship": {
             "citizen": "Warganegara Malaysia",
@@ -25928,7 +26162,8 @@
       "review_required": "Semakan sumber, identiti atau kecacatan dipautkan diperlukan.",
       "invalid": "Semak medan, hasil dijangka dan keputusan dipilih.",
       "limit": "Had saiz atau rekod disokong telah dilebihi.",
-      "module_unavailable": "System Testing tidak didayakan untuk akaun ini."
+      "module_unavailable": "System Testing tidak didayakan untuk akaun ini.",
+      "feedback_unavailable": "Maklum balas dimatikan untuk akaun ini."
     },
     "updateReasons": {
       "new_reviewed_guide": "Panduan disemak baharu",
@@ -28535,6 +28770,14 @@
     }
   },
   "operatorWorkspace": {
+    "feedbackMenu": "Menu Maklum Balas",
+    "shown": "Dipaparkan",
+    "hidden": "Disembunyikan",
+    "feedbackMenuOnHelp": "Kakitangan pelanggan ini boleh melihat menu Maklum Balas dan menghantar maklum balas. Menyembunyikannya membuang menu dan menutup halaman Maklum Balas; maklum balas sedia ada dikekalkan.",
+    "feedbackMenuOffHelp": "Menu Maklum Balas disembunyikan untuk pelanggan ini dan halamannya ditutup. Maklum balas sedia ada dikekalkan dan muncul semula apabila menu dipaparkan.",
+    "feedbackMenuHide": "Sembunyikan menu Maklum Balas",
+    "feedbackMenuShow": "Paparkan menu Maklum Balas",
+    "feedbackMenuSaved": "Menu Maklum Balas dikemas kini.",
     "workspace": "Ruang kerja operator",
     "customers": "Pelanggan",
     "provisioning": "Penyediaan",

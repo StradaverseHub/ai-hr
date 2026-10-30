@@ -879,7 +879,8 @@ describe('§6 the Movement screen reaches the same refusal, and it is now legibl
     expect(body).not.toContain('compensationErrorMessage');
 
     const mv = read('core/movement.ts');
-    const legAt = mv.indexOf("case 'compensation.set': {");
+    // 646355e5 — anchored on the rollback's own leg: the correction replay also reads compensation.set.
+    const legAt = mv.indexOf("case 'compensation.set': {", mv.indexOf('async function reverseLegTx('));
     expect(legAt, "the reversal's compensation leg was renamed").toBeGreaterThanOrEqual(0);
     const leg = mv.slice(legAt, legAt + 1200);
     expect(leg.length).toBeGreaterThan(600);

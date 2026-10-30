@@ -177,6 +177,10 @@ export function duplicateDayLineKeys(lines: readonly DayLine[]): string[] {
  * else — five days of 2.00 hours are five copies of one answer. Deduplicating here is what turns "one
  * request per row per keystroke" into one request carrying at most a handful of numbers, without the
  * client ever doing arithmetic of its own.
+ *
+ * 34062f81 — NO LONGER WHAT THE SCREEN ASKS WITH. A formula reading `calendar_days` also depends on each
+ * line's Effective Date month, so the grid now asks with `distinctDayEntries` below. Kept as the pure
+ * quantity normaliser it always was.
  */
 export function distinctQuantities(lines: readonly DayLine[]): string[] {
   const out: string[] = [];
@@ -198,3 +202,40 @@ export const quantityKey = (quantity: string): string => {
   const q = quantity.trim();
   return q === '' || !Number.isFinite(Number(q)) ? '' : String(Number(q));
 };
+
+/**
+ * 34062f81 — the date half of a line's pricing key. A formula reading `calendar_days` divides by the
+ * length of the month the line's Effective Date falls in, so the date is part of the question. A line
+ * whose date is missing or not a real calendar day is asked with '' (priced against the pay month, as
+ * before); it cannot be saved anyway (`dayLineIssue`), and it re-asks the moment a real date is entered.
+ */
+export const dayEntryDate = (txnDate: string): string => (isTransactionEffectiveDate(txnDate) ? txnDate : '');
+
+/** The lookup key a derived figure is stored under: (effective date, normalised quantity). */
+export const dayEntryKey = (line: Pick<DayLine, 'txnDate' | 'quantity'>): string => {
+  const q = quantityKey(line.quantity);
+  return q === '' ? '' : `${dayEntryDate(line.txnDate)}|${q}`;
+};
+
+/**
+ * 34062f81 — the DISTINCT (date, quantity) pairs in the grid, so the preview asks the server for each
+ * figure ONCE while still pricing every dated line on its own. Two lines of 1 day dated 28-Sep-2026 and
+ * 10-Oct-2026 are two questions (30 vs 31 calendar days); two lines of 1 day on the same date are one.
+ * Sorted, so the request — and the stale-response key built from it — is stable under row reordering.
+ */
+export function distinctDayEntries(lines: readonly DayLine[]): { txnDate: string; quantity: string }[] {
+  const out: { txnDate: string; quantity: string }[] = [];
+  const seen = new Set<string>();
+  for (const l of lines) {
+    const q = l.quantity.trim();
+    if (q === '' || !Number.isFinite(Number(q)) || !(Number(q) > 0)) continue;
+    const entry = { txnDate: dayEntryDate(l.txnDate), quantity: String(Number(q)) };
+    const k = `${entry.txnDate}|${entry.quantity}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(entry);
+  }
+  return out.sort((a, b) =>
+    a.txnDate !== b.txnDate ? (a.txnDate < b.txnDate ? -1 : 1) : a.quantity < b.quantity ? -1 : a.quantity > b.quantity ? 1 : 0,
+  );
+}

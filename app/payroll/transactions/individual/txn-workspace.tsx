@@ -28,10 +28,11 @@ import {
   blankDayLine,
   dayKeyOf,
   dayLineIssue,
+  dayEntryDate,
+  dayEntryKey,
   dayLineTotals,
-  distinctQuantities,
+  distinctDayEntries,
   duplicateDayLineKeys,
-  quantityKey,
   type DayLine,
 } from './day-lines';
 
@@ -102,6 +103,8 @@ type ItemOption = {
   /** c11e81aa — may this item be keyed DAY BY DAY? False for a fixed-amount item, whose figure is one
    *  figure for the month. See core/pay-rule.ts payRuleAllowsDayByDay for the rule and its reasoning. */
   variesByDay: boolean;
+  /** 34062f81 — see TxnPayItem.readsCalendarDays. */
+  readsCalendarDays: boolean;
 };
 const componentIdOf = (value: string): string | null => (value.startsWith('c:') ? value.slice(2) : null);
 
@@ -164,6 +167,10 @@ export type TxnPayItem = {
    *  above are: a fixed-amount item and an item with no rule at all are indistinguishable from
    *  `derives`/`inputUnit` alone, and only one of them may be keyed per day. */
   variesByDay: boolean;
+  /** 34062f81 — the item's formula reads Calendar Days in the Month, which a dated line takes from its own
+   *  Effective Date. Only drives an explanatory line on screen; resolved on the server
+   *  (payRuleReadsOperand). Optional so callers that predate it read as "no". */
+  readsCalendarDays?: boolean;
 };
 
 export type TxnCompany = { id: string; name: string; currency: string | null };
@@ -329,6 +336,7 @@ export function TxnWorkspace({
       // c11e81aa — a generic kind names no pay item, so no configuration says its figure is one figure
       // for the month. Overtime, Unpaid and Leave are the per-day cases this screen exists for.
       variesByDay: true,
+      readsCalendarDays: false,
     }));
     const master: ItemOption[] = payItems
       .filter((c) => COMPONENT_KIND_TO_TXN[c.kind] != null)
@@ -340,6 +348,7 @@ export function TxnWorkspace({
         derives: c.derives,
         inputUnit: c.inputUnit,
         variesByDay: c.variesByDay,
+        readsCalendarDays: c.readsCalendarDays === true,
       }));
     return [...generic, ...master];
   }, [payItems, t, genericKinds]);
@@ -884,6 +893,9 @@ export function TxnWorkspace({
           formPeriod,
           form?.quantity.trim() ?? '',
           form?.unit ?? '',
+          // 34062f81 — the Effective Date is part of the question (`calendar_days` is its month's length),
+          // so changing it re-asks and a reply for the previous date can never paint over this one.
+          dayEntryDate(form?.txnDate ?? ''),
         ].join('|')
       : '';
   const [derivedState, setDerivedState] = useState<{
@@ -895,7 +907,7 @@ export function TxnWorkspace({
   useEffect(() => {
     if (!derivedKey) return;
     let live = true;
-    const [componentId, employmentId, companyId, payPeriod, quantity, unit] = derivedKey.split('|');
+    const [componentId, employmentId, companyId, payPeriod, quantity, unit, txnDate] = derivedKey.split('|');
     previewTxnAmountAction({
       componentId: componentId!,
       employmentId: employmentId!,
@@ -903,6 +915,7 @@ export function TxnWorkspace({
       payPeriod: payPeriod!,
       quantity: quantity === '' ? null : Number(quantity),
       unit: unit === '' ? null : unit!,
+      txnDate: txnDate ? txnDate : null,
     })
       .then((r) => {
         if (!live) return;
@@ -927,11 +940,12 @@ export function TxnWorkspace({
 
   // ── 4e403268 — the SAME derivation, for a whole day-by-day grid, in ONE request ──
   /**
-   * The distinct quantities the grid needs priced. Deduplicated because the figure depends on (item,
-   * employment, company, month, quantity, unit) and nothing else: five days of 2.00 hours are five copies
-   * of one answer, and asking five times would be five transactions resolving the same employee's month.
+   * The distinct (date, quantity) pairs the grid needs priced. 34062f81 — the figure depends on (item,
+   * employment, company, month, quantity, unit) AND on the month of the line's own Effective Date, because
+   * `calendar_days` is that month's length. Five lines of 2.00 hours on one date are one question; one day
+   * dated in September and one day dated in October are two.
    */
-  const dailyQuantities = useMemo(() => (daily ? distinctQuantities(daily.lines) : []), [daily]);
+  const dailyEntries = useMemo(() => (daily ? distinctDayEntries(daily.lines) : []), [daily]);
   /**
    * Keyed on everything the answer depends on, and the answers are stored WITH the key — the same
    * store-the-key / derive-is-this-current guard the two effects above use, for the same reason: a reply
@@ -939,14 +953,16 @@ export function TxnWorkspace({
    * The key is empty until there is something to price, so an empty grid fires nothing.
    */
   const dailyDerivedKey =
-    daily != null && derives && pickedItem?.fromMaster && selected && isPeriod(formPeriod) && dailyQuantities.length > 0
+    daily != null && derives && pickedItem?.fromMaster && selected && isPeriod(formPeriod) && dailyEntries.length > 0
       ? [
           componentIdOf(pickedItem.value) ?? '',
           selected.employmentId,
           selected.companyId,
           formPeriod,
           requiredUnit ?? '',
-          dailyQuantities.join(','),
+          // Every (date, quantity) pair is IN the key, so moving one line to another date invalidates the
+          // figures on screen and a late reply for the old dates is discarded by the guard below.
+          dailyEntries.map((e) => `${e.txnDate}~${e.quantity}`).join(','),
         ].join('|')
       : '';
   const [dailyDerived, setDailyDerived] = useState<{
@@ -958,14 +974,20 @@ export function TxnWorkspace({
   useEffect(() => {
     if (!dailyDerivedKey) return;
     let live = true;
-    const [componentId, employmentId, companyId, payPeriod, unit, quantities] = dailyDerivedKey.split('|');
+    const [componentId, employmentId, companyId, payPeriod, unit, entries] = dailyDerivedKey.split('|');
     previewTxnAmountsAction({
       componentId: componentId!,
       employmentId: employmentId!,
       companyId: companyId!,
       payPeriod: payPeriod!,
       unit: unit === '' ? null : unit!,
-      quantities: quantities!.split(',').filter(Boolean),
+      entries: entries!
+        .split(',')
+        .filter(Boolean)
+        .map((e) => {
+          const [txnDate, quantity] = e.split('~');
+          return { txnDate: txnDate ?? '', quantity: quantity ?? '' };
+        }),
     })
       .then((r) => {
         if (!live) return;
@@ -973,7 +995,7 @@ export function TxnWorkspace({
         else if (!r.derived) setDailyDerived({ key: dailyDerivedKey, amounts: {}, zeroDivisor: null, error: null });
         else {
           const amounts: Record<string, string> = {};
-          for (const a of r.amounts) amounts[a.quantity] = a.amount;
+          for (const a of r.amounts) amounts[dayEntryKey(a)] = a.amount;
           setDailyDerived({ key: dailyDerivedKey, amounts, zeroDivisor: r.zeroDivisor, error: null });
         }
       })
@@ -997,7 +1019,7 @@ export function TxnWorkspace({
   const dailyAmountFor = useCallback(
     (line: DayLine): string | null => {
       if (!derives) return line.amount.trim() === '' ? null : line.amount;
-      const k = quantityKey(line.quantity);
+      const k = dayEntryKey(line);
       if (k === '') return null;
       return dailyDerivedCurrent?.amounts[k] ?? null;
     },
@@ -2413,6 +2435,11 @@ export function TxnWorkspace({
                     five). Per-day is the right answer — the amount shown against a date has to be what
                     that date is worth — but it is a surprise unless it is said. */}
                 {derives && <p className="text-xs text-muted-foreground">{t('dayGridRoundingHint')}</p>}
+                {/* 34062f81 — said only when the item's formula actually reads Calendar Days in the Month,
+                    so it explains a figure on screen rather than standing as boilerplate. */}
+                {derives && pickedItem?.readsCalendarDays && (
+                  <p className="text-xs text-muted-foreground">{t('dayGridCalendarDaysHint')}</p>
+                )}
                 {dailyDerivedCurrent?.zeroDivisor && (
                   <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
                     {dailyDerivedCurrent.zeroDivisor}

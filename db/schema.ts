@@ -3364,7 +3364,9 @@ export const compensation = pgTable(
 // is NOT auto-applied"): those legacy figures are RATES, yet the rate election cannot carry them either
 // because voluntary_excess is max(elected, statutory) and can only raise. A typed amount is the only
 // affordance there is. See docs/adr/0087-epf-manual-amount-categories.md.
-export const epfModeEnum = pgEnum('epf_mode', ['auto', 'voluntary_excess', 'exempt', 'manual_amount', 'manual_percentage']);
+// topup_percentage (b6dbadc5, migration 0697) — Top-up (existing percentage election) as an ADDITIVE top-up:
+// the rates are per-side increments added to the statutory rate. voluntary_excess keeps its total-rate meaning.
+export const epfModeEnum = pgEnum('epf_mode', ['auto', 'voluntary_excess', 'exempt', 'manual_amount', 'manual_percentage', 'topup_percentage']);
 
 // ───────────── Employee statutory profile — Malaysia pack (per-person) ─────────────
 // Pack-owned (localization/my). Statutory identity is per Person, not per Employment.
@@ -3588,6 +3590,8 @@ export const employeeStatutoryMy = pgTable(
   (t) => [
     uniqueIndex('employee_statutory_my_person_uq').on(t.personId),
     check('employee_statutory_my_manual_percentage_rates', sql`${t.epfMode}::text <> 'manual_percentage' OR (${t.epfEmployeeRate} IS NOT NULL AND ${t.epfEmployerRate} IS NOT NULL AND ${t.epfEmployeeRate} BETWEEN 0.01 AND 1 AND ${t.epfEmployerRate} BETWEEN 0.01 AND 1)`),
+    // b6dbadc5 (migration 0697) — top-up increments are 0..1 per side (null = nothing added) and carry no amounts.
+    check('employee_statutory_my_topup_percentage_rates', sql`${t.epfMode}::text <> 'topup_percentage' OR ((${t.epfEmployeeRate} IS NULL OR ${t.epfEmployeeRate} BETWEEN 0 AND 1) AND (${t.epfEmployerRate} IS NULL OR ${t.epfEmployerRate} BETWEEN 0 AND 1) AND ${t.epfEmployeeAmount} IS NULL AND ${t.epfEmployerAmount} IS NULL)`),
     check('employee_statutory_my_tax_applicability_epoch_check', sql`${t.taxApplicabilityEpoch} >= 0`),
     check('employee_statutory_my_tax_circumstance_check', sql`${t.taxCircumstance} IS NULL OR ${t.taxCircumstance} = 'none' OR (${t.taxCircumstance} = 'single' AND ${t.taxCategory} = 1) OR (${t.taxCircumstance} = 'spouse_not_working' AND ${t.taxCategory} = 2) OR (${t.taxCircumstance} IN ('spouse_working', 'widow_divorced') AND ${t.taxCategory} = 3)`),
     // Item e3ce0d4d — PARTIAL: real ICs stay unique per tenant, but multiple non-Malaysian rows carrying a
@@ -9674,6 +9678,8 @@ export const movementEventType = pgTable(
     behaviourKind: text('behaviour_kind').notNull(),
     /** Display text. Null on a built-in override means "use the shipped translation". */
     label: text('label'),
+    /** 1d58019a (migration 0721) — optional note shown under the type on the New Event form. */
+    description: text('description'),
     sortOrder: integer('sort_order').notNull().default(0),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: createdAt(),
@@ -9682,6 +9688,90 @@ export const movementEventType = pgTable(
     index('movement_event_type_tenant_idx').on(t.tenantId),
     uniqueIndex('movement_event_type_tenant_code_uq').on(t.tenantId, t.code),
   ],
+);
+
+// ─────────────── Termination reasons — tenant overlay (1d58019a, migration 0721, ADR-0165) ───────────────
+// The SAME overlay shape as movement_event_type above, for the exit-reason list: the thirteen built-in reasons
+// in core/termination-reason.ts stay the starting list, and a row renames / switches off one of them or adds
+// one of the tenant's own inside one of the three FIXED groups. No stored termination_type: the turnover
+// classification is derived in code (built-in mapping, else the group), so it has exactly one owner.
+// employment.termination_reason_code stays TEXT with no FK, so history keeps whatever code it recorded.
+// RLS (0721): tenant-read for every member, admin-only insert/update/delete.
+export const terminationReason = pgTable(
+  'termination_reason',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** Stable identity recorded on employment.termination_reason_code and in the movement payload. */
+    code: text('code').notNull(),
+    /** Display text. Null on a built-in override means "use the shipped translation". */
+    label: text('label'),
+    /** 'voluntary' | 'involuntary' | 'other' — the three fixed groups. */
+    category: text('category').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('termination_reason_tenant_idx').on(t.tenantId),
+    uniqueIndex('termination_reason_tenant_code_uq').on(t.tenantId, t.code),
+  ],
+);
+
+// ─────────────── Movement type controls (1d58019a Step 2, migration 0722, ADR-0166) ───────────────
+// Which termination reasons a Termination type offers (no rows = every active reason), the Field Controls of a
+// comparison type (no rows = today's full grid), and supporting documents on a movement (keyed by the
+// movement's group id). Settings rows: tenant-read, admin-write. Attachments: workforce-view read with the
+// compensation predicate for pay fields; append-only (no UPDATE/DELETE grant).
+export const movementTypeTerminationReason = pgTable(
+  'movement_type_termination_reason',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    typeCode: text('type_code').notNull(),
+    reasonCode: text('reason_code').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('movement_type_termination_reason_uq').on(t.tenantId, t.typeCode, t.reasonCode)],
+);
+
+export const movementTypeFieldRule = pgTable(
+  'movement_type_field_rule',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    typeCode: text('type_code').notNull(),
+    /** One of the comparison fields (lib/movement-field-rules.ts MOVEMENT_RULE_FIELDS). */
+    field: text('field').notNull(),
+    included: boolean('included').notNull(),
+    editable: boolean('editable').notNull(),
+    mustChange: boolean('must_change').notNull(),
+    /** 'none' | 'optional' | 'required'. */
+    document: text('document').notNull().default('none'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('movement_type_field_rule_uq').on(t.tenantId, t.typeCode, t.field)],
+);
+
+export const movementAttachment = pgTable(
+  'movement_attachment',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    /** The MovementTag.groupId every leg of the movement shares (a scheduled movement's too). */
+    movementGroupId: uuid('movement_group_id').notNull(),
+    field: text('field').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    content: bytea('content').notNull(),
+    uploadedBy: uuid('uploaded_by'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('movement_attachment_group_idx').on(t.tenantId, t.employmentId, t.movementGroupId)],
 );
 
 // ─────────────── Personnel — employee import history (feedback cf43c909, migration 0341) ───────────────
@@ -11488,3 +11578,10 @@ export const payrollTxnImportAttempt=pgTable('payroll_txn_import_attempt',{
  state:text('state').$type<'validated'|'completed'|'reverted'>().notNull().default('validated'),written:integer('written').notNull().default(0),recalcBatchIds:jsonb('recalc_batch_ids').$type<string[]>().notNull().default([]),
  createdAt:createdAt(),revertedAt:timestamp('reverted_at',{withTimezone:true}),revertedBy:uuid('reverted_by').references(()=>appUser.id),
 },t=>[uniqueIndex('payroll_txn_import_operation').on(t.tenantId,t.createdBy,t.operationId)]);
+
+/** Immutable pre-correction metadata. Money and payroll transaction rows are never rewritten. */
+export const informationPayslipSnapshot=pgTable('information_payslip_snapshot',{
+ payslipId:uuid('payslip_id').primaryKey(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+ companyId:uuid('company_id').notNull().references(()=>company.id),grade:text('grade'),employmentType:text('employment_type'),hiredOn:date('hired_on').notNull(),joinDate:date('join_date'),documentMetadata:jsonb('document_metadata').notNull().$type<Record<string,unknown>>(),
+ recordedBy:uuid('recorded_by').notNull().references(()=>appUser.id),recordedAt:createdAt(),
+});

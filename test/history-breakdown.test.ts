@@ -317,3 +317,167 @@ describe('deriveHistoryBreakdown — reconcile before replacing (6b134681)', () 
     expect(b.allowanceNet).toBe(500);
   });
 });
+
+/**
+ * 5a5309d5 — THE THREE FIGURES THAT STILL SHOWED ONLY A TOTAL.
+ *
+ *  1. Overtime the ATTENDANCE engine paid is recorded per leg in `statutory.otDetail`, never as a pay item,
+ *     so the `ot` bucket is empty and the panel printed one Overtime amount. It now falls back to those
+ *     legs — the same preference the printed payslip applies (lib/payslip-pdf.ts `overtimeLinesOf`).
+ *  2. A run's own deduction pay items (D0030 MONTHLY PARKING) were stamped into the `deduct` bucket and
+ *     folded unnamed into "Other deductions"; only imported history was itemised.
+ *  3. Non-payable record lines (BIK, VOLA) sat in the mixed "Itemised payroll items" list.
+ *
+ * Every list is still handed out ONLY when it adds up to the figure it sits under.
+ */
+describe('deriveHistoryBreakdown — overtime legs, named deductions and non-payable amounts (5a5309d5)', () => {
+  const sum = (rows: { amount: number }[]) => Math.round(rows.reduce((t, r) => t + r.amount, 0) * 100) / 100;
+  /** Three statutory legs as the attendance prefill stamps them: qty × rate is each amount to the sen. */
+  const otDetail = {
+    lines: [
+      { kind: 'workday', qty: 4, unit: 'hours', rate: 25, amount: 100 },
+      { kind: 'rest_day', qty: 4, unit: 'hours', rate: 20, amount: 80 },
+      { kind: 'holiday', qty: 2, unit: 'hours', rate: 30, amount: 60 },
+    ],
+  };
+
+  it('itemises attendance overtime by leg, with its hours, and the legs sum to the Overtime figure', () => {
+    const b = deriveHistoryBreakdown(row({ overtime: '240.00', statutory: { otDetail } }));
+    expect(b.overtimeLines).toEqual([
+      { code: '', name: '', amount: 100, detail: { qty: 4, rate: 25, unit: 'hours' }, otLeg: 'workday' },
+      { code: '', name: '', amount: 80, detail: { qty: 4, rate: 20, unit: 'hours' }, otLeg: 'rest_day' },
+      { code: '', name: '', amount: 60, detail: { qty: 2, rate: 30, unit: 'hours' }, otLeg: 'holiday' },
+    ]);
+    expect(sum(b.overtimeLines)).toBe(240);
+    expect(b.overtime).toBe(240);
+  });
+
+  it('falls back to the bare Overtime total when the recorded legs do not add up to it', () => {
+    expect(deriveHistoryBreakdown(row({ overtime: '300.00', statutory: { otDetail } })).overtimeLines).toEqual([]);
+    // A leg in a shape this version does not know is dropped, so the rest fall short and nothing is listed.
+    const unknown = { lines: [...otDetail.lines.slice(0, 2), { ...otDetail.lines[2], kind: 'night_shift' }] };
+    expect(deriveHistoryBreakdown(row({ overtime: '240.00', statutory: { otDetail: unknown } })).overtimeLines).toEqual([]);
+    // A leg whose hours × rate does not make its amount is dropped the same way.
+    const wrong = { lines: [...otDetail.lines.slice(0, 2), { ...otDetail.lines[2], qty: 3 }] };
+    expect(deriveHistoryBreakdown(row({ overtime: '240.00', statutory: { otDetail: wrong } })).overtimeLines).toEqual([]);
+  });
+
+  it('prefers the overtime PAY ITEMS when the run has them, exactly as the printed payslip does', () => {
+    const componentLines = [
+      { code: 'OT15', name: 'OVERTIME 1.5', amount: 240, buckets: [{ bucket: 'ot' as const, amount: 240 }] },
+    ];
+    const b = deriveHistoryBreakdown(row({ overtime: '240.00', statutory: { componentLines, otDetail } }));
+    expect(b.overtimeLines).toEqual([{ code: 'OT15', name: 'OVERTIME 1.5', amount: 240 }]);
+  });
+
+  it('lists a run’s own deduction pay items under Other deductions when they add up to it', () => {
+    const componentLines = [
+      { code: 'D0030', name: 'MONTHLY PARKING', amount: 20, buckets: [{ bucket: 'deduct' as const, amount: 20 }] },
+      { code: 'D0041', name: 'STAFF WELFARE', amount: 5.5, buckets: [{ bucket: 'deduct' as const, amount: 5.5 }] },
+    ];
+    const b = deriveHistoryBreakdown(row({ otherDeductions: '25.50', statutory: { componentLines } }));
+    expect(b.absence.residual).toBe(25.5);
+    expect(b.deductionLines).toEqual([
+      { code: 'D0030', name: 'MONTHLY PARKING', amount: 20 },
+      { code: 'D0041', name: 'STAFF WELFARE', amount: 5.5 },
+    ]);
+    expect(sum(b.deductionLines)).toBe(b.absence.residual);
+  });
+
+  it('shows the bare Other deductions total when the deduction items do not add up to it', () => {
+    // A loan instalment (or a clamped deduction) inside the column: the items explain only part of it.
+    const componentLines = [
+      { code: 'D0030', name: 'MONTHLY PARKING', amount: 20, buckets: [{ bucket: 'deduct' as const, amount: 20 }] },
+    ];
+    const b = deriveHistoryBreakdown(row({ otherDeductions: '70.00', statutory: { componentLines } }));
+    expect(b.absence.residual).toBe(70);
+    expect(b.deductionLines).toEqual([]);
+  });
+
+  it('does not list a deduction item twice when its money is already the named Unpaid leave row', () => {
+    const componentLines = [
+      { code: 'UPL', name: 'UNPAID LEAVE', amount: 250, buckets: [{ bucket: 'deduct' as const, amount: 250 }] },
+      { code: 'D0030', name: 'MONTHLY PARKING', amount: 20, buckets: [{ bucket: 'deduct' as const, amount: 20 }] },
+    ];
+    const statutory = { componentLines, unpaidLeave: { days: 1, amount: 250 } };
+    // The column holds the 250 ONCE: it is already printed as "Unpaid leave · 1 day", so only the
+    // parking item is left to explain the 20.00 residual.
+    const once = deriveHistoryBreakdown(row({ otherDeductions: '270.00', statutory }));
+    expect(once.absence.unpaidLeave).toEqual({ days: 1, amount: 250 });
+    expect(once.absence.residual).toBe(20);
+    expect(once.deductionLines).toEqual([{ code: 'D0030', name: 'MONTHLY PARKING', amount: 20 }]);
+    // When the column genuinely holds both (the leave engine AND a UPL pay item both charged), both items
+    // are separate money in the residual and both are listed.
+    const twice = deriveHistoryBreakdown(row({ otherDeductions: '520.00', statutory }));
+    expect(twice.absence.residual).toBe(270);
+    expect(twice.deductionLines.map((l) => l.code)).toEqual(['UPL', 'D0030']);
+    // And when removing the overlap still does not reconcile, the bare total stands.
+    expect(deriveHistoryBreakdown(row({ otherDeductions: '300.00', statutory })).deductionLines).toEqual([]);
+  });
+
+  it('splits stamped non-payable lines into their own list and leaves everything else itemised', () => {
+    const recordLines = [
+      { code: 'BIK_HOUSE', name: 'BIK (Household Servant)', amount: 500, nonPayable: true },
+      { code: 'TXN_EARNING', name: 'Sunday callout', amount: 120, nonPayable: false },
+      { code: 'VOLA', name: 'VOLA', amount: 100, nonPayable: true },
+      // Written before the stamp existed (r185): never re-derived, so it stays in the ordinary list.
+      { code: 'BIK_CAR', name: 'Car benefit', amount: 300 },
+      // A recorded employer contribution is not a non-payable amount for this box.
+      { code: 'C0001', name: 'Employer insurance', amount: 40, nonPayable: true, kind: 'contribution' },
+    ];
+    const b = deriveHistoryBreakdown(row({ statutory: { recordLines } }));
+    expect(b.nonPayableLines.map((l) => l.code)).toEqual(['BIK_HOUSE', 'VOLA']);
+    expect(b.nonPayableTotal).toBe(600);
+    expect(b.itemisedRecordLines.map((l) => l.code)).toEqual(['TXN_EARNING', 'BIK_CAR', 'C0001']);
+    // Each line is in exactly one list, and the full stored array (which the export reads) is untouched.
+    expect(b.nonPayableLines.length + b.itemisedRecordLines.length).toBe(recordLines.length);
+    expect(b.recordLines).toEqual(recordLines);
+  });
+
+  it('a payslip with no non-payable lines has an empty Non-payable list and a zero total', () => {
+    const b = deriveHistoryBreakdown(row({ statutory: { recordLines: [{ code: 'X', name: 'X', amount: 1, nonPayable: false }] } }));
+    expect(b.nonPayableLines).toEqual([]);
+    expect(b.nonPayableTotal).toBe(0);
+    expect(b.itemisedRecordLines).toHaveLength(1);
+  });
+
+  it('INVARIANT: every list the panel renders sums to the figure it sits under, and no figure moves', () => {
+    const statutory = {
+      componentLines: [
+        { code: 'A0010', name: 'Travel Allowance', amount: 100, buckets: [{ bucket: 'wage' as const, amount: 100 }] },
+        { code: 'A0011', name: 'Phone Allowance', amount: 50, buckets: [{ bucket: 'wage' as const, amount: 50 }] },
+        { code: 'B0001', name: 'Performance Bonus', amount: 500, buckets: [{ bucket: 'bonus' as const, amount: 500 }] },
+        { code: 'D0030', name: 'Monthly Parking', amount: 20, buckets: [{ bucket: 'deduct' as const, amount: 20 }] },
+      ],
+      otDetail,
+      recordLines: [{ code: 'BIK_HOUSE', name: 'BIK (Household Servant)', amount: 500, nonPayable: true }],
+      epfEmployee: 380, socsoEmployee: 20, eisEmployee: 8, pcb: 30.6,
+    };
+    const figures = {
+      basic: '4000.00', allowance: '150.00', overtime: '240.00', bonus: '500.00', gross: '4890.00',
+      otherDeductions: '20.00', totalDeductions: '458.60', net: '4431.40',
+    };
+    const b = deriveHistoryBreakdown(row({ ...figures, statutory }));
+    const pairs: [string, { amount: number }[], number][] = [
+      ['allowances', b.allowanceLines, b.allowanceNet],
+      ['overtime', b.overtimeLines, b.overtime],
+      ['bonus', b.bonusLines, b.bonus],
+      ['other deductions', b.deductionLines, b.absence.residual],
+      ['non-payable', b.nonPayableLines, b.nonPayableTotal],
+    ];
+    for (const [name, lines, figure] of pairs) {
+      expect(lines.length, `${name} is itemised`).toBeGreaterThan(0);
+      expect(sum(lines), `${name} lines sum to the figure`).toBe(figure);
+    }
+    // Independent expected values, not read back from the derivation.
+    expect([b.allowanceNet, b.overtime, b.bonus, b.absence.residual, b.nonPayableTotal]).toEqual([150, 240, 500, 20, 500]);
+    // The non-payable amount is outside gross and net: the earnings rows still make gross without it.
+    expect(b.basic + b.allowanceNet + b.overtime + b.bonus).toBe(b.gross);
+    // Stripping every stamp leaves every figure byte-identical — this is a display change only.
+    const bare = deriveHistoryBreakdown(row({ ...figures, statutory: { epfEmployee: 380, socsoEmployee: 20, eisEmployee: 8, pcb: 30.6 } }));
+    for (const k of ['basic', 'allowanceNet', 'overtime', 'bonus', 'gross', 'otherDeductions', 'totalDeductions', 'net'] as const) {
+      expect(b[k], k).toBe(bare[k]);
+    }
+    expect(b.absence.residual).toBe(bare.absence.residual);
+  });
+});
