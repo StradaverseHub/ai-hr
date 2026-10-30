@@ -8,10 +8,14 @@ ALTER TABLE app.assistant_own_leave_review ADD COLUMN payroll_reopen_batch_id uu
 DO $$ DECLARE c record;strict_nulls text;scope_name text;matches integer;previous text;newexpr text;original jsonb;item record;after_hash text;changed text[];
 BEGIN
  SELECT jsonb_object_agg(conname,encode(sha256(convert_to(conbin::text,'UTF8')),'hex')) INTO original FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c';
- -- Select the genuine actor-scope CHECK by its column dependency set, BEFORE deparsing any tree.
- SELECT count(*),min(conname) INTO matches,scope_name FROM pg_constraint q WHERE q.conrelid='app.assistant_own_leave_review'::regclass AND q.contype='c'
- AND q.conkey @> ARRAY(SELECT attnum FROM pg_attribute WHERE attrelid=q.conrelid AND attname IN('action_kind','person_id','employment_id','company_id','testing_execution_id'))::smallint[]
- AND NOT (SELECT attnum FROM pg_attribute WHERE attrelid=q.conrelid AND attname='state')=ANY(q.conkey);
+ -- Enumerate only the actual dependency candidates; use the predecessor owner's exact markers.
+ matches:=0;
+ FOR c IN SELECT conname,conbin,oid FROM pg_constraint q WHERE q.conrelid='app.assistant_own_leave_review'::regclass AND q.contype='c'
+ AND q.conkey @> ARRAY(SELECT attnum FROM pg_attribute WHERE attrelid=q.conrelid AND attname IN('employment_id','testing_execution_id'))::smallint[] ORDER BY conname LOOP
+  RAISE NOTICE '0734 scope candidate % rawConbinBytes %',c.conname,octet_length(c.conbin::text);
+  SELECT pg_get_expr(conbin,conrelid) INTO previous FROM pg_constraint WHERE oid=c.oid;
+  IF previous LIKE '%testing_execution_id IS NOT NULL%' AND previous LIKE '%employment_id IS NULL%' THEN matches:=matches+1;scope_name:=c.conname;END IF;
+ END LOOP;
  IF matches<>1 THEN RAISE EXCEPTION '0734 actor scope drift: %',matches;END IF;
  changed:=ARRAY[scope_name,'assistant_review_kind_columns'];
  IF EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname='assistant_review_action_kind' AND contype='c') OR NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname='assistant_review_action_kind_registered' AND contype='f' AND confrelid='app.assistant_action_kind'::regclass) OR NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname='assistant_review_kind_columns' AND contype='c') THEN RAISE EXCEPTION '0734 ordered kind schema drift';END IF;
