@@ -3405,15 +3405,21 @@ function employmentClaimCountWhere(employmentId: string, opts: EmploymentClaimRe
       where ${employment.id}=${employmentId}::uuid)`);
 }
 async function employmentClaimRowsTx(tx: Tx, employmentId: string, opts: EmploymentClaimRead = {}): Promise<ClaimRow[]> {
-  const query = tx.select(rowSelect()).from(claimRequest)
+  const order = [opts.cursorOrder ? sql`date_trunc('milliseconds',${claimRequest.createdAt}) desc` : desc(claimRequest.createdAt), desc(claimRequest.id)];
+  // LIMIT is inside the CTE, after all membership/RLS checks but before display joins.
+  // Otherwise bad RLS cardinality estimates can cause a million display lookups before LIMIT25.
+  const ids = tx.select({id:claimRequest.id}).from(claimRequest)
+    .where(employmentClaimCountWhere(employmentId,opts)).orderBy(...order).$dynamic();
+  if(opts.limit!==undefined)ids.limit(opts.limit);
+  if(opts.offset!==undefined)ids.offset(opts.offset);
+  const page=tx.$with('employment_claim_page').as(ids);
+  const query = tx.with(page).select(rowSelect()).from(page)
+    .innerJoin(claimRequest,eq(claimRequest.id,page.id))
     .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
     .leftJoin(claimItem, eq(claimItem.id, claimRequest.claimItemId))
     .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
     .innerJoin(person, eq(person.id, employment.personId))
-    .where(employmentClaimWhere(employmentId, opts))
-    .orderBy(opts.cursorOrder ? sql`date_trunc('milliseconds',${claimRequest.createdAt}) desc` : desc(claimRequest.createdAt), desc(claimRequest.id)).$dynamic();
-  if (opts.limit !== undefined) query.limit(opts.limit);
-  if (opts.offset !== undefined) query.offset(opts.offset);
+    .orderBy(...order);
   const rows = await query;
   const atts = await attachmentsByClaim(tx, rows.map(row => row.id));
   return rows.map(row => toRow(row, atts));
