@@ -23,6 +23,16 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Staging scheduling is enforced outside the rsynced application. A detached process holds the
+# operation lock for its entire lifetime; a dropped watcher never releases the staging lease.
+if [ "$PWD" = /opt/ai-hr ] && [ -f /var/tmp/aihr-deploy/staging-release-queue/coordinator.py ]; then
+  [ "${AIHR_STAGING_CANDIDATE:-}" = "${AIHR_DEPLOY_REF:-unknown}" ] || { echo 'Staging lease source differs' >&2; exit 78; }
+  if [ "${AIHR_STAGING_DEPLOY_GUARDED:-}" != 1 ]; then
+    exec python3 /var/tmp/aihr-deploy/staging-release-queue/coordinator.py guard -- env AIHR_STAGING_DEPLOY_GUARDED=1 bash "$PWD/deploy/deploy.sh" "$@"
+  fi
+  python3 /var/tmp/aihr-deploy/staging-release-queue/coordinator.py assert-env || exit 78
+fi
+
 # ── r291 / readiness 7.1 — THIS DEPLOY REPORTS ON ITSELF ─────────────────────
 #
 # Everything below this block is unchanged. What is added is a record, in /var/tmp/aihr-deploy, of

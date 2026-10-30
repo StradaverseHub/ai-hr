@@ -98,6 +98,11 @@ def cleanup_install(directory,source):
     finally:
         for handle in reversed(handles):os.close(handle)
 if __name__=="__main__":
+    # Only the CLI on commissioned staging is guarded; isolated fixture functions stay pure.
+    import pathlib
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'scripts/staging'))
+    from lease import guard_server_cli
+    guard_server_cli()
     try:
         require(len(sys.argv)==2,"usage: cleanup-install.py PRIVATE_INSTALL_DIRECTORY")
         print(json.dumps(cleanup_install(sys.argv[1],"/opt/ai-hr"),sort_keys=True))

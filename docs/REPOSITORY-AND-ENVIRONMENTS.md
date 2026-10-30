@@ -44,6 +44,10 @@ Owner direction reaffirmed 30 October 2026: GitHub Actions has removed the Mac a
 
 Use standard public-repository GitHub-hosted runners only. The owner forbids paid larger runners and spending-limit increases. Inspect actual current runner resources, workflow, repository visibility and capacity before making performance/cost claims. [Actions procedure](ALPHA-STAGING-ACTIONS.md) and [CI policy](CI-STAGING-VERIFICATION-POLICY.md) own candidate dispatch and authenticated evidence. Inspect actual enable switches; this document grants no authority to enable automatic CD.
 
+## Shared staging queue — owner decision, 30 October 2026
+
+Use the [shared staging queue and lease](STAGING-RELEASE-QUEUE.md) across AI and operator sessions. One controller owns installation, acceptance and required capture; prepare and verify aggregate candidates outside the staging window. Start with up to three ordinary migration-free members, isolate higher-risk changes, and preserve every existing release safeguard. Commissioning and actual pilot evidence are separate from source implementation; legacy clients must adopt the guarded protocol.
+
 ## Private production package distribution
 
 Production packages, checksums, manifests and release notes belong only in private `StradaverseHub/ai-hr-releases`. Source tags identify the accepted commit and are mirrored unchanged. Follow [production packages](PRODUCTION-PACKAGES.md) only after explicit staging acceptance. Publication does not deploy or authorize database resets. Keep SSH configuration, installation secrets and private assets outside public source/artifacts.
