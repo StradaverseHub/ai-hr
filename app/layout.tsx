@@ -5,7 +5,8 @@ import { Plus_Jakarta_Sans, Geist_Mono, DM_Mono } from 'next/font/google';
 import localFont from 'next/font/local';
 import { cookies, headers } from 'next/headers';
 import { NextIntlClientProvider } from 'next-intl';
-import { getLocale } from 'next-intl/server';
+import { getLocale,getMessages } from 'next-intl/server';
+import {sharedClientMessages} from '@/i18n/client-messages';
 import './globals.css';
 import './login/login.css';
 import './onboarding-workspace.css';
@@ -105,7 +106,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // because middleware.ts needs the same list; keeping two copies is what let them drift apart.
   const pathname = (await headers()).get('x-pathname') ?? '';
   const isAuthRoute = isAuthRoutePath(pathname);
-  const locale = await getLocale();
+  const [locale,messages]=await Promise.all([getLocale(),getMessages()]);
+  const shellMessages=sharedClientMessages(messages);
   // r396 — the UI theme, from the `ui_theme` cookie, written onto <html> so the FIRST paint is already in
   // the chosen theme (no flash). Absent or unknown → Atelier (lib/ui-theme.ts). Read before the auth
   // branch so /login is themed too. Light/dark is a separate axis (next-themes' `.dark` class).
@@ -123,7 +125,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         suppressHydrationWarning
       >
         <body className="h-dvh overflow-auto bg-canvas font-sans">
-          <NextIntlClientProvider>
+          <NextIntlClientProvider messages={shellMessages}>
             <Providers>{children}</Providers>
           </NextIntlClientProvider>
         </body>
@@ -145,7 +147,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     const viewer = await viewerIdentity(session);
     return <html lang={locale} data-ui-theme={uiTheme} className={`${fontVariables} h-full antialiased`} suppressHydrationWarning>
       <body className="h-dvh overflow-hidden font-sans">
-        <NextIntlClientProvider><Providers><UiThemeProvider theme={uiTheme}>
+        <NextIntlClientProvider messages={shellMessages}><Providers><UiThemeProvider theme={uiTheme}>
           <OperatorShell name={viewer.name}>{children}</OperatorShell>
           <OnboardingTour tours={toursForRoles(session.roles)} autoStartTourId={null}/>
           <Toaster/>
@@ -264,7 +266,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       suppressHydrationWarning
     >
       <body className="h-dvh overflow-hidden bg-canvas p-3 font-sans lg:p-4 monolith:bg-background! monolith:p-0!">
-        <NextIntlClientProvider>
+        <NextIntlClientProvider messages={shellMessages}>
         <Providers>
         {/* r398 — the theme the shell's structural branches render on the server (components/ui-theme-context.tsx);
             on the client they follow <html data-ui-theme> itself. */}

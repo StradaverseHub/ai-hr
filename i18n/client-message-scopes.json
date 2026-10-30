@@ -1,0 +1,347 @@
+{
+  "version": 1,
+  "shared": {
+    "prefixes": [
+      "accessConfiguration",
+      "approvalHistory",
+      "approvals",
+      "assistant.fileImport",
+      "assistant.launcher",
+      "auth",
+      "commandBar",
+      "common",
+      "components.themeToggle",
+      "components.uiTheme",
+      "delegations",
+      "employeeHome.greetingNotification",
+      "letters.notifications",
+      "nav",
+      "notifications",
+      "onboarding",
+      "onehr.workspace",
+      "operatorWorkspace",
+      "pageStyleRecovery",
+      "topbar"
+    ],
+    "unknown": []
+  },
+  "segments": {
+    "": {
+      "prefixes": [
+        "attendance.clock",
+        "common.databaseError",
+        "dashboard",
+        "employeeHome.calendar",
+        "employeeHome.celebrations",
+        "employeeHome.greeting",
+        "employeeHome.greetingSend",
+        "employeeHome.knowledgeSearch",
+        "employeeHome.notices",
+        "employeeHome.quickActions",
+        "employeeHome.summary",
+        "employeeHome.taskNames",
+        "employeeHome.tasks",
+        "employeeHome.team",
+        "employeeHome.timeOff",
+        "employeeHome.today",
+        "notices"
+      ],
+      "unknown": []
+    },
+    "admin": {
+      "prefixes": null,
+      "unknown": [
+        "app/admin/personnel/[employmentId]/hire-correction-form.tsx",
+        "app/admin/personnel/import/bank-import-progress.tsx",
+        "app/admin/personnel/import/employee-import.tsx",
+        "app/admin/personnel/import/import-explanations.tsx",
+        "app/admin/personnel/import/movement-import.tsx",
+        "app/admin/personnel/import/section-import.tsx",
+        "app/admin/personnel/new/family-step.tsx",
+        "app/admin/personnel/new/wizard.tsx",
+        "components/attendance/location-assignment.tsx",
+        "components/download-template.tsx",
+        "components/overtime-patterns/choice-label.ts",
+        "components/personnel-field.tsx",
+        "components/personnel-import-evidence-review.tsx",
+        "components/personnel-import-preparation-review.tsx",
+        "components/personnel-import-values.tsx",
+        "components/same-as-permanent-address.tsx"
+      ]
+    },
+    "analytics": {
+      "prefixes": [
+        "analytics",
+        "common.databaseError",
+        "people.employeeStatus"
+      ],
+      "unknown": []
+    },
+    "approvals": {
+      "prefixes": [
+        "approvals",
+        "common.databaseError",
+        "components.plannedAbsences",
+        "components.timelineNav",
+        "leave",
+        "replacementRequest.formulaReview",
+        "review"
+      ],
+      "unknown": []
+    },
+    "assistant": {
+      "prefixes": null,
+      "unknown": [
+        "components/assistant/module-profile-action-panel.tsx",
+        "components/personnel-field.tsx"
+      ]
+    },
+    "attendance": {
+      "prefixes": [
+        "attendance",
+        "attendanceHistory",
+        "clockingFile",
+        "common.databaseError",
+        "components.confirmSubmit",
+        "components.drawer",
+        "employeePanel",
+        "me",
+        "offlineClocking"
+      ],
+      "unknown": []
+    },
+    "callback": {
+      "prefixes": [],
+      "unknown": []
+    },
+    "claims": {
+      "prefixes": [
+        "claims",
+        "common.databaseError",
+        "components.confirmSubmit"
+      ],
+      "unknown": []
+    },
+    "control-tower": {
+      "prefixes": [
+        "admin.ai",
+        "assistant.workspace.ownClear",
+        "common.databaseError",
+        "components.confirmSubmit",
+        "controlTower.orchestrator"
+      ],
+      "unknown": []
+    },
+    "delegations": {
+      "prefixes": [
+        "common.databaseError",
+        "delegations"
+      ],
+      "unknown": []
+    },
+    "email-assets": {
+      "prefixes": [],
+      "unknown": []
+    },
+    "feedback": {
+      "prefixes": [
+        "common.databaseError",
+        "feedback",
+        "pagination"
+      ],
+      "unknown": []
+    },
+    "fonts": {
+      "prefixes": [],
+      "unknown": []
+    },
+    "health": {
+      "prefixes": [],
+      "unknown": []
+    },
+    "invite": {
+      "prefixes": [
+        "common",
+        "internalAuth",
+        "loginPresentation"
+      ],
+      "unknown": []
+    },
+    "knowledge-base": {
+      "prefixes": [
+        "common.databaseError",
+        "kb"
+      ],
+      "unknown": []
+    },
+    "leave": {
+      "prefixes": [
+        "admin.leave.adjustmentsCriteria",
+        "admin.leaveCredit",
+        "admin.profileOptions.category",
+        "admin.replacementLeave",
+        "attendance",
+        "common",
+        "components.confirmSubmit",
+        "components.drawer",
+        "components.plannedAbsences",
+        "components.timelineNav",
+        "employeePanel",
+        "leave",
+        "leaveCreditHistory",
+        "leaveFigure",
+        "me",
+        "nav",
+        "replacementRequest"
+      ],
+      "unknown": []
+    },
+    "letters": {
+      "prefixes": [
+        "common.databaseError",
+        "letters.fields"
+      ],
+      "unknown": []
+    },
+    "lifecycle": {
+      "prefixes": [
+        "common.databaseError",
+        "components.confirmSubmit",
+        "lifecycle",
+        "onboardingV31.copy"
+      ],
+      "unknown": []
+    },
+    "login": {
+      "prefixes": [
+        "common",
+        "internalAuth",
+        "loginPresentation",
+        "mobileSetup"
+      ],
+      "unknown": []
+    },
+    "manage": {
+      "prefixes": [
+        "components.drawer",
+        "myTeam"
+      ],
+      "unknown": []
+    },
+    "me": {
+      "prefixes": null,
+      "unknown": [
+        "app/me/profile-editor.tsx"
+      ]
+    },
+    "mobile-preview": {
+      "prefixes": [
+        "attendance.clock",
+        "claims",
+        "common.databaseError",
+        "me.leaveBalanceTable",
+        "mobilePreview",
+        "notifications"
+      ],
+      "unknown": []
+    },
+    "notices": {
+      "prefixes": [
+        "common.databaseError"
+      ],
+      "unknown": []
+    },
+    "operator": {
+      "prefixes": [
+        "common.databaseError",
+        "kb",
+        "operator",
+        "operatorWorkspace"
+      ],
+      "unknown": []
+    },
+    "org": {
+      "prefixes": [
+        "common.databaseError",
+        "org"
+      ],
+      "unknown": []
+    },
+    "payroll": {
+      "prefixes": null,
+      "unknown": [
+        "components/download-template.tsx"
+      ]
+    },
+    "people": {
+      "prefixes": [],
+      "unknown": []
+    },
+    "performance": {
+      "prefixes": [
+        "common.databaseError",
+        "components.confirmSubmit",
+        "components.drawer",
+        "onehr",
+        "performance.eligibility",
+        "performance.lifecycle",
+        "performance.list",
+        "performance.review",
+        "performanceArea"
+      ],
+      "unknown": []
+    },
+    "personnel": {
+      "prefixes": [
+        "common.databaseError"
+      ],
+      "unknown": []
+    },
+    "reports": {
+      "prefixes": [
+        "common.databaseError",
+        "employeeMasterReports",
+        "payrollComparison"
+      ],
+      "unknown": []
+    },
+    "reset-password": {
+      "prefixes": [
+        "common",
+        "internalAuth",
+        "loginPresentation"
+      ],
+      "unknown": []
+    },
+    "rewards": {
+      "prefixes": [
+        "common.databaseError",
+        "rewards"
+      ],
+      "unknown": []
+    },
+    "roster": {
+      "prefixes": [
+        "common.databaseError",
+        "pagination",
+        "roster"
+      ],
+      "unknown": []
+    },
+    "system-testing": {
+      "prefixes": [
+        "common.databaseError",
+        "systemTestingWorkspace"
+      ],
+      "unknown": []
+    },
+    "tasks": {
+      "prefixes": [
+        "common.databaseError",
+        "notifications.task",
+        "onboardingV31.copy"
+      ],
+      "unknown": []
+    }
+  }
+}

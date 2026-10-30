@@ -74,22 +74,46 @@ try{
  }
  browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||undefined,args:['--host-resolver-rules=MAP localhost 127.0.0.1']});
  report.browserVersion=browser.version();
- async function context(user){const context=await browser.newContext({ignoreHTTPSErrors:true,locale:'en-MY'});await context.addCookies([{name:'__Host-aihr_internal',value:user.token,url:base,secure:true,httpOnly:true,sameSite:'Lax'},{name:'NEXT_LOCALE',value:'en',url:base}]);return context;}
+ async function context(user,locale='en'){
+  const context=await browser.newContext({ignoreHTTPSErrors:true,locale});
+  await context.addCookies([{name:'__Host-aihr_internal',value:user.token,url:base,secure:true,httpOnly:true,sameSite:'Lax'},{name:'NEXT_LOCALE',value:locale,url:base}]);
+  context.on('page',page=>{
+   page.on('pageerror',error=>report.browserErrors.push({role:user.role,locale,error:error.name+': '+error.message.slice(0,150)}));
+   page.on('console',message=>{if(message.type()==='error')report.browserErrors.push({role:user.role,locale,error:message.text().slice(0,150)});});
+  });
+  return context;
+ }
  async function visit(page,user,path,phase='baseline'){
   lastPage=page;
   const start=performance.now();const response=await page.goto(base+path,{waitUntil:'networkidle',timeout:90000});assert.equal(response.status(),200);
   assert(!new URL(page.url()).pathname.startsWith('/login'));await page.locator('main').waitFor();assert((await page.locator('body').innerText()).includes(user.name));
   const heading=(await page.locator('h1').allTextContents()).join(' ').trim();assert(heading.length>0&&!/^404\b/.test(heading),'missing or not-found page heading');
-  const skip=page.getByRole('button',{name:'Skip',exact:true});
+  const skip=page.getByRole('dialog').getByRole('button',{name:'Skip',exact:true});
   if(await skip.isVisible()){await skip.click();await skip.waitFor({state:'hidden'});report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;}
   if(['/claims','/admin/personnel','/payroll'].includes(path))assert(await page.locator('main tbody tr').count()>0,'expected fictional table rows');
   const timing=await page.evaluate(()=>{const n=performance.getEntriesByType('navigation')[0];return {ttfbMs:n.responseStart-n.requestStart,domInteractiveMs:n.domInteractive,decodedBytes:n.decodedBodySize,transferBytes:n.transferSize};});
   report.browser.push({phase,role:user.role,path,heading,elapsedMs:performance.now()-start,...timing});save();
  }
  for(const user of [employee,manager,hr,group,fixture.users[254],fixture.users[251]]){
-  const ctx=await context(user),page=await ctx.newPage();page.on('pageerror',error=>report.browserErrors.push({role:user.role,error:error.name+': '+error.message.slice(0,150)}));page.on('console',message=>{if(message.type()==='error')report.browserErrors.push({role:user.role,error:message.text().slice(0,150)});});
+  const ctx=await context(user),page=await ctx.newPage();
   for(const route of user.role==='employee'?['/claims','/leave','/attendance/individual']:user.role==='manager'?['/approvals','/performance/home']:['/admin/personnel','/payroll','/lifecycle/onboarding'])await visit(page,user,route);
   await page.screenshot({path:join(out,'browser-'+user.index+'.png'),fullPage:false});await ctx.close();
+ }
+ // Locale projection and real client navigation must work before any capacity claim.
+ for(const locale of ['en','ms','zh','ta','th','vi']){
+  const ctx=await context(employee,locale),page=await ctx.newPage();await visit(page,employee,'/claims');
+  const messages=JSON.parse(readFileSync(new URL('../../messages/'+locale+'.json',import.meta.url),'utf8'));
+  const fallback=JSON.parse(readFileSync(new URL('../../messages/en.json',import.meta.url),'utf8'));
+  assert((await page.locator('h1').innerText()).includes(messages.claims?.title||fallback.claims.title));
+  report.browser.at(-1).locale=locale;await ctx.close();
+ }
+ {
+  const ctx=await context(employee),page=await ctx.newPage();await visit(page,employee,'/leave');
+  const documents=[];page.on('request',request=>{if(request.resourceType()==='document')documents.push(request.url());});
+  await Promise.all([page.waitForURL(url=>url.pathname==='/claims',{timeout:90000}),page.locator('a[href="/claims"]:visible').first().click()]);
+  await page.locator('textarea[name="description"]').waitFor();assert.equal(documents.length,0,'client link unexpectedly reloaded the document');
+  assert.equal((await page.locator('h1').innerText()).trim(),'Claims');assert(await page.locator('main tbody tr').count()>0);
+  report.browser.push({workflow:'client navigation',from:'/leave',to:'/claims',documentRequests:0,passed:true});await ctx.close();save();
  }
  // Capture progressive-enhancement action metadata from the actual built form. No hardcoded action ID.
  const ctx=await context(employee),page=await ctx.newPage();await visit(page,employee,'/claims');
@@ -130,8 +154,6 @@ try{
  const browserLoad=Promise.allSettled([employee,manager,hr,group,fixture.users[254],fixture.users[251]].map(async user=>{
   await pause(10000);
   const ctx=await context(user),page=await ctx.newPage();
-  page.on('pageerror',error=>report.browserErrors.push({role:user.role,phase:'loaded',error:error.message.slice(0,150)}));
-  page.on('console',message=>{if(message.type()==='error')report.browserErrors.push({role:user.role,phase:'loaded',error:message.text().slice(0,150)});});
   try{for(const route of user.role==='employee'?['/claims','/leave','/attendance/individual']:user.role==='manager'?['/approvals','/claims','/performance/home']:['/admin/personnel','/payroll','/claims']){
    await visit(page,user,route,'loaded');await pause(1000);
   }}finally{await ctx.close();}

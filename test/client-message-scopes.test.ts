@@ -1,4 +1,4 @@
-import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
+import {readFileSync,mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -25,4 +25,10 @@ it('inventories the application catalog requirements without executing applicati
  const root=fileURLToPath(new URL('..',import.meta.url)),result=computeClientMessageScopes(root);
  expect(result.version).toBe(1);expect(result.segments.claims).toBeDefined();
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'client-message-scopes.json'),JSON.stringify(result,null,2));
+},60000);
+
+it('keeps the checked-in scope contract current for all shell and route client imports',()=>{
+ const root=fileURLToPath(new URL('..',import.meta.url));
+ const expected=JSON.parse(readFileSync(join(root,'i18n/client-message-scopes.json'),'utf8'));
+ expect(computeClientMessageScopes(root)).toEqual(expected);
 },60000);

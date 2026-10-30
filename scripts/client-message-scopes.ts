@@ -2,6 +2,7 @@
 import {existsSync,readFileSync,readdirSync,statSync} from 'node:fs';
 import {join,resolve,relative,dirname,extname} from 'node:path';
 import ts from 'typescript';
+import {unscopedClientMessageContracts} from './personnel-message-contract';
 export type MessageScope={prefixes:string[]|null;unknown:string[]};
 export type ClientMessageScopes={version:1;shared:MessageScope;segments:Record<string,MessageScope>};
 export function computeClientMessageScopes(root:string):ClientMessageScopes{
@@ -60,7 +61,10 @@ export function computeClientMessageScopes(root:string):ClientMessageScopes{
     if(ts.isCallExpression(node)){
      if(client&&ts.isIdentifier(node.expression)&&hooks.has(node.expression.text)){
       const value=node.arguments[0]?literal(file,node.arguments[0]):undefined;
-      if(value)prefixes.add(value);else unknown.add(relative(root,file));
+      if(value)prefixes.add(value);else{
+       const declared=unscopedClientMessageContracts[relative(root,file)];
+       if(declared)declared.forEach(prefix=>prefixes.add(prefix));else unknown.add(relative(root,file));
+      }
      }
      if(client&&ts.isIdentifier(node.expression)&&messagesHooks.has(node.expression.text)
        &&relative(root,file)!=='components/route-message-provider.tsx')unknown.add(relative(root,file));
