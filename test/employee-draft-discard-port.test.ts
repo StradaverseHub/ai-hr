@@ -1,7 +1,8 @@
 /** Actual child-role DELETE and private SQL custody. Authored for hosted migrated DB only. */
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
+import {afterAll,afterEach,beforeAll,beforeEach,expect,it,vi} from 'vitest';
+import {masterKeyAvailable} from '../lib/pii/vault';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {appendEvent,actorOf} from '../db/events';
 import * as s from '../db/schema';
@@ -55,8 +56,8 @@ async function withPhaseProbe(work:()=>Promise<void>){
 }
 async function phaseProof(tx:Tx,id:string,event:string|null=null){const [row]=await tx.execute<{value:PhaseProof}>(sql`select public.ai_discard_test_phase_probe(${id}::uuid,${event}::uuid) value`);expect(row.value).not.toBeNull();return row.value;}
 function expectChildProof(proof:PhaseProof){expect(proof).toMatchObject({stamped:true,draftAbsent:true,eventPresent:true});expect(proof.deleteXid).toBe(proof.parentXid);expect(proof.armXid).toBe(proof.parentXid);expect(proof.stampRowXmin).not.toBe(proof.parentXid);expect(proof.eventRowXmin).not.toBe(proof.parentXid);}
-beforeAll(migrateTestDb);afterAll(closeAll);
-beforeEach(async()=>{await resetDb();b=await seedBase();ctx=adminCtx(b);await setModule(b.tenantId,'lifecycle',null);});
+beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>vi.unstubAllEnvs());
+beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-discard-port-custody-key-12345678');await resetDb();b=await seedBase();ctx=adminCtx(b);await setModule(b.tenantId,'lifecycle',null);});
 
 it('uses a non-table-owner child with inherited app RLS and no login/bypass/role-management authority',async()=>{
  const [row]=await owner.db.execute<{login:boolean;super:boolean;bypass:boolean;createRole:boolean;owns:boolean;inherits:boolean;reverse:boolean;setChild:boolean;appRaw:boolean;childSourceWrite:boolean;childStampWrite:boolean;content:boolean;createApp:boolean}>(sql`select c.rolcanlogin login,c.rolsuper super,c.rolbypassrls bypass,c.rolcreaterole "createRole",exists(select 1 from pg_class t where t.oid in ('employee_draft'::regclass,'app.assistant_own_leave_review'::regclass) and t.relowner=c.oid) owns,pg_has_role(c.oid,'ai_hr_app','USAGE') inherits,pg_has_role('ai_hr_app',c.oid,'MEMBER') reverse,pg_has_role('ai_hr_app',c.oid,'SET') "setChild",has_table_privilege('ai_hr_app','app.assistant_own_leave_review','SELECT') "appRaw",has_column_privilege(c.oid,'app.assistant_own_leave_review','draft_discard_source','UPDATE') "childSourceWrite",has_column_privilege(c.oid,'app.assistant_own_leave_review','draft_discard_delete_witness','UPDATE') "childStampWrite",has_column_privilege(c.oid,'app.assistant_own_leave_review_content','ciphertext','SELECT') content,has_schema_privilege(c.oid,'app','CREATE') "createApp" from pg_roles c where c.rolname='ai_hr_draft_discard_port'`);
@@ -135,6 +136,7 @@ it('ordinary native captures retain non-increasing bounds through the actual enc
 });
 
 it.each([false,true])('real completed-outcome reader and learning privacy capture support actor PERSON linked=%s',async linkedActor=>{
+ expect(masterKeyAvailable()).toBe(true);
  await setModule(b.tenantId,'assistant','active');
  const person=linkedActor?await hireEmployee(ctx,{person:{fullName:'Fictional linked outcome actor',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'}):null;
  const userId=await createAppUser(b.tenantId,person?.personId??null,'hr_admin');await grantAssistant(ctx,{appUserId:userId});
