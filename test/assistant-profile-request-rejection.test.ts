@@ -1,5 +1,7 @@
 /** Real native requests/custody; fictional actors only. No provider or binary workflow. */
 import {randomUUID} from 'node:crypto';
+import {writeFileSync} from 'node:fs';
+import {join} from 'node:path';
 import {and,eq,sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,afterEach,it,expect,vi} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
@@ -38,7 +40,11 @@ async function stored(id:string){const [r]=await owner.db.execute<{state:string;
 async function master(){return {people:await owner.db.select().from(schema.person).where(eq(schema.person.tenantId,b.tenantId)).orderBy(schema.person.id),employment:await owner.db.select().from(schema.employment).where(eq(schema.employment.tenantId,b.tenantId)).orderBy(schema.employment.id),statutory:await owner.db.select().from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.tenantId,b.tenantId))};}
 async function row(id:string){return (await owner.db.select().from(schema.profileChangeRequest).where(eq(schema.profileChangeRequest.id,id)))[0];}
 async function events(id:string){return owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,id)).orderBy(schema.domainEvent.sequence);}
-beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>vi.unstubAllEnvs());
+beforeAll(async()=>{
+ await migrateTestDb();const evidence=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
+ if(evidence){const constraints=Array.from(await owner.db.execute<{name:string;expressionBytes:number}>(sql`select conname as name,octet_length(pg_get_expr(conbin,conrelid)) as "expressionBytes" from pg_constraint where conrelid='app.assistant_own_leave_review'::regclass and contype='c' order by conname`));
+  writeFileSync(join(evidence,'personnel-review-constraint-bytes.json'),JSON.stringify({kind:'PERSONNEL_CUSTODY_CHECK_BYTES',candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,constraints,totalExpressionBytes:constraints.reduce((sum,row)=>sum+row.expressionBytes,0)},null,2)+'\n');}
+});afterAll(closeAll);afterEach(()=>vi.unstubAllEnvs());
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-profile-rejection-custody-key');await resetDb();b=await seedBase();await setModule(b.tenantId,'assistant','active');subject=await hire('Fictional requested employee');hr=await login();});
 it.each(['legacy','v2'] as const)('reviews and rejects one %s scalar request without copying or applying proposal values',async kind=>{
  const proposed=kind==='legacy'?{preferredName:'Private requested name'}:{v:2,fields:[{fieldId:'profile.personal_details.preferredname',before:null,value:'Private requested name'}],registers:[]},id=await request(proposed),before=await master(),original=await row(id),priorEvents=await events(id);
