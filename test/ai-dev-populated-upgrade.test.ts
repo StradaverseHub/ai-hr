@@ -1,4 +1,4 @@
-/** CI-only populated 568→632 aggregate upgrade. Never connects to an installation or replays an installer.
+/** CI-only populated historical568→633 aggregate upgrade. Never connects to an installation or replays an installer.
  * The credential-free witness is metadata only; payroll/review rows below are fictional physical rows.
  * This proves migration preservation, not decryption or native decision behavior (covered separately). */
 import {createHash,randomUUID} from 'node:crypto';
@@ -15,7 +15,7 @@ import witness from './fixtures/ai-dev-applied-ledger-20261030.json';
 
 type Entry={idx:number;when:number;tag:string};
 type Journal={entries:Entry[];[key:string]:unknown};
-// Exact main15 +approved49 source tail; the568-row observed witness remains unchanged.
+// Exact main15 +approved49 source tail +root-reserved0861; the568-row observed witness remains unchanged.
 const TAIL=[
  {"tag":"0696_feedback_menu_operator_switch","idx":683,"when":1793330000031},
  {"tag":"0721_movement_settings_catalog","idx":684,"when":1793330000050},
@@ -81,6 +81,7 @@ const TAIL=[
  {"tag":"0858_assistant_people_general_policy_custody","idx":744,"when":1793330000258},
  {"tag":"0859_assistant_employee_draft_discard_custody","idx":745,"when":1793330000259},
  {"tag":"0860_assistant_payroll_review_draft_delete_compatibility","idx":746,"when":1793330000260},
+ {"tag":"0861_assistant_review_body_pending_parent","idx":747,"when":1793330000261},
 ] as const;
 const PERFORMANCE=['performance.ai_360_enabled','performance.ai_tc_enabled','performance.ai_pm_enabled',
  'performance.ai_review_enabled','performance.ai_idp_enabled','performance.ai_calib_enabled'];
@@ -163,7 +164,7 @@ it('upgrades the exact observed populated Board prefix without rewriting applied
   const baseline=await ledger();
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   expect(await retainedRows()).toEqual(before);
-  const after=await ledger();expect(after).toHaveLength(632);expect(after.slice(0,prefix)).toEqual(baseline);
+  const after=await ledger();expect(after).toHaveLength(633);expect(after.slice(0,prefix)).toEqual(baseline);
   expect(after.slice(prefix).map(({hash,created_at})=>({hash,created_at}))).toEqual(TAIL.map(({tag,when})=>({hash:hashFile(tag),created_at:String(when)})));
   const changedDefinitions=await storage.client`select * from setting_definition order by key`;
   expect(definitions.some(row=>row.key==='feedback.menu_enabled')).toBe(false);

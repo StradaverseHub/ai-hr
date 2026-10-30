@@ -314,10 +314,8 @@ export async function tickStepTx(
     }
     await tx.insert(lcCaseStep).values({ caseId: c.id, tenantId: ctx.tenantId, stepKey: key, done: true, doneBy: ctx.userId ?? null, doneAt: new Date(), reference: clean(p.reference, 100), notes: clean(p.notes, 2000) })
       .onConflictDoUpdate({ target: [lcCaseStep.caseId, lcCaseStep.stepKey], set: { done: true, doneBy: ctx.userId ?? null, doneAt: new Date(), reference: clean(p.reference, 100), notes: p.notes !== undefined ? clean(p.notes, 2000) : sql`${lcCaseStep.notes}` } });
-    const [proof] = await tx.execute<{rowHash:string}>(sql`select encode(sha256(convert_to(to_jsonb(a)::text,'UTF8')),'hex') as "rowHash" from lc_case_step a where a.case_id=${c.id}::uuid and a.tenant_id=${ctx.tenantId}::uuid and a.step_key=${key}`);
-    if (!proof) throw new LifecycleError('Step audit unavailable.', 'conflict');
     const stepEventId = randomUUID();
-    await recordChange(tx, ctx, { eventId: stepEventId, refType: 'case', refId: c.id, action: 'step.done', detail: { step: st.label, key, reference: clean(p.reference, 100) }, eventType: 'lifecycle-case.step-done', subjectEmploymentId: c.employmentId, eventRef: { number, step: key, stepRowHash: proof.rowHash } });
+    await recordChange(tx, ctx, { eventId: stepEventId, refType: 'case', refId: c.id, action: 'step.done', detail: { step: st.label, key, reference: clean(p.reference, 100) }, eventType: 'lifecycle-case.step-done', subjectEmploymentId: c.employmentId, eventRef: { number, step: key } });
     const completion = { eventId: null as string | null };
     const after = await reconcileCompletion(tx, ctx, c, completion);
     return { status: after.status, caseId: c.id, stepKey: key, stepEventId, completionEventId: completion.eventId };
@@ -345,10 +343,8 @@ export async function undoStepTx(tx: Tx, ctx: SessionContext, kind: CaseKind, nu
       throw new LifecycleError('The outcome step stays done while an outcome is recorded.', 'conflict');
     }
     await tx.update(lcCaseStep).set({ done: false, doneBy: null, doneAt: null }).where(and(eq(lcCaseStep.caseId, c.id), eq(lcCaseStep.stepKey, key)));
-    const [proof] = await tx.execute<{rowHash:string;rowVersion:string}>(sql`select encode(sha256(convert_to(to_jsonb(a)::text,'UTF8')),'hex') as "rowHash",a.xmin::text as "rowVersion" from lc_case_step a where a.case_id=${c.id}::uuid and a.tenant_id=${ctx.tenantId}::uuid and a.step_key=${key}`);
-    if (!proof) throw new LifecycleError('Step audit unavailable.', 'conflict');
     const stepEventId = randomUUID();
-    await recordChange(tx, ctx, { eventId: stepEventId, refType: 'case', refId: c.id, action: 'step.undone', detail: { key, reason: clean(reason, 500) }, eventType: 'lifecycle-case.step-undone', subjectEmploymentId: c.employmentId, eventRef: { number, step: key, stepRowHash: proof.rowHash, stepRowVersion: proof.rowVersion } });
+    await recordChange(tx, ctx, { eventId: stepEventId, refType: 'case', refId: c.id, action: 'step.undone', detail: { key, reason: clean(reason, 500) }, eventType: 'lifecycle-case.step-undone', subjectEmploymentId: c.employmentId, eventRef: { number, step: key } });
     const witness = {eventId:null as string|null};
     const after = await reconcileCompletion(tx, ctx, c, witness);
     return {caseId:c.id,stepKey:key,status:after.status,stepEventId,caseEventId:witness.eventId};
