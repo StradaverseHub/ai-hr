@@ -1296,3 +1296,12 @@ it('allows an onboarding-only company HR signer without granting offboarding cas
   await v9Command(signer,row.case.id,row.revision,{type:'generate',template:'module-letter-onb'});let detail=await v9CaseDetail(signer,row.case.id);const document=detail.case.documents.find(document=>document.templateId==='module-letter-onb')!;expect(document.signatoryUserId).toBe(signerId);
   await v9Command(signer,row.case.id,detail.case.revision,{type:'documentSign',id:document.id,signature:{method:'typed',value:'Fictional onboarding HR',consent:true}});detail=await v9CaseDetail(signer,row.case.id);expect(detail.case.documents.find(candidate=>candidate.id===document.id)?.hrSignature).toMatchObject({by:{id:signerId},printedTitle:'Fictional onboarding HR'});
 });
+
+it('workflow test sends cannot resume an independently ready real waiting run',async()=>{
+ const config=(await v9Workspace(admin)).config!;config.workflows=[{id:'test-only',name:'Fictional test',module:'off',status:'published',trigger:{event:'submitted',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'notice',type:'notify',to:'employee',cc:['supervisor'],subject:'Fictional test',body:'Test copy'}],description:''}];await v9SaveConfig(admin,config.revision,config);
+ const day=todayInKualaLumpur(),id=await v9CreateOffboarding(admin,{employmentId,type:'Resignation',noticeDate:addDays(day,-30),lastDay:day});const before=(await v9CaseDetail(admin,id)).case;
+ const waiting={id:'waiting-real',workflowId:'test-only',revision:config.revision,date:day,status:'waiting',cursor:0,reason:'Ready to resume',at:day+'T00:00:00Z',definition:config.workflows[0]};
+ await owner.db.execute(sql`update lc_v9_case set data=${JSON.stringify({...before,state:'submitted',runs:[waiting]})}::jsonb where id=${id}::uuid`);
+ await v9Command(admin,id,before.revision,{type:'testWorkflow',workflowId:'test-only'});const after=(await v9CaseDetail(admin,id)).case;
+ expect(after.runs).toEqual([waiting]);expect(after.mails).toHaveLength(1);expect(after.mails[0]).toMatchObject({to:[admin.userId],cc:[],test:true,workflowId:null});
+});

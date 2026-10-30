@@ -551,7 +551,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       if ((item.sourceId || item.nativeSource) && item.status === 'done' && command.status !== 'done') throw new M.V9Error('This recovery is already recorded on its issuing record. Correct that record before reopening the item.');
       item.status = command.status; item.reason = command.reason.trim(); M.appendLog(c, env, 'item.updated', `${item.name}: ${item.status}`);
     }
-    for (const w of config.workflows) if (c.runs.some(r => r.workflowId === w.id && r.status === 'waiting')) M.runWorkflow(c, config, w, env, 'resume');
+    if (!['emailTest','testWorkflow'].includes(command.type)) for (const w of config.workflows) if (c.runs.some(r => r.workflowId === w.id && r.status === 'waiting')) M.runWorkflow(c, config, w, env, 'resume');
     await store(tx, ctx, row, c, command.type);
   });
 }
