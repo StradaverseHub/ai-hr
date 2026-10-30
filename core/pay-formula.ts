@@ -10,7 +10,7 @@ import {lockPayComponentCatalogTx} from './pay-component-catalog-lock';
 import {parsePayFormula,printPayFormula,analyzePayFormula,PAY_FORMULA_EVALUATOR_VERSION,type FormulaProgram} from '../lib/pay-formula-language';
 import {PAY_FORMULA_REGISTRY_VERSION} from '../lib/pay-formula-registry';
 import {PayFormulaError,type ActiveFormula,type PayFormulaContext,type PayFormulaView,type PayFormulaRevision,type PayFormulaTest,type FormulaReadRequirements} from '../lib/pay-formula-model';
-import {planResolutionOrder,isStatutoryComponent,type PayRuleCatalogNode} from './pay-rule';
+import {planResolutionOrder,isStatutoryComponent,payRuleDependencies,payRuleReadsFixedAllowanceTotal,isFixedAllowanceComponent,type PayRule,type PayRuleCatalogNode} from './pay-rule';
 import {simulatePayFormulaTx,formulaReadRequirementsAllowedTx} from './pay-formula-runtime';
 const uuid=/^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;
 const code=(v:string)=>{const n=v?.trim().toUpperCase();if(!n||!/^[A-Z][A-Z0-9_]{0,63}$/.test(n))throw new PayFormulaError('Enter an ID starting with a letter, using up to 64 letters, digits or underscores.');return n;};
@@ -44,7 +44,13 @@ async function dependencySnapshotTx(tx:Tx,ctx:SessionContext,program:FormulaProg
  const selectedGroups=groups.filter(g=>analysis.dependencies.some(d=>d.kind==='accumulation'&&d.code.toUpperCase()===g.code));for(const g of selectedGroups)for(const member of g.members)codes.add(member);
  const rows=await tx.execute<{id:string;code:string;kind:string;rule:Record<string,unknown>|null;prorates:boolean;roundingMode:string;archivedAt:unknown}>(sql`select id,code,kind,rule as rule,prorates,formula_context as "formulaContext",rounding_method as "roundingMode",archived_at as "archivedAt" from pay_component where tenant_id=${ctx.tenantId}::uuid order by code`);
  const outputCodes=new Set(analysis.dependencies.filter(d=>['calculated','unprorated'].includes(d.kind)).map(d=>d.code.toUpperCase()));for(const g of selectedGroups)for(const member of g.members)outputCodes.add(member);
- const relevantFormulas=new Set<string>(),queue=[...outputCodes];for(let i=0;i<queue.length;i++){if(i>1000)throw new PayFormulaError('Formula dependency graph is too large.');const row=rows.find(r=>r.code.toUpperCase()===queue[i]);if(row?.rule?.kind==='formula_builder'){const formula=String(row.rule.formulaId);if(formula!==selfId)relevantFormulas.add(formula);for(const dependency of row.rule.dependencies as string[]){if(!outputCodes.has(dependency)){outputCodes.add(dependency);codes.add(dependency);queue.push(dependency);}}}}
+ const relevantFormulas=new Set<string>(),queue=[...outputCodes];
+ for(let i=0;i<queue.length;i++){
+  if(i>1000)throw new PayFormulaError('Formula dependency graph is too large.');const row=rows.find(r=>r.code.toUpperCase()===queue[i]);if(!row)continue;
+  const rule=row.rule as PayRule|null;if(rule?.kind==='formula_builder'&&rule.formulaId!==selfId)relevantFormulas.add(rule.formulaId);
+  const dependencies=payRuleDependencies(rule);if(payRuleReadsFixedAllowanceTotal(rule))dependencies.push(...rows.filter(r=>isFixedAllowanceComponent(r.code,r.kind,r.rule as PayRule|null)).map(r=>r.code));
+  for(const raw of dependencies){const dependency=raw.toUpperCase();if(!outputCodes.has(dependency)){outputCodes.add(dependency);codes.add(dependency);queue.push(dependency);}}
+ }
  const catalog=rows.filter(r=>codes.has(r.code.toUpperCase())).map(r=>({...r,rule:r.rule?.kind==='formula_builder'&&r.rule.formulaId===selfId?{...r.rule,dependencies:undefined}:r.rule}));
  const active=await tx.execute<{code:string;revisionId:string;hash:string}>(sql`select f.formula_id as code,r.id as "revisionId",r.content_hash as hash from pay_formula f join lateral(select * from pay_formula_event e where e.formula_id=f.id and e.kind in ('activated','deactivated','deleted') order by sequence desc limit 1)e on e.kind='activated' join pay_formula_revision r on r.id=e.revision_id where f.tenant_id=${ctx.tenantId}::uuid and f.formula_id<>${selfId??''} order by f.formula_id`);
  return {catalog,groups:selectedGroups,active:active.filter(r=>relevantFormulas.has(r.code)),registry:PAY_FORMULA_REGISTRY_VERSION,evaluator:PAY_FORMULA_EVALUATOR_VERSION};

@@ -111,8 +111,6 @@ class Parser{
  parse():FormulaProgram{const program:FormulaProgram={version:1,statements:this.block()};if(this.token().kind!=='eof')fail('syntax','Unexpected statement terminator',this.token().loc);return program;}
 }
 export function parsePayFormula(source:string):FormulaProgram{const program=new Parser(tokenize(source)).parse();validatePayFormula(program);return program;}
-export function multiplyFormulaDecimal(a:string,b:string){return decimalText(bounded(roundedDivision(decimal(a)*decimal(b),SCALE)));}
-export function divideFormulaDecimal(a:string,b:string){return decimalText(bounded(roundedDivision(decimal(a)*SCALE,decimal(b))));}
 export function applyFormulaAmount(amount:string,options:{factor?:string;rounding?:'none'|'up'|'down'|'nearest'}={}):string{
  let n=decimal(multiplyFormulaDecimal(amount,options.factor??'1'));n=roundedDivision(n,TEN**BigInt(10))*TEN**BigInt(10);
  const whole=n/SCALE,remainder=n%SCALE;
