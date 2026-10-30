@@ -509,6 +509,8 @@ label[data-edited-field='true'] > span:first-child::after {
   }
   :root[data-ui-theme='atelier'] main [data-page-header],
   :root[data-ui-theme='atelier'] main :has(> [data-page-header]:only-child) {
-    top: .75rem; background: var(--background); box-shadow: 0 -.75rem 0 var(--background); animation: none;
+    /* Sticky's inset starts below main's 1.75rem top padding (atelier.css). Cover that padding as
+       well as the .75rem inset, so scrolled rows cannot peek through above the pinned header. */
+    top: .75rem; background: var(--background); box-shadow: 0 -2.5rem 0 var(--background); animation: none;
   }
 }
