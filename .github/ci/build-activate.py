@@ -139,6 +139,12 @@ def activate(staged, source, expected_new, expected_old, action="activate"):
                 os.close(fd)
 
 if __name__ == "__main__":
+    # Only the CLI on commissioned staging is guarded; isolated fixture functions stay pure.
+    import pathlib
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / 'scripts/staging'))
+    sys.dont_write_bytecode = True
+    from lease import guard_server_cli
+    guard_server_cli()
     try:
         require(len(sys.argv) == 6, "usage: build-activate.py activate|rollback STAGED_NEXT SOURCE EXPECTED_NEW_ID EXPECTED_OLD_ID")
         action, staged, source, expected_new, expected_old = sys.argv[1:]

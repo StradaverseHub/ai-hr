@@ -507,8 +507,16 @@ def capture_and_publish(args, source_github, github, root):
                    'files': {n: h for n, h in files.items() if staged_source(n)}, 'lock': lock}
         ssh = ['ssh', '-F', str(args.ssh_config.resolve()), '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
                '-o', 'ConnectTimeout=12', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3', args.staging_alias]
+        # Package capture shares the staging lease with installation and acceptance. The credential
+        # is private; read-only --check remains usable without acquiring a lease.
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'staging'))
+        sys.dont_write_bytecode = True
+        from lease import load_lease, guard_command
+        staging_lease = load_lease(args.ref) if args.accept_staging else None
+        def protected(command):
+            return guard_command(staging_lease, command) if staging_lease else command
         def snapshot():
-            value = json.loads(run(ssh + ['python3 -c ' + shlex.quote(SNAPSHOT)], input=json.dumps(request).encode()))
+            value = json.loads(run(ssh + [protected('python3 -c ' + shlex.quote(SNAPSHOT))], input=json.dumps(request).encode()))
             require(value['sha'] == args.ref and BUILD.fullmatch(value['buildId']), 'Invalid staging identity')
             return value
         before = snapshot()
@@ -543,7 +551,7 @@ def capture_and_publish(args, source_github, github, root):
                        '--exclude=.next/cache --exclude=.next/dev --exclude=.next/trace '
                        '--exclude=node_modules/.cache --use-compress-program="gzip -1" -cf - .next node_modules')
             with capture.open('wb') as output:
-                subprocess.run(ssh + [command], stdout=output, check=True, timeout=1800)
+                subprocess.run(ssh + [protected(command)], stdout=output, check=True, timeout=1800)
             require(snapshot() == before, 'Staging changed during runtime capture; retry after acceptance')
             relativize_build_aliases(capture, partial, args.remote_directory)
             capture.unlink()
@@ -566,5 +574,5 @@ if __name__ == '__main__':
         main()
     except (ValueError, OSError, subprocess.SubprocessError) as error:
         # Do not dump SSH input, credential environment, signed URLs or binary API responses.
-        print('Production package publication refused: ' + str(error), file=sys.stderr)
+        print('Production package publication refused: ' + re.sub(r'[a-f0-9]{64}', '<REDACTED>', str(error)), file=sys.stderr)
         sys.exit(1)

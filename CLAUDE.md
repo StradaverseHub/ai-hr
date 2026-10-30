@@ -19,11 +19,13 @@ This is the canonical repository instruction file. Read only the task-specific r
 
 ## Verification and shared resources
 
+Run builder checks, application tests, whole-repository type checks and release verification on standard GitHub-hosted Actions runners. The owner confirmed on 30 October 2026 that this removes the Mac verification bottleneck; local resource slots are a temporary fallback only while the Actions controller is broken. Use `alpha-focused-checks.yml` for development and the authenticated CI operator route for releases; focused passes alone do not authorize release. See [Actions execution policy](docs/REPOSITORY-AND-ENVIRONMENTS.md#public-repository-actions-capacity).
+
 Use focused behavior checks during development. Before release, follow the impact classifier in `scripts/gate.sh`, [ADR-0114](docs/adr/0114-impact-aware-release-and-learning.md), and [CI policy](docs/CI-STAGING-VERIFICATION-POLICY.md). Type checks, tests, production builds, migration rehearsals and rendered journeys establish different claims.
 
 Let all planned full-gate chunks finish against the frozen candidate, including after a failure. Preserve original failures; repair afterward and rerun failed/affected parts under the validated evidence policy. Retain unaffected valid evidence. Never manufacture PASS receipts or relabel evidence onto another commit.
 
-[Resource admission](docs/LOCAL-RESOURCE-LOCKS.md) owns locking. Call `bash scripts/gate.sh` directly: it requests both memory slots and the database atomically. Partial outer locks refuse; do not nest single-slot wrappers around gates. During a shared full gate, other workers only read/edit/commit: no tests, compiler, builds, seed or dev server. Coordinate database rebuilds; namespaces do not isolate a cluster rebuild. Preserve foreign/uncertain leases and processes.
+For the temporary local fallback, [resource admission](docs/LOCAL-RESOURCE-LOCKS.md) owns locking. Call `bash scripts/gate.sh` directly: it requests both memory slots and the database atomically. Partial outer locks refuse; do not nest single-slot wrappers around gates. During a shared full gate, other workers only read/edit/commit: no tests, compiler, builds, seed or dev server. Coordinate database rebuilds; namespaces do not isolate a cluster rebuild. Preserve foreign/uncertain leases and processes.
 
 Verify observable outcomes with real authorized fixtures, failure paths and rendered screens/logs. HTTP 200, an i18n key in an RSC payload or a source grep alone does not prove a working screen. Assert nonempty source slices, ordered query results and independent expected values. Derive dates through the repository's HR date owner. Diagnose unchanged-code failures rather than assuming either a regression or an environment fault.
 
@@ -38,6 +40,8 @@ Local database settings are disposable and machine-specific. Inspect the rebuild
 Preserve others' changes and shared Git history; use owned branches/checkpoints rather than repo-global stash or destructive resets. Give delegated workers separate worktrees, file ownership, database namespaces, ports and evidence directories. Freeze and inspect every contributing branch and uncommitted diff before integration.
 
 For feedback work, read the actual item, attachments and approved plan through `scripts/improve/README.md`. Use the feedback-plan skill for plain-language plans, one proposed course and rendered screen mockups. A plan pushed to a deployed item can reset its status; verify the target/status and command result. Explicit user authorization governs external replies.
+
+For staging submission, batching, deployment, acceptance, package capture or recovery, follow the [shared staging queue and lease](docs/STAGING-RELEASE-QUEUE.md). Claude, Codex and operators use the same staging-host queue; retain the lease through acceptance and required capture. Queue state never replaces release evidence.
 
 For release planning, staging acceptance, production package publication or live installation, read the [production release handoff](docs/PRODUCTION-RELEASE-HANDOFF.md) first. Release policy lives in [repository policy](docs/REPOSITORY-AND-ENVIRONMENTS.md), [deployment](deploy/DEPLOY.md), [operator access](deploy/OPERATOR-ACCESS.md) and [production packages](docs/PRODUCTION-PACKAGES.md). Verify the actual target before invoking tooling. Staging acceptance precedes a separately requested production deployment. Branch alignment and package publication grant no additional deployment authority. Keep secrets and release assets in their designated private stores.
 

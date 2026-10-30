@@ -2,7 +2,7 @@
 
 Status: implemented in the isolated review branch, with private hosted component evidence and a successful read-only configuration probe. No CI artifact has been installed on staging. The complete normal CI/controller adoption, real recipient application/native/ISR validation, coordinated release and an under600second submission-to-arrival measurement remain unfinished.
 
-This protocol applies only to alpha/staging at the private aihr-staging alias and /opt/ai-hr. It does not enable main/live deployment. The coordinating release owner must hold the staging window; the current protocol does not provide a target-wide lease against another operator or legacy release tool.
+This protocol applies only to alpha/staging at the private aihr-staging alias and /opt/ai-hr. It does not enable main/live deployment. The coordinating release owner must hold the staging window; use the [shared staging queue and lease](STAGING-RELEASE-QUEUE.md) once its guarded client/server rollout is commissioned. Older installed sources do not enforce this lease; verify adoption rather than assuming the source change is live.
 
 ## Authentication and original build identity
 
