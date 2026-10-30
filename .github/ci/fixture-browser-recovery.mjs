@@ -13,7 +13,7 @@ import {BUILD_ARTIFACT} from './build-artifact.mjs';
 import {NEXT_APPLICATION_STATE,NEXT_APPLICATION_FAILURE,NEXT_APPLICATION_MEMBERS,inspectNextStatePacket} from './next-application-cache-protocol.mjs';
 import {COMPILER_STATE_ARTIFACT} from './compiler-cache-protocol.mjs';
 import {assessResumeSource} from './resume-source.mjs';
-import {reconstructRepairImpact} from './repair-impact.mjs';
+import {reconstructFixtureRepairImpact} from './fixture-repair-impact.mjs';
 import {collectRecoveryEvidence} from './focused-recovery.mjs';
 import {validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
 import {verifyFixtureBrowserRecovery,repairDisposition,validateRepairFocusedMetadata,validateRepairBuildMetadata} from './fixture-browser-recovery-policy.mjs';
@@ -47,11 +47,11 @@ export function validateFixtureRepairDelta({cwd,original,candidate}){
  assert(isDeepStrictEqual(changed,allowed),'Exact reviewed fixture repair inventory required');
  return {changed,baseTree:git(cwd,'rev-parse',original+'^{tree}'),headTree:git(cwd,'rev-parse',candidate+'^{tree}'),diffSha256:hash(git(cwd,'diff','--binary','--no-ext-diff',original,candidate))};
 }
-export function validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId,browserRunId}){
- const after=source.run.updated_at,known=new Set([...focusedRunIds,buildRunId,...(browserRunId?[browserRunId]:[])]);
+export function validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId,browserRunId,compilerRunId,candidateRefs=[]}){
+ const after=source.run.updated_at,known=new Set([...focusedRunIds,buildRunId,...(browserRunId?[browserRunId]:[]),...(compilerRunId?[compilerRunId]:[])]);
  assert(Number.isFinite(Date.parse(after))&&Array.isArray(rows)&&rows.length<=8000,'Invalid or unbounded repair history');
  assert(source.run.display_title?.startsWith('Alpha CI · '),'Original workflow title must identify its frozen branch');
- const titles=new Set([source.run.display_title,`Alpha CI · ${candidateBranch}`,`Canonical build only · ${candidateBranch}`,`Focused only · ${candidateBranch}`,`Tooling transport only · ${candidateBranch}`]);
+ const titles=new Set([source.run.display_title,...[candidateBranch,...candidateRefs].flatMap(ref=>['Alpha CI','Canonical build only','Focused only','Tooling transport only'].map(prefix=>prefix+' · '+ref))]);
  // An overlapping run may start before the original completes and fail afterwards. Creation-time
  // filtering alone would silently discard that later failure. Bind completion/update history too.
  const matching=new Map();
@@ -65,7 +65,7 @@ export function validateLatestRepairHistory({source,rows,candidateBranch,focused
  return {kind:'AUTHENTICATED_COMPLETE_REPAIR_HISTORY',sourceRunId:source.run.id,after,runIds:relevant.map(r=>r.id).sort((a,b)=>a-b),metadataFingerprint:hash(relevant.sort((a,b)=>a.id-b.id))};
 }
 /** Every unfiltered workflow row is inventoried, including old-created runs updated recently. */
-export function collectCompleteRepairHistory({source,focusedWorkflowId,candidateBranch,focusedRunIds,buildRunId,browserRunId}){
+export function collectCompleteRepairHistory({source,focusedWorkflowId,candidateBranch,focusedRunIds,buildRunId,browserRunId,compilerRunId,candidateRefs=[]}){
  const inventory=()=>{
   const rows=[];
   for(const workflowId of [WORKFLOW_ID,focusedWorkflowId,BROWSER_REPAIR_WORKFLOW_ID]){
@@ -80,17 +80,27 @@ export function collectCompleteRepairHistory({source,focusedWorkflowId,candidate
     assert(page<100,'Workflow history exceeds bound');
    }
   }
-  return validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId,browserRunId});
+  return validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId,browserRunId,compilerRunId,candidateRefs});
  };
  const first=inventory(),second=inventory();
  assert(isDeepStrictEqual(first,second),'Relevant repair history changed during reconciliation; retry');
  return second;
 }
-export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,baseline,focusedRunIds,buildRunId,browserRunId,candidateBranch,evidenceDirectory,reuse=false}){
- candidatePath=resolve(candidatePath);originalPath=resolve(originalPath);runId=Number(runId);buildRunId=Number(buildRunId);browserRunId=Number(browserRunId);
+export function parseFixtureAliases(rows,candidate){
+ assert(Array.isArray(rows)&&rows.length<=99,'Recovery alias inventory exceeds bound');
+ const found={};for(const row of rows){
+  const [head,ref,...extra]=row.split('\t');
+  assert(extra.length===0&&/^refs\/heads\/codex\/mobile-recovery-6bdd-(?:0[1-9]|[1-9][0-9])$/.test(ref)&&head===candidate&&!Object.hasOwn(found,ref.slice('refs/heads/'.length)),'Foreign, moved or duplicate recovery alias');
+  found[ref.slice('refs/heads/'.length)]=head;
+ }
+ return found;
+}
+export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,baseline,focusedRunIds,buildRunId,browserRunId,compilerRunId,candidateBranch,evidenceDirectory,reuse=false}){
+ candidatePath=resolve(candidatePath);originalPath=resolve(originalPath);runId=Number(runId);buildRunId=Number(buildRunId);browserRunId=Number(browserRunId);compilerRunId=Number(compilerRunId);
+ assert(Number.isSafeInteger(compilerRunId)&&compilerRunId>0&&![runId,buildRunId,browserRunId,...focusedRunIds].includes(compilerRunId),'Distinct auxiliary compiler execution required');
  assert(Number.isSafeInteger(browserRunId)&&browserRunId>0&&![runId,buildRunId,...focusedRunIds].includes(browserRunId),'Distinct complete browser run required');
  assert(/^[a-f0-9]{40}$/.test(baseline??'')&&Number.isSafeInteger(runId)&&runId>0&&Number.isSafeInteger(buildRunId)&&buildRunId>0&&buildRunId!==runId,'Exact original/build/baseline identities required');
- assert(Array.isArray(focusedRunIds)&&focusedRunIds.length>0&&focusedRunIds.length<=64&&focusedRunIds.every(n=>Number.isSafeInteger(n)&&n>0&&! [runId,buildRunId].includes(n))&&new Set(focusedRunIds).size===focusedRunIds.length,'Distinct bounded replacement executions required');
+ assert(Array.isArray(focusedRunIds)&&focusedRunIds.length>0&&focusedRunIds.length<=128&&focusedRunIds.every(n=>Number.isSafeInteger(n)&&n>0&&! [runId,buildRunId].includes(n))&&new Set(focusedRunIds).size===focusedRunIds.length,'Distinct bounded replacement executions required');
  assert(typeof candidateBranch==='string'&&/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(candidateBranch)&&!candidateBranch.includes('..'),'Exact repaired source branch required');
  const candidate=cleanHead(candidatePath),original=cleanHead(originalPath),verificationController=cleanHead(controllerRoot);
  const reviewedController=null; // Read-only v3 has no adoption switch or installation grant route.
@@ -98,6 +108,9 @@ export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,b
  assert(api('git/ref/heads/'+candidateBranch.split('/').map(encodeURIComponent).join('/')).object?.sha===candidate,'Repaired candidate branch moved');
  execFileSync('git',['merge-base','--is-ancestor',baseline,original],{cwd:candidatePath,stdio:'ignore'});
  const delta=validateFixtureRepairDelta({cwd:candidatePath,original,candidate});
+ const readAliases=()=>parseFixtureAliases(git(candidatePath,'ls-remote','--heads','origin','refs/heads/codex/mobile-recovery-6bdd-*').split('\n').filter(Boolean),candidate);
+ const aliasHeads=readAliases(),candidateRefs=Object.keys(aliasHeads).sort();
+
  const diagnosticId=Number(process.env.AIHR_RECOVERY_CONTROLLER_RUN_ID);assert(Number.isSafeInteger(diagnosticId)&&diagnosticId>0,'Reviewed verifier controller diagnostic required');
  assert(readFileSync(join(controllerRoot,'.github/workflows/alpha-staging.yml'),'utf8').includes(' .github/ci/repair-recovery.test.mjs'),'Hosted integrity suite must execute v2 refusal controls');
  const dm=metadata(diagnosticId),verificationDiagnostic=validateRecoveryControllerDiagnostic({...dm,controller:verificationController});
@@ -115,21 +128,31 @@ export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,b
  const assessment=assessResumeSource({...source,expectedPlan:sourcePlan,expected});
  for(const name of ['migrations','controller-tests','deployment-hold'])assert(source.jobs.find(j=>j.name===name)?.conclusion==='success','Unsupported failed prerequisite: '+name);
  assert(source.jobs.find(j=>j.name==='verify')?.conclusion==='failure','Original dependent verifier must remain failed');
- const plan=planAt(candidatePath,{controller,baseline,runtime:archived.runtime}),impactContext=reconstructRepairImpact({cwd:candidatePath,base:original,head:candidate,controller:verificationController});
+ const plan=planAt(candidatePath,{controller,baseline,runtime:archived.runtime}),impactContext=reconstructFixtureRepairImpact({cwd:candidatePath,base:original,head:candidate,controller:verificationController});
  assert(isDeepStrictEqual(delta.changed,impactContext.plan.changed),'Reconstructed impact omitted repair paths');
  const disposition=repairDisposition({sourcePlan,plan,assessment,impactContext,verificationController});
  assert(plan.units.filter(u=>u.kind==='browser').every(u=>disposition.fresh.includes(u.id)),'Finite browser fixture repair must replace all three engine units');
  assert(plan.units.filter(u=>disposition.fresh.includes(u.id)).every(u=>!u.pdfTools),'Affected PDF tooling unit needs its full source-bound environment proof');
  const workflow=api('actions/workflows/alpha-focused-checks.yml');assert(workflow.path==='.github/workflows/alpha-focused-checks.yml'&&workflow.state==='active','Focused workflow registry differs');
  const focused=[];
+ const allowedFocusTitles=new Set([candidateBranch,...candidateRefs].map(ref=>'Focused only · '+ref));
  for(const id of focusedRunIds.slice().sort((a,b)=>a-b)){
-  const m=metadata(id),authenticated=validateRepairFocusedMetadata({...m,expected:{runId:id,controller,workflowId:workflow.id,after:source.run.updated_at}});
+  const m=metadata(id);assert(allowedFocusTitles.has(m.run.display_title),'Unregistered source alias focused execution');const authenticated=validateRepairFocusedMetadata({...m,expected:{runId:id,controller,workflowId:workflow.id,after:source.run.updated_at}});
   const f=await collectRecoveryEvidence(id,join(dir,'focused-'+id),{reuse,repairPackets:true}),artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
   assert(isDeepStrictEqual(m,facts(f)),'Focused metadata changed during download');
   const report=packet.get('focused.json'),database=report?.groups?.DB?.length>0,resultName=database?'db.vitest.json':'nodb.vitest.json';
   assert(isDeepStrictEqual([...packet.keys()].sort(),[resultName,'focused.json'].sort()),'Exact homogeneous focused packet required');
   focused.push({...f,...authenticated,artifact,report,result:packet.get(resultName)});
  }
+ const cm=metadata(compilerRunId);
+ assert(cm.run.display_title==='Focused only · '+candidateBranch,'Auxiliary compiler must use the primary frozen source ref');
+ const compilerAuthenticated=validateRepairFocusedMetadata({...cm,expected:{runId:compilerRunId,controller,workflowId:workflow.id,after:source.run.updated_at}});
+ assert(compilerAuthenticated.compiler,'Auxiliary whole compiler failed or skipped');
+ const compilerEvidence=await collectRecoveryEvidence(compilerRunId,join(dir,'compiler-'+compilerRunId),{reuse,compilerPackets:true});
+ assert(isDeepStrictEqual(cm,facts(compilerEvidence)),'Compiler metadata changed during download');
+ const compilerPacket=compilerEvidence.parsed.get('focused-development-evidence');
+ assert(isDeepStrictEqual([...compilerPacket.keys()],['focused.json']),'Compiler auxiliary packet namespace differs');
+ const compilerAuxiliary={...compilerEvidence,workflowId:workflow.id,report:compilerPacket.get('focused.json')};
  const browserMetadata=metadata(browserRunId);
  const browserWorkflow=api('actions/workflows/alpha-staging-browser-checks.yml');
  assert(browserWorkflow.id===BROWSER_REPAIR_WORKFLOW_ID&&browserWorkflow.path===BROWSER_REPAIR_WORKFLOW_PATH&&browserWorkflow.state==='active','Browser workflow registry differs');
@@ -149,14 +172,15 @@ export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,b
  if(built.parsed.has(NEXT_APPLICATION_STATE)){const files=built.rawParsed.get(NEXT_APPLICATION_STATE);assert(isDeepStrictEqual([...files.keys()].sort(),NEXT_APPLICATION_MEMBERS),'Application cache packet differs');
   const state=inspectNextStatePacket({files,run:built.run,job:built.jobs.find(j=>j.name==='build')});assert(state.producer.source===candidate&&state.producer.controller===controller,'Supplemental state source/controller differs');
  }
- const p={candidate,controller,baseline,runId:buildRunId,browserRunId,controllerBranch:built.run.head_branch},build=await sourceBoundBuild({candidatePath,dir,p,jobs:built.jobs});
- const history=collectCompleteRepairHistory({source,focusedWorkflowId:workflow.id,candidateBranch,focusedRunIds,buildRunId,browserRunId});
+ const p={candidate,controller,baseline,runId:buildRunId,browserRunId,compilerRunId,controllerBranch:built.run.head_branch},build=await sourceBoundBuild({candidatePath,dir,p,jobs:built.jobs});
+ const history=collectCompleteRepairHistory({source,focusedWorkflowId:workflow.id,candidateBranch,focusedRunIds,buildRunId,browserRunId,compilerRunId,candidateRefs});
  const reports=sourcePlan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
- const recovery=verifyFixtureBrowserRecovery({sourcePlan,plan,assessment,sourceRun:source.run,reports,focused,browsers,impactContext,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,verificationDiagnostic,reviewedController,buildRun:built.run,build,history});
- recovery.delta=delta;recovery.originalArtifacts=source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}));recovery.originalJobConclusions=source.jobs.map(j=>({id:j.id,name:j.name,conclusion:j.conclusion}));
+ const recovery=verifyFixtureBrowserRecovery({sourcePlan,plan,assessment,sourceRun:source.run,reports,focused,browsers,compilerAuxiliary,impactContext,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,verificationDiagnostic,reviewedController,buildRun:built.run,build,history});
+ recovery.aliasHeads=aliasHeads;recovery.compilerRunId=compilerRunId;recovery.delta=delta;recovery.originalArtifacts=source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}));recovery.originalJobConclusions=source.jobs.map(j=>({id:j.id,name:j.name,conclusion:j.conclusion}));
+ assert(isDeepStrictEqual(aliasHeads,readAliases()),'Recovery alias registry changed during verification');
  assert(cleanHead(candidatePath)===candidate&&cleanHead(originalPath)===original&&cleanHead(controllerRoot)===verificationController,'Source/controller changed while verifying');
  assert([baseline,candidate].includes(api('git/ref/heads/alpha').object?.sha),'Alpha moved away from exact staging baseline/candidate');
- const result={...recovery,recovery,result:'DIAGNOSTIC_NONINSTALLABLE',tier:'diagnostic',installationEligible:false,fingerprint:hash(recovery),build,candidatePath,originalPath,originalRunId:runId,candidateBranch,focusedRunIds:focusedRunIds.slice().sort((a,b)=>a-b),buildRunId,browserRunId,controllerBranch:built.run.head_branch,evidenceDirectory:dir,verifiedAt:new Date().toISOString(),url:built.run.html_url,artifacts:built.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
+ const result={...recovery,recovery,result:'DIAGNOSTIC_NONINSTALLABLE',tier:'diagnostic',installationEligible:false,fingerprint:hash(recovery),build,candidatePath,originalPath,originalRunId:runId,candidateBranch,focusedRunIds:focusedRunIds.slice().sort((a,b)=>a-b),buildRunId,browserRunId,compilerRunId,controllerBranch:built.run.head_branch,evidenceDirectory:dir,verifiedAt:new Date().toISOString(),url:built.run.html_url,artifacts:built.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
  save(dir,reuse?`revalidation-${randomUUID()}.json`:'verification.json',result);return result;
 }
 function facts(f){return {run:f.run,jobs:f.jobs,artifacts:f.artifacts};}

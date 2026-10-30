@@ -104,3 +104,21 @@ test('Real history collector supplies old-created newly-completed failures and r
   state[395862646].pop();state.incomplete=true;saveState();assert.throws(()=>collectCompleteRepairHistory(input),/omitted/);
  }finally{process.env.PATH=oldPath;if(oldRoot===undefined)delete process.env.AIHR_HISTORY_TEST_ROOT;else process.env.AIHR_HISTORY_TEST_ROOT=oldRoot;rmSync(root,{recursive:true,force:true});}
 });
+
+import {parseFixtureAliases} from './fixture-browser-recovery.mjs';
+test('Complete fixed-source alias registry excludes moved, foreign, duplicated and malformed branches',()=>{
+ const sha='a'.repeat(40),row=sha+'\trefs/heads/codex/mobile-recovery-6bdd-01';assert.deepEqual(parseFixtureAliases([row],sha),{'codex/mobile-recovery-6bdd-01':sha});
+ for(const rows of [[row,row],[row.replace(sha,'b'.repeat(40))],[row.replace('6bdd','other')],[row.replace('-01','-00')],[row+'\textra'],Array(100).fill(row)])assert.throws(()=>parseFixtureAliases(rows,sha));
+});
+test('All discovered source aliases contribute pending, failed and superseding history to admission',()=>{
+ const alias='codex/mobile-recovery-6bdd-01',base={id:2,display_title:'Focused only · '+alias,head_sha:'controller',created_at:'2026-10-30T02:10:00Z',updated_at:'2026-10-30T02:20:00Z',status:'completed',conclusion:'success',run_attempt:1};
+ const f={source:{run:{id:1,display_title:'Alpha CI · repair',updated_at:'2026-10-30T02:00:00Z'}},rows:[base,{...base,id:3,display_title:'Canonical build only · repair'},{...base,id:4,display_title:'Tooling transport only · repair'},{...base,id:5,display_title:'Focused only · repair'}],candidateBranch:'repair',candidateRefs:[alias],focusedRunIds:[2],buildRunId:3,browserRunId:4,compilerRunId:5};
+ assert.deepEqual(browserHistory(f).runIds,[2,3,4,5]);
+ for(const extra of [{...base,id:6,conclusion:'failure'},{...base,id:6,status:'pending',conclusion:null}])assert.throws(()=>browserHistory({...f,rows:[...f.rows,extra]}),/Unaccounted/);
+});
+test('Actual compiler auxiliary extractor accepts mixed packets as source identity only and rejects unsafe inventory',()=>{
+ const root=mkdtempSync(join(tmpdir(),'aihr-compiler-extract-')),archive=join(root,'packet.zip'),script=browserFilePath(new URL('./compiler-repair-extract.py',import.meta.url));
+ const entries={'focused.json':JSON.stringify({groups:{NODB:['a'],DB:['b']}}),'nodb.vitest.json':'{}','db.vitest.json':'{}'};
+ const extract=(data,name)=>{writeFileSync(archive,browserExec('python3',['-c','import io,json,sys,zipfile; b=io.BytesIO(); z=zipfile.ZipFile(b,"w"); [(z.writestr(k,v)) for k,v in json.load(sys.stdin).items()]; z.close(); sys.stdout.buffer.write(b.getvalue())'],{input:JSON.stringify(data)}));return browserExec('python3',[script,archive,join(root,name)],{stdio:'pipe'});};
+ try{extract(entries,'valid');assert.deepEqual(JSON.parse(readFileSync(join(root,'valid/focused.json'))).groups,{NODB:['a'],DB:['b']});assert.throws(()=>readFileSync(join(root,'valid/db.vitest.json')));assert.throws(()=>extract({...entries,'../escape.json':'{}'},'bad'));const missing={...entries};delete missing['db.vitest.json'];assert.throws(()=>extract(missing,'missing'));}finally{rmSync(root,{recursive:true,force:true});}
+});

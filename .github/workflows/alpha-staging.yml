@@ -43,7 +43,7 @@ on:
         default: false
         type: boolean
       fixture_certificate_runs:
-        description: JSON object with focusedRunIds, buildRunId, browserRunId and diagnosticId
+        description: JSON object with focusedRunIds, buildRunId, browserRunId, compilerRunId and diagnosticId
         required: false
         default: '{}'
         type: string
@@ -175,6 +175,7 @@ jobs:
           MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
         run: |
           ln -s "$GITHUB_WORKSPACE/scratchpad/fixture-projection-candidate/node_modules" node_modules
+          node --import tsx --test .github/ci/fixture-impact-classifier.test.mjs
           node --import tsx .github/ci/fixture-browser-impact-projection.mjs "$RUNNER_TEMP/fixture-original" "$GITHUB_WORKSPACE/scratchpad/fixture-projection-candidate" "$RUNNER_TEMP/fixture-impact-projection.json"
       - if: ${{ inputs.fixture_projection }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -197,8 +198,8 @@ jobs:
           import assert from 'node:assert/strict';
           import {writeFileSync} from 'node:fs';
           const r=JSON.parse(process.env.CERTIFICATE_RUNS_JSON);
-          assert.deepEqual(Object.keys(r).sort(),['browserRunId','buildRunId','diagnosticId','focusedRunIds'].sort());
-          const options={candidatePath:process.env.GITHUB_WORKSPACE+'/scratchpad/fixture-projection-candidate',originalPath:process.env.RUNNER_TEMP+'/fixture-original',runId:41028659062,baseline:'d6cb83d620d8d4380c981a72fc41628780840b4e',focusedRunIds:r.focusedRunIds,buildRunId:r.buildRunId,browserRunId:r.browserRunId,candidateBranch:'codex/mobile-bank-feedback-staging-prep-20261030',evidenceDirectory:process.env.RUNNER_TEMP+'/fixture-browser-proof'};
+          assert.deepEqual(Object.keys(r).sort(),['browserRunId','buildRunId','compilerRunId','diagnosticId','focusedRunIds'].sort());
+          const options={candidatePath:process.env.GITHUB_WORKSPACE+'/scratchpad/fixture-projection-candidate',originalPath:process.env.RUNNER_TEMP+'/fixture-original',runId:41028659062,baseline:'d6cb83d620d8d4380c981a72fc41628780840b4e',focusedRunIds:r.focusedRunIds,buildRunId:r.buildRunId,browserRunId:r.browserRunId,compilerRunId:r.compilerRunId,candidateBranch:'codex/mobile-bank-feedback-staging-prep-20261030',evidenceDirectory:process.env.RUNNER_TEMP+'/fixture-browser-proof'};
           assert(Number.isSafeInteger(r.diagnosticId)&&r.diagnosticId>0);
           writeFileSync(process.env.RUNNER_TEMP+'/fixture-certificate-options.json',JSON.stringify(options));
           writeFileSync(process.env.GITHUB_ENV,'AIHR_RECOVERY_CONTROLLER_RUN_ID='+r.diagnosticId+'\n',{flag:'a'});

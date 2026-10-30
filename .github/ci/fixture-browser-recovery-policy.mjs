@@ -49,8 +49,8 @@ export function repairDisposition({sourcePlan,plan,assessment,impactContext,veri
  same(plan.runtime,sourcePlan.runtime,'Runtime changed');same(plan.execution,sourcePlan.execution,'Execution policy changed');same(plan.units,sourcePlan.units,'Unit inventory changed');same(plan.suite,sourcePlan.suite,'Test inventory changed');
  assert(plan.policyVersion===sourcePlan.policyVersion&&plan.controller===sourcePlan.controller&&plan.migrationBase===sourcePlan.migrationBase,'Policy/controller/baseline changed');
  const impact=impactContext.plan,{fingerprint,...body}=impact;
- assert(impactContext.snapshotSource==='IMMUTABLE_GIT_OBJECTS'&&sha(impactContext.baseTree)&&sha(impactContext.headTree)&&impactContext.sourceInputsFingerprint===hash({baseTree:impactContext.baseTree,headTree:impactContext.headTree,controller:verificationController,impactPolicy:3}),'Unbound impact source');
- assert(impact.policyVersion===3&&fingerprint===hash(body)&&['impact','full'].includes(impact.tier)&&['low','moderate','high','unknown'].includes(impact.risk),'Invalid independently reconstructed impact');
+ assert(impactContext.snapshotSource==='IMMUTABLE_GIT_OBJECTS'&&sha(impactContext.baseTree)&&sha(impactContext.headTree)&&impactContext.sourceInputsFingerprint===hash({baseTree:impactContext.baseTree,headTree:impactContext.headTree,controller:verificationController,impactPolicy:4}),'Unbound impact source');
+ assert(impact.policyVersion===4&&fingerprint===hash(body)&&['impact','full'].includes(impact.tier)&&['low','moderate','high','unknown'].includes(impact.risk),'Invalid independently reconstructed impact');
  assert(Array.isArray(impact.changed)&&impact.changed.length>0&&new Set(impact.changed).size===impact.changed.length&&impact.changed.every(p=>typeof p==='string'&&!p.startsWith('/')&&!p.split('/').some(x=>!x||x==='.'||x==='..')),'Invalid repair paths');
  same(impact.classifications.map(c=>c.path).sort(),impact.changed.slice().sort(),'Incomplete changed-path classifications');
  assert(Array.isArray(impact.run)&&impact.run.every(p=>plan.suite.includes(p))&&new Set(impact.run).size===impact.run.length&&typeof impact.browser==='boolean','Invalid affected test coverage');
@@ -76,7 +76,21 @@ function caseInventory(result,files,cwd,{passing}){
 export function requireReviewedRepairController({execute,repair,controller,reviewedController}){
  if(execute&&repair)assert(sha(controller)&&reviewedController===controller,'Exact independent verifier review required before any repair deployment operation');
 }
-export function verifyFixtureBrowserRecovery({sourcePlan,plan,assessment,sourceRun,reports,focused,browsers=[],impactContext,classifierHash,verificationController,verificationDiagnostic,reviewedController=null,buildRun,build,history}){
+export function validateCompilerAuxiliary(aux,{plan,sourceRun,classifierHash,history}){
+ const authenticated=validateRepairFocusedMetadata({...aux,expected:{runId:aux.run.id,controller:plan.controller,workflowId:aux.workflowId,after:sourceRun.updated_at}});
+ assert(authenticated.compiler&&history.runIds.includes(aux.run.id),'Successful source-bound auxiliary compiler required');
+ const r=aux.report;
+ assert(r?.kind==='FOCUSED_ONLY'&&r.releaseEligible===false&&r.schemaVersion===1&&r.sha===plan.sha&&r.controller===plan.controller&&r.runId===String(aux.run.id)&&r.attempt==='1'&&r.exitCode===0,'Auxiliary compiler source identity differs');
+ same(r.runtime,plan.runtime,'Auxiliary compiler runtime differs');
+ assert(Date.parse(r.startedAt)>=Date.parse(authenticated.producer.started_at)&&Date.parse(r.endedAt)<=Date.parse(authenticated.producer.completed_at)&&Date.parse(r.endedAt)>=Date.parse(r.startedAt),'Auxiliary report outside producing job');
+ assert(r.classifierHash===classifierHash&&r.healthBefore?.ok===true&&r.healthAfter?.ok===true&&Array.isArray(r.files)&&r.files.length>0&&r.files.length<=64&&new Set(r.files).size===r.files.length&&r.manifestHash===hash(JSON.stringify(r.files)),'Auxiliary compiler source selection differs');
+ same(r.files,r.files.slice().sort(),'Noncanonical auxiliary compiler files');
+ assert(r.groups&&Array.isArray(r.groups.NODB)&&Array.isArray(r.groups.DB),'Compiler source partition missing');
+ same([...r.groups.NODB,...r.groups.DB].sort(),r.files,'Auxiliary compiler partition differs');
+ assert(r.files.every(p=>plan.suite.includes(p))&&Array.isArray(r.batches)&&r.batches.length>0&&r.batches.every(b=>b.exitCode===0&&b.processExitCode===0&&b.signal===null),'Unsuccessful auxiliary source preflight');
+ return {...authenticated.compiler,auxiliary:true,artifactId:aux.artifacts[0].id,digest:aux.artifacts[0].digest,reportHash:hash(r)};
+}
+export function verifyFixtureBrowserRecovery({sourcePlan,plan,assessment,sourceRun,reports,focused,browsers=[],compilerAuxiliary=null,impactContext,classifierHash,verificationController,verificationDiagnostic,reviewedController=null,buildRun,build,history}){
  assert(sourceRun.status==='completed'&&sourceRun.conclusion==='failure'&&sourceRun.run_attempt===1&&assessment.sourceRun.id===sourceRun.id,'Original complete failure required');
  assert(assessment.sha===sourcePlan.sha&&assessment.controller===sourcePlan.controller&&assessment.fingerprint===sourcePlan.fingerprint&&assessment.baseline===plan.migrationBase,'Original source assessment differs');
  assert(verificationDiagnostic.controller===verificationController&&id(verificationDiagnostic.runId),'Hosted verifier diagnostic required');
@@ -88,7 +102,7 @@ export function verifyFixtureBrowserRecovery({sourcePlan,plan,assessment,sourceR
  assert(Array.isArray(reports)&&reports.length===sourcePlan.units.length&&new Set(reports.map(r=>r.id)).size===reports.length,'Complete original reports required');
  assert(build?.canonicalCandidateInputsVerified===true&&build.source===plan.sha&&build.controller===plan.controller&&build.runId===buildRun.id&&buildRun.conclusion==='success','Fresh source-bound canonical build required');
  assert(history?.kind==='AUTHENTICATED_COMPLETE_REPAIR_HISTORY'&&history.sourceRunId===sourceRun.id&&Array.isArray(history.runIds)&&history.runIds.includes(buildRun.id),'Complete latest execution history required');
- const replacements=new Map(),focusedSources=[],compilers=[];
+ const replacements=new Map(),focusedSources=[],compilers=compilerAuxiliary?[validateCompilerAuxiliary(compilerAuxiliary,{plan,sourceRun,classifierHash,history})]:[];
  for(const f of focused){
   const r=f.report;assert(r.kind==='FOCUSED_ONLY'&&r.releaseEligible===false&&r.schemaVersion===1&&r.sha===plan.sha&&r.controller===plan.controller&&r.runId===String(f.run.id)&&r.attempt==='1'&&r.exitCode===0,'Fresh report identity differs');
   same(r.runtime,plan.runtime,'Focused runtime changed');assert(r.classifierHash===classifierHash&&r.manifestHash===hash(JSON.stringify(r.files)),'Classifier/selection differs');
