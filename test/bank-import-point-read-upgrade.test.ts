@@ -20,23 +20,25 @@ type Actor={name:string;ctx:SessionContext;expected:string[];human:boolean;agent
 type Policy={schema:string;table:string;name:string;qual:string|null;catalog:Record<string,unknown>};
 
 describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('0691 populated ordinary upgrade',()=>{
- it('migrates the exact 571-row Board predecessor to 572 (development-only journal) without changing retained facts or authority',async()=>{
+ it('migrates the exact 580-row V9 and Feedback predecessor to 581 (six-scope source preparation) without changing retained facts or authority',async()=>{
   expect(process.env.GITHUB_ACTIONS).toBe('true');expect(process.env.CI).toBe('true');
   const started=performance.now(),deadline=started+150000;
   const budget=()=>expect(performance.now()<deadline,'150-second work budget reserves owned cleanup within 180 seconds').toBe(true);
   const journalBytes=readFileSync('db/migrations/meta/_journal.json');
   const journal=JSON.parse(journalBytes.toString()) as {entries:Entry[];[key:string]:unknown};
   const boundary=journal.entries.findIndex(e=>e.tag===TAG);
-  expect(boundary).toBe(571);expect(journal.entries.length).toBe(572);
-  expect(sha(JSON.stringify(journal.entries.slice(0,boundary)))).toBe("2a9842ad99735fc2173e4cbe5d08768828ce69469be3295cc08db3315554b184");
+  expect(boundary).toBe(580);expect(journal.entries.length).toBe(581);
+  expect(sha(journalBytes)).toBe('0ec4efea88ff081124c96922f3f84988e4dc1e082a7e46d25d2ae7b59550137e');
+  expect(sha(JSON.stringify(journal.entries.slice(0,boundary)))).toBe("0f15971974a4aab83ea7756e1ddce5569b25965593e1cf2efdc4aece8b752ba7");
   exact(journal.entries.slice(-3).map(({idx,when,tag})=>({idx,when,tag})),[
-   {idx:684,when:1793330000050,tag:'0721_movement_settings_catalog'},
-   {idx:685,when:1793330000051,tag:'0722_movement_type_controls'},
-   {idx:686,when:1793330000064,tag:TAG},
-  ],'Board prefix plus development-only Bank append; not an installation allocation');
-  expect(Math.max(...journal.entries.slice(0,boundary).map(e=>e.when))).toBe(1793330000051);
+   {idx:693,when:1793330000063,tag:'0720_lifecycle_v9_self_equipment'},
+   {idx:694,when:1793330000065,tag:'0728_feedback_release_evidence'},
+   {idx:695,when:1793330000075,tag:TAG},
+  ],'Exact V9 and Feedback prefix plus source-only ratified Bank append; no release authority');
+  expect(Math.max(...journal.entries.slice(0,boundary).map(e=>e.when))).toBe(1793330000065);
   expect(sha(readFileSync('db/migrations/'+TAG+'.sql'))).toBe(SQL_SHA);
   const expectedLedger=journal.entries.map(e=>({hash:sha(readFileSync('db/migrations/'+e.tag+'.sql')),created_at:String(e.when)}));
+  expect(sha(JSON.stringify(expectedLedger.map(({created_at,hash})=>({created_at,hash}))))).toBe('38d86c3d2a32cc1203ca8f6456d43da4ee4c1dd65a424f25cdda6881920a7973');
   const name='ai_hr_bank_point_upgrade_'+randomUUID().replaceAll('-','');
   const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!),appUrl=new URL(process.env.TEST_DATABASE_URL!);
   expect(['127.0.0.1','localhost','[::1]']).toContain(ownerUrl.hostname);
@@ -77,7 +79,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('0691 populated ordinary up
    await storage.client`set statement_timeout=60000`;await storage.client`set lock_timeout=5000`;
    await application.client`set statement_timeout=15000`;await application.client`set lock_timeout=5000`;
    phase='normal-prefix-migration';budget();await migrate(storage.db,{migrationsFolder:directory});budget();
-   const prior=await ledger();expect(prior.length).toBe(571);
+   const prior=await ledger();expect(prior.length).toBe(580);
    exact(prior.map(({hash,created_at})=>({hash,created_at})),expectedLedger.slice(0,boundary),'Every ordinary prefix hash/timestamp must match its exact copied SQL');
    phase='populate-retained-fixture';
    const [t1]=await storage.client`insert into tenant(workos_org_id,name) values(${randomUUID()},'Fictional point-upgrade tenant one') returning id`;
@@ -164,9 +166,9 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('0691 populated ordinary up
    expect(beforeFacts['public.person'].length).toBe(5);expect(beforeFacts['public.employment'].length).toBe(5);expect(beforeFacts['public.employee_statutory_my'].length).toBe(5);
    const unchanged=async()=>{exact(await allFacts(),beforeFacts,'All public/app table rows must retain their exact complete JSON bytes');exact(await metadata(),beforeMetadata,'Roles, table ownership/ACL/RLS flags and all function definitions/catalog/owner/ACL must be unchanged');};
    phase='normal-full-migration';budget();await migrate(storage.db,{migrationsFolder:'db/migrations'});budget();
-   const applied=await ledger();expect(applied.length).toBe(572);exact(applied.slice(0,boundary),prior,'The complete old 571-row ledger prefix must be immutable');
+   const applied=await ledger();expect(applied.length).toBe(581);exact(applied.slice(0,boundary),prior,'The complete old 580-row ledger prefix must be immutable');
    exact(applied.map(({hash,created_at})=>({hash,created_at})),expectedLedger,'Normal migrator ledger must match every exact source SQL hash/timestamp');
-   exact(applied.slice(boundary).map(({hash,created_at})=>({hash,created_at})),[{hash:SQL_SHA,created_at:'1793330000064'}],'Exactly the allocated 0691 ledger row must append');
+   exact(applied.slice(boundary).map(({hash,created_at})=>({hash,created_at})),[{hash:SQL_SHA,created_at:'1793330000075'}],'Exactly the allocated 0691 ledger row must append');
    const afterPolicies=await policyRows();expect(afterPolicies.length).toBe(beforePolicies.length);
    const changes=afterPolicies.filter((p,i)=>p.qual!==beforePolicies[i].qual).map(p=>p.schema+'.'+p.table+'.'+p.name);exact(changes,['public.employment.employment_rls'],'Only the intended policy USING may change');
    const normalized=afterPolicies.map((p,i)=>p.schema==='public'&&p.table==='employment'&&p.name==='employment_rls'?{...p,qual:beforePolicies[i].qual,catalog:{...p.catalog,polqual:beforePolicies[i].catalog.polqual}}:p);
@@ -176,7 +178,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('0691 populated ordinary up
    phase='normal-idempotent-rerun';await migrate(storage.db,{migrationsFolder:'db/migrations'});exact(await ledger(),applied,'Rerunning the actual full migrator must append nothing');
    exact(await policyRows(),afterPolicies,'Idempotent rerun must preserve the installed policy catalog');await unchanged();exact(await visibility(),beforeVisibility,'Idempotent rerun must retain the same authority');budget();
    expect(sha(readFileSync('db/migrations/'+TAG+'.sql'))).toBe(SQL_SHA);expect(sha(readFileSync('db/migrations/meta/_journal.json'))).toBe(sha(journalBytes));
-   console.info('[bank-point-read-upgrade]',JSON.stringify({kind:'DEVELOPMENT_BOARD_571_TO_572_NOT_INSTALLATION',prefixRows:prior.length,resultRows:applied.length,appendedSqlSha256:SQL_SHA,appendedTimestamp:journal.entries[boundary].when,
+   console.info('[bank-point-read-upgrade]',JSON.stringify({kind:'DISPOSABLE_POPULATED_580_TO_581_SIX_SCOPE_UPGRADE_NOT_RELEASE',prefixRows:prior.length,resultRows:applied.length,appendedSqlSha256:SQL_SHA,appendedTimestamp:journal.entries[boundary].when,
     ledgerSha256:sha(JSON.stringify(applied)),factTables:Object.keys(beforeFacts).length,fullRowsSha256:sha(JSON.stringify(beforeFacts)),retainedPeople:5,retainedEmployments:5,retainedStatutory:5,contexts:actors.length,humanPrincipals:actors.filter(a=>a.human).length,namedAgentPrincipals:principals.length,markerStates:4,
     onlyEmploymentUsingChanged:true,allRetainedRowsUnchanged:true,rolesFunctionsOwnershipAclAndRlsUnchanged:true,orderedVisibilityUnchanged:true,idempotent:true,elapsedMs:performance.now()-started,liveLedgerClaim:false,releaseAuthorized:false}));
   }catch(error){primary=error;console.info('[bank-point-read-upgrade-failed]',JSON.stringify({phase,elapsedMs:performance.now()-started,sqlState:(error as {code?:string})?.code}));throw error;}finally{
