@@ -1,5 +1,7 @@
 /** Protocol-only mocks. Native permissions, effects and custody are exercised by separate real DB cases. */
 import {describe,it,expect,vi} from 'vitest';
+import {PayrollReset as C} from '../lib/assistant-actions/reviewed-payroll-reset-contract';
+import {checkGenericPacket,readGenericModuleActionResponse} from '../components/assistant/generic-module-action-transport';
 import {createModuleActionBrowserHandler} from '../lib/assistant-actions/module-action-http';
 const origin='https://fixture.test',id='10000000-0000-4000-8000-000000000001',batchId='10000000-0000-4000-8000-000000000002',action='payroll.reset' as const;
 const input={action,contractVersion:1,batchId,reason:'Fictional human reason',confirmResetProcessedRun:true,acknowledgePayslipLoanClaimConsequences:true};
@@ -25,4 +27,12 @@ describe('closed Payroll reset transport',()=>{
   f.owner.reopen.mockResolvedValueOnce({kind:'prepared',review:{...prepared,actionId:other}});expect((await f.handle(request({action,operation:'reopen',actionId:id}))).status).toBe(503);
   f.owner.prepare.mockResolvedValueOnce({kind:'prepared',review:{...prepared,sourceDigest:'PRIVATE source witness'}});const response=await f.handle(request({action,operation:'prepare',input}));expect(response.status).toBe(503);expect(JSON.stringify(await response.json())).not.toContain('PRIVATE');
  });
+ it('round-trips a valid large UTF-8 prepared review through the handler and bounded streaming client',async()=>{
+  const f=fixture(),longInput={...input,reason:'理'.repeat(4000)},longReview={...prepared,content:longInput,review:{...prepared.review,companyName:'公'.repeat(4000),cycleName:'月'.repeat(4000)}};
+  const value={action,operation:'prepare',input:longInput};expect(new TextEncoder().encode(JSON.stringify(value)).byteLength).toBeLessThan(20480);f.owner.prepare.mockResolvedValueOnce({kind:'prepared',review:longReview});
+  const response=await f.handle(request(value));expect(response.status).toBe(200);const bytes=new Uint8Array(await response.arrayBuffer());expect(bytes.byteLength).toBeGreaterThan(32768);expect(bytes.byteLength).toBeLessThan(131072);
+  const body=new ReadableStream<Uint8Array>({start(controller){for(let offset=0;offset<bytes.length;offset+=2003)controller.enqueue(bytes.slice(offset,offset+2003));controller.close();}}),packet=checkGenericPacket(value);if(!packet)throw Error('Expected a valid reset packet');
+  const parsed=await readGenericModuleActionResponse(new Response(body,{headers:{'Content-Type':'application/json'}}),packet);expect(parsed.kind).toBe('prepared');const checked=C.Prepared.parse((parsed as unknown as {review:unknown}).review);expect(checked.content.reason.length).toBe(4000);expect(checked.review.companyName.length).toBe(4000);expect(checked.review.cycleName?.length).toBe(4000);
+ });
+
 });
