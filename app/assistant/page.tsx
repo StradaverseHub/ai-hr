@@ -1,3 +1,4 @@
+import {PersonnelReviewNavigation} from '@/components/assistant/personnel-review-navigation';
 import {AssistantHistoryPrivacy} from '../../components/assistant/history-privacy';
 import {OwnClearForm,OwnClearStatus} from '../../components/assistant/own-clear';
 import {eraseConversationMetadataAction} from './agent-review-actions';
@@ -93,6 +94,7 @@ export default async function AssistantPage({
             {mayGrant && <Link href="/control-tower/agents/allowances#user-limits" className="mt-3 inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{t('home.grantSelf')}</Link>}
           </section>
           {homeTabs}
+          <PersonnelReviewNavigation ctx={s}/>
         </div>
         <section id="assistant-privacy" aria-labelledby="assistant-privacy-heading" className="scroll-mt-4 space-y-2 border-t border-border pt-4">
           <h2 id="assistant-privacy-heading" className="text-sm font-medium">{t('home.privacy')}</h2>
@@ -130,6 +132,7 @@ export default async function AssistantPage({
           placeholder: t('placeholder'), ask: t('ask'), working: t('workspace.working'), scope: t('scopeNote'),
         }} />
         {homeTabs}
+        <PersonnelReviewNavigation ctx={s}/>
       </div>
 
       <ModuleJobChooser modules={workspace.jobModules} selected={sp.job} actions={actionEntries}/>
