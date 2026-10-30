@@ -22338,7 +22338,7 @@
     "bonus": "Always-no reviewer bonus (points)",
     "penalty": "Always-yes reviewer penalty (points)",
     "aiDraft": "Draft with AI",
-    "aiDraftHelp": "Choose relevant passages from your notes and shared evidence to prepare an editable draft. Check the draft before using it; all decisions remain yours.",
+    "aiDraftHelp": "เรียงข้อความจากบันทึกของคุณและหลักฐานที่มีสิทธิ์ดูเป็นโครงร่างแก้ไขได้ ความหมายอยู่ภายใน ตรวจสอบข้อความเดิมก่อนใช้",
     "aiDrafting": "Preparing draft…",
     "aiUnavailable": "AI drafting is unavailable. Continue with the form.",
     "managerReassign": "Reassign reviewer",
@@ -23258,11 +23258,11 @@
     },
     "careerDraft": {
       "title": "ร่างแผนอาชีพของคุณ",
-      "help": "ตรวจสอบเป้าหมายและความมุ่งหวังระยะยาวที่เสนอจากบทบาทที่เลือกและผลประเมิน เลือกความพร้อมในการย้ายด้วยตนเอง",
+      "help": "ตรวจสอบโครงร่างช่องว่างทักษะและเป้าหมายที่บันทึกไว้ ความมุ่งหวังระยะยาวมาจากข้อความที่คุณกรอกเอง AI ไม่สร้างขึ้น เลือกความต้องการย้ายงานด้วยตัวเอง",
       "generate": "ร่างแผน",
       "saveDirection": "บันทึกทิศทางอาชีพที่เลือกก่อนร่างแผน",
-      "empty": "ไม่มีช่องว่างเพิ่มเติมหรือความมุ่งหวังที่ว่างให้ร่าง",
-      "preview": "ตรวจสอบข้อเสนอ การเก็บจะบันทึกเป็นฉบับร่างส่วนตัวให้แก้ไขก่อนแบ่งปัน",
+      "empty": "เลือกทิศทางที่บันทึกไว้หรือกรอกความมุ่งหวังระยะยาวด้วยตัวเอง จะไม่สร้างความมุ่งหวังใหม่",
+      "preview": "ตรวจสอบเป้าหมายเดิมที่เลือกและข้อความของคุณก่อนเก็บในแผนส่วนตัว",
       "keepAspiration": "เก็บความมุ่งหวังระยะยาว",
       "keep": "เก็บฉบับร่างที่เลือก"
     },
@@ -24088,6 +24088,10 @@
       "saved": "The unit is left out of this cycle.",
       "broughtBack": "The unit takes part again.",
       "failed": "Something went wrong. Try again."
+    },
+    "protectedOutline": {
+      "title": "โครงร่างต้นฉบับที่ AI เรียงลำดับ",
+      "help": "AI เลือกเฉพาะลำดับการอ่าน เนื้อหายังคงเป็นข้อเท็จจริงและข้อความเดิม ไม่สร้างคะแนน การตัดสินใจ หรือความหมายใหม่"
     }
   },
   "allowanceV2": {

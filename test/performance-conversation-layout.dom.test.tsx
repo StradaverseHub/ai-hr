@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import en from '../messages/en.json';
@@ -46,4 +46,14 @@ describe('Performance conversation layout',()=>{
   await waitFor(()=>expect(ports.keep).toHaveBeenCalledWith('review','card'));expect((screen.getByRole('button',{name:en.onehr.conversation.reflectionSaved}) as HTMLButtonElement).disabled).toBe(true);expect(ports.refresh).toHaveBeenCalledOnce();
  });
 
+});
+
+
+it('keeps the sent words and an honest thinking state in place during the native command',async()=>{
+ let finish!:(value:unknown)=>void;ports.send.mockReturnValueOnce(new Promise(resolve=>{finish=resolve;}));
+ render(<NextIntlClientProvider locale="en" messages={en}><ReviewConversation reviewId="review" stage="results" initial={{revision:null,messages:[]}} aiEnabled labels={en.onehr.conversation}/></NextIntlClientProvider>);
+ const box=screen.getByLabelText(en.onehr.conversation.message);fireEvent.change(box,{target:{value:'remark: My own current evidence.'}});fireEvent.click(screen.getByRole('button',{name:en.onehr.conversation.send}));
+ await waitFor(()=>expect(ports.send).toHaveBeenCalledOnce());expect(screen.getByRole('status')).toHaveTextContent(en.assistant.workspace.chat.thinking);expect(screen.getByText('remark: My own current evidence.')).toBeInTheDocument();expect(box).toBeDisabled();
+ await act(async()=>{finish({revision:1,messages:[{id:'done',role:'assistant',kind:'guide',text:'Please review your recorded words.',at:'2026-10-30T00:00:00Z'}]});});
+ expect(screen.queryByRole('status')).toBeNull();expect(screen.getByText('Please review your recorded words.')).toBeInTheDocument();expect(box).not.toBeDisabled();expect(ports.refresh).not.toHaveBeenCalled();
 });

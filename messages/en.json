@@ -22338,7 +22338,7 @@
     "bonus": "Always-no reviewer bonus (points)",
     "penalty": "Always-yes reviewer penalty (points)",
     "aiDraft": "Draft with AI",
-    "aiDraftHelp": "Choose relevant passages from your notes and shared evidence to prepare an editable draft. Check the draft before using it; all decisions remain yours.",
+    "aiDraftHelp": "Arrange relevant passages from your own notes and authorized evidence into an editable outline. Their meaning stays local; review the original words before using them.",
     "aiDrafting": "Preparing draft…",
     "aiUnavailable": "AI drafting is unavailable. Continue with the form.",
     "managerReassign": "Reassign reviewer",
@@ -23258,11 +23258,11 @@
     },
     "careerDraft": {
       "title": "Draft your career plan",
-      "help": "Review suggested goals and a longer-term aspiration based on your chosen role and assessment. Choose mobility yourself.",
+      "help": "Review an outline of recorded skill gaps and goals. Any longer-term aspiration comes from your own entered words; AI does not invent one. Choose mobility yourself.",
       "generate": "Draft plan",
       "saveDirection": "Save your chosen direction before drafting the plan.",
-      "empty": "Your plan has no further gaps or blank aspiration to draft.",
-      "preview": "Review the suggestions. Keeping them saves a private draft for you to edit before sharing.",
+      "empty": "Choose a saved direction or enter your own longer-term words. No new aspiration will be invented.",
+      "preview": "Review the selected native goals and your own words before keeping them in your private plan.",
       "keepAspiration": "Keep longer-term aspiration",
       "keep": "Keep selected draft"
     },
@@ -24088,6 +24088,10 @@
       "saved": "The unit is left out of this cycle.",
       "broughtBack": "The unit takes part again.",
       "failed": "Something went wrong. Try again."
+    },
+    "protectedOutline": {
+      "title": "AI-arranged source outline",
+      "help": "AI chose the reading order. These are the original native facts and words; no ratings, decisions or meanings were generated."
     }
   },
   "allowanceV2": {

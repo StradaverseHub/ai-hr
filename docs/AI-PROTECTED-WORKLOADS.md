@@ -49,3 +49,15 @@ The canonical descriptor and availability owner is `lib/ai/provider-workload-pol
 imports are server-side; client screens should receive serialized availability from an authorized
 server boundary. An unavailable variant must explain the supported input and link the native workflow,
 rather than present a generic provider failure or claim that all free text has been restored.
+
+## Protected Performance completion
+
+Native written remarks, potential summaries, Talent evidence, personal-record views and IDP/career-fit views can request a presentation outline. The native owner computes all existing facts, verdicts, scores and decisions. A separate closed operation sends only a purpose, opaque section indices, closed section kinds and coarse lengths. The model must return every offered index exactly once. A deterministic native-output adjudicator preserves the entire original native object and attaches only the checked reading order. It is distinct from the older model-prose operation; its exact-native proof does not weaken or silently override that operation's prose guards.
+
+The expandable outline renderer checks the metadata against sections recomputed from the exact native fields already returned for that view. It applies the validated order, escapes all text and preserves the primary summary and native badges. It never expands private peer inputs into the browser. This arranges native source content; the provider does not understand the withheld paragraphs.
+
+Starter scorecards select eligible native-library ordinals. IDs, human titles, scoring defaults and administrator-owned numbers are restored locally and still pass the original native scorecard adjudicator. The model does not invent targets or compute ratings. Explicit Performance draft commands use local human-text spans, unique authorized target matching and the same native command adjudicators. Missing, ambiguous, hypothetical or negated changes cannot become model-inferred edits. Submission, approval, locks, ratings and employment decisions remain human/native operations.
+
+Existing human words may be formatted in any editable field, including development actions. Blank future claims are not generated. Whole-career previews can receive optional explicit human aspiration words from the existing native form; saved native words take precedence. The request's private source fingerprint binds the captured human text, while only its opaque reference/kind/length goes to the provider. The returned native sourceDigest retains its original canonical-source meaning and is not falsely described as containing the unsaved human text.
+
+All original source/configuration/quota/actor/current-draft checks and post-provider access/cache rechecks remain. Invalid selected ordinals retain the native refusal audit; source or privacy-control failures do not become successful drafts. See the exact-SHA GitHub evidence in the AI DEV handoff; source integration alone is not a PASS receipt.

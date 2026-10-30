@@ -22338,7 +22338,7 @@
     "bonus": "Always-no reviewer bonus (points)",
     "penalty": "Always-yes reviewer penalty (points)",
     "aiDraft": "Draft with AI",
-    "aiDraftHelp": "Choose relevant passages from your notes and shared evidence to prepare an editable draft. Check the draft before using it; all decisions remain yours.",
+    "aiDraftHelp": "将您自己的笔记和有权查看的证据原文整理为可编辑提纲。原文含义保留在本地，使用前请核对。",
     "aiDrafting": "Preparing draft…",
     "aiUnavailable": "AI drafting is unavailable. Continue with the form.",
     "managerReassign": "Reassign reviewer",
@@ -23258,11 +23258,11 @@
     },
     "careerDraft": {
       "title": "起草职业发展计划",
-      "help": "根据您选择的岗位和评估，审核建议目标及长期愿望。请自行选择流动意向。",
+      "help": "查看已记录的技能差距和目标提纲。长期志向只使用您亲自填写的文字，AI 不会编造。请自行选择流动意愿。",
       "generate": "起草计划",
       "saveDirection": "请先保存选定的职业方向，再起草计划。",
-      "empty": "目前没有更多差距或空白的长期愿望可供起草。",
-      "preview": "请审核建议。保留的内容将保存为私人草稿，供您编辑后再分享。",
+      "empty": "请选择已保存的方向或填写自己的长期志向，不会编造新的志向。",
+      "preview": "保留到私人计划前，请核对所选原生目标和您自己的文字。",
       "keepAspiration": "保留长期愿望",
       "keep": "保留所选草稿"
     },
@@ -24088,6 +24088,10 @@
       "saved": "The unit is left out of this cycle.",
       "broughtBack": "The unit takes part again.",
       "failed": "Something went wrong. Try again."
+    },
+    "protectedOutline": {
+      "title": "AI 排列的原文提纲",
+      "help": "AI 只选择阅读顺序。内容仍是原生事实和原文，不生成评级、决定或新的含义。"
     }
   },
   "allowanceV2": {

@@ -22338,7 +22338,7 @@
     "bonus": "Always-no reviewer bonus (points)",
     "penalty": "Always-yes reviewer penalty (points)",
     "aiDraft": "Draft with AI",
-    "aiDraftHelp": "Choose relevant passages from your notes and shared evidence to prepare an editable draft. Check the draft before using it; all decisions remain yours.",
+    "aiDraftHelp": "Sắp xếp trích đoạn từ ghi chú của bạn và bằng chứng được phép thành đề cương có thể sửa. Ý nghĩa được giữ cục bộ; kiểm tra nguyên văn trước khi dùng.",
     "aiDrafting": "Preparing draft…",
     "aiUnavailable": "AI drafting is unavailable. Continue with the form.",
     "managerReassign": "Reassign reviewer",
@@ -23258,11 +23258,11 @@
     },
     "careerDraft": {
       "title": "Soạn kế hoạch nghề nghiệp",
-      "help": "Xem xét mục tiêu và nguyện vọng dài hạn được đề xuất dựa trên vai trò đã chọn và đánh giá của bạn. Tự chọn nguyện vọng điều chuyển.",
+      "help": "Xem đề cương khoảng cách kỹ năng và mục tiêu đã ghi nhận. Nguyện vọng dài hạn lấy từ lời bạn tự nhập; AI không tự tạo. Bạn tự chọn khả năng điều chuyển.",
       "generate": "Soạn kế hoạch",
       "saveDirection": "Lưu hướng nghề nghiệp đã chọn trước khi soạn kế hoạch.",
-      "empty": "Không còn khoảng trống phát triển hoặc nguyện vọng trống để soạn.",
-      "preview": "Xem xét đề xuất. Nội dung giữ lại được lưu thành bản nháp riêng để bạn sửa trước khi chia sẻ.",
+      "empty": "Chọn hướng đã lưu hoặc tự nhập nguyện vọng dài hạn. Không tạo nguyện vọng mới.",
+      "preview": "Xem lại mục tiêu gốc đã chọn và lời của bạn trước khi giữ trong kế hoạch riêng.",
       "keepAspiration": "Giữ nguyện vọng dài hạn",
       "keep": "Giữ bản nháp đã chọn"
     },
@@ -24088,6 +24088,10 @@
       "saved": "The unit is left out of this cycle.",
       "broughtBack": "The unit takes part again.",
       "failed": "Something went wrong. Try again."
+    },
+    "protectedOutline": {
+      "title": "Đề cương nguồn do AI sắp xếp",
+      "help": "AI chọn thứ tự đọc. Đây vẫn là dữ kiện và lời gốc; không tạo xếp hạng, quyết định hoặc ý nghĩa mới."
     }
   },
   "allowanceV2": {
