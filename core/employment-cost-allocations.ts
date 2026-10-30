@@ -15,13 +15,6 @@ export {CostAllocationError} from '../lib/employment-cost-allocation';
 async function subjectTx(tx:Tx,ctx:SessionContext,id:string,date:string,write=false){
  await assertWorkforceEmploymentTx(tx,ctx,id,write?'maintain':'view');
  if(write)await lockLabelCriteriaTx(tx,ctx.tenantId);
- // Positive Workforce grants deliberately do not widen raw employment RLS. This native-owned,
- // minimal projection composes the canonical dated proof behind the SAME capability fence.
- // Existing system/provisioning callers retain their ordinary transaction/RLS path below.
- if(ctx.userId){
-  const[row]=await tx.execute<{subject:unknown}>(sql`select app.employment_cost_allocation_subject(${id}::uuid,${date}::date,${write}) as subject`);
-  return z.object({employment:z.object({id:z.guid(),personId:z.guid(),companyId:z.guid(),hiredOn:z.iso.date(),terminatedOn:z.iso.date().nullable()}).strict(),companyId:z.guid()}).strict().parse(row?.subject);
- }
  const query=tx.select().from(employment).where(eq(employment.id,id));const[e]=await(write?query.for('update'):query);if(!e)throw new CostAllocationError('scope');
  const proof=(await provenCompanyDatesTx(tx,[{employmentId:id,date}])).get(`${id}|${date}`);if(!proof?.companyId)throw new CostAllocationError('date');
  await assertWorkforceCompanyTx(tx,ctx,proof.companyId,write?'maintain':'view');if(write){const[live]=await tx.select({id:company.id}).from(company).where(and(eq(company.id,proof.companyId),isNull(company.archivedAt)));if(!live)throw new CostAllocationError('scope');}return{employment:e,companyId:proof.companyId};
