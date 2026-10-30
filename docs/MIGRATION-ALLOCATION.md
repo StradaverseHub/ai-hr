@@ -410,3 +410,6 @@ This follows the parent-reserved sibling claims0714–0715; those packages are n
 Every number/index/timestamp remains PROVISIONAL until integration freezes above the then-live ordered ledger.
 No installation priority, migration application, protected-ref move or deployment is authorized.
 The action uses the existing encrypted assigned ledger with person-keyed receipts and retains its selected employment binding.
+## Personnel saved-draft activation — provisional source reservation
+
+0714_assistant_employee_draft_activation, idx695 / when1793330000043, is UNAPPLIED and provisional. It follows qualification source0713 only in this isolated branch. Reallocate above the then-live accepted ordered ledger at integration freeze; source reservation is not deployment authority or installation priority. Historical SQL bytes are untouched.

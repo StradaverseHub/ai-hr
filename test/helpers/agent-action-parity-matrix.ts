@@ -102,6 +102,7 @@ export const AGENT_ACTION_PARITY={
  'leave.adjustment.apply':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.compensation.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.emergency_contact.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'employees.draft.activate':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.qualification.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.movement.transfer':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'toil.credit.grant':{kind:'probed',screen:HR_ON_EMPLOYMENT},

@@ -46,6 +46,9 @@ import {setToilPolicy,submitReplacementLeaveRequest,decideReplacementLeaveReques
 import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews,readClaimDecisionChoices,readAttendanceDecisionChoices,readToilDecisionChoices} from '../core/assistant-actions/assigned-decision-review-store';
 import {leaveCancellationReviews,leaveEditReviews,readLeaveChangeChoices} from '../core/assistant-actions/leave-change-review-store';
 import {compensationMaintenanceReviews,readCompensationMaintenanceChoices} from '../core/assistant-actions/compensation-maintenance-review-store';
+import {employeeDraftActivationReviews,readEmployeeDraftActivationChoices} from '../core/assistant-actions/employee-draft-activation-review-store';
+import {createEmployeeDraftWithReservedCode,saveEmployeeDraft,saveAndCompleteEmployeeDraft} from '../core/employee-draft';
+import type {EmployeeDraftData} from '../lib/employee-draft-schema';
 import {qualificationMaintenanceReviews,readQualificationMaintenanceChoices} from '../core/assistant-actions/qualification-maintenance-review-store';
 import {addQualification} from '../core/workforce-registers';
 import {leaveAdjustmentReviews,movementTransferReviews,leaveCreditReviews,readLeaveAdjustmentChoices,readMovementTransferChoices,readLeaveCreditChoices} from '../core/assistant-actions/hr-prepared-review-store';
@@ -366,6 +369,11 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'employees.emergency_contact.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'add',contactId:null,fields:{fullName:'Fictional Emergency Contact',relationship:null,mobilePhone:'000-FICTIONAL',homePhone:null,address:null,remarks:'Fictional human note',priority:'primary'}}),
   offered:async(who,item)=>listed(await readEmergencyContactMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>addEmergencyContact(who,{personId:item.subjectId,fullName:'Fictional Emergency Contact',relationship:null,mobilePhone:'000-FICTIONAL',homePhone:null,address:null,remarks:'Fictional human note',priority:'primary'},tx)},
+ 'employees.draft.activate':{family:'hr_on_employment',store:{prepare:employeeDraftActivationReviews.prepare,confirm:(ctx,input)=>employeeDraftActivationReviews.confirm(ctx,{action:'employees.draft.activate',contractVersion:1,...input})},screenAdmits:isAdmin,
+  async create(_w,h){const root=groupOf(h.base),draft=await createEmployeeDraftWithReservedCode(root,{companyId:h.companyId,fullName:'Fictional saved draft',primaryEmail:randomUUID()+'@fixture.test',employeeIdMode:'manual',employeeCode:'P-'+randomUUID().slice(0,10).toUpperCase()}),data:EmployeeDraftData={profile:{fullName:'Fictional saved draft',primaryEmail:randomUUID()+'@fixture.test',employeeCode:draft.employeeCode,employeeIdMode:'manual'},employment:{companyId:h.companyId,departmentId:h.departmentId,employmentType:'full_time',hiredOn:todayInKualaLumpur()},payroll:{basicSalary:'3000'}};await saveEmployeeDraft(root,{id:draft.id,data,currentStep:4});return itemOf(h,draft.id,{companyId:h.companyId,proposal:data});},
+  human:item=>({action:'employees.draft.activate',contractVersion:1,draftId:item.subjectId,companyId:item.companyId}),
+  offered:async(who,item)=>listed(await readEmployeeDraftActivationChoices(who,{}),'drafts','draftId',item.subjectId),
+  screen:(tx,who,item)=>saveAndCompleteEmployeeDraft(who,{id:item.subjectId,data:item.proposal as EmployeeDraftData,currentStep:4},tx)},
  'employees.qualification.maintain':{family:'hr_on_employment',store:qualificationMaintenanceReviews,screenAdmits:isAdmin,
   create:async(_w,h)=>itemOf(h,h.person.employmentId),
   human:item=>({action:'employees.qualification.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'add',qualificationId:null,fields:{qualification:'Bachelor',description:'Fictional human-entered qualification',fromYm:'2018-01',toYm:'2021-12',institute:'Fictional Institute',major:null,graduationDate:'2021-12-15',result:null,isHighest:true}}),

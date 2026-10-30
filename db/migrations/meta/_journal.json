@@ -4063,6 +4063,13 @@
       "breakpoints": true
     },
     {
+      "idx": 695,
+      "version": "7",
+      "when": 1793330000043,
+      "tag": "0714_assistant_employee_draft_activation",
+      "breakpoints": true
+    },
+    {
       "idx": 696,
       "version": "7",
       "when": 1793330000044,

@@ -728,11 +728,11 @@ async function releaseReservedNumber(
 /** Save exactly this caller's input under the Draft lock, then activate in an inner savepoint.
  * Business failure rolls back all activation owners while committing the attempted Draft for reopening.
  * Throw only AFTER the outer save commits; a failed savepoint rollback aborts the outer transaction. */
-export async function saveAndCompleteEmployeeDraft(ctx:SessionContext,p:{id?:string;data:EmployeeDraftData;currentStep:number}):Promise<{employmentId:string}> {
+export async function saveAndCompleteEmployeeDraft(ctx:SessionContext,p:{id?:string;data:EmployeeDraftData;currentStep:number},outerTx?:Tx):Promise<{employmentId:string}> {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if(!(ctx.roles??[]).some(role=>role==='super_admin'||role==='hr_admin'))throw new DraftActivationValidationError('permission',[]);
   if(p.id&&!UUID_RE.test(p.id))throw new DraftActivationValidationError('draft_unavailable',[]);
-  const outcome=await withTenant(ctx,async tx=>{
+  const run=async(tx:Tx)=>{
     await tx.execute(sql`select app.access_workforce_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // saveEmployeeDraft acquires and retains this exact row's lock before pinning or saving input.
@@ -745,7 +745,10 @@ export async function saveAndCompleteEmployeeDraft(ctx:SessionContext,p:{id?:str
       // survives a typed refusal or a late SQL/audit failure; only the saved Draft remains available.
       return {ok:false as const,error};
     }
-  });
+  };
+  // Default wizard behaviour still commits the attempted Draft after a failed activation savepoint.
+  // An enclosing Assistant custody owner instead throws before its top-level transaction can commit.
+  const outcome=outerTx?await run(outerTx):await withTenant(ctx,run);
   if(!outcome.ok)throw outcome.error;
   return outcome.value;
 }

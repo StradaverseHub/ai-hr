@@ -380,6 +380,14 @@ export const AGENT_ACTIONS=Object.freeze([
   screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:['app/admin/personnel/[employmentId]/qualification-actions.ts#addQualificationAction','app/admin/personnel/[employmentId]/qualification-actions.ts#editQualificationAction','app/admin/personnel/[employmentId]/qualification-actions.ts#archiveQualificationAction']},review:{route:'/assistant/qualifications',handoff:'review_page'},
   store:'generic_assigned',browserOwner:'qualificationMaintenance',pauseKey:'hr_assistant'}),
 
+ defineAgentAction({id:'employees.draft.activate',module:'employees',owner:'personnel',service:'core/employee-draft.ts#saveAndCompleteEmployeeDraft',contractVersion:1,
+  prepare:{status:'implemented',adapter:'employee_draft_activation_review_v1',inputSchema:'EmployeeDraftActivation.Human',outputSchema:'EmployeeDraftActivation.Prepared'},
+  confirm:{status:'implemented',adapter:'employee_draft_activation_review_v1',inputSchema:'EmployeeDraftActivation.Confirmation',outputSchema:'EmployeeDraftActivation.Completed'},
+  outcome:'canonical_receipt_required',semantics:'employment_created_not_payroll_processed_or_access_granted',humanInputs:['draftId','companyId'],
+  permission:{actor:'hr_admin',guard:'core/assistant-actions/employee-draft-activation-source.ts#withEmployeeDraftActivationIntervalTx'},subject:'company',blastRadius:{max:1,unit:'new_person_employment_and_native_initial_owners'},
+  idempotencyKey:'review_action_id',policy:{tier:'approve',category:'hiring'},reversal:{kind:'unknown'},evaluationCases:[],
+  // The legacy endpoint accepts broader shapes; it remains backlog until every variant has parity.
+  screen:{native:'app/admin/personnel/new/page.tsx',entryPoints:[]},review:{route:'/assistant/employee-drafts',handoff:'review_page'},store:'generic_own',browserOwner:'employeeDraftActivation',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'toil.credit.grant',module:'toil',owner:'leave',service:'packs/leave/service.ts#grantLeaveCreditRowsTx',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_leave_credit_review_v1',inputSchema:'HrLeaveCredit.Human',outputSchema:'HrLeaveCredit.Prepared'},
   confirm:{status:'implemented',adapter:'module_leave_credit_review_v1',inputSchema:'HrLeaveCredit.Confirmation',outputSchema:'HrLeaveCredit.Completed'},
