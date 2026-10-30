@@ -74,6 +74,7 @@ export const AGENT_ACTION_PARITY={
  'employees.import':{kind:'human_workflow_only',reason:'No agent prepare or confirm: the Assistant only hands off to the native import page, which keeps its own admission.'},
  'org.reporting.change':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'org.position.archive':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'org.department.archive':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'leave.apply':{kind:'probed',screen:OWN_REQUEST},
  'leave.cancel':{kind:'probed',screen:OWN_REQUEST},
  'leave.edit':{kind:'probed',screen:OWN_REQUEST},

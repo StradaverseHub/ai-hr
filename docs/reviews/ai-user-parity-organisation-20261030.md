@@ -1,6 +1,6 @@
 # Organisation Assistant parity — first slice
 
-Status: complete bounded catalogue action source authored; composed custody/UI hosted verification pending.
+Status: first position slice verified under the release hold. Department archive/restore is prepared locally; its coordinator migration allocation and hosted verification are pending.
 
 ## Native inventory and boundaries
 
@@ -42,3 +42,38 @@ Verified historical source-only checkpoint: run41022930260 on89d7 source11 + arc
 Run41026057810 on13770: all71DB cases passed; NODB/UI70passed and2failed. The new source11, custody15, role11 and UI12 passed; screenshot artifact12963712713 retained. Ledger38CHECKs total2,293,230bytes. Failures were the bounded grid-subaction entrypoint declaration and the old parent-page composition expectation. Whole compiler found only a SYSTEM test carrier using null instead of the actual optional userId type.
 
 Recovery keeps the composite saveLabelsGridAction inventory in backlog and gives the bounded action no one-to-one native export claim. Its real page, bulk service owner and role probes remain explicit. The parent page now uses only the native boolean witness, with updated composition tests; no catalogue label enumeration for a shortcut. The Assistant adapter moves into core/assistant-actions/position-archive-source.ts so the existing governance source manifest binds it. All non-import source bytes are unchanged, verified by static SHA256 comparison. No shared manifest rule is widened. SYSTEM fixture omits userId; no authority change. No original failed run is relabelled.
+
+
+## Verified position checkpoint
+
+Position source candidate `ad28c5fd3f3cce10a892c2e0fb9ff2125f6be231`: recovery [41028025195](https://github.com/StradaverseHub/ai-hr/actions/runs/41028025195) passed source11, custody15, registry10, Organisation composition8 and the whole compiler. Retained position role11 and UI12 passes belong to actual `13770b72d72f1d6bbeee411413cfed9c25af2575` / original run41026057810, whose overall failed result remains recorded. Component screenshots cover six locales at desktop/mobile; they use scripted endpoints, not authenticated server journeys. Migration0733 remains unapplied provisional development source.
+
+## Department archive/restore composition
+
+The mounted department grid also calls `saveLabelsGridAction` → `bulkSaveLabels('department')`, emitting `department.updated`. Its current row update always resends business-unit and head-employment pointers. A bounded Assistant archive/restore must therefore resend the freshly locked/current pointers through those same native resolvers. Omitting them would bypass native refusals for invalid retained routing. The human posts only department ID, expected archive baseline and desired archive state; head/BU metadata is never a human input.
+
+The new source locks Access → leave dependency configuration → all Criteria read barriers → department. It hashes full native name/label/description, parent/head/BU pointers, origin company and department revisions, Criteria rows and epoch, current authority and private head/BU revisions. It runs the real bulk owner inside a rollback/release preview savepoint and refuses normalization of any retained field or routing. Confirmation recomputes the same digest, reads current stored metadata and calls that same owner. Archive refuses ANY nonsuperseded assignment, including ended periods; restore permits retained assignment history where native behavior does. Global and extra-company labels remain native handoffs.
+
+Department uses a sibling specific adapter on the SAME encrypted physical ledger and shared custody engine. Its binding is tenant/USER/nullable actor PERSON/company/department/desired archive bit, with employment NULL. No employee target, fabricated person, new ledger, posted routing or generic executor is introduced. Actor-only retirement and canonical actor erasure use the existing owners. Exact top-transaction row/event proof checks the native USER `department.updated` payload `{name, archived}`; replay requires the original event and current row version. Legacy predicates are wrapped once and canonical dedicated columns remain NULL. The SQL draft has no executable identity until the coordinator assigns its tag, journal index and timestamp.
+
+Additive wiring covers typed registry, strict shared HTTP/results, closed outcome reading, guarded boolean shortcut, `/assistant/org-departments`, human explicit review and confirmation, uncertain same-ID recovery and all six locales. The bounded effect has no one-to-one native export claim: the complete composite grid save remains backlog. The Organisation role wrapper now includes both catalogue actions under all eleven actual roles (22 cases); the previous four action partitions stay unchanged.
+
+Authored department source cases cover archive/restore and exact event identity, normalization refusal, stable preview rollback, in-use history, Criteria changes, stale names, ABA, head/BU/parent preservation, invalid retained head and BU, stale head and BU revisions, legacy in-use restore, foreign tenant, global label and employee refusal. Custody cases cover unlinked USER, foreign login, grant/native-role revocation, SYSTEM, expiry, envelope mismatch, stale source, historical/savepoint-local proof refusal, replay invalidation, hybrid columns, actor erasure and company scope. Protocol fixtures cover posted routing, substitution, private fields, cross-action responses and saved-ID recovery. None has been executed locally.
+
+## Remaining Organisation native inventory
+
+| Mounted surface / effect | Native owner and current boundary | Remaining Assistant work |
+| --- | --- | --- |
+| Company create/general/parent/archive/delete | `app/admin/organization` and `app/admin/actions.ts`; `core/admin.ts` | Distinct lifecycle/general effects; preserve composite general-save semantics, statutory pack and company scope. |
+| System Labels create/edit/Criteria/delete; BU and cost-centre status | `saveLabelsGridAction` / grid removal actions; `bulkSaveLabels`, `core/system-labels` | Position and department status are bounded subsets only. Full batches, shared/global Criteria and other kinds remain native handoffs. |
+| Organisation branch/profile categories | Mounted `ProfileOptionsGrid` on System Labels; `saveProfileOptionsAction` and `removeProfileOptionAction` → `core/profile-options` | Tenant catalogue, not company branch entities. A status change in Save also calls metadata update first; preserve both native effects and partial failure semantics before claiming parity. Old standalone route is a redirect. |
+| Employee ID template create/update/status/delete | `app/admin/settings/employee-id/actions.ts` → `core/employee-id-config` | Global/company template and running-number semantics; separate from Personnel's employee-code correction and draft counter custody. |
+| People General duplicate-identity policy | `savePeopleGeneralAction` → `canConfigurePeopleGeneral` / `savePeopleGeneral`, SQL policy owner | Tenant policy, native revision and actual gate; not a blanket company HR action. |
+| Hiring defaults and movement event configuration | Their mounted settings actions and existing core owners | Coordinate with Lifecycle/Personnel; do not count overlapping settings as new native effects. |
+| Dashboard cards and home content | Mounted dashboard actions and existing card/content services | Separate content/status lifecycle and tenant audience; no provider/authentication policy changes. |
+| Email connection, notifications and template tools | Identity-email admin / notification / template owners | Preserve sender/provider authority; external sends, retries, assets and auth changes remain explicit native handoffs unless the full workflow is implemented. |
+| Job descriptions | `packs/job-descriptions/service` | Draft/version/configuration are separate from binary attachment and export journeys; preserve pack ownership. |
+
+This inventory is a source map, not an implementation or acceptance claim for the remaining rows. Release hold, protected refs, staging and production remain unchanged.
+
+The complete department SQL proposal is retained as `docs/reviews/organisation-department-custody-draft.sql`, outside the executable migrations/journal. Source checkpoint verification selects only database-free UI/protocol/registry checks and the whole compiler while the allocation is pending. Database and role claims require the subsequently assigned migration and a separate exact-SHA run.

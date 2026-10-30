@@ -131,6 +131,16 @@ export const AGENT_ACTIONS=Object.freeze([
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'repeat'},evaluationCases:[],
   screen:{native:'app/admin/settings/system-labels/page.tsx',entryPoints:[]},review:{route:'/assistant/org-positions',handoff:'review_page'},
   store:'generic_own',browserOwner:'positionArchive',pauseKey:'hr_assistant'}),
+ // Bounded checkbox effect inside a composite grid Save: no distinct complete native export maps
+ // one-to-one to this slice. Keep the full saveLabelsGridAction inventory in backlog.
+ defineAgentAction({id:'org.department.archive',module:'org',owner:'organization',service:'core/admin.ts#bulkSaveLabels',contractVersion:1,
+  prepare:{status:'implemented',adapter:'department_archive_review_v1',inputSchema:'DepartmentArchiveHuman',outputSchema:'DepartmentArchivePrepared'},
+  confirm:{status:'implemented',adapter:'department_archive_review_v1',inputSchema:'DepartmentArchiveEnvelopeConfirmation',outputSchema:'DepartmentArchiveCompleted'},
+  outcome:'canonical_receipt_required',semantics:'native_department_archive_current_record',humanInputs:['departmentId','expectedArchived','archived'],
+  permission:{actor:'hr_admin',guard:'core/assistant-actions/department-archive-source.ts#lockDepartmentArchiveSourceTx'},subject:'company',blastRadius:{max:1,unit:'department_catalogue_entry'},
+  idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'repeat'},evaluationCases:[],
+  screen:{native:'app/admin/settings/system-labels/page.tsx',entryPoints:[]},review:{route:'/assistant/org-departments',handoff:'review_page'},
+  store:'generic_own',browserOwner:'departmentArchive',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'org.reporting.change',module:'org',owner:'organization',service:'core/workforce-commands.ts#setReportingLine',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_org_reporting_review_v1',inputSchema:'OrgActionPrepare',outputSchema:'OrgActionPreparedReview'},
   confirm:{status:'implemented',adapter:'module_org_reporting_review_v1',inputSchema:'OrgActionConfirmation',outputSchema:'OrgActionCompletedReceipt'},

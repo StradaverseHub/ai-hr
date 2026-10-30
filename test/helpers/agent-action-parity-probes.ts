@@ -1,3 +1,5 @@
+import {departmentArchiveReviews,readDepartmentArchiveChoices} from '../../core/assistant-actions/department-archive-review-store';
+import {listDepartmentsForLabels} from '../../core/admin';
 import {positionArchiveReviews,readPositionArchiveChoices} from '../../core/assistant-actions/position-archive-review-store';
 import {createPosition,bulkSaveLabels,listPositionsForLabels} from '../../core/admin';
 import {fixedItemArchiveReviews,readFixedItemArchiveChoices} from '../../core/assistant-actions/fixed-item-archive-review-store';
@@ -270,6 +272,12 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'org.position.archive',contractVersion:1,positionId:item.subjectId,expectedArchived:false,archived:true}),
   offered:async(who,item)=>{const choices=await readPositionArchiveChoices(who,{query:item.code});return choices.kind==='choices'&&choices.positions.some(p=>p.positionId===item.subjectId);},
   screen:(tx,who,item)=>bulkSaveLabels(who,'position',{creates:[],updates:[{key:item.subjectId,id:item.subjectId,title:item.code,jobFamily:'',label:'',description:'',archived:true}]},tx)},
+ 'org.department.archive':{family:'catalogue',store:packetStore('org.department.archive',departmentArchiveReviews.prepare,departmentArchiveReviews.confirm),
+  screenAdmits:async(who,item)=>isAdmin(who)&&(await listDepartmentsForLabels(who)).some(p=>p.id===item.subjectId&&!p.inUse),
+  create:async(_w,h)=>{const name='FIC_DEPARTMENT_'+randomUUID().slice(0,8),p=await createDepartment(groupOf(h.base),{companyId:h.companyId,name});return itemOf(h,p.id,{code:name});},
+  human:item=>({action:'org.department.archive',contractVersion:1,departmentId:item.subjectId,expectedArchived:false,archived:true}),
+  offered:async(who,item)=>{const choices=await readDepartmentArchiveChoices(who,{query:item.code});return choices.kind==='choices'&&choices.departments.some(p=>p.departmentId===item.subjectId);},
+  screen:(tx,who,item)=>bulkSaveLabels(who,'department',{creates:[],updates:[{key:item.subjectId,id:item.subjectId,name:item.code,businessUnitId:null,headEmploymentId:null,label:'',description:'',archived:true}]},tx)},
  'approvals.leave.decide':{family:'assigned_decision',store:packetStore('approvals.leave.decide',prepareLeaveDecisionReview,confirmLeaveDecisionReview),
   async create(w,h){const item=await pendingLeave(w,h);const steps=await owner.db.select().from(schema.leaveApprovalStep).where(eq(schema.leaveApprovalStep.leaveRequestId,item.subjectId)).orderBy(schema.leaveApprovalStep.stepIndex);return {...item,stepId:steps.find(row=>row.status==='pending')?.id??null};},
   human:(item,o)=>({action:'approvals.leave.decide',contractVersion:1,leaveRequestId:item.subjectId,currentStepId:item.stepId??null,decision:o.decision,rejectReason:o.decision==='rejected'?REJECT_REASON:null,confirmAssignedDecision:true}),
