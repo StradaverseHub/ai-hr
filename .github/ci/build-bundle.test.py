@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -120,10 +121,27 @@ class BundleTests(unittest.TestCase):
         self.assertNotIn('PRIVATE_CONTENT_MUST_STAY_LOCAL',str(caught.exception))
         self.assertEqual(self.refusal_details(caught.exception)['path'],'escaped\nname')
 
+    def test_cli_pack_measurement_is_separate_from_the_unchanged_byte_manifest(self):
+        child=subprocess.run([sys.executable,str(path),'pack',str(self.source),str(self.output)],
+                             capture_output=True,text=True,check=True)
+        summary=json.loads(child.stdout);measurement=json.loads(child.stderr)
+        self.assertEqual(set(summary),{'kind','files','archiveBytes','unpackedBytes','releaseAuthorized'})
+        self.assertEqual(set(measurement),{'kind','compressionLevel','cpuSeconds','elapsedSeconds','releaseAuthorized'})
+        self.assertEqual(measurement['kind'],'BUILD_BUNDLE_PACK_MEASUREMENT_NOT_RELEASE')
+        self.assertEqual(measurement['compressionLevel'],9);self.assertFalse(measurement['releaseAuthorized'])
+        self.assertGreater(measurement['cpuSeconds'],0);self.assertGreater(measurement['elapsedSeconds'],0)
+        manifest=self.output/'build-bundle-files.json';archive=self.output/'build-bundle.tar.gz'
+        actual=bundle.unpack(archive,manifest,self.destination,self.target)
+        self.assertEqual(summary['archiveBytes'],actual['archiveBytes'])
+        self.assertEqual(summary['files'],len(actual['files']))
+        for row in actual['files']:
+            self.assertEqual((self.destination/row['path']).read_bytes(),(self.source/'.next'/row['path']).read_bytes())
+
     def test_round_trip_preserves_all_production_bytes_and_rebuilds_only_known_aliases(self):
         m,archive,manifest=self.packed();actual=bundle.unpack(archive,manifest,self.destination,self.target)
         self.assertEqual(m,actual);self.assertNotIn('result',m)
         self.assertEqual(m['kind'],'next-build-byte-bundle')
+        self.assertEqual(archive.read_bytes()[8],2)  # Actual gzip header identifies maximum DEFLATE compression.
         for row in m['files']:self.assertEqual((self.destination/row['path']).read_bytes(),(self.source/'.next'/row['path']).read_bytes())
         self.assertTrue((self.destination/'types').is_dir())
         self.assertFalse((self.destination/'cache').exists());self.assertFalse((self.destination/'dev').exists())

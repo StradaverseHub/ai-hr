@@ -10,6 +10,7 @@ import shutil
 import stat
 import sys
 import tarfile
+import time
 
 MAX_FILES = 40000
 MAX_UNPACKED = 2 * 1024**3
@@ -17,6 +18,7 @@ MAX_ARCHIVE = 256 * 1024**2
 MAX_FILE = 256 * 1024**2
 MAX_MANIFEST = 16 * 1024**2
 MAX_PACKAGE = 32 * 1024**2
+COMPRESSION_LEVEL = 9
 EXCLUDED = {"cache", "dev"}
 EXTERNAL_PACKAGES = {"sharp", "fontkit"}
 
@@ -223,7 +225,7 @@ def pack(source, output):
     owned=OwnedOutput(output)  # Never overwrite or merge output from another attempt.
     archive = output / "build-bundle.tar.gz"; rows = []
     try:
-        with archive.open("xb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, compresslevel=6, mtime=0) as gz, tarfile.open(fileobj=gz, mode="w", format=tarfile.USTAR_FORMAT, encoding="utf-8") as tar:
+        with archive.open("xb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, compresslevel=COMPRESSION_LEVEL, mtime=0) as gz, tarfile.open(fileobj=gz, mode="w", format=tarfile.USTAR_FORMAT, encoding="utf-8") as tar:
             for path, expected, mode in files:
                 file = source / ".next" / path
                 fd = os.open(file, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
@@ -385,10 +387,18 @@ def verify_directory(destination, manifest_path, runtime_source, producer_source
     return m
 
 if __name__=='__main__':
+    pack_started = pack_cpu_started = None
     try:
         mode,*args=sys.argv[1:]
         require((mode=='pack' and len(args)==2) or (mode=='unpack' and len(args)==4) or (mode=='unpack-with-origin' and len(args)==5) or (mode in {'verify-directory','verify-active-directory'} and len(args)==4),'usage: build-bundle.py pack SOURCE OUTPUT | unpack ARCHIVE MANIFEST DESTINATION RUNTIME_SOURCE | unpack-with-origin ARCHIVE MANIFEST DESTINATION RUNTIME_SOURCE PRODUCER_SOURCE | verify-directory|verify-active-directory NEXT_DIRECTORY MANIFEST RUNTIME_SOURCE PRODUCER_SOURCE')
+        if mode == 'pack':
+            pack_started = time.monotonic(); pack_cpu_started = time.process_time()
         result=pack(*args) if mode=='pack' else verify_directory(*args,allow_runtime_cache=mode=='verify-active-directory') if mode in {'verify-directory','verify-active-directory'} else unpack(*args)
         print(json.dumps({'kind':result['kind'],'files':len(result['files']),'archiveBytes':result['archiveBytes'],'unpackedBytes':result['unpackedBytes'],'releaseAuthorized':False,**({'runtimeCacheExcluded':True} if mode=='verify-active-directory' else {})}))
     except (ValueError,OSError,KeyError,TypeError,json.JSONDecodeError,tarfile.TarError,EOFError) as error:
         print(str(error),file=sys.stderr);sys.exit(1)
+    finally:
+        if pack_started is not None:
+            print(json.dumps({"kind": "BUILD_BUNDLE_PACK_MEASUREMENT_NOT_RELEASE", "compressionLevel": COMPRESSION_LEVEL,
+                              "cpuSeconds": time.process_time() - pack_cpu_started,
+                              "elapsedSeconds": time.monotonic() - pack_started, "releaseAuthorized": False}), file=sys.stderr)
