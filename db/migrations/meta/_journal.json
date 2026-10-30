@@ -4152,6 +4152,13 @@
       "when": 1793330000055,
       "tag": "0726_assistant_cost_allocation_maintenance",
       "breakpoints": true
+    },
+    {
+      "idx": 708,
+      "version": "7",
+      "when": 1793330000064,
+      "tag": "0727_assistant_personnel_review_navigation",
+      "breakpoints": true
     }
   ]
 }
