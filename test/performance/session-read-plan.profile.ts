@@ -1,6 +1,6 @@
 /** Reversible query-plan experiment: current login and grants are evaluated on every statement. */
 import {randomUUID} from 'node:crypto';
-import {writeFileSync} from 'node:fs';
+import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {sql,eq} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
@@ -18,9 +18,14 @@ it('compares repeated live session guards and revocation outcomes before, during
  const definitions=[];
  for(const signature of ['app.principal_snapshot_current()','app.login_blocked_on(uuid,date)']){
   const [row]=await owner.client`select pg_get_functiondef(${signature}::regprocedure) as original,prosrc as body from pg_proc where oid=${signature}::regprocedure`;
-  expect(row.original).toContain('LANGUAGE sql');
-  const cached=row.original.replace('LANGUAGE sql','LANGUAGE plpgsql').replace(/AS (\$[^$]*\$)[\s\S]*\1/,(_all:string,delimiter:string)=>'AS '+delimiter+'\nBEGIN RETURN ('+row.body.trim().replace(/;$/,'')+'); END;\n'+delimiter);
-  definitions.push({...row,cached});
+  const name=signature.slice(4,signature.indexOf('(')),file=name==='principal_snapshot_current'?'0576_principal_snapshot_current.sql':'0579_configurable_access.sql';
+  const source=readFileSync(new URL('../../db/migrations/'+file,import.meta.url),'utf8');
+  const start=source.indexOf('CREATE FUNCTION app.'+name+'('),end=source.indexOf('$$;',start)+3;
+  expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);
+  const original=source.slice(start,end).replace('CREATE FUNCTION','CREATE OR REPLACE FUNCTION');
+  const body=original.slice(original.indexOf('AS $$')+5,original.lastIndexOf('$$;'));
+  const cached=original.replace('LANGUAGE sql','LANGUAGE plpgsql').replace(/AS (\$[^$]*\$)[\s\S]*\1/,(_all:string,delimiter:string)=>'AS '+delimiter+'\nBEGIN RETURN ('+body.trim().replace(/;$/,'')+'); END;\n'+delimiter);
+  definitions.push({original,cached,installed:row.original});
  }
  const ctx=(u:typeof users[number]):SessionContext=>({...base,userId:u.id,personId:u.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]});
  const probe=async()=>withTenant(ctx(users[0]),async tx=>{
@@ -54,5 +59,5 @@ it('compares repeated live session guards and revocation outcomes before, during
    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'session-read-plan.json'),JSON.stringify({kind:'REVERSIBLE_SESSION_PLAN_EXPERIMENT',releaseEligible:false,phases},null,2));
    expect(errors).toEqual([]);
   }
- }finally{for(const definition of definitions)await owner.client.unsafe(definition.original);}
+ }finally{for(const definition of definitions)await owner.client.unsafe(definition.installed);}
 },180000);

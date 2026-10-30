@@ -4019,6 +4019,13 @@
       "when": 1793330000082,
       "tag": "0745_permission_read_work",
       "breakpoints": true
+    },
+    {
+      "idx": 689,
+      "version": "7",
+      "when": 1793330000210,
+      "tag": "0810_session_read_plans",
+      "breakpoints": true
     }
   ]
 }

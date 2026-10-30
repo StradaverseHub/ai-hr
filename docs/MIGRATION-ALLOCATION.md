@@ -458,3 +458,17 @@ This is a disposable development journal position. The complete performance pref
 reconciliation against the accepted AI/V9 handback before integration;0726/0736 are not
 release allocations above that watermark. No merge, application, installation or deployment
 is authorized. Frozen source receipts remain tied to their exact original candidates.
+
+## Session read planning — development reservation,30 October2026
+
+Main/alpha were freshly fetched atd6cb83d62. A full local-ref journal scan and Git-discovered
+worktree scan found independent Formula0800/1793330000200 and other0745–0747 claims.
+Reserve **0810_session_read_plans / idx689 on this development branch /1793330000210**
+with headroom, not a placeholder series. SQL SHA256: `b721eb8da017a5c5b7096f6233a8a83a6bfa155d65465e3d95e440b2d802dc56`.
+The reversible500-principal experiment41042136707 preserves live archival/termination and
+forged-role refusals; p95 for20 repeated guard pairs falls5199→3710ms and returns5214ms
+after restoration. Only query plans persist; every login/principal fact is read afresh.
+
+This is an unapplied development reservation. Existing0726/0736/0745 collisions and the
+accepted ledger still require reconciliation before integration or application. No protected
+branch integration, target database change, deployment or release eligibility is authorized.
