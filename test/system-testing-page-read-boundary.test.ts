@@ -16,6 +16,7 @@ vi.mock('../components/system-testing/action-form', () => ({ TestingActionForm: 
 vi.mock('../components/system-testing/guide', () => ({ TestingGuide: () => null }));
 vi.mock('../app/admin/system-testing/workspace-actions', () => ({ assignTestingCaseAction: vi.fn(), raiseLegacyTestingFeedbackAction: vi.fn() }));
 vi.mock('../lib/permissions', () => ({ SCREENS: [] }));
+vi.mock('../app/feedback/board', () => ({ feedbackBoardOpen: () => true }));
 vi.mock('../components/ui', () => ({ Card: () => null, PageHeader: () => null, inputCls: '', pageWideCls: '' }));
 import PersonalPage from '../app/system-testing/executions/[id]/page';
 import TeamPage from '../app/admin/system-testing/executions/[id]/page';

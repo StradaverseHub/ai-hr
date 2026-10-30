@@ -41,7 +41,10 @@ it('preserves populated closed payroll and the complete applied prefix through t
   expect(await original()).toEqual(before);expect(await storage.client`select * from information_payslip_snapshot`).toHaveLength(0);
   const receipts=await storage.client`select id,hash,created_at from drizzle.__drizzle_migrations order by id`;
   expect(receipts.slice(0,prefix.length)).toEqual(prefix);expect(receipts).toHaveLength(journal.entries.length);
-  expect(receipts.at(-1)!.hash).toBe(createHash('sha256').update(readFileSync('db/migrations/0698_information_only_corrections.sql')).digest('hex'));
+  // Later ordinary migrations may follow the correction; its own receipt stays at the known boundary.
+  expect(receipts[boundary]!.hash).toBe(createHash('sha256').update(readFileSync('db/migrations/0698_information_only_corrections.sql')).digest('hex'));
+  expect(receipts.slice(boundary).map(row=>({hash:row.hash,when:String(row.created_at)}))).toEqual(
+   journal.entries.slice(boundary).map((entry:{tag:string;when:number})=>({hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex'),when:String(entry.when)})));
   const ctx={tenantId:t,userId:u,personId:p,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
   await application.withTenant(ctx,async tx=>{const [principal]=await tx.execute<{current:boolean}>(sql`select app.principal_snapshot_current() as current`);expect(principal.current).toBe(true);const [result]=await tx.execute<{count:number}>(sql`select app.preserve_information_payroll(${e}::uuid) as count`);expect(result.count).toBe(1);});
   expect(await storage.client`select payslip_id,employment_type,grade,hired_on::text from information_payslip_snapshot`).toEqual([{payslip_id:slip,employment_type:'full_time',grade:null,hired_on:'2025-01-01'}]);

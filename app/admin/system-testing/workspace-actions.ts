@@ -7,6 +7,7 @@ import { ModuleNotEnabledError } from '@/core/entitlements';
 import { assignTestingCase, SystemTestingError, raiseRunAsFeedback, beginTestingExecution, confirmTestingCatalogue, publishTestInstruction, raiseTestingExecutionFeedback, requestTestingRetest, saveTestInstructionDraft, saveTestingExecution } from '@/core/system-testing';
 import { TestingRefusal, testingUuid } from '@/lib/system-testing/model';
 import type { TestingActionState } from '@/lib/system-testing/action-model';
+import { feedbackBoardOpen } from '@/app/feedback/board';
 const adminBase='/admin/system-testing',ownBase='/system-testing';
 function refused(error: unknown): TestingActionState {
   if (error instanceof TestingRefusal) return { error: error.code };
@@ -50,12 +51,14 @@ export async function saveTestingObservationAction(_prior: TestingActionState,fo
 }
 export async function raiseTestingFeedbackAction(_prior: TestingActionState,form: FormData): Promise<TestingActionState> {
   const ctx=await getSession(); let feedbackId: string;
+  if (!feedbackBoardOpen(ctx)) return { error: 'feedback_unavailable' }; // operator switch (0696): no board to raise onto
   try { const raised=await raiseTestingExecutionFeedback(ctx,{ executionId: value(form,'executionId'),expectedRevision: integer(form,'revision'),kind: value(form,'kind') as 'defect'|'improvement' }); feedbackId=raised.feedbackId; }
   catch (error) { return refused(error); }
   refresh(); redirect(`/feedback/${feedbackId}`);
 }
 export async function requestTestingRetestAction(_prior: TestingActionState,form: FormData): Promise<TestingActionState> {
   const ctx=await getSession();
+  if (!feedbackBoardOpen(ctx)) return { error: 'feedback_unavailable' };
   try { await requestTestingRetest(ctx,{ assignmentId: value(form,'assignmentId'),expectedRevision: integer(form,'assignmentRevision'),expectedVersionId: value(form,'versionId'),feedbackId: value(form,'feedbackId') }); }
   catch (error) { return refused(error); }
   refresh(); revalidatePath('/admin/system-testing/executions/[id]','page'); return { error: null };
@@ -69,6 +72,7 @@ export async function confirmTestingCatalogueAction(_prior: TestingActionState,f
 
 export async function raiseLegacyTestingFeedbackAction(_prior: TestingActionState,form: FormData): Promise<TestingActionState> {
   const ctx=await getSession(); let feedbackId: string;
+  if (!feedbackBoardOpen(ctx)) return { error: 'feedback_unavailable' };
   try { ({feedbackId}=await raiseRunAsFeedback(ctx,{runId: value(form,'runId'),reporterEmploymentId:null})); }
   catch(error) { return refused(error); }
   refresh(); redirect(`/feedback/${feedbackId}`);
