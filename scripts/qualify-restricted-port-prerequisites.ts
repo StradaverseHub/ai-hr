@@ -17,9 +17,9 @@ const mode=process.argv[2];if(process.argv.length!==4||!['before','after'].inclu
 const evidence=resolve(process.argv[3]),temp=realpathSync(env.RUNNER_TEMP??'');
 if(!isAbsolute(evidence)||evidence!==realpathSync(evidence)||relative(temp,evidence)!=='aihr-focused')fail('Owned qualification evidence directory required');
 assertQualificationEnvironment(env,execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),process.platform);
-const manifests=JSON.parse(readFileSync(join(fixture,'qualification-source-manifest.json'),'utf8')) as {files:Record<string,string>;v4ManifestSha256:string;baselineSha256:string};
-if(digest(readFileSync(join(fixture,'operator-v4-manifest.json')))!==manifests.v4ManifestSha256)fail('OperatorV4 bytes differ');
-if(manifests.v4ManifestSha256!=='1ccb3cec76a769043595fd4e4725616937a9d765c3eb76695903cc573ffb4e2b')fail('Unreviewed operatorV4 manifest');
+const manifests=JSON.parse(readFileSync(join(fixture,'qualification-source-manifest.json'),'utf8')) as {files:Record<string,string>;v5ManifestSha256:string;baselineSha256:string};
+if(digest(readFileSync(join(fixture,'operator-v5-manifest.json')))!==manifests.v5ManifestSha256)fail('OperatorV5 bytes differ');
+if(manifests.v5ManifestSha256!=='7b879c87832428afc95d428da1a8eb815d0e7504a129c0f560f8a723996987da')fail('Unreviewed operatorV5 manifest');
 function verifyFiles(){
  for(const [path,expected]of Object.entries(manifests.files)){
   if(!/^[a-zA-Z0-9_./-]+$/.test(path)||path.split('/').some(p=>!p||p==='..'||p==='.')||!(/^scripts\//.test(path)||['.github/ci/restricted-port-history.mjs','.github/ci/migration-history.mjs','.github/ci/historical-migrations/0180_profile_option.sql','.github/ci/historical-migrations/0212_dashboard_card_config.sql'].includes(path)))fail('Invalid fixed source manifest path');
@@ -43,7 +43,7 @@ function psql(file:string,user:'postgres'|'ai_hr_owner'|'ai_hr_app'='postgres',v
  // Exact original files include local siblings: supply a read-only candidate directory to psql stdin
  // via docker exec -i is insufficient for \ir. Copy exact pinned fixtures into owned container /tmp.
  for(const [key,value]of Object.entries(vars)){if(!/^(expected_catalog_sha|receipt_child_created)$/.test(key)||!(/^[a-f0-9]{64}$/.test(value)||key==='receipt_child_created'&&value==='true'))fail('Invalid psql literal');args.push('-v',key+'='+value);}
- args.push('-f','/tmp/aihr-operator-v4/'+file);
+ args.push('-f','/tmp/aihr-operator-v5/'+file);
  const r=spawnSync('docker',args,{encoding:'utf8',maxBuffer:8*1024*1024,timeout:120000});
  log.push(`FILE ${file} LOGIN ${user}\n${r.stdout??''}${r.stderr??''}`);
  if(r.error||r.signal||r.status!==0)fail('Pinned qualification SQL failed: '+file);
@@ -61,9 +61,9 @@ const canonical=(v:unknown):unknown=>v&&typeof v==='object'?Array.isArray(v)?v.m
 const same=(a:unknown,b:unknown,message:string)=>{if(JSON.stringify(a)!==JSON.stringify(b))fail(message);};
 async function installContainerFiles(){
  // Fixed tracked fixture directory only; no external executable or arbitrary path option.
- const r=spawnSync('docker',['cp',fixture+'/.',container+':/tmp/aihr-operator-v4'],{encoding:'utf8',timeout:30000});if(r.status!==0||r.error)fail('Could not stage pinned SQL in owned container');
+ const r=spawnSync('docker',['cp',fixture+'/.',container+':/tmp/aihr-operator-v5'],{encoding:'utf8',timeout:30000});if(r.status!==0||r.error)fail('Could not stage pinned SQL in owned container');
  // Verify copied bytes inside container independently of candidate filesystem hashes.
- for(const [path,hash]of Object.entries(manifests.files).filter(([p])=>p.startsWith(FIXTURE_DIRECTORY+'/')&&p.endsWith('.sql'))){const name=path.slice(FIXTURE_DIRECTORY.length+1);const got=execFileSync('docker',['exec',container,'sha256sum','/tmp/aihr-operator-v4/'+name],{encoding:'utf8'}).split(/\s/)[0];if(got!==hash)fail('Container SQL bytes differ');}
+ for(const [path,hash]of Object.entries(manifests.files).filter(([p])=>p.startsWith(FIXTURE_DIRECTORY+'/')&&p.endsWith('.sql'))){const name=path.slice(FIXTURE_DIRECTORY.length+1);const got=execFileSync('docker',['exec',container,'sha256sum','/tmp/aihr-operator-v5/'+name],{encoding:'utf8'}).split(/\s/)[0];if(got!==hash)fail('Container SQL bytes differ');}
 }
 try{
  await installContainerFiles();

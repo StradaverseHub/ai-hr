@@ -1,5 +1,5 @@
 /** Pure input/identity validation for one fixed pre-migration qualification owner. */
-export const FIXTURE_DIRECTORY='scripts/fixtures/restricted-port-operator-v4';
+export const FIXTURE_DIRECTORY='scripts/fixtures/restricted-port-operator-v5';
 export const QUALIFIER='scripts/qualify-restricted-port-prerequisites.ts';
 export function qualificationMode(value:unknown):boolean{
  if(value===undefined||value==='false')return false;
