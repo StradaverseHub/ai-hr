@@ -118,8 +118,26 @@ it('refuses a released child-savepoint actual DELETE and a later attempt to re-a
  await withPhaseProbe(async()=>{await assertRefusal(withTenant(ctx,async tx=>{await source(tx,d.id);const native=await tx.transaction(inner=>discardEmployeeDraft(ctx,d.id,inner,{returnResult:true}));expectChildProof(await phaseProof(tx,id,native.eventId));retainedChildWitness=true;rearmAttempted=true;await command(tx,ctx,'source',null,d.id);}),'42501','Draft discard unavailable');});
  expect({retainedChildWitness,rearmAttempted}).toEqual({retainedChildWitness:true,rearmAttempted:true});expect(await snapshot()).toEqual(before);
 });
-it('same-XID draft updates invalidate ctid even though xmin alone would still match',async()=>{
- const d=await plain(),id=await prepare(d.id),before=await snapshot();await assertRefusal(withTenant(ctx,async tx=>{const v=await source(tx,d.id);await tx.update(s.employeeDraft).set({label:'Changed same transaction'}).where(eq(s.employeeDraft.id,d.id));const [now]=await tx.execute<{xmin:string;ctid:string}>(sql`select xmin::text,ctid::text from employee_draft where id=${d.id}::uuid`);expect(now.ctid).not.toBe(v.ctid);const native=await discardEmployeeDraft(ctx,d.id,tx,{returnResult:true});await complete(tx,id,native.eventId);}),'42501');expect(await snapshot()).toEqual(before);
+it('same-XID draft updates invalidate ctid even though xmin and the full native row digest still match',async()=>{
+ const d=await plain(),id=randomUUID(),before=await snapshot();let sameParentSource=false,ctidOnlyChange=false,actualUnstampedDelete=false,completeAttempted=false;
+ await withPhaseProbe(async()=>{await assertRefusal(withTenant(ctx,async tx=>{
+  // Establish this top-level XID before preparing, without changing any of the 13 native fields.
+  const [initial]=await tx.execute<{xmin:string;parentXid:string;body:unknown}>(sql`update employee_draft d set label=d.label where d.id=${d.id}::uuid returning d.xmin::text,pg_catalog.pg_current_xact_id()::xid::text "parentXid",pg_catalog.to_jsonb(d) body`);
+  expect(initial.xmin).toBe(initial.parentXid);
+  const captured=await source(tx,d.id);expect(captured.xmin).toBe(initial.parentXid);
+  await command(tx,ctx,'prepare',id,d.id,captured.sourceDigest);
+  const armed=await phaseProof(tx,id);expect(armed.armXid).toBe(initial.parentXid);expect(armed.stamped).toBe(false);sameParentSource=true;
+  const [changed]=await tx.execute<{xmin:string;ctid:string;body:unknown}>(sql`update employee_draft d set label=d.label where d.id=${d.id}::uuid returning d.xmin::text,d.ctid::text,pg_catalog.to_jsonb(d) body`);
+  expect(changed.xmin).toBe(captured.xmin);expect(changed.ctid).not.toBe(captured.ctid);expect(changed.body).toEqual(initial.body);
+  // The actual closed source owner recomputes its exact 13-field+xmin digest. The second source
+  // call cannot replace the prepared binding; only its ctid-derived source digest has changed.
+  const current=await source(tx,d.id);expect(current.xmin).toBe(captured.xmin);expect(current.ctid).toBe(changed.ctid);
+  expect(current.nativeRowDigest).toBe(captured.nativeRowDigest);expect(current.sourceDigest).not.toBe(captured.sourceDigest);ctidOnlyChange=true;
+  const native=await discardEmployeeDraft(ctx,d.id,tx,{returnResult:true}),proof=await phaseProof(tx,id,native.eventId);
+  expect(proof).toMatchObject({stamped:false,draftAbsent:true,eventPresent:true});expect(proof.eventRowXmin).toBe(initial.parentXid);actualUnstampedDelete=true;
+  completeAttempted=true;await complete(tx,id,native.eventId);
+ }),'42501','Draft discard proof unavailable');});
+ expect({sameParentSource,ctidOnlyChange,actualUnstampedDelete,completeAttempted}).toEqual({sameParentSource:true,ctidOnlyChange:true,actualUnstampedDelete:true,completeAttempted:true});expect(await snapshot()).toEqual(before);
 });
 it('missing and wrong-payload events cannot complete or consume the pending body',async()=>{
  const d=await configured(),id=await prepare(d.id),before=await snapshot();await assertRefusal(withTenant(ctx,async tx=>{await source(tx,d.id);await tx.execute(sql`select id from app.native_employee_draft_discard_delete(${d.id}::uuid)`);const fake=await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'employee-draft',aggregateId:d.id,eventType:'employee-draft.discarded',actor:actorOf(ctx),payload:{reservedEmployeeCode:d.employeeCode,released:false}},{returnId:true});await complete(tx,id,fake);}),'42501');expect(await snapshot()).toEqual(before);
