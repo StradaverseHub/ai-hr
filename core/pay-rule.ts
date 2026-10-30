@@ -680,6 +680,7 @@ export function validatePayRuleAgainstCatalog(
   catalog: readonly PayRuleCatalogNode[],
 ): PayRuleValidation {
   const self = normCode(target.code);
+  if(self==='BASIC'&&target.rule?.kind==='formula_builder')return {ok:false,code:'STATUTORY_FORBIDDEN'};
   const deps = payRuleDependencies(target.rule);
   const configurable = target.rule != null && target.rule.kind !== 'fixed';
 

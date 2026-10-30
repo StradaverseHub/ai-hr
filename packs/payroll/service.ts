@@ -84,3 +84,4 @@ export {rewardPayrollProvenance} from './reward-provenance';
 export * from '../../core/pay-formula';
 
 export * from '../../core/pay-formula-runtime';
+export * from '../../core/payroll-formula-inputs';
