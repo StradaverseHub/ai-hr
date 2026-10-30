@@ -11,7 +11,7 @@ import {expect,it} from 'vitest';
 import {createDb} from '../db/client';
 import {AGENT_ACTIONS} from '../lib/ai/agent-action-registry';
 
-const TAG='0704_assistant_action_kind';
+const TAG='0813_assistant_action_kind';
 type Journal={entries:{tag:string}[]};
 /** A fresh database migrated to the journal prefix before 0693, populated by `populate`, then upgraded. */
 async function rehearse(populate:(client:postgres.Sql)=>Promise<void>,check:(storage:ReturnType<typeof createDb>,upgrade:()=>Promise<void>,prefix:number)=>Promise<void>){

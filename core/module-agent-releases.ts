@@ -35,7 +35,6 @@ import { assertAiActionUnpausedTx } from './ai-governance';
 import { resolveEntitlementsTx,assertModuleEnabled } from './entitlements';
 import { withAssistantReadTx, withAssistantJobReadsTx,withAssistantAdmissionReadsTx, type AssistantReadSession,type CanonicalModuleRead,type InterpretedModuleRead } from './assistant-read-session';
 import {captureMeasuredCases,compareMeasuredQuality} from '../lib/ai/paired-evaluation';
-import { executeRoutingHoldout, type RoutingEvaluationReport } from './module-agent-evaluation-harness';
 import { capturePromptPlanCandidate,adjudicatePromptReadPlan,PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT,PROMPT_SUITE_DIGEST,PROMPT_ENGINE_DIGEST,PROMPT_POLICY_DIGEST,PROMPT_INPUT_DIGEST,PROMPT_BASELINE } from '../lib/ai/module-agent-prompt-candidate';
 import { resolveAiProviderSnapshotTx } from './ai-provider-snapshot';
 import { governedAiConfig,withAiAdmissionCheck,withAiAdmissionLifecycle,bindStrictAiSpendRoot,preparePrivateAiTask } from './ai-governance';

@@ -14,11 +14,11 @@ import {
 
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 function actualMigrationBlocks(){
- const file='db/migrations/0752_assistant_employee_draft_discard_custody.sql';
+ const file='db/migrations/0859_assistant_employee_draft_discard_custody.sql';
  const path=join(process.cwd(),file);expect(lstatSync(path).isFile()).toBe(true);
  const journalText=readFileSync('db/migrations/meta/_journal.json','utf8');
  const journal=JSON.parse(journalText) as {entries:{idx:number;when:number;tag:string}[]};
- const tag='0752_assistant_employee_draft_discard_custody';
+ const tag='0859_assistant_employee_draft_discard_custody';
  expect(journal.entries.filter(entry=>entry.tag===tag)).toHaveLength(1);
  expect(journal.entries.filter(entry=>entry.idx===731)).toEqual([expect.objectContaining({idx:731,when:1793330000089,tag})]);
  const source=readFileSync(path,'utf8');

@@ -1,4 +1,4 @@
-/** CI-only populated 568→578 upgrade. Never connects to an installation or replays an installer.
+/** CI-only populated 568→632 aggregate upgrade. Never connects to an installation or replays an installer.
  * The credential-free witness is metadata only; payroll/review rows below are fictional physical rows.
  * This proves migration preservation, not decryption or native decision behavior (covered separately). */
 import {createHash,randomUUID} from 'node:crypto';
@@ -15,24 +15,85 @@ import witness from './fixtures/ai-dev-applied-ledger-20261030.json';
 
 type Entry={idx:number;when:number;tag:string};
 type Journal={entries:Entry[];[key:string]:unknown};
+// Exact main15 +approved49 source tail; the568-row observed witness remains unchanged.
 const TAIL=[
- '0703_ai_feature_switch_owner','0704_assistant_action_kind','0705_ai_provider_change_gate',
- '0706_assistant_learning_loop_scope','0707_ai_agent_action_pause','0708_automatic_chasers',
- '0709_delegated_approvals','0710_automatic_followups','0711_template_feature_switch_owner',
- '0712_delegated_leave_review_receipts',
-];
+ {"tag":"0696_feedback_menu_operator_switch","idx":683,"when":1793330000031},
+ {"tag":"0721_movement_settings_catalog","idx":684,"when":1793330000050},
+ {"tag":"0722_movement_type_controls","idx":685,"when":1793330000051},
+ {"tag":"0713_lifecycle_v9","idx":686,"when":1793330000056},
+ {"tag":"0714_lifecycle_v9_email","idx":687,"when":1793330000057},
+ {"tag":"0715_lifecycle_v9_email_assets","idx":688,"when":1793330000058},
+ {"tag":"0716_lifecycle_v9_events","idx":689,"when":1793330000059},
+ {"tag":"0717_lifecycle_v9_delivery_review","idx":690,"when":1793330000060},
+ {"tag":"0718_lifecycle_v9_employment_class","idx":691,"when":1793330000061},
+ {"tag":"0719_lifecycle_v9_business_recipients","idx":692,"when":1793330000062},
+ {"tag":"0720_lifecycle_v9_self_equipment","idx":693,"when":1793330000063},
+ {"tag":"0728_feedback_release_evidence","idx":694,"when":1793330000065},
+ {"tag":"0691_bank_import_point_read","idx":695,"when":1793330000075},
+ {"tag":"0800_pay_formula_builder","idx":696,"when":1793330000200},
+ {"tag":"0811_pay_formula_company_retention","idx":697,"when":1793330000211},
+ {"tag":"0812_ai_feature_switch_owner","idx":698,"when":1793330000212},
+ {"tag":"0813_assistant_action_kind","idx":699,"when":1793330000213},
+ {"tag":"0814_ai_provider_change_gate","idx":700,"when":1793330000214},
+ {"tag":"0815_assistant_learning_loop_scope","idx":701,"when":1793330000215},
+ {"tag":"0816_ai_agent_action_pause","idx":702,"when":1793330000216},
+ {"tag":"0817_automatic_chasers","idx":703,"when":1793330000217},
+ {"tag":"0818_delegated_approvals","idx":704,"when":1793330000218},
+ {"tag":"0819_automatic_followups","idx":705,"when":1793330000219},
+ {"tag":"0820_template_feature_switch_owner","idx":706,"when":1793330000220},
+ {"tag":"0821_delegated_leave_review_receipts","idx":707,"when":1793330000221},
+ {"tag":"0822_assistant_qualification_maintenance","idx":708,"when":1793330000222},
+ {"tag":"0823_assistant_employee_draft_activation","idx":709,"when":1793330000223},
+ {"tag":"0824_assistant_compensation_maintenance","idx":710,"when":1793330000224},
+ {"tag":"0825_assistant_emergency_contact_maintenance","idx":711,"when":1793330000225},
+ {"tag":"0826_assistant_workforce_profile_maintenance","idx":712,"when":1793330000226},
+ {"tag":"0827_assistant_family_maintenance","idx":713,"when":1793330000227},
+ {"tag":"0828_assistant_bank_maintenance","idx":714,"when":1793330000228},
+ {"tag":"0829_assistant_document_metadata","idx":715,"when":1793330000229},
+ {"tag":"0830_assistant_employee_code_maintenance","idx":716,"when":1793330000230},
+ {"tag":"0831_assistant_passport_maintenance","idx":717,"when":1793330000231},
+ {"tag":"0832_assistant_payment_method_maintenance","idx":718,"when":1793330000232},
+ {"tag":"0833_assistant_fixed_item_archive","idx":719,"when":1793330000233},
+ {"tag":"0834_assistant_tp3_opening_maintenance","idx":720,"when":1793330000234},
+ {"tag":"0835_assistant_cost_allocation_maintenance","idx":721,"when":1793330000235},
+ {"tag":"0836_assistant_personnel_review_navigation","idx":722,"when":1793330000236},
+ {"tag":"0837_assistant_attendance_schedule_group","idx":723,"when":1793330000237},
+ {"tag":"0838_assistant_performance_goal_approval","idx":724,"when":1793330000238},
+ {"tag":"0839_assistant_rewards_cancel_review","idx":725,"when":1793330000239},
+ {"tag":"0840_assistant_personnel_profile_request_rejection","idx":726,"when":1793330000240},
+ {"tag":"0841_assistant_position_archive_custody","idx":727,"when":1793330000241},
+ {"tag":"0842_assistant_payroll_reopen_review","idx":728,"when":1793330000242},
+ {"tag":"0843_assistant_lifecycle_offboarding_step_review","idx":729,"when":1793330000243},
+ {"tag":"0844_assistant_performance_checkin_cancel","idx":730,"when":1793330000244},
+ {"tag":"0845_assistant_attendance_day_schedule_correction","idx":731,"when":1793330000245},
+ {"tag":"0846_native_ess_bank_direct_purpose","idx":732,"when":1793330000246},
+ {"tag":"0847_assistant_performance_checkin_complete_custody","idx":733,"when":1793330000247},
+ {"tag":"0848_assistant_rewards_cycle_calendar_review","idx":734,"when":1793330000248},
+ {"tag":"0849_assistant_lifecycle_offboarding_step_undo","idx":735,"when":1793330000249},
+ {"tag":"0850_assistant_department_archive_custody","idx":736,"when":1793330000250},
+ {"tag":"0851_assistant_payroll_reset_review","idx":737,"when":1793330000251},
+ {"tag":"0852_assistant_employee_id_template_status_custody","idx":738,"when":1793330000252},
+ {"tag":"0853_onboarding_draft_discard_absence_context","idx":739,"when":1793330000253},
+ {"tag":"0854_assistant_performance_checkin_schedule_custody","idx":740,"when":1793330000254},
+ {"tag":"0855_assistant_rewards_annual_return_review","idx":741,"when":1793330000255},
+ {"tag":"0856_assistant_lifecycle_offboarding_case_cancel","idx":742,"when":1793330000256},
+ {"tag":"0857_assistant_performance_review_postimage_proof","idx":743,"when":1793330000257},
+ {"tag":"0858_assistant_people_general_policy_custody","idx":744,"when":1793330000258},
+ {"tag":"0859_assistant_employee_draft_discard_custody","idx":745,"when":1793330000259},
+ {"tag":"0860_assistant_payroll_review_draft_delete_compatibility","idx":746,"when":1793330000260},
+] as const;
 const PERFORMANCE=['performance.ai_360_enabled','performance.ai_tc_enabled','performance.ai_pm_enabled',
  'performance.ai_review_enabled','performance.ai_idp_enabled','performance.ai_calib_enabled'];
 const hash=(value:Buffer)=>createHash('sha256').update(value).digest('hex');
 
 it('upgrades the exact observed populated Board prefix without rewriting applied history, payroll, settings or sealed reviews',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as Journal;
- const prefix=journal.entries.findIndex(entry=>entry.tag===TAIL[0]);
+ const prefix=journal.entries.findIndex(entry=>entry.tag===TAIL[0].tag);
  expect(prefix).toBe(568);expect(witness.rows).toHaveLength(prefix);
  expect(witness.source).toBe('f752ac7f5d0323c5eae2280c3830af05b6da465f');
  expect(witness.buildId).toBe('Cvj9_lgd4fATCyUYRwWz_');expect(witness.observedAt).toBe('2026-10-29T21:09:26.134Z');
  expect(journal.entries[prefix-1]).toEqual({idx:682,version:'7',when:1793330000030,tag:'0698_information_only_corrections',breakpoints:true});
- expect(journal.entries.slice(prefix).map(({tag,idx,when})=>({tag,idx,when}))).toEqual(TAIL.map((tag,i)=>({tag,idx:684+i,when:1793330000032+i})));
+ expect(journal.entries.slice(prefix).map(({tag,idx,when})=>({tag,idx,when}))).toEqual(TAIL);
  // The canonical identity owner recognizes only the two retained historical SQL versions. It reads the
  // archived original bytes; this is not a checksum waiver or replacement of applied source.
  const expected:{tag:string;created_at:string;hash:string;sourceSha256?:string}[]=expectedMigrationLedger(process.cwd());
@@ -102,10 +163,14 @@ it('upgrades the exact observed populated Board prefix without rewriting applied
   const baseline=await ledger();
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   expect(await retainedRows()).toEqual(before);
-  const after=await ledger();expect(after).toHaveLength(578);expect(after.slice(0,prefix)).toEqual(baseline);
-  expect(after.slice(prefix).map(({hash,created_at})=>({hash,created_at}))).toEqual(TAIL.map((tag,i)=>({hash:hashFile(tag),created_at:String(1793330000032+i)})));
+  const after=await ledger();expect(after).toHaveLength(632);expect(after.slice(0,prefix)).toEqual(baseline);
+  expect(after.slice(prefix).map(({hash,created_at})=>({hash,created_at}))).toEqual(TAIL.map(({tag,when})=>({hash:hashFile(tag),created_at:String(when)})));
   const changedDefinitions=await storage.client`select * from setting_definition order by key`;
-  expect(changedDefinitions).toEqual(definitions.map(row=>PERFORMANCE.includes(String(row.key))?{...row,default_value:false,default_on_install:false}:row));
+  expect(definitions.some(row=>row.key==='feedback.menu_enabled')).toBe(false);
+  expect(changedDefinitions.filter(row=>row.key!=='feedback.menu_enabled')).toEqual(definitions.map(row=>PERFORMANCE.includes(String(row.key))?{...row,default_value:false,default_on_install:false}:row));
+  const feedback=changedDefinitions.filter(row=>row.key==='feedback.menu_enabled');expect(feedback).toHaveLength(1);
+  expect(feedback[0]).toMatchObject({key:'feedback.menu_enabled',module_code:null,scope:'platform',value_type:'boolean',default_value:true,default_on_install:null,customer_visible:false,sort_order:111});
+  expect(changedDefinitions).toHaveLength(definitions.length+1);
   expect(changedDefinitions.filter(row=>PERFORMANCE.includes(String(row.key)))).toHaveLength(6);
   const constraints=await storage.client`select conname,convalidated from pg_constraint where conname in ('assistant_review_action_kind_registered','ai_native_outcome_association_action_registered') order by conname`;
   expect(constraints).toEqual([{conname:'ai_native_outcome_association_action_registered',convalidated:true},{conname:'assistant_review_action_kind_registered',convalidated:true}]);

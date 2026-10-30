@@ -43,7 +43,7 @@ describe('provider change baseline suites', () => {
     for (const bad of [null, [], {}, { read_plan: start.read_plan }, { ...start, extra: start.read_plan }, { ...start, read_plan: { ...start.read_plan, next: 1 } },
       { ...start, read_plan: { ...start.read_plan, next: start.read_plan.total + 1, passed: start.read_plan.total + 1 } }, { ...start, read_plan: { ...start.read_plan, passed: -1, failed: 1 } }])
       expect(() => captureProviderBaselineProgress(bad)).toThrow();
-    const sql = readFileSync('db/migrations/0705_ai_provider_change_gate.sql', 'utf8');
+    const sql = readFileSync('db/migrations/0814_ai_provider_change_gate.sql', 'utf8');
     expect(sql).toContain("RETURN CASE WHEN failing THEN 'failed' WHEN complete THEN 'passed' ELSE 'evaluating' END;");
   });
 });

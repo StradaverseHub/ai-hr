@@ -195,11 +195,11 @@ describe('static wiring', () => {
   });
   it('appends allocated migration 0707 with grants, RLS and a definer-only writer', () => {
     const journal = JSON.parse(read('db/migrations/meta/_journal.json')).entries;
-    const position=journal.findIndex((entry:{tag:string})=>entry.tag==='0707_ai_agent_action_pause'),last=journal[position];
-    expect(position).toBeGreaterThan(journal.findIndex((entry:{tag:string})=>entry.tag==='0704_assistant_action_kind'));
-    expect(last).toMatchObject({ idx: 688, when: 1793330000036, tag: '0707_ai_agent_action_pause' });
-    expect(journal.filter((entry:{tag:string})=>entry.tag==='0707_ai_agent_action_pause')).toHaveLength(1);
-    const src = read('db/migrations/0707_ai_agent_action_pause.sql');
+    const position=journal.findIndex((entry:{tag:string})=>entry.tag==='0816_ai_agent_action_pause'),last=journal[position];
+    expect(position).toBeGreaterThan(journal.findIndex((entry:{tag:string})=>entry.tag==='0813_assistant_action_kind'));
+    expect(last).toMatchObject({ idx: 688, when: 1793330000036, tag: '0816_ai_agent_action_pause' });
+    expect(journal.filter((entry:{tag:string})=>entry.tag==='0816_ai_agent_action_pause')).toHaveLength(1);
+    const src = read('db/migrations/0816_ai_agent_action_pause.sql');
     expect(src).toContain('ALTER TABLE app.ai_agent_action_pause ENABLE ROW LEVEL SECURITY;');
     expect(src).toContain('REVOKE ALL ON app.ai_agent_action_pause FROM PUBLIC,ai_hr_app;');
     expect(src).toContain('GRANT SELECT ON app.ai_agent_action_pause TO ai_hr_app;');

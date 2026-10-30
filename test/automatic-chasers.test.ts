@@ -429,7 +429,7 @@ describe('WP13 Automatic-tier chasers under the agent principal', () => {
   it('is template-only: no model, provider, spend or admission path, and admission refuses the chasers', async () => {
     const source = readFileSync(path.join(__dirname, '..', 'core', 'automatic-chasers.ts'), 'utf8');
     expect(source).not.toMatch(/from '\.\.\/lib\/ai'|lib\/ai\/providers|generateDraft|converse\(|resolveActiveAiConfig|bindAiSpendTask|ai_admit|ai_action_unpaused|assertAiActionUnpausedTx|_ai_control_context|governedAiConfig|ai-governance/);
-    const migration = readFileSync(path.join(__dirname, '..', 'db', 'migrations', '0708_automatic_chasers.sql'), 'utf8');
+    const migration = readFileSync(path.join(__dirname, '..', 'db', 'migrations', '0817_automatic_chasers.sql'), 'utf8');
     expect(migration).not.toMatch(/FUNCTION app\._ai_control_context|ai_admit/);
     for (const feature of ['approval_chasers', 'review_chasers'] as const)
       await expect(withTenant(adminCtx(base), tx => assertAiActionUnpausedTx(tx, adminCtx(base), feature))).rejects.toThrow('no model call');

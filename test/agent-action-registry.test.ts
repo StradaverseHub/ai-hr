@@ -89,18 +89,18 @@ describe('the agent action registry',()=>{
 
  it('equals the seeded app.assistant_action_kind rows exactly (registry = SQL)',()=>{
   const {rows,files}=seededKinds();
-  expect(files[0]).toBe('0704_assistant_action_kind');
+  expect(files[0]).toBe('0813_assistant_action_kind');
   expect(rows.size).toBe(AGENT_ACTIONS.length);
   const expected=AGENT_ACTIONS.map(action=>({id:action.id,module:action.module,tier_ceiling:action.policy.tier,category:action.policy.category,review_kind:action.store==='human_workflow_only'?null:action.id}));
   expect([...rows.values()].sort((a,b)=>a.id.localeCompare(b.id,'en'))).toEqual(expected.sort((a,b)=>a.id.localeCompare(b.id,'en')));
   // The SQL automatic rule is the same closed category list as WP2's runtime rule.
-  const sql=read('db/migrations/0704_assistant_action_kind.sql'),scope=sql.match(/assistant_action_kind_automatic_scope CHECK\(tier_ceiling<>'automatic' OR category IN\(([^)]*)\)\)/);
+  const sql=read('db/migrations/0813_assistant_action_kind.sql'),scope=sql.match(/assistant_action_kind_automatic_scope CHECK\(tier_ceiling<>'automatic' OR category IN\(([^)]*)\)\)/);
   expect(scope?.[1].split(',').map(item=>item.replace(/'/g,'')).sort()).toEqual([...AUTOMATIC_CATEGORIES].sort());
   for(const category of NEVER_AUTOMATIC_CATEGORIES)expect(scope?.[1]).not.toContain(`'${category}'`);
  });
 
  it('replaces every closed SQL action list with a validated reference, dropping the old CHECKs only afterwards',()=>{
-  const sql=read('db/migrations/0704_assistant_action_kind.sql');
+  const sql=read('db/migrations/0813_assistant_action_kind.sql');
   const at=(text:string)=>{const index=sql.indexOf(text);expect(index,text).toBeGreaterThanOrEqual(0);return index;};
   const reviewFk=at('ADD CONSTRAINT assistant_review_action_kind_registered\n FOREIGN KEY(action_kind) REFERENCES app.assistant_action_kind(review_kind) ON UPDATE RESTRICT ON DELETE RESTRICT NOT VALID;');
   const associationFk=at('ADD CONSTRAINT ai_native_outcome_association_action_registered\n FOREIGN KEY(action) REFERENCES app.assistant_action_kind(id) ON UPDATE RESTRICT ON DELETE RESTRICT NOT VALID;');
