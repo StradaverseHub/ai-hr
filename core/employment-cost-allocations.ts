@@ -10,10 +10,18 @@ import {lockLabelCriteriaTx,visibleLabelIdsCondition} from './system-labels';
 import {provenCompanyDatesTx,dayBefore} from './employment-company';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {allocationInputSchema,normalizedAllocationRows,CostAllocationError,type CostAllocationInput,type AllocationSource} from '../lib/employment-cost-allocation';
+import {z} from 'zod';
 export {CostAllocationError} from '../lib/employment-cost-allocation';
 async function subjectTx(tx:Tx,ctx:SessionContext,id:string,date:string,write=false){
  await assertWorkforceEmploymentTx(tx,ctx,id,write?'maintain':'view');
  if(write)await lockLabelCriteriaTx(tx,ctx.tenantId);
+ // Positive Workforce grants deliberately do not widen raw employment RLS. This native-owned,
+ // minimal projection composes the canonical dated proof behind the SAME capability fence.
+ // Existing system/provisioning callers retain their ordinary transaction/RLS path below.
+ if(ctx.userId){
+  const[row]=await tx.execute<{subject:unknown}>(sql`select app.employment_cost_allocation_subject(${id}::uuid,${date}::date,${write}) as subject`);
+  return z.object({employment:z.object({id:z.guid(),personId:z.guid(),companyId:z.guid(),hiredOn:z.iso.date(),terminatedOn:z.iso.date().nullable()}).strict(),companyId:z.guid()}).strict().parse(row?.subject);
+ }
  const query=tx.select().from(employment).where(eq(employment.id,id));const[e]=await(write?query.for('update'):query);if(!e)throw new CostAllocationError('scope');
  const proof=(await provenCompanyDatesTx(tx,[{employmentId:id,date}])).get(`${id}|${date}`);if(!proof?.companyId)throw new CostAllocationError('date');
  await assertWorkforceCompanyTx(tx,ctx,proof.companyId,write?'maintain':'view');if(write){const[live]=await tx.select({id:company.id}).from(company).where(and(eq(company.id,proof.companyId),isNull(company.archivedAt)));if(!live)throw new CostAllocationError('scope');}return{employment:e,companyId:proof.companyId};
@@ -65,6 +73,66 @@ export function saveEmploymentCostAllocations(ctx:SessionContext,raw:unknown,opt
   const p=await prepareCostAllocationsTx(tx,ctx,raw);if(options.digest!==undefined&&options.digest!==p.digest)throw new CostAllocationError('preview');
   const[result]=await tx.execute<{id:string}>(sql`select app.employment_cost_allocation_commit(${p.input.employmentId}::uuid,${p.companyId}::uuid,${p.input.effectiveDate}::date,${p.input.expectedRevision},${p.input.operation},${JSON.stringify(p.normalized)}::jsonb,${options.source??'manual'}) as id`);return{id:result.id,revision:p.input.expectedRevision+1};
  });
+}
+/** Private reviewed-command projection. The boolean witness precedes all timeline reads because row
+ * policies may otherwise omit a version belonging to another company. It adds VIEW of every ACTIVE
+ * version, never maintenance of those other companies. The ordinary command's authority is unchanged. */
+const reviewedRow=z.object({costCenterId:z.guid(),hundredths:z.number().int().min(1).max(10000),codeSnapshot:z.string().max(4000),labelSnapshot:z.string().max(4000)}).strict();
+const reviewedVersion=z.object({id:z.guid(),companyId:z.guid(),companyName:z.string().min(1).max(4000),revision:z.number().int().positive(),validFrom:z.iso.date(),validTo:z.iso.date().nullable(),superseded:z.boolean(),operation:z.enum(['replace','clear']),source:z.string().max(80),rows:z.array(reviewedRow).max(100)}).strict();
+export const reviewedCostAllocationTimeline=z.array(reviewedVersion).max(100);
+const reviewedContext=z.object({version:z.literal(1),sourceDigest:z.string().regex(/^[a-f0-9]{64}$/),labels:z.array(z.object({id:z.guid(),code:z.string().max(4000),label:z.string().max(4000).nullable(),version:z.string().regex(/^[0-9]+$/)}).strict()).max(100)}).strict();
+export type ReviewedCostAllocationVersion=z.infer<typeof reviewedVersion>;
+export async function reviewedCostAllocationSubjectTx(tx:Tx,ctx:SessionContext,employmentId:string,effectiveDate:string){
+ const[witness]=await tx.execute<{allowed:boolean}>(sql`select app.employment_cost_allocation_review_visible(${employmentId}::uuid) as allowed`);
+ if(witness?.allowed!==true)throw new CostAllocationError('scope');
+ return subjectTx(tx,ctx,employmentId,effectiveDate,true);
+}
+export async function reviewedCostAllocationChoicesTx(tx:Tx,ctx:SessionContext,employmentId:string,effectiveDate:string){
+ const s=await reviewedCostAllocationSubjectTx(tx,ctx,employmentId,effectiveDate);
+ const[h]=await tx.select({revision:head.revision}).from(head).where(eq(head.employmentId,employmentId));
+ const timeline=await reviewedVersionsTx(tx,employmentId);
+ const current=timeline.find(v=>v.validFrom<=effectiveDate&&(!v.validTo||v.validTo>effectiveDate));
+ const choices=await tx.select({id:costCenter.id,code:costCenter.code,label:costCenter.label}).from(costCenter).where(and(isNull(costCenter.archivedAt),visibleLabelIdsCondition(costCenter,'cost_center',[s.companyId]))).orderBy(asc(costCenter.code),asc(costCenter.id)).limit(101);
+ if(choices.length>100)throw new CostAllocationError('scope');
+ return{effectiveDate,effectiveCompanyId:s.companyId,expectedRevision:h?.revision??0,rows:current?.rows??[],choices};
+}
+async function reviewedVersionsTx(tx:Tx,employmentId:string,ids?:string[]){
+ const predicate=ids?sql`s.id in (${sql.join(ids.map(id=>sql`${id}::uuid`),sql`,`)})`:sql`s.superseded_at is null`;
+ if(ids&&!ids.length)return[];
+ const result=await tx.execute<{version:unknown}>(sql`select jsonb_build_object('id',s.id,'companyId',s.company_id,'companyName',(select c.legal_name from company c where c.id=s.company_id and c.tenant_id=s.tenant_id),'revision',s.revision,'validFrom',s.valid_from,'validTo',s.valid_to,'superseded',s.superseded_at is not null,'operation',s.operation,'source',s.source,'rows',coalesce((select jsonb_agg(jsonb_build_object('costCenterId',r.cost_center_id,'hundredths',r.hundredths,'codeSnapshot',r.code_snapshot,'labelSnapshot',r.label_snapshot) order by r.cost_center_id) from employment_cost_allocation_row r where r.tenant_id=s.tenant_id and r.set_id=s.id),'[]'::jsonb)) as version from employment_cost_allocation_set s where s.tenant_id=app.current_tenant_id() and s.employment_id=${employmentId}::uuid and ${predicate} order by s.valid_from,s.revision limit 101`);
+ return reviewedCostAllocationTimeline.parse(result.map(r=>r.version));
+}
+export async function prepareReviewedCostAllocationsTx(tx:Tx,ctx:SessionContext,raw:unknown){
+ const input=allocationInputSchema.parse(raw);
+ await reviewedCostAllocationSubjectTx(tx,ctx,input.employmentId,input.effectiveDate);
+ const p=await prepareCostAllocationsTx(tx,ctx,input);
+ // Access/criteria/employment/labels from prepare, plus company/history/head/versions, remain locked
+ // outside the preview subtransaction. Employment and Access serialize a genuinely absent head.
+ // These tables intentionally grant the application SELECT only; their owning lock seam must
+ // retain that restriction rather than granting UPDATE merely to use SELECT FOR UPDATE.
+ await tx.execute(sql`select app.cost_allocation_review_lock(${input.employmentId}::uuid,${input.effectiveDate}::date,${p.companyId}::uuid)`);
+ const before=await reviewedVersionsTx(tx,input.employmentId);
+ const[context]=await tx.execute<{source:unknown}>(sql`select app.cost_allocation_review_context(${input.employmentId}::uuid,${input.effectiveDate}::date,${p.companyId}::uuid,${JSON.stringify(p.normalized)}::jsonb) as source`);
+ const source=reviewedContext.parse(context?.source);
+ return{...p,before,source};
+}
+/** The SAME native save, no writes escaping this raw savepoint. In particular Drizzle nested
+ * transactions are not used: a rolled-back driver savepoint must not remain open at final save. */
+export async function previewReviewedCostAllocationsTx(tx:Tx,ctx:SessionContext,prepared:Awaited<ReturnType<typeof prepareReviewedCostAllocationsTx>>){
+ await tx.execute(sql`savepoint ai_cost_allocation_preview`);
+ try{
+  const saved=await saveEmploymentCostAllocations(ctx,prepared.input,{existingTx:tx,source:'manual',digest:prepared.digest});
+  return await readReviewedCostAllocationEffectsTx(tx,prepared.input.employmentId,prepared.before,saved.id);
+ }finally{try{await tx.execute(sql`rollback to savepoint ai_cost_allocation_preview`);}finally{await tx.execute(sql`release savepoint ai_cost_allocation_preview`);}}
+}
+/** Internal companion projection, called only under the reviewed interval's already-held authority. */
+export async function readReviewedCostAllocationEffectsTx(tx:Tx,employmentId:string,before:ReviewedCostAllocationVersion[],setId:string){
+  const versions=await reviewedVersionsTx(tx,employmentId,[...before.map(v=>v.id),setId]);
+  const next=versions.find(v=>v.id===setId);if(!next)throw new CostAllocationError('preview');
+  const {id:_generatedId,...interval}=next;
+  const changes=before.flatMap(before=>{const after=versions.find(v=>v.id===before.id);if(!after)throw new CostAllocationError('preview');return JSON.stringify(before)===JSON.stringify(after)?[]:[{before,after}];});
+  const total=next.rows.reduce((sum,row)=>sum+row.hundredths,0);
+  return{interval,changes,total,remainder:10000-total};
 }
 /** Transfer writers call this before changing company history. No implicit remapping or clearing. */
 export async function assertCostAllocationTransferTx(tx:Tx,employmentId:string,date:string){

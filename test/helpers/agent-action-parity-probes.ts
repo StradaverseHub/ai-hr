@@ -1,6 +1,8 @@
 import {fixedItemArchiveReviews,readFixedItemArchiveChoices} from '../../core/assistant-actions/fixed-item-archive-review-store';
 import {archiveEmploymentPayComponent,setEmploymentPayComponent,seedPayComponentCatalog,listPayComponents} from '../../packs/payroll/service';
 import {tp3OpeningMaintenanceReviews,readTp3OpeningMaintenanceChoices} from '../../core/assistant-actions/tp3-opening-maintenance-review-store';
+import {costAllocationMaintenanceReviews,readCostAllocationChoices} from '../../core/assistant-actions/cost-allocation-maintenance-review-store';
+import {saveEmploymentCostAllocations} from '../../core/employment-cost-allocations';
 import {paymentMethodMaintenanceReviews,readPaymentMethodMaintenanceChoices} from '../../core/assistant-actions/payment-method-maintenance-review-store';
 import {setEmploymentPaymentMethod} from '../../core/org';
 import {passportMaintenanceReviews,readPassportMaintenanceChoices} from '../../core/assistant-actions/passport-maintenance-review-store';
@@ -44,7 +46,7 @@ import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vit
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import * as schema from '../../db/schema';
 import {hireEmployee,setReportingLine,endReportingLine} from '../../core/org';
-import {createCompany,createDepartment} from '../../core/admin';
+import {createCompany,createDepartment,createCostCenter} from '../../core/admin';
 import {setCompensation} from '../../core/comp';
 import {setRestDay} from '../../core/roster';
 import {grantAssistant,revokeAssistant} from '../../core/assistant-grant';
@@ -132,7 +134,7 @@ type DbRole=(typeof schema.roleEnum.enumValues)[number];
 type Decision='approved'|'rejected';
 /** Per-probe options: the decision a decider records, and whether the subject's company routes overtime
  * through a one-level direct-manager attendance workflow (the configuration delegate access exists for). */
-type Options={decision:Decision;workflow:boolean};
+type Options={decision:Decision;workflow:boolean;allocationOperation?:'replace'|'clear'};
 const DEFAULT_OPTIONS:Options={decision:'approved',workflow:false};
 /** Who the item belongs to: the default fictional subject, or a positive-control subject in another company or tenant. */
 type Home={person:Person;base:Base;companyId:string;departmentId:string;name:string;session():Promise<SessionContext>};
@@ -382,6 +384,11 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'employees.compensation.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'set',compensationId:null,fields:{basicSalary:'2500.25',currency:'MYR',payMode:'monthly',paymentTerm:'monthly',rateAmount:null,remarks:'Fictional human salary',effectiveFrom:todayInKualaLumpur()}}),
   offered:async(who,item)=>listed(await readCompensationMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>setCompensation(who,{employmentId:item.employmentId,basicSalary:2500.25,currency:'MYR',payMode:'monthly',paymentTerm:'monthly',rateAmount:null,remarks:'Fictional human salary',effectiveFrom:todayInKualaLumpur()},tx)},
+ 'employees.cost_allocation.maintain':{family:'hr_on_employment',store:packetStore('employees.cost_allocation.maintain',costAllocationMaintenanceReviews.prepare,costAllocationMaintenanceReviews.confirm),
+  create:async(_w,h,o)=>{const center=await createCostCenter(groupOf(h.base),{companyId:h.companyId,code:'PARITY-COST',name:'Fictional cost distribution'});const operation=o.allocationOperation??'replace',date=todayInKualaLumpur();if(operation==='clear')await saveEmploymentCostAllocations(groupOf(h.base),{employmentId:h.person.employmentId,effectiveDate:date,expectedRevision:0,operation:'replace',rows:[{costCenterId:center.id,percentage:'25.00'}]});return itemOf(h,h.person.employmentId,{proposal:{effectiveDate:date,effectiveCompanyId:h.companyId,expectedRevision:operation==='clear'?1:0,operation,rows:operation==='clear'?[]:[{costCenterId:center.id,percentage:'33.33'}]}});},
+  human:item=>({action:'employees.cost_allocation.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,...(item.proposal as object)}),
+  offered:async(who,item)=>{const proposal=item.proposal as {effectiveDate:string};const result=await readCostAllocationChoices(who,{query:item.name,employmentId:item.employmentId,effectiveDate:proposal.effectiveDate});return result.kind==='choices'&&result.current!==null&&listed(result,'employees','employmentId',item.employmentId);},
+  screen:(tx,who,item)=>{const {effectiveCompanyId:_nomination,...input}=item.proposal as {effectiveCompanyId:string;effectiveDate:string;expectedRevision:number;operation:'replace'|'clear';rows:{costCenterId:string;percentage:string}[]};return saveEmploymentCostAllocations(who,{employmentId:item.employmentId,...input},{existingTx:tx,source:'manual'});}},
  'employees.payment_method.maintain':{family:'hr_on_employment',store:paymentMethodMaintenanceReviews,screenAdmits:isAdmin,
   create:async(_w,h)=>itemOf(h,h.person.employmentId),
   human:item=>({action:'employees.payment_method.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,expectedMethod:null,paymentMethod:'cash'}),
@@ -543,6 +550,13 @@ describe.each([...selection.actions])('ADR-0151 parity: %s',id=>{
   if('page' in declared)expect(observed.page,`${context} — native page discoverability differs`).toBe(declared.page[role]);
   // The owning screen behaves as declared (independent expected value).
   expect(observed.screen,`${context} — screen differs from the declared matrix`).toBe(declared.screen[role]);
+ },180_000);
+});
+
+if(selection.variants.includes('cost_allocation_clear')) describe('ADR-0151 parity, cost allocation explicit clear',()=>{
+ it.each([...PARITY_ROLES])('%s clears a complete native distribution with the same authority',async role=>{
+  const {observed,notes}=await observe('employees.cost_allocation.maintain',role,{decision:'approved',workflow:false,allocationOperation:'clear'});
+  const declared=AGENT_ACTION_PARITY['employees.cost_allocation.maintain'];assertInvariants('employees.cost_allocation.maintain clear',role,observed,notes,false);expect(observed.screen).toBe(declared.screen[role]);
  },180_000);
 });
 

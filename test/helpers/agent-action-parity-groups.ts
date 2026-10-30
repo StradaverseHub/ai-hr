@@ -1,7 +1,7 @@
 /** Explicit test-only partition. Unknown future actions or variants must fail the coverage guard,
  * never silently disappear or join multiple hosted DB entrypoints. No executable probes live here. */
 import type {ProbedActionId} from './agent-action-parity-matrix';
-export const PARITY_PROBE_VARIANTS=['adapter_coverage','rejected_decisions','routed_attendance','permission_revalidation','boundary_controls','standalone_tester'] as const;
+export const PARITY_PROBE_VARIANTS=['adapter_coverage','rejected_decisions','routed_attendance','permission_revalidation','boundary_controls','standalone_tester','cost_allocation_clear'] as const;
 export type ParityProbeVariant=typeof PARITY_PROBE_VARIANTS[number];
 export const PARITY_PROBE_GROUPS={
  commands:{actions:[

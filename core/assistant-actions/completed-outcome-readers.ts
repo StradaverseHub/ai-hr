@@ -1,5 +1,6 @@
 import {fixedItemArchiveReviews} from './fixed-item-archive-review-store';
 import {tp3OpeningMaintenanceReviews} from './tp3-opening-maintenance-review-store';
+import {costAllocationMaintenanceReviews} from './cost-allocation-maintenance-review-store';
 import {paymentMethodMaintenanceReviews} from './payment-method-maintenance-review-store';
 import {passportMaintenanceReviews} from './passport-maintenance-review-store';
 import {employeeCodeMaintenanceReviews} from './employee-code-maintenance-review-store';
@@ -65,6 +66,7 @@ const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOut
  'employees.compensation.maintain':(tx,ctx,id)=>compensationMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.code.maintain':(tx,ctx,id)=>employeeCodeMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.payment_method.maintain':(tx,ctx,id)=>paymentMethodMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.cost_allocation.maintain':(tx,ctx,id)=>costAllocationMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.workforce_profile.maintain':(tx,ctx,id)=>workforceProfileMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.passport.maintain':(tx,ctx,id)=>passportMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.tp3_opening.maintain':(tx,ctx,id)=>tp3OpeningMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
