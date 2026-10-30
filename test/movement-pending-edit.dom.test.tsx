@@ -46,6 +46,6 @@ describe('pending Movement Edit retains its saved target independently of curren
   const source=fs.readFileSync(path.resolve(__dirname,'../app/admin/personnel/[employmentId]/page.tsx'),'utf8');
   const start=source.indexOf('const movementEditRow'),end=source.indexOf('const hireCorrectionCard',start);
   expect(start).toBeGreaterThan(-1);expect(end).toBeGreaterThan(start+500);const parent=source.slice(start,end);
-  expect(parent).toContain('movementPendingEditInput(s, employmentId, movementEditRow.id)');expect(parent).toContain("movementEditRow.status === 'pending'");expect(parent).toContain('pendingInput: movementEditInput?.values');expect(parent).toContain('{...movementFormProps}');
+  expect(parent).toContain('movementPendingEditInput(s, employmentId, movementEditRow.id)');expect(parent).toContain("const movementEditInput = movementEditRow");expect(parent).toContain('pendingInput: movementEditInput?.values');expect(parent).toContain('{...movementFormProps}');
  });
 });

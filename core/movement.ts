@@ -200,6 +200,8 @@ export type MovementHistoryRow = {
    *  reads these flags so the affordance and the service rule cannot drift apart. */
   canEdit: boolean;
   canReverse: boolean;
+  /** The recorded command type; a voluntary termination may display as Resignation. */
+  correctionKind?: string;
   /** A CLOSED payroll run relied on this movement's window. 646355e5 — corrections are allowed after HR
    *  acknowledges that closed payroll stays as issued; the screen asks for that confirmation. */
   payrollLocked: boolean;
@@ -1210,6 +1212,12 @@ function infoLegIsFlatOnly(e: RawEvent, kind: string): boolean {
   );
 }
 
+/** Presentation of a voluntary exit does not change the writer that owns its inverse. */
+function recordedMovementKind(row: ProjectedRow, group: RawEvent[]): string {
+  return row.kind === 'resignation' && group.some(event => event.eventType === 'employment.terminated')
+    ? 'termination' : row.kind;
+}
+
 type Correctability = { canReverse: boolean; canEdit: boolean; stateChanging: boolean };
 
 /** Whether this movement can be rolled back, and whether it can be corrected in place. `isLatest` is the
@@ -1474,7 +1482,7 @@ export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentI
       const status = statusOf(r);
       // 646355e5 — older events are editable too: the correction steps back over the later movements and
       // replays them (editMovementEvent). The service names any later event that blocks the replay.
-      const c = correctabilityOf(r, g, true, resolvedTypes.get(r.kind)?.behaviourKind??null);
+      const c = correctabilityOf(r, g, true, resolvedTypes.get(recordedMovementKind(r, g))?.behaviourKind??null);
       // 941c9dac — a SUPERSEDED movement is terminal: it never applied and never will, so there is
       // nothing to cancel and nothing to replay. Editing one would also be a trap — the values HR typed
       // are precisely the ones another movement has already overridden.
@@ -1495,6 +1503,7 @@ export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentI
         endDate: r.endDate,
         remarks: r.remarks,
         reversed: r.reversed,
+        correctionKind:recordedMovementKind(r,g),
         canEdit: c.canEdit && !terminal,
         canReverse: c.canReverse && !terminal,
         payrollLocked: locked,
@@ -1751,17 +1760,9 @@ export function movementPendingEditInput(ctx:SessionContext,employmentId:string,
     const [scope]=await tx.execute<{ok:boolean}>(sql`select app.is_admin_for(${emp.companyId}::uuid) as ok`);
     if(!scope?.ok)return {unavailable:true};
     const row=rows.find(r=>r.id===movementId);
-    if(row?.kind==='resignation'&&statusOf(row)==='applied'){
-      const leg=groupEventsOf(events,row).filter(event=>event.eventType==='employment.info.updated').sort((a,b)=>b.sequence-a.sequence)[0];
-      const after=(leg?.payload as {after?:Record<string,string|null>})?.after;
-      return after?{values:{tenderResignationDate:after.tenderResignationDate??null,resignationEffectiveDate:after.resignationDate??null},unavailable:false}:{unavailable:true};
-    }
-    // 646355e5 — an APPLIED termination pre-fills the coded reason and notice it recorded.
-    // 1d58019a Step 2 — decided by the resolved behaviour, so a tenant's own Termination type pre-fills too.
-    if(row&&resolvedTypes.get(row.kind)?.behaviourKind==='termination'&&statusOf(row)==='applied'){
-      const leg=groupEventsOf(events,row).find(event=>event.eventType==='employment.terminated');
-      const recorded=leg?.payload as {terminationReasonCode?:string|null;terminationNoticeDays?:number|null}|undefined;
-      return recorded?{values:{terminationReasonCode:recorded.terminationReasonCode??null,terminationNoticeDays:recorded.terminationNoticeDays==null?null:String(recorded.terminationNoticeDays)},unavailable:false}:{unavailable:true};
+    if(row && statusOf(row)==='applied'){
+      const base=await movementCorrectionBaseTx(tx,ctx,employmentId,movementId);
+      return base?.input?{values:movementPendingFormValues(base.input),unavailable:false}:{unavailable:true};
     }
     if(!row?.scheduled||statusOf(row)!=='pending')return null;
     const event=events.find(e=>e.id===row.id),payload=event?.payload;
@@ -2987,7 +2988,7 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
 }
 
 /** Private admission data never comes from a form or caller-supplied baseline. */
-async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput,futureAdmission?:{baseline?:MovementCurrentState;capture?:(baseline:MovementCurrentState)=>void;expectedBehaviour?:string}){
+async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput,futureAdmission?:{baseline?:MovementCurrentState;capture?:(baseline:MovementCurrentState)=>void;expectedBehaviour?:string},correction?:{fromGroupId:string|null}){
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
     throw new Error('Only an admin can record a movement.');
@@ -3023,13 +3024,15 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
     // baseline the write below diffs against. The sweep and an older correction's replay do not come through
     // here: a rule never re-judges a movement already recorded.
     const future = p.effectiveDate > today;
-    const documents = await assertMovementFieldRulesTx(tx, ctx, p, [], () =>
+    const carriedFields = correction ? await correctionDocumentFieldsTx(tx, ctx, p, correction.fromGroupId) : [];
+    const documents = await assertMovementFieldRulesTx(tx, ctx, p, carriedFields, () =>
       future && futureAdmission?.baseline ? Promise.resolve(futureAdmission.baseline) : currentStateTx(tx, p.employmentId),
     );
     const written = future
       ? await scheduleMovementTx(tx, ctx, p, p.kind as ComparisonKind, futureAdmission)
       : await applyComparisonMovementTx(tx, ctx, p, p.kind);
-    if (documents.length) await saveMovementAttachmentsTx(tx, ctx, p.employmentId, written.groupId, documents);
+    if (correction) await storeCorrectionDocumentsTx(tx, ctx, p.employmentId, correction.fromGroupId, written.groupId, carriedFields, documents);
+    else if (documents.length) await saveMovementAttachmentsTx(tx, ctx, p.employmentId, written.groupId, documents);
     return written;
   }
   // Only comparison types take supporting documents (Field Controls are per comparison field).
@@ -3522,7 +3525,7 @@ async function laterReplayPlanTx(
     if (!g.some((e) => STATE_CHANGING_EVENT_TYPES.has(e.eventType))) continue;
     const end = Math.max(...g.map((e) => e.sequence));
     if (end <= targetSpanEnd) continue;
-    const behaviour = resolvedTypes.get(r.kind)?.behaviourKind ?? null;
+    const behaviour = resolvedTypes.get(recordedMovementKind(r, g))?.behaviourKind ?? null;
     const label = resolvedTypes.get(r.kind)?.label || r.kind;
     const when = r.effectiveDate;
     const replayable =
@@ -3947,10 +3950,11 @@ export async function movementCorrectionBaseTx(tx: Tx, ctx: SessionContext, empl
   const { events, rows, statusOf, resolvedTypes } = await projectRows(tx, ctx.tenantId, employmentId);
   const row = rows.find((r) => r.id === movementId);
   if (!row) return null;
-  const behaviour = resolvedTypes.get(row.kind)?.behaviourKind ?? null;
-  const status = statusOf(row);
   const g = groupEventsOf(events, row);
-  const plain: CreateMovementInput = { employmentId, kind: row.kind, effectiveDate: row.effectiveDate, endDate: row.endDate, remarks: row.remarks };
+  const recordedKind = recordedMovementKind(row, g);
+  const behaviour = resolvedTypes.get(recordedKind)?.behaviourKind ?? null;
+  const status = statusOf(row);
+  const plain: CreateMovementInput = { employmentId, kind: recordedKind, effectiveDate: row.effectiveDate, endDate: row.endDate, remarks: row.remarks };
   let input: CreateMovementInput | null = null;
   if (behaviour && row.kind !== 'hired' && !row.reversed && status !== 'superseded') {
     // A pending movement wrote nothing: its values are the saved intent, read exactly as the Edit retains them.
@@ -3965,7 +3969,7 @@ export async function movementCorrectionBaseTx(tx: Tx, ctx: SessionContext, empl
     } else if (behaviour === 'secondment' || behaviour === 'actingPosition') input = plain;
     else if (isComparisonKind(behaviour) || behaviour === 'resignation') {
       const { typeCode: _code, ...replayed } = await replayInputOfTx(tx, row, g, behaviour);
-      input = { ...replayed, employmentId, kind: row.kind };
+      input = { ...replayed, employmentId, kind: recordedKind };
       const moved = g.find((e) => e.eventType === 'employment.company.transferred');
       const to = (moved?.payload as { after?: { companyId?: string } } | undefined)?.after?.companyId;
       if (to) input.companyId = to;
@@ -3977,7 +3981,7 @@ export async function movementCorrectionBaseTx(tx: Tx, ctx: SessionContext, empl
   }
   // `recorded` is the bare movement (type, dates, remarks) for kinds whose effect IS their date (Join Date
   // Change, Probation Extension …); an import revert re-records a deleted movement from `input ?? recorded`.
-  return { id: row.id, kind: row.kind, behaviour, effectiveDate: row.effectiveDate, status, reversed: !!row.reversed, scheduled: row.scheduled, input, recorded: plain };
+  return { id: row.id, kind: recordedKind, displayKind:row.kind, behaviour, effectiveDate: row.effectiveDate, status, reversed: !!row.reversed, scheduled: row.scheduled, input, recorded: plain };
 }
 
 /** The rollback guards, shared by the rollback and by read-only eligibility checks. */
@@ -3995,7 +3999,7 @@ async function reversalGuardTx(tx: Tx, ctx: SessionContext, employmentId: string
     );
   }
   const group = groupEventsOf(events, row);
-  const c = correctabilityOf(row, group, false, resolvedTypes.get(row.kind)?.behaviourKind??null);
+  const c = correctabilityOf(row, group, false, resolvedTypes.get(recordedMovementKind(row, group))?.behaviourKind??null);
   if (!c.canReverse) {
     throw new MovementNotCorrectableError(
       'This event type cannot be rolled back from Employment History — use the screen that records it.',
@@ -4159,8 +4163,9 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
   return (async (tx: Tx) => {
     await assertWorkforceEmploymentTx(tx,ctx,rawEdit.employmentId,'maintain');
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+    await lockEmploymentStatutoryOwnerTx(tx, rawEdit.employmentId);
     const p = await resolveInputTypeTx(tx, ctx, rawEdit, 'correct', { allowInactive: true });
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveDate ?? '')) {
+    if (!isCalendarDate(p.effectiveDate ?? '')) {
       throw new Error('A valid effective date (YYYY-MM-DD) is required.');
     }
     const reason = p.reason?.trim() || null;
@@ -4174,6 +4179,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
     const endDate = p.endDate?.trim() || null;
 
     let replay: ReplayStep[] = [];
+    let previousBehaviourKind: string | null = null;
     const correct = async () => {
       const { events, rows, statusOf, today, resolvedTypes } = await projectRows(tx, ctx.tenantId, p.employmentId);
       const row = rows.find((r) => r.id === p.movementId);
@@ -4183,10 +4189,55 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
       const status = statusOf(row);
       // 1d58019a Step 2 — what the RECORDED movement does, from the catalogue. `row.kind` is its code, which
       // for one of the organisation's own Termination types is not the string 'termination'.
-      const rowBehaviour = resolvedTypes.get(row.kind)?.behaviourKind ?? null;
+      const rowBehaviour = resolvedTypes.get(recordedMovementKind(row, groupEventsOf(events, row)))?.behaviourKind ?? null;
+      previousBehaviourKind = rowBehaviour;
       if (p.documents?.length && !isComparisonKind(p.kind)) {
         throw new MovementDocumentError('This event type does not take supporting documents.');
       }
+      // Revision 2: changing a behaviour is an inverse followed by a NEW validated movement,
+      // never a relabel of the old ledger row. The private dispatcher owns destination permissions,
+      // required fields, company/date rules, scheduling and document controls. Any failure rolls the
+      // inverse back as part of this transaction (including when called by an import).
+      const interchangeable = rowBehaviour !== null && isComparisonKind(rowBehaviour) && isComparisonKind(p.kind)
+        && !crossesConfirmation(rowBehaviour, p.kind) && !crossesEntityTransfer(rowBehaviour, p.kind);
+      if (rowBehaviour !== p.kind && !interchangeable) {
+        const sourceGroup = groupEventsOf(events, row);
+        const eligibility = correctabilityOf(row, sourceGroup, true, rowBehaviour);
+        if (status === 'superseded' || !eligibility.canReverse) {
+          throw new MovementNotCorrectableError('This event cannot be replaced safely from Movement. Review its recorded history before changing the event type.');
+        }
+        if (status === 'applied' && (eligibility.stateChanging || !['secondment', 'actingPosition'].includes(p.kind))) {
+          const spanEnd = Math.max(...sourceGroup.map(event => event.sequence));
+          replay = await laterReplayPlanTx(tx, events, rows, statusOf, resolvedTypes, row, spanEnd, p.effectiveDate!);
+          for (const later of [...replay].reverse()) {
+            await reverseMovementTx(tx, ctx, p.employmentId, later.movementId, reason, true, {replayOf:p.movementId});
+          }
+        }
+        await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
+        // Judge the replacement against the state AFTER its inverse, not the mistaken exit.
+        const [dates] = await tx.select({hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,lastWorkingDate:employment.lastWorkingDate,resignationDate:employment.resignationDate}).from(employment).where(eq(employment.id,p.employmentId));
+        if (!dates) throw new Error('Employment not found.');
+        if (!['groupJoinDateCorrection','blacklist'].includes(p.kind) && p.effectiveDate! < dates.hiredOn) throw new Error('The replacement event cannot be dated before the employee joined.');
+        const remainingExit = [dates.terminatedOn,dates.lastWorkingDate,dates.resignationDate].filter((date):date is string => !!date).sort()[0];
+        if (remainingExit && p.effectiveDate! > remainingExit && (isComparisonKind(p.kind) || ['secondment','actingPosition'].includes(p.kind))) throw new MovementNotCorrectableError('The replacement event falls after another recorded exit. Review that event first.');
+        const beforeSequence = Math.max(...events.map(event => event.sequence));
+        const result = await dispatchMovementEventTx(tx, ctx, {
+          ...rawEdit, kind:p.typeCode ?? p.kind,
+          remarks:rawEdit.remarks === undefined ? row.remarks : rawEdit.remarks,
+          // A replacement has its own required fields; never inherit an unrelated exit/end date.
+        }, undefined, {fromGroupId:row.groupId});
+        const replaced = await projectRows(tx, ctx.tenantId, p.employmentId);
+        const replacement = replaced.rows.filter(item => item.sequence > beforeSequence && recordedMovementKind(item, groupEventsOf(replaced.events,item)) === (p.typeCode ?? p.kind) && !item.reversed)
+          .sort((a,b) => b.sequence-a.sequence)[0];
+        if (!replacement) throw new MovementNotCorrectableError('The replacement movement could not be verified. No correction was saved.');
+        await appendEvent(tx, {
+          tenantId:ctx.tenantId, aggregateType:'employment', aggregateId:p.employmentId,
+          eventType:'employment.movement.corrected', actor:actorOf(ctx), subjectEmploymentId:p.employmentId,
+          payload:{movementId:p.movementId,replacementMovementId:replacement.id,fromType:recordedMovementKind(row, sourceGroup),toType:p.typeCode ?? p.kind,reason},
+        });
+        return result;
+      }
+
       /** A corrected termination's reason must be one its (possibly re-chosen) type offers — checked only
        *  when the reason or the type changes, so correcting the dates of an older exit never re-judges it. */
       const assertCorrectedReasonTx = async (plan: TerminationPlan, recordedReason: unknown) => {
@@ -4224,8 +4275,8 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
         }
         const corrected={...retained,...Object.fromEntries(Object.entries(p).filter(([,value])=>value!==undefined)),
           remarks:rawEdit.remarks===undefined?row.remarks:remarks,endDate:rawEdit.endDate===undefined?row.endDate:endDate} as typeof p;
-        if(row.kind==='resignation'||p.kind==='resignation'){
-          if(row.kind!=='resignation'||p.kind!=='resignation')throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
+        if(rowBehaviour==='resignation'||p.kind==='resignation'){
+          if(rowBehaviour!=='resignation'||p.kind!=='resignation')throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
           await reverseMovementTx(tx,ctx,p.employmentId,p.movementId,reason,true);
           return recordResignationMovementTx(tx,ctx,corrected);
         }
@@ -4279,12 +4330,12 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
       const group = groupEventsOf(events, row);
       const spanEnd = group.length ? Math.max(...group.map((e) => e.sequence)) : -1;
       let isLatest = spanEnd === latestStateChangingSpanEnd(events, rows);
-      let c = correctabilityOf(row, group, isLatest, resolvedTypes.get(row.kind)?.behaviourKind??null);
+      let c = correctabilityOf(row, group, isLatest, resolvedTypes.get(recordedMovementKind(row, group))?.behaviourKind??null);
       // 646355e5 — an OLDER event is corrected by stepping back to it: every later applied movement is
       // rolled back (newest first), this one is corrected as the latest, and the later ones are replayed
       // afterwards in effective-date order from their own recorded values (replayLaterMovementsTx).
       if (!c.canEdit && c.canReverse && c.stateChanging && !isLatest) {
-        const asLatest = correctabilityOf(row, group, true, resolvedTypes.get(row.kind)?.behaviourKind ?? null);
+        const asLatest = correctabilityOf(row, group, true, resolvedTypes.get(recordedMovementKind(row, groupEventsOf(events, row)))?.behaviourKind ?? null);
         if (asLatest.canEdit) {
           replay = await laterReplayPlanTx(tx, events, rows, statusOf, resolvedTypes, row, spanEnd, p.effectiveDate!);
           for (const later of [...replay].reverse()) {
@@ -4317,8 +4368,8 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
           : applyTerminationTx(tx, ctx, p.employmentId, plan);
       }
 
-      if(row.kind==='resignation'||p.kind==='resignation'){
-        if(row.kind!=='resignation'||p.kind!=='resignation')throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
+      if(rowBehaviour==='resignation'||p.kind==='resignation'){
+        if(rowBehaviour!=='resignation'||p.kind!=='resignation')throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
         const original=groupEventsOf(events,row).filter(event=>event.eventType==='employment.info.updated').sort((a,b)=>b.sequence-a.sequence)[0];
         const originalAfter=(original?.payload as {after?:Record<string,unknown>})?.after;
         const submitted={...p,endDate:p.endDate===undefined?row.endDate:p.endDate,remarks:rawEdit.remarks===undefined?row.remarks:p.remarks,tenderResignationDate:p.tenderResignationDate===undefined?originalAfter?.tenderResignationDate as string|null|undefined:p.tenderResignationDate,resignationEffectiveDate:p.resignationEffectiveDate===undefined?originalAfter?.resignationDate as string|null|undefined:p.resignationEffectiveDate};
@@ -4419,7 +4470,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
           throw new MovementNoChangeError(
             // bd89ccd8 — said "use Delete" until now. There has been no Delete since r88 (10fcf6df), so the
             // one message that still named it was sending HR to look for a button that is not there.
-            'The corrected event would leave nothing changed — use Roll Back to undo the movement instead.',
+            'The corrected event would leave nothing changed — use Delete to undo the movement instead.',
           );
         }
         throw e;
@@ -4435,7 +4486,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
     const result = rawEdit.acknowledgeClosedPayroll === true
       ? await withClosedPayrollCorrectionAuthorityTx(tx, p.employmentId, correctAndReplay)
       : await correctAndReplay();
-    return {...result,behaviourKind:p.kind,replayed:replay.length};
+    return {...result,behaviourKind:p.kind,previousBehaviourKind,replayed:replay.length};
   })(outerTx);
 }
 

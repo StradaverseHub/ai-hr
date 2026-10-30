@@ -59,7 +59,6 @@ import {
   editMovementEvent,
   movementDetail,
   movementHistory,
-  MovementNotCorrectableError,
   reverseMovementEvent,
 } from '../core/movement';
 import { CONFIGURABLE_BEHAVIOUR_KINDS, saveMovementEventType } from '../core/movement-type';
@@ -677,44 +676,26 @@ describe('no tenant can mint a type that moves a legal entity', () => {
   });
 });
 
-describe('a correction cannot re-classify across the Entity Transfer line', () => {
-  it('refuses turning an Entity Transfer into a plain Transfer', async () => {
-    const hire = await hireOne();
-    const asg = await openAssignment(hire.employmentId);
-    await owner.db.update(schema.assignment).set({ costCenterId: null }).where(eq(schema.assignment.id, asg.id));
-    await createMovementEvent(adminCtx(b), coherentMove(hire.employmentId));
-    const row = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'entityTransfer')!;
-    await expect(
-      editMovementEvent(adminCtx(b), {
-        employmentId: hire.employmentId,
-        movementId: row.id,
-        kind: 'transfer',
-        effectiveDate: TODAY,
-        reason: 'Should have been a plain transfer',
-      }),
-    ).rejects.toThrow(MovementNotCorrectableError);
+describe('revision 2 — replacement across the Entity Transfer boundary', () => {
+  it('restores the original company before applying a plain Transfer', async () => {
+    const hire=await hireOne(),asg=await openAssignment(hire.employmentId);
+    await owner.db.update(schema.assignment).set({costCenterId:null}).where(eq(schema.assignment.id,asg.id));
+    await createMovementEvent(adminCtx(b),coherentMove(hire.employmentId));
+    const row=(await movementHistory(adminCtx(b),hire.employmentId)).find(r=>r.kind==='entityTransfer')!;
+    await editMovementEvent(adminCtx(b),{employmentId:hire.employmentId,movementId:row.id,kind:'transfer',effectiveDate:TODAY,departmentId:b.deptB,reason:'Should have been a plain transfer'});
+    expect((await employmentRow(hire.employmentId)).companyId).toBe(b.companyId);
+    expect((await openAssignment(hire.employmentId)).departmentId).toBe(b.deptB);
+    expect((await movementHistory(adminCtx(b),hire.employmentId)).find(r=>r.id===row.id)?.status).toBe('reversed');
   });
-
-  it('refuses turning a plain Transfer into an Entity Transfer', async () => {
-    const hire = await hireOne();
-    await createMovementEvent(adminCtx(b), {
-      employmentId: hire.employmentId,
-      kind: 'transfer',
-      effectiveDate: TODAY,
-      departmentId: b.deptB,
-    });
-    const row = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'transfer')!;
-    await expect(
-      editMovementEvent(adminCtx(b), {
-        employmentId: hire.employmentId,
-        movementId: row.id,
-        kind: 'entityTransfer',
-        effectiveDate: TODAY,
-        companyId: coB,
-        departmentId: deptB2,
-        reason: 'Should have been an entity transfer',
-      }),
-    ).rejects.toThrow(MovementNotCorrectableError);
+  it('uses every destination-company validation when replacing a Transfer with an Entity Transfer', async () => {
+    const hire=await hireOne(),asg=await openAssignment(hire.employmentId);
+    await owner.db.update(schema.assignment).set({costCenterId:null}).where(eq(schema.assignment.id,asg.id));
+    await createMovementEvent(adminCtx(b),{employmentId:hire.employmentId,kind:'transfer',effectiveDate:TODAY,departmentId:b.deptB});
+    const row=(await movementHistory(adminCtx(b),hire.employmentId)).find(r=>r.kind==='transfer')!;
+    await editMovementEvent(adminCtx(b),{...coherentMove(hire.employmentId),movementId:row.id,reason:'Should have been an entity transfer'});
+    expect((await employmentRow(hire.employmentId)).companyId).toBe(coB);
+    expect((await openAssignment(hire.employmentId)).departmentId).toBe(deptB2);
+    expect((await movementHistory(adminCtx(b),hire.employmentId)).find(r=>r.id===row.id)?.status).toBe('reversed');
   });
 });
 

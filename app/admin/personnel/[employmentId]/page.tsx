@@ -1,3 +1,5 @@
+import {MovementHistoryActions} from './movement-history-actions';
+import {movementScreenAccess} from '../../../../lib/movement-screen-access';
 import {HireCorrectionModes} from '../information-correction-form';
 import { getEmploymentCostAllocations } from '@/core/employment-cost-allocations';
 import { CostCenterAllocations } from '@/components/personnel/cost-center-allocations';
@@ -99,8 +101,6 @@ import {
   movementPendingEditInput,
   resignationInformation,
   movementCurrentState,
-  INTERCHANGEABLE_COMPARISON_KINDS,
-  isComparisonKind,
   MOVEMENT_FLAT_FIELDS,
 } from '@/core/movement';
 // 95d17761 — the DEFAULT Employment History view drops the correction artefacts. A pure view filter, so
@@ -603,7 +603,7 @@ export default async function EmployeePage({
   const costAllocationView = admin && emp.companyId ? await getEmploymentCostAllocations(s, employmentId) : null;
   /**
    * c063eea9 — the Correct hire details form (?correctHire=1). Read ONLY while it is open, and only where
-   * Movement may write at all (the same `admin && !terminatedOn` gate `canCreateMovement` applies below).
+   * the caller may correct the employment, including after an exit.
    *
    * The option lists are scoped to the company the employee was HIRED INTO — the hire version's company —
    * which after an Entity Transfer is not today's company. A hire label must be one THAT company may use,
@@ -611,7 +611,7 @@ export default async function EmployeePage({
    * that version's own company), so offering today's company's labels would offer values it then refuses.
    */
   const hireCorrection =
-    admin && !emp.terminatedOn && spCorrectHire === '1'
+    admin && canMaintainWorkforce && spCorrectHire === '1'
       ? // An employment with no assignment at all (legacy data) has nothing to correct: no form, rather
         // than an error page. Any other failure is a real one and still surfaces.
         await hireCorrectionView(s, employmentId).catch((e) => {
@@ -3082,7 +3082,7 @@ export default async function EmployeePage({
 
   // New Event is hidden once terminated (the same gate that hid the old Transfer form); the history
   // itself stays viewable. Rehire is a future, separate piece.
-  const canCreateMovement=admin&&canMaintainWorkforce&&!emp.terminatedOn;
+  const {canCreateMovement, canCorrectMovement} = movementScreenAccess({admin, canMaintainWorkforce, terminatedOn: emp.terminatedOn});
   /** c063eea9 — the caption of a hire-correction field, shared by the history row and the detail view. */
   const hireFieldIds = {
   "businessUnitId": "employment.organisation_assignment.businessunitname",
@@ -3255,92 +3255,21 @@ export default async function EmployeePage({
               <td className="px-4 py-2.5 text-muted-foreground">{m.jobTitle ?? '—'}</td>
               <td className="px-4 py-2.5 font-mono text-xs tabular-nums">{m.basic ?? '—'}</td>
               <td className="px-4 py-2.5">
-                <div className="flex flex-wrap items-center gap-3">
-                  <Link
-                    href={`/admin/personnel/${employmentId}?tab=careerMovement&movement=${m.id}`}
-                    className="text-primary hover:underline"
-                  >
-                    {t('movement.view')}
-                  </Link>
-                  {canCreateMovement && m.canEdit && (
-                    <Link
-                      href={`/admin/personnel/${employmentId}?tab=careerMovement&editMovement=${m.id}`}
-                      className="text-primary hover:underline"
-                    >
-                      {t('movement.edit')}
-                    </Link>
-                  )}
-                  {/* c063eea9 — the Hired row's own correction. It stays offered after a correction: correcting
-                      again is how a correction is undone (a hire correction has no Roll Back). */}
-                  {canCreateMovement && m.kind === 'hired' && (
-                    <Link
-                      href={`/admin/personnel/${employmentId}?tab=careerMovement&correctHire=1`}
-                      className="text-primary hover:underline"
-                    >
-                      {t('movement.hireCorrection.action')}
-                    </Link>
-                  )}
-                  {canCreateMovement && m.canReverse && (
-                    <form action={reverseMovementEventAction} className="inline-flex">
-                      <input type="hidden" name="employmentId" value={employmentId} />
-                      <input type="hidden" name="movementId" value={m.id} />
-                      {/* 10fcf6df — the affordance is ROLLBACK, not Delete. The service behind it has
-                          reversed rather than erased since 66a63bd6 (reverseMovementEventAction →
-                          reverseMovementEvent), and the confirmation has said so all along; the word on
-                          the row was the last thing still promising a deletion that never happened. It is
-                          no longer drawn in the destructive colour either — undoing a movement restores
-                          the employee's previous values, it does not remove a record.
-
-                          bd89ccd8 — a PENDING row says CANCEL instead, and this is a relabel of the ONE
-                          reversal path, never a second writer. A future-dated movement has written
-                          nothing; reversing it is the reversal event alone and the sweep then skips it,
-                          so "cancel" is the honest word for what happens and "roll back" is not. Wearing
-                          the applied wording is what made HR read a wrongly keyed future event as
-                          impossible to get rid of, which is the whole of the reported fault. */}
-                      <ConfirmSubmit
-                        title={
-                          m.status === 'pending'
-                            ? t('movement.cancelConfirmTitle')
-                            : t('movement.rollbackConfirmTitle')
-                        }
-                        subtitle={`${movementKindLabel(m.kind)} · ${formatDmy(m.effectiveDate)}`}
-                        description={
-                          m.status === 'pending'
-                            ? t('movement.cancelConfirmDescription')
-                            : m.payrollWarning
-                              ? t('movement.rollbackConfirmPayroll')
-                              : t('movement.rollbackConfirmDescription')
-                        }
-                        confirmLabel={m.status === 'pending' ? t('movement.cancelEvent') : t('movement.rollback')}
-                        cancelLabel={m.status === 'pending' ? t('movement.keepEvent') : undefined}
-                        // The reason is MANDATORY (bd89ccd8): Confirm stays disabled until it is typed,
-                        // and reverseMovementEvent refuses a blank one regardless — the dialog is not the
-                        // only caller, so the control lives in the service and the form only mirrors it.
-                        reasonField={{ name: 'reason', label: t('movement.correctionReasonLabel'), required: true }}
-                        // 646355e5 — a closed run no longer blocks the rollback; HR confirms it stays as issued.
-                        acknowledgement={
-                          m.payrollLocked
-                            ? {
-                                name: 'acknowledgeClosedPayroll',
-                                warning: `${t('movement.form.closedPayrollTitle', { periods: m.payrollClosedPeriods.join(', ') })} ${t('movement.form.closedPayrollBody')}`,
-                                label: t('movement.form.closedPayrollAcknowledge'),
-                              }
-                            : undefined
-                        }
-                        variant="ghost"
-                        size="sm"
-                        className="h-auto p-0 text-sm font-normal text-primary hover:bg-transparent hover:underline"
-                      >
-                        {m.status === 'pending' ? t('movement.cancel') : t('movement.rollback')}
-                      </ConfirmSubmit>
-                    </form>
-                  )}
-                  {m.payrollLocked && (
-                    <span className="text-xs text-muted-foreground">
-                      {t('movement.payrollClosedBadge', { periods: m.payrollClosedPeriods.join(', ') })}
-                    </span>
-                  )}
-                </div>
+                <MovementHistoryActions employmentId={employmentId} row={m}
+                  eventLabel={`${movementKindLabel(m.kind)} · ${formatDmy(m.effectiveDate)}`}
+                  canCorrect={canCorrectMovement} reverseAction={reverseMovementEventAction}
+                  labels={{
+                    view:t('movement.view'), edit:t('movement.edit'), delete:t('movement.delete'),
+                    deleteTitle:t('movement.deleteTitle'), deleteDescription:t('movement.deleteDescription'),
+                    deletePendingDescription:t('movement.deletePendingDescription'), keepEvent:t('movement.keepEvent'),
+                    reason:t('movement.correctionReasonLabel'), hireEdit:t('movement.hireCorrection.action'),
+                    hireDelete:t('movement.hireDelete'), hireRequirements:t('movement.hireDeleteRequirements'),
+                    unavailable:t('movement.correctionUnavailable'), unsupported:t('movement.correctionUnsupported'),
+                    terminal:t('movement.correctionTerminal'), viewOnly:t('movement.correctionViewOnly'),
+                    closedWarning:`${t('movement.form.closedPayrollTitle', {periods:m.payrollClosedPeriods.join(', ')})} ${t('movement.form.closedPayrollBody')}`,
+                    closedAcknowledge:t('movement.form.closedPayrollAcknowledge'), processedWarning:t('movement.rollbackConfirmPayroll'),
+                  }}/>
+                {m.payrollLocked && <p className="mt-1 text-xs text-muted-foreground">{t('movement.payrollClosedBadge', {periods:m.payrollClosedPeriods.join(', ')})}</p>}
               </td>
             </tr>
           ))}
@@ -3618,60 +3547,27 @@ export default async function EmployeePage({
   // Include the edited code's metadata even if inactive; the client needs its resolved behavior.
   const movementEditRow = spEditMovement ? movements.find((m) => m.id === spEditMovement && m.canEdit) : undefined;
   // 1d58019a Step 2 — termination is decided by the catalogue, so a tenant's own Termination type pre-fills too.
-  const movementEditInput = movementEditRow && (movementEditRow.status === 'pending' || movementEditRow.kind === 'resignation' || movementTypeByCode.get(movementEditRow.kind)?.behaviourKind === 'termination')
+  const movementEditInput = movementEditRow
     ? await movementPendingEditInput(s, employmentId, movementEditRow.id) : null;
-  const editEventCard = canCreateMovement && movementEditRow && movementFormProps ? (
+  const editEventCard = canCorrectMovement && movementEditRow && movementFormProps ? (
     <Card id="section-movement-edit-event" className="overflow-hidden">
       <SectionHeader title={t('movement.editTitle')} />
       <MovementNewEvent
         key={movementEditRow.id}
         {...movementFormProps}
         types={movementTypes
-          .filter((r) => r.active || r.code === movementEditRow.kind)
+          .filter((r) => r.active || r.code === (movementEditRow.correctionKind ?? movementEditRow.kind))
           .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind, ...typeControls(r.code) }))}
         edit={{
           movementId: movementEditRow.id,
-          kind: movementEditRow.kind,
+          kind: movementEditRow.correctionKind ?? movementEditRow.kind,
           effectiveDate: movementEditRow.effectiveDate,
           endDate: movementEditRow.endDate,
           remarks: movementEditRow.remarks,
           pendingInput: movementEditInput?.values,
           pendingUnavailable: movementEditInput?.unavailable,
-          // A correction may re-classify the movement within its own family (a Transfer that should have
-          // been a Promotion), never across it — the service replays the same set of writers either way.
-          // 476f23ed — the family is decided by the BEHAVIOUR, not by the code, so a correction of one of
-          // the organisation's own types offers the same alternatives its behaviour allows. The list is
-          // then expressed back in catalogue codes, so a re-classification cannot pick a type that no
-          // longer exists here.
-          allowedKinds: (() => {
-            const behaviour =
-              movementTypeByCode.get(movementEditRow.kind)?.behaviourKind ?? movementEditRow.kind;
-            // 3ced1040 — Confirmation renders the comparison grid but is its own family of one: it
-            // completes probation, so a correction must not be able to turn it into a Transfer or a
-            // Transfer into it. The service refuses the same crossing (crossesConfirmation), so the
-            // affordance and the rule cannot drift apart.
-            // b7b22514 — Entity Transfer is its own family of one, exactly as Confirmation is, and for a
-            // consequence that is larger: it moved a legal entity. The service refuses the crossing in
-            // BOTH directions (crossesEntityTransfer), so offering any other type here would render a
-            // dropdown whose every other option fails on save. Same shape, same reason, one line down.
-            const family =
-              behaviour === 'confirmation'
-                ? ['confirmation']
-                : behaviour === 'entityTransfer'
-                  ? ['entityTransfer']
-                  : isComparisonKind(behaviour)
-                    ? [...INTERCHANGEABLE_COMPARISON_KINDS]
-                    : // 646355e5 — exits are families of one; the service refuses any crossing.
-                      behaviour === 'termination' || behaviour === 'resignation'
-                      ? [behaviour]
-                      : [behaviour, 'secondment', 'actingPosition'];
-            const codes = movementTypes
-              .filter((r) => r.active && family.includes(r.behaviourKind))
-              .map((r) => r.code);
-            // The movement's own type always stays selectable, even if it has since been switched off —
-            // otherwise correcting it would silently re-classify it.
-            return Array.from(new Set([movementEditRow.kind, ...codes]));
-          })(),
+          // Every replacement goes through the destination's canonical validation in the same transaction.
+          allowedKinds: Array.from(new Set([movementEditRow.correctionKind ?? movementEditRow.kind, ...movementTypes.filter(r => r.active).map(r => r.code)])),
           payrollWarning: movementEditRow.payrollWarning,
           payrollClosedPeriods: movementEditRow.payrollClosedPeriods,
         }}
@@ -3687,7 +3583,7 @@ export default async function EmployeePage({
    * The read-only rows point at the screens that own those fields instead of offering them.
    */
   const hireCorrectionCard =
-    canCreateMovement && hireCorrection && hireCorrectionOptions
+    canCorrectMovement && hireCorrection && hireCorrectionOptions
       ? (() => {
           const recordLabel = (r: { kind: string | null; effectiveDate: string }) =>
             `${r.kind ? movementKindLabel(r.kind) : t('movement.hireCorrection.untaggedRecord')} ${formatDmy(r.effectiveDate)}`;

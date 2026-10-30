@@ -3,7 +3,7 @@ import {asc,eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {assignment,domainEvent,employment} from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {createMovementEvent,editMovementEvent,movementCurrentState,movementHistory,reverseMovementEvent} from '../core/movement';
+import {createMovementEvent,editMovementEvent,movementCurrentState,movementHistory,movementPendingEditInput,reverseMovementEvent} from '../core/movement';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base;
@@ -21,6 +21,14 @@ describe('646355e5 revision 2 — correction of exited employees and wrong event
   expect((await snapshot(e.employmentId)).employment[0].terminatedOn).toBeNull();
   expect((await movementHistory(ctx,e.employmentId)).find(r=>r.id===row.id)?.status).toBe('reversed');
   expect((await movementCurrentState(ctx,e.employmentId)).departmentId).toBe(b.deptA);
+ });
+ it('uses the recorded termination inputs when editing a displayed voluntary Resignation',async()=>{
+  const e=await hire(),ctx=adminCtx(b),row=await exit(e.employmentId);
+  expect(row.correctionKind).toBe('termination');
+  expect(await movementPendingEditInput(ctx,e.employmentId,row.id)).toMatchObject({values:{terminationReasonCode:'resignation',resignationDate:day(-10)},unavailable:false});
+  await editMovementEvent(ctx,{employmentId:e.employmentId,movementId:row.id,kind:'termination',effectiveDate:day(-2),endDate:day(-2),terminationReasonCode:'resignation',resignationDate:day(-10),reason:'Fictional corrected leaving date'});
+  expect((await snapshot(e.employmentId)).employment[0].terminatedOn).toBe(day(-2));
+  expect((await movementHistory(ctx,e.employmentId)).filter(r=>r.kind==='resignation'&&r.status==='applied')).toEqual([expect.objectContaining({effectiveDate:day(-2),correctionKind:'termination'})]);
  });
  it('replaces a mistaken applied exit with a transfer through the canonical dispatcher and links the audit',async()=>{
   const e=await hire(),ctx=adminCtx(b),row=await exit(e.employmentId);

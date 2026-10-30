@@ -63,3 +63,15 @@
 ## Consequences
 
 Old payslips render their retained metadata; current and future processing use corrected data. Corrections that would change money already paid are flagged, not adjusted; adjustment remains a separate authorized payroll process.
+
+## Approved revision 2 — correction after exit and event-type replacement
+
+The reporter approved revision 2 of feedback 646355e5 on 30 October 2026. Creation eligibility and correction eligibility are separate: an exit date continues to restrict New Event, but does not remove authorised HR's correction controls. Workforce maintenance permission, company/tenant scope and the canonical movement's inverse eligibility still apply. New Hire retains the controlled hire-correction and employee-removal policies. Unsupported or terminal rows explain the restriction.
+
+The screen calls removal from active movement history Delete and explains that the ledger is retained and the event's effect is undone. Pending Delete cancels the intent. A required reason and, where applicable, closed-payroll acknowledgement remain server-enforced.
+
+A correction may replace an event across behaviour families, amending the older exclusive-family restriction. This is an atomic inverse followed by the destination's canonical dispatcher, including scheduling, required fields, destination-company rights, field controls and supporting documents. A linked employment.movement.corrected event identifies both movement IDs and type codes. Later applied dependencies are replayed only where the existing replay owner can prove an inverse and valid order; otherwise the entire correction refuses with the conflicting event. The original exclusive-family lists remain relevant to in-family replay and custom-type configuration; they no longer forbid a separately validated replacement.
+
+A voluntary termination is still displayed as Resignation. Its recorded termination leg determines correctionKind and inverse behaviour; the display caption must never route it through the independent resignation-information writer. Manual prefill and import correction/revert read recorded inputs, including the termination reason and tender date, rather than today's mutable profile.
+
+Import Update uses the same correction service. A replacement of an exit is checked against the history after undoing that exit; ordinary Create retains its existing after-exit refusal. Shared destination fields may retain recorded values, while unrelated fields are not copied across behaviour families. Before cells still assert recorded historical values. Closed-payroll snapshots, salary boundaries, audit retention and guarded batch revert remain in force.

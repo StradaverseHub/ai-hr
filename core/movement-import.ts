@@ -15,7 +15,7 @@ import {isAdmin} from '../lib/authz-model';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {movementRecordLimits} from '../lib/movement-type-csv';
 import type {MovementWorkbookType} from '../lib/movement-workbook-layout';
-import {MOVEMENT_FORM_IDS,type MovementFormField} from '../lib/movement-form-contract';
+import {MOVEMENT_FORM_IDS,movementFormFields,type MovementFormField} from '../lib/movement-form-contract';
 import {personnelFormField,personnelFormChoices} from '../lib/personnel-form-contract';
 import {personnelImportOptionLookup} from '../lib/personnel-import-lookup';
 import {MOVEMENT_IMPORT_LIMITS,parseMovementImport,movementImportCellIssues,movementImportDate,type MovementImportAction,type MovementImportRecord,type MovementImportRow,type MovementImportEmployee,type MovementImportPreview,type MovementImportResult} from '../lib/movement-import-contract';
@@ -87,7 +87,7 @@ function lookup(raw:string,options:MovementImportOption[],field:string):string{
  if(value===undefined)throw new Error('unknown_reference:'+field);
  return value;
 }
-async function inputTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,employmentId:string,currentCompanyId:string){
+async function inputTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,employmentId:string,currentCompanyId:string,correctingExit=false){
  const source=await catalogTx(tx,ctx,currentCompanyId);
  const submitted=record.cells.kind??'';const code=lookup(submitted,source.types.map(type=>({value:type.code,label:type.label??type.code})),'event_type');
  const resolved=await resolveMovementEventTypeTx(tx,ctx.tenantId,code);
@@ -98,7 +98,7 @@ async function inputTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,empl
  if(!dates)throw new Error('employee_not_available');
  if(!['groupJoinDateCorrection','blacklist'].includes(resolved.behaviourKind)&&effectiveDate<dates.hiredOn)throw new Error('event_before_hire');
  const exit=[dates.terminatedOn,dates.lastWorkingDate,dates.resignationDate].filter((date):date is string=>!!date).sort()[0];
- if(exit&&effectiveDate>exit&&(isComparisonKind(resolved.behaviourKind)||['secondment','actingPosition'].includes(resolved.behaviourKind)))throw new Error('event_after_exit');
+ if(!correctingExit&&exit&&effectiveDate>exit&&(isComparisonKind(resolved.behaviourKind)||['secondment','actingPosition'].includes(resolved.behaviourKind)))throw new Error('event_after_exit');
  if(resolved.behaviourKind==='blacklist'&&effectiveDate!==todayInKualaLumpur())throw new Error('blacklist_date_must_be_today');
  const targetCompanyId=record.cells.companyId?lookup(record.cells.companyId,source.companies,'companyId'):currentCompanyId;
  const catalog=targetCompanyId===currentCompanyId?source:await catalogTx(tx,ctx,targetCompanyId);
@@ -308,11 +308,11 @@ async function applyCorrectionTx(tx:Tx,ctx:SessionContext,record:MovementImportR
   if(action==='delete'){
    // Delete names the movement by id; a filled date or type is a check that it is the one HR meant.
    if(record.cells.effectiveDate&&movementImportDate(record.cells.effectiveDate)!==base.effectiveDate)throw new Error('event_mismatch:effectiveDate');
-   if(record.cells.kind&&record.cells.kind!==base.kind)throw new Error('event_mismatch:kind');
+   if(record.cells.kind&&record.cells.kind!==base.kind&&record.cells.kind!==base.displayKind)throw new Error('event_mismatch:kind');
    await reverseMovementForImportTx(tx,ctx,employmentId,movementId,reason,{acknowledgeClosedPayroll});
   }else{
    if(!base.input)throw new Error('movement_update_not_supported');
-   const prepared=await inputTx(tx,ctx,{...record,cells:{...record.cells,kind:record.cells.kind??base.kind,effectiveDate:record.cells.effectiveDate??base.effectiveDate}},employmentId,before.companyId);
+   const prepared=await inputTx(tx,ctx,{...record,cells:{...record.cells,kind:record.cells.kind??base.kind,effectiveDate:record.cells.effectiveDate??base.effectiveDate}},employmentId,before.companyId,base.behaviour==='termination'||base.behaviour==='resignation');
    const provided=Object.fromEntries(Object.entries(prepared.input).filter(([,value])=>value!==undefined)) as Partial<CreateMovementInput>;
    // Before, when filled, is the value the movement recorded (what the Employment History download shows).
    if(record.before&&Object.keys(record.before).length){
@@ -321,12 +321,14 @@ async function applyCorrectionTx(tx:Tx,ctx:SessionContext,record:MovementImportR
    }
    // Only a superior HR typed is admitted again (test-record and eligibility rules); a kept one is not re-judged.
    references=(await movementImportRulesTx(tx,ctx,{...record,importVersion:undefined},{...provided,employmentId} as CreateMovementInput,before,prepared.behaviour)).references;
-   const merged={...base.input,...provided,employmentId,kind:provided.kind??base.kind,effectiveDate:provided.effectiveDate??base.effectiveDate} as CreateMovementInput;
+   const destinationFields = new Set<string>(movementFormFields(prepared.behaviour));
+   const retained = base.behaviour === prepared.behaviour ? base.input : Object.fromEntries(Object.entries(base.input).filter(([key]) => destinationFields.has(key)));
+   const merged={...retained,...provided,employmentId,kind:provided.kind??base.kind,effectiveDate:provided.effectiveDate??base.effectiveDate} as CreateMovementInput;
    kind=merged.kind;effectiveDate=merged.effectiveDate;behaviour=prepared.behaviour;
    await editMovementEventTx(tx,ctx,{...merged,movementId,reason,acknowledgeClosedPayroll});
   }
  }catch(error){correctionError(error);}
- if(behaviour&&movementNeedsEntitlementReprojection(behaviour))await reprojectEntitlementForEmployment(ctx,{employmentId,trigger:'movement_recorded',gradeBefore:{gradeId:before.gradeId},...(action==='update'?{changeEffectiveOn:effectiveDate}:{})},tx);
+ if(behaviour&&(movementNeedsEntitlementReprojection(behaviour)||!!base.behaviour&&movementNeedsEntitlementReprojection(base.behaviour)))await reprojectEntitlementForEmployment(ctx,{employmentId,trigger:'movement_recorded',gradeBefore:{gradeId:before.gradeId},...(action==='update'?{changeEffectiveOn:effectiveDate}:{})},tx);
  // The closed months the owner recorded on the reversal(s) this correction appended (replays included).
  const reversals=await tx.select({payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,employmentId),gt(domainEvent.sequence,marker),eq(domainEvent.eventType,'employment.movement.reversed')));
  const closedPayrollPeriods=[...new Set(reversals.flatMap(row=>{const periods=(row.payload as {closedPayrollPeriods?:unknown}|null)?.closedPayrollPeriods;return Array.isArray(periods)?periods.filter((period):period is string=>typeof period==='string'):[];}))].sort();

@@ -22,7 +22,6 @@ import {
 import {
   createMovementEvent,
   editMovementEvent,
-  isComparisonKind,
   MOVEMENT_FLAT_FIELDS,
   MovementNoChangeError,
   reverseMovementEvent,
@@ -576,7 +575,7 @@ export async function editMovementEventAction(formData: FormData) {
       acknowledgeClosedPayroll: formData.get('acknowledgeClosedPayroll') === '1',
     });
     // A correction can move the grade just as the original did, and it carries its own effective date.
-    if (isComparisonKind(result.behaviourKind))
+    if (movementNeedsEntitlementReprojection(result.behaviourKind) || (result.previousBehaviourKind && movementNeedsEntitlementReprojection(result.previousBehaviourKind)))
       await recomputeEntitlement(s, employmentId, 'movement_recorded', {
         gradeBefore,
         changeEffectiveOn: p.effectiveDate ?? null,
