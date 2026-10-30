@@ -459,3 +459,11 @@ ledger at integration freeze; no installation priority or deployment authority i
 append-only source allocation above frozen wave4 eabfe797. No installation priority or release
 authority; reconcile against the accepted migration ledger at integration freeze. Historical SQL
 is unchanged. Only the new kind gains its nullable actor scope; every predecessor rule is retained.
+
+### Existing recurring fixed-item archive — provisional source claim
+
+0724_assistant_fixed_item_archive / idx705 / when1793330000053 is UNAPPLIED PROVISIONAL
+source only over frozen47797e5. It adds one archive-only kind to the existing encrypted assigned
+ledger, retaining every predecessor scope/receipt/native-outcome branch and dynamic bounds.
+Reconcile against the actual accepted ordered installation ledger at integration freeze. No
+installation priority, protected-ref movement or deployment is authorized.

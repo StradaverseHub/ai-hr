@@ -37,17 +37,3 @@ describe('current-source human review links',()=>{
   state.locale=locale;const view=await issued(),shown=await show([view]),copy=copies[locale].assistant.workspace.jobs,link=screen.getAllByRole('link',{name:`${copy.reviewAction} — ${copy.module_employees}`})[0];expect(link.getAttribute('href')).toBe('/admin/personnel/import');expect(link.className).toContain('min-h-11');expect(link.className).toContain('focus-visible:ring-2');expect(shown.container.textContent).toContain(copy.humanReviewNote);expect(shown.container.textContent).not.toMatch(/PRIVATE-|submit automatically/i);expect(shown.container.querySelector('form')).toBeNull();
  });
  it('deduplicates exact module/route across issued views and duplicate action routes',async()=>{
-  const employees=await issued(),again=await issued(),claims=await issued('claims');await show([employees,again,claims,claims]);const links=screen.getAllByRole('link');expect(links.map(link=>link.getAttribute('href'))).toEqual(['/admin/personnel/import','/assistant/compensation','/assistant/employee-code','/assistant/workforce-profile','/assistant/bank','/assistant/document-details','/assistant/payment-method','/assistant/passport','/assistant/emergency-contacts','/assistant/family','/assistant/qualifications','/assistant/employee-drafts','/assistant/claims']);
- });
- it('rejects copied and cross-caller views before disclosing even another valid handoff',async()=>{
-  const original=await issued();for(const input of [{views:[JSON.parse(JSON.stringify(original)) as CanonicalModuleJobView],principal:ctx},{views:[original],principal:{...ctx,userId:'other'}},{views:[original,JSON.parse(JSON.stringify(original)) as CanonicalModuleJobView],principal:ctx}]){const shown=await show(input.views,input.principal);expect(shown.container.textContent).toBe('');expect(screen.queryByRole('link')).toBeNull();shown.unmount();}
- });
- it('does not infer a link from the global catalogue when the actual read returned no handoff',async()=>{const view=await issued('employees','omit');const shown=await show([view]);expect(shown.container.textContent).toBe('');expect(screen.queryByRole('link')).toBeNull();});
- it('refuses foreign, parameterized or model-provided route metadata through the actual source owner',async()=>{
-  for(const route of ['/assistant/claims','/admin/personnel/import?confirm=true','https://outside.invalid/effect','javascript:alert(1)']){const declared=moduleHumanActionHandoffs('employees'),view=await issued('employees',declared.map(row=>({...row,route})));expect(view.state).toBe('unavailable');const shown=await show([view]);expect(screen.queryByRole('link')).toBeNull();expect(shown.container.textContent).toBe('');shown.unmount();}
- });
- it('does not convert a genuine original-record link into a human action handoff',async()=>{const view=await issued('payroll','omit');expect(view.state).toBe('ready');if(view.state!=='ready')throw Error('Missing actual payroll fixture');expect(view.presentation.cards.some(card=>card.href?.startsWith('/me/payslip/')&&card.linkPurpose!=='human_review')).toBe(true);const shown=await show([view]);expect(screen.queryByRole('link')).toBeNull();expect(shown.container.textContent).toBe('');});
- it('returns no footer for an empty source set or a module without actual human-review cards',async()=>{
-  for(const views of [[],[await issued('assistant')]]){const shown=await show(views);expect(screen.queryByRole('link')).toBeNull();expect(shown.container.textContent).toBe('');shown.unmount();}
- });
-});

@@ -1,3 +1,4 @@
+import {fixedItemArchiveReviews} from './fixed-item-archive-review-store';
 import {paymentMethodMaintenanceReviews} from './payment-method-maintenance-review-store';
 import {passportMaintenanceReviews} from './passport-maintenance-review-store';
 import {employeeCodeMaintenanceReviews} from './employee-code-maintenance-review-store';
@@ -67,6 +68,7 @@ const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOut
  'employees.passport.maintain':(tx,ctx,id)=>passportMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.bank.maintain':(tx,ctx,id)=>bankMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.document_metadata.maintain':(tx,ctx,id)=>documentMetadataReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.fixed_item.archive':(tx,ctx,id)=>fixedItemArchiveReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.emergency_contact.maintain':(tx,ctx,id)=>emergencyContactMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.draft.activate':(tx,ctx,id)=>employeeDraftActivationReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.family.maintain':(tx,ctx,id)=>familyMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),

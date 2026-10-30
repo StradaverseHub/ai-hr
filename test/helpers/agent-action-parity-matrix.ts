@@ -106,6 +106,7 @@ export const AGENT_ACTION_PARITY={
  'employees.workforce_profile.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.passport.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.bank.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'employees.fixed_item.archive':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.document_metadata.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.emergency_contact.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.draft.activate':{kind:'probed',screen:HR_ON_EMPLOYMENT},
