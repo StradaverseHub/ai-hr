@@ -61,21 +61,25 @@ it('refuses every legacy-column hybrid while preserving a valid new-kind review 
 
 // Each mutation uses a real valid encrypted custody row; NULL cannot fail a UUID FK/type check.
 const nullReceiptCases=(['awaiting_confirmation','completed'] as const).flatMap(state=>(['kind','id','both'] as const).map(field=>({state,field})));
-it.each(nullReceiptCases)('rejects NULL receipt $field in $state at assistant_review_generic_receipt',async({state,field})=>{
+it.each(nullReceiptCases)('rejects NULL receipt $field in $state through immutable custody and the actual receipt CHECK',async({state,field})=>{
  const review=(await store.prepare(ctx,human())).review;
  if(state==='completed')expect((await store.confirm(ctx,command(review))).kind).toBe('completed');
  const snapshot=async()=>{const[row]=await owner.db.execute<{record:unknown}>(sql`select jsonb_build_object('row',to_jsonb(q),'body',(select to_jsonb(c) from app.assistant_own_leave_review_content c where c.action_id=q.id)) as record from app.assistant_own_leave_review q where q.id=${review.actionId}::uuid`);return row.record;};
  const saved=await snapshot(),before=await business();
  const fields=field==='kind'?sql`receipt_subject_kind=NULL`:field==='id'?sql`receipt_subject_id=NULL`:sql`receipt_subject_kind=NULL,receipt_subject_id=NULL`;
  let failure:unknown;try{await owner.db.execute(sql`update app.assistant_own_leave_review set ${fields} where id=${review.actionId}::uuid`);}catch(error){failure=error;}
- expect(pgSqlState(failure)).toBe('23514');
- let constraint:unknown,current=failure;
- for(let depth=0;current&&typeof current==='object'&&depth<4;depth++){
-  const error=current as {constraint_name?:unknown;constraint?:unknown;cause?:unknown};
-  if(error.constraint_name!==undefined||error.constraint!==undefined){constraint=error.constraint_name??error.constraint;break;}
-  current=error.cause;
+ // The newer ordinary identity guard deliberately refuses before CHECK evaluation.
+ expect(pgSqlState(failure)).toBe('42501');
+ const messages:string[]=[];let current:unknown=failure;
+ for(let depth=0;current&&typeof current==='object'&&depth<8;depth++){
+  const error=current as {message?:string;cause?:unknown};if(error.message)messages.push(error.message);current=error.cause;
  }
- expect(constraint).toBe('assistant_review_generic_receipt');
+ expect(messages.some(message=>message.includes(state==='completed'?'Attendance completed identity changed':'Attendance pending proof immutable'))).toBe(true);
+ // Independently evaluate the ACTUAL installed catalog CHECK on a type-correct mutated
+ // real row. No trigger disabling, production grant or replacement predicate is involved.
+ const[check]=await owner.db.execute<{expression:string}>(sql`select pg_get_expr(conbin,conrelid) expression from pg_constraint where conrelid='app.assistant_own_leave_review'::regclass and conname='assistant_review_generic_receipt' and contype='c'`);expect(check.expression).toBeTruthy();
+ const nulls=field==='kind'?{receipt_subject_kind:null}:field==='id'?{receipt_subject_id:null}:{receipt_subject_kind:null,receipt_subject_id:null};
+ const[result]=await owner.db.execute<{accepted:boolean|null}>(sql`select (${sql.raw(check.expression)}) accepted from (select (jsonb_populate_record(NULL::app.assistant_own_leave_review,to_jsonb(q)||${JSON.stringify(nulls)}::jsonb)).* from app.assistant_own_leave_review q where q.id=${review.actionId}::uuid) typed_row`);expect(result.accepted).toBe(false);
  expect(await snapshot()).toEqual(saved);expect(await business()).toEqual(before);
  if(state==='awaiting_confirmation')expect((await store.confirm(ctx,command(review))).kind).toBe('completed');
  expect((await store.reopen(ctx,review.actionId)).kind).toBe('completed');

@@ -18,7 +18,7 @@ import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {grantAssistant} from '../core/assistant-grant';
 import {erasePersonPii} from '../core/pdpa';
 import {captureNativeOutcomeTargetsTx} from '../core/module-native-outcome-targets';
-import {createAttendanceRule,setEmploymentScheduleGroup,attendanceDayEditor,saveAttendanceDayEdit} from '../packs/attendance/service';
+import {createAttendanceRule,setEmploymentScheduleGroupTx,attendanceDayEditor,saveAttendanceDayEdit} from '../packs/attendance/service';
 import {scheduleGroupMaintenanceReviews as groupStore} from '../core/assistant-actions/schedule-group-maintenance-review-store';
 import {dayScheduleCorrectionReviews as dayStore} from '../core/assistant-actions/day-schedule-correction-review-store';
 import {withScheduleGroupMaintenanceSubjectTx,prepareScheduleGroupMaintenanceSourceTx,confirmScheduleGroupMaintenanceSourceTx} from '../core/assistant-actions/schedule-group-maintenance-source';
@@ -42,7 +42,7 @@ beforeEach(async()=>{
 // rows/events. Never compare a command's own summary to itself as a rollback oracle.
 const tables=['public.app_user','public.pay_period','public.payslip','public.company_payroll_config','public.payroll_policy','public.payroll_history_import_attempt','public.payroll_history_import_record','public.payroll_history_import_snapshot','public.payroll_history_import_revision','public.payroll_history_import_event','public.employment','public.person','public.role_assignment','public.access_configuration','app.access_profile_write_generation','public.domain_event','public.attendance','public.attendance_punch','public.attendance_day_adjustment','public.attendance_overtime_source','public.attendance_overtime_calculation','public.attendance_overtime_calculation_evidence','public.attendance_overtime_policy_part','public.attendance_overtime_line','public.payroll_batch','app.assistant_own_leave_review','app.assistant_own_leave_review_content'];
 async function snapshot(){return Promise.all(tables.map(async table=>{const[row]=await owner.db.execute<{rows:unknown}>(sql.raw(`select coalesce(jsonb_agg(j order by j::text),'[]'::jsonb) as rows from (select to_jsonb(x) j from ${table} x) source`));return{table,rows:row.rows};}));}
-async function refused(work:()=>Promise<unknown>,before:Awaited<ReturnType<typeof snapshot>>){let failure:unknown;try{await work();}catch(error){failure=error;}expect(pgSqlState(failure)).toBe('42501');expect(await snapshot()).toEqual(before);}
+async function refused(work:()=>Promise<unknown>,before:Awaited<ReturnType<typeof snapshot>>){let failure:unknown;try{await work();}catch(error){failure=error;}expect(pgSqlState(failure)).toBe('42501');expect(await snapshot()).toEqual(before);return failure;}
 async function trigger(table:string,when:string,body:string,deferred=false){
  const name='zz_test_attendance_'+randomUUID().replaceAll('-','');
  await owner.db.execute(sql.raw(`create function public.${name}() returns trigger language plpgsql security definer set search_path=pg_catalog,public,pg_temp as $$ begin ${body} end $$`));
@@ -59,21 +59,27 @@ async function prepared(action:typeof actions[number],date=todayInKualaLumpur())
 type Pick=Awaited<ReturnType<typeof prepared>>;
 const confirm=(pick:Pick)=>pick.action===G.action?groupStore.confirm(ctx,{actionId:pick.review.actionId,reviewedDigest:pick.review.reviewedDigest}):dayStore.confirm(ctx,{action:D.action,contractVersion:1,actionId:pick.review.actionId,reviewedDigest:pick.review.reviewedDigest});
 const reopen=(pick:Pick)=>pick.action===G.action?groupStore.reopen(ctx,pick.review.actionId):dayStore.reopen(ctx,pick.review.actionId);
-async function completeTx(tx:Tx,pick:Pick){
+async function completeTx(tx:Tx,pick:Pick,beforeComplete?:(tx:Tx)=>Promise<unknown>){
  if(pick.action===G.action)return withScheduleGroupMaintenanceSubjectTx(tx,ctx,target.employmentId,'pending',async fresh=>{
   const expected=await prepareScheduleGroupMaintenanceSourceTx(tx,fresh,pick.human),native=await confirmScheduleGroupMaintenanceSourceTx(tx,fresh,pick.human,expected.reviewedDigest);
   await captureNativeOutcomeTargetsTx(tx,fresh,{action:G.action,sourceId:pick.review.actionId,eventId:native.eventId,targets:[{kind:'employment',id:target.employmentId},{kind:'person',id:target.personId}]});
+  if(beforeComplete)await beforeComplete(tx);
   await tx.execute(sql`select app.assistant_assigned_review_complete(${pick.review.actionId}::uuid,${G.action},${pick.review.reviewedDigest},${native.eventId}::uuid)`);
  });
  return withDayScheduleIntervalTx(tx,ctx,{employmentId:target.employmentId,date:pick.human.date},async(fresh,subject)=>{
   const expected=await prepareDayScheduleSourceTx(tx,fresh,pick.human,subject),native=await confirmDayScheduleSourceTx(tx,fresh,pick.human,expected.reviewedDigest,subject);
   await captureNativeOutcomeTargetsTx(tx,fresh,{action:D.action,sourceId:pick.review.actionId,eventId:native.eventId,targets:[{kind:'employment',id:target.employmentId},{kind:'person',id:target.personId}]});
+  if(beforeComplete)await beforeComplete(tx);
   await tx.execute(sql`select app.assistant_attendance_day_schedule_command(p_operation=>'complete',p_id=>${pick.review.actionId}::uuid,p_reviewed=>${pick.review.reviewedDigest},p_event=>${native.eventId}::uuid)`);
  });
 }
 async function completionControl(pick:Pick){
+ // Application has no direct ledger/body SELECT grant. A fixture-only, exact-row reader
+ // observes this transaction's persisted SQL state without widening production authority.
+ const name='fixture_attendance_complete_read_'+randomUUID().replaceAll('-','');
+ await owner.db.execute(sql.raw(`create function app.${name}() returns jsonb language sql security definer set search_path=pg_catalog,public,pg_temp as $$ select jsonb_build_object('state',q.state,'bodies',(select count(*)::int from app.assistant_own_leave_review_content c where c.action_id=q.id)) from app.assistant_own_leave_review q where q.id='${pick.review.actionId}'::uuid and q.tenant_id=app.current_tenant_id() and q.user_id=app.current_user_id() $$;revoke all on function app.${name}() from public;grant execute on function app.${name}() to ai_hr_app;`));cleanup.push(()=>owner.db.execute(sql.raw(`drop function if exists app.${name}()`)));
  const before=await snapshot(),control=Error('rollback actual protected complete positive');
- await expect(withTenant(ctx,async tx=>{await completeTx(tx,pick);const[row]=await tx.execute<{state:string;bodies:number}>(sql`select state,(select count(*)::int from app.assistant_own_leave_review_content c where c.action_id=q.id) bodies from app.assistant_own_leave_review q where id=${pick.review.actionId}::uuid`);expect(row).toEqual({state:'completed',bodies:0});throw control;})).rejects.toBe(control);expect(await snapshot()).toEqual(before);
+ await expect(withTenant(ctx,async tx=>{await completeTx(tx,pick);const[row]=await tx.execute<{record:{state:string;bodies:number}}>(sql`select ${sql.raw('app.'+name)}() record`);expect(row.record).toEqual({state:'completed',bodies:0});throw control;})).rejects.toBe(control);expect(await snapshot()).toEqual(before);
 }
 for(const action of actions){
  it(`${action}: refuses a real ordinary AFTER DELETE ciphertext resurrection and rolls back the entire native/custody transaction`,async()=>{
@@ -108,7 +114,7 @@ for(const action of actions){
  });
  it(`${action}: preserves later native edits, original historical recovery and actual completed-review PDPA`,async()=>{
   const pick=await prepared(action),done=await confirm(pick);expect(done.kind).toBe('completed');
-  if(action===G.action)await setEmploymentScheduleGroup(root(),{employmentId:target.employmentId,attendanceRuleId:null});
+  if(action===G.action)await withTenant(root(),tx=>setEmploymentScheduleGroupTx(tx,root(),{employmentId:target.employmentId,attendanceRuleId:null}));
   else{const human=await dayHuman();await saveAttendanceDayEdit(root(),{...human,kind:'schedule',dayKind:'holiday',reason:'Later separately authorized native correction'});}
   expect(await reopen(pick)).toEqual(done);
   await erasePersonPii(root(),{subjectEmploymentId:target.employmentId,scope:'contact',requestRef:'FICTIONAL-ATTENDANCE-COMPLETION-PRIVACY',reason:'Fictional completed review privacy check'});
@@ -140,12 +146,34 @@ for(const action of actions){
   await refused(()=>withTenant(ctx,async tx=>{await completeTx(tx,pick);await tx.execute(sql`set constraints all immediate`);await tx.execute(sql`select ${sql.raw('app.'+name)}()`);}),before);
  });
  it(`${action}: a genuinely slow ordinary body-delete trigger cannot outlive the final confirmation deadline`,async()=>{
-  const pick=await prepared(action),sequence='fixture_attendance_expiry_'+randomUUID().replaceAll('-','');
-  await owner.db.execute(sql.raw(`create sequence public.${sequence}`));cleanup.push(()=>owner.db.execute(sql.raw(`drop sequence if exists public.${sequence}`)));
-  await trigger('app.assistant_own_leave_review_content','after delete',`if OLD.action_id='${pick.review.actionId}'::uuid then perform nextval('public.${sequence}');perform pg_sleep(9);end if;return OLD;`);
-  await owner.db.execute(sql`update app.assistant_own_leave_review set expires_at=clock_timestamp()+interval '8 seconds' where id=${pick.review.actionId}::uuid`);
-  const before=await snapshot();await refused(()=>withTenant(ctx,tx=>completeTx(tx,pick)),before);
-  const[seen]=await owner.db.execute<{called:boolean}>(sql.raw(`select is_called as called from public.${sequence}`));expect(seen.called,'the ordinary trigger must actually execute before final deadline refusal').toBe(true);
+  const pick=await prepared(action),sequence='fixture_attendance_expiry_'+randomUUID().replaceAll('-',''),entry=sequence+'_entry',exit=sequence+'_exit';
+  // Sequence changes survive the intended full transaction rollback. Each records the
+  // actual SQL clock minus the actual stored expiry in microseconds, not a mocked clock.
+  for(const marker of [entry,exit]){await owner.db.execute(sql.raw(`create sequence public.${marker} as bigint minvalue -9223372036854775808 maxvalue 9223372036854775807 start with 0`));cleanup.push(()=>owner.db.execute(sql.raw(`drop sequence if exists public.${marker}`)));}
+  await trigger('app.assistant_own_leave_review_content','after delete',`if OLD.action_id='${pick.review.actionId}'::uuid then
+   declare actual_expiry timestamptz;entered timestamptz;exited timestamptz;begin
+    select expires_at into actual_expiry from app.assistant_own_leave_review where id=OLD.action_id;
+    if not found then raise exception 'Fictional callback expiry missing' using errcode='P0001';end if;
+    entered:=clock_timestamp();perform setval('public.${entry}',floor(extract(epoch from (entered-actual_expiry))*1000000)::bigint,true);
+    if entered>=actual_expiry then raise exception 'Fictional callback entered after expiry' using errcode='P0001';end if;
+    perform pg_sleep(3);
+    exited:=clock_timestamp();perform setval('public.${exit}',floor(extract(epoch from (exited-actual_expiry))*1000000)::bigint,true);
+    if exited<=actual_expiry then raise exception 'Fictional callback exited before expiry' using errcode='P0001';end if;
+   end;
+  end if;return OLD;`);
+  // Fixture-only exact-row deadline setup; the app itself has no raw ledger UPDATE.
+  const deadline='fixture_attendance_deadline_'+randomUUID().replaceAll('-','');
+  await owner.db.execute(sql.raw(`create function app.${deadline}() returns void language plpgsql security definer set search_path=pg_catalog,public,pg_temp as $$ begin update app.assistant_own_leave_review set expires_at=clock_timestamp()+interval '2 seconds' where id='${pick.review.actionId}'::uuid and state='awaiting_confirmation' and tenant_id=app.current_tenant_id() and user_id=app.current_user_id();if not found then raise exception 'Fictional deadline row missing';end if;end $$;revoke all on function app.${deadline}() from public;grant execute on function app.${deadline}() to ai_hr_app;`));cleanup.push(()=>owner.db.execute(sql.raw(`drop function if exists app.${deadline}()`)));
+  // Arm immediately before SQL completion, after actual native work/target capture;
+  // three seconds crosses the real deadline within the real five-second statement cap.
+  const before=await snapshot(),failure=await refused(()=>withTenant(ctx,tx=>completeTx(tx,pick,inner=>inner.execute(sql`select ${sql.raw('app.'+deadline)}()`))),before);
+  const messages:string[]=[];let cause:unknown=failure;const visited=new Set<unknown>();
+  while(cause&&typeof cause==='object'&&!visited.has(cause)){visited.add(cause);const error=cause as {message?:string;cause?:unknown};if(error.message)messages.push(error.message);cause=error.cause;}
+  expect(messages).toContain('Attendance confirmation expired');
+  const[entrySeen]=await owner.db.execute<{called:boolean;delta:string}>(sql.raw(`select is_called called,last_value::text delta from public.${entry}`));
+  const[exitSeen]=await owner.db.execute<{called:boolean;delta:string}>(sql.raw(`select is_called called,last_value::text delta from public.${exit}`));
+  expect(entrySeen.called,'ordinary callback entry must precede expiry').toBe(true);expect(exitSeen.called,'the real sleeping callback must return past expiry').toBe(true);
+  expect(BigInt(entrySeen.delta)<BigInt(0)).toBe(true);expect(BigInt(exitSeen.delta)>BigInt(0)).toBe(true);
  },30000);
 }
 
@@ -372,7 +400,13 @@ for(const action of actions)it(`${action}: V4 later direct metadata DELETE refus
  const nativeBefore=(await snapshot()).filter(row=>!['public.app_user','public.role_assignment','public.access_configuration','app.access_profile_write_generation','app.assistant_own_leave_review','app.assistant_own_leave_review_content'].includes(row.table));
  const[exists]=await owner.db.execute<{n:number}>(sql`select count(*)::int n from app.assistant_own_leave_review where id=${pick.review.actionId}::uuid`);expect(exists.n).toBe(1);
  // Actual catalog-configured ON DELETE CASCADE; separate transaction from confirmation.
- await owner.db.delete(s.appUser).where(eq(s.appUser.id,userId));
+ await owner.db.transaction(async tx=>{
+  // Actual restrictive FK children of the disposable actor must be removed first.
+  // The review is removed only by the real configured USER cascade.
+  await tx.delete(s.assistantGrant).where(eq(s.assistantGrant.appUserId,userId));
+  await tx.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,userId));
+  await tx.delete(s.appUser).where(eq(s.appUser.id,userId));
+ });
  const[gone]=await owner.db.execute<{n:number}>(sql`select count(*)::int n from app.assistant_own_leave_review where id=${pick.review.actionId}::uuid`);expect(gone.n).toBe(0);
  expect((await snapshot()).filter(row=>!['public.app_user','public.role_assignment','public.access_configuration','app.access_profile_write_generation','app.assistant_own_leave_review','app.assistant_own_leave_review_content'].includes(row.table))).toEqual(nativeBefore);
 });
