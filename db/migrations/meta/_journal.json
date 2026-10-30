@@ -4432,6 +4432,20 @@
       "when": 1793330000261,
       "tag": "0861_assistant_review_body_pending_parent",
       "breakpoints": true
+    },
+    {
+      "idx": 748,
+      "version": "7",
+      "when": 1793330000263,
+      "tag": "0863_assistant_bank_effect_closure",
+      "breakpoints": true
+    },
+    {
+      "idx": 749,
+      "version": "7",
+      "when": 1793330000264,
+      "tag": "0864_assistant_catalogue_effect_closure",
+      "breakpoints": true
     }
   ]
 }

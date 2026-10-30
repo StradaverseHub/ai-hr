@@ -29,8 +29,9 @@ export async function prepareEmployeeIdTemplateStatusTx(tx:Tx,ctx:SessionContext
  const review=Review.parse({configId:s.configId,companyId:s.companyId,companyName:s.companyName,templateName:s.fields.templateName,prefix:s.fields.prefix,suffix:s.fields.suffix,status:s.status,afterStatus:content.status});
  return{content,review,reviewedDigest:createHash('sha256').update(JSON.stringify([1,ctx.tenantId,ctx.userId??null,ctx.personId??null,content,s])).digest('hex')};
 }
-export async function confirmEmployeeIdTemplateStatusTx(tx:Tx,ctx:SessionContext,value:unknown,confirmation:unknown){
+export async function confirmEmployeeIdTemplateStatusTx(tx:Tx,ctx:SessionContext,value:unknown,confirmation:unknown,reviewActionId?:string){
  const expected=Confirmation.parse(structuredClone(confirmation)),current=await prepareEmployeeIdTemplateStatusTx(tx,ctx,value);if(current.reviewedDigest!==expected.reviewedDigest)return fail();
+ if(reviewActionId)await tx.execute(sql`select app.assistant_catalogue_native_arm(${reviewActionId}::uuid)`);
  const s=await read(tx,current.content.configId),{after,eventId}=await apply(tx,ctx,s,current.content.status);if(!eventId)return fail();
  return Receipt.parse({kind:'recorded',configId:after.configId,companyId:after.companyId,templateName:after.fields.templateName,prefix:after.fields.prefix,suffix:after.fields.suffix,status:after.status,eventId,semantics:'native_employee_id_template_status_current_record'});
 }

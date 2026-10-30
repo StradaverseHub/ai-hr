@@ -815,3 +815,22 @@ Coordinator allocated `0747_assistant_performance_checkin_schedule_custody`, idx
 ## Shared prepared review body parent — 31 October source reservation
 
 Root coordinator reserved `0861_assistant_review_body_pending_parent`, idx747 / version7 / when1793330000261 / breakpoints:true, after0860 in the reconciled aggregate. Unapplied development source only; no installed-history priority or runtime-success claim. The exact independently reviewed SQL adds the same physical ledger body's pending-parent write invariant with sorted NOWAIT locks; existing native proof, expiry, cleanup, grants and RLS remain authoritative. Actual installed ledger and source hashes require root verification before any staging action.
+
+
+## Reviewed Bank and Organisation effect closure — 31 October source allocations
+
+Root coordinator reserved these append-only DEVELOPMENT source identities after fresh main/alpha
+`7c57d5f64cf81f60573ede28183803ff069b475a`, the refreshed actual installed581-row ledger/watermark75
+(`/private/tmp/parity-staging-ledger-refresh-20261031.json`), and reachable Git/worktree claim audit
+(`/private/tmp/parity-0863-0864-claim-audit-20261031.json`). These records establish source allocation,
+not installation, acceptance or runtime qualification.
+
+| Purpose | Tag | idx | version | when | breakpoints |
+| --- | --- | --- | --- | --- | --- |
+| Bank retained effect closure |0863_assistant_bank_effect_closure |748 |7 |1793330000263 |true |
+| Organisation catalogue effect closure |0864_assistant_catalogue_effect_closure |749 |7 |1793330000264 |true |
+
+Both append strictly after0861. Foreign0862/when1793330000262 remains preserved and excluded
+from this candidate; a numeric gap is intentional. Existing SQL bytes and the full journal prefix
+are immutable. Root must verify the then-current installation ledger and release evidence before
+any installation; neither source allocation nor focused development checks authorizes deployment.

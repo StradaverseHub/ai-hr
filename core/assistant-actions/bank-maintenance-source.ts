@@ -1,6 +1,7 @@
 /** Shared-person bank destination: country registry/native partial owner, local human values only. */
 import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
+import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
 import {isAdmin} from '../../lib/authz-model';
 import {BankMaintenance as C,type BankMaintenanceHuman as Human} from '../../lib/assistant-actions/bank-maintenance-contract';
@@ -14,6 +15,8 @@ import {requirePackFor} from '../../localization/registry';
 import {canonicalEntitlementsForDigest} from '../../lib/assistant-actions/canonical-entitlements';
 export class BankMaintenanceUnavailable extends Error{constructor(){super('Please reopen Bank Information on the native Personnel screen.');this.name='BankMaintenanceUnavailable';}}
 export const bankMaintenanceUnavailable=():never=>{throw new BankMaintenanceUnavailable();};
+const proofDigest=z.string().regex(/^[a-f0-9]{64}$/);
+export const BankMaintenanceProof=z.object({version:z.literal(1),before:proofDigest,retained:proofDigest,after:proofDigest,event:proofDigest,scope:proofDigest}).strict();
 const fail=bankMaintenanceUnavailable,hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 const uuidArray=(ids:readonly string[])=>sql`array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
 type Subject=AssignedSubject&{employeeName:string;employeeCode:string|null;companyName:string;scopeDigest:string;country:string;companyIds:string[];statutoryId:string};
@@ -35,9 +38,11 @@ export async function withBankMaintenanceIntervalTx<T>(tx:Tx,ctx:SessionContext,
 async function review(tx:Tx,ctx:SessionContext,human:Human){
  const s=await subject(tx,ctx,human.employmentId);if(s.subjectId!==human.subjectId)return fail();const pack=requirePackFor(s.country),owner=pack.statutory.reviewedBank;if(!owner)return fail();
  const native=await owner(tx,ctx,{personId:s.subjectId,...human.fields});
- const configuration=await tx.execute<{kind:string;rows:unknown}>(sql`select 'payroll' as kind,coalesce(jsonb_agg(to_jsonb(c) order by c.id),'[]'::jsonb) as rows from company_payroll_config c where c.tenant_id=${ctx.tenantId}::uuid and c.company_id=any(${uuidArray(s.companyIds)}) union all select 'permissions',coalesce(jsonb_agg(to_jsonb(c) order by c.id),'[]'::jsonb) from payroll_permission_grant c where c.tenant_id=${ctx.tenantId}::uuid`);
+ const configuration=await tx.execute<{kind:string;rows:unknown}>(sql`select 'payroll' as kind,coalesce(jsonb_agg((to_jsonb(c)-'created_at'-'updated_at')||jsonb_build_object('created_at',to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),'updated_at',to_char(c.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')) order by c.id),'[]'::jsonb) as rows from company_payroll_config c where c.tenant_id=${ctx.tenantId}::uuid and c.company_id=any(${uuidArray(s.companyIds)}) union all select 'permissions',coalesce(jsonb_agg((to_jsonb(c)-'created_at'-'updated_at')||jsonb_build_object('created_at',to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),'updated_at',to_char(c.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')) order by c.id),'[]'::jsonb) from payroll_permission_grant c where c.tenant_id=${ctx.tenantId}::uuid`);
  const item=C.Item.parse({employmentId:s.employmentId,subjectId:s.subjectId,employeeName:s.employeeName,employeeCode:s.employeeCode,companyName:s.companyName,supported:true,country:s.country,before:native.before,after:native.after,sharedPerson:true});
- return{review:item,reviewedDigest:hash([1,C.action,s,native.reviewedDigest,Array.from(configuration).sort((a,b)=>a.kind<b.kind?-1:a.kind>b.kind?1:0),pack.client.bankNames,canonicalEntitlementsForDigest(ctx.entitlements),item])};
+ const [expected]=await tx.execute<{proof:unknown}>(sql`select app.assistant_bank_review_expected(${s.employmentId}::uuid,${s.subjectId}::uuid,${JSON.stringify(native.after)}::jsonb) as proof`);
+ const bankProof=BankMaintenanceProof.parse(expected?.proof);
+ return{review:item,bankProof,reviewedDigest:hash([1,C.action,s,native.reviewedDigest,bankProof,Array.from(configuration).sort((a,b)=>a.kind<b.kind?-1:a.kind>b.kind?1:0),pack.client.bankNames,canonicalEntitlementsForDigest(ctx.entitlements),item])};
 }
 export const prepareBankMaintenanceSourceTx=review;
 export async function confirmBankMaintenanceSourceTx(tx:Tx,ctx:SessionContext,human:Human,expected:string){

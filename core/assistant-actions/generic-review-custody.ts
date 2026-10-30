@@ -38,7 +38,7 @@ export type ReviewCustodySpec<H,B extends ReviewActorBinding,R extends ReviewRow
  assertConfirmationBinding?(confirmation:unknown,binding:B,source:S):void;
  assertBodyBinding?(binding:B,body:ReviewBody<H>):void;
  prepareNative(tx:Tx,ctx:SessionContext,human:H,source:S):Promise<P>;
- confirmNative(tx:Tx,ctx:SessionContext,body:ReviewBody<H>,source:S,current?:P):Promise<N>;
+ confirmNative(tx:Tx,ctx:SessionContext,body:ReviewBody<H>,source:S,current?:P,reviewIdentity?:Readonly<{actionId:string}>):Promise<N>;
  /** Legacy cached-card protocols may reopen their original card after current source ownership; effects still revalidate natively. */
  reopenNative?(tx:Tx,ctx:SessionContext,body:ReviewBody<H>,source:S):Promise<P>;
  pending(row:R,body:ReviewBody<H>,current:P):Prepared;
@@ -90,7 +90,7 @@ export function createReviewCustody<H,B extends ReviewActorBinding,R extends Rev
   async confirm(supplied:SessionContext,input:unknown){assertHumanReviewedActionTier(supplied,spec.action,spec.tier);const ctx=capture(supplied),parsed=spec.confirmation.safeParse(input);if(!parsed.success)return fail();const p={...parsed.data,actionId:spec.normalizeActionId?.(parsed.data.actionId)??parsed.data.actionId};try{return await withTenant(ctx,tx=>withInterval(tx,ctx,{actionId:p.actionId},async(fresh,source)=>{
    const held=await snapshot(tx,fresh,p.actionId,source,p.reviewedDigest),stored=held.row;bound(stored,fresh,p.actionId,source);spec.assertConfirmationBinding?.(p,stored.metadata.binding,source);
    return settleReviewCustodyTx(stored,{kind:'confirm',expectedDigest:p.reviewedDigest},{completed:row=>completed(tx,fresh,row,source),retired,pending:async()=>{
-   const body=held.body??unseal(stored),native=await spec.confirmNative(tx,fresh,body,source,held.current);await captureNativeOutcomeTargetsTx(tx,fresh,{action:spec.action,sourceId:p.actionId,eventId:spec.nativeEvent(native),targets:spec.targets(source,native,held.current,body)});
+   const body=held.body??unseal(stored),native=await spec.confirmNative(tx,fresh,body,source,held.current,Object.freeze({actionId:stored.metadata.actionId}));await captureNativeOutcomeTargetsTx(tx,fresh,{action:spec.action,sourceId:p.actionId,eventId:spec.nativeEvent(native),targets:spec.targets(source,native,held.current,body)});
    const done=spec.stored.parse(await spec.completeRow(tx,p.actionId,p.reviewedDigest,native));bound(done,fresh,p.actionId,source,'completed');spec.assertCompletion(done,native);return completed(tx,fresh,done,source);
    },unavailable:fail});
   }));}catch{return fail();}},

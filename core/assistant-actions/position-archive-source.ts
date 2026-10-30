@@ -41,9 +41,10 @@ export async function preparePositionArchiveTx(tx:Tx,ctx:SessionContext,value:un
  const reviewedDigest=createHash('sha256').update(JSON.stringify([1,ctx.tenantId,ctx.userId??null,ctx.personId??null,content,s])).digest('hex');
  return {content,review,reviewedDigest};
 }
-export async function confirmPositionArchiveTx(tx:Tx,ctx:SessionContext,value:unknown,confirmation:unknown){
+export async function confirmPositionArchiveTx(tx:Tx,ctx:SessionContext,value:unknown,confirmation:unknown,reviewActionId?:string){
  const expected=Confirmation.parse(structuredClone(confirmation)),current=await preparePositionArchiveTx(tx,ctx,value);
  if(current.reviewedDigest!==expected.reviewedDigest)return fail();
+ if(reviewActionId)await tx.execute(sql`select app.assistant_catalogue_native_arm(${reviewActionId}::uuid)`);
  const s=await read(tx,current.content.positionId),{after,eventId}=await apply(tx,ctx,s,current.content.archived);
  if(!eventId)return fail();
  return Receipt.parse({kind:'recorded',positionId:after.positionId,companyId:after.companyId,title:after.title,archived:after.archived,eventId,semantics:'native_position_archive_current_record'});
