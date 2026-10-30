@@ -2,7 +2,14 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 vi.mock('../lib/ai',()=>({generateDraft:vi.fn()}));
 // Only this isolated unit suite substitutes capability issuance; DB suite uses real governance.
-vi.mock('../core/ai-governance',()=>({withAiAdmissionLifecycle:(cfg:unknown)=>cfg}));
+vi.mock('../core/ai-governance',()=>({
+ withAiAdmissionLifecycle:(cfg:unknown)=>cfg,
+ preparePrivateAiTask:async(configuration:ResolvedAiConfig,id:string,read:()=>Promise<unknown>)=>{
+  const {getProviderWorkloadDescriptor}=await import('../lib/ai/provider-workload-policy');
+  const descriptor=getProviderWorkloadDescriptor(id)!;
+  return {configuration,operation:descriptor.operation,...descriptor.capture(await read()),dispose(){}};
+ },
+}));
 import {generateDraft} from '../lib/ai';
 import {executePromptHoldout} from '../core/module-agent-prompt-harness';
 import {adjudicatePromptReadPlan,promptCandidateSystem,PROMPT_BASELINE,PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT,PROMPT_HOLDOUT_LOCALES} from '../lib/ai/module-agent-prompt-candidate';
