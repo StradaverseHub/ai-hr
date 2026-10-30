@@ -298,11 +298,16 @@ it('bank V2: later owner DELETE cannot remove completed metadata while genuine U
  await exactBankRefusal(()=>owner.db.execute(sql`delete from app.assistant_own_leave_review where id=${r.actionId}::uuid`),'Bank completed identity immutable');
  const userId=await createAppUser(b.tenantId,null,'hr_admin');await grantAssistant(ctx,{appUserId:userId});
  const who:SessionContext={...await entitledCtx(b,['hr_admin']),userId,personId:null,grants:[{role:'hr_admin',companyId:null}]};
- const second=(await store.prepare(who,human())).review;await store.confirm(who,confirm(second));const nativeBefore=await profile();
+ const second=(await store.prepare(who,human())).review;await store.confirm(who,confirm(second));const nativeBefore=await state();
  const [exists]=await owner.db.execute<{count:number}>(sql`select count(*)::int count from app.assistant_own_leave_review where id=${second.actionId}::uuid`);expect(exists.count).toBe(1);
- // This is the actual configured app_user -> review ON DELETE CASCADE, not a forged erasure GUC.
- await owner.db.delete(s.appUser).where(eq(s.appUser.id,userId));
- const [gone]=await owner.db.execute<{count:number}>(sql`select count(*)::int count from app.assistant_own_leave_review where id=${second.actionId}::uuid`);expect(gone.count).toBe(0);expect(await profile()).toEqual(nativeBefore);
+ // Remove only the disposable actor's two restrictive fixture children; the review is
+ // removed by the actual configured app_user -> review ON DELETE CASCADE.
+ await owner.db.transaction(async tx=>{
+  const grants=await tx.delete(s.assistantGrant).where(eq(s.assistantGrant.appUserId,userId)).returning({id:s.assistantGrant.id});expect(grants).toHaveLength(1);
+  const roles=await tx.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,userId)).returning({id:s.roleAssignment.id});expect(roles).toHaveLength(1);
+  const users=await tx.delete(s.appUser).where(eq(s.appUser.id,userId)).returning({id:s.appUser.id});expect(users).toEqual([{id:userId}]);
+ });
+ const [gone]=await owner.db.execute<{count:number;body_count:number;user_count:number}>(sql`select (select count(*)::int from app.assistant_own_leave_review where id=${second.actionId}::uuid) count,(select count(*)::int from app.assistant_own_leave_review_content where action_id=${second.actionId}::uuid) body_count,(select count(*)::int from public.app_user where id=${userId}::uuid) user_count`);expect(gone).toEqual({count:0,body_count:0,user_count:0});expect(await state()).toEqual(nativeBefore);
 });
 
 let bankAuditHarnessActive=false;
