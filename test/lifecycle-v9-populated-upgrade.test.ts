@@ -13,15 +13,16 @@ it('preserves populated Native issuance, private data, identity and every applie
  const journal=JSON.parse(journalBytes.toString());
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
- expect(journal.entries).toHaveLength(581);
+ expect(journal.entries).toHaveLength(582);
  expect(journal.entries.slice(boundary,579)).toHaveLength(8);
- expect(journal.entries.slice(boundary)).toHaveLength(10);
+ expect(journal.entries.slice(boundary)).toHaveLength(11);
  const migrationIdentity=(entry:{idx:number;version:string;when:number;tag:string;breakpoints:boolean})=>({...entry,hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')});
- // The accepted V9 prefix is immutable; only the two coordinated successors may follow it.
+ // The accepted V9 prefix and coordinated Feedback/Bank identities are immutable; Formula appends once.
  expect(createHash('sha256').update(JSON.stringify(journal.entries.slice(0,579).map(migrationIdentity))).digest('hex')).toBe('11e5295ce4e60acb1f13c009a78098b043c862b6412ed2bbc2e102f142a87f85');
  expect(journal.entries.slice(579).map(migrationIdentity)).toEqual([
   {idx:694,version:'7',when:1793330000065,tag:'0728_feedback_release_evidence',breakpoints:true,hash:'d0914e5ec06a1f78b5e081164ab46330f37c29c8c3b2d0d6c592b205cee374c7'},
   {idx:695,version:'7',when:1793330000075,tag:'0691_bank_import_point_read',breakpoints:true,hash:'be6f8d38850fadd9151d58ea7476d8f60e09a0bf2b2b078e0196f4cb90c5bfe9'},
+  {idx:696,version:'7',when:1793330000200,tag:'0800_pay_formula_builder',breakpoints:true,hash:'f8ba2919eb59346bc86453667cc7952a5671db88b740fcab3c41b4530802c322'},
  ]);
  const directory=mkdtempSync(join(tmpdir(),'v9-ordinary-upgrade-')),name='ai_hr_v9_upgrade_'+randomUUID().replaceAll('-','');
  const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);
