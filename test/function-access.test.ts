@@ -110,7 +110,73 @@ describe('function-access registry (lib/permissions)', () => {
     expect(hasAssistantSessionGuard('export default async function Layout(){await getBrowserCommandSession();return null;}')).toBe(true);
     for(const source of ['', '// await getBrowserCommandSession();', 'const label="await getBrowserCommandSession()";', 'function Layout(){getBrowserCommandSession();return null;}'])expect(hasAssistantSessionGuard(source)).toBe(false);
     const screen=SCREENS.find(row=>row.screenKey==='assistantWorkspace');expect(screen).toMatchObject({guard:'assistantSession',labelKey:'nav.assistant',hasScopeNote:true});
+    // Exact source-reviewed mounted inventory, independent of SCREENS and guardedRoutes().
+    // All53 routes share the real authenticated layout; narrower record/effect owners remain current.
+    const expectedAssistantRoutes = [
+      '/assistant',
+      '/assistant/approvals',
+      '/assistant/attendance',
+      '/assistant/bank',
+      '/assistant/claims',
+      '/assistant/compensation',
+      '/assistant/cost-allocation',
+      '/assistant/day-schedule',
+      '/assistant/document-details',
+      '/assistant/emergency-contacts',
+      '/assistant/employee-code',
+      '/assistant/employee-draft-discard',
+      '/assistant/employee-drafts',
+      '/assistant/family',
+      '/assistant/fixed-item-archive',
+      '/assistant/hr',
+      '/assistant/knowledge-base',
+      '/assistant/leave',
+      '/assistant/lifecycle',
+      '/assistant/notifications',
+      '/assistant/offboarding-case-cancel',
+      '/assistant/offboarding-step',
+      '/assistant/offboarding-step-undo',
+      '/assistant/org',
+      '/assistant/org-departments',
+      '/assistant/org-employee-id',
+      '/assistant/org-people-general',
+      '/assistant/org-positions',
+      '/assistant/passport',
+      '/assistant/pay-codes',
+      '/assistant/payment-method',
+      '/assistant/payroll-close',
+      '/assistant/payroll-reopen',
+      '/assistant/payroll-reset',
+      '/assistant/payroll-runs',
+      '/assistant/performance',
+      '/assistant/performance/checkins',
+      '/assistant/performance/checkins/complete',
+      '/assistant/performance/checkins/schedule',
+      '/assistant/performance/goals',
+      '/assistant/profile',
+      '/assistant/profile-request-rejection',
+      '/assistant/qualifications',
+      '/assistant/rewards',
+      '/assistant/rewards/calendar',
+      '/assistant/rewards/cancel',
+      '/assistant/rewards/return',
+      '/assistant/schedule-group',
+      '/assistant/statutory',
+      '/assistant/testing',
+      '/assistant/toil',
+      '/assistant/tp3-opening',
+      '/assistant/workforce-profile',
+    ];
     const actual=guardedRoutes().filter(route=>route==='/assistant'||route.startsWith('/assistant/')).sort();expect(screen?.routes.slice().sort()).toEqual(actual);expect(actual.length).toBeGreaterThan(1);
+    expect(actual).toEqual(expectedAssistantRoutes);expect(screen?.routes.slice().sort()).toEqual(expectedAssistantRoutes);
+    // This is CONDITIONAL shell reach, never a role grant to HR choices, fields, approval or effects.
+    // The actual roleEnum has8 roles; no new role or automatic permission is invented for added routes.
+    const expectedShellReach={employee:true,manager:true,hr_admin:true,super_admin:true,payroll_partner:true,performance_comp_partner:true,operator:true,performance_partner:true};
+    expect(Object.keys(expectedShellReach).sort()).toEqual([...roleEnum.enumValues].sort());
+    for(const [role,reachable] of Object.entries(expectedShellReach))expect(canReach(role as typeof roleEnum.enumValues[number],screen!),role).toBe(reachable);
+    const layout=codeWithoutComments(fs.readFileSync(path.join(APP,'assistant/layout.tsx'),'utf8'));
+    expect(layout).toContain('if(!session.userId)throw new AuthRequiredError');
+    expect(String(getPath(en,'admin.users.scope.assistantWorkspace'))).toContain('do not grant effect permission');
   });
 
   it('MATRIX_ROLES is exactly the roleEnum set (a new role forces a new grid row)', () => {

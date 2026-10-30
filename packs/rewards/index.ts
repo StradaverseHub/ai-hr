@@ -11,3 +11,7 @@ export const rewardsPack: ModulePack = {
   satelliteTables: ['reward_cycle', 'reward_unit', 'reward_member', 'reward_entry', 'reward_decision', 'reward_calendar'].map(table => ({ table })),
 };
 registerPack(rewardsPack);
+
+// Public client-safe calendar contract; canonical validation and values stay pack-owned.
+export {rewardCalendarSchema,emptyRewardCalendar,rewardCalendarStages,rewardOffcycleSlaStages} from './calendar';
+export type {RewardCalendarValues} from './calendar';

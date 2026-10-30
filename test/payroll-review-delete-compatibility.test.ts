@@ -139,13 +139,23 @@ describe('Payroll review/native draft deletion compatibility',()=>{
  });
 
  it('retires a genuine pending reopening through native unlock, reset and deletion while preserving its sibling',async()=>{
-  const sibling=(await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:period,runType:'bonus'})).batchId,siblingBefore=await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,sibling));
+  const sibling=(await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:period,runType:'bonus'})).batchId,siblingBefore=await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,sibling));expect(siblingBefore).toHaveLength(1);
   await closeBatch(ctx,{batchId});const prepared=await preparePayrollReopenReview(ctx,{action:'payroll.reopen',contractVersion:1,batchId,reason,confirmReopenClosedRun:true,acknowledgeRecordedDownstreamWarnings:true});if(prepared.kind!=='prepared')throw Error('Expected genuine pending reopening review');const id=prepared.review.actionId;
-  const identity=async()=>Array.from(await owner.db.execute(sql`select to_jsonb(r)-ARRAY['state','intent_digest','reviewed_digest','payroll_reopen_person_ids'] as row from app.assistant_own_leave_review r where id=${id}::uuid`)),beforeIdentity=await identity(),beforeCapture=await capture(id);expect(beforeCapture.rows).toEqual([]); // Pending review has no completed effect capture; nonempty completed retention is covered separately.
+  const identity=async()=>Array.from(await owner.db.execute<{row:Record<string,unknown>}>(sql`select to_jsonb(r)-ARRAY['state','intent_digest','reviewed_digest','payroll_reopen_person_ids'] as row from app.assistant_own_leave_review r where id=${id}::uuid`)),beforeIdentity=await identity(),beforeCapture=await capture(id);
+  expect(beforeIdentity).toHaveLength(1);expect(beforeIdentity[0].row.payroll_completion_root).toMatchObject({phase:'prepared'});
+  expect(beforeCapture.rows).toEqual([]); // Pending review has no completed effect capture; nonempty completed retention is covered separately.
   await unlockClosedBatch(ctx,{batchId,reason});await resetProcessedBatch(ctx,{batchId,reason});
   const [stillPending]=await owner.db.execute<{state:string;body:number}>(sql`select state,(select count(*)::int from app.assistant_own_leave_review_content where action_id=r.id) body from app.assistant_own_leave_review r where id=${id}::uuid`);expect(stillPending).toEqual({state:'awaiting_confirmation',body:1});expect(await identity()).toEqual(beforeIdentity);expect(await capture(id)).toEqual(beforeCapture);
   await deleteDraftBatch(ctx,{batchId});
-  const [retired]=await owner.db.execute<{state:string;people:unknown;intent:unknown;digest:unknown;body:number}>(sql`select state,payroll_reopen_person_ids people,intent_digest intent,reviewed_digest digest,(select count(*)::int from app.assistant_own_leave_review_content where action_id=r.id) body from app.assistant_own_leave_review r where id=${id}::uuid`);expect(retired).toEqual({state:'refused',people:null,intent:null,digest:null,body:0});expect(await identity()).toEqual(beforeIdentity);expect(await capture(id)).toEqual(beforeCapture);expect(await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,sibling))).toEqual(siblingBefore);expect((await owner.db.select().from(s.payPeriod).where(eq(s.payPeriod.id,periodId))).length).toBe(1);
+  const [retired]=await owner.db.execute<{state:string;people:unknown;intent:unknown;digest:unknown;body:number}>(sql`select state,payroll_reopen_person_ids people,intent_digest intent,reviewed_digest digest,(select count(*)::int from app.assistant_own_leave_review_content where action_id=r.id) body from app.assistant_own_leave_review r where id=${id}::uuid`);expect(retired).toEqual({state:'refused',people:null,intent:null,digest:null,body:0});
+  // Check the real sibling row independently before the target review's terminal template.
+  expect(await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,sibling))).toEqual(siblingBefore);
+  // The full private source must survive unlock/reset, then be scrubbed on target deletion.
+  // Preserve every other compared ledger field; do not omit the root from both snapshots.
+  const afterIdentity=await identity();
+  expect(afterIdentity).toEqual(beforeIdentity.map(({row})=>({row:{...row,payroll_completion_root:null}})));
+  expect(afterIdentity[0].row.payroll_completion_root).toBeNull();
+  expect(await capture(id)).toEqual(beforeCapture);expect((await owner.db.select().from(s.payPeriod).where(eq(s.payPeriod.id,periodId))).length).toBe(1);
  });
 
 });

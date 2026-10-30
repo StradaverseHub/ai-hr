@@ -1,13 +1,16 @@
 /** @vitest-environment jsdom */
 /** Authored UNRUN. Presentation/POST boundaries only, not native authority or promotion proof. */
-import {afterEach,describe,expect,it,vi} from 'vitest';
+import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
-vi.mock('next-intl/server',()=>({getTranslations:vi.fn(async(namespace:string)=>(key:string,values?:Record<string,unknown>)=>namespace+'.'+key+(values?' '+JSON.stringify(values):''))}));
+import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viCopy from '../messages/vi.json';
+const copyState=vi.hoisted(()=>({locale:null as string|null}));
+const copies:Record<string,typeof en>={en,ms,zh,ta,th,vi:viCopy};
+vi.mock('next-intl/server',()=>({getTranslations:vi.fn(async(namespace:string)=>(key:string,values?:Record<string,unknown>)=>{if(copyState.locale===null)return namespace+'.'+key+(values?' '+JSON.stringify(values):'');let value:unknown=copies[copyState.locale];for(const part of [...namespace.split('.'),...key.split('.')])value=(value as Record<string,unknown>)[part];if(typeof value!=='string')throw Error('Missing actual specialist translation');return value.replace(/\{(\w+)\}/g,(_all,name:string)=>String(values?.[name]??'{'+name+'}'));})}));
 vi.mock('../app/assistant/specialist-review-actions',()=>({createSpecialistCandidateAction:vi.fn(),evaluateSpecialistCandidateAction:vi.fn(),promoteSpecialistCandidateAction:vi.fn(),rollbackSpecialistCandidateAction:vi.fn(),runSpecialistJobAction:vi.fn()}));
 import {ModuleSpecialistFindings} from '../components/assistant/module-specialist-findings';
 import {executeCanonicalSpecialist} from '../lib/ai/module-specialists';
 import {ModuleSpecialistReview,SpecialistJobComposer} from '../components/assistant/module-specialist-review';
-afterEach(cleanup);
+beforeEach(()=>{copyState.locale=null;});afterEach(cleanup);
 function view(){return{modules:[{module:'leave' as const,nextVersion:3}],candidates:[
  {id:'own',module:'leave' as const,version:1,playbook:'canonical_domain_v1' as const,own:true,evaluations:2,passingEvaluators:2,incompleteEvaluators:0,personalSignals:false as boolean|null},
  {id:'missing-domain',module:'leave' as const,version:2,playbook:'canonical_followup_v1' as const,own:false,evaluations:2,passingEvaluators:0,incompleteEvaluators:2,personalSignals:false as boolean|null},
@@ -102,4 +105,14 @@ describe('promotion scope chosen by the approver',()=>{
   expect(within(form).getByText('assistant.workspace.specialists.scopeSignalsOnly')).toBeInTheDocument();
   expect(new FormData(form).get('scope')).toBe('user');
  });
+});
+
+it.each(['en','ms','zh','ta','th','vi'])('%s shows entity-specific native evidence and real promotion scope controls',async locale=>{
+ copyState.locale=locale;const data:Parameters<typeof ModuleSpecialistReview>[0]['view']={...view(),modules:[{module:'employees',nextVersion:3}],candidates:view().candidates.map(row=>({...row,module:'employees' as const})),ownNativeSignalChoices:[{associationId:'20000000-0000-4000-8000-000000000004',module:'employees',action:'employees.draft.discard',semantics:'saved_draft_deleted_not_employee',createdAt:'2026-01-01'}]};
+ const {container}=render(await ModuleSpecialistReview({view:data}));const copy=copies[locale].assistant.workspace,picker=container.querySelector<HTMLSelectElement>('select[name="nativeSignalId"]')!;
+ expect(picker).toBeTruthy();expect([...picker.options].map(option=>option.value)).toEqual(['','20000000-0000-4000-8000-000000000004']);expect(picker.value).toBe('');expect(picker.textContent).toContain(copy.nativeOutcomes.action_employees_draft_discard);
+ for(const key of ['scopeLegend','scopeUser','scopeCompany','scopeTenant','scopeHint'] as const)expect(container.textContent).toContain(copy.specialists[key]);
+ const company=container.querySelector<HTMLInputElement>('input[name="scope"][value="company"]')!;expect(company).not.toBeDisabled();fireEvent.click(company);expect(container.textContent).toContain(copy.specialists.scopeCompanyChoice);expect(container.querySelector('select[name="companyId"]')).toBeRequired();
+ cleanup();data.candidates=data.candidates.map(row=>({...row,personalSignals:true}));const second=render(await ModuleSpecialistReview({view:data}));expect(second.container.textContent).toContain(copy.specialists.scopeSignalsOnly);expect(second.container.querySelector('input[name="scope"][value="company"]')).toBeDisabled();expect(second.container.querySelector('input[name="scope"][value="tenant"]')).toBeDisabled();
+ expect(second.container.querySelector('[name="personId"],[name="employeeId"],[name="salary"]')).toBeNull();expect(second.container.textContent).not.toMatch(/action_employees_draft_discard|assistant\.workspace/);
 });

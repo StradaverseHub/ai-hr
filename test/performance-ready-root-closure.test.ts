@@ -168,7 +168,8 @@ it(`rolls ${kind} native effect back when real DB expiry passes during final bod
   `IF OLD.action_id='${f.review.actionId}'::uuid THEN PERFORM pg_sleep(least(3,greatest(0,extract(epoch from ((SELECT expires_at FROM app.assistant_own_leave_review WHERE id=OLD.action_id)-clock_timestamp())))+0.05));END IF;`);
  try{
   await expect(withTenant(f.a.ctx,async tx=>{
-   const [clock]=await tx.execute<{live:boolean}>(sql`select clock_timestamp()<expires_at as live from app.assistant_own_leave_review where id=${f.review.actionId}::uuid`);
+   // Fixture observation uses its real owner connection; the app receives no private-table SELECT.
+   const [clock]=await owner.db.execute<{live:boolean}>(sql`select clock_timestamp()<expires_at as live from app.assistant_own_leave_review where id=${f.review.actionId}::uuid`);
    expect(clock.live).toBe(true);await complete(tx,f);
   })).rejects.toMatchObject({cause:{code:'42501',message:kind==='schedule'?'Scheduling final custody changed':'Performance completed custody changed'}});
   expect(await observed(f)).toEqual(before);
@@ -235,6 +236,10 @@ it('permits real later canonical erasure after completed scheduling with body al
  expect(before).toMatchObject({state:'completed',event:eventId,planned:f.planned,result:f.planned,bodies:0});
  // Existing native canonical admission, contact-only scope, real retained subject and audited effect;
  // independent NEW transaction through normal native service owner, no restoration or privilege waiver.
+ // Seed genuinely erasable non-NULL contacts; primaryEmail is retained non-NULL identity.
+ await owner.db.update(schema.person).set({personalEmail:'fictional-erasure@fixture.test',phone:'+60120000000'}).where(eq(schema.person.id,f.a.employee.personId));
+ const [contactBefore]=await owner.db.select().from(schema.person).where(eq(schema.person.id,f.a.employee.personId));
+ expect(contactBefore.personalEmail).toBe('fictional-erasure@fixture.test');expect(contactBefore.phone).toBe('+60120000000');
  const report=await withTenant(group(),tx=>erasePersonPiiTx(tx,group(),{subjectEmploymentId:f.a.employee.employmentId,
   scope:'contact',reason:'Fictional later scheduling erasure',requestRef:'fictional-scheduling-'+randomUUID()}));
  expect(report).toBeDefined();
@@ -245,7 +250,9 @@ it('permits real later canonical erasure after completed scheduling with body al
   from app.assistant_own_leave_review r where r.id=${f.review.actionId}::uuid`);
  expect(after).toEqual({...before,intent:null,reviewed:null});
  const [person]=await owner.db.select().from(schema.person).where(eq(schema.person.id,f.a.employee.personId));
- expect(person.primaryEmail).toBeNull();
+ expect(report.erased).toEqual(expect.arrayContaining(['personalEmail','phone']));
+ expect(person.personalEmail).toBeNull();expect(person.phone).toBeNull();
+ expect(person.primaryEmail).toBe(contactBefore.primaryEmail);
  const erasures=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,f.a.employee.personId));
  expect(erasures.filter(e=>e.eventType==='pii.erased')).toHaveLength(1);
  const births=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,f.planned));

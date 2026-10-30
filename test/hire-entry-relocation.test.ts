@@ -173,7 +173,10 @@ describe('the dedicated screen carries the whole job', () => {
     expect(ownerStart).toBeGreaterThan(-1);
     expect(ownerEnd).toBeGreaterThan(ownerStart);
     const owner = codeOf(draftCore.slice(ownerStart, ownerEnd));
-    expect(owner).toContain('withTenant(ctx,async tx=>');
+    // The same native callback is named so explicit custody can supply its actual parent Tx.
+    expect(owner).toContain('const run=async(tx:Tx)=>');
+    expect(owner).toContain('const outcome=outerTx?await run(outerTx):await withTenant(ctx,run)');
+    expect(owner).toContain('if(outerTx)return {ok:true as const,value:await completeEmployeeDraftTx(tx,ctx,saved.id)}');
     expect(owner).toContain('saveEmployeeDraft(ctx,p,tx)');
     expect(owner).toContain('tx.transaction(activationTx=>completeEmployeeDraftTx(activationTx,ctx,saved.id))');
   });

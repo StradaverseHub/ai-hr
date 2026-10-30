@@ -18,13 +18,23 @@ const WORKER_SOURCE='968354c00a71df7baccd499eb60757a3307ed61e';
 const PACKET_POLICY={controller:'567ec0908a24e21078e458ec1e93e696cafeb0a8',formatSha256:'07fa30e623f192ed8231ed42de4a606ed8251539db95389ec7ad6b50ff166369',
  roots:['package.json','pnpm-lock.yaml','tsconfig.json','app','assets','components','content','core','data','db','deploy','i18n','lib','localization','messages','packs','public','scripts','types','node_modules']};
 const unchanged=['db/client.ts','scripts/bank-import-runner.ts','core/bank-import-job.ts','lib/bank-import-source.server.ts','lib/bank-import-job.ts'];
+// Current web db/client differs only in this reviewed erased type union. The child process below
+// still receives and verifies the COMPLETE immutable 968 db/client, including its original type.
+const WORKER_AGENT_ENABLEMENT = "export type AgentEnablement = { feature: 'readiness_reminders' | 'claims_triage'; userId: string; eventId: string };";
+const WEB_AGENT_ENABLEMENT = "export type AgentEnablement = { feature: 'readiness_reminders' | 'claims_triage' | 'approval_chasers' | 'review_chasers' | 'clock_reminders' | 'document_reminders' | 'lifecycle_chasers'; userId: string; eventId: string };";
+
 // Only the exact independently reviewed Bank changes may differ in the new web source.
 // The executed old worker still receives its own immutable original bytes below.
 const REVIEWED_BANK_SOURCE='9a1b613d8f7208e59ca389b0f72a67970a023a36';
 const reviewedChanges=['core/bank-import-worker.ts','core/import-sections.ts','core/import-history.ts'];
 beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
 it('runs immutable 968 worker Git source under the corrected V2 root policy against the AI schema and web contract',async()=>{
- expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...unchanged],{encoding:'utf8'}).trim()).toBe('');
+ expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...unchanged.filter(path=>path!=='db/client.ts')],{encoding:'utf8'}).trim()).toBe('');
+ const workerClient=execFileSync('git',['show',WORKER_SOURCE+':db/client.ts'],{encoding:'utf8'}),webClient=readFileSync('db/client.ts','utf8');
+ expect(workerClient.split(WORKER_AGENT_ENABLEMENT)).toHaveLength(2);
+ expect(webClient.split(WEB_AGENT_ENABLEMENT)).toHaveLength(2);
+ // No arbitrary type/comment stripping: ANY other runtime, import, context, transaction or type delta fails.
+ expect(webClient.replace(WEB_AGENT_ENABLEMENT,WORKER_AGENT_ENABLEMENT)).toBe(workerClient);
  expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...reviewedChanges],{encoding:'utf8'}).trim().split('\n').sort()).toEqual([...reviewedChanges].sort());
  expect(execFileSync('git',['diff','--name-only',REVIEWED_BANK_SOURCE,'HEAD','--',...reviewedChanges],{encoding:'utf8'}).trim()).toBe('');
  // PR61 adds a pinned provider-schema validator for tests only. Prove the complete old package
@@ -90,7 +100,7 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
   if(evidence){mkdirSync(evidence,{recursive:true});writeFileSync(join(evidence,'worker-cross-version.json'),JSON.stringify({
    kind:'GIT_SOURCE_CROSS_VERSION_FIXTURE_NOT_PACKET_OR_LIVE_ACCEPTANCE',workerSource:WORKER_SOURCE,webSource:process.env.AIHR_CI_HEAD,
    correctedRootPolicy:PACKET_POLICY,actualPacketExecuted:false,authenticatedCorrectedPacketProofRequired:true,
-   schemaEntries:schema.ledger,unchangedSourcePaths:unchanged,reviewedChangedPathContracts:{source:REVIEWED_BANK_SOURCE,paths:reviewedChanges,executedWorkerBytes:WORKER_SOURCE},sourceArchiveSha256:createHash('sha256').update(archive).digest('hex'),
+   schemaEntries:schema.ledger,unchangedSourcePaths:unchanged.filter(path=>path!=='db/client.ts'),reviewedWebTypeOnlyChange:{path:'db/client.ts',workerDeclaration:WORKER_AGENT_ENABLEMENT,webDeclaration:WEB_AGENT_ENABLEMENT,allOtherBytesIdentical:true,executedArchivedBytes:WORKER_SOURCE},reviewedChangedPathContracts:{source:REVIEWED_BANK_SOURCE,paths:reviewedChanges,executedWorkerBytes:WORKER_SOURCE},sourceArchiveSha256:createHash('sha256').update(archive).digest('hex'),
    newWebAdmission:true,humanCommandFixture:true,canonicalWrite:true,tenantDenial:true,newProcessReplay:true,historyItems:history.length,
    protectedServiceVerified:false,liveRestartVerified:false,deploymentAuthorized:false,
   },null,2)+'\n');}

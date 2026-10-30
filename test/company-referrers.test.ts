@@ -27,7 +27,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
-import type { SessionContext } from '../db/client';
+import type { SessionContext,Tx } from '../db/client';
 
 let SESSION: SessionContext;
 class RedirectError extends Error {
@@ -70,7 +70,10 @@ import * as schema from '../db/schema';
 import { defaultPolicy } from '../packs/rewards/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { withTenant } from '../db/client';
-import { hireEmployee } from '../core/org';
+import { hireEmployee,transferEmploymentCompanyTx } from '../core/org';
+import * as costAllocations from '../core/employment-cost-allocations';
+import {costAllocationMaintenanceReviews} from '../core/assistant-actions/cost-allocation-maintenance-review-store';
+import {grantAssistant} from '../core/assistant-grant';
 import { createMovementEvent } from '../core/movement';
 import {setCompensation} from '../core/comp';
 import {savePayFormula,testPayFormula,setPayFormulaActive,loadActiveFormulaProgramTx,recordFormulaEvaluationTx,getPayFormula,getFormulaEvaluation} from '../core/pay-formula';
@@ -1128,4 +1131,229 @@ describe('Board 3 retained company records', () => {
     expect(await attempt(context,original)).toBe('employees');
     expect(await owner.db.select().from(schema.employmentCostAllocationSet).where(eq(schema.employmentCostAllocationSet.employmentId,hired.employmentId))).toEqual(history);
   });
+});
+
+// Retention-only fictional rows deliberately isolate each physical FK on an otherwise unused
+// company. They are owner-arranged valid metadata, not a claim of a native reviewed action.
+// No guard/RLS is disabled and no raw app privilege is installed.
+describe('Assistant effective-company and promotion retention',()=>{
+ const retained=(ctx:SessionContext,id:string)=>withTenant(ctx,async tx=>{const [row]=await tx.execute<{used:boolean}>(sql`select app.ai_assistance_company_in_use(${id}::uuid) as used`);return row.used;});
+ async function metadata(companyId:string,kind:'allocation'|'promotion',terminal:boolean){
+  const id=randomUUID();
+  if(kind==='allocation'){
+   const target=await hireEmployee(ADMIN(),{companyId:b.companyId,departmentId:b.deptA,person:{fullName:'Fictional retained review subject',primaryEmail:randomUUID()+'@retention.test'},employmentType:'full_time',hiredOn:'2024-01-01'});
+   await owner.db.execute(sql`insert into app.assistant_own_leave_review(action_kind,id,tenant_id,user_id,person_id,employment_id,company_id,decision_subject_person_id,receipt_subject_kind,receipt_subject_id,allocation_effective_date,allocation_effective_company_id,intent_digest,reviewed_digest,state,created_at,expires_at)
+    values('employees.cost_allocation.maintain',${id}::uuid,${b.tenantId}::uuid,${b.adminUserId}::uuid,NULL,${target.employmentId}::uuid,${b.companyId}::uuid,${target.personId}::uuid,'employment',${target.employmentId}::uuid,'2025-01-01'::date,${companyId}::uuid,${terminal?null:'a'.repeat(64)},${terminal?null:'b'.repeat(64)},${terminal?'discarded':'awaiting_confirmation'},now(),now()+interval '10 minutes')`);
+  }else{
+   const [author]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:'retention_'+randomUUID()}).returning({id:schema.appUser.id});
+   await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:author.id,role:'employee',companyId:null});
+   const candidate=randomUUID(),digest='a'.repeat(64);
+   await owner.db.execute(sql`insert into public.ai_agent_candidate(id,tenant_id,owner_user_id,author_user_id,module_code,version,kind,configuration,candidate_digest,baseline_digest,source_digest,engine_digest,policy_digest,input_digest)
+    values(${candidate}::uuid,${b.tenantId}::uuid,${author.id}::uuid,${author.id}::uuid,'org',1,'canonical_specialist_v1','{"kind":"canonical_specialist_v1","module":"org","playbook":"canonical_domain_v1"}'::jsonb,${digest},${digest},${digest},${digest},${digest},${digest})`);
+   await owner.db.execute(sql`insert into public.ai_agent_promotion(id,tenant_id,candidate_id,owner_user_id,module_code,approver_user_id,receipt,max_jobs,used_jobs,created_at,expires_at,scope,company_id)
+    values(${id}::uuid,${b.tenantId}::uuid,${candidate}::uuid,${author.id}::uuid,'org',${b.adminUserId}::uuid,'Fictional retention metadata',1,0,now()-interval '2 hours',${terminal?sql`now()-interval '1 hour'`:sql`now()+interval '1 hour'`},'company',${companyId}::uuid)`);
+  }
+  return id;
+ }
+ async function snapshot(id:string,kind:'allocation'|'promotion'){
+  const [row]=await owner.db.execute<{value:unknown}>(sql`select jsonb_build_object('retained',(select to_jsonb(s)||jsonb_build_object('_xmin',s.xmin::text) from ${sql.raw(kind==='allocation'?'app.assistant_own_leave_review':'public.ai_agent_promotion')} s where s.id=${id}::uuid),'events',(select jsonb_agg(to_jsonb(e) order by e.id) from public.domain_event e where e.tenant_id=${b.tenantId}::uuid)) as value`);return row.value;
+ }
+ for(const kind of ['allocation','promotion'] as const)for(const terminal of [false,true])it(`retains ${kind} ${terminal?'retired or expired':'pending or active'} company metadata without revealing hidden rows`,async()=>{
+  const id=await bare(),other=await bare(),context=scopedAdmin(id);
+  expect(await retained(context,id)).toBe(false);expect(await verdict(ADMIN(),id)).toBeNull();
+  const ref=await metadata(id,kind,terminal),before=await snapshot(ref,kind);
+  expect(await retained(context,id)).toBe(true);
+  for(const denied of [member(),scopedAdmin(other),{...context,tenantId:randomUUID()}])expect(await retained(denied,id)).toBe(false);
+  expect(await retained(context,randomUUID())).toBe(false);
+  if(kind==='allocation')expect(await sqlStateOf(withTenant(context,tx=>tx.execute(sql`select * from app.assistant_own_leave_review where id=${ref}::uuid`)))).toBe('42501');
+  else expect(await withTenant(context,tx=>tx.execute(sql`select id from public.ai_agent_promotion where id=${ref}::uuid`))).toHaveLength(0);
+  // Shared reader must refuse before DELETE; a hidden FK fallback alone is insufficient.
+  expect(await verdict(context,id)).toBe('other');expect(await attempt(context,id)).toBe('other');
+  expect(await exists(id)).toBe(true);expect(await snapshot(ref,kind)).toEqual(before);
+ });
+ it('pins the exact boolean owner and app isolation without granting private reads',async()=>{
+  const [proof]=await owner.db.execute<{forced:boolean;definer:boolean;appLedger:boolean;appFunction:boolean;publicFunction:boolean;policyApp:boolean;ownerMatches:boolean;appMember:boolean;appInherit:boolean;appSet:boolean;exactOwnerGuard:boolean}>(sql`select c.relforcerowsecurity as forced,p.prosecdef as definer,
+   has_table_privilege('ai_hr_app','app.assistant_own_leave_review','SELECT') as "appLedger",has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as "appFunction",
+   exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as "publicFunction",
+   exists(select 1 from pg_policy pol join pg_roles a on a.oid=any(pol.polroles) where pol.polrelid=c.oid and pol.polname='ai_agent_promotion_company_retention' and a.rolname='ai_hr_app') as "policyApp",
+   p.proowner=c.relowner and p.proowner=(select relowner from pg_class where oid='app.assistant_own_leave_review'::regclass) as "ownerMatches",
+   pg_has_role('ai_hr_app',p.proowner,'MEMBER') as "appMember",pg_has_role('ai_hr_app',p.proowner,'USAGE') as "appInherit",pg_has_role('ai_hr_app',p.proowner,'SET') as "appSet",
+   exists(select 1 from pg_policy pol where pol.polrelid=c.oid and pol.polname='ai_agent_promotion_company_retention' and pol.polroles=array[c.relowner] and pg_get_expr(pol.polqual,pol.polrelid) like '%CURRENT_USER = pg_get_userbyid%') as "exactOwnerGuard"
+   from pg_proc p join pg_roles r on r.oid=p.proowner join pg_class c on c.oid='public.ai_agent_promotion'::regclass where p.oid='app.ai_assistance_company_in_use(uuid)'::regprocedure`);
+  // Universal migration topology supports privileged disposable owners; genuine restricted-owner proof is separately mandatory.
+  expect(proof).toEqual({forced:true,definer:true,appLedger:false,appFunction:true,publicFunction:false,policyApp:false,ownerMatches:true,appMember:false,appInherit:false,appSet:false,exactOwnerGuard:true});
+  const id=await bare();await metadata(id,'promotion',true);expect(await retained(scopedAdmin(id),id)).toBe(true);
+ });
+
+ type ActorRun=<T>(who:SessionContext,work:(tx:Tx)=>Promise<T>)=>Promise<T>;
+ // Driver-scoped nested transaction: any expected SQL error escapes this scope before callers classify it.
+ // A raw SQL savepoint would leave postgres-js's outer scoped error tracker poisoned.
+ const retentionActorRun=(base:Tx):ActorRun=>async(who,fn)=>base.transaction(async inner=>{
+  await inner.execute(sql`set local role ai_hr_app`);
+  await inner.execute(sql`select set_config('app.tenant_id',${who.tenantId},true),set_config('app.user_id',${who.userId??''},true),set_config('app.roles',${(who.roles??[]).join(',')},true),set_config('app.grants',${JSON.stringify(who.grants??(who.roles??[]).map(role=>({role,companyId:null})))},true),set_config('app.agent_principal_id','',true)`);
+  const result=await fn(inner);await inner.execute(sql`reset role`);return result;
+ });
+ async function retentionCatalog(tx:Pick<Tx,'execute'>){const [row]=await tx.execute<{value:unknown}>(sql`select jsonb_build_object(
+  'relations',(select jsonb_agg(jsonb_build_array(c.oid,c.relowner,c.relacl,c.relrowsecurity,c.relforcerowsecurity) order by c.oid) from pg_class c where c.oid in('public.ai_agent_promotion'::regclass,'app.assistant_own_leave_review'::regclass,'public.company'::regclass,'public.personnel_import_assistance_attempt'::regclass,'public.employee_import_evaluation_attempt'::regclass,'public.employee_import_evaluation_run_membership'::regclass)),
+  'functions',(select jsonb_agg(jsonb_build_array(p.oid,p.proowner,p.proacl,p.proconfig,p.prosecdef,pg_get_functiondef(p.oid)) order by p.oid) from pg_proc p where p.oid in('app.ai_assistance_company_in_use(uuid)'::regprocedure,'app.current_tenant_id()'::regprocedure,'app.current_user_id()'::regprocedure,'app.principal_snapshot_current()'::regprocedure,'app.is_admin_for(uuid)'::regprocedure)),
+  'policies',(select jsonb_agg(jsonb_build_array(p.oid,p.polrelid,p.polname,p.polroles,p.polcmd,p.polpermissive,pg_get_expr(p.polqual,p.polrelid),pg_get_expr(p.polwithcheck,p.polrelid)) order by p.oid) from pg_policy p where p.polrelid in('public.ai_agent_promotion'::regclass,'app.assistant_own_leave_review'::regclass)),
+  'schemas',(select jsonb_agg(jsonb_build_array(n.oid,n.nspowner,n.nspacl) order by n.oid) from pg_namespace n where n.nspname in('app','public')),
+  'roles',(select jsonb_agg(to_jsonb(r) order by r.oid) from pg_roles r where r.rolname in('ai_hr_owner','ai_hr_app')),
+  'edges',(select jsonb_agg(to_jsonb(m) order by m.roleid,m.member,m.grantor) from pg_auth_members m where m.roleid in(select oid from pg_roles where rolname in('ai_hr_owner','ai_hr_app')) or m.member in(select oid from pg_roles where rolname in('ai_hr_owner','ai_hr_app')))) as value`);return row.value;}
+ async function restrictedProjection(work:(run:ActorRun,read:Tx)=>Promise<void>){
+  const before=await retentionCatalog(owner.db),rollback='Fictional restricted retention projection rollback';
+  await expect(owner.db.transaction(async tx=>{
+   const [role]=await tx.execute<{superuser:boolean;bypass:boolean;createRole:boolean}>(sql`select rolsuper as superuser,rolbypassrls as bypass,rolcreaterole as "createRole" from pg_roles where rolname='ai_hr_owner'`);expect(role).toEqual({superuser:false,bypass:false,createRole:false});
+   await tx.execute(sql`alter table public.ai_agent_promotion owner to ai_hr_owner`);
+   await tx.execute(sql`alter table app.assistant_own_leave_review owner to ai_hr_owner`);
+   await tx.execute(sql`alter function app.ai_assistance_company_in_use(uuid) owner to ai_hr_owner`);
+   // Same exact owner predicate; only bind its TO role to the projected physical owner, as0865 does.
+   const [qual]=await tx.execute<{predicate:string}>(sql`select pg_get_expr(polqual,polrelid) as predicate from pg_policy where polrelid='public.ai_agent_promotion'::regclass and polname='ai_agent_promotion_company_retention'`);
+   await tx.execute(sql`alter policy ai_agent_promotion_company_retention on public.ai_agent_promotion to ai_hr_owner`);
+   const [after]=await tx.execute<{predicate:string}>(sql`select pg_get_expr(polqual,polrelid) as predicate from pg_policy where polrelid='public.ai_agent_promotion'::regclass and polname='ai_agent_promotion_company_retention'`);expect(after).toEqual(qual);
+   // Fixture-only closed dependency privileges to restricted owner, NEVER to app; entire catalog rolls back.
+   await tx.execute(sql`grant usage on schema app,public to ai_hr_owner`);
+   await tx.execute(sql`grant select on public.company,public.personnel_import_assistance_attempt,public.employee_import_evaluation_attempt,public.employee_import_evaluation_run_membership to ai_hr_owner`);
+   await tx.execute(sql`grant execute on function app.current_tenant_id(),app.current_user_id(),app.principal_snapshot_current(),app.is_admin_for(uuid) to ai_hr_owner`);
+   const run=retentionActorRun(tx);
+   const [identity]=await tx.execute<{owner:string;promotion:string;review:string;forced:boolean;superuser:boolean;bypass:boolean;appMember:boolean;appInherit:boolean;appSet:boolean;appRaw:boolean;exactPolicyRole:boolean}>(sql`select pg_get_userbyid(p.proowner) as owner,pg_get_userbyid(c.relowner) as promotion,pg_get_userbyid(l.relowner) as review,c.relforcerowsecurity as forced,r.rolsuper as superuser,r.rolbypassrls as bypass,pg_has_role('ai_hr_app',p.proowner,'MEMBER') as "appMember",pg_has_role('ai_hr_app',p.proowner,'USAGE') as "appInherit",pg_has_role('ai_hr_app',p.proowner,'SET') as "appSet",has_table_privilege('ai_hr_app','app.assistant_own_leave_review','SELECT') as "appRaw",exists(select 1 from pg_policy pol where pol.polrelid=c.oid and pol.polname='ai_agent_promotion_company_retention' and pol.polroles=array[c.relowner]) as "exactPolicyRole" from pg_proc p join pg_roles r on r.oid=p.proowner join pg_class c on c.oid='public.ai_agent_promotion'::regclass join pg_class l on l.oid='app.assistant_own_leave_review'::regclass where p.oid='app.ai_assistance_company_in_use(uuid)'::regprocedure`);
+   expect(identity).toEqual({owner:'ai_hr_owner',promotion:'ai_hr_owner',review:'ai_hr_owner',forced:true,superuser:false,bypass:false,appMember:false,appInherit:false,appSet:false,appRaw:false,exactPolicyRole:true});
+   await work(run,tx);throw new Error(rollback);
+  })).rejects.toThrow(rollback);
+  expect(await retentionCatalog(owner.db)).toEqual(before);
+ }
+ for(const topology of ['ordinary','restricted-projection'] as const)it(`keeps every promotion-dependent row and admission private to a noncreator personless company administrator (${topology})`,async()=>{
+  const companyId=await bare(),other=await bare(),promotion=await metadata(companyId,'promotion',false),context=scopedAdmin(companyId);
+  await owner.db.update(schema.roleAssignment).set({companyId}).where(eq(schema.roleAssignment.appUserId,b.adminUserId));
+  const grants=await owner.db.select({role:schema.roleAssignment.role,companyId:schema.roleAssignment.companyId}).from(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,b.adminUserId));expect(grants).toEqual([{role:'hr_admin',companyId}]);
+  const [p]=await owner.db.execute<{candidate:string;author:string}>(sql`select candidate_id as candidate,owner_user_id as author from public.ai_agent_promotion where id=${promotion}::uuid`);
+  const [otherAdmin]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:'retention_other_admin_'+randomUUID()}).returning({id:schema.appUser.id});await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:otherAdmin.id,role:'hr_admin',companyId:other});
+  const otherContext:SessionContext={...adminCtx(b),userId:otherAdmin.id,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:other}]};
+  const job=randomUUID(),use=randomUUID(),rollback=randomUUID(),digest='a'.repeat(64);
+  await owner.db.execute(sql`insert into public.ai_agent_candidate_provenance(candidate_id,tenant_id,owner_user_id,refs,native_refs,receipt) values(${p.candidate}::uuid,${b.tenantId}::uuid,${p.author}::uuid,'[]'::jsonb,'[]'::jsonb,'Fictional signal-free provenance')`);
+  await owner.db.execute(sql`insert into public.ai_agent_rollback(id,tenant_id,promotion_id,actor_user_id,reason) values(${rollback}::uuid,${b.tenantId}::uuid,${promotion}::uuid,${p.author}::uuid,'human')`);
+  await owner.db.execute(sql`insert into public.ai_agent_job_receipt(id,tenant_id,user_id,promotion_id,receipt) values(${job}::uuid,${b.tenantId}::uuid,${p.author}::uuid,${promotion}::uuid,'Fictional private job')`);
+  await owner.db.execute(sql`insert into public.ai_assistant_answer_strategy_use(id,tenant_id,user_id,promotion_id,candidate_digest,provider_fingerprint,source_digest,receipt) values(${use}::uuid,${b.tenantId}::uuid,${p.author}::uuid,${promotion}::uuid,${digest},${digest},${digest},'Fictional private strategy use')`);
+  let reader:Pick<Tx,'execute'>=owner.db;
+  const allRows=async()=>{const [r]=await reader.execute<{value:unknown}>(sql`select jsonb_build_object(
+   'promotion',(select to_jsonb(s)||jsonb_build_object('_xmin',s.xmin::text) from public.ai_agent_promotion s where s.id=${promotion}::uuid),
+   'candidate',(select to_jsonb(s)||jsonb_build_object('_xmin',s.xmin::text) from public.ai_agent_candidate s where s.id=${p.candidate}::uuid),
+   'provenance',(select to_jsonb(s)||jsonb_build_object('_xmin',s.xmin::text) from public.ai_agent_candidate_provenance s where s.candidate_id=${p.candidate}::uuid),
+   'rollback',(select to_jsonb(s)||jsonb_build_object('_xmin',s.xmin::text) from public.ai_agent_rollback s where s.id=${rollback}::uuid),
+   'job',(select to_jsonb(s)||jsonb_build_object('_xmin',s.xmin::text) from public.ai_agent_job_receipt s where s.id=${job}::uuid),
+   'answerUse',(select to_jsonb(s)||jsonb_build_object('_xmin',s.xmin::text) from public.ai_assistant_answer_strategy_use s where s.id=${use}::uuid)) as value`);return r.value;};
+  const before=await allRows();
+  // SET denial is from a TRUE app LOGIN, never the projection's privileged fixture session.
+  expect(await sqlStateOf(withTenant(context,async tx=>{const [login]=await tx.execute<{session:string;current:string}>(sql`select session_user as session,current_user as current`);expect(login).toEqual({session:'ai_hr_app',current:'ai_hr_app'});await tx.execute(sql`set local role ai_hr_owner`);}))).toBe('42501');
+  const foreign=await seedBase();
+  const exercise=async(run:ActorRun,read:Pick<Tx,'execute'|'transaction'>)=>{reader=read;const retained=(who:SessionContext,id:string)=>run(who,async tx=>{const [r]=await tx.execute<{used:boolean}>(sql`select app.ai_assistance_company_in_use(${id}::uuid) as used`);return r.used;});
+expect(before).toMatchObject({promotion:{used_jobs:0},candidate:{id:p.candidate},provenance:{refs:[],native_refs:[]},rollback:{id:rollback},job:{id:job},answerUse:{id:use}});
+  await run(context,async tx=>{
+   const [identity]=await tx.execute<{app:string;principal:boolean;group:boolean;person:string|null;employed:boolean}>(sql`select current_user as app,app.principal_snapshot_current() as principal,app.is_group_admin() as "group",u.person_id as person,exists(select 1 from public.employment e where e.person_id=u.person_id and e.company_id=${companyId}::uuid) as employed from public.app_user u where u.id=${b.adminUserId}::uuid`);
+   expect(identity).toEqual({app:'ai_hr_app',principal:true,group:false,person:null,employed:false});
+  });
+  expect(p.author).not.toBe(context.userId);expect(await retained(context,companyId)).toBe(true);
+  const hidden=async(who:SessionContext)=>run(who,async tx=>{
+   for(const [table,column,id] of [['ai_agent_promotion','id',promotion],['ai_agent_candidate','id',p.candidate],['ai_agent_candidate_provenance','candidate_id',p.candidate],['ai_agent_rollback','id',rollback],['ai_agent_job_receipt','id',job],['ai_assistant_answer_strategy_use','id',use]])expect(await tx.execute(sql`select * from ${sql.identifier(table)} where ${sql.identifier(column)}=${id}::uuid`)).toHaveLength(0);
+   const [signals]=await tx.execute<{candidate:boolean;feedback:boolean;native:boolean}>(sql`select app.agent_candidate_signals_current(${p.candidate}::uuid) as candidate,app.agent_signal_custody_visible('job',${job}::uuid,${b.tenantId}::uuid,${p.author}::uuid) as feedback,app.agent_native_signal_custody_visible('job',${job}::uuid,${b.tenantId}::uuid,${p.author}::uuid) as native`);expect(signals).toEqual({candidate:false,feedback:false,native:false});
+  });
+  await hidden(context);await hidden(otherContext);await hidden({...adminCtx(foreign)});
+  expect(await retained(otherContext,other)).toBe(false);expect(await retained(otherContext,companyId)).toBe(false);expect(await retained(adminCtx(foreign),companyId)).toBe(false);
+  const [unusedIdentity]=await run(otherContext,tx=>tx.execute<{current:boolean}>(sql`select app.principal_snapshot_current() as current`));expect(unusedIdentity.current).toBe(true);
+  await run(context,async tx=>{const [absent]=await tx.execute<{empty:boolean;unknown:boolean}>(sql`select app.ai_assistance_company_in_use(NULL::uuid) as empty,app.ai_assistance_company_in_use(${randomUUID()}::uuid) as unknown`);expect(absent).toEqual({empty:false,unknown:false});});
+  if(topology==='restricted-projection'){
+   const rollback='Fictional stale retention principal rollback';
+   await expect(read.transaction(async inner=>{
+    await inner.execute(sql`update public.app_user set archived_at=now() where id=${context.userId}::uuid`);
+    const [stale]=await retentionActorRun(inner)(context,actor=>actor.execute<{current:boolean;used:boolean}>(sql`select app.principal_snapshot_current() as current,app.ai_assistance_company_in_use(${companyId}::uuid) as used`));expect(stale).toEqual({current:false,used:false});
+    throw new Error(rollback);
+   })).rejects.toThrow(rollback);
+  }
+  expect(await run(context,tx=>tx.execute(sql`update public.ai_agent_promotion set used_jobs=used_jobs+1 where id=${promotion}::uuid returning id`))).toHaveLength(0);
+  expect(await sqlStateOf(run(context,tx=>tx.execute(sql`insert into public.ai_agent_rollback(tenant_id,promotion_id,actor_user_id,reason) values(${b.tenantId}::uuid,${promotion}::uuid,${context.userId}::uuid,'source_changed')`)))).toBe('42501');
+  expect(await sqlStateOf(run(context,tx=>tx.execute(sql`insert into public.ai_agent_job_receipt(tenant_id,user_id,promotion_id,receipt) values(${b.tenantId}::uuid,${context.userId}::uuid,${promotion}::uuid,'Fictional denied job')`)))).toBe('42501');
+  expect(await sqlStateOf(run(context,tx=>tx.execute(sql`insert into public.ai_assistant_answer_strategy_use(id,tenant_id,user_id,person_id,promotion_id,candidate_digest,provider_fingerprint,source_digest,receipt) values(${randomUUID()}::uuid,${b.tenantId}::uuid,${context.userId}::uuid,NULL,${promotion}::uuid,${digest},${digest},${digest},'Fictional denied strategy')`)))).toBe('42501');
+  // Existing own-user visibility remains, without inventing a company employment requirement.
+  const author:SessionContext={...adminCtx(b),userId:p.author,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+  expect(await retained(author,companyId)).toBe(false);
+  await run(author,async tx=>{for(const [table,id] of [['ai_agent_promotion',promotion],['ai_agent_candidate',p.candidate],['ai_agent_job_receipt',job],['ai_assistant_answer_strategy_use',use]])expect(await tx.execute(sql`select id from ${sql.identifier(table)} where id=${id}::uuid`)).toHaveLength(1);});
+  expect(await allRows()).toEqual(before);
+  };
+  if(topology==='restricted-projection')await restrictedProjection(exercise);else await exercise(withTenant,owner.db);
+  reader=owner.db;expect(await allRows()).toEqual(before);
+ });
+ it('counts a real sealed cost review for its historical company after native transfer without exposing its ledger',async()=>{
+  vi.stubEnv('AI_CONFIG_SECRET','fictional-company-retention-native-review');
+  try{
+   await setModule(b.tenantId,'assistant','active');const actor={...ADMIN(),grants:[{role:'hr_admin' as const,companyId:null}]};await grantAssistant(actor,{appUserId:b.adminUserId});
+   const target=await hireEmployee(actor,{companyId:b.companyId,departmentId:b.deptA,person:{fullName:'Fictional dated retention employee',primaryEmail:randomUUID()+'@retention.test'},employmentType:'full_time',hiredOn:'2024-01-01'});
+   await costAllocations.saveEmploymentCostAllocations(actor,{employmentId:target.employmentId,effectiveDate:'2024-01-01',expectedRevision:0,operation:'replace',rows:[{costCenterId:b.costCenterId,percentage:'100'}]});
+   await costAllocations.saveEmploymentCostAllocations(actor,{employmentId:target.employmentId,effectiveDate:'2025-01-01',expectedRevision:1,operation:'clear',rows:[]});
+   const destination=await createCompany(actor,{legalName:'Fictional retention destination',country:'MY'}),department=await createDepartment(actor,{companyId:destination.id,name:'Fictional destination department'});
+   await withTenant(actor,tx=>transferEmploymentCompanyTx(tx,actor,{employmentId:target.employmentId,newCompanyId:destination.id,effectiveDate:'2025-01-01',placement:{departmentId:department.id},movement:{type:'entityTransfer'}}));
+   const review=(await costAllocationMaintenanceReviews.prepare(actor,{action:'employees.cost_allocation.maintain',contractVersion:1,employmentId:target.employmentId,subjectId:target.employmentId,effectiveCompanyId:b.companyId,effectiveDate:'2024-06-01',expectedRevision:2,operation:'replace',rows:[{costCenterId:b.costCenterId,percentage:'100'}]})).review;
+   const [row]=await owner.db.execute<{original:string;effective:string;person:string|null;bodies:number}>(sql`select company_id as original,allocation_effective_company_id as effective,person_id as person,(select count(*)::int from app.assistant_own_leave_review_content where action_id=r.id) as bodies from app.assistant_own_leave_review r where id=${review.actionId}::uuid`);
+   expect(row).toEqual({original:destination.id,effective:b.companyId,person:null,bodies:1});
+   expect(await retained(scopedAdmin(b.companyId),b.companyId)).toBe(true);
+   expect(await sqlStateOf(withTenant(scopedAdmin(b.companyId),tx=>tx.execute(sql`select * from app.assistant_own_leave_review where id=${review.actionId}::uuid`)))).toBe('42501');
+   // Native historical references also exist here; isolated deletion attribution is proved by the four metadata cases above.
+   expect(await retained(scopedAdmin(destination.id),b.companyId)).toBe(false);
+   const sealed=async()=>{const [r]=await owner.db.execute<{value:unknown}>(sql`select jsonb_build_object('ledger',(select to_jsonb(r)||jsonb_build_object('_xmin',r.xmin::text) from app.assistant_own_leave_review r where id=${review.actionId}::uuid),'body',(select to_jsonb(c) from app.assistant_own_leave_review_content c where action_id=${review.actionId}::uuid)) as value`);return r.value;};
+   const before=await sealed();
+   await restrictedProjection(async run=>{
+    const selected=scopedAdmin(b.companyId);
+    const [used]=await run(selected,tx=>tx.execute<{used:boolean}>(sql`select app.ai_assistance_company_in_use(${b.companyId}::uuid) as used`));expect(used.used).toBe(true);
+    expect(await sqlStateOf(run(selected,tx=>tx.execute(sql`select * from app.assistant_own_leave_review where id=${review.actionId}::uuid`)))).toBe('42501');
+    const [denied]=await run(scopedAdmin(destination.id),tx=>tx.execute<{used:boolean}>(sql`select app.ai_assistance_company_in_use(${b.companyId}::uuid) as used`));expect(denied.used).toBe(false);
+   });
+   expect(await sealed()).toEqual(before);
+  }finally{vi.unstubAllEnvs();}
+ });
+
+ it('returns false for null and unknown companies and a genuinely stale principal snapshot',async()=>{
+  const id=await bare(),context=scopedAdmin(id);await metadata(id,'promotion',false);expect(await retained(context,id)).toBe(true);
+  await withTenant(context,async tx=>{const [row]=await tx.execute<{used:boolean}>(sql`select app.ai_assistance_company_in_use(NULL::uuid) as used`);expect(row.used).toBe(false);});
+  expect(await retained(context,randomUUID())).toBe(false);
+  await owner.db.update(schema.roleAssignment).set({role:'employee'}).where(eq(schema.roleAssignment.appUserId,b.adminUserId));
+  await withTenant(context,async tx=>{const [row]=await tx.execute<{current:boolean;used:boolean}>(sql`select app.principal_snapshot_current() as current,app.ai_assistance_company_in_use(${id}::uuid) as used`);expect(row).toEqual({current:false,used:false});});
+ });
+ for(const kind of ['header','evaluation','membership'] as const)it(`preserves the existing ${kind} import retention branch without exposing its private rows`,async()=>{
+  const id=await bare(),context=scopedAdmin(id),digest='a'.repeat(64),header=randomUUID(),evaluation=randomUUID(),run=randomUUID();
+  const [author]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:'old_retention_'+randomUUID()}).returning({id:schema.appUser.id});
+  expect(await retained(context,id)).toBe(false);
+  if(kind==='header')await owner.db.execute(sql`insert into public.personnel_import_assistance_attempt(id,tenant_id,user_id,company_id,operation_nonce,source_revision,registry_digest,headers_digest,input_digest,header_indexes,mode) values(${header}::uuid,${b.tenantId}::uuid,${author.id}::uuid,${id}::uuid,${randomUUID()}::uuid,${digest},${digest},${digest},${digest},'[0]'::jsonb,'deterministic')`);
+  else{
+   await owner.db.execute(sql`insert into public.employee_import_evaluation_attempt(id,tenant_id,user_id,company_id,cohort_id,operation_nonce,mode,binding_ciphertext) values(${evaluation}::uuid,${b.tenantId}::uuid,${author.id}::uuid,${id}::uuid,${randomUUID()}::uuid,${randomUUID()}::uuid,'assisted','Fictional retained import binding')`);
+   if(kind==='membership'){
+    await owner.db.execute(sql`insert into public.ai_model_run(id,tenant_id,user_id,feature_id,operation,provider,model,state,reserved_tokens) values(${run}::uuid,${b.tenantId}::uuid,${author.id}::uuid,'personnel_import_mapping','draft','fictional','fictional','pending',0)`);
+    await owner.db.execute(sql`insert into public.employee_import_evaluation_run_membership(ai_run_id,evaluation_id,evaluation_version,slot,tenant_id,user_id,company_id,header_attempt_id) values(${run}::uuid,${evaluation}::uuid,1,1,${b.tenantId}::uuid,${author.id}::uuid,${id}::uuid,${header}::uuid)`);
+   }
+  }
+  expect(await retained(context,id)).toBe(true);expect(await retained(member(),id)).toBe(false);
+  const table={header:'personnel_import_assistance_attempt',evaluation:'employee_import_evaluation_attempt',membership:'employee_import_evaluation_run_membership'}[kind];
+  expect(await withTenant(context,tx=>tx.execute(sql`select * from ${sql.identifier(table)} where company_id=${id}::uuid`))).toHaveLength(0);
+  expect(await verdict(context,id)).toBe('other');expect(await attempt(context,id)).toBe('other');expect(await exists(id)).toBe(true);
+  // Membership legitimately co-retains its evaluation. Exact preserved SQL branch identity is independently reviewed; this case does not claim isolated membership attribution.
+ });
+
+ for(const failure of ['wrong-owner','app-membership'] as const)it(`refuses the actual0865 preflight for ${failure} and restores the entire fixture topology`,async()=>{
+  const source=readFileSync(fileURLToPath(new URL('../db/migrations/0865_assistant_company_retention_references.sql',import.meta.url)),'utf8'),preflight=source.split('--> statement-breakpoint')[0];
+  expect(preflight).toContain("DO $retention$");const before=await retentionCatalog(owner.db);
+  let caught:unknown;
+  try{await owner.db.transaction(async tx=>{
+   if(failure==='wrong-owner'){const [own]=await tx.execute<{name:string}>(sql`select pg_get_userbyid(proowner) as name from pg_proc where oid='app.ai_assistance_company_in_use(uuid)'::regprocedure`);await tx.execute(sql`alter function app.ai_assistance_company_in_use(uuid) owner to ${sql.identifier(own.name==='ai_hr_owner'?'postgres':'ai_hr_owner')}`);}
+   else{
+    // Isolated universal-topology counterexample, not a role profile or restricted proof.
+    // All four changes roll back; no app query is executed while this unsafe edge exists.
+    await tx.execute(sql`alter table public.ai_agent_promotion owner to postgres`);await tx.execute(sql`alter table app.assistant_own_leave_review owner to postgres`);await tx.execute(sql`alter function app.ai_assistance_company_in_use(uuid) owner to postgres`);
+    await tx.execute(sql`grant postgres to ai_hr_app`);
+   }
+   await tx.execute(sql.raw(preflight));throw new Error('Fictional invalid retention topology was accepted');
+  });}catch(error){caught=error;}
+  expect(pgSqlState(caught)).toBe('P0001');
+  // Exact migration guard, not duplicate-policy or fixture-setup refusal.
+  const chain=(caught as {cause?:{message?:string}})?.cause;expect(chain?.message??(caught as Error)?.message).toBe('Company retention exact owner or app boundary unavailable');
+  expect(await retentionCatalog(owner.db)).toEqual(before);
+ });
+
 });

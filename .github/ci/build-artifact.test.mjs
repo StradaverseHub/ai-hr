@@ -67,7 +67,7 @@ test('v4 requires the build artifact; only that namespace has the binary bound a
 
 
 test('only current manifest and provenance format/profile admit even when record hashes are freshly bound',()=>{
- const changes=[v=>v.format=1,v=>delete v.capacityProfile,v=>v.capacityProfile.profileVersion=1,
+ const changes=[v=>v.format=1,v=>delete v.capacityProfile,v=>v.capacityProfile={profileVersion:2,archiveMaxBytes:276824064,zipMaxBytes:293601280},v=>v.capacityProfile.profileVersion=2,v=>v.capacityProfile.archiveMaxBytes=276824064,v=>v.capacityProfile.profileVersion=1,
   v=>v.capacityProfile.archiveMaxBytes=268435456,v=>v.capacityProfile.zipMaxBytes++,v=>v.capacityProfile.extra=true];
  for(const owner of ['manifest','provenance'])for(const mutate of changes){
   const f=fixture();try{
@@ -80,8 +80,8 @@ test('only current manifest and provenance format/profile admit even when record
   }finally{f.close();}
  }
 });
-test('archive capacity is264MiB while outer ZIP remains280MiB; oversized actual archive refuses',()=>{
- assert.equal(BUILD_ARCHIVE_MAX,276824064);assert.equal(BUILD_ZIP_MAX,293601280);
+test('archive capacity is272MiB while outer ZIP remains280MiB; oversized actual archive refuses',()=>{
+ assert.equal(BUILD_ARCHIVE_MAX,285212672);assert.equal(BUILD_ZIP_MAX,293601280);
  const f=fixture();try{
   truncateSync(join(f.directory,'bytes/build-bundle.tar.gz'),BUILD_ARCHIVE_MAX+1);
   assert.throws(()=>inspectCiBuildPacket(f.directory,f.expected),/oversized packet member/);

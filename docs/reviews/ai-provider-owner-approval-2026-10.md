@@ -187,3 +187,30 @@ authorized. These controls are not an anonymity guarantee.
 Prior failures and source receipts remain at their actual producing SHAs. Fresh source-bound hosted
 qualification and separate authenticated release evidence remain required. Further covered-source
 changes require another exact technical disposition; generated identities alone grant no approval.
+
+
+## Technical source binding — 31 October 2026, bounded full-gate repairs
+
+Independent review reconstructed the same1133-file provider closure at
+`033c556d1b4e9d3818be2055a810271398bcceea25bcf40eedff9e7417db4d78`.
+Only ten covered files differ from the original combined source
+`b8134d487cce89cb974f87956e1d1a24f6d42fbc`: two scoped company-retention declarations,
+the canonical client-safe Rewards calendar facade and import, additive Assistant shell route
+metadata under the same authenticated session guard, and exactly216 native-outcome caption
+leaves across six locales. The final six captions name the employee Schedule Group assignment
+and cover setting, switching and clearing. They do not claim group catalogue, clock, overtime
+or payment effects. All other1123 covered files and closure membership are unchanged.
+
+Finite serializers, descriptors, provider transports, replay/one-use dispatch, spend controls,
+current access and literal-review validation remain unchanged. No raw-data variant, new protected
+purpose, contract, model money calculation or autonomous sensitive effect is admitted.
+The SAME24 approved records receive only this reviewed sourceDigest; every original human
+status, reviewer, evidence anchor and2026-10-30T06:19:30Z timestamp is preserved. Both pending
+blocks remain byte-identical. This technical completion within the original owner-approved
+protected feature/UI scope is not a new human approval, privacy certification, runtime PASS
+or staging acceptance. Translation review is semantic peer review, not native-speaker certification.
+
+Independent technical disposition: `rewards-provider-r1-final-technical-review-20261031.md`,
+SHA256 `9b8dba774b65f36fa5f84cebc043607d71a01fc2d2c1921cc6a651f696cef11b`.
+Fresh exact-source hosted qualification remains required; original failures retain their real
+source/controller identities. Any further covered-byte change requires another exact review.

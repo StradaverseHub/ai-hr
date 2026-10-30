@@ -37,9 +37,9 @@ test('grant scope, exact shapes, hashes, runtime and immutable source/build iden
   g=>g.target='production',g=>g.controllerBranch='codex/work',g=>g.source='short',g=>g.baselineBuildId=g.build.nextBuildId,
   g=>g.environmentSha256='bad',g=>g.witnessFingerprint='bad',g=>g.runAttempt=2,g=>g.extra='unrecognized',
   g=>g.artifact.extra=true,g=>g.artifact.digest=digest('a'),g=>g.build.extra=true,
-  g=>g.build.runtime.node='22.0.0',g=>g.build.archiveBytes=264*1024**2+1,
-  g=>g.format=1,g=>g.build.format=1,g=>delete g.build.capacityProfile,g=>g.policyVersion='aihr-staging-ci/v15',
-  g=>g.build.capacityProfile.profileVersion=1,g=>g.build.capacityProfile.archiveMaxBytes=268435456,g=>g.build.capacityProfile.zipMaxBytes++,
+  g=>g.build.runtime.node='22.0.0',g=>g.build.archiveBytes=272*1024**2+1,
+  g=>g.format=1,g=>g.build.format=1,g=>delete g.build.capacityProfile,g=>g.policyVersion='aihr-staging-ci/v15',g=>g.policyVersion='aihr-staging-ci/v16',
+  g=>g.build.capacityProfile={profileVersion:2,archiveMaxBytes:276824064,zipMaxBytes:293601280},g=>g.build.capacityProfile.profileVersion=2,g=>g.build.capacityProfile.archiveMaxBytes=276824064,g=>g.build.capacityProfile.profileVersion=true,g=>g.build.capacityProfile.archiveMaxBytes=285212673,g=>g.build.capacityProfile.profileVersion=1,g=>g.build.capacityProfile.archiveMaxBytes=268435456,g=>g.build.capacityProfile.zipMaxBytes++,
   g=>g.build.capacityProfile.extra=true,g=>g.build.buildSourcePath='/source/../other',g=>g.build.preparedSha256='bad',g=>g.installId='../escape'
  ]){const {grant}=fixture();mutate(grant);assert.throws(()=>validateInstallGrant(grant));}
 });
@@ -137,8 +137,8 @@ test('bundle hashing and unpacking get ten minutes, inside the detached deploy d
 test('only the closed current grant admits the newly bounded archive range',()=>{
  const {grant}=fixture();
  assert.equal(grant.format,2);assert.equal(grant.build.format,2);assert.deepEqual(grant.build.capacityProfile,BUILD_CAPACITY_PROFILE);
- for(const archiveBytes of [256*1024**2+1,264*1024**2])assert.doesNotThrow(()=>validateInstallGrant({...grant,build:{...grant.build,archiveBytes}}));
- assert.throws(()=>validateInstallGrant({...grant,build:{...grant.build,archiveBytes:264*1024**2+1}}));
+ for(const archiveBytes of [256*1024**2+1,264*1024**2+1,272*1024**2])assert.doesNotThrow(()=>validateInstallGrant({...grant,build:{...grant.build,archiveBytes}}));
+ assert.throws(()=>validateInstallGrant({...grant,build:{...grant.build,archiveBytes:272*1024**2+1}}));
 });
 test('retained baseline identity fences preserve opaque old records without a legacy decoder or new authority',t=>{
  const directory=privateFixture(t),next=join(directory,'retained'),packet=join(directory,'packet');
@@ -146,12 +146,15 @@ test('retained baseline identity fences preserve opaque old records without a le
  writeFileSync(join(next,'BUILD_ID'),'old-baseline');
  const opaque=Buffer.from('{"format":1,"oldBaselineRecord":"unchanged and never decoded"}\n');
  writeFileSync(join(next,'original-format1-manifest.json'),opaque,{mode:0o600});
+ const opaqueProfile2=Buffer.from('{"format":2,"capacityProfile":{"profileVersion":2,"archiveMaxBytes":276824064,"zipMaxBytes":293601280},"oldBaselineRecord":"unchanged and never decoded"}\n');
+ writeFileSync(join(next,'original-profile2-manifest.json'),opaqueProfile2,{mode:0o600});
  const entries={'system-testing.json':Buffer.from('new prepared record'),'successful-build.json':Buffer.from('new observation record'),
   'build-provenance.json':Buffer.from('new current provenance'),'bytes/build-bundle-files.json':Buffer.from('new current manifest')};
  for(const [name,data]of Object.entries(entries))writeFileSync(join(packet,name),data,{mode:0o600});
  const stat=statSync(next),p={directory,next,packet,grant:{baselineBuildId:'old-baseline'}},activated={activation:{retainedDirectory:{device:stat.dev,inode:stat.ino}}};
  retainNormalCleanupAudit(p,activated);
  assert.deepEqual(readFileSync(join(next,'original-format1-manifest.json')),opaque);
+ assert.deepEqual(readFileSync(join(next,'original-profile2-manifest.json')),opaqueProfile2);
  assert.equal(readFileSync(join(next,'BUILD_ID'),'utf8'),'old-baseline');
  for(const [name,data]of Object.entries(entries))assert.deepEqual(readFileSync(join(directory,'audit',name)),data);
  assert.equal(readdirSync(directory).includes('cleanup-authorized.json'),false,'Audit retention alone grants no cleanup authority');
@@ -159,5 +162,6 @@ test('retained baseline identity fences preserve opaque old records without a le
  writeFileSync(join(next,'BUILD_ID'),'foreign');assert.throws(()=>retainNormalCleanupAudit(p,activated));writeFileSync(join(next,'BUILD_ID'),'old-baseline');
  writeFileSync(join(packet,'build-provenance.json'),'changed current record');assert.throws(()=>retainNormalCleanupAudit(p,activated));
  assert.deepEqual(readFileSync(join(next,'original-format1-manifest.json')),opaque);
+ assert.deepEqual(readFileSync(join(next,'original-profile2-manifest.json')),opaqueProfile2);
  assert.equal(readFileSync(join(next,'BUILD_ID'),'utf8'),'old-baseline');
 });

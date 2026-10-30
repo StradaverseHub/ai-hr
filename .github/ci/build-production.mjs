@@ -11,7 +11,7 @@ const SHA=/^[a-f0-9]{40}$/;
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const fail=message=>{throw Error('Production build producer refused: '+message);};
 // Closed format2 byte-capacity identity; never use manifest values as allowance.
-export const BUILD_CAPACITY_PROFILE=Object.freeze({profileVersion:2,archiveMaxBytes:276824064,zipMaxBytes:293601280});
+export const BUILD_CAPACITY_PROFILE=Object.freeze({profileVersion:3,archiveMaxBytes:285212672,zipMaxBytes:293601280});
 export function assertBuildCapacityProfile(profile){
  if(!isDeepStrictEqual(profile,BUILD_CAPACITY_PROFILE))fail('unknown or mixed build capacity profile');
  return profile;

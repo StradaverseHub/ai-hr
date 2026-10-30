@@ -782,7 +782,7 @@ describe('20837372 · a full-row statutory save does not wipe ∑LP', () => {
 
     // Exactly what the Personnel / Zakat screens do: rebuild the row and pass the four TP3 figures back
     // through. Nothing hands `tp3Lp` over, because the setter has no such field.
-    await setStatutoryProfileMY(a, {
+    const fullRowInput = {
       personId: e.personId,
       icNumber: before.icNumber,
       taxCategory: 3,
@@ -792,15 +792,34 @@ describe('20837372 · a full-row statutory save does not wipe ∑LP', () => {
       tp3EpfClaimed: Number(before.tp3EpfClaimed),
       tp3PcbPaid: Number(before.tp3PcbPaid),
       tp3ZakatPaid: Number(before.tp3ZakatPaid),
-    });
+    };
+    await setStatutoryProfileMY(a, fullRowInput);
 
     const after = await statRow(e.personId);
     expect(Number(after.tp3Lp), 'a statutory save must not quietly put the PCB back up').toBe(D_TOTAL);
-    // …and the setter genuinely has no field for it, so no future caller can be asked to remember one.
+    // Even an untyped extra caller field cannot enter the native full-row write set.
+    await setStatutoryProfileMY(a, {...fullRowInput,tp3Lp:0} as Parameters<typeof setStatutoryProfileMY>[1]);
+    expect(Number((await statRow(e.personId)).tp3Lp),'an unsupported extra input cannot overwrite the actual form-derived LP').toBe(D_TOTAL);
     const setter = readFileSync(join(ROOT, 'localization/my/statutory.ts'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^[ \t]*\/\/.*$/gm, '');
-    expect(setter, 'core/tp3.ts is the ONLY writer of tp3_lp').not.toMatch(/tp3Lp/);
+    const ownerSlice=(start:string,end:string)=>{
+      const at=setter.indexOf(start),until=setter.indexOf(end,at+start.length);
+      expect(at,start+' exists').toBeGreaterThanOrEqual(0);expect(until,end+' follows the owner').toBeGreaterThan(at);
+      const source=setter.slice(at,until);expect(source.length,start+' has a nonempty body').toBeGreaterThan(100);return source;
+    };
+    const fullInput=ownerSlice('export type StatutoryInput = {','function normalizeStatutoryInputMY(');
+    const normalize=ownerSlice('function normalizeStatutoryInputMY(','async function prepareStatutoryProfileMYTx(');
+    const write=ownerSlice('async function writeStatutoryProfileMYTx(','const STATUTORY_RECALC_FIELDS_MY');
+    const facade=ownerSlice('export async function setStatutoryProfileMY(','export type Tp3Input = {');
+    for(const source of [fullInput,normalize,write,facade])expect(source,'the called full-row owners cannot accept/write/derive LP').not.toMatch(/\btp3Lp\b|\blpDeclared\b/);
+    expect(facade).toContain('normalizeStatutoryInputMY(input)');expect(facade).toContain('prepareStatutoryProfileMYTx(tx,input,normalized)');expect(facade).toContain('writeStatutoryProfileMYTx(tx,ctx,input,prepared)');expect(write).toContain('.set({ ...values, updatedAt:');
+    const opening=ownerSlice('function normalizedTp3OpeningValuesMY(','const tp3AncillaryHashMY');
+    expect([...opening.matchAll(/^\s*(tp3\w+)\s*:/gm)].map(match=>match[1])).toEqual(['tp3Year','tp3NetRemuneration','tp3EpfClaimed','tp3PcbPaid']);
+    expect(opening).not.toMatch(/\btp3Lp\b|\blpDeclared\b/);
+    // The newly added occurrence is a READ-ONLY before/after hash, not a second accumulator writer.
+    const hash=setter.match(/^const tp3AncillaryHashMY=sql<string>`[^\n]+`;/m);expect(hash,'ancillary read proof exists').not.toBeNull();
+    expect(hash?.[0]).toContain('${employeeStatutoryMy.tp3Lp}');expect(hash?.[0]).not.toMatch(/\b(?:update|insert|delete)\b|\.set\(/i);
   });
 });
 

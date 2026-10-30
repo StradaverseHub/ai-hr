@@ -4446,6 +4446,13 @@
       "when": 1793330000264,
       "tag": "0864_assistant_catalogue_effect_closure",
       "breakpoints": true
+    },
+    {
+      "idx": 750,
+      "version": "7",
+      "when": 1793330000265,
+      "tag": "0865_assistant_company_retention_references",
+      "breakpoints": true
     }
   ]
 }

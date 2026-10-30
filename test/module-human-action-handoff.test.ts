@@ -60,7 +60,7 @@ it('hands assigned Leave, claim, attendance and replacement-leave decisions to h
 });
 
 it('offers fixed Attendance request and Schedule Group review pages without carrying source baselines or work claims',()=>{
- const rows=moduleHumanActionHandoffs('attendance');expect(rows).toEqual([{module:'attendance',action:'attendance.correction.request',route:'/assistant/attendance',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'attendance',action:'attendance.overtime.request',route:'/assistant/attendance',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'attendance',action:'attendance.schedule_group.maintain',route:'/assistant/schedule-group',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
+ const rows=moduleHumanActionHandoffs('attendance');expect(rows).toEqual([{module:'attendance',action:'attendance.correction.request',route:'/assistant/attendance',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'attendance',action:'attendance.overtime.request',route:'/assistant/attendance',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'attendance',action:'attendance.schedule_group.maintain',route:'/assistant/schedule-group',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'attendance',action:'attendance.day_schedule.correct',route:'/assistant/day-schedule',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
  for(const extra of [{employmentId:'other'},{baseline:'private'},{clockChanges:{}},{requestedOtMinutes:60},{approved:true},{route:'/assistant/attendance?employee=other'}])expect(()=>checkedModuleHumanHandoffs('attendance',rows.map(row=>({...row,...extra})))).toThrow();
 });
 
@@ -86,7 +86,7 @@ it('offers native Employee import and a local human qualification review without
 });
 
 it('offers the human Payroll close and reopen pages without financial inputs, batch selection, release overrides or confirmation',()=>{
- const rows=moduleHumanActionHandoffs('payroll');expect(rows).toEqual([{module:'payroll',action:'payroll.close',route:'/assistant/payroll-close',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'payroll',action:'payroll.reopen',route:'/assistant/payroll-reopen',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
+ const rows=moduleHumanActionHandoffs('payroll');expect(rows).toEqual([{module:'payroll',action:'payroll.close',route:'/assistant/payroll-close',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'payroll',action:'payroll.reopen',route:'/assistant/payroll-reopen',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'payroll',action:'payroll.reset',route:'/assistant/payroll-reset',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
  for(const extra of [{batchId:'other'},{salary:100},{override:true},{releaseTiming:{}},{confirmCloseProcessedRun:true},{route:'/assistant/payroll-close?batch=other'}])expect(()=>checkedModuleHumanHandoffs('payroll',rows.map(row=>({...row,...extra})))).toThrow();
 });
 

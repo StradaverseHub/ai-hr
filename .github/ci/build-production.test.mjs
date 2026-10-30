@@ -64,14 +64,14 @@ test('legacy Node20 packet runtime cannot be relabelled as the future Node22 tar
 
 
 test('current byte capacity is one closed format2 profile; missing, legacy and mixed bounds refuse',()=>{
- assert.deepEqual(BUILD_CAPACITY_PROFILE,{profileVersion:2,archiveMaxBytes:276824064,zipMaxBytes:293601280});
+ assert.deepEqual(BUILD_CAPACITY_PROFILE,{profileVersion:3,archiveMaxBytes:285212672,zipMaxBytes:293601280});
  assert.doesNotThrow(()=>assertBuildCapacityProfile({...BUILD_CAPACITY_PROFILE}));
- for(const value of [undefined,null,{}, {...BUILD_CAPACITY_PROFILE,profileVersion:1},{...BUILD_CAPACITY_PROFILE,profileVersion:true},
-  {...BUILD_CAPACITY_PROFILE,archiveMaxBytes:268435456},{...BUILD_CAPACITY_PROFILE,archiveMaxBytes:276824065},
+ for(const value of [undefined,null,{}, {profileVersion:2,archiveMaxBytes:276824064,zipMaxBytes:293601280}, {...BUILD_CAPACITY_PROFILE,profileVersion:2}, {...BUILD_CAPACITY_PROFILE,archiveMaxBytes:276824064}, {...BUILD_CAPACITY_PROFILE,profileVersion:1},{...BUILD_CAPACITY_PROFILE,profileVersion:true},
+  {...BUILD_CAPACITY_PROFILE,archiveMaxBytes:268435456},{...BUILD_CAPACITY_PROFILE,archiveMaxBytes:285212673},
   {...BUILD_CAPACITY_PROFILE,zipMaxBytes:293601281},{...BUILD_CAPACITY_PROFILE,extra:true}])assert.throws(()=>assertBuildCapacityProfile(value));
 });
 test('actual five-member aggregate has its own hard ZIP bound independent of legal member caps',()=>{
- const archive=276824064;
+ const archive=285212672;
  assert.doesNotThrow(()=>assertBuildPacketAggregate([archive,1,1,1,293601280-archive-3]));
  for(const sizes of [[archive,1024**2,1024**2,80*1024,16*1024**2],[archive,1,1,1,293601280-archive-2],
   [1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,NaN],[1,1,1,1,-1],[1,1,1,1,1.5]])assert.throws(()=>assertBuildPacketAggregate(sizes));

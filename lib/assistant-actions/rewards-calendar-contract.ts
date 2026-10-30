@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {rewardCalendarSchema} from '../../packs/rewards/calendar';
+import {rewardCalendarSchema} from '../../packs/rewards/index';
 export const REWARDS_CALENDAR_ACTION='rewards.calendar.update' as const;
 const id=z.guid(),digest=z.string().regex(/^[a-f0-9]{64}$/),base={action:z.literal(REWARDS_CALENDAR_ACTION),contractVersion:z.literal(1)};
 export const RewardsCalendarHuman=z.object({...base,unitId:id,cycleId:id,companyId:id,calendarId:id.nullable(),revision:z.number().int().nonnegative(),values:rewardCalendarSchema,confirmSharedCalendar:z.literal(true)}).strict();

@@ -2,6 +2,7 @@
 from __future__ import annotations
 import gzip
 import hashlib
+import heapq
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -14,7 +15,7 @@ import time
 
 MAX_FILES = 40000
 MAX_UNPACKED = 2 * 1024**3
-CAPACITY_PROFILE = {"profileVersion": 2, "archiveMaxBytes": 276824064, "zipMaxBytes": 293601280}
+CAPACITY_PROFILE = {"profileVersion": 3, "archiveMaxBytes": 285212672, "zipMaxBytes": 293601280}
 MAX_ARCHIVE = CAPACITY_PROFILE["archiveMaxBytes"]
 MAX_ZIP = CAPACITY_PROFILE["zipMaxBytes"]
 MAX_FILE = 256 * 1024**2
@@ -220,6 +221,55 @@ class OwnedOutput:
     def close(self):
         os.close(self.parent_fd)
 
+
+# Fixed-size metadata only. This is not a payload-selection or capacity-admission owner.
+PACK_DIAGNOSTIC_MAX_BYTES = 32768
+PACK_DIAGNOSTIC_TOP_MEMBERS = 20
+PACK_DIAGNOSTIC_DIRECTORIES = (
+    "server/app", "server/chunks", "server/pages", "server", "static/chunks", "static/media",
+    "static/css", "static", "types", "diagnostics", "build", "standalone", "root", "other",
+)
+PACK_DIAGNOSTIC_EXTENSIONS = (
+    ".nft.json", ".map", ".json", ".mjs", ".cjs", ".js", ".css", ".html", ".rsc", ".meta",
+    ".body", ".ts", ".txt", ".woff2", ".woff", ".ttf", ".otf", ".png", ".jpg", ".svg", "none", "other",
+)
+
+def pack_inventory_diagnostic(rows, directories, aliases, archive_bytes):
+    """Summarize the existing validated/hashed rows; never reopen payload or build another file tree."""
+    directory_totals = {key: {"files": 0, "bytes": 0} for key in PACK_DIAGNOSTIC_DIRECTORIES}
+    extension_totals = {key: {"files": 0, "bytes": 0} for key in PACK_DIAGNOSTIC_EXTENSIONS}
+    member_digest = hashlib.sha256()
+    unpacked_bytes = 0
+    for row in rows:
+        path, size = row["path"], row["size"]
+        member_digest.update(canonical(row))  # Existing original manifest row, one framed JSON line.
+        unpacked_bytes += size
+        directory = next((key for key in PACK_DIAGNOSTIC_DIRECTORIES[:-2]
+                          if path.startswith(key + "/")), "root" if "/" not in path else "other")
+        extension = next((key for key in PACK_DIAGNOSTIC_EXTENSIONS[:-2]
+                          if path.endswith(key)), "none" if not PurePosixPath(path).suffix else "other")
+        for totals, key in [(directory_totals, directory), (extension_totals, extension)]:
+            totals[key]["files"] += 1
+            totals[key]["bytes"] += size
+    return {
+        "kind": "BUILD_BUNDLE_INVENTORY_DIAGNOSTIC_NOT_ADMISSION", "diagnosticVersion": 1,
+        "releaseAuthorized": False, "capacityCheckPending": True, "capacityProfile": dict(CAPACITY_PROFILE),
+        "compressionLevel": COMPRESSION_LEVEL, "archiveBytes": archive_bytes, "archiveLimitBytes": MAX_ARCHIVE,
+        "files": len(rows), "directories": len(directories), "externalAliases": len(aliases),
+        "unpackedBytes": unpacked_bytes, "directoryTotals": directory_totals, "extensionTotals": extension_totals,
+        "memberListDigestFormat": "sha256-canonical-json-lines-of-original-manifest-rows-in-scan-order",
+        "memberListSha256": member_digest.hexdigest(),
+        "largestMembers": heapq.nsmallest(PACK_DIAGNOSTIC_TOP_MEMBERS, rows,
+                                          key=lambda row: (-row["size"], row["path"])),
+    }
+
+
+def emit_pack_inventory_diagnostic(rows, directories, aliases, archive_bytes):
+    encoded = canonical(pack_inventory_diagnostic(rows, directories, aliases, archive_bytes))
+    require(len(encoded) <= PACK_DIAGNOSTIC_MAX_BYTES, "bounded pack diagnostic exceeds limit")
+    # One ASCII JSON line; only validated relative paths/counts/digests, no code, absolute paths or environment.
+    sys.stderr.write(encoded.decode("ascii"))
+
 def pack(source, output):
     source, output = Path(source).absolute(), Path(output).absolute()
     require(output.parent.resolve() == output.parent and not output.is_relative_to(source / ".next"), "unsafe bundle output directory")
@@ -238,6 +288,7 @@ def pack(source, output):
                     require(reader.count == info.size and identity(os.fstat(stream.fileno())) == expected, "build changed during packaging")
                     rows.append({"path": path, "size": info.size, "sha256": reader.hash.hexdigest(), "mode": info.mode})
         require(scan(source) == (files, dirs, aliases), "build inventory changed during packaging")
+        emit_pack_inventory_diagnostic(rows, dirs, aliases, archive.lstat().st_size)
         regular(archive, MAX_ARCHIVE, context="compressed-build-archive", root=output)
         build_id = (source / ".next/BUILD_ID").read_text().strip()
         require(build_id and len(build_id.encode()) <= 512 and not any(ord(c) < 32 or ord(c) == 127 for c in build_id), "invalid production build ID")

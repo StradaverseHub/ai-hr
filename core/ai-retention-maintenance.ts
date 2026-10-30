@@ -63,6 +63,7 @@ export async function retireExpiredAiCustodyTx(tx: Tx): Promise<AiRetentionResul
       and current_setting('transaction_isolation')='read committed'
       and current_setting('transaction_read_only')='off'
       and has_function_privilege(current_user,'app.agent_signal_custody_visible(text,uuid,uuid,uuid)','EXECUTE')
+      and has_function_privilege(current_user,'app._payroll_completion_shape(jsonb,text,text)','EXECUTE')
       and (select r.rolsuper or p.proowner=r.oid from pg_catalog.pg_roles r cross join pg_catalog.pg_proc p
         where r.rolname=current_user and p.oid='app.assistant_transcripts_retire_expired(uuid,integer,integer)'::regprocedure) is true
       and (select count(*)=${AI_RETENTION_MAINTAINED_RELATIONS.length} and bool_and(r.rolsuper or c.relowner=r.oid)
@@ -89,7 +90,9 @@ export async function retireExpiredAiCustodyTx(tx: Tx): Promise<AiRetentionResul
           and state='awaiting_confirmation' and expires_at<=now()
         order by expires_at,id limit 100 for update skip locked
       ), retired as (
-        update app.assistant_own_leave_review r set state='expired',intent_digest=null,reviewed_digest=null
+        update app.assistant_own_leave_review r set state='expired',intent_digest=null,reviewed_digest=null,
+          payroll_completion_root=case when r.action_kind='payroll.reopen' then null else r.payroll_completion_root end,
+          org_manager_person_id=null,org_previous_manager_person_id=null
         from selected s where r.id=s.id and r.tenant_id=${tenant.tenant_id}::uuid returning r.id
       ), erased as (
         delete from app.assistant_own_leave_review_content c using retired r
