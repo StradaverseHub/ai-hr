@@ -30399,7 +30399,7 @@
     "previousTreatment": "Previous recorded treatment",
     "latestTreatment": "Latest saved treatment",
     "preserved": "Original transaction amounts, closed batches, issued payslips, PCB paid, payments and existing statutory reports or submissions stay unchanged.",
-    "recalculateAction": "Recalculate {count} eligible employees",
+    "recalculateAction": "{count, plural, one {Recalculate # eligible employee} other {Recalculate # eligible employees}}",
     "confirmTitle": "Recalculate Income Tax Value?",
     "confirmDescription": "Apply the reviewed latest saved settings for {company}, January–{month} {year}, to {count} employees and {records} records listed below?",
     "excludedHint": "Excluded: {blocked} blocked employees and {unchanged} employees with no changes.",
