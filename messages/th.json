@@ -11101,7 +11101,7 @@
         "onboardingModuleAccess": "เฉพาะผู้ดูแลหลักที่มีสิทธิ์บริหาร HR ทั้งกลุ่มเท่านั้นที่ให้หรือถอนสิทธิ์โมดูลได้",
         "onboardingRequisitions": "กลุ่มจัดเตรียม กลุ่มอนุมัติและกลุ่มเพิ่มระบบที่กำหนด ผู้ใช้โมดูลและ HR บริษัทอ่านคำขอได้ การดำเนินการยังจำกัดตามทีม ขั้นตอนหรือสิทธิ์รายการปัจจุบัน การถูกกล่าวถึงให้สิทธิ์เฉพาะการสนทนานั้น",
         "onboardingSettings": "ผู้ใช้โมดูลดูแลนโยบาย แค็ตตาล็อก ขั้นตอนอนุมัติและการส่งต่อ ผู้ดูแลหลักที่ไม่มีสิทธิ์โมดูลจัดการได้เฉพาะกลุ่มและการให้สิทธิ์",
-        "onboardingV31": "ต้องได้รับสิทธิ์โมดูลการเริ่มงานโดยเฉพาะ แยกจากบทบาท HR ข้อมูลระบุตัวตนเฉพาะ HR ต้องมีสิทธิ์ HR ของบริษัทด้วย",
+        "onboardingV31": "ต้องมีสิทธิ์โมดูลการเริ่มงานหรือสิทธิ์เข้าถึงหน้าของกลุ่มที่กำหนดไว้ การดูแต่ละส่วนแยกจากสิทธิ์ดำเนินการเคส และข้อมูลเฉพาะ HR ยังต้องมีสิทธิ์ HR ของบริษัทด้วย",
         "performanceHome": "Everyone signed in reaches it while Performance is on. Each card shows only the viewer's own work and the results released to them; a leader seat adds aggregate counts for the people it leads, never one person's band.",
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked. The department view lists only the people whose current head-of-department assignment names you, read-only.",
         "payrollConfig": "ทุกคนเปิดได้ เฉพาะผู้ดูแลของบริษัทเท่านั้นที่เปลี่ยนได้",

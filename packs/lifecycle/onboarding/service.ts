@@ -824,13 +824,14 @@ export async function onboardingNote(ctx: SessionContext, caseId: string, input:
         M.fail('This note is too long.');
     return withTenant(ctx, async (tx) => {
         const { row, config, actor, c } = await loadTx(tx, ctx, caseId, true);
-        if (!await participantTx(tx, caseId))
+        if (!(actor.caseActions&&actor.sections?.notes==='view')&&!await participantTx(tx, caseId))
             M.fail('This conversation is not available.', 'forbidden');
         const thread = (await tx.select().from(notes).where(eq(notes.caseId, caseId)).orderBy(asc(notes.createdAt), asc(notes.id))).map(n => n.data);
-        if (input.context !== 'requisition' && !c.tasks.some(t => t.id === input.context) && !input.id)
+        if (input.context !== 'case' && input.context !== 'requisition' && !c.tasks.some(t => t.id === input.context) && !input.id)
             M.fail('Choose an existing task conversation.');
         const task = c.tasks.find(t => t.id === input.context), r = M.currentReq(c);
-        const allowed = actor.module || actor.caseActions&&actor.sections?.notes==='view' || task?.assignee === actor.id || input.context === 'requisition' && !!r && (requisitionGroupAccess(config,actor.id)||r.items.some(item=>M.inGroup(config,item.team,actor.id))) || thread.some(n => n.context === input.context && n.mentions.includes(actor.id));
+        const pageNote=actor.caseActions&&actor.sections?.notes==='view'&&(input.context==='case'||input.context==='requisition'&&actor.sections.equip!=='hidden'||!!task&&(actor.sections.checklist==='all'||actor.sections.checklist==='team'&&(task.assignee===actor.id||M.inGroup(config,task.group,actor.id))));
+        const allowed = actor.module || pageNote || task?.assignee === actor.id || input.context === 'requisition' && !!r && (requisitionGroupAccess(config,actor.id)||r.items.some(item=>M.inGroup(config,item.team,actor.id))) || thread.some(n => n.context === input.context && n.mentions.includes(actor.id));
         if (!allowed)
             M.fail('This conversation is not available.', 'forbidden');
         if (c.state === 'cancelled')
@@ -1164,7 +1165,8 @@ export async function onboardingNavigation(ctx: SessionContext) {
         const { config, revision } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config);
         const list = actor.module ? await tx.select({data:cases.data}).from(cases).orderBy(asc(cases.id)) : [];
         const today=todayInKualaLumpur();
-        return { module:actor.module, master:actor.master, requisitions:actor.module || actor.hr || requisitionGroupAccess(config,actor.id), joiners:list.filter(row=>M.visibleRecentJoiner(config,row.data,today)).length, checklists:actor.module&&revision?config.checklists.length:0 };
+        const [scope]=await tx.execute<{hr:boolean}>(sql`select app.is_admin() as hr`);
+        return { module:actor.module, v9:actor.master||!!config.v9ChecklistRevision&&(!!actor.page||!!actor.records||!!scope?.hr&&config.access.offboarding.includes(actor.id)), master:actor.master, requisitions:actor.records || actor.module || actor.hr || requisitionGroupAccess(config,actor.id), joiners:list.filter(row=>M.visibleRecentJoiner(config,row.data,today)).length, checklists:actor.module&&revision?config.checklists.length:0 };
     });
 }
 async function assignRoleTasksTx(tx: Tx, c: M.Case): Promise<boolean> {

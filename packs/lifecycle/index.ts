@@ -28,7 +28,7 @@
 import { Laptop } from 'lucide-react';
 import { registerPack, type ModulePack, type NavLinkDescriptor } from '../registry';
 const LIFECYCLE_NAV_LINKS: NavLinkDescriptor[] = [
-    { group: 'manage', href: '/lifecycle/v9', labelKey: 'onboardingOffboarding', icon: Laptop, adminOnly: true },
+    { group: 'manage', href: '/lifecycle/v9', labelKey: 'onboardingOffboarding', icon: Laptop },
     { group: 'manage', href: '/me/lifecycle', labelKey: 'myLifecycle', icon: Laptop },
     { group: 'manage', href: '/lifecycle/requisitions/onboarding', labelKey: 'onboardingRequisitions', icon: Laptop },
     { group: 'main', href: '/lifecycle', labelKey: 'lifecycle', icon: Laptop },

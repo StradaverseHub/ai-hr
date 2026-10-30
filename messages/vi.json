@@ -11101,7 +11101,7 @@
         "onboardingModuleAccess": "Chỉ quản trị viên chính có quyền quản trị HR toàn tập đoàn mới được cấp hoặc thu hồi quyền mô-đun.",
         "onboardingRequisitions": "Các nhóm thực hiện, phê duyệt và thêm hệ thống đã cấu hình, người dùng mô-đun và HR công ty được đọc yêu cầu. Thao tác vẫn giới hạn theo nhóm, bước hoặc quyền mục hiện tại. Việc được nhắc đến chỉ cấp quyền xem cuộc thảo luận tương ứng.",
         "onboardingSettings": "Người dùng mô-đun quản lý chính sách, danh mục, quy trình phê duyệt và định tuyến. Quản trị viên chính chưa có quyền mô-đun chỉ quản lý nhóm và cấp quyền.",
-        "onboardingV31": "Cần được cấp quyền mô-đun hội nhập riêng, độc lập với vai trò HR. Trường định danh dành cho HR còn yêu cầu quyền HR tại công ty.",
+        "onboardingV31": "Cần quyền mô-đun hội nhập hoặc quyền xem trang được cấu hình cho nhóm. Quyền xem từng phần tách biệt với thao tác hồ sơ; trường dành riêng cho HR vẫn cần quyền HR của công ty.",
         "performanceHome": "Everyone signed in reaches it while Performance is on. Each card shows only the viewer's own work and the results released to them; a leader seat adds aggregate counts for the people it leads, never one person's band.",
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked. The department view lists only the people whose current head-of-department assignment names you, read-only.",
         "payrollConfig": "Mọi người đều có thể mở; chỉ quản trị viên của công ty mới có thể thay đổi.",

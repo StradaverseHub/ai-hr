@@ -11101,7 +11101,7 @@
         "onboardingModuleAccess": "குழு முழுவதற்குமான HR நிர்வாக அதிகாரமுள்ள முதன்மை நிர்வாகி மட்டுமே தொகுதி அணுகலை வழங்கவோ அகற்றவோ முடியும்.",
         "onboardingRequisitions": "அமைக்கப்பட்ட வழங்கல், ஒப்புதல் மற்றும் அமைப்பு சேர்க்கும் குழுக்கள், தொகுதி பயனர்கள் மற்றும் நிறுவன HR கோரிக்கைகளைப் படிக்கலாம். செயல்கள் தற்போதைய குழு, படி அல்லது உருப்படி உரிமைகளுக்கு உட்பட்டவை. குறிப்பிடப்படுவது அந்த உரையாடலை மட்டும் அணுக அனுமதிக்கும்.",
         "onboardingSettings": "தொகுதி பயனர்கள் கொள்கைகள், பட்டியல்கள், ஒப்புதல் ஓட்டங்கள் மற்றும் வழித்தடங்களை நிர்வகிக்கிறார்கள். தொகுதி அணுகல் இல்லாத முதன்மை நிர்வாகி குழுக்கள் மற்றும் அனுமதிகளை மட்டும் நிர்வகிக்கலாம்.",
-        "onboardingV31": "HR பாத்திரத்திலிருந்து தனியாக வெளிப்படையான பணிச்சேர்ப்பு தொகுதி அனுமதி தேவை. HR அடையாளப் புலங்களுக்கு நிறுவன HR அணுகலும் தேவை.",
+        "onboardingV31": "பணிச்சேர்ப்பு தொகுதி அனுமதி அல்லது அமைக்கப்பட்ட குழுப் பக்க அணுகல் தேவை. பகுதி தெரிவுநிலையும் வழக்குச் செயல்களும் தனித்தனி; HR புலங்களுக்கு நிறுவன HR அணுகலும் தேவை.",
         "performanceHome": "Everyone signed in reaches it while Performance is on. Each card shows only the viewer's own work and the results released to them; a leader seat adds aggregate counts for the people it leads, never one person's band.",
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked. The department view lists only the people whose current head-of-department assignment names you, read-only.",
         "payrollConfig": "அனைவரும் இதைத் திறக்கலாம்; நிறுவனத்தின் நிர்வாகிகள் மட்டுமே இதை மாற்ற முடியும்.",

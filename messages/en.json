@@ -11101,7 +11101,7 @@
         "onboardingModuleAccess": "Only a Master Admin with group-wide HR administration grants or removes module access.",
         "onboardingRequisitions": "Operational fulfilment, approval and configured add-system groups, module users and company HR can read requisitions. Actions remain restricted to the current team, step or item rights. A mention alone grants only its discussion context.",
         "onboardingSettings": "Onboarding module users maintain policies, catalogues, workflows and routing. A Master Admin without module access manages groups and grants only.",
-        "onboardingV31": "Requires an explicit Onboarding module grant, independent of HR role. HR-only identity fields also require company HR access.",
+        "onboardingV31": "Requires an Onboarding module grant or configured group page access. Section visibility and case actions are separate; HR-only fields also require company HR access.",
         "performanceHome": "Everyone signed in reaches it while Performance is on. Each card shows only the viewer's own work and the results released to them; a leader seat adds aggregate counts for the people it leads, never one person's band.",
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked. The department view lists only the people whose current head-of-department assignment names you, read-only.",
         "payrollConfig": "Everyone can open this; only admins for the company can change it.",

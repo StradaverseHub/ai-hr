@@ -11101,7 +11101,7 @@
         "onboardingModuleAccess": "Hanya Pentadbir Utama dengan pentadbiran HR seluruh kumpulan boleh memberi atau membuang akses modul.",
         "onboardingRequisitions": "Kumpulan penyediaan, kelulusan dan penambahan sistem yang ditetapkan, pengguna modul serta HR syarikat boleh membaca permintaan. Tindakan mengikut hak pasukan, langkah atau item semasa. Sebutan hanya memberi konteks perbincangannya.",
         "onboardingSettings": "Pengguna modul Onboarding mengurus dasar, katalog, aliran kelulusan dan penghalaan. Pentadbir Utama tanpa akses modul hanya mengurus kumpulan dan kebenaran.",
-        "onboardingV31": "Memerlukan kebenaran modul Onboarding yang jelas, berasingan daripada peranan HR. Medan identiti HR juga memerlukan akses HR syarikat.",
+        "onboardingV31": "Memerlukan kebenaran modul Onboarding atau akses halaman kumpulan yang dikonfigurasi. Paparan bahagian dan tindakan kes adalah berasingan; medan khusus HR juga memerlukan akses HR syarikat.",
         "performanceHome": "Everyone signed in reaches it while Performance is on. Each card shows only the viewer's own work and the results released to them; a leader seat adds aggregate counts for the people it leads, never one person's band.",
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked. The department view lists only the people whose current head-of-department assignment names you, read-only.",
         "payrollConfig": "Semua orang boleh membukanya; hanya pentadbir syarikat boleh mengubahnya.",

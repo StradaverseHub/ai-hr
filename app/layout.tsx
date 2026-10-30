@@ -224,7 +224,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // The canonical inbox admits ordinary employees only for an actionable, non-self v3/v4 assignment.
   // Reuse that result; do not promote the viewer to manager or query the assignment owner twice.
   const hasAssignedAttendanceApproval = !canApprove && approvalTasks.some(task => task.kind === 'attendance');
-  const onboardingNav=isModuleEnabledOrFalse(session,'lifecycle')?await onboardingNavigation(session):{module:false,master:false,requisitions:false,joiners:0,checklists:0};
+  const onboardingNav=isModuleEnabledOrFalse(session,'lifecycle')?await onboardingNavigation(session):{module:false,v9:false,master:false,requisitions:false,joiners:0,checklists:0};
   const onboardingAccess=onboardingNav.module;
   const onboardingQueue = isModuleEnabledOrFalse(session, 'lifecycle') ? await onboardingTasks(session) : [];
   // Profile Changes now has its own Personnel queue. Count only tasks this inbox actually opens;
@@ -305,6 +305,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               approvalCount={legacyApprovalCount}
               taskCount={pendingTasks.length}
               onboardingAccess={onboardingAccess}
+              onboardingV9Access={onboardingNav.v9}
               onboardingJoinerCount={onboardingNav.joiners}
               onboardingChecklistCount={onboardingNav.checklists}
               onboardingMaster={onboardingNav.master}
