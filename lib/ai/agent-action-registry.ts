@@ -372,7 +372,8 @@ export const AGENT_ACTIONS=Object.freeze([
   outcome:'canonical_receipt_required',semantics:'request_rejected_reason_shared_with_employee_no_profile_fields_applied',humanInputs:['employmentId','subjectId','reason'],
   permission:{actor:'hr_admin',guard:'core/assistant-actions/profile-request-rejection-source.ts#withProfileRequestRejectionSubjectTx'},subject:'other_employment',blastRadius:{max:1,unit:'profile_change_request'},
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'final'},evaluationCases:[],
-  screen:{native:'app/admin/personnel/profile-changes/page.tsx',entryPoints:['app/admin/personnel/profile-changes/actions.ts#decideProfileChangeAction']},review:{route:'/assistant/profile-request-rejection',handoff:'review_page'},
+  // Only non-own pending scalar rejection is implemented; the broad approve/reject action remains backlog.
+  screen:{native:'app/admin/personnel/profile-changes/page.tsx',entryPoints:[]},review:{route:'/assistant/profile-request-rejection',handoff:'review_page'},
   store:'generic_assigned',browserOwner:'profileRequestRejection',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'employees.code.maintain',module:'employees',owner:'personnel',service:'core/workforce-code.ts#setWorkforceEmployeeCode',contractVersion:1,
   prepare:{status:'implemented',adapter:'employee_code_maintenance_review_v1',inputSchema:'EmployeeCodeMaintenance.Human',outputSchema:'EmployeeCodeMaintenance.Prepared'},

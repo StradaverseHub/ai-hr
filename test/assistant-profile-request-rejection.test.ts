@@ -106,12 +106,19 @@ it('expires pending custody without a native decision and retires the encrypted 
 it('refuses relinked current users before decrypting the original actor body',async()=>{
  const who=await login('hr_admin',false),id=await request(),r=(await reviews.prepare(who,human(id))).review;await owner.db.update(schema.appUser).set({personId:subject.personId}).where(eq(schema.appUser.id,who.userId!));const unwrap=vi.spyOn(vault,'unwrapDek').mockImplementation(()=>{throw Error('relinked actor must not unwrap former custody');});try{await expect(reviews.reopen(who,r.actionId)).rejects.toThrow();await expect(reviews.confirm({...who,personId:subject.personId},confirmation(r))).rejects.toThrow();expect(unwrap).not.toHaveBeenCalled();expect(await stored(r.actionId)).toMatchObject({actorPersonId:null,state:'awaiting_confirmation',bodies:1});expect(await row(id)).toMatchObject({status:'pending'});}finally{unwrap.mockRestore();}
 });
-it('records native self-call outcome and row/event evidence separately, and refuses composed false-success proof',async()=>{
+it('refuses native and Assistant own-request decisions under current RLS without any row, event or custody effect',async()=>{
  const self=await login('super_admin'),[employment]=await owner.db.select({id:schema.employment.id}).from(schema.employment).where(eq(schema.employment.personId,self.personId!)),id=await request(undefined,{employmentId:employment.id,personId:self.personId!}),before=await row(id);
- // JS's shared super-admin exception is not itself proof of a native update: SQL reader/update RLS
- // also excludes own requests. Keep the existing native call result separate from observable effect.
- const native=await Promise.allSettled([decideProfileChange(self,{requestId:id,decision:'rejected',reason:'Native own-request probe'})]);const after=await row(id),audit=await events(id);expect(native[0]).toMatchObject({status:'fulfilled',value:{status:'rejected'}});expect(audit).toHaveLength(1);expect(after.proposed).toEqual(before.proposed);expect(after.status).toBe('pending');expect(audit.every(e=>e.aggregateId===id&&e.actorId===self.userId)).toBe(true);
- await expect(reviews.prepare(self,human(id,'Assistant own rejection',employment.id))).rejects.toThrow();await expect(withTenant(self,tx=>decideProfileChange(self,{requestId:id,decision:'rejected',reason:'Composed own-request refusal'},tx))).rejects.toThrow();expect(await row(id)).toEqual(after);expect(await events(id)).toEqual(audit);
+ // A plain own-request read is permitted, but FOR UPDATE also requires the native review UPDATE
+ // policy, whose real USER/PERSON binding excludes self even when the JS guard has an exception.
+ await withTenant(self,async tx=>{
+  expect(await tx.select({id:schema.profileChangeRequest.id}).from(schema.profileChangeRequest).where(eq(schema.profileChangeRequest.id,id))).toEqual([{id}]);
+  expect(await tx.select({id:schema.profileChangeRequest.id}).from(schema.profileChangeRequest).where(eq(schema.profileChangeRequest.id,id)).for('update')).toEqual([]);
+ });
+ await expect(decideProfileChange(self,{requestId:id,decision:'rejected',reason:'Native own-request probe'})).rejects.toThrow('profile change request not found (or not visible)');
+ expect(await row(id)).toEqual(before);expect(await events(id)).toHaveLength(0);
+ await expect(reviews.prepare(self,human(id,'Assistant own rejection',employment.id))).rejects.toThrow();
+ await expect(withTenant(self,tx=>decideProfileChange(self,{requestId:id,decision:'rejected',reason:'Composed own-request refusal'},tx))).rejects.toThrow('profile change request not found (or not visible)');
+ expect(await row(id)).toEqual(before);expect(await events(id)).toHaveLength(0);expect((await reviews.list(self)).reviews).toEqual([]);
 });
 it('rejects oversize human reason before custody and permits fresh expiry replacement on the same subject',async()=>{
  const id=await request();await expect(reviews.prepare(hr,human(id,'x'.repeat(2001)))).rejects.toThrow();expect(await row(id)).toMatchObject({status:'pending'});
@@ -165,7 +172,7 @@ it('keeps the native legacy commitment stable for an uninitialized Access row',a
 });
 it('keeps all dedicated hybrid columns closed through the finite generic branch and independent sibling checks',async()=>{
  const id=await request(),r=(await reviews.prepare(hr,human(id))).review,allowed=['action_kind','id','tenant_id','user_id','person_id','employment_id','company_id','intent_digest','reviewed_digest','state','created_at','expires_at','decision_subject_person_id','receipt_subject_kind','receipt_subject_id','receipt_event_id'];
- const columns=await owner.db.execute<{name:string;type:string}>(sql`select a.attname as name,format_type(a.atttypid,a.atttypmod) as type from pg_attribute a where a.attrelid='app.assistant_own_leave_review'::regclass and a.attnum>0 and not a.attisdropped and not (a.attname::text=any(${allowed}::text[])) order by a.attnum`);expect(columns).toHaveLength(54);
+ const columns=await owner.db.execute<{name:string;type:string}>(sql`select a.attname as name,format_type(a.atttypid,a.atttypmod) as type from pg_attribute a where a.attrelid='app.assistant_own_leave_review'::regclass and a.attnum>0 and not a.attisdropped and not (a.attname::text=any(ARRAY[${sql.join(allowed.map(name=>sql`${name}`),sql`, `)}]::text[])) order by a.attnum`);expect(columns).toHaveLength(54);
  for(const column of columns){
   const value=column.type==='uuid'?sql`${randomUUID()}::uuid`:column.type==='uuid[]'?sql`ARRAY[${randomUUID()}::uuid]`:column.type==='integer'?sql`1`:column.type==='date'?sql`DATE '2026-10-30'`:column.type==='text'?sql`'fictional hybrid'`:null;if(value===null)throw Error('Unhandled dedicated column type: '+column.name+' '+column.type);
   let failure:unknown;try{await owner.db.execute(sql`update app.assistant_own_leave_review set ${sql.identifier(column.name)}=${value} where id=${r.actionId}::uuid`);}catch(error){failure=error;}expect(pgSqlState(failure),column.name+' must remain closed').toBe('23514');
