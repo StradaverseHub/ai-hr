@@ -13,13 +13,13 @@ it('compares mixed-principal visibility and malformed-context outcomes before, d
  const companies=[b.companyId];
  for(let i=1;i<5;i++){const [company]=await owner.db.insert(s.company).values({tenantId:b.tenantId,country:'MY',legalName:'Fictional gate company '+i}).returning();companies.push(company.id);}
  const users=Array.from({length:500},(_,i)=>({id:randomUUID(),personId:randomUUID(),employmentId:randomUUID(),companyId:companies[i%5],role:(i<2?'hr_admin':i===2?'manager':'employee') as 'hr_admin'|'manager'|'employee'}));
- await owner.db.insert(s.person).values(users.map((u,i)=>({id:u.personId,tenantId:b.tenantId,fullName:'Fictional gate person '+i})));
+ await owner.db.insert(s.person).values(users.map((u,i)=>({id:u.personId,tenantId:b.tenantId,fullName:'Fictional gate person '+i,primaryEmail:u.id+'@example.invalid'})));
  await owner.db.insert(s.employment).values(users.map(u=>({id:u.employmentId,tenantId:b.tenantId,personId:u.personId,companyId:u.companyId,hiredOn:'2025-01-01'})));
  await owner.db.insert(s.appUser).values(users.map(u=>({id:u.id,tenantId:b.tenantId,personId:u.personId,workosUserId:'gate_'+u.id})));
  await owner.db.insert(s.roleAssignment).values(users.map((u,i)=>({tenantId:b.tenantId,appUserId:u.id,role:u.role,companyId:i===1?null:u.companyId})));
  const reports=users.filter((u,i)=>i>2&&u.companyId===users[2].companyId).slice(0,10);
  await owner.db.insert(s.reportingLine).values(reports.map(u=>({tenantId:b.tenantId,managerEmploymentId:users[2].employmentId,subordinateEmploymentId:u.employmentId,lineType:'administrative' as const,validFrom:'2025-01-01'})));
- const [otherPerson]=await owner.db.insert(s.person).values({tenantId:foreign.tenantId,fullName:'Fictional other tenant'}).returning();
+ const [otherPerson]=await owner.db.insert(s.person).values({tenantId:foreign.tenantId,fullName:'Fictional other tenant',primaryEmail:randomUUID()+'@example.invalid'}).returning();
  await owner.db.insert(s.employment).values({tenantId:foreign.tenantId,personId:otherPerson.id,companyId:foreign.companyId,hiredOn:'2025-01-01'});
  for(const table of ['employment','person','app_user','role_assignment','reporting_line'])await owner.client.unsafe('analyze '+table);
  const [definition]=await owner.client`select pg_get_functiondef('app.visible_employment_ids()'::regprocedure)as original,prosrc as body from pg_proc where oid='app.visible_employment_ids()'::regprocedure`;
