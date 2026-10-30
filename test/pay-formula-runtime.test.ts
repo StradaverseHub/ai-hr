@@ -6,7 +6,7 @@ import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {seedPayComponentCatalog,upsertPayComponent,setEmploymentPayComponent} from '../core/pay-components';
 import {createBatch,generatePayslips} from '../core/payroll';
-import {savePayFormula,testPayFormula,setPayFormulaActive} from '../core/pay-formula';
+import {savePayFormula,testPayFormula,setPayFormulaActive,getFormulaEvaluation} from '../core/pay-formula';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import type {SessionContext} from '../db/client';
 import type {PayFormulaContext} from '../lib/pay-formula-model';
@@ -43,4 +43,22 @@ it('blocks payroll atomically when valid test input becomes a zero runtime divis
  expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId))).toHaveLength(0);
  expect(await owner.db.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.batchId,batchId))).toHaveLength(0);
  const [batch]=await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batchId));expect(batch.status).toBe('draft');
+});
+it('keeps prefetched but unread branch values out of retained evidence',async()=>{
+ const secret='private-unused-nationality';await owner.db.update(schema.person).set({nationality:secret}).where(eq(schema.person.id,employee.personId));
+ await activate('If False Then\n Explain {#EmployeeInformation}("nationality")\nEnd If\nReturn 1');
+ const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:context.period,payrollCycleId:context.cycleId});await generatePayslips(ctx,{batchId});
+ const [evidence]=await owner.db.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.batchId,batchId));
+ expect(JSON.stringify(evidence.payload)).not.toContain(secret);expect(evidence.readRequirements.categories).not.toContain('identity');
+});
+it('keeps actual private reads out of payslips and revokes access to their retained trace',async()=>{
+ const secret='private-used-nationality';await owner.db.update(schema.person).set({nationality:secret}).where(eq(schema.person.id,employee.personId));
+ await activate('Explain {#EmployeeInformation}("nationality")\nReturn 1');
+ const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:context.period,payrollCycleId:context.cycleId});await generatePayslips(ctx,{batchId});
+ const [evidence]=await owner.db.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.batchId,batchId));
+ expect(evidence.readRequirements.categories).toContain('identity');expect(JSON.stringify(evidence.payload)).toContain(secret);
+ const [slip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));expect(JSON.stringify(slip.statutory)).not.toContain(secret);
+ expect(await getFormulaEvaluation(ctx,evidence.id)).not.toBeNull();
+ await owner.db.insert(schema.payrollPermissionGrant).values(['hr_admin','super_admin'].map(role=>({tenantId:base.tenantId,companyId:base.companyId,role,permissionKey:'report.read.identity',allowed:false})));
+ expect(await getFormulaEvaluation(ctx,evidence.id)).toBeNull();
 });
