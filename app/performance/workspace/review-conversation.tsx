@@ -27,15 +27,16 @@ export function ReviewConversation({reviewId,stage,initial,aiEnabled,labels,chil
  },[]);
  const [conversation,setConversation]=useState(initial),[pendingText,setPendingText]=useState(''),[words,setWords]=useState(''),[error,setError]=useState(''),[pending,start]=useTransition();
  function send(intent:'guide'|'draft'|'starter'){
-  const text=words.trim()||(intent==='starter'?labels.starter:labels.next);
-  setPendingText(text);
+  const originalWords=words;
+  const text=originalWords.trim()||(intent==='starter'?labels.starter:labels.next);
+  setWords('');setError('');setPendingText(text);
   start(async()=>{
-   try{await flushAssessmentDrafts();}catch(e){setError(e instanceof Error?e.message:labels.help);setPendingText('');return;}
+   try{await flushAssessmentDrafts();}catch(e){setWords(originalWords);setError(e instanceof Error?e.message:labels.help);setPendingText('');return;}
    try{
    const result=stage==='calibration'?await calibrationConversationAction(contextId??reviewId,axis??'both',conversation.revision,crypto.randomUUID(),text):await reviewConversationAction(reviewId,stage,conversation.revision,crypto.randomUUID(),text,intent,contextId);
-   if('error' in result){setError(result.error);return;}
-   setConversation(result);setWords('');setError('');if('draftUpdated' in result&&result.draftUpdated)router.refresh();
-   }catch(e){setError(e instanceof Error?e.message:labels.help);}finally{setPendingText('');}
+   if('error' in result){setWords(originalWords);setError(result.error);return;}
+   setConversation(result);setError('');if('draftUpdated' in result&&result.draftUpdated)router.refresh();
+   }catch(e){setWords(originalWords);setError(e instanceof Error?e.message:labels.help);}finally{setPendingText('');}
   });
  }
  function keepReflection(messageId:string){
