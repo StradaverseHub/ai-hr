@@ -110,7 +110,7 @@ CREATE FUNCTION app._assistant_payroll_reopen_review_source(p_person uuid,p_batc
 BEGIN
  PERFORM app._assistant_payroll_reopen_review_identity(p_person);
  IF NOT EXISTS(SELECT 1 FROM public.payroll_batch b JOIN public.pay_period p ON p.id=b.pay_period_id AND p.tenant_id=b.tenant_id AND p.company_id=b.company_id AND p.period=b.pay_period
-  WHERE b.id=p_batch AND b.tenant_id=app.current_tenant_id() AND b.company_id=p_company AND b.pay_period_id=p_period AND app.can_admin_payroll_for(b.company_id)) THEN RAISE EXCEPTION 'Payroll reopen review unavailable' USING ERRCODE='42501';END IF;
+  WHERE b.id=p_batch AND b.tenant_id=app.current_tenant_id() AND b.company_id=p_company AND b.pay_period_id=p_period AND app.can_admin_payroll_for(b.company_id) AND app.is_admin()) THEN RAISE EXCEPTION 'Payroll reopen review unavailable' USING ERRCODE='42501';END IF;
 END $$;
 REVOKE ALL ON FUNCTION app._assistant_payroll_reopen_review_source(uuid,uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint

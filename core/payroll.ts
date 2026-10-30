@@ -12362,12 +12362,12 @@ export function revertStatutoryAdjustment(ctx: SessionContext, p: { batchId: str
   });
 }
 
-/** Reviewed reopening keeps the native configurable unlock authority, including payroll partners;
- * it never substitutes the close permission or an invented employee/HR subject. */
+/** Actual composite native authority: configurable unlock, financial scope and the unchanged
+ * 0173 payroll_status_history INSERT policy. No new role grant or fictional employment. */
 async function reviewedPayrollReopenAuthorityTx(tx:Tx,ctx:SessionContext,batchId:string){
  const [batch]=await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriodId:payrollBatch.payPeriodId,payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(eq(payrollBatch.id,batchId)).limit(1);
  if(!batch)throw new BatchNotUnlockableError();
- const [scope]=await tx.execute<{allowed:boolean}>(sql`select app.can_admin_payroll_for(${batch.companyId}::uuid) as allowed`);
+ const [scope]=await tx.execute<{allowed:boolean}>(sql`select app.can_admin_payroll_for(${batch.companyId}::uuid) AND app.is_admin() as allowed`);
  if(scope?.allowed!==true)throw new PayrollPermissionDeniedError('payroll.unlock');
  await assertPayrollPermission(tx,ctx,'payroll.unlock',batch.companyId);return batch;
 }
@@ -12409,7 +12409,10 @@ export async function reopenReviewedPayrollBatchTx(tx:Tx,ctx:SessionContext,p:{b
 export async function readReviewedPayrollReopenReferenceTx(tx:Tx,ctx:SessionContext,p:{batchId:string;unlockedEventId:string}){
  await reviewedPayrollReopenAuthorityTx(tx,ctx,p.batchId);
  const [row]=await tx.execute<{receipt:unknown}>(sql`select app.read_own_payroll_reopen_effect(${p.batchId}::uuid,${p.unlockedEventId}::uuid) as receipt`);
- return row?.receipt?ReviewedPayrollReopenSourceReceipt.parse({...z.record(z.string(),z.unknown()).parse(row.receipt),kind:'reopened',proof:'exact_unlock_history_batch_event_conditional_parent_event',semantics:'historical_reopen_not_reset_recalculated_or_payment_reversed',replayed:false}):null;
+ if(!row?.receipt)return null;
+ const receipt=ReviewedPayrollReopenSourceReceipt.parse({...z.record(z.string(),z.unknown()).parse(row.receipt),kind:'reopened',proof:'exact_unlock_history_batch_event_conditional_parent_event',semantics:'historical_reopen_not_reset_recalculated_or_payment_reversed',replayed:false});
+ // Native reference fields only; the source adapter owns fresh-versus-historical receipt markers.
+ return {batchId:receipt.batchId,payPeriodId:receipt.payPeriodId,statusHistoryId:receipt.statusHistoryId,unlockedEventId:receipt.unlockedEventId,periodReopenedEventId:receipt.periodReopenedEventId,parentWasReopened:receipt.parentWasReopened,currentStatus:receipt.currentStatus,currentPeriodStatus:receipt.currentPeriodStatus};
 }
 export async function reviewedPayrollReopenChoiceMetadataTx(tx:Tx,ctx:SessionContext){
  await lockAccessConfigurationTx(tx,ctx.tenantId);

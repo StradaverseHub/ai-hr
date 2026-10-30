@@ -30,8 +30,9 @@ describe('Payroll reopening complete native/custody effect',()=>{
   const before=await state(),r=await prepare();expect(r.review).toMatchObject({beforeStatus:'closed',afterStatus:'processed',beforePeriodStatus:'closed',parentWillReopen:true});
   expect(JSON.stringify(r)).not.toContain('PRIVATE fictional Payroll employee');
   const done=await confirm(r);if(done.kind!=='completed')throw Error('Expected completed reopening');
-  const receipt=done.receipt.receipt;expect(receipt).toMatchObject({batchId,currentStatus:'processed',currentPeriodStatus:'open',parentWasReopened:true,replayed:false});
-  const after=await state();expect(after.slips).toEqual(before.slips);expect(after.batch[0].totals).toEqual(before.batch[0].totals);expect(after.batch[0].releasedAt).toEqual(before.batch[0].releasedAt);
+  // Shared custody reconciles even its first completed response; replayed describes receipt reading, not a second effect.
+  const receipt=done.receipt.receipt;expect(receipt).toMatchObject({batchId,currentStatus:'processed',currentPeriodStatus:'open',parentWasReopened:true,replayed:true});
+  const after=await state();expect(after.history.filter(row=>row.action==='unlock')).toHaveLength(1);expect(after.events.filter(row=>row.aggregateId===batchId&&row.eventType==='payroll-batch.unlocked')).toHaveLength(1);expect(after.slips).toEqual(before.slips);expect(after.batch[0].totals).toEqual(before.batch[0].totals);expect(after.batch[0].releasedAt).toEqual(before.batch[0].releasedAt);
   const history=after.history.find(row=>row.id===receipt.statusHistoryId);expect(history).toMatchObject({batchId,action:'unlock',fromStatus:'closed',toStatus:'processed',reason:human().reason});
   const event=after.events.find(row=>row.id===receipt.unlockedEventId);expect(event).toMatchObject({aggregateId:batchId,eventType:'payroll-batch.unlocked',actorId:ctx.userId});expect(event!.payload).toMatchObject({statusHistoryId:receipt.statusHistoryId,periodReopenedEventId:receipt.periodReopenedEventId,reopenedPeriod:true});
   const parent=after.events.find(row=>row.id===receipt.periodReopenedEventId);expect(parent).toMatchObject({aggregateId:receipt.payPeriodId,eventType:'pay-period.reopened'});
@@ -45,12 +46,14 @@ describe('Payroll reopening complete native/custody effect',()=>{
  it('repeats the configurable native unlock permission at confirmation and allows metadata/discard after revocation',async()=>{const r=await prepare();await setPayrollPermissionGrant(ctx,{companyId:b.companyId,permissionKey:'payroll.unlock',role:'hr_admin',allowed:false});await revokeAssistant(ctx,{appUserId:ctx.userId!});const before=await state();await expect(confirm(r)).rejects.toThrow();expect((await listPayrollReopenReviews(ctx)).reviews.map(row=>row.actionId)).toContain(r.actionId);expect((await discardPayrollReopenReview(ctx,retirement(r))).receipt.state).toBe('discarded');expect(await state()).toEqual(before);});
  it('refuses disabled switch before prepare or effect, and bounds native choices',async()=>{expect((await readPayrollReopenChoices(ctx)).kind).toBe('choices');await setSetting(b.tenantId,'payroll.unlock_enabled',false);ctx={...await entitledCtx(b,['hr_admin']),personId:ctx.personId,grants:[{role:'hr_admin',companyId:null}]};const before=await state();await expect(prepare()).rejects.toThrow();expect(await state()).toEqual(before);});
  it('retires expired review bodies and cannot attach unrelated native events',async()=>{const r=await prepare();const before=await state();await expect(withTenant(ctx,tx=>tx.execute(sql`select app.assistant_payroll_reopen_review_complete(${r.actionId}::uuid,${r.reviewedDigest},${randomUUID()}::uuid)`))).rejects.toThrow();await owner.db.execute(sql`update app.assistant_own_leave_review set created_at=clock_timestamp()-interval '2 minutes',expires_at=clock_timestamp()-interval '1 second' where id=${r.actionId}::uuid`);const retired=await reopenPayrollReopenReview(ctx,r.actionId);expect(retired.kind).toBe('retired');expect(await state()).toEqual(before);});
- it('preserves actual native configurable payroll-partner unlock authority without an HR-only prerequisite',async()=>{
+ it('preserves actual native audit INSERT authority despite a configured payroll-partner unlock grant',async()=>{
   const userId=await createAppUser(b.tenantId,null,'employee');await assignRole(ctx,{appUserId:userId,role:'payroll_partner',companyId:b.companyId});await grantAssistant(ctx,{appUserId:userId});
   const partner={...await entitledCtx(b,['employee','payroll_partner']),userId,personId:undefined,grants:[{role:'employee' as const,companyId:null},{role:'payroll_partner' as const,companyId:b.companyId}]};
   await expect(preparePayrollReopenReview(partner,human())).rejects.toThrow();
   await setPayrollPermissionGrant(ctx,{companyId:b.companyId,permissionKey:'payroll.unlock',role:'payroll_partner',allowed:true});
-  const prepared=await preparePayrollReopenReview(partner,human());if(prepared.kind!=='prepared')throw Error();expect((await confirmPayrollReopenReview(partner,confirmation(prepared.review))).kind).toBe('completed');
+  const before=await state();let failure:unknown;try{await unlockClosedBatch(partner,{batchId,reason:human().reason});}catch(e){failure=e;}
+  const denied=failure as {code?:string;cause?:{code?:string}}|undefined;expect(denied?.cause?.code??denied?.code).toBe('42501');expect(await state()).toEqual(before);
+  await expect(preparePayrollReopenReview(partner,human())).rejects.toThrow();const choices=await readPayrollReopenChoices(partner);if(choices.kind==='choices')expect(choices.batches).toEqual([]);expect(await state()).toEqual(before);
  });
  it('erases the complete affected run cohort encrypted review without changing payroll data',async()=>{
   const r=await prepare(),before=await state();await erasePersonPii(ctx,{subjectEmploymentId:employmentId,scope:'contact',requestRef:'FICTIONAL-REOPEN-ERASURE',reason:'Fictional run-cohort privacy request'});
@@ -77,7 +80,7 @@ describe('Payroll reopening complete native/custody effect',()=>{
   const fresh=await withTenant(ctx,tx=>prepareReviewedPayrollReopenSourceTx(tx,ctx,human()));
   expect(fresh.reviewedDigest===before.reviewedDigest,'Native source changed during custody-only preparation').toBe(true);
   const done=await withTenant(ctx,tx=>confirmReviewedPayrollReopenSourceTx(tx,ctx,human(),fresh.reviewedDigest));
-  expect(done.receipt).toMatchObject({batchId,currentStatus:'processed',parentWasReopened:true});
+  expect(done.receipt).toMatchObject({batchId,currentStatus:'processed',parentWasReopened:true,replayed:false});
  });
  it('reopens a still-pending review without changing its private source or business state',async()=>{
   const r=await prepare(),before=await state();const pending=await reopenPayrollReopenReview(ctx,r.actionId);expect(pending.kind).toBe('prepared');expect(await state()).toEqual(before);
