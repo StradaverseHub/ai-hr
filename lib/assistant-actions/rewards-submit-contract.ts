@@ -1,10 +1,11 @@
 /** Unmounted annual-only human submission contract; no mutation is enabled here. */
 import {z} from 'zod';
 export const REWARDS_SUBMIT_ACTION='rewards.annual_review.submit' as const;
+const stage=z.enum(['draft','bg','gr','ctro','ec','approved','posted','rejected','withdrawn']);
 const id=z.guid(),digest=z.string().regex(/^[a-f0-9]{64}$/),base={action:z.literal(REWARDS_SUBMIT_ACTION),contractVersion:z.literal(1)};
 export const RewardsSubmitHuman=z.object({...base,unitId:id,revision:z.number().int().nonnegative(),reason:z.string().trim().min(10).max(4000),confirmWholeAnnualReview:z.literal(true),confirmNativeWarnings:z.literal(true)}).strict();
 export const RewardsSubmitReview=z.object({unitId:id,companyId:id,companyName:z.string().min(1).max(1000),name:z.string().min(1).max(1000),kind:z.literal('annual'),revision:z.number().int().nonnegative(),before:z.literal('draft'),after:z.literal('bg'),nextSeat:z.literal('bg'),reason:z.string().min(10).max(4000),consequence:z.literal('whole_annual_review_submitted_to_bg_same_revision_native_approvals_required')}).strict();
-export const RewardsSubmitReceipt=z.object({kind:z.literal('submitted_for_review'),unitId:id,decisionId:id,eventId:id,submittedRevision:z.number().int().nonnegative(),currentRevision:z.number().int().nonnegative(),currentStatus:z.string().max(40),proof:z.literal('historical_annual_submission_current_unit')}).strict().refine(r=>r.currentRevision>=r.submittedRevision);
+export const RewardsSubmitReceipt=z.object({kind:z.literal('submitted_for_review'),unitId:id,decisionId:id,eventId:id,submittedRevision:z.number().int().nonnegative(),currentRevision:z.number().int().nonnegative(),currentStatus:stage,proof:z.literal('historical_annual_submission_current_unit')}).strict().refine(r=>r.currentRevision>=r.submittedRevision);
 export const RewardsSubmitConfirmation=z.object({...base,actionId:id,reviewedDigest:digest}).strict();
 export const RewardsSubmitRetirement=z.object({...base,actionId:id}).strict();
 export const RewardsSubmitPrepared=z.object({...base,actionId:id,reviewedDigest:digest,createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),content:RewardsSubmitHuman,review:RewardsSubmitReview}).strict().refine(r=>r.content.unitId===r.review.unitId&&r.content.revision===r.review.revision&&r.content.reason===r.review.reason&&Date.parse(r.expiresAt)>Date.parse(r.createdAt));
