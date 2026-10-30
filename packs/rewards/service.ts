@@ -1010,7 +1010,8 @@ export async function cancelRewardReviewTx(tx: Tx, ctx: SessionContext, unitId: 
     const entries = await tx.select().from(rewardEntry).where(eq(rewardEntry.unitId, unitId)).orderBy(asc(rewardEntry.id));
     await tx.insert(rewardDecision).values({ tenantId: ctx.tenantId, unitId, actorId: ctx.userId!, revision, action: 'withdraw', fromStage: unit.status, toStage: 'withdrawn', reason, digest: digest(unit, entries) });
   }
-  const eventId = await stamp(tx, ctx, unitId, 'cancelled', { fromStage: unit.status, reason, revision, before: { status: unit.status, revision }, after: { status: 'withdrawn', revision: revision + 1 } }, true);
+  const [proof] = await tx.execute<{hash:string}>(sql`select encode(sha256(convert_to(to_jsonb(q)::text,'UTF8')),'hex') as hash from reward_unit q where q.id=${unitId}::uuid and q.tenant_id=${ctx.tenantId}::uuid`);
+  const eventId = await stamp(tx, ctx, unitId, 'cancelled', { cancelRowHash: proof.hash, fromStage: unit.status, reason, revision, before: { status: unit.status, revision }, after: { status: 'withdrawn', revision: revision + 1 } }, true);
   if (!eventId) throw new RewardError('Cancellation audit identity unavailable.');
   return { unitId, eventId, cancelledRevision: revision, currentRevision: revision + 1, status: 'withdrawn' as const };
 }

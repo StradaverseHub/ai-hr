@@ -1,0 +1,46 @@
+'use client';
+import Link from 'next/link';
+import {useEffect,useId,useRef,useState} from 'react';
+import {useTranslations} from 'next-intl';
+import {z} from 'zod';
+import {Button,inputCls} from '@/components/ui';
+import {REWARDS_CANCEL_ACTION as action,RewardsCancelChoices,RewardsCancelHuman} from '@/lib/assistant-actions/rewards-cancel-contract';
+import {RewardsCancelModuleActionBrowserPacket,RewardsCancelModuleActionBrowserResult,parseRewardsCancelModuleActionBrowserResult,REWARDS_CANCEL_ACTION_RESPONSE_BYTES,ModuleActionBrowserError} from '@/lib/assistant-actions/module-action-http';
+type Packet=z.infer<typeof RewardsCancelModuleActionBrowserPacket>;type Result=z.infer<typeof RewardsCancelModuleActionBrowserResult>;type Review=Extract<Result,{kind:'prepared'}>['review'];
+const bad=()=>Error('Rewards review unavailable.');
+export async function readModuleRewardsCancelActionResponse(response:Response,packet:Packet):Promise<Result>{
+ if(response.headers.get('content-type')?.split(';')[0].trim().toLowerCase()!=='application/json'||!response.body){await response.body?.cancel().catch(()=>undefined);throw bad();}const length=response.headers.get('content-length');if(length!==null&&(!/^\d+$/.test(length)||Number(length)>REWARDS_CANCEL_ACTION_RESPONSE_BYTES)){await response.body.cancel().catch(()=>undefined);throw bad();}
+ const reader=response.body.getReader(),parts:Uint8Array[]=[];let bytes=0,fragments=0;try{for(;;){const part=await reader.read();if(part.done)break;bytes+=part.value.byteLength;if(++fragments>1024||bytes>REWARDS_CANCEL_ACTION_RESPONSE_BYTES)throw bad();parts.push(part.value);}const joined=new Uint8Array(bytes);let offset=0;for(const part of parts){joined.set(part,offset);offset+=part.byteLength;}const value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(joined));if(!response.ok){ModuleActionBrowserError.parse(value);throw bad();}return parseRewardsCancelModuleActionBrowserResult(packet,value);}catch{await reader.cancel().catch(()=>undefined);throw bad();}finally{reader.releaseLock();}
+}
+
+export function RewardsCancelPanel({choices,resumeActionId}:{choices:z.infer<typeof RewardsCancelChoices>|null;resumeActionId?:string}){
+ const t=useTranslations('assistant.workspace.rewardsCancellation'),id=useId();
+ const [unitId,setUnitId]=useState(''),[reason,setReason]=useState(''),[author,setAuthor]=useState(false),[consent,setConsent]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(false),[uncertain,setUncertain]=useState(!!resumeActionId),[known,setKnown]=useState<string|null>(resumeActionId??null),[result,setResult]=useState<Result|null>(null),[index,setIndex]=useState<Extract<Result,{kind:'rewards_cancel_review_index'}>|null>(null),[now,setNow]=useState(Date.now);
+ const flight=useRef(false),alive=useRef(true),controller=useRef<AbortController|null>(null),expected=useRef<{unitId:string;revision:number}|null>(null);
+ useEffect(()=>{alive.current=true;return()=>{alive.current=false;controller.current?.abort();};},[]);
+ const review:Review|null=result?.kind==='prepared'?result.review:null,expired=!!review&&now>=Date.parse(review.expiresAt);
+ useEffect(()=>{if(!review)return;const timer=setTimeout(()=>setNow(Date.now()),Math.max(0,Date.parse(review.expiresAt)-Date.now()+1));return()=>clearTimeout(timer);},[review?.expiresAt]);
+ async function send(value:Packet){if(flight.current)return;const packet=RewardsCancelModuleActionBrowserPacket.parse(value);if(uncertain&&(packet.operation==='prepare'||packet.operation==='confirm'||packet.operation==='reopen'&&known&&packet.actionId!==known||packet.operation==='discard'&&known&&packet.confirmation.actionId!==known))return;
+  flight.current=true;setBusy(true);setError(false);setConsent(false);const abort=new AbortController();controller.current=abort;const timer=setTimeout(()=>abort.abort(),15000);
+  if(packet.operation==='prepare')expected.current={unitId:packet.input.unitId,revision:packet.input.revision};
+  try{const response=await fetch('/api/assistant/module-actions',{method:'POST',mode:'same-origin',credentials:'same-origin',cache:'no-store',redirect:'error',signal:abort.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify(packet)});const next=await readModuleRewardsCancelActionResponse(response,packet);if(abort.signal.aborted)throw bad();
+   const selected=next.kind==='prepared'?{unitId:next.review.content.unitId,revision:next.review.content.revision}:next.kind==='completed'?{unitId:next.receipt.receipt.unitId,revision:next.receipt.receipt.cancelledRevision}:null;
+   if(selected&&expected.current&&(selected.unitId!==expected.current.unitId||selected.revision!==expected.current.revision))throw bad();if(!alive.current)return;
+   if(next.kind==='rewards_cancel_review_index'){setIndex(next);return;}
+   setReason('');setUnitId('');setAuthor(false);setUncertain(false);setNow(Date.now());setResult(next);setKnown(next.kind==='prepared'?next.review.actionId:next.receipt.actionId);
+  }catch{if(alive.current){setError(true);if(packet.operation!=='list'){setResult(null);setReason('');setUnitId('');setAuthor(false);setUncertain(true);setKnown(packet.operation==='reopen'?packet.actionId:packet.operation==='prepare'?null:packet.confirmation.actionId);}}}
+  finally{clearTimeout(timer);flight.current=false;if(alive.current)setBusy(false);}
+ }
+ return <section className="min-w-0 space-y-4" aria-label={t('title')} aria-busy={busy}>
+ <h2 className="text-lg font-semibold">{t('title')}</h2><p className="text-sm">{t('consequence')}</p><p role="status" aria-live="polite" className="text-sm">{busy?t('working'):uncertain?t('uncertain'):result?.kind==='completed'?t('completed'):result?.kind==='retired'?t('retired'):t('intro')}</p>{error&&<p role="alert">{t('unavailable')}</p>}
+ {!result&&!uncertain&&<form className="space-y-4" onSubmit={e=>{e.preventDefault();const u=choices?.units.find(x=>x.unitId===unitId),input=RewardsCancelHuman.safeParse({action,contractVersion:1,unitId,revision:u?.revision,reason,confirmWholeReview:true});if(author&&input.success)void send({action,operation:'prepare',input:input.data});}}><fieldset disabled={busy||!choices} className="space-y-4">
+ <label className="block text-sm">{t('unit')}<select required className={inputCls} value={unitId} onChange={e=>{setUnitId(e.target.value);setAuthor(false);}}><option value="">{t('choose')}</option>{choices?.units.map(u=><option key={u.unitId} value={u.unitId}>{u.name}</option>)}</select></label>{choices?.truncated&&<p>{t('more')}</p>}{choices?.units.length===0&&<p>{t('empty')}</p>}
+ <label className="block text-sm">{t('reason')}<textarea required minLength={10} maxLength={4000} className={inputCls} value={reason} onChange={e=>{setReason(e.target.value);setAuthor(false);}}/></label><label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={author} onChange={e=>setAuthor(e.target.checked)}/>{t('author')}</label><Button disabled={!author||!unitId||reason.trim().length<10}>{t('prepare')}</Button></fieldset></form>}
+ {review&&<div className="space-y-4 rounded-lg border border-border p-4"><h3 className="font-semibold break-words">{review.review.name}</h3><p>{t('revision')}: {review.review.revision}</p><p>{t('before')}: {t('states.'+review.review.before)} → {t('states.withdrawn')}</p><p className="whitespace-pre-wrap break-words">{review.review.reason}</p><p>{t('consequence')}</p>{expired&&<p role="alert">{t('expired')}</p>}<label className="flex items-start gap-2 text-sm"><input type="checkbox" disabled={busy||expired} checked={consent} onChange={e=>setConsent(e.target.checked)}/>{t('consent')}</label><Button disabled={busy||expired||!consent} onClick={()=>void send({action,operation:'confirm',confirmation:{action,contractVersion:1,actionId:review.actionId,reviewedDigest:review.reviewedDigest}})}>{t('confirm')}</Button></div>}
+ {result?.kind==='completed'&&<p>{t('proof')}: {result.receipt.receipt.cancelledRevision} · {t('revision')}: {result.receipt.receipt.currentRevision}</p>}
+ {known&&<div className="flex flex-wrap gap-2"><Button variant="outline" disabled={busy} onClick={()=>void send({action,operation:'reopen',actionId:known})}>{t('reopen')}</Button>{result?.kind!=='completed'&&<Button variant="outline" disabled={busy} onClick={()=>void send({action,operation:'discard',confirmation:{action,contractVersion:1,actionId:known}})}>{t('discard')}</Button>}</div>}
+ <Button variant="outline" disabled={busy} onClick={()=>void send({action,operation:'list'})}>{t('find')}</Button>{index&&<ul className="space-y-2">{index.reviews.map(r=><li key={r.actionId}><Button variant="outline" disabled={busy||uncertain&&known!==null&&known!==r.actionId} onClick={()=>{if(!uncertain)expected.current=null;void send({action,operation:'reopen',actionId:r.actionId});}}>{t('reopen')} · {r.createdAt}</Button></li>)}</ul>}
+ {(result?.kind==='completed'||result?.kind==='retired')&&<Button variant="outline" disabled={busy} onClick={()=>{setResult(null);setKnown(null);setIndex(null);setConsent(false);expected.current=null;}}>{t('new')}</Button>}
+ <Link className="inline-flex min-h-11 items-center text-sm underline" href="/admin/rewards">{t('native')}</Link>
+ </section>;
+}

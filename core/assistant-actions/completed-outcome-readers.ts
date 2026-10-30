@@ -1,3 +1,4 @@
+import {readCompletedRewardsCancelOutcomeTx} from './rewards-cancel-review-store';
 import {fixedItemArchiveReviews} from './fixed-item-archive-review-store';
 import {tp3OpeningMaintenanceReviews} from './tp3-opening-maintenance-review-store';
 import {costAllocationMaintenanceReviews} from './cost-allocation-maintenance-review-store';
@@ -92,6 +93,7 @@ const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOut
  'multi_cycle_payroll.create_run':(tx,ctx,id)=>readCompletedMultiCycleRunOutcomeTx(tx,ctx,id),
  'typed_pay_components.create':(tx,ctx,id)=>readCompletedPayComponentOutcomeTx(tx,ctx,id),
  'payroll.close':(tx,ctx,id)=>readCompletedPayrollCloseOutcomeTx(tx,ctx,id),
+ 'rewards.cancel_review':(tx,ctx,id)=>readCompletedRewardsCancelOutcomeTx(tx,ctx,id),
  'rewards.post':(tx,ctx,id)=>readCompletedRewardsPostOutcomeTx(tx,ctx,id),
 };
 export async function readCompletedNativeOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown,server:NativeOutcomeServerContext={}){
