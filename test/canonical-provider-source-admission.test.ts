@@ -173,6 +173,12 @@ describe('exact native source ownership at callback tail',()=>{
  });
  it.each(['cancel','type'] as const)('holds actual triage %s source against its native writer through admission',async kind=>{
   const claim=await claimFixture(),[type]=await owner.db.select().from(schema.claimType).where(eq(schema.claimType.id,claim.claimTypeId));let writer:Promise<void>|undefined,observed=false;
+  transport.mockImplementationOnce(async(_cfg,args)=>{
+   // Native writes must complete after admission and before the later result-source replay.
+   // Awaiting here also proves admission custody does not extend across provider latency.
+   expect(writer).toBeDefined();await writer;
+   args.onUsage?.({inputTokens:0,outputTokens:0,cachedInputTokens:0});return '{"requestDetail":true}';
+  });
   afterSourceReplay=async tx=>{
    const [holder]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);
    // Cancellation first locks the selected request FOR UPDATE; type editing also waits on its row.
