@@ -15,6 +15,7 @@
  * The six-locale render of the control lives in test/r396-theme-switch.dom.test.tsx (jsdom project).
  */
 import { execFileSync } from 'node:child_process';
+import en from '../messages/en.json';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,7 +39,7 @@ vi.mock('next/headers', () => ({
   headers: async () => ({ get: (name: string) => (name === 'x-pathname' ? pathname : null) }),
 }));
 vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePath(...args) }));
-vi.mock('next-intl/server', () => ({ getLocale: async () => 'en' }));
+vi.mock('next-intl/server', () => ({ getLocale: async () => 'en',getMessages:async()=>en }));
 // next/font loaders require the Next compiler; record the real layout call options here.
 const fontCalls: Record<string, Record<string, unknown>> = {};
 vi.mock('next/font/google', () => {
@@ -210,7 +211,7 @@ describe('D. app/globals.css — Monolith scoped, Classic untouched', () => {
   });
 
   it("Classic's :root and .dark blocks are byte-identical to main's", () => {
-    const mainCss = execFileSync('git', ['show', 'main:app/globals.css'], { cwd: ROOT, encoding: 'utf8' });
+    const mainCss = execFileSync('git', ['show', 'origin/main:app/globals.css'], { cwd: ROOT, encoding: 'utf8' });
     for (const sel of [':root', '.dark']) {
       const before = block(mainCss, sel);
       expect(before.length, sel).toBeGreaterThan(500);

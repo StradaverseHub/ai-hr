@@ -1,6 +1,7 @@
 /** Exercise the actual root layout with deferred owner reads: no database or wall-clock budget. */
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {isValidElement, type ReactNode} from 'react';
+import en from '../messages/en.json';
 const state = vi.hoisted(() => ({
   path: '/', admin: true, modules: new Set(['notifications', 'lifecycle', 'employees']),
   session: {tenantId: 'tenant-a', userId: 'user-a', roles: ['hr_admin']},
@@ -12,7 +13,7 @@ vi.mock('next/font/google', () => ({Plus_Jakarta_Sans: () => ({variable: ''}), G
 vi.mock('next/font/local', () => ({default: () => ({variable: ''})}));
 vi.mock('next/headers', () => ({headers: async () => new Map([['x-pathname', state.path]]), cookies: async () => new Map()}));
 vi.mock('next-intl', () => ({NextIntlClientProvider: 'Intl'}));
-vi.mock('next-intl/server', () => ({getLocale: async () => 'en'}));
+vi.mock('next-intl/server', () => ({getLocale: async () => 'en',getMessages:async()=>en}));
 vi.mock('next/navigation', () => ({redirect: (path: string) => {throw Error(`redirect:${path}`);}}));
 vi.mock('../lib/login-presentation-server', () => ({publicLoginPresentation: async () => ({})}));
 vi.mock('../lib/identity/email-settings', () => ({canConfigureIdentityEmail: async () => false}));
@@ -28,7 +29,7 @@ vi.mock('../core/workforce-access', () => ({workforceViewScope: async () => ({ca
 vi.mock('../lib/scope', () => ({getScopeIds: async () => state.scope}));
 vi.mock('../core/onboarding', () => ({getOnboardingStatus: async () => true}));
 vi.mock('../core/letter-navigation', () => ({letterNavigation: async () => []}));
-vi.mock('../core/approvals-inbox', () => ({listPendingTasks: state.pending}));
+vi.mock('../core/approvals-inbox', () => ({pendingTaskSummary:async(...args:unknown[])=>({items:await state.pending(...args),total:0,approvalCount:0})}));
 vi.mock('../packs/lifecycle/service', () => ({onboardingNavigation: state.nav, onboardingTasks: state.tasks,
   onboardingNotices: state.notices, onboardingUnreadNoticeCount: state.noticeCount}));
 vi.mock('../packs/performance/service', () => ({latestOnehrAdminCycleId: async () => null, adminSectionHref: () => ''}));
