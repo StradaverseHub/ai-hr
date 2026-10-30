@@ -36,8 +36,9 @@ async function contextTx(tx:Tx,ctx:SessionContext,reviewId:string,requireAi=true
 }
 
 /** One successful whole-plan request has its own five-per-Malaysia-day counter. Nothing is written to the plan. */
-export async function suggestAssessmentCareerPlan(ctx:SessionContext,reviewId:string,requestId:string){
+export async function suggestAssessmentCareerPlan(ctx:SessionContext,reviewId:string,requestId:string,authored?:{aspirationLong?:string}){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+ const human=Object.freeze(z.object({aspirationLong:z.string().trim().max(4000).optional()}).strict().parse(authored??{}));
  z.uuid().parse(requestId);const before=await context(ctx,reviewId),fieldKey=`career_draft:${before.view.cycle.id}`;
  const quota=await withPerformanceTenant(ctx,async tx=>{
   const [used]=await tx.select({id:assessmentAiUse.id}).from(assessmentAiUse).where(and(eq(assessmentAiUse.actorUserId,ctx.userId!),eq(assessmentAiUse.requestId,requestId)));
@@ -46,22 +47,23 @@ export async function suggestAssessmentCareerPlan(ctx:SessionContext,reviewId:st
  });
  if(!quota.remaining)throw Error('All 5 career plan drafts have been used today. The limit resets at midnight Malaysia time.');
  const cfg=await withPerformanceTenant(ctx,tx=>assessmentAiConfigTx(tx,ctx,'idp'));if(!cfg)throw Error('AI career drafting is unavailable. You can build your plan yourself.');
- const items=before.pool.slice(0,before.room),deterministic=items.some(i=>['stretch','missing','performance'].includes(i.kind)),draftProfile=!before.career.aspirationLong?.trim();
+ const items=before.pool.slice(0,before.room),deterministic=items.some(i=>['stretch','missing','performance'].includes(i.kind)),draftProfile=!before.career.aspirationLong?.trim()&&!!human.aspirationLong;
  if(!items.length&&!draftProfile)return {goals:[],aspirationLong:'',pool:before.pool,sourceDigest:before.sourceDigest,empty:true,...quota};
  const grounding={target:before.targetLabel||null,selfWords:before.words};
  const generate=async(args:GenerateArgs)=>{
-  // An aspiration requires interpreting private personal narrative and choosing future intent.
-  // Keep that human-authored; source-reference goal outlines remain available independently.
-  if(args.system.includes('aspirationLong'))throw new ProviderWorkloadUnavailableError('career_aspiration_semantics');
+  // Explicit human aspiration words enter only the LOCAL source-reader callback below.
+  // The registered descriptor emits index/kind/lengthBand only, never the local text.
+  const profile=args.system.includes('aspirationLong');
   let expected:string|undefined;const bound=withAiAdmissionCheck(cfg,'performance_idp',async(tx,request)=>{
    if(request.operation!=='draft'||request.inputDigest!==expected||!await assessmentAiFeatureEnabledTx(tx,ctx,'idp')||(await contextTx(tx,ctx,reviewId)).sourceDigest!==before.sourceDigest)throw Error('Current career drafting source could not be confirmed.');
    const [used]=await tx.select({id:assessmentAiUse.id}).from(assessmentAiUse).where(and(eq(assessmentAiUse.actorUserId,ctx.userId!),eq(assessmentAiUse.requestId,requestId)));
    if(used||!(await assessmentAiQuotaTx(tx,ctx,fieldKey)).remaining)throw Error('Current career drafting allowance could not be confirmed.');
   });
-  const task=await preparePrivateAiTask(bound,'performance_narrative_selection_v1',async tx=>{if((await contextTx(tx,ctx,reviewId)).sourceDigest!==before.sourceDigest)throw Error('Current career drafting source could not be confirmed.');return {task:'career_outline',passages:items.map((item,index)=>({index,kind:'career',text:item.area}))};});
+  const task=await preparePrivateAiTask(bound,'performance_narrative_selection_v1',async tx=>{if((await contextTx(tx,ctx,reviewId)).sourceDigest!==before.sourceDigest)throw Error('Current career drafting source could not be confirmed.');return {task:'career_outline',passages:profile?[{index:0,kind:'authored',text:human.aspirationLong!}]:items.map((item,index)=>({index,kind:'career',text:item.area}))};});
   try{if(task.operation!=='draft')throw Error('Protected career outline unavailable.');expected=draftInputDigest(task.args as GenerateArgs);const selected:unknown=JSON.parse(await generateDraft(task.configuration,task.args as GenerateArgs));
    if(!selected||typeof selected!=='object'||Array.isArray(selected)||Object.keys(selected).join(',')!=='items'||!Array.isArray((selected as {items:unknown}).items))throw Error('Protected career selection unavailable.');
-   const indices=(selected as {items:unknown[]}).items;if(!indices.length||indices.length>Math.min(30,before.room)||new Set(indices).size!==indices.length||indices.some(i=>typeof i!=='number'||!Number.isSafeInteger(i)||i<0||i>=items.length))throw Error('Protected career selection unavailable.');
+   const indices=(selected as {items:unknown[]}).items;if(!indices.length||indices.length>(profile?1:Math.min(30,before.room))||new Set(indices).size!==indices.length||indices.some(i=>typeof i!=='number'||!Number.isSafeInteger(i)||i<0||i>=(profile?1:items.length)))throw Error('Protected career selection unavailable.');
+   if(profile)return JSON.stringify({aspirationLong:human.aspirationLong});
    return JSON.stringify(indices.map(i=>{const item=items[i as number],actions={experience:'Practise this development area in an appropriate work activity and record your learning.',exposure:'Discuss progress in this area with your manager or an appropriate colleague.',education:'Choose relevant learning material and review what you learned.'};return deterministic?{i,...actions}:{area:item.area,item_ids:[item.id],...actions};}));
   }finally{task.dispose();}
  };

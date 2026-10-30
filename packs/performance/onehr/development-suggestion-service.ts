@@ -1,5 +1,7 @@
 import {withAiAdmissionCheck,preparePrivateAiTask} from '../../../core/ai-governance';
 import type {GenerateArgs} from '../../../lib/ai/types';
+import {AiPrivacyGateError} from '../../../lib/ai/provider-privacy-error';
+import {AiAllowanceError} from '../../../lib/ai/types';
 import {draftInputDigest} from '../../../lib/ai/draft-input';
 import {assertPerformanceProviderSourceTx} from './provider-source-authority';
 import {assessmentAiUse} from '../../../db/schema';
@@ -50,17 +52,17 @@ export async function suggestAssessmentDevelopmentGoals(ctx:SessionContext,revie
   if(used||!(await assessmentAiQuotaTx(tx,ctx,fieldKey)).remaining)throw Error('Current development drafting allowance could not be confirmed.');
  });
  const task=await preparePrivateAiTask(bound,'performance_narrative_selection_v1',async tx=>{if(fingerprint(await assessmentDevelopmentContextTx(tx,ctx,reviewId))!==beforeSource)throw Error('Current development source could not be confirmed.');return {task:'development_outline',passages:before.gaps.pool.map((item,index)=>({index,kind:'development',text:item.label+'\n'+item.detail}))};});
- let raw:string;
+ let raw='',generationFailure:unknown;
  try{if(task.operation!=='draft')throw Error('Protected development operation unavailable.');expected=draftInputDigest(task.args as GenerateArgs);const selected:unknown=JSON.parse(await generateDraft(task.configuration,task.args as GenerateArgs));
   if(!selected||typeof selected!=='object'||Array.isArray(selected)||Object.keys(selected).join(',')!=='items'||!Array.isArray((selected as {items:unknown}).items))throw Error('Protected development selection unavailable.');
   const indices=(selected as {items:unknown[]}).items;if(!indices.length||indices.length>Math.min(30,before.room)||new Set(indices).size!==indices.length||indices.some(i=>typeof i!=='number'||!Number.isSafeInteger(i)||i<0||i>=before.gaps.pool.length))throw Error('Protected development selection unavailable.');
   raw=JSON.stringify(indices.map(i=>{const item=before.gaps.pool[i as number];return {area:item.label,title:item.label,item_ids:[item.id],experience:'Practise this development area in an appropriate work activity and record your learning.',exposure:'Discuss progress in this area with your manager or an appropriate colleague.',education:'Choose relevant learning material and review what you learned.'};}));
- }finally{task.dispose();}
+ }catch(error){generationFailure=error;}finally{task.dispose();}
  const goals=parseDevelopmentSuggestions(raw,new Set(before.gaps.pool.map(i=>i.id)),before.room),fresh=await source(ctx,reviewId);
  const unchanged=JSON.stringify({gaps:before.gaps,planRevision:before.plan?.revision??null,viewRevision:before.view.revision,room:before.room})===JSON.stringify({gaps:fresh.gaps,planRevision:fresh.plan?.revision??null,viewRevision:fresh.view.revision,room:fresh.room});
  await recordProposal(ctx,{type:'performance_draft_command',subject:{type:'performance-review',id:reviewId},facts,proposal:{goals},adjudication:unchanged&&goals.length?{ok:true}:{ok:false,reason:unchanged?'No goal cited an available development item.':'The assessment or plan changed.'},provider:cfg.provider,model:cfg.model});
  if(!unchanged)throw Error('Your assessment or plan changed while preparing suggestions. Reload before trying again.');
- if(!goals.length)throw Error('No usable goal suggestions were returned. You can add your own goals or try again.');
+ if(!goals.length){if(generationFailure instanceof AiAllowanceError||generationFailure instanceof AiPrivacyGateError)throw generationFailure;throw Error('No usable goal suggestions were returned. You can add your own goals or try again.');}
  return withPerformanceTenant(ctx,async tx=>{
   if(!(await assessmentAiFeatureEnabledTx(tx,ctx,'idp')))throw Error('AI goal suggestions were switched off.');
   await recordAssessmentAiUseTx(tx,ctx,reviewId,fieldKey,requestId);
