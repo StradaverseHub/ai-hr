@@ -12,7 +12,34 @@
 .login-welcome-content { flex: 1; padding-top: clamp(2.5rem, 5vh, 5rem); }
 .login-welcome h2 { max-width: 16ch; margin: 0; font-size: clamp(2rem, 3.1vw, 3.5rem); font-weight: 700; line-height: 1.12; letter-spacing: -.025em; text-wrap: balance; }
 .login-welcome-content > p { max-width: 50ch; margin-top: 1.5rem; color: #dcd9ef; font-size: 1rem; line-height: 1.7; }
-.login-welcome-topics { display: flex; flex-direction: column; gap: .75rem; margin-top: 3rem; padding: 1.5rem 0; border-top: 1px solid #595581; border-bottom: 1px solid #595581; font-size: clamp(1.25rem, 2vw, 2rem); font-weight: 500; line-height: 1.4; }
+/* The log takes the height the welcome column has left (about 38.5rem goes to brand, copy and the card's
+   own bars), so the column fits a laptop screen without the page scrolling. */
+.login-tour { display: flex; flex-direction: column; margin-top: 2.25rem; max-width: 34rem; overflow: hidden; border-radius: 1rem; background: #fff; color: #22222b; box-shadow: 0 24px 48px -24px rgb(10 6 40 / .6); }
+.login-tour-head { display: flex; align-items: center; gap: .625rem; padding: .875rem 1rem .5rem; font-size: .875rem; font-weight: 700; }
+.login-tour-mark { display: grid; place-items: center; width: 1.75rem; height: 1.75rem; border-radius: .5rem; background: #c2410c; color: #fff; font-size: .6875rem; }
+.login-tour-title { flex: 1; min-width: 0; }
+.login-tour-play { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 999px; color: var(--login-muted); cursor: pointer; }
+.login-tour-play:hover { background: #f1f0f8; color: var(--login-ink); }
+.login-tour-topics { display: flex; flex-wrap: wrap; gap: .375rem; padding: 0 1rem .75rem; }
+.login-tour-topics button { min-height: 2rem; padding: .25rem .75rem; border-radius: 999px; background: #f1f0f8; color: var(--login-ink); font-size: .75rem; font-weight: 600; cursor: pointer; }
+.login-tour-topics button[aria-pressed='true'] { background: var(--login-ink); color: #fff; }
+.login-tour-log { display: flex; flex-direction: column; gap: .625rem; height: clamp(7.5rem, 100dvh - 38.5rem, 17rem); margin: 0; padding: .75rem 1rem; overflow-y: auto; border-top: 1px solid #ecebf3; list-style: none; scroll-behavior: smooth; }
+.login-tour-log li { max-width: 85%; padding: .625rem .875rem; border-radius: .875rem; font-size: .875rem; line-height: 1.5; animation: login-tour-in 260ms ease-out; }
+.login-tour-log li[data-from='assistant'] { align-self: flex-start; border-bottom-left-radius: .25rem; background: #f1f0f8; }
+.login-tour-log li[data-from='visitor'] { align-self: flex-end; border-bottom-right-radius: .25rem; background: var(--login-ink); color: #fff; }
+.login-tour-log li[data-typing] { display: flex; gap: .25rem; padding-block: .875rem; }
+.login-tour-log li[data-typing] span { width: .375rem; height: .375rem; border-radius: 999px; background: #8e8b9f; animation: login-tour-dot 1s infinite ease-in-out; }
+.login-tour-log li[data-typing] span:nth-child(2) { animation-delay: .15s; }
+.login-tour-log li[data-typing] span:nth-child(3) { animation-delay: .3s; }
+.login-tour-actions { display: flex; flex-wrap: wrap; gap: .5rem; min-height: 3.75rem; padding: .75rem 1rem; border-top: 1px solid #ecebf3; }
+.login-tour-actions button { display: inline-flex; align-items: center; gap: .375rem; min-height: 2.25rem; padding: .375rem .875rem; border: 1px solid #c9c6dc; border-radius: 999px; color: var(--login-ink); font-size: .8125rem; font-weight: 600; cursor: pointer; }
+.login-tour-actions button:hover { border-color: var(--login-ink); background: #f7f6fc; }
+@keyframes login-tour-in { from { opacity: 0; transform: translateY(.375rem); } }
+@keyframes login-tour-dot { 0%, 80%, 100% { opacity: .35; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-.1875rem); } }
+@media (prefers-reduced-motion: reduce) {
+  .login-tour-log { scroll-behavior: auto; }
+  .login-tour-log li, .login-tour-log li[data-typing] span { animation: none; }
+}
 .login-welcome-foot { margin-top: 2.5rem; padding-top: 1rem; color: #dcd9ef; font-size: .8125rem; }
 .login-media { position: relative; margin-top: 1.75rem; overflow: hidden; border-radius: .875rem; background: #201b4c; }
 .login-media img, .login-media video { display: block; width: 100%; max-height: 48vh; object-fit: contain; }

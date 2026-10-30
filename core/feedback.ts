@@ -10,6 +10,7 @@ import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { generateDraft, redactPII } from '../lib/ai';
+import type { FeedbackBoardStatus, FeedbackRelease } from '../lib/feedback-release';
 import { DEFAULT_FEEDBACK_SORT, type FeedbackSort } from '../lib/feedback-sort';
 import { resolveActiveAiConfig } from './ai-config';
 import {
@@ -25,7 +26,8 @@ import {
 } from '../db/schema';
 import { resolveEntitlementsTx, settingEnabled } from './entitlements';
 import { assertAiPrincipalTx } from './ai-principal';
-import { withAiAdmissionCheck } from './ai-governance';
+import { withAiAdmissionCheck,preparePrivateAiTask } from './ai-governance';
+import type {GenerateArgs} from '../lib/ai/types';
 import { draftInputDigest } from '../lib/ai/draft-input';
 
 export class FeedbackError extends Error {
@@ -280,12 +282,20 @@ export async function generateFeedbackPlan(ctx: SessionContext, p: { feedbackId:
     );
   }
 
-  const args=Object.freeze({system,prompt:`Write an implementation plan for this product feedback:\n\n${lines.join('\n')}`,maxTokens:2048});
-  const sourceDigest=feedbackPlanningDigest(fb),inputDigest=draftInputDigest(args);
+  const sourceDigest=feedbackPlanningDigest(fb);let inputDigest:string|undefined;
   const bound=withAiAdmissionCheck(aiCfg,'feedback_planning',async(tx,request)=>{
     if(request.operation!=='draft'||request.inputDigest!==inputDigest||feedbackPlanningDigest(await feedbackPlanningSourceTx(tx,ctx,fb.id,true))!==sourceDigest)throw new FeedbackError('Current feedback planning source could not be confirmed.');
   });
-  const plan=await generateDraft(bound,args);
+  const task=await preparePrivateAiTask(bound,'feedback_task_outline_v1',async tx=>{if(feedbackPlanningDigest(await feedbackPlanningSourceTx(tx,ctx,fb.id,true))!==sourceDigest)throw new FeedbackError('Current feedback planning source could not be confirmed.');return {category:fb.category,contested:fb.status==='contested',source:sourceDigest};});
+  let plan:string;
+  try{
+    if(task.operation!=='draft')throw new FeedbackError('Protected planning operation unavailable.');inputDigest=draftInputDigest(task.args as GenerateArgs);
+    const selected:unknown=JSON.parse(await generateDraft(task.configuration,task.args as GenerateArgs));
+    if(!selected||typeof selected!=='object'||Array.isArray(selected)||Object.keys(selected).join(',')!=='steps'||!Array.isArray((selected as {steps:unknown}).steps))throw new FeedbackError('A supported plan outline is required.');
+    const steps=(selected as {steps:unknown[]}).steps,required=['reproduce','change','verify','review'];if(steps.length!==4||new Set(steps).size!==4||steps.some(s=>typeof s!=='string'||!required.includes(s)))throw new FeedbackError('A supported plan outline is required.');
+    const wording:Record<string,string>={reproduce:`Check the reported situation: ${fb.description}`,change:`Make the requested change: ${fb.expectedFunction||fb.expectedBehavior||fb.description}`,verify:`Verify the expected result: ${fb.expectedBehavior||fb.expectedFunction||fb.description}`,review:'Show the completed change and verification evidence to the reporter for review before release.'};
+    plan=`${fb.title}\n\n`+steps.map((step,index)=>`${index+1}. ${wording[step as string]}`).join('\n\n')+(fb.status==='contested'&&fb.contestReason?`\n\nReporter’s requested revisions: ${fb.contestReason}`:'');
+  }finally{task.dispose();}
   if(!plan.trim())throw new FeedbackError('A plan is required.');
   await withTenant(ctx,async tx=>{
     // A provider result is not authority to overwrite a concurrently changed source or plan.
@@ -708,7 +718,7 @@ export async function markFeedbackDeployed(
     }
     await tx
       .update(feedbackRequest)
-      .set({ status: 'deployed', buildRef: p.buildRef ?? undefined, decidedAt: sql`now()`, updatedAt: sql`now()` })
+      .set({ status: 'deployed', release: null, buildRef: p.buildRef ?? undefined, decidedAt: sql`now()`, updatedAt: sql`now()` })
       .where(eq(feedbackRequest.id, fb.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -810,6 +820,8 @@ export type FeedbackRow = {
   category: FeedbackCategory;
   title: string;
   status: FeedbackStatus;
+  release?: FeedbackRelease | null;
+  buildRef?: string | null;
   reporter: string | null;
   reporterUserId?: string | null;
   planRevision: number;
@@ -840,16 +852,29 @@ export type FeedbackRow = {
  */
 export const FEEDBACK_LIST_LIMIT = 200;
 
+/** Same cycle/build guard as feedbackBoardStatus; evaluated before filtering and LIMIT. */
+const boardStatusSql = sql<FeedbackBoardStatus>`CASE WHEN ${feedbackRequest.status} = 'deployed'
+  AND ${feedbackRequest.release}->>'planRevision' = ${feedbackRequest.planRevision}::text
+  AND ${feedbackRequest.release}->>'reopenedCount' = ${feedbackRequest.reopenedCount}::text
+  AND ${feedbackRequest.release}->>'buildRef' = ${feedbackRequest.buildRef}
+  AND ${feedbackRequest.release}->>'stage' IN ('staging', 'production_ready', 'production')
+  THEN ${feedbackRequest.release}->>'stage' ELSE ${feedbackRequest.status}::text END`;
+
+export function feedbackBoardCounts(ctx: SessionContext) {
+  return withTenant(ctx, tx => tx.select({ status: boardStatusSql, count: sql<number>`count(*)::int` })
+    .from(feedbackRequest).groupBy(boardStatusSql));
+}
+
 export function listFeedback(
   ctx: SessionContext,
-  opts: { status?: FeedbackStatus; category?: FeedbackCategory; sort?: FeedbackSort } = {},
+  opts: { status?: FeedbackBoardStatus; category?: FeedbackCategory; sort?: FeedbackSort } = {},
 ): Promise<FeedbackRow[]> {
   // Ordering is SQL, not a browser sort, because the LIMIT below is the whole point: over 517 production
   // rows, sorting the returned page would rank only the 200 most recently CREATED items and an old item
   // touched yesterday would never surface. See lib/feedback-sort.ts.
   const dir = (opts.sort ?? DEFAULT_FEEDBACK_SORT) === 'updated_asc' ? asc : desc;
   const filters = [
-    opts.status ? eq(feedbackRequest.status, opts.status) : undefined,
+    opts.status ? eq(boardStatusSql, opts.status) : undefined,
     opts.category ? eq(feedbackRequest.category, opts.category) : undefined,
   ].filter(Boolean);
   return withTenant(ctx, (tx) =>
@@ -859,6 +884,8 @@ export function listFeedback(
         category: feedbackRequest.category,
         title: feedbackRequest.title,
         status: feedbackRequest.status,
+        release: feedbackRequest.release,
+        buildRef: feedbackRequest.buildRef,
         // 0348 — the display label wins when set. Operator-raised items carry 'CLAUDE AI'; every in-app
         // submission leaves it NULL and falls through to the joined person name, so the board reads the
         // same as it always did for anything a human wrote.

@@ -1,3 +1,7 @@
+import {ProtectedAnalysis} from '@/components/assistant/protected-analysis';
+import {isAdmin} from '@/lib/authz-model';
+import {allowedCompanies} from '@/core/read';
+import {getScopeIds} from '@/lib/scope';
 import {AssistantHistoryPrivacy} from '../../components/assistant/history-privacy';
 import {OwnClearForm,OwnClearStatus} from '../../components/assistant/own-clear';
 import {eraseConversationMetadataAction} from './agent-review-actions';
@@ -7,18 +11,17 @@ import { getTranslations } from 'next-intl/server';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { getSession } from '@/lib/session';
 import { loadAiWorkspace } from '@/core/ai-workspace';
-import {CanonicalModuleJob,ModuleJobChooser,GroundedWorkspaceReply,GovernedModuleJobComposer,GovernedWorkspaceJob} from '@/components/assistant/module-jobs';
+import {CanonicalModuleJob,ModuleJobChooser,GovernedModuleJobComposer,GovernedWorkspaceJob} from '@/components/assistant/module-jobs';
 import {loadCanonicalModuleJob} from '@/core/workspace-module-jobs';
 import {allowedModuleActionEntries} from '@/core/assistant-actions/module-action-entries';
 import {ModuleQuestionPlanner} from '@/components/assistant/module-plan';
 import {eraseModuleProposalsAction} from './module-plan-actions';
 import {SpecialistJobComposer} from '@/components/assistant/module-specialist-review';
-import { WorkspaceComposer } from '@/components/assistant/workspace-composer';
-import { MAX_TURNS } from '@/core/assistant';
+import { WorkspaceConversation } from '@/components/assistant/workspace-conversation';
+import { ExchangeReply } from '@/components/assistant/exchange-reply';
 import Link from 'next/link';
 import { isGroupAdmin } from '@/lib/authz';
-import { Card, ErrorBanner, PageHeader } from '@/components/ui';
-import { askAssistantAction } from './actions';
+import { ErrorBanner, PageHeader } from '@/components/ui';
 import { viewerIdentity } from '@/lib/viewer';
 import { readEmployeeHomeIdentity } from '@/core/employee-home';
 import { homeDisplayClock } from '@/lib/employee-home';
@@ -26,7 +29,7 @@ import { AssistantHomeTabs } from '@/components/assistant/assistant-home-tabs';
 import { HomeTasksCard } from '@/components/employee-home/tasks-card';
 import { HomeCalendarCard } from '@/components/employee-home/calendar-card';
 import {eraseGovernedJobFeedbackAction} from './job-feedback-actions';
-import { saveAgentFeedbackAction, eraseAgentFeedbackAction } from './feedback-actions';
+import { eraseAgentFeedbackAction } from './feedback-actions';
 
 /**
  * ADR-0082 slice 4 — THE ASSISTANT'S FIRST SCREEN, and the first time any of it is reachable.
@@ -53,7 +56,7 @@ import { saveAgentFeedbackAction, eraseAgentFeedbackAction } from './feedback-ac
 export default async function AssistantPage({
   searchParams,
 }: {
-  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string }>;
+  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string;chatReset?:string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('assistant');
@@ -110,6 +113,7 @@ export default async function AssistantPage({
     );
   }
 
+  const analysisScope=isAdmin(s)?await allowedCompanies(s).then(rows=>getScopeIds(rows.map(row=>row.id))).catch(()=>[]):[];
   const { history } = workspace;
   const selectedJob=sp.job===undefined||sp.governed!==undefined?null:await loadCanonicalModuleJob(s,{module:sp.job});
   // Shortcuts are offered only where the target's own authorization rules admit this session.
@@ -125,71 +129,29 @@ export default async function AssistantPage({
         <PageHeader title={greeting} description={t('description')} />
         <OwnClearStatus status={sp.ownClear}/>
         <ErrorBanner message={errorMessage} />
-        <WorkspaceComposer fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} layout="hero" action={askAssistantAction} tasks={tasks} labels={{
-          tasks: t('workspace.tasks'), taskHint: t('workspace.taskHint'), question: t('workspace.question'),
-          placeholder: t('placeholder'), ask: t('ask'), working: t('workspace.working'), scope: t('scopeNote'),
-        }} />
+        <WorkspaceConversation resetKey={sp.chatReset} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} tasks={tasks}
+          initialTurn={history.find(h=>h.id===sp.e)?{id:sp.e!,question:history.find(h=>h.id===sp.e)!.question,
+            answer:<ExchangeReply exchange={history.find(h=>h.id===sp.e)!} ctx={s}/>} : undefined}/>
         {homeTabs}
       </div>
 
-      <ModuleJobChooser modules={workspace.jobModules} selected={sp.job} actions={actionEntries}/>
-      {selectedJob&&<CanonicalModuleJob view={selectedJob} ctx={s}/>}
-      {workspace.governedJob&&<GovernedWorkspaceJob view={workspace.governedJob} ctx={s}/>}
-      {workspace.governedJob&&sp.governed&&<NativeOutcomes jobId={sp.governed} status={sp.nativeOutcome} selectedLink={sp.nativeLink}/>}
-      <GovernedModuleJobComposer modules={workspace.jobModules}/>
-      <SpecialistJobComposer modules={workspace.jobModules}/>
-      <ModuleQuestionPlanner permit={workspace.planningPermit} availability={workspace.planningAvailability} view={workspace.proposal} status={sp.planning??(sp.proposal&&!workspace.proposal?'unavailable':undefined)}/>
-
-      {/* Candidate reviews for group administrators live on AI management › Assistant. */}
-
-      {!selectedJob&&!workspace.governedJob&&history.length > 0 && <section aria-labelledby="assistant-history-heading" className="space-y-5">
-      <h2 id="assistant-history-heading" className="text-sm font-medium">{t('workspace.history')}</h2>
-      {history.map((h) => (
-        <Card key={h.id} className={`p-5 ${h.id === sp.e ? 'ring-1 ring-primary' : ''}`}>
-          <p className="text-sm font-medium">{h.question}</p>
-
-          {h.grounded?<GroundedWorkspaceReply reply={h.grounded} ctx={s} exchangeId={h.id}/>:
-          h.hasAnswer?<a href={'/assistant?e='+encodeURIComponent(h.id)} className="mt-3 inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.answers.check')}</a>:
-          <p className="mt-2 text-sm text-muted-foreground">{t('noAnswer')}</p>}
-
-          {/* §2.5 — every terminal state that is not `end` is VISIBLE. `refusal` is its own case rather
-              than an error: the model declined, which is a real outcome the asker should see as one. */}
-          {h.stop && h.stop !== 'end' && (
-            <p className="mt-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-              {h.hitTurnCap ? t('stop_turn_cap', { n: MAX_TURNS }) : t(`stop_${h.stop}`)}
-            </p>
-          )}
-
-          <form action={saveAgentFeedbackAction} className="mt-4 space-y-2 border-t pt-3">
-            <input type="hidden" name="exchangeId" value={h.id} />
-            <label className="flex items-start gap-2 text-xs text-muted-foreground">
-              <input type="checkbox" name="consented" value="yes" required className="mt-0.5" />
-              <span>{t('workspace.feedbackConsent')}</span>
-            </label>
-            <div className="flex flex-wrap gap-2" aria-label={t('workspace.feedbackTitle')}>
-              {(['helpful', 'needs_correction', 'incorrect'] as const).map(outcome => <button
-                key={outcome} type="submit" name="outcome" value={outcome}
-                className="min-h-11 rounded-md border px-3 py-2 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-                {t(`workspace.feedback_${outcome}`)}
-              </button>)}
-            </div>
-          </form>
-
-          {h.toolCalls.length > 0 && (
-            <p className="mt-2 text-[11px] text-muted-foreground">
-              {t('lookedAt', { tools: [...new Set(h.toolCalls.map((c) => c.name))].join(', ') })}
-            </p>
-          )}
-        </Card>
-      ))}
-
-      <OwnClearForm kind="feedback" action={eraseAgentFeedbackAction} label={t('workspace.feedbackErase')}/>
-      </section>}
-      {!selectedJob&&!workspace.governedJob&&history.length === 0 && (
-        <Card className="p-6">
-          <p className="text-sm text-muted-foreground">{t('empty')}</p>
-        </Card>
-      )}
+      {history.length>0&&<details className="mx-auto max-w-3xl border-t border-border pt-2">
+        <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.chat.recent')}</summary>
+        <ul className="space-y-1 pb-3">{history.map(h=><li key={h.id}><Link href={'/assistant?e='+encodeURIComponent(h.id)} scroll={false} className="block rounded-md px-3 py-3 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{h.question}</Link></li>)}</ul>
+      </details>}
+      <details open={Boolean(sp.job||sp.governed||sp.proposal||sp.planning)} className="border-t border-border pt-2">
+        <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.chat.tools')}</summary>
+        <div className="space-y-6 pt-3">
+          {analysisScope.length>0&&<ProtectedAnalysis scopeIds={analysisScope}/>}
+          <ModuleJobChooser modules={workspace.jobModules} selected={sp.job} actions={actionEntries}/>
+          {selectedJob&&<CanonicalModuleJob view={selectedJob} ctx={s}/>}
+          {workspace.governedJob&&<GovernedWorkspaceJob view={workspace.governedJob} ctx={s}/>}
+          {workspace.governedJob&&sp.governed&&<NativeOutcomes jobId={sp.governed} status={sp.nativeOutcome} selectedLink={sp.nativeLink}/>}
+          <GovernedModuleJobComposer modules={workspace.jobModules}/>
+          <SpecialistJobComposer modules={workspace.jobModules}/>
+          <ModuleQuestionPlanner permit={workspace.planningPermit} availability={workspace.planningAvailability} view={workspace.proposal} status={sp.planning??(sp.proposal&&!workspace.proposal?'unavailable':undefined)}/>
+        </div>
+      </details>
       {/* Own-data privacy controls sit together at the end; each still asks first and reports its outcome. */}
       <section id="assistant-privacy" aria-labelledby="assistant-privacy-heading" className="scroll-mt-4 space-y-2 border-t border-border pt-4">
         <h2 id="assistant-privacy-heading" className="text-sm font-medium">{t('home.privacy')}</h2>

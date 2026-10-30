@@ -1,3 +1,4 @@
+import {ProtectedAnalysis} from '@/components/assistant/protected-analysis';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -137,6 +138,7 @@ export default async function AnalyticsPage({
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('title')} description={t('description')} />
+      <details className="rounded-xl border p-4"><summary className="min-h-11 cursor-pointer py-2 text-sm font-medium">{(await getTranslations('assistant.privateAnalysis'))('title')}</summary><div className="pt-3"><ProtectedAnalysis scopeIds={scopeIds}/></div></details>
 
       {/* Unified filter bar (form-GET, auto-submit on select change) */}
       <Card>

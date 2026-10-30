@@ -32,8 +32,8 @@ function planInput(f:FormData){
 export async function developmentSuggestionsAction(reviewId:string){
  const s=await getSession();try{return await perf.suggestAssessmentDevelopmentGoals(s,reviewId,crypto.randomUUID());}catch(error){return {error:await actionError(error)};}
 }
-export async function careerPlanDraftAction(reviewId:string){
- const s=await getSession();try{return await perf.suggestAssessmentCareerPlan(s,reviewId,crypto.randomUUID());}catch(error){return {error:await actionError(error)};}
+export async function careerPlanDraftAction(reviewId:string,authored?:{aspirationLong?:string}){
+ const s=await getSession();try{const words=z.object({aspirationLong:z.string().trim().min(1).max(4000).optional()}).strict().parse(authored??{});return await perf.suggestAssessmentCareerPlan(s,reviewId,crypto.randomUUID(),words);}catch(error){return {error:await actionError(error)};}
 }
 export async function applyCareerPlanDraftAction(f:FormData,selected:import('@/packs/performance/onehr/career-draft-model').CareerDraftGoal[],aspirationLong:string,sourceDigest:string){
  const s=await getSession();try{const id=z.uuid().parse(str(f,'reviewId'));await perf.applyAssessmentCareerPlan(s,id,str(f,'planRevision')?num(f,'planRevision'):null,planInput(f),selected,aspirationLong,sourceDigest);revalidateAssessmentWorkspace();revalidatePath('/me/performance');revalidatePath(`/performance/assessment/${id}`);return {ok:true as const};}catch(error){return {error:await actionError(error)};}

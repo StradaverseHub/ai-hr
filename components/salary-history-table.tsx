@@ -279,6 +279,7 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
         </button>
       </div>
 
+      <ClientPager state={state} />
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -397,7 +398,6 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
           </tbody>
         </table>
       </div>
-      <ClientPager state={state} />
     </div>
   );
 }

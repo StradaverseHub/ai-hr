@@ -54,7 +54,7 @@ function fixture(copy: { t?: (k: string, v?: Record<string, unknown>) => string;
     FlatList: (p: { refreshControl: React.ReactNode; ListHeaderComponent: React.ReactNode; ListEmptyComponent: React.ReactNode; ListFooterComponent: React.ReactNode; data: unknown[]; keyExtractor: (i: unknown) => string; renderItem: (a: { item: unknown }) => React.ReactNode }) =>
       <div>{p.refreshControl}{p.ListHeaderComponent}{p.data.length ? p.data.map((i) => <div key={p.keyExtractor(i)}>{p.renderItem({ item: i })}</div>) : p.ListEmptyComponent}{p.ListFooterComponent}</div>,
   };
-  const ui = {
+  const ui = {fmtMoney:(v:string)=>v,InfoNote:({short,detail}:any)=><span><span>{short}</span><span>{detail}</span></span>,HeaderBack:()=><button aria-label="back">‹</button>,ListRow:({label,value,onPress}:any)=><button aria-label={value?`${label}, ${value}`:label} onClick={onPress}>{label}{value?`: ${value}`:''}</button>,
     Button: (p: { disabled?: boolean; onPress: () => void; title: string }) => <button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,
     Card: View, Muted: Text, Title: Text, Row: ({ label, value }: { label: string; value: string }) => <p>{label}: {value}</p>,
     Screen: ({ children, onRefresh }: { children?: React.ReactNode; onRefresh?: () => void }) => <div><button onClick={onRefresh}>refresh</button>{children}</div>,
@@ -66,7 +66,7 @@ function fixture(copy: { t?: (k: string, v?: Record<string, unknown>) => string;
     react: React, 'react/jsx-runtime': jsx, 'react-native': native, './ui': ui, './errors': errors,
     './auth': { authGeneration: () => 1, assertAuthGeneration: () => {} },
     './config': { config: { apiUrl: 'https://hr.test' }, identityNamespace: () => 'company' },
-    './i18n': { appLocale: () => 'en', t },
+    './i18n': { appLocale: () => 'en', intlLocale: () => 'en-MY', t },
   };
   const api = { apiGetPage, apiGetV2, apiPostV2, v2Page: (path: string) => ({ kind: 'page', path, schema: null }) };
   const paged = load('mobile/lib/paged-list.tsx', { ...base, './api': api });
@@ -93,7 +93,7 @@ describe('approvals list', () => {
     const f = fixture();
     f.apiGetPage.mockResolvedValueOnce({ items: [
       item(),
-      // D12 made claims native; a resignation is still read-only in the app.
+      // A resignation is read-only in the app.
       item({ id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', kind: 'resignation', subject: { name: 'Chong', code: null }, nativeDecision: false, webPath: '/approvals?category=resignation&task=resignation&requestId=cccccccc-cccc-4ccc-8ccc-cccccccccccc#row' }),
     ], nextCursor: null });
     render(<f.ApprovalsScreen />);
@@ -108,10 +108,29 @@ describe('approvals list', () => {
     expect(f.apiPostV2).not.toHaveBeenCalled();
   });
 
+  it('a claim approval is listed with its summary but opens on the web — no native detail, even though the server marks it native', async () => {
+    const f = fixture();
+    const sum = { label: 'Meals', from: '2026-10-20', to: '2026-10-20', days: null, amount: '42.50', currency: 'MYR' };
+    // The server still sends claims as native (older installed apps decide them), so it sends no web path.
+    const claim = item({ id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', kind: 'claim', nativeDecision: true, webPath: null, summary: sum });
+    expect(v2tasks.TaskItemV2.safeParse(claim).success).toBe(true);
+    f.apiGetPage.mockResolvedValueOnce({ items: [claim], nextCursor: null });
+    render(<f.ApprovalsScreen />);
+    await screen.findByText('Meals · 2026-10-20 · MYR 42.50');
+    expect(screen.queryByRole('button', { name: /^task_claim/ })).toBeNull();
+    fireEvent.click(screen.getByRole('link', { name: 'openOnWeb: task_claim · Aisyah · Meals · 2026-10-20 · MYR 42.50' }));
+    expect(f.openURL).toHaveBeenCalledWith('https://hr.test/approvals');
+    expect(f.push).not.toHaveBeenCalled();
+    expect(f.apiGetV2).not.toHaveBeenCalled();
+  });
+
   it('never builds a path or a web URL from anything but a native kind, a UUID and a relative path', () => {
     const f = fixture();
     expect(() => f.taskPath('profile', ID)).toThrow();
-    expect(f.taskPath('claim', ID, 'document')).toBe(`v2/tasks/claim/${ID}/document`);
+    // Claims left the app (declutter round): no native claim detail or receipt path is ever built.
+    expect(() => f.taskPath('claim', ID)).toThrow();
+    expect(() => f.taskPath('claim', ID, 'document')).toThrow();
+    expect(f.taskPath('leave', ID, 'decision')).toBe(`v2/tasks/leave/${ID}/decision`);
     expect(() => f.taskPath('leave', '../me')).toThrow();
     expect(f.taskPath('attendance', ID.toUpperCase(), 'decision')).toBe(`v2/tasks/attendance/${ID}/decision`);
     expect(f.webUrl('//evil.test/x')).toBeNull();
@@ -251,7 +270,12 @@ describe('approval detail', () => {
  * a template ("{days} days") and a value that already carries its unit ("5 days"), which a key-echoing `t` cannot see.
  */
 function realCopy(language: 'en' | 'ms') {
-  const i18n = load('mobile/lib/i18n.ts', { 'expo-localization': { getLocales: () => [{ languageCode: language }] } });
+  const i18n = load('mobile/lib/i18n.ts', {
+    'expo-localization': { getLocales: () => [{ languageCode: language }] },
+    // No language chosen in Settings: the phone's language decides, as before. The four other catalogues are not read here.
+    './preferences': { APP_LOCALES: ['en', 'ms', 'zh', 'ta', 'th', 'vi'], displayPrefs: () => ({ appearance: 'auto', language: 'auto' }) },
+    './locales/zh': { default: {} }, './locales/ta': { default: {} }, './locales/th': { default: {} }, './locales/vi': { default: {} },
+  });
   const t = i18n.t as (k: string, v?: Record<string, unknown>) => string;
   const fmtDays = (n: number | null) => (n == null ? '—' : t(n === 1 ? 'day' : 'days', { n: String(Math.round(n * 100) / 100) }));
   return { t, fmtDays };

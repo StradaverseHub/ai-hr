@@ -128,7 +128,7 @@ export function ZakatElectionsList({ rows }: { rows: ZakatElectionListRow[] }) {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-border">
         <input
           type="search"
           value={query}
@@ -140,7 +140,8 @@ export function ZakatElectionsList({ rows }: { rows: ZakatElectionListRow[] }) {
         <span className="text-xs text-muted-foreground">{t('history.nShown', { count: sorted.length })}</span>
       </div>
 
-      <div className="overflow-x-auto border-t border-border">
+      <ClientPager state={state} paramNames={{ page: 'ePage', size: 'eSize' }} />
+      <div className="overflow-x-auto">
         <table className="w-full min-w-[720px] text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
@@ -194,8 +195,6 @@ export function ZakatElectionsList({ rows }: { rows: ZakatElectionListRow[] }) {
           </tbody>
         </table>
       </div>
-
-      <ClientPager state={state} paramNames={{ page: 'ePage', size: 'eSize' }} />
     </div>
   );
 }

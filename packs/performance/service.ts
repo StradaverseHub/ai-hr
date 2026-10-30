@@ -94,3 +94,5 @@ export {getPerformanceAreaFacts,getPerformanceAreaFactsAndItems,performanceTabAc
 export {adminSectionHref} from './onehr/admin-sections';
 export {getPerformanceHome} from './onehr/performance-home-service';
 export {performanceHomeLayout,homeNext,homeSlot,notInReason,teamCounts,toolDoors,pastJourney,type PerformanceHomeView,type PerformanceHomeLayout,type PerformanceHomeCardId,type HomeNext,type HomeRow,type HomeSlot,type HomeRail,type NotInReason,type TeamCounts,type HomeToolGroup,type RunningLeaderStatus,type RecordLeaderStatus} from './onehr/performance-home-model';
+
+export {performanceAnalysisSourceTx} from './onehr/analysis-source';

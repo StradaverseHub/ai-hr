@@ -12,6 +12,7 @@
 import { execFileSync } from 'node:child_process';
 import { operatorSsh } from '../operator-ssh.mjs';
 import { randomUUID } from 'node:crypto';
+import { RELEASE_STAGES, type FeedbackReleaseStage } from '../../lib/feedback-release';
 
 const SSH = operatorSsh();
 const TARGET = SSH.target;
@@ -602,7 +603,7 @@ export function markDeployed(p: { id: string; tenantId: string; reporterEmployme
   const sql = [
     'BEGIN;',
     doBlock(['BEGIN', reporterBindingBody(p), 'END'].join('\n')),
-    `UPDATE feedback_request SET status = 'deployed', build_ref = ${dq(p.buildRef)}, decided_at = now(), updated_at = now() WHERE id = '${p.id}';`,
+    `UPDATE feedback_request SET status = 'deployed', release = NULL, build_ref = ${dq(p.buildRef)}, decided_at = now(), updated_at = now() WHERE id = '${p.id}';`,
     `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.deployed', 'agent', ${reporterEmploymentSql(p.reporterEmploymentId)}, ${dq(JSON.stringify({ buildRef: p.buildRef }))}::jsonb);`,
     'COMMIT;',
   ].join('\n');
@@ -663,4 +664,61 @@ export function fetchAttachment(attachmentId: string): Buffer {
   const b64 = remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -tAc ${shellQuote(sql)}`).trim();
   if (!b64) throw new Error(`no attachment ${attachmentId}`);
   return Buffer.from(b64, 'base64');
+}
+
+
+/** Record an independently checked release milestone; never deploys or approves a release itself. */
+export function recordFeedbackRelease(p: {
+  id: string; tenantId: string; reporterEmploymentId: string | null;
+  stage: FeedbackReleaseStage; sourceSha: string; buildId: string; buildRef: string; evidence: string;
+}): void {
+  assertUuid(p.id, 'feedback id');
+  assertUuid(p.tenantId, 'tenant id');
+  reporterEmploymentSql(p.reporterEmploymentId);
+  if (!RELEASE_STAGES.includes(p.stage)) throw new Error('Unknown feedback release stage.');
+  if (!/^[a-f0-9]{40}$/.test(p.sourceSha)) throw new Error('sourceSha must be a full lowercase commit SHA.');
+  for (const key of ['buildId', 'buildRef', 'evidence'] as const) {
+    if (typeof p[key] !== 'string' || !p[key].trim() || p[key].length > 2000) throw new Error(`${key} is required (maximum 2000 characters).`);
+  }
+  const payload = JSON.stringify({ stage: p.stage, sourceSha: p.sourceSha, buildId: p.buildId, buildRef: p.buildRef, evidence: p.evidence });
+  const predecessor = p.stage === 'production_ready' ? 'staging' : 'production_ready';
+  const body = `DECLARE fb feedback_request%ROWTYPE; milestone jsonb;
+BEGIN
+  ${reporterBindingBody(p)}
+  SELECT * INTO STRICT fb FROM feedback_request WHERE id='${p.id}' AND tenant_id='${p.tenantId}';
+  IF fb.status = 'deployed' AND fb.release->>'stage' = ${dq(p.stage)}
+    AND fb.release->>'sourceSha' = ${dq(p.sourceSha)} AND fb.release->>'buildId' = ${dq(p.buildId)}
+    AND fb.release->>'buildRef' = ${dq(p.buildRef)} AND fb.build_ref = ${dq(p.buildRef)}
+    AND fb.release->>'planRevision' = fb.plan_revision::text
+    AND fb.release->>'reopenedCount' = fb.reopened_count::text THEN
+    RETURN;
+  END IF;
+  IF fb.status NOT IN ('approved','building','done','deployed') THEN
+    RAISE EXCEPTION 'Feedback is not in a releasable state';
+  END IF;
+  IF ${dq(p.stage)} <> 'staging' THEN
+    IF fb.status <> 'deployed' OR fb.release IS NULL
+      OR fb.release->>'stage' IS DISTINCT FROM ${dq(predecessor)}
+      OR fb.release->>'sourceSha' IS DISTINCT FROM ${dq(p.sourceSha)}
+      OR fb.release->>'buildId' IS DISTINCT FROM ${dq(p.buildId)}
+      OR fb.release->>'buildRef' IS DISTINCT FROM ${dq(p.buildRef)}
+      OR fb.build_ref IS DISTINCT FROM ${dq(p.buildRef)}
+      OR fb.release->>'planRevision' IS DISTINCT FROM fb.plan_revision::text
+      OR fb.release->>'reopenedCount' IS DISTINCT FROM fb.reopened_count::text THEN
+      RAISE EXCEPTION 'Record the preceding milestone for the same feedback cycle, source and build first';
+    END IF;
+  ELSIF fb.status = 'deployed' AND fb.release->>'stage' IN ('production_ready','production')
+    AND fb.release->>'sourceSha' = ${dq(p.sourceSha)} AND fb.release->>'buildId' = ${dq(p.buildId)}
+    AND fb.release->>'planRevision' = fb.plan_revision::text
+    AND fb.release->>'reopenedCount' = fb.reopened_count::text THEN
+    RAISE EXCEPTION 'Cannot regress the same release to staging';
+  END IF;
+  milestone := ${dq(payload)}::jsonb || jsonb_build_object(
+    'planRevision', fb.plan_revision, 'reopenedCount', fb.reopened_count, 'recordedAt', now());
+  UPDATE feedback_request SET status='deployed', release=milestone, build_ref=${dq(p.buildRef)},
+    decided_at=now(), updated_at=now() WHERE id=fb.id AND tenant_id=fb.tenant_id;
+  INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload)
+    VALUES (fb.tenant_id, 'feedback', fb.id, 'feedback.release.recorded', 'agent', fb.reporter_employment_id, milestone);
+END`;
+  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, doBlock(body));
 }

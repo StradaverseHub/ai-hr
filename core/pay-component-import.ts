@@ -17,7 +17,7 @@ export function payItemVocabulary(t: (key: string) => string, english: (key: str
     displayCategory: [entry('', 'displayCategory_auto'), ...PAY_DISPLAY_CATEGORIES.map(value => entry(value, `displayCategory_${value}`))],
     archived: [entry('active', 'statusActive'), entry('inactive', 'statusInactive')],
     roundingMethod: ROUNDING_METHODS.map(value => entry(value, `rounding_${value}`, value === 'none' ? ['Exact (no rounding)'] : [])),
-    inputKind: PAY_RULE_KINDS.map(value => entry(value, `inputType_${value}`, value === 'fixed' ? ['Fixed Value'] : value === 'per_hour' ? ['Hourly Rate x Hours'] : [])),
+    inputKind: PAY_RULE_KINDS.filter(value=>value!=='formula_builder').map(value => entry(value, `inputType_${value}`, value === 'fixed' ? ['Fixed Value'] : value === 'per_hour' ? ['Hourly Rate x Hours'] : [])),
     pcbRemunerationType: PCB_REMUNERATION_TYPES.map(value => entry(value, `remType_${value}`)),
     pcbExemptionCode: [...new Map(PCB_REMUNERATION_TYPES.flatMap(type => Object.entries(pcbExemptionCodesFor(type)).map(([value, cap]) => [value, { value, label: `${value} (${cap})` }] as const))).values()],
     eaFormLine: [entry('', 'eaLineNone'), ...countryPacks().flatMap(pack => (pack.eaReporting ?? []).filter(row => row.active).map(row => ({ value: row.code, label: row.label, aliases: row.aliases })))],

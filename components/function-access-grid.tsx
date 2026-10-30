@@ -27,7 +27,7 @@ export function FunctionAccessGrid({
   labels: { accessible: string; notAccessible: string; screenColumn: string };
 }) {
   return (
-    <div className="overflow-x-auto">
+    <div data-function-access-scroll className="relative min-w-0 max-w-full overflow-x-auto" tabIndex={0} role="region" aria-label={labels.screenColumn}>
       <table className="w-full min-w-[720px] border-separate border-spacing-0 text-sm">
         <thead>
           <tr>
@@ -59,7 +59,7 @@ export function FunctionAccessGrid({
                 </th>
                 {MATRIX_ROLES.map((role) => {
                   const ok = canReach(role, screen);
-                  const conditional=screen.guard==='assistantSession'||screen.guard==='requireAccessConfiguration'||screen.guard==='requireWorkforceAccess';
+                  const conditional=screen.guard==='requireSecurityCenter'||screen.guard==='requireGroupAdministration'&&ok||screen.guard==='assistantSession'||screen.guard==='requireAccessConfiguration'||screen.guard==='requireWorkforceAccess';
                   const answer=conditional?(note??labels.notAccessible):ok?labels.accessible:labels.notAccessible;
                   return (
                     <td key={role} className="border-t border-border px-3 py-2.5 text-center align-top">

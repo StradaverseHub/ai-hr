@@ -63,6 +63,7 @@ Read only records relevant to the task. A newer decision supersedes an older one
 - [ADR-0049 — Job-function partner roles](0049-job-function-partner-roles.md)
 - [ADR-0050 — Self Personal Tax Relief (LHDN TP1), yearly self-service + PCB divisor fix](0050-tp1-self-relief.md)
 - [ADR-0051 — Feedback module v2: close the loop (post-deploy refute) + bulk review + dashboard](0051-feedback-loop-closure.md)
+- [Feedback release milestones](feedback-release-milestones.md) — proposed extension of ADR-0051; environment evidence and Kanban projection.
 - [ADR-0052 — Hierarchy visibility (direct + indirect / HOD) and approval delegation](0052-hierarchy-visibility-and-delegation.md)
 - [ADR-0053 — Automated Probation / Contract / Internship Review Workflow](0053-employment-review-workflow.md)
 - [ADR-0054 — Location master data (attendance state input)](0054-location-master-data.md)
@@ -171,3 +172,4 @@ Read only records relevant to the task. A newer decision supersedes an older one
 - [ADR-0164 — Movement corrections behind closed payroll](0164-movement-corrections-behind-closed-payroll.md)
 - [ADR-0165 — Tenant-owned termination reasons and event-type descriptions](0165-tenant-termination-reason-catalogue.md)
 - [ADR-0166 — Custom Termination types, per-type reasons, Field Controls and movement documents](0166-movement-type-controls-and-custom-termination.md)
+- [ADR-0168 — Bounded reusable payroll formulas](0168-bounded-pay-formula-builder.md)

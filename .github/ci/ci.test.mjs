@@ -41,3 +41,15 @@ test('independent v12 report verification rejects absent or foreign per-unit dep
  report.pdfToolSetup={kind:'NO_EXTERNAL_PDF_TOOLS_REQUIRED_FOR_COMPLETE_UNIT',candidate:plan.sha,controller:plan.controller,fingerprint:plan.fingerprint,unit:plan.units[0].id,pdfToolsRequired:false,steps:[],releaseAuthorized:false};assert.equal(verifyReports(plan,[report]).tests,1);
  for(const key of ['candidate','controller','fingerprint','unit']){const wrong=structuredClone(report);wrong.pdfToolSetup[key]='foreign';assert.throws(()=>verifyReports(plan,[wrong]));}
 });
+
+test('normal cleanup diagnostic selects only the explicit non-activation phase',()=>{
+ const workflow=readFileSync(new URL('../workflows/alpha-staging-diagnostics.yml',import.meta.url),'utf8');
+ const job=workflow.match(/^  normal-cleanup:\n    if: \$\{\{ (.+) \}\}/m);assert(job,'Normal cleanup diagnostic must have an explicit routing guard');
+ const guard=job[1];assert.match(guard,/^inputs\.installer_fixture_phase == 'normal-cleanup' && !inputs\.filesystem_activation_probe$/);
+ const route=(phase,activation)=>guard.replace("inputs.installer_fixture_phase == 'normal-cleanup'",String(phase==='normal-cleanup')).replace('!inputs.filesystem_activation_probe',String(!activation))==='true && true';
+ for(const phase of ['full','source-proof-followup','environment','source-transfer-followup','ledger-connection-followup','pdf-tools-setup','private-access-integration','normal-cleanup'])for(const activation of [true,false])assert.equal(route(phase,activation),phase==='normal-cleanup'&&!activation);
+ assert.doesNotMatch(workflow,/normal_cleanup_probe/);assert.match(workflow,/options: \[full,[^\n]*normal-cleanup\]/);
+ // Every existing activation fixture keeps its own activation guard, so normal=false cannot enter it.
+ const activationJobs=[...workflow.matchAll(/^  ([a-z-]+):\n    if: \$\{\{ (inputs\.filesystem_activation_probe[^\n]+) \}\}/gm)];assert.ok(activationJobs.length>=4);
+ for(const [,name,guard] of activationJobs)assert.ok(guard.includes("inputs.installer_fixture_phase != 'normal-cleanup'")||/inputs\.installer_fixture_phase == '(?!normal-cleanup)[a-z-]+'/.test(guard),'Activation route must exclude normal cleanup even for conflicting selectors: '+name);
+});

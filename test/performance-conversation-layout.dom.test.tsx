@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import en from '../messages/en.json';
@@ -46,4 +46,29 @@ describe('Performance conversation layout',()=>{
   await waitFor(()=>expect(ports.keep).toHaveBeenCalledWith('review','card'));expect((screen.getByRole('button',{name:en.onehr.conversation.reflectionSaved}) as HTMLButtonElement).disabled).toBe(true);expect(ports.refresh).toHaveBeenCalledOnce();
  });
 
+});
+
+
+it('keeps the sent words and an honest thinking state in place during the native command',async()=>{
+ let finish!:(value:unknown)=>void;ports.send.mockReturnValueOnce(new Promise(resolve=>{finish=resolve;}));
+ render(<NextIntlClientProvider locale="en" messages={en}><ReviewConversation reviewId="review" stage="results" initial={{revision:null,messages:[]}} aiEnabled labels={en.onehr.conversation}/></NextIntlClientProvider>);
+ const box=screen.getByLabelText(en.onehr.conversation.message);fireEvent.change(box,{target:{value:'remark: My own current evidence.'}});fireEvent.click(screen.getByRole('button',{name:en.onehr.conversation.send}));
+ await waitFor(()=>expect(ports.send).toHaveBeenCalledOnce());expect(screen.getByRole('status')).toHaveTextContent(en.assistant.workspace.chat.thinking);expect(screen.getByText('remark: My own current evidence.')).toBeInTheDocument();expect(box).toBeDisabled();expect(box).toHaveValue('');
+ await act(async()=>{finish({revision:1,messages:[{id:'done',role:'assistant',kind:'guide',text:'Please review your recorded words.',at:'2026-10-30T00:00:00Z'}]});});
+ expect(screen.queryByRole('status')).toBeNull();expect(screen.getByText('Please review your recorded words.')).toBeInTheDocument();expect(box).not.toBeDisabled();expect(ports.refresh).not.toHaveBeenCalled();
+});
+
+
+it.each(['response','throw'])('restores the exact original draft after a %s failure and permits an explicit retry',async(failure)=>{
+ const original='  remark: My own current evidence.  ';
+ if(failure==='response')ports.send.mockResolvedValueOnce({error:'Please try again.'});
+ else ports.send.mockRejectedValueOnce(new Error('Please try again.'));
+ render(<NextIntlClientProvider locale="en" messages={en}><ReviewConversation reviewId="review" stage="results" initial={{revision:7,messages:[]}} aiEnabled labels={en.onehr.conversation}/></NextIntlClientProvider>);
+ const box=screen.getByLabelText(en.onehr.conversation.message);fireEvent.change(box,{target:{value:original}});fireEvent.click(screen.getByRole('button',{name:en.onehr.conversation.send}));
+ await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('Please try again.'));
+ expect(box).toHaveValue(original);expect(box).not.toBeDisabled();expect(screen.queryByRole('status')).toBeNull();expect(ports.refresh).not.toHaveBeenCalled();
+ expect(ports.send.mock.calls[0][2]).toBe(7);expect(ports.send.mock.calls[0][4]).toBe(original.trim());
+ fireEvent.click(screen.getByRole('button',{name:en.onehr.conversation.send}));
+ await waitFor(()=>expect(ports.refresh).toHaveBeenCalledOnce());
+ expect(ports.send).toHaveBeenCalledTimes(2);expect(ports.send.mock.calls[1][2]).toBe(7);expect(ports.send.mock.calls[1][4]).toBe(original.trim());expect(box).toHaveValue('');expect(screen.queryByRole('alert')).toBeNull();
 });

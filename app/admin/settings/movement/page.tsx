@@ -205,6 +205,16 @@ export default async function MovementSettingsPage({
           />
         </SettingsToolbar>
 
+        <Pager
+          basePath={PAGE}
+          params={{
+            q: q || undefined,
+            status: status === 'all' ? undefined : status,
+            sort: sort === 'catalog' ? undefined : sort,
+            dir: dir === 'asc' ? undefined : dir,
+          }}
+          state={pgState}
+        />
         <div className={tableWrapCls}>
           <table className="w-full text-sm">
             <thead className={theadCls}>
@@ -317,16 +327,6 @@ export default async function MovementSettingsPage({
             </tbody>
           </table>
         </div>
-        <Pager
-          basePath={PAGE}
-          params={{
-            q: q || undefined,
-            status: status === 'all' ? undefined : status,
-            sort: sort === 'catalog' ? undefined : sort,
-            dir: dir === 'asc' ? undefined : dir,
-          }}
-          state={pgState}
-        />
       </Card>
     </div>
   );

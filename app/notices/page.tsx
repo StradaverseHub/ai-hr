@@ -33,6 +33,11 @@ export default async function MyNoticesPage({searchParams}:{searchParams?:Promis
     <Button type="submit" variant="outline" className="min-h-11">{t('applyFilter')}</Button>
    </form>
    <p role="status" className="text-sm text-muted-foreground">{t('matchingCounts',{total:result.total,unread:result.unread,required:result.acknowledgementRequired})}</p>
+   <nav aria-label={t('noticePagination')} className="flex flex-wrap items-center justify-between gap-3 text-sm">
+    {result.page>1?<Link className="inline-flex min-h-11 items-center underline" href={href(result.page-1)}>{t('previousPage')}</Link>:<span/>}
+    <span>{t('pageOf',{page:result.page,pages:result.pages})}</span>
+    {result.page<result.pages?<Link className="inline-flex min-h-11 items-center underline" href={href(result.page+1)}>{t('nextPage')}</Link>:<span/>}
+   </nav>
    <Card data-tour="notices-mine">
     <SectionHeader title={t('myListTitle')} count={result.total}/>
     <ul className="divide-y divide-border">
@@ -51,11 +56,6 @@ export default async function MyNoticesPage({searchParams}:{searchParams?:Promis
      </li>)}
     </ul>
    </Card>
-   <nav aria-label={t('noticePagination')} className="flex flex-wrap items-center justify-between gap-3 text-sm">
-    {result.page>1?<Link className="inline-flex min-h-11 items-center underline" href={href(result.page-1)}>{t('previousPage')}</Link>:<span/>}
-    <span>{t('pageOf',{page:result.page,pages:result.pages})}</span>
-    {result.page<result.pages?<Link className="inline-flex min-h-11 items-center underline" href={href(result.page+1)}>{t('nextPage')}</Link>:<span/>}
-   </nav>
   </>}
  </div>;
 }

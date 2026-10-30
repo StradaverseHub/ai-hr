@@ -14,17 +14,22 @@ type Props = {
   /** 'hero': the Assistant home layout. The question box leads, with send inside it; task shortcuts follow as chips. */
   layout?: 'stacked' | 'hero';
   fileImport?: boolean;
+  clearAfterSubmit?: boolean;
+  clientSubmit?: boolean;
+  pending?: boolean;
 };
 
-function ComposerFields({ tasks, labels, layout = 'stacked',question,setQuestion }: Omit<Props, 'action'> & {question:string;setQuestion:(value:string)=>void}) {
-  const { pending } = useFormStatus();
+function ComposerFields({ tasks, labels, layout = 'stacked',question,setQuestion,pending:externalPending }: Omit<Props, 'action'> & {question:string;setQuestion:(value:string)=>void}) {
+  const formStatus = useFormStatus();
+  const pending = externalPending ?? formStatus.pending;
   const textarea = useRef<HTMLTextAreaElement>(null);
   const choose = (task: Task) => { setQuestion(task.prompt); textarea.current?.focus(); };
   if (layout === 'hero') return <>
-    <div className="rounded-xl border border-border bg-card shadow-sm focus-within:ring-2 focus-within:ring-primary">
+    <div className="rounded-xl border border-border bg-card shadow-sm focus-within:ring-2 focus-within:ring-primary" data-ui-composer>
       <label htmlFor="assistant-question" className="sr-only">{labels.question}</label>
       <textarea ref={textarea} id="assistant-question" name="question" required rows={3} maxLength={2000}
         value={question} readOnly={pending} onChange={event => setQuestion(event.target.value)}
+        onKeyDown={event => {if(event.key==='Enter'&&!event.shiftKey&&!event.nativeEvent.isComposing&&!pending&&question.trim()){event.preventDefault();event.currentTarget.form?.requestSubmit();}}}
         placeholder={labels.placeholder} aria-describedby="assistant-question-scope" className="min-h-24 w-full resize-y rounded-t-xl bg-transparent px-4 pt-3 text-sm outline-none" />
       <div className="flex items-center justify-between gap-3 px-3 pb-3">
         <p id="assistant-question-scope" className="text-xs text-muted-foreground">{labels.scope}</p>
@@ -55,6 +60,7 @@ function ComposerFields({ tasks, labels, layout = 'stacked',question,setQuestion
       <label htmlFor="assistant-question" className="text-sm font-medium">{labels.question}</label>
       <textarea ref={textarea} id="assistant-question" name="question" required rows={3} maxLength={2000}
         value={question} readOnly={pending} onChange={event => setQuestion(event.target.value)}
+        onKeyDown={event => {if(event.key==='Enter'&&!event.shiftKey&&!event.nativeEvent.isComposing&&!pending&&question.trim()){event.preventDefault();event.currentTarget.form?.requestSubmit();}}}
         placeholder={labels.placeholder} aria-describedby="assistant-question-scope" className={`${inputCls} min-h-28 w-full resize-y`} />
     </div>
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -67,8 +73,9 @@ function ComposerFields({ tasks, labels, layout = 'stacked',question,setQuestion
 }
 
 /** Task selection only writes local form state. No automatic provider call or hidden task capability. */
-export function WorkspaceComposer({ action, tasks, labels, layout,fileImport }: Props) {
+export function WorkspaceComposer({ action, tasks, labels, layout,fileImport,clearAfterSubmit,clientSubmit,pending }: Props) {
   const [question,setQuestion]=useState('');
-  const composer=<form action={action} className="space-y-4"><ComposerFields tasks={tasks} labels={labels} layout={layout} question={question} setQuestion={setQuestion}/></form>;
+  const submit=async(data:FormData)=>{if(clearAfterSubmit)setQuestion('');await action(data);};
+  const composer=<form action={clientSubmit?undefined:submit} onSubmit={clientSubmit?event=>{event.preventDefault();if(!pending)void submit(new FormData(event.currentTarget));}:undefined} className="space-y-4"><ComposerFields pending={pending} tasks={tasks} labels={labels} layout={layout} question={question} setQuestion={setQuestion}/></form>;
   return fileImport?<Suspense fallback={composer}><AssistantFileImport normalComposer={composer} instruction={question} onInstructionChange={setQuestion}/></Suspense>:composer;
 }

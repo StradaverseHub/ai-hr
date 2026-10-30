@@ -4002,29 +4002,113 @@
     {
       "idx": 686,
       "version": "7",
-      "when": 1793330000055,
-      "tag": "0726_claim_history_order",
+      "when": 1793330000056,
+      "tag": "0713_lifecycle_v9",
       "breakpoints": true
     },
     {
       "idx": 687,
       "version": "7",
-      "when": 1793330000073,
-      "tag": "0736_visibility_plan_cache",
+      "when": 1793330000057,
+      "tag": "0714_lifecycle_v9_email",
       "breakpoints": true
     },
     {
       "idx": 688,
       "version": "7",
-      "when": 1793330000082,
-      "tag": "0745_permission_read_work",
+      "when": 1793330000058,
+      "tag": "0715_lifecycle_v9_email_assets",
       "breakpoints": true
     },
     {
       "idx": 689,
       "version": "7",
-      "when": 1793330000210,
-      "tag": "0810_session_read_plans",
+      "when": 1793330000059,
+      "tag": "0716_lifecycle_v9_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 690,
+      "version": "7",
+      "when": 1793330000060,
+      "tag": "0717_lifecycle_v9_delivery_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 691,
+      "version": "7",
+      "when": 1793330000061,
+      "tag": "0718_lifecycle_v9_employment_class",
+      "breakpoints": true
+    },
+    {
+      "idx": 692,
+      "version": "7",
+      "when": 1793330000062,
+      "tag": "0719_lifecycle_v9_business_recipients",
+      "breakpoints": true
+    },
+    {
+      "idx": 693,
+      "version": "7",
+      "when": 1793330000063,
+      "tag": "0720_lifecycle_v9_self_equipment",
+      "breakpoints": true
+    },
+    {
+      "idx": 694,
+      "version": "7",
+      "when": 1793330000065,
+      "tag": "0728_feedback_release_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 695,
+      "version": "7",
+      "when": 1793330000075,
+      "tag": "0691_bank_import_point_read",
+      "breakpoints": true
+    },
+    {
+      "idx": 696,
+      "version": "7",
+      "when": 1793330000200,
+      "tag": "0800_pay_formula_builder",
+      "breakpoints": true
+    },
+    {
+      "idx": 697,
+      "version": "7",
+      "when": 1793330000211,
+      "tag": "0811_pay_formula_company_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 698,
+      "version": "7",
+      "when": 1793330000212,
+      "tag": "0812_claim_history_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 699,
+      "version": "7",
+      "when": 1793330000213,
+      "tag": "0813_visibility_plan_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 700,
+      "version": "7",
+      "when": 1793330000214,
+      "tag": "0814_permission_read_work",
+      "breakpoints": true
+    },
+    {
+      "idx": 701,
+      "version": "7",
+      "when": 1793330000215,
+      "tag": "0815_session_read_plans",
       "breakpoints": true
     }
   ]

@@ -413,6 +413,7 @@ export default async function SelfOvertimePage({
             </div>
             <p className="border-b border-border px-4 py-2 text-xs text-muted-foreground">{t('otPolicyPlanTotalsHelp')}</p>
 
+            <Pager basePath={LIST_PATH} params={viewParams} state={state} />
             {plans.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-muted-foreground">{emptyMessage}</p>
             ) : (
@@ -529,7 +530,6 @@ export default async function SelfOvertimePage({
                 </table>
               </div>
             )}
-            <Pager basePath={LIST_PATH} params={viewParams} state={state} />
           </>
         )}
       </Card>

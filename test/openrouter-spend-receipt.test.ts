@@ -1,8 +1,8 @@
+import {fixtureOpenRouterTransport as createOpenRouterTransport} from './helpers/provider-egress-fixture';
 /** Authored UNRUN. Actual fixed transport + lossless parser + ALS + Node HMAC; ONLY fetch is
  * mocked. No production route ceiling, external billing guarantee or SQL verifier proof. */
 import {createHmac} from 'node:crypto';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
-import {createOpenRouterTransport} from '../lib/ai/providers/openrouter-transport';
 import {readOpenRouterOptions} from '../lib/ai/providers/openrouter-configuration';
 import {aiSpendConfigurationDigest,createAiSpendReceiptScope} from '../lib/ai/spend-receipt';
 import {exactUsdDecimalNanos,parseSpendEvidenceJson,readOpenRouterInlineCharge,readOpenRouterGenerationCharge} from '../lib/ai/providers/openrouter-spend-evidence';

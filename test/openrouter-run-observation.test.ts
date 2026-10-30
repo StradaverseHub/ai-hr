@@ -1,6 +1,6 @@
 /** Authored UNRUN. Mocked fetch only; no key activation or real provider call. */
 import {describe,expect,it,vi} from 'vitest';
-import {createOpenRouterAdapter} from '../lib/ai/providers/openrouter';
+import {fixtureOpenRouterAdapter as createOpenRouterAdapter} from './helpers/provider-egress-fixture';
 import {readOpenRouterOptions} from '../lib/ai/providers/openrouter-configuration';
 import type {ResolvedAiConfig} from '../lib/ai/types';
 const cfg:ResolvedAiConfig={provider:'openrouter',model:'fictional/model',apiKey:'fictional-key',providerOptions:readOpenRouterOptions({version:1,routing:{allowedProviders:['approved-a']}}),governance:{run:async(_request,call)=>call(()=>{})}};

@@ -37,7 +37,7 @@ function fixture() {
   'react-native':{ActivityIndicator:()=> <div>Loading</div>,BackHandler:{addEventListener:(_type:string,handler:()=>boolean)=>{back.handler=handler;return{remove(){if(back.handler===handler)back.handler=null;}};}},ScrollView:Container,Text:Container,View:Container,TextInput:({accessibilityLabel,value,onChangeText,editable}:any)=><input aria-label={accessibilityLabel} value={value} onChange={e=>onChangeText(e.target.value)} disabled={editable===false}/>,StyleSheet:{create:(x:unknown)=>x}},
   'expo-linking':{getInitialURL,clearInitialURL:vi.fn(),addEventListener:(_type:string,listener:typeof linking.listener)=>{linking.listener=listener;return{remove(){linking.listener=null;}};}},
   'react-native-safe-area-context':{SafeAreaView:Container},'expo-file-system':{File,Directory,Paths:{document:'doc',cache:'cache'}},'expo-document-picker':{getDocumentAsync:picker},'expo-router':{router:{replace:vi.fn(),back:vi.fn()},SplashScreen:{hideAsync:vi.fn(async()=>{})}},
-  './auth':{signOut:clear},'./config':{runtimeConnections:true,applyCompanyConnection:(p:unknown)=>{applied=p;}},'./company-profile':companyProfile,'./connection-state':{createConnectionState},'./i18n':{appLocale:()=> 'en'},
+  './auth':{signOut:clear},'./config':{runtimeConnections:true,applyCompanyConnection:(p:unknown)=>{applied=p;}},'./company-profile':companyProfile,'./connection-state':{createConnectionState},'./i18n':{appLocale:()=> 'en',intlLocale:()=> 'en-MY'},'./locales/zh':{company:{}},'./locales/ta':{company:{}},'./locales/th':{company:{}},'./locales/vi':{company:{}},
   '../../lib/mobile-workplace-setup':workplaceSetup,
   './ui':{colors:{},Button:({title,onPress,disabled}:any)=><button onClick={onPress} disabled={disabled}>{title}</button>},'../connections/trust.json':trust,'../connections/profiles.json':[setup('Test cloud','https://cloud.example.test')]};
  const output={exports:{} as any};
@@ -97,7 +97,7 @@ describe('shipped company setup screen',()=>{
  });
  it('places link review inside the shipped session and draft providers',()=>{
   const layout=readFileSync('mobile/app/_layout.tsx','utf8');
-  expect(layout).toMatch(/<CompanyConnectionProvider><SessionProvider>[\s\S]*<JourneyDraftProvider><WorkplaceReviewBoundary><Gate \/><\/WorkplaceReviewBoundary><\/JourneyDraftProvider>[\s\S]*<\/SessionProvider><\/CompanyConnectionProvider>/);
+  expect(layout).toMatch(/<CompanyConnectionProvider><SessionProvider>[\s\S]*<JourneyDraftProvider><WorkplaceReviewBoundary><Gate(?: key=\{language\})? \/><\/WorkplaceReviewBoundary><\/JourneyDraftProvider>[\s\S]*<\/SessionProvider><\/CompanyConnectionProvider>/);
  });
  it('pastes and verifies an on-prem setup link without opening another host or sending credentials',async()=>{
   const f=fixture(),user=userEvent.setup();render(<f.Provider><f.PrivateView/></f.Provider>);

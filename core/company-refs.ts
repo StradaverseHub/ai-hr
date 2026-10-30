@@ -112,6 +112,11 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   {table:'employee_home_configuration_revision',column:'company_id',disposition:'other',existsFunction:'app.retained_company_history_in_use',note:'Immutable policy, approval, Home or notice history retains its original company; expose only a scoped retention boolean.'},
   {table:'notice',column:'owner_company_id',disposition:'other',existsFunction:'app.retained_company_history_in_use',note:'Immutable policy, approval, Home or notice history retains its original company; expose only a scoped retention boolean.'},
   {table:'reward_policy_group_target',column:'company_id',disposition:'other',existsFunction:'app.reward_policy_group_company_in_use',note:'Immutable shared reward configuration versions retain each explicit company/unit pair; expose only the authorised company retention boolean.'},
+  { table: 'lc_v9_case', column: 'company_id', disposition: 'employees', existsFunction: 'app.lc_v9_company_employee_history_in_use', note: 'Retained offboarding facts and employee lifecycle history keep their original company.' },
+  { table: 'lc_v9_case_revision', column: 'company_id', disposition: 'employees', existsFunction: 'app.lc_v9_company_employee_history_in_use', note: 'Immutable V9 case revisions retain their original company after employee transfers.' },
+  { table: 'lc_v9_file', column: 'company_id', disposition: 'employees', existsFunction: 'app.lc_v9_company_employee_history_in_use', note: 'Employee document files retain their company even when the case is not visible to an organisation administrator.' },
+  { table: 'lc_v9_email_delivery', column: 'company_id', disposition: 'employees', existsFunction: 'app.lc_v9_company_employee_history_in_use', note: 'Immutable employee communication intents and delivery receipts retain their company without exposing message content.' },
+  { table: 'lc_v9_payroll_handover', column: 'company_id', disposition: 'payroll', note: 'Frozen final-pay handovers and their review history retain the company as payroll evidence.' },
   { table: 'lc_onboarding_case', column: 'company_id', disposition: 'employees', note: 'Onboarding source identity, tasks, approvals and handover history must survive company changes.' },
   { table: 'lc_onboarding_case_revision', column:'company_id', disposition:'employees', note:'Immutable onboarding case history survives company changes.' },
   { table: 'lc_onboarding_private_revision', column:'company_id', disposition:'employees', note:'Sensitive onboarding history retains HR-only access.' },
@@ -136,6 +141,8 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
 
   // ── payroll: any row refuses ─────────────────────────────────────────────────────────────────────────
   { table: 'information_payslip_snapshot', column: 'company_id', disposition: 'payroll', note: 'Immutable historical payslip display evidence remains with its paying company, including after a legitimate payroll reset.' },
+  { table: 'pay_formula_test', column: 'company_id', disposition: 'payroll', existsFunction: 'app.pay_formula_company_in_use', note: 'Immutable saved formula tests retain their selected paying company and private calculation evidence.' },
+  { table: 'pay_formula_evaluation', column: 'company_id', disposition: 'payroll', existsFunction: 'app.pay_formula_company_in_use', note: 'Immutable payroll formula evaluations retain the original paying company, including after a payroll reset or draft deletion.' },
   { table: 'payroll_batch', column: 'company_id', disposition: 'payroll', note: 'A payroll run. Its payslips hang off it, so this is where every payslip is counted.' },
   { table: 'pay_period', column: 'company_id', disposition: 'payroll', note: 'A payroll period opened or closed for the company.' },
   { table: 'pcb_payment', column: 'company_id', disposition: 'payroll', note: 'A recorded PCB tax payment to LHDN. Money that has left the company.' },

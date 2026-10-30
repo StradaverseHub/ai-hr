@@ -189,12 +189,12 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   it('answers natural calibration queries from fresh scoped facts and opens a person without moving or locking them',async()=>{
     await complete();const reviewer=peers[0].ctx,id=await perf.createOnehrCalibration(a,cycleId,{name:'Query cohort',companyId:b.companyId,tier:'bu',reviewerUserIds:[reviewer.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
     vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
-    vi.mocked(generateDraft).mockResolvedValue('{"action":"distribution","axis":"performance"}');
+    vi.mocked(generateDraft).mockResolvedValue('{"action":"distribution"}');
     const first=await perf.sendCalibrationMessage(reviewer,id,'performance',null,randomUUID(),'How are the performance bands spread across my cohort?');
     expect(first.messages.at(-1)?.text).toContain('ME: 1');
-    const prompt=vi.mocked(generateDraft).mock.calls[0][1].prompt;expect(prompt).toContain('Assessment subject');expect(prompt).not.toContain('primaryEmail');expect(prompt).not.toContain('anonymousFeedback');expect(prompt).not.toContain('salary');
+    const prompt=vi.mocked(generateDraft).mock.calls[0][1].prompt;expect(prompt).not.toContain('Assessment subject');expect(JSON.parse(prompt)).toEqual({action:'distribution'});expect(prompt).not.toContain('primaryEmail');expect(prompt).not.toContain('anonymousFeedback');expect(prompt).not.toContain('salary');
     const words='Could you explain Assessment subject?',start=words.indexOf('Assessment subject');
-    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({action:'person',reviewId,name:{start,end:start+'Assessment subject'.length}}));
+    vi.mocked(generateDraft).mockResolvedValue('{"action":"person"}');
     const request=randomUUID(),second=await perf.sendCalibrationMessage(reviewer,id,'performance',first.revision,request,words);
     expect(second.messages.at(-1)?.text).toContain('manager: ME');let v=await perf.getOnehrCalibration(reviewer,id);
     expect(v.held.performance).toMatchObject({focus:reviewId,lines:[],requestId:request});expect(v.rows[0].entry.performance).toBeNull();expect(v.session.revision).toBe(1);
@@ -578,7 +578,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await perf.saveOnehrKpiCheckIn(self,reviewId,(await view(self)).revision,id,'at_risk','Dependency needs support');
     await prepareMockedSpend('performance_assistant');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     const label=(await view(self)).kpis[0].title,message=`Set ${label} to off track`;
-    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'checkin',id,target:{start:4,end:4+label.length},answer:{start:message.indexOf('off track'),end:message.length}}]}));
+    vi.mocked(generateDraft).mockResolvedValue('{"items":[0]}');
     expect((await perf.sendReviewMessage(self,reviewId,'results',null,randomUUID(),message)).draftUpdated).toBe(true);
     expect((await view(self)).kpis[0].checkIn).toMatchObject({answer:'off_track',note:'Dependency needs support'});
     const first=(await view(self)).revision;await perf.saveOnehrKpiCheckIn(self,reviewId,first,id,'on_track','Dependency resolved');

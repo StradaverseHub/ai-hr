@@ -16,12 +16,11 @@ export function IntegrityKeys(){
   const {employmentId,signOut}=useSession(),me=useApi('me',{},signOut);
   const selected=employmentId?me.data?.employments.find(item=>item.employmentId===employmentId)?.employmentId:me.data?.employments[0]?.employmentId;
   const key=JSON.stringify([authGeneration(),identityNamespace(),appLocale(),selected]);
-  return <Screen>
+  return <Screen back>
     <Title>{t('integrityKeysTitle')}</Title>
     <Muted>{t('integrityKeysHint')}</Muted>
     <LoadState loading={me.loading} error={me.error} hasData={me.data!==null} onRetry={me.reload}/>
     {me.data&&(selected?<KeyInventory key={key} employmentId={selected}/>:<Muted>{t('integrityKeysNoEmployment')}</Muted>)}
-    <Button title={t('back')} kind="quiet" onPress={()=>router.back()}/>
   </Screen>;
 }
 type Action={kind:'busy'|'uncertain'|'confirmed'|'refused';keyId:string};

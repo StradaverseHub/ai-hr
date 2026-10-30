@@ -23,6 +23,15 @@ import { defaultEmailConfig, EmailSettingsError } from '../lib/identity/email-mo
 const wrap=(node:React.ReactNode)=>render(<NextIntlClientProvider locale="en" messages={messages}>{node}</NextIntlClientProvider>);
 const page=async(query={})=>wrap(await Page({searchParams:Promise.resolve(query)}));
 const sidebar=(admin:boolean,operator=false,preview=admin)=>wrap(<Sidebar isAdmin={admin} canApprove={false} canPreviewIdentityEmail={preview} canConfigureIdentityEmail={operator} enabledModules={[]} defaultCollapsed={false}/>);
+function openSystemSettings() {
+ const section=document.querySelector<HTMLButtonElement>('button[aria-controls="nav-section-systemConfiguration"]');
+ if(section?.getAttribute('aria-expanded')==='false')fireEvent.click(section);
+ const triggers=screen.getAllByRole('button',{name:messages.nav.systemConfiguration}).filter(button=>button.hasAttribute('aria-controls')&&button.getAttribute('aria-controls')!=='nav-section-systemConfiguration');
+ expect(triggers).toHaveLength(1);const trigger=triggers[0];
+ if(trigger.getAttribute('aria-expanded')!=='true')fireEvent.click(trigger);
+ const panel=document.getElementById(trigger.getAttribute('aria-controls')!);expect(panel).not.toBeNull();
+ return panel!;
+}
 beforeEach(()=>{
  cleanup();vi.clearAllMocks();m.session.mockResolvedValue({s:{userId:'admin',roles:['hr_admin']}});m.allowed.mockResolvedValue(false);m.demo.mockReturnValue(true);m.accounts.mockResolvedValue({items:[],hasMore:false,nextCursor:undefined});m.retention.mockResolvedValue(null);m.guard.mockResolvedValue({session:{userId:'operator'},actor:{subject:'verified'}});
  m.test.mockResolvedValue({status:'success',authenticated:true});
@@ -31,20 +40,20 @@ beforeEach(()=>{
 });
 describe('SMTP settings discovery and temporary demo testing',()=>{
  it('lets a demo administrator find Email delivery under System Configuration without a paid module',()=>{
-  sidebar(true);fireEvent.click(screen.getByRole('button',{name:messages.nav.systemConfiguration}));
-  expect(within(screen.getByRole('navigation',{name:messages.nav.systemConfiguration})).getByRole('link',{name:messages.nav.identityEmail})).toHaveAttribute('href','/admin/settings/email');
+  sidebar(true);const panel=openSystemSettings();
+  expect(within(panel).getByRole('link',{name:messages.nav.identityEmail})).toHaveAttribute('href','/admin/settings/email');
  });
  it('keeps the enrolled installation operator navigation limited to Email delivery',()=>{
-  sidebar(false,true);fireEvent.click(screen.getByRole('button',{name:messages.nav.systemConfiguration}));
-  expect(within(screen.getByRole('navigation',{name:messages.nav.systemConfiguration})).getAllByRole('link').map(a=>a.getAttribute('href'))).toEqual(['/admin/settings/email']);
+  sidebar(false,true);const panel=openSystemSettings();
+  expect(within(panel).getAllByRole('link').map(a=>a.getAttribute('href'))).toEqual(['/admin/settings/email']);
  });
  it('does not offer system setup to an ordinary employee',()=>{
   sidebar(false);expect(screen.queryByRole('button',{name:messages.nav.systemConfiguration})).toBeNull();expect(screen.queryByRole('link',{name:messages.nav.identityEmail})).toBeNull();
  });
  it('does not advertise SMTP preview to a partner who only has the broader administration rail',()=>{
   sidebar(true,false,false);
-  fireEvent.click(screen.getByRole('button',{name:messages.nav.systemConfiguration}));
-  expect(within(screen.getByRole('navigation',{name:messages.nav.systemConfiguration})).queryByRole('link',{name:messages.nav.identityEmail})).toBeNull();
+  const panel=openSystemSettings();
+  expect(within(panel).queryByRole('link',{name:messages.nav.identityEmail})).toBeNull();
  });
  it.each(['hr_admin','super_admin'])('allows %s to edit temporary connection fields without reading or saving live settings',async role=>{
   m.session.mockResolvedValue({s:{userId:'admin',roles:[role]}});
@@ -109,4 +118,12 @@ describe('SMTP settings discovery and temporary demo testing',()=>{
  it('shows a real service failure without presenting the preview as live settings',async()=>{
   m.allowed.mockResolvedValue(true);m.read.mockRejectedValue(new EmailSettingsError('unavailable'));await page();expect(screen.getByText(messages.identityEmail.errors.unavailable)).toBeInTheDocument();expect(screen.queryByLabelText(messages.identityEmail.host)).toBeNull();
  });
+});
+it('shows confirmed profile addresses and keeps installation-default activation as the explicit default',async()=>{
+ m.allowed.mockResolvedValue(true);const config={...defaultEmailConfig,host:'smtp.fixture.test',from:'default@fixture.test'};
+ m.read.mockResolvedValue({supportsLifecycleSenders:true,lifecycleSenders:[{profile:'hr',from:'confirmed-hr@fixture.test',connectionId:'fixture',appliedAt:'2026-10-29T00:00:00Z',hasUnappliedChanges:true},{profile:'onboarding',from:config.from,hasUnappliedChanges:false},{profile:'noreply',from:config.from,hasUnappliedChanges:false}],active:config,connections:[],selectedConnectionId:'fixture',selectedConnectionName:'Fictional sender',draft:{id:'version',config,hasPassword:false,testedAt:'2026-10-29T00:00:00Z'},revision:'revision',testRecipient:'operator@fixture.test'});
+ await page({connection:'fixture',success:'sender'});
+ expect(screen.getByText(messages.identityEmail.lifecycleSenderTitle)).toBeVisible();expect(screen.getByText(/confirmed-hr@fixture.test/)).toBeVisible();expect(screen.getByText(messages.identityEmail.senderPending)).toBeVisible();
+ const target=screen.getByLabelText(messages.identityEmail.applyTarget);expect(target).toHaveValue('');expect(within(target).getAllByRole('option').map(option=>option.getAttribute('value'))).toEqual(['','onboarding','hr','noreply']);fireEvent.change(target,{target:{value:'hr'}});expect(target).toHaveValue('hr');
+ expect(screen.getByLabelText(messages.identityEmail.received)).toBeRequired();expect(screen.getByText(messages.identityEmail.success.sender)).toBeVisible();expect(screen.queryByText(messages.identityEmail.success.apply)).not.toBeInTheDocument();
 });

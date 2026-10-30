@@ -34,7 +34,7 @@ import { appLocale, t, type MessageKey } from './i18n';
 import { PagedList, usePagedList, type PageLoader, type PagedListState } from './paged-list';
 import { shareProtectedDocument } from './protected-document';
 import { useSession } from './session';
-import { Button, Card, LoadState, Muted, Row, Screen, Title, fmtMoney } from './ui';
+import { Button, Card, fmtMoney, HeaderBack, LoadState, Muted, Row, Screen, Title } from './ui';
 import {
   EaSourcesV2, PayslipDetailResult, PayslipIndexV2, ShareEventResult,
   type EaSourceV2, type PayslipDetailV2, type PayslipIndexItemV2, type PayslipRowV2, type RunTypeV2, type SharedDocumentV2,
@@ -240,8 +240,8 @@ export function PayslipsScreen() {
   return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={['top']}>
     <PagedList list={shown} keyOf={itemKey} emptyText={enabled === false ? t('payrollOff') : t('noPayslips')} contentContainerStyle={{ padding: 20, gap: 8 }}
       header={<View style={{ gap: 12 }}>
+        <HeaderBack />
         <TenantBrand />
-        <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
         <Title>{t('payTitle')}</Title>
         <Button title={t('payEaOpen')} kind="quiet" onPress={() => router.push('/pay/ea')} />
         {offline && <NeedsConnection onRetry={list.retry} />}
@@ -278,8 +278,7 @@ export function PayslipDetailScreen({ id }: { id: string }) {
   const payslip = detail.data?.outcome === 'found' ? detail.data.payslip : null;
   const offline = noConnection(detail.error);
   const heading = (text: string) => <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600' }}>{text}</Text>;
-  return <Screen onRefresh={detail.reload}>
-    <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
+  return <Screen back onRefresh={detail.reload}>
     {offline ? <NeedsConnection onRetry={detail.reload} /> : <LoadState loading={detail.loading} hasData={false} error={detail.error} onRetry={detail.reload} />}
     {detail.data?.outcome === 'refused' && <Muted>{t('payNotFound')}</Muted>}
     {payslip && <>
@@ -316,8 +315,7 @@ export function EaScreen() {
   const offline = noConnection(sources.error);
   const data = sources.data;
   const lang = appLocale() === 'ms' ? 'ms' : 'en';
-  return <Screen onRefresh={sources.reload}>
-    <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
+  return <Screen back onRefresh={sources.reload}>
     <Title>{t('payEaTitle')}</Title>
     {offline ? <NeedsConnection onRetry={sources.reload} /> : <LoadState loading={sources.loading} hasData={false} error={sources.error} onRetry={sources.reload} />}
     {data && !data.enabled && <Muted>{t('payrollOff')}</Muted>}

@@ -45,7 +45,7 @@ function fixture() {
     throw new Error('Unexpected read ' + String(path));
   });
   const apiPostV2 = vi.fn<(...a: unknown[]) => Promise<unknown>>();
-  const push = vi.fn(), signOut = vi.fn();
+  const push = vi.fn(), navigate = vi.fn(), signOut = vi.fn();
   const View = ({ children }: { children?: React.ReactNode }) => <div>{children}</div>;
   const Text = ({ children, accessibilityRole }: { children?: React.ReactNode; accessibilityRole?: string }) => <span role={accessibilityRole === 'alert' ? 'alert' : undefined}>{children}</span>;
   const native = {
@@ -56,7 +56,7 @@ function fixture() {
     FlatList: (p: { refreshControl: React.ReactNode; ListHeaderComponent: React.ReactNode; ListEmptyComponent: React.ReactNode; ListFooterComponent: React.ReactNode; data: unknown[]; keyExtractor: (i: unknown) => string; renderItem: (a: { item: unknown }) => React.ReactNode; onEndReached: () => void }) =>
       <div>{p.refreshControl}{p.ListHeaderComponent}{p.data.length ? p.data.map((i) => <div key={p.keyExtractor(i)}>{p.renderItem({ item: i })}</div>) : p.ListEmptyComponent}{p.ListFooterComponent}<button onClick={p.onEndReached}>end-reached</button></div>,
   };
-  const ui = {
+  const ui = {InfoNote:({short,detail}:any)=><span><span>{short}</span><span>{detail}</span></span>,HeaderBack:()=><button aria-label="back">‹</button>,ListRow:({label,value,onPress}:any)=><button aria-label={value?`${label}, ${value}`:label} onClick={onPress}>{label}{value?`: ${value}`:''}</button>,
     Button: (p: { disabled?: boolean; onPress: () => void; title: string }) => <button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,
     Card: View, Muted: Text, Title: Text, Row: ({ label, value }: { label: string; value: string }) => <p>{label}: {value}</p>,
     LoadState: (p: { error: Error | null; hasData: boolean; loading: boolean; onRetry: () => void }) => p.error ? <div>{'error:' + p.error.name}<button onClick={p.onRetry}>retry-load</button></div> : p.loading ? <span role="progressbar" /> : null,
@@ -66,19 +66,19 @@ function fixture() {
     react: React, 'react/jsx-runtime': jsx, 'react-native': native, './ui': ui, './errors': errors,
     './auth': { authGeneration: () => 1, assertAuthGeneration: () => {} },
     './config': { config: { apiUrl: 'https://hr.test' }, identityNamespace: () => 'company' },
-    './i18n': { appLocale: () => 'en', t },
+    './i18n': { appLocale: () => 'en', intlLocale: () => 'en-MY', t },
   };
   const api = { apiGetV2, apiPostV2, apiGetPage: vi.fn() };
   const paged = load('mobile/lib/paged-list.tsx', { ...base, './api': api });
   const screens = load('mobile/lib/inbox.tsx', {
     ...base, './api': api, './paged-list': paged, '../../lib/mobile-api/v2/notifications': v2notifications, './attendance-format': load('mobile/lib/attendance-format.ts', base),
-    'react-native-safe-area-context': { SafeAreaView: View }, 'expo-router': { router: { push } },
+    'react-native-safe-area-context': { SafeAreaView: View }, 'expo-router': { router: { push, navigate } },
     './design': { DesignText: Text, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark') }) },
     './session': { useSession: () => ({ employmentId: 'own', signOut }) },
   });
   const posted = (n = 0) => apiPostV2.mock.calls[n] as [string, unknown, Record<string, unknown>];
   // Object.assign keeps the loaded module's index signature (an object spread drops it).
-  return Object.assign({} as Loaded, screens, { apiGetV2, apiPostV2, push, signOut, posted, pages, summaries });
+  return Object.assign({} as Loaded, screens, { apiGetV2, apiPostV2, push, navigate, signOut, posted, pages, summaries });
 }
 afterEach(cleanup);
 
@@ -241,11 +241,13 @@ describe('Home "Needs you"', () => {
     const g = fixture();
     g.summaries.push(async () => summary({ status: 'ok', count: 3 }, { status: 'ok', enabled: true, unreadCount: 4 }));
     render(<g.HomeNeeds />);
-    expect(await screen.findByText('approvalsTitle: homeTasksCount 3')).toBeTruthy();
-    expect(screen.getByText('tabInbox: unreadCount 4')).toBeTruthy();
-    expect(screen.queryByText('nothingNeedsYou')).toBeNull();
-    fireEvent.click(screen.getByText('openApprovals'));
+    // Two tappable rows (declutter round): the approvals count opens Approvals, the unread count opens the Inbox.
+    fireEvent.click(await screen.findByRole('button', { name: 'approvalsTitle, homeTasksCount 3' }));
     expect(g.push).toHaveBeenCalledWith('/approvals');
+    fireEvent.click(screen.getByRole('button', { name: 'tabInbox, unreadCount 4' }));
+    expect(g.navigate).toHaveBeenCalledWith('/inbox');
+    expect(screen.queryByText('nothingNeedsYou')).toBeNull();
+    expect(screen.queryByText('openApprovals')).toBeNull();
   });
 
   it('signs out on a 401 and shows nothing of an old answer', async () => {

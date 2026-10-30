@@ -2,7 +2,7 @@
  * Payroll Setup — AI-assisted pay-rule drafting (core/pay-rule-ai.ts). Contract under test:
  *   - draft-only: a draft NEVER writes to any pay table (pay_component is untouched);
  *   - graceful degradation: with the gateway unconfigured the feature is OFF (PayRuleDraftError, no LLM call);
- *   - PII redaction: emails / IC numbers in the description are scrubbed before they reach the gateway;
+ *   - Closed intent: only a source-parsed rule kind reaches the gateway; parameters stay local;
  *   - one-shot: invalid model JSON ⇒ a SINGLE PayRuleDraftError (generateDraft called exactly once, no retry);
  *   - auditability: a valid draft appends pay-component.ai-rule-drafted with an { type: 'agent' } actor and a
  *     PII-free payload (provider/model/componentCode/ruleKind only — never the description).
@@ -16,7 +16,7 @@ vi.mock('../lib/ai', async (importActual) => {
   const actual = await importActual<typeof import('../lib/ai')>();
   return {
     ...actual, // keep redactPII real
-    generateDraft: vi.fn(async () => JSON.stringify({ rule: { kind: 'percent_of', base: 'basic', pct: 10 }, explanation: 'Ten percent of basic salary.' })),
+    generateDraft: vi.fn(async () => JSON.stringify({ kind: 'percent_of' })),
   };
 });
 
@@ -52,7 +52,7 @@ describe('Payroll Setup — AI-assisted pay-rule drafting', () => {
     await setModule(base.tenantId,'payroll','active');a = await entitledCtx(base);
     vi.mocked(generateDraft)
       .mockReset()
-      .mockResolvedValue(JSON.stringify({ rule: { kind: 'percent_of', base: 'basic', pct: 10 }, explanation: 'Ten percent of basic salary.' }));
+      .mockResolvedValue(JSON.stringify({ kind: 'percent_of' }));
     vi.mocked(resolveActiveAiConfig)
       .mockReset()
       .mockImplementation(issuedFixtureConfig);
@@ -61,20 +61,20 @@ describe('Payroll Setup — AI-assisted pay-rule drafting', () => {
     await closeAll();
   });
 
-  it('drafts a valid rule from a redacted description, writes nothing, and audits the generation', async () => {
+  it('drafts a valid rule from a closed intent with local parameters, writes nothing, and audits the generation', async () => {
     const res = await draftPayRule(a, {
-      description: 'Pay 10% of basic. Ask jane@acme.test (910101-01-1234) if unsure.',
+      description: '10% of basic',
       componentCode: 'HOUSING',
       componentProrates: true,
     });
     expect(res.rule).toEqual({ kind: 'percent_of', base: 'basic', pct: 10 });
-    expect(res.explanation).toBe('Ten percent of basic salary.');
+    expect(res.explanation).toBe('Prepared the requested rule from your supplied parameters. Review the native validation and values before saving.');
 
-    // The gateway saw redacted free text — NOT the raw PII.
+    // The gateway sees only the rule kind, with all human parameters retained locally.
     expect(generateDraft).toHaveBeenCalledTimes(1);
     const { prompt } = vi.mocked(generateDraft).mock.calls[0][1];
-    expect(prompt).toContain('[email]');
-    expect(prompt).toContain('[id]');
+    expect(JSON.parse(prompt)).toEqual({requestedKind:'percent_of',componentProrates:true});
+    expect(prompt).not.toContain('10');
     expect(prompt).not.toContain('jane@acme.test');
     expect(prompt).not.toContain('910101-01-1234');
 
@@ -89,6 +89,8 @@ describe('Payroll Setup — AI-assisted pay-rule drafting', () => {
     expect(JSON.stringify(payload)).not.toContain('jane@acme.test');
   });
 
+  it('keeps unstructured private descriptions unavailable before provider transport',async()=>{await expect(draftPayRule(a,{description:'Pay 10% of basic. Ask jane@acme.test (910101-01-1234) if unsure.'})).rejects.toMatchObject({name:'ProviderWorkloadUnavailableError'});expect(generateDraft).not.toHaveBeenCalled();});
+
   it('is OFF when no AI config resolves (PayRuleDraftError, no LLM call)', async () => {
     vi.mocked(resolveActiveAiConfig).mockResolvedValue(null);
     await expect(draftPayRule(a, { description: 'Pay 10% of basic.' })).rejects.toBeInstanceOf(PayRuleDraftError);
@@ -97,19 +99,19 @@ describe('Payroll Setup — AI-assisted pay-rule drafting', () => {
 
   it('one-shot: invalid model JSON ⇒ a single PayRuleDraftError, no second AI call', async () => {
     vi.mocked(generateDraft).mockResolvedValue('this is not json at all');
-    await expect(draftPayRule(a, { description: 'something' })).rejects.toBeInstanceOf(PayRuleDraftError);
+    await expect(draftPayRule(a, { description: '10% of basic' })).rejects.toBeInstanceOf(PayRuleDraftError);
     expect(generateDraft).toHaveBeenCalledTimes(1); // no retry / re-prompt
   });
 
   it('one-shot: a structurally-invalid rule from the model is rejected (no second call), nothing audited', async () => {
     vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({ rule: { kind: 'gross_of', base: 'gross', pct: 10 }, explanation: 'x' }));
-    await expect(draftPayRule(a, { description: 'percent of gross' })).rejects.toBeInstanceOf(PayRuleDraftError);
+    await expect(draftPayRule(a, { description: '10% of basic' })).rejects.toBeInstanceOf(PayRuleDraftError);
     expect(generateDraft).toHaveBeenCalledTimes(1);
     expect(await eventTypesFor(base.tenantId, base.tenantId)).not.toContain('pay-component.ai-rule-drafted');
   });
 
   it('proration conflict from the model is rejected against the editing component (per_day on a prorating component)', async () => {
-    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({ rule: { kind: 'per_day', rate: 50 }, explanation: 'RM50 per day' }));
-    await expect(draftPayRule(a, { description: 'RM50 per day', componentProrates: true })).rejects.toBeInstanceOf(PayRuleDraftError);
+    vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({kind:'per_day'}));
+    await expect(draftPayRule(a, { description: 'per day: 50', componentProrates: true })).rejects.toBeInstanceOf(PayRuleDraftError);
   });
 });

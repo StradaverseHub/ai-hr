@@ -4897,7 +4897,8 @@ export type PayRule =
   | { kind: 'per_hour'; rate: number; onlyPullHoursWithinShiftSchedule?: boolean } // rate × attendance hours (component MUST have prorates=false)
   | { kind: 'flat_capped'; value: number; cap: number } //  min(value, cap)
   | { kind: 'qty_rate'; qty: number; rate: number } //      61bf109d — a quantity multiplied by a rate
-  | { kind: 'formula'; start: FormulaOperand; terms: FormulaTerm[] }; // 61bf109d — the restricted formula
+  | { kind: 'formula'; start: FormulaOperand; terms: FormulaTerm[] } // 61bf109d — the restricted formula
+  | { kind: 'formula_builder'; formulaId: string; dependencies: string[]; context?: {ordinaryRate?:string;hoursPerDay?:string;rate?:string} }; // server-owned active IR dependencies
 
 // A reusable named shift for a company (e.g. "Night A", 22:00–06:00). crossesMidnight = endTime ≤ startTime.
 export const shift = pgTable(
@@ -7202,6 +7203,7 @@ export const payComponent = pgTable(
     // existing row stays valid (the compat golden is untouched). Resolved by core/pay-rule.ts and only read
     // inside the kernel's TYPED_PAY_COMPONENTS_ENABLED block — a rule is meaningless with typed components off.
     rule: jsonb('rule').$type<PayRule | null>(),
+    formulaContext: jsonb('formula_context').$type<{ordinaryRate?:string;hoursPerDay?:string;rate?:string}|null>(),
     // 61bf109d — RECORDED resolution order (migration 0330). A `percent_of base:'component'` or `formula`
     // rule makes one pay item depend on another, so the kernel can no longer resolve components in arbitrary
     // query order without risking two runs of the same payroll disagreeing. The dependency graph is
@@ -9128,6 +9130,8 @@ export const feedbackRequest = pgTable(
     /** Why it is parked, for the cases blockedById cannot express. Cleared on unblock. */
     blockedReason: text('blocked_reason'),
     buildRef: text('build_ref'), // PR / branch link once a build agent runs (F4)
+    /** Operator-attested release evidence for this exact feedback cycle and build. */
+    release: jsonb('release').$type<import('../lib/feedback-release').FeedbackRelease | null>(),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -11275,7 +11279,7 @@ export const lcOnboardingCase = pgTable('lc_onboarding_case', {
 },t=>[uniqueIndex('lc_onboarding_case_source_uq').on(t.tenantId,t.sourceDraftId)]);
 export const lcOnboardingPrivate = pgTable('lc_onboarding_private', {
   caseId:uuid('case_id').primaryKey().references(()=>lcOnboardingCase.id),tenantId:tenantId(),
-  companyId:uuid('company_id').notNull().references(()=>company.id),data:jsonb('data').$type<{source:Partial<import('../lib/onboarding-model').Facts>;local:Partial<import('../lib/onboarding-model').Facts>}>().notNull(),
+  companyId:uuid('company_id').notNull().references(()=>company.id),data:jsonb('data').$type<{source:Partial<import('../lib/onboarding-model').Facts>;local:Partial<import('../lib/onboarding-model').Facts>;caseValues?:Record<string,string>;caseContactEmail?:string}>().notNull(),
 });
 export const lcOnboardingNote = pgTable('lc_onboarding_note', {
   id:id(),tenantId:tenantId(),caseId:uuid('case_id').notNull().references(()=>lcOnboardingCase.id),
@@ -11302,6 +11306,34 @@ export const lcOnboardingPrivateRevision=pgTable('lc_onboarding_private_revision
  caseId:uuid('case_id').notNull().references(()=>lcOnboardingCase.id),revision:integer('revision').notNull(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
  data:jsonb('data').$type<typeof lcOnboardingPrivate.$inferSelect.data>().notNull(),createdAt:createdAt(),
 },t=>[primaryKey({columns:[t.caseId,t.revision]})]);
+
+/** V9 case/document executions are additive; previous lifecycle generations retain their history. */
+export const lcV9Config = pgTable('lc_v9_config', {
+  tenantId: tenantId().primaryKey(), revision: integer('revision').notNull().default(1),
+  data: jsonb('data').$type<import('../lib/lifecycle-v9-model').Config>().notNull(), updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+export const lcV9ConfigRevision = pgTable('lc_v9_config_revision', {
+  tenantId: tenantId(), revision: integer('revision').notNull(), data: jsonb('data').$type<import('../lib/lifecycle-v9-model').Config>().notNull(),
+  actorUserId: uuid('actor_user_id').references(() => appUser.id), createdAt: createdAt(),
+}, t => [primaryKey({ columns: [t.tenantId, t.revision] })]);
+export const lcV9Case = pgTable('lc_v9_case', {
+  id: id(), tenantId: tenantId(), companyId: uuid('company_id').notNull().references(() => company.id), employmentId: uuid('employment_id').notNull().references(() => employment.id),
+  module: text('module').$type<'onb' | 'off'>().notNull(), number: text('number').notNull(), revision: integer('revision').notNull().default(1),
+  data: jsonb('data').$type<import('../lib/lifecycle-v9-model').Case>().notNull(), createdAt: createdAt(), updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, t => [uniqueIndex('lc_v9_case_number_uq').on(t.tenantId, t.number), index('lc_v9_case_company').on(t.tenantId, t.companyId, t.module)]);
+export const lcV9CaseRevision = pgTable('lc_v9_case_revision', {
+  tenantId: tenantId(), caseId: uuid('case_id').notNull().references(() => lcV9Case.id), companyId: uuid('company_id').notNull().references(() => company.id), revision: integer('revision').notNull(),
+  data: jsonb('data').$type<import('../lib/lifecycle-v9-model').Case>().notNull(), actorUserId: uuid('actor_user_id').references(() => appUser.id), createdAt: createdAt(),
+}, t => [primaryKey({ columns: [t.caseId, t.revision] })]);
+export const lcV9File = pgTable('lc_v9_file', {
+  id: id(), tenantId: tenantId(), caseId: uuid('case_id').notNull().references(() => lcV9Case.id), companyId: uuid('company_id').notNull().references(() => company.id),
+  documentId: text('document_id'), slot: text('slot').notNull(), filename: text('filename').notNull(), mimeType: text('mime_type').notNull(), content: bytea('content').notNull(),
+  uploadedBy: uuid('uploaded_by').notNull().references(() => appUser.id), createdAt: createdAt(),
+});
+export const lcV9PayrollHandover = pgTable('lc_v9_payroll_handover', {
+  id: uuid('id').primaryKey(), tenantId: tenantId(), companyId: uuid('company_id').notNull().references(() => company.id), caseId: uuid('case_id').notNull().references(() => lcV9Case.id), employmentId: uuid('employment_id').notNull().references(() => employment.id),
+  data: jsonb('data').$type<import('../lib/lifecycle-v9-model').FinalFigures>().notNull(), status: text('status').$type<'pending' | 'reviewed' | 'withdrawn'>().notNull().default('pending'), reviewedBy: uuid('reviewed_by').references(() => appUser.id), reviewNote: text('review_note'), createdAt: createdAt(), updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
 
 /** Closed-payroll leave follow-up, not a payroll input or automatic adjustment. */
 export const payrollLeaveException = pgTable('payroll_leave_exception', {
@@ -11586,3 +11618,23 @@ export const informationPayslipSnapshot=pgTable('information_payslip_snapshot',{
  companyId:uuid('company_id').notNull().references(()=>company.id),grade:text('grade'),employmentType:text('employment_type'),hiredOn:date('hired_on').notNull(),joinDate:date('join_date'),documentMetadata:jsonb('document_metadata').notNull().$type<Record<string,unknown>>(),
  recordedBy:uuid('recorded_by').notNull().references(()=>appUser.id),recordedAt:createdAt(),
 });
+
+// Reusable formula identities; revisions, tests and lifecycle facts remain append-only.
+export const payFormula=pgTable('pay_formula',{
+ id:id(),tenantId:tenantId(),formulaId:text('formula_id').notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('pay_formula_tenant_code_uq').on(t.tenantId,t.formulaId)]);
+export const payFormulaRevision=pgTable('pay_formula_revision',{
+ id:id(),tenantId:tenantId(),formulaId:uuid('formula_id').notNull().references(()=>payFormula.id),ordinal:integer('ordinal').notNull(),description:text('description').notNull(),method:text('method').notNull(),source:text('source').notNull(),program:jsonb('program').notNull().$type<import('../lib/pay-formula-language').FormulaProgram>(),contentHash:text('content_hash').notNull(),dependencies:jsonb('dependencies').notNull().$type<string[]>(),dependencySnapshot:jsonb('dependency_snapshot').notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('pay_formula_revision_ordinal_uq').on(t.formulaId,t.ordinal)]);
+export const payFormulaTest=pgTable('pay_formula_test',{
+ id:id(),tenantId:tenantId(),revisionId:uuid('revision_id').notNull().references(()=>payFormulaRevision.id),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),actorId:uuid('actor_id').notNull().references(()=>appUser.id),context:jsonb('context').notNull().$type<import('../lib/pay-formula-model').PayFormulaContext>(),sourceFingerprint:text('source_fingerprint').notNull(),dependencyFingerprint:text('dependency_fingerprint').notNull(),evaluatorVersion:text('evaluator_version').notNull(),registryVersion:text('registry_version').notNull(),passed:boolean('passed').notNull(),amount:text('amount'),explanations:jsonb('explanations').notNull().$type<string[]>(),error:text('error'),readRequirements:jsonb('read_requirements').notNull().$type<import('../lib/pay-formula-model').FormulaReadRequirements>(),createdAt:createdAt(),
+});
+export const payFormulaEvent=pgTable('pay_formula_event',{
+ id:id(),tenantId:tenantId(),formulaId:uuid('formula_id').notNull().references(()=>payFormula.id),revisionId:uuid('revision_id').references(()=>payFormulaRevision.id),testId:uuid('test_id').references(()=>payFormulaTest.id),componentId:uuid('component_id').references(()=>payComponent.id),kind:text('kind').notNull(),detail:jsonb('detail').notNull(),actorId:uuid('actor_id').notNull().references(()=>appUser.id),sequence:bigserial('sequence',{mode:'number'}).notNull(),createdAt:createdAt(),
+});
+export const payFormulaEvaluation=pgTable('pay_formula_evaluation',{
+ id:id(),tenantId:tenantId(),formulaId:uuid('formula_id').notNull().references(()=>payFormula.id),revisionId:uuid('revision_id').notNull().references(()=>payFormulaRevision.id),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),batchId:uuid('batch_id').notNull(),componentCode:text('component_code').notNull(),period:text('period').notNull(),amount:text('amount').notNull(),payload:jsonb('payload').notNull(),readRequirements:jsonb('read_requirements').notNull().$type<import('../lib/pay-formula-model').FormulaReadRequirements>(),actorId:uuid('actor_id').notNull().references(()=>appUser.id),createdAt:createdAt(),
+});
+export const payFormulaAccumulation=pgTable('pay_formula_accumulation',{
+ id:id(),tenantId:tenantId(),code:text('code').notNull(),ordinal:integer('ordinal').notNull(),members:jsonb('members').notNull().$type<string[]>(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('pay_formula_accumulation_version_uq').on(t.tenantId,t.code,t.ordinal)]);

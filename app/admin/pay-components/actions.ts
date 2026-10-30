@@ -1,4 +1,6 @@
 'use server';
+import {ProviderWorkloadUnavailableError} from '@/lib/ai/provider-workload-policy';
+import {AiPrivacyGateError} from '@/lib/ai/provider-privacy-request';
 
 import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
@@ -96,6 +98,7 @@ function componentFields(formData: FormData, normalizeCode = true): PayComponent
     eaFormLine: String(formData.get('eaFormLine') ?? '') || null,
     roundingMethod: String(formData.get('roundingMethod') ?? 'none'),
     rule: parseRule(String(formData.get('rule') ?? '')),
+    ...(['formulaOrdinaryRate','formulaHoursPerDay','formulaRate'].some(field=>formData.has(field))?{formulaContext:{ordinaryRate:String(formData.get('formulaOrdinaryRate')??''),hoursPerDay:String(formData.get('formulaHoursPerDay')??''),rate:String(formData.get('formulaRate')??'')}}:{}),
     // Feedback 09b554e9 — LHDN PCB 2026 classification. The form ALWAYS supplies these (nulls when the
     // panels hide them), so the service's mandatory-pair / wrong-list / epf-bonus-without-epf validation is
     // authoritative on every save (PayComponentStatutoryConfigError → localised message below).
@@ -264,6 +267,7 @@ export async function draftPayRuleAction(p: {
     });
     return { rule, explanation };
   } catch (e) {
+    if(e instanceof ProviderWorkloadUnavailableError||e instanceof AiPrivacyGateError)return {error:(await getTranslations('assistant'))('err_protected_input')};
     if (e instanceof PayRuleDraftError) {
       return { error: e.reason === 'not_configured' ? t('assistUnconfigured') : e.reason === 'forbidden' ? t('assistNotAuthorised') : t('assistFailed') };
     }

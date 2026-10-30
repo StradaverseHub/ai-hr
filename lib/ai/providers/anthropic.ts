@@ -1,3 +1,4 @@
+import {consumeProviderEgressDispatch} from '../provider-egress';
 import { hasTokenCounts } from '../usage';
 /**
  * Anthropic (Claude) adapter (ADR-0023). Client is constructed PER CALL from the resolved key — never
@@ -44,6 +45,8 @@ export const anthropicAdapter: AiAdapter = {
   provider: 'anthropic',
   async readImage(cfg,args){
     try{
+      if(cfg.provider!=='anthropic')throw new AiGatewayError('The AI provider route could not be confirmed.');
+      consumeProviderEgressDispatch(cfg,'image',args);
       const result=await new Anthropic({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}).messages.create({model:cfg.model,max_tokens:2500,system:imageReadInstruction,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:args.mimeType,data:Buffer.from(args.data).toString('base64')}}]}]},{signal:args.signal});
       if(hasTokenCounts(result.usage,['input_tokens','output_tokens']))args.onUsage?.(usageFor(result.usage));
       if(result.stop_reason==='refusal')throw new AiImageReadError(false);
@@ -53,6 +56,8 @@ export const anthropicAdapter: AiAdapter = {
 
   async generate(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
     try {
+      if(cfg.provider!=='anthropic')throw new AiGatewayError('The AI provider route could not be confirmed.');
+      consumeProviderEgressDispatch(cfg,'draft',args);
       const message = await (args.signal?new Anthropic({apiKey:cfg.apiKey,timeout:args.timeoutMs,maxRetries:0}):cfg.governance?new Anthropic({apiKey:cfg.apiKey,maxRetries:0}):client(cfg.apiKey)).messages.create({
         model: cfg.model,
         max_tokens: args.maxTokens ?? 2048,
@@ -74,6 +79,8 @@ export const anthropicAdapter: AiAdapter = {
 
   async validate(cfg: ResolvedAiConfig): Promise<ValidateResult> {
     try {
+      if(cfg.provider!=='anthropic')throw new AiGatewayError('The AI provider route could not be confirmed.');
+      consumeProviderEgressDispatch(cfg,'probe');
       // Metadata-only probe: validates the key (401) and the model id (404) with no generation cost.
       await client(cfg.apiKey).models.retrieve(cfg.model);
       return { ok: true };
@@ -87,6 +94,8 @@ export const anthropicAdapter: AiAdapter = {
    *  blocks that can be handed back as INPUT for multi-turn continuity. */
   async converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promise<ConverseResult> {
     try {
+      if(cfg.provider!=='anthropic')throw new AiGatewayError('The AI provider route could not be confirmed.');
+      consumeProviderEgressDispatch(cfg,'conversation',args);
       const tools = requestTools(args.tools);
       const message = await converseClient(cfg.apiKey, args.timeoutMs, Boolean(cfg.governance)).messages.create({
         model: cfg.model,

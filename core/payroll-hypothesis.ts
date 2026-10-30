@@ -64,6 +64,8 @@ import { and, desc, eq, gte, inArray, isNull,sql } from 'drizzle-orm';
 import { withTenant, type SessionContext,type Tx } from '../db/client';
 import * as schema from '../db/schema';
 import { generateDraft } from '../lib/ai';
+import {preparePrivateAiTask} from './ai-governance';
+import type {GenerateArgs} from '../lib/ai/types';
 import { digestOf, recordProposal, type Adjudication } from './agent-proposal';
 import { resolveActiveAiConfig } from './ai-config';
 import { settingEnabled,resolveEntitlementsTx } from './entitlements';
@@ -682,8 +684,14 @@ export async function proposeHypotheses(
 
     let raw = '';
     try {
-      const args=Object.freeze({system:SYSTEM,prompt:featuresAsText(c.f),maxTokens:MAX_TOKENS}),expectedInput=draftInputDigest(args),bound=withAiAdmissionCheck(cfg,'payroll_hypotheses',async(tx,request)=>{if(!ctx.userId||request.operation!=='draft'||request.inputDigest!==expectedInput||(await hypothesisSourceTx(tx,ctx,p)).digest!==source.digest)throw Error('Current payroll source unavailable.');});
-      raw=await generateDraft(bound,args);
+      // Native rules derive eligible questions locally. Exact feature values and peer medians never
+      // leave Payroll; the model ranks only independently admissible hypothesis/evidence pairs.
+      const candidates=HYPOTHESIS_CLAIMS.flatMap(claim=>FEATURE_KEYS.filter(key=>adjudicateHypothesis({claim,evidence:[key]},c.f).ok).map(key=>({claim,evidence:[key]})));
+      if(!candidates.length)continue;
+      let expectedInput:string|undefined;
+      const bound=withAiAdmissionCheck(cfg,'payroll_hypotheses',async(tx,request)=>{if(!ctx.userId||request.operation!=='draft'||request.inputDigest!==expectedInput||(await hypothesisSourceTx(tx,ctx,p)).digest!==source.digest)throw Error('Current payroll source unavailable.');});
+      const task=await preparePrivateAiTask(bound,'payroll_feature_hypothesis_v1',async tx=>{if((await hypothesisSourceTx(tx,ctx,p)).digest!==source.digest)throw Error('Current payroll source unavailable.');return {candidates,source:source.digest};});
+      try{if(task.operation!=='draft')throw Error('Protected payroll operation unavailable.');expectedInput=draftInputDigest(task.args as GenerateArgs);raw=await generateDraft(task.configuration,task.args as GenerateArgs);}finally{task.dispose();}
     } catch {
       // Provider down, timed out, refused. Nothing proposed, nothing recorded; the next pass re-asks.
       continue;

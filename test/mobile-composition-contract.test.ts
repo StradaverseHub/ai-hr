@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { composeMobileDesign, DEFAULT_MOBILE_DESIGN, legacyMobileDesign, mobileDesignTemplate, parseMobileDesign, type MobileDesignV2 } from '../lib/mobile-design';
-import { newMobileBlock } from '../lib/mobile-composition';
+import { MOBILE_BLOCK_KINDS, MOBILE_DESTINATIONS, newMobileBlock, type MobileBlockKind } from '../lib/mobile-composition';
 const design = () => composeMobileDesign(DEFAULT_MOBILE_DESIGN);
 describe('mobile visual composer contract and installed-client compatibility', () => {
   it('keeps all four distinct style directions valid in both themes and preserves the v1 projection', () => {
@@ -21,6 +21,21 @@ describe('mobile visual composer contract and installed-client compatibility', (
     d.composition.pages[0].blocks[0].title = 'Changed'; d.composition.themes.light.bg = '#000000';
     expect(saved.composition.pages[0].blocks[0].title).toBe(''); expect(saved.composition.themes.light.bg).toBe('#f2f0eb');
     expect(DEFAULT_MOBILE_DESIGN).not.toHaveProperty('composition');
+  });
+  it('offers no expense-claims section or destination, and refuses a design that names one (declutter round: claims are web-only)', () => {
+    // The catalogue the web builder offers and the app renders: nothing about claims.
+    expect([...MOBILE_DESTINATIONS, ...MOBILE_BLOCK_KINDS].filter(v => /claim/i.test(v))).toEqual([]);
+    // So no stored design can carry one: each form a claims reference could take is refused by the one parser both the
+    // server (save, publish, read) and the app use, rather than reaching a screen that no longer exists.
+    const forms: ((d: MobileDesignV2) => void)[] = [
+      d => { d.composition.pages[0].blocks.push(newMobileBlock('claims' as MobileBlockKind, 'claims')); },
+      d => { d.composition.pages[0].blocks.push({ ...newMobileBlock('action', 'open-claims'), target: 'claims' }); },
+      d => { d.composition.navigation.items.splice(1, 0, { target: 'claims', label: 'Claims', icon: 'grid' }); },
+    ];
+    for (const mutate of forms) { const d = design(); mutate(d); expect(() => parseMobileDesign(d)).toThrow('invalid_design'); }
+    // A tenant page that merely happens to be called "claims" is the tenant's own page, not the deleted feature.
+    const own = design(); own.composition.pages.push({ id: 'claims', title: 'Claims policy', blocks: [newMobileBlock('text', 'policy')] });
+    expect(() => parseMobileDesign(own)).not.toThrow();
   });
   it.each([
     (d: MobileDesignV2) => { (d.composition as unknown as Record<string, unknown>).script = 'alert(1)'; },

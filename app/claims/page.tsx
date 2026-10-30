@@ -210,7 +210,8 @@ export default async function ClaimsPage({
 
       <Card data-tour="claims-history" className="overflow-hidden">
         <SectionHeader title={t('myClaims')} count={pgState.total} />
-        {pgState.total === 0 ? (
+        <Pager basePath="/claims" params={selectedQuery} state={pgState} />
+        {claimPage.length === 0 ? (
           <p className="px-4 py-6 text-sm text-muted-foreground">{t('empty')}</p>
         ) : (
           <table className="w-full text-sm">
@@ -270,7 +271,6 @@ export default async function ClaimsPage({
             </tbody>
           </table>
         )}
-        <Pager basePath="/claims" params={selectedQuery} state={pgState} />
       </Card>
     </div>
   );

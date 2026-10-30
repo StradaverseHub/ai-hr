@@ -7,6 +7,7 @@ import { MODULE_AGENT_CAPABILITIES, isAgentModuleCode, type AgentModuleCode } fr
 import {MODULE_AGENT_ACTIONS,parseModuleAgentActionNomination} from '../lib/ai/module-agent-actions';
 import {moduleHumanActionHandoffs} from '../lib/ai/module-human-handoffs';
 import {isAdmin} from '../lib/authz-model';
+import {assistantAgentStatusTx} from './ai-management';
 import { assertAiPrincipalTx } from './ai-principal';
 import { assertMayUseAssistant } from './assistant-grant';
 import { assertAiActionUnpausedTx } from './ai-governance';
@@ -120,7 +121,8 @@ export function createModuleAgentReaders(ctx: SessionContext, tx: Tx, active: ()
       }
       case 'system_testing': data = await ownTestingWorkStatusesTx(tx,fresh,25); break;
       case 'assistant': data = { capabilities: MODULE_AGENT_CAPABILITIES.filter(([code]) => isModuleEnabled(fresh, code)&&(code!=='system_explorer'||isAdmin(fresh)))
-        .map(([code, binding]) => ({ module: code, capability: binding, authority: 'rechecked-at-canonical-source' })), effects: 'human-confirmation-only' }; break;
+        .map(([code, binding]) => ({ module: code, capability: binding, authority: 'rechecked-at-canonical-source' })), effects: 'human-confirmation-only',
+        ...(isAdmin(fresh)?{adminAgentStatus:await assistantAgentStatusTx(tx,fresh)}:{}) }; break;
       default: return unavailable();
     }
     if (!active()) return unavailable();

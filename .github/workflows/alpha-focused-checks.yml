@@ -148,7 +148,7 @@ jobs:
       - uses: ./automation/.github/actions/setup-alpha
         with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
       - name: Provision multilingual fonts for AI review screenshots
-        if: ${{ contains(inputs.selected_tests, 'test/ai-management-naming.dom.test.tsx') || contains(inputs.selected_tests, 'test/ai-probe-history-page.dom.test.tsx') }}
+        if: ${{ contains(inputs.selected_tests, 'test/ai-management-naming.dom.test.tsx') || contains(inputs.selected_tests, 'test/ai-probe-history-page.dom.test.tsx') || contains(inputs.selected_tests, 'test/feedback-kanban.dom.test.tsx') }}
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends fonts-noto-core fonts-noto-cjk

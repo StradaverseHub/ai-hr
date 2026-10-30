@@ -1,4 +1,11 @@
 import {parsePageQuery} from '../lib/pagination';
+import {readPayrollComponentInputsTx,readPayrollIndividualLedgerTx,readPayrollAttendanceHoursTx} from './payroll-formula-inputs';
+import {eligibleWorkingDays,payrollIncrementBasic,payrollRateBasic,payrollRoundAmount as roundAmount} from '../lib/payroll-basic';
+import {preparePayFormulaRuntimeTx} from './pay-formula-runtime';
+import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
+import {divideFormulaDecimal,applyFormulaAmount} from '../lib/pay-formula-language';
+import {payrollProrationRatio} from '../lib/payroll-proration';
+import {payrollProrationFactor as prorationFactor} from '../lib/payroll-proration';
 import {frozenPayslipInformation,informationPayslipDocument,overlayInformationDocument} from './information-correction-history';
 import {readReviewedPayrollRunScopeLabelsTx} from './payroll-run-selection';
 import {visibleLabelIdsCondition} from './system-labels';
@@ -755,18 +762,7 @@ export const EXCLUDE_TOIL_BANKED_DAYS = sql`not exists (
 // Per-component payable-amount rounding (ADR-0035 1A, #15). 'none' keeps exact 2dp (legacy ⇒ the gated
 // path stays byte-identical when no component opts in); up/down/nearest round to a whole ringgit. This
 // only shapes a component's own cash amount — statutory contribution rounding is untouched.
-const roundAmount = (n: number, method?: string | null): number => {
-  switch (method) {
-    case 'up':
-      return Math.ceil(round2(n));
-    case 'down':
-      return Math.floor(round2(n));
-    case 'nearest':
-      return Math.round(round2(n));
-    default:
-      return round2(n);
-  }
-};
+
 
 // Wave 2C (ADR-0024): an additional same-month run's statutory contribution is the INCREMENT of the
 // cumulative month — re-run the month with/without this run's additional remuneration and take the
@@ -1018,7 +1014,13 @@ export async function markRunsAffectedByPayComponent(
   ctx: SessionContext,
   p: { componentId: string; code: string },
 ): Promise<{ batchId: string; employmentIds: string[] }[]> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx,tx=>markRunsAffectedByPayComponentTx(tx,ctx,p));
+}
+
+/** Same native stale-marker owner for a caller already holding the calculation configuration transaction. */
+export async function markRunsAffectedByPayComponentTx(
+  tx:Tx,ctx:SessionContext,p:{componentId:string;code:string},
+):Promise<{batchId:string;employmentIds:string[]}[]> {
     const open = await tx
       .select({ id: payrollBatch.id })
       .from(payrollBatch)
@@ -1079,7 +1081,6 @@ export async function markRunsAffectedByPayComponent(
       marked.push({ batchId, employmentIds });
     }
     return marked;
-  });
 }
 
 /**
@@ -1528,60 +1529,6 @@ async function employmentTypeWindow(
  * matrix). The min(1,…) clamp is preserved so a CustomDays divisor < calendar days employed can never pay
  * more than a full month.
  */
-function prorationFactor(
-  payPeriod: string,
-  hiredOn: string,
-  terminatedOn: string | null,
-  opts?: {
-    divisorDays?: number;
-    workingDayBasis?: { roster: number[]; holidays: Set<string> };
-    // c7fdfcf6 (Payroll Schedule) — the SALARY cut-off window overriding the calendar-month bounds. Absent ⇒
-    // the calendar month `[M-01 … M-end]` (byte-identical to the legacy formula). When a policy/company cut-off
-    // is configured, the join-date / resignation proration is counted against this window (e.g. anchor 26 ⇒
-    // [26 of M-1 … 25 of M]) and the denominator is the window's own length in days — delivering the reporter's
-    // "salary cut-off determines Basic Salary / Join-Date / Resignation proration".
-    window?: { start: string; end: string };
-  },
-): number {
-  const [year, month1] = payPeriod.split('-').map(Number);
-  const dim = daysInMonth(year, month1);
-  const periodStart = opts?.window?.start ?? `${payPeriod}-01`;
-  const periodEnd = opts?.window?.end ?? `${payPeriod}-${String(dim).padStart(2, '0')}`;
-  // Inclusive length of the window in days (cross-month safe). For the calendar-month default this equals `dim`.
-  const windowDays =
-    Math.round((Date.parse(`${periodEnd}T00:00:00Z`) - Date.parse(`${periodStart}T00:00:00Z`)) / 86_400_000) + 1;
-  const start = hiredOn > periodStart ? hiredOn : periodStart;
-  const end = terminatedOn && terminatedOn < periodEnd ? terminatedOn : periodEnd;
-  if (start > periodEnd || end < periodStart) return 0;
-  const denom = opts?.divisorDays && opts.divisorDays > 0 ? opts.divisorDays : windowDays;
-  if (opts?.workingDayBasis) {
-    // Count the employee's WORKING days within [start, end] vs the working days across the whole period.
-    const { roster, holidays } = opts.workingDayBasis;
-    const isWork = (d: string): boolean => {
-      const dt = new Date(`${d}T00:00:00Z`);
-      const iso = ((dt.getUTCDay() + 6) % 7) + 1; // 1=Mon … 7=Sun
-      return roster.includes(iso) && !holidays.has(d);
-    };
-    let eligibleWork = 0;
-    for (let t = Date.parse(`${start}T00:00:00Z`); t <= Date.parse(`${end}T00:00:00Z`); t += 86_400_000) {
-      if (isWork(new Date(t).toISOString().slice(0, 10))) eligibleWork++;
-    }
-    // Working-day denominator: the configured CustomDays divisor when set, else the period's own working days.
-    let denomWork = opts.divisorDays && opts.divisorDays > 0 ? opts.divisorDays : 0;
-    if (denomWork === 0) {
-      for (let t = Date.parse(`${periodStart}T00:00:00Z`); t <= Date.parse(`${periodEnd}T00:00:00Z`); t += 86_400_000) {
-        if (isWork(new Date(t).toISOString().slice(0, 10))) denomWork++;
-      }
-    }
-    if (denomWork === 0) return 0;
-    return Math.min(1, eligibleWork / denomWork);
-  }
-  // Cross-month-safe eligible-day count (inclusive). For a same-month calendar window this is identical to the
-  // legacy `end.day − start.day + 1`.
-  const eligibleDays =
-    Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000) + 1;
-  return Math.min(1, Math.max(0, eligibleDays) / denom);
-}
 
 /**
  * 2.1.2 — Eligible WORKING days for a DAILY-rated employee in a wage period. Counts the employee's working
@@ -1591,27 +1538,6 @@ function prorationFactor(
  * before it) yields 0 — the multiply then makes basic = 0, never a divide-by-zero. The Mon–Fri roster mirrors
  * the working-day basis the leave/proration primitives use; Sat/Sun and listed holidays are non-working.
  */
-function eligibleWorkingDays(
-  payPeriod: string,
-  hiredOn: string,
-  terminatedOn: string | null,
-  holidays: Set<string>,
-): number {
-  const [year, month1] = payPeriod.split('-').map(Number);
-  const dim = daysInMonth(year, month1);
-  const periodStart = `${payPeriod}-01`;
-  const periodEnd = `${payPeriod}-${String(dim).padStart(2, '0')}`;
-  const start = hiredOn > periodStart ? hiredOn : periodStart;
-  const end = terminatedOn && terminatedOn < periodEnd ? terminatedOn : periodEnd;
-  if (start > periodEnd || end < periodStart) return 0;
-  let days = 0;
-  for (let t = Date.parse(`${start}T00:00:00Z`); t <= Date.parse(`${end}T00:00:00Z`); t += 86_400_000) {
-    const d = new Date(t).toISOString().slice(0, 10);
-    const iso = ((new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7) + 1; // 1=Mon … 7=Sun
-    if (iso <= 5 && !holidays.has(d)) days++;
-  }
-  return days;
-}
 
 /**
  * Unpaid-leave days per employment for a wage period, auto-derived from APPROVED requests of an
@@ -3821,7 +3747,7 @@ export async function generatePayslips(
   },
 ) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
-  return withTenant(ctx, async tx=>{await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);return generatePayslipsTx(tx,ctx,p);});
+  return withTenant(ctx, async tx=>{await lockPayComponentCatalogReadTx(tx,ctx);await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);return generatePayslipsTx(tx,ctx,p);});
 }
 
 async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePayslipsParams) {
@@ -4530,7 +4456,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // on the 11th is paid by the outgoing entity for the working days up to the 10th and by the
         // incoming one for the rest. Unsegmented ⇒ the stored dates ⇒ the identical count as before.
         const eligibleDays = eligibleWorkingDays(payPeriod, segHiredOn(e), segTerminatedOn(e), dailyHolidays);
-        dailyPayByEmp.set(e.employmentId, { rate, eligibleDays, basic: round2(rate * eligibleDays) });
+        dailyPayByEmp.set(e.employmentId, { rate, eligibleDays, basic: payrollRateBasic(rate,eligibleDays) });
       }
     }
 
@@ -4801,17 +4727,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         byEmp.set(r.employmentId, list);
       }
       for (const [employmentId, rows] of byEmp) {
-        if (rows.length < 2) continue; // no straddle ⇒ leave the kernel's single-row read alone
-        rows.sort((a, b) => a.validFrom.localeCompare(b.validFrom));
-        const oldRow = rows[0];
-        const newRow = rows[rows.length - 1];
-        // The increment takes effect at the new row's validFrom. Blend: old × days-before + new × days-from.
-        const incrementDate = newRow.validFrom;
-        if (incrementDate <= periodStart || incrementDate > periodEnd) continue; // not a mid-period increment
-        const daysBefore = Math.max(0, Number(incrementDate.slice(8, 10)) - 1); // days on the OLD rate
-        const daysFrom = dim - daysBefore; //                                      days on the NEW rate
-        const blended = round2((oldRow.basic * daysBefore + newRow.basic * daysFrom) / dim);
-        incrementBasicByEmp.set(employmentId, blended);
+        const blended=payrollIncrementBasic(rows,periodStart,periodEnd,dim);
+        if(blended!==undefined)incrementBasicByEmp.set(employmentId,blended);
       }
     }
 
@@ -5181,8 +5098,16 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // source instead of compensation + payroll_input. The seeded component flags reproduce the legacy
     // agency split exactly, so a back-filled batch is byte-identical (proven by the compat test).
     const typedComponents = isModuleEnabled(ctx, 'typed_pay_components');
+    if(!typedComponents&&empIds.length){
+      const [linked]=await tx.execute<{present:boolean}>(sql`select exists(select 1 from pay_component c where c.tenant_id=${ctx.tenantId}::uuid and c.code<>'BASIC' and c.rule->>'kind'='formula_builder' and (
+        exists(select 1 from employment_pay_component e where e.component_id=c.id and e.employment_id in (${sql.join(empIds.map(id=>sql`${id}::uuid`),sql`,`)}) and e.valid_from<=${periodEnd}::date and (e.valid_to is null or e.valid_to>=${periodStart}::date) and e.superseded_at is null)
+        or exists(select 1 from payroll_batch_component b where b.component_id=c.id and b.batch_id=${p.batchId}::uuid and b.employment_id in (${sql.join(empIds.map(id=>sql`${id}::uuid`),sql`,`)}))
+        or (${settingEnabled(ctx,'payroll.individual_txn_pay_enabled')} and exists(select 1 from payroll_individual_txn t where t.component_id=c.id and t.batch_id=${p.batchId}::uuid and (t.consumed_batch_id is null or t.consumed_batch_id=${p.batchId}::uuid) and t.kind in ('earning','deduction') and t.employment_id in (${sql.join(empIds.map(id=>sql`${id}::uuid`),sql`,`)})))
+      )) as present`);
+      if(linked?.present)throw new Error('Formula Builder requires Typed Pay Items. Enable the module before calculating this payroll run.');
+    }
     type CompRow = {
-      code: string; name: string; kind: string; amount: number; rounding: string;
+      code: string; name: string; kind: string; amount: number; rounding: string; formulaInput?:string;
       epf: boolean; socso: boolean; pcb: boolean; hrdf: boolean; nonPayable: boolean; prorates: boolean;
       // 1.2.1 Fixed Transaction — per-employee override of the catalog `prorates` flag (null = inherit). A
       // one-off batch component has no override, so this is null there too (⇒ catalog flag, unchanged).
@@ -5225,74 +5150,14 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     const recurringByEmp = new Map<string, CompRow[]>();
     const batchCompByEmp = new Map<string, CompRow[]>();
     if (typedComponents && empIds.length) {
-      // Catalog + amount columns shared by both the recurring and the one-off batch query.
-      const catCols = {
-        amount: employmentPayComponent.amount,
-        code: payComponent.code,
-        name: payComponent.name,
-        kind: payComponent.kind,
-        epf: payComponent.includedInEpf,
-        socso: payComponent.includedInSocsoEis,
-        pcb: payComponent.includedInPcb,
-        hrdf: payComponent.includedInHrdfBase,
-        nonPayable: payComponent.isNonPayable,
-        // 711adcd2 — the two ORP tick boxes (migration 0456). See the CompRow comments.
-        orpOvertime: payComponent.orpOvertime,
-        orpUnpaidLeave: payComponent.orpUnpaidLeave,
-        prorates: payComponent.prorates,
-        rounding: payComponent.roundingMethod,
-        rule: payComponent.rule, // Payroll Setup — read for the resolver (null on every legacy row).
-        resolutionOrder: payComponent.resolutionOrder, // 61bf109d — recorded dependency rank (0 on legacy rows).
-        // LHDN PCB 2026 classification (feedback 09b554e9) — null/false on every legacy row.
-        epfBonus2012: payComponent.epfBonus2012,
-        pcbRemunerationType: payComponent.pcbRemunerationType,
-        pcbExemptionCode: payComponent.pcbExemptionCode,
-        // Feedback 3c473773 — the declared payslip box (migration 0393). Read-only here; it is applied to
-        // the DISPLAY overlay in earningsOf and to nothing else.
-        displayCategory: payComponent.displayCategory,
-        eaFormLine: payComponent.eaFormLine,
-      };
       const push = (map: Map<string, CompRow[]>, r: { employmentId: string; amount: string; prorateOverride?: boolean | null } & Omit<CompRow, 'amount' | 'prorateOverride'>) => {
         const list = map.get(r.employmentId) ?? [];
-        list.push({ ...r, amount: Number(r.amount), prorateOverride: r.prorateOverride ?? null });
+        list.push({ ...r, formulaInput:r.amount, amount: Number(r.amount), prorateOverride: r.prorateOverride ?? null });
         map.set(r.employmentId, list);
       };
-      const rec = await tx
-        .select({
-          ...catCols,
-          sourceId: employmentPayComponent.id,
-          employmentId: employmentPayComponent.employmentId,
-          // 1.2.1 Fixed Transaction — per-employee prorate override (null = inherit catalog `prorates`).
-          prorateOverride: employmentPayComponent.prorateOverride,
-        })
-        .from(employmentPayComponent)
-        .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
-        .where(
-          and(
-            inArray(employmentPayComponent.employmentId, empIds),
-            // 1.2.1 Fixed Transaction — PERIOD-AWARE window, mirroring the employment/compensation filter
-            // above (lte(hiredOn, periodEnd) / or(isNull(terminatedOn), gte(terminatedOn, periodStart))):
-            //   • valid_from <= periodEnd        → the item has started by the end of this period
-            //   • valid_to IS NULL OR >= periodStart → the item has not ended before this period starts
-            //   • superseded_at IS NULL          → never apply a row that was replaced by a newer value
-            // valid_to is an INCLUSIVE end-date: validTo == periodStart still applies (gte). The lte(valid_from,
-            // periodEnd) clause is a no-op for legacy/backfilled rows (their valid_from is a past month, so
-            // it is <= periodEnd) — proven by the legacy-window test. The activate/deactivate semantics here
-            // are BINARY in/out of window by design: an item active for any part of the period pays its full
-            // amount (times the employee tenure `factor`); per-item mid-month day-proration of the item's OWN
-            // window is an explicit v1 non-goal (the spec ties prorate to join/resign, not the item window).
-            lte(employmentPayComponent.validFrom, periodEnd),
-            or(isNull(employmentPayComponent.validTo), gte(employmentPayComponent.validTo, periodStart)),
-            isNull(employmentPayComponent.supersededAt),
-          ),
-        );
-      for (const r of rec) push(recurringByEmp, r);
-      const bat = await tx
-        .select({ ...catCols, sourceId: payrollBatchComponent.id, oneOff: sql<boolean>`true`, employmentId: payrollBatchComponent.employmentId, amount: payrollBatchComponent.amount })
-        .from(payrollBatchComponent)
-        .innerJoin(payComponent, eq(payComponent.id, payrollBatchComponent.componentId))
-        .where(eq(payrollBatchComponent.batchId, p.batchId));
-      for (const r of bat) push(batchCompByEmp, r);
+      const {recurring:rec,batch:bat}=await readPayrollComponentInputsTx(tx,{employmentIds:empIds,periodStart,periodEnd,batchId:p.batchId});
+      for(const r of rec)push(recurringByEmp,r);
+      for(const r of bat)push(batchCompByEmp,r);
     }
 
     // ── f1564110 Phase 3 — individual (one-off) transaction consumption (amends ADR-0056) ──
@@ -5334,54 +5199,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // before this shipped carry no flag at all, and every reader must treat an unflagged list as one list.
     const txnRecordLinesByEmp = new Map<string, PayslipRecordLine[]>();
     if (individualTxnPay) {
-      const ledger = await tx
-        .select({
-          id: payrollIndividualTxn.id,
-          employmentId: payrollIndividualTxn.employmentId,
-          kind: payrollIndividualTxn.kind,
-          amount: payrollIndividualTxn.amount,
-          notes: payrollIndividualTxn.notes,
-          componentId: payrollIndividualTxn.componentId,
-          compCode: payComponent.code,
-          compName: payComponent.name,
-          compKind: payComponent.kind,
-          compEpf: payComponent.includedInEpf,
-          compSocso: payComponent.includedInSocsoEis,
-          compPcb: payComponent.includedInPcb,
-          compHrdf: payComponent.includedInHrdfBase,
-          compNonPayable: payComponent.isNonPayable,
-          compProrates: payComponent.prorates,
-          compRounding: payComponent.roundingMethod,
-          compEpfBonus2012: payComponent.epfBonus2012,
-          compPcbRemunerationType: payComponent.pcbRemunerationType,
-          compPcbExemptionCode: payComponent.pcbExemptionCode,
-          // Feedback 3c473773 — the catalog row's declared payslip box rides the one-off transaction too.
-          // This is the reporter's exact path: an Overtime 1.5 one-off landed in Bonus because the box was
-          // inferred from the pay code's PCB stream.
-          compDisplayCategory: payComponent.displayCategory,
-          compEaFormLine: payComponent.eaFormLine,
-        })
-        .from(payrollIndividualTxn)
-        .leftJoin(payComponent, eq(payComponent.id, payrollIndividualTxn.componentId))
-        // 0db616f3 (0437) — THE CONSUMED MARKER, and this `or` is the whole guard.
-        //
-        // Before it, this predicate was `batch_id = $1` and nothing else: every row hanging off the run
-        // was folded on EVERY generation of it, and a row that moved to a second run was folded there
-        // too, with nothing recording that its money had already reached somebody. That is the January
-        // 2026 shape — 24 imported bonus lines on the regular run, a bonus run showing nineteen zero
-        // payslips, and one `generatePayslips` call between the ledger and paying all 24.
-        //
-        // "Consumed by NOBODY, or consumed by ME." The second half is not a loophole, it is the three
-        // legitimate re-runs: `resetProcessedBatch` destroys this run's payslips so a correction can be
-        // re-generated, a selective reprocess rewrites a subset of them, and both must still pay these
-        // lines. What the first half refuses is the case with no defence today — a DIFFERENT run paying
-        // a line an earlier run already paid.
-        .where(
-          and(
-            eq(payrollIndividualTxn.batchId, p.batchId),
-            or(isNull(payrollIndividualTxn.consumedBatchId), eq(payrollIndividualTxn.consumedBatchId, p.batchId)),
-          ),
-        );
+      const ledger=await readPayrollIndividualLedgerTx(tx,{batchId:p.batchId});
       // `nonPayable: false` is stamped HERE rather than at each call site: every line this helper carries is
       // provenance for money that MOVED (an overtime payment, a one-off earning, a one-off deduction), and
       // a future call site that forgot the flag would silently print a paid item as never paid.
@@ -5418,6 +5236,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
                 name: t.compName ?? t.compCode,
                 kind: t.compKind ?? t.kind,
                 amount: amt,
+                formulaInput:t.amount,
                 rounding: t.compRounding ?? 'none',
                 epf: t.compEpf ?? false,
                 socso: t.compSocso ?? false,
@@ -5434,14 +5253,14 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
                 orpUnpaidLeave: false,
                 prorates: t.compProrates ?? false,
                 prorateOverride: null,
-                rule: null, // keyed amount is authoritative — never re-derive via a catalog rule
+                rule: t.compRule?.kind==='formula_builder'?t.compRule:null, // keyed amount is authoritative — never re-derive via a catalog rule
                 // r168 verification — a BATCH row. Forcing rule:null here is what let it satisfy the
                 // fixed_allowances aggregate; this says plainly that it is a one-off, not a recurring
                 // catalog allowance, so the aggregate skips it.
                 oneOff: true,
                 // 61bf109d — a null rule short-circuits to `amount`, so the rank is inert here; 0 keeps the
                 // one-off row in the first resolution group, exactly where an unranked row belonged before.
-                resolutionOrder: 0,
+                resolutionOrder:t.compRule?.kind==='formula_builder'?(t.compResolutionOrder??0):0,
                 // LHDN PCB 2026 classification rides the catalog row (feedback 09b554e9).
                 epfBonus2012: t.compEpfBonus2012 ?? false,
                 pcbRemunerationType: t.compPcbRemunerationType ?? null,
@@ -5520,18 +5339,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     const hourlyModeEmps = emps.filter((e) => e.payMode === 'hourly' && e.rateAmount != null);
     const hoursByEmp = new Map<string, number>();
     if ((typedComponents || hourlyModeEmps.length > 0) && empIds.length) {
-      const att = await tx
-        .select({ employmentId: attendance.employmentId, minutes: sql<string>`coalesce(sum(${attendance.workedMinutes}), 0)` })
-        .from(attendance)
-        .where(
-          and(
-            inArray(attendance.employmentId, empIds),
-            gte(attendance.attendanceDate, periodStart),
-            lte(attendance.attendanceDate, periodEnd),
-          ),
-        )
-        .groupBy(attendance.employmentId);
-      for (const a of att) hoursByEmp.set(a.employmentId, Number(a.minutes) / 60);
+      for(const [id,hours]of await readPayrollAttendanceHoursTx(tx,{employmentIds:empIds,periodStart,periodEnd}))hoursByEmp.set(id,hours);
     }
 
     // ── ADR-0078 (642ecc55) — Hourly pay mode: basic = per-hour rate × attendance hours in the period ──
@@ -5544,7 +5352,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     for (const e of hourlyModeEmps) {
       const rate = Number(e.rateAmount);
       const hours = hoursByEmp.get(e.employmentId) ?? 0;
-      hourlyPayByEmp.set(e.employmentId, { rate, hours, basic: round2(rate * hours) });
+      hourlyPayByEmp.set(e.employmentId, { rate, hours, basic: payrollRateBasic(rate,hours) });
     }
 
     // LHDN PCB 2026 (feedback 09b554e9) — the exemption tables ride the resolved statutory ruleset (a
@@ -5628,10 +5436,11 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       }
       return rows;
     };
-    const earningsOf = (
-      e: { employmentId: string; basic: unknown; allowance: unknown },
+    const formulaRefsByEmp=new Map<string,{formulaId:string;revisionId:string;contentHash:string;evaluationId:string;componentCode:string;amount:string}[]>();
+    const earningsOf = async (
+      e: (typeof emps)[number],
       factor: number,
-    ): {
+    ): Promise<{
       basicRaw: number; basicGross: number; allowanceApplied: number; hrdfAllowApplied: number;
       overtime: number; bonus: number; reimburse: number; deduct: number;
       // ── Feedback 017d9c25 (r187) — the statutory BASE carve-outs the pay-item ticks demand ──
@@ -5686,7 +5495,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // basic, so a mid-month joiner's daily rate is not shortened twice. 0 on every path until an operator
       // ticks a box (0456 backfills the column false everywhere), which is what makes this byte-identical.
       orpUnpaidLeaveExtra: number;
-    } => {
+    }> => {
       if (!typedComponents) {
         const basicRaw = Number(e.basic);
         const allowRaw = Number(e.allowance ?? 0);
@@ -5872,7 +5681,15 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // is what makes two runs of the same payroll agree. For an all-fixed catalog every rank is 0 and each
       // entry short-circuits to `c.amount` — the exact expression this line used before, hence byte-identical.
       // The SAME function backs the admin preview, so the preview cannot drift from the run.
+      const builderComponents=comps.some(c=>c.rule?.kind==='formula_builder');
+      const ratio=builderComponents?payrollProrationRatio(payPeriod,segHiredOn(e),segTerminatedOn(e),prorationOptsByEmp.get(e.employmentId)):null;
+      const exactFactor=ratio?divideFormulaDecimal(String(ratio.numerator),String(ratio.denominator)):'1';
+      const effectivePaidBasic=dailyPayByEmp.get(e.employmentId)?.basic??hourlyPayByEmp.get(e.employmentId)?.basic??incrementBasicByEmp.get(e.employmentId);
+      const formulaRuntime=builderComponents?await preparePayFormulaRuntimeTx(tx,ctx,{companyId:batch.companyId,employmentId:e.employmentId,period:payPeriod,cycleId:batch.payrollCycleId??'',asOf:segmentByEmp.get(e.employmentId)?.to??periodEnd,currentCode:'',input:'0'},
+        {components:comps,scope:rscope,basic:String(e.basic??'0'),proratedBasic:String(effectivePaidBasic??basicGross),legacyFactor:factor,factor:exactFactor,batchId:batch.id}):null;
+      if(formulaRuntime)rscope.formulaBuilder=formulaRuntime.runtime;
       const resolvedByIdx = resolvePayComponentSet(comps, rscope);
+      if(formulaRuntime)formulaRefsByEmp.set(e.employmentId,await formulaRuntime.record());
 
       for (const [ci, c] of comps.entries()) {
         // Feedback 64fb5e48 — a BASIC component is inert in the engine: the Personnel record above already
@@ -5884,7 +5701,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // byte-identical to the prior `c.prorates` behaviour. `factor` is the EA-1955 join/resign tenure
         // factor (prorate ON = proportional for a mid-period joiner/resigner, OFF = full amount).
         const prorate = c.prorateOverride ?? c.prorates;
-        const applied = roundAmount(prorate ? resolved * factor : resolved, c.rounding);
+        const applied = c.rule?.kind==='formula_builder'?Number(formulaRuntime!.applied.get(c)):roundAmount(prorate ? resolved * factor : resolved, c.rounding);
         // 2333b7fb/0253dc7c — the ticks ride the line from the row this run folded (see the type).
         // ── a96d320c — THE RATE AND THE INPUT, WHERE THE RULE ACTUALLY MULTIPLIED THEM ──────────────
         //
@@ -6645,7 +6462,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       const daysWorked = daily ? daily.eligibleDays : Math.round(factor * dim); // proration basis surfaced on the payslip
       // Earnings come from the typed components (flag on) or compensation + payroll_input (flag off).
       // Either way these reproduce the same variables, so the agency-base math below is unchanged.
-      const en = earningsOf(e, factor);
+      const en = await earningsOf(e, factor);
       // 1c — salary-increment proration: when the policy enables it AND a mid-period increment straddles the
       // period, the basic is the two-row blend (already day-weighted across the increment date), NOT
       // basic×factor. Default (off / no straddle) ⇒ undefined ⇒ the kernel's normal basicGross is used.
@@ -7621,6 +7438,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // zero-OT slip / additional run, which sets slipOvertime to 0).
         statutory: {
           ...st,
+          ...(formulaRefsByEmp.has(e.employmentId)?{formulaEvaluations:formulaRefsByEmp.get(e.employmentId)!.filter(ref=>stampComponentLines.some(line=>line.code===ref.componentCode))}:{}),
           ...statutoryProvenance,
           // Saved selection input, before existing proration. Back-pay reads this new contract rather
           // than pricing a new period-effective slip from a future revision visible at processing.
@@ -9660,6 +9478,7 @@ export async function reprocessSelectedEmployees(
   try {
     for (const employmentId of enq.employmentIds) {
       await withTenant(ctx, async (tx) => {
+        await lockPayComponentCatalogReadTx(tx,ctx);
         const ownedBatch=await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);
         // One authoritative checkpoint: exact job row + batch lock stay held until this employee's
         // money AND outcome commit. Duplicate/resumed workers see committed outcomes before acting.

@@ -17,15 +17,24 @@ const WORKER_SOURCE='968354c00a71df7baccd499eb60757a3307ed61e';
 // This source fixture never substitutes for that controller's authenticated extracted-packet boot proof.
 const PACKET_POLICY={controller:'567ec0908a24e21078e458ec1e93e696cafeb0a8',formatSha256:'07fa30e623f192ed8231ed42de4a606ed8251539db95389ec7ad6b50ff166369',
  roots:['package.json','pnpm-lock.yaml','tsconfig.json','app','assets','components','content','core','data','db','deploy','i18n','lib','localization','messages','packs','public','scripts','types','node_modules']};
-const unchanged=['db/client.ts','scripts/bank-import-runner.ts','core/bank-import-worker.ts','core/bank-import-job.ts','core/import-sections.ts','core/import-history.ts','lib/bank-import-source.server.ts','lib/bank-import-job.ts'];
+const unchanged=['db/client.ts','scripts/bank-import-runner.ts','core/bank-import-job.ts','lib/bank-import-source.server.ts','lib/bank-import-job.ts'];
+// Only the exact independently reviewed Bank changes may differ in the new web source.
+// The executed old worker still receives its own immutable original bytes below.
+const REVIEWED_BANK_SOURCE='9a1b613d8f7208e59ca389b0f72a67970a023a36';
+const reviewedChanges=['core/bank-import-worker.ts','core/import-sections.ts','core/import-history.ts'];
 beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
 it('runs immutable 968 worker Git source under the corrected V2 root policy against the AI schema and web contract',async()=>{
  expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...unchanged],{encoding:'utf8'}).trim()).toBe('');
+ expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...reviewedChanges],{encoding:'utf8'}).trim().split('\n').sort()).toEqual([...reviewedChanges].sort());
+ expect(execFileSync('git',['diff','--name-only',REVIEWED_BANK_SOURCE,'HEAD','--',...reviewedChanges],{encoding:'utf8'}).trim()).toBe('');
  // PR61 adds a pinned provider-schema validator for tests only. Prove the complete old package
- // and lock graph remain identical after removing ONLY this explicitly approved additive delta.
+ // and lock graph remain identical after removing ONLY the explicit validator and server-boundary marker deltas.
  const oldPackage=JSON.parse(execFileSync('git',['show',WORKER_SOURCE+':package.json'],{encoding:'utf8'}));
- expect(JSON.parse(readFileSync('package.json','utf8'))).toEqual({...oldPackage,devDependencies:{...oldPackage.devDependencies,ajv:'8.20.0'}});
+ expect(JSON.parse(readFileSync('package.json','utf8'))).toEqual({...oldPackage,dependencies:{...oldPackage.dependencies,'server-only':'0.0.1'},devDependencies:{...oldPackage.devDependencies,ajv:'8.20.0'}});
  const additions=[
+  '      server-only:\n        specifier: 0.0.1\n        version: 0.0.1\n',
+  '  server-only@0.0.1:\n    resolution: {integrity: sha512-qepMx2JxAa5jjfzxG79yPPq+8BuFToHd1hm7kI+Z4zAq1ftQiP7HcxMhDDItrbtwVeLg/cY2JnKnrcFkmiswNA==}\n\n',
+  '  server-only@0.0.1: {}\n\n',
   '      ajv:\n        specifier: 8.20.0\n        version: 8.20.0\n',
   '  ajv@8.20.0:\n    resolution: {integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==}\n\n',
   '  fast-uri@3.1.9:\n    resolution: {integrity: sha512-hS/0Wt3Ya043oKXs0sIxrMpKQITXhMLIrVAKKXi4gozGC9v7YRWVnXIZzjNPTO02M9BdxLCWqK1yRXgNziVyJQ==}\n\n',
@@ -45,6 +54,7 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
   expect(roots).toEqual(expect.arrayContaining(['package.json','pnpm-lock.yaml','tsconfig.json','core','db','i18n','localization','lib','scripts','packs']));
   const archive=execFileSync('git',['archive',WORKER_SOURCE,...roots],{maxBuffer:128*1024**2});
   execFileSync('tar',['-xf','-','-C',directory],{input:archive,maxBuffer:1024**2});
+  for(const path of [...unchanged,...reviewedChanges])expect(readFileSync(join(directory,path)).equals(execFileSync('git',['show',WORKER_SOURCE+':'+path])),'Executed old worker retains original '+path).toBe(true);
   // Real isolated dependency files, preserving internal pnpm links. No external module symlink,
   // installation files, frozen worker source or vendor network is modified by this disposable fixture.
   execFileSync('cp',['-a',...(process.platform==='linux'?['--reflink=auto']:[]),join(process.cwd(),'node_modules'),join(directory,'node_modules')],{timeout:60000,maxBuffer:1024**2});
@@ -80,7 +90,7 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
   if(evidence){mkdirSync(evidence,{recursive:true});writeFileSync(join(evidence,'worker-cross-version.json'),JSON.stringify({
    kind:'GIT_SOURCE_CROSS_VERSION_FIXTURE_NOT_PACKET_OR_LIVE_ACCEPTANCE',workerSource:WORKER_SOURCE,webSource:process.env.AIHR_CI_HEAD,
    correctedRootPolicy:PACKET_POLICY,actualPacketExecuted:false,authenticatedCorrectedPacketProofRequired:true,
-   schemaEntries:schema.ledger,unchangedSourcePaths:unchanged,sourceArchiveSha256:createHash('sha256').update(archive).digest('hex'),
+   schemaEntries:schema.ledger,unchangedSourcePaths:unchanged,reviewedChangedPathContracts:{source:REVIEWED_BANK_SOURCE,paths:reviewedChanges,executedWorkerBytes:WORKER_SOURCE},sourceArchiveSha256:createHash('sha256').update(archive).digest('hex'),
    newWebAdmission:true,humanCommandFixture:true,canonicalWrite:true,tenantDenial:true,newProcessReplay:true,historyItems:history.length,
    protectedServiceVerified:false,liveRestartVerified:false,deploymentAuthorized:false,
   },null,2)+'\n');}

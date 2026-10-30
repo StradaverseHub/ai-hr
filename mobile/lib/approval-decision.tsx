@@ -9,9 +9,10 @@
  * when the answer is lost, "Try again" resends the SAME reference, so it is never applied twice. A refusal reloads
  * the task and says why (a moved step/stage is `stale_step`). Nothing is queued or persisted.
  *
- * D12 (M11) — expense claims are decided here too: who, the type, the amount (the server's two-place string, never
- * computed), the date, the employee's description and custom answers, and each receipt viewable through the
- * task-scoped document route (an image in the app; a PDF says to open it on the web). A rejection needs a reason.
+ * Expense claims left the app (mobile declutter round): a claim approval is still LISTED, with its server summary
+ * line, but behaves like every other web-only kind — an "Open on web" chip, no native detail and no receipt download.
+ * The server still marks claims `nativeDecision` (older installed apps decide them natively); this build decides
+ * natively only the kinds in NATIVE below.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, TextInput, View } from 'react-native';
@@ -19,16 +20,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { DesignText as Text, useTenantDesign } from './design';
-import { apiDownload, apiGetV2, apiPostV2, v2Download, v2Page } from './api';
+import { apiGetV2, apiPostV2, v2Page } from './api';
 import { assertAuthGeneration, authGeneration } from './auth';
 import { config, identityNamespace } from './config';
 import { RequestRejectedError, SignInRequiredError } from './errors';
 import { appLocale, t, type MessageKey } from './i18n';
 import { PagedList, usePagedResource } from './paged-list';
 import { useSession } from './session';
-import { Button, Card, LoadState, Muted, Screen, Title, fmtDays } from './ui';
-import { ClaimAnswers, ReceiptLink, claimMoney } from './claim-parts';
-import { CLAIM_RECEIPT_MAX_BYTES, CLAIM_RECEIPT_TYPES } from '../../lib/mobile-api/v2/claims';
+import { Button, Card, HeaderBack, LoadState, Muted, Screen, Title, fmtDays, fmtMoney } from './ui';
 import {
   TaskDecisionResult, TaskDetailResult, TaskItemV2,
   type TaskDecisionRefusal, type TaskDecisionRefusalCode, type TaskDetailV2, type TaskKind,
@@ -36,7 +35,12 @@ import {
 
 export const TASKS = v2Page('v2/tasks', TaskItemV2);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const NATIVE = ['leave', 'leaveCancellation', 'attendance', 'claim'] as const;
+const NATIVE = ['leave', 'leaveCancellation', 'attendance'] as const;
+/** Decided in this app: the server says it may be, AND this build has the screen for it (claims no longer do). */
+export const decidesNatively = (item: Pick<TaskItemV2, 'kind' | 'nativeDecision'>) => item.nativeDecision && (NATIVE as readonly string[]).includes(item.kind);
+/** Where a web-only row opens: the server's path, or — for a kind the server still marks native (a claim) and so sends
+ * no path for — the web approvals inbox, which lists it. */
+const webPathOf = (item: TaskItemV2) => item.webPath ?? (item.nativeDecision ? '/approvals' : null);
 /** The only path the app builds: a natively decided kind and a validated UUID. */
 export function taskPath(kind: string, id: string, action?: 'decision' | 'document'): `v2/${string}` {
   if (!(NATIVE as readonly string[]).includes(kind) || !UUID.test(id)) throw new Error('Invalid task reference');
@@ -85,7 +89,7 @@ export function taskSummaryLine(item: TaskItemV2): string | null {
     s.label,
     s.from && s.to ? span(s.from, s.to) : s.from,
     s.days != null ? fmtDays(s.days) : null,
-    s.amount != null ? claimMoney(s.amount, s.currency) : null,
+    s.amount != null ? (s.currency ? `${s.currency} ${fmtMoney(s.amount)}` : fmtMoney(s.amount)) : null,
   ].filter((part): part is string => !!part);
   return parts.length ? parts.join(' · ') : null;
 }
@@ -95,13 +99,13 @@ export function TaskRow({ item }: { item: TaskItemV2 }) {
   const summary = taskSummaryLine(item);
   const label = [t(KIND_LABEL[item.kind]), item.subject.name, summary].filter(Boolean).join(' · ');
   const body = <><Text style={{ color: palette.text, fontSize: 17, fontWeight: '600' }}>{t(KIND_LABEL[item.kind])}</Text>{item.subject.name ? <Muted>{item.subject.name}</Muted> : null}{summary ? <Muted>{summary}</Muted> : null}</>;
-  if (item.nativeDecision) {
+  if (decidesNatively(item)) {
     return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => router.push({ pathname: '/approvals/[kind]/[id]', params: { kind: item.kind, id: item.id } })}
       style={{ paddingVertical: 14, borderBottomWidth: 1, borderColor: palette.border, gap: 6 }}>{body}</Pressable>;
   }
   return <View style={{ paddingVertical: 14, borderBottomWidth: 1, borderColor: palette.border, gap: 6 }}>
     {body}
-    <Pressable accessibilityRole="link" accessibilityLabel={`${t('openOnWeb')}: ${label}`} onPress={() => openOnWeb(item.webPath)}
+    <Pressable accessibilityRole="link" accessibilityLabel={`${t('openOnWeb')}: ${label}`} onPress={() => openOnWeb(webPathOf(item))}
       style={{ alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, borderWidth: 1, borderColor: palette.border, borderRadius: 999 }}>
       <Text style={{ color: palette.accent }}>{t('openOnWeb')}</Text>
     </Pressable>
@@ -116,7 +120,7 @@ export function ApprovalsScreen() {
   return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={['top']}>
     <PagedList list={list} keyOf={keyOf} emptyText={t('approvalsEmpty')} contentContainerStyle={{ padding: 20, gap: 8 }}
       header={<View style={{ gap: 12 }}>
-        <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
+        <HeaderBack />
         <Title>{t('approvalsTitle')}</Title>
       </View>}
       renderItem={(item) => <TaskRow item={item} />} />
@@ -154,7 +158,8 @@ type Sent = { body: Body; phase: 'sending' | 'uncertain' };
 
 /** What the task asks, in one line: type · dates · days, or the attendance application's own facts. */
 export function taskLine(task: TaskDetailV2): string {
-  if (task.kind === 'claim') return t('claimsApprovalLine', { type: task.claimItem ? `${task.claimType} · ${task.claimItem}` : task.claimType, amount: claimMoney(task.amount, task.currency), date: task.incurredOn });
+  // Never loaded here (taskPath refuses a claim); kept so the server's union stays exhaustively handled.
+  if (task.kind === 'claim') return t('task_claim');
   // fmtDays already carries its unit ("5 days"); the summary templates add none (a "{days} days" template doubled it).
   if (task.kind === 'leave') return t('approvalLeaveSummary', { type: task.leaveType, dates: span(task.startDate, task.endDate), days: fmtDays(task.days) })
     + (task.durationType === 'half_day_am' || task.durationType === 'half_day_pm' ? ` · ${t(HALF_DAY[task.durationType])}` : '')
@@ -231,8 +236,7 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
     <Button title={t('approvalsBack')} onPress={() => router.back()} />
   </Screen>;
 
-  return <Screen onRefresh={detail.reload}>
-    <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
+  return <Screen back onRefresh={detail.reload}>
     <LoadState loading={detail.loading} hasData={detail.data != null} error={detail.error} onRetry={detail.reload} />
     {notice && <Text accessibilityRole="alert" style={{ color: palette.text, lineHeight: 23 }}>{notice}</Text>}
     {detail.data?.outcome === 'refused' && <Muted>{approvalRefusalText(detail.data)}</Muted>}
@@ -241,16 +245,6 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
       <Text style={{ color: palette.text, fontSize: 17, lineHeight: 24 }}>{taskLine(task)}</Text>
       {task.employeeReason && <Muted>{t('approvalEmployeeNote', { note: task.employeeReason })}</Muted>}
       {((task.kind === 'leave' && task.hasDocument) || (task.kind === 'attendance' && task.hasAttachment)) && <Muted>{t('approvalDocumentOnWeb')}</Muted>}
-      {task.kind === 'claim' && <>
-        {task.quantityKm && <Muted>{t('claimsKm', { km: task.quantityKm })}</Muted>}
-        {task.fields.length > 0 && <Card>{heading(t('claimsFieldsHeading'))}<ClaimAnswers fields={task.fields} /></Card>}
-        <Card>
-          {heading(t('claimsReceiptsHeading'))}
-          {task.receipts.length === 0 ? <Muted>{t('claimsNoReceipts')}</Muted>
-            : task.receipts.map((r) => <ReceiptLink key={r.id} receipt={r} onSignInRequired={signOut}
-              open={() => apiDownload(v2Download(taskPath('claim', task.id, 'document'), CLAIM_RECEIPT_MAX_BYTES, CLAIM_RECEIPT_TYPES), { attachment: r.id })} />)}
-        </Card>
-      </>}
       {task.kind === 'attendance' && task.original && <Card>
         {heading(t('approvalOriginalHeading'))}
         <Muted>{task.original.state === 'not_captured' ? t('approvalOriginalNotCaptured') : task.original.state === 'no_record' ? t('approvalOriginalNoRecord')

@@ -1,4 +1,5 @@
 import {captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
+import {MODULE_JOBS} from '../lib/ai/module-jobs';
 /** Actual screen component, fictional data owners. Optional HTML capture supports rendered review. */
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render,screen,fireEvent} from '@testing-library/react';
@@ -20,7 +21,11 @@ vi.mock('../app/delegations/actions',()=>({loadDelegationContextAction:vi.fn()})
 vi.mock('../components/delegation-manager',()=>({DelegationManager:()=>null}));
 vi.mock('../lib/authz',()=>({isGroupAdmin:()=>true,isAdmin:()=>true}));
 vi.mock('../core/entitlements',()=>({isModuleEnabledOrFalse:()=>true,isModuleEnabled:()=>true}));
-vi.mock('../core/ai-management',()=>({AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementView:async()=>({provider:null,mayWriteUsers:true,features:[],usage:[],policies:[],userDefault:null,companies:[],companyUsage:[],users:[],moreUsers:false,groups:[],attention:{companies:[],users:[],blocked:[]},runs:[],runFilter:{},legacyBudget:null,spend:null}),bulkAssistantDepartments:async()=>[],previewBulkAssistantAccess:async()=>({matched:0,changing:0})}));
+vi.mock('../core/ai-management',async()=>{
+ const {AI_FEATURES}=await import('../lib/ai/features');const assistant=AI_FEATURES.find(feature=>feature.id==='hr_assistant');if(!assistant)throw Error('Missing actual Assistant feature definition');
+ // Match the native status owner: enabled module/switch, but no configured provider means provider-required.
+ return {AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementView:async()=>({provider:null,mayWriteUsers:true,features:[{...assistant,enabled:true,state:'provider',mayWrite:true}],usage:[],policies:[],userDefault:null,companies:[],companyUsage:[],users:[],moreUsers:false,groups:[],attention:{companies:[],users:[],blocked:[]},runs:[],runFilter:{},legacyBudget:null,spend:null}),bulkAssistantDepartments:async()=>[],previewBulkAssistantAccess:async()=>({matched:0,changing:0})};
+});
 vi.mock('../core/hr-orchestrator',()=>({orchestrationQueue:async()=>({})}));
 vi.mock('../app/control-tower/work-queue',()=>({OrchestrationWorkQueue:()=>null}));
 vi.mock('../app/control-tower/agents/actions',()=>({applyBulkAssistantAction:vi.fn(),clearGroupAllowanceAction:vi.fn(),setGroupAllowanceAction:vi.fn(),clearUserAllowanceAction:vi.fn(),setAiSpendBudgetAction:vi.fn(),setAiAllowanceAction:vi.fn(),setAiFeatureAction:vi.fn(),setAssistantPermissionAction:vi.fn()}));
@@ -36,6 +41,9 @@ describe('approved AI vocabulary in six rendered locales',()=>{
    return render(<NextIntlClientProvider locale={locale} messages={copies[locale] as any}><div className="flex min-h-screen max-sm:flex-col"><div className="h-screen shrink-0 max-sm:h-auto"><Sidebar isAdmin canAdministerAi canConfigureAiProvider canApprove canAccessTeam enabledModules={null} defaultCollapsed={false}/></div><main className="min-w-0 flex-1 p-4">{page}</main></div></NextIntlClientProvider>);
   };
   await renderSection('overview');expect(screen.getByText(copies[locale].aiManagement.mapAssistant)).toBeInTheDocument();
+  const t=createTranslator({locale,messages:copies[locale] as any,namespace:'aiManagement'}),count=t('mapSpecialists',{available:MODULE_JOBS.length,total:MODULE_JOBS.length});
+  expect(screen.getByText(`${copies[locale].aiManagement.states.provider} · ${count}`)).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain(`${copies[locale].aiManagement.states.module} · ${count}`);
   const overview=document.body.innerHTML;
   await captureAiReviewScreenshots(overview,locale,'overview');
   fireEvent.click(screen.getByRole('button',{name:copies[locale].nav.aiControlTower}));

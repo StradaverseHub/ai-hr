@@ -220,7 +220,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const hasAssignedAttendanceApproval = !canApprove && approvalTasks.some(task => task.kind === 'attendance');
   const onboardingNoticesEnabled = isModuleEnabledOrFalse(session, 'lifecycle');
   const [onboardingNav, onboardingQueue, onboardingUnread, onboardingRead, onboardingUnreadCount] = await Promise.all([
-    onboardingNoticesEnabled ? onboardingNavigation(session) : Promise.resolve({module:false,master:false,requisitions:false,joiners:0,checklists:0}),
+    onboardingNoticesEnabled ? onboardingNavigation(session) : Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false,records:false},master:false,requisitions:false,joiners:0,checklists:0}),
     onboardingNoticesEnabled ? onboardingTasks(session) : Promise.resolve([]),
     onboardingNoticesEnabled ? onboardingNotices(session) : Promise.resolve([]),
     onboardingNoticesEnabled ? onboardingNotices(session, true) : Promise.resolve([]),
@@ -292,6 +292,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               hasAssignedApproval={hasAssignedApproval}
               canReviewProfileChanges={isAdmin(session)}
               canAdministerAi={isAdmin(session)}
+              canAdministerSecurity={isAdmin(session)}
+              canConfigureAccess={accessConfigurationAvailable}
+              canProvisionUsers={isGroupAdmin(session)}
               canConfigureAiProvider={isGroupAdmin(session)}
               canAccessTeam={hasTeamAccess(session)}
               // ADR-0142 — the OneHR performance partner gets the Performance admin entry only, NOT the admin rail:
@@ -308,6 +311,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               approvalCount={legacyApprovalCount}
               taskCount={approvalSummary.total+onboardingQueue.length}
               onboardingAccess={onboardingAccess}
+              onboardingV9Access={onboardingNav.v9}
+              onboardingV9Navigation={onboardingNav.v9Navigation}
               onboardingJoinerCount={onboardingNav.joiners}
               onboardingChecklistCount={onboardingNav.checklists}
               onboardingMaster={onboardingNav.master}
@@ -325,7 +330,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               viewerName={viewer.name}
               viewerCode={viewer.employeeCode}
             />
-            <div data-app-content className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4 monolith:gap-5! monolith:px-4 monolith:pt-4 min-[900px]:monolith:pr-12 min-[900px]:monolith:pl-11 min-[900px]:monolith:pt-[22px]">
+            <div data-app-content className="flex min-w-0 max-sm:min-h-0 flex-1 flex-col gap-3 lg:gap-4 monolith:gap-5! monolith:px-4 monolith:pt-4 min-[900px]:monolith:pr-12 min-[900px]:monolith:pl-11 min-[900px]:monolith:pt-[22px]">
               {/* Three-zone grid: equal minmax(0,1fr) side tracks keep the centre search geometrically
                   centred regardless of what each cluster contains (dev switcher hidden in production,
                   bell variants, …). The centre track is bounded from sm up so the w-full trigger has a

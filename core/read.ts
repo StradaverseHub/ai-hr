@@ -6734,3 +6734,14 @@ export async function myReleasedPayslips(ctx: SessionContext) {
   const rows = await myPayslips(ctx, employments.map((e) => e.employmentId));
   return rows.filter((p) => p.status === 'closed' && p.released);
 }
+
+/** Same native page predicate/joins as status tabs; only local person/status membership leaves this reader. */
+export async function leaveAnalysisSourceTx(tx:Tx,ctx:SessionContext,companyIds:readonly string[]){
+ await assertAiPrincipalTx(tx,ctx);if(!companyIds.length)throw Error('Leave analysis requires a company scope.');
+ const {where,currentAssignment}=leaveRequestPageWhere({companyIds:[...companyIds],limit:0,offset:0});
+ const rows=await tx.select({id:leaveRequest.id,personId:employment.personId,status:leaveRequest.status}).from(leaveRequest)
+  .innerJoin(employment,eq(employment.id,leaveRequest.employmentId)).innerJoin(person,eq(person.id,employment.personId))
+  .innerJoin(leaveType,eq(leaveType.id,leaveRequest.leaveTypeId)).leftJoin(assignment,currentAssignment)
+  .leftJoin(department,eq(department.id,assignment.departmentId)).where(where);
+ return {selection:'all_visible_requests',rows:rows.map(row=>({personId:row.personId,conditions:{pending_request_share:row.status==='pending'}}))};
+}

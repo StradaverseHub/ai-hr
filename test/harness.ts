@@ -81,6 +81,7 @@ const ALL_TABLES = [
   'letter_verification_rate','letter_access_token','letter_recipient_event','letter_artifact','letter_approval_decision','letter_revision','letter_record','letter_job','letter_counter','letter_generation_batch','letter_template_field','letter_template_version','letter_template','letter_merge_field_version','letter_policy_version','letter_asset','letter_capability_grant',
   'import_attempt_event','bank_import_row', 'bank_import_chunk', 'bank_import_job', 'import_attempt_item','import_attempt',
   'payroll_history_import_event','payroll_history_import_revision','payroll_history_import_snapshot','payroll_history_import_record','payroll_history_import_attempt',
+  'pay_formula_evaluation','pay_formula_event','pay_formula_test','pay_formula_revision','pay_formula_accumulation','pay_formula',
   'payroll_batch', 'payslip', 'payroll_input', 'payroll_individual_txn', 'employee_cp38', 'company_statutory_my',
   'payroll_leave_exception', 'employment_holiday_calendar',
   'payroll_policy',

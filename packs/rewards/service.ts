@@ -1561,3 +1561,18 @@ export async function sendReadyRewardUnits(ctx: SessionContext, companyIds: stri
   }
   return result;
 }
+
+/** Current native review verification metadata only. No observations, amounts, recommendations or ratings. */
+export async function rewardsAnalysisSourceTx(tx:Tx,ctx:SessionContext,companyIds:readonly string[],unitId?:string){
+ if(!companyIds.length)throw Error('Rewards analysis requires a company scope.');
+ const available=await listRewardUnits(ctx,[...companyIds],tx);
+ const latest=Math.max(...available.map(unit=>unit.year));
+ const units=unitId?available.filter(unit=>unit.id===unitId):available.filter(unit=>unit.year===latest);
+ if(!units.length||units.some(unit=>unit.people===null||unit.verified===null))throw Error('A complete authorized rewards review is unavailable.');
+ const rows=await tx.select({id:rewardEntry.id,unitId:rewardEntry.unitId,personId:employment.personId,
+  reviewed:sql<boolean>`coalesce(${rewardEntry.facts}->>'reviewed','false')='true'`}).from(rewardEntry)
+  .innerJoin(employment,eq(employment.id,rewardEntry.employmentId))
+  .where(and(inArray(rewardEntry.unitId,units.map(unit=>unit.id)),inArray(employment.companyId,[...companyIds])));
+ for(const unit of units)if(rows.filter(row=>row.unitId===unit.id).length!==Number(unit.people))throw Error('Incomplete rewards population.');
+ return {selection:units.map(unit=>unit.id).sort().join(','),rows:rows.map(row=>({personId:row.personId,conditions:{facts_verification_share:row.reviewed}}))};
+}

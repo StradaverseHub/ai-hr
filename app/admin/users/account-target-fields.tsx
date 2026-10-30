@@ -21,7 +21,7 @@ export function AccountTargetFields({ people, companies, roles, selectedPerson, 
       <input type="hidden" name="accountType" value="existing" />
       <Field label={t('existing')}><input type="hidden" name="personId" value={selectedPerson.id} />
         <span className="py-2 text-sm">{selectedPerson.name}</span>
-        <a href={`/admin/users#${idPrefix === 'manual' ? 'manual-account-setup' : 'invite-user'}`} className="text-xs underline">{t('chooseAnother')}</a>
+        <a href={idPrefix === 'manual' ? '/admin/users/create' : '/admin/users/invite'} className="text-xs underline">{t('chooseAnother')}</a>
       </Field>
     </> : <>
       <fieldset className="space-y-2 sm:col-span-2" aria-describedby={`${idPrefix}-target-help`}>

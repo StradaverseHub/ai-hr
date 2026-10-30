@@ -1,3 +1,14 @@
+/** TEST ONLY: synthetic privacy-review seam for this legacy gateway-control suite. The new
+ * disclosure assertion/consumption is isolated so the original protocol, capture, source, admission,
+ * spend and accounting controls below are still exercised. Actual binding/transfer/revocation and
+ * provider egress dispatch remain real. Dedicated provider-privacy-request, provider-data-review-gate
+ * and ai-private-analysis suites exercise the real default-block/review policy separately. This
+ * fixture grants no production review status and admits no real provider data. */
+vi.mock('../lib/ai/provider-privacy-request', async importActual => {
+  const actual = await importActual<typeof import('../lib/ai/provider-privacy-request')>();
+  return { ...actual, assertProviderPrivacyRequest: () => {}, consumeProviderPrivacyRequest: () => {} };
+});
+
 /** Authored UNRUN. Actual app-role admission/settlement, no provider request or reported capability proof. */
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';

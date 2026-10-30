@@ -9,6 +9,9 @@ vi.mock('next-intl/server', () => ({ getLocale:m.locale, getTranslations: async 
   const t = (key: string) => `${namespace ? namespace + '.' : ''}${key}`.split('.').reduce((v: any, k) => v?.[k], en) ?? key;
   return Object.assign(t, { rich: t });
 } }));
+vi.mock('../app/admin/users/security-page',()=>({SecurityPageHeader:()=>null}));
+vi.mock('../app/admin/users/legacy-navigation',()=>({LegacySecurityNavigation:()=>null}));
+vi.mock('../lib/security-center-authz',()=>({requireGroupAdministration:async()=>({tenantId:'tenant'})}));
 vi.mock('../lib/authz', () => ({ requireAdmin: async () => ({ tenantId: 'tenant' }), isGroupAdmin: m.group }));
 vi.mock('../lib/identity/config', () => ({ keycloakSelected: m.enabled }));
 vi.mock('../core/admin', () => ({ listUsers: m.users }));
@@ -22,6 +25,8 @@ vi.mock('../app/admin/actions', () => ({ archiveUserAction: vi.fn(), assignRoleA
 vi.mock('../app/admin/users/manual-actions', () => ({ createManualAccountAction: vi.fn(), resumeManualAccountAction: vi.fn(), cancelManualAccountAction: vi.fn() }));
 vi.mock('../app/admin/users/manual-setup', () => ({ ManualAccountSetup: (props: unknown) => { m.manual(props); return null; } }));
 import UsersPage from '../app/admin/users/page';
+import CreatePage from '../app/admin/users/create/page';
+import InvitePage from '../app/admin/users/invite/page';
 const person = { id: 'person-a', name: 'Employee A', email: 'same@example.test', code: 'A-001' };
 const show = async (params = {}) => render(<NextIntlClientProvider locale="en" messages={en}>{await UsersPage({ searchParams: Promise.resolve(params) })}</NextIntlClientProvider>);
 const directory = () => (document.querySelector('[data-tour="admin-users"] table') ?? document.querySelector('[data-tour="admin-users"]')) as HTMLElement;
@@ -36,13 +41,13 @@ describe('employee activation actions and lifecycle display', () => {
     await show(); const d = within(directory());
     expect(d.getByText('Pending activation')).toBeTruthy();
     fireEvent.click(d.getByRole('button', {name:'Activate'}));
-    expect(d.getByRole('link', { name: 'Set username and password' }).getAttribute('href')).toBe('/admin/users?activate=person-a#manual-account-setup');
-    expect(d.getByRole('link', { name: 'Send invitation' }).getAttribute('href')).toBe('/admin/users?activate=person-a#invite-user');
+    expect(d.getByRole('link', { name: 'Set username and password' }).getAttribute('href')).toBe('/admin/users/create?activate=person-a');
+    expect(d.getByRole('link', { name: 'Send invitation' }).getAttribute('href')).toBe('/admin/users/invite?activate=person-a');
     expect(d.queryByRole('button',{name:'Add role'})).toBeNull();
     expect(d.queryByRole('button',{name:'Archive'})).toBeNull();
   });
   it('preselects the exact pending person, prefills email, and keeps employee access as default', async () => {
-    await show({ activate: person.id });
+    render(<NextIntlClientProvider locale="en" messages={en}>{await CreatePage({searchParams:Promise.resolve({activate:person.id})})}{await InvitePage({searchParams:Promise.resolve({activate:person.id})})}</NextIntlClientProvider>);
     expect(m.manual).toHaveBeenCalledWith(expect.objectContaining({ selectedPerson: person }));
     expect(document.querySelector<HTMLInputElement>('input[name="personId"]')?.value).toBe(person.id);
     expect(screen.getByRole('textbox', { name: 'Email' }).getAttribute('value')).toBe(person.email);
@@ -59,11 +64,11 @@ describe('employee activation actions and lifecycle display', () => {
     expect(document.querySelector<HTMLInputElement>('input[name="ownershipAttested"]')?.required).toBe(true);
   });
   it('defaults invitation language to the current locale and keeps all six explicit choices',async()=>{
-    m.locale.mockResolvedValue('ms');await show({activate:person.id});
+    m.locale.mockResolvedValue('ms');render(<NextIntlClientProvider locale="en" messages={en}>{await InvitePage({searchParams:Promise.resolve({activate:person.id})})}</NextIntlClientProvider>);
     const language=screen.getByRole<HTMLSelectElement>('combobox',{name:en.emailDesign.language});expect(language.name).toBe('emailLocale');expect(language.value).toBe('ms');expect(Array.from(language.options,option=>option.value)).toEqual(['en','ms','zh','vi','ta','th']);
   });
   it('does not trust a forged or stale activation target from the URL', async () => {
-    await show({ activate: 'foreign-or-archived-person' });
+    render(<NextIntlClientProvider locale="en" messages={en}>{await CreatePage({searchParams:Promise.resolve({activate:'foreign-or-archived-person'})})}{await InvitePage({searchParams:Promise.resolve({activate:'foreign-or-archived-person'})})}</NextIntlClientProvider>);
     expect(m.manual).toHaveBeenCalledWith(expect.objectContaining({ selectedPerson: undefined }));
     expect(document.querySelector('input[name="personId"]')).toBeNull();
     expect(screen.getByRole('textbox', { name: 'Email' }).getAttribute('value')).toBe('');
@@ -82,7 +87,7 @@ describe('employee activation actions and lifecycle display', () => {
     await show({ activate: person.id }); const d = within(directory());
     expect(d.getByText('Setup pending')).toBeTruthy(); expect(d.getByRole('link', { name: 'Resume setup' })).toBeTruthy();
     expect(d.queryByText('Pending activation')).toBeNull();
-    expect(m.manual).toHaveBeenCalledWith(expect.objectContaining({ selectedPerson: undefined }));
+    const data=await import('../app/admin/users/data');expect((await data.loadUsersData({tenantId:'tenant'} as never)).pendingEmployees).toEqual([]);
   });
   it('hidden archived logins cannot reappear through an invitation or a concurrent pending read', async () => {
     m.users.mockResolvedValue({ users: [{ id: 'archived', personId: person.id, name: person.name, email: person.email, archivedAt: new Date(), roles: [] }], hiddenCount: 0 });
@@ -90,7 +95,7 @@ describe('employee activation actions and lifecycle display', () => {
     await show({ activate: person.id });
     expect(within(directory()).queryByText(person.name)).toBeNull();
     expect(m.users).toHaveBeenCalledWith(expect.anything(), { includeArchived: true });
-    expect(m.manual).toHaveBeenCalledWith(expect.objectContaining({ selectedPerson: undefined }));
+    const data=await import('../app/admin/users/data');expect((await data.loadUsersData({tenantId:'tenant'} as never)).pendingEmployees).toEqual([]);
   });
   it('labels a named standalone login and retains its normal archive and role controls',async()=>{
     m.users.mockResolvedValue({users:[{id:'external-user',personId:'external-person',name:'External admin',email:'external@example.test',hasEmployment:false,roles:[{id:'grant',role:'hr_admin',companyId:null}]}],hiddenCount:0});

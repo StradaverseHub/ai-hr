@@ -1,11 +1,28 @@
+/** TEST ONLY: synthetic privacy-review seam for this legacy gateway-control suite. The new
+ * disclosure assertion/consumption is isolated so the original protocol, capture, source, admission,
+ * spend and accounting controls below are still exercised. Actual binding/transfer/revocation and
+ * provider egress dispatch remain real. Dedicated provider-privacy-request, provider-data-review-gate
+ * and ai-private-analysis suites exercise the real default-block/review policy separately. This
+ * fixture grants no production review status and admits no real provider data. */
+vi.mock('../lib/ai/provider-privacy-request', async importActual => {
+  const actual = await importActual<typeof import('../lib/ai/provider-privacy-request')>();
+  return { ...actual, assertProviderPrivacyRequest: () => {}, consumeProviderPrivacyRequest: () => {} };
+});
+
 /** Authored UNRUN. Mocked terminal JSON only, not real provider capability or billing proof. */
 import {afterEach,expect,it,vi} from 'vitest';
-import {createOpenRouterAdapter} from '../lib/ai/providers/openrouter';
+import {fixtureOpenRouterAdapter as createOpenRouterAdapter} from './helpers/provider-egress-fixture';
 import {openrouterAdapter} from '../lib/ai/providers/openrouter';
 import {readOpenRouterOptions} from '../lib/ai/providers/openrouter-configuration';
 import {runProviderProtocolEvaluation} from '../lib/ai/provider-protocol';
 import {converse} from '../lib/ai';
 import type {ResolvedAiConfig,AiRunObservation,AiUsage} from '../lib/ai/types';
+// TEST ONLY: preserve this suite's synthetic governance/protocol boundary. Real opaque issued
+// identity, one-use privacy admission and review approval are covered by their dedicated suites.
+vi.mock('../core/ai-governance',()=>({
+  preparePrivateAiTask:async(configuration:ResolvedAiConfig,id:string,read:()=>Promise<unknown>)=>{const {getProviderWorkloadDescriptor}=await import('../lib/ai/provider-workload-policy');const descriptor=getProviderWorkloadDescriptor(id)!;return {configuration,operation:descriptor.operation,...descriptor.capture(await read()),dispose(){}};},
+  withAiRunObserver:(configuration:ResolvedAiConfig,hooks:{beforeCall?:()=>void;usage?:(value:import('../lib/ai/types').AiUsage)=>void;observation?:(value:import('../lib/ai/types').AiRunObservation)=>void;settled?:()=>void}):ResolvedAiConfig=>({...configuration,governance:{async run(request,call,outgoing){try{return await configuration.governance!.run(request,async(record,observe)=>{hooks.beforeCall?.();return call(value=>{record(value);hooks.usage?.(value);},value=>{observe?.(value);hooks.observation?.(value);});},outgoing);}finally{hooks.settled?.();}}}}),
+}));
 const config:ResolvedAiConfig={provider:'openrouter',model:'fictional/model',apiKey:'fictional-key',providerOptions:readOpenRouterOptions({version:1,routing:{allowedProviders:['approved-a']}}),governance:{run:async(_request,call)=>call(()=>{})}};
 const usage={cost:0.25,prompt_tokens:10,completion_tokens:3,total_tokens:13,prompt_tokens_details:{cached_tokens:2}},body=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json'}});
 afterEach(()=>vi.restoreAllMocks());

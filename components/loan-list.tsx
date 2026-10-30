@@ -118,7 +118,7 @@ export function LoanList({ loans }: { loans: LoanRow[] }) {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-border">
         <input
           type="search"
           value={query}
@@ -130,7 +130,8 @@ export function LoanList({ loans }: { loans: LoanRow[] }) {
         <span className="text-xs text-muted-foreground">{t('nShown', { count: sorted.length })}</span>
       </div>
 
-      <div className="overflow-x-auto border-t border-border">
+      <ClientPager state={state} />
+      <div className="overflow-x-auto">
         <table className="w-full min-w-[720px] text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
@@ -187,8 +188,6 @@ export function LoanList({ loans }: { loans: LoanRow[] }) {
           </tbody>
         </table>
       </div>
-
-      <ClientPager state={state} />
     </div>
   );
 }

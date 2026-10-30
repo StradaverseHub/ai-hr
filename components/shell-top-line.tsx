@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { useIsMonolith, useUiTheme } from '@/components/ui-theme-context';
@@ -23,15 +24,33 @@ export function ShellRoutePath() {
   // Atelier round 1 — a breadcrumb from the rail's own current row (components/nav-index-context.tsx):
   // section, then module, then page. Nothing when the page is not a rail destination (a record detail
   // reached from a list keeps the list's row lit, so this still names where you are).
+  // The module and, on a record below a list, the list itself are links back up the trail; the section is
+  // a rail heading with no page of its own, so it stays text. Every link is a rail destination this viewer
+  // already sees, and each still enforces its own route guard.
+  const activePath = active?.href.split('?')[0] ?? null;
+  const below = atelier && !!activePath && pathname !== activePath;
+  const pageTitle = usePageTitle(below ? pathname : null);
   if (atelier) {
     if (!active) return null;
-    const trail = [active.section, active.parent].filter((x): x is string => !!x);
+    const parentLink = active.parentHref && active.parentHref.split('?')[0] !== pathname ? active.parentHref : null;
     return (
       <nav aria-label={tTop('breadcrumb')} className="atelier-crumb" data-shell-path>
-        {trail.map((part) => (
-          <span key={part} className="contents">{part}<i aria-hidden>/</i></span>
-        ))}
-        <b aria-current="page">{active.label}</b>
+        {active.section && <span className="contents">{active.section}<i aria-hidden>/</i></span>}
+        {active.parent && (
+          <span className="contents">
+            {parentLink ? <Link href={parentLink}>{active.parent}</Link> : active.parent}
+            <i aria-hidden>/</i>
+          </span>
+        )}
+        {below ? (
+          <>
+            <Link href={active.href}>{active.label}</Link>
+            <i aria-hidden>/</i>
+            <b aria-current="page">{pageTitle ?? tTop('details')}</b>
+          </>
+        ) : (
+          <b aria-current="page">{active.label}</b>
+        )}
       </nav>
     );
   }
@@ -44,6 +63,35 @@ export function ShellRoutePath() {
       <span aria-hidden className="h-3.5 w-px shrink-0 bg-hairline" />
     </>
   );
+}
+
+/**
+ * The heading of the page below a list, for the breadcrumb's last crumb. The shell does not know a record's
+ * name, but the page already prints it as its title, so this follows it throughout the detail route.
+ * A streamed transition can retain the old heading before replacing it, and a refresh can rename
+ * a record without changing its path.
+ * Null on a list page, or while the current heading is missing or empty.
+ */
+function usePageTitle(path: string | null): string | null {
+  const [title, setTitle] = useState<{ path: string; text: string } | null>(null);
+  useEffect(() => {
+    if (!path) return;
+    const main = document.querySelector('[data-app-content] > main');
+    if (!main) return;
+    const read = () => {
+      const h1 = main.querySelector('[data-page-header] h1') ?? main.querySelector('h1');
+      const text = h1?.textContent?.trim();
+      setTitle((prev) => text
+        ? (prev?.path === path && prev.text === text ? prev : { path, text })
+        : null);
+    };
+    const observer = new MutationObserver(read);
+    observer.observe(main, { childList: true, subtree: true, characterData: true });
+    read();
+    return () => observer.disconnect();
+  }, [path]);
+  // A title read on the previous record must never label this one.
+  return path && title?.path === path ? title.text : null;
 }
 
 /**

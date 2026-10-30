@@ -64,7 +64,17 @@ describe('ADR-0082 slice 4 — the screen exists and is wired', () => {
 
   it('renders deterministic canonical cards and fixed bridge copy, never raw stored model prose',()=>{
     const page=read('app/assistant/page.tsx');expect(page).not.toContain('{h.answer}');
-    expect(page).toContain('CanonicalModuleJob');expect(page).toContain('GroundedWorkspaceReply');
+    expect(page).toContain('CanonicalModuleJob');
+    expect(page).toContain("from '@/components/assistant/workspace-conversation'");
+    expect(page).toContain('<WorkspaceConversation');
+    expect(page).toContain('initialTurn={history.find(h=>h.id===sp.e)?');
+    expect(page).toContain("from '@/components/assistant/exchange-reply'");
+    expect(page).toContain('answer:<ExchangeReply exchange={history.find(h=>h.id===sp.e)!} ctx={s}/>');
+    const reply=read('components/assistant/exchange-reply.tsx');
+    expect(reply).toContain("import {GroundedWorkspaceReply} from './module-jobs'");
+    expect(reply).toContain('h.grounded?<GroundedWorkspaceReply reply={h.grounded} ctx={ctx} exchangeId={h.id}/>');
+    expect(reply).toContain("t('workspace.conversation.unavailable')");
+    expect(reply).not.toContain('{h.answer}');
     const renderer=read('components/assistant/module-jobs.tsx');expect(renderer).toContain("t('grounded')");expect(renderer).toContain("'generic':'unavailable'");
     const source=read('core/ai-workspace.ts');expect(source).toContain('answer:null');
     expect(source).toContain('workspaceGroundedAnswers');

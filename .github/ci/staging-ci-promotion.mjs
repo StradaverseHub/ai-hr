@@ -4,7 +4,7 @@ import {join} from 'node:path';
 import {createInstallGrant,validateInstallGrant,installJson,installHash} from './ci-install-grant.mjs';
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(value);
 export function stagingInstallerCommand(mode,sourceRef,installId,buildRecordId){
- assert(['initialize','status','cleanup'].includes(mode),'Operator may initialize or inspect; deploy spine owns stage/activation');
+ assert(['initialize','status','cleanup','cleanup-session'].includes(mode),'Operator may initialize or inspect; deploy spine owns stage/activation');
  if(mode==='initialize')return 'cd /opt/ai-hr && /opt/node22/bin/node .github/ci/staging-build-install.mjs initialize';
  assert(/^[a-f0-9]{40}$/.test(sourceRef)&&uuid(installId)&&uuid(buildRecordId),'Exact frozen installer selection required');
  return 'cd /opt/ai-hr && /opt/node22/bin/node --env-file=.env.production --import tsx .github/ci/staging-build-install.mjs '+mode+' '+sourceRef+' '+installId+' '+buildRecordId;

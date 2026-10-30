@@ -1,3 +1,4 @@
+import {consumeProviderEgressDispatch} from '../provider-egress';
 import { hasTokenCounts } from '../usage';
 /**
  * OpenAI adapter (ADR-0023). Per-call client; generic error mapping. Uses chat.completions with the
@@ -41,6 +42,8 @@ export const openaiAdapter: AiAdapter = {
   provider: 'openai',
   async readImage(cfg,args){
     try{
+      if(cfg.provider!=='openai'&&cfg.provider!=='ai_gateway')throw new AiGatewayError('The AI provider route could not be confirmed.');
+      consumeProviderEgressDispatch(cfg,'image',args);
       const result=await new OpenAI({apiKey:cfg.apiKey,...gateway(cfg),timeout:args.timeoutMs,maxRetries:0}).chat.completions.create({model:cfg.model,max_completion_tokens:2500,messages:[instruction(cfg,imageReadInstruction),{role:'user',content:[{type:'image_url',image_url:{url:`data:${args.mimeType};base64,${Buffer.from(args.data).toString('base64')}`,detail:'high'}}]}]},{signal:args.signal});
       if(hasTokenCounts(result.usage,['prompt_tokens','completion_tokens']))args.onUsage?.(usageFor(result.usage));
       if(result.choices[0]?.message.refusal)throw new AiImageReadError(false);
@@ -50,6 +53,8 @@ export const openaiAdapter: AiAdapter = {
 
   async generate(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
     try {
+      if(cfg.provider!=='openai'&&cfg.provider!=='ai_gateway')throw new AiGatewayError('The AI provider route could not be confirmed.');
+      consumeProviderEgressDispatch(cfg,'draft',args);
       const completion = await (args.signal?new OpenAI({apiKey:cfg.apiKey,...gateway(cfg),timeout:args.timeoutMs,maxRetries:0}):cfg.governance?new OpenAI({apiKey:cfg.apiKey,...gateway(cfg),maxRetries:0}):client(cfg)).chat.completions.create({
         model: cfg.model,
         max_completion_tokens: args.maxTokens ?? 2048,
@@ -68,6 +73,8 @@ export const openaiAdapter: AiAdapter = {
 
   async validate(cfg: ResolvedAiConfig): Promise<ValidateResult> {
     try {
+      if(cfg.provider!=='openai'&&cfg.provider!=='ai_gateway')throw new AiGatewayError('The AI provider route could not be confirmed.');
+      consumeProviderEgressDispatch(cfg,'probe');
       // Metadata-only probe: validates the key (401) and the model id (404) with no generation cost.
       await client(cfg).models.retrieve(cfg.model);
       return { ok: true };
@@ -93,6 +100,8 @@ export const openaiAdapter: AiAdapter = {
    */
   async converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promise<ConverseResult> {
     try {
+      if(cfg.provider!=='openai'&&cfg.provider!=='ai_gateway')throw new AiGatewayError('The AI provider route could not be confirmed.');
+      consumeProviderEgressDispatch(cfg,'conversation',args);
       const tools = requestTools(args.tools);
       const completion = await converseClient(cfg, args.timeoutMs, Boolean(cfg.governance)).chat.completions.create({
         model: cfg.model,

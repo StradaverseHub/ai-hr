@@ -1,6 +1,6 @@
 import React, {isValidElement} from 'react';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notifications:vi.fn(),unread:vi.fn()}));
+const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',theme:'monolith',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notifications:vi.fn(),unread:vi.fn()}));
 vi.mock('next/font/google',()=>{const font=()=>({variable:'fixture-font'});return {Plus_Jakarta_Sans:font,Geist_Mono:font,DM_Mono:font};});
 vi.mock('next/font/local',()=>({default:()=>({variable:'fixture-schibsted-font'})}));
 vi.mock('next/headers',()=>({headers:async()=>new Headers({'x-pathname':m.pathname}),cookies:async()=>({get:()=>undefined})}));
@@ -11,7 +11,7 @@ vi.mock('../lib/viewer',()=>({viewerIdentity:async()=>({name:'Fixture',employeeC
 vi.mock('../lib/principals',()=>({listPrincipals:async()=>[]}));
 vi.mock('../lib/demo-mode',()=>({demoSwitcherEnabled:()=>true,isDemoDeployment:()=>true}));
 vi.mock('../lib/scope',()=>({getScopeIds:async()=>m.scopeIds}));
-vi.mock('../lib/ui-theme-server',()=>({currentUiTheme:async()=>'monolith'}));
+vi.mock('../lib/ui-theme-server',()=>({currentUiTheme:async()=>m.theme}));
 vi.mock('../core/read',()=>({allowedCompanies:async()=>[],listApprovalHistory:async()=>[]}));
 vi.mock('../core/onboarding',()=>({getOnboardingStatus:async()=>m.onboarded}));
 vi.mock('../packs/lifecycle/service',()=>({onboardingTasks:async()=>[],onboardingUnreadNoticeCount:async()=>0,onboardingNotices:async()=>[],onboardingNavigation:async()=>({module:false,master:false,requisitions:false,joiners:0,checklists:0})}));
@@ -36,7 +36,7 @@ import {Sidebar} from '../components/sidebar';
 import {OnboardingTour} from '../components/onboarding-tour';
 import {NoticePopupSlot} from '../components/notice/notice-surfaces';
 import {WELCOME_TOUR_ID} from '../lib/onboarding-tour';
-beforeEach(()=>{m.scopeIds=[];m.module.mockReset();m.module.mockReturnValue(false);m.feedback.mockReset();m.feedback.mockReturnValue(true);m.notifications.mockReset();m.notifications.mockResolvedValue([]);m.unread.mockReset();m.unread.mockResolvedValue(0);m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.pathname='/admin/settings/email';m.onboarded=true;});
+beforeEach(()=>{m.theme='monolith';m.scopeIds=[];m.module.mockReset();m.module.mockReturnValue(false);m.feedback.mockReset();m.feedback.mockReturnValue(true);m.notifications.mockReset();m.notifications.mockResolvedValue([]);m.unread.mockReset();m.unread.mockResolvedValue(0);m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.pathname='/admin/settings/email';m.onboarded=true;});
 function propsOf(node:React.ReactNode,target:unknown):Record<string,unknown>|undefined{
  if(Array.isArray(node)){for(const child of node){const found=propsOf(child,target);if(found)return found;}return;}
  if(!isValidElement<{children?:React.ReactNode}>(node))return;
@@ -127,4 +127,18 @@ it('loads account notifications for selected company entitlements without an emp
  const tree=await Layout({children:null});expect(propsOf(tree,NotificationCenter)).toBeDefined();
  expect(m.notifications).toHaveBeenCalledTimes(3);for(const [,employmentId,opts]of m.notifications.mock.calls){expect(employmentId).toBeUndefined();expect(opts).toMatchObject({letterCompanyIds:[active]});}
  expect(m.unread).toHaveBeenCalledTimes(2);for(const [,,opts]of m.unread.mock.calls)expect(opts).toMatchObject({letterCompanyIds:[active]});
+});
+
+// Actual async RootLayout, not a standalone Sidebar fixture: V9 must keep the customer shell.
+it.each(['classic','monolith','atelier'])('keeps V9 inside the selected %s AIHR framework',async theme=>{
+ m.theme=theme;m.pathname='/lifecycle/v9';
+ m.session.mockResolvedValue({tenantId:'tenant',userId:'user',roles:['hr_admin'],grants:[]});m.operator.mockResolvedValue(false);
+ const tree=await Layout({children:<main>V9 reference content</main>});
+ expect(tree.props['data-ui-theme']).toBe(theme);expect(sidebarProps(tree)).toBeDefined();
+});
+it('keeps the same customer shell on a native V9 case deep link',async()=>{
+ m.pathname='/lifecycle/v9/onboarding/11111111-1111-4111-8111-111111111111';
+ m.session.mockResolvedValue({tenantId:'tenant',userId:'user',roles:['hr_admin'],grants:[]});m.operator.mockResolvedValue(false);
+ const tree=await Layout({children:<main>Native case</main>});
+ expect(tree.props['data-ui-theme']).toBe('monolith');expect(sidebarProps(tree)).toBeDefined();
 });

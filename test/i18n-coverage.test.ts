@@ -13,6 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import {PAY_FORMULA_FUNCTIONS,PAY_FORMULA_FIELD_TYPES} from '../lib/pay-formula-registry';
 
 const MESSAGES = path.resolve(__dirname, '../messages');
 const LOCALES = ['ms', 'ta', 'th', 'vi', 'zh'] as const;
@@ -30,6 +31,11 @@ function flatten(obj: Dict, prefix = '', out: Record<string, unknown> = {}): Rec
 }
 function getPath(obj: Dict, dotted: string): unknown {
   return dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Dict)[k] : undefined), obj);
+}
+
+// Only a complete literal argument is static. A quoted prefix followed by + is dynamic.
+function staticTranslationKeys(source: string): string[] {
+  return [...source.matchAll(/\bt(?:\.rich)?\(\s*(['"])([a-z][a-zA-Z0-9_.]*)\1\s*(?=[,)])/g)].map(match => match[2]);
 }
 
 function sourceFiles(): string[] {
@@ -73,6 +79,47 @@ describe('i18n coverage', () => {
     expect([...new Set(orphans)], orphans.join('\n')).toEqual([]);
   });
 
+  it('distinguishes complete static literals from dynamic prefixes without hiding missing keys', () => {
+    const source = `t('loading'); t("missing.static"); t.rich('rich.key', {value: 1});
+      t('fields.' + field); t("parameter." + key); t('notStatic'.toUpperCase());`;
+    expect(staticTranslationKeys(source)).toEqual(['loading','missing.static','rich.key']);
+    expect(staticTranslationKeys(source).filter(key => getPath(en, `payFormula.${key}`) === undefined))
+      .toEqual(['missing.static','rich.key']);
+  });
+
+  it('resolves the Formula editor dynamic catalogue in every locale', () => {
+    const editor=fs.readFileSync(path.resolve(__dirname,'../app/payroll/formula-builder/condition-editor.tsx'),'utf8');
+    const parameterMap=editor.match(/const parameterKeys:Record<string,string>=\{([^}]+)\}/)?.[1];
+    expect(parameterMap).toBeTruthy();
+    const parameters=new Map([...parameterMap!.matchAll(/'([^']+)':'([^']+)'/g)].map(match=>[match[1],match[2]]));
+    expect(parameters.size).toBe(11);
+    const keys=new Set([
+      ...['decimal','string','boolean','date'].map(type=>`types.${type}`),
+      ...['decimal','string','boolean','name','call','unary','binary'].map(kind=>`expression.${kind}`),
+      ...['declare','assign','if','explain','return','comment'].map(kind=>`statement.${kind}`),
+      ...Object.values(PAY_FORMULA_FIELD_TYPES).flatMap(fields=>Object.keys(fields).map(field=>`fields.${field}`)),
+      ...PAY_FORMULA_FUNCTIONS.flatMap(fn=>[
+        `functions.${fn.code}`,`functionHelp.${fn.code}`,
+        ...fn.parameters.map(parameter=>{
+          expect(parameters.has(parameter.name),parameter.name).toBe(true);
+          return `parameter.${parameters.get(parameter.name)}`;
+        }),
+        ...fn.parameters.flatMap(parameter=>(parameter.choices??[]).flatMap(choice=>{
+          const key=getPath(en,`payFormula.fields.${choice}`)!==undefined?`fields.${choice}`
+            :getPath(en,`payFormula.choices.${choice}`)!==undefined?`choices.${choice}`:null;
+          // The editor deliberately shows unlocalized source codes only when no catalogue label exists.
+          expect(choice.trim()).not.toBe('');return key?[key]:[];
+        })),
+      ]),
+    ]);
+    expect(PAY_FORMULA_FUNCTIONS.length).toBeGreaterThan(20);
+    for(const locale of ['en',...LOCALES])for(const key of keys){
+      const value=getPath(load(locale),`payFormula.${key}`);
+      expect(typeof value,`${locale}:payFormula.${key}`).toBe('string');
+      expect((value as string).trim(),`${locale}:payFormula.${key}`).not.toBe('');
+    }
+  });
+
   it('C. every static t() key in a single-namespace file resolves in en.json', () => {
     const missing: string[] = [];
     for (const f of sourceFiles()) {
@@ -83,8 +130,8 @@ describe('i18n coverage', () => {
       const uniq = [...new Set(namespaces)];
       if (uniq.length !== 1) continue; // multi-namespace files: skip (can't attribute keys statically)
       const ns = uniq[0];
-      for (const km of src.matchAll(/\bt(?:\.rich)?\(\s*['"]([a-z][a-zA-Z0-9_.]*)['"]/g)) {
-        const full = `${ns}.${km[1]}`;
+      for (const key of staticTranslationKeys(src)) {
+        const full = `${ns}.${key}`;
         if (getPath(en, full) === undefined) missing.push(`${full}  (${path.relative(path.resolve(__dirname, '..'), f)})`);
       }
     }

@@ -29,7 +29,7 @@ const modulePlacement = (module:NavigationModule,section:NavigationSection):Navi
 const shared = new Set(['/','/me','/org','/tasks','/approvals','/system-testing','/assistant','/knowledge-base','/feedback']);
 const system = new Set(['/admin/holidays','/admin/settings/system-labels','/admin/system-settings/approval-delegation',
   '/admin/settings/email','/admin/settings/email-templates','/admin/settings/login','/admin/settings/notifications','/admin/scheduled-actions','/admin/privacy','/admin/audit',
-  '/admin/ai','/admin/users','/admin/system-explorer','/admin/system-testing','/mobile-preview','/admin/settings/dashboard']);
+  '/admin/ai','/admin/security-center','/admin/users/access','/admin/users/function-access','/admin/users/create','/admin/users/invite','/admin/users','/admin/system-explorer','/admin/system-testing','/mobile-preview','/admin/settings/dashboard']);
 const peopleConfig = new Set(['/admin/organization','/admin/settings/employee-id','/admin/settings/hiring-defaults',
   '/admin/settings/movement','/admin/settings/profile-requests','/admin/settings/people-general']);
 const leaveHr = new Set(['/admin/leave-config/adjustments','/admin/leave-config/data-import',
@@ -42,6 +42,7 @@ const attendanceMine = new Set(['/attendance/clock','/attendance/my-records','/a
 /** Unknown destinations remain explicit so source/coverage checks can refuse incomplete placement. */
 export function navigationPlacement(href:string):NavigationPlacement | undefined {
   const [path,query]=href.split('?'),params=new URLSearchParams(query);
+  if(path==='/lifecycle/v9'&&['tasks','records'].includes(params.get('view')??''))return {area:'shared'};
   if(path==='/me'&&params.get('tab')==='payroll'||path==='/me/tax-relief'||path.startsWith('/me/payslip')||path==='/me/ea'||path==='/me/tp3')return modulePlacement('payroll','mine');
   if(shared.has(path)||path==='/reports'&&!params.has('cat'))return {area:'shared'};
   if(system.has(path))return {area:'system'};
@@ -55,6 +56,8 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(path==='/control-tower/agents'||path.startsWith('/control-tower/agents/'))return modulePlacement('controlTower','ai');
   if(path.startsWith('/control-tower'))return modulePlacement('controlTower','hr');
   if(path.startsWith('/admin/lifecycle'))return modulePlacement('onboarding','config');
+  if(path==='/me/lifecycle')return modulePlacement('onboarding','mine');
+  if(path.startsWith('/lifecycle/v9'))return modulePlacement('onboarding','hr');
   if(path.startsWith('/lifecycle/onboarding')||path.startsWith('/lifecycle/requisitions'))return modulePlacement('onboarding','hr');
   if(path==='/lifecycle')return modulePlacement('onboarding','mine');
   if(path==='/leave/tracker')return modulePlacement('leave','team');

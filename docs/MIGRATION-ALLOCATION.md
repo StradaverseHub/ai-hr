@@ -5,6 +5,27 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## V9 coordinated staging successor — 30 October 2026
+
+The owner explicitly resumed this session, authorized merging V9 and deploying to staging, and appointed a release orchestrator. V9 is the next authorized application release after Board handback and the separate queue-guard verification window. No AI, MOBILE, performance or Bank feature payload is included. Production remains unauthorized.
+
+The fresh canonical/accepted baseline is `2ab4f6c120a28692857e93adeed072d463713ab6`: preserve its complete571-entry journal and every applied SQL byte, including0721/0722 atidx684–685/when1793330000050–51. V9's earlier verification-only0713–0720/idx694–701/when42–49 positions were never installed and are superseded: those lower timestamps would now be skipped.
+
+The freeze audit inspected1887 refs/237 unique journals plus476 registered worktree journals. Known unapplied AI personnel claims end at54 and performance0726 at55; none of the inspected worktrees claimed56 or later. The release orchestrator and the AI, parity, performance, MOBILE and Bank owners were notified. Lower provisional AI0703–0712 and other uninstalled claims must be reallocated above the actual installed watermark before their later owning release; they are not silently included or replayed here. Bank's proposed successor64/idx694 remains provisional until this release's actual handback.
+
+V9 appends immediately after the installed prefix atidx686–693/when1793330000056–63. Six SQL bodies remain byte-identical to verified435d6f7a7. The still-unapplied0714/0719 bodies now implement the HTML’s explicit self-test behavior for pending/closed cases: the frozen recipient must equal the initiating actor, CC must be empty and no onboarding contact is permitted; real delivery remains restricted to submitted cases. The installed571-entry prefix and these eight allocated positions are unchanged. Revalidate the current source/ledger and peer claims before admission. This allocation does not waive authenticated aggregate verification, migration rehearsals, scoped rendered acceptance, the shared lease or exact staging arrival.
+
+| Index | Timestamp | Filename | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|686|1793330000056|0713_lifecycle_v9|7cd451abc6b6fd5a2a7bd46aae2078e6d7b33d795f07e2c132d42637a44aeb3f|
+|687|1793330000057|0714_lifecycle_v9_email|6e2a5914825c1b89a73ba02c0da88f24c63c641ea6eab73280197b564387271b|
+|688|1793330000058|0715_lifecycle_v9_email_assets|7cce0a32d622fa500692deee33d1dc2738009fdddb3c9a7500c627cd50ede0ce|
+|689|1793330000059|0716_lifecycle_v9_events|98f23c7f62f93508f7da8eb4d51c891467ee87ec6d090cae2c64e1e111b51a1b|
+|690|1793330000060|0717_lifecycle_v9_delivery_review|a2a29747b6fcfea39dfc2e54f554f2f44fc9d365c911796066de1a4c36d2979f|
+|691|1793330000061|0718_lifecycle_v9_employment_class|8fcdc41c6db137aa69e29c5dab44a8788b7c3c30620b97d215d7bbbb65f34dd2|
+|692|1793330000062|0719_lifecycle_v9_business_recipients|4547c284bbacdf709cd5a5c66b1f7458a981cc2dec40825ead194081ab9f2f22|
+|693|1793330000063|0720_lifecycle_v9_self_equipment|3e7f1b5fe1b08e33d9424ef8262649c4c9ca22356a893987aeaa1d81f391846b|
+
 ## Feedback menu operator switch — 30 October 2026 (unapplied successor)
 
 Branch `claude/feedback-menu-operator-toggle-616263` includes verified staging source
@@ -391,6 +412,226 @@ Other unapplied lower-timestamp claims likewise require a fresh coordinated appe
 installed watermark before their own release. V9's eight drafts remain unallocated. This allocation
 grants no production deployment or human staging acceptance.
 
+## Feedback Kanban and release evidence — isolated development, 30 October 2026
+
+`codex/feedback-kanban-release-status-20261030` starts at freshly fetched matching main/alpha
+`2ab4f6c120a28692857e93adeed072d463713ab6`. Registered worktree inspection found filenames through
+0726 and sequences through 1793330000064. This development candidate reserves
+`0727_feedback_release_evidence`, idx686 / sequence1793330000065, after its unchanged canonical prefix.
+It adds nullable feedback release evidence without guessing environments for existing records.
+The standard private `aihr-staging` alias was unavailable in this session, so the installed watermark
+has **not** been verified. This is a provisional development/CI position, not an installation allocation.
+Before integration/application, reconcile competing source claims, actual ordered ledger and current
+canonical journal with the release owner. No applied SQL bytes, installation or acceptance are changed.
+
+## Feedback Kanban staging reconciliation — 30 October 2026
+
+The owner explicitly requested reconciliation, required release checks and staging deployment of
+PR114. Fresh main/alpha and healthy staging source are2ab4f6c12; staging build
+IlVluYN1mVKchUHs5im0D has571 applied entries, through0722 / sequence1793330000051.
+The repository's ordered exact-ledger verifier matched the entire prefix, including the two audited
+historical-byte identities. The prefix and every applied SQL byte remain unchanged.
+
+The earlier0727 filename is superseded by **0728_feedback_release_evidence**, idx686 /
+sequence**1793330000065**, because an unmerged Assistant draft also claims the0727 number.
+The SQL body is unchanged (SHA256 `d0914e5ec06a1f78b5e081164ab46330f37c29c8c3b2d0d6c592b205cee374c7`). A fresh inspection of1,928 local/origin refs
+and488 registered worktrees found no other claim at or above…065. The…052–064 claims remain
+unmerged development drafts, with collisions already present at…055 and…064; none is a prerequisite
+of this feedback change or included implicitly. Their owners must reallocate those unapplied entries
+above the actual installed watermark before their later integration/application. No foreign SQL,
+reservation or branch is edited. This owner-authorized migration-bearing release runs alone in the
+shared queue, against the complete unchanged canonical prefix. Installation still requires the frozen
+candidate's authenticated full release witness, populated-baseline upgrade proof and exclusive lease.
+
+
+## Feedback preparation after V9 publication — 30 October 2026
+
+The earlier Feedback gate passed at d82ff8bee against baseline2ab4f6c12. Its installation
+preflight refused when alpha advanced to V9 d6cb83d62; no Feedback source, packet, migration
+or service mutation occurred. The claimed-only Feedback lease was safely aborted. The owner’s
+later release order places Onboarding/V9 first, then the combined MOBILE, ENHANCEMENT,
+BREADCRUMB and PR115 release, before this Feedback release can claim the window.
+
+This separate preparation branch preserves d6cb83d62’s entire journal prefix and moves the
+still-unapplied0728 entry to provisional idx694 / sequence1793330000065. Its SQL SHA256 remains
+`d0914e5ec06a1f78b5e081164ab46330f37c29c8c3b2d0d6c592b205cee374c7`. This is source
+compatibility preparation only. Reconcile index, sequence and competing claims again against
+the actual accepted combined baseline and complete ordered staging ledger before freezing
+the next candidate. The earlier gate is preserved for its original source and baseline; it
+does not authorize installation of this merged preparation source. No staging claim, application,
+acceptance or production authority is implied.
+
+## Five-scope MOBILE successor — compatibility preparation, 30 October 2026
+
+The owner authorized Feedback PR114 to join MOBILE, ENHANCEMENT, BREADCRUMB and PR115 source
+in one isolated successor release. MOBILE remains the aggregate integration and installation owner.
+The prepared source normally merges Feedback member12893f30d8a5d739ed6ec196a727c4ca30d6d90b
+with the preserved four-scope checkpoint898b2e53b3649c1ad4e68b6917763fcbb0ad9e28.
+It retains V9d6cb83d620d8d4380c981a72fc41628780840b4e's exact579-entry journal prefix and
+existing SQL bytes, then appends only0728_feedback_release_evidence at provisional idx694 /
+sequence1793330000065. Its SQL SHA256 remains
+`d0914e5ec06a1f78b5e081164ab46330f37c29c8c3b2d0d6c592b205cee374c7`.
+
+This is compatibility preparation, not a final installation allocation or accepted baseline.
+Unmerged drafts now claim filenames through0737 and sequences through1793330000074, with
+collisions among those drafts. Do not silently advance Feedback over foreign claims, import
+unrelated payloads or infer that unmerged draft positions are installation reservations.
+Before final freeze, coordinate canonical claims against V9's actual accepted ordered ledger and
+watermark. Preserve the original member witnesses at their original candidates and baselines.
+The migration-bearing aggregate needs its own authenticated complete witness, populated-baseline
+upgrade and restore-readiness evidence, web/native/controller checks, one truthful isolated ticket
+and explicit combined human acceptance. PR115 source inclusion does not enable recovery-v2
+installation adoption. No staging claim, migration application or production authority follows here.
+
+## Six-scope MOBILE successor — coordinated source reservation, 30 October 2026
+
+The owner authorized Bank to join the isolated MOBILE, ENHANCEMENT, BREADCRUMB,
+PR115-source and Feedback candidate for source preparation and combined checks only.
+The Bank-containing candidate remains under an explicit protected-branch/PR merge,
+staging deployment and independent worker activation hold until concrete readiness is reviewed.
+The earlier five-scope deployment authorization does not lift this hold.
+
+The release orchestrator ratified the following source-only order after V9 human acceptance
+and completed lease handback. The accepted V9 baseline is
+`d6cb83d620d8d4380c981a72fc41628780840b4e`, build `2a2TlmC0dUsC0GcmbIAXZ`,
+with579 ordered applied rows through idx693 / sequence1793330000063.
+All579 source journal entries and existing SQL bytes remain unchanged.
+
+| Owner | Index | Sequence | Filename | SQL SHA256 |
+| --- | ---: | ---: | --- | --- |
+| Feedback PR114 | 694 | 1793330000065 | 0728_feedback_release_evidence | d0914e5ec06a1f78b5e081164ab46330f37c29c8c3b2d0d6c592b205cee374c7 |
+| Bank | 695 | 1793330000075 | 0691_bank_import_point_read | be6f8d38850fadd9151d58ea7476d8f60e09a0bf2b2b078e0196f4cb90c5bfe9 |
+
+Immediately before writing this reservation and journal, a fresh fetch and source audit covered
+2037 local/origin refs and506 registered worktrees. Existing parsed claims ended at…074.
+The two conflicted journals were accounted for by parsing both complete variants without
+editing foreign files: the owned preparation merge ended at…065/…064, and the old unrelated
+Feedback-menu merge ended at…022/…023. There was no…075-or-later claim at that observation.
+Unrelated draft payloads at…064 and…066–074 remain excluded and their reservations/history
+remain untouched; their owners must reconcile unapplied positions before later integration.
+The old Bank idx686/…064 position was an isolated development fixture, never an installation
+reservation, and is not copied into this aggregate journal.
+
+The pre-Bank580-entry source prefix is exactly accepted V9579 followed by Feedback…065.
+The aggregate appends only the unchanged Bank SQL at…075, for581 source journal entries.
+This freezes a finite source contract for the Bank successor proof controllers; old producer/
+consumer contracts pinned to earlier prefixes must refuse this candidate. Preserve historical
+refusal coverage and require a reviewed explicit new prefix/slot/SQL contract, fresh exact-source
+packet, short401 and full100001 native-save proof with independent cleanup verification.
+A complete aggregate witness, populated upgrade, restore readiness, web/native/controller
+journeys and independent review are still required. No protected-ref move, staging claim,
+installation, worker activation, human acceptance or production authority follows from this record.
+
+## Pay Formula Builder — 30 October 2026 (unapplied, review branch)
+
+Feedback `02472802-f445-40b8-b1a3-5defc7c69b59` uses an isolated review branch based on fetched aligned
+`origin/main` and `origin/alpha` `d6cb83d620d8d4380c981a72fc41628780840b4e`. The read-only staging
+source/build and migration ledger were verified at this same revision: 579 installed receipts,
+maximum sequence1793330000063. None of this feature's SQL has been applied.
+
+The initial provisional0741 / sequence1793330000078 collided with another unapplied Rewards owner.
+A fresh scan of1494 distinct local ref heads and307 registered worktrees found external reservations
+through0743 / sequence1793330000080. Formula Builder therefore moves to **0744_pay_formula_builder**,
+**idx694 / sequence1793330000081**, preserving the canonical installed journal prefix exactly.
+The abandoned0741 name is not a migration installed by this feature. Prior Movement0729/…066 and
+Tax0737/…074 remain separate, unapplied review branches and are not included here.
+
+This reserves source only. Recheck competing claims and the live ledger before integration/application;
+no staging/production deployment or protected-branch integration is authorized. Clean and populated
+ordinary journal rehearsals are in `test/pay-formula-upgrade.test.ts` and run in standard Actions.
+
+### Formula reservation superseded again before application
+
+Immediately before the second hosted verification freeze, a fresh fetch still aligned main/alpha at
+`d6cb83d620d8d4380c981a72fc41628780840b4e`; staging still has579 receipts through1793330000063.
+A fresh scan of1501 distinct ref heads and310 registered worktrees discovered a concurrent external
+Payroll reset reservation0744/…081 and newer external0745/…082 claims. Formula Builder therefore
+supersedes its never-applied0744/…081 reservation with **0746_pay_formula_builder / idx694 /
+1793330000083**. No lower reserved/applied migration is changed or included. The migration also keeps
+an immutable durable batch UUID in private evaluation history without a live-batch FK: canonical
+processed→reset→delete-draft cleanup must retain formula evidence without mutating/deleting it.
+The insert binding still verifies a real matching payroll batch/company/period. Native Pay Item deletion
+now uses its existing in-use refusal for a retained formula link instead of exposing a foreign-key error.
+
+These remain source reservations. All future integration/application gates must repeat collision and
+watermark checks; concurrent external branches have twice selected an already-pushed provisional claim.
+
+### Final Formula source reservation with allocation headroom
+
+Before the third hosted freeze, a fresh fetch and scan of1511 distinct ref heads and313 registered
+worktrees found concurrent external reservations through0747 / sequence1793330000084. Main/alpha
+remain aligned at`d6cb83d620d8d4380c981a72fc41628780840b4e`; the last independently read live watermark
+is579 installed receipts through1793330000063. No Formula SQL has been applied. To avoid repeated
+max+1 races, the coordinator authorized a unique higher source reservation with headroom:
+**0800_pay_formula_builder / idx694 / sequence1793330000200**. A complete ref/worktree scan and explicit
+0800/…200 collision check found no prior owner. Noncontiguous filenames/timestamps are permitted by
+the append-only journal: this adds exactly one entry after the unchanged canonical prefix and does not
+create placeholder migrations, fill gaps, or change any applied SQL bytes.
+
+This supersedes every provisional Formula0741/0744/0746 reservation above, all never applied.
+Current SQL SHA256: `f8ba2919eb59346bc86453667cc7952a5671db88b740fcab3c41b4530802c322`.
+Tenant-binding checks include optional event component/test references. Migration and normal populated
+upgrade witnesses will be rerun on this exact reservation. Final integration/application still requires
+fresh competing-claim, canonical-prefix and live ordered-ledger verification; this is not deployment authority.
+
+The still-unapplied0800 body now distinguishes Native financial subject authority from explicit
+Workforce-purpose source provenance and intersects private-category rights with the current company.
+This changes no default grants and adds no schema columns; immutable requirements JSON carries the
+optional provenance flag. Clean and populated ordinary upgrades are rerun after this final SQL change.
+
+Before the sixth focused verification freeze, a fresh canonical fetch and complete scan of1536 distinct
+ref heads and324 registered worktrees found only Formula-owned claims for0800 /1793330000200.
+Concurrent external source reservations extend through0810 /1793330000210 and remain separate;
+main/alpha still resolve to`d6cb83d620d8d4380c981a72fc41628780840b4e`. A fresh read-only staging ledger
+query still returns579 installed receipts through1793330000063. The0800 SQL hash above is unchanged;
+fifth verification run41047504952 passed both clean and populated ordinary upgrades on these bytes.
+No deployment/application authority is implied by this source-reservation audit.
+
+
+## Next isolated aggregate — source-only provisional draft, 30 October 2026
+
+The release coordinator authorized reversible source-only integration of Onboarding HTML PR138,
+AI DEV PR107, Security Center PR135 and Formula Builder PR140 from exact provisional predecessor
+6bdddf4f84b3ecb693d8fbf29409373e49c73ac9. That predecessor has not been declared accepted by this
+draft. Its complete581-entry journal prefix and all SQL bytes remain unchanged. Formula0800
+retains SQL SHA256 f8ba2919eb59346bc86453667cc7952a5671db88b740fcab3c41b4530802c322 and when1793330000200;
+the draft appends it at idx696 solely to make the cumulative source reviewable. This is not a
+reservation, installation allocation, live-ledger verification or release qualification. Before final
+freeze, refresh actual accepted source/build/ordered ledger, competing claims and the central allocation;
+stop if this provisional slot or watermark is no longer valid. No applied SQL may change.
+
+
+## Formula company retention repair — centrally ratified source append, 31 October 2026
+
+The release coordinator ratified this append after the original combined gate completed.
+Fresh staging metadata at 2026-10-30T17:14:16Z reports healthy source/build
+`f2ca511f4ded441399fd30437bb75553bb92efbb` / `7N7c7Fk5tpJmI7C-5QGwf`,
+no active lease or prepared batch, and all 581 ordered applied hashes/timestamps matching
+that canonical baseline, through1793330000075. Preserve every 581 prefix entry and SQL byte.
+The existing pending 0800 remains idx696 /1793330000200 with unchanged SQL SHA256
+`f8ba2919eb59346bc86453667cc7952a5671db88b740fcab3c41b4530802c322`.
+
+The fresh claims audit covered 1537 distinct heads, 283 journal blobs and 340 worktrees,
+including both conflicted journal variants without editing them. External 0810 /1793330000210
+remains excluded. No 0811 filename or sequence 211 collision was found. Append exactly:
+
+| Index | Timestamp | Filename | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|697|1793330000211|0811_pay_formula_company_retention|b3bea8f1c646e0989ac1cf161cc4950e4956439693961c2d8c00aba1c21aae5b|
+
+This read-only boolean helper supplies the existing native company deletion guard with
+retention evidence even after private trace permission is revoked. It requires a current
+validated human company administrator and returns no receipt payload, count or identifier.
+It widens no receipt RLS, table grants, financial effect or real account authority.
+The ordinary owner must own both helper and non-FORCE-RLS receipt tables; verify actual
+ownership, ACLs, principal negatives, hidden receipt behavior and clean/populated upgrades
+on the frozen repaired source. The source journal now has 583 entries. Bank's separate
+scoped 580-to581 proof still executes only its immutable 581 prefix.
+
+This allocation authorizes source repair only. No SQL has been applied by this reservation;
+backup/restore, authenticated affected qualification, exact release admission, protected
+integration and the exclusive staging window remain required. Production is untouched.
+
 ## Performance development reservation — 30 October 2026
 
 Owned branch `codex/system-performance-audit-20261030` reserves
@@ -472,3 +713,26 @@ after restoration. Only query plans persist; every login/principal fact is read 
 This is an unapplied development reservation. Existing0726/0736/0745 collisions and the
 accepted ledger still require reconciliation before integration or application. No protected
 branch integration, target database change, deployment or release eligibility is authorized.
+
+## Performance source reconciliation — 31 October 2026, development only
+
+The isolated performance branch merges published main/alpha
+`b0907303caf7fcb75fdce7194a327d10ae209ba2`. Its complete 583-entry source journal
+through 0811 / idx697 /1793330000211 and all SQL bytes are preserved exactly.
+A read-only scan of 2,382 local/remote refs (284 distinct parseable journal blobs)
+and 344 Git-registered worktrees found filenames through0811 and sequences
+through1793330000211. The four unapplied performance drafts are renamed without
+changing their SQL bytes and appended in the same dependency order:
+
+| Index | Sequence | Filename | SQL SHA256 |
+| ---: | ---: | --- | --- |
+| 698 | 1793330000212 | 0812_claim_history_order | `0b3c2b7072e4cee09d37550af1edd855c88ceb5094d122fb1c6032c64e402d3e` |
+| 699 | 1793330000213 | 0813_visibility_plan_cache | `189485ba9146331bf38afa903a7e18f68fb27a3927ceef4a480c876de95165b2` |
+| 700 | 1793330000214 | 0814_permission_read_work | `f828d2414577cf794cf37db0ae72979dc3f5caa1215dd324548bd85acbbfa2d6` |
+| 701 | 1793330000215 | 0815_session_read_plans | `b721eb8da017a5c5b7096f6233a8a83a6bfa155d65465e3d95e440b2d802dc56` |
+
+This supersedes the older performance development positions above. Older receipts
+retain their original source identities and do not verify this merged candidate.
+The installed ledger/watermark was not queried in this source-only reconciliation;
+installation allocation, complete live-prefix verification and release acceptance
+remain held. No target database, protected branch or deployment changes are authorized.

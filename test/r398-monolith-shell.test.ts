@@ -6,8 +6,8 @@
  *  • The intent bar sits between the top line and <main>; the status line after <main>.
  *  • <CommandBar /> stays MOUNTED in Monolith (its centre track is hidden, not removed), because the intent
  *    bar opens that dialog and ⌘K lives in it.
- *  • Classic keeps its baseline class strings except the explicit mobile notification-panel repair
- *    below. That repair keeps the panel within the viewport; every other baseline class remains pinned.
+ *  • Classic keeps its baseline class strings except the finite approved mobile repairs below.
+ *    Every other baseline class remains pinned to the original immutable source.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -41,7 +41,12 @@ const RESPONSIVE_NOTIFICATION_PANEL = 'fixed right-3 z-50 mt-2 w-[22rem] max-w-[
 // badge goes back to a plain primary lettered tile. An approved Classic change, mapped like the notification
 // panel above. Same mapping as the branding branch (claude/app-branding-ai-hr-802edd), which spelled it "AI HR".
 // Phone controls retain the verified 44px targets; every other Classic class remains pinned.
-const CLASSIC_TOUCH_TARGET_REPAIRS:Record<string,Record<string,string>> = {
+// ea0fba3de also permits the phone content column to shrink into its main scroller.
+// This exact old-to-new mapping adds only max-sm:min-h-0; desktop classes stay identical.
+const CLASSIC_APPROVED_MOBILE_REPAIRS:Record<string,Record<string,string>> = {
+  "app/layout.tsx": {
+    "flex min-w-0 flex-1 flex-col gap-3 lg:gap-4": "flex min-w-0 max-sm:min-h-0 flex-1 flex-col gap-3 lg:gap-4"
+  },
   "components/company-switcher.tsx": {
     "flex min-w-0 max-w-full items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98]": "flex min-w-0 max-w-full items-center min-h-11 gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98]"
   },
@@ -101,7 +106,7 @@ describe('Classic shell baseline, with the approved mobile notification position
         expect(cnStrings(onMain(file)).some((c) => c.includes('rounded-[1.25rem]'))).toBe(true);
       }
       const now = read(file);
-      for(const oldClass of Object.keys(CLASSIC_TOUCH_TARGET_REPAIRS[file]??{}))expect(before.filter(cls=>cls===oldClass)).toHaveLength(1);
+      for(const oldClass of Object.keys(CLASSIC_APPROVED_MOBILE_REPAIRS[file]??{}))expect(before.filter(cls=>cls===oldClass)).toHaveLength(1);
       if (file === 'components/notification-center.tsx') {
         expect(before.filter(cls => cls === CLASSIC_NOTIFICATION_PANEL)).toHaveLength(1);
         expect(classNames(now).filter(cls => cls === RESPONSIVE_NOTIFICATION_PANEL)).toHaveLength(1);
@@ -123,7 +128,7 @@ describe('Classic shell baseline, with the approved mobile notification position
         if (file === 'components/sidebar.tsx' && cls === KINGDEE_MARK_SIZE) continue;
         const expected = file === 'components/notification-center.tsx' && cls === CLASSIC_NOTIFICATION_PANEL
           ? RESPONSIVE_NOTIFICATION_PANEL
-          : file === 'components/sidebar.tsx' && cls === KINGDEE_BRAND_BADGE ? HR_BRAND_BADGE : CLASSIC_TOUCH_TARGET_REPAIRS[file]?.[cls]??cls;
+          : file === 'components/sidebar.tsx' && cls === KINGDEE_BRAND_BADGE ? HR_BRAND_BADGE : CLASSIC_APPROVED_MOBILE_REPAIRS[file]?.[cls]??cls;
         // Either the exact attribute is still there, or the same string with `monolith:` utilities appended.
         const kept = now.includes(`className="${expected}"`) || now.includes(`className="${expected} monolith:`);
         expect(kept, `Classic class string changed in ${file}: "${cls}"`).toBe(true);

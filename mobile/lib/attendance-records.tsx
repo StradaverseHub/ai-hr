@@ -122,8 +122,7 @@ function RosterTab({ month, onMonth }: { month: string | null; onMonth: (m: stri
 export function AttendanceHomeScreen() {
   const [tab, setTab] = useState<'records' | 'roster'>('records');
   const [month, setMonth] = useState<string | null>(null);
-  return <Screen>
-    <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
+  return <Screen back>
     <Title>{t('attTitle')}</Title>
     <View style={{ flexDirection: 'row', gap: 8 }}>
       <Button title={t('attTabRecords')} kind={tab === 'records' ? 'primary' : 'quiet'} onPress={() => setTab('records')} />
@@ -156,8 +155,7 @@ export function AttendanceDayScreen({ date }: { date: string }) {
   const found = day.data?.outcome === 'found' ? day.data : null;
   const online = !!found && !day.error && !day.loading;
   const d = found?.day;
-  return <Screen onRefresh={day.reload}>
-    <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
+  return <Screen back onRefresh={day.reload}>
     <Title>{t('attDayTitle', { date: valid ? fmtCalendarDate(date) : date })}</Title>
     <LoadState loading={day.loading} hasData={day.data != null} error={day.error} onRetry={day.reload} />
     {day.data?.outcome === 'refused' && <Muted>{t(day.data.code === 'module_off' ? 'attModuleOff' : 'attNotFound')}</Muted>}

@@ -240,6 +240,7 @@ export default async function OrganizationPage({
           </button>
         </form>
 
+        <Pager basePath="/admin/organization" params={{ q, status, sort }} state={pgState} />
         {/* 3783fd87 — lines rather than filled grey. `tableWrapCls`'s own rounded border is dropped
             because this table sits INSIDE a Card that already draws one; two borders 4px apart is the
             "unnecessary grey" the request names, and the Card's own edge is the boundary. The shared
@@ -287,7 +288,6 @@ export default async function OrganizationPage({
             </tbody>
           </table>
         </div>
-        <Pager basePath="/admin/organization" params={{ q, status, sort }} state={pgState} />
       </Card>
     </div>
   );

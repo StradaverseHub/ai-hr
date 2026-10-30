@@ -178,7 +178,13 @@ export default async function IndividualAttendancePage({
         {!selectedEmp ? (
           <p className="px-4 py-10 text-center text-sm text-muted-foreground">{t('filters.pickEmployeePrompt')}</p>
         ) : (
-          /* Wide table — the extra columns scroll horizontally on narrow screens. */
+          <>
+          <Pager
+            basePath="/attendance/individual"
+            params={{ emp: sp.emp, from: sp.from, to: sp.to }}
+            state={pgState}
+          />
+          {/* Wide table — the extra columns scroll horizontally on narrow screens. */}
           <div className="overflow-x-auto">
             {/* f728826a — `w-max min-w-full`, not `w-full`: the same squeeze fixed on Breakdown and Daily this
                   round. w-full compresses every cell below its content width and nowrap text then paints
@@ -242,12 +248,8 @@ export default async function IndividualAttendancePage({
                 )}
               </tbody>
             </table>
-            <Pager
-              basePath="/attendance/individual"
-              params={{ emp: sp.emp, from: sp.from, to: sp.to }}
-              state={pgState}
-            />
           </div>
+          </>
         )}
       </Card>
       </CollapsibleEmployeePanel>

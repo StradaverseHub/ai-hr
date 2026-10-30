@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {PassThrough} from 'node:stream';
+import {spawn} from 'node:child_process';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {cleanupFrames,readSingleCleanupCommit,acquireNormalCleanupLock,durableCleanupRecord} from './normal-cleanup-io.mjs';
+import {cleanupTreeFence,canonicalSourceExclusions} from './normal-cleanup-fences.mjs';
+test('continuous IPC preserves fragmented and coalesced READY/result frames',async()=>{const stream=new PassThrough(),frames=cleanupFrames(stream);const first=frames.next();stream.write('{"kind":"REA');stream.end('DY"}\n{"kind":"RESULT"}\n');assert.deepEqual(await first,{kind:'READY'});assert.deepEqual(await frames.next(),{kind:'RESULT'});await new Promise(done=>setImmediate(done));frames.finish();});
+test('actual subprocess IPC drains one strict COMMIT ending at EOF',async()=>{
+ const module=new URL('./normal-cleanup-io.mjs',import.meta.url).href,child=spawn(process.execPath,['--input-type=module','-e',`import {readSingleCleanupCommit} from ${JSON.stringify(module)};const value=await readSingleCleanupCommit(process.stdin);process.stdout.write(JSON.stringify(value)+String.fromCharCode(10));`],{stdio:['pipe','pipe','pipe']});
+ let error='';child.stderr.on('data',b=>error+=b);const done=new Promise((yes,no)=>{child.once('error',no);child.once('close',code=>code===0?yes():no(Error(error)));});done.catch(()=>{});
+ const frames=cleanupFrames(child.stdout);child.stdin.write('{"nonce":');child.stdin.end('"fictional"}\n');assert.deepEqual(await frames.next(),{nonce:'fictional'});await done;frames.finish();
+});
+for(const value of ['', '{}\n{}\n','{bad}\n','{}'])test('single COMMIT refuses EOF/malformed/multiple frame '+JSON.stringify(value),async()=>{const stream=new PassThrough(),result=readSingleCleanupCommit(stream);stream.end(value);await assert.rejects(result);});
+test('input deadlines and oversized frames fail closed',async()=>{const stream=new PassThrough();await assert.rejects(readSingleCleanupCommit(stream,{timeout:10}));const other=new PassThrough(),frames=cleanupFrames(other,{timeout:10,bound:10});const result=frames.next();other.end('x'.repeat(11));await assert.rejects(result);});
+test('extra output and early EOF cannot report channel success',async()=>{const stream=new PassThrough(),frames=cleanupFrames(stream);stream.end('{}\n{}\n');await frames.next();await new Promise(done=>setImmediate(done));assert.throws(()=>frames.finish());const other=new PassThrough(),empty=cleanupFrames(other);other.end();await assert.rejects(empty.next());});
+test('durable per-install lock and consumed record refuse concurrency/replay',t=>{const root=mkdtempSync(join(tmpdir(),'normal-cleanup-'));t.after(()=>rmSync(root,{recursive:true,force:true}));const path=join(root,'normal-cleanup.lock'),release=acquireNormalCleanupLock(path,{fixture:true});assert.throws(()=>acquireNormalCleanupLock(path,{}));durableCleanupRecord(join(root,'consumed.json'),{nonce:'fictional'});assert.throws(()=>durableCleanupRecord(join(root,'consumed.json'),{}));assert.equal(JSON.parse(readFileSync(join(root,'consumed.json'))).nonce,'fictional');release();});
+test('source/compiled fences include all nodes except exact real exclusions',t=>{const root=mkdtempSync(join(tmpdir(),'normal-fence-'));t.after(()=>rmSync(root,{recursive:true,force:true}));mkdirSync(join(root,'cache'));writeFileSync(join(root,'cache','runtime'),'a');writeFileSync(join(root,'immutable'),'a');const fence=()=>cleanupTreeFence(root,p=>p==='cache'),before=fence();writeFileSync(join(root,'cache','runtime'),'b');assert.equal(fence(),before);writeFileSync(join(root,'immutable'),'b');assert.notEqual(fence(),before);const excluded=canonicalSourceExclusions(['--exclude','.next','--exclude','node_modules','--exclude','/.improve/','--exclude','/mobile/*.pem']);assert.ok(excluded('.next'));assert.ok(excluded('nested/node_modules'));assert.ok(excluded('mobile/secret.pem'));assert.ok(!excluded('nested/.improve'));assert.ok(!excluded('mobile/real.ts'));});

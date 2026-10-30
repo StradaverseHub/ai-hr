@@ -14,7 +14,6 @@
  *      the font mapping, the @theme additions and the scoped .mono/.num classes are present.
  * The six-locale render of the control lives in test/r396-theme-switch.dom.test.tsx (jsdom project).
  */
-import { execFileSync } from 'node:child_process';
 import en from '../messages/en.json';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -157,9 +156,11 @@ describe('C. app/layout.tsx writes the theme onto <html data-ui-theme>', () => {
     const src = read('app/layout.tsx');
     // The JSX elements, not comment mentions of <html>: each opens with `<html` + newline + `lang={locale}`.
     const htmlTags = src.match(/<html\s+lang=\{locale\}/g) ?? [];
-    // Auth, installation operator and customer shells all retain the selected theme.
+    // Auth, installation operator and every customer route share the selected AIHR theme.
     expect(htmlTags.length).toBe(3);
     expect(src.match(/<html\s+lang=\{locale\}\s+data-ui-theme=\{uiTheme\}/g) ?? []).toHaveLength(3);
+    expect(src).not.toContain('data-ui-theme="classic"');
+    expect(src).not.toContain('forcedTheme="light" lifecycleV9');
     // r401 — the cookie is read in ONE place, lib/ui-theme-server.ts, which the layout and the pages that branch
     // on the theme (Dashboard, My Profile) all call; the read itself is the same resolveUiTheme(cookie) it was.
     expect(src).toMatch(/const uiTheme = await currentUiTheme\(\);/);
@@ -211,7 +212,8 @@ describe('D. app/globals.css — Monolith scoped, Classic untouched', () => {
   });
 
   it("Classic's :root and .dark blocks are byte-identical to main's", () => {
-    const mainCss = execFileSync('git', ['show', 'origin/main:app/globals.css'], { cwd: ROOT, encoding: 'utf8' });
+    // Frozen reviewed baseline works in detached and shallow CI checkouts too.
+    const mainCss = JSON.parse(read('test/fixtures/ui-theme-classic-baseline.json')).css as string;
     for (const sel of [':root', '.dark']) {
       const before = block(mainCss, sel);
       expect(before.length, sel).toBeGreaterThan(500);

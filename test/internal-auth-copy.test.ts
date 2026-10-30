@@ -11,7 +11,7 @@ describe('embedded auth language contracts', () => {
       for (const key of Object.keys(en.internalAuth)) expect(catalogue[key]).toBeTruthy();
     }
   });
-  it('the native English and Malay copy is the same owned authentication vocabulary', () => {
-    for (const locale of ['en','ms'] as const) expect(mobile[locale]).toEqual(JSON.parse(readFileSync(`messages/${locale}.json`, 'utf8')).internalAuth);
+  it('the native copy is the same owned authentication vocabulary in all six languages', () => {
+    for (const locale of ['en','ms','zh','ta','th','vi'] as const) expect(mobile[locale]).toEqual(JSON.parse(readFileSync(`messages/${locale}.json`, 'utf8')).internalAuth);
   });
 });

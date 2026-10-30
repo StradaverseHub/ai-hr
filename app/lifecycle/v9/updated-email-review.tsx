@@ -1,0 +1,13 @@
+'use client';
+import { useState } from 'react';
+import type { LifecycleV9UpdatedEmailPreview, LifecycleV9Command } from '@/packs/lifecycle/service';
+import { readV9UpdatedEmail } from './actions';
+export function UpdatedEmailReview({caseId,mailId,busy,command}:{caseId:string;mailId:string;busy:boolean;command:(input:LifecycleV9Command)=>Promise<{ok:boolean;error?:string}>}) {
+  const [preview,setPreview]=useState<LifecycleV9UpdatedEmailPreview|null>(null),[reason,setReason]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(false),[queued,setQueued]=useState(false);
+  async function review(){setLoading(true);setError('');setPreview(null);try{const result=await readV9UpdatedEmail(caseId,mailId);if(result.ok)setPreview(result.preview);else setError(result.error);}catch{setError('The updated copy could not be prepared. Try again.');}finally{setLoading(false);}}
+  async function send(){if(!preview)return;setLoading(true);setError('');try{const result=await command({type:'emailReplace',id:mailId,sourceRevision:preview.sourceRevision,reason});if(result.ok)setQueued(true);else setError(result.error??'The updated copy could not be queued. Your review is still here.');}catch{setError('The updated copy could not be queued. Your review is still here.');}finally{setLoading(false);}}
+  return <section className="v9-stack" aria-label="Review an updated email copy">{error&&<p className="v9-notice v9-error" role="alert">{error}</p>}{queued?<p role="status">Updated copy queued for delivery. The original receipt is retained.</p>:<>
+    <button type="button" className="v9-button" disabled={busy||loading} onClick={()=>void review()}>{loading?'Preparing…':preview?'Refresh updated preview':'Review updated copy'}</button>
+    {preview&&<><p className="v9-muted">This creates a new delivery with the current copy, recipients and attachments. Review these details before queueing it.</p><dl><dt>To</dt><dd>{preview.to.join(', ')}</dd><dt>CC</dt><dd>{preview.cc.join(', ')||'None'}</dd><dt>Subject</dt><dd>{preview.subject}</dd></dl><p className="v9-prewrap">{preview.body}</p><p>Documents: {preview.documents.map(document=>document.name+' · v'+document.version).join(', ')||'None'}</p><p>Files and images: {preview.files.join(', ')||'None'}</p><label className="v9-field"><span>Updated-copy review reason *</span><textarea rows={3} maxLength={4000} value={reason} disabled={busy||loading} onChange={event=>setReason(event.target.value)}/></label><button type="button" className="v9-button v9-button-primary" disabled={busy||loading||!reason.trim()} onClick={()=>void send()}>Queue reviewed updated copy</button></>}
+  </>}</section>;
+}

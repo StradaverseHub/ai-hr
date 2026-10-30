@@ -75,7 +75,7 @@ export const SHELL_BODY_CLS = 'h-dvh overflow-hidden bg-canvas p-3 font-sans lg:
 /** app/layout.tsx — the rail/content row. */
 export const SHELL_ROW_CLS = 'flex h-full gap-3 lg:gap-4';
 /** app/layout.tsx — the content column that the header sits at the top of. */
-export const SHELL_COL_CLS = 'flex min-w-0 flex-1 flex-col gap-3 lg:gap-4';
+export const SHELL_COL_CLS = 'flex min-w-0 max-sm:min-h-0 flex-1 flex-col gap-3 lg:gap-4';
 /** components/sidebar.tsx — the expanded rail. The collapsed state (w-[66px]) only gives MORE room. */
 export const RAIL_WIDTH_CLS = 'w-[232px]';
 /**

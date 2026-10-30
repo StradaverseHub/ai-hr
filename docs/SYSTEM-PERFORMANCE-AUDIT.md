@@ -66,10 +66,12 @@ do not imply equal resident memory. The two-worker app processes consume 385.7
 CPU seconds over 320.1 wall seconds, about 1.2 cores combined, versus 340.4 over
 346.6 for the control. More processes alone do not resolve this shared-host workload.
 
-The current candidate is based on merged main `2ab4f6c12`; main and alpha have
-subsequently advanced. It requires fresh integration review before release.
-Migrations 0726, 0736, 0745 and 0810 remain development reservations; competing
-allocations, the complete journal prefix and installed ledger must be reconciled.
+The earlier measured candidate was based on merged main `2ab4f6c12`. The resumed
+development candidate merges main/alpha `b0907303c`; its new integration checks
+are separate from the results above. The complete 583-entry canonical source
+journal is preserved, followed by the four unchanged performance SQL drafts renamed
+0812–0815 at sequences1793330000212–215. They remain development reservations;
+the installed ledger and final allocation must be verified before release.
 See [migration allocation](MIGRATION-ALLOCATION.md). Applied SQL was not rewritten.
 
 ## Workload and acceptance

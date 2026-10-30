@@ -45,6 +45,8 @@ export function normalizePayItemRow(row: PayItemUploadRow, vocabulary: PayItemVo
   if (!row.values.kind) errors.push({ field: 'kind', code: 'required' });
   const kind = choice('kind', defaults.kind) as PayComponentInput['kind'];
   const inputKind = choice('inputKind', defaults.inputKind) as PayRuleKind;
+  // Workbook has no Formula ID/test evidence columns; reusable formulas are linked in native maintenance.
+  if(inputKind==='formula_builder')errors.push({field:'inputKind',code:'invalidChoice'});
   const input: PayComponentInput = {
     code: row.values.code.trim().toUpperCase(), name: row.values.label.trim(), label: row.values.label.trim(),
     description: row.values.description.trim() || null, kind, isNonPayable: kind === 'non_payable',
@@ -57,7 +59,7 @@ export function normalizePayItemRow(row: PayItemUploadRow, vocabulary: PayItemVo
     pcbRemunerationType: (choice('pcbRemunerationType', '') || null) as PayComponentInput['pcbRemunerationType'],
     pcbExemptionCode: choice('pcbExemptionCode', '') || null,
     eaFormLine: choice('eaFormLine', payComponentEaDefault(kind) ?? '') || null,
-    rule: null, pendingInputKind: inputKind === 'fixed' ? null : inputKind,
+    rule: null, pendingInputKind: inputKind === 'fixed'||inputKind==='formula_builder' ? null : inputKind,
   };
   const archived = choice('archived', defaults.archived ? 'inactive' : 'active') === 'inactive';
   const warnings: string[] = [];

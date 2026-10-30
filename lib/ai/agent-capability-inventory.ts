@@ -63,6 +63,10 @@ type ValidatePolicies<T extends Record<ModuleEffectActionId,AgentActionPolicy>>=
 export type RegisteredAgentActionPolicies=ValidatePolicies<CheckedPolicies>;
 
 export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<string,AgentCapabilityClass>>>>=Object.freeze({
+ "app/lifecycle/v9/email-assets/route.ts#route":{"POST":"backlog:confirm"},
+ "app/lifecycle/v9/files/[caseId]/route.ts#route":{"POST":"handoff:employment_exit_or_discipline"},
+ "app/lifecycle/v9/actions.ts":{"setupV9":"handoff:access_and_authentication","saveV9Config":"handoff:access_and_authentication","createV9Offboarding":"handoff:employment_exit_or_discipline","commandV9":"handoff:employment_exit_or_discipline","readV9Case":"backlog:automatic","readV9Email":"backlog:automatic","readV9Workflow":"backlog:automatic","readV9UpdatedEmail":"backlog:automatic"},
+ "app/me/lifecycle/actions.ts":{"saveOwnLifecycleDocument":"backlog:confirm","updateOwnLifecycleTask":"backlog:confirm","reportOwnLifecycleReturn":"backlog:confirm","updateOwnLifecycleReturn":"backlog:confirm","saveOwnLifecycleEquipmentReceipt":"backlog:confirm"},
  // HR correction effects stay unregistered and require an Approve review before any future integration.
  "app/admin/personnel/information-correction-actions.ts":{"informationContextAction":"backlog:approve","previewInformationAction":"backlog:automatic","saveInformationAction":"backlog:approve","previewInformationUploadAction":"backlog:approve","confirmInformationUploadAction":"backlog:approve"},
   "app/payroll/setup/corrections-actions.ts": {"savePayrollCorrections": "handoff:payroll_reversal"},
@@ -177,6 +181,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/api/mobile/v1/submission-abandon/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/mobile/v2/attendance/applications/[id]/withdraw/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/mobile/v2/attendance/corrections/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/attendance/overtime-plans/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/mobile/v2/attendance/replacement-leave/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/mobile/v2/claims/[id]/cancel/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/mobile/v2/claims/[id]/delete/route.ts#route":{"POST":"internal:other_client_same_service"},
@@ -214,7 +219,8 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/assistant/history-privacy-actions.ts":{"eraseAssistantHistoryAction":"internal:assistant_surface"},
  "app/assistant/import-privacy-actions.ts":{"eraseImportPreparationHistoryAction":"internal:assistant_surface"},
  "app/assistant/job-feedback-actions.ts":{"eraseGovernedJobFeedbackAction":"internal:assistant_surface","saveGovernedJobFeedbackAction":"internal:assistant_surface"},
- "app/assistant/launcher-actions.ts":{"askFromLauncherAction":"internal:assistant_surface"},
+ "app/analytics/ai-actions.ts":{"readProtectedAnalysisAction":"backlog:automatic"},
+ "app/assistant/launcher-actions.ts":{"askFromLauncherAction":"internal:assistant_surface","askFromWorkspaceAction":"internal:assistant_surface"},
  "app/assistant/module-plan-actions.ts":{"eraseModuleProposalsAction":"internal:assistant_surface","evaluateHumanPlannerAction":"internal:assistant_surface","proposeModulePlanAction":"internal:assistant_surface"},
  "app/assistant/native-outcome-actions.ts":{"eraseNativeOutcomesAction":"internal:assistant_surface","recordNativeOutcomeAction":"internal:assistant_surface","reopenNativeOutcomeAction":"internal:assistant_surface"},
  "app/assistant/specialist-review-actions.ts":{"createSpecialistCandidateAction":"internal:assistant_surface","evaluateSpecialistCandidateAction":"internal:assistant_surface","promoteSpecialistCandidateAction":"internal:assistant_surface","rollbackSpecialistCandidateAction":"internal:assistant_surface","runSpecialistJobAction":"internal:assistant_surface"},
@@ -273,6 +279,8 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/payroll/history-import/upload/route.ts#route":{"POST":"backlog:approve"},
  "app/payroll/payment-submission/bank-file/route.ts#route":{"POST":"backlog:approve"},
  "app/payroll/history-import/workflow-actions.ts":{"confirmHistoryUploadAction":"backlog:approve","previewHistoryRevertAction":"backlog:automatic","revertHistoryUploadAction":"handoff:payroll_reversal"},
+ // Formula configuration remains native-only; these are inventory ceilings, not registered agent effects.
+ "app/payroll/formula-builder/actions.ts":{"saveFormulaAction":"backlog:approve","testFormulaAction":"backlog:approve","formulaStateAction":"backlog:approve","deleteFormulaAction":"backlog:approve","saveAccumulationAction":"backlog:approve","searchFormulaEmployeesAction":"backlog:automatic","listFormulaBatchesAction":"backlog:automatic"},
  "app/payroll/payslip-information/actions.ts":{"copyPayslipInformation":"backlog:approve","savePayslipInformation":"backlog:approve"},
  "app/payroll/pcb-payment-actions.ts":{"recordPcbPaymentAction":"backlog:approve"},
  "app/payroll/process/actions.ts":{"checkPayrollCycleReadiness":"backlog:automatic","checkUnattachedForSelection":"backlog:automatic","createRunAction":"registered:multi_cycle_payroll.create_run","fetchPayrollRunEmployees":"backlog:automatic","resumeRunAction":"backlog:approve","runMultiCompanyAction":"backlog:approve","savePayrollDraftsAction":"backlog:approve","validatePayrollSelection":"backlog:automatic"},

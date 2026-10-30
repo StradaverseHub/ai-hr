@@ -83,7 +83,7 @@ describe('Home library search facet',()=>{
   });
   it('includes the real navigation owner projection without replacing a library fault with no-match',async()=>{
     vi.stubGlobal('fetch',vi.fn().mockRejectedValue(new Error('Fictional private failure')));
-    render(<NavIndexProvider><PublishedSearch entries={[{href:'/leave',label:'My Leave',section:'My HR',parent:'Leave'}]}/></NavIndexProvider>);
+    render(<NavIndexProvider><PublishedSearch entries={[{href:'/leave',label:'My Leave',section:'My HR',parent:'Leave',parentHref:'/leave'}]}/></NavIndexProvider>);
     submit('leave');
     await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent(labels.failed));
     expect(screen.getByRole('link',{name:'My Leave'})).toHaveAttribute('href','/leave');
@@ -94,7 +94,7 @@ describe('Home library search facet',()=>{
   it('removes revoked navigation immediately and discards library results from its old navigation context',async()=>{
     let finish:((response:Response)=>void)|undefined;
     const fetcher=vi.fn((_url:string,_options?:RequestInit)=>new Promise<Response>(resolve=>{finish=resolve;}));vi.stubGlobal('fetch',fetcher);
-    const {rerender}=render(<NavIndexProvider><PublishedSearch entries={[{href:'/leave',label:'My Leave',section:null,parent:null}]}/></NavIndexProvider>);
+    const {rerender}=render(<NavIndexProvider><PublishedSearch entries={[{href:'/leave',label:'My Leave',section:null,parent:null,parentHref:null}]}/></NavIndexProvider>);
     submit('leave');await waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(1));
     const signal=fetcher.mock.calls[0][1]?.signal;
     expect(screen.getByRole('link',{name:'My Leave'})).toBeVisible();
@@ -107,7 +107,7 @@ describe('Home library search facet',()=>{
   });
   it('keeps both page and authored-document results when a broad query fills the eight-result budget',async()=>{
     vi.stubGlobal('fetch',vi.fn(async()=>Response.json({version:1,items:Array.from({length:8},(_,i)=>({id:'doc-'+i,title:'Leave policy '+i,descriptionMarkdown:null}))})));
-    render(<NavIndexProvider><PublishedSearch entries={Array.from({length:8},(_,i)=>({href:'/leave/'+i,label:'Leave page '+i,parent:null,section:null}))}/></NavIndexProvider>);
+    render(<NavIndexProvider><PublishedSearch entries={Array.from({length:8},(_,i)=>({href:'/leave/'+i,label:'Leave page '+i,parent:null,parentHref:null,section:null}))}/></NavIndexProvider>);
     submit('leave');await waitFor(()=>expect(screen.getByRole('link',{name:'Leave policy 0'})).toBeVisible());
     expect(screen.getAllByRole('link')).toHaveLength(8);
     expect(screen.getAllByRole('link').filter(link=>link.textContent?.startsWith('Leave page'))).toHaveLength(4);

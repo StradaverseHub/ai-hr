@@ -3968,3 +3968,13 @@ export function actionablePendingClaimIds(ctx:SessionContext,requestIds:readonly
   return rows.filter(row=>allowed.has(row.employmentId)).map(row=>row.id).sort();
  });
 }
+
+/** Read-only source membership under the claims provider guard and native request RLS. No item/pay/receipt data. */
+export async function claimsAnalysisSourceTx(tx:Tx,ctx:SessionContext,companyIds:readonly string[]){
+ await assertClaimsProviderSourceTx(tx,ctx);if(!companyIds.length)throw Error('Claims analysis requires a company scope.');
+ const rows=await tx.select({id:claimRequest.id,employmentId:employment.id,personId:employment.personId,status:claimRequest.status}).from(claimRequest)
+  .innerJoin(claimType,eq(claimType.id,claimRequest.claimTypeId)).innerJoin(employment,eq(employment.id,claimRequest.employmentId))
+  .innerJoin(person,eq(person.id,employment.personId)).where(inArray(employment.companyId,[...companyIds]));
+ const scoped=await filterDelegationOrgScopeTx(tx,ctx,rows,row=>row.employmentId);
+ return {selection:'all_visible_claims',rows:scoped.map(row=>({personId:row.personId,conditions:{pending_claim_share:row.status==='pending'}}))};
+}

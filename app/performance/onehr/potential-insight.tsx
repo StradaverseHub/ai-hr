@@ -2,6 +2,7 @@
 import {useEffect,useRef,useState,useTransition} from 'react';
 import {useTranslations} from 'next-intl';
 import {Button} from '@/components/ui';
+import {NativeInsightOutline} from './native-insight-outline';
 import {assessmentPotentialInsightAction} from '../onehr-actions';
 import type {getAssessmentPotentialInsight} from '@/packs/performance/service';
 export function PotentialInsight({reviewId,sessionId,initialOpen=false}:{reviewId:string;sessionId:string;initialOpen?:boolean}){
@@ -13,7 +14,7 @@ export function PotentialInsight({reviewId,sessionId,initialOpen=false}:{reviewI
   <div className="space-y-3 border-t border-border p-4"><p className="text-xs text-muted-foreground">{t('potentialInsight.help')}</p>
    {busy&&<p role="status">{t('insight.working')}</p>}{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
    {!busy&&!error&&(!result||result.pending)&&<Button type="button" variant="secondary" onClick={()=>load(true)}>{t('insight.generate')}</Button>}
-   {!busy&&result?.data&&<p className="text-sm leading-relaxed">{result.data.paragraph}</p>}
+   {!busy&&result?.data&&<><p className="text-sm leading-relaxed">{result.data.paragraph}</p><NativeInsightOutline data={result.data}/></>}
   </div>
  </details>;
 }

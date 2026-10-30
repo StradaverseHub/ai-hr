@@ -157,7 +157,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
         <tbody className="divide-y divide-border">{view.features.map(feature=>{
           const activity=view.usage.find(u=>u.feature_id===feature.id);
           return <tr key={feature.id} id={`ai-feature-${feature.id}`} className="scroll-mt-4">
-            <td className="px-5 py-4"><p className="font-medium">{t(`features.${feature.id}`)}</p><p className="mt-1 text-xs text-muted-foreground">{t(`kinds.${feature.kind}`)}{feature.id.startsWith('performance_')?` · ${t('imagesIncluded')}`:''}</p>{(()=>{
+            <td className="px-5 py-4"><p className="font-medium">{t(`features.${feature.id}`)}</p><p className="mt-1 text-xs text-muted-foreground">{t(`kinds.${feature.kind}`)}</p><p className="mt-2 max-w-md text-xs leading-relaxed text-muted-foreground">{t(`privateFeatures.${feature.id}`)}</p>{(()=>{
               // ADR-0151 §4.5 — the named agent principal runs a switched-on agent only under a named administrator's switch-on.
               const sw=view.agentSwitches[feature.id as AgentFeature];
               return sw?.state==='attributed'?<p className="mt-1 text-xs text-muted-foreground">{t('agentRunsAs',{by:sw.by??t('agentUnknownAdmin'),date:f.dateTime(sw.at,{dateStyle:'medium',timeZone:'Asia/Kuala_Lumpur'})})}</p>

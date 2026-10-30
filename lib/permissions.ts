@@ -59,14 +59,14 @@ export const MATRIX_ROLES: readonly Role[] = [
 ] as const;
 
 /** The page guard each screen is gated by — the single source of the access truth for that screen. */
-export type Guard = 'assistantSession' | 'requireWorkforceAccess' | 'requireAccessConfiguration' | 'requireAdmin' | 'scopedAdmin' | 'scopedSession' | 'requireTeamAccess' | 'onboardingAccess' | 'onboardingParticipant' | 'onboardingMaster';
+export type Guard = 'requireSecurityCenter' | 'requireGroupAdministration' | 'assistantSession' | 'requireWorkforceAccess' | 'requireAccessConfiguration' | 'requireAdmin' | 'scopedAdmin' | 'scopedSession' | 'requireTeamAccess' | 'onboardingAccess' | 'onboardingParticipant' | 'onboardingMaster';
 
 /** Role eligibility. The effective-capability gate is rendered as conditional, never a role grant. */
 export function rolesForGuard(guard: Guard): ReadonlySet<Role> {
-  if(guard==='assistantSession'||guard==='requireAccessConfiguration'||guard==='requireWorkforceAccess')return new Set<Role>(MATRIX_ROLES);
+  if(guard==='requireSecurityCenter'||guard==='assistantSession'||guard==='requireAccessConfiguration'||guard==='requireWorkforceAccess')return new Set<Role>(MATRIX_ROLES);
   if (guard === 'requireTeamAccess') return new Set<Role>(['manager', 'hr_admin', 'super_admin']);
   // requireAdmin & scopedAdmin both gate on isAdmin → hr_admin + super_admin only.
-  if (guard === 'requireAdmin' || guard === 'scopedAdmin' || guard === 'onboardingMaster') {
+  if (guard === 'requireGroupAdministration' || guard === 'requireAdmin' || guard === 'scopedAdmin' || guard === 'onboardingMaster') {
     return new Set<Role>(['hr_admin', 'super_admin']);
   }
   // scopedSession gates nothing at the page boundary — every authenticated role reaches it; RLS scopes data.
@@ -123,6 +123,10 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'letterFields',href:'/letters/fields',labelKey:'letters.fields.title',guard:'scopedSession',routes:['/letters/fields','/letters/fields/[fieldId]'],hasScopeNote:true},
   // This is a capability gate, not a role grant. The reference grid renders it conditionally for all
   // roles; the page reads current SQL authority and a matching individual denial always wins.
+  {screenKey:'securityCenter',href:'/admin/security-center',labelKey:'securityCenter.title',guard:'requireSecurityCenter',routes:['/admin/security-center'],hasScopeNote:true},
+  {screenKey:'functionAccess',href:'/admin/users/function-access',labelKey:'securityCenter.functions.title',guard:'requireAdmin',routes:['/admin/users/function-access']},
+  {screenKey:'createLogin',href:'/admin/users/create',labelKey:'securityCenter.create.title',guard:'requireGroupAdministration',routes:['/admin/users/create'],hasScopeNote:true},
+  {screenKey:'inviteUser',href:'/admin/users/invite',labelKey:'securityCenter.invite.title',guard:'requireGroupAdministration',routes:['/admin/users/invite'],hasScopeNote:true},
   {screenKey:'accessConfiguration',href:'/admin/users/access',labelKey:'accessConfiguration.title',guard:'requireAccessConfiguration',routes:['/admin/users/access'],hasScopeNote:true},
   {screenKey:'myTasks',href:'/tasks',labelKey:'nav.myTasks',guard:'scopedSession',routes:['/tasks'],hasScopeNote:true},
   {screenKey:'employeeMasterReports',href:'/reports/employee-master',labelKey:'employeeMasterReports.title',guard:'scopedSession',routes:['/reports/employee-master','/reports/employee-master/[id]']},
@@ -1067,7 +1071,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   // registered on `leaveConfig` above, behind the same requireAdmin guard, so nobody who could open the old
   // page loses access. (a324a4b3 had renamed its label nav.toilPolicy → nav.timeOffInLieu.)
   // ADR-0129: role-independent module grants and participation are explained by the scope notes.
-  { screenKey: 'onboardingV31', href: '/lifecycle/onboarding', labelKey: 'nav.newJoiners', guard: 'onboardingAccess', routes: ['/lifecycle/onboarding', '/lifecycle/onboarding/cases/[id]'], hasScopeNote: true },
+  { screenKey: 'onboardingV31', href: '/lifecycle/onboarding', labelKey: 'nav.newJoiners', guard: 'onboardingAccess', routes: ['/lifecycle/onboarding', '/lifecycle/onboarding/cases/[id]', '/lifecycle/v9', '/lifecycle/v9/onboarding/[id]'], hasScopeNote: true },
   { screenKey: 'onboardingChecklists', href: '/lifecycle/onboarding/checklists', labelKey: 'nav.onboardingChecklists', guard: 'onboardingAccess', routes: ['/lifecycle/onboarding/checklists'], hasScopeNote: true },
   { screenKey: 'onboardingSettings', href: '/admin/lifecycle/onboarding', labelKey: 'nav.onboardingSettings', guard: 'onboardingAccess', routes: ['/admin/lifecycle/onboarding'], hasScopeNote: true },
   { screenKey: 'onboardingGroups', href: '/admin/lifecycle/onboarding/groups', labelKey: 'nav.onboardingGroups', guard: 'onboardingParticipant', routes: ['/admin/lifecycle/onboarding/groups'], hasScopeNote: true },
@@ -1497,7 +1501,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     labelKey: 'admin.users.screen.payComponents',
     guard: 'requireAdmin',
     // 911b2886 — the Create/Edit maintenance form moved to dedicated routes (attendance-rule shape).
-    routes: ['/admin/pay-components', '/admin/pay-components/new', '/admin/pay-components/[code]'],
+    routes: ['/admin/pay-components', '/admin/pay-components/new', '/admin/pay-components/[code]', '/payroll/formula-builder', '/payroll/formula-builder/new', '/payroll/formula-builder/[id]', '/payroll/formula-builder/evaluations/[id]'],
   },
   {
     // Granular payroll permission overrides (feedback 9bc442bc) — configurable per company/tenant RBAC.

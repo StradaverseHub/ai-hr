@@ -1,4 +1,5 @@
 'use client';
+import {ProtectedInputHelp} from '@/components/assistant/protected-input-help';
 
 /**
  * Payroll Setup — the non-technical surface for the configurable pay-rule (the feedback's ask).
@@ -27,6 +28,7 @@
  * The Prorates checkbox lives HERE (not in the flags row) because proration interacts with per-day/per-hour
  * rules — keeping them together lets the live validator surface the conflict as the admin toggles either one.
  */
+import Link from 'next/link';
 import { useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -69,6 +71,9 @@ type Props = {
   aiEnabled: boolean;
   /** Other ACTIVE pay items in this tenant's catalog (this one excluded) — the reference picker's options. */
   payItems: PayItemOption[];
+  builderEnabled?:boolean;
+  formulaContext?: {ordinaryRate?:string;hoursPerDay?:string;rate?:string}|null;
+  activeFormulas?: {formulaId:string;description:string;dependencies:string[]}[];
   /** Employees the rule can be previewed against. */
   previewEmployees: PreviewEmployeeOption[];
 };
@@ -100,6 +105,9 @@ function OperandFields({
   op: FormulaOperand;
   onChange: (o: FormulaOperand) => void;
   payItems: PayItemOption[];
+  builderEnabled?:boolean;
+  formulaContext?: {ordinaryRate?:string;hoursPerDay?:string;rate?:string}|null;
+  activeFormulas?: {formulaId:string;description:string;dependencies:string[]}[];
 }) {
   const t = useTranslations('payRule');
   return (
@@ -190,6 +198,9 @@ export function PayRuleEditor({
   aiEnabled,
   payItems,
   previewEmployees,
+  activeFormulas=[],
+  formulaContext,
+  builderEnabled=true,
   catalogueOnly = false,
 }: Props) {
   const t = useTranslations('payRule');
@@ -217,6 +228,8 @@ export function PayRuleEditor({
   const [reviewedPreviewIdentity,setReviewedPreviewIdentity]=useState<string|null>(null);
   const tc = useTranslations('payComponents');
   const [kind, setKind] = useState<PayRuleKind>(initialRule?.kind ?? pendingInputKind ?? 'fixed');
+  const [formulaId,setFormulaId]=useState(initialRule?.kind==='formula_builder'?initialRule.formulaId:'');
+  const [builderContext,setBuilderContext]=useState<{ordinaryRate?:string;hoursPerDay?:string;rate?:string}>(formulaContext??{});
   const [prorates, setProrates] = useState(initialProrates);
   const [pct, setPct] = useState(initialRule?.kind === 'percent_of' ? String(initialRule.pct) : '');
   const [pctBase, setPctBase] = useState<'basic' | 'component'>(
@@ -278,12 +291,14 @@ export function PayRuleEditor({
         return { kind: 'flat_capped', value: num(value), cap: num(cap) };
       case 'qty_rate':
         return { kind: 'qty_rate', qty: num(qty), rate: num(rate) };
+      case 'formula_builder':
+        return {kind:'formula_builder',formulaId,dependencies:activeFormulas.find(f=>f.formulaId===formulaId)?.dependencies??(initialRule?.kind==='formula_builder'&&initialRule.formulaId===formulaId?initialRule.dependencies:[])};
       case 'formula':
         return { kind: 'formula', start, terms };
       default:
         return null;
     }
-  }, [kind, pct, pctBase, pctCode, rate, qty, value, cap, start, terms]);
+  }, [kind, pct, pctBase, pctCode, rate, qty, value, cap, start, terms, formulaId, builderContext, activeFormulas, initialRule]);
 
   const previewIdentity=JSON.stringify([formIdentity.code,formIdentity.kind,prorates,rule,previewEmp?.employmentId??null]);
   const validation = validatePayRule(rule, prorates);
@@ -407,7 +422,7 @@ export function PayRuleEditor({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Field label={t('kindLabel')}>
           <select value={kind} onChange={(e) => setKind(e.target.value as PayRuleKind)} className={inputCls}>
-            {PAY_RULE_KINDS.map((k) => (
+            {PAY_RULE_KINDS.filter(k=>k!=='formula_builder'||builderEnabled||initialRule?.kind==='formula_builder').map((k) => (
               <option key={k} value={k}>
                 {t(`kind_${k}`)}
               </option>
@@ -415,6 +430,14 @@ export function PayRuleEditor({
           </select>
         </Field>
 
+        {kind==='formula_builder'&&<>
+          <Field label={t('builderFormula')}><select value={formulaId} onChange={e=>setFormulaId(e.target.value)} className={inputCls} required><option value="">{t('builderNoFormula')}</option>{initialRule?.kind==='formula_builder'&&!activeFormulas.some(f=>f.formulaId===initialRule.formulaId)&&<option value={initialRule.formulaId}>{initialRule.formulaId}</option>}{activeFormulas.map(f=><option key={f.formulaId} value={f.formulaId}>{f.formulaId} — {f.description}</option>)}</select></Field>
+
+        </>}
+        {(builderEnabled||initialRule?.kind==='formula_builder')&&<details className="rounded-lg border border-border p-3 sm:col-span-3" open={kind==='formula_builder'||undefined}><summary className="cursor-pointer text-sm font-medium">{t('builderBindings')}</summary><div className="mt-3 grid gap-3 sm:grid-cols-3">
+          {(['ordinaryRate','hoursPerDay','rate'] as const).map(key=><Field key={key} label={t(key==='ordinaryRate'?'builderOrdinaryRate':key==='hoursPerDay'?'builderHoursPerDay':'builderRate')}><input name={key==='ordinaryRate'?'formulaOrdinaryRate':key==='hoursPerDay'?'formulaHoursPerDay':'formulaRate'} type="text" inputMode="decimal" value={builderContext[key]??''} onChange={e=>setBuilderContext(v=>({...v,[key]:e.target.value}))} className={inputCls}/></Field>)}
+          <p className="text-xs text-muted-foreground sm:col-span-3">{t('builderContextHint')} <Link href="/payroll/formula-builder" className="underline">{t('builderManage')}</Link></p>
+        </div></details>}
         {kind === 'percent_of' && (
           <>
             <Field label={t('pctLabel')}>
@@ -594,7 +617,7 @@ export function PayRuleEditor({
       {/* ── Check against an employee ──────────────────────────────────────────────────────────────
           The server evaluates the CANDIDATE rule with the same function the payroll run uses, against this
           employee's real basic / hours / other pay items. Nothing is written. */}
-      {!catalogueOnly && (kind !== 'fixed'||aiDraftNeedsPreview) && (
+      {!catalogueOnly && (kind !== 'fixed'&&kind!=='formula_builder'||aiDraftNeedsPreview) && (
         <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
           <h5 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('previewTitle')}</h5>
           <p className="text-xs text-muted-foreground">{t('previewHint')}</p>
@@ -737,12 +760,12 @@ export function PayRuleEditor({
           <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
           <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
             <AlertDialog.Title className="text-base font-semibold">{t('assistTitle')}</AlertDialog.Title>
-            <AlertDialog.Description className="mt-1.5 text-sm text-muted-foreground">{t('assistDescription')}</AlertDialog.Description>
+            <AlertDialog.Description className="mt-1.5 text-sm text-muted-foreground">{t('assistDescription')}</AlertDialog.Description><ProtectedInputHelp kind="payRule" onChoose={setDescription}/>
             <textarea
               rows={4}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder={t('assistPlaceholder')}
+              placeholder="10% of basic"
               className={`${inputCls} mt-3`}
             />
             <div className="mt-4 flex items-center justify-end gap-3">

@@ -1,6 +1,7 @@
 /**
  * M12 (D13) — the two requests an employee files from the app: a missed-punch / correction request for one of their
- * own days, and a replacement-leave (Leave Credit) request. Overtime-plan application stays on the web (D13).
+ * own days, and a replacement-leave (Leave Credit) request. Overtime plans have their own screen since the Mobile WOW
+ * round (mobile/lib/ot-plan.tsx); withdrawing one and attaching files stay on the web.
  *
  * The app decides nothing. The day's clockings on record are shown read only as context; the request PROPOSES times
  * and a reason, and the kernel validates it (requestAttendanceCorrection / submitLeaveCreditRequest), snapshots the
@@ -96,8 +97,7 @@ export function AttendanceCorrectionScreen({ date }: { date: string }) {
     ]);
   }
 
-  return <Screen onRefresh={day.reload}>
-    <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
+  return <Screen back onRefresh={day.reload}>
     <Title>{t('attCorrectionTitle', { date: valid ? fmtCalendarDate(date) : date })}</Title>
     <LoadState loading={day.loading} hasData={day.data != null} error={day.error} onRetry={day.reload} />
     {day.data?.outcome === 'refused' && <Muted>{t(day.data.code === 'module_off' ? 'attModuleOff' : 'attNotFound')}</Muted>}
@@ -254,8 +254,7 @@ export function ReplacementLeaveScreen() {
   const [date, setDate] = useState<string | undefined>(undefined);
   const [sent, setSent] = useState<string | null>(null);
   const o = offer.data;
-  return <Screen onRefresh={offer.reload}>
-    <Button title={t('back')} kind="quiet" onPress={() => router.back()} />
+  return <Screen back onRefresh={offer.reload}>
     <Title>{t('attRlTitle')}</Title>
     <LoadState loading={offer.loading} hasData={o != null} error={offer.error} onRetry={offer.reload} />
     {o && !o.allowed && <Muted>{t(UNAVAILABLE[o.reason ?? 'not_eligible'])}</Muted>}

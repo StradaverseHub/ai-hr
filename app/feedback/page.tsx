@@ -2,45 +2,23 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { FEEDBACK_LIST_LIMIT, feedbackStatusCounts, listFeedback, type FeedbackRow } from '@/core/feedback';
+import { FEEDBACK_LIST_LIMIT, feedbackBoardCounts, listFeedback, type FeedbackRow } from '@/core/feedback';
 import { feedbackBoardOpen } from '@/app/feedback/board';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { DEFAULT_FEEDBACK_SORT, parseFeedbackSort } from '@/lib/feedback-sort';
-import type { FeedbackCategory, FeedbackStatus } from '@/db/schema';
 import { submitFeedbackAction } from './actions';
 import { BulkTable } from './bulk-table';
+import { FeedbackKanban } from './kanban';
+import { FEEDBACK_BOARD_STATUSES, feedbackStatusTone, type FeedbackBoardStatus } from '@/lib/feedback-release';
+import { flipFeedbackSort } from '@/lib/feedback-sort';
 
 const CATEGORIES = ['issue', 'enhancement', 'new_function'] as const;
 // Dashboard chip order; statuses with a zero count are hidden. Includes every feedbackStatusEnum value
 // so the chips sum to the "All" total and any ?status= filter is honoured (e.g. ?status=rejected).
 // `blocked` sits next to approved deliberately: it IS approved work, just not startable yet. Placing it
 // after `approved` keeps the board reading in lifecycle order rather than alphabetically.
-const BOARD_STATUSES = ['open', 'planned', 'contested', 'approved', 'blocked', 'building', 'done', 'deployed', 'rejected', 'cancelled'] as const;
-
-export function statusTone(status: string): string {
-  switch (status) {
-    case 'open':
-      return 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400';
-    case 'planned':
-      return 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400';
-    case 'contested':
-      return 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400';
-    case 'approved':
-    case 'building':
-      return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400';
-    // Amber, not indigo: blocked reads as "needs you", which is the same signal `open` carries, rather
-    // than as a shade of in-progress work that needs nothing from the reporter.
-    case 'blocked':
-      return 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300';
-    case 'done':
-    case 'deployed':
-      return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400';
-    case 'rejected':
-      return 'bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-300';
-    default:
-      return 'bg-muted text-muted-foreground';
-  }
-}
+const BOARD_STATUSES = FEEDBACK_BOARD_STATUSES;
+const statusTone = feedbackStatusTone;
 
 export default async function FeedbackPage({
   searchParams,
@@ -54,14 +32,15 @@ export default async function FeedbackPage({
     skipped?: string;
     status?: string;
     sort?: string;
+    view?: string;
   }>;
 }) {
   const s = await getSession();
   if (!feedbackBoardOpen(s)) notFound();
   const t = await getTranslations('feedback');
-  const { error, toast, toastKey, count, action, skipped, status, sort } = await searchParams;
+  const { error, toast, toastKey, count, action, skipped, status, sort, view } = await searchParams;
   const activeStatus = (BOARD_STATUSES as readonly string[]).includes(status ?? '')
-    ? (status as FeedbackStatus)
+    ? (status as FeedbackBoardStatus)
     : undefined;
   // e14334ef — the board's order rides in the address so the heading link can flip it and the link is
   // shareable. Anything unrecognised falls back to newest-touched-first rather than erroring.
@@ -70,10 +49,12 @@ export default async function FeedbackPage({
   // reporter chose — they pick "oldest first" precisely to chase stale items, and doing that within one
   // status is the obvious next move. The default drops out of the address entirely, the same rule
   // ClientPager applies to page 0, so the bare board stays a bare link.
-  const boardHref = (st?: FeedbackStatus) => {
+  const activeView = view === 'kanban' ? 'kanban' : 'list';
+  const boardHref = (st?: FeedbackBoardStatus, v = activeView, order = activeSort) => {
     const p = new URLSearchParams();
     if (st) p.set('status', st);
-    if (activeSort !== DEFAULT_FEEDBACK_SORT) p.set('sort', activeSort);
+    if (order !== DEFAULT_FEEDBACK_SORT) p.set('sort', order);
+    if (v === 'kanban') p.set('view', v);
     const qs = p.toString();
     return qs ? `/feedback?${qs}` : '/feedback';
   };
@@ -96,14 +77,14 @@ export default async function FeedbackPage({
       : (toast ?? null);
 
   const [counts, rows] = await Promise.all([
-    feedbackStatusCounts(s),
+    feedbackBoardCounts(s),
     listFeedback(s, { status: activeStatus, sort: activeSort }),
   ]);
   const countOf = (st: string) => counts.find((c) => c.status === st)?.count ?? 0;
   const total = counts.reduce((a, c) => a + c.count, 0);
 
   // e14334ef — SAY when the cut bites. listFeedback returns at most FEEDBACK_LIST_LIMIT rows while the
-  // chips above come from feedbackStatusCounts, which is uncapped: on production that paints "All 517"
+  // chips above come from feedbackBoardCounts, which is uncapped: on production that paints "All 517"
   // over a list of 200. Harmless while the order was fixed; not harmless now that the heading flips it,
   // because oldest-first does not reverse the list you were reading, it swaps in a largely disjoint set
   // (the 200 stalest instead of the 200 freshest). ClientPager's own truncation notice cannot cover this
@@ -114,7 +95,7 @@ export default async function FeedbackPage({
   const chipBase = 'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition';
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className={`mx-auto w-full min-w-0 space-y-6 ${activeView === 'kanban' ? 'max-w-none' : 'max-w-5xl'}`}>
       <PageHeader title={t('title')} description={t('subtitle')} />
       <ErrorBanner message={error} />
       {toastMessage && (
@@ -125,7 +106,17 @@ export default async function FeedbackPage({
 
       {/* Dashboard — status board doubling as a filter (no DB query needed to see the queue). */}
       <Card className="p-4">
-        <SectionHeader title={t('boardTitle')} />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <SectionHeader title={t('boardTitle')} />
+          <nav aria-label={t('viewLabel')} className="inline-flex gap-1 rounded-lg bg-muted p-1">
+            {(['list', 'kanban'] as const).map(v => (
+              <Link key={v} href={boardHref(activeStatus, v)} aria-current={activeView === v ? 'page' : undefined}
+                className={`rounded-md px-3 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-primary ${activeView === v ? 'bg-background text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+                {t(v === 'list' ? 'viewList' : 'viewKanban')}
+              </Link>
+            ))}
+          </nav>
+        </div>
         <div className="mt-3 flex flex-wrap gap-2">
           <Link
             href={boardHref()}
@@ -139,14 +130,15 @@ export default async function FeedbackPage({
               href={boardHref(st)}
               className={`${chipBase} ${statusTone(st)} ${activeStatus === st ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : ''}`}
             >
-              {t(`status_${st}`)} <span className="font-semibold">{countOf(st)}</span>
+              {t(st === 'deployed' ? 'releaseUnverified' : `status_${st}`)} <span className="font-semibold">{countOf(st)}</span>
             </Link>
           ))}
         </div>
       </Card>
 
       <Card className="p-5">
-        <SectionHeader title={t('logTitle')} />
+        <details>
+        <summary className="cursor-pointer rounded text-sm font-semibold focus-visible:outline-2 focus-visible:outline-primary">{t('logTitle')}</summary>
         <p className="px-1 pt-2 text-xs text-muted-foreground">{t('logIntro')}</p>
         <form action={submitFeedbackAction} className="mt-3 grid gap-3 md:grid-cols-2">
           <Field label={t('category')}>
@@ -184,16 +176,25 @@ export default async function FeedbackPage({
             </Button>
           </div>
         </form>
+        </details>
       </Card>
 
       <Card className="overflow-hidden">
-        <SectionHeader title={activeStatus ? t(`status_${activeStatus}`) : t('listTitle')} count={rows.length} />
+        <div className="flex flex-wrap items-center justify-between gap-2 p-4">
+          <SectionHeader title={activeStatus ? t(activeStatus === 'deployed' ? 'releaseUnverified' : `status_${activeStatus}`) : t('listTitle')} count={rows.length} />
+          <Link href={boardHref(activeStatus, activeView, flipFeedbackSort(activeSort))} className="rounded text-xs text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-primary">
+            {t(activeSort === 'updated_asc' ? 'sortNewestFirst' : 'sortOldestFirst')}
+          </Link>
+        </div>
+        {activeView === 'kanban' && <p className="px-4 pb-4 text-xs text-muted-foreground">{t('kanbanHint')}</p>}
         {truncated && (
           <p className="border-b border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
             {t('listTruncated', { shown: rows.length, total: scopedTotal })}
           </p>
         )}
-        {rows.length === 0 ? (
+        {activeView === 'kanban' ? (
+          <FeedbackKanban rows={rows} status={activeStatus} counts={counts} sort={activeSort} />
+        ) : rows.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('empty')}</p>
         ) : (
           <BulkTable rows={rows as FeedbackRow[]} status={activeStatus} sort={activeSort} />
