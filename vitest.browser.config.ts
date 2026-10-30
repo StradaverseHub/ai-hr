@@ -66,6 +66,7 @@ export default defineConfig({
       '@testing-library/react',
       'next-intl',
       'next/link',
+      'next/image',
       'next/navigation',
       'lucide-react',
       '@radix-ui/react-slot',

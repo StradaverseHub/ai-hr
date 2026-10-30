@@ -67,8 +67,10 @@ export function ShellRoutePath() {
 
 /**
  * The heading of the page below a list, for the breadcrumb's last crumb. The shell does not know a record's
- * name, but the page already prints it as its title, so this reads that heading once it renders (pages
- * stream, so it watches <main> until one appears). Null on a list page, or until a heading exists.
+ * name, but the page already prints it as its title, so this follows it throughout the detail route.
+ * A streamed transition can retain the old heading before replacing it, and a refresh can rename
+ * a record without changing its path.
+ * Null on a list page, or while the current heading is missing or empty.
  */
 function usePageTitle(path: string | null): string | null {
   const [title, setTitle] = useState<{ path: string; text: string } | null>(null);
@@ -79,15 +81,13 @@ function usePageTitle(path: string | null): string | null {
     const read = () => {
       const h1 = main.querySelector('[data-page-header] h1') ?? main.querySelector('h1');
       const text = h1?.textContent?.trim();
-      if (!text) return false;
-      setTitle((prev) => (prev?.path === path && prev.text === text ? prev : { path, text }));
-      return true;
+      setTitle((prev) => text
+        ? (prev?.path === path && prev.text === text ? prev : { path, text })
+        : null);
     };
-    if (read()) return;
-    const observer = new MutationObserver(() => {
-      if (read()) observer.disconnect();
-    });
+    const observer = new MutationObserver(read);
     observer.observe(main, { childList: true, subtree: true, characterData: true });
+    read();
     return () => observer.disconnect();
   }, [path]);
   // A title read on the previous record must never label this one.
