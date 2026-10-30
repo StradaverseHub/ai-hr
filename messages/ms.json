@@ -499,7 +499,9 @@
     "v9Workflows": "Aliran kerja",
     "v9Settings": "Tetapan kemasukan & pelepasan",
     "v9AssignmentGroups": "Kumpulan Penugasan",
-    "v9ModuleAccess": "Akses Modul"
+    "v9ModuleAccess": "Akses Modul",
+    "v9Tasks": "Tugas",
+    "v9RequestRecords": "Rekod Permintaan"
   },
   "dashboard": {
     "title": "Papan pemuka",

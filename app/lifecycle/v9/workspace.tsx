@@ -1,6 +1,6 @@
 'use client';
 import { CaseMailHistory } from './mail-history';
-import { V9_NAVIGATION, type V9NavigationView } from '@/lib/lifecycle-v9-navigation';
+import { V9_NAVIGATION, type V9WorkspaceView } from '@/lib/lifecycle-v9-navigation';
 import { createContext, useContext, useEffect, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -55,15 +55,15 @@ function Dialog({ title, children, close }: { title: string; children: ReactNode
   useEffect(() => { ref.current?.showModal(); return () => ref.current?.close(); }, []);
   return <dialog className="v9-dialog" aria-label={title} ref={ref} onCancel={close}><header><h2>{title}</h2><button type="button" className="v9-button" aria-label="Close" onClick={close}><X size={18}/></button></header>{children}</dialog>;
 }
-export function V9Workspace({ initial, viewer, joiners = null, nativeCase, nativeSettings = null, navigation = 'standalone', initialView }: { navigation?: 'global' | 'standalone'; initialView?: V9NavigationView; nativeSettings?: NativeSettingsData | null; nativeCase?: { name: string; content: ReactNode }; initial: Workspace; viewer: ViewerIdentity; joiners?: NativeJoinersData | null }) {
+export function V9Workspace({ initial, viewer, joiners = null, nativeCase, nativeSettings = null, navigation = 'standalone', initialView, initialWorkflow }: { navigation?: 'global' | 'standalone'; initialView?: V9WorkspaceView; initialWorkflow?: string; nativeSettings?: NativeSettingsData | null; nativeCase?: { name: string; content: ReactNode }; initial: Workspace; viewer: ViewerIdentity; joiners?: NativeJoinersData | null }) {
   const router = useRouter(), [busy, start] = useTransition();
   const fallbackView: View = initial.permissions?.onboarding===false?(initial.permissions?.offboarding===false?(initial.permissions?.records?'records':'access'):'leavers'):'joiners';
   const requested = V9_NAVIGATION.find(item => item.view === initialView);
-  const entryView = requested && initial.permissions?.[requested.permission] !== false ? requested.view : fallbackView;
+  const entryView: View = initialView === 'tasks' ? 'tasks' : initialView === 'records' && initial.permissions?.records !== false ? 'records' : requested && initial.permissions?.[requested.permission] !== false ? requested.view : fallbackView;
   const [view, setView] = useState<View>(entryView), [selected, setSelected] = useState<string | null>(null), [search, setSearch] = useState(''), [company, setCompany] = useState(''), [module, setModule] = useState<M.Module>('off');
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [creating, setCreating] = useState(false), [reason, setReason] = useState<{ type: 'cancel' | 'reopen'; value: string } | null>(null);
   const [mobileNavigation, setMobileNavigation] = useState(false);
-  useEffect(() => { if (navigation === 'global') { setView(entryView); setSelected(null); setDocument(null); } }, [entryView, navigation]);
+  useEffect(() => { if (navigation === 'global') { setView(entryView); setSelected(null); setDocument(null); if (entryView === 'workflows') setPick(initialWorkflow ?? ''); } }, [entryView, navigation, initialWorkflow]);
   useEffect(()=>{const query=new URLSearchParams(window.location.search);if(query.get('view')==='workflows'&&initial.permissions?.administration!==false){setView('workflows');setPick(query.get('workflow')??'');}},[initial.permissions?.administration]);
   const [settingsTab, setSettingsTab] = useState<'onb' | 'off' | 'shared'>('onb');
   const [nativeSettingsError, setNativeSettingsError] = useState('');
@@ -100,7 +100,7 @@ export function V9Workspace({ initial, viewer, joiners = null, nativeCase, nativ
       {nativeSettingsError && view !== 'groups' && view !== 'access' && (view !== 'settings' || settingsTab !== 'onb') && <div className="v9-notice v9-error" role="alert">Onboarding settings have unsaved changes: {nativeSettingsError}</div>}
       {error && !creating && <div className="v9-notice v9-error" role="alert">{error}</div>}{notice && <div className="v9-notice" role="status">{notice}</div>}
       {nativeCase && view === 'joiners' && <section className="v9-stack" aria-label={`Onboarding case for ${nativeCase.name}`}>{nativeCase.content}</section>}
-      {current ? <CaseView c={current} config={config} users={initial.options.users} personnelWritableKeys={initial.personnelWritableKeys} busy={busy} command={command} onDocument={setDocument} onReason={type => setReason({ type, value: '' })} onOpenWorkflow={id=>{setSelected(null);setView('workflows');setPick(id);}}/> : <>
+      {current ? <CaseView c={current} config={config} users={initial.options.users} personnelWritableKeys={initial.personnelWritableKeys} busy={busy} command={command} onDocument={setDocument} onReason={type => setReason({ type, value: '' })} onOpenWorkflow={id=>{if(navigation==='global'){router.push(`/lifecycle/v9?view=workflows&workflow=${encodeURIComponent(id)}`);return;}setSelected(null);setView('workflows');setPick(id);}}/> : <>
       {view === 'joiners' && !nativeCase && <NativeJoiners data={joiners} company={company} search={search}/>}
       {view === 'leavers' && <><div className="v9-notice">Start a case from the employee record, review the checklist and confirm the case to begin assignments and workflows.</div><CaseList cases={cases.filter(c => c.module === 'off')} open={openCase}/></>}
       {view === 'tasks' && <TaskQueue cases={initial.cases} config={config} native={joiners} actor={initial.actor.id} users={initial.options.users} company={company} search={search} openCase={openCase}/>}

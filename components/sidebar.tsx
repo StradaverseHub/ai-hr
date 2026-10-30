@@ -71,7 +71,7 @@ import {LETTER_NAV_ITEMS} from '@/lib/letter-navigation';
 import { NAVIGATION_MODULES, NAVIGATION_SECTIONS, placeNavigation, navigationPlacement, navigationRouteOwner, type NavigationWorkspace } from '@/lib/navigation-workspaces';
 import { usePublishNavIndex, type NavIndexEntry } from '@/components/nav-index-context';
 import { openCommandBar } from '@/lib/command-bar-events';
-import { V9_NAVIGATION, type V9NavigationPermissions } from '@/lib/lifecycle-v9-navigation';
+import { V9_NAVIGATION, V9_SHARED_NAVIGATION, type V9NavigationPermissions } from '@/lib/lifecycle-v9-navigation';
 import { NavigationSubmenus } from '@/components/navigation-submenus';
 
 // `labelKey` indexes the `nav` message namespace; labels are resolved at render via useTranslations.
@@ -795,15 +795,17 @@ export function Sidebar({
   ];
   // The old lifecycle addresses remain valid for existing records and links, but their old
   // hub/self-service/requisition presentation is replaced by the owner's explicit V9 hierarchy.
-  const lifecycleNavigation = V9_NAVIGATION.filter(item => onboardingV9Access &&
+  const lifecycleNavigation: ChildItem[] = V9_NAVIGATION.filter(item => onboardingV9Access &&
     !!onboardingV9Navigation?.[item.permission]).map(item => ({
       href: item.href, labelKey: item.labelKey, submenuKey: item.submenuKey, icon: ONBOARDING_NODE.icon,
       exactHref: true, ...('ownedSubpaths' in item ? { ownedSubpaths: [...item.ownedSubpaths] } : {}),
     } satisfies ChildItem)).filter(canSeeChild);
-  const destinations = [...authorizedRows.filter(row => {
+  const lifecycleShared: ChildItem[] = V9_SHARED_NAVIGATION.filter(item => onboardingV9Access &&
+    (item.view === 'tasks' || !!onboardingV9Navigation?.records)).map(item => ({href:item.href,labelKey:item.labelKey,icon:ONBOARDING_NODE.icon,exactHref:true})).filter(canSeeChild);
+  const destinations: ChildItem[] = [...authorizedRows.filter(row => {
     const placement = navigationPlacement(row.href);
     return !placement || !('module' in placement) || placement.module !== 'onboarding';
-  }), ...additionalRows.filter(canSeeChild), ...lifecycleNavigation];
+  }), ...additionalRows.filter(canSeeChild), ...lifecycleNavigation, ...lifecycleShared];
   const navigation = placeNavigation(destinations);
   const availableWorkspaces = (['ops','strata'] as const).filter(workspace =>
     navigation.placed.some(row => row.placement.area === workspace),
@@ -822,7 +824,7 @@ export function Sidebar({
       children,tour:children.some(child=>child.tour==='nav-admin')?'nav-admin':undefined} satisfies CollapsibleGroupItem];
   });
   const sharedRows = navigation.placed.filter(row=>row.placement.area==='shared').map(row=>row.destination);
-  const inboxRows = sharedRows.filter(row=>['/tasks','/approvals','/system-testing'].includes(row.href));
+  const inboxRows = sharedRows.filter(row=>['/tasks','/approvals','/system-testing',...V9_SHARED_NAVIGATION.map(item=>item.href)].includes(row.href));
   const sharedItems: Row[] = sharedRows.filter(row=>!inboxRows.includes(row));
   if (inboxRows.length) sharedItems.splice(Math.min(2,sharedItems.length),0,{
     collapsible:true,activeMatch:'children',labelKey:'inbox',icon:ListChecks,children:inboxRows,
@@ -1031,7 +1033,7 @@ export function Sidebar({
                 </Fragment>
               );
             }; return children.some(child => child.submenuKey)
-              ? <NavigationSubmenus items={children} isActive={href => href === currentHref} renderItem={renderChild}/>
+              ? <NavigationSubmenus items={children} isActive={href => href === currentHref} renderItem={renderChild} triggerClassName={railKid}/>
               : children.map(renderChild); })()}
           </nav>
         )}

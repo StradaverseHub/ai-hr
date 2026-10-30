@@ -499,7 +499,9 @@
     "v9Workflows": "工作流",
     "v9Settings": "入职与离职设置",
     "v9AssignmentGroups": "分配组",
-    "v9ModuleAccess": "模块访问"
+    "v9ModuleAccess": "模块访问",
+    "v9Tasks": "任务",
+    "v9RequestRecords": "申请记录"
   },
   "dashboard": {
     "title": "仪表盘",

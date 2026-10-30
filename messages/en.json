@@ -499,7 +499,9 @@
     "v9Workflows": "Workflows",
     "v9Settings": "Onboarding & Offboarding Settings",
     "v9AssignmentGroups": "Assignment Groups",
-    "v9ModuleAccess": "Module Access"
+    "v9ModuleAccess": "Module Access",
+    "v9Tasks": "Tasks",
+    "v9RequestRecords": "Request Records"
   },
   "dashboard": {
     "title": "Dashboard",

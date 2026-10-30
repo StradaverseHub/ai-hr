@@ -1,5 +1,5 @@
 /** Presentation of existing V9 destinations. These flags never grant service access. */
-export type V9NavigationPermissions = { onboarding: boolean; offboarding: boolean; administration: boolean };
+export type V9NavigationPermissions = { onboarding: boolean; offboarding: boolean; administration: boolean; records?: boolean };
 export const V9_NAVIGATION = [
   { view: 'joiners', labelKey: 'newJoiners', submenuKey: 'onboardingV31', permission: 'onboarding', href: '/lifecycle/v9', ownedSubpaths: ['/lifecycle/v9/onboarding'] },
   { view: 'onbChecklists', labelKey: 'onboardingChecklists', submenuKey: 'onboardingV31', permission: 'onboarding', href: '/lifecycle/v9?view=onbChecklists' },
@@ -12,6 +12,15 @@ export const V9_NAVIGATION = [
   { view: 'access', labelKey: 'v9ModuleAccess', submenuKey: 'sectionConfiguration', permission: 'administration', href: '/lifecycle/v9?view=access' },
 ] as const;
 export type V9NavigationView = typeof V9_NAVIGATION[number]['view'];
+/** Shared work queues stay outside the nine-leaf On/Off Boarding module hierarchy. */
+export const V9_SHARED_NAVIGATION = [
+  { view: 'tasks', labelKey: 'v9Tasks', href: '/lifecycle/v9?view=tasks' },
+  { view: 'records', labelKey: 'v9RequestRecords', href: '/lifecycle/v9?view=records' },
+] as const;
+export type V9WorkspaceView = V9NavigationView | typeof V9_SHARED_NAVIGATION[number]['view'];
 export function v9NavigationView(value: unknown): V9NavigationView | undefined {
   return V9_NAVIGATION.find(item => item.view === value)?.view;
+}
+export function v9WorkspaceView(value: unknown): V9WorkspaceView | undefined {
+  return v9NavigationView(value) ?? V9_SHARED_NAVIGATION.find(item => item.view === value)?.view;
 }

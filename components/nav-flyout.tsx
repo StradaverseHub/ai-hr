@@ -266,7 +266,7 @@ export function NavFlyoutPanel({
               </Fragment>
             );
           }; return items.some(item => item.submenuKey)
-            ? <NavigationSubmenus items={items} isActive={isActive} renderItem={renderChild}/>
+            ? <NavigationSubmenus items={items} isActive={isActive} renderItem={renderChild} triggerClassName={rowBase}/>
             : items.map(renderChild); })()}
         </nav>
       </div>

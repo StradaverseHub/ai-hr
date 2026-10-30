@@ -499,7 +499,9 @@
     "v9Workflows": "Quy trình",
     "v9Settings": "Cài đặt tiếp nhận và thôi việc",
     "v9AssignmentGroups": "Nhóm phân công",
-    "v9ModuleAccess": "Quyền truy cập mô-đun"
+    "v9ModuleAccess": "Quyền truy cập mô-đun",
+    "v9Tasks": "Công việc",
+    "v9RequestRecords": "Hồ sơ yêu cầu"
   },
   "dashboard": {
     "title": "Bảng điều khiển",

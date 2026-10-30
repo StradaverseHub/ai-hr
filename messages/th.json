@@ -499,7 +499,9 @@
     "v9Workflows": "เวิร์กโฟลว์",
     "v9Settings": "การตั้งค่าการเริ่มงานและพ้นสภาพ",
     "v9AssignmentGroups": "กลุ่มมอบหมาย",
-    "v9ModuleAccess": "สิทธิ์เข้าถึงโมดูล"
+    "v9ModuleAccess": "สิทธิ์เข้าถึงโมดูล",
+    "v9Tasks": "งาน",
+    "v9RequestRecords": "บันทึกคำขอ"
   },
   "dashboard": {
     "title": "แดชบอร์ด",

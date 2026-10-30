@@ -499,7 +499,9 @@
     "v9Workflows": "பணிப்பாய்வுகள்",
     "v9Settings": "சேர்தல் மற்றும் விலகல் அமைப்புகள்",
     "v9AssignmentGroups": "ஒதுக்கீட்டுக் குழுக்கள்",
-    "v9ModuleAccess": "தொகுதி அணுகல்"
+    "v9ModuleAccess": "தொகுதி அணுகல்",
+    "v9Tasks": "பணிகள்",
+    "v9RequestRecords": "கோரிக்கை பதிவுகள்"
   },
   "dashboard": {
     "title": "டாஷ்போர்டு",

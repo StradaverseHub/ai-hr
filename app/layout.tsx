@@ -1,4 +1,3 @@
-import { isLifecycleV9Path } from '@/lib/lifecycle-v9-routing';
 import type { Metadata } from 'next';
 import { publicLoginPresentation } from '@/lib/login-presentation-server';
 import { canConfigureIdentityEmail } from '@/lib/identity/email-settings';
@@ -150,16 +149,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <OperatorShell name={viewer.name}>{children}</OperatorShell>
           <OnboardingTour tours={toursForRoles(session.roles)} autoStartTourId={null}/>
           <Toaster/>
-        </UiThemeProvider></Providers></NextIntlClientProvider>
-      </body>
-    </html>;
-  }
-  // V9 supplies the pinned HTML's complete navigation and header composition.
-  if (isLifecycleV9Path(pathname)) {
-    return <html lang={locale} data-ui-theme="classic" className={`${fontVariables} h-full antialiased`} suppressHydrationWarning>
-      <body className="min-h-dvh font-sans" style={{ background: '#e8ebf2' }}>
-        <NextIntlClientProvider><Providers forcedTheme="light" lifecycleV9><UiThemeProvider theme="classic">
-          {children}<Toaster/>
         </UiThemeProvider></Providers></NextIntlClientProvider>
       </body>
     </html>;

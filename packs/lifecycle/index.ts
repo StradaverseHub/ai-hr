@@ -26,7 +26,7 @@
  * requests. RLS (migration 0516) is the wall; the services apply the finer rules.
  */
 import { Laptop } from 'lucide-react';
-import { V9_NAVIGATION } from '@/lib/lifecycle-v9-navigation';
+import { V9_NAVIGATION, V9_SHARED_NAVIGATION } from '@/lib/lifecycle-v9-navigation';
 import { registerPack, type ModulePack, type NavLinkDescriptor } from '../registry';
 const LIFECYCLE_NAV_LINKS: NavLinkDescriptor[] = [
     ...V9_NAVIGATION.map(item => ({ group: 'manage' as const, href: item.href, labelKey: item.labelKey, icon: Laptop, exactHref: true, ...('ownedSubpaths' in item ? { ownedSubpaths: [...item.ownedSubpaths] } : {}) })),
@@ -38,6 +38,7 @@ const LIFECYCLE_NAV_LINKS: NavLinkDescriptor[] = [
     { group: 'admin', href: '/admin/lifecycle/onboarding', labelKey: 'onboardingSettings', icon: Laptop, exactHref: true },
     { group: 'admin', href: '/admin/lifecycle/onboarding/groups', labelKey: 'onboardingGroups', icon: Laptop },
     { group: 'admin', href: '/admin/lifecycle/onboarding/access', labelKey: 'onboardingModuleAccess', icon: Laptop },
+    ...V9_SHARED_NAVIGATION.map(item => ({group: 'main' as const, href: item.href, labelKey: item.labelKey, icon: Laptop, exactHref: true})),
 ];
 export const lifecyclePack: ModulePack = {
     id: 'lifecycle',
