@@ -3,7 +3,7 @@ import {classifyTestFile} from '../scripts/gate-db-classify';
 import {PARITY_PROBE_GROUPS,PARITY_PROBE_VARIANTS,PARITY_PROBE_ENTRYPOINTS,type ParityProbeGroup} from './helpers/agent-action-parity-groups';
 /** ADR-0151 §7, review R16 (WP8): every agent action registry entry has a parity matrix declaration, and a
  * new entry without one fails CI. No database: this is the coverage guard; the role matrix itself runs in
- * three tracked DB entrypoints through test/helpers/agent-action-parity-probes.ts. */
+ * four tracked DB entrypoints through test/helpers/agent-action-parity-probes.ts. */
 import {describe,expect,it} from 'vitest';
 import {AGENT_ACTIONS} from '../lib/ai/agent-action-registry';
 import {AGENT_ACTION_PARITY,ATTENDANCE_WORKFLOW_PARITY,PARITY_PENDING_CEILING,PARITY_PENDING_ORIGINAL,PARITY_ROLES,PROBED_ACTION_IDS,parityCoverageProblems,type ParityDeclaration} from './helpers/agent-action-parity-matrix';
@@ -18,6 +18,12 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
   expect(groups.every(group=>group.actions.length>0)).toBe(true);expect(new Set(actions).size).toBe(actions.length);expect([...actions].sort()).toEqual([...PROBED_ACTION_IDS].sort());
   expect(new Set(variants).size).toBe(variants.length);expect([...variants].sort()).toEqual([...PARITY_PROBE_VARIANTS].sort());
   expect(Object.keys(PARITY_PROBE_ENTRYPOINTS).sort()).toEqual(Object.keys(PARITY_PROBE_GROUPS).sort());expect(new Set(Object.values(PARITY_PROBE_ENTRYPOINTS)).size).toBe(groups.length);
+  expect(Object.keys(PARITY_PROBE_GROUPS).sort()).toEqual(['commands','personnel','requests','reviews']);
+  expect(PARITY_PROBE_GROUPS.personnel.actions).toEqual(['employees.document_metadata.maintain','employees.code.maintain','employees.passport.maintain','employees.payment_method.maintain']);
+  expect(PARITY_PROBE_GROUPS.commands.actions).toHaveLength(10);expect(PARITY_PROBE_GROUPS.requests.actions).toHaveLength(13);expect(PARITY_PROBE_GROUPS.reviews.actions).toHaveLength(13);
+  expect(PARITY_PROBE_GROUPS.commands.variants).toEqual([...PARITY_PROBE_VARIANTS]);
+  for(const group of ['requests','reviews','personnel'] as const)expect(PARITY_PROBE_GROUPS[group].variants).toEqual([]);
+  expect(PARITY_PROBE_ENTRYPOINTS.personnel).toBe('test/agent-action-permission-parity-personnel.test.ts');
  });
  it('uses the real shared executable probes from every wrapper and keeps each wrapper classified DB',()=>{
   const read=(path:string)=>{try{return readFileSync(path,'utf8');}catch{return null;}},path='test/helpers/agent-action-parity-probes.ts',probe=read(path);expect(probe).not.toBeNull();if(probe===null)throw Error('Shared parity implementation is missing');
