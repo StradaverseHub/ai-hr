@@ -749,6 +749,7 @@
       "childReliefReview": "Semakan pelepasan anak"
     },
     "switcher": {
+      "loadFailed": "Carian pekerja tidak dapat dimuatkan. Cuba lagi.",
       "ariaLabel": "Cari pekerja",
       "placeholder": "Cari ID pekerja atau nama…",
       "resultsLabel": "Hasil carian pekerja",

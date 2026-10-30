@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useMemo, useRef, useState, useTransition } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { EmployeeName, inputCls } from '@/components/ui';
@@ -28,18 +28,21 @@ import { firstDirtyGuard } from '@/lib/unsaved-changes';
  * null, so a result list can never be the thing that grants access.
  */
 export function EmployeeSwitcher({
-  employees,
+  employees = [],
+  remote = false,
   currentEmploymentId,
   tab,
 }: {
   /** Already scope-fenced by the caller. This component only ever narrows it. */
-  employees: SwitcherEmployee[];
+  employees?: SwitcherEmployee[];
+  remote?: boolean;
   /** The employee whose profile is open, if any — shown as "current" so a jump is obviously a jump. */
   currentEmploymentId?: string | null;
   /** The profile tab to keep open across the jump. Null on the listing, which has no tab. */
   tab?: string | null;
 }) {
   const t = useTranslations('people.switcher');
+  const common = useTranslations('common');
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const listId = useId();
@@ -49,10 +52,26 @@ export function EmployeeSwitcher({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
 
-  const results = useMemo(
-    () => matchEmployees(employees, query, SWITCHER_RESULT_CAP),
-    [employees, query],
-  );
+  const [response, setResponse] = useState<{query:string; rows:SwitcherEmployee[]; failed?:boolean}|null>(null);
+  useEffect(() => {
+    if(!remote||!query.trim())return;
+    const controller=new AbortController();
+    const timer=setTimeout(async()=>{
+      try{
+        const result=await fetch('/api/personnel/search?q='+encodeURIComponent(query),{signal:controller.signal,cache:'no-store'});
+        if(!result.ok)throw new Error('Employee search failed');
+        const data=await result.json();
+        if(!controller.signal.aborted)setResponse({query,rows:data.rows});
+      }catch{
+        if(!controller.signal.aborted)setResponse({query,rows:[],failed:true});
+      }
+    },200);
+    return ()=>{clearTimeout(timer);controller.abort();};
+  },[remote,query]);
+  const localResults = useMemo(() => matchEmployees(employees, query, SWITCHER_RESULT_CAP),[employees,query]);
+  const currentResponse=response?.query===query?response:null;
+  const loading=remote&&!!query.trim()&&!currentResponse;
+  const results=remote?(currentResponse?.rows??[]):localResults;
 
   /**
    * 420ebab5 part two — "Open another employee" is one of the ways the reporter named for leaving a
@@ -100,7 +119,7 @@ export function EmployeeSwitcher({
     <div
       ref={boxRef}
       className="relative"
-      // Closing on blur rather than on a document listener keeps this island free of effects; the
+      // Closing on blur keeps focus inside this control; the
       // contains() check is what stops a click on a RESULT from closing the list before it navigates.
       onBlur={(e) => {
         if (!boxRef.current?.contains(e.relatedTarget as Node | null)) setOpen(false);
@@ -109,6 +128,7 @@ export function EmployeeSwitcher({
       <input
         type="search"
         role="combobox"
+        aria-busy={loading}
         aria-expanded={showList}
         aria-controls={listId}
         aria-autocomplete="list"
@@ -138,7 +158,7 @@ export function EmployeeSwitcher({
           className="absolute right-0 z-50 mt-1 max-h-80 w-[min(22rem,90vw)] overflow-y-auto rounded-md border border-border bg-popover text-popover-foreground shadow-lg"
         >
           {results.length === 0 ? (
-            <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noMatches')}</p>
+            <p className="px-4 py-6 text-center text-sm text-muted-foreground">{loading?common('loading'):currentResponse?.failed?t('loadFailed'):t('noMatches')}</p>
           ) : (
             results.map((e, i) => {
               const isCurrent = e.employmentId === currentEmploymentId;

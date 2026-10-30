@@ -749,6 +749,7 @@
       "childReliefReview": "子女税务减免检视"
     },
     "switcher": {
+      "loadFailed": "无法加载员工搜索，请重试。",
       "ariaLabel": "搜索员工",
       "placeholder": "搜索员工编号或姓名…",
       "resultsLabel": "员工搜索结果",

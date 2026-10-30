@@ -749,6 +749,7 @@
       "childReliefReview": "Child relief review"
     },
     "switcher": {
+      "loadFailed": "Employee search could not be loaded. Try again.",
       "ariaLabel": "Search employee",
       "placeholder": "Search employee ID or name…",
       "resultsLabel": "Employee search results",

@@ -1,0 +1,25 @@
+import {afterEach,expect,it,vi} from 'vitest';
+import {act,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {EmployeeSwitcher} from '../app/admin/personnel/employee-switcher';
+vi.mock('next-intl',()=>({useTranslations:()=> (key:string)=>key}));
+vi.mock('next/navigation',()=>({useRouter:()=>({push:vi.fn()})}));
+vi.mock('../components/ui',()=>({inputCls:'',EmployeeName:({name}:{name:string})=><span>{name}</span>}));
+afterEach(()=>vi.unstubAllGlobals());
+it('debounces searches, hides stale results and distinguishes failure from no matches',async()=>{
+ const calls:{url:string;resolve:(value:unknown)=>void}[]=[];
+ vi.stubGlobal('fetch',vi.fn((url:string)=>new Promise(resolve=>calls.push({url,resolve}))));
+ render(<EmployeeSwitcher remote/>);const box=screen.getByRole('combobox');
+ fireEvent.change(box,{target:{value:'first'}});expect(screen.getByText('loading')).toBeInTheDocument();
+ await waitFor(()=>expect(calls).toHaveLength(1));
+ fireEvent.change(box,{target:{value:'second'}});await waitFor(()=>expect(calls).toHaveLength(2));
+ expect(calls[1].url).toBe('/api/personnel/search?q=second');
+ await act(async()=>{calls[1].resolve({ok:true,json:async()=>({rows:[{employmentId:'second',name:'Current result',employeeCode:null,company:'Fictional',department:null}]})});});
+ expect(await screen.findByText('Current result')).toBeInTheDocument();
+ await act(async()=>{calls[0].resolve({ok:true,json:async()=>({rows:[{employmentId:'first',name:'Stale result',employeeCode:null,company:'Fictional',department:null}]})});});
+ expect(screen.queryByText('Stale result')).not.toBeInTheDocument();
+ fireEvent.change(box,{target:{value:'failed'}});expect(screen.queryByText('Current result')).not.toBeInTheDocument();
+ await waitFor(()=>expect(calls).toHaveLength(3));
+ await act(async()=>{calls[2].resolve({ok:false});});
+ expect(await screen.findByText('loadFailed')).toBeInTheDocument();expect(screen.queryByText('noMatches')).not.toBeInTheDocument();
+ fireEvent.change(box,{target:{value:''}});expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+});

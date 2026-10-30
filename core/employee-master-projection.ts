@@ -109,7 +109,7 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
     let index=keys.get(key);if(!index){index=new Map();for(const row of rows){const bucket=index.get(row[key])??[];bucket.push(row);index.set(row[key],bucket);}keys.set(key,index);}
     return (index.get(value)??[]).slice();
   };
-  const fieldsByOwner=new Map<string,typeof fields>();
+  const fieldsByOwner=new Map<string,(typeof fields)[number][]>();
   for(const field of fields){const owned=fieldsByOwner.get(field.owner)??[];owned.push(field);fieldsByOwner.set(field.owner,owned);}
   const results:MasterSubject[]=[...unknownScope];
   for(const employment of employments){

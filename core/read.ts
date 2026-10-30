@@ -470,6 +470,26 @@ export async function listWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:{co
 }
 
 
+/** Top matches for profile navigation, through the current Workforce-purpose projection.
+ * This deliberately offers no continuation: the switcher is an eight-result jump control. */
+export async function searchWorkforceEmployeesTx(ctx:SessionContext,tx:Tx,companyIds:string[],query:string){
+  if(query.length>200)throw new RangeError('Invalid employee search');
+  const raw=query.trim().toLowerCase(),folded=raw.replace(/[\s._-]/g,'');
+  if(!raw||!companyIds.length)return [];
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  const columns=workforcePickerColumns(),name=sql`lower(${columns.name})`,code=sql`lower(coalesce(${columns.employeeCode},''))`;
+  const compact=sql`regexp_replace(${code}, '[[:space:]._-]', '', 'g')`;
+  const rank=sql<number>`case
+    when ${folded} <> '' and ${compact} <> '' and ${compact} = ${folded} then 0
+    when ${folded} <> '' and ${compact} <> '' and left(${compact},length(${folded})) = ${folded} then 1
+    when left(${name},length(${raw})) = ${raw} then 2
+    when position(${raw} in ${code}) > 0 or (${folded} <> '' and position(${folded} in ${compact}) > 0) then 3
+    when position(${raw} in ${name}) > 0 then 4 else 5 end`;
+  const source=sql`app.access_workforce_picker_rows(null,null::date,null::date) as workforce_row(value)`;
+  return tx.select(columns).from(source).where(and(workforceListWhere({companyIds},workforceListColumns()),sql`${rank} < 5`))
+    .orderBy(rank,columns.name,columns.employmentId).limit(8);
+}
+
 /**
  * Headcount by DERIVED Employee Status over the whole filtered set (feedback 579255c3, point 5) —
  * `{ active: 30, resigned: 9, probation: 1, … }` plus the grand total.
