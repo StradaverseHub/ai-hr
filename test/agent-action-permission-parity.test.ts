@@ -1,6 +1,8 @@
 import {workforceProfileMaintenanceReviews,readWorkforceProfileMaintenanceChoices} from '../core/assistant-actions/workforce-profile-maintenance-review-store';
 import {maintainWorkforceRecord,workforceEditor} from '../core/workforce-maintenance';
 import {workforceMaintenanceFields} from '../lib/workforce-maintenance-fields';
+import {familyMaintenanceReviews,readFamilyMaintenanceChoices} from '../core/assistant-actions/family-maintenance-review-store';
+import {addDependent} from '../core/workforce-registers';
 import {emergencyContactMaintenanceReviews,readEmergencyContactMaintenanceChoices} from '../core/assistant-actions/emergency-contact-maintenance-review-store';
 import {addEmergencyContact} from '../core/workforce-registers';
 /** ADR-0151 §7 "Parity", review R16 (WP8) — the generic per-entry role matrix, driven by the agent action
@@ -382,6 +384,11 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'employees.draft.activate',contractVersion:1,draftId:item.subjectId,companyId:item.companyId}),
   offered:async(who,item)=>listed(await readEmployeeDraftActivationChoices(who,{}),'drafts','draftId',item.subjectId),
   screen:(tx,who,item)=>saveAndCompleteEmployeeDraft(who,{id:item.subjectId,data:item.proposal as EmployeeDraftData,currentStep:4},tx)},
+ 'employees.family.maintain':{family:'hr_on_employment',store:familyMaintenanceReviews,screenAdmits:isAdmin,
+  create:async(_w,h)=>itemOf(h,h.person.personId),
+  human:item=>({action:'employees.family.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'add',dependentId:null,fields:{"fullName":"Fictional Family Member","relationship":"child","dateOfBirth":"2015-01-01","gender":null,"icOrPassport":null,"phone":null,"remarks":"Human entered note","passportNumber":null,"residentialAddress":null,"deceasedOn":null,"marriageDate":null,"marriageStatus":null,"occupation":null,"companyName":null,"employerAddress":null,"schoolName":null,"studyLevel":null,"studyCountry":null,"childReliefCategory":null,"isBeneficiary":false,"isDeceased":false,"spouseWorking":null,"isStudent":null,"childTaxRelief":null,"childReliefPercentage":null}}),
+  offered:async(who,item)=>listed(await readFamilyMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
+  screen:(tx,who,item)=>addDependent(who,{personId:item.subjectId,...{"fullName":"Fictional Family Member","relationship":"child","dateOfBirth":"2015-01-01","gender":null,"icOrPassport":null,"phone":null,"remarks":"Human entered note","passportNumber":null,"residentialAddress":null,"deceasedOn":null,"marriageDate":null,"marriageStatus":null,"occupation":null,"companyName":null,"employerAddress":null,"schoolName":null,"studyLevel":null,"studyCountry":null,"childReliefCategory":null,"isBeneficiary":false,"isDeceased":false,"spouseWorking":null,"isStudent":null,"childTaxRelief":null,"childReliefPercentage":null}},tx)},
  'employees.qualification.maintain':{family:'hr_on_employment',store:qualificationMaintenanceReviews,screenAdmits:isAdmin,
   create:async(_w,h)=>itemOf(h,h.person.employmentId),
   human:item=>({action:'employees.qualification.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'add',qualificationId:null,fields:{qualification:'Bachelor',description:'Fictional human-entered qualification',fromYm:'2018-01',toYm:'2021-12',institute:'Fictional Institute',major:null,graduationDate:'2021-12-15',result:null,isHighest:true}}),

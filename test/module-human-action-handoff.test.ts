@@ -79,6 +79,7 @@ it('offers native Employee import and a local human qualification review without
  for(const extra of [{rows:[]},{headers:[]},{companyId:'other'},{dataset:'private'},{source:'private'},{commit:true},{route:'/admin/personnel/import?company=other'},{authority:'rechecked_on_review_page'}])expect(()=>checkedModuleHumanHandoffs('employees',rows.map(row=>({...row,...extra})))).toThrow();
  expect(()=>checkedModuleHumanHandoffs('leave',rows)).toThrow();
  expect(()=>parseModuleAgentActionNomination({module:'employees',action:'employees.import',phase:'prepare'})).toThrow();
+ expect(()=>parseModuleAgentActionNomination({module:'employees',action:'employees.family.maintain',phase:'prepare'})).toThrow();
 });
 
 it('offers the actual human Payroll close page without financial inputs, batch selection, release overrides or confirmation',()=>{

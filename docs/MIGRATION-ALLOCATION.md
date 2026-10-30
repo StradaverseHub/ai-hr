@@ -419,3 +419,12 @@ The action uses the existing encrypted assigned ledger with person-keyed receipt
 Source-only claim0717_assistant_workforce_profile_maintenance / idx698 / when1793330000046.
 Every number/index/timestamp is PROVISIONAL until integration freeze above the then-live ordered ledger.
 Preserve0713–0716 sibling kinds and all applied SQL bytes. This claims no installation priority, protected-ref move or deployment.
+
+## Family maintenance parity — provisional 30 October 2026
+
+Source-only claim `0718_assistant_family_maintenance`, idx699 / when1793330000047.
+The parent reserved0717/idx698 for a separately reviewed creation package; this checkout does not include it.
+All numbers remain PROVISIONAL until integration freezes above the then-live ordered ledger.
+No installation priority, migration application, protected-ref movement or deployment is authorized.
+This appends one shared-person Approve action to the existing encrypted assigned ledger and preserves
+all predecessor checks, index predicates, verifier branches and dynamic outcome bounds.

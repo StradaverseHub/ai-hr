@@ -4089,6 +4089,13 @@
       "when": 1793330000046,
       "tag": "0717_assistant_workforce_profile_maintenance",
       "breakpoints": true
+    },
+    {
+      "idx": 699,
+      "version": "7",
+      "when": 1793330000047,
+      "tag": "0718_assistant_family_maintenance",
+      "breakpoints": true
     }
   ]
 }

@@ -1,3 +1,4 @@
+import {familyMaintenanceReviews} from './family-maintenance-review-store';
 import {requireNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 /** Closed actual-source adapters only. Never calls prepare/confirm, decrypts pending content,
  * executes a service string, or interprets arbitrary native SQL/event payloads in a harness. */
@@ -58,6 +59,7 @@ const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOut
  'employees.workforce_profile.maintain':(tx,ctx,id)=>workforceProfileMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.emergency_contact.maintain':(tx,ctx,id)=>emergencyContactMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.draft.activate':(tx,ctx,id)=>employeeDraftActivationReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.family.maintain':(tx,ctx,id)=>familyMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.qualification.maintain':(tx,ctx,id)=>qualificationMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.movement.transfer':(tx,ctx,id)=>movementTransferReviews.readCompletedOutcomeTx(tx,ctx,id),
  'toil.credit.grant':(tx,ctx,id)=>leaveCreditReviews.readCompletedOutcomeTx(tx,ctx,id),

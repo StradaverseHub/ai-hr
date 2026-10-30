@@ -15,6 +15,7 @@ describe('closed native outcome association contract',()=>{
    expect(NativeOutcomeReference.safeParse({source:'review',action,actionId:randomUUID()}).success).toBe(false);
   }
   expect(NATIVE_REVIEW_ACTIONS).toHaveLength(AGENT_ACTIONS.filter(row=>row.store!=='human_workflow_only').length);expect(Object.keys(NATIVE_OUTCOME_ACTIONS)).toHaveLength(actions.length);
+  expect([...NATIVE_REVIEW_ACTIONS].sort()).toEqual(actions.filter(action=>action!=='employees.import').sort());expect(NATIVE_REVIEW_ACTIONS).toContain('employees.family.maintain');
   expect(NON_EFFECT_OBSERVATIONS).toEqual({system_explorer:'authorized_schema_observation',assistant:'authorized_orchestration_read_execution'});
  });
  it('accepts only explicit consent, closed references and server-owned import versions',()=>{
