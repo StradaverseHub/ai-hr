@@ -20534,7 +20534,8 @@
           "posted": "Penghantaran direkodkan",
           "rejected": "Ditolak",
           "withdrawn": "Ditarik balik"
-        }
+        },
+        "reviewHint": "Semak pembatalan di bawah sebelum mengesahkan."
       }
     },
     "denied_unavailable": "Ada sedikit masalah di pihak saya. Sila cuba lagi sebentar nanti.",

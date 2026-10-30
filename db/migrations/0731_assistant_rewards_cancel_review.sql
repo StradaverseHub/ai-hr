@@ -1,12 +1,11 @@
 -- UNAPPLIED PROVISIONAL DEVELOPMENT ONLY. Coordinator idx711 / when1793330000068.
 -- Same physical encrypted ledger and unit/company compatibility protocol as Rewards post.
 -- Legacy rewards_posted_* columns hold this kind's cancellation event/revision; no payroll effect.
-INSERT INTO app.assistant_action_kind(id,module,tier_ceiling,category,review_kind)
-VALUES('rewards.cancel_review','rewards','approve','pay','rewards.cancel_review');
+INSERT INTO app.assistant_action_kind(id,module,tier_ceiling,category,review_kind) VALUES('rewards.cancel_review','rewards','approve','pay','rewards.cancel_review');
 --> statement-breakpoint
 -- Preserve every predecessor CHECK byte-expression for all predecessor kinds. Only the new closed
 -- kind uses the existing unit/company column family; no assigned employment/person is fabricated.
-DO $$ DECLARE c record; old text; canonical text; null_columns text;
+DO $$ DECLARE c record; old text; canonical text; null_columns text; scope_name text; rewards_name text; matches integer;
 BEGIN
  -- Closed metadata/receipt whitelist. Every other physical column is strictly NULL for cancellation,
  -- including all existing assigned subject and other action receipt columns. No predecessor tree copy.
@@ -15,9 +14,18 @@ BEGIN
  AND attname NOT IN ('action_kind','id','tenant_id','user_id','person_id','employment_id','company_id','intent_digest','reviewed_digest','state','created_at','expires_at','rewards_unit_id','rewards_posted_event_id','rewards_posted_revision','rewards_posted_batch_id','rewards_review_person_ids');
  IF null_columns IS NULL THEN RAISE EXCEPTION '0731 missing canonical custody columns';END IF;
  canonical:=null_columns||' AND employment_id IS NULL AND company_id IS NOT NULL AND rewards_unit_id IS NOT NULL AND rewards_posted_batch_id IS NULL AND ((state=''completed'')=(rewards_posted_event_id IS NOT NULL AND rewards_posted_revision IS NOT NULL)) AND ((rewards_posted_event_id IS NULL)=(rewards_posted_revision IS NULL)) AND (state=''completed'' OR (rewards_posted_event_id IS NULL AND rewards_posted_revision IS NULL)) AND (rewards_review_person_ids IS NULL OR rewards_review_person_ids=ARRAY[]::uuid[])';
- FOR c IN SELECT conname,pg_get_expr(conbin,conrelid) AS expression FROM pg_constraint
- WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND pg_get_expr(conbin,conrelid) LIKE '%action_kind%' LOOP
- old:=c.expression;
+ -- Only three existing checks reject this kind: actor scope, dedicated Rewards columns and
+ -- legacy kind receipt columns. Other family checks already enforce their own columns NULL.
+ -- Discover exact keys without deparsing every large predecessor tree into a held cursor.
+ SELECT count(*),min(conname) INTO matches,scope_name FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c'
+ AND conkey @> ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid='app.assistant_own_leave_review'::regclass AND attname='testing_execution_id'),(SELECT attnum FROM pg_attribute WHERE attrelid='app.assistant_own_leave_review'::regclass AND attname='employment_id')]::smallint[];
+ IF matches<>1 THEN RAISE EXCEPTION '0731 actor scope shape drift';END IF;
+ SELECT count(*),min(conname) INTO matches,rewards_name FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c'
+ AND conkey @> ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid='app.assistant_own_leave_review'::regclass AND attname='action_kind'),(SELECT attnum FROM pg_attribute WHERE attrelid='app.assistant_own_leave_review'::regclass AND attname='rewards_unit_id')]::smallint[];
+ IF matches<>1 THEN RAISE EXCEPTION '0731 Rewards column shape drift';END IF;
+ FOR c IN SELECT conname FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND conname IN (scope_name,rewards_name,'assistant_review_kind_columns') LOOP
+ SELECT pg_get_expr(conbin,conrelid) INTO old FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname=c.conname;
+ RAISE NOTICE '0731 wrapping %, predecessor bytes %, finite new branch bytes %',c.conname,octet_length(old),octet_length(canonical);
  EXECUTE format('ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT %I',c.conname);
  EXECUTE format('ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT %I CHECK (CASE WHEN action_kind=''rewards.cancel_review'' THEN (%s) ELSE (%s) END)',c.conname,canonical,old);
  END LOOP;

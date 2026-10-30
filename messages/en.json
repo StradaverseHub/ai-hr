@@ -20534,7 +20534,8 @@
           "posted": "Posting recorded",
           "rejected": "Rejected",
           "withdrawn": "Withdrawn"
-        }
+        },
+        "reviewHint": "Review the cancellation below before confirming."
       }
     },
     "denied_unavailable": "A little snag on my side. Please try again in a moment.",

@@ -8,7 +8,7 @@ import {RewardsCancelPanel} from '../components/assistant/rewards-cancel-panel';
 import {REWARDS_CANCEL_ACTION as action} from '../lib/assistant-actions/rewards-cancel-contract';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viMessages from '../messages/vi.json';
 vi.mock('next/link',()=>({default:({children,...props}:React.AnchorHTMLAttributes<HTMLAnchorElement>)=><a {...props}>{children}</a>}));
-vi.mock('../components/ui',()=>({Button:({children,variant:_,...props}:React.ButtonHTMLAttributes<HTMLButtonElement>&{variant?:string})=><button {...props}>{children}</button>,inputCls:''}));
+vi.mock('../components/ui',async()=>({Button:(await import('../components/ui/button')).Button,inputCls:''}));
 const unitId='10000000-0000-4000-8000-000000000001',companyId='10000000-0000-4000-8000-000000000002',actionId='10000000-0000-4000-8000-000000000003',eventId='10000000-0000-4000-8000-000000000004';
 const reason='Fictional reason <img src=x onerror=alert(1)>',input={action,contractVersion:1,unitId,revision:3,reason,confirmWholeReview:true};
 const prepared=()=>({kind:'prepared',review:{action,contractVersion:1,actionId,reviewedDigest:'a'.repeat(64),createdAt:new Date(Date.now()-1000).toISOString(),expiresAt:new Date(Date.now()+600000).toISOString(),content:structuredClone(input),review:{unitId,companyId,name:'Fictional review',revision:3,before:'bg',after:'withdrawn',reason,consequence:'whole_review_cancelled_entries_and_decisions_retained_reservation_released'}}});
