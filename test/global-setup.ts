@@ -26,11 +26,13 @@ import {profileTestPhase} from './profile';
  *    gets "permission denied for database" the moment a test tries to connect under RLS.
  */
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync,writeFileSync } from 'node:fs';
+import {join} from 'node:path';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { seedCatalogs } from '../scripts/seed-catalogs';
+import {prepareDisposableDraftDiscardRoles,DRAFT_DISCARD_ROLE_FIXTURE_FINGERPRINT_INPUT} from './helpers/personnel-draft-discard-ci-role-fixture';
 
 /** Swap the database name on a postgres:// URL, preserving credentials, host, port and params. */
 export function withDatabase(url: string, dbName: string): string {
@@ -74,7 +76,7 @@ const FINGERPRINT_TABLE = '_test_template_fingerprint';
  * whose column did not exist. It surfaced as `column "statutory_tier" does not exist` from seedBase —
  * indistinguishable from a schema bug, and it survived a rerun, which is the part that wastes the hour.
  */
-export const FINGERPRINT_EXTRA_FILES = ['db/migrations/meta/_journal.json', 'packs/catalog.ts'] as const;
+export const FINGERPRINT_EXTRA_FILES = ['db/migrations/meta/_journal.json', 'packs/catalog.ts',DRAFT_DISCARD_ROLE_FIXTURE_FINGERPRINT_INPUT] as const;
 
 /**
  * A hash of everything that determines the template's SHAPE: the migration files, the migration JOURNAL,
@@ -214,6 +216,16 @@ async function setupImpl({ provide }: { provide?: (k: string, v: unknown) => voi
   // called rather than imported as constants. Bound to locals so every statement below uses one value.
   const templateName = templateDb();
   const workerPrefix = workerDbPrefix();
+
+  // Cluster roles are not cloned with a database or covered by its saved fingerprint. Validate
+  // the exact disposable role graph before EVERY cache decision, including reuse. No live bootstrap.
+  const roleFixture=await prepareDisposableDraftDiscardRoles(adminUrl);
+  writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'personnel-draft-discard-role-prerequisites.json'),JSON.stringify({
+    kind:'PERSONNEL_DRAFT_DISCARD_DISPOSABLE_ROLE_PREREQUISITES',candidate:process.env.AIHR_CI_HEAD,
+    controller:process.env.AIHR_CI_CONTROL_HEAD,runId:process.env.GITHUB_RUN_ID,
+    helperSha256:createHash('sha256').update(readFileSync(DRAFT_DISCARD_ROLE_FIXTURE_FINGERPRINT_INPUT)).digest('hex'),
+    ...roleFixture,scope:'disposable focused cluster only; no installation attestation',
+  },null,2)+'\n');
 
   const t0 = Date.now();
 

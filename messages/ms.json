@@ -19753,6 +19753,63 @@
           "other": "Lain-lain"
         }
       },
+      "employeeDraftDiscard": {
+        "title": "Buang draf pekerja yang disimpan",
+        "description": "Semak maklumat yang disimpan dan kesan pada ID Pekerja sebelum membuang satu draf.",
+        "back": "Kembali ke Pembantu",
+        "intro": "Pilih draf yang disimpan untuk disemak. Membuangnya memadam semua maklumat yang disimpan dalam draf itu.",
+        "working": "Sedang diproses…",
+        "unavailable": "Keputusan tidak dapat disahkan. Buka semula semakan yang sama atau periksa draf dalam Personel.",
+        "choicesUnavailable": "Draf tidak tersedia. Semak akses semasa anda dalam Personel.",
+        "draft": "Draf yang disimpan",
+        "choose": "Pilih draf",
+        "unnamed": "Draf tanpa nama",
+        "unassigned": "Tiada syarikat ditetapkan",
+        "empty": "Tiada draf yang disimpan tersedia.",
+        "truncated": "Memaparkan 25 draf terkini. Buka Personel untuk selebihnya.",
+        "handoff": "Semak draf ini dalam Personel sebelum membuangnya.",
+        "onboardingHandoff": "Draf ini dipautkan kepada kes orientasi. Semak kesan pada kes dan tugasnya dalam Personel.",
+        "native": "Buka draf Personel",
+        "prepareConsent": "Saya memilih draf ini dan mahu menyemak pembuangan maklumat yang disimpan.",
+        "prepare": "Semak pembuangan draf",
+        "reviewTitle": "Semak pembuangan draf yang disimpan",
+        "company": "Syarikat",
+        "reservation": "Kesan pada ID Pekerja",
+        "consequence": "Pengesahan memadam secara kekal semua maklumat yang disimpan dalam draf ini. Anda tidak boleh memulihkannya dalam aplikasi. Tindakan ini tidak memadam rekod pekerja.",
+        "expires": "Semakan tamat pada",
+        "expired": "Semakan ini telah tamat. Mulakan semakan baharu daripada draf Personel.",
+        "confirmConsent": "Saya telah menyemak draf ini dan kesan pada ID Pekerjanya. Saya membenarkan semua maklumat yang disimpan dalam draf ini dipadam secara kekal, tanpa fungsi buat asal dalam aplikasi.",
+        "confirm": "Buang draf yang disimpan",
+        "retire": "Batalkan semakan ini",
+        "retireNote": "Membatalkan semakan ini mengekalkan draf yang disimpan.",
+        "uncertain": "Keputusan belum pasti. Buka semula semakan yang sama untuk mendapatkan keputusannya sebelum cuba membuang draf lain.",
+        "uncertainUnknown": "Semakan mungkin telah disimpan. Cari semakan anda sebelum memulakan semula.",
+        "reopen": "Buka semula semakan",
+        "done": "Draf yang disimpan telah dibuang",
+        "doneNote": "Draf dan maklumatnya telah dipadam. Aplikasi tidak boleh memulihkannya.",
+        "another": "Semak draf lain",
+        "find": "Cari semakan saya",
+        "noReviews": "Tiada semakan yang disimpan ditemui.",
+        "outcomes": {
+          "no_reservation": "Draf ini tiada ID Pekerja yang ditempah. Tiada nombor akan dikembalikan.",
+          "unreserved_code": "ID Pekerja {code} tidak lagi dipegang oleh draf ini. Tiada tempahan jujukan untuk dikembalikan.",
+          "released_tip": "ID Pekerja {code} berada di hujung jujukan. Nombor yang ditempah akan dikembalikan.",
+          "retained_gap": "ID Pekerja {code} tidak lagi dipegang oleh draf ini. Nombornya tidak akan dikembalikan kepada jujukan; jurang kekal."
+        },
+        "completedOutcomes": {
+          "no_reservation": "Tiada ID Pekerja ditempah dan tiada nombor dikembalikan.",
+          "unreserved_code": "ID Pekerja {code} tidak lagi dipegang oleh draf ini. Tiada tempahan jujukan untuk dikembalikan.",
+          "released_tip": "Nombor yang ditempah untuk ID Pekerja {code} telah dikembalikan kepada jujukannya.",
+          "retained_gap": "ID Pekerja {code} tidak lagi dipegang oleh draf ini. Nombornya tidak dikembalikan kepada jujukan; jurang kekal."
+        },
+        "states": {
+          "awaiting_confirmation": "Menunggu pengesahan",
+          "completed": "Draf yang disimpan telah dibuang",
+          "discarded": "Semakan dibatalkan; draf dikekalkan",
+          "expired": "Semakan tamat",
+          "refused": "Semakan tidak dapat diteruskan"
+        }
+      },
       "employeeDraftActivation": {
         "title": "Aktifkan draf pekerja tersimpan",
         "description": "Semak draf tersimpan yang disokong dan sahkan penciptaan pekerja melalui perkhidmatan asal.",

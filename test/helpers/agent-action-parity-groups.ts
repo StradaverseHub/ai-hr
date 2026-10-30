@@ -26,6 +26,7 @@ export const PARITY_PROBE_GROUPS={
   'employees.payment_method.maintain','employees.fixed_item.archive','employees.tp3_opening.maintain',
   'employees.cost_allocation.maintain','employees.profile_request.reject',
  ],variants:['cost_allocation_clear']},
+ personnel_discard:{actions:['employees.draft.discard'],variants:[]},
 } satisfies Record<string,{actions:readonly ProbedActionId[];variants:readonly ParityProbeVariant[]}>;
 export type ParityProbeGroup=keyof typeof PARITY_PROBE_GROUPS;
-export const PARITY_PROBE_ENTRYPOINTS:Record<ParityProbeGroup,string>={commands:'test/agent-action-permission-parity-commands.test.ts',requests:'test/agent-action-permission-parity-requests.test.ts',reviews:'test/agent-action-permission-parity-reviews.test.ts',personnel:'test/agent-action-permission-parity-personnel.test.ts'};
+export const PARITY_PROBE_ENTRYPOINTS:Record<ParityProbeGroup,string>={commands:'test/agent-action-permission-parity-commands.test.ts',requests:'test/agent-action-permission-parity-requests.test.ts',reviews:'test/agent-action-permission-parity-reviews.test.ts',personnel:'test/agent-action-permission-parity-personnel.test.ts',personnel_discard:'test/agent-action-permission-parity-personnel-discard.test.ts'};

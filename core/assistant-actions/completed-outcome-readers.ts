@@ -34,6 +34,7 @@ import {compensationMaintenanceReviews} from './compensation-maintenance-review-
 import {workforceProfileMaintenanceReviews} from './workforce-profile-maintenance-review-store';
 import {emergencyContactMaintenanceReviews} from './emergency-contact-maintenance-review-store';
 import {employeeDraftActivationReviews} from './employee-draft-activation-review-store';
+import {employeeDraftDiscardReviews} from './employee-draft-discard-review-store';
 import {qualificationMaintenanceReviews} from './qualification-maintenance-review-store';
 import {leaveAdjustmentReviews,movementTransferReviews,leaveCreditReviews} from './hr-prepared-review-store';
 import {readCompletedMultiCycleRunOutcomeTx} from './multi-cycle-run-review-store';
@@ -76,6 +77,7 @@ const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOut
  'employees.document_metadata.maintain':(tx,ctx,id)=>documentMetadataReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.fixed_item.archive':(tx,ctx,id)=>fixedItemArchiveReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.emergency_contact.maintain':(tx,ctx,id)=>emergencyContactMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.draft.discard':(tx,ctx,id)=>employeeDraftDiscardReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.draft.activate':(tx,ctx,id)=>employeeDraftActivationReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.family.maintain':(tx,ctx,id)=>familyMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.qualification.maintain':(tx,ctx,id)=>qualificationMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),

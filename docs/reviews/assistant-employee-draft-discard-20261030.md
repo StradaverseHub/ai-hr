@@ -1,5 +1,7 @@
 # Saved Personnel draft discard — unmounted contract and native effect map
 
+Historical proposal preserved for review provenance. The current development design and verification status are in [the implementation review](assistant-employee-draft-discard-implementation-20261030.md).
+
 Status: pending independent architecture/proof review. This change contains a typed contract, pure authored contract/transport tests and this map only. It adds no runtime adapter, registry entry, tool, route, mounted control, native writer, SQL, journal allocation or completion proof. No local execution or hosted result is claimed. The base is `44111437c4e831f92be348a946d1954562c3e0e5`.
 
 ## Proposed boundary and public shape

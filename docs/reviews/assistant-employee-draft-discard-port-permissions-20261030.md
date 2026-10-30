@@ -1,5 +1,7 @@
 # Draft discard port — revised NONEXECUTABLE SQL review proposal
 
+Historical proposal preserved for review provenance. The current development design and verification status are in [the implementation review](assistant-employee-draft-discard-implementation-20261030.md).
+
 Root corrections incorporated in this private revision; independent review and integration gaps remain. NOT approved or executable. Review material only. None of these fenced statements has been applied. This is NOT a migration, bootstrap change, provisioning authorization or installation instruction. Dedicated non-table-owner NOLOGIN role is the selected design; no canonical-policy copies or alternative proof architecture are proposed. All private columns/policy/function/role names below remain proposed, unallocated identifiers. Existing action-kind/CHECK/retirement/proof integration is deliberately not claimed implemented.
 
 Sources: deploy/bootstrap-db.sql:59 creates ai_hr_owner NOSUPERUSER NOCREATEROLE; 0510 owns native draft author/company policy; 0579 adds restrictive TO ai_hr_app draft RLS/triggers and its session/effective-role owner exception; 0622:141 closes raw review/content grants; 0714 activation command must keep its API/grants/completion/body behavior.

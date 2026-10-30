@@ -18,11 +18,12 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
   expect(groups.every(group=>group.actions.length>0)).toBe(true);expect(new Set(actions).size).toBe(actions.length);expect([...actions].sort()).toEqual([...PROBED_ACTION_IDS].sort());
   expect(new Set(variants).size).toBe(variants.length);expect([...variants].sort()).toEqual([...PARITY_PROBE_VARIANTS].sort());
   expect(Object.keys(PARITY_PROBE_ENTRYPOINTS).sort()).toEqual(Object.keys(PARITY_PROBE_GROUPS).sort());expect(new Set(Object.values(PARITY_PROBE_ENTRYPOINTS)).size).toBe(groups.length);
-  expect(Object.keys(PARITY_PROBE_GROUPS).sort()).toEqual(['commands','personnel','requests','reviews']);
+  expect(Object.keys(PARITY_PROBE_GROUPS).sort()).toEqual(['commands','personnel','personnel_discard','requests','reviews']);
   expect(PARITY_PROBE_GROUPS.personnel.actions).toEqual(['employees.document_metadata.maintain','employees.code.maintain','employees.passport.maintain','employees.payment_method.maintain','employees.fixed_item.archive','employees.tp3_opening.maintain','employees.cost_allocation.maintain','employees.profile_request.reject']);
   expect(PARITY_PROBE_GROUPS.commands.actions).toHaveLength(10);expect(PARITY_PROBE_GROUPS.requests.actions).toHaveLength(13);expect(PARITY_PROBE_GROUPS.reviews.actions).toHaveLength(13);
   expect(PARITY_PROBE_GROUPS.commands.variants).toEqual(['adapter_coverage','rejected_decisions','routed_attendance','permission_revalidation','boundary_controls','standalone_tester']);
   expect(PARITY_PROBE_GROUPS.personnel.variants).toEqual(['cost_allocation_clear']);
+  expect(PARITY_PROBE_GROUPS.personnel_discard).toEqual({actions:['employees.draft.discard'],variants:[]});
   for(const group of ['requests','reviews'] as const)expect(PARITY_PROBE_GROUPS[group].variants).toEqual([]);
   expect(PARITY_PROBE_ENTRYPOINTS.personnel).toBe('test/agent-action-permission-parity-personnel.test.ts');
  });
@@ -56,7 +57,7 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
  });
 
  it('has a real adapter for every human review action, with no remaining pending ceiling',()=>{
-  const humanActions=[...PARITY_PENDING_ORIGINAL,'approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer','toil.credit.grant','employees.qualification.maintain','employees.compensation.maintain','employees.emergency_contact.maintain','employees.draft.activate','employees.workforce_profile.maintain','employees.family.maintain','employees.bank.maintain','employees.fixed_item.archive','employees.document_metadata.maintain','employees.code.maintain','employees.passport.maintain','employees.cost_allocation.maintain','employees.payment_method.maintain','employees.tp3_opening.maintain','employees.profile_request.reject'];
+  const humanActions=[...PARITY_PENDING_ORIGINAL,'approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer','toil.credit.grant','employees.qualification.maintain','employees.compensation.maintain','employees.emergency_contact.maintain','employees.draft.activate','employees.workforce_profile.maintain','employees.family.maintain','employees.bank.maintain','employees.fixed_item.archive','employees.document_metadata.maintain','employees.code.maintain','employees.passport.maintain','employees.cost_allocation.maintain','employees.payment_method.maintain','employees.tp3_opening.maintain','employees.profile_request.reject','employees.draft.discard'];
   expect([...PROBED_ACTION_IDS].sort()).toEqual(humanActions.sort());
   expect(PROBED_ACTION_IDS).toHaveLength(humanActions.length);expect(PARITY_PENDING_CEILING.size).toBe(0);
   for(const id of PROBED_ACTION_IDS)expect(AGENT_ACTIONS.find(action=>action.id===id)?.store,id).not.toBe('human_workflow_only');
