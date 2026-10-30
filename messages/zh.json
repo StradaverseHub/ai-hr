@@ -21785,7 +21785,29 @@
       "amountOver": "超出 {amount}",
       "amountLeft": "剩余 {amount}",
       "cellsAdjusted": "已调整 {count} 个单元格",
-      "poolFormula": "PAT达成率 × 目标奖金月数 × 符合资格的工资总额。每个计划保持独立额度。"
+      "poolFormula": "PAT达成率 × 目标奖金月数 × 符合资格的工资总额。每个计划保持独立额度。",
+      "increase": "加薪 %",
+      "hiddenRows": "根据可见性规则，有 {count} 人未在此列出。单位总额已包含他们。",
+      "decide": {
+        "blocked": "仍有 {count} 项阻止。提交或批准前，请先处理待查事项中的所有阻止项。",
+        "reasonForWarnings": "有 {count} 项警告或例外。请至少用 10 个字符说明为何可以接受。",
+        "reasonForReturn": "退回审核时，请至少用 10 个字符说明原因。",
+        "moves": "{from} → {to}",
+        "submitTitle": "提交此审核？",
+        "submitHelp": "审核将转给下一位审批人，除非被退回，否则无法再编辑。",
+        "approveTitle": "批准此审核？",
+        "approveHelp": "您的批准及原因将被记录，审核进入下一阶段。",
+        "returnTitle": "将此审核退回草稿？",
+        "returnHelp": "审核将退回给业务单位总裁修改。对方可以看到您的原因，所有审批将重新开始。"
+      },
+      "person": {
+        "close": "关闭",
+        "previous": "上一位",
+        "next": "下一位",
+        "position": "第 {index} / {total} 位",
+        "openRecord": "打开完整记录进行编辑",
+        "noFlags": "此人没有待查事项。"
+      }
     },
     "sharedGovernance": {
       "excludedFor": "{year} 年已排除公司",
