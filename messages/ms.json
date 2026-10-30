@@ -20497,6 +20497,22 @@
         }
       },
       "rewardsCalendar": {
+        "calendar": {
+          "annual": "Tarikh akhir tahunan",
+          "offcycle": "Tempoh perkhidmatan luar kitaran",
+          "caseDue": "Keputusan kes ER/PIP",
+          "notSet": "Tidak ditetapkan",
+          "days": "{days} hari",
+          "stage": {
+            "bu": "Penyerahan CEO BU",
+            "returned": "Penyerahan semula semakan dipulangkan",
+            "bg": "Kelulusan CEO BG",
+            "gr": "Kelulusan Ganjaran Kumpulan",
+            "ctro": "Kelulusan CTRO",
+            "ec": "Kelulusan Pengerusi Eksekutif",
+            "payroll": "Pengeposan gaji"
+          }
+        },
         "title": "Ubah tarikh akhir Ganjaran",
         "intro": "Pilih syarikat dan kitaran, kemudian masukkan tarikh akhir. Ruang kosong bermaksud tiada tarikh akhir.",
         "consequence": "Kalendar ini dikongsi oleh semua semakan dalam kitaran dan syarikat terpilih. Ia hanya memaparkan tarikh akhir; ia tidak meluluskan, menyekat atau memindahkan semakan.",

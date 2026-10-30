@@ -20497,6 +20497,22 @@
         }
       },
       "rewardsCalendar": {
+        "calendar": {
+          "annual": "Thời hạn hằng năm",
+          "offcycle": "Thời hạn xử lý ngoài chu kỳ",
+          "caseDue": "Quyết định vụ việc ER/PIP",
+          "notSet": "Chưa đặt",
+          "days": "{days} ngày",
+          "stage": {
+            "bu": "BU CEO gửi",
+            "returned": "Gửi lại đợt xét duyệt bị trả về",
+            "bg": "BG CEO phê duyệt",
+            "gr": "Bộ phận khen thưởng tập đoàn phê duyệt",
+            "ctro": "CTRO phê duyệt",
+            "ec": "Chủ tịch điều hành phê duyệt",
+            "payroll": "Ghi sổ bảng lương"
+          }
+        },
         "title": "Sửa thời hạn khen thưởng",
         "intro": "Chọn công ty và chu kỳ, rồi nhập thời hạn. Để trống nghĩa là không có thời hạn.",
         "consequence": "Lịch này được dùng chung cho mọi đợt xét duyệt trong chu kỳ và công ty đã chọn. Lịch chỉ hiển thị thời hạn, không phê duyệt, chặn hay chuyển bước xét duyệt.",

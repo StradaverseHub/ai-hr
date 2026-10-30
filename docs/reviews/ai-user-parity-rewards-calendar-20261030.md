@@ -24,3 +24,13 @@ Six-locale component screenshot plan uses fictional scripted transport, not an a
 
 ## Verification plan
 Freeze exact source; public standard ubuntu24.04 hosted alpha-focused-checks only, whole typecheck true in every group. Feature group covers calendar custody/native calendar owner, cancellation regression/hybrids, UI/contracts/HTTP/registry/parity guards/shortcuts/handoffs. Separate actual eleven-role calendar group. Let ALL planned jobs finish before repair; retain originals and rerun only failed/invalidated areas. No local tests/collection/compiler/build/DB/devserver. Not installed, accepted or released.
+
+## Original verified evidence and bounded visual correction
+Both original workflows187cf9c3bee9e0166f6bdd7b6b6ab20026c11e2d are SUCCESS, including BOTH whole typechecks: feature41035548082 (201PASS) and actual11role41035551841 (11PASS). Exact source/controllerd6cb confirmed; releaseEligiblefalse; both OOMKilledfalse. Migration0741 raw targets46169/25501937bytes; untouched-check hash digest b6a59555d4da4f1fdef5e461ed15e8ccfc61c38cd5b090c9292e4a39e6328838;59 typed unrelated-column hybrids refused23514. Original reports/logs/screenshots retained in /private/tmp/rewards-calendar-41035548082 and /private/tmp/rewards-calendar-41035551841. All planned jobs finished before correction.
+
+| Before | After | Why |
+| --- | --- | --- |
+| Reused native calendar labels are English in translated locales | Owned calendar labels translated in all six locales | Makes every reviewed field understandable without changing global native copy |
+| Date and before/after value cells wrap on mobile | Values stay on one line inside the bounded table | Keeps complete ISO dates readable |
+
+Only calendar UI/owned translations/DOM fixture and this review note change. Native services, SQL, contracts and role probes are byte-identical to187cf. Retain valid original native/permission/contract/shared evidence on its actual source; rerun ONLY affected calendar DOM11 with twelve new captures and whole compilertrue. No aggregate relabelled PASS or release authority.

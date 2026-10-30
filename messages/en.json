@@ -20497,6 +20497,22 @@
         }
       },
       "rewardsCalendar": {
+        "calendar": {
+          "annual": "Annual deadlines",
+          "offcycle": "Off-cycle service levels",
+          "caseDue": "ER/PIP case decisions",
+          "notSet": "Not set",
+          "days": "{days} days",
+          "stage": {
+            "bu": "BU CEO submission",
+            "returned": "Returned review resubmission",
+            "bg": "BG CEO approval",
+            "gr": "Group Rewards approval",
+            "ctro": "CTRO approval",
+            "ec": "Executive Chairman approval",
+            "payroll": "Payroll posting"
+          }
+        },
         "title": "Edit Rewards deadlines",
         "intro": "Choose a company and cycle, then enter the deadlines. Empty fields mean no deadline.",
         "consequence": "This calendar is shared by all reviews in the selected cycle and company. It displays deadlines only; it does not approve, block or move reviews.",
