@@ -73,6 +73,11 @@ async function execute(supplied:SessionContext,value:unknown,reopen:boolean):Pro
    try{if(protectedTask.operation!=='draft')throw unavailable();text=await generateDraft(protectedTask.configuration,protectedTask.args as GenerateArgs);}finally{protectedTask.dispose();}
    if(Buffer.byteLength(text,'utf8')>32768)throw unavailable();
    const raw=z.object({mappings:z.array(PersonnelImportHeaderMappingSchema).min(1).max(32)}).strict().parse(JSON.parse(text));
+   // A provider can only select meanings established by the local canonical header owner.
+   // Static registry membership alone does not justify mapping an unknown private heading.
+   for(const mapping of raw.mappings){const allowed=protectedSource.columns.find(column=>column.columnIndex===mapping.columnIndex)?.candidates??[];
+    if(mapping.status==='mapped'&&!allowed.includes(mapping.field)||mapping.status==='ambiguous'&&mapping.fields.some(field=>!allowed.includes(field)))throw unavailable();
+   }
    proposal=capturePersonnelImportHeaderProposal({version:1,sourceRevision:p.sourceRevision,registryDigest:p.registryDigest,mappings:raw.mappings},headers);
   }
   await withTenant(ctx,async tx=>{await guard(tx,ctx,p.companyId);await completePersonnelImportAssistanceTx(tx,ctx,exact,proposal);});

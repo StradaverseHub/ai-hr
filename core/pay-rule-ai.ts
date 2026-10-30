@@ -117,7 +117,7 @@ export async function draftPayRule(
   });
   let raw:string;try{
     const task=await preparePrivateAiTask(bound,'authored_pay_rule_v1',async tx=>{await assertPayRuleDraftAuthorTx(tx,ctx);return {description:p.description,prorates:p.componentProrates??false};});
-    try{if(task.operation!=='draft')throw new PayRuleDraftError('invalid_output');expected=draftInputDigest(task.args as GenerateArgs);const selected:unknown=JSON.parse(await generateDraft(task.configuration,task.args as GenerateArgs)),local={rule:protectedPayRuleInput(p.description) as PayRule};
+    try{if(task.operation!=='draft')throw new PayRuleDraftError('invalid_output');expected=draftInputDigest(task.args as GenerateArgs);const selected:unknown=JSON.parse(await generateDraft(task.configuration,task.args as GenerateArgs)),local={rule:protectedPayRuleInput(p.description)};
       if(!selected||typeof selected!=='object'||Array.isArray(selected)||Object.keys(selected).join(',')!=='kind'||(selected as {kind:unknown}).kind!==local.rule.kind)throw new PayRuleDraftError('invalid_output');
       raw=JSON.stringify({rule:local.rule,explanation:'Prepared the requested rule from your supplied parameters. Review the native validation and values before saving.'});
     }finally{task.dispose();}

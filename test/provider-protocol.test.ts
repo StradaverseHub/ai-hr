@@ -15,6 +15,12 @@ import { runProviderProtocolEvaluation, assertProviderProtocolEvaluation } from 
 import { readOpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
 import type { ResolvedAiConfig } from '../lib/ai/types';
 import { syntheticProviderTransport } from './provider-evaluation-fixture';
+// TEST ONLY: preserve this suite's synthetic governance/protocol boundary. Real opaque issued
+// identity, one-use privacy admission and review approval are covered by their dedicated suites.
+vi.mock('../core/ai-governance',()=>({
+  preparePrivateAiTask:async(configuration:ResolvedAiConfig,id:string,read:()=>Promise<unknown>)=>{const {getProviderWorkloadDescriptor}=await import('../lib/ai/provider-workload-policy');const descriptor=getProviderWorkloadDescriptor(id)!;return {configuration,operation:descriptor.operation,...descriptor.capture(await read()),dispose(){}};},
+  withAiRunObserver:(configuration:ResolvedAiConfig,hooks:{beforeCall?:()=>void;usage?:(value:import('../lib/ai/types').AiUsage)=>void;observation?:(value:import('../lib/ai/types').AiRunObservation)=>void;settled?:()=>void}):ResolvedAiConfig=>({...configuration,governance:{async run(request,call,outgoing){try{return await configuration.governance!.run(request,async(record,observe)=>{hooks.beforeCall?.();return call(value=>{record(value);hooks.usage?.(value);},value=>{observe?.(value);hooks.observation?.(value);});},outgoing);}finally{hooks.settled?.();}}}}),
+}));
 const options = readOpenRouterOptions({ version: 1, routing: { allowedProviders: ['approved-a'], allowFallbacks: false, sort: 'latency' } });
 const cfg = (): ResolvedAiConfig => ({ provider: 'openrouter', model: 'fictional/model', apiKey: 'fixture-only-key', providerOptions: options,
   governance: { async run(_request, call) { return call(() => {}); } } });

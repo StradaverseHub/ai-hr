@@ -62,7 +62,7 @@ export function protectedPayRuleInput(description:string):Record<string,unknown>
  return refuse('raw_rule_description');
 }
 const reportDatasets=['attendance_ot','attendance_daily','leave_balances','payroll_register','payroll_history','claim_types','performance_goals','performance_reviews'] as const;
-export const PROTECTED_REPORT_FIELDS=Object.freeze(['employeeCode','name','company','department','position','payPeriod','gross','net','status','date','days','hours','leaveType','available','taken','pending','workedMinutes','otMinutes','title','weight','progress','dueOn']);
+export const PROTECTED_REPORT_FIELDS=Object.freeze(['employeeCode','name','company','department','position','payPeriod','gross','net','status','date','days','hours','leaveType','available','taken','pending','balance','workedMinutes','otMinutes','title','weight','progress','dueOn']);
 export function protectedReportColumns(description:string,available:readonly string[]):readonly string[]{const m=/^columns\s*:\s*([a-zA-Z][a-zA-Z0-9_]*(?:\s*,\s*[a-zA-Z][a-zA-Z0-9_]*)*)\s*$/.exec(description.trim());if(!m)return refuse('raw_report_description');const fields=m[1].split(',').map(v=>v.trim());if(!fields.length||fields.length>20||new Set(fields).size!==fields.length||fields.some(f=>!available.includes(f)||!PROTECTED_REPORT_FIELDS.includes(f)))return refuse('unsupported_report_columns');return Object.freeze(fields);}
 export function protectedCalibrationQuery(input:unknown){
  const r=row(input,['message','axis','people','units']);if(typeof r.message!=='string'||r.message.length>2000)return refuse();const message=r.message,axis=member(r.axis,['performance','potential','both'] as const);
