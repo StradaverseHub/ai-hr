@@ -20,6 +20,7 @@ import {readCompletedClaimCancellationOutcomeTx} from './claim-cancellation-revi
 import {leaveCancellationReviews,leaveEditReviews} from './leave-change-review-store';
 import {overtimeRequestReviews} from './overtime-request-review-store';
 import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews} from './assigned-decision-review-store';
+import {qualificationMaintenanceReviews} from './qualification-maintenance-review-store';
 import {leaveAdjustmentReviews,movementTransferReviews,leaveCreditReviews} from './hr-prepared-review-store';
 import {readCompletedMultiCycleRunOutcomeTx} from './multi-cycle-run-review-store';
 import {readCompletedPayComponentOutcomeTx} from './pay-component-review-store';
@@ -49,6 +50,7 @@ const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOut
  'approvals.attendance.decide':(tx,ctx,id)=>attendanceDecisionReviews.readCompletedOutcomeTx(tx,ctx,id),
  'approvals.toil.decide':(tx,ctx,id)=>toilDecisionReviews.readCompletedOutcomeTx(tx,ctx,id),
  'leave.adjustment.apply':(tx,ctx,id)=>leaveAdjustmentReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.qualification.maintain':(tx,ctx,id)=>qualificationMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.movement.transfer':(tx,ctx,id)=>movementTransferReviews.readCompletedOutcomeTx(tx,ctx,id),
  'toil.credit.grant':(tx,ctx,id)=>leaveCreditReviews.readCompletedOutcomeTx(tx,ctx,id),
  'performance.review.acknowledge':(tx,ctx,id)=>readCompletedStandardReviewOutcomeTx(tx,ctx,id),

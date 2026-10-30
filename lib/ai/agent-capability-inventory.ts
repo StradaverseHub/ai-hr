@@ -91,7 +91,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/personnel/[employmentId]/encashment-actions.ts":{"adjustEncashmentAction":"backlog:approve","unfreezeEncashmentAction":"backlog:approve"},
  "app/admin/personnel/[employmentId]/holiday-calendar-actions.ts":{"saveHolidayCalendarAssignmentAction":"backlog:approve"},
  "app/admin/personnel/[employmentId]/incentive-actions.ts":{"revokeIncentiveDeclarationAction":"backlog:approve","saveIncentiveDeclarationAction":"backlog:approve"},
- "app/admin/personnel/[employmentId]/qualification-actions.ts":{"addQualificationAction":"backlog:approve","archiveQualificationAction":"backlog:approve","editQualificationAction":"backlog:approve"},
+ "app/admin/personnel/[employmentId]/qualification-actions.ts":{"addQualificationAction":"registered:employees.qualification.maintain","archiveQualificationAction":"registered:employees.qualification.maintain","editQualificationAction":"registered:employees.qualification.maintain"},
  "app/admin/personnel/[employmentId]/tax-selection-actions.ts":{"savePayrollTaxSelectionAction":"backlog:approve"},
  "app/admin/personnel/[employmentId]/workforce-record-actions.ts":{"saveWorkforceCodeAction":"backlog:approve","saveWorkforceRecordAction":"backlog:approve"},
  "app/admin/personnel/actions.ts":{"decideProfileChangeAction":"backlog:approve"},

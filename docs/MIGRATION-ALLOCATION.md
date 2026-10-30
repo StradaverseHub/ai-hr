@@ -5,6 +5,16 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Personnel qualification parity — 30 October 2026 (provisional source claim)
+
+`codex/ai-user-parity-personnel-custody-20261030` appends
+`0713_assistant_qualification_maintenance`, idx694 / when1793330000042, after the ten
+unapplied AI reservations 0703–0712. This is a **provisional source claim only**. It does
+not establish installation priority, authorize a deployment, or override a later accepted
+ledger watermark. At integration freeze re-fetch the ordered accepted journal and live
+ledger, coordinate competing claims, and relocate this unapplied migration above that tail.
+All applied SQL bytes and journal identities must remain unchanged.
+
 ## AI architecture review WP6–WP14 reservations — 29 October 2026
 
 Reserved for the AI architecture review packages (handoff `docs/reviews/ai-architecture-handoff-2026-10.md`).
