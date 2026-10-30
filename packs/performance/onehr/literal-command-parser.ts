@@ -17,7 +17,7 @@ export function literalSettingProposal(facts:SettingCommandFacts):{commands:Lite
  const text=facts.text,change=new RegExp(`^${verbs.set} (.+?) (weight|target|rate[1-5]|threshold|multiple|excellence) (?:to|kepada|为|thành|க்கு|เป็น) (${number})\\s*%?\\.?$`,'diu').exec(text);
  if(change){const item=unique(facts.kpis,change[1],k=>k.title);if(!item)return null;const field=change[2].toLowerCase();return{commands:[{action:field==='weight'?'set_weight':field==='target'?'set_target':'set_number',id:item.id,target:at(change,1),value:at(change,3),...(!['weight','target'].includes(field)?{field}:{})}]};}
  const operation=new RegExp(`^(${verbs.add}|${verbs.remove}) kpi\\s*:\\s*(.+?)\\s*$`,'diu').exec(text);if(!operation)return null;
- const add=new RegExp(`^${verbs.add}$`,'iu').test(operation[1]),item=unique(add?facts.library:facts.kpis,operation[2],k=>k.title);return item?{commands:[{action:add?'add_kpi':'remove_kpi',id:item.id,target:at(operation,2)}]}:null;
+ const add=new RegExp(`^${verbs.add}$`,'iu').test(operation[1]),item=add?unique(facts.library,operation[2],k=>k.title):unique(facts.kpis,operation[2],k=>k.title);return item?{commands:[{action:add?'add_kpi':'remove_kpi',id:item.id,target:at(operation,2)}]}:null;
 }
 export function literalCareerProposal(facts:CareerCommandFacts):{commands:LiteralDraftCommand[]}|null{
  const text=facts.text,remove=new RegExp(`^${verbs.remove} (.+?)\\.?$`,'diu').exec(text);
