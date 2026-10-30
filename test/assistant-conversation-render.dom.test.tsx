@@ -56,9 +56,45 @@ describe('grounded conversation rendering',()=>{
   const issued=await view('employees',{rows:[{employeeCode:'MIXED-RECORD',company:'Canonical employer',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false});
   if(issued.state!=='ready')throw Error('Actual canonical view unavailable');const explanation=issued.answerExplanations?.find(row=>row.code==='specialist_finding:employment_active');if(!explanation)throw Error('Actual owner must attach source explanations before issuance');
   const first=select(issued,0,'employeeCode'),last=select(issued,0,'company'),segments:readonly Segment[]=[{kind:'fact',...first},{kind:'explanation',view:issued,explanation},{kind:'fact',...last}],plan:AssistantAnswerPlan={version:1,mode:'answer',blocks:[{kind:'fact',read:0,card:0,fact:first.fact},{kind:'explanation',read:0,card:explanation.card,code:explanation.code},{kind:'fact',read:0,card:0,fact:last.fact}]};
-  const shown=render(await GroundedWorkspaceReply({ctx,reply:{...reply(plan,[first,last]),conversation:{plan,facts:[first,last],segments}}}));const region=screen.getByRole('region',{name:en.assistant.workspace.conversation.answerLabel}),list=region.querySelector<HTMLOListElement>(':scope > ol')!;expect(list).not.toBeNull();expect(list.className).toContain('list-decimal');expect(region.querySelector(':scope > ul')).toBeNull();expect(region.querySelector('table')).toBeNull();
-  expect(within(list).getAllByRole('listitem').map(row=>row.textContent)).toEqual([`Canonical employer — ${en.assistant.workspace.jobs.field_employeeCode}: MIXED-RECORD`,`${en.assistant.workspace.jobs.module_employees}${en.assistant.workspace.specialistFindings.employment_active}`,`Canonical employer — ${en.assistant.workspace.jobs.field_company}: Canonical employer`]);
+  const shown=render(await GroundedWorkspaceReply({ctx,reply:{...reply(plan,[first,last]),conversation:{plan,facts:[first,last],segments}}}));const region=screen.getByRole('region',{name:en.assistant.workspace.conversation.answerLabel}),list=region.querySelector<HTMLUListElement>(':scope > ul')!;expect(list).not.toBeNull();expect(list.className).not.toContain('list-decimal');expect(region.querySelector(':scope > ol')).toBeNull();expect(region.querySelector('table')).toBeNull();
+  expect(within(list).getAllByRole('listitem').map(row=>row.textContent)).toEqual([`Canonical employer${en.assistant.workspace.jobs.field_employeeCode}: MIXED-RECORD`,`${en.assistant.workspace.jobs.module_employees}${en.assistant.workspace.specialistFindings.employment_active}`,`Canonical employer${en.assistant.workspace.jobs.field_company}: Canonical employer`]);
   expect(shown.container.querySelectorAll('details')).toHaveLength(1);expect(state.reviewLinks).not.toHaveBeenCalled();
+ });
+ it('shows record context once for adjacent facts and keeps technical provenance inside closed Sources',async()=>{
+  const issued=await view('employees',{rows:[{employeeCode:'COMPACT-REC',company:'Only employer',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false});
+  const shown=render(await GroundedWorkspaceReply({ctx,reply:answer([select(issued,0,'employeeCode'),select(issued,0,'company')])})),region=screen.getByRole('region',{name:en.assistant.workspace.conversation.answerLabel}),list=region.querySelector(':scope > ul')!;
+  expect([...list.querySelectorAll('li > span:first-child')].filter(row=>row.className.includes('block')).map(row=>row.textContent)).toEqual(['Only employer']);
+  expect(within(list).getAllByRole('listitem').map(row=>row.textContent)).toEqual([`Only employer${en.assistant.workspace.jobs.field_employeeCode}: COMPACT-REC`,`${en.assistant.workspace.jobs.field_company}: Only employer`]);
+  expect([...region.querySelectorAll(':scope > p')].map(row=>row.textContent)).not.toContain(en.assistant.workspace.conversation.canonicalNote);
+  const details=region.querySelector('details')!;expect(details.open).toBe(false);expect(details.textContent).toContain(en.assistant.workspace.conversation.canonicalNote);expect(shown.container.textContent).not.toContain(' — ');
+ });
+ it.each(['en','ms','zh','ta','th','vi'])('%s answers an actual available-area catalogue with useful source guidance and a concise permission boundary',async locale=>{
+  state.locale=locale;const modules=['leave','payroll','claims','org','employees','attendance','performance'] as const,issued=await view('assistant',{capabilities:modules.map(module=>({module,capability:'fictional-binding',secret:'PRIVATE-PAYLOAD'})),effects:'human-confirmation-only'}),copy=localeCopy(locale).assistant.workspace;
+  const shown=render(await GroundedWorkspaceReply({ctx,reply:{mode:'grounded',views:[issued],fallbackModules:[],partial:false,tools:['my_module_work'],conversation:null}}));
+  const root=shown.container.firstElementChild!,summary=root.firstElementChild!;expect(summary.textContent).toContain(copy.conversation.catalogueIntro);expect(summary.textContent).toContain(copy.conversation.catalogueScope);
+  expect([...summary.querySelectorAll(':scope > ul > li')].map(row=>row.querySelector('span')?.textContent)).toEqual(modules.slice(0,6).map(module=>copy.jobs[`module_${module}`]));
+  const more=summary.querySelector('details')!;expect(more.open).toBe(false);expect(more.querySelector('summary')?.textContent).toBe(copy.conversation.moreAreas.replace('{count}','1'));expect(more.textContent).toContain(copy.jobs.module_performance);
+  expect(summary.textContent).not.toContain(copy.jobs.module_rewards);expect(root.textContent).not.toContain('PRIVATE-PAYLOAD');expect(root.textContent).not.toContain('fictional-binding');
+  const sources=[...root.children].find(row=>row.tagName==='DETAILS') as HTMLDetailsElement;expect(sources.open).toBe(false);expect(sources.querySelector('summary')?.textContent).toBe(copy.conversation.sources);shown.unmount();
+ });
+ it('renders the same helpful catalogue for an original checked catalogue explanation',async()=>{
+  const issued=await view('assistant',{capabilities:[{module:'leave',capability:'own_leave_balances'}],effects:'human-confirmation-only'});if(issued.state!=='ready')throw Error('Expected canonical catalogue');
+  const explanation=issued.answerExplanations?.find(row=>row.code==='specialist_finding:catalogue_not_permission');if(!explanation)throw Error('Expected original catalogue descriptor');
+  const plan:AssistantAnswerPlan={version:1,mode:'answer',blocks:[{kind:'explanation',read:0,card:explanation.card,code:explanation.code}]};
+  const shown=render(await GroundedWorkspaceReply({ctx,reply:{mode:'grounded',views:[issued],fallbackModules:[],partial:false,tools:['my_module_work'],conversation:{plan,facts:[],segments:[{kind:'explanation',view:issued,explanation}]}}}));
+  expect(shown.container.textContent).toContain(en.assistant.workspace.conversation.catalogueIntro);expect(shown.container.textContent).toContain(en.assistant.workspace.jobs.help_leave);expect(shown.container.textContent).toContain(en.assistant.workspace.conversation.catalogueScope);expect(screen.queryByRole('status')).toBeNull();
+ });
+ it('does not turn a cloned or foreign catalogue into capability claims',async()=>{
+  const issued=await view('assistant',{capabilities:[{module:'payroll',capability:'own_released_payslips'}],effects:'human-confirmation-only'});
+  for(const [source,principal] of [[JSON.parse(JSON.stringify(issued)) as CanonicalModuleJobView,ctx],[issued,{...ctx,userId:'another-user'}]] as const){
+   const shown=render(await GroundedWorkspaceReply({ctx:principal,reply:{mode:'grounded',views:[source],fallbackModules:[],partial:false,tools:['my_module_work'],conversation:null}}));
+   expect(shown.container.textContent).not.toContain(en.assistant.workspace.conversation.catalogueIntro);expect(shown.container.textContent).not.toContain(en.assistant.workspace.jobs.help_payroll);expect(screen.getByRole('status').textContent).toBe(en.assistant.workspace.jobs.unavailable);shown.unmount();
+  }
+ });
+ it('keeps unselected legacy records under Sources and does not present them as a verified answer',async()=>{
+  const issued=await view('employees',{rows:[{employeeCode:'LEGACY-SOURCE',company:'Legacy employer',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:true});
+  const shown=render(await GroundedWorkspaceReply({ctx,reply:{mode:'grounded',views:[issued],fallbackModules:[],partial:true,tools:['my_module_work'],conversation:null}})),root=shown.container.firstElementChild!,details=root.querySelector('details')!;
+  expect(root.firstElementChild?.textContent).toBe(en.assistant.workspace.answers.grounded);expect(details.open).toBe(false);expect(details.textContent).toContain('LEGACY-SOURCE');expect([...root.children].filter(row=>row.tagName!=='DETAILS').map(row=>row.textContent).join('')).not.toContain('LEGACY-SOURCE');expect(root.textContent).toContain(en.assistant.workspace.answers.partial);
  });
  it('refuses a whole mixed answer before disclosing facts for a cloned, foreign or plan-mismatched explanation',async()=>{
   const issued=await view('employees',{rows:[{employeeCode:'MIXED-PRIVATE-RECORD',company:'MIXED-PRIVATE-COMPANY',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false}),other=await view('employees',{rows:[{employeeCode:'OTHER-PRIVATE',company:'OTHER-PRIVATE-COMPANY',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false});
@@ -78,14 +114,14 @@ describe('grounded conversation rendering',()=>{
  });
  it('copies canonical money decimals without model arithmetic, symbol substitution or rounding',async()=>{
   const issued=await view('payroll',{rows:[{payPeriod:'2026-01',company:'Fictional employer',gross:'1234.5600',deductions:'123.3300',net:'1111.2300',currency:'MYR',runType:'regular',runSeq:1}],truncated:false});render(await GroundedWorkspaceReply({ctx,reply:answer([select(issued,0,'net'),select(issued,0,'gross')])}));
-  const list=screen.getByRole('region',{name:en.assistant.workspace.conversation.answerLabel}).querySelector('ul')!;expect(within(list).getAllByRole('listitem').map(row=>row.textContent)).toEqual([`2026-01 — ${en.assistant.workspace.jobs.field_net}: 1111.2300 MYR`,`2026-01 — ${en.assistant.workspace.jobs.field_gross}: 1234.5600 MYR`]);
+  const list=screen.getByRole('region',{name:en.assistant.workspace.conversation.answerLabel}).querySelector('ul')!;expect(within(list).getAllByRole('listitem').map(row=>row.textContent)).toEqual([`2026-01${en.assistant.workspace.jobs.field_net}: 1111.2300 MYR`,`${en.assistant.workspace.jobs.field_gross}: 1234.5600 MYR`]);
  });
  it('keeps mismatched selected fields and interleaved records as exact-order bullets, never a false comparison table',async()=>{
   const issued=await view('employees',{rows:[{employeeCode:'FIELD-A',company:'Employer A',hiredOn:'2020-01-01',terminatedOn:null,status:'active'},
    {employeeCode:'FIELD-B',company:'Employer B',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false});
   for(const [facts,expected] of [
-   [[select(issued,0,'employeeCode'),select(issued,1,'company')],[`Employer A — ${en.assistant.workspace.jobs.field_employeeCode}: FIELD-A`,`Employer B — ${en.assistant.workspace.jobs.field_company}: Employer B`]],
-   [[select(issued,0,'employeeCode'),select(issued,1,'employeeCode'),select(issued,0,'company')],[`Employer A — ${en.assistant.workspace.jobs.field_employeeCode}: FIELD-A`,`Employer B — ${en.assistant.workspace.jobs.field_employeeCode}: FIELD-B`,`Employer A — ${en.assistant.workspace.jobs.field_company}: Employer A`]],
+   [[select(issued,0,'employeeCode'),select(issued,1,'company')],[`Employer A${en.assistant.workspace.jobs.field_employeeCode}: FIELD-A`,`Employer B${en.assistant.workspace.jobs.field_company}: Employer B`]],
+   [[select(issued,0,'employeeCode'),select(issued,1,'employeeCode'),select(issued,0,'company')],[`Employer A${en.assistant.workspace.jobs.field_employeeCode}: FIELD-A`,`Employer B${en.assistant.workspace.jobs.field_employeeCode}: FIELD-B`,`Employer A${en.assistant.workspace.jobs.field_company}: Employer A`]],
   ] as const){
    const shown=render(await GroundedWorkspaceReply({ctx,reply:answer(facts)})),region=screen.getByRole('region',{name:en.assistant.workspace.conversation.answerLabel});
    expect(region.querySelector('table')).toBeNull();expect(within(region.querySelector(':scope > ul')!).getAllByRole('listitem').map(row=>row.textContent)).toEqual(expected);shown.unmount();
@@ -96,12 +132,12 @@ describe('grounded conversation rendering',()=>{
    {payPeriod:'2026-02',company:'Employer B',net:'8.0020',currency:'USD'}],truncated:false});
   render(await GroundedWorkspaceReply({ctx,reply:answer([select(issued,1,'net'),select(issued,0,'net')])}));
   const region=screen.getByRole('region',{name:en.assistant.workspace.conversation.answerLabel});expect(region.querySelector('table')).toBeNull();
-  expect(within(region.querySelector(':scope > ul')!).getAllByRole('listitem').map(row=>row.textContent)).toEqual([`2026-02 — ${en.assistant.workspace.jobs.field_net}: 8.0020 USD`,`2026-01 — ${en.assistant.workspace.jobs.field_net}: 9.0010 MYR`]);
+  expect(within(region.querySelector(':scope > ul')!).getAllByRole('listitem').map(row=>row.textContent)).toEqual([`2026-02${en.assistant.workspace.jobs.field_net}: 8.0020 USD`,`2026-01${en.assistant.workspace.jobs.field_net}: 9.0010 MYR`]);
  });
  it('renders one original recorded fact as a concise paragraph with closed source details',async()=>{
   const issued=await view('employees',{rows:[{employeeCode:'SINGLE-REC',company:'Only employer',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false});
   const shown=render(await GroundedWorkspaceReply({ctx,reply:answer([select(issued,0,'employeeCode')])})),region=screen.getByRole('region',{name:en.assistant.workspace.conversation.answerLabel});
-  expect([...region.querySelectorAll(':scope > p')].map(row=>row.textContent)).toContain(`Only employer — ${en.assistant.workspace.jobs.field_employeeCode}: SINGLE-REC`);
+  expect([...region.querySelectorAll(':scope > p')].map(row=>row.textContent)).toContain(`Only employer${en.assistant.workspace.jobs.field_employeeCode}: SINGLE-REC`);
   expect(region.querySelector(':scope > ul,:scope > ol,:scope > table')).toBeNull();expect(region.querySelector('progress')).toBeNull();
   const details=shown.container.querySelector('details')!;expect(details.open).toBe(false);expect(details.textContent).toContain('SINGLE-REC');
  });
@@ -146,7 +182,7 @@ describe('grounded conversation rendering',()=>{
   expect(issued.presentation.cards[0].withheld).toBe(true);expect(issued.presentation.cards[0].facts.map(row=>row.field)).toEqual(['company','taken','pending']);
   const shown=render(await GroundedWorkspaceReply({ctx,reply:answer([select(issued,0,'taken')])})),region=screen.getByRole('region',{name:en.assistant.workspace.conversation.answerLabel});
   const answerLine=[...region.querySelectorAll(':scope > p')].find(row=>row.querySelector('.tabular-nums'));
-  expect(answerLine?.textContent).toContain(`Annual — ${en.assistant.workspace.jobs.field_taken}: 2.5`);
+  expect(answerLine?.textContent).toContain(`Annual${en.assistant.workspace.jobs.field_taken}: 2.5`);
   expect(answerLine?.querySelector('.tabular-nums')?.textContent).toBe('2.5');
   expect(answerLine?.textContent).toContain(en.assistant.workspace.jobs.withheld);
   expect(screen.queryByRole('status')).toBeNull();expect(shown.container.textContent).not.toMatch(/9876|8765/);expect(region.querySelector('table')).toBeNull();

@@ -20,6 +20,7 @@ import {ConversationActionProposal} from './conversation-action-proposal';
 import {moduleHumanActionHandoffs} from '../../lib/ai/module-human-handoffs';
 import {ASSISTANT_PROPOSAL_MODULE,isAssistantProposableAction} from '../../lib/ai/assistant-action-proposal-hints';
 import {ConversationExplanation} from './conversation-explanation';
+import {AssistantCatalogueSummary} from './assistant-catalogue-summary';
 import {ModuleSpecialistFindings} from './module-specialist-findings';
 import {OwnClearForm} from './own-clear';
 const knownStates=new Set(['active','probation','resigned','terminated','pending','approved','rejected','cancelled','draft','paid','closed','completed','in_progress','not_tested','passed','failed','skipped','annual','offcycle','regular','day','hour','not_started','self_review','manager_review','submitted','acknowledged','present','absent','late','half_day','active_serving_notice','blacklisted','withhold','full_day','half_day_am','half_day_pm','hourly','administrative','functional','taken','converted_to_pay','lapsed','reversed','pass','fail','blocked','partial','manager','report']);
@@ -135,7 +136,7 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
     const card=selected.explanation.card===null?null:selected.view.presentation.cards[selected.explanation.card];
     const company=card?.facts.find(fact=>fact.field==='company'&&typeof fact.value==='string')?.value;
     const heading=card?canonicalHeading(card,text):text.t(`module_${selected.view.presentation.module}`);
-    return <li key={index} className="space-y-1 break-words text-sm leading-relaxed"><p className="font-medium">{heading}{typeof company==='string'&&company!==heading?` (${company})`:''}</p>{await ConversationExplanation({view:selected.view,explanation:selected.explanation,ctx})}</li>;
+    return <li key={index} className="space-y-1 break-words text-sm leading-relaxed"><p className="text-xs text-muted-foreground">{heading}{typeof company==='string'&&company!==heading?` (${company})`:''}</p>{await ConversationExplanation({view:selected.view,explanation:selected.explanation,ctx})}</li>;
    }
    const paired=conversation.facts[factIndex++];
    if(selected.kind!=='fact'||!closedConversationFields(selected,['kind','view','card','fact'])||!paired||paired.view!==selected.view||paired.card!==selected.card||paired.fact!==selected.fact)throw Error();
@@ -149,7 +150,8 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
    }
    const progress=fact.field==='progressPercent'&&typeof fact.value==='number'&&fact.value>=0&&fact.value<=100
     ? <progress aria-label={text.t('field_progressPercent')} value={fact.value} max={100} className="mt-2 block h-2 w-full max-w-sm accent-primary">{fact.value}%</progress>:null;
-   const content=<><span className="font-medium">{canonicalHeading(card,text)}</span>{' — '}{text.t(`field_${fact.field}`)}{': '}<span className="tabular-nums">{value}</span>{progress}{card.withheld&&<span className="block text-xs text-muted-foreground">{text.t('withheld')}</span>}</>;
+   const previous=segments[index-1],sameRecord=previous?.kind==='fact'&&previous.view===selected.view&&previous.card===selected.card;
+   const content=<>{!sameRecord&&<span className="block text-xs text-muted-foreground">{canonicalHeading(card,text)}</span>}{text.t(`field_${fact.field}`)}{': '}<span className="font-medium tabular-nums">{value}</span>{progress}{card.withheld&&<span className="block text-xs text-muted-foreground">{text.t('withheld')}</span>}</>;
    renderedFacts.push({view:selected.view,card:selected.card,fact:selected.fact,value:String(value),content});
    return <li key={index} className="break-words text-sm leading-relaxed">{content}</li>;
   }));
@@ -162,19 +164,23 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
      return <tr key={row.sourceKey+':'+row.card} className="border-t"><th scope="row" className="max-w-xs break-words px-3 py-2 align-top font-medium">{heading}{typeof company==='string'&&company!==heading?` (${company})`:''}</th>{row.positions.map((position,index)=><td key={index} className="break-words px-3 py-2 align-top tabular-nums">{renderedFacts[position].value}</td>)}</tr>;
     })}</tbody>
    </table></div>:factOnly&&renderedFacts.length===1?<p className="break-words text-sm leading-relaxed">{renderedFacts[0].content}</p>:
-    factOnly?<ul className="space-y-2">{lines}</ul>:<ol className="list-decimal space-y-3 pl-5">{lines}</ol>;
+    factOnly?<ul className="space-y-2">{lines}</ul>:<ul className="space-y-3">{lines}</ul>;
   const sources=await Promise.all(views.map(async view=>({id:view.viewId,card:await CanonicalModuleJob({view,ctx})})));
-  return <section aria-label={copy('answerLabel')} className="space-y-3"><p className="text-xs text-muted-foreground">{copy('canonicalNote')}</p>{answerBody}
-   <details className="rounded-lg border border-border p-3"><summary className="min-h-11 cursor-pointer py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('sources')}</summary><div className="mt-3 space-y-4">{sources.map(source=><div key={source.id}>{source.card}</div>)}</div></details>
+  return <section aria-label={copy('answerLabel')} className="space-y-3">{answerBody}
+   {views.some(view=>view.state==='ready'&&view.presentation.truncated)&&<p className="text-xs text-muted-foreground">{text.t('truncated')}</p>}
+   <details className="text-muted-foreground"><summary className="min-h-11 w-fit cursor-pointer py-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('sources')}</summary><div className="mt-2 space-y-4 rounded-lg border border-border p-3"><p className="text-xs">{copy('canonicalNote')}</p>{sources.map(source=><div key={source.id}>{source.card}</div>)}</div></details>
   </section>;
  }catch{return unavailable();}
 }
 /** No arbitrary model prose is rendered. Clarification/refusal precede legacy grounded/generic mode. */
 export async function GroundedWorkspaceReply({reply,ctx,exchangeId}:{reply:GroundedWorkspaceAnswer;ctx:SessionContext;exchangeId?:string}){
- const t=await getTranslations('assistant.workspace.answers'),conversation=reply.conversation??null;
+ const[t,copy]=await Promise.all([getTranslations('assistant.workspace.answers'),getTranslations('assistant.workspace.conversation')]),conversation=reply.conversation??null;
+ let catalogue:ReactNode=null;
+ if(conversation===null&&reply.mode==='grounded'&&reply.views.length===1)catalogue=await AssistantCatalogueSummary({view:reply.views[0],ctx});
+ const legacySources=conversation===null&&reply.mode==='grounded'?await Promise.all(reply.views.map(async view=>({id:view.viewId,card:await CanonicalModuleJob({view,ctx})}))):[];
  return <div className="mt-3 space-y-4">
-  {conversation!==null?await ConversationReplyBody({conversation,ctx,exchangeId}):reply.mode==='grounded'?<><p className="text-sm text-muted-foreground">{t('grounded')}</p>
-   {reply.views.map(view=><CanonicalModuleJob key={view.viewId} view={view} ctx={ctx}/>)}
+  {conversation!==null?await ConversationReplyBody({conversation,ctx,exchangeId}):reply.mode==='grounded'?<>{catalogue??<p className="text-sm">{t('grounded')}</p>}
+   <details className="text-muted-foreground"><summary className="min-h-11 w-fit cursor-pointer py-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('sources')}</summary><div className="mt-2 space-y-4 rounded-lg border border-border p-3">{legacySources.map(source=><div key={source.id}>{source.card}</div>)}</div></details>
    {reply.partial&&<p className="text-xs text-muted-foreground">{t('partial')}</p>}</>:
    <p className="text-sm text-muted-foreground">{t(reply.mode==='generic'?'generic':'unavailable')}</p>}
   {conversation?.plan.mode==='refuse'&&conversation.plan.code==='human_review_required'&&await ConversationReviewLinks({views:reply.views,ctx})}
