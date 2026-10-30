@@ -39,7 +39,7 @@ import {
 
 export type { ClaimMileageStamp, ClaimRateConfig };
 import { toCsv } from '../lib/csv';
-import { assertCanDecide, filterDelegationOrgScopeTx,isApprovalDecisionRefusal,assertAssignedWorkPrincipalTx } from './approvals';
+import { assertCanDecide, filterDelegationOrgScopeTx,decisionEmploymentAuthorityTx,assertAssignedWorkPrincipalTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { resolveBatchScopeFilter, resolveBatchCutOffWindow, type BatchScope } from './payroll';
 import { calendarWindowFor } from './payroll-policy-config';
@@ -3951,12 +3951,7 @@ async function readPendingClaimTasks(ctx:SessionContext,companyIds?:string[],lim
 /** Authority depends on the subject employment, not the number of requests it owns. Keep this
  * transaction-local: never reuse a decision across requests or after reporting/delegation changes. */
 async function claimDecisionEmploymentsTx(tx:Tx,ctx:SessionContext,employmentIds:readonly string[]){
- const allowed=new Set<string>();
- for(const employmentId of new Set(employmentIds)){
-  try{await assertCanDecide(tx,ctx,employmentId,'claim',scopeOf('claims.claim'));allowed.add(employmentId);}
-  catch(error){if(!isApprovalDecisionRefusal(error,'claim'))throw error;}
- }
- return allowed;
+ return (await decisionEmploymentAuthorityTx(tx,ctx,employmentIds,scopeOf('claims.claim'))).allowed;
 }
 
 export function actionablePendingClaimIds(ctx:SessionContext,requestIds:readonly string[]){

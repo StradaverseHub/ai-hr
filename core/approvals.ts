@@ -8,7 +8,7 @@
  *   - only an admin or the subject's *active administrative* manager may decide.
  * Every decision is still evented with the real actor.
  */
-import { and, eq, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { employment, reportingLine } from '../db/schema';
 import {AssignedWorkPrincipalUnavailableError} from '../lib/assigned-work';
@@ -31,77 +31,42 @@ export function isApprovalDecisionRefusal(error:unknown,label:string):boolean{
  ].includes(error.message);
 }
 
-export async function assertCanDecide(
-  tx: Tx,
-  ctx: SessionContext,
-  subjectEmploymentId: string,
-  label: string,
-  // R44 delegation (Phase 2): the module/task this decision belongs to. When supplied, a SCOPED delegation
-  // only authorises the delegate if it covers this (module, taskType) — a whole-scope (no scope rows)
-  // delegation still covers everything. When OMITTED (legacy callers: profile, performance, …) the
-  // 1-arg helper runs → whole-scope behaviour, unchanged.
-  scope?: { module: string; taskType: string },
-): Promise<void> {
-  const [subject] = await tx
-    .select({ personId: employment.personId })
-    .from(employment)
-    .where(eq(employment.id, subjectEmploymentId))
-    .limit(1);
-  const roles = ctx.roles ?? [];
-  const isSuperAdmin = roles.includes('super_admin');
-  const isAdminRole = isSuperAdmin || roles.includes('hr_admin');
-  const isSelf = ctx.personId != null && subject?.personId === ctx.personId;
-  // Self-approval ban (task #84) — preserved against the SUBJECT. A delegate who is themselves the
-  // subject (or routed into their own approval chain) is still blocked below by this guard, never
-  // re-opened by the delegation branch.
-  if (isSelf && !isSuperAdmin) throw new Error(`You cannot decide your own ${label}`);
-  if (isAdminRole) return;
-  const mgr = ctx.personId
-    ? await tx
-        .select({ id: reportingLine.id })
-        .from(reportingLine)
-        .innerJoin(employment, eq(employment.id, reportingLine.managerEmploymentId))
-        .where(
-          and(
-            eq(reportingLine.subordinateEmploymentId, subjectEmploymentId),
-            eq(reportingLine.lineType, 'administrative'),
-            // The line must be in its effective window NOW — not future-dated, not ended. Matches
-            // currentAdminManager (perf spawn); previously this checked only isNull(validTo), so a
-            // not-yet-effective or future-ending line could authorise a decision.
-            lte(reportingLine.validFrom, sql`current_date`),
-            or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
-            isNull(reportingLine.supersededAt),
-            eq(employment.personId, ctx.personId),
-          ),
-        )
-        .limit(1)
-    : [];
-  if (mgr.length > 0) return;
+/** The same canonical guard supports one command or a metadata batch. Authority is recomputed
+ * in the caller's transaction on every call; no permission result survives this invocation. */
+export async function decisionEmploymentAuthorityTx(
+ tx:Tx,ctx:SessionContext,employmentIds:readonly string[],scope?:{module:string;taskType:string},
+):Promise<{allowed:Set<string>;self:Set<string>}>{
+ const allowed=new Set<string>(),self=new Set<string>(),ids=[...new Set(employmentIds)];
+ const roles=ctx.roles??[],superAdmin=roles.includes('super_admin'),admin=superAdmin||roles.includes('hr_admin');
+ for(let offset=0;offset<ids.length;offset+=1000){
+  const chunk=ids.slice(offset,offset+1000);
+  const subjects=await tx.select({id:employment.id,personId:employment.personId}).from(employment).where(inArray(employment.id,chunk));
+  if(ctx.personId!=null&&!superAdmin)for(const subject of subjects)if(subject.personId===ctx.personId)self.add(subject.id);
+  const candidates=chunk.filter(id=>!self.has(id));if(!candidates.length)continue;
+  if(admin){candidates.forEach(id=>allowed.add(id));continue;}
+  if(!ctx.personId)continue;
+  // Identical current administrative-manager predicates to the scalar command guard.
+  const managers=await tx.selectDistinct({id:reportingLine.subordinateEmploymentId}).from(reportingLine)
+   .innerJoin(employment,eq(employment.id,reportingLine.managerEmploymentId)).where(and(
+    inArray(reportingLine.subordinateEmploymentId,candidates),eq(reportingLine.lineType,'administrative'),
+    lte(reportingLine.validFrom,sql`current_date`),or(isNull(reportingLine.validTo),sql`${reportingLine.validTo}>current_date`),
+    isNull(reportingLine.supersededAt),eq(employment.personId,ctx.personId),
+   ));
+  managers.forEach(row=>allowed.add(row.id));
+  const delegated=candidates.filter(id=>!allowed.has(id));if(!delegated.length)continue;
+  // Always the canonical three-argument owner: current direct manager, active one-hop edge,
+  // optional task/module coverage and delegation org coverage. Self remains excluded above.
+  const rows=await tx.execute(sql`select subject.id,app.can_decide_via_delegation(subject.id,${scope?.module??null},${scope?.taskType??null}) as ok
+   from (values ${sql.join(delegated.map(id=>sql`(${id}::uuid)`),sql`,`)}) as subject(id)`);
+  for(const row of rows as unknown as {id:string;ok:boolean}[])if(row.ok)allowed.add(row.id);
+ }
+ return {allowed,self};
+}
 
-  // Delegation branch (ADR-0052 Step 4): the caller is a valid decider if an ACTIVE `delegate` edge
-  // names them as the delegate AND the delegator is the subject's CURRENT direct administrative manager —
-  // re-validated at decision time (not merely at create time), window covering current_date, delegator
-  // still live, ONE hop only (no transitive chaining). This is encoded once in the SECURITY-DEFINER
-  // helper app.can_decide_via_delegation, which we reuse here: the delegate cannot SEE the delegator's
-  // employment under RLS (no visibility inheritance), so an in-statement join through `employment` would
-  // be wrongly filtered — the definer helper resolves it without leaking visibility. The self-ban above
-  // already blocked a delegate who is the subject.
-  //
-  // R51 (baf56348, migration 0286): ALWAYS the 3-arg overload. NULL module/task = no module filter
-  // (byte-identical to the old 1-arg decide behaviour), so the legacy scope-less callers (profile,
-  // performance, offboarding, employment review — travel was one until b833a077/r362 removed it) keep
-  // their whole-scope semantics — while the new ORG gate
-  // inside the function now applies to every decide path through this one chokepoint.
-  if (ctx.personId) {
-    const res = scope
-      ? await tx.execute(
-          sql`SELECT app.can_decide_via_delegation(${subjectEmploymentId}, ${scope.module}, ${scope.taskType}) AS ok`,
-        )
-      : await tx.execute(sql`SELECT app.can_decide_via_delegation(${subjectEmploymentId}, NULL, NULL) AS ok`);
-    const ok = (res as unknown as { ok: boolean }[])[0]?.ok;
-    if (ok) return;
-  }
-  throw new Error(`Only an admin or the administrative manager can decide this ${label}`);
+export async function assertCanDecide(tx:Tx,ctx:SessionContext,subjectEmploymentId:string,label:string,scope?:{module:string;taskType:string}):Promise<void>{
+ const authority=await decisionEmploymentAuthorityTx(tx,ctx,[subjectEmploymentId],scope);
+ if(authority.self.has(subjectEmploymentId))throw new Error(`You cannot decide your own ${label}`);
+ if(!authority.allowed.has(subjectEmploymentId))throw new Error(`Only an admin or the administrative manager can decide this ${label}`);
 }
 
 /**
