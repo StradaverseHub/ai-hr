@@ -1,9 +1,14 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import {readFileSync} from 'node:fs';
+import en from '../messages/en.json';
+import zh from '../messages/zh.json';
+import ms from '../messages/ms.json';
+import ta from '../messages/ta.json';
+import th from '../messages/th.json';
+import viMessages from '../messages/vi.json';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {cleanup,render,screen} from '@testing-library/react';
-import {createTranslator} from 'next-intl';
+import {createTranslator,type AbstractIntlMessages} from 'next-intl';
 import {locales} from '../i18n/config';
 import {PERFORMANCE_AREA_TABS} from '../packs/performance/onehr/tab-model';
 import {PerformanceNativeHandoffs} from '../components/assistant/performance-native-handoffs';
@@ -16,7 +21,7 @@ vi.mock('next/link',()=>({default:({href,children,...props}:React.ComponentProps
 beforeEach(()=>{vi.clearAllMocks();source.session.mockResolvedValue({tenantId:'PRIVATE'});source.doors.mockResolvedValue(PERFORMANCE_AREA_TABS.filter(tab=>tab.strip!=='home').map(({id,href,labelKey})=>({id,href,labelKey})));});
 afterEach(cleanup);
 it.each(locales)('renders bounded native workflow links with actual %s labels',async locale=>{
- const messages=JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8'));
+ const messages:AbstractIntlMessages=({en,zh,ms,ta,th,vi:viMessages})[locale];
  source.translate.mockImplementation(async(namespace:string)=>createTranslator({locale,messages,namespace}));
  const element=await PerformanceNativeHandoffs();expect(element).not.toBeNull();
  render(element);

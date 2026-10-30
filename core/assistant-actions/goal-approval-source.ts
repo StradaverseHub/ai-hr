@@ -39,7 +39,7 @@ export async function reconcileGoalApprovalSourceTx(tx:Tx,ctx:SessionContext,ref
 export async function readGoalApprovalChoicesTx(tx:Tx,ctx:SessionContext,selection:unknown){
  const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve'),pick=C.Selection.parse(selection??{query:''});
  // The SQL predicate mirrors native visibility/direct-manager/delegation + absolute self-ban.
- // Limit before projection; no names, ratings, comments or other assessment work is read.
+ // Limit before projection; only exact participant/company labels and goal titles are returned.
  const rows=await tx.select({subjectId:performanceGoal.id,employmentId:performanceGoal.employmentId,title:performanceGoal.title,employeeName:person.fullName,companyName:company.legalName}).from(performanceGoal).innerJoin(employment,and(eq(employment.id,performanceGoal.employmentId),eq(employment.tenantId,performanceGoal.tenantId))).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).innerJoin(company,and(eq(company.id,employment.companyId),eq(company.tenantId,employment.tenantId)))
   .where(and(eq(performanceGoal.tenantId,fresh.tenantId),eq(performanceGoal.approvalStatus,'proposed'),sql`${performanceGoal.title} ilike ${'%'+pick.query.replace(/[\\%_]/g,'\\$&')+'%'}`,sql`app.assistant_goal_approval_choice_scope(${performanceGoal.id})`,...(pick.subjectId?[eq(performanceGoal.id,pick.subjectId)]:[])))
   .orderBy(performanceGoal.id).limit(26);
