@@ -445,3 +445,21 @@ now uses its existing in-use refusal for a retained formula link instead of expo
 
 These remain source reservations. All future integration/application gates must repeat collision and
 watermark checks; concurrent external branches have twice selected an already-pushed provisional claim.
+
+### Final Formula source reservation with allocation headroom
+
+Before the third hosted freeze, a fresh fetch and scan of1511 distinct ref heads and313 registered
+worktrees found concurrent external reservations through0747 / sequence1793330000084. Main/alpha
+remain aligned at`d6cb83d620d8d4380c981a72fc41628780840b4e`; the last independently read live watermark
+is579 installed receipts through1793330000063. No Formula SQL has been applied. To avoid repeated
+max+1 races, the coordinator authorized a unique higher source reservation with headroom:
+**0800_pay_formula_builder / idx694 / sequence1793330000200**. A complete ref/worktree scan and explicit
+0800/…200 collision check found no prior owner. Noncontiguous filenames/timestamps are permitted by
+the append-only journal: this adds exactly one entry after the unchanged canonical prefix and does not
+create placeholder migrations, fill gaps, or change any applied SQL bytes.
+
+This supersedes every provisional Formula0741/0744/0746 reservation above, all never applied.
+Current SQL SHA256: `ce3968009648ff47bcaa1dbbbed519220c623c3da860ce5b89c90ff285165c1c`.
+Tenant-binding checks include optional event component/test references. Migration and normal populated
+upgrade witnesses will be rerun on this exact reservation. Final integration/application still requires
+fresh competing-claim, canonical-prefix and live ordered-ledger verification; this is not deployment authority.
