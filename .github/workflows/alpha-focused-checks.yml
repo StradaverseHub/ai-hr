@@ -23,7 +23,7 @@ on:
         description: Explicit service benchmark outside the normal unit-test inventory
         default: none
         type: choice
-        options: [none, plan-cache, claims-sql]
+        options: [none, plan-cache, claims-sql, admin-gate]
       profile_database_sql:
         description: Track statements in the isolated development database
         default: false
@@ -320,7 +320,7 @@ jobs:
           retention-days: 14
 
   service-performance-profile:
-    if: ${{ inputs.service_profile == 'plan-cache' || inputs.service_profile == 'claims-sql' }}
+    if: ${{ inputs.service_profile == 'plan-cache' || inputs.service_profile == 'claims-sql' || inputs.service_profile == 'admin-gate' }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
