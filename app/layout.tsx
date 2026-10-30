@@ -153,10 +153,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       </body>
     </html>;
   }
-  const principals = await listPrincipals();
   // Dev identity switcher: developers, plus the gated consultant demo (ALLOW_DEMO_SESSION; see lib/demo-mode).
   const showDevSwitcher = demoSwitcherEnabled();
-  const allowed = await allowedCompanies(session);
+  const [principals, allowed] = await Promise.all([listPrincipals(), allowedCompanies(session)]);
   const scopeIds = await getScopeIds(allowed.map((c) => c.id));
   const cookieStore = await cookies();
   const railCollapsed = cookieStore.get('rail_collapsed')?.value === '1';
@@ -173,8 +172,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     viewerIdentity(session),canConfigureAccess(session),
     isAdmin(session)?Promise.resolve(false):workforceViewScope(session).then(scope=>scope.canOpen),
   ]);
-  const letterDestinations=isModuleEnabledOrFalse(session,'employees')?await letterNavigation(session,scopeIds):[];
-  const onboarded = await getOnboardingStatus(session);
+  const [letterDestinations, onboarded, identityEmailAvailable] = await Promise.all([
+    isModuleEnabledOrFalse(session, 'employees') ? letterNavigation(session, scopeIds) : Promise.resolve([]),
+    getOnboardingStatus(session),
+    canConfigureIdentityEmail(session),
+  ]);
   const tours = toursForRoles(session.roles);
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
   // ADR-0034 34-3: when notifications are on, the bell shows the viewer's own notifications (everyone), not
@@ -213,22 +215,29 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // The canonical inbox admits ordinary employees only for an actionable, non-self v3/v4 assignment.
   // Reuse that result; do not promote the viewer to manager or query the assignment owner twice.
   const hasAssignedAttendanceApproval = !canApprove && approvalTasks.some(task => task.kind === 'attendance');
-  const onboardingNav=isModuleEnabledOrFalse(session,'lifecycle')?await onboardingNavigation(session):{module:false,master:false,requisitions:false,joiners:0,checklists:0};
+  const onboardingNoticesEnabled = isModuleEnabledOrFalse(session, 'lifecycle');
+  const [onboardingNav, onboardingQueue, onboardingUnread, onboardingRead, onboardingUnreadCount] = await Promise.all([
+    onboardingNoticesEnabled ? onboardingNavigation(session) : Promise.resolve({module:false,master:false,requisitions:false,joiners:0,checklists:0}),
+    onboardingNoticesEnabled ? onboardingTasks(session) : Promise.resolve([]),
+    onboardingNoticesEnabled ? onboardingNotices(session) : Promise.resolve([]),
+    onboardingNoticesEnabled ? onboardingNotices(session, true) : Promise.resolve([]),
+    onboardingNoticesEnabled ? onboardingUnreadNoticeCount(session) : Promise.resolve(0),
+  ]);
   const onboardingAccess=onboardingNav.module;
-  const onboardingQueue = isModuleEnabledOrFalse(session, 'lifecycle') ? await onboardingTasks(session) : [];
   // Profile Changes now has its own Personnel queue. Count only tasks this inbox actually opens;
   // My tasks and the bell still contain every canonical task, without another query.
   const legacyApprovalCount = approvalTasks.filter(task => task.linkPath.split(/[?#]/, 1)[0] === '/approvals').length;
   const hasAssignedApproval = !canApprove && legacyApprovalCount>0;
   const pendingTasks:NotificationTaskItem[]=[...approvalTasks,...onboardingQueue.map(onboardingNotificationTask)];
-  const onboardingNoticesEnabled=isModuleEnabledOrFalse(session,'lifecycle');
-  const [onboardingUnread,onboardingRead]=onboardingNoticesEnabled?await Promise.all([onboardingNotices(session),onboardingNotices(session,true)]):[[],[]];
-  const onboardingUnreadCount=onboardingNoticesEnabled?await onboardingUnreadNoticeCount(session):0;
-  const notifUnread = bellNotificationsEnabled ? await unreadNotificationCount(session, undefined, {...notificationScope, action: false }) : 0;
-  const taskNotifCount = bellNotificationsEnabled ? await unreadNotificationCount(session, undefined, {...notificationScope, action: true }) : 0;
-  const notifItems = bellNotificationsEnabled ? await listNotifications(session, undefined, {...notificationScope, limit: 12, read: false, action: false }) : [];
-  const taskNotifs = bellNotificationsEnabled ? await listNotifications(session, undefined, {...notificationScope, limit: 12, read: false, action: true }) : [];
-  const readNotifs = bellNotificationsEnabled ? await listNotifications(session, undefined, {...notificationScope, limit: 12, read: true }) : [];
+  // These five recipient reads are independent. Keep this batch after dispatch and separate
+  // from the approval fan-out above so a shell render does not launch every query at once.
+  const [notifUnread, taskNotifCount, notifItems, taskNotifs, readNotifs] = await Promise.all([
+    bellNotificationsEnabled ? unreadNotificationCount(session, undefined, {...notificationScope, action: false }) : Promise.resolve(0),
+    bellNotificationsEnabled ? unreadNotificationCount(session, undefined, {...notificationScope, action: true }) : Promise.resolve(0),
+    bellNotificationsEnabled ? listNotifications(session, undefined, {...notificationScope, limit: 12, read: false, action: false }) : Promise.resolve([]),
+    bellNotificationsEnabled ? listNotifications(session, undefined, {...notificationScope, limit: 12, read: false, action: true }) : Promise.resolve([]),
+    bellNotificationsEnabled ? listNotifications(session, undefined, {...notificationScope, limit: 12, read: true }) : Promise.resolve([]),
+  ]);
   // Approval history (44a89810): recent team decisions for the bell's History tab — canApprove only,
   // no dead query for regular employees.
   const approvalHistory = canApprove
@@ -272,7 +281,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // each page's route guard (requirePayrollAccess / requirePerfCompAccess) 403/redirects
               // the pages it can't enter. The cap ORs isAdmin into every partner capability so a user
               // who is BOTH hr_admin and a partner is never narrower than a plain admin (union rule).
-              canConfigureIdentityEmail={await canConfigureIdentityEmail(session)}
+              canConfigureIdentityEmail={identityEmailAvailable}
               canPreviewIdentityEmail={isAdmin(session)}
               isAdmin={isAdmin(session) || canManagePayroll(session) || canManagePerfComp(session)}
               canApprove={(session.roles ?? []).includes('manager')}

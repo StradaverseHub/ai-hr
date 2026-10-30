@@ -11,7 +11,7 @@ import {
   headcountSummary,
   leaveBalancesSummary,
   leaveUtilisation,
-  masterDataExport,
+  masterDataCount,
   movementByMonth,
   newHires,
   parseAnalyticsFilters,
@@ -71,7 +71,7 @@ export default async function AnalyticsPage({
       movementByMonth(s, scopeIds, { from, to, filters }),
       carryForwardReport(s, scopeIds, { year: reportYear, filter, companyId: filters.companyId }),
     ]);
-  const masterCount = (await masterDataExport(s, scopeIds, { includeComp: false, filter })).length;
+  const masterCount = await masterDataCount(s, scopeIds, { filter });
 
   // Carry the period + scoping filters onto every export link.
   const filterQs =

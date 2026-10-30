@@ -10595,6 +10595,25 @@ export async function removeEmployeePayrollTx(
   };
 }
 
+/** All-time list counters without loading every historical run and its totals into the page. */
+export function payrollBatchListCounts(ctx: SessionContext, companyIds?: string[]) {
+  return withTenant(ctx, async tx => {
+    const [row] = await tx.select({total: sql<number>`count(*)::int`,
+      unpublished: sql<number>`count(*) filter (where ${payrollBatch.historyImportAttemptId} is null and ${payrollBatch.status} not in ('draft','closed'))::int`,
+    }).from(payrollHistoryEffectiveBatch)
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .where(batchListWhere(companyIds));
+    return {total: Number(row?.total ?? 0), unpublished: Number(row?.unpublished ?? 0)};
+  });
+}
+function batchListWhere(companyIds?: string[], periodFilter?: ReturnType<typeof eq>) {
+  return and(
+    companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined,
+    periodFilter,
+    or(isNull(payrollBatch.historyImportAttemptId), gt(payrollBatch.employeeCount, 0)),
+  );
+}
+
 // Read-only list (no events.append per the CLAUDE.md skip rule). `payPeriod` is an OPTIONAL
 // additive filter: when a non-empty string is passed it is AND-ed onto the existing tenant-RLS +
 // companyIds guard, so it can only NARROW the result (Build #10). Omitting it (or passing '')
@@ -10671,13 +10690,7 @@ export function listBatches(
       .from(payrollHistoryEffectiveBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .leftJoin(payrollCycle, eq(payrollCycle.id, payrollBatch.payrollCycleId))
-      .where(
-        and(
-          companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined,
-          periodFilter,
-          or(isNull(payrollBatch.historyImportAttemptId),gt(payrollBatch.employeeCount,0)),
-        ),
-      )
+      .where(batchListWhere(companyIds, periodFilter))
       .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq),
   );
 }

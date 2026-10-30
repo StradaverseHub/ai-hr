@@ -1,3 +1,4 @@
+import {parsePageQuery, pageState} from '../lib/pagination';
 import {assertClaimsProviderSourceTx} from './claims-provider-source';
 import {createHash} from 'node:crypto';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
@@ -6,7 +7,7 @@ import type {AssignedApprovalMetadata} from '../lib/assigned-work';
  * admin-write); every state change appends a DomainEvent. The lifecycle (submit/decide) + payout live in
  * later slices of this file.
  */
-import { and, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withClaimsTenant` — every one of this file's
 // 35 exported entry points refuses a tenant without the Claims module, however the call was reached.
@@ -3386,21 +3387,49 @@ const toRow = (r: RawClaimRow, atts: Map<string, ClaimRow['attachments']>): Clai
   attachments: atts.get(r.id) ?? [],
 });
 
-/** A single employment's claims (newest first) — "my claims". */
-export async function listClaimsForEmployment(ctx: SessionContext, employmentId: string): Promise<ClaimRow[]> {
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .select(rowSelect())
-      .from(claimRequest)
+type EmploymentClaimRead = {claimId?: string; status?: 'draft' | 'history'; limit?: number; offset?: number};
+function employmentClaimWhere(employmentId: string, opts: EmploymentClaimRead) {
+  return and(eq(claimRequest.employmentId, employmentId),
+    opts.claimId ? eq(claimRequest.id, opts.claimId) : undefined,
+    opts.status === 'draft' ? eq(claimRequest.status, 'draft') : undefined,
+    opts.status === 'history' ? ne(claimRequest.status, 'draft') : undefined);
+}
+async function employmentClaimRowsTx(tx: Tx, employmentId: string, opts: EmploymentClaimRead = {}): Promise<ClaimRow[]> {
+  const query = tx.select(rowSelect()).from(claimRequest)
+    .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
+    .leftJoin(claimItem, eq(claimItem.id, claimRequest.claimItemId))
+    .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
+    .innerJoin(person, eq(person.id, employment.personId))
+    .where(employmentClaimWhere(employmentId, opts))
+    .orderBy(desc(claimRequest.createdAt), desc(claimRequest.id)).$dynamic();
+  if (opts.limit !== undefined) query.limit(opts.limit);
+  if (opts.offset !== undefined) query.offset(opts.offset);
+  const rows = await query;
+  const atts = await attachmentsByClaim(tx, rows.map(row => row.id));
+  return rows.map(row => toRow(row, atts));
+}
+
+/** A single employment's claims, newest first; a detail read can narrow by id in SQL. */
+export function listClaimsForEmployment(ctx: SessionContext, employmentId: string, opts: {claimId?: string} = {}): Promise<ClaimRow[]> {
+  return withTenant(ctx, tx => employmentClaimRowsTx(tx, employmentId, opts));
+}
+
+/** Drafts have their own workspace; never read filed history to populate it. */
+export function listClaimDraftsForEmployment(ctx: SessionContext, employmentId: string): Promise<ClaimRow[]> {
+  return withTenant(ctx, tx => employmentClaimRowsTx(tx, employmentId, {status: 'draft'}));
+}
+
+/** Bound history rows and attachment metadata in SQL before constructing the browser's page. */
+export function listClaimHistoryPage(ctx: SessionContext, employmentId: string, input: {page?: string; size?: string} = {}) {
+  const query = parsePageQuery(input);
+  return withTenant(ctx, async tx => {
+    const [countRow] = await tx.select({n: sql<number>`count(*)::int`}).from(claimRequest)
       .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
-      // LEFT join: legacy/zero-item rows (claim_item_id IS NULL) must not be dropped from the list.
-      .leftJoin(claimItem, eq(claimItem.id, claimRequest.claimItemId))
       .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(claimRequest.employmentId, employmentId))
-      .orderBy(desc(claimRequest.createdAt));
-    const atts = await attachmentsByClaim(tx, rows.map((r) => r.id));
-    return rows.map((r) => toRow(r, atts));
+      .where(employmentClaimWhere(employmentId, {status: 'history'}));
+    const rows = await employmentClaimRowsTx(tx, employmentId, {status: 'history', limit: query.limit, offset: query.offset});
+    return {rows, state: pageState(query, Number(countRow?.n ?? 0), rows.length)};
   });
 }
 

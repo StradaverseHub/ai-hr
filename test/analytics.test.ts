@@ -13,6 +13,7 @@ import {
   changeJobTransactions,
   headcountSummary,
   masterDataExport,
+  masterDataCount,
   newHires,
   terminations,
   turnoverRate,
@@ -51,6 +52,21 @@ describe('Wave 4B — analytics read layer', () => {
     await terminateEmployment(a, { employmentId: e3.employmentId, terminationDate: '2026-05-20', terminationType: 'voluntary' });
     return { a, e1, e2, e3, e4 };
   }
+
+  it('counts master rows in SQL with export parity across scope, filters and termination', async () => {
+    const {a} = await cohort();
+    for (const scope of [undefined, [base.companyId]]) {
+      for (const opts of [{}, {includeTerminated: true}, {filter: {q: 'ann'}},
+        {filter: {departmentId: base.deptA}}, {filter: {q: 'no-such-person'}}]) {
+        const rows = await masterDataExport(a, scope, opts);
+        expect(await masterDataCount(a, scope, opts)).toBe(rows.length);
+      }
+    }
+    expect(await masterDataCount(a, undefined)).toBe(3);
+    expect(await masterDataCount(a, undefined, {includeTerminated: true})).toBe(4);
+    const other = await seedBase();
+    expect(await masterDataCount(adminCtx(other), undefined)).toBe(0);
+  });
 
   it('headcount: counts only active employees as of the date', async () => {
     const { a } = await cohort();
