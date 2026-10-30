@@ -72,9 +72,12 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 import { withTenant } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { createMovementEvent } from '../core/movement';
+import {setCompensation} from '../core/comp';
+import {savePayFormula,testPayFormula,setPayFormulaActive,loadActiveFormulaProgramTx,recordFormulaEvaluationTx} from '../core/pay-formula';
+import {seedPayComponentCatalog,createBatch,deleteDraftBatch} from '../packs/payroll/service';
 import { saveReplacementHolidayPolicy } from '../core/holiday-replacements';
 import { saveOvertimePatternDraft } from '../packs/attendance/service';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, entitledCtx, setModule, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import {
   COMPANY_CONFIG_DEPENDENTS,
   COMPANY_REFERRERS,
@@ -300,7 +303,7 @@ describe('§1 the declared referrer set is the live schema', () => {
 
   it('never cascades an employee record or a payroll record', () => {
     const cascaded = cascadedReferrers().map((r) => r.table);
-    for (const t of ['employment', 'assignment', 'employee_draft', 'payroll_batch', 'pay_period', 'pcb_payment', 'statutory_report', 'back_pay_run']) {
+    for (const t of ['employment', 'assignment', 'employee_draft', 'payroll_batch', 'pay_period', 'pcb_payment', 'statutory_report', 'back_pay_run', 'pay_formula_test', 'pay_formula_evaluation']) {
       expect(cascaded, `${t} must never be cascaded`).not.toContain(t);
     }
   });
@@ -502,6 +505,64 @@ const CASES: Case[] = [
     },
   },
 ];
+
+describe('Formula evidence retains a company independently of its current employees and runs',()=>{
+  it.each(['test','evaluation'] as const)('refuses native company deletion for a retained formula %s',async kind=>{
+    await setModule(b.tenantId,'typed_pay_components','active');
+    const ctx=await entitledCtx(b),target=await fresh('Retained Formula paying company');
+    await seedPayComponentCatalog(ctx);
+    const [department]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:target,name:'Fictional former assignment'}).returning();
+    // Evaluation activates a test for the other company so its retained target-company evaluation
+    // is the ONLY payroll referrer. The test-only case has no payroll run or evaluation at all.
+    const testCompany=kind==='test'?target:b.companyId;
+    const employee=await hireEmployee(ctx,{person:{fullName:'Fictional retained Formula subject',primaryEmail:`${randomUUID()}@test.local`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});
+    await setCompensation(ctx,{employmentId:employee.employmentId,basicSalary:3000,effectiveFrom:'2026-01-01'});
+    // Start under the other employer so the hire's separate tax-selection owner does not itself
+    // retain target. Fixture the dated target assignment for the actual saved native test.
+    if(kind==='test'){
+      await owner.db.update(schema.employment).set({companyId:target}).where(eq(schema.employment.id,employee.employmentId));
+      await owner.db.update(schema.assignment).set({companyId:target,departmentId:department.id}).where(eq(schema.assignment.employmentId,employee.employmentId));
+    }
+    const [cycle]=await owner.db.insert(schema.payrollCycle).values({tenantId:b.tenantId,companyId:testCompany,name:'Fictional Formula test cycle',code:'FORMULA_RETENTION',runType:'regular'}).returning();
+    const saved=await savePayFormula(ctx,{formulaId:'RETAINED_COMPANY',description:'Retained native calculation evidence',method:'write',source:'Return 1'});
+    const tested=await testPayFormula(ctx,{...saved,context:{companyId:testCompany,employmentId:employee.employmentId,period:'2026-05',asOf:'2026-05-31',cycleId:cycle.id,currentCode:'OVERTIME',input:'0'}});
+    expect(tested.passed,tested.error??'nonempty saved native test').toBe(true);expect(tested.amount).toBe('1');
+    if(kind==='evaluation'){
+      await setPayFormulaActive(ctx,{...saved,testId:tested.id,active:true});
+      await owner.db.update(schema.employment).set({companyId:target}).where(eq(schema.employment.id,employee.employmentId));
+      await owner.db.update(schema.assignment).set({companyId:target,departmentId:department.id}).where(eq(schema.assignment.employmentId,employee.employmentId));
+      const {batchId}=await createBatch(ctx,{companyId:target,payPeriod:'2026-05'});
+      // Exercise the real protected evaluation writer/identity trigger, not an owner INSERT or
+      // disabled RLS. Its exact constant amount comes from the saved successful native test.
+      await withTenant(ctx,async tx=>{
+        const formula=await loadActiveFormulaProgramTx(tx,ctx,'RETAINED_COMPANY');
+        await recordFormulaEvaluationTx(tx,ctx,{formula,employmentId:employee.employmentId,companyId:target,batchId,componentCode:'OVERTIME',period:'2026-05',amount:tested.amount!,explanations:tested.explanations,reads:[],sources:[],readRequirements:tested.readRequirements});
+      });
+      // Canonical draft deletion deliberately retains immutable evaluation evidence without a batch FK.
+      await deleteDraftBatch(ctx,{batchId});
+    }
+    // Fixture a later transfer without erasing or editing any retained Formula receipt. This isolates
+    // the historical financial blocker from the existing employment/assignment deletion blockers.
+    await owner.db.update(schema.employment).set({companyId:b.companyId}).where(eq(schema.employment.id,employee.employmentId));
+    await owner.db.update(schema.assignment).set({companyId:b.companyId,departmentId:b.deptA}).where(eq(schema.assignment.employmentId,employee.employmentId));
+    expect(await owner.db.select().from(schema.employment).where(eq(schema.employment.companyId,target))).toHaveLength(0);
+    expect(await owner.db.select().from(schema.assignment).where(eq(schema.assignment.companyId,target))).toHaveLength(0);
+    expect(await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.companyId,target))).toHaveLength(0);
+    expect(await owner.db.select().from(schema.payPeriod).where(eq(schema.payPeriod.companyId,target))).toHaveLength(0);
+    expect(await owner.db.select().from(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.companyId,target))).toHaveLength(0);
+    const evidence=async()=>kind==='test'
+      ? owner.db.select().from(schema.payFormulaTest).where(eq(schema.payFormulaTest.companyId,target))
+      : owner.db.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.companyId,target));
+    const before=await evidence();expect(before).toHaveLength(1);
+    const other=kind==='test'
+      ? await owner.db.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.companyId,target))
+      : await owner.db.select().from(schema.payFormulaTest).where(eq(schema.payFormulaTest.companyId,target));
+    expect(other).toHaveLength(0);
+    expect(await verdict(ctx,target),'panel must report financial history rather than unused setup').toBe('payroll');
+    expect(await attempt(ctx,target),'native delete must refuse before FK/immutable-trigger errors').toBe('payroll');
+    expect(await exists(target)).toBe(true);expect(await evidence()).toEqual(before);
+  });
+});
 
 describe('§2 the panel and the delete guard give the same answer, for every disposition', () => {
   for (const c of CASES) {
