@@ -20495,6 +20495,15 @@
           "expired": "Expired",
           "refused": "Refused"
         }
+      },
+      "payrollRecoveryHandoffs": {
+        "title": "Payroll recovery in the native workspace",
+        "description": "Open the native review screen to reset or reopen a run. Payroll has not changed. Review the consequences and enter a reason there before confirming.",
+        "reset": "Review reset in Payroll",
+        "reopen": "Review reopening in Payroll",
+        "scope": "Current month, up to 25 runs. Native permissions and state checks apply when you continue.",
+        "all": "View all payroll runs",
+        "unavailable": "Payroll recovery links are unavailable. Open Payroll to continue."
       }
     },
     "denied_unavailable": "A little snag on my side. Please try again in a moment.",

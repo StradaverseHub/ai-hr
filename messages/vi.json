@@ -20495,6 +20495,15 @@
           "expired": "Đã hết hạn",
           "refused": "Bị từ chối"
         }
+      },
+      "payrollRecoveryHandoffs": {
+        "title": "Khôi phục bảng lương trong không gian gốc",
+        "description": "Mở màn hình xem xét gốc để đặt lại hoặc mở lại đợt lương. Bảng lương chưa thay đổi. Xem xét tác động và nhập lý do tại đó trước khi xác nhận.",
+        "reset": "Xem xét đặt lại trong Bảng lương",
+        "reopen": "Xem xét mở lại trong Bảng lương",
+        "scope": "Tháng hiện tại, tối đa 25 đợt. Quyền và trạng thái sẽ được kiểm tra khi tiếp tục.",
+        "all": "Xem tất cả đợt lương",
+        "unavailable": "Liên kết khôi phục không khả dụng. Mở Bảng lương để tiếp tục."
       }
     },
     "denied_unavailable": "Phía tôi gặp chút trục trặc. Vui lòng thử lại sau giây lát.",

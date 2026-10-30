@@ -20495,6 +20495,15 @@
           "expired": "Tamat tempoh",
           "refused": "Ditolak"
         }
+      },
+      "payrollRecoveryHandoffs": {
+        "title": "Pemulihan gaji dalam ruang kerja asal",
+        "description": "Buka skrin semakan asal untuk menetapkan semula atau membuka semula larian. Gaji belum berubah. Semak kesan dan masukkan sebab di sana sebelum mengesahkan.",
+        "reset": "Semak penetapan semula dalam Gaji",
+        "reopen": "Semak pembukaan semula dalam Gaji",
+        "scope": "Bulan semasa, sehingga 25 larian. Kebenaran dan semakan status asal terpakai apabila anda meneruskan.",
+        "all": "Lihat semua larian gaji",
+        "unavailable": "Pautan pemulihan gaji tidak tersedia. Buka Gaji untuk meneruskan."
       }
     },
     "denied_unavailable": "Ada sedikit masalah di pihak saya. Sila cuba lagi sebentar nanti.",
