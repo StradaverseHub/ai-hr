@@ -1,3 +1,4 @@
+import {scheduleGroupMaintenanceReviews} from './schedule-group-maintenance-review-store';
 import {fixedItemArchiveReviews} from './fixed-item-archive-review-store';
 import {tp3OpeningMaintenanceReviews} from './tp3-opening-maintenance-review-store';
 import {costAllocationMaintenanceReviews} from './cost-allocation-maintenance-review-store';
@@ -64,6 +65,7 @@ const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOut
  'approvals.toil.decide':(tx,ctx,id)=>toilDecisionReviews.readCompletedOutcomeTx(tx,ctx,id),
  'leave.adjustment.apply':(tx,ctx,id)=>leaveAdjustmentReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.compensation.maintain':(tx,ctx,id)=>compensationMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'attendance.schedule_group.maintain':(tx,ctx,id)=>scheduleGroupMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.code.maintain':(tx,ctx,id)=>employeeCodeMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.payment_method.maintain':(tx,ctx,id)=>paymentMethodMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.cost_allocation.maintain':(tx,ctx,id)=>costAllocationMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),

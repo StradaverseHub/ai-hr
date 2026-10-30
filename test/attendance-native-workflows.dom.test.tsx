@@ -22,7 +22,7 @@ async function view(){const root=document.createElement('div');root.innerHTML=re
 describe('Attendance native workflow handoffs',()=>{
  it.each(['en','ms','zh','ta','th','vi'])('renders bounded native destinations and honest copy in %s',async locale=>{
   source.locale=locale;source.session.mockResolvedValue({tenantId:'tenant',userId:'user',roles:['hr_admin']});const root=await view();
-  expect([...root.querySelectorAll('a')].map(a=>a.getAttribute('href'))).toEqual(['/attendance/clock','/attendance/individual','/admin/attendance/schedule-assignment','/roster','/admin/personnel']);
+  expect([...root.querySelectorAll('a')].map(a=>a.getAttribute('href'))).toEqual(['/attendance/clock','/assistant/schedule-group','/attendance/individual','/admin/attendance/schedule-assignment','/roster','/admin/personnel']);
   for(const link of root.querySelectorAll('a')){expect(link.textContent?.trim()).toBeTruthy();expect(link.className).toContain('min-h-11');expect(link.getAttribute('href')).not.toContain('employmentId');}
   expect(root.querySelector('section')?.getAttribute('aria-labelledby')).toBe(root.querySelector('h2')?.id);
   expect(root.querySelectorAll('form,input,button')).toHaveLength(0);
@@ -32,12 +32,12 @@ describe('Attendance native workflow handoffs',()=>{
   source.session.mockResolvedValue({tenantId:'tenant',userId:'user',roles:[role]});const root=await view();expect([...root.querySelectorAll('a')].map(a=>a.getAttribute('href'))).toEqual(['/attendance/clock']);
  });
  it.each(['hr_admin','super_admin'])('offers native administration navigation for %s without requiring a PERSON link',async role=>{
-  source.session.mockResolvedValue({tenantId:'tenant',userId:'user',roles:[role],grants:[{role,companyId:'company'}]});expect((await view()).querySelectorAll('a')).toHaveLength(5);
+  source.session.mockResolvedValue({tenantId:'tenant',userId:'user',roles:[role],grants:[{role,companyId:'company'}]});expect((await view()).querySelectorAll('a')).toHaveLength(6);
  });
  it('hides administrative navigation on missing USER, unavailable session and subsequent revocation',async()=>{
   source.session.mockResolvedValueOnce({roles:['hr_admin']});expect((await view()).querySelectorAll('a')).toHaveLength(1);
   source.session.mockRejectedValueOnce(Error('PRIVATE session'));const failed=await view();expect(failed.querySelectorAll('a')).toHaveLength(1);expect(failed.textContent).not.toContain('PRIVATE');
-  source.session.mockResolvedValueOnce({userId:'user',roles:['hr_admin']});expect((await view()).querySelectorAll('a')).toHaveLength(5);
+  source.session.mockResolvedValueOnce({userId:'user',roles:['hr_admin']});expect((await view()).querySelectorAll('a')).toHaveLength(6);
   expect((await view()).querySelectorAll('a')).toHaveLength(1);
  });
 });

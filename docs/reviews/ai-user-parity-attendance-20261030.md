@@ -34,3 +34,18 @@ Shared changes: additive Assistant Attendance page composition and one new six-l
 ## Next command dependency
 
 Smallest prospective reviewed mutation: one employment current schedule-group change/clear, using setEmploymentScheduleGroupTx in the same transaction. Requires current native permission investigation, explicit no-op receipt semantics, group/shift dependency digest and locking, exact row/event proof, encrypted generic assigned custody and role cases. Request one coordinator-allocated migration for unique action-kind registration and narrowly scoped subject/proof custody capability (private prefix assistant_attendance_schedule_group_*); final SQL requirements must be checked against native authority before implementation. No numeric migration position claimed. This command is NOT implemented by the handoff slice.
+
+
+## Current mutation slice (supersedes next-command pending description above)
+
+Implemented source: `attendance.schedule_group.maintain`, route `/assistant/schedule-group`, for another person's employment only. This is an explicit Assistant narrowing: native0017 and mounted HR surfaces permit administered own-employment changes. Generic assigned same-PERSON refusal stays unchanged, including a second employment of the same person. No native policy gap is repaired or widened.
+
+Current real USER + current principal snapshot + mounted isAdmin admission + legacy administered company write authority are required before private preview. No positive non-HR Workforce capability is treated as HR. Unlinked USERs remain eligible when native authority holds; SYSTEM and null USER are refused. Existing native Workforce-deny differences remain an integration finding, not a policy change.
+
+The owner `setEmploymentScheduleGroupTx` gains only opt-in `{returnEventId:true}`. Existing default changed:true object shape is unchanged; changed:false still performs no update/event. Assistant rejects unchanged proposals before custody. Confirmation calls this exact writer in its current top transaction, preserving current-shift reverse-check and rollback. The review digest binds employment revision, access generation, current date, group records, pool/rotation rows, today's roster, dated arrangements and effective/cache shifts. A native incompatibility may still refuse confirmation; prepare does not simulate compatibility or promise acceptance.
+
+Exact event UUID and top-level row/event xmin are required by the closed SQL proof and shared custody verifier; no lookalike audit lookup or fabricated no-op event. Receipt recovery rechecks current scope and reads the historical native event; later group changes do not rewrite the completed receipt. Shared encrypted body lifecycle, stale/revoked/foreign actor refusal, pause switches and human confirmation remain in their existing owners.
+
+Shared edits are additive registry/browser packet/result/owner/completed-outcome entries, source manifest, a new disjoint 11-role Attendance probe partition and guard, six-locale namespace, page navigation, and two Attendance facade exports. Provisional migration0729 / idx709 / when1793330000066 is the only allocated entry; predecessor SQL and journal identities are preserved. No sibling placeholders. Requires installation reconciliation; source is not installed/accepted.
+
+Authored focused coverage: strict contracts and forged fields; six-locale review/recovery and expiry; disjoint role offer/prepare/confirm/cross-user cases; native own-admin contrast; native default/no-op shape; real unlinked USER and SYSTEM; NULL clear/inactive group; exact same-topTx proof and outer rollback; incompatible-shift reverse-check; stale group/employment/policy; concurrent replay. Hosted results must be recorded before any pass claim.
