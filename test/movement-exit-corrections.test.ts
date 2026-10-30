@@ -30,6 +30,26 @@ describe('646355e5 revision 2 — correction of exited employees and wrong event
   expect((await snapshot(e.employmentId)).employment[0].terminatedOn).toBe(day(-2));
   expect((await movementHistory(ctx,e.employmentId)).filter(r=>r.kind==='resignation'&&r.status==='applied')).toEqual([expect.objectContaining({effectiveDate:day(-2),correctionKind:'termination'})]);
  });
+ it('corrects an earlier transfer and replays the later voluntary exit without converting it into resignation-only information',async()=>{
+  const e=await hire(),ctx=adminCtx(b);
+  await createMovementEvent(ctx,{employmentId:e.employmentId,kind:'transfer',effectiveDate:day(-15),departmentId:b.deptB});
+  const original=(await movementHistory(ctx,e.employmentId)).find(row=>row.kind==='transfer')!;
+  await exit(e.employmentId);
+  const result=await editMovementEvent(ctx,{employmentId:e.employmentId,movementId:original.id,kind:'transfer',effectiveDate:day(-16),departmentId:b.deptB,reason:'Fictional earlier transfer date correction'});
+  expect(result.replayed).toBe(1);
+  const history=await movementHistory(ctx,e.employmentId),active=history.filter(row=>row.status==='applied');
+  expect(active.filter(row=>row.kind==='transfer')).toEqual([expect.objectContaining({effectiveDate:day(-16)})]);
+  expect(active.filter(row=>row.kind==='resignation')).toEqual([expect.objectContaining({effectiveDate:day(-3),correctionKind:'termination'})]);
+  expect((await snapshot(e.employmentId)).employment[0]).toMatchObject({terminatedOn:day(-3),terminationReasonCode:'resignation'});
+ });
+ it('refuses an earlier correction that would fall after the recorded exit, without a partial replay',async()=>{
+  const e=await hire(),ctx=adminCtx(b);
+  await createMovementEvent(ctx,{employmentId:e.employmentId,kind:'transfer',effectiveDate:day(-15),departmentId:b.deptB});
+  const original=(await movementHistory(ctx,e.employmentId)).find(row=>row.kind==='transfer')!;await exit(e.employmentId);
+  const before=await snapshot(e.employmentId);
+  await expect(editMovementEvent(ctx,{employmentId:e.employmentId,movementId:original.id,kind:'transfer',effectiveDate:day(-1),departmentId:b.deptB,reason:'Fictional conflicting transfer date'})).rejects.toThrow(/falls after the later/);
+  expect(await snapshot(e.employmentId)).toEqual(before);
+ });
  it('replaces a mistaken applied exit with a transfer through the canonical dispatcher and links the audit',async()=>{
   const e=await hire(),ctx=adminCtx(b),row=await exit(e.employmentId);
   await editMovementEvent(ctx,{employmentId:e.employmentId,movementId:row.id,kind:'transfer',effectiveDate:day(-3),departmentId:b.deptB,reason:'Fictional event type correction'});

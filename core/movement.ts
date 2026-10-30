@@ -3500,12 +3500,12 @@ async function undoSalaryAfterClosedPayrollTx(tx: Tx, ctx: SessionContext, emplo
 }
 
 /** 646355e5 — one later movement to put back after an older one is corrected. */
-type ReplayStep = { movementId: string; label: string; effectiveDate: string; sequence: number; behaviour: string; input: CreateMovementInput };
+type ReplayStep = { movementId: string; label: string; effectiveDate: string; sequence: number; behaviour: string; input: CreateMovementInput; terminationType?: TerminationType };
 
 /**
  * 646355e5 — the later applied movements an older correction steps back over, with the values each one
  * set, read from its own recorded legs (never from today's master data). Refuses — naming the event —
- * when a later movement cannot be replayed exactly (a kind with its own lifecycle, a company move, or a
+ * when a later movement cannot be replayed exactly (an unsupported lifecycle, a company move, or a
  * corrected date that would land after it), so nothing is half-corrected.
  */
 async function laterReplayPlanTx(
@@ -3530,7 +3530,7 @@ async function laterReplayPlanTx(
     const when = r.effectiveDate;
     const replayable =
       behaviour !== null &&
-      (isComparisonKind(behaviour) || behaviour === 'resignation') &&
+      (isComparisonKind(behaviour) || behaviour === 'resignation' || behaviour === 'termination') &&
       behaviour !== 'entityTransfer' &&
       correctabilityOf(r, g, true, behaviour).canReverse &&
       !g.some((e) => e.eventType === 'employment.company.transferred');
@@ -3544,7 +3544,10 @@ async function laterReplayPlanTx(
         `The corrected effective date ${correctedDate} falls after the later ${label} event on ${when}. Keep the date before it, or roll the later event back first.`,
       );
     }
-    steps.push({ movementId: r.id, label, effectiveDate: when, sequence: r.sequence, behaviour, input: await replayInputOfTx(tx, r, g, behaviour) });
+    const exit = g.find(event => event.eventType === 'employment.terminated')?.payload as {terminationType?:unknown} | undefined;
+    const terminationType = typeof exit?.terminationType === 'string' && ['voluntary','involuntary','retired','contract_end','death','other'].includes(exit.terminationType) ? exit.terminationType as TerminationType : undefined;
+    if(behaviour==='termination' && !terminationType) throw new MovementNotCorrectableError(`The later ${label} event on ${when} has no verified exit classification. Review it before correcting this event.`);
+    steps.push({ movementId: r.id, label, effectiveDate: when, sequence: r.sequence, behaviour, input: await replayInputOfTx(tx, r, g, behaviour), terminationType });
   }
   return steps.sort((a, b) => (a.effectiveDate === b.effectiveDate ? a.sequence - b.sequence : a.effectiveDate < b.effectiveDate ? -1 : 1));
 }
@@ -3554,7 +3557,7 @@ async function replayInputOfTx(tx: Tx, r: ProjectedRow, g: RawEvent[], behaviour
   const input: CreateMovementInput & Record<string, unknown> = {
     employmentId: '',
     kind: behaviour,
-    typeCode: r.kind,
+    typeCode: recordedMovementKind(r,g),
     effectiveDate: r.effectiveDate,
     endDate: r.endDate,
     remarks: r.remarks,
@@ -3591,13 +3594,20 @@ async function replayInputOfTx(tx: Tx, r: ProjectedRow, g: RawEvent[], behaviour
         input.paymentTerm = row.paymentTerm;
         break;
       }
+      case 'employment.terminated':
+        input.terminationReasonCode = p.terminationReasonCode ?? null;
+        input.terminationNoticeDays = p.terminationNoticeDays ?? null;
+        break;
       case 'employment.info.updated': {
         const fields: string[] = Array.isArray(p.fields) ? p.fields : [];
         for (const f of fields) {
           if ((MOVEMENT_FLAT_FIELDS as readonly string[]).includes(f)) input[f] = p.after?.[f] ?? null;
-          if (f === 'tenderResignationDate') input.tenderResignationDate = p.after?.[f] ?? null;
+          if (f === 'tenderResignationDate') {
+            if(behaviour==='termination') input.resignationDate=p.after?.[f] ?? null;
+            else input.tenderResignationDate=p.after?.[f] ?? null;
+          }
           if (f === 'resignationDate') input.resignationEffectiveDate = p.after?.[f] ?? null;
-          if (f === 'lastWorkingDate' && behaviour === 'resignation') input.endDate = p.after?.[f] ?? null;
+          if (f === 'lastWorkingDate' && (behaviour === 'resignation' || behaviour === 'termination')) input.endDate = p.after?.[f] ?? null;
         }
         break;
       }
@@ -3613,6 +3623,11 @@ async function replayLaterMovementsTx(tx: Tx, ctx: SessionContext, employmentId:
     const input = { ...step.input, employmentId };
     try {
       if (step.behaviour === 'resignation') await applyResignationMovementTx(tx, ctx, input);
+      else if(step.behaviour === 'termination') {
+        const plan=await planTerminationTx(tx,ctx,input,'create');
+        if(plan.terminationType!==step.terminationType) throw new MovementNotCorrectableError('The recorded exit classification no longer matches its reason. Review that exit before correcting an earlier event.');
+        await applyTerminationTx(tx,ctx,employmentId,plan);
+      }
       else await applyComparisonMovementTx(tx, ctx, input, step.behaviour as ComparisonKind);
     } catch (e) {
       if (e instanceof MovementNoChangeError) {

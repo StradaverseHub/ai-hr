@@ -108,10 +108,13 @@ async function employmentRow(employmentId: string) {
 
 /** A CLOSED payroll run that paid this employment in `period` ('YYYY-MM'). */
 async function closedPayrollFor(employmentId: string, period: string) {
-  const [pp] = await owner.db
+  let [pp] = await owner.db
     .insert(schema.payPeriod)
     .values({ tenantId: b.tenantId, companyId: b.companyId, period, status: 'closed' })
+    .onConflictDoNothing()
     .returning({ id: schema.payPeriod.id });
+  if (!pp) [pp] = await owner.db.select({id:schema.payPeriod.id}).from(schema.payPeriod).where(and(eq(schema.payPeriod.companyId,b.companyId),eq(schema.payPeriod.period,period),eq(schema.payPeriod.status,'closed'))).limit(1);
+  expect(pp).toBeDefined();
   const [batch] = await owner.db
     .insert(schema.payrollBatch)
     .values({
