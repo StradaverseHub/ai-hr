@@ -32,7 +32,7 @@
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { terminationReason } from '../db/schema';
+import { movementTypeTerminationReason, terminationReason } from '../db/schema';
 import type { TerminationType } from './org';
 import {
   TERMINATION_REASONS,
@@ -199,16 +199,20 @@ export async function listTerminationReasons(ctx: SessionContext): Promise<Termi
  * requirement: whoever may record a termination may read the reasons it offers.
  */
 export function terminationReasonCatalogue(ctx: SessionContext): Promise<ResolvedTerminationReason[]> {
-  return withTenant(ctx, async (tx) =>
-    catalogue(await overlayTx(tx, ctx.tenantId)).map((r) => ({
-      code: r.code,
-      label: r.label,
-      category: r.category,
-      terminationType: r.terminationType,
-      active: r.active,
-      builtIn: r.builtIn,
-    })),
-  );
+  return withTenant(ctx, (tx) => terminationReasonCatalogueTx(tx, ctx.tenantId));
+}
+
+/** 1d58019a Step 2 — the same catalogue inside a caller's transaction (the movement workbook's catalogue
+ *  read and fingerprint, and the per-type offer lists). Read-only; no admin requirement. */
+export async function terminationReasonCatalogueTx(tx: Tx, tenantId: string): Promise<ResolvedTerminationReason[]> {
+  return catalogue(await overlayTx(tx, tenantId)).map((r) => ({
+    code: r.code,
+    label: r.label,
+    category: r.category,
+    terminationType: r.terminationType,
+    active: r.active,
+    builtIn: r.builtIn,
+  }));
 }
 
 /**
@@ -375,6 +379,12 @@ export async function deleteTerminationReason(ctx: SessionContext, code: string)
       .where(and(eq(terminationReason.tenantId, ctx.tenantId), eq(terminationReason.code, code)))
       .returning({ id: terminationReason.id });
     if (!row) throw new TerminationReasonError('Unknown termination reason.');
+    // 1d58019a Step 2 — an unused reason may still be ticked on a Termination type's offer list. Remove those
+    // ticks with it, so a later reason of the same name does not silently inherit them. Saving an offer list
+    // resolves every code under the shared form of this lock, so it cannot re-tick the code mid-delete.
+    await tx
+      .delete(movementTypeTerminationReason)
+      .where(and(eq(movementTypeTerminationReason.tenantId, ctx.tenantId), eq(movementTypeTerminationReason.reasonCode, code)));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'termination-reason',

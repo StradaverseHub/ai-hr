@@ -5,6 +5,23 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Board item 1d58019a (Movement Settings Enhancement, Step 2) — 30 October 2026
+
+Unapplied source reservation on `claude/fb-1d58019a-step2` (Step 1 plus 646355e5 at 1e7bd488b, journal ending
+at idx683 / 0713_movement_settings_catalog / sequence1793330000042). A fresh fetch and check of every local and
+`origin/*` ref, every registered worktree and every builder checkout found migration filenames claimed through
+`0720_lifecycle_v9_self_equipment` (`codex/v9-lifecycle-alignment-20261029`, which also claims a second `0713_*`
+filename) and journal sequences through 1793330000049. This item takes the next free filename and sequence:
+
+| Owner | Index (on this branch) | Sequence | Filename | SQL SHA256 |
+| --- | ---: | ---: | --- | --- |
+| Board 1d58019a Step 2 | 684 | 1793330000050 | 0721_movement_type_controls | a0496be717176c50f476a9605077c73240d6616539e9c8bbc57097f6fff451cb |
+
+As for Step 1, the index is this branch's journal position only; integration with the intervening allocations
+re-positions it (filename, sequence and SQL bytes do not change). Nothing is applied anywhere. The `0713`
+filename number is claimed twice (Step 1 and the lifecycle v9 branch, different sequences); whoever integrates
+second must reconcile that before journal append.
+
 ## Board item 1d58019a (Movement Settings Enhancement, Step 1) — 30 October 2026
 
 Unapplied source reservation on `claude/fb-1d58019a` (base origin/main `f752ac7f5`, whose journal ends at

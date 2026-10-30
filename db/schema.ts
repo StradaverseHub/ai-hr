@@ -9718,6 +9718,62 @@ export const terminationReason = pgTable(
   ],
 );
 
+// ─────────────── Movement type controls (1d58019a Step 2, migration 0721, ADR-0166) ───────────────
+// Which termination reasons a Termination type offers (no rows = every active reason), the Field Controls of a
+// comparison type (no rows = today's full grid), and supporting documents on a movement (keyed by the
+// movement's group id). Settings rows: tenant-read, admin-write. Attachments: workforce-view read with the
+// compensation predicate for pay fields; append-only (no UPDATE/DELETE grant).
+export const movementTypeTerminationReason = pgTable(
+  'movement_type_termination_reason',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    typeCode: text('type_code').notNull(),
+    reasonCode: text('reason_code').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('movement_type_termination_reason_uq').on(t.tenantId, t.typeCode, t.reasonCode)],
+);
+
+export const movementTypeFieldRule = pgTable(
+  'movement_type_field_rule',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    typeCode: text('type_code').notNull(),
+    /** One of the comparison fields (lib/movement-field-rules.ts MOVEMENT_RULE_FIELDS). */
+    field: text('field').notNull(),
+    included: boolean('included').notNull(),
+    editable: boolean('editable').notNull(),
+    mustChange: boolean('must_change').notNull(),
+    /** 'none' | 'optional' | 'required'. */
+    document: text('document').notNull().default('none'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('movement_type_field_rule_uq').on(t.tenantId, t.typeCode, t.field)],
+);
+
+export const movementAttachment = pgTable(
+  'movement_attachment',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    /** The MovementTag.groupId every leg of the movement shares (a scheduled movement's too). */
+    movementGroupId: uuid('movement_group_id').notNull(),
+    field: text('field').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    content: bytea('content').notNull(),
+    uploadedBy: uuid('uploaded_by'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('movement_attachment_group_idx').on(t.tenantId, t.employmentId, t.movementGroupId)],
+);
+
 // ─────────────── Personnel — employee import history (feedback cf43c909, migration 0341) ───────────────
 // One row per employee-import RUN. The Excel reader, the pre-import validation preview and the downloadable
 // error report all shipped in r86 (d8471481); what was missing is the RECORD — once an upload finished there

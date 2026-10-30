@@ -3984,6 +3984,13 @@
       "when": 1793330000042,
       "tag": "0713_movement_settings_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 684,
+      "version": "7",
+      "when": 1793330000050,
+      "tag": "0721_movement_type_controls",
+      "breakpoints": true
     }
   ]
 }

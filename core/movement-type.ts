@@ -15,7 +15,10 @@
  *   • the BEHAVIOUR — what the system DOES when one is recorded. Fixed, in code, keyed by MovementKind.
  *
  * Every catalogue entry MAPS to exactly one built-in behaviour kind. Rename and enable/disable are free;
- * semantics stay with the built-in kind. A tenant cannot invent a type that claims to be a Termination.
+ * semantics stay with the built-in kind. 1d58019a Step 2 (ADR-0166, owner sign-off 30 October 2026) AMENDS
+ * the original rule that a tenant cannot invent a type that claims to be a Termination: a tenant's own type
+ * may now carry the Termination behaviour, and then runs exactly the built-in Termination's writer, reversal
+ * and correction. Every other lifecycle behaviour stays out of reach (see CONFIGURABLE_BEHAVIOUR_KINDS).
  *
  * AN OVERLAY, NOT A REPLACEMENT. The table records what a tenant DID to the built-in list — renamed a
  * label, switched a type off, added one of their own. A tenant with no rows behaves exactly as before.
@@ -39,6 +42,14 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { movementEventType } from '../db/schema';
 import { INTERCHANGEABLE_COMPARISON_KINDS, MOVEMENT_KINDS, type MovementKind } from './movement';
+import {
+  deleteMovementTypeControlsTx,
+  movementTypeControlsTx,
+  offeredTerminationReasons,
+  terminationReasonCatalogueTx,
+  writeMovementTypeControlsTx,
+} from './movement-type-controls';
+import type { MovementFieldRule } from '../lib/movement-field-rules';
 
 /**
  * The behaviour kinds a CUSTOM type may map onto.
@@ -54,11 +65,21 @@ import { INTERCHANGEABLE_COMPARISON_KINDS, MOVEMENT_KINDS, type MovementKind } f
  * is load-bearing. Confirmation became a comparison kind (same grid, same writer) but it still completes
  * probation, so it stays off this list exactly as the paragraph above says it must; spreading the wider
  * list here would have handed tenants the power to invent one as a silent side effect of that change.
+ *
+ * 1d58019a Step 2 (ADR-0166) — `termination` JOINS the list, by owner decision (30 October 2026), reversing
+ * this paragraph's exclusion for Termination alone. The reasoning that made it safe: Termination is a
+ * deterministic writer whose consequence (end of employment, reason, notice, last working day, reporting
+ * lines, payroll flags) does not depend on what the type is called, and every branch that used to test the
+ * raw code 'termination' now resolves the code through this catalogue first (core/movement.ts), so a
+ * "Retrenchment" type gets the identical writer, reversal and correction. Classification (Termination /
+ * Non-Termination) is DERIVED from this behaviour, never stored. The rest stay excluded exactly as above,
+ * and a type's behaviour is locked once any recorded movement uses it (saveMovementEventType).
  */
 export const CONFIGURABLE_BEHAVIOUR_KINDS: readonly MovementKind[] = [
   ...INTERCHANGEABLE_COMPARISON_KINDS,
   'secondment',
   'actingPosition',
+  'termination',
 ];
 
 export const isConfigurableBehaviourKind = (v: string): v is MovementKind =>
@@ -280,7 +301,9 @@ function resolveMovementTypeRow(code:string,row:typeof movementEventType.$inferS
     if (!behaviourKind) return null;
     // A CUSTOM type may only carry a configurable behaviour, whatever is in the row. This is the
     // read-side half of the write-side guard: a row edited around the service still cannot make a
-    // tenant-invented type behave like a Termination.
+    // tenant-invented type behave like a Confirmation, a Blacklist or any other non-configurable kind.
+    // 1d58019a Step 2 — Termination is configurable now, so it resolves here; the guard and the write-side
+    // list are the same constant, which is what keeps them extended together.
     if (!isBuiltInKind(code) && !isConfigurableBehaviourKind(behaviourKind)) return null;
     return { code, behaviourKind, active: row.isActive, label: row.label };
   }
@@ -296,17 +319,33 @@ export function resolveMovementEventTypeRows(tenantId:string,codes:readonly stri
  return new Map(codes.map(code=>[code,resolveMovementTypeRow(code,byCode.get(code))] as const));
 }
 
-/** Bounded exact active choices inside a caller-owned transaction; one catalog read, no per-type query. */
+/** One reason a Termination type offers, as the movement workbook lists it (reference sheet, fingerprint). */
+export type MovementChoiceReason = { code: string; label: string | null; category: string; builtIn: boolean };
+
+/** Bounded exact active choices inside a caller-owned transaction; one catalog read, no per-type query.
+ * 1d58019a Step 2 — each choice also carries its CONTROLS, because the movement workbook is signed to this
+ * list: a Termination type its effectively offered reasons (the tenant's reason catalogue narrowed to the
+ * ticked ones), a comparison type its Field Controls when it has any. A changed reason or rule therefore
+ * changes the workbook's catalogue fingerprint and an older download is refused as stale. */
 export async function activeMovementEventTypeChoicesTx(tx:Tx,tenantId:string){
  const overlays=await tx.select().from(movementEventType).where(eq(movementEventType.tenantId,tenantId)).orderBy(asc(movementEventType.sortOrder),asc(movementEventType.code)).limit(1001);
  if(overlays.length>1000)throw new MovementTypeError('movement_catalog_too_large');
  const byCode=new Map(overlays.map(row=>[row.code,row]));
- const choices=[];
+ const resolvedChoices=[];
  for(const code of new Set([...MOVEMENT_KINDS,...overlays.map(row=>row.code)])){
-  const resolved=resolveMovementTypeRow(code,byCode.get(code));if(resolved?.active)choices.push(resolved);
+  const resolved=resolveMovementTypeRow(code,byCode.get(code));if(resolved?.active)resolvedChoices.push(resolved);
  }
- if(choices.length>1000)throw new MovementTypeError('movement_catalog_too_large');
- return choices;
+ if(resolvedChoices.length>1000)throw new MovementTypeError('movement_catalog_too_large');
+ const controls=await movementTypeControlsTx(tx,tenantId,resolvedChoices);
+ const reasons=resolvedChoices.some(c=>c.behaviourKind==='termination')?await terminationReasonCatalogueTx(tx,tenantId):[];
+ return resolvedChoices.map(choice=>{
+  const c=controls.get(choice.code);
+  return {
+   ...choice,
+   ...(choice.behaviourKind==='termination'?{reasons:offeredTerminationReasons(reasons,c?.reasonCodes??null).map((r):MovementChoiceReason=>({code:r.code,label:r.label,category:r.category,builtIn:r.builtIn}))}:{}),
+   ...(c?.configured?{rules:c.rules}:{}),
+  };
+ });
 }
 
 
@@ -325,6 +364,12 @@ export async function saveMovementEventType(
     sortOrder?: number;
     /** 1d58019a — undefined leaves the stored description alone; blank clears it. */
     description?: string | null;
+    /** 1d58019a Step 2 — a Termination type's offered reasons (empty = every active reason). undefined
+     *  leaves the stored list alone. */
+    reasonCodes?: readonly string[] | null;
+    /** 1d58019a Step 2 — a comparison type's Field Controls (empty = today's behaviour). undefined leaves
+     *  the stored rules alone. */
+    fieldRules?: readonly MovementFieldRule[] | null;
   },
 ): Promise<{ code: string }> {
   assertAdmin(ctx, 'change movement event types');
@@ -352,14 +397,31 @@ export async function saveMovementEventType(
         if (!isConfigurableBehaviourKind(p.behaviourKind)) {
           throw new MovementTypeError('That is not an event behaviour a custom type can use.');
         }
+        // 1d58019a Step 2 (ADR-0166) — LOCKED ONCE USED. Employment History is a projection that resolves a
+        // recorded code's behaviour at READ time, so re-pointing a used type would re-project every past
+        // record under a different behaviour (an old Termination re-read as a Transfer, and corrected as
+        // one). Checked under the exclusive catalogue lock; a movement write resolving this type holds the
+        // shared form for its whole transaction, so the check and the write cannot interleave.
+        if ((await inUseCodesTx(tx, ctx.tenantId)).has(existingCode)) {
+          throw new MovementTypeError(
+            'This event type is already used by recorded movements, so what it does (and its classification) can no longer change. Add a new event type instead.',
+          );
+        }
         behaviourKind = p.behaviourKind;
       }
-      await upsertTx(tx, ctx, {
+      const aggregateId = await upsertTx(tx, ctx, {
         code: existingCode,
         behaviourKind,
         label,
         sortOrder: p.sortOrder,
         description,
+      });
+      await writeMovementTypeControlsTx(tx, ctx, {
+        code: existingCode,
+        aggregateId,
+        behaviour: behaviourKind,
+        reasonCodes: p.reasonCodes,
+        fieldRules: p.fieldRules,
       });
       return { code: existingCode };
     }
@@ -381,7 +443,14 @@ export async function saveMovementEventType(
     if (RESERVED_CODES.has(code)) throw new MovementTypeError('That name is reserved. Choose another name.');
     const existing = await overlayTx(tx, ctx.tenantId);
     if (existing.has(code)) throw new MovementTypeError('An event type with that name already exists.');
-    await upsertTx(tx, ctx, { code, behaviourKind, label, sortOrder: p.sortOrder ?? existing.size, description });
+    const aggregateId = await upsertTx(tx, ctx, { code, behaviourKind, label, sortOrder: p.sortOrder ?? existing.size, description });
+    await writeMovementTypeControlsTx(tx, ctx, {
+      code,
+      aggregateId,
+      behaviour: behaviourKind,
+      reasonCodes: p.reasonCodes,
+      fieldRules: p.fieldRules,
+    });
     return { code };
   });
 }
@@ -412,7 +481,7 @@ async function upsertTx(
     /** undefined = leave as stored. */
     description?: string | null;
   },
-): Promise<void> {
+): Promise<string> {
   const [row] = await tx
     .insert(movementEventType)
     .values({
@@ -453,6 +522,7 @@ async function upsertTx(
       description: row.description,
     },
   });
+  return row.id;
 }
 
 /** Switch a type on or off. Deactivating never alters records that already use it — it only stops the type
@@ -499,6 +569,8 @@ export async function deleteMovementEventType(ctx: SessionContext, code: string)
       .where(and(eq(movementEventType.tenantId, ctx.tenantId), eq(movementEventType.code, code)))
       .returning({ id: movementEventType.id });
     if (!row) throw new MovementTypeError('Unknown movement event type.');
+    // 1d58019a Step 2 — its reason list and Field Controls go with it (never used, so nothing recorded them).
+    await deleteMovementTypeControlsTx(tx, ctx.tenantId, code);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'movement-event-type',
