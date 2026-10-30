@@ -4898,7 +4898,7 @@ export type PayRule =
   | { kind: 'flat_capped'; value: number; cap: number } //  min(value, cap)
   | { kind: 'qty_rate'; qty: number; rate: number } //      61bf109d — a quantity multiplied by a rate
   | { kind: 'formula'; start: FormulaOperand; terms: FormulaTerm[] } // 61bf109d — the restricted formula
-  | { kind: 'formula_builder'; formulaId: string; dependencies: string[] }; // server-owned active IR dependencies
+  | { kind: 'formula_builder'; formulaId: string; dependencies: string[]; context?: {ordinaryRate?:string;hoursPerDay?:string;rate?:string} }; // server-owned active IR dependencies
 
 // A reusable named shift for a company (e.g. "Night A", 22:00–06:00). crossesMidnight = endTime ≤ startTime.
 export const shift = pgTable(
