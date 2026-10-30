@@ -31,12 +31,72 @@ const governedCallers:Record<string,{features:readonly string[];seams:readonly R
 // Shared Performance provider seam: it resolves no configuration of its own and admits every call under the
 // calling Performance feature. Its call sites ARE provider call sites, so each is held to the same rule as a
 // direct call (a Performance pack file that resolves through assessmentAiConfigTx); the seam shows its admission.
-const performanceSeam={file:'packs/performance/onehr/provider-source-draft.ts',call:'generatePerformanceSourceDraft',admission:/withAiAdmissionCheck\(cfg,\s*`performance_\$\{feature\}`/};
+const performanceSeam={file:'packs/performance/onehr/provider-source-draft.ts',call:'generatePerformanceSourceDraft',nativeCall:'generatePerformanceNativeOutline',admission:/withAiAdmissionCheck\(cfg,\s*`performance_\$\{feature\}`/};
+// Closed native owners, including BOTH governed Performance wrappers. Explicit source owners
+// detect lost paths without treating textual call count as a measure of business coverage.
+const performanceOwners:Record<string,Record<string,string>>={
+  "packs/performance/onehr/admin-agent-service.ts": {
+    "askAssessmentAdmin": "generateDraft"
+  },
+  "packs/performance/onehr/ai.ts": {
+    "draftOnehrNarrative": "generateDraft"
+  },
+  "packs/performance/onehr/calibration-conversation.ts": {
+    "sendCalibrationMessage": "generatePerformanceSourceDraft"
+  },
+  "packs/performance/onehr/career-draft-service.ts": {
+    "suggestAssessmentCareerPlan": "generateDraft"
+  },
+  "packs/performance/onehr/competency-insight-service.ts": {
+    "getAssessmentCompetencyInsight": "generateDraft"
+  },
+  "packs/performance/onehr/development-suggestion-service.ts": {
+    "suggestAssessmentDevelopmentGoals": "generateDraft"
+  },
+  "packs/performance/onehr/evidence-reading.ts": {
+    "readAssessmentFileTexts": "readImage"
+  },
+  "packs/performance/onehr/feedback-conversation.ts": {
+    "sendFeedbackMessage": "generatePerformanceSourceDraft"
+  },
+  "packs/performance/onehr/guide-service.ts": {
+    "askPerformanceGuide": "generateDraft"
+  },
+  "packs/performance/onehr/idp-fit-service.ts": {
+    "getAssessmentIdpFit": "generatePerformanceNativeOutline"
+  },
+  "packs/performance/onehr/insight-service.ts": {
+    "getAssessmentPerformanceInsight": "generateDraft"
+  },
+  "packs/performance/onehr/potential-insight-service.ts": {
+    "getAssessmentPotentialInsight": "generatePerformanceNativeOutline"
+  },
+  "packs/performance/onehr/provider-source-draft.ts": {
+    "generatePerformanceNativeOutline": "generateDraft",
+    "generatePerformanceSourceDraft": "generateDraft"
+  },
+  "packs/performance/onehr/record-insight-service.ts": {
+    "getAssessmentRecordInsight": "generatePerformanceNativeOutline"
+  },
+  "packs/performance/onehr/review-command-ai.ts": {
+    "confirmLiteral": "generateDraft",
+    "proposeSettingSuggestion": "generateDraft"
+  },
+  "packs/performance/onehr/rewrite-service.ts": {
+    "rewriteAssessmentField": "generateDraft"
+  },
+  "packs/performance/onehr/talent-insight-service.ts": {
+    "getAssessmentTalentInsight": "generatePerformanceNativeOutline"
+  },
+  "packs/performance/onehr/written-remarks-service.ts": {
+    "getAssessmentWrittenRemarks": "generatePerformanceNativeOutline"
+  }
+};
 describe('complete AI management inventory and boundary',()=>{
  it('registers every production AI workload caller and keeps providers behind the shared gateway',()=>{
-  const coreFound:string[]=[];let packCalls=0;
+  const coreFound:string[]=[],packFound:string[]=[];
   for(const file of [...walk('core'),...walk('packs'),...walk('app'),...walk('lib'),...walk('scripts')]){
-   const src=read(file),tree=ts.createSourceFile(file,src,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+   const src=read(file),tree=ts.createSourceFile(file,src,ts.ScriptTarget.Latest,true,file.endsWith('x')?ts.ScriptKind.TSX:ts.ScriptKind.TS);
    let calls=0;const aliases=new Map<string,string>(),namespaces=new Set<string>();
    for(const statement of tree.statements)if(ts.isImportDeclaration(statement)&&statement.importClause?.namedBindings){
     const bindings=statement.importClause.namedBindings;
@@ -45,7 +105,7 @@ describe('complete AI management inventory and boundary',()=>{
    }
    const visit=(node:ts.Node)=>{if(ts.isCallExpression(node)){
     const call=ts.isIdentifier(node.expression)?aliases.get(node.expression.text)??node.expression.text:ts.isPropertyAccessExpression(node.expression)&&ts.isIdentifier(node.expression.expression)&&namespaces.has(node.expression.expression.text)?node.expression.name.text:'';
-    if(['generateDraft','readImage','converse','generatePrivateAiAnalysis',performanceSeam.call].includes(call))calls++;
+    if(['generateDraft','readImage','converse','generatePrivateAiAnalysis',performanceSeam.call,performanceSeam.nativeCall].includes(call))calls++;
    }ts.forEachChild(node,visit);};visit(tree);
    expect(aiBoundaryViolations(file,src),file).toEqual([]);
    if(!calls)continue;
@@ -59,12 +119,23 @@ describe('complete AI management inventory and boundary',()=>{
    else{expect(file.startsWith('packs/performance/onehr/'),`${file} needs a governed configuration seam`).toBe(true);if(file===performanceSeam.file)expect(src).toMatch(performanceSeam.admission);else {
      const imported=new Set<string>();let admission=false,shared=false;
      for(const statement of tree.statements)if(ts.isImportDeclaration(statement)&&ts.isStringLiteral(statement.moduleSpecifier)&&statement.importClause?.namedBindings&&ts.isNamedImports(statement.importClause.namedBindings))
-      for(const binding of statement.importClause.namedBindings.elements){const name=(binding.propertyName??binding.name).text;if(name==='withAiAdmissionCheck'&&statement.moduleSpecifier.text.endsWith('core/ai-governance')||name===performanceSeam.call&&statement.moduleSpecifier.text==='./provider-source-draft')imported.add(binding.name.text);}
-     const check=(node:ts.Node)=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&imported.has(node.expression.text)){if(node.expression.text===performanceSeam.call)shared=true;else admission=true;}ts.forEachChild(node,check);};check(tree);
+      for(const binding of statement.importClause.namedBindings.elements){const name=(binding.propertyName??binding.name).text;if(name==='withAiAdmissionCheck'&&statement.moduleSpecifier.text.endsWith('core/ai-governance')||(name===performanceSeam.call||name===performanceSeam.nativeCall)&&statement.moduleSpecifier.text==='./provider-source-draft')imported.add(binding.name.text);}
+     const check=(node:ts.Node)=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&imported.has(node.expression.text)){if(node.expression.text===performanceSeam.call||node.expression.text===performanceSeam.nativeCall)shared=true;else admission=true;}ts.forEachChild(node,check);};check(tree);
      expect(admission||shared,`${file} must call an imported admission owner or the governed Performance wrapper`).toBe(true);
-    }packCalls+=calls;}
+    }packFound.push(file);}
   }
-  expect(coreFound.sort()).toEqual([...Object.keys(coreCallers),...Object.keys(governedCallers)].sort());expect(packCalls).toBeGreaterThan(15);
+  expect(coreFound.sort()).toEqual([...Object.keys(coreCallers),...Object.keys(governedCallers)].sort());expect(packFound.sort()).toEqual(Object.keys(performanceOwners).sort());
+  // Check the concrete named caller body too, so keeping a file/import while dropping its supported
+  // operation cannot satisfy the inventory. Nested functions remain inside their real native owner.
+  for(const [file,owners] of Object.entries(performanceOwners)){
+   const src=read(file),tree=ts.createSourceFile(file,src,ts.ScriptTarget.Latest,true,file.endsWith('x')?ts.ScriptKind.TSX:ts.ScriptKind.TS);
+   const declarations=new Map<string,ts.FunctionDeclaration>();
+   const collect=(node:ts.Node)=>{if(ts.isFunctionDeclaration(node)&&node.name)declarations.set(node.name.text,node);ts.forEachChild(node,collect);};collect(tree);
+   for(const [owner,call] of Object.entries(owners)){
+    const declaration=declarations.get(owner);expect(declaration,`${file} retains native owner ${owner}`).toBeDefined();
+    expect(declaration?.body?.getText(tree),`${file}#${owner} invokes ${call}`).toMatch(new RegExp(`\\b${call}\\s*\\(`));
+   }
+  }
   // Since the provider snapshot owner (ADR-0131, 64651f101) the tenant row and platform fallback are one
   // snapshot, so the active resolver issues exactly one governed configuration and nothing ungoverned.
   const config=read('core/ai-config.ts');expect(config.match(/governedAiConfig\(/g)?.length).toBe(1);

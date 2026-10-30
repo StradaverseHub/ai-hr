@@ -73,10 +73,19 @@ describe('Performance AI switches default OFF (owner decision 3)', () => {
     expect([...update![1].matchAll(/'([^']+)'/g)].map(m => m[1]).sort()).toEqual([...PERFORMANCE_KEYS].sort());
   });
 
-  it('makes "every catalogued boolean default is false" true, as core/entitlements.ts states', () => {
+  it('keeps boolean defaults off except the explicit operator-owned Feedback menu', () => {
     const booleans = SETTING_CATALOG.filter(s => s.valueType === 'boolean');
     expect(booleans.length).toBeGreaterThan(6);
-    expect(booleans.filter(s => s.defaultValue !== false).map(s => s.key)).toEqual([]);
+    // Native0696 deliberately preserves the existing menu when no operator row exists. This
+    // presentation switch is not AI admission and does not opt any Performance AI feature in.
+    expect(booleans.filter(s => s.defaultValue !== false).map(s => s.key)).toEqual(['feedback.menu_enabled']);
+    expect(booleans.find(s => s.key === 'feedback.menu_enabled')).toMatchObject({
+      moduleCode:null,scope:'platform',valueType:'boolean',defaultValue:true,defaultOnInstall:null,customerVisible:false,
+    });
+    expect(settingBacked.map(([,key])=>key)).not.toContain('feedback.menu_enabled');
+    const menuOwner=read('db/migrations/0696_feedback_menu_operator_switch.sql');
+    expect(menuOwner).toContain("RETURN coalesce(result,true);");
+    expect(menuOwner).toContain("'feedback.menu_enabled',NULL,'platform','boolean','true'::jsonb,NULL,false");
     for (const file of ['core/entitlements.ts', 'core/entitlement-types.ts']) expect(read(file)).not.toMatch(/performance AI switches default true/);
   });
 });
