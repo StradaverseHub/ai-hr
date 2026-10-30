@@ -140,7 +140,7 @@ export async function assertReviewBodyPendingParentContract<P extends Pending>(i
    const [before]=await owner.db.execute<{value:string}>(sql.raw(`select nextval('app.${sequence}')::text value`));
    await reject(operation);
    const [after]=await owner.db.execute<{value:string}>(sql.raw(`select last_value::text value from app.${sequence}`));
-   expect(BigInt(after.value)).toBe(BigInt(before.value)+1n);
+   expect(BigInt(after.value)).toBe(BigInt(before.value)+BigInt(1));
   }
  }finally{
   await owner.db.execute(sql.raw(`DROP TRIGGER IF EXISTS ${trigger} ON app.assistant_own_leave_review_content;
