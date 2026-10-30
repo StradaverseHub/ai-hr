@@ -57,7 +57,10 @@ it('isolates Home role and reporting-visibility query planning with fresh native
   ) THEN EXISTS(
    SELECT 1 FROM public.reporting_line r JOIN public.employment report ON report.id=r.subordinate_employment_id`)
   .replace(reportEnd,"  ) ELSE false END THEN 'manager' ELSE 'employee' END");
- const guardedRole=roleDefinition.sqlHeader+'AS $home_role_guard$'+guardedBody+'$home_role_guard$;
+ const guardedRole=readFileSync(new URL('../../db/migrations/0862_home_role_reporting_guard.sql',import.meta.url),'utf8');
+ // The measured guard phase applies the exact journaled DDL to the populated fixture.
+ // This proves function behavior/attributes, not installed-ledger or release admission.
+ expect(guardedRole).toContain(guardedBody.trim());
  expect([body.trim(),guardedBody.trim()]).toContain(roleDefinition.installedBody.trim());';
  const phases:Record<string,unknown>={},probes=users.slice(0,100);
  try{
