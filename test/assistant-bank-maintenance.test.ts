@@ -59,7 +59,7 @@ it('rejects historical native bank events at the SQL completion boundary',async(
  const r=(await store.prepare(ctx,human())).review;await pack().statutory.setBank(ctx,{personId:target.personId,...fields()});const [event]=await owner.db.execute<{id:string}>(sql`select id from domain_event where tenant_id=${b.tenantId}::uuid and event_type='employee.bank.updated' order by sequence desc limit 1`);await expect(withTenant(ctx,tx=>tx.execute(sql`select app.assistant_assigned_review_complete(${r.actionId}::uuid,${C.action},${r.reviewedDigest},${event.id}::uuid)`))).rejects.toThrow();
 });
 it('refuses current grant loss and expires without a native write',async()=>{
- const r=(await store.prepare(ctx,human())).review,before=await state();await owner.db.execute(sql`update app.assistant_own_leave_review set expires_at=clock_timestamp()-interval '1 second' where id=${r.actionId}::uuid`);expect(await store.confirm(ctx,confirm(r))).toMatchObject({kind:'retired',receipt:{state:'expired'}});expect(await state()).toEqual(before);await revokeAssistant(ctx,{appUserId:ctx.userId!});await expect(store.prepare(ctx,human())).rejects.toThrow();
+ const r=(await store.prepare(ctx,human())).review,before=await state();await owner.db.execute(sql`update app.assistant_own_leave_review set created_at=clock_timestamp()-interval '2 minutes',expires_at=clock_timestamp()-interval '1 second' where id=${r.actionId}::uuid`);expect(await store.confirm(ctx,confirm(r))).toMatchObject({kind:'retired',receipt:{state:'expired'}});expect(await state()).toEqual(before);await revokeAssistant(ctx,{appUserId:ctx.userId!});await expect(store.prepare(ctx,human())).rejects.toThrow();
 });
 
 it('binds added retained-company scope and checks its granular denial before private source',async()=>{
