@@ -1,3 +1,4 @@
+// Bounded hand TP3 opening review leaves broader setTp3Action/form exports backlog.
 // Payment-method MY/other-employment review is bounded; the broad legacy export remains backlog.
 /** Passport review covers existing MY profiles only. Broad setPassportAction stays backlog:approve for no-row and legacy-country paths. */
 /** Bank Information subset is registered separately. Legacy setBankAction stays backlog:approve because its MY fallback is broader than the supported actual-country review. */

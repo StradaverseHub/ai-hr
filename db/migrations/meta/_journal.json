@@ -4138,6 +4138,13 @@
       "when": 1793330000053,
       "tag": "0724_assistant_fixed_item_archive",
       "breakpoints": true
+    },
+    {
+      "idx": 706,
+      "version": "7",
+      "when": 1793330000054,
+      "tag": "0725_assistant_tp3_opening_maintenance",
+      "breakpoints": true
     }
   ]
 }

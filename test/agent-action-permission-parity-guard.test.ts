@@ -54,7 +54,7 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
  });
 
  it('has a real adapter for every human review action, with no remaining pending ceiling',()=>{
-  const humanActions=[...PARITY_PENDING_ORIGINAL,'approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer','toil.credit.grant','employees.qualification.maintain','employees.compensation.maintain','employees.emergency_contact.maintain','employees.draft.activate','employees.workforce_profile.maintain','employees.family.maintain','employees.bank.maintain','employees.fixed_item.archive','employees.document_metadata.maintain','employees.code.maintain','employees.passport.maintain','employees.payment_method.maintain'];
+  const humanActions=[...PARITY_PENDING_ORIGINAL,'approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer','toil.credit.grant','employees.qualification.maintain','employees.compensation.maintain','employees.emergency_contact.maintain','employees.draft.activate','employees.workforce_profile.maintain','employees.family.maintain','employees.bank.maintain','employees.fixed_item.archive','employees.document_metadata.maintain','employees.code.maintain','employees.passport.maintain','employees.payment_method.maintain','employees.tp3_opening.maintain'];
   expect([...PROBED_ACTION_IDS].sort()).toEqual(humanActions.sort());
   expect(PROBED_ACTION_IDS).toHaveLength(humanActions.length);expect(PARITY_PENDING_CEILING.size).toBe(0);
   for(const id of PROBED_ACTION_IDS)expect(AGENT_ACTIONS.find(action=>action.id===id)?.store,id).not.toBe('human_workflow_only');

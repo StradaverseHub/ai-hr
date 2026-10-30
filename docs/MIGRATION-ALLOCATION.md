@@ -467,3 +467,10 @@ source only over frozen47797e5. It adds one archive-only kind to the existing en
 ledger, retaining every predecessor scope/receipt/native-outcome branch and dynamic bounds.
 Reconcile against the actual accepted ordered installation ledger at integration freeze. No
 installation priority, protected-ref movement or deployment is authorized.
+
+### Personnel TP3 hand opening balances — provisional source claim
+
+0725_assistant_tp3_opening_maintenance / idx706 / when1793330000054 is a PROVISIONAL source
+claim above47797e588.0724/idx705 belongs to the independent archive worker and is absent from this
+isolated tree. Reconcile both at integration freeze; no installation priority or release authority.
+No historical migration bytes are edited.

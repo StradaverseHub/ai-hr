@@ -105,6 +105,7 @@ export const AGENT_ACTION_PARITY={
  'employees.code.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.workforce_profile.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.passport.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'employees.tp3_opening.maintain':{kind:'probed',screen:{...HR_ON_EMPLOYMENT,another_company:A},narrowed:{another_company:'The legacy HR-only native setter shares person-level statutory authority across tenant companies. Assistant additionally requires shared-person Workforce maintenance and TP3 payroll/personnel visibility in every retained company before its minimal snapshot.'}},
  'employees.bank.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.fixed_item.archive':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.document_metadata.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
