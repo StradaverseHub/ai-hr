@@ -501,7 +501,13 @@
     "v9AssignmentGroups": "Nhóm phân công",
     "v9ModuleAccess": "Quyền truy cập mô-đun",
     "v9Tasks": "Công việc",
-    "v9RequestRecords": "Hồ sơ yêu cầu"
+    "v9RequestRecords": "Hồ sơ yêu cầu",
+    "createLogin": "Tạo tài khoản đăng nhập thủ công",
+    "inviteUser": "Mời người dùng",
+    "users": "Người dùng",
+    "securityPermissions": "Bảo mật và quyền",
+    "functionAccess": "Truy cập chức năng",
+    "securityCenter": "Trung tâm bảo mật"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -11184,7 +11190,10 @@
         "letterRegister": "Phạm vi công ty hiện tại và quyền Thư hiện tại cần cho từng thao tác.",
         "letterSettings": "Phạm vi công ty hiện tại. Quyền Cài đặt cấu hình quy trình; quyền Phê duyệt chỉ quản lý hình chữ ký của chính bạn.",
         "emailTemplates": "Chỉ quản trị viên nhân sự hoặc hệ thống có quyền toàn tổ chức mới được quản lý thiết kế email. Quản trị viên chỉ có quyền tại công ty không được phép.",
-        "importHistory": "Liệt kê lần nhập khi bạn có quyền xem Nhân sự cho ít nhất một công ty trong đó, và chỉ hiển thị nhân viên của các công ty bạn được xem. Tệp gốc cần quyền xem mọi công ty trong tệp; Hoàn tác cần quyền duy trì Nhân sự cho mọi công ty trong tệp."
+        "importHistory": "Liệt kê lần nhập khi bạn có quyền xem Nhân sự cho ít nhất một công ty trong đó, và chỉ hiển thị nhân viên của các công ty bạn được xem. Tệp gốc cần quyền xem mọi công ty trong tệp; Hoàn tác cần quyền duy trì Nhân sự cho mọi công ty trong tệp.",
+        "securityCenter": "Dành cho quản trị viên hoặc người có quyền cấu hình truy cập.",
+        "createLogin": "Chỉ dành cho quản trị viên toàn nhóm. Thiết lập thủ công cũng yêu cầu nhà cung cấp đăng nhập được hỗ trợ và phiên quản trị viên đã xác minh.",
+        "inviteUser": "Chỉ dành cho quản trị viên toàn nhóm."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {
@@ -30547,6 +30556,33 @@
       "proven_window_too_wide": "thời gian chấm công không chắc chắn vượt quá mức công ty cho phép.",
       "employment_inactive": "nhân viên không làm việc vào ngày đó.",
       "overtime_settled": "tăng ca của ngày này đã được quyết toán."
+    }
+  },
+  "securityCenter": {
+    "title": "Trung tâm bảo mật",
+    "description": "Quản lý cài đặt bảo mật, tạo tài khoản và quyền truy cập người dùng.",
+    "back": "Quay lại Trung tâm bảo mật",
+    "invitationSent": "Đã gửi lời mời.",
+    "legacyHelp": "Chọn trang để thiết lập tài khoản này.",
+    "permissions": {
+      "title": "Bảo mật và quyền",
+      "description": "Cấu hình quy tắc truy cập, nhóm được bảo vệ và quyền."
+    },
+    "functions": {
+      "title": "Truy cập chức năng",
+      "description": "Xem vai trò nào có thể mở từng màn hình."
+    },
+    "create": {
+      "title": "Tạo tài khoản đăng nhập thủ công",
+      "description": "Tạo tài khoản đăng nhập và hoàn tất thiết lập đang chờ."
+    },
+    "invite": {
+      "title": "Mời người dùng",
+      "description": "Gửi lời mời qua email đến một người cụ thể."
+    },
+    "users": {
+      "title": "Người dùng",
+      "description": "Tìm người dùng và quản lý vai trò, lời mời cùng quyền truy cập tài khoản."
     }
   }
 }

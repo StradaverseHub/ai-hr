@@ -1,0 +1,67 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+Security & permissions currently opens a long page that combines the access guide, account creation, invitations and user management. The editable security settings already have a separate screen, but are reached through that page.
+
+WHAT WE'LL CHANGE
+
+- Rename the System Configuration entry to Security Center. Open a clear settings overview, following the existing Payroll Settings layout.
+
+- Provide five independent pages: Security & Permissions, Function Access, Create a Login Manually, Invite a User and Users. Each will have its own title, relevant controls and a way back to Security Center.
+
+- Show the available pages in the left navigation and overview. Each person will see only the pages and actions their existing permissions allow.
+
+- Keep existing user records, permissions, invitation options and account-creation rules. Account forms and their success or error messages will stay on the relevant page.
+
+- Keep user-list filters and management actions, including activation, invitations and unfinished account setup. Existing links will lead to the appropriate page without losing the selected person.
+
+WHAT YOU'LL GET
+
+Administrators can go directly to the security task they need, without scrolling through unrelated sections. The five pages will use consistent spacing, headings and controls across supported screen sizes and languages.
+
+GOOD TO KNOW
+
+- Function Access currently explains which roles can open each screen. It will retain that guide; supported permission changes remain on Security & Permissions.
+
+- Moving a form will not give anyone new authority to create accounts, invite users or change access. The attached screens show proposed navigation with fictional examples.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+VERIFIED BASELINE
+
+Freshly fetched origin/main and origin/alpha are aligned at d6cb83d620d8d4380c981a72fc41628780840b4e. Read-only staging deploy-state reports the same source and built ref with stale_build=0. Item 144a85d5-c36c-4551-be53-33c1b1e77b93 was open at revision0, without a plan, attachment or block trail. This is a planning deliverable; recheck state and revision immediately before publishing. No account or permission has been changed.
+
+CURRENT OWNERS AND PRESERVATION
+
+app/admin/users/page.tsx uses requireAdmin and currently combines the FunctionAccessGrid, ManualAccountSetup, invitation form and UsersDirectory. It builds existing-login, pending-person, invitation and preparing-enrollment rows together, suppressing duplicate activation choices for retained or archived logins. Preserve this classification and the archived filter. Companies, role choices, invitation visibility, manual setup and assistant-grant actions differ between group administrators and delegated company administrators. Do not flatten those differences when extracting pages.
+
+The existing editable Security & Permissions page is app/admin/users/access/page.tsx, guarded by requireAccessConfiguration in lib/access-configuration-authz.ts. The access editor uses current configure permission and can admit an authorized non-role-based administrator. It has its own preview/save services and audit history. Do not replace that permission with requireAdmin merely to make the navigation simpler. The Security Center hub must accept a person who can reach any permitted child, without fetching otherwise forbidden user-directory or account data. Show only authorized destinations; direct page and command guards remain authoritative.
+
+components/function-access-grid.tsx is a read-only projection of lib/permissions.ts, showing page reachability and scope notes rather than editable action grants. Keep that meaning and link to the existing supported security editor where permitted. Do not invent editable checkboxes, a new permission engine or a per-action matrix the services do not enforce.
+
+PROPOSED ROUTES AND NAVIGATION
+
+Use /admin/security-center for the overview, /admin/users/access for existing Security & Permissions, /admin/users/function-access for the guide, /admin/users/create for manual login creation, /admin/users/invite for invitations and /admin/users for the directory. Preserve stable internal user/person/employment IDs and all existing canonical services.
+
+Replace the current Security & permissions sidebar row with the Security Center node and five independent children. Update components/sidebar.tsx, lib/navigation-workspaces.ts, the screen/route registry and any command/search inventory so active-parent, selected-child, expansion, Back and browser-history behavior are consistent in Atelier, Classic, Monolith and the mobile drawer. Use the existing Payroll Settings page and shared PageHeader, Card, button, field and table vocabulary; no shell redesign or new authentication world.
+
+Keep the existing Security & Permissions route and configure guard. Function Access and Users retain the current administrator reachability. Manual creation and invitations retain the existing group-administrator page visibility and current server command requirements. The manual form must retain its unavailable-provider explanation, verified issuer/session binding, ownership attestation and existing resume/cancel lifecycle. An inactive compatibility provider must not be activated by this change. Embedded HR login, MFA and recovery remain the current authentication direction under ADR-0117; merely importing Keycloak or WorkOS compatibility code does not establish the installed provider.
+
+EXTRACTION AND COMPATIBILITY
+
+Extract reusable page data/form sections where useful rather than copying authorization or row classification five times. Keep manual and invitation target fields, linked versus standalone persons, company scope and allowed role choices. Existing server actions in app/admin/actions.ts, app/admin/users/manual-actions.ts and app/admin/users/access/actions.ts remain the command owners; change only their closed-list destination and revalidation behavior where necessary. Success, refusal and cancellation return to the page that owns the operation. Never accept an arbitrary form-provided return URL.
+
+Existing links use /admin/users?activate=personId with manual-account-setup or invite-user fragments; UsersDirectory and AccountTargetFields also emit fragment-only or choose-another links. A URL fragment does not reach the server. Handle these known legacy fragments through a bounded client compatibility handoff, preserving only allowlisted query values and rechecking the destination's permissions. Provide clear fallback links when script is unavailable. Route legacy manual result queries to the new manual page safely. Preserve /admin/users?archived=1 and directory context, and update current activation/choose-another/resume links to their direct destinations. Do not redirect every activate request to manual setup and accidentally discard invitation intent.
+
+Keep Security & Permissions protected-group/final-administrator safeguards, access preview and atomic-save behavior unchanged. Keep invite/revoke, role assignment/revocation, archive/restore, assistant grants and unfinished manual enrollment actions in their correct scopes. Opening the overview or moving between pages writes no security records. No database migration is expected for this navigation and extraction work.
+
+STATES AND VERIFICATION
+
+Provide loading, empty, no-authority, validation failure, provider-unavailable, pending enrollment and successful-operation states. Preserve entered values where existing controls already do so; do not claim a completed action from a navigation change. Support all six locales, keyboard focus, accessible navigation labels and responsive table scrolling.
+
+Run focused behavior/DOM checks, whole-repository TypeScript and production build on standard GitHub-hosted alpha-focused-checks.yml with frozen expected SHA. Cover all five direct routes; group versus delegated administrators; access.configure-only users; denied and stale authority; provider-dependent manual setup; invitation and selected-person links; known legacy query/fragment handoffs; no open redirects; success/error/revalidation destinations; directory states and filters; role/archive/assistant actions; Security & Permissions preview/save; registry labels; sidebar active states; themes; phone and desktop journeys; and missing translations. Relevant existing suites include function-access, users-directory, access-configuration navigation/editor/actions, manual identity setup, invitation/login lifecycle and principal scope tests. Retain original failures and rerun failed/affected areas after planned jobs finish.
+
+Plan approval authorizes implementation only. A concrete component preview and diff, development verification and the required human review precede any staging release. Follow the staging queue and authenticated release evidence rules; no production deployment is included.

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import {captureAiReviewScreenshots,aiReviewDomHtml} from './helpers/ai-review-screenshots';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
@@ -26,6 +27,7 @@ function fixture(){
 }
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 describe('access editor decisions and stale preview behavior',()=>{
+ it('renders the existing security controls at desktop and phone sizes',async()=>{fixture();await captureAiReviewScreenshots(aiReviewDomHtml(document.body),'en','security-permissions');},60000);
  it('keeps protected groups and unsupported capabilities read-only and never offers confirmation before preview',()=>{
   const f=fixture();expect((screen.getByRole('textbox',{name:'Group name'}) as HTMLInputElement).disabled).toBe(true);
   f.chooseReaders();expect((screen.getByRole('checkbox',{name:/Maintain workforce records/}) as HTMLInputElement).disabled).toBe(true);

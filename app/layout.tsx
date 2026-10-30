@@ -280,6 +280,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               hasAssignedApproval={hasAssignedApproval}
               canReviewProfileChanges={isAdmin(session)}
               canAdministerAi={isAdmin(session)}
+              canAdministerSecurity={isAdmin(session)}
+              canConfigureAccess={accessConfigurationAvailable}
+              canProvisionUsers={isGroupAdmin(session)}
               canConfigureAiProvider={isGroupAdmin(session)}
               canAccessTeam={hasTeamAccess(session)}
               // ADR-0142 — the OneHR performance partner gets the Performance admin entry only, NOT the admin rail:

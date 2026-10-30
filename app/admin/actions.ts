@@ -1533,9 +1533,11 @@ export async function inviteUserAction(formData: FormData) {
       ...(standalone?{fullName}:{personId}),
     });
   } catch (e) {
-    fail(USERS, e);
+    fail('/admin/users/invite', e);
   }
-  ok(USERS);
+  revalidatePath(USERS);
+  revalidatePath('/admin/users/invite');
+  redirect('/admin/users/invite?saved=1');
 }
 
 /** Archive (switch off) or restore a login — group-admin only, guarded in the service, RLS backstop. */
