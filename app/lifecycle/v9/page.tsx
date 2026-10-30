@@ -3,9 +3,11 @@ import { V9Error } from '@/lib/lifecycle-v9-model';
 import { requireModule } from '@/lib/authz';
 import { V9Workspace } from './workspace';
 import { readV9Workspace } from './read-workspace';
+import { v9NavigationView } from '@/lib/lifecycle-v9-navigation';
 import './workspace.css';
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams: Promise<{view?: string | string[]}> }) {
   const session = await requireModule('lifecycle');
   const workspace=await readV9Workspace(session).catch(error=>{if(error instanceof V9Error&&error.code==='forbidden')redirect('/me/lifecycle');throw error;});
-  return <V9Workspace {...workspace}/>;
+  const query = await searchParams;
+  return <V9Workspace {...workspace} navigation="global" initialView={v9NavigationView(query.view)}/>;
 }

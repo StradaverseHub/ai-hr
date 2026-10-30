@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { ChevronRight, X, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ApprovalCountBadge } from '@/components/approval-count-badge';
+import { NavigationSubmenus } from '@/components/navigation-submenus';
 
 /**
  * Flyout navigation for modules with sub-items (fdc20776 — replaces the accordion in
@@ -28,6 +29,7 @@ import { ApprovalCountBadge } from '@/components/approval-count-badge';
  */
 
 export type FlyoutChild = {
+  submenuKey?: string;
   pendingCount?: number;
   sectionKey?: string;
   navigationHref?: string;
@@ -228,13 +230,13 @@ export function NavFlyoutPanel({
           {layout === 'atelier' && <button type="button" onClick={onEscape} aria-label={common('close')} className="inline-flex size-9 shrink-0 items-center justify-center rounded-md hover:bg-accent"><X aria-hidden className="size-4"/></button>}
         </div>
         <nav aria-label={label} className="flex flex-1 flex-col gap-1 overflow-y-auto">
-          {items.map((child, i) => {
+          {(() => { const renderChild = (child: FlyoutChild, i: number) => {
             const active = isActive(child.href);
             const ChildIcon = child.icon;
             const childLabel = t(child.labelKey);
             return (
               <Fragment key={child.href}>
-              {child.sectionKey && child.sectionKey!==items[i-1]?.sectionKey && (layout === 'atelier' ? <h3 className="atelier-subheading">{t(child.sectionKey)}</h3> : <p className="mb-0 mt-3 px-3 text-xs font-medium text-muted-foreground">{t(child.sectionKey)}</p>)}
+              {!child.submenuKey && child.sectionKey && child.sectionKey!==items[i-1]?.sectionKey && (layout === 'atelier' ? <h3 className="atelier-subheading">{t(child.sectionKey)}</h3> : <p className="mb-0 mt-3 px-3 text-xs font-medium text-muted-foreground">{t(child.sectionKey)}</p>)}
               <Link
                 key={child.href}
                 ref={i === 0 ? firstLinkRef : undefined}
@@ -258,12 +260,14 @@ export function NavFlyoutPanel({
                   className={cn('size-[18px] shrink-0', active && 'text-primary')}
                   strokeWidth={2}
                 />
-                <span className="truncate text-sm">{childLabel}</span>
+                <span className={child.submenuKey ? 'min-w-0 text-sm' : 'truncate text-sm'}>{childLabel}</span>
                 {child.pendingCount!=null&&child.pendingCount>0&&<ApprovalCountBadge count={child.pendingCount} collapsed={false}/>}
               </Link>
               </Fragment>
             );
-          })}
+          }; return items.some(item => item.submenuKey)
+            ? <NavigationSubmenus items={items} isActive={isActive} renderItem={renderChild}/>
+            : items.map(renderChild); })()}
         </nav>
       </div>
     </>

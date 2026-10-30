@@ -443,7 +443,7 @@
     "workspaceStrata": "Strat",
     "workspaceSwitch": "வழிசெலுத்தல் பணியிடம்",
     "modulePeople": "பணியாளர்கள்",
-    "moduleOnboarding": "சேர்ப்பு & IT",
+    "moduleOnboarding": "சேர்தல்/விலகல்",
     "moduleLeave": "விடுப்பு",
     "moduleAttendance": "வருகை",
     "sectionMine": "எனது",
@@ -491,7 +491,15 @@
     "aiManagementOrchestrator": "HR பணிவரிசை",
     "aiManagementRuns": "சமீபத்திய மாதிரி அழைப்புகள்",
     "moduleELetter": "மின்-கடிதம்",
-    "emailTemplates": "மின்னஞ்சல் வார்ப்புருக்கள்"
+    "emailTemplates": "மின்னஞ்சல் வார்ப்புருக்கள்",
+    "v9Offboarding": "விலகல்",
+    "v9Leavers": "விலகும் ஊழியர்கள்",
+    "v9OffboardingChecklists": "விலகல் சரிபார்ப்புப் பட்டியல்கள்",
+    "v9Templates": "வார்ப்புருக்கள்",
+    "v9Workflows": "பணிப்பாய்வுகள்",
+    "v9Settings": "சேர்தல் மற்றும் விலகல் அமைப்புகள்",
+    "v9AssignmentGroups": "ஒதுக்கீட்டுக் குழுக்கள்",
+    "v9ModuleAccess": "தொகுதி அணுகல்"
   },
   "dashboard": {
     "title": "டாஷ்போர்டு",

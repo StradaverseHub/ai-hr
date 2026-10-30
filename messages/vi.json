@@ -443,7 +443,7 @@
     "workspaceStrata": "Strat",
     "workspaceSwitch": "Không gian điều hướng",
     "modulePeople": "Nhân sự",
-    "moduleOnboarding": "Hội nhập & IT",
+    "moduleOnboarding": "Tiếp nhận/Thôi việc",
     "moduleLeave": "Nghỉ phép",
     "moduleAttendance": "Chấm công",
     "sectionMine": "Của tôi",
@@ -491,7 +491,15 @@
     "aiManagementOrchestrator": "Hàng đợi công việc HR",
     "aiManagementRuns": "Lượt gọi mô hình gần đây",
     "moduleELetter": "Thư điện tử",
-    "emailTemplates": "Mẫu email"
+    "emailTemplates": "Mẫu email",
+    "v9Offboarding": "Thôi việc",
+    "v9Leavers": "Nhân viên thôi việc",
+    "v9OffboardingChecklists": "Danh sách kiểm tra thôi việc",
+    "v9Templates": "Mẫu",
+    "v9Workflows": "Quy trình",
+    "v9Settings": "Cài đặt tiếp nhận và thôi việc",
+    "v9AssignmentGroups": "Nhóm phân công",
+    "v9ModuleAccess": "Quyền truy cập mô-đun"
   },
   "dashboard": {
     "title": "Bảng điều khiển",

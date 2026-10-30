@@ -443,7 +443,7 @@
     "workspaceStrata": "Strat",
     "workspaceSwitch": "พื้นที่การนำทาง",
     "modulePeople": "บุคลากร",
-    "moduleOnboarding": "การรับเข้าทำงานและ IT",
+    "moduleOnboarding": "การเริ่มงาน/พ้นสภาพ",
     "moduleLeave": "การลา",
     "moduleAttendance": "การเข้างาน",
     "sectionMine": "ของฉัน",
@@ -491,7 +491,15 @@
     "aiManagementOrchestrator": "คิวงาน HR",
     "aiManagementRuns": "การเรียกโมเดลล่าสุด",
     "moduleELetter": "จดหมายอิเล็กทรอนิกส์",
-    "emailTemplates": "เทมเพลตอีเมล"
+    "emailTemplates": "เทมเพลตอีเมล",
+    "v9Offboarding": "การพ้นสภาพ",
+    "v9Leavers": "พนักงานพ้นสภาพ",
+    "v9OffboardingChecklists": "รายการตรวจสอบการพ้นสภาพ",
+    "v9Templates": "เทมเพลต",
+    "v9Workflows": "เวิร์กโฟลว์",
+    "v9Settings": "การตั้งค่าการเริ่มงานและพ้นสภาพ",
+    "v9AssignmentGroups": "กลุ่มมอบหมาย",
+    "v9ModuleAccess": "สิทธิ์เข้าถึงโมดูล"
   },
   "dashboard": {
     "title": "แดชบอร์ด",
