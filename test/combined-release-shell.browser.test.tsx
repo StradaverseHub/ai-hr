@@ -160,10 +160,10 @@ describe('isolated combined release: actual shell CSS and controls',()=>{
  });
  it('Atelier home composer focuses its whole frame without a second textarea outline',async()=>{
   document.documentElement.setAttribute('data-ui-theme','atelier');document.body.className=geometry.body;await page.viewport(390,844);
-  render(providers('atelier',<div data-app-shell className={geometry.shell}><div data-app-content className={geometry.content}><main className={geometry.main}>
+  const view=render(providers('atelier',<div data-app-shell className={geometry.shell}><div data-app-content className={geometry.content}><main className={geometry.main}>
    <AtelierAskBox label="Fictional home question" placeholder="Ask about a fixture" submitLabel="Send home fixture" suggestions={[]}/>
    <label htmlFor="focus-control">Ordinary field focus control</label><input id="focus-control"/>
-  </main></div></div>));
+  </main></div></div>));view.container.style.height='100%';await tick();
   const field=screen.getByLabelText('Fictional home question'),frame=document.querySelector('[data-ui-composer]')!,before=getComputedStyle(frame).boxShadow;
   // Check the empty textarea while it actually owns focus; moving focus to Send hides this regression.
   field.focus();await waitFor(()=>expect(getComputedStyle(frame).boxShadow).not.toBe(before));
