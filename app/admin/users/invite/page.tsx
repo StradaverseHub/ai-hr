@@ -8,7 +8,7 @@ import {SecurityPageHeader} from '../security-page';
 export default async function InviteUserPage({searchParams}:{searchParams:Promise<{activate?:string;error?:string;saved?:string}>}){
  const s=await requireGroupAdministration(),params=await searchParams,t=await getTranslations('admin.users'),center=await getTranslations('securityCenter'),tAll=await getTranslations(),locale=await getLocale();
  const {peopleOptions,companies,pendingEmployees}=await loadUsersData(s),selectedPerson=pendingEmployees.find(p=>p.id===params.activate);
- return <div className="mx-auto max-w-5xl space-y-6"><SecurityPageHeader title={center('invite.title')}/><ErrorBanner message={params.error}/>
+ return <div className="mx-auto max-w-5xl space-y-6"><SecurityPageHeader title={center('invite.title')}/>{params.error&&<div role="alert"><ErrorBanner message={params.error}/></div>}
  {params.saved==='1'&&<p role="status" className="rounded-lg border border-border p-4 text-sm">{center('invitationSent')}</p>}
         <Card>
           <div id="invite-user"><SectionHeader title={t('inviteTitle')} /></div>

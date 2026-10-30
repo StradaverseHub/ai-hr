@@ -11,7 +11,7 @@ export default async function FunctionAccessPage(){
  const scopeNoteFor=(screen:ScreenEntry):string|null=>screen.hasScopeNote?t(`scope.${screen.screenKey}`):null;
  const roleLabelFor=(role:Role):string=>t(`role.${role}`);
  return <div className="mx-auto max-w-5xl space-y-6"><SecurityPageHeader title={center('functions.title')}/>
-      <Card data-tour="admin-function-access">
+      <Card data-tour="admin-function-access" className="min-w-0 overflow-hidden">
         <SectionHeader title={t('sectionFunctionAccess')} />
         <p className="px-4 pt-3 text-xs text-muted-foreground">{t('functionAccessCaption')}</p>
         <div className="p-4 pt-3">

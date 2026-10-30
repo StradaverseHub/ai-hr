@@ -43,7 +43,7 @@ describe('independent Security Center pages',()=>{
  it.each(Object.keys(copies) as (keyof typeof copies)[])('%s renders the real overview with five authorized cards',async locale=>{
   m.locale=locale;await show(await Hub());expect(screen.getByRole('heading',{level:1,name:copies[locale].securityCenter.title})).toBeTruthy();
   expect(screen.getAllByRole('link')).toHaveLength(5);expect(m.load).not.toHaveBeenCalled();
-  await captureAiReviewScreenshots(aiReviewDomHtml(document.body),locale,'security-overview');
+  await captureAiReviewScreenshots(aiReviewDomHtml(document.body),locale,'security-overview','real components; fictional read owners; no authenticated server journey','atelier');
  },60000);
  it('renders only configure-authorized cards without querying user data',async()=>{
   m.access={admin:false,configure:true,provision:false};await show(await Hub());expect(screen.getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/admin/users/access']);expect(m.load).not.toHaveBeenCalled();

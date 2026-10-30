@@ -27,7 +27,7 @@ export function FunctionAccessGrid({
   labels: { accessible: string; notAccessible: string; screenColumn: string };
 }) {
   return (
-    <div className="overflow-x-auto">
+    <div data-function-access-scroll className="min-w-0 max-w-full overflow-x-auto" tabIndex={0} role="region" aria-label={labels.screenColumn}>
       <table className="w-full min-w-[720px] border-separate border-spacing-0 text-sm">
         <thead>
           <tr>

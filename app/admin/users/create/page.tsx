@@ -12,7 +12,7 @@ export default async function CreateLoginPage({searchParams}:{searchParams:Promi
  const {peopleOptions,companies,manualEnrollments,pendingEmployees}=await loadUsersData(s);
  const error=manualIdentityErrorCodes.find(code=>code===params.manualError);
  return <div className="mx-auto max-w-5xl space-y-6"><SecurityPageHeader title={center('create.title')}/>
-  <ErrorBanner message={error?t(`manual.errors.${error}`):undefined}/>
+  {error&&<div role="alert"><ErrorBanner message={t(`manual.errors.${error}`)}/></div>}
   {['created','cancelled'].includes(params.manualSuccess??'')&&<p role="status" className="rounded-lg border border-border p-4 text-sm">{t(`manual.success.${params.manualSuccess as 'created'|'cancelled'}`)}</p>}
   <ManualAccountSetup available={keycloakSelected()||internalSelected()} people={peopleOptions} companies={companies} roles={ROLES.map(value=>({value,label:t(`role.${value}`)}))} pending={manualEnrollments} selectedPerson={pendingEmployees.find(p=>p.id===params.activate)}/>
  </div>;

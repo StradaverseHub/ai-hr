@@ -120,7 +120,8 @@ const ADMIN_GROUP_FLAT_HREFS = [
   '/admin/notice-board',
   '/analytics',
   '/admin/audit',
-  '/admin/users',
+  // Security Center is now mounted from the closed SECURITY_PAGES inventory; its rendered
+  // node and every authorized leaf are pinned by security-center-sidebar.dom.test.tsx.
 ] as const;
 
 /** The admin group literal: from its labelKey to the end of the GROUPS array. It is the last group,
