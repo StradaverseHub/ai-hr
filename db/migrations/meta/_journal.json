@@ -4002,6 +4002,62 @@
     {
       "idx": 686,
       "version": "7",
+      "when": 1793330000056,
+      "tag": "0713_lifecycle_v9",
+      "breakpoints": true
+    },
+    {
+      "idx": 687,
+      "version": "7",
+      "when": 1793330000057,
+      "tag": "0714_lifecycle_v9_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 688,
+      "version": "7",
+      "when": 1793330000058,
+      "tag": "0715_lifecycle_v9_email_assets",
+      "breakpoints": true
+    },
+    {
+      "idx": 689,
+      "version": "7",
+      "when": 1793330000059,
+      "tag": "0716_lifecycle_v9_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 690,
+      "version": "7",
+      "when": 1793330000060,
+      "tag": "0717_lifecycle_v9_delivery_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 691,
+      "version": "7",
+      "when": 1793330000061,
+      "tag": "0718_lifecycle_v9_employment_class",
+      "breakpoints": true
+    },
+    {
+      "idx": 692,
+      "version": "7",
+      "when": 1793330000062,
+      "tag": "0719_lifecycle_v9_business_recipients",
+      "breakpoints": true
+    },
+    {
+      "idx": 693,
+      "version": "7",
+      "when": 1793330000063,
+      "tag": "0720_lifecycle_v9_self_equipment",
+      "breakpoints": true
+    },
+    {
+      "idx": 694,
+      "version": "7",
       "when": 1793330000066,
       "tag": "0729_movement_exit_payroll_preservation",
       "breakpoints": true

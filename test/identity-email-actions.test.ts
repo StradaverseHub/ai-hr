@@ -36,3 +36,11 @@ describe('SMTP server action authentication boundary',()=>{
   form.set('security','starttls');vi.stubEnv('AUTH_PROVIDER','keycloak');await expect(saveEmailDraft(form)).rejects.toThrow('error=invalid');expect(mocks.ipc).not.toHaveBeenCalled();
  });
 });
+
+it('applies a lifecycle sender only through an internal named connection and the server actor',async()=>{
+ vi.stubEnv('AUTH_PROVIDER','internal');const form=new FormData();form.set('draftId','actual-version');form.set('connectionId','actual-connection');form.set('received','true');form.set('lifecycleSender','hr');form.set('tenantId','attacker');
+ await expect(activateEmailDraft(form)).rejects.toThrow('success=sender');expect(mocks.ipc).toHaveBeenCalledWith({op:'apply',actor,draftId:'actual-version',connectionId:'actual-connection',received:true,lifecycleSender:'hr'});
+ for(const profile of ['__proto__','unknown']){mocks.ipc.mockClear();form.set('lifecycleSender',profile);await expect(activateEmailDraft(form)).rejects.toThrow('error=invalid');expect(mocks.ipc).not.toHaveBeenCalled();}
+ form.set('lifecycleSender','hr');form.delete('connectionId');await expect(activateEmailDraft(form)).rejects.toThrow('error=invalid');
+ form.set('connectionId','actual-connection');vi.stubEnv('AUTH_PROVIDER','keycloak');await expect(activateEmailDraft(form)).rejects.toThrow('error=invalid');
+});

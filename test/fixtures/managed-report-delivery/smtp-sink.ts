@@ -3,8 +3,9 @@ import {createServer,type TLSSocket} from 'node:tls';
 import {createHash} from 'node:crypto';
 export type SinkMode='accept'|'temporary'|'lost'|'hold';
 export type CapturedReportMail={recipients:string[];raw:Buffer;sha256:string};
-export async function startReportSmtpSink(input:{key:Buffer;cert:Buffer;port?:number;recipients:readonly string[]}) {
+export async function startReportSmtpSink(input:{key:Buffer;cert:Buffer;port?:number;recipients:readonly string[];recipientCount?:number}) {
  if(!input.recipients.length||input.recipients.some(value=>!/^[-a-z0-9]+@report-acceptance\.invalid$/.test(value)))throw new Error('Fictional sink recipients required.');
+ let recipientCount=input.recipientCount??1;if(!Number.isInteger(recipientCount)||recipientCount<1||recipientCount>input.recipients.length)throw Error('Invalid fixture envelope count');
  let mode:SinkMode='accept',capturedBytes=0;const messages:CapturedReportMail[]=[],sockets=new Set<TLSSocket>();
  const server=createServer({key:input.key,cert:input.cert,minVersion:'TLSv1.2'},socket=>{
   sockets.add(socket);socket.on('error',()=>{});socket.on('close',()=>sockets.delete(socket));socket.write('220 localhost disposable report fixture\r\n');
@@ -28,7 +29,7 @@ export async function startReportSmtpSink(input:{key:Buffer;cert:Buffer;port?:nu
      const address=line.match(/^RCPT TO:<([^>]+)>$/)?.[1];
      if(!address||!input.recipients.includes(address)){socket.write('550 5.1.1 Fixture recipient refused\r\n');continue;}
      recipients.push(address);socket.write('250 OK\r\n');
-    }else if(line==='DATA'){if(recipients.length!==1){socket.write('554 Fixture needs one recipient\r\n');continue;}data=true;socket.write('354 End with dot\r\n');}
+    }else if(line==='DATA'){if(recipients.length!==recipientCount||new Set(recipients).size!==recipientCount){socket.write('554 Fixture envelope count differs\r\n');continue;}data=true;socket.write('354 End with dot\r\n');}
     else if(line==='QUIT')socket.end('221 Bye\r\n');else if(line==='RSET'){recipients=[];socket.write('250 OK\r\n');}else socket.write('502 Unsupported fixture command\r\n');
    }
   });
@@ -36,7 +37,7 @@ export async function startReportSmtpSink(input:{key:Buffer;cert:Buffer;port?:nu
  server.on('tlsClientError',()=>{});
  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(input.port??0,'127.0.0.1',()=>{server.off('error',reject);resolve();});});
  const address=server.address();if(!address||typeof address==='string')throw new Error('Fixture sink did not bind.');
- return {port:address.port,messages,setMode:(next:SinkMode)=>{mode=next;},disconnect:()=>{for(const socket of sockets)socket.destroy();},close:async()=>{for(const socket of sockets)socket.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));}};
+ return {port:address.port,messages,setRecipientCount:(count:number)=>{if(!Number.isInteger(count)||count<1||count>input.recipients.length)throw Error('Invalid fixture envelope count');recipientCount=count;},setMode:(next:SinkMode)=>{mode=next;},disconnect:()=>{for(const socket of sockets)socket.destroy();},close:async()=>{for(const socket of sockets)socket.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));}};
 }
 /** Unfold continuation lines only in the MIME header section, never in encoded body data. */
 function mimePart(part:string):{headers:Map<string,string[]>;body:string} {
@@ -52,7 +53,7 @@ function oneHeader(headers:Map<string,string[]>,name:string):string {
  const values=headers.get(name);if(values?.length!==1)throw new Error('Missing or repeated MIME header.');return values[0];
 }
 /** Reads the attachment emitted by the real Nodemailer transport, never a caller-supplied workbook. */
-export function reportAttachment(raw:Buffer):Buffer {
+export function reportAttachment(raw:Buffer,expectedType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'|'application/pdf'='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'):Buffer {
  const outer=mimePart(raw.toString('ascii')),type=oneHeader(outer.headers,'content-type');
  if(type.split(';')[0].trim().toLowerCase()!=='multipart/mixed')throw new Error('Missing multipart workbook.');
  const boundary=type.match(/(?:^|;)\s*boundary="([^"\r\n]{1,200})"(?:;|$)/i)?.[1];if(!boundary)throw new Error('Missing multipart boundary.');
@@ -65,9 +66,9 @@ export function reportAttachment(raw:Buffer):Buffer {
    if(dispositions.length!==1)throw new Error('Repeated attachment disposition.');parts.push(part);
   }
  }
- if(parts.length!==1)throw new Error('Expected one workbook attachment.');
+ if(parts.length!==1)throw new Error(expectedType==='application/pdf'?'Expected one PDF attachment.':'Expected one workbook attachment.');
  const part=parts[0],mediaType=oneHeader(part.headers,'content-type').split(';')[0].trim().toLowerCase(),encoding=oneHeader(part.headers,'content-transfer-encoding').toLowerCase();
- if(mediaType!=='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'||encoding!=='base64')throw new Error('Unexpected attachment encoding.');
+ if(mediaType!==expectedType||encoding!=='base64')throw new Error('Unexpected attachment encoding.');
  const encoded=part.body.trim();if(!/^[a-zA-Z0-9+/=\r\n]+$/.test(encoded))throw new Error('Invalid attachment encoding.');
- const result=Buffer.from(encoded.replace(/\s/g,''),'base64');if(result.length<4||result.subarray(0,2).toString()!=='PK')throw new Error('Attachment is not an XLSX archive.');return result;
+ const result=Buffer.from(encoded.replace(/\s/g,''),'base64');if(expectedType==='application/pdf'?result.subarray(0,5).toString()!=='%PDF-':result.length<4||result.subarray(0,2).toString()!=='PK')throw new Error('Attachment signature differs.');return result;
 }
