@@ -11,7 +11,7 @@ beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase()
 const day=(offset:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
 const hire=()=>hireEmployee(adminCtx(b),{person:{fullName:'Fictional exit correction',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:day(-90)});
 const snapshot=async(id:string)=>({employment:await owner.db.select().from(employment).where(eq(employment.id,id)).orderBy(asc(employment.id)),assignments:await owner.db.select().from(assignment).where(eq(assignment.employmentId,id)).orderBy(asc(assignment.id)),events:await owner.db.select().from(domainEvent).where(eq(domainEvent.subjectEmploymentId,id)).orderBy(asc(domainEvent.sequence))});
-const exit=async(id:string)=>{await createMovementEvent(adminCtx(b),{employmentId:id,kind:'termination',effectiveDate:day(-3),endDate:day(-3),terminationReasonCode:'resignation',resignationDate:day(-10)});return (await movementHistory(adminCtx(b),id)).find(row=>row.kind==='termination')!;};
+const exit=async(id:string)=>{await createMovementEvent(adminCtx(b),{employmentId:id,kind:'termination',effectiveDate:day(-3),endDate:day(-3),terminationReasonCode:'resignation',resignationDate:day(-10)});return (await movementHistory(adminCtx(b),id)).find(row=>row.kind==='resignation')!;};
 describe('646355e5 revision 2 — correction of exited employees and wrong event types',()=>{
  it('undoes the CHCE0067 shape: applied voluntary termination tagged as termination, without deleting history',async()=>{
   const e=await hire(),ctx=adminCtx(b),row=await exit(e.employmentId);
@@ -39,7 +39,7 @@ describe('646355e5 revision 2 — correction of exited employees and wrong event
   const row=(await movementHistory(ctx,e.employmentId)).find(r=>r.kind==='secondment')!;
   await editMovementEvent(ctx,{employmentId:e.employmentId,movementId:row.id,kind:'termination',effectiveDate:day(-2),endDate:day(-2),terminationReasonCode:'resignation',resignationDate:day(-10),reason:'Fictional replacement exit'});
   expect((await snapshot(e.employmentId)).employment[0].terminatedOn).toBe(day(-2));
-  expect((await movementHistory(ctx,e.employmentId)).filter(r=>r.kind==='termination'&&r.status==='applied')).toHaveLength(1);
+  expect((await movementHistory(ctx,e.employmentId)).filter(r=>r.kind==='resignation'&&r.status==='applied')).toHaveLength(1);
  });
  it('rolls the exit inverse and every ledger write back if the replacement is invalid',async()=>{
   const e=await hire(),ctx=adminCtx(b),row=await exit(e.employmentId),before=await snapshot(e.employmentId);
