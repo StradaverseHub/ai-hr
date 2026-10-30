@@ -18,7 +18,7 @@ it('keeps drafting separate from the actual field until the person explicitly ke
  fireEvent.click(screen.getByRole('button',{name:en.onehr.rewrite.title}));
  fireEvent.click(screen.getByRole('button',{name:en.onehr.rewrite.generate}));
  expect(await screen.findByRole('textbox',{name:en.onehr.rewrite.suggestion})).toBeTruthy();expect(input.value).toBe(original);
- expect(action).toHaveBeenCalledWith({kind:'pm_self_remark'},original,en.onehr.rewrite.polishInstruction,expect.any(String));
+ expect(action).toHaveBeenCalledWith({kind:'pm_self_remark'},original,'format as a paragraph',expect.any(String));
  await waitFor(()=>expect((screen.getByRole('button',{name:en.onehr.rewrite.keep}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:en.onehr.rewrite.keep}));expect(input.value).toBe(proposed);expect(submitted).not.toHaveBeenCalled();
 });
 it('leaves the original words intact when the person discards a draft and hides AI controls when switched off',async()=>{

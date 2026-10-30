@@ -17,10 +17,20 @@ const paragraph='First native fact. Second native fact.';
 const value=()=>({paragraph,nativeOutline:{operation:'native_outline_selection',order:[1,0],sections:nativeParagraphOutline(paragraph)}});
 beforeEach(()=>{vi.clearAllMocks();h.flush.mockResolvedValue(undefined);});afterEach(cleanup);
 describe('native protected insight presentation',()=>{
- it('applies the validated exhaustive model order only in the expandable presentation',()=>{
+ it('mounts no duplicate native text while closed and lazily renders the validated order only after expansion',async()=>{
+  const text='Exactly one native statement.';
+  wrap(<><p>{text}</p><NativeInsightOutline data={{paragraph:text,nativeOutline:{operation:'native_outline_selection',order:[0],sections:nativeParagraphOutline(text)}}}/></>);
+  expect(screen.getByText(text)).toBeTruthy();expect(screen.queryByRole('list',{name:words.title})).toBeNull();
+  const summary=screen.getByText(words.title);fireEvent.click(summary);
+  await waitFor(()=>expect(within(screen.getByRole('list',{name:words.title})).getByRole('listitem').textContent).toBe(text));
+  expect(screen.getAllByText(text)).toHaveLength(2);fireEvent.click(summary);
+  await waitFor(()=>expect(screen.queryByRole('list',{name:words.title})).toBeNull());expect(screen.getByText(text)).toBeTruthy();
+ });
+
+ it('applies the validated exhaustive model order only in the expandable presentation',async()=>{
   wrap(<><p>{paragraph}</p><NativeInsightOutline data={value()}/></>);
   expect(screen.getByText(paragraph)).toBeTruthy();const trigger=screen.getByText(words.title);expect(trigger.closest('details')).not.toHaveAttribute('open');
-  fireEvent.click(trigger);expect(trigger.closest('details')).toHaveAttribute('open');expect(screen.getByText(words.help)).toBeTruthy();
+  fireEvent.click(trigger);await screen.findByRole('list',{name:words.title});expect(trigger.closest('details')).toHaveAttribute('open');expect(screen.getByText(words.help)).toBeTruthy();
   expect(within(screen.getByRole('list',{name:words.title})).getAllByRole('listitem').map(item=>item.textContent)).toEqual(['Second native fact.','First native fact.']);
  });
  it.each([
@@ -43,17 +53,17 @@ describe('native protected insight presentation',()=>{
   wrap(<><NativeInsightOutline data={{paragraph}}/><NativeInsightOutline data={{paragraph,nativeOutline:metadata}}/></>);
   expect(accessed).toBe(false);expect(screen.queryByText(words.title)).toBeNull();
  });
- it('escapes source text and never creates HTML, links or executable model prose',()=>{
+ it('escapes source text and never creates HTML, links or executable model prose',async()=>{
   const text='<img src=x onerror=alert(1)> [source](https://example.test)';
   wrap(<NativeInsightOutline data={{paragraph:text,nativeOutline:{operation:'native_outline_selection',order:[0],sections:nativeParagraphOutline(text)}}}/>);
-  fireEvent.click(screen.getByText(words.title));expect(screen.getByRole('listitem').textContent).toBe(text);expect(screen.queryByRole('img')).toBeNull();expect(screen.queryByRole('link')).toBeNull();
+  fireEvent.click(screen.getByText(words.title));await screen.findByRole('listitem');expect(screen.getByRole('listitem').textContent).toBe(text);expect(screen.queryByRole('img')).toBeNull();expect(screen.queryByRole('link')).toBeNull();
  });
  it('preserves native IDP verdict, score and primary explanation while displaying a different reading order',async()=>{
   const data={v:2 as const,kind:'idp_fit' as const,verdict:'partly_fits' as const,verdict_why:'Native direction needs discussion.',scores:'Recorded score: 19',paragraph:'Native plan has one goal.',discuss:['Discuss the recorded plan.'],nativeOutline:{operation:'native_outline_selection',order:[2,0,1],sections:[{index:0,kind:'summary',text:'Native plan has one goal.'},{index:1,kind:'decision',text:'Native direction needs discussion.'},{index:2,kind:'discussion',text:'Discuss the recorded plan.'}]}};
   h.idp.mockResolvedValue({status:'shared',canGenerate:true,pending:false,source:'ai',data});wrap(<IdpFitInsight reviewId="review"/>);
   fireEvent.click(screen.getByText(en.onehr.idpFit.title));await screen.findByText('Recorded score: 19');
   expect(screen.getByText(en.onehr.idpFit.verdict.partly_fits)).toBeTruthy();expect(screen.getByText('Native plan has one goal.')).toBeTruthy();
-  fireEvent.click(screen.getByText(words.title));expect(within(screen.getByRole('list',{name:words.title})).getAllByRole('listitem').map(item=>item.textContent)).toEqual(['Discuss the recorded plan.','Native plan has one goal.','Native direction needs discussion.']);
+  fireEvent.click(screen.getByText(words.title));await screen.findByRole('list',{name:words.title});expect(within(screen.getByRole('list',{name:words.title})).getAllByRole('listitem').map(item=>item.textContent)).toEqual(['Discuss the recorded plan.','Native plan has one goal.','Native direction needs discussion.']);
   expect(screen.getByText('Recorded score: 19')).toBeTruthy();expect(screen.getByText(en.onehr.idpFit.verdict.partly_fits)).toBeTruthy();await waitFor(()=>expect(h.idp).toHaveBeenCalledOnce());
  });
  it('preserves the native Talent decision and rejects outline text copied from another result',async()=>{

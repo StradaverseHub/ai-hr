@@ -1,5 +1,6 @@
 'use client';
 import {useTranslations} from 'next-intl';
+import {useState} from 'react';
 import {NATIVE_OUTLINE_KINDS,nativeParagraphOutline,type NativeOutlineSection} from '@/lib/ai/native-insight-outline';
 type Variant='paragraph'|'talent'|'idp';
 function record(value:unknown,keys?:readonly string[]):Record<string,unknown>|null{
@@ -44,9 +45,9 @@ function readingOrder(data:unknown,variant:Variant,paragraphKind:NativeOutlineSe
 /** Supplementary presentation only. Primary native badges, decisions, figures and summaries remain
  * in their existing UI. React escapes all text; no model prose, HTML or links are interpreted. */
 export function NativeInsightOutline({data,variant='paragraph',paragraphKind='summary'}:{data:unknown;variant?:Variant;paragraphKind?:NativeOutlineSection['kind']}){
- const t=useTranslations('onehr.protectedOutline'),sections=readingOrder(data,variant,paragraphKind);if(!sections)return null;
- return <details className="rounded-md border border-border px-3" onToggle={event=>event.stopPropagation()}>
+ const t=useTranslations('onehr.protectedOutline'),[expanded,setExpanded]=useState(false),sections=readingOrder(data,variant,paragraphKind);if(!sections)return null;
+ return <details className="rounded-md border border-border px-3" onToggle={event=>{event.stopPropagation();setExpanded(event.currentTarget.open);}}>
   <summary className="min-h-11 cursor-pointer py-3 text-sm font-medium">{t('title')}</summary>
-  <div className="space-y-3 pb-3"><p className="text-xs text-muted-foreground">{t('help')}</p><ol aria-label={t('title')} className="list-decimal space-y-3 pl-5 text-sm leading-relaxed">{sections.map(section=><li key={section.index} className="whitespace-pre-wrap break-words">{section.text}</li>)}</ol></div>
+  {expanded&&<div className="space-y-3 pb-3"><p className="text-xs text-muted-foreground">{t('help')}</p><ol aria-label={t('title')} className="list-decimal space-y-3 pl-5 text-sm leading-relaxed">{sections.map(section=><li key={section.index} className="whitespace-pre-wrap break-words">{section.text}</li>)}</ol></div>}
  </details>;
 }
