@@ -45,11 +45,11 @@ ALTER TABLE app.assistant_own_leave_review ADD COLUMN offboarding_cancel_effect_
 -- scrubs it atomically; no private case/body fingerprint is added to native domain-event payloads.
 CREATE FUNCTION app._assistant_case_cancel_scrub() RETURNS trigger
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ BEGIN
- -- The completed identity, never a content hash, fences the rest of this root transaction.
- -- Canonical erasure may clear private content/digests; it never changes completed identity.
+ -- Completed receipt identity is permanent. Business-table fences below last only this root
+ -- transaction. Canonical erasure may clear private content/digests, never retarget identity.
  IF OLD.action_kind='lifecycle.offboarding.case.cancel' AND OLD.state='completed'
-  AND OLD.offboarding_cancel_case_version=pg_current_xact_id()::xid::text
-  AND (TG_OP='DELETE' OR to_jsonb(NEW) IS DISTINCT FROM to_jsonb(OLD)) THEN
+  AND (TG_OP='DELETE' OR (to_jsonb(NEW)-ARRAY['intent_digest','reviewed_digest','offboarding_cancel_effect_commitment'])
+   IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['intent_digest','reviewed_digest','offboarding_cancel_effect_commitment'])) THEN
   RAISE EXCEPTION 'Case cancellation unavailable' USING ERRCODE='42501';END IF;
  IF TG_OP='DELETE' THEN RETURN OLD;END IF;
  IF NEW.action_kind='lifecycle.offboarding.case.cancel' AND (NEW.state<>'awaiting_confirmation' OR NEW.intent_digest IS NULL OR NEW.reviewed_digest IS NULL) THEN NEW.offboarding_cancel_effect_commitment:=NULL;END IF;

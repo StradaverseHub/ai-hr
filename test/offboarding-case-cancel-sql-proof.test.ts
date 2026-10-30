@@ -121,3 +121,12 @@ it.each(['version','identity'] as const)('refuses a BEFORE ledger trigger that s
 it('allows ordinary later-transaction native IT work after the root fence ends',async()=>{
  await prepare();await withTenant(f.ctx,async tx=>{await source(tx);const r=await native(tx);await complete(tx,r.eventId);});await withTenant(f.ctx,tx=>tx.update(s.itRequisition).set({notes:'Legitimate later work'}).where(eq(s.itRequisition.id,f.reqId)));const [q]=await owner.db.select().from(s.itRequisition).where(eq(s.itRequisition.id,f.reqId));expect(q.notes).toBe('Legitimate later work');
 });
+
+it('permanently refuses later-transaction completed receipt metadata retargeting or deletion',async()=>{
+ await prepare();await withTenant(f.ctx,async tx=>{await source(tx);const r=await native(tx);await complete(tx,r.eventId);});
+ const [before]=await owner.db.execute(sql`select to_jsonb(r) data from app.assistant_own_leave_review r where id=${id}::uuid`);
+ for(const column of ['action_kind','state','tenant_id','user_id','person_id','employment_id','company_id','lifecycle_case_id','lifecycle_case_person_id','lifecycle_submitted_event_id','offboarding_cancel_case_version']){
+  const value=column==='action_kind'?'lifecycle.offboarding.step.undo':column==='state'?'discarded':column==='offboarding_cancel_case_version'?'1':randomUUID();await assertRefused(owner.db.execute(sql`update app.assistant_own_leave_review set ${sql.identifier(column)}=${value} where id=${id}::uuid`));
+ }
+ await assertRefused(owner.db.execute(sql`delete from app.assistant_own_leave_review where id=${id}::uuid`));const [after]=await owner.db.execute(sql`select to_jsonb(r) data from app.assistant_own_leave_review r where id=${id}::uuid`);expect(after).toEqual(before);
+});
