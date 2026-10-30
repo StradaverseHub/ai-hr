@@ -5,6 +5,7 @@ import {types as nodeTypes} from 'node:util';
 import {z} from 'zod';
 import {adjudicatePromptReadPlan} from './module-agent-prompt-candidate';
 import {captureAssistantProposalHints,type AssistantProposableAction,type AssistantProposalHints} from './assistant-action-proposal-hints';
+import {assistantConversationCandidateSystem,type AssistantConversationCandidate} from './assistant-conversation-candidate';
 import {isCalendarDate} from '../calendar-date';
 import {AiGatewayError,type ConverseArgs,type GenerateArgs} from './types';
 import {AGENT_MODULE_CODES,type AgentModuleCode} from './module-agents';
@@ -17,7 +18,7 @@ export type PrivateAssistantIntent=typeof PRIVATE_ASSISTANT_INTENTS[number];
 const ordinal=z.number().int().min(0),explanation=z.enum(ASSISTANT_EXPLANATION_CODES as [typeof ASSISTANT_EXPLANATION_CODES[number],...typeof ASSISTANT_EXPLANATION_CODES[number][]]);
 const read=z.object({read:ordinal.max(7),module:z.enum(AGENT_MODULE_CODES as [AgentModuleCode,...AgentModuleCode[]]),cards:z.array(z.object({card:ordinal.max(24),facts:z.array(z.object({fact:ordinal.max(63),field:z.enum(JOB_FACT_FIELDS),available:z.boolean()}).strict()).max(64)}).strict()).max(25),explanations:z.array(z.object({card:ordinal.max(24).nullable(),code:explanation}).strict()).max(512)}).strict();
 const payload=z.discriminatedUnion('operation',[
- z.object({version:z.literal(1),operation:z.literal('conversation'),intent:z.enum(PRIVATE_ASSISTANT_INTENTS),reads:z.array(read).max(8)}).strict(),
+ z.object({version:z.literal(1),operation:z.literal('conversation'),intent:z.enum(PRIVATE_ASSISTANT_INTENTS),strategy:z.enum(['baseline_v1','focused_v1']),reads:z.array(read).max(8)}).strict(),
  z.object({version:z.literal(1),operation:z.literal('draft'),intent:z.enum(PRIVATE_ASSISTANT_INTENTS),modules:z.array(z.enum(AGENT_MODULE_CODES as [AgentModuleCode,...AgentModuleCode[]])).min(1).max(4)}).strict(),
 ]);
 export type PrivateAssistantPayload=z.infer<typeof payload>;
@@ -46,11 +47,13 @@ const system='Select only relevant available ordinal facts or canonical explanat
 export function capturePrivateAssistantTask(value:unknown):{args:ConverseArgs|GenerateArgs;local:PrivateAssistantPayload}{
  const local=capture(value),json=JSON.stringify(local);
  if(local.operation==='draft')return{args:Object.freeze({system:'Choose only from the supplied source-owned module list. Return exactly {"decision":"read","modules":["closed-module-code"]}, using the supplied modules only, or {"decision":"refuse","modules":[]}. Never add modules, prose, effects or other keys.',prompt:json,maxTokens:384,timeoutMs:15000}),local};
- return{args:Object.freeze({system:[system],turns:[{role:'user' as const,content:json}],tools:[],maxTokens:2048,timeoutMs:30000}),local};
+ return{args:Object.freeze({system:[assistantConversationCandidateSystem({kind:'assistant_answer_prompt_v1',variant:local.strategy}),system],turns:[{role:'user' as const,content:json}],tools:[],maxTokens:2048,timeoutMs:30000}),local};
 }
 export function fingerprintPrivateAssistantTask(value:unknown):string{return createHash('sha256').update(JSON.stringify(capture(value))).digest('hex');}
-export function privateAssistantCatalogue(intent:PrivateAssistantIntent,reads:readonly AssistantAnswerRead[]):PrivateAssistantPayload{
- return capture({version:1,operation:'conversation',intent,reads:reads.map(source=>({read:source.read,module:source.presentation.module,cards:source.presentation.cards.slice(0,25).map((card,index)=>({card:index,facts:card.facts.map((fact,index)=>({fact:index,field:fact.field,available:(card.withheld!==true||source.presentation.module==='leave')&&fact.value!==null&&(typeof fact.value!=='string'||fact.value.trim().length>0)}))})),explanations:source.explanations}))});
+export type PrivateAssistantCardSelection=Readonly<{read:number;cards:readonly number[]}>;
+export function privateAssistantCatalogue(intent:PrivateAssistantIntent,reads:readonly AssistantAnswerRead[],strategy:AssistantConversationCandidate['variant']='baseline_v1',selection?:readonly PrivateAssistantCardSelection[]):PrivateAssistantPayload{
+ const allowed=(read:number,card:number)=>selection===undefined||selection.some(row=>row.read===read&&row.cards.includes(card));
+ return capture({version:1,operation:'conversation',intent,strategy,reads:reads.map(source=>({read:source.read,module:source.presentation.module,cards:source.presentation.cards.slice(0,25).map((card,index)=>({card:index,facts:card.facts.map((fact,index)=>({fact:index,field:fact.field,available:(card.withheld!==true||source.presentation.module==='leave')&&fact.value!==null&&(typeof fact.value!=='string'||fact.value.trim().length>0)}))})).filter(card=>allowed(source.read,card.card)),explanations:source.explanations.filter(item=>item.card===null||allowed(source.read,item.card))}))});
 }
 export function adjudicatePrivateAssistantTerminal(text:string,local:unknown):AssistantAnswerPlan{
  const source=capture(local);if(source.operation!=='conversation')return fail();const plan=parseAssistantAnswerPlan(text);
@@ -117,4 +120,45 @@ export function resolvePrivateAssistantIntent(question:string,previous:readonly 
 export function privateAssistantModules(intent:PrivateAssistantIntent):readonly AgentModuleCode[]{
  const module:AgentModuleCode=intent==='module_overview'?'assistant':intent.startsWith('leave_')?'leave':intent==='claim_statuses'?'claims':intent==='holidays'||intent==='reporting_line'?'org':intent==='work_profile'?'employees':intent==='payslip'||intent==='pay_change'?'payroll':intent as AgentModuleCode;
  return Object.freeze([module]);
+}
+
+/** Values below are LOCAL comparison options only, never disclosure payload or source authority.
+ * The caller supplies only freshly read canonical cards and its authenticated clarification chain. */
+export type PrivateAssistantClarification=Readonly<{originalQuestion:string;slot:'employment'|'leave_type'|'period'|'module';answer:string;earlier:readonly Readonly<{question:string;slot:'employment'|'leave_type'|'period'|'module'}>[]} >;
+export function resolvePrivateAssistantClarifiedIntent(clarification:PrivateAssistantClarification):ReturnType<typeof resolvePrivateAssistantIntent>{
+ const questions=[...clarification.earlier.map(step=>step.question),clarification.originalQuestion];
+ const bare=(text:string)=>AGENT_MODULE_CODES.some(module=>[module.replaceAll('_',' '),...(moduleNames[module]??[])].some(name=>normalize(name)===normalize(text)));
+ for(let index=0;index<questions.length;index++){const candidate=resolvePrivateAssistantIntent(questions[index]);if(candidate.intent&&(index===0||!bare(questions[index])))return candidate;}
+ // A bare module after an unknown/named request does not turn that request into an own read.
+ // Restart only on an explicit complete source-owned own-task phrase, never on a slot label.
+ const candidate=resolvePrivateAssistantIntent(clarification.answer);
+ return !bare(clarification.answer)&&candidate.intent?candidate:{intent:null,social:null};
+}
+export type PrivateAssistantLocalEmployment=Readonly<{read:number;card:number;key:string;labels:readonly string[]}>;
+export function selectPrivateAssistantCards(intent:PrivateAssistantIntent,reads:readonly AssistantAnswerRead[],clarification:PrivateAssistantClarification|null,employments:readonly PrivateAssistantLocalEmployment[]=[]):Readonly<{selection:readonly PrivateAssistantCardSelection[];slot?:'employment'|'leave_type'|'period'}>{
+ type Option={read:number;card:number;employment?:PrivateAssistantLocalEmployment;leaveType?:string;period?:string};
+ let candidates:Option[]=reads.flatMap(read=>read.presentation.cards.slice(0,25).map((card,index)=>{
+  const text=(field:'leaveType'|'period')=>{const value=card.facts.find(fact=>fact.field===field)?.value;return typeof value==='string'?value:undefined;};
+  return{read:read.read,card:index,employment:employments.find(row=>row.read===read.read&&row.card===index),leaveType:text('leaveType')??(read.presentation.module==='leave'&&card.title.kind==='text'?card.title.value:undefined),period:text('period')??(read.presentation.module==='payroll'&&card.title.kind==='text'?card.title.value:undefined)};
+ }));
+ const result=(slot?:'employment'|'leave_type'|'period')=>({selection:reads.map(read=>({read:read.read,cards:candidates.filter(row=>row.read===read.read).map(row=>row.card)})),...(slot?{slot}:{})});
+ const steps=clarification?[...clarification.earlier,{question:clarification.originalQuestion,slot:clarification.slot}]:[];
+ for(let index=0;index<steps.length;index++){
+  const slot=steps[index].slot;if(slot==='module')continue;const answer=normalize(steps[index+1]?.question??clarification!.answer);
+  const options=new Map<string,Option[]>();
+  for(const candidate of candidates){const label=slot==='leave_type'?candidate.leaveType:slot==='period'?candidate.period:undefined;
+   const key=slot==='employment'?candidate.employment?.key:label===undefined?undefined:normalize(label);if(key===undefined)continue;
+   const matches=slot==='employment'?candidate.employment!.labels.some(label=>normalize(label)===answer):normalize(label!)===answer;
+   if(matches)options.set(key,[...(options.get(key)??[]),candidate]);
+  }
+  if(options.size!==1)return result(slot);candidates=[...options.values()][0];
+ }
+ const ownLeave=['leave_available','leave_pending','leave_taken'].includes(intent);
+ if(ownLeave){
+  const identities=new Set(candidates.map(row=>row.employment?.key));
+  if(identities.size>1)return result('employment');
+  const types=new Set(candidates.map(row=>row.leaveType===undefined?null:normalize(row.leaveType)));
+  if(types.size>1)return result('leave_type');
+ }
+ return result();
 }
