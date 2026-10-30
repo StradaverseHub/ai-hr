@@ -158,9 +158,26 @@ describe('isolated combined release: actual shell CSS and controls',()=>{
   fireEvent.change(field,{target:{value:'A fictional question'}});field.focus();await waitFor(()=>expect(getComputedStyle(frame).boxShadow).not.toBe(before));expect(getComputedStyle(field).outlineStyle).toBe('none');const focusedShadow=getComputedStyle(frame).boxShadow;expect(focusedShadow).not.toBe('none');await capture(`${theme}-composer-textarea`,frame.closest('main')!);
   const send=screen.getByRole('button',{name:'Send fixture'});send.focus();expect(frame.matches(':focus-within')).toBe(true);await waitFor(()=>expect(getComputedStyle(frame).boxShadow).toBe(focusedShadow));expect(box(send).bottom).toBeLessThanOrEqual(box(frame).bottom);expect(ports.ask).not.toHaveBeenCalled();await capture(`${theme}-composer`,frame.closest('main')!);
  });
- it('Atelier home composer also includes its send bar in the focus frame',async()=>{
-  document.documentElement.setAttribute('data-ui-theme','atelier');await page.viewport(390,844);
-  render(providers('atelier',<main className="p-4"><AtelierAskBox label="Fictional home question" placeholder="Ask about a fixture" submitLabel="Send home fixture" suggestions={[]}/></main>));
-  const field=screen.getByLabelText('Fictional home question'),frame=document.querySelector('[data-ui-composer]')!;fireEvent.change(field,{target:{value:'A fictional question'}});field.focus();await tick();const send=screen.getByRole('button',{name:'Send home fixture'});send.focus();expect(frame.matches(':focus-within')).toBe(true);expect(getComputedStyle(field).boxShadow).toBe('none');expect(box(send).bottom).toBeLessThanOrEqual(box(frame).bottom);expect(ports.ask).not.toHaveBeenCalled();expect(getComputedStyle(frame).boxShadow).not.toBe('none');await capture('atelier-home-composer',frame.closest('main')!);
+ it('Atelier home composer focuses its whole frame without a second textarea outline',async()=>{
+  document.documentElement.setAttribute('data-ui-theme','atelier');document.body.className=geometry.body;await page.viewport(390,844);
+  render(providers('atelier',<div data-app-shell className={geometry.shell}><div data-app-content className={geometry.content}><main className={geometry.main}>
+   <AtelierAskBox label="Fictional home question" placeholder="Ask about a fixture" submitLabel="Send home fixture" suggestions={[]}/>
+   <label htmlFor="focus-control">Ordinary field focus control</label><input id="focus-control"/>
+  </main></div></div>));
+  const field=screen.getByLabelText('Fictional home question'),frame=document.querySelector('[data-ui-composer]')!,before=getComputedStyle(frame).boxShadow;
+  // Check the empty textarea while it actually owns focus; moving focus to Send hides this regression.
+  field.focus();await waitFor(()=>expect(getComputedStyle(frame).boxShadow).not.toBe(before));
+  expect(document.activeElement).toBe(field);expect(field.matches(':focus-visible')).toBe(true);
+  expect(getComputedStyle(field).outlineStyle).toBe('none');expect(getComputedStyle(field).boxShadow).toBe('none');
+  const focusedShadow=getComputedStyle(frame).boxShadow;expect(focusedShadow).not.toBe('none');
+  await capture('atelier-home-composer-textarea',frame.closest('main')!);
+  fireEvent.change(field,{target:{value:'A fictional question'}});
+  const send=screen.getByRole('button',{name:'Send home fixture'});send.focus();expect(document.activeElement).toBe(send);expect(frame.matches(':focus-within')).toBe(true);
+  expect(getComputedStyle(frame).boxShadow).toBe(focusedShadow);expect(box(send).bottom).toBeLessThanOrEqual(box(frame).bottom);expect(ports.ask).not.toHaveBeenCalled();
+  await capture('atelier-home-composer-send',frame.closest('main')!);
+  // The composer exception must preserve the normal accessible field focus treatment.
+  const control=screen.getByLabelText('Ordinary field focus control');control.focus();expect(control.matches(':focus-visible')).toBe(true);
+  expect(getComputedStyle(control).outlineStyle).not.toBe('none');expect(parseFloat(getComputedStyle(control).outlineWidth)).toBeGreaterThan(0);
+  expect(getComputedStyle(control).boxShadow).not.toBe('none');expect(ports.ask).not.toHaveBeenCalled();
  });
 });
