@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "reviewedUnmountedSource": "9d22973252df8cf848d388beec3d1dd82a62e1a0",
+  "candidateIdentity": "exact frozen commit containing this plan; dispatch must record expected_sha",
+  "candidateRef": "codex/ai-user-parity-lifecycle-case-cancel-client-20261030",
+  "selected_tests": [
+    "test/offboarding-case-cancel-sql-proof.test.ts",
+    "test/offboarding-case-cancel-review-store.test.ts",
+    "test/offboarding-case-cancel-native.test.ts",
+    "test/offboarding-case-cancel-contract.test.ts",
+    "test/offboarding-case-cancel-browser-contract.test.ts",
+    "test/offboarding-case-cancel-panel.dom.test.tsx",
+    "test/offboarding-case-cancel-http.test.ts",
+    "test/agent-action-permission-parity-lifecycle.test.ts",
+    "test/agent-action-permission-parity-guard.test.ts",
+    "test/agent-action-registry.test.ts",
+    "test/assistant-action-catalogue.test.ts",
+    "test/agent-capability-inventory.test.ts",
+    "test/module-human-action-handoff.test.ts",
+    "test/module-action-http.test.ts",
+    "test/lifecycle.test.ts",
+    "test/lifecycle-pack-drift.test.ts",
+    "test/offboarding-step-review-store.test.ts",
+    "test/offboarding-step-undo-review-store.test.ts"
+  ],
+  "run_typecheck": true,
+  "runner": "standard public GitHub-hosted ubuntu-24.04",
+  "postgresMemoryGiB": 2,
+  "releaseEligible": false,
+  "recovery": "wait for all planned jobs; preserve original failures; rerun only failed/affected areas"
+}

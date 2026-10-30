@@ -482,17 +482,41 @@ export async function setOutcome(ctx: SessionContext, number: string, outcome: '
   });
 }
 
+/** Native cancellation in the caller's transaction. Only case status/reason and the original native
+ * history/event change. An already-cancelled native call is still a no-op, with no invented event. */
+export async function cancelCaseTx(tx:Tx,ctx:SessionContext,kind:CaseKind,number:string,reason:string){
+  const why=clean(reason,500);
+  if(!why)throw new LifecycleError('A reason is required to cancel.');
+  const c=await loadCase(tx,number,kind,true);
+  await requireLevel(tx,c.companyId,LEVEL.manager,'only a manager cancels a case');
+  if(c.status==='cancelled')return {caseId:c.id,status:'cancelled' as const,eventId:null};
+  if(c.status==='completed')throw new LifecycleError('A completed case cannot be cancelled.','conflict');
+  await tx.update(lcCase).set({status:'cancelled',cancelReason:why}).where(eq(lcCase.id,c.id));
+  const eventId=randomUUID();
+  await recordChange(tx,ctx,{eventId,refType:'case',refId:c.id,action:'case.cancelled',detail:{reason:why},eventType:'lifecycle-case.cancelled',subjectEmploymentId:c.employmentId,eventRef:{number}});
+  return {caseId:c.id,status:'cancelled' as const,eventId};
+}
 export async function cancelCase(ctx: SessionContext, kind: CaseKind, number: string, reason: string): Promise<void> {
-  const why = clean(reason, 500);
-  if (!why) throw new LifecycleError('A reason is required to cancel.');
-  await withTenant(ctx, async (tx) => {
-    const c = await loadCase(tx, number, kind, true);
-    await requireLevel(tx, c.companyId, LEVEL.manager, 'only a manager cancels a case');
-    if (c.status === 'cancelled') return;
-    if (c.status === 'completed') throw new LifecycleError('A completed case cannot be cancelled.', 'conflict');
-    await tx.update(lcCase).set({ status: 'cancelled', cancelReason: why }).where(eq(lcCase.id, c.id));
-    await recordChange(tx, ctx, { refType: 'case', refId: c.id, action: 'case.cancelled', detail: { reason: why }, eventType: 'lifecycle-case.cancelled', subjectEmploymentId: c.employmentId, eventRef: { number } });
-  });
+  const why=clean(reason,500);
+  if(!why)throw new LifecycleError('A reason is required to cancel.');
+  await withTenant(ctx,async tx=>{await cancelCaseTx(tx,ctx,kind,number,why);});
+}
+
+/** Minimal manager-authorized purpose projection; the caller must hold its fresh guarded interval.
+ * Uses the existing scope owner before any private case facts and excludes other case-state intents. */
+export async function offboardingCaseCancellationChoiceTx(tx:Tx,ctx:SessionContext,number:string){
+  const c=await offboardingCaseForStepChoicesTx(tx,ctx,number,LEVEL.manager);
+  if(c.status!=='in_progress')throw new LifecycleError('Case cancellation unavailable.','conflict');
+  return {caseId:c.id,caseNumber:c.number};
+}
+export async function prepareOffboardingCaseCancellationTx(tx:Tx,ctx:SessionContext,caseId:string,number:string,reason:string){
+  const choice=await offboardingCaseCancellationChoiceTx(tx,ctx,number);
+  if(choice.caseId!==caseId)throw new LifecycleError('Case cancellation unavailable.','conflict');
+  const why=clean(reason,500);if(!why)throw new LifecycleError('A reason is required to cancel.');
+  const c=await loadCase(tx,number,'offboarding');
+  if(c.status!=='in_progress')throw new LifecycleError('Case cancellation unavailable.','conflict');
+  return {caseId:c.id,caseNumber:c.number,companyId:c.companyId,resignationDate:c.resignationDate!,lastWorkingDay:c.lastWorkingDay,
+    before:{status:'in_progress' as const,cancelReason:c.cancelReason},after:{status:'cancelled' as const,cancelReason:why}};
 }
 
 export async function reopenCase(ctx: SessionContext, kind: CaseKind, number: string): Promise<void> {

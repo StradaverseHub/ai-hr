@@ -21274,6 +21274,33 @@
           "refused": "已拒绝"
         },
         "receiptSnapshot": "此处为确认时记录的影响。后续变化请查看考勤。"
+      },
+      "offboardingCaseCancel": {
+        "working": "处理中…",
+        "unavailable": "此审核不可用。请重新打开原生个案。",
+        "uncertain": "响应结果不确定。请先重新打开同一审核。",
+        "caseNumber": "个案编号",
+        "load": "加载个案",
+        "prepare": "准备审核",
+        "dates": "辞职日期／最后工作日",
+        "none": "无",
+        "caseStatus": "个案状态",
+        "in_progress": "进行中",
+        "discard": "放弃",
+        "reopen": "重新打开",
+        "retired": "此审核已终止。",
+        "find": "查找我的审核",
+        "manual": "打开原生离职流程",
+        "title": "取消离职个案",
+        "description": "核对个案取消及其原因。",
+        "scope": "仅取消此个案。相关 IT 工作及雇佣记录保持不变。",
+        "reason": "原因（必填）",
+        "previousReason": "原有个案原因",
+        "caseConsent": "我确认应取消此离职个案。",
+        "confirmConsent": "我已核对原因，并确认仅取消此个案。",
+        "confirm": "确认取消个案",
+        "recorded": "个案取消已记录。",
+        "cancelled": "已取消"
       }
     },
     "denied_unavailable": "我这边遇到了小状况，请稍后再试。",

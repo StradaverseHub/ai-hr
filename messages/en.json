@@ -21274,6 +21274,33 @@
           "refused": "Refused"
         },
         "receiptSnapshot": "Recorded effects at confirmation. Open Attendance for later changes."
+      },
+      "offboardingCaseCancel": {
+        "working": "Working…",
+        "unavailable": "This review is unavailable. Reopen the native case.",
+        "uncertain": "The response is uncertain. Reopen the same review before continuing.",
+        "caseNumber": "Case number",
+        "load": "Load case",
+        "prepare": "Prepare review",
+        "dates": "Resignation / last working day",
+        "none": "None",
+        "caseStatus": "Case status",
+        "in_progress": "In progress",
+        "discard": "Discard",
+        "reopen": "Reopen",
+        "retired": "This review has been retired.",
+        "find": "Find my reviews",
+        "manual": "Open native offboarding",
+        "title": "Cancel an offboarding case",
+        "description": "Review the case cancellation and its reason.",
+        "scope": "Only this case will be cancelled. Related IT work and employment records stay unchanged.",
+        "reason": "Reason (required)",
+        "previousReason": "Previous case reason",
+        "caseConsent": "I confirm this offboarding case should be cancelled.",
+        "confirmConsent": "I have reviewed the reason and the case-only cancellation.",
+        "confirm": "Confirm case cancellation",
+        "recorded": "The native case cancellation was recorded.",
+        "cancelled": "Cancelled"
       }
     },
     "denied_unavailable": "A little snag on my side. Please try again in a moment.",

@@ -10,7 +10,7 @@ export const PARITY_PROBE_GROUPS={
  organisation:{actions:['org.position.archive','org.department.archive'],variants:[]},
  rewardsCalendar:{actions:['rewards.calendar.update'],variants:[]},
  rewards:{actions:['rewards.cancel_review'],variants:[]},
- lifecycle:{actions:['lifecycle.offboarding.step.complete','lifecycle.offboarding.step.undo'],variants:[]},
+ lifecycle:{actions:['lifecycle.offboarding.step.complete','lifecycle.offboarding.step.undo','lifecycle.offboarding.case.cancel'],variants:[]},
  commands:{actions:[
   'org.reporting.change','knowledge_base.article.create','typed_pay_components.create','leave.adjustment.apply',
   'employees.compensation.maintain','employees.bank.maintain','employees.emergency_contact.maintain',

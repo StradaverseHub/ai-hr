@@ -99,6 +99,7 @@ export const AGENT_ACTION_PARITY={
  'rewards.calendar.update':{kind:'probed',screen:{...HR_ON_EMPLOYMENT,assigned_approver:A}},
  'rewards.cancel_review':{kind:'probed',screen:{...HR_ON_EMPLOYMENT,assigned_approver:A}},
  // Stock role fixture: no lc_staff grants. Unlinked native staff positive control is in offboarding-step-review-store.test.ts.
+ 'lifecycle.offboarding.case.cancel':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'lifecycle.offboarding.step.undo':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'lifecycle.offboarding.step.complete':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'lifecycle.acknowledgement.submit':{kind:'probed',screen:OWN_REQUEST},

@@ -21274,6 +21274,33 @@
           "refused": "Bị từ chối"
         },
         "receiptSnapshot": "Tác động được ghi nhận lúc xác nhận. Mở Chấm công để xem thay đổi sau đó."
+      },
+      "offboardingCaseCancel": {
+        "working": "Đang xử lý…",
+        "unavailable": "Không thể xem lại. Hãy mở hồ sơ gốc.",
+        "uncertain": "Chưa rõ kết quả. Hãy mở lại cùng bản xem lại trước khi tiếp tục.",
+        "caseNumber": "Số hồ sơ",
+        "load": "Tải hồ sơ",
+        "prepare": "Chuẩn bị xem lại",
+        "dates": "Ngày từ chức / ngày làm việc cuối",
+        "none": "Không có",
+        "caseStatus": "Trạng thái hồ sơ",
+        "in_progress": "Đang tiến hành",
+        "discard": "Hủy bản xem lại",
+        "reopen": "Mở lại",
+        "retired": "Bản xem lại đã kết thúc.",
+        "find": "Tìm bản xem lại của tôi",
+        "manual": "Mở quy trình nghỉ việc gốc",
+        "title": "Hủy hồ sơ nghỉ việc",
+        "description": "Xem lại việc hủy hồ sơ và lý do.",
+        "scope": "Chỉ hồ sơ này bị hủy. Công việc IT liên quan và dữ liệu việc làm không thay đổi.",
+        "reason": "Lý do (bắt buộc)",
+        "previousReason": "Lý do trước đó của hồ sơ",
+        "caseConsent": "Tôi xác nhận cần hủy hồ sơ nghỉ việc này.",
+        "confirmConsent": "Tôi đã xem lại lý do và việc chỉ hủy hồ sơ này.",
+        "confirm": "Xác nhận hủy hồ sơ",
+        "recorded": "Việc hủy hồ sơ đã được ghi nhận.",
+        "cancelled": "Đã hủy"
       }
     },
     "denied_unavailable": "Phía tôi gặp chút trục trặc. Vui lòng thử lại sau giây lát.",
