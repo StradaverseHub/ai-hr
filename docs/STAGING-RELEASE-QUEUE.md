@@ -125,3 +125,5 @@ Keep required private capture inside the lease. Slow human acceptance can still 
 measure it before introducing preview installations or changing acceptance policy. Rollback of queue
 adoption is explicit operator recovery after all operations stop; never delete the database, reset
 fencing epochs or silently remove enforcement from an occupied staging target.
+
+Commissioning and bounded pilot evidence: [validation record](STAGING-RELEASE-QUEUE-VALIDATION.md).

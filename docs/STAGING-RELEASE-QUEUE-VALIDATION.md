@@ -5,7 +5,7 @@ an application gate receipt, human staging acceptance or production deployment a
 
 ## Hosted controller and release checks
 
-Implementation `1c8187b6db2ae7941a0132ec6626697913b66fa3` retains the coordinator bytes tested at
+Compiled implementation `1348e326084f967fa45554a535615a49e56728af` retains the coordinator bytes tested at
 `4949a340429313838f4d11537accb3565302a06c`. The installed coordinator SHA256 is
 `660242698d48f7475efb01b81cedadc11a05c358edf755862ed0a40f2bab4af5`.
 
@@ -29,11 +29,12 @@ against the bytecode-suppression repair. Original failures remain at their produ
   points suppress bytecode generation and fixture subprocesses use Python's `-B`. The verifier and
   source-cleanliness requirement were preserved. The compiler also caught an overly narrow inferred path literal in the imported pending-marker helper. Its explicit string parameter types now match its existing absolute-path runtime checks; target-binding and marker validation are unchanged.
 
-The repaired legacy release area is checked separately in
-[41000965485](https://github.com/StradaverseHub/ai-hr/actions/runs/41000965485). Its actual conclusion
-must be established before publication; a pending run or passing assertions inside a failed process
-are not a successful verification result. Unaffected passing evidence retains its original identity.
-A complete normal release witness is still required before installing a new application candidate.
+The repaired legacy release area passed all45 cases and the final clean-candidate check in
+[41000965485](https://github.com/StradaverseHub/ai-hr/actions/runs/41000965485). The corrected helper
+boundary, selected gate checks and whole-repository compiler passed at exact1348e3260 in
+[41001552999](https://github.com/StradaverseHub/ai-hr/actions/runs/41001552999). Unaffected evidence
+retains its original identity. A complete normal release witness is still required before installing
+a new application candidate; these component results are not combined into a fabricated full PASS.
 
 ## Live shared-queue rehearsal
 
