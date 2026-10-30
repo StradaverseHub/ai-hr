@@ -73,3 +73,47 @@ or sensitive AI effect needs separate explicit disposition. This draft still use
 predecessor and provisional Formula allocation; final baseline reconciliation, independent updated-diff
 review and genuine exact-source hosted qualification remain held by the release coordinator. No provider
 call, protected-ref move, staging lease, tenant initialization or deployment was performed by this review.
+
+
+## Confirmed-failure repair: integrated technical review — 31 October 2026
+
+Technical source review completed for exact checkpoint
+`b717b29cc39f538a61113133a9452ba242e4bef2`; binding recorded at 2026-10-30T17:36:25.112330+00:00.
+The AI source owner independently reconstructed the immutable Git import closure:
+the same 997 members now hash to
+`568bbdb994d30852f16df845110d804167e35eab18e7b049c0dc21e785644b06`.
+Exactly three covered files differ from original failed candidate4c84688d: native company
+reference retention, module-agent governed preparation and the finite workload descriptor.
+The other 994 covered files are byte-identical.
+
+The release coordinator explicitly dispositioned the new strict version1 five-field
+`human_plan_holdouts_v1` branch under existing `synthetic_read_plan_v1`, within the
+original fixed published synthetic evaluation purpose and confirmed-failure repair scope.
+This is a newly accepted protected input shape relative to the old descriptor. It resolves
+only twelve pre-existing, byte-identical published fixture IDs; caller question, locale,
+expected decision, modules or additional fields cannot be substituted. The legacy
+two-field PROMPT branch remains unchanged. Both branches retain the original four
+outgoing fields, fixed candidate systems, token limit and timeout. Independent frozen
+pre-change byte expectations cover both systems and all 288 legacy requests.
+
+Actual evaluator preparation retains the same issued configuration, evaluation spend
+root, current candidate/non-author/provider/source checks, one-use custody and disposal.
+Local adjudication, immutable retained results and two independent complete non-author
+evaluations remain required. The native company-retention helper returns a scoped
+boolean only and adds no provider disclosure, private trace access or financial authority.
+Its separate0811 allocation preserves the existing0800 SQL bytes and applied prefix.
+
+The AI source owner reviewed these exact integrated bytes and explicitly permitted
+matching only the SAME24 active literal sourceDigest values to the digest above.
+The human subsequently explicitly approved this exact reviewed binding refresh, with
+matching technical documentation and manifests. Statuses, reviewer identities, evidence
+references and original human review timestamp `2026-10-30T06:19:30Z` are unchanged;
+both pending records remain byte-identical. This records technical completion and the
+explicit digest-refresh authorization under the existing provisional purpose. It is not
+a new privacy-specialist certification, raw human-input permission or release acceptance.
+
+Original full run41091902997 remains failed at its original4c84688d source/controller.
+Source reviews and newly authored assertions are not executed PASS evidence. The final
+repaired source still requires classifier-derived hosted qualification, ordinary clean
+and populated upgrades, actual backup/restore evidence and coordinated staging admission.
+Any further covered-source change invalidates this exact technical disposition.
