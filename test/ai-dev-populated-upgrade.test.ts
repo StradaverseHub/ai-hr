@@ -1,4 +1,4 @@
-/** CI-only populated 568→578 upgrade. Never connects to an installation or replays an installer.
+/** CI-only populated 569→579 upgrade. Never connects to an installation or replays an installer.
  * The credential-free witness is metadata only; payroll/review rows below are fictional physical rows.
  * This proves migration preservation, not decryption or native decision behavior (covered separately). */
 import {createHash,randomUUID} from 'node:crypto';
@@ -25,13 +25,13 @@ const PERFORMANCE=['performance.ai_360_enabled','performance.ai_tc_enabled','per
  'performance.ai_review_enabled','performance.ai_idp_enabled','performance.ai_calib_enabled'];
 const hash=(value:Buffer)=>createHash('sha256').update(value).digest('hex');
 
-it('upgrades the exact observed populated Board prefix without rewriting applied history, payroll, settings or sealed reviews',async()=>{
+it('upgrades the exact observed populated FEEDBACK prefix without rewriting applied history, payroll, settings or sealed reviews',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as Journal;
  const prefix=journal.entries.findIndex(entry=>entry.tag===TAIL[0]);
- expect(prefix).toBe(568);expect(witness.rows).toHaveLength(prefix);
- expect(witness.source).toBe('f752ac7f5d0323c5eae2280c3830af05b6da465f');
- expect(witness.buildId).toBe('Cvj9_lgd4fATCyUYRwWz_');expect(witness.observedAt).toBe('2026-10-29T21:09:26.134Z');
- expect(journal.entries[prefix-1]).toEqual({idx:682,version:'7',when:1793330000030,tag:'0698_information_only_corrections',breakpoints:true});
+ expect(prefix).toBe(569);expect(witness.rows).toHaveLength(prefix);
+ expect(witness.source).toBe('348b720e7a82c5e5573fc09196d06dfce50c787c');
+ expect(witness.buildId).toBe('pYcygMSnqy5gufcCpl73B');expect(witness.observedAt).toBe('2026-10-30T01:57:09.823Z');
+ expect(journal.entries[prefix-1]).toEqual({idx:683,version:'7',when:1793330000031,tag:'0696_feedback_menu_operator_switch',breakpoints:true});
  expect(journal.entries.slice(prefix).map(({tag,idx,when})=>({tag,idx,when}))).toEqual(TAIL.map((tag,i)=>({tag,idx:684+i,when:1793330000032+i})));
  // The canonical identity owner recognizes only the two retained historical SQL versions. It reads the
  // archived original bytes; this is not a checksum waiver or replacement of applied source.
@@ -102,7 +102,7 @@ it('upgrades the exact observed populated Board prefix without rewriting applied
   const baseline=await ledger();
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   expect(await retainedRows()).toEqual(before);
-  const after=await ledger();expect(after).toHaveLength(578);expect(after.slice(0,prefix)).toEqual(baseline);
+  const after=await ledger();expect(after).toHaveLength(579);expect(after.slice(0,prefix)).toEqual(baseline);
   expect(after.slice(prefix).map(({hash,created_at})=>({hash,created_at}))).toEqual(TAIL.map((tag,i)=>({hash:hashFile(tag),created_at:String(1793330000032+i)})));
   const changedDefinitions=await storage.client`select * from setting_definition order by key`;
   expect(changedDefinitions).toEqual(definitions.map(row=>PERFORMANCE.includes(String(row.key))?{...row,default_value:false,default_on_install:false}:row));

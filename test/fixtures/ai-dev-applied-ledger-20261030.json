@@ -1,8 +1,8 @@
 {
-  "kind": "POST_INSTALL_READ_ONLY_STATUS_AND_ORDERED_LEDGER",
-  "source": "f752ac7f5d0323c5eae2280c3830af05b6da465f",
-  "buildId": "Cvj9_lgd4fATCyUYRwWz_",
-  "observedAt": "2026-10-29T21:09:26.134Z",
+  "kind": "FEEDBACK_POST_INSTALL_READ_ONLY_ORDERED_LEDGER",
+  "source": "348b720e7a82c5e5573fc09196d06dfce50c787c",
+  "buildId": "pYcygMSnqy5gufcCpl73B",
+  "observedAt": "2026-10-30T01:57:09.823Z",
   "rows": [
     {
       "id": "1",
@@ -2843,14 +2843,19 @@
       "id": "605",
       "hash": "52b5def0e3001fa044954faff05929983603965e6eeee0a7acbabc548ea5f2ac",
       "created_at": "1793330000030"
+    },
+    {
+      "id": "606",
+      "hash": "b631d1c7d3100c707f04cf86a3d47e77faa82cc26a142d0b9c836600cfda9259",
+      "created_at": "1793330000031"
     }
   ],
   "proof": {
     "format": 1,
     "kind": "READ_ONLY_EXACT_MIGRATION_LEDGER_NOT_RELEASE",
-    "rows": 568,
-    "expectedSha256": "7cd33263471e51b5a70255e687f00c4a374c6e0e0186c5dc8f25014c0fb4e40c",
-    "actualSha256": "08211e61e3b3e479002337c123d129263401130cfdc9dd1625b614e99c13c135",
+    "rows": 569,
+    "expectedSha256": "6bdb07195bf31ae9696c626a9662b3788a6177d84e5465c6e96af7bc42d21878",
+    "actualSha256": "66fe1e9e3ad8458e9aafd76050b4acc6ba32f671f6d852f42d25ef3c125bc4a2",
     "releaseAuthorized": false
   }
 }
