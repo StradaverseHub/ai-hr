@@ -1,8 +1,10 @@
 -- ADR-0151 personnel parity: one human-reviewed shared-person bank destination operation.
 -- PROVISIONAL SOURCE CLAIM ONLY: 0719 / idx700 / when1793330000048. Reallocate above the
 -- then-live accepted ledger at integration freeze. No installation priority or deployment authority.
--- Reuse the one prepared-action ledger and its generic ASSIGNED custody. Every prior kind retains
--- its prior constraints, binding, verifier and receipt behaviour; no historical SQL is edited.
+-- Reuse the one prepared-action ledger and its generic ASSIGNED custody. The bounded actor-scope
+-- compatibility repair below supports native USERs without Persons for six reviewed Personnel kinds.
+-- All native binding, verifier and receipt checks remain; other prior scope predicates are preserved.
+-- No applied historical SQL is edited.
 INSERT INTO app.assistant_action_kind(id,module,tier_ceiling,category,review_kind) VALUES
  ('employees.bank.maintain','employees','approve','personnel','employees.bank.maintain');
 --> statement-breakpoint
