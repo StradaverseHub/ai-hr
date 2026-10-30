@@ -1,5 +1,6 @@
 /** Real HTTPS requests + Chromium against the isolated production server; no auth/test route bypass. */
 import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
 import {actionFormData} from './action-form.ts';
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {join} from 'node:path';
@@ -18,13 +19,29 @@ const agent=new https.Agent({keepAlive:true,maxSockets:600,rejectUnauthorized:fa
 const suite=process.env.PERF_HTTP_SUITE||'claims-heavy';assert(['claims-heavy','whole-system'].includes(suite));
 const thinkTimeMs=Number(process.env.PERF_HTTP_THINK_MS||1000);assert([1000,5000].includes(thinkTimeMs));
 const report={suite,kind:'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:500,tenants:2,companies:10,startedAt:new Date().toISOString(),
- assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs:30000,navigation:'full-document HTTP stress plus real server actions',tls:'fixture-only self-signed localhost',browserContexts:6,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
- coverage:[],boundaries:[],browser:[],phases:[],functionalErrors:[],browserErrors:[],latencyTargetMet:false};
+ assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs:30000,navigation:'full-document HTTP stress plus real server actions',tls:'fixture-only self-signed localhost',browserContexts:6,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
+ coverage:[],boundaries:[],browser:[],phases:[],functionalErrors:[],browserErrors:[],persistenceObservers:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
-function appCpu(){
- const ids=process.env.PERF_APP_PIDS??process.env.PERF_APP_PID,ticks=Number(process.env.PERF_CLOCK_TICKS);
+function processCpu(ids){
+ const ticks=Number(process.env.PERF_CLOCK_TICKS);
  if(!/^\d+(,\d+)*$/.test(ids??'')||!Number.isFinite(ticks)||ticks<=0)return null;
  try{return ids.split(',').reduce((total,pid)=>{const stat=readFileSync('/proc/'+pid+'/stat','utf8'),fields=stat.slice(stat.lastIndexOf(')')+2).trim().split(/\s+/);return total+(Number(fields[11])+Number(fields[12]))/ticks;},0);}catch{return null;}
+}
+const appCpu=()=>processCpu(process.env.PERF_APP_PIDS??process.env.PERF_APP_PID);
+function resourceCpu(){
+ const ticks=Number(process.env.PERF_CLOCK_TICKS),name=process.env.PERF_POSTGRES_CONTAINER;
+ assert.equal(name,`aihr-ci-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}-${process.env.AIHR_CI_UNIT}`);
+ assert(/^aihr-ci-\d+-\d+-db-(?:[1-4]|[0-9a-f]{16})$/.test(name));
+ // Only this workflow's labelled disposable container may be inspected.
+ assert.equal(execFileSync('docker',['inspect','--format','{{index .Config.Labels "aihr-owner"}}',name],{encoding:'utf8',timeout:5000}).trim(),name);
+ const usage=execFileSync('docker',['exec',name,'cat','/sys/fs/cgroup/cpu.stat'],{encoding:'utf8',timeout:5000});
+ const fields=Object.fromEntries(usage.trim().split('\n').map(line=>{const [key,value]=line.trim().split(/\s+/);return [key,Number(value)];}));
+ for(const key of ['usage_usec','user_usec','system_usec','throttled_usec'])assert(Number.isSafeInteger(fields[key])&&fields[key]>=0,'missing PostgreSQL CPU counter');
+ const host=readFileSync('/proc/stat','utf8').split('\n')[0].trim().split(/\s+/).slice(1).map(Number);
+ assert(host.length>=8&&host.every(value=>Number.isSafeInteger(value)&&value>=0)&&ticks>0);
+ return {postgresCpuSeconds:fields.usage_usec/1e6,postgresUserSeconds:fields.user_usec/1e6,postgresSystemSeconds:fields.system_usec/1e6,
+  postgresThrottledSeconds:fields.throttled_usec/1e6,proxyCpuSeconds:processCpu(process.env.PERF_PROXY_PID),
+  hostUserSystemSeconds:(host[0]+host[1]+host[2]+host[5]+host[6])/ticks,hostIoWaitSeconds:host[4]/ticks,hostStealSeconds:host[7]/ticks};
 }
 function appMemory(){
  const ids=process.env.PERF_APP_PIDS??process.env.PERF_APP_PID;
@@ -57,6 +74,26 @@ async function request(user,path,fields,expectedStatus=200,record=true,actionHea
   assert(!response.content.includes('PERF Person '+String(user.tenant?0:250).padStart(4,'0')),'cross-tenant person leaked');
  }
  return response;
+}
+// Six fictional principals only. Reads are indexed and stop as soon as the changed
+// state is visible. Observation time is an upper bound on commit visibility, not
+// an exact transaction duration; it is kept separate from HTTP latency samples.
+async function observedMutation(user,operation,visible,send){
+ if(![0,1,2,4,250,254].includes(user.index))return send();
+ let stopped=false;const started=performance.now();
+ const observation=(async()=>{
+  let polls=0;
+  try{
+   while(!stopped){polls++;if(await visible())return {visible:true,visibleByMs:performance.now()-started,polls};await pause(100);}
+   return {visible:false,visibleByMs:null,polls};
+  }catch{return {visible:false,visibleByMs:null,polls,observerError:true};}
+ })();
+ let response;
+ try{response=await send();return response;}
+ finally{
+  stopped=true;const httpFinishedMs=performance.now()-started,result=await observation;
+  report.persistenceObservers.push({user:user.index,role:user.role,operation,...result,httpDurationMs:response?.durationMs??null,httpFinishedMs});
+ }
 }
 const summary=values=>{const sorted=[...values].sort((a,b)=>a-b);return {samples:sorted.length,p50Ms:sorted[Math.ceil(sorted.length*.5)-1]??null,p95Ms:sorted[Math.ceil(sorted.length*.95)-1]??null,p99Ms:sorted[Math.ceil(sorted.length*.99)-1]??null,maxMs:sorted.at(-1)??null};};
 async function databaseSnapshot(label){
@@ -224,7 +261,7 @@ try{
  if(report.coverage.some(v=>v.status==='failed'))throw Error('Pilot route failures must be diagnosed before a 500-user run');
  await db`select pg_stat_statements_reset()`;
  const waits=[];let samplingBusy=false;sampling=setInterval(async()=>{if(samplingBusy)return;samplingBusy=true;try{const rows=await db`select coalesce(wait_event_type,'CPU-or-ready')as kind,count(*)::int as connections from pg_stat_activity where datname=current_database()and state='active'group by 1`;waits.push({at:Date.now(),rows});}catch{}finally{samplingBusy=false;}},1000);
- const appCpuBefore=appCpu(),driverCpuBefore=process.cpuUsage();
+ const resourceCpuBefore=resourceCpu(),appCpuBefore=appCpu(),driverCpuBefore=process.cpuUsage();
  const offset=samples.length,started=performance.now(),steadyStart=started+10000,steadyUntil=steadyStart+30000;
  const progress={launched:0,active:0,peakActive:0,completed:0,failed:0,iterations:0};
  progressTimer=setInterval(()=>{report.progress={...progress,elapsedMs:performance.now()-started};save();writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));},5000);
@@ -247,11 +284,17 @@ try{
   const template=contextTemplates.createTemplate,fields={...template.fields};
   for(const [key,value]of Object.entries({employmentId:user.employmentId,claimTypeId:user.claimTypeId,amount:'1',incurredOn:fixture.today,description,intent:'draft'}))fields[template.prefix+key]=value;
   delete fields[template.prefix+'draftId'];
-  const created=await request(user,'/claims',fields,template.status,true,template.headers,template.fieldOrder);assert.equal(new URL(String(created.headers['x-action-redirect']??created.headers.location).split(';')[0],base).searchParams.get('toast'),'Draft saved');
+  const created=await observedMutation(user,'create',async()=>{
+   const rows=await db`select id from claim_request where employment_id=${user.employmentId}::uuid and status='draft' and description=${description} limit 2`;return rows.length===1;
+  },()=>request(user,'/claims',fields,template.status,true,template.headers,template.fieldOrder));assert.equal(new URL(String(created.headers['x-action-redirect']??created.headers.location).split(';')[0],base).searchParams.get('toast'),'Draft saved');
   const [draft]=await db`select id from claim_request where employment_id=${user.employmentId}::uuid and status='draft'and description=${description}`;assert(draft,'HTTP create did not persist');
-  await pause(thinkTimeMs);await request(user,'/claims',{...fields,[template.prefix+'draftId']:draft.id,[template.prefix+'amount']:'2'},template.status,true,template.headers,template.fieldOrder);
+  await pause(thinkTimeMs);await observedMutation(user,'edit',async()=>{
+   const [row]=await db`select amount from claim_request where id=${draft.id}::uuid`;return row&&Number(row.amount)===2;
+  },()=>request(user,'/claims',{...fields,[template.prefix+'draftId']:draft.id,[template.prefix+'amount']:'2'},template.status,true,template.headers,template.fieldOrder));
   const [edited]=await db`select amount from claim_request where id=${draft.id}::uuid`;assert.equal(Number(edited.amount),2);
-  await pause(thinkTimeMs);await request(user,'/claims',{...contextTemplates.deleteTemplate.fields,[contextTemplates.deleteTemplate.prefix+'employmentId']:user.employmentId,[contextTemplates.deleteTemplate.prefix+'id']:draft.id},contextTemplates.deleteTemplate.status,true,contextTemplates.deleteTemplate.headers,contextTemplates.deleteTemplate.fieldOrder);
+  await pause(thinkTimeMs);await observedMutation(user,'delete',async()=>{
+   return (await db`select id from claim_request where id=${draft.id}::uuid`).length===0;
+  },()=>request(user,'/claims',{...contextTemplates.deleteTemplate.fields,[contextTemplates.deleteTemplate.prefix+'employmentId']:user.employmentId,[contextTemplates.deleteTemplate.prefix+'id']:draft.id},contextTemplates.deleteTemplate.status,true,contextTemplates.deleteTemplate.headers,contextTemplates.deleteTemplate.fieldOrder));
   assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
   iteration++;progress.iterations++;
   }while(performance.now()<steadyUntil);
@@ -262,8 +305,13 @@ try{
  report.browserLoad={contexts:browserResults.length,completed:browserResults.filter(v=>v.status==='fulfilled').length,errors:browserResults.flatMap((v,index)=>v.status==='rejected'?[{index,error:String(v.reason.message).slice(0,180)}]:[])};
  clearInterval(sampling);sampling=null;clearInterval(progressTimer);progressTimer=null;report.progress={...progress,elapsedMs:performance.now()-started};
  report.functionalErrors=results.flatMap((value,index)=>value.status==='rejected'?[{user:index,error:String(value.reason.message).slice(0,180)}]:[]);
- const appCpuAfter=appCpu(),driverCpu=process.cpuUsage(driverCpuBefore);
- report.cpu={appProcesses:Number(process.env.PERF_APP_WORKERS||1),appCpuSeconds:appCpuBefore!==null&&appCpuAfter!==null?appCpuAfter-appCpuBefore:null,driverCpuSeconds:(driverCpu.user+driverCpu.system)/1000000,elapsedSeconds:(performance.now()-started)/1000,includesBrowserCpu:false,includesPostgresCpu:false};
+ const appCpuAfter=appCpu(),driverCpu=process.cpuUsage(driverCpuBefore),resourceCpuAfter=resourceCpu();
+ const resourceDelta=Object.fromEntries(Object.keys(resourceCpuBefore).map(key=>{
+  const before=resourceCpuBefore[key],after=resourceCpuAfter[key];
+  assert(before!==null&&after!==null&&after>=before,'missing or reset resource CPU counter');return [key,after-before];
+ }));
+ report.cpu={appProcesses:Number(process.env.PERF_APP_WORKERS||1),appCpuSeconds:appCpuBefore!==null&&appCpuAfter!==null?appCpuAfter-appCpuBefore:null,driverCpuSeconds:(driverCpu.user+driverCpu.system)/1000000,elapsedSeconds:(performance.now()-started)/1000,includesBrowserCpu:false,includesPostgresCpu:false,resourceDelta,
+  counterScope:'PostgreSQL cgroup includes its capture helpers; proxy is the orchestrator process; host counters include all hosted-runner processes. Host user/system excludes IO wait and steal.'};
  report.appMemory={processes:appMemory(),peakIncludesStartupAndBaseline:true};
  const loaded=samples.slice(offset),reads=loaded.filter(v=>v.method==='GET'),writes=loaded.filter(v=>v.method==='POST');
  report.phases.push({name:'500-paced-HTTP-users-'+suite+'-'+thinkTimeMs+'ms-think',elapsedMs:performance.now()-started,completed:results.filter(v=>v.status==='fulfilled').length,errors:report.functionalErrors.length,

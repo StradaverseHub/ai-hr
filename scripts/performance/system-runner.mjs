@@ -96,7 +96,7 @@ try{
   let ready=false;for(let i=0;i<120;i++){try{const response=await fetch('http://127.0.0.1:'+port+'/login');if(response.status===200){ready=true;break;}}catch{}await pause(500);}
   assert(ready,'production worker did not become ready');
  }
- await run('http-and-browser',process.execPath,['--import','tsx','scripts/performance/system-load.mjs'],{...env,PERF_APP_PIDS:apps.map(app=>app.pid).join(','),PERF_APP_WORKERS:String(workers),PERF_CLOCK_TICKS:execFileSync('getconf',['CLK_TCK'],{encoding:'utf8'}).trim(),NODE_OPTIONS:'--max-old-space-size=2048'},600000);
+ await run('http-and-browser',process.execPath,['--import','tsx','scripts/performance/system-load.mjs'],{...env,PERF_APP_PIDS:apps.map(app=>app.pid).join(','),PERF_PROXY_PID:String(process.pid),PERF_POSTGRES_CONTAINER:container,PERF_APP_WORKERS:String(workers),PERF_CLOCK_TICKS:execFileSync('getconf',['CLK_TCK'],{encoding:'utf8'}).trim(),NODE_OPTIONS:'--max-old-space-size=2048'},600000);
  report.exitCode=0;
 }catch(error){report.error=String(error.message).slice(0,350);console.error('[system-perf] '+report.error);}
 finally{
