@@ -7,7 +7,7 @@ assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.RUNNER_
 assert.equal(process.env.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');assert.equal(process.platform,'linux');
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
 const sha=git('rev-parse','HEAD');assert.equal(sha,process.env.AIHR_CI_HEAD);assert.equal(git('status','--porcelain'),'');
-const mode=process.env.PERF_SERVICE_PROFILE;assert(['plan-cache','claims-sql','admin-gate','session-plan'].includes(mode));
+const mode=process.env.PERF_SERVICE_PROFILE;assert(['plan-cache','claims-sql','admin-gate','session-plan','scope-lock'].includes(mode));
 const out=join(process.env.RUNNER_TEMP,'service-performance-evidence');mkdirSync(out,{recursive:true});
 const env={...process.env,TEST_DB_NAMESPACE:'aifocus',AIHR_FOCUSED_EVIDENCE_DIR:out,
  DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test',
@@ -24,7 +24,7 @@ function run(label,command,args){
 save();
 try{
  run('postgres','bash',['.github/ci/postgres.sh','reset']);
- const file=mode==='plan-cache'?'claims-plan-cache':mode==='admin-gate'?'visibility-admin-gate':mode==='session-plan'?'session-read-plan':'claims-query-profile';
+ const file=mode==='plan-cache'?'claims-plan-cache':mode==='admin-gate'?'visibility-admin-gate':mode==='session-plan'?'session-read-plan':mode==='scope-lock'?'workforce-read-lock':'claims-query-profile';
  run('profile','pnpm',['exec','vitest','run','--config','vitest.performance.config.ts','--project','performance',
   'test/performance/'+file+'.profile.ts','--reporter=default','--reporter=json','--outputFile='+join(out,'vitest.json')]);
  report.exitCode=0;
