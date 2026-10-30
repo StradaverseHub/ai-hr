@@ -30637,6 +30637,11 @@
     "traceLoading": "Đang tải phép tính đã lưu…",
     "traceErrorTitle": "Không thể tải phép tính này",
     "traceErrorMessage": "Làm mới để thử lại. Quyền truy cập hiện tại được kiểm tra mỗi lần.",
-    "traceRetry": "Thử lại"
+    "traceRetry": "Thử lại",
+    "traceCompany": "Công ty chi trả",
+    "traceEmployee": "Nhân viên",
+    "traceEmployeeProtected": "Thông tin nhân viên bị hạn chế hoặc không khả dụng",
+    "traceCompanyUnavailable": "Thông tin công ty không khả dụng",
+    "traceContextHint": "Tên công ty và nhân viên hiển thị theo quyền truy cập hiện tại."
   }
 }

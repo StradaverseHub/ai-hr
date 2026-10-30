@@ -30637,6 +30637,11 @@
     "traceLoading": "Loading saved calculation…",
     "traceErrorTitle": "Unable to load this calculation",
     "traceErrorMessage": "Refresh this view to try again. Your current access is checked each time.",
-    "traceRetry": "Try again"
+    "traceRetry": "Try again",
+    "traceCompany": "Paying company",
+    "traceEmployee": "Employee",
+    "traceEmployeeProtected": "Employee details restricted or unavailable",
+    "traceCompanyUnavailable": "Company unavailable",
+    "traceContextHint": "Company and employee labels follow your current access."
   }
 }
