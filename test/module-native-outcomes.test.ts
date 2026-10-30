@@ -2,6 +2,7 @@
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
+import {AGENT_ACTIONS} from '../lib/ai/agent-action-registry';
 import {MODULE_AGENT_ACTIONS} from '../lib/ai/module-agent-actions';
 import {NATIVE_OUTCOME_ACTIONS,NATIVE_REVIEW_ACTIONS,NON_EFFECT_OBSERVATIONS,NativeOutcomeReference,RecordNativeOutcomeAssociation,NativeOutcomeAssociationView} from '../lib/ai/module-native-outcomes';
 
@@ -13,7 +14,7 @@ describe('closed native outcome association contract',()=>{
    expect(Object.hasOwn(NATIVE_OUTCOME_ACTIONS,action)).toBe(false);
    expect(NativeOutcomeReference.safeParse({source:'review',action,actionId:randomUUID()}).success).toBe(false);
   }
-  expect(NATIVE_REVIEW_ACTIONS).toHaveLength(32);expect(Object.keys(NATIVE_OUTCOME_ACTIONS)).toHaveLength(33);
+  expect(NATIVE_REVIEW_ACTIONS).toHaveLength(AGENT_ACTIONS.filter(row=>row.store!=='human_workflow_only').length);expect(Object.keys(NATIVE_OUTCOME_ACTIONS)).toHaveLength(actions.length);
   expect(NON_EFFECT_OBSERVATIONS).toEqual({system_explorer:'authorized_schema_observation',assistant:'authorized_orchestration_read_execution'});
  });
  it('accepts only explicit consent, closed references and server-owned import versions',()=>{
