@@ -16,7 +16,12 @@ on:
         required: false
         default: browser-install
         type: choice
-        options: [browser-install, operator-transport, browser-image, browser-image-firefox, browser-image-suite]
+        options: [browser-install, operator-transport, browser-image, browser-image-firefox, browser-image-suite, combined-ui]
+      selected_browser_tests:
+        description: JSON array of tracked browser test paths for preparation only
+        required: false
+        default: '["test/combined-release-shell.browser.test.tsx"]'
+        type: string
 permissions: {contents: read, actions: read}
 concurrency:
   group: browser-provisioning-diagnostic-${{ inputs.candidate_ref }}-${{ inputs.probe_scope || 'browser-install' }}
@@ -185,5 +190,60 @@ jobs:
         with:
           name: diagnostic-browser-image-${{ matrix.engine }}
           path: ${{ runner.temp }}/browser-image/
+          if-no-files-found: error
+          retention-days: 7
+
+  combined-ui:
+    if: ${{ inputs.probe_scope == 'combined-ui' }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: mcr.microsoft.com/playwright@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
+      options: --init --ipc=host
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      SELECTED_BROWSER_TESTS: ${{ inputs.selected_browser_tests }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-browser-image
+      - name: Bind selected production-component preparation probe
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import {execFileSync} from 'node:child_process';
+          import assert from 'node:assert/strict';
+          const files=JSON.parse(process.env.SELECTED_BROWSER_TESTS);
+          assert(Array.isArray(files)&&files.length>0&&files.length<=3);
+          for(const file of files){assert(/^test\/[a-z0-9/-]+\.browser\.test\.tsx$/.test(file));execFileSync('git',['ls-files','--error-unmatch','--',file]);}
+          fs.mkdirSync('.vitest-attachments',{recursive:true});
+          fs.mkdirSync(process.env.RUNNER_TEMP+'/combined-ui',{recursive:true});
+          fs.writeFileSync('.vitest-attachments/combined-ui.config.mts',`import base from '../vitest.browser.config';\nexport default {...base,test:{...base.test,include:${JSON.stringify(files)},browser:{...base.test.browser,instances:[{browser:'chromium'}]}}};\n`);
+          fs.writeFileSync(process.env.RUNNER_TEMP+'/combined-ui/binding.json',JSON.stringify({kind:'FICTIONAL_COMPONENT_PREPARATION_ONLY',candidate:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,files,releaseAuthorized:false},null,2));
+          JS
+      - name: Selected Chromium behavior and rendered CSS
+        run: pnpm exec vitest run --config .vitest-attachments/combined-ui.config.mts --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/combined-ui/results.json"
+      - name: Retain only fictional component screenshots
+        if: always()
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          const dest=process.env.RUNNER_TEMP+'/combined-ui/screenshots';fs.mkdirSync(dest,{recursive:true});
+          function walk(dir){for(const e of fs.readdirSync(dir,{withFileTypes:true})){if(e.isSymbolicLink())continue;const p=path.join(dir,e.name);if(e.isDirectory()&&!['node_modules','.git','.next'].includes(e.name))walk(p);else if(e.isFile()&&/^combined-[a-z0-9-]+\.png$/.test(e.name))fs.copyFileSync(p,path.join(dest,e.name));}}
+          walk('.');
+          JS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: diagnostic-fictional-combined-ui-chromium
+          path: ${{ runner.temp }}/combined-ui/
           if-no-files-found: error
           retention-days: 7
