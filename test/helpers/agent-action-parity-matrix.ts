@@ -75,6 +75,7 @@ export const AGENT_ACTION_PARITY={
  'org.reporting.change':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'org.position.archive':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'org.department.archive':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'org.employee_id_template.status':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'leave.apply':{kind:'probed',screen:OWN_REQUEST},
  'leave.cancel':{kind:'probed',screen:OWN_REQUEST},
  'leave.edit':{kind:'probed',screen:OWN_REQUEST},

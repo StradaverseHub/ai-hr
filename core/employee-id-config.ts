@@ -191,6 +191,7 @@ export async function createConfig(
   const status = normalizeStatus(p.status);
   assertFits(prefix, numberLength, suffix);
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
     if (status === 'active') await assertActiveInvariants(tx, ctx.tenantId, { companyId, prefix });
     let id: string;
     try {
@@ -244,6 +245,7 @@ export async function updateConfig(
   },
 ): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
     const [before] = await tx.select().from(employeeIdConfig).where(eq(employeeIdConfig.id, p.id)).limit(1);
     if (!before) throw new Error('Employee ID setup not found');
     const templateName = p.templateName !== undefined ? cleanTemplateName(p.templateName) : before.templateName;
@@ -294,9 +296,11 @@ export async function updateConfig(
   });
 }
 
-export async function setStatus(ctx: SessionContext, p: { id: string; status: string }): Promise<{ id: string }> {
+/** Optional transaction seam for reviewed status changes; the ordinary native call remains transaction-owning. */
+export async function setStatus(ctx: SessionContext, p: { id: string; status: string }, outerTx?: Tx): Promise<{ id: string }> {
   const status = normalizeStatus(p.status);
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
     const [before] = await tx.select().from(employeeIdConfig).where(eq(employeeIdConfig.id, p.id)).limit(1);
     if (!before) throw new Error('Employee ID setup not found');
     // Activating a config must not violate the one-active-per-scope / unique-prefix invariants.
@@ -318,11 +322,13 @@ export async function setStatus(ctx: SessionContext, p: { id: string; status: st
       payload: { status },
     });
     return { id: p.id };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
 export async function deleteConfig(ctx: SessionContext, p: { id: string }): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
     await tx.delete(employeeIdConfig).where(eq(employeeIdConfig.id, p.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
