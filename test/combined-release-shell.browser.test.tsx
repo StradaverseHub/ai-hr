@@ -20,7 +20,6 @@ import '../app/login/login.css';
 
 const ports=vi.hoisted(()=>({path:'/admin/personnel',search:'q=Fictional&size=25',replace:vi.fn(),push:vi.fn(),scope:vi.fn(),ask:vi.fn(),delegation:vi.fn()}));
 vi.mock('next/navigation',()=>({usePathname:()=>ports.path,useSearchParams:()=>new URLSearchParams(ports.search),useRouter:()=>({replace:ports.replace,push:ports.push,refresh:vi.fn()})}));
-vi.mock('next/link',async()=>{const React=await import('react');return{default:({href,...props}:ComponentProps<'a'>)=>React.createElement('a',{...props,href,onClick:(event:MouseEvent<HTMLAnchorElement>)=>{event.preventDefault();props.onClick?.(event);}})};});
 vi.mock('../components/intent-link',async()=>{const React=await import('react');function Link({prefetch:_prefetch,...props}:ComponentProps<'a'>&{prefetch?:boolean}){return React.createElement('a',{...props,onClick:(event:MouseEvent<HTMLAnchorElement>)=>{event.preventDefault();props.onClick?.(event);}});}return{default:Link,IntentLink:Link};});
 vi.mock('@/app/scope-actions',()=>({setCompanyScope:ports.scope}));
 vi.mock('@/app/assistant/actions',()=>({askAssistantAction:ports.ask}));
