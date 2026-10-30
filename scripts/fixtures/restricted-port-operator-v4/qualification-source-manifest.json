@@ -17,7 +17,7 @@
     "scripts/fixtures/restricted-port-operator-v4/snapshot.sql": "cdd440b11407d7793f186bb61e36b626fdf4c785506ef0d7ec1d05eb2eb2ca98",
     "scripts/fixtures/restricted-port-operator-v4/source-hashes.json": "ccca27d602ad19bea263f642d858de59511541a49d7e7395164af7c19e2759eb",
     "scripts/lib/restricted-port-qualification.ts": "3f9d9f138e617cc5b33969cf2267a6c984714e6da0666ea48a60fac139442ef4",
-    "scripts/qualify-restricted-port-prerequisites.ts": "24faa15d5083e3b987dc51666a75ea42015dfc532f1304f5643c50142f507311",
+    "scripts/qualify-restricted-port-prerequisites.ts": "5b3a166f19e2baadee510b9328d18ded47915c974b87d8b578afb7d503603a6b",
     ".github/ci/restricted-port-history.mjs": "297fa5166942ebf084f86a661a85a1743efa3594457a57979d2e4d88c3fcceb5",
     ".github/ci/migration-history.mjs": "e9ebfb9d97f6c3eac0bb4a6884c31ebfdba00e7492e979b76ca0f51c6ca9a6e2",
     ".github/ci/historical-migrations/0180_profile_option.sql": "ae128e75c9491bd1d39537fdddd18ad9307b2050f813b8a056d473dcfda9d41f",
