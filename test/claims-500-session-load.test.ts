@@ -21,6 +21,11 @@ it('measures 500 simultaneous employee read/create/edit/delete journeys over one
     '2026-01-03'::timestamptz+n*interval '1 second'
    from unnest(${users.map(u=>u.employmentId)}::uuid[]) e(id) cross join generate_series(1,2000) n`;
  await owner.client`analyze claim_request`;
+ await owner.client`analyze person`;
+ await owner.client`analyze employment`;
+ await owner.client`analyze app_user`;
+ await owner.client`analyze role_assignment`;
+ await owner.client`analyze claim_type`;
  const samples:Record<string,number[]>={read:[],create:[],edit:[],delete:[]};
  const started=performance.now();let checkpointAt=0;
  const checkpoint=()=>{
@@ -54,7 +59,7 @@ it('measures 500 simultaneous employee read/create/edit/delete journeys over one
  }));
  const failures=results.flatMap((r,i)=>r.status==='rejected'?[{session:i,message:String(r.reason)}]:[]);
  const quantiles=Object.fromEntries(Object.entries(samples).map(([k,values])=>{values.sort((a,b)=>a-b);return[k,{samples:values.length,p50Ms:values[Math.ceil(values.length*.5)-1],p95Ms:values[Math.ceil(values.length*.95)-1],p99Ms:values[Math.ceil(values.length*.99)-1],maxMs:values.at(-1)}];}));
- const report={kind:'service-burst-only',sessions:500,records:1000000,applicationPool:10,jitComparison:comparison,elapsedMs:performance.now()-started,errors:failures.length,operations:quantiles,failures};
+ const report={kind:'service-burst-only',fixtureStatistics:'all principal and claim fixture tables analyzed',sessions:500,records:1000000,applicationPool:10,jitComparison:comparison,elapsedMs:performance.now()-started,errors:failures.length,operations:quantiles,failures};
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/claims-500-sessions.json',JSON.stringify(report,null,2));
  console.info('[claims-500-sessions]',JSON.stringify(report));
  expect(failures).toEqual([]);

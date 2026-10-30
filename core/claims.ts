@@ -3401,13 +3401,16 @@ function employmentClaimWhere(employmentId: string, opts: EmploymentClaimRead) {
     opts.claimStatus ? eq(claimRequest.status, opts.claimStatus as typeof CLAIM_STATUSES[number]) : undefined,
     opts.before ? sql`(date_trunc('milliseconds',${claimRequest.createdAt}),${claimRequest.id}) < (${opts.before[0]}::timestamptz,${opts.before[1]}::uuid)` : undefined);
 }
+// Keep the person lookup a single authorized PK probe. With only a join variable,
+// RLS cardinality estimates can instead scan every person and expand their policy subplans.
+const claimSubjectPersonId = (employmentId:string) => sql`(select person_id from employment where id=${employmentId}::uuid)`;
 /** Uncorrelated identity checks retain related-table RLS and execute once per statement.
  * ANY(array(select...)) prevents a flattened join from probing the type for every claim. */
 function employmentClaimCountWhere(tenantId: string, employmentId: string, opts: EmploymentClaimRead) {
   return and(eq(claimRequest.tenantId,tenantId), employmentClaimWhere(employmentId, opts),
     sql`${claimRequest.claimTypeId} = any(array(select ${claimType.id} from ${claimType}))`,
     sql`exists(select 1 from ${employment} inner join ${person} on ${person.id}=${employment.personId}
-      where ${employment.id}=${employmentId}::uuid)`);
+      where ${employment.id}=${employmentId}::uuid and ${person.id}=${claimSubjectPersonId(employmentId)})`);
 }
 async function employmentClaimRowsTx(tx: Tx, tenantId: string, employmentId: string, opts: EmploymentClaimRead = {}): Promise<ClaimRow[]> {
   const order = [opts.cursorOrder ? sql`date_trunc('milliseconds',${claimRequest.createdAt}) desc` : desc(claimRequest.createdAt), desc(claimRequest.id)];
@@ -3424,6 +3427,7 @@ async function employmentClaimRowsTx(tx: Tx, tenantId: string, employmentId: str
     .leftJoin(claimItem, eq(claimItem.id, claimRequest.claimItemId))
     .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
     .innerJoin(person, eq(person.id, employment.personId))
+    .where(and(eq(employment.id,employmentId),sql`${person.id}=${claimSubjectPersonId(employmentId)}`))
     .orderBy(...order);
   const rows = await query;
   const atts = await attachmentsByClaim(tx, rows.map(row => row.id));
