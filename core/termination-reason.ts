@@ -27,7 +27,7 @@
  *
  * ── 1d58019a: THIS IS NOW THE STARTING LIST, NOT THE WHOLE LIST (ADR-0165) ───────────────────────────────
  * Each tenant can rename and switch off these reasons and add its own inside the three fixed groups. That
- * overlay lives in `termination_reason` (migration 0713) and is read through core/termination-reason-
+ * overlay lives in `termination_reason` (migration 0721) and is read through core/termination-reason-
  * catalog.ts, exactly as movement_event_type overlays MOVEMENT_KINDS. This module stays PURE (no database
  * import) because client-side and workbook code import it; anything that must know a tenant's own reasons
  * resolves them through the catalogue module instead of the constants below. A built-in reason keeps its

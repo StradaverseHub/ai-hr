@@ -5,22 +5,38 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
-## Board item 1d58019a (Movement Settings Enhancement, Step 2) — 30 October 2026
+## Board item 1d58019a (Movement Settings Steps 1 and 2): renumbered on 30 October 2026
 
-Unapplied source reservation on `claude/fb-1d58019a-step2` (Step 1 plus 646355e5 at 1e7bd488b, journal ending
-at idx683 / 0713_movement_settings_catalog / sequence1793330000042). A fresh fetch and check of every local and
-`origin/*` ref, every registered worktree and every builder checkout found migration filenames claimed through
-`0720_lifecycle_v9_self_equipment` (`codex/v9-lifecycle-alignment-20261029`, which also claims a second `0713_*`
-filename) and journal sequences through 1793330000049. This item takes the next free filename and sequence:
+Both 1d58019a migrations are unapplied anywhere. Staging runs c4fad43c1, whose journal ends at 0698. Both are
+renumbered so that they append after every competing claim. The reason is that Step 1's original allocation,
+`0713_movement_settings_catalog` at sequence 1793330000042, collided with:
+
+- `codex/v9-lifecycle-alignment-20261029`: `0713_lifecycle_v9` at …042, then 0714–0720 at …043–…049;
+- `codex/ai-user-parity-personnel-check2-20261030` and `check3-20261030`: both also claim …042.
+
+Immediately before this commit, a fresh fetch and check of every local and `origin/*` ref, every registered
+worktree and every builder checkout found these maxima:
+
+- filenames: through `0720_lifecycle_v9_self_equipment` (plus `0716_assistant_emergency_contact_maintenance`);
+- journal sequences: through 1793330000049, other than this branch's own.
+
+Step 1 stays before Step 2. The SQL bytes of Step 1 are identical to the original 0713 file. Only the filename,
+the journal tag and the `when` value changed.
 
 | Owner | Index (on this branch) | Sequence | Filename | SQL SHA256 |
 | --- | ---: | ---: | --- | --- |
-| Board 1d58019a Step 2 | 684 | 1793330000050 | 0721_movement_type_controls | a0496be717176c50f476a9605077c73240d6616539e9c8bbc57097f6fff451cb |
+| Board 1d58019a Step 1 | 683 | 1793330000050 | 0721_movement_settings_catalog | 7e0f83300471d5297a0345a16ed8e156fd3fbd7ed8fc5a521577173c1c0c1246 |
+| Board 1d58019a Step 2 | 684 | 1793330000051 | 0722_movement_type_controls | f05714a30e9d833ad6a6495546a1f5f41dabffbce88035e69cc98d2529fd9ec5 |
 
-As for Step 1, the index is this branch's journal position only; integration with the intervening allocations
-re-positions it (filename, sequence and SQL bytes do not change). Nothing is applied anywhere. The `0713`
-filename number is claimed twice (Step 1 and the lifecycle v9 branch, different sequences); whoever integrates
-second must reconcile that before journal append.
+About the Step 2 entry:
+
+- It was first recorded as `0721_movement_type_controls` at …050 with SHA256 a0496be7…451cb.
+- Its body was then corrected before any application. It now explicitly revokes the UPDATE, DELETE and TRUNCATE
+  privileges that deploy/bootstrap-db.sql's default privileges would otherwise grant ai_hr_app.
+- That earlier hash identifies no file that exists now.
+
+The index is this branch's journal position only. At integration, recheck competing claims and the installed
+ledger. Never reuse 0713 or …042 for this item.
 
 ## Board item 1d58019a (Movement Settings Enhancement, Step 1) — 30 October 2026
 
@@ -34,6 +50,9 @@ rather than any lower gap:
 | Owner | Index (on this branch) | Sequence | Filename | SQL SHA256 |
 | --- | ---: | ---: | --- | --- |
 | Board 1d58019a | 683 | 1793330000042 | 0713_movement_settings_catalog | 7e0f83300471d5297a0345a16ed8e156fd3fbd7ed8fc5a521577173c1c0c1246 |
+
+Superseded on 30 October 2026, before any application. The same SQL bytes are now
+`0721_movement_settings_catalog` at sequence 1793330000050 (see the renumbering section above).
 
 The index is this branch's journal position only. Integration with the AI 0699–0712 allocations must
 re-position the entry after them (index changes, filename/sequence/SQL bytes do not). Nothing is applied

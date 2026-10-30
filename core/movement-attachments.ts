@@ -3,7 +3,7 @@
  *
  * FOLLOWS THE EXISTING ATTACHMENT OWNERS. core/profile-attachments.ts (validation by declared type AND by the
  * file's own leading bytes, bounded size, bytes in a tenant-RLS row) and the leave attachment's size/type
- * gate. A movement document is append-only evidence: there is no update or delete grant (migration 0721), and
+ * gate. A movement document is append-only evidence: there is no update or delete grant (migration 0722), and
  * a correction carries the corrected movement's documents forward as COPIES so the rolled-back record keeps
  * its own.
  *

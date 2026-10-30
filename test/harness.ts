@@ -71,10 +71,10 @@ const ALL_TABLES = [
   // line above: a surviving overlay row would rename or switch off an event type for a later test file,
   // and the symptom would be a movement that "disappeared" from Employment History with no obvious cause.
   'movement_event_type',
-  // 1d58019a — the termination-reason overlay (migration 0713), explicit for the same reason: a surviving
+  // 1d58019a — the termination-reason overlay (migration 0721), explicit for the same reason: a surviving
   // row would rename or switch off a reason for a later test file.
   'termination_reason',
-  // 1d58019a Step 2 (migration 0721) — per-type reason lists, Field Controls and movement documents. A
+  // 1d58019a Step 2 (migration 0722) — per-type reason lists, Field Controls and movement documents. A
   // surviving rule would silently narrow the New Event form (or refuse a movement) in a later test file.
   'movement_type_termination_reason', 'movement_type_field_rule', 'movement_attachment',
   'holiday', 'holiday_group_holiday', 'attendance', 'attendance_policy', 'travel_request',

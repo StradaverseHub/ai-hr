@@ -34,7 +34,7 @@
  * 1d58019a (ADR-0165) — that door is now open, but the reason list moved to its OWN overlay module,
  * core/termination-reason-catalog.ts, rather than into this one: reasons are resolved inside core/org.ts's
  * termination writer, and this module imports core/movement (which imports core/org). This item also adds an
- * optional DESCRIPTION per event type (migration 0713) and admin-only settings readers for the full-width
+ * optional DESCRIPTION per event type (migration 0721) and admin-only settings readers for the full-width
  * Movement Settings pages.
  */
 import { and, asc, eq, sql } from 'drizzle-orm';

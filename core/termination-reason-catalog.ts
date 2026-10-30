@@ -2,7 +2,7 @@
  * 1d58019a — "Movement Settings Enhancement", Step 1: the tenant's termination-reason catalogue (ADR-0165).
  *
  * THE SHAPE IS movement_event_type's, ON PURPOSE. core/termination-reason.ts keeps the thirteen built-in
- * reasons as the STARTING list; `termination_reason` (migration 0713) records only what a tenant DID to it —
+ * reasons as the STARTING list; `termination_reason` (migration 0721) records only what a tenant DID to it —
  * renamed or switched off a built-in reason, or added one of its own in one of the three fixed groups. A
  * tenant with no rows behaves exactly as before, and nothing is seeded, so there is nothing to keep in step
  * when the shipped list grows.

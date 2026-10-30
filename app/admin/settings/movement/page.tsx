@@ -47,7 +47,7 @@ const PAGE = '/admin/settings/movement';
  *   • Two new columns. CLASSIFICATION is DERIVED from the behaviour — Termination for the termination
  *     behaviour, Non-Termination for everything else — and is read-only in this step; it has no column of
  *     its own in the database, so it cannot disagree with what the type does. DESCRIPTION is the optional
- *     note the configuration page edits (movement_event_type.description, migration 0713). The old "What It
+ *     note the configuration page edits (movement_event_type.description, migration 0721). The old "What It
  *     Does" column moved onto the configuration page with the picker it describes.
  *   • DELETE ON EVERY ROW. A deletable row (one of the organisation's own that nothing has recorded) keeps
  *     the ordinary confirm-and-delete. A built-in or in-use row opens delete-explanation.tsx: why it cannot

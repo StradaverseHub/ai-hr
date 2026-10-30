@@ -40,7 +40,7 @@ export type MovementRuleField = (typeof MOVEMENT_RULE_FIELDS)[number];
 export const isMovementRuleField = (v: string): v is MovementRuleField =>
   (MOVEMENT_RULE_FIELDS as readonly string[]).includes(v);
 
-/** The pay fields. Their documents follow the same access rule as the salary itself (migration 0721). */
+/** The pay fields. Their documents follow the same access rule as the salary itself (migration 0722). */
 export const MOVEMENT_PAY_FIELDS: readonly MovementRuleField[] = ['basicSalary', 'currency', 'payMode', 'paymentTerm'];
 
 export const MOVEMENT_DOCUMENT_MODES = ['none', 'optional', 'required'] as const;
@@ -155,7 +155,7 @@ export function movementFieldRuleViolations(
 export const movementRulesNeedDocument = (rules: readonly MovementFieldRule[]): boolean =>
   rules.some((r) => r.document === 'required');
 
-/** Supporting documents (core/movement-attachments.ts; migration 0721's CHECKs hold the same bounds). */
+/** Supporting documents (core/movement-attachments.ts; migration 0722's CHECKs hold the same bounds). */
 export const MOVEMENT_DOCUMENT_MIME_TYPES = ['application/pdf', 'image/png', 'image/jpeg'] as const;
 export const MOVEMENT_DOCUMENT_MAX_BYTES = 5 * 1024 * 1024;
 export const MOVEMENT_DOCUMENT_MAX_FILES = 5;

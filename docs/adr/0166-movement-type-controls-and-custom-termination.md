@@ -4,7 +4,7 @@
 - Status: implementation candidate for approved feedback 1d58019a (Movement Settings Enhancement), Step 2; not merged, tested on a target, installed or accepted.
 - Amends: decision 476f23ed ("a tenant cannot invent a type that claims to be a Termination"), for Termination only. Owner sign-off: 30 October 2026, in chat, together with the Step 2 scope.
 - Builds on: [ADR-0164](0164-movement-corrections-behind-closed-payroll.md) (corrections, termination reversal, import Update/Delete), [ADR-0165](0165-tenant-termination-reason-catalogue.md) (tenant reason catalogue) and [ADR-0156](0156-single-sheet-movement-import.md) (movement workbook).
-- Migration: `0721_movement_type_controls` (journal idx 684, sequence 1793330000050). Unapplied.
+- Migration: `0722_movement_type_controls` (journal idx 684, sequence 1793330000051), after Step 1's `0721_movement_settings_catalog` (idx 683, sequence 1793330000050). Both unapplied; renumbered on 30 October 2026 to append after every other claim (see docs/MIGRATION-ALLOCATION.md).
 
 ## Context
 

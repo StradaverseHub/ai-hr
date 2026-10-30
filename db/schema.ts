@@ -9678,7 +9678,7 @@ export const movementEventType = pgTable(
     behaviourKind: text('behaviour_kind').notNull(),
     /** Display text. Null on a built-in override means "use the shipped translation". */
     label: text('label'),
-    /** 1d58019a (migration 0713) — optional note shown under the type on the New Event form. */
+    /** 1d58019a (migration 0721) — optional note shown under the type on the New Event form. */
     description: text('description'),
     sortOrder: integer('sort_order').notNull().default(0),
     isActive: boolean('is_active').notNull().default(true),
@@ -9690,13 +9690,13 @@ export const movementEventType = pgTable(
   ],
 );
 
-// ─────────────── Termination reasons — tenant overlay (1d58019a, migration 0713, ADR-0165) ───────────────
+// ─────────────── Termination reasons — tenant overlay (1d58019a, migration 0721, ADR-0165) ───────────────
 // The SAME overlay shape as movement_event_type above, for the exit-reason list: the thirteen built-in reasons
 // in core/termination-reason.ts stay the starting list, and a row renames / switches off one of them or adds
 // one of the tenant's own inside one of the three FIXED groups. No stored termination_type: the turnover
 // classification is derived in code (built-in mapping, else the group), so it has exactly one owner.
 // employment.termination_reason_code stays TEXT with no FK, so history keeps whatever code it recorded.
-// RLS (0713): tenant-read for every member, admin-only insert/update/delete.
+// RLS (0721): tenant-read for every member, admin-only insert/update/delete.
 export const terminationReason = pgTable(
   'termination_reason',
   {
@@ -9718,7 +9718,7 @@ export const terminationReason = pgTable(
   ],
 );
 
-// ─────────────── Movement type controls (1d58019a Step 2, migration 0721, ADR-0166) ───────────────
+// ─────────────── Movement type controls (1d58019a Step 2, migration 0722, ADR-0166) ───────────────
 // Which termination reasons a Termination type offers (no rows = every active reason), the Field Controls of a
 // comparison type (no rows = today's full grid), and supporting documents on a movement (keyed by the
 // movement's group id). Settings rows: tenant-read, admin-write. Attachments: workforce-view read with the
