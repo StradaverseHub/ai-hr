@@ -26,6 +26,33 @@ async function currentControlAdminTx(tx: Tx, ctx: SessionContext, groupOnly: boo
     if (row?.allowed !== true) throw new AiControlError('Current AI administration access could not be confirmed.');
   }
 }
+type ScheduledAgentFeature=Extract<typeof AI_FEATURES[number],{kind:'agent'}>;
+/** Shared with the management screen. A switch is not runtime eligibility or a successful run. */
+function scheduledAgentFeatureStatus(ctx:SessionContext,feature:ScheduledAgentFeature){
+ const setting=SETTING_CATALOG.find(row=>row.key===feature.setting);
+ const enabled=(ctx.entitlements?.settings[feature.setting]??setting?.defaultValue)===true;
+ const moduleHeld=isModuleEnabled(ctx,feature.module),effective=enabled&&getSetting(ctx,feature.setting)===true;
+ const state=!enabled?'paused' as const:!moduleHeld?'module' as const:!effective?'restricted' as const:
+  feature.id==='readiness_reminders'?'templates' as const:'scheduled' as const;
+ return {enabled,effective:effective&&moduleHeld,state};
+}
+export const ASSISTANT_AGENT_MANAGEMENT_HREF='/control-tower/agents/features#ai-features' as const;
+/** Minimal administrator-only read. Deliberately never resolves provider configuration, keys, usage,
+ * policies or user labels. Runs inside the caller's existing read-only Assistant transaction. */
+export async function assistantAgentStatusTx(tx:Tx,supplied:SessionContext){
+ const ctx=captureControlContext(supplied);assertAdmin(ctx);await currentControlAdminTx(tx,ctx,false);
+ const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};
+ const switches=await agentSwitchStatesTx(tx,fresh);
+ const agents=AI_FEATURES.filter((feature):feature is ScheduledAgentFeature=>feature.kind==='agent').map(feature=>{
+  const status=scheduledAgentFeatureStatus(fresh,feature),attribution=switches.find(row=>row.feature===feature.id)?.state??'not_applicable';
+  // Only the two named-principal specialists require recorded switch attribution. In particular,
+  // 'scheduled' still means scheduled AI is unavailable, even when these switch prerequisites pass.
+  return Object.freeze({feature:feature.id,switchOn:status.enabled,effectiveSwitchOn:status.effective&&attribution!=='off'&&attribution!=='unattributed',state:status.state,attribution});
+ });
+ return Object.freeze({total:agents.length,switchesOn:agents.filter(row=>row.switchOn).length,
+  effectiveSwitchesOn:agents.filter(row=>row.effectiveSwitchOn).length,agents:Object.freeze(agents),
+  ...(isGroupAdmin(fresh)?{managementHref:ASSISTANT_AGENT_MANAGEMENT_HREF}:{})});
+}
 export function parseAiAllowance(value: string, maximum: number): number | null {
   if (!value.trim()) return null;
   if (!/^\d+$/.test(value.trim())) throw new AiControlError('Enter a whole number of zero or more, or leave blank for no additional cap.');
@@ -80,6 +107,7 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
     const selectedProvider = !usable ? null : provider ? activeProvider ? {provider:activeProvider.provider,model:activeProvider.model} : provider.envFallback : resolved;
     // Only provider/model metadata crosses to the view, after checking that its key can be resolved.
     const features = AI_FEATURES.map(f => {
+      if(f.kind==='agent'){const status=scheduledAgentFeatureStatus(fresh,f);return {...f,enabled:status.enabled,state:status.state,mayWrite:isGroupAdmin(ctx)};}
       const setting = f.setting ? SETTING_CATALOG.find(s => s.key === f.setting) : undefined;
       const enabled = setting ? (fresh.entitlements.settings[f.setting!] ?? setting.defaultValue) === true : policies.find(p => p.scopeKey === `feature:${f.id}`)?.enabled !== false;
       const effective = enabled && (!setting || getSetting(fresh,f.setting!) === true);
@@ -87,7 +115,6 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       // A configured provider does not admit scheduled model spend. This is a runtime-status mirror,
       // never an allowance or a grant to the principal.
       const state = !enabled ? 'paused' : !moduleHeld ? 'module' : !effective ? 'restricted'
-        : f.kind === 'agent' ? f.id === 'readiness_reminders' ? 'templates' : 'scheduled'
         : !selectedProvider ? 'provider' : 'ready';
       return {...f,enabled,state,mayWrite:isGroupAdmin(ctx)&&f.kind!=='platform'};
     });

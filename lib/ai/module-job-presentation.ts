@@ -56,7 +56,17 @@ export function presentCanonicalModuleData(module:AgentModuleCode,data:unknown):
   case 'notifications':rows(data).forEach((row,index)=>push({title:record(index),facts:[value(row,'createdAt','notificationCreated','date'),value(row,'readAt','notificationReadAt','date')]}));break;
   case 'system_explorer':{const row=object(data);push({title:record(0),facts:[value(row,'withheldTables','withheldTables','number')]});rows(row.tables).forEach((table,index)=>push({title:title(table,'table',index),facts:[value(table,'module','module','module')]}));break;}
   case 'system_testing':rows(data).forEach((row,index)=>{if(!['not_started','in_progress','passed','failed','blocked','retest_required','not_applicable','partial'].includes(String(row.status)))throw Error('Canonical Testing work status unavailable.');push({title:title(row,'title',index),facts:[value(row,'caseNo','testCase','number'),value(row,'moduleCode','module','module'),value(row,'ordinal','testingInstructionVersion','number'),value(row,'status','status','testingStatus'),value(row,'updatedAt','date','date')],...(typeof row.executionId==='string'&&/^[a-f0-9-]{36}$/i.test(row.executionId)?{href:'/system-testing/executions/'+encodeURIComponent(row.executionId)}:{})});});break;
-  case 'assistant':list(object(data).capabilities).map(object).forEach(row=>{if(!isAgentModuleCode(row.module))throw Error('Unknown canonical capability.');push({title:{kind:'module',module:row.module},facts:[]});});break;
+  case 'assistant':{const source=object(data),status=source.adminAgentStatus===undefined?null:object(source.adminAgentStatus);
+   const count=(key:string)=>{const n=status?.[key];if(typeof n!=='number'||!Number.isSafeInteger(n)||n<0||n>25)throw Error('Canonical scheduled-agent count unavailable.');return n;};
+   const facts:JobFact[]=status?[{field:'backgroundAgentsTotal',value:count('total'),format:'number'},
+    {field:'backgroundAgentSwitchesOn',value:count('switchesOn'),format:'number'},
+    {field:'backgroundAgentEffectiveSwitchesOn',value:count('effectiveSwitchesOn'),format:'number'}]:[];
+   if(status&&(count('effectiveSwitchesOn')>count('switchesOn')||count('switchesOn')>count('total')||
+    status.managementHref!==undefined&&status.managementHref!=='/control-tower/agents/features#ai-features'))throw Error('Canonical scheduled-agent summary unavailable.');
+   list(source.capabilities).map(object).forEach(row=>{if(!isAgentModuleCode(row.module))throw Error('Unknown canonical capability.');
+    push({title:{kind:'module',module:row.module},facts:row.module==='assistant'?facts:[],
+     ...(row.module==='assistant'&&status?.managementHref?{href:'/control-tower/agents/features#ai-features',linkPurpose:'human_review' as const}:{})});});break;}
+
   default:throw Error('Unsupported canonical module job.');
  }
  return Object.freeze({module,cards:Object.freeze(cards),truncated,...(hasEmployment===undefined?{}:{hasEmployment})});
