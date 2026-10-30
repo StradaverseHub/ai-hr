@@ -1,0 +1,29 @@
+{
+  "status": "PRIVATE_V5_UNAPPLIED_UNRUN",
+  "files": {
+    "scripts/fixtures/restricted-port-operator-v5/README.md": "1b591ae14e46a9d9d5bebe795f91296eebf8c749f173216ecbf023907caaab79",
+    "scripts/fixtures/restricted-port-operator-v5/app-after.sql": "293df95bf3e6cc8f6e1cfb2c154ed7f60edfc37f04f73056a8de52822c0a904b",
+    "scripts/fixtures/restricted-port-operator-v5/app-before.sql": "92679eab579a370e4f9427abf6a9a5e4c13bd7938a30587147379d3e94b663bd",
+    "scripts/fixtures/restricted-port-operator-v5/hosted-column-acl-fixtures.sql": "b8dc8de07e11bff1dcfa460a532548ca09e69ea2da88aaea85bf7df1908de9d3",
+    "scripts/fixtures/restricted-port-operator-v5/installed-ledger-581.json": "6082cc6c4c1d048e87eb8c16948d5b94cf813e4c732a4ad655a9eda85c6ef824",
+    "scripts/fixtures/restricted-port-operator-v5/operator-v5-manifest.json": "7b879c87832428afc95d428da1a8eb815d0e7504a129c0f560f8a723996987da",
+    "scripts/fixtures/restricted-port-operator-v5/populate-baseline.sql": "06f6af480e48171f8e43fe6fcbddd3b6b5aec2cc04d4674cf9ccef0c9643d2c1",
+    "scripts/fixtures/restricted-port-operator-v5/prepare-commit.sql": "fd11fe73ee29d0f320abfcf51bc53cce921ab3eee0ded429de3fc7024e56cc1a",
+    "scripts/fixtures/restricted-port-operator-v5/prepare-rehearse.sql": "8f7b4fc4104b10384c8005ec1addc7269fbadaba08d85742273d3379e47301c4",
+    "scripts/fixtures/restricted-port-operator-v5/prepare.sql": "169cf4002223d9b79403310f7faca79f246a1c0716ffad3940ccbefb88906078",
+    "scripts/fixtures/restricted-port-operator-v5/restricted-owner-rehearsal.sql": "73f63a93b017de950df8e95b0f848af425f7700fe8f74a457ea7c779b3d14ce3",
+    "scripts/fixtures/restricted-port-operator-v5/rollback-preparation.sql": "6b82a27b683f53beba35be661861dfe1709296d20d35f89178f0b2fa0b71204d",
+    "scripts/fixtures/restricted-port-operator-v5/snapshot-view.sql": "1feb1d9af6f84f8ab52d9b58f1bb9f642b6014ace7d094e9aa1bf3e182ef5bc9",
+    "scripts/fixtures/restricted-port-operator-v5/snapshot.sql": "cdd440b11407d7793f186bb61e36b626fdf4c785506ef0d7ec1d05eb2eb2ca98",
+    "scripts/fixtures/restricted-port-operator-v5/source-hashes.json": "ccca27d602ad19bea263f642d858de59511541a49d7e7395164af7c19e2759eb",
+    "scripts/lib/restricted-port-qualification.ts": "4856668cde49003f65a3fbd20e2a97eef8d3c4b40c43ba7dbb21829b78cc9863",
+    "scripts/qualify-restricted-port-prerequisites.ts": "3997dbf6f77af5b236cd0155d892c45af20db50c5c215b23c6821fee5961d5b3",
+    ".github/ci/restricted-port-history.mjs": "297fa5166942ebf084f86a661a85a1743efa3594457a57979d2e4d88c3fcceb5",
+    ".github/ci/migration-history.mjs": "e9ebfb9d97f6c3eac0bb4a6884c31ebfdba00e7492e979b76ca0f51c6ca9a6e2",
+    ".github/ci/historical-migrations/0180_profile_option.sql": "ae128e75c9491bd1d39537fdddd18ad9307b2050f813b8a056d473dcfda9d41f",
+    ".github/ci/historical-migrations/0212_dashboard_card_config.sql": "aa9337028da35cd3816d8d66486455595e36aea709c98405868ca36320c99f41"
+  },
+  "baselineSha256": "6082cc6c4c1d048e87eb8c16948d5b94cf813e4c732a4ad655a9eda85c6ef824",
+  "historicalAuthority": ".github/ci/migration-history.mjs authenticated applied archive selection; no ledger rewrite",
+  "v5ManifestSha256": "7b879c87832428afc95d428da1a8eb815d0e7504a129c0f560f8a723996987da"
+}
