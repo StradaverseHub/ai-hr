@@ -8,7 +8,7 @@ import {z} from 'zod';
 import {CURRENCIES} from '@/lib/currencies';
 import {PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS} from '@/lib/personnel-choice-vocabulary';
 import {Button,inputCls} from '@/components/ui';
-import {CompensationMaintenance as contract,QUALIFICATION_MAINTENANCE_ACTION as action} from '@/lib/assistant-actions/compensation-maintenance-contract';
+import {CompensationMaintenance as contract,COMPENSATION_MAINTENANCE_ACTION as action} from '@/lib/assistant-actions/compensation-maintenance-contract';
 import {checkGenericPacket,packetActionId,sendGenericModuleAction} from './generic-module-action-transport';
 type Operation='set'|'edit'|'supersede';
 type Fields={basicSalary:string;currency:string;payMode:typeof PERSONNEL_PAY_MODES[number];paymentTerm:typeof PERSONNEL_PAYMENT_TERMS[number];rateAmount:string|null;remarks:string|null;effectiveFrom:string};
