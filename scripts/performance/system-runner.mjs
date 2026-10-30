@@ -23,8 +23,10 @@ const env={...process.env,AUTH_PROVIDER:'internal',AUTH_SESSION_KEY:authKey,AUTH
  TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_system_perf',TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_system_perf'};
 for(const key of Object.keys(env))if(key.startsWith('WORKOS_')||key==='SHARE_PASSWORD'||key==='DEV_USER_ID')delete env[key];
 env.SHARE_PASSWORD='';env.DEV_USER_ID='';
+const workers=Number(process.env.PERF_APP_WORKERS||'1');assert([1,2].includes(workers));
+const ports=Array.from({length:workers},(_,index)=>3174+index),poolPerWorker=10/workers,heapPerWorker=4096/workers;
 const report={kind:'ISOLATED_HTTP_BROWSER_DEVELOPMENT_ONLY',releaseEligible:false,sha,controller:process.env.AIHR_CI_CONTROL_HEAD,
- run:process.env.GITHUB_RUN_ID,host:{cpus:os.availableParallelism(),memoryBytes:os.totalmem()},phases:[],exitCode:1};
+ run:process.env.GITHUB_RUN_ID,topology:{workers,poolPerWorker,totalApplicationPool:10,heapMiBPerWorker:heapPerWorker,totalHeapMiB:4096,upstreamKeepAlive:false},proxyErrors:[],host:{cpus:os.availableParallelism(),memoryBytes:os.totalmem()},phases:[],exitCode:1};
 const save=()=>writeFileSync(join(out,'runner.json'),JSON.stringify(report,null,2));
 save();
 async function assertPortFree(port){const server=net.createServer();await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve);});await new Promise(resolve=>server.close(resolve));}
@@ -59,10 +61,10 @@ function summarizeCpu(){
  });
  writeFileSync(join(out,'cpu-hot-frames.json'),JSON.stringify(rows,null,2));
 }
-let app,proxy,dbStarted=false,appFd;
+const apps=[],appFds=[];let proxy,upstream,dbStarted=false;
 const container=`aihr-ci-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}-db-1`;
 try{
- await assertPortFree(3174);await assertPortFree(3443);
+ for(const port of ports)await assertPortFree(port);await assertPortFree(3443);
  const buildEnv={...env,NODE_ENV:'production',NODE_OPTIONS:'--max-old-space-size=6144'};
  for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'])buildEnv[key]='postgres://nobody:nothing@127.0.0.1:1/no_database';
  await run('build','pnpm',['build'],buildEnv);
@@ -72,27 +74,37 @@ try{
  await run('migrate','pnpm',['db:migrate']);await run('catalogs',process.execPath,['--import','tsx','scripts/seed-catalogs.ts']);
  await run('fixture',process.execPath,['--import','tsx','scripts/performance/system-fixture.mjs'],{...env,NODE_ENV:'development'},600000);
  await run('certificate','openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',join(privateDir,'key.pem'),'-out',join(privateDir,'cert.pem'),'-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost']);
- appFd=openSync(join(privateDir,'server.log'),'w',0o600);
  mkdirSync(join(out,'cpu'),{recursive:true});
- app=spawn(process.execPath,['--cpu-prof','--cpu-prof-dir='+join(out,'cpu'),'node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port','3174'],{env:{...env,NODE_ENV:'production',NODE_OPTIONS:'--max-old-space-size=4096'},stdio:['ignore',appFd,appFd]});
- const upstream=new http.Agent({keepAlive:true,maxSockets:600});
+ for(const [index,port]of ports.entries()){
+  const fd=openSync(join(privateDir,'server-'+index+'.log'),'w',0o600);appFds.push(fd);
+  apps.push(spawn(process.execPath,['--cpu-prof','--cpu-prof-dir='+join(out,'cpu'),'node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...env,NODE_ENV:'production',AIHR_DB_POOL_MAX:String(poolPerWorker),NODE_OPTIONS:'--max-old-space-size='+heapPerWorker},stdio:['ignore',fd,fd]}));
+ }
+ // Avoid replaying a mutation onto a backend socket that closed during an idle interval.
+ // Fresh loopback connections also avoid unsafe automatic retries after an ambiguous write.
+ upstream=new http.Agent({keepAlive:false,maxSockets:600});let nextWorker=0;
  proxy=https.createServer({key:readFileSync(join(privateDir,'key.pem')),cert:readFileSync(join(privateDir,'cert.pem'))},(req,res)=>{
-  const request=http.request({host:'127.0.0.1',port:3174,path:req.url,method:req.method,agent:upstream,
+  const request=http.request({host:'127.0.0.1',port:ports[nextWorker++%ports.length],path:req.url,method:req.method,agent:upstream,
    headers:{...req.headers,host:'localhost:3443','x-forwarded-host':'localhost:3443','x-forwarded-proto':'https'}},response=>{res.writeHead(response.statusCode,response.headers);response.pipe(res);});
-  request.on('error',()=>{if(res.destroyed)return;if(res.headersSent){res.destroy();return;}res.writeHead(502);res.end();});
+  request.on('error',error=>{
+   report.proxyErrors.push({at:new Date().toISOString(),method:req.method,path:req.url.split('?')[0],code:error.code??error.name,reusedSocket:request.reusedSocket,headersSent:res.headersSent,clientAborted:Boolean(req.aborted||res.destroyed)});save();
+   if(res.destroyed)return;if(res.headersSent){res.destroy();return;}res.writeHead(502);res.end();
+  });
   req.on('aborted',()=>request.destroy());
   res.on('close',()=>{if(!res.writableFinished)request.destroy();});req.pipe(request);
  });await new Promise((resolve,reject)=>{proxy.once('error',reject);proxy.listen(3443,'127.0.0.1',resolve);});
- let ready=false;for(let i=0;i<120;i++){try{const response=await fetch('http://127.0.0.1:3174/login');if(response.status===200){ready=true;break;}}catch{}await pause(500);}
- assert(ready,'production server did not become ready');
- await run('http-and-browser',process.execPath,['--import','tsx','scripts/performance/system-load.mjs'],{...env,PERF_APP_PID:String(app.pid),PERF_CLOCK_TICKS:execFileSync('getconf',['CLK_TCK'],{encoding:'utf8'}).trim(),NODE_OPTIONS:'--max-old-space-size=2048'},600000);
+ for(const port of ports){
+  let ready=false;for(let i=0;i<120;i++){try{const response=await fetch('http://127.0.0.1:'+port+'/login');if(response.status===200){ready=true;break;}}catch{}await pause(500);}
+  assert(ready,'production worker did not become ready');
+ }
+ await run('http-and-browser',process.execPath,['--import','tsx','scripts/performance/system-load.mjs'],{...env,PERF_APP_PIDS:apps.map(app=>app.pid).join(','),PERF_APP_WORKERS:String(workers),PERF_CLOCK_TICKS:execFileSync('getconf',['CLK_TCK'],{encoding:'utf8'}).trim(),NODE_OPTIONS:'--max-old-space-size=2048'},600000);
  report.exitCode=0;
 }catch(error){report.error=String(error.message).slice(0,350);console.error('[system-perf] '+report.error);}
 finally{
  if(proxy)await new Promise(resolve=>{proxy.close(resolve);proxy.closeAllConnections();});
- if(app){app.kill('SIGTERM');await Promise.race([new Promise(resolve=>app.once('exit',resolve)),pause(5000)]);if(app.exitCode===null)app.kill('SIGKILL');}
- if(appFd!==undefined)closeSync(appFd);
- if(app)try{summarizeCpu();}catch(error){report.cpuSummaryError=String(error.message).slice(0,180);}
+ if(upstream)upstream.destroy();
+ await Promise.all(apps.map(async app=>{if(app.exitCode!==null)return;app.kill('SIGTERM');await Promise.race([new Promise(resolve=>app.once('exit',resolve)),pause(5000)]);if(app.exitCode===null)app.kill('SIGKILL');}));
+ for(const fd of appFds)closeSync(fd);
+ if(apps.length)try{summarizeCpu();}catch(error){report.cpuSummaryError=String(error.message).slice(0,180);}
  if(dbStarted){const stats=spawnSync('bash',['.github/ci/postgres.sh','stats'],{env,encoding:'utf8'});writeFileSync(join(out,'postgres-resources.txt'),stats.stdout??'');await run('cleanup','bash',['.github/ci/postgres.sh','stop']).catch(()=>{report.exitCode=1;});}
  save();
 }

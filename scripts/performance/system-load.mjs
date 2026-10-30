@@ -22,9 +22,18 @@ const report={suite,kind:'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:fa
  coverage:[],boundaries:[],browser:[],phases:[],functionalErrors:[],browserErrors:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
 function appCpu(){
- const pid=process.env.PERF_APP_PID,ticks=Number(process.env.PERF_CLOCK_TICKS);
- if(!/^\d+$/.test(pid??'')||!Number.isFinite(ticks)||ticks<=0)return null;
- try{const stat=readFileSync('/proc/'+pid+'/stat','utf8'),fields=stat.slice(stat.lastIndexOf(')')+2).trim().split(/\s+/);return (Number(fields[11])+Number(fields[12]))/ticks;}catch{return null;}
+ const ids=process.env.PERF_APP_PIDS??process.env.PERF_APP_PID,ticks=Number(process.env.PERF_CLOCK_TICKS);
+ if(!/^\d+(,\d+)*$/.test(ids??'')||!Number.isFinite(ticks)||ticks<=0)return null;
+ try{return ids.split(',').reduce((total,pid)=>{const stat=readFileSync('/proc/'+pid+'/stat','utf8'),fields=stat.slice(stat.lastIndexOf(')')+2).trim().split(/\s+/);return total+(Number(fields[11])+Number(fields[12]))/ticks;},0);}catch{return null;}
+}
+function appMemory(){
+ const ids=process.env.PERF_APP_PIDS??process.env.PERF_APP_PID;
+ if(!/^\d+(,\d+)*$/.test(ids??''))return null;
+ try{return ids.split(',').map((pid,worker)=>{const status=readFileSync('/proc/'+pid+'/status','utf8');
+  const rss=status.match(/^VmRSS:\s+(\d+) kB$/m),peak=status.match(/^VmHWM:\s+(\d+) kB$/m);
+  if(!rss||!peak)throw Error('process memory unavailable');
+  return {worker,rssMiB:Number(rss[1])/1024,peakRssMiB:Number(peak[1])/1024};
+ });}catch{return null;}
 }
 const samples=[];
 async function request(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[]){
@@ -254,7 +263,8 @@ try{
  clearInterval(sampling);sampling=null;clearInterval(progressTimer);progressTimer=null;report.progress={...progress,elapsedMs:performance.now()-started};
  report.functionalErrors=results.flatMap((value,index)=>value.status==='rejected'?[{user:index,error:String(value.reason.message).slice(0,180)}]:[]);
  const appCpuAfter=appCpu(),driverCpu=process.cpuUsage(driverCpuBefore);
- report.cpu={appCpuSeconds:appCpuBefore!==null&&appCpuAfter!==null?appCpuAfter-appCpuBefore:null,driverCpuSeconds:(driverCpu.user+driverCpu.system)/1000000,elapsedSeconds:(performance.now()-started)/1000,includesBrowserCpu:false,includesPostgresCpu:false};
+ report.cpu={appProcesses:Number(process.env.PERF_APP_WORKERS||1),appCpuSeconds:appCpuBefore!==null&&appCpuAfter!==null?appCpuAfter-appCpuBefore:null,driverCpuSeconds:(driverCpu.user+driverCpu.system)/1000000,elapsedSeconds:(performance.now()-started)/1000,includesBrowserCpu:false,includesPostgresCpu:false};
+ report.appMemory={processes:appMemory(),peakIncludesStartupAndBaseline:true};
  const loaded=samples.slice(offset),reads=loaded.filter(v=>v.method==='GET'),writes=loaded.filter(v=>v.method==='POST');
  report.phases.push({name:'500-paced-HTTP-users-'+suite+'-'+thinkTimeMs+'ms-think',elapsedMs:performance.now()-started,completed:results.filter(v=>v.status==='fulfilled').length,errors:report.functionalErrors.length,
   read:summary(reads.map(v=>v.durationMs)),write:summary(writes.map(v=>v.durationMs)),ttfb:summary(loaded.map(v=>v.ttfbMs)),wireBytes:loaded.reduce((sum,v)=>sum+v.wireBytes,0),decodedBytes:loaded.reduce((sum,v)=>sum+v.decodedBytes,0)});
