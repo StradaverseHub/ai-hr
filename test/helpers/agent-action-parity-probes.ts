@@ -1,3 +1,5 @@
+import {peopleGeneralPolicyReviews} from '../../core/assistant-actions/people-general-policy-review-store';
+import {canConfigurePeopleGeneral,readPeopleGeneralTx,savePeopleGeneral} from '../../core/people-general';
 import {employeeIdTemplateStatusReviews,readEmployeeIdTemplateStatusChoices} from '../../core/assistant-actions/employee-id-template-status-review-store';
 import {createConfig as createEmployeeIdConfig,setStatus as setEmployeeIdConfigStatus,listConfigs as listEmployeeIdConfigs} from '../../core/employee-id-config';
 import {allowedCompanies} from '../../core/read';
@@ -163,7 +165,7 @@ type World={
  login(base:Base,person:Person,role:DbRole,companyId:string|null):Promise<{ctx:SessionContext;userId:string}>;
  claimTypes:Map<string,string>;
 };
-type Family='assigned_decision'|'hr_on_employment'|'own'|'catalogue';
+type Family='assigned_decision'|'hr_on_employment'|'own'|'catalogue'|'tenant_policy';
 type Adapter={
  family:Family;store:Store;independentScreen?:boolean;pageAdmits?:(who:SessionContext)=>boolean;
  /** The page/route admission the screen's server action calls before its service (e.g. requireAdmin → isAdmin). */
@@ -269,6 +271,10 @@ async function notificationIdentity(who:SessionContext){
  await owner.db.insert(schema.appExternalIdentity).values({issuer:identity.issuer,subject:identity.subject,appUserId:who.userId!}).onConflictDoNothing();provider.current.mockResolvedValue(identity);return identity;
 }
 const ADAPTERS:Record<ProbedActionId,Adapter>={
+ 'org.people_general.change':{family:'tenant_policy',store:packetStore('org.people_general.change',peopleGeneralPolicyReviews.prepare,peopleGeneralPolicyReviews.confirm),
+  screenAdmits:who=>canConfigurePeopleGeneral(who),create:async(_w,h)=>itemOf(h,h.base.tenantId),
+  human:()=>({action:'org.people_general.change',contractVersion:1,expected:{allowDuplicatedNric:false,allowDuplicatedEmail:false},desired:{allowDuplicatedNric:true,allowDuplicatedEmail:true}}),
+  offered:who=>canConfigurePeopleGeneral(who),screen:async(tx,who)=>savePeopleGeneral(who,{...await readPeopleGeneralTx(tx),allowDuplicatedNric:true,allowDuplicatedEmail:true},tx)},
  'org.position.archive':{family:'catalogue',store:packetStore('org.position.archive',positionArchiveReviews.prepare,positionArchiveReviews.confirm),
   screenAdmits:async(who,item)=>isAdmin(who)&&(await listPositionsForLabels(who)).some(p=>p.id===item.subjectId&&!p.inUse),
   create:async(_w,h)=>{const title='FIC_POSITION_'+randomUUID().slice(0,8),p=await createPosition(groupOf(h.base),{companyId:h.companyId,title});return itemOf(h,p.id,{code:title});},

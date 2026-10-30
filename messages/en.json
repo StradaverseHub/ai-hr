@@ -20599,7 +20599,7 @@
       "peopleGeneralPolicy": {
         "back": "Back to Organisation",
         "working": "Checking…",
-        "unavailable": "This review is unavailable. Open Employee ID settings to check current templates and permissions.",
+        "unavailable": "This review is unavailable. Open People General settings to check the current policy and permissions.",
         "retired": "This review has been retired.",
         "prepare": "Review change",
         "before": "Before",

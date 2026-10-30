@@ -20599,7 +20599,7 @@
       "peopleGeneralPolicy": {
         "back": "返回组织",
         "working": "正在检查…",
-        "unavailable": "此复核不可用。请打开员工编号设置，检查当前模板和权限。",
+        "unavailable": "此审核不可用。请打开人员常规设置，检查当前政策和权限。",
         "retired": "此审核已结束。",
         "prepare": "审核变更",
         "before": "变更前",

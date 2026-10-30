@@ -20599,7 +20599,7 @@
       "peopleGeneralPolicy": {
         "back": "Quay lại Tổ chức",
         "working": "Đang kiểm tra…",
-        "unavailable": "Không thể dùng bản xem xét này. Mở cài đặt mã nhân viên để kiểm tra mẫu và quyền hiện tại.",
+        "unavailable": "Không thể dùng bản xem xét này. Mở cài đặt nhân sự chung để kiểm tra chính sách và quyền hiện tại.",
         "retired": "Bản xem xét này đã kết thúc.",
         "prepare": "Xem xét thay đổi",
         "before": "Trước",
