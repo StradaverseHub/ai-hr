@@ -594,7 +594,8 @@ export function previewWorkflowNotification(c: Case, config: Config, step: Extra
  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
  const lines=selected.map(task=>`• ${task.name}${validDate(task.dueOn)?` (due ${Number(task.dueOn.slice(8))} ${months[Number(task.dueOn.slice(5,7))-1]})`:''}${target?'':` – ${task.assignee?env.userName(task.assignee):'unassigned'}`}`);
  const values={...env.mergeValues,'owner.name':target?recipientName(target,env).split(' ')[0]:'','pending.count':String(selected.length),'pending.tasks':lines.length?lines.join('\n'):'Nothing pending'};
- return {subject:merge(step.subject,values,emailSensitiveKeys(config)).text,body:merge(step.body,values,emailSensitiveKeys(config)).text,to:recipientLabel(role,config,env),cc:step.cc.map(role=>recipientLabel(role,config,env)).join(', ')};
+ const ownerText=(text:string)=>text.split('{owner.name}').join(values['owner.name']).split('{pending.count}').join(values['pending.count']).split('{pending.tasks}').join(values['pending.tasks']);
+ return {subject:merge(ownerText(step.subject),env.mergeValues,emailSensitiveKeys(config)).text,body:merge(ownerText(step.body),env.mergeValues,emailSensitiveKeys(config)).text,to:recipientLabel(role,config,env),cc:step.cc.map(role=>recipientLabel(role,config,env)).join(', ')};
 }
 /** A workflow test queues only its message steps to the actor, never advancing a run or employee work. */
 export function testWorkflowMessages(c: Case, config: Config, workflowId: string, env: Environment): void {
