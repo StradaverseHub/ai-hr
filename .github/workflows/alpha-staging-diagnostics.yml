@@ -11,11 +11,6 @@ on:
         description: Exact candidate commit
         required: true
         type: string
-      normal_cleanup_probe:
-        description: Normal valid-grant cleanup IPC, real package/filter and refusal fixtures only; no release authority
-        required: false
-        default: false
-        type: boolean
       filesystem_activation_probe:
         description: Private Linux activation, byte inventory and installer refusal fixtures; no app build, DB, SSH or staging
         required: false
@@ -26,7 +21,7 @@ on:
         required: false
         default: full
         type: choice
-        options: [full, source-proof-followup, environment, source-transfer-followup, ledger-connection-followup, pdf-tools-setup, private-access-integration]
+        options: [full, source-proof-followup, environment, source-transfer-followup, ledger-connection-followup, pdf-tools-setup, private-access-integration, normal-cleanup]
       plan_probe:
         description: Dependency-free native classifier parity against the authenticated full plan
         required: false
@@ -1023,7 +1018,7 @@ jobs:
           retention-days: 3
 
   normal-cleanup:
-    if: ${{ inputs.normal_cleanup_probe }}
+    if: ${{ inputs.installer_fixture_phase == 'normal-cleanup' && !inputs.filesystem_activation_probe }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
