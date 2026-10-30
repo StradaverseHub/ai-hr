@@ -2,6 +2,31 @@
 
 The system has verified growth risks. Returning a short browser table does not always mean that the database read, calculation or response is bounded. The changes in this candidate reduce unnecessary reads and payloads; they do not certify every module for millions of records or simultaneous users.
 
+## Latest verified outcome
+
+Implemented source is frozen at `4d5b404e2`; the final handoff adds documentation only.
+Draft review: [PR113](https://github.com/StradaverseHub/ai-hr/pull/113). It remains held
+for integration/migration reconciliation and release acceptance; no installation was changed.
+
+- One-million-claim history read: **564.4 ms median /581.9 ms maximum** across five warm
+  service samples,25 rows and12,307 response bytes. Initial hosted median was5218ms.
+- Shared permission planning: the original query evaluated company-admin access500 times
+  before DISTINCT. Materializing distinct companies preserves the same visible identities;
+  isolated measured helper execution fell from22.8ms to1.5ms.
+- **306 authorization/regression assertions passed**, including87 visibility-equivalence
+  checks; the final source also passes its complete TypeScript check and production build.
+- **500 concurrent fictional employee sessions complete read/create/edit/delete journeys
+  without errors**, but the latency target is **not met**. In the controlled same-run test,
+  paced p95 reads/creates/edits/deletes remain around2.8–3.1seconds. Raising the pool from10
+  to20 did not help. The default remains10.
+
+These are service-level Claims workloads, not a certificate for every page, HTTP/browser
+journey, module, tenant distribution or production configuration. The workload starts500
+sessions over10seconds, pauses750–1250ms between actions and runs warm after an instantaneous
+burst. Optional audit hash-chain flag is false in this fixture. Zero functional errors and
+green measurement tests do not establish a latency pass. The proposed budgets remain p95
+under1000ms for ordinary data reads and under500ms for simple mutations.
+
 The source baseline is `c4fad43c1d67d69125a3f37e7549a5a8a7053362`, fetched from matching main and alpha refs on 30 October 2026. The repository inventory covered 6,945 JavaScript and TypeScript files and 417 page routes. Static scans identify candidates; the workflow traces and tests below establish the narrower implementation findings. This is not a line-by-line correctness review of every file.
 
 ## Changes in this candidate
@@ -165,3 +190,60 @@ with proposed successor sequences56–63; verify actual installed source/ledger 
 Our unapplied0726 must receive a fresh coordinated append above the actual watermark
 before later integration/release. Source or migration edits invalidate affected evidence;
 retain every original run identity rather than relabelling it.
+
+### Final frozen-source receipts
+
+| Source / hosted run | Result |
+| --- | --- |
+|e4da0f57c /[41013812848](https://github.com/StradaverseHub/ai-hr/actions/runs/41013812848)|299 DB +7 non-DB assertions pass;87 native visibility-equivalence checks included. Whole compiler and production build pass.|
+|e4da0f57c /[41013812648](https://github.com/StradaverseHub/ai-hr/actions/runs/41013812648)|Five claims assertions pass; million-row median564.7ms/max579.5ms. Revised0726 migration is installed in the private fresh test database.|
+|d321ddd2e /[41014332355](https://github.com/StradaverseHub/ai-hr/actions/runs/41014332355)|25 assertions pass;500 burst journeys complete without errors; claimant-PK restriction and all principal fixture tables analyzed.|
+|4b685934c /[41014983746](https://github.com/StradaverseHub/ai-hr/actions/runs/41014983746)|25 assertions pass;500-session burst and paced workloads complete with zero errors. Paced p95 spans1826–1954ms, above the proposed budgets.|
+|4b685934c /[41014984239](https://github.com/StradaverseHub/ai-hr/actions/runs/41014984239)|Five assertions pass; million-row median564.4ms/max581.9ms,25 rows/12,307 bytes. Claims query source is unchanged in4d5b404e2.|
+|4d5b404e2 /[41015751657](https://github.com/StradaverseHub/ai-hr/actions/runs/41015751657)|Same runner compares10 and20 actual application-pool connections. Both capacities complete burst and paced phases with zero errors. Pool identity is asserted; closed fixture pools alone are removed from the HMR cache between iterations.|
+|4d5b404e2 /[41016041103](https://github.com/StradaverseHub/ai-hr/actions/runs/41016041103)|Eight DB and three non-DB assertions pass, including the tenant-transaction contract and pool bounds. Whole-repository compiler and production build pass.|
+
+Controlled pool comparison, p95 milliseconds (same runner, each phase500 sessions):
+
+| Pool | Model | Read | Create | Edit | Delete | Errors |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+|10|Instantaneous burst|6853|6757|3736|4354|0|
+|20|Instantaneous burst|7112|6879|3664|4317|0|
+|10|Paced, warm|3053|3062|3011|2783|0|
+|20|Paced, warm|3133|3034|3050|2818|0|
+
+Do not compare different runner samples as controlled speed ratios. The isolated initial
+shared-helper comparison was22.849ms versus1.506ms; a separate loaded regression run
+measured79.483ms versus2.365ms. Both show the repeated-check problem; their absolute
+values describe their own environments.
+
+`AIHR_DB_POOL_MAX` configures only the application singleton, accepts integers1–40 and
+defaults to10. Explicit maintenance/fixture pool sizes retain their existing behavior.
+The default and target installation remain unchanged. The pool comparison gives no reason
+to recommend20. Budget connections across processes and replicas against actual database
+capacity; the upper configuration bound is not a recommended size.
+
+Read-only staging metadata observed a two-CPU application host with about3.8GiB RAM and
+a local database reporting max_connections100. The database role cannot inspect protected
+profiling settings; the accessible extension catalog lists neither pg_stat_statements nor
+pg_stat_kcache. No settings, extensions, grants, services or target data were changed.
+Target CPU/query profiling and HTTP mixed-load validation require the coordinated release/
+profiling window; a larger connection pool is not a proven remedy.
+
+Revised development0726 SQL SHA256:
+`0b3c2b7072e4cee09d37550af1edd855c88ceb5094d122fb1c6032c64e402d3e`.
+It includes the ordering index and the distinct-company visibility fence. All prior
+index-only receipts keep their original source identities. Before later release, reconcile
+both the accepted journal and actual current visibility-function definition; do not overwrite
+newer owner changes. Preserve applied bytes, reallocate the unapplied entry above the actual
+watermark, rehearse the populated upgrade, run required impact-selected gates and accept the
+candidate on staging. The draft currently conflicts with newer main; no protected branch merge,
+staging reservation or deployment has occurred.
+
+Remaining high-priority capacity work is to locate CPU/query/serialization costs under
+representative multi-role, multi-company HTTP traffic, measure pool/lock waits and memory,
+and retain acceptable tail latency while payroll, imports and exports run. Remote Personnel
+search bounds transferred results but still needs large-workforce query-plan measurements;
+detail-form pickers retain some whole-population reads. Deep-history and mobile cursor
+latencies beyond the tested cases remain unverified. The500-user whole-system goal remains
+open until these results meet the agreed acceptance conditions on the actual target.

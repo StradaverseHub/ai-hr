@@ -362,3 +362,11 @@ one per company. All visibility arms/security attributes remain intact. This bro
 the release impact: require current app-role visibility-equivalence, hierarchy, grants
 and module RLS checks plus load regression before release. Earlier index-only migration
 receipts remain tied to their original bytes and do not verify this revised migration.
+
+Final isolated performance source4d5b404e2 retains the revised0726 SHA256
+`0b3c2b7072e4cee09d37550af1edd855c88ceb5094d122fb1c6032c64e402d3e`.
+Hosted41013812848 passes306 permission/regression assertions plus compiler/build;
+41014984239 verifies the million-row Claims budget;41015751657 records pool comparisons;
+41016041103 verifies the final bounded-pool source. These are focused development receipts,
+not a release witness or an allocation above the actual V9 handoff. The500-user latency target
+is still unmet; no merge/deployment acceptance is claimed.
