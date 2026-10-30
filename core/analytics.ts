@@ -23,7 +23,7 @@ import {
   sql,
   type SQL,
 } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { isAdmin } from '../lib/authz-model';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -251,21 +251,20 @@ export type HeadcountSummary = {
   byPosition: DimensionCount[];
 };
 
-/** Active headcount as of a date, tallied by company, department, and position. */
-export function headcountSummary(
-  ctx: SessionContext,
-  scopeIds: string[] | undefined,
-  opts: { asOf: string },
-): Promise<HeadcountSummary> {
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .select({ company: company.legalName, department: department.name, position: position.title })
+/** One native headcount source. Person IDs are internal only, used to establish disclosure support;
+ * the ordinary headcount report still returns exactly its existing employment counts and dimensions. */
+function headcountSourceRowsTx(tx:Tx,scopeIds:string[]|undefined,asOf:string){
+  return tx
+      .select({ personId: employment.personId, company: company.legalName, department: department.name, position: position.title })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
       .leftJoin(assignment, currentAssignment)
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
-      .where(and(activeAsOf(opts.asOf), scopeWhere(scopeIds)));
+      .where(and(activeAsOf(asOf), scopeWhere(scopeIds)));
+}
+export async function headcountSummaryTx(tx:Tx,scopeIds:string[]|undefined,opts:{asOf:string}):Promise<HeadcountSummary>{
+  const rows=await headcountSourceRowsTx(tx,scopeIds,opts.asOf);
     const tally = (key: 'company' | 'department' | 'position'): DimensionCount[] => {
       const m = new Map<string, number>();
       for (const r of rows) {
@@ -280,7 +279,24 @@ export function headcountSummary(
       byDepartment: tally('department'),
       byPosition: tally('position'),
     };
-  });
+}
+/** Active headcount as of a date, tallied by company, department, and position. */
+export function headcountSummary(ctx:SessionContext,scopeIds:string[]|undefined,opts:{asOf:string}):Promise<HeadcountSummary>{
+ return withTenant(ctx,tx=>headcountSummaryTx(tx,scopeIds,opts));
+}
+
+export type WorkforceHeadcountSource=Readonly<{previousHeadcount:number;currentHeadcount:number;previousPersons:number;currentPersons:number;unionPersons:number}>;
+/** Same native active-as-of rows as the dashboard, in the caller's transaction. Privacy support is
+ * DISTINCT PEOPLE, not the employment/assignment row count reported as native headcount. No identifier,
+ * name or dimension label is returned. The calling report owner must authorize this exact scope. */
+export async function workforceHeadcountSourceTx(tx:Tx,companyIds:readonly string[],dates:Readonly<{previousAsOf:string;currentAsOf:string}>):Promise<WorkforceHeadcountSource>{
+ const scope=[...companyIds],previousAsOf=dates.previousAsOf,currentAsOf=dates.currentAsOf;
+ if(!scope.length||scope.some(id=>typeof id!=='string'||!UUID_RE.test(id)))throw Error('Workforce headcount scope unavailable.');
+ const previous=await headcountSourceRowsTx(tx,scope,previousAsOf),current=await headcountSourceRowsTx(tx,scope,currentAsOf);
+ if([...previous,...current].some(row=>typeof row.personId!=='string'||!UUID_RE.test(row.personId)))throw Error('Workforce headcount support unavailable.');
+ const previousPeople=new Set(previous.map(row=>row.personId)),currentPeople=new Set(current.map(row=>row.personId));
+ return Object.freeze({previousHeadcount:previous.length,currentHeadcount:current.length,previousPersons:previousPeople.size,currentPersons:currentPeople.size,
+  unionPersons:new Set([...previousPeople,...currentPeople]).size});
 }
 
 export type MasterDataRow = {
