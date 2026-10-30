@@ -58,6 +58,19 @@ REVOKE ALL ON FUNCTION app._assistant_case_cancel_scrub() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER assistant_case_cancel_private_scrub BEFORE UPDATE OR DELETE ON app.assistant_own_leave_review
  FOR EACH ROW EXECUTE FUNCTION app._assistant_case_cancel_scrub();
 --> statement-breakpoint
+-- A later BEFORE trigger can rewrite NEW after an earlier guard ran. This nondeferrable
+-- AFTER companion checks the persisted postimage; it never rewrites domain or custody data.
+CREATE FUNCTION app._assistant_case_cancel_identity_after() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ BEGIN
+ IF OLD.action_kind='lifecycle.offboarding.case.cancel' AND OLD.state='completed'
+  AND (TG_OP='DELETE' OR (to_jsonb(NEW)-ARRAY['intent_digest','reviewed_digest','offboarding_cancel_effect_commitment'])
+   IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['intent_digest','reviewed_digest','offboarding_cancel_effect_commitment'])) THEN
+  RAISE EXCEPTION 'Case cancellation unavailable' USING ERRCODE='42501';END IF;
+ RETURN NULL;END $$;
+REVOKE ALL ON FUNCTION app._assistant_case_cancel_identity_after() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER assistant_case_cancel_identity_after AFTER UPDATE OR DELETE ON app.assistant_own_leave_review
+ FOR EACH ROW EXECUTE FUNCTION app._assistant_case_cancel_identity_after();
+--> statement-breakpoint
 DO $$ DECLARE unrelated text;BEGIN
  SELECT string_agg(format('%I IS NULL',attname),' AND ' ORDER BY attnum) INTO unrelated FROM pg_attribute
  WHERE attrelid='app.assistant_own_leave_review'::regclass AND attnum>0 AND NOT attisdropped
@@ -128,6 +141,7 @@ REVOKE ALL ON FUNCTION app._assistant_case_cancel_domain_fence() FROM PUBLIC,ai_
 DO $$ DECLARE table_name text;BEGIN
  FOREACH table_name IN ARRAY ARRAY['lc_case','lc_case_step','lc_comment','it_requisition','it_requisition_item','it_asset','domain_event','lc_history'] LOOP
   EXECUTE format('CREATE TRIGGER assistant_case_cancel_root_fence BEFORE INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION app._assistant_case_cancel_domain_fence()',table_name);
+  EXECUTE format('CREATE TRIGGER assistant_case_cancel_root_fence_after AFTER INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION app._assistant_case_cancel_domain_fence()',table_name);
  END LOOP;
 END $$;
 --> statement-breakpoint
@@ -140,6 +154,8 @@ CREATE FUNCTION app._assistant_case_cancel_body_fence() RETURNS trigger
  RETURN NEW;END $$;
 REVOKE ALL ON FUNCTION app._assistant_case_cancel_body_fence() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER assistant_case_cancel_body_fence BEFORE INSERT OR UPDATE ON app.assistant_own_leave_review_content
+ FOR EACH ROW EXECUTE FUNCTION app._assistant_case_cancel_body_fence();
+CREATE TRIGGER assistant_case_cancel_body_fence_after AFTER INSERT OR UPDATE ON app.assistant_own_leave_review_content
  FOR EACH ROW EXECUTE FUNCTION app._assistant_case_cancel_body_fence();
 --> statement-breakpoint
 -- Pure typed-row serialization only: caller authority and current_date retain their TimeZone.

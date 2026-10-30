@@ -6,7 +6,7 @@ import {withTenant,type Tx} from '../db/client';
 import {appendEvent,actorOf} from '../db/events';
 import * as s from '../db/schema';
 import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
-import {cancelCaseTx,cancelCase,reopenCase} from '../packs/lifecycle/service';
+import {cancelCaseTx,cancelCase,reopenCase,createOffboardingCase} from '../packs/lifecycle/service';
 import {pgSqlState} from '../lib/db-error';
 import {closeAll,migrateTestDb,owner} from './harness';
 import {caseCancelFixture,caseCancelSnapshot,type CaseCancelFixture} from './helpers/offboarding-case-cancel-db-fixture';
@@ -129,4 +129,18 @@ it('permanently refuses later-transaction completed receipt metadata retargeting
   const value=column==='action_kind'?'lifecycle.offboarding.step.undo':column==='state'?'discarded':column==='offboarding_cancel_case_version'?'1':randomUUID();await assertRefused(owner.db.execute(sql`update app.assistant_own_leave_review set ${sql.identifier(column)}=${value} where id=${id}::uuid`));
  }
  await assertRefused(owner.db.execute(sql`delete from app.assistant_own_leave_review where id=${id}::uuid`));const [after]=await owner.db.execute(sql`select to_jsonb(r) data from app.assistant_own_leave_review r where id=${id}::uuid`);expect(after).toEqual(before);
+});
+
+it('checks the actual inserted step after a later-named BEFORE trigger retargets an unrelated row into the sealed case',async()=>{
+ const other=await createOffboardingCase(f.ctx,{companyId:f.b.companyId,fullName:'Other fictional case',employeeNo:'OTHER-'+randomUUID(),resignationDate:'2026-10-01'});await prepare();const before=await caseCancelSnapshot(f);
+ await owner.db.execute(sql.raw(`CREATE FUNCTION app.test_case_cancel_late_retarget() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN NEW.case_id:='${f.caseId}'::uuid;RETURN NEW;END $$`));
+ try{await owner.db.execute(sql`create trigger zz_test_case_cancel_late_retarget before insert on public.lc_case_step for each row execute function app.test_case_cancel_late_retarget()`);
+  await assertRefused(withTenant(f.ctx,async tx=>{await source(tx);const r=await native(tx);await complete(tx,r.eventId);await tx.insert(s.lcCaseStep).values({tenantId:f.b.tenantId,caseId:other.id,stepKey:'retargeted-extra',done:false});}));
+ }finally{await owner.db.execute(sql`drop trigger zz_test_case_cancel_late_retarget on public.lc_case_step`);await owner.db.execute(sql`drop function app.test_case_cancel_late_retarget()`);}expect(await caseCancelSnapshot(f)).toEqual(before);
+});
+it('checks the actual historical completed receipt after a late BEFORE trigger rewrites a no-op update',async()=>{
+ await prepare();await withTenant(f.ctx,async tx=>{await source(tx);const r=await native(tx);await complete(tx,r.eventId);});const [before]=await owner.db.execute(sql`select to_jsonb(r) data from app.assistant_own_leave_review r where id=${id}::uuid`);
+ await owner.db.execute(sql.raw(`CREATE FUNCTION app.test_case_cancel_late_retarget() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF OLD.id='${id}'::uuid AND OLD.state='completed' THEN NEW.user_id:='${f.b.adminUserId}'::uuid;END IF;RETURN NEW;END $$`));
+ try{await owner.db.execute(sql`create trigger zz_test_case_cancel_late_retarget before update on app.assistant_own_leave_review for each row execute function app.test_case_cancel_late_retarget()`);await assertRefused(owner.db.execute(sql`update app.assistant_own_leave_review set state=state where id=${id}::uuid`));}
+ finally{await owner.db.execute(sql`drop trigger zz_test_case_cancel_late_retarget on app.assistant_own_leave_review`);await owner.db.execute(sql`drop function app.test_case_cancel_late_retarget()`);}const [after]=await owner.db.execute(sql`select to_jsonb(r) data from app.assistant_own_leave_review r where id=${id}::uuid`);expect(after).toEqual(before);
 });
