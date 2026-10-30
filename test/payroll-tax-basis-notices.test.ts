@@ -1,15 +1,15 @@
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {withTenant} from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {taxBasisNoticeReferences,taxBasisNoticesForPayslip} from '../core/payroll-tax-basis-notices';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
-let b:Base;
-beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();});afterAll(closeAll);
+import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+let b:Base,ctx:SessionContext;
+beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'payroll','active');ctx=await entitledCtx(b);});afterAll(closeAll);
 async function fixture(){
- const ctx=adminCtx(b),{employmentId}=await hireEmployee(ctx,{person:{fullName:'Fictional original tax working',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});
+ const {employmentId}=await hireEmployee(ctx,{person:{fullName:'Fictional original tax working',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});
  const [period]=await owner.db.insert(s.payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period:'2026-01',status:'closed'}).returning();
  const [batch]=await owner.db.insert(s.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:period.id,payPeriod:'2026-01',batchDate:'2026-01-25',status:'closed'}).returning();
  const [slip]=await owner.db.insert(s.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId,basicSalary:'5000',grossPay:'5500',totalDeductions:'100',netPay:'5400',employerCost:'5500',statutory:{pcb:100,bases:{pcb:5000}}}).returning();
@@ -41,7 +41,7 @@ describe('tax-basis notices preserve original working and scope administrative l
   expect(await taxBasisNoticesForPayslip(ctx,{companyIds:[],payslipId:slip.id})).toEqual(empty);
   expect(await taxBasisNoticesForPayslip(ctx,{companyIds:[b.companyId],payslipId:'-'.repeat(36)})).toEqual(empty);
   expect(await taxBasisNoticesForPayslip(ctx,{companyIds:[randomUUID()],payslipId:slip.id})).toEqual(empty);
-  const other=await seedBase();expect(await taxBasisNoticesForPayslip(adminCtx(other),{companyIds:[b.companyId],payslipId:slip.id})).toEqual(empty);
+  const other=await seedBase();await setModule(other.tenantId,'payroll','active');expect(await taxBasisNoticesForPayslip(await entitledCtx(other),{companyIds:[b.companyId],payslipId:slip.id})).toEqual(empty);
  });
  it('distinguishes consumed correction references from corrections to the original source',async()=>{
   const {ctx,slip,correctionBatchId}=await fixture();
