@@ -24,7 +24,7 @@ try{
  await owner.client`create extension if not exists pg_stat_statements`;
  for(let t=0;t<2;t++){
   const b=await seedBase(),ctx=adminCtx(b),organization=t?'perf-b':'perf-a';
-  await owner.db.insert(s.tenantModule).values(MODULE_CATALOG.filter(m=>!m.isCore&&m.packBacked).map(m=>({tenantId:b.tenantId,moduleCode:m.code,status:'active'}))).onConflictDoNothing();
+  await owner.db.insert(s.tenantModule).values(MODULE_CATALOG.filter(m=>!m.isCore&&(m.packBacked||m.code==='system_testing'||m.code==='system_explorer')).map(m=>({tenantId:b.tenantId,moduleCode:m.code,status:'active'}))).onConflictDoNothing();
   const org={code:organization,tenantId:b.tenantId,name:'Performance organization '+t};
   await writeRecord(owner.client,'org:'+organization,org,null);await writeRecord(owner.client,'tenant:'+b.tenantId,org,null);
   const type=await createClaimType(ctx,{code:'PERF',name:'Performance claim',defaultTaxable:false,requiresReceipt:false});
@@ -45,6 +45,7 @@ try{
    const userId=randomUUID(),subject=randomUUID(),version=randomUUID(),secret=generateSecret(),issuer=internalIssuer(b.tenantId);
    await owner.db.insert(s.appUser).values({id:userId,tenantId:b.tenantId,personId:hired.personId,workosUserId:'perf_'+userId});
    const grants=[{tenantId:b.tenantId,appUserId:userId,role:'employee',companyId:company.companyId}];
+   if(role==='manager')grants.push({tenantId:b.tenantId,appUserId:userId,role:'manager',companyId:company.companyId});
    if(role==='companyHR'||role==='groupHR')grants.push({tenantId:b.tenantId,appUserId:userId,role:'hr_admin',companyId:role==='groupHR'?null:company.companyId});
    if(role==='groupHR')for(const r of ['payroll_partner','performance_comp_partner'])grants.push({tenantId:b.tenantId,appUserId:userId,role:r,companyId:null});
    await owner.db.insert(s.roleAssignment).values(grants);

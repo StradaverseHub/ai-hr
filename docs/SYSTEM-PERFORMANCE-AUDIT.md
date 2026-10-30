@@ -247,3 +247,54 @@ search bounds transferred results but still needs large-workforce query-plan mea
 detail-form pickers retain some whole-population reads. Deep-history and mobile cursor
 latencies beyond the tested cases remain unverified. The500-user whole-system goal remains
 open until these results meet the agreed acceptance conditions on the actual target.
+
+### Production HTTP continuation — 30 October 2026
+
+No deployment is authorized. Owned development source merged published main2ab4f6c12
+without changing its applied journal prefix. All measurements below use disposable standard
+GitHub-hosted runners, never an installation's customer data.
+
+The first actual production HTTPS run, source531429c6d / run41019376795, built successfully
+and seeded500 real encrypted internal sessions across two tenants/ten companies, one million
+pending claims,90,000 attendance days and500 historical payslips. PostgreSQL durability was
+ON (fsync, synchronous_commit, full_page_writes); audit hash chaining was enabled. Ordinary
+employee routes took171–512ms but decoded1.7–1.9MB per page. The first manager /approvals
+request exceeded90seconds, subsequent manager/HR requests stalled, and the driver reached
+its600second deadline. No browser or500-user phase completed. This is a retained failure,
+not a capacity certificate. Sessions were provisioned with normal encrypted credential/family/
+session records; concurrent password/MFA login enrollment was not exercised.
+
+The approval task owner repeated the same decision authorization once per pending claim,
+then retrieved those same IDs again in1,000-ID batches.1a248026c checks each distinct subject
+employment once within the current transaction.7a535ba34 resolves subject names/authority
+before request history, gives the global shell a25-claim preview with an exact SQL total,
+and SQL-pages the approval workspace before private fields and attachment reads. Its
+30 focused assertions and whole-repository compiler pass in41022428133; these do not verify
+later changes. Full metadata readers retain their uncapped contract. Other task kinds still
+need individual scale measurements; the complete /tasks view remains an uncapped reader.
+
+SQL profiling run41021604700 deliberately failed its paced latency assertion: p95 read3043ms,
+create3027ms, edit2997ms, delete2808ms, zero functional errors. The permission-set SQL function
+was invoked17,503 times; its nested query accumulated69,668ms planning and39,631ms execution.
+These are summed across connections/nested statements and must not be added to wall time.
+
+A reversible same-runner experiment, sourcec27d5eed8 / run41022556721, preserved all query
+bytes and changed only its implementation language from SQL to PL/pgSQL. The cached object
+is a PostgreSQL execution plan, never permissions or query results. Session identity, grants,
+current_date and hierarchy are evaluated afresh. With500 distinct principals and one million
+claims, paced p95 read fell1723.2→28.4ms, create1695.5→24.3ms, edit1691.7→26.7ms and
+delete1608.9→17.9ms, with zero journey failures. The service fixture's audit-chain flag was
+false; no HTTP/browser claim follows from these numbers. A baseline-after-candidate repeat
+and broader multi-tenant visibility equivalence remain required to exclude warm-order bias.
+
+019ba0274 adds the unapplied0736 successor (SQL SHA256
+189485ba9146331bf38afa903a7e18f68fb27a3927ceef4a480c876de95165b2) and starts
+41023273405 (visibility/claims/compiler) and41023276238 (durable production HTTPS and
+Chromium). The driver now records active queries on a slow pilot, fails early on a pilot
+failure, captures server CPU profiles and runs six hydrated browser journeys alongside500
+HTTP principals. It explicitly fails on p95 read≥1000ms or write≥500ms. These runs were
+pending when this paragraph was written; they are not recorded as passes.
+
+Neither0736's provisional successor reservation nor these development receipts resolve
+0726's collision with the AI/V9 allocation. Reconcile both against the accepted ledger before
+any future integration. There is no release witness, deployment or500-user whole-system pass.
