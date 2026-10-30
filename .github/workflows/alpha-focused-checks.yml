@@ -19,6 +19,10 @@ on:
         description: Isolated production HTTP/browser profiling; no release or deployment
         default: false
         type: boolean
+      profile_database_sql:
+        description: Track statements in the isolated development database
+        default: false
+        type: boolean
       profile_database:
         description: Opt-in reset/seed/template timing when the candidate implements test/profile.ts
         default: false
@@ -60,6 +64,8 @@ env:
   AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
   AIHR_CI_PG_MEMORY_GIB: '2'
   AIHR_CI_PG_JIT: 'on'
+  AIHR_CI_PG_STATEMENTS: ${{ inputs.profile_database_sql && '1' || '0' }}
+  AIHR_CI_PG_STATEMENTS_OWNER: visibility-plan-benchmark
   AIHR_FOCUSED_PROFILE: ${{ inputs.profile_database }}
   AIHR_TEST_DURATION_ORDER: ${{ inputs.duration_order }}
   DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database

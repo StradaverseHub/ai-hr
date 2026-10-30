@@ -9,7 +9,7 @@ import {appUser,employment,person,roleAssignment} from '../../db/schema';
 import {createClaimType,deleteClaimDraft,listClaimHistoryPage,listClaimsForEmployment,saveClaimDraft} from '../../packs/claims/service';
 import {adminCtx,owner,resetDb,seedBase} from '../harness';
 
-export async function runClaimsLoad(reportSuffix=''){
+export async function runClaimsLoad(reportSuffix='',hooks:{beforePhase?:(phase:string)=>Promise<void>;afterPhase?:(phase:string)=>Promise<void>}={}){
  await resetDb();const b=await seedBase(),admin=adminCtx(b);
  const type=await createClaimType(admin,{code:'BURST',name:'Fictional burst',defaultTaxable:false,requiresReceipt:false});
  const users=Array.from({length:500},(_,i)=>({personId:randomUUID(),employmentId:randomUUID(),userId:randomUUID(),name:'Fictional '+i}));
@@ -48,6 +48,7 @@ export async function runClaimsLoad(reportSuffix=''){
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/claims-jit-comparison'+reportSuffix+'.json',JSON.stringify(comparison));
  const phases:Record<string,unknown>={};
  for(phase of ['burst','paced']){
+  await hooks.beforePhase?.(phase);
   samples={read:[],create:[],edit:[],delete:[]};const phaseStart=performance.now();
   const results=await Promise.allSettled(users.map(async(u,i)=>{
    if(phase==='paced')await pause(i*20);
@@ -74,6 +75,7 @@ export async function runClaimsLoad(reportSuffix=''){
   const report={kind:'service-burst-and-paced-only',fixtureStatistics:'all principal and claim fixture tables analyzed',sessions:500,records:1000000,applicationPool:applicationClient.options.max,pacedAssumption:'Warm after burst;500 starts over10seconds;750–1250ms pause between actions',auditHashChainFlag:process.env.AUDIT_HASH_CHAIN_ENABLED==='true',jitComparison:comparison,elapsedMs:performance.now()-started,phases};
   if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/claims-500-sessions'+reportSuffix+'.json',JSON.stringify(report,null,2));
   console.info('[claims-500-sessions]',JSON.stringify(report));
+  await hooks.afterPhase?.(phase);
   expect(failures).toEqual([]);
  }
  const [remaining]=await owner.client`select count(*)::int as n from claim_request where tenant_id=${b.tenantId}::uuid`;
