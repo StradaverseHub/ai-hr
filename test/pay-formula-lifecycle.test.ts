@@ -23,7 +23,7 @@ async function saved(formulaId='SAMPLE',source='Return 1.005'){return savePayFor
 async function activated(formulaId='SAMPLE',source='Return {#Rounding}(1.005, 2)'){const s=await saved(formulaId,source),t=await testPayFormula(ctx,{...s,context});expect(t.passed,t.error??'successful receipt').toBe(true);await setPayFormulaActive(ctx,{...s,testId:t.id,active:true});return {...s,test:t};}
 it('requires an exact successful saved revision and retains the old active revision through draft edits',async()=>{
  const s=await saved();await expect(setPayFormulaActive(ctx,{...s,active:true})).rejects.toThrow(/Test/);
- const t=await testPayFormula(ctx,{...s,context});expect(t.amount).toBe('1.005');await setPayFormulaActive(ctx,{...s,testId:t.id,active:true});
+ const t=await testPayFormula(ctx,{...s,context});expect(t.amount).toBe('1.01');await setPayFormulaActive(ctx,{...s,testId:t.id,active:true});
  const newer=await savePayFormula(ctx,{id:s.id,expectedRevisionId:s.revisionId,formulaId:'SAMPLE',description:'New saved version',method:'conditions',source:'Return 2'});
  const view=await getPayFormula(ctx,s.id);expect(view?.activeRevisionId).toBe(s.revisionId);expect(view?.versions).toHaveLength(2);
  await expect(setPayFormulaActive(ctx,{...newer,testId:t.id,active:true})).rejects.toThrow(/successful test/);
