@@ -87,7 +87,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/personnel/[employmentId]/cost-allocation-actions.ts":{"previewCostAllocationsAction":"backlog:automatic","readCostAllocationsAction":"backlog:automatic","saveCostAllocationsAction":"backlog:approve"},
  "app/admin/personnel/[employmentId]/cp38-actions.ts":{"addCp38Action":"backlog:approve","editCp38Action":"backlog:approve","terminateCp38Action":"backlog:approve"},
  "app/admin/personnel/[employmentId]/dependent-actions.ts":{"addDependentAction":"backlog:approve","archiveDependentAction":"backlog:approve","editDependentAction":"backlog:approve"},
- "app/admin/personnel/[employmentId]/emergency-contact-actions.ts":{"addEmergencyContactAction":"backlog:approve","deleteEmergencyContactAction":"backlog:approve","editEmergencyContactAction":"backlog:approve"},
+ "app/admin/personnel/[employmentId]/emergency-contact-actions.ts":{"addEmergencyContactAction":"registered:employees.emergency_contact.maintain","deleteEmergencyContactAction":"registered:employees.emergency_contact.maintain","editEmergencyContactAction":"registered:employees.emergency_contact.maintain"},
  "app/admin/personnel/[employmentId]/encashment-actions.ts":{"adjustEncashmentAction":"backlog:approve","unfreezeEncashmentAction":"backlog:approve"},
  "app/admin/personnel/[employmentId]/holiday-calendar-actions.ts":{"saveHolidayCalendarAssignmentAction":"backlog:approve"},
  "app/admin/personnel/[employmentId]/incentive-actions.ts":{"revokeIncentiveDeclarationAction":"backlog:approve","saveIncentiveDeclarationAction":"backlog:approve"},
