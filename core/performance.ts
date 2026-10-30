@@ -2260,25 +2260,33 @@ async function loadCheckin(tx: Tx, checkinId: string) {
   return c;
 }
 
+/** Canonical completion plan: native current authority/state and native notes normalization.
+ * Assistant callers must establish their purpose-bound note-size budget before calling this owner.
+ * No completion time or event is invented during a preview. */
+export async function readCheckInCompletionPlanTx(tx:Tx,ctx:SessionContext,p:{checkinId:string;notes?:string}){
+  const [scope]=await tx.select({id:performanceCheckin.id,subjectEmploymentId:performanceCheckin.subjectEmploymentId,status:performanceCheckin.status}).from(performanceCheckin).where(eq(performanceCheckin.id,p.checkinId)).limit(1).for('update');
+  if(!scope)throw new PerfError('Check-in not found');
+  if(scope.status!=='scheduled')throw new PerfError(`This check-in is ${scope.status}`);
+  await assertCanDecide(tx,ctx,scope.subjectEmploymentId,'check-in');
+  const [checkin]=await tx.select({row:performanceCheckin,version:sql<string>`${performanceCheckin}.xmin::text`}).from(performanceCheckin).where(eq(performanceCheckin.id,p.checkinId)).limit(1);
+  if(!checkin)throw new PerfError('Check-in not found');
+  const afterNotes=p.notes?.trim()??checkin.row.notes;
+  return{checkin:checkin.row,afterNotes,reviewDigest:createHash('sha256').update(JSON.stringify([1,ctx.tenantId,ctx.userId??null,ctx.personId??null,p,checkin,afterNotes])).digest('hex')};
+}
+
+/** Same native completion in the supplied transaction. Reviewed completion opts in to the exact
+ * native clock metadata; ordinary UI/SYSTEM audit shape and notes semantics remain unchanged. */
+export async function completeCheckInTx(tx:Tx,ctx:SessionContext,p:{checkinId:string;notes?:string},expectedDigest?:string){
+  const plan=await readCheckInCompletionPlanTx(tx,ctx,p),c=plan.checkin;
+  if(expectedDigest!==undefined&&expectedDigest!==plan.reviewDigest)throw new PerfError('The check-in changed. Review it again.');
+  const completedAt=new Date();
+  await tx.update(performanceCheckin).set({status:'completed',completedAt,notes:plan.afterNotes}).where(eq(performanceCheckin.id,c.id));
+  const eventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'performance-checkin',aggregateId:c.id,eventType:'performance-checkin.completed',actor:actorOf(ctx),subjectEmploymentId:c.subjectEmploymentId,payload:expectedDigest===undefined?undefined:{version:1,completedAt:completedAt.toISOString()}},{returnId:true});
+  return{checkinId:c.id,employmentId:c.subjectEmploymentId,eventId,completedAt:completedAt.toISOString()};
+}
 /** Mark a scheduled check-in completed, capturing the shared notes. Manager-or-admin. */
-export async function completeCheckIn(ctx: SessionContext, p: { checkinId: string; notes?: string }): Promise<void> {
-  await withTenant(ctx, async (tx) => {
-    const c = await loadCheckin(tx, p.checkinId);
-    if (c.status !== 'scheduled') throw new PerfError(`This check-in is ${c.status}`);
-    await assertCanDecide(tx, ctx, c.subjectEmploymentId, 'check-in');
-    await tx
-      .update(performanceCheckin)
-      .set({ status: 'completed', completedAt: new Date(), notes: p.notes?.trim() ?? c.notes })
-      .where(eq(performanceCheckin.id, c.id));
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'performance-checkin',
-      aggregateId: c.id,
-      eventType: 'performance-checkin.completed',
-      actor: actorOf(ctx),
-      subjectEmploymentId: c.subjectEmploymentId,
-    });
-  });
+export async function completeCheckIn(ctx:SessionContext,p:{checkinId:string;notes?:string}):Promise<void>{
+  await withTenant(ctx,async tx=>{await completeCheckInTx(tx,ctx,p);});
 }
 
 /** Native current-decision source. Keep assertCanDecide's real super-admin self exception;

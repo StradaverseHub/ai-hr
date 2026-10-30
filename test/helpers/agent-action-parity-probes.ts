@@ -1,3 +1,4 @@
+import {checkInCompletionReviews,readCheckInCompletionChoices} from '../../core/assistant-actions/checkin-completion-review-store';
 import {checkInCancellationReviews,readCheckInCancellationChoices} from '../../core/assistant-actions/checkin-cancellation-review-store';
 import {goalApprovalReviews,readGoalApprovalChoices} from '../../core/assistant-actions/goal-approval-review-store';
 import {fixedItemArchiveReviews,readFixedItemArchiveChoices} from '../../core/assistant-actions/fixed-item-archive-review-store';
@@ -273,6 +274,11 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'performance.checkin.cancel',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,cancel:true}),
   offered:async(who,item)=>{const choices=await readCheckInCancellationChoices(who,{query:'',subjectId:item.subjectId});return choices.kind==='choices'&&choices.items.some(row=>row.subjectId===item.subjectId);},
   screen:(tx,who,item)=>perf.cancelCheckInTx(tx,who,{checkinId:item.subjectId})},
+ 'performance.checkin.complete':{family:'assigned_checkin',store:checkInCompletionReviews,
+  async create(w,h){const {id}=await perf.scheduleCheckIn(await w.as('manager'),{subjectEmploymentId:h.person.employmentId,scheduledOn:calendarDate(10),notes:'Fictional shared check-in notes'});return itemOf(h,id);},
+  human:item=>({action:'performance.checkin.complete',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,complete:true,notesMode:'preserve'}),
+  offered:async(who,item)=>{const choices=await readCheckInCompletionChoices(who,{query:'',subjectId:item.subjectId});return choices.kind==='choices'&&choices.items.some(row=>row.subjectId===item.subjectId);},
+  screen:(tx,who,item)=>perf.completeCheckInTx(tx,who,{checkinId:item.subjectId})},
  'performance.goal.approve':{family:'assigned_goal',store:goalApprovalReviews,
   async create(_w,h){const year=Number(todayInKualaLumpur().slice(0,4)),group=groupOf(h.base),{cycleId}=await perf.createCycle(group,{name:'Fictional Proposed Goal',companyId:h.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`,assessmentWorkflow:false});await perf.openCycle(group,{cycleId});const self=await h.session(),{id}=await perf.createGoal(self,{employmentId:h.person.employmentId,cycleId,title:'Fictional Parity Goal'});const [review]=await owner.db.select({id:schema.performanceReview.id}).from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,h.person.employmentId)));await perf.proposeGoals(self,{reviewId:review.id});return itemOf(h,id);},
   human:item=>({action:'performance.goal.approve',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,approve:true}),

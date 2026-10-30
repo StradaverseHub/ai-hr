@@ -478,3 +478,7 @@ No historical migration bytes are edited.
 ### Personnel Wave 5 composition — no installation priority
 
 The archive, MY TP3 opening and cost allocation source reservations 0724/0725/0726 (idx705/706/707, when1793330000053/54/55) remain UNAPPLIED and PROVISIONAL. Incoming unverified coordination reports a competing performance 0726/when55 claim and V9 append proposals at when56–63. These are leads, not verified installed history or authority. Before integration freeze, reconcile and reallocate **all our unapplied 0713–0726** above the actual then-installed ordered ledger and timestamp watermark. No exclusive reservation, applied SQL rename, silent amendment of other claims, protected-ref movement or release action is authorized by this composition.
+
+## Performance check-in completion — provisional source reservation
+
+Coordinator allocated `0740_assistant_performance_checkin_complete_custody`, idx719 / version7 / when1793330000077 / breakpoints:true on 30 October 2026. Development only, above the owned cancellation slice. The accepted installation ledger must be refreshed before integration/application. Same physical custody ledger, native same-transaction completion and exact captured native timestamp proof; ordinary native audit remains unchanged. No release or installation authorization.

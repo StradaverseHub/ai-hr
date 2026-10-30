@@ -4166,6 +4166,13 @@
       "when": 1793330000074,
       "tag": "0737_assistant_performance_checkin_cancel",
       "breakpoints": true
+    },
+    {
+      "idx": 719,
+      "version": "7",
+      "when": 1793330000077,
+      "tag": "0740_assistant_performance_checkin_complete_custody",
+      "breakpoints": true
     }
   ]
 }

@@ -1,3 +1,4 @@
+import {checkInCompletionReviews} from './checkin-completion-review-store';
 import {checkInCancellationReviews} from './checkin-cancellation-review-store';
 import {goalApprovalReviews} from './goal-approval-review-store';
 import {fixedItemArchiveReviews} from './fixed-item-archive-review-store';
@@ -53,6 +54,7 @@ function currentStatus(completion:unknown){const outer=object(completion),receip
 type CompletedOutcomeReader=(tx:Tx,ctx:SessionContext,id:string,server:NativeOutcomeServerContext)=>Promise<{completion:unknown;eventId:string}>;
 const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOutcomeReader>>={
  'performance.checkin.cancel':(tx,ctx,id)=>checkInCancellationReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'performance.checkin.complete':(tx,ctx,id)=>checkInCompletionReviews.readCompletedOutcomeTx(tx,ctx,id),
  'performance.goal.approve':(tx,ctx,id)=>goalApprovalReviews.readCompletedOutcomeTx(tx,ctx,id),
  'leave.apply':(tx,ctx,id)=>readCompletedOwnLeaveOutcomeTx(tx,ctx,id),
  'ess.profile.request':(tx,ctx,id)=>readCompletedProfileOutcomeTx(tx,ctx,id),
