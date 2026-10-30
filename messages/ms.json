@@ -19774,7 +19774,7 @@
         "captured": "Semua nilai yang disimpan dalam draf yang disokong ini",
         "blank": "Tidak dinyatakan",
         "initialPay": "Pampasan awal dan nilai lalai asal",
-        "leave": "Penciptaan pekerja memberikan kelayakan cuti berikut mengikut peraturan semasa. Baki dikira oleh perkhidmatan cuti.",
+        "leave": "Kredit cuti pembukaan tepat daripada pratonton pengaktifan asal (hari dan tarikh kuat kuasa):",
         "consequence": "Pengesahan mencipta individu dan penggajian baharu dengan ID Pekerja ditempah, pampasan awal dan kelayakan cuti melalui perkhidmatan asal, kemudian membuang draf ini. Ia tidak memproses gaji atau memberikan log masuk atau akses.",
         "expires": "Semakan tamat",
         "expired": "Semakan ini telah tamat. Buka semula draf untuk semakan baharu.",
@@ -19826,7 +19826,8 @@
           "expired": "Tamat",
           "refused": "Ditolak"
         },
-        "currency": "Mata wang"
+        "currency": "Mata wang",
+        "noOpeningLeave": "Pengaktifan asal ini tidak mengkreditkan cuti pembukaan."
       }
     },
     "denied_unavailable": "Ada sedikit masalah di pihak saya. Sila cuba lagi sebentar nanti.",

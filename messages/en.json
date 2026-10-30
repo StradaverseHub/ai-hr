@@ -19774,7 +19774,7 @@
         "captured": "All captured values in this supported draft",
         "blank": "Not specified",
         "initialPay": "Initial compensation and native defaults",
-        "leave": "The native hire creates these standing leave grants using current rules. Balances are calculated by the leave service.",
+        "leave": "Exact opening leave credits from the native activation preview (days and effective date):",
         "consequence": "Confirming creates a new person and employment with the reserved Employee ID, initial compensation and standing leave through the native services, then removes this draft. It does not process payroll or grant a login or access.",
         "expires": "Review expires",
         "expired": "This review has expired. Reopen the draft for a new review.",
@@ -19826,7 +19826,8 @@
           "expired": "Expired",
           "refused": "Refused"
         },
-        "currency": "Currency"
+        "currency": "Currency",
+        "noOpeningLeave": "No opening leave is credited by this native activation."
       }
     },
     "denied_unavailable": "A little snag on my side. Please try again in a moment.",

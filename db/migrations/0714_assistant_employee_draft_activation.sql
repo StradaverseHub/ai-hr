@@ -54,7 +54,7 @@ BEGIN
  PERFORM app._assistant_multi_cycle_run_review_identity(NULL,false);
  IF app.is_admin() IS NOT TRUE OR p_operation IS NULL OR p_operation NOT IN('prepare','subject','read','discard','index','complete') THEN RAISE EXCEPTION 'Draft activation review unavailable' USING ERRCODE='42501';END IF;
  IF p_operation='index' THEN
-  SELECT coalesce(jsonb_agg(jsonb_build_object('action',action_kind,'contractVersion',1,'actionId',id,'state',state,'createdAt',to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'expiresAt',to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')) ORDER BY created_at DESC,id DESC),'[]'::jsonb) INTO output FROM (SELECT * FROM app.assistant_own_leave_review WHERE tenant_id=t AND user_id=u AND action_kind='employees.draft.activate' AND app.is_admin_for(company_id) AND app.access_workforce_company(company_id,'workforce.maintain') ORDER BY created_at DESC,id DESC LIMIT 25) selected;
+  SELECT coalesce(jsonb_agg(jsonb_build_object('action',action_kind,'contractVersion',1,'actionId',id,'state',state,'createdAt',to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'expiresAt',to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')) ORDER BY created_at DESC,id DESC),'[]'::jsonb) INTO output FROM (SELECT * FROM app.assistant_own_leave_review WHERE tenant_id=t AND user_id=u AND action_kind='employees.draft.activate' AND person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=u AND a.tenant_id=t) AND app.is_admin_for(company_id) AND app.access_workforce_company(company_id,'workforce.maintain') ORDER BY created_at DESC,id DESC LIMIT 25) selected;
   RETURN output;
  END IF;
  IF p_operation='prepare' THEN

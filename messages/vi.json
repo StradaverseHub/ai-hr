@@ -19774,7 +19774,7 @@
         "captured": "Tất cả giá trị đã lưu trong bản nháp được hỗ trợ này",
         "blank": "Chưa chỉ định",
         "initialPay": "Lương ban đầu và giá trị mặc định của dịch vụ gốc",
-        "leave": "Dịch vụ tuyển dụng gốc tạo các quyền nghỉ phép sau theo quy tắc hiện tại. Số dư do dịch vụ nghỉ phép tính.",
+        "leave": "Quyền nghỉ phép ban đầu chính xác từ xem trước kích hoạt gốc (số ngày và ngày hiệu lực):",
         "consequence": "Xác nhận sẽ tạo hồ sơ cá nhân và việc làm mới với mã nhân viên đã giữ, lương ban đầu và quyền nghỉ phép qua dịch vụ gốc, rồi xóa bản nháp này. Thao tác không xử lý bảng lương hay cấp đăng nhập hoặc quyền truy cập.",
         "expires": "Hết hạn xem xét",
         "expired": "Lần xem xét đã hết hạn. Mở lại bản nháp để xem xét mới.",
@@ -19826,7 +19826,8 @@
           "expired": "Hết hạn",
           "refused": "Từ chối"
         },
-        "currency": "Tiền tệ"
+        "currency": "Tiền tệ",
+        "noOpeningLeave": "Kích hoạt gốc này không cộng quyền nghỉ phép ban đầu."
       }
     },
     "denied_unavailable": "Phía tôi gặp chút trục trặc. Vui lòng thử lại sau giây lát.",
