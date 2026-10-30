@@ -190,6 +190,13 @@ jobs:
           path: ${{ runner.temp }}/fixture-impact-projection.json
           if-no-files-found: error
           retention-days: 7
+      - if: ${{ always() && inputs.fixture_projection }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: finite-all-packet-transport-diagnostic
+          path: ${{ runner.temp }}/fixture-packet-transport-diagnostics/packet-summary.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Refuse invalid PDF-only diagnostic execution
         if: ${{ inputs.fixture_pdf_unit }}
         env: {PROJECTION: '${{ inputs.fixture_projection }}', CONTROLLER_ONLY: '${{ inputs.controller_only }}', DIAGNOSTICS_ONLY: '${{ inputs.diagnostics_only }}', CERTIFICATE: '${{ inputs.fixture_certificate }}'}

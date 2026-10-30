@@ -152,3 +152,14 @@ test('Finite fixture reader preserves exact complete inert duration diagnostics 
   for(const e of [missing,{...entries,'duration-sequence-smoke/unknown.json':'{}'},{...entries,'duration-sequence-smoke/../evil.json':'{}'},{...entries,'duration-sequence-smoke/proof.json':'x'.repeat(16*1024*1024+1)},{...entries,'focused.json':JSON.stringify({groups:{NODB:[],DB:['test/db.test.ts']}}),'db.vitest.json':'{}'}])assert.throws(()=>extract(e));
  }finally{rmSync(root,{recursive:true,force:true});}
 });
+
+test('Finite fixture reader retains one exact inert DB worker diagnostic but never admits it to Node coverage',()=>{
+ const root=mkdtempSync(join(tmpdir(),'fixture-worker-reader-')),path=join(root,'packet.zip');
+ const entries={'focused.json':JSON.stringify({groups:{NODB:[],DB:['test/db.test.ts']}}),'db.vitest.json':'{}','postgres.log':'facts','postgres-state.json':'{}','postgres-stats.txt':'facts','worker-cross-version.json':'{}'};
+ let i=0;const read=e=>{writeFileSync(path,browserExec('python3',['-c','import io,json,sys,zipfile;b=io.BytesIO();z=zipfile.ZipFile(b,"w");[(z.writestr(k,v)) for k,v in json.load(sys.stdin).items()];z.close();sys.stdout.buffer.write(b.getvalue())'],{input:JSON.stringify(e)}));const destination=join(root,'out-'+i++);browserExec('python3',[browserFilePath(new URL('./fixture-repair-extract.py',import.meta.url)),path,destination],{stdio:'pipe'});return destination;};
+ try{
+  assert.deepEqual(readdirSync(read(entries)).sort(),['db.vitest.json','focused.json']);
+  const missing={...entries};delete missing['postgres-state.json'];
+  for(const e of [missing,{...entries,'worker-cross-version.json':'x'.repeat(16*1024*1024+1)},{...entries,'worker-cross-version-extra.json':'{}'},{'focused.json':JSON.stringify({groups:{NODB:['test/node.test.ts'],DB:[]}}),'nodb.vitest.json':'{}','worker-cross-version.json':'{}'}])assert.throws(()=>read(e));
+ }finally{rmSync(root,{recursive:true,force:true});}
+});
