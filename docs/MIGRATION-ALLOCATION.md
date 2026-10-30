@@ -410,3 +410,28 @@ This follows the parent-reserved sibling claims0714–0715; those packages are n
 Every number/index/timestamp remains PROVISIONAL until integration freezes above the then-live ordered ledger.
 No installation priority, migration application, protected-ref move or deployment is authorized.
 The action uses the existing encrypted assigned ledger with person-keyed receipts and retains its selected employment binding.
+## Personnel saved-draft activation — provisional source reservation
+
+0714_assistant_employee_draft_activation, idx695 / when1793330000043, is UNAPPLIED and provisional. It follows qualification source0713 only in this isolated branch. Reallocate above the then-live accepted ordered ledger at integration freeze; source reservation is not deployment authority or installation priority. Historical SQL bytes are untouched.
+
+## Positive Workforce profile parity — provisional 30 October 2026
+
+Source-only claim0717_assistant_workforce_profile_maintenance / idx698 / when1793330000046.
+Every number/index/timestamp is PROVISIONAL until integration freeze above the then-live ordered ledger.
+Preserve0713–0716 sibling kinds and all applied SQL bytes. This claims no installation priority, protected-ref move or deployment.
+
+## Family maintenance parity — provisional 30 October 2026
+
+Source-only claim `0718_assistant_family_maintenance`, idx699 / when1793330000047.
+The parent reserved0717/idx698 for a separately reviewed creation package; this checkout does not include it.
+All numbers remain PROVISIONAL until integration freezes above the then-live ordered ledger.
+No installation priority, migration application, protected-ref movement or deployment is authorized.
+This appends one shared-person Approve action to the existing encrypted assigned ledger and preserves
+all predecessor checks, index predicates, verifier branches and dynamic outcome bounds.
+
+## Personnel Bank Information parity — provisional 30 October 2026
+
+Source-only claim `0719_assistant_bank_maintenance`, idx700 / when1793330000048.
+Sibling0714/0717/0718 claims are not included in this isolated package. Reconcile all reservations
+at integration freeze above the then-live ordered ledger. This is unapplied source, with no installation
+priority, deployment, protected-ref movement or release authority. Historical SQL/journal bytes remain unchanged.

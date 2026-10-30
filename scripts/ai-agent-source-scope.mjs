@@ -24,7 +24,7 @@ export const AI_SOURCE_MANIFEST_OUTPUT = 'lib/ai/module-agent-source-manifest.ts
 const AI_MIGRATION_WORDS = new Set(['ai', 'agent', 'assistant', 'specialist']);
 const PREFIXES = ['lib/ai/', 'lib/assistant-actions/', 'core/assistant-actions/'];
 const CORE_FILE = /^core\/(?:assistant|module-agent|module-specialist|module-native|ai-|agent-)[^/]*$/;
-const FILES = new Set(['packs/catalog.ts', 'scripts/ai-agent-source-manifest.mjs', 'scripts/ai-agent-source-scope.mjs']);
+const FILES = new Set(['core/dependent-review.ts', 'packs/catalog.ts', 'scripts/ai-agent-source-manifest.mjs', 'scripts/ai-agent-source-scope.mjs']);
 
 export function isAiSourceFile(name) {
   if (typeof name !== 'string' || name === AI_SOURCE_MANIFEST_OUTPUT || name.startsWith('.') || !/\.(ts|tsx|mjs|sql|json)$/.test(name)) return false;

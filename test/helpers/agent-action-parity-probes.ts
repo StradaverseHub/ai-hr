@@ -1,5 +1,13 @@
-import {emergencyContactMaintenanceReviews,readEmergencyContactMaintenanceChoices} from '../core/assistant-actions/emergency-contact-maintenance-review-store';
-import {addEmergencyContact} from '../core/workforce-registers';
+import {workforceViewScope} from '../../core/workforce-access';
+import {PARITY_PROBE_GROUPS,type ParityProbeGroup,type ParityProbeVariant} from './agent-action-parity-groups';
+import {workforceProfileMaintenanceReviews,readWorkforceProfileMaintenanceChoices} from '../../core/assistant-actions/workforce-profile-maintenance-review-store';
+import {maintainWorkforceRecord,workforceEditor} from '../../core/workforce-maintenance';
+import {workforceMaintenanceFields} from '../../lib/workforce-maintenance-fields';
+import {familyMaintenanceReviews,readFamilyMaintenanceChoices} from '../../core/assistant-actions/family-maintenance-review-store';
+import {addDependent} from '../../core/workforce-registers';
+import {bankMaintenanceReviews,readBankMaintenanceChoices} from '../../core/assistant-actions/bank-maintenance-review-store';
+import {emergencyContactMaintenanceReviews,readEmergencyContactMaintenanceChoices} from '../../core/assistant-actions/emergency-contact-maintenance-review-store';
+import {addEmergencyContact} from '../../core/workforce-registers';
 /** ADR-0151 §7 "Parity", review R16 (WP8) — the generic per-entry role matrix, driven by the agent action
  * registry through test/helpers/agent-action-parity-matrix.ts.
  *
@@ -23,88 +31,91 @@ import {addEmergencyContact} from '../core/workforce-registers';
 import {randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
-import {withTenant,type SessionContext,type Tx} from '../db/client';
-import * as schema from '../db/schema';
-import {hireEmployee,setReportingLine,endReportingLine} from '../core/org';
-import {createCompany,createDepartment} from '../core/admin';
-import {setCompensation} from '../core/comp';
-import {setRestDay} from '../core/roster';
-import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
-import {createMovementEventTx} from '../core/movement';
-import {isAdmin} from '../lib/authz-model';
-import {createClaimType,setClaimPolicy,submitClaim,decideClaimTx,cancelClaimTx} from '../packs/claims/service';
-import {prepareClaimCancellationReview,confirmClaimCancellationReview,readClaimCancellationChoices} from '../core/assistant-actions/claim-cancellation-review-store';
-import {OWN_CLAIM_CANCELLATION_ACTION} from '../lib/assistant-actions/own-claim-cancellation-contract';
-import {requestAttendanceCorrection,requestAttendanceCorrectionTx,decideAttendanceCorrection,saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../packs/attendance/service';
-import {overtimeRequestReviews,readOvertimeRequestChoices} from '../core/assistant-actions/overtime-request-review-store';
-import {OWN_OVERTIME_REQUEST_ACTION} from '../lib/assistant-actions/own-overtime-request-contract';
-import {toilRequestReviews} from '../core/assistant-actions/toil-request-review-store';
-import {readToilRequestModuleActionChoices} from '../core/assistant-actions/module-action-server';
-import {myEmployment} from '../core/read';
-import {resolveEntitlementsTx} from '../core/entitlements';
-import {setToilPolicy,submitReplacementLeaveRequest,decideReplacementLeaveRequestTx,applyLeaveAdjustmentBatchTx,grantLeaveCreditRowsTx,requestLeave,cancelOwnLeaveTx,editLeaveRequestTx} from '../packs/leave/service';
-import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews,readClaimDecisionChoices,readAttendanceDecisionChoices,readToilDecisionChoices} from '../core/assistant-actions/assigned-decision-review-store';
-import {leaveCancellationReviews,leaveEditReviews,readLeaveChangeChoices} from '../core/assistant-actions/leave-change-review-store';
-import {compensationMaintenanceReviews,readCompensationMaintenanceChoices} from '../core/assistant-actions/compensation-maintenance-review-store';
-import {qualificationMaintenanceReviews,readQualificationMaintenanceChoices} from '../core/assistant-actions/qualification-maintenance-review-store';
-import {addQualification} from '../core/workforce-registers';
-import {leaveAdjustmentReviews,movementTransferReviews,leaveCreditReviews,readLeaveAdjustmentChoices,readMovementTransferChoices,readLeaveCreditChoices} from '../core/assistant-actions/hr-prepared-review-store';
-import {ASSIGNED_CLAIM_DECISION_ACTION,ASSIGNED_ATTENDANCE_DECISION_ACTION,ASSIGNED_TOIL_DECISION_ACTION} from '../lib/assistant-actions/assigned-decision-contract';
-import {OWN_LEAVE_CANCELLATION_ACTION,OWN_LEAVE_EDIT_ACTION} from '../lib/assistant-actions/own-leave-change-contract';
-import {HR_LEAVE_ADJUSTMENT_ACTION,HR_MOVEMENT_TRANSFER_ACTION,HR_LEAVE_CREDIT_ACTION} from '../lib/assistant-actions/hr-prepared-contract';
-import {AGENT_ACTIONS} from '../lib/ai/agent-action-registry';
-import {todayInKualaLumpur} from '../lib/hr-date';
-import {AGENT_ACTION_PARITY,ATTENDANCE_WORKFLOW_PARITY,ALWAYS_REFUSED,PARITY_PHASES,PARITY_ROLES,PROBED_ACTION_IDS,expectedAgentOutcome,type ParityPhase,type ParityOutcome,type ParityRole,type ProbedActionId} from './helpers/agent-action-parity-matrix';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {withTenant,type SessionContext,type Tx} from '../../db/client';
+import * as schema from '../../db/schema';
+import {hireEmployee,setReportingLine,endReportingLine} from '../../core/org';
+import {createCompany,createDepartment} from '../../core/admin';
+import {setCompensation} from '../../core/comp';
+import {setRestDay} from '../../core/roster';
+import {grantAssistant,revokeAssistant} from '../../core/assistant-grant';
+import {createMovementEventTx} from '../../core/movement';
+import {isAdmin} from '../../lib/authz-model';
+import {createClaimType,setClaimPolicy,submitClaim,decideClaimTx,cancelClaimTx} from '../../packs/claims/service';
+import {prepareClaimCancellationReview,confirmClaimCancellationReview,readClaimCancellationChoices} from '../../core/assistant-actions/claim-cancellation-review-store';
+import {OWN_CLAIM_CANCELLATION_ACTION} from '../../lib/assistant-actions/own-claim-cancellation-contract';
+import {requestAttendanceCorrection,requestAttendanceCorrectionTx,decideAttendanceCorrection,saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../../packs/attendance/service';
+import {overtimeRequestReviews,readOvertimeRequestChoices} from '../../core/assistant-actions/overtime-request-review-store';
+import {OWN_OVERTIME_REQUEST_ACTION} from '../../lib/assistant-actions/own-overtime-request-contract';
+import {toilRequestReviews} from '../../core/assistant-actions/toil-request-review-store';
+import {readToilRequestModuleActionChoices} from '../../core/assistant-actions/module-action-server';
+import {myEmployment,employeeDetail} from '../../core/read';
+import {resolveEntitlementsTx} from '../../core/entitlements';
+import {setToilPolicy,submitReplacementLeaveRequest,decideReplacementLeaveRequestTx,applyLeaveAdjustmentBatchTx,grantLeaveCreditRowsTx,requestLeave,cancelOwnLeaveTx,editLeaveRequestTx} from '../../packs/leave/service';
+import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews,readClaimDecisionChoices,readAttendanceDecisionChoices,readToilDecisionChoices} from '../../core/assistant-actions/assigned-decision-review-store';
+import {leaveCancellationReviews,leaveEditReviews,readLeaveChangeChoices} from '../../core/assistant-actions/leave-change-review-store';
+import {compensationMaintenanceReviews,readCompensationMaintenanceChoices} from '../../core/assistant-actions/compensation-maintenance-review-store';
+import {employeeDraftActivationReviews,readEmployeeDraftActivationChoices} from '../../core/assistant-actions/employee-draft-activation-review-store';
+import {createEmployeeDraftWithReservedCode,saveEmployeeDraft,saveAndCompleteEmployeeDraft} from '../../core/employee-draft';
+import type {EmployeeDraftData} from '../../lib/employee-draft-schema';
+import {qualificationMaintenanceReviews,readQualificationMaintenanceChoices} from '../../core/assistant-actions/qualification-maintenance-review-store';
+import {addQualification} from '../../core/workforce-registers';
+import {leaveAdjustmentReviews,movementTransferReviews,leaveCreditReviews,readLeaveAdjustmentChoices,readMovementTransferChoices,readLeaveCreditChoices} from '../../core/assistant-actions/hr-prepared-review-store';
+import {ASSIGNED_CLAIM_DECISION_ACTION,ASSIGNED_ATTENDANCE_DECISION_ACTION,ASSIGNED_TOIL_DECISION_ACTION} from '../../lib/assistant-actions/assigned-decision-contract';
+import {OWN_LEAVE_CANCELLATION_ACTION,OWN_LEAVE_EDIT_ACTION} from '../../lib/assistant-actions/own-leave-change-contract';
+import {HR_LEAVE_ADJUSTMENT_ACTION,HR_MOVEMENT_TRANSFER_ACTION,HR_LEAVE_CREDIT_ACTION} from '../../lib/assistant-actions/hr-prepared-contract';
+import {AGENT_ACTIONS} from '../../lib/ai/agent-action-registry';
+import {todayInKualaLumpur} from '../../lib/hr-date';
+import {AGENT_ACTION_PARITY,ATTENDANCE_WORKFLOW_PARITY,ALWAYS_REFUSED,PARITY_PHASES,PARITY_ROLES,PROBED_ACTION_IDS,expectedAgentOutcome,type ParityPhase,type ParityOutcome,type ParityRole,type ProbedActionId} from './agent-action-parity-matrix';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from '../harness';
 
 
 vi.mock('server-only',()=>({}));
-vi.mock('../lib/real-auth',()=>({appOrigin:()=>undefined}));
-vi.mock('../core/assistant-actions/own-leave-server',()=>({authenticateOwnLeaveBrowserSession:vi.fn(()=>{throw Error('No HTTP authentication in DB parity fixtures');})}));
-import {prepareOwnLeaveReviewTx,confirmOwnLeaveReview} from '../core/assistant-actions/own-leave-store';
-import {readOwnLeaveCandidateTx} from '../core/assistant-actions/own-leave-candidate';
-import {prepareProfileModuleActionReview,confirmProfileModuleActionReview,prepareClaimModuleActionReview,confirmClaimModuleActionReview,prepareClaimSubmissionModuleActionReview,confirmClaimSubmissionModuleActionReview} from '../core/assistant-actions/module-action-review-store';
-import {readProfileModuleActionChoices,readClaimModuleActionChoices,readAttendanceCorrectionModuleActionChoices,readKnowledgeModuleActionAvailability,readPayComponentModuleActionChoices,readOrgModuleActionChoices} from '../core/assistant-actions/module-action-server';
-import {prepareAttendanceCorrectionReview,confirmAttendanceCorrectionReview} from '../core/assistant-actions/attendance-correction-review-store';
-import {prepareKnowledgeArticleReview,confirmKnowledgeArticleReview} from '../core/assistant-actions/knowledge-article-review-store';
-import {preparePayComponentReview,confirmPayComponentReview} from '../core/assistant-actions/pay-component-review-store';
-import {prepareOrgActionReview,confirmOrgActionReview} from '../core/assistant-actions/org-action-review-store';
-import {createArticleTx} from '../core/knowledge-base';
-import {createPayComponentTx} from '../packs/payroll/service';
-import {saveProfileEditPolicy} from '../core/profile-edit-policy';
-import {readOwnProfileWorkspace,submitOwnProfileEdit} from '../core/profile-edit';
-import {saveClaimDraft,submitDraftClaims} from '../packs/claims/service';
+vi.mock('../../lib/real-auth',()=>({appOrigin:()=>undefined}));
+vi.mock('../../core/assistant-actions/own-leave-server',()=>({authenticateOwnLeaveBrowserSession:vi.fn(()=>{throw Error('No HTTP authentication in DB parity fixtures');})}));
+import {prepareOwnLeaveReviewTx,confirmOwnLeaveReview} from '../../core/assistant-actions/own-leave-store';
+import {readOwnLeaveCandidateTx} from '../../core/assistant-actions/own-leave-candidate';
+import {prepareProfileModuleActionReview,confirmProfileModuleActionReview,prepareClaimModuleActionReview,confirmClaimModuleActionReview,prepareClaimSubmissionModuleActionReview,confirmClaimSubmissionModuleActionReview} from '../../core/assistant-actions/module-action-review-store';
+import {readProfileModuleActionChoices,readClaimModuleActionChoices,readAttendanceCorrectionModuleActionChoices,readKnowledgeModuleActionAvailability,readPayComponentModuleActionChoices,readOrgModuleActionChoices} from '../../core/assistant-actions/module-action-server';
+import {prepareAttendanceCorrectionReview,confirmAttendanceCorrectionReview} from '../../core/assistant-actions/attendance-correction-review-store';
+import {prepareKnowledgeArticleReview,confirmKnowledgeArticleReview} from '../../core/assistant-actions/knowledge-article-review-store';
+import {preparePayComponentReview,confirmPayComponentReview} from '../../core/assistant-actions/pay-component-review-store';
+import {prepareOrgActionReview,confirmOrgActionReview} from '../../core/assistant-actions/org-action-review-store';
+import {createArticleTx} from '../../core/knowledge-base';
+import {createPayComponentTx} from '../../packs/payroll/service';
+import {saveProfileEditPolicy} from '../../core/profile-edit-policy';
+import {readOwnProfileWorkspace,submitOwnProfileEdit} from '../../core/profile-edit';
+import {saveClaimDraft,submitDraftClaims} from '../../packs/claims/service';
 
 
 const provider=vi.hoisted(()=>({current:vi.fn()}));
-vi.mock('../lib/identity/provider',()=>({currentProviderSession:provider.current}));
-import {prepareLeaveDecisionReview,confirmLeaveDecisionReview} from '../core/assistant-actions/leave-decision-review-store';
-import {preparePayrollCloseReview,confirmPayrollCloseReview} from '../core/assistant-actions/payroll-close-review-store';
-import {prepareMultiCycleRunReview,confirmMultiCycleRunReview} from '../core/assistant-actions/multi-cycle-run-review-store';
-import {prepareCountryStatutoryReview,confirmCountryStatutoryReview} from '../core/assistant-actions/country-statutory-review-store';
-import {prepareRewardsPostReview,confirmRewardsPostReview} from '../core/assistant-actions/rewards-post-review-store';
-import {prepareLifecycleAckReview,confirmLifecycleAckReview} from '../core/assistant-actions/lifecycle-ack-review-store';
-import {prepareReviewModuleActionReview,confirmReviewModuleActionReview,prepareOnehrModuleActionReview,confirmOnehrModuleActionReview,prepareTestingModuleActionReview,confirmTestingModuleActionReview,prepareModuleActionReview,confirmModuleActionReview} from '../core/assistant-actions/module-action-review-store';
-import {readAssignedLeaveModuleActionChoices,readPerformanceModuleActionChoices,readTestingModuleActionChoices,readLifecycleAckModuleActionAvailability,readPayrollCloseModuleActionChoices,readRewardsPostModuleActionChoices,readCountryStatutoryModuleActionChoices,readNotificationModuleActionChoices} from '../core/assistant-actions/module-action-server';
-import {readMultiCycleRunModuleActionChoices} from '../core/assistant-actions/multi-cycle-run-choices';
-import {resolveOwnNotificationServerIdentity} from '../core/assistant-actions/own-notification-preferences-source';
-import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../core/notification-email';
-import {decideLeave} from '../packs/leave/service';
-import * as perf from '../packs/performance/service';
-import {defaultPolicy as defaultOnehrPolicy} from '../packs/performance/onehr/model';
-import onehrFramework from '../packs/performance/onehr/framework.json';
-import {createBatch,generatePayslips,closeBatch,createAdditionalRunTx} from '../packs/payroll/service';
-import {upsertPayrollCycle} from '../core/payroll-cycle';
-import {requirePackFor} from '../localization/registry';
-import {createOnboardingCase,tickStep} from '../packs/lifecycle/service';
-import {submitMyAcknowledgement} from '../core/lifecycle-self';
-import {ONBOARDING_STEPS} from '../core/lifecycle-defaults';
-import * as testing from '../core/system-testing-workspace';
-import type {InstructionDefinition} from '../lib/system-testing/model';
-import * as rewards from '../packs/rewards/service';
-import {emptyFacts as emptyRewardFacts} from '../packs/rewards/model';
-import {setRewardMember} from './rewards-access-fixture';
-import {configureRewardFixture,refreshRewardFixtureBudget} from './rewards-governance-fixture';
+vi.mock('../../lib/identity/provider',()=>({currentProviderSession:provider.current}));
+import {prepareLeaveDecisionReview,confirmLeaveDecisionReview} from '../../core/assistant-actions/leave-decision-review-store';
+import {preparePayrollCloseReview,confirmPayrollCloseReview} from '../../core/assistant-actions/payroll-close-review-store';
+import {prepareMultiCycleRunReview,confirmMultiCycleRunReview} from '../../core/assistant-actions/multi-cycle-run-review-store';
+import {prepareCountryStatutoryReview,confirmCountryStatutoryReview} from '../../core/assistant-actions/country-statutory-review-store';
+import {prepareRewardsPostReview,confirmRewardsPostReview} from '../../core/assistant-actions/rewards-post-review-store';
+import {prepareLifecycleAckReview,confirmLifecycleAckReview} from '../../core/assistant-actions/lifecycle-ack-review-store';
+import {prepareReviewModuleActionReview,confirmReviewModuleActionReview,prepareOnehrModuleActionReview,confirmOnehrModuleActionReview,prepareTestingModuleActionReview,confirmTestingModuleActionReview,prepareModuleActionReview,confirmModuleActionReview} from '../../core/assistant-actions/module-action-review-store';
+import {readAssignedLeaveModuleActionChoices,readPerformanceModuleActionChoices,readTestingModuleActionChoices,readLifecycleAckModuleActionAvailability,readPayrollCloseModuleActionChoices,readRewardsPostModuleActionChoices,readCountryStatutoryModuleActionChoices,readNotificationModuleActionChoices} from '../../core/assistant-actions/module-action-server';
+import {readMultiCycleRunModuleActionChoices} from '../../core/assistant-actions/multi-cycle-run-choices';
+import {resolveOwnNotificationServerIdentity} from '../../core/assistant-actions/own-notification-preferences-source';
+import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../../core/notification-email';
+import {decideLeave} from '../../packs/leave/service';
+import * as perf from '../../packs/performance/service';
+import {defaultPolicy as defaultOnehrPolicy} from '../../packs/performance/onehr/model';
+import onehrFramework from '../../packs/performance/onehr/framework.json';
+import {createBatch,generatePayslips,closeBatch,createAdditionalRunTx} from '../../packs/payroll/service';
+import {upsertPayrollCycle} from '../../core/payroll-cycle';
+import {requirePackFor} from '../../localization/registry';
+import {createOnboardingCase,tickStep} from '../../packs/lifecycle/service';
+import {submitMyAcknowledgement} from '../../core/lifecycle-self';
+import {ONBOARDING_STEPS} from '../../core/lifecycle-defaults';
+import * as testing from '../../core/system-testing-workspace';
+import type {InstructionDefinition} from '../../lib/system-testing/model';
+import * as rewards from '../../packs/rewards/service';
+import {emptyFacts as emptyRewardFacts} from '../../packs/rewards/model';
+import {setRewardMember} from '../rewards-access-fixture';
+import {configureRewardFixture,refreshRewardFixtureBudget} from '../rewards-governance-fixture';
 
 type Person={employmentId:string;personId:string};
 type DbRole=(typeof schema.roleEnum.enumValues)[number];
@@ -361,11 +372,31 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'employees.compensation.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'set',compensationId:null,fields:{basicSalary:'2500.25',currency:'MYR',payMode:'monthly',paymentTerm:'monthly',rateAmount:null,remarks:'Fictional human salary',effectiveFrom:todayInKualaLumpur()}}),
   offered:async(who,item)=>listed(await readCompensationMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>setCompensation(who,{employmentId:item.employmentId,basicSalary:2500.25,currency:'MYR',payMode:'monthly',paymentTerm:'monthly',rateAmount:null,remarks:'Fictional human salary',effectiveFrom:todayInKualaLumpur()},tx)},
+ 'employees.workforce_profile.maintain':{family:'hr_on_employment',store:workforceProfileMaintenanceReviews,
+  create:async(_w,h)=>{const workspace=await workforceEditor(groupOf(h.base),h.person.employmentId);if(!workspace)throw Error('Native profile fixture unavailable');const values=Object.fromEntries(workforceMaintenanceFields('person','personal').map(({key})=>[key,workspace.profile[key as keyof typeof workspace.profile]]));values.preferredName='Fictional reviewed name';return itemOf(h,h.person.employmentId,{proposal:{expectedVersion:workspace.profileVersion,values}});},
+  human:item=>({action:'employees.workforce_profile.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,section:'personal',...(item.proposal as {expectedVersion:string;values:Record<string,string|null>})}),
+  offered:async(who,item)=>listed(await readWorkforceProfileMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
+  screen:(tx,who,item)=>maintainWorkforceRecord(who,{employmentId:item.employmentId,kind:'person',rowId:null,operation:'update',patch:(item.proposal as {values:Record<string,string|null>}).values,expectedVersion:(item.proposal as {expectedVersion:string}).expectedVersion},tx)},
+ 'employees.bank.maintain':{family:'hr_on_employment',store:bankMaintenanceReviews,screenAdmits:async(who,item)=>isAdmin(who)&&(await workforceViewScope(who)).canOpen&&!!await employeeDetail(who,item.employmentId,'workforce'),
+  create:async(_w,h)=>{await requirePackFor('MY').statutory.set(groupOf(h.base),{personId:h.person.personId,icNumber:null});return itemOf(h,h.person.personId);},
+  human:item=>({action:'employees.bank.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,fields:{bankName:'Fictional bank',bankAccountNo:'000-FICTIONAL',enableCustomHolderName:false,customHolderName:null,enableCustomHolderId:false,customHolderId:null}}),
+  offered:async(who,item)=>listed(await readBankMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
+  screen:(tx,who,item)=>requirePackFor('MY').statutory.setBank(who,{personId:item.subjectId,employmentId:item.employmentId,bankName:'Fictional bank',bankAccountNo:'000-FICTIONAL',enableCustomHolderName:false,customHolderName:null,enableCustomHolderId:false,customHolderId:null},tx)},
  'employees.emergency_contact.maintain':{family:'hr_on_employment',store:emergencyContactMaintenanceReviews,screenAdmits:isAdmin,
   create:async(_w,h)=>itemOf(h,h.person.personId),
   human:item=>({action:'employees.emergency_contact.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'add',contactId:null,fields:{fullName:'Fictional Emergency Contact',relationship:null,mobilePhone:'000-FICTIONAL',homePhone:null,address:null,remarks:'Fictional human note',priority:'primary'}}),
   offered:async(who,item)=>listed(await readEmergencyContactMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>addEmergencyContact(who,{personId:item.subjectId,fullName:'Fictional Emergency Contact',relationship:null,mobilePhone:'000-FICTIONAL',homePhone:null,address:null,remarks:'Fictional human note',priority:'primary'},tx)},
+ 'employees.draft.activate':{family:'hr_on_employment',store:{prepare:employeeDraftActivationReviews.prepare,confirm:(ctx,input)=>employeeDraftActivationReviews.confirm(ctx,{action:'employees.draft.activate',contractVersion:1,...input})},screenAdmits:isAdmin,
+  async create(_w,h){const root=groupOf(h.base),draft=await createEmployeeDraftWithReservedCode(root,{companyId:h.companyId,fullName:'Fictional saved draft',primaryEmail:randomUUID()+'@fixture.test',employeeIdMode:'manual',employeeCode:'P-'+randomUUID().slice(0,10).toUpperCase()}),data:EmployeeDraftData={profile:{fullName:'Fictional saved draft',primaryEmail:randomUUID()+'@fixture.test',employeeCode:draft.employeeCode,employeeIdMode:'manual'},employment:{companyId:h.companyId,departmentId:h.departmentId,employmentType:'full_time',hiredOn:todayInKualaLumpur()},payroll:{basicSalary:'3000'}};await saveEmployeeDraft(root,{id:draft.id,data,currentStep:4});return itemOf(h,draft.id,{companyId:h.companyId,proposal:data});},
+  human:item=>({action:'employees.draft.activate',contractVersion:1,draftId:item.subjectId,companyId:item.companyId}),
+  offered:async(who,item)=>listed(await readEmployeeDraftActivationChoices(who,{}),'drafts','draftId',item.subjectId),
+  screen:(tx,who,item)=>saveAndCompleteEmployeeDraft(who,{id:item.subjectId,data:item.proposal as EmployeeDraftData,currentStep:4},tx)},
+ 'employees.family.maintain':{family:'hr_on_employment',store:familyMaintenanceReviews,screenAdmits:isAdmin,
+  create:async(_w,h)=>itemOf(h,h.person.personId),
+  human:item=>({action:'employees.family.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'add',dependentId:null,fields:{"fullName":"Fictional Family Member","relationship":"child","dateOfBirth":"2015-01-01","gender":null,"icOrPassport":null,"phone":null,"remarks":"Human entered note","passportNumber":null,"residentialAddress":null,"deceasedOn":null,"marriageDate":null,"marriageStatus":null,"occupation":null,"companyName":null,"employerAddress":null,"schoolName":null,"studyLevel":null,"studyCountry":null,"childReliefCategory":null,"isBeneficiary":false,"isDeceased":false,"spouseWorking":null,"isStudent":null,"childTaxRelief":null,"childReliefPercentage":null}}),
+  offered:async(who,item)=>listed(await readFamilyMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
+  screen:(tx,who,item)=>addDependent(who,{personId:item.subjectId,...{"fullName":"Fictional Family Member","relationship":"child","dateOfBirth":"2015-01-01","gender":null,"icOrPassport":null,"phone":null,"remarks":"Human entered note","passportNumber":null,"residentialAddress":null,"deceasedOn":null,"marriageDate":null,"marriageStatus":null,"occupation":null,"companyName":null,"employerAddress":null,"schoolName":null,"studyLevel":null,"studyCountry":null,"childReliefCategory":null,"isBeneficiary":false,"isDeceased":false,"spouseWorking":null,"isStudent":null,"childTaxRelief":null,"childReliefPercentage":null}},tx)},
  'employees.qualification.maintain':{family:'hr_on_employment',store:qualificationMaintenanceReviews,screenAdmits:isAdmin,
   create:async(_w,h)=>itemOf(h,h.person.employmentId),
   human:item=>({action:'employees.qualification.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'add',qualificationId:null,fields:{qualification:'Bachelor',description:'Fictional human-entered qualification',fromYm:'2018-01',toYm:'2021-12',institute:'Fictional Institute',major:null,graduationDate:'2021-12-15',result:null,isHighest:true}}),
@@ -409,14 +440,16 @@ async function observe(id:ProbedActionId,role:ParityRole,o:Options=DEFAULT_OPTIO
  let w=await buildWorld(),item=await adapter.create(w,w.home,o),who=await w.as(role);
  const screen=await screenOutcome(adapter,who,item,w.people[role].employmentId,o,notes);
  if(adapter.independentScreen){w=await buildWorld();item=await adapter.create(w,w.home,o);who=await w.as(role);}
+ // Creating the reference login changes native Access/policy revisions. Finish that setup before
+ // either review, so this custody probe does not accidentally manufacture a stale source.
+ const reference=PARITY_ROLES.find(r=>r!==role&&expectedAgentOutcome(declared,r)==='allow'),referenceActor=reference?await w.as(reference):null;
  let offer:ParityOutcome='deny';
  try{offer=await adapter.offered(who,item)?'allow':'deny';}catch(error){notes.offer=why(error);}
  const own=await tryPrepare(adapter,who,item,o,notes),prepare:ParityOutcome=own?'allow':'deny';
  // Probe another login BEFORE any effect changes the shared source. A permitted actor must not be
  // able to adopt another permitted actor's review, including another login linked to the same person.
- const reference=PARITY_ROLES.find(r=>r!==role&&expectedAgentOutcome(declared,r)==='allow');
  let theirs:Review|null,crossActor=who;
- if(reference){const referenceActor=await w.as(reference);notes.crossUserReference=reference;theirs=await tryPrepare(adapter,referenceActor,item,o,notes,'reference');}
+ if(reference&&referenceActor){notes.crossUserReference=reference;theirs=await tryPrepare(adapter,referenceActor,item,o,notes,'reference');}
  else if(own){crossActor=(await w.login(w.b,w.subject,'employee',null)).ctx;notes.crossUserReference='same_person_new_login_attempts_original_review';theirs=own;}
  else throw Error(`${id}: no permitted reference actor for custody refusal: ${JSON.stringify(notes)}`);
  if(!theirs)throw Error(`${id}: reference preparation failed, so cross-user confirmation proves nothing: ${notes.reference}`);
@@ -445,19 +478,22 @@ function assertInvariants(id:string,role:ParityRole,observed:Observed,notes:Reco
  return context;
 }
 
+/** Register exactly one selected DB entrypoint; wrappers add no describe nesting or hooks. */
+export function registerAgentActionParity(group:ParityProbeGroup){
+const selection:{actions:readonly ProbedActionId[];variants:readonly ParityProbeVariant[]}=PARITY_PROBE_GROUPS[group];
 beforeAll(async()=>{await migrateTestDb();});
 afterAll(closeAll);
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-parity-harness-custody-key-1234');await resetDb();});
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 
-describe('WP8 parity harness coverage',()=>{
+if(selection.variants.includes('adapter_coverage')) describe('WP8 parity harness coverage',()=>{
  it('has exactly one adapter per probed matrix entry, each a registry entry with an agent store',()=>{
   expect(Object.keys(ADAPTERS).sort()).toEqual([...PROBED_ACTION_IDS].sort());
   for(const id of PROBED_ACTION_IDS)expect(AGENT_ACTIONS.find(action=>action.id===id)?.store,id).not.toBe('human_workflow_only');
  });
 });
 
-describe.each([...PROBED_ACTION_IDS])('ADR-0151 parity: %s',id=>{
+describe.each([...selection.actions])('ADR-0151 parity: %s',id=>{
  it.each([...PARITY_ROLES])('%s gets the screen\'s allow/deny on offer, prepare and own confirm, and no cross-user confirm',async role=>{
   const declared=AGENT_ACTION_PARITY[id],{observed,notes}=await observe(id,role);
   console.info(`[parity] ${id} ${role} ${JSON.stringify(observed)} ${JSON.stringify(notes)}`);
@@ -471,7 +507,7 @@ describe.each([...PROBED_ACTION_IDS])('ADR-0151 parity: %s',id=>{
 
 const DECISIONS=PROBED_ACTION_IDS.filter(id=>ADAPTERS[id].family==='assigned_decision');
 /** Rejections: the parity invariants hold; the observed screen outcome is recorded in the log, not declared. */
-describe.each(DECISIONS)('ADR-0151 parity, rejected decision: %s',id=>{
+if(selection.variants.includes('rejected_decisions')) describe.each(DECISIONS)('ADR-0151 parity, rejected decision: %s',id=>{
  it.each([...PARITY_ROLES])('%s gets the screen\'s allow/deny when rejecting',async role=>{
   const {observed,notes}=await observe(id,role,{decision:'rejected',workflow:false});
   console.info(`[parity:rejected] ${id} ${role} ${JSON.stringify(observed)} ${JSON.stringify(notes)}`);
@@ -481,7 +517,7 @@ describe.each(DECISIONS)('ADR-0151 parity, rejected decision: %s',id=>{
 
 /** The attendance delegate policies (0533/0570/0592) apply to workflow-routed requests; probe the delegate,
  * the manager and HR under a one-level direct-manager workflow, approving and rejecting. */
-describe('ADR-0151 parity, attendance under a routed one-level workflow',()=>{
+if(selection.variants.includes('routed_attendance')) describe('ADR-0151 parity, attendance under a routed one-level workflow',()=>{
  it.each((['assigned_approver','manager','company_hr','employee'] as const).flatMap(role=>(['approved','rejected'] as const).map(decision=>[role,decision] as const)))('%s %s',async(role,decision)=>{
   const {observed,notes}=await observe('approvals.attendance.decide',role,{decision,workflow:true});
   console.info(`[parity:workflow] approvals.attendance.decide ${role} ${decision} ${JSON.stringify(observed)} ${JSON.stringify(notes)}`);
@@ -491,7 +527,7 @@ describe('ADR-0151 parity, attendance under a routed one-level workflow',()=>{
 });
 
 /** Prepare as a permitted role, remove that permission, then confirm must be refused by revalidation. */
-describe('ADR-0151 parity: permission removed between prepare and confirm',()=>{
+if(selection.variants.includes('permission_revalidation')) describe('ADR-0151 parity: permission removed between prepare and confirm',()=>{
  it('assigned decision: the manager\'s reporting line ends before confirmation',async()=>{
   const w=await buildWorld(),adapter=ADAPTERS['approvals.claim.decide'],item=await adapter.create(w,w.home,DEFAULT_OPTIONS),mgr=await w.as('manager'),notes:Record<string,string>={};
   const review=await tryPrepare(adapter,mgr,item,DEFAULT_OPTIONS,notes);expect(review,JSON.stringify(notes)).not.toBeNull();
@@ -525,7 +561,7 @@ describe('ADR-0151 parity: permission removed between prepare and confirm',()=>{
 /** Positive controls: the cross-company and cross-tenant sessions are refused above only because of the
  * boundary. Here each acts on an item in its OWN company or tenant and must be able to prepare and confirm. */
 const CONTROLS:[ProbedActionId,'another_company'|'another_tenant'][]=(['approvals.claim.decide','leave.adjustment.apply','leave.cancel','notifications.email_preferences.save'] as const).flatMap(id=>(['another_company','another_tenant'] as const).map(role=>[id,role] as [ProbedActionId,'another_company'|'another_tenant']));
-describe('ADR-0151 parity positive controls: the boundary sessions act inside their own company or tenant',()=>{
+if(selection.variants.includes('boundary_controls')) describe('ADR-0151 parity positive controls: the boundary sessions act inside their own company or tenant',()=>{
  it.each(CONTROLS)('%s as %s on its own side of the boundary',async(id,role)=>{
   const w=await buildWorld(),adapter=ADAPTERS[id],who=await w.as(role),notes:Record<string,string>={};
   const base=role==='another_tenant'?w.foreign:w.b,companyId=role==='another_tenant'?w.foreign.companyId:w.companyB,departmentId=role==='another_tenant'?w.foreign.deptB:w.deptOther;
@@ -543,7 +579,7 @@ describe('ADR-0151 parity positive controls: the boundary sessions act inside th
 
 /** A standalone assigned tester is a USER, with no fabricated PERSON or EMPLOYMENT. The role matrix
  * above additionally probes the employee-linked assigned tester against all other native actors. */
-describe('WP8 assigned tester without staff identity',()=>{
+if(selection.variants.includes('standalone_tester')) describe('WP8 assigned tester without staff identity',()=>{
  it('records the assigned login observation and refuses another login and another tenant',async()=>{
   const w=await buildWorld(),adapter=ADAPTERS['system_testing.execution.save'],original=await adapter.create(w,w.home,DEFAULT_OPTIONS);
   const [originalAssignment]=await owner.db.select().from(schema.testAssignment).where(eq(schema.testAssignment.id,original.assignmentId!));
@@ -564,3 +600,5 @@ describe('WP8 assigned tester without staff identity',()=>{
   const [run]=await owner.db.select().from(schema.testRun).where(eq(schema.testRun.executionId,item.subjectId));expect(run).toMatchObject({runByUserId:who.userId,actualResult:observation.actualResult,executionStatus:observation.status});
  },180_000);
 });
+
+}

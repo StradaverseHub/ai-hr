@@ -405,6 +405,9 @@ export interface CountryPack {
     getEditSnapshot?: MyStatutoryModule['getStatutoryEditSnapshotMY'];
     setTp3: MyStatutoryModule['setTp3ProfileMY'];
     setBank: MyStatutoryModule['setBankProfileMY'];
+    bankEditAccess?: MyStatutoryModule['canMaintainBankProfileMY'];
+    /** Local human Bank Information review; exact native partial-set normalization and source locks. */
+    reviewedBank?:MyStatutoryModule['prepareReviewedBankMYTx'];
     setRegistrationNumbers?: MyStatutoryModule['setRegistrationNumbersMY'];
     setIc: MyStatutoryModule['setIcProfileMY'];
     canApplyIcChange:MyStatutoryModule['canApplyIcProfileChangeMY'];

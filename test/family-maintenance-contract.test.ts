@@ -1,0 +1,10 @@
+import {describe,it,expect} from 'vitest';
+import {FamilyMaintenance as C} from '../lib/assistant-actions/family-maintenance-contract';
+const employmentId='11111111-1111-4111-8111-111111111111',personId='22222222-2222-4222-8222-222222222222';
+const fields={"fullName":"Fictional Family Member","relationship":"child","dateOfBirth":"2015-01-01","gender":null,"icOrPassport":null,"phone":null,"remarks":"Human entered note","passportNumber":null,"residentialAddress":null,"deceasedOn":null,"marriageDate":null,"marriageStatus":null,"occupation":null,"companyName":null,"employerAddress":null,"schoolName":null,"studyLevel":null,"studyCountry":null,"childReliefCategory":null,"isBeneficiary":false,"isDeceased":false,"spouseWorking":null,"isStudent":null,"childTaxRelief":null,"childReliefPercentage":null};
+const add={action:C.action,contractVersion:1,employmentId,subjectId:personId,operation:'add',dependentId:null,fields};
+describe('Family human boundary',()=>{
+ it('preserves exact human text and a distinct person subject; refuses undeclared fields, authority and operations',()=>{expect(C.Human.parse(add)).toEqual(add);for(const input of [{...add,actor:'hr_admin'},{...add,operation:'approve'},{...add,fields:{...fields,salary:'1'}},{...add,fields:{...fields,marriageDate:'2020-01-01'}}])expect(C.Human.safeParse(input).success).toBe(false);});
+ it('requires an existing contact for update/archive and excludes archive field edits',()=>{expect(C.Human.safeParse({...add,operation:'archive',dependentId:employmentId,fields:null}).success).toBe(true);for(const input of [{...add,operation:'archive'},{...add,operation:'update',fields:null},{...add,dependentId:employmentId}])expect(C.Human.safeParse(input).success).toBe(false);});
+ it('bounds actual serialized Unicode before encrypted custody',()=>{expect(C.Human.safeParse({...add,fields:{...fields,residentialAddress:'漢'.repeat(2000)}}).success).toBe(true);expect(C.Human.safeParse({...add,fields:{...fields,residentialAddress:'漢'.repeat(4000),remarks:'漢'.repeat(4000),fullName:'漢'.repeat(4000)}}).success).toBe(false);});
+});

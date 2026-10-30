@@ -2,7 +2,7 @@
  *
  * This file DECLARES, per registry entry, what the owning screen allows each role to do to one fixture
  * subject. It is not a permission model and nothing in the product reads it. The DB harness
- * (test/agent-action-permission-parity.test.ts) runs the owning screen's own admission and service for each
+ * (test/helpers/agent-action-parity-probes.ts, registered by three tracked DB wrappers) runs the owning screen's own admission and service for each
  * role, and the Assistant's offer, prepare and confirm paths for the same role and subject, and requires:
  *   1. the observed screen outcome equals the value declared here (an independent expected value);
  *   2. every agent phase equals the screen outcome, except where a role is listed in `narrowed` (the agent
@@ -101,7 +101,11 @@ export const AGENT_ACTION_PARITY={
  'system_testing.execution.save':{kind:'probed',screen:OWN_REQUEST},
  'leave.adjustment.apply':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.compensation.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'employees.workforce_profile.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'employees.bank.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.emergency_contact.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'employees.draft.activate':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'employees.family.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.qualification.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.movement.transfer':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'toil.credit.grant':{kind:'probed',screen:HR_ON_EMPLOYMENT},

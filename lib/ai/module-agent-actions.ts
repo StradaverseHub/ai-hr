@@ -7,7 +7,7 @@
 import {z} from 'zod';
 import {MODULE_CATALOG} from '../../packs/catalog';
 import {MODULE_AGENT_CAPABILITIES,isAgentModuleCode,type AgentModuleCode,type AgentCapability} from './module-agents';
-import {agentActionById,agentActionsByModule,type AgentAction,type AgentActionAdapter,type AgentActionIdOfModule,type AgentActionOf,type AgentActionOwner,type AgentPreparableActionId} from './agent-action-registry';
+import {agentActionById,agentActionsByModule,type AgentAction,type AgentActionServiceMember,type AgentActionAdapter,type AgentActionIdOfModule,type AgentActionOf,type AgentActionOwner,type AgentPreparableActionId} from './agent-action-registry';
 export const MODULE_AGENT_ACTION_CONTRACT_VERSION=1 as const;
 export type ModuleActionPhase='read'|'explain'|'prepare'|'confirm';
 export type ModuleActionStatus='implemented'|'read_context_only'|'human_workflow_only'|'pending_adapter'|'unavailable';
@@ -16,8 +16,8 @@ type EffectIds={[M in AgentModuleCode]:AgentActionIdOfModule<M>};
 export type ModuleEffectActionId=EffectIds[AgentModuleCode];
 type CanonicalOwner=AgentActionOwner|'schema_inventory'|'assistant_orchestration';
 type PhaseBoundary=Readonly<{status:ModuleActionStatus;adapter:AgentActionAdapter|null;inputSchema:string|null;outputSchema:string|null}>;
-type Action<M extends AgentModuleCode>=Readonly<{id:EffectIds[M];owner:CanonicalOwner;publicBoundary:string;publicMember?:'statutory.set';observations?:'human_actual_only';contractVersion:number;prepare:PhaseBoundary;confirm:PhaseBoundary;human:'canonical_workflow_required';outcome:'canonical_receipt_required'|'submitted_not_approved'}>;
-type Declaration<M extends AgentModuleCode>=Readonly<{module:M;owner:CanonicalOwner;publicBoundary:string;publicMember?:'statutory.set';source:string;coverage:'partial_actions'|'read_only'|'orchestration_only';money:'stored_kernel_amounts_only'|'canonical_engine_only'|'not_exposed';phases:Readonly<Record<ModuleActionPhase,ModuleActionStatus>>;read:Readonly<{id:ReadCapability<M>;status:'implemented';adapter:'canonical_module_read_v1';inputSchema:'AgentModuleCode';outputSchema:'createModuleAgentReaders.moduleWork:return'}>;actions:readonly Action<M>[]} >;
+type Action<M extends AgentModuleCode>=Readonly<{id:EffectIds[M];owner:CanonicalOwner;publicBoundary:string;publicMember?:AgentActionServiceMember;observations?:'human_actual_only';contractVersion:number;prepare:PhaseBoundary;confirm:PhaseBoundary;human:'canonical_workflow_required';outcome:'canonical_receipt_required'|'submitted_not_approved'}>;
+type Declaration<M extends AgentModuleCode>=Readonly<{module:M;owner:CanonicalOwner;publicBoundary:string;publicMember?:AgentActionServiceMember;source:string;coverage:'partial_actions'|'read_only'|'orchestration_only';money:'stored_kernel_amounts_only'|'canonical_engine_only'|'not_exposed';phases:Readonly<Record<ModuleActionPhase,ModuleActionStatus>>;read:Readonly<{id:ReadCapability<M>;status:'implemented';adapter:'canonical_module_read_v1';inputSchema:'AgentModuleCode';outputSchema:'createModuleAgentReaders.moduleWork:return'}>;actions:readonly Action<M>[]} >;
 export type ModuleAgentActionDeclaration={[M in AgentModuleCode]:Declaration<M>}[AgentModuleCode];
 /** Key order is part of specialistNativeContractDigest (JSON of MODULE_AGENT_ACTIONS[module]); keep it. */
 const phaseOf=(phase:AgentAction['prepare']|AgentAction['confirm']):PhaseBoundary=>Object.freeze({status:phase.status,adapter:phase.adapter,inputSchema:phase.inputSchema,outputSchema:phase.outputSchema});

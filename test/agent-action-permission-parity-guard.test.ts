@@ -1,6 +1,9 @@
+import {readFileSync} from 'node:fs';
+import {classifyTestFile} from '../scripts/gate-db-classify';
+import {PARITY_PROBE_GROUPS,PARITY_PROBE_VARIANTS,PARITY_PROBE_ENTRYPOINTS,type ParityProbeGroup} from './helpers/agent-action-parity-groups';
 /** ADR-0151 §7, review R16 (WP8): every agent action registry entry has a parity matrix declaration, and a
  * new entry without one fails CI. No database: this is the coverage guard; the role matrix itself runs in
- * test/agent-action-permission-parity.test.ts. */
+ * three tracked DB entrypoints through test/helpers/agent-action-parity-probes.ts. */
 import {describe,expect,it} from 'vitest';
 import {AGENT_ACTIONS} from '../lib/ai/agent-action-registry';
 import {AGENT_ACTION_PARITY,ATTENDANCE_WORKFLOW_PARITY,PARITY_PENDING_CEILING,PARITY_PENDING_ORIGINAL,PARITY_ROLES,PROBED_ACTION_IDS,parityCoverageProblems,type ParityDeclaration} from './helpers/agent-action-parity-matrix';
@@ -10,6 +13,26 @@ const declarations:Readonly<Record<string,ParityDeclaration>>=AGENT_ACTION_PARIT
 const probed:ParityDeclaration={kind:'probed',screen:{employee:'allow',manager:'deny',assigned_approver:'deny',company_hr:'deny',group_hr:'deny',super_admin:'deny',payroll_partner:'deny',performance_comp_partner:'deny',performance_partner:'deny',another_company:'deny',another_tenant:'deny'}};
 
 describe('WP8 parity matrix coverage of the agent action registry',()=>{
+ it('partitions every probed action and every variant into exactly one tracked executable entrypoint',()=>{
+  const groups:readonly{actions:readonly string[];variants:readonly string[]}[]=Object.values(PARITY_PROBE_GROUPS),actions=groups.flatMap(group=>group.actions),variants=groups.flatMap(group=>group.variants);
+  expect(groups.every(group=>group.actions.length>0)).toBe(true);expect(new Set(actions).size).toBe(actions.length);expect([...actions].sort()).toEqual([...PROBED_ACTION_IDS].sort());
+  expect(new Set(variants).size).toBe(variants.length);expect([...variants].sort()).toEqual([...PARITY_PROBE_VARIANTS].sort());
+  expect(Object.keys(PARITY_PROBE_ENTRYPOINTS).sort()).toEqual(Object.keys(PARITY_PROBE_GROUPS).sort());expect(new Set(Object.values(PARITY_PROBE_ENTRYPOINTS)).size).toBe(groups.length);
+ });
+ it('uses the real shared executable probes from every wrapper and keeps each wrapper classified DB',()=>{
+  const read=(path:string)=>{try{return readFileSync(path,'utf8');}catch{return null;}},path='test/helpers/agent-action-parity-probes.ts',probe=read(path);expect(probe).not.toBeNull();if(probe===null)throw Error('Shared parity implementation is missing');
+  for(const [group,file]of Object.entries(PARITY_PROBE_ENTRYPOINTS)){
+   expect(read(file)).toBe("import {registerAgentActionParity} from './helpers/agent-action-parity-probes';\nregisterAgentActionParity('"+group+"');\n");
+   expect(classifyTestFile(file,read).db,file).toBe(true);expect(PARITY_PROBE_GROUPS[group as ParityProbeGroup].actions.length).toBeGreaterThan(0);
+  }
+  expect(probe).toContain("describe.each([...selection.actions])('ADR-0151 parity: %s'");
+  for(const variant of PARITY_PROBE_VARIANTS)expect(probe.split("if(selection.variants.includes('"+variant+"')) describe")).toHaveLength(2);
+  expect([...probe.matchAll(/if\(selection\.variants\.includes\(/g)]).toHaveLength(PARITY_PROBE_VARIANTS.length);
+  expect(probe.split("it.each([...PARITY_ROLES])")).toHaveLength(3);
+  // Inspect the actual implementation, never a comment-only wrapper: all native/own/custody probes,
+  // independent declared screen expectations, rejection reason and foreign source non-effects stay.
+  for(const assertion of ["const screen=await screenOutcome(adapter,who,item","const own=await tryPrepare(adapter,who,item","const confirm:ParityOutcome=own?await tryConfirm(adapter,who,own","if(!theirs)throw Error","foreign confirmation changed the owner's custody","foreign confirmation wrote a native event","screen differs from the declared matrix","cross-company/tenant agent must refuse","rejection must preserve the same explicit human reason","before confirmation","no adjustment row may be written"])expect(probe).toContain(assertion);
+ });
  it('requires routed delegate confirmation parity after the delegated-approvals fix',()=>{
   expect(ATTENDANCE_WORKFLOW_PARITY.screen.assigned_approver).toBe('allow');
   expect(ATTENDANCE_WORKFLOW_PARITY).not.toHaveProperty('narrowed');
@@ -25,7 +48,7 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
  });
 
  it('has a real adapter for every human review action, with no remaining pending ceiling',()=>{
-  const humanActions=[...PARITY_PENDING_ORIGINAL,'approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer','toil.credit.grant','employees.qualification.maintain','employees.compensation.maintain','employees.emergency_contact.maintain'];
+  const humanActions=[...PARITY_PENDING_ORIGINAL,'approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer','toil.credit.grant','employees.qualification.maintain','employees.compensation.maintain','employees.emergency_contact.maintain','employees.draft.activate','employees.workforce_profile.maintain','employees.family.maintain','employees.bank.maintain'];
   expect([...PROBED_ACTION_IDS].sort()).toEqual(humanActions.sort());
   expect(PROBED_ACTION_IDS).toHaveLength(humanActions.length);expect(PARITY_PENDING_CEILING.size).toBe(0);
   for(const id of PROBED_ACTION_IDS)expect(AGENT_ACTIONS.find(action=>action.id===id)?.store,id).not.toBe('human_workflow_only');

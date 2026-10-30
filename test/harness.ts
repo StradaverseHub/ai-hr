@@ -425,7 +425,7 @@ async function seedBaseImpl(): Promise<Base> {
 
 export async function createAppUser(
   tenantId: string,
-  personId: string,
+  personId: string | null,
   role: 'employee' | 'manager' | 'hr_admin' | 'super_admin',
 ): Promise<string> {
   const [u] = await owner.db

@@ -17,7 +17,8 @@ export function assistantActionActors(ctx:SessionContext):readonly AgentActionAc
  const person=typeof ctx.personId==='string'&&ctx.personId.length>0,user=typeof ctx.userId==='string'&&ctx.userId.length>0;
  const held:Record<AgentActionActor,boolean>={
   self:person,assigned_approver:person,assigned_tester:user,agent_principal:false,
-  hr_admin:isAdmin(ctx),tenant_admin:isGroupAdmin(ctx),payroll_admin:canManagePayroll(ctx),rewards_admin:canManagePerfComp(ctx),
+  // Positive Workforce authority requires a fresh owning-service read; it has no inline hint protocol.
+  workforce_maintainer:false,hr_admin:isAdmin(ctx),tenant_admin:isGroupAdmin(ctx),payroll_admin:canManagePayroll(ctx),rewards_admin:canManagePerfComp(ctx),
  };
  return Object.freeze((Object.keys(held) as AgentActionActor[]).filter(actor=>held[actor]));
 }
