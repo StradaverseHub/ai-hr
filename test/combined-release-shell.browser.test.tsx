@@ -99,12 +99,12 @@ describe('isolated combined release: actual shell CSS and controls',()=>{
   ports.search=String(url).slice(1);view.rerender(<Screen theme={theme}/>);expect(screen.getByText('Fictional row 26')).toBeVisible();expect(screen.queryByText('Fictional row 1')).toBeNull();
  });
  it('uses actual rail destinations for module/list links and follows the real h1 when a record changes',async()=>{
-  ports.path='/attendance/daily/fictional-a';const view=await mount('atelier',1280,false,true,'Fictional attendance A');
+  ports.path='/attendance/individual/2026-10-29';const view=await mount('atelier',1280,false,true,'Fictional attendance A');
   const crumb=await screen.findByRole('navigation',{name:en.topbar.breadcrumb});
   await waitFor(()=>expect(crumb.querySelector('[aria-current=page]')?.textContent).toBe('Fictional attendance A'));
-  const hrefs=Array.from(crumb.querySelectorAll('a')).map(link=>link.getAttribute('href'));expect(hrefs).toContain('/attendance');expect(hrefs).toContain('/attendance/daily');
+  const hrefs=Array.from(crumb.querySelectorAll('a')).map(link=>link.getAttribute('href'));expect(hrefs).toContain('/attendance');expect(hrefs).toContain('/attendance/clock');
   // A streamed route can commit its new pathname before the previous heading is replaced.
-  ports.path='/attendance/daily/fictional-b';view.rerender(<Screen theme="atelier" title="Fictional attendance A"/>);await tick();
+  ports.path='/attendance/individual/2026-10-30';view.rerender(<Screen theme="atelier" title="Fictional attendance A"/>);await tick();
   view.rerender(<Screen theme="atelier" title="Fictional attendance B"/>);
   await waitFor(()=>expect(crumb.querySelector('[aria-current=page]')?.textContent).toBe('Fictional attendance B'));expect(crumb.textContent).not.toContain('Fictional attendance A');
  });
