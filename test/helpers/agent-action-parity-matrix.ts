@@ -101,6 +101,7 @@ export const AGENT_ACTION_PARITY={
  'system_testing.execution.save':{kind:'probed',screen:OWN_REQUEST},
  'leave.adjustment.apply':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.compensation.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'employees.workforce_profile.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.emergency_contact.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.draft.activate':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.qualification.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},

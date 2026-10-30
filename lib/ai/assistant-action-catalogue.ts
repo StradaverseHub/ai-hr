@@ -27,7 +27,7 @@ import {ASSISTANT_PROPOSAL_HINT_KEYS,isAssistantProposableAction,type AssistantP
 /** Tiers that can be proposed as an inline card. Automatic and Handoff never are. */
 export const CHAT_PROPOSABLE_TIERS=Object.freeze(['confirm','approve'] as const satisfies readonly AgentTier[]);
 /** Every actor class in the registry's permission union. The type check below fails if the union grows. */
-export const AGENT_ACTION_ACTORS=Object.freeze(['self','assigned_approver','hr_admin','tenant_admin','payroll_admin','rewards_admin','assigned_tester','agent_principal'] as const satisfies readonly AgentActionActor[]);
+export const AGENT_ACTION_ACTORS=Object.freeze(['self','assigned_approver','hr_admin','workforce_maintainer','tenant_admin','payroll_admin','rewards_admin','assigned_tester','agent_principal'] as const satisfies readonly AgentActionActor[]);
 type MissingActor=Exclude<AgentActionActor,typeof AGENT_ACTION_ACTORS[number]>;
 const actorsAreExhaustive:[MissingActor] extends [never]?true:never=true;void actorsAreExhaustive;
 

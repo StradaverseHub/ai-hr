@@ -1,3 +1,6 @@
+import {workforceProfileMaintenanceReviews,readWorkforceProfileMaintenanceChoices} from '../core/assistant-actions/workforce-profile-maintenance-review-store';
+import {maintainWorkforceRecord,workforceEditor} from '../core/workforce-maintenance';
+import {workforceMaintenanceFields} from '../lib/workforce-maintenance-fields';
 import {emergencyContactMaintenanceReviews,readEmergencyContactMaintenanceChoices} from '../core/assistant-actions/emergency-contact-maintenance-review-store';
 import {addEmergencyContact} from '../core/workforce-registers';
 /** ADR-0151 §7 "Parity", review R16 (WP8) — the generic per-entry role matrix, driven by the agent action
@@ -364,6 +367,11 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'employees.compensation.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'set',compensationId:null,fields:{basicSalary:'2500.25',currency:'MYR',payMode:'monthly',paymentTerm:'monthly',rateAmount:null,remarks:'Fictional human salary',effectiveFrom:todayInKualaLumpur()}}),
   offered:async(who,item)=>listed(await readCompensationMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>setCompensation(who,{employmentId:item.employmentId,basicSalary:2500.25,currency:'MYR',payMode:'monthly',paymentTerm:'monthly',rateAmount:null,remarks:'Fictional human salary',effectiveFrom:todayInKualaLumpur()},tx)},
+ 'employees.workforce_profile.maintain':{family:'hr_on_employment',store:workforceProfileMaintenanceReviews,
+  create:async(_w,h)=>{const workspace=await workforceEditor(groupOf(h.base),h.person.employmentId);if(!workspace)throw Error('Native profile fixture unavailable');const values=Object.fromEntries(workforceMaintenanceFields('person','personal').map(({key})=>[key,workspace.profile[key as keyof typeof workspace.profile]]));values.preferredName='Fictional reviewed name';return itemOf(h,h.person.employmentId,{proposal:{expectedVersion:workspace.profileVersion,values}});},
+  human:item=>({action:'employees.workforce_profile.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,section:'personal',...(item.proposal as {expectedVersion:string;values:Record<string,string|null>})}),
+  offered:async(who,item)=>listed(await readWorkforceProfileMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
+  screen:(tx,who,item)=>maintainWorkforceRecord(who,{employmentId:item.employmentId,kind:'person',rowId:null,operation:'update',patch:(item.proposal as {values:Record<string,string|null>}).values,expectedVersion:(item.proposal as {expectedVersion:string}).expectedVersion},tx)},
  'employees.emergency_contact.maintain':{family:'hr_on_employment',store:emergencyContactMaintenanceReviews,screenAdmits:isAdmin,
   create:async(_w,h)=>itemOf(h,h.person.personId),
   human:item=>({action:'employees.emergency_contact.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'add',contactId:null,fields:{fullName:'Fictional Emergency Contact',relationship:null,mobilePhone:'000-FICTIONAL',homePhone:null,address:null,remarks:'Fictional human note',priority:'primary'}}),

@@ -41,7 +41,7 @@ import {OWN_LEAVE_CONTRACT_VERSION} from '../assistant-actions/own-leave-contrac
 export type AgentActionOwner='personnel'|'organization'|'leave'|'profile'|'knowledge_base'|'payroll'|'attendance'|'claims'|'performance'|'rewards'|'lifecycle'|'country_pack_my'|'notifications'|'system_testing';
 export type AgentActionPhaseStatus='implemented'|'human_workflow_only'|'pending_adapter';
 export type AgentActionPhase=Readonly<{status:AgentActionPhaseStatus;adapter:string|null;inputSchema:string|null;outputSchema:string|null}>;
-export type AgentActionActor='self'|'assigned_approver'|'hr_admin'|'tenant_admin'|'payroll_admin'|'rewards_admin'|'assigned_tester'|'agent_principal';
+export type AgentActionActor='self'|'assigned_approver'|'hr_admin'|'workforce_maintainer'|'tenant_admin'|'payroll_admin'|'rewards_admin'|'assigned_tester'|'agent_principal';
 export type AgentActionSubject='own_employment'|'own_user'|'assigned_request'|'other_employment'|'other_person'|'company'|'tenant';
 export type AgentActionStoreFamily='dedicated'|'generic_own'|'generic_assigned'|'module_action'|'own_leave'|'human_workflow_only';
 export type AgentActionHandoff='review_page'|'native_workflow'|'none';
@@ -363,6 +363,14 @@ export const AGENT_ACTIONS=Object.freeze([
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'pay'},reversal:{kind:'entry_point',by:'app/admin/personnel/[employmentId]/actions.ts#supersedeCompensationAction'},evaluationCases:[],
   screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:['app/admin/personnel/[employmentId]/actions.ts#setCompensationAction','app/admin/personnel/[employmentId]/actions.ts#editCompensationAction','app/admin/personnel/[employmentId]/actions.ts#supersedeCompensationAction']},review:{route:'/assistant/compensation',handoff:'review_page'},
   store:'generic_assigned',browserOwner:'compensationMaintenance',pauseKey:'hr_assistant'}),
+ defineAgentAction({id:'employees.workforce_profile.maintain',module:'employees',owner:'personnel',service:'core/workforce-maintenance.ts#maintainWorkforceRecord',contractVersion:1,
+  prepare:{status:'implemented',adapter:'workforce_profile_maintenance_review_v1',inputSchema:'WorkforceProfileMaintenance.Human',outputSchema:'WorkforceProfileMaintenance.Prepared'},
+  confirm:{status:'implemented',adapter:'workforce_profile_maintenance_review_v1',inputSchema:'WorkforceProfileMaintenance.Confirmation',outputSchema:'WorkforceProfileMaintenance.Completed'},
+  outcome:'canonical_receipt_required',semantics:'shared_person_profile_updated_not_employment_pay_or_access',humanInputs:['employmentId','subjectId','section','expectedVersion','values'],
+  permission:{actor:'workforce_maintainer',guard:'core/assistant-actions/workforce-profile-maintenance-source.ts#withWorkforceProfileMaintenanceIntervalTx'},subject:'other_person',blastRadius:{max:1,unit:'shared_person_finite_profile_section'},
+  idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'repeat'},evaluationCases:[],
+  screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:[]},review:{route:'/assistant/workforce-profile',handoff:'review_page'},
+  store:'generic_assigned',browserOwner:'workforceProfileMaintenance',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'employees.emergency_contact.maintain',module:'employees',owner:'personnel',service:'core/workforce-registers.ts#addEmergencyContact',contractVersion:1,
   prepare:{status:'implemented',adapter:'emergency_contact_maintenance_review_v1',inputSchema:'EmergencyContactMaintenance.Human',outputSchema:'EmergencyContactMaintenance.Prepared'},
   confirm:{status:'implemented',adapter:'emergency_contact_maintenance_review_v1',inputSchema:'EmergencyContactMaintenance.Confirmation',outputSchema:'EmergencyContactMaintenance.Completed'},

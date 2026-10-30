@@ -413,3 +413,9 @@ The action uses the existing encrypted assigned ledger with person-keyed receipt
 ## Personnel saved-draft activation — provisional source reservation
 
 0714_assistant_employee_draft_activation, idx695 / when1793330000043, is UNAPPLIED and provisional. It follows qualification source0713 only in this isolated branch. Reallocate above the then-live accepted ordered ledger at integration freeze; source reservation is not deployment authority or installation priority. Historical SQL bytes are untouched.
+
+## Positive Workforce profile parity — provisional 30 October 2026
+
+Source-only claim0717_assistant_workforce_profile_maintenance / idx698 / when1793330000046.
+Every number/index/timestamp is PROVISIONAL until integration freeze above the then-live ordered ledger.
+Preserve0713–0716 sibling kinds and all applied SQL bytes. This claims no installation priority, protected-ref move or deployment.

@@ -21,6 +21,7 @@ import {leaveCancellationReviews,leaveEditReviews} from './leave-change-review-s
 import {overtimeRequestReviews} from './overtime-request-review-store';
 import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews} from './assigned-decision-review-store';
 import {compensationMaintenanceReviews} from './compensation-maintenance-review-store';
+import {workforceProfileMaintenanceReviews} from './workforce-profile-maintenance-review-store';
 import {emergencyContactMaintenanceReviews} from './emergency-contact-maintenance-review-store';
 import {employeeDraftActivationReviews} from './employee-draft-activation-review-store';
 import {qualificationMaintenanceReviews} from './qualification-maintenance-review-store';
@@ -54,6 +55,7 @@ const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOut
  'approvals.toil.decide':(tx,ctx,id)=>toilDecisionReviews.readCompletedOutcomeTx(tx,ctx,id),
  'leave.adjustment.apply':(tx,ctx,id)=>leaveAdjustmentReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.compensation.maintain':(tx,ctx,id)=>compensationMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.workforce_profile.maintain':(tx,ctx,id)=>workforceProfileMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.emergency_contact.maintain':(tx,ctx,id)=>emergencyContactMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.draft.activate':(tx,ctx,id)=>employeeDraftActivationReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.qualification.maintain':(tx,ctx,id)=>qualificationMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),

@@ -93,6 +93,8 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/personnel/[employmentId]/incentive-actions.ts":{"revokeIncentiveDeclarationAction":"backlog:approve","saveIncentiveDeclarationAction":"backlog:approve"},
  "app/admin/personnel/[employmentId]/qualification-actions.ts":{"addQualificationAction":"registered:employees.qualification.maintain","archiveQualificationAction":"registered:employees.qualification.maintain","editQualificationAction":"registered:employees.qualification.maintain"},
  "app/admin/personnel/[employmentId]/tax-selection-actions.ts":{"savePayrollTaxSelectionAction":"backlog:approve"},
+ // Profile person/update sections are supported by employees.workforce_profile.maintain; this composite
+ // export also reaches qualification/emergency/dependent kinds, which remain distinct pending parity.
  "app/admin/personnel/[employmentId]/workforce-record-actions.ts":{"saveWorkforceCodeAction":"backlog:approve","saveWorkforceRecordAction":"backlog:approve"},
  "app/admin/personnel/actions.ts":{"decideProfileChangeAction":"backlog:approve"},
  "app/admin/personnel/column-actions.ts":{"resetEmployeeColumnsAction":"backlog:approve","saveEmployeeColumnsAction":"backlog:approve"},

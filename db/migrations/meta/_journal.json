@@ -4082,6 +4082,13 @@
       "when": 1793330000045,
       "tag": "0716_assistant_emergency_contact_maintenance",
       "breakpoints": true
+    },
+    {
+      "idx": 698,
+      "version": "7",
+      "when": 1793330000046,
+      "tag": "0717_assistant_workforce_profile_maintenance",
+      "breakpoints": true
     }
   ]
 }
