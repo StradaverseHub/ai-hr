@@ -11,7 +11,7 @@ const formulaTables=['pay_formula','pay_formula_revision','pay_formula_test','pa
 const nativeTables=['tenant','company','person','app_user','role_assignment','employment','compensation','pay_component','pay_period','payroll_batch','payroll_input','payslip','domain_event'];
 it.each(['clean','populated'] as const)('rehearses the %s ordinary Formula Builder journal upgrade without changing Native payroll or prior receipts',async mode=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{tag:string;when:number}[]};
- const boundary=journal.entries.findIndex(entry=>entry.tag==='0741_pay_formula_builder');expect(boundary).toBeGreaterThan(0);
+ const boundary=journal.entries.findIndex(entry=>entry.tag==='0744_pay_formula_builder');expect(boundary).toBeGreaterThan(0);
  const directory=mkdtempSync(join(tmpdir(),'formula-ordinary-upgrade-')),name='ai_hr_formula_upgrade_'+randomUUID().replaceAll('-','');
  const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!),appUrl=new URL(process.env.TEST_DATABASE_URL!);
  expect(['127.0.0.1','localhost']).toContain(ownerUrl.hostname);expect(['127.0.0.1','localhost']).toContain(appUrl.hostname);expect(ownerUrl.username).not.toBe('ai_hr_app');expect(appUrl.username).toBe('ai_hr_app');
