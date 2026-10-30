@@ -1,0 +1,62 @@
+{
+  "purpose": "Native goal INSERT-only event reference regression and cohesive proof-suite resource recovery",
+  "previousCandidate": "64646a2a64f18d70ef005da9d78faea41e4b77c2",
+  "releaseHold": true,
+  "runtimeChange": "approveGoalTx uses server UUID + same INSERT-only appendEvent; SQL still verifies actual event, no event SELECT policy widening",
+  "retainedCases": 221,
+  "retainedScopes": [
+    {
+      "candidate": "4a710f87f7fb79aab0e2ae6630124fd0507d154f",
+      "scope": "110 unaffected assertions: cancellation11/completion16/scheduling24/family28/qualification21/catalogue4/native-checkins6"
+    },
+    {
+      "candidate": "8e0925bd699a67acb6731f0e796c6777ce822909",
+      "scope": "11 boundary DB assertions"
+    },
+    {
+      "candidate": "faf64e101db23e5c803bc4e70e8ac816592ba4a7",
+      "scope": "100 NODB assertions; original workflow FAILED"
+    }
+  ],
+  "proofSplit": {
+    "originalCases": 69,
+    "proof": 15,
+    "tamper": 29,
+    "transaction": 25,
+    "disposition": "All original assertion blocks and fullName templates preserved; shared helper contains only fixture/setup and observed-state queries"
+  },
+  "capacity": "Standard public runner, unchanged 2GiB PostgreSQL and 2 workers, no controller/telemetry waiver",
+  "groups": [
+    {
+      "id": "proof-main",
+      "run_typecheck": true,
+      "tests": [
+        "test/performance-review-postimage-proof.test.ts",
+        "test/assistant-goal-approval-custody.test.ts",
+        "test/performance-lifecycle.test.ts"
+      ]
+    },
+    {
+      "id": "proof-tamper",
+      "run_typecheck": true,
+      "tests": [
+        "test/performance-review-postimage-tamper.test.ts"
+      ]
+    },
+    {
+      "id": "proof-tx",
+      "run_typecheck": true,
+      "tests": [
+        "test/performance-review-postimage-transaction.test.ts"
+      ]
+    },
+    {
+      "id": "goal-native",
+      "run_typecheck": true,
+      "tests": [
+        "test/agent-action-permission-parity-performance.test.ts",
+        "test/module-action-performance-review-custody.test.ts"
+      ]
+    }
+  ]
+}

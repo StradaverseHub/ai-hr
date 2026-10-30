@@ -1,3 +1,4 @@
+import {derivePerformancePostimageTx,assertPerformancePostimageTx} from './assistant-actions/performance-postimage-proof';
 import { boundedNarrativeFacts, adjudicateNarrative } from '../lib/ai/evidence-selection';
 import {assertPerformanceProviderSourceTx} from './performance-provider-source';
 import {withAiAdmissionCheck} from './ai-governance';
@@ -939,7 +940,7 @@ export async function proposeGoals(ctx: SessionContext, p: { reviewId: string })
 /** Native approval source under the caller's transaction. The row lock holds the reviewed
  * goal stable through the effect; current native decision authority is rechecked on every read.
  * The digest is a private refusal witness, never a model-posted performance fact. */
-export async function readGoalApprovalSourceTx(tx:Tx,ctx:SessionContext,goalId:string){
+export async function readGoalApprovalSourceTx(tx:Tx,ctx:SessionContext,goalId:string,reviewed=false){
   assertModuleEnabled(ctx,'performance');
   const [g]=await tx.select().from(performanceGoal).where(eq(performanceGoal.id,goalId)).limit(1).for('update');
   if(!g)throw new PerfError('Goal not found');
@@ -947,16 +948,21 @@ export async function readGoalApprovalSourceTx(tx:Tx,ctx:SessionContext,goalId:s
   const [subj]=await tx.select({personId:employment.personId}).from(employment).where(eq(employment.id,g.employmentId)).limit(1);
   if(ctx.personId!=null&&subj?.personId===ctx.personId)throw new PerfError('You cannot approve your own goal');
   if(g.approvalStatus!=='proposed')throw new PerfError(`Only a proposed goal can be approved (it is ${g.approvalStatus})`);
-  return {goal:g,reviewDigest:createHash('sha256').update(JSON.stringify([1,ctx.tenantId,ctx.userId??null,ctx.personId??null,g])).digest('hex')};
+  const postimageProof=reviewed?await derivePerformancePostimageTx(tx,'performance.goal.approve',goalId):undefined;
+  return {goal:g,postimageProof,reviewDigest:createHash('sha256').update(JSON.stringify([1,ctx.tenantId,ctx.userId??null,ctx.personId??null,g,...(reviewed?[postimageProof]:[])])).digest('hex')};
 }
 
 /** SAME native effect for browser and reviewed custody callers; the outer transaction owns commit.
  * Returning an event ID is an insert reference, not proof that the transaction committed. */
-export async function approveGoalTx(tx:Tx,ctx:SessionContext,p:{goalId:string},expectedDigest?:string){
-  const {goal:g,reviewDigest}=await readGoalApprovalSourceTx(tx,ctx,p.goalId);
+export async function approveGoalTx(tx:Tx,ctx:SessionContext,p:{goalId:string},expectedDigest?:string,reviewed=false){
+  const {goal:g,reviewDigest,postimageProof}=await readGoalApprovalSourceTx(tx,ctx,p.goalId,reviewed);
   if(expectedDigest!==undefined&&expectedDigest!==reviewDigest)throw new PerfError('The goal changed. Review it again.');
   await tx.update(performanceGoal).set({approvalStatus:'approved',approvedByUserId:ctx.userId??null,approvedAt:sql`now()`,updatedAt:sql`now()`}).where(eq(performanceGoal.id,g.id));
-  const eventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'performance-goal',aggregateId:g.id,eventType:'performance-goal.approved',actor:actorOf(ctx),subjectEmploymentId:g.employmentId},{returnId:true});
+  if(postimageProof)await assertPerformancePostimageTx(tx,'performance.goal.approve',g.id,postimageProof);
+  // INSERT RETURNING would add event-read authority. This server UUID is only an insertion
+  // reference; protected custody still verifies the actual event/type/actor/subject/top transaction.
+  const eventId=randomUUID();await appendEvent(tx,{id:eventId,tenantId:ctx.tenantId,aggregateType:'performance-goal',aggregateId:g.id,eventType:'performance-goal.approved',actor:actorOf(ctx),subjectEmploymentId:g.employmentId});
+  if(postimageProof)await assertPerformancePostimageTx(tx,'performance.goal.approve',g.id,postimageProof);
   return {goalId:g.id,employmentId:g.employmentId,eventId};
 }
 
@@ -2255,7 +2261,7 @@ async function loadCheckin(tx: Tx, checkinId: string) {
 /** Canonical completion plan: native current authority/state and native notes normalization.
  * Assistant callers must establish their purpose-bound note-size budget before calling this owner.
  * No completion time or event is invented during a preview. */
-export async function readCheckInCompletionPlanTx(tx:Tx,ctx:SessionContext,p:{checkinId:string;notes?:string}){
+export async function readCheckInCompletionPlanTx(tx:Tx,ctx:SessionContext,p:{checkinId:string;notes?:string},reviewed=false){
   const [scope]=await tx.select({id:performanceCheckin.id,subjectEmploymentId:performanceCheckin.subjectEmploymentId,status:performanceCheckin.status}).from(performanceCheckin).where(eq(performanceCheckin.id,p.checkinId)).limit(1).for('update');
   if(!scope)throw new PerfError('Check-in not found');
   if(scope.status!=='scheduled')throw new PerfError(`This check-in is ${scope.status}`);
@@ -2263,17 +2269,20 @@ export async function readCheckInCompletionPlanTx(tx:Tx,ctx:SessionContext,p:{ch
   const [checkin]=await tx.select({row:performanceCheckin,version:sql<string>`${performanceCheckin}.xmin::text`}).from(performanceCheckin).where(eq(performanceCheckin.id,p.checkinId)).limit(1);
   if(!checkin)throw new PerfError('Check-in not found');
   const afterNotes=p.notes?.trim()??checkin.row.notes;
-  return{checkin:checkin.row,afterNotes,reviewDigest:createHash('sha256').update(JSON.stringify([1,ctx.tenantId,ctx.userId??null,ctx.personId??null,p,checkin,afterNotes])).digest('hex')};
+  const postimageProof=reviewed?await derivePerformancePostimageTx(tx,'performance.checkin.complete',p.checkinId,p.notes===undefined?'preserve':'replace',p.notes===undefined?null:afterNotes):undefined;
+  return{checkin:checkin.row,afterNotes,postimageProof,reviewDigest:createHash('sha256').update(JSON.stringify([1,ctx.tenantId,ctx.userId??null,ctx.personId??null,p,checkin,afterNotes,...(reviewed?[postimageProof]:[])])).digest('hex')};
 }
 
 /** Same native completion in the supplied transaction. Reviewed completion opts in to the exact
  * native clock metadata; ordinary UI/SYSTEM audit shape and notes semantics remain unchanged. */
-export async function completeCheckInTx(tx:Tx,ctx:SessionContext,p:{checkinId:string;notes?:string},expectedDigest?:string){
-  const plan=await readCheckInCompletionPlanTx(tx,ctx,p),c=plan.checkin;
+export async function completeCheckInTx(tx:Tx,ctx:SessionContext,p:{checkinId:string;notes?:string},expectedDigest?:string,reviewed=false){
+  const plan=await readCheckInCompletionPlanTx(tx,ctx,p,reviewed),c=plan.checkin;
   if(expectedDigest!==undefined&&expectedDigest!==plan.reviewDigest)throw new PerfError('The check-in changed. Review it again.');
   const completedAt=new Date();
   await tx.update(performanceCheckin).set({status:'completed',completedAt,notes:plan.afterNotes}).where(eq(performanceCheckin.id,c.id));
+  if(plan.postimageProof)await assertPerformancePostimageTx(tx,'performance.checkin.complete',c.id,plan.postimageProof,completedAt.toISOString());
   const eventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'performance-checkin',aggregateId:c.id,eventType:'performance-checkin.completed',actor:actorOf(ctx),subjectEmploymentId:c.subjectEmploymentId,payload:expectedDigest===undefined?undefined:{version:1,completedAt:completedAt.toISOString()}},{returnId:true});
+  if(plan.postimageProof)await assertPerformancePostimageTx(tx,'performance.checkin.complete',c.id,plan.postimageProof,completedAt.toISOString());
   return{checkinId:c.id,employmentId:c.subjectEmploymentId,eventId,completedAt:completedAt.toISOString()};
 }
 /** Mark a scheduled check-in completed, capturing the shared notes. Manager-or-admin. */
@@ -2283,20 +2292,23 @@ export async function completeCheckIn(ctx:SessionContext,p:{checkinId:string;not
 
 /** Native current-decision source. Keep assertCanDecide's real super-admin self exception;
  * managerEmploymentId is historical context, never a replacement permission oracle. */
-export async function readCheckInCancellationSourceTx(tx:Tx,ctx:SessionContext,checkinId:string){
+export async function readCheckInCancellationSourceTx(tx:Tx,ctx:SessionContext,checkinId:string,reviewed=false){
   assertModuleEnabled(ctx,'performance');
   const [checkin]=await tx.select({id:performanceCheckin.id,tenantId:performanceCheckin.tenantId,subjectEmploymentId:performanceCheckin.subjectEmploymentId,managerEmploymentId:performanceCheckin.managerEmploymentId,scheduledOn:performanceCheckin.scheduledOn,status:performanceCheckin.status,version:sql<string>`${performanceCheckin}.xmin::text`}).from(performanceCheckin).where(eq(performanceCheckin.id,checkinId)).limit(1).for('update');
   if(!checkin)throw new PerfError('Check-in not found');
   if(checkin.status!=='scheduled')throw new PerfError(`This check-in is ${checkin.status}`);
   await assertCanDecide(tx,ctx,checkin.subjectEmploymentId,'check-in');
-  return{checkin,reviewDigest:createHash('sha256').update(JSON.stringify([1,ctx.tenantId,ctx.userId??null,ctx.personId??null,checkin])).digest('hex')};
+  const postimageProof=reviewed?await derivePerformancePostimageTx(tx,'performance.checkin.cancel',checkinId):undefined;
+  return{checkin,postimageProof,reviewDigest:createHash('sha256').update(JSON.stringify([1,ctx.tenantId,ctx.userId??null,ctx.personId??null,checkin,...(reviewed?[postimageProof]:[])])).digest('hex')};
 }
 /** One SAME supplied transaction for the native cancellation and its exact event reference. */
-export async function cancelCheckInTx(tx:Tx,ctx:SessionContext,p:{checkinId:string},expectedDigest?:string){
-  const {checkin:c,reviewDigest}=await readCheckInCancellationSourceTx(tx,ctx,p.checkinId);
+export async function cancelCheckInTx(tx:Tx,ctx:SessionContext,p:{checkinId:string},expectedDigest?:string,reviewed=false){
+  const {checkin:c,reviewDigest,postimageProof}=await readCheckInCancellationSourceTx(tx,ctx,p.checkinId,reviewed);
   if(expectedDigest!==undefined&&expectedDigest!==reviewDigest)throw new PerfError('The check-in changed. Review it again.');
   await tx.update(performanceCheckin).set({status:'cancelled'}).where(eq(performanceCheckin.id,c.id));
+  if(postimageProof)await assertPerformancePostimageTx(tx,'performance.checkin.cancel',c.id,postimageProof);
   const eventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'performance-checkin',aggregateId:c.id,eventType:'performance-checkin.cancelled',actor:actorOf(ctx),subjectEmploymentId:c.subjectEmploymentId},{returnId:true});
+  if(postimageProof)await assertPerformancePostimageTx(tx,'performance.checkin.cancel',c.id,postimageProof);
   return{checkinId:c.id,employmentId:c.subjectEmploymentId,eventId};
 }
 /** Cancel a scheduled check-in. Native current manager/admin rules, including the super-admin exception. */

@@ -1,0 +1,53 @@
+{
+  "purpose": "0750 legacy three-action Performance proof repair; focused development only",
+  "base": "d3eb7aae8c29fe3f482dbf18ccd455623aa35ef6",
+  "candidate": null,
+  "releaseHold": true,
+  "publication": "pending independent exact implementation review",
+  "groups": [
+    {
+      "id": "proof",
+      "run_typecheck": true,
+      "tests": [
+        "test/performance-review-postimage-proof.test.ts",
+        "test/assistant-goal-approval-custody.test.ts",
+        "test/assistant-checkin-cancellation-custody.test.ts",
+        "test/assistant-checkin-completion-custody.test.ts"
+      ]
+    },
+    {
+      "id": "native-ledger",
+      "run_typecheck": true,
+      "tests": [
+        "test/performance-lifecycle.test.ts",
+        "test/performance-checkins.test.ts",
+        "test/assistant-checkin-scheduling-custody.test.ts",
+        "test/assistant-family-maintenance.test.ts",
+        "test/assistant-qualification-custody.test.ts",
+        "test/assistant-action-catalogue-db.test.ts",
+        "test/module-action-performance-review-custody.test.ts",
+        "test/agent-action-permission-parity-performance.test.ts"
+      ]
+    },
+    {
+      "id": "boundary-ui",
+      "run_typecheck": true,
+      "tests": [
+        "test/agent-action-registry.test.ts",
+        "test/agent-capability-inventory.test.ts",
+        "test/agent-action-permission-parity-guard.test.ts",
+        "test/module-action-http.test.ts",
+        "test/module-action-server-choices.test.ts",
+        "test/assistant-action-entries.test.ts",
+        "test/performance-native-handoffs.dom.test.tsx",
+        "test/performance-pack-drift.test.ts",
+        "test/goal-approval-panel.dom.test.tsx",
+        "test/checkin-cancellation-panel.dom.test.tsx",
+        "test/checkin-completion-panel.dom.test.tsx",
+        "test/goal-approval-contract.test.ts",
+        "test/checkin-cancellation-contract.test.ts",
+        "test/checkin-completion-contract.test.ts"
+      ]
+    }
+  ]
+}
