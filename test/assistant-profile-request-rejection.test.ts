@@ -3,6 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,afterEach,it,expect,vi} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {pgSqlState} from '../lib/db-error';
 import * as schema from '../db/schema';
 import * as vault from '../lib/pii/vault';
 import {hireEmployee} from '../core/org';
@@ -154,4 +155,13 @@ it('keeps the native legacy commitment stable for an uninitialized Access row',a
  const [before]=await owner.db.execute<{initialized:boolean}>(sql`select exists(select 1 from access_configuration where tenant_id=${b.tenantId}::uuid and initialized) as initialized`);expect(before.initialized).toBe(false);
  const id=await request(),r=(await reviews.prepare(hr,human(id))).review;await owner.db.execute(sql`insert into access_configuration(tenant_id,initialized) values(${b.tenantId}::uuid,false) on conflict(tenant_id) do update set revision=gen_random_uuid() where not access_configuration.initialized`);
  expect((await reviews.reopen(hr,r.actionId)).kind).toBe('prepared');expect((await reviews.confirm(hr,confirmation(r))).kind).toBe('completed');expect(await row(id)).toMatchObject({status:'rejected'});
+});
+it('keeps all dedicated hybrid columns closed through the finite generic branch and independent sibling checks',async()=>{
+ const id=await request(),r=(await reviews.prepare(hr,human(id))).review,allowed=['action_kind','id','tenant_id','user_id','person_id','employment_id','company_id','intent_digest','reviewed_digest','state','created_at','expires_at','decision_subject_person_id','receipt_subject_kind','receipt_subject_id','receipt_event_id'];
+ const columns=await owner.db.execute<{name:string;type:string}>(sql`select a.attname as name,format_type(a.atttypid,a.atttypmod) as type from pg_attribute a where a.attrelid='app.assistant_own_leave_review'::regclass and a.attnum>0 and not a.attisdropped and not (a.attname::text=any(${allowed}::text[])) order by a.attnum`);expect(columns).toHaveLength(54);
+ for(const column of columns){
+  const value=column.type==='uuid'?sql`${randomUUID()}::uuid`:column.type==='uuid[]'?sql`ARRAY[${randomUUID()}::uuid]`:column.type==='integer'?sql`1`:column.type==='date'?sql`DATE '2026-10-30'`:column.type==='text'?sql`'fictional hybrid'`:null;if(value===null)throw Error('Unhandled dedicated column type: '+column.name+' '+column.type);
+  let failure:unknown;try{await owner.db.execute(sql`update app.assistant_own_leave_review set ${sql.identifier(column.name)}=${value} where id=${r.actionId}::uuid`);}catch(error){failure=error;}expect(pgSqlState(failure),column.name+' must remain closed').toBe('23514');
+ }
+ expect(await stored(r.actionId)).toMatchObject({state:'awaiting_confirmation',bodies:1});expect(await row(id)).toMatchObject({status:'pending'});expect(await events(id)).toHaveLength(0);
 });

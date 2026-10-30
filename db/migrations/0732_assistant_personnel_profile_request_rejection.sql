@@ -29,8 +29,11 @@ BEGIN
  SELECT pg_get_expr(c.conbin,c.conrelid) INTO previous FROM pg_constraint c
   WHERE c.conrelid='app.assistant_own_leave_review'::regclass AND c.conname='assistant_review_kind_columns' AND c.contype='c';
  IF previous IS NULL OR position('employees.qualification.maintain' in previous)=0 THEN RAISE EXCEPTION 'profile-rejection: existing generic assigned branch unavailable';END IF;
- -- Evaluate the already accepted generic-column rule for the new kind, preserving all sibling cases.
- generic_columns:=replace(previous,'action_kind','''employees.qualification.maintain''::text');
+ -- The canonical generic branch (0670; admitted by 0671/0677/0713 onward) is exactly these
+ -- eight NULLs. Independent sibling CHECKs retain all other dedicated-column NULL fences.
+ -- Never substitute the kind into a copy of the entire predecessor tree: that duplicates it
+ -- with every appended kind. Keep its complete bytes ONCE, in the ELSE for every old kind.
+ generic_columns:='leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL AND performance_ack_event_id IS NULL';
  ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT assistant_review_kind_columns;
  EXECUTE 'ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_review_kind_columns CHECK (CASE WHEN action_kind=''employees.profile_request.reject'' THEN ('||generic_columns||') ELSE ('||previous||') END)';
 END $$;
