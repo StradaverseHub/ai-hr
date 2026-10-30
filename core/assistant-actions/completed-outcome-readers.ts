@@ -1,3 +1,4 @@
+import {paymentMethodMaintenanceReviews} from './payment-method-maintenance-review-store';
 import {passportMaintenanceReviews} from './passport-maintenance-review-store';
 import {employeeCodeMaintenanceReviews} from './employee-code-maintenance-review-store';
 import {familyMaintenanceReviews} from './family-maintenance-review-store';
@@ -61,6 +62,7 @@ const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOut
  'leave.adjustment.apply':(tx,ctx,id)=>leaveAdjustmentReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.compensation.maintain':(tx,ctx,id)=>compensationMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.code.maintain':(tx,ctx,id)=>employeeCodeMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.payment_method.maintain':(tx,ctx,id)=>paymentMethodMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.workforce_profile.maintain':(tx,ctx,id)=>workforceProfileMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.passport.maintain':(tx,ctx,id)=>passportMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.bank.maintain':(tx,ctx,id)=>bankMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),

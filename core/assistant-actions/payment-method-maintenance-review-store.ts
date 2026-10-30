@@ -1,0 +1,6 @@
+import {withTenant,type SessionContext} from '../../db/client';
+import {createGenericAssignedReviewStore} from './generic-assigned-review-store';
+import {PaymentMethodMaintenance as C} from '../../lib/assistant-actions/payment-method-maintenance-contract';
+import {withPaymentMethodMaintenanceSubjectTx,preparePaymentMethodMaintenanceSourceTx,confirmPaymentMethodMaintenanceSourceTx,reconcilePaymentMethodMaintenanceSourceTx,readPaymentMethodMaintenanceChoicesTx,paymentMethodMaintenanceUnavailable} from './payment-method-maintenance-source';
+export const paymentMethodMaintenanceReviews=createGenericAssignedReviewStore({action:C.action,human:C.Human,consequence:C.consequence,prepared:C.Prepared,completed:C.Completed,retired:C.Retired,index:C.Index,indexKind:C.indexKind,withSubject:withPaymentMethodMaintenanceSubjectTx,prepare:preparePaymentMethodMaintenanceSourceTx,confirm:confirmPaymentMethodMaintenanceSourceTx,reconcile:reconcilePaymentMethodMaintenanceSourceTx,unavailable:paymentMethodMaintenanceUnavailable});
+export async function readPaymentMethodMaintenanceChoices(supplied:SessionContext,selection?:unknown){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};try{return await withTenant(ctx,tx=>readPaymentMethodMaintenanceChoicesTx(tx,ctx,selection));}catch{return{kind:'unavailable' as const};}}

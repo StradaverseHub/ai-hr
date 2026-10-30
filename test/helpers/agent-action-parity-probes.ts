@@ -1,3 +1,5 @@
+import {paymentMethodMaintenanceReviews,readPaymentMethodMaintenanceChoices} from '../../core/assistant-actions/payment-method-maintenance-review-store';
+import {setEmploymentPaymentMethod} from '../../core/org';
 import {passportMaintenanceReviews,readPassportMaintenanceChoices} from '../../core/assistant-actions/passport-maintenance-review-store';
 import {employeeCodeMaintenanceReviews,readEmployeeCodeMaintenanceChoices} from '../../core/assistant-actions/employee-code-maintenance-review-store';
 import {setWorkforceEmployeeCode} from '../../core/workforce-code';
@@ -376,6 +378,11 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'employees.compensation.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'set',compensationId:null,fields:{basicSalary:'2500.25',currency:'MYR',payMode:'monthly',paymentTerm:'monthly',rateAmount:null,remarks:'Fictional human salary',effectiveFrom:todayInKualaLumpur()}}),
   offered:async(who,item)=>listed(await readCompensationMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>setCompensation(who,{employmentId:item.employmentId,basicSalary:2500.25,currency:'MYR',payMode:'monthly',paymentTerm:'monthly',rateAmount:null,remarks:'Fictional human salary',effectiveFrom:todayInKualaLumpur()},tx)},
+ 'employees.payment_method.maintain':{family:'hr_on_employment',store:paymentMethodMaintenanceReviews,screenAdmits:isAdmin,
+  create:async(_w,h)=>itemOf(h,h.person.employmentId),
+  human:item=>({action:'employees.payment_method.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,expectedMethod:null,paymentMethod:'cash'}),
+  offered:async(who,item)=>listed(await readPaymentMethodMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
+  screen:(tx,who,item)=>setEmploymentPaymentMethod(who,{employmentId:item.employmentId,paymentMethod:'cash'},tx)},
  'employees.code.maintain':{family:'hr_on_employment',store:employeeCodeMaintenanceReviews,
   create:async(_w,h)=>{const rows=await readEmployeeCodeMaintenanceChoices(groupOf(h.base),{query:'',employmentId:h.person.employmentId});if(rows.kind!=='choices')throw Error('Native code fixture unavailable');const selected=rows.employees.find(row=>row.employmentId===h.person.employmentId);if(!selected)throw Error('Missing native code fixture');return itemOf(h,h.person.employmentId,{proposal:{expectedCode:selected.employeeCode,employeeCode:'FIC-'+randomUUID().slice(0,8).toUpperCase()}});},
   human:item=>({action:'employees.code.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,...(item.proposal as {expectedCode:string|null;employeeCode:string})}),

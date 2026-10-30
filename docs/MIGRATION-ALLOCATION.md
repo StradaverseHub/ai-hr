@@ -452,3 +452,10 @@ under its prior owner/constraints and the same dynamic outcome bounds.
 0722_assistant_passport_maintenance / idx703 / when1793330000051 is UNAPPLIED provisional source only.
 0720–0721 sibling packages are not included in this tree. Reconcile all claims above the then-live ordered
 ledger at integration freeze; no installation priority or deployment authority is granted.
+
+### Personnel current payment method — provisional source claim
+
+0723_assistant_payment_method_maintenance / idx704 / when1793330000052 is a PROVISIONAL
+append-only source allocation above frozen wave4 eabfe797. No installation priority or release
+authority; reconcile against the accepted migration ledger at integration freeze. Historical SQL
+is unchanged. Only the new kind gains its nullable actor scope; every predecessor rule is retained.

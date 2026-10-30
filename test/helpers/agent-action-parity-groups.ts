@@ -19,7 +19,7 @@ export const PARITY_PROBE_GROUPS={
   'approvals.leave.decide','approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide',
   'payroll.close','performance.review.acknowledge','performance.onehr.plan.acknowledge','multi_cycle_payroll.create_run',
   'country-my.statutory.update','employees.workforce_profile.maintain','employees.draft.activate',
-  'employees.family.maintain','toil.credit.grant',
+  'employees.family.maintain','toil.credit.grant','employees.payment_method.maintain',
  ],variants:[]},
 } satisfies Record<string,{actions:readonly ProbedActionId[];variants:readonly ParityProbeVariant[]}>;
 export type ParityProbeGroup=keyof typeof PARITY_PROBE_GROUPS;
