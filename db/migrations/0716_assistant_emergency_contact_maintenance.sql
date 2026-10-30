@@ -148,8 +148,11 @@ BEGIN
   definition:=replace(definition,marker,replacement);
   IF target='app.native_outcome_completed_review_choices(jsonb)'::regprocedure THEN
    bound:=substring(definition from 'NOT BETWEEN 1 AND ([0-9]+)');
-   IF bound IS NULL THEN RAISE EXCEPTION '0716: outcome choices bound unavailable';END IF;
-   definition:=replace(definition,'NOT BETWEEN 1 AND '||bound,'NOT BETWEEN 1 AND '||(bound::integer+1)::text);
+   IF bound IS NOT NULL THEN
+    definition:=replace(definition,'NOT BETWEEN 1 AND '||bound,'NOT BETWEEN 1 AND (SELECT count(*) FROM app.assistant_action_kind WHERE review_kind IS NOT NULL)');
+   ELSIF position('NOT BETWEEN 1 AND (SELECT count(*) FROM app.assistant_action_kind WHERE review_kind IS NOT NULL)' in definition)=0 THEN
+    RAISE EXCEPTION '0716: outcome choices bound unavailable';
+   END IF;
   END IF;
   EXECUTE definition;
  END LOOP;
