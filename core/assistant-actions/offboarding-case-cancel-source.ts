@@ -1,4 +1,4 @@
-/** Unmounted source adapter; SQL/registry/mount review must precede execution. */
+/** Bounded native case-cancellation source adapter with same-transaction authority. */
 import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';

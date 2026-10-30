@@ -1,4 +1,4 @@
-/** Unexposed contract: one legacy offboarding case cancellation; no linked IT/employment effects. */
+/** One legacy offboarding case cancellation; linked IT work and employment remain unchanged. */
 import {z} from 'zod';
 const id=z.guid(),reason=z.string().trim().min(1).max(500),digest=z.string().regex(/^[a-f0-9]{64}$/);
 export const OffboardingCaseCancelHuman=z.object({caseId:id,caseNumber:z.string().min(1).max(100),reason,confirmCaseCancellation:z.literal(true)}).strict();
@@ -8,7 +8,7 @@ export const OffboardingCaseCancelPrepared=z.object({content:OffboardingCaseCanc
 });
 export const OffboardingCaseCancelNativeReference=z.object({caseId:id,status:z.literal('cancelled'),eventId:id}).strict();
 
-/** Unexposed wire shapes only; no registry, server adapter, route or SQL execution is enabled. */
+/** Dedicated closed human-review wire shapes; private SQL proofs never enter these packets. */
 export const OFFBOARDING_CASE_CANCEL_ACTION='lifecycle.offboarding.case.cancel' as const;
 const wireBase={action:z.literal(OFFBOARDING_CASE_CANCEL_ACTION),contractVersion:z.literal(1)};
 const WirePrepared=z.object({...wireBase,actionId:id,reviewedDigest:digest,createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),content:OffboardingCaseCancelHuman,review:OffboardingCaseCancelReview}).strict().superRefine((v,ctx)=>{

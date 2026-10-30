@@ -1,4 +1,4 @@
-/** Pure unexposed browser packet/result validation. No transport registration or authority. */
+/** Strict dedicated browser packets and result correspondence; server owners retain authority. */
 import {z} from 'zod';
 import {OffboardingCaseCancel as C} from './offboarding-case-cancel-contract';
 export const OffboardingCaseCancelPacket=z.discriminatedUnion('operation',[

@@ -1,4 +1,4 @@
-/** Lazy UNMOUNTED factory over the SAME encrypted ledger/engine. No new action is registered here. */
+/** Same encrypted ledger/engine factory; dedicated owners mount its registered singleton. */
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import {NATIVE_OUTCOME_ACTIONS,type NativeOutcomeAction} from '../../lib/ai/module-native-outcomes';
@@ -13,7 +13,7 @@ const Stored=z.object({metadata:Metadata,sealed:OwnLeaveSealedReview.nullable(),
 type S=z.infer<typeof Stored>;type P=Awaited<ReturnType<typeof prepareOffboardingCaseCancelSourceTx>>;type N=Awaited<ReturnType<typeof confirmOffboardingCaseCancelSourceTx>>;
 export function createOffboardingCaseCancelReviews(){
  // Runtime registry membership is mandatory; no cast/borrowed action can make an unregistered
- // action executable. The factory is called only by the later reviewed atomic mount.
+ // action executable. Dedicated owners share the registered singleton below.
  const action=z.custom<NativeOutcomeAction>(v=>typeof v==='string'&&Object.hasOwn(NATIVE_OUTCOME_ACTIONS,v)).parse(C.action);
  return createReviewCustody<z.infer<typeof C.Human>,z.infer<typeof Binding>,S,OffboardingCaseCancelSource,P,N,z.infer<typeof C.Prepared>,z.infer<typeof C.Completed>,z.infer<typeof C.Retired>,z.infer<typeof C.Index>>({
  action,tier:'confirm',human:C.Human,metadata:Metadata,stored:Stored,confirmation:C.Confirmation,retirement:C.Retirement,retired:C.Retired,index:C.Index,indexKind:'offboarding_case_cancel_review_index',
@@ -33,3 +33,6 @@ export function createOffboardingCaseCancelReviews(){
  async indexRows(tx){return Array.from(await tx.execute(sql`select action,1 as "contractVersion",action_id as "actionId",state,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt" from app.assistant_offboarding_case_cancel_reviews_index()`));},unavailable:fail,
  });
 }
+
+/** Registered atomically with the dedicated HTTP/page/outcome owners after source clearance. */
+export const offboardingCaseCancelReviews=createOffboardingCaseCancelReviews();
