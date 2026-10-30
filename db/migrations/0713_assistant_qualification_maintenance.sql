@@ -6,12 +6,25 @@
 INSERT INTO app.assistant_action_kind(id,module,tier_ceiling,category,review_kind) VALUES
  ('employees.qualification.maintain','employees','approve','personnel','employees.qualification.maintain');
 --> statement-breakpoint
--- Preserve each prior expression exactly, adding only a branch for this kind.
+-- Extend the existing HR generic branch itself, preserving its complete predicate. Other dedicated
+-- receipt families retain their separate null-column CHECKs from 0622. Refuse unexpected schema drift.
+DO $$
+DECLARE previous text;marker constant text:='''toil.credit.grant''::text]';
+BEGIN
+ SELECT pg_get_expr(c.conbin,c.conrelid) INTO previous FROM pg_constraint c
+  WHERE c.conrelid='app.assistant_own_leave_review'::regclass AND c.conname='assistant_review_kind_columns' AND c.contype='c';
+ IF previous IS NULL OR (length(previous)-length(replace(previous,marker,'')))/length(marker)<>1 THEN
+  RAISE EXCEPTION '0713: expected one existing HR generic column branch';END IF;
+ ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT assistant_review_kind_columns;
+ EXECUTE 'ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_review_kind_columns CHECK ('||
+  replace(previous,marker,'''toil.credit.grant''::text, ''employees.qualification.maintain''::text]')||')';
+END $$;
+--> statement-breakpoint
+-- Preserve each remaining prior expression exactly, adding only a branch for this kind.
 DO $$
 DECLARE item record;previous text;added text;
 BEGIN
  FOR item IN SELECT * FROM (VALUES
-  ('assistant_review_kind_columns', 'leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL AND performance_ack_event_id IS NULL'),
   ('assistant_review_decision_columns', 'decision_subject_person_id IS NOT NULL AND decision_request_id IS NULL AND decision_step_id IS NULL AND decision_event_id IS NULL AND decision_applicant_person_id IS NULL'),
   ('assistant_review_generic_receipt', 'receipt_subject_kind=''employment'' AND receipt_subject_id=employment_id AND ((state=''completed'')=(receipt_event_id IS NOT NULL))')
  ) AS requirements(name,expression) LOOP

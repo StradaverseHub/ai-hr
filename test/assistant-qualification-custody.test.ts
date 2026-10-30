@@ -13,6 +13,7 @@ import {applyLeaveAdjustmentBatchTx} from '../packs/leave/service';
 import {qualificationMaintenanceReviews,readQualificationMaintenanceChoices} from '../core/assistant-actions/qualification-maintenance-review-store';
 import {QualificationMaintenance as Q} from '../lib/assistant-actions/qualification-maintenance-contract';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
+import {pgSqlState} from '../lib/db-error';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
@@ -120,6 +121,23 @@ describe('Qualification generic assigned SQL custody',()=>{
   expect(result.metadata.state).toBe('completed');
   expect(await stored(oldId)).toMatchObject({state:'completed',bodies:0});
   const [newRow]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from app.assistant_own_leave_review where action_kind=${ACTION} and state='awaiting_confirmation'`);expect(newRow.n).toBe(1);
+ });
+
+ it('rejects every dedicated-family hybrid column by a CHECK constraint even through the owner connection',async()=>{
+  const id=await prepare();
+  // Derive the exhaustive dedicated column set from the installed table, excluding only metadata and
+  // the generic assigned binding/receipt columns. A new unguarded dedicated column makes this fail.
+  const allowed=['action_kind','id','tenant_id','user_id','person_id','employment_id','company_id','intent_digest','reviewed_digest','state','created_at','expires_at','decision_subject_person_id','receipt_subject_kind','receipt_subject_id','receipt_event_id'];
+  const columns=await owner.db.execute<{name:string;type:string}>(sql`select attname as name,format_type(atttypid,atttypmod) as type from pg_attribute where attrelid='app.assistant_own_leave_review'::regclass and attnum>0 and not attisdropped order by attnum`);
+  const dedicated=Array.from(columns).filter(column=>!allowed.includes(column.name));expect(dedicated.length).toBeGreaterThan(40);
+  for(const column of dedicated){
+   const value=column.type==='uuid'?sql`${randomUUID()}::uuid`:column.type==='uuid[]'?sql`ARRAY[${randomUUID()}::uuid]`:column.type==='integer'?sql`1`:column.type==='text'?sql`'fictional-hybrid'`:null;
+   if(!value)throw Error(`Unreviewed dedicated column type ${column.name}: ${column.type}`);
+   let failure:unknown;try{await owner.db.execute(sql`update app.assistant_own_leave_review set ${sql.identifier(column.name)}=${value} where id=${id}::uuid`);}catch(error){failure=error;}
+   // Prove the per-kind CHECK, rather than accepting a foreign key or privilege failure as coverage.
+   expect(pgSqlState(failure),column.name).toBe('23514');
+  }
+  expect(await stored(id)).toEqual({state:'awaiting_confirmation',eventId:null,bodies:1});
  });
 
  it('keeps helper functions private and registry metadata non-automatic',async()=>{
