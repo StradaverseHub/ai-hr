@@ -1,6 +1,7 @@
 /** Cross-source v2 accounting. API/archive/source authentication belongs to the adapter. */
 import assert from 'node:assert/strict';
 import {isDeepStrictEqual} from 'node:util';
+import {validateCompleteUnitHealth} from './unit-repair-health.mjs';
 import {validatePdfRepairMetadata} from './pdf-repair-metadata.mjs';
 import {validateBrowserRepairMetadata,validateBrowserRepairImage} from './browser-repair-metadata.mjs';
 import {relative} from 'node:path';
@@ -131,7 +132,7 @@ export function verifyFixtureBrowserRecovery({sourcePlan,plan,assessment,sourceR
   const binding=validatePdfRepairMetadata({...pdf,expected:{runId:pdf.run.id,verificationController,after:sourceRun.updated_at}});
   assert(history.runIds.includes(pdf.run.id)&&pdf.codeController===plan.controller,'Unaccounted or unpinned PDF code controller');
   const {fingerprint,...executionBody}={...plan,controller:verificationController},executionPlan={...executionBody,fingerprint:hash(executionBody)};
-  const u=pdfUnits[0];assert(pdf.report?.id===u.id,'Foreign PDF unit');verifyUnitReport(executionPlan,pdf.report);
+  const u=pdfUnits[0];assert(pdf.report?.id===u.id,'Foreign PDF unit');validateCompleteUnitHealth({report:pdf.report,standaloneHealth:pdf.standaloneHealth,producer:binding.producer});verifyUnitReport(executionPlan,pdf.report);
   assert(pdf.report.batches.length===1&&isDeepStrictEqual(pdf.report.pdfToolSetup,pdf.setup)&&isDeepStrictEqual(pdf.report.batches[0].result,pdf.result),'PDF setup or standalone result differs');
   const cases=caseInventory(pdf.result,u.files,pdf.report.cwd,{passing:true});
   for(const [path,names] of cases){assert(needed.get(u.id).has(path)&&!replacements.has(path),'Extra or duplicate PDF replacement');replacements.set(path,{cases:names,runId:pdf.run.id,jobId:binding.producer.id,artifactId:binding.artifact.id,digest:binding.artifact.digest,executionController:verificationController,codeController:pdf.codeController});}
@@ -145,6 +146,7 @@ export function verifyFixtureBrowserRecovery({sourcePlan,plan,assessment,sourceR
    const p=b.packets.find(p=>p.engine===binding.engine),u=browserUnits.find(u=>u.engine===binding.engine);
    assert(p&&u&&p.report?.id===u.id,'Foreign browser engine or duplicate packet');
    validateBrowserRepairImage({...p,expected:{runtime:plan.runtime,candidate:plan.sha,controller:plan.controller,lockSha256:b.lockSha256}});
+   validateCompleteUnitHealth({report:p.report,standaloneHealth:p.standaloneHealth,producer:binding.producer});
    const verified=verifyUnitReport(plan,p.report);
    assert(p.report.batches.length===1&&isDeepStrictEqual(p.report.batches[0].result,p.result),'Browser standalone result differs from complete unit report');
    const cases=caseInventory(p.result,u.files,p.report.cwd,{passing:true});

@@ -166,8 +166,8 @@ export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,b
  assert(isDeepStrictEqual(browserMetadata,facts(browserEvidence)),'Browser metadata changed during byte download');
  const packets=bindings.map(({engine,artifact,identityArtifact})=>{
   const unitPacket=browserEvidence.parsed.get(artifact.name),identity=browserEvidence.parsed.get(identityArtifact.name);
-  assert(isDeepStrictEqual([...unitPacket.keys()].sort(),[`unit-browser-${engine}.json`,`browser-${engine}-batch-0.json`].sort())&&isDeepStrictEqual([...identity.keys()].sort(),['image-binding.json','source-binding.json']),'Browser packet namespace differs');
-  return {engine,report:unitPacket.get(`unit-browser-${engine}.json`),result:unitPacket.get(`browser-${engine}-batch-0.json`),binding:identity.get('image-binding.json'),...identity.get('source-binding.json')};
+  assert(isDeepStrictEqual([...unitPacket.keys()].sort(),[`unit-browser-${engine}.json`,`browser-${engine}-batch-0.json`,`health-before-browser-${engine}.json`].sort())&&isDeepStrictEqual([...identity.keys()].sort(),['image-binding.json','source-binding.json']),'Browser packet namespace differs');
+  return {engine,standaloneHealth:unitPacket.get(`health-before-browser-${engine}.json`),report:unitPacket.get(`unit-browser-${engine}.json`),result:unitPacket.get(`browser-${engine}-batch-0.json`),binding:identity.get('image-binding.json'),...identity.get('source-binding.json')};
  });
  const browsers=[{...browserEvidence,candidateBranch,lockSha256:hash(readFileSync(join(candidatePath,'pnpm-lock.yaml'))),packets}];
  let pdf=null;
@@ -178,7 +178,7 @@ export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,b
   const required=[`unit-${unit.id}.json`,`${unit.id}-batch-0.json`,`health-before-${unit.id}.json`,'pdf-tools-setup.json','code-controller.json'].sort();
   assert(isDeepStrictEqual([...packet.keys()].sort(),required),'Complete closed PDF unit archive required');
   const code=packet.get('code-controller.json');assert(code?.codeController===controller&&code.executionController===verificationController&&code.source===candidate,'PDF controller identities differ');
-  pdf={...evidence,codeController:code.codeController,report:packet.get(`unit-${unit.id}.json`),result:packet.get(`${unit.id}-batch-0.json`),setup:packet.get('pdf-tools-setup.json')};
+  pdf={...evidence,standaloneHealth:packet.get(`health-before-${unit.id}.json`),codeController:code.codeController,report:packet.get(`unit-${unit.id}.json`),result:packet.get(`${unit.id}-batch-0.json`),setup:packet.get('pdf-tools-setup.json')};
  }
  const bm=metadata(buildRunId);validateRepairBuildMetadata({...bm,expected:{runId:buildRunId,controller,after:source.run.updated_at,candidateBranch}});
  validateRepairArchiveInventory(bm,new Set([BUILD_ARTIFACT,NEXT_APPLICATION_STATE]),()=> 'build');assert(bm.artifacts.some(a=>a.name===BUILD_ARTIFACT),'Mandatory fresh canonical build packet missing');

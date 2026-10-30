@@ -77,7 +77,7 @@ test('Actual bounded browser extractor preserves unit results, binds image text 
  const root=mkdtempSync(join(tmpdir(),'aihr-browser-extract-')),archive=join(root,'packet.zip'),script=browserFilePath(new URL('./browser-repair-extract.py',import.meta.url));
  const writeZip=entries=>writeFileSync(archive,browserExec('python3',['-c','import io,json,sys,zipfile; b=io.BytesIO(); z=zipfile.ZipFile(b,"w"); [(z.writestr(k,v)) for k,v in json.load(sys.stdin).items()]; z.close(); sys.stdout.buffer.write(b.getvalue())'],{input:JSON.stringify(entries)}));
  const extract=(entries,mode,label)=>{writeZip(entries);return browserExec('python3',[script,archive,join(root,label),mode,'chromium'],{stdio:'pipe'});};
- const unit={'unit-browser-chromium.json':'{"report":true}','browser-chromium-batch-0.json':'{"result":true}'};
+ const unit={'unit-browser-chromium.json':'{"report":true}','browser-chromium-batch-0.json':'{"result":true}','health-before-browser-chromium.json':'{"health":true}'};
  const identity={'filesystem-capacity.txt':'facts','image-binding.json':'{"binding":true}','installed-packages.tsv':'packages','lockfile-sha256.txt':'lock text\n','source-sha.txt':'source text\n'};
  try{
   extract(unit,'unit','unit');assert.deepEqual(JSON.parse(readFileSync(join(root,'unit/unit-browser-chromium.json'))),{report:true});
