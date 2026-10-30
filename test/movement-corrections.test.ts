@@ -108,13 +108,10 @@ async function employmentRow(employmentId: string) {
 
 /** A CLOSED payroll run that paid this employment in `period` ('YYYY-MM'). */
 async function closedPayrollFor(employmentId: string, period: string) {
-  let [pp] = await owner.db
+  const [pp] = await owner.db
     .insert(schema.payPeriod)
     .values({ tenantId: b.tenantId, companyId: b.companyId, period, status: 'closed' })
-    .onConflictDoNothing()
     .returning({ id: schema.payPeriod.id });
-  if (!pp) [pp] = await owner.db.select({id:schema.payPeriod.id}).from(schema.payPeriod).where(and(eq(schema.payPeriod.companyId,b.companyId),eq(schema.payPeriod.period,period),eq(schema.payPeriod.status,'closed'))).limit(1);
-  expect(pp).toBeDefined();
   const [batch] = await owner.db
     .insert(schema.payrollBatch)
     .values({
@@ -616,22 +613,22 @@ describe('payroll interaction — acknowledge on closed, warn on processed, neve
   it('requires acknowledgement and retains issued payroll when a record-only event becomes a salary change in a closed month',async()=>{
     const hire=await hireOne(),ctx=adminCtx(b);
     await setCompensation(ctx,{employmentId:hire.employmentId,basicSalary:4000,effectiveFrom:'2026-01-01'});
-    await createMovementEvent(ctx,{employmentId:hire.employmentId,kind:'secondment',effectiveDate:'2026-07-01',remarks:'Fictional wrongly classified event'});
-    await closedPayrollFor(hire.employmentId,'2026-06');
+    await createMovementEvent(ctx,{employmentId:hire.employmentId,kind:'secondment',effectiveDate:'2026-08-01',remarks:'Fictional wrongly classified event'});
+    await closedPayrollFor(hire.employmentId,'2026-07');
     const original=(await movementHistory(ctx,hire.employmentId)).find(row=>row.kind==='secondment')!;
     expect(original.payrollLocked).toBe(false);
     const slips=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId,hire.employmentId));
-    const input={employmentId:hire.employmentId,movementId:original.id,kind:'salaryAdjustment',effectiveDate:'2026-06-01',basicSalary:4500,reason:'Fictional wrong event type and date'};
+    const input={employmentId:hire.employmentId,movementId:original.id,kind:'salaryAdjustment',effectiveDate:'2026-07-01',basicSalary:4500,reason:'Fictional wrong event type and date'};
     await expect(editMovementEvent(ctx,input)).rejects.toBeInstanceOf(MovementClosedPayrollAcknowledgementError);
     expect((await movementHistory(ctx,hire.employmentId)).find(row=>row.id===original.id)?.status).toBe('applied');
     await editMovementEvent(ctx,{...input,acknowledgeClosedPayroll:true});
     expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId,hire.employmentId))).toEqual(slips);
-    expect((await openCompensation(hire.employmentId)).validFrom).toBe('2026-07-01');
+    expect((await openCompensation(hire.employmentId)).validFrom).toBe('2026-08-01');
     expect((await openCompensation(hire.employmentId)).basicSalary).toBe('4500.00');
     const snapshots=await owner.db.select().from(schema.informationPayslipSnapshot).where(eq(schema.informationPayslipSnapshot.employmentId,hire.employmentId));
     expect(snapshots).toHaveLength(1);
     const reversals=await owner.db.select({payload:schema.domainEvent.payload}).from(schema.domainEvent).where(and(eq(schema.domainEvent.subjectEmploymentId,hire.employmentId),eq(schema.domainEvent.eventType,'employment.movement.reversed')));
-    expect(reversals.map(row=>row.payload)).toContainEqual(expect.objectContaining({movementId:original.id,closedPayrollPeriods:['2026-06'],closedPayrollAcknowledged:true,closedPayrollCorrectedOn:expect.any(String)}));
+    expect(reversals.map(row=>row.payload)).toContainEqual(expect.objectContaining({movementId:original.id,closedPayrollPeriods:['2026-07'],closedPayrollAcknowledged:true,closedPayrollCorrectedOn:expect.any(String)}));
   });
 
   it('only WARNS when a processed (not yet closed) run covered the period — the correction still applies', async () => {

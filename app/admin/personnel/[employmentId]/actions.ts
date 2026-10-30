@@ -578,7 +578,7 @@ export async function editMovementEventAction(formData: FormData) {
     if (movementNeedsEntitlementReprojection(result.behaviourKind) || (result.previousBehaviourKind && movementNeedsEntitlementReprojection(result.previousBehaviourKind)))
       await recomputeEntitlement(s, employmentId, 'movement_recorded', {
         gradeBefore,
-        changeEffectiveOn: p.effectiveDate ?? null,
+        changeEffectiveOn: result.effectiveDate,
       });
   } catch (e) {
     // r374 — the SAME translator as the create path, for the same reason and not a second one. A

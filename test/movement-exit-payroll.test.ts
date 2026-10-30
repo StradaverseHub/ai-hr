@@ -9,7 +9,7 @@ import {hireEmployee,terminateEmployment} from '../core/org';
 import {createMovementEvent,movementHistory,reverseMovementEvent} from '../core/movement';
 import {payslipForReview} from '../core/payroll-view';
 import {buildPayslipPdfData,renderPayslipPdf} from '../lib/payslip-pdf';
-import {isDatabaseError} from '../lib/db-error';
+import {pgSqlState} from '../lib/db-error';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {labels as pdfLabels} from './fixtures/payslip-pdf-fixture';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -43,7 +43,7 @@ describe('646355e5 — ended employment retains finalised payroll before correct
    await owner.client.unsafe(original.slice(start,end).replace('CREATE FUNCTION','CREATE OR REPLACE FUNCTION'));
    let failure:unknown;
    try{await reverseMovementEvent(ctx,{employmentId,movementId:movement.id,reason:'Fictional incorrect exit',acknowledgeClosedPayroll:true});}catch(error){failure=error;}
-   expect(isDatabaseError(failure,'P0002')).toBe(true);
+   expect(pgSqlState(failure)).toBe('P0002');
    expect(await owner.db.select().from(s.informationPayslipSnapshot).where(eq(s.informationPayslipSnapshot.employmentId,employmentId))).toHaveLength(0);
   }finally{await installRepair();}
   await reverseMovementEvent(ctx,{employmentId,movementId:movement.id,reason:'Fictional incorrect exit',acknowledgeClosedPayroll:true});

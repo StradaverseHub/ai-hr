@@ -778,7 +778,7 @@ describe('SOURCE GUARDS — the New Event form', () => {
 
 // ───────────────── the blast radius of allowing joinDate to be rolled back ─────────────────
 
-describe('allowing joinDate back is scoped to the Entity Transfer, and does NOT widen joinDateChange', () => {
+describe('revision 2 — explicit date-owner inverse alongside Entity Transfer', () => {
   // FOUND IN VERIFICATION. `joinDate` had to be named as a reversible info-leg date or every Entity
   // Transfer would silently lose its correction button. But the EXISTING joinDateChange movement writes
   // the SAME employment.info.updated with joinDate in its fields — so naming it kind-blind quietly made a
@@ -787,7 +787,7 @@ describe('allowing joinDate back is scoped to the Entity Transfer, and does NOT 
   // each is maintained on its own screen with its own gates".
   //
   // A widened correction gate is not a side effect a transfer gets to have, so it is now keyed by kind.
-  it('a joinDateChange is still NOT correctable', async () => {
+  it('a joinDateChange has its own verified inverse', async () => {
     const hire = await hireOne({ hiredOn: '2018-03-15' });
     await createMovementEvent(adminCtx(b), {
       employmentId: hire.employmentId,
@@ -797,8 +797,8 @@ describe('allowing joinDate back is scoped to the Entity Transfer, and does NOT 
     });
     const row = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'joinDateChange');
     expect(row, 'the movement must exist to be judged').toBeTruthy();
-    expect(row!.canReverse, 'unchanged by this item — it was false before b7b22514').toBe(false);
-    expect(row!.canEdit, 'unchanged by this item').toBe(false);
+    expect(row!.canReverse).toBe(true);
+    expect(row!.canEdit).toBe(true);
   });
 
   it('and the Entity Transfer beside it still IS', async () => {

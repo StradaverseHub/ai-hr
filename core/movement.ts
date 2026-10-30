@@ -46,6 +46,7 @@ import {
 import {
   setEmploymentAssignment,
   setEmploymentBlacklist,
+  reverseEmploymentBlacklistTx,
   setEmploymentGrade,
   setEmploymentInfo,
   setReportingLine,
@@ -1140,6 +1141,8 @@ const REVERSIBLE_EVENT_TYPES = new Set([
   // reverseTerminationTx, which restores exactly the columns, assignment version and reporting lines the
   // forward write changed, and refuses when the termination date has since been changed elsewhere.
   'employment.terminated',
+  'employment.blacklisted',
+  'employment.blacklist.cleared',
 ]);
 
 /**
@@ -1167,9 +1170,8 @@ const STATE_CHANGING_EVENT_TYPES = new Set(
  * the event's own `fields`; it is never restored directly — putting the confirmation date back re-derives
  * it, which is also what keeps it consistent with an extended probation date this movement never touched.
  *
- * Resignation has its own scoped reversible family below. Probation extension and the two
- * join dates are moved by kinds that are NOT comparison kinds, they derive from one another, and each is
- * maintained on its own screen with its own gates.
+ * Resignation and the date-only movements have their own scoped inverse fields below. Derived dates
+ * are recomputed by their existing owner rather than directly overwritten during a correction.
  */
 const REVERSIBLE_INFO_DATE_FIELDS: readonly string[] = ['confirmationDate', 'finalConfirmationDate'];
 
@@ -1190,6 +1192,9 @@ const REVERSIBLE_INFO_DATE_FIELDS: readonly string[] = ['confirmationDate', 'fin
  * Widening a correction gate is not a side effect an Entity Transfer gets to have.
  */
 const KIND_SCOPED_INFO_DATE_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  probationExtension: ['extendedConfirmationDate','finalConfirmationDate'],
+  joinDateChange: ['joinDate'],
+  groupJoinDateCorrection: ['hiredOn'],
   resignation: ['tenderResignationDate','resignationDate','lastWorkingDate'],
   entityTransfer: ['joinDate'],
   // 646355e5 — the exit-dates leg applyTerminationTx writes beside the termination itself.
@@ -1204,6 +1209,13 @@ function infoLegIsFlatOnly(e: RawEvent, kind: string): boolean {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fields: string[] = Array.isArray((e.payload as any)?.fields) ? (e.payload as any).fields : [];
   const kindScoped = KIND_SCOPED_INFO_DATE_FIELDS[kind] ?? [];
+  if (['probationExtension','joinDateChange','groupJoinDateCorrection'].includes(kind)) {
+    const before=(e.payload as {before?:Record<string,unknown>}|null)?.before;
+    const after=(e.payload as {after?:Record<string,unknown>}|null)?.after;
+    const owned=KIND_SCOPED_INFO_DATE_FIELDS[kind].filter(field=>field!=='finalConfirmationDate');
+    if(!owned.some(field=>fields.includes(field))||!before||!after||owned.some(field=>fields.includes(field)&&(!Object.hasOwn(before,field)||!Object.hasOwn(after,field))))return false;
+    if(kind==='groupJoinDateCorrection'&&(typeof before.hiredOn!=='string'||!isCalendarDate(before.hiredOn)))return false;
+  }
   return fields.every(
     (f) =>
       (MOVEMENT_FLAT_FIELDS as readonly string[]).includes(f) ||
@@ -1215,7 +1227,7 @@ function infoLegIsFlatOnly(e: RawEvent, kind: string): boolean {
 /** Presentation of a voluntary exit does not change the writer that owns its inverse. */
 function recordedMovementKind(row: ProjectedRow, group: RawEvent[]): string {
   return row.kind === 'resignation' && group.some(event => event.eventType === 'employment.terminated')
-    ? 'termination' : row.kind;
+    ? 'termination' : row.kind==='blacklistCleared' && group.some(event=>event.eventType==='employment.blacklist.cleared') ? 'blacklist' : row.kind;
 }
 
 type Correctability = { canReverse: boolean; canEdit: boolean; stateChanging: boolean };
@@ -1234,13 +1246,16 @@ function correctabilityOf(row: ProjectedRow, group: RawEvent[], isLatest: boolea
   if (behaviour === 'termination' && !group.some((e) => e.eventType === 'employment.terminated' || e.eventType === 'employment.movement.scheduled')) {
     return { canReverse: false, canEdit: false, stateChanging };
   }
+  const ownedDateField:Record<string,string>={probationExtension:'extendedConfirmationDate',joinDateChange:'joinDate',groupJoinDateCorrection:'hiredOn'};
+  if(ownedDateField[behaviour]&&!group.some(event=>event.eventType==='employment.info.updated'&&((event.payload as {fields?:string[]}|null)?.fields??[]).includes(ownedDateField[behaviour])))return {canReverse:false,canEdit:false,stateChanging};
+  if(behaviour==='blacklist'&&!group.some(event=>['employment.blacklisted','employment.blacklist.cleared'].includes(event.eventType)))return {canReverse:false,canEdit:false,stateChanging};
   const supported = group.every(
     (e) =>
       REVERSIBLE_EVENT_TYPES.has(e.eventType) &&
       (e.eventType !== 'employment.info.updated' || infoLegIsFlatOnly(e, behaviour)),
   );
   const canReverse = supported && !row.reversed;
-  const canEdit = canReverse && (!stateChanging || ((isComparisonKind(behaviour) || behaviour==='resignation' || behaviour==='termination') && isLatest));
+  const canEdit = canReverse && (!stateChanging || ((isComparisonKind(behaviour) || ['resignation','termination','probationExtension','joinDateChange','groupJoinDateCorrection','blacklist'].includes(behaviour)) && isLatest));
   return { canReverse, canEdit, stateChanging };
 }
 
@@ -2988,7 +3003,7 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
 }
 
 /** Private admission data never comes from a form or caller-supplied baseline. */
-async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput,futureAdmission?:{baseline?:MovementCurrentState;capture?:(baseline:MovementCurrentState)=>void;expectedBehaviour?:string},correction?:{fromGroupId:string|null}){
+async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput,futureAdmission?:{baseline?:MovementCurrentState;capture?:(baseline:MovementCurrentState)=>void;expectedBehaviour?:string},correction?:{fromGroupId:string|null;allowInactive?:boolean}){
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
     throw new Error('Only an admin can record a movement.');
@@ -2997,7 +3012,7 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
   // built-in kind resolves to itself; one of the organisation's own types resolves to the behaviour it was
   // mapped to, and its code travels on as `typeCode` so the ledger records what HR chose. A type that was
   // switched off is refused here rather than silently applied — that is the whole point of switching it off.
-  const p = await resolveInputTypeTx(tx, ctx, rawInput, 'record');
+  const p = await resolveInputTypeTx(tx, ctx, rawInput, 'record', {allowInactive:correction?.allowInactive===true});
   if(futureAdmission?.expectedBehaviour!==undefined&&p.kind!==futureAdmission.expectedBehaviour)throw new Error('preview_stale_revalidate');
   const execute=async()=>{
   if (p.kind !== 'blacklist' && !/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveDate ?? '')) {
@@ -3530,7 +3545,7 @@ async function laterReplayPlanTx(
     const when = r.effectiveDate;
     const replayable =
       behaviour !== null &&
-      (isComparisonKind(behaviour) || behaviour === 'resignation' || behaviour === 'termination') &&
+      (isComparisonKind(behaviour) || ['resignation','termination','probationExtension','joinDateChange','groupJoinDateCorrection'].includes(behaviour)) &&
       behaviour !== 'entityTransfer' &&
       correctabilityOf(r, g, true, behaviour).canReverse &&
       !g.some((e) => e.eventType === 'employment.company.transferred');
@@ -3628,6 +3643,11 @@ async function replayLaterMovementsTx(tx: Tx, ctx: SessionContext, employmentId:
         if(plan.terminationType!==step.terminationType) throw new MovementNotCorrectableError('The recorded exit classification no longer matches its reason. Review that exit before correcting an earlier event.');
         await applyTerminationTx(tx,ctx,employmentId,plan);
       }
+      else if(['probationExtension','joinDateChange','groupJoinDateCorrection'].includes(step.behaviour)) {
+        const marker=await movementLedgerMarkerTx(tx,ctx,employmentId);
+        await dispatchMovementEventTx(tx,ctx,{...input,kind:input.typeCode??input.kind},undefined,{fromGroupId:null,allowInactive:true});
+        if(!(await movementRowsAfterSequenceTx(tx,ctx,employmentId,marker)).length)throw new MovementNoChangeError();
+      }
       else await applyComparisonMovementTx(tx, ctx, input, step.behaviour as ComparisonKind);
     } catch (e) {
       if (e instanceof MovementNoChangeError) {
@@ -3656,7 +3676,8 @@ async function reverseLegTx(
    * correction's own recorded replacements to the row that stands in for it now; without this the
    * rollback found a superseded row, returned early, and left the movement's version in force.
    */
-  hireCorrections: unknown[] = [],
+  hireCorrections: unknown[],
+  correctionReason: string | null,
 ): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const p = (e.payload ?? {}) as Record<string, any>;
@@ -3812,6 +3833,8 @@ async function reverseLegTx(
           orgLine: employment.orgLine,
           orgBase: employment.orgBase,
           confirmationDate: employment.confirmationDate,
+          hiredOn: employment.hiredOn,
+          extendedConfirmationDate: employment.extendedConfirmationDate,
           // b7b22514 — read so the join-date restore below can apply the same last-write-wins test the
           // flat columns get: put it back only while the stored value is still the one this movement wrote.
           joinDate: employment.joinDate,
@@ -3848,8 +3871,18 @@ async function reverseLegTx(
       for(const field of ['tenderResignationDate','resignationDate','lastWorkingDate'] as const) {
         if(fields.includes(field)&&(cur[field]??null)===(after[field]??null))restore[field]=before[field]??null;
       }
-      if (Object.keys(restore).length) {
-        await withExitDateAuthorityTx(tx,employmentId,()=>setEmploymentInfo(ctx, { employmentId, ...restore, movement: tag }, tx));
+      const dates:{hiredOn?:string;extendedConfirmationDate?:string|null}={};
+      for(const field of ['hiredOn','extendedConfirmationDate'] as const){
+        if(!fields.includes(field))continue;
+        if(!Object.hasOwn(before,field)||!Object.hasOwn(after,field)||(cur[field]??null)!==(after[field]??null))throw new MovementNotCorrectableError('A later date correction conflicts with this event. Review the later movement first.');
+        if(field==='hiredOn'){
+          if(typeof before.hiredOn!=='string'||!isCalendarDate(before.hiredOn))throw new MovementNotCorrectableError('The original Group Join Date cannot be verified.');
+          dates.hiredOn=before.hiredOn;
+        }else dates.extendedConfirmationDate=before.extendedConfirmationDate??null;
+      }
+      if(tag.type==='joinDateChange'&&fields.includes('joinDate')&&(cur.joinDate??null)!==(after.joinDate??null))throw new MovementNotCorrectableError('A later Join Date change conflicts with this event. Review it first.');
+      if (Object.keys(restore).length || Object.keys(dates).length) {
+        await withExitDateAuthorityTx(tx,employmentId,()=>setEmploymentInfo(ctx, { employmentId, ...restore, ...dates, movement: tag }, tx));
       }
       return;
     }
@@ -3896,6 +3929,11 @@ async function reverseLegTx(
       });
       return;
     }
+
+    case 'employment.blacklisted':
+    case 'employment.blacklist.cleared':
+      await reverseEmploymentBlacklistTx(tx,ctx,{employmentId,eventId:e.id,reason:correctionReason ?? ''});
+      return;
 
     case 'employment.terminated': {
       // 646355e5 — undo the termination leg; its exit-dates leg (a higher sequence) was undone first.
@@ -3981,7 +4019,11 @@ export async function movementCorrectionBaseTx(tx: Tx, ctx: SessionContext, empl
         if (value === null || typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))) retained[key] = value;
       }
       input = { ...retained, ...plain } as CreateMovementInput;
-    } else if (behaviour === 'secondment' || behaviour === 'actingPosition') input = plain;
+    } else if (['secondment','actingPosition','probationExtension','joinDateChange','groupJoinDateCorrection'].includes(behaviour)) input = plain;
+    else if(behaviour==='blacklist'){
+      const leg=g.find(event=>['employment.blacklisted','employment.blacklist.cleared'].includes(event.eventType));
+      if(leg)input={...plain,blacklisted:leg.eventType==='employment.blacklisted'};
+    }
     else if (isComparisonKind(behaviour) || behaviour === 'resignation') {
       const { typeCode: _code, ...replayed } = await replayInputOfTx(tx, row, g, behaviour);
       input = { ...replayed, employmentId, kind: recordedKind };
@@ -4084,7 +4126,7 @@ async function reverseMovementTx(
   const tag: MovementTag = { type: row.kind, groupId: randomUUID(), secondary: true };
   const hireCorrections = events.filter((x) => x.eventType === HIRE_CORRECTED_EVENT).map((x) => x.payload);
   for (const e of [...group].sort((a, b) => b.sequence - a.sequence)) {
-    await reverseLegTx(tx, ctx, employmentId, e, tag, hireCorrections);
+    await reverseLegTx(tx, ctx, employmentId, e, tag, hireCorrections, reason);
   }
   await appendEvent(tx, {
     tenantId: ctx.tenantId,
@@ -4204,12 +4246,17 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
       const row = rows.find((r) => r.id === p.movementId);
       if (!row) throw new Error('Movement event not found.');
       if (row.reversed) throw new Error('This movement event has already been rolled back.');
-      if (!resolvedTypes.get(row.kind)) throw new MovementNotCorrectableError('This event type cannot be edited from Employment History — use the screen that records it.');
+      if (!resolvedTypes.get(recordedMovementKind(row,groupEventsOf(events,row)))) throw new MovementNotCorrectableError('This event type cannot be edited from Employment History — use the screen that records it.');
       const status = statusOf(row);
       // 1d58019a Step 2 — what the RECORDED movement does, from the catalogue. `row.kind` is its code, which
       // for one of the organisation's own Termination types is not the string 'termination'.
       const rowBehaviour = resolvedTypes.get(recordedMovementKind(row, groupEventsOf(events, row)))?.behaviourKind ?? null;
       previousBehaviourKind = rowBehaviour;
+      const sourceKind=recordedMovementKind(row,groupEventsOf(events,row));
+      if((p.typeCode??p.kind)!==sourceKind){
+        const destination=await resolveMovementEventTypeTx(tx,ctx.tenantId,p.typeCode??p.kind);
+        if(!destination?.active)throw new MovementNotCorrectableError('A switched-off event type cannot replace this movement. Select an active type.');
+      }
       if (p.documents?.length && !isComparisonKind(p.kind)) {
         throw new MovementDocumentError('This event type does not take supporting documents.');
       }
@@ -4229,7 +4276,8 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
       // inverse back as part of this transaction (including when called by an import).
       const interchangeable = rowBehaviour !== null && isComparisonKind(rowBehaviour) && isComparisonKind(p.kind)
         && !crossesConfirmation(rowBehaviour, p.kind) && !crossesEntityTransfer(rowBehaviour, p.kind);
-      if (rowBehaviour !== p.kind && !interchangeable) {
+      if ((rowBehaviour !== p.kind && !interchangeable) || ['probationExtension','joinDateChange','groupJoinDateCorrection','blacklist'].includes(rowBehaviour ?? '')) {
+        if(rowBehaviour===p.kind && p.effectiveDate===row.effectiveDate && (rawEdit.endDate===undefined||endDate===row.endDate) && (rawEdit.remarks===undefined||remarks===row.remarks) && p.kind!=='blacklist')throw new MovementNoChangeError();
         const sourceGroup = groupEventsOf(events, row);
         const eligibility = correctabilityOf(row, sourceGroup, true, rowBehaviour);
         if (status === 'superseded' || !eligibility.canReverse) {
@@ -4253,8 +4301,9 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
         const result = await dispatchMovementEventTx(tx, ctx, {
           ...rawEdit, kind:p.typeCode ?? p.kind,
           remarks:rawEdit.remarks === undefined ? row.remarks : rawEdit.remarks,
+          ...(rawEdit.endDate===undefined&&rowBehaviour===p.kind?{endDate:row.endDate}:{}),
           // A replacement has its own required fields; never inherit an unrelated exit/end date.
-        }, undefined, {fromGroupId:row.groupId});
+        }, undefined, {fromGroupId:row.groupId,allowInactive:(p.typeCode??p.kind)===sourceKind});
         const replaced = await projectRows(tx, ctx.tenantId, p.employmentId);
         const replacement = replaced.rows.filter(item => item.sequence > beforeSequence && recordedMovementKind(item, groupEventsOf(replaced.events,item)) === (p.typeCode ?? p.kind) && !item.reversed)
           .sort((a,b) => b.sequence-a.sequence)[0];
@@ -4514,7 +4563,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
     const result = rawEdit.acknowledgeClosedPayroll === true
       ? await withClosedPayrollCorrectionAuthorityTx(tx, p.employmentId, correctAndReplay)
       : await correctAndReplay();
-    return {...result,behaviourKind:p.kind,previousBehaviourKind,replayed:replay.length};
+    return {...result,behaviourKind:p.kind,previousBehaviourKind,effectiveDate:p.effectiveDate,replayed:replay.length};
   })(outerTx);
 }
 

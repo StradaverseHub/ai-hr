@@ -724,7 +724,7 @@ export function MovementNewEvent({
           // The folded-in Blacklist box: Set / Clear map to the same audited service the old card used.
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {label(movementField('blacklisted'))}
-            <select {...personnelWorkflowControl(movementField('blacklisted'), 'movement', 'edit')} defaultValue={isBlacklisted ? 'false' : 'true'} className={inputCls}>
+            <select {...personnelWorkflowControl(movementField('blacklisted'), 'movement', 'edit')} defaultValue={saved?.blacklisted ?? (isBlacklisted ? 'false' : 'true')} className={inputCls}>
               {personnelFormChoices(movementField('blacklisted')).map(choice=><option key={choice.value} value={choice.value}>{tPay(choice.labelKey.slice(14))}</option>)}
             </select>
           </label>
