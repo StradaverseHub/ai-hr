@@ -1,41 +1,69 @@
 -- UNAPPLIED PROVISIONAL DEVELOPMENT ONLY. Coordinator idx720 / when1793330000078.
 -- Same encrypted ledger; truthful cycle/company fact owner and native unit entry witness.
--- Separate nullable column additions and equivalent validated constraints. The combined ADD
--- exceeded the hosted memory bound after composition; no predecessor guard is removed or changed.
--- Report only stored catalogue sizes, never deparse unrelated predecessor expressions here.
-DO $$ DECLARE checks bigint;largest integer;total bigint; BEGIN
- SELECT count(*),max(pg_column_size(conbin)),sum(pg_column_size(conbin)) INTO checks,largest,total
- FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c';
- RAISE NOTICE '0741 DDL start: CHECK count %, largest stored bytes %, total stored bytes %',checks,largest,total;
+-- Atomic DDL reordering; source-reviewed development recovery, not runtime-qualified.
+-- The one large guard already owned by this migration is absent only within this DO statement.
+-- ACCESS EXCLUSIVE lasts through the enclosing transaction; any uncaught error rolls back all DDL.
+DO $$
+DECLARE
+ guard_name text;guard_oid oid;guard_raw_sha text;guard_expression text;guard_validated boolean;
+ guard_noinherit boolean;guard_local boolean;guard_inherited integer;matches integer;
+ before_hashes jsonb;after_hashes jsonb;before_count bigint;after_count bigint;
+ null_columns text;canonical text;restored_validated boolean;
+BEGIN
+ LOCK TABLE app.assistant_own_leave_review IN ACCESS EXCLUSIVE MODE;
+ SELECT count(*),min(oid) INTO matches,guard_oid FROM pg_constraint
+ WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND conname='assistant_review_kind_columns';
+ IF matches<>1 THEN RAISE EXCEPTION '0741 atomic DDL: exact predecessor kind guard missing';END IF;
+ -- Hold scalar definition and SHA only, not a cursor/record carrying the large raw conbin.
+ SELECT conname,encode(sha256(convert_to(conbin::text,'UTF8')),'hex'),pg_get_expr(conbin,conrelid),
+  convalidated,connoinherit,conislocal,coninhcount
+ INTO guard_name,guard_raw_sha,guard_expression,guard_validated,guard_noinherit,guard_local,guard_inherited
+ FROM pg_constraint WHERE oid=guard_oid;
+ IF guard_name IS DISTINCT FROM 'assistant_review_kind_columns' OR guard_raw_sha IS NULL OR guard_expression IS NULL
+  OR guard_validated IS NOT TRUE OR guard_noinherit OR guard_local IS NOT TRUE OR guard_inherited<>0
+  OR position('leave_request_id' in guard_expression)=0 OR position('performance_ack_event_id' in guard_expression)=0
+ THEN RAISE EXCEPTION '0741 atomic DDL: predecessor kind guard shape drift';END IF;
+ IF EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid='app.assistant_own_leave_review'::regclass AND attnum>0 AND NOT attisdropped
+  AND attname IN('rewards_calendar_unit_id','rewards_calendar_cycle_id','rewards_calendar_id','rewards_calendar_event_id','rewards_calendar_revision'))
+  OR EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass
+   AND conname IN('assistant_own_leave_review_rewards_calendar_event_id_key','assistant_own_leave_review_rewards_calendar_revision_check'))
+ THEN RAISE EXCEPTION '0741 atomic DDL: calendar columns or guards already exist';END IF;
+ -- Full catalogue-row hashes include old OIDs, definitions and validation flags for EVERY other guard.
+ SELECT count(*),jsonb_object_agg(conname,encode(sha256(convert_to(to_jsonb(c)::text,'UTF8')),'hex') ORDER BY conname)
+ INTO before_count,before_hashes FROM pg_constraint c
+ WHERE conrelid='app.assistant_own_leave_review'::regclass AND oid<>guard_oid;
+ IF before_hashes IS NULL THEN RAISE EXCEPTION '0741 atomic DDL: predecessor inventory missing';END IF;
+ RAISE NOTICE '0741 atomic DDL captured %, raw SHA256 %, expression bytes %, other constraints %',guard_name,guard_raw_sha,octet_length(guard_expression),before_count;
+ EXECUTE format('ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT %I',guard_name);
+ RAISE NOTICE '0741 atomic DDL: owned kind guard removed under ACCESS EXCLUSIVE';
+ -- Combine only nullable catalogue additions while the giant predecessor is out of the descriptor.
+ ALTER TABLE app.assistant_own_leave_review
+  ADD COLUMN rewards_calendar_unit_id uuid,
+  ADD COLUMN rewards_calendar_cycle_id uuid,
+  ADD COLUMN rewards_calendar_id uuid,
+  ADD COLUMN rewards_calendar_event_id uuid,
+  ADD COLUMN rewards_calendar_revision integer;
+ ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_own_leave_review_rewards_calendar_event_id_key UNIQUE (rewards_calendar_event_id);
+ ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_own_leave_review_rewards_calendar_revision_check CHECK (rewards_calendar_revision>0);
+ RAISE NOTICE '0741 atomic DDL: five nullable columns and identical validated UNIQUE/CHECK created';
+ SELECT string_agg(format('%I IS NULL',attname),' AND ' ORDER BY attnum) INTO null_columns
+ FROM pg_attribute WHERE attrelid='app.assistant_own_leave_review'::regclass AND attnum>0 AND NOT attisdropped
+ AND attname NOT IN ('action_kind','id','tenant_id','user_id','person_id','employment_id','company_id','intent_digest','reviewed_digest','state','created_at','expires_at','rewards_calendar_unit_id','rewards_calendar_cycle_id','rewards_calendar_event_id','rewards_calendar_revision','rewards_calendar_id');
+ IF null_columns IS NULL THEN RAISE EXCEPTION '0741 missing canonical custody columns';END IF;
+ canonical:=null_columns||' AND employment_id IS NULL AND company_id IS NOT NULL AND rewards_calendar_unit_id IS NOT NULL AND rewards_calendar_cycle_id IS NOT NULL AND ((state=''completed'')=(rewards_calendar_event_id IS NOT NULL AND rewards_calendar_revision IS NOT NULL AND rewards_calendar_id IS NOT NULL)) AND ((rewards_calendar_event_id IS NULL)=(rewards_calendar_id IS NULL)) AND ((rewards_calendar_event_id IS NULL)=(rewards_calendar_revision IS NULL)) AND (state=''completed'' OR (rewards_calendar_event_id IS NULL AND rewards_calendar_revision IS NULL))';
+ -- SAME original0741 CASE and verbatim captured predecessor expression, included exactly once.
+ EXECUTE format('ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT %I CHECK (CASE WHEN action_kind=''rewards.calendar.update'' THEN (%s) ELSE (%s) END)',guard_name,canonical,guard_expression);
+ SELECT convalidated INTO restored_validated FROM pg_constraint
+ WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND conname=guard_name;
+ IF restored_validated IS NOT TRUE THEN RAISE EXCEPTION '0741 atomic DDL: validated kind guard was not restored';END IF;
+ SELECT count(*),jsonb_object_agg(conname,encode(sha256(convert_to(to_jsonb(c)::text,'UTF8')),'hex') ORDER BY conname)
+ INTO after_count,after_hashes FROM pg_constraint c
+ WHERE conrelid='app.assistant_own_leave_review'::regclass AND before_hashes ? conname;
+ IF after_count<>before_count OR after_hashes IS DISTINCT FROM before_hashes THEN RAISE EXCEPTION '0741 atomic DDL: another predecessor constraint changed';END IF;
+ IF (SELECT count(*) FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass)<>before_count+3 THEN RAISE EXCEPTION '0741 atomic DDL: unexpected constraint inventory';END IF;
+ RAISE NOTICE '0741 atomic DDL complete: validated owned kind guard restored; predecessor raw SHA256 %, all other catalogue hashes unchanged',guard_raw_sha;
+ -- No EXCEPTION handler, COMMIT, separate connection, temporary table or surviving unguarded state.
 END $$;
---> statement-breakpoint
-ALTER TABLE app.assistant_own_leave_review ADD COLUMN rewards_calendar_unit_id uuid;
---> statement-breakpoint
-DO $$ BEGIN RAISE NOTICE '0741 DDL 1/7 complete: unit column';END $$;
---> statement-breakpoint
-ALTER TABLE app.assistant_own_leave_review ADD COLUMN rewards_calendar_cycle_id uuid;
---> statement-breakpoint
-DO $$ BEGIN RAISE NOTICE '0741 DDL 2/7 complete: cycle column';END $$;
---> statement-breakpoint
-ALTER TABLE app.assistant_own_leave_review ADD COLUMN rewards_calendar_id uuid;
---> statement-breakpoint
-DO $$ BEGIN RAISE NOTICE '0741 DDL 3/7 complete: calendar column';END $$;
---> statement-breakpoint
-ALTER TABLE app.assistant_own_leave_review ADD COLUMN rewards_calendar_event_id uuid;
---> statement-breakpoint
-DO $$ BEGIN RAISE NOTICE '0741 DDL 4/7 complete: event column';END $$;
---> statement-breakpoint
-ALTER TABLE app.assistant_own_leave_review ADD COLUMN rewards_calendar_revision integer;
---> statement-breakpoint
-DO $$ BEGIN RAISE NOTICE '0741 DDL 5/7 complete: revision column';END $$;
---> statement-breakpoint
-ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_own_leave_review_rewards_calendar_event_id_key UNIQUE (rewards_calendar_event_id);
---> statement-breakpoint
-DO $$ BEGIN RAISE NOTICE '0741 DDL 6/7 complete: event uniqueness';END $$;
---> statement-breakpoint
-ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_own_leave_review_rewards_calendar_revision_check CHECK (rewards_calendar_revision>0);
---> statement-breakpoint
-DO $$ BEGIN RAISE NOTICE '0741 DDL 7/7 complete: positive revision';END $$;
 --> statement-breakpoint
 INSERT INTO app.assistant_action_kind(id,module,tier_ceiling,category,review_kind) VALUES('rewards.calendar.update','rewards','approve','pay','rewards.calendar.update');
 --> statement-breakpoint
@@ -50,14 +78,14 @@ BEGIN
  AND attname NOT IN ('action_kind','id','tenant_id','user_id','person_id','employment_id','company_id','intent_digest','reviewed_digest','state','created_at','expires_at','rewards_calendar_unit_id','rewards_calendar_cycle_id','rewards_calendar_event_id','rewards_calendar_revision','rewards_calendar_id');
  IF null_columns IS NULL THEN RAISE EXCEPTION '0741 missing canonical custody columns';END IF;
  canonical:=null_columns||' AND employment_id IS NULL AND company_id IS NOT NULL AND rewards_calendar_unit_id IS NOT NULL AND rewards_calendar_cycle_id IS NOT NULL AND ((state=''completed'')=(rewards_calendar_event_id IS NOT NULL AND rewards_calendar_revision IS NOT NULL AND rewards_calendar_id IS NOT NULL)) AND ((rewards_calendar_event_id IS NULL)=(rewards_calendar_id IS NULL)) AND ((rewards_calendar_event_id IS NULL)=(rewards_calendar_revision IS NULL)) AND (state=''completed'' OR (rewards_calendar_event_id IS NULL AND rewards_calendar_revision IS NULL))';
- -- Only actor scope and legacy kind receipt columns reject the new closed kind. Other family checks already enforce their own columns NULL.
+ -- The kind guard was restored atomically above; only actor scope remains to wrap here.
  -- Discover exact keys without deparsing every large predecessor tree into a held cursor.
  SELECT count(*),min(conname) INTO matches,scope_name FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND conname='assistant_own_leave_review_check'
  AND conkey @> ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid='app.assistant_own_leave_review'::regclass AND attname='testing_execution_id'),(SELECT attnum FROM pg_attribute WHERE attrelid='app.assistant_own_leave_review'::regclass AND attname='employment_id')]::smallint[];
  IF matches<>1 THEN RAISE EXCEPTION '0741 actor scope shape drift';END IF;
  SELECT jsonb_object_agg(conname,encode(sha256(convert_to(conbin::text,'UTF8')),'hex') ORDER BY conname) INTO before_hashes FROM pg_constraint
  WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND conname NOT IN (scope_name,'assistant_review_kind_columns');
- FOR c IN SELECT conname FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND conname IN (scope_name,'assistant_review_kind_columns') LOOP
+ FOR c IN SELECT conname FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND conname=scope_name LOOP
  SELECT octet_length(conbin::text) INTO raw_bytes FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname=c.conname;
  RAISE NOTICE '0741 target % raw conbin bytes before deparse %',c.conname,raw_bytes;
  SELECT pg_get_expr(conbin,conrelid) INTO old FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname=c.conname;
