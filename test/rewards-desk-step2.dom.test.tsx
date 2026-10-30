@@ -43,7 +43,8 @@ describe('Reward Desk step 2 — people and safe actions',()=>{
   await show({person:'b'});
   const panel=within(screen.getByRole('dialog'));
   expect(panel.getByRole('heading',{name:'Fictional Bravo'})).toBeTruthy();
-  for(const text of ['RM5,375.00','RM1,250.00','1.50','RM12,000.00','Increase above the guideline for this rating.','2 of 3'])expect(panel.getAllByText(text).length).toBeGreaterThan(0);
+  // en-MY separates "RM" from the amount with a (non-breaking) space.
+  for(const text of [/^RM\s5,375\.00$/,/^RM\s125\.00$/,/^RM\s12,000\.00$/,'1.50','Increase above the guideline for this rating.','2 of 3'])expect(panel.getAllByText(text).length).toBeGreaterThan(0);
   expect(panel.getByRole('link',{name:/Previous/}).getAttribute('href')).toBe('/rewards/unit?person=a');
   expect(panel.getByRole('link',{name:/Next/}).getAttribute('href')).toBe('/rewards/unit?person=c');
   expect(panel.getByRole('link',{name:'Open full record to edit'}).getAttribute('href')).toBe('/rewards/unit/people/b');
