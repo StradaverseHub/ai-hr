@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { accumulateEaRouting } from '../localization/my/ea-routing';
+import { accumulateEaRouting,eaIncomePartsForSource } from '../localization/my/ea-routing';
 import type { StoredComponentLine } from '../core/payslip-earning-lines';
 import { EA_LINE_TO_FIELD } from '../localization/my/reports';
 const line = (code: string, bucket: string, amount: number): StoredComponentLine => ({ code, buckets: [{ bucket, amount }] });
@@ -31,4 +31,10 @@ describe('approved annual EA routing preserves processed money', () => {
     const r = route([line('UNKNOWN', 'wage', 400)], [['UNKNOWN', 'invalid']]);
     expect(r.deltas).toEqual({}); expect([...r.unmapped]).toEqual(['UNKNOWN']);
   });
+});
+
+it('subtracts the exact original EA baseline when mixed historical provenance leaves pre-coverage routing inactive',()=>{
+ const original={basic:'5000',overtime:'0',bonus:'0',allowance:'500',statutory:{componentLines:[line('COMMISSION','wage',500)]}},mapping=new Map([['COMMISSION','EA_B1B']]);
+ expect(eaIncomePartsForSource(original,0,mapping,EA_LINE_TO_FIELD,false)).toEqual({grossSalary:5000,bonus:0,allowances:500});
+ expect(eaIncomePartsForSource(original,0,mapping,EA_LINE_TO_FIELD,true)).toEqual({grossSalary:5000,bonus:0,allowances:0,directorFee:500});
 });

@@ -13,11 +13,12 @@ import {lockPayrollHistoryReadTx,lockPayrollHistoryWriteTx} from './payroll-hist
 import {resolvePayrollPermission} from './payroll';
 import {parsePayrollHistorySource} from './payroll-history-revisions';
 import {taxBasisSourceHashTx,readEffectiveTaxBasesTx,validatedTaxBasis} from './payroll-tax-basis-read';
+const uuidArray=(ids:string[])=>sql`array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
 const uuid=/^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const canonical=(v:unknown):string=>JSON.stringify(v,(_key,item)=>object(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
 const hash=(v:unknown)=>createHash('sha256').update(canonical(v)).digest('hex');
-const fail=(s:string):never=>{throw new PayrollTaxBasisError(s);};
+function fail(s:string):never{throw new PayrollTaxBasisError(s);}
 const round=(n:number)=>Math.round(n*100)/100;
 const money=(v:unknown):number|null=>{if(typeof v!=='number'&&typeof v!=='string')return null;if(typeof v==='string'&&!v.trim())return null;const n=Number(v);return Number.isFinite(n)&&n>=0&&Number.isSafeInteger(Math.round(n*100))&&Math.abs(n*100-Math.round(n*100))<1e-6?n:null;};
 function validateSelection(v:TaxBasisSelection){if(!v||!uuid.test(v.companyId)||!Number.isInteger(v.year)||v.year<1900||v.year>2999||!Number.isInteger(v.upToMonth)||v.upToMonth<1||v.upToMonth>12||v.employmentIds!==null&&(!Array.isArray(v.employmentIds)||!v.employmentIds.length||v.employmentIds.length>1000||v.employmentIds.some(id=>!uuid.test(id))||new Set(v.employmentIds).size!==v.employmentIds.length))fail('Choose a company, assessment year, final month and valid employees.');}
@@ -113,11 +114,12 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
    const beforeTaxable=prior?.pcb??(object(st.bases)?money(st.bases.pcb):null),beforeExempt=prior?money(prior.exempt):object(st.exemptionUsed)?round(Object.entries(st.exemptionUsed).filter(([code])=>code.startsWith('PCB_')).reduce((n,[,v])=>n+(money(v)??0),0)):null;
    const exempt=money(row.basis.exempt);if(exempt===null)fail('The country pack did not return exact exemption evidence.');
    const old=await tx.execute<{id:string;basis:unknown}>(sql`select id,basis from payroll_tax_basis_revision where company_id=${selection.companyId}::uuid and employment_id=${who.id}::uuid and period=${source.period} and (payslip_id=${source.id}::uuid or payslip_id in (select previous.id from payroll_history_import_snapshot previous join payroll_history_import_snapshot current on current.record_id=previous.record_id where current.id=${source.id}::uuid)) order by id`);
-   const basis={...validatedTaxBasis(row.basis),supersedes:old.map(r=>r.id),settingsHash,appliedSettings:settings.filter(setting=>row.basis.items.some(item=>item.code===setting.code)),rulesEvidence:rulesEvidence[row.period]};
+   const items=row.basis.items.map((item,index)=>{const saved=prior?.items[index];return {...item,previousTreatment:saved?.code===item.code&&saved.amount===item.amount?saved.latestTreatment:item.previousTreatment};});
+   const basis={...validatedTaxBasis(row.basis),items,supersedes:old.map(r=>r.id),settingsHash,appliedSettings:settings.filter(setting=>row.basis.items.some(item=>item.code===setting.code)),rulesEvidence:rulesEvidence[row.period]};
    ytdTaxable=round(ytdTaxable+basis.pcb);ytdExempt=round(ytdExempt+exempt);
    months.push({payslipId:source.id,period:source.period,sourceHash:await taxBasisSourceHashTx(tx,source.id),beforeTaxable,taxable:basis.pcb,difference:beforeTaxable===null?null:round(basis.pcb-beforeTaxable),beforeExempt,exempt,ytdTaxable,ytdExempt,items:basis.items,basis});
   }
-  const comparison=(b:TaxBasisValue)=>{const {supersedes,...values}=b;return values;};
+  const comparison=(b:TaxBasisValue)=>{const {supersedes,...values}=b;return {...values,items:b.items.map(({previousTreatment,...item})=>item)};};
   const changed=months.some(m=>!effective?.has(m.payslipId)||hash(comparison(effective.get(m.payslipId)!.basis))!==hash(comparison(m.basis)));
   if(changed&&slips.some(s=>s.period>cutoff)){
    const altersAllocation=months.some(m=>Object.keys(m.basis.exemptionUsed).length>0||object(included.find(s=>s.id===m.payslipId)!.statutory.exemptionUsed)&&Object.keys(included.find(s=>s.id===m.payslipId)!.statutory.exemptionUsed as object).length>0);
@@ -131,7 +133,7 @@ async function computeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection):P
  await permission(tx,ctx,selection.companyId);
  const [company]=await tx.execute<{name:string}>(sql`select legal_name as name from company where id=${selection.companyId}::uuid and archived_at is null`);if(!company)fail('Company is unavailable.');
  const settings=await settingsTx(tx);if(!settings.some(s=>s.code.toUpperCase()==='BASIC'))settings.push(basicSetting);const settingsHash=hash(settings);
- const employees=await tx.execute<{id:string;employeeNo:string;name:string}>(sql`select id,"employeeNo",name from app.payroll_tax_basis_subjects(${selection.companyId}::uuid,${selection.year},${selection.upToMonth}) ${selection.employmentIds===null?sql``:sql`where id=any(${selection.employmentIds}::uuid[])`} order by "employeeNo",id`);
+ const employees=await tx.execute<{id:string;employeeNo:string;name:string}>(sql`select id,"employeeNo",name from app.payroll_tax_basis_subjects(${selection.companyId}::uuid,${selection.year},${selection.upToMonth}) ${selection.employmentIds===null?sql``:sql`where id=any(${uuidArray(selection.employmentIds)})`} order by "employeeNo",id`);
  if(selection.employmentIds!==null&&employees.length!==selection.employmentIds.length)fail('An employee is unavailable, belongs to another company, or has no history in the selected period.');
  if(employees.length>1000)fail('Select up to 1,000 employees per preview. Split a larger company into selected employee groups.');
  const results:TaxBasisEmployee[]=[],cache:SourceCache=new Map(),started=Date.now();for(const who of employees){if(Date.now()-started>25000)fail('This preview is too large. Select a smaller employee group and preview again.');results.push(await employeeTx(tx,ctx,selection,who,settings,settingsHash,cache));}
@@ -147,7 +149,7 @@ export async function taxBasisOptions(ctx:SessionContext){return withTenant(ctx,
  const ids=companies.map(c=>c.id);if(!ids.length)fail('Income-tax recalculation access is unavailable.');assertModuleGate(ctx,'payroll');
  const employees: {id:string;companyId:string;employeeNo:string;name:string}[]=[];
  for(const id of ids){const subjects=await tx.execute<{id:string;employeeNo:string;name:string}>(sql`select * from app.payroll_tax_basis_subjects(${id}::uuid,null,null)`);employees.push(...subjects.map(s=>({...s,companyId:id})));}
- const years=await tx.execute<{year:number}>(sql`select distinct left(pay_period,4)::integer as year from payroll_batch where company_id=any(${ids}::uuid[]) and status in ('processed','closed') order by year desc`);return {companies,employees,years:years.map(r=>r.year),canRecalculate};
+ const years=await tx.execute<{year:number}>(sql`select distinct left(pay_period,4)::integer as year from payroll_batch where company_id=any(${uuidArray(ids)}) and status in ('processed','closed') order by year desc`);return {companies,employees,years:years.map(r=>r.year),canRecalculate};
  });}
 export async function previewTaxBasisRecalculation(ctx:SessionContext,selection:TaxBasisSelection):Promise<TaxBasisPreview>{validateSelection(selection);return withTenant(ctx,async tx=>{
  await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await permission(tx,ctx,selection.companyId,true);const computed=await computeTx(tx,ctx,selection);const id=randomUUID(),createdAt=new Date().toISOString(),expiresAt=new Date(Date.now()+15*60000).toISOString();const previewHash=hash({selection,computed});
@@ -184,7 +186,7 @@ async function executeTaxBasisRecalculation(ctx:SessionContext,input:{previewId:
    await recordEventTx(tx,ctx,opened.id,opened.selection.companyId,'processing');
    for(const m of reviewed.months){
     const [last]=await tx.execute<{ordinal:number}>(sql`select coalesce(max(ordinal),0)::integer as ordinal from payroll_tax_basis_revision where payslip_id=${m.payslipId}::uuid`);
-    await tx.execute(sql`insert into payroll_tax_basis_revision(tenant_id,company_id,employment_id,payslip_id,period,source_hash,ordinal,batch_id,basis,supersedes) values(${ctx.tenantId}::uuid,${opened.selection.companyId}::uuid,${reviewed.id}::uuid,${m.payslipId}::uuid,${m.period},${m.sourceHash},${last.ordinal+1},${opened.id}::uuid,${JSON.stringify(m.basis)}::jsonb,${m.basis.supersedes as string[]}::uuid[])`);
+    await tx.execute(sql`insert into payroll_tax_basis_revision(tenant_id,company_id,employment_id,payslip_id,period,source_hash,ordinal,batch_id,basis,supersedes) values(${ctx.tenantId}::uuid,${opened.selection.companyId}::uuid,${reviewed.id}::uuid,${m.payslipId}::uuid,${m.period},${m.sourceHash},${last.ordinal+1},${opened.id}::uuid,${JSON.stringify(m.basis)}::jsonb,${uuidArray(m.basis.supersedes as string[])})`);
    }
    await recordEventTx(tx,ctx,opened.id,opened.selection.companyId,'employee_completed',reviewed,reviewed.id);await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-tax-basis',aggregateId:opened.id,eventType:'payroll.tax-basis.corrected',actor:actorOf(ctx),subjectEmploymentId:reviewed.id,payload:{companyId:opened.selection.companyId,year:opened.selection.year,upToMonth:opened.selection.upToMonth,recordCount:reviewed.recordCount,previewHash:input.previewHash}});
   });}catch(error){

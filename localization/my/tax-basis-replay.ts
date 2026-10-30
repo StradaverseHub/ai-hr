@@ -6,7 +6,7 @@ export type TaxBasisItemSetting={id:string;code:string;name:string;kind:string;i
 export type TaxBasisSourceSlip={id:string;period:string;runOrder:number;sourceLines:{code:string;amount:number;direction:'earning'|'deduction';previousTreatment?:string|null}[];statutory:Record<string,unknown>;expectedGross:number;expectedOtherDeductions:number};
 export type TaxBasisReplayInput={year:number;upToMonth:number;slips:TaxBasisSourceSlip[];settings:TaxBasisItemSetting[];rulesByPeriod:Record<string,{rules:StatutoryRuleset;hash:string}>;openingExemptionUsed:Record<string,number>};
 export type TaxBasisReplayRow={payslipId:string;period:string;basis:TaxBasisValue};
-const fail=(message:string):never=>{throw new TaxBasisReplayError(message);};
+function fail(message:string):never{throw new TaxBasisReplayError(message);}
 const round=(n:number)=>Math.round(n*100)/100;
 function money(value:unknown,label:string):number{if(typeof value!=='number'||!Number.isFinite(value)||value<0||!Number.isSafeInteger(Math.round(value*100))||Math.abs(value*100-Math.round(value*100))>1e-6)fail(`${label}: an exact non-negative monetary amount is required.`);return value as number;}
 const obj=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
@@ -25,7 +25,7 @@ export function replayMyTaxBasis(input:TaxBasisReplayInput):TaxBasisReplayRow[]{
   if(!Number.isInteger(slip.runOrder)||slip.runOrder<0||order.has(`${slip.period}:${slip.runOrder}`))fail('Payroll run order is missing or ambiguous.');order.add(`${slip.period}:${slip.runOrder}`);
   const resolution=input.rulesByPeriod[slip.period];
   if(!resolution?.hash||!resolution.rules.pcbExemptions)fail(`${slip.period}: year-specific exemption rules are unavailable.`);
-  const declaredYears=resolution.rules.version.match(/20\d{2}/g)??[];
+  const declaredYears:string[]=resolution.rules.version.match(/20\d{2}/g)??[];
   if(declaredYears.length&&!declaredYears.includes(String(input.year)))fail(`${slip.period}: the resolved statutory rules belong to a different assessment year.`);
   const tables=resolution.rules.pcbExemptions;
   if(!Array.isArray(slip.sourceLines)||!slip.sourceLines.length)fail(`${slip.period}: original Pay Item lines are unavailable.`);

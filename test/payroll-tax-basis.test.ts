@@ -5,6 +5,9 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {createCompany} from '../core/admin';
 import {hireEmployee} from '../core/org';
+import {setCompensation} from '../core/comp';
+import {setStatutoryProfileMY} from '../localization/my/statutory';
+import {createBatch,generatePayslips} from '../core/payroll';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload} from '../core/payroll-history-revisions';
 import {previewTaxBasisRecalculation,confirmTaxBasisRecalculation,taxBasisOptions,getTaxBasisBatch,listTaxBasisBatches,continueTaxBasisBatch,recoverTaxBasisBatch} from '../core/payroll-tax-basis';
@@ -45,6 +48,21 @@ describe('authorized immutable historical income tax corrections',()=>{
   expect(await confirm(p)).toEqual(done);expect(await continueTaxBasisBatch(ctx,done.id)).toEqual(done);
   const revisions=await owner.db.select().from(schema.payrollTaxBasisRevision);expect(revisions).toHaveLength(3);
   const repeated=await previewTaxBasisRecalculation(ctx,selection());expect(repeated.unchangedCount).toBe(1);expect(repeated.eligibleCount).toBe(0);
+  await owner.db.update(schema.payComponent).set({includedInPcb:false}).where(eq(schema.payComponent.id,travel));
+  const next=await previewTaxBasisRecalculation(ctx,selection());expect(next.eligibleCount).toBe(1);expect(next.employees[0].months[0].items.find(i=>i.code==='TRV')?.previousTreatment).toMatch(/Taxable/);expect(next.employees[0].months[0].taxable).toBe(5000);
+ });
+ it('feeds the corrected prefix into a real future run while preserving prior issued money',async()=>{
+  await owner.db.update(schema.payComponent).set({includedInPcb:false}).where(eq(schema.payComponent.id,travel));
+  const original=await owner.db.select().from(schema.payslip),p=await previewTaxBasisRecalculation(ctx,selection());await confirm(p);
+  const [subject]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employee));
+  await setCompensation(ctx,{employmentId:employee,basicSalary:5000,effectiveFrom:'2025-01-01'});
+  await setStatutoryProfileMY(ctx,{personId:subject.personId,icNumber:'850202025555',taxCategory:1,numChildren:0});
+  const run=await createBatch(ctx,{companyId:b.companyId,payPeriod:'2026-04'});await generatePayslips(ctx,{batchId:run.batchId});
+  const [future]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,run.batchId));
+  const st=future.statutory as {pcbMeta:{ytdGross:number;ytdNet:number};taxBasisCorrections:unknown[];epfEmployee:number};
+  expect(st.pcbMeta.ytdGross).toBe(15000);expect(st.pcbMeta.ytdNet).toBe(15000);expect(st.taxBasisCorrections).toHaveLength(3);
+  expect(Number(future.grossPay)).toBe(5000);expect(st.epfEmployee).toBe(550);
+  const after=await owner.db.select().from(schema.payslip);for(const row of original)expect(after.find(s=>s.id===row.id)).toEqual(row);
  });
  it('refuses stale settings and excludes nonselected employees and other assessment years',async()=>{
   const p=await previewTaxBasisRecalculation(ctx,selection());await owner.db.update(schema.payComponent).set({includedInPcb:false}).where(eq(schema.payComponent.id,travel));

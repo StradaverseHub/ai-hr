@@ -29,7 +29,7 @@ import {
 // ea54fe6e — read the itemised lines STRUCTURALLY (by shape), which is what lets this file consume the
 // kernel's stamp without importing core/payroll and dragging the whole engine into every EA caller.
 import { storedComponentLines } from '../../core/payslip-earning-lines';
-import { hasCompleteHistoricalEaProvenance, accumulateEaRouting } from './ea-routing';
+import { eaIncomePartsForSource,hasCompleteHistoricalEaProvenance, accumulateEaRouting } from './ea-routing';
 import { MY_EA_REPORTING } from './ea-reporting';
 import { accumulatedEaNonCash, eaNonCashExemption } from './ea-noncash';
 export { EA_BUCKET_SOURCE_FIELD } from './ea-routing';
@@ -2260,9 +2260,7 @@ export async function eaStatement(
         if (!hasCompleteHistoricalEaProvenance([original],mapping))
           throw new PayrollTaxBasisError('The corrected income has incomplete original EA routing evidence. Review the source before generating this tax report.');
         const oldExemption = Object.entries(correction.basis.exemptionUsed).reduce((n,[code,value])=>code.startsWith('PCB_')?n+num(value):n,0);
-        const oldRouting = accumulateEaRouting(storedComponentLines(original.statutory),mapping,EA_LINE_TO_FIELD,true);
-        const oldParts: Partial<Record<EaField,number>> = {grossSalary:num(original.basic)+num(original.overtime),bonus:num(original.bonus),allowances:num(original.allowance)-oldExemption};
-        for (const [field,amount] of Object.entries(oldRouting.deltas)) oldParts[field as EaField]=(oldParts[field as EaField]??0)+(amount??0);
+        const oldParts=eaIncomePartsForSource(original,oldExemption,mapping,EA_LINE_TO_FIELD,routingActive);
         for (const field of EA_PART_B_COMPONENTS) derived[field]=round2(derived[field]-(oldParts[field]??0));
         for (const item of correction.basis.items) {
           if (item.latestTreatment==='Taxable remuneration deduction') { derived.grossSalary=round2(derived.grossSalary-item.amount);continue; }

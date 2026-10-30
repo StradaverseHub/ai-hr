@@ -16,7 +16,7 @@ export default async function TaxBasisBatchPage({params}:{params:Promise<{id:str
   const unfinished=batch.status==='processing'||batch.status==='pending';
   return <div className={pageWideCls}>
     <PageHeader title={t('batchTitle',{reference:batch.reference})} description={batch.companyName} back={{href:'/payroll/income-tax-recalculation',label:t('backRecalculation')}}/>
-    <section className="space-y-5 rounded-xl border p-5"><dl className="grid gap-5 text-sm sm:grid-cols-2 lg:grid-cols-4">
+    <section className="space-y-5 rounded-xl border border-border p-5"><dl className="grid gap-5 text-sm sm:grid-cols-2 lg:grid-cols-4">
       <div><dt className="text-muted-foreground">{t('period')}</dt><dd className="mt-1 font-medium">{t('periodRange',{year:batch.year,month:t(`months.${batch.upToMonth}`)})}</dd></div>
       <div><dt className="text-muted-foreground">{t('selection')}</dt><dd className="mt-1 font-medium">{t(batch.selection==='all'?'allEmployees':'selectedEmployees')}</dd></div>
       <div><dt className="text-muted-foreground">{t('status')}</dt><dd className="mt-1 font-medium" role="status">{t(`batchStates.${batch.status}`)}</dd></div>
@@ -25,8 +25,8 @@ export default async function TaxBasisBatchPage({params}:{params:Promise<{id:str
       <div><dt className="text-muted-foreground">{t('date')}</dt><dd className="mt-1 font-medium">{format.dateTime(new Date(batch.createdAt),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}</dd></div>
       <div><dt className="text-muted-foreground">{t('outcomes')}</dt><dd className="mt-1 font-medium">{t('resultCounts',{completed:batch.completedCount,failed:batch.failedCount})}</dd></div>
       <div><dt className="text-muted-foreground">{t('records')}</dt><dd className="mt-1 font-medium tabular-nums">{batch.recordCount}</dd></div>
-    </dl><p className="border-t pt-4 text-xs text-muted-foreground">{t('preserved')}</p>
-      {batch.failedCount>0&&!unfinished&&<div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-amber-300 bg-amber-50/40 p-4 dark:border-amber-700 dark:bg-amber-950/10"><p className="max-w-3xl text-sm">{t('partialHint')}</p>{canRecalculate&&<Link className="rounded-lg border bg-background px-4 py-2 text-sm font-medium" href={'/payroll/income-tax-recalculation?retry='+batch.id}>{t('retryFailed')}</Link>}</div>}
+    </dl><p className="border-t border-border pt-4 text-xs text-muted-foreground">{t('preserved')}</p>
+      {batch.failedCount>0&&!unfinished&&<div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-amber-300 bg-amber-50/40 p-4 dark:border-amber-700 dark:bg-amber-950/10"><p className="max-w-3xl text-sm">{t('partialHint')}</p>{canRecalculate&&<Link className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium" href={'/payroll/income-tax-recalculation?retry='+batch.id}>{t('retryFailed')}</Link>}</div>}
       {unfinished&&<TaxBasisProgress batchId={batch.id} recoverable={batch.recoverable===true} canRecalculate={canRecalculate}/>}
     </section>
     <section className="space-y-4"><h2 className="font-semibold">{t('employeeOutcomes')}</h2><TaxBasisResults employees={batch.employees}/></section>
