@@ -478,3 +478,13 @@ No historical migration bytes are edited.
 ### Personnel Wave 5 composition — no installation priority
 
 The archive, MY TP3 opening and cost allocation source reservations 0724/0725/0726 (idx705/706/707, when1793330000053/54/55) remain UNAPPLIED and PROVISIONAL. Incoming unverified coordination reports a competing performance 0726/when55 claim and V9 append proposals at when56–63. These are leads, not verified installed history or authority. Before integration freeze, reconcile and reallocate **all our unapplied 0713–0726** above the actual then-installed ordered ledger and timestamp watermark. No exclusive reservation, applied SQL rename, silent amendment of other claims, protected-ref movement or release action is authorized by this composition.
+
+
+## Personnel action navigation — 30 October 2026 (provisional source claim only)
+
+`codex/ai-user-parity-personnel-navigation-20261030` proposes
+`0727_assistant_personnel_review_navigation`, idx708 / when1793330000064, for two boolean native
+navigation witnesses only. This is UNAPPLIED and is not a canonical reservation or installation
+priority. Incoming V9 source reportedly proposes56–63, and performance0726/55 is a collision lead;
+no sibling package or applied SQL is edited. At integration freeze reallocate the complete unapplied
+Personnel tail above the actual accepted ordered ledger after coordinating all source claims.
