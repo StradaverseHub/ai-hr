@@ -6,15 +6,15 @@
 not release acceptance. [Draft PR 113](https://github.com/StradaverseHub/ai-hr/pull/113)
 is held; this work has not deployed to staging or production.
 
-The newest completed 30-route workload (`c6a904865`) retains **one million Claims
+The newest completed 30-route workload (`645a2ac90`) retains **one million Claims
 and one million attendance rows**. All500 data journeys, allsix loaded browser
 journeys and native audit checks complete at both activity levels, but speed
 acceptance fails:
 
 | Activity pause | Read p95 | Mutation p95 | Complete data journeys | Complete loaded browsers |
 | --- | ---: | ---: | ---: | ---: |
-| [1s](https://github.com/StradaverseHub/ai-hr/actions/runs/41113693279) | 54.5s | 59.1s | 500/500 | 6/6 |
-| [5s](https://github.com/StradaverseHub/ai-hr/actions/runs/41113711375) | 50.5s | 53.9s | 500/500 | 6/6 |
+| [1s](https://github.com/StradaverseHub/ai-hr/actions/runs/41115991569) | 54.4s | 58.3s | 500/500 | 6/6 |
+| [5s](https://github.com/StradaverseHub/ai-hr/actions/runs/41115973494) | 50.8s | 54.4s | 500/500 | 6/6 |
 
 Both builds, migration runs and fixture assertions pass. Each verifies500 current-day
 attendance rows, no attendance before hire, all30 selected concurrent routes, nine
@@ -27,14 +27,14 @@ comparison passes. Its HTTP/browser qualification fails speed despite allsix
 browser journeys completing in each run.
 
 Actual CPU counters over the timed phase distinguish database and application work:
-one-second app325.55s / PostgreSQL619.97s over311.20wall seconds; five-second
-app332.91s / PostgreSQL582.49s over308.24wall seconds. Database throttling and host
+one-second app320.96s / PostgreSQL622.92s over309.14wall seconds; five-second
+app323.42s / PostgreSQL632.27s over313.02wall seconds. Database throttling and host
 steal are zero. Host user/system counters include these components and Chromium,
 so they must not be added to component CPU. No production sizing claim follows.
 
 Six principals across roles/tenants each have create, edit and delete visibility
 observed every100ms through an independent committed-state reader. All18 per run
-become visible: one-second by11.7–24.2s; five-second by10.7–20.3s. Their HTTP
+become visible: one-second by11.6–22.5s; five-second by12.9–20.7s. Their HTTP
 responses still finish tens of seconds after these observations. These are
 upper bounds on when committed data became visible, not exact transaction timings
 or a causal attribution of the response tail. The frozen thresholds remain unmet.
@@ -200,10 +200,45 @@ setters and no separate audit setters. All native principal/tenant/armed checks
 pass. Per-principal three-transaction p95 is1,073.2ms before /811.9ms combined /
 807.1ms restored. The warmed control is comparable to combined, so this establishes
 a round-trip reduction, **not a consistent latency improvement**.
-Full one/five-second HTTP/browser qualification is pending in frozen source645 runs
+Full one/five-second HTTP/browser qualification completes in frozen source645 runs
 [41115991569](https://github.com/StradaverseHub/ai-hr/actions/runs/41115991569) and
 [41115973494](https://github.com/StradaverseHub/ai-hr/actions/runs/41115973494).
+Both complete500/500 persisted CRUD journeys,6/6 loaded browsers, all30routes,
+nine authority boundaries and native audit verification with zero journey/runtime
+errors. One-second read/write p9554.4/58.3s; five-second50.8/54.4s. **Speed FAIL**.
+The results remain comparable in magnitude to the preceding profile-reader runs;
+the audit setup reduction does not resolve the HTTP bottleneck. Separate hosted
+runners do not establish a causal improvement or regression ratio.
 The earlier `c6a904865` HTTP tests do not qualify this later setup change.
+
+## Current-main integration and protected-source binding
+
+Fresh main/alpha advanced together to `7c57d5f64` during the frozen tests. Normal
+merge `6430d9570` preserves their CI/fixture repairs; the sole merge conflict takes
+main's stronger `nativeMoneySnapshot` return type. Main's583-entry migration prefix
+and all existing SQL bytes remain unchanged; the candidate has588 entries with the
+five separately held performance drafts. No protected ref was moved by this task.
+
+The source review also finds SQL/JavaScript legacy parity gaps in lifecycle JSON:
+an absent task status remains unfinished, an absent state remains not cancelled,
+and an explicit unknown source join date must not inherit a local date. Repairs
+`7b7e4b444` / `f256f8f34` add direct native comparisons with the existing owner.
+Current-main fixture/lifecycle checks and whole compiler run
+[41119700182](https://github.com/StradaverseHub/ai-hr/actions/runs/41119700182);
+the later explicit-null date assertion needs its own final focused evidence.
+These later source changes are not relabelled onto the source645 load runs.
+
+Generated fingerprints are refreshed after integration. The immutable Git-blob
+privacy closure independently matches998 files and digest
+`c1c073ea81f8f90c3d70d2794aca562470ffd74252ec38066e3ef8a55193cc41`;
+976 files are unchanged,21 change and one dependency is added. The same24 literal
+approved-contract records still identify the earlier approved digest, and the two
+pending records are untouched. The source-bound approval gate therefore remains
+closed in this draft; ordinary protected-provider positive checks cannot yet pass.
+Run [41119710456](https://github.com/StradaverseHub/ai-hr/actions/runs/41119710456)
+retains the real gate result. No generated hash alone renews human approval.
+The [technical review and exact proposed scope](reviews/system-performance-provider-source-review-20261031.md)
+records the reviewed changes; a fingerprint-only proposal is prepared and unapplied.
 
 ## Workload and acceptance
 
