@@ -14,11 +14,14 @@ export async function AssistantCatalogueSummary({view,ctx}:{view:CanonicalModule
   });
   if(modules.length===0||new Set(modules).size!==modules.length)return null;
   const[copy,jobs]=await Promise.all([getTranslations('assistant.workspace.conversation'),getTranslations('assistant.workspace.jobs')]);
-  const areas=modules.map(module=><li key={module} className="text-sm leading-relaxed"><span className="font-medium">{jobs(`module_${module}`)}</span>{' — '}{jobs(`help_${module}`)}</li>);
+  const preferred=['leave','payroll','claims','org','employees','attendance','performance'] as const;
+  const selected=[...preferred.filter(module=>modules.includes(module)),...modules.filter(module=>!preferred.some(code=>code===module))].slice(0,3);
+  const examples=selected.map(module=><li key={module} className="text-sm leading-relaxed">{preferred.some(code=>code===module)?copy(`example_${module}`):copy('example_area',{area:jobs(`module_${module}`)})}</li>);
+  const areas=modules.map(module=><li key={module} className="text-sm leading-relaxed">{jobs(`module_${module}`)}</li>);
   return <div className="space-y-3">
    <p className="text-sm leading-relaxed">{copy('catalogueIntro')}</p>
-   <ul className="space-y-2">{areas.slice(0,6)}</ul>
-   {areas.length>6&&<details><summary className="min-h-11 w-fit cursor-pointer py-2 text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('moreAreas',{count:areas.length-6})}</summary><ul className="mt-2 space-y-2">{areas.slice(6)}</ul></details>}
+   <ul className="list-disc space-y-2 pl-5">{examples}</ul>
+   <details><summary className="min-h-11 w-fit cursor-pointer py-2 text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('allAreas')}</summary><ul className="mt-2 space-y-2">{areas}</ul></details>
    <p className="text-xs text-muted-foreground">{copy('catalogueScope')}</p>
    {view.presentation.truncated&&<p className="text-xs text-muted-foreground">{jobs('truncated')}</p>}
   </div>;

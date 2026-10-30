@@ -1,6 +1,7 @@
 /** Canonical typed facts only. A model answer, copied receipt or arbitrary JSON cannot render here. */
 import type {ReactNode} from 'react';
 import {conversationFactLayout} from '../../lib/ai/assistant-answer-layout';
+import {assistantFactSentenceKey} from '../../lib/ai/assistant-fact-sentences';
 import {randomUUID} from 'node:crypto';
 import {ConversationClarification} from './conversation-clarification';
 import {saveGovernedJobFeedbackAction,eraseGovernedJobFeedbackAction} from '../../app/assistant/job-feedback-actions';
@@ -100,6 +101,10 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
  try{
   const plan=conversation.plan;if(!closedConversationFields(conversation,['plan','facts',...(conversation.clarificationAllowed===undefined?[]:['clarificationAllowed']),...(conversation.segments===undefined?[]:['segments'])])||!Array.isArray(conversation.facts)||(conversation.clarificationAllowed!==undefined&&conversation.clarificationAllowed!==false)||!plan||plan.version!==1)return unavailable();
   if(plan.mode!=='answer'&&conversation.segments!==undefined)return unavailable();
+  if(plan.mode==='social'){
+   if(!closedConversationFields(plan,['version','mode','code'])||!['greeting','thanks'].includes(plan.code)||conversation.facts.length!==0)return unavailable();
+   return <p className="text-sm leading-relaxed">{copy(`social_${plan.code}`)}</p>;
+  }
   if(plan.mode==='clarify'){
    if(!closedConversationFields(plan,['version','mode','slot'])||!['employment','leave_type','period','module'].includes(plan.slot)||conversation.facts.length!==0)return unavailable();
    const bound=typeof exchangeId==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(exchangeId),labelId=bound?'assistant-clarification-'+exchangeId:'assistant-clarification-unavailable';
@@ -133,7 +138,7 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
     const card=selected.explanation.card===null?null:selected.view.presentation.cards[selected.explanation.card];
     const company=card?.facts.find(fact=>fact.field==='company'&&typeof fact.value==='string')?.value;
     const heading=card?canonicalHeading(card,text):text.t(`module_${selected.view.presentation.module}`);
-    return <li key={index} className="space-y-1 break-words text-sm leading-relaxed"><p className="text-xs text-muted-foreground">{heading}{typeof company==='string'&&company!==heading?` (${company})`:''}</p>{await ConversationExplanation({view:selected.view,explanation:selected.explanation,ctx})}</li>;
+    return <div key={index} className="space-y-1 break-words text-sm leading-relaxed">{card&&<p className="text-xs text-muted-foreground">{heading}{typeof company==='string'&&company!==heading?` (${company})`:''}</p>}{await ConversationExplanation({view:selected.view,explanation:selected.explanation,ctx})}</div>;
    }
    const paired=conversation.facts[factIndex++];
    if(selected.kind!=='fact'||!closedConversationFields(selected,['kind','view','card','fact'])||!paired||paired.view!==selected.view||paired.card!==selected.card||paired.fact!==selected.fact)throw Error();
@@ -147,10 +152,10 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
    }
    const progress=fact.field==='progressPercent'&&typeof fact.value==='number'&&fact.value>=0&&fact.value<=100
     ? <progress aria-label={text.t('field_progressPercent')} value={fact.value} max={100} className="mt-2 block h-2 w-full max-w-sm accent-primary">{fact.value}%</progress>:null;
-   const previous=segments[index-1],sameRecord=previous?.kind==='fact'&&previous.view===selected.view&&previous.card===selected.card;
-   const content=<>{!sameRecord&&<span className="block text-xs text-muted-foreground">{canonicalHeading(card,text)}</span>}{text.t(`field_${fact.field}`)}{': '}<span className="font-medium tabular-nums">{value}</span>{progress}{card.withheld&&<span className="block text-xs text-muted-foreground">{text.t('withheld')}</span>}</>;
+   const sentence=copy(`natural.${assistantFactSentenceKey(selected.view.presentation.module,card,fact,selected.view.toolName)}`,{record:canonicalHeading(card,text),field:text.t(`field_${fact.field}`),value:String(value)});
+   const content=<><span className="tabular-nums">{sentence}</span>{progress}{card.withheld&&<span className="block text-xs text-muted-foreground">{text.t('withheld')}</span>}</>;
    renderedFacts.push({view:selected.view,card:selected.card,fact:selected.fact,value:String(value),content});
-   return <li key={index} className="break-words text-sm leading-relaxed">{content}</li>;
+   return <p key={index} className="break-words text-sm leading-relaxed">{content}</p>;
   }));
   const factOnly=plan.blocks.every(block=>block.kind==='fact');
   const layout=factOnly?conversationFactLayout(renderedFacts.map(row=>({sourceKey:row.view.viewId,presentation:row.view.presentation,card:row.card,fact:row.fact}))):{kind:'list' as const};
@@ -161,9 +166,10 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
      return <tr key={row.sourceKey+':'+row.card} className="border-t"><th scope="row" className="max-w-xs break-words px-3 py-2 align-top font-medium">{heading}{typeof company==='string'&&company!==heading?` (${company})`:''}</th>{row.positions.map((position,index)=><td key={index} className="break-words px-3 py-2 align-top tabular-nums">{renderedFacts[position].value}</td>)}</tr>;
     })}</tbody>
    </table></div>:factOnly&&renderedFacts.length===1?<p className="break-words text-sm leading-relaxed">{renderedFacts[0].content}</p>:
-    factOnly?<ul className="space-y-2">{lines}</ul>:<ul className="space-y-3">{lines}</ul>;
+    <div data-conversation-paragraphs="" className="space-y-3">{lines}</div>;
   const sources=await Promise.all(views.map(async view=>({id:view.viewId,card:await CanonicalModuleJob({view,ctx})})));
   return <section aria-label={copy('answerLabel')} className="space-y-3">{answerBody}
+   {renderedFacts.some(row=>row.view.presentation.module==='assistant'&&['backgroundAgentsTotal','backgroundAgentSwitchesOn','backgroundAgentEffectiveSwitchesOn'].includes(String(row.view.presentation.cards[row.card].facts[row.fact].field)))&&<p className="text-xs text-muted-foreground">{copy('backgroundSwitchNote')}</p>}
    {views.some(view=>view.state==='ready'&&view.presentation.truncated)&&<p className="text-xs text-muted-foreground">{text.t('truncated')}</p>}
    <details className="text-muted-foreground"><summary className="min-h-11 w-fit cursor-pointer py-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('sources')}</summary><div className="mt-2 space-y-4 rounded-lg border border-border p-3"><p className="text-xs">{copy('canonicalNote')}</p>{sources.map(source=><div key={source.id}>{source.card}</div>)}</div></details>
   </section>;
