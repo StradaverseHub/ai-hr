@@ -91,7 +91,7 @@ describe('floating Assistant',()=>{
   send('What about tomorrow?');await screen.findByRole('alert');
   expect(state.ask).toHaveBeenNthCalledWith(2,{question:'What about tomorrow?',path:'/leave',previousExchangeId:'exchange-parent',previousConversationToken:'scope-bound-parent'});
   send('Try that again');await screen.findByText('Another answer');
-  expect(state.ask).toHaveBeenNthCalledWith(3,{question:'Try that again',path:'/leave',previousExchangeId:'exchange-parent',previousConversationToken:'scope-bound-parent'});
+  expect(state.ask).toHaveBeenNthCalledWith(3,{question:'Try that again',path:'/leave'});
   state.path='/claims';view.rerender(<NextIntlClientProvider locale="en" messages={en}><AssistantLauncher position="bottom-right" hiddenAreas={[]}/></NextIntlClientProvider>);
   send('My claims');await waitFor(()=>expect(state.ask).toHaveBeenCalledTimes(4));
   expect(state.ask).toHaveBeenNthCalledWith(4,{question:'My claims',path:'/claims'});

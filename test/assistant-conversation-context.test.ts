@@ -60,7 +60,7 @@ describe('same-login human chat context owner',()=>{
   const retired=await exchange(mine.ctx,'Retired question');await owner.db.execute(sql`select app._assistant_transcripts_retire(${mine.ctx.tenantId}::uuid,array[${retired}::uuid],true)`);
   for(const ctx of [other.ctx,foreign.ctx])await refused(ctx,id);
   for(const bad of [foreignId,expired,retired,randomUUID(),'bad-id',null,undefined])await refused(mine.ctx,bad);
-  for(const question of ['', ' ', 'x'.repeat(2001),null,undefined,{}])await refused(mine.ctx,id,question);
+  for(const question of ['', ' ', 'x'.repeat(2001),null,undefined,{}])await expect(ownAssistantConversationContext(mine.ctx,id,question)).rejects.toThrow(/^Current conversation unavailable\.$/);
   let invoked=false;await refused(mine.ctx,{toString(){invoked=true;return id;}});expect(invoked).toBe(false);
  });
  it('requires an authentic scope-bound token and rejects tampering, another exchange, principal or company selection before provider use',async()=>{
