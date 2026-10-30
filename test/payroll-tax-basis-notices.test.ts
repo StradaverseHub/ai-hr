@@ -8,12 +8,12 @@ import {taxBasisNoticeReferences,taxBasisNoticesForPayslip} from '../core/payrol
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext;
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'payroll','active');ctx=await entitledCtx(b);});afterAll(closeAll);
-async function fixture(){
+async function fixture(consumed=false){
+ const previewId=randomUUID(),correctionBatchId=randomUUID();
  const {employmentId}=await hireEmployee(ctx,{person:{fullName:'Fictional original tax working',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});
  const [period]=await owner.db.insert(s.payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period:'2026-01',status:'closed'}).returning();
  const [batch]=await owner.db.insert(s.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:period.id,payPeriod:'2026-01',batchDate:'2026-01-25',status:'closed'}).returning();
- const [slip]=await owner.db.insert(s.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId,basicSalary:'5000',grossPay:'5500',totalDeductions:'100',netPay:'5400',employerCost:'5500',statutory:{pcb:100,bases:{pcb:5000}}}).returning();
- const previewId=randomUUID(),correctionBatchId=randomUUID();
+ const [slip]=await owner.db.insert(s.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId,basicSalary:'5000',grossPay:'5500',totalDeductions:'100',netPay:'5400',employerCost:'5500',statutory:{pcb:100,bases:{pcb:5000},...(consumed?{taxBasisCorrections:[{batchId:correctionBatchId}]}:{})}}).returning();
  await withTenant(ctx,async tx=>{
   await tx.execute(sql`insert into payroll_tax_basis_preview(id,tenant_id,company_id,created_by,preview,selection,preview_hash,expires_at) values(${previewId}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${ctx.userId!}::uuid,'{}','{}',${'a'.repeat(64)},now()+interval '15 minutes')`);
   await tx.execute(sql`insert into payroll_tax_basis_batch(id,tenant_id,company_id,created_by,preview_id) values(${correctionBatchId}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${ctx.userId!}::uuid,${previewId}::uuid)`);
@@ -44,8 +44,7 @@ describe('tax-basis notices preserve original working and scope administrative l
   const other=await seedBase();await setModule(other.tenantId,'payroll','active');expect(await taxBasisNoticesForPayslip(await entitledCtx(other),{companyIds:[b.companyId],payslipId:slip.id})).toEqual(empty);
  });
  it('distinguishes consumed correction references from corrections to the original source',async()=>{
-  const {ctx,slip,correctionBatchId}=await fixture();
-  await owner.db.update(s.payslip).set({statutory:{...(slip.statutory as Record<string,unknown>),taxBasisCorrections:[{batchId:correctionBatchId}]}}).where(eq(s.payslip.id,slip.id));
+  const {ctx,slip}=await fixture(true);
   const notices=await taxBasisNoticesForPayslip(ctx,{companyIds:[b.companyId],payslipId:slip.id});expect(notices.original).toHaveLength(1);expect(notices.applied).toEqual(notices.original);
  });
 });

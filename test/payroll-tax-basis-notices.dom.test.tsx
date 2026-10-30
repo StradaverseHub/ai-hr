@@ -24,7 +24,7 @@ describe('visible tax-basis audit references',()=>{
   expect(screen.getByRole('note')).toHaveTextContent('TAX-12345678');expect(screen.queryByRole('link')).toBeNull();
  });
  it('adds the correction notice to the actual statutory-report renderer without changing its money table',()=>{
-  render(<StatutoryReportPanel result={{columns:[{key:'income',label:'Taxable income',numeric:true}],rows:[{income:5500}],totals:{income:5500},readiness:[],meta:{hasBatch:true}}} strings={{heading:'Reviewed report',readinessTitle:'Missing information',noRows:'No rows'}} taxBasisNotice={{references:[reference],strings:{...strings,description:en.payrollTaxBasis.noticeApplied}}}/>);
+  render(<StatutoryReportPanel result={{columns:[{key:'income',label:'Taxable income',numeric:true}],rows:[{income:5500}],totals:{income:5500},readiness:[],meta:{hasBatch:true,statutoryVersion:'fixture-2026'}}} strings={{heading:'Reviewed report',readinessTitle:'Missing information',noRows:'No rows'}} taxBasisNotice={{references:[reference],strings:{...strings,description:en.payrollTaxBasis.noticeApplied}}}/>);
   expect(screen.getByRole('note')).toHaveTextContent(en.payrollTaxBasis.noticeApplied);
   expect(within(screen.getByRole('table')).getByText('RM 5,500.00')).toBeVisible();
   expect(screen.getAllByText('RM 5,500.00')).toHaveLength(2);

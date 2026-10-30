@@ -3,7 +3,7 @@ import type {SessionContext, Tx} from '../db/client';
 import {taxBasisNoticeBatchIds, type TaxBasisNoticeReference} from '../lib/payroll-tax-basis-notices';
 import {assertModuleGate} from './module-gate';
 import {withPayrollHistoryTenant} from './payroll-history-lock';
-import {resolvePayrollPermission} from './payroll';
+import {resolvePayrollPermission} from '../packs/payroll/service';
 const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 
 async function referencesTx(tx: Tx, ctx: SessionContext, references: unknown): Promise<TaxBasisNoticeReference[]> {
