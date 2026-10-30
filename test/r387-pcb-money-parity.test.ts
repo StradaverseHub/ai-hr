@@ -60,7 +60,7 @@ describe('r387 complete monetary parity against original calculation',()=>{
   const extra=await createAdditionalRun(ctx,{companyId:base.companyId,payPeriod:`${year}-02`,runType:'bonus'});
   const bonus=await upsertPayComponent(ctx,{...flags,code:'SYNTH_TAXABLE_BONUS',label:'Cash Bonus',name:'Cash Bonus',includedInSocsoEis:false,pcbRemunerationType:'additional',pcbExemptionCode:'PCB_TAXABLE',epfBonus2012:true});
   await setPayrollBatchComponent(ctx,{batchId:extra.batchId,employmentId:e.employmentId,componentId:bonus.id,amount:1000});await generatePayslips(ctx,{batchId:extra.batchId});
-  const snapshots=[];
+  const snapshots: ReturnType<typeof normalized>[]=[];
   const comp=await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId,e.employmentId));
   expect(comp).toHaveLength(1);expect(Number(comp[0].basicSalary)).toBe(10000);
   const [payingCompany]=await owner.db.select().from(schema.company).where(eq(schema.company.id,base.companyId));

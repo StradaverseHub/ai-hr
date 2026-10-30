@@ -111,21 +111,21 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
     // its `feature:` policy row. A feature row left over for a setting-backed feature cannot be written any more
     // and is ignored by admission, so it is reported as a stale override instead of acting as a hidden switch.
     const features = AI_FEATURES.map(f => {
-      if(isScheduledAgentFeature(f)){const status=scheduledAgentFeatureStatus(fresh,f);return {...f,enabled:status.enabled,state:status.state,mayWrite:isGroupAdmin(ctx)};}
       const setting = f.setting ? SETTING_CATALOG.find(s => s.key === f.setting) : undefined;
       const featureRow = policies.find(p => p.scopeKey === `feature:${f.id}` && p.kind === 'feature');
       const staleOverride = setting && featureRow ? {enabled:featureRow.enabled,updatedAt:featureRow.updatedAt} : null;
+      const configured = setting ? fresh.entitlements.settings[f.setting!] !== undefined : featureRow !== undefined;
+      if(isScheduledAgentFeature(f)){const status=scheduledAgentFeatureStatus(fresh,f);return {...f,enabled:status.enabled,state:status.state,staleOverride,configured,mayWrite:isGroupAdmin(ctx)};}
       const enabled = setting ? (fresh.entitlements.settings[f.setting!] ?? setting.defaultValue) === true : featureRow?.enabled !== false;
       const effective = enabled && (!setting || getSetting(fresh,f.setting!) === true);
       const moduleHeld = f.module == null || isModuleEnabled(fresh, f.module);
       // A configured provider does not admit scheduled model spend. This is a runtime-status mirror,
       // never an allowance or a grant to the principal.
       const state = !enabled ? 'paused' : !moduleHeld ? 'module' : !effective ? 'restricted'
-        : f.kind === 'agent' ? f.id === 'readiness_reminders' || f.id === 'approval_chasers' || f.id === 'review_chasers' || f.id === 'clock_reminders' || f.id === 'document_reminders' || f.id === 'lifecycle_chasers' ? 'templates' : 'scheduled'
+        : f.kind === 'agent' ? 'scheduled'
         : !selectedProvider ? 'provider' : 'ready';
       // WP12 (R20): whether an administrator actually set this switch (a stored setting or a `feature:` row), so drift
       // reports a switch someone turned on that does not take effect, never a default nobody chose.
-      const configured = setting ? fresh.entitlements.settings[f.setting!] !== undefined : featureRow !== undefined;
       return {...f,enabled,state,staleOverride,configured,mayWrite:isGroupAdmin(ctx)&&f.kind!=='platform'};
     });
     // ADR-0151 §4.5 — the switch-on each agent specialist runs under, and who made it. An agent that is on
