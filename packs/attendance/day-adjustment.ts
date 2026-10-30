@@ -1,5 +1,5 @@
 import {AttendanceDayOvertimeChanges} from '../../lib/attendance-day-overtime-review';
-import {captureAttendanceDayOvertimeStateTx,attendanceDayOvertimeViewTx,attendanceDayOvertimeWitnessTx} from './day-overtime-effects';
+import {captureAttendanceDayOvertimeWriteTx,assertAttendanceDayOvertimeWriteTx,captureAttendanceDayOvertimeStateTx,attendanceDayOvertimeViewTx,attendanceDayOvertimeWitnessTx} from './day-overtime-effects';
 import {captureAttendanceDayReviewStateTx,attendanceDayReviewWitnessTx} from './day-schedule-effects';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
@@ -153,8 +153,10 @@ export async function saveAttendanceDayEdit(ctx:SessionContext,p:AttendanceDayEd
       manual=nativeOvertimeManualRows(ctx,current,p.rows);
     }
     const values={shiftId,dayKind,manualOtRows:manual,reason,updatedBy:ctx.userId??'system',updatedAt:new Date(),version:(current.adjustment?.version??0)+1};
+    const expectedOvertimeWrite=options?.reviewOvertimeEffects?await captureAttendanceDayOvertimeWriteTx(tx,values):null;
     const [saved]=await tx.insert(s.attendanceDayAdjustment).values({tenantId:ctx.tenantId,employmentId:p.employmentId,attendanceDate:p.date,...values})
       .onConflictDoUpdate({target:[s.attendanceDayAdjustment.tenantId,s.attendanceDayAdjustment.employmentId,s.attendanceDayAdjustment.attendanceDate],set:values}).returning();
+    if(expectedOvertimeWrite)await assertAttendanceDayOvertimeWriteTx(tx,expectedOvertimeWrite,saved);
     const calculated=await attendanceDayCalculationTx(tx,ctx,p.employmentId,p.date);
     if(calculated.day?.checkInAt){
       const figures=await recomputeDayFigures(tx,ctx,{employmentId:p.employmentId,date:p.date,checkInAt:calculated.day.checkInAt,
@@ -174,10 +176,10 @@ export async function saveAttendanceDayEdit(ctx:SessionContext,p:AttendanceDayEd
       eventId=await appendEvent(tx,{...eventArgs,payload:{...eventArgs.payload,reviewEffects}},{returnId:true});
     }else if(options?.reviewOvertimeEffects&&p.kind==='overtime'){
       await markAttendancePayrollTx(tx,ctx,payroll,p.employmentId);
-      const editor=await readTx(tx,ctx,p.employmentId,p.date);if(!beforeOvertime||!editor)throw Error('Native overtime review is unavailable.');
+      const editor=await readTx(tx,ctx,p.employmentId,p.date);if(!beforeOvertime||!editor||!expectedOvertimeWrite)throw Error('Native overtime review is unavailable.');
       const after=await captureAttendanceDayOvertimeStateTx(tx,ctx,p,payroll.map(row=>row.batchId),editor);
       await attendanceDayOvertimeViewTx(tx,ctx,p,after.summary);
-      const reviewOvertimeEffects=await attendanceDayOvertimeWitnessTx(tx,ctx,p,payroll.map(row=>row.batchId),beforeOvertime,after);
+      const reviewOvertimeEffects=await attendanceDayOvertimeWitnessTx(tx,ctx,p,payroll.map(row=>row.batchId),beforeOvertime,after,expectedOvertimeWrite);
       eventId=await appendEvent(tx,{...eventArgs,payload:{...eventArgs.payload,reviewOvertimeEffects}},{returnId:true});
     }else{
       eventId=await appendEvent(tx,eventArgs,{returnId:options?.returnEventId===true});

@@ -59,3 +59,9 @@ it('refuses an otherwise shaped review whose total body exceeds the public budge
  v.review.after.pattern.cashIssues=structuredClone(v.review.before.pattern.cashIssues);
  expect(C.Prepared.safeParse(v).success).toBe(false);
 });
+
+it('refuses extra displayed rows and inconsistent manual or Auto display projections',()=>{
+ const extra=otPrepared();extra.review.after.legacyRows.push({...extra.review.after.legacyRows[2],key:'fictional-unrequested'});expect(C.Prepared.safeParse(extra).success).toBe(false);
+ const wrongBefore=otPrepared();wrongBefore.review.before.legacyRows[1].effectiveMinutes=91;expect(C.Prepared.safeParse(wrongBefore).success).toBe(false);
+ const wrongAuto=otPrepared();wrongAuto.review.before.legacyRows[0].effectiveMinutes=41;expect(C.Prepared.safeParse(wrongAuto).success).toBe(false);
+});

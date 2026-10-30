@@ -5,9 +5,19 @@ import {OvertimeOwnerError} from './overtime-patterns';
 import type {SessionContext,Tx} from '../../db/client';
 import type {AttendanceDayEditorData} from './day-adjustment';
 import type {ManualOtRows} from '../../lib/attendance-day-adjustment';
-import {AttendanceDayOvertimeChanges,AttendanceDayOvertimeReviewSummary,AttendanceDayOvertimeReviewView,AttendanceDayOvertimeReviewWitness,type AttendanceDayOvertimeReviewSummaryData} from '../../lib/attendance-day-overtime-review';
+import {AttendanceDayOvertimeChanges,AttendanceDayOvertimeNativeWrite,AttendanceDayOvertimeReviewSummary,AttendanceDayOvertimeReviewView,AttendanceDayOvertimeReviewWitness,type AttendanceDayOvertimeReviewSummaryData} from '../../lib/attendance-day-overtime-review';
 import {captureAttendanceDayReviewStateTx,attendanceDayReviewViewTx,attendanceDayReviewWitnessTx} from './day-schedule-effects';
 
+/** Generated BEFORE the native INSERT, independently of its RETURNING/trigger-modified values.
+ * Only non-financial manual minute/provenance data already present in the native event is hashed. */
+export async function captureAttendanceDayOvertimeWriteTx(tx:Tx,values:{manualOtRows:ManualOtRows;updatedBy:string;updatedAt:Date}){
+ const[row]=await tx.execute<{digest:string}>(sql`select encode(sha256(convert_to(${JSON.stringify(values.manualOtRows)}::jsonb::text,'UTF8')),'hex') as digest`);
+ return AttendanceDayOvertimeNativeWrite.parse({manualMapDigest:row?.digest,updatedBy:values.updatedBy,updatedAt:values.updatedAt.toISOString()});
+}
+export async function assertAttendanceDayOvertimeWriteTx(tx:Tx,generated:Awaited<ReturnType<typeof captureAttendanceDayOvertimeWriteTx>>,actual:{manualOtRows:ManualOtRows;updatedBy:string;updatedAt:Date}){
+ const stored=await captureAttendanceDayOvertimeWriteTx(tx,actual);
+ if(stored.manualMapDigest!==generated.manualMapDigest||stored.updatedBy!==generated.updatedBy||stored.updatedAt!==generated.updatedAt)throw Error('Native overtime writer metadata changed before persistence.');
+}
 export async function captureAttendanceDayOvertimeStateTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string},batchIds:string[],editor:AttendanceDayEditorData){
  const base=await captureAttendanceDayReviewStateTx(tx,ctx,p,batchIds,editor);
  // Canonical money commitments may be needed even before the first pattern source exists.
@@ -24,9 +34,10 @@ export async function attendanceDayOvertimeViewTx(tx:Tx,ctx:SessionContext,p:{em
  return AttendanceDayOvertimeReviewView.parse({...native,complete,approvedOtMinutes,legacyRows});
 }
 type State=Awaited<ReturnType<typeof captureAttendanceDayOvertimeStateTx>>;
-export async function attendanceDayOvertimeWitnessTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string;rows:{key:string;minutes:number|null}[]},batchIds:string[],before:State,after:State){
+export async function attendanceDayOvertimeWitnessTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string;rows:{key:string;minutes:number|null}[]},batchIds:string[],before:State,after:State,generated:Awaited<ReturnType<typeof captureAttendanceDayOvertimeWriteTx>>){
  const selectedRows=AttendanceDayOvertimeChanges.parse(p.rows);
  if(!ctx.userId||!after.adjustment||before.summary.override.shiftId!==after.summary.override.shiftId||before.summary.override.dayKind!==after.summary.override.dayKind)throw Error('Native overtime schedule retention is unavailable.');
+ await assertAttendanceDayOvertimeWriteTx(tx,generated,after.adjustment);
  const prior:ManualOtRows=before.adjustment?.manualOtRows??{},actual=after.adjustment.manualOtRows,expected:ManualOtRows=structuredClone(prior);
  for(const input of selectedRows){
   if(input.minutes===null){delete expected[input.key];continue;}
@@ -37,5 +48,5 @@ export async function attendanceDayOvertimeWitnessTx(tx:Tx,ctx:SessionContext,p:
  const canonical=(map:ManualOtRows)=>JSON.stringify(Object.keys(map).sort().map(key=>[key,map[key]]));
  if(canonical(expected)!==canonical(actual))throw Error('Native overtime changed an unselected manual entry.');
  const base=await attendanceDayReviewWitnessTx(tx,ctx,p,batchIds,{summary:before.baseSummary,rows:before.rows,privateRetention:before.privateRetention},{summary:after.baseSummary,rows:after.rows,privateRetention:after.privateRetention});
- return AttendanceDayOvertimeReviewWitness.parse({...base,selectedRows,before:{summary:before.summary,rows:before.rows},after:{summary:after.summary,rows:after.rows}});
+ return AttendanceDayOvertimeReviewWitness.parse({...base,selectedRows,write:generated,before:{summary:before.summary,rows:before.rows},after:{summary:after.summary,rows:after.rows}});
 }

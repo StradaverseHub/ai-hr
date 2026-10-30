@@ -7,12 +7,14 @@ export const AttendanceDayOvertimeChanges=z.array(z.object({key:z.string().min(1
  .refine(rows=>new Set(rows.map(row=>row.key)).size===rows.length)
  .refine(rows=>JSON.stringify(rows).length<=20000&&byteLength(rows)<=20000);
 export const AttendanceDayOvertimeReviewRow=AttendanceDayReviewLegacyRow.extend({manualMinutes:minute.nullable(),manualCalculatedMinutes:z.number().int().nullable(),autoEffectiveMinutes:z.number().int()}).strict()
- .refine(v=>(v.manualMinutes===null)===(v.manualCalculatedMinutes===null));
+ .refine(v=>(v.manualMinutes===null)===(v.manualCalculatedMinutes===null)
+  &&(v.manualMinutes===null?!v.orphan&&v.effectiveMinutes===v.autoEffectiveMinutes:v.effectiveMinutes===v.manualMinutes));
 const extra={complete:z.boolean(),approvedOtMinutes:z.number().int().nullable(),legacyRows:z.array(AttendanceDayOvertimeReviewRow).max(100)};
 export const AttendanceDayOvertimeReviewSummary=AttendanceDayReviewSummary.omit({legacyRows:true}).extend(extra).strict();
 export const AttendanceDayOvertimeReviewView=AttendanceDayReviewView.omit({legacyRows:true}).extend(extra).strict()
  .refine(v=>new Set(v.legacyRows.map(row=>row.key)).size===v.legacyRows.length&&new Set(v.payroll.map(row=>row.batchId)).size===v.payroll.length);
-export const AttendanceDayOvertimeReviewWitness=z.object({version:z.literal(1),date:z.iso.date(),selectedRows:AttendanceDayOvertimeChanges,payrollBatchIds:z.array(z.guid()).max(25),
+export const AttendanceDayOvertimeNativeWrite=z.object({manualMapDigest:z.string().regex(/^[a-f0-9]{64}$/),updatedBy:z.guid(),updatedAt:z.iso.datetime()}).strict();
+export const AttendanceDayOvertimeReviewWitness=z.object({version:z.literal(1),date:z.iso.date(),selectedRows:AttendanceDayOvertimeChanges,write:AttendanceDayOvertimeNativeWrite,payrollBatchIds:z.array(z.guid()).max(25),
  before:z.object({summary:AttendanceDayOvertimeReviewSummary,rows:z.array(AttendanceDayReviewRow).max(256)}).strict(),
  after:z.object({summary:AttendanceDayOvertimeReviewSummary,rows:z.array(AttendanceDayReviewRow).max(256)}).strict(),relatedEventIds:z.array(z.guid()).max(100)}).strict().refine(v=>byteLength(v)<=120000);
 export type AttendanceDayOvertimeReviewSummaryData=z.infer<typeof AttendanceDayOvertimeReviewSummary>;

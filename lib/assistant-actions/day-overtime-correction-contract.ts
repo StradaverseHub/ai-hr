@@ -20,6 +20,7 @@ function effectsMatch(before:ViewData,after:ViewData){
  * eligibility, approved Auto semantics, calculations and actual stored effects in the transaction. */
 function selectionMatches(rows:ChangesData,before:ViewData,after:ViewData){
  const picked=new Map(rows.map(row=>[row.key,row.minutes]));
+ if(after.legacyRows.some(row=>!before.legacyRows.some(original=>original.key===row.key)))return false;
  for(const input of rows){
   const original=before.legacyRows.find(row=>row.key===input.key),result=after.legacyRows.find(row=>row.key===input.key);
   if(!original)return false;
