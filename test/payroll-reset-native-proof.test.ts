@@ -132,4 +132,13 @@ describe('protected native reset proof',()=>{
   try{await refused(async tx=>{await arm(tx,id);const native=await resetProcessedBatchTx(tx,ctx,{batchId,reason});await complete(tx,id,native.resetEventId);},'Payroll reset exact native event missing');expect(await state()).toEqual(before);}finally{await owner.db.execute(sql`drop trigger fictional_bad_reset_step_payload on public.domain_event`);await owner.db.execute(sql`drop function app.fictional_bad_reset_step_payload()`);}
  });
 
+ it.each([false,true])('preserves the native visible-parent/invisible-child shortfall branch (visible lower remainder=%s)',async(visibleRemainder)=>{
+  const visibleId=await mixedActor(true);await owner.db.update(s.employeeLoan).set({employmentId:visibleId,outstandingBalance:'100.00',status:'active'}).where(eq(s.employeeLoan.id,loanId));await owner.db.update(s.loanRepayment).set({appliedAmount:'100.00'}).where(eq(s.loanRepayment.id,repId));
+  const [hidden]=await owner.db.insert(s.loanRepayment).values({tenantId:b.tenantId,loanId,employmentId,sequenceNo:3,dueAmount:'100.00',status:'scheduled'}).returning();
+  if(visibleRemainder)await owner.db.insert(s.loanRepayment).values({tenantId:b.tenantId,loanId,employmentId:visibleId,sequenceNo:2,dueAmount:'100.00',status:'scheduled'});
+  const before=await state();let nativeDue:string|undefined;
+  await expect(withTenant(ctx,async tx=>{const native=await resetProcessedBatchTx(tx,ctx,{batchId,reason});expect(native).toMatchObject({loanInstalmentsReversed:1,loansReopened:0});const [rep]=await tx.select().from(s.loanRepayment).where(eq(s.loanRepayment.id,repId));nativeDue=rep.dueAmount;throw Error('Fictional native hidden-child rollback');})).rejects.toThrow('Fictional native hidden-child rollback');expect(nativeDue).toBe(visibleRemainder?'200.00':'100.00');expect(await state()).toEqual(before);
+  const id=await prepare();await withTenant(ctx,async tx=>{await arm(tx,id);const native=await resetProcessedBatchTx(tx,ctx,{batchId,reason});await complete(tx,id,native.resetEventId);});const after=await state();expect(after.reps.find(row=>row.id===repId)).toMatchObject({status:'reserved',dueAmount:nativeDue});expect(after.reps.find(row=>row.id===hidden.id)).toEqual(hidden);expect(after.loans[0]).toMatchObject({outstandingBalance:'200.00',instalmentsPaid:0,status:'active'});
+ });
+
 });
