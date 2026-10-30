@@ -154,7 +154,9 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
 
  it('does not offer or execute a corrupt custom lifecycle mapping hidden behind an otherwise active code',async()=>{
   const id=await hire(),before=await state(id),ctx=adminCtx(b);
-  await owner.db.insert(movementEventType).values({tenantId:b.tenantId,code:'forged_exit',label:'Fictional forged lifecycle type',behaviourKind:'termination',isActive:true});
+  // 1d58019a Step 2 (ADR-0166) — Termination is a configurable behaviour now, so the forged mapping uses a
+  // lifecycle kind that is still out of reach for a tenant's own type.
+  await owner.db.insert(movementEventType).values({tenantId:b.tenantId,code:'forged_exit',label:'Fictional forged lifecycle type',behaviourKind:'probationExtension',isActive:true});
   expect((await movementImportCatalog(ctx,b.companyId)).types.some(type=>type.code==='forged_exit')).toBe(false);
   expect((await ready(csv([['EMP-0004','forged_exit',day(-1),'','','']]))).valid).toBe(0);expect(await state(id)).toEqual(before);
  });

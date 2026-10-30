@@ -119,17 +119,18 @@ describe('476f23ed — the catalogue is an overlay on the built-in kinds', () =>
     expect(rowFor(await listMovementEventTypes(adminCtx(b)), 'termination').label).toBeNull();
   });
 
-  it('a custom type can only carry a consequence-free behaviour', async () => {
-    // The set is exactly the comparison kinds plus the two record-only ones.
+  it('a custom type can only carry a consequence-free behaviour — or, since 1d58019a Step 2, Termination', async () => {
+    // The set is exactly the comparison kinds plus the two record-only ones, plus Termination (ADR-0166,
+    // owner sign-off 30 October 2026, amending 476f23ed for Termination alone).
     expect([...CONFIGURABLE_BEHAVIOUR_KINDS].sort()).toEqual(
       [
         'actingPosition', 'demotion', 'employmentTypeChange', 'increment', 'orgAssignmentChange',
-        'promotion', 'reportingLineChange', 'salaryAdjustment', 'secondment', 'transfer',
+        'promotion', 'reportingLineChange', 'salaryAdjustment', 'secondment', 'termination', 'transfer',
       ].sort(),
     );
     for (const forbidden of [
-      'termination', 'confirmation', 'probationExtension', 'resignation', 'blacklist',
-      'joinDateChange', 'groupJoinDateCorrection',
+      'confirmation', 'probationExtension', 'resignation', 'blacklist',
+      'joinDateChange', 'groupJoinDateCorrection', 'entityTransfer',
     ]) {
       await expect(
         saveMovementEventType(adminCtx(b), { label: `Custom ${forbidden}`, behaviourKind: forbidden }),
@@ -490,9 +491,11 @@ describe('476f23ed — the settings screen', () => {
     expect(form).toMatch(/value=\{description\}[\s\S]*onChange=\{\(e\) => setDescription\(e\.target\.value\)\}/);
     expect(form).not.toContain('defaultValue');
     expect(form).toContain('<ErrorBanner message={state.error} />');
-    // Classification is shown read-only in Step 1: disabled radios, never posted.
+    // Classification is derived from the behaviour and never posted. 1d58019a Step 2: for an unused custom type
+    // the radios are a shortcut onto the behaviour; they are disabled for a built-in or a used type.
     expect(form).not.toMatch(/name="classification"/);
-    expect(form.match(/type="radio"[^>]*disabled/g) ?? []).toHaveLength(2);
+    expect(form.match(/type="radio"[^>]*disabled=\{behaviourLocked\}/g) ?? []).toHaveLength(2);
+    expect(form).toContain('const behaviourLocked = builtIn || inUse;');
     // Labels arrive pre-translated: no translator inside the island.
     expect(form).not.toMatch(/useTranslations|getTranslations/);
   });
@@ -565,6 +568,13 @@ describe('476f23ed — the settings screen', () => {
         'reasons.activateConfirmDescription', 'reasons.deleteConfirmTitle', 'reasons.deleteConfirmDescription',
         'reasons.deleteBlocked.inUse', 'reasons.deleteBlocked.builtIn', 'reasons.deleteBlocked.switchOffInstead',
         'reasons.deleteBlocked.alreadyOff',
+        // 1d58019a Step 2 — classification lock, Termination Reasons and Field Controls cards.
+        'config.sections.reasons', 'config.sections.fields', 'config.classificationLocked', 'config.classificationBuiltIn',
+        'config.reasonsHint', 'config.reasonsAllHint', 'config.reasonsManageHint', 'config.fieldsHint',
+        'config.fieldsNotApplicable', 'config.fieldsCompanyLocked', 'config.fieldColumns.field',
+        'config.fieldColumns.include', 'config.fieldColumns.edit', 'config.fieldColumns.mustChange',
+        'config.fieldColumns.file', 'config.fieldGroups.organisation', 'config.fieldGroups.labels',
+        'config.fieldGroups.salary', 'config.documents.none', 'config.documents.optional', 'config.documents.required',
       ]) {
         if (k.includes('.')) {
           const v = k.split('.').reduce<unknown>((o, part) => (o as Record<string, unknown> | undefined)?.[part], ms);
