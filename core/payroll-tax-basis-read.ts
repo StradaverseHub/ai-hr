@@ -23,7 +23,8 @@ export function validatedTaxBasis(value:unknown):TaxBasisValue{
  const money=(v:unknown)=>typeof v==='number'&&Number.isFinite(v)&&v>=0&&Number.isSafeInteger(Math.round(v*100))&&Math.abs(v*100-Math.round(v*100))<1e-6;
  if(!object(value)||value.version!==1||!money(value.pcb)||!money(value.normal)||!money(value.additional)||!money(value.exempt)||typeof value.period!=='string'||!/^\d{4}-(0[1-9]|1[0-2])$/.test(value.period)||!object(value.exemptionUsed)||!Array.isArray(value.items)||typeof value.rulesHash!=='string'||!value.rulesHash||value.lp!==undefined&&!money(value.lp))throw new PayrollTaxBasisError('A saved income-tax correction is malformed.');
  for(const [code,amount]of Object.entries(value.exemptionUsed))if(!/^(PCB_|LP_)/.test(code)||!money(amount))throw new PayrollTaxBasisError('A saved income-tax exemption correction is malformed.');
- for(const item of value.items)if(!object(item)||typeof item.code!=='string'||!item.code||typeof item.name!=='string'||!money(item.amount)||!money(item.taxable)||!money(item.exempt)||typeof item.latestTreatment!=='string'||!(item.previousTreatment===null||typeof item.previousTreatment==='string'))throw new PayrollTaxBasisError('Saved Pay Item tax evidence is malformed.');
+ for(const item of value.items)if(!object(item)||typeof item.code!=='string'||!item.code||typeof item.name!=='string'||!money(item.amount)||!money(item.taxable)||!money(item.exempt)||Math.round((Number(item.taxable)+Number(item.exempt))*100)>Math.round(Number(item.amount)*100)||typeof item.latestTreatment!=='string'||!(item.previousTreatment===null||typeof item.previousTreatment==='string'))throw new PayrollTaxBasisError('Saved Pay Item tax evidence is malformed.');
+ if(Math.round((Number(value.normal)+Number(value.additional))*100)!==Math.round(Number(value.pcb)*100))throw new PayrollTaxBasisError('The corrected remuneration totals do not reconcile.');
  return value as TaxBasisValue;
 }
 export type EffectiveTaxBasis={statutory:Record<string,unknown>;correction:TaxBasisCorrectionRef;basis:TaxBasisValue};
@@ -38,17 +39,22 @@ export async function readEffectiveTaxBasesTx(tx:Tx,ctx:SessionContext,payslipId
    on r.company_id=k."companyId" and r.employment_id=k."employmentId" and r.period=k.period
   where r.tenant_id=${ctx.tenantId}::uuid order by r.payslip_id,r.ordinal desc`);
  const superseded=new Set<string>();for(const row of corrections)if(object(row.basis)&&Array.isArray(row.basis.supersedes))for(const id of row.basis.supersedes)if(typeof id==='string')superseded.add(id);
- const byId=new Map(sources.map(s=>[s.id,s])),visited=new Set<string>();
+ // A consumer may request one cycle of a corrected multi-cycle month. Other current sources in
+ // that exact employer/month context must be validated, not mistaken for vanished source rows.
+ const requested=new Set(payslipIds),known=new Set(sources.map(s=>s.id));
+ const contextSources=await sourceRows(tx,[...new Set(corrections.map(row=>row.payslipId))].filter(id=>!known.has(id)));
+ const byId=new Map([...sources,...contextSources].map(s=>[s.id,s])),visited=new Set<string>();
  for(const row of corrections){
   if(visited.has(row.payslipId))continue;visited.add(row.payslipId);
   if(superseded.has(row.id))continue;
   const source=byId.get(row.payslipId);
   if(!source||hashSource(source)!==row.sourceHash)throw new PayrollTaxBasisError('Saved payroll changed after an income-tax correction. Review and recalculate the affected employee before continuing.');
   const basis=validatedTaxBasis(row.basis),original=source.source.statutory;
+  if(basis.period!==source.period)throw new PayrollTaxBasisError('The corrected tax period does not match its original source.');
   if(!object(original))throw new PayrollTaxBasisError('The original statutory source is unavailable.');
   const correction:TaxBasisCorrectionRef={id:row.id,batchId:row.batchId,sourceHash:row.sourceHash,basisVersion:1};
   const statutory={...original,bases:{...(object(original.bases)?original.bases:{}),pcb:basis.pcb},exemptionUsed:{...basis.exemptionUsed},...(basis.lp!==undefined?{lp:basis.lp}:{}),taxBasisCorrection:correction};
-  out.set(row.payslipId,{statutory,correction,basis});
+  if(requested.has(row.payslipId))out.set(row.payslipId,{statutory,correction,basis});
  }
  return out;
 }

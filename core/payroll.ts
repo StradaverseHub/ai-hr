@@ -7233,6 +7233,12 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         ...stCore,
         pcbNonCash:nonCashSnapshot,
         bases: statBases,
+        // Exact opening actually applied to this run, retained for later explicit tax-basis replay.
+        // This is captured from the source profile before own-employer exemption consumption.
+        taxBasisOpeningExemptionYear: pYear,
+        taxBasisOpeningExemptionUsed: e.tp3Year === pYear
+          ? Object.fromEntries(Object.entries(e.tp3ExemptionUsed ?? {}).map(([code,amount]) => [code,round2(Number(amount ?? 0))] as const).filter(([,amount]) => amount > 0))
+          : {},
         ...(taxBasisCorrectionsByEmp.get(e.employmentId)?.length ? {taxBasisCorrections: taxBasisCorrectionsByEmp.get(e.employmentId)} : {}),
         // Item 70b14723 — see `epfManualStamp` above. Key absent for every employee not on a typed amount,
         // so every other payslip is byte-identical.
