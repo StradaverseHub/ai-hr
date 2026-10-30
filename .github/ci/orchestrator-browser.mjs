@@ -9,7 +9,7 @@ import {fileURLToPath} from 'node:url';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {hostHealth} from './host-health.mjs';
 import {CI_EXECUTION} from './manifest.mjs';
-import {capturePostgresEvidence, validatePostgresEvidence} from './postgres-evidence.mjs';
+import {capturePostgresEvidence, validatePostgresEvidence, postgresProfileFromEnv} from './postgres-evidence.mjs';
 
 const base = 'http://127.0.0.1:3174';
 const tenant = '11111111-1111-1111-1111-111111111111';
@@ -77,12 +77,17 @@ export function receiptExpectation(scenario) {
   }
 }
 
+export function assertBrowserPostgresProfile(env) {
+  const profile = postgresProfileFromEnv(env);
+  assert.deepEqual(profile, CI_EXECUTION.postgres, 'Browser checks require the exact v15 PostgreSQL profile');
+  return profile;
+}
+
 async function main() {
   assert.equal(process.env.GITHUB_ACTIONS, 'true'); assert.equal(process.env.CI, 'true');
   assert.equal(process.env.RUNNER_ENVIRONMENT, 'github-hosted'); assert.equal(process.platform, 'linux');
   assert.equal(process.env.GITHUB_REPOSITORY, 'StradaverseHub/ai-hr');
-  assert.equal(process.env.AIHR_CI_PG_MEMORY_GIB, String(CI_EXECUTION.postgres.memoryBytes / 1024 ** 3));
-  assert.equal(process.env.AIHR_CI_PG_JIT, CI_EXECUTION.postgres.jit);
+  const postgresProfile = assertBrowserPostgresProfile(process.env);
   assert(/^\d+$/.test(process.env.GITHUB_RUN_ID ?? '') && /^\d+$/.test(process.env.GITHUB_RUN_ATTEMPT ?? ''));
   const sha = git('rev-parse', 'HEAD'), controller = process.env.AIHR_CI_CONTROL_HEAD;
   assert.equal(sha, process.env.AIHR_CI_HEAD); assert(/^[a-f0-9]{40}$/.test(controller ?? ''));
@@ -94,6 +99,7 @@ async function main() {
   assert(within && !within.startsWith('../') && !isAbsolute(within));
   mkdirSync(out, {mode: 0o700});
   const report = {kind: 'PRODUCTION_RENDERER_DEVELOPMENT_ONLY', releaseEligible: false, sha, controller,
+    execution: {workers: CI_EXECUTION.workers, postgres: postgresProfile},
     run: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT,
     fixtureOrigin: 'NEW_SYNTHETIC_CI_FIXTURE_NOT_RECOVERED_RAM_DATA', phases: [], visits: [], scenarios: [],
     browserErrors: [], consoleErrors: [], serverErrors: [], exitCode: 1,
@@ -311,7 +317,7 @@ async function main() {
       writeFileSync(join(out, 'postgres-stats.txt'), (stats.stdout ?? '') + (stats.stderr ?? ''), {flag: 'wx', mode: 0o600});
       if (stats.status !== 0) report.exitCode = 1;
       try {
-        const snapshot = capturePostgresEvidence('db-1');
+        const snapshot = capturePostgresEvidence('db-1', postgresProfile);
         writeFileSync(join(out, 'postgres-evidence.json'), scrub(JSON.stringify(snapshot, null, 2)) + '\n', {flag: 'wx', mode: 0o600});
         validatePostgresEvidence(snapshot, CI_EXECUTION);
         report.databaseEvidenceValid = true;

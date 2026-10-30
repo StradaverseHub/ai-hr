@@ -1,4 +1,4 @@
-# Canonical CI build packet — current version8 source contract
+# Canonical CI build packet — current version16 source contract
 
 Status: prepared in the isolated performance review branch. Pure/private integrity and typed-helper probes have run; this revised normal workflow has not run a complete release gate, promoted an artifact, or established a new release baseline. Main/live deployment stays disabled.
 
@@ -20,7 +20,15 @@ A build-only invocation can compile review dispatches and same-repository PR che
 
 ## Authenticated operator boundary
 
-Policy aihr-staging-ci/v8 retains the complete independently reconstructed job/test/browser inventory and adds the mandatory build artifact. Only this exact artifact namespace may exceed the existing64MiB JSON artifact ceiling, with a280MiB compressed ZIP limit and256MiB inner archive limit. The optional whole-compiler-state and next-application-state-v1 packets cannot replace either the build or any required test report. Version5 adds the second fixed optional namespace; it does not weaken required coverage.
+Policy aihr-staging-ci/v16 retains the complete independently reconstructed job/test/browser inventory and adds the mandatory build artifact. Only this exact artifact namespace may exceed the existing64MiB JSON artifact ceiling, with an unchanged280MiB compressed ZIP limit and264MiB inner archive limit. The optional whole-compiler-state and next-application-state-v1 packets cannot replace either the build or any required test report. Version5 adds the second fixed optional namespace; it does not weaken required coverage.
+
+Current build manifest and provenance are format2 and carry the exact closed capacityProfile `{profileVersion:2,archiveMaxBytes:276824064,zipMaxBytes:293601280}`. The inspected packet and new installation grant build preserve that identity; remote unpack, native consumer and active compiled-byte inventory must agree. Only the compressed archive cap rises. Individual payload file256MiB, external package32MiB, manifest16MiB, total unpacked2GiB and40000 entries remain fixed. The independent prepared System Testing and successful-observation records remain format1.
+
+Producer finalization, packet inspection and extraction require the ACTUAL aggregate size of the five serialized regular members at most280MiB; extraction checks declared totals and cumulative streamed bytes. Separately, authenticate and bound the ACTUAL outer ZIP at280MiB through metadata/download/readback/extraction. A264MiB archive plus maximum-sized metadata is not assumed to fit the wrapper. Missing/mixed profile, old format, over-bound or inconsistent bytes refuse; no fallback or omitted payload is allowed.
+
+This v16 capacity revision is source work pending actual hosted qualification. The original gzip9 diagnostic41107852301 failed its256MiB archive bound at272659334 bytes and skipped its consumer. Preserve that failure. Require a fresh complete real producer and different-VM native/rendered consumer, then ordinary full authenticated qualification. The v15 PostgreSQL profile2 and all other release safeguards are unchanged.
+
+Old installed baseline manifests/grants are preserved verbatim, not decoded by new admission. Existing status/profile/ledger/build-ID and retained-directory inode fences establish baseline preservation; the new candidate's packet/grant selects its own records. No legacy reader or compatibility adapter is needed or accepted on the normal path.
 
 The operator authenticates the repository/run/controller/job/artifact through GitHub APIs, checks downloaded ZIP length and digest, and uses the existing exact-inventory bounded binary extractor. It then verifies source/controller/runtime/build UUID/BUILD_ID, original successful observation times inside the producing job, every bound record/manifest digest, and the actual archive length/digest. It independently regenerates the canonical System Testing preparation from the unchanged candidate and checks exact preparation bytes plus package/lock hashes. Immediately before any existing operator transfer, fresh API revalidation also reopens local packet bytes and rechecks canonical source.
 

@@ -57,6 +57,7 @@ env:
   TZ: Asia/Kuala_Lumpur
   AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
   AIHR_CI_PG_JIT: ${{ inputs.jit_mode }}
+  AIHR_CI_PG_PROFILE: legacy-${{ inputs.memory_gib }}g
   AIHR_CI_PG_MEMORY_GIB: ${{ inputs.memory_gib }}
 jobs:
   resolve:

@@ -1,10 +1,11 @@
 /** One exact CI partition; every DB batch gets a fresh, job-owned PostgreSQL container. */
 import {spawnSync} from 'node:child_process';
+import assert from 'node:assert/strict';
 import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 const postgres = fileURLToPath(new URL('./postgres.sh', import.meta.url));
-import {capturePostgresEvidence,validatePostgresEvidence} from './postgres-evidence.mjs';
+import {capturePostgresEvidence,validatePostgresEvidence,postgresProfileFromEnv} from './postgres-evidence.mjs';
 import {hostHealth} from './host-health.mjs';
 import {createPlan} from './plan.mjs';
 import {DB_BATCH_FILES} from './manifest.mjs';
@@ -21,7 +22,7 @@ try {
   report.healthBefore = hostHealth();
   writeFileSync(join(dir, `health-before-${id}.json`), JSON.stringify(report.healthBefore,null,2)+'\n', {flag:'wx'});
   if (!report.healthBefore.ok) throw Error('Runner disk headroom too low: '+JSON.stringify(report.healthBefore));
-  if(unit.kind==='db'&&(process.env.AIHR_CI_PG_MEMORY_GIB!=='2'||process.env.AIHR_CI_PG_JIT!=='on'))throw Error('Full CI requires measured 2 GiB/default-JIT database budget');
+  if(unit.kind==='db')assert.deepEqual(postgresProfileFromEnv(process.env),plan.execution.postgres,'Full CI requires the exact versioned PostgreSQL execution profile');
   const batchSize = unit.kind === 'db' ? DB_BATCH_FILES : Math.max(1, unit.files.length);
   for (let offset = 0; offset < unit.files.length; offset += batchSize) {
     const files = unit.files.slice(offset, offset + batchSize), path = join(dir, `${id}-batch-${offset}.json`);
@@ -47,7 +48,7 @@ try {
     const child = spawnSync('pnpm', args, {stdio: 'inherit', env});
     const exitCode = child.status ?? 1;
     const stats = unit.kind === 'db' ? spawnSync('bash', [postgres, 'stats'], {encoding:'utf8', env:{...process.env, AIHR_CI_UNIT:id}}) : null;
-    const databaseEvidence=unit.kind==='db'?capturePostgresEvidence(id):null;
+    const databaseEvidence=unit.kind==='db'?capturePostgresEvidence(id,plan.execution.postgres):null;
     report.batches.push({exitCode,databaseEvidence, databaseResourceSnapshot: stats?.status === 0 ? JSON.parse(stats.stdout) : null, result: JSON.parse(readFileSync(path, 'utf8'))});
     if(databaseEvidence)validatePostgresEvidence(databaseEvidence,plan.execution);
     failure ||= exitCode !== 0;
@@ -60,7 +61,7 @@ try {
 } finally {
   report.healthAfter = hostHealth();
   if (unit.kind === 'db') {
-    try{report.databaseTerminalEvidence=capturePostgresEvidence(id);validatePostgresEvidence(report.databaseTerminalEvidence,plan.execution);}catch(error){report.databaseTelemetryError=String(error);report.exitCode=1;}
+    try{report.databaseTerminalEvidence=capturePostgresEvidence(id,plan.execution.postgres);validatePostgresEvidence(report.databaseTerminalEvidence,plan.execution);}catch(error){report.databaseTelemetryError=String(error);report.exitCode=1;}
     const cleanup = spawnSync('bash', [postgres, 'stop'], {stdio: 'inherit', env: {...process.env, AIHR_CI_UNIT: id}});
     if (cleanup.status !== 0) report.exitCode = 1;
   }

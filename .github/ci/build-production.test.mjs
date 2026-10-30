@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {assertBuildRuntime,assertBuildInvocation,assertCiCandidateBuildInvocation,assertDiagnosticBuildInvocation,assertSuccessfulObservation,STAGING_BUILD_RUNTIME} from './build-production.mjs';
+import {assertBuildRuntime,assertBuildInvocation,assertCiCandidateBuildInvocation,assertDiagnosticBuildInvocation,assertSuccessfulObservation,STAGING_BUILD_RUNTIME,BUILD_CAPACITY_PROFILE,assertBuildCapacityProfile,assertBuildPacketAggregate} from './build-production.mjs';
 const environment={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',AIHR_CI_HEAD:'a'.repeat(40),AIHR_CI_CONTROL_HEAD:'b'.repeat(40),GITHUB_SHA:'b'.repeat(40),GITHUB_RUN_ATTEMPT:'1',GITHUB_RUN_ID:'123',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/alpha'};
 test('Only the pinned target tuple passes; public/key compile overrides refuse',()=>{
  assert.equal(assertBuildRuntime({...STAGING_BUILD_RUNTIME},{}),true);
@@ -61,3 +61,20 @@ test('normal build-only context accepts review/PR production compilation but can
 });
 
 test('legacy Node20 packet runtime cannot be relabelled as the future Node22 target',()=>{assert.throws(()=>assertBuildRuntime({...STAGING_BUILD_RUNTIME,node:'20.20.2',abi:'115'},{}),/runtime mismatch/);});
+
+
+test('current byte capacity is one closed format2 profile; missing, legacy and mixed bounds refuse',()=>{
+ assert.deepEqual(BUILD_CAPACITY_PROFILE,{profileVersion:2,archiveMaxBytes:276824064,zipMaxBytes:293601280});
+ assert.doesNotThrow(()=>assertBuildCapacityProfile({...BUILD_CAPACITY_PROFILE}));
+ for(const value of [undefined,null,{}, {...BUILD_CAPACITY_PROFILE,profileVersion:1},{...BUILD_CAPACITY_PROFILE,profileVersion:true},
+  {...BUILD_CAPACITY_PROFILE,archiveMaxBytes:268435456},{...BUILD_CAPACITY_PROFILE,archiveMaxBytes:276824065},
+  {...BUILD_CAPACITY_PROFILE,zipMaxBytes:293601281},{...BUILD_CAPACITY_PROFILE,extra:true}])assert.throws(()=>assertBuildCapacityProfile(value));
+});
+test('actual five-member aggregate has its own hard ZIP bound independent of legal member caps',()=>{
+ const archive=276824064;
+ assert.doesNotThrow(()=>assertBuildPacketAggregate([archive,1,1,1,293601280-archive-3]));
+ for(const sizes of [[archive,1024**2,1024**2,80*1024,16*1024**2],[archive,1,1,1,293601280-archive-2],
+  [1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,NaN],[1,1,1,1,-1],[1,1,1,1,1.5]])assert.throws(()=>assertBuildPacketAggregate(sizes));
+ // The System Testing observation is a separate schema and remains format1.
+ assert.equal(successful.format,1);assert.equal(check(successful),true);
+});

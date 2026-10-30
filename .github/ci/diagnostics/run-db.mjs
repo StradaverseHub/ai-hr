@@ -4,7 +4,10 @@ import {mkdirSync,readFileSync,writeFileSync,appendFileSync,openSync,closeSync} 
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {hostHealth} from '../host-health.mjs';
+import {postgresProfileFromEnv} from '../postgres-evidence.mjs';
 if(process.env.GITHUB_ACTIONS!=='true'||process.platform!=='linux')throw Error('Disposable Linux CI only');
+const postgresProfile=postgresProfileFromEnv(process.env);
+if(postgresProfile.profileVersion!==1)throw Error('Historical diagnostic requires an explicit legacy resource profile');
 const fixture=JSON.parse(readFileSync(new URL('./db-original-batch.json',import.meta.url),'utf8'));
 const mode=process.argv[2],modes={'slow-r395':['test/r395-write-path-equivalence.test.ts'],'slow-attendance':['test/attendance-policy-storage.test.ts'],'repaired-focused':['test/organization-list-detail.test.ts','test/company-referrers.test.ts','test/r298-payroll-sections-gate.test.ts'],'original-batch':fixture.files,'isolated-r298':['test/r298-payroll-sections-gate.test.ts'],'isolated-organization':['test/organization-list-detail.test.ts'],'isolated-organization-baseline':['test/organization-list-detail.test.ts']};
 const files=modes[mode];if(!files||files.length>64)throw Error('Invalid diagnostic mode');
@@ -15,7 +18,7 @@ const name=`aihr-ci-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMP
 const out=join(process.env.RUNNER_TEMP,'diagnostic-db-'+mode);mkdirSync(out,{recursive:true});
 const postgres=fileURLToPath(new URL('../postgres.sh',import.meta.url));
 const invoke=(cmd,args,opts={})=>spawnSync(cmd,args,{encoding:'utf8',timeout:30000,maxBuffer:4*1024*1024,...opts});
-const report={kind:'DIAGNOSTIC_ONLY_NOT_GATE_RECEIPT',mode,sha,sourceRole:mode.startsWith('slow-')?'unchanged-frozen-performance-candidate':mode==='repaired-focused'?'repaired-candidate-development':mode.endsWith('-baseline')?'released-staging-baseline':'original-failed-candidate',migrationJournalEntries:JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')).entries.length,files,postgresMemoryBytes:1073741824*Number(process.env.AIHR_CI_PG_MEMORY_GIB??1),jitRequested:process.env.AIHR_CI_PG_JIT??'postgres-default',workers:2,healthBefore:hostHealth(),started:new Date().toISOString(),vitestExitCode:null};
+const report={kind:'DIAGNOSTIC_ONLY_NOT_GATE_RECEIPT',mode,sha,sourceRole:mode.startsWith('slow-')?'unchanged-frozen-performance-candidate':mode==='repaired-focused'?'repaired-candidate-development':mode.endsWith('-baseline')?'released-staging-baseline':'original-failed-candidate',migrationJournalEntries:JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')).entries.length,files,postgresProfile,jitRequested:postgresProfile.jit,workers:2,healthBefore:hostHealth(),started:new Date().toISOString(),vitestExitCode:null};
 let logger,fd,sampler;
 function snapshot(label){
  const state=invoke('docker',['inspect','--format','{{json .State}}',name]);

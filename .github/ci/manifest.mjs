@@ -2,7 +2,8 @@
 import {createHash} from 'node:crypto';
 import {balanceDatabaseFiles,DB_SCHEDULING} from './db-scheduling.mjs';
 import {PDF_TOOL_CONSUMERS} from './pdf-tool-scope.mjs';
-export const CI_EXECUTION={workers:2,postgres:{memoryBytes:2*1024**3,jit:'on'},scheduling:DB_SCHEDULING};
+import {V15_POSTGRES_PROFILE} from './postgres-evidence.mjs';
+export const CI_EXECUTION={workers:2,postgres:V15_POSTGRES_PROFILE,scheduling:DB_SCHEDULING};
 export const DB_BATCH_FILES=24;
 export const NODB_BATCH_FILES=256;
 export const BROWSER_ENGINES=['chromium','firefox','webkit'];

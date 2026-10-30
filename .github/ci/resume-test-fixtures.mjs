@@ -28,8 +28,8 @@ export function fixture() {
   const jobs = requiredEvidence(expectedPlan).jobs.map((name, i) => ({id: 1000 + i, name, run_id: 100, run_attempt: 1,
     head_sha: expected.controller, head_branch: 'main', status: 'completed', conclusion: name === 'verify' ? 'failure' : 'success',
     started_at: time(19), completed_at: time(6)}));
-  const resource = () => ({schemaVersion: 1, memoryLimit: 2147483648, memoryMax: 2147483648, memoryPeak: 1000000000,
-    memoryEvents: {oom_kill: 0}, state: {Running: true, OOMKilled: false, Dead: false},
+  const resource = () => ({schemaVersion: 2, errors: {}, profileVersion: 2, configuredCapBytes: 2113929216, peakBudgetBytes: 2147483648, memoryLimit: 2113929216, memorySwap: 2113929216, memoryMax: 2113929216, memorySwapMax: 0, memoryPeak: 1000000000,
+    memoryEvents: {oom: 0, oom_kill: 0}, state: {Running: true, OOMKilled: false, Dead: false},
     settings: {jit: 'on', jitAvailable: true, serverVersionNum: '160015'}});
   const reports = units.map(unit => ({schemaVersion: 1, id: unit.id, sha: expected.candidate, fingerprint: expectedPlan.fingerprint,
     cwd: '/candidate', files: unit.files, exitCode: 0, ...(unit.kind === 'db' ? {databaseTerminalEvidence: resource()} : {}),

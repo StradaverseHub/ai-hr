@@ -95,9 +95,29 @@ async function finiteHumanFixture(){
  const prepare=async()=>preparePrivateAiTask(await configuration(),'synthetic_read_plan_v1',source);
  return {author,reviewer,sent,...candidate,configuration,source,prepare,sourceReads:()=>sourceReads};
 }
+// Carry the grant actually seeded for this login; flattened roles alone cannot authorize controls.
+async function fixtureControlOwner():Promise<SessionContext>{
+ const grants=await owner.db.execute<{role:'hr_admin';company_id:string|null}>(sql`select role,company_id from public.role_assignment where tenant_id=${base.tenantId}::uuid and app_user_id=${base.adminUserId}::uuid order by role,company_id`);
+ expect([...grants]).toEqual([{role:'hr_admin',company_id:null}]);
+ const ctx:SessionContext={...adminCtx(base),grants:grants.map(grant=>({role:grant.role,companyId:grant.company_id}))};
+ await withTenant(ctx,async tx=>{const [proof]=await tx.execute<{current:boolean;group_admin:boolean}>(sql`select app.principal_snapshot_current() as current,app.is_group_admin() as group_admin`);expect(proof).toEqual({current:true,group_admin:true});});
+ return ctx;
+}
+async function pauseFixtureFeature(ctx:SessionContext,feature:'hr_assistant'|'module_agent_evaluation'){
+ await setAiFeature(ctx,feature,false);
+ await withTenant(ctx,async tx=>{
+  const rows=await tx.execute<{tenant_id:string;scope_key:string;feature_id:string;enabled:boolean;current:boolean;group_admin:boolean;unpaused:boolean}>(sql`select tenant_id,scope_key,feature_id,enabled,app.principal_snapshot_current() as current,app.is_group_admin() as group_admin,app.ai_action_unpaused(${feature}) as unpaused from public.ai_control_policy where tenant_id=${ctx.tenantId}::uuid and scope_key=${'feature:'+feature} and kind='feature' and feature_id=${feature}`);
+  expect([...rows]).toEqual([{tenant_id:ctx.tenantId,scope_key:'feature:'+feature,feature_id:feature,enabled:false,current:true,group_admin:true,unpaused:false}]);
+ });
+}
 async function finiteUsage(){const [row]=await owner.db.execute<{runs:number;reservations:number;roots:number}>(sql`select (select count(*)::int from public.ai_model_run where tenant_id=${base.tenantId}::uuid) as runs,(select count(*)::int from app.ai_spend_reservation where tenant_id=${base.tenantId}::uuid) as reservations,(select count(*)::int from app.ai_spend_root where tenant_id=${base.tenantId}::uuid) as roots`);return row;}
 
 describe('fixed human holdout protected preparation and actual evaluation',()=>{
+ it('refuses the roles-only control fixture without changing policy, then accepts its actual seeded group grant',async()=>{
+  const control=await fixtureControlOwner(),policy=()=>owner.db.execute(sql`select * from public.ai_control_policy where tenant_id=${base.tenantId}::uuid and scope_key='feature:module_agent_evaluation'`),before=await policy();
+  await expect(setAiFeature(adminCtx(base),'module_agent_evaluation',false)).rejects.toThrow('Only a group administrator');expect(await policy()).toEqual(before);
+  await pauseFixtureFeature(control,'module_agent_evaluation');expect(await finiteUsage()).toEqual({runs:0,reservations:0,roots:0});
+ });
  it('admits one genuine finite draft on its candidate root, replays its actual source and refuses one-use replay',async()=>{
   const a=await finiteHumanFixture(),task=await a.prepare();
   try{
@@ -153,28 +173,29 @@ describe('fixed human holdout protected preparation and actual evaluation',()=>{
   await expect(evaluateHumanQuestionPlannerCandidate(a.author,{candidateId:a.candidateId,consent:consent()})).rejects.toThrow();expect(a.sent).toHaveBeenCalledTimes(2);expect(await finiteUsage()).toEqual({runs:14,reservations:14,roots:1});
  });
  it('retains the native blocked ledger when evaluation itself is paused after finite preparation',async()=>{
-  const a=await finiteHumanFixture(),original=ai.generateDraft;let afterPreparation=false;
-  vi.spyOn(ai,'generateDraft').mockImplementation(async(cfg,args)=>{if(!afterPreparation){afterPreparation=true;await setAiFeature(adminCtx(base),'module_agent_evaluation',false);}return original(cfg,args);});
+  const a=await finiteHumanFixture(),control=await fixtureControlOwner(),original=ai.generateDraft;let afterPreparation=false,setupFailure:unknown;
+  vi.spyOn(ai,'generateDraft').mockImplementation(async(cfg,args)=>{if(!afterPreparation){try{await pauseFixtureFeature(control,'module_agent_evaluation');afterPreparation=true;}catch(error){setupFailure=error;throw error;}}return original(cfg,args);});
   const result=await evaluateHumanQuestionPlannerCandidate(a.reviewer,{candidateId:a.candidateId,consent:consent()});
-  expect(afterPreparation).toBe(true);expect(result).toMatchObject({state:'incomplete',attempted:12,completedCases:0,knownFailures:0});expect(a.sent).not.toHaveBeenCalled();
+  expect(setupFailure).toBeUndefined();expect(afterPreparation).toBe(true);expect(result).toMatchObject({state:'incomplete',attempted:12,completedCases:0,knownFailures:0});expect(a.sent).not.toHaveBeenCalled();
   // The canonical admission owner records refusals; these are not provider calls or spend roots.
   expect(await finiteUsage()).toEqual({runs:12,reservations:0,roots:0});
   const [blocked]=await owner.db.execute<{paused:number;admitted:number}>(sql`select count(*) filter(where state='blocked' and reason='paused')::int as paused,count(*) filter(where state<>'blocked')::int as admitted from public.ai_model_run where tenant_id=${base.tenantId}::uuid`);expect(blocked).toEqual({paused:12,admitted:0});
  });
  it.each(['candidate','provider','principal','assistant','pause'] as const)('refuses actual evaluator %s drift after real preparation and before provider dispatch',async change=>{
-  const a=await finiteHumanFixture(),original=ai.generateDraft;let afterPreparation=false;
+  const a=await finiteHumanFixture(),control=change==='pause'?await fixtureControlOwner():null,original=ai.generateDraft;let afterPreparation=false,setupFailure:unknown;
   vi.spyOn(ai,'generateDraft').mockImplementation(async(cfg,args)=>{
-   if(!afterPreparation){afterPreparation=true;
+   if(!afterPreparation){try{
     if(change==='candidate')await owner.db.execute(sql`update public.ai_agent_candidate set source_digest=${'0'.repeat(64)} where id=${a.candidateId}::uuid`);
     if(change==='provider')vi.stubEnv('OPENAI_API_KEY','fictional-rotated-after-preparation');
     if(change==='principal')await owner.db.execute(sql`update public.app_user set archived_at=now() where id=${a.reviewer.userId}::uuid`);
     if(change==='assistant')await revokeAssistant(adminCtx(base),{appUserId:a.reviewer.userId!});
-    if(change==='pause')await setAiFeature(adminCtx(base),'hr_assistant',false);
-   }
+    if(change==='pause')await pauseFixtureFeature(control!,'hr_assistant');
+    afterPreparation=true;
+   }catch(error){setupFailure=error;throw error;}}
    return original(cfg,args);
   });
   const outcome=await evaluateHumanQuestionPlannerCandidate(a.reviewer,{candidateId:a.candidateId,consent:consent()}).then(value=>value,()=>null);
-  expect(afterPreparation).toBe(true);if(outcome)expect(outcome).toMatchObject({state:'incomplete',completedCases:0});
+  expect(setupFailure).toBeUndefined();expect(afterPreparation).toBe(true);if(outcome)expect(outcome).toMatchObject({state:'incomplete',completedCases:0});
   expect(a.sent).not.toHaveBeenCalled();expect(await finiteUsage()).toEqual({runs:0,reservations:0,roots:0});
  });
 });

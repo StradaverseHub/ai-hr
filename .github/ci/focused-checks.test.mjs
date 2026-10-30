@@ -54,3 +54,30 @@ for (const [name, mutate] of [
   const value = result(); mutate(value);
   assert.throws(() => verifyFocusedResult(value, files, '/candidate'));
 });
+
+
+test('database consumer requires exact v15 cap/budget identity and refuses legacy or mixed selectors', async () => {
+  const {assertFocusedPostgresProfile} = await import('./focused-checks.mjs');
+  const env = {AIHR_CI_PG_PROFILE: '2', AIHR_CI_PG_CONFIGURED_CAP_BYTES: '2113929216',
+    AIHR_CI_PG_PEAK_BUDGET_BYTES: '2147483648', AIHR_CI_PG_JIT: 'on'};
+  assert.deepEqual(assertFocusedPostgresProfile(env), {profileVersion: 2, configuredCapBytes: 2113929216, peakBudgetBytes: 2147483648, jit: 'on'});
+  for (const changes of [{AIHR_CI_PG_PROFILE: undefined}, {AIHR_CI_PG_PROFILE: '1'},
+    {AIHR_CI_PG_CONFIGURED_CAP_BYTES: '2147483648'}, {AIHR_CI_PG_PEAK_BUDGET_BYTES: '2147483649'},
+    {AIHR_CI_PG_MEMORY_GIB: '2'}, {AIHR_CI_PG_JIT: 'off'}, {AIHR_CI_PG_JIT: undefined}])
+    assert.throws(() => assertFocusedPostgresProfile({...env, ...changes}));
+  assert.throws(() => assertFocusedPostgresProfile({AIHR_CI_PG_PROFILE: 'legacy-2g', AIHR_CI_PG_MEMORY_GIB: '2', AIHR_CI_PG_JIT: 'on'}));
+});
+
+
+test('focused plan identity binds cap and peak budget independently of selected file identity', async () => {
+  const {focusedPlanIdentity} = await import('./focused-checks.mjs');
+  const input = {sha: 'a'.repeat(40), controller: 'c'.repeat(40), files, groups: {DB: files, NODB: []},
+    classifierHash: 'b'.repeat(64), execution: {workers: 2, postgres: {profileVersion: 2,
+      configuredCapBytes: 2113929216, peakBudgetBytes: 2147483648, jit: 'on'}}};
+  const original = focusedPlanIdentity(input);
+  for (const change of [{configuredCapBytes: 2147483648}, {peakBudgetBytes: 2147483649}, {profileVersion: 1}]) {
+    const altered = focusedPlanIdentity({...input, execution: {...input.execution, postgres: {...input.execution.postgres, ...change}}});
+    assert.notEqual(altered.fingerprint, original.fingerprint);
+    assert.deepEqual(altered.files, original.files);
+  }
+});
