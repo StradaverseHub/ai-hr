@@ -286,15 +286,20 @@ describe('Payroll Reset — mandatory reason (resetProcessedBatch)', () => {
     const [beforeClaim]=await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,claimId));
     await owner.db.execute(sql`create function app.fictional_reset_preview_failure() returns trigger language plpgsql as $$begin if NEW.action='rollback' then raise exception 'Fictional reset preview refusal';end if;return NEW;end$$`);
     await owner.db.execute(sql`create trigger fictional_reset_preview_failure before insert on public.payroll_status_history for each row execute function app.fictional_reset_preview_failure()`);
+    let cleanupObserved=false;
     try {
-      await withTenant(ctx,async tx=>{
+      await expect(withTenant(ctx,async tx=>{
         await expect(previewReviewedPayrollResetTx(tx,ctx,{batchId,reason:'Preview failure cleanup'})).rejects.toThrow();
         const [batch]=await tx.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batchId));
         expect(batch).toEqual(beforeBatch);
         // A subsequent real SAVEPOINT must work; the failed preview did not leave an aborted scope.
         await tx.execute(sql`SAVEPOINT fictional_after_preview`);
         await tx.execute(sql`RELEASE SAVEPOINT fictional_after_preview`);
-      });
+        cleanupObserved=true;
+        // Reviewed callers abort the whole transaction after a native preview failure.
+        throw new Error('Fictional caller abort after preview refusal');
+      })).rejects.toThrow();
+      expect(cleanupObserved,'Native error cleanup must leave SQL usable before caller abort').toBe(true);
     } finally {
       await owner.db.execute(sql`drop trigger fictional_reset_preview_failure on public.payroll_status_history`);
       await owner.db.execute(sql`drop function app.fictional_reset_preview_failure()`);
