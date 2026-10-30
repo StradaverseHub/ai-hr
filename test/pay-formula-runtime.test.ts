@@ -135,3 +135,12 @@ it('uses the Native normalized reference for legacy lowercase stored Pay Item co
  const saved=await savePayFormula(ctx,{formulaId:'CASING',description:'Preserved legacy identity',method:'write',source:'Return {#PayItem}("LOWER_A") + {#PayItemNoProrate}("LOWER_A") + {#PayItemInput}("LOWER_A")'});
  const result=await testPayFormula(ctx,{...saved,context});expect(result.passed,result.error??'normalized legacy code').toBe(true);expect(result.amount).toBe('13.68');
 });
+it('uses the Native period-end salary owner when testing an existing run',async()=>{
+ await setCompensation(ctx,{employmentId:employee.employmentId,basicSalary:6200,monthlyAllowance:0,effectiveFrom:'2026-05-16'});
+ const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:context.period,payrollCycleId:context.cycleId});
+ context={...context,asOf:'2026-05-10',batchId} as PayFormulaContext;
+ const tested=await activate('Return {#Basic} / 10');expect(tested.amount).toBe('620');
+ await generatePayslips(ctx,{batchId});
+ const [slip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
+ expect(slip.basicSalary).toBe('6200.00');expect((slip.statutory as {componentLines:{code:string;amount:number}[]}).componentLines.find(l=>l.code===item.code)?.amount).toBe(620);
+});
