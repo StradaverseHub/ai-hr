@@ -32,6 +32,12 @@ const privateFields=['reason','proposed','amount','description','employeeRemark'
 function expectHeaders(rows:unknown[]){for(const row of rows)for(const field of privateFields)expect(row).not.toHaveProperty(field);}
 
 describe('Home assigned-decision metadata is an uncapped projection at its source owner',()=>{
+ it('returns an empty profile queue only after validating the current native principal',async()=>{
+  const ctx=adminCtx(b);
+  expect(await pendingProfileTaskMetadata(ctx)).toEqual([]);
+  await expect(pendingProfileTaskMetadata({...ctx,userId:randomUUID()})).rejects.toThrow();
+  await expect(pendingProfileTaskMetadata({...ctx,personId:randomUUID()})).rejects.toThrow();
+ });
  it('reads every pending leave header while reasons, units and application dates are unavailable to the runtime role',async()=>{
   const e=await subject(),today=todayInKualaLumpur();
   const heads=await owner.db.insert(s.leaveRequest).values(Array.from({length:211},()=>({tenantId:b.tenantId,employmentId:e.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:today,endDate:today,days:'1',reason:'Fictional private leave reason'}))).returning({id:s.leaveRequest.id});

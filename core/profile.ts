@@ -886,6 +886,9 @@ export async function pendingProfileTaskMetadata(ctx:SessionContext,companyIds?:
     sql`NOT app.is_self_person(${profileChangeRequest.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
    .orderBy(desc(profileChangeRequest.createdAt),profileChangeRequest.id);
  });
+ // The first transaction has already checked the current principal and policy. With no
+ // candidates there is no decision authority to resolve in a second locked transaction.
+ if(candidates.length===0)return [];
  const allowed=new Set(await actionableProfileChangeIds(ctx,candidates.map(row=>row.id)));
  return candidates.filter(row=>allowed.has(row.id));
 }
