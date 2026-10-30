@@ -5,7 +5,7 @@ const COMMAND_VARIANTS=['adapter_coverage','rejected_decisions','routed_attendan
 export const PARITY_PROBE_VARIANTS=[...COMMAND_VARIANTS,'cost_allocation_clear'] as const;
 export type ParityProbeVariant=typeof PARITY_PROBE_VARIANTS[number];
 export const PARITY_PROBE_GROUPS={
- attendance:{actions:['attendance.schedule_group.maintain'],variants:[]},
+ attendance:{actions:['attendance.schedule_group.maintain','attendance.day_schedule.correct'],variants:[]},
  payroll:{actions:['payroll.reopen'],variants:[]},
  organisation:{actions:['org.position.archive','org.department.archive'],variants:[]},
  rewardsCalendar:{actions:['rewards.calendar.update'],variants:[]},

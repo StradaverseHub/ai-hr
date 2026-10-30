@@ -14,6 +14,7 @@ export async function AttendanceNativeWorkflows(){
  try{const session=await getBrowserCommandSession();admin=!!session.userId&&isAdmin(session);}catch{/* Hide administrative navigation when the session is unavailable. */}
  const links=[{href:'/attendance/clock',label:'clock' as const},...(admin?[
   {href:'/assistant/schedule-group',label:'reviewGroup' as const},
+  {href:'/assistant/day-schedule',label:'reviewDay' as const},
   {href:'/attendance/individual',label:'corrections' as const},
   {href:'/admin/attendance/schedule-assignment',label:'schedule' as const},
   {href:'/roster',label:'roster' as const},
