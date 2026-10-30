@@ -240,6 +240,47 @@ class ConsumerRefusals(unittest.TestCase):
             with self.assertRaises(ValueError): p.require_registered_policy(root)
             entries[1]['tag']=entries[0]['tag'];(folder/'meta/_journal.json').write_text(json.dumps({'entries':entries}))
             with self.assertRaises(ValueError): p.ordinary_source_ledger(root)
+        # Complete immutable source581 fixtures; never a synthetic tiny journal
+        # accepted by the finite contract. Hash inventory came from actual2de Git SQL bytes.
+        raw=(HERE/'fixtures/bank-consumer-581-journal.json').read_bytes();journal=json.loads(raw)
+        fixture=json.loads((HERE/'fixtures/bank-consumer-581-sql-hashes.json').read_bytes())
+        self.assertEqual(fixture['source'],'2de3f58bb53536d974d1c34d09a08a185237b6e2')
+        self.assertEqual(p.digest(raw),'0ec4efea88ff081124c96922f3f84988e4dc1e082a7e46d25d2ae7b59550137e')
+        self.assertEqual(len(journal['entries']),581);self.assertEqual(len(fixture['ordinarySql']),581)
+        self.assertEqual(p.digest(p.canonical(journal['entries'][:580])),'85d457d4d2ab8d616ef1ddfa245559038f45754da3560b126d690c701ba740a8')
+        self.assertEqual([row['created_at'] for row in fixture['ordinarySql']],[str(row['when']) for row in journal['entries']])
+        def fixture_ledger(rows):
+            return {'kind':'FRESH_ORDINARY_SOURCE_JOURNAL_NOT_STAGING_LEDGER','rows':len(rows),'sha256':p.digest(json.dumps(rows,sort_keys=True,separators=(',',':')).encode()),'journalSha256':p.digest(raw)}
+        ledger=fixture_ledger(fixture['ordinarySql']);self.assertEqual(ledger['sha256'],'38d86c3d2a32cc1203ca8f6456d43da4ee4c1dd65a424f25cdda6881920a7973')
+        with tempfile.TemporaryDirectory(prefix='throughput-581-bank-sql-') as temporary:
+            bank=Path(temporary)/'0691_bank_import_point_read.sql';bank.write_bytes(fixture['bankSql'].encode())
+            original=p.file_hash(bank);self.assertEqual(original,'be6f8d38850fadd9151d58ea7476d8f60e09a0bf2b2b078e0196f4cb90c5bfe9')
+            p.validate_581_policy_contract(raw,ledger,original)
+            bank.write_bytes(bank.read_bytes()+b'\n-- actual changed SQL byte control\n')
+            altered=p.file_hash(bank);self.assertNotEqual(altered,original)
+            with self.assertRaises(ValueError): p.validate_581_policy_contract(raw,ledger,altered)
+            changed_sql=copy.deepcopy(fixture['ordinarySql']);changed_sql[-1]['hash']=altered
+            with self.assertRaises(ValueError): p.validate_581_policy_contract(raw,fixture_ledger(changed_sql),original)
+            routed=Path(temporary)/'source';meta=routed/'db/migrations/meta';meta.mkdir(parents=True)
+            (meta/'_journal.json').write_bytes(raw)
+            (meta.parent/'0691_bank_import_point_read.sql').write_bytes(fixture['bankSql'].encode())
+            # Only the expensive ALL-SQL I/O derivation is supplied as a fixture;
+            # production routing and the finite validator remain real and strict.
+            with patch.object(p,'ordinary_source_ledger',return_value=ledger) as derived:
+                p.require_registered_policy(routed);derived.assert_called_once_with(routed)
+            with patch.object(p,'ordinary_source_ledger',return_value={**ledger,'sha256':'0'*64}),self.assertRaises(ValueError): p.require_registered_policy(routed)
+        mutations=[]
+        for position,key,value in [(0,'tag','unknown_prefix'),(0,'idx',9999),(578,'when',1793330000064),(579,'when',1793330000064),(580,'idx',681),(580,'when',1793330000017)]:
+            changed=copy.deepcopy(journal);changed['entries'][position][key]=value;mutations.append(changed)
+        changed=copy.deepcopy(journal);changed['entries'][0],changed['entries'][1]=changed['entries'][1],changed['entries'][0];mutations.append(changed)
+        changed=copy.deepcopy(journal);changed['entries'][579]=copy.deepcopy(changed['entries'][580]);mutations.append(changed)
+        changed=copy.deepcopy(journal);changed['entries'].pop();mutations.append(changed)
+        for changed in mutations:
+            with self.subTest(tail=changed['entries'][-1]),self.assertRaises(ValueError): p.validate_581_policy_contract(p.canonical(changed),ledger,original)
+        with self.assertRaises(ValueError): p.validate_581_policy_contract(raw+b' ',ledger,original)
+        for key,value in [('rows',580),('rows',True),('kind','STAGING_LEDGER'),('journalSha256','0'*64),('sha256','0'*64)]:
+            changed={**ledger,key:value}
+            with self.subTest(ledger_key=key),self.assertRaises(ValueError): p.validate_581_policy_contract(raw,changed,original)
 
     def test_new_producer_contract_is_closed_and_strict(self):
         fmt=SimpleNamespace(canonical=p.canonical,RUNTIME={'node':'22.23.3','abi':'127','platform':'linux','arch':'x64','glibc':'2.39'})

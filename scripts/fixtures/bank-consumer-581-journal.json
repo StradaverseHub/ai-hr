@@ -1,0 +1,4073 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1780643607452,
+      "tag": "0000_luxuriant_anita_blake",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1780644084655,
+      "tag": "0001_rls_grants_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780649778900,
+      "tag": "0002_role_gate_structural_writes",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1780657916079,
+      "tag": "0003_crazy_mole_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1780657940741,
+      "tag": "0004_slice1_comp_statutory_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1780658850999,
+      "tag": "0005_tiresome_newton_destine",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780658852462,
+      "tag": "0006_holiday_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780711790200,
+      "tag": "0007_brief_masked_marvel",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1780711791348,
+      "tag": "0008_attendance_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1780713439733,
+      "tag": "0009_nervous_nehzno",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1780713440904,
+      "tag": "0010_payroll_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1780720043705,
+      "tag": "0011_payroll_immutability",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1780722667774,
+      "tag": "0012_principal_bootstrap",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1780724527392,
+      "tag": "0013_payroll_batch_rls_tighten",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1780726599924,
+      "tag": "0014_company_hierarchy_statutory",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1780726645485,
+      "tag": "0015_company_tree_helpers_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1780727728709,
+      "tag": "0016_company_scoped_authz",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1780729626201,
+      "tag": "0017_fix_employment_self_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1780731868065,
+      "tag": "0018_employment_cost_allocation",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1780737193014,
+      "tag": "0019_archivable_entities",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1780756326089,
+      "tag": "0020_role_assignment_super_admin_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1780758657746,
+      "tag": "0021_employee_tax_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1780812398952,
+      "tag": "0022_payroll_input",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1780814602709,
+      "tag": "0023_role_assignment_subdelegation",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1780883185588,
+      "tag": "0024_payroll_bonus",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1780884135535,
+      "tag": "0025_payslip_days_worked",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1780886250811,
+      "tag": "0026_statutory_report",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1781061021314,
+      "tag": "0027_attendance_time_engine",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1781081810189,
+      "tag": "0028_attendance_correction",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1781086228685,
+      "tag": "0029_greedy_butterfly",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1781162200017,
+      "tag": "0030_org_catalog_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1781167058928,
+      "tag": "0031_leave_type_code_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1781168228840,
+      "tag": "0032_famous_giant_girl",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1781173129862,
+      "tag": "0033_chunky_redwing",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1781329800108,
+      "tag": "0034_wet_the_spike",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1781329890108,
+      "tag": "0035_performance_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1781340852534,
+      "tag": "0036_true_senator_kelly",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1781340942534,
+      "tag": "0037_domain_event_subject_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1781440901531,
+      "tag": "0038_powerful_vision",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1781440901600,
+      "tag": "0039_kb_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1781442519059,
+      "tag": "0040_cool_microchip",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1781442519100,
+      "tag": "0041_onboarding_fns",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1781444844057,
+      "tag": "0042_faulty_hellion",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1781520501005,
+      "tag": "0043_gorgeous_wolfpack",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1781520501100,
+      "tag": "0044_statutory_ruleset_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1781527908635,
+      "tag": "0045_easy_cobalt_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1781527908700,
+      "tag": "0046_statutory_pack_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1781585858249,
+      "tag": "0047_slow_gargoyle",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1781585858300,
+      "tag": "0048_claims_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1781669998010,
+      "tag": "0049_bored_nebula",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1781669998060,
+      "tag": "0050_performance_goal_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1781671253321,
+      "tag": "0051_harsh_albert_cleary",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1781671253371,
+      "tag": "0052_performance_checkin_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1781671845614,
+      "tag": "0053_heavy_magma",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1781671845664,
+      "tag": "0054_peer_feedback_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1781672199785,
+      "tag": "0055_slow_kabuki",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1781673425192,
+      "tag": "0056_shocking_tarantula",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1781673425242,
+      "tag": "0057_calibration_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1781680441038,
+      "tag": "0058_chunky_beast",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1781680441039,
+      "tag": "0059_ai_provider_config_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1781680441040,
+      "tag": "0060_compensation_read_admin_or_self",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1781691282538,
+      "tag": "0061_sleepy_nehzno",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1781692326991,
+      "tag": "0062_jittery_kronos",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1781697451796,
+      "tag": "0063_minor_red_shift",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1781698689975,
+      "tag": "0064_sour_the_hunter",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1781698689976,
+      "tag": "0065_pay_component_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1781775046553,
+      "tag": "0066_curly_cable",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1781775046554,
+      "tag": "0067_pay_period_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1781775046555,
+      "tag": "0068_epf_citizenship",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1781775046556,
+      "tag": "0069_designated_paymaster",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1781775046557,
+      "tag": "0070_drop_paymaster_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1781775046558,
+      "tag": "0071_pay_component_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1781775046559,
+      "tag": "0072_company_bank_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1781775046560,
+      "tag": "0073_pii_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1781775046561,
+      "tag": "0074_audit_hash_chain",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1781775046562,
+      "tag": "0075_shift_roster",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1781775046563,
+      "tag": "0076_toil",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1781775046564,
+      "tag": "0077_toil_expiry_action",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1781775046565,
+      "tag": "0078_notification_engine",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1781775046566,
+      "tag": "0079_notification_cursor_sequence",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1781861446566,
+      "tag": "0080_pay_component_ea_rounding",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1781861450000,
+      "tag": "0081_company_payroll_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1781861460000,
+      "tag": "0082_payroll_batch_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1781861470000,
+      "tag": "0083_leave_eligibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1781861480000,
+      "tag": "0084_leave_mandatory_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1781861490000,
+      "tag": "0085_leave_multi_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1781861500000,
+      "tag": "0086_leave_approval_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1781861510000,
+      "tag": "0087_state_holidays",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1781861520000,
+      "tag": "0088_leave_type_i18n",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1781861530000,
+      "tag": "0089_leave_cycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1781861540000,
+      "tag": "0090_job_grades",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1781861550000,
+      "tag": "0091_resignation_request",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1781861560000,
+      "tag": "0092_statutory_component_override",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1781861570000,
+      "tag": "0093_feedback_module",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1781861580000,
+      "tag": "0094_feedback_deployed_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1781861590000,
+      "tag": "0095_payroll_config_cutoffs",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1781861600000,
+      "tag": "0096_performance_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1781861610000,
+      "tag": "0097_leave_duration",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1781861620000,
+      "tag": "0098_leave_document_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1781861630000,
+      "tag": "0099_job_function_partner_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1781861640000,
+      "tag": "0100_holiday_groups",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1781861650000,
+      "tag": "0101_claim_item_rate_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1781861660000,
+      "tag": "0102_tp1_self_relief",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1781861670000,
+      "tag": "0103_pay_component_rule",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1781861680000,
+      "tag": "0104_feedback_refute_reopen",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1781861690000,
+      "tag": "0105_leave_payroll_impact",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1781861700000,
+      "tag": "0106_emergency_leave_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1781861710000,
+      "tag": "0107_employment_provisional_end",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1781861720000,
+      "tag": "0108_hierarchy_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1781861730000,
+      "tag": "0109_hierarchy_visibility_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1781861740000,
+      "tag": "0110_employment_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1781861750000,
+      "tag": "0111_location_master_data",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1781861760000,
+      "tag": "0112_org_holiday_hierarchy",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1781861770000,
+      "tag": "0113_replacement_leave_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1781861780000,
+      "tag": "0114_payroll_ot_breakdown",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1781861790000,
+      "tag": "0115_fixed_transaction",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1781861800000,
+      "tag": "0116_payroll_individual_txn",
+      "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1781861810000,
+      "tag": "0117_employee_cp38",
+      "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1781861820000,
+      "tag": "0118_employee_statutory_zakat",
+      "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1781861830000,
+      "tag": "0119_ea_override",
+      "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1781861840000,
+      "tag": "0120_loan_management",
+      "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1781861850000,
+      "tag": "0121_rls_leak_fixes",
+      "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1781861860000,
+      "tag": "0122_ot_source_provenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1781861870000,
+      "tag": "0123_toil_first_schedule_consent",
+      "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1781861880000,
+      "tag": "0124_emergency_unpaid_consent",
+      "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1781861890000,
+      "tag": "0125_maternity_allowance_s37",
+      "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1781861900000,
+      "tag": "0126_holiday_tentative",
+      "breakpoints": true
+    },
+    {
+      "idx": 127,
+      "version": "7",
+      "when": 1781861910000,
+      "tag": "0127_payroll_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "7",
+      "when": 1781861920000,
+      "tag": "0128_payroll_policy_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1781861930000,
+      "tag": "0129_hourly_leave_period",
+      "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1781861940000,
+      "tag": "0130_payroll_policy_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 131,
+      "version": "7",
+      "when": 1781861950000,
+      "tag": "0131_leave_per_date_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1781861960000,
+      "tag": "0132_partial_leave_cancellation",
+      "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1781861970000,
+      "tag": "0133_leave_backdating_limit",
+      "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "7",
+      "when": 1781861980000,
+      "tag": "0134_leave_policy_company_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 135,
+      "version": "7",
+      "when": 1781861990000,
+      "tag": "0135_location_holiday_calendars",
+      "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1781862000000,
+      "tag": "0136_business_unit_master",
+      "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1781862010000,
+      "tag": "0137_employee_dependent",
+      "breakpoints": true
+    },
+    {
+      "idx": 138,
+      "version": "7",
+      "when": 1781862020000,
+      "tag": "0138_leave_partial_approval_single_aggregate",
+      "breakpoints": true
+    },
+    {
+      "idx": 139,
+      "version": "7",
+      "when": 1781862030000,
+      "tag": "0139_shift_template",
+      "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1781862040000,
+      "tag": "0140_shift_weekly_pattern",
+      "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1781862050000,
+      "tag": "0141_feedback_restore",
+      "breakpoints": true
+    },
+    {
+      "idx": 142,
+      "version": "7",
+      "when": 1781862060000,
+      "tag": "0142_half_day_schedule",
+      "breakpoints": true
+    },
+    {
+      "idx": 143,
+      "version": "7",
+      "when": 1781862070000,
+      "tag": "0143_leave_encashment",
+      "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1781862080000,
+      "tag": "0144_clocking_locations_geofencing",
+      "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "7",
+      "when": 1781862090000,
+      "tag": "0145_org_catalog_description",
+      "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1781862100000,
+      "tag": "0146_attendance_request_management",
+      "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1781862110000,
+      "tag": "0147_leave_type_custom_messages",
+      "breakpoints": true
+    },
+    {
+      "idx": 148,
+      "version": "7",
+      "when": 1781862120000,
+      "tag": "0148_review_cycle_eligibility_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 149,
+      "version": "7",
+      "when": 1781862130000,
+      "tag": "0149_leave_approval_rule_matrix",
+      "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1781862140000,
+      "tag": "0150_payroll_cycle_master",
+      "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "7",
+      "when": 1781862150000,
+      "tag": "0151_real_auth_workos",
+      "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1781862151000,
+      "tag": "0152_fixed_transaction_run_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1781862152000,
+      "tag": "0153_company_logo",
+      "breakpoints": true
+    },
+    {
+      "idx": 154,
+      "version": "7",
+      "when": 1781862153000,
+      "tag": "0154_attendance_allowance",
+      "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1781862154000,
+      "tag": "0155_leave_type_expiry",
+      "breakpoints": true
+    },
+    {
+      "idx": 156,
+      "version": "7",
+      "when": 1781862155000,
+      "tag": "0156_resignation_request_attachment",
+      "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1781862156000,
+      "tag": "0157_shared_system_labels",
+      "breakpoints": true
+    },
+    {
+      "idx": 158,
+      "version": "7",
+      "when": 1781862157000,
+      "tag": "0158_tp1_relief_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 159,
+      "version": "7",
+      "when": 1781862158000,
+      "tag": "0159_leave_type_min_advance_days",
+      "breakpoints": true
+    },
+    {
+      "idx": 160,
+      "version": "7",
+      "when": 1781862159000,
+      "tag": "0160_probation_reminders_review_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 161,
+      "version": "7",
+      "when": 1781862160000,
+      "tag": "0161_employment_default_shift",
+      "breakpoints": true
+    },
+    {
+      "idx": 162,
+      "version": "7",
+      "when": 1781862161000,
+      "tag": "0162_shift_grace_and_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 163,
+      "version": "7",
+      "when": 1781862162000,
+      "tag": "0163_shift_ot_rule",
+      "breakpoints": true
+    },
+    {
+      "idx": 164,
+      "version": "7",
+      "when": 1781862163000,
+      "tag": "0164_claim_limits_by_grade",
+      "breakpoints": true
+    },
+    {
+      "idx": 165,
+      "version": "7",
+      "when": 1781862164000,
+      "tag": "0165_custom_report",
+      "breakpoints": true
+    },
+    {
+      "idx": 166,
+      "version": "7",
+      "when": 1781862165000,
+      "tag": "0166_compensation_remarks",
+      "breakpoints": true
+    },
+    {
+      "idx": 167,
+      "version": "7",
+      "when": 1781862166000,
+      "tag": "0167_compensation_updated_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 168,
+      "version": "7",
+      "when": 1781862167000,
+      "tag": "0168_person_profile_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "7",
+      "when": 1781862168000,
+      "tag": "0169_leave_type_description",
+      "breakpoints": true
+    },
+    {
+      "idx": 170,
+      "version": "7",
+      "when": 1781862169000,
+      "tag": "0170_leave_approval_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1781862170000,
+      "tag": "0171_org_heads_for_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "7",
+      "when": 1781862171000,
+      "tag": "0172_payroll_cycle_description",
+      "breakpoints": true
+    },
+    {
+      "idx": 173,
+      "version": "7",
+      "when": 1781862172000,
+      "tag": "0173_payroll_status_control",
+      "breakpoints": true
+    },
+    {
+      "idx": 174,
+      "version": "7",
+      "when": 1781862173000,
+      "tag": "0174_payroll_policy_defaults_release",
+      "breakpoints": true
+    },
+    {
+      "idx": 175,
+      "version": "7",
+      "when": 1781862174000,
+      "tag": "0175_holiday_group_inheritance",
+      "breakpoints": true
+    },
+    {
+      "idx": 176,
+      "version": "7",
+      "when": 1781862175000,
+      "tag": "0176_individual_txn_period_keyed",
+      "breakpoints": true
+    },
+    {
+      "idx": 177,
+      "version": "7",
+      "when": 1781862176000,
+      "tag": "0177_individual_txn_component",
+      "breakpoints": true
+    },
+    {
+      "idx": 178,
+      "version": "7",
+      "when": 1781862177000,
+      "tag": "0178_leave_type_ess_view_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 179,
+      "version": "7",
+      "when": 1781862178000,
+      "tag": "0179_leave_type_visual_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 180,
+      "version": "7",
+      "when": 1781862179000,
+      "tag": "0180_profile_option",
+      "breakpoints": true
+    },
+    {
+      "idx": 181,
+      "version": "7",
+      "when": 1781862180000,
+      "tag": "0181_leave_type_day_type_inclusion",
+      "breakpoints": true
+    },
+    {
+      "idx": 182,
+      "version": "7",
+      "when": 1781862181000,
+      "tag": "0182_leave_type_leave_unit",
+      "breakpoints": true
+    },
+    {
+      "idx": 183,
+      "version": "7",
+      "when": 1781862182000,
+      "tag": "0183_job_grade_name_uq",
+      "breakpoints": true
+    },
+    {
+      "idx": 184,
+      "version": "7",
+      "when": 1781862183000,
+      "tag": "0184_employment_info_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 185,
+      "version": "7",
+      "when": 1781862184000,
+      "tag": "0185_dependent_family_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 186,
+      "version": "7",
+      "when": 1781862185000,
+      "tag": "0186_employee_document",
+      "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1781862186000,
+      "tag": "0187_payroll_policy_code",
+      "breakpoints": true
+    },
+    {
+      "idx": 188,
+      "version": "7",
+      "when": 1781862187000,
+      "tag": "0188_shift_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "7",
+      "when": 1781862188000,
+      "tag": "0189_system_label_short_code",
+      "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "7",
+      "when": 1781862189000,
+      "tag": "0190_leave_year_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 191,
+      "version": "7",
+      "when": 1781862190000,
+      "tag": "0191_leave_year_opening_rule",
+      "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "7",
+      "when": 1781862191000,
+      "tag": "0192_leave_type_employee_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 193,
+      "version": "7",
+      "when": 1781862192000,
+      "tag": "0193_leave_type_ess_placement",
+      "breakpoints": true
+    },
+    {
+      "idx": 194,
+      "version": "7",
+      "when": 1781862193000,
+      "tag": "0194_holiday_master_fields_and_group_holiday",
+      "breakpoints": true
+    },
+    {
+      "idx": 195,
+      "version": "7",
+      "when": 1781862194000,
+      "tag": "0195_company_general_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 196,
+      "version": "7",
+      "when": 1781862195000,
+      "tag": "0196_delegation_self_service_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 197,
+      "version": "7",
+      "when": 1781862196000,
+      "tag": "0197_shift_shared_library",
+      "breakpoints": true
+    },
+    {
+      "idx": 198,
+      "version": "7",
+      "when": 1781862197000,
+      "tag": "0198_socso_eis_statutory_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 199,
+      "version": "7",
+      "when": 1781862198000,
+      "tag": "0199_bank_custom_holder",
+      "breakpoints": true
+    },
+    {
+      "idx": 200,
+      "version": "7",
+      "when": 1781862199000,
+      "tag": "0200_identity_tax_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 201,
+      "version": "7",
+      "when": 1781862200000,
+      "tag": "0201_socso_eis_category",
+      "breakpoints": true
+    },
+    {
+      "idx": 202,
+      "version": "7",
+      "when": 1781862201000,
+      "tag": "0202_pay_period_unlock_escape",
+      "breakpoints": true
+    },
+    {
+      "idx": 203,
+      "version": "7",
+      "when": 1781862202000,
+      "tag": "0203_employer_bears_epf",
+      "breakpoints": true
+    },
+    {
+      "idx": 204,
+      "version": "7",
+      "when": 1781862203000,
+      "tag": "0204_attendance_rule_library",
+      "breakpoints": true
+    },
+    {
+      "idx": 205,
+      "version": "7",
+      "when": 1781862204000,
+      "tag": "0205_benefit_scheme",
+      "breakpoints": true
+    },
+    {
+      "idx": 206,
+      "version": "7",
+      "when": 1781862205000,
+      "tag": "0206_profile_option_description",
+      "breakpoints": true
+    },
+    {
+      "idx": 207,
+      "version": "7",
+      "when": 1781862206000,
+      "tag": "0207_dashboard_layout",
+      "breakpoints": true
+    },
+    {
+      "idx": 208,
+      "version": "7",
+      "when": 1781862207000,
+      "tag": "0208_leave_type_duplicate_application_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 209,
+      "version": "7",
+      "when": 1781862208000,
+      "tag": "0209_leave_type_allow_negative_balance",
+      "breakpoints": true
+    },
+    {
+      "idx": 210,
+      "version": "7",
+      "when": 1781862209000,
+      "tag": "0210_nationality_full_iso_seed",
+      "breakpoints": true
+    },
+    {
+      "idx": 211,
+      "version": "7",
+      "when": 1781862210000,
+      "tag": "0211_employee_id_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 212,
+      "version": "7",
+      "when": 1781862211000,
+      "tag": "0212_dashboard_card_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 213,
+      "version": "7",
+      "when": 1781862212000,
+      "tag": "0213_dashboard_layout_shape_and_shortcuts",
+      "breakpoints": true
+    },
+    {
+      "idx": 214,
+      "version": "7",
+      "when": 1781862213000,
+      "tag": "0214_employee_passport_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 215,
+      "version": "7",
+      "when": 1781862214000,
+      "tag": "0215_person_permanent_correspondence_address",
+      "breakpoints": true
+    },
+    {
+      "idx": 216,
+      "version": "7",
+      "when": 1781862215000,
+      "tag": "0216_employment_join_date",
+      "breakpoints": true
+    },
+    {
+      "idx": 217,
+      "version": "7",
+      "when": 1781862216000,
+      "tag": "0217_employment_dates_units",
+      "breakpoints": true
+    },
+    {
+      "idx": 218,
+      "version": "7",
+      "when": 1781862217000,
+      "tag": "0218_leave_approval_policy_grade_group",
+      "breakpoints": true
+    },
+    {
+      "idx": 219,
+      "version": "7",
+      "when": 1781862218000,
+      "tag": "0219_assignment_business_unit",
+      "breakpoints": true
+    },
+    {
+      "idx": 220,
+      "version": "7",
+      "when": 1781862219000,
+      "tag": "0220_scheme_leave_combined_limit",
+      "breakpoints": true
+    },
+    {
+      "idx": 225,
+      "version": "7",
+      "when": 1781862224000,
+      "tag": "0225_leave_type_probation_eligibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 230,
+      "version": "7",
+      "when": 1781862229000,
+      "tag": "0230_delegation_scope_reason",
+      "breakpoints": true
+    },
+    {
+      "idx": 240,
+      "version": "7",
+      "when": 1781862219000,
+      "tag": "0240_employment_blacklist",
+      "breakpoints": true
+    },
+    {
+      "idx": 241,
+      "version": "7",
+      "when": 1781862310000,
+      "tag": "0241_leave_formula_explanation",
+      "breakpoints": true
+    },
+    {
+      "idx": 245,
+      "version": "7",
+      "when": 1781862320000,
+      "tag": "0245_leave_entitlement_recalc_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 250,
+      "version": "7",
+      "when": 1781862330000,
+      "tag": "0250_dependent_child_relief",
+      "breakpoints": true
+    },
+    {
+      "idx": 255,
+      "version": "7",
+      "when": 1781862340000,
+      "tag": "0255_leave_calendar_rename",
+      "breakpoints": true
+    },
+    {
+      "idx": 261,
+      "version": "7",
+      "when": 1781862350000,
+      "tag": "0261_employee_id_template_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 265,
+      "version": "7",
+      "when": 1781862360000,
+      "tag": "0265_attendance_multi_punch",
+      "breakpoints": true
+    },
+    {
+      "idx": 270,
+      "version": "7",
+      "when": 1781862370000,
+      "tag": "0270_employment_payment_method",
+      "breakpoints": true
+    },
+    {
+      "idx": 275,
+      "version": "7",
+      "when": 1781862375000,
+      "tag": "0275_company_bank_multi_account",
+      "breakpoints": true
+    },
+    {
+      "idx": 276,
+      "version": "7",
+      "when": 1781862376000,
+      "tag": "0276_company_statutory_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 277,
+      "version": "7",
+      "when": 1781862377000,
+      "tag": "0277_compensation_delete_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 279,
+      "version": "7",
+      "when": 1781862379000,
+      "tag": "0279_user_archive_and_login_block",
+      "breakpoints": true
+    },
+    {
+      "idx": 280,
+      "version": "7",
+      "when": 1781862380000,
+      "tag": "0280_job_run",
+      "breakpoints": true
+    },
+    {
+      "idx": 281,
+      "version": "7",
+      "when": 1781862381000,
+      "tag": "0281_fix_consume_invitation_ambiguous",
+      "breakpoints": true
+    },
+    {
+      "idx": 282,
+      "version": "7",
+      "when": 1781862382000,
+      "tag": "0282_leave_year_delete_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 286,
+      "version": "7",
+      "when": 1781862386000,
+      "tag": "0286_delegation_org_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 287,
+      "version": "7",
+      "when": 1781862387000,
+      "tag": "0287_leave_approval_escalation",
+      "breakpoints": true
+    },
+    {
+      "idx": 288,
+      "version": "7",
+      "when": 1781862388000,
+      "tag": "0288_approval_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 289,
+      "version": "7",
+      "when": 1781862389000,
+      "tag": "0289_pay_component_label",
+      "breakpoints": true
+    },
+    {
+      "idx": 290,
+      "version": "7",
+      "when": 1781862390000,
+      "tag": "0290_compensation_pay_mode_term",
+      "breakpoints": true
+    },
+    {
+      "idx": 293,
+      "version": "7",
+      "when": 1781862393000,
+      "tag": "0293_dependent_education_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 294,
+      "version": "7",
+      "when": 1781862394000,
+      "tag": "0294_operator_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 295,
+      "version": "7",
+      "when": 1781862395000,
+      "tag": "0295_operator_console",
+      "breakpoints": true
+    },
+    {
+      "idx": 296,
+      "version": "7",
+      "when": 1781862396000,
+      "tag": "0296_employee_dashboard_fixed_row",
+      "breakpoints": true
+    },
+    {
+      "idx": 297,
+      "version": "7",
+      "when": 1781862397000,
+      "tag": "0297_pay_component_pcb_classification",
+      "breakpoints": true
+    },
+    {
+      "idx": 298,
+      "version": "7",
+      "when": 1781862398000,
+      "tag": "0298_shared_labels_criteria_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 299,
+      "version": "7",
+      "when": 1781862399000,
+      "tag": "0299_dashboard_card_audience",
+      "breakpoints": true
+    },
+    {
+      "idx": 300,
+      "version": "7",
+      "when": 1781862400000,
+      "tag": "0300_person_salutation",
+      "breakpoints": true
+    },
+    {
+      "idx": 301,
+      "version": "7",
+      "when": 1781862401000,
+      "tag": "0301_passport_issuing_country",
+      "breakpoints": true
+    },
+    {
+      "idx": 302,
+      "version": "7",
+      "when": 1781862402000,
+      "tag": "0302_employee_device",
+      "breakpoints": true
+    },
+    {
+      "idx": 303,
+      "version": "7",
+      "when": 1781862403000,
+      "tag": "0303_leave_type_year_cycle_override",
+      "breakpoints": true
+    },
+    {
+      "idx": 304,
+      "version": "7",
+      "when": 1781862404000,
+      "tag": "0304_person_phone_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 305,
+      "version": "7",
+      "when": 1781862405000,
+      "tag": "0305_dependent_relationship_options",
+      "breakpoints": true
+    },
+    {
+      "idx": 306,
+      "version": "7",
+      "when": 1781862406000,
+      "tag": "0306_subject_to_hrdf",
+      "breakpoints": true
+    },
+    {
+      "idx": 307,
+      "version": "7",
+      "when": 1781862407000,
+      "tag": "0307_company_default_currency",
+      "breakpoints": true
+    },
+    {
+      "idx": 308,
+      "version": "7",
+      "when": 1781862408000,
+      "tag": "0308_employee_qualification",
+      "breakpoints": true
+    },
+    {
+      "idx": 309,
+      "version": "7",
+      "when": 1781862409000,
+      "tag": "0309_backfill_dob_from_ic",
+      "breakpoints": true
+    },
+    {
+      "idx": 310,
+      "version": "7",
+      "when": 1781862410000,
+      "tag": "0310_leave_type_year_cycle_override_a2c",
+      "breakpoints": true
+    },
+    {
+      "idx": 311,
+      "version": "7",
+      "when": 1781862411000,
+      "tag": "0311_company_default_payroll_cycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 312,
+      "version": "7",
+      "when": 1781862412000,
+      "tag": "0312_invitation_privilege_escalation",
+      "breakpoints": true
+    },
+    {
+      "idx": 313,
+      "version": "7",
+      "when": 1781862413000,
+      "tag": "0313_module_entitlements",
+      "breakpoints": true
+    },
+    {
+      "idx": 314,
+      "version": "7",
+      "when": 1781862414000,
+      "tag": "0314_toil_accrual_payroll_partner_read",
+      "breakpoints": true
+    },
+    {
+      "idx": 315,
+      "version": "7",
+      "when": 1781862415000,
+      "tag": "0315_job_grade_description",
+      "breakpoints": true
+    },
+    {
+      "idx": 316,
+      "version": "7",
+      "when": 1781862416000,
+      "tag": "0316_leave_balance_source_and_upl",
+      "breakpoints": true
+    },
+    {
+      "idx": 317,
+      "version": "7",
+      "when": 1781862417000,
+      "tag": "0317_feedback_blocked_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 318,
+      "version": "7",
+      "when": 1781862418000,
+      "tag": "0318_feedback_plan_revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 319,
+      "version": "7",
+      "when": 1781862419000,
+      "tag": "0319_attendance_rule_tenant_wide",
+      "breakpoints": true
+    },
+    {
+      "idx": 320,
+      "version": "7",
+      "when": 1781862420000,
+      "tag": "0320_approval_history_count",
+      "breakpoints": true
+    },
+    {
+      "idx": 321,
+      "version": "7",
+      "when": 1781862421000,
+      "tag": "0321_feedback_attachment_stage",
+      "breakpoints": true
+    },
+    {
+      "idx": 322,
+      "version": "7",
+      "when": 1781862422000,
+      "tag": "0322_person_emergency_contact_register",
+      "breakpoints": true
+    },
+    {
+      "idx": 323,
+      "version": "7",
+      "when": 1781862423000,
+      "tag": "0323_feedback_block_answer",
+      "breakpoints": true
+    },
+    {
+      "idx": 324,
+      "version": "7",
+      "when": 1781862424000,
+      "tag": "0324_payroll_settings_relocation",
+      "breakpoints": true
+    },
+    {
+      "idx": 325,
+      "version": "7",
+      "when": 1781862425000,
+      "tag": "0325_leave_type_rule_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 327,
+      "version": "7",
+      "when": 1781862427000,
+      "tag": "0327_shared_leave_group_max_days_per_application",
+      "breakpoints": true
+    },
+    {
+      "idx": 329,
+      "version": "7",
+      "when": 1781862429000,
+      "tag": "0329_movement_scheduled_apply_once",
+      "breakpoints": true
+    },
+    {
+      "idx": 330,
+      "version": "7",
+      "when": 1781862430000,
+      "tag": "0330_pay_component_resolution_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 331,
+      "version": "7",
+      "when": 1781862431000,
+      "tag": "0331_employee_status_state_machine",
+      "breakpoints": true
+    },
+    {
+      "idx": 332,
+      "version": "7",
+      "when": 1781862432000,
+      "tag": "0332_review_cycle_include_probation",
+      "breakpoints": true
+    },
+    {
+      "idx": 333,
+      "version": "7",
+      "when": 1781862433000,
+      "tag": "0333_annual_carry_expiry_six_months",
+      "breakpoints": true
+    },
+    {
+      "idx": 334,
+      "version": "7",
+      "when": 1781862434000,
+      "tag": "0334_leave_type_rules_repoint_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 335,
+      "version": "7",
+      "when": 1781862435000,
+      "tag": "0335_scheme_category_rounding_thresholds_application_limits",
+      "breakpoints": true
+    },
+    {
+      "idx": 337,
+      "version": "7",
+      "when": 1781862437000,
+      "tag": "0337_employee_draft",
+      "breakpoints": true
+    },
+    {
+      "idx": 338,
+      "version": "7",
+      "when": 1781862438000,
+      "tag": "0338_termination_movement",
+      "breakpoints": true
+    },
+    {
+      "idx": 340,
+      "version": "7",
+      "when": 1781862440000,
+      "tag": "0340_movement_event_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 341,
+      "version": "7",
+      "when": 1781862441000,
+      "tag": "0341_import_history_and_disabled_individual",
+      "breakpoints": true
+    },
+    {
+      "idx": 342,
+      "version": "7",
+      "when": 1781862442000,
+      "tag": "0342_leave_shared_group",
+      "breakpoints": true
+    },
+    {
+      "idx": 343,
+      "version": "7",
+      "when": 1781862443000,
+      "tag": "0343_leave_type_max_consecutive",
+      "breakpoints": true
+    },
+    {
+      "idx": 344,
+      "version": "7",
+      "when": 1781862444000,
+      "tag": "0344_leave_type_country",
+      "breakpoints": true
+    },
+    {
+      "idx": 345,
+      "version": "7",
+      "when": 1781862445000,
+      "tag": "0345_module_change_request",
+      "breakpoints": true
+    },
+    {
+      "idx": 346,
+      "version": "7",
+      "when": 1781862446000,
+      "tag": "0346_company_statutory_tier",
+      "breakpoints": true
+    },
+    {
+      "idx": 347,
+      "version": "7",
+      "when": 1781862447000,
+      "tag": "0347_usage_snapshot_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 348,
+      "version": "7",
+      "when": 1781862448000,
+      "tag": "0348_feedback_reporter_label",
+      "breakpoints": true
+    },
+    {
+      "idx": 349,
+      "version": "7",
+      "when": 1781862449000,
+      "tag": "0349_leave_type_carry_percent",
+      "breakpoints": true
+    },
+    {
+      "idx": 350,
+      "version": "7",
+      "when": 1781862450000,
+      "tag": "0350_tenant_closure_and_suspension_windows",
+      "breakpoints": true
+    },
+    {
+      "idx": 351,
+      "version": "7",
+      "when": 1781862451000,
+      "tag": "0351_platform_plane",
+      "breakpoints": true
+    },
+    {
+      "idx": 352,
+      "version": "7",
+      "when": 1781862452000,
+      "tag": "0352_leave_limit_period_and_negative_floor",
+      "breakpoints": true
+    },
+    {
+      "idx": 353,
+      "version": "7",
+      "when": 1781862453000,
+      "tag": "0353_leave_adjustment_batch",
+      "breakpoints": true
+    },
+    {
+      "idx": 354,
+      "version": "7",
+      "when": 1781862454000,
+      "tag": "0354_toil_accrual_request_approval_dates",
+      "breakpoints": true
+    },
+    {
+      "idx": 355,
+      "version": "7",
+      "when": 1781862455000,
+      "tag": "0355_employee_id_manual_override_default_on",
+      "breakpoints": true
+    },
+    {
+      "idx": 356,
+      "version": "7",
+      "when": 1781862456000,
+      "tag": "0356_disabled_spouse_and_child_relief_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 357,
+      "version": "7",
+      "when": 1781862457000,
+      "tag": "0357_leave_adjustment_batch_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 358,
+      "version": "7",
+      "when": 1781862458000,
+      "tag": "0358_leave_type_rounding_bands",
+      "breakpoints": true
+    },
+    {
+      "idx": 365,
+      "version": "7",
+      "when": 1781862465000,
+      "tag": "0365_leave_type_override_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 370,
+      "version": "7",
+      "when": 1781862470000,
+      "tag": "0370_drop_leave_type_expiry",
+      "breakpoints": true
+    },
+    {
+      "idx": 375,
+      "version": "7",
+      "when": 1781862475000,
+      "tag": "0375_leave_type_accrual_day_and_unconfigured",
+      "breakpoints": true
+    },
+    {
+      "idx": 376,
+      "version": "7",
+      "when": 1781862476000,
+      "tag": "0376_leave_type_earning_method_clearout",
+      "breakpoints": true
+    },
+    {
+      "idx": 380,
+      "version": "7",
+      "when": 1781862480000,
+      "tag": "0380_replacement_leave_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 381,
+      "version": "7",
+      "when": 1781862481000,
+      "tag": "0381_replacement_leave_request",
+      "breakpoints": true
+    },
+    {
+      "idx": 385,
+      "version": "7",
+      "when": 1781862485000,
+      "tag": "0385_leave_year_config_reset",
+      "breakpoints": true
+    },
+    {
+      "idx": 386,
+      "version": "7",
+      "when": 1781862486000,
+      "tag": "0386_carry_percent_clears_cap",
+      "breakpoints": true
+    },
+    {
+      "idx": 387,
+      "version": "7",
+      "when": 1781862487000,
+      "tag": "0387_leave_type_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 388,
+      "version": "7",
+      "when": 1781862488000,
+      "tag": "0388_employment_contract_information",
+      "breakpoints": true
+    },
+    {
+      "idx": 390,
+      "version": "7",
+      "when": 1781862490000,
+      "tag": "0390_notice_board",
+      "breakpoints": true
+    },
+    {
+      "idx": 391,
+      "version": "7",
+      "when": 1781862491000,
+      "tag": "0391_notice_dashboard_card",
+      "breakpoints": true
+    },
+    {
+      "idx": 392,
+      "version": "7",
+      "when": 1781862492000,
+      "tag": "0392_claim_draft_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 393,
+      "version": "7",
+      "when": 1781862493000,
+      "tag": "0393_pay_component_display_category",
+      "breakpoints": true
+    },
+    {
+      "idx": 394,
+      "version": "7",
+      "when": 1781862494000,
+      "tag": "0394_attendance_calc_stage1",
+      "breakpoints": true
+    },
+    {
+      "idx": 395,
+      "version": "7",
+      "when": 1781862495000,
+      "tag": "0395_attendance_ot_split_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 396,
+      "version": "7",
+      "when": 1781862496000,
+      "tag": "0396_entitlement_template_and_eligibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 397,
+      "version": "7",
+      "when": 1781862497000,
+      "tag": "0397_entitlement_reset_archive",
+      "breakpoints": true
+    },
+    {
+      "idx": 398,
+      "version": "7",
+      "when": 1781862498000,
+      "tag": "0398_entitlement_reset_archive_capture",
+      "breakpoints": true
+    },
+    {
+      "idx": 399,
+      "version": "7",
+      "when": 1781862499000,
+      "tag": "0399_leave_generation_run",
+      "breakpoints": true
+    },
+    {
+      "idx": 400,
+      "version": "7",
+      "when": 1781862500000,
+      "tag": "0400_leave_generation_run_item",
+      "breakpoints": true
+    },
+    {
+      "idx": 403,
+      "version": "7",
+      "when": 1781862503000,
+      "tag": "0403_payroll_recalc_mark",
+      "breakpoints": true
+    },
+    {
+      "idx": 404,
+      "version": "7",
+      "when": 1781862504000,
+      "tag": "0404_leave_calendar_off_dashboard",
+      "breakpoints": true
+    },
+    {
+      "idx": 406,
+      "version": "7",
+      "when": 1781862506000,
+      "tag": "0406_feedback_attachment_plan_stage",
+      "breakpoints": true
+    },
+    {
+      "idx": 408,
+      "version": "7",
+      "when": 1781862508000,
+      "tag": "0408_claim_mileage_rate_and_form_field",
+      "breakpoints": true
+    },
+    {
+      "idx": 409,
+      "version": "7",
+      "when": 1781862509000,
+      "tag": "0409_eligibility_rule_company_scoped_write",
+      "breakpoints": true
+    },
+    {
+      "idx": 410,
+      "version": "7",
+      "when": 1781862510000,
+      "tag": "0410_entitlement_reset_drop_old_layers",
+      "breakpoints": true
+    },
+    {
+      "idx": 411,
+      "version": "7",
+      "when": 1781862511000,
+      "tag": "0411_attendance_calc_trace",
+      "breakpoints": true
+    },
+    {
+      "idx": 413,
+      "version": "7",
+      "when": 1781862513000,
+      "tag": "0413_back_pay",
+      "breakpoints": true
+    },
+    {
+      "idx": 414,
+      "version": "7",
+      "when": 1781862514000,
+      "tag": "0414_rounding_bands_two_decimals",
+      "breakpoints": true
+    },
+    {
+      "idx": 415,
+      "version": "7",
+      "when": 1781862515000,
+      "tag": "0415_employee_draft_reserved_code",
+      "breakpoints": true
+    },
+    {
+      "idx": 416,
+      "version": "7",
+      "when": 1781862516000,
+      "tag": "0416_leave_ledger_reset_archive",
+      "breakpoints": true
+    },
+    {
+      "idx": 417,
+      "version": "7",
+      "when": 1781862517000,
+      "tag": "0417_shift_general_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 418,
+      "version": "7",
+      "when": 1781862518000,
+      "tag": "0418_shift_ot_window",
+      "breakpoints": true
+    },
+    {
+      "idx": 419,
+      "version": "7",
+      "when": 1781862519000,
+      "tag": "0419_clocking_location_radius_and_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 420,
+      "version": "7",
+      "when": 1781862520000,
+      "tag": "0420_location_branch",
+      "breakpoints": true
+    },
+    {
+      "idx": 421,
+      "version": "7",
+      "when": 1781862521000,
+      "tag": "0421_employment_shift_arrangement",
+      "breakpoints": true
+    },
+    {
+      "idx": 422,
+      "version": "7",
+      "when": 1781862522000,
+      "tag": "0422_payroll_policy_deduct_absent_days",
+      "breakpoints": true
+    },
+    {
+      "idx": 424,
+      "version": "7",
+      "when": 1781862524000,
+      "tag": "0424_plan_ot",
+      "breakpoints": true
+    },
+    {
+      "idx": 425,
+      "version": "7",
+      "when": 1781862525000,
+      "tag": "0425_payroll_anomaly",
+      "breakpoints": true
+    },
+    {
+      "idx": 426,
+      "version": "7",
+      "when": 1781862526000,
+      "tag": "0426_fixed_transaction_no_overlap",
+      "breakpoints": true
+    },
+    {
+      "idx": 427,
+      "version": "7",
+      "when": 1781862527000,
+      "tag": "0427_payroll_import_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 428,
+      "version": "7",
+      "when": 1781862528000,
+      "tag": "0428_claim_block_limit_and_mileage_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 429,
+      "version": "7",
+      "when": 1781862529000,
+      "tag": "0429_shift_cutoff_and_day_kinds",
+      "breakpoints": true
+    },
+    {
+      "idx": 430,
+      "version": "7",
+      "when": 1781862530000,
+      "tag": "0430_payroll_statutory_adjustment",
+      "breakpoints": true
+    },
+    {
+      "idx": 432,
+      "version": "7",
+      "when": 1781862532000,
+      "tag": "0432_individual_txn_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 433,
+      "version": "7",
+      "when": 1781862533000,
+      "tag": "0433_employee_list_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 434,
+      "version": "7",
+      "when": 1781862534000,
+      "tag": "0434_attendance_request_remark_kind_attachment",
+      "breakpoints": true
+    },
+    {
+      "idx": 435,
+      "version": "7",
+      "when": 1781862535000,
+      "tag": "0435_claim_policy_claim_item",
+      "breakpoints": true
+    },
+    {
+      "idx": 436,
+      "version": "7",
+      "when": 1781862536000,
+      "tag": "0436_roster_assignment_delete_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 437,
+      "version": "7",
+      "when": 1781862537000,
+      "tag": "0437_individual_txn_consumed",
+      "breakpoints": true
+    },
+    {
+      "idx": 438,
+      "version": "7",
+      "when": 1781862538000,
+      "tag": "0438_leave_shared_group_ess_placement",
+      "breakpoints": true
+    },
+    {
+      "idx": 439,
+      "version": "7",
+      "when": 1781862539000,
+      "tag": "0439_ot_rounding_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 440,
+      "version": "7",
+      "when": 1781862540000,
+      "tag": "0440_assignment_company",
+      "breakpoints": true
+    },
+    {
+      "idx": 441,
+      "version": "7",
+      "when": 1781862541000,
+      "tag": "0441_individual_txn_intended_cycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 443,
+      "version": "7",
+      "when": 1781862543000,
+      "tag": "0443_payroll_cycle_updated_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 446,
+      "version": "7",
+      "when": 1781862546000,
+      "tag": "0446_payslip_coverage_dates",
+      "breakpoints": true
+    },
+    {
+      "idx": 447,
+      "version": "7",
+      "when": 1781862547000,
+      "tag": "0447_leave_type_min_advance_day_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 448,
+      "version": "7",
+      "when": 1781862548000,
+      "tag": "0448_tp1_status_values",
+      "breakpoints": true
+    },
+    {
+      "idx": 449,
+      "version": "7",
+      "when": 1781862549000,
+      "tag": "0449_tp1_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 450,
+      "version": "7",
+      "when": 1781862550000,
+      "tag": "0450_statutory_old_ic_and_country_code",
+      "breakpoints": true
+    },
+    {
+      "idx": 451,
+      "version": "7",
+      "when": 1781862551000,
+      "tag": "0451_assistant_substrate",
+      "breakpoints": true
+    },
+    {
+      "idx": 452,
+      "version": "7",
+      "when": 1781862552000,
+      "tag": "0452_agent_proposal_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 453,
+      "version": "7",
+      "when": 1781862553000,
+      "tag": "0453_custom_report_app_grant",
+      "breakpoints": true
+    },
+    {
+      "idx": 454,
+      "version": "7",
+      "when": 1781862554000,
+      "tag": "0454_anomaly_finding_proposal_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 455,
+      "version": "7",
+      "when": 1781862555000,
+      "tag": "0455_domain_event_recent_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 456,
+      "version": "7",
+      "when": 1781862556000,
+      "tag": "0456_pay_item_orp_flags",
+      "breakpoints": true
+    },
+    {
+      "idx": 457,
+      "version": "7",
+      "when": 1781862557000,
+      "tag": "0457_shift_colour_flex_break",
+      "breakpoints": true
+    },
+    {
+      "idx": 458,
+      "version": "7",
+      "when": 1781862558000,
+      "tag": "0458_profile_change_decision_reason",
+      "breakpoints": true
+    },
+    {
+      "idx": 459,
+      "version": "7",
+      "when": 1781862559000,
+      "tag": "0459_clocking_location_shared",
+      "breakpoints": true
+    },
+    {
+      "idx": 460,
+      "version": "7",
+      "when": 1781862560000,
+      "tag": "0460_entitlement_reset_archive_layers",
+      "breakpoints": true
+    },
+    {
+      "idx": 461,
+      "version": "7",
+      "when": 1781862561000,
+      "tag": "0461_clocking_location_report_label",
+      "breakpoints": true
+    },
+    {
+      "idx": 462,
+      "version": "7",
+      "when": 1781862562000,
+      "tag": "0462_leave_type_default_entitlement_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 463,
+      "version": "7",
+      "when": 1781862563000,
+      "tag": "0463_recalc_audit_grade_and_effective_date",
+      "breakpoints": true
+    },
+    {
+      "idx": 464,
+      "version": "7",
+      "when": 1781862564000,
+      "tag": "0464_employment_attendance_rule_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 465,
+      "version": "7",
+      "when": 1781862565000,
+      "tag": "0465_tenant_suspension_window_control_plane",
+      "breakpoints": true
+    },
+    {
+      "idx": 466,
+      "version": "7",
+      "when": 1781862566000,
+      "tag": "0466_statutory_report_filing",
+      "breakpoints": true
+    },
+    {
+      "idx": 467,
+      "version": "7",
+      "when": 1781862567000,
+      "tag": "0467_leave_approval_step_fixed_approver",
+      "breakpoints": true
+    },
+    {
+      "idx": 468,
+      "version": "7",
+      "when": 1781862568000,
+      "tag": "0468_leave_approval_step_alternates",
+      "breakpoints": true
+    },
+    {
+      "idx": 469,
+      "version": "7",
+      "when": 1781862569000,
+      "tag": "0469_leave_credit_register",
+      "breakpoints": true
+    },
+    {
+      "idx": 470,
+      "version": "7",
+      "when": 1781862570000,
+      "tag": "0470_payroll_run_exists",
+      "breakpoints": true
+    },
+    {
+      "idx": 471,
+      "version": "7",
+      "when": 1781862571000,
+      "tag": "0471_cancel_approved_leave",
+      "breakpoints": true
+    },
+    {
+      "idx": 472,
+      "version": "7",
+      "when": 1781862572000,
+      "tag": "0472_own_leave_request_approvers",
+      "breakpoints": true
+    },
+    {
+      "idx": 473,
+      "version": "7",
+      "when": 1781862573000,
+      "tag": "0473_rounding_bands_inclusive_ranges",
+      "breakpoints": true
+    },
+    {
+      "idx": 474,
+      "version": "7",
+      "when": 1781862574000,
+      "tag": "0474_employment_card_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 475,
+      "version": "7",
+      "when": 1789903203991,
+      "tag": "0475_entitlement_rounding",
+      "breakpoints": true
+    },
+    {
+      "idx": 476,
+      "version": "7",
+      "when": 1789980188344,
+      "tag": "0476_pcb_payment",
+      "breakpoints": true
+    },
+    {
+      "idx": 479,
+      "version": "7",
+      "when": 1789980189344,
+      "tag": "0479_payroll_input_ot_derivation",
+      "breakpoints": true
+    },
+    {
+      "idx": 480,
+      "version": "7",
+      "when": 1789980190344,
+      "tag": "0480_employee_tp3",
+      "breakpoints": true
+    },
+    {
+      "idx": 482,
+      "version": "7",
+      "when": 1789980192344,
+      "tag": "0482_system_testing",
+      "breakpoints": true
+    },
+    {
+      "idx": 483,
+      "version": "7",
+      "when": 1789980193344,
+      "tag": "0483_schedule_group_working_week",
+      "breakpoints": true
+    },
+    {
+      "idx": 484,
+      "version": "7",
+      "when": 1789980194344,
+      "tag": "0484_location_drop_holiday_calendar",
+      "breakpoints": true
+    },
+    {
+      "idx": 485,
+      "version": "7",
+      "when": 1789980195344,
+      "tag": "0485_marriage_leave",
+      "breakpoints": true
+    },
+    {
+      "idx": 486,
+      "version": "7",
+      "when": 1789980196344,
+      "tag": "0486_toil_extended_hours_on_workday",
+      "breakpoints": true
+    },
+    {
+      "idx": 487,
+      "version": "7",
+      "when": 1789980197344,
+      "tag": "0487_leave_credit_claim_lines",
+      "breakpoints": true
+    },
+    {
+      "idx": 488,
+      "version": "7",
+      "when": 1789980198344,
+      "tag": "0488_tp3_section_d_lp",
+      "breakpoints": true
+    },
+    {
+      "idx": 489,
+      "version": "7",
+      "when": 1789980199344,
+      "tag": "0489_tp3_exemption_used",
+      "breakpoints": true
+    },
+    {
+      "idx": 490,
+      "version": "7",
+      "when": 1789980200344,
+      "tag": "0490_leave_history_import",
+      "breakpoints": true
+    },
+    {
+      "idx": 491,
+      "version": "7",
+      "when": 1789980201344,
+      "tag": "0491_epf_manual_amount",
+      "breakpoints": true
+    },
+    {
+      "idx": 492,
+      "version": "7",
+      "when": 1789980202344,
+      "tag": "0492_payslip_statutory_admin_or_self",
+      "breakpoints": true
+    },
+    {
+      "idx": 497,
+      "version": "7",
+      "when": 1789980207344,
+      "tag": "0497_leave_bf_import",
+      "breakpoints": true
+    },
+    {
+      "idx": 498,
+      "version": "7",
+      "when": 1789980208344,
+      "tag": "0498_own_reporting_managers",
+      "breakpoints": true
+    },
+    {
+      "idx": 499,
+      "version": "7",
+      "when": 1789980209344,
+      "tag": "0499_ea_signatory",
+      "breakpoints": true
+    },
+    {
+      "idx": 500,
+      "version": "7",
+      "when": 1790867765653,
+      "tag": "0500_attendance_clock_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 502,
+      "version": "7",
+      "when": 1790867765655,
+      "tag": "0502_payslip_information",
+      "breakpoints": true
+    },
+    {
+      "idx": 503,
+      "version": "7",
+      "when": 1790912363798,
+      "tag": "0503_employment_tax_scheme_my",
+      "breakpoints": true
+    },
+    {
+      "idx": 504,
+      "version": "7",
+      "when": 1790931526487,
+      "tag": "0504_tax_scheme_historical_employer",
+      "breakpoints": true
+    },
+    {
+      "idx": 505,
+      "version": "7",
+      "when": 1790933835608,
+      "tag": "0505_employment_tax_selection_my",
+      "breakpoints": true
+    },
+    {
+      "idx": 506,
+      "version": "7",
+      "when": 1790933835609,
+      "tag": "0506_pay_component_vola",
+      "breakpoints": true
+    },
+    {
+      "idx": 507,
+      "version": "7",
+      "when": 1790953010000,
+      "tag": "0507_attendance_attention_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 508,
+      "version": "7",
+      "when": 1790962962847,
+      "tag": "0508_my_team_authorized_subject_set",
+      "breakpoints": true
+    },
+    {
+      "idx": 509,
+      "version": "7",
+      "when": 1791004108592,
+      "tag": "0509_person_tax_circumstance",
+      "breakpoints": true
+    },
+    {
+      "idx": 510,
+      "version": "7",
+      "when": 1791210417875,
+      "tag": "0510_employee_draft_company_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 511,
+      "version": "7",
+      "when": 1791210418875,
+      "tag": "0511_company_delete_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 512,
+      "version": "7",
+      "when": 1791210419875,
+      "tag": "0512_own_replacement_request_deciders",
+      "breakpoints": true
+    },
+    {
+      "idx": 513,
+      "version": "7",
+      "when": 1791300000000,
+      "tag": "0513_payslip_information_payment_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 514,
+      "version": "7",
+      "when": 1791300001000,
+      "tag": "0514_fixed_transaction_payroll_cycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 515,
+      "version": "7",
+      "when": 1791400000000,
+      "tag": "0515_set_based_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 516,
+      "version": "7",
+      "when": 1791500000000,
+      "tag": "0516_lifecycle_module",
+      "breakpoints": true
+    },
+    {
+      "idx": 517,
+      "version": "7",
+      "when": 1791600000000,
+      "tag": "0517_clocking_location_companies",
+      "breakpoints": true
+    },
+    {
+      "idx": 518,
+      "version": "7",
+      "when": 1791700000000,
+      "tag": "0518_clocking_file_import",
+      "breakpoints": true
+    },
+    {
+      "idx": 519,
+      "version": "7",
+      "when": 1791800000000,
+      "tag": "0519_shift_flexible_break_to_rows",
+      "breakpoints": true
+    },
+    {
+      "idx": 520,
+      "version": "7",
+      "when": 1791900000000,
+      "tag": "0520_web_clocking_photo_setting",
+      "breakpoints": true
+    },
+    {
+      "idx": 521,
+      "version": "7",
+      "when": 1791900000001,
+      "tag": "0521_tenant_mobile_design",
+      "breakpoints": true
+    },
+    {
+      "idx": 522,
+      "version": "7",
+      "when": 1791900000002,
+      "tag": "0522_mobile_visual_composer",
+      "breakpoints": true
+    },
+    {
+      "idx": 523,
+      "version": "7",
+      "when": 1791900000003,
+      "tag": "0523_deployment_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 524,
+      "version": "7",
+      "when": 1791900000004,
+      "tag": "0524_rewards",
+      "breakpoints": true
+    },
+    {
+      "idx": 525,
+      "version": "7",
+      "when": 1791900000005,
+      "tag": "0525_identity_email_administration",
+      "breakpoints": true
+    },
+    {
+      "idx": 526,
+      "version": "7",
+      "when": 1791900000006,
+      "tag": "0526_manual_identity_enrollment",
+      "breakpoints": true
+    },
+    {
+      "idx": 527,
+      "version": "7",
+      "when": 1791900000007,
+      "tag": "0527_workflow_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 528,
+      "version": "7",
+      "when": 1791900000008,
+      "tag": "0528_attendance_punch_corrections",
+      "breakpoints": true
+    },
+    {
+      "idx": 529,
+      "version": "7",
+      "when": 1791900000009,
+      "tag": "0529_onehr_native",
+      "breakpoints": true
+    },
+    {
+      "idx": 530,
+      "version": "7",
+      "when": 1791900000010,
+      "tag": "0530_attendance_payroll_entity_protection",
+      "breakpoints": true
+    },
+    {
+      "idx": 531,
+      "version": "7",
+      "when": 1791900000011,
+      "tag": "0531_attendance_rotation",
+      "breakpoints": true
+    },
+    {
+      "idx": 532,
+      "version": "7",
+      "when": 1791900000012,
+      "tag": "0532_attendance_allowance_periods",
+      "breakpoints": true
+    },
+    {
+      "idx": 533,
+      "version": "7",
+      "when": 1791900000013,
+      "tag": "0533_attendance_approval_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 534,
+      "version": "7",
+      "when": 1791900000014,
+      "tag": "0534_persisted_audit_chain",
+      "breakpoints": true
+    },
+    {
+      "idx": 535,
+      "version": "7",
+      "when": 1791900000015,
+      "tag": "0535_hr_orchestrator",
+      "breakpoints": true
+    },
+    {
+      "idx": 536,
+      "version": "7",
+      "when": 1791900000016,
+      "tag": "0536_web_clock_optional_location",
+      "breakpoints": true
+    },
+    {
+      "idx": 537,
+      "version": "7",
+      "when": 1791900000017,
+      "tag": "0537_attendance_day_adjustments",
+      "breakpoints": true
+    },
+    {
+      "idx": 539,
+      "version": "7",
+      "when": 1791900000019,
+      "tag": "0539_clock_removal_and_location_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 540,
+      "version": "7",
+      "when": 1791900000020,
+      "tag": "0540_performance_journey_parity",
+      "breakpoints": true
+    },
+    {
+      "idx": 541,
+      "version": "7",
+      "when": 1791900000021,
+      "tag": "0541_ai_control_centre",
+      "breakpoints": true
+    },
+    {
+      "idx": 542,
+      "version": "7",
+      "when": 1791900000022,
+      "tag": "0542_account_email_failures",
+      "breakpoints": true
+    },
+    {
+      "idx": 543,
+      "version": "7",
+      "when": 1791900000023,
+      "tag": "0543_embedded_authentication",
+      "breakpoints": true
+    },
+    {
+      "idx": 544,
+      "version": "7",
+      "when": 1791900000024,
+      "tag": "0544_own_earned_credit_actors",
+      "breakpoints": true
+    },
+    {
+      "idx": 545,
+      "version": "7",
+      "when": 1791900000025,
+      "tag": "0545_schedule_configuration",
+      "breakpoints": true
+    },
+    {
+      "idx": 546,
+      "version": "7",
+      "when": 1791900000026,
+      "tag": "0546_employee_master_reports",
+      "breakpoints": true
+    },
+    {
+      "idx": 547,
+      "version": "7",
+      "when": 1791900000027,
+      "tag": "0547_replacement_public_holidays",
+      "breakpoints": true
+    },
+    {
+      "idx": 548,
+      "version": "7",
+      "when": 1791900000028,
+      "tag": "0548_attendance_hierarchy_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 549,
+      "version": "7",
+      "when": 1791900000029,
+      "tag": "0549_employee_master_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 550,
+      "version": "7",
+      "when": 1791900000030,
+      "tag": "0550_system_label_company_criteria",
+      "breakpoints": true
+    },
+    {
+      "idx": 551,
+      "version": "7",
+      "when": 1791900000031,
+      "tag": "0551_overtime_patterns",
+      "breakpoints": true
+    },
+    {
+      "idx": 552,
+      "version": "7",
+      "when": 1791900000032,
+      "tag": "0552_employee_master_internal_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 553,
+      "version": "7",
+      "when": 1791900000033,
+      "tag": "0553_report_occurrence_write_privileges",
+      "breakpoints": true
+    },
+    {
+      "idx": 558,
+      "version": "7",
+      "when": 1791900000038,
+      "tag": "0558_board_set_based_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 559,
+      "version": "7",
+      "when": 1791900000039,
+      "tag": "0559_replacement_holiday_company_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 560,
+      "version": "7",
+      "when": 1791900000040,
+      "tag": "0560_employee_profile_edit_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 561,
+      "version": "7",
+      "when": 1791900000041,
+      "tag": "0561_versioned_system_testing",
+      "breakpoints": true
+    },
+    {
+      "idx": 564,
+      "version": "7",
+      "when": 1791900000044,
+      "tag": "0564_onboarding_v31",
+      "breakpoints": true
+    },
+    {
+      "idx": 565,
+      "version": "7",
+      "when": 1791900000045,
+      "tag": "0565_pay_component_import_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 566,
+      "version": "7",
+      "when": 1791900000046,
+      "tag": "0566_label_import_tenant_code_collision",
+      "breakpoints": true
+    },
+    {
+      "idx": 568,
+      "version": "7",
+      "when": 1791900000048,
+      "tag": "0568_ai_user_default_allowance",
+      "breakpoints": true
+    },
+    {
+      "idx": 569,
+      "version": "7",
+      "when": 1791900000049,
+      "tag": "0569_employment_test_record",
+      "breakpoints": true
+    },
+    {
+      "idx": 570,
+      "version": "7",
+      "when": 1791900000050,
+      "tag": "0570_attendance_participant_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 571,
+      "version": "7",
+      "when": 1791900000051,
+      "tag": "0571_ess_profile_policy_routes",
+      "breakpoints": true
+    },
+    {
+      "idx": 572,
+      "version": "7",
+      "when": 1791900000052,
+      "tag": "0572_leave_payroll_followup",
+      "breakpoints": true
+    },
+    {
+      "idx": 573,
+      "version": "7",
+      "when": 1791900000053,
+      "tag": "0573_employment_holiday_calendar",
+      "breakpoints": true
+    },
+    {
+      "idx": 574,
+      "version": "7",
+      "when": 1791900000054,
+      "tag": "0574_card_assignment_import_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 575,
+      "version": "7",
+      "when": 1791900000055,
+      "tag": "0575_attendance_request_participant_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 576,
+      "version": "7",
+      "when": 1791900000056,
+      "tag": "0576_principal_snapshot_current",
+      "breakpoints": true
+    },
+    {
+      "idx": 578,
+      "version": "7",
+      "when": 1791900000058,
+      "tag": "0578_ess_photo_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 579,
+      "version": "7",
+      "when": 1791900000059,
+      "tag": "0579_configurable_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 580,
+      "version": "7",
+      "when": 1791900000060,
+      "tag": "0580_reward_policy_groups",
+      "breakpoints": true
+    },
+    {
+      "idx": 591,
+      "version": "7",
+      "when": 1791900000071,
+      "tag": "0591_my_tp3_private_drafts",
+      "breakpoints": true
+    },
+    {
+      "idx": 592,
+      "version": "7",
+      "when": 1791900000072,
+      "tag": "0592_attendance_workflow_v4",
+      "breakpoints": true
+    },
+    {
+      "idx": 593,
+      "version": "7",
+      "when": 1791900000073,
+      "tag": "0593_my_ea_source_eligibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 594,
+      "version": "7",
+      "when": 1791900000074,
+      "tag": "0581_attendance_group_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 595,
+      "version": "7",
+      "when": 1791900000075,
+      "tag": "0582_employee_home_notice_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 596,
+      "version": "7",
+      "when": 1791900000076,
+      "tag": "0583_employee_home_person_privacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 597,
+      "version": "7",
+      "when": 1791900000077,
+      "tag": "0584_employee_home_sharing",
+      "breakpoints": true
+    },
+    {
+      "idx": 598,
+      "version": "7",
+      "when": 1791900000078,
+      "tag": "0585_home_team_calendar",
+      "breakpoints": true
+    },
+    {
+      "idx": 599,
+      "version": "7",
+      "when": 1791900000079,
+      "tag": "0586_employee_home_greetings",
+      "breakpoints": true
+    },
+    {
+      "idx": 600,
+      "version": "7",
+      "when": 1791900000080,
+      "tag": "0590_attendance_policy_execution",
+      "breakpoints": true
+    },
+    {
+      "idx": 601,
+      "version": "7",
+      "when": 1791900000081,
+      "tag": "0594_people_nric_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 602,
+      "version": "7",
+      "when": 1791900000082,
+      "tag": "0595_job_description_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 603,
+      "version": "7",
+      "when": 1791900000083,
+      "tag": "0596_rewards_review_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 604,
+      "version": "7",
+      "when": 1791900000084,
+      "tag": "0597_employment_cost_allocations",
+      "breakpoints": true
+    },
+    {
+      "idx": 605,
+      "version": "7",
+      "when": 1791900000085,
+      "tag": "0598_cost_allocation_criteria_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 606,
+      "version": "7",
+      "when": 1791900000086,
+      "tag": "0599_board3_company_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 607,
+      "version": "7",
+      "when": 1792941214167,
+      "tag": "0600_login_presentation",
+      "breakpoints": true
+    },
+    {
+      "idx": 608,
+      "version": "7",
+      "when": 1792941214168,
+      "tag": "0601_operator_customer_workspace",
+      "breakpoints": true
+    },
+    {
+      "idx": 612,
+      "version": "7",
+      "when": 1792997586564,
+      "tag": "0612_standalone_user_enrollment",
+      "breakpoints": true
+    },
+    {
+      "idx": 613,
+      "version": "7",
+      "when": 1793023949843,
+      "tag": "0620_onehr_panel_manager_anonymity",
+      "breakpoints": true
+    },
+    {
+      "idx": 614,
+      "version": "7",
+      "when": 1793025815550,
+      "tag": "0610_performance_partner_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 615,
+      "version": "7",
+      "when": 1793025815551,
+      "tag": "0611_performance_partner_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 616,
+      "version": "7",
+      "when": 1793025815552,
+      "tag": "0602_payroll_history_revisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 617,
+      "version": "7",
+      "when": 1793025815553,
+      "tag": "0603_letter_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 618,
+      "version": "7",
+      "when": 1793109999999,
+      "tag": "0641_account_email_delivery_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 619,
+      "version": "7",
+      "when": 1793110000000,
+      "tag": "0640_onehr_plan_reviewer_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 620,
+      "version": "7",
+      "when": 1793120000000,
+      "tag": "0646_reward_calendar",
+      "breakpoints": true
+    },
+    {
+      "idx": 621,
+      "version": "7",
+      "when": 1793130000001,
+      "tag": "0621_ai_action_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 622,
+      "version": "7",
+      "when": 1793130000002,
+      "tag": "0629_lifecycle_acknowledgement_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 623,
+      "version": "7",
+      "when": 1793130000003,
+      "tag": "0630_testing_execution_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 624,
+      "version": "7",
+      "when": 1793130000004,
+      "tag": "0631_payroll_close_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 625,
+      "version": "7",
+      "when": 1793130000005,
+      "tag": "0632_statutory_source_ownership",
+      "breakpoints": true
+    },
+    {
+      "idx": 626,
+      "version": "7",
+      "when": 1793130000006,
+      "tag": "0622_own_leave_review_store",
+      "breakpoints": true
+    },
+    {
+      "idx": 627,
+      "version": "7",
+      "when": 1793130000007,
+      "tag": "0623_openrouter_provider_options",
+      "breakpoints": true
+    },
+    {
+      "idx": 628,
+      "version": "7",
+      "when": 1793130000008,
+      "tag": "0624_assistant_disclosure",
+      "breakpoints": true
+    },
+    {
+      "idx": 629,
+      "version": "7",
+      "when": 1793130000009,
+      "tag": "0625_provider_readiness",
+      "breakpoints": true
+    },
+    {
+      "idx": 630,
+      "version": "7",
+      "when": 1793130000010,
+      "tag": "0626_module_agent_feedback",
+      "breakpoints": true
+    },
+    {
+      "idx": 631,
+      "version": "7",
+      "when": 1793130000011,
+      "tag": "0627_module_agent_improvement",
+      "breakpoints": true
+    },
+    {
+      "idx": 632,
+      "version": "7",
+      "when": 1793130000012,
+      "tag": "0628_employee_import_ai_evaluation",
+      "breakpoints": true
+    },
+    {
+      "idx": 633,
+      "version": "7",
+      "when": 1793130000013,
+      "tag": "0642_module_specialist_diagnostic_playbook",
+      "breakpoints": true
+    },
+    {
+      "idx": 634,
+      "version": "7",
+      "when": 1793130000014,
+      "tag": "0648_ai_concurrency_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 635,
+      "version": "7",
+      "when": 1793130000015,
+      "tag": "0649_ai_provider_accounting_summary",
+      "breakpoints": true
+    },
+    {
+      "idx": 636,
+      "version": "7",
+      "when": 1793130000016,
+      "tag": "0650_ai_native_outcomes",
+      "breakpoints": true
+    },
+    {
+      "idx": 637,
+      "version": "7",
+      "when": 1793130000017,
+      "tag": "0651_ai_spend_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 638,
+      "version": "7",
+      "when": 1793130000018,
+      "tag": "0652_performance_provider_source_custody",
+      "breakpoints": true
+    },
+    {
+      "idx": 639,
+      "version": "7",
+      "when": 1793130000019,
+      "tag": "0653_claims_provider_source_custody",
+      "breakpoints": true
+    },
+    {
+      "idx": 640,
+      "version": "7",
+      "when": 1793130000020,
+      "tag": "0654_ai_optional_usd_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 641,
+      "version": "7",
+      "when": 1793130000021,
+      "tag": "0655_assistant_conversation_candidates",
+      "breakpoints": true
+    },
+    {
+      "idx": 642,
+      "version": "7",
+      "when": 1793130000022,
+      "tag": "0656_assistant_transcript_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 643,
+      "version": "7",
+      "when": 1793130000023,
+      "tag": "0657_ai_integration_repairs",
+      "breakpoints": true
+    },
+    {
+      "idx": 644,
+      "version": "7",
+      "when": 1793140000000,
+      "tag": "0660_payroll_history_adopt_ordinary",
+      "breakpoints": true
+    },
+    {
+      "idx": 645,
+      "version": "7",
+      "when": 1793150000000,
+      "tag": "0661_ai_gateway_provider",
+      "breakpoints": true
+    },
+    {
+      "idx": 646,
+      "version": "7",
+      "when": 1793160000000,
+      "tag": "0662_ai_group_allowance",
+      "breakpoints": true
+    },
+    {
+      "idx": 647,
+      "version": "7",
+      "when": 1793165000000,
+      "tag": "0668_people_duplicate_email_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 648,
+      "version": "7",
+      "when": 1793166000000,
+      "tag": "0658_assistant_exchange_continuation",
+      "breakpoints": true
+    },
+    {
+      "idx": 649,
+      "version": "7",
+      "when": 1793170000000,
+      "tag": "0663_onehr_leader_seats",
+      "breakpoints": true
+    },
+    {
+      "idx": 650,
+      "version": "7",
+      "when": 1793170000001,
+      "tag": "0664_onehr_hod_department_view",
+      "breakpoints": true
+    },
+    {
+      "idx": 651,
+      "version": "7",
+      "when": 1793170000002,
+      "tag": "0665_onehr_two_step_release",
+      "breakpoints": true
+    },
+    {
+      "idx": 652,
+      "version": "7",
+      "when": 1793170000004,
+      "tag": "0667_onehr_unit_exclusion",
+      "breakpoints": true
+    },
+    {
+      "idx": 653,
+      "version": "7",
+      "when": 1793170000005,
+      "tag": "0666_onehr_leader_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 654,
+      "version": "7",
+      "when": 1793190000000,
+      "tag": "0670_ai_orchestrator_wave1_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 655,
+      "version": "7",
+      "when": 1793260000000,
+      "tag": "0675_import_attempt_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 656,
+      "version": "7",
+      "when": 1793270000000,
+      "tag": "0676_employment_import_void",
+      "breakpoints": true
+    },
+    {
+      "idx": 657,
+      "version": "7",
+      "when": 1793275000000,
+      "tag": "0671_ai_orchestrator_wave1b_decisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 658,
+      "version": "7",
+      "when": 1793300000000,
+      "tag": "0613_request_abuse_budgets",
+      "breakpoints": true
+    },
+    {
+      "idx": 659,
+      "version": "7",
+      "when": 1793300000001,
+      "tag": "0633_geofence_reported_uncertainty",
+      "breakpoints": true
+    },
+    {
+      "idx": 660,
+      "version": "7",
+      "when": 1793300000002,
+      "tag": "0634_mobile_integrity_challenges",
+      "breakpoints": true
+    },
+    {
+      "idx": 661,
+      "version": "7",
+      "when": 1793300000003,
+      "tag": "0635_mobile_integrity_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 662,
+      "version": "7",
+      "when": 1793300000004,
+      "tag": "0636_mobile_android_key_custody",
+      "breakpoints": true
+    },
+    {
+      "idx": 663,
+      "version": "7",
+      "when": 1793300000005,
+      "tag": "0647_mobile_offline_attendance",
+      "breakpoints": true
+    },
+    {
+      "idx": 664,
+      "version": "7",
+      "when": 1793300000006,
+      "tag": "0673_mobile_push_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 665,
+      "version": "7",
+      "when": 1793310000000,
+      "tag": "0672_ai_agent_principal",
+      "breakpoints": true
+    },
+    {
+      "idx": 666,
+      "version": "7",
+      "when": 1793320000000,
+      "tag": "0677_ai_hr_prepared_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 667,
+      "version": "7",
+      "when": 1793330000000,
+      "tag": "0674_assistant_outcome_measurement",
+      "breakpoints": true
+    },
+    {
+      "idx": 668,
+      "version": "7",
+      "when": 1793330000004,
+      "tag": "0678_ai_connection_probe_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 669,
+      "version": "7",
+      "when": 1793330000005,
+      "tag": "0679_email_templates_r2",
+      "breakpoints": true
+    },
+    {
+      "idx": 670,
+      "version": "7",
+      "when": 1793330000006,
+      "tag": "0680_rewards_exclusions_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 671,
+      "version": "7",
+      "when": 1793330000007,
+      "tag": "0681_rewards_approval_participation",
+      "breakpoints": true
+    },
+    {
+      "idx": 672,
+      "version": "7",
+      "when": 1793330000008,
+      "tag": "0682_epf_manual_percentage",
+      "breakpoints": true
+    },
+    {
+      "idx": 673,
+      "version": "7",
+      "when": 1793330000009,
+      "tag": "0683_profile_field_approvals",
+      "breakpoints": true
+    },
+    {
+      "idx": 674,
+      "version": "7",
+      "when": 1793330000010,
+      "tag": "0684_ocbc_bank_payment_exports",
+      "breakpoints": true
+    },
+    {
+      "idx": 675,
+      "version": "7",
+      "when": 1793330000011,
+      "tag": "0685_bank_import_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 676,
+      "version": "7",
+      "when": 1793330000012,
+      "tag": "0686_ai_provider_custody_owner_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 677,
+      "version": "7",
+      "when": 1793330000013,
+      "tag": "0687_assistant_question_budget",
+      "breakpoints": true
+    },
+    {
+      "idx": 678,
+      "version": "7",
+      "when": 1793330000014,
+      "tag": "0688_payroll_txn_import_attempts",
+      "breakpoints": true
+    },
+    {
+      "idx": 679,
+      "version": "7",
+      "when": 1793330000015,
+      "tag": "0689_rewards_unit_governance",
+      "breakpoints": true
+    },
+    {
+      "idx": 680,
+      "version": "7",
+      "when": 1793330000016,
+      "tag": "0690_rewards_policy_pair_membership",
+      "breakpoints": true
+    },
+    {
+      "idx": 681,
+      "version": "7",
+      "when": 1793330000023,
+      "tag": "0697_epf_topup_percentage",
+      "breakpoints": true
+    },
+    {
+      "idx": 682,
+      "version": "7",
+      "when": 1793330000030,
+      "tag": "0698_information_only_corrections",
+      "breakpoints": true
+    },
+    {
+      "idx": 683,
+      "version": "7",
+      "when": 1793330000031,
+      "tag": "0696_feedback_menu_operator_switch",
+      "breakpoints": true
+    },
+    {
+      "idx": 684,
+      "version": "7",
+      "when": 1793330000050,
+      "tag": "0721_movement_settings_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 685,
+      "version": "7",
+      "when": 1793330000051,
+      "tag": "0722_movement_type_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 686,
+      "version": "7",
+      "when": 1793330000056,
+      "tag": "0713_lifecycle_v9",
+      "breakpoints": true
+    },
+    {
+      "idx": 687,
+      "version": "7",
+      "when": 1793330000057,
+      "tag": "0714_lifecycle_v9_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 688,
+      "version": "7",
+      "when": 1793330000058,
+      "tag": "0715_lifecycle_v9_email_assets",
+      "breakpoints": true
+    },
+    {
+      "idx": 689,
+      "version": "7",
+      "when": 1793330000059,
+      "tag": "0716_lifecycle_v9_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 690,
+      "version": "7",
+      "when": 1793330000060,
+      "tag": "0717_lifecycle_v9_delivery_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 691,
+      "version": "7",
+      "when": 1793330000061,
+      "tag": "0718_lifecycle_v9_employment_class",
+      "breakpoints": true
+    },
+    {
+      "idx": 692,
+      "version": "7",
+      "when": 1793330000062,
+      "tag": "0719_lifecycle_v9_business_recipients",
+      "breakpoints": true
+    },
+    {
+      "idx": 693,
+      "version": "7",
+      "when": 1793330000063,
+      "tag": "0720_lifecycle_v9_self_equipment",
+      "breakpoints": true
+    },
+    {
+      "idx": 694,
+      "version": "7",
+      "when": 1793330000065,
+      "tag": "0728_feedback_release_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 695,
+      "version": "7",
+      "when": 1793330000075,
+      "tag": "0691_bank_import_point_read",
+      "breakpoints": true
+    }
+  ]
+}

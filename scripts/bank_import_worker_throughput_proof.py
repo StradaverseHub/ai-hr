@@ -87,7 +87,23 @@ def ordinary_source_ledger(source):
         expected.append({'created_at':str(when),'hash':file_hash(path)})
     return {'kind':'FRESH_ORDINARY_SOURCE_JOURNAL_NOT_STAGING_LEDGER','rows':len(expected),'sha256':digest(json.dumps(expected,sort_keys=True,separators=(',',':')).encode()),'journalSha256':digest(raw)}
 
+def validate_581_policy_contract(raw,ledger,bank_sql_hash):
+    check(isinstance(raw,bytes) and digest(raw)=='0ec4efea88ff081124c96922f3f84988e4dc1e082a7e46d25d2ae7b59550137e','unknown 581-entry raw source journal refused')
+    journal=json.loads(raw);entries=journal['entries']
+    check(isinstance(entries,list) and len(entries)==581 and digest(canonical(entries[:580]))=='85d457d4d2ab8d616ef1ddfa245559038f45754da3560b126d690c701ba740a8','exact complete 580-entry predecessor required')
+    tail=[{'idx':693,'version':'7','when':1793330000063,'tag':'0720_lifecycle_v9_self_equipment','breakpoints':True},{'idx':694,'version':'7','when':1793330000065,'tag':'0728_feedback_release_evidence','breakpoints':True},{'idx':695,'version':'7','when':1793330000075,'tag':'0691_bank_import_point_read','breakpoints':True}]
+    check(exact(entries[-3:],tail) and [i for i,row in enumerate(entries) if row.get('tag')=='0691_bank_import_point_read']==[580],'exact registered V9/Feedback/Bank tail required')
+    expected={'kind':'FRESH_ORDINARY_SOURCE_JOURNAL_NOT_STAGING_LEDGER','rows':581,'sha256':'38d86c3d2a32cc1203ca8f6456d43da4ee4c1dd65a424f25cdda6881920a7973','journalSha256':'0ec4efea88ff081124c96922f3f84988e4dc1e082a7e46d25d2ae7b59550137e'}
+    check(exact(ledger,expected),'complete 581-entry actual ordinary SQL ledger differs')
+    check(bank_sql_hash=='be6f8d38850fadd9151d58ea7476d8f60e09a0bf2b2b078e0196f4cb90c5bfe9','registered 581-contract Bank SQL bytes differ')
+
 def require_registered_policy(source):
+    raw=(Path(source)/'db/migrations/meta/_journal.json').read_bytes()
+    if len(json.loads(raw)['entries'])==581:
+        # This finite alternative is fed by ALL actual source SQL bytes, never a
+        # staging ledger, count-only waiver or a guessed final application SHA.
+        validate_581_policy_contract(raw,ordinary_source_ledger(source),file_hash(Path(source)/'db/migrations/0691_bank_import_point_read.sql'))
+        return
     entries=json.loads((Path(source)/'db/migrations/meta/_journal.json').read_bytes())['entries']
     matches=[i for i,row in enumerate(entries) if row['tag']=='0691_bank_import_point_read']
     check(len(matches)==1 and matches[0]==566,'registered policy must follow the complete ordinary 566-entry predecessor')
