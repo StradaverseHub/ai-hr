@@ -15,7 +15,7 @@ const db=postgres(process.env.MIGRATION_DATABASE_URL,{max:2});
 const agent=new https.Agent({keepAlive:true,maxSockets:600,rejectUnauthorized:false,
  lookup:(_host,options,callback)=>options.all?callback(null,[{address:'127.0.0.1',family:4}]):callback(null,'127.0.0.1',4)});
 const report={kind:'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:500,tenants:2,companies:10,startedAt:new Date().toISOString(),
- assumptions:{arrivalWindowMs:10000,thinkTimeMs:1000,tls:'fixture-only self-signed localhost',browserContexts:6,loginEnrollmentLoad:false},
+ assumptions:{arrivalWindowMs:10000,thinkTimeMs:1000,tls:'fixture-only self-signed localhost',browserContexts:6,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
  coverage:[],boundaries:[],browser:[],phases:[],functionalErrors:[],browserErrors:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
 const samples=[];
@@ -35,7 +35,7 @@ async function request(user,path,fields,expectedStatus=200,record=true,actionHea
  if(record)samples.push({role:user?.role??'anonymous',route:path.split('?')[0],method:fields?'POST':'GET',status:response.status,durationMs:response.durationMs,ttfbMs:response.ttfbMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});
  assert.equal(response.status,expectedStatus,`Unexpected HTTP status for ${path.split('?')[0]}`);
  if(!fields&&expectedStatus===200&&!path.startsWith('/api/')){
-  assert(!response.content.includes('NEXT_HTTP_ERROR_FALLBACK;500'),'server error boundary');
+  assert(!/NEXT_HTTP_ERROR_FALLBACK;(404|500)/.test(response.content),'streamed error boundary');
   assert(response.content.includes(user.name),'signed-in principal marker missing');
   assert(!response.content.includes('PERF Person '+String(user.tenant?0:250).padStart(4,'0')),'cross-tenant person leaked');
  }
@@ -52,14 +52,14 @@ async function databaseSnapshot(label){
  writeFileSync(join(out,'database-'+label+'.json'),JSON.stringify({settings,statements,active},null,2));
 }
 const employee=fixture.users.find(u=>u.role==='employee'),hr=fixture.users.find(u=>u.role==='companyHR'),group=fixture.users.find(u=>u.role==='groupHR'),manager=fixture.users.find(u=>u.role==='manager');
-const employeeRoutes=['/','/me','/claims','/leave','/attendance/individual','/me/payslip','/notices','/performance/my','/lifecycle/me'];
+const employeeRoutes=['/','/me','/claims','/leave','/attendance/individual','/me/payslip','/notices','/performance/home','/lifecycle/me'];
 const hrRoutes=['/admin/personnel','/attendance','/payroll','/reports','/reports/employee-master','/lifecycle/onboarding','/lifecycle/offboarding','/roster','/letters/register','/performance','/rewards','/system-testing','/feedback','/knowledge-base','/control-tower','/admin/settings/movement'];
 let browser,sampling,contextTemplates;
 try{
  save();await db`select pg_stat_statements_reset()`;
  const anonymous=await request(null,'/claims',undefined,307,false);assert(String(anonymous.headers.location).includes('/login'));report.boundaries.push({kind:'anonymous',passed:true});
  for(const user of [employee,manager,hr,group]){
-  const routes=user===employee?employeeRoutes:user===manager?['/approvals','/approvals/history','/performance/team']:hrRoutes;
+  const routes=user===employee?employeeRoutes:user===manager?['/approvals','/approvals/history','/performance/home']:hrRoutes;
   for(const route of routes){
    const diagnostic=setTimeout(()=>{databaseSnapshot('slow-pilot').catch(()=>{});},10000);
    try{const response=await request(user,route);report.coverage.push({role:user.role,route,status:'passed',durationMs:response.durationMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});}
@@ -78,13 +78,14 @@ try{
  async function visit(page,user,path,phase='baseline'){
   const start=performance.now();const response=await page.goto(base+path,{waitUntil:'networkidle',timeout:90000});assert.equal(response.status(),200);
   assert(!new URL(page.url()).pathname.startsWith('/login'));await page.locator('main').waitFor();assert((await page.locator('body').innerText()).includes(user.name));
-  const heading=(await page.locator('h1').allTextContents()).join(' ').trim();assert(heading.length>0,'missing page heading');
+  const heading=(await page.locator('h1').allTextContents()).join(' ').trim();assert(heading.length>0&&!/^404\b/.test(heading),'missing or not-found page heading');
+  if(['/claims','/admin/personnel','/payroll'].includes(path))assert(await page.locator('main tbody tr').count()>0,'expected fictional table rows');
   const timing=await page.evaluate(()=>{const n=performance.getEntriesByType('navigation')[0];return {ttfbMs:n.responseStart-n.requestStart,domInteractiveMs:n.domInteractive,decodedBytes:n.decodedBodySize,transferBytes:n.transferSize};});
   report.browser.push({phase,role:user.role,path,heading,elapsedMs:performance.now()-start,...timing});save();
  }
  for(const user of [employee,manager,hr,group,fixture.users[254],fixture.users[251]]){
   const ctx=await context(user),page=await ctx.newPage();page.on('pageerror',error=>report.browserErrors.push({role:user.role,error:error.name+': '+error.message.slice(0,150)}));page.on('console',message=>{if(message.type()==='error')report.browserErrors.push({role:user.role,error:message.text().slice(0,150)});});
-  for(const route of user.role==='employee'?['/claims','/leave','/attendance/individual']:user.role==='manager'?['/approvals','/performance/team']:['/admin/personnel','/payroll','/lifecycle/onboarding'])await visit(page,user,route);
+  for(const route of user.role==='employee'?['/claims','/leave','/attendance/individual']:user.role==='manager'?['/approvals','/performance/home']:['/admin/personnel','/payroll','/lifecycle/onboarding'])await visit(page,user,route);
   await page.screenshot({path:join(out,'browser-'+user.index+'.png'),fullPage:false});await ctx.close();
  }
  // Capture progressive-enhancement action metadata from the actual built form. No hardcoded action ID.
@@ -93,16 +94,16 @@ try{
   const req=response.request();const raw=req.postDataBuffer();assert(raw,'missing browser action payload');
   const form=await new Request(base+'/claims',{method:'POST',headers:{'Content-Type':req.headers()['content-type']},body:raw}).formData();
   const fields=Object.fromEntries([...form].filter(([,value])=>typeof value==='string'));
-  const key=Object.keys(fields).find(key=>key.endsWith('_claimTypeId')||key.endsWith('_id'));
+  const key=Object.keys(fields).find(key=>key==='claimTypeId'||key==='id'||key.endsWith('_claimTypeId')||key.endsWith('_id'));
   assert(key,'unrecognized real browser action fields');
-  const suffix=key.endsWith('_claimTypeId')?'claimTypeId':'id',prefix=key.slice(0,-suffix.length);
+  const suffix=key.endsWith('claimTypeId')?'claimTypeId':'id',prefix=key.slice(0,-suffix.length);
   const headers={};for(const key of ['accept','next-action','next-router-state-tree'])if(req.headers()[key])headers[key]=req.headers()[key];
   assert(headers['next-action'],'browser server action header missing');
   return {fields,prefix,headers,status:response.status()};
  }
  const browserAction=()=>page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/claims');
  await page.locator('[name="claimTypeId"]').selectOption(employee.claimTypeId);await page.locator('[name="amount"]').fill('1');await page.locator('[name="incurredOn"]').fill(fixture.today);
- await page.locator('[name="description"]').fill('PERF_BROWSER_DRAFT');
+ await page.locator('textarea[name="description"]').fill('PERF_BROWSER_DRAFT');
  const creating=browserAction();await page.locator('button[name="intent"][value="draft"]').click();const createTemplate=await capturedAction(await creating);
  await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});
  const [draft]=await db`select id from claim_request where employment_id=${employee.employmentId}::uuid and status='draft' and description='PERF_BROWSER_DRAFT'`;
@@ -126,12 +127,12 @@ try{
   const ctx=await context(user),page=await ctx.newPage();
   page.on('pageerror',error=>report.browserErrors.push({role:user.role,phase:'loaded',error:error.message.slice(0,150)}));
   page.on('console',message=>{if(message.type()==='error')report.browserErrors.push({role:user.role,phase:'loaded',error:message.text().slice(0,150)});});
-  try{for(const route of user.role==='employee'?['/claims','/leave','/attendance/individual']:user.role==='manager'?['/approvals','/claims','/performance/team']:['/admin/personnel','/payroll','/claims']){
+  try{for(const route of user.role==='employee'?['/claims','/leave','/attendance/individual']:user.role==='manager'?['/approvals','/claims','/performance/home']:['/admin/personnel','/payroll','/claims']){
    await visit(page,user,route,'loaded');await pause(1000);
   }}finally{await ctx.close();}
  }));
  const results=await Promise.allSettled(fixture.users.map(async(user,i)=>{
-  await pause(i*20);const routes=user.role==='employee'?['/me','/claims','/leave']:user.role==='manager'?['/approvals','/claims','/performance/team']:['/admin/personnel','/payroll','/claims'];
+  await pause(i*20);const routes=user.role==='employee'?['/me','/claims','/leave']:user.role==='manager'?['/approvals','/claims','/performance/home']:['/admin/personnel','/payroll','/claims'];
   for(const route of routes){await request(user,route);await pause(1000);}
   const description='PERF_HTTP_'+i;
   const template=contextTemplates.createTemplate,fields={...template.fields};
