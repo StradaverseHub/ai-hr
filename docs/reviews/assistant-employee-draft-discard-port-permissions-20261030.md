@@ -69,7 +69,7 @@ USING (
   AND tenant_id=app.current_tenant_id()
   AND user_id=app.current_user_id()
   AND state='awaiting_confirmation'
-  AND expires_at>clock_timestamp()
+  AND expires_at>pg_catalog.clock_timestamp()
   AND app.is_admin()
   AND app.principal_snapshot_current()
   AND EXISTS (
@@ -88,7 +88,7 @@ USING (
   AND assistant_own_leave_review.tenant_id=app.current_tenant_id()
   AND assistant_own_leave_review.user_id=app.current_user_id()
   AND assistant_own_leave_review.state='awaiting_confirmation'
-  AND assistant_own_leave_review.expires_at>clock_timestamp()
+  AND assistant_own_leave_review.expires_at>pg_catalog.clock_timestamp()
   AND assistant_own_leave_review.draft_discard_deleted_digest IS NULL
   AND assistant_own_leave_review.draft_discard_delete_xid IS NULL
   AND app.is_admin()
@@ -104,7 +104,7 @@ WITH CHECK (
   AND assistant_own_leave_review.tenant_id=app.current_tenant_id()
   AND assistant_own_leave_review.user_id=app.current_user_id()
   AND assistant_own_leave_review.state='awaiting_confirmation'
-  AND assistant_own_leave_review.expires_at>clock_timestamp()
+  AND assistant_own_leave_review.expires_at>pg_catalog.clock_timestamp()
   AND assistant_own_leave_review.draft_discard_deleted_digest IS NOT NULL
   AND assistant_own_leave_review.draft_discard_deleted_digest
       =assistant_own_leave_review.draft_discard_source_digest
@@ -163,7 +163,7 @@ BEGIN
     WHERE r.action_kind='employees.draft.discard'
       AND r.receipt_subject_kind='employee_draft' AND r.receipt_subject_id=p_draft
       AND r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id()
-      AND r.state='awaiting_confirmation' AND r.expires_at>clock_timestamp()
+      AND r.state='awaiting_confirmation' AND r.expires_at>pg_catalog.clock_timestamp()
       AND r.draft_discard_source_digest IS NOT NULL
       AND r.draft_discard_source_xmin IS NOT NULL
       AND r.draft_discard_source_ctid IS NOT NULL
@@ -182,14 +182,14 @@ BEGIN
   END LOOP;
 
   -- Schema drift disables proof capture, never the ordinary native GUI DELETE.
-  SELECT array_agg(a.attname::text ORDER BY a.attnum) INTO actual_columns
+  SELECT pg_catalog.array_agg(a.attname::text ORDER BY a.attnum) INTO actual_columns
   FROM pg_catalog.pg_attribute a
   WHERE a.attrelid='public.employee_draft'::regclass
     AND a.attnum>0 AND NOT a.attisdropped;
   -- IMPORTANT: physical order must be verified from the eventual deployment catalog.
   -- Compare sorted names here to avoid making ORM declaration order a physical-order assumption.
-  source_shape_ok := (SELECT array_agg(n ORDER BY n) FROM unnest(actual_columns) n) IS NOT DISTINCT FROM
-     (SELECT array_agg(n ORDER BY n) FROM unnest(ARRAY[
+  source_shape_ok := (SELECT pg_catalog.array_agg(n ORDER BY n) FROM pg_catalog.unnest(actual_columns) n) IS NOT DISTINCT FROM
+     (SELECT pg_catalog.array_agg(n ORDER BY n) FROM pg_catalog.unnest(ARRAY[
        'id','tenant_id','company_id','created_by_person_id','label','data','current_step',
        'reserved_employee_code','reserved_at','reserved_config_id','reserved_number',
        'created_at','updated_at']::text[]) n);
@@ -213,21 +213,21 @@ BEGIN
     RETURN;
   END IF;
   -- Domain/version plus fourteen exact OLD values. UTC microseconds are session-independent.
-  source_bytes:=convert_to(jsonb_build_array('native-employee-draft-row:v1',jsonb_build_array(
+  source_bytes:=pg_catalog.convert_to(pg_catalog.jsonb_build_array('native-employee-draft-row:v1',pg_catalog.jsonb_build_array(
     deleted.id,deleted.tenant_id,deleted.company_id,deleted.created_by_person_id,
     deleted.label,deleted.data,deleted.current_step,deleted.reserved_employee_code,
-    to_char(deleted.reserved_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+    pg_catalog.to_char(deleted.reserved_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
     deleted.reserved_config_id,deleted.reserved_number,
-    to_char(deleted.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
-    to_char(deleted.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+    pg_catalog.to_char(deleted.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+    pg_catalog.to_char(deleted.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
     deleted.source_xmin
   ))::text,'UTF8');
-  IF octet_length(source_bytes)>1048576 THEN
+  IF pg_catalog.octet_length(source_bytes)>1048576 THEN
     -- Native deletion still succeeds without proof; Assistant must refuse missing stamp and rollback.
     RETURN QUERY SELECT deleted.id::uuid;
     RETURN;
   END IF;
-  source_digest:=encode(sha256(source_bytes),'hex');
+  source_digest:=pg_catalog.encode(pg_catalog.sha256(source_bytes),'hex');
 
   -- Native GUI calls can have no matching current-user review. That is not an error.
   -- Source digest includes actual deleted OLD fields+xmin; a prior SELECT cannot stamp.
@@ -241,7 +241,7 @@ BEGIN
     AND r.tenant_id=deleted.tenant_id AND r.tenant_id=app.current_tenant_id()
     AND r.user_id=app.current_user_id()
     AND r.company_id IS NOT DISTINCT FROM deleted.company_id
-    AND r.state='awaiting_confirmation' AND r.expires_at>clock_timestamp()
+    AND r.state='awaiting_confirmation' AND r.expires_at>pg_catalog.clock_timestamp()
     AND r.draft_discard_source_digest=candidate_digest
     AND candidate_digest=source_digest
     AND r.draft_discard_source_xmin=candidate_xmin
@@ -426,3 +426,17 @@ Open source-review items are the SQL-owned same-snapshot prepare context/cheap m
 The fenced RLS prototype rechecks clock_timestamp expiry in UPDATE WITH CHECK. Review the expiry-boundary behavior before assembly: capture is optional for an ordinary native GUI discard, so an elapsed review deadline must not turn an otherwise authorized native deletion into a new failure merely because it crosses during stamping. The final completion owner must still enforce the actual deadline. The child role cannot change expires_at; use that immutability and the old-row eligibility check rather than treating this unfinished predicate as approved.
 
 An additive clearing candidate is a private new-kind-only AFTER INSERT hook on the existing protected assistant_review_erasure_intent. It could clear source/witness fields for the intent's admitted review_ids even when a completed review body was already removed. This is under independent review, not implemented: prove the existing canonical erasure admission and deferred actual-audit obligations, and allow the invoker guard's owner-only clearing branch only when that protected intent covers the row. Do not infer completed erasure from a body DELETE alone or grant the port role access to privacy intents.
+
+
+## Independently checked privacy-hook integration conditions
+
+Read-only review of the current0622 owner confirms that its redaction captures associated review IDs, including completed rows whose bodies are already gone; it retains actor/person/company bindings, removes bodies and private digests, then inserts the protected assistant_review_erasure_intent. An additive private AFTER INSERT hook on that intent is therefore a viable integration point. No hook is implemented here.
+
+- The hook must preserve generic cleanup that happens before the intent is inserted. A pending row may already be refused and its witness retired at that point.
+- A completed row must be allowed to clear its entire private source/witness tuple irreversibly. The guard and final CHECKs must allow the erased completed shape; recovery then becomes unavailable.
+- The hook cannot require event_id immediately: the canonical owner binds the actual erasure audit later, and existing deferred obligations must remain unchanged so missing audit rolls the whole transaction back.
+- Match the admitted review IDs and erased actor PERSON, not the erasing operator's own PERSON. Do not newly require a top-level tuple xmin for the privacy intent: canonical erasure may legitimately use a child savepoint. This differs from new discard completion's deliberate top-level deletion requirement.
+- If the invoker guard consults the protected intent for completed clearing, procedurally require the actual ledger-owner role before that SELECT. The child-port stamp branch must exit first, so no privacy-intent privilege is granted to app or the port role.
+- Proof-only clearing can occur when the canonical erased-body count is zero. Preserve that count; do not fake a deleted body or redefine the native audit result.
+
+All built-in calls in the fenced runtime examples are explicitly pg_catalog-qualified to avoid introducing overload lookup through a writable public schema. The final role/schema catalog review must still consider PUBLIC and inherited CREATE privileges, and the real native helper environment; a search_path declaration alone is not a privilege attestation.
