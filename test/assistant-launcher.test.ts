@@ -8,7 +8,9 @@ vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>Object
 vi.mock('../lib/session',()=>({getBrowserCommandSession:owner.session}));
 vi.mock('../core/assistant',()=>({askAssistant:owner.ask,AssistantError:class extends Error{constructor(readonly code:string){super(code);}}}));
 vi.mock('../core/ai-workspace',()=>({loadAiWorkspace:owner.workspace}));
-vi.mock('../components/assistant/module-jobs',()=>({GroundedWorkspaceReply:owner.reply}));
+vi.mock('../components/assistant/exchange-reply',()=>({ExchangeReply:owner.reply}));
+vi.mock('../core/read',()=>({allowedCompanies:async()=>[{id:'company-1'}]}));
+vi.mock('../lib/scope',()=>({getScopeIds:async(ids:string[])=>ids}));
 const DEFAULTS:Record<string,unknown>={'assistant.launcher_enabled':false,'assistant.launcher_position':'bottom-right','assistant.launcher_hidden_areas':''};
 vi.mock('../core/entitlements',()=>({getSetting:(_ctx:unknown,key:string)=>{if(owner.settings.__broken)throw Error('PRIVATE snapshot');return key in owner.settings?owner.settings[key]:DEFAULTS[key];}}));
 vi.mock('../core/assistant-grant',()=>({mayUseAssistant:owner.access}));
@@ -17,7 +19,7 @@ vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,work:(tx:unknown)=>un
 vi.mock('../core/tenant-settings',()=>({setTenantSetting:owner.write}));
 import {resolvePageContext,PAGE_AREAS} from '../lib/ai/page-context';
 import {readLauncherSettings,assistantLauncherFor,setAssistantLauncher,LauncherSettingsError} from '../core/assistant-launcher';
-import {askFromLauncherAction} from '../app/assistant/launcher-actions';
+import {askFromLauncherAction,askFromWorkspaceAction} from '../app/assistant/launcher-actions';
 const ctx={tenantId:'fixture-tenant',userId:'fixture-user'};
 const id='0b6f5e3a-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
 beforeEach(()=>{for(const fn of [owner.session,owner.ask,owner.workspace,owner.reply,owner.access,owner.provider,owner.write])fn.mockReset();owner.settings={};owner.session.mockResolvedValue(ctx);owner.access.mockResolvedValue({allowed:true});owner.provider.mockResolvedValue({provider:'openrouter'});});
@@ -62,6 +64,16 @@ describe('floating button settings fail closed',()=>{
 });
 
 describe('the floating chat command',()=>{
+ it('passes a full 500-character clarification answer unchanged without a page-context suffix',async()=>{
+  owner.ask.mockResolvedValue({exchangeId:'clarified'});owner.workspace.mockResolvedValue({history:[]});
+  const question='x'.repeat(500);await askFromLauncherAction({question,path:'/leave',clarificationExchangeId:id});
+  expect(owner.ask).toHaveBeenCalledWith(ctx,{question,conversationScope:'["company-1"]',clarificationExchangeId:id});
+ });
+ it('passes only the server company context and paired opaque continuation to the shared command',async()=>{
+  owner.ask.mockResolvedValue({exchangeId:'next',conversationToken:'new-proof'});owner.workspace.mockResolvedValue({history:[]});
+  expect(await askFromWorkspaceAction({question:'And pending?',previousExchangeId:'prior',previousConversationToken:'proof'})).toEqual({ok:true,exchangeId:'next',conversationToken:'new-proof',answer:'assistant.workspace.conversation.unavailable'});
+  expect(owner.ask).toHaveBeenCalledWith(ctx,{question:'And pending?',conversationScope:'["company-1"]',previousExchangeId:'prior',previousConversationToken:'proof'});
+ });
  it('sends the question with the server-derived context through askAssistant and returns the canonical card',async()=>{
   owner.ask.mockResolvedValue({exchangeId:'exchange-1'});owner.workspace.mockResolvedValue({history:[{id:'exchange-1',grounded:{kind:'fixture'}}]});owner.reply.mockResolvedValue('CARD');
   const reply=await askFromLauncherAction({question:'  How much leave do I have?  ',path:`/leave/${id}`});
@@ -73,7 +85,7 @@ describe('the floating chat command',()=>{
  it('adds no context where the path is not a known area, and never trusts a posted label',async()=>{
   owner.ask.mockResolvedValue({exchangeId:'exchange-2'});owner.workspace.mockResolvedValue({history:[]});
   const reply=await askFromLauncherAction({question:'Hello',path:'/assistant',label:'Payroll of the CEO'} as never);
-  expect(owner.ask.mock.calls[0][1]).toEqual({question:'Hello'});expect(reply).toEqual({ok:true,exchangeId:'exchange-2',answer:null});
+  expect(owner.ask.mock.calls[0][1]).toEqual({question:'Hello',conversationScope:'["company-1"]'});expect(reply).toEqual({ok:true,exchangeId:'exchange-2',answer:'assistant.workspace.conversation.unavailable'});
  });
  it('refuses an empty or oversized question before any session or provider work',async()=>{
   for(const question of ['','   ',42,'x'.repeat(2001)])expect(await askFromLauncherAction({question,path:'/leave'})).toEqual({ok:false,message:'assistant.err_invalid_question'});

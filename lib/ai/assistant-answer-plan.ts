@@ -33,6 +33,7 @@ export type AssistantAnswerBlock=Readonly<{kind:'fact';read:number;card:number;f
  Readonly<{kind:'explanation';read:number;card:number|null;code:AssistantExplanationCode}>;
 export type AssistantAnswerPlan=Readonly<{version:1;mode:'answer';blocks:readonly AssistantAnswerBlock[]}>|
  Readonly<{version:1;mode:'clarify';slot:AssistantClarificationSlot}>|
+ Readonly<{version:1;mode:'social';code:'greeting'|'thanks'}>|
  Readonly<{version:1;mode:'insufficient';code:'no_verified_facts'|'unsupported_explanation'}>|
  Readonly<{version:1;mode:'refuse';code:'unsupported_request'|'human_review_required'}>|
  /** ADR-0151 §4.3: a suggestion only. It names a declared, implemented, proposable action and typed
@@ -40,9 +41,19 @@ export type AssistantAnswerPlan=Readonly<{version:1;mode:'answer';blocks:readonl
   * the caller can currently read. The card resolves hints against the caller's own fresh choices. */
  Readonly<{version:1;mode:'propose';action:AssistantProposableAction;hints:AssistantProposalHints}>;
 /** Current caller facts the propose mode needs; built by the caller's own source owner, never posted. */
-export type AssistantAnswerAdjudication=Readonly<{readableModules?:readonly AgentModuleCode[]}>;
+export type AssistantAnswerAdjudication=Readonly<{readableModules?:readonly AgentModuleCode[];question?:string}>;
 export type AssistantAnswerRead=Readonly<{read:number;presentation:JobPresentation;
  explanations:readonly Readonly<{card:number|null;code:AssistantExplanationCode}>[]}>;
+
+/** Only standalone pleasantries may use a source-free social reply. Mixed requests still need
+ * normal factual adjudication; record text or a model's guessed intent never supplies this input. */
+export function assistantSocialIntent(question:unknown):'greeting'|'thanks'|null{
+ if(typeof question!=='string'||question.length>100)return null;
+ const normalized=question.normalize('NFC').trim().toLocaleLowerCase('en').replace(/[.!?。！？，,\s]+$/u,'').trim();
+ if(['hi','hello','hey','hi assistant','hello assistant','good morning','good afternoon','good evening','hai','helo','selamat pagi','selamat petang','selamat malam','你好','您好','嗨','早上好','xin chào','chào','வணக்கம்','สวัสดี','สวัสดีครับ','สวัสดีค่ะ'].includes(normalized))return 'greeting';
+ if(['thanks','thank you','thankyou','terima kasih','谢谢','謝謝','多谢','多謝','cảm ơn','cảm ơn bạn','நன்றி','ขอบคุณ','ขอบคุณครับ','ขอบคุณค่ะ'].includes(normalized))return 'thanks';
+ return null;
+}
 
 /** Keep the original read ordinal in the real tool catalogue. The model chooses ordering/focus;
  * code owns semantic clauses and canonical calculations. Unknown causes require insufficiency.
@@ -52,9 +63,11 @@ export const ASSISTANT_ANSWER_PROTOCOL=[
  'Use exactly one of these shapes: {"version":1,"mode":"answer","blocks":[{"kind":"fact","read":0,"card":0,"fact":0}]}',
  'or {"version":1,"mode":"answer","blocks":[{"kind":"explanation","read":0,"card":null,"code":"<available exact code>"}]}',
  'or {"version":1,"mode":"clarify","slot":"employment|leave_type|period|module"}',
+ 'or {"version":1,"mode":"social","code":"greeting|thanks"}',
  'or {"version":1,"mode":"insufficient","code":"no_verified_facts|unsupported_explanation"}',
  'or {"version":1,"mode":"refuse","code":"unsupported_request|human_review_required"}',
  'or {"version":1,"mode":"propose","action":"<proposable action>","hints":{"<hint key>":"<value>"}}.',
+ 'Use social only for a standalone greeting or thanks, without reading HR records. A greeting mixed with a factual question still requires an answer from current sources; never disguise an HR/settings/effect request as social.',
  'Order 1 to 16 distinct fact/explanation blocks relevant to this question. The catalogue numbers original actual executed reads; use only its ordinals and available codes.',
  'A fact states only its recorded field. An explanation selects only its canonical clause for the same read/card (null means source-wide). Never infer causes, calculations, comparisons, decisions or permission reasons.',
  'Never invent or supply prose, HR values, URLs, effects or guessed selectors. Null, blank and omitted facts are unavailable; a partially withheld Leave card exposes only its remaining projected nonnull facts. Truncation proves neither absence nor all-clear.',
@@ -97,6 +110,7 @@ export function captureAssistantAnswerPlan(value:unknown):AssistantAnswerPlan{
   }
   if(!blocks.length)return fail();return Object.freeze({version:1,mode:'answer',blocks:Object.freeze(blocks)});
  }
+ if(row.mode==='social'){exact(row,['version','mode','code']);if(row.code!=='greeting'&&row.code!=='thanks')return fail();return Object.freeze({version:1,mode:'social',code:row.code});}
  if(row.mode==='clarify'){
   exact(row,['version','mode','slot']);if(!ASSISTANT_CLARIFICATION_SLOTS.includes(row.slot as AssistantClarificationSlot))return fail();
   return Object.freeze({version:1,mode:'clarify',slot:row.slot as AssistantClarificationSlot});
@@ -180,6 +194,7 @@ function currentReads(input:readonly AssistantAnswerRead[]):readonly CurrentRead
  */
 export function adjudicateAssistantAnswerPlan(value:unknown,current:readonly AssistantAnswerRead[],caller:AssistantAnswerAdjudication={}):AssistantAnswerPlan{
  const plan=captureAssistantAnswerPlan(value),reads=currentReads(current),byRead=new Map(reads.map(read=>[read.read,read]));
+ if(plan.mode==='social'){if(reads.length!==0||assistantSocialIntent(caller.question)!==plan.code)return fail();return plan;}
  // A proposal fails closed like any other unsupported plan unless the current caller can read its module.
  if(plan.mode==='propose'){const readable=caller.readableModules;if(!Array.isArray(readable)||!readable.includes(ASSISTANT_PROPOSAL_MODULE[plan.action]))return fail();return plan;}
  if(plan.mode==='answer')for(const block of plan.blocks){

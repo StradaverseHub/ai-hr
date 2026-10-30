@@ -35,6 +35,7 @@
 import { randomUUID } from 'node:crypto';
 import { assistantSourceDigest, sealAssistantDisclosure, type AssistantSourceRead } from '../lib/ai/assistant-disclosure';
 import { ownAssistantClarification, assertOwnAssistantClarificationCurrentTx, assistantClarificationSourceExchangeId } from './assistant-clarification';
+import {ownAssistantConversationContext,assertOwnAssistantConversationContextCurrentTx,assistantConversationSourceExchangeId,issueAssistantConversationToken} from './assistant-conversation-context';
 import {buildAssistantConversationSystem} from '../lib/ai/assistant-conversation-system';
 import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability,type AssistantConversationStrategyCapability} from './module-agent-releases';
 import { parseAssistantAnswerPlan, adjudicateAssistantAnswerPlan, type AssistantAnswerPlan, type AssistantAnswerRead } from '../lib/ai/assistant-answer-plan';
@@ -109,6 +110,8 @@ export type AssistantAnswer = {
   hitTurnCap: boolean;
   /** Names only, in call order, for a "what did it look at" line under the answer. */
   toolsUsed: string[];
+  /** Opaque scope-bound continuation proof, held only by the current chat client. */
+  conversationToken?:string;
 };
 
 /**
@@ -149,10 +152,10 @@ function rowCountOf(outcome: ToolOutcome): number | null {
  */
 export async function askAssistant(
   ctx: SessionContext,
-  p: { question: string; now?: Date; clarificationExchangeId?:string },
+  p: { question: string; now?: Date; clarificationExchangeId?:string; previousExchangeId?:string; previousConversationToken?:string; conversationScope?:string },
 ): Promise<AssistantAnswer> {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  p={question:p.question,...(p.now?{now:new Date(p.now.getTime())}:{}),...(p.clarificationExchangeId===undefined?{}:{clarificationExchangeId:p.clarificationExchangeId})};
+  p={question:p.question,...(p.now?{now:new Date(p.now.getTime())}:{}),...(p.clarificationExchangeId===undefined?{}:{clarificationExchangeId:p.clarificationExchangeId}),...(p.previousExchangeId===undefined?{}:{previousExchangeId:p.previousExchangeId}),...(p.previousConversationToken===undefined?{}:{previousConversationToken:p.previousConversationToken}),...(p.conversationScope===undefined?{}:{conversationScope:p.conversationScope})};
   // The grant is the gate, and it is checked before anything else — including before we look at whether
   // the tenant even has a provider, so an ungranted user cannot probe the configuration.
   await assertMayUseAssistant(ctx);
@@ -164,14 +167,17 @@ export async function askAssistant(
   if (!appUserId) throw new AssistantError('invalid_question');
 
   const humanQuestion = p.question.trim();
-  if (!humanQuestion || humanQuestion.length > MAX_QUESTION_CHARS) throw new AssistantError('invalid_question');
+  if (!humanQuestion || humanQuestion.length > MAX_QUESTION_CHARS || (p.conversationScope!==undefined&&(typeof p.conversationScope!=='string'||p.conversationScope.length>4096))) throw new AssistantError('invalid_question');
+  if((p.previousExchangeId===undefined)!==(p.previousConversationToken===undefined))throw new AssistantError('invalid_question');
+  if(p.clarificationExchangeId!==undefined&&p.previousExchangeId!==undefined)throw new AssistantError('invalid_question');
+  const conversationContext=p.previousExchangeId===undefined?null:await ownAssistantConversationContext(ctx,p.previousExchangeId,humanQuestion,p.previousConversationToken,p.conversationScope).catch(()=>{throw new AssistantError('invalid_question');});
   const clarification = p.clarificationExchangeId===undefined?null:await ownAssistantClarification(ctx,p.clarificationExchangeId,humanQuestion);
   // 0658: the new row records which own exchange it answered, so a later reply can carry this one too.
-  const continuesExchangeId = assistantClarificationSourceExchangeId(clarification);
-  // Stored history is human-readable. Each new clarification is loaded by the actual own-row owner,
+  const continuesExchangeId = assistantClarificationSourceExchangeId(clarification)??assistantConversationSourceExchangeId(conversationContext);
+  // Stored history is human-readable. Each continuation is loaded by the actual own-row owner,
   // and only human text enters context; no prior model answer or historical HR result is replayed.
   // RETENTION (owner rule: raw chat content lives 30 days from ITS OWN question). A continuation stores
-  // ONLY the new human reply. The original question stays in the original exchange under that exchange's
+  // ONLY the new human question. The original question stays in the original exchange under that exchange's
   // deadline and reaches the provider below as transient turn context; copying it into this new row would
   // give it a fresh 30 days, so a clarification read on day 29 would carry it to day 59.
   const question = humanQuestion;
@@ -190,7 +196,8 @@ export async function askAssistant(
     // transaction. The strategy owner rechecks that own source exchange in this marker transaction and
     // before every provider round trip, so history erased or retired since that read never reaches one.
     const conversationStrategy=await prepareAssistantConversationStrategyTx(tx,ctx,rooted,question,
-      clarification?carrier=>assertOwnAssistantClarificationCurrentTx(carrier,ctx,clarification):undefined);
+      clarification?carrier=>assertOwnAssistantClarificationCurrentTx(carrier,ctx,clarification):
+      conversationContext?carrier=>assertOwnAssistantConversationContextCurrentTx(carrier,ctx,conversationContext):undefined);
     return { cfg:conversationStrategy.configuration, conversationStrategy, ...budget };
   }).catch(error=>{
     if(error instanceof AssistantQuestionBudgetError)throw new AssistantError(error.budgetCode);
@@ -204,13 +211,14 @@ export async function askAssistant(
   // a tool outside the tenant's modules cannot be reached by the model simply naming it.
   const offered = toolsFor(ctx);
   const tools = offered.map((t) => t.spec);
-  // Human turns only: the first question of the carried conversation, then each human reply with the
-  // slot it answered, ending with this reply. No prior model answer is replayed.
+  // Human intent only, ending with the current question. Ordinary earlier questions are explicitly
+  // labelled untrusted human context, never replayed as assistant answers or current HR evidence.
+  // The dedicated clarification path preserves its authenticated slot semantics.
   const turns: AiTurn[] = clarification ? (()=>{
     const steps=[...clarification.earlier,{question:clarification.originalQuestion,slot:clarification.slot}];
     return [{role:'user',content:steps[0]!.question} as AiTurn,
       ...steps.map((step,i)=>({role:'user',content:JSON.stringify({humanClarification:{slot:step.slot,answer:i+1<steps.length?steps[i+1]!.question:clarification.answer}})}) as AiTurn)];
-  })() : [{ role: 'user', content: question }];
+  })() : [...(conversationContext?.questions.map(previous=>({role:'user' as const,content:JSON.stringify({previousHumanQuestion:previous})}))??[]),{ role: 'user', content: question }];
   const audit: { name: string; input: unknown; rowCount: number | null; refusal?: string }[] = [];
 
   const sourceReads: AssistantSourceRead[] = [];
@@ -261,7 +269,7 @@ export async function askAssistant(
         // prepared or written here. It also needs the caller's current module read set, read only for it.
         if (res.stop === 'end' && sourcesComplete) try {
           const parsed = parseAssistantAnswerPlan(res.text);
-          answerPlan = adjudicateAssistantAnswerPlan(parsed, answerReads, parsed.mode === 'propose' ? { readableModules: assistantReadableModules(ctx) } : {});
+          answerPlan = adjudicateAssistantAnswerPlan(parsed, answerReads, {question:humanQuestion,...(parsed.mode === 'propose' ? { readableModules: assistantReadableModules(ctx) } : {})});
         } catch { answerPlan = undefined; }
         break;
       }
@@ -344,7 +352,7 @@ export async function askAssistant(
   // answer was not. The caller sees the generic, warm failure and nothing that confirms what was erased.
   if (!recorded.retained) throw new AssistantError('provider_error');
 
-  return { exchangeId: recorded.exchangeId, stop, turns: turnCount, hitTurnCap, toolsUsed: audit.map((a) => a.name) };
+  return { exchangeId: recorded.exchangeId, conversationToken:issueAssistantConversationToken(ctx,recorded.exchangeId,conversationContext,p.conversationScope), stop, turns: turnCount, hitTurnCap, toolsUsed: audit.map((a) => a.name) };
 }
 
 /**

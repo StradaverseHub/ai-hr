@@ -1,6 +1,7 @@
 /** A selected clause consumes an original fresh source-owned descriptor, never model prose or a
  * posted/copied JSON explanation. Canonical engines own the verdict; this component names it only. */
 import {getTranslations} from 'next-intl/server';
+import {AssistantCatalogueSummary} from './assistant-catalogue-summary';
 import type {SessionContext} from '../../db/client';
 import {assertCanonicalModuleJobView,type CanonicalModuleJobView} from '../../core/workspace-module-jobs';
 import type {AssistantAnswerExplanation} from '../../lib/ai/assistant-answer-explanations';
@@ -48,6 +49,7 @@ export async function ConversationExplanation({view,explanation,ctx}:{view:Canon
   }
   if(c.kind==='specialist_finding'){
    if(!SPECIALIST_FINDINGS.includes(c.finding)||explanation.code!==`specialist_finding:${c.finding}`||!view.specialist?.findings.includes(c.finding))return unavailable();
+   if(c.finding==='catalogue_not_permission'&&view.presentation.module==='assistant')return await AssistantCatalogueSummary({view,ctx})??unavailable();
    const t=await getTranslations('assistant.workspace.specialistFindings');return <p className="text-sm">{t(c.finding)}</p>;
   }
   if(c.kind==='specialist_followup'){

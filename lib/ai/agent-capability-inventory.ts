@@ -214,7 +214,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/assistant/history-privacy-actions.ts":{"eraseAssistantHistoryAction":"internal:assistant_surface"},
  "app/assistant/import-privacy-actions.ts":{"eraseImportPreparationHistoryAction":"internal:assistant_surface"},
  "app/assistant/job-feedback-actions.ts":{"eraseGovernedJobFeedbackAction":"internal:assistant_surface","saveGovernedJobFeedbackAction":"internal:assistant_surface"},
- "app/assistant/launcher-actions.ts":{"askFromLauncherAction":"internal:assistant_surface"},
+ "app/assistant/launcher-actions.ts":{"askFromLauncherAction":"internal:assistant_surface","askFromWorkspaceAction":"internal:assistant_surface"},
  "app/assistant/module-plan-actions.ts":{"eraseModuleProposalsAction":"internal:assistant_surface","evaluateHumanPlannerAction":"internal:assistant_surface","proposeModulePlanAction":"internal:assistant_surface"},
  "app/assistant/native-outcome-actions.ts":{"eraseNativeOutcomesAction":"internal:assistant_surface","recordNativeOutcomeAction":"internal:assistant_surface","reopenNativeOutcomeAction":"internal:assistant_surface"},
  "app/assistant/specialist-review-actions.ts":{"createSpecialistCandidateAction":"internal:assistant_surface","evaluateSpecialistCandidateAction":"internal:assistant_surface","promoteSpecialistCandidateAction":"internal:assistant_surface","rollbackSpecialistCandidateAction":"internal:assistant_surface","runSpecialistJobAction":"internal:assistant_surface"},
