@@ -4,7 +4,8 @@ import {spawnSync} from 'node:child_process';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
-import {publicRefusal} from './v9-hosted-refusal.mjs';
+import {publicRefusal,executionEnvelope,publicRateHeaders} from './v9-hosted-refusal.mjs';
+import {request} from 'node:https';
 assert(process.env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&process.env.GITHUB_EVENT_NAME==='workflow_dispatch'&&process.env.GITHUB_RUN_ATTEMPT==='1','First-attempt canonical diagnostic only');
 const output=join(process.env.RUNNER_TEMP,'v9-review-public');mkdirSync(output,{recursive:true,mode:0o700});
 function metadata(path){
@@ -18,5 +19,14 @@ assert(job.id===124016969855&&job.run_id===run.id&&job.head_sha===run.head_sha&&
 const result=spawnSync('gh',['api','repos/StradaverseHub/ai-hr/actions/jobs/124016969855/logs'],{encoding:'utf8',timeout:60000,maxBuffer:16*1024**2});
 const proof={kind:'FINITE_JOB_LOG_TRANSPORT_DIAGNOSTIC_ONLY',producerJobId:124016969855,exitCode:result.status,signal:result.signal,errorCode:['ENOBUFS','ETIMEDOUT','ENOENT','ECONNRESET'].includes(result.error?.code)?result.error.code:null,bytes:Buffer.byteLength(result.stdout??''),installationEligible:false,releaseAuthorized:false,...publicRefusal(result.stderr??'')};
 if(result.status===0){proof.reason='TRANSPORT_SUCCEEDED';proof.logSha256=createHash('sha256').update(result.stdout).digest('hex');}
+const version=spawnSync('gh',['--version'],{encoding:'utf8',timeout:10000,maxBuffer:4096});
+proof.execution={...executionEnvelope({tokenPresent:typeof process.env.GH_TOKEN==='string'&&process.env.GH_TOKEN.length>0,versionText:version.stdout,stderr:result.stderr}),ghAvailable:version.status===0,apiHostnameExact:true};
+// Node HTTPS never follows redirects. The Location/body are neither read into diagnostics nor published.
+proof.directHttps=await new Promise(resolve=>{
+ let timedOut=false;
+ const req=request({hostname:'api.github.com',path:'/repos/StradaverseHub/ai-hr/actions/jobs/124016969855/logs',method:'GET',headers:{Authorization:'Bearer '+process.env.GH_TOKEN,'User-Agent':'AIHR-V9-read-only-diagnostic',Accept:'application/vnd.github+json'}},res=>{res.resume();resolve({status:res.statusCode,rate:publicRateHeaders(res.headers),redirectsFollowed:false});});
+ req.setTimeout(20000,()=>{timedOut=true;req.destroy();});
+ req.on('error',error=>resolve({status:null,errorClass:timedOut?'TIMEOUT':['ENOTFOUND','ETIMEDOUT','ECONNRESET','CERT_HAS_EXPIRED','UNABLE_TO_VERIFY_LEAF_SIGNATURE','ERR_TLS_CERT_ALTNAME_INVALID'].includes(error.code)?error.code:'UNCLASSIFIED_NETWORK_ERROR',redirectsFollowed:false}));req.end();
+});
 writeFileSync(join(output,'log-transport.json'),JSON.stringify(proof,null,2)+'\n',{mode:0o600,flag:'wx'});console.log(JSON.stringify(proof));
 if(result.status!==0)process.exitCode=1;

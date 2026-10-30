@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {publicRefusal} from './v9-hosted-refusal.mjs';
+import {publicRefusal,executionEnvelope,publicRateHeaders} from './v9-hosted-refusal.mjs';
 test('retains only known refusal and tracked relative locations',()=>{
  const raw='SECRET_TOKEN=private\nValueError: Unsafe or duplicate artifact filename\n File "/home/runner/work/private/reader/.github/ci/extract-artifact.py", line 17\n at collect (/home/runner/work/private/reader/.github/ci/v9-db-resource-assessment.mjs:25:9)';
  const r=publicRefusal(raw,['.github/ci/extract-artifact.py','.github/ci/v9-db-resource-assessment.mjs']);assert.equal(r.reason,'Unsafe or duplicate artifact filename');assert.equal(r.frames.length,2);assert(r.errorClasses.includes('ValueError'));assert(!JSON.stringify(r).includes('SECRET_TOKEN'));assert(!JSON.stringify(r).includes('/home/'));assert.match(r.diagnosticSha256,/^[a-f0-9]{64}$/);
@@ -14,4 +14,11 @@ test('locations are bounded and duplicate frames removed',()=>{
 
 test('transport diagnostics reveal fixed status/code values without raw responses',()=>{
  const r=publicRefusal('gh: private payload TOKEN=secret (HTTP 403) ENOBUFS');assert.deepEqual(r.httpStatuses,[403]);assert.deepEqual(r.transportCodes,['ENOBUFS']);assert(!JSON.stringify(r).includes('TOKEN'));assert(!JSON.stringify(r).includes('private payload'));
+});
+
+test('execution envelope publishes booleans/version/counts without error words or token values',()=>{
+ const r=executionEnvelope({tokenPresent:true,versionText:'gh version 2.83.1 (private)\nURL=secret',stderr:'TOKEN=secret TLS handshake timeout\n'});assert.equal(r.ghVersion,'2.83.1');assert.equal(r.tokenPresent,true);assert.equal(r.cliClasses.network,true);assert(!JSON.stringify(r).includes('TOKEN'));assert(!JSON.stringify(r).includes('secret'));
+});
+test('only numeric rate metadata and fixed resource classes survive header filtering',()=>{
+ assert.deepEqual(publicRateHeaders({'retry-after':'60','x-ratelimit-remaining':'42','x-ratelimit-resource':'core',location:'https://private/token',authorization:'secret','x-ratelimit-reset':'bad'}),{'retry-after':60,'x-ratelimit-remaining':42,'x-ratelimit-resource':'core'});assert.deepEqual(publicRateHeaders({'x-ratelimit-resource':'secret','retry-after':'private'}),{});
 });
