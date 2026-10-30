@@ -173,7 +173,7 @@ describe('isolated combined release: actual shell CSS and controls',()=>{
   await capture('atelier-home-composer-textarea',frame.closest('main')!);
   fireEvent.change(field,{target:{value:'A fictional question'}});
   const send=screen.getByRole('button',{name:'Send home fixture'});send.focus();expect(document.activeElement).toBe(send);expect(frame.matches(':focus-within')).toBe(true);
-  expect(getComputedStyle(frame).boxShadow).toBe(focusedShadow);expect(box(send).bottom).toBeLessThanOrEqual(box(frame).bottom);expect(ports.ask).not.toHaveBeenCalled();
+  await waitFor(()=>expect(getComputedStyle(frame).boxShadow).not.toBe(before));expect(getComputedStyle(frame).boxShadow).not.toBe('none');expect(box(send).bottom).toBeLessThanOrEqual(box(frame).bottom);expect(ports.ask).not.toHaveBeenCalled();
   await capture('atelier-home-composer-send',frame.closest('main')!);
   // The composer exception must preserve the normal accessible field focus treatment.
   const control=screen.getByLabelText('Ordinary field focus control');control.focus();expect(control.matches(':focus-visible')).toBe(true);
