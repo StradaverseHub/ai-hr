@@ -4,8 +4,8 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render,screen} from '@testing-library/react';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viMessages from '../messages/vi.json';
 const state=vi.hoisted(()=>({locale:'en',data:{rows:[{employeeCode:'CANONICAL-01',company:'Canonical employer',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false} as unknown,fail:false,tools:[] as unknown[]}));
-vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations:async(namespace:string)=>(key:string,params?:Record<string,string|number>)=>{
- let value:unknown=copies[state.locale];for(const name of [...namespace.split('.'),...key.split('.')])value=(value as Record<string,unknown>)[name];
+vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations:async(namespace?:string)=>(key:string,params?:Record<string,string|number>)=>{
+ let value:unknown=copies[state.locale];for(const name of [...(namespace?namespace.split('.'):[]),...key.split('.')])value=(value as Record<string,unknown>)[name];
  if(typeof value!=='string')throw Error('Missing test translation '+namespace+'.'+key);
  return value.replace(/\{(\w+)\}/g,(_whole,field:string)=>String(params?.[field]??'{'+field+'}'));
 }}));
@@ -26,6 +26,7 @@ import {loadCanonicalModuleJob,loadCanonicalToolJob,type CanonicalModuleJobView}
 import {CanonicalModuleJob,ModuleJobChooser,GroundedWorkspaceReply,GovernedModuleJobComposer} from '../components/assistant/module-jobs';
 import {AGENT_MODULE_CODES,MODULE_AGENT_CAPABILITIES} from '../lib/ai/module-agents';
 import {MODULE_ACTION_ENTRIES} from '../lib/assistant-actions/module-action-entries';
+import {personnelReviewTitleKey} from '../lib/ai/personnel-review-labels';
 import {moduleHumanActionHandoffs} from '../lib/ai/module-human-handoffs';
 import {assistantSourceDigest} from '../lib/ai/assistant-disclosure';
 import {compactSpecialistWork,executeCanonicalSpecialist} from '../lib/ai/module-specialists';
@@ -126,6 +127,16 @@ describe('deterministic current-user job cards',()=>{
   const view=await loadCanonicalToolJob(ctx,'my_module_work',{module:'leave'},assistantSourceDigest(outcome),{} as AssistantReadSession),copy=(copies[locale] as typeof en).assistant.workspace.jobs;
   const shown=render(await CanonicalModuleJob({view,ctx}));expect(screen.getByRole('link',{name:copy.reviewAction}).getAttribute('href')).toBe('/assistant/leave');expect(screen.getByText(copy.humanReviewNote)).toBeTruthy();expect(shown.container.querySelectorAll('form[method="post"]')).toHaveLength(0);shown.unmount();
   render(await CanonicalModuleJob({view:JSON.parse(JSON.stringify(view)) as CanonicalModuleJobView,ctx}));expect(screen.queryByRole('link',{name:copy.reviewAction})).toBeNull();
+ });
+ it.each(['en','ms','zh','ta','th','vi'])('%s labels all source-owned Personnel cards and links by the exact operation',async locale=>{
+  state.locale=locale;const source={module:'employees' as const,capability:MODULE_AGENT_CAPABILITIES.find(row=>row[0]==='employees')![1],scope:'current-caller',data:state.data,humanActions:moduleHumanActionHandoffs('employees')};
+  const configuration={kind:'canonical_specialist_v1' as const,module:'employees' as const,playbook:'canonical_domain_v1' as const};
+  const outcome={ok:true as const,...source,specialistWork:compactSpecialistWork(executeCanonicalSpecialist(configuration,source),{mode:'baseline',version:0,configuration})};
+  state.tools=[{spec:{name:'my_module_work'},module:null,sensitivity:'ordinary',run:async()=>outcome}];
+  const view=await loadCanonicalToolJob(ctx,'my_module_work',{module:'employees'},assistantSourceDigest(outcome),{} as AssistantReadSession);
+  const shown=render(await CanonicalModuleJob({view,ctx}));const handoffs=source.humanActions.filter(row=>row.action!=='employees.import');expect(handoffs).toHaveLength(16);const names:string[]=[];
+  for(const handoff of handoffs){const key=personnelReviewTitleKey('employees',handoff.route);expect(key).not.toBeNull();let title:unknown=copies[locale];for(const part of key!.split('.'))title=(title as Record<string,unknown>)[part];names.push(String(title));expect(screen.getByRole('heading',{name:String(title)})).toBeTruthy();expect(screen.getByRole('link',{name:String(title)}).getAttribute('href')).toBe(handoff.route);}
+  expect(new Set(names).size).toBe(16);expect(shown.container.querySelectorAll('form[method="post"]')).toHaveLength(0);
  });
  it('refuses model-forged, serialized, cross-user and expired views before rendering their facts',async()=>{
   const issued=await loadCanonicalModuleJob(ctx,{module:'employees'});

@@ -44,7 +44,7 @@ DECLARE item record;previous text;added text;
 BEGIN
  FOR item IN SELECT * FROM (VALUES
   ('assistant_review_decision_columns', 'decision_subject_person_id IS NOT NULL AND decision_request_id IS NULL AND decision_step_id IS NULL AND decision_event_id IS NULL AND decision_applicant_person_id IS NULL'),
-  ('assistant_review_generic_receipt', 'receipt_subject_kind=''employment'' AND receipt_subject_id=employment_id AND ((state=''completed'')=(receipt_event_id IS NOT NULL))')
+  ('assistant_review_generic_receipt', 'receipt_subject_kind IS NOT NULL AND receipt_subject_id IS NOT NULL AND receipt_subject_kind=''employment'' AND receipt_subject_id=employment_id AND ((state=''completed'')=(receipt_event_id IS NOT NULL))')
  ) AS requirements(name,expression) LOOP
   SELECT pg_get_expr(c.conbin,c.conrelid) INTO previous FROM pg_constraint c
    WHERE c.conrelid='app.assistant_own_leave_review'::regclass AND c.conname=item.name AND c.contype='c';

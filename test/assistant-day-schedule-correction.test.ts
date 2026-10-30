@@ -13,8 +13,9 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {createShift,assignDefaultShift} from '../core/roster';
 import {importPunchCsv} from './helpers/punch-import';
 import {saveOvertimePatternDraft,validateOvertimePatternActivation,activateOvertimePattern,saveOvertimePatternAssignment} from '../packs/attendance/overtime-patterns';
+import {saveReplacementHolidayPolicy,reconcileReplacementHolidays} from '../core/holiday-replacements';
 import type {OvertimePattern} from '../lib/overtime-pattern-model';
-import {attendanceDayEditor,saveAttendanceDayEdit} from '../packs/attendance/service';
+import {attendanceDayEditor,saveAttendanceDayEdit,attendancePolicyCalendarTx,workedDayKindForTx,setAttendancePolicy} from '../packs/attendance/service';
 import {dayScheduleCorrectionReviews as store,readDayScheduleCorrectionChoices as choices} from '../core/assistant-actions/day-schedule-correction-review-store';
 import {withDayScheduleIntervalTx,prepareDayScheduleSourceTx} from '../core/assistant-actions/day-schedule-correction-source';
 import {employeeCodeMaintenanceReviews} from '../core/assistant-actions/employee-code-maintenance-review-store';
@@ -49,3 +50,70 @@ function pattern(earningId:string):OvertimePattern{return {v:1,currency:{code:'M
 it('carries real native cash/line evidence through encrypted prepare, same-transaction confirmation and historical receipt',async()=>{await setModule(b.tenantId,'payroll','active');ctx={...await entitledCtx(b),grants:[{role:'hr_admin',companyId:null}]};const current=date();vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date(current+'T23:59:00+08:00'));const base=await createShift(ctx,{code:'CUSTODY_BASE',name:'Fictional original shift',startTime:'08:00',endTime:'17:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5,6,7]});await assignDefaultShift(ctx,{employmentId:target.employmentId,shiftId:base.id});const next=await createShift(ctx,{code:'CUSTODY_NEXT',name:'Fictional corrected shift',startTime:'08:00',endTime:'18:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5,6,7]});const [employee]=await owner.db.select().from(s.employment).where(eq(s.employment.id,target.employmentId));expect(await importPunchCsv(ctx,`staff,time
 ${employee.employeeCode},${date()} 08:00:00
 ${employee.employeeCode},${date()} 20:00:00`)).toMatchObject({punches:2});const [earning]=await owner.db.insert(s.payComponent).values({tenantId:b.tenantId,code:'CUSTODY_OT',name:'Fictional custody earning',kind:'allowance'}).returning();const saved=await saveOvertimePatternDraft(ctx,{draft:{code:'CUSTODY_PATTERN',creationCompanyId:b.companyId,companyIds:[b.companyId],name:'Fictional custody pattern',definition:pattern(earning.id)}});const check=await validateOvertimePatternActivation(ctx,{versionId:saved.versionId,expectedRevision:saved.revision});expect(check.issues).toEqual([]);await activateOvertimePattern(ctx,{versionId:saved.versionId,expectedRevision:saved.revision,validationDigest:check.validationDigest!,effectiveFrom:date()});await saveOvertimePatternAssignment(ctx,{versionId:saved.versionId,target:{type:'individual',employmentIds:[target.employmentId]},priority:1,from:date(),to:null});const h={...await human(),shiftId:next.id,dayKind:'workday' as const},before=await business(),r=(await store.prepare(ctx,h)).review;expect(await business()).toEqual(before);expect(r.review.after.day?.figures.otMinutes).toBe(120);expect(r.review.after.pattern).toMatchObject({amountMinorUnits:'2500',currency:'MYR'});expect(r.review.after.pattern.lines).toMatchObject([{componentId:earning.id,amountMinorUnits:'2500'}]);const done=await store.confirm(ctx,command(r));expect(done.kind).toBe('completed');if(done.kind!=='completed')throw Error('Missing native completion');expect(done.receipt.receipt.after).toEqual(r.review.after);expect(await custody(r.actionId)).toMatchObject({state:'completed',bodies:0});const [event]=await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.id,done.receipt.receipt.eventId));expect(JSON.stringify(event.payload)).not.toContain('privateRetention');expect(JSON.stringify((event.payload as {reviewEffects:unknown}).reviewEffects)).not.toContain('amountMinorUnits');expect(await store.reopen(ctx,r.actionId)).toEqual(done);});
+
+// Each mutation uses a real valid encrypted custody row; NULL cannot fail a UUID FK/type check.
+const nullReceiptCases=(['awaiting_confirmation','completed'] as const).flatMap(state=>(['kind','id','both'] as const).map(field=>({state,field})));
+it.each(nullReceiptCases)('rejects NULL receipt $field in $state at assistant_review_generic_receipt',async({state,field})=>{
+ const review=(await store.prepare(ctx,await human())).review;
+ if(state==='completed')expect((await store.confirm(ctx,command(review))).kind).toBe('completed');
+ const snapshot=async()=>{const[row]=await owner.db.execute<{record:unknown}>(sql`select jsonb_build_object('row',to_jsonb(q),'body',(select to_jsonb(c) from app.assistant_own_leave_review_content c where c.action_id=q.id)) as record from app.assistant_own_leave_review q where q.id=${review.actionId}::uuid`);return row.record;};
+ const saved=await snapshot(),before=await business();
+ const fields=field==='kind'?sql`receipt_subject_kind=NULL`:field==='id'?sql`receipt_subject_id=NULL`:sql`receipt_subject_kind=NULL,receipt_subject_id=NULL`;
+ let failure:unknown;try{await owner.db.execute(sql`update app.assistant_own_leave_review set ${fields} where id=${review.actionId}::uuid`);}catch(error){failure=error;}
+ expect(pgSqlState(failure)).toBe('23514');
+ let constraint:unknown,current=failure;
+ for(let depth=0;current&&typeof current==='object'&&depth<4;depth++){
+  const error=current as {constraint_name?:unknown;constraint?:unknown;cause?:unknown};
+  if(error.constraint_name!==undefined||error.constraint!==undefined){constraint=error.constraint_name??error.constraint;break;}
+  current=error.cause;
+ }
+ expect(constraint).toBe('assistant_review_generic_receipt');
+ expect(await snapshot()).toEqual(saved);expect(await business()).toEqual(before);
+ if(state==='awaiting_confirmation')expect((await store.confirm(ctx,command(review))).kind).toBe('completed');
+ expect((await store.reopen(ctx,review.actionId)).kind).toBe('completed');
+});
+
+it('confirms a genuine future Monday override and Auto reset against the retained native replacement calendar without inventing attendance',async()=>{
+ const today=todayInKualaLumpur(),epoch=Date.parse(today+'T00:00:00Z'),offset=((8-new Date(epoch).getUTCDay())%7)+7;
+ const monday=new Date(epoch+offset*86400000).toISOString().slice(0,10),sunday=new Date(Date.parse(monday+'T00:00:00Z')-86400000).toISOString().slice(0,10),tuesday=new Date(Date.parse(monday+'T00:00:00Z')+86400000).toISOString().slice(0,10);
+ expect(monday>today).toBe(true);expect(sunday>today).toBe(true);
+ expect(new Intl.DateTimeFormat('en',{weekday:'long',timeZone:'Asia/Kuala_Lumpur'}).format(new Date(monday+'T12:00:00+08:00'))).toBe('Monday');
+ expect(new Intl.DateTimeFormat('en',{weekday:'long',timeZone:'Asia/Kuala_Lumpur'}).format(new Date(sunday+'T12:00:00+08:00'))).toBe('Sunday');
+ await owner.db.update(s.company).set({defaultWorkState:'Selangor'}).where(eq(s.company.id,b.companyId));
+ const base=await createShift(root(),{code:'FUTURE_BASE',name:'Fictional Monday to Friday baseline',startTime:'08:00',endTime:'17:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5]});
+ const revised=await createShift(root(),{code:'FUTURE_NEXT',name:'Fictional corrected Monday shift',startTime:'09:00',endTime:'18:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5]});
+ await assignDefaultShift(root(),{employmentId:target.employmentId,shiftId:base.id});
+ await setAttendancePolicy(root(),{companyId:b.companyId,workStart:'08:00',workEnd:'17:00',breakMinutes:60,lateAfter:'08:00',halfDayBefore:'13:00',workingDays:[1,2,3,4,5,6,7]});
+ const[original]=await owner.db.insert(s.holiday).values({tenantId:b.tenantId,country:'MY',companyId:b.companyId,holidayDate:sunday,name:'Fictional original Sunday public holiday'}).returning();
+ await saveReplacementHolidayPolicy(root(),{companyId:b.companyId,effectiveFrom:today,regime:'company_confirmed',confirmed:true,restMode:'scheduled_rest',halfEligible:false,searchDays:30,reason:'Fictional confirmed replacement entitlement for this calendar fixture.'});
+ await reconcileReplacementHolidays(root(),target.employmentId);
+ const[replacement]=await owner.db.select().from(s.replacementHoliday).where(and(eq(s.replacementHoliday.employmentId,target.employmentId),eq(s.replacementHoliday.sourceHolidayId,original.id)));
+ expect(replacement).toMatchObject({sourceDate:sunday,replacementDate:monday,status:'allocated',manual:false});
+ const calendar=()=>withTenant(ctx,tx=>attendancePolicyCalendarTx(tx,{employmentId:target.employmentId,dates:[sunday,monday,tuesday]}));
+ const expectedBefore=await calendar();
+ expect(expectedBefore).toMatchObject([{date:sunday,state:'known',dayClass:'publicHoliday',moneyDay:'holiday'},{date:monday,state:'known',dayClass:'replacementHoliday',moneyDay:'holiday'},{date:tuesday,state:'known',dayClass:'normal',moneyDay:'workday'}]);
+ const mondayFact=expectedBefore.find(row=>row.date===monday);expect(mondayFact?.state==='known'&&mondayFact.references).toContain(`replacement-holiday:${replacement.id}`);
+ const preserved=()=>Promise.all([
+  owner.db.select().from(s.holiday).orderBy(s.holiday.id),owner.db.select().from(s.replacementHoliday).orderBy(s.replacementHoliday.id),
+  owner.db.select().from(s.replacementHolidayRevision).orderBy(s.replacementHolidayRevision.id),owner.db.select().from(s.shift).orderBy(s.shift.id),
+  owner.db.select().from(s.employment).orderBy(s.employment.id),owner.db.select().from(s.rosterAssignment).orderBy(s.rosterAssignment.id),
+  owner.db.select().from(s.employmentShiftArrangement).orderBy(s.employmentShiftArrangement.id),
+ ]);
+ const retained=await preserved(),before=await business(),input={...await human(monday),shiftId:revised.id,dayKind:'workday' as const};
+ const review=(await store.prepare(ctx,input)).review;
+ expect(review.review.before).toMatchObject({resolvedDayKind:'holiday',day:null});
+ expect(review.review.after).toMatchObject({resolvedShiftCode:'FUTURE_NEXT',resolvedDayKind:'workday',day:null,override:{shiftId:revised.id,dayKind:'workday',version:1}});
+ expect(await business()).toEqual(before);expect(await preserved()).toEqual(retained);expect(await calendar()).toEqual(expectedBefore);
+ const done=await store.confirm(ctx,command(review));expect(done.kind).toBe('completed');expect(await store.reopen(ctx,review.actionId)).toEqual(done);
+ expect(await withTenant(ctx,tx=>workedDayKindForTx(tx,target.employmentId,monday))).toBe('workday');
+ const changed=await calendar();expect(changed).toMatchObject([{date:sunday,state:'known',dayClass:'publicHoliday'},{date:monday,state:'known',dayClass:'normal',moneyDay:'workday'},{date:tuesday,state:'known',dayClass:'normal'}]);
+ expect(changed.filter(row=>row.date!==monday)).toEqual(expectedBefore.filter(row=>row.date!==monday));
+ expect((await attendanceDayEditor(ctx,target.employmentId,tuesday))?.schedule).toMatchObject({shiftCode:'FUTURE_BASE',dayKind:'workday'});
+ const after=await business();expect(after.days).toEqual(before.days);expect(after.punches).toEqual(before.punches);expect(after.adjustments).toHaveLength(1);expect(after.adjustments[0]).toMatchObject({attendanceDate:monday,version:1});expect(await preserved()).toEqual(retained);
+ const reset=(await store.prepare(ctx,{...await human(monday),shiftId:null,dayKind:null})).review;
+ expect(reset.review.before.resolvedDayKind).toBe('workday');expect(reset.review.after).toMatchObject({resolvedDayKind:'holiday',day:null,override:{shiftId:null,dayKind:null,version:2}});
+ const restored=await store.confirm(ctx,command(reset));expect(restored.kind).toBe('completed');expect(await store.reopen(ctx,reset.actionId)).toEqual(restored);
+ expect(await withTenant(ctx,tx=>workedDayKindForTx(tx,target.employmentId,monday))).toBe('holiday');
+ expect(await calendar()).toMatchObject([{date:sunday,state:'known',dayClass:'publicHoliday'},{date:monday,state:'known',dayClass:'replacementHoliday',moneyDay:'holiday'},{date:tuesday,state:'known',dayClass:'normal'}]);
+ expect(await preserved()).toEqual(retained);const final=await business();expect(final.days).toEqual(before.days);expect(final.punches).toEqual(before.punches);expect(final.adjustments).toHaveLength(1);expect(final.adjustments[0]).toMatchObject({attendanceDate:monday,version:2,shiftId:null,dayKind:null});
+});

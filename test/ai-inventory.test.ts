@@ -193,11 +193,11 @@ describe('static wiring', () => {
     expect(body).toContain("if(route&&route.action===null)throw new AiAllowanceError('paused');");
     await expect(withAgentActionPauseScope('no.such_action', async () => 1)).rejects.toThrow('Unknown agent action');
   });
-  it('appends allocated migration 0707 with grants, RLS and a definer-only writer', () => {
+  it('appends mapped migration 0816 with grants, RLS and a definer-only writer', () => {
     const journal = JSON.parse(read('db/migrations/meta/_journal.json')).entries;
     const position=journal.findIndex((entry:{tag:string})=>entry.tag==='0816_ai_agent_action_pause'),last=journal[position];
     expect(position).toBeGreaterThan(journal.findIndex((entry:{tag:string})=>entry.tag==='0813_assistant_action_kind'));
-    expect(last).toMatchObject({ idx: 688, when: 1793330000036, tag: '0816_ai_agent_action_pause' });
+    expect(last).toMatchObject({ idx: 702, when: 1793330000216, tag: '0816_ai_agent_action_pause' });
     expect(journal.filter((entry:{tag:string})=>entry.tag==='0816_ai_agent_action_pause')).toHaveLength(1);
     const src = read('db/migrations/0816_ai_agent_action_pause.sql');
     expect(src).toContain('ALTER TABLE app.ai_agent_action_pause ENABLE ROW LEVEL SECURITY;');

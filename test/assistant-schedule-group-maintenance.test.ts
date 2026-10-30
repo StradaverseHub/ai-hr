@@ -58,3 +58,25 @@ it('refuses every legacy-column hybrid while preserving a valid new-kind review 
  expect((await employeeCodeMaintenanceReviews.confirm(ctx,command(old))).kind).toBe('completed');
  const [size]=await owner.db.execute<{bytes:number}>(sql`select octet_length(pg_get_expr(conbin,conrelid))::int as bytes from pg_constraint where conrelid='app.assistant_own_leave_review'::regclass and conname='assistant_review_kind_columns'`);expect(size.bytes).toBeGreaterThan(400);console.log('Attendance generic custody constraint bytes',size.bytes);
 });
+
+// Each mutation uses a real valid encrypted custody row; NULL cannot fail a UUID FK/type check.
+const nullReceiptCases=(['awaiting_confirmation','completed'] as const).flatMap(state=>(['kind','id','both'] as const).map(field=>({state,field})));
+it.each(nullReceiptCases)('rejects NULL receipt $field in $state at assistant_review_generic_receipt',async({state,field})=>{
+ const review=(await store.prepare(ctx,human())).review;
+ if(state==='completed')expect((await store.confirm(ctx,command(review))).kind).toBe('completed');
+ const snapshot=async()=>{const[row]=await owner.db.execute<{record:unknown}>(sql`select jsonb_build_object('row',to_jsonb(q),'body',(select to_jsonb(c) from app.assistant_own_leave_review_content c where c.action_id=q.id)) as record from app.assistant_own_leave_review q where q.id=${review.actionId}::uuid`);return row.record;};
+ const saved=await snapshot(),before=await business();
+ const fields=field==='kind'?sql`receipt_subject_kind=NULL`:field==='id'?sql`receipt_subject_id=NULL`:sql`receipt_subject_kind=NULL,receipt_subject_id=NULL`;
+ let failure:unknown;try{await owner.db.execute(sql`update app.assistant_own_leave_review set ${fields} where id=${review.actionId}::uuid`);}catch(error){failure=error;}
+ expect(pgSqlState(failure)).toBe('23514');
+ let constraint:unknown,current=failure;
+ for(let depth=0;current&&typeof current==='object'&&depth<4;depth++){
+  const error=current as {constraint_name?:unknown;constraint?:unknown;cause?:unknown};
+  if(error.constraint_name!==undefined||error.constraint!==undefined){constraint=error.constraint_name??error.constraint;break;}
+  current=error.cause;
+ }
+ expect(constraint).toBe('assistant_review_generic_receipt');
+ expect(await snapshot()).toEqual(saved);expect(await business()).toEqual(before);
+ if(state==='awaiting_confirmation')expect((await store.confirm(ctx,command(review))).kind).toBe('completed');
+ expect((await store.reopen(ctx,review.actionId)).kind).toBe('completed');
+});

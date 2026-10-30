@@ -1,3 +1,4 @@
+import {personnelReviewTitleKey} from '../../lib/ai/personnel-review-labels';
 import {assistantReadableModules} from '../../core/assistant-readable-modules';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 /** Canonical typed facts only. A model answer, copied receipt or arbitrary JSON cannot render here. */
@@ -41,8 +42,8 @@ export async function ModuleJobChooser({modules,selected,actions=[]}:{modules:re
  </section>;
 }
 async function canonicalJobText(){
- const[t,answers,gap,rewardStage,rewardKind,locale]=await Promise.all([getTranslations('assistant.workspace.jobs'),getTranslations('assistant.workspace.answers'),getTranslations('controlTower.readinessScreen.gap'),getTranslations('rewards.stages'),getTranslations('rewards.kinds'),getLocale()]);
- const safeLocale=['en','ms','zh','ta','th','vi'].includes(locale)?locale:'en';return{t,answers,gap,rewardStage,rewardKind,safeLocale};
+ const[t,answers,gap,rewardStage,rewardKind,locale,reviewTitles]=await Promise.all([getTranslations('assistant.workspace.jobs'),getTranslations('assistant.workspace.answers'),getTranslations('controlTower.readinessScreen.gap'),getTranslations('rewards.stages'),getTranslations('rewards.kinds'),getLocale(),getTranslations()]);
+ const safeLocale=['en','ms','zh','ta','th','vi'].includes(locale)?locale:'en';return{t,answers,gap,rewardStage,rewardKind,safeLocale,reviewTitles};
 }
 type CanonicalJobText=Awaited<ReturnType<typeof canonicalJobText>>;
 function displayCanonicalFact(fact:JobFact,module:AgentModuleCode,text:CanonicalJobText){
@@ -65,7 +66,7 @@ function displayCanonicalFact(fact:JobFact,module:AgentModuleCode,text:Canonical
   return String(fact.value);
 }
 
-function canonicalHeading(card:JobCard,{t,gap}:CanonicalJobText){return card.title.kind==='text'?card.title.value:card.title.kind==='gap'?gap(card.title.code):card.title.kind==='module'?t(`module_${card.title.module}`):t('record',{n:card.title.number});}
+function canonicalHeading(card:JobCard,{t,gap,reviewTitles}:CanonicalJobText){const key=card.title.kind==='module'&&card.linkPurpose==='human_review'?personnelReviewTitleKey(card.title.module,card.href):null;if(key)return reviewTitles(key);return card.title.kind==='text'?card.title.value:card.title.kind==='gap'?gap(card.title.code):card.title.kind==='module'?t(`module_${card.title.module}`):t('record',{n:card.title.number});}
 export async function CanonicalModuleJob({view,ctx}:{view:CanonicalModuleJobView;ctx:SessionContext}){
  const text=await canonicalJobText(),{t,answers,safeLocale}=text;
  try{assertCanonicalModuleJobView(view,ctx);}catch{return <Card className="p-5"><p role="status" className="text-sm text-muted-foreground">{t('unavailable')}</p></Card>;}
@@ -84,7 +85,7 @@ export async function CanonicalModuleJob({view,ctx}:{view:CanonicalModuleJobView
    </div>)}</dl>}
    {card.withheld&&<p className="mt-3 text-xs text-muted-foreground">{t('withheld')}</p>}
    {card.title.kind==='module'&&card.linkPurpose!=='human_review'&&<a href={'/assistant?job='+card.title.module} className="mt-3 inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('open')}</a>}
-   {card.href&&<a href={card.href} className="mt-3 inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t(card.linkPurpose==='human_review'?'reviewAction':'original')}</a>}
+   {card.href&&<a href={card.href} className="mt-3 inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{card.linkPurpose==='human_review'&&card.title.kind==='module'&&personnelReviewTitleKey(card.title.module,card.href)?text.reviewTitles(personnelReviewTitleKey(card.title.module,card.href)!):t(card.linkPurpose==='human_review'?'reviewAction':'original')}</a>}
   </Card>)}</div>
   {presentation.truncated&&<p className="text-sm text-muted-foreground">{t('truncated')}</p>}
   {view.specialist&&<ModuleSpecialistFindings assessment={view.specialist} selection={view.specialistVersion}/>}

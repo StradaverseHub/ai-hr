@@ -20,7 +20,7 @@ function actualMigrationBlocks(){
  const journal=JSON.parse(journalText) as {entries:{idx:number;when:number;tag:string}[]};
  const tag='0859_assistant_employee_draft_discard_custody';
  expect(journal.entries.filter(entry=>entry.tag===tag)).toHaveLength(1);
- expect(journal.entries.filter(entry=>entry.idx===731)).toEqual([expect.objectContaining({idx:731,when:1793330000089,tag})]);
+ expect(journal.entries.filter(entry=>entry.idx===745)).toEqual([expect.objectContaining({idx:745,when:1793330000259,tag})]);
  const source=readFileSync(path,'utf8');
  const block=(tag:string)=>{
   const matches=[...source.matchAll(new RegExp('^DO \\$'+tag+'\\$[\\s\\S]*?^END \\$'+tag+'\\$;','gm'))];
@@ -30,7 +30,7 @@ function actualMigrationBlocks(){
  const preflight=block('preflight'),transfer=block('transfer');
  expect(transfer).toContain('ALTER FUNCTION app._draft_discard_source_snapshot(uuid,uuid) OWNER TO ai_hr_draft_discard_port');
  expect(transfer).toContain('ALTER FUNCTION app.native_employee_draft_discard_delete(uuid) OWNER TO ai_hr_draft_discard_port');
- return{file,journalIndex:731,journalWhen:1793330000089,journalTag:tag,journalHash:hash(journalText),sourceHash:hash(source),preflight,transfer,preflightHash:hash(preflight),transferHash:hash(transfer)};
+ return{file,journalIndex:745,journalWhen:1793330000259,journalTag:tag,journalHash:hash(journalText),sourceHash:hash(source),preflight,transfer,preflightHash:hash(preflight),transferHash:hash(transfer)};
 }
 function connection(adminUrl:string,database:string,user:string){
  const url=new URL(adminUrl);url.pathname='/'+database;url.username=user;

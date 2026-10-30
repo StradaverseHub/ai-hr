@@ -6,6 +6,7 @@ import {z} from 'zod';
 import {Button,inputCls} from '@/components/ui';
 import {PayrollReopen as C} from '@/lib/assistant-actions/reviewed-payroll-reopen-contract';
 import {checkGenericPacket,packetActionId,sendGenericModuleAction,type GenericPacket} from './generic-module-action-transport';
+class ReviewBindingMismatch extends Error{}
 type Prepared=z.infer<typeof C.Prepared>;type Done=z.infer<typeof C.Completed>;type Retired=z.infer<typeof C.Retired>;
 type State={kind:'draft'}|{kind:'review';review:Prepared}|{kind:'done';receipt:Done}|{kind:'retired';receipt:Retired}|{kind:'uncertain';actionId:string|null;expectedBatchId?:string|null};
 export function PayrollReopenPanel({resumeActionId}:{resumeActionId?:string}){
@@ -24,10 +25,10 @@ export function PayrollReopenPanel({resumeActionId}:{resumeActionId?:string}){
   try{const result=await sendGenericModuleAction(packet as GenericPacket,controller.signal);if(controller.signal.aborted)throw Error();if(!alive.current)return;
    if(result.kind==='choices'||result.kind==='unavailable'){setChoices(C.Choices.parse(result));return;}
    if(result.kind===C.indexKind){setIndex(C.Index.parse(result));return;}
-   if(result.kind==='prepared'&&'review'in result){const next=C.Prepared.parse(result.review);if(target&&next.content.batchId!==target)throw Error();clear();setIndex(null);setState({kind:'review',review:next});setNow(Date.now());}
-   else if(result.kind==='completed'&&'receipt'in result){const next=C.Completed.parse(result.receipt);if(target&&next.receipt.batchId!==target)throw Error();clear();setIndex(null);setState({kind:'done',receipt:next});}
+   if(result.kind==='prepared'&&'review'in result){const next=C.Prepared.parse(result.review);if(target&&next.content.batchId!==target)throw new ReviewBindingMismatch();clear();setIndex(null);setState({kind:'review',review:next});setNow(Date.now());}
+   else if(result.kind==='completed'&&'receipt'in result){const next=C.Completed.parse(result.receipt);if(target&&next.receipt.batchId!==target)throw new ReviewBindingMismatch();clear();setIndex(null);setState({kind:'done',receipt:next});}
    else if(result.kind==='retired'&&'receipt'in result){clear();setState({kind:'retired',receipt:C.Retired.parse(result.receipt)});}else throw Error();
-  }catch{if(alive.current){setError(true);if(!['choices','list'].includes(packet.operation)){clear();setState({kind:'uncertain',actionId:packetActionId(packet),expectedBatchId:target});}}}
+  }catch(failure){if(alive.current){setError(true);if(!['choices','list'].includes(packet.operation)){clear();setState({kind:'uncertain',actionId:failure instanceof ReviewBindingMismatch&&state.kind==='uncertain'&&!state.actionId?null:packetActionId(packet),expectedBatchId:target});}}}
   finally{clearTimeout(timer);flight.current=false;if(alive.current)setBusy(false);}
  }
  function prepare(event:FormEvent){event.preventDefault();const content=C.Human.safeParse({action:C.action,contractVersion:1,batchId,reason,confirmReopenClosedRun:authored,acknowledgeRecordedDownstreamWarnings:authored});if(!content.success){setError(true);return;}void dispatch({action:C.action,operation:'prepare',input:content.data});}
