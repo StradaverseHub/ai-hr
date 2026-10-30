@@ -20,7 +20,7 @@ export function CostAllocationMaintenancePanel({resumeActionId,initialEmployment
    if(packet.operation==='choices'){const next=C.Choices.parse(result);if(next.kind==='unavailable'){setChoices(null);setError(t('unavailable'));return;}setChoices(next);setConsent(false);setRows(next.current?.rows.map(r=>({costCenterId:r.costCenterId,percentage:formatAllocationPercent(r.hundredths)}))??[]);return;}
    if(packet.operation==='list'){setIndex(C.Index.parse(result).reviews);return;}
    setRows([]);setConsent(false);setConfirmed(false);
-   if(result.kind==='prepared'){setState({kind:'review',review:C.Prepared.parse((result as {review:unknown}).review)});return;}
+   if(result.kind==='prepared'){const next=C.Prepared.parse((result as {review:unknown}).review);setExpired(Date.now()>=Date.parse(next.expiresAt));setState({kind:'review',review:next});return;}
    if(result.kind==='completed'){setState({kind:'completed',receipt:C.Completed.parse((result as {receipt:unknown}).receipt)});return;}
    if(result.kind==='retired'){C.Retired.parse((result as {receipt:unknown}).receipt);setState({kind:'retired'});return;}throw Error();
   }catch{if(alive.current&&token===sequence.current){setError(t('unavailable'));if(packet.operation==='choices')setChoices(null);else if(packet.operation!=='list')setState({kind:'uncertain',actionId:fallback});}}
