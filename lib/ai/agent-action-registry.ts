@@ -282,7 +282,7 @@ export const AGENT_ACTIONS=Object.freeze([
   outcome:'canonical_receipt_required',semantics:'offboarding_step_completed_with_optional_derived_case_completion',humanInputs:['caseId','caseNumber','stepKey','reference','notes','confirmStepCompletion','acceptDerivedCaseCompletion'],
   permission:{actor:'lifecycle_staff',guard:'core/assistant-actions/offboarding-step-completion-source.ts#withOffboardingStepIntervalTx'},subject:'lifecycle_case',blastRadius:{max:1,unit:'offboarding_step_and_derived_case_completion'},
   idempotencyKey:'review_action_id',policy:{tier:'confirm',category:'own_work'},reversal:{kind:'entry_point',by:'app/lifecycle/actions.ts#undoStepAction'},evaluationCases:[],
-  screen:{native:'app/lifecycle/offboarding/[number]/page.tsx',entryPoints:['app/lifecycle/actions.ts#tickStepAction']},review:{route:'/assistant/offboarding-step',handoff:'review_page'},
+  screen:{native:'app/lifecycle/offboarding/[number]/page.tsx',entryPoints:[]},review:{route:'/assistant/offboarding-step',handoff:'review_page'},
   store:'dedicated',browserOwner:'offboardingStep',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'lifecycle.acknowledgement.submit',module:'lifecycle',owner:'lifecycle',service:'core/lifecycle-self.ts#submitMyAcknowledgement',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_lifecycle_ack_review_v1',inputSchema:'LifecycleAckReviewPrepare',outputSchema:'LifecycleAckPreparedReview'},
