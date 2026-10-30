@@ -3,6 +3,7 @@
 import React,{isValidElement,type ReactElement} from 'react';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 const source=vi.hoisted(()=>({session:vi.fn(),locale:vi.fn(),availability:vi.fn()}));
+vi.mock('../components/assistant/payroll-recovery-handoffs',()=>({PayrollRecoveryHandoffs:()=>null}));
 vi.mock('server-only',()=>({}));vi.mock('../lib/session',()=>({getBrowserCommandSession:source.session}));vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:string)=>key),getLocale:source.locale}));vi.mock('../core/assistant-actions/module-action-server',()=>({readPayrollCloseModuleActionChoices:source.availability}));vi.mock('../components/assistant/module-payroll-close-action-panel',()=>({ModulePayrollCloseActionPanel:()=>null}));vi.mock('next/link',()=>({default:()=>null}));vi.mock('../components/ui',()=>({Card:()=>null,PageHeader:()=>null}));
 import {ModulePayrollCloseActionSection} from '../components/assistant/module-payroll-close-action-section';
 import {ModulePayrollCloseActionPanel} from '../components/assistant/module-payroll-close-action-panel';

@@ -23,6 +23,7 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
+import {withTenant} from '../db/client';
 import {
   PayrollPermissionDeniedError,
   UnlockReasonRequiredError,
@@ -30,6 +31,7 @@ import {
   createBatch,
   generatePayslips,
   unlockClosedBatch,
+  unlockClosedBatchTx,
 } from '../core/payroll';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
@@ -151,6 +153,27 @@ describe('Unlock closed payroll — single confirm, mandatory reason (unlockClos
     expect((await batchRow(batchId)).status).toBe('closed');
     expect(await unlockHistoryRows(batchId)).toHaveLength(0);
     expect(await eventTypesFor(base.tenantId, batchId)).not.toContain('payroll-batch.unlocked');
+  });
+
+  it('Tx seam returns the exact inserted history and both conditional event IDs, and outer rollback undoes every effect', async () => {
+    const batchId=await closedBatch('2026-06');
+    const su=await superCtx();
+    await expect(withTenant(su,async tx=>{
+      const result=await unlockClosedBatchTx(tx,su,{batchId,reason:'  exact proof rollback  '});
+      const [history]=await tx.select().from(schema.payrollStatusHistory).where(eq(schema.payrollStatusHistory.id,result.statusHistoryId));
+      expect(history).toMatchObject({batchId,action:'unlock',fromStatus:'closed',toStatus:'processed',reason:'exact proof rollback'});
+      const [batchEvent]=await tx.select().from(schema.domainEvent).where(eq(schema.domainEvent.id,result.unlockedEventId));
+      expect(batchEvent).toMatchObject({aggregateId:batchId,eventType:'payroll-batch.unlocked'});
+      expect(batchEvent.payload).toMatchObject({reason:'exact proof rollback',reopenedPeriod:true});
+      expect(result.periodReopenedEventId).not.toBeNull();
+      const [periodEvent]=await tx.select().from(schema.domainEvent).where(eq(schema.domainEvent.id,result.periodReopenedEventId!));
+      expect(periodEvent).toMatchObject({aggregateId:(await batchRow(batchId)).payPeriodId,eventType:'pay-period.reopened'});
+      throw new Error('deliberate outer rollback');
+    })).rejects.toThrow('deliberate outer rollback');
+    expect((await batchRow(batchId)).status).toBe('closed');
+    expect(await periodStatusOf(batchId)).toBe('closed');
+    expect(await unlockHistoryRows(batchId)).toHaveLength(0);
+    expect(await eventTypesFor(base.tenantId,batchId)).not.toContain('payroll-batch.unlocked');
   });
 
   it('b. a non-blank reason succeeds (no code): Closed → Processed, period reopened, history row + events carry the trimmed reason', async () => {

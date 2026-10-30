@@ -3,6 +3,12 @@ import {ensureStandardRule} from '../../packs/attendance/service';
 import {setEmploymentScheduleGroupTx} from '../../core/roster';
 import {profileRequestRejectionReviews,readProfileRequestRejectionChoices} from '../../core/assistant-actions/profile-request-rejection-review-store';
 import {decideProfileChange} from '../../core/profile';
+import {preparePayrollReopenReview,confirmPayrollReopenReview,readPayrollReopenChoices} from '../../core/assistant-actions/payroll-reopen-review-store';
+import {unlockClosedBatch} from '../../packs/payroll/service';
+import {departmentArchiveReviews,readDepartmentArchiveChoices} from '../../core/assistant-actions/department-archive-review-store';
+import {listDepartmentsForLabels} from '../../core/admin';
+import {positionArchiveReviews,readPositionArchiveChoices} from '../../core/assistant-actions/position-archive-review-store';
+import {createPosition,bulkSaveLabels,listPositionsForLabels} from '../../core/admin';
 import {fixedItemArchiveReviews,readFixedItemArchiveChoices} from '../../core/assistant-actions/fixed-item-archive-review-store';
 import {archiveEmploymentPayComponent,setEmploymentPayComponent,seedPayComponentCatalog,listPayComponents} from '../../packs/payroll/service';
 import {tp3OpeningMaintenanceReviews,readTp3OpeningMaintenanceChoices} from '../../core/assistant-actions/tp3-opening-maintenance-review-store';
@@ -56,7 +62,7 @@ import {setCompensation} from '../../core/comp';
 import {setRestDay} from '../../core/roster';
 import {grantAssistant,revokeAssistant} from '../../core/assistant-grant';
 import {createMovementEventTx} from '../../core/movement';
-import {isAdmin} from '../../lib/authz-model';
+import {isAdmin,canManagePayroll} from '../../lib/authz-model';
 import {createClaimType,setClaimPolicy,submitClaim,decideClaimTx,cancelClaimTx} from '../../packs/claims/service';
 import {prepareClaimCancellationReview,confirmClaimCancellationReview,readClaimCancellationChoices} from '../../core/assistant-actions/claim-cancellation-review-store';
 import {OWN_CLAIM_CANCELLATION_ACTION} from '../../lib/assistant-actions/own-claim-cancellation-contract';
@@ -83,7 +89,7 @@ import {HR_LEAVE_ADJUSTMENT_ACTION,HR_MOVEMENT_TRANSFER_ACTION,HR_LEAVE_CREDIT_A
 import {AGENT_ACTIONS} from '../../lib/ai/agent-action-registry';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {AGENT_ACTION_PARITY,ATTENDANCE_WORKFLOW_PARITY,ALWAYS_REFUSED,PARITY_PHASES,PARITY_ROLES,PROBED_ACTION_IDS,expectedAgentOutcome,type ParityPhase,type ParityOutcome,type ParityRole,type ProbedActionId} from './agent-action-parity-matrix';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from '../harness';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from '../harness';
 
 
 vi.mock('server-only',()=>({}));
@@ -161,7 +167,7 @@ type World={
  login(base:Base,person:Person,role:DbRole,companyId:string|null):Promise<{ctx:SessionContext;userId:string}>;
  claimTypes:Map<string,string>;
 };
-type Family='assigned_decision'|'hr_on_employment'|'own';
+type Family='assigned_decision'|'hr_on_employment'|'own'|'catalogue';
 type Adapter={
  family:Family;store:Store;independentScreen?:boolean;pageAdmits?:(who:SessionContext)=>boolean;
  /** The page/route admission the screen's server action calls before its service (e.g. requireAdmin → isAdmin). */
@@ -267,6 +273,18 @@ async function notificationIdentity(who:SessionContext){
  await owner.db.insert(schema.appExternalIdentity).values({issuer:identity.issuer,subject:identity.subject,appUserId:who.userId!}).onConflictDoNothing();provider.current.mockResolvedValue(identity);return identity;
 }
 const ADAPTERS:Record<ProbedActionId,Adapter>={
+ 'org.position.archive':{family:'catalogue',store:packetStore('org.position.archive',positionArchiveReviews.prepare,positionArchiveReviews.confirm),
+  screenAdmits:async(who,item)=>isAdmin(who)&&(await listPositionsForLabels(who)).some(p=>p.id===item.subjectId&&!p.inUse),
+  create:async(_w,h)=>{const title='FIC_POSITION_'+randomUUID().slice(0,8),p=await createPosition(groupOf(h.base),{companyId:h.companyId,title});return itemOf(h,p.id,{code:title});},
+  human:item=>({action:'org.position.archive',contractVersion:1,positionId:item.subjectId,expectedArchived:false,archived:true}),
+  offered:async(who,item)=>{const choices=await readPositionArchiveChoices(who,{query:item.code});return choices.kind==='choices'&&choices.positions.some(p=>p.positionId===item.subjectId);},
+  screen:(tx,who,item)=>bulkSaveLabels(who,'position',{creates:[],updates:[{key:item.subjectId,id:item.subjectId,title:item.code,jobFamily:'',label:'',description:'',archived:true}]},tx)},
+ 'org.department.archive':{family:'catalogue',store:packetStore('org.department.archive',departmentArchiveReviews.prepare,departmentArchiveReviews.confirm),
+  screenAdmits:async(who,item)=>isAdmin(who)&&(await listDepartmentsForLabels(who)).some(p=>p.id===item.subjectId&&!p.inUse),
+  create:async(_w,h)=>{const name='FIC_DEPARTMENT_'+randomUUID().slice(0,8),p=await createDepartment(groupOf(h.base),{companyId:h.companyId,name});return itemOf(h,p.id,{code:name});},
+  human:item=>({action:'org.department.archive',contractVersion:1,departmentId:item.subjectId,expectedArchived:false,archived:true}),
+  offered:async(who,item)=>{const choices=await readDepartmentArchiveChoices(who,{query:item.code});return choices.kind==='choices'&&choices.departments.some(p=>p.departmentId===item.subjectId);},
+  screen:(tx,who,item)=>bulkSaveLabels(who,'department',{creates:[],updates:[{key:item.subjectId,id:item.subjectId,name:item.code,businessUnitId:null,headEmploymentId:null,label:'',description:'',archived:true}]},tx)},
  'approvals.leave.decide':{family:'assigned_decision',store:packetStore('approvals.leave.decide',prepareLeaveDecisionReview,confirmLeaveDecisionReview),
   async create(w,h){const item=await pendingLeave(w,h);const steps=await owner.db.select().from(schema.leaveApprovalStep).where(eq(schema.leaveApprovalStep.leaveRequestId,item.subjectId)).orderBy(schema.leaveApprovalStep.stepIndex);return {...item,stepId:steps.find(row=>row.status==='pending')?.id??null};},
   human:(item,o)=>({action:'approvals.leave.decide',contractVersion:1,leaveRequestId:item.subjectId,currentStepId:item.stepId??null,decision:o.decision,rejectReason:o.decision==='rejected'?REJECT_REASON:null,confirmAssignedDecision:true}),
@@ -277,6 +295,8 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
  'performance.onehr.plan.acknowledge':{family:'own',screenAdmits:ownEmploymentScreen,store:packetStore('performance.onehr.plan.acknowledge',prepareOnehrModuleActionReview,confirmOnehrModuleActionReview),
   async create(w,h){const year=Number(todayInKualaLumpur().slice(0,4)),group=groupOf(h.base),[grade]=await owner.db.insert(schema.jobGrade).values({tenantId:h.base.tenantId,code:'12',name:'Fictional Grade12'}).returning({id:schema.jobGrade.id});await owner.db.update(schema.employment).set({gradeId:grade.id}).where(eq(schema.employment.companyId,h.companyId));const {cycleId}=await perf.createCycle(group,{name:'Fictional OneHR Review',companyId:h.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`});await perf.configureOnehrCycle(group,cycleId,null,defaultOnehrPolicy(onehrFramework));await perf.openCycle(group,{cycleId});const [review]=await owner.db.select({id:schema.performanceReview.id}).from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,h.person.employmentId)));await perf.saveOnehrPlan(await h.session(),review.id,null,{career:{aspiration:'Fictional workshop practice',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[{id:randomUUID(),area:'Fictional facilitation',dueOn:'',onJob:'Human fixture workshop',fromOthers:'',formalLearning:'',status:'not_started'}]},true);let [plan]=await owner.db.select().from(schema.onehrPlan).where(and(eq(schema.onehrPlan.employmentId,h.person.employmentId),eq(schema.onehrPlan.planYear,year+1)));await perf.reviewOnehrPlan(await w.as('manager'),plan.id,plan.revision,'Agreed','Fictional career conversation',true,undefined,todayInKualaLumpur());[plan]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id));return itemOf(h,plan.id,{revision:plan.revision});},
   human:item=>({action:'performance.onehr.plan.acknowledge',contractVersion:1,intent:{version:1,planId:item.subjectId,acknowledge:true}}),offered:async(who,item)=>listed(await readPerformanceModuleActionChoices(who),'items','sourceId',item.subjectId),screen:(tx,who,item)=>perf.acknowledgeOnehrPlanTx(tx,who,item.subjectId,item.revision!)},
+ 'payroll.reopen':{family:'hr_on_employment',pageAdmits:canManagePayroll,independentScreen:true,store:packetStore('payroll.reopen',preparePayrollReopenReview,confirmPayrollReopenReview),
+  async create(_w,h){const group=groupOf(h.base),period=previousPeriod();await requirePackFor('MY').statutory.set(group,{personId:h.person.personId,icNumber:'900101019885'});const {batchId}=await createBatch(group,{companyId:h.companyId,payPeriod:period,scope:{employmentIds:[h.person.employmentId]}});await generatePayslips(group,{batchId});await closeBatch(group,{batchId});await setSetting(h.base.tenantId,'payroll.unlock_enabled',true);return itemOf(h,batchId);},human:item=>({action:'payroll.reopen',contractVersion:1,batchId:item.subjectId,reason:'Fictional payroll reopen parity reason',confirmReopenClosedRun:true,acknowledgeRecordedDownstreamWarnings:true}),offered:async(who,item)=>listed(await readPayrollReopenChoices(who),'batches','batchId',item.subjectId),screen:(_tx,who,item)=>unlockClosedBatch(who,{batchId:item.subjectId,reason:'Fictional payroll reopen parity reason'})},
  'payroll.close':{family:'hr_on_employment',pageAdmits:isAdmin,independentScreen:true,store:packetStore('payroll.close',preparePayrollCloseReview,confirmPayrollCloseReview),
   async create(_w,h){const group=groupOf(h.base),period=previousPeriod();await requirePackFor('MY').statutory.set(group,{personId:h.person.personId,icNumber:'900101019885'});const {batchId}=await createBatch(group,{companyId:h.companyId,payPeriod:period,scope:{employmentIds:[h.person.employmentId]}});await generatePayslips(group,{batchId});return itemOf(h,batchId);},human:item=>({action:'payroll.close',contractVersion:1,batchId:item.subjectId,confirmCloseProcessedRun:true}),offered:async(who,item)=>listed(await readPayrollCloseModuleActionChoices(who),'batches','batchId',item.subjectId),screen:(_tx,who,item)=>closeBatch(who,{batchId:item.subjectId})},
  'multi_cycle_payroll.create_run':{family:'hr_on_employment',pageAdmits:isAdmin,store:packetStore('multi_cycle_payroll.create_run',prepareMultiCycleRunReview,confirmMultiCycleRunReview),

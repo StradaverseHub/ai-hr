@@ -85,8 +85,8 @@ it('offers native Employee import and a local human qualification review without
  for(const action of ['employees.fixed_item.archive','employees.tp3_opening.maintain','employees.document_metadata.maintain','employees.code.maintain','employees.passport.maintain','employees.payment_method.maintain']){expect(parseModuleAgentActionNomination({module:'employees',action,phase:'prepare'})).toMatchObject({kind:'prepare',module:'employees',action,requiresHumanSelection:true,effect:'none'});expect(()=>parseModuleAgentActionNomination({module:'employees',action,phase:'prepare',fields:{value:'Model-filled record'}})).toThrow();}
 });
 
-it('offers the actual human Payroll close page without financial inputs, batch selection, release overrides or confirmation',()=>{
- const rows=moduleHumanActionHandoffs('payroll');expect(rows).toEqual([{module:'payroll',action:'payroll.close',route:'/assistant/payroll-close',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
+it('offers the human Payroll close and reopen pages without financial inputs, batch selection, release overrides or confirmation',()=>{
+ const rows=moduleHumanActionHandoffs('payroll');expect(rows).toEqual([{module:'payroll',action:'payroll.close',route:'/assistant/payroll-close',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'payroll',action:'payroll.reopen',route:'/assistant/payroll-reopen',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
  for(const extra of [{batchId:'other'},{salary:100},{override:true},{releaseTiming:{}},{confirmCloseProcessedRun:true},{route:'/assistant/payroll-close?batch=other'}])expect(()=>checkedModuleHumanHandoffs('payroll',rows.map(row=>({...row,...extra})))).toThrow();
 });
 
