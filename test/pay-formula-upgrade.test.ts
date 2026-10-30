@@ -14,6 +14,9 @@ const nativeTables=['tenant','company','person','app_user','role_assignment','em
 it.each(['clean','populated'] as const)('rehearses the %s ordinary Formula Builder journal upgrade without changing Native payroll or prior receipts',async mode=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{tag:string;when:number}[]};
  const boundary=journal.entries.findIndex(entry=>entry.tag==='0800_pay_formula_builder');expect(boundary).toBeGreaterThan(0);
+ expect(journal.entries.slice(boundary).map(({tag,when})=>({tag,when}))).toEqual([{tag:'0800_pay_formula_builder',when:1793330000200},{tag:'0811_pay_formula_company_retention',when:1793330000211}]);
+ expect(createHash('sha256').update(readFileSync('db/migrations/0800_pay_formula_builder.sql')).digest('hex')).toBe('f8ba2919eb59346bc86453667cc7952a5671db88b740fcab3c41b4530802c322');
+ expect(createHash('sha256').update(readFileSync('db/migrations/0811_pay_formula_company_retention.sql')).digest('hex')).toBe('b3bea8f1c646e0989ac1cf161cc4950e4956439693961c2d8c00aba1c21aae5b');
  const directory=mkdtempSync(join(tmpdir(),'formula-ordinary-upgrade-')),name='ai_hr_formula_upgrade_'+randomUUID().replaceAll('-','');
  const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!),appUrl=new URL(process.env.TEST_DATABASE_URL!);
  expect(['127.0.0.1','localhost']).toContain(ownerUrl.hostname);expect(['127.0.0.1','localhost']).toContain(appUrl.hostname);expect(ownerUrl.username).not.toBe('ai_hr_app');expect(appUrl.username).toBe('ai_hr_app');
@@ -46,13 +49,23 @@ it.each(['clean','populated'] as const)('rehearses the %s ordinary Formula Build
   if(prefix){expect(after.slice(0,boundary)).toEqual(prefix);expect(await native()).toEqual(before);expect(await storage.client`select formula_context,rule,prorates,kind::text from pay_component where id=${component}`).toEqual([{formula_context:null,rule:nativeRule,prorates:false,kind:'allowance'}]);}
   for(const table of formulaTables){expect(await storage.client.unsafe(`select count(*)::int as count from public.${table}`)).toEqual([{count:0}]);
    expect(await storage.client`select has_table_privilege('ai_hr_app',${table},'SELECT') as readable,has_table_privilege('ai_hr_app',${table},'INSERT') as insertable,has_table_privilege('ai_hr_app',${table},'UPDATE') as mutable,has_table_privilege('ai_hr_app',${table},'DELETE') as deletable,has_table_privilege('ai_hr_app',${table},'TRUNCATE') as truncatable`).toEqual([{readable:true,insertable:true,mutable:false,deletable:false,truncatable:false}]);
-   expect(await storage.client`select relrowsecurity from pg_class where oid=${'public.'+table}::regclass`).toEqual([{relrowsecurity:true}]);
+   expect(await storage.client`select relrowsecurity,relforcerowsecurity,relowner=(select proowner from pg_proc where oid='app.pay_formula_company_in_use(uuid)'::regprocedure) as same_definer_owner,relowner=(select oid from pg_roles where rolname='ai_hr_app') as app_owned from pg_class where oid=${'public.'+table}::regclass`).toEqual([{relrowsecurity:true,relforcerowsecurity:false,same_definer_owner:true,app_owned:false}]);
   }
   expect(await storage.client`select count(*)::int as count from pg_constraint where conrelid='pay_formula_evaluation'::regclass and confrelid='payroll_batch'::regclass and contype='f'`).toEqual([{count:0}]);
   expect(await storage.client`select has_column_privilege('ai_hr_app','pay_formula','formula_id','UPDATE') as rename,has_column_privilege('ai_hr_app','pay_formula','tenant_id','UPDATE') as retenant`).toEqual([{rename:true,retenant:false}]);
   expect(await storage.client`select has_function_privilege('ai_hr_app','app.pay_formula_active(text)','EXECUTE') as safe_accessor,not exists(select 1 from pg_proc p,lateral aclexplode(p.proacl) a where p.oid='app.pay_formula_active(text)'::regprocedure and a.grantee=0 and a.privilege_type='EXECUTE') as public_revoked`).toEqual([{safe_accessor:true,public_revoked:true}]);
   const [accessor]=await storage.client`select pg_get_function_result('app.pay_formula_active(text)'::regprocedure) as result,prosecdef from pg_proc where oid='app.pay_formula_active(text)'::regprocedure`;
   expect(accessor.prosecdef).toBe(true);expect(accessor.result).toContain('revision_id uuid');expect(accessor.result).toContain('dependency_fingerprint text');expect(accessor.result).not.toMatch(/context|explanations|read_requirements|payload|amount/);
+  // The retention function sees owner-held rows without widening the private trace SELECT policy.
+  // Metadata must prove the actual migrator's ownership, not merely assume a SECURITY DEFINER can see them.
+  const [retention]=await storage.client`select p.prosecdef,p.provolatile,pg_get_function_result(p.oid) as result,p.proconfig,
+    p.proowner=(select oid from pg_roles where rolname='ai_hr_app') as app_owned,
+    has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app_execute,
+    not exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public_revoked
+    from pg_proc p where p.oid='app.pay_formula_company_in_use(uuid)'::regprocedure`;
+  expect(retention).toEqual({prosecdef:true,provolatile:'s',result:'boolean',proconfig:['search_path=pg_catalog, public, app'],app_owned:false,app_execute:true,public_revoked:true});
+  expect(await storage.client`select rolsuper,rolbypassrls from pg_roles where rolname='ai_hr_app'`).toEqual([{rolsuper:false,rolbypassrls:false}]);
+  expect(await application.client`select app.pay_formula_company_in_use(${company}::uuid) as retained`).toEqual([{retained:false}]);
   // An unbound application session receives no activation metadata or private test/evaluation rows.
   expect(await application.client`select * from app.pay_formula_active('UPGRADE_OT')`).toEqual([]);
   expect(await application.client`select * from pay_formula_test`).toEqual([]);expect(await application.client`select * from pay_formula_evaluation`).toEqual([]);
