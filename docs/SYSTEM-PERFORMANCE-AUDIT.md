@@ -1,413 +1,229 @@
 # System performance and capacity review
 
-The system has verified growth risks. Returning a short browser table does not always mean that the database read, calculation or response is bounded. The changes in this candidate reduce unnecessary reads and payloads; they do not certify every module for millions of records or simultaneous users.
+## Outcome and limits
 
-## Latest verified outcome
+**The 500-concurrent-user speed target is not met.** This is development evidence,
+not release acceptance. [Draft PR 113](https://github.com/StradaverseHub/ai-hr/pull/113)
+is held; this work has not deployed to staging or production.
 
-Implemented source is frozen at `4d5b404e2`; the final handoff adds documentation only.
-Draft review: [PR113](https://github.com/StradaverseHub/ai-hr/pull/113). It remains held
-for integration/migration reconciliation and release acceptance; no installation was changed.
+The owner requested both one-second and five-second activity levels. All four
+workloads on source `5249c199a98a0509638426383bc6f356f2a10f0a` reached 500 active
+users and failed speed acceptance. Each used 1,500 page reads and approximately
+1,500 real create/edit/delete requests. These are aggregate timed-phase p95
+values, not successful steady-state capacity measurements:
 
-- One-million-claim history read: **564.4 ms median /581.9 ms maximum** across five warm
-  service samples,25 rows and12,307 response bytes. Initial hosted median was5218ms.
-- Shared permission planning: the original query evaluated company-admin access500 times
-  before DISTINCT. Materializing distinct companies preserves the same visible identities;
-  isolated measured helper execution fell from22.8ms to1.5ms.
-- **306 authorization/regression assertions passed**, including87 visibility-equivalence
-  checks; the final source also passes its complete TypeScript check and production build.
-- **500 concurrent fictional employee sessions complete read/create/edit/delete journeys
-  without errors**, but the latency target is **not met**. In the controlled same-run test,
-  paced p95 reads/creates/edits/deletes remain around2.8–3.1seconds. Raising the pool from10
-  to20 did not help. The default remains10.
-
-These are service-level Claims workloads, not a certificate for every page, HTTP/browser
-journey, module, tenant distribution or production configuration. The workload starts500
-sessions over10seconds, pauses750–1250ms between actions and runs warm after an instantaneous
-burst. Optional audit hash-chain flag is false in this fixture. Zero functional errors and
-green measurement tests do not establish a latency pass. The proposed budgets remain p95
-under1000ms for ordinary data reads and under500ms for simple mutations.
-
-The source baseline is `c4fad43c1d67d69125a3f37e7549a5a8a7053362`, fetched from matching main and alpha refs on 30 October 2026. The repository inventory covered 6,945 JavaScript and TypeScript files and 417 page routes. Static scans identify candidates; the workflow traces and tests below establish the narrower implementation findings. This is not a line-by-line correctness review of every file.
-
-## Changes in this candidate
-
-| Area | Previous work | Result |
-| --- | --- | --- |
-| Shared page shell | Independent notification and lifecycle reads waited sequentially | Small parallel batches; dispatch still precedes notification reads and approval fan-out remains separate |
-| Personnel employee record | Twelve independent supporting reads waited individually | Three batches of four, retaining the session and each person, employment and company boundary |
-| Personnel New Event | Current company options were fetched again | Reuses the exact current-company lists already loaded; other companies still use their own resolvers |
-| Claims history | All claims and attachment metadata loaded before browser pagination; rejection facts fetched for all historical rejections | History uses SQL limit and offset with stable time/id ordering; facts are fetched for displayed rejections; drafts use a separate read |
-| Mobile claim lists | All claims loaded before status filtering, counts and cursor slicing | Status aggregates and cursor continuation run in SQL; only the bounded page receives receipt metadata |
-| Payroll batch detail | Every payslip statutory snapshot loaded before slicing | SQL pages fetch only displayed snapshots; count and minimal off-page recalculation identities preserve totals and warnings |
-| Lifecycle shell | All cases and notes loaded; directory resolved even without relevant mentions | Actionable case predicates, unresolved actor mentions, SQL recent-joiner counter and lazy name lookup |
-| Employee master export | Each employment repeatedly scanned shared source arrays | Projection-local grouped rows and descriptor/name maps; fresh slices preserve local sorting |
-| Personnel list switcher | Whole authorized directory shipped on every page opening | Debounced remote search returns at most eight authorized matches; abort/stale-result handling and explicit errors |
-| Mobile claim detail | Loaded every claim to locate one id | Narrows by employment and claim id in SQL |
-| Analytics | Generated the full employee master export solely to obtain its length | SQL aggregate with the same joins and shared filter predicate |
-| Payroll list | Loaded all historical batches and their totals for two counters | SQL aggregates over the same effective-history source and visibility predicate; selected-year behaviour stays intact |
-| Individual Attendance | Loaded punch details for the entire selected date range | Loads only the displayed attendance ids through the existing page-scoped owner |
-| Unused code | Four modules had no import, export, source-string or symbol consumers | Removed 540 lines from three retired controls and the unused benefit-scheme label module |
-
-The retired controls are `components/add-company.tsx`, `components/period-switcher.tsx` and `components/schedule-group-week-editor.tsx`. The label module is `lib/benefit-scheme-label.ts`. No active route was removed. Other apparent orphans were retained: tests read some files directly, the evidence extractor is launched as a process, and compatibility facades need contract review. Identical route layout guards are framework entry points using an existing shared helper; deleting them would remove route coverage.
-
-## Measured behaviour
-
-### Shared layout scheduling
-
-A test invokes the actual root layout with deferred read owners. The original layout fails its concurrency assertions. With each mocked I/O operation taking 20 ms, the affected lifecycle and bell groups take 180 ms before the change and 40 ms afterward. These are deterministic scheduling measurements, not live page-load timings.
-
-The Personnel support test verifies twelve reads in three 20 ms windows, with at most four supporting reads active. The original twelve sequential waits would require twelve windows. Existing database service guards remain responsible for data access.
-
-### Claims history growth
-
-The opt-in database benchmark creates synthetic claims in a disposable migrated namespace and calls the actual service as the application role. It uses one employment to stress the worst case of a single very large history. Five serial reads per size measure the first page and its exact total. Times include service work; response sizes are JSON before HTTP compression. They exclude a browser, network latency and competing users.
-
-| Claims in fixture | Returned history rows | Response bytes | Median service time | Slowest of five |
-| ---: | ---: | ---: | ---: | ---: |
-| 10,000 | 25 | 12,305 | 18.7 ms | 21.3 ms |
-| 100,000 | 25 | 12,306 | 108.9 ms | 115.1 ms |
-| 1,000,000 | 25 | 12,307 | 2,975.1 ms | 3,245.8 ms |
-
-At 10,000 claims, the legacy full-list read returned 10,000 rows and 4,859,999 JSON bytes in 83.7 ms. The bounded result is about 395 times smaller. This comparison does not measure peak memory and is not a percentile estimate from production traffic.
-
-A second run under application permissions separated the million-row plans: the count took 1,596 ms and a representative ordered id-page lookup took 1,322 ms. That run measured a 3,206 ms median for the complete service. The million-row result is a failed latency objective despite successful functional assertions and bounded output. Exact totals, sorting and policy-filtered joins need further work. Offset pagination also becomes more expensive on deep pages. A million records distributed across many employments is a different workload and needs its own measurement.
-
-Reproduce the opt-in fixture through complete-set local resource admission, with valid local test URLs in private configuration:
-
-```sh
-python3 scripts/local-resource-lock.py --test-slots 2 --database performance-scale -- \
-  env TEST_DB_NAMESPACE=perf_scale VITEST_MAX_WORKERS=1 AIHR_SCALE_CLAIMS=true \
-  AIHR_SCALE_REPORT=/private/tmp/aihr-claims-scale.json \
-  pnpm exec vitest run --project node --maxWorkers 1 \
-  test/claims-history-pagination.test.ts -t 'grows to one million'
-```
-
-The namespace must be unique, within the test helper's length limit, and disposable. The fixture deletes its own template and worker databases at teardown. Do not use installation database credentials.
-
-## Review across the system
-
-| Area | Verified source finding | Remaining capacity concern |
-| --- | --- | --- |
-| Navigation and notifications | Shared root composes approvals, lifecycle, notifications and assistant access; database pool defaults to ten connections | Per-page query count, opportunistic notification dispatch and repeated access reads can dominate; measure pool waits under concurrency |
-| Personnel and organization | Record renders ten panels; current list has SQL pagination and a bounded picker service exists | Record still prepares hidden panels and some pickers preload the workforce; move large pickers to authorized search without losing unsaved form state |
-| Leave and approvals | Canonical leave reads already support SQL paging and keyset continuation; inbox fans out across owners | Full actionable queues and per-request breakdown reads grow with backlog; batch metadata and derive badges without loading private decision workspaces |
-| Attendance and roster | Daily attendance pages in SQL; individual punch details are now page-scoped | Individual/range and summary views still derive complete selected ranges before slicing; bound date windows and page the authorized subject set before expensive derivation |
-| Payroll and statutory | All-time counters now aggregate in SQL; selected year remains filtered in SQL | Batch detail loads all payslips before pagination; preflight and payroll generation require size-dependent capacity tests and resumable work rather than optimistic UI-only changes |
-| Claims and loans | Web history is SQL-paged; one-record mobile lookups are bounded | Exact counts remain expensive at the extreme; draft lists and mobile claims list still load complete sets; move mobile listing to SQL cursor pages with status aggregates |
-| Performance and Rewards | Module services include bounded task projections and batched home reads | Review/calibration cohorts and reward evaluation perform per-subject work; load-test large cycles and batches while preserving releases, self-exclusion and frozen outcomes |
-| Lifecycle | `onboardingTasks` reads all visible cases and notes; navigation independently reads case data | A shell-level task read grows with accumulated onboarding history; add purpose-specific, SQL-filtered actionable projections and summary counts |
-| Reports and analytics | Master count no longer builds an export; Employee Master explicitly caps 2,000 subjects and 50,000 records per source read | Export projection still calls some domain readers per employment and per leave type; large reports need queued, streamed generation with fresh scoped admission |
-| Imports and bulk changes | Bank import uses a durable worker, 100-row apply batches and explicit 250,000-row/128 MiB bounds | Initial source decoding holds a complete file; other imports have their own limits and transaction patterns; measure peak memory, restart recovery and writer contention independently |
-| Assistant and Control Tower | Domain readers and prepared action boundaries exist; browser action panels contain timeouts and uncertain-outcome handling | Provider latency, concurrent tool reads and serialized proposal steps require separate budgets; preserve deterministic service authorization and idempotent commands |
-| Documents, letters and exports | Spreadsheet browser entry points lazily import the parser; PDF and workbook generation have specialized owners | CPU-heavy rendering competes with interactive requests in the application process; measure worker isolation, bounded queues and file-store throughput |
-| Identity, access and shared database | `withTenant` installs caller context in one statement and preserves RLS; source contains roughly 435 schema index declarations | Query plans must be measured under real role and company scopes; owner-role timings cannot establish user performance; no global private-data cache should be introduced |
-| Browser payload and refreshes | English message catalogue is 1,793,684 source bytes and root uses an unrestricted internationalization provider; 44 root-layout invalidation call sites were found | Measure compressed RSC/JavaScript and hydration; narrow message delivery by actual client namespaces; verify whether explicit refreshes duplicate server-action refresh work before changing freshness |
-
-There were 17 page files with actual `paginateRows(...)` calls at baseline; claims history removes one. The remaining 16 include high-growth payroll and attendance paths as well as small configuration catalogues. They are not equally urgent. Counts of `await` expressions or nearby loop awaits are investigation aids, not proof of unnecessary sequential work. Financial writes, audit append order, lock acquisition and dependent reads must retain their order.
-
-## Prioritized remaining work
-
-Scores use `(impact + risk) × (6 − effort)`, with each input from 1 to 5. Effort is relative, not a delivery promise.
-
-| Priority | Work | Impact | Risk | Effort | Score | Acceptance condition |
-| --- | --- | ---: | ---: | ---: | ---: | --- |
-| P1 | Separate claims exact-count and ordered-page costs; validate candidate ordering indexes and cursor navigation | 5 | 4 | 2 | 36 | Application-role plans and latency stay within the chosen interactive budget at 10k, 100k and 1m histories, including deep pages |
-| P1 | Replace shell lifecycle scans with actionable projections and counters | 5 | 4 | 3 | 27 | Completed history growth does not increase rows loaded for a viewer's current shell; task parity and scope tests pass |
-| P1 | Page payroll batch payslips and attendance derivation in the database | 5 | 5 | 3 | 30 | Fixed page size bounds fetched and derived records; totals remain correct; payroll and attendance financial gates pass |
-| P1 | Use authorized remote employee search in large pickers | 5 | 4 | 3 | 27 | Maximum 100 results, cursor continuation, current-value retention and grant revocation coverage |
-| P1 | Establish request, query and pool-wait measurements under concurrency | 5 | 4 | 3 | 27 | Per-role p50/p95/p99, errors, memory and lock waits at agreed user counts, without logging HR values or tokens |
-| P2 | Queue and stream expensive exports and long imports | 5 | 4 | 4 | 18 | Bounded memory, progress, cancellation, retries and permission revalidation; concurrent simple reads and writes remain responsive |
-| P2 | Reduce browser translation payload and verify mutation refresh duplication | 4 | 3 | 3 | 21 | Smaller measured RSC/JS payload and hydration work; all languages and post-write freshness pass |
-| P2 | Deepen oversized modules along domain boundaries | 3 | 4 | 4 | 14 | Smaller interfaces and one owner per business fact, with unchanged behaviour and shrinking boundary-debt allowlists |
-
-`core/leave.ts` and `core/payroll.ts` each exceed 12,000 lines at baseline; attendance exceeds 7,000. This makes changes harder to reason about, but file length itself does not establish a runtime bottleneck. Refactor cohesive readers and writers after profiling, instead of splitting files solely to reduce line counts.
-
-## Capacity acceptance before a scale claim
-
-Test at 10,000, 100,000 and 1,000,000 relevant records using both concentrated and distributed tenant/company histories. Include employee, manager, company HR and group HR scopes. Exercise cold and warm page opening, search, deep paging, create, edit and delete, with simultaneous exports, imports and payroll work.
-
-Candidate budgets for agreement are p95 under one second for ordinary authenticated page data and under 500 ms for a simple record mutation, excluding file transfer and long-running calculation jobs. A tab already loaded in the browser should respond within 100 ms. These are proposed acceptance targets, not established results. The owner confirmed a target of **500 concurrent users** on 30 October 2026. Distinguish 500 signed-in active users with realistic think time from a simultaneous 500-request burst; measure both before setting server/database capacity.
-
-Capture server duration, database execution and planning, rows scanned/returned, response bytes, browser interaction/hydration, pool waits, lock waits, CPU, memory and failure rate. Verify authorization, audit history, idempotency and transaction outcomes under the same load. Add indexes only against measured plans and real tenant distributions, then coordinate migrations through the current allocation and deployed-watermark policy.
-
-A Git-discovered private SSH configuration now permits read-only staging diagnostics. The observed installation reported an incomplete prior deployment and a stale build; this candidate has not changed that other-owner state. Live request measurements and rendered acceptance remain outstanding. The exported 569-row ledger matches current source hashes except three historical differences: two match historical Git bytes; the0240 hash remains unresolved. No applied SQL was changed. The0726 index reservation is development-only until the complete ledger and competing allocations are reconciled. No installation or production change is part of this candidate. Focused test passes do not replace the repository's impact-selected release gate, build, migration policy or staging acceptance.
-
-## Earlier development verification (before hosted continuation)
-
-- Nine focused shell, Personnel, attendance display and pack-boundary suites pass: 109 tests.
-- Four focused database suites pass: 40 tests covering claim pagination, analytics parity, mobile claims and claim forms.
-- Five additional workflow/database suites pass: 86 tests covering rendered Personnel module gating, payroll timelines, daily attendance, punch reads and claim drafts.
-- The scale fixture and payroll list suite pass together: 10 tests. The separate measured scale runs also pass their functional assertions and clean up their private databases. Passing these assertions does not override the three-second latency finding.
-- Changed-file lint reports 15 errors and 14 warnings. Running the same checks against the baseline reproduces exactly those counts; there are no new diagnostics. Existing examples include render-local analytics components and a pure payroll helper named like a React hook.
-- The default full TypeScript check exhausted its 4 GB heap. The 8 GB rerun was stopped after more than twelve minutes without a result. It is not a full-repository type-check pass. The complete application project passes `tsc --project tsconfig.build.json --noEmit --incremental false` with a 6 GB heap; test and CLI typing remain outside that successful check.
-- The production build, complete impact-selected release gate, browser journeys on the candidate and installation acceptance remain outstanding. The staging SSH alias is unavailable here.
-
-## Hosted continuation and capacity evidence
-
-Development source includes freshly fetched main/alpha7098cde19 through a normal merge.
-All new application tests, whole compiler checks and production builds run on standard
-GitHub-hosted runners, following the updated repository policy. Earlier local evidence
-above retains its original scope; it is not relabelled onto the later candidate.
-
-The first hosted million-row claims probe failed its under1000ms median budget at
-approximately5218ms despite bounded response rows. Its retained permission-scoped
-plans showed full-history sorting plus nearly a million repeated person/type index
-lookups. Disabling JIT alone did not fix this. The successor replaces count joins with
-semi-joins and adds an employment/time/id ordering index. The first index migration
-failed the fresh baseline because its partial predicate referenced an enum value added
-in the same transaction. The unpublished index was corrected to cover all statuses;
-existing migration bytes and grants remain unchanged. Retain these failures as evidence.
-
-The500-session probe uses500 distinct real fictional employee principals and one
-million claims distributed across500 employments. Every concurrent journey reads a
-history page, creates/edits/deletes its own draft and verifies the persisted outcomes.
-It records per-operation p50/p95/p99, maximum latency and errors through the normal
-ten-connection application pool. This is a service burst probe, not an HTTP/browser
-capacity certificate or a measurement of pool wait in isolation. Functional completion
-does not establish the proposed latency budgets. Multi-role/multi-tenant HTTP workloads,
-deep paging, imports/exports/payroll contention and target-host resource measurements
-remain required before a whole-system500-user or millions-of-records readiness claim.
-
-### Retained hosted results, 30 October 2026
-
-| Candidate / run | Evidence | Limits |
-| --- | --- | --- |
-| d7ab4676f /41010512996 | 20 functional assertions pass; million-row median5218ms fails | Initial JIT-only tuning did not satisfy the budget |
-| 2f12079e1 /41010956574 | Full failed-count/join plans retained | Almost a million repeated person/type probes; full sorting |
-| a03d10589 /41010867792 |24 non-DB and55 DB assertions pass; new fixtures fail; compiler/build catch readonly-array mutation | Fixture and typing repairs made afterward; original failures retained |
-|9d528facb /41011708143 |83 UI/route assertions pass; whole compiler and production build pass | DB selection stopped on unpublished partial-index/enum migration incompatibility |
-|1904b9acb /41011806546 |50 functional assertions pass; million-row median7572.5ms fails | Corrected full index alone did not constrain display joins |
-|54d5f29d0 /41012353092 |89 assertions pass; million-row median1199ms fails; one generated-code fixture collision | Page-before-join reduces work but still misses the unchanged1000ms budget |
-|0ccb8dd87 /41012887934 |55 assertions pass, no failures. Million-row median578.2ms/max631.6ms,25rows/12,307bytes.10k median27ms;100k40.1ms | Five warm samples, one concentrated employment, service-level calls; no HTTP or500-user certificate |
-|cf5738c60 /41012653080 |24 non-DB and136 DB assertions pass; whole compiler and production build pass | One generated-code fixture collision, repaired in0ccb8dd87 and covered by the successful55-assertion rerun |
-|40b7813e5 /41011891127 |500-session service burst exceeds240-second test limit | No complete capacity receipt |
-|cf5738c60 /41012655333 |Second burst exceeds240seconds. Retained checkpoint:500reads,500creates,232edits,0deletes completed at202seconds | Incomplete counts are not successes for whole journeys. Single default/off JIT creation samples232.6/217.8ms do not explain the bottleneck |
-
-Later main/alpha advanced to2ab4f6c12 with the Movement release and571-entry journal
-through0722 /1793330000051. Those changes are not implicitly included in this frozen
-performance candidate. The release orchestrator reports V9 ahead of this candidate,
-with proposed successor sequences56–63; verify actual installed source/ledger on handback.
-Our unapplied0726 must receive a fresh coordinated append above the actual watermark
-before later integration/release. Source or migration edits invalidate affected evidence;
-retain every original run identity rather than relabelling it.
-
-### Final frozen-source receipts
-
-| Source / hosted run | Result |
-| --- | --- |
-|e4da0f57c /[41013812848](https://github.com/StradaverseHub/ai-hr/actions/runs/41013812848)|299 DB +7 non-DB assertions pass;87 native visibility-equivalence checks included. Whole compiler and production build pass.|
-|e4da0f57c /[41013812648](https://github.com/StradaverseHub/ai-hr/actions/runs/41013812648)|Five claims assertions pass; million-row median564.7ms/max579.5ms. Revised0726 migration is installed in the private fresh test database.|
-|d321ddd2e /[41014332355](https://github.com/StradaverseHub/ai-hr/actions/runs/41014332355)|25 assertions pass;500 burst journeys complete without errors; claimant-PK restriction and all principal fixture tables analyzed.|
-|4b685934c /[41014983746](https://github.com/StradaverseHub/ai-hr/actions/runs/41014983746)|25 assertions pass;500-session burst and paced workloads complete with zero errors. Paced p95 spans1826–1954ms, above the proposed budgets.|
-|4b685934c /[41014984239](https://github.com/StradaverseHub/ai-hr/actions/runs/41014984239)|Five assertions pass; million-row median564.4ms/max581.9ms,25 rows/12,307 bytes. Claims query source is unchanged in4d5b404e2.|
-|4d5b404e2 /[41015751657](https://github.com/StradaverseHub/ai-hr/actions/runs/41015751657)|Same runner compares10 and20 actual application-pool connections. Both capacities complete burst and paced phases with zero errors. Pool identity is asserted; closed fixture pools alone are removed from the HMR cache between iterations.|
-|4d5b404e2 /[41016041103](https://github.com/StradaverseHub/ai-hr/actions/runs/41016041103)|Eight DB and three non-DB assertions pass, including the tenant-transaction contract and pool bounds. Whole-repository compiler and production build pass.|
-
-Controlled pool comparison, p95 milliseconds (same runner, each phase500 sessions):
-
-| Pool | Model | Read | Create | Edit | Delete | Errors |
-| --- | --- | ---: | ---: | ---: | ---: | ---: |
-|10|Instantaneous burst|6853|6757|3736|4354|0|
-|20|Instantaneous burst|7112|6879|3664|4317|0|
-|10|Paced, warm|3053|3062|3011|2783|0|
-|20|Paced, warm|3133|3034|3050|2818|0|
-
-Do not compare different runner samples as controlled speed ratios. The isolated initial
-shared-helper comparison was22.849ms versus1.506ms; a separate loaded regression run
-measured79.483ms versus2.365ms. Both show the repeated-check problem; their absolute
-values describe their own environments.
-
-`AIHR_DB_POOL_MAX` configures only the application singleton, accepts integers1–40 and
-defaults to10. Explicit maintenance/fixture pool sizes retain their existing behavior.
-The default and target installation remain unchanged. The pool comparison gives no reason
-to recommend20. Budget connections across processes and replicas against actual database
-capacity; the upper configuration bound is not a recommended size.
-
-Read-only staging metadata observed a two-CPU application host with about3.8GiB RAM and
-a local database reporting max_connections100. The database role cannot inspect protected
-profiling settings; the accessible extension catalog lists neither pg_stat_statements nor
-pg_stat_kcache. No settings, extensions, grants, services or target data were changed.
-Target CPU/query profiling and HTTP mixed-load validation require the coordinated release/
-profiling window; a larger connection pool is not a proven remedy.
-
-Revised development0726 SQL SHA256:
-`0b3c2b7072e4cee09d37550af1edd855c88ceb5094d122fb1c6032c64e402d3e`.
-It includes the ordering index and the distinct-company visibility fence. All prior
-index-only receipts keep their original source identities. Before later release, reconcile
-both the accepted journal and actual current visibility-function definition; do not overwrite
-newer owner changes. Preserve applied bytes, reallocate the unapplied entry above the actual
-watermark, rehearse the populated upgrade, run required impact-selected gates and accept the
-candidate on staging. The draft currently conflicts with newer main; no protected branch merge,
-staging reservation or deployment has occurred.
-
-Remaining high-priority capacity work is to locate CPU/query/serialization costs under
-representative multi-role, multi-company HTTP traffic, measure pool/lock waits and memory,
-and retain acceptable tail latency while payroll, imports and exports run. Remote Personnel
-search bounds transferred results but still needs large-workforce query-plan measurements;
-detail-form pickers retain some whole-population reads. Deep-history and mobile cursor
-latencies beyond the tested cases remain unverified. The500-user whole-system goal remains
-open until these results meet the agreed acceptance conditions on the actual target.
-
-### Production HTTP continuation — 30 October 2026
-
-No deployment is authorized. Owned development source merged published main2ab4f6c12
-without changing its applied journal prefix. All measurements below use disposable standard
-GitHub-hosted runners, never an installation's customer data.
-
-The first actual production HTTPS run, source531429c6d / run41019376795, built successfully
-and seeded500 real encrypted internal sessions across two tenants/ten companies, one million
-pending claims,90,000 attendance days and500 historical payslips. PostgreSQL durability was
-ON (fsync, synchronous_commit, full_page_writes); audit hash chaining was enabled. Ordinary
-employee routes took171–512ms but decoded1.7–1.9MB per page. The first manager /approvals
-request exceeded90seconds, subsequent manager/HR requests stalled, and the driver reached
-its600second deadline. No browser or500-user phase completed. This is a retained failure,
-not a capacity certificate. Sessions were provisioned with normal encrypted credential/family/
-session records; concurrent password/MFA login enrollment was not exercised.
-
-The approval task owner repeated the same decision authorization once per pending claim,
-then retrieved those same IDs again in1,000-ID batches.1a248026c checks each distinct subject
-employment once within the current transaction.7a535ba34 resolves subject names/authority
-before request history, gives the global shell a25-claim preview with an exact SQL total,
-and SQL-pages the approval workspace before private fields and attachment reads. Its
-30 focused assertions and whole-repository compiler pass in41022428133; these do not verify
-later changes. Full metadata readers retain their uncapped contract. Other task kinds still
-need individual scale measurements; the complete /tasks view remains an uncapped reader.
-
-SQL profiling run41021604700 deliberately failed its paced latency assertion: p95 read3043ms,
-create3027ms, edit2997ms, delete2808ms, zero functional errors. The permission-set SQL function
-was invoked17,503 times; its nested query accumulated69,668ms planning and39,631ms execution.
-These are summed across connections/nested statements and must not be added to wall time.
-
-A reversible same-runner experiment, sourcec27d5eed8 / run41022556721, preserved all query
-bytes and changed only its implementation language from SQL to PL/pgSQL. The cached object
-is a PostgreSQL execution plan, never permissions or query results. Session identity, grants,
-current_date and hierarchy are evaluated afresh. With500 distinct principals and one million
-claims, paced p95 read fell1723.2→28.4ms, create1695.5→24.3ms, edit1691.7→26.7ms and
-delete1608.9→17.9ms, with zero journey failures. The service fixture's audit-chain flag was
-false; no HTTP/browser claim follows from these numbers. A baseline-after-candidate repeat
-and broader multi-tenant visibility equivalence remain required to exclude warm-order bias.
-
-019ba0274 adds the unapplied0736 successor (SQL SHA256
-189485ba9146331bf38afa903a7e18f68fb27a3927ceef4a480c876de95165b2) and starts
-41023273405 (visibility/claims/compiler) and41023276238 (durable production HTTPS and
-Chromium). The driver now records active queries on a slow pilot, fails early on a pilot
-failure, captures server CPU profiles and runs six hydrated browser journeys alongside500
-HTTP principals. It explicitly fails on p95 read≥1000ms or write≥500ms. These runs were
-pending when this paragraph was written; they are not recorded as passes.
-
-Neither0736's provisional successor reservation nor these development receipts resolve
-0726's collision with the AI/V9 allocation. Reconcile both against the accepted ledger before
-any future integration. There is no release witness, deployment or500-user whole-system pass.
-
-Subsequent retained evidence:
-
-- Deduplication alone (1a248026c /41022122955) still serialized156,301,559 decoded bytes
-  for group-HR /admin/personnel (11,341ms) and32,298,992 for company HR (2,365ms).
-  Bounded-preview source7a535ba34 /41022430730 reduced these to1,929,309 (1,061ms)
-  and1,926,742 bytes (427ms). Manager /approvals fell from7,944,132 bytes/2,930ms to
-  1,966,049 bytes/750ms. These are distinct runner samples, not controlled timing ratios.
--41022430730 completed44 pilot HTTP visits and17 browser visits, but one browser rendered
-  an intentionally unavailable Performance task tab as a streamed404. The driver initially
-  counted this as a heading. It then failed before the500-user phase because an unqualified
-  description selector also matched the page metadata tag.542dcf6a3 repairs those driver bugs,
-  selects the enabled Performance dashboard for fixtures without review assignments, rejects
-  streamed404/500 screens and requires actual fictional rows in Claims/Personnel/Payroll.
-  Original route counts must not be presented as44 fully verified functional screens.
--019ba0274 /41023273405 passes185 assertions (172DB +13 independent checks) and the
-  whole-repository compiler. The one-million-history service median is309.8ms, maximum328.2ms,
-  with25 rows/12,307 response bytes.1fe2a621d /41023694694 passes203 more assertions
-  (140DB +63 independent checks), including cross-module INSERT/UPDATE equivalence and
-  notification/category/bulk contracts. These are focused development evidence.
-- Controlled baseline–candidate–baseline repeat41023627029 hit the experiment's240second
-  deadline while completing the final baseline; no comparison PASS is claimed. Completed
-  baseline paced p95 values were3598/3567/3548/3322ms (read/create/edit/delete); candidate
-  values were733/713/719/689ms, zero journey errors. This still improves measured latency,
-  but misses the500ms write target and disproves treating the first28ms sample as a universal
-  capacity guarantee. Baseline-after burst timings returned to the original slow range.
-  Increase only the experiment's completion budget to480seconds; endpoint latency thresholds
-  remain unchanged. Keep this original timeout and all partial reports.
-
-Controlled repeat41024687484 (source76dfc8fbd) completed all three fixture preparations
-and all six500-principal service phases with zero journey failures. Same-run paced p95:
-
-| Implementation | Read | Create | Edit | Delete |
+| Workload / pause | Page read p95 | Mutation p95 | Completed users | Loaded browsers |
 | --- | ---: | ---: | ---: | ---: |
-| SQL baseline before |1787.4ms|1766.6ms|1756.6ms|1708.9ms|
-| PL/pgSQL plan cache |28.4ms|24.6ms|27.8ms|18.3ms|
-| SQL baseline after |1888.4ms|1890.0ms|1880.8ms|1770.8ms|
+| [Claims-heavy, 1 s](https://github.com/StradaverseHub/ai-hr/actions/runs/41056536098) | 83.0 s | 53.2 s | 500/500 | 2/6 |
+| [Claims-heavy, 5 s](https://github.com/StradaverseHub/ai-hr/actions/runs/41056521892) | 86.4 s | 51.0 s | 500/500 | 0/6 |
+| [27-route mix, 1 s](https://github.com/StradaverseHub/ai-hr/actions/runs/41056541678) | 51.4 s | 53.0 s | 500/500 | 6/6 |
+| [27-route mix, 5 s](https://github.com/StradaverseHub/ai-hr/actions/runs/41056528025) | 46.9 s | 45.8 s | 498/500 | 6/6 |
 
-This controls warm execution order and reproduces the planning improvement. Burst candidate
-p95 remained2595/2584/1657/1550ms, so it does not satisfy a simultaneous-burst target. The
-fixture still covers paced service journeys with audit-chain off, not sustained500-user HTTP.
-The SQL/profile experiments are explicitly opt-in through `profile_database_sql=true` so normal
-verification does not require a profiling extension or rewrite a function for an experiment.
+The wider five-second run returned two HTTP 502 responses on Claims writes; 498
+journeys completed. The other three completed all 500 data journeys. Both wider
+runs covered all 27 selected routes. All four passed the nine authorization
+boundaries, six-locale/browser baseline and actual post-load audit verification:
+each tenant retained exactly one canonical initialization prefix, with no later
+unchained events or invalid chain links. All had zero browser runtime errors.
+Loaded browser timeouts and the latency checks remain failures where shown.
 
-The production driver successorffef01ebf holds users in repeated journeys until30seconds
-after its10second ramp and records active/peak users. Its six browser contexts start after
-the full cohort arrives. Per-role steady-state p95 thresholds and nonempty read/write samples
-are required, preventing a fast majority or short-lived sessions from hiding HR latency.
-It writes partial progress, request samples and wait evidence every five seconds. This is a
-full-document HTTPS stress mix with real server actions; no login-enrollment or native-client
-navigation throughput claim is implied. Earlier one-journey runs retain their narrower scope.
+Broad regression source `08356ad57` passed 727 test cases. Its auxiliary ORM
+factory typing errors were repaired; recovery passed 104 affected cases and the
+whole compiler. The empty-profile-task change passed 48 affected cases and the
+whole compiler. The exact audit fixture SQL, including negative cases, passed
+six native cases and the whole compiler on `5249c199a`. These receipts retain
+their original source identities in the table below; counts are not summed
+because coverage overlaps.
 
-Driver/CI corrections after those receipts:
+The measured app CPU was 279.5 seconds over 277.9 wall seconds in the wider
+one-second run, and 269.2 over 266.3 in the wider five-second run. This shows
+roughly one app CPU core continuously occupied. Driver CPU was about 25 seconds
+in each run. Database, TLS-proxy and Chromium CPU are separate and are not
+included in those counters. PostgreSQL active-state samples are not CPU usage.
 
--542dcf6a3 /41024268138 reached the browser form but the normal first-login welcome tour
-  intercepted the click. Its screenshot confirms the overlay. The outstanding response waiter
-  then rejected outside the active click await; no500-user phase completed. Dismiss the tour's
-  normal Skip button, attach click/response handlers together, and preserve a screenshot on error.
--529ce39a7 /41025823216 deliberately checked normal profiling-off behavior. Four pagination
-  assertions passed, but the strict evidence verifier correctly rejected two skipped diagnostic
-  assertions. This run is a failure. Keep that verifier unchanged. Move diagnostics into
-  `test/performance/*.profile.ts`, a separate `vitest.performance.config.ts` and an explicit
-  `service_profile` Actions job. Normal test coverage has no conditional skips; benchmark reports
-  have their own source/run identity and never become normal-suite or release receipts.
+A subsequent development-only comparison (`8ec8eac23`) runs one versus two app
+workers on the same four-CPU runner class. Both use a total of ten application
+connections and 4 GiB of app heap. Application/service/schema/test source is
+unchanged from `5249c199a`; only the harness and its workflow change. The proxy
+uses fresh backend connections and records transport errors without automatic
+write retries. Both comparisons complete all 500 data journeys with zero HTTP errors, all
+27 routes, nine authorization boundaries and valid post-load audit chains.
+The one-worker control measures 62.7 s read / 58.2 s write p95, with two of six
+loaded browsers completing. The two-worker run measures 60.8 s / 52.0 s, with
+three of six loaded browsers completing. Both fail speed/browser acceptance.
+These are separate hosted runners; the difference is not a controlled speed ratio
+and does not justify a production worker-count change.
 
-### Sustained500-active-user HTTP failure and next measured fixes
+The two earlier HTTP 502s do not recur in these 1,000 combined user journeys.
+Recorded proxy errors in the new runs are exclusively aborted browser requests,
+not failed virtual-user writes. The earlier stale-backend-socket hypothesis remains
+an inference; the original failure is retained. No mutations were automatically retried.
 
-Source79a4eadea /41026824898 completed production build,44 pilot route requests,
-17 browser route visits and a real hydrated Claim create/edit/delete with persisted-state
-checks. It dismissed the welcome tour through the normal UI. Then all500 users remained
-active during the sustained workload (peak500); none completed a full HTTP journey.
-Read p95 among112 completed responses was88,909ms;500 journeys aborted or failed and
-all six browsers exceeded90seconds. Only12 writes completed, so their315ms p95 is not
-representative throughput evidence. No500-user pass or arbitrary-million-record guarantee
-is implied. The test records failed users and routes, absolute deadlines, partial progress,
-database waits and CPU profiles. The load generator, app, browsers and database share the
-four-CPU/~16GiB development runner; the installation has different hardware.
+One worker ends at 1,857 MiB RSS (2,013 MiB high-water mark). Two workers end at
+2,850 MiB RSS combined; their individual high-water marks sum to 3,049 MiB. That
+sum is not a measured simultaneous combined peak. Equal configured heap budgets
+do not imply equal resident memory. The two-worker app processes consume 385.7
+CPU seconds over 320.1 wall seconds, about 1.2 cores combined, versus 340.4 over
+346.6 for the control. More processes alone do not resolve this shared-host workload.
 
-After the load statistics reset,602 task-owner reads accompanied51,240 visibility-function
-calls and258,671 company-admin checks. The nested role predicate ran898,544 times and
-accumulated48,277ms planning. Nested SQL totals overlap and are not wall time. Wait samples
-were predominantly CPU/ready; the app profile also attributed substantial time to React
-serialization, output buffers and garbage collection. Both database query fan-out and the
-full client translation catalog are measured bottlenecks, not assumed diagnoses.
+The current candidate is based on merged main `2ab4f6c12`; main and alpha have
+subsequently advanced. It requires fresh integration review before release.
+Migrations 0726, 0736, 0745 and 0810 remain development reservations; competing
+allocations, the complete journal prefix and installed ledger must be reconciled.
+See [migration allocation](MIGRATION-ALLOCATION.md). Applied SQL was not rewritten.
 
-The public English catalog is1,561,561 UTF-8 JSON bytes. A conservative source inventory
-52b38ea39 /41028176486 verifies client boundaries, named/aliased hooks, imported namespace
-constants, dynamic imports and type-only/server-action exclusions. Unknown consumers retain
-the complete catalog. A route template owns first-segment message requirements, including
-all deeper pages; the persistent root shell gets only its own messages. A small client provider
-merges inherited messages without resending them. Selected messages and their projection
-cache contain public strings only, never principals, grants, employment facts or authorization
-results. The library recommends selective message provision and documents its serialization
-cost: https://next-intl.dev/docs/environments/server-client-components . Installed Next16.3.8
-template/layout documentation was read to preserve cached-layout navigation behavior.
+## Workload and acceptance
 
-8a12631ec /41030475504 passed the compiler but exposed a missing explicit locale in the
-nested client provider and correctly failed a stale message inventory. ae06157b7 /41032656640
-fixes the provider and passes all six data/provider checks; only the intentional inventory
-mismatch remains. Refresh the manifest from its hosted canonical Personnel descriptor/choice
-vocabulary output. Unknown unscoped consumers stay conservative. English Claims messages
-measure49,891 bytes including the shell, versus1,561,561 before; these are public-message
-bytes, not yet a production HTML or concurrency result. Six-locale and real client-link
-navigation checks are added before the next sustained HTTP phase.
+- Standard GitHub-hosted runner (four CPUs, about 15.6 GiB RAM); one production
+  Next.js process, PostgreSQL 16,
+  HTTPS proxy, HTTP driver and six Chromium contexts share the runner. This is
+  not a production hardware sizing certificate or 500 simultaneous browsers.
+  V8 CPU sampling is enabled; an unprofiled controlled repeat is still required
+  before claiming final production capacity.
+- Actual native encrypted internal sessions for 500 fictional people: 460
+  employees, 20 managers, 18 company HR and two group HR; two tenants and ten
+  companies. Normal session validation, RLS, module gates and domain services run.
+  Login enrollment, MFA enrollment and recovery throughput are not measured.
+- One million pending claims, 90,000 attendance rows and 500 frozen payslips.
+  Other worklists are not populated at million-row scale. Payroll calculation,
+  publication, imports, exports, document generation and AI-provider throughput
+  are not capacity-certified by this fixture.
+- Ten-second arrival ramp, then 30 seconds of sustained activity; requests wait
+  for responses. Think time applies after each of three page reads and after
+  create and edit; delete is followed by the next journey without an extra pause.
+  These are closed-loop full-document page requests and real server actions,
+  not a claim of 500 requests per second or a measured warm SPA navigation mix.
+- The wider mix rotates over 27 selected routes across employee, manager and HR
+  areas. The harness rejects missing route coverage. Browser pilots also prove
+  six locales, client-link navigation, translated form labels and persisted CRUD.
+- Real captured multipart server-action order is retained. The driver verifies
+  persisted create/edit/delete outcomes, rather than treating HTTP 200 as success.
+  Nine anonymous/company/person/tenant boundary checks must pass before load.
+- PostgreSQL durability remains on (`fsync`, `synchronous_commit`, full-page
+  writes). The application process requests audit chaining. Earlier fixture metadata incorrectly
+  claimed every seeded event was chained: importing the unit harness cleared that
+  fixture process flag. The failed five-second precondition exposed this; earlier
+  runs do not prove complete fixture-chain coverage. The repaired harness additionally
+  asserts one canonical `access-configuration.initialized` prefix per tenant,
+  requires every subsequent event to be chained and runs the canonical tenant-chain
+  verifier after timed load. Verification is outside measured request latency.
+- Current speed checks require nonempty steady samples, per-role read p95 below
+  1,000 ms, write p95 below 500 ms, peak 500 active users, zero journey errors,
+  complete loaded browsers and zero browser runtime errors. They were not relaxed.
 
-The first admin-gate fixture41031593641 failed on a required fixture email; no timing or
-permission result is claimed. Corrected9e7b20ab5 /41032946748 passes500 mixed principals
-per phase and preserves malformed-context22P02 failures. Baseline/candidate/baseline-after
-p95 visibility-transaction latencies were363.6/238.7/282.1ms. This skips only the canonical
-admin branch for principals with no admin grant, validates grant company IDs before the
-short-circuit and retains every original per-company guard. It remains an isolated reversible
-experiment until broad visibility/write equivalence and sustained HTTP evidence validate an
-appended successor. A follow-up separately tests plan reuse for the nested pure grant predicate.
+## Implemented reductions
+
+| Area | Change and preserved contract |
+| --- | --- |
+| Claims | SQL count and ordered page IDs before joins, bounded receipt metadata, mobile cursor, JIT removed only from the measured interactive read; full history and authorization remain available. |
+| Approval shell | Canonical decision authority is batched in chunks of 1,000; shell claims preview is capped at 25 with a separate total. Full task readers retain their semantics. |
+| Translation payload | Fixed route-segment providers ship required public namespaces; unknown dynamic consumers fall back to the full catalog. Six locales and actual leave-to-claims client navigation are checked. English Claims catalog falls from 1,561,561 bytes to 49,891; decoded pilot Claims HTML is about 212 KB instead of about 1.8 MB. |
+| ORM | Application transactions no longer construct unused relational-query helpers for 319 schema tables. Explicit typed table queries remain; application, maintenance and bootstrap factories agree. |
+| Workforce access | The sealed read-only scope projection takes a shared advisory lock on the existing key. Configuration writers retain exclusive locks; no read-to-write upgrade or permission-result cache was added. |
+| Session and visibility SQL | Development migrations retain the canonical queries and cache PL/pgSQL execution plans per connection. Current principals, grants, termination and dates remain freshly evaluated; data/results are not cached. |
+| Date display | Reuse immutable Kuala Lumpur date/time formatter objects; dates and formatted results remain fresh. Midnight, leap-day and year-boundary test cases cover behavior. |
+| Payroll, attendance and reports | SQL paging/aggregates and narrowed source reads; totals remain global to authorized scope. Employee Master avoids an export for its count and explicitly bounds source rows. |
+| Personnel | Authorized remote search returns eight matches, aborts stale requests and preserves current selection. No unbounded employment download for the picker. |
+| Profile task metadata | An empty queue returns after its first native principal/policy read; it no longer opens a second locked policy transaction to authorize zero candidate IDs. Nonempty queues still refresh decision authority. |
+| Lifecycle and cleanup | SQL-filtered actionable reads, lazy names, independent shell scheduling; four unused modules and roughly 540 dead lines removed. File size alone was not treated as a runtime bottleneck. |
+
+Application pool default remains ten. Earlier controlled native-service experiment
+[41015751657](https://github.com/StradaverseHub/ai-hr/actions/runs/41015751657)
+asserted actual pool sizes and removed only closed fixture pools between phases:
+paced read p95 was 3,053 ms with ten connections and 3,133 ms with twenty. That
+source predates later optimizations; it did not justify increasing the default.
+
+## Retained evidence
+
+Each result belongs to its exact source/run. Unaffected passes are retained;
+failed runs are not relabelled as successful after a repair. All recent builds,
+tests and whole-repository compiler checks ran on standard hosted Actions.
+
+| Run | Evidence and interpretation |
+| --- | --- |
+| [41047735790](https://github.com/StradaverseHub/ai-hr/actions/runs/41047735790) | `08356ad57`: one-second claims-heavy; 500/500 complete, 1,500 reads and 1,500 writes, six browsers complete, zero data/runtime errors; **speed FAIL**, 64.1 s/43.9 s read/write p95. |
+| [41047747182](https://github.com/StradaverseHub/ai-hr/actions/runs/41047747182) | Same source, one-second wider mix: all 27 routes, 500/500 complete, 1,500 reads/writes; **speed/browser FAIL**, 72.4 s/65.4 s p95. |
+| [41047756949](https://github.com/StradaverseHub/ai-hr/actions/runs/41047756949) | Same source: **727 test cases PASS**, 495 DB and 232 non-DB, zero skips. Whole-project compiler **FAIL** with 37 errors caused by two auxiliary ORM factories retaining the old relational schema type. Both factories repaired in `bfa624c0d`; recovery is recorded separately below. |
+| [41060140746](https://github.com/StradaverseHub/ai-hr/actions/runs/41060140746), [41060146463](https://github.com/StradaverseHub/ai-hr/actions/runs/41060146463) | `8ec8eac23`: same-source five-second wider mix, one/two workers with equal total pool/heap budgets. Both complete 500/500 data journeys, 27 routes and actual audit verification. No HTTP 502s; speed and loaded browser acceptance FAIL. Detailed figures above. |
+| [41056536098](https://github.com/StradaverseHub/ai-hr/actions/runs/41056536098), [41056521892](https://github.com/StradaverseHub/ai-hr/actions/runs/41056521892) | `5249c199a`: one-/five-second Claims-heavy runs complete 500/500 data journeys, actual audit verification PASS; latency FAIL and four/six loaded browser timeouts respectively. |
+| [41056541678](https://github.com/StradaverseHub/ai-hr/actions/runs/41056541678), [41056528025](https://github.com/StradaverseHub/ai-hr/actions/runs/41056528025) | Same source: both wider mixes cover all 27 routes and complete six loaded browsers; one-second completes 500/500 data journeys, five-second 498/500 with two HTTP 502s. Actual audit verification PASS; latency FAIL in both. |
+| [41055981483](https://github.com/StradaverseHub/ai-hr/actions/runs/41055981483) | `5249c199a`: six native audit test cases PASS, including the exact fixture SQL, canonical initialization prefix, extra-unprotected-event rejection and wrong-tenant rejection; whole-project compiler PASS. |
+| [41055375797](https://github.com/StradaverseHub/ai-hr/actions/runs/41055375797) | `c2d775ab3`: six native audit test cases and whole-project compiler PASS; isolated the fixture's overly strict prefix assertion. |
+| [41053423025](https://github.com/StradaverseHub/ai-hr/actions/runs/41053423025), [41053428767](https://github.com/StradaverseHub/ai-hr/actions/runs/41053428767), [41053434679](https://github.com/StradaverseHub/ai-hr/actions/runs/41053434679), [41053440323](https://github.com/StradaverseHub/ai-hr/actions/runs/41053440323) | `0452e61c0`: production builds PASS; all four runs stop at the fixture's all-events-chained assertion. Restoring the flag alone did not satisfy that assertion. No HTTP capacity result. |
+| [41051720296](https://github.com/StradaverseHub/ai-hr/actions/runs/41051720296), [41051776196](https://github.com/StradaverseHub/ai-hr/actions/runs/41051776196) | `8f17f01ca`: production builds PASS; both five-second runs FAIL fixture audit-chain assertion before HTTP load. No capacity result. Explicit fixture opt-in repaired afterward. |
+| [41052704338](https://github.com/StradaverseHub/ai-hr/actions/runs/41052704338) | `d410275ff`: all 48 profile metadata, photo and routing test cases PASS (39 DB, nine non-DB), zero skips; whole-project compiler PASS. |
+| [41051827777](https://github.com/StradaverseHub/ai-hr/actions/runs/41051827777) | `8f17f01ca`: all 104 affected test cases PASS (92 DB, 12 non-DB), zero skips; separate whole-project compiler PASS. |
+| [41046741731](https://github.com/StradaverseHub/ai-hr/actions/runs/41046741731) | `af8d76fa0`: native 500-user, 5,000-transaction ORM comparison. Full-schema-before p95 3,748.7 ms; lean 2,706.2; restored full schema 3,384.3. Zero context/role errors. Helper benchmark, not HTTP acceptance. |
+| [41044578625](https://github.com/StradaverseHub/ai-hr/actions/runs/41044578625) | `c4fe191c9`: canonical Workforce scope, 500 native users; exclusive-before p95 6,083.7 ms, shared 2,474.1, exclusive-after 5,872.3. Zero authority errors. |
+| [41044430904](https://github.com/StradaverseHub/ai-hr/actions/runs/41044430904) | `16dc`: 73 DB test cases PASS including overlapping readers and writer exclusion. Seven old shell mock failures retained; fixtures repaired in `07948f38d`. |
+| [41045771750](https://github.com/StradaverseHub/ai-hr/actions/runs/41045771750) | `07948f38d`: affected shell checks and compiler PASS. Original test cases retained. |
+| [41044045493](https://github.com/StradaverseHub/ai-hr/actions/runs/41044045493) | `aac43d9f6`: valid real action protocol, 222/500 journeys complete, 278 aborted; read/write p95 85.5 s/25.9 s, six browser timeouts. Original capacity FAIL. |
+| [41044054072](https://github.com/StradaverseHub/ai-hr/actions/runs/41044054072) | Same source wider mix: 500/500 data journeys complete, but 68.7 s/63.3 s p95, browser timeouts and four missing concurrent routes. Sampler repaired later; this run is not complete route coverage. |
+| [41044060062](https://github.com/StradaverseHub/ai-hr/actions/runs/41044060062) | `aac43d9f6`: two real multipart serialization test cases and compiler PASS. |
+| [41042991046](https://github.com/StradaverseHub/ai-hr/actions/runs/41042991046) | `1157fdda5`: 589 test cases PASS (403 DB, 186 non-DB), whole compiler PASS. Million-claim history median 513.4 ms, maximum 561.8 ms over five measured reads; 25 rows/12,307 serialized bytes. This is not HTTP latency or a percentile estimate. |
+| [41042136707](https://github.com/StradaverseHub/ai-hr/actions/runs/41042136707) | `8dfe24a75`: 500 native users/20 guard pairs: baseline p95 5,198.7 ms, candidate 3,709.8, restored 5,214.1; live archive/termination/forged-role checks retained. |
+| [41041869992](https://github.com/StradaverseHub/ai-hr/actions/runs/41041869992) | `f6b5a9faf`: 83 browser entries, six locales and client navigation without runtime errors. HTTP preflight correctly failed due to multipart root argument being emitted before its referenced form. No 500-user capacity result. |
+| [41041875352](https://github.com/StradaverseHub/ai-hr/actions/runs/41041875352) | Route provider recovery: 121 test cases PASS, one Attendance module-guard contract FAIL; corrected by using Attendance template rather than adding a layout. Compiler PASS; later 589 test cases cover recovery. |
+| [41038620726](https://github.com/StradaverseHub/ai-hr/actions/runs/41038620726) | `b73671eff`: old HTTP write replays failed persistence; these timings are invalid as write-capacity evidence. Client navigation also exposed missing Claims messages. Both defects retained and repaired with real browser/protocol checks. |
+| [41038847752](https://github.com/StradaverseHub/ai-hr/actions/runs/41038847752) | `ba4bb00cf`: preflight failure before 500 users; no capacity claim. |
+| [41038629207](https://github.com/StradaverseHub/ai-hr/actions/runs/41038629207) | `b73671eff`: 400 test cases and whole compiler PASS; measured million-row history median 556.7 ms, maximum 568 ms. |
+| [41036691608](https://github.com/StradaverseHub/ai-hr/actions/runs/41036691608) | Batched authority: 31 test cases and whole compiler PASS. |
+| [41035010001](https://github.com/StradaverseHub/ai-hr/actions/runs/41035010001) | Public message projection: 34 test cases and whole compiler PASS. |
+| [41023273405](https://github.com/StradaverseHub/ai-hr/actions/runs/41023273405), [41023694694](https://github.com/StradaverseHub/ai-hr/actions/runs/41023694694) | Earlier sources `019ba0274`/`1fe2a621d`: 185 and 203 test cases PASS; first run whole compiler PASS. Their scope is retained without relabelling onto later candidates. |
+| [41019376795](https://github.com/StradaverseHub/ai-hr/actions/runs/41019376795), [41022122955](https://github.com/StradaverseHub/ai-hr/actions/runs/41022122955), [41022430730](https://github.com/StradaverseHub/ai-hr/actions/runs/41022430730) | Original HTTP manager timeout retained. Deduplication alone still produced 156 MB decoded group-HR pages; bounded source `7a535ba34` reduced that sample to 1.9 MB. Different runners; no controlled speed ratio claimed. |
+| [41023627029](https://github.com/StradaverseHub/ai-hr/actions/runs/41023627029) | Earlier visibility repeat measured 733 ms reads/689–719 ms writes and exceeded its deadline during final baseline. Original failure retained. |
+| [41026824898](https://github.com/StradaverseHub/ai-hr/actions/runs/41026824898) | `79a4eadea`: original valid 500-active-user stress failure; zero completed journeys, all 500 failed. Retained as failure, not a successful baseline. |
+| [41022556721](https://github.com/StradaverseHub/ai-hr/actions/runs/41022556721), [41024687484](https://github.com/StradaverseHub/ai-hr/actions/runs/41024687484), [41026831338](https://github.com/StradaverseHub/ai-hr/actions/runs/41026831338) | Visibility plan experiments show improvement but substantial runner variance: some candidate measurements near 28 ms; later candidate measurements around 513–539 ms. Do not advertise a universal 28 ms result. |
+| [41025823216](https://github.com/StradaverseHub/ai-hr/actions/runs/41025823216) | Strict skip verifier rejected diagnostic `runIf` suites. Diagnostic profiles were moved to explicit separate jobs; verifier was not weakened. |
+
+The initial million-claim reader took roughly 5.2 seconds. Later isolated readings
+are around half a second, but those five-read helper measurements cannot establish
+500-user request performance. Historical local checks in earlier revisions also
+retain their original scope; they are not whole-project compiler/release passes.
+
+## Remaining bottlenecks and next acceptance
+
+On `08356ad57`, all 44 unloaded HTTP pilots in the wider mix were below 900 ms
+(the slowest was the employee home at 892 ms). Their loaded counterparts take
+tens of seconds. This indicates capacity/queueing growth under contention; a
+fast isolated page is not a concurrent capacity pass.
+
+The production CPU profiles originally identified eager ORM construction for all
+319 tables and repeated Intl formatter construction. Those frames disappear after
+the fixes. Remaining sampled cost includes SQL construction, PostgreSQL result
+allocation, native socket writes, compression and garbage collection. Database
+profiles still show repeated current-principal/visibility evaluation and shell
+profile/workforce projections. PostgreSQL samples include client waits as well as
+CPU-ready work: another pool-size increase is not justified by these observations.
+The completed frozen runs measure application and driver CPU separately from wall time.
+The most expensive recorded SQL statements report zero JIT compilation time in
+the retained one-/five-second profiles. Further JIT changes are not justified by
+that evidence. Root-shell source still performs multiple authorized task/policy
+reads on redirecting draft saves. Reducing repeated shell work and measuring warm
+client navigation remain high-priority application work; they have not been implemented
+or validated as completed fixes in this batch.
+
+Next's installed server-action implementation removes the router state before
+fetching a redirect target, rebuilding the root shell. The current test intentionally
+measures full documents and real redirecting actions. A separately labelled warm
+client-navigation workload is still needed; it must preserve principal, scoped-data
+and persistence checks rather than substituting HTTP success alone.
+
+Priorities remain:
+
+1. Reduce repeated authorized shell reads and measure each change with paired
+   native-service experiments plus the unchanged HTTP/browser acceptance checks.
+2. Establish application CPU, database execution, pool wait and browser budgets on
+   representative installation hardware. Do not infer required hardware solely
+   from this shared development runner.
+3. Exercise million-row histories beyond Claims, concentrated and distributed
+   companies, deep paging, imports/exports and payroll calculation/publication
+   alongside ordinary interactive reads and writes.
+4. Add bounded queued/streamed generation for expensive reports and documents;
+   measure restart recovery, memory and effect on interactive latency.
+5. Reconcile migrations and fresh main/alpha before any release gate. A passing
+   focused run, merged source or draft PR grants no deployment authority.
+
+Fixtures, private keys and native session tokens stay outside public artifacts.
+The HTTP evidence contains fictional screenshots, timings, normalized SQL, sampled
+CPU frames and request outcomes. No private production data was used in load tests.
