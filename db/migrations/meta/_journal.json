@@ -4160,6 +4160,7 @@
       "when": 1793330000078,
       "tag": "0741_assistant_rewards_cycle_calendar_review",
       "breakpoints": true
-    }
+    },
+    {"idx":727,"version":"7","when":1793330000085,"tag":"0748_assistant_rewards_annual_return_review","breakpoints":true}
   ]
 }
