@@ -1892,21 +1892,8 @@ async function codesForEmployments(tx: Tx, employmentIds: string[]): Promise<Map
 /** The current administrative-line manager's employment id, or null (top of org).
  *  Exported (0110) so the employment-review service reuses the SAME reporting-line query — no duplication. */
 export async function currentAdminManager(tx: Tx, tenantId: string, subjectEmploymentId: string): Promise<string | null> {
-  const [mgr] = await tx
-    .select({ id: reportingLine.managerEmploymentId })
-    .from(reportingLine)
-    .where(
-      and(
-        eq(reportingLine.tenantId, tenantId),
-        eq(reportingLine.subordinateEmploymentId, subjectEmploymentId),
-        eq(reportingLine.lineType, 'administrative'),
-        lte(reportingLine.validFrom, sql`current_date`),
-        or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
-        isNull(reportingLine.supersededAt),
-      ),
-    )
-    .limit(1);
-  return mgr?.id ?? null;
+  const [row]=await tx.execute<{managerEmploymentId:string|null}>(sql`select app.performance_current_admin_manager(${tenantId}::uuid,${subjectEmploymentId}::uuid) as "managerEmploymentId"`);
+  return row?.managerEmploymentId??null;
 }
 
 // ─────────────────────────── Goals / OKRs (ADR-0022, Phase B) ───────────────────────────
@@ -2220,38 +2207,43 @@ export type CheckinRow = {
   completedAt: string | null;
 };
 
-/** Schedule a 1:1 with a report. Manager-or-admin only (assertCanDecide bans self). The manager is
- *  resolved to the subject's current administrative manager. */
-export async function scheduleCheckIn(
-  ctx: SessionContext,
-  p: { subjectEmploymentId: string; scheduledOn: string; notes?: string },
-): Promise<{ id: string }> {
-  if (!p.scheduledOn) throw new PerfError('A check-in needs a date');
-  return withTenant(ctx, async (tx) => {
-    await assertCanDecide(tx, ctx, p.subjectEmploymentId, 'check-in');
-    const managerEmploymentId = await currentAdminManager(tx, ctx.tenantId, p.subjectEmploymentId);
-    const [row] = await tx
-      .insert(performanceCheckin)
-      .values({
-        tenantId: ctx.tenantId,
-        subjectEmploymentId: p.subjectEmploymentId,
-        managerEmploymentId,
-        scheduledOn: p.scheduledOn,
-        notes: p.notes?.trim() || null,
-        createdByUserId: ctx.userId ?? null,
-      })
-      .returning({ id: performanceCheckin.id });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'performance-checkin',
-      aggregateId: row.id,
-      eventType: 'performance-checkin.scheduled',
-      actor: actorOf(ctx),
-      subjectEmploymentId: p.subjectEmploymentId,
-      payload: { scheduledOn: p.scheduledOn },
-    });
-    return { id: row.id };
-  });
+/** Native scheduling plan without creating a row or event. The caller owns its surrounding
+ * configuration interval; currentAdminManager remains the sole reporting-line resolver. */
+export async function readCheckInSchedulingPlanTx(tx:Tx,ctx:SessionContext,p:{subjectEmploymentId:string;scheduledOn:string;notes?:string},options:{reviewedSource?:boolean}={reviewedSource:true}){
+  assertModuleEnabled(ctx,'performance');
+  if(!p.scheduledOn)throw new PerfError('A check-in needs a date');
+  await assertCanDecide(tx,ctx,p.subjectEmploymentId,'check-in');
+  const [subject]=await tx.select({id:employment.id,tenantId:employment.tenantId,companyId:employment.companyId,personId:employment.personId,version:sql<string>`${employment}.xmin::text`}).from(employment).where(eq(employment.id,p.subjectEmploymentId)).limit(1).for('update');
+  if(!subject)throw new PerfError('Employment not found');
+  const managerEmploymentId=await currentAdminManager(tx,ctx.tenantId,p.subjectEmploymentId),notes=p.notes?.trim()||null;
+  let lineDigest:string|null=null;
+  if(options.reviewedSource!==false){
+    // Bound in SQL before returning any full revision collection to the Assistant owner.
+    const [budget]=await tx.execute<{rows:string;bytes:string}>(sql`select count(*)::text as rows,coalesce(sum(octet_length(jsonb_build_array(r.id,r.manager_employment_id,r.valid_from,r.valid_to,r.superseded_at,r.xmin::text)::text)),0)::text as bytes from public.reporting_line r where r.tenant_id=${ctx.tenantId}::uuid and r.subordinate_employment_id=${p.subjectEmploymentId}::uuid and r.line_type='administrative'`);
+    const rows=Number(budget?.rows),bytes=Number(budget?.bytes);
+    if(!Number.isSafeInteger(rows)||!Number.isSafeInteger(bytes)||rows>1000||bytes>262144)throw new PerfError('Use Performance to schedule this check-in.');
+    // Revision custody, not a second manager resolver. Include ended/future rows as source changes
+    // can alter the native result; only the fixed-size digest leaves this plan.
+    const lines=await tx.select({id:reportingLine.id,managerEmploymentId:reportingLine.managerEmploymentId,validFrom:reportingLine.validFrom,validTo:reportingLine.validTo,supersededAt:reportingLine.supersededAt,version:sql<string>`${reportingLine}.xmin::text`}).from(reportingLine).where(and(eq(reportingLine.tenantId,ctx.tenantId),eq(reportingLine.subordinateEmploymentId,p.subjectEmploymentId),eq(reportingLine.lineType,'administrative'))).orderBy(reportingLine.id).limit(1001);
+    if(lines.length!==rows)throw new PerfError('The scheduling source changed. Review it again.');
+    lineDigest=createHash('sha256').update(JSON.stringify(lines)).digest('hex');
+  }
+  return{subject,managerEmploymentId,scheduledOn:p.scheduledOn,notes,reviewDigest:createHash('sha256').update(JSON.stringify([1,ctx.tenantId,ctx.userId??null,ctx.personId??null,p,subject,managerEmploymentId,lineDigest,notes])).digest('hex')};
+}
+
+/** Same supplied native transaction. The optional prospective identity is server review state,
+ * never a human field or an existing check-in nomination. Ordinary callers retain DB-generated IDs. */
+export async function scheduleCheckInTx(tx:Tx,ctx:SessionContext,p:{subjectEmploymentId:string;scheduledOn:string;notes?:string},reviewed?:{plannedResultId:string;expectedDigest:string}){
+  const plan=await readCheckInSchedulingPlanTx(tx,ctx,p,{reviewedSource:reviewed!==undefined});
+  if(reviewed&&(reviewed.expectedDigest!==plan.reviewDigest||p.notes!==undefined))throw new PerfError('The scheduling source changed. Review it again.');
+  const [row]=await tx.insert(performanceCheckin).values({id:reviewed?.plannedResultId,tenantId:ctx.tenantId,subjectEmploymentId:p.subjectEmploymentId,managerEmploymentId:plan.managerEmploymentId,scheduledOn:p.scheduledOn,notes:plan.notes,createdByUserId:ctx.userId??null}).returning({id:performanceCheckin.id});
+  const eventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'performance-checkin',aggregateId:row.id,eventType:'performance-checkin.scheduled',actor:actorOf(ctx),subjectEmploymentId:p.subjectEmploymentId,payload:{scheduledOn:p.scheduledOn}},{returnId:true});
+  return{checkinId:row.id,employmentId:p.subjectEmploymentId,eventId,scheduledOn:p.scheduledOn};
+}
+/** Schedule a native check-in; retain the ordinary API and event payload. */
+export async function scheduleCheckIn(ctx:SessionContext,p:{subjectEmploymentId:string;scheduledOn:string;notes?:string}):Promise<{id:string}>{
+  if(!p.scheduledOn)throw new PerfError('A check-in needs a date');
+  return withTenant(ctx,async tx=>{const result=await scheduleCheckInTx(tx,ctx,p);return{id:result.checkinId};});
 }
 
 async function loadCheckin(tx: Tx, checkinId: string) {

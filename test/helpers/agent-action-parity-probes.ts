@@ -1,3 +1,4 @@
+import {checkInSchedulingReviews,readCheckInSchedulingChoices} from '../../core/assistant-actions/checkin-scheduling-review-store';
 import {checkInCompletionReviews,readCheckInCompletionChoices} from '../../core/assistant-actions/checkin-completion-review-store';
 import {checkInCancellationReviews,readCheckInCancellationChoices} from '../../core/assistant-actions/checkin-cancellation-review-store';
 import {goalApprovalReviews,readGoalApprovalChoices} from '../../core/assistant-actions/goal-approval-review-store';
@@ -279,6 +280,11 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'performance.checkin.complete',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,complete:true,notesMode:'preserve'}),
   offered:async(who,item)=>{const choices=await readCheckInCompletionChoices(who,{query:'',subjectId:item.subjectId});return choices.kind==='choices'&&choices.items.some(row=>row.subjectId===item.subjectId);},
   screen:(tx,who,item)=>perf.completeCheckInTx(tx,who,{checkinId:item.subjectId})},
+ 'performance.checkin.schedule':{family:'assigned_checkin',store:checkInSchedulingReviews,
+  async create(_w,h){return itemOf(h,h.person.employmentId);},
+  human:item=>({action:'performance.checkin.schedule',contractVersion:1,employmentId:item.employmentId,scheduledOn:calendarDate(10),confirmSchedule:true}),
+  offered:async(who,item)=>{const choices=await readCheckInSchedulingChoices(who,{query:'',employmentId:item.employmentId});return choices.kind==='choices'&&choices.items.some(row=>row.employmentId===item.employmentId);},
+  screen:(tx,who,item)=>perf.scheduleCheckInTx(tx,who,{subjectEmploymentId:item.employmentId,scheduledOn:calendarDate(10)})},
  'performance.goal.approve':{family:'assigned_goal',store:goalApprovalReviews,
   async create(_w,h){const year=Number(todayInKualaLumpur().slice(0,4)),group=groupOf(h.base),{cycleId}=await perf.createCycle(group,{name:'Fictional Proposed Goal',companyId:h.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`,assessmentWorkflow:false});await perf.openCycle(group,{cycleId});const self=await h.session(),{id}=await perf.createGoal(self,{employmentId:h.person.employmentId,cycleId,title:'Fictional Parity Goal'});const [review]=await owner.db.select({id:schema.performanceReview.id}).from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,h.person.employmentId)));await perf.proposeGoals(self,{reviewId:review.id});return itemOf(h,id);},
   human:item=>({action:'performance.goal.approve',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,approve:true}),

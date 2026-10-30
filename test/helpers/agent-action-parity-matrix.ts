@@ -92,6 +92,7 @@ export const AGENT_ACTION_PARITY={
  // Native goal RLS does not inherit stand-in Personnel visibility; keep that real native denial.
  'performance.checkin.cancel':{kind:'probed',screen:{...ASSIGNED_DECISION,assigned_approver:D}},
  'performance.checkin.complete':{kind:'probed',screen:{...ASSIGNED_DECISION,assigned_approver:D}},
+ 'performance.checkin.schedule':{kind:'probed',screen:{...ASSIGNED_DECISION,assigned_approver:D}},
  'performance.goal.approve':{kind:'probed',screen:{...ASSIGNED_DECISION,assigned_approver:D}},
  'performance.review.acknowledge':{kind:'probed',screen:OWN_REQUEST},
  'performance.onehr.plan.acknowledge':{kind:'probed',screen:OWN_REQUEST},
