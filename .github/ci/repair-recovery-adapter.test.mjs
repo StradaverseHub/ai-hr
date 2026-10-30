@@ -163,3 +163,16 @@ test('Finite fixture reader retains one exact inert DB worker diagnostic but nev
   for(const e of [missing,{...entries,'worker-cross-version.json':'x'.repeat(16*1024*1024+1)},{...entries,'worker-cross-version-extra.json':'{}'},{'focused.json':JSON.stringify({groups:{NODB:['test/node.test.ts'],DB:[]}}),'nodb.vitest.json':'{}','worker-cross-version.json':'{}'}])assert.throws(()=>read(e));
  }finally{rmSync(root,{recursive:true,force:true});}
 });
+
+test('Finite letter diagnostics remain inert, complete, Node-only and bounded except exact immutable ZIP profiles',()=>{
+ const root=mkdtempSync(join(tmpdir(),'fixture-letter-reader-')),path=join(root,'packet.zip');
+ const names=[...['en','ms','ta','th','vi','zh'].map(l=>'letter-pdf-fixtures/fictional-letter-'+l+'.pdf'),'letter-report-fixtures/fictional-report.pdf','letter-report-fixtures/fictional-report.xlsx','private-workflow-email-upgrade/manifest.json','private-workflow-email-upgrade/workflow-upgrade.cjs'];
+ const entries={'focused.json':JSON.stringify({groups:{NODB:['test/letter.test.ts'],DB:[]}}),'nodb.vitest.json':'{}',...Object.fromEntries(names.map(n=>[n,'inert']))};let i=0;
+ const read=e=>{writeFileSync(path,browserExec('python3',['-c','import io,json,sys,zipfile;b=io.BytesIO();z=zipfile.ZipFile(b,"w",compression=zipfile.ZIP_DEFLATED);[(z.writestr(k,v)) for k,v in json.load(sys.stdin).items()];z.close();sys.stdout.buffer.write(b.getvalue())'],{input:JSON.stringify(e),maxBuffer:64*1024**2}));const out=join(root,'out-'+i++);browserExec('python3',[browserFilePath(new URL('./fixture-repair-extract.py',import.meta.url)),path,out],{stdio:'pipe'});return out;};
+ try{
+  assert.deepEqual(readdirSync(read(entries)).sort(),['focused.json','nodb.vitest.json']);
+  const missing={...entries};delete missing[names[0]];
+  const db={'focused.json':JSON.stringify({groups:{NODB:[],DB:['test/db.test.ts']}}),'db.vitest.json':'{}','postgres.log':'facts','postgres-state.json':'{}','postgres-stats.txt':'facts'};
+  for(const e of [missing,{...entries,'letter-pdf-fixtures/fictional-letter-other.pdf':'x'},{...entries,'private-workflow-email-upgrade/workflow-upgrade.cjs':'x'.repeat(31074589)},{...db,...Object.fromEntries(names.map(n=>[n,'inert']))},{...db,'postgres.log':'x'.repeat(16779562)}])assert.throws(()=>read(e));
+ }finally{rmSync(root,{recursive:true,force:true});}
+});

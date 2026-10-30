@@ -35,8 +35,16 @@ async function inspect(runId){
   assert(report.kind==='FOCUSED_ONLY'&&report.sha===source&&report.controller===controller&&report.runId===String(runId)&&report.attempt==='1','Exact immutable source/run binding required');
   record.extracted=[];
   for(const name of ['focused.json',result]){const bytes=readFileSync(join(destination,name)),raw=(await exec('python3',['-c','import sys,zipfile;sys.stdout.buffer.write(zipfile.ZipFile(sys.argv[1]).read(sys.argv[2]))',archive,name],{encoding:'buffer',timeout:10000,maxBuffer:64*1024**2})).stdout;assert(bytes.equals(raw),'Extracted coverage bytes changed');record.extracted.push({name,digest:digest(bytes)});}
+  if([41041082246,41041362860].includes(runId)){
+   const tampered=join(directory,'tampered-profile.zip');writeFileSync(tampered,Buffer.concat([bytes,Buffer.from('\n')]),{flag:'wx',mode:0o600});
+   await assert.rejects(()=>exec('python3',[fileURLToPath(new URL('./fixture-repair-extract.py',import.meta.url)),tampered,join(directory,'tampered-refused')],{timeout:10000,maxBuffer:1024*1024}),error=>String(error.stderr).includes('Repair member exceeds bound'),'Changed original ZIP bytes must refuse an oversize profile');
+   record.immutableOversizeProfileTamperRefusal=true;
+  }
   record.status='AUTHENTICATED_ORIGINAL_PACKET_TRANSPORT';
- }catch(error){record.status='REFUSED';record.stage=stage;record.errorClass=error?.name==='AssertionError'?'ASSERTION_REFUSAL':'TRANSPORT_OR_EXTRACTOR_REFUSAL';}
+ }catch(error){record.status='REFUSED';record.stage=stage;record.errorClass=error?.name==='AssertionError'?'ASSERTION_REFUSAL':'TRANSPORT_OR_EXTRACTOR_REFUSAL';
+  const stderr=Buffer.from(error?.stderr??'');record.stderrBytes=stderr.length;record.stderrDigest=digest(stderr);
+  const text=stderr.toString('utf8'),known=['Repair member exceeds bound','Unsafe, duplicate or unknown repair member','Repair packet exceeds bounds','Incomplete letter diagnostic inventory','Incomplete duration diagnostic inventory','Database diagnostics differ'];
+  record.reason=known.find(k=>text.includes(k))??(/HTTP (?:502|503|504)/.test(text)?'HTTP_RETRYABLE_SERVER':/unexpected EOF|connection reset|TLS handshake timeout|i\/o timeout/i.test(text)?'TRANSIENT_TRANSPORT':error?.code==='ETIMEDOUT'?'TIMEOUT':'UNCLASSIFIED_REFUSAL');}
  records.push(record);saveSummary(false);console.log(JSON.stringify(record));
 }
 await Promise.all(Array.from({length:3},async()=>{for(;;){const index=next++;if(index>=runIds.length)return;await inspect(runIds[index]);}}));
