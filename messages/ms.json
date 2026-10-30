@@ -21631,7 +21631,29 @@
       "amountOver": "Lebih {amount}",
       "amountLeft": "Baki {amount}",
       "cellsAdjusted": "{count} sel diubah",
-      "poolFormula": "Pencapaian PAT × bulan bonus sasaran × gaji yang layak. Setiap pelan mempunyai kumpulan dananya sendiri."
+      "poolFormula": "Pencapaian PAT × bulan bonus sasaran × gaji yang layak. Setiap pelan mempunyai kumpulan dananya sendiri.",
+      "increase": "Kenaikan %",
+      "hiddenRows": "{count, plural, other {# orang}} tidak disenaraikan di sini kerana peraturan keterlihatan. Jumlah unit termasuk mereka.",
+      "decide": {
+        "blocked": "{count, plural, other {# Sekatan}} masih terbuka. Selesaikan setiap Sekatan dalam Perkara untuk diperiksa sebelum menghantar atau meluluskan.",
+        "reasonForWarnings": "{count, plural, other {# amaran atau pengecualian}} terbuka. Tulis sekurang-kurangnya 10 aksara menerangkan mengapa ia boleh diterima.",
+        "reasonForReturn": "Untuk mengembalikan semakan, tulis sekurang-kurangnya 10 aksara menerangkan sebabnya.",
+        "moves": "{from} → {to}",
+        "submitTitle": "Hantar semakan ini?",
+        "submitHelp": "Semakan beralih kepada pelulus seterusnya dan tidak boleh disunting lagi kecuali ia dikembalikan.",
+        "approveTitle": "Luluskan semakan ini?",
+        "approveHelp": "Kelulusan anda direkodkan bersama sebab anda, dan semakan beralih ke peringkat seterusnya.",
+        "returnTitle": "Kembalikan semakan ini kepada draf?",
+        "returnHelp": "Semakan kembali kepada CEO BU untuk diubah. Sebab anda ditunjukkan kepada mereka, dan setiap kelulusan bermula semula."
+      },
+      "person": {
+        "close": "Tutup",
+        "previous": "Sebelumnya",
+        "next": "Seterusnya",
+        "position": "{index} daripada {total}",
+        "openRecord": "Buka rekod penuh untuk menyunting",
+        "noFlags": "Tiada perkara untuk orang ini."
+      }
     },
     "sharedGovernance": {
       "excludedFor": "Dikecualikan bagi {year}",

@@ -21631,7 +21631,29 @@
       "amountOver": "{amount} over",
       "amountLeft": "{amount} left",
       "cellsAdjusted": "{count, plural, one {# cell adjusted} other {# cells adjusted}}",
-      "poolFormula": "PAT achievement × target bonus months × eligible payroll. Each plan keeps its own pool."
+      "poolFormula": "PAT achievement × target bonus months × eligible payroll. Each plan keeps its own pool.",
+      "increase": "Increase %",
+      "hiddenRows": "{count, plural, one {# person is} other {# people are}} not listed here because of visibility rules. Unit totals include them.",
+      "decide": {
+        "blocked": "{count, plural, one {# Block is} other {# Blocks are}} still open. Clear every Block in Flags before you submit or approve.",
+        "reasonForWarnings": "{count, plural, one {# warning or exception is} other {# warnings or exceptions are}} open. Write at least 10 characters explaining why they are acceptable.",
+        "reasonForReturn": "To return the review, write at least 10 characters explaining why.",
+        "moves": "{from} → {to}",
+        "submitTitle": "Submit this review?",
+        "submitHelp": "The review moves to the next approver and can no longer be edited unless it is returned.",
+        "approveTitle": "Approve this review?",
+        "approveHelp": "Your approval is recorded with your reason, and the review moves to the next stage.",
+        "returnTitle": "Return this review to draft?",
+        "returnHelp": "The review goes back to the BU CEO to change. Your reason is shown to them, and every approval starts again."
+      },
+      "person": {
+        "close": "Close",
+        "previous": "Previous",
+        "next": "Next",
+        "position": "{index} of {total}",
+        "openRecord": "Open full record to edit",
+        "noFlags": "No flags for this person."
+      }
     },
     "sharedGovernance": {
       "excludedFor": "Excluded for {year}",
