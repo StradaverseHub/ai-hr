@@ -411,3 +411,21 @@ fresh exact-SHA full gate. Its older focused/full-gate evidence stays tied to th
 Other unapplied lower-timestamp claims likewise require a fresh coordinated append above the actual
 installed watermark before their own release. V9's eight drafts remain unallocated. This allocation
 grants no production deployment or human staging acceptance.
+
+## Pay Formula Builder — 30 October 2026 (unapplied, review branch)
+
+Feedback `02472802-f445-40b8-b1a3-5defc7c69b59` uses an isolated review branch based on fetched aligned
+`origin/main` and `origin/alpha` `d6cb83d620d8d4380c981a72fc41628780840b4e`. The read-only staging
+source/build and migration ledger were verified at this same revision: 579 installed receipts,
+maximum sequence1793330000063. None of this feature's SQL has been applied.
+
+The initial provisional0741 / sequence1793330000078 collided with another unapplied Rewards owner.
+A fresh scan of1494 distinct local ref heads and307 registered worktrees found external reservations
+through0743 / sequence1793330000080. Formula Builder therefore moves to **0744_pay_formula_builder**,
+**idx694 / sequence1793330000081**, preserving the canonical installed journal prefix exactly.
+The abandoned0741 name is not a migration installed by this feature. Prior Movement0729/…066 and
+Tax0737/…074 remain separate, unapplied review branches and are not included here.
+
+This reserves source only. Recheck competing claims and the live ledger before integration/application;
+no staging/production deployment or protected-branch integration is authorized. Clean and populated
+ordinary journal rehearsals are in `test/pay-formula-upgrade.test.ts` and run in standard Actions.

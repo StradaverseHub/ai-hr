@@ -171,3 +171,4 @@ Read only records relevant to the task. A newer decision supersedes an older one
 - [ADR-0164 — Movement corrections behind closed payroll](0164-movement-corrections-behind-closed-payroll.md)
 - [ADR-0165 — Tenant-owned termination reasons and event-type descriptions](0165-tenant-termination-reason-catalogue.md)
 - [ADR-0166 — Custom Termination types, per-type reasons, Field Controls and movement documents](0166-movement-type-controls-and-custom-termination.md)
+- [ADR-0168 — Bounded reusable payroll formulas](0168-bounded-pay-formula-builder.md)
