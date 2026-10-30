@@ -308,10 +308,11 @@ try{
  const appCpuAfter=appCpu(),driverCpu=process.cpuUsage(driverCpuBefore),resourceCpuAfter=resourceCpu();
  const resourceDelta=Object.fromEntries(Object.keys(resourceCpuBefore).map(key=>{
   const before=resourceCpuBefore[key],after=resourceCpuAfter[key];
-  assert(before!==null&&after!==null&&after>=before,'missing or reset resource CPU counter');return [key,after-before];
+  return [key,before!==null&&after!==null&&after>=before?after-before:null];
  }));
- report.cpu={appProcesses:Number(process.env.PERF_APP_WORKERS||1),appCpuSeconds:appCpuBefore!==null&&appCpuAfter!==null?appCpuAfter-appCpuBefore:null,driverCpuSeconds:(driverCpu.user+driverCpu.system)/1000000,elapsedSeconds:(performance.now()-started)/1000,includesBrowserCpu:false,includesPostgresCpu:false,resourceDelta,
-  counterScope:'PostgreSQL cgroup includes its capture helpers; proxy is the orchestrator process; host counters include all hosted-runner processes. Host user/system excludes IO wait and steal.'};
+ report.cpu={appProcesses:Number(process.env.PERF_APP_WORKERS||1),appCpuSeconds:appCpuBefore!==null&&appCpuAfter!==null?appCpuAfter-appCpuBefore:null,driverCpuSeconds:(driverCpu.user+driverCpu.system)/1000000,elapsedSeconds:(performance.now()-started)/1000,includesBrowserCpu:false,includesPostgresCpu:false};
+ report.resourceCpu={...resourceDelta,complete:Object.values(resourceDelta).every(value=>value!==null),elapsedSeconds:(performance.now()-started)/1000,
+  countersOverlap:true,counterScope:'PostgreSQL cgroup includes its capture helpers; proxy is the orchestrator process. Host user/system includes all hosted-runner processes (including Chromium) and overlaps every component; do not sum it with component counters. IO wait and steal are reported separately.'};
  report.appMemory={processes:appMemory(),peakIncludesStartupAndBaseline:true};
  const loaded=samples.slice(offset),reads=loaded.filter(v=>v.method==='GET'),writes=loaded.filter(v=>v.method==='POST');
  report.phases.push({name:'500-paced-HTTP-users-'+suite+'-'+thinkTimeMs+'ms-think',elapsedMs:performance.now()-started,completed:results.filter(v=>v.status==='fulfilled').length,errors:report.functionalErrors.length,

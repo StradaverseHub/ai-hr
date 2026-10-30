@@ -1,6 +1,6 @@
 /** Reversible native query-plan experiment. Never changes an installation or supplies release evidence. */
 import {randomUUID} from 'node:crypto';
-import {writeFileSync} from 'node:fs';
+import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {sql,eq} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
@@ -31,10 +31,16 @@ it('isolates Home role and reporting-visibility query planning with fresh native
   const [row]=await owner.client`select pg_get_functiondef(${signature}::regprocedure) as original,prosrc as body,
    proowner::text,proacl::text,prosecdef,provolatile,proconfig from pg_proc where oid=${signature}::regprocedure`;
   expect(row.original).toContain('LANGUAGE sql');const at=row.original.indexOf('AS $function$');expect(at).toBeGreaterThan(0);
-  const header=row.original.slice(0,at).replace('LANGUAGE sql','LANGUAGE plpgsql');
-  const cached=header+'AS $home_role_plan$ BEGIN RETURN ('+row.body.trim().replace(/;$/,'')+'); END; $home_role_plan$;';
-  const {original,body,...security}=row;
-  definitions.push({signature,original,body,security,cached});
+  const {original:installed,body:installedBody,...security}=row,sqlHeader=installed.slice(0,at);
+  let body=installedBody;
+  if(signature==='app.own_home_dashboard_role(uuid)'){
+   const canonical=readFileSync(new URL('../../db/migrations/0584_employee_home_sharing.sql',import.meta.url),'utf8');
+   const start=canonical.indexOf('CREATE FUNCTION app.own_home_dashboard_role('),end=canonical.indexOf('$$;',start);
+   body=canonical.slice(start,end).split('AS $$')[1];expect(body).toBeTruthy();
+  }
+  const original=sqlHeader+'AS $function$'+body+'$function$;';
+  const cached=sqlHeader.replace('LANGUAGE sql','LANGUAGE plpgsql')+'AS $home_role_plan$ BEGIN RETURN ('+body.trim().replace(/;$/,'')+'); END; $home_role_plan$;';
+  definitions.push({signature,installed,installedBody,sqlHeader,original,body,security,cached});
  }
  // A cheap necessary-condition gate prevents an unassigned employee's role lookup
  // from planning/evaluating every report/person visibility predicate. The full
@@ -51,7 +57,8 @@ it('isolates Home role and reporting-visibility query planning with fresh native
   ) THEN EXISTS(
    SELECT 1 FROM public.reporting_line r JOIN public.employment report ON report.id=r.subordinate_employment_id`)
   .replace(reportEnd,"  ) ELSE false END THEN 'manager' ELSE 'employee' END");
- const guardedRole=roleDefinition.original.slice(0,roleDefinition.original.indexOf('AS $function$'))+'AS $home_role_guard$'+guardedBody+'$home_role_guard$;';
+ const guardedRole=roleDefinition.sqlHeader+'AS $home_role_guard$'+guardedBody+'$home_role_guard$;
+ expect([body.trim(),guardedBody.trim()]).toContain(roleDefinition.installedBody.trim());';
  const phases:Record<string,unknown>={},probes=users.slice(0,100);
  try{
   for(const phase of ['baseline','role-plan','guarded-role','visibility-plans','baseline-after']){
@@ -76,7 +83,7 @@ it('isolates Home role and reporting-visibility query planning with fresh native
    finally{await owner.db.update(s.reportingLine).set({supersededAt:null}).where(eq(s.reportingLine.managerEmploymentId,users[2].employmentId));}
    expect(await read(context(users[2]),users[2].employmentId)).toBe('manager');
    phases[phase]={principalInventory:500,activeProbes:100,elapsedMs,p50Ms:times[49],p95Ms:times[94],maxMs:times.at(-1),errors,liveBoundaryChecks:true,statements};
-   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'home-role-query.json'),JSON.stringify({kind:'REVERSIBLE_HOME_ROLE_PLAN_EXPERIMENT',releaseEligible:false,phases},null,2));expect(errors).toEqual([]);
+   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'home-role-query.json'),JSON.stringify({kind:'REVERSIBLE_HOME_ROLE_PLAN_EXPERIMENT',releaseEligible:false,roleBaseline:'0584_employee_home_sharing.sql',installedRoleGuarded:roleDefinition.installedBody.trim()===guardedBody.trim(),phases},null,2));expect(errors).toEqual([]);
   }
- }finally{for(const definition of definitions)await owner.client.unsafe(definition.original);}
+ }finally{for(const definition of definitions)await owner.client.unsafe(definition.installed);}
 },480000);

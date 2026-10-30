@@ -736,3 +736,28 @@ retain their original source identities and do not verify this merged candidate.
 The installed ledger/watermark was not queried in this source-only reconciliation;
 installation allocation, complete live-prefix verification and release acceptance
 remain held. No target database, protected branch or deployment changes are authorized.
+
+## Home role read guard — 31 October 2026, development only
+
+Fresh main/alpha remain `b0907303caf7fcb75fdce7194a327d10ae209ba2`. A scan of
+2406 local/remote refs (287 distinct parseable journals) and
+349 registered worktrees finds filenames through0861 and sequences
+through1793330000261. Preserve the complete existing source journal and every SQL byte.
+Append the next unapplied development successor:
+
+| Index | Sequence | Filename | SQL SHA256 |
+| ---: | ---: | --- | --- |
+| 702 | 1793330000262 | 0862_home_role_reporting_guard | `1d9e2acbc583e86813d3fccbd3596d54acdc8090f9f591489beaee7f0b02998e` |
+
+Native experiment41107920846 (`35a9544ed`) compares100 active actual principals
+within a500-person/ten-company fixture. Necessary-edge guard p95 is98.8ms versus
+13,995.9ms before and12,373.3ms after restoration. Owner, ACL, security attributes,
+current assignments, archival, forged-grant and foreign/other-subject checks pass.
+The guard preserves the full original visibility query whenever any edge exists;
+no permission result or private record is cached. Broader native and HTTP/browser
+qualification is required on the migration candidate.
+
+This is source-only development allocation. No installed ledger or watermark was
+queried; the complete accepted ledger and all unapplied performance reservations
+still require final reconciliation. No target application, protected integration,
+release acceptance or deployment authority is granted by this record.

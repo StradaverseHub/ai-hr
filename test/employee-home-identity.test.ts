@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {eq} from 'drizzle-orm';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import type {SessionContext} from '../db/client';
-import {company,department,person,roleAssignment} from '../db/schema';
+import {company,department,person,roleAssignment,reportingLine} from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {HomeAccessError,ownHomeSubjectSelection,readEmployeeHomeIdentity,readEmployeeHomeGreetingIdentity,requireOwnHomeSubject} from '../core/employee-home';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -65,6 +65,19 @@ describe('salary-free employee Home identity and selection',()=>{
    await expect(readEmployeeHomeIdentity(ctx,id)).rejects.toMatchObject({code:'employmentUnavailable'});
   for(const id of [report.employmentId,foreignEmployee.employmentId,randomUUID(),''])
    await expect(readEmployeeHomeGreetingIdentity(ctx,id)).rejects.toMatchObject({code:'employmentUnavailable'});
+ });
+ it('keeps an unreadable future reporting edge out of the Manager role and observes its later activation and revocation',async()=>{
+  const {employee,ctx}=await ownEmployee(),on=todayInKualaLumpur();
+  await hireEmployee(adminCtx(b),{person:{fullName:'Fictional future report',primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,
+   departmentId:b.deptA,employmentType:'full_time',hiredOn:on,reportingManagerEmploymentId:employee.employmentId});
+  expect((await readEmployeeHomeIdentity(ctx)).role).toBe('manager');
+  const tomorrow=new Date(Date.parse(on+'T12:00:00Z')+86400000).toISOString().slice(0,10);
+  await owner.db.update(reportingLine).set({validFrom:tomorrow}).where(eq(reportingLine.managerEmploymentId,employee.employmentId));
+  expect((await readEmployeeHomeIdentity(ctx)).role).toBe('employee');
+  await owner.db.update(reportingLine).set({validFrom:on}).where(eq(reportingLine.managerEmploymentId,employee.employmentId));
+  expect((await readEmployeeHomeIdentity(ctx)).role).toBe('manager');
+  await owner.db.update(reportingLine).set({supersededAt:new Date()}).where(eq(reportingLine.managerEmploymentId,employee.employmentId));
+  expect((await readEmployeeHomeIdentity(ctx)).role).toBe('employee');
  });
  it('does not apply a flattened manager role to a second company outside its actual grant',async()=>{
   const {employee,ctx}=await ownEmployee();

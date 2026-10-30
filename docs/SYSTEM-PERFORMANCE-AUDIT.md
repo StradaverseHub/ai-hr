@@ -6,6 +6,26 @@
 not release acceptance. [Draft PR 113](https://github.com/StradaverseHub/ai-hr/pull/113)
 is held; this work has not deployed to staging or production.
 
+The newest completed 30-route workload (`63b36a4c3`) retains **one million Claims
+and one million attendance rows**. All500 data journeys and native audit checks
+complete at both activity levels, but speed/browser acceptance fails:
+
+| Activity pause | Read p95 | Mutation p95 | Complete data journeys | Complete loaded browsers |
+| --- | ---: | ---: | ---: | ---: |
+| [1s](https://github.com/StradaverseHub/ai-hr/actions/runs/41105246682) | 69.8s | 63.3s | 500/500 | 0/6 |
+| [5s](https://github.com/StradaverseHub/ai-hr/actions/runs/41105238515) | 64.5s | 57.3s | 500/500 | 1/6 |
+
+Both builds, migration runs and fixture assertions pass. Each verifies500 current-day
+attendance rows, no attendance before hire, all30 selected concurrent routes, nine
+authorization boundaries, no browser runtime errors and valid post-load native audit
+chains with only the known initialization prefix. Browser navigation timeouts remain
+failures. These separate hosted runners do not establish a causal scaling ratio.
+An additional measured Home-role query fix is now an unapplied development migration;
+its broader native and HTTP/browser qualification remains pending.
+
+Earlier comparable development checkpoints are retained below with their original
+sources and narrower data volumes.
+
 The owner requested both one-second and five-second activity levels. All four
 workloads on source `5249c199a98a0509638426383bc6f356f2a10f0a` reached 500 active
 users and failed speed acceptance. Each used 1,500 page reads and approximately
@@ -74,6 +94,60 @@ journal is preserved, followed by the four unchanged performance SQL drafts rena
 the installed ledger and final allocation must be verified before release.
 See [migration allocation](MIGRATION-ALLOCATION.md). Applied SQL was not rewritten.
 
+## Current development verification — 31 October 2026
+
+Source `0331b4cf6547f0613a17ab3f1e24e00f2b8d98df` includes published main/alpha
+`b0907303c`, the preserved canonical migration prefix and the following additional
+reductions. It has not been installed anywhere:
+
+- Manager/HR review task queues share one native principal proof, query and tenant
+  transaction. Existing per-row stage authority and single-stage APIs remain.
+- Empty leave cancellation metadata returns after its first native principal proof,
+  avoiding a second transaction for zero decision candidates.
+- Complete ESS policy projections compute their visibility closure once per call,
+  instead of recomputing it for each editable field. No permission result is cached
+  between calls. Disclosure/primary-contact/route checks and a separate public-policy CPU
+  comparison pass, with their original sources and counts below.
+- Generated client translation scopes include current main's new consumers. The
+  wider HTTP/browser mix grows from 27 to 30 routes, adding Security Center,
+  Formula Builder and its new-form screen. New measurements must retain this changed mix.
+- The load fixture supports 180 or 2,000 attendance days per employee: 90,000 or
+  one million attendance rows alongside one million Claims and 500 frozen payslips.
+  It independently asserts counts, 500 current-day records and no attendance before hire.
+  This is retained-history read coverage, not a payroll/attendance calculation certificate.
+
+The retained one-second `e09a841ca` SQL sample still records154 Home role calls
+averaging1,236.8ms, alongside84,827 employment-visibility calls. The nested SQL
+planning/execution values overlap and must not be summed as independent CPU time.
+A reversible disposable-database experiment now isolates role/visibility plan reuse
+and a necessary reporting-edge precheck that retains the full original visibility
+query whenever any edge exists. The winning necessary-edge precheck is now drafted in unapplied migration0862;
+broader native and HTTP/browser qualification is pending. Function language, security
+attributes and execute ACLs remain unchanged. No installation has been changed.
+The first diagnostic run stopped before timing because the isolated worker lacked
+`pg_stat_statements`; its original failed setup is retained and the corrected run
+explicitly installs the extension in that worker database.
+
+The review-reader comparison on `cdb51ea36` uses 500 actual linked principals and
+five pairs of empty-queue reads each. Separate-before p95 is10,217.5ms, grouped
+5,197.5ms, separate-after9,666.1ms, with no errors. This supports the reader change;
+it does not establish an equivalent page-speed improvement or meet HTTP acceptance.
+
+| Run | Exact source and result |
+| --- | --- |
+| [41103360230](https://github.com/StradaverseHub/ai-hr/actions/runs/41103360230) | `cba553212`: 272 cases PASS, one stale generated translation-inventory assertion FAIL, zero skipped assertions. Whole compiler FAIL: BigInt literal under ES2017 plus an untyped money-snapshot array, in two imported tests. Original failures retained; assertions/compiler target were not weakened. The million-claim helper median is565.0ms, max565.8ms over five reads, returning25rows/12,307bytes; not HTTP capacity. |
+| [41103845727](https://github.com/StradaverseHub/ai-hr/actions/runs/41103845727) | `cdb51ea36`: native 500-principal review-reader comparison PASS; all three phases and measured figures above. |
+| [41103850616](https://github.com/StradaverseHub/ai-hr/actions/runs/41103850616) | Requested `cdb51ea36`; resolver refused a moved candidate branch before tests/compiler. No behavior evidence. Replaced by a frozen-ref task regression below; original refusal remains. |
+| [41104695275](https://github.com/StradaverseHub/ai-hr/actions/runs/41104695275) | `e09a841ca`: translation/inventory and affected Formula/Security rendering recovery **47 cases PASS**, zero skips. Generated hosted inventory equals repaired source. |
+| [41104188955](https://github.com/StradaverseHub/ai-hr/actions/runs/41104188955), [41104191072](https://github.com/StradaverseHub/ai-hr/actions/runs/41104191072) | `e09a841ca`: 30-route HTTP/browser,90,000 attendance rows. One-second read/write p95 **52.8/53.3s**; five-second **39.6/39.6s**. Both complete500/500 journeys, all30routes, allsix loaded browsers, nine authority boundaries and native audit verification; zero HTTP journey/runtime errors. **Speed FAIL** in both; changed main/mix prevents a causal ratio against earlier runs. |
+| [41105244228](https://github.com/StradaverseHub/ai-hr/actions/runs/41105244228) | `63b36a4c3`: both imported test typing repairs verified with **19 cases PASS** (two DB,17 non-DB), zero skips; whole compiler PASS. Assertions and ES2017 target preserved. |
+| [41105246682](https://github.com/StradaverseHub/ai-hr/actions/runs/41105246682), [41105238515](https://github.com/StradaverseHub/ai-hr/actions/runs/41105238515) | `63b36a4c3`: both30-route loads complete500/500 data journeys and actual audit verification, with zero HTTP journey/runtime errors. One-second read/write p9569.8/63.3s and0/6loaded browsers; five-second64.5/57.3s and1/6browsers. **Speed/browser FAIL**; exact fixture counts and independent date bounds PASS. |
+| [41105777866](https://github.com/StradaverseHub/ai-hr/actions/runs/41105777866) | `0331b4cf6`: complete ESS policy CPU comparison PASS.243 public fields /79 editable /five primary-only;100 measured calls per phase/version. Versions3/4/5 previous-before p95 7.97/12.90/13.30ms; current0.47/0.65/0.43ms; previous-after7.36/12.37/12.62ms. Identical outputs and fresh policy changes verified; helper CPU, not HTTP capacity. |
+| [41105777665](https://github.com/StradaverseHub/ai-hr/actions/runs/41105777665) | `0331b4cf6`: affected ESS disclosure, edit/approval routes, photos and calling authority **79 cases PASS** (38 DB,41 non-DB), zero skips; whole compiler PASS. |
+| [41106189667](https://github.com/StradaverseHub/ai-hr/actions/runs/41106189667) | `0331b4cf6`: frozen-ref native task metadata, actual assignment, stage transitions and shell regression **47 cases PASS** (40 DB,seven non-DB), zero skips. |
+| [41106766391](https://github.com/StradaverseHub/ai-hr/actions/runs/41106766391) | `f7dd66c60`: Home-role diagnostic setup FAIL before timing: missing worker extension. No capacity or performance result. |
+| [41107920846](https://github.com/StradaverseHub/ai-hr/actions/runs/41107920846) | `35a9544ed`: repaired native experiment PASS.500 actual principals/100 active probes: baseline p9513,995.9ms; role-plan12,102.5; necessary-edge guard98.8; visibility-plan wrappers5,841.0; restored baseline12,373.3. All phase identity/assignment/archival/forged-grant/foreign-subject checks and owner/ACL/security attributes PASS. Only the necessary-edge guard is selected for product SQL; global visibility wrappers are not adopted. |
+
 ## Workload and acceptance
 
 - Standard GitHub-hosted runner (four CPUs, about 15.6 GiB RAM); one production
@@ -123,6 +197,7 @@ See [migration allocation](MIGRATION-ALLOCATION.md). Applied SQL was not rewritt
 | ORM | Application transactions no longer construct unused relational-query helpers for 319 schema tables. Explicit typed table queries remain; application, maintenance and bootstrap factories agree. |
 | Workforce access | The sealed read-only scope projection takes a shared advisory lock on the existing key. Configuration writers retain exclusive locks; no read-to-write upgrade or permission-result cache was added. |
 | Session and visibility SQL | Development migrations retain the canonical queries and cache PL/pgSQL execution plans per connection. Current principals, grants, termination and dates remain freshly evaluated; data/results are not cached. |
+| Home role read | An unapplied necessary reporting-edge gate avoids unrelated visibility evaluations for unassigned employees. If any eligible edge exists, the entire original visibility query remains authoritative; native qualification and full load recovery are pending. |
 | Date display | Reuse immutable Kuala Lumpur date/time formatter objects; dates and formatted results remain fresh. Midnight, leap-day and year-boundary test cases cover behavior. |
 | Payroll, attendance and reports | SQL paging/aggregates and narrowed source reads; totals remain global to authorized scope. Employee Master avoids an export for its count and explicitly bounds source rows. |
 | Personnel | Authorized remote search returns eight matches, aborts stale requests and preserves current selection. No unbounded employment download for the picker. |
