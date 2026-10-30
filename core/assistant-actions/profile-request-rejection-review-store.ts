@@ -1,0 +1,6 @@
+import {withTenant,type SessionContext} from '../../db/client';
+import {createGenericAssignedReviewStore} from './generic-assigned-review-store';
+import {ProfileRequestRejection as C} from '../../lib/assistant-actions/profile-request-rejection-contract';
+import {withProfileRequestRejectionSubjectTx,prepareProfileRequestRejectionSourceTx,confirmProfileRequestRejectionSourceTx,reconcileProfileRequestRejectionSourceTx,readProfileRequestRejectionChoicesTx,profileRequestRejectionUnavailable} from './profile-request-rejection-source';
+export const profileRequestRejectionReviews=createGenericAssignedReviewStore({action:C.action,human:C.Human,consequence:C.consequence,prepared:C.Prepared,completed:C.Completed,retired:C.Retired,index:C.Index,indexKind:C.indexKind,withSubject:withProfileRequestRejectionSubjectTx,prepare:prepareProfileRequestRejectionSourceTx,confirm:confirmProfileRequestRejectionSourceTx,reconcile:reconcileProfileRequestRejectionSourceTx,unavailable:profileRequestRejectionUnavailable});
+export async function readProfileRequestRejectionChoices(supplied:SessionContext,selection?:unknown){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};try{return await withTenant(ctx,tx=>readProfileRequestRejectionChoicesTx(tx,ctx,selection));}catch{return{kind:'unavailable' as const};}}
