@@ -19,7 +19,7 @@ it('profiles current permission planning over 500 employments without changing a
    .split('CREATE OR REPLACE FUNCTION app.visible_employment_ids()')[1].split('AS $$')[1].split('$$;')[0];
  expect(original).toContain('FROM (SELECT DISTINCT e.company_id');
  expect(body).toContain('tenant_company AS MATERIALIZED');
- const fenced=body;
+ const fenced=readFileSync(new URL('../db/migrations/0726_claim_history_order.sql',import.meta.url),'utf8').split('AS $$')[1].split('$$;')[0];
  const visibilityPlans=await owner.withTenant(probeCtx,async tx=>{
    await tx.execute(sql`SET LOCAL jit = off`);
    const baseline=await tx.execute(sql.raw('explain (analyze,buffers,format json) '+original));

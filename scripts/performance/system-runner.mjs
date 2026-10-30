@@ -7,6 +7,7 @@ import {join,resolve} from 'node:path';
 import https from 'node:https';
 import http from 'node:http';
 import os from 'node:os';
+import net from 'node:net';
 import {setTimeout as pause} from 'node:timers/promises';
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.RUNNER_ENVIRONMENT,'github-hosted');
 assert.equal(process.env.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');
@@ -25,12 +26,14 @@ env.SHARE_PASSWORD='';env.DEV_USER_ID='';
 const report={kind:'ISOLATED_HTTP_BROWSER_DEVELOPMENT_ONLY',releaseEligible:false,sha,controller:process.env.AIHR_CI_CONTROL_HEAD,
  run:process.env.GITHUB_RUN_ID,host:{cpus:os.availableParallelism(),memoryBytes:os.totalmem()},phases:[],exitCode:1};
 const save=()=>writeFileSync(join(out,'runner.json'),JSON.stringify(report,null,2));
+save();
+async function assertPortFree(port){const server=net.createServer();await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve);});await new Promise(resolve=>server.close(resolve));}
 async function run(label,command,args,childEnv=env,timeout=900000){
  console.log('[system-perf] '+label+' started');const start=Date.now();
  const fd=openSync(join(privateDir,label+'.log'),'w',0o600);
  const child=spawn(command,args,{env:childEnv,stdio:['ignore',fd,fd]});
- const timer=setTimeout(()=>child.kill('SIGTERM'),timeout);let code;
- try{code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',resolve);});}finally{clearTimeout(timer);closeSync(fd);}
+ let killTimer;const timer=setTimeout(()=>{child.kill('SIGTERM');killTimer=setTimeout(()=>child.kill('SIGKILL'),10000);},timeout);let code;
+ try{code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',resolve);});}finally{clearTimeout(timer);clearTimeout(killTimer);closeSync(fd);}
  report.phases.push({label,elapsedMs:Date.now()-start,exitCode:code});save();
  console.log('[system-perf] '+JSON.stringify(report.phases.at(-1)));
  if(code!==0){const text=readFileSync(join(privateDir,label+'.log'),'utf8').slice(-12000).replace(/[A-Za-z0-9_-]{32,}/g,'<REDACTED>');writeFileSync(join(out,label+'-failure.txt'),text);}
@@ -39,6 +42,7 @@ async function run(label,command,args,childEnv=env,timeout=900000){
 let app,proxy,dbStarted=false,appFd;
 const container=`aihr-ci-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}-db-1`;
 try{
+ await assertPortFree(3174);await assertPortFree(3443);
  const buildEnv={...env,NODE_ENV:'production',NODE_OPTIONS:'--max-old-space-size=6144'};
  for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'])buildEnv[key]='postgres://nobody:nothing@127.0.0.1:1/no_database';
  await run('build','pnpm',['build'],buildEnv);
@@ -49,7 +53,8 @@ try{
  await run('fixture',process.execPath,['--import','tsx','scripts/performance/system-fixture.mjs'],{...env,NODE_ENV:'development'},600000);
  await run('certificate','openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',join(privateDir,'key.pem'),'-out',join(privateDir,'cert.pem'),'-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost']);
  appFd=openSync(join(privateDir,'server.log'),'w',0o600);
- app=spawn(process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port','3174'],{env:{...env,NODE_ENV:'production',NODE_OPTIONS:'--max-old-space-size=4096'},stdio:['ignore',appFd,appFd]});
+ mkdirSync(join(out,'cpu'),{recursive:true});
+ app=spawn(process.execPath,['--cpu-prof','--cpu-prof-dir='+join(out,'cpu'),'node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port','3174'],{env:{...env,NODE_ENV:'production',NODE_OPTIONS:'--max-old-space-size=4096'},stdio:['ignore',appFd,appFd]});
  const upstream=new http.Agent({keepAlive:true,maxSockets:600});
  proxy=https.createServer({key:readFileSync(join(privateDir,'key.pem')),cert:readFileSync(join(privateDir,'cert.pem'))},(req,res)=>{
   const request=http.request({host:'127.0.0.1',port:3174,path:req.url,method:req.method,agent:upstream,

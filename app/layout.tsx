@@ -445,6 +445,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                     unread={notifUnread + onboardingUnreadCount}
                     items={[...notifItems,...onboardingUnread]}
                     tasks={pendingTasks}
+                    claimTaskCount={approvalSummary.claimTotal}
                     taskNotifications={taskNotifs}
                     taskCount={approvalSummary.total+onboardingQueue.length+taskNotifCount}
                     readItems={[...readNotifs,...onboardingRead]}

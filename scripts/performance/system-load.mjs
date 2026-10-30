@@ -75,12 +75,12 @@ try{
  browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||undefined,args:['--host-resolver-rules=MAP localhost 127.0.0.1']});
  report.browserVersion=browser.version();
  async function context(user){const context=await browser.newContext({ignoreHTTPSErrors:true,locale:'en-MY'});await context.addCookies([{name:'__Host-aihr_internal',value:user.token,url:base,secure:true,httpOnly:true,sameSite:'Lax'},{name:'NEXT_LOCALE',value:'en',url:base}]);return context;}
- async function visit(page,user,path){
+ async function visit(page,user,path,phase='baseline'){
   const start=performance.now();const response=await page.goto(base+path,{waitUntil:'networkidle',timeout:90000});assert.equal(response.status(),200);
   assert(!new URL(page.url()).pathname.startsWith('/login'));await page.locator('main').waitFor();assert((await page.locator('body').innerText()).includes(user.name));
   const heading=(await page.locator('h1').allTextContents()).join(' ').trim();assert(heading.length>0,'missing page heading');
   const timing=await page.evaluate(()=>{const n=performance.getEntriesByType('navigation')[0];return {ttfbMs:n.responseStart-n.requestStart,domInteractiveMs:n.domInteractive,decodedBytes:n.decodedBodySize,transferBytes:n.transferSize};});
-  report.browser.push({role:user.role,path,heading,elapsedMs:performance.now()-start,...timing});save();
+  report.browser.push({phase,role:user.role,path,heading,elapsedMs:performance.now()-start,...timing});save();
  }
  for(const user of [employee,manager,hr,group,fixture.users[254],fixture.users[251]]){
   const ctx=await context(user),page=await ctx.newPage();page.on('pageerror',error=>report.browserErrors.push({role:user.role,error:error.name+': '+error.message.slice(0,150)}));page.on('console',message=>{if(message.type()==='error')report.browserErrors.push({role:user.role,error:message.text().slice(0,150)});});
@@ -121,6 +121,15 @@ try{
  await db`select pg_stat_statements_reset()`;
  const waits=[];let samplingBusy=false;sampling=setInterval(async()=>{if(samplingBusy)return;samplingBusy=true;try{const rows=await db`select coalesce(wait_event_type,'CPU-or-ready')as kind,count(*)::int as connections from pg_stat_activity where datname=current_database()and state='active'group by 1`;waits.push({at:Date.now(),rows});}catch{}finally{samplingBusy=false;}},1000);
  const offset=samples.length,started=performance.now();
+ // Representative hydrated browsers share the load interval with all 500 HTTP principals.
+ const browserLoad=Promise.allSettled([employee,manager,hr,group,fixture.users[254],fixture.users[251]].map(async user=>{
+  const ctx=await context(user),page=await ctx.newPage();
+  page.on('pageerror',error=>report.browserErrors.push({role:user.role,phase:'loaded',error:error.message.slice(0,150)}));
+  page.on('console',message=>{if(message.type()==='error')report.browserErrors.push({role:user.role,phase:'loaded',error:message.text().slice(0,150)});});
+  try{for(const route of user.role==='employee'?['/claims','/leave','/attendance/individual']:user.role==='manager'?['/approvals','/claims','/performance/team']:['/admin/personnel','/payroll','/claims']){
+   await visit(page,user,route,'loaded');await pause(1000);
+  }}finally{await ctx.close();}
+ }));
  const results=await Promise.allSettled(fixture.users.map(async(user,i)=>{
   await pause(i*20);const routes=user.role==='employee'?['/me','/claims','/leave']:user.role==='manager'?['/approvals','/claims','/performance/team']:['/admin/personnel','/payroll','/claims'];
   for(const route of routes){await request(user,route);await pause(1000);}
@@ -135,6 +144,8 @@ try{
   await pause(1000);await request(user,'/claims',{...contextTemplates.deleteTemplate.fields,[contextTemplates.deleteTemplate.prefix+'employmentId']:user.employmentId,[contextTemplates.deleteTemplate.prefix+'id']:draft.id},contextTemplates.deleteTemplate.status,true,contextTemplates.deleteTemplate.headers);
   assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
  }));
+ const browserResults=await browserLoad;
+ report.browserLoad={contexts:browserResults.length,completed:browserResults.filter(v=>v.status==='fulfilled').length,errors:browserResults.flatMap((v,index)=>v.status==='rejected'?[{index,error:String(v.reason.message).slice(0,180)}]:[])};
  clearInterval(sampling);sampling=null;
  report.functionalErrors=results.flatMap((value,index)=>value.status==='rejected'?[{user:index,error:String(value.reason.message).slice(0,180)}]:[]);
  const loaded=samples.slice(offset),reads=loaded.filter(v=>v.method==='GET'),writes=loaded.filter(v=>v.method==='POST');
@@ -142,6 +153,6 @@ try{
   read:summary(reads.map(v=>v.durationMs)),write:summary(writes.map(v=>v.durationMs)),ttfb:summary(loaded.map(v=>v.ttfbMs)),wireBytes:loaded.reduce((sum,v)=>sum+v.wireBytes,0),decodedBytes:loaded.reduce((sum,v)=>sum+v.decodedBytes,0)});
  report.latencyTargetMet=report.phases[0].read.p95Ms<1000&&report.phases[0].write.p95Ms<500;
  writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));
- await databaseSnapshot('loaded');save();assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.browserErrors.length,0,'browser runtime errors');
+ await databaseSnapshot('loaded');save();assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
 }catch(error){report.error=String(error.message).slice(0,350);writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));await databaseSnapshot('failure').catch(()=>{});save();throw error;}
 finally{if(sampling)clearInterval(sampling);if(browser)await browser.close();agent.destroy();await db.end();save();}

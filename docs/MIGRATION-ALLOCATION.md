@@ -431,3 +431,17 @@ preserving its entire571-entry journal.0726 is appended at development idx686 /w
 only for disposable CI databases. This does not compete with V9's release allocation:
 the performance candidate remains explicitly non-deployable pending the actual V9
 handback and fresh successor allocation. No existing SQL byte or applied entry changes.
+
+## Permission plan caching — 30 October 2026, development only
+
+Read-only refresh of main/alpha plus remote refs and Git-discovered worktree journals found
+filenames through0735 and sequences through1793330000072. Reserve unapplied
+`0736_visibility_plan_cache` at sequence1793330000073 (idx687 on this development branch).
+It preserves0726's complete visibility query and changes its language to PL/pgSQL so PostgreSQL
+can retain the query plan per connection. Permission results, session identity and effective dates
+are evaluated afresh; policies and grants do not change. The paired500-principal experiment
+41022556721 motivates this change; current equivalence and HTTP tests remain required.
+
+This does not resolve0726's pre-existing filename/sequence collision with AI/V9 reservations.
+Both performance successors require reconciliation above the accepted ledger at integration.
+No staging application, branch integration, deployment or release eligibility is authorized.

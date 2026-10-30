@@ -4005,6 +4005,13 @@
       "when": 1793330000055,
       "tag": "0726_claim_history_order",
       "breakpoints": true
+    },
+    {
+      "idx": 687,
+      "version": "7",
+      "when": 1793330000073,
+      "tag": "0736_visibility_plan_cache",
+      "breakpoints": true
     }
   ]
 }

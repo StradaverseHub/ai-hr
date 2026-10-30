@@ -150,7 +150,7 @@ async function loadPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,m
   ];
   items.sort((a,b)=>a.createdAt<b.createdAt?1:a.createdAt>b.createdAt?-1:a.kind.localeCompare(b.kind)||a.id.localeCompare(b.id));
   const omittedClaims=claimResult.total-claims.length;
-  return {items,total:items.length+omittedClaims,approvalCount:items.filter(task=>task.linkPath.split(/[?#]/,1)[0]==='/approvals').length+omittedClaims};
+  return {items,claimTotal:claimResult.total,total:items.length+omittedClaims,approvalCount:items.filter(task=>task.linkPath.split(/[?#]/,1)[0]==='/approvals').length+omittedClaims};
 }
 
 export async function pendingApprovalsCount(
