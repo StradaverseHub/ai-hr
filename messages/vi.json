@@ -20081,6 +20081,63 @@
           "other": "Khác"
         }
       },
+      "employeeDraftDiscard": {
+        "title": "Loại bỏ bản nháp nhân viên đã lưu",
+        "description": "Xem lại thông tin đã lưu và kết quả xử lý mã nhân viên trước khi loại bỏ một bản nháp.",
+        "back": "Quay lại Trợ lý",
+        "intro": "Chọn bản nháp đã lưu để xem lại. Việc loại bỏ sẽ xóa mọi thông tin đã lưu trong bản nháp đó.",
+        "working": "Đang xử lý…",
+        "unavailable": "Không thể xác minh kết quả. Mở lại đúng lượt xem xét đã lưu hoặc kiểm tra bản nháp trong Nhân sự.",
+        "choicesUnavailable": "Không thể tải bản nháp. Hãy kiểm tra quyền truy cập hiện tại trong Nhân sự.",
+        "draft": "Bản nháp đã lưu",
+        "choose": "Chọn bản nháp",
+        "unnamed": "Bản nháp chưa đặt tên",
+        "unassigned": "Chưa chỉ định công ty",
+        "empty": "Không có bản nháp đã lưu nào.",
+        "truncated": "Đang hiển thị 25 bản nháp mới nhất. Mở Nhân sự để xem thêm.",
+        "handoff": "Xem lại bản nháp này trong Nhân sự trước khi loại bỏ.",
+        "onboardingHandoff": "Bản nháp này liên kết với hồ sơ hội nhập. Hãy xem tác động đến hồ sơ và các nhiệm vụ trong Nhân sự.",
+        "native": "Mở bản nháp Nhân sự",
+        "prepareConsent": "Tôi đã chọn bản nháp này và muốn xem lại việc loại bỏ thông tin đã lưu.",
+        "prepare": "Xem xét loại bỏ bản nháp",
+        "reviewTitle": "Xem xét loại bỏ bản nháp đã lưu",
+        "company": "Công ty",
+        "reservation": "Kết quả xử lý mã nhân viên",
+        "consequence": "Xác nhận sẽ xóa vĩnh viễn mọi thông tin đã lưu trong bản nháp này. Bạn không thể khôi phục trong ứng dụng. Thao tác này không xóa hồ sơ nhân viên.",
+        "expires": "Lượt xem xét hết hạn lúc",
+        "expired": "Lượt xem xét đã hết hạn. Hãy bắt đầu lượt mới từ bản nháp Nhân sự.",
+        "confirmConsent": "Tôi đã xem lại bản nháp và kết quả xử lý mã nhân viên. Tôi cho phép xóa vĩnh viễn mọi thông tin đã lưu trong bản nháp này và hiểu rằng không thể hoàn tác trong ứng dụng.",
+        "confirm": "Loại bỏ bản nháp đã lưu",
+        "retire": "Hủy lượt xem xét này",
+        "retireNote": "Hủy lượt xem xét sẽ giữ lại bản nháp đã lưu.",
+        "uncertain": "Kết quả chưa chắc chắn. Mở lại đúng lượt xem xét này để lấy kết quả trước khi thử loại bỏ bản nháp khác.",
+        "uncertainUnknown": "Lượt xem xét có thể đã được lưu. Hãy tìm các lượt đã lưu trước khi bắt đầu lại.",
+        "reopen": "Mở lại lượt xem xét đã lưu",
+        "done": "Đã loại bỏ bản nháp đã lưu",
+        "doneNote": "Bản nháp và thông tin đã lưu đã bị xóa. Ứng dụng không thể khôi phục chúng.",
+        "another": "Xem xét bản nháp khác",
+        "find": "Tìm các lượt xem xét đã lưu",
+        "noReviews": "Không tìm thấy lượt xem xét đã lưu.",
+        "outcomes": {
+          "no_reservation": "Bản nháp này không giữ mã nhân viên nào. Không có số nào được trả lại.",
+          "unreserved_code": "Bản nháp sẽ không còn giữ mã nhân viên {code}. Không có số đặt trước trong dãy để trả lại.",
+          "released_tip": "Mã nhân viên {code} ở cuối dãy. Số đã giữ sẽ được trả lại.",
+          "retained_gap": "Bản nháp sẽ không còn giữ mã nhân viên {code}. Số này không được trả lại vào dãy; khoảng trống vẫn còn."
+        },
+        "completedOutcomes": {
+          "no_reservation": "Không có mã nhân viên được giữ và không có số nào được trả lại.",
+          "unreserved_code": "Bản nháp không còn giữ mã nhân viên {code}. Không có số đặt trước trong dãy để trả lại.",
+          "released_tip": "Số đã giữ cho mã nhân viên {code} đã được trả lại vào dãy.",
+          "retained_gap": "Bản nháp không còn giữ mã nhân viên {code}. Số này không được trả lại vào dãy; khoảng trống vẫn còn."
+        },
+        "states": {
+          "awaiting_confirmation": "Đang chờ xác nhận",
+          "completed": "Đã loại bỏ bản nháp đã lưu",
+          "discarded": "Đã hủy xem xét; bản nháp được giữ lại",
+          "expired": "Lượt xem xét đã hết hạn",
+          "refused": "Không thể tiếp tục xem xét"
+        }
+      },
       "employeeDraftActivation": {
         "title": "Kích hoạt bản nháp nhân viên đã lưu",
         "description": "Xem xét bản nháp đã lưu được hỗ trợ và xác nhận tạo nhân viên qua dịch vụ gốc.",

@@ -797,3 +797,8 @@ SQL byte remain unchanged. The human explicitly confirmed 0717–0725 were never
 drafts; the coordinator separately verified the actual installed prefix. Superseded held numeric
 filenames and lower timestamps are not alternate installation paths. Function names containing
 historical numbers remain unchanged; this allocation renames migration files and journal tags only.
+
+
+## Personnel saved-draft discard — provisional development only
+
+Coordinator assigned `0752_assistant_employee_draft_discard_custody`, idx731/version7/when1793330000089/breakpoints:true, for the closed native discard port, six private proof/admission fields, pending activation/discard cleanup and protected privacy hook. This is UNAPPLIED PROVISIONAL DEVELOPMENT identity only. Preserve all historical SQL; reconcile against the actual accepted ordered installation ledger before any future installation. The verified Lifecycle0746 remains separately owned. No live operator role provisioning, bootstrap change, protected merge or deployment is authorized.

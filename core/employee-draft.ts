@@ -1,3 +1,4 @@
+import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {assertWorkforceCompanyTx} from './workforce-access';
@@ -640,9 +641,27 @@ export async function createEmployeeDraftWithReservedCode(
   });
 }
 
-export async function discardEmployeeDraft(ctx: SessionContext, id: string): Promise<void> {
+export type EmployeeDraftDiscardResult = {
+  draftId: string;
+  reservedEmployeeCode: string | null;
+  released: boolean;
+  eventId: string;
+};
+
+export function discardEmployeeDraft(
+  ctx: SessionContext, id: string, outerTx: Tx, options: { returnResult: true },
+): Promise<EmployeeDraftDiscardResult>;
+export function discardEmployeeDraft(ctx: SessionContext, id: string, outerTx?: Tx): Promise<void>;
+/** Optional composition uses the caller's transaction without opening a savepoint. A captured result
+ * identifies this native delete/event attempt; it is not proof of commit or a custody witness. */
+export async function discardEmployeeDraft(
+  ctx: SessionContext, id: string, outerTx?: Tx, options?: { returnResult: true },
+): Promise<void | EmployeeDraftDiscardResult> {
   assertAdmin(ctx);
-  await withTenant(ctx, async (tx) => {
+  const capture = options?.returnResult === true;
+  if (capture && !outerTx) throw new Error('Draft discard result requires an enclosing transaction.');
+  const run = async (tx: Tx): Promise<void | EmployeeDraftDiscardResult> => {
+    await boundNativeOutcomeTransactionTx(tx);
     const [row] = await tx
       .select({
         reservedEmployeeCode: employeeDraft.reservedEmployeeCode,
@@ -653,13 +672,21 @@ export async function discardEmployeeDraft(ctx: SessionContext, id: string): Pro
       .where(eq(employeeDraft.id, id))
       .limit(1);
     await onboardingSyncDraftTx(ctx,tx,id,'discard');
-    const deleted = await tx
-      .delete(employeeDraft)
-      .where(eq(employeeDraft.id, id))
-      .returning({ id: employeeDraft.id });
+    let deleted: { id: string }[];
+    try {
+      deleted = await tx.execute<{ id: string }>(sql`select id from app.native_employee_draft_discard_delete(${id}::uuid)`);
+    } catch (error) {
+      const { pgErrorChain } = await import('../lib/db-error');
+      // Translate only this closed port's dedicated zero-DELETE refusal. Counter, audit and
+      // authority errors retain their native meaning and escape the enclosing transaction.
+      if (pgErrorChain(error).some(link => link.code === 'P0002' && link.message === 'Draft delete not found')) {
+        throw new Error('Draft not found (or not visible).');
+      }
+      throw error;
+    }
     if (deleted.length === 0) throw new Error('Draft not found (or not visible).');
     const released = row ? await releaseReservedNumber(tx, ctx.tenantId, row) : false;
-    await appendEvent(tx, {
+    const event = {
       tenantId: ctx.tenantId,
       aggregateType: 'employee-draft',
       aggregateId: id,
@@ -670,8 +697,14 @@ export async function discardEmployeeDraft(ctx: SessionContext, id: string): Pro
       payload: row?.reservedEmployeeCode
         ? { reservedEmployeeCode: row.reservedEmployeeCode, released }
         : {},
-    });
-  });
+    };
+    const eventId = capture ? await appendEvent(tx, event, { returnId: true }) : await appendEvent(tx, event);
+    if (capture) {
+      if (!eventId) throw new Error('Draft discard event reference missing.');
+      return { draftId: deleted[0].id, reservedEmployeeCode: row?.reservedEmployeeCode ?? null, released, eventId };
+    }
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
 /**

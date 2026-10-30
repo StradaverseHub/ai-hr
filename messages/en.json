@@ -20081,6 +20081,63 @@
           "other": "Other"
         }
       },
+      "employeeDraftDiscard": {
+        "title": "Discard a saved employee draft",
+        "description": "Review the saved input and Employee ID outcome before discarding one draft.",
+        "back": "Back to Assistant",
+        "intro": "Choose a saved draft to review. Discarding removes all information saved in that draft.",
+        "working": "Working…",
+        "unavailable": "The result could not be verified. Reopen the same saved review or check the draft in Personnel.",
+        "choicesUnavailable": "Drafts are unavailable. Check your current access in Personnel.",
+        "draft": "Saved draft",
+        "choose": "Choose a draft",
+        "unnamed": "Unnamed draft",
+        "unassigned": "No company assigned",
+        "empty": "No saved drafts are available.",
+        "truncated": "Showing the latest 25 drafts. Open Personnel for more.",
+        "handoff": "Review this draft in Personnel before discarding it.",
+        "onboardingHandoff": "This draft is linked to an onboarding case. Review its case and task consequences in Personnel.",
+        "native": "Open Personnel drafts",
+        "prepareConsent": "I selected this saved draft and want to review discarding its saved information.",
+        "prepare": "Review draft discard",
+        "reviewTitle": "Review saved-draft discard",
+        "company": "Company",
+        "reservation": "Employee ID outcome",
+        "consequence": "Confirming permanently deletes all information saved in this draft. You cannot restore it in the application. This action does not delete an employee record.",
+        "expires": "Review expires",
+        "expired": "This review has expired. Start a fresh review from Personnel drafts.",
+        "confirmConsent": "I reviewed this draft and its Employee ID outcome. I authorize permanently deleting all saved information in this draft, with no application undo.",
+        "confirm": "Discard saved draft",
+        "retire": "Cancel this review",
+        "retireNote": "Cancelling this review keeps the saved draft.",
+        "uncertain": "The result is uncertain. Reopen this same review to recover its result before trying another discard.",
+        "uncertainUnknown": "The review may have been saved. Find your saved reviews before starting again.",
+        "reopen": "Reopen saved review",
+        "done": "Saved draft discarded",
+        "doneNote": "The draft and its saved information were deleted. The application cannot restore them.",
+        "another": "Review another draft",
+        "find": "Find my saved reviews",
+        "noReviews": "No saved reviews were found.",
+        "outcomes": {
+          "no_reservation": "This draft has no reserved Employee ID. No number will be returned.",
+          "unreserved_code": "Employee ID {code} will no longer be held by this draft. There is no sequence reservation to return.",
+          "released_tip": "Employee ID {code} is at the sequence tip. Its reserved number will be returned.",
+          "retained_gap": "Employee ID {code} will no longer be held by this draft. Its number will not be returned to the sequence; the gap remains."
+        },
+        "completedOutcomes": {
+          "no_reservation": "There was no reserved Employee ID and no number was returned.",
+          "unreserved_code": "Employee ID {code} is no longer held by this draft. There was no sequence reservation to return.",
+          "released_tip": "The reserved number for Employee ID {code} was returned to its sequence.",
+          "retained_gap": "Employee ID {code} is no longer held by this draft. Its number was not returned to the sequence; the gap remains."
+        },
+        "states": {
+          "awaiting_confirmation": "Awaiting confirmation",
+          "completed": "Saved draft discarded",
+          "discarded": "Review cancelled; the draft was kept",
+          "expired": "Review expired",
+          "refused": "Review could not proceed"
+        }
+      },
       "employeeDraftActivation": {
         "title": "Activate a saved employee draft",
         "description": "Review a supported saved draft and confirm native employee creation.",

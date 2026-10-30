@@ -548,6 +548,14 @@ export const AGENT_ACTIONS=Object.freeze([
   screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:['app/admin/personnel/[employmentId]/qualification-actions.ts#addQualificationAction','app/admin/personnel/[employmentId]/qualification-actions.ts#editQualificationAction','app/admin/personnel/[employmentId]/qualification-actions.ts#archiveQualificationAction']},review:{route:'/assistant/qualifications',handoff:'review_page'},
   store:'generic_assigned',browserOwner:'qualificationMaintenance',pauseKey:'hr_assistant'}),
 
+ defineAgentAction({id:'employees.draft.discard',module:'employees',owner:'personnel',service:'core/employee-draft.ts#discardEmployeeDraft',contractVersion:1,
+  prepare:{status:'implemented',adapter:'employee_draft_discard_review_v1',inputSchema:'EmployeeDraftDiscard.Human',outputSchema:'EmployeeDraftDiscard.Prepared'},
+  confirm:{status:'implemented',adapter:'employee_draft_discard_review_v1',inputSchema:'EmployeeDraftDiscard.Confirmation',outputSchema:'EmployeeDraftDiscard.Completed'},
+  outcome:'canonical_receipt_required',semantics:'saved_draft_deleted_not_employee',humanInputs:['draftId','companyId','consent'],
+  permission:{actor:'hr_admin',guard:'core/assistant-actions/employee-draft-discard-source.ts#withEmployeeDraftDiscardIntervalTx'},subject:'company',blastRadius:{max:1,unit:'saved_draft_and_native_reservation_release'},
+  idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'final'},evaluationCases:[],
+  // Assigned-company drafts with no linked Onboarding case; broader legacy variants remain native.
+  screen:{native:'app/admin/personnel/new/page.tsx',entryPoints:[]},review:{route:'/assistant/employee-draft-discard',handoff:'review_page'},store:'generic_own',browserOwner:'employeeDraftDiscard',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'employees.draft.activate',module:'employees',owner:'personnel',service:'core/employee-draft.ts#saveAndCompleteEmployeeDraft',contractVersion:1,
   prepare:{status:'implemented',adapter:'employee_draft_activation_review_v1',inputSchema:'EmployeeDraftActivation.Human',outputSchema:'EmployeeDraftActivation.Prepared'},
   confirm:{status:'implemented',adapter:'employee_draft_activation_review_v1',inputSchema:'EmployeeDraftActivation.Confirmation',outputSchema:'EmployeeDraftActivation.Completed'},
