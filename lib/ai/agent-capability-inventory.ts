@@ -206,7 +206,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/attendance/application-history/offline-actions.ts":{"resolveOfflineClaimAction":"backlog:approve"},
  "app/attendance/clock/actions.ts":{"clockInAction":"backlog:confirm","clockOutAction":"backlog:confirm","requestClockRemovalAction":"backlog:confirm"},
  "app/attendance/import/actions.ts":{"commitClockingImportAction":"backlog:confirm","validateClockingImportAction":"backlog:automatic"},
- "app/attendance/individual/[date]/actions.ts":{"adminCorrectAttendanceDayAction":"backlog:confirm","rejectAttendanceDayApplicationAction":"backlog:approve","saveAttendanceClockDataAction":"backlog:confirm","saveAttendanceDayChangesAction":"backlog:confirm","submitUnclockedAttendanceWorkAction":"backlog:confirm"},
+ "app/attendance/individual/[date]/actions.ts":{"adminCorrectAttendanceDayAction":"backlog:confirm","rejectAttendanceDayApplicationAction":"backlog:approve","saveAttendanceClockDataAction":"backlog:confirm","saveAttendanceDayChangesAction":"backlog:confirm","saveAttendanceDayScheduleAction":"backlog:confirm","submitUnclockedAttendanceWorkAction":"backlog:confirm"},
  "app/attendance/my-records/[date]/actions.ts":{"requestOwnAttendanceDayAction":"registered:attendance.correction.request"},
  "app/attendance/recompute/actions.ts":{"applyRecomputeAction":"backlog:confirm","previewRecomputeAction":"backlog:confirm"},
  "app/auth-actions.ts":{"logoutAction":"handoff:access_and_authentication","requestPasswordResetAction":"handoff:access_and_authentication","signOutUnlinkedAction":"handoff:access_and_authentication"},
