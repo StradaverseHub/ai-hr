@@ -8,6 +8,7 @@ import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {createCompany,createDepartment} from '../core/admin';
 import {addEmployeeDocument,updateEmployeeDocumentMeta,replaceEmployeeDocumentContent} from '../core/employee-documents';
+import {prepareDocumentMetadataSourceTx,withDocumentMetadataSubjectTx} from '../core/assistant-actions/document-metadata-source';
 import {documentMetadataReviews as store,readDocumentMetadataChoices} from '../core/assistant-actions/document-metadata-review-store';
 import {DocumentMetadata as C} from '../lib/assistant-actions/document-metadata-contract';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
@@ -41,6 +42,21 @@ describe('Ordinary document exact three-field native review',()=>{
   const after=await state(),{title,category,description,updatedAt,updatedByUserId,...attachment}=after.documents[0],{title:oldTitle,category:oldCategory,description:oldDescription,updatedAt:oldUpdated,updatedByUserId:oldUpdater,...prior}=before.documents[0];expect({title,category,description}).toEqual(r.review.after);expect(attachment).toEqual(prior);expect(updatedByUserId).toBe(ctx.userId);
   const events=after.events.filter(e=>!before.events.some(old=>old.id===e.id));expect(events).toHaveLength(1);expect(events[0]).toMatchObject({id:first.receipt.receipt.eventId,aggregateType:'employee-document',aggregateId:documentId,eventType:'employee-document.updated',subjectEmploymentId:target.employmentId,actorId:ctx.userId});expect(events[0].payload).toMatchObject({title,category,metadataAfterHash:expect.stringMatching(/^[a-f0-9]{64}$/)});expect(JSON.stringify(events[0].payload)).not.toContain(description!);
   expect((await withTenant(ctx,tx=>readCompletedNativeOutcomeTx(tx,ctx,{source:'review',action:C.action,actionId:r.actionId}))).evidence.eventId).toBe(first.receipt.receipt.eventId);
+ });
+ it('keeps the same real native source digest under equivalent entitlement ordering and detects a real value change',async()=>{
+  const input=human(),before=await state();await withTenant(ctx,tx=>withDocumentMetadataSubjectTx(tx,ctx,documentId,'pending',async fresh=>{
+   if(!fresh.entitlements)throw Error('Expected current resolved commercial snapshot');
+   // Exercise the actual source digest against the SAME locked native row after real authority
+   // admission. These detached copies are digest probes; canonical output is never a permission input.
+   const left=structuredClone(fresh.entitlements),right=structuredClone(fresh.entitlements);expect(left.enabledModules.length).toBeGreaterThan(0);
+   left.enabledModules=[...left.enabledModules,...left.enabledModules];right.enabledModules=[...right.enabledModules].reverse();
+   left.settings={...left.settings,fictionalDigestOrdering:{z:null,a:{z:0,a:false},ordered:[{z:2,a:1},'last','last']}};
+   right.settings={fictionalDigestOrdering:{ordered:[{a:1,z:2},'last','last'],a:{a:false,z:0},z:null},...right.settings};
+   expect(JSON.stringify(left)).not.toBe(JSON.stringify(right));
+   const one=await prepareDocumentMetadataSourceTx(tx,{...fresh,entitlements:left},input),two=await prepareDocumentMetadataSourceTx(tx,{...fresh,entitlements:right},input);expect(two.review).toEqual(one.review);expect(two.reviewedDigest).toBe(one.reviewedDigest);
+   const changed=structuredClone(right);(changed.settings.fictionalDigestOrdering as {a:{z:number}}).a.z=1;
+   const three=await prepareDocumentMetadataSourceTx(tx,{...fresh,entitlements:changed},input);expect(three.review).toEqual(one.review);expect(three.reviewedDigest).not.toBe(one.reviewedDigest);
+  }));expect(await state()).toEqual(before);
  });
  it('shares native trim/slice200/null normalization without imposing a new category catalog',async()=>{
   const input=human();input.fields={title:' x'+ 'z'.repeat(240)+' ',category:' ',description:' '};const r=(await store.prepare(ctx,input)).review;expect(r.review.after).toEqual({title:('x'+'z'.repeat(240)).slice(0,200),category:null,description:null});await store.confirm(ctx,confirmation(r));const [row]=await owner.db.select().from(s.employeeDocument).where(eq(s.employeeDocument.id,documentId));expect({title:row.title,category:row.category,description:row.description}).toEqual(r.review.after);

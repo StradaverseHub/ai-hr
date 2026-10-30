@@ -32,6 +32,7 @@ checks remain authoritative.
 Preparation returns a closed metadata projection, filename/MIME/stored-size labels and exact normalized
 before/after. It does not speculate a write. Access locks and the document FOR UPDATE are retained through
 confirmation; company/employment/Access revisions and the document xmin bind a private reviewed digest.
+The entitlement snapshot is canonicalized only for the private digest using the pure `canonicalEntitlementsForDigest` helper: module/company sets are sorted and deduplicated, nested setting object keys are deterministic, ordered setting arrays and every real value/status remain unchanged. The helper detaches its output, never mutates the current snapshot and is never used for permission decisions. A same-locked-native-source witness proves ordering equivalence and a real setting change still changes the digest.
 The opaque document row revision also changes on attachment replacement, so bytes need not be read or
 hashed. Runtime snapshot/choices queries deliberately never SELECT content. Existing oversized/invalid
 legacy fields hand off instead of widening the contract or silently omitting consequences.
@@ -60,6 +61,7 @@ Authored tests (not run locally):
   concurrent confirm/reopen/replay, native outcome capture, current-XID/old-event/foreign-document proof,
   description tamper and null proof, exhaustive hybrid receipt constraints, genuine issued-letter
   generation/immutability and native handoff. All attachment contents are fictional in-memory fixtures.
+- test/canonical-entitlements.test.ts: pure set/object ordering equivalence, ordered setting arrays, nonmutation, missing/null/scalar distinctions and actual tenant/status/module/scope/value changes.
 - test/document-metadata-contract.test.ts: finite input, actual UTF-8 bound and no bytes/authority/proof
   internals in the public contract.
 - test/document-metadata-transport.test.ts: actual six-operation packet registry and streamed response

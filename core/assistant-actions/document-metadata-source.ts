@@ -1,5 +1,6 @@
 /** Ordinary document metadata only. No attachment bytes, provider, download or letter mutation. */
 import {createHash} from 'node:crypto';
+import {canonicalEntitlementsForDigest} from '../../lib/assistant-actions/canonical-entitlements';
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
 import {isAdmin} from '../../lib/authz-model';
@@ -25,7 +26,7 @@ async function review(tx:Tx,ctx:SessionContext,human:Human){
  const s=await subject(tx,ctx,human.subjectId);if(s.employmentId!==human.employmentId)return fail();
  const native=await prepareEmployeeDocumentMetadataTx(tx,ctx,{documentId:human.subjectId,...human.fields});if(native.subject.employmentId!==s.employmentId||native.subject.personId!==s.subjectPersonId)return fail();
  const {revision,...attachment}=native.attachment,item=C.Item.parse({employmentId:s.employmentId,subjectId:s.subjectId,employeeName:s.employeeName,employeeCode:s.employeeCode,companyName:s.companyName,before:native.before,after:native.after,attachment});
- return{review:item,reviewedDigest:hash([1,C.action,s,revision,attachment,item,ctx.entitlements])};
+ return{review:item,reviewedDigest:hash([1,C.action,s,revision,attachment,item,canonicalEntitlementsForDigest(ctx.entitlements)])};
 }
 export const prepareDocumentMetadataSourceTx=review;
 export async function confirmDocumentMetadataSourceTx(tx:Tx,ctx:SessionContext,human:Human,expected:string){
