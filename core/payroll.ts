@@ -7046,14 +7046,14 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       const tp1Rebate = isAdditionalRun ? 0 : round2(tp1RebateByEmp.get(e.employmentId) ?? 0);
       let zakatOffsetTotal = round2(effectiveZakat + tp1Rebate);
       const earlierTaxBasis=earlierTaxBasisByEmp.get(e.employmentId);
-      const computeMonth = (additional: number, ot: number, zakatCurrent = zakatOffsetTotal, bases = stOpts) =>
+      const computeMonth = (additional: number, ot: number, zakatCurrent = zakatOffsetTotal, bases = stOpts, includesEarlier = true) =>
         pack.payroll.statutory(
           wagesExOt,
           taxProfile,
           additional,
           ot,
           { month: pMonth, acc: accByEmp.get(e.employmentId), lpCurrent: lp, zakatCurrent },
-          earlierTaxBasis?.corrected ? {...bases,pcbCashNormalOverride:earlierTaxBasis.normal,pcbAdditionalOverride:round2(additional+earlierTaxBasis.additionalDelta)} : bases,
+          earlierTaxBasis?.corrected ? {...bases,pcbCashNormalOverride:earlierTaxBasis.normal,pcbAdditionalOverride:round2(additional+(includesEarlier?earlierTaxBasis.additionalDelta:0))} : bases,
           rules,
         );
       // Step 4 (f3148da1) — the OT figure fed to the statutory engine INCLUDES the converted excess, so the
@@ -7061,7 +7061,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // overtime line stays the capped figure; the excess shows under the chosen pay item. Convert=0 ⇒ otStat===overtime.
       const otStat = round2(overtime + otConvertAmount);
       if (zakat <= 0 && !isAdditionalRun && e.zakatActive && e.zakatMethod === 'percent_of_pcb') {
-        const probe = computeMonth(bonus, otStat, 0);
+        const probe = computeMonth(bonus, otStat, 0, stOpts, false);
         effectiveZakat = round2(Number(e.zakatPercent ?? 0) * (probe.pcbNormalPreZakat ?? 0));
         // The probe re-resolves the payslip's zakat, so the offset total has to be re-derived from it or
         // every `computeMonth` below would default to the pre-probe figure. The probe itself passes 0.
@@ -7137,7 +7137,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
                 computeMonth(earlierRun.additional + bonus, round2(earlierRun.overtime + otStat), undefined, bases),
                 chargedByEarlierRuns(
                   computeMonth(earlierRun.additional, earlierRun.overtime, effectiveZakat, {...baseline,pcbNonCashNormal:{bik:round2(nonCashBefore.bik+taxableNonCash(en.nonCashEntries.filter(x=>x.source==='recurring')).bik),vola:round2(nonCashBefore.vola+taxableNonCash(en.nonCashEntries.filter(x=>x.source==='recurring')).vola)}}),
-                  computeMonth(0, 0, effectiveZakat, {...baseline,pcbNonCashNormal:taxableNonCash(en.nonCashEntries.filter(x=>x.source==='recurring'))}),
+                  computeMonth(0, 0, effectiveZakat, {...baseline,pcbNonCashNormal:taxableNonCash(en.nonCashEntries.filter(x=>x.source==='recurring'))}, false),
                 ),
               )
             : computeMonth(bonus, otStat, undefined, bases);
