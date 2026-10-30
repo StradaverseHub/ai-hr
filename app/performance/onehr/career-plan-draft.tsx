@@ -12,9 +12,11 @@ export function CareerPlanDraft({reviewId,savedTargetId,initialQuota}:{reviewId:
  const [result,setResult]=useState<Draft|null>(null),[kept,setKept]=useState<number[]>([]),[long,setLong]=useState(''),[keepLong,setKeepLong]=useState(false),[error,setError]=useState(''),[pending,start]=useTransition();
  const quota=result??initialQuota;
  const generate=()=>{
-  const form=root.current?.closest('form');if(!form)return;
-  if((String(new FormData(form).get('targetProfileId')??'')||null)!==savedTargetId){setError(t('saveDirection'));return;}
-  setError('');start(async()=>{try{const response=await careerPlanDraftAction(reviewId);if('error' in response){setError(response.error??goalsT('unavailable'));return;}setResult(response);setKept(response.goals.map((_,i)=>i));setLong(response.aspirationLong);setKeepLong(!!response.aspirationLong&&!String(new FormData(form).get('aspirationLong')??'').trim());}catch{setError(goalsT('unavailable'));}});
+  const form=root.current?.closest('form');if(!form)return;const data=new FormData(form);
+  if((String(data.get('targetProfileId')??'')||null)!==savedTargetId){setError(t('saveDirection'));return;}
+  // Capture only explicit human words from the existing native form. Empty input nominates no aspiration.
+  const aspirationLong=String(data.get('aspirationLong')??'').trim();
+  setError('');start(async()=>{try{const response=await (aspirationLong?careerPlanDraftAction(reviewId,{aspirationLong}):careerPlanDraftAction(reviewId));if('error' in response){setError(response.error??goalsT('unavailable'));return;}setResult(response);setKept(response.goals.map((_,i)=>i));setLong(response.aspirationLong);setKeepLong(!!response.aspirationLong&&!String(new FormData(form).get('aspirationLong')??'').trim());}catch{setError(goalsT('unavailable'));}});
  };
  const apply=()=>{
   const form=root.current?.closest('form');if(!form||!result)return;const data=new FormData(form);
