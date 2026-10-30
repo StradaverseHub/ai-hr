@@ -9,7 +9,7 @@ import type {TaxBasisPreview,TaxBasisSelection} from '@/lib/payroll-tax-basis';
 import {previewTaxBasisAction,confirmTaxBasisAction} from './actions';
 import {TaxBasisResults} from './results';
 
-export type TaxBasisOptions={companies:{id:string;name:string}[];employees:{id:string;companyId:string;employeeNo:string;name:string}[];years:number[];canRecalculate:boolean};
+export type TaxBasisOptions={companies:{id:string;name:string;canRecalculate?:boolean}[];employees:{id:string;companyId:string;employeeNo:string;name:string}[];years:number[];canRecalculate:boolean};
 const input='mt-1 block w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50';
 const button='inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 const primary=button+' border-primary bg-primary text-primary-foreground hover:bg-primary/90';
@@ -28,6 +28,7 @@ export function TaxBasisWorkflow({options,initialSelection}:{options:TaxBasisOpt
   const [confirmOpen,setConfirmOpen]=useState(false);
   const [acknowledged,setAcknowledged]=useState(false);
   const [employeePage,setEmployeePage]=useState(0);
+  const canRecalculate=options.companies.find(company=>company.id===companyId)?.canRecalculate??options.canRecalculate;
   const employees=options.employees.filter(employee=>employee.companyId===companyId);
   const matching=employees.filter(employee=>(employee.employeeNo+' '+employee.name).toLocaleLowerCase().includes(search.toLocaleLowerCase()));
   const pages=Math.max(1,Math.ceil(matching.length/30));
@@ -53,18 +54,18 @@ export function TaxBasisWorkflow({options,initialSelection}:{options:TaxBasisOpt
   const money=(value:number|null)=>value===null?t('unavailable'):formatMoney(value,'MYR');
   if(options.companies.length===0||options.years.length===0)return <section className="rounded-xl border p-6"><p className="text-sm text-muted-foreground">{t('noHistoryAvailable')}</p></section>;
   return <div className="space-y-6">
-    {!options.canRecalculate&&<p className="rounded-lg border p-4 text-sm text-muted-foreground">{t('readOnly')}</p>}
+    {!canRecalculate&&<p className="rounded-lg border p-4 text-sm text-muted-foreground">{t('readOnly')}</p>}
     {initialSelection&&<p role="status" className="rounded-lg border bg-muted/30 p-4 text-sm">{t('retryHint')}</p>}
     <section className="space-y-5 rounded-xl border p-5" aria-labelledby="tax-basis-period-title">
-      <fieldset disabled={busy!==null||!options.canRecalculate} className="space-y-5 disabled:opacity-70">
+      <fieldset disabled={busy!==null} className="space-y-5 disabled:opacity-70">
         <legend id="tax-basis-period-title" className="font-semibold">{t('recalculationPeriod')}</legend>
         <div className="grid gap-4 md:grid-cols-3">
           <label className="text-sm font-medium" htmlFor="tax-company">{t('company')}<select id="tax-company" className={input} value={companyId} onChange={event=>{invalidate();setCompanyId(event.target.value);setSelected([]);setSearch('');setEmployeePage(0);}}>{options.companies.map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select></label>
-          <label className="text-sm font-medium" htmlFor="tax-year">{t('year')}<select id="tax-year" className={input} value={year} onChange={event=>{invalidate();setYear(Number(event.target.value));}}>{options.years.map(value=><option key={value} value={value}>{value}</option>)}</select></label>
-          <label className="text-sm font-medium" htmlFor="tax-month">{t('upToMonth')}<select id="tax-month" className={input} value={upToMonth} onChange={event=>{invalidate();setUpToMonth(Number(event.target.value));}}>{Array.from({length:12},(_,index)=><option key={index+1} value={index+1}>{t(`months.${index+1}`)}</option>)}</select></label>
+          <label className="text-sm font-medium" htmlFor="tax-year">{t('year')}<select id="tax-year" disabled={!canRecalculate} className={input} value={year} onChange={event=>{invalidate();setYear(Number(event.target.value));}}>{options.years.map(value=><option key={value} value={value}>{value}</option>)}</select></label>
+          <label className="text-sm font-medium" htmlFor="tax-month">{t('upToMonth')}<select id="tax-month" disabled={!canRecalculate} className={input} value={upToMonth} onChange={event=>{invalidate();setUpToMonth(Number(event.target.value));}}>{Array.from({length:12},(_,index)=><option key={index+1} value={index+1}>{t(`months.${index+1}`)}</option>)}</select></label>
         </div>
         <p className="text-xs text-muted-foreground">{t('periodHint',{year,month:t(`months.${upToMonth}`)})}</p>
-        <fieldset className="space-y-3 border-t pt-5"><legend className="pt-4 font-semibold">{t('employeeSelection')}</legend>
+        <fieldset disabled={!canRecalculate} className="space-y-3 border-t pt-5"><legend className="pt-4 font-semibold">{t('employeeSelection')}</legend>
           <div className="flex flex-wrap gap-6 text-sm"><label className="flex items-center gap-2"><input type="radio" name="tax-selection" checked={all} onChange={()=>{invalidate();setAll(true);}}/>{t('allEmployees')}</label><label className="flex items-center gap-2"><input type="radio" name="tax-selection" checked={!all} onChange={()=>{invalidate();setAll(false);}}/>{t('selectedEmployees')}</label></div>
           <p className="text-xs text-muted-foreground">{t('employeeHint')}</p>
           {!all&&<div className="space-y-3">
@@ -74,7 +75,7 @@ export function TaxBasisWorkflow({options,initialSelection}:{options:TaxBasisOpt
             {pages>1&&<nav aria-label={t('employeePagination')} className="flex items-center justify-end gap-3 text-xs"><button type="button" className={button} disabled={employeePage===0} onClick={()=>setEmployeePage(page=>page-1)}>{t('previous')}</button><span>{t('page',{current:employeePage+1,total:pages})}</span><button type="button" className={button} disabled={employeePage+1===pages} onClick={()=>setEmployeePage(page=>page+1)}>{t('next')}</button></nav>}
           </div>}
         </fieldset>
-        <div className="flex justify-end"><button type="button" className={button} onClick={generatePreview} disabled={!companyId||!year||(!all&&selected.length===0)}>{t(busy==='preview'?'previewing':'previewAction')}</button></div>
+        <div className="flex justify-end"><button type="button" className={button} onClick={generatePreview} disabled={!canRecalculate||!companyId||!year||(!all&&selected.length===0)}>{t(busy==='preview'?'previewing':'previewAction')}</button></div>
       </fieldset>
     </section>
     {error&&<p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{error}</p>}
@@ -87,7 +88,7 @@ export function TaxBasisWorkflow({options,initialSelection}:{options:TaxBasisOpt
       <TaxBasisResults employees={preview.employees}/>
       <div className="flex flex-wrap items-center justify-between gap-4 border-t pt-4"><p className="max-w-3xl text-xs text-muted-foreground">{t('preserved')}</p>
         <AlertDialog.Root open={confirmOpen} onOpenChange={open=>{if(!busy){setConfirmOpen(open);setAcknowledged(false);}}}>
-          <AlertDialog.Trigger asChild><button type="button" className={primary} disabled={busy!==null||preview.eligibleCount===0||!options.canRecalculate}>{t('recalculateAction',{count:preview.eligibleCount})}</button></AlertDialog.Trigger>
+          <AlertDialog.Trigger asChild><button type="button" className={primary} disabled={busy!==null||preview.eligibleCount===0||!canRecalculate}>{t('recalculateAction',{count:preview.eligibleCount})}</button></AlertDialog.Trigger>
           <AlertDialog.Portal><AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/45"/><AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border bg-popover p-6 text-popover-foreground shadow-xl">
             <AlertDialog.Title className="text-lg font-semibold">{t('confirmTitle')}</AlertDialog.Title>
             <AlertDialog.Description className="mt-3 text-sm text-muted-foreground">{t('confirmDescription',{company:preview.companyName,year:preview.year,month:t(`months.${preview.upToMonth}`),count:preview.eligibleCount,records:preview.recordCount})}</AlertDialog.Description>

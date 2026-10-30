@@ -30457,6 +30457,13 @@
       "10": "October",
       "11": "November",
       "12": "December"
-    }
+    },
+    "continueHint": "Continue with the next group of up to 50 employees. Each group rechecks the original reviewed inputs and current permissions. Completed corrections remain saved.",
+    "continueAction": "Continue recalculation",
+    "interruptedHint": "No progress has been recorded for at least five minutes. Review unfinished employees to prepare a fresh preview; previous successful corrections stay saved.",
+    "reviewUnfinished": "Review unfinished employees",
+    "recoverTitle": "Review this interrupted recalculation?",
+    "recoverDescription": "Previous successful corrections will remain saved. Unfinished employees will be marked for review. You must generate and confirm a fresh preview using the latest saved settings before recalculating them; the old preview will not be reused.",
+    "recoverAction": "Yes — Review unfinished employees"
   }
 }

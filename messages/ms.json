@@ -30457,6 +30457,13 @@
       "10": "Oktober",
       "11": "November",
       "12": "Disember"
-    }
+    },
+    "continueHint": "Teruskan dengan kumpulan seterusnya sehingga 50 pekerja. Setiap kumpulan menyemak semula input asal yang disemak dan kebenaran semasa. Pembetulan selesai kekal disimpan.",
+    "continueAction": "Teruskan pengiraan semula",
+    "interruptedHint": "Tiada kemajuan direkodkan selama sekurang-kurangnya lima minit. Semak pekerja yang belum selesai untuk menyediakan pratonton baharu; pembetulan berjaya terdahulu kekal disimpan.",
+    "reviewUnfinished": "Semak pekerja belum selesai",
+    "recoverTitle": "Semak pengiraan semula yang terganggu ini?",
+    "recoverDescription": "Pembetulan berjaya terdahulu kekal disimpan. Pekerja yang belum selesai akan ditandakan untuk semakan. Anda mesti menjana dan mengesahkan pratonton baharu menggunakan tetapan terkini sebelum mengira semula mereka; pratonton lama tidak akan digunakan semula.",
+    "recoverAction": "Ya — Semak pekerja belum selesai"
   }
 }

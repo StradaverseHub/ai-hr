@@ -11,12 +11,13 @@ import th from '../messages/th.json';
 import viMessages from '../messages/vi.json';
 import {TaxBasisWorkflow,type TaxBasisOptions} from '../app/payroll/income-tax-recalculation/workflow';
 import {TaxBasisResults} from '../app/payroll/income-tax-recalculation/results';
+import {TaxBasisProgress} from '../app/payroll/income-tax-recalculation/progress';
 import TaxBasisPage from '../app/payroll/income-tax-recalculation/page';
 import TaxBasisBatchPage from '../app/payroll/income-tax-recalculation/[id]/page';
 import type {TaxBasisBatch,TaxBasisEmployee,TaxBasisPreview,TaxBasisSelection} from '../lib/payroll-tax-basis';
 
-const mocks=vi.hoisted(()=>({preview:vi.fn(),confirm:vi.fn(),push:vi.fn(),refresh:vi.fn(),options:vi.fn(),list:vi.fn(),get:vi.fn()}));
-vi.mock('../app/payroll/income-tax-recalculation/actions',()=>({previewTaxBasisAction:mocks.preview,confirmTaxBasisAction:mocks.confirm}));
+const mocks=vi.hoisted(()=>({preview:vi.fn(),confirm:vi.fn(),recover:vi.fn(),continue:vi.fn(),push:vi.fn(),refresh:vi.fn(),options:vi.fn(),list:vi.fn(),get:vi.fn()}));
+vi.mock('../app/payroll/income-tax-recalculation/actions',()=>({previewTaxBasisAction:mocks.preview,confirmTaxBasisAction:mocks.confirm,recoverTaxBasisAction:mocks.recover,continueTaxBasisAction:mocks.continue}));
 vi.mock('../packs/payroll/service',()=>({taxBasisOptions:mocks.options,listTaxBasisBatches:mocks.list,getTaxBasisBatch:mocks.get}));
 vi.mock('../lib/authz',()=>({requirePayrollAccess:async()=>({tenantId:'tenant-a',userId:'actor-a'})}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push:mocks.push,refresh:mocks.refresh}),notFound:()=>{throw Error('NEXT_NOT_FOUND');}}));
@@ -68,6 +69,14 @@ describe('historical income tax basis review and confirmation',()=>{
     const previewButton=screen.getByRole('button',{name:'Preview Recalculation'});expect(previewButton).toBeDisabled();
     await user.click(previewButton);expect(mocks.preview).not.toHaveBeenCalled();expect(mocks.confirm).not.toHaveBeenCalled();
   });
+  it('uses company-specific write scope while allowing a switch to an authorized company',async()=>{
+    const user=userEvent.setup();show('en',{options:{...options,companies:[{id:'company-a',name:'Example Company',canRecalculate:false},{id:'company-b',name:'Other Company',canRecalculate:true}]}});
+    expect(screen.getByRole('button',{name:'Preview Recalculation'})).toBeDisabled();
+    expect(screen.getByLabelText('Company')).toBeEnabled();
+    await user.selectOptions(screen.getByLabelText('Company'),'company-b');
+    expect(screen.getByRole('button',{name:'Preview Recalculation'})).toBeEnabled();
+    expect(mocks.preview).not.toHaveBeenCalled();expect(mocks.confirm).not.toHaveBeenCalled();
+  });
   it('keeps unknown previous values unavailable and displays exact server-owned amounts',async()=>{
     const row=employee({beforeTaxable:null,difference:null,beforeExempt:null,months:[{...employee().months[0],beforeTaxable:null,beforeExempt:null,difference:null,items:[{...employee().months[0].items[0],previousTreatment:null}]}]});
     render(wrap(<TaxBasisResults employees={[row]}/>));
@@ -107,5 +116,60 @@ describe('historical income tax basis review and confirmation',()=>{
     await user.click(screen.getByRole('button',{name:'Preview Recalculation'}));
     expect(mocks.preview).toHaveBeenCalledExactlyOnceWith({companyId:'company-a',year:2026,upToMonth:3,employmentIds:['employee-b']});
     expect(mocks.confirm).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('bounded continuation and interrupted batch recovery',()=>{
+  it('continues only the next server-owned group and refreshes progress without starting a new preview',async()=>{
+    const user=userEvent.setup();mocks.continue.mockResolvedValue({ok:true,result:{id:batchId}});
+    render(wrap(<TaxBasisProgress batchId={batchId} recoverable={false} canRecalculate/>));
+    expect(screen.queryByRole('button',{name:'Review unfinished employees'})).toBeNull();
+    await user.click(screen.getByRole('button',{name:'Continue recalculation'}));
+    expect(mocks.continue).toHaveBeenCalledExactlyOnceWith({batchId});
+    expect(mocks.refresh).toHaveBeenCalledOnce();expect(mocks.push).not.toHaveBeenCalled();
+    expect(mocks.preview).not.toHaveBeenCalled();expect(mocks.recover).not.toHaveBeenCalled();
+  });
+  it.each(Object.keys(catalogs) as (keyof typeof catalogs)[])('requires explicit interrupted recovery confirmation and a fresh preview in %s',async locale=>{
+    const user=userEvent.setup(),t=catalogs[locale].payrollTaxBasis;mocks.recover.mockResolvedValue({ok:true,result:{id:batchId}});
+    render(wrap(<TaxBasisProgress batchId={batchId} recoverable canRecalculate/>,locale));
+    expect(screen.queryByRole('button',{name:t.continueAction})).toBeNull();
+    await user.click(screen.getByRole('button',{name:t.reviewUnfinished}));
+    const dialog=screen.getByRole('alertdialog');expect(within(dialog).getByText(t.recoverDescription)).toBeVisible();
+    expect(mocks.recover).not.toHaveBeenCalled();await user.click(within(dialog).getByRole('button',{name:t.recoverAction}));
+    expect(mocks.recover).toHaveBeenCalledExactlyOnceWith({batchId});
+    expect(mocks.push).toHaveBeenCalledWith('/payroll/income-tax-recalculation?retry='+batchId);
+    expect(mocks.confirm).not.toHaveBeenCalled();expect(mocks.preview).not.toHaveBeenCalled();
+  });
+  it('offers only refresh to view-only operators and never invokes a continuation or recovery',async()=>{
+    const user=userEvent.setup();render(wrap(<TaxBasisProgress batchId={batchId} recoverable canRecalculate={false}/>));
+    expect(screen.queryByRole('button',{name:'Review unfinished employees'})).toBeNull();
+    expect(screen.queryByRole('button',{name:'Continue recalculation'})).toBeNull();
+    await user.click(screen.getByRole('button',{name:'Refresh results'}));
+    expect(mocks.refresh).toHaveBeenCalledOnce();expect(mocks.recover).not.toHaveBeenCalled();expect(mocks.continue).not.toHaveBeenCalled();
+  });
+  it('retains prior results on authorization or active-heartbeat refusal without routing to a retry',async()=>{
+    const user=userEvent.setup();mocks.recover.mockResolvedValue({ok:false,error:'This batch is still active.'});
+    render(wrap(<TaxBasisProgress batchId={batchId} recoverable canRecalculate/>));
+    await user.click(screen.getByRole('button',{name:'Review unfinished employees'}));
+    await user.click(screen.getByRole('button',{name:'Yes — Review unfinished employees'}));
+    expect(await screen.findByRole('alert')).toHaveTextContent('This batch is still active.');
+    expect(mocks.push).not.toHaveBeenCalled();expect(mocks.refresh).not.toHaveBeenCalled();
+    cleanup();mocks.continue.mockResolvedValue({ok:false,error:'Your payroll permission changed.'});
+    render(wrap(<TaxBasisProgress batchId={batchId} recoverable={false} canRecalculate/>));
+    await user.click(screen.getByRole('button',{name:'Continue recalculation'}));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your payroll permission changed.');
+    expect(mocks.push).not.toHaveBeenCalled();expect(mocks.refresh).not.toHaveBeenCalled();
+  });
+  it('uses the server heartbeat decision on the batch detail and omits controls for terminal batches',async()=>{
+    mocks.options.mockResolvedValue(options);mocks.get.mockResolvedValue({...batch(),status:'processing',recoverable:true});
+    render(wrap(await TaxBasisBatchPage({params:Promise.resolve({id:batchId})})));
+    expect(screen.getByRole('button',{name:'Review unfinished employees'})).toBeVisible();
+    expect(screen.queryByRole('button',{name:'Continue recalculation'})).toBeNull();
+    expect(screen.queryByRole('link',{name:'Preview failed employees again'})).toBeNull();cleanup();
+    mocks.get.mockResolvedValue({...batch(),status:'completed',recoverable:false,failedCount:0});
+    render(wrap(await TaxBasisBatchPage({params:Promise.resolve({id:batchId})})));
+    expect(screen.queryByRole('button',{name:'Review unfinished employees'})).toBeNull();
+    expect(screen.queryByRole('button',{name:'Continue recalculation'})).toBeNull();
   });
 });

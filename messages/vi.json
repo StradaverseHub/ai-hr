@@ -30457,6 +30457,13 @@
       "10": "10",
       "11": "11",
       "12": "12"
-    }
+    },
+    "continueHint": "Tiếp tục nhóm kế tiếp tối đa 50 nhân viên. Mỗi nhóm kiểm tra lại dữ liệu đã xem xét ban đầu và quyền hiện tại. Các điều chỉnh hoàn tất vẫn được lưu.",
+    "continueAction": "Tiếp tục tính lại",
+    "interruptedHint": "Không có tiến độ được ghi nhận trong ít nhất năm phút. Xem xét nhân viên chưa hoàn tất để tạo bản xem trước mới; các điều chỉnh thành công trước đó vẫn được lưu.",
+    "reviewUnfinished": "Xem xét nhân viên chưa hoàn tất",
+    "recoverTitle": "Xem xét lần tính lại bị gián đoạn này?",
+    "recoverDescription": "Các điều chỉnh thành công trước đó vẫn được lưu. Nhân viên chưa hoàn tất sẽ được đánh dấu để xem xét. Bạn phải tạo và xác nhận bản xem trước mới theo thiết lập đã lưu mới nhất trước khi tính lại; không dùng lại bản xem trước cũ.",
+    "recoverAction": "Có — Xem xét nhân viên chưa hoàn tất"
   }
 }
