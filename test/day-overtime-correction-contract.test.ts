@@ -37,8 +37,9 @@ it('binds newly recorded manual calculation facts and preserves the unselected o
  const changed=otPrepared();changed.review.after.legacyRows[2].manualCalculatedMinutes=1;expect(C.Prepared.safeParse(changed).success).toBe(false);
 });
 it('allows an explicit orphan reset on an incomplete day while retaining the other native rows',()=>{
- const v=otPrepared();v.content.rows=[{key:'fictional-orphan',minutes:null}];v.review.before.complete=false;v.review.after.complete=false;
- v.review.after.legacyRows=structuredClone(v.review.before.legacyRows);
+ const v=otPrepared();v.content.rows=[{key:'fictional-orphan',minutes:null}];v.review.before.complete=false;v.review.after.complete=false;v.review.before.day=null;v.review.after.day=null;
+ v.review.before.legacyRows=v.review.before.legacyRows.map(row=>({...row,calculatedMinutes:0,autoEffectiveMinutes:0,effectiveMinutes:row.manualMinutes??0}));
+ v.review.after.legacyRows=structuredClone(v.review.before.legacyRows);v.review.after.pattern=structuredClone(v.review.before.pattern);
  v.review.before.legacyRows.push({...v.review.before.legacyRows[2],key:'fictional-orphan',orphan:true});
  expect(C.Prepared.safeParse(v).success).toBe(true);
 });
